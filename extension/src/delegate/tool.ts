@@ -20,7 +20,7 @@ const Tier = StringEnum(["cheap", "strong"] as const);
 const CHECK_IN = " Check on it with status: writers commit to their own branches, not the main checkout.";
 const STEP_MODEL = "Only a model the person named, in their words.";
 const WORKERS = "Subagents at once, only when the person asked; default 2.";
-const MODELS_GUIDELINE = "Give a step a model only when the person named one, in their words (if it fits none, ask which they meant). To look at an image your model can't see, delegate without a model: the subagent switches to the person's Look at images model. Set workers only when they ask for more or fewer than 2 at once.";
+const MODELS_GUIDELINE = "Give a step a model only when the person named one, in their words (if it fits none, ask which they meant). A person asking for Claude (Claude, Opus, Sonnet, Haiku) means Claude Code where it's on, for any job: give the step that name and it runs there in its role. A Claude on a paid endpoint runs only when the person singled it out by name; if a name is refused as one, ask them which they meant before naming it by its whole label. To look at an image your model can't see, delegate without a model: the subagent switches to the person's Look at images model. Set workers only when they ask for more or fewer than 2 at once.";
 /** The text checking on runs, naming models and setting workers adds to every thread's tool definitions, for tests that size a window around them. */
 export const MODEL_CHOICE_TEXT = [CHECK_IN, STEP_MODEL, WORKERS, MODELS_GUIDELINE, "models", "models lists the models a step may name; "];
 // She picks a tier; a model only when the person named one (a saved workflow, which a user writes, may name one too).
@@ -70,10 +70,10 @@ function request(p: Params): Request {
   return { ...narrowing, [k]: p[k] } as Request;
 }
 
-/** Whether a request has Claude Code do any of its steps. */
-function usesClaude(req: Request): boolean {
+/** Whether a request has Claude Code do any of its steps: by its role, or by a model naming Claude where Claude Code is on. */
+function usesClaude(req: Request, claude: (model: string | undefined) => boolean): boolean {
   const steps = "tasks" in req ? req.tasks : "chain" in req ? req.chain : "task" in req ? [req] : [];
-  return steps.some((s) => s.role === CLAUDE_ROLE) || ("loop" in req && [req.loop.worker, req.loop.reviewer].includes(CLAUDE_ROLE));
+  return steps.some((s) => s.role === CLAUDE_ROLE || claude(s.model)) || ("loop" in req && [req.loop.worker, req.loop.reviewer].includes(CLAUDE_ROLE));
 }
 
 /** One line per subagent: its run, role, status, thread and usage. */
@@ -155,8 +155,9 @@ export function createDelegateExtension(thread: ThreadContext, delegation: Deleg
       async execute(_id, p, signal, _onUpdate, ctx) {
         const action = p.action ?? "run";
         if (action === "models") {
-          const list = delegation.models(thread);
-          return text(list.length ? list.map((m) => `${m.label} (${m.local ? "local" : "cloud"}${m.vision ? ", vision" : ""}${m.paid ? ", paid" : ""})`).join("\n") : "This thread has no chat models to name.");
+          const list = delegation.models(thread).map((m) => `${m.label} (${m.local ? "local" : "cloud"}${m.vision ? ", vision" : ""}${m.paid ? ", paid" : ""})`);
+          if (delegation.claudeCode(thread)) list.push("Claude Code (cloud, the person's Claude plan): name it Claude, Claude Opus, Sonnet or Haiku");
+          return text(list.length ? list.join("\n") : "This thread has no chat models to name.");
         }
         if (action === "status") {
           const rows = delegation.status(thread).filter((r) => !p.id || r.run === p.id);
@@ -170,7 +171,7 @@ export function createDelegateExtension(thread: ThreadContext, delegation: Deleg
           // A project chat never waits on a subagent: the person hears from it while the work runs.
           const projectChat = !!thread.view.own.getThread(thread.threadId)?.project;
           // Claude Code's jobs run long, so they never hold her turn.
-          const claude = usesClaude(req);
+          const claude = usesClaude(req, (model) => !!delegation.claudeFor(thread, model));
           const run = delegation.start(thread, req, { background: !!p.background || projectChat || claude, budget: requestBudget, workers: p.workers });
           if (run.background) {
             const why = p.background ? "" : claude ? ", as Claude Code always runs" : ", as every run in a project chat is";
