@@ -75,3 +75,34 @@ export function unmatched(name: string, m: { closest: Named[] }): string {
   if (!m.closest.length) return `"${name}" isn't one of this thread's models, and none is close. Ask the person which model they meant.`;
   return `"${name}" isn't exactly one of this thread's models. Closest: ${m.closest.map((x) => x.label).join(", ")}. Ask the person which one they meant before going on.`;
 }
+
+/** Claude Code's model aliases, which a name's words may ask for. */
+export type ClaudeAlias = "opus" | "sonnet" | "haiku";
+const CLAUDE_WORDS = new Set(["claude", "code", "anthropic", "opus", "sonnet", "haiku"]);
+
+/**
+ * Whether a name in plain words means Claude itself ("Claude", "Claude Opus",
+ * "claude sonnet 4.5"): every word is Claude's, an alias, or a version. Such
+ * a name goes to Claude Code where it's on, not to a cloud copy of Claude.
+ */
+export function meansClaude(name: string): boolean {
+  const w = words(name);
+  return w.some((x) => x === "claude" || x === "anthropic" || x === "opus" || x === "sonnet" || x === "haiku")
+    && w.every((x) => CLAUDE_WORDS.has(x) || /^[0-9]+$/.test(x));
+}
+
+/** The Claude Code model alias a name asks for, if its words name one. */
+export function claudeAlias(name: string): ClaudeAlias | undefined {
+  return words(name).find((x): x is ClaudeAlias => x === "opus" || x === "sonnet" || x === "haiku");
+}
+
+/** Whether a model is a Claude served by an endpoint (Anthropic's API, OpenRouter), by its own name. */
+export function isClaudeModel(label: string): boolean {
+  return own(label).includes("claude");
+}
+
+/** Whether `name` names one of the models outright: its offering ID or its whole `endpoint/model` label. */
+export function namedOutright(name: string, models: Named[]): boolean {
+  const q = name.trim().toLowerCase();
+  return models.some((m) => m.id === name || m.label.toLowerCase() === q);
+}

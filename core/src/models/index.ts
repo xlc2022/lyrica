@@ -32,7 +32,7 @@ export { acceptedSettings, ANSWER_SETTINGS, payloadFields, replyCap, DEFAULT_CON
 export { fingerprint, HostIdentityChanged, HostRefused, hostOrigin, normaliseCode, PairingFailed, pairingProofs } from "./host.ts";
 export { useTailnetProxy } from "./tailnet.ts";
 export { refId, type Entry, type Use } from "./refs.ts";
-export { matchModel, sameModelName, singledOut, unmatched, type Match, type Named } from "./match.ts";
+export { claudeAlias, isClaudeModel, matchModel, meansClaude, namedOutright, sameModelName, singledOut, unmatched, type ClaudeAlias, type Match, type Named } from "./match.ts";
 export { MAX_CLIP_BYTES, MAX_CLIP_SECONDS, MAX_SPEAK_CHARS, pcmSeconds, SPEECH_CONTENT_TYPE, SPEECH_FORMAT, wavData, wavSeconds } from "./speech.ts";
 
 /** A cloud model was asked for where only local models are allowed. Nothing falls back. */

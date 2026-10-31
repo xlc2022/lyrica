@@ -1264,7 +1264,9 @@ it adds no tool.
   sandbox is the fence, and her `bash` call already went through the
   thread's mode. Plan mode has no `bash`, so no Claude Code.
 - **The prompt** has one line for such a thread (`CLAUDE_CODE_LINE`): she
-  hands coding and repository jobs worth the user's plan, never
+  hands coding and repository jobs worth the user's plan, and any job the
+  person asks Claude for by name (a step's model Claude, Opus, Sonnet or
+  Haiku runs there in its role), never
   conversation, to the `claude` delegate role (docs/delegation.md, "Claude
   Code"), or `claude -p` with bash where she has no `delegate`, and when it
   reports the plan's usage limit she waits for the reset with a wake-up

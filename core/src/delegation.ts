@@ -50,8 +50,8 @@ export interface SubagentRecord {
   outputTokens: number;
   startedAt: string;
   endedAt: string | null;
-  /** How its model was picked: a tier, or a model a saved workflow named. Read again when it is continued. */
-  pick?: { tier: Tier } | { model: string };
+  /** How its model was picked: a tier, a model a saved workflow named, or Claude Code standing in for a step that named Claude (its alias and the role asked for). Read again when it is continued. */
+  pick?: { tier: Tier } | { model: string } | { claude: { alias?: "opus" | "sonnet" | "haiku"; role?: string } };
   /** The narrowing its run was given, applied again when it is continued. */
   narrowing?: { folders?: string[]; readOnly?: boolean; internet?: false };
   /** The offering it runs on. `model` keeps its label. */

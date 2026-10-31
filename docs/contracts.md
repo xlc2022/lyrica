@@ -728,8 +728,10 @@ Custom roles override built-ins by name, except `claude`.
   thread's `claudeCode()`, and a `workspace.claudeDir`), refused with
   `internet: false`, always in the background. A `Subagent` works through a
   `SubagentBody` (`send`, `steer`, `abort`, `reply`, `dispose`): a Pi
-  session's, or `claudeBody`'s one `claude -p --output-format json` run
-  per turn through `ExecutionTarget.run`, resumed with `--resume`.
+  session's, or `claudeBody`'s one `claude -p --output-format stream-json` run
+  per turn through `ExecutionTarget.run`, resumed with `--resume`, with
+  `--model <alias>` and the asked role's prompt in its brief when it stands
+  in for a step that named Claude (`SubagentRecord.pick` `{ claude }`).
 - The default action runs work: `task` with an optional `role` and `tier`;
   or `tasks: [...]` (parallel), `chain: [...]`, `loop`, `council`, or
   `workflow: name`. Any of these can be `background: true` (always, in a
@@ -740,8 +742,13 @@ Custom roles override built-ins by name, except `claude`.
   workflow named, resolved by `Models.find`, else `matchModel` over
   `Models.textModels(ctx)`; a name that fits no one model fails with the
   closest; a cloud one with a local `sameModelName` twin runs on the twin unless
-  `singledOut(the person's latest message, it, all)`. `action: "models"` lists
-  them local first, each local or cloud, with vision and paid where they apply.
+  `singledOut(the person's latest message, it, all)`. A name that
+  `meansClaude` in words and isn't `namedOutright` runs on Claude Code where
+  `delegation.claudeFor(thread, name)` says so, in the step's role; a cloud
+  `isClaudeModel` named in words fails unless the person's latest message
+  singles it out. `action: "models"` lists
+  them local first, each local or cloud, with vision and paid where they apply,
+  and Claude Code where the thread's runs have it.
   `folders` narrows granted host folders only, not sandbox repository paths;
   an invalid folder returns that distinction and advises omitting `folders`
   to read the parent's checkouts. Read-only roles, narrowed runs and writers

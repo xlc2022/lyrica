@@ -46,9 +46,19 @@ subagent:
   entry of the thread that owns the run, and counts only without a mark
   (another thread's message, a wake-up, a routine): so a person naming the
   cloud copy in the project chat doesn't reach a run in a project thread,
-  which then uses the local copy. `delegate({ action: "models" })` lists the chat
+  which then uses the local copy. A name that means Claude itself in words
+  ("Claude", "Claude Opus", "Sonnet"; `meansClaude`), rather than one of the
+  thread's models outright (its offering ID or whole label), runs on Claude
+  Code where the thread's runs have it (`claudeFor`), in the role the step
+  asked for ([Claude Code](#claude-code)), whatever the job: the person asked
+  for Claude, and Claude Code is how she reaches it on their plan. A Claude
+  an endpoint serves (Anthropic's API, OpenRouter; `isClaudeModel`) spends
+  the user's money, so named in words it is refused, telling her to check
+  with the person first, unless the person's latest message singles it out
+  (`singledOut`); naming it by its whole label is her word that she checked.
+  `delegate({ action: "models" })` lists the chat
   models she may name, local first, each marked local or cloud, and vision
-  and paid where they apply. A subagent whose model
+  and paid where they apply, and Claude Code where the thread's runs have it. A subagent whose model
   has no vision switches, on a tool result holding an image, to the first
   model up in the person's Look at images list (task `vision`), else the
   first local chat model with vision she may use whose machine is up, which
@@ -251,10 +261,18 @@ Pi session: `extension/src/delegate/claude.ts`. A subagent works through a
   runs have Claude Code (`delegation.claudeCode`). Elsewhere, or with
   `internet: false`, the run fails before any thread is made. A user's own
   role can't be named `claude`.
+- **Standing in for a role:** a step of any role whose `model` names Claude
+  in words (above) runs here instead of on a Pi session: its record's role is
+  `claude`, its pick `{ claude: { alias?, role } }` (the alias its words asked
+  for, `opus`, `sonnet` or `haiku`, passed as `--model`; the role asked for),
+  its model `Claude Code/<alias>` (or `Claude Code`), and it is read-only
+  where that role is. Its brief carries the role's prompt under "Your role".
+  Continuing it keeps the alias and mode.
 - **A turn** is one `claude -p … --output-format stream-json` run in the
   parent's sandbox through the `claude` wrapper and the run's relay, in the
   sandbox's working folder, so the user's token never enters it.
-  `readOnly` runs it in Claude Code's plan mode. It always runs in the
+  `readOnly` runs it in Claude Code's plan mode, where it changes nothing and
+  answers in its last message (plan mode writes no report). It always runs in the
   background, since such jobs run long; while it runs it counts as a tool at
   work, so the idle check leaves it alone, and `stop` kills it.
 - **Brief in, report out:** the first turn's task goes in `BRIEF.md`, in a

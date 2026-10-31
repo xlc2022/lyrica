@@ -90,6 +90,19 @@ the thread shows the job. This brief makes Claude Code one of her
   plan-limit card and notification ("Claude Code"), and Fall back hands
   the job to the coder role. The claude role is refused until the reset.
 
+## Built after (the owner's word, 2026-10-31)
+
+- **Any job the person asks Claude for.** The owner asked for a Claude Opus
+  second opinion and she ran the oracle on the paid `claude-opus-latest`,
+  since a step's model is matched in words against the thread's models and
+  Claude Code isn't one. Now a model that means Claude in words
+  (`meansClaude`) runs the step on Claude Code in the role it asked for,
+  read-only in plan mode where the role is, with `--model` from the alias
+  (docs/delegation.md, "Claude Code"). A Claude on a paid endpoint named in
+  words is refused until the person singles it out, or she names its whole
+  label after checking with them. A read-only run answers in its last
+  message, since plan mode writes no report.
+
 ## Out of scope
 
 - Her tools inside Claude Code through a local MCP server (option 3 in the
