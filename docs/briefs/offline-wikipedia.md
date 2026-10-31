@@ -36,12 +36,19 @@ address and its state in Administration → Web search (docs/ux.md).
   check-host.
 - Docs: contracts, DESIGN, ux, web, daemon, workspace, the guides, README.
 
+## Done after merge
+
+- #720 merged (fa86ad8). The test machine serves the nopic dump; the
+  maxi dump is downloading beside it.
+- The service skips a `.zim` kiwix can't open (`lyrica-kiwix-start`
+  builds a library with `kiwix-manage`), after a half-downloaded dump
+  under its final name crash-looped kiwix-serve on the test machine; the
+  guide says to download under a `.part` name.
+
 ## Next
 
-- Lunasa: `services.lyrica.zimDir = "/srv/lyrica/zim"` once the dump is
-  there and this is merged; then a search and a read in a local-only
-  thread.
-- A maxi copy somewhere with room, if the owner wants the pictures.
+- A search and a read in a local-only thread on the test machine.
+- Whether the nopic file goes once the maxi copy serves (the owner's call).
 
 ## Open questions
 

@@ -1331,9 +1331,12 @@ same ("On NixOS" below).
   leaves this unit out, since not every install has it
   ([guides/searxng.md](guides/searxng.md)).
 - When ZIM files are in `LYRICA_ZIM_DIR` (`/var/lib/lyrica-kiwix` unless
-  set), it installs Debian's `kiwix-tools` and `lyrica-kiwix.service`
-  (kiwix-serve on `127.0.0.1:8889`, no search bar, every `.zim` in the
-  folder; `/etc/lyrica/kiwix.env` holds the folder and port), writes
+  set), it installs Debian's `kiwix-tools`, `/usr/local/sbin/lyrica-kiwix-start`
+  and `lyrica-kiwix.service` (kiwix-serve on `127.0.0.1:8889`, no search
+  bar, serving a library the start script builds with `kiwix-manage` from
+  every `.zim` in the folder it can open, so a file still downloading under
+  its final name is skipped with a journal line rather than stopping the
+  service; `/etc/lyrica/kiwix.env` holds the folder and port), writes
   `http://127.0.0.1:8889` to `kiwix-address` in her state folder, which
   lyricad adopts as the Kiwix address the same way (`adoptLocalKiwix`), and
   waits for its catalog. When the files are gone on a later run it removes
@@ -1470,8 +1473,9 @@ system with the module on. Only x86_64-linux.
   `lyrica-searxng-secret` oneshot that makes its secret once, and
   `searxng-address` in her state folder (a tmpfiles rule, removed when off; an address lyricad already stored
   stays until an administrator clears it). With `zimDir` set it declares
-  `lyrica-kiwix.service` (kiwix-serve from `pkgs.kiwix-tools` on
-  `127.0.0.1:8889`, a dynamic user, every `.zim` in the folder, mirroring
+  `lyrica-kiwix.service` (the same `lyrica-kiwix-start` script with
+  `pkgs.kiwix-tools` on its path: kiwix-serve on `127.0.0.1:8889`, a
+  dynamic user, every `.zim` in the folder that kiwix can open, mirroring
   install.sh's unit) and `kiwix-address` the same way.
   `lyrica` on the system path is the same wrapper as
   install.sh's, so the first-run step is `lyrica admin setup-code` as root:
