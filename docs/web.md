@@ -65,7 +65,8 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   choice are saved per user (`Display`). Pinned threads come first under a
   **Pinned** eyebrow, whatever the sort. A thread unread for this user
   is bold; private threads carry a small lock in the private colour; a
-  thread at work (`busy`, or a project thread's `working` state) pulses its
+  thread at work (`busy`, `making` while a clip is made after its turn, or a
+  project thread's `working` state) pulses its
   pool dot or lock, steady under reduced motion; child
   threads (Lyrica's, branches, forks, copies) sit behind `›`, a child
   showing when it works or waits and a count of its unseen updates (at most

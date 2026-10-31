@@ -1093,6 +1093,30 @@ test("private and local-only threads offer only local models", async ({ page, ba
   await expect(picker.getByRole("button", { name: "cloud-model" })).toHaveCount(0);
 });
 
+test("a thread making a clip after its turn pulses its sidebar row until the clip ends", async ({ page, baseURL }) => {
+  await enter(page, baseURL!);
+  await newThread(page, "General");
+  await send(page, "hello");
+  const row = page.locator(".side a.thread[aria-current='page']");
+  await expect(row).not.toHaveClass(/\bworking\b/);
+  // The daemon marks a thread whose clip is still being made; the list is the only source the row reads.
+  let making = true;
+  const id = threadIdOf(page.url());
+  await page.route(/\/threads$/, async (r) => {
+    if (r.request().method() !== "GET") return r.continue();
+    const list = await (await r.fetch()).json() as { id: string; making?: true }[];
+    await r.fulfill({ json: list.map((t) => (t.id === id && making ? { ...t, making: true } : t)) });
+  });
+  await page.reload();
+  await expect(row).toHaveClass(/\bworking\b/);
+  await expect(row.locator(".sr-only", { hasText: "working" })).toHaveCount(1);
+  making = false;
+  await page.reload();
+  await expect(row).not.toHaveClass(/\bworking\b/);
+  // The list is re-read on every event; a read still in flight would fail the next test.
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
 test("in an ask mode, a command can be allowed, and denying it stops the tool", async ({ page, baseURL }) => {
   await enter(page, baseURL!);
   await newThread(page, "General");
