@@ -1273,7 +1273,7 @@ again installs that checkout's commit as a release, the way an update does
 same ("On NixOS" below).
 
 - It installs the packages (bubblewrap, gocryptfs, FUSE, passt, nftables,
-  openssl, ImageMagick, and for the updater build-essential, python3, git,
+  openssl, ImageMagick, ffmpeg (with ffprobe, so she can check her clips), and for the updater build-essential, python3, git,
   openssh-client and jq, and python3-venv for clones' Python dependencies), and the `tailscale` package from Tailscale's apt
   repository when its binaries are missing (then disabling the host's own
   `tailscaled.service` the package enables, unless it was enabled before, so
@@ -1483,7 +1483,7 @@ system with the module on. Only x86_64-linux.
   `LYRICA_SANDBOX_TOOLS` to one directory of `sandboxPackages`
   (`nix/sandbox-tools.nix`: a shell, the usual command-line tools, git,
   OpenSSH, OpenSSL, curl, jq, ripgrep, Python, make and gcc (for native npm
-  modules), ImageMagick, Chromium with IBM Plex
+  modules), ImageMagick, ffmpeg (headless, with ffprobe), Chromium with IBM Plex
   and DejaVu fonts for her screenshots, bubblewrap, passt, nftables) and
   `LYRICA_SANDBOX_CLOSURE` to the store paths of their closure, Node's and
   the CA bundle's (`closureInfo`). See docs/workspace.md.

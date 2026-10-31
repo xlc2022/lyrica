@@ -73,7 +73,7 @@ say "Installing packages..."
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
 apt-get install -y -qq --no-install-recommends \
-  bubblewrap gocryptfs fuse3 passt nftables openssl ca-certificates curl unzip rsync imagemagick \
+  bubblewrap gocryptfs fuse3 passt nftables openssl ca-certificates curl unzip rsync imagemagick ffmpeg \
   build-essential python3 python3-venv git gh openssh-client jq >/dev/null
 # tea, Gitea's and Forgejo's client, isn't packaged everywhere; git alone still works with those accounts.
 apt-get install -y -qq --no-install-recommends tea >/dev/null 2>&1 \
