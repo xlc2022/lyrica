@@ -174,8 +174,19 @@ in {
       uwsgiConfig = { http = "127.0.0.1:${toString searxngPort}"; disable-logging = true; };
       settings = {
         server = { bind_address = "127.0.0.1"; port = searxngPort; secret_key = "$SEARX_SECRET_KEY"; limiter = false; image_proxy = false; };
-        search = { formats = [ "html" "json" ]; safe_search = 0; default_lang = "auto"; };
-        outgoing = { request_timeout = 3.0; max_request_timeout = 8.0; };
+        search = {
+          formats = [ "html" "json" ]; safe_search = 0; default_lang = "auto";
+          # How long an engine rests after refusing (SearXNG's own defaults rest one for up to a day).
+          suspended_times = { SearxEngineAccessDenied = 600; SearxEngineCaptcha = 900; SearxEngineTooManyRequests = 180; };
+        };
+        outgoing = { request_timeout = 6.0; max_request_timeout = 10.0; };
+        # General search asks five engines, so one resting after a CAPTCHA doesn't end her search; startpage only ever answers with a CAPTCHA.
+        engines = [
+          { name = "bing"; disabled = false; }
+          { name = "qwant"; disabled = false; }
+          { name = "yahoo"; disabled = false; }
+          { name = "startpage"; disabled = true; }
+        ];
       };
     };
     # Its secret_key, made once.

@@ -1,6 +1,6 @@
 import { deflateSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
-import { cutPage, fetchArgv, fetchedPage, htmlMarkdown, outside, pdfText, renderArgv, renderedPage, searxngSearch } from "../src/web.ts";
+import { cutPage, fetchArgv, fetchedPage, htmlMarkdown, outside, pdfText, renderArgv, renderedPage, SearchGate, searxngSearch } from "../src/web.ts";
 
 // What web_fetch and web_search give her (docs/workspace.md, "Web").
 
@@ -132,14 +132,55 @@ describe("web_search", () => {
     expect(text).toBe("1. Moth week (2026-10-27)\n   https://n.example\n   It's moth week.");
   });
 
-  it("tries again once when engines failed, then says which and what SearXNG suggests", async () => {
+  const fresh = (at = { t: 0 }, gap = 0) => new SearchGate(() => at.t, gap);
+
+  it("tries again once when an engine failed passingly, then says which and what SearXNG suggests", async () => {
     seen.length = 0;
     const failed = { results: [], unresponsive_engines: [["duckduckgo", "timeout"], ["brave", "CAPTCHA"]], suggestions: ["luna moth"] };
-    const text = await searxngSearch("http://s.lan", "lunar moth", { count: 8 }, undefined, replies(failed, failed));
+    const text = await searxngSearch("http://s.lan", "lunar moth", { count: 8 }, undefined, replies(failed, failed), fresh());
     expect(seen).toHaveLength(2);
     expect(text).toBe(`No results for "lunar moth".\nThese search engines didn't answer: duckduckgo (timeout), brave (CAPTCHA).\nSearXNG suggests: "luna moth".`);
     seen.length = 0;
-    await searxngSearch("http://s.lan", "nothing", { count: 8 }, undefined, replies({ results: [] }));
+    await searxngSearch("http://s.lan", "nothing", { count: 8 }, undefined, replies({ results: [] }), fresh());
     expect(seen).toHaveLength(1);
+  });
+
+  it("doesn't ask again when every engine refused, and says for how long each has", async () => {
+    seen.length = 0;
+    const at = { t: 0 };
+    const g = fresh(at);
+    const refused = { results: [], unresponsive_engines: [["brave", "too many requests"], ["duckduckgo", "CAPTCHA"], ["startpage", "Suspended: CAPTCHA"]] };
+    await searxngSearch("http://s.lan", "arc a750", { count: 8 }, undefined, replies(refused), g);
+    expect(seen).toHaveLength(1);
+    at.t = 12 * 60_000;
+    const text = await searxngSearch("http://s.lan", "arc a750 sample", { count: 8 }, undefined, replies(refused), g);
+    expect(text).toBe(`No results for "arc a750 sample".\nThese search engines didn't answer: brave (too many requests for 12 minutes), duckduckgo (CAPTCHA for 12 minutes), startpage (CAPTCHA for 12 minutes).\nSearXNG rests an engine that refused, for minutes to a day (its search.suspended_times): the same search again now gets the same answer. Try another category, or later.`);
+    // An engine that answers is forgotten, and starts over if it refuses again.
+    at.t = 20 * 60_000;
+    await searxngSearch("http://s.lan", "moths", { count: 8 }, undefined, replies({ results: [{ title: "Moths", url: "https://m.example", engines: ["brave"] }] }), g);
+    at.t = 21 * 60_000;
+    const again = await searxngSearch("http://s.lan", "arc", { count: 8 }, undefined, replies({ results: [], unresponsive_engines: [["brave", "too many requests"], ["bing", "timeout"]] }, { results: [] }), g);
+    expect(again).toBe(`No results for "arc".`);
+  });
+
+  it("answers the same search from its last reply for a minute, and sends different ones a gap apart", async () => {
+    seen.length = 0;
+    const at = { t: 0 };
+    const g = new SearchGate(() => at.t, 0);
+    const f = replies({ results: [{ title: "Moths", url: "https://m.example" }] }, { results: [] });
+    const [a, b] = await Promise.all([searxngSearch("http://s.lan", "moths", { count: 8 }, undefined, f, g), searxngSearch("http://s.lan", "moths", { count: 3 }, undefined, f, g)]);
+    expect(seen).toHaveLength(1);
+    expect(a).toBe(b);
+    await searxngSearch("http://s.lan", "moths", { count: 8, page: 2 }, undefined, f, g);
+    expect(seen).toHaveLength(2);
+    at.t = 61_000;
+    await searxngSearch("http://s.lan", "moths", { count: 8 }, undefined, f, g);
+    expect(seen).toHaveLength(3);
+
+    const times: number[] = [];
+    const timed = (async () => { times.push(Date.now()); return new Response(JSON.stringify({ results: [] })); }) as unknown as typeof fetch;
+    const spaced = new SearchGate(Date.now, 40);
+    await Promise.all([searxngSearch("http://s.lan", "a", { count: 8 }, undefined, timed, spaced), searxngSearch("http://s.lan", "b", { count: 8 }, undefined, timed, spaced)]);
+    expect(times[1]! - times[0]!).toBeGreaterThanOrEqual(35);
   });
 });

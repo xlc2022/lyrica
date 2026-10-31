@@ -1510,9 +1510,17 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     general|news|science|it|videos and `pageno` 1 to 10; 15 s) for up
     to `count` results (8 by default, 20 at most) as title, date (when
     SearXNG has `publishedDate`), URL and snippet, after its first answer
-    or infobox line. No results while `unresponsive_engines` is non-empty:
-    it asks once more, then names the failed engines and SearXNG's
-    corrections and suggestions. It is offered only
+    or infobox line. Requests to SearXNG go at least a second apart
+    (`SearchGate`, one for the daemon, in memory), and the same search
+    (query, time, category, page) within a minute is answered from its
+    last reply. No results while an engine failed passingly (`timeout`
+    and the like): it asks once more. An engine SearXNG reports as
+    `CAPTCHA`, `too many requests`, `access denied` or `Suspended: …`
+    refused and is resting, so no retry; still nothing, it names the
+    failed engines, why, and for how long each refusing one has been
+    seen refusing (an engine seen in a result's `engines` is forgotten),
+    says a rested engine gives the same answer when every failed engine
+    refused, then SearXNG's corrections and suggestions. It is offered only
     while an address is set, read on every turn and call. A
     `user:password@` in the address goes as basic auth. `web_fetch` runs
     curl (`fetchArgv`, the URL one argument, a browser's user agent, 10 MB
