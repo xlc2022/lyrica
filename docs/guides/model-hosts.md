@@ -570,7 +570,8 @@ and videos, or `COMFY_GPU=0,1` in `host/.env` (then `host/install.sh`)
 runs a ComfyUI on each, so two clips or images run at once, one per GPU.
 Each GPU then loads its own copy of a recipe, so leave room in system RAM
 for each running clip's frames (about 5 GB for 16 s, 18 GB for 60 s at
-H3's size). A recipe is then measured afresh on each GPU, since each GPU's
+H3's size, and up to 18 GB for a clip SeedVR2 upscales, which the host
+caps there). A recipe is then measured afresh on each GPU, since each GPU's
 copy is its own model. When she asks for a shape (16:9, say), the host
 keeps the recipe's area and fits the size to its template's step. Ask for
 a number of steps and she passes it on for that clip; a recipe's own steps
