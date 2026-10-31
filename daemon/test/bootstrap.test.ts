@@ -1,4 +1,5 @@
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync, chmodSync } from "node:fs";
+import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
 import { createServer as createTcp } from "node:net";
 import { tmpdir } from "node:os";
@@ -390,6 +391,58 @@ describe("the tailnet", () => {
     for (const c of ts.calls()) {
       expect(c.args.join(" ")).not.toMatch(/funnel|--ssh|--advertise-routes|--advertise-exit-node|--exit-node|--reset/);
     }
+  });
+
+  /** A plain request to a loopback port with its own headers (fetch won't send a Host of our choosing). */
+  function raw(port: number, method: string, path: string, headers: Record<string, string>, body?: string) {
+    return new Promise<{ status: number; headers: Record<string, string | string[] | undefined>; text: string }>((resolve, reject) => {
+      const req = httpRequest({ host: "127.0.0.1", port, method, path, headers: { ...(body ? { "content-type": "application/json" } : {}), ...headers } }, (res) => {
+        let text = "";
+        res.setEncoding("utf8");
+        res.on("data", (c) => (text += c));
+        res.on("end", () => resolve({ status: res.statusCode ?? 0, headers: res.headers, text }));
+      });
+      req.on("error", reject);
+      req.end(body);
+    });
+  }
+
+  it("sends a plain-HTTP request at her tailnet address to the HTTPS front door, and believes a proxy's forwarded host for the origin check", async () => {
+    const { d, ada, url, web } = await joined();
+    await ada.put(url, { authKey: KEY });
+    const login = JSON.stringify({ login: "ada", password: "pw" });
+    // Her userspace tailscaled hands <her address>:7340 and :7342 to the same loopback ports: Direct is on, but not at that address.
+    const dir = (await ada.get<WebAccess>(web)).body.direct!;
+    let r = await raw(d.port, "GET", "/", { host: "100.101.102.103:7340" });
+    expect(r.status).toBe(403);
+    expect(r.headers["content-type"]).toContain("text/html");
+    expect(r.text).toContain("Turn on Tailnet or Direct in Administration");
+    r = await raw(d.servePort, "POST", "/api/login", { host: "lyrica.example.ts.net:7342", origin: "http://lyrica.example.ts.net:7342" }, login);
+    expect(r.status).toBe(403);
+    expect(JSON.parse(r.text).error).toMatch(/plain HTTP, so you can't log in here/);
+    // This machine's own loopback name is fine, whatever the port.
+    r = await raw(d.port, "GET", "/api/state", { host: `${dir.addresses[0]}:${d.port}` });
+    expect(r.status).toBe(200);
+    // With Tailnet on, the request is sent to her name.
+    expect((await ada.put<WebAccess>(web, { mode: "tailnet" })).status).toBe(200);
+    r = await raw(d.servePort, "GET", "/settings?x=1", { host: "lyrica.example.ts.net:7342" });
+    expect(r.status).toBe(302);
+    expect(r.headers.location).toBe("https://lyrica.example.ts.net/settings?x=1");
+    r = await raw(d.port, "GET", "/", { host: "100.101.102.103:7340" });
+    expect(r.headers.location).toBe("https://lyrica.example.ts.net/");
+    r = await raw(d.servePort, "POST", "/api/login", { host: "100.101.102.103:7342", origin: "http://100.101.102.103:7342" }, login);
+    expect(r.status).toBe(403);
+    expect(JSON.parse(r.text).error).toContain("Use https://lyrica.example.ts.net/ instead.");
+    // Through tailscale serve: X-Forwarded-Proto https, and the browser's host in X-Forwarded-Host when Host was rewritten.
+    r = await raw(d.servePort, "GET", "/api/state", { host: "lyrica.example.ts.net", "x-forwarded-proto": "https", "x-forwarded-for": "100.64.0.9" });
+    expect(r.status).toBe(200);
+    r = await raw(d.servePort, "POST", "/api/login", { host: `127.0.0.1:${d.servePort}`, "x-forwarded-proto": "https", "x-forwarded-host": "lyrica.example.ts.net", origin: "https://lyrica.example.ts.net" }, login);
+    expect(r.status).toBe(200);
+    r = await raw(d.servePort, "POST", "/api/login", { host: `127.0.0.1:${d.servePort}`, "x-forwarded-proto": "https", origin: "https://lyrica.example.ts.net" }, login);
+    expect(r.status).toBe(200); // a proxy that sends neither: the Tailnet mode's own name is allowed
+    r = await raw(d.servePort, "POST", "/api/login", { host: `127.0.0.1:${d.servePort}`, "x-forwarded-proto": "https", "x-forwarded-host": "lyrica.example.ts.net", origin: "https://evil.example" }, login);
+    expect(r.status).toBe(403);
+    expect(JSON.parse(r.text).error).toBe("cross-origin requests are refused");
   });
 
   it("names MagicDNS or HTTPS certificates when the tailnet has them off", async () => {

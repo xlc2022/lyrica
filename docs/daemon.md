@@ -68,7 +68,16 @@ the project. The welcome web interface is a separate build.
 `<runtime>/lyricad.sock`, mode `0600`. The socket serves the same API to local
 clients; they still log in. A second loopback port (7342) is the one only her
 tailscaled's `tailscale serve` targets (Web access, Tailnet); a request on it
-came through her tailnet address.
+came through her tailnet address. Both ports speak plain HTTP, so a request
+on either addressed to a name that isn't this machine (anything but
+localhost or 127.x) came through something that forwards to loopback, where
+the Secure login cookie can never be set: it is a wrong door, unless a
+trusted proxy on loopback says `X-Forwarded-Proto: https` (the built-in
+Caddy, `tailscale serve`). A page load is redirected to the HTTPS front door
+when one is known (Direct at that very address, or the Tailnet mode's name),
+else answered 403 with one sentence saying how to turn one on; an API call
+gets the sentence as its 403 error, so an open login page shows it. Each
+name is logged once.
 
 - **Setting up.** Without `<runtime>/self.db` it starts anyway, setting up:
   `GET /api/state` says `{ locked: true, setup: true, name, users: [],
@@ -1163,6 +1172,16 @@ so is a tailnet destination when nothing listens on the port.
   off; over the LAN or on the machine they work.
 - Her outbound traffic to tailnet peers still goes through the host's
   network; the host's own Tailscale, if any, is never touched.
+- Userspace networking has no interface, so this machine's addresses never
+  include hers, and tailscaled hands every inbound TCP connection to her
+  tailnet address, on any port it doesn't serve itself, to the same port on
+  this machine's loopback. So `http://<her address or name>:7340` and `:7342`
+  reach lyricad's two plain listeners from any peer, and `https://` on those
+  ports fails, since the listeners don't speak TLS: lyricad treats them as
+  the wrong door (Starting and unlocking, above) and sends the browser to
+  `https://<her DNS name>/` once the Tailnet web mode is on. Nothing else
+  on loopback is meant to be reached that way; a service an operator adds
+  on loopback is reachable from her tailnet too.
 - `POST /hooks/forge/:account` answers on the serve port only (anywhere else
   it is 404), so it arrives through her tailnet address. It is a nudge, not a
   trusted read: `lyricad` checks the forge's HMAC signature
@@ -1193,7 +1212,9 @@ Plain-HTTP listeners stay HTTP/1.1.
   certificate it makes naming them all (P-256, ten years), whose fingerprint
   and PEM the panel shows. Anyone may connect, and the client's own address
   is its address (no `X-Forwarded-For`). HTTPS on the Tailscale addresses too,
-  since the login cookie is `Secure`. Its settings are written to
+  since the login cookie is `Secure`; those are the host's own tailscaled's
+  interfaces, never her userspace one (The tailnet, above), so over her
+  tailnet only the Tailnet mode serves HTTPS. Its settings are written to
   `web-external.json` at the first start without `self.db` when that file
   doesn't exist, so a host that already had web access keeps it; with no
   `web.access` in `self.db`, that file is the setting. At each start it
@@ -1210,7 +1231,10 @@ Plain-HTTP listeners stay HTTP/1.1.
   it, so nobody is locked out; turning Tailnet on again once it answers closes
   Direct. The status fetches the name again. Off, or any other mode, runs
   `serve reset`. tailscaled keeps the serve configuration, so the unlock page
-  is there after a restart.
+  is there after a restart. The origin check on the serve port accepts the
+  browser's host from `X-Forwarded-Host` and the mode's own name and address,
+  so a `tailscale serve` that rewrites `Host` to the loopback target still
+  logs in.
 - **Built-in Caddy.** The administrator picks the name, the Tailscale and/or
   LAN addresses to serve on (detected from the host's interfaces), the DNS
   provider and its credentials, an optional ACME email, and Let's Encrypt

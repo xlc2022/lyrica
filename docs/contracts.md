@@ -1858,6 +1858,17 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     `WebAccessStatus.tailnet`), and `frontDoor` includes the Direct port on
     this machine's addresses and, in Tailnet, 443 on her Tailscale address and
     DNS name. All additive.
+  - **Wrong door.** On the two plain loopback listeners (`port` and the serve
+    port), a request whose `Host` isn't this machine's loopback name and that
+    no trusted proxy marked `X-Forwarded-Proto: https` is answered without
+    reaching a route: a `GET`/`HEAD` page load is `302` to the HTTPS front
+    door (`https://<host>:<Direct port>` when `Host` is one of Direct's
+    addresses, else `https://<Tailnet DNS name>`) with the same path and
+    query, or `403 text/html` with one sentence when there is none; a path
+    under `/api/` or `/hooks/` is `403 { error }` with that sentence. The
+    origin check for a mutation accepts, besides `Host`/`:authority`, a
+    trusted proxy's `X-Forwarded-Host` and, on the serve port, the Tailnet
+    mode's DNS name and address.
 - **Web search** (`core/src/web.ts`, `core/src/kiwix.ts`): the server's
   SearXNG address is `self.db` `settings` `web.searxng` (`searxngAddress`,
   `setSearxngAddress`) and its kiwix-serve address, the offline copy of

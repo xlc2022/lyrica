@@ -503,6 +503,12 @@ export class WebAccess {
     return `${s.name} {\n${tls}${upstream}\n}\n`;
   }
 
+  /** The Tailnet mode's DNS name and address while it is on: where a plain request at her tailnet address is sent. */
+  tailnetHosts(): { dnsName: string; address?: string } | undefined {
+    const s = this.load();
+    return s.mode === "tailnet" && s.tailnet ? { dnsName: s.tailnet.dnsName, ...(s.tailnet.address ? { address: s.tailnet.address } : {}) } : undefined;
+  }
+
   /** Where sandboxes must never reach: the front door's ports and hosts, and the extra listener's port everywhere. */
   frontDoor(): FrontDoor {
     const s = this.load();
