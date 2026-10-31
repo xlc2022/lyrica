@@ -123,7 +123,8 @@ in {
         A folder of ZIM files (an offline copy of Wikipedia from
         download.kiwix.org), served by kiwix-serve from kiwix-tools as
         lyrica-kiwix.service on 127.0.0.1:8889, no search bar, every .zim
-        in the folder at start. lyricad stores http://127.0.0.1:8889 as
+        in the folder that kiwix can open at start (one still downloading
+        is skipped and logged). lyricad stores http://127.0.0.1:8889 as
         Administration → Web search's Kiwix address while none is set, as
         on Debian with install.sh. Null runs nothing.
       '';
@@ -224,11 +225,12 @@ in {
       description = "kiwix-serve for Lyrica's offline Wikipedia";
       after = [ "network.target" ];
       wantedBy = [ "multi-user.target" ];
+      path = [ pkgs.kiwix-tools ];
+      environment = { ZIM_DIR = toString cfg.zimDir; KIWIX_PORT = toString kiwixPort; };
       serviceConfig = {
         DynamicUser = true;
-        ExecStart = "${pkgs.writeShellScript "lyrica-kiwix" ''
-          exec ${pkgs.kiwix-tools}/bin/kiwix-serve --address 127.0.0.1 --port ${toString kiwixPort} --nodatealiases --nosearchbar ${lib.escapeShellArg (toString cfg.zimDir)}/*.zim
-        ''}";
+        RuntimeDirectory = "lyrica-kiwix";
+        ExecStart = pkgs.writeShellScript "lyrica-kiwix-start" (builtins.readFile ../daemon/deploy/lyrica-kiwix-start);
         Restart = "on-failure";
         RestartSec = 10;
         ProtectSystem = "strict";

@@ -303,6 +303,7 @@ if ls "$ZIM_DIR"/*.zim >/dev/null 2>&1; then
   if command -v kiwix-serve >/dev/null || apt-get install -y -qq --no-install-recommends kiwix-tools >/dev/null 2>&1; then
     KIWIX=yes
     printf 'ZIM_DIR=%s\nKIWIX_PORT=%s\n' "$ZIM_DIR" "$KIWIX_PORT" >/etc/lyrica/kiwix.env
+    install -m 0755 "$SRC/daemon/deploy/lyrica-kiwix-start" /usr/local/sbin/lyrica-kiwix-start
     install -m 0644 "$SRC/daemon/deploy/lyrica-kiwix.service" /etc/systemd/system/lyrica-kiwix.service
     printf 'http://127.0.0.1:%s\n' "$KIWIX_PORT" >"$STATE/kiwix-address"
     chown lyrica:lyrica "$STATE/kiwix-address"
@@ -313,7 +314,7 @@ if ls "$ZIM_DIR"/*.zim >/dev/null 2>&1; then
 elif [ -f /etc/systemd/system/lyrica-kiwix.service ]; then
   # The ZIM files went: the unit goes, and the address offer with it (an address lyricad stored stays until an administrator clears it).
   systemctl disable --now --quiet lyrica-kiwix 2>/dev/null || true
-  rm -f /etc/systemd/system/lyrica-kiwix.service /etc/lyrica/kiwix.env "$STATE/kiwix-address"
+  rm -f /etc/systemd/system/lyrica-kiwix.service /usr/local/sbin/lyrica-kiwix-start /etc/lyrica/kiwix.env "$STATE/kiwix-address"
   say "No ZIM files in $ZIM_DIR any more: lyrica-kiwix removed."
 fi
 
