@@ -1515,7 +1515,12 @@ names) looked up on every call, so changing a thread's settings applies at
 once. Commands typed with `!` in the terminal run in the sandbox. A short
 `workspace` prompt section tells her where she works, what she was given,
 whether she has internet, and her machines. It also lists the programs the
-sandbox has on this host (`sandboxTools` in `sandbox.ts`) and, only when it
+sandbox has on this host (`sandboxTools` in `sandbox.ts`), with the Python
+libraries its Python can import (beautifulsoup4, lxml, requests, html5lib,
+PyYAML, those of them present in Debian's dist-packages or the Nix
+environment's site-packages; `pythonLibraries`), telling her those are all
+there are besides the standard library, so she doesn't pip install into a
+sandbox that is new for each command, and, only when it
 finds Chromium, points her to `page preview` for checking a page, says how
 Playwright or Puppeteer use that browser, and that a static page is checked
 once it parses and one preview looks right. It then names the offline

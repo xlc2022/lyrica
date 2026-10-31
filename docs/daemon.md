@@ -1276,7 +1276,9 @@ same ("On NixOS" below).
 
 - It installs the packages (bubblewrap, gocryptfs, FUSE, passt, nftables,
   openssl, ImageMagick, ffmpeg (with ffprobe, so she can check her clips), and for the updater build-essential, python3, git,
-  openssh-client and jq, and python3-venv for clones' Python dependencies), and the `tailscale` package from Tailscale's apt
+  openssh-client and jq, python3-venv for clones' Python dependencies, and
+  the sandbox's Python baseline for scraping and data work: python3-bs4,
+  python3-lxml, python3-requests, python3-html5lib and python3-yaml), and the `tailscale` package from Tailscale's apt
   repository when its binaries are missing (then disabling the host's own
   `tailscaled.service` the package enables, unless it was enabled before, so
   a host keeps its own as it was), checks for Node.js 22.12 or later (the web UI
@@ -1484,7 +1486,8 @@ system with the module on. Only x86_64-linux.
 - **Sandboxes.** NixOS has no `/usr` to share. The module sets
   `LYRICA_SANDBOX_TOOLS` to one directory of `sandboxPackages`
   (`nix/sandbox-tools.nix`: a shell, the usual command-line tools, git,
-  OpenSSH, OpenSSL, curl, jq, ripgrep, Python, make and gcc (for native npm
+  OpenSSH, OpenSSL, curl, jq, ripgrep, Python with beautifulsoup4, lxml,
+  requests, html5lib and PyYAML, make and gcc (for native npm
   modules), ImageMagick, ffmpeg (headless, with ffprobe), Chromium with IBM Plex
   and DejaVu fonts for her screenshots, bubblewrap, passt, nftables) and
   `LYRICA_SANDBOX_CLOSURE` to the store paths of their closure, Node's and

@@ -6,7 +6,7 @@ import { lookup } from "node:dns/promises";
 import { networkInterfaces, tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { makeWorktrees, worktreeGrants, removeWorktrees, FilesRefused, Sandbox, SandboxDenied, ThreadFiles, Users, Workspace, type Worktree, type Grant, type Network } from "../src/index.ts";
+import { makeWorktrees, worktreeGrants, removeWorktrees, FilesRefused, pythonLibraries, Sandbox, SandboxDenied, ThreadFiles, Users, Workspace, type Worktree, type Grant, type Network } from "../src/index.ts";
 import { freshKeyring, profile } from "./helpers.ts";
 import { png } from "./fake-images.ts";
 
@@ -86,6 +86,17 @@ describe("the offline libraries", () => {
     expect(sandbox.allow("/opt/libs/three/build/three.module.js", false)).toBe("/opt/libs/three/build/three.module.js");
     expect(() => sandbox.allow("/opt/libs/three/build/three.module.js", true)).toThrow(/\/opt\/libs is read-only/);
     expect(() => sandbox.allow("/opt/other", false)).toThrow(/outside this thread's folders/);
+  });
+});
+
+describe("the sandbox's Python libraries", () => {
+  it("names only the listed ones its folders hold, by the names her prompt uses", () => {
+    const dir = mkdtempSync(join(tmpdir(), "pylibs-"));
+    try {
+      for (const m of ["bs4", "yaml", "numpy"]) mkdirSync(join(dir, m));
+      expect(pythonLibraries([dir, join(dir, "missing")])).toEqual(["beautifulsoup4", "PyYAML"]);
+      expect(pythonLibraries([])).toEqual([]);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 });
 
