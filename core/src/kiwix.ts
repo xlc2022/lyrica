@@ -131,7 +131,8 @@ function snippetOf(title: string, description: string): string {
 /**
  * Up to `count` hits for `query` across the books, each asked on its own
  * (kiwix-serve refuses one search over books in different languages) and
- * merged in turn; a book that fails is left out.
+ * merged in turn, the same URL once (a maxi and a nopic copy of one
+ * language hold the same articles); a book that fails is left out.
  */
 export async function kiwixSearch(address: string, query: string, count: number, signal?: AbortSignal, f: typeof fetch = fetch): Promise<KiwixHit[]> {
   const all = await books(address, signal, f);
@@ -158,7 +159,7 @@ export async function kiwixSearch(address: string, query: string, count: number,
   for (let i = 0; merged.length < count; i++) {
     const round = per.map((h) => h[i]).filter((h): h is KiwixHit => !!h);
     if (!round.length) break;
-    merged.push(...round);
+    for (const h of round) if (!merged.some((m) => m.url === h.url)) merged.push(h);
   }
   return merged.slice(0, count);
 }

@@ -989,8 +989,11 @@ The **Web search** switch gives her two tools (`extension/src/web.ts`,
   links, after the web results, and `web_search` is offered with it alone.
   `web_fetch` reads a wikipedia.org page from the copy before going
   online, lists the page's pictures when the copy has them, and gives a
-  listed picture back as an image. None of that leaves the machine, so it
-  works with the internet off and in a local-only thread.
+  listed picture back as an image. With kiwix-serve on this machine, as
+  the install sets it up, none of that leaves it, so it works with the
+  internet off and in a local-only thread; a copy on another machine is
+  reached by lyricad like SearXNG, outside the thread's switches, and sees
+  the query and the article's title.
 - `web_fetch` otherwise runs `curl` in the thread's sandbox, the URL one argument,
   so the internet switch and allowed hosts above decide what it can reach:
   a private thread with internet off reads only its allowed hosts. It

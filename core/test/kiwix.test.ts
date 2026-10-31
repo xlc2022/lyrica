@@ -19,6 +19,11 @@ const CATALOG = `<?xml version="1.0" encoding="UTF-8"?>
     <author><name>Wikipedia</name></author>
   </entry>
   <entry>
+    <id>urn:uuid:3</id><title>Wikipedia</title><updated>2026-05-01T00:00:00Z</updated><language>eng</language>
+    <name>wikipedia_en_all_nopic</name><flavour>nopic</flavour>
+    <link type="text/html" href="/content/wikipedia_en_all_nopic_2026-05" />
+  </entry>
+  <entry>
     <id>urn:uuid:2</id><title>Wiktionary</title><updated>2026-05-01T00:00:00Z</updated><language>eng</language>
     <name>wiktionary_en_all_maxi</name><flavour>maxi</flavour>
     <link type="text/html" href="/content/wiktionary_en_all_maxi_2026-05" />
@@ -67,10 +72,12 @@ describe("the offline copy of Wikipedia", () => {
     const { f } = serve();
     expect(await kiwixBooks(A, undefined, f)).toEqual([
       { id: BOOK, name: "wikipedia_en_all_maxi", title: "Wikipedia", language: "eng", date: "2026-06-01", wiki: "en" },
+      { id: "wikipedia_en_all_nopic_2026-05", name: "wikipedia_en_all_nopic", title: "Wikipedia", language: "eng", date: "2026-05-01", wiki: "en" },
       { id: "wiktionary_en_all_maxi_2026-05", name: "wiktionary_en_all_maxi", title: "Wiktionary", language: "eng", date: "2026-05-01", wiki: "" },
     ]);
     expect(await kiwixStatus(A, f)).toEqual({ kiwixState: "reachable", books: [
       { name: "wikipedia_en_all_maxi", title: "Wikipedia", language: "eng", date: "2026-06-01" },
+      { name: "wikipedia_en_all_nopic", title: "Wikipedia", language: "eng", date: "2026-05-01" },
       { name: "wiktionary_en_all_maxi", title: "Wiktionary", language: "eng", date: "2026-05-01" },
     ] });
     const down = (async () => { throw new TypeError("fetch failed", { cause: new Error("ECONNREFUSED") }); }) as unknown as typeof fetch;
@@ -78,9 +85,10 @@ describe("the offline copy of Wikipedia", () => {
     expect(await kiwixStatus(null, f)).toEqual({ kiwixState: "unset", books: [] });
   });
 
-  it("searches every book on its own and merges the hits in turn, as wikipedia.org links where it can", async () => {
+  it("searches every book on its own and merges the hits in turn, as wikipedia.org links where it can, each once", async () => {
     const { f, urls } = serve({ hits: {
       [BOOK]: [["Lute", `/content/${BOOK}/A/Lute`, "Lute A lute is any plucked string instrument with a neck...."], ["Oud", `/content/${BOOK}/A/Oud`, "Oud The oud is a short-neck lute-type instrument...."]],
+      "wikipedia_en_all_nopic_2026-05": [["Lute", "/content/wikipedia_en_all_nopic_2026-05/A/Lute", "Lute A lute is any plucked string instrument...."]],
       "wiktionary_en_all_maxi_2026-05": [["lute", "/content/wiktionary_en_all_maxi_2026-05/lute", "lute A plucked string instrument...."]],
     } });
     const hits = await kiwixSearch(A, "lute", 5, undefined, f);
@@ -91,6 +99,7 @@ describe("the offline copy of Wikipedia", () => {
     ]);
     expect(urls.filter((u) => u.includes("/search?"))).toEqual([
       `${A}/search?pattern=lute&books.name=${BOOK}&format=xml&pageLength=5`,
+      `${A}/search?pattern=lute&books.name=wikipedia_en_all_nopic_2026-05&format=xml&pageLength=5`,
       `${A}/search?pattern=lute&books.name=wiktionary_en_all_maxi_2026-05&format=xml&pageLength=5`,
     ]);
     expect(kiwixLines(hits.slice(0, 1))).toBe("Offline copy of Wikipedia 2026-06:\n- Lute\n  https://en.wikipedia.org/wiki/Lute\n  A lute is any plucked string instrument with a neck");

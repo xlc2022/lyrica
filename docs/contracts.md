@@ -1526,7 +1526,8 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     (page 1, no time, general or no category) also asks it
     (`kiwixSearch`: `GET <kiwix>/search?pattern=…&books.name=<book>&format=xml&pageLength=n`,
     one request per book since kiwix-serve refuses a search over books
-    in different languages, 15 s, hits merged in turn, at most 5) and
+    in different languages, 15 s, hits merged in turn, the same URL once,
+    at most 5) and
     appends "Offline copy of <title> <YYYY-MM>:" with each hit as title,
     URL and snippet, after the web results. A hit of a book named
     `wikipedia_<lang>_…` is the page `https://<lang>.wikipedia.org/wiki/<path>`

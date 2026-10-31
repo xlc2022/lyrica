@@ -5,9 +5,11 @@ Kiwix packages Wikipedia as one ZIM file with a full-text index, and
 whole server, from `lyricad`, the way she asks SearXNG: a plain
 `web_search` lists its articles after the web results (and works with it
 alone), and `web_fetch` reads any wikipedia.org page from the copy before
-going online, with its pictures when the copy has them. Nothing of that
-leaves the machine, so it works with the internet off, in a local-only
-thread, and while every search engine is resting.
+going online, with its pictures when the copy has them. With kiwix-serve
+on her machine, as both installs set it up, nothing of that leaves it, so
+it works with the internet off, in a local-only thread, and while every
+search engine is resting. A kiwix-serve elsewhere sees the query and the
+article's title, as a SearXNG does.
 
 ## Choose a dump
 
