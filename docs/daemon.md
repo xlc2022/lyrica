@@ -1132,7 +1132,9 @@ rewritten.
 
 She is a device of her own on the tailnet: `lyrica-tailscaled.service` runs
 `tailscaled` in userspace networking as the `lyrica` user, with its state in
-`/var/lib/lyrica-tailscale` and its socket at
+`/var/lib/lyrica-tailscale` (`--state` and `--statedir`: the serve
+certificate lives there too, and tailscaled derives that directory from
+`--state` only when its folder is called `tailscale`) and its socket at
 `/run/lyrica-tailscale/tailscaled.sock`. `daemon/src/tailnet.ts` drives it
 with the `tailscale` CLI (`--socket` hers on every call), run by `lyricad`
 directly, never in a sandbox and never as a model tool. Every command comes
@@ -1229,7 +1231,9 @@ Plain-HTTP listeners stay HTTP/1.1.
   previous listener closes; if this machine can't check it (it need not be on
   her tailnet), the mode is saved anyway and Direct, if on, stays on beside
   it, so nobody is locked out; turning Tailnet on again once it answers closes
-  Direct. The status fetches the name again. Off, or any other mode, runs
+  Direct. The status fetches the name again, and once it answers records
+  `certificates` as issued, so the panel stops saying the certificate isn't
+  there yet. Off, or any other mode, runs
   `serve reset`. tailscaled keeps the serve configuration, so the unlock page
   is there after a restart. The origin check on the serve port accepts the
   browser's host from `X-Forwarded-Host` and the mode's own name and address,
