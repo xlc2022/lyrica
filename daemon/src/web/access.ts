@@ -519,7 +519,11 @@ export class WebAccess {
     const dir = this.o.external.direct();
     const ports = dir ? [443, dir.port] : [443];
     if (s.mode === "tailnet" && s.tailnet) {
-      return { ports, hosts: [s.tailnet.dnsName, ...(s.tailnet.address ? [s.tailnet.address] : [])], exclude: [] };
+      // Her name is a MagicDNS name this machine's resolver needn't know (her tailscaled is
+      // userspace, so the host has no MagicDNS). Her tailscaled said what it stands for when
+      // the mode was switched on, so that address is the front door; the name would only
+      // fail to resolve and take every sandbox offline.
+      return { ports, hosts: [s.tailnet.address ?? s.tailnet.dnsName], exclude: [] };
     }
     return { ports, hosts: [], exclude: [] };
   }

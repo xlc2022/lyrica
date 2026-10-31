@@ -1856,8 +1856,9 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     `WebAccessStatus.direct`) and `"tailnet"` (`tailscale serve` to the serve
     port; `WebAccess.tailnet: { dnsName, certificates }`,
     `WebAccessStatus.tailnet`), and `frontDoor` includes the Direct port on
-    this machine's addresses and, in Tailnet, 443 on her Tailscale address and
-    DNS name. All additive.
+    this machine's addresses and, in Tailnet, 443 on her Tailscale address
+    (which stands for her MagicDNS name: this machine's resolver needn't know
+    it, since her tailscaled is userspace). All additive.
   - **Wrong door.** On the two plain loopback listeners (`port` and the serve
     port), a request whose `Host` isn't this machine's loopback name and that
     no trusted proxy marked `X-Forwarded-Proto: https` is answered without

@@ -1284,8 +1284,9 @@ Plain-HTTP listeners stay HTTP/1.1.
 - **Sandboxes never reach the front door.** `Workspace` reads it at every
   sandbox start (`frontDoor`): the front port (443, or the external proxy's
   own port) and Direct's port on this machine's addresses, on every address
-  the name has resolved to (in Tailnet, her DNS name and her Tailscale
-  address), and on the external proxy's addresses; and the external proxy
+  the name has resolved to (in Tailnet, her Tailscale address as her
+  tailscaled gave it at the switch, standing for her MagicDNS name, which this
+  machine's resolver needn't know), and on the external proxy's addresses; and the external proxy
   listener's port on every address. If the name has never resolved, the
   sandbox gets no network for that run
   ([workspace.md](workspace.md#network-access-from-tools)).
