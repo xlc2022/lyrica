@@ -24,7 +24,9 @@ for, on the operator's own hardware. It builds on [video.md](video.md).
    frames and their sound anchor frame 0 of the new clip (the first of them
    is also the image H3's text encoder reads the prompt with, and the prompt
    is prefixed to say the shot goes on with no cut; animating an image, the
-   image is also each later clip's reference picture), the new clip's
+   image is also each later clip's reference picture, after the clip so
+   far's last frame, since the image alone made the shot cut back to its
+   framing), the new clip's
    first `overlap` frames are dropped, and the rest is appended. One MP4
    comes back. The clips share one GPU hold and one progress, weighted by
    frames; each clip's seed is the next. Joining happens in ComfyUI (our
