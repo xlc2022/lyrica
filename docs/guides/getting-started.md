@@ -236,8 +236,8 @@ read it for anything not covered here.
    and Caddy, that her `tailscaled` answers on its socket, `NoNewPrivs`,
    the setuid `fusermount3`, Caddy's socket, `lyrica-update.path`, a
    sandbox and `pasta` as the `lyrica` user, the network self-test, the
-   port and, when the module runs them, SearXNG and kiwix-serve, one line each, and ends
-   with "All checks passed." or stops at the first failure.
+   port and, when the module runs them, SearXNG and kiwix-serve, one line
+   each, and ends with "All checks passed." or stops at the first failure.
 10. The self-test runs at unlock, so `check-host.sh` misses it when she
     hasn't been unlocked yet (after `lyrica admin init` she starts
     locked). After the first unlock, run
@@ -1136,11 +1136,12 @@ or Ubuntu, as root:
 
 ```sh
 systemctl disable --now lyricad lyrica-caddy lyrica-tailscaled \
-  lyrica-searxng lyrica-update.path lyrica-update lyrica-probation \
-  lyrica-rollback 2>/dev/null
+  lyrica-searxng lyrica-kiwix lyrica-update.path lyrica-update \
+  lyrica-probation lyrica-rollback 2>/dev/null
 cd /etc/systemd/system && rm -f lyricad.service lyrica-caddy.service \
-  lyrica-tailscaled.service lyrica-searxng.service lyrica-update.path \
-  lyrica-update.service lyrica-probation.service lyrica-rollback.service
+  lyrica-tailscaled.service lyrica-searxng.service lyrica-kiwix.service \
+  lyrica-update.path lyrica-update.service lyrica-probation.service \
+  lyrica-rollback.service
 rm -f /etc/sysctl.d/60-lyrica.conf
 systemctl daemon-reload
 docker rm -f lyrica-searxng 2>/dev/null   # if you said yes to SearXNG
@@ -1148,19 +1149,19 @@ rm -rf /opt/lyrica /etc/lyrica /usr/local/lib/lyrica-update \
   /usr/local/lib/lyrica-chromium /usr/local/lib/lyrica-caddy.stamp \
   /usr/local/bin/lyrica /usr/local/bin/lyrica-caddy \
   /usr/local/bin/chromium-headless-shell
-# Her data, the update snapshots, Caddy's certificates and her Tailscale
-# node: only once you're sure.
+# Her data, the update snapshots, Caddy's certificates, her Tailscale
+# node and the Wikipedia ZIM files: only once you're sure.
 rm -rf /var/lib/lyrica /var/lib/lyrica-snapshots /var/lib/lyrica-update \
-  /var/lib/lyrica-caddy /var/lib/lyrica-tailscale
+  /var/lib/lyrica-caddy /var/lib/lyrica-tailscale /var/lib/lyrica-kiwix
 userdel lyrica; userdel lyrica-build; userdel lyrica-caddy
 ```
 
 `install.sh` also installed packages (bubblewrap, gocryptfs, Node and the
-rest in "On Debian or Ubuntu") and, when they were missing, Claude Code,
-Codex and headless Chromium in `/usr/local/bin`; remove those with `apt`
-or by hand only if nothing else uses them. Remove her node from your
-tailnet's admin console, and the deploy key from the repository on
-GitHub.
+rest in "On Debian or Ubuntu", `kiwix-tools` with ZIM files present)
+and, when they were missing, Claude Code, Codex and headless Chromium in
+`/usr/local/bin`; remove those with `apt` or by hand only if nothing else
+uses them. Remove her node from your tailnet's admin console, and the
+deploy key from the repository on GitHub.
 
 ## Checklist for the first install on your machine
 
