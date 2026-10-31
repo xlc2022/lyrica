@@ -844,6 +844,14 @@ test("Project settings → Files and images: the project folder one folder at a 
   await section.getByRole("button", { name: "Videos", exact: true }).click();
   await expect(section.getByText("No videos yet.")).toBeVisible();
   if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/project-videos-${page.viewportSize()!.width}.png` });
+  // A late answer for the tab left behind doesn't replace the one shown.
+  await page.route("**/images", async (r) => { await new Promise((done) => setTimeout(done, 1000)); await r.continue(); });
+  await section.getByRole("button", { name: "Images", exact: true }).click();
+  const late = page.waitForResponse("**/images");
+  await section.getByRole("button", { name: "Videos", exact: true }).click();
+  await late;
+  await expect(section.getByText("No videos yet.")).toBeVisible();
+  await page.unrouteAll();
   await noHorizontalScroll(page);
 });
 

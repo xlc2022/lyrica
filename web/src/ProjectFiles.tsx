@@ -62,10 +62,16 @@ export function FilesSection({ ctx, pool, threadId }: { ctx: ShellContext; pool:
   const [loadError, setLoadError] = useState("");
   const picker = useRef<HTMLInputElement>(null);
 
-  const load = useCallback(() => (tab === "files"
-    ? get<FileListing>(`${base}?dir=${encodeURIComponent(dir)}`).then((l) => { setListing(l); setLoadError(""); })
-    : get<ImageEntry[]>(`${base}/${tab}`).then((entries) => { setMedia({ tab, entries }); setLoadError(""); })
-  ).catch((e: Error) => setLoadError(e.message)), [base, dir, tab]);
+  // The newest load wins: an older one answering late (the Images grid's, after a switch to Videos) would replace it.
+  const loads = useRef(0);
+  const load = useCallback(() => {
+    const n = ++loads.current;
+    const latest = <T,>(then: (x: T) => void) => (x: T) => { if (n === loads.current) { then(x); setLoadError(""); } };
+    return (tab === "files"
+      ? get<FileListing>(`${base}?dir=${encodeURIComponent(dir)}`).then(latest(setListing))
+      : get<ImageEntry[]>(`${base}/${tab}`).then(latest((entries: ImageEntry[]) => setMedia({ tab, entries })))
+    ).catch((e: Error) => { if (n === loads.current) setLoadError(e.message); });
+  }, [base, dir, tab]);
   useEffect(() => { void load(); }, [load]);
   // The folder is shared by every thread of the project: any thread finishing a tool call or a turn reloads it, and so does coming back to the window.
   const activity = Object.values(ctx.activity).reduce((n, x) => n + x, 0);
