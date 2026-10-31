@@ -157,13 +157,23 @@ describe("image tool: portrait photos (principle 2)", () => {
 });
 
 describe("image tool results (principles 1 and 4)", () => {
-  it("tries a model asked for by name first, and says when the name matches none", async () => {
+  it("tries a model asked for by name first, lists her models in the tool, and stops when the name matches none", async () => {
     const s = await setup();
+    const tool = (o: ImageTools) => { let t!: ToolDefinition; createImageExtension(o)({ on: () => {}, registerTool: (d: ToolDefinition) => { t = d; } } as unknown as ExtensionAPI); return t; };
+    const model = (tool(s.options as ImageTools).parameters as { properties: { model: { description: string } } }).properties.model;
+    expect(model.description).toMatch(/The image models here: gpt-image-1 \(create, edit\)/);
     const named = await s.run({ action: "create", prompt: "A garden", model: "GPT Image" });
     const text = (named.content as { type: string; text?: string }[]).find(c => c.type === "text")!.text!;
     expect(text).toMatch(/^Made with gpt-image-1 on openai\. Saved /);
-    const unknown = await s.run({ action: "create", prompt: "A garden", model: "Flux" });
-    expect(unknown.content).toContainEqual({ type: "text", text: expect.stringMatching(/No image model here is called "Flux"; the ones that can: .*gpt-image-1/) });
+    const before = s.heard.length;
+    await expect(s.run({ action: "create", prompt: "A garden", model: "Flux" })).rejects.toThrow(/No image model here is called "Flux"; the ones that can create: .*gpt-image-1.*Leave model out/);
+    expect(s.heard).toHaveLength(before);
+  });
+  it("points a create with references that no model takes to edit", async () => {
+    const s = await setup(), plain = await s.host("plain", undefined, undefined, 0);
+    s.models.setColumnTask(s.ada.id, "private", "image.create", [plain.ref]);
+    s.context({ pool: "private", localOnly: true });
+    await expect(s.run({ action: "create", prompt: "A garden", references: ["/workspace/uploads/landscape.png"] })).rejects.toThrow(/To change an image, use edit with it as image\./);
   });
 
   it("sends LoRAs asked for by name to a model that takes them, says which, and lists the library when one isn't found", async () => {
