@@ -115,7 +115,7 @@ function caBundle(): string | undefined {
 }
 const BROWSERS = ["chromium", "chromium-headless-shell", "chromium-browser"];
 // Programs her prompt names when present, by the name it uses.
-const LISTED: [string[], string][] = [[["git"], "git"], [["curl"], "curl"], [["jq"], "jq"], [["rg"], "ripgrep"], [["node"], "Node"], [["npm"], "npm"], [["python3"], "Python 3"], [["magick", "convert"], "ImageMagick"]];
+const LISTED: [string[], string][] = [[["git"], "git"], [["curl"], "curl"], [["jq"], "jq"], [["rg"], "ripgrep"], [["node"], "Node"], [["npm"], "npm"], [["python3"], "Python 3"], [["magick", "convert"], "ImageMagick"], [["ffmpeg"], "ffmpeg"], [["ffprobe"], "ffprobe"]];
 const binDirs = () => (tools() ? [`${tools()}/bin`] : PATH.split(":"));
 const find = (names: string[]) => binDirs().flatMap((d) => names.map((n) => `${d}/${n}`)).find((p) => existsSync(p));
 /** What the sandbox has on this host: the programs her prompt names, and Chromium's path if there is one. */

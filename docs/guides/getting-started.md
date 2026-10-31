@@ -332,7 +332,8 @@ answers ahead; without a terminal the answer is no), then:
 
 1. Installs the packages her sandboxes need: bubblewrap, gocryptfs, FUSE,
    passt, nftables, ImageMagick (the Files panel's thumbnails are made in
-   the sandbox), openssl, curl, unzip and rsync for itself, and
+   the sandbox), ffmpeg (with ffprobe, so she can check and cut her
+   clips), openssl, curl, unzip and rsync for itself, and
    build-essential, python3, git, openssh-client and jq for building
    releases and fetching updates, python3-venv for her clones' Python
    dependencies, and `gh` and `tea` for threads with
@@ -1092,7 +1093,10 @@ refused. To replace the destination, enter the full URL and token again;
   Plex for her screenshots on this run; on NixOS the next rebuild brings
   them. An existing install gets Claude Code and Codex on its next
   `install.sh` run (Update on Administration, Updates doesn't install
-  them), and NixOS on the next rebuild. On NixOS that rebuild also starts
+  them), and NixOS on the next rebuild. An existing install gets ffmpeg
+  and ffprobe on its next `install.sh` run (or `apt-get install
+  ffmpeg`), and NixOS on the next rebuild; until then she can't check a
+  clip's length or streams herself. On NixOS that rebuild also starts
   SearXNG for her web search unless `services.lyrica.searxng = false`.
   The home page header (the greeting, then the date, the time and
   "0.1.0 · <build>") shows the git commit that is running.

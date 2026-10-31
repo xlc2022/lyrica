@@ -1,7 +1,8 @@
 # The tools her sandboxes have by default on NixOS, mounted as their /usr
 # (LYRICA_SANDBOX_TOOLS, core/src/workspace/sandbox.ts). bubblewrap, passt,
 # nftables, bash, coreutils and util-linux must stay: lyricad and its
-# self-test use them. imagemagick makes the Files panel's thumbnails; git,
+# self-test use them. imagemagick makes the Files panel's thumbnails; ffmpeg (with
+# ffprobe) lets her check and cut her own clips; git,
 # gh and tea are for threads with repositories (docs/workspace.md, "Git
 # accounts and repositories"), nodejs_24 and openssl for her own code
 # and its tests, claude-code
@@ -24,6 +25,7 @@ with pkgs; [
   bashInteractive coreutils findutils gnugrep gnused gawk diffutils patch
   gnutar gzip xz bzip2 zstd unzip which file less procps util-linux
   getent git gh tea nodejs_24 openssh openssl curl cacert jq ripgrep python3 gnumake gcc imagemagick
+  ffmpeg-headless
   chromium ibm-plex dejavu_fonts
   bubblewrap passt nftables
   unfree.claude-code codex
