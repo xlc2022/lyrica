@@ -1,8 +1,8 @@
 import { CLOUD_IMAGE_PROVIDERS, imageAt, PLAN_IMAGE, PLAN_IMAGE_MODEL, validateImageRequest, type ImageRequest, type GeneratedImage } from "./images.ts";
 export { CLOUD_IMAGE_PROVIDERS, PLAN_IMAGE_MODEL, type ImageRequest, type GeneratedImage, type ImageInput } from "./images.ts";
-import { validateVideoRequest, videoAt, type GeneratedVideo, type VideoRequest } from "./videos.ts";
+import { upscaleVideoAt, validateVideoRequest, validateVideoUpscale, videoAt, type GeneratedVideo, type VideoRequest, type VideoUpscaleRequest } from "./videos.ts";
 import { loraFiles, loraName, type LoraAsk } from "./loras.ts";
-export { isMp4, LONGEST_VIDEO_SECONDS, type GeneratedVideo, type VideoRequest } from "./videos.ts";
+export { isMp4, LONGEST_VIDEO_SECONDS, type GeneratedVideo, type VideoRequest, type VideoUpscaleRequest } from "./videos.ts";
 export { loraFiles, loraName, matchLora, MAX_LORAS, type LoraAsk } from "./loras.ts";
 export { type JobProgress, withProgress } from "./progress.ts";
 import type { JobProgress } from "./progress.ts";
@@ -218,6 +218,8 @@ export interface Offering extends Capabilities {
   mask?: boolean;
   /** A host video recipe that adds to a clip, and chains clips into a video past its longest clip. */
   extend?: boolean;
+  /** A host upscale recipe that upscales whole clips too (SeedVR2's `upscale_video`). */
+  upscalesClips?: boolean;
   /** A host video recipe's longest video in seconds (host/API.md, "Recipes"); a longer request is skipped. */
   longestSeconds?: number;
   /** A host video recipe renders sound with the picture (its listing's `video.audio`). */
@@ -367,7 +369,7 @@ export interface CleanupItem {
  * What a call needs from a model: tools, room for the conversation, or an image create tier.
  * `first`: models asked for by name, tried before the list for this one call (`namedImageModels`).
  */
-export interface Need { tools?: boolean; tokens?: number; imageTier?: "fast" | "quality"; imageMask?: boolean; imageReferences?: number; animate?: boolean; motion?: boolean; extend?: boolean; seconds?: number; first?: string[]; loras?: string[] }
+export interface Need { tools?: boolean; tokens?: number; imageTier?: "fast" | "quality"; imageMask?: boolean; imageReferences?: number; animate?: boolean; motion?: boolean; extend?: boolean; clip?: boolean; seconds?: number; first?: string[]; loras?: string[] }
 /** `evenIfDown`: ignore the health cache (stale still counts). `except`: endpoints to treat as down. */
 export interface ResolveOptions { evenIfDown?: boolean; except?: ReadonlySet<string> }
 
@@ -532,7 +534,7 @@ const toEndpoint = (r: EndpointRow, shared: boolean, now = Date.now()): Endpoint
   };
 };
 const toOffering = (r: OfferingRow, now = Date.now()): Offering => {
-  const caps: Capabilities & { digest?: string; identity?: ModelIdentity; downloaded?: boolean; size?: number; recipe?: string; mask?: boolean; references?: number; loras?: string[]; extend?: boolean; longestSeconds?: number; sound?: boolean; useFor?: Offering["useFor"]; separate?: boolean; servedContext?: number; servedParallel?: number; opensThinking?: boolean; alwaysThinks?: boolean; lmStudio?: boolean; llamaServer?: boolean; price?: ModelPrice; retiresAt?: string; maxOutput?: number } = { ...JSON.parse(r.found), ...JSON.parse(r.hand) };
+  const caps: Capabilities & { digest?: string; identity?: ModelIdentity; downloaded?: boolean; size?: number; recipe?: string; mask?: boolean; references?: number; loras?: string[]; extend?: boolean; upscalesClips?: boolean; longestSeconds?: number; sound?: boolean; useFor?: Offering["useFor"]; separate?: boolean; servedContext?: number; servedParallel?: number; opensThinking?: boolean; alwaysThinks?: boolean; lmStudio?: boolean; llamaServer?: boolean; price?: ModelPrice; retiresAt?: string; maxOutput?: number } = { ...JSON.parse(r.found), ...JSON.parse(r.hand) };
   // A host's serving settings decide its context window, over one set by hand and one discovered.
   const served = (JSON.parse(r.found) as { servedContext?: number }).servedContext;
   if (served) caps.contextWindow = served;
@@ -549,6 +551,7 @@ const toOffering = (r: OfferingRow, now = Date.now()): Offering => {
     ...(caps.recipe ? { recipe: caps.recipe, useFor: caps.useFor ?? "both" } : {}),
     ...(caps.mask !== undefined ? { mask: caps.mask } : {}),
     ...(caps.extend ? { extend: true } : {}),
+    ...(caps.upscalesClips ? { upscalesClips: true } : {}),
     ...(typeof caps.longestSeconds === "number" ? { longestSeconds: caps.longestSeconds } : {}),
     ...(caps.sound ? { sound: true } : {}),
     ...(typeof caps.references === "number" ? { references: caps.references } : {}),
@@ -1727,7 +1730,7 @@ export class Models {
     // A recipe that does nothing Lyrica can ask for isn't one, so it never shows as a chat model.
     const recipes = (listIn<{ id: string; name: string; state: string; does?: string[]; useFor?: Offering["useFor"]; mask?: boolean; references?: number; takesLoras?: unknown; video?: { longestSeconds?: unknown; audio?: unknown } }>(await this.hostCall(ep, "GET", "/host/v1/recipes?state=confirmed").catch(() => []), "recipes") ?? [])
       .filter((r) => r?.state === "confirmed" && r.does?.some((a) => RECIPE_ACTIONS.includes(a))).map((r) => ({
-        modelId: `recipe/${r.id}`, recipe: r.name, useFor: r.useFor ?? "both", ...(r.does?.includes("create") ? { image: true } : {}), ...(r.does?.includes("edit") ? { edit: true, ...(typeof r.mask === "boolean" ? { mask: r.mask } : {}) } : {}), ...(r.does?.includes("upscale") ? { upscale: true } : {}),
+        modelId: `recipe/${r.id}`, recipe: r.name, useFor: r.useFor ?? "both", ...(r.does?.includes("create") ? { image: true } : {}), ...(r.does?.includes("edit") ? { edit: true, ...(typeof r.mask === "boolean" ? { mask: r.mask } : {}) } : {}), ...(r.does?.includes("upscale") ? { upscale: true, ...(r.does.includes("upscale_video") ? { upscalesClips: true } : {}) } : {}),
         ...((r.does?.includes("create") || r.does?.includes("edit")) && typeof r.references === "number" ? { references: r.references } : {}),
         ...(r.does?.includes("video") ? { video: true } : {}), ...(r.does?.includes("animate") ? { animate: true } : {}),
         ...(r.does?.includes("motion") ? { motion: true } : {}), ...(r.does?.includes("extend") ? { extend: true } : {}),
@@ -2811,6 +2814,22 @@ export class Models {
     });
   }
 
+  /**
+   * A whole clip upscaled by the context's Image upscaling list, in memory; only a host recipe that upscales clips
+   * takes it (`upscalesClips`), so no cloud model is resolved. The caller stores it and records the call.
+   */
+  async upscaleVideo(ctx: CallContext, request: VideoUpscaleRequest, opts: { signal?: AbortSignal; beforeSend?: (resolution: Resolution) => Promise<void>; onProgress?: (p: JobProgress) => void; first?: string[] } = {}): Promise<{ video: GeneratedVideo; resolution: Resolution }> {
+    validateVideoUpscale(request);
+    return this.callWithFallback("image.upscale", ctx, { clip: true, ...(opts.first?.length ? { first: opts.first } : {}) }, async (r) => {
+      opts.signal?.throwIfAborted();
+      await opts.beforeSend?.(r);
+      opts.signal?.throwIfAborted();
+      const ep = r.endpoint;
+      const video = await upscaleVideoAt({ fetch: this.fetchFor(ep) ?? fetch, baseUrl: hostOrigin(ep.addresses![0]!), modelId: r.offering.modelId }, request, opts.signal, opts.onProgress);
+      return { video, resolution: r };
+    });
+  }
+
   // --- Speech ---
 
   /**
@@ -3199,6 +3218,7 @@ export class Models {
     if (task === "image.create" && need.imageTier
       && o.useFor && o.useFor !== "both" && o.useFor !== need.imageTier) return `it is for ${o.useFor} images`;
     if (task === "image.upscale" && !o.upscale) return "it doesn't upscale images";
+    if (task === "image.upscale" && need.clip && !o.upscalesClips) return "it doesn't upscale clips";
     if (task === "image.edit" && !o.edit) return "it doesn't edit images";
     // A host recipe whose template takes no mask; one listed before hosts said so is tried.
     if (task === "image.edit" && need.imageMask && o.mask === false) return "it doesn't take a mask";

@@ -269,6 +269,22 @@ describe("image tool results (principles 1 and 4)", () => {
     expect(s.workstation.server.videos).toHaveLength(2);
     expect(s.heard).toEqual([]);
   });
+  it("upscales a workspace clip on the Image upscaling list's host, saving a new clip", async () => {
+    const s = await setup();
+    s.models.setColumnTask(s.ada.id, "general", "image.upscale", [s.workstation.ref]);
+    writeFileSync(join(s.folder, "uploads", "walk.mp4"), mp4);
+    const out = await s.run({ action: "upscale_video", video: "/workspace/uploads/walk.mp4", scale: 2 });
+    expect((out.details as { video: unknown }).video).toMatchObject({ type: "video", model: "shared.workstation/Art", width: 2560, height: 1408, audio: true, path: expect.stringMatching(/^\/workspace\/videos\//) });
+    expect(out.content).toContainEqual({ type: "text", text: expect.stringContaining("Upscaled with Art on workstation: 5.0 s at 2560×1408, with sound.") });
+    expect(s.workstation.server.upscaled).toEqual([{ recipe: "art", video: mp4.toString("base64"), scale: 2 }]);
+    expect(s.models.recentCalls(s.ada.id).map(c => c.task)).toEqual(["image.upscale"]);
+    await expect(s.run({ action: "upscale_video" })).rejects.toThrow("upscale_video needs video");
+    await expect(s.run({ action: "upscale_video", video: "/workspace/uploads/walk.mp4", image: "/workspace/uploads/landscape.png" })).rejects.toThrow("upscale_video doesn't take image");
+    await expect(s.run({ action: "upscale_video", video: "/workspace/uploads/landscape.png" })).rejects.toThrow(/isn't an MP4/);
+    await expect(s.run({ action: "upscale_video", video: "/workspace/uploads/walk.mp4", loras: [{ name: "x", strength: 1 }] })).rejects.toThrow(/takes no LoRAs/);
+    expect(s.workstation.server.upscaled).toHaveLength(1);
+    expect(s.heard).toEqual([]);
+  });
   it("hands a clip to the background when lyricad runs clips, so her turn ends, and the clip comes back when it's made", async () => {
     const s = await setup();
     s.models.setColumnTask(s.ada.id, "general", "video", [s.workstation.clip]);

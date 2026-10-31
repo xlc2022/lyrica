@@ -4,7 +4,7 @@ import { createHash, randomInt } from "node:crypto";
 import { mkdirSync, readdirSync, readlinkSync, statSync, symlinkSync, unlinkSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { basename, join } from "node:path";
-import { imageSize, mp4Seconds, mp4Video, type ComfyGpus } from "./comfy.ts";
+import { imageSize, mp4Seconds, mp4Sound, mp4Video, type ComfyGpus } from "./comfy.ts";
 import type { Downloads } from "./downloads.ts";
 import { HostError, invalid, notFound, onlyFields, readJson, sendJson } from "./http.ts";
 import type { JobProgress } from "./jobs.ts";
@@ -29,6 +29,14 @@ const VIDEO_FIELDS = ["recipe", "prompt", "negativePrompt", "image", "drive", "e
 const MAX_REQUEST_LORAS = 8;
 /** A driving clip (`motion`): only its first seconds are used. */
 const DRIVE_LIMIT = 64 * 1024 * 1024;
+const CLIP_UPSCALE_FIELDS = ["recipe", "video", "scale", "maxSize", "colorMatch", "seed"];
+/**
+ * An upscaled clip's frames times its pixels, at most: ComfyUI holds every frame in system memory at 12 bytes a
+ * pixel, so this is about 18 GB of frames (15 s at 24 fps from 720p to 1440p).
+ */
+const MAX_CLIP_UPSCALE_PIXELS = 1_500_000_000;
+/** SeedVR2 takes seeds up to 2^32 - 1. */
+const UPSCALE_SEEDS = 2 ** 32;
 
 const FIELDS: Record<"create" | "edit" | "upscale", string[]> = {
   create: ["recipe", "prompt", "negativePrompt", "width", "height", "count", "steps", "cfg", "seed", "references", "loras"],
@@ -295,6 +303,10 @@ export class Images {
       await this.runtime.jobs.track(this.runtime.jobs.token(req), (job) => this.video(req, res, job));
       return true;
     }
+    if (path === "/host/v1/videos/upscale" && method === "POST") {
+      await this.runtime.jobs.track(this.runtime.jobs.token(req), (job) => this.upscaleClip(req, res, job));
+      return true;
+    }
     const job = path.match(/^\/host\/v1\/jobs\/([A-Za-z0-9_-]{16,64})$/);
     if (job && method === "GET") {
       const state = this.runtime.jobs.get(job[1]!);
@@ -425,7 +437,7 @@ export class Images {
       values.resolution = Math.min(MAX_RESOLUTION, Math.round(Math.min(size.width, size.height) * scale));
       for (const p of recipe.parts) if (p.file) values[`${p.role}Name`] = this.seedvr2Names.get(p.file) ?? basename(p.file);
     }
-    values.seed = int(body, "seed", 0, 2 ** 48) ?? randomInt(2 ** 47);
+    values.seed = action === "upscale" ? int(body, "seed", 0, UPSCALE_SEEDS - 1) ?? randomInt(UPSCALE_SEEDS) : int(body, "seed", 0, 2 ** 48) ?? randomInt(2 ** 47);
 
     const started = Date.now();
     const gpu = this.pick(recipe);
@@ -596,6 +608,71 @@ export class Images {
     sendJson(res, 200, {
       video: { mp4: video.toString("base64"), width: size?.width ?? values.width, height: size?.height ?? values.height,
         frames, fps, duration: frames / fps, audio: spec.audio, seed: values.seed },
+      poster: poster ? poster.toString("base64") : null,
+      seconds,
+    });
+  }
+
+  /**
+   * A whole clip through an upscaler whose template has a clip workflow (SeedVR2's): its frames in batches, at
+   * `scale` times the shorter side as for images, keeping its frame rate and sound.
+   */
+  private async upscaleClip(req: IncomingMessage, res: ServerResponse, job: JobProgress): Promise<void> {
+    const body = await readJson(req, Math.ceil(DRIVE_LIMIT / 3) * 4 + 1024 * 1024);
+    onlyFields(body, CLIP_UPSCALE_FIELDS);
+    if (typeof body.recipe !== "string") throw invalid("recipe is missing.");
+    const recipe = this.book.all().find((r) => r.id === body.recipe && r.state === "confirmed");
+    if (!recipe || !this.book.ready(recipe, this.files())) throw notFound("No confirmed, ready recipe with that ID.");
+    const template = this.book.templates.get(recipe.template)!;
+    if (!recipe.does.includes("upscale") || !template.clipWorkflow) throw invalid("That recipe doesn't upscale clips.");
+    if (this.sdcpp) throw invalid("This host makes images with stable-diffusion.cpp, which can't upscale clips.");
+    if (typeof body.video !== "string") throw invalid("video must be a base64 MP4.");
+    const clip = Buffer.from(body.video, "base64");
+    if (clip.length > DRIVE_LIMIT) throw invalid("video is larger than 64 MB.");
+    const source = mp4Video(clip);
+    if (!source) throw invalid("video isn't an MP4 clip whose video track can be read.");
+
+    const values: Values = { ...BASE_DEFAULTS, batchSize: 33, temporalOverlap: 3, ...recipe.defaults };
+    const scale = num(body, "scale", 1, 4) ?? Number(values.scale);
+    values.maxSize = int(body, "maxSize", 256, 8192) ?? values.maxSize!;
+    if (body.colorMatch !== undefined && !COLOR_MATCH.includes(body.colorMatch as string)) throw invalid(`colorMatch must be one of ${COLOR_MATCH.join(", ")}.`);
+    values.colorMatch = (body.colorMatch as string) ?? values.colorMatch!;
+    const short = Math.min(source.width, source.height), long = Math.max(source.width, source.height);
+    values.resolution = Math.min(MAX_RESOLUTION, Math.round(short * scale));
+    // The upscaler scales the shorter side to `resolution`, then both down again if the longer passes maxSize.
+    const k = Math.min(Number(values.resolution) / short, Number(values.maxSize) / long);
+    const width = Math.round(source.width * k), height = Math.round(source.height * k);
+    if (width * height * source.frames > MAX_CLIP_UPSCALE_PIXELS) {
+      const most = Math.floor(MAX_CLIP_UPSCALE_PIXELS / (width * height));
+      throw invalid(`At ${width}×${height} a clip upscales at most ${most} frames (${(most / source.fps).toFixed(1)} s); this one has ${source.frames}. Use a smaller scale or a shorter clip.`);
+    }
+    for (const p of recipe.parts) if (p.file) values[`${p.role}Name`] = this.seedvr2Names.get(p.file) ?? basename(p.file);
+    values.seed = int(body, "seed", 0, UPSCALE_SEEDS - 1) ?? randomInt(UPSCALE_SEEDS);
+
+    const started = Date.now();
+    const gpu = this.pick(recipe);
+    const model = this.asModel(recipe, gpu);
+    const comfy = this.comfy.byGpu.get(gpu)!;
+    const abort = new AbortController();
+    res.on("close", () => {
+      if (!res.writableFinished) abort.abort();
+    });
+    const scheduler = this.runtime.scheduler;
+    const parts = present(recipe, this.files());
+    const { video, poster } = await this.on(gpu, () => scheduler.run(model, "image", () => {
+      job.running();
+      return scheduler.measuring(model, () => comfy.runVideo({ source: clip }, (names) => fill({ ...template, workflow: template.clipWorkflow! }, parts, [], { ...values, ...names }),
+        VIDEO_TIMEOUT_MS, abort.signal, job.progress));
+    }, gpu, abort.signal));
+    const seconds = (Date.now() - started) / 1000;
+    this.runtime.count(recipe.id, { requests: 1, seconds });
+    this.log("video", { recipe: recipe.id, action: "upscale", frames: source.frames });
+    const made = mp4Video(video);
+    const size = poster ? imageSize(poster) : null;
+    const frames = made?.frames ?? source.frames, fps = made?.fps ?? source.fps;
+    sendJson(res, 200, {
+      video: { mp4: video.toString("base64"), width: size?.width ?? made?.width ?? width, height: size?.height ?? made?.height ?? height,
+        frames, fps, duration: frames / fps, audio: mp4Sound(video), seed: values.seed },
       poster: poster ? poster.toString("base64") : null,
       seconds,
     });

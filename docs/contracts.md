@@ -372,6 +372,7 @@ interface Offering extends Capabilities {   // one model on one endpoint, with a
   status: "listed" | "missing" | "gone"; missingSince?;      // gone: missing for GONE_DAYS (30)
   digest?; identity?: ModelIdentity; downloaded?; size?; recipe?; separate?;   // reported by a host; useFor inherited from Capabilities
   extend?; longestSeconds?; sound?;                          // a host video recipe that adds to clips (and chains them), its longest video, and whether it renders sound
+  upscalesClips?;                                            // a host upscale recipe that upscales whole clips too (its listing does `upscale_video`)
   opensThinking?;                                            // a host's chat template writes <think> itself
   alwaysThinks?;                                             // LM Studio or OpenRouter says it can't turn thinking off
   price?: { input; output; reasoning?; cacheRead?; cacheWrite?; free };   // OpenRouter's pricing, US dollars per million tokens
@@ -487,6 +488,9 @@ class Models {                                              // new Models(keyrin
   // with extend) answers, so no clip or first frame reaches a cloud model. A recipe whose `longestSeconds` is under `duration` is skipped
   // ("it makes videos of at most N s"); a host recipe that chains clips (MiniMax H3) answers up to 60 s as one clip.
   // POST /host/v1/videos/create with explicit fields only; two hours at most, per 5 s asked (videoTimeout), since a chain gives each clip two hours.
+  upscaleVideo(ctx, request: VideoUpscaleRequest { video: Uint8Array (an MP4 of at most 64 MB); scale?: 1-4; maxSize?: 256-8192 }, { signal?, beforeSend?, onProgress?, first? }?): Promise<{ video: GeneratedVideo; resolution }>
+  // The `image.upscale` task's list; only a host recipe that lists `upscale_video` (Offering.upscalesClips) answers ("it doesn't
+  // upscale clips"). POST /host/v1/videos/upscale with explicit fields only; two hours at most (VIDEO_TIMEOUT_MS).
   firstVideoModel(ctx): { name; longestSeconds?; extend; sound } | undefined   // the Videos list's first usable model, for the image tool's duration and prompt; no call
   loraModels(ctx, "image.create" | "image.edit" | "video", asks: LoraAsk[]): { ids; names }   // local models taking every LoRA asked, list order first, for `first`; names: every LoRA they take (loraName); no call
   // Thinking and call records
@@ -1396,7 +1400,8 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     the user's reactions since her last turn; `reactionLines` puts them in
     the turn message as `<reactions>`;
   - `image` (`createImageExtension(ImageTools)`), one tool with `create`, `edit`,
-    `upscale`, `video`, `animate` and `motion`. Create takes `prompt`, `tier` (`fast` or `quality`), optional
+    `upscale`, `video`, `animate`, `motion`, `extend` and `upscale_video` (a workspace clip, optional
+    `scale` and `maxSize`, through `Models.upscaleVideo`, in the background as other clips are, recorded as `image.upscale`). Create takes `prompt`, `tier` (`fast` or `quality`), optional
     `size: { width, height }` or `aspectRatio` (`width:height`), `count` and
     `references`; edit takes `image`, `instruction`, optional `mask`, `count`
     and `references`; upscale takes `image`, optional `scale` and `maxSize`.

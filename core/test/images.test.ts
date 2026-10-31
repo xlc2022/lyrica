@@ -45,6 +45,23 @@ describe("image calls through the router (principles 1 and 2)", () => {
     ]);
     expect(s.heard).toEqual([]);
   });
+  it("upscales a clip on the Image upscaling list's first host recipe that upscales clips, never a cloud model", async () => {
+    const s = await setup(), ctx = s.ctx({ pool: "private" });
+    const older = await s.host("older", undefined, undefined, undefined, undefined, false);
+    s.models.setColumnTask(s.ada.id, "private", "image.upscale", [older.ref, s.workstation.ref]);
+    const made = await s.models.upscaleVideo(ctx, { video: mp4, scale: 2 });
+    expect(made.resolution.ref).toEqual(s.workstation.ref);
+    expect(made.resolution.skipped.map(p => p.reason)).toEqual(["it doesn't upscale clips"]);
+    expect(made.video).toMatchObject({ type: "video/mp4", width: 2560, height: 1408, audio: true });
+    expect(s.workstation.server.upscaled).toEqual([{ recipe: "art", video: mp4.toString("base64"), scale: 2 }]);
+    // The same recipe still upscales images.
+    expect((await s.models.image(ctx, { action: "upscale", image: input })).resolution.ref).toEqual(older.ref);
+    await expect(s.models.upscaleVideo(ctx, { video: png })).rejects.toThrow(/MP4/);
+    await expect(s.models.upscaleVideo(ctx, { video: mp4, scale: 5 })).rejects.toThrow(/1 to 4/);
+    s.models.setColumnTask(s.ada.id, "private", "image.upscale", [older.ref]);
+    await expect(s.models.upscaleVideo(ctx, { video: mp4 })).rejects.toThrow();
+    expect(s.heard).toEqual([]);
+  });
   it("passes over a host recipe that takes no mask for a masked edit, and uses it for a maskless one", async () => {
     const s = await setup(), ctx = s.ctx({ pool: "private", localOnly: true });
     const plain = await s.host("plain", undefined, false);

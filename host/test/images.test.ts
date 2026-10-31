@@ -4,7 +4,7 @@ import net, { type AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { Comfy, ComfyGpus, mp4Seconds, mp4Video, samplingProgress } from "../src/comfy.ts";
+import { Comfy, ComfyGpus, mp4Seconds, mp4Sound, mp4Video, samplingProgress } from "../src/comfy.ts";
 import { clipPlan, Images, inputImage, recipeSize, videoValues } from "../src/images.ts";
 import { ggufBytes } from "../src/gguf.ts";
 import { scanParts } from "../src/parts.ts";
@@ -402,9 +402,10 @@ describe("long videos", () => {
     expect(JSON.stringify(next)).not.toContain("$");
   });
 
-  it("reads a clip's size, frame count and frame rate from its video track", () => {
+  it("reads a clip's size, frame count and frame rate from its video track, and whether it has sound", () => {
     expect(mp4Video(clip(1344, 768, 192, 24))).toEqual({ width: 1344, height: 768, frames: 192, fps: 24 });
     expect(mp4Video(mp4(3))).toBeNull();
+    expect([mp4Sound(clip(1344, 768, 192, 24)), mp4Sound(mp4(3))]).toEqual([true, false]);
     // A version 1 media header too short for its 64-bit duration is no clip, not an error.
     const v1 = clip(1344, 768, 192, 24);
     const at = v1.lastIndexOf("mdhd");
@@ -1109,6 +1110,41 @@ describe("the image API", () => {
     const listed = (await s.api("/host/v1/recipes")).body.recipes;
     expect(listed.find((r: Recipe) => r.id === z.id)).not.toHaveProperty("unsupported");
     expect(listed.find((r: Recipe) => r.name === "From a newer host")).toMatchObject({ does: [], ready: false, unsupported: expect.stringContaining("no template future-model") });
+  });
+
+  it("upscales a whole clip with SeedVR2, keeping its frame rate and sound, and refuses one too big to hold", async () => {
+    const s = await stack({ files: { "u/seedvr2_ema_7b_fp16.safetensors": safetensors({ x: { dtype: "F16" } }), "u/ema_vae_fp16.safetensors": safetensors({ y: {} }) } });
+    const seedvr: Recipe = (await s.api("/host/v1/recipes?state=proposed")).body.recipes.find((r: Recipe) => r.arch === "seedvr2");
+    expect(seedvr.does).toEqual(["upscale", "upscale_video"]);
+    const z = s.book.all().find((r) => r.arch === "z-image")!;
+    await s.api("/host/v1/recipes/confirm", { body: { ids: [seedvr.id, z.id] } });
+
+    const made = await s.api("/host/v1/videos/upscale", { body: { recipe: seedvr.id, video: clip(1280, 720, 121, 24).toString("base64"), scale: 2 } });
+    expect([made.status, made.body.error]).toEqual([200, undefined]);
+    const [p] = s.comfyFake.seen.prompts;
+    expect(p.load.inputs.file).toBe("lyrica-source.mp4");
+    expect(p.upscale.inputs).toMatchObject({ image: ["parts", 0], resolution: 1440, max_resolution: 4096, batch_size: 33, temporal_overlap: 3, color_correction: "lab" });
+    // SeedVR2 refuses seeds past 2^32 - 1.
+    expect(p.upscale.inputs.seed).toBeLessThan(2 ** 32);
+    expect(made.body.video.seed).toBe(p.upscale.inputs.seed);
+    expect([p.dit.inputs.model, p.vae.inputs.model]).toEqual(["seedvr2_ema_7b_fp16.safetensors", "ema_vae_fp16.safetensors"]);
+    // The clip's own frame rate and sound go back into the new one.
+    expect([p.video.inputs.fps, p.video.inputs.audio]).toEqual([["parts", 2], ["parts", 1]]);
+    // The fake's clip has no headers: its length is the source's.
+    expect(made.body.video).toMatchObject({ frames: 121, fps: 24, duration: 121 / 24 });
+
+    const refused = async (extra: object, recipe = seedvr.id) => (await s.api("/host/v1/videos/upscale", { body: { recipe, ...extra } })).body.error.message;
+    // 15 s at 24 fps from 1080p to 2160p holds about 36 GB of frames.
+    expect(await refused({ video: clip(1920, 1080, 360, 24).toString("base64") })).toMatch(/^At 3840×2160 a clip upscales at most 180 frames \(7\.5 s\); this one has 360/);
+    expect(await refused({ video: PNG.toString("base64") })).toMatch(/isn't an MP4 clip/);
+    expect(await refused({ video: clip(1280, 720, 121, 24).toString("base64"), prompt: "x" })).toMatch(/prompt/);
+    expect(await refused({ video: clip(1280, 720, 121, 24).toString("base64") }, z.id)).toBe("That recipe doesn't upscale clips.");
+    expect(s.comfyFake.seen.prompts).toHaveLength(1);
+
+    // An image upscale takes a seed SeedVR2 accepts too.
+    const image = await s.api("/host/v1/images/upscale", { body: { recipe: seedvr.id, image: PNG.toString("base64") } });
+    expect(image.status).toBe(200);
+    expect(s.comfyFake.seen.prompts[1].upscale.inputs.seed).toBeLessThan(2 ** 32);
   });
 
   it("makes a long video and extends a clip as chained clips in one GPU hold, and refuses what it can't chain", async () => {

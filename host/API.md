@@ -822,6 +822,9 @@ as `{ "parts": [...] }`, each entry like this:
   `motion` (an image's subject moved as a driving clip's person moves).
   A video recipe whose template has a continuation (MiniMax H3) also
   lists `extend`: it adds to a clip, and chains clips past `maxSeconds`.
+  An upscale recipe whose template has a clip workflow
+  (`workflows/<template>-clip.json`, SeedVR2's) also lists `upscale_video`
+  ("Making videos", `POST /host/v1/videos/upscale`).
 - `video`: a video recipe's timing, from its template: `{ "fps": 24,
   "frameStep": 4, "frameOffset": 1, "sizeStep": 32, "maxSeconds": 8,
   "audio": false, "longestSeconds": 8 }`. `maxSeconds` is its longest
@@ -952,8 +955,8 @@ the action is `invalid`.
 
   `scale` (1 to 4) multiplies the shorter side; `maxSize` (256 to 8192)
   caps the longer one; `colorMatch` is
-  `lab`, `wavelet`, `wavelet_adaptive`, `hsv`, `adain` or `none`. Defaults
-  come from the recipe.
+  `lab`, `wavelet`, `wavelet_adaptive`, `hsv`, `adain` or `none`; `seed`
+  is 0 to 2^32 - 1, SeedVR2's range. Defaults come from the recipe.
 
 For upscale, the shorter side's target (`scale` times the shorter side) is
 capped at 4096.
@@ -1064,6 +1067,24 @@ newer host made, read after a rollback).
   it holds its ComfyUI's GPU while it runs, like an image job. Errors are as
   for images; on a stable-diffusion.cpp host every video job is
   `invalid`.
+- `POST /host/v1/videos/upscale`
+
+  ```json
+  { "recipe": "<id>", "video": "<base64 MP4>", "scale": 2, "maxSize": 4096,
+    "colorMatch": "lab", "seed": 1234 }
+  ```
+
+  A whole clip, an MP4 of at most 64 MB, through a recipe that lists
+  `upscale_video`. `scale`, `maxSize`, `colorMatch` and `seed` are as for
+  an image upscale. The clip's frames go through SeedVR2 in batches of the
+  recipe's `batchSize` (default 33, 4n + 1 frames), blended over
+  `temporalOverlap` frames (default 3), with tiled VAE encoding and
+  decoding and the DiT moved to system memory between stages; the clip's
+  frame rate and sound are kept. ComfyUI holds every upscaled frame in
+  system memory, so a clip whose upscaled frames times their pixels pass
+  1.5 billion (15 s at 24 fps from 720p to 1440p) is `invalid`, saying how
+  many frames that size allows. The answer is as for `videos/create`, its
+  `audio` read from the new clip. It may run for two hours.
 
 ### Job progress
 

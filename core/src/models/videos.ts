@@ -44,6 +44,15 @@ export function validateVideoRequest(r: VideoRequest): void {
 /** An MP4 starts with its `ftyp` box. */
 export const isMp4 = (b: Uint8Array) => b.length > 12 && Buffer.from(b.subarray(4, 8)).toString("latin1") === "ftyp";
 
+/** A clip to upscale: `scale` times its shorter side (1 to 4), its longer side at most `maxSize` (host/API.md, "Making videos"). */
+export interface VideoUpscaleRequest { video: Uint8Array; scale?: number; maxSize?: number }
+
+export function validateVideoUpscale(r: VideoUpscaleRequest): void {
+  if (!isMp4(r.video) || r.video.length > MAX_DRIVE_BYTES) throw new HostRefused("invalid", "a clip to upscale is an MP4 of at most 64 MB");
+  if (r.scale !== undefined && !(r.scale >= 1 && r.scale <= 4)) throw new HostRefused("invalid", "upscale scale must be from 1 to 4");
+  if (r.maxSize !== undefined && !(Number.isInteger(r.maxSize) && r.maxSize >= 256 && r.maxSize <= 8192)) throw new HostRefused("invalid", "upscale maxSize must be from 256 to 8192");
+}
+
 /** A confirmed host recipe that makes videos: `POST /host/v1/videos/create`, in memory only. */
 export async function videoAt(t: { fetch: typeof fetch; baseUrl: string; modelId: string; loras?: { file: string; strength: number }[] }, r: VideoRequest, signal?: AbortSignal, onProgress?: (p: JobProgress) => void): Promise<GeneratedVideo> {
   if (!t.modelId.startsWith("recipe/")) throw new HostRefused("invalid", "a host video model must be a confirmed recipe");
@@ -52,9 +61,22 @@ export async function videoAt(t: { fetch: typeof fetch; baseUrl: string; modelId
     ...(r.drive ? { drive: Buffer.from(r.drive).toString("base64") } : {}), ...(r.extend ? { extend: Buffer.from(r.extend).toString("base64") } : {}),
     ...(r.size ?? {}), ...(r.aspectRatio ? { aspectRatio: r.aspectRatio } : {}), ...(r.duration === undefined ? {} : { duration: r.duration }),
     ...(r.steps === undefined ? {} : { steps: r.steps }) });
-  const timeout = AbortSignal.timeout(videoTimeout(r));
+  return postVideo(t, "/host/v1/videos/create", body, videoTimeout(r), signal, onProgress);
+}
+
+/** A whole clip through a confirmed host recipe that upscales clips: `POST /host/v1/videos/upscale`, in memory only. */
+export async function upscaleVideoAt(t: { fetch: typeof fetch; baseUrl: string; modelId: string }, r: VideoUpscaleRequest, signal?: AbortSignal, onProgress?: (p: JobProgress) => void): Promise<GeneratedVideo> {
+  if (!t.modelId.startsWith("recipe/")) throw new HostRefused("invalid", "a host upscale model must be a confirmed recipe");
+  const body = JSON.stringify({ recipe: t.modelId.slice(7), video: Buffer.from(r.video).toString("base64"),
+    ...(r.scale === undefined ? {} : { scale: r.scale }), ...(r.maxSize === undefined ? {} : { maxSize: r.maxSize }) });
+  return postVideo(t, "/host/v1/videos/upscale", body, VIDEO_TIMEOUT_MS, signal, onProgress);
+}
+
+/** A video job's request and its answer, a clip and its poster. */
+async function postVideo(t: { fetch: typeof fetch; baseUrl: string }, path: string, body: string, ms: number, signal?: AbortSignal, onProgress?: (p: JobProgress) => void): Promise<GeneratedVideo> {
+  const timeout = AbortSignal.timeout(ms);
   let res: Response;
-  try { res = await withProgress(t, onProgress, (tag) => t.fetch(`${t.baseUrl}/host/v1/videos/create`, { method: "POST", body, headers: { "content-type": "application/json", ...tag }, redirect: "error", signal: signal ? AbortSignal.any([signal, timeout]) : timeout })); }
+  try { res = await withProgress(t, onProgress, (tag) => t.fetch(`${t.baseUrl}${path}`, { method: "POST", body, headers: { "content-type": "application/json", ...tag }, redirect: "error", signal: signal ? AbortSignal.any([signal, timeout]) : timeout })); }
   catch (e) {
     signal?.throwIfAborted();
     if (e instanceof HostRefused || e instanceof HostIdentityChanged) throw e;
