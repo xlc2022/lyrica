@@ -330,12 +330,14 @@ in `user.db` (`settings.fallback`, `thread_choices.fallback`).
 default becomes.
 
 **A model asked for by name.** `need.first` holds offering IDs tried before
-the list, for that one call; the list itself is unchanged, so its first
+the list, for that one call (`need.after`, those tried after it); the list itself is unchanged, so its first
 model is the second choice. Image calls fill it from
 `namedImageModels(ctx, action, name)`: the models that can do the action
 whose name contains the given one, ignoring case, spaces and punctuation
 ("Krea2" finds "Krea 2 Turbo"), those in the list first and in its order.
-Any of the user's image models can match, not only those in the list; a
+Any of the user's image models can match, not only those in the list (its
+`names`, for the error she reads when a name matches none, are only the
+lists' models that do the action, from `imageModels`); a
 private or local-only context matches local models only, and Free models
 only still applies. A named model answers whatever the create tier. With
 Fallback off only the named model is tried. `Resolution.passedOver` lists
@@ -597,6 +599,18 @@ its template takes; a create or edit with more references than that skips
 it (Krea 2, Z-Image and FLUX take none, so a call with a reference photo
 goes on to a recipe that takes one, such as Qwen-Image 2.1). A cloud
 provider whose adapter declares no references is skipped the same way.
+A create with references also tries, after its own list (`need.after`,
+not with Fallback off), the local models on the Edit list that create and
+take that many: a recipe that does both often sits only on the Edit list.
+Cloud models there aren't added; one off the Create list makes a create
+only when asked for by name.
+
+`imageModels(ctx)` lists the models on the context's Create, Edit and
+Upscale lists that can do their list's task, by name in list order, with
+the actions each does there and how many references it takes (0 for none;
+left out when unknown). The image tool's `model` field names them in its
+description, so she never guesses a name. Models off the lists aren't
+named, since one answers only when the user asks for it.
 
 A create request has `prompt`, `tier` (`fast` or `quality`), optional
 `size: { width, height }`, `count` and `references`. Edit takes `prompt`,
@@ -710,14 +724,19 @@ The `image` tool reads workspace paths and `/photos-of-me/<file>`, enforces
 the user's portrait policy before each resolved attempt, and stores results in
 the encrypted thread folder. Its text result says “Made with <model> on
 <host or endpoint name>” for every provider, alongside the saved paths, then
-`No image model here is called "<name>"; the ones that can: …` when a named
-model matched none, `With <LoRA> at <strength>, …` for the LoRAs it sent,
+`With <LoRA> at <strength>, …` for the LoRAs it sent,
 and `Passed over first: <label> (<reason>); …` whenever
 `passedOver` isn't empty, so she can say she fell back. A clip's result says
 the same. Its `loras` field (create, edit, video and animate) lists the
 LoRAs her models take in its description; a call naming one that no model
 takes fails before any model is called, saying `No image model here takes
-"<name>". The LoRAs here: …`.
+"<name>". The LoRAs here: …`. Its `model` field lists the models on her
+image lists (`imageModels`) as `<name> (<actions>; up to <n> references)`;
+a name that matches none fails before any model is called, saying `No image
+model here is called "<name>"; the ones that can <action>: …. Leave model
+out unless they name one.` A create with references that no model can take
+fails with the router's `NoModel` reasons and `To change an image, use edit
+with it as image.`, since a reference-only create is often a meant edit.
 After a refusal, the tool runs no more image calls for the rest of her turn
 (it resets on Pi's `agent_start`), answering each with
 `REFUSED_THIS_TURN`, so a model can't reword the prompt and spend more of

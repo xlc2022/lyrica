@@ -81,6 +81,20 @@ describe("image calls through the router (principles 1 and 2)", () => {
     expect((await s.models.image(ctx, { action: "create", prompt: "A garden", tier: "quality" })).resolution.ref).toEqual(plain.ref);
     expect(plain.server.images.map(i => "references" in i.body)).toEqual([false]);
   });
+  it("tries an Edit list's local model that also creates for a create with references no Create model takes, never a model off both lists", async () => {
+    const s = await setup(), ctx = s.ctx({ pool: "private", localOnly: true });
+    const plain = await s.host("plain", undefined, undefined, 0), three = await s.host("three", undefined, undefined, 3), off = await s.host("off", undefined, undefined, 3);
+    s.models.setColumnTask(s.ada.id, "private", "image.create", [plain.ref]);
+    s.models.setColumnTask(s.ada.id, "private", "image.edit", [three.ref]);
+    const made = await s.models.image(ctx, { action: "create", prompt: "A garden", tier: "quality", references: [input] });
+    expect(made.resolution.ref).toEqual(three.ref);
+    // Without references the Create list answers as before; past what any listed model takes, none does.
+    expect((await s.models.image(ctx, { action: "create", prompt: "A garden", tier: "quality" })).resolution.ref).toEqual(plain.ref);
+    await expect(s.models.image(ctx, { action: "create", prompt: "A garden", tier: "quality", references: [input, input, input, input] })).rejects.toThrow(/doesn't take reference images/);
+    expect(off.server.images).toEqual([]);
+    // What her tool lists: the models on her lists, what each does, and how many references it takes.
+    expect(s.models.imageModels(ctx)).toEqual([{ name: "Art", actions: ["create", "edit", "upscale"], references: 3 }]);
+  });
   it("creates and edits through the keyed OpenAI endpoint, including quality and references", async () => {
     const s = await setup();
     for (const tier of ["fast", "quality"] as const) await s.models.image(s.ctx(), { action: "create", prompt: "A garden", tier, count: 2 });

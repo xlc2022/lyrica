@@ -635,9 +635,9 @@ their subagents, at any depth (`familyRoot`, `WorkspaceSettings.family`).
 The `image` tool creates, edits and upscales through the thread's model router, and makes and upscales short clips (below).
 It names inputs by workspace path: uploads, earlier results or granted files.
 Reject, pick and clear_rejected sort her attempts (below, "Rejected attempts").
-Create, edit and upscale take an optional `model` when the user names one: it is tried first, then the
-usual list, and her result says when a name matched nothing or a model was passed over, which her
-guidelines tell her to pass on.
+Create, edit, upscale and upscale_video take an optional `model` when the user names one: it is tried first, then the
+usual list. A name that matches nothing stops the call before anything runs, listing the models that can,
+and her result says when a model was passed over, which her guidelines tell her to pass on.
 Create takes a prompt, fast or quality (quality when left out), optional size or `width:height` aspect
 ratio, count and references; her guidelines say to write the prompt as one
 detailed paragraph (subject and action, then setting, light, framing and
