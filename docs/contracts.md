@@ -398,7 +398,8 @@ interface CallContext {
   fallback?: boolean;                       // Fallback; false: only a list's first entry answers; absent is on
   contextLimit?: number;                    // the most context the thread plans for, below its model's window; inherited by children
 }
-interface Need { tools?: boolean; tokens?: number; imageTier?: "fast" | "quality"; imageMask?: boolean }        // what the call needs from a model
+interface Need { tools?; tokens?; imageTier?: "fast" | "quality"; imageMask?; imageReferences?; animate?; motion?; extend?; seconds?; loras?: string[];
+               first?: string[]; after?: string[] }   // what the call needs from a model; first/after: offering IDs tried before/after the list for one call
 interface Resolution { ref: { offeringId }; endpoint; offering; label; profile: string;   // the preset's name, or "Custom"
                        source: "thread" | "preset" | "column"; skipped: { label; reason }[]; remaining: number }
 interface Pace { promptTokens; readTokens?; outputTokens; window; ttftMs; genMs; processed }   // counts and times only
@@ -489,6 +490,7 @@ class Models {                                              // new Models(keyrin
   // POST /host/v1/videos/create with explicit fields only; two hours at most, per 5 s asked (videoTimeout), since a chain gives each clip two hours.
   firstVideoModel(ctx): { name; longestSeconds?; extend; sound } | undefined   // the Videos list's first usable model, for the image tool's duration and prompt; no call
   loraModels(ctx, "image.create" | "image.edit" | "video", asks: LoraAsk[]): { ids; names }   // local models taking every LoRA asked, list order first, for `first`; names: every LoRA they take (loraName); no call
+  imageModels(ctx): { name; actions: ("create" | "edit" | "upscale")[]; references? }[]   // the models on the Images lists that can do their task, for the image tool's model field; no call
   // Thinking and call records
   defaultThinking(userId) / setDefaultThinking(userId, level) / setThinking(userId, threadId, level | null)
   thinkingFor(resolution, asked, unset?): { level; note? }   // asked defaults to DEFAULT_THINKING ("medium"), also the per-user default; unset (CallContext.thinkingUnset) drops the can't-think note
@@ -1402,7 +1404,9 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     and `references`; upscale takes `image`, optional `scale` and `maxSize`.
     Create, edit and upscale take an optional `model`, a name she was asked
     for: `Models.namedImageModels` turns it into offerings tried before the
-    list for that call (docs/models.md, "A model asked for by name").
+    list for that call (docs/models.md, "A model asked for by name"). The
+    field's description lists the models on her image lists
+    (`Models.imageModels`), and a name that matches none fails before any call.
     Create, edit, video and animate take an optional `loras: [{ name, strength }]`:
     `Models.loraModels` puts the models that take them all after any named one,
     a name none takes fails before any call with the LoRAs there are, and the result
