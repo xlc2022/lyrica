@@ -50,9 +50,10 @@ With `services.lyrica.enable`, `services.lyrica.searxng` is on unless you
 set it to `false`. It turns on NixOS's own `services.searx` (no Docker),
 in uWSGI with request logging off, since its built-in server logs every
 query. It listens on `127.0.0.1:8888` with the same settings as
-install.sh's: JSON on, limiter off, five general engines, short rests. `lyrica-searxng-secret.service` makes
-its `secret_key` once, in `/var/lib/lyrica-searxng/env`. The address goes
-to `/var/lib/lyrica/searxng-address` and fills in under Administration in
+install.sh's: JSON on, limiter off, five general engines, short rests.
+`lyrica-searxng-secret.service` makes its `secret_key` once, in
+`/var/lib/lyrica-searxng/env`. The address goes to
+`/var/lib/lyrica/searxng-address` and fills in under Administration in
 the same way. More `services.searx.settings` merge in, engines for example.
 Turning it off removes the address file, but not the address lyricad
 already stored: clear it in Administration, or give the address of a

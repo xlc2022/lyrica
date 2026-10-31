@@ -1103,9 +1103,13 @@ refused. To replace the destination, enter the full URL and token again;
   baseline (python3-bs4, python3-lxml, python3-requests, python3-html5lib,
   python3-yaml) on its next `install.sh` run (or `apt-get install` of
   them), and NixOS on the next rebuild; until then `import bs4` fails in
-  her sandbox and her prompt doesn't name the libraries. On NixOS that
-  rebuild also starts SearXNG for her web search unless
-  `services.lyrica.searxng = false`.
+  her sandbox and her prompt doesn't name the libraries. A SearXNG that
+  `install.sh` set up before 2026-10-31 keeps its old `settings.yml`, so
+  its engines rest for up to a day after one CAPTCHA: copy the new
+  sections in by hand ([searxng.md](searxng.md#engines-that-refuse)); the
+  NixOS module applies them on its rebuild. On NixOS that rebuild also
+  starts SearXNG for her web search unless `services.lyrica.searxng =
+  false`.
   The home page header (the greeting, then the date, the time and
   "0.1.0 · <build>") shows the git commit that is running.
 
