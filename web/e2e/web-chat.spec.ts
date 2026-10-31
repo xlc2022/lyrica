@@ -1113,6 +1113,8 @@ test("a thread making a clip after its turn pulses its sidebar row until the cli
   making = false;
   await page.reload();
   await expect(row).not.toHaveClass(/\bworking\b/);
+  // The list is re-read on every event; a read still in flight would fail the next test.
+  await page.unrouteAll({ behavior: "ignoreErrors" });
 });
 
 test("in an ask mode, a command can be allowed, and denying it stops the tool", async ({ page, baseURL }) => {
