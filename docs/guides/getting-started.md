@@ -1148,7 +1148,7 @@ docker rm -f lyrica-searxng 2>/dev/null   # if you said yes to SearXNG
 rm -rf /opt/lyrica /etc/lyrica /usr/local/lib/lyrica-update \
   /usr/local/lib/lyrica-chromium /usr/local/lib/lyrica-caddy.stamp \
   /usr/local/bin/lyrica /usr/local/bin/lyrica-caddy \
-  /usr/local/bin/chromium-headless-shell
+  /usr/local/bin/chromium-headless-shell /usr/local/sbin/lyrica-kiwix-start
 # Her data, the update snapshots, Caddy's certificates, her Tailscale
 # node and the Wikipedia ZIM files: only once you're sure.
 rm -rf /var/lib/lyrica /var/lib/lyrica-snapshots /var/lib/lyrica-update \
