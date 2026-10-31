@@ -1466,7 +1466,9 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     `"clip-failed"`, its reason in the text), which messages show as an
     assistant message with the call's image tool part (ID `<toolCallId>:made`,
     the call's args, the notice's text as its result) and then the video part, and the `notice` event carries as
-    `video` and `call`, and wakes an idle thread. A clip delivered before `call` existed shows alone. Without it (an explicit retry) the call
+    `video` and `call`, and wakes an idle thread. While a clip is being made, the thread's
+    `ThreadSummary.making` is `true` (`ThreadHost.makingClip`), and the user's events report a change
+    when it starts and ends. A clip delivered before `call` existed shows alone. Without it (an explicit retry) the call
     answers with its facts and its poster as image content, so she sees the first frame;
     a host's progress (create, edit, upscale, video, animate, motion) goes to Pi as the call's update, details `{ progress: JobProgress }`;
     details `{ video: VideoPart }`, `VideoPart` being `{ type: "video", path,

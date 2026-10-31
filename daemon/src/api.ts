@@ -875,6 +875,8 @@ export interface ThreadSummary {
   updatedAt: string;
   /** A turn is running. */
   busy: boolean;
+  /** A clip is being made for it in the background, after her turn ended. */
+  making?: true;
   /** Started by Lyrica from its parent (`threads start`). */
   child: boolean;
   /** A child thread's state: working, waiting for an approval, or idle. */

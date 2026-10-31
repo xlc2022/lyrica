@@ -618,7 +618,9 @@ the background (`ClipJobs`, clips.ts) comes with status `clip` and its
 `video` part: the message list shows it as her message with the clip, and
 the `notice` event carries `video`; a failed one has status `clip-failed`.
 Either wakes an idle thread once; a clip Lock or a shutdown stopped wakes
-nothing.
+nothing. While a clip is being made, the thread's `ThreadSummary.making` is
+true (`ThreadHost.makingClip`), and the user's events say the list changed
+when it starts and ends, so the sidebar row pulses meanwhile.
 
 Child-thread notices use the same encrypted delivery path. Questions,
 `needsYou`, a report at the child's idle turn end, and failure/didn't-start

@@ -2688,7 +2688,7 @@ function summary(d: Lyricad, user: User, pool: Pool, store: PoolStore, th: Threa
     pool, id: th.id, interface: th.interface, subagent: th.subagent, child: th.child, hidden: th.hidden, unlogged: th.unlogged, createdAt: th.createdAt,
     updatedAt: store.lastEntry(th.id)?.createdAt ?? th.createdAt,
     ...(th.title ? { title: th.title } : {}), ...(th.parent ? { parent: th.parent } : {}),
-    busy: d.services!.host.busy(user.id, pool, th.id), children, pinned: look.pinned().has(`${pool}/${th.id}`),
+    busy: d.services!.host.busy(user.id, pool, th.id), ...(d.services!.host.makingClip(user.id, pool, th.id) ? { making: true as const } : {}), children, pinned: look.pinned().has(`${pool}/${th.id}`),
     ...(th.child ? childInfo(d, user, pool, th.id) : {}),
     ...(pref?.group ? { group: pref.group } : {}), ...(pref?.unread ? { unread: true } : {}),
     ...(th.project ? { project: true as const, ...(th.goal ? { goal: th.goal } : {}), ...instructionsOf(store, th.id) } : {}),

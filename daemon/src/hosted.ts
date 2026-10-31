@@ -199,6 +199,11 @@ export class ThreadHost {
     return this.threads.get(`${userId}/${pool}/${threadId}`)?.busy ?? false;
   }
 
+  /** A clip is being made for the thread in the background, after its turn ended. */
+  makingClip(userId: string, pool: Pool, threadId: string): boolean {
+    return (this.opts.clipsMaking?.(userId, pool, threadId).length ?? 0) > 0;
+  }
+
   /** A hosted thread's context now, if its session is open. */
   context(userId: string, pool: Pool, threadId: string): Api.ContextInfo | undefined {
     return this.threads.get(`${userId}/${pool}/${threadId}`)?.context();
