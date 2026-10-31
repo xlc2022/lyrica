@@ -27,7 +27,7 @@ export function createWebExtension(web: WebTools): ExtensionFactory {
       label: "Web search",
       description: "Search the web. Returns titles, dates, URLs and snippets; read a result with web_fetch.",
       promptSnippet: "search the web",
-      promptGuidelines: ["Search when the answer depends on something current or that you don't know; read the best result with web_fetch before relying on a snippet, and say where it came from.", OUTSIDE_GUIDELINE],
+      promptGuidelines: ["Search when the answer depends on something current or that you don't know; read the best result with web_fetch before relying on a snippet, and say where it came from.", "When a search says its engines refused and are resting, don't search again for the same thing: use what you have, or tell the user search is resting.", OUTSIDE_GUIDELINE],
       annotations: { openWorldHint: true, readOnlyHint: true },
       parameters: Type.Object({
         query: Type.String({ description: "What to search for." }),

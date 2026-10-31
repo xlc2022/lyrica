@@ -46,6 +46,26 @@ the person's last message or her last words. Home: docs/ux.md, "The pages
 she read for a reply". Searches aren't listed: a snippet isn't a page she
 read.
 
+## Part C: engines that refuse (2026-10-31)
+
+Her search on the dev deployment answered nothing: SearXNG's three
+default general engines had all refused (DuckDuckGo and Startpage a
+CAPTCHA, Brave "too many requests") at a few searches an hour, from a
+home address, and SearXNG's own defaults rest a refused engine for up to
+a day, while she retried every empty search at once.
+
+1. **SearXNG settings** (the install.sh template, the NixOS module, the
+   guide): Bing, Qwant and Yahoo on, Startpage off (a proof-of-work
+   CAPTCHA), rests of 15, 10 and 3 minutes instead of a day, and a 6 s
+   engine timeout, since Qwant and Yahoo miss 3 s.
+2. **Her side** (`SearchGate` in `core/src/web.ts`): requests to SearXNG
+   a second apart, the same search answered from its last reply for a
+   minute, a retry only when an engine failed passingly, and, when every
+   engine refused, how long each has been refusing and that asking
+   again gets the same answer. Her guideline says not to.
+3. Out of scope: a keyed or paid engine (Brave's API and the like need a
+   sign-up), a proxy or Tor for SearXNG's outgoing requests.
+
 ## Out of scope
 
 Paid search APIs, a search cache, new tools, and changing what a private
@@ -53,7 +73,7 @@ thread may reach.
 
 ## Handoff
 
-Part A: merged in #628 (fda62c5). Part B: on `claude/project-thread-ax31pt`
-(web/src/Messages.tsx `Sources`/`sourcesOf`, web/src/app.css; tests in
-web/test/tool-markers.test.ts and the "Sources" e2e in web-chat.spec.ts,
-with a `fetch:` command in the e2e fake). Next: UI review, then merge.
+Part A: merged in #628 (fda62c5). Part B: merged in #635 (5a868a9).
+Part C: on `feature/web-search-rate`; done as written above, with tests
+in core/test/web.test.ts. Next: PR review, merge, then the dev
+deployment rebuilds so the module's new SearXNG settings apply.

@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fauxAssistantMessage, fauxProvider, fauxToolCall } from "@earendil-works/pi-ai";
 import { createAgentSession, DefaultResourceLoader, SessionManager, type AgentSession } from "@earendil-works/pi-coding-agent";
-import { searxngSearch, type ExecutionTarget } from "@lyrica/core";
+import { SearchGate, searxngSearch, type ExecutionTarget } from "@lyrica/core";
 import { afterEach, describe, expect, it } from "vitest";
 import { createWebExtension, type WebTools } from "../src/index.ts";
 
@@ -93,15 +93,17 @@ describe("web tools", () => {
 
 describe("searxngSearch", () => {
   const reply = (status: number, body: unknown) => (async () => new Response(JSON.stringify(body), { status })) as unknown as typeof fetch;
+  // Each search its own gate: the shared one answers the same search from its last reply.
+  const gate = () => new SearchGate(Date.now, 0);
 
   it("lists an answer, then results as title, URL and snippet, up to count", async () => {
     const results = [1, 2, 3].map((i) => ({ title: `Result ${i}`, url: `https://r${i}.example`, content: `snippet\n${i}` }));
-    const text = await searxngSearch("http://s.lan", "q", { count: 2 }, undefined, reply(200, { answers: ["42"], results }));
+    const text = await searxngSearch("http://s.lan", "q", { count: 2 }, undefined, reply(200, { answers: ["42"], results }), gate());
     expect(text).toBe("Answer: 42\n\n1. Result 1\n   https://r1.example\n   snippet 1\n2. Result 2\n   https://r2.example\n   snippet 2");
   });
 
   it("says plainly what failed", async () => {
-    await expect(searxngSearch("http://s.lan", "q", { count: 8 }, undefined, reply(403, {}))).rejects.toThrow("is the json format enabled");
+    await expect(searxngSearch("http://s.lan", "q", { count: 8 }, undefined, reply(403, {}), gate())).rejects.toThrow("is the json format enabled");
   });
 
   it("sends user:password in the address as basic auth", async () => {
