@@ -1209,7 +1209,9 @@ export class Lyricad implements Drainable {
     const title = esc(this.nameSeen ?? DEFAULT_NAME);
     res.writeHead(403, { ...SECURITY_HEADERS, "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
     res.end(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${title}</title>`
-      + `<style>body{margin:0;min-height:100vh;display:grid;place-items:center;font:16px/1.5 system-ui,sans-serif;color:#1f2a2e;background:#f6f7f7}main{max-width:28rem;padding:1.5rem}h1{font-size:1.25rem;margin:0 0 .75rem}p{margin:0}</style></head>`
+      // The app's --bg and --fg in both schemes (web/src/app.css), so a dark phone doesn't flash white.
+      + "<style>:root{color-scheme:light dark}body{margin:0;min-height:100vh;display:grid;place-items:center;font:15px/1.5 system-ui,sans-serif;color:#1d2626;background:#f7f8f8}"
+      + "@media (prefers-color-scheme: dark){body{color:#e3eaea;background:#141818}}main{max-width:28rem;padding:1.5rem}h1{font-size:1.25rem;margin:0 0 .75rem}p{margin:0}</style></head>"
       + `<body><main><h1>${title}</h1><p>${esc(sentence)}</p></main></body></html>`);
   }
 
