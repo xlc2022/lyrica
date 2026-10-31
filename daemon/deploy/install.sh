@@ -74,7 +74,12 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
 apt-get install -y -qq --no-install-recommends \
   bubblewrap gocryptfs fuse3 passt nftables openssl ca-certificates curl unzip rsync imagemagick ffmpeg \
-  build-essential python3 python3-venv git gh openssh-client jq >/dev/null
+  build-essential python3 python3-venv git gh openssh-client jq \
+  python3-bs4 python3-lxml python3-requests python3-html5lib python3-yaml >/dev/null
+# The python3-* line is the sandbox's Python baseline for scraping and data work
+# (beautifulsoup4, lxml, requests, html5lib, PyYAML); her prompt names the ones
+# present (sandboxTools in core/src/workspace/sandbox.ts). nix/sandbox-tools.nix
+# gives NixOS the same.
 # tea, Gitea's and Forgejo's client, isn't packaged everywhere; git alone still works with those accounts.
 apt-get install -y -qq --no-install-recommends tea >/dev/null 2>&1 \
   || say "tea isn't packaged here: threads with a Gitea or Forgejo account use git alone until it's installed."

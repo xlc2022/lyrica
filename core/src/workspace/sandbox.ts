@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { closeSync, constants, existsSync, lstatSync, mkdtempSync, openSync, readFileSync, readlinkSync, realpathSync, rmSync } from "node:fs";
+import { closeSync, constants, existsSync, lstatSync, mkdtempSync, openSync, readdirSync, readFileSync, readlinkSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, posix } from "node:path";
 import type { Readable, Writable } from "node:stream";
@@ -118,9 +118,28 @@ const BROWSERS = ["chromium", "chromium-headless-shell", "chromium-browser"];
 const LISTED: [string[], string][] = [[["git"], "git"], [["curl"], "curl"], [["jq"], "jq"], [["rg"], "ripgrep"], [["node"], "Node"], [["npm"], "npm"], [["python3"], "Python 3"], [["magick", "convert"], "ImageMagick"], [["ffmpeg"], "ffmpeg"], [["ffprobe"], "ffprobe"]];
 const binDirs = () => (tools() ? [`${tools()}/bin`] : PATH.split(":"));
 const find = (names: string[]) => binDirs().flatMap((d) => names.map((n) => `${d}/${n}`)).find((p) => existsSync(p));
-/** What the sandbox has on this host: the programs her prompt names, and Chromium's path if there is one. */
-export function sandboxTools(): { programs: string[]; browser?: string } {
-  return { programs: LISTED.filter(([names]) => find(names)).map(([, label]) => label), browser: find(BROWSERS) };
+// Python libraries her prompt names when present, by import name and the name it uses
+// (install.sh's python3-* packages; nix/sandbox-tools.nix's python3.withPackages).
+const PYTHON_LISTED: [string, string][] = [["bs4", "beautifulsoup4"], ["lxml", "lxml"], ["requests", "requests"], ["html5lib", "html5lib"], ["yaml", "PyYAML"]];
+/** The sandbox's Python library folders: Debian's dist-packages under /usr, or the Nix environment's site-packages. */
+function pythonLibDirs(): string[] {
+  const roots = tools() ? [`${tools()}/lib`] : ["/usr/lib/python3/dist-packages", "/usr/local/lib", "/usr/lib"];
+  return roots.flatMap((root) => {
+    if (root.endsWith("dist-packages")) return [root];
+    let versions: string[];
+    try { versions = readdirSync(root).filter((d) => /^python3(\.\d+)?$/.test(d)); } catch { return []; }
+    return versions.flatMap((v) => ["site-packages", "dist-packages"].map((s) => `${root}/${v}/${s}`));
+  });
+}
+/** The listed Python libraries the sandbox's Python can import, by the names her prompt uses. */
+export function pythonLibraries(dirs = pythonLibDirs()): string[] {
+  return PYTHON_LISTED.filter(([mod]) => dirs.some((d) => existsSync(`${d}/${mod}`))).map(([, label]) => label);
+}
+/** What the sandbox has on this host: the programs her prompt names, the Python libraries it names, and Chromium's path if there is one. */
+export function sandboxTools(): { programs: string[]; python?: string[]; browser?: string } {
+  const programs = LISTED.filter(([names]) => find(names)).map(([, label]) => label);
+  const python = programs.includes("Python 3") ? pythonLibraries() : [];
+  return { programs, ...python.length ? { python } : {}, browser: find(BROWSERS) };
 }
 /** Where the sandbox's CA bundle and Chromium are, so npm, pip, Playwright and Puppeteer use them instead of failing or downloading their own. */
 export function toolEnv(): Record<string, string> {
