@@ -32,6 +32,8 @@ export interface HostOptions {
   log: (line: string) => void;
   /** The server's SearXNG address, for web_search; without one there is no web_search. */
   searxng?: () => string | null;
+  /** The server's kiwix-serve address: the offline copy of Wikipedia, in web_search and web_fetch. */
+  kiwix?: () => string | null;
   /** Child threads: every hosted thread gets the `threads` tool. */
   threads?: ThreadsHost;
   codePulls?: (userId: string, pool: Pool, threadId: string) => string[];
@@ -1128,7 +1130,7 @@ export class HostedThread {
             ...(this.o.clips ? { background: (make: (signal: AbortSignal, onProgress: (p: JobProgress) => void) => Promise<ClipMade>, toolCallId: string) => this.o.clips!(this.userId, this.pool, this.threadId, make, toolCallId) } : {}),
           }),
           // web_search and web_fetch, behind the Web search switch; a fetch runs in the thread's sandbox.
-          createWebExtension({ searxng: () => this.o.searxng?.(), target: () => tools.target(), canRender: () => !!sandboxTools().browser && sandboxHas("node") }),
+          createWebExtension({ searxng: () => this.o.searxng?.(), kiwix: () => this.o.kiwix?.(), target: () => tools.target(), canRender: () => !!sandboxTools().browser && sandboxHas("node") }),
           // The project's checks, run when a code turn that changed something ends.
           createChecksExtension({ checks: () => tools.checks(), code: () => tools.settings().code, plan: () => tools.settings().mode === "plan",
             checkouts: () => checkoutsOf(tools.settings(), workspace.repositoriesFor({ userId: this.userId, pool: this.pool, threadId: this.threadId })), target: () => tools.target(),

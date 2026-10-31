@@ -24,6 +24,7 @@ export * from "./forge/decide.ts";
 export * from "./delegation.ts";
 export * from "./workspace/index.ts";
 export * from "./web.ts";
+export * from "./kiwix.ts";
 
 export * from "./routines.ts";
 export * from "./zone.ts";

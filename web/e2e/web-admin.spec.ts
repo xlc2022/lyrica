@@ -1120,7 +1120,7 @@ test("Image models: groups by architecture with Role and Where; a recipe opens t
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
 
-test("Web search: the administrator sets the SearXNG address and sees whether it answers; without one the switch says why", async ({ page, baseURL }) => {
+test("Web search: the administrator sets the SearXNG and Kiwix addresses and sees whether they answer; without one the switch says why", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   const shot = async (name: string) => {
     if (!process.env.SCREENSHOTS) return;
@@ -1134,26 +1134,45 @@ test("Web search: the administrator sets the SearXNG address and sees whether it
   await page.goto(`/#/u/${userId}/admin/search`);
   const section = page.getByRole("region", { name: "Web search" });
   const address = section.getByLabel("SearXNG address");
+  const state = section.locator(".state-word[data-for=searxng]");
+  const save = (form: ReturnType<typeof section.locator>) => form.getByRole("button", { name: "Save" }).click();
+  const searxngForm = section.locator("form", { has: address });
   await address.fill(`${fake}/searxng`);
-  await section.getByRole("button", { name: "Save" }).click();
-  await expect(section.locator(".state-word")).toHaveText("Reachable");
+  await save(searxngForm);
+  await expect(state).toHaveText("Reachable");
   await noHorizontalScroll(page);
   await shot("web-search-reachable");
   await address.fill(`${fake}/nothing-here`);
-  await section.getByRole("button", { name: "Save" }).click();
-  await expect(section.locator(".state-word")).toHaveText("Unreachable");
-  await expect(section.locator(".state-word")).toHaveAttribute("title", /answered 404/);
+  await save(searxngForm);
+  await expect(state).toHaveText("Unreachable");
+  await expect(state).toHaveAttribute("title", /answered 404/);
   await shot("web-search-unreachable");
   await address.fill("");
-  await section.getByRole("button", { name: "Save" }).click();
-  await expect(section.locator(".state-word")).toHaveCount(0);
+  await save(searxngForm);
+  await expect(state).toHaveCount(0);
+
+  // The offline copy of Wikipedia: its state names the books kiwix-serve has.
+  const kiwix = section.getByLabel("Kiwix address");
+  const kiwixForm = section.locator("form", { has: kiwix });
+  const kiwixState = section.locator(".state-word[data-for=kiwix]");
+  await kiwix.fill(`${fake}/kiwix`);
+  await save(kiwixForm);
+  await expect(kiwixState).toHaveText("Reachable");
+  await expect(kiwixState).toHaveAttribute("title", "Wikipedia 2026-06 (eng)");
+  await shot("web-search-kiwix");
+  await kiwix.fill(`${fake}/nothing-here`);
+  await save(kiwixForm);
+  await expect(kiwixState).toHaveText("Unreachable");
+  await kiwix.fill("");
+  await save(kiwixForm);
+  await expect(kiwixState).toHaveCount(0);
 
   await newThread(page, "General");
   await send(page, "hello there");
   await page.getByRole("button", { name: "Attach or switch tools" }).click();
   const menu = page.getByRole("menu", { name: "Attach and tools" });
   const web = menu.locator("label.switch", { hasText: "Web search" });
-  await expect(web).toHaveAttribute("title", "Search needs a SearXNG address in Administration");
+  await expect(web).toHaveAttribute("title", "Search needs a SearXNG or Kiwix address in Administration");
   await expect(menu.getByLabel("Web search")).toBeEnabled();
   await web.hover();
   await shot("web-search-switch-unset");

@@ -59,23 +59,36 @@ const OFFERED = "web.searxng.offered";
  * changes it isn't overridden later. True when it was stored.
  */
 export function adoptLocalSearxng(self: Db, address: string): boolean {
-  const a = checkSearxng(address);
-  if (!a) return false;
-  const offered = self.prepare("SELECT value FROM settings WHERE key = ?").get(OFFERED) as { value: string } | undefined;
-  if (offered?.value === a) return false;
-  self.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(OFFERED, a);
-  if (searxngAddress(self)) return false;
-  setSearxngAddress(self, a);
+  return adoptLocalAddress(self, { key: KEY, offered: OFFERED, address: checkSearxng(address) });
+}
+
+/**
+ * Stores a checked address under `key` while none is set, once per
+ * address (`offered` records the last one), so an administrator who clears
+ * or changes it isn't overridden later. True when it was stored. Shared by
+ * SearXNG and kiwix-serve (kiwix.ts).
+ */
+export function adoptLocalAddress(self: Db, o: { key: string; offered: string; address: string | null }): boolean {
+  if (!o.address) return false;
+  const offered = self.prepare("SELECT value FROM settings WHERE key = ?").get(o.offered) as { value: string } | undefined;
+  if (offered?.value === o.address) return false;
+  self.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(o.offered, o.address);
+  const set = self.prepare("SELECT value FROM settings WHERE key = ?").get(o.key) as { value: string } | undefined;
+  if (set?.value) return false;
+  self.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(o.key, o.address);
   return true;
 }
 
-function checkSearxng(address: string | null): string | null {
+const checkSearxng = (address: string | null) => checkAddress(address, "SearXNG");
+
+/** A service's address: an http(s) URL without query or fragment, kept without a trailing slash; null for none. */
+export function checkAddress(address: string | null, what: string): string | null {
   const a = String(address ?? "").trim();
   if (!a) return null;
   let url: URL;
-  try { url = new URL(a); } catch { throw new Error("the SearXNG address is a URL, like https://search.example.org"); }
-  if (url.protocol !== "http:" && url.protocol !== "https:") throw new Error("the SearXNG address starts with http:// or https://");
-  if (url.search || url.hash) throw new Error("the SearXNG address has no query or fragment");
+  try { url = new URL(a); } catch { throw new Error(`the ${what} address is a URL, like ${what === "Kiwix" ? "http://127.0.0.1:8889" : "https://search.example.org"}`); }
+  if (url.protocol !== "http:" && url.protocol !== "https:") throw new Error(`the ${what} address starts with http:// or https://`);
+  if (url.search || url.hash) throw new Error(`the ${what} address has no query or fragment`);
   return url.href.replace(/\/+$/, "");
 }
 

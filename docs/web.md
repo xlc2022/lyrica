@@ -916,8 +916,11 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   isn't the current passphrase.", a 429 "Too many tries. Try again in <n> min."
   with the button disabled; the fields clear after a success or Cancel), **Tailnet**, Web access, **Web search** (`src/WebSearch.tsx`:
   **SearXNG address** in mono, without its password (a basic-auth password
-  is kept when the user@host is unchanged), one Save, and Reachable or Unreachable as a
-  dot and a word, what failed as its tooltip; `GET`/`PUT …/admin/web-search`),
+  is kept when the user@host is unchanged), its Save, and Reachable or Unreachable as a
+  dot and a word, what failed as its tooltip; then **Kiwix address** in mono
+  (the offline copy of Wikipedia), its own Save and state word, whose
+  Reachable tooltip lists the books kiwix-serve has; `GET`/`PUT …/admin/web-search`,
+  each form sending only its field),
   **Updates**, **Persona**: the persona changes that users sent on, the
   file now and the proposed text side by side, rendered as Markdown
   (who sent them, whether they edited them, and a confirmation when the file
@@ -1377,7 +1380,7 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   the box is empty. Under the box, a row of borderless controls: at the left
   the "+" icon, whose menu attaches a file and, after a separator, has the
   Web search, Internet for commands and Images switches (Web search's
-  tooltip says "Search needs a SearXNG address in Administration" while the
+  tooltip says "Search needs a SearXNG or Kiwix address in Administration" while the
   server has none, `ThreadSettings.searchProvider`); then the mic; at the right the
   mode, a link with a chevron that opens a menu of the four modes (a check on
   the current one, its line, its number key; a mode above a granted

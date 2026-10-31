@@ -983,7 +983,15 @@ The **Web search** switch gives her two tools (`extension/src/web.ts`,
   videos), and for a later page. Each result shows its date when SearXNG
   has one. When nothing comes back because engines failed, it asks once
   more, then says which engines failed and what SearXNG suggests.
-- `web_fetch` runs `curl` in the thread's sandbox, the URL one argument,
+- With a Kiwix address (an offline copy of Wikipedia on kiwix-serve, the
+  second field of Administration → Web search; [guides/wikipedia.md](guides/wikipedia.md)),
+  a plain search also lists up to five of its articles, as wikipedia.org
+  links, after the web results, and `web_search` is offered with it alone.
+  `web_fetch` reads a wikipedia.org page from the copy before going
+  online, lists the page's pictures when the copy has them, and gives a
+  listed picture back as an image. None of that leaves the machine, so it
+  works with the internet off and in a local-only thread.
+- `web_fetch` otherwise runs `curl` in the thread's sandbox, the URL one argument,
   so the internet switch and allowed hosts above decide what it can reach:
   a private thread with internet off reads only its allowed hosts. It
   sends a browser's user agent, follows up to 5 redirects, gives up after

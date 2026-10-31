@@ -6,7 +6,21 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { ThreadSettings, WebSearch } from "../src/api.ts";
 import { browser, daemon, enc, login, runtime } from "./helpers.ts";
 
-// Administration → Web search: the server's SearXNG address.
+// Administration → Web search: the server's SearXNG address, and the kiwix-serve with its offline copy of Wikipedia.
+
+const NO_KIWIX = { kiwix: null, kiwixState: "unset", books: [] };
+
+/** A kiwix-serve whose catalog has one book. */
+async function kiwix() {
+  const srv = createServer((req, res) => {
+    if (req.url !== "/catalog/v2/entries") { res.writeHead(404); return res.end(); }
+    res.writeHead(200, { "content-type": "application/atom+xml" });
+    res.end(`<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"><entry><title>Wikipedia</title><updated>2026-06-01T00:00:00Z</updated><language>eng</language><name>wikipedia_en_all_nopic</name><link type="text/html" href="/content/wikipedia_en_all_nopic_2026-06" /></entry></feed>`);
+  });
+  servers.push(srv);
+  await new Promise<void>((r) => srv.listen(0, "127.0.0.1", r));
+  return `http://127.0.0.1:${(srv.address() as AddressInfo).port}`;
+}
 
 const servers: Server[] = [];
 afterEach(() => { for (const s of servers.splice(0)) s.close(); });
@@ -35,10 +49,10 @@ async function setup() {
 describe("web search", () => {
   it("saves the address, says whether SearXNG answers, and is for administrators only", async () => {
     const { rt, base, ada, url } = await setup();
-    expect((await ada.get<WebSearch>(url)).body).toEqual({ searxng: null, auth: false, state: "unset" });
+    expect((await ada.get<WebSearch>(url)).body).toEqual({ searxng: null, auth: false, state: "unset", ...NO_KIWIX });
 
     const good = `http://${await searxng()}`;
-    expect((await ada.put<WebSearch>(url, { searxng: `${good}/` })).body).toEqual({ searxng: good, auth: false, state: "reachable" });
+    expect((await ada.put<WebSearch>(url, { searxng: `${good}/` })).body).toEqual({ searxng: good, auth: false, state: "reachable", ...NO_KIWIX });
     const bad = (await ada.put<WebSearch>(url, { searxng: `http://${await searxng({ json: false })}` })).body;
     expect(bad).toMatchObject({ state: "unreachable" });
     expect(bad.reason).toContain("json format");
@@ -56,12 +70,22 @@ describe("web search", () => {
     expect((await ada.get<ThreadSettings>(settings)).body.searchProvider).toBe(true);
     await ada.put(url, { searxng: "" });
     expect((await ada.get<ThreadSettings>(settings)).body.searchProvider).toBe(false);
+
+    // The Kiwix address, saved on its own, names the books; it counts as a provider too.
+    const k = await kiwix();
+    const withKiwix = (await ada.put<WebSearch>(url, { kiwix: `${k}/` })).body;
+    expect(withKiwix).toEqual({ searxng: null, auth: false, state: "unset", kiwix: k, kiwixState: "reachable", books: [{ name: "wikipedia_en_all_nopic", title: "Wikipedia", language: "eng", date: "2026-06-01" }] });
+    expect((await ada.get<ThreadSettings>(settings)).body.searchProvider).toBe(true);
+    expect((await ada.put<WebSearch>(url, { searxng: good })).body).toMatchObject({ searxng: good, kiwix: k });
+    expect((await ada.put<WebSearch>(url, { kiwix: `http://${await searxng()}` })).body).toMatchObject({ kiwixState: "unreachable", kiwixReason: expect.stringContaining("catalog") });
+    expect((await ada.put(url, { kiwix: "ftp://x" })).status).toBe(400);
+    expect((await ada.put<WebSearch>(url, { kiwix: null })).body).toMatchObject({ searxng: good, ...NO_KIWIX });
   });
 
   it("never sends a basic-auth password back, and keeps it while the user@host stays", async () => {
     const { ada, url, logs } = await setup();
     const host = await searxng({ auth: "lyrica:s3cret-pw" });
-    const shown = { searxng: `http://lyrica@${host}`, auth: true, state: "reachable" };
+    const shown = { searxng: `http://lyrica@${host}`, auth: true, state: "reachable", ...NO_KIWIX };
     expect((await ada.put<WebSearch>(url, { searxng: `http://lyrica:s3cret-pw@${host}` })).body).toEqual(shown);
     expect((await ada.get<WebSearch>(url)).body).toEqual(shown);
     // Saving what was shown keeps the password.
@@ -70,26 +94,28 @@ describe("web search", () => {
     expect((await ada.put<WebSearch>(url, { searxng: `http://lyrica:wrong@${host}` })).body).toMatchObject({ auth: true, state: "unreachable" });
     // Another user doesn't take it.
     expect((await ada.put<WebSearch>(url, { searxng: `http://other@${host}` })).body).toMatchObject({ searxng: `http://other@${host}`, auth: false });
-    expect((await ada.put<WebSearch>(url, { searxng: "" })).body).toEqual({ searxng: null, auth: false, state: "unset" });
+    expect((await ada.put<WebSearch>(url, { searxng: "" })).body).toEqual({ searxng: null, auth: false, state: "unset", ...NO_KIWIX });
     expect(logs.join("\n")).not.toContain("s3cret-pw");
   });
 
   it("takes the SearXNG install.sh runs here while none is set, and never again once an administrator clears it", async () => {
     const rt = await runtime();
     const local = `http://${await searxng()}`;
+    const k = await kiwix();
     writeFileSync(join(rt.home, "searxng-address"), `${local}\n`);
+    writeFileSync(join(rt.home, "kiwix-address"), `${k}\n`);
     const first = await daemon(rt);
     await browser(first.base).post("/api/unlock", { passphrase: "passphrase" });
     let ada = await login(first.base, "ada", "pw");
     const url = `/api/u/${rt.ada.id}/admin/web-search`;
-    expect((await ada.get<WebSearch>(url)).body).toEqual({ searxng: local, auth: false, state: "reachable" });
-    await ada.put(url, { searxng: "" });
+    expect((await ada.get<WebSearch>(url)).body).toMatchObject({ searxng: local, auth: false, state: "reachable", kiwix: k, kiwixState: "reachable" });
+    await ada.put(url, { searxng: "", kiwix: "" });
     await first.stop();
 
     const second = await daemon(rt);
     await browser(second.base).post("/api/unlock", { passphrase: "passphrase" });
     ada = await login(second.base, "ada", "pw");
-    expect((await ada.get<WebSearch>(url)).body).toEqual({ searxng: null, auth: false, state: "unset" });
+    expect((await ada.get<WebSearch>(url)).body).toEqual({ searxng: null, auth: false, state: "unset", ...NO_KIWIX });
     await second.stop();
 
     // A new address is a new offer; an address an administrator set stays whatever install.sh offers.

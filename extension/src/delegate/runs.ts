@@ -68,6 +68,8 @@ export interface DelegationOptions {
   name?: () => string;
   /** The server's SearXNG address, for a subagent's web_search. */
   searxng?: () => string | null;
+  /** The server's kiwix-serve address, the offline copy of Wikipedia, for a subagent's web tools. */
+  kiwix?: () => string | null;
   /** The Claude plan's usage limit stopped a claude run, with when it resets if Claude Code said: lyricad wakes its parent then. */
   onClaudeLimit?: (parent: Parent, until?: number) => void;
   /** Why the claude role is refused for now, if it is: the user fell back from the Claude plan until it resets. */
@@ -1148,7 +1150,7 @@ export class Delegation {
           approve: r => this.approve(sub!, r),
         }));
         // Its role says whether it searches; its Web search switch is its parent's or off.
-        extensions.push(createWebExtension({ searxng: () => this.o.searxng?.(), target: () => tools.target(), canRender: () => !!sandboxTools().browser && sandboxHas("node") }));
+        extensions.push(createWebExtension({ searxng: () => this.o.searxng?.(), kiwix: () => this.o.kiwix?.(), target: () => tools.target(), canRender: () => !!sandboxTools().browser && sandboxHas("node") }));
         // Its parent's MCP servers, read live, so one taken from the parent goes from it too; its calls ask in both threads.
         if (tools.settings().mcpServers.length) {
           extensions.push(createMcpServersExtension(tools));
