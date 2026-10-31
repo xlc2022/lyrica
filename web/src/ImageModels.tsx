@@ -60,6 +60,8 @@ const WHERE: ["all" | "local" | "cloud", string][] = [["all", "All"], ["local", 
 /** A plain model's group: cloud models by themselves, since their architecture isn't known; a local one's under Other. */
 const CLOUD = "\u0000cloud", OTHER = "\u0000other";
 const groupWord = (a: string) => (a === CLOUD ? "Cloud" : a === OTHER ? "Other" : archWord(a));
+/** A recipe's `does` as its facts line says it. */
+const doesWord = (d: HostRecipe["does"][number]) => (d === "create" ? "generate" : d === "upscale_video" ? "upscale clips" : d);
 const plainDoes = (m: OfferingInfo, d: Does) => (d === "create" ? !!m.image : d === "edit" ? !!m.edit : !!m.upscale);
 
 /** The architectures the hosts report, for the chips. */
@@ -319,7 +321,7 @@ function RecipeRow({ L, row, groups, offeringOf, open, reveal, starred, onStar, 
   const tiers = new Set(row.copies.filter((c) => c.recipe.does.includes("create")).map((c) => c.recipe.useFor ?? "both"));
   const facts = [
     archWord(row.copies[0]!.recipe.arch),
-    ...new Set(row.copies.flatMap((c) => c.recipe.does.map((d) => (d === "create" ? "generate" : d)))),
+    ...new Set(row.copies.flatMap((c) => c.recipe.does.map(doesWord))),
     tiers.size === 0 ? null : tiers.size === 1 && !tiers.has("both") ? [...tiers][0] : "fast and quality",
     group ? <>group of <span className="num">{group.members.length}</span></> : plural(row.copies.length, "copy", "copies"),
     base ? `built on ${base}` : null,
@@ -703,7 +705,7 @@ function ReviewRow({ L, c, selected, menu, setMenu, onPick, onSelect, details, o
           {r.name}{selected && <span className="sr-only"> (selected)</span>}
           {r.ready ? <span className="pill ok">ready</span> : <span className="pill warn"><span>{plural(miss.count, "part missing", "parts missing")}{miss.bytes > 0 && <> · <Size text={size(miss.bytes)} /></>}</span></span>}
         </span>
-        <span className="meta">{[archWord(r.arch), ...r.does].join(" · ")}{main && <> · <span className="mono">{main}</span>{others.length > 0 && <> with {others.map((f, i) => <Fragment key={f}>{i > 0 && ", "}<span className="mono">{f}</span></Fragment>)}</>}</>}</span>
+        <span className="meta">{[archWord(r.arch), ...r.does.map(doesWord)].join(" · ")}{main && <> · <span className="mono">{main}</span>{others.length > 0 && <> with {others.map((f, i) => <Fragment key={f}>{i > 0 && ", "}<span className="mono">{f}</span></Fragment>)}</>}</>}</span>
       </div>
       {L.editable(c.hostId) && (
         <div className="actions">

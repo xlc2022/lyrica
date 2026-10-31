@@ -768,7 +768,8 @@ function makingLabel(a: unknown): string {
   return args.action === "edit" ? "Editing an image" : args.action === "upscale" ? "Upscaling an image"
     : args.action === "reject" ? (n === 1 ? "Rejecting an image" : `Rejecting ${n} images`) : args.action === "pick" ? "Picking an image"
     : args.action === "clear_rejected" ? "Deleting rejected images" : args.action === "video" ? "Making a clip"
-    : args.action === "animate" ? "Animating an image" : args.action === "motion" ? "Copying a clip's moves" : args.action === "extend" ? "Extending a clip" : "Making an image";
+    : args.action === "animate" ? "Animating an image" : args.action === "motion" ? "Copying a clip's moves" : args.action === "extend" ? "Extending a clip"
+    : args.action === "upscale_video" ? "Upscaling a clip" : "Making an image";
 }
 
 /** The file a `read` call showed her as an image, in this thread's folders; not on a machine, whose files the panel can't reach. */

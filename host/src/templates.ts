@@ -62,6 +62,11 @@ export interface Template {
    * video from its start, so a later clip would play it again from there.
    */
   continuation?: Continuation;
+  /**
+   * The workflow that upscales a whole clip (`host/workflows/<name>-clip.json`, SeedVR2's): the clip's frames
+   * go through the upscaler in batches, and its sound and frame rate are kept.
+   */
+  clipWorkflow?: Record<string, Node>;
   workflow: Record<string, Node>;
 }
 
@@ -89,14 +94,24 @@ export const LONGEST_SECONDS = 60;
 /** The longest video a template makes: chained clips when it has a continuation, else one clip. */
 export const longestSeconds = (t: Template) => (t.continuation ? LONGEST_SECONDS : t.video?.maxSeconds ?? 0);
 
-/** A file that `continues` another template is that template's continuation, not a template a recipe can pick. */
+/**
+ * A file that `continues` another template is that template's continuation, and one that `upscalesClipsFor` one
+ * its clip workflow, not templates a recipe can pick.
+ */
 export function loadTemplates(dir: string): Map<string, Template> {
   const out = new Map<string, Template>();
   const continuations: (Continuation & { continues: string })[] = [];
+  const clips: { upscalesClipsFor: string; workflow: Record<string, Node> }[] = [];
   for (const f of readdirSync(dir).filter((f) => f.endsWith(".json")).sort()) {
     const t = JSON.parse(readFileSync(join(dir, f), "utf8"));
     if (typeof t.continues === "string") continuations.push(t);
+    else if (typeof t.upscalesClipsFor === "string") clips.push(t);
     else out.set(f.slice(0, -5), { ...t, name: f.slice(0, -5) });
+  }
+  for (const c of clips) {
+    const t = out.get(c.upscalesClipsFor);
+    if (!t?.does.includes("upscale")) throw new Error(`${c.upscalesClipsFor}-clip upscales clips for no upscale template`);
+    t.clipWorkflow = c.workflow;
   }
   for (const c of continuations) {
     const t = out.get(c.continues);

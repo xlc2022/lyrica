@@ -632,12 +632,12 @@ their subagents, at any depth (`familyRoot`, `WorkspaceSettings.family`).
 
 ## Images and portrait photos
 
-The `image` tool creates, edits and upscales through the thread's model router, and makes short clips (below).
+The `image` tool creates, edits and upscales through the thread's model router, and makes and upscales short clips (below).
 It names inputs by workspace path: uploads, earlier results or granted files.
 Reject, pick and clear_rejected sort her attempts (below, "Rejected attempts").
-Create, edit and upscale take an optional `model` when the user names one: it is tried first, then the
-usual list, and her result says when a name matched nothing or a model was passed over, which her
-guidelines tell her to pass on.
+Create, edit, upscale and upscale_video take an optional `model` when the user names one: it is tried first, then the
+usual list. A name that matches nothing stops the call before anything runs, listing the models that can,
+and her result says when a model was passed over, which her guidelines tell her to pass on.
 Create takes a prompt, fast or quality (quality when left out), optional size or `width:height` aspect
 ratio, count and references; her guidelines say to write the prompt as one
 detailed paragraph (subject and action, then setting, light, framing and
@@ -688,7 +688,10 @@ move as a given clip shows, or when a person's moves from a prompt alone
 would come out badly (a plain `video` of the moves first, then `motion`);
 and, for a video longer than one clip with a person in it, to make a still
 of them first and animate it, since the host gives each later clip the
-still as a reference and a prompt alone doesn't keep a face. A clip is made in the background (lyricad's
+still as a reference and a prompt alone doesn't keep a face. `upscale_video` takes a workspace clip and
+optional `scale` and `maxSize`, as upscale does for an image, and saves the larger clip as a new one; it
+runs on the Image upscaling list, where only a model host's recipe that upscales clips answers (SeedVR2),
+and her guidelines say to use it only when asked, on a finished clip. A clip is made in the background (lyricad's
 clip jobs): the call reads the first frame and returns, she says it's on its
 way and ends her reply, and when it is made the thread gets it as her
 message and an idle thread wakes to say it's ready; a failure comes as a

@@ -1054,7 +1054,7 @@ test("Image models: groups by architecture with Role and Where; a recipe opens t
   await expect(page.locator(".head .cap")).toHaveText("Image models · 1 found on your hosts");
   const row = page.locator("li.rvrow");
   await expect(row).toContainText("Qwen-Image1 part missing · 0.3 GB");
-  await expect(row).toContainText("Qwen-Image · create · qwen_image_fp8.safetensors with qwen_image_vae.safetensors");
+  await expect(row).toContainText("Qwen-Image · generate · qwen_image_fp8.safetensors with qwen_image_vae.safetensors");
   await expect(page.getByRole("checkbox")).toHaveCount(0);
   if (phone(page)) expect((await row.getByRole("button", { name: "Actions for Qwen-Image on box" }).boundingBox())!.height).toBeGreaterThanOrEqual(44);
   await noHorizontalScroll(page);

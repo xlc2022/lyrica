@@ -571,6 +571,14 @@ first byte on image and video jobs, which answer only when done); the answer is 
 metadata removed, all in memory. Fallback is as for images. It is not a
 thread task: a thread uses its preset's or column's list.
 
+`upscaleVideo(ctx, { video, scale?, maxSize? }, { signal?, beforeSend?, onProgress?, first? })`
+upscales a whole clip (an MP4 of at most 64 MB; `scale` 1 to 4, `maxSize`
+256 to 8192, as for an image) with the `image.upscale` list: only a host
+recipe whose listing does `upscale_video` (the offering's `upscalesClips`)
+answers, so a cloud model or an image-only upscaler is passed over ("it
+doesn't upscale clips"). It posts `/host/v1/videos/upscale` and waits up
+to two hours; the answer is checked as for `video`.
+
 The tasks `image.create`, `image.edit` and `image.upscale` have their own
 ordered lists and require `image`, `edit` and `upscale` capabilities respectively.
 Local endpoints resolve by these capabilities; the cloud provider table does

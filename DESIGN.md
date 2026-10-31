@@ -1033,7 +1033,10 @@ it's off.
   defaults such as the scale and the largest size. The task
   `image.upscale` has its own list in each preset (7B on the Blackwell,
   3B on the 3090), and the `image` tool offers `upscale`. Portrait photos
-  follow the same rule as for edits.
+  follow the same rule as for edits. The same recipe upscales whole clips
+  (`upscale_video`, 2026-10-31): the host runs a clip's frames through
+  SeedVR2 in batches and keeps its frame rate and sound, from the same
+  list, so no clip reaches a cloud model.
 - **Videos** (2026-10-28): video models are recipes too, on the same
   ComfyUI: Wan 2.2 (TI2V 5B for a 24 GB card; T2V and I2V 14B, whose two
   experts and their speed LoRAs are one recipe, in fp8 or as Q5 GGUF

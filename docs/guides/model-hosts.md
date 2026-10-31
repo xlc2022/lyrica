@@ -529,7 +529,9 @@ other tier, including on fallback; edits and upscaling use their lists as
 before. Her `image` tool keeps a recipe's defaults unless she gives a size
 or count, and never picks parts or LoRAs itself. Each list is an ordered
 fallback, and private threads only use local models. SeedVR2 recipes
-upscale. Before any cloud fallback, a portrait photo's cloud setting is
+upscale images, and whole clips from the same **Image upscaling** list
+once the host has `workflows/seedvr2-clip.json` (an update brings it; no
+download). Before any cloud fallback, a portrait photo's cloud setting is
 checked. OpenAI setup and offline diagrams are in the [getting-started
 guide](getting-started.md#image-models). Qwen-Image 2.1 edits (masked
 too) and Z-Image and Krea 2 Q5 on stable-diffusion.cpp have made real
