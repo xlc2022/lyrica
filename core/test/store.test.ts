@@ -174,6 +174,30 @@ describe("notes", () => {
     expect(own.search("paint command", auto)).toEqual([]);
   });
 
+  it("automatic recall matches on what a message is about, not its filler, and a word by its stem", async () => {
+    const { memory, ada } = await setup();
+    const { own } = memory.openThreadView(ada.id, "general");
+    const s = said(own, "notes");
+    const [, trying, , , dentist, recipe] = own.addNotes([
+      { text: "{user} sometimes skips breakfast", source: s.entry },
+      { text: "{user} is trying to read more fiction this year", source: s.entry },
+      { text: "{user} doesn't like cilantro", source: s.entry },
+      { text: "{user} grows thyme on the balcony", source: s.entry },
+      { text: "{user} should call the dentist about something", source: s.entry },
+      { text: "{user}'s favourite recipe is mushroom risotto", source: s.entry },
+    ], { author: "lyrica", thread: s.thread });
+    const auto = { minWords: 2, skip: ["Lyrica"], said: true, current: true, limit: 5 };
+    // "some", "should" and "try" say nothing about the question, and "some" isn't the start of "something".
+    expect(own.search("Hi! What are some interesting recipes I should try?", auto).map((h) => h.id)).toEqual([recipe]);
+    expect(own.search("Should I try something new?", auto)).toEqual([]);
+    // A deliberate search (the browser, the recall tool) for filler alone still searches it.
+    expect(own.search("something").map((h) => h.id)).toEqual([dentist]);
+    // A word with an ending finds its stem: "recipes" finds "recipe", "tried" finds "trying" only by a word that isn't filler.
+    expect(own.search("mushroom recipes", auto).map((h) => h.id)).toEqual([recipe]);
+    expect(own.search("fiction books", auto).map((h) => h.id)).toEqual([trying]);
+    expect(own.search("dentist appointments", auto).map((h) => h.id)).toEqual([dentist]);
+  });
+
   it("automatic recall doesn't count words common in her memory", async () => {
     const { memory, ada } = await setup();
     const { own } = memory.openThreadView(ada.id, "general");
