@@ -63,19 +63,71 @@ export function indexText(text: string): string {
 const citationsInSafe = (m: string) => m.slice(1, -1).split(/[,;]\s*/).every((p) => splitId(p));
 const userWord = (id: UserId) => `lyricau${id.replaceAll("-", "")}`;
 
+/**
+ * Words a search leaves out: function words, greetings, and the filler of a
+ * question ("some", "should", "try", "something"), which says nothing about
+ * what it is about, but in a small memory is rare enough to carry a match.
+ */
 const STOP = new Set(("a an and are as at be but by can do did does for from had has have how i if in is it its me my no not of on or " +
   "our so that the their them then there these they this to too us was we were what when where which who why will with would " +
-  "you your yes ok just about like really very hi hello hey thanks thank please").split(" "));
+  "you your yes ok just about like really very hi hello hey thanks thank please " +
+  "some any something anything things thing should could might must shall may try tried trying want wants wanted need needs needed " +
+  "think thought know knew get got give take make made let see look tell say said also maybe perhaps much more most lot lots bit " +
+  "going gone go went come came here into onto than only other over out up down still already again ever never always often " +
+  "sometimes someone anyone everyone everything nothing somewhere am been being while because").split(" "));
+
+/**
+ * A word's stem, when a common English ending can be taken off and at least four
+ * letters are left: "recipes" is "recipe", "interesting" is "interest", "drinks"
+ * is "drink". The index has no stemmer, so the query carries the stem as a prefix.
+ */
+export function stem(word: string): string | undefined {
+  for (const end of ["ing", "ies", "es", "ed", "s"]) {
+    if (word.length - end.length < 4 || !word.endsWith(end)) continue;
+    const base = word.slice(0, -end.length);
+    // "es" only after a hissing sound ("dishes", "boxes", "classes"); "recipes" and "shapes" drop their "s".
+    if (end === "es" && !/(?:s|x|z|ch|sh)$/.test(base)) continue;
+    if (end === "s" && base.endsWith("s")) return undefined;
+    return end === "ies" ? `${base}i` : base;
+  }
+  return undefined;
+}
+
+/** How many letters a text's word may add to a short query word and still be that word ("cats", "baked"), not another ("sometimes", "trying"). */
+const SHORT_WORD = 5;
+const SHORT_GROWTH = 2;
+
+/**
+ * Whether a text word is the query word: the same word, a longer word
+ * starting with it (any length past `SHORT_WORD` letters; a short one
+ * grows at most `SHORT_GROWTH`), or a word sharing its stem.
+ */
+export function sameWord(have: string, want: string): boolean {
+  if (have === want) return true;
+  if (have.startsWith(want) && (want.length >= SHORT_WORD || have.length - want.length <= SHORT_GROWTH)) return true;
+  const base = stem(want);
+  return base !== undefined && have.startsWith(base);
+}
+
+/** The query's words without stopwords; with `fallback`, all of them when every word is one (a deliberate search for "something"). */
+function contentWords(query: string, fallback: boolean): string[] {
+  const all = [...new Set(query.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [])];
+  const kept = all.filter((w) => !STOP.has(w));
+  return kept.length || !fallback ? kept : all;
+}
 
 /**
  * An FTS5 query for free text: every word, OR'd. A user's name found in the
  * query adds that user's token as one more alternative, so "Al" finds
- * `[[u:…]]` and "Al-ion" still finds "Al-ion".
+ * `[[u:…]]` and "Al-ion" still finds "Al-ion". A query of only stopwords
+ * searches them as they are, unless `strict` (automatic recall), which finds nothing.
  */
-export function ftsQuery(query: string, profiles: Map<UserId, Profile>): string | undefined {
-  const words = [...new Set((query.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []).filter((w) => !STOP.has(w)))].slice(0, 32);
+export function ftsQuery(query: string, profiles: Map<UserId, Profile>, strict = false): string | undefined {
+  const words = contentWords(query, !strict).slice(0, 32);
   const users = [...new Set(queryTokens(query, profiles).map((m) => userWord(m.userId)))];
-  const terms = [...words.map((w) => `"${w}"`), ...users];
+  // A word with an English ending also matches by its stem, as a prefix: "recipes" finds "recipe".
+  const stems = [...new Set(words.map(stem).filter((s): s is string => !!s && !words.includes(s)))];
+  const terms = [...words.map((w) => `"${w}"`), ...stems.map((s) => `"${s}"*`), ...users];
   return terms.length ? terms.join(" OR ") : undefined;
 }
 
@@ -98,8 +150,9 @@ export function queryTerms(query: string, profiles: Map<UserId, Profile>): strin
 }
 
 /**
- * Whether `text` holds at least `min` of the terms, as a word or the start
- * of one ("drink" counts in "drinks"). A query of `min` terms or fewer needs
+ * Whether `text` holds at least `min` of the terms, each as a word
+ * (`sameWord`: "drink" counts in "drinks" and "recipes" in "recipe", but "some"
+ * not in "sometimes"). A query of `min` terms or fewer needs
  * only one. With `common` (terms found in much of the index), it must also
  * hold `min` of the other terms, or all of them when there are fewer, or one
  * for a short query; a query of only common terms finds nothing.
@@ -108,7 +161,7 @@ export function holdsEnough(text: string, terms: string[][], min = 1, common?: b
   const rare = common ? terms.filter((_, i) => !common[i]) : terms;
   if (!rare.length) return !terms.length;
   const has = [...new Set(fold(indexText(text)).match(WORD) ?? [])];
-  const holds = (t: string[]) => t.some((w) => has.some((h) => h.startsWith(w)));
+  const holds = (t: string[]) => t.some((w) => has.some((h) => sameWord(h, w)));
   if (terms.length <= min) return rare.some(holds);
   return terms.filter(holds).length >= min && rare.filter(holds).length >= Math.min(min, rare.length);
 }
@@ -130,7 +183,7 @@ export function searchWords(query: string): string[] {
 
 /** The literal words of a query, for picking a snippet. */
 export function queryWords(query: string): string[] {
-  return (query.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []).filter((w) => !STOP.has(w));
+  return contentWords(query, true);
 }
 
 /** About `width` characters of `text` around the first query word it contains. */

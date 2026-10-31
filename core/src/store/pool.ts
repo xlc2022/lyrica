@@ -811,7 +811,7 @@ export class PoolReader {
 
   search(query: string, opts: SearchOptions = {}): Hit[] {
     if (opts.skip?.length) query = withoutWords(query, opts.skip);
-    const fts = ftsQuery(query, this.c.profiles());
+    const fts = ftsQuery(query, this.c.profiles(), !!opts.minWords);
     if (!fts) return [];
     const limit = opts.limit ?? 8;
     if (limit <= 0) return [];

@@ -203,9 +203,13 @@ The cheapest mechanism comes first:
    journal hit says `your journal` (in the `recall` tool, a tool result says `tool result`), so the model doesn't blend what the user
    asked with her own replies and dreams. (A thread shared from another user
    is the recipient's from then on, so its messages read as theirs.) The
-   search leaves out her own name, which nearly everything mentions, and when
-   the message has three words or more (after stopwords), a hit must hold at
-   least two of them (each as a word or a word's start; a user's name counts
+   search leaves out her own name, which nearly everything mentions, and the
+   filler of a question ("some", "should", "try", "something"), which says
+   nothing about what it is about. When the message has three words or more
+   (after stopwords), a hit must hold at least two of them (each as the same
+   word, its stem, or a longer word starting with it, where a word under five
+   letters grows by at most two: "drink" counts in "drinks" and "recipes" in
+   "recipe", but "some" not in "sometimes"; a user's name counts
    once, written or as a mention). A word in more than 2% of the index (and
    more than 20 items) is common: it still finds and ranks hits but doesn't
    count, so a hit must hold two of the message's other words (or all of
@@ -227,8 +231,12 @@ The cheapest mechanism comes first:
    her prompt gets an `earlier` section naming them
    (`e:<thread>#1` to the last one summarized) until the next compaction.
 
-Search is FTS5 (BM25). A query is its words, minus common stopwords and
-greetings, OR'd together; a user's name in it adds that user's token as one more alternative.
+Search is FTS5 (BM25). A query is its words, minus common stopwords,
+greetings and filler, OR'd together (a deliberate search of only such words,
+in the browser or the `recall` tool, searches them as they are; automatic
+recall finds nothing for one); a word with an English ending ("recipes",
+"interesting") adds its stem as a prefix ("recipe*", "interest*"), since the
+index has no stemmer; a user's name in it adds that user's token as one more alternative.
 Indexed: notes, pages, the journal, and logged thread entries (what was said,
 tool calls, and the first 2,000 characters of each tool result). Not indexed:
 entries written unlogged, copied entries (exports and forks, `copyEntries`),
