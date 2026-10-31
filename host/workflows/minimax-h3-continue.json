@@ -4,8 +4,19 @@
   "clipSeconds": 15,
   "promptPrefix": "The same continuous shot goes on from the given frames, with no cut and no jump back to an earlier moment; the action carries on from where it is now. ",
   "reference": {
-    "promptPrefix": "Everyone looks exactly as in <Picture 1>: the same face, hair and clothes. ",
+    "promptPrefix": "<Picture 1> is the shot as it is now: keep its framing, camera distance and angle. Everyone looks exactly as in <Picture 2>: the same face, hair and clothes, whatever its framing. ",
     "workflow": {
+      "now": {
+        "class_type": "ImageFromBatch",
+        "inputs": {
+          "image": [
+            "tail",
+            0
+          ],
+          "batch_index": -1,
+          "length": 1
+        }
+      },
       "reference": {
         "class_type": "LoadImage",
         "inputs": {
@@ -24,6 +35,10 @@
           "vae": "$vae",
           "audio_vae": "$vae_audio",
           "ref_images.ref_image_0": [
+            "now",
+            0
+          ],
+          "ref_images.ref_image_1": [
             "reference",
             0
           ]
