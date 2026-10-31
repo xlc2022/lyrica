@@ -369,7 +369,7 @@ describe("the tailnet", () => {
     expect((await ada.post<Tailnet>(`${url}/connect`)).body.state).toBe("connected");
   });
 
-  it("serves the Tailnet web mode through tailscale serve, adds its name to the front door, and leaving turns it off", async () => {
+  it("serves the Tailnet web mode through tailscale serve, adds her Tailscale address to the front door, and leaving turns it off", async () => {
     const { d, ada, url, web, ts } = await joined();
     await ada.put(url, { authKey: KEY });
     const on = await ada.put<WebAccess>(web, { mode: "tailnet" });
@@ -379,7 +379,8 @@ describe("the tailnet", () => {
     expect(ts.calls().some((c) => c.args.slice(2).join(" ") === `serve --bg --https=443 http://127.0.0.1:${d.servePort}`)).toBe(true);
     // This machine couldn't check the name, so Direct stays on beside it.
     expect(on.body.direct).not.toBeNull();
-    expect(d.services!.web.frontDoor()).toEqual({ ports: [443, on.body.direct!.port], hosts: ["lyrica.example.ts.net", "100.101.102.103"], exclude: [] });
+    // Her Tailscale address stands for the MagicDNS name, which this machine's resolver may not know.
+    expect(d.services!.web.frontDoor()).toEqual({ ports: [443, on.body.direct!.port], hosts: ["100.101.102.103"], exclude: [] });
 
     expect((await ada.del<Tailnet>(url)).body.state).toBe("notJoined");
     expect((await ada.get<WebAccess>(web)).body.mode).toBe("direct");
