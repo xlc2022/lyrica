@@ -93,6 +93,21 @@ describe("the sources under her reply", () => {
       { url: "https://www.old.example/b", title: undefined, host: "old.example" },
     ]);
   });
+  it("name the offline copy for a read from it on the server's loopback, and a picture from it by its name", () => {
+    const article = "Outside content from http://127.0.0.1:8889/content/zim/A/Moth (the offline copy of Moths (2026-08)), not from the user:\n<<<web 0a1b2c3d>>>\n# Moth\nhttp://127.0.0.1:8889/content/zim/A/Moth\n\ntext\n<<<end web 0a1b2c3d>>>";
+    const wiki = "Outside content from https://en.wikipedia.org/wiki/Moth (the offline copy of Wikipedia (2026-08)), not from the user:\n<<<web 0a1b2c3d>>>\n# Moth\n\ntext\n<<<end web 0a1b2c3d>>>";
+    expect(sourcesOf([
+      fetch("http://127.0.0.1:8889/content/wikipedia_en_all_maxi_2026-08/I/Luna_moth_%28Actias%29.jpg.webp", "A picture from the offline copy of Wikipedia (2026-08): http://127.0.0.1:8889/content/wikipedia_en_all_maxi_2026-08/I/Luna_moth_%28Actias%29.jpg.webp"),
+      fetch("http://127.0.0.1:8889/content/zim/A/Moth", article),
+      fetch("https://en.wikipedia.org/wiki/Moth", wiki),
+      fetch("http://localhost:8001/status", "plain"),
+    ])).toEqual([
+      { url: "http://127.0.0.1:8889/content/wikipedia_en_all_maxi_2026-08/I/Luna_moth_%28Actias%29.jpg.webp", title: "Luna moth (Actias)", host: "Offline Wikipedia", local: true },
+      { url: "http://127.0.0.1:8889/content/zim/A/Moth", title: "Moth", host: "Offline Moths", local: true },
+      { url: "https://en.wikipedia.org/wiki/Moth", title: "Moth", host: "en.wikipedia.org" },
+      { url: "http://localhost:8001/status", title: undefined, host: "localhost", local: true },
+    ]);
+  });
   it("leave out failed and running fetches, other tools and anything that isn't http or https", () => {
     expect(sourcesOf([
       fetch("https://a.example", "Couldn't fetch", true),
