@@ -422,6 +422,8 @@ button.jump-latest { font-size: 13px; min-height: var(--tap); }
 .marker > button code { overflow: hidden; text-overflow: ellipsis; min-width: 0; color: var(--fg); font-size: 12px; }
 .marker[data-type="recall"] > button::before, .marker[data-type="remember"] > button::before { content: ""; flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
 .tool-name { font: 600 12px var(--mono); color: var(--accent); }
+/* Where a call's answer came from instead, when not what it asked ("from Offline Wikipedia"): kept whole while the address shortens. */
+.marker > button .via { flex: none; }
 .state[data-state="failed"] { color: var(--danger); }
 .marker-body { margin-top: 6px; border: 1px solid var(--line); border-radius: 10px; background: var(--tool); padding: 8px 12px; display: grid; gap: 8px; }
 .marker-body pre { margin: 0; overflow-x: auto; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--fg); font-size: 12px; line-height: 1.5; }
@@ -1283,9 +1285,10 @@ a.fpath { font-family: var(--mono); font-size: 0.93em; overflow-wrap: anywhere; 
 .sources ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
 .sources li { min-width: 0; max-width: 100%; }
 .sources .source { display: inline-flex; align-items: baseline; gap: 6px; max-width: min(320px, 100%); min-height: 28px; padding: 4px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); font-size: 13px; color: var(--fg); }
-.sources a:hover, .sources a:focus-visible { border-color: var(--edge); }
+.sources .source:hover, .sources .source:focus-visible { border-color: var(--edge); }
 .source-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .source-host { font-family: var(--mono); font-size: 12px; color: var(--muted); white-space: nowrap; }
+button.source { font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
 @media (pointer: coarse) { .sources .source { min-height: 44px; align-items: center; } }
 .reactions { display: flex; flex-wrap: wrap; gap: 6px; }
 .msg.user .reactions { justify-self: start; }

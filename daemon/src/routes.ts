@@ -6,7 +6,7 @@ import {
   ANSWER, CLOUD_IMAGE_PROVIDERS, recentWorkAllowed, WELCOME_LIMITS, describe, AuthError, isPlan, type PlanKind, NoRecoveryCopy, WrongPassword, isEmoji, WORKDIR, CAPABILITIES, FilesRefused, checkTask, isRestricted, voiceContext, refId, THINKING_LEVELS, publicKeyOf, authorizedKeysLine, proxmoxAddress, CloudModelForbidden, FROM_PARENT, NoModel, WAKEUP, ROUTINE, WATCHING, PRONOUN_PRESETS, projectSlug,
   citationsIn, exportMemories, importMemories, exportSkills, importSkills, firstLine, GIT_KINDS, kindOf, mcpHost, sentenceCiting, splitId, HomeFileMissing, MAX_IMAGE_BYTES,
   type Author, type Column, type Endpoint, type ModelRef, type Offering, type Hit, type Item, type GitAccountConfig, type MachineConfig, type McpServerConfig, type OwnerView, type Pool, type PoolStore, type SleepItem, type SleepRunRecord, type Thread, type ThreadPref, type User,
-  searxngAddress, searxngStatus, searxngView, setSearxngAddress, kiwixAddress, kiwixPicture, kiwixStatus, setKiwixAddress, forgetKiwixBooks, claudeCodeInstalled, modelName,
+  searxngAddress, searxngStatus, searxngView, setSearxngAddress, kiwixAddress, kiwixArticle, kiwixPicture, kiwixStatus, setKiwixAddress, forgetKiwixBooks, claudeCodeInstalled, modelName,
   codexSignedIn, codexSignIn, codexSignOut, type CodexBox, type CodexSignIn, serverZone, zoneOf,
   ChangesUnavailable, type ByteRange, commitFiles, fileSides, repositoryChanges, type ExecutionTarget,
 } from "@lyrica/core";
@@ -131,6 +131,14 @@ export function apiRoutes(d: Lyricad): Route[] {
         "content-security-policy": "default-src 'none'; sandbox", "x-content-type-options": "nosniff" });
       r.res.end(picture.bytes);
       return undefined;
+    }),
+    // An article of the offline copy, for a source to open in the app: kiwix-serve's alone, never fetched online.
+    route("GET", `${u}/web/page`, async (r): Promise<Api.OfflinePage> => {
+      imageUser(r);
+      const address = kiwixAddress(d.keyring.self());
+      const article = address ? await kiwixArticle(address, r.query.get("url") ?? "") : undefined;
+      if (!article) throw new HttpError(404, "not a page of the offline copy");
+      return article;
     }),
     route("POST", `${u}/photos-of-me`, async (r): Promise<Api.UploadResponse> => {
       const user = imageUser(r);

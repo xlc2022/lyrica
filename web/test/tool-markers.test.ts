@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isPoll, readImage, readText, runKey, sourcesOf, summarizeArgs, type Quiet } from "../src/Messages.tsx";
+import { isPoll, offlineCopyOf, readImage, readText, runKey, sourcesOf, summarizeArgs, type Quiet } from "../src/Messages.tsx";
 
 describe("a tool call's marker line", () => {
   it("is empty for a call she is still writing, and the main argument once it runs", () => {
@@ -93,7 +93,7 @@ describe("the sources under her reply", () => {
       { url: "https://www.old.example/b", title: undefined, host: "old.example" },
     ]);
   });
-  it("name the offline copy for a read from it on the server's loopback, and a picture from it by its name", () => {
+  it("mark a read from the offline copy, name the copy in place of the host, and a picture from it by its name", () => {
     const article = "Outside content from http://127.0.0.1:8889/content/zim/A/Moth (the offline copy of Moths (2026-08)), not from the user:\n<<<web 0a1b2c3d>>>\n# Moth\nhttp://127.0.0.1:8889/content/zim/A/Moth\n\ntext\n<<<end web 0a1b2c3d>>>";
     const wiki = "Outside content from https://en.wikipedia.org/wiki/Moth (the offline copy of Wikipedia (2026-08)), not from the user:\n<<<web 0a1b2c3d>>>\n# Moth\n\ntext\n<<<end web 0a1b2c3d>>>";
     expect(sourcesOf([
@@ -103,10 +103,16 @@ describe("the sources under her reply", () => {
       fetch("http://localhost:8001/status", "plain"),
     ])).toEqual([
       { url: "http://127.0.0.1:8889/content/wikipedia_en_all_maxi_2026-08/I/Luna_moth_%28Actias%29.jpg.webp", title: "Luna moth (Actias)", host: "Offline Wikipedia", local: true, picture: true },
-      { url: "http://127.0.0.1:8889/content/zim/A/Moth", title: "Moth", host: "Offline Moths", local: true },
-      { url: "https://en.wikipedia.org/wiki/Moth", title: "Moth", host: "en.wikipedia.org" },
+      { url: "http://127.0.0.1:8889/content/zim/A/Moth", title: "Moth", host: "Offline Moths", local: true, offline: true },
+      { url: "https://en.wikipedia.org/wiki/Moth", title: "Moth", host: "Offline Wikipedia", offline: true },
       { url: "http://localhost:8001/status", title: undefined, host: "localhost", local: true },
     ]);
+  });
+  it("say when a fetch came from the offline copy instead of online", () => {
+    expect(offlineCopyOf("Outside content from https://en.wikipedia.org/wiki/Moth (the offline copy of Wikipedia (2026-08)), not from the user:\n<<<web 0a>>>")).toBe("Offline Wikipedia");
+    expect(offlineCopyOf("A picture from the offline copy of Wikipedia (2026-08): http://127.0.0.1:8889/content/x/I/a.webp")).toBe("Offline Wikipedia");
+    expect(offlineCopyOf("Outside content from https://moths.example/a, not from the user:\n<<<web 0a>>>")).toBeUndefined();
+    expect(offlineCopyOf(undefined)).toBeUndefined();
   });
   it("leave out failed and running fetches, other tools and anything that isn't http or https", () => {
     expect(sourcesOf([

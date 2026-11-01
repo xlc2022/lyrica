@@ -1185,6 +1185,8 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   An MCP call (`server`, `serverTool`) leads with the server's name and
   the tool in mono, shows the arguments as JSON, and has Allow, **Allow in
   this thread** and Deny. Its tool marker names the server, then the tool.
+  A `web_fetch` marker whose result came from the offline copy adds
+  "from Offline <copy>" after the URL (`offlineCopyOf`).
   A tool marker for a call on a machine names the machine first. A
   subagent's request shows in its parent's thread (in its card, when that
   is open) and on its own page, naming the subagent, and stays past the
@@ -1238,9 +1240,13 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   read (`sourcesOf`: successful calls, http and https only, once each, with
   the `# ` title line that follows the outside-content marker) as links
   under its text, before the reaction chips. A read from the offline copy
-  (`core/src/kiwix.ts`) on a loopback address shows "Offline <copy>" in
-  place of the host, a picture from it its file name as the title and
-  a link through `FileLinks.picture` (`/web/picture`), and any other
+  (`core/src/kiwix.ts`), a wikipedia.org page included, shows
+  "Offline <copy>" in place of the host and a picture from it its file name as the title.
+  Every chip read from the offline copy is a button: a picture opens in the
+  Lightbox through `FileLinks.picture` (`/web/picture`), an article in
+  `OfflinePage` (`src/OfflinePage.tsx`, a `dialog.viewer` reading
+  `…/web/page`, its Markdown in `Prose` with the thread's `FileLinks`, so its
+  pictures show through lyricad and open large). Any other
   loopback chip is a plain chip rather than a link unless the app itself
   is open on a loopback address, its tooltip ending "Only the server can
   open this address."

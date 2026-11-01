@@ -1589,7 +1589,8 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     without it), so a model with vision sees it and the vision guard
     switches a subagent without. Written in her reply as a Markdown image,
     a listed picture shows in the message through `GET
-    /api/u/:userId/web/picture?url=` (`kiwixPicture`, daemon.md). A page no book has, or any other URL,
+    /api/u/:userId/web/picture?url=` (`kiwixPicture`, daemon.md). A source read from the copy opens in the app through `GET
+    /api/u/:userId/web/page?url=` (`kiwixArticle`, daemon.md). A page no book has, or any other URL,
     goes online: `web_fetch` runs
     curl (`fetchArgv`, the URL one argument, a browser's user agent, 10 MB
     at most) through the thread's sandbox
