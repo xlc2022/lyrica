@@ -23,6 +23,7 @@ import { collectRefs, isList, mapMembers, moveSettings, refId, rewrite, type Ent
 import type { Named } from "./match.ts";
 import { addNotice, MIXED_PRESET, NOTICE, syncLegacy } from "./schema.ts";
 import { MAX_CLIP_BYTES, MAX_CLIP_SECONDS, MAX_SPEAK_CHARS, speakAt, transcribeAt, wavSeconds, type SpeechTarget } from "./speech.ts";
+import { embedAt, queryText } from "./embed.ts";
 
 export type SpeechTask = "speech.transcribe" | "speech.speak";
 
@@ -34,6 +35,7 @@ export { useTailnetProxy } from "./tailnet.ts";
 export { refId, type Entry, type Use } from "./refs.ts";
 export { claudeAlias, isClaudeModel, matchModel, meansClaude, namedOutright, sameModelName, singledOut, unmatched, type ClaudeAlias, type Match, type Named } from "./match.ts";
 export { MAX_CLIP_BYTES, MAX_CLIP_SECONDS, MAX_SPEAK_CHARS, pcmSeconds, SPEECH_CONTENT_TYPE, SPEECH_FORMAT, wavData, wavSeconds } from "./speech.ts";
+export { EMBED_BATCH, queryText, type EmbedTarget } from "./embed.ts";
 
 /** A cloud model was asked for where only local models are allowed. Nothing falls back. */
 export class CloudModelForbidden extends Error {}
@@ -2934,6 +2936,31 @@ export class Models {
       if (!(e instanceof NoModel)) throw e;
       if (!this.listFor(task, ctx)?.list.length) return { reason: "none", problem: `No ${TASK_NAMES[task]} model is set${isRestricted(ctx) ? " in the Private column" : ""}` };
       return { reason: "none", problem: e.message };
+    }
+  }
+
+  /**
+   * Embeds texts with the context's Embeddings model, falling back like
+   * `transcribe`. `query` wraps each text as a retrieval query (`queryText`);
+   * stored memories are embedded plain. `model` is the offering's model ID:
+   * vectors compare only within one model. The caller records nothing: an
+   * embedding is bookkeeping, not a call she made.
+   */
+  async embed(ctx: CallContext, texts: string[], opts: { query?: boolean; signal?: AbortSignal; timeoutMs?: number } = {}): Promise<{ model: string; vectors: Float32Array[]; resolution: Resolution }> {
+    const input = opts.query ? texts.map(queryText) : texts;
+    return this.callWithFallback("embedding", ctx, {}, async (r) => {
+      const vectors = await embedAt(this.speechTarget(r), input, { ...(opts.signal ? { signal: opts.signal } : {}), ...(opts.timeoutMs ? { timeoutMs: opts.timeoutMs } : {}) });
+      return { model: r.offering.modelId, vectors, resolution: r };
+    });
+  }
+
+  /** The model ID the context's Embeddings list resolves to now, without calling it, or undefined when it has none usable. */
+  embeddingModel(ctx: CallContext): string | undefined {
+    try {
+      return this.resolve("embedding", ctx).offering.modelId;
+    } catch (err) {
+      if (err instanceof NoModel || err instanceof CloudModelForbidden) return undefined;
+      throw err;
     }
   }
 

@@ -1086,6 +1086,11 @@ export class HostedThread {
         extensions: [
           createLyricaExtension(ctx, {
             code: () => tools.settings().code,
+            // Recall by meaning: the message as a vector from the thread's Embeddings list, in a few seconds or not at all.
+            embed: async (text) => {
+              const { model, vectors } = await models.embed(call, [text], { query: true, timeoutMs: 8_000 });
+              return vectors[0] ? { model, values: vectors[0] } : undefined;
+            },
             codeRepositories: () => codeRepositories(tools.target(), workspace.repositoriesFor({ userId: this.userId, pool: this.pool, threadId: this.threadId }), this.o.codePulls?.(this.userId, this.pool, this.threadId)),
             repoRules: () => repoRules(tools.target(), checkoutsOf(tools.settings(), workspace.repositoriesFor({ userId: this.userId, pool: this.pool, threadId: this.threadId }))),
             skills: {

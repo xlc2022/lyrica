@@ -201,6 +201,53 @@ describe("notes", () => {
       .toEqual(["recipe", "dish", "shape", "class", "interest", "roast", "batteri", undefined, undefined, undefined]);
   });
 
+  it("recalls by meaning as well as by words: rank fusion, the keyword rules kept, one model's index", async () => {
+    const { memory, ada } = await setup();
+    const { own } = memory.openThreadView(ada.id, "general");
+    const s = said(own, "notes");
+    const [cilantro, thyme, trains, recipe] = own.addNotes([
+      { text: "{user} doesn't like cilantro", source: s.entry },
+      { text: "{user} grows thyme on the balcony", source: s.entry },
+      { text: "{user} finds trains interesting", source: s.entry },
+      { text: "{user}'s favourite recipe is mushroom risotto", source: s.entry },
+    ], { author: "lyrica", thread: s.thread });
+    const vec = (xs: number[]) => Float32Array.from(xs);
+    const food = vec([1, 0, 0, 0]), rail = vec([0, 1, 0, 0]), other = vec([0, 0, 0, 1]);
+    const model = "toy-embed";
+    // What the embedder would list: every indexed item, the message by its spoken words.
+    const pending = own.unembedded(model, 10);
+    expect(pending.map((p) => p.id).sort()).toEqual([cilantro, thyme, trains, recipe, s.entry].sort());
+    // The fixture's message carries no content, so it is listed with no text, for the embedder to mark skipped.
+    expect(pending.find((p) => p.id === s.entry)!.text).toBe("");
+    own.putVectors(model, [
+      { id: cilantro!, kind: "note", vec: food }, { id: thyme!, kind: "note", vec: food }, { id: trains!, kind: "note", vec: rail },
+      { id: recipe!, kind: "note", vec: food }, { id: s.entry, kind: "entry" },
+    ]);
+    expect(own.unembedded(model, 10)).toEqual([]);
+    expect(own.vectorCount(model)).toEqual({ done: 5, left: 0 });
+    const auto = { minWords: 2, said: true, current: true, limit: 5 };
+    const query = "Hi! What are some interesting recipes I should try?";
+    // Words alone: "recipes" and "interesting". With the vector: the recipe first, found both ways, then the food notes that share no word with the question beside the trains.
+    expect(own.search(query, auto).map((h) => h.id).sort()).toEqual([recipe, trains].sort());
+    const fused = own.search(query, { ...auto, vector: { model, values: food } }).map((h) => h.id);
+    expect(fused[0]).toBe(recipe);
+    expect(fused.slice(1).sort()).toEqual([cilantro, thyme, trains].sort());
+    // A vector below the floor brings nothing by meaning; a message of only filler recalls nothing by words.
+    expect(own.search("Should I try something new?", { ...auto, vector: { model, values: other } })).toEqual([]);
+    expect(own.search("Should I try something new?", { ...auto, vector: { model, values: vec([0.6, 0, 0, 0.8]) } }).map((h) => h.id).sort()).toEqual([cilantro, thyme, recipe].sort());
+    // Another model's vector finds nothing in this index; storing its vectors replaces the index.
+    expect(own.search(query, { ...auto, vector: { model: "other-embed", values: food } }).map((h) => h.id).sort()).toEqual([recipe, trains].sort());
+    own.putVectors("other-embed", [{ id: trains!, kind: "note", vec: rail }]);
+    expect(own.vectorCount("other-embed")).toEqual({ done: 1, left: 4 });
+    expect(own.unembedded(model, 10)).toHaveLength(5);
+    // A deleted or rewritten memory loses its vector.
+    own.putVectors(model, [{ id: cilantro!, kind: "note", vec: food }, { id: thyme!, kind: "note", vec: food }]);
+    own.delete(cilantro!, "lyrica");
+    own.edit(thyme!, { text: "{user} grows thyme and basil on the balcony" }, "lyrica");
+    expect(own.nearest(model, food, 10).map((n) => n.id)).toEqual([]);
+    expect(own.unembedded(model, 10).map((p) => p.id)).toContain(thyme);
+  });
+
   it("automatic recall doesn't count words common in her memory", async () => {
     const { memory, ada } = await setup();
     const { own } = memory.openThreadView(ada.id, "general");

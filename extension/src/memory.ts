@@ -33,6 +33,18 @@ export interface MemoryContext {
   projectThreads?: () => string | undefined;
   /** Her name, left out of automatic recall: nearly everything mentions it. */
   name?: string;
+  /** The user's message or a recall query as a vector, for hits by meaning; undefined (or a throw) means keywords alone. */
+  embed?: (text: string) => Promise<{ model: string; values: Float32Array } | undefined>;
+}
+
+/** The query's vector, or nothing: an embedding model that is away or slow never holds up a turn. */
+export async function queryVector(ctx: Pick<MemoryContext, "embed">, text: string): Promise<{ model: string; values: Float32Array } | undefined> {
+  if (!ctx.embed || !text.trim()) return undefined;
+  try {
+    return await ctx.embed(text);
+  } catch {
+    return undefined;
+  }
 }
 
 export const UNLOGGED_NOTICE =
@@ -69,7 +81,8 @@ export async function memorySections(view: PoolView, prompt: string, ctx: Memory
   const index = own.pageIndex().map((p) => `- [${p.id}] ${p.title}: ${p.summary}`).join("\n");
   const stores = [{ prefix: "", store: own }, ...view.reads.map((store) => ({ prefix: `${store.pool}/`, store }))];
   const folderPages = stores.flatMap(({ prefix, store }) => store.forFolders(ctx.folders).map((p) => ({ ...p, id: prefix + p.id })));
-  const hits = prompt.trim() ? search(view, prompt, { current: true, said: true, limit: RECALL_HITS, minWords: RECALL_WORDS, skip: ctx.name ? [ctx.name] : undefined, excludeThread: ctx.threadId, fromThread: ctx.code ? codeMemoryThread(view, ctx.threadId) : ctx.threadId, ...(ctx.code ? { only: { project: true, about: "working" } } : {}) }, ctx.hide) : [];
+  const vector = await queryVector(ctx, prompt);
+  const hits = prompt.trim() ? search(view, prompt, { current: true, said: true, limit: RECALL_HITS, minWords: RECALL_WORDS, skip: ctx.name ? [ctx.name] : undefined, excludeThread: ctx.threadId, fromThread: ctx.code ? codeMemoryThread(view, ctx.threadId) : ctx.threadId, ...(ctx.code ? { only: { project: true, about: "working" } } : {}), ...(vector ? { vector } : {}) }, ctx.hide) : [];
   const item = own.itemForThread(ctx.threadId);
   return {
     notice: own.getThread(ctx.threadId)?.unlogged ? UNLOGGED_NOTICE : undefined,

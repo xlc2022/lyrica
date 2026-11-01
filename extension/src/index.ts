@@ -3,7 +3,7 @@ import { isThreadView, type CallContext, type Interface, type Persona, type Pool
 import { assemble, type Budgets, type Section } from "./assemble.ts";
 import { dropNudges, frameMidTurn, contextLines, registerContext, type ContextMeter } from "./context.ts";
 import { setToolsOff } from "./gate.ts";
-import { earlierText, keptFrom, memorySections } from "./memory.ts";
+import { earlierText, keptFrom, memorySections, type MemoryContext } from "./memory.ts";
 import { CODE_GUIDELINES, CODING_GUIDELINE, CODE_TOOLS_OFF, codeTaskText } from "./code.ts";
 import { RULES_IN_ALL } from "./code-repositories.ts";
 import { registerSkillTool, SKILLS_IN_ALL, type SkillToolOptions } from "./skills.ts";
@@ -80,6 +80,8 @@ export interface LyricaOptions {
   reactions?: () => UserReaction[];
   /** Her name for this deployment, read every turn; automatic recall leaves it out. */
   name?: () => string;
+  /** The message or a recall query as a vector from the Embeddings model, for recall by meaning; absent or failing means keywords alone. */
+  embed?: MemoryContext["embed"];
   /**
    * Skills (docs/briefs/skills.md): the index for this turn, a library skill's body for read_memory s:<name>, and,
    * where she may save one, save_skill.
@@ -93,7 +95,7 @@ export function createLyricaExtension(thread: ThreadContext, opts: LyricaOptions
   if (!isThreadView(thread.view) || thread.view.pool !== thread.pool) throw new Error("the extension needs this thread's own view from openThreadView");
   const { view } = thread;
   let turnCode = opts.code?.() ?? false;
-  const who = () => ({ threadId: thread.threadId, user: { id: thread.user.id, profile: opts.profile() }, hide: opts.hide, code: turnCode });
+  const who = () => ({ threadId: thread.threadId, user: { id: thread.user.id, profile: opts.profile() }, hide: opts.hide, code: turnCode, embed: opts.embed });
   return (pi) => {
     const router = new TopicRouter();
     registerMemoryTools(pi, view, who, { readOnly: opts.memoryTools === "read", skill: opts.skills?.read });
@@ -116,7 +118,7 @@ export function createLyricaExtension(thread: ThreadContext, opts: LyricaOptions
       const persona = code ? { core: fullPersona.core.filter(f => /(^|\/)SOUL\.md$/.test(f.path)), topics: [] } : fullPersona;
       const topics = code ? [] : router.route([...persona.topics, SELF_PRIMER], startText(event));
       setToolsOff(pi, ctx, "code", code ? CODE_TOOLS_OFF : []);
-      const memory = await memorySections(view, startText(event), { ...who(), folders: opts.folders?.() ?? [], projectThreads: opts.projectThreads, name: opts.name?.() });
+      const memory = await memorySections(view, startText(event), { ...who(), folders: opts.folders?.() ?? [], projectThreads: opts.projectThreads, name: opts.name?.(), embed: opts.embed });
       // An unlogged thread isn't offered remember at all.
       if (opts.memoryTools !== "read") setToolsOff(pi, ctx, "unlogged", memory.notice ? ["remember", ...(saving ? ["save_skill"] : [])] : []);
       const { customPrompt, sections, topics: topicTexts, turn, report } = assemble(

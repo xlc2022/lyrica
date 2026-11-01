@@ -210,6 +210,8 @@ export interface SearchOptions {
   minWords?: number;
   /** Only what was said: no tool results, and a message matches on its text, not its tool calls (automatic recall). */
   said?: boolean;
+  /** The query's vector from `model`: hits by meaning join the keyword hits by rank fusion (docs/briefs/recall-meaning.md). */
+  vector?: { model: string; values: Float32Array };
 }
 
 export interface MemoryRevision {
@@ -285,6 +287,16 @@ export interface StoreContext {
 }
 
 const now = () => new Date().toISOString();
+/** The vector scaled to length one (a zero vector stays as it is). */
+function unit(v: Float32Array): Float32Array {
+  let norm = 0;
+  for (const x of v) norm += x * x;
+  if (!norm) return v;
+  const out = new Float32Array(v.length);
+  const k = 1 / Math.sqrt(norm);
+  for (let i = 0; i < v.length; i++) out[i] = v[i]! * k;
+  return out;
+}
 const json = <T>(s: string): T => JSON.parse(s) as T;
 const entryId = (thread: string, n: number) => `e:${thread}#${n}`;
 const TOOL_TEXT_LIMIT = 2000;
@@ -295,6 +307,12 @@ const INSTRUCTIONS_LIMIT = 2000;
 export const PROJECT_BOOST = 1.5;
 /** The most candidates a filtered search scans per query. */
 const ONLY_SCAN = 2000;
+/** The most of an item's text that is embedded. */
+const EMBED_CHARS = 1500;
+/** Rank fusion: a hit scores 1 / (RRF_K + rank) from each list it is in; a hit on both lists outranks one on either. */
+export const RRF_K = 60;
+/** The least cosine similarity a vector hit needs: below it, a nearest neighbour is only the nearest, not related. */
+export const VECTOR_FLOOR = 0.5;
 /**
  * A word in more than this share of the index (and in more than COMMON_MIN items) is common:
  * it still finds and ranks hits, but doesn't count toward `minWords` ("create", "one", "another").
@@ -552,7 +570,7 @@ export class PoolReader {
   }
 
   /** An entry's own words: the text parts of its message, without the tool calls its stored text also holds. */
-  private saidText(id: string): string {
+  protected saidText(id: string): string {
     const [, thread, n] = /^e:(.+)#(\d+)$/.exec(id) as unknown as [string, string, string];
     const row = (this.db.prepare("SELECT data FROM entries WHERE thread = ? AND n = ?").get(thread, Number(n))
       ?? this.db.prepare("SELECT data FROM entries WHERE orig = ? AND unlogged = 0 ORDER BY rowid LIMIT 1").get(id)) as { data: string } | undefined;
@@ -844,7 +862,40 @@ export class PoolReader {
       if (hits.length >= want || candidates.length < size || offset >= ONLY_SCAN) break;
       size = Math.min(size * 2, ONLY_SCAN - offset);
     }
-    return threads.length ? hits.sort((a, b) => b.score - a.score).slice(0, limit) : hits;
+    const byWords = threads.length ? hits.sort((a, b) => b.score - a.score).slice(0, limit) : hits;
+    if (!opts.vector) return byWords;
+    // Rank fusion: each list's ranks count, so an item found both ways rises, and one found only by meaning still comes up.
+    const near = this.nearest(opts.vector.model, opts.vector.values, limit * 4);
+    const nearOurs = threads.length ? this.inProject(near.map((n) => n.id), threads) : undefined;
+    const byMeaning = near
+      .filter((n) => !(opts.only && !((opts.only.project && nearOurs?.has(n.id)) || (n.kind === "note" && working.has(n.id)))) && !(opts.kinds && !opts.kinds.includes(n.kind)))
+      .map((n) => this.hit(n.id, n.kind, words, [], n.score, { ...opts, minWords: undefined }, undefined))
+      .filter((h): h is Hit => !!h).slice(0, limit);
+    const fused = new Map<string, Hit>();
+    for (const list of [byWords, byMeaning]) {
+      list.forEach((h, rank) => {
+        const seen = fused.get(h.id);
+        fused.set(h.id, { ...(seen ?? h), score: (seen?.score ?? 0) + 1 / (RRF_K + rank + 1) });
+      });
+    }
+    return [...fused.values()].sort((a, b) => b.score - a.score).slice(0, limit);
+  }
+
+  /** The `limit` items nearest the vector by cosine, from `model`'s vectors, at or above VECTOR_FLOOR; `score` is the similarity. */
+  nearest(model: string, values: Float32Array, limit: number): { id: string; kind: Kind; score: number }[] {
+    if (limit <= 0 || !values.length) return [];
+    const rows = this.db.prepare("SELECT id, kind, vec FROM vectors WHERE model = ? AND vec IS NOT NULL").all(model) as { id: string; kind: Kind; vec: Buffer }[];
+    const q = unit(values);
+    const found: { id: string; kind: Kind; score: number }[] = [];
+    for (const r of rows) {
+      const v = new Float32Array(r.vec.buffer, r.vec.byteOffset, r.vec.byteLength / 4);
+      if (v.length !== q.length) continue;
+      let dot = 0, norm = 0;
+      for (let i = 0; i < v.length; i++) { dot += v[i]! * q[i]!; norm += v[i]! * v[i]!; }
+      const score = norm > 0 ? dot / Math.sqrt(norm) : 0;
+      if (score >= VECTOR_FLOOR) found.push({ id: r.id, kind: r.kind, score });
+    }
+    return found.sort((a, b) => b.score - a.score).slice(0, limit);
   }
 
   /** Which of the query's terms are common in this pool's index (COMMON_SHARE); a user's name never is. */
@@ -1272,6 +1323,7 @@ export class PoolStore extends PoolReader {
       for (const { src } of candidates) if (this.cameFrom(src).every((d) => goneSet.has(d))) this.remove(src, author, true);
       this.db.prepare("UPDATE pages SET flagged = 1 WHERE 'p:' || slug IN (SELECT src FROM citations WHERE dst IN (SELECT value FROM json_each(?)))").run(gone);
       this.db.prepare("DELETE FROM search WHERE kind = 'entry' AND id IN (SELECT value FROM json_each(?))").run(gone);
+      this.db.prepare("DELETE FROM vectors WHERE id IN (SELECT value FROM json_each(?))").run(gone);
       this.db.prepare("DELETE FROM questions WHERE thread = ? AND n >= ?").run(threadId, fromN);
       this.db.prepare("DELETE FROM entries WHERE thread = ? AND n >= ?").run(threadId, fromN);
       this.db.prepare("UPDATE threads SET cut = max(cut, ?) WHERE id = ?").run(rows.at(-1)!.n, threadId);
@@ -1416,6 +1468,7 @@ export class PoolStore extends PoolReader {
           .run(`t:${threadId}`, author, now());
       }
       this.db.prepare("DELETE FROM search WHERE kind = 'entry' AND id LIKE ?").run(`e:${threadId}#%`);
+      this.db.prepare("DELETE FROM vectors WHERE id LIKE ?").run(`e:${threadId}#%`);
       this.db.prepare("DELETE FROM entries WHERE thread = ?").run(threadId);
       this.db.prepare("DELETE FROM wakeups WHERE thread = ?").run(threadId);
       this.db.prepare("DELETE FROM threads WHERE id = ?").run(threadId);
@@ -1524,6 +1577,7 @@ export class PoolStore extends PoolReader {
         this.db.prepare("DELETE FROM revisions WHERE item = ?").run(id);
         this.db.prepare("DELETE FROM citations WHERE src = ?").run(id);
         this.db.prepare("DELETE FROM search WHERE id = ?").run(id);
+        this.db.prepare("DELETE FROM vectors WHERE id = ?").run(id);
       }
     });
     return ids.length;
@@ -1798,6 +1852,7 @@ export class PoolStore extends PoolReader {
     this.db.prepare("DELETE FROM revisions WHERE item = ?").run(id);
     this.db.prepare("DELETE FROM citations WHERE src = ?").run(id);
     this.db.prepare("DELETE FROM search WHERE id = ?").run(id);
+    this.db.prepare("DELETE FROM vectors WHERE id = ?").run(id);
   }
 
   /** Records a new version: a revision, its citations and its search row. */
@@ -1813,8 +1868,43 @@ export class PoolStore extends PoolReader {
     this.index(id, kind, text);
   }
 
+  /** A search row; a vector it had goes, so the embedder makes one from the new text. */
   private index(id: string, kind: Kind, text: string): void {
     this.db.prepare("INSERT INTO search (id, kind, text) VALUES (?, ?, ?)").run(id, kind, indexText(text));
+    this.db.prepare("DELETE FROM vectors WHERE id = ?").run(id);
+  }
+
+  // Vectors (docs/briefs/recall-meaning.md)
+
+  /**
+   * Indexed items with no vector from `model`: a message by its spoken words
+   * (a tool result or a message with none is listed with empty text, to be
+   * marked skipped), a note, page or journal entry by its indexed text.
+   */
+  unembedded(model: string, limit: number): { id: string; kind: Kind; text: string }[] {
+    const rows = this.db.prepare("SELECT id, kind, text FROM search WHERE id NOT IN (SELECT id FROM vectors WHERE model = ?) LIMIT ?").all(model, limit) as { id: string; kind: Kind; text: string }[];
+    return rows.map((r) => {
+      if (r.kind !== "entry") return { id: r.id, kind: r.kind, text: r.text.slice(0, EMBED_CHARS) };
+      const [entry] = this.entryWindow(r.id, 0);
+      const said = entry && ENTRY_ORIGIN[entry.role] ? this.saidText(r.id) : "";
+      return { id: r.id, kind: r.kind, text: said.trim().slice(0, EMBED_CHARS) };
+    });
+  }
+
+  /** Stores vectors from `model`, dropping any other model's: one model, one index. A row with no vector marks an item the model skips. */
+  putVectors(model: string, rows: { id: string; kind: Kind; vec?: Float32Array }[]): void {
+    const put = this.db.prepare("INSERT OR REPLACE INTO vectors (id, kind, model, vec) VALUES (?, ?, ?, ?)");
+    this.db.transaction(() => {
+      this.db.prepare("DELETE FROM vectors WHERE model != ?").run(model);
+      for (const r of rows) put.run(r.id, r.kind, model, r.vec ? Buffer.from(r.vec.buffer, r.vec.byteOffset, r.vec.byteLength) : null);
+    })();
+  }
+
+  /** How many indexed items have a vector from `model`, and how many are left. */
+  vectorCount(model: string): { done: number; left: number } {
+    const done = (this.db.prepare("SELECT count(*) AS n FROM vectors WHERE model = ?").get(model) as { n: number }).n;
+    const total = (this.db.prepare("SELECT count(*) AS n FROM search").get() as { n: number }).n;
+    return { done, left: Math.max(0, total - done) };
   }
 
   /** Stored form: `{user}` becomes a token; existing tokens are kept as they are. */

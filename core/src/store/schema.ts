@@ -139,6 +139,20 @@ export const POOL_UPGRADES = [
   { check: "SELECT 1 FROM pragma_table_info('pages') WHERE name = 'instructions'", sql: "ALTER TABLE pages ADD COLUMN instructions TEXT" },
 ];
 
+/**
+ * Vectors (derived) over what the search index holds, for recall by meaning
+ * (docs/briefs/recall-meaning.md): one row per indexed item and the model that
+ * made it; `vec` is float32 little-endian, NULL for an item the model skips.
+ */
+export const VECTORS_SCHEMA = `
+CREATE TABLE IF NOT EXISTS vectors (
+  id    TEXT PRIMARY KEY,
+  kind  TEXT NOT NULL,
+  model TEXT NOT NULL,
+  vec   BLOB
+);
+`;
+
 /** Wake-ups (DESIGN.md, Projects): a thread's note to itself for later. Fired ones stay a day, for the daily cap. */
 export const WAKEUPS_SCHEMA = `
 CREATE TABLE IF NOT EXISTS wakeups (
