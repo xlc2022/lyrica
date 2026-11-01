@@ -25,7 +25,7 @@ export interface Request {
   route: string;
   params: Record<string, string>;
   query: URLSearchParams;
-  /** The client's address: the proxy's X-Forwarded-For when it came through one on loopback. */
+  /** The client's address: its proxy's X-Forwarded-For when the listener's own proxy is in front of it (Lyricad.behind), else the socket's. */
   ip: string;
   cookie: string | undefined;
   /** "tailnet": it came through her own tailnet address (`tailscale serve` to its own loopback port). */
@@ -83,7 +83,7 @@ export function readBody(req: IncomingMessage, limit: number): Promise<Buffer> {
   });
 }
 
-/** Whose X-Forwarded-For a listener believes: on 127.0.0.1, the built-in Caddy's; on the extra listener, the external proxy's. */
+/** Whose forwarded headers a listener believes: on 127.0.0.1 only its own proxy's, the built-in Caddy's in Built-in mode or tailscale serve's in Tailnet mode (Lyricad.behind); on the extra listener, the external proxy's. */
 export type TrustForwarded = (remote: string) => boolean;
 
 export const fromLoopback: TrustForwarded = (remote) => remote === "127.0.0.1" || remote === "::1" || remote === "::ffff:127.0.0.1";
@@ -228,7 +228,8 @@ export function statusOf(err: unknown): number {
   if (err instanceof CloudModelForbidden || err instanceof NoModel || err instanceof PairingFailed || err instanceof GitAccountProblem || err instanceof McpServerProblem) return 400;
   // A model host's refusal keeps its meaning; anything else from it is a bad gateway.
   if (err instanceof HostRefused) return ({ invalid: 400, need_repo: 400, refused: 403, not_found: 404, in_use: 409, above_recommended: 409, too_big: 413, no_space: 507 } as Record<string, number>)[err.code] ?? 502;
-  if (err instanceof Error && err.constructor === Error) return 400;
+  // A system error (ENOENT, EACCES, ...) is also a plain Error, but it is the server's, and its message names a server path.
+  if (err instanceof Error && err.constructor === Error && !("errno" in err || "syscall" in err)) return 400;
   return 500;
 }
 

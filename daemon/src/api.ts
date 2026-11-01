@@ -848,7 +848,8 @@ export interface McpServerInfo {
  * MCP `initialize` and `tools/list`, saving nothing: 400 with why when the
  * server doesn't answer as one. POST /api/u/:userId/mcp-servers
  * (McpServerInput) → McpServerInfo. Checks it again and saves it. Remote
- * (streamable HTTP) servers only. A private server whose host resolves
+ * (streamable HTTP) servers only, for now: a local (stdio) server isn't
+ * built yet (DESIGN.md, MCP servers). A private server whose host resolves
  * outside her network needs `offNetworkConfirmed`.
  */
 export interface McpServerInput { name: string; url: string; token?: string; pool: Pool; offNetworkConfirmed?: boolean }
@@ -1169,7 +1170,7 @@ export interface ThreadSettings {
   mode: PermissionMode;
   /** Switches: web_search and web_fetch, and the image tool. Off removes them from the session. */
   webSearch: boolean;
-  /** Whether the server has a SearXNG address: without one, the switch gives web_fetch alone. */
+  /** Whether the server has a SearXNG or kiwix-serve address: without one, the switch gives web_fetch alone. */
   searchProvider: boolean;
   images: boolean;
   /** Claude Code on the user's Claude plan in her sandbox runs: the switch along its ancestors (docs/workspace.md, "Claude Code"). */
@@ -1948,7 +1949,7 @@ export interface AdminStatus {
   credentials: { available: boolean; reason?: string };
 }
 
-/** PUT /api/u/:userId/admin/passphrase → AdminStatus. Saves (with the passphrase) or forgets the self.db passphrase. */
+/** PUT /api/u/:userId/admin/passphrase → AdminStatus. Saves (with the passphrase) or forgets the self.db passphrase. A wrong passphrase is 401 and counts on the per-address limiter, as a change's does. */
 export interface PassphraseChange { save: boolean; passphrase?: string }
 
 /** POST /api/u/:userId/admin/passphrase/change → AdminStatus, plus `note` when a saved passphrase could not be re-saved and was removed. Rekeys self.db with `next`; a wrong `current` is 403, counted on the limiter. */

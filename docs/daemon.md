@@ -439,8 +439,9 @@ Each active thread is one Pi session from `openThreadSession`, with
   (no way back); either pins it. `PATCH` also sets `goal`, `instructions`
   (kept on the project page apart from sleep's text), `paused`,
   `threadsModel`, `threadsThinking` and `threadsFallback` (the model,
-  thinking and Fallback its new threads start with; each null follows the
-  project chat; the model is a new thread's `code` model when it starts in
+  thinking and Fallback its new threads start with, checked as a thread's
+  own settings are, so a private project can't name a cloud model; each
+  null follows the project chat; the model is a new thread's `code` model when it starts in
   code mode, its `chat` model otherwise), `watchThreads` and `checkInOnThreads` (each on unless
   turned off; see [delegation.md](delegation.md#child-threads)). A **look** at the threads
   (`watch.ts`) is one call to the `watching` task, through

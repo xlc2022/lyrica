@@ -246,8 +246,10 @@ export function machineSetup(account: string, keyLine: string, asUser = false): 
     `printf 'Match User ${account}\\n    AuthorizedKeysFile /etc/ssh/authorized_keys/%%u\\n' > /etc/ssh/sshd_config.d/lyrica.conf`,
     "sshd -t && systemctl reload ssh",
     "",
-    "# 2. Optional: sudo for exact commands only (visudo -f /etc/sudoers.d/lyrica)",
+    "# 2. Optional: sudo without a password, for exact commands (visudo -f /etc/sudoers.d/lyrica)",
     `${account} ALL=(root) NOPASSWD: /usr/bin/systemctl restart nginx`,
+    "#    or, on a machine you really trust, for everything:",
+    `# ${account} ALL=(root) NOPASSWD: ALL`,
     ...fingerprint,
   ].join("\n");
 }

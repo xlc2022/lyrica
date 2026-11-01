@@ -349,7 +349,7 @@ export class ThreadImages {
     if (portrait) this.portraits.markPortraitFolder(this.ownFolder());
     const paths = inDir(this.home(), [...this.thread(), ...folder], true, dir => images.map(image => {
       const png = cleanPng(image.bytes);
-      // Record before publishing the bytes so concurrent readers cannot miss the policy.
+      // The bytes' mark too, for a copy that leaves the folder: before publishing them, so concurrent readers cannot miss the policy.
       if (portrait) this.portraits.recordPortraitImage(createHash("sha256").update(png.bytes).digest("hex"));
       const name = `${randomUUID()}.png`;
       const fd = openSync(`/proc/self/fd/${dir}/${name}`, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);

@@ -417,7 +417,7 @@ describe("MCP servers", () => {
       expect(settings.mcpServer("house")).toBeUndefined();
       await expect(workspace.addMcpServer(ada.id, { name: "away", url: "http://192.0.2.7/mcp", pool: "private" })).rejects.toThrow(/outside your network/);
       await expect(workspace.addMcpServer(ada.id, { name: "plain", url: house.url, token: "ha-token", pool: "general" })).rejects.toThrow(/only over https/);
-      await expect(workspace.addMcpServer(ada.id, { name: "local", url: "stdio:npx server", pool: "private" })).rejects.toThrow(/local servers/);
+      await expect(workspace.addMcpServer(ada.id, { name: "local", url: "stdio:npx server", pool: "private" })).rejects.toThrow(/isn't built yet/);
       const m = await workspace.addMcpServer(ada.id, { name: "house", url: house.url, token: "ha-token", pool: "private" });
       expect(m).toMatchObject({ tools: 2, description: "Home Assistant: lights and sensors.", offNetwork: false, state: { kind: "online" } });
       // Names that are one server to Pi.

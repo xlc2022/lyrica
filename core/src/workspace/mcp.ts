@@ -3,8 +3,9 @@ import {
   type JsonRpcId, type JsonRpcMessage, type McpTransport,
 } from "@earendil-works/pi-mcp";
 
-// MCP servers she reaches (DESIGN.md, "MCP servers"): remote ones only, over
-// streamable HTTP, through Pi's own client. Lyrica writes no protocol code;
+// MCP servers she reaches (DESIGN.md, "MCP servers"): remote ones, over
+// streamable HTTP, through Pi's own client; a local (stdio) server is allowed
+// in principle but not built yet. Lyrica writes no protocol code;
 // this file is the one transport every connection uses, so what reaches Pi is
 // already kept small and nothing a server says is written to disk.
 
@@ -23,7 +24,7 @@ export class McpServerProblem extends Error {
 export function mcpUrl(raw: string, pool?: "general" | "private", token?: string): string {
   let url: URL;
   try { url = new URL(String(raw ?? "").trim()); } catch { throw new Error("the URL looks like https://mcp.example.com/mcp"); }
-  if (url.protocol !== "https:" && url.protocol !== "http:") throw new Error("an MCP server is a URL (streamable HTTP); local servers that run a command aren't supported");
+  if (url.protocol !== "https:" && url.protocol !== "http:") throw new Error("an MCP server is a URL (streamable HTTP); a local server that runs a command isn't built yet");
   if (url.username || url.password) throw new Error("put the token in the Token field, not in the URL");
   if (pool === "general" && token && url.protocol !== "https:") throw new Error("a general server's token is sent only over https");
   url.hash = "";

@@ -1132,6 +1132,14 @@ export function apiRoutes(d: Lyricad): Route[] {
         if (change.setup !== undefined) {
           try { s().workspace.settings(user.id).setSetup(pool, thread.id, change.setup); } catch (err) { throw new HttpError(400, (err as Error).message); }
         }
+        // The checks a thread's own settings get (threadSettingsChange): the shape, the level, and models a thread of this pool may use.
+        if (change.threadsModel !== undefined && change.threadsModel !== null) {
+          const list = Array.isArray(change.threadsModel);
+          const refs = s().models.checkThreadList(s().models.callContext(user.id, pool, thread.id), "chat", list ? toRefs(change.threadsModel) : [toRef(change.threadsModel)]);
+          change.threadsModel = list ? refs : refs[0]!;
+        }
+        if (change.threadsThinking !== undefined && change.threadsThinking !== null && !THINKING_LEVELS.includes(change.threadsThinking)) throw new HttpError(400, "threadsThinking is off, low, medium or high");
+        if (change.threadsFallback !== undefined && change.threadsFallback !== null && typeof change.threadsFallback !== "boolean") throw new HttpError(400, "threadsFallback is true, false or null");
         if (settings) {
           s().projects.set(user.id, pool, thread.id, {
             ...(change.paused !== undefined ? { paused: !!change.paused } : {}),
@@ -2554,9 +2562,9 @@ function mcpServerInfo(m: McpServerConfig): Api.McpServerInfo {
   };
 }
 
-/** An MCP server to add or check: remote only, so a `command` (a local, stdio server) is refused. */
+/** An MCP server to add or check: remote only for now, so a `command` (a local, stdio server, not built yet) is refused. */
 function mcpInput(input: Api.McpServerInput & { command?: unknown }): { name: string; url: string; token?: string; pool: Pool; offNetworkConfirmed: boolean } {
-  if (input?.command !== undefined) throw new HttpError(400, "only remote MCP servers (a URL) can be added; local servers that run a command aren't supported");
+  if (input?.command !== undefined) throw new HttpError(400, "only remote MCP servers (a URL) can be added; a local server that runs a command isn't built yet");
   const token = input.token === undefined ? undefined : String(input.token);
   return { name: String(input.name ?? ""), url: String(input.url ?? ""), ...(token ? { token } : {}), pool: checkPool(input.pool), offNetworkConfirmed: input.offNetworkConfirmed === true };
 }
