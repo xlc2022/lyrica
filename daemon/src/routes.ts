@@ -6,7 +6,7 @@ import {
   ANSWER, CLOUD_IMAGE_PROVIDERS, recentWorkAllowed, WELCOME_LIMITS, describe, AuthError, isPlan, type PlanKind, NoRecoveryCopy, WrongPassword, isEmoji, WORKDIR, CAPABILITIES, FilesRefused, checkTask, isRestricted, voiceContext, refId, THINKING_LEVELS, publicKeyOf, authorizedKeysLine, proxmoxAddress, CloudModelForbidden, FROM_PARENT, NoModel, WAKEUP, ROUTINE, WATCHING, PRONOUN_PRESETS, projectSlug,
   citationsIn, exportMemories, importMemories, exportSkills, importSkills, firstLine, GIT_KINDS, kindOf, mcpHost, sentenceCiting, splitId, HomeFileMissing, MAX_IMAGE_BYTES,
   type Author, type Column, type Endpoint, type ModelRef, type Offering, type Hit, type Item, type GitAccountConfig, type MachineConfig, type McpServerConfig, type OwnerView, type Pool, type PoolStore, type SleepItem, type SleepRunRecord, type Thread, type ThreadPref, type User,
-  searxngAddress, searxngStatus, searxngView, setSearxngAddress, kiwixAddress, kiwixStatus, setKiwixAddress, forgetKiwixBooks, claudeCodeInstalled, modelName,
+  searxngAddress, searxngStatus, searxngView, setSearxngAddress, kiwixAddress, kiwixPicture, kiwixStatus, setKiwixAddress, forgetKiwixBooks, claudeCodeInstalled, modelName,
   codexSignedIn, codexSignIn, codexSignOut, type CodexBox, type CodexSignIn, serverZone, zoneOf,
   ChangesUnavailable, type ByteRange, commitFiles, fileSides, repositoryChanges, type ExecutionTarget,
 } from "@lyrica/core";
@@ -119,6 +119,17 @@ export function apiRoutes(d: Lyricad): Route[] {
       r.res.writeHead(200, { "content-type": file.type, "content-length": String(file.size), "cache-control": "no-store",
         "content-security-policy": "default-src 'none'; sandbox", "x-content-type-options": "nosniff" });
       file.stream.on("error", () => r.res.destroy()); file.stream.pipe(r.res);
+      return undefined;
+    }),
+    // A picture of the offline copy of Wikipedia, for a message to show: kiwix-serve's alone, so none leaves the server.
+    route("GET", `${u}/web/picture`, async (r) => {
+      imageUser(r);
+      const address = kiwixAddress(d.keyring.self());
+      const picture = address ? await kiwixPicture(address, r.query.get("url") ?? "") : undefined;
+      if (!picture) throw new HttpError(404, "not a picture of the offline copy");
+      r.res.writeHead(200, { "content-type": picture.mimeType, "content-length": String(picture.bytes.length), "cache-control": "no-store",
+        "content-security-policy": "default-src 'none'; sandbox", "x-content-type-options": "nosniff" });
+      r.res.end(picture.bytes);
       return undefined;
     }),
     route("POST", `${u}/photos-of-me`, async (r): Promise<Api.UploadResponse> => {

@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 import Markdown, { type Components, type Options } from "react-markdown";
 import { Icon } from "./icons.tsx";
 import remarkGfm from "remark-gfm";
-import { basename, fileTarget, InlineImage, Lightbox, rehypePaths, type FileLinks } from "./paths.tsx";
+import { basename, fileTarget, InlineImage, isRemote, largeUrl, Lightbox, RemotePicture, rehypePaths, type FileLinks } from "./paths.tsx";
 import remarkMath from "remark-math";
 import { prepareMarkdown } from "./markdown.ts";
 import { RichCode, richPre } from "./RichBlock.tsx";
@@ -261,8 +261,9 @@ export function fullTime(iso: string): string {
 
 /**
  * Links open in a new tab, except Lyrica's own (a mentioned thread, a file she can reach). A link to a file, by its
- * absolute path or relative to the thread's folder, opens it in the Files panel. A remote image is never loaded, only
- * linked by its alt text; a file's shows in the message and opens large (docs/ux.md §6).
+ * absolute path or relative to the thread's folder, opens it in the Files panel. A remote image is linked by its alt
+ * text, never loaded from its host; the offline copy of Wikipedia's shows through lyricad. A file's shows in the
+ * message and opens large (docs/ux.md §6).
  */
 function markdown(files: FileLinks | undefined, large: (path: string) => void, skip?: ReadonlySet<string>): Components {
   return {
@@ -280,6 +281,7 @@ function markdown(files: FileLinks | undefined, large: (path: string) => void, s
       // An image already shown in this turn (an image part's) stays a link to it, so it isn't shown twice.
       return file && files && skip?.has(file) ? <a className="fpath" href={files.href(file)}>{alt || basename(file)}</a>
         : file && files ? <InlineImage src={file} alt={alt ?? ""} files={files} large={large} />
+        : files && isRemote(src) ? <RemotePicture url={src} alt={alt ?? ""} files={files} large={large} />
         : <a href={src} target="_blank" rel="noopener noreferrer">{alt || src}</a>;
     },
   };
@@ -316,7 +318,7 @@ export function Prose({ text, files, onLarge, a, copyCode, skipImages }: { text:
   return (
     <>
       <Markdown skipHtml components={components} remarkPlugins={REMARK} rehypePlugins={plugins}>{prepareMarkdown(text)}</Markdown>
-      {large && files && createPortal(<Lightbox path={large} url={files.url(large)} onClose={() => setLarge(undefined)} />, document.body)}
+      {large && files && createPortal(<Lightbox path={large} url={largeUrl(files, large)} onClose={() => setLarge(undefined)} />, document.body)}
     </>
   );
 }

@@ -20,7 +20,7 @@ import { findThread } from "./Thread.tsx";
 import { EditBox, MessageActions, MessageMenu, type Rewinder } from "./Rewind.tsx";
 import { shortModel } from "./ModelLabel.tsx";
 import { ConfirmDialog, ErrorText, fullTime, Prose, useAction, useDismiss, wakeTime } from "./ui.tsx";
-import { basename, fileTarget, InlineImage, isImagePath, isUnderWorkdir, Lightbox, PathText, SHARED, useFileLinks, type FileLinks } from "./paths.tsx";
+import { basename, fileTarget, InlineImage, isImagePath, isUnderWorkdir, largeUrl, Lightbox, PathText, SHARED, useFileLinks, type FileLinks } from "./paths.tsx";
 import { CopyButton } from "./CopyButton.tsx";
 import type { ReactNode } from "react";
 import { foldLooks, raisedIn, toldIn, type Told } from "./looks.ts";
@@ -63,7 +63,7 @@ export function Conversation({ ctx, pool, base, threadId, subagent, thread, rewi
   const show = (id: string, on: boolean) => setShown((o) => { const n = new Set(o); if (on) n.add(id); else n.delete(id); return n; });
   // The image open large, held here: the message it was opened from may be replaced by its stored copy meanwhile.
   const [large, setLarge] = useState<{ path: string; url: string }>();
-  const openLarge = useCallback((path: string, files: FileLinks) => setLarge({ path, url: files.url(path) }), []);
+  const openLarge = useCallback((path: string, files: FileLinks) => setLarge({ path, url: largeUrl(files, path) }), []);
   const questions = new Map<string, QuestionState>();
   for (const m of messages) for (const p of m.parts) {
     if (p.type === "tool" && isQuestionPart(p)) {

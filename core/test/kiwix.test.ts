@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { forgetKiwixBooks, kiwixBooks, kiwixLines, kiwixPage, kiwixSearch, kiwixStatus } from "../src/kiwix.ts";
+import { forgetKiwixBooks, kiwixBooks, kiwixLines, kiwixPage, kiwixPicture, kiwixSearch, kiwixStatus } from "../src/kiwix.ts";
 
 // The offline copy of Wikipedia on kiwix-serve, as web_search and web_fetch
 // read it (docs/contracts.md, "web_search and web_fetch"). The replies are
@@ -142,5 +142,18 @@ describe("the offline copy of Wikipedia", () => {
     expect(["image/webp", "image/png"]).toContain(picture.mimeType);
     expect(await kiwixPage(A, new URL(`${A}/content/other_book/Lute`), undefined, f)).toBeUndefined();
     expect(await kiwixPage(A, new URL(`${A}/content/${BOOK}/Missing`), undefined, f)).toBeUndefined();
+  });
+
+  it("gives the web UI a picture of its own, and nothing else, never asking another host", async () => {
+    const { f, urls } = serve({ pages: { "A/Lute": ARTICLE } });
+    expect(await kiwixPicture(A, `${A}/content/${BOOK}/I/Lute_photo.webp`, undefined, f)).toEqual({ bytes: Buffer.from("RIFF....WEBPVP8 "), mimeType: "image/webp" });
+    expect(urls.at(-1)).toBe(`${A}/raw/${BOOK}/content/I/Lute_photo.webp`);
+    const asked = urls.length;
+    for (const u of [`${A}/content/${BOOK}/A/Lute`, `${A}/content/${BOOK}/I/Missing.webp`]) expect(await kiwixPicture(A, u, undefined, f)).toBeUndefined();
+    expect(urls.length).toBe(asked + 2);
+    for (const u of ["https://upload.wikimedia.org/x.png", `${A}/catalog/v2/entries`, `${A}/content/${BOOK}/I/Lute_photo.webp?x=1`, `http://127.0.0.1:88891/content/${BOOK}/I/Lute_photo.webp`, "not a url"]) {
+      expect(await kiwixPicture(A, u, undefined, f)).toBeUndefined();
+    }
+    expect(urls.length).toBe(asked + 2);
   });
 });
