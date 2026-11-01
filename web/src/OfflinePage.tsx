@@ -8,10 +8,16 @@ import { useFileLinks } from "./paths.tsx";
 import { ErrorText, Prose } from "./ui.tsx";
 import type { Env } from "./Messages.tsx";
 
-/** "the offline copy of Wikipedia (2026-08)" as the facts line shows it: "Offline Wikipedia · 2026-08". */
-export function copyFacts(copy: string): string {
+/** "the offline copy of Wikipedia (2026-08)" as the facts line shows it: "Offline Wikipedia" and the date, "2026-08". */
+export function copyFacts(copy: string): { name: string; date?: string } {
   const m = /^the offline copy of (.+?)(?: \((\d{4}-\d{2})\))?$/.exec(copy);
-  return m ? `Offline ${m[1]}${m[2] ? ` · ${m[2]}` : ""}` : copy;
+  return m ? { name: `Offline ${m[1]}`, ...(m[2] ? { date: m[2] } : {}) } : { name: copy };
+}
+
+/** The facts line: the copy, then its date in mono. */
+function Facts({ copy }: { copy: string }) {
+  const { name, date } = copyFacts(copy);
+  return <>{name}{date && <> · <span className="num">{date}</span></>}</>;
 }
 
 /** The article's Markdown without the URL line web_fetch puts under its title. */
@@ -40,7 +46,7 @@ export function OfflinePage({ url, title, online, env, onClose }: { url: string;
       <section className="viewer-file" aria-label={title}>
         <div className="viewer-head">
           <span className="fname" title={url}>{title}</span>
-          <span className="viewer-facts muted">{page ? copyFacts(page.copy) : "Offline copy"}</span>
+          <span className="viewer-facts muted">{page ? <Facts copy={page.copy} /> : "Offline copy"}</span>
           <span className="viewer-acts">
             {online && <a className="mono sm" href={url} target="_blank" rel="noopener noreferrer" title={`Online: ${url}`}>{online}</a>}
             <button type="button" className="icon sm" aria-label="Close" title="Close" onClick={onClose}><Icon name="close" /></button>
