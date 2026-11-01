@@ -1109,7 +1109,9 @@ dialog.viewer > .error { position: absolute; bottom: 8px; left: 16px; }
   dialog.viewer { width: 100vw; height: 100dvh; border: 0; border-radius: 0; }
   .viewer-head { padding: 6px 8px 6px var(--gutter); }
   /* Close stays on the path's line at the right; the actions take the whole line below it. */
-  .viewer-head > .viewer-close { order: 1; }
+  .viewer-head > .viewer-close { order: 1; margin-left: auto; }
+  /* The path gives way (clipped with an ellipsis) so its facts and Close keep the first line. */
+  .viewer-file .viewer-head .fname { flex: 1 1 0; }
   .viewer-head > .viewer-acts { order: 2; flex-basis: 100%; margin-left: 0; }
   .viewer-text, .viewer-prose, .viewer-note { padding-inline: var(--gutter); }
 }
