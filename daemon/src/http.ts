@@ -25,7 +25,7 @@ export interface Request {
   route: string;
   params: Record<string, string>;
   query: URLSearchParams;
-  /** The client's address: the proxy's X-Forwarded-For when it came through one on loopback. */
+  /** The client's address: its proxy's X-Forwarded-For when the listener's own proxy is in front of it (Lyricad.behind), else the socket's. */
   ip: string;
   cookie: string | undefined;
   /** "tailnet": it came through her own tailnet address (`tailscale serve` to its own loopback port). */
@@ -83,7 +83,7 @@ export function readBody(req: IncomingMessage, limit: number): Promise<Buffer> {
   });
 }
 
-/** Whose X-Forwarded-For a listener believes: on 127.0.0.1, the built-in Caddy's; on the extra listener, the external proxy's. */
+/** Whose forwarded headers a listener believes: on 127.0.0.1 only its own proxy's, the built-in Caddy's in Built-in mode or tailscale serve's in Tailnet mode (Lyricad.behind); on the extra listener, the external proxy's. */
 export type TrustForwarded = (remote: string) => boolean;
 
 export const fromLoopback: TrustForwarded = (remote) => remote === "127.0.0.1" || remote === "::1" || remote === "::ffff:127.0.0.1";
