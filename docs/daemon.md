@@ -187,8 +187,8 @@ name/id and error class; stderr is discarded.
   their key, then stops their threads and unmounts their home. Event
   streams check the session with every event and every few seconds, so
   logout and Lock end them.
-- Login, unlock, password changes and linking are rate-limited per login
-  name and per address: three failures are free, then each attempt waits twice as long as
+- Login, unlock, password changes, linking, and saving or changing the
+  self.db passphrase are rate-limited per login name and per address: three failures are free, then each attempt waits twice as long as
   the last, up to 15 minutes (`429` with `Retry-After`). In Built-in mode the
   address is the last `X-Forwarded-For` entry, and behind an external proxy
   the proxy's; the other modes believe no forwarded headers on loopback, so

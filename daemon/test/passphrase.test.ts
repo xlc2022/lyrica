@@ -24,6 +24,19 @@ describe("changing the self.db passphrase", () => {
     expect((await ada.get(`/api/u/${rt.ada.id}/threads`)).status).toBe(200);
   });
 
+  it("slows down guessing the passphrase through Save, as through a change", async () => {
+    const rt = await runtime();
+    const { base } = await daemon(rt, { rateLimit: { free: 2, baseMs: 60_000, maxMs: 600_000 } });
+    await browser(base).post("/api/unlock", { passphrase: "passphrase" });
+    const ada = await login(base, "ada", "pw");
+    const url = `/api/u/${rt.ada.id}/admin/passphrase`;
+    expect((await ada.put(url, { save: true, passphrase: "guess1" })).status).toBe(401);
+    expect((await ada.put(url, { save: true, passphrase: "guess2" })).status).toBe(401);
+    // The third try waits, even with the right passphrase; the change shares the same limit.
+    expect((await ada.put(url, { save: true, passphrase: "passphrase" })).status).toBe(429);
+    expect((await ada.post(`${url}/change`, { current: "passphrase", next: "fresh" })).status).toBe(429);
+  });
+
   it("rekeys the file: after a restart only the new passphrase opens it, and a saved one is re-saved", async () => {
     const rt = await runtime();
     const { base, stop } = await daemon(rt);
