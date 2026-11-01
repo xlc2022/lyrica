@@ -2492,7 +2492,8 @@ imageFiles(t): ThreadImages
 // ThreadImages.save(GeneratedImage[], portrait = false): string[]; exclusive images/<uuid>.png in the encrypted thread folder,
 //   removes PNG metadata, refuses symlinks, returns /workspace/images/<uuid>.png paths. A project chat's (t.coordinates,
 //   as saveUpload) go in shared/images (/workspace/shared/images/<uuid>.png, its threads' /shared/images).
-//   With a portrait input, records each result's SHA-256 in encrypted user.db settings before writing; descendants inherit the rule.
+//   With a portrait input, marks this thread's folder (markPortraitFolder) and records each result's SHA-256 in encrypted
+//   user.db settings before writing, so a re-encoded copy read from the folder still counts; descendants inherit the rule.
 // ThreadImages.saveVideo(GeneratedVideo): string; exclusive videos/<uuid>.mp4 (a project chat's shared/videos/), with its
 //   poster, PNG metadata removed, written first as the clip's thumbnail (.lyrica/thumbs/videos/<uuid>.mp4.png).
 // ThreadImages.content(path, range?: { start, end? }) streams those bytes; a start past the end throws RangeError.
