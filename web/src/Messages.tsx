@@ -527,7 +527,7 @@ function Sources({ sources }: { sources: Source[] }) {
           return (
             <li key={s.url}>
               {s.local && !here
-                ? <span className="source" title={tip}>{inner}</span>
+                ? <span className="source" title={`${tip}\nOnly the server can open this address.`}>{inner}</span>
                 : <a className="source" href={s.url} target="_blank" rel="noopener noreferrer" title={tip}>{inner}</a>}
             </li>
           );

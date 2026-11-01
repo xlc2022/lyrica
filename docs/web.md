@@ -1237,7 +1237,8 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   (`core/src/kiwix.ts`) on a loopback address shows "Offline <copy>" in
   place of the host, a picture from it its file name as the title, and a
   loopback chip is a plain chip rather than a link unless the app itself
-  is open on a loopback address.
+  is open on a loopback address, its tooltip ending "Only the server can
+  open this address."
 - **Each message has an action row** under it (`MessageActions` in
   `src/Rewind.tsx`, after the reaction chips; docs/ux.md §6, A message's
   actions): quiet icon buttons, Copy (the message's text; Copied or Copy
