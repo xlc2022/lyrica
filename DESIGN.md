@@ -2104,13 +2104,15 @@ Details in [docs/sleep.md](docs/sleep.md).
   them, so a private thread's query leaves her network as an anonymous
   query. An offline copy of Wikipedia (a ZIM file served by kiwix-serve,
   the Kiwix address in the same section; the NixOS module's `zimDir` and
-  install.sh's ZIM folder run one) joins every plain search and answers a
+  install.sh's ZIM folder run one) joins every plain search, answers alone
+  a search naming Wikipedia (the web only when it has nothing), and answers a
   fetch of a wikipedia.org page, and its pictures, before the sandbox goes
   online. With kiwix-serve on this machine, as the install sets it up,
   that part never leaves it, so it works with the internet off, in a
   local-only thread, and when every search engine is resting; a copy on
   another machine is reached by lyricad like SearXNG, outside the thread's
-  switches, and sees the query and the article's title (decided 2026-10-31). A switch that's off removes the tools from the session, so she
+  switches, and sees the query and the article's title (decided 2026-10-31). Both tools take `online` to skip the copy when the user asks
+  for the live site (2026-11-01). A switch that's off removes the tools from the session, so she
   can't use them; a subagent or child thread can't turn back on what its
   parent turned off, even later. Local-only and the pool are not switches here: they
   stay in the thread's settings, where changing them is deliberate.

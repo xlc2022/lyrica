@@ -1194,7 +1194,8 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   the tool in mono, shows the arguments as JSON, and has Allow, **Allow in
   this thread** and Deny. Its tool marker names the server, then the tool.
   A `web_fetch` marker whose result came from the offline copy adds
-  "from Offline <copy>" after the URL (`offlineCopyOf`).
+  "from Offline <copy>" after the URL (`offlineCopyOf`), and a
+  `web_search` marker the copy answered alone adds it after the query.
   A tool marker for a call on a machine names the machine first. A
   subagent's request shows in its parent's thread (in its card, when that
   is open) and on its own page, naming the subagent, and stays past the
@@ -1621,7 +1622,7 @@ Plan thread, under a plain "Let's get to work!" line. Recent work uses the exist
 with ten eligible same-pool threads ticked initially. Only the selection is
 sent with the short setup message; lyricad adds the directions to that turn's context. Closing the dialog refocuses its button, and with no recent work it offers only Close. Fold in calls render suggestion rows, each loaded on its own (an unreadable thread drops its row); applied
 rows disappear, and access losses appear under their titles. Fold in and Fold in all open a
-confirm dialog (threads and their child threads, the losses with a "Give <project> access to these" checkbox that widens the project through its settings route before folding); the card's Cancel dismisses it in the browser.
+confirm dialog (threads and their child threads, the losses with a "Give <project> access to these" checkbox that widens the project through its settings route before folding), which stays open when her reply ends and the stored copy replaces the card (the conversation holds which rows it asks about, by call ID); the card's Cancel dismisses it in the browser.
 Continue as project (C), beside Make project… with their distinct tooltips,
 asks in a dialog, then opens the new project's settings. Draft Goal and Instructions populate their
 fields without applying them; Save applies edits and Discard draft clears

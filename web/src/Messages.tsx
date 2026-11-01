@@ -59,6 +59,9 @@ export function Conversation({ ctx, pool, base, threadId, subagent, thread, rewi
   // Expanded tool markers, by call ID, so they stay open when the stored copy replaces the live one.
   const [openTools, setOpenTools] = useState<ReadonlySet<string>>(new Set());
   const toggleTool = (id: string) => setOpenTools((o) => { const n = new Set(o); if (!n.delete(id)) n.add(id); return n; });
+  // The rows a Fold in card's dialog is open for, by call ID, so the dialog stays open when the stored copy replaces the live one.
+  const [folding, setFolding] = useState<ReadonlyMap<string, number[]>>(new Map());
+  const fold = useCallback((id: string, rows?: number[]) => setFolding((m) => { const n = new Map(m); if (rows) n.set(id, rows); else n.delete(id); return n; }), []);
   // Subagents whose work is shown in their delegate card here: their approvals show there too.
   const [shown, setShown] = useState<ReadonlySet<string>>(new Set());
   const show = (id: string, on: boolean) => setShown((o) => { const n = new Set(o); if (on) n.add(id); else n.delete(id); return n; });
@@ -74,7 +77,7 @@ export function Conversation({ ctx, pool, base, threadId, subagent, thread, rewi
   }
   const env: Env = {
     questions, questionChanged: () => { thread.dispatch({ type: "refresh" }); ctx.refreshThreads(); ctx.refreshNotifications(); },
-    busy: live.busy, settingsVersion: live.settings, lastUser: messages.findLast(m => m.role === "user")?.n, userId: ctx.user.id, you: ctx.user.displayName, pool, base, threadId, subagent, openTools, toggleTool,
+    busy: live.busy, settingsVersion: live.settings, lastUser: messages.findLast(m => m.role === "user")?.n, userId: ctx.user.id, you: ctx.user.displayName, pool, base, threadId, subagent, openTools, toggleTool, folding, fold,
     permissions: live.permissions, making: live.making, ticks: live.subagents, show, rewinder, parentTitle, speech, onError: onError ?? (() => {}), project,
     lastHers: messages.findLast((m) => m.role === "assistant")?.n, large: openLarge, threads: ctx.threads,
   };
@@ -142,6 +145,9 @@ export interface Env {
   subagent: boolean;
   openTools: ReadonlySet<string>;
   toggleTool: (id: string) => void;
+  /** Fold in dialogs open, by call ID: the rows each asks about. */
+  folding: ReadonlyMap<string, number[]>;
+  fold: (id: string, rows?: number[]) => void;
   permissions: PermissionRequest[];
   /** What her image calls are making now, by call: each shows a placeholder under its marker. */
   making: Record<string, Making>;
@@ -478,9 +484,12 @@ export interface Source { url: string; title?: string; host: string; local?: boo
 /** Which offline copy a fetch read from, as kiwix.ts names it ("the offline copy of Wikipedia (2026-08)"), without the date. */
 const OFFLINE = /^(?:A picture from|Outside content from \S+ \() ?the offline copy of (.+?)(?: \(\d{4}-\d{2}\))?(?::|\), not from the user:)/;
 
-/** "Offline Wikipedia" when a web_fetch result came from the offline copy instead of the address she asked for. */
+/** The same for a web_search the offline copy answered alone (one naming Wikipedia). */
+const OFFLINE_SEARCH = /^Outside content from a search of the offline copy of (.+?)(?: \(\d{4}-\d{2}\))? for "/;
+
+/** "Offline Wikipedia" when a web_fetch result came from the offline copy instead of the address she asked for, or a web_search's from it alone. */
 export function offlineCopyOf(result: string | undefined): string | undefined {
-  const copy = result === undefined ? undefined : OFFLINE.exec(result)?.[1]?.trim();
+  const copy = result === undefined ? undefined : (OFFLINE.exec(result) ?? OFFLINE_SEARCH.exec(result))?.[1]?.trim();
   return copy ? `Offline ${copy}` : undefined;
 }
 
@@ -751,7 +760,7 @@ function Marker({ part, env }: { part: Exclude<MessagePart, { type: "text" | "im
   if (part.type === "tool" && part.name === "threads") {
     const action = (part.args as { action?: string } | null)?.action;
     if (action === "ask" && !part.isError) return <QuestionCard args={part.args} state={env.questions.get(part.toolCallId)} base={env.base} onChange={env.questionChanged} />;
-    if (action === "fold") return <FoldCard part={part} userId={env.userId} pool={env.pool} projectId={env.threadId} env={env.project} />;
+    if (action === "fold") return <FoldCard part={part} userId={env.userId} pool={env.pool} projectId={env.threadId} env={env.project} asked={env.folding.get(part.toolCallId)} setAsked={(rows) => env.fold(part.toolCallId, rows)} />;
     if (action === "draft") return <a href={href({ page: "project", userId: env.userId, pool: env.pool, threadId: env.threadId })}>Project settings</a>;
     if (action === "suggest") return <SuggestedCard part={part} userId={env.userId} pool={env.pool} projectId={env.threadId} env={env.project} />;
     // Her checklist shows in the header's facts line; its call is a marker like any tool's.
@@ -778,8 +787,8 @@ function Marker({ part, env }: { part: Exclude<MessagePart, { type: "text" | "im
       // A call on a machine names it first, and an MCP call its server.
       const mcp = mcpOf(part.name);
       const place = mcp?.server ?? machineOf(part.args);
-      // A web_fetch the offline copy answered says so: the URL she asked for was never fetched online.
-      const copy = part.name === "web_fetch" && !part.isError ? offlineCopyOf(part.result) : undefined;
+      // A web_fetch or web_search the offline copy answered says so: the URL she asked for was never fetched online, and the search never left the server.
+      const copy = (part.name === "web_fetch" || part.name === "web_search") && !part.isError ? offlineCopyOf(part.result) : undefined;
       label = <>{place && <b className="place">{place}</b>}<b className="tool-name">{mcp?.tool ?? part.name}</b> <code>{summarizeArgs(part.args)}</code> {copy && <><span className="via">from {copy}</span> </>}<span className="state" data-state={state}>{state}</span></>;
       if (part.name === "image") {
         const args = (part.args ?? {}) as { action?: string; tier?: string; images?: unknown };

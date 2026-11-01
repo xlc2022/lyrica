@@ -4,7 +4,9 @@ Kiwix packages Wikipedia as one ZIM file with a full-text index, and
 `kiwix-serve` serves it over HTTP. Lyrica asks one kiwix-serve for the
 whole server, from `lyricad`, the way she asks SearXNG: a plain
 `web_search` lists its articles after the web results (and works with it
-alone), and `web_fetch` reads any wikipedia.org page from the copy before
+alone), a search that names Wikipedia ("V24 engine wikipedia",
+`site:en.wikipedia.org`) asks only the copy and goes to the web only when
+the copy has nothing, and `web_fetch` reads any wikipedia.org page from the copy before
 going online, with its pictures when the copy has them. With kiwix-serve
 on her machine, as both installs set it up, nothing of that leaves it, so
 it works with the internet off, in a local-only thread, and while every
@@ -96,3 +98,10 @@ picture itself (WebP converted to PNG through ImageMagick, which both
 installs have). A picture she puts in her reply shows in the message,
 loaded through Lyrica's server, so kiwix-serve can stay on loopback. A page the copy lacks, or any other site, is fetched from
 the thread's sandbox as before.
+
+A search naming Wikipedia that the copy answered is headed as a search
+of the offline copy, and its line in the conversation reads **from
+Offline Wikipedia**. Kiwix finds only articles holding every word of a
+search, so the word "wikipedia" is left out of what it is asked. Ask her
+for the live Wikipedia and she searches and reads it online instead (the
+tools' `online` option).

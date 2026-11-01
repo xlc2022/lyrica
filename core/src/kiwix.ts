@@ -5,8 +5,9 @@ import { adoptLocalAddress, checkAddress, htmlMarkdown, type FetchedPage } from 
 
 // An offline copy of Wikipedia (DESIGN.md, "Switches in the message box"):
 // ZIM files served by a kiwix-serve an administrator sets for the server,
-// asked by lyricad as SearXNG is. web_search adds its hits to a search, and
-// web_fetch reads a wikipedia.org page from it before going online.
+// asked by lyricad as SearXNG is. web_search adds its hits to a search, or
+// asks it alone when the search names Wikipedia, and web_fetch reads a
+// wikipedia.org page from it before going online.
 
 const KEY = "web.kiwix";
 const OFFERED = "web.kiwix.offered";
@@ -120,6 +121,25 @@ function hitUrl(address: string, book: KiwixBook, path: string): string {
 
 export interface KiwixHit { title: string; url: string; snippet: string; book: KiwixBook }
 
+/** How a result names the copy it came from: "the offline copy of Wikipedia (2026-08)", as the web UI reads it. */
+export function copyName(book: KiwixBook): string {
+  return `the offline copy of ${book.title}${book.date ? ` (${book.date.slice(0, 7)})` : ""}`;
+}
+
+/** "wikipedia", "wikipedia's", or a site: filter on wikipedia.org, as she writes them into a search. */
+const NAMES_WIKIPEDIA = /(?:^|\s)(?:site:(?:[a-z-]+\.)*wikipedia\.org\S*|wikipedia(?:'s|’s)?)(?=\s|$)/giu;
+
+/**
+ * A search's words for kiwix-serve, which matches only articles holding every word: without the ones naming
+ * Wikipedia, which a copy of Wikipedia never needs and few articles hold. `wikipedia` says whether the
+ * search named it; a search that is nothing but the name is left as it is.
+ */
+export function offlineQuery(query: string): { query: string; wikipedia: boolean } {
+  const rest = query.replace(NAMES_WIKIPEDIA, " ").replace(/\s+/g, " ").trim();
+  const plain = query.replace(/\s+/g, " ").trim();
+  return rest && rest !== plain ? { query: rest, wikipedia: true } : { query: plain, wikipedia: false };
+}
+
 /** The first words of a hit's text, without the title it begins with and without the trailing dots. */
 function snippetOf(title: string, description: string): string {
   let s = description.replace(/\s+/g, " ").trim();
@@ -136,9 +156,10 @@ function snippetOf(title: string, description: string): string {
  */
 export async function kiwixSearch(address: string, query: string, count: number, signal?: AbortSignal, f: typeof fetch = fetch): Promise<KiwixHit[]> {
   const all = await books(address, signal, f);
+  const pattern = offlineQuery(query).query;
   const per = await Promise.all(all.map(async (book) => {
     try {
-      const path = `/search?pattern=${encodeURIComponent(query)}&books.name=${encodeURIComponent(book.id)}&format=xml&pageLength=${count}`;
+      const path = `/search?pattern=${encodeURIComponent(pattern)}&books.name=${encodeURIComponent(book.id)}&format=xml&pageLength=${count}`;
       const res = await get(address, path, SEARCH_MS, signal, f);
       if (!res.ok) return [];
       const doc = xml(await res.text());
@@ -223,7 +244,7 @@ const PICTURES = 12, PICTURE_MB = 5;
  * their addresses on kiwix-serve, which web_fetch reads as images.
  */
 function page(address: string, url: string, html: string, book: KiwixBook, here: string): KiwixRead {
-  const copy = `the offline copy of ${book.title}${book.date ? ` (${book.date.slice(0, 7)})` : ""}`;
+  const copy = copyName(book);
   const md = htmlMarkdown(html, url);
   const pictures: KiwixPicture[] = [];
   try {
@@ -313,7 +334,7 @@ export async function kiwixPage(address: string, url: URL, signal?: AbortSignal,
     if (!res.ok) return undefined;
     const here = `${address}/content/${encodeURIComponent(book.id)}/${encodeURI(path)}`;
     const type = (res.headers.get("content-type") ?? "").split(";")[0]!.trim().toLowerCase();
-    const copy = `the offline copy of ${book.title}${book.date ? ` (${book.date.slice(0, 7)})` : ""}`;
+    const copy = copyName(book);
     if (/^image\/(png|jpeg|gif|webp)$/.test(type)) {
       // A page-only read (the web UI's article) never reads or converts a picture.
       if (pagesOnly) { await res.body?.cancel(); return undefined; }

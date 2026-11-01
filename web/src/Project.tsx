@@ -581,8 +581,12 @@ export function ProjectWelcome({ userId, pool, project, settings, onChange }: { 
   </div>;
 }
 
-/** Existing-work suggestions share the Suggested threads card's rows and actions. Nothing is folded until the dialog confirms it. */
-export function FoldCard({ part, userId, pool, projectId, env }: { part: Extract<MessagePart, { type: "tool" }>; userId: string; pool: Pool; projectId: string; env?: ProjectEnv }) {
+/**
+ * Existing-work suggestions share the Suggested threads card's rows and actions. Nothing is folded until the dialog
+ * confirms it. Which rows the dialog asks about is held by the conversation (`asked`, `setAsked`): her reply ending
+ * replaces the live message holding this card with its stored copy, which mounts the card again.
+ */
+export function FoldCard({ part, userId, pool, projectId, env, asked, setAsked }: { part: Extract<MessagePart, { type: "tool" }>; userId: string; pool: Pool; projectId: string; env?: ProjectEnv; asked?: number[]; setAsked: (rows?: number[]) => void }) {
   const ids = (part.args as { ids?: string[] } | null)?.ids ?? [];
   const base = threadPath(userId, pool, projectId);
   // Each row loads on its own: a thread that is gone or unreadable drops its row and leaves the rest. `index` is the row's place in the call.
@@ -592,7 +596,6 @@ export function FoldCard({ part, userId, pool, projectId, env }: { part: Extract
   const tree = useLoad(() => get<ThreadSummary[]>(`${u(userId, "threads")}?all=1`).catch(() => [] as ThreadSummary[]), [base, part.toolCallId]);
   const summary = useLoad(() => get<ThreadSummary>(base), [base]);
   const project = useLoad(() => get<ThreadSettings>(`${base}/settings`), [base]);
-  const [asked, setAsked] = useState<number[]>();
   // Kept in this browser only: no server action stores a dismissal.
   const [dismissed, setDismissed] = useState(false);
   const started = env?.overview.started ?? {};

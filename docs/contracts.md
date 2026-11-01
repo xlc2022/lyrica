@@ -1534,8 +1534,8 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     API messages and events carry paths, never the PNG's base64 bytes.
     The Images switch and Plan mode gate it; subagents also need the tool in
     their role and may not be read-only. It adds one tool within the budget;
-  - `web_search({ query, count?, time?, category?, page? })` and
-    `web_fetch({ url, maxChars?, offset? })`
+  - `web_search({ query, count?, time?, category?, page?, online? })` and
+    `web_fetch({ url, maxChars?, offset?, online? })`
     (`createWebExtension({ searxng(), kiwix?(), target(), canRender?() })`,
     `core/src/web.ts`, `core/src/kiwix.ts`), in
     every hosted thread and in a subagent whose role lists them (the
@@ -1568,7 +1568,18 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     in different languages, 15 s, hits merged in turn, the same URL once,
     at most 5) and
     appends "Offline copy of <title> <YYYY-MM>:" with each hit as title,
-    URL and snippet, after the web results. A hit of a book named
+    URL and snippet, after the web results. Its pattern leaves out the
+    words naming Wikipedia (`offlineQuery`: "wikipedia", "wikipedia's",
+    `site:…wikipedia.org…`), since kiwix-serve matches only articles
+    holding every word. A plain search whose query names Wikipedia asks
+    the copy alone, for up to `count` hits, headed "a search of the
+    offline copy of <title> (<YYYY-MM>) for "<query>"" (the web UI
+    marks it **from Offline <title>**); only when the copy has no hits
+    or fails does it ask SearXNG with the query as written, saying "The
+    offline copy had nothing for "<pattern>"." (or the failure) after
+    the results. `online: true` skips the copy in both tools, for when the
+    user asks for the live site; `web_search` online without a SearXNG
+    address is an error. A hit of a book named
     `wikipedia_<lang>_…` is the page `https://<lang>.wikipedia.org/wiki/<path>`
     (the ZIM path without its `A/` and `.html`); any other book's hit is
     its `<kiwix>/content/<book>/<path>`. Either side failing is said after
