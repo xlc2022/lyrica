@@ -48,6 +48,18 @@ working implementation (`config/extensions/stateful-memory/memory-sleep.js`).
 
 ## The cycle (per pool)
 
+0. **Renamed files.** Before anything else, plain code (no model) works
+   through the renames the Files panel kept since the last run
+   (`renames`, pool step 13; docs/workspace.md, "Renaming keeps links"):
+   each holds the old and new paths as one thread writes them, or one path
+   for a grant's file. A note, page or journal entry that cites that thread
+   (one of its messages or the thread itself, directly or through a note it
+   cites) gets the new paths, oldest rename first, as an edit by sleep, so
+   the old text stays a revision and the night's changes list it; a grant's
+   rename reaches every memory. A note a user added, and a page's words a
+   user wrote, are the user's to change and keep the old path. The renames
+   are then cleared (`PoolStore.applyRenames`). This runs whenever sleep
+   runs with the key, even when the night has nothing else to do.
 1. **Consolidate.** She reads the notes since the last sleep and skims the
    threads they came from. For anything important that she never saved, she
    writes a note (catch-up stays light; Monika manages without it). Then she

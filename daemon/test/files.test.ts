@@ -127,6 +127,8 @@ describe("the Files panel's routes", () => {
       expect(reply!.message.content).toEqual([{ type: "thinking", thinking: "/workspace/uploads/cat.png", thinkingSignature: "sig" },
         { type: "toolCall", id: "c1", name: "bash", arguments: { command: "file /workspace/uploads/tabby.png" } }]);
       expect(after.own.draft(thread.id)?.text).toBe("/workspace/uploads/tabby.png\nlook");
+      // Memories wait for sleep: the rename is kept for the thread that names it.
+      expect(after.own.pendingRenames()).toBeGreaterThan(0);
       // Another thread's /workspace is another folder.
       expect((after.own.loadEntries(other)[0] as { message: { content: string } }).message.content).toBe("/workspace/uploads/cat.png");
     } finally { after.close(); }

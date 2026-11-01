@@ -1,6 +1,6 @@
 # Brief: Renaming a file keeps its links
 
-**Status:** Built (2026-11-01, PR in review). **Owner:** the "Rename files with links auto-updated" thread.
+**Status:** Messages built (PR #767, merged 2026-11-01); memories at sleep in review. **Owner:** the "Rename files with links auto-updated" thread.
 **Read first:** AGENTS.md, DESIGN.md ("Files and images"), docs/workspace.md ("Renaming keeps links"),
 daemon/src/relink.ts, core/src/workspace/renames.ts.
 
@@ -14,8 +14,8 @@ own next turn, which knows the new name.
 
 A real rename with every stored mention rewritten, over a fixed ID with a cosmetic name. Her tools,
 commands and the sandbox work by path, so an ID scheme would need a translation layer in every tool
-and in her context (principle 3, lean on Pi; principle 8, small surface). The rewrite is one store
-method and one helper, with no schema change and no migration.
+and in her context (principle 3, lean on Pi; principle 8, small surface). The message rewrite is one store
+method and one helper with no schema change; memories need one small pool table (step 13).
 
 ## In scope
 
@@ -23,17 +23,22 @@ method and one helper, with no schema change and no migration.
   and draft, in the request's pool; re-indexing changed entries.
 - Reopening each changed thread's open session at its next turn, reloading its open views, and a
   note in her next turn naming old and new path.
+- Memories (second PR, decided by the user 2026-11-01): a ledger of renames per thread in the pool
+  (`renames`, pool step 13), applied by plain code at the start of sleep to the notes, pages and
+  journal entries citing that thread, as sleep's edit (never marked as the user's), with the old
+  text kept as a revision.
 
 ## Out of scope
 
-- Memories, notes, pages and other files that copied the path: they keep it (memory changes are
-  hers, with revisions; principle 5).
+- Other files that copied the path, a note a user added and a page's words from a user: they keep
+  it.
 - The other pool, and a file renamed by her own commands (`mv` in bash): only the panel's rename
   rewrites.
 - Her reasoning blocks and image bytes, never rewritten.
 
 ## Handoff note
 
-Done: everything in scope, with a route test (daemon/test/files.test.ts) and unit tests
-(core/test/workspace.test.ts "renaming keeps links"). Next: nothing planned. Open: whether her own
+Done: messages and drafts (PR #767), memories at sleep (second PR), with a route test
+(daemon/test/files.test.ts), unit tests (core/test/workspace.test.ts "renaming keeps links",
+core/test/store.test.ts "renamed files at sleep") and a migration test (pool step 13). Next: nothing planned. Open: whether her own
 `mv` should rewrite too, if real use asks for it.

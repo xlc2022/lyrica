@@ -1,5 +1,5 @@
 import { removeSecrets } from "../secrets.ts";
-import { rewriteStrings } from "../workspace/renames.ts";
+import { pathRewriter, rewriteStrings, type Respelling } from "../workspace/renames.ts";
 import { SkillLibrary } from "../skills.ts";
 import { randomBytes } from "node:crypto";
 import { nextRun, parseSchedule, type Schedule } from "../routines.ts";
@@ -1249,6 +1249,74 @@ export class PoolStore extends PoolReader {
       if (draft && newDraft !== draft.text) this.db.prepare("UPDATE drafts SET text = ?, updated_at = ? WHERE thread = ?").run(newDraft, now(), threadId);
       return { entries: changed, draft: !!draft && newDraft !== draft.text };
     });
+  }
+
+  /**
+   * Keeps a rename for sleep (docs/sleep.md, "Renamed files"): for each thread that can reach the file, its old and
+   * new paths as that thread writes them; `thread` null for a grant's file. Paths only.
+   */
+  recordRename(rows: { thread: string | null; swaps: Respelling[] }[]): void {
+    const at = now();
+    const put = this.db.prepare("INSERT INTO renames (thread, swaps, at) VALUES (?, ?, ?)");
+    this.tx(() => { for (const r of rows) if (r.swaps.length && (r.thread === null || this.getThread(r.thread))) put.run(r.thread, JSON.stringify(r.swaps), at); });
+  }
+
+  /** How many renames wait for sleep. */
+  pendingRenames(): number {
+    return (this.db.prepare("SELECT count(*) AS n FROM renames").get() as { n: number }).n;
+  }
+
+  /**
+   * Sleep's first step (docs/sleep.md, "Renamed files"): the notes, pages and journal entries that cite a thread with
+   * a waiting rename (by one of its messages or the thread itself, or through a note that does) get its new paths,
+   * oldest rename first, as an edit by sleep, so the old text stays a revision. A grant's rename reaches every one.
+   * A note a user added, and a page's own words from a user, are only the user's to change, so they keep the old
+   * path. The renames are cleared. Returns the memories changed.
+   */
+  applyRenames(): string[] {
+    const rows = this.db.prepare("SELECT id, thread, swaps FROM renames ORDER BY id").all() as { id: number; thread: string | null; swaps: string }[];
+    if (!rows.length) return [];
+    const threadOf = (dst: string): string | undefined => {
+      if (dst.startsWith("t:")) return dst.slice(2);
+      if (dst.startsWith("e:") && dst.includes("#")) return dst.slice(2, dst.lastIndexOf("#"));
+      return undefined;
+    };
+    // Each memory's threads: what it cites, and what the notes it cites cite.
+    const cites = new Map<string, Set<string>>();
+    for (const c of this.db.prepare("SELECT src, dst FROM citations").all() as { src: string; dst: string }[]) {
+      const set = cites.get(c.src) ?? new Set<string>();
+      set.add(c.dst);
+      cites.set(c.src, set);
+    }
+    const threads = (id: string): Set<string> => {
+      const out = new Set<string>();
+      for (const dst of cites.get(id) ?? []) {
+        const t = threadOf(dst);
+        if (t) out.add(t);
+        else if (dst.startsWith("n:")) for (const d of cites.get(dst) ?? []) { const tt = threadOf(d); if (tt) out.add(tt); }
+      }
+      return out;
+    };
+    const ids = [
+      ...(this.db.prepare("SELECT id FROM notes WHERE superseded_by IS NULL").all() as { id: string }[]).map((r) => r.id),
+      ...(this.db.prepare("SELECT 'p:' || slug AS id FROM pages").all() as { id: string }[]).map((r) => r.id),
+      ...(this.db.prepare("SELECT id FROM journal").all() as { id: string }[]).map((r) => r.id),
+    ];
+    const changed: string[] = [];
+    for (const id of ids) {
+      const mine = threads(id);
+      const swaps = rows.filter((r) => r.thread === null || mine.has(r.thread)).map((r) => pathRewriter(JSON.parse(r.swaps) as Respelling[]));
+      if (!swaps.length) continue;
+      const item = this.load(id);
+      if (!item || (item.kind === "note" && item.origin === "user")) continue;
+      const respell = (s: string) => swaps.reduce((t, f) => f(t), s);
+      const text = respell(item.text), summary = item.summary === undefined ? undefined : respell(item.summary);
+      if (text === item.text && summary === item.summary) continue;
+      try { this.edit(id, { text, ...(summary === undefined ? {} : { summary }) }, "sleep"); changed.push(id); }
+      catch { /* a page's words from a user, kept as they are */ }
+    }
+    this.db.prepare("DELETE FROM renames WHERE id <= ?").run(rows.at(-1)!.id);
+    return changed;
   }
 
   /** Pins or unpins entry `n`: a pinned entry stays in her context word for word. Throws if there's no such entry. */

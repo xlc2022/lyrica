@@ -913,3 +913,34 @@ describe("code-mode core storage", () => {
     view.close();
   });
 });
+
+describe("renamed files at sleep", () => {
+  it("respells the memories citing a thread with a waiting rename, by sleep, and leaves others and a user's note alone", async () => {
+    const { memory, ada } = await setup();
+    const view = memory.openThreadView(ada.id, "general");
+    try {
+      const a = said(view.own, "here is the cat photo");
+      const b = said(view.own, "another thread");
+      const [cat] = view.own.addNotes([{ text: "{user}'s cat is in /workspace/uploads/cat.png", source: a.entry }], { author: "lyrica", thread: a.thread });
+      const [other] = view.own.addNotes([{ text: "Also /workspace/uploads/cat.png, but another folder", source: b.entry }], { author: "lyrica", thread: b.thread });
+      const owner = memory.openOwnerView(ada.id);
+      const [theirs] = owner.general.addNotes([{ text: "Mine: /workspace/uploads/cat.png", source: a.entry }], { author: `user:${ada.id}`, thread: a.thread });
+      owner.close();
+      const page = view.own.putPage({ slug: "pets", title: "Pets", summary: "The cat, /workspace/uploads/cat.png", text: `See /workspace/uploads/cat.png [${cat}]` }, "sleep");
+      view.own.recordRename([{ thread: a.thread, swaps: [{ from: "/workspace/uploads/cat.png", to: "/workspace/uploads/tabby.png" }] }]);
+      expect(view.own.pendingRenames()).toBe(1);
+
+      expect(view.own.applyRenames().sort()).toEqual([cat, page].sort());
+      expect(view.own.get(cat!)?.text).toBe(`Al's cat is in /workspace/uploads/tabby.png [${a.entry}]`);
+      // Through the note it cites, the page follows too; the old text stays a revision, written by sleep.
+      expect(view.own.get(page)).toMatchObject({ text: expect.stringContaining("tabby.png"), summary: "The cat, /workspace/uploads/tabby.png" });
+      expect(view.own.revisions(cat!).at(-1)?.author).toBe("sleep");
+      expect(view.own.revisions(cat!)[0]?.body.text).toContain("cat.png");
+      // Another thread's folder, and a note the user added, keep the old path.
+      expect(view.own.get(other!)?.text).toContain("/workspace/uploads/cat.png");
+      expect(view.own.get(theirs!)?.text).toContain("/workspace/uploads/cat.png");
+      expect(view.own.pendingRenames()).toBe(0);
+      expect(view.own.applyRenames()).toEqual([]);
+    } finally { view.close(); }
+  });
+});
