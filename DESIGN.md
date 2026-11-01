@@ -1595,12 +1595,22 @@ Decided 2026-10-12 (docs/briefs/mcp.md).
 - **Pi's own client** (principle 3). Each granted server is registered for
   the session; nothing about servers is written to disk outside the
   user's encrypted database.
-- **Remote servers only:** a URL (streamable HTTP) and an optional token,
+- **Remote servers first:** a URL (streamable HTTP) and an optional token,
   sent as a bearer token (over https only, for a general server) and
-  stored like a Git account's. A local (stdio)
-  server would be a process running for the whole session, which the
-  process budget and "nothing runs inside lyricad's process" rule out; she
-  has `bash` for local work. OAuth sign-in comes later.
+  stored like a Git account's. A local (stdio) server, a program she
+  starts herself, is allowed in principle but not built yet (the owner
+  lifted the rule against it on 2026-11-01: a server that only ships
+  stdio shouldn't be out of her reach). When it is built it keeps the same
+  guards as everything else she runs: the program runs as an unprivileged
+  user in a sandbox, never inside `lyricad`'s process, with no log or
+  temporary file of its text on disk; it counts against the process
+  budget (principle 8) like a background job; and it is added, granted
+  and gated exactly as a remote server is. Before building it, the thread
+  checks whether starting the program per session and discarding its
+  output stream break the server or make its answers useless (lost state,
+  slow starts, warnings that go nowhere), and tells the owner. Until then
+  a `command` is refused, and she has `bash` for local work. OAuth sign-in
+  comes later.
 - **Added like Git accounts, granted like repositories.** Settings → MCP
   servers holds each user's servers, each in one pool, checked before it
   is saved. A thread gets a server only when granted: an MCP servers row

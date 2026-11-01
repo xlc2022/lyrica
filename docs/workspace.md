@@ -1171,7 +1171,8 @@ gives her its tools through Pi's own MCP client (DESIGN.md, "MCP servers").
   `user.db` (`mcp_servers`, user step 3): a name (letters, digits, `-`
   and `_`), a URL, an optional token never shown back, a pool, and the
   description and tool count from its last check. Only remote servers
-  (streamable HTTP): a stdio `command` is refused. Adding one, or replacing
+  (streamable HTTP) so far: a stdio `command` is refused until local
+  servers are built (DESIGN.md, "MCP servers"). Adding one, or replacing
   its token, runs `initialize` and `tools/list` first (`probeMcp` in
   `core/src/workspace/mcp.ts`) and saves nothing when that fails. A
   general server with a token must use https. A private server's host
