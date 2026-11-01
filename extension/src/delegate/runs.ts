@@ -16,6 +16,7 @@ import { createMcpServersExtension } from "../mcp.ts";
 import { createWebExtension } from "../web.ts";
 import { checkoutsOf, repoRules } from "../code-repositories.ts";
 import { createImageExtension } from "../images.ts";
+import { createSyntaxExtension } from "../syntax.ts";
 import { createWorkspaceExtension, type ApprovalRequest } from "../workspace.ts";
 import { rolesFor } from "./roles.ts";
 import { CLAUDE_ROLE, claudeBody, claudeModelLabel } from "./claude.ts";
@@ -1170,7 +1171,7 @@ export class Delegation {
             }), release, usedBefore(earlier));
           return this.begin(run, sub, child, pick, narrowing, earlier);
         }
-        extensions.push(createWorkspaceExtension({ ...tools, approve: (r) => this.approve(sub!, r) }));
+        extensions.push(createWorkspaceExtension({ ...tools, approve: (r) => this.approve(sub!, r) }), createSyntaxExtension({ target: (m) => tools.target(m) }));
         // A coder works in its parent's checkouts or its own worktrees, under their repositories' own instructions.
         if (role.name === "coder") rules = () => repoRules(tools.target(), checkoutsOf(tools.settings(), tools.repositories?.() ?? [], worktrees));
         if (workspace.imageFiles) extensions.push(createImageExtension({ models: this.o.models, threadId: child.id,

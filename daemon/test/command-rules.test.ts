@@ -127,14 +127,25 @@ describe("project checks through lyricad", () => {
     expect((await s.ada.patch<ThreadSummary>(s.path, { setup: " make deps " })).body.projectSettings!.setup).toBe("make deps");
     expect((await s.ada.patch<ThreadSummary>(s.path, { setup: null })).body.projectSettings!.setup).toBeUndefined();
     await s.ada.patch(`${s.childPath}/settings`, { code: true, mode: "auto" });
-    // Code mode runs on the Coding model, the workers endpoint here.
-    s.sub.respond(c => c.messages.some(m => m.role === "tool") ? { text: "Done." } : bash("echo built"));
+    // Code mode runs on the Coding model, the workers endpoint here; so does the evidence check, which sees the turn's calls.
+    let judged = 0;
+    s.sub.respond(c => {
+      if (JSON.stringify(c.messages).includes("<tool_calls>")) return { text: ++judged === 1 ? '{"verdict":"continue","reason":"Nothing shows the build ran.","next":"Run it."}' : '{"verdict":"done"}' };
+      return c.messages.some(m => m.role === "tool") ? { text: "Done." } : bash("echo built");
+    });
     const stream = s.ada.events(`${s.childPath}/events`);
     await s.ada.post(`${s.childPath}/messages`, { text: "Build it" });
     await stream.until(e => e.type === "turn_end");
     stream.close();
     const notices = async () => (await s.ada.get<MessagePage>(`${s.childPath}/messages`)).body.messages.filter((m) => m.role === "notice").map((m) => m.parts[0]);
-    await vi.waitFor(async () => expect(await notices()).toEqual([{ type: "delegation", text: "`npm test`", status: "checks-passed" }]));
-    expect(s.runs.filter((r) => r.some((a) => a.includes("npm test")))).toEqual([["sh", "-c", "npm test 2>&1"]]);
+    // The checks ran on her reply, then the judge sent her back once, unseen, and her next reply was checked and judged again.
+    await vi.waitFor(async () => expect(await notices()).toEqual([
+      { type: "delegation", text: "`npm test`", status: "checks-passed" },
+      { type: "delegation", text: "Nothing shows the build ran.", status: "evidence-not-shown" },
+      { type: "delegation", text: "`npm test`", status: "checks-passed" },
+      { type: "delegation", text: "The tool results bear the reply out.", status: "evidence-checked" },
+    ]));
+    expect(JSON.stringify(s.sub.requests)).toContain("isn't borne out by this turn's tool results: Nothing shows the build ran. Next: Run it.");
+    expect(s.runs.filter((r) => r.some((a) => a.includes("npm test")))).toEqual([["sh", "-c", "npm test 2>&1"], ["sh", "-c", "npm test 2>&1"]]);
   });
 });

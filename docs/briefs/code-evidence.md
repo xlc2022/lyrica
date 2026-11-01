@@ -1,6 +1,6 @@
 # Brief: Evidence for "done" in code turns
 
-**Status:** Not started. Comes from a study of the hermes-agent and opencode
+**Status:** Built (2026-11-01, PR pending review). Comes from a study of the hermes-agent and opencode
 coding prompts (2026-11-01); the prompt-only lessons from that study are in
 the code-mode brief's follow-up note.
 
@@ -99,4 +99,14 @@ tier).
 
 ## Handoff notes
 
-None yet.
+- Done: all three parts, in `extension/src/evidence.ts` (judge prompt and
+  verdict), `checks.ts` (runs the judge after the checks), `syntax.ts` and
+  `repair.ts`; the Evidence notice in the daemon and web; docs/workspace.md,
+  contracts, DESIGN and docs/ux.md.
+- Pi answers an unknown tool name before any hook runs, so the repair works
+  on `message_end`: the reply's calls are renamed and their JSON-string
+  arguments parsed before validation, and the "not found" result is reworded
+  as it is recorded.
+- Next: the code-mode eval's real-model check on lunasa with the local
+  models, recording how often the judge said `continue` and whether she then
+  fixed what it named.

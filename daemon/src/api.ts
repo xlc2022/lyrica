@@ -1295,6 +1295,7 @@ export type MessagePart =
    * result or question, a note, or what a user wrote to one of its subagents.
    * `status` says which ("finished", "question", "note", "user_message", …;
    * "limit" for the tool limit, "checks-passed" or "checks-failed" for a project's checks,
+   * "evidence-checked" or "evidence-not-shown" for the evidence check after them,
    * "job" for a background command that ended).
    */
   | { type: "delegation"; text: string; runId?: string; status?: string; threads?: ThreadRef[]; told?: Told[] }

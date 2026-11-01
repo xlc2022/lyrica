@@ -1152,13 +1152,15 @@ function ThreadsPill({ threads, env }: { threads: ThreadRef[]; env: Env }) {
 
 const NOTICE_HEADS: Record<string, string> = {
   question: "Subagent asks", note: "Subagent note", user_message: "Message to a subagent", interrupted: "Subagent interrupted",
-  update: "Child thread", limit: "Tool limit", "checks-passed": "Checks", "checks-failed": "Checks", job: "Background command",
+  update: "Child thread", limit: "Tool limit", "checks-passed": "Checks", "checks-failed": "Checks", "evidence-checked": "Evidence", "evidence-not-shown": "Evidence", job: "Background command",
   clip: "Clip", "clip-failed": "Clip",
 };
-/** A project's checks at the end of a code turn: a dot and a word after the head. */
+/** A project's checks at the end of a code turn, and the evidence check after them: a dot and a word after the head. */
 const CHECK_STATES: Record<string, ReactNode> = {
   "checks-passed": <span className="status-word"><span className="dot up" aria-hidden="true" />passed</span>,
   "checks-failed": <span className="status-word"><span className="dot down" aria-hidden="true" />failed</span>,
+  "evidence-checked": <span className="status-word"><span className="dot up" aria-hidden="true" />checked</span>,
+  "evidence-not-shown": <span className="status-word"><span className="dot down" aria-hidden="true" />not shown</span>,
   "clip-failed": <span className="status-word"><span className="dot down" aria-hidden="true" />failed</span>,
 };
 
