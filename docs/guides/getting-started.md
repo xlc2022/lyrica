@@ -862,6 +862,15 @@ failure goes back to her to fix, up to 3 rounds; after that she reports it
 as not done, and in a project the project chat is told which checks fail. Details are in
 [docs/workspace.md](../workspace.md#project-checks).
 
+After the checks, her code model can also judge her reply against what
+the turn's tools showed, and send her back once or twice when "done"
+isn't shown; the thread then shows an **Evidence** notice, **checked** or
+**not shown**, beside Checks. **Evidence judge**, beside Code mode in the
+thread drawer and under Project settings → New threads, picks when:
+**Automatic (local models only)**, the default, judges only when the code
+model is local; **On** judges on a cloud model too, which spends its
+tokens; **Off** never ([docs/workspace.md](../workspace.md#the-evidence-judge)).
+
 For her own code, the one-time setup on GitHub (her account as a
 collaborator, its token as a Git account, rules for `main` and her
 `lyrica/*` branches, CODEOWNERS) is in
