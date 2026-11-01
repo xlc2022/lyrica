@@ -1,6 +1,6 @@
 # Images and videos on every image GPU
 
-**Status:** built on `claude/project-thread-lgb1w6`; not yet run on a real two-GPU host.
+**Status:** Merged as #697 (21a9bf53); not yet run on a real two-GPU host.
 
 The owner asked (2026-10-30) whether a host with two GPUs can run two
 MiniMax H3 clips at once, one per GPU, and the same for images. It

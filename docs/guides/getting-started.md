@@ -463,9 +463,11 @@ tailnet or models: do those under Administration and Settings.
 
 After every restart without a saved passphrase she starts **locked**: the
 API answers only the state and unlock calls, and the web UI serves its
-unlock page. Enter the passphrase there, then log in. A script that
-calls `POST /api/unlock` instead must send an `Origin` header matching her
-address, or it gets `403`.
+unlock page. Enter the passphrase there, then log in. Three wrong
+passphrases are free; after that each try waits twice as long as the last,
+up to 15 minutes. A script that calls `POST /api/unlock` instead must send
+an `Origin` header matching her address, or it gets `403`, and gets `429`
+with `Retry-After` while a wait runs.
 
 ### Check the deploy
 
@@ -872,7 +874,9 @@ conversation and memory never go through it.
    `lyricad`, is never shown back, and never enters her sandbox.
 3. In a thread's drawer, turn on **Claude Code**. It is off by default, and
    appears only once a token is saved and Claude Code is installed. It works
-   only in a general thread that isn't local-only.
+   only in a general thread that isn't local-only. With the switch on, a
+   subagent step that asks for Claude by name runs on Claude Code too; a
+   paid Claude model from an API key is used only when you say so.
 
 Claude Code sends what it reads to Anthropic. Details are in
 [docs/workspace.md](../workspace.md#claude-code).
@@ -901,7 +905,9 @@ steps:
    ssh` (the unit is `sshd` on Fedora and RHEL). The key line is
    restricted to connections from this computer. If she should run some
    commands as root there, give the account exact commands with `visudo -f
-   /etc/sudoers.d/lyrica`, never a password.
+   /etc/sudoers.d/lyrica`, or on a machine you really trust `<account>
+   ALL=(root) NOPASSWD: ALL`. She never takes a sudo password; a root step
+   she can't run there comes to you on a card.
 2. Press Enter. She connects, prints the machine's host key fingerprint
    and whether her key was accepted, and asks you to confirm the
    fingerprint. Compare it with what the machine prints:
@@ -1122,7 +1128,10 @@ refused. To replace the destination, enter the full URL and token again;
   NixOS the next `nixos-rebuild switch` brings ImageMagick in with the
   default `sandboxPackages`. An existing install gets Tailscale and her
   `tailscaled` on its next run and keeps its web access as it was; Direct
-  comes only with a fresh install. An install made before 2026-10-12
+  comes only with a fresh install. An install made before 2026-10-31
+  needs one more `install.sh` run before Web access, Tailnet can get its
+  certificate (her `tailscaled` unit gained `--statedir`); NixOS gets it
+  on its next rebuild. An install made before 2026-10-12
   needs `apt-get install gh`, and `apt-get install tea` where it is
   packaged (or this run), for threads with repositories; on NixOS the next
   rebuild brings them. An install without
@@ -1173,7 +1182,10 @@ docker rm -f lyrica-searxng 2>/dev/null   # if you said yes to SearXNG
 rm -rf /opt/lyrica /etc/lyrica /usr/local/lib/lyrica-update \
   /usr/local/lib/lyrica-chromium /usr/local/lib/lyrica-caddy.stamp \
   /usr/local/bin/lyrica /usr/local/bin/lyrica-caddy \
-  /usr/local/bin/chromium-headless-shell /usr/local/sbin/lyrica-kiwix-start
+  /usr/local/bin/chromium-headless-shell /usr/local/sbin/lyrica-kiwix-start \
+  /usr/local/sbin/lyrica-update /usr/local/sbin/lyrica-snapshot \
+  /usr/local/sbin/lyrica-restore /usr/local/sbin/lyrica-rollback \
+  /var/cache/lyrica-searxng /var/cache/lyrica-tailscale
 # Her data, the update snapshots, Caddy's certificates, her Tailscale
 # node and the Wikipedia ZIM files: only once you're sure.
 rm -rf /var/lib/lyrica /var/lib/lyrica-snapshots /var/lib/lyrica-update \

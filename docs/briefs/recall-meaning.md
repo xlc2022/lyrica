@@ -1,6 +1,6 @@
 # Brief: Recall by meaning
 
-**Status:** Built, in PR review. **Thread:** Make memory recall more relevant.
+**Status:** Merged as #739 (97fe827d). **Thread:** Make memory recall more relevant.
 **Branch:** `feature/recall-meaning`. **Model:** Fable builds, PR review
 reviews (core, migrations, daemon).
 
