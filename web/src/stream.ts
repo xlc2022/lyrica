@@ -8,7 +8,7 @@ const LISTENED: Record<ThreadEvent["type"], true> = {
   hello: true, reset: true, turn_start: true, message_start: true, text: true, thinking: true, tool_call: true, tool_start: true, tool_end: true, making: true, made: true,
   recall: true, remember: true, permission: true, permission_end: true, usage: true, queue: true, received: true, error: true,
   offline: true, title: true, settings: true, turn_end: true, delegation: true, notice: true, rewound: true, child: true,
-  reactions: true, steps: true, wakeups: true, context: true, compacted: true, gpu_wait: true,
+  reactions: true, renamed: true, steps: true, wakeups: true, context: true, compacted: true, gpu_wait: true,
 };
 const EVENT_TYPES = Object.keys(LISTENED) as ThreadEvent["type"][];
 
@@ -69,6 +69,21 @@ export function useThread(userId: string, pool: Pool, threadId: string) {
     setHasMore(more);
   }, [base, messages, hasMore]);
 
+  // A renamed file's mentions were rewritten in the stored messages: every message shown loads again, older pages too.
+  const shown = useRef(messages);
+  shown.current = messages;
+  const reloadShown = useCallback(async () => {
+    const first = shown.current[0]?.n;
+    const fresh: Message[] = [];
+    let page = await get<MessagePage>(`${base}/messages?limit=200`);
+    fresh.unshift(...page.messages);
+    while (first !== undefined && page.hasMore && page.messages.length && page.messages[0]!.n > first) {
+      page = await get<MessagePage>(`${base}/messages?before=${page.messages[0]!.n}&limit=200`);
+      fresh.unshift(...page.messages);
+    }
+    setMessages((old) => mergeByN(old, fresh));
+  }, [base]);
+
   // The event stream. EventSource reconnects by itself with Last-Event-ID. If
   // it gives up (an HTTP error, say while lyricad restarts), a new one can't
   // send that header, so we reload from stored messages instead. One GET also
@@ -88,6 +103,7 @@ export function useThread(userId: string, pool: Pool, threadId: string) {
             // Removed messages go at once; the reload brings what's left.
             if (e.type === "rewound") setMessages((old) => old.filter((x) => x.n < e.from));
             // A reaction, hers or from another tab, lands on the stored message at once.
+            if (e.type === "renamed") reloadShown().catch(() => {});
             if (e.type === "reactions") setMessages((old) => old.map((x) => (x.n === e.n ? { ...x, reactions: e.reactions.length ? e.reactions : undefined } : x)));
             dispatch(e);
             // The re-sent message is stored at or after the rewind point, so its stored copy replaces this one as a send's does.
@@ -111,7 +127,7 @@ export function useThread(userId: string, pool: Pool, threadId: string) {
     };
     open();
     return () => { stopped = true; es?.close(); clearTimeout(retry); };
-  }, [base, threadId]);
+  }, [base, threadId, reloadShown]);
 
   return { messages, questions, hasMore, loaded, loadError, loadOlder, loadUntil, live, dispatch, connected, willResend };
 }

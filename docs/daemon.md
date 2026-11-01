@@ -847,6 +847,10 @@ documented in `daemon/src/api.ts`, "The Files panel".
   the thread's folder and read-write grants. A read-only grant, a root itself,
   `.lyrica`, or a path outside the thread's folders is refused with 403; a
   taken `to` or a missing file is 400 with the reason. Deleting is permanent.
+  A rename then rewrites the stored mentions of the old path in every thread
+  of the pool that can reach the file, reopens their sessions at their next
+  turn and sends their streams `renamed` (docs/workspace.md, "Renaming keeps
+  links").
 - `POST …/files/zip { paths }` answers `application/zip`, built in Node as it
   streams from `cat` in the sandbox: nothing is written to disk, and no zip
   tool is needed in the sandbox.

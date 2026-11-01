@@ -30,6 +30,7 @@ import { historyQuery } from "./history.ts";
 import { modelFacts } from "./model-facts.ts";
 import { redactUrl, unredactUrl } from "./redact.ts";
 import { isPdf, VIEW_LIMIT, viewHeaders, viewKind, withConsole } from "./file-view.ts";
+import { relinkFiles, type Relinked } from "./relink.ts";
 
 const DISPLAY_DEFAULTS: Api.Display = { theme: "device", showGeneral: true, showPrivate: true, showHidden: false, sort: "date", projects: "all", checklists: true };
 const THREAD_SORTS: Api.ThreadSort[] = ["date", "activity", "started", "title", "groups"];
@@ -1680,7 +1681,21 @@ export function apiRoutes(d: Lyricad): Route[] {
     }),
     route("POST", `${t}/files/rename`, async (r): Promise<Api.Ok> => {
       const { from, to } = await r.json<Api.FileRenameInput>();
-      await refused(() => files(r).rename(String(from ?? ""), String(to ?? "")));
+      const moved = await refused(() => files(r).rename(String(from ?? ""), String(to ?? "")));
+      // Its links follow it: every thread that names it has the mentions rewritten (docs/workspace.md, "Renaming keeps links").
+      const user = d.userFor(r), pool = poolOf(r);
+      const here = r.params.threadId!;
+      let relinked: Relinked[] = [];
+      // The file has moved either way: a failed rewrite leaves the old links, and is logged without any path or text.
+      try { relinked = owner(d, user, (o) => relinkFiles(s().workspace, o[pool], { userId: user.id, pool, threadId: threadOf(o, r).id }, moved.from, moved.to)); }
+      catch (err) { console.error(`rewriting a renamed file's links failed (${(err as Error)?.name ?? "Error"})`); }
+      for (const c of relinked) {
+        // The panel notes the rename for its own thread; another thread that names the file is told in its own spelling.
+        if (c.threadId !== here) s().workspace.settings(user.id).noteFiles(c.threadId, "renamed", [c.from, c.to]);
+        const hosted = s().host.peek(user.id, pool, c.threadId);
+        hosted?.reload();
+        hosted?.publish({ type: "renamed" });
+      }
       return { ok: true };
     }),
     route("POST", `${t}/files/delete`, async (r): Promise<Api.Ok> => {

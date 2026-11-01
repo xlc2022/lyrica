@@ -57,7 +57,7 @@ export class ThreadFiles {
    * delete, so the record of which thread wrote a file follows it. `workdir` is the thread's folder (a test's
    * stand-in may put it elsewhere). `shared`: the box mounts the family's /shared, a root of its own.
    */
-  constructor(private readonly box: Sandbox, private readonly grants: Grant[], private readonly note: (kind: "added" | "removed", names: string[]) => void = () => {},
+  constructor(private readonly box: Sandbox, private readonly grants: Grant[], private readonly note: (kind: "added" | "removed" | "renamed", names: string[]) => void = () => {},
     private readonly workdir = WORKDIR, private readonly origins: OriginEvents = {}, private readonly shared = false) {}
 
   roots(): FileRoot[] {
@@ -219,8 +219,8 @@ export class ThreadFiles {
     this.note("added", [p]);
   }
 
-  /** Moves a file or folder to a new path; a path already taken is refused. */
-  async rename(from: string, to: string): Promise<void> {
+  /** Moves a file or folder to a new path; a path already taken is refused. Returns both paths as she sees them. */
+  async rename(from: string, to: string): Promise<{ from: string; to: string }> {
     const f = this.inside(from);
     const t = this.inside(to);
     // Thumbnails move with it: a clip's poster can't be made again (ThreadImages.saveVideo). One with nowhere to go is deleted.
@@ -228,9 +228,9 @@ export class ThreadFiles {
     const pairs = this.thumbsOf([f]).flatMap((c, i) => [c, moved[i] ?? ""]);
     await this.file(["sh", "-c", 'if [ -e "$2" ] || [ -L "$2" ]; then echo "$2 is already there" >&2; exit 1; fi; mv -T -- "$1" "$2" && shift 2 && ' +
       'while [ $# -gt 1 ]; do if [ -e "$1" ]; then rm -rf -- "$2"; { [ -n "$2" ] && mkdir -p -- "$(dirname -- "$2")" && mv -T -- "$1" "$2"; } || rm -rf -- "$1"; fi; shift 2; done', "sh", f, t, ...pairs]);
-    this.note("removed", [f]);
-    this.note("added", [t]);
+    this.note("renamed", [f, t]);
     this.origins.moved?.(f, t);
+    return { from: f, to: t };
   }
 
   /** Deletes files and folders, for good. */

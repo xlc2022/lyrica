@@ -1592,7 +1592,9 @@ export interface ImageEntry extends FileEntry { source: "uploaded" | "made" }
  * limits) and kept under `.lyrica/thumbs` until the image changes or goes; 404 for a grant's file, a name that is
  * not an image's, or a server without ImageMagick, when the panel shows the file itself.
  * POST …/files/upload?dir=<path>&name=<file> with the bytes → UploadResponse: saved under a free name in that folder.
- * POST …/files/folder { path } → Ok. POST …/files/rename { from, to } → Ok (a taken `to` is refused).
+ * POST …/files/folder { path } → Ok. POST …/files/rename { from, to } → Ok (a taken `to` is refused); every thread
+ * that can reach the file has its stored mentions of the old path rewritten (docs/workspace.md, "Renaming keeps
+ * links"), and its open streams get `renamed`.
  * POST …/files/delete { paths } → Ok, for good. POST …/files/zip { paths } → application/zip, built as it streams.
  * A root itself can't be renamed or deleted; a read-only grant refuses every change (403); a path outside the
  * thread's folders is 403. Her next turn is told, by name, what the panel added or removed.
@@ -1627,6 +1629,8 @@ export type ThreadEvent =
   | { type: "hello"; busy: boolean; queued: string[]; permissions: PermissionRequest[]; making: Making[]; gpuWait?: GpuWait }
   /** Missed events can't be replayed: reload messages. */
   | { type: "reset" }
+  /** A file was renamed and stored messages that named it changed: reload every message shown. */
+  | { type: "renamed" }
   | { type: "turn_start" }
   /** A new assistant message begins. */
   | { type: "message_start"; model?: string }

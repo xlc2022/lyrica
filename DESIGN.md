@@ -194,7 +194,10 @@ Each user has two pools of memory.
       naming the files added or removed since her last turn. Files attached
       in the message box go to `uploads/` and show in the panel too.
     - Rename and Delete work in the thread's folder and in read-write
-      grants, never in read-only ones. Deleting is permanent, and deleting
+      grants, never in read-only ones. A renamed or moved file keeps its
+      links: every stored message, tool call and draft that named its old
+      path names the new one (decided 2026-11-01, over a fixed ID with a
+      shown name, since her tools work by path). Deleting is permanent, and deleting
       in a grant says it deletes on the server.
     - A panel upload belongs to the thread, not to a message, so removing
       turns never deletes it.

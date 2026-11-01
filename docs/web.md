@@ -257,7 +257,11 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   upload or her call that wrote it, through the same channel), downloads (one file by its address, several as `…/files/zip`), copies
   paths, renames and deletes (a confirm dialog), uploads and makes folders;
   dropping files on the panel uploads them to the folder last opened. After a
-  change the folders it touched are reloaded. A row in a writable folder
+  change the folders it touched are reloaded. A rename rewrites the stored
+  messages that named the file (docs/workspace.md, "Renaming keeps links"),
+  and each open thread's stream then sends `renamed`, on which `useThread`
+  (`src/stream.ts`) loads again every message it shows, older pages too, so
+  chips and images follow the new name. A row in a writable folder
   has **Rename** and **Delete** icon buttons at its right (`.frow-acts`,
   shown on hover or focus-within, always where nothing can hover): Rename
   edits the name in place (`InlineRename`), Delete opens the menu straight

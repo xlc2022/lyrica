@@ -33,6 +33,7 @@ import {
   type MachineConfig, type MachineKind, type MachineLimit, type Network, type NewMachine, type PermissionMode, type ThreadRepository, type ThreadWorkspace,
 } from "./settings.ts";
 import { AllowedPaths } from "./paths.ts";
+import type { Respelling } from "./renames.ts";
 import { generateSshKey, SshTarget } from "./ssh.ts";
 import { Jobs, type JobInfo } from "./jobs.ts";
 import { sandboxedTransport, type SshTransport } from "./transport.ts";
@@ -49,6 +50,7 @@ export * from "./rules.ts";
 export * from "./mcp.ts";
 export * from "./net.ts";
 export * from "./paths.ts";
+export * from "./renames.ts";
 export * from "./ops.ts";
 export * from "./page.ts";
 export * from "./proxmox.ts";
@@ -529,6 +531,34 @@ export class Workspace {
     if (origin) return `${origin.folder}:${origin.path}`;
     const p = posix.normalize(path);
     return this.grantsFor(t).some((g) => g.writable && p.startsWith(`${g.path.replace(/\/$/, "")}/`)) ? `grant:${p}` : undefined;
+  }
+
+  /**
+   * How thread `c` writes the file thread `t` renamed or moved from `from` to `to` (both as `t` sees them), old and
+   * new: by the thread folder (and the family path a checkout's thread works under) when `c` works in that folder,
+   * by /shared when the file is in its family's, by the path itself in a grant `c` has, and relative to its folder
+   * as a link's target. None when `c` can't reach the file; a move into another folder only respells it in `t`.
+   */
+  respellings(t: WorkspaceThread, from: string, to: string, c: WorkspaceThread): Respelling[] {
+    const k = this.originKey(t, from), n = this.originKey(t, to);
+    if (!k) {
+      const p = posix.normalize(from), under = (g: Grant) => p === g.path || p.startsWith(`${g.path.replace(/\/$/, "")}/`);
+      return this.grantsFor(c).some(under) ? [{ from: p, to: posix.normalize(to) }] : [];
+    }
+    if (!n || n.folder !== k.folder) return c.threadId === t.threadId ? [{ from: posix.normalize(from), to: posix.normalize(to) }] : [];
+    const s = this.settings(c.userId);
+    const out: Respelling[] = [];
+    const add = (prefix: string, strip: string, link?: true) => {
+      if (k.path.startsWith(strip) && n.path.startsWith(strip)) out.push({ from: prefix + k.path.slice(strip.length), to: prefix + n.path.slice(strip.length), ...(link ? { link } : {}) });
+    };
+    if (s.folderThread(c.threadId) === k.folder) {
+      add(`${WORKDIR}/`, "");
+      const alias = this.workdirAlias(c);
+      if (alias) add(`${alias}/`, "");
+      add("", "", true);
+    }
+    if (s.folderThread(s.familyRoot(c.threadId)) === k.folder) add(`${SHARED}/`, "shared/");
+    return out;
   }
 
   /** Thread `t` wrote these files (as she sees them). With `since`, from a command's sweep for files newer than its start. */

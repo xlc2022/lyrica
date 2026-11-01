@@ -19,6 +19,9 @@ export interface Grant {
  * asks before bash, "ask" before bash, write and edit, and "plan" leaves only
  * the tools that read.
  */
+/** What the Files panel did since her last turn: paths as she sees them. */
+export interface FileNotes { added: string[]; removed: string[]; renamed: { from: string; to: string }[] }
+
 export type PermissionMode = "auto" | "acceptEdits" | "ask" | "plan";
 /** From the least strict to the most. */
 export const PERMISSION_MODES: readonly PermissionMode[] = ["auto", "acceptEdits", "ask", "plan"];
@@ -793,18 +796,22 @@ export class WorkspaceSettings {
     return this.resolve(this.thread(threadId), pool);
   }
 
-  /** Records what the Files panel added or removed, for her next turn. */
-  noteFiles(threadId: string, kind: "added" | "removed", paths: string[]): void {
+  /** Records what the Files panel added, removed or renamed (`paths` is then the old path and the new), for her next turn. */
+  noteFiles(threadId: string, kind: "added" | "removed" | "renamed", paths: string[]): void {
     const at = new Date().toISOString();
     const insert = this.db.prepare("INSERT INTO panel_files (thread_id, kind, path, at) VALUES (?, ?, ?, ?)");
-    for (const path of paths) insert.run(threadId, kind, path, at);
+    if (kind === "renamed") insert.run(threadId, kind, JSON.stringify(paths.slice(0, 2)), at);
+    else for (const path of paths) insert.run(threadId, kind, path, at);
   }
 
   /** The panel's notes since her last turn, oldest first, cleared as they're taken. */
-  takeFileNotes(threadId: string): { added: string[]; removed: string[] } {
+  takeFileNotes(threadId: string): FileNotes {
     const rows = this.db.prepare("SELECT kind, path FROM panel_files WHERE thread_id = ? ORDER BY rowid").all(threadId) as { kind: string; path: string }[];
     if (rows.length) this.db.prepare("DELETE FROM panel_files WHERE thread_id = ?").run(threadId);
-    return { added: rows.filter((r) => r.kind === "added").map((r) => r.path), removed: rows.filter((r) => r.kind === "removed").map((r) => r.path) };
+    const renamed = rows.filter((r) => r.kind === "renamed").flatMap((r) => {
+      try { const [from, to] = JSON.parse(r.path) as unknown[]; return typeof from === "string" && typeof to === "string" ? [{ from, to }] : []; } catch { return []; }
+    });
+    return { added: rows.filter((r) => r.kind === "added").map((r) => r.path), removed: rows.filter((r) => r.kind === "removed").map((r) => r.path), renamed };
   }
 
   /**

@@ -70,7 +70,7 @@ export interface ThreadTools {
   /** The same for a command: the files in her folder and /shared newer than `since`, its start, found in the background. */
   madeSince?(since: Date): void;
   /** What the person's Files panel added or removed since her last turn, names only; taking them clears them. */
-  fileNotes?(): { added: string[]; removed: string[] };
+  fileNotes?(): { added: string[]; removed: string[]; renamed?: { from: string; to: string }[] };
   /** Where its parent, children and (in a project) siblings read its folder, and its own part of /shared. Without it, neither is said. */
   family?(): { folder: string; handover?: string };
   /** Starts an approved command in the background (docs/workspace.md, "Background commands"). Without it, bash has no background and there is no jobs tool. */
@@ -589,12 +589,17 @@ export function gitSection(tools: ThreadTools, problems: string[] = []): string 
   return [GIT_GUIDE, `Your repositories here:\n${repos.map(line).join("\n")}`, ...(problems.length ? [`At the start of this turn:\n${problems.map((p) => `- ${p}`).join("\n")}`] : [])].join("\n\n");
 }
 
-/** One line naming what the person added or removed in the Files panel since her last turn. */
-function fileNotes(n?: { added: string[]; removed: string[] }): string[] {
-  if (!n || (!n.added.length && !n.removed.length)) return [];
+/** One line naming what the person added, removed or renamed in the Files panel since her last turn. */
+function fileNotes(n?: { added: string[]; removed: string[]; renamed?: { from: string; to: string }[] }): string[] {
+  const renamed = n?.renamed ?? [];
+  if (!n || (!n.added.length && !n.removed.length && !renamed.length)) return [];
   const list = (paths: string[]) => (paths.length > 20 ? `${paths.slice(0, 20).join(", ")} and ${paths.length - 20} more` : paths.join(", "));
-  const parts = [n.added.length ? `added ${list(n.added)}` : "", n.removed.length ? `removed ${list(n.removed)}` : ""].filter(Boolean);
-  return [`Since your last turn, in the Files panel, the person ${parts.join(" and ")}.`];
+  const parts = [
+    n.added.length ? `added ${list(n.added)}` : "", n.removed.length ? `removed ${list(n.removed)}` : "",
+    renamed.length ? `renamed ${list(renamed.map((r) => `${r.from} to ${r.to}`))}` : "",
+  ].filter(Boolean);
+  // The stored messages name the new paths now (docs/workspace.md, "Renaming keeps links").
+  return [`Since your last turn, in the Files panel, the person ${parts.join(" and ")}.${renamed.length ? " Earlier messages now use the new paths." : ""}`];
 }
 
 function network(n: Network): string {
