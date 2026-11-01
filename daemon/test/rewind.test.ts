@@ -237,7 +237,8 @@ describe.skipIf(!homeRunnable)("removing turns that changed files", () => {
     // base.txt's first write is still undoable; a month on, the sweep clears it, and logs counts only.
     d.sweep(new Date(Date.now() + 31 * 864e5));
     expect(logs.find((l) => l.startsWith("sweep:"))).toMatch(/^sweep: \d+ snapshots, 1 change records, \d+ thread folders, \d+ worktrees removed$/);
-    expect(logs.join("\n")).not.toMatch(/base\.txt|v1|fresh/);
+    // "v1" as a word: the log names the temp folder, whose random suffix can hold "v1" (lyricad-dpv1Tl).
+    expect(logs.join("\n")).not.toMatch(/base\.txt|\bv1\b|fresh/);
   });
 });
 
