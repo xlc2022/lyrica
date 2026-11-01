@@ -42,7 +42,7 @@ import {
 } from "./http.ts";
 import { TailnetControl } from "./tailnet.ts";
 import { listenUpdateSocket, type Drainable, type UpdatePaths } from "./updates.ts";
-import { DIRECT_PORT, directFor, ExternalListener, hostAddresses, WebAccess, type Bind } from "./web/access.ts";
+import { DIRECT_PORT, directFor, ExternalListener, FRONT_FILE, hostAddresses, readFront, WebAccess, writeFront, type Bind, type Front } from "./web/access.ts";
 import { apiRoutes } from "./routes.ts";
 import { sweepUser, wipeHome } from "./sweep.ts";
 
@@ -194,6 +194,8 @@ export class Lyricad implements Drainable {
   private readonly mounted = new Set<string>();
   /** The external proxy's listener, from its settings file: it opens at start, before unlock. */
   readonly external: ExternalListener;
+  /** Which plain listener has its proxy in front, as last saved to its file: for `behind` before unlock. */
+  private frontSaved: Front | undefined;
   readonly tailnet: TailnetControl;
   port = 0;
   /** The loopback port only `tailscale serve` targets: requests on it came through her tailnet address. */
@@ -236,6 +238,7 @@ export class Lyricad implements Drainable {
     this.log = opts.log ?? ((line) => process.stderr.write(`${line}\n`));
     this.routes = apiRoutes(this);
     this.external = new ExternalListener(join(opts.home, "web-external.json"), (o) => this.listenExternal(o));
+    this.frontSaved = readFront(this.frontFile);
     this.updatePaths = { state: opts.update?.state ?? "/var/lib/lyrica-update", requests: opts.update?.requests ?? join(opts.home, "updates") };
     this.tailnet = new TailnetControl({ binary: opts.tailnet?.binary, socket: opts.tailnet?.socket, runtime: opts.home });
     if (opts.tailnet?.proxy) {
@@ -267,7 +270,7 @@ export class Lyricad implements Drainable {
 
   /** Listens, then unseals a saved passphrase and unlocks if it is available. */
   async start(): Promise<void> {
-    const tcp = createServer((req, res) => void this.handle(req, res, fromLoopback, undefined, true));
+    const tcp = createServer((req, res) => void this.handle(req, res, this.behind("builtin"), undefined, true));
     await new Promise<void>((resolve, reject) => { tcp.once("error", reject); tcp.listen(this.opts.port, "127.0.0.1", resolve); });
     this.port = (tcp.address() as AddressInfo).port;
     this.servers.push(tcp);
@@ -288,12 +291,14 @@ export class Lyricad implements Drainable {
     const updateSocket = this.opts.update?.socket === false ? undefined : this.opts.update?.socket ?? join(this.opts.home, "update.sock");
     if (updateSocket) this.servers.push(await listenUpdateSocket(updateSocket, this, this.log));
     // Only her tailscaled's `serve` targets this one, so a request on it came through her tailnet address.
-    const serve = createServer((req, res) => void this.handle(req, res, fromLoopback, "tailnet", true));
+    const serve = createServer((req, res) => void this.handle(req, res, this.behind("tailnet"), "tailnet", true));
     await new Promise<void>((resolve, reject) => { serve.once("error", reject); serve.listen(this.opts.web?.servePort ?? (this.opts.port === 0 ? 0 : SERVE_PORT), "127.0.0.1", resolve); });
     this.servePort = (serve.address() as AddressInfo).port;
     this.servers.push(serve);
     this.log(`lyricad listening on 127.0.0.1:${this.port}${socket ? ` and ${socket}` : ""}, and on 127.0.0.1:${this.servePort} for her tailnet`);
     mkdirSync(this.opts.home, { recursive: true, mode: 0o700 });
+    // A fresh install has no proxy in front of either listener; an older one says so at its first unlock.
+    if (this.settingUp && this.frontSaved === undefined) writeFront(this.frontFile, this.frontSaved = "none");
     if (this.settingUp) await this.beginSetup();
     await this.directAddresses();
     // While locked it answers only state, unlock and the web UI's files here too, so the proxy can show the unlock page.
@@ -475,8 +480,9 @@ export class Lyricad implements Drainable {
       self: () => keyring.self(), tailnet: this.tailnet, servePort: this.servePort, directPort: w.directPort,
       caddy: { socket: w.caddySocket ?? "/run/lyrica-caddy/admin.sock", tlsLog: w.tlsLog ?? "/run/lyrica-caddy/tls.log" },
       httpsPort: w.httpsPort ?? 443, upstream: this.port, reserved: [this.port, this.servePort], addresses: w.addresses,
-      external: this.external, certWaitMs: w.certWaitMs, trustCa: w.trustCa, log: this.log,
+      external: this.external, frontFile: this.frontFile, certWaitMs: w.certWaitMs, trustCa: w.trustCa, log: this.log,
     });
+    this.frontSaved = web.rememberFront();
     // A pending wake for background jobs that ended, by `user/pool/thread`: those ending close together wake it once.
     const jobWakes = new Map<string, NodeJS.Timeout>();
     /** Wakes an idle thread once, a few seconds after the first of the endings `kind` names, with all their notices. */
@@ -511,7 +517,7 @@ export class Lyricad implements Drainable {
     });
     // Where the front door is, read at every sandbox start, so a change in web access applies to the next command.
     const workspace = new Workspace(keyring, users, {
-      excludePorts: this.sandboxExcluded, frontDoor: () => web.frontDoor(), bwrap: this.opts.bwrap, pasta: this.opts.pasta,
+      excludePorts: this.sandboxExcluded, frontDoor: () => web.frontDoor(), log: this.log, bwrap: this.opts.bwrap, pasta: this.opts.pasta,
       // A private or local-only thread never gets Claude Code. Asked at each run, once the models below exist.
       restricted: (u, p, thread) => isRestricted(models.callContext(u, p, thread)),
       // A family member's folder is mounted only when its thread is in the reader's pool and not the other one (folders are named by ID alone).
@@ -1086,6 +1092,7 @@ export class Lyricad implements Drainable {
       await s.host.close();
       for (const id of this.mounted) await s.workspace.unmountHome(id).catch(() => {});
       for (const u of s.users.all()) this.keyring.lockUser(u.id);
+      this.frontSaved = s.web.front();
     }
     this.userEvents.close();
     this.mounted.clear();
@@ -1173,6 +1180,21 @@ export class Lyricad implements Drainable {
     }
   }
 
+  private get frontFile(): string { return join(this.opts.home, FRONT_FILE); }
+
+  /**
+   * Whose forwarded headers a plain listener believes: loopback's, but only
+   * while that listener's proxy is in front of it (the built-in Caddy on the
+   * main port, `tailscale serve` on the serve port). Her userspace tailscaled
+   * hands every tailnet peer to loopback too, and those must not pick their
+   * own address, host or scheme. The front comes from self.db once unlocked,
+   * and before that from the file WebAccess keeps beside it; an install from
+   * before that file believes loopback as it did, until its first unlock.
+   */
+  private behind(proxy: "builtin" | "tailnet"): TrustForwarded {
+    return (remote) => fromLoopback(remote) && (this.services?.web.front() ?? this.frontSaved ?? proxy) === proxy;
+  }
+
   /** The Tailnet mode's DNS name and address, which a page served through `tailscale serve` may name as its origin. */
   private tailnetNames(): string[] {
     const t = this.services?.web.tailnetHosts();
@@ -1194,7 +1216,7 @@ export class Lyricad implements Drainable {
       : "This address is plain HTTP, so you can't log in here. Turn on Tailnet or Direct in Administration › Web access, then use its https address.";
     if (!this.wrongDoors.has(name)) {
       this.wrongDoors.add(name);
-      this.log(`a plain-HTTP request addressed to ${name}: ${to ? `sent to ${to}` : "no HTTPS front door to send it to"}`);
+      this.log(`a plain-HTTP request ${name ? `addressed to ${name}` : "with no Host header"}: ${to ? `sent to ${to}` : "no HTTPS front door to send it to"}`);
     }
     if (path.startsWith("/api/") || path.startsWith("/hooks/")) {
       sendJson(res, 403, { error: sentence });

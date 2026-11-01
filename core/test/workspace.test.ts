@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import ssh2 from "ssh2";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { testMcpServer } from "./mcp-server.ts";
-import { gitEnv, keepResult, noReplyEmail, MCP_RESULT_BYTES, generateSshKey, helperSandbox, nftRules, resolveAddresses, sandboxedTransport, SshTarget, migrate, Users, Workspace, WorkspaceSettings, type HelperSandbox, type MachineConfig, type SandboxSpec } from "../src/index.ts";
+import { gitEnv, hostAddresses, keepResult, noReplyEmail, MCP_RESULT_BYTES, generateSshKey, helperSandbox, nftRules, resolveAddresses, sandboxedTransport, SshTarget, subnetOf, migrate, Users, Workspace, WorkspaceSettings, type HelperSandbox, type MachineConfig, type SandboxSpec } from "../src/index.ts";
 import { freshKeyring, profile } from "./helpers.ts";
 
 const dirs: string[] = [];
@@ -28,17 +28,31 @@ async function setup() {
   return { keyring, users, ada, host, workspace, paths, settings: workspace.settings(ada.id) };
 }
 
+describe("this machine, as a sandbox counts it", () => {
+  it("is each interface's address, and a bridge's whole subnet: containers behind Docker are this machine too", () => {
+    const iface = (address: string, cidr: string, internal = false) => [{ address, netmask: "", family: "IPv4" as const, mac: "", internal, cidr }];
+    const interfaces = { lo: iface("127.0.0.1", "127.0.0.1/8", true), eth0: iface("10.0.0.5", "10.0.0.5/24"), docker0: iface("172.17.0.1", "172.17.0.1/16"), "br-9f2a": iface("172.18.0.1", "172.18.0.1/16") };
+    expect(hostAddresses(interfaces as never)).toEqual(["10.0.0.5", "172.17.0.1", "172.17.0.0/16", "172.18.0.1", "172.18.0.0/16"]);
+    expect(subnetOf("192.168.1.77/20")).toBe("192.168.0.0/20");
+    // The subnet goes into the rules as it is: with services off, nothing on it is reachable even with the internet on.
+    const rules = nftRules(true, [], [7340], { addresses: ["10.0.0.5", "172.17.0.0/16"], services: false, front: [443] });
+    expect(rules).toContain("ip daddr { 10.0.0.5, 172.17.0.0/16 } meta l4proto { tcp, udp } th dport { 443 } reject");
+    expect(rules).toContain("ip daddr { 10.0.0.5, 172.17.0.0/16 } reject");
+  });
+});
+
 describe("the front door in a sandbox's rules", () => {
   it("covers this machine's addresses and the front door's other hosts, resolved when the sandbox starts", async () => {
-    const front = (await resolveAddresses(["localhost", "192.0.2.10", "::1"]))!;
+    const front = (await resolveAddresses(["localhost", "192.0.2.10", "::1"])).addresses;
     expect(front).toEqual(["127.0.0.1", "192.0.2.10"]);
-    // Fails closed: a name that has never resolved gives no answer, so the run gets no network.
-    expect(await resolveAddresses(["lyrica.invalid"], async () => { throw new Error("NXDOMAIN"); })).toBeUndefined();
+    // A name that has never resolved is named, so the caller can say so; the addresses that are known still come back.
+    expect(await resolveAddresses(["lyrica.invalid", "192.0.2.10"], async () => { throw new Error("NXDOMAIN"); })).toEqual({ addresses: ["192.0.2.10"], unresolved: ["lyrica.invalid"] });
     // A name that resolved once keeps that address covered when it moves or stops resolving.
     const at = (...a: string[]) => async () => a.map((address) => ({ address, family: 4 }));
-    expect(await resolveAddresses(["moving.example"], at("192.0.2.20"))).toEqual(["192.0.2.20"]);
-    expect(await resolveAddresses(["moving.example"], at("192.0.2.21"))).toEqual(["192.0.2.20", "192.0.2.21"]);
-    expect(await resolveAddresses(["moving.example"], async () => { throw new Error("SERVFAIL"); })).toEqual(["192.0.2.20", "192.0.2.21"]);
+    const addresses = async (...args: Parameters<typeof resolveAddresses>) => (await resolveAddresses(...args)).addresses;
+    expect(await addresses(["moving.example"], at("192.0.2.20"))).toEqual(["192.0.2.20"]);
+    expect(await addresses(["moving.example"], at("192.0.2.21"))).toEqual(["192.0.2.20", "192.0.2.21"]);
+    expect(await resolveAddresses(["moving.example"], async () => { throw new Error("SERVFAIL"); })).toEqual({ addresses: ["192.0.2.20", "192.0.2.21"], unresolved: [] });
     const rules = nftRules(true, [], [7340, 7341], { addresses: ["10.0.0.5"], services: false, front: [443], frontAddresses: front });
     expect(rules).toContain("ip daddr { 10.0.0.5, 127.0.0.1, 192.0.2.10 } meta l4proto { tcp, udp } th dport { 443 } reject");
     expect(rules).toContain("th dport { 7340, 7341 } reject");

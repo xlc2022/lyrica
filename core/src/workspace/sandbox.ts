@@ -38,6 +38,8 @@ export interface SandboxSpec {
   self?: string[];
   /** Other hosts (IPs or names, resolved at each run) where the front ports are never reachable: an external proxy, Lyrica's name. */
   frontHosts?: string[];
+  /** Told, once per name, when a front-door name doesn't resolve on this machine: lyricad's log. */
+  warn?: (line: string) => void;
   /**
    * Called with each grant's real path just before it is mounted, so the
    * grant can be checked against the current settings. Throws to refuse.
@@ -307,6 +309,9 @@ interface RunOptions {
 /** What a run says when its output passed `maxBytes`: a web page that inflates to gigabytes can't fill lyricad's memory. */
 export const OUTPUT_OVER = "output over";
 
+/** Front-door names already said not to resolve, so the log gets each once. */
+const unresolvedSaid = new Set<string>();
+
 /**
  * Runs commands in bubblewrap with every namespace unshared. Only the
  * thread's folder, its grants and a read-only system exist inside. Each
@@ -440,9 +445,14 @@ export class Sandbox implements ExecutionTarget {
   private async launch(argv: string[], cwd: string | undefined, forward: number[], relay: Relay | undefined): Promise<Sandboxed> {
     let { internet, services, hosts } = this.spec.network;
     if (relay) forward = [...forward, relay.port];
-    // The front door's names must resolve (now or before), or this run gets no network at all: its rules can't be trusted.
-    const frontAddresses = internet || services || hosts.length || forward.length ? await resolveAddresses(this.spec.frontHosts ?? []) : [];
-    if (!frontAddresses) [internet, services, hosts, forward] = [false, false, [], []];
+    // The front door's names, resolved now or before. One that has never resolved on this machine is said once, and the run
+    // keeps its network: the front ports are shut on this machine's own addresses and the listed proxies whatever the name says.
+    const front = internet || services || hosts.length || forward.length ? await resolveAddresses(this.spec.frontHosts ?? []) : { addresses: [], unresolved: [] };
+    for (const h of front.unresolved) {
+      if (unresolvedSaid.has(h)) continue;
+      unresolvedSaid.add(h);
+      this.spec.warn?.(`${h} doesn't resolve on this machine, so sandboxes can't shut the front door at its addresses until it does`);
+    }
     const networked = internet || services || hosts.length > 0 || forward.length > 0;
     const resolved = await resolveHosts(hosts);
     // Files written into the sandbox's /etc. Hostnames are pinned when it starts;
@@ -482,7 +492,7 @@ export class Sandbox implements ExecutionTarget {
     if (networked) {
       const rules = nftRules(internet, resolved.rules, this.spec.exclude ?? [], {
         addresses: this.spec.self ?? hostAddresses(), services, front: this.spec.front ?? [],
-        frontAddresses: frontAddresses ?? [],
+        frontAddresses: front.addresses,
       });
       cmd = ["unshare", "--user", "--map-root-user", "--net", "--", "bash", "--norc", "-c", HOLD, "bash", rules, String(ready), String(ready + 1), ...cmd];
     }

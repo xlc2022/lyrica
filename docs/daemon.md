@@ -71,9 +71,18 @@ tailscaled's `tailscale serve` targets (Web access, Tailnet); a request on it
 came through her tailnet address. Both ports speak plain HTTP, so a request
 on either addressed to a name that isn't this machine (anything but
 localhost or 127.x) came through something that forwards to loopback, where
-the Secure login cookie can never be set: it is a wrong door, unless a
-trusted proxy on loopback says `X-Forwarded-Proto: https` (the built-in
-Caddy, `tailscale serve`). A page load is redirected to the HTTPS front door
+the Secure login cookie can never be set: it is a wrong door, and so is a
+request with no Host header. The exception is the proxy in front of that
+listener saying `X-Forwarded-Proto: https`: the built-in Caddy on the main
+port in Built-in mode, `tailscale serve` on the serve port in Tailnet mode.
+Each plain listener believes loopback's forwarded headers (`X-Forwarded-For`,
+`X-Forwarded-Host`, `X-Forwarded-Proto`) only while that mode is on, since
+her userspace tailscaled hands every tailnet peer to loopback too (The
+tailnet, below). The mode is read from `self.db` once unlocked, and before
+that from `<runtime>/web-front` (`builtin`, `tailnet` or `none`, mode
+`0600`), which `lyricad` writes at setup, at each unlock and at each change
+of mode; an install from before that file believes loopback as it did,
+until its first unlock writes it. A page load is redirected to the HTTPS front door
 when one is known (Direct at that very address, or the Tailnet mode's name),
 else answered 403 with one sentence saying how to turn one on; an API call
 gets the sentence as its 403 error, so an open login page shows it. Each
@@ -180,8 +189,10 @@ name/id and error class; stderr is discarded.
   logout and Lock end them.
 - Login, unlock, password changes and linking are rate-limited per login
   name and per address: three failures are free, then each attempt waits twice as long as
-  the last, up to 15 minutes (`429` with `Retry-After`). Behind Caddy, the
-  address is the last `X-Forwarded-For` entry.
+  the last, up to 15 minutes (`429` with `Retry-After`). In Built-in mode the
+  address is the last `X-Forwarded-For` entry, and behind an external proxy
+  the proxy's; the other modes believe no forwarded headers on loopback, so
+  neither a local process nor a tailnet peer can pick its own address.
 - One attempt per login name and per address runs at a time; others get
   `429` at once, so parallel guesses get no free tries. An unknown login
   still runs Argon2 (against a dummy key), so the time taken doesn't reveal
@@ -1181,9 +1192,12 @@ so is a tailnet destination when nothing listens on the port.
   reach lyricad's two plain listeners from any peer, and `https://` on those
   ports fails, since the listeners don't speak TLS: lyricad treats them as
   the wrong door (Starting and unlocking, above) and sends the browser to
-  `https://<her DNS name>/` once the Tailnet web mode is on. Nothing else
+  `https://<her DNS name>/` once the Tailnet web mode is on, and believes
+  those connections' forwarded headers only on the listener whose proxy is
+  in front (Starting and unlocking). Nothing else
   on loopback is meant to be reached that way; a service an operator adds
-  on loopback is reachable from her tailnet too.
+  on loopback is reachable from her tailnet too. A Tailscale ACL that allows
+  only port 443 to this machine closes the path for everything else.
 - `POST /hooks/forge/:account` answers on the serve port only (anywhere else
   it is 404), so it arrives through her tailnet address. It is a nudge, not a
   trusted read: `lyricad` checks the forge's HMAC signature
@@ -1208,7 +1222,10 @@ Direct and the external proxy's HTTPS listener speak HTTP/2 with HTTP/1.1
 fallback, so multiple tabs' streams can share one connection (principle 8).
 Plain-HTTP listeners stay HTTP/1.1.
 
-- **Only this machine** (`off`): only `127.0.0.1` and the Unix socket.
+- **Only this machine** (`off`): only `127.0.0.1` and the Unix socket. While
+  she is joined to a tailnet, its peers still reach those ports at her tailnet
+  address through her tailscaled's forwarding (The tailnet, above), where
+  nobody can log in: it is a wrong door, and no forwarded header is believed.
 - **Direct**, the mode she starts in: `lyricad` itself serves HTTPS on port
   7340 on every LAN and Tailscale address of this machine, with one
   certificate it makes naming them all (P-256, ten years), whose fingerprint
@@ -1285,6 +1302,9 @@ Plain-HTTP listeners stay HTTP/1.1.
   and the old one gives its open requests five seconds to finish, so the
   request that asked for the change gets its answer; if the new one can't
   open, the old one stays.
+- Which plain listener has its proxy in front (`builtin`, `tailnet` or
+  `none`) is kept in `<runtime>/web-front`, mode `0600`, for the listeners
+  before unlock (Starting and unlocking).
 - **Sandboxes never reach the front door.** `Workspace` reads it at every
   sandbox start (`frontDoor`): the front port (443, or the external proxy's
   own port) and Direct's port on this machine's addresses, on every address

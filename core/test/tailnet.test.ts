@@ -3,7 +3,7 @@ import { createSecureServer } from "node:http2";
 import { brotliCompressSync, gzipSync } from "node:zlib";
 import { createServer as createTcp, connect, type AddressInfo, type Socket } from "node:net";
 import { afterAll, describe, expect, it } from "vitest";
-import { addressesOutside, useTailnetProxy } from "../src/index.ts";
+import { addressesOutside, resolveHost, useTailnetProxy } from "../src/index.ts";
 import { fakeHost } from "./fake-host.ts";
 import { selfSigned } from "./fake-proxmox.ts";
 import { withModels } from "./helpers.ts";
@@ -58,6 +58,8 @@ describe("the tailnet, through her tailscaled's proxy", () => {
     }
     // A name in her tailnet counts as her own network: tailscaled resolves it to a peer.
     expect(await addressesOutside("http://lm.tail1234.ts.net:1234/v1")).toEqual([]);
+    // So does a Git account's or a machine's host there, which this machine's resolver can't look up.
+    expect(await resolveHost("forge.tail1234.ts.net")).toEqual({ addresses: [], outside: false });
   });
 
   it("leaves every other fetch as it was: compressed HTTP/2 answers still decode, through the tunnel too", async () => {

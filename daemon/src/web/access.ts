@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { generateKeyPairSync, X509Certificate } from "node:crypto";
 import { chmodSync, closeSync, existsSync, openSync, readFileSync, readSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { isIP } from "node:net";
 import { networkInterfaces } from "node:os";
 import { checkServerIdentity, connect as connectTls, type PeerCertificate } from "node:tls";
@@ -64,6 +65,36 @@ export const DIRECT_PORT = 7340;
 
 const OFF: Stored = { mode: "off", name: "" };
 const KEY = "web.access";
+
+/**
+ * Which plain loopback listener has a proxy in front of it: the built-in
+ * Caddy on lyricad's main port, `tailscale serve` on its serve port, or
+ * neither. Only that listener believes loopback's forwarded headers, since
+ * her userspace tailscaled hands every tailnet peer to loopback too. The
+ * mode is in self.db, so this is also kept in a plain file in lyricad's
+ * state directory, for the listeners before unlock.
+ */
+export type Front = "builtin" | "tailnet" | "none";
+export const FRONT_FILE = "web-front";
+
+/** The front as last saved, or undefined when the file isn't there (an install from before it, until its first unlock). */
+export function readFront(path: string): Front | undefined {
+  try {
+    const v = readFileSync(path, "utf8").trim();
+    return v === "builtin" || v === "tailnet" || v === "none" ? v : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export function writeFront(path: string, front: Front): void {
+  const tmp = join(dirname(path), `.${FRONT_FILE}.tmp`);
+  writeFileSync(tmp, `${front}\n`, { mode: 0o600 });
+  chmodSync(tmp, 0o600);
+  renameSync(tmp, path);
+}
+
+const frontOf = (mode: Api.WebMode): Front => (mode === "builtin" || mode === "tailnet" ? mode : "none");
 /** How long a new name may take to get its certificate before the change is undone. */
 export const CERT_WAIT_MS = 90_000;
 
@@ -209,6 +240,8 @@ export interface WebAccessOptions {
   /** This machine's Tailscale and LAN addresses. Read from its interfaces unless a test gives them. */
   addresses?: () => Api.HostAddress[];
   external: ExternalListener;
+  /** Where the proxied listener (Front) is kept for the listeners before unlock. */
+  frontFile?: string;
   /** How long to wait for a new name's certificate. */
   certWaitMs?: number;
   /** Extra CA to trust when checking the certificate (tests). */
@@ -266,6 +299,7 @@ export class WebAccess {
 
   private save(s: Stored): void {
     this.o.self().prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(KEY, JSON.stringify(s));
+    this.cachedFront = undefined;
   }
 
   private addresses(): Api.HostAddress[] { return (this.o.addresses ?? hostAddresses)(); }
@@ -312,7 +346,19 @@ export class WebAccess {
       throw new Error(this.redact((err as Error).message, next));
     }
     this.save({ ...next, appliedAt: Date.now() });
+    this.rememberFront();
     return this.view();
+  }
+
+  /** Which plain listener has its proxy in front now. Asked on every request, so it is read once per change. */
+  private cachedFront: Front | undefined;
+  front(): Front { return this.cachedFront ??= frontOf(this.load().mode); }
+
+  /** Writes the front to its file, so the listeners know it before the next unlock. */
+  rememberFront(): Front {
+    const f = this.front();
+    if (this.o.frontFile) writeFront(this.o.frontFile, f);
+    return f;
   }
 
   private async validate(c: Api.WebAccessChange, prev: Stored): Promise<{ next: Stored; external?: External | Direct }> {
