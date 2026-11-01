@@ -297,6 +297,10 @@ export const STEPS: Record<DbKind, MigrationStep[]> = {
     // Principles 2 and 6: a project's setup command, which installs a clone's dependencies in place of the lockfile's. Adds a column only.
     version: 19,
     run(db) { addColumns(db, [["project_settings", "setup", "TEXT"]]); },
+  }, {
+    // Principles 2 and 8: the evidence judge's setting per thread, auto (local code models only) by default. Adds a column only.
+    version: 20,
+    run(db) { addColumns(db, [["thread_workspaces", "evidence", "TEXT NOT NULL DEFAULT 'auto'"]]); },
   }],
   pool: [{
     version: 1, contract: true,

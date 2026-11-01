@@ -104,7 +104,7 @@ async function run(mode: ThreadWorkspace["mode"], calls: ReturnType<typeof fauxT
     ...(o.again ? [(_ctx: unknown) => { offered.push(session!.getActiveToolNames()); return fauxAssistantMessage("again"); }] : []),
   ]);
   const settings: ThreadWorkspace = {
-    grants: [{ path: "/srv/music", writable: false }], internet: false, services: false, hosts: [], mode, webSearch: true, images: true, claudeCode: false, code: false,
+    grants: [{ path: "/srv/music", writable: false }], internet: false, services: false, hosts: [], mode, webSearch: true, images: true, claudeCode: false, code: false, evidence: "auto",
     machines: (o.machines ?? []).map((m) => m.name), repositories: [], mcpServers: [], parent: null, ...o.settings,
   };
   const workspace = createWorkspaceExtension({

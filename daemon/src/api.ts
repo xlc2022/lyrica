@@ -34,6 +34,7 @@ export type ThreadTask = (typeof THREAD_TASKS)[number];
 /** One model on one endpoint, by its permanent offering ID, or a model group, which expands into its members in order. */
 export type ModelRef = { offeringId: string } | { groupId: string };
 export type ThinkingLevel = "off" | "low" | "medium" | "high";
+export type { EvidenceSetting } from "@lyrica/core";
 /** A preset's entry for a task: an ordered list, or another task's list (Same as). */
 export type Entry = ModelRef[] | { same: Task };
 export interface Pronouns { subj: string; obj: string; poss: string; possPro: string; refl: string }
@@ -941,6 +942,8 @@ export interface ProjectSettingsInfo {
   paused: boolean;
   /** The chat model new threads of the project start with; none: the project chat's. */
   threadsCode?: boolean;
+  /** The evidence judge's setting new threads of the project start with; none: the project chat's. */
+  threadsEvidence?: EvidenceSetting;
   threadsModel?: ModelRef | ModelRef[];
   threadsThinking?: ThinkingLevel;
   /** Fallback for new threads of the project; none: the project chat's. */
@@ -976,6 +979,8 @@ export interface ThreadChange {
   /** A project's setup command; empty or null clears it. */
   setup?: string | null;
   threadsCode?: boolean;
+  /** null follows the project chat. */
+  threadsEvidence?: EvidenceSetting | null;
   paused?: boolean; threadsModel?: ModelRef | ModelRef[] | null; threadsThinking?: ThinkingLevel | null; threadsFallback?: boolean | null; watchThreads?: boolean; checkInOnThreads?: boolean;
 }
 /** PUT and DELETE /api/u/:userId/threads/:pool/:threadId/pin → ThreadSummary. The user's own pin, in user.db. */
@@ -1124,6 +1129,8 @@ export interface TaskModel {
 
 export interface ThreadSettings {
   code: boolean;
+  /** The evidence judge on a code turn's reply: `auto` only on a local code model, `on` on any, `off` never. */
+  evidence: EvidenceSetting;
   models: Record<ThreadTask, TaskModel>;
   /** Wake-ups waiting, soonest first; the user may remove each (`DELETE …/wakeups/:id`). */
   wakeups: WakeupInfo[];
@@ -1201,6 +1208,7 @@ export interface ThreadSettings {
  */
 export interface ThreadSettingsChange {
   code?: boolean;
+  evidence?: EvidenceSetting;
   /** A model or an ordered list; null clears the thread's choice, so the column's applies. */
   models?: Partial<Record<ThreadTask, ModelRef | ModelRef[] | null>>;
   /** The preset the thread uses by id; null follows its column. Private and local-only threads may choose only a private preset. */
@@ -1295,7 +1303,7 @@ export type MessagePart =
    * result or question, a note, or what a user wrote to one of its subagents.
    * `status` says which ("finished", "question", "note", "user_message", …;
    * "limit" for the tool limit, "checks-passed" or "checks-failed" for a project's checks,
-   * "evidence-checked" or "evidence-not-shown" for the evidence check after them,
+   * "evidence-checked" or "evidence-not-shown" for the evidence judge after them,
    * "job" for a background command that ended).
    */
   | { type: "delegation"; text: string; runId?: string; status?: string; threads?: ThreadRef[]; told?: Told[] }
@@ -2398,7 +2406,7 @@ export interface PushInfo {
 }
 export type { PushSettings } from "@lyrica/core";
 export type { ChangedFile, ChangeCommit, CheckResult, FileSides, RepositoryChanges } from "@lyrica/core";
-import type { ChangedFile, CheckResult, RepositoryChanges } from "@lyrica/core";
+import type { EvidenceSetting, ChangedFile, CheckResult, RepositoryChanges } from "@lyrica/core";
 
 /** GET /api/u/:userId/events: text-free list invalidation; hello on every connection. */
 export type UserEvent = { type: "hello" } | { type: "changed" };

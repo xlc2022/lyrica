@@ -1879,6 +1879,11 @@ test("Code mode: thread switch, Coding model and project defaults", async ({ pag
   await drawer.getByRole("checkbox", { name: "Code mode", exact: true }).click();
   await expect.poll(async () => (await api("GET", `${path}/settings`)).code).toBe(true);
   await expect(drawer.getByRole("combobox", { name: "Mode", exact: true })).toHaveValue(mode);
+  // The Evidence judge select under it: Automatic until the thread picks, saved at once.
+  const judge = drawer.getByRole("combobox", { name: "Evidence judge", exact: true });
+  await expect(judge.locator("option:checked")).toHaveText("Automatic (local models only)");
+  await judge.selectOption("off");
+  await expect.poll(async () => (await api("GET", `${path}/settings`)).evidence).toBe("off");
   // One Conversation select edits what answers now: Coding here. A thread's pick replaces the preset's list.
   const conversation = drawer.getByRole("combobox", { name: "Conversation", exact: true });
   await expect(conversation).toHaveValue(local);
@@ -1911,16 +1916,19 @@ test("Code mode: thread switch, Coding model and project defaults", async ({ pag
   await openProjectSettings(page);
   // New threads say what new threads get, and name the coordinator they follow rather than "this chat":
   // the page opens on its own, with no chat in view. The chat's own Model and Mode live in its header, drawer and composer.
-  for (const field of ["Model", "Thinking", "Fallback"])
+  for (const field of ["Model", "Evidence judge", "Thinking", "Fallback"])
     await expect(page.getByRole("combobox", { name: field, exact: true }).locator("option").first()).toHaveText("Same as coordinator");
+  await page.getByRole("combobox", { name: "Evidence judge", exact: true }).selectOption("on");
   await expect(page.getByRole("heading", { name: "Workspace", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "This chat", exact: true })).toHaveCount(0);
   await expect(page.getByRole("combobox", { name: "Mode", exact: true })).toHaveCount(0);
   await page.getByRole("checkbox", { name: "Code mode", exact: true }).click();
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect.poll(async () => (await api("GET", path)).projectSettings.threadsCode).toBe(true);
+  expect((await api("GET", path)).projectSettings.threadsEvidence).toBe("on");
   await page.reload();
   await expect(page.getByRole("checkbox", { name: "Code mode", exact: true })).toBeChecked();
+  await expect(page.getByRole("combobox", { name: "Evidence judge", exact: true })).toHaveValue("on");
   await noHorizontalScroll(page);
   if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/code-mode-project-${page.viewportSize()!.width}.png`, fullPage: true });
 

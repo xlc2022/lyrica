@@ -1467,7 +1467,7 @@ thread to carry on with CI as the judge, saves the known failure with
 it (`daemon/src/children.ts`, `checksReport`). The output stays in the encrypted
 conversation and is never logged (`extension/src/checks.ts`).
 
-### The evidence check
+### The evidence judge
 
 Principles 2 and 6: once the checks pass, or where the project has none, the
 same reply is judged against what the turn's tools showed, so "done" rests
@@ -1476,7 +1476,7 @@ goes to the thread's own `code` model list through the router, so a private
 or local-only thread's stays local and no model is added. The judge (its
 prompt adapted from opencode's goal judge, MIT) sees the person's request
 and the Code task as data, each tool call of the turn with the last 60
-lines of its result (at most 80 calls and 60,000 characters, newest kept),
+lines of its result (at most 40 calls and 30,000 characters, newest kept),
 and her reply, marked as a claim and not evidence. It answers one JSON line:
 `done`, `continue` with what isn't shown and the next step, or `blocked`
 with what only the person can give. A `continue` goes back to her unseen,
@@ -1488,6 +1488,14 @@ can't run, counts as `done` and says so. Each judgment shows an
 the judge's reason as its body. It never runs in a project chat, in Plan
 mode or for a subagent (its parent reads the report). The prompt and
 answer stay in the encrypted conversation and are never logged.
+
+The **Evidence judge** setting (principle 8) says when it runs: **Automatic
+(local models only)**, the default, judges only when the code model that
+answers is local, so a cloud model's tokens are spent only where someone
+chose it; **On** judges on any model; **Off** never. It sits beside Code
+mode in the thread drawer and under Project settings → New threads, where
+a project sets what its new threads start with; each thread keeps its own
+copy and changes it on its own, and a skipped judgment shows no notice.
 
 ### Syntax check after a write
 

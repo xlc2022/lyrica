@@ -1186,14 +1186,17 @@ failing command, its checkout and short head commit, and the last 20 lines
 it at once, in place of the turn's other end notice.
 With `judge(prompt, signal?)` and `codeTask()` (the daemon gives them to a
 thread that is neither a project chat nor a subagent; `judge` answers
-`judgePrompt(…)` on the thread's `code` list through `callWithFallback`),
+`judgePrompt(…)` on the thread's `code` list through `callWithFallback`,
+and answers `undefined`, which shows nothing, when the thread's `evidence`
+setting is `off`, or `auto` and the model that answered is not local),
 it then judges the reply once the checks pass or there are none: a
 `lyrica-evidence` notice ("Evidence checked: …" or "Evidence not shown: …",
 `EvidenceResult { ok, reason }` details that the daemon turns into a
 `delegation` part with status `evidence-checked` or `evidence-not-shown`)
 and, on `continue`, a hidden `lyrica-evidence-continue` follow-up, at most
 `EVIDENCE_ROUNDS` (2) a run, the same reason twice ending them
-(`extension/src/evidence.ts`: `judgePrompt`, `parseVerdict`, `continueAsk`).
+(`extension/src/evidence.ts`: `judgePrompt`, `parseVerdict`, `continueAsk`;
+the prompt keeps at most 40 calls and 30,000 characters, newest first).
 `createSyntaxExtension({ target(machine?) })` appends "Syntax check
 failed: …" to a successful `write` or `edit` of a .js, .mjs, .cjs, .json or
 .py file whose checker fails on the target, within 10 seconds (exit 127, a
@@ -2372,6 +2375,13 @@ expand-only user step 14 (`thread_workspaces.code`). `inheritSettings`
 copies it to descendants; each child can edit it independently. It is not
 narrowed by ancestors and never changes permission mode.
 `ThreadSettings` returns `code: boolean`; PATCH accepts `code?: boolean`.
+`ThreadWorkspace.evidence` (`EvidenceSetting`: `auto`, `on` or `off`,
+`EVIDENCE_SETTINGS`) is the evidence judge's setting, `auto` by default
+(judged only on a local code model), stored by expand-only user step 20
+(`thread_workspaces.evidence`, TEXT default 'auto'), copied to descendants
+and edited independently like `code`. `ThreadSettings` returns it; PATCH
+accepts `evidence?: EvidenceSetting`; a change reloads the thread's session
+as the other workspace keys do.
 The daemon's `Task` and `THREAD_TASKS` include `code`. A thread's `code`
 override wins in code mode; its Chat override does not apply. Thread model
 selection continues to use `preset`, never a profile choice.
@@ -2392,6 +2402,8 @@ several is refused with the closest; subagents are refused.
 Project settings carry optional `threadsCode`, stored in encrypted user
 settings (`project.code.<pool>/<id>`), removed on forget. New child and
 routine threads apply it beside `threadsModel`; unset inherits the parent.
+`threadsEvidence` (`EvidenceSetting`, null clears) is stored and applied
+the same way (`project.evidence.<pool>/<id>`).
 `threadsModel` becomes a new thread's own `code` model when that thread
 starts in code mode, and its own `chat` model otherwise.
 The watcher exposes cached open PR checks via `codePulls`, without a new

@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   del, get, patch, post, put, threadPath, u,
-  type CommandRule, type AllowedPaths, type GitRepository, type Grant, type MachineInfo, type MessagePart, type ModelRef, type Pool, type ProjectOverview, type ThinkingLevel, type ThreadChange, type ThreadSettings, type ThreadSummary,
+  type CommandRule, type AllowedPaths, type EvidenceSetting, type GitRepository, type Grant, type MachineInfo, type MessagePart, type ModelRef, type Pool, type ProjectOverview, type ThinkingLevel, type ThreadChange, type ThreadSettings, type ThreadSummary,
 } from "./api.ts";
 import { ProjectQuestion } from "./Question.tsx";
 import { FoldConfirm, foldLosses, foldLossNames } from "./FoldConfirm.tsx";
@@ -16,7 +16,7 @@ import { go, href, parse } from "./route.ts";
 import { Repositories } from "./Git.tsx";
 import { McpServers } from "./Mcp.tsx";
 import { FilesSection } from "./ProjectFiles.tsx";
-import { CODE_MODE_HINT, Folders, Machines } from "./Settings.tsx";
+import { CODE_MODE_HINT, EVIDENCE_CHOICES, EVIDENCE_HINT, Folders, Machines } from "./Settings.tsx";
 import { Main, PageHead, useWide, type ShellContext } from "./Shell.tsx";
 import { ConfirmDialog, Dialog, ErrorText, Prose, shortTime, Switch, useAction, useDismiss, useInView, useLoad, wakeTime } from "./ui.tsx";
 import { modelName } from "./ModelLabel.tsx";
@@ -332,7 +332,7 @@ export function ProjectPage({ ctx, pool, threadId, section }: { ctx: ShellContex
   );
 }
 
-/** Goal; Paused, Watching threads and Check in on threads; New threads (Model, Code mode, Thinking, Fallback); Workspace (Group, Folders, Machines, Repositories, MCP servers) and the Thread settings link; Commands; Setup; Checks; one Save. */
+/** Goal; Paused, Watching threads and Check in on threads; New threads (Model, Code mode, Evidence judge, Thinking, Fallback); Workspace (Group, Folders, Machines, Repositories, MCP servers) and the Thread settings link; Commands; Setup; Checks; one Save. */
 export function GeneralSection({ ctx, base, summary, settings, onSummary, onSettings }: {
   ctx: ShellContext; base: string; summary: ThreadSummary; settings: ThreadSettings; onSummary: (s: ThreadSummary) => void; onSettings: (s: ThreadSettings) => void;
 }) {
@@ -347,6 +347,7 @@ export function GeneralSection({ ctx, base, summary, settings, onSummary, onSett
   const [checkIn, setCheckIn] = useState(ps?.checkInOnThreads !== false);
   const [model, setModel] = useState(refOf(ps?.threadsModel));
   const [code, setCode] = useState(ps?.threadsCode ?? settings.code);
+  const [evidence, setEvidence] = useState<EvidenceSetting | "">(ps?.threadsEvidence ?? "");
   const [thinking, setThinking] = useState<ThinkingLevel | "">(ps?.threadsThinking ?? "");
   const [fallback, setFallback] = useState<"" | "on" | "off">(ps?.threadsFallback === undefined ? "" : ps.threadsFallback ? "on" : "off");
   const [group, setGroup] = useState(summary.group ?? "");
@@ -367,6 +368,7 @@ export function GeneralSection({ ctx, base, summary, settings, onSummary, onSett
       ...(checkIn !== (ps?.checkInOnThreads !== false) ? { checkInOnThreads: checkIn } : {}),
       threadsModel: model ? { offeringId: model } : null,
       ...(code !== (ps?.threadsCode ?? settings.code) ? { threadsCode: code } : {}),
+      threadsEvidence: evidence || null,
       threadsThinking: thinking || null,
       threadsFallback: fallback ? fallback === "on" : null,
       ...(group !== (summary.group ?? "") ? { group: group || null } : {}),
@@ -424,6 +426,13 @@ export function GeneralSection({ ctx, base, summary, settings, onSummary, onSett
           </select>
         </label>
         <Switch label="Code mode" hint={CODE_MODE_HINT} checked={code} onChange={setCode} />
+        <label className="field" title={`${EVIDENCE_HINT} ${newThreadsHint}`}>
+          <span>Evidence judge</span>
+          <select value={evidence} onChange={(e) => setEvidence(e.target.value as EvidenceSetting | "")}>
+            <option value="">Same as coordinator</option>
+            {EVIDENCE_CHOICES.map(([v, name]) => <option key={v} value={v}>{name}</option>)}
+          </select>
+        </label>
         <label className="field" title={newThreadsHint}>
           <span>Thinking</span>
           <select value={thinking} onChange={(e) => setThinking(e.target.value as ThinkingLevel | "")}>

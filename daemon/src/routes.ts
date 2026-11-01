@@ -1,4 +1,4 @@
-import { DEFAULT_THINKING, PushStore, type PushSettings, type SkillLibrary } from "@lyrica/core";
+import { EVIDENCE_SETTINGS, DEFAULT_THINKING, PushStore, type PushSettings, type SkillLibrary } from "@lyrica/core";
 import { pushTarget } from "./push.ts";
 import { imageRetryOptions } from "./image-retry.ts";
 import { randomUUID } from "node:crypto";
@@ -1106,7 +1106,7 @@ export function apiRoutes(d: Lyricad): Route[] {
           s().projects.pin(user.id, pool, thread.id, true);
         }
         const project = !!store.getThread(thread.id)!.project;
-        const settings = change.threadsCode !== undefined || change.paused !== undefined || change.threadsModel !== undefined || change.threadsThinking !== undefined || change.threadsFallback !== undefined || change.watchThreads !== undefined || change.checkInOnThreads !== undefined || change.commandRules !== undefined || change.checks !== undefined || change.setup !== undefined;
+        const settings = change.threadsCode !== undefined || change.threadsEvidence !== undefined || change.paused !== undefined || change.threadsModel !== undefined || change.threadsThinking !== undefined || change.threadsFallback !== undefined || change.watchThreads !== undefined || change.checkInOnThreads !== undefined || change.commandRules !== undefined || change.checks !== undefined || change.setup !== undefined;
         if ((change.goal !== undefined || change.instructions !== undefined || change.discardDraft !== undefined || settings) && !project) {
           throw new HttpError(400, "only a project has a goal, instructions and project settings");
         }
@@ -1140,11 +1140,13 @@ export function apiRoutes(d: Lyricad): Route[] {
         }
         if (change.threadsThinking !== undefined && change.threadsThinking !== null && !THINKING_LEVELS.includes(change.threadsThinking)) throw new HttpError(400, "threadsThinking is off, low, medium or high");
         if (change.threadsFallback !== undefined && change.threadsFallback !== null && typeof change.threadsFallback !== "boolean") throw new HttpError(400, "threadsFallback is true, false or null");
+        if (change.threadsEvidence !== undefined && change.threadsEvidence !== null && !EVIDENCE_SETTINGS.includes(change.threadsEvidence)) throw new HttpError(400, "threadsEvidence is auto, on, off or null");
         if (settings) {
           s().projects.set(user.id, pool, thread.id, {
             ...(change.paused !== undefined ? { paused: !!change.paused } : {}),
             ...(change.threadsModel !== undefined ? { model: change.threadsModel } : {}),
             ...(change.threadsCode !== undefined ? { code: change.threadsCode } : {}),
+            ...(change.threadsEvidence !== undefined ? { evidence: change.threadsEvidence } : {}),
             ...(change.threadsThinking !== undefined ? { thinking: change.threadsThinking } : {}),
             ...(change.threadsFallback !== undefined ? { fallback: change.threadsFallback } : {}),
             ...(change.watchThreads !== undefined ? { watch: !!change.watchThreads } : {}),
@@ -2722,7 +2724,7 @@ function summary(d: Lyricad, user: User, pool: Pool, store: PoolStore, th: Threa
     ...(settings ? { projectSettings: {
       ...(settings.draftGoal !== undefined ? { draftGoal: settings.draftGoal } : {}),
       ...(settings.draftInstructions !== undefined ? { draftInstructions: settings.draftInstructions } : {}),
-      commandRules: d.services!.workspace.settings(user.id).commandRules(pool, th.id), checks: d.services!.workspace.settings(user.id).checks(pool, th.id), setup: d.services!.workspace.settings(user.id).setup(pool, th.id), pageId: `p:${projectSlug(th.id)}`, paused: settings.paused, threadsCode: settings.code, watchThreads: settings.watch, checkInOnThreads: settings.checkIn, ...(settings.model ? { threadsModel: settings.model } : {}), ...(settings.thinking ? { threadsThinking: settings.thinking } : {}),
+      commandRules: d.services!.workspace.settings(user.id).commandRules(pool, th.id), checks: d.services!.workspace.settings(user.id).checks(pool, th.id), setup: d.services!.workspace.settings(user.id).setup(pool, th.id), pageId: `p:${projectSlug(th.id)}`, paused: settings.paused, threadsCode: settings.code, ...(settings.evidence ? { threadsEvidence: settings.evidence } : {}), watchThreads: settings.watch, checkInOnThreads: settings.checkIn, ...(settings.model ? { threadsModel: settings.model } : {}), ...(settings.thinking ? { threadsThinking: settings.thinking } : {}),
       ...(settings.fallback !== undefined ? { threadsFallback: settings.fallback } : {}),
     } } : {}),
     ...(mine ? { state: mine.state, ...(mine.held ? { held: mine.held } : {}), ...(mine.worktreeReason ? { worktreeReason: mine.worktreeReason } : {}), ...(mine.anchor !== undefined ? { anchor: mine.anchor } : {}), ...(mine.needsYou ? { needsYou: true as const } : {}), ...chips(d, user, pool, th.id, look) } : {}),
@@ -2884,7 +2886,7 @@ function threadSettings(d: Lyricad, user: User, pool: Pool, threadId: string): A
     network: workspace.network({ userId: user.id, pool, threadId }),
     grants: applies.grants, machines: applies.machines, repositories: applies.repositories, mcpServers: applies.mcpServers, mode: applies.mode, webSearch: applies.webSearch,
     searchProvider: !!(searxngAddress(d.keyring.self()) || kiwixAddress(d.keyring.self())), images: applies.images, unlogged: isUnlogged, parent: tw.parent,
-    claudeCode: applies.claudeCode,
+    claudeCode: applies.claudeCode, evidence: tw.evidence,
     claudeCodeOffered: pool === "general" && !ctx.localOnly && !!workspace.settings(user.id).claudeCodeToken() && claudeCodeInstalled(),
     speech: speechState(models, ctx),
     fallback: models.threadFallback(user.id, threadId), fallbackOn: ctx.fallback !== false,
@@ -2895,7 +2897,7 @@ function threadSettings(d: Lyricad, user: User, pool: Pool, threadId: string): A
   };
 }
 
-const WORKSPACE_KEYS = ["grants", "internet", "services", "hosts", "mode", "code", "webSearch", "images", "claudeCode", "machines", "repositories", "mcpServers"] as const;
+const WORKSPACE_KEYS = ["grants", "internet", "services", "hosts", "mode", "code", "evidence", "webSearch", "images", "claudeCode", "machines", "repositories", "mcpServers"] as const;
 
 /** A thread's subagents and child threads, and theirs, hidden ones included. */
 function descendants(d: Lyricad, user: User, pool: Pool, threadId: string): string[] {
@@ -2947,6 +2949,7 @@ function changeSettings(d: Lyricad, user: User, pool: Pool, thread: Thread, chan
   }
 
   for (const k of ["code", "webSearch", "images", "claudeCode"] as const) if (change[k] !== undefined && typeof change[k] !== "boolean") throw new Error(`${k} is true or false`);
+  if (change.evidence !== undefined && !EVIDENCE_SETTINGS.includes(change.evidence)) throw new Error("evidence is auto, on or off");
   // Claude Code sends what it reads to Anthropic, so a local-only thread can't have it (Workspace.claudeCodeFor checks again at every run).
   if (localOnly && (change.claudeCode ?? (pool === "general" && ws.thread(thread.id).claudeCode))) throw new CloudModelForbidden("Claude Code sends what it reads to Anthropic, so a local-only thread can't use it");
   if (change.fallback !== undefined && change.fallback !== null && typeof change.fallback !== "boolean") throw new Error("fallback is true, false or null");

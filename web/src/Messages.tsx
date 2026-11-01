@@ -1155,7 +1155,7 @@ const NOTICE_HEADS: Record<string, string> = {
   update: "Child thread", limit: "Tool limit", "checks-passed": "Checks", "checks-failed": "Checks", "evidence-checked": "Evidence", "evidence-not-shown": "Evidence", job: "Background command",
   clip: "Clip", "clip-failed": "Clip",
 };
-/** A project's checks at the end of a code turn, and the evidence check after them: a dot and a word after the head. */
+/** A project's checks at the end of a code turn, and the evidence judge after them: a dot and a word after the head. */
 const CHECK_STATES: Record<string, ReactNode> = {
   "checks-passed": <span className="status-word"><span className="dot up" aria-hidden="true" />passed</span>,
   "checks-failed": <span className="status-word"><span className="dot down" aria-hidden="true" />failed</span>,
