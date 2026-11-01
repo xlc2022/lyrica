@@ -59,7 +59,8 @@ working implementation (`config/extensions/stateful-memory/memory-sleep.js`).
    rename reaches every memory. Its text, summary and a page's
    instructions are respelled, a user's own notes and words included (the
    user renamed the file or approved it; decided 2026-11-01): the one edit
-   sleep makes to a user's words. The revision keeps the renames, so a
+   sleep makes to a user's words, and the store refuses it unless the new
+   version is exactly the old one with its paths respelled. The revision keeps the renames, so a
    page's user-written words are known in their new spelling afterwards
    and sleep still keeps them word for word. The renames
    are then cleared (`PoolStore.applyRenames`). This runs whenever sleep
