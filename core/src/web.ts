@@ -245,6 +245,47 @@ export class SearchGate {
 
 const gate = new SearchGate();
 
+/** Words too common to tell whether a result is about the search. */
+const COMMON = new Set("the and for with from that this what when where which who why how are was were has have not you your about into its can does did".split(" "));
+/** Scripts written without spaces between words, where a query's words can't be told apart. */
+const UNSPACED = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}\p{Script=Thai}]/u;
+const plain = (s: string) => s.normalize("NFKD").replace(/\p{M}+/gu, "").toLowerCase();
+const words = (s: string) => plain(s).match(/[\p{L}\p{N}]+/gu) ?? [];
+
+/** Whether two words differ by at most one letter added, dropped or changed. */
+function oneApart(a: string, b: string): boolean {
+  if (Math.abs(a.length - b.length) > 1) return false;
+  let i = 0;
+  while (i < a.length && a[i] === b[i]) i++;
+  const rest = (x: string, y: string) => x.slice(i + 1) === y.slice(i + 1) || x.slice(i + 1) === y.slice(i) || x.slice(i) === y.slice(i + 1);
+  return i === a.length && i === b.length ? true : rest(a, b);
+}
+
+/**
+ * A test for whether a result is about the search: it shares at least one
+ * in three of the query's words, in its title, URL or snippet, allowing a
+ * different ending (moth, moths) or one letter's typo in a longer word. A
+ * query that has no such words (only short or common ones, or Chinese,
+ * Japanese, Korean or Thai) keeps every result. Bing through SearXNG now and
+ * then answers with results for something else entirely, or for one word of
+ * the query alone.
+ */
+export function aboutQuery(query: string): ((r: { title?: string; url?: string; content?: string }) => boolean) | undefined {
+  const terms = [...new Set(words(query))].filter((w) => w.length >= 3 && !COMMON.has(w) && !UNSPACED.test(w));
+  if (!terms.length) return undefined;
+  // One word in three, so dinner rolls don't pass for a search about a Rolls-Royce engine.
+  const need = Math.ceil(terms.length / 3);
+  return (r) => {
+    const text = `${r.title ?? ""} ${r.url ?? ""} ${r.content ?? ""}`;
+    const joined = plain(text);
+    const seen = words(text);
+    const shared = terms.filter((t) => joined.includes(t) || seen.some((w) =>
+      (Math.min(w.length, t.length) >= 4 && Math.abs(w.length - t.length) <= 3 && (w.startsWith(t) || t.startsWith(w)))
+      || (t.length >= 5 && oneApart(t, w))));
+    return shared.length >= need;
+  };
+}
+
 /**
  * `web_search`: up to `count` results as title, date, URL and snippet, after
  * an answer or infobox if SearXNG has one. Searches go a second apart, and
@@ -263,15 +304,22 @@ export async function searxngSearch(address: string, query: string, o: WebSearch
   const boxLine = box && oneLine(box.content).split(/(?<=\.)\s/)[0];
   if (boxLine) lines.push(`${oneLine(box.infobox) || "Infobox"}: ${boxLine}`);
   if (lines.length) lines.push("");
-  const results = (reply.results ?? []).filter((x) => x.url).slice(0, o.count);
+  const about = aboutQuery(query);
+  const found = (reply.results ?? []).filter((x) => x.url);
+  const unrelated = about ? found.filter((x) => !about(x)) : [];
+  const results = found.filter((x) => !unrelated.includes(x)).slice(0, o.count);
   results.forEach((r, i) => {
     const date = day(r.publishedDate);
     lines.push(`${i + 1}. ${oneLine(r.title) || r.url}${date ? ` (${date})` : ""}`, `   ${r.url}`);
     const snippet = oneLine(r.content);
     if (snippet) lines.push(`   ${snippet}`);
   });
+  const from = [...new Set(unrelated.flatMap((x) => x.engines ?? (x.engine ? [x.engine] : [])))];
+  const left = unrelated.length ? `Left out ${unrelated.length} result${unrelated.length === 1 ? "" : "s"} that share${unrelated.length === 1 ? "s" : ""} too few words with the search${from.length ? ` (from ${from.join(", ")})` : ""}.` : "";
+  if (results.length && left) lines.push("", left);
   if (!results.length) {
     lines.push(`No results for "${query}"${o.page && o.page > 1 ? ` on page ${o.page}` : ""}.`);
+    if (left) lines.push(left);
     const failed = g.failed(reply);
     if (failed.line) lines.push(`These search engines didn't answer: ${failed.line}.`);
     if (failed.allRefused) lines.push("SearXNG rests an engine that refused, for minutes to a day (its search.suspended_times): the same search again now gets the same answer. Try another category, or later.");

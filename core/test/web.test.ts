@@ -1,6 +1,6 @@
 import { deflateSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
-import { cutPage, fetchArgv, fetchedPage, htmlMarkdown, outside, pdfText, renderArgv, renderedPage, SearchGate, searxngSearch } from "../src/web.ts";
+import { aboutQuery, cutPage, fetchArgv, fetchedPage, htmlMarkdown, outside, pdfText, renderArgv, renderedPage, SearchGate, searxngSearch } from "../src/web.ts";
 
 // What web_fetch and web_search give her (docs/workspace.md, "Web").
 
@@ -133,6 +133,40 @@ describe("web_search", () => {
   });
 
   const fresh = (at = { t: 0 }, gap = 0) => new SearchGate(() => at.t, gap);
+
+  it("leaves out results that share no word with the search, and says so", async () => {
+    const junk = [
+      { title: "Instagram App - App Store", url: "https://apps.apple.com/us/app/instagram/id389801252", content: "Download Instagram by Instagram, Inc.", engines: ["bing"] },
+      { title: "Instagram Reality Baybeh! - Reddit", url: "https://www.reddit.com/r/InstagramReality/", engines: ["bing"] },
+    ];
+    const good = { title: "Rolls-Royce Phantom II", url: "https://en.wikipedia.org/wiki/Rolls-Royce_Phantom_II", content: "A straight-six car.", engines: ["mojeek"] };
+    const some = await searxngSearch("http://s.lan", "Rolls-Royce V16 wikipedia engine", { count: 5 }, undefined, replies({ results: [junk[0], good, junk[1]] }), fresh());
+    expect(some).toBe("1. Rolls-Royce Phantom II\n   https://en.wikipedia.org/wiki/Rolls-Royce_Phantom_II\n   A straight-six car.\n\nLeft out 2 results that share too few words with the search (from bing).");
+    const none = await searxngSearch("http://s.lan", "Rolls-Royce V16 wikipedia engine", { count: 5 }, undefined, replies({ results: junk }), fresh());
+    expect(none).toBe(`No results for "Rolls-Royce V16 wikipedia engine".\nLeft out 2 results that share too few words with the search (from bing).`);
+  });
+
+  it("leaves out a result that matches only one word of a longer search", () => {
+    // What bing answered on a test machine.
+    const about = aboutQuery("Rolls-Royce V16 wikipedia engine")!;
+    expect(about({ title: "Rolls-Royce Motor Cars - Wikipedia", url: "https://en.wikipedia.org/wiki/Rolls-Royce_Motor_Cars" })).toBe(true);
+    expect(about({ title: "Configure Your Rolls-Royce", url: "https://www.rolls-roycemotorcars.com/en_US/bespoke/configure-your-rolls-royce.html" })).toBe(true);
+    expect(about({ title: "Classic Dinner Rolls Recipe", url: "https://www.allrecipes.com/recipe/215378/classic-dinner-rolls/" })).toBe(false);
+    expect(about({ title: "Amazon.com: Rolls", url: "https://www.amazon.com/rolls/s?k=rolls" })).toBe(false);
+    expect(about({ title: "Rolls in Bakery & Bread - Walmart.com", url: "https://www.walmart.com/browse/food/rolls/976759_976779_1037480" })).toBe(false);
+  });
+
+  it("counts a result as about the search despite a different ending, a typo, accents or case", () => {
+    const about = aboutQuery("lunar moths")!;
+    expect(about({ title: "Moth week", url: "https://n.example" })).toBe(true);
+    expect(about({ title: "Lunr", url: "https://x.example" })).toBe(true);
+    expect(about({ title: "Butterflies", url: "https://x.example" })).toBe(false);
+    expect(aboutQuery("Café crème")!({ title: "CAFE menu" })).toBe(true);
+    expect(aboutQuery("rols royce")!({ url: "https://www.rolls-roycemotorcars.com/" })).toBe(true);
+    // Nothing to tell by: every result stays.
+    expect(aboutQuery("what is it")).toBeUndefined();
+    expect(aboutQuery("劳斯莱斯 发动机")).toBeUndefined();
+  });
 
   it("tries again once when an engine failed passingly, then says which and what SearXNG suggests", async () => {
     seen.length = 0;
