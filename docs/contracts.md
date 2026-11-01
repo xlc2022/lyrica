@@ -2076,10 +2076,13 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   - models (paths under `/api/u/:userId/`):
     - **Endpoints:** `GET`/`POST endpoints`; `PATCH`/`DELETE endpoints/:id`;
       `POST endpoints/:id/discover`, `…/reset-ids`, `…/merge` (→ `EndpointInfo`),
-      `…/models` (→ `OfferingInfo`); `GET …/probe`. Types: `EndpointInfo` (`api`,
+      `…/models` (→ `OfferingInfo`); `PATCH endpoints/:id/models`
+      (`ModelsEnabledChange` `{ disabled, offeringIds? }`, every model of the
+      endpoint without `offeringIds` → `EndpointInfo`); `GET …/probe`. Types: `EndpointInfo` (`api`,
       `addresses`, `fingerprint`, `hasApiKey`, `keyLast4?`, `planAccount?`,
       `cloudCapabilities?`, `unencrypted`, `stale`,
-      `downSince`, `signedOut`, `models: OfferingInfo[]`), `OfferingInfo` (with `label`),
+      `downSince`, `signedOut`, `models: OfferingInfo[]`), `OfferingInfo` (with `label`
+      and `disabled?`, switched off in its endpoint's list),
       `EndpointInput`, `EndpointChange`, `ModelInput`, `Probe`, `MergeInput`.
     - **Plans:** `POST plans/sign-in` (`PlanSignInStart`: `plan` and `name`,
       or `endpointId` to sign in again → `PlanSignInStarted` `{ id, url,
