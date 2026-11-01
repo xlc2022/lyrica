@@ -1239,7 +1239,8 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   the `# ` title line that follows the outside-content marker) as links
   under its text, before the reaction chips. A read from the offline copy
   (`core/src/kiwix.ts`) on a loopback address shows "Offline <copy>" in
-  place of the host, a picture from it its file name as the title, and a
+  place of the host, a picture from it its file name as the title and
+  a link through `FileLinks.picture` (`/web/picture`), and any other
   loopback chip is a plain chip rather than a link unless the app itself
   is open on a loopback address, its tooltip ending "Only the server can
   open this address."

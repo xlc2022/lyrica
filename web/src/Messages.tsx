@@ -468,10 +468,10 @@ function Sep() {
  */
 /**
  * A page she read in a turn: its URL, the title web_fetch headed it with (a picture's name for a picture from the
- * offline copy), what to show for where it came from, and whether it is on the server's own loopback, which a browser
- * can't open.
+ * offline copy), what to show for where it came from, whether it is on the server's own loopback, which a browser
+ * can't open, and whether it is a picture of the offline copy, which lyricad serves (`/web/picture`).
  */
-export interface Source { url: string; title?: string; host: string; local?: boolean }
+export interface Source { url: string; title?: string; host: string; local?: boolean; picture?: boolean }
 
 /** Which offline copy a fetch read from, as kiwix.ts names it ("the offline copy of Wikipedia (2026-08)"), without the date. */
 const OFFLINE = /^(?:A picture from|Outside content from \S+ \() ?the offline copy of (.+?)(?: \(\d{4}-\d{2}\))?(?::|\), not from the user:)/;
@@ -504,18 +504,19 @@ export function sourcesOf(parts: MessagePart[]): Source[] {
     const picture = p.result.startsWith("A picture from ");
     const title = picture ? pictureName(url) : /^<<<web [0-9a-f]+>>>\n# (.+)$/m.exec(p.result)?.[1]?.trim();
     const host = copy && local ? `Offline ${copy}` : url.hostname.replace(/^www\./, "");
-    seen.set(url.href, { url: url.href, title: title || undefined, host, ...(local ? { local } : {}) });
+    seen.set(url.href, { url: url.href, title: title || undefined, host, ...(local ? { local } : {}), ...(picture && copy ? { picture: true } : {}) });
   }
   return [...seen.values()];
 }
 
 /**
- * Principle 1: where her answer came from, under her reply (docs/ux.md, "The pages she read"). Each opens in a new tab,
- * except one on the server's loopback when this page isn't itself on a loopback address: the browser can't reach it, so
- * it is a plain chip.
+ * Principle 1: where her answer came from, under her reply (docs/ux.md, "The pages she read"). Each opens in a new tab:
+ * a picture of the offline copy through lyricad, which serves it; any other on the server's loopback, when this page
+ * isn't itself on a loopback address, is a plain chip, since the browser can't reach it.
  */
-function Sources({ sources }: { sources: Source[] }) {
+function Sources({ sources, env }: { sources: Source[]; env: Pick<Env, "userId" | "pool" | "threadId"> }) {
   const label = useId();
+  const files = useFileLinks(env.userId, env.pool, env.threadId);
   const here = isLoopback(window.location.hostname);
   return (
     <div className="sources">
@@ -526,9 +527,9 @@ function Sources({ sources }: { sources: Source[] }) {
           const inner = <>{s.title && <span className="source-title">{s.title}</span>}<span className="source-host">{s.host}</span></>;
           return (
             <li key={s.url}>
-              {s.local && !here
+              {s.local && !here && !(s.picture && files.picture)
                 ? <span className="source" title={`${tip}\nOnly the server can open this address.`}>{inner}</span>
-                : <a className="source" href={s.url} target="_blank" rel="noopener noreferrer" title={tip}>{inner}</a>}
+                : <a className="source" href={s.picture && files.picture ? files.picture(s.url) : s.url} target="_blank" rel="noopener noreferrer" title={tip}>{inner}</a>}
             </li>
           );
         })}
@@ -594,7 +595,7 @@ function Parts({ parts, env, model, streaming, n, at, folded, reactions, bare, s
         {env.rewinder && n !== undefined && env.rewinder.pinned.has(n) && <span className="badge pin-badge">pinned</span>}
       </div>
       {out}
-      {sources.length > 0 && <Sources sources={sources} />}
+      {sources.length > 0 && <Sources sources={sources} env={env} />}
       {n !== undefined && <ReactionChips n={n} reactions={reactions} reactor={env.rewinder} her={who} />}
       {env.rewinder && n !== undefined && (
         <MessageActions n={n} role="assistant" rewinder={env.rewinder} model={model} text={parts.filter((p) => p.type === "text").map((p) => p.text).join("\n")} onRemember={() => setRemembering(true)}

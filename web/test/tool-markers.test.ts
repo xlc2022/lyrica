@@ -102,7 +102,7 @@ describe("the sources under her reply", () => {
       fetch("https://en.wikipedia.org/wiki/Moth", wiki),
       fetch("http://localhost:8001/status", "plain"),
     ])).toEqual([
-      { url: "http://127.0.0.1:8889/content/wikipedia_en_all_maxi_2026-08/I/Luna_moth_%28Actias%29.jpg.webp", title: "Luna moth (Actias)", host: "Offline Wikipedia", local: true },
+      { url: "http://127.0.0.1:8889/content/wikipedia_en_all_maxi_2026-08/I/Luna_moth_%28Actias%29.jpg.webp", title: "Luna moth (Actias)", host: "Offline Wikipedia", local: true, picture: true },
       { url: "http://127.0.0.1:8889/content/zim/A/Moth", title: "Moth", host: "Offline Moths", local: true },
       { url: "https://en.wikipedia.org/wiki/Moth", title: "Moth", host: "en.wikipedia.org" },
       { url: "http://localhost:8001/status", title: undefined, host: "localhost", local: true },
