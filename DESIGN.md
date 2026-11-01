@@ -1063,7 +1063,8 @@ it's off.
   the `image` tool's `motion` action uses it (an image and a workspace
   clip), through the same Videos list. A recipe whose template has a
   continuation (MiniMax H3, 2026-10-30) makes videos past its longest
-  clip, up to 60 s, as near-equal clips of at most 8 s chained on the
+  clip, up to 60 s, as near-equal clips no longer than its longest clip
+  (15 s for H3; a video that fits one clip is never split) chained on the
   host, each starting from the last 22 frames and sound of the clip so
   far, joined into one MP4; the `image` tool's `extend` action makes an
   existing clip longer the same way. Each recipe's longest video is
@@ -1650,6 +1651,13 @@ Decided 2026-10-12 (docs/briefs/claude-code.md).
 - **A program, not a model.** Her chat, persona and memory never go
   through it; no tool is added (principle 8), only one prompt line where
   it's available.
+- **Claude named in words means Claude Code** (2026-11-01). A delegation
+  step whose model names Claude itself ("Claude", "Claude Opus", "Sonnet")
+  rather than one of the thread's models outright runs on Claude Code, in
+  the step's role, where the thread's runs have it: the person asked for
+  Claude, and Claude Code is how she reaches it on their plan. A paid
+  Claude an endpoint serves, named in words, waits for the person's word
+  (docs/delegation.md, "Subagents").
 - **The user's own sign-in.** `claude setup-token` on their own computer;
   the token is kept in `user.db` and never enters a sandbox. A run that may
   use Claude Code reaches Anthropic through the run's relay in `lyricad`
@@ -2111,7 +2119,15 @@ Details in [docs/sleep.md](docs/sleep.md).
   back is Roll back. Details in [docs/daemon.md](docs/daemon.md), "On NixOS".
 - **Reaching the web UI:**
   - `lyricad` serves plain HTTP on `127.0.0.1` behind an HTTPS proxy. The
-    browser never gets plain HTTP: login cookies are `Secure`.
+    browser never gets plain HTTP: login cookies are `Secure`. A request
+    on a plain listener addressed to anything but this machine, or with no
+    Host header, is a **wrong door** (2026-10-31): it is sent to the HTTPS
+    front door, or told how to turn one on, and never logged in. Each
+    listener believes loopback's forwarded headers only while its own proxy
+    is in front (the built-in Caddy on the main port, `tailscale serve` on
+    the serve port), read from `<runtime>/web-front` before unlock. A
+    Tailscale ACL allowing only port 443 to the machine closes the plain
+    ports to peers (docs/daemon.md, "Starting and unlocking", "The tailnet").
   - The name is a subdomain of the owner's domain (for example
     `lyrica.example.net`), whose DNS record points at a Tailscale address. On
     the LAN, local (split) DNS gives the same name a LAN address, so one
