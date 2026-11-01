@@ -1071,7 +1071,7 @@ dialog.viewer[data-split] { grid-template-columns: minmax(0, 1fr) clamp(360px, 3
 .viewer-head { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; padding: 8px 10px 8px 16px; border-bottom: 1px solid var(--line); min-width: 0; }
 .viewer-head .fname { font-size: 13px; flex: 0 1 auto; }
 .viewer-facts { font-size: 13px; white-space: nowrap; margin-right: auto; }
-.viewer-acts { display: flex; gap: 6px; align-items: center; margin-left: auto; }
+.viewer-acts { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-left: auto; }
 .viewer-body { flex: 1; min-height: 0; display: flex; flex-direction: column; background: var(--bg); }
 .viewer-body.viewer-scroll { overflow: auto; }
 .viewer-body > .empty, .viewer-body > .error { padding: 16px; }
@@ -1108,6 +1108,9 @@ dialog.viewer > .error { position: absolute; bottom: 8px; left: 16px; }
 @media (max-width: 760px) {
   dialog.viewer { width: 100vw; height: 100dvh; border: 0; border-radius: 0; }
   .viewer-head { padding: 6px 8px 6px var(--gutter); }
+  /* Close stays on the path's line at the right; the actions take the whole line below it. */
+  .viewer-head > .viewer-close { order: 1; }
+  .viewer-head > .viewer-acts { order: 2; flex-basis: 100%; margin-left: 0; }
   .viewer-text, .viewer-prose, .viewer-note { padding-inline: var(--gutter); }
 }
 /* The changes view (docs/ux.md §6, Changes.tsx): the badge, then the dialog's files and commits at the left and the differences at the right. */
