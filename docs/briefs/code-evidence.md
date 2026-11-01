@@ -111,6 +111,12 @@ tier).
   as it is recorded.
 - The setting: `ThreadWorkspace.evidence` (user step 20), `threadsEvidence`
   on a project, the daemon's `judge` answering nothing when it says so.
-- Next: the code-mode eval's real-model check on lunasa with the local
-  models, recording how often the judge said `continue` and whether she then
-  fixed what it named.
+- Checked on the local 27B code model (2026-11-01, eight real code turns
+  on Automatic): the judge ran on every turn and said `checked` each time,
+  with no wrong verdict and no syntax-check failure, taking 8 to 45 seconds
+  a turn. It never said `continue`, because the model refused to claim an
+  unverified result even when told to; the send-back path is covered by the
+  scripted tests in `extension/test/checks.test.ts` and
+  `daemon/test/command-rules.test.ts`, not yet by a real model.
+- Next: nothing planned. A canned false transcript fed to the real judge
+  would show the send-back path live, if wanted.
