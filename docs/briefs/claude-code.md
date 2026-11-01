@@ -25,7 +25,10 @@ ours (principle 3), and adds no model-facing tool (principle 8).
 ## Decisions
 
 - **She decides when to use it**, from one prompt line, like a strong
-  subagent: coding and repository jobs worth the plan, never conversation.
+  subagent: coding and repository jobs worth the plan, never conversation,
+  and any job the person asks Claude for by name (a step whose model is
+  Claude, Opus, Sonnet or Haiku runs there in its role; docs/delegation.md,
+  "Claude Code").
 - **The owner's own sign-in.** `claude setup-token` runs on their own
   computer, in Anthropic's flow; Lyrica only keeps the token it prints.
 - **Off by default per thread**, never in a private or local-only thread.

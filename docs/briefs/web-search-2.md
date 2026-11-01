@@ -74,6 +74,6 @@ thread may reach.
 ## Handoff
 
 Part A: merged in #628 (fda62c5). Part B: merged in #635 (5a868a9).
-Part C: on `feature/web-search-rate`; done as written above, with tests
-in core/test/web.test.ts. Next: PR review, merge, then the dev
-deployment rebuilds so the module's new SearXNG settings apply.
+Part C: merged in #717 (77dce200), with tests in core/test/web.test.ts.
+Next: the dev deployment rebuilds so the module's new SearXNG settings
+apply (an older install copies them by hand, docs/guides/getting-started.md).

@@ -252,6 +252,7 @@ Options, for a second run or a non-interactive one (`host/install.sh --help`):
 | `--no-tailscale` | Leave the tailnet. |
 | `--vendor nvidia\|amd`, `--amd-backend rocm\|vulkan`, `--hsa-override VER` | Override what was detected. |
 | `--yes` | No questions: defaults and flags. |
+| `--cmp-unlock` | On a CMP 100-210, install the unlock without asking (`--yes` alone skips it). |
 | `--no-start` | Write `.env` only. |
 | `--no-gpu` | `host-api` alone, no model servers. What CI uses. |
 
@@ -608,10 +609,11 @@ video-saving node, so the next Update or `host/install.sh` rebuilds it.
 
 ComfyUI hosts also list a **SCAIL-2** starter (about 28 GB of files),
 which moves an image's subject as the person in a driving clip moves.
-Only the host's API can use it so far: Lyrica leaves it out of her
-model lists until her side is built. On a 3090 a 5 s clip at 1280×704
-took 9 to 14 minutes at 21 GB of VRAM and nearly 30 GB of system memory,
-so give the machine room beyond the card. Its weights are MIT; it finds
+Her `image` tool uses it from the **Videos** list like any video recipe:
+given an image and a driving clip (an MP4 of at most 64 MB), the image's
+subject moves as the person in the clip moves. On a 3090 a 5 s clip at
+1280×704 took 9 to 14 minutes at 21 GB of VRAM and nearly 30 GB of system
+memory, so give the machine room beyond the card. Its weights are MIT; it finds
 people with SAM 3.1, under Meta's SAM License (commercial use allowed,
 with an acknowledgement in publications, lawful use including privacy
 law, and trade controls). Its frame-reading node is another addition to

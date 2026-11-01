@@ -48,12 +48,14 @@ and carries its children into a new project. The interface is built under
    `web_search`, and `web_fetch` for reading a page, which needs the
    thread's internet or the page's host allowed. To let her hand big or
    hard coding jobs to Claude Code on the owner's Claude plan, save the
-   token from `claude setup-token` in **Settings → Claude Code** and turn
+   token from `claude setup-token` in **Settings → Claude Code and Codex**
+   and turn
    on the project chat's **Claude Code** switch in Thread settings, so the
    project's threads inherit it (docs/workspace.md, "Claude Code"); with
    the internet off, also allow `api.anthropic.com`. She then delegates
    those jobs to the `claude` role, in the background, and gets its report
-   back (docs/delegation.md, "Claude Code").
+   back; any job the person asks Claude for by name runs there too, in its
+   role (docs/delegation.md, "Claude Code").
    Project settings → General → **Commands** can save trusted checks as
    Allow rules, pushes as Ask, and commands she must leave to the user as
    Forbid. These apply to the project chat, its threads and subagents;

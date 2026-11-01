@@ -41,11 +41,13 @@ The Lyrica Pi extension. `createLyricaExtension(thread, options)` returns a Pi
   when it's over.
 - **`memory.ts`** reads the thread's `PoolView`: an unlogged notice, WAKE, the
   about-user page (private first, then general), the page index and pages about the thread's `folders()` go in the system
-  prompt; recall hits for the message (labelled "added by Sam" for a user's
-  own memories) and the time since the user last spoke go in the turn
+  prompt; recall hits for the message, found by its words and, through the
+  thread's `embed`, by its meaning (labelled "added by Sam" for a user's
+  own memories), and the time since the user last spoke go in the turn
   message.
 - **`tools.ts`** registers `remember`, `recall` and `read_memory`, each with a
-  snippet and guidelines. In an unlogged thread `remember` is taken out of the
+  snippet and guidelines; `recall` embeds its query the same way and falls
+  back to keywords alone. In an unlogged thread `remember` is taken out of the
   active tools (through `gate.ts`, which several reasons share to turn tools
   off). Subagents and sleep get only `recall` and `read_memory` from here
   (sleep registers its own `remember` and writing tools).

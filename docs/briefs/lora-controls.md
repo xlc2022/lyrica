@@ -1,6 +1,6 @@
 # LoRAs for one call, and their strength
 
-**Status:** built on `claude/project-thread-5qvkhr`, one PR for both steps.
+**Status:** Merged as #706, one PR for both steps.
 
 The owner asked (2026-10-30) for a review of how LoRAs are added to
 ComfyUI images and clips and how their strength is set, and to be able to

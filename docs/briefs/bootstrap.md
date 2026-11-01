@@ -182,7 +182,9 @@ getting-started guide (Operator docs, after the merge); the releases layout
 of `/opt/lyrica` (Releases); a per-user nickname for her (not now, decided
 2026-10-11); routes, exit nodes and Tailscale SSH; her own outbound path
 to tailnet peers through her device (a SOCKS proxy for sandboxes and
-machines; later, if a host that isn't on the tailnet needs it).
+machines; later, if a host that isn't on the tailnet needs it). #734 added
+that path for Git accounts (the account check and the credential relay);
+sandboxes and machines still use the host's network.
 
 ## Done when
 

@@ -1,6 +1,6 @@
 # Upscaling clips with SeedVR2
 
-**Status:** built on `claude/project-thread-g9646h`; not yet run on a GPU.
+**Status:** Merged as #712 (b62f3d27); not yet run on a GPU.
 
 The owner asked (2026-10-31) for SeedVR2 7B video upscaling. Her `image`
 tool already upscaled images with SeedVR2 (3B and 7B starters), but nothing

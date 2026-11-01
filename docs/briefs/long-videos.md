@@ -1,6 +1,6 @@
 # Videos longer than one clip
 
-**Status:** built (#690, #694); follow-up fixes on `claude/project-thread-5q2352`.
+**Status:** Merged: #690, #694, #695, #696, #700.
 
 The owner asked (2026-10-30) for videos longer than a model's longest
 clip. She asked MiniMax H3 for 16 s and hit the 15 s cap: one H3 clip is
@@ -79,5 +79,5 @@ own, so no recipe can pick it.
 - Done: host (continuation template and nodes, clip plan, `extend`,
   `longestSeconds`), core (offering fields, routing, `firstVideoModel`),
   the image tool's `extend` action and per-model duration, docs.
-- Next: PR review; the workstation run; a Duration field in the recipe
+- Next: the workstation run; a Duration field in the recipe
   settings beside Steps (#688), showing the recipe's longest.

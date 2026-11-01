@@ -45,8 +45,9 @@ the thread shows the job. This brief makes Claude Code one of her
   run its checks; Claude Code reads those itself. Claude Code is told to read it
   and, before ending, write `REPORT.md` there: what changed, what's left,
   the checks it ran and their results. The run's result is `REPORT.md`,
-  or Claude Code's last message (`--output-format json`, `result`) when
-  there's no report. Both files stay in the encrypted workspace.
+  or Claude Code's last message (`--output-format stream-json`) when
+  there's no report, as a read-only run always answers, since plan mode
+  writes none. Both files stay in the encrypted workspace.
 - **Continuing:** `message` on a finished run resumes that run's Claude
   Code session (`--resume <session_id>` from its JSON), with the message
   as the new prompt, and writes a fresh `REPORT.md`.
