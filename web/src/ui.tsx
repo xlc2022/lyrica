@@ -265,7 +265,7 @@ export function fullTime(iso: string): string {
  * text, never loaded from its host; the offline copy of Wikipedia's shows through lyricad. A file's shows in the
  * message and opens large (docs/ux.md §6).
  */
-function markdown(files: FileLinks | undefined, large: (path: string) => void, skip?: ReadonlySet<string>): Components {
+function markdown(files: FileLinks | undefined, large: (path: string) => void, skipped: () => ReadonlySet<string> | undefined = () => undefined): Components {
   return {
     a: ({ node: _, ...props }) => {
       if (props.href?.startsWith("#/")) return <a {...props} />;
@@ -279,7 +279,7 @@ function markdown(files: FileLinks | undefined, large: (path: string) => void, s
       if (typeof src !== "string" || !src) return <>{alt}</>;
       const file = files && fileTarget(src);
       // An image already shown in this turn (an image part's) stays a link to it, so it isn't shown twice.
-      return file && files && skip?.has(file) ? <a className="fpath" href={files.href(file)}>{alt || basename(file)}</a>
+      return file && files && skipped()?.has(file) ? <a className="fpath" href={files.href(file)}>{alt || basename(file)}</a>
         : file && files ? <InlineImage src={file} alt={alt ?? ""} files={files} large={large} />
         : files && isRemote(src) ? <RemotePicture url={src} alt={alt ?? ""} files={files} large={large} />
         : <a href={src} target="_blank" rel="noopener noreferrer">{alt || src}</a>;
@@ -312,8 +312,15 @@ const PRE = { plain: richPre(false), copy: richPre(true) };
  */
 export function Prose({ text, files, onLarge, a, copyCode, skipImages }: { text: string; files?: FileLinks; onLarge?: (path: string) => void; a?: Components["a"]; copyCode?: boolean; /** Images of the thread's shown already, kept as links. */ skipImages?: ReadonlySet<string> }) {
   const [large, setLarge] = useState<string>();
-  const open = onLarge ?? setLarge;
-  const components = useMemo(() => ({ ...(files ? markdown(files, open, skipImages) : PLAIN), ...(a ? { a } : {}), code: RichCode, pre: copyCode ? PRE.copy : PRE.plain }), [files, open, a, copyCode, skipImages]);
+  // The renderer mounts each tag with its component as the element's type, so new components remount every image and
+  // link in the message. A streaming message re-renders on every token with a new skipImages set (and some callers
+  // pass a new onLarge), which reloaded every picture and flashed it back to its link; read the latest through a ref.
+  const latest = useRef({ open: onLarge ?? setLarge, skipImages });
+  latest.current = { open: onLarge ?? setLarge, skipImages };
+  const components = useMemo(() => ({
+    ...(files ? markdown(files, (path) => latest.current.open(path), () => latest.current.skipImages) : PLAIN),
+    ...(a ? { a } : {}), code: RichCode, pre: copyCode ? PRE.copy : PRE.plain,
+  }), [files, a, copyCode]);
   const plugins = useMemo(() => (files ? [rehypePaths(files)] : []), [files]);
   return (
     <>

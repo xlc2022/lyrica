@@ -2181,6 +2181,41 @@ test("a source read from the offline copy of Wikipedia opens in the app: the art
   }
 });
 
+test("her pictures stay put while her reply streams and after it, so the page neither flashes nor jumps", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  const fake = `http://127.0.0.1:${Number(new URL(baseURL!).port) + 10}`;
+  const kiwix = (address: string) => page.evaluate(async ([path, a]) => {
+    await fetch(path, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ kiwix: a }) });
+  }, [`/api/u/${userId}/admin/web-search`, address] as const);
+  await kiwix(`${fake}/kiwix`);
+  try {
+    await newThread(page, "General");
+    const lute = `${fake}/kiwix/content/wikipedia_en_all_nopic_2026-06/I/Lute.png`;
+    // "slowly" paces the fake model's pieces, so the reply is still streaming well after the picture shows.
+    await send(page, ["reply: ### Lute", "", `![A Renaissance lute](${lute})`, "", "It came to Europe slowly, through Spain and Sicily, carried by traders and by musicians.", "", "Players tuned it in courses of paired strings."].join("\n"));
+    const picture = page.getByRole("button", { name: "A Renaissance lute, open large" });
+    await expect(picture).toBeVisible();
+    // A mark on the element: a remount (which reloaded the picture and showed its link for a moment) drops it.
+    const mark = () => picture.locator("img").evaluate((img) => { (img as HTMLImageElement & { kept?: boolean }).kept = true; });
+    const kept = () => picture.locator("img").evaluate((img) => Boolean((img as HTMLImageElement & { kept?: boolean }).kept));
+    await mark();
+    const hers = page.locator(".msg.her");
+    await expect(hers.getByText("carried by traders", { exact: false })).toBeVisible();
+    expect(await kept()).toBe(true);
+    if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/streaming-picture-${page.viewportSize()!.width}.png` });
+    await expect(hers.getByText("Players tuned it in courses of paired strings.")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Stop" })).toHaveCount(0);
+    // Once the turn is done, scrolling re-renders the thread; the picture still stays the same element.
+    await mark();
+    await picture.hover();
+    for (let i = 0; i < 4; i++) { await page.mouse.wheel(0, i % 2 ? 200 : -200); await page.waitForTimeout(50); }
+    expect(await kept()).toBe(true);
+    await expect(page.getByRole("link", { name: "A Renaissance lute" })).toHaveCount(0);
+  } finally {
+    await kiwix("");
+  }
+});
+
 test("a picture of the offline copy of Wikipedia shows in her reply through lyricad; another remote image stays a link", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   const fake = `http://127.0.0.1:${Number(new URL(baseURL!).port) + 10}`;

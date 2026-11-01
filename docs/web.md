@@ -1039,8 +1039,13 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   asked for only through lyricad's `…/web/picture`, which serves the offline
   copy of Wikipedia's pictures and nothing else: until it loads, and for any
   other image, it shows as a link with its alt text, and once loaded it shows
-  and opens large like a file's (`largeUrl`). The browser never asks the
-  image's own host. An image her image tool already shows in the same turn (an
+  and opens large like a file's (`largeUrl`); one that loaded once in the page
+  shows at once when it mounts again (the stored copy replacing the live one).
+  The browser never asks the image's own host. `Prose` keeps its Markdown
+  components the same across renders (the latest `skipImages` and `onLarge`
+  are read through a ref), since new components would remount every image and
+  link on each streamed piece or scroll, reloading the pictures and jumping the
+  page. An image her image tool already shows in the same turn (an
   image part before her text, up to the next user message) is rendered as
   its path link, not a second thumbnail (`conversationNodes` tracks the
   paths shown; `Prose skipImages`). In the person's message an image path
