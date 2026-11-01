@@ -38,8 +38,9 @@ address and its state in Administration → Web search (docs/ux.md).
 
 ## Done after merge
 
-- #720 merged (fa86ad8). The test machine serves the nopic dump; the
-  maxi dump is downloading beside it.
+- #720 merged (fa86ad8). The test machine served the nopic dump first,
+  then the maxi one (2026-08) once it had downloaded, and the owner had
+  the nopic file deleted: one copy, with pictures.
 - The service skips a `.zim` kiwix can't open (`lyrica-kiwix-start`
   builds a library with `kiwix-manage`), after a half-downloaded dump
   under its final name crash-looped kiwix-serve on the test machine; the
@@ -48,7 +49,6 @@ address and its state in Administration → Web search (docs/ux.md).
 ## Next
 
 - A search and a read in a local-only thread on the test machine.
-- Whether the nopic file goes once the maxi copy serves (the owner's call).
 
 ## Open questions
 
