@@ -276,6 +276,11 @@ members are skipped. A general thread's own choice is a preset (or none:
 its column) via `setThreadPreset`; a thread's own lists (`setThreadModel`)
 beat the preset.
 
+The Embeddings list is read by recall by meaning (docs/memory.md): its
+first reachable model embeds every memory and each message's query. The
+copies on different hosts should be the same model file, so they carry one
+model ID and share one index; a different model re-embeds the pool.
+
 `same` names a task of the same kind (text, embeddings, images, speech) that doesn't
 itself follow another, so it is one level deep. A preset's first entry
 brings the defaults: titles, compaction and watching follow cheap

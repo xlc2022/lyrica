@@ -4,7 +4,7 @@ import { DELEGATION_SCHEMA } from "./delegation.ts";
 import { IDENTITY_SCHEMA } from "./models/host.ts";
 import { addNotice, ENDPOINT_SCHEMA, MIXED_PRESET, migrate as moveModels, MODEL_CHOICE_SCHEMA, PRESET_SCHEMA, REDIRECT_SCHEMA, upgradeCalls, upgradeEndpoints } from "./models/schema.ts";
 import { PREFS_SCHEMA } from "./prefs.ts";
-import { POOL_SCHEMA, POOL_UPGRADES, ROUTINES_SCHEMA, WAKEUPS_SCHEMA, WATCHES_SCHEMA } from "./store/schema.ts";
+import { POOL_SCHEMA, POOL_UPGRADES, ROUTINES_SCHEMA, VECTORS_SCHEMA, WAKEUPS_SCHEMA, WATCHES_SCHEMA } from "./store/schema.ts";
 import { CHANGES_SCHEMA } from "./workspace/changes.ts";
 import { SKILLS_SCHEMA } from "./skills.ts";
 import { MACHINES_SCHEMA, ORIGINS_SCHEMA, upgradeWorkspace, WORKSPACE_SCHEMA } from "./workspace/settings.ts";
@@ -362,6 +362,10 @@ export const STEPS: Record<DbKind, MigrationStep[]> = {
     // Principle 6: CI and review wakes are marked, so her own wake-up cap doesn't hold them back (DESIGN.md, CI wakes). Expand only.
     version: 11,
     run(db) { db.exec("ALTER TABLE wakeups ADD COLUMN source TEXT"); },
+  }, {
+    // Principle 5: recall by meaning keeps its vectors in the pool, derived from the index (docs/briefs/recall-meaning.md). Adds a table only.
+    version: 12,
+    run(db) { db.exec(VECTORS_SCHEMA); },
   }],
 };
 

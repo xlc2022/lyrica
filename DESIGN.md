@@ -1751,6 +1751,15 @@ Details in [docs/memory.md](docs/memory.md).
 
 - **Layers:** threads → notes (small facts she saves whenever she likes) →
   pages (her understanding of one subject) → WAKE (her orientation) → journal.
+- **Recall by meaning** (the owner, 2026-11-01;
+  [briefs/recall-meaning.md](docs/briefs/recall-meaning.md)): automatic
+  recall and `recall` search by words (FTS5) and by meaning (vectors from
+  the Embeddings task's model, kept in the pool database), merged by rank
+  fusion. The Embeddings list carries the fallback: a GPU-hosted copy
+  first, a CPU-served copy of the same model after it; with none reachable,
+  recall is by words alone and the embedder catches up later. One model per
+  index: a changed model re-embeds the pool. No index server, no native
+  extension: a scan in the daemon is enough for a pool of thousands.
 - **Lineage:** each layer cites the one below it by ID, inline. "Where did this
   come from" and "what was it consolidated into" are both answered from those
   citations.

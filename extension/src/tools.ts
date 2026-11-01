@@ -2,7 +2,7 @@ import { StringEnum } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { PoolView } from "@lyrica/core";
 import { Type } from "typebox";
-import { codeMemoryThread, formatHit, formatRead, keptFrom, nearCopy, sameText, search, type MemoryContext } from "./memory.ts";
+import { codeMemoryThread, formatHit, formatRead, keptFrom, nearCopy, sameText, search, type MemoryContext, queryVector } from "./memory.ts";
 import { syncEntries } from "./record.ts";
 
 // The Memory component's model-facing tools: remember, recall, read_memory.
@@ -87,7 +87,8 @@ export function registerMemoryTools(pi: ExtensionAPI, view: PoolView, ctx: () =>
       const c = ctx();
       // Her own thread's entries that a compaction took out of context are found like any other conversation's.
       const keepBefore = toolCtx?.sessionManager ? keptFrom(view, toolCtx.sessionManager.getBranch(), c.threadId) : undefined;
-      const hits = search(view, params.query, { limit: params.limit ?? 8, excludeThread: c.threadId, keepBefore, fromThread: c.code ? codeMemoryThread(view, c.threadId) : c.threadId, ...(c.code && !params.everywhere ? { only: { project: true, about: "working" } } : {}) }, c.hide);
+      const vector = await queryVector(c, params.query);
+      const hits = search(view, params.query, { limit: params.limit ?? 8, excludeThread: c.threadId, keepBefore, fromThread: c.code ? codeMemoryThread(view, c.threadId) : c.threadId, ...(c.code && !params.everywhere ? { only: { project: true, about: "working" } } : {}), ...(vector ? { vector } : {}) }, c.hide);
       return text(hits.length ? hits.map((h) => formatHit(h, c.user)).join("\n") : "Nothing found.");
     },
   });

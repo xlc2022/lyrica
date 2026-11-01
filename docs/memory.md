@@ -61,8 +61,9 @@ users.
   in Pi 1.4). It loads entries from the database and writes new ones back.
   Every interface goes through `lyricad`, so no thread is ever written as a
   plaintext file.
-- **Full-text search lives inside the encrypted database** (FTS5). There is no
-  plaintext index.
+- **Full-text search lives inside the encrypted database** (FTS5), and so do
+  the vectors for recall by meaning (`vectors`). There is no plaintext index
+  and no index server.
 - **Unlocking.** The `lyricad` passphrase unlocks `self.db`. As a service,
   `lyricad` starts locked and the web UI shows an unlock page. Each user's
   databases are unlocked by that user's password at login. A recovery copy of
@@ -197,7 +198,8 @@ The cheapest mechanism comes first:
    entry removes the pin and the rewind counts it, and sleep's material lists
    which new entries were pinned, as a sign they matter.
 2. **Automatic recall on every user turn.** Search notes, pages and past
-   threads in the pool using the user's message, and inject up to five hits as
+   threads in the pool using the user's message, by its words and, with an
+   Embeddings model set, by its meaning (below), and inject up to five hits as
    short snippets with their IDs and dates (at most 4,000 characters). A
    message hit says who said it (`entry by Ada` or `entry by you`) and a
    journal hit says `your journal` (in the `recall` tool, a tool result says `tool result`), so the model doesn't blend what the user
@@ -244,7 +246,32 @@ the per-turn context message, and
 calls to the memory tools themselves, so recall never finds its own echoes.
 Automatic recall leaves out superseded notes and the current thread; the
 `recall` tool leaves out the current thread's entries still in her context.
-There are no embeddings.
+
+**Recall by meaning** ([briefs/recall-meaning.md](briefs/recall-meaning.md),
+2026-11-01). Beside the words, each search can carry the query as a vector
+from the **Embeddings** task's model (`vector: { model, values }`). The
+pool keeps a `vectors` table, derived from the index: one row per indexed
+item and the model that made it, the vector as float32, or none for an
+item the model skips (a tool result, a message with no spoken words).
+`nearest(model, vec, limit)` scans them by cosine and keeps those at or
+above `VECTOR_FLOOR` (0.5); `search` fuses that list with the keyword list
+by reciprocal rank (`RRF_K` 60), so an item found both ways comes first and
+one that shares no word with the question still comes up. The keyword
+rules (`minWords`, common words, `said`, `current`, project boost) apply to
+the keyword side; `said`, `current`, `kinds` and `only` to both. Vectors
+compare only within one model: `putVectors(model, rows)` drops any other
+model's rows, so a changed Embeddings list re-embeds the pool from the
+start, keyword recall working meanwhile. `unembedded(model, limit, excludeThreads)` lists
+what has no vector yet (a message by its spoken words, at most 1,500
+characters of any item; never sleep's entries, nor those of the threads
+named, which the embedder uses to keep a local-only thread's words from a
+cloud model), and `vectorCount(model)` how far along it is.
+Automatic recall and the `recall` tool embed their text through the
+thread's `embed` (lyricad: `models.embed(call, [text], { query: true })`,
+eight seconds at most); an embedding model that is away, slow or unset
+means keywords alone. lyricad's embedder fills the table in the background
+(docs/daemon.md, "The embedder"). The memory browser's search stays
+keyword-only, and sleep doesn't use vectors.
 
 Core search accepts `only: { project: true, about: "working" }` to retain
 project items or notes tagged with the whole `working` word. It reuses

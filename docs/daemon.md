@@ -984,6 +984,25 @@ own conversation goes there at once. Each keeps the file's revision it was
 drafted against: if the file has changed since, approving it needs
 `overwrite`, so newer changes aren't undone unseen.
 
+## The embedder
+
+Vectors for recall by meaning (docs/memory.md, "Recall by meaning") are
+made in the background by `Embedder` (`daemon/src/embedder.ts`) on the
+20-second tick: for each unlocked user and each pool, it resolves the
+pool's Embeddings model (`models.embeddingModel`, a private pool's context
+being local-only), takes up to `EMBED_BATCH` (32) indexed items without a
+vector from it, embeds them in one call through `models.embed`, and stores
+them with `putVectors`, which also drops any other model's rows. An item
+with no spoken words (a tool result) is marked skipped without a call, and
+so is one the model refuses (after the batch is retried one item at a
+time), so one bad item doesn't hold up the pool. The cloud boundary holds
+in the background as in a turn: when the general pool's model is on a cloud
+endpoint (`embeddingModel(ctx).local` is false), the entries of the
+user's local-only threads (`models.localOnlyThreads`) are left out of
+`unembedded` until the list resolves to a local model. A pool with nothing
+to do, no model, or a model that can't be reached rests a minute. Nothing
+is recorded as a call and only counts are logged.
+
 ## Sleep
 
 `lyricad` builds one `Sleep` ([sleep.md](sleep.md)) and runs it three ways:

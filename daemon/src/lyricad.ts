@@ -15,6 +15,7 @@ import {
 } from "@lyrica/core";
 import { Delegation, planCatalog, Sleep, type Limits, type SleepLimits } from "@lyrica/extension";
 import { ChildThreads } from "./children.ts";
+import { Embedder } from "./embedder.ts";
 import { Routines } from "./routines.ts";
 import { CLAUDE_LIMIT_RESUME, Wakeups } from "./wakeups.ts";
 import { claudePlanId } from "./plan-waits.ts";
@@ -150,6 +151,8 @@ export interface Services {
   prefs: ThreadPrefs;
   /** Threads shared with a user, waiting in self.db for them to add or decline. */
   shares: ThreadShares;
+  /** Vectors for recall by meaning, a batch per pool per tick. */
+  embedder: Embedder;
 }
 
 const DEFAULT_WEB = fileURLToPath(new URL("../../web/dist", import.meta.url));
@@ -679,7 +682,8 @@ export class Lyricad implements Drainable {
     host.draining = this.drainingNow;
     const shares = new ThreadShares(keyring.self());
     const routines = new Routines({ memory, host: () => host, children, zone: (id) => zoneOf(users.get(id)?.profile ?? {}), log: this.log });
-    this.services = { routines, wakeups, forge, clips, users, memory, models, workspace, persona, proposals, delegation, children, projects, watcher, sleep, host, web, tailnet: this.tailnet, prefs, shares };
+    const embedder = new Embedder({ users, memory, models, hasKey: (id) => keyring.hasUserKey(id), log: this.log });
+    this.services = { routines, wakeups, forge, clips, users, memory, models, workspace, persona, proposals, delegation, children, projects, watcher, sleep, host, web, tailnet: this.tailnet, prefs, shares, embedder };
     this.rememberName(selfName(keyring.self()));
     await web.resume();
     await this.finishDeletes();
@@ -908,6 +912,7 @@ export class Lyricad implements Drainable {
       this.services.children.watchIdle(now);
       this.services.routines.tick(now);
       this.services.forge.tick(now);
+      void this.services.embedder.tick(now.getTime());
       if (now.getTime() - this.prunedAt >= 3600_000) {
         this.prunedAt = now.getTime();
         // Model lists, once a day each: a model an endpoint drops is marked missing, as by Refresh.
