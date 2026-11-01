@@ -1,6 +1,6 @@
 # Brief: Renaming a file keeps its links
 
-**Status:** Messages built (PR #767, merged 2026-11-01); memories at sleep in review. **Owner:** the "Rename files with links auto-updated" thread.
+**Status:** Messages built (PR #767, merged 2026-11-01); memories at sleep built (PR #769, merged 2026-11-01). **Owner:** the "Rename files with links auto-updated" thread.
 **Read first:** AGENTS.md, DESIGN.md ("Files and images"), docs/workspace.md ("Renaming keeps links"),
 daemon/src/relink.ts, core/src/workspace/renames.ts.
 
