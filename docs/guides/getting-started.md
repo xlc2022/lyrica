@@ -650,6 +650,11 @@ the Private column too, unless a thread picks its own model, so its
   each list once a day, so new models
   appear and dropped ones go to Clean up; no model is called. Shared
   endpoints are read this way only for an administrator who leaves it on.
+  To keep a model out of every list and picker, untick **Enabled** beside
+  it in the endpoint's "N models" list (or **Disable all models** in its
+  ⋯, then tick the few you want); the setting survives a re-read of the
+  list, and a list past twelve models gets a search box. That is the way
+  to cut an OpenRouter sign-in down to a few models.
 
 - **A model host** (a GPU machine of your own running the host stack):
   [model-hosts.md](model-hosts.md).
