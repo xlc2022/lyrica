@@ -798,9 +798,9 @@ eBay's own MCP server searches listings and reads item details through
 eBay's public APIs, read-only, with a free eBay developer keyset. It runs
 as a command in the thread's sandbox: on NixOS `services.lyrica.ebayMcp =
 true` installs it among her sandbox tools, on Debian `npm install -g
-@ebay/npm-public-api-mcp` does. Then add it under Settings, **MCP
-servers** as the command `ebay-mcp-server` with the keyset in its
-Environment field: [ebay-mcp.md](ebay-mcp.md).
+--prefix /opt/lyrica/tools @ebay/npm-public-api-mcp` does. Then add it
+under Settings, **MCP servers** as the command `ebay-mcp-server` with
+the keyset in its Environment field: [ebay-mcp.md](ebay-mcp.md).
 
 ## Give her repositories
 
@@ -1200,7 +1200,8 @@ passphrase. Remove her model hosts first ("Uninstall" in
 [model-hosts.md](model-hosts.md)).
 
 On NixOS, remove `services.lyrica` from the configuration and rebuild,
-then delete the state folders below if you want the data gone. On Debian
+then delete the state folders `--purge` deletes (below) if you want the
+data gone. On Debian
 or Ubuntu, as root, from the checkout or the installed release:
 
 ```sh
@@ -1214,14 +1215,18 @@ installed there for her sandboxes, an MCP server included), the updater,
 the `lyrica` command, Caddy and the kiwix start script in `/usr/local`,
 `/etc/lyrica`, the caches, the SearXNG container, and any copies of
 Claude Code, Codex, Chromium and eBay's MCP server an install from before
-2026-11-01 left in `/usr/local`; then it lists what it kept: `/var/lib/lyrica`, the update
-snapshots (`/var/lib/lyrica-snapshots`, `/var/lib/lyrica-update`),
-Caddy's certificates, her Tailscale node, the ZIM files and the three
-service users. `--purge` deletes those too and removes the users.
+2026-11-01 left in `/usr/local`; then it lists what it kept:
+`/var/lib/lyrica`, the update snapshots (`/var/lib/lyrica-snapshots`,
+`/var/lib/lyrica-update`), Caddy's certificates, her Tailscale node, the
+ZIM files and the three service users. `--purge` deletes those too and
+removes the users.
 
 Neither removes an apt package (bubblewrap, gocryptfs, Node and the rest
-in "On Debian or Ubuntu", `tailscale`, `kiwix-tools`); remove those with
-`apt` only if nothing else uses them. Remove her node from your tailnet's
+in "On Debian or Ubuntu", `tailscale`, `kiwix-tools`) or the Tailscale
+apt repository install.sh added when Tailscale was missing
+(`/etc/apt/sources.list.d/tailscale.list` and
+`/usr/share/keyrings/tailscale-archive-keyring.gpg`); remove those only
+if nothing else uses them. Remove her node from your tailnet's
 admin console, and the deploy key from the repository on GitHub.
 
 ## Checklist for the first install on your machine
