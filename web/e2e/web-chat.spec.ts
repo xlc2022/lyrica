@@ -1429,7 +1429,7 @@ test("coming back to a thread while she reasons shows her reasoning from its sta
   await enter(page, baseURL!);
   await newThread(page, "General");
   // "think slowly:" reasons a sentence every 300 ms for about 4 s before the reply.
-  await send(page, "think slowly: about the garden");
+  await send(page, "think slowly: about the kettle");
   const reasoning = page.getByRole("button", { name: "Show reasoning" });
   await reasoning.click();
   await expect(page.locator(".thought")).toContainText("Step 2 of my reasoning.");
