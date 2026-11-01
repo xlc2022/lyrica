@@ -8,7 +8,7 @@ import { her } from "./name.ts";
 import { ErrorText, Switch, useAction, useLoad } from "./ui.tsx";
 
 const MODES: { mode: WebMode; label: string; hint: () => string }[] = [
-  { mode: "off", label: "Only this machine", hint: () => "Nothing listens beyond 127.0.0.1." },
+  { mode: "off", label: "Only this machine", hint: () => `Nothing listens beyond 127.0.0.1. While ${her()} is on a tailnet, its devices still reach that port at her tailnet address, where nobody can log in.` },
   { mode: "direct", label: "Direct", hint: () => `${her()}'s own HTTPS on this machine's addresses, with a certificate she made; a browser trusts it once by its fingerprint.` },
   { mode: "tailnet", label: "Tailnet", hint: () => "HTTPS at her tailnet name through Tailscale, for every device on the tailnet." },
   { mode: "builtin", label: "Built-in Caddy", hint: () => `${her()} runs Caddy on the addresses you pick, with a certificate for your hostname from a DNS challenge.` },

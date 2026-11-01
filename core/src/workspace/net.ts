@@ -116,15 +116,36 @@ export function loopbackPorts(proto: "tcp" | "udp"): number[] {
   return [...ports].sort((a, b) => a - b);
 }
 
+/** Interfaces that bridge to guests on this machine: Docker's, Podman's, CNI's, libvirt's, LXC's, LXD's and Incus's. */
+const BRIDGE = /^(docker|br-|podman|cni|virbr|lxc|lxd|incus)/;
+
+/** The network a CIDR address is on: 172.17.0.1/16 is on 172.17.0.0/16. */
+export function subnetOf(cidr: string): string {
+  const [addr, bits] = cidr.split("/");
+  const n = Number(bits);
+  const value = addr!.split(".").reduce((acc, o) => (acc << 8n) | BigInt(o), 0n);
+  const net = n === 0 ? 0n : (value >> BigInt(32 - n)) << BigInt(32 - n);
+  return `${[24, 16, 8, 0].map((s) => Number((net >> BigInt(s)) & 255n)).join(".")}/${n}`;
+}
+
 /**
  * This machine's own IPv4 addresses (LAN, Tailscale and so on), read when a
  * sandbox starts. To a sandbox they are this machine, not the network: they
  * fall under the machine's-services switch, and lyricad's front door (Caddy,
- * on the front ports) is never reachable on them.
+ * on the front ports) is never reachable on them. A bridge to guests on this
+ * machine (Docker and the like) brings its whole subnet: a container that
+ * trusts "only this machine can reach me" is this machine too.
  */
-export function hostAddresses(): string[] {
-  return Object.values(networkInterfaces()).flat()
-    .filter((i) => i?.family === "IPv4" && !i.internal).map((i) => i!.address);
+export function hostAddresses(interfaces = networkInterfaces()): string[] {
+  const out: string[] = [];
+  for (const [name, list] of Object.entries(interfaces)) {
+    for (const i of list ?? []) {
+      if (i.family !== "IPv4" || i.internal) continue;
+      out.push(i.address);
+      if (BRIDGE.test(name) && i.cidr) out.push(subnetOf(i.cidr));
+    }
+  }
+  return out;
 }
 
 /** pasta's options for a thread's network. `forward` adds loopback TCP ports whatever the services switch says. */
@@ -158,21 +179,23 @@ const seen = new Map<string, Set<string>>();
 
 /**
  * IPv4 addresses for the front door's IPs and hostnames: what each name
- * resolves to now, plus every address it resolved to before. Returns
- * undefined if a name has never resolved, so the caller can fail closed.
+ * resolves to now, plus every address it resolved to before. A name that
+ * has never resolved in this process is named in `unresolved`, so the caller
+ * can say so; the addresses that are known still come back.
  */
-export async function resolveAddresses(hosts: string[], resolve = (h: string) => lookup(h, { all: true, family: 4 })): Promise<string[] | undefined> {
+export async function resolveAddresses(hosts: string[], resolve = (h: string) => lookup(h, { all: true, family: 4 })): Promise<{ addresses: string[]; unresolved: string[] }> {
   const out = new Set<string>();
+  const unresolved: string[] = [];
   for (const h of hosts) {
     if (isIP(h) === 4) { out.add(h); continue; }
     if (isIP(h)) continue;
     const known = seen.get(h) ?? new Set<string>();
     for (const a of await resolve(h).catch(() => [])) known.add(a.address);
-    if (!known.size) return undefined;
+    if (!known.size) { unresolved.push(h); continue; }
     seen.set(h, known);
     for (const a of known) out.add(a);
   }
-  return [...out];
+  return { addresses: [...out], unresolved };
 }
 
 /** The nftables ruleset loaded into the sandbox's namespace: default deny, then what the thread allows. */

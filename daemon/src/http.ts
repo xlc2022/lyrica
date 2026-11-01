@@ -150,12 +150,15 @@ const LOOPBACK_NAME = /^(localhost|127(\.\d{1,3}){3}|\[::1\]|::1)$/i;
  * machine: it came through something that forwards to loopback, such as her
  * userspace tailscaled, which hands every port on her tailnet address to the
  * same port here. A trusted proxy that says `X-Forwarded-Proto: https`
- * (the built-in Caddy, `tailscale serve`) terminated TLS itself.
+ * (the built-in Caddy, `tailscale serve`) terminated TLS itself. A request
+ * with no Host header (HTTP/1.0) names no door at all, so it is the wrong
+ * one too: the answer is the empty name.
  */
 export function wrongDoor(req: IncomingMessage, trusted: boolean): string | undefined {
-  const host = req.headers.host;
-  if (!host || !req.socket.remoteAddress) return undefined; // HTTP/1.0, or the Unix socket
+  if (!req.socket.remoteAddress) return undefined; // the Unix socket
   if (trusted && req.headers["x-forwarded-proto"] === "https") return undefined;
+  const host = req.headers.host;
+  if (!host) return "";
   const name = host.replace(/:\d+$/, "");
   return LOOPBACK_NAME.test(name) ? undefined : name;
 }

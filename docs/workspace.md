@@ -929,10 +929,15 @@ How it is enforced:
     settings): its port (443, or the external proxy's own) on this
     machine's own addresses, on every address Lyrica's name has resolved to,
     and on an external proxy's addresses; and an extra listener's port on
-    every address. If the name has never resolved, that run gets no network
-    at all;
+    every address. A name that has never resolved on this machine is logged
+    once (`lyricad`'s log), and the run keeps its network: the front ports
+    are shut on this machine's own addresses and the listed proxies whatever
+    the name says;
   - this machine's own addresses (LAN, Tailscale; read from its interfaces
-    when each sandbox starts) only with the machine's-services switch on.
+    when each sandbox starts), and the whole subnet of each bridge to guests
+    on this machine (`docker*`, `br-*`, `podman*`, `cni*`, `virbr*`, `lxc*`,
+    `lxd*`, `incus*`), so a container behind Docker is this machine too:
+    only with the machine's-services switch on.
     Internet and allowed hosts never reach this machine, so a command can't
     reach `lyricad` through a proxy;
   - the sandbox's loopback, where pasta forwards exactly the host's loopback
@@ -1036,7 +1041,10 @@ come from the user's Git accounts (DESIGN.md, "Updates and self-editing").
   answers) and saves nothing when that fails. Each use records Signed in,
   Token rejected or Unreachable. A GitHub account is general only. A
   private account's host must resolve on her own network (LAN, loopback or
-  the tailnet, as for private machines); when it stops doing so the
+  the tailnet, as for private machines); a host in her tailnet (a MagicDNS
+  name or a 100.x address) is reached through her tailscaled's proxy, by
+  the account check and by the credential relay alike, so a machine with no
+  Tailscale of its own still reaches a forge there; when it stops doing so the
   account is Off network and no token goes out until the user confirms
   **Use anyway**. A new pool, or removing the account, takes its
   repositories from every thread at once.

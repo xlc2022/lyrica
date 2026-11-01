@@ -844,6 +844,12 @@ describe.skipIf(!netRunnable || !lan)("a sandbox's network switches", () => {
     const proxied = new Sandbox({ workdir: p("work"), grants: [], network: { ...OFF, internet: true }, self: [], front: [lyricad], frontHosts: [lan!] });
     expect((await sh(tcp(lan!, lyricad), proxied)).out).not.toContain("LYRICAD");
     expect((await sh(tcp(lan!, peer), proxied)).out).toContain("PEER");
+    // A name that doesn't resolve on this machine is said once, and the run keeps its network and the rest of its rules.
+    const said: string[] = [];
+    const unresolved = new Sandbox({ workdir: p("work"), grants: [], network: { ...OFF, internet: true }, self: [], front: [lyricad], frontHosts: ["lyrica.invalid", lan!], warn: (l) => said.push(l) });
+    expect((await sh(tcp(lan!, peer), unresolved)).out).toContain("PEER");
+    expect((await sh(tcp(lan!, lyricad), unresolved)).out).not.toContain("LYRICAD");
+    expect(said).toEqual(["lyrica.invalid doesn't resolve on this machine, so sandboxes can't shut the front door at its addresses until it does"]);
   });
 
   it("never reaches the host's abstract sockets", async () => {

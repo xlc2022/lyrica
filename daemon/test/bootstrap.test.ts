@@ -1,7 +1,7 @@
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync, chmodSync } from "node:fs";
 import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
-import { createServer as createTcp } from "node:net";
+import { connect as tcpConnect, createServer as createTcp } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -399,6 +399,18 @@ describe("the tailnet", () => {
   });
 
   /** A plain request to a loopback port with its own headers (fetch won't send a Host of our choosing). */
+  /** One HTTP/1.0 request with no Host header, as an old client or a scanner sends it: the whole answer. */
+  function noHost(port: number, path: string) {
+    return new Promise<string>((resolve, reject) => {
+      const s = tcpConnect({ host: "127.0.0.1", port }, () => s.write(`GET ${path} HTTP/1.0\r\n\r\n`));
+      let text = "";
+      s.setEncoding("utf8");
+      s.on("data", (c) => (text += c));
+      s.on("end", () => resolve(text));
+      s.on("error", reject);
+    });
+  }
+
   function raw(port: number, method: string, path: string, headers: Record<string, string>, body?: string) {
     return new Promise<{ status: number; headers: Record<string, string | string[] | undefined>; text: string }>((resolve, reject) => {
       const req = httpRequest({ host: "127.0.0.1", port, method, path, headers: { ...(body ? { "content-type": "application/json" } : {}), ...headers } }, (res) => {
@@ -413,7 +425,7 @@ describe("the tailnet", () => {
   }
 
   it("sends a plain-HTTP request at her tailnet address to the HTTPS front door, and believes a proxy's forwarded host for the origin check", async () => {
-    const { d, ada, url, web } = await joined();
+    const { d, ada, url, web, home } = await joined();
     await ada.put(url, { authKey: KEY });
     const login = JSON.stringify({ login: "ada", password: "pw" });
     // Her userspace tailscaled hands <her address>:7340 and :7342 to the same loopback ports: Direct is on, but not at that address.
@@ -428,8 +440,18 @@ describe("the tailnet", () => {
     // This machine's own loopback name is fine, whatever the port.
     r = await raw(d.port, "GET", "/api/state", { host: `${dir.addresses[0]}:${d.port}` });
     expect(r.status).toBe(200);
+    // A request with no Host header names no door, so it is the wrong one too.
+    expect(await noHost(d.port, "/api/state")).toMatch(/^HTTP\/1\.[01] 403[\s\S]*plain HTTP, so you can't log in here/);
+    // No proxy is in front of either plain listener yet, so neither believes loopback's forwarded headers: a tailnet peer can't pose as tailscale serve.
+    expect(readFileSync(join(home, "web-front"), "utf8").trim()).toBe("none");
+    r = await raw(d.servePort, "GET", "/api/state", { host: "lyrica.example.ts.net", "x-forwarded-proto": "https", "x-forwarded-for": "100.64.0.9" });
+    expect(r.status).toBe(403);
     // With Tailnet on, the request is sent to her name.
     expect((await ada.put<WebAccess>(web, { mode: "tailnet" })).status).toBe(200);
+    expect(readFileSync(join(home, "web-front"), "utf8").trim()).toBe("tailnet");
+    // Only the serve port has tailscale serve in front: on the main port the same headers are a tailnet peer's, and it is still a wrong door.
+    r = await raw(d.port, "GET", "/", { host: "100.101.102.103:7340", "x-forwarded-proto": "https" });
+    expect(r.status).toBe(302);
     r = await raw(d.servePort, "GET", "/settings?x=1", { host: "lyrica.example.ts.net:7342" });
     expect(r.status).toBe(302);
     expect(r.headers.location).toBe("https://lyrica.example.ts.net/settings?x=1");

@@ -2,13 +2,13 @@ import { execFile } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, request as httpRequest, type IncomingHttpHeaders, type Server } from "node:http";
 import { request as httpsRequest } from "node:https";
-import type { AddressInfo, Socket } from "node:net";
+import { connect as tcpConnect, createServer as createTcpServer, type AddressInfo, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { connect as tlsConnect } from "node:tls";
 import { gzipSync } from "node:zlib";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { gitEnv, openRelay, type ForgeCredential, type Relay } from "../src/index.ts";
+import { gitEnv, openRelay, useTailnetProxy, type ForgeCredential, type Relay } from "../src/index.ts";
 
 // A run's relay keeps Git tokens in lyricad (docs/workspace.md, "Credentials"):
 // git, gh and tea hold placeholders, and the relay swaps in a token only
@@ -37,6 +37,24 @@ beforeAll(async () => {
   base = `http://127.0.0.1:${(upstream.address() as AddressInfo).port}`;
 });
 afterAll(() => { upstream.close(); rmSync(dir, { recursive: true, force: true }); });
+
+// Her tailscaled's proxy, as a stand-in (core/test/tailnet.test.ts): every CONNECT goes to the same port on loopback, and the targets are kept.
+const targets: string[] = [];
+const proxy = createTcpServer((client: Socket) => {
+  client.once("data", (head) => {
+    const target = /^CONNECT (\S+) HTTP\/1\.1/.exec(head.toString("latin1"))?.[1] ?? "";
+    targets.push(target);
+    const up = tcpConnect({ host: "127.0.0.1", port: Number(target.slice(target.lastIndexOf(":") + 1)) }, () => {
+      client.write("HTTP/1.1 200 OK\r\n\r\n");
+      client.pipe(up).pipe(client);
+    });
+    up.on("error", () => client.destroy());
+    client.on("error", () => up.destroy());
+  });
+});
+await new Promise<void>((r) => proxy.listen(0, "127.0.0.1", r));
+useTailnetProxy(`127.0.0.1:${(proxy.address() as AddressInfo).port}`, () => "tail1234.ts.net");
+afterAll(() => proxy.close());
 
 const open = (o: { reaches?: (h: string) => boolean; internet?: boolean } = {}) => openRelay({
   forge: [credential({}), credential({ repo: "ada/notes", kind: "forgejo", host: "forge.lan:3000", token: FORGE_TOKEN, placeholder: "lyrica_placeholder_forge" })],
@@ -138,6 +156,28 @@ describe("a run's relay for Git", () => {
       // A request with no placeholder goes as it is: a public repository's clone, say.
       expect((await through(relay, "github.com:443", "/ada/other.git/info/refs", "Bearer sk-something-else")).status).toBe(404);
       expect(seen.at(-1)!.headers.authorization).toBe("Bearer sk-something-else");
+    } finally {
+      relay.close();
+    }
+  });
+
+  it("reaches a forge on her tailnet through her tailscaled's proxy, and every other host as before", async () => {
+    const port = new URL(base).port;
+    const relay = await openRelay({
+      forge: [credential({}), credential({ repo: "ada/notes", kind: "forgejo", host: "forge.tail1234.ts.net", token: FORGE_TOKEN, placeholder: "lyrica_placeholder_forge" })],
+      reaches: () => true, internet: true,
+      upstreams: { "github.com": base, "forge.tail1234.ts.net": `http://forge.tail1234.ts.net:${port}` },
+    });
+    try {
+      seen.length = 0;
+      targets.length = 0;
+      const r = await through(relay, "forge.tail1234.ts.net:443", "/api/v1/repos/ada/notes", "token lyrica_placeholder_forge");
+      expect(r.status).toBe(404);
+      expect(seen.map((s) => s.url)).toEqual(["/api/v1/repos/ada/notes"]);
+      expect(seen[0]!.headers.authorization).toBe(`token ${FORGE_TOKEN}`);
+      expect(targets).toEqual([`forge.tail1234.ts.net:${port}`]);
+      expect((await through(relay, "github.com:443", "/ada/lyrica.git/info/refs", `Basic ${Buffer.from("ada:lyrica_placeholder_github").toString("base64")}`)).status).toBe(404);
+      expect(targets).toEqual([`forge.tail1234.ts.net:${port}`]);
     } finally {
       relay.close();
     }

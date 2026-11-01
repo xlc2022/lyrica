@@ -1825,7 +1825,9 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
 - **Web access** (`LyricadOptions.web`): built-in Caddy, configured through
   its admin socket `/run/lyrica-caddy/admin.sock`, or an external proxy, with
   an extra listener whose settings and TLS key are in
-  `<runtime>/web-external.json` (0600) and which opens before unlock. Settings
+  `<runtime>/web-external.json` (0600) and which opens before unlock, and
+  `<runtime>/web-front` (0600) naming the plain listener with a proxy in
+  front, for the time before unlock. Settings
   and DNS credentials live in `self.db`. See [daemon.md](daemon.md).
 - **Unlocking:** when started as a service, `lyricad` starts locked, and the
   API serves only the unlock endpoint until `self.db` is unlocked.
