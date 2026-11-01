@@ -56,10 +56,18 @@ working implementation (`config/extensions/stateful-memory/memory-sleep.js`).
    (one of its messages or the thread itself, directly or through a note it
    cites) gets the new paths, oldest rename first, as an edit by sleep, so
    the old text stays a revision and the night's changes list it; a grant's
-   rename reaches every memory. A note a user added, and a page's words a
-   user wrote, are the user's to change and keep the old path. The renames
+   rename reaches every memory. Its text, summary and a page's
+   instructions are respelled, a user's own notes and words included (the
+   user renamed the file or approved it; decided 2026-11-01): the one edit
+   sleep makes to a user's words. The revision keeps the renames, so a
+   page's user-written words are known in their new spelling afterwards
+   and sleep still keeps them word for word. The renames
    are then cleared (`PoolStore.applyRenames`). This runs whenever sleep
-   runs with the key, even when the night has nothing else to do.
+   runs with the key, even when the night has nothing else to do. The run's
+   start is taken before this step, so its changes (the Sleep page's row,
+   `sleepChanges`) list these edits: edited notes after the new ones, pages
+   with their word diff. A night skipped for no other activity still records
+   that start, and its row opens to them.
 1. **Consolidate.** She reads the notes since the last sleep and skims the
    threads they came from. For anything important that she never saved, she
    writes a note (catch-up stays light; Monika manages without it). Then she
@@ -81,7 +89,8 @@ working implementation (`config/extensions/stateful-memory/memory-sleep.js`).
    contradictions with no plain later word become questions for the user.
    This step also rewrites pages flagged by a deletion or a supersede. Notes and pages a user edited or added since the last sleep are
    authoritative: she builds on them, and asks rather than overwriting them.
-   She never edits or deletes a memory a user wrote.
+   She never edits or deletes a memory a user wrote (step 0's respelling of
+   a renamed file's path is plain code, not hers).
 2. **Dream.** Free reflection, as in Monika, written into the journal. It's
    marked as reflection, so nothing in a dream becomes a fact by itself. The
    code adds the marker; one she copied from an earlier entry is dropped.

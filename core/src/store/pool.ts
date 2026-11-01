@@ -300,6 +300,10 @@ function unit(v: Float32Array): Float32Array {
 }
 const json = <T>(s: string): T => JSON.parse(s) as T;
 const entryId = (thread: string, n: number) => `e:${thread}#${n}`;
+/** A revision's body as a memory's: without the renames a respelling revision keeps for userText. */
+const revisionBody = (raw: string): Body => { const { renamed: _, ...body } = JSON.parse(raw) as Body & { renamed?: unknown }; return body; };
+/** Renames applied in order, oldest first, each as one rewriter. */
+const respeller = (renames: Respelling[][]) => { const fs = renames.map(pathRewriter); return (s: string) => fs.reduce((t, f) => f(t), s); };
 const TOOL_TEXT_LIMIT = 2000;
 const GOAL_LIMIT = 2000;
 /** Well under the project section's budget, so the notes and threads after them always fit. */
@@ -779,8 +783,11 @@ export class PoolReader {
     return { threads, notes, edited, flagged };
   }
 
-  /** What sleep wrote between two times, newest version of each: notes, pages (with the version before), journal, WAKE. */
-  sleepChanges(from: string, to: string): { notes: string[]; pages: { id: string; before?: Body; after: Body }[]; journal: string[]; wake?: string } {
+  /**
+   * What sleep wrote between two times, newest version of each: notes it made, notes it edited (as its renamed-files
+   * step does), pages (with the version before), journal, WAKE.
+   */
+  sleepChanges(from: string, to: string): { notes: string[]; edited: string[]; pages: { id: string; before?: Body; after: Body }[]; journal: string[]; wake?: string } {
     const revs = this.db.prepare("SELECT * FROM revisions WHERE author = 'sleep' AND created_at >= ? AND created_at <= ? ORDER BY id")
       .all(from, to) as RevisionRow[];
     const latest = new Map<string, RevisionRow>();
@@ -790,12 +797,13 @@ export class PoolReader {
     const ids = [...latest.keys()];
     const pages = ids.filter((id) => kindOf(id) === "page").map((id) => {
       const before = this.db.prepare("SELECT body FROM revisions WHERE item = ? AND id < ? ORDER BY id DESC LIMIT 1").get(id, firstId.get(id)) as { body: string } | undefined;
-      return { id, ...(before ? { before: json<Body>(before.body) } : {}), after: json<Body>(latest.get(id)!.body) };
+      return { id, ...(before ? { before: revisionBody(before.body) } : {}), after: revisionBody(latest.get(id)!.body) };
     });
     const created = (id: string) => !this.db.prepare("SELECT 1 FROM revisions WHERE item = ? AND id < ?").get(id, firstId.get(id));
     const wake = latest.get("wake");
     return {
       notes: ids.filter((id) => kindOf(id) === "note" && created(id)),
+      edited: ids.filter((id) => kindOf(id) === "note" && !created(id)),
       pages,
       journal: ids.filter((id) => kindOf(id) === "journal"),
       ...(wake ? { wake: json<Body>(wake.body).text } : {}),
@@ -997,7 +1005,7 @@ export class PoolReader {
 
   revisions(id: string): MemoryRevision[] {
     return (this.db.prepare("SELECT * FROM revisions WHERE item = ? ORDER BY id").all(id) as RevisionRow[])
-      .map((r) => ({ id: r.id, item: r.item, body: json(r.body), author: r.author, createdAt: r.created_at }));
+      .map((r) => ({ id: r.id, item: r.item, body: revisionBody(r.body), author: r.author, createdAt: r.created_at }));
   }
 
   /** Versions newest first; search literal text, title, summary, author and date. */
@@ -1006,7 +1014,7 @@ export class PoolReader {
     const params = { id, ...(q ? { q } : {}) };
     const total = (this.db.prepare(`SELECT count(*) AS n FROM revisions WHERE ${where}`).get(params) as { n: number }).n;
     const rows = this.db.prepare(`SELECT * FROM revisions WHERE ${where} ORDER BY id DESC LIMIT @limit OFFSET @offset`).all({ ...params, limit, offset }) as RevisionRow[];
-    return { total, entries: rows.map((r): MemoryRevision => ({ id: r.id, item: r.item, body: json(r.body), author: r.author, createdAt: r.created_at })) };
+    return { total, entries: rows.map((r): MemoryRevision => ({ id: r.id, item: r.item, body: revisionBody(r.body), author: r.author, createdAt: r.created_at })) };
   }
 
   /** Whether a deleted memory came from this entry (or its whole thread), so sleep mustn't extract it again. */
@@ -1270,8 +1278,8 @@ export class PoolStore extends PoolReader {
    * Sleep's first step (docs/sleep.md, "Renamed files"): the notes, pages and journal entries that cite a thread with
    * a waiting rename (by one of its messages or the thread itself, or through a note that does) get its new paths,
    * oldest rename first, as an edit by sleep, so the old text stays a revision. A grant's rename reaches every one.
-   * A note a user added, and a page's own words from a user, are only the user's to change, so they keep the old
-   * path. The renames are cleared. Returns the memories changed.
+   * A user's own notes, words and instructions follow too: the user renamed the file, or approved it (decided
+   * 2026-11-01). The renames are cleared. Returns the memories changed.
    */
   applyRenames(): string[] {
     const rows = this.db.prepare("SELECT id, thread, swaps FROM renames ORDER BY id").all() as { id: number; thread: string | null; swaps: string }[];
@@ -1305,15 +1313,17 @@ export class PoolStore extends PoolReader {
     const changed: string[] = [];
     for (const id of ids) {
       const mine = threads(id);
-      const swaps = rows.filter((r) => r.thread === null || mine.has(r.thread)).map((r) => pathRewriter(JSON.parse(r.swaps) as Respelling[]));
-      if (!swaps.length) continue;
+      const renames = rows.filter((r) => r.thread === null || mine.has(r.thread)).map((r) => JSON.parse(r.swaps) as Respelling[]);
+      if (!renames.length) continue;
       const item = this.load(id);
-      if (!item || (item.kind === "note" && item.origin === "user")) continue;
-      const respell = (s: string) => swaps.reduce((t, f) => f(t), s);
-      const text = respell(item.text), summary = item.summary === undefined ? undefined : respell(item.summary);
-      if (text === item.text && summary === item.summary) continue;
-      try { this.edit(id, { text, ...(summary === undefined ? {} : { summary }) }, "sleep"); changed.push(id); }
-      catch { /* a page's words from a user, kept as they are */ }
+      if (!item) continue;
+      const respell = respeller(renames);
+      const change: Partial<Body> = { text: respell(item.text) };
+      if (item.summary !== undefined) change.summary = respell(item.summary);
+      if (item.instructions !== undefined) change.instructions = respell(item.instructions);
+      if (change.text === item.text && change.summary === item.summary && change.instructions === item.instructions) continue;
+      this.edit(id, change, "sleep", renames);
+      changed.push(id);
     }
     this.db.prepare("DELETE FROM renames WHERE id <= ?").run(rows.at(-1)!.id);
     return changed;
@@ -1803,9 +1813,10 @@ export class PoolStore extends PoolReader {
 
   // Sleep runs and items
 
-  startSleepRun(reason: SleepRunRecord["reason"], until: string): string {
+  /** `startedAt`: when the run began, before its renamed-files step, so the night's changes include those edits. */
+  startSleepRun(reason: SleepRunRecord["reason"], until: string, startedAt = now()): string {
     const id = this.newSleepId("s", "sleep_runs");
-    this.db.prepare("INSERT INTO sleep_runs (id, reason, status, until, started_at) VALUES (?, ?, 'running', ?, ?)").run(id, reason, until, now());
+    this.db.prepare("INSERT INTO sleep_runs (id, reason, status, until, started_at) VALUES (?, ?, 'running', ?, ?)").run(id, reason, until, startedAt);
     return id;
   }
 
@@ -1817,10 +1828,11 @@ export class PoolStore extends PoolReader {
   }
 
   /** A skipped run: nothing moves, and the reason is kept. */
-  recordSleepRun(reason: SleepRunRecord["reason"], skipReason: SkipReason, at = now()): string {
+  /** `startedAt`: earlier than `at` only when the skipped run still respelled renamed files, which its changes then list. */
+  recordSleepRun(reason: SleepRunRecord["reason"], skipReason: SkipReason, at = now(), startedAt = at): string {
     const id = this.newSleepId("s", "sleep_runs");
     this.db.prepare("INSERT INTO sleep_runs (id, reason, status, skip_reason, until, started_at, finished_at) VALUES (?, ?, 'skipped', ?, ?, ?, ?)")
-      .run(id, reason, skipReason, at, at, at);
+      .run(id, reason, skipReason, at, startedAt, at);
     return id;
   }
 
@@ -1852,19 +1864,23 @@ export class PoolStore extends PoolReader {
    * and `{user}` is accepted; citations and the search index update with it.
    * Only the user may change what a user wrote.
    */
-  edit(id: string, change: Partial<Body>, author: Author): void {
+  /**
+   * `renamed`: sleep respelling renamed files (applyRenames), which may change a user's words, since the user renamed
+   * the file; the revision keeps the renames, so a user's words are known in their new spelling after it.
+   */
+  edit(id: string, change: Partial<Body>, author: Author, renamed?: Respelling[][]): void {
     this.checkAuthor(author);
     const item = this.load(id);
     if (!item) throw new Error(`no such memory: ${id}`);
-    if (item.origin === "user" && item.kind === "note" && !author.startsWith("user:")) {
+    if (item.origin === "user" && item.kind === "note" && !author.startsWith("user:") && !renamed) {
       throw new Error("a memory a user added can only be changed by the user");
     }
     const body = this.stored({ ...bodyOf(item), ...change });
-    if (item.kind === "page" && !author.startsWith("user:") && (body.instructions ?? "") !== (item.instructions ?? "")) {
+    if (item.kind === "page" && !author.startsWith("user:") && !renamed && (body.instructions ?? "") !== (item.instructions ?? "")) {
       throw new Error("a page's instructions can only be changed by the user");
     }
     // A page a user wrote or edited keeps their words: sleep may only add around them.
-    const theirs = item.kind === "page" && !author.startsWith("user:") ? this.userText(id) : undefined;
+    const theirs = item.kind === "page" && !author.startsWith("user:") && !renamed ? this.userText(id) : undefined;
     if (theirs && !body.text.includes(theirs)) {
       throw new Error(`${id} has text a user wrote; keep it word for word and add around it, or ask about it instead`);
     }
@@ -1885,7 +1901,7 @@ export class PoolStore extends PoolReader {
           this.db.prepare("UPDATE wake SET text = ?, updated_at = ? WHERE id = 1").run(body.text, at);
           break;
       }
-      this.written(id, body, author, at);
+      this.written(id, body, author, at, renamed);
     });
   }
 
@@ -1932,8 +1948,11 @@ export class PoolStore extends PoolReader {
     let theirs: string | undefined;
     let before: string | undefined;
     for (const r of revs) {
-      const text = json<Body>(r.body).text.trim();
+      const body = json<Body & { renamed?: Respelling[][] }>(r.body);
+      const text = body.text.trim();
       if (r.author.startsWith("user:") && text !== before) theirs = text;
+      // A renamed file respelled their words too: they stand in the new spelling from then on.
+      else if (body.renamed && theirs !== undefined) theirs = respeller(body.renamed)(theirs).trim();
       before = text;
     }
     return theirs;
@@ -1967,8 +1986,8 @@ export class PoolStore extends PoolReader {
   }
 
   /** Records a new version: a revision, its citations and its search row. */
-  private written(id: string, body: Body, author: Author, at: string): void {
-    this.db.prepare("INSERT INTO revisions (item, body, author, created_at) VALUES (?, ?, ?, ?)").run(id, JSON.stringify(body), author, at);
+  private written(id: string, body: Body, author: Author, at: string, renamed?: Respelling[][]): void {
+    this.db.prepare("INSERT INTO revisions (item, body, author, created_at) VALUES (?, ?, ?, ?)").run(id, JSON.stringify(renamed ? { ...body, renamed } : body), author, at);
     this.db.prepare("DELETE FROM citations WHERE src = ?").run(id);
     const cite = this.db.prepare("INSERT OR IGNORE INTO citations (src, dst) VALUES (?, ?)");
     for (const dst of citationsIn(body.text, this.pool)) if (dst !== id) cite.run(id, dst);

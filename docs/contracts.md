@@ -234,7 +234,7 @@ nothing else. No code path gives a general view a private handle.
 | Reading for the prompt | `getWake`, `pageIndex`, `forFolders(paths)`, `listJournal`, `journalHistory({ limit, offset, q })` → `{ entries, total }`, `userIntroduced` |
 | Search | `search(query, { kinds, limit, current, excludeThread, fromThread, only, skip, minWords, said, vector })`, returning `{ id, kind, snippet, score, at, origin }` (`vector: { model, values }`: the query's vector; hits by meaning from `nearest(model, values, limit)`, cosine at or above `VECTOR_FLOOR`, join the keyword hits by reciprocal rank fusion, `RRF_K`, docs/memory.md "Recall by meaning"; `origin`: who wrote a memory, or `user` or `lyrica` for a user or assistant entry, unset for a tool result; a user-role entry lyricad wrote, such as a message from another of her threads, a watch, a wake-up or a routine, is `lyrica`; `at`: when an entry was said or a memory last changed; `skip`: words left out of the query; `minWords`: when the query has more words than that, a hit holds at least that many of them, each as the same word, its stem or a longer word starting with it (`sameWord`), a user's name counting once, and enough of its words that aren't common in the index, a word in more than 2% of it and 20 items being common; `said`: leave out tool results and match a message on its text, not its tool calls);  a store's `unembedded(model, limit, excludeThreads?)` → `{ id, kind, text }[]` (indexed items with no vector from `model`, never sleep's entries nor those of `excludeThreads`; a message by its spoken words, empty for one with none), `putVectors(model, [{ id, kind, vec? }])` (float32 vectors; `vec` left out marks an item skipped; another model's rows are dropped), `vectorCount(model)` → `{ done, left }`; `searchMessages(query, { limit, before?, threads? })` → `MessageHit[]` (`thread`, `n`, `role`, `text`, `createdAt`): the user's messages and her replies from the same index, every word of `query` as a word or a word's start (`searchWords`), newest first, before `before`, in `threads`; an entry a rewind removed while a branch keeps its copy is found at the copy |
 | Lineage | `cameFrom`, `usedIn`, `revisions`, `revisionHistory(id, { limit, offset, q })` → `{ entries, total }` (newest first), `isTombstoned(entryId)`, `editedSince(since)` |
-| Sleep runs | `startSleepRun`, `updateSleepRun`, `recordSleepRun` (a skip), `listSleepRuns`, `sleepRunHistory({ limit, offset, q })` → `{ entries, total }`, `getSleepRun`, `watermark`, `sleepMaterial(since, until)`, `sleepChanges(from, to)` |
+| Sleep runs | `startSleepRun`, `updateSleepRun`, `recordSleepRun` (a skip), `listSleepRuns`, `sleepRunHistory({ limit, offset, q })` → `{ entries, total }`, `getSleepRun`, `watermark`, `sleepMaterial(since, until)`, `sleepChanges(from, to)` → `{ notes (made), edited (notes it edited), pages, journal, wake? }`; `startSleepRun(reason, until, startedAt?)` and `recordSleepRun(reason, skip, at?, startedAt?)` take the time the run began, before its renamed-files step |
 | Sleep items | `addItem`, `listItems`, `getItem`, `startItem(id, threadId)`, `dismissItem`, `itemForThread`. Items, like the journal and WAKE, store `{user}` as a mention token, and the readers give it back as the name |
 
 IDs:
@@ -265,7 +265,11 @@ authoritative.
 or `user`), and the browser filters on it. Sleep may cite user memories but
 never edits or deletes them. On a page a user wrote or edited, the store
 refuses a sleep edit that doesn't keep the latest user-written text word for
-word: sleep can only add around it.
+word: sleep can only add around it. The one exception is `applyRenames`
+(`edit(id, change, "sleep", renamed)`): a renamed file's paths are respelled in
+user memories too, and the revision keeps the renames (`renamed`, stripped
+from what `revisions` returns), so the user-written text is known in its new
+spelling afterwards.
 
 **Owner view.** `openOwnerView(userId)` gives the signed-in user read and write
 access to both of their own pools, for the memory browser.

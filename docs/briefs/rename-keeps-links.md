@@ -30,8 +30,8 @@ method and one helper with no schema change; memories need one small pool table 
 
 ## Out of scope
 
-- Other files that copied the path, a note a user added and a page's words from a user: they keep
-  it.
+- Other files that copied the path: they keep it. (A user's own notes and words do follow: the user
+  renamed the file or approved it, decided 2026-11-01.)
 - The other pool, and a file renamed by her own commands (`mv` in bash): only the panel's rename
   rewrites.
 - Her reasoning blocks and image bytes, never rewritten.

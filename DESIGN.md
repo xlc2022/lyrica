@@ -199,7 +199,8 @@ Each user has two pools of memory.
       path names the new one (decided 2026-11-01, over a fixed ID with a
       shown name, since her tools work by path). Memories citing those
       threads follow at the next sleep, as sleep's own edit, never as the
-      user's; files' contents are left alone. Deleting is permanent, and deleting
+      user's, the user's own notes and words included; files' contents are
+      left alone. Deleting is permanent, and deleting
       in a grant says it deletes on the server.
     - A panel upload belongs to the thread, not to a message, so removing
       turns never deletes it.
