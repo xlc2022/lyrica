@@ -519,6 +519,10 @@ Private column, so a host is how private threads get a model at all. Each user
 picks their own voice and speed per language with the speech model's
 **Settings**, in its host's "N models" list under Models, Hosts and
 endpoints; without one, the model's first voice for the language is used.
+In that same list, untick **Enabled** beside a model to keep it out of
+every list and picker (its managers only; others see an "off" pill), or
+use **Disable all models** and **Enable all models** in the host's ⋯. The
+setting survives a rescan of the host's models folder.
 
 ### Recall by meaning
 
