@@ -1108,7 +1108,11 @@ it's off.
 
   This rule is enforced by the `image` tool before every resolved provider
   attempt, including fallbacks; local models always remain allowed.
-  Images made from them follow the same rule.
+  Images made from them follow the same rule, and so does the thread: once
+  a result made from a portrait lands in a thread's folder, every image that
+  thread reads, and every image another thread reads from that folder,
+  counts as a portrait, so a copy re-saved in the sandbox keeps the rule.
+  A photo of the user they upload to a thread themselves isn't marked.
 - **Later:** a personal LoRA, trained on the user's photos on the GPU machine
   for a closer likeness (brief: `docs/briefs/personal-lora.md`). It would be
   trained only from that user's own `photos-of-me/`, when they start it, by

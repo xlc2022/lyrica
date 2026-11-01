@@ -6,7 +6,7 @@ import type { Readable } from "node:stream";
 import { cleanPng, type GeneratedImage, type ImageInput } from "../models/images.ts";
 import { isMp4, MAX_DRIVE_BYTES, type GeneratedVideo } from "../models/videos.ts";
 import { sniffImage } from "./ops.ts";
-import { WORKDIR } from "./sandbox.ts";
+import { FAMILY_ROOT, SHARED, WORKDIR } from "./sandbox.ts";
 import type { WorkspaceSettings } from "./settings.ts";
 
 export const PHOTOS_DIR = "/photos-of-me";
@@ -169,7 +169,7 @@ export class ThreadImages {
   /** home must check the key and mount on every access; thread names its relative folder in that home. */
   constructor(private readonly home: () => string, private readonly thread: () => string[],
     private readonly readWorkspace: (path: string) => Promise<{ stream: Readable; size: number }>,
-    private readonly portraits: Pick<WorkspaceSettings, "isPortraitImage" | "recordPortraitImage">,
+    private readonly portraits: Pick<WorkspaceSettings, "isPortraitImage" | "recordPortraitImage" | "isPortraitFolder" | "markPortraitFolder">,
     /** Hears of the images saved, as she sees their paths. */
     private readonly made: (paths: string[]) => void = () => {},
     /** Whether images go to the thread's shared/ (a project chat's, read by its threads at /shared) instead of images/. */
@@ -177,9 +177,29 @@ export class ThreadImages {
     /** Hears of an image moved by reject or pick, as she sees both paths, so its record of who made it moves along. */
     private readonly moved: (from: string, to: string) => void = () => {},
     /** Hears of the rejects clearRejected deleted, as she saw their paths, so their records go too. */
-    private readonly removed: (paths: string[]) => void = () => {}) {}
+    private readonly removed: (paths: string[]) => void = () => {},
+    /** The thread whose folder holds a path she sees (/shared is the family's topmost); none for a grant. Without it, /workspace is this thread's and /shared nobody's. */
+    private readonly folderOf: (path: string) => string | undefined = (path) => (path.startsWith(`${SHARED}/`) ? undefined : this.ownFolder())) {}
 
   private folder(kind: "images" | "videos" = "images"): string[] { return this.shared() ? ["shared", kind] : [kind]; }
+
+  /** The thread whose folder this is, as `thread()` names it. */
+  private ownFolder(): string { return decodeURIComponent(this.thread()[1] ?? ""); }
+
+  /**
+   * Whether an image she reads counts as a portrait by where it is: her own folder once a portrait result landed
+   * there (then everything she reads in this thread counts, wherever it is), or another thread's marked folder
+   * read at /thread-workspaces/<id> or /shared.
+   */
+  private portraitByFolder(path: string): boolean {
+    if (this.portraits.isPortraitFolder(this.ownFolder())) return true;
+    const p = posix.normalize(path);
+    const family = p.startsWith(`${FAMILY_ROOT}/`) ? p.slice(FAMILY_ROOT.length + 1).split("/")[0] : undefined;
+    let folder: string | undefined;
+    if (family !== undefined) { try { folder = decodeURIComponent(family); } catch { folder = undefined; } }
+    else folder = this.folderOf(p);
+    return folder !== undefined && this.portraits.isPortraitFolder(folder);
+  }
 
   /**
    * One of her made images by the path she names, in the images folder or its rejected/: the file's name and
@@ -296,7 +316,7 @@ export class ThreadImages {
       return { input: imageInput(bytes), portrait: true };
     }
     const bytes = await this.readCapped(path, MAX_IMAGE_BYTES, "an input image is at most 20 MB");
-    return { input: imageInput(bytes), portrait: this.portraits.isPortraitImage(createHash("sha256").update(bytes).digest("hex")) };
+    return { input: imageInput(bytes), portrait: this.portraitByFolder(path) || this.portraits.isPortraitImage(createHash("sha256").update(bytes).digest("hex")) };
   }
 
   /** A clip from the workspace (`motion`'s driving clip, or one to `extend`): an MP4 of at most 64 MB, read in memory only. */
@@ -325,6 +345,8 @@ export class ThreadImages {
   /** Exclusive PNG names, no sidecars or prompt metadata, and no writes through a symlink. */
   save(images: GeneratedImage[], portrait = false): string[] {
     const folder = this.folder();
+    // The folder's mark, before any result is written: from here on, whatever this thread reads counts as a portrait.
+    if (portrait) this.portraits.markPortraitFolder(this.ownFolder());
     const paths = inDir(this.home(), [...this.thread(), ...folder], true, dir => images.map(image => {
       const png = cleanPng(image.bytes);
       // Record before publishing the bytes so concurrent readers cannot miss the policy.

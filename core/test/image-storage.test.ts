@@ -14,10 +14,11 @@ afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, f
 function setup() {
   const root = mkdtempSync(join(tmpdir(), "lyrica-image-files-")); dirs.push(root);
   const home = join(root, "home"); mkdirSync(home); ensurePhotosDir(home);
-  const portraits = new Set<string>();
-  const files = new ThreadImages(() => home, () => ["threads", "web%2Fa"], async () => ({ stream: Readable.from([png]), size: png.length }),
-    { isPortraitImage: hash => portraits.has(hash), recordPortraitImage: hash => { portraits.add(hash); } });
-  return { root, home, files };
+  const portraits = new Set<string>(), folders = new Set<string>();
+  const marks = { isPortraitImage: (hash: string) => portraits.has(hash), recordPortraitImage: (hash: string) => { portraits.add(hash); },
+    isPortraitFolder: (folder: string) => folders.has(folder), markPortraitFolder: (folder: string) => { folders.add(folder); } };
+  const files = new ThreadImages(() => home, () => ["threads", "web%2Fa"], async () => ({ stream: Readable.from([png]), size: png.length }), marks);
+  return { root, home, files, marks, folders };
 }
 const has = (cmd: string) => { try { execFileSync("sh", ["-c", `command -v ${cmd}`], { stdio: "ignore" }); return true; } catch { return false; } };
 const fuse = process.getuid?.() !== 0 && existsSync("/dev/fuse") && has("gocryptfs") && has("fusermount3");
@@ -37,6 +38,26 @@ describe("image storage boundaries (principles 2 and 4)", () => {
     await expect(files.read("/photos-of-me/escape/portrait.png")).rejects.toThrow();
     writeFileSync(join(home, "photos-of-me", "not-an-image.png"), Buffer.alloc(32));
     await expect(files.read("/photos-of-me/not-an-image.png")).rejects.toThrow(/PNG, JPEG or WebP/);
+  });
+  it("marks the thread's folder with its first portrait result, so a copy with other bytes still counts, in this thread and from its family", async () => {
+    const { home, marks, folders } = setup();
+    // Every read here answers bytes no hash knows (the PNG with a byte after its end), so only the folder's mark can count them.
+    const altered = Buffer.concat([png, Buffer.alloc(1)]);
+    const reads = async () => ({ stream: Readable.from([altered]), size: altered.length });
+    const files = new ThreadImages(() => home, () => ["threads", "web%2Fa"], reads, marks);
+    expect((await files.read("/workspace/uploads/landscape.png")).portrait).toBe(false);
+    files.save([cleanPng(png)], true);
+    expect(folders).toEqual(new Set(["web/a"]));
+    // Whatever this thread reads now counts, wherever it is.
+    expect((await files.read("/workspace/uploads/landscape.png")).portrait).toBe(true);
+    expect((await files.read("/some/grant/photo.png")).portrait).toBe(true);
+    // Another thread reading this one's folder at /thread-workspaces/<id> or /shared counts too; its own doesn't.
+    const other = new ThreadImages(() => home, () => ["threads", "web%2Fb"], reads, marks,
+      () => {}, () => false, () => {}, () => {}, (path) => (path.startsWith("/shared/") ? "web/a" : path.startsWith("/workspace/") ? "web/b" : undefined));
+    expect((await other.read("/thread-workspaces/web%2Fa/images/x.png")).portrait).toBe(true);
+    expect((await other.read("/shared/images/x.png")).portrait).toBe(true);
+    expect((await other.read("/workspace/uploads/landscape.png")).portrait).toBe(false);
+    expect((await other.read("/some/grant/photo.png")).portrait).toBe(false);
   });
   it("saves exclusively inside the thread folder, strips metadata again and refuses an images symlink", () => {
     const { root, home, files } = setup();
@@ -73,7 +94,7 @@ describe("image storage boundaries (principles 2 and 4)", () => {
     const { root, home } = setup();
     const moves: [string, string][] = [], removed: string[] = [];
     const files = new ThreadImages(() => home, () => ["threads", "web%2Fa"], async () => ({ stream: Readable.from([png]), size: png.length }),
-      { isPortraitImage: () => false, recordPortraitImage: () => {} }, () => {}, () => false, (from, to) => { moves.push([from, to]); }, paths => { removed.push(...paths); });
+      { isPortraitImage: () => false, recordPortraitImage: () => {}, isPortraitFolder: () => false, markPortraitFolder: () => {} }, () => {}, () => false, (from, to) => { moves.push([from, to]); }, paths => { removed.push(...paths); });
     const [a, b] = files.save([cleanPng(png), cleanPng(png)]);
     const dir = join(home, "threads", "web%2Fa"), name = (p: string) => p.split("/").at(-1)!;
     mkdirSync(join(dir, ".lyrica", "thumbs", "images"), { recursive: true });
@@ -107,7 +128,7 @@ describe("image storage boundaries (principles 2 and 4)", () => {
   it("saves a project chat's results in its shared folder, where the chat still shows them", () => {
     const { home } = setup();
     const chat = new ThreadImages(() => home, () => ["threads", "p1"], async () => ({ stream: Readable.from([png]), size: png.length }),
-      { isPortraitImage: () => false, recordPortraitImage: () => {} }, () => {}, () => true);
+      { isPortraitImage: () => false, recordPortraitImage: () => {}, isPortraitFolder: () => false, markPortraitFolder: () => {} }, () => {}, () => true);
     const [path] = chat.save([cleanPng(png)]);
     expect(path).toMatch(/^\/workspace\/shared\/images\/[0-9a-f-]{36}\.png$/);
     expect(readFileSync(join(home, "threads", "p1", "shared", "images", path!.split("/").at(-1)!))).toEqual(png);

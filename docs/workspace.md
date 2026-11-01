@@ -726,9 +726,15 @@ Images made from portraits follow the same rule. `ThreadImages.save(images,
 portrait)` records each cleaned result's SHA-256 in encrypted `user.db` settings
 before writing it; `read` checks that hash for every workspace input. Copies
 and renames retain the rule, and a result used to make another result passes it
-on. A copy re-encoded in the sandbox (say, to JPEG) has other bytes and isn't
-caught. Only hashes are stored, under additive `images.portrait.sha256.<hash>` keys
-in the existing settings table; no schema change or prompt metadata is needed.
+on. A copy re-encoded in the sandbox (say, to JPEG) has other bytes, so `save`
+also marks the thread's folder (`markPortraitFolder`, keyed by `folderThread`)
+before the first portrait result is written: from then on every image that
+thread reads counts as a portrait, wherever it is, and so does an image another
+thread reads from that folder at `/thread-workspaces/<id>` or `/shared`
+(`Workspace.originKey` names the folder). The mark is never cleared. Only hashes
+and marks are stored, under additive `images.portrait.sha256.<hash>` and
+`images.portrait.thread.<id>` keys in the existing settings table; no schema
+change or prompt metadata is needed.
 
 `WorkspaceSettings.photoCloudPolicy()` is Never, Ask once a day (default), or
 Always (`never`, `ask`, `always`), in encrypted `user.db` settings. User schema
