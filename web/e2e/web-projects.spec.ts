@@ -1244,6 +1244,9 @@ test("the Files panel: a tree one folder at a time, a file shown, search, the Im
   const linked = page.getByRole("dialog", { name: "plan.md" });
   await expect(linked.locator(".viewer-head .fname")).toHaveText("uploads/plan.md");
   await expect(linked.locator(".viewer-prose")).toContainText("Water the trays.");
+  // Download and Copy path sit in the viewer's header as buttons, beside the library's ⋯.
+  await expect(linked.getByRole("button", { name: "Download", exact: true })).toBeVisible();
+  await expect(linked.getByRole("button", { name: "Copy path", exact: true })).toBeVisible();
   await linked.getByRole("button", { name: "Close", exact: true }).click();
   await expect(linked).toHaveCount(0);
   if (phone(page)) { await page.goBack(); await page.getByRole("heading", { level: 1, name: "hello files" }).waitFor(); }

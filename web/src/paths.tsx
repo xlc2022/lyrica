@@ -6,8 +6,7 @@ import { Icon } from "./icons.tsx";
 import type { Element, Root, Text } from "hast";
 import { threadPath, u, type Pool } from "./api.ts";
 import { href } from "./route.ts";
-import { RowMenu } from "./Machines.tsx";
-import { ErrorText } from "./ui.tsx";
+import { CopyIconButton } from "./CopyButton.tsx";
 
 export const WORKDIR = "/workspace";
 export const SHARED = "/shared";
@@ -178,27 +177,20 @@ export function VideoThumb({ path, files }: { path: string; files: FileLinks }) 
 export const basename = (p: string) => p.slice(p.lastIndexOf("/") + 1);
 
 /** An image shown large over the page; the Files panel's Images tab and a message's inline images share it. */
-export function Lightbox({ path, url, onClose, onMenu, bare }: { path: string; url: string; onClose: () => void; bare?: boolean; onMenu?: (e: React.MouseEvent) => void }) {
+export function Lightbox({ path, url, onClose, bare }: { path: string; url: string; onClose: () => void; bare?: boolean }) {
   const ref = useRef<HTMLDialogElement>(null);
-  const [menu, setMenu] = useState(false);
-  const [error, setError] = useState("");
   useEffect(() => { const el = ref.current; if (el && !el.open) el.showModal(); return () => el?.close(); }, []);
   const name = basename(path);
   return (
     <dialog ref={ref} className="lightbox" aria-label={name} onCancel={(e) => { e.preventDefault(); onClose(); }}
-      onKeyDown={(e) => { if (e.key === "Escape" && menu) { e.preventDefault(); e.stopPropagation(); setMenu(false); } }}
       onClick={(e) => { if (e.target === ref.current) onClose(); }}>
       <div className="fhead">
         <span className="fname mono">{bare ? name : shown(path)}</span>
-        {onMenu ? <button type="button" className="icon sm" aria-label="Image actions" aria-haspopup="menu" onClick={onMenu}><Icon name="more" /></button>
-          : <RowMenu label="Image actions" open={menu} onOpen={setMenu} items={[
-            { label: "Download", onPick: () => { const a = document.createElement("a"); a.href = url; a.download = name; a.click(); } },
-            { label: "Copy path", onPick: () => { void navigator.clipboard.writeText(path).catch((e: Error) => setError(e.message)); } },
-          ]} />}
-        <button type="button" className="icon sm" aria-label="Close" onClick={onClose}><Icon name="close" /></button>
+        <button type="button" className="icon sm" aria-label="Download" title="Download" onClick={() => { const a = document.createElement("a"); a.href = url; a.download = name; a.click(); }}><Icon name="download" /></button>
+        <CopyIconButton text={path} label="Copy path" className="icon sm" />
+        <button type="button" className="icon sm" aria-label="Close" title="Close" onClick={onClose}><Icon name="close" /></button>
       </div>
       <div className="lb-img"><img src={url} alt={name} /></div>
-      <ErrorText error={error} />
     </dialog>
   );
 }

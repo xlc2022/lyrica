@@ -287,7 +287,9 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   1180 px the **Thread** toggle (a labelled button, pressed while the thread
   shows) switches between the two; from 1180 px up it shows or hides the
   thread. The header names the file (mono), its facts
-  (kind, size, time) and **Preview | Source** for HTML, SVG and Markdown.
+  (kind, size, time), **Preview | Source** for HTML, SVG and Markdown, then
+  **Download** and **Copy path** as icon buttons (Copy path is
+  `CopyIconButton`, reading Copied for 2 s), and the library's ⋯ where it has one.
   What it shows depends on the name: HTML in an `iframe` of
   `…/files/view` with `sandbox="allow-scripts allow-popups"`, its console
   messages (posted by the route's bridge, taken only from that frame's
@@ -1086,8 +1088,8 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   shows as her own message when a `notice` event brings its `video` (or the
   thread reloads), under the call's marker again, done, from the event's `call`; a failed one is a notice headed Clip with a down dot and
   "failed", then the reason.
-  The shared Lightbox has a filename header, Download and Copy path behind
-  ⋯, and Close. Image tool markers read Making an image with its tier,
+  The shared Lightbox has a filename header, then Download, Copy path and
+  Close as icon buttons. Image tool markers read Making an image with its tier,
   Editing an image, Upscaling an image, Rejecting an image (or <n> images),
   Picking an image or Deleting rejected images, then the word running, done
   or failed; expanding a failed marker shows the result's reason. Her

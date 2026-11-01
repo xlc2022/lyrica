@@ -500,8 +500,8 @@ stands; change the contract only where the UI needs it, in the same PR.
   its accessible name, and a cap line under it "Made with <model> · fast"
   or "· quality" (facts, not a caption) with a ⋯ menu Download, Copy path,
   Show in Files, Edit… (opens the composer with "Edit <path>: " filled, the
-  Images switch on). A tap opens the existing Lightbox (filename header, ⋯
-  with Download and Copy path, ✕; no prev/next).
+  Images switch on). A tap opens the existing Lightbox (filename header,
+  Download and Copy path as icon buttons, ✕; no prev/next).
 - **Progress while one is made**: the tool-call marker for `image` reads
   "Making an image · fast" (or quality; "Editing an image", "Upscaling an
   image" for the other actions) with the running dot; "step <n> of <m>" in
