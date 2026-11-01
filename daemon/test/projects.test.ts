@@ -158,6 +158,11 @@ describe("projects", () => {
     other.respond(() => ({ text: "From gemma." }));
     const box = (await s.ada.post<EndpointInfo>(`${s.u}/endpoints`, { name: "box", kind: "local", baseUrl: other.baseUrl })).body;
     const gemma = box.models[0]!.id;
+    // Checked as a thread's own settings are: a model it has, a thinking level, a boolean.
+    expect((await s.ada.patch(s.path, { threadsModel: { offeringId: "nowhere" } })).status).toBe(400);
+    expect((await s.ada.patch(s.path, { threadsModel: "gemma" })).status).toBe(400);
+    expect((await s.ada.patch(s.path, { threadsThinking: "max" })).status).toBe(400);
+    expect((await s.ada.patch(s.path, { threadsFallback: "off" })).status).toBe(400);
     await s.ada.patch(s.path, { threadsCode: true, threadsModel: { offeringId: gemma } });
     s.script("chat").push(start(["Fixture", "fixture: fix addition"]), { text: "Started." });
     const child = ends((await s.say("Fix the fixture")).events).flatMap(e => e.threads ?? [])[0]!.id;

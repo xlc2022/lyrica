@@ -119,4 +119,9 @@ describe("every chat model offline", () => {
   it("answers an offline call 502, since 503 sends the web UI to unlock", () => {
     expect(statusOf(new Offline("chat", []))).toBe(502);
   });
+
+  it("answers a system error 500, so its server path isn't sent as a reason", () => {
+    expect(statusOf(new Error("expected a name"))).toBe(400);
+    expect(statusOf(Object.assign(new Error("ENOENT: no such file or directory, open '/srv/x'"), { errno: -2, code: "ENOENT", syscall: "open" }))).toBe(500);
+  });
 });

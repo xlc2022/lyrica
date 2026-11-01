@@ -2149,7 +2149,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
       `Models.forgetThread` for it and each subagent thread under it.
     - **Errors from core** (`statusOf`): `CloudModelForbidden`, `NoModel`,
       `PairingFailed`, `GitAccountProblem` and a plain `Error` (a validation
-      message) are `400`; `AuthError` and `WrongPassword` are `401`;
+      message; a system error with `errno` or `syscall` is `500`) are `400`; `AuthError` and `WrongPassword` are `401`;
       `Forbidden` is `403`; `SchemaTooNew` and `MigrationFailed` are `409`;
       `Offline` is `502`; `Locked` is `503`. A `HostRefused` keeps the
       host's meaning by `code`: `invalid` and `need_repo` 400, `refused` 403,

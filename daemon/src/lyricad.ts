@@ -1174,7 +1174,8 @@ export class Lyricad implements Drainable {
     } catch (err) {
       const status = err instanceof URIError ? 400 : statusOf(err);
       const message = status === 500 ? "internal error" : (err as Error).message;
-      if (status === 500) this.log(`error in ${method} ${routeName}: ${(err as Error).name}: ${(err as Error).message.split("\n")[0]}`);
+      // By name only, as hosted sessions log: a message can quote what the handler was given.
+      if (status === 500) this.log(`error in ${method} ${routeName}: ${(err as Error).name}${"code" in (err as object) ? ` ${String((err as { code: unknown }).code)}` : ""}`);
       // Offline says which models were tried, so the interface can show it the same way for chat, images and speech.
       const offline = err instanceof Offline ? { code: err.code, task: err.task, tried: err.tried } : {};
       const updating = err instanceof Updating ? { updating: true } : {};
