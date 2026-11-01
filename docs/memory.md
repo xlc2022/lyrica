@@ -261,9 +261,11 @@ rules (`minWords`, common words, `said`, `current`, project boost) apply to
 the keyword side; `said`, `current`, `kinds` and `only` to both. Vectors
 compare only within one model: `putVectors(model, rows)` drops any other
 model's rows, so a changed Embeddings list re-embeds the pool from the
-start, keyword recall working meanwhile. `unembedded(model, limit)` lists
+start, keyword recall working meanwhile. `unembedded(model, limit, excludeThreads)` lists
 what has no vector yet (a message by its spoken words, at most 1,500
-characters of any item), and `vectorCount(model)` how far along it is.
+characters of any item; never sleep's entries, nor those of the threads
+named, which the embedder uses to keep a local-only thread's words from a
+cloud model), and `vectorCount(model)` how far along it is.
 Automatic recall and the `recall` tool embed their text through the
 thread's `embed` (lyricad: `models.embed(call, [text], { query: true })`,
 eight seconds at most); an embedding model that is away, slow or unset

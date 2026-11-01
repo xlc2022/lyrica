@@ -45,4 +45,62 @@ describe("the embedder", () => {
     general.close();
     priv.close();
   });
+
+  it("keeps a local-only thread's words away from a cloud embedding model, and embeds them once the model is local", async () => {
+    const m = await withModels();
+    const { models, ada, users, keyring } = m;
+    const memory = new Memory(keyring, users);
+    const add = async (name: string, kind: "cloud" | "local") => {
+      const server = await fakeEmbed({ label: name });
+      const ep = models.addEndpoint(ada, { name, kind, baseUrl: server.baseUrl });
+      const found = await models.discover(ada, ep.id);
+      return { server, ref: { offeringId: models.setCapabilities(ada, found[0]!.id, { embedding: true }).id } };
+    };
+    const cloud = await add("api", "cloud");
+    const local = await add("cpu", "local");
+    models.setColumnTask(ada.id, "general", "embedding", [cloud.ref]);
+    const general = memory.openThreadView(ada.id, "general");
+    const open = general.own.createThread({ interface: "cli" });
+    const quiet = general.own.createThread({ interface: "cli" });
+    models.setLocalOnly(ada.id, "general", quiet.id, true);
+    const message = (thread: string, text: string, piId: string) => general.own.appendEntry(thread, { piId, role: "user", data: { type: "message", message: { role: "user", content: text } }, text });
+    message(open.id, "what should I cook tonight?", "a1");
+    const secret = message(quiet.id, "the quiet diagnosis came back", "b1");
+    const embedder = new Embedder({ users, memory, models, hasKey: (id) => keyring.hasUserKey(id), log: () => {} });
+    await embedder.tick();
+    expect(cloud.server.heard).toHaveLength(1);
+    expect(JSON.stringify(cloud.server.heard)).not.toMatch(/diagnosis/);
+    expect(general.own.unembedded("Qwen3-Embedding-0.6B-Q8_0.gguf", 10).map((p) => p.id)).toEqual([secret]);
+    // The list now resolves to a local copy of the same model: the local-only thread's words may go to it.
+    models.setColumnTask(ada.id, "general", "embedding", [local.ref]);
+    await embedder.tick(Date.now() + 61_000);
+    expect(local.server.heard.flatMap((h) => h.input)).toEqual(["the quiet diagnosis came back"]);
+    expect(cloud.server.heard).toHaveLength(1);
+    expect(general.own.unembedded("Qwen3-Embedding-0.6B-Q8_0.gguf", 10)).toEqual([]);
+    general.close();
+  });
+
+  it("marks an item the model refuses as skipped instead of retrying the same batch forever", async () => {
+    const m = await withModels();
+    const { models, ada, users, keyring } = m;
+    const memory = new Memory(keyring, users);
+    const server = await fakeEmbed();
+    const ep = models.addEndpoint(ada, { name: "embed", kind: "local", baseUrl: server.baseUrl });
+    const found = await models.discover(ada, ep.id);
+    models.setColumnTask(ada.id, "general", "embedding", [{ offeringId: models.setCapabilities(ada, found[0]!.id, { embedding: true }).id }]);
+    const general = memory.openThreadView(ada.id, "general");
+    const t = general.own.createThread({ interface: "cli" });
+    const said = general.own.appendEntry(t.id, { piId: "p1", role: "user", data: { type: "message", message: { role: "user", content: "what should I cook tonight?" } }, text: "what should I cook tonight?" });
+    const [bad] = general.own.addNotes([{ text: "{user} said REFUSE-ME once", source: said }], { author: "lyrica", thread: t.id });
+    server.refuse((text) => /REFUSE-ME/.test(text));
+    const logs: string[] = [];
+    const embedder = new Embedder({ users, memory, models, hasKey: (id) => keyring.hasUserKey(id), log: (l) => logs.push(l) });
+    await embedder.tick();
+    expect(general.own.unembedded("Qwen3-Embedding-0.6B-Q8_0.gguf", 10)).toEqual([]);
+    expect(general.own.nearest("Qwen3-Embedding-0.6B-Q8_0.gguf", Float32Array.from([1, 0, 0, 0]), 5).map((n) => n.id)).toEqual([said]);
+    expect(general.own.nearest("Qwen3-Embedding-0.6B-Q8_0.gguf", Float32Array.from([0, 0, 0, 1]), 5).map((n) => n.id)).not.toContain(bad);
+    expect(logs).toEqual(["embedding general memory: 1 of 2 refused by the model, skipped"]);
+    expect(JSON.stringify(logs)).not.toMatch(/REFUSE-ME|cook/);
+    general.close();
+  });
 });

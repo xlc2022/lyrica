@@ -1879,10 +1879,15 @@ export class PoolStore extends PoolReader {
   /**
    * Indexed items with no vector from `model`: a message by its spoken words
    * (a tool result or a message with none is listed with empty text, to be
-   * marked skipped), a note, page or journal entry by its indexed text.
+   * marked skipped), a note, page or journal entry by its indexed text. The
+   * entries of `excludeThreads` (local-only threads, when the model is a
+   * cloud one) are left out, as are sleep's threads, which recall never shows.
    */
-  unembedded(model: string, limit: number): { id: string; kind: Kind; text: string }[] {
-    const rows = this.db.prepare("SELECT id, kind, text FROM search WHERE id NOT IN (SELECT id FROM vectors WHERE model = ?) LIMIT ?").all(model, limit) as { id: string; kind: Kind; text: string }[];
+  unembedded(model: string, limit: number, excludeThreads: string[] = []): { id: string; kind: Kind; text: string }[] {
+    // json_each has an `id` column of its own, so the index's is named.
+    const rows = this.db.prepare(`SELECT s.id, s.kind, s.text FROM search s WHERE s.id NOT IN (SELECT id FROM vectors WHERE model = @model)
+      AND s.id NOT LIKE 'e:sleep/%' AND NOT EXISTS (SELECT 1 FROM json_each(@threads) t WHERE s.id LIKE 'e:' || t.value || '#%') LIMIT @limit`)
+      .all({ model, threads: JSON.stringify(excludeThreads), limit }) as { id: string; kind: Kind; text: string }[];
     return rows.map((r) => {
       if (r.kind !== "entry") return { id: r.id, kind: r.kind, text: r.text.slice(0, EMBED_CHARS) };
       const [entry] = this.entryWindow(r.id, 0);

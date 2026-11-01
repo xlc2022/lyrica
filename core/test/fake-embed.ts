@@ -26,6 +26,7 @@ export function toyVector(text: string): number[] {
 export async function fakeEmbed(opts: { models?: Record<string, unknown>[]; label?: string; vectorFor?: (text: string) => number[] } = {}) {
   const heard: { model: string; input: string[] }[] = [];
   let fail: { status: number } | undefined;
+  let refuse: ((text: string) => boolean) | undefined;
   const server = createServer((req, res) => {
     let body = "";
     req.on("data", (c) => (body += c));
@@ -38,6 +39,8 @@ export async function fakeEmbed(opts: { models?: Record<string, unknown>[]; labe
       if (fail) { res.writeHead(fail.status, { "content-type": "application/json" }); return res.end(JSON.stringify({ error: { message: "scripted failure" } })); }
       const asked = JSON.parse(body) as { model: string; input: string[] | string };
       const input = Array.isArray(asked.input) ? asked.input : [asked.input];
+      // A model that can't take one of the inputs refuses the whole request, as llama-server does.
+      if (refuse && input.some(refuse)) { res.writeHead(400, { "content-type": "application/json" }); return res.end(JSON.stringify({ error: { message: "input too long" } })); }
       heard.push({ model: asked.model, input });
       res.writeHead(200, { "content-type": "application/json" });
       // Answered in reverse order with indexes, as a server may.
@@ -52,6 +55,8 @@ export async function fakeEmbed(opts: { models?: Record<string, unknown>[]; labe
     baseUrl: `http://127.0.0.1:${port}/v1`,
     heard,
     failWith: (status: number | undefined) => { fail = status === undefined ? undefined : { status }; },
+    /** Refuses (400) any request holding an input the predicate matches. */
+    refuse: (pred: ((text: string) => boolean) | undefined) => { refuse = pred; },
     stop: () => new Promise<void>((r) => { server.closeAllConnections(); server.close(() => r()); }),
   };
 }

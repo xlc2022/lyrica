@@ -33,7 +33,7 @@ describe("embeddings", () => {
     await s.models.embed(ctx, ["what should I cook?"], { query: true });
     expect(s.gpu.server.heard[1]!.input).toEqual([queryText("what should I cook?")]);
     expect(queryText("x")).toMatch(/^Instruct: .*\nQuery: x$/);
-    expect(s.models.embeddingModel(ctx)).toBe("Qwen3-Embedding-0.6B-Q8_0.gguf");
+    expect(s.models.embeddingModel(ctx)).toEqual({ model: "Qwen3-Embedding-0.6B-Q8_0.gguf", local: true });
   });
 
   it("falls back from a host that is away to the next copy of the model, and reports when none answers", async () => {

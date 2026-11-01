@@ -2435,6 +2435,11 @@ export class Models {
     });
   }
 
+  /** The user's general threads switched to local-only: their words never go to a cloud model, in the background either. */
+  localOnlyThreads(userId: string): string[] {
+    return this.withUser(userId, (db) => (db.prepare("SELECT thread FROM local_only_threads ORDER BY thread").all() as { thread: string }[]).map((r) => r.thread));
+  }
+
   /** A forgotten thread's model choices and call records go with it. */
   forgetThread(userId: string, pool: Pool, threadId: string): void {
     this.withUser(userId, (db) => db.transaction(() => {
@@ -2954,10 +2959,11 @@ export class Models {
     });
   }
 
-  /** The model ID the context's Embeddings list resolves to now, without calling it, or undefined when it has none usable. */
-  embeddingModel(ctx: CallContext): string | undefined {
+  /** The model the context's Embeddings list resolves to now, without calling it (its model ID and whether its endpoint is local), or undefined when it has none usable. */
+  embeddingModel(ctx: CallContext): { model: string; local: boolean } | undefined {
     try {
-      return this.resolve("embedding", ctx).offering.modelId;
+      const r = this.resolve("embedding", ctx);
+      return { model: r.offering.modelId, local: r.endpoint.kind === "local" };
     } catch (err) {
       if (err instanceof NoModel || err instanceof CloudModelForbidden) return undefined;
       throw err;

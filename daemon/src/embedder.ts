@@ -41,17 +41,26 @@ export class Embedder {
     }
   }
 
-  /** Embeds one batch for a pool. Returns how many items got a vector or were marked skipped (0 with nothing to do or no model). */
+  /**
+   * Embeds one batch for a pool. Returns how many items got a vector or were
+   * marked skipped (0 with nothing to do or no model). The private pool's
+   * model is local by its column; the general pool's may be a cloud one,
+   * and then the words of its local-only threads stay out (the cloud
+   * boundary holds in the background as in a turn) until the list resolves
+   * to a local model.
+   */
   async pool(userId: string, pool: Pool): Promise<number> {
     const ctx = { userId, pool, localOnly: pool === "private" };
-    const model = this.o.models.embeddingModel(ctx);
-    if (!model) return 0;
+    const found = this.o.models.embeddingModel(ctx);
+    if (!found) return 0;
+    const { model, local } = found;
+    const keepOut = local ? [] : this.o.models.localOnlyThreads(userId);
     const view = this.o.memory.openThreadView(userId, pool);
     try {
-      const pending = view.own.unembedded(model, EMBED_BATCH);
+      const pending = view.own.unembedded(model, EMBED_BATCH, keepOut);
       if (!pending.length) return 0;
       const toEmbed = pending.filter((p) => p.text);
-      let vectors: Float32Array[] = [];
+      let vectors: (Float32Array | undefined)[] = [];
       if (toEmbed.length) {
         try {
           const out = await this.o.models.embed(ctx, toEmbed.map((p) => p.text));
@@ -60,12 +69,24 @@ export class Embedder {
           vectors = out.vectors;
         } catch (err) {
           if (err instanceof NoModel || isUnreachable(err)) return 0;
-          throw err;
+          // The model refused the batch (an input it can't take): each item alone, and one it still refuses is marked skipped, so one bad item doesn't hold up the pool.
+          vectors = await Promise.all(toEmbed.map(async (p) => {
+            try {
+              const one = await this.o.models.embed(ctx, [p.text]);
+              return one.model === model ? one.vectors[0] : undefined;
+            } catch (e) {
+              if (e instanceof NoModel || isUnreachable(e)) throw e;
+              return undefined;
+            }
+          })).catch(() => undefined) ?? [];
+          if (!vectors.length) return 0;
+          this.o.log(`embedding ${pool} memory: ${vectors.filter((v) => !v).length} of ${toEmbed.length} refused by the model, skipped`);
         }
       }
       const rows = pending.map((p) => {
         const at = toEmbed.indexOf(p);
-        return at >= 0 ? { id: p.id, kind: p.kind, vec: vectors[at]! } : { id: p.id, kind: p.kind };
+        const vec = at >= 0 ? vectors[at] : undefined;
+        return vec ? { id: p.id, kind: p.kind, vec } : { id: p.id, kind: p.kind };
       });
       view.own.putVectors(model, rows);
       return rows.length;
