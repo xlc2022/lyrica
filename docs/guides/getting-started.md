@@ -612,7 +612,10 @@ the unlock page is reachable.
 Her own `tailscaled` runs from the install on, but on no tailnet until the
 setup page or Administration, **Tailnet** joins one with an auth key. Then
 the **Tailnet** mode in Web access serves her at her own ts.net name
-through `tailscale serve`. Details are in
+through `tailscale serve`. Every other port on her tailnet address is
+forwarded to this machine's loopback, so a service you add there is
+reachable from her tailnet too; a Tailscale ACL that allows only port 443
+to her closes that path. Details are in
 [docs/daemon.md](../daemon.md#the-tailnet).
 
 ## Give her models
