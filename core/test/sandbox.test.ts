@@ -6,7 +6,8 @@ import { lookup } from "node:dns/promises";
 import { networkInterfaces, tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { makeWorktrees, worktreeGrants, removeWorktrees, FilesRefused, pythonLibraries, Sandbox, SandboxDenied, ThreadFiles, Users, Workspace, type Worktree, type Grant, type Network } from "../src/index.ts";
+import { McpClient } from "@earendil-works/pi-mcp";
+import { makeWorktrees, worktreeGrants, removeWorktrees, FilesRefused, mcpStdioTransport, pythonLibraries, Sandbox, SandboxDenied, ThreadFiles, Users, Workspace, type Worktree, type Grant, type Network } from "../src/index.ts";
 import { freshKeyring, profile } from "./helpers.ts";
 import { png } from "./fake-images.ts";
 
@@ -101,6 +102,32 @@ describe("the sandbox's Python libraries", () => {
 });
 
 describe.skipIf(!runnable)("the sandbox", () => {
+  it("starts a local MCP server in her folder with the server's own environment inside only, under the sandbox's, and nothing of lyricad's", async () => {
+    writeFileSync(p("work", "mcp.cjs"), readFileSync(new URL("./mcp-stdio.cjs", import.meta.url)));
+    process.env.MCP_TEST_SECRET = "lyricad's own";
+    try {
+      // BASH_ENV would run the file in the launcher's bash on the host (with network on) if it reached it; the server sees it, the launcher never.
+      let launcher: string[] = [];
+      const transport = mcpStdioTransport({ start: async () => {
+        const child = await box().start(["node", "/workspace/mcp.cjs"], "/workspace", { WHO: "ada", HOME: "/nope", PATH: "/nope", BASH_ENV: "/workspace/evil.sh" });
+        launcher = readFileSync(`/proc/${child.pid}/environ`, "utf8").split("\0");
+        return child;
+      } });
+      const client = new McpClient({ name: "test", version: "1", requestTimeoutMs: 15_000 });
+      await client.connect(transport);
+      expect((await client.listTools()).map((t) => t.name)).toEqual(["whoami"]);
+      const result = await client.callTool("whoami", {});
+      const text = (result.content as { type: string; text?: string }[]).find((b) => b.type === "text")?.text ?? "";
+      expect(JSON.parse(text)).toEqual({ who: "ada", home: "/workspace", secret: null, cwd: "/workspace", bashEnv: "/workspace/evil.sh" });
+      expect(launcher.filter((e) => /^(WHO|BASH_ENV)=/.test(e))).toEqual([]);
+      expect(launcher).toContain("HOME=/workspace");
+      expect(launcher.find((e) => e.startsWith("PATH="))).not.toContain("/nope");
+      await client.close();
+    } finally {
+      delete process.env.MCP_TEST_SECRET;
+    }
+  });
+
   it("lets her work in her folder and her grants", async () => {
     const ops = box().ops();
     await ops.write.writeFile("/workspace/draft.md", "hello");

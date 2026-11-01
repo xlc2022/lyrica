@@ -124,6 +124,21 @@ describe("user step 3 (MCP servers)", () => {
   });
 });
 
+describe("user step 21 (local MCP servers)", () => {
+  it("gives every remote server from each released schema an empty command and environment, and the release before still opens it", () => {
+    for (let v = 3; v < 21; v++) {
+      const db = scratchDb();
+      migrate(db, "user", {}, STEPS.user.filter((s) => s.version <= v));
+      db.prepare("INSERT INTO mcp_servers (name, url, token, pool) VALUES ('house', 'http://127.0.0.1:8123/mcp', 't', 'private')").run();
+      migrate(db, "user");
+      expect(db.prepare("SELECT command, env FROM mcp_servers WHERE name = 'house'").get()).toEqual({ command: "[]", env: "{}" });
+      expect(new WorkspaceSettings(db, () => ({ general: [], private: [] })).mcpServer("house")).toMatchObject({ url: "http://127.0.0.1:8123/mcp", token: "t", command: [], env: {} });
+      expect(() => checkReadable(db, "user", STEPS.user.filter((s) => s.version < 21))).not.toThrow();
+      db.close();
+    }
+  });
+});
+
 describe("user step 5 (portrait-photo cloud choice)", () => {
   it("expands every released user schema with Ask once a day and preserves an existing choice", () => {
     for (let v = 1; v < 5; v++) for (const policy of [undefined, "never", "always"]) {

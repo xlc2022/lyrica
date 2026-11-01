@@ -14,6 +14,8 @@ export type JobState = "running" | "exited" | "failed" | "timed out" | "stopped"
 export interface JobInfo {
   /** `j<n>`, counted per thread. */
   id: string;
+  /** A process that isn't a command of hers but holds a running slot: a local MCP server (docs/briefs/mcp-local.md). */
+  kind?: "mcp";
   /** "sandbox" or the machine's name. */
   place: string;
   command: string;
@@ -55,11 +57,13 @@ export function jobDuration(from: string, to: string): string {
 export function jobLine(j: JobInfo, now = new Date().toISOString()): string {
   const how = j.state === "running" ? `running for ${jobDuration(j.startedAt, now)}`
     : `${j.state}${j.exitCode !== undefined && j.exitCode !== null ? ` with code ${j.exitCode}` : ""} after ${jobDuration(j.startedAt, j.endedAt ?? now)}${j.reason ? ` (${j.reason})` : ""}`;
+  if (j.kind === "mcp") return `${j.id} in the sandbox, ${how}: the MCP server ${j.command}`;
   return `${j.id} in ${j.place === "sandbox" ? "the sandbox" : j.place}, ${how}: ${j.command}`;
 }
 
-/** What lyricad tells the thread when a job ends: the job, and the last lines of its output. */
+/** What lyricad tells the thread when a job ends: the job, and the last lines of its output. A local MCP server's output is never kept. */
 export function jobNotice(j: JobInfo, output: string): string {
+  if (j.kind === "mcp") return `${jobLine(j)}. Its tools are off until the next turn starts it again.`;
   const tail = lastLines(output.trimEnd(), 40);
   return `Background command ${jobLine(j)}\n${tail ? `Last output:\n${tail}` : "No output."}`;
 }
@@ -99,6 +103,41 @@ export class Jobs {
       .catch((err: Error) => this.end(job, "failed", null, err.message))
       .finally(() => clearTimeout(timer));
     return info(job);
+  }
+
+  /**
+   * Holds one of the thread's running slots for a local MCP server (named
+   * by `server`), so it counts in the process budget as a background command
+   * does: `jobs` lists it, `stop` ends it through `onStop`. Refuses a fifth.
+   * `release` lets the slot go without a notice (the session closed the
+   * server); `died` ends it as failed, with a notice, when it stopped on its own.
+   */
+  hold(thread: JobThread, server: string, onStop: () => void): { id: string; release: () => void; died: (reason?: string) => void } {
+    const k = key(thread);
+    const list = this.byThread.get(k) ?? [];
+    const running = list.filter((j) => j.state === "running");
+    if (running.length >= JOB_LIMITS.running) {
+      throw new Error(`this thread already has ${running.length} background commands running (${running.map((j) => j.id).join(", ")}), so the MCP server ${server} can't start; stop one with jobs`);
+    }
+    const n = (this.next.get(k) ?? 0) + 1;
+    this.next.set(k, n);
+    const job: Job = {
+      id: `j${n}`, kind: "mcp", place: "sandbox", command: server, cwd: "/workspace", startedAt: new Date().toISOString(), state: "running",
+      thread, controller: new AbortController(), output: [], outputBytes: 0, dropped: 0,
+    };
+    job.controller.signal.addEventListener("abort", () => { try { onStop(); } catch { /* already gone */ } }, { once: true });
+    list.push(job);
+    this.byThread.set(k, list);
+    return {
+      id: job.id,
+      release: () => {
+        if (job.state !== "running") return;
+        job.state = "exited";
+        const l = this.byThread.get(k);
+        if (l) l.splice(l.indexOf(job), 1);
+      },
+      died: (reason) => this.end(job, "failed", null, reason),
+    };
   }
 
   /** The thread's jobs, oldest first. */
@@ -166,7 +205,7 @@ export class Jobs {
 }
 
 const info = (j: Job): JobInfo => ({
-  id: j.id, place: j.place, command: j.command, cwd: j.cwd, startedAt: j.startedAt, state: j.state,
+  id: j.id, ...(j.kind ? { kind: j.kind } : {}), place: j.place, command: j.command, cwd: j.cwd, startedAt: j.startedAt, state: j.state,
   ...(j.endedAt ? { endedAt: j.endedAt } : {}), ...(j.exitCode !== undefined ? { exitCode: j.exitCode } : {}), ...(j.reason ? { reason: j.reason } : {}),
 });
 

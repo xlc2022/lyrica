@@ -198,7 +198,9 @@ read it for anything not covered here.
    files for her offline Wikipedia, served on 127.0.0.1:8889;
    [wikipedia.md](wikipedia.md)), `mcpNixos` (off: an MCP server for
    NixOS lookups on 127.0.0.1:8001 that you then add under Settings, MCP
-   servers; [nixos-mcp.md](nixos-mcp.md)), `caddyPackage`, and
+   servers; [nixos-mcp.md](nixos-mcp.md)), `ebayMcp` (off: eBay's own MCP
+   server among her sandbox tools, added under Settings, MCP servers as
+   the command `ebay-mcp-server`; [ebay-mcp.md](ebay-mcp.md)), `caddyPackage`, and
    `sandboxPackages`, the tools her commands see (NixOS has no `/usr` to
    share, so the module builds one directory from that list, which
    includes git, gh, tea, Node 24, Claude Code and Codex by default; add
@@ -784,6 +786,16 @@ Nix function docs, and reads the machine's own flake inputs and Nix store.
 Add it once under Settings, **MCP servers** as a General server at
 `http://127.0.0.1:8001/mcp`, then grant it to the threads or projects that
 should have it: [nixos-mcp.md](nixos-mcp.md).
+
+## Give her eBay
+
+eBay's own MCP server searches listings and reads item details through
+eBay's public APIs, read-only, with a free eBay developer keyset. It runs
+as a command in the thread's sandbox: on NixOS `services.lyrica.ebayMcp =
+true` installs it among her sandbox tools, on Debian `npm install -g
+@ebay/npm-public-api-mcp` does. Then add it under Settings, **MCP
+servers** as the command `ebay-mcp-server` with the keyset in its
+Environment field: [ebay-mcp.md](ebay-mcp.md).
 
 ## Give her repositories
 

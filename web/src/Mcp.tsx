@@ -1,7 +1,9 @@
 // MCP servers (DESIGN.md "MCP servers", docs/ux.md §6): the MCP servers
 // section of Settings with a row per server and its drawer (Add server opens
-// the same drawer with a Token field), and the MCP servers list the thread
-// drawer and Project settings share. Copied from Git accounts and Repositories.
+// the same drawer with a Token or Environment field), and the MCP servers
+// list the thread drawer and Project settings share. Copied from Git accounts
+// and Repositories. A server is a URL or a command (a local server, started
+// in the thread's sandbox); the drawer takes one of the two.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { del, get, HttpError, patch, post, u, type McpServerChange, type McpServerInfo, type McpServerInput, type Pool } from "./api.ts";
 import { DrawerMenu } from "./Git.tsx";
@@ -13,6 +15,8 @@ import { ConfirmDialog, ErrorText, useAction, useDismiss, useLoad } from "./ui.t
 
 const POOLS: Record<Pool, string> = { general: "General", private: "Private" };
 const PRIVATE_POOL = "A private server must be on your own network: LAN, this machine or the tailnet.";
+const COMMAND_TIP = "A local server: the program and its arguments, started in the thread's sandbox with the thread's folders and network. Give a URL or a command, not both.";
+const ENV_TIP = "The program's own variables, one KEY=value per line, such as its API keys. Never shown again.";
 
 /** At most one state per row: Online, Token rejected, Unreachable with how long, or Off network for a private one. */
 export function mcpState(m: McpServerInfo, now = Date.now()): { tone: "ok" | "warn" | "bad"; word: string; detail?: string } | undefined {
@@ -74,16 +78,18 @@ export function McpServersSection({ ctx }: { ctx: ShellContext }) {
 }
 
 /**
- * One server's drawer: Name, URL and Pool, with Replace token and Remove
- * behind ⋯. Without `server` it is Add server: a Token field too (optional),
- * and the server is checked before the row is saved.
+ * One server's drawer: Name, URL or Command, and Pool, with Replace token
+ * (a URL) or Replace environment (a command) and Remove behind ⋯. Without
+ * `server` it is Add server: a Token field (optional) or an Environment
+ * field too, and the server is checked before the row is saved.
  */
 function McpDrawer({ userId, server, onSaved, onChanged, onClose }: {
   userId: string; server?: McpServerInfo; onSaved: () => void; onChanged: () => void; onClose: () => void;
 }) {
   const adding = !server;
-  const [form, setForm] = useState({ name: server?.name ?? "", url: server?.url ?? "", pool: server?.pool ?? "general" as Pool, token: "" });
+  const [form, setForm] = useState({ name: server?.name ?? "", url: server?.url ?? "", command: server?.command ?? "", pool: server?.pool ?? "general" as Pool, token: "", env: "" });
   const [replacing, setReplacing] = useState(false);
+  const local = !!form.command.trim();
   const [removing, setRemoving] = useState(false);
   const [offNetwork, setOffNetwork] = useState<"save" | "use">();
   const [run, busy, error] = useAction();
@@ -98,15 +104,21 @@ function McpDrawer({ userId, server, onSaved, onChanged, onClose }: {
   const change: McpServerChange = server ? {
     ...(form.name.trim() !== server.name ? { name: form.name.trim() } : {}),
     ...(form.url.trim() !== server.url ? { url: form.url.trim() } : {}),
+    ...(form.command.trim() !== server.command ? { command: form.command.trim() } : {}),
     ...(form.pool !== server.pool ? { pool: form.pool } : {}),
   } : {};
-  const ready = adding ? !!(form.name.trim() && form.url.trim()) : replacing ? true : Object.keys(change).length > 0;
+  const one = !!form.url.trim() !== local;
+  const ready = adding ? !!(form.name.trim() && one) : replacing ? true : Object.keys(change).length > 0 && one;
   const outside = (err: unknown) => err instanceof HttpError && /outside your network/.test(err.message);
   const save = (offNetworkConfirmed = false) => run(async () => {
     try {
       if (adding) {
-        const input: McpServerInput = { name: form.name.trim(), url: form.url.trim(), pool: form.pool, offNetworkConfirmed, ...(form.token.trim() ? { token: form.token.trim() } : {}) };
+        const input: McpServerInput = local
+          ? { name: form.name.trim(), command: form.command.trim(), pool: form.pool, ...(form.env.trim() ? { env: form.env } : {}) }
+          : { name: form.name.trim(), url: form.url.trim(), pool: form.pool, offNetworkConfirmed, ...(form.token.trim() ? { token: form.token.trim() } : {}) };
         await post<McpServerInfo>(u(userId, "mcp-servers"), input);
+      } else if (replacing && server.command) {
+        await post<McpServerInfo>(u(userId, "mcp-servers", server.name, "env"), { env: form.env });
       } else if (replacing) {
         await post<McpServerInfo>(u(userId, "mcp-servers", server.name, "token"), { token: form.token.trim() });
       } else {
@@ -124,7 +136,7 @@ function McpDrawer({ userId, server, onSaved, onChanged, onClose }: {
       <div className="drawer-head">
         <h2>{adding ? "Add server" : server.name}</h2>
         {server && <DrawerMenu label={`Actions for ${server.name}`} items={[
-          { label: "Replace token", onPick: () => setReplacing(true) },
+          { label: server.command ? "Replace environment" : "Replace token", onPick: () => setReplacing(true) },
           ...(server.pool === "private" && server.offNetwork && !server.state ? [{ label: "Use anyway", onPick: () => setOffNetwork("use") }] : []),
           { label: "Remove", danger: true, onPick: () => setRemoving(true) },
         ]} />}
@@ -134,11 +146,26 @@ function McpDrawer({ userId, server, onSaved, onChanged, onClose }: {
         {server && <StateWord m={server} />}
         <fieldset className="group" disabled={busy}>
           <label className="field"><span>Name</span><input value={form.name} autoFocus={adding} spellCheck={false} onChange={(e) => set("name", e.target.value)} /></label>
-          <label className="field"><span>URL</span><input className="mono" value={form.url} placeholder="https://mcp.example.com/mcp" spellCheck={false} onChange={(e) => set("url", e.target.value)} /></label>
-          {(adding || replacing) && (
+          {!(replacing && server?.command) && (
+            <label className="field"><span>URL</span>
+              <input className="mono" value={form.url} placeholder="https://mcp.example.com/mcp" spellCheck={false} disabled={replacing || local} onChange={(e) => set("url", e.target.value)} />
+            </label>
+          )}
+          {!(replacing && server && !server.command) && (
+            <label className="field"><span>Command</span>
+              <input className="mono" value={form.command} placeholder="ebay-mcp-server" spellCheck={false} disabled={replacing || !!form.url.trim()} title={COMMAND_TIP} onChange={(e) => set("command", e.target.value)} />
+            </label>
+          )}
+          {(adding || replacing) && !(local || server?.command) && (
             <label className="field"><span>Token</span>
               <input className="mono" type="password" value={form.token} autoComplete="off" spellCheck={false} autoFocus={replacing}
                 placeholder="Optional" title="Sent as a bearer token. Leave it empty for a server that takes none." onChange={(e) => set("token", e.target.value)} />
+            </label>
+          )}
+          {(adding || replacing) && (local || server?.command) && (
+            <label className="field"><span>Environment</span>
+              <textarea className="mono" rows={3} value={form.env} autoComplete="off" spellCheck={false} autoFocus={replacing}
+                placeholder={"KEY=value"} title={ENV_TIP} onChange={(e) => set("env", e.target.value)} />
             </label>
           )}
           <label className="field"><span>Pool</span>

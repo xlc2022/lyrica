@@ -417,7 +417,8 @@ describe("MCP servers", () => {
       expect(settings.mcpServer("house")).toBeUndefined();
       await expect(workspace.addMcpServer(ada.id, { name: "away", url: "http://192.0.2.7/mcp", pool: "private" })).rejects.toThrow(/outside your network/);
       await expect(workspace.addMcpServer(ada.id, { name: "plain", url: house.url, token: "ha-token", pool: "general" })).rejects.toThrow(/only over https/);
-      await expect(workspace.addMcpServer(ada.id, { name: "local", url: "stdio:npx server", pool: "private" })).rejects.toThrow(/isn't built yet/);
+      await expect(workspace.addMcpServer(ada.id, { name: "local", url: "stdio:npx server", pool: "private" })).rejects.toThrow(/starts with https:/);
+      await expect(workspace.addMcpServer(ada.id, { name: "both", url: house.url, command: ["server"], pool: "private" })).rejects.toThrow(/URL or a command, not both/);
       const m = await workspace.addMcpServer(ada.id, { name: "house", url: house.url, token: "ha-token", pool: "private" });
       expect(m).toMatchObject({ tools: 2, description: "Home Assistant: lights and sensors.", offNetwork: false, state: { kind: "online" } });
       // Names that are one server to Pi.
@@ -426,6 +427,33 @@ describe("MCP servers", () => {
     } finally {
       await house.close();
     }
+  });
+
+  it("keeps a local server as a command with its environment, in either pool, with no host to check", async () => {
+    const { ada, settings, workspace } = await setup();
+    expect(() => settings.addMcpServer({ name: "ebay", url: "", command: [], pool: "general", description: null, tools: 0, offNetwork: false })).toThrow(/needs a URL or a command/);
+    expect(() => settings.addMcpServer({ name: "ebay", url: "", command: ["ebay-mcp-server"], token: "t", pool: "general", description: null, tools: 0, offNetwork: false })).toThrow(/environment, not a token/);
+    expect(() => settings.addMcpServer({ name: "docs", url: "https://mcp.example.com/mcp", env: { A: "b" }, pool: "general", description: null, tools: 0, offNetwork: false })).toThrow(/token, not an environment/);
+    settings.addMcpServer({ name: "ebay", url: "", command: ["ebay-mcp-server", "--quiet"], env: { EBAY_CLIENT_ID: "id", EBAY_CLIENT_SECRET: "s" }, pool: "private", description: "eBay", tools: 4, offNetwork: true }, "online");
+    const m = settings.mcpServer("ebay")!;
+    expect(m).toMatchObject({ url: "", token: "", command: ["ebay-mcp-server", "--quiet"], env: { EBAY_CLIENT_ID: "id", EBAY_CLIENT_SECRET: "s" }, offNetwork: false, state: { kind: "online" } });
+    expect(() => settings.setMcpToken("ebay", "t")).toThrow(/environment, not a token/);
+    settings.setMcpEnv("ebay", { EBAY_CLIENT_ID: "id2", EBAY_CLIENT_SECRET: "s2" });
+    expect(settings.mcpServer("ebay")!.env).toEqual({ EBAY_CLIENT_ID: "id2", EBAY_CLIENT_SECRET: "s2" });
+    // A changed command is a new server to check; a renamed one keeps its state.
+    settings.updateMcpServer("ebay", { command: ["ebay-mcp-server"] });
+    expect(settings.mcpServer("ebay")!.state).toBeNull();
+    settings.mcpServerState("ebay", "online");
+    settings.updateMcpServer("ebay", { name: "ebay2" });
+    expect(settings.mcpServer("ebay2")!.state?.kind).toBe("online");
+    expect(() => settings.updateMcpServer("ebay2", { url: "https://x.example.com/mcp" })).toThrow(/not both/);
+    // A private thread gets it at once: there is no host to pass the own-network check.
+    settings.setThread("p", "private", { mcpServers: ["ebay2"] });
+    const t = { userId: ada.id, pool: "private" as const, threadId: "p" };
+    expect(workspace.mcpServersFor(t)).toEqual([{ name: "ebay2", url: "", token: "", command: ["ebay-mcp-server"], description: "eBay" }]);
+    expect(await workspace.checkMcpServers(t)).toEqual([]);
+    await expect(workspace.setMcpToken(ada.id, "ebay2", "t")).rejects.toThrow(/local server/);
+    await expect(workspace.startMcpServer({ ...t, threadId: "other" }, "ebay2")).rejects.toThrow(/isn't one of this thread's local MCP servers/);
   });
 
   it("never gives a private thread a general server, and takes one off a project from its running threads at once", async () => {

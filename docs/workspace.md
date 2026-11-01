@@ -831,7 +831,9 @@ background, so it doesn't hold her turn (`core/src/workspace/jobs.ts`).
   (`j1`, `j2`, … per thread), where it runs and the command.
 - Its time limit is 4 hours unless she gives one, and at most 24
   (`JOB_LIMITS`); at the limit it is killed and reported as timed out. A
-  thread has at most 4 running at once; a fifth is refused, naming them.
+  thread has at most 4 running at once, a running local MCP server
+  counting as one (`Jobs.hold`, "MCP servers" above); a fifth is refused,
+  naming them.
 - The `jobs` tool lists the thread's jobs (where, command, state, how
   long), shows one's output so far, or stops one. A target caps output as
   for any command, so while a job runs its first 20 KB shows, and its end
@@ -1196,13 +1198,17 @@ The NixOS module can run one for her: mcp-nixos, for Nix and NixOS
 lookups (`services.lyrica.mcpNixos`, docs/guides/nixos-mcp.md).
 
 - **A server** is a row in Settings → **MCP servers**, kept in the user's
-  `user.db` (`mcp_servers`, user step 3): a name (letters, digits, `-`
-  and `_`), a URL, an optional token never shown back, a pool, and the
-  description and tool count from its last check. Only remote servers
-  (streamable HTTP) so far: a stdio `command` is refused until local
-  servers are built (DESIGN.md, "MCP servers"). Adding one, or replacing
-  its token, runs `initialize` and `tools/list` first (`probeMcp` in
-  `core/src/workspace/mcp.ts`) and saves nothing when that fails. A
+  `user.db` (`mcp_servers`, user steps 3 and 20): a name (letters, digits,
+  `-` and `_`), a URL with an optional token never shown back, or a
+  command (one line: the program and its arguments, split like a shell
+  does, nothing expanded) with its own environment (`KEY=value` lines,
+  never shown back either), a pool, and the description and tool count
+  from its last check. Adding one, or replacing its token or environment,
+  runs `initialize` and `tools/list` first (`probeMcp` and
+  `probeMcpCommand` in `core/src/workspace/mcp.ts`; a local server is
+  started for it in a sandbox of its own with an empty folder and no
+  network, so a server that needs the network to start is told so by its
+  own last line on stderr) and saves nothing when that fails. A
   general server with a token must use https. A private server's host
   must resolve on her own network, as for a private Git account, with
   **Off network** and **Use anyway** when it stops doing so. A private
@@ -1210,8 +1216,9 @@ lookups (`services.lyrica.mcpNixos`, docs/guides/nixos-mcp.md).
   its host has passed that check in this `lyricad` process (after a
   restart: at session start, before Pi connects anything). The check
   resolves DNS separately from the connection, so DNS rebinding isn't
-  prevented, as for private Git accounts. Each use records Online, Token
-  rejected (401 or 403) or Unreachable.
+  prevented, as for private Git accounts. A local server has no host:
+  its facts line says "this machine", and either pool takes it. Each use
+  records Online, Token rejected (401 or 403) or Unreachable.
 - **A thread's servers** are granted like repositories: the MCP servers
   row in the thread drawer and under Workspace on Project settings, so a
   project's threads get the project chat's servers or fewer. A private or
@@ -1226,6 +1233,22 @@ lookups (`services.lyrica.mcpNixos`, docs/guides/nixos-mcp.md).
   `${VAR}` or `!command` expansion), refuses redirects, drops servers'
   log notifications, and cuts each result to 16 KB in memory, a binary
   resource replaced by a line naming it, so nothing reaches disk.
+- **A local server** is registered with its command, but Pi never starts
+  it: Lyrica's transport (`mcpStdioTransport`) does, through
+  `Workspace.startMcpServer`, in the thread's sandbox (its folder as the
+  working directory, its grants and network, the server's environment
+  set inside the sandbox only, as bwrap `--setenv` arguments read from a
+  pipe, never in the launcher's environment or on a host command line,
+  and under the sandbox's own, so `PATH` and `HOME` stay the sandbox's and
+  nothing of `lyricad`'s environment reaches it), and speaks
+  newline-delimited JSON-RPC on its pipes. Its stderr is held in memory,
+  the last 4 KB, only for the line that says why it didn't answer. While
+  it runs it holds one of the thread's four background-command slots
+  (`Jobs.hold`): `jobs` lists it as the MCP server by name and `stop`
+  ends it (the next turn starts it again); a fifth doesn't start and the
+  server shows Unreachable. Closing the session ends its stdin, then
+  SIGTERM, then SIGKILL. A server that stops on its own is reported like
+  a failed job, without any output.
 - **Approval:** a tool its server marks read-only (`readOnlyHint`) runs
   freely, and only those (with `tool_search`) are on in Plan mode. Every
   other call asks, whatever the mode, with **Allow in this thread** for

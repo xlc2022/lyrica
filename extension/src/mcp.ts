@@ -1,6 +1,6 @@
 import { devNull } from "node:os";
 import { createMcpExtension, createToolSearchExtension, type ExtensionFactory } from "@earendil-works/pi-coding-agent";
-import { mcpTransport, type McpStateKind, type ThreadMcpServer } from "@lyrica/core";
+import { mcpStdioTransport, mcpTransport, type McpProcess, type McpStateKind, type ThreadMcpServer } from "@lyrica/core";
 
 // MCP servers (DESIGN.md, "MCP servers"): Pi's own client and tool_search,
 // with nothing about servers read from or written to disk. Each granted
@@ -15,6 +15,8 @@ export interface McpServersHost {
   checkMcpServers?(): Promise<string[]>;
   /** How a connection went, for the server's state in Settings. */
   mcpServerState?(name: string, kind: McpStateKind): void;
+  /** Starts one of the thread's local servers in its sandbox, with its own environment under the sandbox's (Workspace.startMcpServer). */
+  startMcpServer?(name: string): Promise<McpProcess>;
 }
 
 /** The section that tells her about a server held back this turn. */
@@ -27,7 +29,9 @@ const SECTION = "mcp_problems";
  * Lyrica's transport, with the token as a bearer header and no OAuth), its
  * mcp.log gets nothing (the transport drops the servers' log messages, and
  * the log points at the null device), and results reach Pi already cut
- * below its 20 KB limit, so it saves no full text to a temporary file.
+ * below its 20 KB limit, so it saves no full text to a temporary file. A
+ * local server is registered with its command, but Pi never starts it:
+ * Lyrica's transport does, in the thread's sandbox (DESIGN.md, "MCP servers").
  */
 export function createMcpServersExtension(host: McpServersHost): ExtensionFactory {
   return async (pi) => {
@@ -39,9 +43,10 @@ export function createMcpServersExtension(host: McpServersHost): ExtensionFactor
         if (!want.has(name)) { pi.unregisterMcpServer(name); registered.delete(name); }
       }
       for (const [name, s] of want) {
-        const key = JSON.stringify([s.url, s.token, s.description]);
+        const key = JSON.stringify([s.url, s.token, s.command, s.description]);
         if (registered.get(name) === key) continue;
-        pi.registerMcpServer(name, { url: s.url, exposure: "deferred", ...(s.description ? { description: s.description } : {}) });
+        const where = s.command?.length ? { command: s.command[0]!, args: s.command.slice(1) } : { url: s.url };
+        pi.registerMcpServer(name, { ...where, exposure: "deferred", ...(s.description ? { description: s.description } : {}) });
         registered.set(name, key);
       }
     };
@@ -70,8 +75,14 @@ export function createMcpServersExtension(host: McpServersHost): ExtensionFactor
       loadConfig: () => ({ servers: [], errors: [], autoEnableCodemode: false }),
       createTransport: (entry) => {
         const s = tokenOf(entry.name);
-        if (!s || !("url" in entry.config)) throw new Error(`MCP server ${entry.name} isn't one of this thread's`);
-        return mcpTransport({ url: s.url, token: s.token || undefined, state: (kind) => host.mcpServerState?.(entry.name, kind) });
+        if (!s) throw new Error(`MCP server ${entry.name} isn't one of this thread's`);
+        const state = (kind: McpStateKind) => host.mcpServerState?.(entry.name, kind);
+        if (s.command?.length) {
+          if (!host.startMcpServer) throw new Error(`the local MCP server ${entry.name} can't be started here`);
+          return mcpStdioTransport({ start: () => host.startMcpServer!(entry.name), state });
+        }
+        if (!("url" in entry.config)) throw new Error(`MCP server ${entry.name} isn't one of this thread's`);
+        return mcpTransport({ url: s.url, token: s.token || undefined, state });
       },
       logPath: devNull,
       updateConfig: () => {},

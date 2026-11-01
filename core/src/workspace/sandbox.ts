@@ -421,9 +421,13 @@ export class Sandbox implements ExecutionTarget {
 
   /**
    * Starts argv inside a fresh sandbox and hands back the process, its stdin
-   * still open: run() for one command, the SSH helper for a connection.
+   * still open: run() for one command, the SSH helper for a connection, a
+   * local MCP server for a session. `extra` is the program's own environment
+   * (a server's keys), set inside the sandbox only and under its own: PATH,
+   * HOME and the rest stay the sandbox's, and nothing of it reaches the
+   * launcher on the host.
    */
-  async start(argv: string[], cwd?: string): Promise<Sandboxed> {
+  async start(argv: string[], cwd?: string, extra: Record<string, string> = {}): Promise<Sandboxed> {
     let forward = this.spec.forward ?? [];
     const c = this.spec.credentials;
     const relay = c && (c.forge.length || c.anthropic) ? await openRelay({
@@ -437,14 +441,14 @@ export class Sandbox implements ExecutionTarget {
       onLimit: this.spec.onLimit,
     }) : undefined;
     try {
-      return await this.launch(argv, cwd, forward, relay);
+      return await this.launch(argv, cwd, forward, relay, extra);
     } catch (err) {
       relay?.close();
       throw err;
     }
   }
 
-  private async launch(argv: string[], cwd: string | undefined, forward: number[], relay: Relay | undefined): Promise<Sandboxed> {
+  private async launch(argv: string[], cwd: string | undefined, forward: number[], relay: Relay | undefined, extra: Record<string, string>): Promise<Sandboxed> {
     let { internet, services, hosts } = this.spec.network;
     if (relay) forward = [...forward, relay.port];
     // The front door's names, resolved now or before. One that has never resolved on this machine is said once, and the run
@@ -489,7 +493,16 @@ export class Sandbox implements ExecutionTarget {
     // PID, then starts bwrap, which keeps the network. pasta can't start bwrap
     // itself: since 2024 it closes every file it inherits, and bwrap needs the
     // folders and data above.
-    const ready = 3 + fds.length + data.length;
+    // The program's own environment goes in through a pipe of bwrap arguments
+    // (`--setenv`), set inside the sandbox only: never in the environment of
+    // bwrap, unshare or bash, which run on the host (a server's `LD_PRELOAD`
+    // or `BASH_ENV` would run code as lyricad's user there), and never on a
+    // host command line. The sandbox's own variables win over it.
+    const own = { ...runEnv, ...env(), LYRICA_SANDBOX: "1", ...forge || claude ? { PATH: `${FORGE_BIN}:${env().PATH}` } : {} };
+    const setenv = Object.entries(extra).filter(([k]) => !(k in own)).map(([k, v]) => `--setenv\0${k}\0${v}\0`).join("");
+    const envFd = setenv ? 3 + fds.length + data.length : undefined;
+    if (envFd !== undefined) args.push("--args", String(envFd));
+    const ready = 3 + fds.length + data.length + (envFd === undefined ? 0 : 1);
     let cmd = [this.spec.bwrap ?? "bwrap", ...args, "--", ...argv];
     if (networked) {
       const rules = nftRules(internet, resolved.rules, this.spec.exclude ?? [], {
@@ -500,8 +513,8 @@ export class Sandbox implements ExecutionTarget {
     }
     const child = spawn(cmd[0]!, cmd.slice(1), {
       // LYRICA_SANDBOX tells a command it is in here, as the sandbox tests check before nesting one.
-      env: { ...runEnv, ...env(), LYRICA_SANDBOX: "1", ...forge || claude ? { PATH: `${FORGE_BIN}:${env().PATH}` } : {} },
-      stdio: ["pipe", "pipe", "pipe", ...fds, ...data.map(() => "pipe" as const), ...(networked ? ["pipe", "pipe"] as const : [])],
+      env: own,
+      stdio: ["pipe", "pipe", "pipe", ...fds, ...data.map(() => "pipe" as const), ...(envFd === undefined ? [] : ["pipe"] as const), ...(networked ? ["pipe", "pipe"] as const : [])],
     });
     child.on("error", () => {}); // reported to the caller's own listener; never an uncaught error
     if (relay) child.on("close", () => relay.close());
@@ -511,6 +524,11 @@ export class Sandbox implements ExecutionTarget {
       pipe.on("error", () => {}); // if bwrap never starts, the spawn error is what's reported
       pipe.end(text);
     });
+    if (envFd !== undefined) {
+      const pipe = child.stdio[envFd] as Writable;
+      pipe.on("error", () => {});
+      pipe.end(setenv);
+    }
     if (!networked) return child as Sandboxed;
 
     const go = child.stdio[ready + 1] as Writable;

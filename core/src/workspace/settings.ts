@@ -5,7 +5,7 @@ import { isAbsolute, posix } from "node:path";
 import type { Db } from "../db.ts";
 import type { Pool } from "../types.ts";
 import { parseHost } from "./net.ts";
-import { MCP_NAME, mcpNamespace, mcpUrl, type McpStateKind } from "./mcp.ts";
+import { checkMcpEnv, MCP_NAME, mcpCommand, mcpCommandLine, mcpNamespace, mcpUrl, type McpStateKind } from "./mcp.ts";
 import { certFingerprint } from "./proxmox.ts";
 
 /** A folder a thread may touch. It is mounted at the same path inside the sandbox. */
@@ -154,12 +154,17 @@ export interface GitAccountState { kind: "signedIn" | "rejected" | "unreachable"
 
 export type NewGitAccount = Omit<GitAccountConfig, "state" | "webhookSecret">;
 
-/** An MCP server she can use: a URL (streamable HTTP) and an optional token, in one pool. */
+/** An MCP server she can use, in one pool: a URL (streamable HTTP) with an optional token, or a local one, a command with its environment. */
 export interface McpServerConfig {
   name: string;
+  /** Its streamable HTTP address; empty for a local server. */
   url: string;
   /** Sent as `Authorization: Bearer`. Lives only in user.db and in memory; empty for none. */
   token: string;
+  /** A local server's program and arguments, started in the thread's sandbox; empty for a remote server. */
+  command: string[];
+  /** A local server's own environment (its keys), under the sandbox's. Lives only in user.db and in memory. */
+  env: Record<string, string>;
   /** Used only by threads of this pool. A private one must be on her own network. */
   pool: Pool;
   /** The line Pi lists it with: the first line of its instructions, or its title, from the last check. */
@@ -174,7 +179,8 @@ export interface McpServerConfig {
 
 export interface McpServerState { kind: McpStateKind; since: string }
 
-export type NewMcpServer = Omit<McpServerConfig, "state">;
+/** A server to save: `token`, `command` and `env` may be left out (a remote one has no command, a local one no token). */
+export type NewMcpServer = Omit<McpServerConfig, "state" | "token" | "command" | "env"> & Partial<Pick<McpServerConfig, "token" | "command" | "env">>;
 
 const GIT_ACCOUNT = /^[A-Za-z0-9._-]{1,100}$/;
 const REPO_PART = /^[A-Za-z0-9_.-]+$/;
@@ -1125,24 +1131,24 @@ export class WorkspaceSettings {
   addMcpServer(m: NewMcpServer, state: McpStateKind | null = null): McpServerConfig {
     this.checkMcpName(m.name);
     const next = checkMcpServer(m);
-    this.db.prepare(`INSERT INTO mcp_servers (name, url, token, pool, description, tools, off_network, state, checked_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(next.name, next.url, next.token, next.pool, next.description, next.tools, next.offNetwork ? 1 : 0,
+    this.db.prepare(`INSERT INTO mcp_servers (name, url, token, command, env, pool, description, tools, off_network, state, checked_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(next.name, next.url, next.token, JSON.stringify(next.command), JSON.stringify(next.env), next.pool, next.description, next.tools, next.offNetwork ? 1 : 0,
       state, state && new Date().toISOString());
     return this.needMcp(m.name);
   }
 
   /**
-   * Renames a server or changes its URL or pool. A new pool takes it from
-   * every thread, so it is never reached from both pools; a new name follows
-   * into the threads that use it.
+   * Renames a server or changes its URL, command or pool. A new pool takes it
+   * from every thread, so it is never reached from both pools; a new name
+   * follows into the threads that use it.
    */
-  updateMcpServer(name: string, change: Partial<Pick<McpServerConfig, "name" | "url" | "pool" | "description" | "tools">>): McpServerConfig {
+  updateMcpServer(name: string, change: Partial<Pick<McpServerConfig, "name" | "url" | "command" | "pool" | "description" | "tools">>): McpServerConfig {
     const before = this.needMcp(name);
     const next = checkMcpServer({ ...before, ...change });
     if (next.name !== name) this.checkMcpName(next.name, name);
-    const moved = next.url !== before.url;
-    this.db.prepare(`UPDATE mcp_servers SET name = ?, url = ?, pool = ?, description = ?, tools = ?${moved ? ", state = NULL, checked_at = NULL" : ""} WHERE name = ?`)
-      .run(next.name, next.url, next.pool, next.description, next.tools, name);
+    const moved = next.url !== before.url || JSON.stringify(next.command) !== JSON.stringify(before.command);
+    this.db.prepare(`UPDATE mcp_servers SET name = ?, url = ?, command = ?, pool = ?, description = ?, tools = ?${moved ? ", state = NULL, checked_at = NULL" : ""} WHERE name = ?`)
+      .run(next.name, next.url, JSON.stringify(next.command), next.pool, next.description, next.tools, name);
     if (next.pool !== before.pool) this.dropMcpServer(name);
     else if (next.name !== name) this.renameMcpServer(name, next.name);
     return this.needMcp(next.name);
@@ -1152,6 +1158,14 @@ export class WorkspaceSettings {
   setMcpToken(name: string, token: string, state: McpStateKind | null = null): McpServerConfig {
     const next = checkMcpServer({ ...this.needMcp(name), token });
     this.db.prepare("UPDATE mcp_servers SET token = ?, state = ?, checked_at = ? WHERE name = ?").run(next.token, state, state && new Date().toISOString(), name);
+    return this.needMcp(name);
+  }
+
+  /** Replace environment: a local server's new one, checked by starting the server with it (`Workspace.setMcpEnv`) first. */
+  setMcpEnv(name: string, env: Record<string, string>, state: McpStateKind | null = null): McpServerConfig {
+    const next = checkMcpServer({ ...this.needMcp(name), env });
+    if (!next.command.length) throw new Error("a remote server has a token, not an environment");
+    this.db.prepare("UPDATE mcp_servers SET env = ?, state = ?, checked_at = ? WHERE name = ?").run(JSON.stringify(next.env), state, state && new Date().toISOString(), name);
     return this.needMcp(name);
   }
 
@@ -1250,19 +1264,29 @@ function checkGitAccount(a: NewGitAccount): NewGitAccount {
 }
 
 /** An MCP server's fields cleaned and checked: a URL its pool allows, and a token with no spaces. */
-function checkMcpServer(m: NewMcpServer): NewMcpServer {
+/** A server as it may be kept: a URL with a token, or a command with an environment, never both. */
+function checkMcpServer(m: NewMcpServer): Omit<McpServerConfig, "state"> {
   if (m.pool !== "general" && m.pool !== "private") throw new Error("an MCP server is general or private");
   const token = String(m.token ?? "").trim();
   if (token.length > 4096 || /[\s\0-\x1f\x7f]/.test(token)) throw new Error("that doesn't look like a token");
-  return { ...m, url: mcpUrl(m.url, m.pool, token), token };
+  const command = Array.isArray(m.command) && m.command.length ? mcpCommand(mcpCommandLine(m.command.map(String))) : [];
+  const url = String(m.url ?? "").trim();
+  if (command.length && url) throw new Error("a server is a URL or a command, not both");
+  if (!command.length && !url) throw new Error("a server needs a URL or a command");
+  if (command.length && token) throw new Error("a local server has an environment, not a token");
+  const env = checkMcpEnv(m.env ?? {});
+  if (!command.length && Object.keys(env).length) throw new Error("a remote server has a token, not an environment");
+  return { ...m, url: command.length ? "" : mcpUrl(url, m.pool, token), token, command, env, offNetwork: command.length ? false : m.offNetwork };
 }
 
+
 interface McpServerRow {
-  name: string; url: string; token: string; pool: Pool; description: string | null; tools: number; off_network: number;
+  name: string; url: string; token: string; command: string; env: string; pool: Pool; description: string | null; tools: number; off_network: number;
   state: McpStateKind | null; checked_at: string | null;
 }
 const toMcpServer = (r: McpServerRow): McpServerConfig => ({
-  name: r.name, url: r.url, token: r.token, pool: r.pool, description: r.description, tools: r.tools, offNetwork: r.off_network === 1,
+  name: r.name, url: r.url, token: r.token, command: JSON.parse(r.command || "[]"), env: JSON.parse(r.env || "{}"), pool: r.pool,
+  description: r.description, tools: r.tools, offNetwork: r.off_network === 1,
   state: r.state && r.checked_at ? { kind: r.state, since: r.checked_at } : null,
 });
 

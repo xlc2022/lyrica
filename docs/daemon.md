@@ -1564,7 +1564,12 @@ system with the module on. Only x86_64-linux.
   `nix flake archive` on a flake directory the call names), no address file: the user adds it
   under Settings → MCP servers, in the pool of the threads that may use it,
   General for most (docs/guides/nixos-mcp.md).
-  It has no Debian counterpart.
+  It has no Debian counterpart. With `ebayMcp` on (off by default) eBay's
+  own MCP server (`nix/ebay-mcp.nix`, built from its npm lock file) joins
+  the sandbox tools as `ebay-mcp-server`, a command a user adds under
+  Settings → MCP servers with their eBay keyset in its environment
+  (docs/guides/ebay-mcp.md); on Debian the same package is installed with
+  `npm install -g`.
   `lyrica` on the system path is the same wrapper as
   install.sh's, so the first-run step is `lyrica admin setup-code` as root:
   nothing prints the code or the fingerprint at `nixos-rebuild`. The wrapper

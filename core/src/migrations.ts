@@ -301,6 +301,10 @@ export const STEPS: Record<DbKind, MigrationStep[]> = {
     // Principles 2 and 8: the evidence judge's setting per thread, auto (local code models only) by default. Adds a column only.
     version: 20,
     run(db) { addColumns(db, [["thread_workspaces", "evidence", "TEXT NOT NULL DEFAULT 'auto'"]]); },
+  }, {
+    // Local (stdio) MCP servers (docs/briefs/mcp-local.md): a server's command and environment beside its URL. Adds only.
+    version: 21,
+    run(db) { addColumns(db, [["mcp_servers", "command", "TEXT NOT NULL DEFAULT '[]'"], ["mcp_servers", "env", "TEXT NOT NULL DEFAULT '{}'"]]); },
   }],
   pool: [{
     version: 1, contract: true,
