@@ -137,17 +137,20 @@ export function InlineImage({ src, alt, label, files, large, onGone, onBroken }:
  * the image's own host (docs/ux.md §6).
  */
 export function RemotePicture({ url, alt, files, large }: { url: string; alt: string; files: FileLinks; large: (path: string) => void }) {
-  const [shown, setShown] = useState<boolean>();
+  const src = files.picture?.(url);
+  // One that loaded before (the live message's copy, replaced by the stored one when the turn ends) shows at once.
+  const [shown, setShown] = useState<boolean | undefined>(() => (src && loadedPictures.has(src) ? true : undefined));
   const name = basename(url.replace(/[?#].*$/, ""));
   const link = <a href={url} target="_blank" rel="noopener noreferrer">{alt || url}</a>;
-  if (!files.picture || shown === false) return link;
-  const src = files.picture(url);
+  if (!src || shown === false) return link;
   return shown ? (
     <button type="button" className="inline-img" onClick={() => large(url)} aria-label={`${alt || name}, open large`}>
       <img src={src} alt={alt || name} />
     </button>
-  ) : <>{link}<img src={src} alt="" hidden onLoad={() => setShown(true)} onError={() => setShown(false)} /></>;
+  ) : <>{link}<img src={src} alt="" hidden onLoad={() => { loadedPictures.add(src); setShown(true); }} onError={() => setShown(false)} /></>;
 }
+/** The pictures that have loaded in this page, by their lyricad address. */
+const loadedPictures = new Set<string>();
 
 /** The thumbnail, or the image itself where the server makes none. */
 export function Thumb({ path, alt, files, onGone, onBroken }: { path: string; alt: string; files: FileLinks; /** Neither the thumbnail nor the image loads, and the server says the file isn't there. */ onGone?: () => void; /** Neither loads, for any other reason (refused, offline). */ onBroken?: () => void }) {
