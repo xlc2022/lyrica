@@ -4,7 +4,7 @@ import { assemble, type Budgets, type Section } from "./assemble.ts";
 import { dropNudges, frameMidTurn, contextLines, registerContext, type ContextMeter } from "./context.ts";
 import { setToolsOff } from "./gate.ts";
 import { earlierText, keptFrom, memorySections, type MemoryContext } from "./memory.ts";
-import { CODE_GUIDELINES, CODING_GUIDELINE, CODE_TOOLS_OFF, codeTaskText } from "./code.ts";
+import { CODE_GUIDELINES, CODING_GUIDELINE, CODE_TOOLS_OFF, codeTaskText, EXECUTION_GUIDELINES, needsExecutionGuidelines } from "./code.ts";
 import { RULES_IN_ALL } from "./code-repositories.ts";
 import { registerSkillTool, SKILLS_IN_ALL, type SkillToolOptions } from "./skills.ts";
 import { SELF_PRIMER } from "./primer.ts";
@@ -130,7 +130,7 @@ export function createLyricaExtension(thread: ThreadContext, opts: LyricaOptions
       // prefix stable and appends only what changed, so it stays cacheable.
       const options = event.systemPromptOptions;
       options.selectedTools = pi.getActiveTools();
-      const tools = toolGuidance(options, [...CONTINUATION_GUIDELINES, ...WORK_GUIDELINES, CODING_GUIDELINE, ...(code ? [CODE_GUIDELINES] : [])]);
+      const tools = toolGuidance(options, [...CONTINUATION_GUIDELINES, ...WORK_GUIDELINES, CODING_GUIDELINE, ...(code ? [CODE_GUIDELINES, ...(needsExecutionGuidelines(ctx.model) ? [EXECUTION_GUIDELINES] : [])] : [])]);
       options.customPrompt = customPrompt;
       options.sections = { ...(tools ? { tools } : {}), ...options.sections, ...sections };
       if (code) {
