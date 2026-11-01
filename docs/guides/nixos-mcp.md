@@ -8,7 +8,8 @@ nix.dev, package version history (NixHub) and binary-cache status. On the
 machine it runs on it also lists a flake's pinned inputs and reads files
 under `/nix/store`. Lyrica reaches it like any MCP server (Settings → **MCP
 servers**), so a thread can ask it how to write an option before editing
-a NixOS configuration, or check what her own machine is pinned to.
+a NixOS configuration, or, given the flake's directory, check what her
+own machine is pinned to.
 
 It needs no account or key and changes nothing. Its lookups go to the sites
 above over the internet; the two local actions stay on the machine.
@@ -21,10 +22,14 @@ services.lyrica.mcpNixos = true;
 
 Then `nixos-rebuild switch`. The module runs `lyrica-mcp-nixos.service`:
 nixpkgs' `mcp-nixos` in HTTP mode on `127.0.0.1:8001` (endpoint
-`http://127.0.0.1:8001/mcp`), as a dynamic user with `nix` on its path, so
-its flake-inputs action can read this machine's flakes. `nix/check-host.sh`
-checks that it answers. Nothing fills the address in for her: add it as
-below.
+`http://127.0.0.1:8001/mcp`), as a dynamic user with `nix` on its path and
+a cache under `/var/cache/lyrica-mcp-nixos`, so its flake-inputs action
+can run `nix flake archive` on a flake of this machine. That action needs
+the flake's directory named in the call (its `source`, for example
+`/etc/nixos`; the unit's own working directory is `/`), and the `flakes`
+and `nix-command` features on in the system's `nix.settings`.
+`nix/check-host.sh` checks that it answers. Nothing fills the address in
+for her: add it as below.
 
 ## Run it on another machine
 

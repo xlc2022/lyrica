@@ -1512,7 +1512,9 @@ system with the module on. Only x86_64-linux.
   nixpkgs' `mcp-nixos` (built against a `fastmcp` with its tests
   skipped: neither is in the channel's binary cache and three of its
   proxy tests fail in the build sandbox) in HTTP mode on `127.0.0.1:8001`, path `/mcp`, a
-  dynamic user with `nix` on its path, no address file: the user adds it
+  dynamic user with `nix` on its path and `CacheDirectory`
+  `lyrica-mcp-nixos` as its home and cache (its flake-inputs action runs
+  `nix flake archive` on a flake directory the call names), no address file: the user adds it
   under Settings → MCP servers as a Private server (docs/guides/nixos-mcp.md).
   It has no Debian counterpart.
   `lyrica` on the system path is the same wrapper as

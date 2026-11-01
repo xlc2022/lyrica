@@ -55,9 +55,13 @@ in
       wants = [ "network-online.target" ];
       after = [ "network-online.target" ];
       wantedBy = [ "multi-user.target" ];
-      # flake-inputs runs `nix flake archive`; store reads need nothing.
+      # flake-inputs runs `nix flake archive` in the directory the caller
+      # passes as `source`; nix needs a writable cache for it, which the
+      # dynamic user gets under /var/cache. store reads need nothing.
       path = [ config.nix.package ];
       environment = {
+        HOME = "/var/cache/lyrica-mcp-nixos";
+        XDG_CACHE_HOME = "/var/cache/lyrica-mcp-nixos";
         MCP_NIXOS_TRANSPORT = "http";
         MCP_NIXOS_HOST = cfg.address;
         MCP_NIXOS_PORT = toString cfg.port;
@@ -66,6 +70,7 @@ in
       serviceConfig = {
         ExecStart = "${cfg.package}/bin/mcp-nixos";
         DynamicUser = true;
+        CacheDirectory = "lyrica-mcp-nixos";
         Restart = "on-failure";
         RestartSec = 10;
         ProtectSystem = "strict";

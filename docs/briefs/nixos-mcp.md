@@ -23,7 +23,9 @@ changed none of this: mcp-nixos speaks HTTP and keeps no state.
   (default package: nixpkgs' mcp-nixos 2.4.3 built against fastmcp with
   its tests skipped, since neither is in the nixos-26.05 binary cache and
   three fastmcp proxy tests fail in the build sandbox),
-  in HTTP mode with `nix` on its path, dynamic user, hardened like
+  in HTTP mode with `nix` on its path, dynamic user with
+  `/var/cache/lyrica-mcp-nixos` as home and cache (nix needs a writable
+  cache for `nix flake archive`; PR review's finding), hardened like
   `lyrica-kiwix`. Exported as `nixosModules.mcp-nixos` for a machine that
   only runs the server.
 - `services.lyrica.mcpNixos` (default false) in `nix/module.nix` turns it
