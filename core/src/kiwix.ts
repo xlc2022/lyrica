@@ -237,6 +237,29 @@ function page(address: string, url: string, html: string, book: KiwixBook, here:
   return { text: pictures.length ? `${md.text}\n\nPictures, each readable with web_fetch:\n${pictures.map((p, i) => `${i + 1}. ${p}`).join("\n")}` : md.text, copy };
 }
 
+/**
+ * A picture of kiwix-serve's own, for the web UI to show in a message (docs/ux.md §6): only an image under the
+ * address's /content/, at most PICTURE_MB, and nothing from any other host, so showing one tells nobody outside
+ * the server. Undefined for anything else.
+ */
+export async function kiwixPicture(address: string, url: string, signal?: AbortSignal, f: typeof fetch = fetch): Promise<{ bytes: Buffer; mimeType: string } | undefined> {
+  let u: URL;
+  try { u = new URL(url); } catch { return undefined; }
+  const base = `${address}/content/`;
+  if (!u.href.startsWith(base) || u.search || u.username || u.password) return undefined;
+  const [book, ...path] = u.href.slice(base.length).replace(/#.*$/, "").split("/");
+  if (!book || !path.join("")) return undefined;
+  let res: Response;
+  try { res = await get(address, `/raw/${book}/content/${path.join("/")}`, PAGE_MS, signal, f); } catch { return undefined; }
+  // A redirect kiwix-serve gives stays on kiwix-serve.
+  if (!res.ok || (res.url && !res.url.startsWith(`${address}/`))) { await res.body?.cancel(); return undefined; }
+  const type = (res.headers.get("content-type") ?? "").split(";")[0]!.trim().toLowerCase();
+  if (!/^image\/(png|jpeg|gif|webp)$/.test(type)) { await res.body?.cancel(); return undefined; }
+  if (Number(res.headers.get("content-length") ?? 0) > PICTURE_MB * 1_000_000) { await res.body?.cancel(); return undefined; }
+  const bytes = Buffer.from(await res.arrayBuffer());
+  return bytes.length > PICTURE_MB * 1_000_000 ? undefined : { bytes, mimeType: type };
+}
+
 /** A WebP as PNG through ImageMagick on lyricad's PATH (the sandbox tools' on NixOS), for models whose reader has no WebP; as it is without ImageMagick. */
 export async function pictureForModel(bytes: Buffer, mimeType: string): Promise<{ image: Buffer; mimeType: string }> {
   if (mimeType !== "image/webp") return { image: bytes, mimeType };

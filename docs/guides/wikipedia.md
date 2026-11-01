@@ -93,5 +93,6 @@ Reading a wikipedia.org link gives the article as Markdown, headed by its
 title and link, and from a copy with pictures a list of them under it,
 each an address on kiwix-serve; reading one of those gives her the
 picture itself (WebP converted to PNG through ImageMagick, which both
-installs have). A page the copy lacks, or any other site, is fetched from
+installs have). A picture she puts in her reply shows in the message,
+loaded through Lyrica's server, so kiwix-serve can stay on loopback. A page the copy lacks, or any other site, is fetched from
 the thread's sandbox as before.

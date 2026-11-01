@@ -1033,8 +1033,12 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   message by its thumbnail (`…/files/thumb`, or the image itself where the
   server makes none) and opens large, from `…/files/content`, in the
   shared Lightbox dialog; the conversation holds which image is open, so the
-  stored copy replacing a live message doesn't close it (an SVG stays a link, since `…/files/content` serves it as text, never as a page); a remote image is never loaded and shows as a link with its
-  alt text. An image her image tool already shows in the same turn (an
+  stored copy replacing a live message doesn't close it (an SVG stays a link, since `…/files/content` serves it as text, never as a page); a remote image (`RemotePicture`) is
+  asked for only through lyricad's `…/web/picture`, which serves the offline
+  copy of Wikipedia's pictures and nothing else: until it loads, and for any
+  other image, it shows as a link with its alt text, and once loaded it shows
+  and opens large like a file's (`largeUrl`). The browser never asks the
+  image's own host. An image her image tool already shows in the same turn (an
   image part before her text, up to the next user message) is rendered as
   its path link, not a second thumbnail (`conversationNodes` tracks the
   paths shown; `Prose skipImages`). In the person's message an image path

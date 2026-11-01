@@ -13,7 +13,7 @@
 // answers with that markdown as written (the echo's "You said: " would put a
 // fence mid-line, where it is not a fence), a look at a project's
 // threads (the `watching` call) tells the first thread it wasn't about "Heads up:
-// the plan changed.", /searxng is a SearXNG answering JSON, /kiwix a kiwix-serve with one book, anything else gets a few streamed sentences that echo it. /local/v1 serves "local-model"
+// the plan changed.", /searxng is a SearXNG answering JSON, /kiwix a kiwix-serve with one book and one picture (I/Lute.png), anything else gets a few streamed sentences that echo it. /local/v1 serves "local-model"
 // and /cloud/v1 "cloud-model"; /long/v1 serves one model with a long id, for a header line that has to shrink. /speech/v1 is a speech server: "whisper"
 // transcribes any clip as "hello from the fake" and "kokoro" speaks a second
 // of PCM; POST /speech/down and /speech/up make the whole server fail (503)
@@ -30,12 +30,26 @@ import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { crc32, deflateSync } from "node:zlib";
 import { Keyring, PersonaStore, PRONOUN_PRESETS, SystemdCredentials, Users } from "@lyrica/core";
 import { Lyricad } from "@lyrica/daemon";
 import { testMcpServer } from "../../core/test/mcp-server.ts";
 import { SLEEP_FIXTURE } from "./helpers.ts";
 
 export const PASSPHRASE = "correct horse";
+
+/** The offline copy's one picture: a 240×160 gradient PNG. */
+const LUTE_PNG = (() => {
+  const w = 240, h = 160;
+  const chunk = (type: string, data: Buffer) => {
+    const head = Buffer.alloc(8); head.writeUInt32BE(data.length); head.write(type, 4);
+    const tail = Buffer.alloc(4); tail.writeUInt32BE(crc32(Buffer.concat([head.subarray(4), data])));
+    return Buffer.concat([head, data, tail]);
+  };
+  const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(w); ihdr.writeUInt32BE(h, 4); ihdr[8] = 8; ihdr[9] = 2;
+  const rows = Buffer.concat(Array.from({ length: h }, (_, y) => Buffer.from([0, ...Array.from({ length: w }, (_, x) => [200 - (y >> 1), 150, 90 + Math.floor(x / 3)]).flat()])));
+  return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk("IHDR", ihdr), chunk("IDAT", deflateSync(rows)), chunk("IEND", Buffer.alloc(0))]);
+})();
 /** The one model /long/v1 serves. */
 const LONG_MODEL = "a-very-long-model-name-70b-instruct-q4_k_m-20261012";
 const ARGON2 = { memoryCost: 1024, timeCost: 1, parallelism: 1 };
@@ -149,6 +163,10 @@ function fakeModel() {
         const title = slug.split("-").map((w) => w[0]!.toUpperCase() + w.slice(1)).join(" ");
         res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
         return res.end(`<!doctype html><html><head><title>${title}</title></head><body><nav>Home</nav><article><h1>${title}</h1><p class="byline">By Sam</p>${`<p>${title} is a page the fake serves, long enough for the reader to keep as an article.</p>`.repeat(8)}</article></body></html>`);
+      }
+      if (req.url === "/kiwix/raw/wikipedia_en_all_nopic_2026-06/content/I/Lute.png") {
+        res.writeHead(200, { "content-type": "image/png" });
+        return res.end(LUTE_PNG);
       }
       // A kiwix-serve at /kiwix, with one book in its catalog.
       if (req.url === "/kiwix/catalog/v2/entries") {

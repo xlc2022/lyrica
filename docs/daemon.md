@@ -31,6 +31,13 @@ is 404; a missing login is 401.
   `GET …/photos-of-me/:name` serves one sniffed PNG/JPEG/WebP for thumbnails
   and downloads, with the same no-store, nosniff and sandbox CSP as thread
   images; traversal, symlinks and non-images are 404.
+- `GET /api/u/:userId/web/picture?url=<address>` serves a picture of the
+  offline copy of Wikipedia for a message to show (`kiwixPicture`): only a
+  PNG/JPEG/GIF/WebP of at most 5 MB under the server's kiwix-serve
+  `<kiwix>/content/`, read from `<kiwix>/raw/<book>/content/<path>`, with the
+  same no-store, nosniff and sandbox CSP as thread images. Anything else, or
+  no kiwix-serve set, is 404, and no other host is ever asked. Any signed-in
+  user may ask.
 - `GET /api/u/:userId/photo-cloud` returns `{ policy }`; `PUT` accepts
   `{ policy: "never" | "ask" | "always" }`, returns the saved setting, and
   clears the user's daily approval. Other values are 400. Default is `ask`;

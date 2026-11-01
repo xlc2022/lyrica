@@ -4,7 +4,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Icon } from "./icons.tsx";
 import type { Element, Root, Text } from "hast";
-import { threadPath, type Pool } from "./api.ts";
+import { threadPath, u, type Pool } from "./api.ts";
 import { href } from "./route.ts";
 import { RowMenu } from "./Machines.tsx";
 import { ErrorText } from "./ui.tsx";
@@ -48,13 +48,22 @@ export interface FileLinks {
   href: (path: string) => string;
   url: (path: string) => string;
   thumb: (path: string) => string;
+  /** A remote image through lyricad, which serves only the offline copy of Wikipedia's (docs/ux.md §6). */
+  picture?: (url: string) => string;
 }
+
+/** A remote image's address, as against a path. */
+export const isRemote = (src: string) => /^https?:\/\//i.test(src);
+
+/** What shows an image large: a remote one through lyricad, a file by its path. */
+export const largeUrl = (files: FileLinks, path: string) => (isRemote(path) && files.picture ? files.picture(path) : files.url(path));
 
 export function useFileLinks(userId: string, pool: Pool, threadId: string): FileLinks {
   return useMemo(() => ({
     href: (path) => href({ page: "files", userId, pool, threadId, ...(path === WORKDIR ? {} : { path }) }),
     url: (path) => `${threadPath(userId, pool, threadId)}/files/content?path=${encodeURIComponent(path)}`,
     thumb: (path) => `${threadPath(userId, pool, threadId)}/files/thumb?path=${encodeURIComponent(path)}`,
+    picture: (url) => `${u(userId, "web", "picture")}?url=${encodeURIComponent(url)}`,
   }), [userId, pool, threadId]);
 }
 
@@ -120,6 +129,24 @@ export function InlineImage({ src, alt, label, files, large, onGone, onBroken }:
       <Thumb path={src} alt={alt || basename(src)} files={files} onGone={onGone} onBroken={onBroken} />
     </button>
   );
+}
+
+/**
+ * A remote image in her prose: shown, opening large, when lyricad serves it (a picture of the offline copy of
+ * Wikipedia); otherwise, and until it has loaded, the link with its alt text. The browser asks only lyricad, never
+ * the image's own host (docs/ux.md §6).
+ */
+export function RemotePicture({ url, alt, files, large }: { url: string; alt: string; files: FileLinks; large: (path: string) => void }) {
+  const [shown, setShown] = useState<boolean>();
+  const name = basename(url.replace(/[?#].*$/, ""));
+  const link = <a href={url} target="_blank" rel="noopener noreferrer">{alt || url}</a>;
+  if (!files.picture || shown === false) return link;
+  const src = files.picture(url);
+  return shown ? (
+    <button type="button" className="inline-img" onClick={() => large(url)} aria-label={`${alt || name}, open large`}>
+      <img src={src} alt={alt || name} />
+    </button>
+  ) : <>{link}<img src={src} alt="" hidden onLoad={() => setShown(true)} onError={() => setShown(false)} /></>;
 }
 
 /** The thumbnail, or the image itself where the server makes none. */

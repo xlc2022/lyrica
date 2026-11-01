@@ -13,6 +13,8 @@ const NO_KIWIX = { kiwix: null, kiwixState: "unset", books: [] };
 /** A kiwix-serve whose catalog has one book. */
 async function kiwix() {
   const srv = createServer((req, res) => {
+    if (req.url === "/raw/wikipedia_en_all_nopic_2026-06/content/I/Lute.webp") { res.writeHead(200, { "content-type": "image/webp" }); return res.end("RIFF....WEBPVP8 "); }
+    if (req.url === "/raw/wikipedia_en_all_nopic_2026-06/content/A/Lute") { res.writeHead(200, { "content-type": "text/html" }); return res.end("<p>Lute</p>"); }
     if (req.url !== "/catalog/v2/entries") { res.writeHead(404); return res.end(); }
     res.writeHead(200, { "content-type": "application/atom+xml" });
     res.end(`<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"><entry><title>Wikipedia</title><updated>2026-06-01T00:00:00Z</updated><language>eng</language><name>wikipedia_en_all_nopic</name><link type="text/html" href="/content/wikipedia_en_all_nopic_2026-06" /></entry></feed>`);
@@ -80,6 +82,22 @@ describe("web search", () => {
     expect((await ada.put<WebSearch>(url, { kiwix: `http://${await searxng()}` })).body).toMatchObject({ kiwixState: "unreachable", kiwixReason: expect.stringContaining("catalog") });
     expect((await ada.put(url, { kiwix: "ftp://x" })).status).toBe(400);
     expect((await ada.put<WebSearch>(url, { kiwix: null })).body).toMatchObject({ searxng: good, ...NO_KIWIX });
+  });
+
+  it("shows a picture of the offline copy to a signed-in user, and nothing else", async () => {
+    const { rt, base, ada, url } = await setup();
+    const k = await kiwix();
+    const picture = (u: string, cookie = ada.cookie) => fetch(`${base}/api/u/${rt.ada.id}/web/picture?url=${encodeURIComponent(u)}`, { headers: cookie ? { cookie } : {} });
+    const lute = `${k}/content/wikipedia_en_all_nopic_2026-06/I/Lute.webp`;
+    expect((await picture(lute)).status).toBe(404);
+    await ada.put(url, { kiwix: k });
+    const res = await picture(lute);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("image/webp");
+    expect(res.headers.get("content-security-policy")).toContain("sandbox");
+    expect(Buffer.from(await res.arrayBuffer()).toString()).toBe("RIFF....WEBPVP8 ");
+    for (const u of [`${k}/content/wikipedia_en_all_nopic_2026-06/A/Lute`, "https://upload.wikimedia.org/x.png", `${k}/catalog/v2/entries`]) expect((await picture(u)).status).toBe(404);
+    expect((await picture(lute, "")).status).not.toBe(200);
   });
 
   it("never sends a basic-auth password back, and keeps it while the user@host stays", async () => {

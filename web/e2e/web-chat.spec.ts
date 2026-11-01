@@ -2130,3 +2130,42 @@ test("the pages she read show under her reply as Sources, each opening in a new 
     await page.emulateMedia({ colorScheme: null });
   }
 });
+
+test("a picture of the offline copy of Wikipedia shows in her reply through lyricad; another remote image stays a link", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  const fake = `http://127.0.0.1:${Number(new URL(baseURL!).port) + 10}`;
+  const kiwix = (address: string) => page.evaluate(async ([path, a]) => {
+    await fetch(path, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ kiwix: a }) });
+  }, [`/api/u/${userId}/admin/web-search`, address] as const);
+  await kiwix(`${fake}/kiwix`);
+  try {
+    await newThread(page, "General");
+    const lute = `${fake}/kiwix/content/wikipedia_en_all_nopic_2026-06/I/Lute.png`;
+    await send(page, ["reply: ### Lute", "", `![A Renaissance lute](${lute})`, "", "*A Renaissance lute, from the offline copy.*", "", "![A lute online](https://upload.example.invalid/Lute.png)", "", "The lute came to Europe through Spain."].join("\n"));
+    await expect(page.getByText("The lute came to Europe through Spain.")).toBeVisible();
+    const msg = page.locator(".prose").filter({ hasText: "The lute came to Europe through Spain." });
+    const picture = msg.getByRole("button", { name: "A Renaissance lute, open large" });
+    await expect(picture).toBeVisible();
+    await expect(picture.locator("img")).toHaveAttribute("src", `/api/u/${userId}/web/picture?url=${encodeURIComponent(lute)}`);
+    await expect.poll(() => picture.locator("img").evaluate((img: HTMLImageElement) => img.naturalWidth)).toBe(240);
+    // An image from anywhere else is never asked for: a link with its alt text, as before.
+    await expect(msg.getByRole("link", { name: "A lute online" })).toHaveAttribute("href", "https://upload.example.invalid/Lute.png");
+    await expect(msg.getByRole("link", { name: "A Renaissance lute" })).toHaveCount(0);
+    await noHorizontalScroll(page);
+    if (process.env.SCREENSHOTS) {
+      for (const colorScheme of ["light", "dark"] as const) {
+        await page.emulateMedia({ colorScheme });
+        await page.screenshot({ path: `${process.env.SCREENSHOTS}/offline-picture-${page.viewportSize()!.width}-${colorScheme}.png` });
+      }
+      await page.emulateMedia({ colorScheme: null });
+    }
+    await picture.click();
+    const box = page.getByRole("dialog", { name: "Lute.png" });
+    await expect(box).toBeVisible();
+    await expect.poll(() => box.locator(".lb-img img").evaluate((img: HTMLImageElement) => img.naturalWidth)).toBe(240);
+    if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/offline-picture-large-${page.viewportSize()!.width}.png` });
+    await box.getByRole("button", { name: "Close" }).click();
+  } finally {
+    await kiwix("");
+  }
+});
