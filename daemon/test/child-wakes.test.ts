@@ -1,12 +1,12 @@
 import { Memory, Models, Users, Workspace, type Pool } from "@lyrica/core";
 import type { Delegation, ThreadContext } from "@lyrica/extension";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { freshKeyring, profile } from "../../core/test/helpers.ts";
 import { ChildThreads, MAX_WAKE_ROUNDS } from "../src/children.ts";
 import type { ThreadHost } from "../src/hosted.ts";
 
 const close: (() => void)[] = [];
-afterEach(() => { for (const fn of close.splice(0)) fn(); });
+afterEach(() => { vi.useRealTimers(); for (const fn of close.splice(0)) fn(); });
 
 async function setup(wakeMs = 0) {
   const keyring = await freshKeyring();
@@ -133,6 +133,8 @@ describe("child wake guards", () => {
 
   it("batches reports close together into one wake, while a question or an error wakes at once", async () => {
     const s = await setup(80);
+    // The batch window runs on a faked clock: on a slow runner two reports could take longer than 80 real ms.
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
     const other = s.parentFrom.view.own.createThread({ interface: "web", parent: s.parent.id, child: true });
     s.children.adopt(s.user.id, "general", other.id, s.parent.id, undefined);
     const report = async (from: ThreadContext, text: string) => {
@@ -144,13 +146,15 @@ describe("child wake guards", () => {
     await report(s.from, "Beds planned.");
     await report(otherFrom, "Seeds ordered.");
     expect(s.wakes).toEqual([]);
-    await expect.poll(() => s.wakes).toEqual([s.parent.id]);
+    await vi.advanceTimersByTimeAsync(80);
+    expect(s.wakes).toEqual([s.parent.id]);
     // A report during that wake's turn doesn't join it (a model call of its own): it wakes the parent again after, batched.
     await report(s.from, "Beds dug.");
     expect(s.joined.at(-1)).toBe(false);
     s.end();
     expect(s.wakes).toHaveLength(1);
-    await expect.poll(() => s.wakes).toHaveLength(2);
+    await vi.advanceTimersByTimeAsync(80);
+    expect(s.wakes).toHaveLength(2);
     s.end();
     // A question wakes at once, and joins a running wake's turn.
     expect(await s.children.message(otherFrom, "parent", "Which seeds?", { question: true })).toBe("wakes");
