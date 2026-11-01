@@ -1012,6 +1012,9 @@ The **Web search** switch gives her two tools (`extension/src/web.ts`,
   second field of Administration → Web search; [guides/wikipedia.md](guides/wikipedia.md)),
   a plain search also lists up to five of its articles, as wikipedia.org
   links, after the web results, and `web_search` is offered with it alone.
+  A search naming Wikipedia ("… wikipedia", `site:wikipedia.org`) asks
+  the copy alone, without that word, and SearXNG only when the copy has
+  nothing. `online` on either tool skips the copy.
   `web_fetch` reads a wikipedia.org page from the copy before going
   online, lists the page's pictures when the copy has them, and gives a
   listed picture back as an image. With kiwix-serve on this machine, as

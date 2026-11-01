@@ -478,9 +478,12 @@ export interface Source { url: string; title?: string; host: string; local?: boo
 /** Which offline copy a fetch read from, as kiwix.ts names it ("the offline copy of Wikipedia (2026-08)"), without the date. */
 const OFFLINE = /^(?:A picture from|Outside content from \S+ \() ?the offline copy of (.+?)(?: \(\d{4}-\d{2}\))?(?::|\), not from the user:)/;
 
-/** "Offline Wikipedia" when a web_fetch result came from the offline copy instead of the address she asked for. */
+/** The same for a web_search the offline copy answered alone (one naming Wikipedia). */
+const OFFLINE_SEARCH = /^Outside content from a search of the offline copy of (.+?)(?: \(\d{4}-\d{2}\))? for "/;
+
+/** "Offline Wikipedia" when a web_fetch result came from the offline copy instead of the address she asked for, or a web_search's from it alone. */
 export function offlineCopyOf(result: string | undefined): string | undefined {
-  const copy = result === undefined ? undefined : OFFLINE.exec(result)?.[1]?.trim();
+  const copy = result === undefined ? undefined : (OFFLINE.exec(result) ?? OFFLINE_SEARCH.exec(result))?.[1]?.trim();
   return copy ? `Offline ${copy}` : undefined;
 }
 
@@ -778,8 +781,8 @@ function Marker({ part, env }: { part: Exclude<MessagePart, { type: "text" | "im
       // A call on a machine names it first, and an MCP call its server.
       const mcp = mcpOf(part.name);
       const place = mcp?.server ?? machineOf(part.args);
-      // A web_fetch the offline copy answered says so: the URL she asked for was never fetched online.
-      const copy = part.name === "web_fetch" && !part.isError ? offlineCopyOf(part.result) : undefined;
+      // A web_fetch or web_search the offline copy answered says so: the URL she asked for was never fetched online, and the search never left the server.
+      const copy = (part.name === "web_fetch" || part.name === "web_search") && !part.isError ? offlineCopyOf(part.result) : undefined;
       label = <>{place && <b className="place">{place}</b>}<b className="tool-name">{mcp?.tool ?? part.name}</b> <code>{summarizeArgs(part.args)}</code> {copy && <><span className="via">from {copy}</span> </>}<span className="state" data-state={state}>{state}</span></>;
       if (part.name === "image") {
         const args = (part.args ?? {}) as { action?: string; tier?: string; images?: unknown };

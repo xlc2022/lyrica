@@ -1194,7 +1194,8 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   the tool in mono, shows the arguments as JSON, and has Allow, **Allow in
   this thread** and Deny. Its tool marker names the server, then the tool.
   A `web_fetch` marker whose result came from the offline copy adds
-  "from Offline <copy>" after the URL (`offlineCopyOf`).
+  "from Offline <copy>" after the URL (`offlineCopyOf`), and a
+  `web_search` marker the copy answered alone adds it after the query.
   A tool marker for a call on a machine names the machine first. A
   subagent's request shows in its parent's thread (in its card, when that
   is open) and on its own page, naming the subagent, and stays past the

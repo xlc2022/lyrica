@@ -108,9 +108,11 @@ describe("the sources under her reply", () => {
       { url: "http://localhost:8001/status", title: undefined, host: "localhost", local: true },
     ]);
   });
-  it("say when a fetch came from the offline copy instead of online", () => {
+  it("say when a fetch or a search came from the offline copy instead of online", () => {
     expect(offlineCopyOf("Outside content from https://en.wikipedia.org/wiki/Moth (the offline copy of Wikipedia (2026-08)), not from the user:\n<<<web 0a>>>")).toBe("Offline Wikipedia");
     expect(offlineCopyOf("A picture from the offline copy of Wikipedia (2026-08): http://127.0.0.1:8889/content/x/I/a.webp")).toBe("Offline Wikipedia");
+    expect(offlineCopyOf("Outside content from a search of the offline copy of Wikipedia (2026-08) for \"V24 engine wikipedia\", not from the user:\n<<<web 0a>>>")).toBe("Offline Wikipedia");
+    expect(offlineCopyOf("Outside content from a web search for \"V24 engine\", not from the user:\n<<<web 0a>>>")).toBeUndefined();
     expect(offlineCopyOf("Outside content from https://moths.example/a, not from the user:\n<<<web 0a>>>")).toBeUndefined();
     expect(offlineCopyOf(undefined)).toBeUndefined();
   });

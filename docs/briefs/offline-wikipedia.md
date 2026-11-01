@@ -46,6 +46,14 @@ address and its state in Administration → Web search (docs/ux.md).
   under its final name crash-looped kiwix-serve on the test machine; the
   guide says to download under a `.part` name.
 
+- 2026-11-01: a search naming Wikipedia ("… wikipedia",
+  `site:wikipedia.org`) asks the copy alone and goes to SearXNG only when
+  the copy has nothing; the copy is asked without the word, since
+  kiwix-serve's search wants every word in the article and "wikipedia"
+  emptied every such search on the test machine (reproduced on
+  kiwix-serve 3.5). Its marker says **from Offline Wikipedia**. Both tools
+  take `online` to skip the copy when the user asks for the live site.
+
 ## Next
 
 - A search and a read in a local-only thread on the test machine.

@@ -171,6 +171,71 @@ describe("the offline copy of Wikipedia", () => {
   });
 });
 
+describe("a search naming Wikipedia", () => {
+  /** A SearXNG answering every search with one result, counting the searches. */
+  async function searxng() {
+    const asked: string[] = [];
+    const srv = createServer((req, res) => {
+      asked.push(new URL(req.url!, "http://x").searchParams.get("q") ?? "");
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ results: [{ title: "Lute | Fandom", url: "https://fandom.example/lute", content: "lute lore" }] }));
+    });
+    servers.push(srv);
+    await new Promise<void>((r) => srv.listen(0, "127.0.0.1", r));
+    return { address: `http://127.0.0.1:${(srv.address() as AddressInfo).port}`, asked };
+  }
+
+  it("asks only the offline copy, without the word Wikipedia, and says it came from the copy", async () => {
+    const address = await kiwix(), web = await searxng();
+    const { s, results } = await session({ searxng: () => web.address, kiwix: () => address, target: () => sandbox([]) }, [
+      [fauxToolCall("web_search", { query: "lute  wikipedia" })],
+      [fauxToolCall("web_search", { query: "lute site:en.wikipedia.org", count: 3 })],
+    ]);
+    try {
+      await s.prompt("one"); await s.prompt("two");
+    } finally {
+      s.dispose();
+    }
+    expect(results[0]).toMatch(/^Outside content from a search of the offline copy of Wikipedia \(2026-06\) for "lute wikipedia", not from the user:\n<<<web [0-9a-f]{8}>>>\nOffline copy of Wikipedia 2026-06:\n- Lute\n  https:\/\/en\.wikipedia\.org\/wiki\/Lute\n  A plucked string instrument\n<<<end web [0-9a-f]{8}>>>$/);
+    expect(results[1]).toContain("- Lute\n  https://en.wikipedia.org/wiki/Lute");
+    expect(web.asked).toEqual([]);
+  });
+
+  it("goes to the web, with the words she wrote, when the copy has nothing", async () => {
+    const address = await kiwix(false), web = await searxng();
+    const { s, results } = await session({ searxng: () => web.address, kiwix: () => address, target: () => sandbox([]) }, [
+      [fauxToolCall("web_search", { query: "lute wikipedia" })],
+    ]);
+    try {
+      await s.prompt("one");
+    } finally {
+      s.dispose();
+    }
+    expect(results[0]).toMatch(/^Outside content from a web search for "lute wikipedia", not from the user:\n<<<web [0-9a-f]{8}>>>\n1\. Lute \| Fandom\n/);
+    expect(results[0]).toMatch(/<<<end web [0-9a-f]{8}>>>\nThe offline copy had nothing for "lute"\.$/);
+    expect(web.asked).toEqual(["lute wikipedia"]);
+  });
+
+  it("goes to the web alone when she asks online, for a search and a read", async () => {
+    const address = await kiwix(), web = await searxng();
+    const calls: string[][] = [];
+    const { s, results } = await session({ searxng: () => web.address, kiwix: () => address, target: () => sandbox(calls) }, [
+      [fauxToolCall("web_search", { query: "lute wikipedia", online: true })],
+      [fauxToolCall("web_fetch", { url: "https://en.wikipedia.org/wiki/Lute", online: true })],
+    ]);
+    try {
+      await s.prompt("one"); await s.prompt("two");
+    } finally {
+      s.dispose();
+    }
+    expect(results[0]).toMatch(/^Outside content from a web search for "lute wikipedia"/);
+    expect(results[0]).not.toContain("Offline copy");
+    expect(web.asked).toEqual(["lute wikipedia"]);
+    expect(results[1]).toMatch(/^Outside content from https:\/\/en\.wikipedia\.org\/wiki\/Lute, not from the user:/);
+    expect(calls.map((c) => c.at(-1))).toEqual(["https://en.wikipedia.org/wiki/Lute"]);
+  });
+});
+
 describe("searxngSearch", () => {
   const reply = (status: number, body: unknown) => (async () => new Response(JSON.stringify(body), { status })) as unknown as typeof fetch;
   // Each search its own gate: the shared one answers the same search from its last reply.

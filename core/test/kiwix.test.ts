@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { forgetKiwixBooks, kiwixArticle, kiwixBooks, kiwixLines, kiwixPage, kiwixPicture, kiwixSearch, kiwixStatus } from "../src/kiwix.ts";
+import { forgetKiwixBooks, offlineQuery, kiwixArticle, kiwixBooks, kiwixLines, kiwixPage, kiwixPicture, kiwixSearch, kiwixStatus } from "../src/kiwix.ts";
 
 // The offline copy of Wikipedia on kiwix-serve, as web_search and web_fetch
 // read it (docs/contracts.md, "web_search and web_fetch"). The replies are
@@ -106,6 +106,10 @@ describe("the offline copy of Wikipedia", () => {
     expect(kiwixLines([])).toBe("");
     // The catalog was read once for both calls.
     expect(urls.filter((u) => u.endsWith("/catalog/v2/entries"))).toHaveLength(1);
+    // kiwix-serve matches only articles holding every word: the name of Wikipedia is left out.
+    urls.length = 0;
+    await kiwixSearch(A, "Lute wikipedia", 5, undefined, f);
+    expect(urls.filter((u) => u.includes("/search?"))[0]).toBe(`${A}/search?pattern=Lute&books.name=${BOOK}&format=xml&pageLength=5`);
   });
 
   it("reads a wikipedia.org page by its title, with links absolute on wikipedia.org and its pictures listed", async () => {
@@ -170,5 +174,18 @@ describe("the offline copy of Wikipedia", () => {
       expect(await kiwixPicture(A, u, undefined, f)).toBeUndefined();
     }
     expect(urls.length).toBe(asked + 2);
+  });
+});
+
+describe("offlineQuery", () => {
+  it("takes out the words naming Wikipedia, and says the search named it", () => {
+    expect(offlineQuery("V24 engine wikipedia")).toEqual({ query: "V24 engine", wikipedia: true });
+    expect(offlineQuery("Wikipedia's  Rolls-Royce V24 aircraft engine")).toEqual({ query: "Rolls-Royce V24 aircraft engine", wikipedia: true });
+    expect(offlineQuery("lute site:en.wikipedia.org")).toEqual({ query: "lute", wikipedia: true });
+    expect(offlineQuery("lute site:wikipedia.org/wiki")).toEqual({ query: "lute", wikipedia: true });
+    expect(offlineQuery("lute wikipedia.org")).toEqual({ query: "lute wikipedia.org", wikipedia: false });
+    expect(offlineQuery("  lute  ")).toEqual({ query: "lute", wikipedia: false });
+    expect(offlineQuery("wikipedia")).toEqual({ query: "wikipedia", wikipedia: false });
+    expect(offlineQuery("wikipedians")).toEqual({ query: "wikipedians", wikipedia: false });
   });
 });

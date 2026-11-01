@@ -1,13 +1,14 @@
 import type { ExtensionAPI, ExtensionContext, ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import { StringEnum } from "@earendil-works/pi-ai";
-import { clamp, cutPage, outside, OUTSIDE_GUIDELINE, FETCH_BYTES, FETCH_TOO_LARGE, fetchArgv, fetchedPage, kiwixLines, kiwixPage, kiwixSearch, maskSecrets, OUTPUT_OVER, RENDER_MS, renderArgv, renderedPage, SEARCH_CATEGORIES, SEARCH_TIMES, searxngSearch, type ExecutionTarget, type FetchedPage } from "@lyrica/core";
+import { clamp, copyName, cutPage, outside, OUTSIDE_GUIDELINE, FETCH_BYTES, FETCH_TOO_LARGE, fetchArgv, fetchedPage, kiwixLines, kiwixPage, kiwixSearch, maskSecrets, offlineQuery, OUTPUT_OVER, RENDER_MS, renderArgv, renderedPage, SEARCH_CATEGORIES, SEARCH_TIMES, searxngSearch, type ExecutionTarget, type FetchedPage } from "@lyrica/core";
 import { Type } from "typebox";
 import { setToolsOff } from "./gate.ts";
 
 // web_search and web_fetch (DESIGN.md, "Switches in the message box"). The
 // Web search switch turns both off (SWITCHED_TOOLS in workspace.ts). An
-// offline copy of Wikipedia on kiwix-serve joins a search and answers a
-// fetch of a wikipedia.org page before the sandbox goes online.
+// offline copy of Wikipedia on kiwix-serve joins a search, answers alone a
+// search naming Wikipedia, and answers a fetch of a wikipedia.org page
+// before the sandbox goes online.
 
 export interface WebTools {
   /** The server's SearXNG address, read on every call; without one or a kiwix-serve there is no web_search. */
@@ -32,7 +33,7 @@ export function createWebExtension(web: WebTools): ExtensionFactory {
     pi.registerTool({
       name: "web_search",
       label: "Web search",
-      description: "Search the web, and the server's offline copy of Wikipedia when it has one. Returns titles, dates, URLs and snippets; read a result with web_fetch.",
+      description: "Search the web, and the server's offline copy of Wikipedia when it has one; a search naming Wikipedia (\"... wikipedia\" or site:wikipedia.org) asks only the offline copy, and the web if the copy has nothing; online skips the copy. Returns titles, dates, URLs and snippets; read a result with web_fetch.",
       promptSnippet: "search the web",
       promptGuidelines: ["Search when the answer depends on something current or that you don't know; read the best result with web_fetch before relying on a snippet, and say where it came from.", "When a search says its engines refused and are resting, don't search again for the same thing: use what you have, or tell the user search is resting.", OUTSIDE_GUIDELINE],
       annotations: { openWorldHint: true, readOnlyHint: true },
@@ -42,31 +43,43 @@ export function createWebExtension(web: WebTools): ExtensionFactory {
         time: Type.Optional(StringEnum(SEARCH_TIMES, { description: "Only results from the past day, week, month or year." })),
         category: Type.Optional(StringEnum(SEARCH_CATEGORIES, { description: "Which engines to ask; general if left out." })),
         page: Type.Optional(Type.Integer({ description: "Which page of results, 1 to 10; 1 if left out." })),
+        online: Type.Optional(Type.Boolean({ description: "true: only the web, never the offline copy, as when the user asks for the live Wikipedia." })),
       }),
       async execute(_id, p, signal) {
         const address = web.searxng();
         const kiwix = web.kiwix?.();
         if (!address && !kiwix) return text("Web search isn't set up: it needs a SearXNG or Kiwix address in Administration.", true);
+        if (p.online && !address) return text("Web search online isn't set up: it needs a SearXNG address in Administration.", true);
         const count = clamp(p.count, 8, 20), page = clamp(p.page, 1, 10);
+        const query = p.query.replace(/\s+/g, " ").trim();
         // The offline copy has no dates, categories or pages: it joins a plain search's first page.
-        const offline = kiwix && page === 1 && !p.time && (!p.category || p.category === "general")
-          ? kiwixSearch(kiwix, p.query, Math.min(count, OFFLINE_HITS), signal).then(kiwixLines, (err: Error) => ({ failed: err.message }))
+        const plain = !!kiwix && !p.online && page === 1 && !p.time && (!p.category || p.category === "general");
+        // A search naming Wikipedia asks the offline copy alone, and the web only when the copy has nothing.
+        let missed = "";
+        if (plain && offlineQuery(query).wikipedia) {
+          const hits = await kiwixSearch(kiwix, query, count, signal).catch((err: Error) => err);
+          if (Array.isArray(hits) && hits.length) return text(outside(`a search of ${copyName(hits[0]!.book)} for "${query}"`, kiwixLines(hits)));
+          missed = Array.isArray(hits) ? `The offline copy had nothing for "${offlineQuery(query).query}".` : hits.message;
+          if (!address) return text(missed, true);
+        }
+        const offline = plain && !missed
+          ? kiwixSearch(kiwix, query, Math.min(count, OFFLINE_HITS), signal).then(kiwixLines, (err: Error) => ({ failed: err.message }))
           : Promise.resolve("");
         const online = address
           ? searxngSearch(address, p.query, { count, time: p.time, category: p.category, page }, signal).then((t) => t, (err: Error) => ({ failed: err.message }))
           : Promise.resolve("");
         const [web_, wiki] = await Promise.all([online, offline]);
         const parts = [web_, wiki].filter((x): x is string => typeof x === "string" && !!x);
-        const failed = [web_, wiki].flatMap((x) => (typeof x === "string" ? [] : [x.failed]));
+        const failed = [missed, ...[web_, wiki].flatMap((x) => (typeof x === "string" ? [] : [x.failed]))].filter(Boolean);
         if (!parts.length) return text(failed.join(" "), true);
-        return text(`${outside(`a web search for "${p.query.replace(/\s+/g, " ").trim()}"`, parts.join("\n\n"))}${failed.length ? `\n${failed.join(" ")}` : ""}`);
+        return text(`${outside(`a web search for "${query}"`, parts.join("\n\n"))}${failed.length ? `\n${failed.join(" ")}` : ""}`);
       },
     });
 
     pi.registerTool({
       name: "web_fetch",
       label: "Web fetch",
-      description: "Read a web page or PDF as text: a page's main text as Markdown. A wikipedia.org page comes from the server's offline copy when it has one, and a picture it lists comes back as an image; anything else is fetched from this conversation's sandbox, so its internet switch and allowed hosts apply.",
+      description: "Read a web page or PDF as text: a page's main text as Markdown. A wikipedia.org page comes from the server's offline copy when it has one (unless online), and a picture it lists comes back as an image; anything else is fetched from this conversation's sandbox, so its internet switch and allowed hosts apply.",
       promptSnippet: "read a web page or PDF as text",
       promptGuidelines: ["A cut page names the offset to read on from.", OUTSIDE_GUIDELINE],
       annotations: { openWorldHint: true, readOnlyHint: true },
@@ -74,13 +87,14 @@ export function createWebExtension(web: WebTools): ExtensionFactory {
         url: Type.String({ description: "An http or https URL." }),
         maxChars: Type.Optional(Type.Integer({ description: "Most characters to return, up to 50000; 20000 if left out." })),
         offset: Type.Optional(Type.Integer({ description: "Where to start, in characters: the offset a cut page names to read on. 0 if left out." })),
+        online: Type.Optional(Type.Boolean({ description: "true: fetch the page online even when the offline copy has it, as when the user asks for the live Wikipedia." })),
       }),
       async execute(_id, p, signal) {
         let url: URL;
         try { url = new URL(p.url.trim()); } catch { return text(`${p.url} isn't a URL.`, true); }
         if (url.protocol !== "http:" && url.protocol !== "https:") return text("web_fetch reads only http and https URLs.", true);
         // The offline copy first: a page it has never needs the network.
-        const kiwix = web.kiwix?.();
+        const kiwix = p.online ? undefined : web.kiwix?.();
         if (kiwix) {
           try {
             const local = await kiwixPage(kiwix, url, signal);
