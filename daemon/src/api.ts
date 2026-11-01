@@ -249,6 +249,8 @@ export interface OfferingInfo extends Capabilities {
   maxOutput?: number;
   /** This user starred it (PUT …/offerings/:id/star). Set on the Models page's endpoints only: the Image models tab sorts by it. */
   starred?: boolean;
+  /** Switched off in its endpoint's model list (PATCH …/endpoints/:id/models): only that list shows it; no task list, picker, library or fallback does. */
+  disabled?: true;
 }
 
 export interface EndpointInfo {
@@ -539,6 +541,8 @@ export interface ModelsPage {
   release?: { tag: string; commit: string };
 }
 
+/** PATCH /api/u/:userId/endpoints/:endpointId/models → EndpointInfo. Switches the named models (every model of the endpoint when `offeringIds` is left out) off or on in its list. A shared endpoint needs an administrator. */
+export interface ModelsEnabledChange { disabled: boolean; offeringIds?: string[] }
 /** PATCH /api/u/:userId/offerings/:offeringId → OfferingInfo. Sets capabilities by hand; null clears one. */
 export type CapabilitiesChange = { [K in keyof Capabilities]?: Capabilities[K] | null };
 /** DELETE /api/u/:userId/offerings/:offeringId → Ok. Leaves a tombstone. */

@@ -110,6 +110,15 @@ test("Models: the sidebar link opens Overview, Hosts and endpoints lists the end
   await expect(routerRow.locator("li[data-offering]").filter({ hasText: "cloud-model" }).getByRole("button", { name: "Remove" })).toHaveCount(0);
   await noHorizontalScroll(page);
   await shot("missing-model");
+  // Enabled: off takes a model out of everything but this list; the ⋯ switches every model at once.
+  const cloudModel = routerRow.locator("li[data-offering]").filter({ hasText: "cloud-model" });
+  await cloudModel.getByRole("checkbox", { name: "Enabled: cloud-model" }).uncheck();
+  await expect(cloudModel).toHaveClass(/off/);
+  await expect(cloudModel.getByRole("checkbox", { name: "Enabled: cloud-model" })).not.toBeChecked();
+  await shot("disabled-model");
+  await routerRow.getByRole("button", { name: "Actions for router" }).click();
+  await page.getByRole("menuitem", { name: "Enable all models" }).click();
+  await expect(cloudModel.getByRole("checkbox", { name: "Enabled: cloud-model" })).toBeChecked();
   await old.getByRole("button", { name: "Remove old-model" }).click();
   const ask = page.getByRole("dialog", { name: "Remove old-model?" });
   await ask.getByRole("button", { name: "Remove" }).click();

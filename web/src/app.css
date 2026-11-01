@@ -1422,6 +1422,7 @@ a.tile:hover { text-decoration: none; border-color: var(--accent); }
 .models button.link.sm { min-height: 30px; }
 .model-list { list-style: none; margin: 0; padding: 8px 0 0; border-top: 1px solid var(--line); display: grid; gap: 2px; font-size: 13px; }
 .model-list li { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; min-height: 30px; }
+.model-list li.off code { color: var(--muted); }
 .model-list code { overflow-wrap: anywhere; }
 .tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); min-width: 0; }
 .models table { border-collapse: collapse; width: 100%; font-size: 13px; }

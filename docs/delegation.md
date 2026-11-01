@@ -57,7 +57,7 @@ subagent:
   with the person first, unless the person's latest message singles it out
   (`singledOut`); naming it by its whole label is her word that she checked.
   `delegate({ action: "models" })` lists the chat
-  models she may name, local first, each marked local or cloud, and vision
+  models she may name (never one switched off in its endpoint's list), local first, each marked local or cloud, and vision
   and paid where they apply, and Claude Code where the thread's runs have it. A subagent whose model
   has no vision switches, on a tool result holding an image, to the first
   model up in the person's Look at images list (task `vision`), else the

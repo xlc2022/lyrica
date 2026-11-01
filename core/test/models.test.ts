@@ -183,6 +183,33 @@ describe("endpoints", () => {
     expect(models.resolveModel("chat", priv)).toEqual(localRef);
   });
 
+  it("a model switched off in its endpoint's list is seen nowhere else until it is switched on again", async () => {
+    const { models, ada, gpu, openrouter, localRef, cloudRef, ctx } = await withModels();
+    models.setColumnTask(ada.id, "general", "chat", [cloudRef, localRef]);
+    models.setDisabled(ada, [cloudRef.offeringId], true);
+    // Still in its endpoint's own list, marked; nowhere else: not the lists, the router, the library, the models she may name, or by name.
+    expect(models.offerings(ada.id, openrouter.id).map((o) => [o.modelId, o.disabled])).toEqual([["deepseek/deepseek-4.1-flash", true]]);
+    expect(models.offering(ada.id, cloudRef.offeringId)).toBeUndefined();
+    expect(models.find(ada.id, "openrouter/deepseek/deepseek-4.1-flash")).toBeUndefined();
+    expect(models.column(ada.id, "general").entries.chat).toEqual([localRef]);
+    expect(models.resolve("chat", ctx(), { first: [cloudRef.offeringId] })).toMatchObject({ ref: localRef, skipped: [{ reason: "it is switched off in openrouter's list" }] });
+    expect(models.textLibrary(ada.id).entries.flatMap((e) => e.copies.map((c) => c.label))).toEqual(["gpu/qwen3.8-27b"]);
+    expect(models.textModels(ctx()).map((m) => m.label)).toEqual(["gpu/qwen3.8-27b"]);
+    expect(() => models.setColumnTask(ada.id, "general", "chat", [cloudRef])).toThrow(NoModel);
+    // Rediscovery keeps it off; switching it on brings it back with its ID.
+    await models.discover(ada, openrouter.id);
+    expect(models.offerings(ada.id, openrouter.id)[0]!.disabled).toBe(true);
+    models.setDisabled(ada, [cloudRef.offeringId], false);
+    expect(models.offering(ada.id, cloudRef.offeringId)?.offering).toMatchObject({ id: cloudRef.offeringId, status: "listed" });
+    expect(models.offerings(ada.id, openrouter.id)[0]!.disabled).toBeUndefined();
+    // Every model of an endpoint at once, and the models of a shared endpoint are an administrator's call.
+    const { models: m, ada: admin, bob, lan, qwen } = await withShared();
+    expect(() => m.setDisabled(bob, [qwen.offeringId], true)).toThrow(Forbidden);
+    m.setDisabled(admin, m.offerings(admin.id, lan.id).map((o) => o.id), true);
+    expect(m.offerings(bob.id, lan.id).every((o) => o.disabled)).toBe(true);
+    expect(m.textModels({ userId: bob.id, pool: "general", localOnly: false }).map((x) => x.label)).toEqual(["shared.lan2/Qwen3.8-27B-Q4_K_M.gguf"]);
+  });
+
   it("probe reports up and down, and an endpoint down for 14 days is stale", async () => {
     const { models, ada, gpu, keyring, users } = await withModels();
     expect(await models.probe(ada.id, gpu.id)).toEqual({ state: "up" });
