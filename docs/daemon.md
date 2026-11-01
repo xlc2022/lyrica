@@ -1525,7 +1525,18 @@ system with the module on. Only x86_64-linux.
   `lyrica-kiwix.service` (the same `lyrica-kiwix-start` script with
   `pkgs.kiwix-tools` on its path: kiwix-serve on `127.0.0.1:8889`, a
   dynamic user, every `.zim` in the folder that kiwix can open, mirroring
-  install.sh's unit) and `kiwix-address` the same way.
+  install.sh's unit) and `kiwix-address` the same way. With `mcpNixos`
+  on (off by default) it declares `lyrica-mcp-nixos.service` through
+  `nix/mcp-nixos-module.nix` (`services.lyrica-mcp-nixos`, also exported
+  as `nixosModules.mcp-nixos` for a machine that runs only the server):
+  nixpkgs' `mcp-nixos` (built against a `fastmcp` with its tests
+  skipped: neither is in the channel's binary cache and three of its
+  proxy tests fail in the build sandbox) in HTTP mode on `127.0.0.1:8001`, path `/mcp`, a
+  dynamic user with `nix` on its path and `CacheDirectory`
+  `lyrica-mcp-nixos` as its home and cache (its flake-inputs action runs
+  `nix flake archive` on a flake directory the call names), no address file: the user adds it
+  under Settings → MCP servers as a Private server (docs/guides/nixos-mcp.md).
+  It has no Debian counterpart.
   `lyrica` on the system path is the same wrapper as
   install.sh's, so the first-run step is `lyrica admin setup-code` as root:
   nothing prints the code or the fingerprint at `nixos-rebuild`. The wrapper

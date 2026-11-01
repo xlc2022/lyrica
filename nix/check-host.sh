@@ -40,4 +40,10 @@ fi
 if [ -f /var/lib/lyrica/kiwix-address ]; then
   "$tools/bin/curl" -fsS -o /dev/null "$(cat /var/lib/lyrica/kiwix-address)/catalog/v2/entries" && ok "kiwix-serve answers for her offline Wikipedia" || bad "kiwix-serve doesn't answer: journalctl -u lyrica-kiwix"
 fi
+if systemctl cat lyrica-mcp-nixos >/dev/null 2>&1; then
+  env=$(systemctl show -p Environment --value lyrica-mcp-nixos | tr ' ' '\n')
+  mcp="http://$(echo "$env" | sed -n 's/^MCP_NIXOS_HOST=//p'):$(echo "$env" | sed -n 's/^MCP_NIXOS_PORT=//p')/mcp"
+  # Any HTTP answer will do: a bare GET is refused by the protocol, but only a connection refusal fails.
+  "$tools/bin/curl" -sS -o /dev/null "$mcp" && ok "mcp-nixos answers at $mcp" || bad "mcp-nixos doesn't answer at $mcp: journalctl -u lyrica-mcp-nixos"
+fi
 echo "All checks passed."

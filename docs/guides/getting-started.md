@@ -196,7 +196,9 @@ read it for anything not covered here.
    127.0.0.1:8888, whose address fills in under Administration, Web
    search; [searxng.md](searxng.md)), `zimDir` (null: a folder of ZIM
    files for her offline Wikipedia, served on 127.0.0.1:8889;
-   [wikipedia.md](wikipedia.md)), `caddyPackage`, and
+   [wikipedia.md](wikipedia.md)), `mcpNixos` (off: an MCP server for
+   NixOS lookups on 127.0.0.1:8001 that you then add under Settings, MCP
+   servers; [nixos-mcp.md](nixos-mcp.md)), `caddyPackage`, and
    `sandboxPackages`, the tools her commands see (NixOS has no `/usr` to
    share, so the module builds one directory from that list, which
    includes git, gh, tea, Node 24, Claude Code and Codex by default; add
@@ -236,7 +238,8 @@ read it for anything not covered here.
    and Caddy, that her `tailscaled` answers on its socket, `NoNewPrivs`,
    the setuid `fusermount3`, Caddy's socket, `lyrica-update.path`, a
    sandbox and `pasta` as the `lyrica` user, the network self-test, the
-   port and, when the module runs them, SearXNG and kiwix-serve, one line
+   port and, when the module runs them, SearXNG, kiwix-serve and
+   mcp-nixos, one line
    each, and ends with "All checks passed." or stops at the first failure.
 10. The self-test runs at unlock, so `check-host.sh` misses it when she
     hasn't been unlocked yet (after `lyrica admin init` she starts
@@ -762,6 +765,15 @@ An offline copy of Wikipedia makes both work without the internet:
 download a ZIM file into a folder, point `services.lyrica.zimDir` or
 `LYRICA_ZIM_DIR` at it, and its address fills in as the **Kiwix address**
 of the same section: [wikipedia.md](wikipedia.md).
+
+## Give her Nix and NixOS lookups
+
+On NixOS, `services.lyrica.mcpNixos = true` runs mcp-nixos, an MCP server
+that looks up NixOS packages and options, Home Manager options, flakes and
+Nix function docs, and reads the machine's own flake inputs and Nix store.
+Add it once under Settings, **MCP servers** as a Private server at
+`http://127.0.0.1:8001/mcp`, then grant it to the threads or projects that
+should have it: [nixos-mcp.md](nixos-mcp.md).
 
 ## Give her repositories
 

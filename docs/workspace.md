@@ -1177,6 +1177,8 @@ come from the user's Git accounts (DESIGN.md, "Updates and self-editing").
 
 A service with an MCP server (Home Assistant, a calendar, a docs site)
 gives her its tools through Pi's own MCP client (DESIGN.md, "MCP servers").
+The NixOS module can run one for her: mcp-nixos, for Nix and NixOS
+lookups (`services.lyrica.mcpNixos`, docs/guides/nixos-mcp.md).
 
 - **A server** is a row in Settings → **MCP servers**, kept in the user's
   `user.db` (`mcp_servers`, user step 3): a name (letters, digits, `-`
