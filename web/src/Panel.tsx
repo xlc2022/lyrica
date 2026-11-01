@@ -345,7 +345,7 @@ function StatusSection({ ctx }: { ctx: ShellContext }) {
   const page = ctx.models.page;
   const hosts = page?.endpoints.filter((ep) => ep.api === "host") ?? [];
   const latest = runs.data?.runs.filter((r) => !hidden(ctx.me.display, r.pool)) ?? [];
-  return (
+  return <>
     <section className="card" aria-labelledby="h-status">
       <div className="section-head">
         <h2 id="h-status">Status</h2>
@@ -363,26 +363,26 @@ function StatusSection({ ctx }: { ctx: ShellContext }) {
       <dl className="facts">
         <dt>Her tools' network</dt><dd>{s ? (s.networkRefused ? <span className="status-word"><span className="dot down" />Refused</span> : <span className="status-word"><span className="dot up" />Self-test passed</span>) : "…"}</dd>
         <dt>Sleep time</dt><dd className="num">{sleep.data?.time ?? "…"}</dd>
-        <dt>Last sleep</dt><dd>{!runs.data ? "…" : latest.length ? latest.map((r, i) => <span key={r.pool} className="status-line">{i > 0 && <br />}<PoolWord pool={r.pool} /> · <span className="num">{shortTime(r.startedAt)}</span>
-          {r.finishedAt && <> · <span className="num">{duration(Date.parse(r.finishedAt) - Date.parse(r.startedAt))}</span></>} · {r.status === "skipped" && r.skipReason ? SKIPPED[r.skipReason] : RUN_WORD[r.status]}</span>) : "Not yet"}</dd>
+        <dt>Last sleep</dt><dd>{!runs.data ? "…" : latest.length ? latest.map((r) => <div key={r.pool} className="sleep-run"><PoolWord pool={r.pool} /> · <span className="num">{shortTime(r.startedAt)}</span>
+          {r.finishedAt && <> · <span className="num">{duration(Date.parse(r.finishedAt) - Date.parse(r.startedAt))}</span></>} · {r.status === "skipped" && r.skipReason ? SKIPPED[r.skipReason] : RUN_WORD[r.status]}</div>) : "Not yet"}</dd>
         <dt>Memory</dt><dd>{memory.data ? <><span className="num">{memory.data.pages.toLocaleString()}</span> {memory.data.pages === 1 ? "page" : "pages"} · <span className="num">{memory.data.notes.toLocaleString()}</span> {memory.data.notes === 1 ? "note" : "notes"}</> : "…"}</dd>
         <dt>Start unlocked</dt><dd>{s ? (s.savedPassphrase ? "Passphrase saved" : "Passphrase not saved") : "…"}</dd>
       </dl>
-      {page && hosts.length > 0 && <section aria-labelledby="h-status-hosts" className="status-hosts">
-        <h3 id="h-status-hosts" style={{ fontSize: 15 }}>Model hosts</h3>
-        {hosts.map((ep) => {
-          const host = hostOf(page, ep.id);
-          return <div key={ep.id} className="status-host" data-endpoint={ep.id}>
-            <div className="row"><span className="name">{ep.name}</span><StateWord ep={ep} host={host} /></div>
-            {host && "status" in host && host.status.gpus.map((g) => <GpuBlock key={g.index} g={g} />)}
-            {host && "status" in host && <CpuBlock status={host.status} />}
-            {host && "status" in host && <RamBlock status={host.status} />}
-          </div>;
-        })}
-      </section>}
-      {s?.modelFacts && <ModelCallFacts facts={s.modelFacts} />}
     </section>
-  );
+    {page && hosts.length > 0 && <section className="card status-hosts" aria-labelledby="h-status-hosts">
+      <h2 id="h-status-hosts">Model hosts</h2>
+      {hosts.map((ep) => {
+        const host = hostOf(page, ep.id);
+        return <div key={ep.id} className="status-host" data-endpoint={ep.id}>
+          <div className="row"><span className="name">{ep.name}</span><StateWord ep={ep} host={host} /></div>
+          {host && "status" in host && host.status.gpus.map((g) => <GpuBlock key={g.index} g={g} />)}
+          {host && "status" in host && <CpuBlock status={host.status} />}
+          {host && "status" in host && <RamBlock status={host.status} />}
+        </div>;
+      })}
+    </section>}
+    {s?.modelFacts && <ModelCallFacts facts={s.modelFacts} />}
+  </>;
 }
 
 const PoolWord = ({ pool }: { pool: Pool }) => <>{pool === "general" ? "General" : "Private"}</>;

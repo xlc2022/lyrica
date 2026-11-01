@@ -890,9 +890,10 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   and 2; controls reuse §3's secondary button and menu, §4's short labels
   and tooltips, and §6's confirmation dialog. No drawer or extra captions.
 - **Administration**, for administrators: Status (`StatusSection` in
-  `Panel.tsx`: "Updated" time and a refresh icon button in its head, and it
-  re-reads Status, the sleep runs, memory counts and the Models page every
-  minute while visible and on focus; stale Debian systemd units with the
+  `Panel.tsx`, three cards: Status, Model hosts, Model calls; "Updated" time
+  and a refresh icon button in the Status card's head, and the page re-reads
+  Status, the sleep runs, memory counts and the Models page every minute
+  while visible and on focus; stale Debian systemd units with the
   action to run `install.sh`, the server's network self-test, sleep time,
   last sleep per shown pool from `GET …/sleep`, memory pages and notes from
   `GET …/memory`, start unlocked; **Model hosts** from the shell's Models page,

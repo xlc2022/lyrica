@@ -2113,6 +2113,13 @@ test("Status model facts preserve existing facts and render empty, measured and 
     for (const name of ["Calls per hour", "Output tokens per hour", "Speed per call · tok/s", "Calls by task"]) await expect(facts.getByRole("figure", { name, exact: true }).locator(".chart-box svg")).toBeVisible();
     await expect(facts.getByRole("list", { name: "Models" }).getByRole("listitem")).toHaveText(["fixture-cloud", "fixture-measured", "fixture-without-speed-with-a-long-model-name-for-phone-wrapping"]);
     await expect(page.getByText("Last sleep", { exact: true })).toBeVisible();
+    // A run reads as one line, however wide the page: pool, start, length and outcome.
+    expect((await page.request.post(`http://127.0.0.1:${modelPort}/sleep-item-fixture`, { data: { userId } })).ok()).toBe(true);
+    await page.getByRole("button", { name: "Refresh" }).click();
+    await expect(page.getByText(/Skipped: /)).toBeVisible();
+    if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/status-${page.viewportSize()!.width}.png`, fullPage: true });
+    const run = page.locator(".sleep-run").filter({ hasText: "General" });
+    if (page.viewportSize()!.width > 600) expect((await run.boundingBox())!.height).toBeLessThan(30);
     await expect(page.locator("dt").filter({ hasText: /^Memory$/ })).toBeVisible();
     const statusReads = () => page.waitForRequest((r) => r.url().endsWith(`/api/u/${userId}/admin/status`));
     const read = statusReads();
