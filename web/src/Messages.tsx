@@ -59,6 +59,9 @@ export function Conversation({ ctx, pool, base, threadId, subagent, thread, rewi
   // Expanded tool markers, by call ID, so they stay open when the stored copy replaces the live one.
   const [openTools, setOpenTools] = useState<ReadonlySet<string>>(new Set());
   const toggleTool = (id: string) => setOpenTools((o) => { const n = new Set(o); if (!n.delete(id)) n.add(id); return n; });
+  // The rows a Fold in card's dialog is open for, by call ID, so the dialog stays open when the stored copy replaces the live one.
+  const [folding, setFolding] = useState<ReadonlyMap<string, number[]>>(new Map());
+  const fold = useCallback((id: string, rows?: number[]) => setFolding((m) => { const n = new Map(m); if (rows) n.set(id, rows); else n.delete(id); return n; }), []);
   // Subagents whose work is shown in their delegate card here: their approvals show there too.
   const [shown, setShown] = useState<ReadonlySet<string>>(new Set());
   const show = (id: string, on: boolean) => setShown((o) => { const n = new Set(o); if (on) n.add(id); else n.delete(id); return n; });
@@ -74,7 +77,7 @@ export function Conversation({ ctx, pool, base, threadId, subagent, thread, rewi
   }
   const env: Env = {
     questions, questionChanged: () => { thread.dispatch({ type: "refresh" }); ctx.refreshThreads(); ctx.refreshNotifications(); },
-    busy: live.busy, settingsVersion: live.settings, lastUser: messages.findLast(m => m.role === "user")?.n, userId: ctx.user.id, you: ctx.user.displayName, pool, base, threadId, subagent, openTools, toggleTool,
+    busy: live.busy, settingsVersion: live.settings, lastUser: messages.findLast(m => m.role === "user")?.n, userId: ctx.user.id, you: ctx.user.displayName, pool, base, threadId, subagent, openTools, toggleTool, folding, fold,
     permissions: live.permissions, making: live.making, ticks: live.subagents, show, rewinder, parentTitle, speech, onError: onError ?? (() => {}), project,
     lastHers: messages.findLast((m) => m.role === "assistant")?.n, large: openLarge, threads: ctx.threads,
   };
@@ -142,6 +145,9 @@ export interface Env {
   subagent: boolean;
   openTools: ReadonlySet<string>;
   toggleTool: (id: string) => void;
+  /** Fold in dialogs open, by call ID: the rows each asks about. */
+  folding: ReadonlyMap<string, number[]>;
+  fold: (id: string, rows?: number[]) => void;
   permissions: PermissionRequest[];
   /** What her image calls are making now, by call: each shows a placeholder under its marker. */
   making: Record<string, Making>;
@@ -754,7 +760,7 @@ function Marker({ part, env }: { part: Exclude<MessagePart, { type: "text" | "im
   if (part.type === "tool" && part.name === "threads") {
     const action = (part.args as { action?: string } | null)?.action;
     if (action === "ask" && !part.isError) return <QuestionCard args={part.args} state={env.questions.get(part.toolCallId)} base={env.base} onChange={env.questionChanged} />;
-    if (action === "fold") return <FoldCard part={part} userId={env.userId} pool={env.pool} projectId={env.threadId} env={env.project} />;
+    if (action === "fold") return <FoldCard part={part} userId={env.userId} pool={env.pool} projectId={env.threadId} env={env.project} asked={env.folding.get(part.toolCallId)} setAsked={(rows) => env.fold(part.toolCallId, rows)} />;
     if (action === "draft") return <a href={href({ page: "project", userId: env.userId, pool: env.pool, threadId: env.threadId })}>Project settings</a>;
     if (action === "suggest") return <SuggestedCard part={part} userId={env.userId} pool={env.pool} projectId={env.threadId} env={env.project} />;
     // Her checklist shows in the header's facts line; its call is a marker like any tool's.

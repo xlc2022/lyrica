@@ -270,6 +270,8 @@ function fakeModel() {
         send({ role: "assistant", tool_calls: [{ index: 0, id: `call_${Date.now()}`, type: "function", function: { name: "threads", arguments: JSON.stringify(args) } }] });
         send({}, "tool_calls");
       } else if (ask || child || suggest || steps || fold || draft || tell || read || compact) {
+        // Her words after a Fold in card come two seconds late, so the card's dialog is open when her reply ends.
+        if (fold) await new Promise((r) => setTimeout(r, 2000));
         send({ role: "assistant", content: child ? "Started it." : tell ? "Sent it." : read ? "Read it." : compact ? "Compacting." : steps ? "Checklist set." : "Suggested." });
         send({}, "stop");
       } else if ((command || plan || skill) && last?.role !== "tool") {

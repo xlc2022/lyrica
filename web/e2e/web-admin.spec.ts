@@ -1523,6 +1523,10 @@ test("project welcome and fold in", async ({ page, baseURL }) => {
   await expect(dialog.getByRole("heading", { name: /^Fold Garden notes into Garden\?$/ })).toBeVisible();
   await expect(dialog.getByText("A thread can't be taken out of a project once it's in.")).toBeVisible();
   if (process.env.LYRICA_PROJECT_SHOTS) await page.screenshot({ path: `../shots/fold-dialog-${width}.png` });
+  // Her reply ends while the dialog is open: the stored copy replaces the live one, and the dialog stays.
+  await expect(page.getByText("Suggested.", { exact: true })).toBeVisible();
+  await expect.poll(async () => (await api("GET", `${u}/threads/general/${encodeURIComponent(p.id)}`)).busy).toBe(false);
+  await expect(dialog.getByRole("heading", { name: /^Fold Garden notes into Garden\?$/ })).toBeVisible();
   await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(dialog).toHaveCount(0);
   expect(await overview()).toHaveLength(0);
