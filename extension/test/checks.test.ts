@@ -11,7 +11,7 @@ import { EVIDENCE_CONTINUE, EVIDENCE_NOTICE, EVIDENCE_ROUNDS, judgePrompt, parse
 
 /**
  * She edits once, then says done after every message; the checks pass from round `passFrom` (never when 0).
- * `judge`: the evidence check's answers in turn (the last one again after that), each judged prompt kept in `judged`.
+ * `judge`: the evidence judge's answers in turn (the last one again after that), each judged prompt kept in `judged`.
  */
 async function scenario(o: { passFrom?: number; edit?: boolean; thinking?: boolean; options?: Partial<ChecksOptions>; output?: string; reject?: string; judge?: string[] } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "lyrica-checks-"));
@@ -121,7 +121,7 @@ describe("project checks", () => {
   });
 });
 
-describe("the evidence check", () => {
+describe("the evidence judge", () => {
   const notShown = '{"verdict":"continue","reason":"The test output shows FAIL track.test.ts, so the tests don\'t all pass.","next":"Fix the failing test and run npm test again."}';
 
   it("sends a reply the tool results don't bear out back to her, unseen, and shows it as not shown", async () => {
@@ -163,10 +163,21 @@ describe("the evidence check", () => {
 
   it("counts an answer it can't read, or a judge that fails, as done, and says so", async () => {
     const r = await scenario({ options: { checks: () => [] }, judge: ["I think it's fine."] });
-    expect(r.evidence).toEqual([{ ok: true, reason: "The evidence check's answer couldn't be read, so the reply stands." }]);
+    expect(r.evidence).toEqual([{ ok: true, reason: "The evidence judge's answer couldn't be read, so the reply stands." }]);
     expect(r.asked).toEqual([]);
     const failed = await scenario({ options: { checks: () => [], judge: async () => { throw new Error("every model is away"); } } });
-    expect(failed.evidence).toEqual([{ ok: true, reason: "The evidence check couldn't run (every model is away), so the reply stands." }]);
+    expect(failed.evidence).toEqual([{ ok: true, reason: "The evidence judge couldn't run (every model is away), so the reply stands." }]);
+  });
+
+  it("shows nothing when the judge answers nothing, as its setting skips this model, and the run ends", async () => {
+    const r = await scenario({ passFrom: 1, options: { judge: async () => undefined } });
+    expect(r.evidence).toEqual([]);
+    expect(r.asked).toEqual([]);
+    expect(r.notices).toEqual(["Checks passed: `npm test`"]);
+    expect(r.round).toBe(1);
+    const alone = await scenario({ options: { checks: () => [], judge: async () => undefined } });
+    expect(alone.evidence).toEqual([]);
+    expect(alone.round).toBe(1);
   });
 
   it("runs no judge without a file change, in Plan mode, or while the checks fail", async () => {

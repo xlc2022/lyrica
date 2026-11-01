@@ -13,8 +13,8 @@ export interface EvidenceResult { ok: boolean; reason: string }
 export const EVIDENCE_CONTINUE = "lyrica-evidence-continue";
 export const EVIDENCE_ROUNDS = 2;
 /** The most of the turn's calls the judge is shown, newest first, and the most text in all. */
-const MAX_CALLS = 80;
-const MAX_CHARS = 60_000;
+const MAX_CALLS = 40;
+const MAX_CHARS = 30_000;
 const ARGS_CHARS = 400;
 
 export interface Verdict { verdict: "done" | "continue" | "blocked"; reason: string; next?: string }

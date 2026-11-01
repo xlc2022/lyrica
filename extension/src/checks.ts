@@ -4,7 +4,7 @@ import { continueAsk, EVIDENCE_CONTINUE, EVIDENCE_NOTICE, EVIDENCE_ROUNDS, judge
 
 // Principles 2 and 6: a project's checks run when a code turn ends, whatever the model decides,
 // so "done" means the person's own commands passed (docs/workspace.md, "Project checks").
-// Once they pass, or where there are none, the evidence check asks the thread's own code
+// Once they pass, or where there are none, the evidence judge asks the thread's own code
 // model whether the turn's tool results show the work done (docs/briefs/code-evidence.md).
 
 /** Shown in the thread: which checks passed or failed. */
@@ -34,10 +34,10 @@ export interface ChecksOptions {
   /** The checks still fail after the last round: lyricad tells the thread's parent, if it has one (docs/delegation.md). */
   exhausted?(report: string): void;
   /**
-   * The evidence check: one call to the thread's own `code` model list, answering the judge prompt. None in a
+   * The evidence judge: one call to the thread's own `code` model list, answering the judge prompt. None in a
    * project chat or a subagent. A throw, or an answer that isn't a verdict, counts as done and is said in the notice.
    */
-  judge?(prompt: { system: string; user: string }, signal?: AbortSignal): Promise<string>;
+  judge?(prompt: { system: string; user: string }, signal?: AbortSignal): Promise<string | undefined>;
   /** The thread's Code task, as her prompt carries it, for the judge. */
   codeTask?(): string | undefined;
 }
@@ -79,7 +79,7 @@ export function createChecksExtension(o: ChecksOptions): ExtensionFactory {
   return (pi) => {
     let changed = false;
     let rounds = 0;
-    /** The evidence check's rounds this run, and the reason it gave last: the same one again ends them. */
+    /** The evidence judge's rounds this run, and the reason it gave last: the same one again ends them. */
     let judged = 0;
     let lastReason: string | undefined;
     /** What started the run, and each tool call with its result, for the judge. Kept in memory for the run only. */
@@ -97,18 +97,20 @@ export function createChecksExtension(o: ChecksOptions): ExtensionFactory {
       if (o.judge) calls.push({ name: e.toolName, args: e.input, output: tail(e.content.map((c) => (c.type === "text" ? c.text : "(image)")).join("\n")), isError: e.isError });
     });
     /**
-     * The evidence check on her reply: the notice, and whether a follow-up went back to her, so her next reply ending
-     * the run is checked and judged again.
+     * The evidence judge on her reply: the notice, and whether a follow-up went back to her, so her next reply ending
+     * the run is checked and judged again. No entry when the judge answered nothing (its setting skips this model).
      */
-    const judge = async (reply: string, signal?: AbortSignal): Promise<{ entry: Entry; pending: boolean }> => {
+    const judge = async (reply: string, signal?: AbortSignal): Promise<{ entry?: Entry; pending: boolean }> => {
       const notice = (details: EvidenceResult, pending = false) => ({ pending, entry: { type: "custom_message", customType: EVIDENCE_NOTICE, content: `Evidence ${details.ok ? "checked" : "not shown"}: ${details.reason}`, display: true, details } as Entry });
       let v: Verdict | undefined;
       let note: string | undefined;
       try {
-        v = parseVerdict(await o.judge!(judgePrompt({ request, task: o.codeTask?.(), calls, reply }), signal));
-        if (!v) note = "The evidence check's answer couldn't be read, so the reply stands.";
+        const answer = await o.judge!(judgePrompt({ request, task: o.codeTask?.(), calls, reply }), signal);
+        if (answer === undefined) return { pending: false };
+        v = parseVerdict(answer);
+        if (!v) note = "The evidence judge's answer couldn't be read, so the reply stands.";
       } catch (err) {
-        note = `The evidence check couldn't run (${(err as Error).message}), so the reply stands.`;
+        note = `The evidence judge couldn't run (${(err as Error).message}), so the reply stands.`;
       }
       if (!v || v.verdict === "done") return notice({ ok: true, reason: note ?? (v?.reason || "The tool results bear the reply out.") });
       if (v.verdict === "blocked") return notice({ ok: false, reason: `Waits on you: ${v.reason}` });
@@ -132,13 +134,13 @@ export function createChecksExtension(o: ChecksOptions): ExtensionFactory {
       if (!pi.getActiveTools().length) return;
       if (!o.code() || o.plan()) return;
       const checks = o.checks();
-      // No checks: the evidence check alone, on each reply until its rounds are spent.
+      // No checks: the evidence judge alone, on each reply until its rounds are spent.
       if (!checks.length) {
         if (!o.judge || judged >= EVIDENCE_ROUNDS) { changed = false; return; }
         const r = await judge(reply, ctx.signal);
         if (ctx.signal?.aborted) return;
         if (!r.pending) changed = false;
-        return { entries: [r.entry] };
+        return r.entry ? { entries: [r.entry] } : undefined;
       }
       const target = o.target();
       const dirs: (string | undefined)[] = o.checkouts();
@@ -166,7 +168,7 @@ export function createChecksExtension(o: ChecksOptions): ExtensionFactory {
         if (o.judge && judged < EVIDENCE_ROUNDS) {
           const r = await judge(reply, ctx.signal);
           if (ctx.signal?.aborted) return;
-          entries.push(r.entry);
+          if (r.entry) entries.push(r.entry);
           pending = r.pending;
         }
         if (!pending) changed = false;

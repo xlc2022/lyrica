@@ -1138,7 +1138,7 @@ export class HostedThread {
           createWebExtension({ searxng: () => this.o.searxng?.(), kiwix: () => this.o.kiwix?.(), target: () => tools.target(), canRender: () => !!sandboxTools().browser && sandboxHas("node") }),
           // A file she wrote that doesn't parse is said in the write's own result.
           createSyntaxExtension({ target: (m) => tools.target(m) }),
-          // The project's checks, run when a code turn that changed something ends; then the evidence check, on the
+          // The project's checks, run when a code turn that changed something ends; then the evidence judge, on the
           // thread's own code model through the router (a private thread's stays local). Never in a project chat or a subagent.
           createChecksExtension({ checks: () => tools.checks(), code: () => tools.settings().code, plan: () => tools.settings().mode === "plan",
             checkouts: () => checkoutsOf(tools.settings(), workspace.repositoriesFor({ userId: this.userId, pool: this.pool, threadId: this.threadId })), target: () => tools.target(),
@@ -1146,7 +1146,11 @@ export class HostedThread {
             ...(!thread.subagent && !thread.project ? {
               codeTask: () => codeTaskText(view.own.codeTask(this.threadId)),
               judge: async (prompt, signal) => {
+                // The Evidence judge setting: Off judges nothing; Automatic judges only on a local code model, so cloud tokens are a choice someone made.
+                const evidence = tools.settings().evidence;
+                if (evidence === "off") return undefined;
                 const reply = await models.callWithFallback("code", call, {}, async (resolution) => {
+                  if (evidence === "auto" && resolution.endpoint.kind !== "local") return undefined;
                   const { model } = piModelFor(runtime, models, "code", call, resolution);
                   models.recordCall(this.userId, { pool: this.pool, threadId: this.threadId, task: "code", resolution });
                   const { reply: r } = await timedReply(runtime.streamSimple(model, {
@@ -1156,7 +1160,7 @@ export class HostedThread {
                   if (r.stopReason === "aborted") throw new Error("stopped");
                   return r;
                 });
-                return reply.content.filter((p) => p.type === "text").map((p) => (p as { text: string }).text).join("");
+                return reply?.content.filter((p) => p.type === "text").map((p) => (p as { text: string }).text).join("");
               },
             } : {}) }),
           // Pi's MCP client and tool_search, only while the thread has a server: a change of grants reopens the session.

@@ -2,7 +2,7 @@
 
 **Status:** Merged as #352 (a88fe05), 2026-10-19; children start in it since #355 (9e9c993). Handoff notes below are history.
 
-**Follow-up, 2026-11-01** (from a study of the hermes-agent and opencode coding prompts): coder gets the worker's honesty and report rules; code turns and coder get three execution guidelines on any model but Claude; the first guideline adds matching the surrounding code; the Git guide says not to discard others' changes; `working` notes are worded as facts. The evidence check at the end of a code turn and a syntax check after each write have their own brief, docs/briefs/code-evidence.md.
+**Follow-up, 2026-11-01** (from a study of the hermes-agent and opencode coding prompts): coder gets the worker's honesty and report rules; code turns and coder get three execution guidelines on any model but Claude; the first guideline adds matching the surrounding code; the Git guide says not to discard others' changes; `working` notes are worded as facts. The evidence judge at the end of a code turn and a syntax check after each write have their own brief, docs/briefs/code-evidence.md.
 
 **Branch:** `feature/code-mode`. **Built by:** Codex on the test machine
 (Opus for review fixes).

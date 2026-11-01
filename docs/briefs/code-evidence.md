@@ -75,8 +75,10 @@ tier).
 
 - A judge outside code mode, or for coder subagents (their parent reads
   the report).
-- A setting to turn A off. If its cost shows on a cloud code model, that
-  is a decision for the person, and it would need a home in docs/ux.md.
+- (Done after review, 2026-11-01: the person asked for it.) The **Evidence
+  judge** setting, Automatic (local models only) by default, On or Off,
+  per thread and for a project's new threads; the judge's prompt halved to
+  40 calls and 30,000 characters.
 - LSP, type checking on write, formatters.
 
 ## Done when
@@ -107,6 +109,8 @@ tier).
   on `message_end`: the reply's calls are renamed and their JSON-string
   arguments parsed before validation, and the "not found" result is reworded
   as it is recorded.
+- The setting: `ThreadWorkspace.evidence` (user step 20), `threadsEvidence`
+  on a project, the daemon's `judge` answering nothing when it says so.
 - Next: the code-mode eval's real-model check on lunasa with the local
   models, recording how often the judge said `continue` and whether she then
   fixed what it named.
