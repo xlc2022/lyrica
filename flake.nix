@@ -42,6 +42,10 @@
       # The model host's prerequisites (host/README.md, "On NixOS").
       nixosModules.model-host = ./nix/host-module.nix;
 
+      # mcp-nixos alone, for a machine that only runs the MCP server for her
+      # (docs/guides/nixos-mcp.md). services.lyrica.mcpNixos runs it beside her.
+      nixosModules.mcp-nixos = ./nix/mcp-nixos-module.nix;
+
       checks.${system} = {
         package = self.packages.${system}.lyrica;
         gpu-unlock-module = self.packages.${system}.gpu-unlock-module;
@@ -53,6 +57,7 @@
             self.nixosModules.default
             {
               services.lyrica.enable = true;
+              services.lyrica.mcpNixos = true;
               boot.loader.grub.enable = false;
               fileSystems."/" = { device = "/dev/null"; fsType = "ext4"; };
               system.stateVersion = "26.05";

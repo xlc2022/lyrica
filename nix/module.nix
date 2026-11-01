@@ -2,6 +2,7 @@
 # declaring what daemon/deploy/install.sh does on Debian. The units mirror
 # daemon/deploy/lyricad.service, lyrica-tailscaled.service,
 # lyrica-caddy.service, lyrica-searxng.service and lyrica-kiwix.service; keep them in step.
+# mcp-nixos has no Debian counterpart: nix/mcp-nixos-module.nix, imported here.
 # See docs/daemon.md, "On NixOS".
 { config, lib, pkgs, ... }:
 
@@ -130,6 +131,19 @@ in {
       '';
     };
 
+    mcpNixos = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        mcp-nixos on this machine as lyrica-mcp-nixos.service
+        (services.lyrica-mcp-nixos, nix/mcp-nixos-module.nix): an MCP
+        server on 127.0.0.1:8001 for NixOS package, option, flake and Nix
+        function lookups, and for reading this machine's flake inputs and
+        /nix/store. A user adds http://127.0.0.1:8001/mcp in Settings →
+        MCP servers as a Private server; nothing fills it in by itself.
+      '';
+    };
+
     sandboxPackages = lib.mkOption {
       type = lib.types.listOf lib.types.package;
       default = import ./sandbox-tools.nix pkgs;
@@ -145,7 +159,11 @@ in {
     };
   };
 
+  imports = [ ./mcp-nixos-module.nix ];
+
   config = lib.mkIf cfg.enable {
+    services.lyrica-mcp-nixos.enable = lib.mkIf cfg.mcpNixos true;
+
     assertions = [{
       assertion = config.security.allowUserNamespaces;
       message = "services.lyrica needs unprivileged user namespaces (bubblewrap, pasta): security.allowUserNamespaces must stay on.";
