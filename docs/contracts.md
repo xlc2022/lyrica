@@ -1545,7 +1545,12 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     general|news|science|it|videos and `pageno` 1 to 10; 15 s) for up
     to `count` results (8 by default, 20 at most) as title, date (when
     SearXNG has `publishedDate`), URL and snippet, after its first answer
-    or infobox line. Requests to SearXNG go at least a second apart
+    or infobox line. A result that shares no word with the query
+    (`aboutQuery`: title, URL or snippet; a different ending or one
+    letter's typo still counts; short and common words don't) is left
+    out, and a line after the results says how many and from which
+    engines; a query with no such words, or in Chinese, Japanese, Korean
+    or Thai, keeps every result. Requests to SearXNG go at least a second apart
     (`SearchGate`, one for the daemon, in memory), and the same search
     (query, time, category, page) within a minute is answered from its
     last reply. No results while an engine failed passingly (`timeout`

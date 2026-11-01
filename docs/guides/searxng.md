@@ -180,6 +180,12 @@ use_default_settings:
     keep_only: [duckduckgo, brave, wikipedia, github, stackoverflow]
 ```
 
+Bing (and now and then Yahoo) sometimes answers a search with results
+about something else entirely, such as an App Store page for a search
+about car engines. Lyrica leaves out any result that shares no word with
+the search and tells her how many it left out and from which engine. If
+one engine keeps showing up there, turn it off as above.
+
 ### Engines that refuse
 
 When an engine answers with a CAPTCHA, "too many requests" or "access
