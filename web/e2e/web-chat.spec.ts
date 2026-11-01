@@ -2235,6 +2235,9 @@ test("her pictures stay put while her reply streams and after it, so the page ne
     if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/streaming-picture-${page.viewportSize()!.width}.png` });
     await expect(hers.getByText("Players tuned it in courses of paired strings.")).toBeVisible();
     await expect(page.getByRole("button", { name: "Stop" })).toHaveCount(0);
+    // The stored copy replaces the live reply (a new element, by design) a moment after Stop goes: wait for it, its
+    // section numbered, before marking, or the swap lands after the mark and reads as a remount.
+    await expect(page.locator("section.turn", { has: picture })).toHaveAttribute("id", /^m-/);
     // Once the turn is done, scrolling re-renders the thread; the picture still stays the same element.
     await mark();
     await picture.hover();
