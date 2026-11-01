@@ -235,7 +235,7 @@ describe("a night's sleep", () => {
     await s.sleep.run(s.ada.id, "private", "manual");
     expect(p.own.cameFrom("p:health")).toEqual([`general/${general.note}`, secret.note]);
     expect(g.own.get("p:health")).toBeUndefined();
-    expect(g.own.sleepChanges("", new Date().toISOString())).toEqual({ notes: [], pages: [], journal: [] });
+    expect(g.own.sleepChanges("", new Date().toISOString())).toEqual({ notes: [], edited: [], pages: [], journal: [] });
     // Private sleep ran on the local model only.
     expect(s.cloud.requests).toHaveLength(0);
 
@@ -407,6 +407,24 @@ describe("a night's sleep", () => {
     expect(s.proposals.drafts(sam.id)).toEqual([expect.objectContaining({ text: "Friends are chosen family.", author: "sleep" })]);
     expect(s.persona.proposals()).toEqual([]);
     expect(v.own.listItems()).toEqual([expect.objectContaining({ kind: "persona", source: expect.stringMatching(/^draft:\d+$/) })]);
+    v.close();
+  });
+
+  it("respells renamed files first, as sleep, and lists them in the night's changes even when the night is otherwise skipped", async () => {
+    const s = await setup();
+    const v = s.view();
+    const said = s.talk(v, "The cat photo is uploads/cat.png.", "{user}'s cat photo is /workspace/uploads/cat.png");
+    s.script({});
+    expect(await s.sleep.run(s.ada.id, "general", "manual")).toMatchObject({ status: "complete" });
+    v.own.recordRename([{ thread: said.thread, swaps: [{ from: "/workspace/uploads/cat.png", to: "/workspace/uploads/tabby.png" }] }]);
+    const run = await s.sleep.run(s.ada.id, "general", "scheduled");
+    expect(run).toMatchObject({ status: "skipped", skipReason: "no-activity" });
+    expect(v.own.get(said.note!)?.text).toContain("/workspace/uploads/tabby.png");
+    expect(v.own.revisions(said.note!).at(-1)?.author).toBe("sleep");
+    // The skipped run began before its renamed-files step, so its changes name the note.
+    expect(run.startedAt < run.finishedAt!).toBe(true);
+    expect(v.own.sleepChanges(run.startedAt, run.finishedAt!).edited).toEqual([said.note]);
+    expect(s.logs.join("\n")).not.toContain("tabby");
     v.close();
   });
 

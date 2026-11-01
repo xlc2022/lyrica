@@ -669,3 +669,23 @@ describe("pool step 11 (wake-up sources)", () => {
     }
   });
 });
+
+describe("pool step 13 (renames)", () => {
+  it("expands every released pool schema with an empty renames table, keeps the previous readers, and drops a rename with its thread", () => {
+    for (let version = 1; version < 13; version++) {
+      const db = scratchDb();
+      const previous = STEPS.pool.filter((s) => s.version <= version);
+      migrate(db, "pool", {}, previous);
+      SEED.pool(db);
+      migrate(db, "pool");
+      expect(schemaOf(db)).toEqual({ version: SCHEMA.pool, minReader: MIN_READER.pool });
+      expect(() => checkReadable(db, "pool", previous)).not.toThrow();
+      expect(db.prepare("SELECT title FROM threads WHERE id = 'web/a'").get()).toEqual({ title: "A test thread" });
+      db.pragma("foreign_keys = ON");
+      db.prepare("INSERT INTO renames (thread, swaps, at) VALUES ('web/a', '[]', '2026-01-01'), (NULL, '[]', '2026-01-01')").run();
+      db.prepare("DELETE FROM threads WHERE id = 'web/a'").run();
+      expect(db.prepare("SELECT thread FROM renames").all()).toEqual([{ thread: null }]);
+      db.close();
+    }
+  });
+});

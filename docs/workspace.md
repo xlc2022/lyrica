@@ -569,9 +569,12 @@ takes is `lyrica@pve!agent=<that secret>`.
   changed thread's open session reopens on the new text at its next turn
   (one cache miss), its open views reload their messages (`renamed`), and
   her next turn there is told the old and new path and that earlier
-  messages use the new one. Only the request's pool is touched; text she
-  copied into a memory, a note or another file keeps the old path. A move
-  into another folder respells it only in the renaming thread.
+  messages use the new one. Only the request's pool is touched. Memories
+  follow at the next sleep: each thread's respellings are kept in the pool
+  (`renames`, `PoolStore.recordRename`), and sleep's first step rewrites the
+  notes, pages and journal entries citing that thread (docs/sleep.md, "The
+  cycle", step 0). Text in other files keeps the old path. A move into
+  another folder respells it only in the renaming thread.
 - **Which thread wrote each file** is recorded in `user.db` (`file_origins`:
   the folder's thread, the path in it, the thread, the time; never content),
   so the file viewer shows that thread beside the file. Her sandbox `write`

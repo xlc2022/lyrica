@@ -197,7 +197,10 @@ Each user has two pools of memory.
       grants, never in read-only ones. A renamed or moved file keeps its
       links: every stored message, tool call and draft that named its old
       path names the new one (decided 2026-11-01, over a fixed ID with a
-      shown name, since her tools work by path). Deleting is permanent, and deleting
+      shown name, since her tools work by path). Memories citing those
+      threads follow at the next sleep, as sleep's own edit, never as the
+      user's, the user's own notes and words included; files' contents are
+      left alone. Deleting is permanent, and deleting
       in a grant says it deletes on the server.
     - A panel upload belongs to the thread, not to a message, so removing
       turns never deletes it.

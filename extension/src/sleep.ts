@@ -210,9 +210,14 @@ export class Sleep {
     const view = this.o.memory.openThreadView(userId, pool);
     try {
       this.flushSkips(view, userId, pool);
+      // The run begins here, so the night's changes include the renamed-files edits, a skipped night's too.
+      const begun = new Date().toISOString();
+      // Files renamed since the last run: the memories citing their threads get the new paths first, by plain code (docs/sleep.md, "Renamed files").
+      const respelled = view.own.applyRenames();
+      if (respelled.length) this.log(`sleep ${pool}: respelled renamed files in ${respelled.length} memories`);
       const plan = this.plan(view);
       const skip = (s: SkipReason) => {
-        const id = view.own.recordSleepRun(reason, s);
+        const id = view.own.recordSleepRun(reason, s, undefined, respelled.length ? begun : undefined);
         this.log(`sleep ${pool}: skipped, ${s}`);
         this.emit({ type: "finished", userId, pool, runId: id, status: "skipped", skipReason: s });
         return view.own.getSleepRun(id)!;
@@ -226,7 +231,7 @@ export class Sleep {
       }
       if (await this.probe(userId, pool, plan.phases)) return skip("endpoint-down");
 
-      const runId = plan.resume?.id ?? view.own.startSleepRun(reason, plan.until);
+      const runId = plan.resume?.id ?? view.own.startSleepRun(reason, plan.until, begun);
       this.active.add(runId);
       const phases = { ...(plan.resume?.phases ?? {}) };
       view.own.updateSleepRun(runId, { status: "running" });

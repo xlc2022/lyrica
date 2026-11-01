@@ -452,7 +452,10 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   (`GET …/runs/<id>`). A row shows Notes, Pages with their word diff, Questions,
   Thoughts, the Dream and the WAKE, each linking to the Memory page at that
   memory (`…/memory/<pool>/<id>`; a `t:` or `e:` source links to its thread);
-  a skipped run is one line and does not open. **Sleep now** ▾ picks the
+  a skipped run is one line and does not open, unless its renamed-files step
+  respelled memories first (it began before it ended; docs/sleep.md step 0),
+  when it opens to them. Notes lists the notes the run made, then those it
+  edited. **Sleep now** ▾ picks the
   pool (`POST …/sleep/<pool>`); a `confirm` answer becomes a dialog whose
   **Sleep now** resends with `confirm: true`; a 409 is shown as a toast in
   `lyricad`'s words. Text arrives in stored form and is shown with the users of

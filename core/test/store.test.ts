@@ -913,3 +913,40 @@ describe("code-mode core storage", () => {
     view.close();
   });
 });
+
+describe("renamed files at sleep", () => {
+  it("respells the memories citing a thread with a waiting rename, the user's own words too, as sleep, and leaves another folder alone", async () => {
+    const { memory, ada } = await setup();
+    const view = memory.openThreadView(ada.id, "general");
+    try {
+      const a = said(view.own, "here is the cat photo");
+      const b = said(view.own, "another thread");
+      const [cat] = view.own.addNotes([{ text: "{user}'s cat is in /workspace/uploads/cat.png", source: a.entry }], { author: "lyrica", thread: a.thread });
+      const [other] = view.own.addNotes([{ text: "Also /workspace/uploads/cat.png, but another folder", source: b.entry }], { author: "lyrica", thread: b.thread });
+      const page = view.own.putPage({ slug: "pets", title: "Pets", summary: "The cat, /workspace/uploads/cat.png", text: `See /workspace/uploads/cat.png [${cat}]` }, "sleep");
+      const owner = memory.openOwnerView(ada.id);
+      const [theirs] = owner.general.addNotes([{ text: "Mine: /workspace/uploads/cat.png", source: a.entry }], { author: `user:${ada.id}`, thread: a.thread });
+      // The user's own words on the page, which sleep otherwise keeps word for word.
+      owner.general.edit(page, { text: `My cat: /workspace/uploads/cat.png [${cat}]` }, `user:${ada.id}`);
+      owner.close();
+      view.own.recordRename([{ thread: a.thread, swaps: [{ from: "/workspace/uploads/cat.png", to: "/workspace/uploads/tabby.png" }] }]);
+      expect(view.own.pendingRenames()).toBe(1);
+
+      expect(view.own.applyRenames().sort()).toEqual([cat, page, theirs].sort());
+      expect(view.own.get(cat!)?.text).toBe(`Al's cat is in /workspace/uploads/tabby.png [${a.entry}]`);
+      expect(view.own.get(theirs!)?.text).toContain("/workspace/uploads/tabby.png");
+      // Through the note it cites, the page follows too; the old text stays a revision, written by sleep, never as the user's.
+      expect(view.own.get(page)).toMatchObject({ text: `My cat: /workspace/uploads/tabby.png [${cat}]`, summary: "The cat, /workspace/uploads/tabby.png" });
+      expect(view.own.revisions(theirs!).at(-1)?.author).toBe("sleep");
+      expect(view.own.revisions(cat!)[0]?.body.text).toContain("cat.png");
+      expect(view.own.revisions(page).at(-1)?.body).not.toHaveProperty("renamed");
+      // Their words now stand in the new spelling: sleep may add around them, and still not drop them.
+      view.own.edit(page, { text: `My cat: /workspace/uploads/tabby.png [${cat}]. Grey.` }, "sleep");
+      expect(() => view.own.edit(page, { text: `A cat [${cat}]` }, "sleep")).toThrow(/text a user wrote/);
+      // Another thread's folder keeps the old path.
+      expect(view.own.get(other!)?.text).toContain("/workspace/uploads/cat.png");
+      expect(view.own.pendingRenames()).toBe(0);
+      expect(view.own.applyRenames()).toEqual([]);
+    } finally { view.close(); }
+  });
+});

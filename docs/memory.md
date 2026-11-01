@@ -84,7 +84,8 @@ for a thread, pool step 9). That file is step 1; every later change is a numbere
 pool step in `core/src/migrations.ts` (step 2 adds `entries.reactions`, step 3
 the table `drafts`: the composer's unsent text, one row per thread; step 4 the
 table `wakeups`; step 5 `thread_steps` for checklists; step 6 `routines`
-for recurring turns), never DDL in the memory module.
+for recurring turns; step 13 `renames`, files renamed in the Files panel until
+sleep respells the memories citing their threads), never DDL in the memory module.
 `citations` and `search` are derived from the text. Deleting runs with
 `secure_delete` on and merges the index, so removed text doesn't linger in
 free pages.

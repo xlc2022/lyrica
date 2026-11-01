@@ -2710,12 +2710,14 @@ function sleepRunDetail(d: Lyricad, o: OwnerView, pool: Pool, runId: string): Ap
   const store = o[pool];
   const run = store.getSleepRun(runId);
   if (!run) throw new HttpError(404, "no such sleep run");
-  const changes = run.status === "skipped" ? { notes: [], pages: [], journal: [] } : store.sleepChanges(run.startedAt, run.finishedAt ?? new Date().toISOString());
+  // A skipped run lists what its renamed-files step respelled (docs/sleep.md, step 0); otherwise it wrote nothing.
+  const changes = run.status === "skipped" && run.startedAt === run.finishedAt ? { notes: [], edited: [], pages: [], journal: [] } : store.sleepChanges(run.startedAt, run.finishedAt ?? new Date().toISOString());
   const raw = (id: string) => store.get(id, { raw: true });
   const items = store.listItems({ run: run.id, includeDismissed: true }).map((i) => sleepItemInfo(pool, i));
   return {
     ...sleepRunInfo(pool, run),
-    notes: changes.notes.map((id) => ({ id, text: raw(id)?.text ?? "" })),
+    // Notes it made, then notes it edited (a renamed file respelled).
+    notes: [...changes.notes, ...changes.edited].map((id) => ({ id, text: raw(id)?.text ?? "" })),
     pages: changes.pages.map((p) => ({ id: p.id, ...(p.after.title ? { title: p.after.title } : {}), ...(p.before ? { before: p.before.text } : {}), after: p.after.text })),
     questions: items.filter((i) => i.kind === "question"),
     items: items.filter((i) => i.kind !== "question"),

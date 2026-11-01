@@ -235,8 +235,8 @@ function RunRow({ run, detail, userId, users, load }: { run: SleepRunInfo; detai
     <span className="t"><PoolName pool={run.pool} />{run.status === "running" && <span className="busy" title="Sleeping" />}<span className="when num">{clock(run.startedAt)}</span></span>
     <span className="meta">{runLine(run, detail)}</span>
   </>;
-  // A skipped run wrote nothing, so there is nothing to open.
-  if (run.status === "skipped") return <div className="sleep-run" data-run={run.id} data-pool={run.pool} data-status={run.status}><div className="sleep-sum">{head}</div></div>;
+  // A skipped run wrote nothing, so there is nothing to open, unless it respelled renamed files first (it began earlier than it ended).
+  if (run.status === "skipped" && run.startedAt === run.finishedAt) return <div className="sleep-run" data-run={run.id} data-pool={run.pool} data-status={run.status}><div className="sleep-sum">{head}</div></div>;
   return (
     <details className="sleep-run" data-run={run.id} data-pool={run.pool} data-status={run.status} onToggle={open}>
       <summary className="sleep-sum">{head}</summary>

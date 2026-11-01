@@ -153,6 +153,20 @@ CREATE TABLE IF NOT EXISTS vectors (
 );
 `;
 
+/**
+ * Files renamed in the Files panel, until sleep respells the memories that cite the thread (docs/sleep.md, "Renamed
+ * files"): `swaps` is JSON of the old and new paths as that thread writes them; no thread for a grant's file, whose
+ * path is the same everywhere. Paths only, never memory text.
+ */
+export const RENAMES_SCHEMA = `
+CREATE TABLE IF NOT EXISTS renames (
+  id     INTEGER PRIMARY KEY,
+  thread TEXT REFERENCES threads (id) ON DELETE CASCADE,
+  swaps  TEXT NOT NULL,
+  at     TEXT NOT NULL
+);
+`;
+
 /** Wake-ups (DESIGN.md, Projects): a thread's note to itself for later. Fired ones stay a day, for the daily cap. */
 export const WAKEUPS_SCHEMA = `
 CREATE TABLE IF NOT EXISTS wakeups (
