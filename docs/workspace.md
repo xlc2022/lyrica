@@ -215,8 +215,10 @@ chmod 644 /etc/ssh/authorized_keys/<account>
 printf 'Match User <account>\n    AuthorizedKeysFile /etc/ssh/authorized_keys/%%u\n' > /etc/ssh/sshd_config.d/lyrica.conf
 sshd -t && systemctl reload ssh
 
-# 2. Optional: sudo for exact commands only (visudo -f /etc/sudoers.d/lyrica)
+# 2. Optional: sudo without a password, for exact commands (visudo -f /etc/sudoers.d/lyrica)
 <account> ALL=(root) NOPASSWD: /usr/bin/systemctl restart nginx
+#    or, on a machine you really trust, for everything:
+# <account> ALL=(root) NOPASSWD: ALL
 ```
 
 The test then reads the host key the machine shows and tries the login,
@@ -267,7 +269,13 @@ the person's own account.
 
 She never runs `sudo` with a password and never writes sudoers: a root step
 on a machine goes to the user on a card (`run_as_root`,
-`core/src/workspace/root.ts`).
+`core/src/workspace/root.ts`). The owner decides by hand, per machine, how
+much `sudo` she gets without a password: nothing, exact commands, or
+everything on a machine the owner really trusts (DESIGN.md, "Machines");
+with everything, `sudo <command>` runs from her `bash` like any command
+there, under the machine's mode limit and the suspect-command check, and
+the card is for machines without it. The lines she may *offer* on a card
+(below) stay exact commands.
 
 - She writes the script on the machine with `write`, then calls
   `run_as_root({ machine, path, why, sudoers? })`. `lyricad` reads the file

@@ -1503,7 +1503,12 @@ NAS, and Proxmox nodes. Decided 2026-10-11 from
 - **Root stays with the user.** She never runs `sudo` with a password or
   writes sudoers. A root step is a script she writes on the machine and
   hands over on a question card with its hash; when a root command will
-  recur, she may offer exact sudoers lines, which the user adds.
+  recur, she may offer exact sudoers lines, which the user adds. How much
+  sudo she has on a machine is the owner's call, made by hand on that
+  machine: exact commands, or on a machine the owner really trusts,
+  passwordless sudo for everything (the owner said so on 2026-11-01).
+  Even then she holds no password, writes no sudoers, and the machine's
+  mode limit and the suspect-command check still apply to what she runs.
 - **A machine has a mode limit**, the loosest mode she may use there: Ask,
   Accept edits or Auto. New machines start at **Ask**; the owner loosens each one
   as she proves reliable there. A call's mode is the strictest of the
@@ -1521,8 +1526,9 @@ NAS, and Proxmox nodes. Decided 2026-10-11 from
   carries `restrict` and `from=` Lyrica's addresses, so a stolen key is
   useless elsewhere, and the machine's setup puts it in a root-owned file
   (`AuthorizedKeysFile /etc/ssh/authorized_keys/%u`), so no command she
-  runs can add a key to stay. Her sudo rights are the exact commands the owner
-  lists; she never has a password.
+  runs can add a key to stay. Her sudo rights are what the owner writes
+  into sudoers on that machine, exact commands or all of them; she never
+  has a password.
 - **The host key is confirmed when the machine is added**, never pinned on
   first use: the Add machine page shows the fingerprint Lyrica sees next to
   the command that prints it on the machine, and on the tailnet also checks
