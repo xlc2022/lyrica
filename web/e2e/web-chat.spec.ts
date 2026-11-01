@@ -2144,8 +2144,13 @@ test("a source read from the offline copy of Wikipedia opens in the app: the art
     await send(page, `fetch: https://en.wikipedia.org/wiki/Lute, ${lute}`);
     await expect(page.getByText("Read them.")).toBeVisible();
     const sources = page.locator(".turn").filter({ hasText: "Read them." }).getByRole("list", { name: "Sources" });
-    // Her markers say the offline copy answered, not wikipedia.org.
-    await expect(page.locator(".marker").filter({ hasText: "web_fetch https://en.wikipedia.org/wiki/Lute" })).toContainText("from Offline Wikipedia");
+    // Her marker says the offline copy answered, not wikipedia.org. Once her calls fold into a run, the run opens to show it.
+    const marker = page.locator(".marker[data-type='tool']").filter({ hasText: "web_fetch https://en.wikipedia.org/wiki/Lute" });
+    await expect(async () => {
+      const closed = page.locator(".marker.tool-run > button[aria-expanded='false']");
+      if (await closed.count()) await closed.first().click();
+      await expect(marker).toContainText("from Offline Wikipedia", { timeout: 1000 });
+    }).toPass();
     // Both read from the offline copy: buttons that open in the app, not links.
     await expect(sources.getByRole("link")).toHaveCount(0);
     const article = sources.getByRole("button").first();
