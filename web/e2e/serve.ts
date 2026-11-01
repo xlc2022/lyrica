@@ -25,6 +25,7 @@
 // "read <title>" reads that child thread (then says "Read it.").
 // "compact: <summary>" compacts the thread with that summary (then says "Compacting.").
 // "fetch: <url>, <url>" reads each with web_fetch in turn (then says "Read them."); /page/<slug> is an article.
+// "think slowly: <text>" streams twelve sentences of reasoning, slowly, before the echo.
 import { copyFileSync, mkdtempSync, rmSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
@@ -281,6 +282,13 @@ function fakeModel() {
         // A message that says "slowly" streams slowly enough to be read aloud while it is written. Only a short
         // one: sleep's long instructions quote the conversations, and a sleep run paced so took ~8 s of a 10 s wait.
         const pace = said.length < 1000 && /slowly/.test(said) ? 300 : 30;
+        // "think slowly:" reasons first, a sentence at a time, so a test can leave the thread and come back mid-reasoning.
+        if (said.startsWith("think slowly:")) {
+          for (const n of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]) {
+            send({ role: "assistant", reasoning_content: `Step ${n} of my reasoning. ` });
+            await new Promise((r) => setTimeout(r, pace));
+          }
+        }
         for (const piece of text.match(/.{1,12}/gs) ?? []) {
           send({ role: "assistant", content: piece });
           await new Promise((r) => setTimeout(r, pace));

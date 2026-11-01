@@ -1425,6 +1425,36 @@ test("a thread's checklist: Checklist and its count after Context, a popover of 
   await expect(fact).toHaveText(/^Checklist 2 of 3/);
 });
 
+test("coming back to a thread while she reasons shows her reasoning from its start", async ({ page, baseURL }) => {
+  await enter(page, baseURL!);
+  await newThread(page, "General");
+  // "think slowly:" reasons a sentence every 300 ms for about 4 s before the reply.
+  await send(page, "think slowly: about the kettle");
+  const reasoning = page.getByRole("button", { name: "Show reasoning" });
+  await reasoning.click();
+  await expect(page.locator(".thought")).toContainText("Step 2 of my reasoning.");
+  const thread = page.url();
+
+  // She opens another page, and comes back while the reasoning goes on.
+  const side = page.getByRole("complementary", { name: "Threads" });
+  if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
+  await side.getByRole("link", { name: /^Notifications/ }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Notifications" })).toBeVisible();
+  await page.waitForTimeout(700);
+  await page.goto(thread);
+  await page.getByRole("button", { name: "Show reasoning" }).click();
+  const thought = page.locator(".thought");
+  await expect(thought).toContainText("Step 5 of my reasoning.");
+  // From its first sentence, not from where she came back, and only once.
+  await expect(thought).toHaveText(/^Step 1 of my reasoning\. Step 2 of my reasoning\. /);
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/reasoning-back-${page.viewportSize()!.width}.png` });
+  expect((await thought.textContent())!.match(/Step 1 of/g)).toHaveLength(1);
+  // The stored reply keeps the whole reasoning too.
+  await expect(page.getByText("You said: think slowly")).toBeVisible();
+  await page.getByRole("button", { name: "Show reasoning" }).click();
+  await expect(page.locator(".thought")).toHaveText(/^Step 1 of my reasoning\. [\s\S]*Step 12 of my reasoning\.\s*$/);
+});
+
 test("each message shows when it was sent in mono after its name, her reply once it is stored, and on a phone the header line stays on one line", async ({ page, baseURL }) => {
   await enter(page, baseURL!);
   await newThread(page, "General");

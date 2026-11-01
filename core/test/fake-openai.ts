@@ -3,7 +3,7 @@ import type { AddressInfo } from "node:net";
 import { afterEach } from "vitest";
 
 /** What the fake answers to one chat request: text, streamed deltas, a tool call, or an HTTP error. */
-export type Reply = { text: string; slowMs?: number } | { tools: { name: string; args: unknown; id?: string }[] } | { status: number; message?: string } | { deltas: { content?: string; reasoning_content?: string }[] };
+export type Reply = { text: string; slowMs?: number } | { tools: { name: string; args: unknown; id?: string }[] } | { status: number; message?: string } | { deltas: { content?: string; reasoning_content?: string }[]; /** Holds the reply open after the deltas until this settles. */ hold?: Promise<unknown> };
 /** Picks the reply from the request, and may take its time. */
 export type Responder = (chat: ChatRequest) => Reply | Promise<Reply>;
 
@@ -64,6 +64,7 @@ export async function fakeOpenAI(opts: { models?: Record<string, unknown>[]; lab
       const send = (o: unknown) => res.write(`data: ${JSON.stringify(o)}\n\n`);
       if ("deltas" in reply) {
         for (const delta of reply.deltas) send({ ...base, choices: [{ index: 0, delta, finish_reason: null }] });
+        await reply.hold;
       } else if ("text" in reply && reply.slowMs) {
         // A model that takes its time: the first word, a pause, then the rest.
         const [head, ...rest] = reply.text.split(" ");

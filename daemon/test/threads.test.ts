@@ -143,6 +143,44 @@ describe("a conversation", () => {
     stale.close();
   });
 
+  it("sends a view that opens mid-message the message so far, its reasoning first", async () => {
+    const { ada, model, path } = await setup();
+    let release!: () => void;
+    const hold = new Promise<void>((r) => { release = r; });
+    model.reply({ deltas: [{ reasoning_content: "First I " }, { reasoning_content: "weigh it." }, { content: "The answer" }], hold });
+    const first = ada.events(`${path}/events`);
+    await first.ready;
+    try {
+      await ada.post(`${path}/messages`, { text: "think about it" });
+      await first.until((e) => e.type === "text");
+      // She opens another thread and comes back: a new stream, with no Last-Event-ID.
+      const back = ada.events(`${path}/events`);
+      await back.until(is("hello"));
+      expect(back.events.map((e) => e.event)).toEqual([
+        expect.objectContaining({ type: "message_start" }),
+        { type: "thinking", delta: "First I weigh it." },
+        { type: "text", delta: "The answer" },
+        expect.objectContaining({ type: "hello", busy: true }),
+      ]);
+      // A stream that reconnects with Last-Event-ID gets the missed events instead, not the message twice.
+      const resumed = ada.events(`${path}/events`, back.events[0]!.id);
+      await resumed.until(is("hello"));
+      expect(resumed.events.map((e) => e.event.type)).toEqual(["hello"]);
+      resumed.close();
+      release();
+      await back.until(is("turn_end"));
+      back.close();
+      // Once the turn has ended, a new view starts from the stored messages alone.
+      const later = ada.events(`${path}/events`);
+      await later.until(is("hello"));
+      expect(later.events.map((e) => e.event.type)).toEqual(["hello"]);
+      later.close();
+    } finally {
+      release();
+      first.close();
+    }
+  });
+
   it("queues a message sent during a turn and runs it next", async () => {
     const { ada, model, path } = await setup({ permissionMs: 5_000 });
     await ada.patch(`${path}/settings`, { mode: "acceptEdits" });
@@ -191,10 +229,11 @@ describe("permission prompts", () => {
     expect(request).toMatchObject({ tool: "bash", args: { command: "echo hi" } });
     // Waiting: the model hasn't been asked again yet.
     expect(model.requests).toHaveLength(1);
-    // A view that opens now sees the waiting request.
+    // A view that opens now sees the call so far and the waiting request.
     const late = ada.events(`${path}/events`);
     await late.until(is("hello"));
-    expect((late.events[0]!.event as { permissions: unknown[] }).permissions).toHaveLength(1);
+    expect(late.events.map((e) => e.event.type)).toEqual(["message_start", "tool_call", "tool_start", "hello"]);
+    expect((late.events.at(-1)!.event as { permissions: unknown[] }).permissions).toHaveLength(1);
     late.close();
 
     await ada.post(`${path}/permissions/${request.requestId}`, { allow: false });

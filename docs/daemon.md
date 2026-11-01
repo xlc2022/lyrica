@@ -708,7 +708,12 @@ custom roles and saved workflows (`DelegationStore`, in `user.db`).
 Event IDs are `<epoch>-<n>`; the epoch changes with every start. A reconnect
 with `Last-Event-ID` replays from a buffer of the last 500 events. If that's
 impossible, the stream starts with `reset` and the client reloads messages
-from `…/messages`, which pages through stored entries.
+from `…/messages`, which pages through stored entries. A stream that opens
+without a replay (a view the user comes back to, or after `reset`) while a
+message is being written first gets that message so far, before `hello`: its
+`message_start`, then its events with each run of text and of reasoning joined
+into one delta, so the view doesn't start mid-sentence. The message so far is
+held in memory only, and dropped when the turn ends.
 
 ## Permission prompts
 
