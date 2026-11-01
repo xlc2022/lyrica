@@ -699,7 +699,10 @@ ChatGPT Images first in the General threads column's image lists and the
 key's model after it.
 
 Then put models in the lists, under Models, Tasks, or from a terminal
-(`private` for the Private column, `general` for the General column):
+(`private` for the Private column, `general` for the General column). An
+**Embeddings** model, from a model host, makes her recall search by
+meaning as well as by words ("Recall by meaning" in
+[model-hosts.md](model-hosts.md#recall-by-meaning)):
 
 ```sh
 lyrica admin models preset set general image.create openai-images/gpt-image-1 --user ada
