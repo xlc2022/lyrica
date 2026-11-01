@@ -1347,8 +1347,9 @@ Plain-HTTP listeners stay HTTP/1.1.
 `daemon/deploy/install.sh`, run as root on Debian or Ubuntu from a clean git
 checkout outside `/opt/lyrica`, installs or upgrades everything. Running it
 again installs that checkout's commit as a release, the way an update does
-("Updates" below). On NixOS, her expected home, the flake's module does the
-same ("On NixOS" below).
+("Updates" below). `daemon/deploy/uninstall.sh` takes it all off again
+(docs/guides/getting-started.md, "Uninstall"). On NixOS, her expected
+home, the flake's module does the same ("On NixOS" below).
 
 - It installs the packages (bubblewrap, gocryptfs, FUSE, passt, nftables,
   openssl, ImageMagick, ffmpeg (with ffprobe, so she can check her clips), and for the updater build-essential, python3, git,
@@ -1358,11 +1359,17 @@ same ("On NixOS" below).
   repository when its binaries are missing (then disabling the host's own
   `tailscaled.service` the package enables, unless it was enabled before, so
   a host keeps its own as it was), checks for Node.js 22.12 or later (the web UI
-  build needs it, Vite 8), installs IBM Plex and Playwright's
-  headless Chromium (the version `web/package.json` pins, with the
-  libraries it needs, in `/usr/local/lib/lyrica-chromium`, linked as
-  `/usr/local/bin/chromium-headless-shell`, so her sandboxes can take
-  screenshots; reinstalled only when that version changes), and creates
+  build needs it, Vite 8), makes her tool prefix `/opt/lyrica/tools`
+  (root-owned; every sandbox mounts it read-only with its `bin` first on
+  the PATH, `TOOLS_PREFIX` in `core/src/workspace/sandbox.ts`, so programs
+  installed only for her never go into the host's `/usr` or `/usr/local`),
+  installs IBM Plex and Playwright's headless Chromium there (the version
+  `web/package.json` pins, with the libraries it needs, in
+  `/opt/lyrica/tools/lib/chromium`, linked as
+  `/opt/lyrica/tools/bin/chromium-headless-shell`, so her sandboxes can take
+  screenshots; reinstalled only when that version changes), Claude Code
+  and Codex there with `npm install -g --prefix` (removing the copies an
+  install from before 2026-11-01 left in `/usr/local`), and creates
   three system users:
   `lyrica` runs `lyricad`, `lyrica-caddy` runs Caddy, `lyrica-build` builds
   releases and runs their smoke tests with no access to her data. The `lyrica-caddy`

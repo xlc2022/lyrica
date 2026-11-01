@@ -140,6 +140,8 @@ describe.skipIf(!runnable)("the sandbox", () => {
     expect(r).toEqual({ code: 0, out: "hellosong.txt\n" });
     // Marked, so tests that would nest a sandbox skip in here.
     expect(await sh("echo $LYRICA_SANDBOX")).toEqual({ code: 0, out: "1\n" });
+    // Her tool prefix is first on the PATH whether or not the host has one (ro-bind-try).
+    expect((await sh("echo $PATH")).out.startsWith(nixTools ? `${nixTools}/bin:` : "/opt/lyrica/tools/bin:/usr/local/bin:")).toBe(true);
   });
 
   it("commits in a fresh clone as the repository's account, without a git config of her own", async () => {

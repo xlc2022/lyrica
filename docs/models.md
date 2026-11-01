@@ -717,8 +717,8 @@ declares create, edit, mask, references, sizes, count and tier mappings.
   --device-auth`), from the Codex card in Settings → **Claude Code and Codex** (`/api/u/:userId/codex`). The
   daemon installs the runner with `setCodexImages`. `codex` is among the
   sandbox's tools: nixpkgs' `codex` in `nix/sandbox-tools.nix` on NixOS
-  (whatever version nixpkgs has), a pinned `@openai/codex` in `/usr/local`
-  from `install.sh`. The first time discovery finds ChatGPT
+  (whatever version nixpkgs has), a pinned `@openai/codex` in her tool
+  prefix `/opt/lyrica/tools` from `install.sh`. The first time discovery finds ChatGPT
   Images, image task lists in the user's presets and columns that named one
   of the plan's chat models name it instead, and an empty Image edits list
   in a general preset or the general column gets it (private ones never

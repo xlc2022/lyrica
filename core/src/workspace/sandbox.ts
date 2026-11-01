@@ -95,6 +95,14 @@ const ETC = [
 ].map((f) => `/etc/${f}`);
 // /usr/sbin is for nft, which runs in the new namespaces before bwrap; the sandbox's PATH is the same.
 const PATH = "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin";
+/**
+ * Lyrica's own tool prefix on Debian and Ubuntu: root-owned, mounted
+ * read-only into every sandbox with its `bin` first on the PATH, so what an
+ * operator installs for her (install.sh's Claude Code, Codex and headless
+ * Chromium; a local MCP server with `npm install -g --prefix`) never goes
+ * into the host's own trees. Absent on NixOS, whose tools are a store path.
+ */
+export const TOOLS_PREFIX = "/opt/lyrica/tools";
 // On NixOS there's no /usr to share. The service sets LYRICA_SANDBOX_TOOLS to
 // a Nix environment of the sandbox's tools, which becomes the sandbox's /usr,
 // and LYRICA_SANDBOX_CLOSURE to the list of store paths it needs (closureInfo's
@@ -102,7 +110,8 @@ const PATH = "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin";
 // the system's generated configs. The tools' bin is first on the host's PATH
 // too, for pasta, nft and bwrap.
 const tools = () => process.env.LYRICA_SANDBOX_TOOLS || undefined;
-const env = () => ({ PATH: tools() ? `${tools()}/bin:${PATH}` : PATH, HOME: WORKDIR, LANG: "C.UTF-8", TERM: "dumb", ...toolEnv() });
+const binPath = () => (tools() ? `${tools()}/bin:${PATH}` : `${TOOLS_PREFIX}/bin:${PATH}`);
+const env = () => ({ PATH: binPath(), HOME: WORKDIR, LANG: "C.UTF-8", TERM: "dumb", ...toolEnv() });
 // The system's CA bundle (mounted with /etc/ssl), which Node and Python don't read by themselves.
 const CA_BUNDLE = "/etc/ssl/certs/ca-certificates.crt";
 /**
@@ -120,7 +129,7 @@ function caBundle(): string | undefined {
 const BROWSERS = ["chromium", "chromium-headless-shell", "chromium-browser"];
 // Programs her prompt names when present, by the name it uses.
 const LISTED: [string[], string][] = [[["git"], "git"], [["curl"], "curl"], [["jq"], "jq"], [["rg"], "ripgrep"], [["node"], "Node"], [["npm"], "npm"], [["python3"], "Python 3"], [["magick", "convert"], "ImageMagick"], [["ffmpeg"], "ffmpeg"], [["ffprobe"], "ffprobe"]];
-const binDirs = () => (tools() ? [`${tools()}/bin`] : PATH.split(":"));
+const binDirs = () => (tools() ? [`${tools()}/bin`] : binPath().split(":"));
 const find = (names: string[]) => binDirs().flatMap((d) => names.map((n) => `${d}/${n}`)).find((p) => existsSync(p));
 // Python libraries her prompt names when present, by import name and the name it uses
 // (install.sh's python3-* packages; nix/sandbox-tools.nix's python3.withPackages).
@@ -164,10 +173,9 @@ const CLAUDE_DIR = "/run/lyrica/claude";
 // The claude wrapper for a run with Claude Code (claude.sh), in the same folder.
 const CLAUDE = readFileSync(new URL("./claude.sh", import.meta.url), "utf8");
 
-/** Whether a program is among the sandbox's tools: in LYRICA_SANDBOX_TOOLS on NixOS, else in the host's /usr. */
+/** Whether a program is among the sandbox's tools: in LYRICA_SANDBOX_TOOLS on NixOS, else in TOOLS_PREFIX or the host's /usr. */
 export function sandboxHas(program: string): boolean {
-  const dirs = tools() ? [`${tools()}/bin`] : PATH.split(":");
-  return dirs.some((d) => existsSync(`${d}/${program}`));
+  return binDirs().some((d) => existsSync(`${d}/${program}`));
 }
 /** Whether the `claude` program is among the sandbox's tools. */
 export const claudeCodeInstalled = (): boolean => sandboxHas("claude");
@@ -569,6 +577,7 @@ export class Sandbox implements ExecutionTarget {
         if (stat.isSymbolicLink()) args.push("--symlink", readlinkSync(dir), dir);
         else args.push("--ro-bind", dir, dir);
       }
+      args.push("--ro-bind-try", TOOLS_PREFIX, TOOLS_PREFIX);
     }
     for (const f of ETC) args.push("--ro-bind-try", f, f);
     args.push("--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp");

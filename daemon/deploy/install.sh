@@ -93,16 +93,26 @@ command -v node >/dev/null || die "install Node.js 24, or 22.12 or later (for ex
 node -e 'const [a, b] = process.versions.node.split(".").map(Number); process.exit(a > 22 || (a === 22 && b >= 12) ? 0 : 1)' \
   || die "Node.js $(node -v) is too old: lyricad needs 22.12 or later"
 
+# --- Her tool prefix ---
+# Programs installed only for her sandboxes go in $TOOLS, root-owned, which
+# every sandbox mounts read-only with its bin first on the PATH
+# (TOOLS_PREFIX in core/src/workspace/sandbox.ts): nothing of hers lands
+# in the host's own /usr or /usr/local. An install from before 2026-11-01
+# put Claude Code, Codex and Chromium in /usr/local; those copies are
+# removed once the prefix has them. uninstall.sh removes the prefix whole.
+TOOLS=$PREFIX/tools
+install -d -m 0755 "$TOOLS" "$TOOLS/bin" "$TOOLS/lib"
+
 # --- A browser for her screenshots ---
 # Principle 1: render HTML/SVG diagrams offline in the thread sandbox.
 # Playwright's headless Chromium, at the version this checkout's Playwright
 # expects, with the libraries it needs; her sandbox sees it as
-# /usr/local/bin/chromium-headless-shell (web/e2e/shot.ts). Ubuntu ships
+# chromium-headless-shell on its PATH (web/e2e/shot.ts). Ubuntu ships
 # Chromium only as a snap, so Debian and Ubuntu both get this one. IBM Plex is
 # the web UI's font.
 apt-get install -y -qq --no-install-recommends fonts-ibm-plex >/dev/null 2>&1 \
   || say "fonts-ibm-plex isn't packaged here: her screenshots use a fallback font."
-BROWSERS=/usr/local/lib/lyrica-chromium
+BROWSERS=$TOOLS/lib/chromium
 PW_VERSION=$(jq -r '.devDependencies["@playwright/test"]' "$SRC/web/package.json")
 if [ "$(cat "$BROWSERS/version" 2>/dev/null)" != "$PW_VERSION" ]; then
   say "Installing headless Chromium for screenshots..."
@@ -110,30 +120,37 @@ if [ "$(cat "$BROWSERS/version" 2>/dev/null)" != "$PW_VERSION" ]; then
     || die "installing headless Chromium failed"
   SHELL_BIN=$(find "$BROWSERS" -type f \( -name headless_shell -o -name chrome-headless-shell \) -perm -u+x | sort -V | tail -1)
   [ -n "$SHELL_BIN" ] || die "headless Chromium installed, but its binary isn't in $BROWSERS"
-  ln -sfn "$SHELL_BIN" /usr/local/bin/chromium-headless-shell
+  ln -sfn "$SHELL_BIN" "$TOOLS/bin/chromium-headless-shell"
   printf '%s\n' "$PW_VERSION" >"$BROWSERS/version"
+  rm -rf /usr/local/lib/lyrica-chromium /usr/local/bin/chromium-headless-shell
 fi
 
 # --- Claude Code ---
 # Anthropic's `claude` program, for threads with Claude Code on
 # (docs/workspace.md, "Claude Code"). The version NixOS 26.05 packages, in
-# /usr/local, where her sandbox finds it. An update leaves it as it is.
+# her tool prefix. An update leaves it as it is.
 CLAUDE_CODE_VERSION=2.1.223
-if [ "$(/usr/local/bin/claude --version 2>/dev/null | cut -d' ' -f1)" != "$CLAUDE_CODE_VERSION" ]; then
+if [ "$("$TOOLS/bin/claude" --version 2>/dev/null | cut -d' ' -f1)" != "$CLAUDE_CODE_VERSION" ]; then
   say "Installing Claude Code..."
-  npm install -g --prefix /usr/local --no-audit --no-fund --loglevel=error "@anthropic-ai/claude-code@$CLAUDE_CODE_VERSION" >/dev/null \
+  npm install -g --prefix "$TOOLS" --no-audit --no-fund --loglevel=error "@anthropic-ai/claude-code@$CLAUDE_CODE_VERSION" >/dev/null \
     || say "installing Claude Code failed: threads can't use it until it's installed."
+fi
+if [ -x "$TOOLS/bin/claude" ] && [ -d /usr/local/lib/node_modules/@anthropic-ai/claude-code ]; then
+  npm uninstall -g --prefix /usr/local --loglevel=error @anthropic-ai/claude-code >/dev/null 2>&1 || true
 fi
 
 # --- Codex ---
 # OpenAI's `codex` program, which makes ChatGPT Images with the user's own
-# Codex sign-in (docs/models.md, "Image canvases"), in /usr/local, where
-# Lyrica's sandbox finds it. An update leaves it as it is.
+# Codex sign-in (docs/models.md, "Image canvases"), in her tool prefix. An
+# update leaves it as it is.
 CODEX_VERSION=0.163.0
-if [ "$(/usr/local/bin/codex --version 2>/dev/null | awk '{print $NF}')" != "$CODEX_VERSION" ]; then
+if [ "$("$TOOLS/bin/codex" --version 2>/dev/null | awk '{print $NF}')" != "$CODEX_VERSION" ]; then
   say "Installing Codex..."
-  npm install -g --prefix /usr/local --no-audit --no-fund --loglevel=error "@openai/codex@$CODEX_VERSION" >/dev/null \
+  npm install -g --prefix "$TOOLS" --no-audit --no-fund --loglevel=error "@openai/codex@$CODEX_VERSION" >/dev/null \
     || say "installing Codex failed: ChatGPT Images can't work until it's installed."
+fi
+if [ -x "$TOOLS/bin/codex" ] && [ -d /usr/local/lib/node_modules/@openai/codex ]; then
+  npm uninstall -g --prefix /usr/local --loglevel=error @openai/codex >/dev/null 2>&1 || true
 fi
 
 # --- Tailscale ---

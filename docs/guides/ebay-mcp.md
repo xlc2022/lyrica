@@ -45,14 +45,15 @@ Then `nixos-rebuild switch`. The module builds the package from its npm
 lock file (`nix/ebay-mcp.nix`) and adds it to her sandbox tools, where
 `ebay-mcp-server` is on the path.
 
-On Debian or Ubuntu, install it system-wide, under `/usr` or
-`/usr/local`, which her sandboxes mount:
+On Debian or Ubuntu, install it into her tool prefix, which her
+sandboxes mount with its `bin` on the PATH and which `uninstall.sh`
+removes whole, so nothing lands in the host's own `/usr`:
 
 ```sh
-sudo npm install -g @ebay/npm-public-api-mcp
+sudo npm install -g --prefix /opt/lyrica/tools @ebay/npm-public-api-mcp
 ```
 
-It needs Node 22 or later, which install.sh already installs.
+It needs Node 22 or later, which install.sh already checks for.
 
 ## Add it to Lyrica
 

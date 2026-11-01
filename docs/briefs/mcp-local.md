@@ -1,6 +1,6 @@
 # Brief: local (stdio) MCP servers, and eBay's
 
-**Status:** built, in review. **Thread:** "Add eBay's MCP server to Lyrica".
+**Status:** merged (#753). **Thread:** "Add eBay's MCP server to Lyrica".
 Builds on [mcp.md](mcp.md); the lines are in DESIGN.md, "MCP servers".
 
 ## Why
@@ -79,7 +79,10 @@ readOnlyHint for eBay's tools (an upstream PR, later).
 
 ## Handoff
 
-Done (2026-11-01): everything under Build, in one PR from this thread.
+Done (2026-11-01, #753, merged 282037f): everything under Build, in one
+PR from this thread. A follow-up (docs/briefs/debian-tools.md) gave
+Debian a tool prefix, so eBay's server installs there instead of
+`/usr/local`.
 Core: `mcpCommand`, `mcpEnv`, `mcpStdioTransport`, `probeMcpCommand`,
 `Workspace.startMcpServer`, `Jobs.hold`, `Sandbox.start(argv, cwd, env)`,
 user step 21. Daemon: `command` and `env` in `McpServerInput`,

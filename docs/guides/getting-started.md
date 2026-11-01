@@ -348,13 +348,18 @@ answers ahead; without a terminal the answer is no), then:
    scraping and data work (her prompt names the ones present), and `gh`
    and `tea` for threads with repositories (`tea` only where it is
    packaged; without it, Gitea and Forgejo accounts work through git
-   alone). It installs IBM Plex and
-   Playwright's headless Chromium with the libraries it needs, in
-   `/usr/local/lib/lyrica-chromium`, so her sandboxes can take
-   screenshots. It installs Anthropic's Claude Code
-   (`@anthropic-ai/claude-code`, at the version the script pins) with npm
-   into `/usr/local`, and OpenAI's Codex (`@openai/codex`, also pinned) for
-   ChatGPT Images; if either fails it only prints a warning. When
+   alone). It makes her tool prefix, `/opt/lyrica/tools`: root-owned,
+   mounted read-only into every sandbox with its `bin` first on the PATH,
+   so programs installed only for her never touch the host's own `/usr`
+   or `/usr/local`. There it installs IBM Plex and
+   Playwright's headless Chromium with the libraries it needs
+   (`/opt/lyrica/tools/lib/chromium`), so her sandboxes can take
+   screenshots, Anthropic's Claude Code
+   (`@anthropic-ai/claude-code`, at the version the script pins) with
+   `npm install -g --prefix /opt/lyrica/tools`, and OpenAI's Codex
+   (`@openai/codex`, also pinned) for ChatGPT Images; if either fails it
+   only prints a warning. An install from before 2026-11-01 had those
+   three in `/usr/local`; this run moves them and removes the old copies. When
    Tailscale's binaries are missing it adds Tailscale's apt repository
    and installs `tailscale`; the package turns on the host's own
    `tailscaled`,
@@ -859,7 +864,9 @@ venv are already there (`install.sh` installs `python3-venv`; an older
 install gets it on its next `install.sh` run); for the others, put the
 installer where her sandbox sees it. On NixOS, add
 `pnpm`, `yarn` or `uv` to `sandboxPackages`. On Debian or Ubuntu,
-install it system-wide (anywhere under `/usr`, `/usr/local` included).
+install it into her tool prefix (`npm install -g --prefix
+/opt/lyrica/tools pnpm`, or a binary in `/opt/lyrica/tools/bin`), which
+keeps the host's own `/usr` as it is; anything under `/usr` works too.
 Until then her turn is told "dependencies didn't install", with "a
 program it needs isn't installed in the sandbox" when the installer is
 missing.
@@ -1161,8 +1168,10 @@ refused. To replace the destination, enter the full URL and token again;
   needs `apt-get install gh`, and `apt-get install tea` where it is
   packaged (or this run), for threads with repositories; on NixOS the next
   rebuild brings them. An install without
-  `/usr/local/bin/chromium-headless-shell` gets headless Chromium and IBM
-  Plex for her screenshots on this run; on NixOS the next rebuild brings
+  `/opt/lyrica/tools/bin/chromium-headless-shell` gets headless Chromium and IBM
+  Plex for her screenshots on this run (an install from before 2026-11-01
+  had it, Claude Code and Codex in `/usr/local`: this run moves them into
+  her tool prefix and removes the old copies); on NixOS the next rebuild brings
   them. An existing install gets Claude Code and Codex on its next
   `install.sh` run (Update on Administration, Updates doesn't install
   them), and NixOS on the next rebuild. An existing install gets ffmpeg
@@ -1184,47 +1193,36 @@ refused. To replace the destination, enter the full URL and token again;
 
 ## Uninstall
 
-There is no uninstall script for Lyrica herself, since what matters is
-her data: deleting `/var/lib/lyrica` deletes every user's memories and
-threads for good. Copy it first (with the service stopped) if anyone may
-want them back; the copy opens only with the passphrase. Remove her model
-hosts first ("Uninstall" in [model-hosts.md](model-hosts.md)).
+What matters is her data: deleting `/var/lib/lyrica` deletes every
+user's memories and threads for good. Copy it first (with the service
+stopped) if anyone may want them back; the copy opens only with the
+passphrase. Remove her model hosts first ("Uninstall" in
+[model-hosts.md](model-hosts.md)).
 
 On NixOS, remove `services.lyrica` from the configuration and rebuild,
 then delete the state folders below if you want the data gone. On Debian
-or Ubuntu, as root:
+or Ubuntu, as root, from the checkout or the installed release:
 
 ```sh
-systemctl disable --now lyricad lyrica-caddy lyrica-tailscaled \
-  lyrica-searxng lyrica-kiwix lyrica-update.path lyrica-update \
-  lyrica-probation lyrica-rollback 2>/dev/null
-cd /etc/systemd/system && rm -f lyricad.service lyrica-caddy.service \
-  lyrica-tailscaled.service lyrica-searxng.service lyrica-kiwix.service \
-  lyrica-update.path lyrica-update.service lyrica-probation.service \
-  lyrica-rollback.service
-rm -f /etc/sysctl.d/60-lyrica.conf
-systemctl daemon-reload
-docker rm -f lyrica-searxng 2>/dev/null   # if you said yes to SearXNG
-rm -rf /opt/lyrica /etc/lyrica /usr/local/lib/lyrica-update \
-  /usr/local/lib/lyrica-chromium /usr/local/lib/lyrica-caddy.stamp \
-  /usr/local/bin/lyrica /usr/local/bin/lyrica-caddy \
-  /usr/local/bin/chromium-headless-shell /usr/local/sbin/lyrica-kiwix-start \
-  /usr/local/sbin/lyrica-update /usr/local/sbin/lyrica-snapshot \
-  /usr/local/sbin/lyrica-restore /usr/local/sbin/lyrica-rollback \
-  /var/cache/lyrica-searxng /var/cache/lyrica-tailscale
-# Her data, the update snapshots, Caddy's certificates, her Tailscale
-# node and the Wikipedia ZIM files: only once you're sure.
-rm -rf /var/lib/lyrica /var/lib/lyrica-snapshots /var/lib/lyrica-update \
-  /var/lib/lyrica-caddy /var/lib/lyrica-tailscale /var/lib/lyrica-kiwix
-userdel lyrica; userdel lyrica-build; userdel lyrica-caddy
+/opt/lyrica/current/daemon/deploy/uninstall.sh           # keeps her data
+/opt/lyrica/current/daemon/deploy/uninstall.sh --purge   # deletes it too
 ```
 
-`install.sh` also installed packages (bubblewrap, gocryptfs, Node and the
-rest in "On Debian or Ubuntu", `kiwix-tools` with ZIM files present)
-and, when they were missing, Claude Code, Codex and headless Chromium in
-`/usr/local/bin`; remove those with `apt` or by hand only if nothing else
-uses them. Remove her node from your tailnet's admin console, and the
-deploy key from the repository on GitHub.
+Without `--purge` it stops and removes her units, all of `/opt/lyrica`
+(the releases, the bare repository and her tool prefix with everything
+installed there for her sandboxes, an MCP server included), the updater,
+the `lyrica` command, Caddy and the kiwix start script in `/usr/local`,
+`/etc/lyrica`, the caches, the SearXNG container, and any copies of
+Claude Code, Codex, Chromium and eBay's MCP server an install from before
+2026-11-01 left in `/usr/local`; then it lists what it kept: `/var/lib/lyrica`, the update
+snapshots (`/var/lib/lyrica-snapshots`, `/var/lib/lyrica-update`),
+Caddy's certificates, her Tailscale node, the ZIM files and the three
+service users. `--purge` deletes those too and removes the users.
+
+Neither removes an apt package (bubblewrap, gocryptfs, Node and the rest
+in "On Debian or Ubuntu", `tailscale`, `kiwix-tools`); remove those with
+`apt` only if nothing else uses them. Remove her node from your tailnet's
+admin console, and the deploy key from the repository on GitHub.
 
 ## Checklist for the first install on your machine
 

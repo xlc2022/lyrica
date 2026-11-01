@@ -46,9 +46,13 @@ database files. A command that could see either one could read everything.
   files (certificates, `resolv.conf`, `hosts`, `passwd`, `group`, the loader
   cache), `/proc`, `/dev`, an empty `/tmp`, its family's shared folder at
   `/shared` (below, "Handing files over"), the thread's folder at
-  `/workspace`, each grant at its own host path, and the offline libraries
-  at `/opt/libs`, read-only ([Tools](#tools)). Its environment is a
-  fixed minimal set; nothing of `lyricad`'s is passed in.
+  `/workspace`, each grant at its own host path, the offline libraries
+  at `/opt/libs`, read-only ([Tools](#tools)), and on Debian and Ubuntu
+  her tool prefix `/opt/lyrica/tools` when the host has one, read-only,
+  its `bin` first on the PATH (`TOOLS_PREFIX`: where install.sh puts
+  Claude Code, Codex and headless Chromium, and an operator a local MCP
+  server, so nothing of hers goes into the host's own `/usr`). Its
+  environment is a fixed minimal set; nothing of `lyricad`'s is passed in.
 - On NixOS (`LYRICA_SANDBOX_TOOLS` set, docs/daemon.md "On NixOS") the
   system is the module's sandbox tools instead: they are `/usr`, with `/bin`
   and `/sbin` linking to `usr/bin`, and only the store paths listed in
@@ -1267,8 +1271,8 @@ it adds no tool.
 - **Installed** with the sandbox's tools: nixpkgs' `claude-code` in the
   NixOS sandbox tools (unfree, allowed by itself in its own import in
   `nix/sandbox-tools.nix`, so the machine's configuration needs nothing),
-  and on Debian and Ubuntu `install.sh` puts the same version in
-  `/usr/local`. An update never installs it. `claudeCodeInstalled()` says
+  and on Debian and Ubuntu `install.sh` puts the same version in her tool
+  prefix `/opt/lyrica/tools`. An update never installs it. `claudeCodeInstalled()` says
   whether it is there.
 - **Signing in:** the user runs `claude setup-token` on their own
   computer, Anthropic's own sign-in, and pastes the token it prints into
@@ -1416,8 +1420,8 @@ her account is general.
   dark, as PNGs under `shots/`, and prints their paths for `read`. It
   needs no internet. The browser is the sandbox's headless Chromium:
   `chromium` in the NixOS sandbox tools, or the
-  `/usr/local/bin/chromium-headless-shell` that install.sh puts in `/usr`
-  on Debian and Ubuntu.
+  `chromium-headless-shell` that install.sh puts in her tool prefix
+  `/opt/lyrica/tools` on Debian and Ubuntu.
 - **Her self-primer** (`extension/src/primer.ts`) comes up when her code
   does, like a persona topic: where to read first, the branch and review
   flow, boundary code, update notes and rollbacks.
