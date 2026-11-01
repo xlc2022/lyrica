@@ -2113,13 +2113,6 @@ test("Status model facts preserve existing facts and render empty, measured and 
     for (const name of ["Calls per hour", "Output tokens per hour", "Speed per call · tok/s", "Calls by task"]) await expect(facts.getByRole("figure", { name, exact: true }).locator(".chart-box svg")).toBeVisible();
     await expect(facts.getByRole("list", { name: "Models" }).getByRole("listitem")).toHaveText(["fixture-cloud", "fixture-measured", "fixture-without-speed-with-a-long-model-name-for-phone-wrapping"]);
     await expect(page.getByText("Last sleep", { exact: true })).toBeVisible();
-    // A run reads as one line, however wide the page: pool, start, length and outcome.
-    expect((await page.request.post(`http://127.0.0.1:${modelPort}/sleep-item-fixture`, { data: { userId } })).ok()).toBe(true);
-    await page.getByRole("button", { name: "Refresh" }).click();
-    await expect(page.getByText(/Skipped: /)).toBeVisible();
-    if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/status-${page.viewportSize()!.width}.png`, fullPage: true });
-    const run = page.locator(".sleep-run").filter({ hasText: "General" });
-    if (page.viewportSize()!.width > 600) expect((await run.boundingBox())!.height).toBeLessThan(30);
     await expect(page.locator("dt").filter({ hasText: /^Memory$/ })).toBeVisible();
     const statusReads = () => page.waitForRequest((r) => r.url().endsWith(`/api/u/${userId}/admin/status`));
     const read = statusReads();
@@ -2271,4 +2264,17 @@ test("a long From sleep row opens its own text in place and starts no chat", asy
   await trellis.getByRole("button", { name: "Dismiss" }).click();
   await expect(trellis).toHaveCount(0);
   await expect(card.locator(".sleep-item").filter({ hasText: "second trellis" })).toHaveCount(0);
+});
+
+// After the From sleep test, since this one adds sleep items of its own: Status reads a pool's last
+// sleep as one line (pool, start, length and outcome), not one part per line.
+test("Status reads each pool's last sleep on one line", async ({ page, baseURL, request }) => {
+  const userId = await enter(page, baseURL!);
+  expect((await request.post(`http://127.0.0.1:${Number(new URL(baseURL!).port) + 10}/sleep-item-fixture`, { data: { userId } })).ok()).toBe(true);
+  await page.goto(`/#/u/${userId}/admin/status`);
+  const run = page.locator(".sleep-run").filter({ hasText: "General" }).first();
+  await expect(run).toContainText("Skipped: nothing new");
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/status-sleep-${page.viewportSize()!.width}.png` });
+  if (page.viewportSize()!.width > 600) expect((await run.boundingBox())!.height).toBeLessThan(30);
+  await noHorizontalScroll(page);
 });
