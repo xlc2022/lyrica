@@ -251,7 +251,7 @@ export async function kiwixArticle(address: string, url: string, signal?: AbortS
   let u: URL;
   try { u = new URL(url); } catch { return undefined; }
   if ((u.protocol !== "http:" && u.protocol !== "https:") || u.username || u.password) return undefined;
-  const read = await kiwixPage(address, u, signal, f).catch(() => undefined);
+  const read = await kiwixPage(address, u, signal, f, true).catch(() => undefined);
   if (!read || "image" in read || read.isError) return undefined;
   const pictures = read.pictures ?? [];
   const body = pictures.length ? read.text.slice(0, read.text.lastIndexOf("\n\nPictures, each readable with web_fetch:")) : read.text;
@@ -303,8 +303,9 @@ export async function pictureForModel(bytes: Buffer, mimeType: string): Promise<
  * language a book copies (read by its title, then as kiwix-serve suggests
  * it), or a page of kiwix-serve's own. Undefined when no book has it, so
  * web_fetch goes online; an error only when kiwix-serve can't be asked.
+ * `pagesOnly`: a picture is undefined, without reading its bytes.
  */
-export async function kiwixPage(address: string, url: URL, signal?: AbortSignal, f: typeof fetch = fetch): Promise<KiwixRead | undefined> {
+export async function kiwixPage(address: string, url: URL, signal?: AbortSignal, f: typeof fetch = fetch, pagesOnly = false): Promise<KiwixRead | undefined> {
   const where = locate(address, url, await books(address, signal, f));
   if (!where) return undefined;
   const read = async (book: KiwixBook, path: string): Promise<KiwixRead | undefined> => {
@@ -314,6 +315,8 @@ export async function kiwixPage(address: string, url: URL, signal?: AbortSignal,
     const type = (res.headers.get("content-type") ?? "").split(";")[0]!.trim().toLowerCase();
     const copy = `the offline copy of ${book.title}${book.date ? ` (${book.date.slice(0, 7)})` : ""}`;
     if (/^image\/(png|jpeg|gif|webp)$/.test(type)) {
+      // A page-only read (the web UI's article) never reads or converts a picture.
+      if (pagesOnly) { await res.body?.cancel(); return undefined; }
       const bytes = Buffer.from(await res.arrayBuffer());
       if (bytes.length > PICTURE_MB * 1_000_000) return { copy, text: `The picture at ${url.href} is larger than ${PICTURE_MB} MB.`, isError: true };
       return { copy, ...await pictureForModel(bytes, type) };
