@@ -112,7 +112,8 @@ test("Models: the sidebar link opens Overview, Hosts and endpoints lists the end
   await shot("missing-model");
   // Enabled: off takes a model out of everything but this list; the ⋯ switches every model at once.
   const cloudModel = routerRow.locator("li[data-offering]").filter({ hasText: "cloud-model" });
-  await cloudModel.getByRole("checkbox", { name: "Enabled: cloud-model" }).uncheck();
+  // The box is controlled: it changes once the page has reloaded.
+  await cloudModel.getByRole("checkbox", { name: "Enabled: cloud-model" }).click();
   await expect(cloudModel).toHaveClass(/off/);
   await expect(cloudModel.getByRole("checkbox", { name: "Enabled: cloud-model" })).not.toBeChecked();
   await shot("disabled-model");
