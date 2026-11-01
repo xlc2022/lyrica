@@ -2052,7 +2052,8 @@ export function apiRoutes(d: Lyricad): Route[] {
     route("PUT", `${u}/admin/passphrase`, async (r) => {
       d.adminFor(r);
       const { save, passphrase } = await r.json<Api.PassphraseChange>();
-      if (save) await d.keyring.saveSelfPassphrase(String(passphrase ?? ""));
+      // Saving checks the passphrase first: guesses count on the limiter, as a change's do.
+      if (save) await limited(d, [`passphrase:${r.ip}`], () => d.keyring.saveSelfPassphrase(String(passphrase ?? "")), "wrong passphrase");
       else await d.keyring.forgetSelfPassphrase();
       return adminStatus(d);
     }),
