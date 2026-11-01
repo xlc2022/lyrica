@@ -708,10 +708,16 @@ async function fakeImages(page: Page) {
       parts: [{ role: "diffusion", slot: null, file: parts[5]!.file, added: false },
         { role: "vae", slot: null, file: null, added: false, missing: { source: "huggingface", repo: "Comfy-Org/Qwen-Image_ComfyUI", path: "split_files/vae/qwen_image_vae.safetensors", size: 0.25 * GB } }] },
   ];
-  await page.route(/\/api\/u\/[^/]+\/hosts\/ep-box\/images$/, (route) => {
+  // `hold()` keeps the next reads of the library waiting until its release, as a slow host would.
+  let gate: Promise<void> | undefined;
+  const read = { count: 0 };
+  const hold = () => { let release!: () => void; gate = new Promise((r) => { release = () => { gate = undefined; r(); }; }); return release; };
+  await page.route(/\/api\/u\/[^/]+\/hosts\/ep-box\/images$/, async (route) => {
+    if (gate) await gate;
     const byRole: Record<string, unknown[]> = {};
     for (const p of parts) (byRole[p.role as string] ??= []).push(p);
-    return route.fulfill(json({ recipes, parts: byRole }));
+    await route.fulfill(json({ recipes, parts: byRole }));
+    read.count++;
   });
   await page.route(/\/api\/u\/[^/]+\/hosts\/ep-box\/(recipes\/[^/]+|manage)$/, (route) => {
     const path = new URL(route.request().url()).pathname.replace(/^.*\/ep-box\//, "");
@@ -738,7 +744,7 @@ async function fakeImages(page: Page) {
     asked.push({ path, body: route.request().postDataJSON() });
     return route.fulfill(json({ recipe: { ...recipes[0], id: "00000000-0000-4000-8000-000000000004", name: "FLUX.1 schnell" }, downloads: [] }));
   });
-  return { asked, zi, qi, offering: { id: "off-z", modelId: `recipe/${zi}`, label: `box/recipe/${zi}`, manual: false, status: "listed", recipe: "Z-Image Turbo", image: true } };
+  return { asked, zi, qi, hold, read, offering: { id: "off-z", modelId: `recipe/${zi}`, label: `box/recipe/${zi}`, manual: false, status: "listed", recipe: "Z-Image Turbo", image: true } };
 }
 
 test("a host card has one facts line and Pause, Edit and ⋯; Edit opens a drawer that moves the models folder after asking, and Pair again… is a page", async ({ page, baseURL }) => {
@@ -1026,11 +1032,18 @@ test("Image models: groups by architecture with Role and Where; a recipe opens t
   const strength = block.getByRole("spinbutton", { name: "Strength of pixel-art.safetensors" });
   await expect(strength).toHaveValue("0.6");
   await expect(block.locator(".partrow").filter({ has: page.getByRole("spinbutton", { name: "Strength of pixel-art.safetensors" }) })).toContainText("of 4");
+  // The recipe read back after a save can land while the next number is being typed: it never overwrites it.
+  const release = images.hold();
   await strength.fill("9");
   await strength.press("Enter");
   await expect(strength).toHaveValue("4");
   await expect.poll(() => post(`recipes/${images.zi}`).at(-1)).toEqual({ do: "change", change: { op: "setLora", file: "comfy/loras/pixel-art.safetensors", strength: 4 } });
+  await expect(strength).toBeEnabled();
   await strength.fill("0.75");
+  const reads = images.read.count;
+  release();
+  await expect.poll(() => images.read.count).toBeGreaterThan(reads);
+  await expect(strength).toHaveValue("0.75");
   await strength.blur();
   await expect.poll(() => post(`recipes/${images.zi}`).at(-1)).toEqual({ do: "change", change: { op: "setLora", file: "comfy/loras/pixel-art.safetensors", strength: 0.75 } });
   if (process.env.SCREENSHOTS) await block.screenshot({ path: `${process.env.SCREENSHOTS}/image-models-lora-strength-${page.viewportSize()!.width}.png` });

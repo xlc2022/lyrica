@@ -427,18 +427,27 @@ function NumberField({ label, value, min, max, step, disabled, onSave, name }: {
   name?: string;
 }) {
   const [text, setText] = useState(String(value));
+  // The number last saved or read back, and whether the person is typing: a value read back after a save (the
+  // recipe refreshes once the host answers) shows only while they aren't, so it never overwrites what they type.
+  const saved = useRef(value);
+  const typing = useRef(false);
+  useEffect(() => {
+    saved.current = value;
+    if (!typing.current) setText(String(value));
+  }, [value]);
   const leave = () => {
+    typing.current = false;
     const n = Number(text);
-    if (!text.trim() || !Number.isFinite(n)) { setText(String(value)); return; }
+    if (!text.trim() || !Number.isFinite(n)) { setText(String(saved.current)); return; }
     const v = Math.min(max, Math.max(min, Number.isInteger(step) ? Math.round(n) : Math.round(n * 100) / 100));
     setText(String(v));
-    if (v !== value) onSave(v);
+    if (v !== saved.current) { saved.current = v; onSave(v); }
   };
   return (
     <label className="field steps"><span>{label}</span>
       <span className="steps-in">
         <input type="number" min={min} max={max} step={step} value={text} disabled={disabled} aria-label={name}
-          onChange={(e) => setText(e.target.value)} onBlur={leave} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); leave(); } }} />
+          onChange={(e) => { typing.current = true; setText(e.target.value); }} onBlur={leave} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); leave(); } }} />
         <span className="muted">of <span className="num">{max}</span></span>
       </span>
     </label>
@@ -485,7 +494,7 @@ function CopyBlock({ L, c, details }: { L: Lib; c: RecipeCopy; details?: boolean
     </div>
   );
   const steps = !details && !proposed && typeof r.defaults.steps === "number" && (
-    <NumberField key={`${r.id}:${r.defaults.steps}`} label="Steps" value={r.defaults.steps} min={1} max={150} step={1} disabled={!editable || L.busy} onSave={(n) => change({ op: "defaults", defaults: { steps: n } })} />
+    <NumberField key={r.id} label="Steps" value={r.defaults.steps} min={1} max={150} step={1} disabled={!editable || L.busy} onSave={(n) => change({ op: "defaults", defaults: { steps: n } })} />
   );
   const where = mainPart?.downloaded ? `${her()}'s downloads` : "the shared folder";
   return (
@@ -529,7 +538,7 @@ function CopyBlock({ L, c, details }: { L: Lib; c: RecipeCopy; details?: boolean
         ))}
         {r.loras.map((l) => (
           <PartRow key={l.file} role="lora" field={editable} small={editable ? undefined : `strength ${l.strength}`} file={l.file} cap={facts(l.file)} bytes={partOf(l.file)?.size}>
-            {editable && <NumberField key={`${l.file}:${l.strength}`} label="Strength" name={`Strength of ${fileName(l.file)}`} value={l.strength} min={-LORA_MAX} max={LORA_MAX} step={0.05}
+            {editable && <NumberField key={l.file} label="Strength" name={`Strength of ${fileName(l.file)}`} value={l.strength} min={-LORA_MAX} max={LORA_MAX} step={0.05}
               disabled={L.busy} onSave={(n) => change({ op: "setLora", file: l.file, strength: n })} />}
             {editable && <button type="button" className="link" aria-label={`Remove the LoRA ${fileName(l.file)}`} disabled={L.busy} onClick={() => change({ op: "removeLora", file: l.file })}>Remove</button>}
           </PartRow>
