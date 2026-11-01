@@ -262,23 +262,27 @@ function oneApart(a: string, b: string): boolean {
 }
 
 /**
- * A test for whether a result is about the search: it shares a word with the
- * query, in its title, URL or snippet, allowing a different ending (moth,
- * moths) or one letter's typo in a longer word. A query that has no such
- * words (only short or common ones, or Chinese, Japanese, Korean or Thai)
- * keeps every result. Some engines, bing through SearXNG among them, now
- * and then answer with results for something else entirely.
+ * A test for whether a result is about the search: it shares at least one
+ * in three of the query's words, in its title, URL or snippet, allowing a
+ * different ending (moth, moths) or one letter's typo in a longer word. A
+ * query that has no such words (only short or common ones, or Chinese,
+ * Japanese, Korean or Thai) keeps every result. Bing through SearXNG now and
+ * then answers with results for something else entirely, or for one word of
+ * the query alone.
  */
 export function aboutQuery(query: string): ((r: { title?: string; url?: string; content?: string }) => boolean) | undefined {
   const terms = [...new Set(words(query))].filter((w) => w.length >= 3 && !COMMON.has(w) && !UNSPACED.test(w));
   if (!terms.length) return undefined;
+  // One word in three, so dinner rolls don't pass for a search about a Rolls-Royce engine.
+  const need = Math.ceil(terms.length / 3);
   return (r) => {
     const text = `${r.title ?? ""} ${r.url ?? ""} ${r.content ?? ""}`;
     const joined = plain(text);
     const seen = words(text);
-    return terms.some((t) => joined.includes(t) || seen.some((w) =>
+    const shared = terms.filter((t) => joined.includes(t) || seen.some((w) =>
       (Math.min(w.length, t.length) >= 4 && Math.abs(w.length - t.length) <= 3 && (w.startsWith(t) || t.startsWith(w)))
       || (t.length >= 5 && oneApart(t, w))));
+    return shared.length >= need;
   };
 }
 
@@ -311,7 +315,7 @@ export async function searxngSearch(address: string, query: string, o: WebSearch
     if (snippet) lines.push(`   ${snippet}`);
   });
   const from = [...new Set(unrelated.flatMap((x) => x.engines ?? (x.engine ? [x.engine] : [])))];
-  const left = unrelated.length ? `Left out ${unrelated.length} result${unrelated.length === 1 ? "" : "s"} that share${unrelated.length === 1 ? "s" : ""} no word with the search${from.length ? ` (from ${from.join(", ")})` : ""}.` : "";
+  const left = unrelated.length ? `Left out ${unrelated.length} result${unrelated.length === 1 ? "" : "s"} that share${unrelated.length === 1 ? "s" : ""} too few words with the search${from.length ? ` (from ${from.join(", ")})` : ""}.` : "";
   if (results.length && left) lines.push("", left);
   if (!results.length) {
     lines.push(`No results for "${query}"${o.page && o.page > 1 ? ` on page ${o.page}` : ""}.`);

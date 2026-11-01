@@ -141,9 +141,19 @@ describe("web_search", () => {
     ];
     const good = { title: "Rolls-Royce Phantom II", url: "https://en.wikipedia.org/wiki/Rolls-Royce_Phantom_II", content: "A straight-six car.", engines: ["mojeek"] };
     const some = await searxngSearch("http://s.lan", "Rolls-Royce V16 wikipedia engine", { count: 5 }, undefined, replies({ results: [junk[0], good, junk[1]] }), fresh());
-    expect(some).toBe("1. Rolls-Royce Phantom II\n   https://en.wikipedia.org/wiki/Rolls-Royce_Phantom_II\n   A straight-six car.\n\nLeft out 2 results that share no word with the search (from bing).");
+    expect(some).toBe("1. Rolls-Royce Phantom II\n   https://en.wikipedia.org/wiki/Rolls-Royce_Phantom_II\n   A straight-six car.\n\nLeft out 2 results that share too few words with the search (from bing).");
     const none = await searxngSearch("http://s.lan", "Rolls-Royce V16 wikipedia engine", { count: 5 }, undefined, replies({ results: junk }), fresh());
-    expect(none).toBe(`No results for "Rolls-Royce V16 wikipedia engine".\nLeft out 2 results that share no word with the search (from bing).`);
+    expect(none).toBe(`No results for "Rolls-Royce V16 wikipedia engine".\nLeft out 2 results that share too few words with the search (from bing).`);
+  });
+
+  it("leaves out a result that matches only one word of a longer search", () => {
+    // What bing answered on a test machine.
+    const about = aboutQuery("Rolls-Royce V16 wikipedia engine")!;
+    expect(about({ title: "Rolls-Royce Motor Cars - Wikipedia", url: "https://en.wikipedia.org/wiki/Rolls-Royce_Motor_Cars" })).toBe(true);
+    expect(about({ title: "Configure Your Rolls-Royce", url: "https://www.rolls-roycemotorcars.com/en_US/bespoke/configure-your-rolls-royce.html" })).toBe(true);
+    expect(about({ title: "Classic Dinner Rolls Recipe", url: "https://www.allrecipes.com/recipe/215378/classic-dinner-rolls/" })).toBe(false);
+    expect(about({ title: "Amazon.com: Rolls", url: "https://www.amazon.com/rolls/s?k=rolls" })).toBe(false);
+    expect(about({ title: "Rolls in Bakery & Bread - Walmart.com", url: "https://www.walmart.com/browse/food/rolls/976759_976779_1037480" })).toBe(false);
   });
 
   it("counts a result as about the search despite a different ending, a typo, accents or case", () => {
