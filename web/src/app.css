@@ -1282,11 +1282,11 @@ a.fpath { font-family: var(--mono); font-size: 0.93em; overflow-wrap: anywhere; 
 .sources-label { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
 .sources ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
 .sources li { min-width: 0; max-width: 100%; }
-.sources a { display: inline-flex; align-items: baseline; gap: 6px; max-width: min(320px, 100%); min-height: 28px; padding: 4px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); font-size: 13px; color: var(--fg); }
+.sources .source { display: inline-flex; align-items: baseline; gap: 6px; max-width: min(320px, 100%); min-height: 28px; padding: 4px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); font-size: 13px; color: var(--fg); }
 .sources a:hover, .sources a:focus-visible { border-color: var(--edge); }
 .source-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .source-host { font-family: var(--mono); font-size: 12px; color: var(--muted); white-space: nowrap; }
-@media (pointer: coarse) { .sources a { min-height: 44px; align-items: center; } }
+@media (pointer: coarse) { .sources .source { min-height: 44px; align-items: center; } }
 .reactions { display: flex; flex-wrap: wrap; gap: 6px; }
 .msg.user .reactions { justify-self: start; }
 .reaction { display: inline-flex; align-items: center; gap: 5px; min-height: 26px; padding: 1px 8px 1px 6px; font-size: 13px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); color: var(--fg); font-weight: 400; }

@@ -466,12 +466,31 @@ function Sep() {
  * (the run they belong to is her inner workings). `shown`: image paths her image parts already showed this turn, so her
  * prose keeps them as links. `images`: how its image parts show, with the turn's rejected attempts (rejects.ts).
  */
-/** A page she read in a turn: its URL and the title web_fetch headed it with, if any. */
-export interface Source { url: string; title?: string; host: string }
+/**
+ * A page she read in a turn: its URL, the title web_fetch headed it with (a picture's name for a picture from the
+ * offline copy), what to show for where it came from, and whether it is on the server's own loopback, which a browser
+ * can't open.
+ */
+export interface Source { url: string; title?: string; host: string; local?: boolean }
+
+/** Which offline copy a fetch read from, as kiwix.ts names it ("the offline copy of Wikipedia (2026-08)"), without the date. */
+const OFFLINE = /^(?:A picture from|Outside content from \S+ \() ?the offline copy of (.+?)(?: \(\d{4}-\d{2}\))?(?::|\), not from the user:)/;
+
+/** A picture's name from its path: the file name with underscores as spaces and without its extensions. */
+function pictureName(url: URL): string {
+  let name = url.pathname.split("/").pop() ?? "";
+  try { name = decodeURIComponent(name); } catch { /* as it is */ }
+  return name.replace(/(\.(webp|png|jpe?g|gif|svg))+$/i, "").replace(/_/g, " ").trim();
+}
+
+/** The server's own loopback: 127.0.0.0/8, localhost or ::1. */
+const isLoopback = (host: string) => /^(127\.\d+\.\d+\.\d+|localhost|\[::1\])$/i.test(host);
 
 /**
  * The pages her web_fetch calls read (since the person's last message or her last words, conversationNodes), once each in the order she read them: the URL she asked for (http or
- * https only), and the "# " title line that follows the outside-content marker in the result (core/src/web.ts).
+ * https only), and the "# " title line that follows the outside-content marker in the result (core/src/web.ts). A read from
+ * the offline copy (core/src/kiwix.ts) names the copy ("Offline Wikipedia") in place of a loopback host, and a picture
+ * from it takes the picture's name as its title.
  */
 export function sourcesOf(parts: MessagePart[]): Source[] {
   const seen = new Map<string, Source>();
@@ -480,27 +499,39 @@ export function sourcesOf(parts: MessagePart[]): Source[] {
     let url: URL;
     try { url = new URL(String((p.args as { url?: unknown } | null)?.url ?? "").trim()); } catch { continue; }
     if ((url.protocol !== "http:" && url.protocol !== "https:") || seen.has(url.href)) continue;
-    const title = /^<<<web [0-9a-f]+>>>\n# (.+)$/m.exec(p.result)?.[1]?.trim();
-    seen.set(url.href, { url: url.href, title: title || undefined, host: url.hostname.replace(/^www\./, "") });
+    const local = isLoopback(url.hostname);
+    const copy = OFFLINE.exec(p.result)?.[1]?.trim();
+    const picture = p.result.startsWith("A picture from ");
+    const title = picture ? pictureName(url) : /^<<<web [0-9a-f]+>>>\n# (.+)$/m.exec(p.result)?.[1]?.trim();
+    const host = copy && local ? `Offline ${copy}` : url.hostname.replace(/^www\./, "");
+    seen.set(url.href, { url: url.href, title: title || undefined, host, ...(local ? { local } : {}) });
   }
   return [...seen.values()];
 }
 
-/** Principle 1: where her answer came from, under her reply (docs/ux.md, "The pages she read"). Each opens in a new tab. */
+/**
+ * Principle 1: where her answer came from, under her reply (docs/ux.md, "The pages she read"). Each opens in a new tab,
+ * except one on the server's loopback when this page isn't itself on a loopback address: the browser can't reach it, so
+ * it is a plain chip.
+ */
 function Sources({ sources }: { sources: Source[] }) {
   const label = useId();
+  const here = isLoopback(window.location.hostname);
   return (
     <div className="sources">
       <span className="sources-label" id={label}>Sources</span>
       <ul aria-labelledby={label}>
-        {sources.map((s) => (
-          <li key={s.url}>
-            <a href={s.url} target="_blank" rel="noopener noreferrer" title={s.title ? `${s.title}\n${s.url}` : s.url}>
-              {s.title && <span className="source-title">{s.title}</span>}
-              <span className="source-host">{s.host}</span>
-            </a>
-          </li>
-        ))}
+        {sources.map((s) => {
+          const tip = s.title ? `${s.title}\n${s.url}` : s.url;
+          const inner = <>{s.title && <span className="source-title">{s.title}</span>}<span className="source-host">{s.host}</span></>;
+          return (
+            <li key={s.url}>
+              {s.local && !here
+                ? <span className="source" title={`${tip}\nOnly the server can open this address.`}>{inner}</span>
+                : <a className="source" href={s.url} target="_blank" rel="noopener noreferrer" title={tip}>{inner}</a>}
+            </li>
+          );
+        })}
       </ul>
     </div>
   );
@@ -1152,13 +1183,15 @@ function ThreadsPill({ threads, env }: { threads: ThreadRef[]; env: Env }) {
 
 const NOTICE_HEADS: Record<string, string> = {
   question: "Subagent asks", note: "Subagent note", user_message: "Message to a subagent", interrupted: "Subagent interrupted",
-  update: "Child thread", limit: "Tool limit", "checks-passed": "Checks", "checks-failed": "Checks", job: "Background command",
+  update: "Child thread", limit: "Tool limit", "checks-passed": "Checks", "checks-failed": "Checks", "evidence-checked": "Evidence", "evidence-not-shown": "Evidence", job: "Background command",
   clip: "Clip", "clip-failed": "Clip",
 };
-/** A project's checks at the end of a code turn: a dot and a word after the head. */
+/** A project's checks at the end of a code turn, and the evidence judge after them: a dot and a word after the head. */
 const CHECK_STATES: Record<string, ReactNode> = {
   "checks-passed": <span className="status-word"><span className="dot up" aria-hidden="true" />passed</span>,
   "checks-failed": <span className="status-word"><span className="dot down" aria-hidden="true" />failed</span>,
+  "evidence-checked": <span className="status-word"><span className="dot up" aria-hidden="true" />checked</span>,
+  "evidence-not-shown": <span className="status-word"><span className="dot down" aria-hidden="true" />not shown</span>,
   "clip-failed": <span className="status-word"><span className="dot down" aria-hidden="true" />failed</span>,
 };
 

@@ -61,6 +61,8 @@ export interface ThreadWorkspace {
   claudeCode: boolean;
   /** Coding preference: copied at creation, editable independently of ancestors. */
   code: boolean;
+  /** The evidence judge on a code turn's reply: on its local code model only (auto), always, or never. Copied at creation, editable independently. */
+  evidence: EvidenceSetting;
   /** The machines it may work on besides the sandbox, by name, from its pool's machines. */
   machines: string[];
   /** The repositories it clones, each with the Git account of its pool that reaches it. */
@@ -70,6 +72,10 @@ export interface ThreadWorkspace {
   /** Set for a subagent's thread: its settings can only be the parent's or stricter. */
   parent: string | null;
 }
+
+/** The evidence judge's setting: `auto` judges only on a local code model (docs/workspace.md, "The evidence judge"). */
+export type EvidenceSetting = "auto" | "on" | "off";
+export const EVIDENCE_SETTINGS: readonly EvidenceSetting[] = ["auto", "on", "off"];
 
 /** The loosest mode she may use on a machine. */
 export type MachineLimit = Exclude<PermissionMode, "plan">;
@@ -227,7 +233,8 @@ CREATE TABLE IF NOT EXISTS thread_workspaces (
   web_search INTEGER NOT NULL DEFAULT 1,
   images     INTEGER NOT NULL DEFAULT 1,
   machines   TEXT NOT NULL DEFAULT '[]',
-  allowed    TEXT NOT NULL DEFAULT '[]'
+  allowed    TEXT NOT NULL DEFAULT '[]',
+  evidence   TEXT NOT NULL DEFAULT 'auto'
 );
 -- What the Files panel added or removed since her last turn in the thread: paths only, cleared when her turn takes them.
 CREATE TABLE IF NOT EXISTS panel_files (
@@ -502,13 +509,13 @@ export class WorkspaceSettings {
   thread(threadId: string): ThreadWorkspace {
     const row = this.db.prepare("SELECT * FROM thread_workspaces WHERE thread_id = ?").get(threadId) as ThreadRow | undefined;
     // A thread from before modes were saved for every new thread: Auto, as it had then. New threads get the default from startThread.
-    if (!row) return { grants: [], internet: null, services: null, hosts: null, mode: "auto", webSearch: true, images: true, claudeCode: false, code: false, machines: [], repositories: [], mcpServers: [], parent: null };
+    if (!row) return { grants: [], internet: null, services: null, hosts: null, mode: "auto", webSearch: true, images: true, claudeCode: false, code: false, evidence: "auto", machines: [], repositories: [], mcpServers: [], parent: null };
     const threadWork = this.threadWork(threadId);
     const bool = (v: number | null) => (v === null ? null : v === 1);
     return {
       grants: JSON.parse(row.grants), internet: bool(row.internet), services: bool(row.services),
       hosts: row.hosts === null ? null : JSON.parse(row.hosts), mode: row.mode, webSearch: row.web_search === 1, images: row.images === 1,
-      claudeCode: row.claude_code === 1, code: row.code === 1, machines: JSON.parse(row.machines), repositories: JSON.parse(row.repositories), mcpServers: JSON.parse(row.mcp_servers), parent: row.parent, ...(threadWork ? { threadWork } : {}),
+      claudeCode: row.claude_code === 1, code: row.code === 1, evidence: EVIDENCE_SETTINGS.includes(row.evidence as EvidenceSetting) ? (row.evidence as EvidenceSetting) : "auto", machines: JSON.parse(row.machines), repositories: JSON.parse(row.repositories), mcpServers: JSON.parse(row.mcp_servers), parent: row.parent, ...(threadWork ? { threadWork } : {}),
     };
   }
 
@@ -664,12 +671,12 @@ export class WorkspaceSettings {
   private write(threadId: string, t: ThreadWorkspace): void {
     const int = (v: boolean | null) => (v === null ? null : v ? 1 : 0);
     // The upsert keeps the thread's allowed commands.
-    this.db.prepare(`INSERT INTO thread_workspaces (thread_id, grants, internet, services, hosts, mode, parent, web_search, images, claude_code, code, machines, repositories, mcp_servers)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (thread_id) DO UPDATE SET grants = excluded.grants, internet = excluded.internet,
+    this.db.prepare(`INSERT INTO thread_workspaces (thread_id, grants, internet, services, hosts, mode, parent, web_search, images, claude_code, code, evidence, machines, repositories, mcp_servers)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (thread_id) DO UPDATE SET grants = excluded.grants, internet = excluded.internet,
       services = excluded.services, hosts = excluded.hosts, mode = excluded.mode, parent = excluded.parent, web_search = excluded.web_search,
-      images = excluded.images, claude_code = excluded.claude_code, code = excluded.code, machines = excluded.machines, repositories = excluded.repositories, mcp_servers = excluded.mcp_servers`).run(threadId,
+      images = excluded.images, claude_code = excluded.claude_code, code = excluded.code, evidence = excluded.evidence, machines = excluded.machines, repositories = excluded.repositories, mcp_servers = excluded.mcp_servers`).run(threadId,
       JSON.stringify(t.grants), int(t.internet), int(t.services), t.hosts === null ? null : JSON.stringify(t.hosts), t.mode, t.parent, int(t.webSearch), int(t.images),
-      int(t.claudeCode), int(t.code), JSON.stringify(t.machines), JSON.stringify(t.repositories), JSON.stringify(t.mcpServers));
+      int(t.claudeCode), int(t.code), t.evidence, JSON.stringify(t.machines), JSON.stringify(t.repositories), JSON.stringify(t.mcpServers));
   }
 
   /**
@@ -690,7 +697,7 @@ export class WorkspaceSettings {
     this.db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(`workspace.narrowed.${childThreadId}`, narrowed ? "1" : "0");
     // Start from nothing, so a refused narrowing leaves the child with no access at all.
     this.write(childThreadId, {
-      grants: [], internet: false, services: false, hosts: [], mode: "plan", webSearch: false, images: false, claudeCode: false, code: false, machines: [], repositories: [], mcpServers: [], parent: parentThreadId,
+      grants: [], internet: false, services: false, hosts: [], mode: "plan", webSearch: false, images: false, claudeCode: false, code: false, evidence: "auto", machines: [], repositories: [], mcpServers: [], parent: parentThreadId,
     });
     return this.setThread(childThreadId, pool, {
       grants: narrower.grants ?? parent.grants,
@@ -702,6 +709,7 @@ export class WorkspaceSettings {
       images: narrower.images ?? parent.images,
       claudeCode: narrower.claudeCode ?? parent.claudeCode,
       code: parent.code,
+      evidence: parent.evidence,
       machines: narrower.machines ?? parent.machines,
       repositories: narrower.repositories ?? parent.repositories,
       mcpServers: narrower.mcpServers ?? parent.mcpServers,
@@ -1238,7 +1246,7 @@ const mcpKey = (server: string) => `mcp:${server}`;
 
 interface ThreadRow {
   grants: string; internet: number | null; services: number | null; hosts: string | null;
-  mode: PermissionMode; parent: string | null; web_search: number; images: number; claude_code: number; code: number; machines: string; repositories: string; mcp_servers: string;
+  mode: PermissionMode; parent: string | null; web_search: number; images: number; claude_code: number; code: number; evidence: string; machines: string; repositories: string; mcp_servers: string;
 }
 
 export const sameRepository = (a: ThreadRepository, b: ThreadRepository): boolean => a.name === b.name && a.account === b.account;

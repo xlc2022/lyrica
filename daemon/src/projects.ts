@@ -1,4 +1,4 @@
-import type { ModelRef, Pool, ThinkingLevel, Users } from "@lyrica/core";
+import { EVIDENCE_SETTINGS, type EvidenceSetting, type ModelRef, type Pool, type ThinkingLevel, type Users } from "@lyrica/core";
 
 // What a user sets about threads and projects that isn't conversation: thread
 // pins, and each project's settings (paused, the model, thinking and Fallback its new
@@ -8,6 +8,8 @@ import type { ModelRef, Pool, ThinkingLevel, Users } from "@lyrica/core";
 export interface ProjectSettings {
   paused: boolean;
   code?: boolean;
+  /** The evidence judge's setting its new threads start with; none: the project chat's. */
+  evidence?: EvidenceSetting;
   draftGoal?: string;
   draftInstructions?: string;
   /** The chat model new threads of the project start with; none: the project chat's. */
@@ -45,6 +47,10 @@ export class Projects {
         const saved = db.prepare("SELECT value FROM settings WHERE key = ?").get(`project.code.${pool}/${project}`) as { value: string } | undefined;
         return saved ? saved.value === "true" : undefined;
       }),
+      evidence: this.db(userId, db => {
+        const saved = db.prepare("SELECT value FROM settings WHERE key = ?").get(`project.evidence.${pool}/${project}`) as { value: string } | undefined;
+        return saved && EVIDENCE_SETTINGS.includes(saved.value as EvidenceSetting) ? (saved.value as EvidenceSetting) : undefined;
+      }),
       watch: row?.watch !== 0,
       checkIn: this.db(userId, db => (db.prepare("SELECT value FROM settings WHERE key = ?").get(`project.checkIn.${pool}/${project}`) as { value: string } | undefined)?.value !== "false"),
       ...(row?.draft_goal !== null && row?.draft_goal !== undefined ? { draftGoal: row.draft_goal } : {}),
@@ -55,13 +61,19 @@ export class Projects {
     };
   }
 
-  /** Changes some of a project's settings; `null` clears the model, thinking or Fallback. */
-  set(userId: string, pool: Pool, project: string, change: { code?: boolean; checkIn?: boolean; paused?: boolean; model?: ModelRef | ModelRef[] | null; thinking?: ThinkingLevel | null; fallback?: boolean | null; watch?: boolean; draftGoal?: string | null; draftInstructions?: string | null }): ProjectSettings {
+  /** Changes some of a project's settings; `null` clears the model, thinking, Fallback or evidence judge. */
+  set(userId: string, pool: Pool, project: string, change: { code?: boolean; evidence?: EvidenceSetting | null; checkIn?: boolean; paused?: boolean; model?: ModelRef | ModelRef[] | null; thinking?: ThinkingLevel | null; fallback?: boolean | null; watch?: boolean; draftGoal?: string | null; draftInstructions?: string | null }): ProjectSettings {
     if (change.fallback !== undefined && change.fallback !== null && typeof change.fallback !== "boolean") throw new Error("fallback is true, false or null");
     for (const value of [change.draftGoal, change.draftInstructions]) if (value !== undefined && value !== null && (typeof value !== "string" || value.length > 2000)) throw new Error("project drafts have at most 2000 characters");
     if (change.code !== undefined) {
       if (typeof change.code !== "boolean") throw new Error("code is true or false");
       this.db(userId, db => db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(`project.code.${pool}/${project}`, String(change.code)));
+    }
+    if (change.evidence !== undefined) {
+      if (change.evidence !== null && !EVIDENCE_SETTINGS.includes(change.evidence)) throw new Error("evidence is auto, on, off or null");
+      this.db(userId, db => change.evidence === null
+        ? db.prepare("DELETE FROM settings WHERE key = ?").run(`project.evidence.${pool}/${project}`)
+        : db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(`project.evidence.${pool}/${project}`, change.evidence));
     }
     if (change.checkIn !== undefined) {
       if (typeof change.checkIn !== "boolean") throw new Error("checkIn is true or false");
@@ -97,7 +109,7 @@ export class Projects {
   forget(userId: string, pool: Pool, threads: string[]): void {
     const t = JSON.stringify(threads);
     this.db(userId, (db) => {
-      for (const thread of threads) db.prepare("DELETE FROM settings WHERE key = ?").run(`project.code.${pool}/${thread}`);
+      for (const thread of threads) for (const key of ["code", "evidence", "checkIn"]) db.prepare("DELETE FROM settings WHERE key = ?").run(`project.${key}.${pool}/${thread}`);
       for (const table of ["pinned_threads", "project_settings", "started_suggestions"]) {
         db.prepare(`DELETE FROM ${table} WHERE pool = ? AND thread IN (SELECT value FROM json_each(?))`).run(pool, t);
       }

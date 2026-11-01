@@ -4,7 +4,7 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 import {
   get, patch, u,
   type AllowedPaths, type EndpointInfo, type Grant, type ModelRef, type PermissionMode, type MachineInfo, type OfferingInfo, type Presets,
-  type TaskModel, type ThinkingLevel, type ThreadSettings, type ThreadSettingsChange, type ThreadSummary, type ThreadTask,
+  type EvidenceSetting, type TaskModel, type ThinkingLevel, type ThreadSettings, type ThreadSettingsChange, type ThreadSummary, type ThreadTask,
 } from "./api.ts";
 import { Repositories } from "./Git.tsx";
 import { McpServers } from "./Mcp.tsx";
@@ -16,6 +16,9 @@ import type { ShellContext } from "./Shell.tsx";
 import { ConfirmDialog, ErrorText, Switch, useAction, useDismiss, useInView, useLoad } from "./ui.tsx";
 
 export const CODE_MODE_HINT = "Focus on the code: a coding model, a short persona, and only this project's memory and your working preferences.";
+export const EVIDENCE_HINT = "When a code turn that changed something ends, the coding model judges the reply against what the tools showed, and sends her back once or twice if it isn't shown. Automatic judges only on a local model; a cloud model's tokens are a choice you make here.";
+/** The Evidence judge select's choices, in order. */
+export const EVIDENCE_CHOICES: [EvidenceSetting, string][] = [["auto", "Automatic (local models only)"], ["on", "On"], ["off", "Off"]];
 
 export const TASK_LABELS: Record<ThreadTask, string> = {
   chat: "Main conversation",
@@ -264,6 +267,11 @@ export function SettingsDrawer({ ctx, base, summary, settings, machines, onSetti
             </select>
           </label>
           <Switch label="Code mode" hint={CODE_MODE_HINT} checked={settings.code} onChange={(v) => change({ code: v })} />
+          <label className="field" title={EVIDENCE_HINT}><span>Evidence judge</span>
+            <select value={settings.evidence} onChange={(e) => change({ evidence: e.target.value as EvidenceSetting })}>
+              {EVIDENCE_CHOICES.map(([v, name]) => <option key={v} value={v}>{name}</option>)}
+            </select>
+          </label>
           <Switch label="Web search" hint={settings.searchProvider ? undefined : "Search needs a SearXNG or Kiwix address in Administration"} checked={settings.webSearch} onChange={(v) => change({ webSearch: v })} />
           <Switch label="Images" checked={settings.images} onChange={(v) => change({ images: v })} />
           {(settings.claudeCodeOffered || settings.claudeCode) && (

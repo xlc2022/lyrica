@@ -476,6 +476,28 @@ describe("code mode migrations", () => {
     }
   });
 
+  it("user step 20 expands every released schema with the evidence judge on Automatic and keeps earlier readers", () => {
+    for (let version = 1; version < 20; version++) {
+      const db = scratchDb();
+      const previous = STEPS.user.filter((s) => s.version <= version);
+      migrate(db, "user", {}, previous);
+      db.prepare("INSERT INTO thread_workspaces (thread_id, grants, mode) VALUES ('web/a', '[]', 'ask')").run();
+      migrate(db, "user");
+      const settings = new WorkspaceSettings(db, () => ({ general: [], private: [] }));
+      expect(settings.thread("web/a"), `v${version}`).toMatchObject({ evidence: "auto", mode: "ask" });
+      settings.setThread("web/a", "general", { evidence: "off" });
+      expect(settings.thread("web/a")).toMatchObject({ evidence: "off", mode: "ask" });
+      // A child copies it and changes it on its own.
+      settings.inheritSettings("web/a", "web/b", "general");
+      expect(settings.thread("web/b")).toMatchObject({ evidence: "off", parent: "web/a" });
+      settings.setThread("web/b", "general", { evidence: "on" });
+      expect([settings.thread("web/a").evidence, settings.thread("web/b").evidence]).toEqual(["off", "on"]);
+      expect(schemaOf(db)).toEqual({ version: SCHEMA.user, minReader: MIN_READER.user });
+      expect(() => checkReadable(db, "user", previous)).not.toThrow();
+      db.close();
+    }
+  });
+
   it("pool step 9 expands every released schema with code tasks, preserves readers and cascades deletion", () => {
     for (let version = 1; version < 9; version++) {
       const db = scratchDb();

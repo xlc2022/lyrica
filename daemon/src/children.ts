@@ -719,6 +719,7 @@ export class ChildThreads implements ThreadsHost {
         this.o.models.setThreadModel(userId, pool, made.id, "speech.transcribe");
         const chosen = project ? this.o.project?.(userId, pool, project) : undefined;
         if (chosen?.code !== undefined) this.o.workspace.settings(userId).setThread(made.id, pool, { code: chosen.code });
+        if (chosen?.evidence !== undefined) this.o.workspace.settings(userId).setThread(made.id, pool, { evidence: chosen.evidence });
         if (chosen?.model) this.o.models.setThreadModel(userId, pool, made.id, this.o.workspace.settings(userId).effective(made.id).code ? "code" : "chat", chosen.model);
         if (chosen?.thinking) this.o.models.setThinking(userId, made.id, chosen.thinking);
         if (chosen?.fallback !== undefined) this.o.models.setThreadFallback(userId, made.id, chosen.fallback);

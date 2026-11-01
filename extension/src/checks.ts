@@ -1,8 +1,11 @@
 import type { ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import { maskSecrets, type ExecutionTarget } from "@lyrica/core";
+import { continueAsk, EVIDENCE_CONTINUE, EVIDENCE_NOTICE, EVIDENCE_ROUNDS, judgePrompt, parseVerdict, type EvidenceResult, type JudgedCall, type Verdict } from "./evidence.ts";
 
 // Principles 2 and 6: a project's checks run when a code turn ends, whatever the model decides,
 // so "done" means the person's own commands passed (docs/workspace.md, "Project checks").
+// Once they pass, or where there are none, the evidence judge asks the thread's own code
+// model whether the turn's tool results show the work done (docs/briefs/code-evidence.md).
 
 /** Shown in the thread: which checks passed or failed. */
 export const CHECKS_NOTICE = "lyrica-checks";
@@ -30,6 +33,13 @@ export interface ChecksOptions {
   target(): ExecutionTarget;
   /** The checks still fail after the last round: lyricad tells the thread's parent, if it has one (docs/delegation.md). */
   exhausted?(report: string): void;
+  /**
+   * The evidence judge: one call to the thread's own `code` model list, answering the judge prompt. None in a
+   * project chat or a subagent. A throw, or an answer that isn't a verdict, counts as done and is said in the notice.
+   */
+  judge?(prompt: { system: string; user: string }, signal?: AbortSignal): Promise<string | undefined>;
+  /** The thread's Code task, as her prompt carries it, for the judge. */
+  codeTask?(): string | undefined;
 }
 
 /** The last lines of a check's output, within the character limit. */
@@ -63,24 +73,75 @@ async function runCheck(target: ExecutionTarget, dir: string | undefined, comman
   }
 }
 
+type Entry = { type: "custom_message"; customType: string; content: string; display: boolean; details: unknown };
+
 export function createChecksExtension(o: ChecksOptions): ExtensionFactory {
   return (pi) => {
     let changed = false;
     let rounds = 0;
-    pi.on("agent_start", () => { changed = false; rounds = 0; });
+    /** The evidence judge's rounds this run, and the reason it gave last: the same one again ends them. */
+    let judged = 0;
+    let lastReason: string | undefined;
+    /** What started the run, and each tool call with its result, for the judge. Kept in memory for the run only. */
+    let request = "";
+    let calls: JudgedCall[] = [];
+    pi.on("agent_start", () => { changed = false; rounds = 0; judged = 0; lastReason = undefined; calls = []; });
+    pi.on("before_agent_start", (e) => {
+      // A run a hidden message starts (a child's report, a nudge) carries on the request before it.
+      if (e.messageType === "user") request = e.prompt;
+      else if (!request) { const c = e.message.content; request = typeof c === "string" ? c : c.filter((p) => p.type === "text").map((p) => p.text).join("\n"); }
+    });
     pi.on("tool_result", (e) => {
       // A delegate counts too: a single coder writes in the thread's own checkouts (docs/delegation.md).
       if (!e.isError && ["edit", "write", "bash", "delegate"].includes(e.toolName)) changed = true;
+      if (o.judge) calls.push({ name: e.toolName, args: e.input, output: tail(e.content.map((c) => (c.type === "text" ? c.text : "(image)")).join("\n")), isError: e.isError });
     });
+    /**
+     * The evidence judge on her reply: the notice, and whether a follow-up went back to her, so her next reply ending
+     * the run is checked and judged again. No entry when the judge answered nothing (its setting skips this model).
+     */
+    const judge = async (reply: string, signal?: AbortSignal): Promise<{ entry?: Entry; pending: boolean }> => {
+      const notice = (details: EvidenceResult, pending = false) => ({ pending, entry: { type: "custom_message", customType: EVIDENCE_NOTICE, content: `Evidence ${details.ok ? "checked" : "not shown"}: ${details.reason}`, display: true, details } as Entry });
+      let v: Verdict | undefined;
+      let note: string | undefined;
+      try {
+        const answer = await o.judge!(judgePrompt({ request, task: o.codeTask?.(), calls, reply }), signal);
+        if (answer === undefined) return { pending: false };
+        v = parseVerdict(answer);
+        if (!v) note = "The evidence judge's answer couldn't be read, so the reply stands.";
+      } catch (err) {
+        note = `The evidence judge couldn't run (${(err as Error).message}), so the reply stands.`;
+      }
+      if (!v || v.verdict === "done") return notice({ ok: true, reason: note ?? (v?.reason || "The tool results bear the reply out.") });
+      if (v.verdict === "blocked") return notice({ ok: false, reason: `Waits on you: ${v.reason}` });
+      // continue: back to her unseen, at most EVIDENCE_ROUNDS times; the same reason again means she can't show it.
+      if (judged >= EVIDENCE_ROUNDS || v.reason === lastReason) {
+        judged = EVIDENCE_ROUNDS;
+        return notice({ ok: false, reason: v.reason });
+      }
+      judged++;
+      lastReason = v.reason;
+      pi.sendMessage({ customType: EVIDENCE_CONTINUE, content: continueAsk(v, judged >= EVIDENCE_ROUNDS), display: false }, { deliverAs: "followUp", triggerTurn: true });
+      return notice({ ok: false, reason: v.reason }, true);
+    };
     pi.on("turn_end", async (e, ctx) => {
       // Her reply ends the run: no tool calls, and not cut off by an error, a stop or the tool limit's wrap-up.
       if (!changed || rounds >= CHECK_ROUNDS || e.message.role !== "assistant") return;
       if (e.message.content.some((c) => c.type === "toolCall") || e.message.stopReason === "error" || e.message.stopReason === "aborted") return;
       // A reply with only thinking isn't one: turn-tools asks her to carry on.
-      if (!e.message.content.some((c) => c.type === "text" && c.text.trim())) return;
+      const reply = e.message.content.filter((c) => c.type === "text").map((c) => c.text).join("\n");
+      if (!reply.trim()) return;
       if (!pi.getActiveTools().length) return;
+      if (!o.code() || o.plan()) return;
       const checks = o.checks();
-      if (!checks.length || !o.code() || o.plan()) return;
+      // No checks: the evidence judge alone, on each reply until its rounds are spent.
+      if (!checks.length) {
+        if (!o.judge || judged >= EVIDENCE_ROUNDS) { changed = false; return; }
+        const r = await judge(reply, ctx.signal);
+        if (ctx.signal?.aborted) return;
+        if (!r.pending) changed = false;
+        return r.entry ? { entries: [r.entry] } : undefined;
+      }
       const target = o.target();
       const dirs: (string | undefined)[] = o.checkouts();
       if (!dirs.length) dirs.push(undefined);
@@ -99,9 +160,19 @@ export function createChecksExtension(o: ChecksOptions): ExtensionFactory {
       if (ctx.signal?.aborted) return;
       const list = (cs: string[]) => cs.map((c) => `\`${c}\``).join(", ");
       if (!failed.length) {
-        changed = false;
         const details: ChecksResult = { ok: true, failed: [], passed };
-        return { entries: [{ type: "custom_message", customType: CHECKS_NOTICE, content: `Checks passed: ${list(passed)}`, display: true, details }] };
+        const entries: Entry[] = [{ type: "custom_message", customType: CHECKS_NOTICE, content: `Checks passed: ${list(passed)}`, display: true, details }];
+        // The checks passed: now whether the results show the work done. While a follow-up is pending, her next
+        // reply ending the run is checked again, edits or not.
+        let pending = false;
+        if (o.judge && judged < EVIDENCE_ROUNDS) {
+          const r = await judge(reply, ctx.signal);
+          if (ctx.signal?.aborted) return;
+          if (r.entry) entries.push(r.entry);
+          pending = r.pending;
+        }
+        if (!pending) changed = false;
+        return { entries };
       }
       // Still pending: her next reply ending the run is checked again, edits or not.
       rounds++;

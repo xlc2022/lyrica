@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { Workspace, type ExecutionTarget } from "@lyrica/core";
 import { fakeOpenAI } from "../../core/test/fake-openai.ts";
 import { browser, daemon, enc, localModel, login, runtime } from "./helpers.ts";
-import type { EndpointInfo, MessagePage, PermissionRequest, ThreadSummary } from "../src/api.ts";
+import type { EndpointInfo, MessagePage, PermissionRequest, ThreadSettings, ThreadSummary } from "../src/api.ts";
 
 afterEach(() => vi.restoreAllMocks());
 async function setup() {
@@ -127,14 +127,73 @@ describe("project checks through lyricad", () => {
     expect((await s.ada.patch<ThreadSummary>(s.path, { setup: " make deps " })).body.projectSettings!.setup).toBe("make deps");
     expect((await s.ada.patch<ThreadSummary>(s.path, { setup: null })).body.projectSettings!.setup).toBeUndefined();
     await s.ada.patch(`${s.childPath}/settings`, { code: true, mode: "auto" });
-    // Code mode runs on the Coding model, the workers endpoint here.
-    s.sub.respond(c => c.messages.some(m => m.role === "tool") ? { text: "Done." } : bash("echo built"));
+    // Code mode runs on the Coding model, the workers endpoint here; so does the evidence judge, which sees the turn's calls.
+    let judged = 0;
+    s.sub.respond(c => {
+      if (JSON.stringify(c.messages).includes("<tool_calls>")) return { text: ++judged === 1 ? '{"verdict":"continue","reason":"Nothing shows the build ran.","next":"Run it."}' : '{"verdict":"done"}' };
+      return c.messages.some(m => m.role === "tool") ? { text: "Done." } : bash("echo built");
+    });
     const stream = s.ada.events(`${s.childPath}/events`);
     await s.ada.post(`${s.childPath}/messages`, { text: "Build it" });
     await stream.until(e => e.type === "turn_end");
     stream.close();
     const notices = async () => (await s.ada.get<MessagePage>(`${s.childPath}/messages`)).body.messages.filter((m) => m.role === "notice").map((m) => m.parts[0]);
-    await vi.waitFor(async () => expect(await notices()).toEqual([{ type: "delegation", text: "`npm test`", status: "checks-passed" }]));
-    expect(s.runs.filter((r) => r.some((a) => a.includes("npm test")))).toEqual([["sh", "-c", "npm test 2>&1"]]);
+    // The checks ran on her reply, then the judge sent her back once, unseen, and her next reply was checked and judged again.
+    await vi.waitFor(async () => expect(await notices()).toEqual([
+      { type: "delegation", text: "`npm test`", status: "checks-passed" },
+      { type: "delegation", text: "Nothing shows the build ran.", status: "evidence-not-shown" },
+      { type: "delegation", text: "`npm test`", status: "checks-passed" },
+      { type: "delegation", text: "The tool results bear the reply out.", status: "evidence-checked" },
+    ]));
+    expect(JSON.stringify(s.sub.requests)).toContain("isn't borne out by this turn's tool results: Nothing shows the build ran. Next: Run it.");
+    expect(s.runs.filter((r) => r.some((a) => a.includes("npm test")))).toEqual([["sh", "-c", "npm test 2>&1"], ["sh", "-c", "npm test 2>&1"]]);
+  });
+
+  it("judges on Automatic only on a local code model, on On on any, and never on Off; a local-only thread's judge stays local", async () => {
+    const s = await setup();
+    const cloud = await fakeOpenAI({ models: [{ id: "cloud" }] });
+    const u = `/api/u/${s.rt.ada.id}`;
+    const gpt = { offeringId: (await s.ada.post<EndpointInfo>(`${u}/endpoints`, { name: "openrouter", kind: "cloud", baseUrl: cloud.baseUrl })).body.models[0]!.id };
+    const worker = { offeringId: (await s.ada.get<EndpointInfo[]>(`${u}/endpoints`)).body.find((e) => e.name === "workers")!.models[0]!.id };
+    expect((await s.ada.put(`${u}/columns/general/code`, { models: [gpt, worker] })).status).toBe(200);
+    expect((await s.ada.put(`${u}/columns/private/code`, { model: worker })).status).toBe(200);
+    const judgeRequests = (m: { requests: { messages: unknown[] }[] }) => m.requests.filter((c) => JSON.stringify(c.messages).includes("<tool_calls>")).length;
+    // Each turn runs a command, then says done; the judge is answered with a done verdict wherever it asks.
+    const answer = (c: { messages: { role: string }[] }) => JSON.stringify(c.messages).includes("<tool_calls>") ? { text: '{"verdict":"done"}' } : c.messages.at(-1)!.role === "tool" ? { text: "Done." } : bash("echo built");
+    cloud.respond(answer);
+    s.sub.respond(answer);
+    expect((await s.ada.patch<ThreadSettings>(`${s.childPath}/settings`, { code: true, mode: "auto" })).body.evidence).toBe("auto");
+    expect((await s.ada.patch(`${s.childPath}/settings`, { evidence: "sometimes" })).status).toBe(400);
+    const messages = async () => (await s.ada.get<MessagePage>(`${s.childPath}/messages`)).body.messages;
+    const judgements = async () => (await messages()).filter((m) => m.role === "notice" && m.parts[0]?.type === "delegation" && m.parts[0].status === "evidence-checked").length;
+    // Each turn ends with her "Done."; the stream replays the last turn's end, so the reply count is what is waited on.
+    const turn = async (n: number) => {
+      await s.ada.post(`${s.childPath}/messages`, { text: "Build it" });
+      await vi.waitFor(async () => expect((await messages()).filter((m) => m.role === "assistant" && m.parts[0]?.type === "text").length).toBe(n), { timeout: 10_000 });
+      await new Promise((r) => setTimeout(r, 300)); // the judge's notice, if any, lands after the reply
+    };
+    // Automatic: the general list's first model is a cloud one, so the turn runs there and nothing is judged.
+    await turn(1);
+    expect([judgeRequests(cloud), judgeRequests(s.sub), await judgements()]).toEqual([0, 0, 0]);
+    // On: the judge runs on the list's first model, the cloud one.
+    expect((await s.ada.patch<ThreadSettings>(`${s.childPath}/settings`, { evidence: "on" })).body.evidence).toBe("on");
+    await turn(2);
+    expect([judgeRequests(cloud), judgeRequests(s.sub), await judgements()]).toEqual([1, 0, 1]);
+    // The same thread switched to local-only: the judge's tool results and reply reach only the local model.
+    expect((await s.ada.patch(`${s.childPath}/settings`, { localOnly: true })).status).toBe(200);
+    const cloudSaw = cloud.requests.length;
+    await turn(3);
+    expect([judgeRequests(cloud), judgeRequests(s.sub), await judgements()]).toEqual([1, 1, 2]);
+    // The cloud model saw nothing of that turn, not its tool calls either.
+    expect(cloud.requests.length).toBe(cloudSaw);
+    // Off: nothing is judged, on any model.
+    expect((await s.ada.patch<ThreadSettings>(`${s.childPath}/settings`, { evidence: "off" })).body.evidence).toBe("off");
+    await turn(4);
+    expect([judgeRequests(cloud), judgeRequests(s.sub), await judgements()]).toEqual([1, 1, 2]);
+    // A project's New threads value is kept and cleared on the project, and refused when it isn't a setting.
+    expect((await s.ada.patch<ThreadSummary>(s.path, { threadsEvidence: "off" })).body.projectSettings!.threadsEvidence).toBe("off");
+    expect((await s.ada.patch<ThreadSummary>(s.path, { threadsThinking: "high" })).body.projectSettings!.threadsEvidence).toBe("off");
+    expect((await s.ada.patch(s.path, { threadsEvidence: "always" })).status).toBe(400);
+    expect((await s.ada.patch<ThreadSummary>(s.path, { threadsEvidence: null })).body.projectSettings!.threadsEvidence).toBeUndefined();
   });
 });

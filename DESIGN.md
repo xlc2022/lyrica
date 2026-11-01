@@ -1746,6 +1746,18 @@ shows which checks passed or failed (docs/workspace.md, "Project checks").
 When a child thread's rounds run out, `lyricad`, not the model, tells its
 parent at once which checks fail, where and at which commit, so the parent
 can tell the thread's work from its environment (2026-10-24).
+Once the checks pass, or where there are none, the thread's own code model
+judges the reply against the turn's tool results, with her reply counted as
+a claim and not evidence: what isn't shown goes back to her unseen, at most
+two rounds, and the thread shows an Evidence notice beside Checks. By
+default the judge runs only on a local code model; the Evidence judge
+setting, per thread and for a project's new threads, turns it on for any
+model or off, since a cloud model's tokens are the person's to spend
+(decided 2026-11-01). A file
+she writes that doesn't parse (.js, .json, .py) is said in the write's own
+result, and a small model's tool call that is nearly right (an object sent
+as a JSON string, another harness's tool name) runs rather than failing on
+its shape (docs/workspace.md, "The evidence judge"; decided 2026-11-01).
 Each clone comes with its dependencies: after cloning or fetching it,
 `lyricad` runs the project's setup command, or else the install its
 lockfile names, in the thread's sandbox once and again when the command or
