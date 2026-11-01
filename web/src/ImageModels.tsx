@@ -427,21 +427,18 @@ function NumberField({ label, value, min, max, step, disabled, onSave, name }: {
   name?: string;
 }) {
   const [text, setText] = useState(String(value));
-  // The number last saved or read back, and whether the person is typing: a value read back after a save (the
-  // recipe refreshes once the host answers) shows only while they aren't, so it never overwrites what they type.
-  const saved = useRef(value);
+  // Whether the person is typing: a value read back after a save (the recipe refreshes once the host answers)
+  // shows only while they aren't, so it never overwrites what they type. A refused save leaves `value` as it was,
+  // so leaving the field again sends the number again.
   const typing = useRef(false);
-  useEffect(() => {
-    saved.current = value;
-    if (!typing.current) setText(String(value));
-  }, [value]);
+  useEffect(() => { if (!typing.current) setText(String(value)); }, [value]);
   const leave = () => {
     typing.current = false;
     const n = Number(text);
-    if (!text.trim() || !Number.isFinite(n)) { setText(String(saved.current)); return; }
+    if (!text.trim() || !Number.isFinite(n)) { setText(String(value)); return; }
     const v = Math.min(max, Math.max(min, Number.isInteger(step) ? Math.round(n) : Math.round(n * 100) / 100));
     setText(String(v));
-    if (v !== saved.current) { saved.current = v; onSave(v); }
+    if (v !== value) onSave(v);
   };
   return (
     <label className="field steps"><span>{label}</span>
