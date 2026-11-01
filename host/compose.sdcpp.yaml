@@ -1,7 +1,7 @@
 # Images on a CMP 100-210 (10de:1df4 or 10de:1d84): install.sh adds this when
 # COMFY_GPU is one. stable-diffusion.cpp's sd-server (sdcpp/Dockerfile),
 # built to use int8 by CI or here, makes the images in ComfyUI's place,
-# which isn't started. It uses one GPU, COMFY_GPU, and runs only while a
+# which isn't started. It uses one GPU, the first in COMFY_GPU, and runs only while a
 # recipe is loaded (sdcpp/gate.sh reads serving/sdcpp.json).
 volumes:
   # gate.sh names the sd-server it is running; host-api reads it.

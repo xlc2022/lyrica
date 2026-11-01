@@ -80,7 +80,7 @@ export function registerMemoryTools(pi: ExtensionAPI, view: PoolView, ctx: () =>
     promptGuidelines: RECALL_GUIDELINES,
     parameters: Type.Object({
       everywhere: Type.Optional(Type.Boolean({ description: "Search all memory for this call, including outside code mode’s project and working preferences." })),
-      query: Type.String({ description: "Words to look for." }),
+      query: Type.String({ description: "What to look for: words, or a question. Matches by words and by meaning." }),
       limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 20 })),
     }),
     async execute(_id, params, _signal, _update, toolCtx) {

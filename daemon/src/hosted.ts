@@ -30,7 +30,7 @@ export interface HostOptions {
   permissionMs: number;
   /** For failures that aren't the user's: never message text. */
   log: (line: string) => void;
-  /** The server's SearXNG address, for web_search; without one there is no web_search. */
+  /** The server's SearXNG address, for web_search; without one or a kiwix-serve there is no web_search. */
   searxng?: () => string | null;
   /** The server's kiwix-serve address: the offline copy of Wikipedia, in web_search and web_fetch. */
   kiwix?: () => string | null;
