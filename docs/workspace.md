@@ -998,7 +998,10 @@ The **Web search** switch gives her two tools (`extension/src/web.ts`,
   so the internet switch and allowed hosts above decide what it can reach:
   a private thread with internet off reads only its allowed hosts. It
   sends a browser's user agent, follows up to 5 redirects, gives up after
-  20 seconds or 10 MB, and reads only http and https. `lyricad` keeps a
+  20 seconds or 10 MB (counted after decompression too: the sandbox run's
+  own output cap stops a small compressed body that inflates past it, so a
+  hostile page can't fill `lyricad`'s memory), and reads only http and
+  https. `lyricad` keeps a
   page's main text (Mozilla Readability), or the whole page when that
   finds too little, as Markdown headed by its title, URL, byline and date,
   without scripts, styles, navigation, forms or images. It reads a PDF's

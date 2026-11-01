@@ -263,6 +263,13 @@ describe.skipIf(!runnable)("the sandbox", () => {
     expect((await sh("ls /proc | grep -c '^[0-9]'")).out.trim()).toMatch(/^[1-5]$/);
   });
 
+  it("stops a run whose output passes its cap, as web_fetch asks, instead of keeping it all", async () => {
+    // A compressed page can inflate far past curl's own size limit (docs/workspace.md, "Web").
+    await expect(box().run(["sh", "-c", "head -c 3000000 /dev/zero"], { maxBytes: 1_000_000 })).rejects.toThrow(/^output over 1000000 bytes/);
+    const r = await box().run(["sh", "-c", "head -c 500000 /dev/zero"], { maxBytes: 1_000_000 });
+    expect(r.stdout.length).toBe(500_000);
+  });
+
   it("isolates project worktrees with unique paths in shared git metadata", async () => {
     const repo = p("project-repo"); mkdirSync(repo);
     const git = (...args: string[]) => execFileSync("git", ["-C", repo, ...args], { encoding: "utf8" });

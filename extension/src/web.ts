@@ -1,6 +1,6 @@
 import type { ExtensionAPI, ExtensionContext, ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import { StringEnum } from "@earendil-works/pi-ai";
-import { clamp, cutPage, outside, OUTSIDE_GUIDELINE, fetchArgv, fetchedPage, kiwixLines, kiwixPage, kiwixSearch, maskSecrets, RENDER_MS, renderArgv, renderedPage, SEARCH_CATEGORIES, SEARCH_TIMES, searxngSearch, type ExecutionTarget, type FetchedPage } from "@lyrica/core";
+import { clamp, cutPage, outside, OUTSIDE_GUIDELINE, FETCH_BYTES, FETCH_TOO_LARGE, fetchArgv, fetchedPage, kiwixLines, kiwixPage, kiwixSearch, maskSecrets, OUTPUT_OVER, RENDER_MS, renderArgv, renderedPage, SEARCH_CATEGORIES, SEARCH_TIMES, searxngSearch, type ExecutionTarget, type FetchedPage } from "@lyrica/core";
 import { Type } from "typebox";
 import { setToolsOff } from "./gate.ts";
 
@@ -100,8 +100,14 @@ export function createWebExtension(web: WebTools): ExtensionFactory {
         try {
           // A page that echoes a request back never shows her the sandbox's credentials.
           const secrets = target.secrets?.() ?? [];
+          // The run's output is capped too: curl's own limit counts bytes on the wire, and a compressed body can inflate far past it.
           const run = async (argv: string[], timeoutMs: number) => {
-            const r = await target.run!(argv, { signal, timeoutMs });
+            let r: Awaited<ReturnType<NonNullable<ExecutionTarget["run"]>>>;
+            try {
+              r = await target.run!(argv, { signal, timeoutMs, maxBytes: FETCH_BYTES });
+            } catch (err) {
+              throw (err as Error).message.startsWith(OUTPUT_OVER) ? new Error(FETCH_TOO_LARGE) : err;
+            }
             return { ...r, stdout: maskSecrets(r.stdout, secrets), stderr: maskSecrets(r.stderr, secrets) };
           };
           let page: FetchedPage = await fetchedPage(url.href, await run(fetchArgv(url.href), 30_000), signal);

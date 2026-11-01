@@ -288,6 +288,14 @@ export const clamp = (n: number | undefined, fallback: number, max: number): num
 /** A browser's user agent: many sites refuse curl's. */
 export const FETCH_UA = "Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140.0";
 const MAX_MB = 10;
+/**
+ * Most bytes a fetch may hand back, as the sandbox counts them. curl's
+ * --max-filesize measures the bytes on the wire, so a compressed body that
+ * inflates past it still comes through; the run's own cap stops it there.
+ */
+export const FETCH_BYTES = MAX_MB * 1_000_000;
+/** The error a fetch gives when the run's output cap stopped it. */
+export const FETCH_TOO_LARGE = `the page is larger than ${MAX_MB} MB`;
 
 /**
  * The command `web_fetch` runs in the thread's sandbox: the URL is one argv

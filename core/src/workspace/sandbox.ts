@@ -300,7 +300,12 @@ interface RunOptions {
   onData?: (data: Buffer) => void;
   signal?: AbortSignal;
   timeoutMs?: number;
+  /** Most output bytes (stdout and stderr together) kept or passed on; past it the command is killed and the run fails. */
+  maxBytes?: number;
 }
+
+/** What a run says when its output passed `maxBytes`: a web page that inflates to gigabytes can't fill lyricad's memory. */
+export const OUTPUT_OVER = "output over";
 
 /**
  * Runs commands in bubblewrap with every namespace unshared. Only the
@@ -379,12 +384,20 @@ export class Sandbox implements ExecutionTarget {
     return new Promise((resolve, reject) => {
       const out: Buffer[] = [];
       const err: Buffer[] = [];
-      child.stdout.on("data", (d: Buffer) => (o.onData ? o.onData(d) : out.push(d)));
-      child.stderr.on("data", (d: Buffer) => (o.onData ? o.onData(d) : err.push(d)));
-      child.stdin.on("error", () => {}); // the command may exit without reading its input
-      child.stdin.end(o.input ?? "");
       let stopped: Error | undefined;
       const stop = (why: Error) => { stopped = why; child.kill("SIGKILL"); };
+      // Output is counted before it is kept, so a body that inflates past the limit stops the command instead of filling memory.
+      let size = 0;
+      const take = (d: Buffer, into: Buffer[]) => {
+        if (stopped) return;
+        size += d.length;
+        if (o.maxBytes !== undefined && size > o.maxBytes) return stop(new Error(`${OUTPUT_OVER} ${o.maxBytes} bytes`));
+        o.onData ? o.onData(d) : into.push(d);
+      };
+      child.stdout.on("data", (d: Buffer) => take(d, out));
+      child.stderr.on("data", (d: Buffer) => take(d, err));
+      child.stdin.on("error", () => {}); // the command may exit without reading its input
+      child.stdin.end(o.input ?? "");
       const timer = o.timeoutMs ? setTimeout(() => stop(new Error(`timeout:${o.timeoutMs! / 1000}`)), o.timeoutMs) : undefined;
       const onAbort = () => stop(new Error("aborted"));
       o.signal?.addEventListener("abort", onAbort, { once: true });
