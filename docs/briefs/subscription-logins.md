@@ -102,7 +102,9 @@ extension, daemon and web.
   "participating" apps), and xAI's wording for its usage-limit error,
   which `isPlanLimit` guesses.
 - Every model in Pi's catalogue for the provider is listed, including ones
-  a plan may not cover; a call to one fails like any refused call.
+  a plan may not cover; a call to one fails like any refused call. Since
+  #742 the user can switch such a model off in the plan's model list
+  (docs/models.md, "Enabled"), so nothing picks it.
 
 ## Out of scope
 

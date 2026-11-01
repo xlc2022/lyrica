@@ -61,7 +61,7 @@ export const isTextModel = (m: EndpointInfo["models"][number]) => m.status !== "
 /** The text models, counted once per model ID. */
 function textModels(eps: EndpointInfo[]): number {
   const ids = new Set<string>();
-  for (const ep of eps) for (const m of ep.models) if (isTextModel(m)) ids.add(m.modelId.toLowerCase());
+  for (const ep of eps) for (const m of ep.models) if (isTextModel(m) && !m.disabled) ids.add(m.modelId.toLowerCase());
   return ids.size;
 }
 
@@ -468,7 +468,7 @@ function listOf(table: Table, task: Task, depth = 0): ModelRef[] {
 type Copy = { m: OfferingInfo; ep: Endpoint };
 function copies(p: ModelsPage): Map<string, Copy> {
   const out = new Map<string, Copy>();
-  for (const ep of p.endpoints) for (const m of ep.models) out.set(m.id, { m, ep });
+  for (const ep of p.endpoints) for (const m of ep.models) if (!m.disabled) out.set(m.id, { m, ep });
   return out;
 }
 const answers = (p: ModelsPage, c: Copy) => c.ep.state === "up" && !c.ep.stale && c.m.status !== "gone" && !c.ep.pausedAt && !paused(hostOf(p, c.ep.id));
@@ -837,7 +837,7 @@ function Picker({ p, groups, column, task, list, q, setQ, busy, onAdd, onCancel 
   const needle = q.trim().toLowerCase();
   const eps = p.endpoints.filter((ep) => kindOk(ep.kind)).map((ep) => ({
     ep,
-    models: ep.models.filter((m) => suits(task, m) && !taken.has(m.id) && (!needle || `${modelName(m)} ${m.modelId} ${ep.name}`.toLowerCase().includes(needle))),
+    models: ep.models.filter((m) => !m.disabled && suits(task, m) && !taken.has(m.id) && (!needle || `${modelName(m)} ${m.modelId} ${ep.name}`.toLowerCase().includes(needle))),
   })).filter((x) => x.models.length);
   const all = copies(p);
   const gs = groups.filter((g) => !taken.has(`g:${g.id}`) && g.members.some((id) => { const c = all.get(id); return !!c && kindOk(c.ep.kind) && suits(task, c.m); }));
@@ -1023,16 +1023,28 @@ function Hosts({ ctx }: { ctx: MCtx }) {
   );
 }
 
-/** An endpoint's models, each by its ID (a recipe by its name); a speaking model has its Settings, and a missing or gone one Remove. */
+/**
+ * An endpoint's models, each by its ID (a recipe by its name) after its Enabled checkbox; a speaking model has its Settings, and a
+ * missing or gone one Remove. A model switched off is muted here and seen nowhere else.
+ */
 function ModelList({ ctx, ep, onVoice }: { ctx: MCtx; ep: EndpointInfo; onVoice: (m: OfferingInfo) => void }) {
   const [run, busy, error] = useAction();
   const [removing, setRemoving] = useState<OfferingInfo>();
+  const [q, setQ] = useState("");
   if (!ep.models.length) return <p className="muted small wide">No models yet.</p>;
+  const enable = (m: OfferingInfo, on: boolean) => void run(async () => { await patch(u(ctx.user.id, "endpoints", ep.id, "models"), { disabled: !on, offeringIds: [m.id] }); ctx.models.reload(); });
+  const needle = q.trim().toLowerCase();
+  const shown = needle ? ep.models.filter((m) => `${modelName(m)} ${m.modelId}`.toLowerCase().includes(needle)) : ep.models;
   return (
     <>
+      {ep.models.length > SEARCHABLE_MODELS && <input className="wide" type="search" aria-label={`Search ${ep.name} models`} placeholder={`Search ${ep.models.length} models`} value={q} onChange={(e) => setQ(e.target.value)} />}
       <ul className="model-list wide" aria-label={`${ep.name} models`}>
-        {ep.models.map((m) => (
-          <li key={m.id} data-offering={m.id}>
+        {!shown.length && <li className="muted">No models match.</li>}
+        {shown.map((m) => (
+          <li key={m.id} data-offering={m.id} className={m.disabled ? "off" : undefined}>
+            {canEdit(ctx, ep)
+              ? <input type="checkbox" aria-label={`Enabled: ${modelName(m)}`} checked={!m.disabled} disabled={busy} onChange={(e) => enable(m, e.target.checked)} />
+              : m.disabled && <span className="pill">off</span>}
             {m.recipe ? <ModelLabel model={m.recipe} endpoint={ep.name} id={m.modelId} /> : <ModelLabel model={m.modelId} endpoint={ep.name} raw />}
             {m.status !== "listed" && <span className="pill warn">{m.status}</span>}
             {m.speak?.voices.length ? <button type="button" className="link sm" aria-label={`${m.modelId} settings`} onClick={() => onVoice(m)}>Settings</button> : null}
@@ -1049,6 +1061,9 @@ function ModelList({ ctx, ep, onVoice }: { ctx: MCtx; ep: EndpointInfo; onVoice:
     </>
   );
 }
+
+/** An endpoint's model list gets a search box above this many models. */
+const SEARCHABLE_MODELS = 12;
 
 /** The ⋯ menu's actions on any endpoint, and the fields and dialogs they open. */
 const PLAN_NAMES = { chatgpt: "ChatGPT", grok: "Grok" } as const;
@@ -1069,6 +1084,8 @@ function useEndpointActions(ctx: MCtx, ep: Endpoint, others: Endpoint[], onSignI
     ...(planOf(ep.api) && onSignIn ? [{ label: "Sign in again", onPick: onSignIn }] : []),
     { label: "Read its models", onPick: () => void run(async () => { await post(`${path}/discover`); done(); }) },
     { label: "Add a model by hand", onPick: () => setModel("") },
+    ...(ep.models.some((m) => !m.disabled) ? [{ label: "Disable all models", onPick: () => void run(async () => { await patch(`${path}/models`, { disabled: true }); done(); }) }] : []),
+    ...(ep.models.some((m) => m.disabled) ? [{ label: "Enable all models", onPick: () => void run(async () => { await patch(`${path}/models`, { disabled: false }); done(); }) }] : []),
     { label: "Reset IDs…", onPick: () => setAsking("reset") },
     ...(targets.length ? [{ label: "Merge into…", onPick: () => setInto(targets[0]!.id) }] : []),
     { label: "Remove", danger: true, onPick: () => setAsking("remove") },

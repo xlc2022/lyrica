@@ -370,6 +370,7 @@ interface Voice { id; language }                             // language: a prim
 interface Offering extends Capabilities {   // one model on one endpoint, with a permanent id
   id; endpointId; modelId; manual: boolean;
   status: "listed" | "missing" | "gone"; missingSince?;      // gone: missing for GONE_DAYS (30)
+  disabled?: true;                                           // switched off in its endpoint's list: only offerings(userId, endpointId) returns it
   digest?; identity?: ModelIdentity; downloaded?; size?; recipe?; separate?;   // reported by a host; useFor inherited from Capabilities
   extend?; longestSeconds?; sound?;                          // a host video recipe that adds to clips (and chains them), its longest video, and whether it renders sound
   upscalesClips?;                                            // a host upscale recipe that upscales whole clips too (its listing does `upscale_video`)
@@ -426,6 +427,7 @@ class Models {                                              // new Models(keyrin
   label(userId, id) / find(userId, idOrLabel): ModelRef? / findEndpoint(userId, idOrLabel)
   addModel(actor, endpointId, { modelId } & Capabilities): Offering
   setCapabilities(actor, offeringId, { [cap]?: value | null }): Offering   // by hand wins over discovery
+  setDisabled(actor, offeringIds, disabled)                 // off: leaves every preset and column list, and only its endpoint's list shows it
   // Discovery and health
   discover(actor, endpointId): Promise<Offering[]>          // GET /v1/models; a host's /host/v1/models and confirmed recipes
   probe(userId, endpointId, timeoutMs?): Promise<{ state: "up" | "down"; warning? }>
@@ -2077,10 +2079,13 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   - models (paths under `/api/u/:userId/`):
     - **Endpoints:** `GET`/`POST endpoints`; `PATCH`/`DELETE endpoints/:id`;
       `POST endpoints/:id/discover`, `…/reset-ids`, `…/merge` (→ `EndpointInfo`),
-      `…/models` (→ `OfferingInfo`); `GET …/probe`. Types: `EndpointInfo` (`api`,
+      `…/models` (→ `OfferingInfo`); `PATCH endpoints/:id/models`
+      (`ModelsEnabledChange` `{ disabled, offeringIds? }`, every model of the
+      endpoint without `offeringIds` → `EndpointInfo`); `GET …/probe`. Types: `EndpointInfo` (`api`,
       `addresses`, `fingerprint`, `hasApiKey`, `keyLast4?`, `planAccount?`,
       `cloudCapabilities?`, `unencrypted`, `stale`,
-      `downSince`, `signedOut`, `models: OfferingInfo[]`), `OfferingInfo` (with `label`),
+      `downSince`, `signedOut`, `models: OfferingInfo[]`), `OfferingInfo` (with `label`
+      and `disabled?`, switched off in its endpoint's list),
       `EndpointInput`, `EndpointChange`, `ModelInput`, `Probe`, `MergeInput`.
     - **Plans:** `POST plans/sign-in` (`PlanSignInStart`: `plan` and `name`,
       or `endpointId` to sign in again → `PlanSignInStarted` `{ id, url,

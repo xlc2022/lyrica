@@ -542,6 +542,16 @@ export function apiRoutes(d: Lyricad): Route[] {
       if (action !== "pause" && action !== "resume" && action !== "restart") throw new HttpError(404, "a host can be paused, resumed or restarted");
       return (await s().models.hostControl(d.userFor(r), r.params.endpointId!, action)) as Api.HostStatus;
     }),
+    route("PATCH", `${u}/endpoints/:endpointId/models`, async (r) => {
+      const user = d.userFor(r);
+      const c = await r.json<Api.ModelsEnabledChange>();
+      if (typeof c.disabled !== "boolean") throw new HttpError(400, "disabled is true or false");
+      const own = new Set(s().models.offerings(user.id, r.params.endpointId!).map((o) => o.id));
+      const ids = c.offeringIds === undefined ? [...own] : c.offeringIds;
+      if (!Array.isArray(ids) || ids.some((id) => typeof id !== "string" || !own.has(id))) throw new HttpError(400, "offeringIds names models of this endpoint");
+      s().models.setDisabled(user, ids, c.disabled);
+      return endpointInfo(d, user.id, r.params.endpointId!);
+    }),
     route("PATCH", `${u}/offerings/:offeringId`, async (r) => {
       const user = d.userFor(r);
       const c = await r.json<Api.CapabilitiesChange>();

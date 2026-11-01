@@ -207,6 +207,8 @@ export interface Offering extends Capabilities {
   /** listed; missing (the endpoint stopped listing it); gone (missing for GONE_DAYS, so fallbacks skip it). */
   status: "listed" | "missing" | "gone";
   missingSince?: string;
+  /** Switched off in its endpoint's model list: nothing else in Lyrica sees it. */
+  disabled?: true;
   /** The file's SHA-256, where a host reports it. */
   digest?: string;
   /** What a host read from the file or its model card. */
@@ -537,7 +539,7 @@ const toEndpoint = (r: EndpointRow, shared: boolean, now = Date.now()): Endpoint
   };
 };
 const toOffering = (r: OfferingRow, now = Date.now()): Offering => {
-  const caps: Capabilities & { digest?: string; identity?: ModelIdentity; downloaded?: boolean; size?: number; recipe?: string; mask?: boolean; references?: number; loras?: string[]; extend?: boolean; upscalesClips?: boolean; longestSeconds?: number; sound?: boolean; useFor?: Offering["useFor"]; separate?: boolean; servedContext?: number; servedParallel?: number; opensThinking?: boolean; alwaysThinks?: boolean; lmStudio?: boolean; llamaServer?: boolean; price?: ModelPrice; retiresAt?: string; maxOutput?: number } = { ...JSON.parse(r.found), ...JSON.parse(r.hand) };
+  const caps: Capabilities & { digest?: string; identity?: ModelIdentity; downloaded?: boolean; size?: number; recipe?: string; mask?: boolean; references?: number; loras?: string[]; extend?: boolean; upscalesClips?: boolean; longestSeconds?: number; sound?: boolean; useFor?: Offering["useFor"]; separate?: boolean; servedContext?: number; servedParallel?: number; opensThinking?: boolean; alwaysThinks?: boolean; lmStudio?: boolean; llamaServer?: boolean; price?: ModelPrice; retiresAt?: string; maxOutput?: number; disabled?: boolean } = { ...JSON.parse(r.found), ...JSON.parse(r.hand) };
   // A host's serving settings decide its context window, over one set by hand and one discovered.
   const served = (JSON.parse(r.found) as { servedContext?: number }).servedContext;
   if (served) caps.contextWindow = served;
@@ -547,6 +549,7 @@ const toOffering = (r: OfferingRow, now = Date.now()): Offering => {
     ...Object.fromEntries(CAPABILITIES.filter((k) => caps[k] !== undefined).map((k) => [k, caps[k]])),
     status: gone ? "gone" : r.missing_since ? "missing" : "listed",
     ...(r.missing_since ? { missingSince: r.missing_since } : {}),
+    ...(caps.disabled === true ? { disabled: true as const } : {}),
     ...(typeof caps.digest === "string" ? { digest: caps.digest } : {}),
     ...(caps.identity ? { identity: caps.identity } : {}),
     ...(caps.downloaded !== undefined ? { downloaded: caps.downloaded } : {}),
@@ -579,7 +582,10 @@ const factsOf = (m: DiscoveredModel): Capabilities => {
 /** Every endpoint, offering and group one user can see, read once. */
 interface Catalog {
   endpoints: Map<string, Endpoint>;
+  /** The models the rest of Lyrica sees: never a disabled one. */
   offerings: Map<string, Offering>;
+  /** The models switched off in their endpoint's list, seen only there. */
+  disabled: Map<string, Offering>;
   groups: Map<string, Group>;
 }
 
@@ -748,9 +754,32 @@ export class Models {
     return this.catalog(userId).endpoints.get(id);
   }
 
-  /** An endpoint's models. */
+  /** An endpoint's models, disabled ones included: the one list that still shows them. */
   offerings(userId: string, endpointId: string): Offering[] {
-    return [...this.catalog(userId).offerings.values()].filter((o) => o.endpointId === endpointId);
+    const c = this.catalog(userId);
+    return [...c.offerings.values(), ...c.disabled.values()].filter((o) => o.endpointId === endpointId).sort((a, b) => a.modelId.localeCompare(b.modelId));
+  }
+
+  /**
+   * Switches models off or on in their endpoint's list. A disabled model
+   * leaves every task list in this user's presets and columns, and the rest of Lyrica
+   * never sees it: not the router, the pickers, the libraries, groups or the
+   * models she may name. An administrator decides for a shared endpoint, its
+   * owner for a personal one.
+   */
+  setDisabled(actor: User, offeringIds: string[], disabled: boolean): void {
+    const c = this.catalog(actor.id);
+    for (const id of offeringIds) {
+      const o = c.offerings.get(id) ?? c.disabled.get(id);
+      if (!o) throw new NoModel(`no model ${id}`);
+      this.write(actor, o.endpointId, (db) => {
+        const row = db.prepare("SELECT hand FROM offerings WHERE id = ?").get(id) as { hand: string };
+        const hand = JSON.parse(row.hand) as Record<string, unknown>;
+        if (disabled) hand.disabled = true; else delete hand.disabled;
+        db.prepare("UPDATE offerings SET hand = ? WHERE id = ?").run(JSON.stringify(hand), id);
+      });
+      if (disabled) this.dropFromLists(actor.id, id, [...TASKS]);
+    }
   }
 
   /** An offering and its endpoint, if this user can see it. */
@@ -2557,7 +2586,12 @@ export class Models {
       const { id, grouped } = unique[i]!;
       const o = c.offerings.get(id);
       const named = !!need.first?.includes(id);
-      if (!o) { skipped.push({ label: id, reason: "it no longer exists" }); if (named) passedOver.push(skipped.at(-1)!); continue; }
+      if (!o) {
+        const off = c.disabled.get(id);
+        skipped.push(off ? { label: labelOf(c.endpoints.get(off.endpointId)!, off), reason: `it is switched off in ${c.endpoints.get(off.endpointId)!.name}'s list` } : { label: id, reason: "it no longer exists" });
+        if (named) passedOver.push(skipped.at(-1)!);
+        continue;
+      }
       const ep = c.endpoints.get(o.endpointId)!;
       const label = labelOf(ep, o);
       if (restricted && ep.kind !== "local") {
@@ -3387,9 +3421,11 @@ export class Models {
     for (const o of [...own.offerings, ...shared.offerings]) {
       if (plans.has(o.endpointId) && o.modelId !== PLAN_IMAGE_MODEL) { delete o.image; delete o.edit; delete o.upscale; delete o.video; delete o.animate; delete o.motion; delete o.useFor; }
     }
+    const all = [...own.offerings, ...shared.offerings];
     return {
       endpoints: new Map([...own.endpoints, ...shared.endpoints].map((e) => [e.id, e])),
-      offerings: new Map([...own.offerings, ...shared.offerings].map((o) => [o.id, o])),
+      offerings: new Map(all.filter((o) => !o.disabled).map((o) => [o.id, o])),
+      disabled: new Map(all.filter((o) => o.disabled).map((o) => [o.id, o])),
       groups: new Map([...own.groups, ...shared.groups].map((g) => [g.id, g])),
     };
   }

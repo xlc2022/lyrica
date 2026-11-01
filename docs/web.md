@@ -498,6 +498,10 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   again…; the endpoint actions). One facts line: the first address and "+n",
   "version" and the version, for its managers "models folder", its path and
   free space, shared or only you, "N models" opening its model list (a
+  search box above it past twelve models; for its managers an **Enabled**
+  checkbox per model, `PATCH …/endpoints/:id/models` with that one
+  `offeringId`, an unticked model muted there and seen nowhere else, others
+  seeing an "off" pill; a
   speaking model's **Settings** there, and for its managers a missing or
   gone model's **Remove**, `DELETE …/offerings/:id` after a confirm dialog) and **Dashboard** (a link, `GET
   …/dashboard`, a new tab). **Edit** opens the host's drawer: Name (`PATCH
@@ -526,7 +530,9 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   Remove key; a plan's drawer has Name only). Add endpoint suggests ChatGPT
   for that plan and OpenAI for api.openai.com without replacing a name the
   user typed. Names preserve capitals. A plan whose sign-in lapsed
-  reads **Signed out**. Each row's ⋯: Sign in again (plans), Read its models, Add a model by hand, Pair
+  reads **Signed out**. Each row's ⋯: Sign in again (plans), Read its models, Add a model by hand,
+  Disable all models and Enable all models (each while it would change a
+  model; `PATCH …/endpoints/:id/models` with no `offeringIds`), Pair
   again… (hosts), Reset IDs…, Merge into… (same kind and sharing), Remove,
   the last three confirmed by a dialog. Clean up: a row per item with a
   stale, gone or empty pill, "Unreachable for N days." / "Missing for N

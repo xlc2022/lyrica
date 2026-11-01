@@ -41,6 +41,20 @@ and `-`, at most 40 characters.
   or plan (`paused_at` on `endpoints`, added by expand-only self step 3 and
   user step 12 to databases made before it): the router skips it ("is
   paused") until it resumes. A model host pauses itself instead (`hostControl`).
+- **Enabled.** Each model in an endpoint's list has an Enabled checkbox,
+  ticked by default. Unticked (`setDisabled`, `disabled` in the offering's
+  hand-set JSON, so no schema change; `PATCH …/endpoints/:id/models` for
+  one model, some or all of them), the model leaves every task list in the
+  user's presets and columns and the catalogue the rest of Lyrica reads:
+  the router skips it ("it is switched off in <endpoint>'s list" when a
+  thread's own list or a named model still holds it), no picker, library,
+  group or `textModels` (the models she may name for a subagent) shows it,
+  and `find` doesn't find it. Only `offerings(userId, endpointId)`, the
+  endpoint's own list, returns it, marked, so it can be ticked again with its
+  ID and settings intact; discovery keeps the mark. A shared endpoint's
+  models are an administrator's call, as its other settings are. This is how
+  an endpoint with hundreds of models, such as OpenRouter, is cut down to
+  the few that should ever be chosen.
 - **Labels.** People and Lyrica name a model as `<endpoint>/<model>`, with
   `shared.` before a shared endpoint's name, so the two never collide. A host
   recipe's `<model>` is its name (`modelName`), never its `recipe/<id>`;
@@ -304,7 +318,7 @@ chat's), expanding groups and following redirects, and returns the first
 model that can answer, with the ones it skipped and why. A model is skipped
 when:
 
-- it is gone, or its endpoint is stale;
+- it is gone, switched off in its endpoint's list, or its endpoint is stale;
 - its endpoint is known to be down: the health cache holds each probe's
   result and each failed connection (`reportDown`) for 30 seconds;
 - it can't handle the call: no tools when tools are needed, a context window

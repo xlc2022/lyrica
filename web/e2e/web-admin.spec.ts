@@ -110,6 +110,16 @@ test("Models: the sidebar link opens Overview, Hosts and endpoints lists the end
   await expect(routerRow.locator("li[data-offering]").filter({ hasText: "cloud-model" }).getByRole("button", { name: "Remove" })).toHaveCount(0);
   await noHorizontalScroll(page);
   await shot("missing-model");
+  // Enabled: off takes a model out of everything but this list; the ⋯ switches every model at once.
+  // old-model, not cloud-model: switching off drops a model from the column lists the Tasks test expects.
+  // The box is controlled: it changes once the page has reloaded.
+  await old.getByRole("checkbox", { name: "Enabled: old-model" }).click();
+  await expect(old).toHaveClass(/off/);
+  await expect(old.getByRole("checkbox", { name: "Enabled: old-model" })).not.toBeChecked();
+  await shot("disabled-model");
+  await routerRow.getByRole("button", { name: "Actions for router" }).click();
+  await page.getByRole("menuitem", { name: "Enable all models" }).click();
+  await expect(old.getByRole("checkbox", { name: "Enabled: old-model" })).toBeChecked();
   await old.getByRole("button", { name: "Remove old-model" }).click();
   const ask = page.getByRole("dialog", { name: "Remove old-model?" });
   await ask.getByRole("button", { name: "Remove" }).click();
@@ -1292,7 +1302,8 @@ test("image providers run 2: cloud switches and refusal links", async ({ page, b
   await page.goto(`/#/u/${userId}/models/hosts`);
   const row = page.locator(`[data-endpoint="${ep.id}"]`);
   await row.getByRole("button", { name: /^\d+ models?$/ }).click();
-  await expect(row.getByRole("checkbox")).toHaveCount(0);
+  await expect(row.getByRole("checkbox", { name: /^(Generate|Edit)$/ })).toHaveCount(0);
+  await expect(row.getByRole("checkbox", { name: "Enabled: art-model" })).toBeChecked();
   await page.goto(`/#/u/${userId}/models/images`);
   const cloud = page.getByRole("region", { name: "Cloud", exact: true });
   await cloud.getByText("Other cloud models").click();
