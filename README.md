@@ -25,6 +25,9 @@ cloud model is outside our control.
 - [docs/guides/wikipedia.md](docs/guides/wikipedia.md) gives her an offline
   copy of Wikipedia (a Kiwix ZIM file) that searches and reads work from
   without the internet.
+- [docs/guides/nixos-mcp.md](docs/guides/nixos-mcp.md) runs mcp-nixos on
+  NixOS, so she can look up packages, options and flakes before editing
+  a configuration.
 
 She isn't deployed yet. The first run is the web setup page, with
 `lyrica admin init` on the server as the other way.

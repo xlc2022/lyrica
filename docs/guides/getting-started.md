@@ -239,8 +239,8 @@ read it for anything not covered here.
    the setuid `fusermount3`, Caddy's socket, `lyrica-update.path`, a
    sandbox and `pasta` as the `lyrica` user, the network self-test, the
    port and, when the module runs them, SearXNG, kiwix-serve and
-   mcp-nixos, one line
-   each, and ends with "All checks passed." or stops at the first failure.
+   mcp-nixos, one line each, and ends with "All checks passed." or stops
+   at the first failure.
 10. The self-test runs at unlock, so `check-host.sh` misses it when she
     hasn't been unlocked yet (after `lyrica admin init` she starts
     locked). After the first unlock, run
