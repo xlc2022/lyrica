@@ -1876,6 +1876,13 @@ export class PoolStore extends PoolReader {
       throw new Error("a memory a user added can only be changed by the user");
     }
     const body = this.stored({ ...bodyOf(item), ...change });
+    // The renamed-files exception holds only for sleep, and only for exactly the respelling: no other word changes.
+    if (renamed) {
+      const respell = respeller(renamed);
+      const old = bodyOf(item);
+      const expected = this.stored({ ...old, text: respell(old.text), ...(old.summary !== undefined ? { summary: respell(old.summary) } : {}), ...(old.instructions !== undefined ? { instructions: respell(old.instructions) } : {}) });
+      if (author !== "sleep" || JSON.stringify(body) !== JSON.stringify(expected)) throw new Error(`a renamed-files edit of ${id} may only respell its paths`);
+    }
     if (item.kind === "page" && !author.startsWith("user:") && !renamed && (body.instructions ?? "") !== (item.instructions ?? "")) {
       throw new Error("a page's instructions can only be changed by the user");
     }

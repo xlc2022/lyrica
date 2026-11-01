@@ -943,6 +943,10 @@ describe("renamed files at sleep", () => {
       // Their words now stand in the new spelling: sleep may add around them, and still not drop them.
       view.own.edit(page, { text: `My cat: /workspace/uploads/tabby.png [${cat}]. Grey.` }, "sleep");
       expect(() => view.own.edit(page, { text: `A cat [${cat}]` }, "sleep")).toThrow(/text a user wrote/);
+      // The renamed-files exception covers only the respelling itself, and only for sleep.
+      const swap = [[{ from: "/workspace/uploads/tabby.png", to: "/workspace/uploads/grey.png" }]];
+      expect(() => view.own.edit(theirs!, { text: "Something else" }, "sleep", swap)).toThrow(/may only respell/);
+      expect(() => view.own.edit(theirs!, { text: view.own.get(theirs!)!.text.replace("tabby", "grey") }, "lyrica", swap)).toThrow(/may only respell/);
       // Another thread's folder keeps the old path.
       expect(view.own.get(other!)?.text).toContain("/workspace/uploads/cat.png");
       expect(view.own.pendingRenames()).toBe(0);
