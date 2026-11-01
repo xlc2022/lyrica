@@ -1535,7 +1535,8 @@ system with the module on. Only x86_64-linux.
   dynamic user with `nix` on its path and `CacheDirectory`
   `lyrica-mcp-nixos` as its home and cache (its flake-inputs action runs
   `nix flake archive` on a flake directory the call names), no address file: the user adds it
-  under Settings → MCP servers as a Private server (docs/guides/nixos-mcp.md).
+  under Settings → MCP servers, in the pool of the threads that may use it,
+  General for most (docs/guides/nixos-mcp.md).
   It has no Debian counterpart.
   `lyrica` on the system path is the same wrapper as
   install.sh's, so the first-run step is `lyrica admin setup-code` as root:

@@ -771,7 +771,7 @@ of the same section: [wikipedia.md](wikipedia.md).
 On NixOS, `services.lyrica.mcpNixos = true` runs mcp-nixos, an MCP server
 that looks up NixOS packages and options, Home Manager options, flakes and
 Nix function docs, and reads the machine's own flake inputs and Nix store.
-Add it once under Settings, **MCP servers** as a Private server at
+Add it once under Settings, **MCP servers** as a General server at
 `http://127.0.0.1:8001/mcp`, then grant it to the threads or projects that
 should have it: [nixos-mcp.md](nixos-mcp.md).
 
