@@ -5,7 +5,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { get, type Pool, type ThreadSettings, type ThreadSummary } from "./api.ts";
 import { Icon } from "./icons.tsx";
-import { RowMenu } from "./Machines.tsx";
+import { CopyIconButton } from "./CopyButton.tsx";
 import { href } from "./route.ts";
 import { PanelFrame, useWide, type ShellContext } from "./Shell.tsx";
 import { Thread, findThread } from "./Thread.tsx";
@@ -58,8 +58,8 @@ const size = (n: number) => (n < 1024 ? `${n} B` : n < 1024 * 1024 ? `${Math.max
 /**
  * `base` is the library's `…/files` route. `thread`: the thread whose library it is; the thread that wrote the file
  * (`file.madeBy`, in the same pool) is shown in its place where there is one. It shows beside the file from the
- * split width up and a toggle away below it; without one the file shows on its own. `items` fill the ⋯ menu after
- * Download and Copy path, unless `onMenu` opens the library's own menu (rendered as `children`, inside the dialog).
+ * split width up and a toggle away below it; without one the file shows on its own. Download and Copy path are buttons
+ * in the header; `onMenu`, where given, adds a ⋯ that opens the library's own menu (rendered as `children`, inside the dialog).
  * `list`: the files it was opened among, in their order; a picture steps to the previous or next picture of them
  * with the buttons on its sides or Left and Right, through `onStep`, stopping at the ends.
  */
@@ -72,7 +72,6 @@ export function Viewer({ ctx, threads, file, base, shownPath, thread, list, onSt
   const wide = useWide();
   const [besideHidden, setBesideHidden] = useState(false);
   const [narrowPane, setNarrowPane] = useState<"file" | "thread">("file");
-  const [error, setError] = useState("");
   useEffect(() => { const el = ref.current; if (el && !el.open) el.showModal(); return () => el?.close(); }, []);
   // Going anywhere else (a link in the thread, Open as a page) closes the viewer.
   useEffect(() => { addEventListener("hashchange", onClose); return () => removeEventListener("hashchange", onClose); }, [onClose]);
@@ -105,15 +104,14 @@ export function Viewer({ ctx, threads, file, base, shownPath, thread, list, onSt
       {showFile && (
         <FilePane file={file} shownPath={shownPath} contentUrl={contentUrl()} viewUrl={viewUrl} steps={steps}
           actions={<>
-            {onMenu ? <button type="button" className="icon sm" aria-label="File actions" aria-haspopup="menu" title="File actions" onClick={onMenu}><Icon name="more" /></button>
-              : <RowMenu label="File actions" items={[
-                { label: "Download", onPick: download },
-                { label: "Copy path", onPick: () => { void navigator.clipboard?.writeText(file.path).catch((e: Error) => setError(e.message)); } },
-              ]} />}
+            <button type="button" className="icon sm" aria-label="Download" title="Download" onClick={download}><Icon name="download" /></button>
+            <CopyIconButton text={file.path} label="Copy path" className="icon sm" />
+            {onMenu && <button type="button" className="icon sm" aria-label="File actions" aria-haspopup="menu" title="File actions" onClick={onMenu}><Icon name="more" /></button>}
             {known && <button type="button" className="sm" title={`Thread: ${known.title || "New thread"}`} aria-pressed={showThread} onClick={toggleThread}>Thread</button>}
-            {/* With the thread beside, Close moves to the end of its header, the far right of the viewer. */}
-            {!(wide && showThread) && <button type="button" className="icon sm" aria-label="Close" title="Close" onClick={onClose}><Icon name="close" /></button>}
-          </>} onDownload={download} />
+          </>}
+          // With the thread beside, Close moves to the end of its header, the far right of the viewer.
+          close={!(wide && showThread) && <button type="button" className="icon sm viewer-close" aria-label="Close" title="Close" onClick={onClose}><Icon name="close" /></button>}
+          onDownload={download} />
       )}
       {showThread && known && (
         <section className="viewer-thread" aria-label={known.title || "New thread"}>
@@ -122,7 +120,6 @@ export function Viewer({ ctx, threads, file, base, shownPath, thread, list, onSt
           </PanelFrame>
         </section>
       )}
-      <ErrorText error={error} />
       {children}
     </dialog>
   );
@@ -134,8 +131,9 @@ type Steps = { at: number; count: number; go: (by: -1 | 1) => void };
 type Loaded = { kind: "loading" } | { kind: ViewKind; text?: string } | { kind: "error"; message: string };
 
 /** The file itself: its header line, then what it shows as. */
-function FilePane({ file, shownPath, contentUrl, viewUrl, steps, actions, onDownload }: {
-  file: ViewerFile; shownPath: string; contentUrl: string; viewUrl: string; steps?: Steps; actions: ReactNode; onDownload: () => void;
+function FilePane({ file, shownPath, contentUrl, viewUrl, steps, actions, close, onDownload }: {
+  file: ViewerFile; shownPath: string; contentUrl: string; viewUrl: string; steps?: Steps; actions: ReactNode;
+  /** Close, after the actions; on a phone it stays on the path's line and the actions take the line below. */ close: ReactNode; onDownload: () => void;
 }) {
   const byName = viewKindOf(file.name);
   const [state, setState] = useState<Loaded>({ kind: "loading" });
@@ -177,6 +175,7 @@ function FilePane({ file, shownPath, contentUrl, viewUrl, steps, actions, onDown
           )}
           {actions}
         </span>
+        {close}
       </div>
       <div className={`viewer-body${raw || kind === "text" || kind === "markdown" ? " viewer-scroll" : ""}`}>
         {state.kind === "loading" && <p className="empty">Loading…</p>}

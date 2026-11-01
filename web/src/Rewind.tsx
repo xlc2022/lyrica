@@ -2,6 +2,7 @@
 // regenerate with another model, delete). Deleting waits a few seconds, so it can be undone.
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import type { ModelRef, Pins, Pool, RemovalPlan, RewindRequest, ThreadSettings } from "./api.ts";
+import { CopyIconButton } from "./CopyButton.tsx";
 import { Icon } from "./icons.tsx";
 import { her } from "./name.ts";
 import { isChatModel, matchesModel } from "./ModelLabel.tsx";
@@ -51,26 +52,6 @@ export function MessageActions({ n, role, rewinder, text, model, onEdit, onRemem
       {react}
       <MessageMenu n={n} role={role} rewinder={rewinder} model={model} onRemember={onRemember} />
     </div>
-  );
-}
-
-/** Copy as an icon button: the icon becomes a check and the name Copied for 2 s, or Copy failed where the browser refuses (docs/ux.md §2). */
-function CopyIconButton({ text }: { text: string }) {
-  const [state, setState] = useState<"idle" | "copied" | "failed">("idle");
-  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
-  useEffect(() => () => clearTimeout(timer.current), []);
-  const copy = async () => {
-    let result: "copied" | "failed" = "copied";
-    try { await navigator.clipboard.writeText(text); } catch { result = "failed"; }
-    clearTimeout(timer.current);
-    setState(result);
-    timer.current = setTimeout(() => setState("idle"), 2000);
-  };
-  const label = state === "idle" ? "Copy" : state === "copied" ? "Copied" : "Copy failed";
-  return (
-    <button type="button" className="icon-btn quiet" data-state={state} aria-label={label} title={label} onClick={() => void copy()}>
-      <Icon name={state === "copied" ? "check" : state === "failed" ? "close" : "copy"} />
-    </button>
   );
 }
 

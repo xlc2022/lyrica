@@ -513,12 +513,12 @@ test("an image tool result shows inline, opens large, starts an edit with Images
   await expect(lightbox).toBeVisible();
   await expect(lightbox.locator(".fname")).toHaveText("garden.png");
   await expect(lightbox.getByRole("img")).toHaveAttribute("src", `${base}/file?path=${encodeURIComponent(path)}`);
-  await lightbox.getByRole("button", { name: "Image actions", exact: true }).click();
-  await expect(lightbox.getByRole("menuitem", { name: "Download", exact: true })).toBeVisible();
-  await expect(lightbox.getByRole("menuitem", { name: "Copy path" })).toBeVisible();
-  await page.keyboard.press("Escape");
-  await expect(lightbox).toBeVisible();
-  await expect(lightbox.getByRole("menu")).toBeHidden();
+  // Download and Copy path are buttons in its header, not behind a menu; Copy path reads Copied once it copies.
+  await expect(lightbox.getByRole("button", { name: "Download", exact: true })).toBeVisible();
+  await expect(lightbox.getByRole("button", { name: "Image actions", exact: true })).toHaveCount(0);
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]).catch(() => undefined);
+  await lightbox.getByRole("button", { name: "Copy path", exact: true }).click();
+  await expect(lightbox.getByRole("button", { name: /^(Copied|Copy failed)$/ })).toBeVisible();
   await lightbox.getByRole("button", { name: "Close", exact: true }).click();
   await expect(lightbox).toBeHidden();
   await page.getByRole("button", { name: "Attach or switch tools" }).click();
