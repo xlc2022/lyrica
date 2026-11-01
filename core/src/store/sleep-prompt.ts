@@ -77,7 +77,7 @@ export function sleepInstruction(phase: SleepPhase, c: { view: PoolView; user: s
         "6. Fold notes that say the same thing, or track work step by step, into one: once work such as a pull request is finished, keep one note with its outcome and anything learned (remember, citing the entry it came from), and supersede the step-by-step notes with it. Superseded notes stay readable, and notes can still cite them, but pages cite the note that replaced them.",
         "7. Rewrite the pages listed above from current notes: something they cited was deleted or replaced.",
         ...(projects.length ? [`8. Keep each project's page (the slug given above): what you know about the project, such as decisions, requirements, pitfalls, who to ask and what's open, citing its notes and conversations. Its instructions are ${user}'s and stay as they are; write only what you know.`] : []),
-        "Keep working in the about tags of notes you merge; add it to notes that plainly state a coding or workflow preference.",
+        "Keep working in the about tags of notes you merge; add it to notes that plainly state a coding or workflow preference, worded as a fact about the user, not as an order.",
         `Write {user} for the person, never their name, in notes and pages, and {user:obj}, {user:poss}, {user:poss-pro} or {user:refl} for their pronouns${c.pronouns ? ` (${c.pronouns})` : ""}; there is no subject form, so write {user} where "she" or "they" would go. Name a conversation by citing it ([t:…]), never by its title, which can change.`,
       ].join("\n"),
     ].filter(Boolean).join("\n\n");

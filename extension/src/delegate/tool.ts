@@ -3,7 +3,7 @@ import { LIVE_STATUSES, type Role, type SubagentRecord } from "@lyrica/core";
 import { Type, type Static } from "typebox";
 import { StringEnum } from "@earendil-works/pi-ai";
 import { memorySections } from "../memory.ts";
-import { codeTaskText } from "../code.ts";
+import { codeTaskText, EXECUTION_GUIDELINES, needsExecutionGuidelines } from "../code.ts";
 import { setToolsOff } from "../gate.ts";
 import { startsRequest, startText, toolGuidance, WORK_GUIDELINES, type ThreadContext } from "../index.ts";
 import { syncEntries } from "../record.ts";
@@ -261,9 +261,9 @@ export function createSubagentExtension(thread: ThreadContext, role: Role, hooks
     pi.on("session_start", (_event, ctx) => {
       setToolsOff(pi, ctx, "role", pi.getAllTools().map((t) => t.name).filter((n) => !allowed.has(n)));
     });
-    pi.on("before_agent_start", async (event) => {
+    pi.on("before_agent_start", async (event, ctx) => {
       const o = event.systemPromptOptions;
-      const tools = toolGuidance(o, WORK_GUIDELINES);
+      const tools = toolGuidance(o, [...WORK_GUIDELINES, ...(role.name === "coder" && needsExecutionGuidelines(ctx.model) ? [EXECUTION_GUIDELINES] : [])]);
       o.customPrompt = subagentPrompt(role, name);
       o.sections = { ...(tools ? { tools } : {}), ...o.sections };
       if (role.name === "coder") {

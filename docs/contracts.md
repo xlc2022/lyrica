@@ -2361,6 +2361,10 @@ when `task` or `done` is given, replaces the pool.db task text, emitting `settin
 `ThreadsHost.codeOn(from)` reads the thread's effective `code` setting.
 Outside a project chat, her first successful `edit` or `write` of a session
 while code mode is off carries `CODE_NUDGE`, once.
+The extension exports `EXECUTION_GUIDELINES` and `needsExecutionGuidelines(model)`
+(true for every model whose ID or name doesn't contain "claude"): code turns and
+the coder role add the guidelines when it's true. `CODER_PROMPT` is the coder
+role's prompt.
 `threads({ action: "model", model })` sets the thread's own Chat model (and
 its `code` model in code mode) to the one chat model the name fits, as a
 step's `model` resolves, from the next turn, emitting `settings` so the

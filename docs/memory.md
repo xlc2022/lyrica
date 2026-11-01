@@ -291,8 +291,10 @@ WAKE, about-user, the page index and sleep-item opening. They add each
 checkout's AGENTS.md or CLAUDE.md as `repo_rules`, read from the checkout,
 not memory (docs/contracts.md, extension). The persona is
 SOUL alone. `remember` asks for `working` on stated coding and workflow
-preferences; consolidation keeps that tag when merging notes and may add
-it to clear preferences.
+preferences, worded as a fact about the user rather than an order (an order
+reads later as a command that outranks the current request); consolidation
+keeps that tag when merging notes and may add it to clear preferences, with
+the same wording.
 
 `codeTask(threadId)` and `setCodeTask(threadId, task, done)` read and replace
 the latest task (300 characters) and progress (1,200 characters), with its

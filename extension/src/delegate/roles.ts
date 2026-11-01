@@ -18,12 +18,18 @@ export function subagentPrompt(role: Role, name = "Lyrica"): string {
   return `${SUBAGENT_PREAMBLE}\n\n${role.prompt}`.replace(/\bLyrica\b/g, () => name);
 }
 
+/** The coder's prompt: the code-mode guidelines, and the worker's rules on decisions, honesty and the final report. */
+export const CODER_PROMPT = `${CODE_GUIDELINES}
+If the work needs a product or design decision you weren't given, ask with ask_parent rather than deciding it yourself.
+If the task expects changes and you made none, say so; never report success you didn't achieve.
+End with: what you did, the files and commits you changed, which checks ran and what they showed, and any open risks.`;
+
 const READ = ["read", "bash", "recall", "read_memory"];
 
 export const BUILTIN_ROLES: readonly Role[] = [
   { name: "coder", description: "code changes in a repository: edit, test, fix",
     tier: "strong", tools: ["read", "write", "edit", "bash", "recall", "read_memory"],
-    readOnly: false, thinking: "high", prompt: CODE_GUIDELINES },
+    readOnly: false, thinking: "high", prompt: CODER_PROMPT },
   {
     name: "scout",
     description: "Fast reconnaissance: finds the files, facts and context another agent needs.",

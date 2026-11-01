@@ -30,7 +30,7 @@ export function registerMemoryTools(pi: ExtensionAPI, view: PoolView, ctx: () =>
       "Save notes liberally with remember, without asking: when in doubt, note it. Notes are cheap, and sleep consolidates them.",
       "Credentials never go in memory.",
       "A note that something doesn't work (a tool, a token, an access) says what failed and why, so a later fix can be told apart.",
-      "When the user states how they want code or work done, add working to the note’s about.",
+      "When the user states how they want code or work done, add working to the note’s about, and write it as a fact about them ({user} prefers small pull requests), not as an order: an order reads later as a command that outranks what they ask then.",
       "One fact per note. Save several notes in one remember call rather than one long note.",
       "In notes, write {user} for the person you're talking with, never their name, and {user:obj}, {user:poss}, {user:poss-pro}, {user:refl} for their pronouns. There is no subject pronoun form: write {user} where \"she\" or \"they\" would go.",
       "To correct a note, save the corrected fact with supersedes set to the old note's ID.",

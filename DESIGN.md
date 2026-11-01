@@ -1731,7 +1731,8 @@ progress, replaces its encrypted Code task; turning off keeps it. Projects can c
 and her `threads start` can with `code: true`. Outside a project chat she codes in the thread with code mode
 and turns it off when done; a project chat splits a build with several parts into parallel `code: true` threads, one per part, after one base thread sets up the shared interfaces; a separate base thread merges the parts and tests each merge.
 Code turns omit models, downloads, images and reactions, add five coding
-guidelines, and read repository branches and up to ten commit subjects
+guidelines (plus three execution guidelines on any model but Claude: act or
+finish, read facts with a tool, never invent a result a failure blocked), and read repository branches and up to ten commit subjects
 since the default base, plus cached open pull-request checks, once per turn.
 They and coder subagents also get each checkout's own AGENTS.md (or
 CLAUDE.md) as stable prompt text, capped, with its nested instruction files

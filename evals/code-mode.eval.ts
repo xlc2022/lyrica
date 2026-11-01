@@ -27,12 +27,12 @@ function fakePi() {
     getActiveTools: () => active,
     setActiveTools: (names: string[]) => { active = names; },
   } as unknown as ExtensionAPI;
-  const sessionManager = {};
-  return { pi, tools, async turn(prompt: string) {
+  const sessionManager = { getBranch: () => [] };
+  return { pi, tools, async turn(prompt: string, model?: { id: string; name: string }) {
     const options = { cwd: "/", customPrompt: "", selectedTools: [...active], sections: {} as Record<string, string> };
     const messages = [];
     for (const handler of handlers.get("before_agent_start") ?? []) {
-      const result = await handler({ messageType: "user", prompt, systemPrompt: "", systemPromptOptions: options }, { hasUI: false, sessionManager });
+      const result = await handler({ messageType: "user", prompt, systemPrompt: "", systemPromptOptions: options }, { hasUI: false, sessionManager, model });
       if (result?.message) messages.push(result.message.content);
     }
     return { options, text: JSON.stringify(options) + messages.join("\n"), active: [...active] };
@@ -67,6 +67,8 @@ describe("code mode scripted continuity", () => {
     for (const absent of ["STYLE-SENTINEL", "REGISTER-SENTINEL", "TOPIC-SENTINEL", "WAKE-SENTINEL", "ABOUT-SENTINEL", "PAGE-INDEX-SENTINEL", "fixture unrelated note"]) expect(on.text).not.toContain(absent);
     for (const tool of CODE_TOOLS_OFF) expect(on.active).not.toContain(tool);
     expect(repoReads).toBe(1);
+    expect(on.text).toContain("never end a reply on a plan or a promise");
+    expect(on.text).toContain("check that a library is already used");
     const recall = f.tools.get("recall");
     const result = (everywhere?: boolean) => recall.execute("call", { query: "fixture", everywhere });
     expect(JSON.stringify(await result())).not.toContain("fixture unrelated note");
@@ -76,9 +78,10 @@ describe("code mode scripted continuity", () => {
     for (const restored of ["STYLE-SENTINEL", "REGISTER-SENTINEL", "WAKE-SENTINEL", "ABOUT-SENTINEL"]) expect(off.text).toContain(restored);
     for (const tool of CODE_TOOLS_OFF) expect(off.active).toContain(tool);
     expect(off.text).toContain(CODING_GUIDELINE);
+    expect(off.text).not.toContain("never end a reply on a plan or a promise");
     const delegation = {
       recover: () => {}, depth: () => 0, limits: { depth: 1 }, newBudget: () => ({ left: 8 }),
-      roles: () => [...BUILTIN_ROLES], workflows: () => [],
+      roles: () => [...BUILTIN_ROLES], workflows: () => [], claudeCode: () => undefined,
     } as unknown as Delegation;
     createDelegateExtension(t.context, delegation)(f.pi);
     const plain = await f.turn("Fix the fixture’s failing test");
@@ -127,8 +130,12 @@ describe("code mode scripted continuity", () => {
     const coder = BUILTIN_ROLES.find(r => r.name === "coder")!;
     const sub = fakePi();
     createSubagentExtension(context, coder, { question: () => {}, note: () => true }, new Set(coder.tools))(sub.pi);
-    const prompt = await sub.turn("fixture");
+    const prompt = await sub.turn("fixture", { id: "qwen3.8-27b", name: "Qwen3.8 27B" });
     expect(prompt.text).toContain("PROJECT-SENTINEL");
+    expect(prompt.text).toContain("never report success you didn't achieve");
+    expect(prompt.text).toContain("never end a reply on a plan or a promise");
+    const onClaude = await sub.turn("fixture", { id: "claude-opus-5-5", name: "Claude Opus 5.5" });
+    expect(onClaude.text).not.toContain("never end a reply on a plan or a promise");
     expect(prompt.text).toContain("Coder fixture");
     expect(prompt.text).not.toContain("SOUL-SENTINEL");
     t.view.close();

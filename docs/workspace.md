@@ -1185,7 +1185,8 @@ come from the user's Git accounts (DESIGN.md, "Updates and self-editing").
   branch, merge or rebase the base before pushing, a pull request (then
   `lyricad` wakes the thread when its checks finish or someone reviews
   it), read a failing check's log and never merge on red, the merge
-  queue where there is one, delete merged branches. The project's instructions win where they differ.
+  queue where there is one, delete merged branches, and never discard or
+  overwrite files or changes she didn't make unless asked. The project's instructions win where they differ.
 
 ## MCP servers
 

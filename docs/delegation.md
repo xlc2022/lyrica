@@ -219,7 +219,7 @@ tool in the subagent's thread only.
 | claude | Claude Code ([below](#claude-code)) | Claude Code's own | yes |
 
 Prompts are adapted from `pi-subagents` 0.76.1 (MIT, credited in
-`roles.ts`; coder uses the five code-mode guidelines). A task with no role
+`roles.ts`; coder uses the five code-mode guidelines plus the worker's rules on decisions, honest reporting and its final report, `CODER_PROMPT`). On a model that isn't Claude, coder's prompt also carries the three execution guidelines (`EXECUTION_GUIDELINES`, below). A task with no role
 gets coder when the thread has a repository and the run permits writes;
 otherwise it gets worker. A project chat's folders and clones are read-only
 to it, so to its subagents too, and a task there with no role gets worker. Custom coder roles override the built-in too.
