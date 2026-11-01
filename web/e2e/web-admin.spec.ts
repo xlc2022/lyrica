@@ -2265,3 +2265,16 @@ test("a long From sleep row opens its own text in place and starts no chat", asy
   await expect(trellis).toHaveCount(0);
   await expect(card.locator(".sleep-item").filter({ hasText: "second trellis" })).toHaveCount(0);
 });
+
+// After the From sleep test, since this one adds sleep items of its own: Status reads a pool's last
+// sleep as one line (pool, start, length and outcome), not one part per line.
+test("Status reads each pool's last sleep on one line", async ({ page, baseURL, request }) => {
+  const userId = await enter(page, baseURL!);
+  expect((await request.post(`http://127.0.0.1:${Number(new URL(baseURL!).port) + 10}/sleep-item-fixture`, { data: { userId } })).ok()).toBe(true);
+  await page.goto(`/#/u/${userId}/admin/status`);
+  const run = page.locator(".sleep-run").filter({ hasText: "General" }).first();
+  await expect(run).toContainText("Skipped: nothing new");
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/status-sleep-${page.viewportSize()!.width}.png` });
+  if (page.viewportSize()!.width > 600) expect((await run.boundingBox())!.height).toBeLessThan(30);
+  await noHorizontalScroll(page);
+});

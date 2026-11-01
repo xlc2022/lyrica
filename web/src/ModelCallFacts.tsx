@@ -162,8 +162,8 @@ export function ModelCallFacts({ facts }: { facts: Facts }) {
   const series = seriesOf(facts.models, theme, t.edge);
   const legend = [...new Map(series.map((s) => [s.name, s])).values()];
   const total = { calls: facts.models.reduce((n, m) => n + m.calls, 0), tokens: facts.models.reduce((n, m) => n + m.outputTokens, 0), fallbacks: facts.models.reduce((n, m) => n + m.fallbacks, 0) };
-  return <section aria-label="Model calls" className="model-calls">
-    <h3 style={{ fontSize: 15 }} title="Your own retained call records in displayed pools, across all recorded tasks. A turn's retries replace its record; tool requests update its pace. Claude Code relay totals are not call records. Deleted and pruned records are excluded.">Model calls · last <span className="num">24</span> hours</h3>
+  return <section aria-label="Model calls" className="card model-calls">
+    <h2 title="Your own retained call records in displayed pools, across all recorded tasks. A turn's retries replace its record; tool requests update its pace. Claude Code relay totals are not call records. Deleted and pruned records are excluded.">Model calls · last <span className="num">24</span> hours</h2>
     <p className="muted" title="Nightly pruning keeps the latest 500 records across both pools. Earlier calls within these 24 hours may be missing; counts are not complete daily activity.">Retained history · {facts.pools.map((p) => p === "general" ? "General" : "Private").join(" and ") || "No pools shown"} · pruned to latest <span className="num">500</span> records per user</p>
     {facts.models.length ? <>
       <p><span className="num">{total.calls.toLocaleString()}</span> {total.calls === 1 ? "call" : "calls"} · <span className="num">{tokenCount(total.tokens)}</span> output tokens · <span title={FALLBACK_WHY}>Recorded fallbacks</span> <span className="num">{total.fallbacks}</span></p>

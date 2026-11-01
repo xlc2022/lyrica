@@ -1866,8 +1866,9 @@ code.raw { font-size: 12px; overflow-wrap: anywhere; }
 
 /* Administration → Status (docs/ux.md, Recorded model activity and Status): its hosts, one legend above four charts in
    two columns (one on a phone), each with a hover tip, then a row per model copy. */
-.status-hosts, .model-calls { display: grid; gap: 10px; min-width: 0; }
+.status-hosts, .model-calls { gap: 10px; }
 .status-host { display: grid; gap: 6px; }
+.status-host + .status-host { border-top: 1px solid var(--line); padding-top: 10px; }
 .status-host .name { font-weight: 600; }
 .chart-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0; padding: 0; list-style: none; font-size: 13px; }
 .chart-legend li { display: inline-flex; align-items: center; gap: 6px; min-width: 0; overflow-wrap: anywhere; }
