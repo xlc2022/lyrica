@@ -1184,6 +1184,25 @@ failing command, its checkout and short head commit, and the last 20 lines
 `ThreadsHost.checksExhausted?(userId, pool, thread, report)`, and
 `ChildThreads` delivers it to a child's parent when the turn ends, waking
 it at once, in place of the turn's other end notice.
+With `judge(prompt, signal?)` and `codeTask()` (the daemon gives them to a
+thread that is neither a project chat nor a subagent; `judge` answers
+`judgePrompt(…)` on the thread's `code` list through `callWithFallback`),
+it then judges the reply once the checks pass or there are none: a
+`lyrica-evidence` notice ("Evidence checked: …" or "Evidence not shown: …",
+`EvidenceResult { ok, reason }` details that the daemon turns into a
+`delegation` part with status `evidence-checked` or `evidence-not-shown`)
+and, on `continue`, a hidden `lyrica-evidence-continue` follow-up, at most
+`EVIDENCE_ROUNDS` (2) a run, the same reason twice ending them
+(`extension/src/evidence.ts`: `judgePrompt`, `parseVerdict`, `continueAsk`).
+`createSyntaxExtension({ target(machine?) })` appends "Syntax check
+failed: …" to a successful `write` or `edit` of a .js, .mjs, .cjs, .json or
+.py file whose checker fails on the target, within 10 seconds (exit 127, a
+timeout or a throw add nothing). `createRepairExtension()`, in every
+session `openThreadSession` opens, rewrites a reply's tool calls on
+`message_end` before validation: `parsedArguments(args, parameters)` parses
+JSON strings where the schema wants an object or array, and `TOOL_ALIASES`
+maps other harnesses' names to hers when no tool has the name and hers is
+active, noting it in the result; "Tool X not found" is reworded with her active tools.
 Code turns use SOUL only, no topic routing, WAKE, about-user, page index or
 sleep opening; project, folders and pins remain. `setToolsOff` with reason
 `code` removes `models`, `download_model`, `model_files`, `image`, `react`.

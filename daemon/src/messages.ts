@@ -1,5 +1,5 @@
 import { FROM_PARENT, LYRICA_REACTS, ROOT_TOOL, ROUTINE, WAKEUP, WATCHING, type Reaction as StoredReaction } from "@lyrica/core";
-import { type ChecksResult, CHECKS_NOTICE, DELEGATE_MESSAGE, EMPTY_REPLY_NOTICE, INTERRUPTED_NOTICE, TURN_TOOL_NOTICE, OPENING, PAID_FALLBACK, type PaidFallback, USER_MESSAGE } from "@lyrica/extension";
+import { type ChecksResult, CHECKS_NOTICE, type EvidenceResult, EVIDENCE_NOTICE, DELEGATE_MESSAGE, EMPTY_REPLY_NOTICE, INTERRUPTED_NOTICE, TURN_TOOL_NOTICE, OPENING, PAID_FALLBACK, type PaidFallback, USER_MESSAGE } from "@lyrica/extension";
 import type { Message, MessagePart, Pool, Reaction, RootStep, ThreadRef, Told } from "./api.ts";
 
 // Stored Pi entries as the web UI shows them, and the memory markers that both
@@ -172,6 +172,13 @@ export function toMessages(threadId: string, pool: Pool, entries: { n: number; d
       const list = (cs: string[] = []) => cs.map((c) => `\`${c}\``).join(", ");
       const text = d ? (ok ? list(d.passed) : `${list(d.failed)}${d.passed?.length ? `. Passed: ${list(d.passed)}` : ""}`) : textOf(e.content);
       out.push({ id: `e:${threadId}#${n}`, n, createdAt, role: "notice", parts: [{ type: "delegation", text, status: ok ? "checks-passed" : "checks-failed" }] });
+      continue;
+    }
+    if (e.type === "custom_message" && e.customType === EVIDENCE_NOTICE) {
+      // Head "Evidence" with a checked or not-shown state; the body is the judge's reason.
+      const d = (e as { details?: Partial<EvidenceResult> }).details;
+      const ok = d?.ok ?? textOf(e.content).startsWith("Evidence checked");
+      out.push({ id: `e:${threadId}#${n}`, n, createdAt, role: "notice", parts: [{ type: "delegation", text: d?.reason ?? textOf(e.content), status: ok ? "evidence-checked" : "evidence-not-shown" }] });
       continue;
     }
     if (e.type === "custom_message" && e.customType === EMPTY_REPLY_NOTICE) {

@@ -1467,6 +1467,54 @@ thread to carry on with CI as the judge, saves the known failure with
 it (`daemon/src/children.ts`, `checksReport`). The output stays in the encrypted
 conversation and is never logged (`extension/src/checks.ts`).
 
+### The evidence check
+
+Principles 2 and 6: once the checks pass, or where the project has none, the
+same reply is judged against what the turn's tools showed, so "done" rests
+on evidence rather than on her word (docs/briefs/code-evidence.md). One call
+goes to the thread's own `code` model list through the router, so a private
+or local-only thread's stays local and no model is added. The judge (its
+prompt adapted from opencode's goal judge, MIT) sees the person's request
+and the Code task as data, each tool call of the turn with the last 60
+lines of its result (at most 80 calls and 60,000 characters, newest kept),
+and her reply, marked as a claim and not evidence. It answers one JSON line:
+`done`, `continue` with what isn't shown and the next step, or `blocked`
+with what only the person can give. A `continue` goes back to her unseen,
+as a failing check does, and she works on in the same run: at most 2
+rounds, the second telling her to say plainly what is unverified, and the
+same reason twice ends them. An answer that isn't a verdict, or a judge that
+can't run, counts as `done` and says so. Each judgment shows an
+**Evidence** notice beside **Checks**, **checked** or **not shown**, with
+the judge's reason as its body. It never runs in a project chat, in Plan
+mode or for a subagent (its parent reads the report). The prompt and
+answer stay in the encrypted conversation and are never logged.
+
+### Syntax check after a write
+
+Principle 2: after a successful `write` or `edit` of a `.js`, `.mjs`,
+`.cjs`, `.json` or `.py` file, one file-local check runs where the file
+went, with 10 seconds: `node --check`, `JSON.parse` through `node -e`, or
+Python's `ast.parse` through `python3 -I -c` (never `py_compile`, which writes
+`__pycache__`). A failure is appended to the tool's result ("Syntax check
+failed: …", the last 20 lines, secrets masked); a pass, a missing checker or
+a check that ran out of time adds nothing. TypeScript and other languages
+are left to the project's checks, which know its configuration
+(`extension/src/syntax.ts`, also for coder subagents).
+
+### Tool-call repair
+
+Principle 2: a small model's call that is nearly right runs rather than
+failing on its shape (`extension/src/repair.ts`, every session). As a reply
+ends and before Pi validates its calls, an object or array sent as a JSON
+string is parsed when it parses to that type, and a call to a tool named
+as another harness names it (`read_file`, `write_file`, `str_replace`,
+`apply_edit`, `shell`, `terminal`, `run_command`) runs as hers (`read`,
+`write`, `edit`, `bash`) when no tool has that name and hers is active (one
+turned off stays an unknown name), with "There is no X
+tool, so this ran as Y. Call Y next time." added to its result; the call
+still goes through every approval and mode rule. A name nothing matches
+answers with her active tools listed.
+
 ## Project command rules
 
 Principles 6, 2 and 8: a project keeps at most 100 Allow, Ask or Forbid
