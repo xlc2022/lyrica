@@ -799,8 +799,8 @@ eBay's public APIs, read-only, with a free eBay developer keyset. It runs
 as a command in the thread's sandbox: on NixOS `services.lyrica.ebayMcp =
 true` installs it among her sandbox tools, on Debian `npm install -g
 --prefix /opt/lyrica/tools @ebay/npm-public-api-mcp` does. Then add it
-under Settings, **MCP servers** as the command `ebay-mcp-server` with the keyset in its
-Environment field: [ebay-mcp.md](ebay-mcp.md).
+under Settings, **MCP servers** as the command `ebay-mcp-server` with
+the keyset in its Environment field: [ebay-mcp.md](ebay-mcp.md).
 
 ## Give her repositories
 
@@ -1218,7 +1218,8 @@ Claude Code, Codex, Chromium and eBay's MCP server an install from before
 2026-11-01 left in `/usr/local`; then it lists what it kept:
 `/var/lib/lyrica`, the update snapshots (`/var/lib/lyrica-snapshots`,
 `/var/lib/lyrica-update`), Caddy's certificates, her Tailscale node, the
-ZIM files and the three service users. `--purge` deletes those too and removes the users.
+ZIM files and the three service users. `--purge` deletes those too and
+removes the users.
 
 Neither removes an apt package (bubblewrap, gocryptfs, Node and the rest
 in "On Debian or Ubuntu", `tailscale`, `kiwix-tools`) or the Tailscale
