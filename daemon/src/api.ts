@@ -2134,6 +2134,15 @@ export interface TailnetJoin { authKey: string; hostname?: string; controlServer
 export interface SleepTime { time: string }
 
 /**
+ * GET /api/u/:userId/web/page?url=<address> → OfflinePage: an article of the offline copy of Wikipedia
+ * (`kiwixArticle`), for a source under her reply to open in the app. `url` is a wikipedia.org page a book
+ * copies, or a page on the server's kiwix-serve; `text` is its Markdown, its pictures as Markdown images at
+ * the end; `copy` names the copy ("the offline copy of Wikipedia (2026-08)"). A picture, a page no book has,
+ * any other URL, or no kiwix-serve set: 404; nothing is fetched online. Any signed-in user.
+ */
+export interface OfflinePage { copy: string; text: string }
+
+/**
  * GET /api/u/:userId/admin/web-search → WebSearch; PUT `{ searxng?, kiwix? }` → WebSearch (null or "" clears
  * one, a field left out keeps it).
  * The server's SearXNG, for every thread's web_search; the state is a test search made on each call.

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { forgetKiwixBooks, kiwixBooks, kiwixLines, kiwixPage, kiwixPicture, kiwixSearch, kiwixStatus } from "../src/kiwix.ts";
+import { forgetKiwixBooks, kiwixArticle, kiwixBooks, kiwixLines, kiwixPage, kiwixPicture, kiwixSearch, kiwixStatus } from "../src/kiwix.ts";
 
 // The offline copy of Wikipedia on kiwix-serve, as web_search and web_fetch
 // read it (docs/contracts.md, "web_search and web_fetch"). The replies are
@@ -142,6 +142,21 @@ describe("the offline copy of Wikipedia", () => {
     expect(["image/webp", "image/png"]).toContain(picture.mimeType);
     expect(await kiwixPage(A, new URL(`${A}/content/other_book/Lute`), undefined, f)).toBeUndefined();
     expect(await kiwixPage(A, new URL(`${A}/content/${BOOK}/Missing`), undefined, f)).toBeUndefined();
+  });
+
+  it("gives the web UI an article as Markdown with its pictures as images, and nothing that isn't the copy's", async () => {
+    const { f, urls } = serve({ pages: { "A/Lute": ARTICLE } });
+    const article = await kiwixArticle(A, "https://en.wikipedia.org/wiki/Lute", undefined, f);
+    expect(article?.copy).toBe("the offline copy of Wikipedia (2026-06)");
+    expect(article?.text.split("\n")[0]).toBe("# Lute");
+    expect(article?.text).not.toContain("readable with web_fetch");
+    expect(article?.text.endsWith(`## Pictures\n\n![A Renaissance lute](<${A}/content/${BOOK}/I/Lute_photo.webp>)`)).toBe(true);
+    const asked = urls.length;
+    // A picture, another site, a page no book has: none, and no other host is asked.
+    for (const u of [`${A}/content/${BOOK}/I/Lute_photo.webp`, "https://example.org/wiki/Lute", "https://en.wikipedia.org/wiki/Nope", "javascript:alert(1)", "not a url"]) {
+      expect(await kiwixArticle(A, u, undefined, f)).toBeUndefined();
+    }
+    expect(urls.slice(asked).every((u) => u.startsWith(`${A}/`))).toBe(true);
   });
 
   it("gives the web UI a picture of its own, and nothing else, never asking another host", async () => {

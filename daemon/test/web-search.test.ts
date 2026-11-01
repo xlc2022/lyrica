@@ -100,6 +100,21 @@ describe("web search", () => {
     expect((await picture(lute, "")).status).not.toBe(200);
   });
 
+  it("gives a signed-in user an article of the offline copy, and nothing else", async () => {
+    const { rt, base, ada, url } = await setup();
+    const k = await kiwix();
+    const page = (u: string, cookie = ada.cookie) => fetch(`${base}/api/u/${rt.ada.id}/web/page?url=${encodeURIComponent(u)}`, { headers: cookie ? { cookie } : {} });
+    expect((await page("https://en.wikipedia.org/wiki/Lute")).status).toBe(404);
+    await ada.put(url, { kiwix: k });
+    const res = await page("https://en.wikipedia.org/wiki/Lute");
+    expect(res.status).toBe(200);
+    const body = await res.json() as { copy: string; text: string };
+    expect(body.copy).toBe("the offline copy of Wikipedia (2026-06)");
+    expect(body.text).toContain("Lute");
+    for (const u of [`${k}/content/wikipedia_en_all_nopic_2026-06/I/Lute.webp`, "https://en.wikipedia.org/wiki/Nope", "https://example.org/wiki/Lute", `${k}/catalog/v2/entries`]) expect((await page(u)).status).toBe(404);
+    expect((await page("https://en.wikipedia.org/wiki/Lute", "")).status).not.toBe(200);
+  });
+
   it("never sends a basic-auth password back, and keeps it while the user@host stays", async () => {
     const { ada, url, logs } = await setup();
     const host = await searxng({ auth: "lyrica:s3cret-pw" });

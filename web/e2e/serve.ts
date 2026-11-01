@@ -13,7 +13,7 @@
 // answers with that markdown as written (the echo's "You said: " would put a
 // fence mid-line, where it is not a fence), a look at a project's
 // threads (the `watching` call) tells the first thread it wasn't about "Heads up:
-// the plan changed.", /searxng is a SearXNG answering JSON, /kiwix a kiwix-serve with one book and one picture (I/Lute.png), anything else gets a few streamed sentences that echo it. /local/v1 serves "local-model"
+// the plan changed.", /searxng is a SearXNG answering JSON, /kiwix a kiwix-serve with one book, one article (A/Lute) and one picture (I/Lute.png), anything else gets a few streamed sentences that echo it. /local/v1 serves "local-model"
 // and /cloud/v1 "cloud-model"; /long/v1 serves one model with a long id, for a header line that has to shrink. /speech/v1 is a speech server: "whisper"
 // transcribes any clip as "hello from the fake" and "kokoro" speaks a second
 // of PCM; POST /speech/down and /speech/up make the whole server fail (503)
@@ -167,6 +167,11 @@ function fakeModel() {
       if (req.url === "/kiwix/raw/wikipedia_en_all_nopic_2026-06/content/I/Lute.png") {
         res.writeHead(200, { "content-type": "image/png" });
         return res.end(LUTE_PNG);
+      }
+      // Its one article, which web_fetch reads for https://en.wikipedia.org/wiki/Lute, showing the picture.
+      if (req.url === "/kiwix/raw/wikipedia_en_all_nopic_2026-06/content/A/Lute") {
+        res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+        return res.end(`<!doctype html><html><head><title>Lute</title></head><body><div id="mw-content-text"><h1>Lute</h1><figure><img src="../I/Lute.png" alt="A Renaissance lute"></figure>${"<p>A lute is any plucked string instrument with a neck and a deep round back enclosing a hollow cavity.</p>".repeat(6)}<p>See also <a href="Oud">Oud</a>.</p></div></body></html>`);
       }
       // A kiwix-serve at /kiwix, with one book in its catalog.
       if (req.url === "/kiwix/catalog/v2/entries") {

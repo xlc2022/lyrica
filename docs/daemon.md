@@ -38,6 +38,13 @@ is 404; a missing login is 401.
   same no-store, nosniff and sandbox CSP as thread images. Anything else, or
   no kiwix-serve set, is 404, and no other host is ever asked. Any signed-in
   user may ask.
+- `GET /api/u/:userId/web/page?url=<address>` returns `OfflinePage`
+  (`{ copy, text }`): an article of the offline copy (`kiwixArticle`), for a
+  source under her reply to open in the app. `url` is a wikipedia.org page a
+  book copies or a page on the server's kiwix-serve, read as web_fetch reads
+  it (`kiwixPage`), its pictures as Markdown images at the end. A picture, a
+  page no book has, any other URL, or no kiwix-serve set is 404; nothing is
+  fetched online. Any signed-in user may ask.
 - `GET /api/u/:userId/photo-cloud` returns `{ policy }`; `PUT` accepts
   `{ policy: "never" | "ask" | "always" }`, returns the saved setting, and
   clears the user's daily approval. Other values are 400. Default is `ask`;

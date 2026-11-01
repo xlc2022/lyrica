@@ -20,6 +20,7 @@ import { findThread } from "./Thread.tsx";
 import { EditBox, MessageActions, MessageMenu, type Rewinder } from "./Rewind.tsx";
 import { shortModel } from "./ModelLabel.tsx";
 import { ConfirmDialog, ErrorText, fullTime, Prose, useAction, useDismiss, wakeTime } from "./ui.tsx";
+import { OfflinePage } from "./OfflinePage.tsx";
 import { basename, fileTarget, InlineImage, isImagePath, isUnderWorkdir, largeUrl, Lightbox, PathText, SHARED, useFileLinks, type FileLinks } from "./paths.tsx";
 import { CopyButton } from "./CopyButton.tsx";
 import type { ReactNode } from "react";
@@ -125,7 +126,7 @@ export function Conversation({ ctx, pool, base, threadId, subagent, thread, rewi
   );
 }
 
-interface Env {
+export interface Env {
   questions: Map<string, QuestionState>;
   questionChanged: () => void;
   busy: boolean;
@@ -468,13 +469,20 @@ function Sep() {
  */
 /**
  * A page she read in a turn: its URL, the title web_fetch headed it with (a picture's name for a picture from the
- * offline copy), what to show for where it came from, and whether it is on the server's own loopback, which a browser
- * can't open.
+ * offline copy), what to show for where it came from, whether it is on the server's own loopback, which a browser
+ * can't open, and whether it came from the offline copy (core/src/kiwix.ts): a picture, which lyricad serves
+ * (`/web/picture`), or an article, which it reads for the app (`/web/page`).
  */
-export interface Source { url: string; title?: string; host: string; local?: boolean }
+export interface Source { url: string; title?: string; host: string; local?: boolean; picture?: boolean; offline?: boolean }
 
 /** Which offline copy a fetch read from, as kiwix.ts names it ("the offline copy of Wikipedia (2026-08)"), without the date. */
 const OFFLINE = /^(?:A picture from|Outside content from \S+ \() ?the offline copy of (.+?)(?: \(\d{4}-\d{2}\))?(?::|\), not from the user:)/;
+
+/** "Offline Wikipedia" when a web_fetch result came from the offline copy instead of the address she asked for. */
+export function offlineCopyOf(result: string | undefined): string | undefined {
+  const copy = result === undefined ? undefined : OFFLINE.exec(result)?.[1]?.trim();
+  return copy ? `Offline ${copy}` : undefined;
+}
 
 /** A picture's name from its path: the file name with underscores as spaces and without its extensions. */
 function pictureName(url: URL): string {
@@ -489,7 +497,7 @@ const isLoopback = (host: string) => /^(127\.\d+\.\d+\.\d+|localhost|\[::1\])$/i
 /**
  * The pages her web_fetch calls read (since the person's last message or her last words, conversationNodes), once each in the order she read them: the URL she asked for (http or
  * https only), and the "# " title line that follows the outside-content marker in the result (core/src/web.ts). A read from
- * the offline copy (core/src/kiwix.ts) names the copy ("Offline Wikipedia") in place of a loopback host, and a picture
+ * the offline copy (core/src/kiwix.ts) names the copy ("Offline Wikipedia") in place of the host, and a picture
  * from it takes the picture's name as its title.
  */
 export function sourcesOf(parts: MessagePart[]): Source[] {
@@ -503,20 +511,23 @@ export function sourcesOf(parts: MessagePart[]): Source[] {
     const copy = OFFLINE.exec(p.result)?.[1]?.trim();
     const picture = p.result.startsWith("A picture from ");
     const title = picture ? pictureName(url) : /^<<<web [0-9a-f]+>>>\n# (.+)$/m.exec(p.result)?.[1]?.trim();
-    const host = copy && local ? `Offline ${copy}` : url.hostname.replace(/^www\./, "");
-    seen.set(url.href, { url: url.href, title: title || undefined, host, ...(local ? { local } : {}) });
+    const host = copy ? `Offline ${copy}` : url.hostname.replace(/^www\./, "");
+    seen.set(url.href, { url: url.href, title: title || undefined, host, ...(local ? { local } : {}), ...(copy ? (picture ? { picture: true } : { offline: true }) : {}) });
   }
   return [...seen.values()];
 }
 
 /**
- * Principle 1: where her answer came from, under her reply (docs/ux.md, "The pages she read"). Each opens in a new tab,
- * except one on the server's loopback when this page isn't itself on a loopback address: the browser can't reach it, so
- * it is a plain chip.
+ * Principle 1: where her answer came from, under her reply (docs/ux.md, "The pages she read"). One read from the
+ * offline copy opens in the app, as she read it: an article in a viewer, a picture large, both through lyricad.
+ * Any other opens in a new tab, except one on the server's loopback while this page isn't itself on a loopback
+ * address: the browser can't reach it, so it is a plain chip.
  */
-function Sources({ sources }: { sources: Source[] }) {
+function Sources({ sources, env }: { sources: Source[]; env: Pick<Env, "userId" | "pool" | "threadId" | "large"> }) {
   const label = useId();
+  const files = useFileLinks(env.userId, env.pool, env.threadId);
   const here = isLoopback(window.location.hostname);
+  const [open, setOpen] = useState<Source>();
   return (
     <div className="sources">
       <span className="sources-label" id={label}>Sources</span>
@@ -526,13 +537,15 @@ function Sources({ sources }: { sources: Source[] }) {
           const inner = <>{s.title && <span className="source-title">{s.title}</span>}<span className="source-host">{s.host}</span></>;
           return (
             <li key={s.url}>
-              {s.local && !here
-                ? <span className="source" title={`${tip}\nOnly the server can open this address.`}>{inner}</span>
+              {s.picture && files.picture ? <button type="button" className="source" title={tip} onClick={() => env.large(s.url, files)}>{inner}</button>
+                : s.offline ? <button type="button" className="source" title={tip} onClick={() => setOpen(s)}>{inner}</button>
+                : s.local && !here ? <span className="source" title={`${tip}\nOnly the server can open this address.`}>{inner}</span>
                 : <a className="source" href={s.url} target="_blank" rel="noopener noreferrer" title={tip}>{inner}</a>}
             </li>
           );
         })}
       </ul>
+      {open && createPortal(<OfflinePage url={open.url} title={open.title || open.host} online={open.local && !here ? undefined : new URL(open.url).hostname} env={env} onClose={() => setOpen(undefined)} />, document.body)}
     </div>
   );
 }
@@ -594,7 +607,7 @@ function Parts({ parts, env, model, streaming, n, at, folded, reactions, bare, s
         {env.rewinder && n !== undefined && env.rewinder.pinned.has(n) && <span className="badge pin-badge">pinned</span>}
       </div>
       {out}
-      {sources.length > 0 && <Sources sources={sources} />}
+      {sources.length > 0 && <Sources sources={sources} env={env} />}
       {n !== undefined && <ReactionChips n={n} reactions={reactions} reactor={env.rewinder} her={who} />}
       {env.rewinder && n !== undefined && (
         <MessageActions n={n} role="assistant" rewinder={env.rewinder} model={model} text={parts.filter((p) => p.type === "text").map((p) => p.text).join("\n")} onRemember={() => setRemembering(true)}
@@ -765,7 +778,9 @@ function Marker({ part, env }: { part: Exclude<MessagePart, { type: "text" | "im
       // A call on a machine names it first, and an MCP call its server.
       const mcp = mcpOf(part.name);
       const place = mcp?.server ?? machineOf(part.args);
-      label = <>{place && <b className="place">{place}</b>}<b className="tool-name">{mcp?.tool ?? part.name}</b> <code>{summarizeArgs(part.args)}</code> <span className="state" data-state={state}>{state}</span></>;
+      // A web_fetch the offline copy answered says so: the URL she asked for was never fetched online.
+      const copy = part.name === "web_fetch" && !part.isError ? offlineCopyOf(part.result) : undefined;
+      label = <>{place && <b className="place">{place}</b>}<b className="tool-name">{mcp?.tool ?? part.name}</b> <code>{summarizeArgs(part.args)}</code> {copy && <><span className="via">from {copy}</span> </>}<span className="state" data-state={state}>{state}</span></>;
       if (part.name === "image") {
         const args = (part.args ?? {}) as { action?: string; tier?: string; images?: unknown };
         const making = makingLabel(args);

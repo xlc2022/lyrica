@@ -209,7 +209,10 @@ async function pathOf(address: string, book: KiwixBook, title: string, signal?: 
 }
 
 /** What the offline copy gives web_fetch: a page as Markdown, or a picture's bytes, and which copy it came from. */
-export type KiwixRead = { copy: string } & (FetchedPage | { image: Buffer; mimeType: string });
+export type KiwixRead = { copy: string } & ((FetchedPage & { pictures?: KiwixPicture[] }) | { image: Buffer; mimeType: string });
+
+/** A picture an article shows: its address on kiwix-serve and its alt text. */
+export interface KiwixPicture { src: string; alt: string }
 
 /** How many of an article's pictures are listed under it, and how large a picture may be. */
 const PICTURES = 12, PICTURE_MB = 5;
@@ -222,19 +225,38 @@ const PICTURES = 12, PICTURE_MB = 5;
 function page(address: string, url: string, html: string, book: KiwixBook, here: string): KiwixRead {
   const copy = `the offline copy of ${book.title}${book.date ? ` (${book.date.slice(0, 7)})` : ""}`;
   const md = htmlMarkdown(html, url);
-  const pictures: string[] = [];
+  const pictures: KiwixPicture[] = [];
   try {
     const { document } = parseHTML(html);
     for (const img of document.querySelectorAll("img[src]")) {
       let src: string;
       try { src = new URL(img.getAttribute("src")!, here).href; } catch { continue; }
-      if (!src.startsWith(`${address}/content/${encodeURIComponent(book.id)}/`) || pictures.some((p) => p.startsWith(src))) continue;
+      if (!src.startsWith(`${address}/content/${encodeURIComponent(book.id)}/`) || pictures.some((p) => p.src === src)) continue;
       const alt = (img.getAttribute("alt") ?? "").replace(/\s+/g, " ").trim();
-      pictures.push(`${src}${alt ? ` (${alt})` : ""}`);
+      pictures.push({ src, alt });
       if (pictures.length >= PICTURES) break;
     }
   } catch { /* the text alone */ }
-  return { text: pictures.length ? `${md.text}\n\nPictures, each readable with web_fetch:\n${pictures.map((p, i) => `${i + 1}. ${p}`).join("\n")}` : md.text, copy };
+  const list = pictures.map((p, i) => `${i + 1}. ${p.src}${p.alt ? ` (${p.alt})` : ""}`).join("\n");
+  return { text: pictures.length ? `${md.text}\n\nPictures, each readable with web_fetch:\n${list}` : md.text, copy, pictures };
+}
+
+/**
+ * An article of the offline copy for the web UI to show, as Markdown: the
+ * page web_fetch reads (`kiwixPage`), with its pictures as Markdown images
+ * at the end instead of web_fetch's list. Undefined for a picture, a page no
+ * book has, any other URL, or kiwix-serve not answering: never online.
+ */
+export async function kiwixArticle(address: string, url: string, signal?: AbortSignal, f: typeof fetch = fetch): Promise<{ copy: string; text: string } | undefined> {
+  let u: URL;
+  try { u = new URL(url); } catch { return undefined; }
+  if ((u.protocol !== "http:" && u.protocol !== "https:") || u.username || u.password) return undefined;
+  const read = await kiwixPage(address, u, signal, f, true).catch(() => undefined);
+  if (!read || "image" in read || read.isError) return undefined;
+  const pictures = read.pictures ?? [];
+  const body = pictures.length ? read.text.slice(0, read.text.lastIndexOf("\n\nPictures, each readable with web_fetch:")) : read.text;
+  const alt = (s: string) => s.replace(/[[\]\\]/g, "");
+  return { copy: read.copy, text: pictures.length ? `${body}\n\n## Pictures\n\n${pictures.map((p) => `![${alt(p.alt)}](<${p.src}>)`).join("\n\n")}` : body };
 }
 
 /**
@@ -281,8 +303,9 @@ export async function pictureForModel(bytes: Buffer, mimeType: string): Promise<
  * language a book copies (read by its title, then as kiwix-serve suggests
  * it), or a page of kiwix-serve's own. Undefined when no book has it, so
  * web_fetch goes online; an error only when kiwix-serve can't be asked.
+ * `pagesOnly`: a picture is undefined, without reading its bytes.
  */
-export async function kiwixPage(address: string, url: URL, signal?: AbortSignal, f: typeof fetch = fetch): Promise<KiwixRead | undefined> {
+export async function kiwixPage(address: string, url: URL, signal?: AbortSignal, f: typeof fetch = fetch, pagesOnly = false): Promise<KiwixRead | undefined> {
   const where = locate(address, url, await books(address, signal, f));
   if (!where) return undefined;
   const read = async (book: KiwixBook, path: string): Promise<KiwixRead | undefined> => {
@@ -292,6 +315,8 @@ export async function kiwixPage(address: string, url: URL, signal?: AbortSignal,
     const type = (res.headers.get("content-type") ?? "").split(";")[0]!.trim().toLowerCase();
     const copy = `the offline copy of ${book.title}${book.date ? ` (${book.date.slice(0, 7)})` : ""}`;
     if (/^image\/(png|jpeg|gif|webp)$/.test(type)) {
+      // A page-only read (the web UI's article) never reads or converts a picture.
+      if (pagesOnly) { await res.body?.cancel(); return undefined; }
       const bytes = Buffer.from(await res.arrayBuffer());
       if (bytes.length > PICTURE_MB * 1_000_000) return { copy, text: `The picture at ${url.href} is larger than ${PICTURE_MB} MB.`, isError: true };
       return { copy, ...await pictureForModel(bytes, type) };

@@ -2131,6 +2131,56 @@ test("the pages she read show under her reply as Sources, each opening in a new 
   }
 });
 
+test("a source read from the offline copy of Wikipedia opens in the app: the article in a viewer, a picture large", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  const fake = `http://127.0.0.1:${Number(new URL(baseURL!).port) + 10}`;
+  const kiwix = (address: string) => page.evaluate(async ([path, a]) => {
+    await fetch(path, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ kiwix: a }) });
+  }, [`/api/u/${userId}/admin/web-search`, address] as const);
+  await kiwix(`${fake}/kiwix`);
+  try {
+    await newThread(page, "General");
+    const lute = `${fake}/kiwix/content/wikipedia_en_all_nopic_2026-06/I/Lute.png`;
+    await send(page, `fetch: https://en.wikipedia.org/wiki/Lute, ${lute}`);
+    await expect(page.getByText("Read them.")).toBeVisible();
+    const sources = page.locator(".turn").filter({ hasText: "Read them." }).getByRole("list", { name: "Sources" });
+    // Her marker says the offline copy answered, not wikipedia.org. Once her calls fold into a run, the run opens to show it.
+    const marker = page.locator(".marker[data-type='tool']").filter({ hasText: "web_fetch https://en.wikipedia.org/wiki/Lute" });
+    await expect(async () => {
+      const closed = page.locator(".marker.tool-run > button[aria-expanded='false']");
+      if (await closed.count()) await closed.first().click();
+      await expect(marker).toContainText("from Offline Wikipedia", { timeout: 1000 });
+    }).toPass();
+    // Both read from the offline copy: buttons that open in the app, not links.
+    await expect(sources.getByRole("link")).toHaveCount(0);
+    const article = sources.getByRole("button").first();
+    const picture = sources.getByRole("button").nth(1);
+    await expect(article).toHaveText("LuteOffline Wikipedia");
+    await expect(article).toHaveAttribute("title", "Lute\nhttps://en.wikipedia.org/wiki/Lute");
+    await expect(picture).toHaveAttribute("title", `Lute\n${lute}`);
+    await noHorizontalScroll(page);
+    if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/offline-sources-${page.viewportSize()!.width}.png` });
+    await article.click();
+    const viewer = page.getByRole("dialog", { name: "Lute" });
+    await expect(viewer.getByRole("heading", { name: "Lute", level: 1 })).toBeVisible();
+    await expect(viewer.getByText("Offline Wikipedia · 2026-06")).toBeVisible();
+    await expect(viewer.getByText(/A lute is any plucked string instrument/).first()).toBeVisible();
+    await expect(viewer.getByRole("link", { name: "en.wikipedia.org" })).toHaveAttribute("href", "https://en.wikipedia.org/wiki/Lute");
+    // Its picture, through lyricad, opens large over it.
+    const shown = viewer.getByRole("button", { name: "A Renaissance lute, open large" });
+    await expect.poll(() => shown.locator("img").evaluate((img: HTMLImageElement) => img.naturalWidth)).toBe(240);
+    if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/offline-source-${page.viewportSize()!.width}.png` });
+    await viewer.getByRole("button", { name: "Close" }).click();
+    await expect(viewer).toHaveCount(0);
+    await picture.click();
+    const box = page.getByRole("dialog", { name: "Lute.png" });
+    await expect.poll(() => box.locator(".lb-img img").evaluate((img: HTMLImageElement) => img.naturalWidth)).toBe(240);
+    await box.getByRole("button", { name: "Close" }).click();
+  } finally {
+    await kiwix("");
+  }
+});
+
 test("a picture of the offline copy of Wikipedia shows in her reply through lyricad; another remote image stays a link", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   const fake = `http://127.0.0.1:${Number(new URL(baseURL!).port) + 10}`;
