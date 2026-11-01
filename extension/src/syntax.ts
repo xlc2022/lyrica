@@ -18,8 +18,8 @@ export function syntaxCheck(path: string): string[] | undefined {
   const ext = posix.extname(path).toLowerCase();
   if (ext === ".js" || ext === ".mjs" || ext === ".cjs") return ["node", "--check", path];
   if (ext === ".json") return ["node", "-e", 'JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))', path];
-  // ast.parse, never py_compile: that would write __pycache__.
-  if (ext === ".py") return ["python3", "-c", "import ast, sys; ast.parse(open(sys.argv[1], encoding='utf-8').read(), sys.argv[1])", path];
+  // ast.parse, never py_compile: that would write __pycache__. -I keeps a stray ast.py in the working folder from shadowing the module.
+  if (ext === ".py") return ["python3", "-I", "-c", "import ast, sys; ast.parse(open(sys.argv[1], encoding='utf-8').read(), sys.argv[1])", path];
   return undefined;
 }
 

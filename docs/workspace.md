@@ -1494,7 +1494,7 @@ answer stay in the encrypted conversation and are never logged.
 Principle 2: after a successful `write` or `edit` of a `.js`, `.mjs`,
 `.cjs`, `.json` or `.py` file, one file-local check runs where the file
 went, with 10 seconds: `node --check`, `JSON.parse` through `node -e`, or
-Python's `ast.parse` through `python3 -c` (never `py_compile`, which writes
+Python's `ast.parse` through `python3 -I -c` (never `py_compile`, which writes
 `__pycache__`). A failure is appended to the tool's result ("Syntax check
 failed: …", the last 20 lines, secrets masked); a pass, a missing checker or
 a check that ran out of time adds nothing. TypeScript and other languages

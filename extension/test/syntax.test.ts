@@ -51,7 +51,7 @@ describe("syntax check after a write", () => {
     expect(syntaxCheck("src/a.js")).toEqual(["node", "--check", "src/a.js"]);
     expect(syntaxCheck("a.MJS")?.[0]).toBe("node");
     expect(syntaxCheck("package.json")?.[1]).toBe("-e");
-    expect(syntaxCheck("tool.py")).toEqual(["python3", "-c", "import ast, sys; ast.parse(open(sys.argv[1], encoding='utf-8').read(), sys.argv[1])", "tool.py"]);
+    expect(syntaxCheck("tool.py")).toEqual(["python3", "-I", "-c", "import ast, sys; ast.parse(open(sys.argv[1], encoding='utf-8').read(), sys.argv[1])", "tool.py"]);
     for (const p of ["a.ts", "a.tsx", "README.md", "Makefile", "a.jsonc"]) expect(syntaxCheck(p)).toBeUndefined();
   });
 
@@ -60,7 +60,7 @@ describe("syntax check after a write", () => {
     // Each check runs where the file went, on its absolute path; a failed write isn't checked.
     expect(r.runs.map((x) => `${x.machine}: ${x.argv.join(" ")}`)).toEqual([
       "sandbox: node --check /workspace/bad.js",
-      "sandbox: python3 -c import ast, sys; ast.parse(open(sys.argv[1], encoding='utf-8').read(), sys.argv[1]) /workspace/good.py",
+      "sandbox: python3 -I -c import ast, sys; ast.parse(open(sys.argv[1], encoding='utf-8').read(), sys.argv[1]) /workspace/good.py",
       'nonode: node -e JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")) /workspace/cfg.json',
     ]);
     expect(r.results[0]).toBe("written Syntax check failed: node says\n/workspace/bad.js:3\n  const = [credential hidden]\n        ^\nSyntaxError: Unexpected token '='");
