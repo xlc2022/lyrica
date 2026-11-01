@@ -72,6 +72,11 @@ describe("image tool: portrait photos (principle 2)", () => {
     expect((await s.files.read(secondPath)).portrait).toBe(true);
     s.context({ localOnly: false });
     await expect(s.run({ ...edit, image: secondPath })).rejects.toThrow(/aren't allowed/);
+    // A copy re-saved in the sandbox has bytes no hash knows; the thread's folder is marked, so it still counts.
+    writeFileSync(join(s.folder, "uploads", "reencoded.png"), next);
+    expect((await s.files.read("/workspace/uploads/reencoded.png")).portrait).toBe(true);
+    expect(s.settings.isPortraitFolder("web/a")).toBe(true);
+    await expect(s.run({ ...edit, image: "/workspace/uploads/reencoded.png" })).rejects.toThrow(/aren't allowed/);
     expect(s.heard).toEqual([]); expect(s.asked).toEqual([]);
   });
   it("Never refuses create references, edit inputs and masks before any bytes reach cloud", async () => {

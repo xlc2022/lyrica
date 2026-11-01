@@ -2485,7 +2485,9 @@ imageFiles(t): ThreadImages
 //   the thread's folder only (including the shared project folder); traversal/symlinks/nonfiles → HomeFileMissing.
 // ThreadImages.read(path): Promise<{ input: ImageInput; portrait: boolean }>; ordinary paths via ThreadFiles,
 //   /photos-of-me/<file> from that user's mounted encrypted home, refusing symlinks/traversal; at most 20 MB, PNG/JPEG/WebP.
-// ThreadImages.read also marks bytes whose SHA-256 was recorded as a derived portrait, regardless of path.
+// ThreadImages.read also marks bytes whose SHA-256 was recorded as a derived portrait, regardless of path; and every read
+//   once this thread's folder is marked (a portrait result was saved there), or a read of a marked folder at
+//   /thread-workspaces/<id> or /shared (folderOf, Workspace.originKey).
 // ThreadImages.readClip(path): Promise<Uint8Array>; a workspace MP4 (a driving clip) via ThreadFiles, at most 64 MB, in memory.
 // ThreadImages.save(GeneratedImage[], portrait = false): string[]; exclusive images/<uuid>.png in the encrypted thread folder,
 //   removes PNG metadata, refuses symlinks, returns /workspace/images/<uuid>.png paths. A project chat's (t.coordinates,
@@ -2501,6 +2503,7 @@ photos(userId): PortraitPhotos
 settings(userId).photoCloudPolicy(): "never" | "ask" | "always" / setPhotoCloudPolicy(policy)
 settings(userId).photoCloudApproved(day): boolean / approvePhotoCloud(day) // encrypted day only; no prompt
 settings(userId).isPortraitImage(hash): boolean / recordPortraitImage(hash) // additive images.portrait.sha256.<hash> settings, no schema step
+settings(userId).isPortraitFolder(folderThread): boolean / markPortraitFolder(folderThread) // additive images.portrait.thread.<id> settings; save(…, portrait) marks this thread's
 mountHome(userId) / unmountHome(userId)   // gocryptfs; mount when the user's key becomes available; makes photos-of-me/ outside thread folders
 selfTest(): Promise<string | undefined>   // lyricad calls this at startup
 ```

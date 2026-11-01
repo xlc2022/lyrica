@@ -16,7 +16,8 @@ import { FileChanges, type NewChange } from "./changes.ts";
 import { cleanUploadName, PANEL_DIR, ThreadFiles, type FileEntry } from "./files.ts";
 import { isMounted, mountGocryptfs, unmountGocryptfs } from "./home.ts";
 import { maskSecrets, type ExecutionTarget } from "./ops.ts";
-import { Sandbox, sandboxHas, SHARED, WORKDIR, type Credentials, type SandboxSpec } from "./sandbox.ts";
+import { FAMILY_ROOT, Sandbox, sandboxHas, SHARED, WORKDIR, type Credentials, type SandboxSpec } from "./sandbox.ts";
+export { FAMILY_ROOT } from "./sandbox.ts";
 import type { ClaudeCodeUsage } from "./relay.ts";
 import { SETUP_SCRIPT, SetupFailures, setupOutcome } from "./setup.ts";
 import type { CodexBox } from "../models/codex.ts";
@@ -71,8 +72,6 @@ export interface WorkspaceThread {
   coordinates?: boolean;
 }
 
-/** Where each family member's folder is mounted for the others, and a code thread's own alias: `${FAMILY_ROOT}/<id>`. */
-export const FAMILY_ROOT = "/thread-workspaces";
 
 /** Grants as the thread itself sees them: read-only in a project chat. */
 const ownGrants = (t: WorkspaceThread, grants: Grant[]): Grant[] => (t.coordinates ? grants.map((g) => ({ ...g, writable: false })) : grants);
@@ -488,7 +487,9 @@ export class Workspace {
       if (f && k && f.folder === k.folder) s.moveOrigins(f.folder, f.path, k.path);
     },
     // Cleared rejects take their records with them, as a delete in Files does.
-    (paths) => { const s = this.settings(t.userId); for (const p of paths) { const key = this.originKey(t, p); if (key) s.dropOrigins(key.folder, [key.path]); } });
+    (paths) => { const s = this.settings(t.userId); for (const p of paths) { const key = this.originKey(t, p); if (key) s.dropOrigins(key.folder, [key.path]); } },
+    // The thread whose folder holds an image she reads (/shared is the family's topmost), for the portrait mark.
+    (path) => this.originKey(t, path.startsWith("/") ? path : posix.join(WORKDIR, path))?.folder);
   }
 
   /** A project chat whose shared/ is its own folder's (it is its family's top): what it makes goes there. */

@@ -14,6 +14,8 @@ import { libraryDirs, LIBS } from "./page.ts";
 export const WORKDIR = "/workspace";
 /** The folder a thread shares with its parent, children and (in a project) every thread of the project, as she sees it. */
 export const SHARED = "/shared";
+/** Where each family member's folder is mounted for the others, and a code thread's own alias: `${FAMILY_ROOT}/<id>`. */
+export const FAMILY_ROOT = "/thread-workspaces";
 
 export interface SandboxSpec {
   /** Host path of the thread's folder in the home workspace. Mounted read-write at /workspace. None for the SSH helper. */

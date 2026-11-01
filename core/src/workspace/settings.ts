@@ -435,6 +435,15 @@ export class WorkspaceSettings {
   recordPortraitImage(hash: string): void {
     this.db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, '1')").run(`images.portrait.sha256.${hash}`);
   }
+  /**
+   * Principle 2, the folder's mark: once a portrait result lands in a thread's folder, every image read from that
+   * folder (and every image that thread reads) counts as a portrait too, so a copy re-saved in the sandbox, whose
+   * bytes the hash no longer knows, keeps the rule. Keyed by the folder's thread (`folderThread`); never cleared.
+   */
+  isPortraitFolder(folderThread: string): boolean { return this.setting(`images.portrait.thread.${folderThread}`) === "1"; }
+  markPortraitFolder(folderThread: string): void {
+    this.db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, '1')").run(`images.portrait.thread.${folderThread}`);
+  }
 
   /** The user's network defaults for threads in `pool`. */
   defaultNetwork(pool: Pool): Network {
