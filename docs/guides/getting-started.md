@@ -1213,8 +1213,8 @@ Without `--purge` it stops and removes her units, all of `/opt/lyrica`
 installed there for her sandboxes, an MCP server included), the updater,
 the `lyrica` command, Caddy and the kiwix start script in `/usr/local`,
 `/etc/lyrica`, the caches, the SearXNG container, and any copies of
-Claude Code, Codex and Chromium an install from before 2026-11-01 left in
-`/usr/local`; then it lists what it kept: `/var/lib/lyrica`, the update
+Claude Code, Codex, Chromium and eBay's MCP server an install from before
+2026-11-01 left in `/usr/local`; then it lists what it kept: `/var/lib/lyrica`, the update
 snapshots (`/var/lib/lyrica-snapshots`, `/var/lib/lyrica-update`),
 Caddy's certificates, her Tailscale node, the ZIM files and the three
 service users. `--purge` deletes those too and removes the users.

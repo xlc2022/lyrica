@@ -48,9 +48,10 @@ rm -rf "$PREFIX" /etc/lyrica \
   /usr/local/sbin/lyrica-kiwix-start /usr/local/sbin/lyrica-update \
   /usr/local/sbin/lyrica-snapshot /usr/local/sbin/lyrica-restore /usr/local/sbin/lyrica-rollback \
   /var/cache/lyrica-searxng /var/cache/lyrica-tailscale
-# Copies an install from before 2026-11-01 left in /usr/local.
+# Copies an install from before 2026-11-01 left in /usr/local, and eBay's
+# MCP server where the guide of that day said to put it.
 rm -rf /usr/local/lib/lyrica-chromium /usr/local/bin/chromium-headless-shell
-for pkg in @anthropic-ai/claude-code @openai/codex; do
+for pkg in @anthropic-ai/claude-code @openai/codex @ebay/npm-public-api-mcp; do
   [ -d "/usr/local/lib/node_modules/$pkg" ] && npm uninstall -g --prefix /usr/local --loglevel=error "$pkg" >/dev/null 2>&1 || true
 done
 
