@@ -2608,24 +2608,34 @@ selfTest(): Promise<string | undefined>   // lyricad calls this at startup
   Git guide is a prompt section (`extension/src/git.md`) added to every
   turn of a thread with repositories.
 - **MCP servers API:** `lyricad`'s `/api/u/:userId/mcp-servers` (`GET`;
-  `POST …/probe`; `POST`; `PATCH …/:name` for name, url, pool and
-  `offNetworkConfirmed`; `POST …/:name/token`; `POST …/:name/confirm-off-network`; `DELETE`), each
-  server as `McpServerInfo { name, url, host, pool, hasToken, tools,
-  description, offNetwork, state? }`, with any query value named like a
-  credential (key, token, secret, sig, auth, pass) shown as `•••`, as in
-  `EndpointInfo.baseUrl`; a `PATCH` that sends `•••` back keeps the stored
-  value if the origin is unchanged (`daemon/src/redact.ts`); a body with `command` (stdio) is
-  `400`. Thread settings carry `mcpServers` (names). User database step 3
-  adds `mcp_servers` and `thread_workspaces.mcp_servers`. In core:
+  `POST …/probe`; `POST`; `PATCH …/:name` for name, url, command, pool and
+  `offNetworkConfirmed`; `POST …/:name/token`; `POST …/:name/env`;
+  `POST …/:name/confirm-off-network`; `DELETE`), each
+  server as `McpServerInfo { name, url, command, host, pool, hasToken,
+  hasEnv, tools, description, offNetwork, state? }`, with any query value
+  named like a credential (key, token, secret, sig, auth, pass) shown as
+  `•••`, as in `EndpointInfo.baseUrl`; a `PATCH` that sends `•••` back
+  keeps the stored value if the origin is unchanged
+  (`daemon/src/redact.ts`). `McpServerInput` is a `url` (with `token`) or
+  a `command` (one line, with `env` as `KEY=value` lines), never both:
+  `400` otherwise. A local server's `url` is `""`, its `host` "this
+  machine". Thread settings carry `mcpServers` (names). User database
+  step 3 adds `mcp_servers` and `thread_workspaces.mcp_servers`; step 20
+  adds `mcp_servers.command` (JSON argv) and `.env` (JSON). In core:
   `settings(userId).mcpServers() / addMcpServer / updateMcpServer /
-  setMcpToken / removeMcpServer / mcpServerState / confirmMcpOffNetwork /
-  allowToolInThread`, and `mcpUrl`, `probeMcp`, `mcpTransport`,
-  `keepResult` (`core/src/workspace/mcp.ts`). A session gets
+  setMcpToken / setMcpEnv / removeMcpServer / mcpServerState /
+  confirmMcpOffNetwork / allowToolInThread`, `Workspace.probeMcpServer({
+  url?, token?, command?, env? }) / startMcpServer(t, name)`, and `mcpUrl`,
+  `mcpCommand`, `mcpCommandLine`, `mcpEnv`, `mcpPlace`, `probeMcp`,
+  `probeMcpCommand`, `mcpTransport`, `mcpStdioTransport`, `keepResult`
+  (`core/src/workspace/mcp.ts`), with `Sandbox.start(argv, cwd?, env?)`
+  and `Jobs.hold(thread, server, onStop)`. A session gets
   `createMcpServersExtension({ mcpServers(), checkMcpServers?(),
-  mcpServerState?() })` (`extension/src/mcp.ts`), which registers each
-  granted server with Pi's `registerMcpServer`, exposure `deferred`, and
+  mcpServerState?(), startMcpServer?() })` (`extension/src/mcp.ts`), which
+  registers each granted server with Pi's `registerMcpServer` (a command
+  one by its command, which Pi never runs), exposure `deferred`, and
   loads Pi's MCP and `tool_search` extensions with no `mcp.json`, no log
-  and Lyrica's transport.
+  and Lyrica's transports.
 - **Codex API:** `lyricad`'s `/api/u/:userId/codex` (`GET`; `DELETE`
   signs out) and `POST …/codex/sign-in` (starts Codex's device sign-in,
   replacing one under way; `409` when `codex` isn't installed), each

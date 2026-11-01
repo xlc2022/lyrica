@@ -62,19 +62,11 @@ OAuth sign-in (Pi supports it, but its redirect lands on
 the server's loopback address, which the user's browser can't reach), MCP
 resources and prompts, Lyrica as an MCP server, a catalogue of servers.
 
-## Local (stdio) servers: allowed, not built
+## Local (stdio) servers
 
 The owner lifted the rule against stdio servers on 2026-11-01 ("we should
-not hobble ourselves but of course should keep security in mind"). The
-conditions are in DESIGN.md, "MCP servers": sandboxed, unprivileged, never
-inside `lyricad`, no plaintext of its output on disk, counted in the
-process budget, added and gated like a remote server. Whoever builds it
-first writes up, and tells the owner before building, whether starting the
-program for each session and keeping no log of its output breaks the
-server or makes its answers pointless: state the server keeps only in
-memory is lost at every start, a slow start delays the first call, and
-its warnings and errors on stderr go nowhere. Nothing of this is built;
-a `command` is still refused.
+not hobble ourselves but of course should keep security in mind"), and
+they were built for eBay's server: [mcp-local.md](mcp-local.md).
 
 ## Order
 

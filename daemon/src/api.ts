@@ -827,13 +827,17 @@ export interface GitRepository { name: string; account: string }
 /** GET /api/u/:userId/mcp-servers → McpServerInfo[]. The token is never sent back. */
 export interface McpServerInfo {
   name: string;
-  /** Its streamable HTTP address. Query values named like a credential show as •••, as in EndpointInfo.baseUrl. */
+  /** Its streamable HTTP address; empty for a local server. Query values named like a credential show as •••, as in EndpointInfo.baseUrl. */
   url: string;
-  /** host or host:port, from the URL. */
+  /** A local server's command, one line, as it was given; empty for a remote server. */
+  command: string;
+  /** host or host:port, from the URL; "this machine" for a local server. */
   host: string;
   pool: Pool;
   /** Whether a token is sent with each request. */
   hasToken: boolean;
+  /** Whether a local server is started with an environment of its own. */
+  hasEnv: boolean;
   /** How many tools it offered at the last check. */
   tools: number;
   /** The line she sees it listed with: the first line of its instructions, or its title. */
@@ -847,17 +851,21 @@ export interface McpServerInfo {
  * POST /api/u/:userId/mcp-servers/probe (McpServerInput) → McpServerProbe. An
  * MCP `initialize` and `tools/list`, saving nothing: 400 with why when the
  * server doesn't answer as one. POST /api/u/:userId/mcp-servers
- * (McpServerInput) → McpServerInfo. Checks it again and saves it. Remote
- * (streamable HTTP) servers only, for now: a local (stdio) server isn't
- * built yet (DESIGN.md, MCP servers). A private server whose host resolves
- * outside her network needs `offNetworkConfirmed`.
+ * (McpServerInput) → McpServerInfo. Checks it again and saves it. A server
+ * is a `url` (streamable HTTP, with an optional `token`) or a `command` (a
+ * local server, one line: the program and its arguments, started in the
+ * thread's sandbox with `env`, `KEY=value` lines), never both (DESIGN.md,
+ * MCP servers). A private remote server whose host resolves outside her
+ * network needs `offNetworkConfirmed`.
  */
-export interface McpServerInput { name: string; url: string; token?: string; pool: Pool; offNetworkConfirmed?: boolean }
+export interface McpServerInput { name: string; url?: string; token?: string; command?: string; env?: string; pool: Pool; offNetworkConfirmed?: boolean }
 export interface McpServerProbe { tools: number; description: string | null }
-/** PATCH /api/u/:userId/mcp-servers/:name → McpServerInfo. A new URL is checked first; a new pool takes it from every thread; a new name follows into them. */
-export interface McpServerChange { name?: string; url?: string; pool?: Pool; offNetworkConfirmed?: boolean }
+/** PATCH /api/u/:userId/mcp-servers/:name → McpServerInfo. A new URL or command is checked first; a new pool takes it from every thread; a new name follows into them. */
+export interface McpServerChange { name?: string; url?: string; command?: string; pool?: Pool; offNetworkConfirmed?: boolean }
 /** POST /api/u/:userId/mcp-servers/:name/token → McpServerInfo. Replace token: the server is checked with it first; empty sends none. */
 export interface McpToken { token: string }
+/** POST /api/u/:userId/mcp-servers/:name/env → McpServerInfo. Replace environment, a local server's `KEY=value` lines: it is started with them first. */
+export interface McpEnv { env: string }
 /** POST /api/u/:userId/mcp-servers/:name/confirm-off-network → McpServerInfo. A private server gone off network can be used again. */
 /** DELETE /api/u/:userId/mcp-servers/:name → Ok. Every thread's grant of it goes too. */
 

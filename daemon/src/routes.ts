@@ -4,7 +4,7 @@ import { imageRetryOptions } from "./image-retry.ts";
 import { randomUUID } from "node:crypto";
 import {
   ANSWER, CLOUD_IMAGE_PROVIDERS, recentWorkAllowed, WELCOME_LIMITS, describe, AuthError, isPlan, type PlanKind, NoRecoveryCopy, WrongPassword, isEmoji, WORKDIR, CAPABILITIES, FilesRefused, checkTask, isRestricted, voiceContext, refId, THINKING_LEVELS, publicKeyOf, authorizedKeysLine, proxmoxAddress, CloudModelForbidden, FROM_PARENT, NoModel, WAKEUP, ROUTINE, WATCHING, PRONOUN_PRESETS, projectSlug,
-  citationsIn, exportMemories, importMemories, exportSkills, importSkills, firstLine, GIT_KINDS, kindOf, mcpHost, sentenceCiting, splitId, HomeFileMissing, MAX_IMAGE_BYTES,
+  citationsIn, exportMemories, importMemories, exportSkills, importSkills, firstLine, GIT_KINDS, kindOf, mcpCommand, mcpCommandLine, mcpEnv, mcpPlace, sentenceCiting, splitId, HomeFileMissing, MAX_IMAGE_BYTES,
   type Author, type Column, type Endpoint, type ModelRef, type Offering, type Hit, type Item, type GitAccountConfig, type MachineConfig, type McpServerConfig, type OwnerView, type Pool, type PoolStore, type SleepItem, type SleepRunRecord, type Thread, type ThreadPref, type User,
   searxngAddress, searxngStatus, searxngView, setSearxngAddress, kiwixAddress, kiwixStatus, setKiwixAddress, forgetKiwixBooks, claudeCodeInstalled, modelName,
   codexSignedIn, codexSignIn, codexSignOut, type CodexBox, type CodexSignIn, serverZone, zoneOf,
@@ -857,7 +857,7 @@ export function apiRoutes(d: Lyricad): Route[] {
     route("POST", `${u}/mcp-servers/probe`, async (r): Promise<Api.McpServerProbe> => {
       d.userFor(r);
       const input = mcpInput(await r.json<Api.McpServerInput>());
-      return s().workspace.probeMcpServer(input.url, input.token);
+      return s().workspace.probeMcpServer(input);
     }),
     route("POST", `${u}/mcp-servers`, async (r) => {
       const userId = d.userFor(r).id;
@@ -876,6 +876,12 @@ export function apiRoutes(d: Lyricad): Route[] {
     route("POST", `${u}/mcp-servers/:name/token`, async (r) => {
       const user = d.userFor(r);
       const m = await s().workspace.setMcpToken(user.id, r.params.name!, String((await r.json<Api.McpToken>()).token ?? ""));
+      reloadMcp(d, user.id);
+      return mcpServerInfo(m);
+    }),
+    route("POST", `${u}/mcp-servers/:name/env`, async (r) => {
+      const user = d.userFor(r);
+      const m = await s().workspace.setMcpEnv(user.id, r.params.name!, mcpEnv(String((await r.json<Api.McpEnv>()).env ?? "")));
       reloadMcp(d, user.id);
       return mcpServerInfo(m);
     }),
@@ -2554,19 +2560,21 @@ async function gitAccountInfo(d: Lyricad, a: GitAccountConfig): Promise<Api.GitA
   return info;
 }
 
-/** An MCP server as the API shows it: never its token. */
+/** An MCP server as the API shows it: never its token or its environment. */
 function mcpServerInfo(m: McpServerConfig): Api.McpServerInfo {
   return {
-    name: m.name, url: redactUrl(m.url), host: mcpHost(m.url), pool: m.pool, hasToken: !!m.token, tools: m.tools, description: m.description, offNetwork: m.offNetwork,
+    name: m.name, url: m.url ? redactUrl(m.url) : "", command: mcpCommandLine(m.command), host: mcpPlace(m), pool: m.pool,
+    hasToken: !!m.token, hasEnv: Object.keys(m.env).length > 0, tools: m.tools, description: m.description, offNetwork: m.offNetwork,
     ...(m.state ? { state: m.state } : {}),
   };
 }
 
-/** An MCP server to add or check: remote only for now, so a `command` (a local, stdio server, not built yet) is refused. */
-function mcpInput(input: Api.McpServerInput & { command?: unknown }): { name: string; url: string; token?: string; pool: Pool; offNetworkConfirmed: boolean } {
-  if (input?.command !== undefined) throw new HttpError(400, "only remote MCP servers (a URL) can be added; a local server that runs a command isn't built yet");
+/** An MCP server to add or check: a URL with an optional token, or a command with its environment (`KEY=value` lines). */
+function mcpInput(input: Api.McpServerInput): { name: string; url: string; token?: string; command: string[]; env: Record<string, string>; pool: Pool; offNetworkConfirmed: boolean } {
+  const command = String(input?.command ?? "").trim() ? mcpCommand(String(input.command)) : [];
+  const env = mcpEnv(String(input?.env ?? ""));
   const token = input.token === undefined ? undefined : String(input.token);
-  return { name: String(input.name ?? ""), url: String(input.url ?? ""), ...(token ? { token } : {}), pool: checkPool(input.pool), offNetworkConfirmed: input.offNetworkConfirmed === true };
+  return { name: String(input.name ?? ""), url: String(input.url ?? ""), ...(token ? { token } : {}), command, env, pool: checkPool(input.pool), offNetworkConfirmed: input.offNetworkConfirmed === true };
 }
 
 /** A server's address or token changed, or it went: every open session of the user's reopens at its next turn with the servers as they are. */

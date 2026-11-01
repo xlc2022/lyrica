@@ -28,6 +28,8 @@ cloud model is outside our control.
 - [docs/guides/nixos-mcp.md](docs/guides/nixos-mcp.md) runs mcp-nixos on
   NixOS, so she can look up packages, options and flakes before editing
   a configuration.
+- [docs/guides/ebay-mcp.md](docs/guides/ebay-mcp.md) gives her eBay's own
+  MCP server, so she can search listings and read item details.
 
 She runs on the owner's development machine. The first run is the web
 setup page, with `lyrica admin init` on the server as the other way.

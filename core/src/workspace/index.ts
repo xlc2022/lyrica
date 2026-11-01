@@ -27,7 +27,7 @@ import {
   type ProxmoxAction, type ProxmoxCall, type ProxmoxTransport, type Self,
 } from "./proxmox.ts";
 import { parseHost, reachesHost } from "./net.ts";
-import { mcpHost, mcpUrl, probeMcp, type McpProbe, type McpStateKind } from "./mcp.ts";
+import { mcpHost, mcpUrl, probeMcp, probeMcpCommand, type McpProbe, type McpProcess, type McpStateKind } from "./mcp.ts";
 import {
   checkGrant, gitHost, type McpServerConfig, repositoryDir, repositoryName, repositoryUrl, stricterMode, WorkspaceSettings, type GitAccountConfig, type GitAccountState, type GitKind, type Grant,
   type MachineConfig, type MachineKind, type MachineLimit, type Network, type NewMachine, type PermissionMode, type ThreadRepository, type ThreadWorkspace,
@@ -143,8 +143,11 @@ export interface ThreadGitRepository extends ThreadRepository {
 /** One repository an account can see, for Add repository. */
 export interface GitRepositoryInfo { name: string; account: string }
 
-/** An MCP server as one thread's session registers it: granted, of its pool, and on her network if private. */
-export interface ThreadMcpServer { name: string; url: string; token: string; description: string | null }
+/** An MCP server as one thread's session registers it: granted, of its pool, and on her network if private. A local one has a command and no URL. */
+export interface ThreadMcpServer { name: string; url: string; token: string; command?: string[]; description: string | null }
+
+/** What `Workspace.addMcpServer` and `probeMcpServer` take: a URL with an optional token, or a command with its environment. */
+export interface McpServerInput { name: string; url?: string; token?: string; command?: string[]; env?: Record<string, string>; pool: Pool; offNetworkConfirmed?: boolean }
 
 /** A machine as one thread sees it: granted, of its pool, with its limit. */
 export interface ThreadMachine { name: string; kind: MachineKind; limit: MachineLimit; root: string | null; asUser?: boolean }
@@ -433,6 +436,8 @@ export class Workspace {
       checkMcpServers: () => this.checkMcpServers(t),
       /** How a connection to one of its servers went, for Settings. */
       mcpServerState: (name: string, kind: McpStateKind) => { try { this.settings(t.userId).mcpServerState(name, kind); } catch { /* locked: shown only */ } },
+      /** Starts one of its local servers in its sandbox, for the session's transport. */
+      startMcpServer: (name: string) => this.startMcpServer(t, name),
       /** Whether the user allowed this MCP tool on this server in this thread. */
       toolAllowedInThread: (server: string, tool: string) => this.settings(t.userId).toolAllowedInThread(t.threadId, server, tool),
       /** An approved plan switching the thread's mode. */
@@ -1220,9 +1225,34 @@ export class Workspace {
     return s.effective(t.threadId).mcpServers.flatMap((name) => {
       const m = s.mcpServer(name);
       if (!m || m.pool !== t.pool) return [];
-      if (m.pool === "private" && !this.mcpChecked.has(`${t.userId}/${m.name}/${m.url}`)) return [];
-      return [{ name: m.name, url: m.url, token: m.token, description: m.description }];
+      if (m.pool === "private" && !m.command.length && !this.mcpChecked.has(`${t.userId}/${m.name}/${m.url}`)) return [];
+      return [{ name: m.name, url: m.url, token: m.token, command: m.command, description: m.description }];
     });
+  }
+
+  /**
+   * Starts one of the thread's local servers in its sandbox (its folders,
+   * grants and network, as her bash has them), with the server's own
+   * environment under the sandbox's, holding one of the thread's
+   * background-command slots while it runs (docs/briefs/mcp-local.md).
+   */
+  async startMcpServer(t: WorkspaceThread, name: string): Promise<McpProcess> {
+    const m = this.mcpServersFor(t).find((x) => x.name === name);
+    const cfg = this.settings(t.userId).mcpServer(name);
+    if (!m || !cfg || !cfg.command.length) throw new Error(`${name} isn't one of this thread's local MCP servers`);
+    const target = this.targetFor(t);
+    if (!(target instanceof Sandbox)) throw new Error("a local MCP server runs only in the sandbox");
+    let child: McpProcess | undefined;
+    const slot = this.jobs.hold(t, name, () => child?.kill("SIGKILL"));
+    try {
+      child = await target.start(cfg.command, WORKDIR, cfg.env);
+    } catch (err) {
+      slot.release();
+      throw err;
+    }
+    // Closed by the session: no notice. Gone on its own: told like a failed job, without its output.
+    child.on("close", (code, signal) => (child!.stdin.writableEnded ? slot.release() : slot.died(code === null ? `${signal ?? "killed"}` : `exit ${code}`)));
+    return child;
   }
 
   /** Checks the thread's private servers' hosts, as for a private Git account: what is held back, one plain line each. */
@@ -1231,7 +1261,7 @@ export class Workspace {
     const problems: string[] = [];
     for (const name of s.effective(t.threadId).mcpServers) {
       const m = s.mcpServer(name);
-      if (!m || m.pool !== t.pool) continue;
+      if (!m || m.pool !== t.pool || m.command.length) continue;
       const refused = await this.checkMcpHost(t.userId, m).then(() => undefined, (err: Error) => err.message);
       if (refused) problems.push(refused);
     }
@@ -1257,9 +1287,25 @@ export class Workspace {
     if (outside !== m.offNetwork) s.setMcpOffNetwork(m.name, outside);
   }
 
-  /** A server's check before anything is saved: `initialize` and `tools/list` must answer. Throws McpServerProblem. */
-  probeMcpServer(url: string, token?: string): Promise<McpProbe> {
-    return probeMcp(mcpUrl(url), token?.trim() || undefined, this.opts.forgeFetch);
+  /**
+   * A server's check before anything is saved: `initialize` and `tools/list`
+   * must answer. A local server is started in a sandbox of its own: an empty
+   * folder, no grants, no network (its keys are for its calls, not its
+   * start). Throws McpServerProblem.
+   */
+  probeMcpServer(input: { url?: string; token?: string; command?: string[]; env?: Record<string, string> }): Promise<McpProbe> {
+    if (input.command?.length) {
+      const command = input.command;
+      const env = input.env ?? {};
+      return probeMcpCommand(async () => {
+        const dir = mkdtempSync(join(tmpdir(), "lyrica-mcp-"));
+        const box = new Sandbox({ workdir: dir, grants: [], network: { internet: false, services: false, hosts: [] }, ...this.door(), bwrap: this.opts.bwrap, pasta: this.opts.pasta });
+        const child = await box.start(command, WORKDIR, env);
+        child.on("close", () => rmSync(dir, { recursive: true, force: true }));
+        return child;
+      });
+    }
+    return probeMcp(mcpUrl(input.url ?? ""), input.token?.trim() || undefined, this.opts.forgeFetch);
   }
 
   /** Whether a server's host resolves outside her network; a private one needs the user's confirmation then. */
@@ -1270,29 +1316,49 @@ export class Workspace {
     return outside;
   }
 
-  /** Saves a server once it answers. A private server's host must resolve on her own network, or `offNetworkConfirmed` (the Add anyway dialog). */
-  async addMcpServer(userId: string, input: { name: string; url: string; token?: string; pool: Pool; offNetworkConfirmed?: boolean }): Promise<McpServerConfig> {
+  /**
+   * Saves a server once it answers. A private remote server's host must
+   * resolve on her own network, or `offNetworkConfirmed` (the Add anyway
+   * dialog); a local server has no host to check.
+   */
+  async addMcpServer(userId: string, input: McpServerInput): Promise<McpServerConfig> {
     const s = this.settings(userId);
     if (s.mcpServer(input.name)) throw new Error(`MCP server ${input.name} already exists`);
-    const url = mcpUrl(input.url, input.pool, input.token?.trim());
-    const outside = await this.mcpOutside(url, input.pool, input.offNetworkConfirmed);
     const token = input.token?.trim() ?? "";
-    const probe = await this.probeMcpServer(url, token);
-    return s.addMcpServer({ name: input.name, url, token, pool: input.pool, description: probe.description, tools: probe.tools, offNetwork: outside }, "online");
+    const command = input.command ?? [];
+    const env = input.env ?? {};
+    if (command.length) {
+      if (String(input.url ?? "").trim()) throw new Error("a server is a URL or a command, not both");
+      const probe = await this.probeMcpServer({ command, env });
+      return s.addMcpServer({ name: input.name, url: "", token: "", command, env, pool: input.pool, description: probe.description, tools: probe.tools, offNetwork: false }, "online");
+    }
+    const url = mcpUrl(input.url ?? "", input.pool, token);
+    const outside = await this.mcpOutside(url, input.pool, input.offNetworkConfirmed);
+    const probe = await this.probeMcpServer({ url, token });
+    return s.addMcpServer({ name: input.name, url, token, command: [], env: {}, pool: input.pool, description: probe.description, tools: probe.tools, offNetwork: outside }, "online");
   }
 
-  /** Changes a server's name, URL or pool. A new URL is checked again; a private one moved off her network needs `offNetworkConfirmed`. */
-  async updateMcpServer(userId: string, name: string, change: { name?: string; url?: string; pool?: Pool; offNetworkConfirmed?: boolean }): Promise<McpServerConfig> {
+  /** Changes a server's name, URL, command or pool. A new URL or command is checked again; a private one moved off her network needs `offNetworkConfirmed`. */
+  async updateMcpServer(userId: string, name: string, change: { name?: string; url?: string; command?: string[]; pool?: Pool; offNetworkConfirmed?: boolean }): Promise<McpServerConfig> {
     const s = this.settings(userId);
     const before = s.mcpServer(name);
     if (!before) throw new Error(`no MCP server ${name}`);
     const pool = change.pool ?? before.pool;
+    const command = change.command ?? before.command;
+    if (command.length) {
+      if (String(change.url ?? "").trim()) throw new Error("a server is a URL or a command, not both");
+      const changed = JSON.stringify(command) !== JSON.stringify(before.command);
+      const probe = changed ? await this.probeMcpServer({ command, env: before.env }) : undefined;
+      const m = s.updateMcpServer(name, { ...(change.name !== undefined ? { name: change.name } : {}), url: "", command, pool, ...(probe ? { description: probe.description, tools: probe.tools } : {}) });
+      if (probe) s.mcpServerState(m.name, "online");
+      return s.mcpServer(m.name)!;
+    }
     const url = change.url === undefined ? before.url : mcpUrl(change.url, pool, before.token);
     let outside = before.offNetwork;
     let probe: McpProbe | undefined;
     if (url !== before.url || pool !== before.pool) outside = await this.mcpOutside(url, pool, change.offNetworkConfirmed);
-    if (url !== before.url) probe = await this.probeMcpServer(url, before.token);
-    const m = s.updateMcpServer(name, { ...(change.name !== undefined ? { name: change.name } : {}), url, pool, ...(probe ? { description: probe.description, tools: probe.tools } : {}) });
+    if (url !== before.url) probe = await this.probeMcpServer({ url, token: before.token });
+    const m = s.updateMcpServer(name, { ...(change.name !== undefined ? { name: change.name } : {}), url, command: [], pool, ...(probe ? { description: probe.description, tools: probe.tools } : {}) });
     s.setMcpOffNetwork(m.name, outside);
     if (probe) s.mcpServerState(m.name, "online");
     return s.mcpServer(m.name)!;
@@ -1303,9 +1369,21 @@ export class Workspace {
     const s = this.settings(userId);
     const m = s.mcpServer(name);
     if (!m) throw new Error(`no MCP server ${name}`);
-    const probe = await this.probeMcpServer(m.url, token);
+    if (m.command.length) throw new Error(`${name} is a local server: replace its environment instead`);
+    const probe = await this.probeMcpServer({ url: m.url, token });
     s.updateMcpServer(name, { description: probe.description, tools: probe.tools });
     return s.setMcpToken(name, token.trim(), "online");
+  }
+
+  /** Replace environment: a local server is started with the new one before it replaces the old. */
+  async setMcpEnv(userId: string, name: string, env: Record<string, string>): Promise<McpServerConfig> {
+    const s = this.settings(userId);
+    const m = s.mcpServer(name);
+    if (!m) throw new Error(`no MCP server ${name}`);
+    if (!m.command.length) throw new Error(`${name} is a remote server: replace its token instead`);
+    const probe = await this.probeMcpServer({ command: m.command, env });
+    s.updateMcpServer(name, { description: probe.description, tools: probe.tools });
+    return s.setMcpEnv(name, env, "online");
   }
 
   confirmMcpOffNetwork(userId: string, name: string): McpServerConfig {

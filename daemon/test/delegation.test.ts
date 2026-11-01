@@ -205,7 +205,9 @@ describe("talking with subagents in lyricad", () => {
       const { rt, d, ada, parent, sub, path } = await setup();
       const added = await ada.post<McpServerInfo>(`/api/u/${rt.ada.id}/mcp-servers`, { name: "house", url: house.url, pool: "general" });
       expect(added.body).toMatchObject({ name: "house", tools: 2, state: { kind: "online" }, hasToken: false });
-      expect((await ada.post<{ error: string }>(`/api/u/${rt.ada.id}/mcp-servers`, { name: "local", command: "npx", pool: "general" })).body.error).toMatch(/only remote/);
+      // A server is a URL or a command, checked as one or the other before anything is saved.
+      expect((await ada.post<{ error: string }>(`/api/u/${rt.ada.id}/mcp-servers`, { name: "local", url: house.url, command: "npx", pool: "general" })).body.error).toMatch(/not both/);
+      expect((await ada.post<{ error: string }>(`/api/u/${rt.ada.id}/mcp-servers`, { name: "local", command: "$HOME/server", env: "KEY", pool: "general" })).body.error).toMatch(/needs a value|sandbox's PATH/);
       await ada.patch(`${path}/settings`, { mode: "auto", mcpServers: ["house"] });
       parent.reply({ tools: [{ name: "delegate", args: { task: "turn on the lamp twice", role: "worker", background: true } }] }, { text: "A worker is on it." });
       sub.respond((r) => {

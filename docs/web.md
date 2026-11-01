@@ -832,15 +832,17 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   host (`POST …/git-accounts/probe`, then `POST …/git-accounts`), and a
   private account off network asks first. The token is never sent back.
   **MCP servers** (`src/Mcp.tsx`), after Git accounts: a row per server,
-  its name, a facts line in mono (host, pool, tool count) and one state
-  (Online, Token rejected, Unreachable with how long, Off network). A row
-  opens the drawer (Name, URL, Pool, with the server's description under
-  it), with Replace token, Use anyway and Remove behind ⋯; Remove says it
+  its name, a facts line in mono (host, or "this machine" for a local
+  server; pool; tool count) and one state (Online, Token rejected,
+  Unreachable with how long, Off network). A row opens the drawer (Name,
+  URL or Command, Pool), with Replace token (a URL) or Replace
+  environment (a command), Use anyway and Remove behind ⋯; Remove says it
   leaves every project and thread at once (**Keep** / **Remove**). **Add
-  server** opens the same drawer with an optional Token field and checks
-  the server first (`POST …/mcp-servers/probe`, then `POST
-  …/mcp-servers`); a private server off network asks first (**Add
-  anyway**, or **Save anyway** for a changed URL).
+  server** opens the same drawer with an optional Token field for a URL,
+  or an Environment textarea (`KEY=value` lines) once a command is typed,
+  and checks the server first (`POST …/mcp-servers`, which runs the
+  check); a private server off network asks first (**Add anyway**, or
+  **Save anyway** for a changed URL).
   **Claude Code and Codex**, after MCP servers (`settings/codex` opens it
   too), two cards. Claude Code (`src/ClaudeCode.tsx`): a Token field and
   **Save token** (`PUT …/claude-code`), or once saved Signed in and

@@ -297,6 +297,10 @@ export const STEPS: Record<DbKind, MigrationStep[]> = {
     // Principles 2 and 6: a project's setup command, which installs a clone's dependencies in place of the lockfile's. Adds a column only.
     version: 19,
     run(db) { addColumns(db, [["project_settings", "setup", "TEXT"]]); },
+  }, {
+    // Local (stdio) MCP servers (docs/briefs/mcp-local.md): a server's command and environment beside its URL. Adds only.
+    version: 20,
+    run(db) { addColumns(db, [["mcp_servers", "command", "TEXT NOT NULL DEFAULT '[]'"], ["mcp_servers", "env", "TEXT NOT NULL DEFAULT '{}'"]]); },
   }],
   pool: [{
     version: 1, contract: true,

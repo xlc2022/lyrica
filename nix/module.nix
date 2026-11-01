@@ -25,7 +25,9 @@ let
   ];
 
   # What her sandboxes see as /usr. lyricad also finds bwrap, pasta and nft here.
-  sandboxTools = pkgs.callPackage ./sandbox-env.nix { packages = cfg.sandboxPackages; };
+  sandboxTools = pkgs.callPackage ./sandbox-env.nix {
+    packages = cfg.sandboxPackages ++ lib.optional cfg.ebayMcp (pkgs.callPackage ./ebay-mcp.nix { });
+  };
   # Only these store paths are mounted in her sandboxes.
   sandboxClosure = pkgs.callPackage ./sandbox-closure.nix {
     rootPaths = [ sandboxTools cfg.package.nodejs config.security.pki.caBundle ];
@@ -156,6 +158,20 @@ in {
         lyricad and its self-test use them. Her sandboxes see only these
         packages' closure in /nix/store, plus Node's and the CA bundle's.
         Chromium and fonts render HTML/SVG diagrams offline and take screenshots.
+      '';
+    };
+
+    ebayMcp = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        eBay's own MCP server (nix/ebay-mcp.nix, Apache 2.0) among her
+        sandboxes' tools, as `ebay-mcp-server`: read-only access to eBay's
+        public APIs (listing search, item details, categories) for a user
+        with an eBay developer keyset. A user adds it under Settings → MCP
+        servers as a command, `ebay-mcp-server`, with EBAY_CLIENT_ID and
+        EBAY_CLIENT_SECRET in its environment (docs/guides/ebay-mcp.md);
+        nothing fills it in by itself.
       '';
     };
   };
