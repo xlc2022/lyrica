@@ -240,8 +240,9 @@ const PICTURES = 12, PICTURE_MB = 5;
 
 /**
  * The page's HTML as Markdown, headed as web_fetch's pages are, with links
- * made absolute against `url`, then its pictures (a maxi copy has them) as
- * their addresses on kiwix-serve, which web_fetch reads as images.
+ * made absolute against `url`, and under its title and address its pictures
+ * (a maxi copy has them) as their addresses on kiwix-serve, which web_fetch
+ * reads as images.
  */
 function page(address: string, url: string, html: string, book: KiwixBook, here: string): KiwixRead {
   const copy = copyName(book);
@@ -258,8 +259,16 @@ function page(address: string, url: string, html: string, book: KiwixBook, here:
       if (pictures.length >= PICTURES) break;
     }
   } catch { /* the text alone */ }
-  const list = pictures.map((p, i) => `${i + 1}. ${p.src}${p.alt ? ` (${p.alt})` : ""}`).join("\n");
-  return { text: pictures.length ? `${md.text}\n\nPictures, each readable with web_fetch:\n${list}` : md.text, copy, pictures };
+  if (!pictures.length) return { text: md.text, copy, pictures };
+  // Under the title and address, so the first window of a long article has them: a cut page shows only its start.
+  const head = md.text.indexOf("\n\n");
+  const at = head < 0 ? md.text.length : head;
+  return { text: `${md.text.slice(0, at)}\n\n${pictureList(pictures)}${md.text.slice(at)}`, copy, pictures };
+}
+
+/** The pictures as web_fetch lists them, under the page's title. */
+function pictureList(pictures: KiwixPicture[]): string {
+  return `Pictures, each readable with web_fetch and shown in a reply as a Markdown image:\n${pictures.map((p, i) => `${i + 1}. ${p.src}${p.alt ? ` (${p.alt})` : ""}`).join("\n")}`;
 }
 
 /**
@@ -275,7 +284,7 @@ export async function kiwixArticle(address: string, url: string, signal?: AbortS
   const read = await kiwixPage(address, u, signal, f, true).catch(() => undefined);
   if (!read || "image" in read || read.isError) return undefined;
   const pictures = read.pictures ?? [];
-  const body = pictures.length ? read.text.slice(0, read.text.lastIndexOf("\n\nPictures, each readable with web_fetch:")) : read.text;
+  const body = pictures.length ? read.text.replace(`\n\n${pictureList(pictures)}`, "") : read.text;
   const alt = (s: string) => s.replace(/[[\]\\]/g, "");
   return { copy: read.copy, text: pictures.length ? `${body}\n\n## Pictures\n\n${pictures.map((p) => `![${alt(p.alt)}](<${p.src}>)`).join("\n\n")}` : body };
 }

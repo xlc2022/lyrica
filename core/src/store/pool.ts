@@ -1,4 +1,5 @@
 import { removeSecrets } from "../secrets.ts";
+import { rewriteStrings } from "../workspace/renames.ts";
 import { SkillLibrary } from "../skills.ts";
 import { randomBytes } from "node:crypto";
 import { nextRun, parseSchedule, type Schedule } from "../routines.ts";
@@ -1206,6 +1207,48 @@ export class PoolStore extends PoolReader {
   /** The entries whose text holds `needle`, in any thread of this pool: where an upload is still mentioned. */
   entriesMentioning(needle: string): { thread: string; n: number }[] {
     return this.db.prepare("SELECT thread, n FROM entries WHERE instr(text, ?) > 0").all(needle) as { thread: string; n: number }[];
+  }
+
+  /** The threads whose entries or draft hold any of `needles`: where a renamed file may be named. */
+  threadsMentioning(needles: string[]): string[] {
+    if (!needles.length) return [];
+    const words = JSON.stringify([...new Set(needles.flatMap((w) => [w, JSON.stringify(w).slice(1, -1)]))]);
+    return (this.db.prepare(`SELECT DISTINCT thread FROM entries e WHERE EXISTS (SELECT 1 FROM json_each(?) w WHERE instr(e.data, w.value) > 0)
+      UNION SELECT thread FROM drafts d WHERE EXISTS (SELECT 1 FROM json_each(?) w WHERE instr(d.text, w.value) > 0)`).all(words, words) as { thread: string }[]).map((r) => r.thread);
+  }
+
+  /**
+   * A file was renamed or moved (docs/workspace.md, "Renaming keeps links"): every string of the thread's stored
+   * entries holding one of `needles` (its text, its tool calls and their results, but not her reasoning or an
+   * image's bytes) and its draft go through `rewrite`, in one transaction. A changed entry's search row is made
+   * again, and its vector goes so the embedder makes a new one. Returns the entries that changed and whether the draft did.
+   */
+  rewriteMentions(threadId: string, needles: string[], rewrite: (s: string) => string): { entries: number[]; draft: boolean } {
+    this.mustThread(threadId);
+    if (!needles.length) return { entries: [], draft: false };
+    const words = JSON.stringify([...new Set(needles.flatMap((w) => [w, JSON.stringify(w).slice(1, -1)]))]);
+    return this.tx(() => {
+      const rows = this.db.prepare(`SELECT n, role, data, text FROM entries e WHERE thread = ? AND EXISTS (SELECT 1 FROM json_each(?) w WHERE instr(e.data, w.value) > 0 OR instr(e.text, w.value) > 0)`)
+        .all(threadId, words) as { n: number; role: string; data: string; text: string }[];
+      const changed: number[] = [];
+      const update = this.db.prepare("UPDATE entries SET data = ?, text = ? WHERE thread = ? AND n = ?");
+      for (const r of rows) {
+        const data = JSON.stringify(rewriteStrings(JSON.parse(r.data), rewrite));
+        const text = rewrite(r.text);
+        if (data === r.data && text === r.text) continue;
+        update.run(data, text, threadId, r.n);
+        changed.push(r.n);
+        const id = entryId(threadId, r.n);
+        if (text !== r.text && this.db.prepare("SELECT 1 FROM search WHERE id = ?").get(id)) {
+          this.db.prepare("DELETE FROM search WHERE id = ?").run(id);
+          this.index(id, "entry", r.role === "toolResult" ? text.slice(0, TOOL_TEXT_LIMIT) : text);
+        }
+      }
+      const draft = this.db.prepare("SELECT text FROM drafts WHERE thread = ?").get(threadId) as { text: string } | undefined;
+      const newDraft = draft && rewrite(draft.text);
+      if (draft && newDraft !== draft.text) this.db.prepare("UPDATE drafts SET text = ?, updated_at = ? WHERE thread = ?").run(newDraft, now(), threadId);
+      return { entries: changed, draft: !!draft && newDraft !== draft.text };
+    });
   }
 
   /** Pins or unpins entry `n`: a pinned entry stays in her context word for word. Throws if there's no such entry. */

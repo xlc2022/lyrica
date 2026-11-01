@@ -212,6 +212,8 @@ export function liveReducer(s: Live, e: LiveAction): Live {
     case "usage":
     case "compacted":
     case "reactions":
+    // The stored messages reload (stream.ts).
+    case "renamed":
       return s;
   }
 }

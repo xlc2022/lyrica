@@ -443,16 +443,28 @@ export function htmlPage(url: string, html: string): FetchedPage {
 }
 
 /** The part of a page from `offset`, at most `maxChars`, and a note saying where to read on when there is more. */
-export function cutPage(text: string, maxChars: number, offset = 0): { text: string; note?: string; isError?: boolean } {
+export function cutPage(text: string, maxChars: number, offset = 0): { text: string; note?: string; sections?: string; isError?: boolean } {
   const from = Math.max(0, Math.floor(Number.isFinite(offset) ? offset : 0));
   if (from && from >= text.length) return { text: `The page has ${text.length} characters, so there is nothing from offset ${from}.`, isError: true };
   const to = Math.min(text.length, from + maxChars);
   if (!from && to === text.length) return { text };
-  const note = to < text.length
-    ? `[Characters ${from} to ${to} of ${text.length}. Read on with offset ${to}.]`
-    : `[Characters ${from} to ${to} of ${text.length}: the end of the page.]`;
-  return { text: text.slice(from, to), note };
+  if (to === text.length) return { text: text.slice(from, to), note: `[Characters ${from} to ${to} of ${text.length}: the end of the page.]` };
+  // The headings past the window, each with its offset, so a part further on can be read without paging through.
+  // They are the page's words: the caller puts them inside the markers with the text, never in the note.
+  const later: string[] = [];
+  for (const m of text.slice(to).matchAll(/^#{1,3} +(.+)$/gm)) {
+    if (later.length === SECTIONS) { later.push("…"); break; }
+    const h = m[1]!.trim();
+    later.push(`${h.length > HEADING ? `${h.slice(0, HEADING - 1)}…` : h} (offset ${to + m.index})`);
+  }
+  return {
+    text: text.slice(from, to), note: `[Characters ${from} to ${to} of ${text.length}. Read on with offset ${to}.]`,
+    ...(later.length ? { sections: `Sections further on: ${later.join("; ")}.` } : {}),
+  };
 }
+
+/** How many headings past a cut page's window it names, and how much of each. */
+const SECTIONS = 40, HEADING = 80;
 
 const MARK = /<<<(end )?web [0-9a-f]+>>>/gi;
 

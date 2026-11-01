@@ -98,6 +98,13 @@ describe("web_fetch's reading", () => {
     expect(cutPage(text, 100, 100)).toEqual({ text: "b".repeat(50), note: "[Characters 100 to 150 of 150: the end of the page.]" });
     expect(cutPage(text, 200)).toEqual({ text });
     expect(cutPage(text, 100, 150).isError).toBe(true);
+    // The headings past the window are named with their offsets, apart from the note: they are the page's words.
+    const page = `# Horse\n${"x".repeat(100)}\n## Biology\n${"y".repeat(100)}\n### Diet\nz\n## ${"w".repeat(120)}`;
+    const at = (h: string) => page.indexOf(h);
+    const cut = cutPage(page, 50);
+    expect(cut.note).toBe(`[Characters 0 to 50 of ${page.length}. Read on with offset 50.]`);
+    expect(cut.sections).toBe(`Sections further on: Biology (offset ${at("## Biology")}); Diet (offset ${at("### Diet")}); ${"w".repeat(79)}… (offset ${at("## w")}).`);
+    expect(cutPage(page, 50, at("## Biology")).sections).toContain(`Diet (offset ${at("### Diet")})`);
   });
 
   it("asks like a browser, and renders with the URL as one argument", () => {
