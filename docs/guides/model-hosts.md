@@ -519,6 +519,24 @@ picks their own voice and speed per language with the speech model's
 **Settings**, in its host's "N models" list under Models, Hosts and
 endpoints; without one, the model's first voice for the language is used.
 
+### Recall by meaning
+
+Memory recall searches by words, and by meaning too once the
+**Embeddings** row of Models, Tasks has a model; without one nothing
+breaks, recall is keyword-only. Download the **Qwen3 Embedding 0.6B**
+starter (Q8_0) under Starters on the dashboard; the host
+serves it with llama.cpp as an embedding model by itself, on a GPU or the
+CPU. Put it in the Embeddings row for both the General and the Private
+column, since private and local-only threads only use the Private one.
+With two hosts, list the GPU copy first and a CPU copy after it as the
+fallback, and keep every host in the row on the same model file: the
+vectors are stored per model, so a different model drops the index and
+embeds the pool again from the start, with keyword recall working
+meanwhile. Each memory is embedded once, in the background, and each
+question once per turn; a general pool whose model is on a cloud endpoint
+leaves local-only threads' words out ([docs/memory.md](../memory.md),
+"Recall by meaning").
+
 ## Images
 
 Confirmed, ready recipes can go in the `image.create`, `image.edit` and
@@ -767,7 +785,10 @@ workstation"). Note what goes wrong against each.
    an image with Qwen-Image 2.1 Turbo, then a masked edit: only the
    masked part should change. Templates no real job has used yet may
    need node or input names in `host/workflows/` fixed.
-10. Optional, on a GeForce RTX 20, 30 or 40 card: turn on gpu-unlock
+10. Download the Qwen3 Embedding 0.6B starter, put it in the Embeddings
+    row of Models, Tasks for both columns, and ask in a thread about
+    something said in other words earlier: recall should find it.
+11. Optional, on a GeForce RTX 20, 30 or 40 card: turn on gpu-unlock
     ("Full-rate tensor math"), reboot, and check the kernel log says
     `unlocked`. Time the same prompt and the same image before and
     after, and check that a suspend and resume keeps it.
