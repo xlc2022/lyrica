@@ -1,6 +1,6 @@
 # Brief: Switching a model off in its endpoint's list
 
-**Status:** In review (PR pending).
+**Status:** Merged as #742 (89711b7).
 
 **Thread:** Add per-model enable checkbox. **Branch:** `claude/project-thread-a7u7ff`.
 
@@ -54,7 +54,7 @@ and keeps the user in charge of what spends their money.
 
 ## Handoff notes
 
-- Done: all of the above, built in one PR.
+- Done: all of the above, merged in #742.
 - Next: nothing planned. If the user wants the count beside the row to say
   how many are on ("12 models · 3 on"), that is a one-line change in
   `Models.tsx`.
