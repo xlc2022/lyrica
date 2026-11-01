@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { forgetKiwixBooks, offlineQuery, kiwixArticle, kiwixBooks, kiwixLines, kiwixPage, kiwixPicture, kiwixSearch, kiwixStatus } from "../src/kiwix.ts";
+import { cutPage } from "../src/web.ts";
 
 // The offline copy of Wikipedia on kiwix-serve, as web_search and web_fetch
 // read it (docs/contracts.md, "web_search and web_fetch"). The replies are
@@ -119,9 +120,21 @@ describe("the offline copy of Wikipedia", () => {
     expect(page.copy).toBe("the offline copy of Wikipedia (2026-06)");
     expect(page.text.split("\n").slice(0, 2)).toEqual(["# Lute", "https://en.m.wikipedia.org/wiki/Lute#History"]);
     expect(page.text).toContain("[Ada Lovelace](https://en.m.wikipedia.org/wiki/Ada_Lovelace)");
-    expect(page.text).toContain(`Pictures, each readable with web_fetch:\n1. ${A}/content/${BOOK}/I/Lute_photo.webp (A Renaissance lute)`);
+    // Under the title and address, so a long article's first window has them.
+    expect(page.text.split("\n").slice(2, 5)).toEqual(["", "Pictures, each readable with web_fetch and shown in a reply as a Markdown image:", `1. ${A}/content/${BOOK}/I/Lute_photo.webp (A Renaissance lute)`]);
     expect(page.text).not.toContain("upload.wikimedia.org");
     expect(urls.at(-1)).toBe(`${A}/raw/${BOOK}/content/A/Lute`);
+  });
+
+  it("lists a long article's pictures in the first window web_fetch gives", async () => {
+    const long = ARTICLE.replace("</div></body>", `${"<p>The horse has been domesticated for thousands of years and bred for work, war and sport.</p>".repeat(600)}<figure><img src="../I/Horse_late.webp" alt="A late picture"></figure></div></body>`);
+    const { f } = serve({ pages: { "A/Lute": long } });
+    const page = await kiwixPage(A, new URL("https://en.wikipedia.org/wiki/Lute"), undefined, f);
+    if (!page || "image" in page) throw new Error("expected a page");
+    const first = cutPage(page.text, 20_000);
+    expect(first.note).toContain("Read on with offset");
+    expect(first.text).toContain(`1. ${A}/content/${BOOK}/I/Lute_photo.webp (A Renaissance lute)`);
+    expect(first.text).toContain(`2. ${A}/content/${BOOK}/I/Horse_late.webp (A late picture)`);
   });
 
   it("finds an article spelled differently through kiwix-serve's suggestions, and gives up on one no book has", async () => {

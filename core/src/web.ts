@@ -448,11 +448,19 @@ export function cutPage(text: string, maxChars: number, offset = 0): { text: str
   if (from && from >= text.length) return { text: `The page has ${text.length} characters, so there is nothing from offset ${from}.`, isError: true };
   const to = Math.min(text.length, from + maxChars);
   if (!from && to === text.length) return { text };
-  const note = to < text.length
-    ? `[Characters ${from} to ${to} of ${text.length}. Read on with offset ${to}.]`
-    : `[Characters ${from} to ${to} of ${text.length}: the end of the page.]`;
-  return { text: text.slice(from, to), note };
+  if (to === text.length) return { text: text.slice(from, to), note: `[Characters ${from} to ${to} of ${text.length}: the end of the page.]` };
+  // The headings past the window, each with its offset, so a part further on can be read without paging through.
+  const later: string[] = [];
+  for (const m of text.slice(to).matchAll(/^#{1,3} +(.+)$/gm)) {
+    if (later.length === SECTIONS) { later.push("…"); break; }
+    later.push(`${m[1]!.trim()} (offset ${to + m.index})`);
+  }
+  const sections = later.length ? ` Sections further on: ${later.join("; ")}.` : "";
+  return { text: text.slice(from, to), note: `[Characters ${from} to ${to} of ${text.length}. Read on with offset ${to}.${sections}]` };
 }
+
+/** How many headings past a cut page's window its note names. */
+const SECTIONS = 40;
 
 const MARK = /<<<(end )?web [0-9a-f]+>>>/gi;
 
