@@ -25,12 +25,14 @@ starts in well under a second with Node installed.
 
 1. **A server is a URL or a command.** `mcp_servers` gets `command` (JSON
    argv, `[]` for a remote server) and `env` (JSON, `{}`); user database
-   step 20, adds only. A local server has an empty `url`. Exactly one of
+   step 21, adds only. A local server has an empty `url`. Exactly one of
    the two is set. The command is one program and its arguments, split
    like a shell does (quotes, no expansion); the environment is `KEY=value`
    lines, kept like a token: in `user.db` and memory, never shown back.
 2. **It runs in the thread's sandbox** (`Sandbox.start` with the server's
-   environment under the sandbox's own, so `PATH` and `HOME` are the
+   environment set inside only, through bwrap `--setenv` arguments read
+   from a pipe, so nothing of it reaches bwrap, `unshare` or `bash` on the
+   host, and under the sandbox's own, so `PATH` and `HOME` are the
    sandbox's): the thread's folders, grants and network, as her `bash`
    has them, in its folder. Nothing runs inside `lyricad`. The transport
    (`mcpStdioTransport`, `core/src/workspace/mcp.ts`) speaks
@@ -67,7 +69,7 @@ starts in well under a second with Node installed.
    against a small stdio server in Node; a local server saved with its
    command and environment, never a URL and a command together; a local
    server starts in a sandbox with its environment and without lyricad's
-   (sandbox tests, where bwrap runs); step 20 from every released schema.
+   (sandbox tests, where bwrap runs); step 21 from every released schema.
 
 ## Out of scope
 
@@ -80,7 +82,7 @@ readOnlyHint for eBay's tools (an upstream PR, later).
 Done (2026-11-01): everything under Build, in one PR from this thread.
 Core: `mcpCommand`, `mcpEnv`, `mcpStdioTransport`, `probeMcpCommand`,
 `Workspace.startMcpServer`, `Jobs.hold`, `Sandbox.start(argv, cwd, env)`,
-user step 20. Daemon: `command` and `env` in `McpServerInput`,
+user step 21. Daemon: `command` and `env` in `McpServerInput`,
 `POST …/mcp-servers/:name/env`. Web: Command and Environment in the
 drawer. Nix: `services.lyrica.ebayMcp` and `nix/ebay-mcp.nix`. Docs:
 DESIGN, workspace, contracts, ux, web, daemon, getting-started, the eBay

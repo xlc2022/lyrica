@@ -1237,7 +1237,9 @@ lookups (`services.lyrica.mcpNixos`, docs/guides/nixos-mcp.md).
   it: Lyrica's transport (`mcpStdioTransport`) does, through
   `Workspace.startMcpServer`, in the thread's sandbox (its folder as the
   working directory, its grants and network, the server's environment
-  under the sandbox's own, so `PATH` and `HOME` stay the sandbox's and
+  set inside the sandbox only, as bwrap `--setenv` arguments read from a
+  pipe, never in the launcher's environment or on a host command line,
+  and under the sandbox's own, so `PATH` and `HOME` stay the sandbox's and
   nothing of `lyricad`'s environment reaches it), and speaks
   newline-delimited JSON-RPC on its pipes. Its stderr is held in memory,
   the last 4 KB, only for the line that says why it didn't answer. While

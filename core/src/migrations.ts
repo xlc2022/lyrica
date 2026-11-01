@@ -299,7 +299,7 @@ export const STEPS: Record<DbKind, MigrationStep[]> = {
     run(db) { addColumns(db, [["project_settings", "setup", "TEXT"]]); },
   }, {
     // Local (stdio) MCP servers (docs/briefs/mcp-local.md): a server's command and environment beside its URL. Adds only.
-    version: 20,
+    version: 21,
     run(db) { addColumns(db, [["mcp_servers", "command", "TEXT NOT NULL DEFAULT '[]'"], ["mcp_servers", "env", "TEXT NOT NULL DEFAULT '{}'"]]); },
   }],
   pool: [{

@@ -2620,7 +2620,7 @@ selfTest(): Promise<string | undefined>   // lyricad calls this at startup
   a `command` (one line, with `env` as `KEY=value` lines), never both:
   `400` otherwise. A local server's `url` is `""`, its `host` "this
   machine". Thread settings carry `mcpServers` (names). User database
-  step 3 adds `mcp_servers` and `thread_workspaces.mcp_servers`; step 20
+  step 3 adds `mcp_servers` and `thread_workspaces.mcp_servers`; step 21
   adds `mcp_servers.command` (JSON argv) and `.env` (JSON). In core:
   `settings(userId).mcpServers() / addMcpServer / updateMcpServer /
   setMcpToken / setMcpEnv / removeMcpServer / mcpServerState /

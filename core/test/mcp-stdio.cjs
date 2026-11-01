@@ -26,7 +26,7 @@ rl.on("line", (line) => {
   } else if (m.method === "tools/list") {
     result = { tools: [{ name: "whoami", description: "who", inputSchema: { type: "object", properties: {} }, annotations: { readOnlyHint: true } }] };
   } else if (m.method === "tools/call") {
-    result = { content: [{ type: "text", text: JSON.stringify({ who: process.env.WHO ?? null, home: process.env.HOME ?? null, secret: process.env.MCP_TEST_SECRET ?? null, cwd: process.cwd() }) }] };
+    result = { content: [{ type: "text", text: JSON.stringify({ who: process.env.WHO ?? null, home: process.env.HOME ?? null, secret: process.env.MCP_TEST_SECRET ?? null, cwd: process.cwd(), ...process.env.BASH_ENV ? { bashEnv: process.env.BASH_ENV } : {} }) }] };
   } else if (m.method === "ping") {
     result = {};
   } else {

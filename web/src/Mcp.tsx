@@ -16,7 +16,7 @@ import { ConfirmDialog, ErrorText, useAction, useDismiss, useLoad } from "./ui.t
 const POOLS: Record<Pool, string> = { general: "General", private: "Private" };
 const PRIVATE_POOL = "A private server must be on your own network: LAN, this machine or the tailnet.";
 const COMMAND_TIP = "A local server: the program and its arguments, started in the thread's sandbox with the thread's folders and network. Give a URL or a command, not both.";
-const ENV_TIP = "The program's own variables, KEY=value one per line: its keys. Never shown again.";
+const ENV_TIP = "The program's own variables, one KEY=value per line, such as its API keys. Never shown again.";
 
 /** At most one state per row: Online, Token rejected, Unreachable with how long, or Off network for a private one. */
 export function mcpState(m: McpServerInfo, now = Date.now()): { tone: "ok" | "warn" | "bad"; word: string; detail?: string } | undefined {
