@@ -26,8 +26,8 @@ With a yes it:
 
 - writes `/etc/lyrica/searxng/settings.yml` once, from
   `daemon/deploy/searxng-settings.yml` with a random `secret_key`: JSON
-  on, limiter off, the default engines (the settings in "Configure it"
-  below);
+  on, limiter off, five general engines and short rests (the settings in
+  "Configure it" below);
 - pulls the official image at the tag and digest the script pins and runs
   it as `lyrica-searxng.service`, published on `127.0.0.1:8888` only,
   started at boot (`/etc/lyrica/searxng.env` holds the image and port);
@@ -50,9 +50,10 @@ With `services.lyrica.enable`, `services.lyrica.searxng` is on unless you
 set it to `false`. It turns on NixOS's own `services.searx` (no Docker),
 in uWSGI with request logging off, since its built-in server logs every
 query. It listens on `127.0.0.1:8888` with the same settings as
-install.sh's: JSON on, limiter off. `lyrica-searxng-secret.service` makes
-its `secret_key` once, in `/var/lib/lyrica-searxng/env`. The address goes
-to `/var/lib/lyrica/searxng-address` and fills in under Administration in
+install.sh's: JSON on, limiter off, five general engines, short rests.
+`lyrica-searxng-secret.service` makes its `secret_key` once, in
+`/var/lib/lyrica-searxng/env`. The address goes to
+`/var/lib/lyrica/searxng-address` and fills in under Administration in
 the same way. More `services.searx.settings` merge in, engines for example.
 Turning it off removes the address file, but not the address lyricad
 already stored: clear it in Administration, or give the address of a
@@ -126,10 +127,24 @@ search:
   formats: [html, json]         # json is what Lyrica asks for; the default is html only, which answers her with 403
   safe_search: 0                # 0 off, 1 moderate, 2 strict
   default_lang: "auto"          # or "en", "de", …
+  suspended_times:              # see "Engines that refuse" below
+    SearxEngineAccessDenied: 600
+    SearxEngineCaptcha: 900
+    SearxEngineTooManyRequests: 180
 
 outgoing:
-  request_timeout: 3.0          # seconds each engine gets (the default)
-  max_request_timeout: 8.0      # the most any request may wait
+  request_timeout: 6.0          # seconds each engine gets; SearXNG's own 3.0 is too short for qwant and yahoo
+  max_request_timeout: 10.0     # the most any request may wait
+
+engines:                        # see "Engines" below
+  - name: bing
+    disabled: false
+  - name: qwant
+    disabled: false
+  - name: yahoo
+    disabled: false
+  - name: startpage
+    disabled: true
 
 ui:                             # optional: only for using it in a browser
   default_theme: simple
@@ -138,9 +153,14 @@ ui:                             # optional: only for using it in a browser
 ### Engines
 
 With `use_default_settings: true`, the default engines load, and an entry
-under `engines:` changes the default engine of that name. DuckDuckGo,
-Brave, Wikipedia, GitHub and Stack Overflow are on by default; Google,
-Bing and Qwant are off. To turn one off, or on:
+under `engines:` changes the default engine of that name. SearXNG's own
+defaults ask only DuckDuckGo, Brave and Startpage for a general search
+(Wikipedia gives an infobox; GitHub and Stack Overflow answer their own
+categories), and all three refuse a home address quickly: DuckDuckGo and
+Startpage with a CAPTCHA, Brave with "too many requests". The settings
+above also turn on Bing, Qwant and Yahoo, which answer without a sign-up
+or key, and turn Startpage off, since it answers every request with a
+proof-of-work CAPTCHA. To change one:
 
 ```yaml
 engines:
@@ -150,14 +170,37 @@ engines:
     disabled: false
 ```
 
-An engine that keeps timing out or answering with a CAPTCHA only slows
-every search; turn it off. To load only a short list instead:
+Google is off: it answers a plain request with nothing. An engine that
+keeps timing out or answering with a CAPTCHA only slows every search;
+turn it off. To load only a short list instead:
 
 ```yaml
 use_default_settings:
   engines:
     keep_only: [duckduckgo, brave, wikipedia, github, stackoverflow]
 ```
+
+### Engines that refuse
+
+When an engine answers with a CAPTCHA, "too many requests" or "access
+denied", SearXNG rests it for `search.suspended_times` seconds, and
+meanwhile reports it as `Suspended`. Its own defaults rest an engine for
+up to a day after one CAPTCHA, which with three engines left her search
+with none. The settings above rest one for 15 minutes after a CAPTCHA,
+10 after "access denied" and 3 after "too many requests" (Brave sets
+its own 3 minutes). Lyrica asks SearXNG no more than once a second, asks
+the same search once a minute, retries only when an engine failed
+passingly (a timeout), and tells her for how long each refusing engine
+has been refusing, so she can wait instead of asking again.
+
+An install made before these settings existed keeps its old
+`settings.yml` (install.sh writes it once): copy the `suspended_times`,
+`outgoing` and `engines` sections in from above and restart SearXNG. The
+NixOS module carries them itself; `nixos-rebuild switch` applies them.
+Watch for refusals with `journalctl -u uwsgi` on NixOS (`-u
+lyrica-searxng` on Debian): an engine that still refuses at this rate
+has your address on a list, and only another engine, or another
+address, helps.
 
 ### The limiter
 

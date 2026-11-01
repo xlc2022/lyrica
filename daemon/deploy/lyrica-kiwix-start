@@ -1,0 +1,26 @@
+#!/bin/sh
+# Starts kiwix-serve for her offline Wikipedia (docs/guides/wikipedia.md):
+# every readable .zim in $ZIM_DIR, on 127.0.0.1:$KIWIX_PORT. The files go
+# through kiwix-manage into a library first, so a file kiwix-serve can't
+# open (a download still in progress under its final name, a cut-off copy)
+# is skipped with a line in the journal instead of stopping the service.
+# lyrica-kiwix.service runs it on Debian; nix/module.nix runs the same text.
+set -u
+: "${ZIM_DIR:?ZIM_DIR is the folder of ZIM files}"
+: "${KIWIX_PORT:?KIWIX_PORT is the port on 127.0.0.1}"
+lib=${RUNTIME_DIRECTORY:-/run/lyrica-kiwix}/library.xml
+rm -f "$lib"
+n=0
+for f in "$ZIM_DIR"/*.zim; do
+  [ -f "$f" ] || continue
+  if kiwix-manage "$lib" add "$f" >/dev/null 2>&1; then
+    n=$((n + 1))
+  else
+    echo "skipping $f: kiwix can't open it (still downloading, or cut off?)" >&2
+  fi
+done
+if [ "$n" -eq 0 ]; then
+  echo "no readable ZIM file in $ZIM_DIR" >&2
+  exit 1
+fi
+exec kiwix-serve --library --address 127.0.0.1 --port "$KIWIX_PORT" --nodatealiases --nosearchbar "$lib"

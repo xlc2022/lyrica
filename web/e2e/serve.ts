@@ -13,7 +13,7 @@
 // answers with that markdown as written (the echo's "You said: " would put a
 // fence mid-line, where it is not a fence), a look at a project's
 // threads (the `watching` call) tells the first thread it wasn't about "Heads up:
-// the plan changed.", /searxng is a SearXNG answering JSON, anything else gets a few streamed sentences that echo it. /local/v1 serves "local-model"
+// the plan changed.", /searxng is a SearXNG answering JSON, /kiwix a kiwix-serve with one book, anything else gets a few streamed sentences that echo it. /local/v1 serves "local-model"
 // and /cloud/v1 "cloud-model"; /long/v1 serves one model with a long id, for a header line that has to shrink. /speech/v1 is a speech server: "whisper"
 // transcribes any clip as "hello from the fake" and "kokoro" speaks a second
 // of PCM; POST /speech/down and /speech/up make the whole server fail (503)
@@ -149,6 +149,11 @@ function fakeModel() {
         const title = slug.split("-").map((w) => w[0]!.toUpperCase() + w.slice(1)).join(" ");
         res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
         return res.end(`<!doctype html><html><head><title>${title}</title></head><body><nav>Home</nav><article><h1>${title}</h1><p class="byline">By Sam</p>${`<p>${title} is a page the fake serves, long enough for the reader to keep as an article.</p>`.repeat(8)}</article></body></html>`);
+      }
+      // A kiwix-serve at /kiwix, with one book in its catalog.
+      if (req.url === "/kiwix/catalog/v2/entries") {
+        res.writeHead(200, { "content-type": "application/atom+xml" });
+        return res.end(`<?xml version="1.0" encoding="UTF-8"?><feed xmlns="http://www.w3.org/2005/Atom"><entry><title>Wikipedia</title><updated>2026-06-01T00:00:00Z</updated><language>eng</language><name>wikipedia_en_all_nopic</name><link type="text/html" href="/content/wikipedia_en_all_nopic_2026-06" /></entry></feed>`);
       }
       // A SearXNG at /searxng, answering JSON.
       if (req.url?.startsWith("/searxng/search?")) {

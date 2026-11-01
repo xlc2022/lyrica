@@ -206,6 +206,9 @@ describe("workspace tools in a Pi session", () => {
     expect(toolsLine({ programs: ["git", "Node"], browser: "/usr/bin/chromium" })).toContain("bash, git, Node and headless Chromium.");
     expect(toolsLine({ programs: ["git", "Node"], browser: "/usr/bin/chromium" })).toContain("executablePath: process.env.CHROME_PATH");
     expect(toolsLine({ programs: ["git"] })).toBe("The sandbox has bash, git.");
+    expect(toolsLine({ programs: ["git", "Python 3"], python: ["beautifulsoup4", "requests"] })).toContain("The sandbox has bash, git, Python 3 (with beautifulsoup4, requests).");
+    expect(toolsLine({ programs: ["git", "Python 3"], python: ["beautifulsoup4", "requests"] })).toContain("don't pip install");
+    expect(toolsLine({ programs: ["git", "Python 3"] })).toBe("The sandbox has bash, git, Python 3.");
     expect(toolsLine({ programs: [] })).toBe("");
   });
 

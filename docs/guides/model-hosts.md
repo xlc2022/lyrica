@@ -529,7 +529,9 @@ other tier, including on fallback; edits and upscaling use their lists as
 before. Her `image` tool keeps a recipe's defaults unless she gives a size
 or count, and never picks parts or LoRAs itself. Each list is an ordered
 fallback, and private threads only use local models. SeedVR2 recipes
-upscale. Before any cloud fallback, a portrait photo's cloud setting is
+upscale images, and whole clips from the same **Image upscaling** list
+once the host has `workflows/seedvr2-clip.json` (an update brings it; no
+download). Before any cloud fallback, a portrait photo's cloud setting is
 checked. OpenAI setup and offline diagrams are in the [getting-started
 guide](getting-started.md#image-models). Qwen-Image 2.1 edits (masked
 too) and Z-Image and Krea 2 Q5 on stable-diffusion.cpp have made real
@@ -568,7 +570,8 @@ and videos, or `COMFY_GPU=0,1` in `host/.env` (then `host/install.sh`)
 runs a ComfyUI on each, so two clips or images run at once, one per GPU.
 Each GPU then loads its own copy of a recipe, so leave room in system RAM
 for each running clip's frames (about 5 GB for 16 s, 18 GB for 60 s at
-H3's size). A recipe is then measured afresh on each GPU, since each GPU's
+H3's size, and up to 18 GB for a clip SeedVR2 upscales, which the host
+caps there). A recipe is then measured afresh on each GPU, since each GPU's
 copy is its own model. When she asks for a shape (16:9, say), the host
 keeps the recipe's area and fits the size to its template's step. Ask for
 a number of steps and she passes it on for that clip; a recipe's own steps

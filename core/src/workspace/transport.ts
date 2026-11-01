@@ -69,6 +69,8 @@ export interface HelperSandbox {
   exclude: number[];
   front?: number[];
   frontHosts?: string[];
+  /** Told when a front-door name doesn't resolve (SandboxSpec). */
+  warn?: (line: string) => void;
   bwrap?: string;
   pasta?: string;
   /** Why the sandbox self-test refused network: then no helper starts and the call fails. */
@@ -136,6 +138,7 @@ export function helperSandbox(address: string, port: number, o: HelperSandbox): 
     front: o.front,
     self,
     frontHosts: self.length === hostAddresses().length ? o.frontHosts : [...(o.frontHosts ?? []), address],
+    warn: o.warn,
     files: (files ??= helperFiles()),
     bwrap: o.bwrap,
     pasta: o.pasta,

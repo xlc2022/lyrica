@@ -158,5 +158,7 @@ The owner chose, in order:
   clip (`steps` on video, animate and motion).
 - 2026-10-30, videos past one clip and extending a clip:
   [long-videos.md](long-videos.md).
+- 2026-10-31, upscaling a finished clip with SeedVR2:
+  [video-upscale.md](video-upscale.md).
 - Next: the 14B (fp8 and Q5) and LTX-2.5 starters on a real GPU; H3's
   quality against more steps.

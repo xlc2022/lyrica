@@ -3,6 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileS
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Memory, Workspace, type ExecutionTarget, type ToolOps, type WorkspaceThread } from "@lyrica/core";
+import { fakeOpenAI } from "../../core/test/fake-openai.ts";
 import { afterEach, describe, expect, it } from "vitest";
 import { withModels } from "../../core/test/helpers.ts";
 import { CLAUDE_CODE_LINE, Delegation, type Request, type ThreadContext } from "../src/index.ts";
@@ -23,7 +24,9 @@ const prompt = args[args.indexOf("-p") + 1];
 const resume = args.includes("--resume") ? args[args.indexOf("--resume") + 1] : "none";
 const mode = args.includes("--permission-mode") ? args[args.indexOf("--permission-mode") + 1] : "default";
 const fs = require("node:fs");
-const report = /(\\S+)\\/REPORT\\.md/.exec(prompt)[1] + "/REPORT.md";
+const model = args.includes("--model") ? args[args.indexOf("--model") + 1] : "default";
+const reportAt = /(\\S+)\\/REPORT\\.md/.exec(prompt);
+const report = reportAt && reportAt[1] + "/REPORT.md";
 const brief = /(\\S+\\/BRIEF\\.md)/.exec(prompt);
 const asked = brief ? fs.readFileSync(brief[1], "utf8") : prompt;
 const say = (e) => console.log(JSON.stringify(e));
@@ -33,9 +36,10 @@ say({ type: "system", subtype: "init", session_id: "s-1" });
 say({ type: "assistant", message: { content: [{ type: "text", text: "Looking at the tests." }, { type: "tool_use", id: "tu-1", name: "Bash", input: { command: "npm test" } }] } });
 say({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: "tu-1", content: "x".repeat(5000) }] } });
 if (asked.includes("limit")) answer({ is_error: true, result: "Claude AI usage limit reached|1761300000" }, 1);
+const summary = (asked.split("\\n").find((l) => l.startsWith("Task:")) ?? "") + " resume=" + resume + " mode=" + mode + " model=" + model + " pwd=" + process.cwd();
 say({ type: "assistant", message: { content: [{ type: "text", text: "Done, in short." }] } });
-if (!asked.includes("skip the report")) fs.writeFileSync(report, "Report: " + asked.split("\\n").find((l) => l.startsWith("Task:")) + " resume=" + resume + " mode=" + mode + " pwd=" + process.cwd());
-answer({ is_error: false, result: "Done, in short." });
+if (report && !asked.includes("skip the report")) fs.writeFileSync(report, "Report: " + summary);
+answer({ is_error: false, result: report ? "Done, in short." : "Answer: " + summary });
 `;
 
 async function setup() {
@@ -120,8 +124,10 @@ describe("the claude role", () => {
     const parent = s.thread();
     const plain = await s.run(parent, { task: "skip the report please", role: "claude" });
     expect(plain.result).toBe("Done, in short.");
+    // Plan mode writes no report, so a read-only run's answer is its last message.
     const look = await s.run(parent, { task: "Task: look around", role: "claude", readOnly: true } as Request);
-    expect(look.result).toContain("mode=plan");
+    expect(look.result).toContain("Answer: Task: look around resume=none mode=plan");
+    expect(s.ran.at(-1)!.join(" ")).not.toContain("REPORT.md");
   });
 
   it("says when the Claude plan's usage limit stopped it, for her to wait for the reset", async () => {
@@ -151,5 +157,73 @@ describe("the claude role", () => {
 
   it("is what her prompt line points her to", () => {
     expect(CLAUDE_CODE_LINE).toContain("role claude");
+    expect(CLAUDE_CODE_LINE).toContain("any job the person asks Claude for");
+  });
+});
+
+describe("a step that names Claude", () => {
+  /** A paid Claude the thread may name, as Anthropic's API or OpenRouter would list it. */
+  async function withPaidClaude(s: Awaited<ReturnType<typeof setup>>) {
+    const server = await fakeOpenAI({ label: "anthropic", models: [{ id: "claude-opus-latest", pricing: { prompt: "0.000015", completion: "0.000075" } }] });
+    server.respond(async () => ({ text: "paid opinion" }));
+    const ep = s.models.addEndpoint(s.ada, { name: "anthropic", kind: "cloud", baseUrl: server.baseUrl, apiKey: "sk-test" });
+    s.models.setCapabilities(s.ada, (await s.models.discover(s.ada, ep.id))[0]!.id, { tools: true });
+  }
+
+  it("runs on Claude Code in the role it asked for, whatever the job, not on a paid Claude", async () => {
+    const s = await setup();
+    await withPaidClaude(s);
+    const parent = s.thread();
+    expect(s.delegation.claudeFor(parent, "Claude Opus")).toEqual({ alias: "opus" });
+    expect(s.delegation.claudeFor(parent, "claude")).toEqual({ alias: undefined });
+    expect(s.delegation.claudeFor(parent, "anthropic/claude-opus-latest")).toBeUndefined();
+    expect(s.delegation.claudeFor(parent, "deepseek")).toBeUndefined();
+    const run = await s.run(parent, { task: "Task: second opinion on the CPU shortlist", role: "oracle", model: "Claude Opus", title: "Opus opinion on CPUs" });
+    expect(run.status).toBe("finished");
+    // The oracle is read-only, so Claude Code runs in plan mode on the alias asked for, and answers in its last message.
+    expect(run.result).toContain("Answer: Task: second opinion on the CPU shortlist resume=none mode=plan model=opus");
+    const [row] = s.delegation.status(parent);
+    expect(row).toMatchObject({ role: "claude", model: "Claude Code/opus", status: "finished", pick: { claude: { alias: "opus", role: "oracle" } }, narrowing: { readOnly: true } });
+    expect(parent.view.own.getThread(row!.thread)?.title).toBe("claude: Opus opinion on CPUs");
+    // Its brief carries the oracle's prompt, and says to change nothing.
+    const brief = readFileSync(join(s.claudeDir, "delegate", encodeURIComponent(row!.thread), "BRIEF.md"), "utf8");
+    expect(brief).toContain("## Your role\n\nYou are the oracle");
+    expect(brief).toContain("Change nothing");
+    expect(brief).not.toContain("run its checks");
+    // Continued, it keeps its alias and mode.
+    const more = s.delegation.message(parent, run.id, { text: "Task: and the motherboard?" }, { budget: s.delegation.newBudget() });
+    await more.opened;
+    await more.run.ended;
+    expect(more.run.result).toContain("resume=s-1 mode=plan model=opus");
+    // A writer role named Claude works as the claude role does: a report from the sandbox's folder.
+    const work = await s.run(parent, { task: "Task: fix it", role: "worker", model: "claude" });
+    expect(work.result).toContain("Report: Task: fix it resume=none mode=default model=default");
+    expect(s.delegation.status(parent)[0]).toMatchObject({ role: "claude", model: "Claude Code" });
+    expect(s.delegation.status(parent)[0]!.narrowing).toBeUndefined();
+  });
+
+  it("refuses a paid Claude named in words until the person singles it out, and takes its whole label as her word that she checked", async () => {
+    const s = await setup();
+    await withPaidClaude(s);
+    const parent = s.thread();
+    s.on.claude = false;
+    const vague = await s.run(parent, { task: "Task: opinion", role: "oracle", model: "Claude Opus" });
+    expect(vague.status).toBe("failed");
+    expect(vague.result).toMatch(/would be anthropic\/claude-opus-latest, a Claude on a paid endpoint, not Claude Code \(which isn't on in this thread\)\. Check with the person/);
+    expect(parent.view.own.listThreads({ parent: parent.threadId })).toHaveLength(0);
+    // Named outright, it runs there.
+    const outright = await s.run(parent, { task: "Task: opinion", role: "oracle", model: "anthropic/claude-opus-latest" });
+    expect(outright.status).toBe("finished");
+    expect(s.delegation.status(parent)[0]).toMatchObject({ role: "oracle", model: "anthropic/claude-opus-latest" });
+    // The person's own latest words single it out: it runs there in words too.
+    parent.view.own.appendEntry(parent.threadId, { piId: "u1", role: "user", data: {}, text: "Ask claude-opus-latest on the API, I know it's paid." });
+    expect((await s.run(parent, { task: "Task: opinion", role: "oracle", model: "claude opus" })).status).toBe("finished");
+    // With Claude Code on, words go to Claude Code even though the paid one is listed; the whole label still names the paid one.
+    s.on.claude = true;
+    parent.view.own.appendEntry(parent.threadId, { piId: "u2", role: "user", data: {}, text: "Get Claude's opinion." });
+    await s.run(parent, { task: "Task: opinion", role: "oracle", model: "Claude Opus" });
+    expect(s.delegation.status(parent)[0]).toMatchObject({ role: "claude", model: "Claude Code/opus" });
+    await s.run(parent, { task: "Task: opinion", role: "oracle", model: "anthropic/claude-opus-latest" });
+    expect(s.delegation.status(parent)[0]).toMatchObject({ role: "oracle", model: "anthropic/claude-opus-latest" });
   });
 });

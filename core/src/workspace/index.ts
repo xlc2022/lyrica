@@ -9,6 +9,7 @@ import { tmpdir } from "node:os";
 import { join, posix } from "node:path";
 import { Locked, type Keyring } from "../keyring.ts";
 import { inOwnNetwork } from "../models/http.ts";
+import { tailnetName } from "../models/tailnet.ts";
 import type { Pool } from "../types.ts";
 import type { Users } from "../users.ts";
 import { FileChanges, type NewChange } from "./changes.ts";
@@ -84,6 +85,8 @@ export interface WorkspaceOptions {
    * address. Required, so forgetting it can't leave them open; pass [] for none.
    */
   excludePorts: number[];
+  /** Where a sandbox says that a front-door name doesn't resolve: lyricad's log. */
+  log?: (line: string) => void;
   /**
    * Where lyricad's front door is now, read at every sandbox start: its ports,
    * the hosts it answers on besides this machine (an external proxy, Lyrica's
@@ -177,8 +180,14 @@ export function parseMachineAddress(address: string): { username: string; host: 
   return { username: m[1]!, host: m[2]!.replace(/^\[|\]$/g, ""), port };
 }
 
-/** A host's addresses, and whether any is outside the operator's own network. A resolver that never answers is no answer. */
+/**
+ * A host's addresses, and whether any is outside the operator's own network.
+ * A resolver that never answers is no answer. A name in her tailnet is her
+ * tailscaled's to resolve (this machine's resolver doesn't know MagicDNS
+ * names), and is on her own network by definition.
+ */
 export async function resolveHost(host: string): Promise<{ addresses: string[]; outside: boolean }> {
+  if (tailnetName(host)) return { addresses: [], outside: false };
   const addresses = isIP(host) ? [host] : await Promise.race([
     lookup(host, { all: true }).then((all) => all.map((a) => a.address)),
     new Promise<never>((_, reject) => setTimeout(() => reject(new Error(`${host} doesn't resolve`)), 5000).unref()),
@@ -255,12 +264,13 @@ export class Workspace {
   }
 
   /** The front door and excluded ports as they are now. */
-  private door(): { exclude: number[]; front: number[]; frontHosts: string[] } {
+  private door(): { exclude: number[]; front: number[]; frontHosts: string[]; warn?: (line: string) => void } {
     const d = this.opts.frontDoor?.();
     return {
       exclude: [...new Set([...this.opts.excludePorts, ...(d?.exclude ?? [])])],
       front: d?.ports ?? [443],
       frontHosts: d?.hosts ?? [],
+      ...(this.opts.log ? { warn: this.opts.log } : {}),
     };
   }
 
@@ -1604,7 +1614,7 @@ const lastLine = (text: string): string => text.trim().split("\n").at(-1)?.repla
 export { inOwnNetwork } from "../models/http.ts";
 
 /** Codex's sandbox: its home and the internet, nothing else of the machine's. */
-export function codexSandbox(home: string, o: Pick<SandboxSpec, "exclude" | "front" | "frontHosts" | "bwrap" | "pasta">): SandboxSpec {
+export function codexSandbox(home: string, o: Pick<SandboxSpec, "exclude" | "front" | "frontHosts" | "warn" | "bwrap" | "pasta">): SandboxSpec {
   return { ...o, workdir: home, grants: [], network: { internet: true, services: false, hosts: [] } };
 }
 

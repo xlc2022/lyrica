@@ -27,8 +27,8 @@ integration becomes "add a server" instead of a tool we write and keep
    grants. Turn Pi's
    `mcp.log` and temporary result files off or point them at the
    thread's encrypted workspace: no tool text in plaintext on disk.
-2. **Remote servers only.** Streamable HTTP. A `command` (stdio) server
-   is refused.
+2. **Remote servers first.** Streamable HTTP. A `command` (stdio) server
+   is refused until local servers are built (below).
 3. **Schema:** user database step 3 (`core/src/migrations.ts`, adds only):
    an `mcp_servers` table (name, url, pool, token sealed like a Git
    token, state, checked_at) and `thread_workspaces.mcp_servers` (JSON
@@ -58,9 +58,23 @@ integration becomes "add a server" instead of a tool we write and keep
 
 ## Out of scope
 
-Stdio servers, OAuth sign-in (Pi supports it, but its redirect lands on
+OAuth sign-in (Pi supports it, but its redirect lands on
 the server's loopback address, which the user's browser can't reach), MCP
 resources and prompts, Lyrica as an MCP server, a catalogue of servers.
+
+## Local (stdio) servers: allowed, not built
+
+The owner lifted the rule against stdio servers on 2026-11-01 ("we should
+not hobble ourselves but of course should keep security in mind"). The
+conditions are in DESIGN.md, "MCP servers": sandboxed, unprivileged, never
+inside `lyricad`, no plaintext of its output on disk, counted in the
+process budget, added and gated like a remote server. Whoever builds it
+first writes up, and tells the owner before building, whether starting the
+program for each session and keeping no log of its output breaks the
+server or makes its answers pointless: state the server keeps only in
+memory is lost at every start, a slow start delays the first call, and
+its warnings and errors on stderr go nowhere. Nothing of this is built;
+a `command` is still refused.
 
 ## Order
 

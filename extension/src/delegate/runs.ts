@@ -2,8 +2,8 @@ import { randomBytes } from "node:crypto";
 import { EventEmitter } from "node:events";
 import type { AgentSession, ExtensionFactory, SessionEntry } from "@earendil-works/pi-coding-agent";
 import {
-  DelegationStore, isRestricted, sandboxHas, sandboxTools, LIVE_STATUSES, matchModel, refId, renderThreadMentions, sameModelName, singledOut, unmatched,
-  type CallContext, type CouncilSpec, type Grant, type LoopSpec, type Memory, type ModelRef, type Models, type Pool, type PoolStore, type Role,
+  DelegationStore, isRestricted, sandboxHas, sandboxTools, LIVE_STATUSES, claudeAlias, isClaudeModel, matchModel, meansClaude, namedOutright, refId, renderThreadMentions, sameModelName, singledOut, unmatched,
+  type CallContext, type ClaudeAlias, type CouncilSpec, type Grant, type LoopSpec, type Memory, type ModelRef, type Models, type Pool, type PoolStore, type Role,
   type Step, type SubagentRecord, type SubagentStatus, type Tier, type Usage, type User, type Users, type Workflow, type WorkflowSpec, type Workspace,
 } from "@lyrica/core";
 import type { ThreadContext } from "../index.ts";
@@ -18,7 +18,7 @@ import { checkoutsOf, repoRules } from "../code-repositories.ts";
 import { createImageExtension } from "../images.ts";
 import { createWorkspaceExtension, type ApprovalRequest } from "../workspace.ts";
 import { rolesFor } from "./roles.ts";
-import { CLAUDE_MODEL, CLAUDE_ROLE, claudeBody } from "./claude.ts";
+import { CLAUDE_ROLE, claudeBody, claudeModelLabel } from "./claude.ts";
 import { createDelegateExtension, createSubagentExtension } from "./tool.ts";
 import { makeWorktrees, removeWorktrees, worktreeGrants, worktreeNote, type Worktree } from "./worktree.ts";
 
@@ -68,6 +68,8 @@ export interface DelegationOptions {
   name?: () => string;
   /** The server's SearXNG address, for a subagent's web_search. */
   searxng?: () => string | null;
+  /** The server's kiwix-serve address, the offline copy of Wikipedia, for a subagent's web tools. */
+  kiwix?: () => string | null;
   /** The Claude plan's usage limit stopped a claude run, with when it resets if Claude Code said: lyricad wakes its parent then. */
   onClaudeLimit?: (parent: Parent, until?: number) => void;
   /** Why the claude role is refused for now, if it is: the user fell back from the Claude plan until it resets. */
@@ -455,7 +457,9 @@ export class Run {
   }
 }
 
-type ModelPick = { tier: Tier } | { model: ModelRef };
+/** How Claude Code stands in for a step that named Claude: the alias its words asked for, and the role it asked for. */
+export interface ClaudeAsk { alias?: ClaudeAlias; role?: string }
+type ModelPick = { tier: Tier } | { model: ModelRef } | { claude: ClaudeAsk };
 
 /**
  * Delegation for one lyricad: every run in this process, the limits, the
@@ -639,7 +643,8 @@ export class Delegation {
     try {
       const role = this.role(run.parent.user.id, row.role, "worker");
       // A model it already ran on was allowed then.
-      const pick: ModelPick = row.pick && "model" in row.pick ? { model: this.named(run, row.pick.model, false) } : { tier: row.pick?.tier ?? role.tier };
+      const pick: ModelPick = row.pick && "claude" in row.pick ? { claude: row.pick.claude }
+        : row.pick && "model" in row.pick ? { model: this.named(run, row.pick.model, false) } : { tier: row.pick?.tier ?? role.tier };
       sub = await this.open(run, role, pick, row.narrowing ?? {}, row);
       opened.resolve();
     } catch (err) {
@@ -952,7 +957,7 @@ export class Delegation {
    * name, runs there instead, unless the person's latest message singles out
    * the cloud copy (`singledOut`).
    */
-  private named(run: Run, name: string, preferLocal = true): ModelRef {
+  private named(run: Run, name: string, fresh = true): ModelRef {
     const { models } = this.o;
     const list = models.textModels(this.parentCall(run));
     let ref = models.find(run.parent.user.id, name);
@@ -962,9 +967,27 @@ export class Delegation {
       ref = { offeringId: m.model.id };
     }
     const picked = list.find((x) => x.id === refId(ref));
-    if (!preferLocal || !picked || picked.local) return ref;
+    if (!fresh || !picked || picked.local) return ref;
+    // A Claude served by an endpoint (Anthropic's API, OpenRouter) spends the user's money, where Claude Code spends their plan:
+    // in words it runs only when the person's own words single it out; naming it outright says she checked.
+    if (isClaudeModel(picked.label) && !namedOutright(name, list) && !singledOut(this.personSaid(run), picked, list)) {
+      throw new Error(`"${name}" would be ${picked.label}, a Claude on a paid endpoint, not Claude Code${this.claudeCode(run.parent) ? "" : " (which isn't on in this thread)"}. Check with the person that they meant that one before using it; if they do, name it by its whole label.`);
+    }
     const twin = list.find((x) => x.local && sameModelName(x.label, picked.label));
     return twin && !singledOut(this.personSaid(run), picked, list) ? { offeringId: twin.id } : ref;
+  }
+
+  /**
+   * Whether a step's named model goes to Claude Code: the name means Claude in
+   * words ("Claude", "Claude Opus"; `meansClaude`) rather than naming one of the
+   * thread's models outright, and the thread's runs have Claude Code. Any job,
+   * not only coding: the person asked for Claude, and Claude Code is how she
+   * reaches it on their plan.
+   */
+  claudeFor(parent: Pick<Parent, "user" | "pool" | "threadId">, name: string | undefined): ClaudeAsk | undefined {
+    if (!name || !meansClaude(name) || !this.claudeCode(parent)) return undefined;
+    if (namedOutright(name, this.o.models.textModels(this.o.models.callContext(parent.user.id, parent.pool, parent.threadId)))) return undefined;
+    return { alias: claudeAlias(name) };
   }
 
   /**
@@ -1046,7 +1069,14 @@ export class Delegation {
   }
 
   private spawn(run: Run, step: Step, narrowing: Narrowing, worktrees: Worktree[] = []): Promise<Subagent> {
-    const role = this.role(run.parent.user.id, step.role, this.defaultRole(run, narrowing));
+    const userId = run.parent.user.id;
+    const role = this.role(userId, step.role, this.defaultRole(run, narrowing));
+    // A step that asks for Claude by name runs on Claude Code, in the role it asked for: read-only where that role is.
+    const claude = role.name === CLAUDE_ROLE ? undefined : this.claudeFor(run.parent, step.model);
+    if (claude) {
+      const ask: ClaudeAsk = { ...claude, role: role.name };
+      return this.open(run, this.role(userId, CLAUDE_ROLE, CLAUDE_ROLE), { claude: ask }, role.readOnly ? { ...narrowing, readOnly: true } : narrowing, undefined, step.task, worktrees, !!step.fork, step.done, step.title);
+    }
     const pick: ModelPick = step.model ? { model: this.named(run, step.model) } : { tier: step.tier ?? role.tier };
     return this.open(run, role, pick, narrowing, undefined, step.task, worktrees, !!step.fork, step.done, step.title);
   }
@@ -1070,7 +1100,7 @@ export class Delegation {
     // A subagent that started local-only (a fork of a local-only conversation, say) stays local-only.
     if (earlier && isRestricted(models.callContext(parent.user.id, parent.pool, earlier.thread))) parentCall = { ...parentCall, localOnly: true };
     // Refuse a model before anything is written. Claude Code has none of ours.
-    if (claude) { /* its own */ } else if ("tier" in pick) models.resolveModel(role.name === "coder" ? "code" : `subagent.${pick.tier}`, parentCall);
+    if (claude || "claude" in pick) { /* its own */ } else if ("tier" in pick) models.resolveModel(role.name === "coder" ? "code" : `subagent.${pick.tier}`, parentCall);
     else if ("offeringId" in pick.model && !models.allowed(parentCall).some((a) => a.offerings.some((m) => "offeringId" in pick.model && m.id === pick.model.offeringId))) {
       throw new Error(`${models.label(parent.user.id, refId(pick.model)) ?? refId(pick.model)} isn't one of this thread's models`);
     }
@@ -1086,7 +1116,7 @@ export class Delegation {
       if (fork) forkConversation(view.own, parent.threadId, child.id);
       const parentThread = view.own.getThread(parent.threadId)!;
       if (parentThread.unlogged && !child.unlogged) throw new Error("its parent thread is no longer logged");
-      let call = role.name === "coder" ? models.inheritContext(parentCall, child.id) : models.childContext(parentCall, child.id, pick);
+      let call = role.name === "coder" ? models.inheritContext(parentCall, child.id) : models.childContext(parentCall, child.id, "claude" in pick ? { tier: "strong" } : pick);
       if (role.name === "coder") {
         if ("model" in pick) models.setThreadModel(parent.user.id, parent.pool, child.id, "code", pick.model);
         call = models.callContext(parent.user.id, parent.pool, child.id);
@@ -1131,9 +1161,11 @@ export class Delegation {
           const claudeDir = workspace.claudeDir.bind(workspace);
           // Asked again at each turn, so a turn can't write into the home's bare mount point once it's locked.
           const dir = () => claudeDir({ ...p, threadId: child.id, reposOf: parent.threadId });
-          sub = new Subagent(this, run, ctx, role, CLAUDE_MODEL, true,
+          const ask = "claude" in pick ? pick.claude : {};
+          sub = new Subagent(this, run, ctx, role, claudeModelLabel(ask.alias), true,
             (me) => claudeBody(me, {
-              target, dir, readOnly: !!narrowing.readOnly, name: this.o.name?.() ?? "Lyrica",
+              target, dir, readOnly: !!narrowing.readOnly, name: this.o.name?.() ?? "Lyrica", alias: ask.alias,
+              ...(ask.role ? { role: this.role(parent.user.id, ask.role, ask.role) } : {}),
               ...(this.o.onClaudeLimit ? { onLimit: (until?: number) => this.o.onClaudeLimit!(parent, until) } : {}),
             }), release, usedBefore(earlier));
           return this.begin(run, sub, child, pick, narrowing, earlier);
@@ -1148,7 +1180,7 @@ export class Delegation {
           approve: r => this.approve(sub!, r),
         }));
         // Its role says whether it searches; its Web search switch is its parent's or off.
-        extensions.push(createWebExtension({ searxng: () => this.o.searxng?.(), target: () => tools.target(), canRender: () => !!sandboxTools().browser && sandboxHas("node") }));
+        extensions.push(createWebExtension({ searxng: () => this.o.searxng?.(), kiwix: () => this.o.kiwix?.(), target: () => tools.target(), canRender: () => !!sandboxTools().browser && sandboxHas("node") }));
         // Its parent's MCP servers, read live, so one taken from the parent goes from it too; its calls ask in both threads.
         if (tools.settings().mcpServers.length) {
           extensions.push(createMcpServersExtension(tools));
@@ -1201,7 +1233,7 @@ export class Delegation {
       this.store.record(parent.user.id, {
         pool: parent.pool, thread: child.id, run: run.id, parent: parent.threadId, role: sub.role.name, model: sub.model, ...(offeringId ? { offeringId } : {}),
         background: run.background, status: "running", startedAt: new Date().toISOString(),
-        pick: "tier" in pick ? pick : { model: refId(pick.model) }, narrowing: compact(narrowing),
+        pick: "model" in pick ? { model: refId(pick.model) } : pick, narrowing: compact(narrowing),
       });
     }
     sub.emit({ type: "started", role: sub.role.name, model: sub.model, title: child.title ?? "" });

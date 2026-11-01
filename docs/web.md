@@ -65,7 +65,8 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   choice are saved per user (`Display`). Pinned threads come first under a
   **Pinned** eyebrow, whatever the sort. A thread unread for this user
   is bold; private threads carry a small lock in the private colour; a
-  thread at work (`busy`, or a project thread's `working` state) pulses its
+  thread at work (`busy`, `making` while a clip is made after its turn, or a
+  project thread's `working` state) pulses its
   pool dot or lock, steady under reduced motion; child
   threads (Lyrica's, branches, forks, copies) sit behind `›`, a child
   showing when it works or waits and a count of its unseen updates (at most
@@ -915,8 +916,11 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   isn't the current passphrase.", a 429 "Too many tries. Try again in <n> min."
   with the button disabled; the fields clear after a success or Cancel), **Tailnet**, Web access, **Web search** (`src/WebSearch.tsx`:
   **SearXNG address** in mono, without its password (a basic-auth password
-  is kept when the user@host is unchanged), one Save, and Reachable or Unreachable as a
-  dot and a word, what failed as its tooltip; `GET`/`PUT …/admin/web-search`),
+  is kept when the user@host is unchanged), then Reachable or Unreachable as a
+  dot and a word, what failed as its tooltip; then **Kiwix address** in mono
+  (the offline copy of Wikipedia) and its own state word, whose
+  Reachable tooltip lists the books kiwix-serve has; one Save for both,
+  enabled once either changed; `GET`/`PUT …/admin/web-search`),
   **Updates**, **Persona**: the persona changes that users sent on, the
   file now and the proposed text side by side, rendered as Markdown
   (who sent them, whether they edited them, and a confirmation when the file
@@ -1059,8 +1063,8 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   marker until `made`: a card per image at the asked shape, a dot field in
   the accent lit from the top-right by the host's progress, and a pill with
   the percent, Waiting, or the time since it started (docs/ux.md).
-  A clip's markers read Making a clip, Animating an image and Copying a
-  clip's moves; a clip made in the background marks its call **started**, and the clip
+  A clip's markers read Making a clip, Animating an image, Copying a
+  clip's moves, Extending a clip and Upscaling a clip; a clip made in the background marks its call **started**, and the clip
   shows as her own message when a `notice` event brings its `video` (or the
   thread reloads), under the call's marker again, done, from the event's `call`; a failed one is a notice headed Clip with a down dot and
   "failed", then the reason.
@@ -1376,7 +1380,7 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   the box is empty. Under the box, a row of borderless controls: at the left
   the "+" icon, whose menu attaches a file and, after a separator, has the
   Web search, Internet for commands and Images switches (Web search's
-  tooltip says "Search needs a SearXNG address in Administration" while the
+  tooltip says "Search needs a SearXNG or Kiwix address in Administration" while the
   server has none, `ThreadSettings.searchProvider`); then the mic; at the right the
   mode, a link with a chevron that opens a menu of the four modes (a check on
   the current one, its line, its number key; a mode above a granted

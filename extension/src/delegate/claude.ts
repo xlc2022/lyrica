@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { ExecutionTarget } from "@lyrica/core";
+import type { ClaudeAlias, ExecutionTarget, Role } from "@lyrica/core";
 import { appendPiMessage, appendUserMessage } from "../record.ts";
 import type { Said, Subagent, SubagentBody } from "./runs.ts";
 
@@ -8,11 +8,15 @@ import type { Said, Subagent, SubagentBody } from "./runs.ts";
 // `claude -p` run per turn in the parent's sandbox, through the same wrapper
 // and relay as her bash's `claude`, so the user's token never enters it. It
 // works from BRIEF.md and writes REPORT.md in a folder of its own in the
-// thread's Claude Code folder, which is in the encrypted home workspace.
+// thread's Claude Code folder, which is in the encrypted home workspace. A
+// step whose model names Claude in words (meansClaude) runs here too, with
+// the role it asked for in its brief, so a second opinion the person asked
+// Claude for goes to the user's plan, not to a paid copy of Claude.
 
 export const CLAUDE_ROLE = "claude";
-/** Its model, as the run card and the records name it. */
+/** Its model, as the run card and the records name it: with the alias a step asked for (`Claude Code/opus`). */
 export const CLAUDE_MODEL = "Claude Code";
+export const claudeModelLabel = (alias?: ClaudeAlias) => (alias ? `${CLAUDE_MODEL}/${alias}` : CLAUDE_MODEL);
 /** The wrapper, first on a Claude Code run's PATH (core/src/workspace/claude.sh). */
 const WRAPPER = "/run/lyrica/bin/claude";
 /** Where the thread's Claude Code folder is mounted in the sandbox. */
@@ -23,8 +27,12 @@ export interface ClaudeRun {
   target: ExecutionTarget;
   /** The thread's Claude Code folder on the host (Workspace.claudeDir, which refuses while the home isn't mounted). */
   dir: () => string;
-  /** Claude Code's read-only mode, for a read-only run. */
+  /** Claude Code's read-only mode, for a read-only run: it answers in its final message, since plan mode writes no report. */
   readOnly: boolean;
+  /** The model alias a step asked for (`--model`), else Claude Code's own default. */
+  alias?: ClaudeAlias;
+  /** The role a step asked for, whose prompt the brief carries, when Claude Code stands in for a Pi subagent. */
+  role?: Role;
   /** Her set name, in place of Lyrica. */
   name: string;
   /** The Claude plan's usage limit stopped it, with when it resets if Claude Code said: lyricad wakes the parent to continue it then. */
@@ -37,11 +45,15 @@ function folders(dir: string, threadId: string): { host: string; seen: string } 
   return { host: join(dir, "delegate", name), seen: `${SANDBOX_DIR}/delegate/${name}` };
 }
 
-const reportAsk = (seen: string, name: string) => `Before you end, write ${seen}/REPORT.md: what you changed (files and commits), what's left, and the checks you ran with their results. Your reply goes back to ${name} only if there's no report.`;
+const reportAsk = (seen: string, name: string, readOnly: boolean) => (readOnly
+  ? `Change nothing. Your final message goes back to ${name} as your answer, so make it the answer itself.`
+  : `Before you end, write ${seen}/REPORT.md: what you changed (files and commits), what's left, and the checks you ran with their results. Your reply goes back to ${name} only if there's no report.`);
 
-/** What BRIEF.md says for its first turn. */
-export function brief(task: string, name: string): string {
-  return `# Brief\n\n${task}\n\nYou are working for ${name}, who handed you this task. You see none of her conversation, only this brief. Follow the repository's own instructions (AGENTS.md, CLAUDE.md) and run its checks before you report.\n`;
+/** What BRIEF.md says for its first turn: the task, the role it stands in for, and whose it is. */
+export function brief(task: string, name: string, o: { role?: Role; readOnly?: boolean } = {}): string {
+  const role = o.role ? `\n\n## Your role\n\n${o.role.prompt}` : "";
+  const how = o.readOnly ? "Change nothing: read what you need and answer." : "Follow the repository's own instructions (AGENTS.md, CLAUDE.md) and run its checks before you report.";
+  return `# Brief\n\n${task}${role}\n\nYou are working for ${name}, who handed you this task. You see none of her conversation, only this brief. ${how}\n`;
 }
 
 /** A Claude Code process per turn, resumed from its session for the next. Its work is stored in its thread as it streams. */
@@ -61,13 +73,13 @@ export function claudeBody(sub: Subagent, o: ClaudeRun): SubagentBody {
       const text = said.from ? `${said.from.profile.displayName}, the person ${o.name} works with, writes to you directly:\n\n${said.text}` : said.text;
       // The first turn's task is its brief; a later message continues the same session.
       let prompt: string;
-      if (session) prompt = `${text}\n\n${reportAsk(seen, o.name)}`;
+      if (session) prompt = `${text}\n\n${reportAsk(seen, o.name, o.readOnly)}`;
       else {
-        writeFileSync(join(host, "BRIEF.md"), brief(text, o.name), { mode: 0o600 });
-        prompt = `Read ${seen}/BRIEF.md and do what it asks. ${reportAsk(seen, o.name)}`;
+        writeFileSync(join(host, "BRIEF.md"), brief(text, o.name, { role: o.role, readOnly: o.readOnly }), { mode: 0o600 });
+        prompt = `Read ${seen}/BRIEF.md and do what it asks. ${reportAsk(seen, o.name, o.readOnly)}`;
       }
       appendUserMessage(ctx.view.own, ctx.threadId, text);
-      const argv = [WRAPPER, "-p", prompt, "--output-format", "stream-json", "--verbose", ...(session ? ["--resume", session] : []), ...(o.readOnly ? ["--permission-mode", "plan"] : [])];
+      const argv = [WRAPPER, "-p", prompt, "--output-format", "stream-json", "--verbose", ...(session ? ["--resume", session] : []), ...(o.readOnly ? ["--permission-mode", "plan"] : []), ...(o.alias ? ["--model", o.alias] : [])];
       aborter = new AbortController();
       // While it runs it counts as a tool at work, so a long build inside it doesn't trip the idle check.
       const busy = `claude-${Date.now()}`;

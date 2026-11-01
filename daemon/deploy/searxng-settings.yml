@@ -13,7 +13,22 @@ search:
   formats: [html, json] # json is what Lyrica asks for
   safe_search: 0
   default_lang: "auto"
+  suspended_times:      # how long an engine rests after refusing, in seconds; SearXNG's own defaults rest one for up to a day
+    SearxEngineAccessDenied: 600
+    SearxEngineCaptcha: 900
+    SearxEngineTooManyRequests: 180
 
 outgoing:
-  request_timeout: 3.0
-  max_request_timeout: 8.0
+  request_timeout: 6.0  # qwant and yahoo take longer than SearXNG's 3 s
+  max_request_timeout: 10.0
+
+# General search asks five engines, so one resting after a CAPTCHA doesn't end her search.
+engines:
+  - name: bing
+    disabled: false
+  - name: qwant
+    disabled: false
+  - name: yahoo
+    disabled: false
+  - name: startpage     # answers every request with a proof-of-work CAPTCHA
+    disabled: true

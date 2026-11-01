@@ -941,8 +941,8 @@ export function ThreadLink({ t, userId, on, shown, menu, child, openBeside, besi
     openBeside(t);
   };
   const title = t.title || (t.project ? "New project" : "New thread");
-  // A thread at work pulses its pool dot or lock (steady with reduced motion); a project thread's word says so too.
-  const working = t.busy || t.state === "working";
+  // A thread at work, or making a clip after its turn, pulses its pool dot or lock (steady with reduced motion); a project thread's word says so too.
+  const working = t.busy || t.making || t.state === "working";
   return (
     <a className={`thread${t.unread ? " unread" : ""}${t.project ? " project" : ""}${child && inProject ? " dotted" : ""}${working ? " working" : ""}`} href={href({ page: "thread", userId, pool: t.pool, threadId: t.id })} aria-current={on ? "page" : undefined} data-beside={shown || undefined} {...handlers}
       onClick={click} onKeyDown={(e) => { if (e.key === "Enter") shiftTo(e); }}

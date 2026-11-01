@@ -1,7 +1,8 @@
 # The tools her sandboxes have by default on NixOS, mounted as their /usr
 # (LYRICA_SANDBOX_TOOLS, core/src/workspace/sandbox.ts). bubblewrap, passt,
 # nftables, bash, coreutils and util-linux must stay: lyricad and its
-# self-test use them. imagemagick makes the Files panel's thumbnails; git,
+# self-test use them. imagemagick makes the Files panel's thumbnails; ffmpeg (with
+# ffprobe) lets her check and cut her own clips; git,
 # gh and tea are for threads with repositories (docs/workspace.md, "Git
 # accounts and repositories"), nodejs_24 and openssl for her own code
 # and its tests, claude-code
@@ -10,7 +11,10 @@
 # chromium and the fonts render HTML/SVG diagrams offline (principle 1),
 # and take screenshots of her web UI (web/e2e/shot.ts). gnumake and gcc,
 # with python3, build native npm modules (node-gyp) when no prebuilt binary
-# fits, as Debian's build-essential does there.
+# fits, as Debian's build-essential does there. python3 comes with a baseline
+# for scraping and data work (beautifulsoup4, lxml, requests, html5lib,
+# PyYAML), the same as install.sh's python3-* packages; her prompt names the
+# ones present (sandboxTools in core/src/workspace/sandbox.ts).
 pkgs:
 let
   # Claude Code is unfree. Only it is allowed, in its own import, so the
@@ -23,7 +27,9 @@ in
 with pkgs; [
   bashInteractive coreutils findutils gnugrep gnused gawk diffutils patch
   gnutar gzip xz bzip2 zstd unzip which file less procps util-linux
-  getent git gh tea nodejs_24 openssh openssl curl cacert jq ripgrep python3 gnumake gcc imagemagick
+  getent git gh tea nodejs_24 openssh openssl curl cacert jq ripgrep gnumake gcc imagemagick
+  (python3.withPackages (ps: with ps; [ beautifulsoup4 lxml requests html5lib pyyaml ]))
+  ffmpeg-headless
   chromium ibm-plex dejavu_fonts
   bubblewrap passt nftables
   unfree.claude-code codex

@@ -281,7 +281,9 @@ subfolder, under `lyrica/<source>/<repository>/`.
 Images are made by ComfyUI, from **recipes**: a diffusion model (or a
 checkpoint), its text encoders and VAE, any LoRAs, and default settings.
 Lyrica asks for an image by recipe, never by file or workflow; host-api
-fills the recipe's template in `workflows/` (one per architecture). Recipes
+fills the recipe's template in `workflows/` (one per architecture; a
+`-continue` file chains a video template's clips, and `seedvr2-clip.json`
+upscales whole clips with SeedVR2). Recipes
 live in `recipes.json`; the optional `useFor` tag is `fast`, `quality` or
 `both`, with older recipes reading as both. Models → Image models saves it
 per host, and Lyrica's router filters create tiers by it.

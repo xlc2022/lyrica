@@ -1,9 +1,10 @@
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { createServer, request as httpRequest, type IncomingHttpHeaders, type IncomingMessage, type ServerResponse } from "node:http";
-import { request as httpsRequest } from "node:https";
-import { connect, type AddressInfo, type Socket } from "node:net";
+import { request as httpsRequest, type RequestOptions } from "node:https";
+import { connect, isIP, type AddressInfo, type Socket } from "node:net";
 import * as tls from "node:tls";
 import { createSecureContext, TLSSocket, type SecureContext } from "node:tls";
+import { tailnetSocket, viaTailnet } from "../models/tailnet.ts";
 import { makeAuthority } from "./certs.ts";
 import type { GitKind } from "./settings.ts";
 
@@ -87,6 +88,25 @@ const DOWNLOADS = [/\.githubusercontent\.com$/, /^codeload\.github\.com$/, /\.bl
 let trusted: string[] | undefined;
 const upstreamCAs = () => typeof tls.getCACertificates !== "function" ? undefined
   : trusted ??= [...new Set([...tls.getCACertificates("default"), ...tls.getCACertificates("system")])];
+
+/**
+ * How an upstream on her tailnet is reached: through her tailscaled's proxy,
+ * with TLS inside the tunnel, as a model host is (core/src/models/tailnet.ts).
+ * Node's request takes its own connection for that one request; every other
+ * host keeps the default agent and its kept-alive connections.
+ */
+function tunnelTo(host: string, port: number, secure: boolean): Pick<RequestOptions, "createConnection"> {
+  if (!viaTailnet(host)) return {};
+  const createConnection: NonNullable<RequestOptions["createConnection"]> = (o, cb) => {
+    tailnetSocket(host, port).then((raw) => {
+      if (!secure) return cb(null, raw ?? connect(port, host));
+      const { ca } = o as tls.ConnectionOptions;
+      cb(null, tls.connect({ host, port, ca, ...(raw ? { socket: raw } : {}), ...(isIP(host) ? {} : { servername: host }) }));
+    }, (err: Error) => cb(err, undefined as never));
+    return undefined;
+  };
+  return { createConnection };
+}
 
 /** host:port as a CONNECT names it, without :443. */
 const target = (hostPort: string) => hostPort.toLowerCase().replace(/:443$/, "");
@@ -313,9 +333,10 @@ export async function openRelay(spec: RelaySpec): Promise<Relay> {
   const forward = (to: string, path: string, req: IncomingMessage, res: ServerResponse, headers: IncomingHttpHeaders, capture?: (body: Buffer) => void,
     onUsage?: (usage: ClaudeCodeUsage) => void, body?: Buffer, rest = false) => {
     const base = new URL(spec.upstreams?.[to] ?? `https://${to}`);
-    const request = base.protocol === "https:" ? httpsRequest : httpRequest;
+    const secure = base.protocol === "https:";
+    const request = secure ? httpsRequest : httpRequest;
     const out = request({ protocol: base.protocol, hostname: hostname(base.host), port: base.port || undefined, method: req.method, path, headers,
-      ...base.protocol === "https:" ? { ca: upstreamCAs() } : {} }, (up) => {
+      ...secure ? { ca: upstreamCAs() } : {}, ...tunnelTo(hostname(base.host), Number(base.port) || (secure ? 443 : 80), secure) }, (up) => {
       res.writeHead(up.statusCode ?? 502, up.headers);
       // The plan's usage limit: a 429 whose unified rate limit is rejected, with its reset in seconds.
       if (to === ANTHROPIC_HOST && up.statusCode === 429 && up.headers["anthropic-ratelimit-unified-status"] === "rejected") {

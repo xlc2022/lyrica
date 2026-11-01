@@ -8,7 +8,9 @@
 # /opt/lyrica/current to it, as an update does; Caddy is rebuilt only if a pin
 # changed. It also installs the updater (lyrica-update and its units), which
 # no update replaces. It asks whether to run SearXNG for her web search in
-# Docker (LYRICA_SEARXNG=yes or no answers ahead). A first install ends with the setup page's addresses,
+# Docker (LYRICA_SEARXNG=yes or no answers ahead), and runs kiwix-serve for
+# her offline Wikipedia when ZIM files are in $LYRICA_ZIM_DIR
+# (/var/lib/lyrica-kiwix unless set). A first install ends with the setup page's addresses,
 # certificate fingerprint and code. See docs/daemon.md, "Deployment" and "Updates".
 set -euo pipefail
 
@@ -22,6 +24,9 @@ CADDY_VERSION=v2.11.7
 # The SearXNG image, by tag and digest, and its port on 127.0.0.1.
 SEARXNG_IMAGE=docker.io/searxng/searxng:2026.10.28-c360868e5@sha256:268a4b460136dcefc8f2e896b6098ba3f770c8218dbbddcb86811b06b06816f1
 SEARXNG_PORT=8888
+# kiwix-serve's port on 127.0.0.1 (nix/module.nix has the same), and where its ZIM files are.
+KIWIX_PORT=8889
+ZIM_DIR=${LYRICA_ZIM_DIR:-/var/lib/lyrica-kiwix}
 
 PREFIX=/opt/lyrica
 STATE=/var/lib/lyrica
@@ -73,8 +78,13 @@ say "Installing packages..."
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
 apt-get install -y -qq --no-install-recommends \
-  bubblewrap gocryptfs fuse3 passt nftables openssl ca-certificates curl unzip rsync imagemagick \
-  build-essential python3 python3-venv git gh openssh-client jq >/dev/null
+  bubblewrap gocryptfs fuse3 passt nftables openssl ca-certificates curl unzip rsync imagemagick ffmpeg \
+  build-essential python3 python3-venv git gh openssh-client jq \
+  python3-bs4 python3-lxml python3-requests python3-html5lib python3-yaml >/dev/null
+# The python3-* line is the sandbox's Python baseline for scraping and data work
+# (beautifulsoup4, lxml, requests, html5lib, PyYAML); her prompt names the ones
+# present (sandboxTools in core/src/workspace/sandbox.ts). nix/sandbox-tools.nix
+# gives NixOS the same.
 # tea, Gitea's and Forgejo's client, isn't packaged everywhere; git alone still works with those accounts.
 apt-get install -y -qq --no-install-recommends tea >/dev/null 2>&1 \
   || say "tea isn't packaged here: threads with a Gitea or Forgejo account use git alone until it's installed."
@@ -283,6 +293,31 @@ if [ "$SEARXNG" = yes ]; then
   chmod 0600 "$STATE/searxng-address"
 fi
 
+# --- Offline Wikipedia (when ZIM files are in the folder) ---
+# kiwix-serve from Debian's kiwix-tools as lyrica-kiwix.service, on 127.0.0.1
+# only, serving every .zim in $ZIM_DIR (docs/guides/wikipedia.md). Its address
+# waits in $STATE/kiwix-address, and lyricad stores it as Administration's
+# Kiwix address while none is set.
+KIWIX=no
+if ls "$ZIM_DIR"/*.zim >/dev/null 2>&1; then
+  if command -v kiwix-serve >/dev/null || apt-get install -y -qq --no-install-recommends kiwix-tools >/dev/null 2>&1; then
+    KIWIX=yes
+    printf 'ZIM_DIR=%s\nKIWIX_PORT=%s\n' "$ZIM_DIR" "$KIWIX_PORT" >/etc/lyrica/kiwix.env
+    install -m 0755 "$SRC/daemon/deploy/lyrica-kiwix-start" /usr/local/sbin/lyrica-kiwix-start
+    install -m 0644 "$SRC/daemon/deploy/lyrica-kiwix.service" /etc/systemd/system/lyrica-kiwix.service
+    printf 'http://127.0.0.1:%s\n' "$KIWIX_PORT" >"$STATE/kiwix-address"
+    chown lyrica:lyrica "$STATE/kiwix-address"
+    chmod 0600 "$STATE/kiwix-address"
+  else
+    say "Not serving the ZIM files in $ZIM_DIR: kiwix-tools isn't packaged here."
+  fi
+elif [ -f /etc/systemd/system/lyrica-kiwix.service ]; then
+  # The ZIM files went: the unit goes, and the address offer with it (an address lyricad stored stays until an administrator clears it).
+  systemctl disable --now --quiet lyrica-kiwix 2>/dev/null || true
+  rm -f /etc/systemd/system/lyrica-kiwix.service /usr/local/sbin/lyrica-kiwix-start /etc/lyrica/kiwix.env "$STATE/kiwix-address"
+  say "No ZIM files in $ZIM_DIR any more: lyrica-kiwix removed."
+fi
+
 # --- Units ---
 for u in lyrica-caddy.service lyricad.service lyrica-tailscaled.service lyrica-update.service lyrica-update.path lyrica-rollback.service lyrica-probation.service; do
   install -m 0644 "$SRC/daemon/deploy/$u" "/etc/systemd/system/$u"
@@ -303,6 +338,17 @@ if [ -d /run/systemd/system ]; then
     done
     if [ "$ANSWERED" = yes ]; then say "SearXNG answers on 127.0.0.1:$SEARXNG_PORT."
     else say "SearXNG hasn't answered yet (journalctl -u lyrica-searxng); Administration → Web search will say when it does."; fi
+  fi
+  if [ "$KIWIX" = yes ]; then
+    systemctl enable --quiet lyrica-kiwix
+    systemctl restart lyrica-kiwix
+    ANSWERED=no
+    for _ in $(seq 1 30); do
+      curl -fsS -o /dev/null "http://127.0.0.1:$KIWIX_PORT/catalog/v2/entries" 2>/dev/null && { ANSWERED=yes; break; }
+      sleep 1
+    done
+    if [ "$ANSWERED" = yes ]; then say "kiwix-serve answers on 127.0.0.1:$KIWIX_PORT with the ZIM files in $ZIM_DIR."
+    else say "kiwix-serve hasn't answered yet (journalctl -u lyrica-kiwix); Administration → Web search will say when it does."; fi
   fi
   systemctl start lyrica-tailscaled || say "Her tailscaled didn't start (journalctl -u lyrica-tailscaled); Administration → Tailnet will say so."
   if [ -f "$STATE/self.db" ]; then

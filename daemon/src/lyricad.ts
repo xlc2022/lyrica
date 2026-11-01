@@ -8,7 +8,7 @@ import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  adoptLocalSearxng, bootstrap, isMounted, codexImage, DEFAULT_NAME, HostRefused, isRestricted, Keyring, Memory, Models, Offline, PersonaProposals, PersonaStore, PRONOUN_PRESETS, searxngAddress, selfName, setSelfName,
+  adoptLocalKiwix, adoptLocalSearxng, bootstrap, kiwixAddress, isMounted, codexImage, DEFAULT_NAME, HostRefused, isRestricted, Keyring, Memory, Models, Offline, PersonaProposals, PersonaStore, PRONOUN_PRESETS, searxngAddress, selfName, setSelfName,
   SystemdCredentials, ThreadPrefs, ThreadShares, Users, WrongPassword, Workspace, finishWipe, jobNotice, homeWiped, homeWipePending, useTailnetProxy, wipePending, wipePools,
   localDate, localTime, serverZone, zoneOf,
   type Argon2Params, type CredentialStore, type Pool, type ThreadsLimits, type User,
@@ -37,12 +37,12 @@ const JOB_WAKE = "A background command ended: its notice is above (and any other
 /** What an idle thread is woken with when a clip she started is made, or fails. */
 const CLIP_WAKE = "A clip you started in the background is done: its notice is above, and the chat shows the clip. Tell them it's ready, or why it failed.";
 import {
-  checkOrigin, fromLoopback, HttpError, makeRequest, match, plainAddress, readBody, secureServer, sendJson, serveStatic, statusOf, Updating,
+  checkOrigin, fromLoopback, HttpError, makeRequest, match, plainAddress, readBody, secureServer, SECURITY_HEADERS, sendJson, serveStatic, statusOf, Updating, wrongDoor,
   type Listener, type Request, type Route, type TrustForwarded,
 } from "./http.ts";
 import { TailnetControl } from "./tailnet.ts";
 import { listenUpdateSocket, type Drainable, type UpdatePaths } from "./updates.ts";
-import { DIRECT_PORT, directFor, ExternalListener, hostAddresses, WebAccess, type Bind } from "./web/access.ts";
+import { DIRECT_PORT, directFor, ExternalListener, FRONT_FILE, hostAddresses, readFront, WebAccess, writeFront, type Bind, type Front } from "./web/access.ts";
 import { apiRoutes } from "./routes.ts";
 import { sweepUser, wipeHome } from "./sweep.ts";
 
@@ -194,12 +194,16 @@ export class Lyricad implements Drainable {
   private readonly mounted = new Set<string>();
   /** The external proxy's listener, from its settings file: it opens at start, before unlock. */
   readonly external: ExternalListener;
+  /** Which plain listener has its proxy in front, as last saved to its file: for `behind` before unlock. */
+  private frontSaved: Front | undefined;
   readonly tailnet: TailnetControl;
   port = 0;
   /** The loopback port only `tailscale serve` targets: requests on it came through her tailnet address. */
   servePort = 0;
   /** While setting up: the one-time code the setup page asks for. */
   private setupCode: string | undefined;
+  /** Names plain-HTTP requests were addressed to, each logged once. */
+  private readonly wrongDoors = new Set<string>();
   /** Her name, as last read or set: answered while locked, from a copy beside self.db. */
   private nameSeen: string | undefined;
   private readonly nightly: NodeJS.Timeout;
@@ -234,6 +238,7 @@ export class Lyricad implements Drainable {
     this.log = opts.log ?? ((line) => process.stderr.write(`${line}\n`));
     this.routes = apiRoutes(this);
     this.external = new ExternalListener(join(opts.home, "web-external.json"), (o) => this.listenExternal(o));
+    this.frontSaved = readFront(this.frontFile);
     this.updatePaths = { state: opts.update?.state ?? "/var/lib/lyrica-update", requests: opts.update?.requests ?? join(opts.home, "updates") };
     this.tailnet = new TailnetControl({ binary: opts.tailnet?.binary, socket: opts.tailnet?.socket, runtime: opts.home });
     if (opts.tailnet?.proxy) {
@@ -265,7 +270,7 @@ export class Lyricad implements Drainable {
 
   /** Listens, then unseals a saved passphrase and unlocks if it is available. */
   async start(): Promise<void> {
-    const tcp = createServer((req, res) => void this.handle(req, res));
+    const tcp = createServer((req, res) => void this.handle(req, res, this.behind("builtin"), undefined, true));
     await new Promise<void>((resolve, reject) => { tcp.once("error", reject); tcp.listen(this.opts.port, "127.0.0.1", resolve); });
     this.port = (tcp.address() as AddressInfo).port;
     this.servers.push(tcp);
@@ -286,12 +291,14 @@ export class Lyricad implements Drainable {
     const updateSocket = this.opts.update?.socket === false ? undefined : this.opts.update?.socket ?? join(this.opts.home, "update.sock");
     if (updateSocket) this.servers.push(await listenUpdateSocket(updateSocket, this, this.log));
     // Only her tailscaled's `serve` targets this one, so a request on it came through her tailnet address.
-    const serve = createServer((req, res) => void this.handle(req, res, fromLoopback, "tailnet"));
+    const serve = createServer((req, res) => void this.handle(req, res, this.behind("tailnet"), "tailnet", true));
     await new Promise<void>((resolve, reject) => { serve.once("error", reject); serve.listen(this.opts.web?.servePort ?? (this.opts.port === 0 ? 0 : SERVE_PORT), "127.0.0.1", resolve); });
     this.servePort = (serve.address() as AddressInfo).port;
     this.servers.push(serve);
     this.log(`lyricad listening on 127.0.0.1:${this.port}${socket ? ` and ${socket}` : ""}, and on 127.0.0.1:${this.servePort} for her tailnet`);
     mkdirSync(this.opts.home, { recursive: true, mode: 0o700 });
+    // A fresh install has no proxy in front of either listener; an older one says so at its first unlock.
+    if (this.settingUp && this.frontSaved === undefined) writeFront(this.frontFile, this.frontSaved = "none");
     if (this.settingUp) await this.beginSetup();
     await this.directAddresses();
     // While locked it answers only state, unlock and the web UI's files here too, so the proxy can show the unlock page.
@@ -391,18 +398,23 @@ export class Lyricad implements Drainable {
   }
 
   /**
-   * install.sh leaves `searxng-address` beside self.db when it runs SearXNG
-   * here (docs/guides/searxng.md): it becomes Administration's address while
-   * none is set.
+   * install.sh and the NixOS module leave `searxng-address` and
+   * `kiwix-address` beside self.db when they run SearXNG or kiwix-serve
+   * here (docs/guides/searxng.md, docs/guides/wikipedia.md): each becomes
+   * Administration's address while none is set.
    */
   private adoptSearxng(): void {
-    let address: string;
-    try { address = readFileSync(join(this.opts.home, "searxng-address"), "utf8").trim(); } catch { return; }
-    try {
-      if (adoptLocalSearxng(this.keyring.self(), address)) this.log("web search uses the SearXNG install.sh runs here");
-    } catch (err) {
-      this.log(`searxng-address isn't a SearXNG address: ${firstLine(err as Error)}`);
-    }
+    const adopt = (file: string, what: string, take: (address: string) => boolean) => {
+      let address: string;
+      try { address = readFileSync(join(this.opts.home, file), "utf8").trim(); } catch { return; }
+      try {
+        if (take(address)) this.log(`web search uses the ${what} the install runs here`);
+      } catch (err) {
+        this.log(`${file} isn't a ${what} address: ${firstLine(err as Error)}`);
+      }
+    };
+    adopt("searxng-address", "SearXNG", (a) => adoptLocalSearxng(this.keyring.self(), a));
+    adopt("kiwix-address", "kiwix-serve", (a) => adoptLocalKiwix(this.keyring.self(), a));
   }
 
   /** Her name: from self.db once unlocked, else the copy beside it. */
@@ -468,8 +480,9 @@ export class Lyricad implements Drainable {
       self: () => keyring.self(), tailnet: this.tailnet, servePort: this.servePort, directPort: w.directPort,
       caddy: { socket: w.caddySocket ?? "/run/lyrica-caddy/admin.sock", tlsLog: w.tlsLog ?? "/run/lyrica-caddy/tls.log" },
       httpsPort: w.httpsPort ?? 443, upstream: this.port, reserved: [this.port, this.servePort], addresses: w.addresses,
-      external: this.external, certWaitMs: w.certWaitMs, trustCa: w.trustCa, log: this.log,
+      external: this.external, frontFile: this.frontFile, certWaitMs: w.certWaitMs, trustCa: w.trustCa, log: this.log,
     });
+    this.frontSaved = web.rememberFront();
     // A pending wake for background jobs that ended, by `user/pool/thread`: those ending close together wake it once.
     const jobWakes = new Map<string, NodeJS.Timeout>();
     /** Wakes an idle thread once, a few seconds after the first of the endings `kind` names, with all their notices. */
@@ -499,12 +512,12 @@ export class Lyricad implements Drainable {
       },
       // Its placeholder in the thread's open views (docs/ux.md, "A clip the agent made").
       making: (t, m) => host.peek(t.userId, t.pool, t.threadId)?.publish({ type: "making", ...m }),
-      made: (t, toolCallId) => host.peek(t.userId, t.pool, t.threadId)?.publish({ type: "made", toolCallId }),
+      made: (t, toolCallId) => { host.peek(t.userId, t.pool, t.threadId)?.publish({ type: "made", toolCallId }); this.userEvents.changed(t.userId); },
       log: this.log,
     });
     // Where the front door is, read at every sandbox start, so a change in web access applies to the next command.
     const workspace = new Workspace(keyring, users, {
-      excludePorts: this.sandboxExcluded, frontDoor: () => web.frontDoor(), bwrap: this.opts.bwrap, pasta: this.opts.pasta,
+      excludePorts: this.sandboxExcluded, frontDoor: () => web.frontDoor(), log: this.log, bwrap: this.opts.bwrap, pasta: this.opts.pasta,
       // A private or local-only thread never gets Claude Code. Asked at each run, once the models below exist.
       restricted: (u, p, thread) => isRestricted(models.callContext(u, p, thread)),
       // A family member's folder is mounted only when its thread is in the reader's pool and not the other one (folders are named by ID alone).
@@ -557,7 +570,7 @@ export class Lyricad implements Drainable {
     // A subagent's approvals are asked in its thread and its parent's, through the host built next.
     let host!: ThreadHost;
     let forge!: ForgeWatcher;
-    const delegation = new Delegation({ users, memory, models, workspace, cwd, limits: this.opts.delegation, approve: (r, signal) => host.approveSubagent(r, signal), name: () => selfName(keyring.self()), searxng: () => searxngAddress(keyring.self()),
+    const delegation = new Delegation({ users, memory, models, workspace, cwd, limits: this.opts.delegation, approve: (r, signal) => host.approveSubagent(r, signal), name: () => selfName(keyring.self()), searxng: () => searxngAddress(keyring.self()), kiwix: () => kiwixAddress(keyring.self()),
       // The Claude plan's usage limit stopped a claude run: its parent carries on a minute after the reset, as a cut-off turn does for its plan.
       onClaudeLimit: (parent, until) => {
         const id = claudePlanId(parent.user.id);
@@ -624,10 +637,11 @@ export class Lyricad implements Drainable {
       },
     });
     host = new ThreadHost({
-      users, memory, models, workspace, persona, delegation, cwd, log: this.log, sameFile, searxng: () => searxngAddress(keyring.self()), name: () => selfName(keyring.self()),
+      users, memory, models, workspace, persona, delegation, cwd, log: this.log, sameFile, searxng: () => searxngAddress(keyring.self()), kiwix: () => kiwixAddress(keyring.self()), name: () => selfName(keyring.self()),
       idleMs: this.opts.idleMs ?? 15 * 60_000, permissionMs: this.opts.permissionMs ?? 5 * 60_000, offlineRetryMs: this.opts.offlineRetryMs,
       codePulls: (u, p, t) => forge.codePulls(u, p, t),
-      clips: (u, p, t, make, toolCallId) => clips.start({ userId: u, pool: p, threadId: t }, make, toolCallId),
+      // The thread list hears when a clip starts and ends, so its row pulses meanwhile (docs/ux.md §6).
+      clips: (u, p, t, make, toolCallId) => { clips.start({ userId: u, pool: p, threadId: t }, make, toolCallId); this.userEvents.changed(u); },
       clipsMaking: (u, p, t) => clips.making(u, p, t),
       resume: (u, p, t, at, note) => wakeups.resume(u, p, t, at, note),
       threads: children, onTurn: (u, p, t, working, byPerson) => {
@@ -1078,6 +1092,7 @@ export class Lyricad implements Drainable {
       await s.host.close();
       for (const id of this.mounted) await s.workspace.unmountHome(id).catch(() => {});
       for (const u of s.users.all()) this.keyring.lockUser(u.id);
+      this.frontSaved = s.web.front();
     }
     this.userEvents.close();
     this.mounted.clear();
@@ -1104,7 +1119,14 @@ export class Lyricad implements Drainable {
     });
   }
 
-  private async handle(req: IncomingMessage, res: ServerResponse, trust: TrustForwarded = fromLoopback, via?: "tailnet"): Promise<void> {
+  /**
+   * `plain`: one of the two plain-HTTP loopback listeners. A request there
+   * addressed to a name that isn't this machine came through a forwarder to
+   * loopback (her userspace tailscaled hands every port on her tailnet
+   * address to the same port here), where the Secure login cookie can never
+   * be set: it is sent to the HTTPS front door, or told why it can't log in.
+   */
+  private async handle(req: IncomingMessage, res: ServerResponse, trust: TrustForwarded = fromLoopback, via?: "tailnet", plain = false): Promise<void> {
     const started = performance.now();
     const method = req.method ?? "GET";
     let routeName = "(static)";
@@ -1112,6 +1134,13 @@ export class Lyricad implements Drainable {
     try {
       const url = new URL(req.url ?? "/", "http://lyricad");
       const path = url.pathname;
+      const trusted = trust(req.socket.remoteAddress ?? "");
+      const name = plain ? wrongDoor(req, trusted) : undefined;
+      if (name !== undefined) {
+        routeName = "(wrong door)";
+        this.wrongDoor(name, path, url.search, method, res);
+        return;
+      }
       // The Forgejo/Gitea webhook answers only on her tailnet listener: a signed nudge to poll at once.
       if (method === "POST" && path.startsWith("/hooks/forge/")) {
         routeName = "/hooks/forge/:account";
@@ -1131,7 +1160,7 @@ export class Lyricad implements Drainable {
       if (this.settingUp && routeName !== "/api/state" && routeName !== "/api/setup") throw new HttpError(503, "Lyrica isn't set up yet");
       const open = routeName === "/api/state" || routeName === "/api/unlock" || routeName === "/api/setup";
       if (!open && !this.services) throw new HttpError(503, "lyricad is locked");
-      if (method !== "GET" && method !== "HEAD") checkOrigin(req);
+      if (method !== "GET" && method !== "HEAD") checkOrigin(req, trusted, via === "tailnet" ? this.tailnetNames() : []);
       const r: Request = makeRequest(req, res, routeName, found.params, url, trust, via);
       const body = await found.route.handler(r);
       if (method !== "GET" && method !== "HEAD" && found.params.userId && res.statusCode >= 200 && res.statusCode < 300 && !UNLISTED.has(routeName)) this.userEvents.changed(found.params.userId);
@@ -1149,6 +1178,63 @@ export class Lyricad implements Drainable {
       if (!res.headersSent) sendJson(res, status, { error: message, ...refused, ...offline, ...updating }, err instanceof HttpError ? err.headers : {});
       else res.end();
     }
+  }
+
+  private get frontFile(): string { return join(this.opts.home, FRONT_FILE); }
+
+  /**
+   * Whose forwarded headers a plain listener believes: loopback's, but only
+   * while that listener's proxy is in front of it (the built-in Caddy on the
+   * main port, `tailscale serve` on the serve port). Her userspace tailscaled
+   * hands every tailnet peer to loopback too, and those must not pick their
+   * own address, host or scheme. The front comes from self.db once unlocked,
+   * and before that from the file WebAccess keeps beside it; an install from
+   * before that file believes loopback as it did, until its first unlock.
+   */
+  private behind(proxy: "builtin" | "tailnet"): TrustForwarded {
+    return (remote) => fromLoopback(remote) && (this.services?.web.front() ?? this.frontSaved ?? proxy) === proxy;
+  }
+
+  /** The Tailnet mode's DNS name and address, which a page served through `tailscale serve` may name as its origin. */
+  private tailnetNames(): string[] {
+    const t = this.services?.web.tailnetHosts();
+    return t ? [t.dnsName, ...(t.address ? [t.address] : [])] : [];
+  }
+
+  /**
+   * A plain-HTTP request addressed to `name`: a page load is redirected to
+   * the HTTPS front door when one is known (Direct at that very address, or
+   * the Tailnet mode's name), else answered with one sentence; an API call
+   * gets the sentence as its error, so an open login page shows it.
+   */
+  private wrongDoor(name: string, path: string, search: string, method: string, res: ServerResponse): void {
+    const dir = this.external.direct();
+    const t = this.services?.web.tailnetHosts();
+    const to = dir?.addresses.includes(name) ? `https://${name}:${dir.port}` : t ? `https://${t.dnsName}` : undefined;
+    const sentence = to
+      ? `This address is plain HTTP, so you can't log in here. Use ${to}/ instead.`
+      : "This address is plain HTTP, so you can't log in here. Turn on Tailnet or Direct in Administration › Web access, then use its https address.";
+    if (!this.wrongDoors.has(name)) {
+      this.wrongDoors.add(name);
+      this.log(`a plain-HTTP request ${name ? `addressed to ${name}` : "with no Host header"}: ${to ? `sent to ${to}` : "no HTTPS front door to send it to"}`);
+    }
+    if (path.startsWith("/api/") || path.startsWith("/hooks/")) {
+      sendJson(res, 403, { error: sentence });
+      return;
+    }
+    if (to && (method === "GET" || method === "HEAD")) {
+      res.writeHead(302, { ...SECURITY_HEADERS, location: `${to}${path}${search}`, "cache-control": "no-store" });
+      res.end();
+      return;
+    }
+    const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;" })[c]!);
+    const title = esc(this.nameSeen ?? DEFAULT_NAME);
+    res.writeHead(403, { ...SECURITY_HEADERS, "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+    res.end(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${title}</title>`
+      // The app's --bg and --fg in both schemes (web/src/app.css), so a dark phone doesn't flash white.
+      + "<style>:root{color-scheme:light dark}body{margin:0;min-height:100vh;display:grid;place-items:center;font:15px/1.5 system-ui,sans-serif;color:#1d2626;background:#f7f8f8}"
+      + "@media (prefers-color-scheme: dark){body{color:#e3eaea;background:#141818}}main{max-width:28rem;padding:1.5rem}h1{font-size:1.25rem;margin:0 0 .75rem}p{margin:0}</style></head>"
+      + `<body><main><h1>${title}</h1><p>${esc(sentence)}</p></main></body></html>`);
   }
 
   /**

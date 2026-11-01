@@ -6,7 +6,7 @@ import { lookup } from "node:dns/promises";
 import { networkInterfaces, tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { makeWorktrees, worktreeGrants, removeWorktrees, FilesRefused, Sandbox, SandboxDenied, ThreadFiles, Users, Workspace, type Worktree, type Grant, type Network } from "../src/index.ts";
+import { makeWorktrees, worktreeGrants, removeWorktrees, FilesRefused, pythonLibraries, Sandbox, SandboxDenied, ThreadFiles, Users, Workspace, type Worktree, type Grant, type Network } from "../src/index.ts";
 import { freshKeyring, profile } from "./helpers.ts";
 import { png } from "./fake-images.ts";
 
@@ -86,6 +86,17 @@ describe("the offline libraries", () => {
     expect(sandbox.allow("/opt/libs/three/build/three.module.js", false)).toBe("/opt/libs/three/build/three.module.js");
     expect(() => sandbox.allow("/opt/libs/three/build/three.module.js", true)).toThrow(/\/opt\/libs is read-only/);
     expect(() => sandbox.allow("/opt/other", false)).toThrow(/outside this thread's folders/);
+  });
+});
+
+describe("the sandbox's Python libraries", () => {
+  it("names only the listed ones its folders hold, by the names her prompt uses", () => {
+    const dir = mkdtempSync(join(tmpdir(), "pylibs-"));
+    try {
+      for (const m of ["bs4", "yaml", "numpy"]) mkdirSync(join(dir, m));
+      expect(pythonLibraries([dir, join(dir, "missing")])).toEqual(["beautifulsoup4", "PyYAML"]);
+      expect(pythonLibraries([])).toEqual([]);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 });
 
@@ -250,6 +261,13 @@ describe.skipIf(!runnable)("the sandbox", () => {
     expect(r.out).not.toContain("LYRICA_TEST_SECRET");
     expect(r.out).not.toContain("ALIVE");
     expect((await sh("ls /proc | grep -c '^[0-9]'")).out.trim()).toMatch(/^[1-5]$/);
+  });
+
+  it("stops a run whose output passes its cap, as web_fetch asks, instead of keeping it all", async () => {
+    // A compressed page can inflate far past curl's own size limit (docs/workspace.md, "Web").
+    await expect(box().run(["sh", "-c", "head -c 3000000 /dev/zero"], { maxBytes: 1_000_000 })).rejects.toThrow(/^output over 1000000 bytes/);
+    const r = await box().run(["sh", "-c", "head -c 500000 /dev/zero"], { maxBytes: 1_000_000 });
+    expect(r.stdout.length).toBe(500_000);
   });
 
   it("isolates project worktrees with unique paths in shared git metadata", async () => {
@@ -826,6 +844,12 @@ describe.skipIf(!netRunnable || !lan)("a sandbox's network switches", () => {
     const proxied = new Sandbox({ workdir: p("work"), grants: [], network: { ...OFF, internet: true }, self: [], front: [lyricad], frontHosts: [lan!] });
     expect((await sh(tcp(lan!, lyricad), proxied)).out).not.toContain("LYRICAD");
     expect((await sh(tcp(lan!, peer), proxied)).out).toContain("PEER");
+    // A name that doesn't resolve on this machine is said once, and the run keeps its network and the rest of its rules.
+    const said: string[] = [];
+    const unresolved = new Sandbox({ workdir: p("work"), grants: [], network: { ...OFF, internet: true }, self: [], front: [lyricad], frontHosts: ["lyrica.invalid", lan!], warn: (l) => said.push(l) });
+    expect((await sh(tcp(lan!, peer), unresolved)).out).toContain("PEER");
+    expect((await sh(tcp(lan!, lyricad), unresolved)).out).not.toContain("LYRICAD");
+    expect(said).toEqual(["lyrica.invalid doesn't resolve on this machine, so sandboxes can't shut the front door at its addresses until it does"]);
   });
 
   it("never reaches the host's abstract sockets", async () => {

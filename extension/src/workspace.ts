@@ -564,11 +564,13 @@ const SERVER_LINE = "Each command, and each background job, runs in its own sand
 export const BUILD_THERE = `Build, edit and save the work in a read-write folder you were given (or a repository in ${WORKDIR}/repos), never as loose files in ${WORKDIR}, which is for scratch and things to show the person.`;
 
 /** The one prompt line for a thread with Claude Code (docs/workspace.md, "Claude Code"). */
-export const CLAUDE_CODE_LINE = "Claude Code, Anthropic's coding agent, is on here: delegate a coding or repository job to role claude. It works in this sandbox, in the background, and its report arrives as a message; delegate message continues it. With no delegate tool, `claude -p \"<task>\"` with bash does the same. It spends the person's own Claude plan, so use it for jobs big or hard enough to need it, never for conversation. If it says the plan's usage limit is reached, don't do the job another way: set a wake-up (threads, later) for when it resets and carry on then.";
+export const CLAUDE_CODE_LINE = "Claude Code, Anthropic's coding agent, is on here: delegate a coding or repository job to role claude, and any job the person asks Claude for by naming it (Claude, Opus, Sonnet, Haiku) as the step's model, which runs there in the role you give it. It works in this sandbox, in the background, and its report arrives as a message; delegate message continues it. With no delegate tool, `claude -p \"<task>\"` with bash does the same. It spends the person's own Claude plan, so use it for jobs big or hard enough to need it or that they ask Claude for, never for conversation. If it says the plan's usage limit is reached, don't do the job another way: set a wake-up (threads, later) for when it resets and carry on then.";
 
-/** The sandbox's programs on this host (sandboxTools in core), and how to use its Chromium when it has one. */
-export function toolsLine(t: { programs: string[]; browser?: string } = sandboxTools()): string {
-  const parts = t.programs.length ? [`The sandbox has bash, ${t.programs.join(", ")}${t.browser ? " and headless Chromium" : ""}.`] : [];
+/** The sandbox's programs on this host (sandboxTools in core), its Python libraries, and how to use its Chromium when it has one. */
+export function toolsLine(t: { programs: string[]; python?: string[]; browser?: string } = sandboxTools()): string {
+  const programs = t.programs.map((p) => (p === "Python 3" && t.python?.length ? `Python 3 (with ${t.python.join(", ")})` : p));
+  const parts = programs.length ? [`The sandbox has bash, ${programs.join(", ")}${t.browser ? " and headless Chromium" : ""}.`] : [];
+  if (t.python?.length) parts.push("Those are the Python libraries there are, besides the standard library: don't pip install into the sandbox (each command is a fresh one); a clone's own dependencies go in its .venv.");
   if (t.browser) parts.push("To check a page, use page preview. To script a browser (clicks, several pages), Playwright and Puppeteer use the same Chromium, never their own download: `executablePath: process.env.CHROME_PATH` and `args: [\"--no-sandbox\"]`. A static page is checked once it parses and one preview looks right.");
   return parts.join(" ");
 }

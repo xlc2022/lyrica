@@ -126,14 +126,41 @@ function clientIp(req: IncomingMessage, trust: TrustForwarded): string {
 /** An address as a client socket reports it, without the IPv4-mapped prefix. */
 export const plainAddress = (a: string | undefined): string => (a ?? "").replace(/^::ffff:/, "");
 
-/** A state-changing request must come from a page on this host. HTTP/2 names the host in `:authority`. */
-export function checkOrigin(req: IncomingMessage): void {
+/**
+ * A state-changing request must come from a page on this host. HTTP/2 names
+ * the host in `:authority`; a trusted proxy that rewrote Host names the
+ * browser's in `X-Forwarded-Host`, and `also` holds the front door's own
+ * names (the Tailnet mode's) for a proxy that sends neither.
+ */
+export function checkOrigin(req: IncomingMessage, trusted = false, also: string[] = []): void {
   const origin = req.headers.origin;
   let host: string | undefined;
   try {
     host = origin ? new URL(origin).host : undefined;
   } catch { /* refused below */ }
-  if (!host || host !== (req.headers.host ?? req.headers[":authority"])) throw new HttpError(403, "cross-origin requests are refused");
+  const forwarded = trusted ? req.headers["x-forwarded-host"] : undefined;
+  const hosts = [req.headers.host ?? req.headers[":authority"], ...(typeof forwarded === "string" ? [forwarded.split(",")[0]!.trim()] : []), ...also];
+  if (!host || !hosts.includes(host)) throw new HttpError(403, "cross-origin requests are refused");
+}
+
+const LOOPBACK_NAME = /^(localhost|127(\.\d{1,3}){3}|\[::1\]|::1)$/i;
+
+/**
+ * Whether a plain-HTTP request was addressed to a name that isn't this
+ * machine: it came through something that forwards to loopback, such as her
+ * userspace tailscaled, which hands every port on her tailnet address to the
+ * same port here. A trusted proxy that says `X-Forwarded-Proto: https`
+ * (the built-in Caddy, `tailscale serve`) terminated TLS itself. A request
+ * with no Host header (HTTP/1.0) names no door at all, so it is the wrong
+ * one too: the answer is the empty name.
+ */
+export function wrongDoor(req: IncomingMessage, trusted: boolean): string | undefined {
+  if (!req.socket.remoteAddress) return undefined; // the Unix socket
+  if (trusted && req.headers["x-forwarded-proto"] === "https") return undefined;
+  const host = req.headers.host;
+  if (!host) return "";
+  const name = host.replace(/:\d+$/, "");
+  return LOOPBACK_NAME.test(name) ? undefined : name;
 }
 
 /** A listener lyricad can close, whatever protocol it speaks. */

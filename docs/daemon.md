@@ -68,7 +68,25 @@ the project. The welcome web interface is a separate build.
 `<runtime>/lyricad.sock`, mode `0600`. The socket serves the same API to local
 clients; they still log in. A second loopback port (7342) is the one only her
 tailscaled's `tailscale serve` targets (Web access, Tailnet); a request on it
-came through her tailnet address.
+came through her tailnet address. Both ports speak plain HTTP, so a request
+on either addressed to a name that isn't this machine (anything but
+localhost or 127.x) came through something that forwards to loopback, where
+the Secure login cookie can never be set: it is a wrong door, and so is a
+request with no Host header. The exception is the proxy in front of that
+listener saying `X-Forwarded-Proto: https`: the built-in Caddy on the main
+port in Built-in mode, `tailscale serve` on the serve port in Tailnet mode.
+Each plain listener believes loopback's forwarded headers (`X-Forwarded-For`,
+`X-Forwarded-Host`, `X-Forwarded-Proto`) only while that mode is on, since
+her userspace tailscaled hands every tailnet peer to loopback too (The
+tailnet, below). The mode is read from `self.db` once unlocked, and before
+that from `<runtime>/web-front` (`builtin`, `tailnet` or `none`, mode
+`0600`), which `lyricad` writes at setup, at each unlock and at each change
+of mode; an install from before that file believes loopback as it did,
+until its first unlock writes it. A page load is redirected to the HTTPS front door
+when one is known (Direct at that very address, or the Tailnet mode's name),
+else answered 403 with one sentence saying how to turn one on; an API call
+gets the sentence as its 403 error, so an open login page shows it. Each
+name is logged once.
 
 - **Setting up.** Without `<runtime>/self.db` it starts anyway, setting up:
   `GET /api/state` says `{ locked: true, setup: true, name, users: [],
@@ -171,8 +189,10 @@ name/id and error class; stderr is discarded.
   logout and Lock end them.
 - Login, unlock, password changes, linking, and saving or changing the
   self.db passphrase are rate-limited per login name and per address: three failures are free, then each attempt waits twice as long as
-  the last, up to 15 minutes (`429` with `Retry-After`). Behind Caddy, the
-  address is the last `X-Forwarded-For` entry.
+  the last, up to 15 minutes (`429` with `Retry-After`). In Built-in mode the
+  address is the last `X-Forwarded-For` entry, and behind an external proxy
+  the proxy's; the other modes believe no forwarded headers on loopback, so
+  neither a local process nor a tailnet peer can pick its own address.
 - One attempt per login name and per address runs at a time; others get
   `429` at once, so parallel guesses get no free tries. An unknown login
   still runs Argon2 (against a dummy key), so the time taken doesn't reveal
@@ -618,7 +638,9 @@ the background (`ClipJobs`, clips.ts) comes with status `clip` and its
 `video` part: the message list shows it as her message with the clip, and
 the `notice` event carries `video`; a failed one has status `clip-failed`.
 Either wakes an idle thread once; a clip Lock or a shutdown stopped wakes
-nothing.
+nothing. While a clip is being made, the thread's `ThreadSummary.making` is
+true (`ThreadHost.makingClip`), and the user's events say the list changed
+when it starts and ends, so the sidebar row pulses meanwhile.
 
 Child-thread notices use the same encrypted delivery path. Questions,
 `needsYou`, a report at the child's idle turn end, and failure/didn't-start
@@ -1121,7 +1143,9 @@ rewritten.
 
 She is a device of her own on the tailnet: `lyrica-tailscaled.service` runs
 `tailscaled` in userspace networking as the `lyrica` user, with its state in
-`/var/lib/lyrica-tailscale` and its socket at
+`/var/lib/lyrica-tailscale` (`--state` and `--statedir`: the serve
+certificate lives there too, and tailscaled derives that directory from
+`--state` only when its folder is called `tailscale`) and its socket at
 `/run/lyrica-tailscale/tailscaled.sock`. `daemon/src/tailnet.ts` drives it
 with the `tailscale` CLI (`--socket` hers on every call), run by `lyricad`
 directly, never in a sandbox and never as a model tool. Every command comes
@@ -1161,6 +1185,19 @@ so is a tailnet destination when nothing listens on the port.
   off; over the LAN or on the machine they work.
 - Her outbound traffic to tailnet peers still goes through the host's
   network; the host's own Tailscale, if any, is never touched.
+- Userspace networking has no interface, so this machine's addresses never
+  include hers, and tailscaled hands every inbound TCP connection to her
+  tailnet address, on any port it doesn't serve itself, to the same port on
+  this machine's loopback. So `http://<her address or name>:7340` and `:7342`
+  reach lyricad's two plain listeners from any peer, and `https://` on those
+  ports fails, since the listeners don't speak TLS: lyricad treats them as
+  the wrong door (Starting and unlocking, above) and sends the browser to
+  `https://<her DNS name>/` once the Tailnet web mode is on, and believes
+  those connections' forwarded headers only on the listener whose proxy is
+  in front (Starting and unlocking). Nothing else
+  on loopback is meant to be reached that way; a service an operator adds
+  on loopback is reachable from her tailnet too. A Tailscale ACL that allows
+  only port 443 to this machine closes the path for everything else.
 - `POST /hooks/forge/:account` answers on the serve port only (anywhere else
   it is 404), so it arrives through her tailnet address. It is a nudge, not a
   trusted read: `lyricad` checks the forge's HMAC signature
@@ -1185,13 +1222,18 @@ Direct and the external proxy's HTTPS listener speak HTTP/2 with HTTP/1.1
 fallback, so multiple tabs' streams can share one connection (principle 8).
 Plain-HTTP listeners stay HTTP/1.1.
 
-- **Only this machine** (`off`): only `127.0.0.1` and the Unix socket.
+- **Only this machine** (`off`): only `127.0.0.1` and the Unix socket. While
+  she is joined to a tailnet, its peers still reach those ports at her tailnet
+  address through her tailscaled's forwarding (The tailnet, above), where
+  nobody can log in: it is a wrong door, and no forwarded header is believed.
 - **Direct**, the mode she starts in: `lyricad` itself serves HTTPS on port
   7340 on every LAN and Tailscale address of this machine, with one
   certificate it makes naming them all (P-256, ten years), whose fingerprint
   and PEM the panel shows. Anyone may connect, and the client's own address
   is its address (no `X-Forwarded-For`). HTTPS on the Tailscale addresses too,
-  since the login cookie is `Secure`. Its settings are written to
+  since the login cookie is `Secure`; those are the host's own tailscaled's
+  interfaces, never her userspace one (The tailnet, above), so over her
+  tailnet only the Tailnet mode serves HTTPS. Its settings are written to
   `web-external.json` at the first start without `self.db` when that file
   doesn't exist, so a host that already had web access keeps it; with no
   `web.access` in `self.db`, that file is the setting. At each start it
@@ -1206,9 +1248,14 @@ Plain-HTTP listeners stay HTTP/1.1.
   previous listener closes; if this machine can't check it (it need not be on
   her tailnet), the mode is saved anyway and Direct, if on, stays on beside
   it, so nobody is locked out; turning Tailnet on again once it answers closes
-  Direct. The status fetches the name again. Off, or any other mode, runs
+  Direct. The status fetches the name again, and once it answers records
+  `certificates` as issued, so the panel stops saying the certificate isn't
+  there yet. Off, or any other mode, runs
   `serve reset`. tailscaled keeps the serve configuration, so the unlock page
-  is there after a restart.
+  is there after a restart. The origin check on the serve port accepts the
+  browser's host from `X-Forwarded-Host` and the mode's own name and address,
+  so a `tailscale serve` that rewrites `Host` to the loopback target still
+  logs in.
 - **Built-in Caddy.** The administrator picks the name, the Tailscale and/or
   LAN addresses to serve on (detected from the host's interfaces), the DNS
   provider and its credentials, an optional ACME email, and Let's Encrypt
@@ -1255,11 +1302,15 @@ Plain-HTTP listeners stay HTTP/1.1.
   and the old one gives its open requests five seconds to finish, so the
   request that asked for the change gets its answer; if the new one can't
   open, the old one stays.
+- Which plain listener has its proxy in front (`builtin`, `tailnet` or
+  `none`) is kept in `<runtime>/web-front`, mode `0600`, for the listeners
+  before unlock (Starting and unlocking).
 - **Sandboxes never reach the front door.** `Workspace` reads it at every
   sandbox start (`frontDoor`): the front port (443, or the external proxy's
   own port) and Direct's port on this machine's addresses, on every address
-  the name has resolved to (in Tailnet, her DNS name and her Tailscale
-  address), and on the external proxy's addresses; and the external proxy
+  the name has resolved to (in Tailnet, her Tailscale address as her
+  tailscaled gave it at the switch, standing for her MagicDNS name, which this
+  machine's resolver needn't know), and on the external proxy's addresses; and the external proxy
   listener's port on every address. If the name has never resolved, the
   sandbox gets no network for that run
   ([workspace.md](workspace.md#network-access-from-tools)).
@@ -1273,8 +1324,10 @@ again installs that checkout's commit as a release, the way an update does
 same ("On NixOS" below).
 
 - It installs the packages (bubblewrap, gocryptfs, FUSE, passt, nftables,
-  openssl, ImageMagick, and for the updater build-essential, python3, git,
-  openssh-client and jq, and python3-venv for clones' Python dependencies), and the `tailscale` package from Tailscale's apt
+  openssl, ImageMagick, ffmpeg (with ffprobe, so she can check her clips), and for the updater build-essential, python3, git,
+  openssh-client and jq, python3-venv for clones' Python dependencies, and
+  the sandbox's Python baseline for scraping and data work: python3-bs4,
+  python3-lxml, python3-requests, python3-html5lib and python3-yaml), and the `tailscale` package from Tailscale's apt
   repository when its binaries are missing (then disabling the host's own
   `tailscaled.service` the package enables, unless it was enabled before, so
   a host keeps its own as it was), checks for Node.js 22.12 or later (the web UI
@@ -1326,6 +1379,18 @@ same ("On NixOS" below).
   once per address (`adoptLocalSearxng`). The updater's stale-units check
   leaves this unit out, since not every install has it
   ([guides/searxng.md](guides/searxng.md)).
+- When ZIM files are in `LYRICA_ZIM_DIR` (`/var/lib/lyrica-kiwix` unless
+  set), it installs Debian's `kiwix-tools`, `/usr/local/sbin/lyrica-kiwix-start`
+  and `lyrica-kiwix.service` (kiwix-serve on `127.0.0.1:8889`, no search
+  bar, serving a library the start script builds with `kiwix-manage` from
+  every `.zim` in the folder it can open, so a file still downloading under
+  its final name is skipped with a journal line rather than stopping the
+  service; `/etc/lyrica/kiwix.env` holds the folder and port), writes
+  `http://127.0.0.1:8889` to `kiwix-address` in her state folder, which
+  lyricad adopts as the Kiwix address the same way (`adoptLocalKiwix`), and
+  waits for its catalog. When the files are gone on a later run it removes
+  the unit and the address file. The stale-units check leaves this unit
+  out too ([guides/wikipedia.md](guides/wikipedia.md)).
 - It installs `lyricad.service`, `lyrica-tailscaled.service` and
   `lyrica-caddy.service` and starts them. Without `self.db` it ends by
   printing the setup page's addresses, the certificate's fingerprint and the
@@ -1456,7 +1521,22 @@ system with the module on. Only x86_64-linux.
   `127.0.0.1:8888` with install.sh's settings, a
   `lyrica-searxng-secret` oneshot that makes its secret once, and
   `searxng-address` in her state folder (a tmpfiles rule, removed when off; an address lyricad already stored
-  stays until an administrator clears it).
+  stays until an administrator clears it). With `zimDir` set it declares
+  `lyrica-kiwix.service` (the same `lyrica-kiwix-start` script with
+  `pkgs.kiwix-tools` on its path: kiwix-serve on `127.0.0.1:8889`, a
+  dynamic user, every `.zim` in the folder that kiwix can open, mirroring
+  install.sh's unit) and `kiwix-address` the same way. With `mcpNixos`
+  on (off by default) it declares `lyrica-mcp-nixos.service` through
+  `nix/mcp-nixos-module.nix` (`services.lyrica-mcp-nixos`, also exported
+  as `nixosModules.mcp-nixos` for a machine that runs only the server):
+  nixpkgs' `mcp-nixos` (built against a `fastmcp` with its tests
+  skipped: neither is in the channel's binary cache and three of its
+  proxy tests fail in the build sandbox) in HTTP mode on `127.0.0.1:8001`, path `/mcp`, a
+  dynamic user with `nix` on its path and `CacheDirectory`
+  `lyrica-mcp-nixos` as its home and cache (its flake-inputs action runs
+  `nix flake archive` on a flake directory the call names), no address file: the user adds it
+  under Settings → MCP servers as a Private server (docs/guides/nixos-mcp.md).
+  It has no Debian counterpart.
   `lyrica` on the system path is the same wrapper as
   install.sh's, so the first-run step is `lyrica admin setup-code` as root:
   nothing prints the code or the fingerprint at `nixos-rebuild`. The wrapper
@@ -1482,14 +1562,15 @@ system with the module on. Only x86_64-linux.
 - **Sandboxes.** NixOS has no `/usr` to share. The module sets
   `LYRICA_SANDBOX_TOOLS` to one directory of `sandboxPackages`
   (`nix/sandbox-tools.nix`: a shell, the usual command-line tools, git,
-  OpenSSH, OpenSSL, curl, jq, ripgrep, Python, make and gcc (for native npm
-  modules), ImageMagick, Chromium with IBM Plex
+  OpenSSH, OpenSSL, curl, jq, ripgrep, Python with beautifulsoup4, lxml,
+  requests, html5lib and PyYAML, make and gcc (for native npm
+  modules), ImageMagick, ffmpeg (headless, with ffprobe), Chromium with IBM Plex
   and DejaVu fonts for her screenshots, bubblewrap, passt, nftables) and
   `LYRICA_SANDBOX_CLOSURE` to the store paths of their closure, Node's and
   the CA bundle's (`closureInfo`). See docs/workspace.md.
 - **Options:** `enable`, `package`, `port` (7340), `tailscale` (on),
-  `tailscalePackage`, `openFirewall` (on), `searxng` (on), `caddyPackage`,
-  `sandboxPackages`.
+  `tailscalePackage`, `openFirewall` (on), `searxng` (on), `zimDir` (null),
+  `caddyPackage`, `sandboxPackages`.
 - **Releases** are generations of the profile `/nix/var/nix/profiles/lyrica`,
   which lyricad runs. An Update builds `git+file:///opt/lyrica/repo.git?rev=<commit>#lyrica`
   as root (Nix's own sandboxed builders do the building, not `lyrica-build`),
@@ -1513,5 +1594,6 @@ system with the module on. Only x86_64-linux.
   lyricad and Caddy run, the `lyrica` profile exists, `lyrica-update.path`
   is active, her tailscaled answers `lyrica` on its socket, `NoNewPrivs` is `0`, `fusermount3` is setuid, Caddy's
   admin socket exists, a sandbox and `pasta` start as `lyrica`, the
-  self-test hasn't refused network, lyricad answers on port 7340, and with
-  `searxng` on, SearXNG answers `/healthz`.
+  self-test hasn't refused network, lyricad answers on port 7340, with
+  `searxng` on, SearXNG answers `/healthz`, and with `zimDir` set,
+  kiwix-serve answers its catalog.

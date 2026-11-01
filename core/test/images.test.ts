@@ -45,6 +45,23 @@ describe("image calls through the router (principles 1 and 2)", () => {
     ]);
     expect(s.heard).toEqual([]);
   });
+  it("upscales a clip on the Image upscaling list's first host recipe that upscales clips, never a cloud model", async () => {
+    const s = await setup(), ctx = s.ctx({ pool: "private" });
+    const older = await s.host("older", undefined, undefined, undefined, undefined, false);
+    s.models.setColumnTask(s.ada.id, "private", "image.upscale", [older.ref, s.workstation.ref]);
+    const made = await s.models.upscaleVideo(ctx, { video: mp4, scale: 2 });
+    expect(made.resolution.ref).toEqual(s.workstation.ref);
+    expect(made.resolution.skipped.map(p => p.reason)).toEqual(["it doesn't upscale clips"]);
+    expect(made.video).toMatchObject({ type: "video/mp4", width: 2560, height: 1408, audio: true });
+    expect(s.workstation.server.upscaled).toEqual([{ recipe: "art", video: mp4.toString("base64"), scale: 2 }]);
+    // The same recipe still upscales images.
+    expect((await s.models.image(ctx, { action: "upscale", image: input })).resolution.ref).toEqual(older.ref);
+    await expect(s.models.upscaleVideo(ctx, { video: png })).rejects.toThrow(/MP4/);
+    await expect(s.models.upscaleVideo(ctx, { video: mp4, scale: 5 })).rejects.toThrow(/1 to 4/);
+    s.models.setColumnTask(s.ada.id, "private", "image.upscale", [older.ref]);
+    await expect(s.models.upscaleVideo(ctx, { video: mp4 })).rejects.toThrow();
+    expect(s.heard).toEqual([]);
+  });
   it("passes over a host recipe that takes no mask for a masked edit, and uses it for a maskless one", async () => {
     const s = await setup(), ctx = s.ctx({ pool: "private", localOnly: true });
     const plain = await s.host("plain", undefined, false);
@@ -63,6 +80,20 @@ describe("image calls through the router (principles 1 and 2)", () => {
     expect((await s.models.image(ctx, { action: "create", prompt: "A garden", tier: "quality", references: [input, input] })).resolution.ref).toEqual(s.spare.ref);
     expect((await s.models.image(ctx, { action: "create", prompt: "A garden", tier: "quality" })).resolution.ref).toEqual(plain.ref);
     expect(plain.server.images.map(i => "references" in i.body)).toEqual([false]);
+  });
+  it("tries an Edit list's local model that also creates for a create with references no Create model takes, never a model off both lists", async () => {
+    const s = await setup(), ctx = s.ctx({ pool: "private", localOnly: true });
+    const plain = await s.host("plain", undefined, undefined, 0), three = await s.host("three", undefined, undefined, 3), off = await s.host("off", undefined, undefined, 3);
+    s.models.setColumnTask(s.ada.id, "private", "image.create", [plain.ref]);
+    s.models.setColumnTask(s.ada.id, "private", "image.edit", [three.ref]);
+    const made = await s.models.image(ctx, { action: "create", prompt: "A garden", tier: "quality", references: [input] });
+    expect(made.resolution.ref).toEqual(three.ref);
+    // Without references the Create list answers as before; past what any listed model takes, none does.
+    expect((await s.models.image(ctx, { action: "create", prompt: "A garden", tier: "quality" })).resolution.ref).toEqual(plain.ref);
+    await expect(s.models.image(ctx, { action: "create", prompt: "A garden", tier: "quality", references: [input, input, input, input] })).rejects.toThrow(/doesn't take reference images/);
+    expect(off.server.images).toEqual([]);
+    // What her tool lists: the models on her lists, what each does, and how many references it takes.
+    expect(s.models.imageModels(ctx)).toEqual([{ name: "Art", actions: ["create", "edit", "upscale"], references: 3 }]);
   });
   it("creates and edits through the keyed OpenAI endpoint, including quality and references", async () => {
     const s = await setup();

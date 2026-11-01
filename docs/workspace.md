@@ -632,12 +632,12 @@ their subagents, at any depth (`familyRoot`, `WorkspaceSettings.family`).
 
 ## Images and portrait photos
 
-The `image` tool creates, edits and upscales through the thread's model router, and makes short clips (below).
+The `image` tool creates, edits and upscales through the thread's model router, and makes and upscales short clips (below).
 It names inputs by workspace path: uploads, earlier results or granted files.
 Reject, pick and clear_rejected sort her attempts (below, "Rejected attempts").
-Create, edit and upscale take an optional `model` when the user names one: it is tried first, then the
-usual list, and her result says when a name matched nothing or a model was passed over, which her
-guidelines tell her to pass on.
+Create, edit, upscale and upscale_video take an optional `model` when the user names one: it is tried first, then the
+usual list. A name that matches nothing stops the call before anything runs, listing the models that can,
+and her result says when a model was passed over, which her guidelines tell her to pass on.
 Create takes a prompt, fast or quality (quality when left out), optional size or `width:height` aspect
 ratio, count and references; her guidelines say to write the prompt as one
 detailed paragraph (subject and action, then setting, light, framing and
@@ -688,7 +688,10 @@ move as a given clip shows, or when a person's moves from a prompt alone
 would come out badly (a plain `video` of the moves first, then `motion`);
 and, for a video longer than one clip with a person in it, to make a still
 of them first and animate it, since the host gives each later clip the
-still as a reference and a prompt alone doesn't keep a face. A clip is made in the background (lyricad's
+still as a reference and a prompt alone doesn't keep a face. `upscale_video` takes a workspace clip and
+optional `scale` and `maxSize`, as upscale does for an image, and saves the larger clip as a new one; it
+runs on the Image upscaling list, where only a model host's recipe that upscales clips answers (SeedVR2),
+and her guidelines say to use it only when asked, on a finished clip. A clip is made in the background (lyricad's
 clip jobs): the call reads the first frame and returns, she says it's on its
 way and ends her reply, and when it is made the thread gets it as her
 message and an idle thread wakes to say it's ready; a failure comes as a
@@ -926,10 +929,15 @@ How it is enforced:
     settings): its port (443, or the external proxy's own) on this
     machine's own addresses, on every address Lyrica's name has resolved to,
     and on an external proxy's addresses; and an extra listener's port on
-    every address. If the name has never resolved, that run gets no network
-    at all;
+    every address. A name that has never resolved on this machine is logged
+    once (`lyricad`'s log), and the run keeps its network: the front ports
+    are shut on this machine's own addresses and the listed proxies whatever
+    the name says;
   - this machine's own addresses (LAN, Tailscale; read from its interfaces
-    when each sandbox starts) only with the machine's-services switch on.
+    when each sandbox starts), and the whole subnet of each bridge to guests
+    on this machine (`docker*`, `br-*`, `podman*`, `cni*`, `virbr*`, `lxc*`,
+    `lxd*`, `incus*`), so a container behind Docker is this machine too:
+    only with the machine's-services switch on.
     Internet and allowed hosts never reach this machine, so a command can't
     reach `lyricad` through a proxy;
   - the sandbox's loopback, where pasta forwards exactly the host's loopback
@@ -980,11 +988,25 @@ The **Web search** switch gives her two tools (`extension/src/web.ts`,
   videos), and for a later page. Each result shows its date when SearXNG
   has one. When nothing comes back because engines failed, it asks once
   more, then says which engines failed and what SearXNG suggests.
-- `web_fetch` runs `curl` in the thread's sandbox, the URL one argument,
+- With a Kiwix address (an offline copy of Wikipedia on kiwix-serve, the
+  second field of Administration → Web search; [guides/wikipedia.md](guides/wikipedia.md)),
+  a plain search also lists up to five of its articles, as wikipedia.org
+  links, after the web results, and `web_search` is offered with it alone.
+  `web_fetch` reads a wikipedia.org page from the copy before going
+  online, lists the page's pictures when the copy has them, and gives a
+  listed picture back as an image. With kiwix-serve on this machine, as
+  the install sets it up, none of that leaves it, so it works with the
+  internet off and in a local-only thread; a copy on another machine is
+  reached by lyricad like SearXNG, outside the thread's switches, and sees
+  the query and the article's title.
+- `web_fetch` otherwise runs `curl` in the thread's sandbox, the URL one argument,
   so the internet switch and allowed hosts above decide what it can reach:
   a private thread with internet off reads only its allowed hosts. It
   sends a browser's user agent, follows up to 5 redirects, gives up after
-  20 seconds or 10 MB, and reads only http and https. `lyricad` keeps a
+  20 seconds or 10 MB (counted after decompression too: the sandbox run's
+  own output cap stops a small compressed body that inflates past it, so a
+  hostile page can't fill `lyricad`'s memory), and reads only http and
+  https. `lyricad` keeps a
   page's main text (Mozilla Readability), or the whole page when that
   finds too little, as Markdown headed by its title, URL, byline and date,
   without scripts, styles, navigation, forms or images. It reads a PDF's
@@ -1019,7 +1041,10 @@ come from the user's Git accounts (DESIGN.md, "Updates and self-editing").
   answers) and saves nothing when that fails. Each use records Signed in,
   Token rejected or Unreachable. A GitHub account is general only. A
   private account's host must resolve on her own network (LAN, loopback or
-  the tailnet, as for private machines); when it stops doing so the
+  the tailnet, as for private machines); a host in her tailnet (a MagicDNS
+  name or a 100.x address) is reached through her tailscaled's proxy, by
+  the account check and by the credential relay alike, so a machine with no
+  Tailscale of its own still reaches a forge there; when it stops doing so the
   account is Off network and no token goes out until the user confirms
   **Use anyway**. A new pool, or removing the account, takes its
   repositories from every thread at once.
@@ -1152,12 +1177,15 @@ come from the user's Git accounts (DESIGN.md, "Updates and self-editing").
 
 A service with an MCP server (Home Assistant, a calendar, a docs site)
 gives her its tools through Pi's own MCP client (DESIGN.md, "MCP servers").
+The NixOS module can run one for her: mcp-nixos, for Nix and NixOS
+lookups (`services.lyrica.mcpNixos`, docs/guides/nixos-mcp.md).
 
 - **A server** is a row in Settings → **MCP servers**, kept in the user's
   `user.db` (`mcp_servers`, user step 3): a name (letters, digits, `-`
   and `_`), a URL, an optional token never shown back, a pool, and the
   description and tool count from its last check. Only remote servers
-  (streamable HTTP): a stdio `command` is refused. Adding one, or replacing
+  (streamable HTTP) so far: a stdio `command` is refused until local
+  servers are built (DESIGN.md, "MCP servers"). Adding one, or replacing
   its token, runs `initialize` and `tools/list` first (`probeMcp` in
   `core/src/workspace/mcp.ts`) and saves nothing when that fails. A
   general server with a token must use https. A private server's host
@@ -1250,7 +1278,9 @@ it adds no tool.
   sandbox is the fence, and her `bash` call already went through the
   thread's mode. Plan mode has no `bash`, so no Claude Code.
 - **The prompt** has one line for such a thread (`CLAUDE_CODE_LINE`): she
-  hands coding and repository jobs worth the user's plan, never
+  hands coding and repository jobs worth the user's plan, and any job the
+  person asks Claude for by name (a step's model Claude, Opus, Sonnet or
+  Haiku runs there in its role), never
   conversation, to the `claude` delegate role (docs/delegation.md, "Claude
   Code"), or `claude -p` with bash where she has no `delegate`, and when it
   reports the plan's usage limit she waits for the reset with a wake-up
@@ -1512,7 +1542,12 @@ names) looked up on every call, so changing a thread's settings applies at
 once. Commands typed with `!` in the terminal run in the sandbox. A short
 `workspace` prompt section tells her where she works, what she was given,
 whether she has internet, and her machines. It also lists the programs the
-sandbox has on this host (`sandboxTools` in `sandbox.ts`) and, only when it
+sandbox has on this host (`sandboxTools` in `sandbox.ts`), with the Python
+libraries its Python can import (beautifulsoup4, lxml, requests, html5lib,
+PyYAML, those of them present in Debian's dist-packages or the Nix
+environment's site-packages; `pythonLibraries`), telling her those are all
+there are besides the standard library, so she doesn't pip install into a
+sandbox that is new for each command, and, only when it
 finds Chromium, points her to `page preview` for checking a page, says how
 Playwright or Puppeteer use that browser, and that a static page is checked
 once it parses and one preview looks right. It then names the offline

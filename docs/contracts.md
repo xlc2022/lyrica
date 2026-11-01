@@ -232,7 +232,7 @@ nothing else. No code path gives a general view a private handle.
 | Writing memories | `addNotes(notes, { author, thread? })`, `supersede(old, by, author)` (marks existing notes replaced by a current note and flags pages citing them; deletes nothing, so no tombstone; never a user's note unless a user does it), `pruneSuperseded(before)` → count (sleep removes superseded notes, not a user's, edited by one or archived, that nothing but their replacement cites, whose replacement was written before `before`; no tombstone), `putPage` (sleep and user pages), `putWake`, `addJournal`. Every write (notes, pages and edits, WAKE, journal, sleep items, project instructions) passes text, title, summary and tags through `removeSecrets` (core/src/secrets.ts) first; matches become `[secret removed]` |
 | Any memory, by ID | `get`, `edit`, `restore`, `archive`, `delete`, `deleteMany` |
 | Reading for the prompt | `getWake`, `pageIndex`, `forFolders(paths)`, `listJournal`, `journalHistory({ limit, offset, q })` → `{ entries, total }`, `userIntroduced` |
-| Search | `search(query, { kinds, limit, current, excludeThread, fromThread, only, skip, minWords, said })`, returning `{ id, kind, snippet, score, at, origin }` (`origin`: who wrote a memory, or `user` or `lyrica` for a user or assistant entry, unset for a tool result; a user-role entry lyricad wrote, such as a message from another of her threads, a watch, a wake-up or a routine, is `lyrica`; `at`: when an entry was said or a memory last changed; `skip`: words left out of the query; `minWords`: when the query has more words than that, a hit holds at least that many of them, as a word or a word's start, a user's name counting once, and enough of its words that aren't common in the index, a word in more than 2% of it and 20 items being common; `said`: leave out tool results and match a message on its text, not its tool calls); `searchMessages(query, { limit, before?, threads? })` → `MessageHit[]` (`thread`, `n`, `role`, `text`, `createdAt`): the user's messages and her replies from the same index, every word of `query` as a word or a word's start (`searchWords`), newest first, before `before`, in `threads`; an entry a rewind removed while a branch keeps its copy is found at the copy |
+| Search | `search(query, { kinds, limit, current, excludeThread, fromThread, only, skip, minWords, said })`, returning `{ id, kind, snippet, score, at, origin }` (`origin`: who wrote a memory, or `user` or `lyrica` for a user or assistant entry, unset for a tool result; a user-role entry lyricad wrote, such as a message from another of her threads, a watch, a wake-up or a routine, is `lyrica`; `at`: when an entry was said or a memory last changed; `skip`: words left out of the query; `minWords`: when the query has more words than that, a hit holds at least that many of them, each as the same word, its stem or a longer word starting with it (`sameWord`), a user's name counting once, and enough of its words that aren't common in the index, a word in more than 2% of it and 20 items being common; `said`: leave out tool results and match a message on its text, not its tool calls); `searchMessages(query, { limit, before?, threads? })` → `MessageHit[]` (`thread`, `n`, `role`, `text`, `createdAt`): the user's messages and her replies from the same index, every word of `query` as a word or a word's start (`searchWords`), newest first, before `before`, in `threads`; an entry a rewind removed while a branch keeps its copy is found at the copy |
 | Lineage | `cameFrom`, `usedIn`, `revisions`, `revisionHistory(id, { limit, offset, q })` → `{ entries, total }` (newest first), `isTombstoned(entryId)`, `editedSince(since)` |
 | Sleep runs | `startSleepRun`, `updateSleepRun`, `recordSleepRun` (a skip), `listSleepRuns`, `sleepRunHistory({ limit, offset, q })` → `{ entries, total }`, `getSleepRun`, `watermark`, `sleepMaterial(since, until)`, `sleepChanges(from, to)` |
 | Sleep items | `addItem`, `listItems`, `getItem`, `startItem(id, threadId)`, `dismissItem`, `itemForThread`. Items, like the journal and WAKE, store `{user}` as a mention token, and the readers give it back as the name |
@@ -372,6 +372,7 @@ interface Offering extends Capabilities {   // one model on one endpoint, with a
   status: "listed" | "missing" | "gone"; missingSince?;      // gone: missing for GONE_DAYS (30)
   digest?; identity?: ModelIdentity; downloaded?; size?; recipe?; separate?;   // reported by a host; useFor inherited from Capabilities
   extend?; longestSeconds?; sound?;                          // a host video recipe that adds to clips (and chains them), its longest video, and whether it renders sound
+  upscalesClips?;                                            // a host upscale recipe that upscales whole clips too (its listing does `upscale_video`)
   opensThinking?;                                            // a host's chat template writes <think> itself
   alwaysThinks?;                                             // LM Studio or OpenRouter says it can't turn thinking off
   price?: { input; output; reasoning?; cacheRead?; cacheWrite?; free };   // OpenRouter's pricing, US dollars per million tokens
@@ -398,7 +399,8 @@ interface CallContext {
   fallback?: boolean;                       // Fallback; false: only a list's first entry answers; absent is on
   contextLimit?: number;                    // the most context the thread plans for, below its model's window; inherited by children
 }
-interface Need { tools?: boolean; tokens?: number; imageTier?: "fast" | "quality"; imageMask?: boolean }        // what the call needs from a model
+interface Need { tools?; tokens?; imageTier?: "fast" | "quality"; imageMask?; imageReferences?; animate?; motion?; extend?; seconds?; loras?: string[];
+               first?: string[]; after?: string[] }   // what the call needs from a model; first/after: offering IDs tried before/after the list for one call
 interface Resolution { ref: { offeringId }; endpoint; offering; label; profile: string;   // the preset's name, or "Custom"
                        source: "thread" | "preset" | "column"; skipped: { label; reason }[]; remaining: number }
 interface Pace { promptTokens; readTokens?; outputTokens; window; ttftMs; genMs; processed }   // counts and times only
@@ -487,8 +489,12 @@ class Models {                                              // new Models(keyrin
   // with extend) answers, so no clip or first frame reaches a cloud model. A recipe whose `longestSeconds` is under `duration` is skipped
   // ("it makes videos of at most N s"); a host recipe that chains clips (MiniMax H3) answers up to 60 s as one clip.
   // POST /host/v1/videos/create with explicit fields only; two hours at most, per 5 s asked (videoTimeout), since a chain gives each clip two hours.
+  upscaleVideo(ctx, request: VideoUpscaleRequest { video: Uint8Array (an MP4 of at most 64 MB); scale?: 1-4; maxSize?: 256-8192 }, { signal?, beforeSend?, onProgress?, first? }?): Promise<{ video: GeneratedVideo; resolution }>
+  // The `image.upscale` task's list; only a host recipe that lists `upscale_video` (Offering.upscalesClips) answers ("it doesn't
+  // upscale clips"). POST /host/v1/videos/upscale with explicit fields only; two hours at most (VIDEO_TIMEOUT_MS).
   firstVideoModel(ctx): { name; longestSeconds?; extend; sound } | undefined   // the Videos list's first usable model, for the image tool's duration and prompt; no call
   loraModels(ctx, "image.create" | "image.edit" | "video", asks: LoraAsk[]): { ids; names }   // local models taking every LoRA asked, list order first, for `first`; names: every LoRA they take (loraName); no call
+  imageModels(ctx): { name; actions: ("create" | "edit" | "upscale")[]; references? }[]   // the models on the Images lists that can do their task, for the image tool's model field; no call
   // Thinking and call records
   defaultThinking(userId) / setDefaultThinking(userId, level) / setThinking(userId, threadId, level | null)
   thinkingFor(resolution, asked, unset?): { level; note? }   // asked defaults to DEFAULT_THINKING ("medium"), also the per-user default; unset (CallContext.thinkingUnset) drops the can't-think note
@@ -722,8 +728,10 @@ Custom roles override built-ins by name, except `claude`.
   thread's `claudeCode()`, and a `workspace.claudeDir`), refused with
   `internet: false`, always in the background. A `Subagent` works through a
   `SubagentBody` (`send`, `steer`, `abort`, `reply`, `dispose`): a Pi
-  session's, or `claudeBody`'s one `claude -p --output-format json` run
-  per turn through `ExecutionTarget.run`, resumed with `--resume`.
+  session's, or `claudeBody`'s one `claude -p --output-format stream-json` run
+  per turn through `ExecutionTarget.run`, resumed with `--resume`, with
+  `--model <alias>` and the asked role's prompt in its brief when it stands
+  in for a step that named Claude (`SubagentRecord.pick` `{ claude }`).
 - The default action runs work: `task` with an optional `role` and `tier`;
   or `tasks: [...]` (parallel), `chain: [...]`, `loop`, `council`, or
   `workflow: name`. Any of these can be `background: true` (always, in a
@@ -734,8 +742,13 @@ Custom roles override built-ins by name, except `claude`.
   workflow named, resolved by `Models.find`, else `matchModel` over
   `Models.textModels(ctx)`; a name that fits no one model fails with the
   closest; a cloud one with a local `sameModelName` twin runs on the twin unless
-  `singledOut(the person's latest message, it, all)`. `action: "models"` lists
-  them local first, each local or cloud, with vision and paid where they apply.
+  `singledOut(the person's latest message, it, all)`. A name that
+  `meansClaude` in words and isn't `namedOutright` runs on Claude Code where
+  `delegation.claudeFor(thread, name)` says so, in the step's role; a cloud
+  `isClaudeModel` named in words fails unless the person's latest message
+  singles it out. `action: "models"` lists
+  them local first, each local or cloud, with vision and paid where they apply,
+  and Claude Code where the thread's runs have it.
   `folders` narrows granted host folders only, not sandbox repository paths;
   an invalid folder returns that distinction and advises omitting `folders`
   to read the parent's checkouts. Read-only roles, narrowed runs and writers
@@ -1396,13 +1409,16 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     the user's reactions since her last turn; `reactionLines` puts them in
     the turn message as `<reactions>`;
   - `image` (`createImageExtension(ImageTools)`), one tool with `create`, `edit`,
-    `upscale`, `video`, `animate` and `motion`. Create takes `prompt`, `tier` (`fast` or `quality`), optional
+    `upscale`, `video`, `animate`, `motion`, `extend` and `upscale_video` (a workspace clip, optional
+    `scale` and `maxSize`, through `Models.upscaleVideo`, in the background as other clips are, recorded as `image.upscale`). Create takes `prompt`, `tier` (`fast` or `quality`), optional
     `size: { width, height }` or `aspectRatio` (`width:height`), `count` and
     `references`; edit takes `image`, `instruction`, optional `mask`, `count`
     and `references`; upscale takes `image`, optional `scale` and `maxSize`.
-    Create, edit and upscale take an optional `model`, a name she was asked
+    Create, edit, upscale and upscale_video take an optional `model`, a name she was asked
     for: `Models.namedImageModels` turns it into offerings tried before the
-    list for that call (docs/models.md, "A model asked for by name").
+    list for that call (docs/models.md, "A model asked for by name"). The
+    field's description lists the models on her image lists
+    (`Models.imageModels`), and a name that matches none fails before any call.
     Create, edit, video and animate take an optional `loras: [{ name, strength }]`:
     `Models.loraModels` puts the models that take them all after any named one,
     a name none takes fails before any call with the LoRAs there are, and the result
@@ -1466,7 +1482,9 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     `"clip-failed"`, its reason in the text), which messages show as an
     assistant message with the call's image tool part (ID `<toolCallId>:made`,
     the call's args, the notice's text as its result) and then the video part, and the `notice` event carries as
-    `video` and `call`, and wakes an idle thread. A clip delivered before `call` existed shows alone. Without it (an explicit retry) the call
+    `video` and `call`, and wakes an idle thread. While a clip is being made, the thread's
+    `ThreadSummary.making` is `true` (`ThreadHost.makingClip`), and the user's events report a change
+    when it starts and ends. A clip delivered before `call` existed shows alone. Without it (an explicit retry) the call
     answers with its facts and its poster as image content, so she sees the first frame;
     a host's progress (create, edit, upscale, video, animate, motion) goes to Pi as the call's update, details `{ progress: JobProgress }`;
     details `{ video: VideoPart }`, `VideoPart` being `{ type: "video", path,
@@ -1491,7 +1509,8 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     their role and may not be read-only. It adds one tool within the budget;
   - `web_search({ query, count?, time?, category?, page? })` and
     `web_fetch({ url, maxChars?, offset? })`
-    (`createWebExtension({ searxng(), target(), canRender?() })`, `core/src/web.ts`), in
+    (`createWebExtension({ searxng(), kiwix?(), target(), canRender?() })`,
+    `core/src/web.ts`, `core/src/kiwix.ts`), in
     every hosted thread and in a subagent whose role lists them (the
     researcher's), behind the Web search switch. `web_search` asks the
     server's SearXNG (`GET <address>/search?q=…&format=json`, plus
@@ -1499,11 +1518,50 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     general|news|science|it|videos and `pageno` 1 to 10; 15 s) for up
     to `count` results (8 by default, 20 at most) as title, date (when
     SearXNG has `publishedDate`), URL and snippet, after its first answer
-    or infobox line. No results while `unresponsive_engines` is non-empty:
-    it asks once more, then names the failed engines and SearXNG's
-    corrections and suggestions. It is offered only
-    while an address is set, read on every turn and call. A
-    `user:password@` in the address goes as basic auth. `web_fetch` runs
+    or infobox line. Requests to SearXNG go at least a second apart
+    (`SearchGate`, one for the daemon, in memory), and the same search
+    (query, time, category, page) within a minute is answered from its
+    last reply. No results while an engine failed passingly (`timeout`
+    and the like): it asks once more. An engine SearXNG reports as
+    `CAPTCHA`, `too many requests`, `access denied` or `Suspended: …`
+    refused and is resting, so no retry; still nothing, it names the
+    failed engines, why, and for how long each refusing one has been
+    seen refusing (an engine seen in a result's `engines` is forgotten),
+    says a rested engine gives the same answer when every failed engine
+    refused, then SearXNG's corrections and suggestions. With a Kiwix
+    address (the offline copy of Wikipedia, kiwix-serve), a plain search
+    (page 1, no time, general or no category) also asks it
+    (`kiwixSearch`: `GET <kiwix>/search?pattern=…&books.name=<book>&format=xml&pageLength=n`,
+    one request per book since kiwix-serve refuses a search over books
+    in different languages, 15 s, hits merged in turn, the same URL once,
+    at most 5) and
+    appends "Offline copy of <title> <YYYY-MM>:" with each hit as title,
+    URL and snippet, after the web results. A hit of a book named
+    `wikipedia_<lang>_…` is the page `https://<lang>.wikipedia.org/wiki/<path>`
+    (the ZIM path without its `A/` and `.html`); any other book's hit is
+    its `<kiwix>/content/<book>/<path>`. Either side failing is said after
+    the other's results; both failing is the error. The books come from
+    `GET <kiwix>/catalog/v2/entries` (`kiwixBooks`: id from the
+    `text/html` link, name, title, language, date), read once and kept
+    five minutes (`forgetKiwixBooks` drops them). `web_search` is offered
+    only while a SearXNG or Kiwix address is set, read on every turn and
+    call. A `user:password@` in the SearXNG address goes as basic auth.
+    `web_fetch` reads from the offline copy first (`kiwixPage`): a
+    `https://<lang>(.m).wikipedia.org/wiki/<title>` page when a book
+    copies that language (`GET <kiwix>/raw/<book>/content/<path>` with
+    the path `A/<title>`, `<title>`, with `.html`, then the path
+    `GET <kiwix>/suggest?content=<book>&term=<title>&count=10` gives for
+    that title), and any `<kiwix>/content/<book>/<path>` of its own. A
+    page becomes Markdown as below, links absolute on wikipedia.org (so
+    they are read offline too), then "Pictures, each readable with
+    web_fetch:" listing up to 12 of its images by their `<kiwix>/content/…`
+    addresses (a maxi copy has them, a nopic one none), and the result's
+    "from" names the copy and its month. A listed picture (png, jpeg, gif
+    or webp, 5 MB at most) comes back as an image part, WebP as PNG
+    through ImageMagick on lyricad's PATH (`pictureForModel`; as WebP
+    without it), so a model with vision sees it and the vision guard
+    switches a subagent without. A page no book has, or any other URL,
+    goes online: `web_fetch` runs
     curl (`fetchArgv`, the URL one argument, a browser's user agent, 10 MB
     at most) through the thread's sandbox
     target's `run`, so its internet switch and allowed hosts apply.
@@ -1767,7 +1825,9 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
 - **Web access** (`LyricadOptions.web`): built-in Caddy, configured through
   its admin socket `/run/lyrica-caddy/admin.sock`, or an external proxy, with
   an extra listener whose settings and TLS key are in
-  `<runtime>/web-external.json` (0600) and which opens before unlock. Settings
+  `<runtime>/web-external.json` (0600) and which opens before unlock, and
+  `<runtime>/web-front` (0600) naming the plain listener with a proxy in
+  front, for the time before unlock. Settings
   and DNS credentials live in `self.db`. See [daemon.md](daemon.md).
 - **Unlocking:** when started as a service, `lyricad` starts locked, and the
   API serves only the unlock endpoint until `self.db` is unlocked.
@@ -1805,24 +1865,44 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     `WebAccessStatus.direct`) and `"tailnet"` (`tailscale serve` to the serve
     port; `WebAccess.tailnet: { dnsName, certificates }`,
     `WebAccessStatus.tailnet`), and `frontDoor` includes the Direct port on
-    this machine's addresses and, in Tailnet, 443 on her Tailscale address and
-    DNS name. All additive.
-- **Web search** (`core/src/web.ts`): the server's SearXNG address is
-  `self.db` `settings` `web.searxng` (`searxngAddress`,
-  `setSearxngAddress`); `GET`/`PUT /api/u/:userId/admin/web-search` →
+    this machine's addresses and, in Tailnet, 443 on her Tailscale address
+    (which stands for her MagicDNS name: this machine's resolver needn't know
+    it, since her tailscaled is userspace). All additive.
+  - **Wrong door.** On the two plain loopback listeners (`port` and the serve
+    port), a request whose `Host` isn't this machine's loopback name and that
+    no trusted proxy marked `X-Forwarded-Proto: https` is answered without
+    reaching a route: a `GET`/`HEAD` page load is `302` to the HTTPS front
+    door (`https://<host>:<Direct port>` when `Host` is one of Direct's
+    addresses, else `https://<Tailnet DNS name>`) with the same path and
+    query, or `403 text/html` with one sentence when there is none; a path
+    under `/api/` or `/hooks/` is `403 { error }` with that sentence. The
+    origin check for a mutation accepts, besides `Host`/`:authority`, a
+    trusted proxy's `X-Forwarded-Host` and, on the serve port, the Tailnet
+    mode's DNS name and address.
+- **Web search** (`core/src/web.ts`, `core/src/kiwix.ts`): the server's
+  SearXNG address is `self.db` `settings` `web.searxng` (`searxngAddress`,
+  `setSearxngAddress`) and its kiwix-serve address, the offline copy of
+  Wikipedia, `web.kiwix` (`kiwixAddress`, `setKiwixAddress`);
+  `GET`/`PUT /api/u/:userId/admin/web-search` →
   `WebSearch { searxng: string | null, auth, state: "reachable" |
-  "unreachable" | "unset", reason? }`, administrators only, the state from
-  a test search on each call; `PUT { searxng }` with null or "" clears it.
-  A password in the address (basic auth) is never sent back: `searxng`
+  "unreachable" | "unset", reason?, kiwix: string | null, kiwixState:
+  the same three, kiwixReason?, books: { name, title, language, date }[] }`,
+  administrators only, `state` from a test search and `kiwixState` and
+  `books` from the catalog on each call; `PUT { searxng?, kiwix? }`: a
+  field with null or "" clears that address, one left out keeps it.
+  A password in the SearXNG address (basic auth) is never sent back: `searxng`
   comes without it and `auth` says one is stored; a `PUT` with the same
   user@host and no password keeps it, one with a password replaces it.
-  `ThreadSettings.searchProvider` says whether one is set.
-  `adoptLocalSearxng(self, address)` stores the address install.sh (or the
-  NixOS module's `searxng` option) leaves
-  in `<LYRICA_HOME>/searxng-address` while none is set, called by lyricad
-  on each unlock; `web.searxng.offered` records it, so each address is
-  offered once and a cleared or changed one stays.
-  `HostOptions.searxng` and `DelegationOptions.searxng` give it to sessions.
+  `ThreadSettings.searchProvider` says whether either is set.
+  `adoptLocalSearxng(self, address)` and `adoptLocalKiwix(self, address)`
+  (`adoptLocalAddress`) store the address install.sh (or the
+  NixOS module's `searxng` and `zimDir` options) leaves
+  in `<LYRICA_HOME>/searxng-address` and `kiwix-address` while none is
+  set, called by lyricad on each unlock; `web.searxng.offered` and
+  `web.kiwix.offered` record it, so each address is offered once and a
+  cleared or changed one stays.
+  `HostOptions.searxng`/`kiwix` and `DelegationOptions.searxng`/`kiwix`
+  give them to sessions.
 - **HTTP/SSE API**, defined in `daemon/src/api.ts` and described in
   [daemon.md](daemon.md). The web UI imports its types from there:
   - auth;

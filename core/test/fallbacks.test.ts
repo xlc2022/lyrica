@@ -132,7 +132,8 @@ describe("an image model asked for by name", () => {
     const named = s.models.namedImageModels(priv, "create", "krea2");
     expect(named.ids).toEqual([krea.id]);
     expect(s.models.namedImageModels(s.ctx(), "create", "KREA-2").ids.sort()).toEqual([krea.id, cloud.id].sort());
-    expect(s.models.namedImageModels(priv, "create", "flux")).toEqual({ ids: [], names: ["z-image", "Krea 2 Turbo"] });
+    // The names she reads when a name matches none are her list's only: a model off it answers only when asked for.
+    expect(s.models.namedImageModels(priv, "create", "flux")).toEqual({ ids: [], names: ["z-image"] });
     const need = { imageTier: "quality" as const, first: named.ids };
     expect(s.models.resolve("image.create", priv, need).ref).toEqual({ offeringId: krea.id });
     // The list itself is untouched: without the name, its default answers.

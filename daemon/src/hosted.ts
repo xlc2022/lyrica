@@ -32,6 +32,8 @@ export interface HostOptions {
   log: (line: string) => void;
   /** The server's SearXNG address, for web_search; without one there is no web_search. */
   searxng?: () => string | null;
+  /** The server's kiwix-serve address: the offline copy of Wikipedia, in web_search and web_fetch. */
+  kiwix?: () => string | null;
   /** Child threads: every hosted thread gets the `threads` tool. */
   threads?: ThreadsHost;
   codePulls?: (userId: string, pool: Pool, threadId: string) => string[];
@@ -64,7 +66,7 @@ import { PLAN_LIMIT_RESUME } from "./wakeups.ts";
 const CHILD_WAKE = "lyrica-child-wake";
 
 /** An image call that makes something, so the chat shows its placeholder while it runs; sorting attempts makes nothing. */
-const makes = (tool: string, args: unknown) => tool === "image" && ["create", "edit", "upscale", "video", "animate", "motion", "extend"].includes((args as { action?: string } | null)?.action ?? "");
+const makes = (tool: string, args: unknown) => tool === "image" && ["create", "edit", "upscale", "video", "animate", "motion", "extend", "upscale_video"].includes((args as { action?: string } | null)?.action ?? "");
 /** Events kept for reconnecting streams. Older ones reload from stored entries. */
 const BUFFER = 500;
 /** Each lyricad run gets its own epoch, so an event ID from before a restart is never mistaken for a current one. */
@@ -197,6 +199,11 @@ export class ThreadHost {
   /** Whether a turn is running in the thread, without creating a record. */
   busy(userId: string, pool: Pool, threadId: string): boolean {
     return this.threads.get(`${userId}/${pool}/${threadId}`)?.busy ?? false;
+  }
+
+  /** A clip is being made for the thread in the background, after its turn ended. */
+  makingClip(userId: string, pool: Pool, threadId: string): boolean {
+    return (this.opts.clipsMaking?.(userId, pool, threadId).length ?? 0) > 0;
   }
 
   /** A hosted thread's context now, if its session is open. */
@@ -1123,7 +1130,7 @@ export class HostedThread {
             ...(this.o.clips ? { background: (make: (signal: AbortSignal, onProgress: (p: JobProgress) => void) => Promise<ClipMade>, toolCallId: string) => this.o.clips!(this.userId, this.pool, this.threadId, make, toolCallId) } : {}),
           }),
           // web_search and web_fetch, behind the Web search switch; a fetch runs in the thread's sandbox.
-          createWebExtension({ searxng: () => this.o.searxng?.(), target: () => tools.target(), canRender: () => !!sandboxTools().browser && sandboxHas("node") }),
+          createWebExtension({ searxng: () => this.o.searxng?.(), kiwix: () => this.o.kiwix?.(), target: () => tools.target(), canRender: () => !!sandboxTools().browser && sandboxHas("node") }),
           // The project's checks, run when a code turn that changed something ends.
           createChecksExtension({ checks: () => tools.checks(), code: () => tools.settings().code, plan: () => tools.settings().mode === "plan",
             checkouts: () => checkoutsOf(tools.settings(), workspace.repositoriesFor({ userId: this.userId, pool: this.pool, threadId: this.threadId })), target: () => tools.target(),

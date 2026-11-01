@@ -1,7 +1,8 @@
 # services.lyrica: lyricad, her own tailscaled and the built-in Caddy on NixOS,
 # declaring what daemon/deploy/install.sh does on Debian. The units mirror
 # daemon/deploy/lyricad.service, lyrica-tailscaled.service,
-# lyrica-caddy.service and lyrica-searxng.service; keep them in step.
+# lyrica-caddy.service, lyrica-searxng.service and lyrica-kiwix.service; keep them in step.
+# mcp-nixos has no Debian counterpart: nix/mcp-nixos-module.nix, imported here.
 # See docs/daemon.md, "On NixOS".
 { config, lib, pkgs, ... }:
 
@@ -12,6 +13,8 @@ let
   directPort = 7340;
   # SearXNG's port on 127.0.0.1, as SEARXNG_PORT in daemon/deploy/install.sh.
   searxngPort = 8888;
+  # kiwix-serve's port on 127.0.0.1, as KIWIX_PORT in daemon/deploy/install.sh.
+  kiwixPort = 8889;
 
   # The DNS plugins, read from the same table install.sh builds from.
   providers = builtins.readFile ../daemon/src/web/providers.ts;
@@ -113,6 +116,34 @@ in {
       '';
     };
 
+    zimDir = lib.mkOption {
+      type = lib.types.nullOr lib.types.path;
+      default = null;
+      example = "/srv/lyrica/zim";
+      description = ''
+        A folder of ZIM files (an offline copy of Wikipedia from
+        download.kiwix.org), served by kiwix-serve from kiwix-tools as
+        lyrica-kiwix.service on 127.0.0.1:8889, no search bar, every .zim
+        in the folder that kiwix can open at start (one still downloading
+        is skipped and logged). lyricad stores http://127.0.0.1:8889 as
+        Administration → Web search's Kiwix address while none is set, as
+        on Debian with install.sh. Null runs nothing.
+      '';
+    };
+
+    mcpNixos = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        mcp-nixos on this machine as lyrica-mcp-nixos.service
+        (services.lyrica-mcp-nixos, nix/mcp-nixos-module.nix): an MCP
+        server on 127.0.0.1:8001 for NixOS package, option, flake and Nix
+        function lookups, and for reading this machine's flake inputs and
+        /nix/store. A user adds http://127.0.0.1:8001/mcp in Settings →
+        MCP servers as a Private server; nothing fills it in by itself.
+      '';
+    };
+
     sandboxPackages = lib.mkOption {
       type = lib.types.listOf lib.types.package;
       default = import ./sandbox-tools.nix pkgs;
@@ -128,7 +159,11 @@ in {
     };
   };
 
+  imports = [ ./mcp-nixos-module.nix ];
+
   config = lib.mkIf cfg.enable {
+    services.lyrica-mcp-nixos.enable = lib.mkIf cfg.mcpNixos true;
+
     assertions = [{
       assertion = config.security.allowUserNamespaces;
       message = "services.lyrica needs unprivileged user namespaces (bubblewrap, pasta): security.allowUserNamespaces must stay on.";
@@ -162,6 +197,8 @@ in {
       # The address lyricad offers Administration → Web search (core/src/web.ts, adoptLocalSearxng).
       (if cfg.searxng then "f+ ${state}/searxng-address 0600 lyrica lyrica - http://127.0.0.1:${toString searxngPort}"
        else "r ${state}/searxng-address")
+      (if cfg.zimDir != null then "f+ ${state}/kiwix-address 0600 lyrica lyrica - http://127.0.0.1:${toString kiwixPort}"
+       else "r ${state}/kiwix-address")
     ];
 
     networking.firewall.allowedTCPPorts = lib.mkIf cfg.openFirewall [ directPort ];
@@ -174,8 +211,19 @@ in {
       uwsgiConfig = { http = "127.0.0.1:${toString searxngPort}"; disable-logging = true; };
       settings = {
         server = { bind_address = "127.0.0.1"; port = searxngPort; secret_key = "$SEARX_SECRET_KEY"; limiter = false; image_proxy = false; };
-        search = { formats = [ "html" "json" ]; safe_search = 0; default_lang = "auto"; };
-        outgoing = { request_timeout = 3.0; max_request_timeout = 8.0; };
+        search = {
+          formats = [ "html" "json" ]; safe_search = 0; default_lang = "auto";
+          # How long an engine rests after refusing (SearXNG's own defaults rest one for up to a day).
+          suspended_times = { SearxEngineAccessDenied = 600; SearxEngineCaptcha = 900; SearxEngineTooManyRequests = 180; };
+        };
+        outgoing = { request_timeout = 6.0; max_request_timeout = 10.0; };
+        # General search asks five engines, so one resting after a CAPTCHA doesn't end her search; startpage only ever answers with a CAPTCHA.
+        engines = [
+          { name = "bing"; disabled = false; }
+          { name = "qwant"; disabled = false; }
+          { name = "yahoo"; disabled = false; }
+          { name = "startpage"; disabled = true; }
+        ];
       };
     };
     # Its secret_key, made once.
@@ -190,6 +238,26 @@ in {
       '';
     };
 
+    # As daemon/deploy/lyrica-kiwix.service on Debian.
+    systemd.services.lyrica-kiwix = lib.mkIf (cfg.zimDir != null) {
+      description = "kiwix-serve for Lyrica's offline Wikipedia";
+      after = [ "network.target" ];
+      wantedBy = [ "multi-user.target" ];
+      path = [ pkgs.kiwix-tools ];
+      environment = { ZIM_DIR = toString cfg.zimDir; KIWIX_PORT = toString kiwixPort; };
+      serviceConfig = {
+        DynamicUser = true;
+        RuntimeDirectory = "lyrica-kiwix";
+        ExecStart = pkgs.writeShellScript "lyrica-kiwix-start" (builtins.readFile ../daemon/deploy/lyrica-kiwix-start);
+        Restart = "on-failure";
+        RestartSec = 10;
+        ProtectSystem = "strict";
+        ProtectHome = true;
+        PrivateTmp = true;
+        NoNewPrivileges = true;
+      };
+    };
+
     systemd.services.lyrica-tailscaled = lib.mkIf cfg.tailscale {
       description = "Tailscale for Lyrica (her own device, userspace networking)";
       after = [ "network-online.target" ];
@@ -201,7 +269,7 @@ in {
         User = "lyrica";
         Group = "lyrica";
         # --port=0 picks a free UDP port, so it never fights the host's tailscaled over 41641.
-        ExecStart = "${cfg.tailscalePackage}/bin/tailscaled --tun=userspace-networking --state=/var/lib/lyrica-tailscale/tailscaled.state --socket=/run/lyrica-tailscale/tailscaled.sock --port=0 --outbound-http-proxy-listen=127.0.0.1:1056";
+        ExecStart = "${cfg.tailscalePackage}/bin/tailscaled --tun=userspace-networking --state=/var/lib/lyrica-tailscale/tailscaled.state --statedir=/var/lib/lyrica-tailscale --socket=/run/lyrica-tailscale/tailscaled.sock --port=0 --outbound-http-proxy-listen=127.0.0.1:1056";
         StateDirectory = "lyrica-tailscale";
         StateDirectoryMode = "0700";
         RuntimeDirectory = "lyrica-tailscale";

@@ -326,6 +326,20 @@ export function mp4Video(b: Buffer): { width: number; height: number; frames: nu
   return null;
 }
 
+/** Whether an MP4 has a sound track (a `trak` whose handler is `soun`). */
+export function mp4Sound(b: Buffer): boolean {
+  const moov = mp4Moov(b);
+  for (let at = moov?.[0] ?? 0; moov;) {
+    const trak = mp4Box(b, at, moov[1], "trak");
+    if (!trak) return false;
+    at = trak[1];
+    const mdia = mp4Box(b, trak[0], trak[1], "mdia");
+    const hdlr = mdia && mp4Box(b, mdia[0], mdia[1], "hdlr");
+    if (hdlr && hdlr[1] - hdlr[0] >= 12 && b.toString("latin1", hdlr[0] + 8, hdlr[0] + 12) === "soun") return true;
+  }
+  return false;
+}
+
 /** The payload of the first `type` box between `from` and `to`, or null. */
 function mp4Box(b: Buffer, from: number, to: number, type: string): [number, number] | null {
   for (let i = from; i + 8 <= to;) {

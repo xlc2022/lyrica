@@ -174,6 +174,17 @@ describe("the live view of a thread's stream", () => {
     expect(s.items).toEqual([{ role: "notice", text, status: "watching", told }]);
   });
 
+  it("reloads for a notice between turns, and drops its live copy with that reload, so a reload already on its way can't show it twice", () => {
+    const opened = run([{ type: "hello", busy: false, queued: [], permissions: [], making: [] }]);
+    const s = run([{ type: "notice", text: "[Watching threads]\n\nTold no thread.", status: "watching" }], opened);
+    expect(s.reload).toBe(opened.reload + 1);
+    expect(run([{ type: "stored" }], s).items).toEqual([]);
+    // Mid-turn, the turn's end reloads it.
+    const busy = run([{ type: "turn_start" }, { type: "notice", text: "Subagent run r1 finished" }]);
+    expect(busy.reload).toBe(0);
+    expect(run([{ type: "stored" }], busy).items).toHaveLength(1);
+  });
+
   it("shows a clip made in the background as hers, under its call's marker", () => {
     const video = { type: "video" as const, path: "/workspace/videos/a.mp4", model: "box/Clip", width: 704, height: 704, duration: 5, audio: false };
     const call = { type: "tool" as const, name: "image", toolCallId: "c1:made", args: { action: "animate", prompt: "She waves" }, result: "The clip is ready.", isError: false };

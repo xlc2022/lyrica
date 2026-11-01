@@ -1,8 +1,8 @@
 import { CLOUD_IMAGE_PROVIDERS, imageAt, PLAN_IMAGE, PLAN_IMAGE_MODEL, validateImageRequest, type ImageRequest, type GeneratedImage } from "./images.ts";
 export { CLOUD_IMAGE_PROVIDERS, PLAN_IMAGE_MODEL, type ImageRequest, type GeneratedImage, type ImageInput } from "./images.ts";
-import { validateVideoRequest, videoAt, type GeneratedVideo, type VideoRequest } from "./videos.ts";
+import { upscaleVideoAt, validateVideoRequest, validateVideoUpscale, videoAt, type GeneratedVideo, type VideoRequest, type VideoUpscaleRequest } from "./videos.ts";
 import { loraFiles, loraName, type LoraAsk } from "./loras.ts";
-export { isMp4, LONGEST_VIDEO_SECONDS, type GeneratedVideo, type VideoRequest } from "./videos.ts";
+export { isMp4, LONGEST_VIDEO_SECONDS, type GeneratedVideo, type VideoRequest, type VideoUpscaleRequest } from "./videos.ts";
 export { loraFiles, loraName, matchLora, MAX_LORAS, type LoraAsk } from "./loras.ts";
 export { type JobProgress, withProgress } from "./progress.ts";
 import type { JobProgress } from "./progress.ts";
@@ -32,7 +32,7 @@ export { acceptedSettings, ANSWER_SETTINGS, payloadFields, replyCap, DEFAULT_CON
 export { fingerprint, HostIdentityChanged, HostRefused, hostOrigin, normaliseCode, PairingFailed, pairingProofs } from "./host.ts";
 export { useTailnetProxy } from "./tailnet.ts";
 export { refId, type Entry, type Use } from "./refs.ts";
-export { matchModel, sameModelName, singledOut, unmatched, type Match, type Named } from "./match.ts";
+export { claudeAlias, isClaudeModel, matchModel, meansClaude, namedOutright, sameModelName, singledOut, unmatched, type ClaudeAlias, type Match, type Named } from "./match.ts";
 export { MAX_CLIP_BYTES, MAX_CLIP_SECONDS, MAX_SPEAK_CHARS, pcmSeconds, SPEECH_CONTENT_TYPE, SPEECH_FORMAT, wavData, wavSeconds } from "./speech.ts";
 
 /** A cloud model was asked for where only local models are allowed. Nothing falls back. */
@@ -218,6 +218,8 @@ export interface Offering extends Capabilities {
   mask?: boolean;
   /** A host video recipe that adds to a clip, and chains clips into a video past its longest clip. */
   extend?: boolean;
+  /** A host upscale recipe that upscales whole clips too (SeedVR2's `upscale_video`). */
+  upscalesClips?: boolean;
   /** A host video recipe's longest video in seconds (host/API.md, "Recipes"); a longer request is skipped. */
   longestSeconds?: number;
   /** A host video recipe renders sound with the picture (its listing's `video.audio`). */
@@ -366,8 +368,9 @@ export interface CleanupItem {
 /**
  * What a call needs from a model: tools, room for the conversation, or an image create tier.
  * `first`: models asked for by name, tried before the list for this one call (`namedImageModels`).
+ * `after`: models tried after the list for this one call, unless Fallback is off (`referenceModels`).
  */
-export interface Need { tools?: boolean; tokens?: number; imageTier?: "fast" | "quality"; imageMask?: boolean; imageReferences?: number; animate?: boolean; motion?: boolean; extend?: boolean; seconds?: number; first?: string[]; loras?: string[] }
+export interface Need { tools?: boolean; tokens?: number; imageTier?: "fast" | "quality"; imageMask?: boolean; imageReferences?: number; animate?: boolean; motion?: boolean; extend?: boolean; clip?: boolean; seconds?: number; first?: string[]; after?: string[]; loras?: string[] }
 /** `evenIfDown`: ignore the health cache (stale still counts). `except`: endpoints to treat as down. */
 export interface ResolveOptions { evenIfDown?: boolean; except?: ReadonlySet<string> }
 
@@ -532,7 +535,7 @@ const toEndpoint = (r: EndpointRow, shared: boolean, now = Date.now()): Endpoint
   };
 };
 const toOffering = (r: OfferingRow, now = Date.now()): Offering => {
-  const caps: Capabilities & { digest?: string; identity?: ModelIdentity; downloaded?: boolean; size?: number; recipe?: string; mask?: boolean; references?: number; loras?: string[]; extend?: boolean; longestSeconds?: number; sound?: boolean; useFor?: Offering["useFor"]; separate?: boolean; servedContext?: number; servedParallel?: number; opensThinking?: boolean; alwaysThinks?: boolean; lmStudio?: boolean; llamaServer?: boolean; price?: ModelPrice; retiresAt?: string; maxOutput?: number } = { ...JSON.parse(r.found), ...JSON.parse(r.hand) };
+  const caps: Capabilities & { digest?: string; identity?: ModelIdentity; downloaded?: boolean; size?: number; recipe?: string; mask?: boolean; references?: number; loras?: string[]; extend?: boolean; upscalesClips?: boolean; longestSeconds?: number; sound?: boolean; useFor?: Offering["useFor"]; separate?: boolean; servedContext?: number; servedParallel?: number; opensThinking?: boolean; alwaysThinks?: boolean; lmStudio?: boolean; llamaServer?: boolean; price?: ModelPrice; retiresAt?: string; maxOutput?: number } = { ...JSON.parse(r.found), ...JSON.parse(r.hand) };
   // A host's serving settings decide its context window, over one set by hand and one discovered.
   const served = (JSON.parse(r.found) as { servedContext?: number }).servedContext;
   if (served) caps.contextWindow = served;
@@ -549,6 +552,7 @@ const toOffering = (r: OfferingRow, now = Date.now()): Offering => {
     ...(caps.recipe ? { recipe: caps.recipe, useFor: caps.useFor ?? "both" } : {}),
     ...(caps.mask !== undefined ? { mask: caps.mask } : {}),
     ...(caps.extend ? { extend: true } : {}),
+    ...(caps.upscalesClips ? { upscalesClips: true } : {}),
     ...(typeof caps.longestSeconds === "number" ? { longestSeconds: caps.longestSeconds } : {}),
     ...(caps.sound ? { sound: true } : {}),
     ...(typeof caps.references === "number" ? { references: caps.references } : {}),
@@ -1727,7 +1731,7 @@ export class Models {
     // A recipe that does nothing Lyrica can ask for isn't one, so it never shows as a chat model.
     const recipes = (listIn<{ id: string; name: string; state: string; does?: string[]; useFor?: Offering["useFor"]; mask?: boolean; references?: number; takesLoras?: unknown; video?: { longestSeconds?: unknown; audio?: unknown } }>(await this.hostCall(ep, "GET", "/host/v1/recipes?state=confirmed").catch(() => []), "recipes") ?? [])
       .filter((r) => r?.state === "confirmed" && r.does?.some((a) => RECIPE_ACTIONS.includes(a))).map((r) => ({
-        modelId: `recipe/${r.id}`, recipe: r.name, useFor: r.useFor ?? "both", ...(r.does?.includes("create") ? { image: true } : {}), ...(r.does?.includes("edit") ? { edit: true, ...(typeof r.mask === "boolean" ? { mask: r.mask } : {}) } : {}), ...(r.does?.includes("upscale") ? { upscale: true } : {}),
+        modelId: `recipe/${r.id}`, recipe: r.name, useFor: r.useFor ?? "both", ...(r.does?.includes("create") ? { image: true } : {}), ...(r.does?.includes("edit") ? { edit: true, ...(typeof r.mask === "boolean" ? { mask: r.mask } : {}) } : {}), ...(r.does?.includes("upscale") ? { upscale: true, ...(r.does.includes("upscale_video") ? { upscalesClips: true } : {}) } : {}),
         ...((r.does?.includes("create") || r.does?.includes("edit")) && typeof r.references === "number" ? { references: r.references } : {}),
         ...(r.does?.includes("video") ? { video: true } : {}), ...(r.does?.includes("animate") ? { animate: true } : {}),
         ...(r.does?.includes("motion") ? { motion: true } : {}), ...(r.does?.includes("extend") ? { extend: true } : {}),
@@ -2527,8 +2531,8 @@ export class Models {
     const c = this.catalog(ctx.userId);
     const restricted = isRestricted(ctx);
     const listed = this.listFor(task, ctx, c);
-    if (!listed && !need.first?.length) throw new NoModel(`no model is set for ${TASK_NAMES[task]} in ${this.columnName(ctx)}`);
-    const found = { source: "column" as const, profile: "Custom", ...listed, list: [...(need.first ?? []).map((offeringId) => ({ offeringId })), ...listed?.list ?? []] };
+    if (!listed && !need.first?.length && !need.after?.length) throw new NoModel(`no model is set for ${TASK_NAMES[task]} in ${this.columnName(ctx)}`);
+    const found = { source: "column" as const, profile: "Custom", ...listed, list: [...(need.first ?? []).map((offeringId) => ({ offeringId })), ...listed?.list ?? [], ...(need.after ?? []).map((offeringId) => ({ offeringId }))] };
     const candidates: { id: string; grouped: boolean }[] = [];
     const cut = ctx.fallback === false && found.list.length > 1;
     for (const ref of cut ? found.list.slice(0, 1) : found.list) {
@@ -2679,8 +2683,8 @@ export class Models {
   nextImageModel(ctx: CallContext, action: "create" | "edit" | "upscale", need: Need, afterEndpoint: string, noCloud = false): Resolution | undefined {
     const task = `image.${action}` as Task;
     const catalog = this.catalog(ctx.userId), listed = this.listFor(task, ctx, catalog);
-    if (!listed && !need.first?.length) return undefined;
-    const found = { source: "column" as const, profile: "Custom", ...listed, list: [...(need.first ?? []).map((offeringId) => ({ offeringId })), ...listed?.list ?? []] };
+    if (!listed && !need.first?.length && !need.after?.length) return undefined;
+    const found = { source: "column" as const, profile: "Custom", ...listed, list: [...(need.first ?? []).map((offeringId) => ({ offeringId })), ...listed?.list ?? [], ...(need.after ?? []).map((offeringId) => ({ offeringId }))] };
     const list = ctx.fallback === false ? found.list.slice(0, 1) : found.list;
     const ids = list.flatMap(ref => "offeringId" in ref ? [ref.offeringId] : catalog.groups.get(ref.groupId)?.members ?? []);
     let passed = false;
@@ -2715,8 +2719,9 @@ export class Models {
    * The image models a name asks for, for one call: those whose name contains it,
    * ignoring case, spaces and punctuation ("Krea2" finds "Krea 2 Turbo"), that can do
    * the action, in the list's order and then the rest. A local-only or private
-   * context matches local models only. `names`: every model the name could have
-   * matched, for the error she reads when it matches none.
+   * context matches local models only. `names`: the models on the context's image
+   * lists that can do the action (`imageModels`), for the error she reads when it
+   * matches none: a model off the lists is used only when asked for by name.
    */
   namedImageModels(ctx: CallContext, action: "create" | "edit" | "upscale", name: string): { ids: string[]; names: string[] } {
     const task = `image.${action}` as Task, c = this.catalog(ctx.userId);
@@ -2728,7 +2733,47 @@ export class Models {
     }).sort((a, b) => (order.indexOf(a.id) + 1 || Infinity) - (order.indexOf(b.id) + 1 || Infinity));
     const want = flat(name);
     const ids = want ? able.filter((o) => flat(modelName(o)).includes(want)).map((o) => o.id) : [];
-    return { ids, names: [...new Set(able.map(modelName))] };
+    return { ids, names: this.imageModels(ctx).filter((m) => m.actions.includes(action)).map((m) => m.name) };
+  }
+
+  /**
+   * The models on the context's Images lists (create, edit and upscale, groups expanded) that can do
+   * their list's task, by name in list order: what each does here and, for create and edit, how many
+   * reference images it takes (0: none; unknown when its host doesn't say). For the image tool's
+   * description, so she names only models that exist; no model is called.
+   */
+  imageModels(ctx: CallContext): { name: string; actions: ("create" | "edit" | "upscale")[]; references?: number }[] {
+    const c = this.catalog(ctx.userId), out = new Map<string, { name: string; actions: ("create" | "edit" | "upscale")[]; references?: number }>();
+    for (const action of ["create", "edit", "upscale"] as const) {
+      const task = `image.${action}` as Task;
+      for (const ref of this.listFor(task, ctx, c)?.list ?? []) {
+        for (const raw of "offeringId" in ref ? [ref.offeringId] : c.groups.get(ref.groupId)?.members ?? []) {
+          const id = this.follow(raw), o = id ? c.offerings.get(id) : undefined, ep = o && c.endpoints.get(o.endpointId);
+          if (!o || !ep || (isRestricted(ctx) && ep.kind !== "local") || this.unfit(task, o, ep, {})) continue;
+          const name = modelName(o), m = out.get(name) ?? { name, actions: [] };
+          if (!m.actions.includes(action)) m.actions.push(action);
+          if (action !== "upscale") {
+            const takes = ep.kind === "cloud" ? (CLOUD_IMAGE_PROVIDERS[ep.api]?.references ? undefined : 0) : o.references;
+            if (takes !== undefined) m.references = Math.max(m.references ?? 0, takes);
+          }
+          out.set(name, m);
+        }
+      }
+    }
+    return [...out.values()];
+  }
+
+  /**
+   * For a create with reference images: the local models on the context's Edit list that also create
+   * and take that many references, to try after the Create list's models, which may take none. A cloud
+   * model there isn't added: one off the Create list answers a create only when asked for by name.
+   */
+  private referenceModels(ctx: CallContext, refs: number): string[] {
+    const c = this.catalog(ctx.userId);
+    return (this.listFor("image.edit", ctx, c)?.list ?? []).flatMap((r) => "offeringId" in r ? [r.offeringId] : c.groups.get(r.groupId)?.members ?? []).filter((raw) => {
+      const id = this.follow(raw), o = id ? c.offerings.get(id) : undefined, ep = o && c.endpoints.get(o.endpointId);
+      return !!o && ep?.kind === "local" && (o.references ?? 0) >= refs && !this.unfit("image.create", o, ep, {});
+    });
   }
 
   /**
@@ -2758,7 +2803,10 @@ export class Models {
     const asks = request.action === "upscale" ? [] : request.loras ?? [];
     const need: Need = { ...request.action === "create" ? { imageTier: request.tier } : request.action === "edit" ? { imageMask: !!request.mask } : {},
       ...(refs ? { imageReferences: refs } : {}), ...(asks.length ? { loras: asks.map((a) => a.name) } : {}) };
-    return this.callWithFallback(`image.${request.action}`, ctx, opts.first?.length ? { ...need, first: opts.first } : need, async (r) => {
+    if (opts.first?.length) need.first = opts.first;
+    // A create with references may find no Create model that takes them; an Edit model that also creates can.
+    if (request.action === "create" && refs) { const after = this.referenceModels(ctx, refs); if (after.length) need.after = after; }
+    return this.callWithFallback(`image.${request.action}`, ctx, need, async (r) => {
       opts.signal?.throwIfAborted();
       await opts.beforeSend?.(r);
       opts.signal?.throwIfAborted();
@@ -2807,6 +2855,22 @@ export class Models {
       const ep = r.endpoint;
       const video = await videoAt({ fetch: this.fetchFor(ep) ?? fetch, baseUrl: hostOrigin(ep.addresses![0]!), modelId: r.offering.modelId,
         ...(asks.length ? { loras: loraFiles(asks, r.offering.loras ?? []).loras } : {}) }, request, opts.signal, opts.onProgress);
+      return { video, resolution: r };
+    });
+  }
+
+  /**
+   * A whole clip upscaled by the context's Image upscaling list, in memory; only a host recipe that upscales clips
+   * takes it (`upscalesClips`), so no cloud model is resolved. The caller stores it and records the call.
+   */
+  async upscaleVideo(ctx: CallContext, request: VideoUpscaleRequest, opts: { signal?: AbortSignal; beforeSend?: (resolution: Resolution) => Promise<void>; onProgress?: (p: JobProgress) => void; first?: string[] } = {}): Promise<{ video: GeneratedVideo; resolution: Resolution }> {
+    validateVideoUpscale(request);
+    return this.callWithFallback("image.upscale", ctx, { clip: true, ...(opts.first?.length ? { first: opts.first } : {}) }, async (r) => {
+      opts.signal?.throwIfAborted();
+      await opts.beforeSend?.(r);
+      opts.signal?.throwIfAborted();
+      const ep = r.endpoint;
+      const video = await upscaleVideoAt({ fetch: this.fetchFor(ep) ?? fetch, baseUrl: hostOrigin(ep.addresses![0]!), modelId: r.offering.modelId }, request, opts.signal, opts.onProgress);
       return { video, resolution: r };
     });
   }
@@ -3199,6 +3263,7 @@ export class Models {
     if (task === "image.create" && need.imageTier
       && o.useFor && o.useFor !== "both" && o.useFor !== need.imageTier) return `it is for ${o.useFor} images`;
     if (task === "image.upscale" && !o.upscale) return "it doesn't upscale images";
+    if (task === "image.upscale" && need.clip && !o.upscalesClips) return "it doesn't upscale clips";
     if (task === "image.edit" && !o.edit) return "it doesn't edit images";
     // A host recipe whose template takes no mask; one listed before hosts said so is tried.
     if (task === "image.edit" && need.imageMask && o.mask === false) return "it doesn't take a mask";

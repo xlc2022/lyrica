@@ -194,7 +194,11 @@ read it for anything not covered here.
    port 7340 for Direct, whatever `port` is, so the machine can be set up
    from another one), `searxng` (on: a SearXNG for her web search on
    127.0.0.1:8888, whose address fills in under Administration, Web
-   search; [searxng.md](searxng.md)), `caddyPackage`, and
+   search; [searxng.md](searxng.md)), `zimDir` (null: a folder of ZIM
+   files for her offline Wikipedia, served on 127.0.0.1:8889;
+   [wikipedia.md](wikipedia.md)), `mcpNixos` (off: an MCP server for
+   NixOS lookups on 127.0.0.1:8001 that you then add under Settings, MCP
+   servers; [nixos-mcp.md](nixos-mcp.md)), `caddyPackage`, and
    `sandboxPackages`, the tools her commands see (NixOS has no `/usr` to
    share, so the module builds one directory from that list, which
    includes git, gh, tea, Node 24, Claude Code and Codex by default; add
@@ -234,8 +238,9 @@ read it for anything not covered here.
    and Caddy, that her `tailscaled` answers on its socket, `NoNewPrivs`,
    the setuid `fusermount3`, Caddy's socket, `lyrica-update.path`, a
    sandbox and `pasta` as the `lyrica` user, the network self-test, the
-   port and, when the module runs it, SearXNG, one line each, and ends
-   with "All checks passed." or stops at the first failure.
+   port and, when the module runs them, SearXNG, kiwix-serve and
+   mcp-nixos, one line
+   each, and ends with "All checks passed." or stops at the first failure.
 10. The self-test runs at unlock, so `check-host.sh` misses it when she
     hasn't been unlocked yet (after `lyrica admin init` she starts
     locked). After the first unlock, run
@@ -332,12 +337,16 @@ answers ahead; without a terminal the answer is no), then:
 
 1. Installs the packages her sandboxes need: bubblewrap, gocryptfs, FUSE,
    passt, nftables, ImageMagick (the Files panel's thumbnails are made in
-   the sandbox), openssl, curl, unzip and rsync for itself, and
+   the sandbox), ffmpeg (with ffprobe, so she can check and cut her
+   clips), openssl, curl, unzip and rsync for itself, and
    build-essential, python3, git, openssh-client and jq for building
    releases and fetching updates, python3-venv for her clones' Python
-   dependencies, and `gh` and `tea` for threads with
-   repositories (`tea` only where it is packaged; without it, Gitea and
-   Forgejo accounts work through git alone). It installs IBM Plex and
+   dependencies, python3-bs4, python3-lxml, python3-requests,
+   python3-html5lib and python3-yaml as her sandbox's Python baseline for
+   scraping and data work (her prompt names the ones present), and `gh`
+   and `tea` for threads with repositories (`tea` only where it is
+   packaged; without it, Gitea and Forgejo accounts work through git
+   alone). It installs IBM Plex and
    Playwright's headless Chromium with the libraries it needs, in
    `/usr/local/lib/lyrica-chromium`, so her sandboxes can take
    screenshots. It installs Anthropic's Claude Code
@@ -374,7 +383,9 @@ answers ahead; without a terminal the answer is no), then:
    starts `lyrica-update.path`, and enables `lyrica-probation.service`,
    which resumes an update's probation after a reboot. With a yes to
    SearXNG it also starts `lyrica-searxng.service` on `127.0.0.1:8888`
-   ([searxng.md](searxng.md#set-up-by-installsh)). On an upgrade it
+   ([searxng.md](searxng.md#set-up-by-installsh)), and with ZIM files in
+   `LYRICA_ZIM_DIR` (`/var/lib/lyrica-kiwix`) `lyrica-kiwix.service` on
+   `127.0.0.1:8889` ([wikipedia.md](wikipedia.md)). On an upgrade it
    restarts `lyricad`. On a fresh install `lyricad` starts setting up,
    and the script prints a one-time setup code, the addresses to open
    and the certificate's fingerprint (see "First run"), then the deploy
@@ -566,7 +577,14 @@ A fresh install starts in **Direct**: `lyricad` serves HTTPS itself on port
 machine's addresses change, the next start makes a new certificate and logs
 its fingerprint. Direct stays on until an administrator picks another mode
 under Administration, **Web access**: Only this machine, Direct, Tailnet,
-Built-in Caddy or A proxy elsewhere.
+Built-in Caddy or A proxy elsewhere. The Tailscale addresses are the
+machine's own, not hers: her own `tailscaled` has no interface, and a
+connection to her tailnet address on port 7340 or 7342 lands on
+`lyricad`'s plain HTTP listeners, so `https://` there never connects. Over
+her tailnet, reach her through the **Tailnet** mode at
+`https://<her MagicDNS name>/`, with no port; a plain `http://` request on
+those ports is sent there once that mode is on, and otherwise answered
+with one sentence saying to turn on Tailnet or Direct.
 
 For a name of your own with a certificate browsers trust, use the built-in
 Caddy:
@@ -597,7 +615,10 @@ the unlock page is reachable.
 Her own `tailscaled` runs from the install on, but on no tailnet until the
 setup page or Administration, **Tailnet** joins one with an auth key. Then
 the **Tailnet** mode in Web access serves her at her own ts.net name
-through `tailscale serve`. Details are in
+through `tailscale serve`. Every other port on her tailnet address is
+forwarded to this machine's loopback, so a service you add there is
+reachable from her tailnet too; a Tailscale ACL that allows only port 443
+to her closes that path. Details are in
 [docs/daemon.md](../daemon.md#the-tailnet).
 
 ## Give her models
@@ -739,6 +760,20 @@ works: [searxng.md](searxng.md). Every thread with the Web search switch
 on can then search, private ones included (the engines see the query,
 never who asked). `web_fetch` reads a page with `curl` inside the thread's
 sandbox, so its network switches decide what it reaches.
+
+An offline copy of Wikipedia makes both work without the internet:
+download a ZIM file into a folder, point `services.lyrica.zimDir` or
+`LYRICA_ZIM_DIR` at it, and its address fills in as the **Kiwix address**
+of the same section: [wikipedia.md](wikipedia.md).
+
+## Give her Nix and NixOS lookups
+
+On NixOS, `services.lyrica.mcpNixos = true` runs mcp-nixos, an MCP server
+that looks up NixOS packages and options, Home Manager options, flakes and
+Nix function docs, and reads the machine's own flake inputs and Nix store.
+Add it once under Settings, **MCP servers** as a Private server at
+`http://127.0.0.1:8001/mcp`, then grant it to the threads or projects that
+should have it: [nixos-mcp.md](nixos-mcp.md).
 
 ## Give her repositories
 
@@ -1092,8 +1127,20 @@ refused. To replace the destination, enter the full URL and token again;
   Plex for her screenshots on this run; on NixOS the next rebuild brings
   them. An existing install gets Claude Code and Codex on its next
   `install.sh` run (Update on Administration, Updates doesn't install
-  them), and NixOS on the next rebuild. On NixOS that rebuild also starts
-  SearXNG for her web search unless `services.lyrica.searxng = false`.
+  them), and NixOS on the next rebuild. An existing install gets ffmpeg
+  and ffprobe on its next `install.sh` run (or `apt-get install
+  ffmpeg`), and NixOS on the next rebuild; until then she can't check a
+  clip's length or streams herself. An existing install gets the Python
+  baseline (python3-bs4, python3-lxml, python3-requests, python3-html5lib,
+  python3-yaml) on its next `install.sh` run (or `apt-get install` of
+  them), and NixOS on the next rebuild; until then `import bs4` fails in
+  her sandbox and her prompt doesn't name the libraries. A SearXNG that
+  `install.sh` set up before 2026-10-31 keeps its old `settings.yml`, so
+  its engines rest for up to a day after one CAPTCHA: copy the new
+  sections in by hand ([searxng.md](searxng.md#engines-that-refuse)); the
+  NixOS module applies them on its rebuild. On NixOS that rebuild also
+  starts SearXNG for her web search unless `services.lyrica.searxng =
+  false`.
   The home page header (the greeting, then the date, the time and
   "0.1.0 · <build>") shows the git commit that is running.
 
@@ -1111,31 +1158,32 @@ or Ubuntu, as root:
 
 ```sh
 systemctl disable --now lyricad lyrica-caddy lyrica-tailscaled \
-  lyrica-searxng lyrica-update.path lyrica-update lyrica-probation \
-  lyrica-rollback 2>/dev/null
+  lyrica-searxng lyrica-kiwix lyrica-update.path lyrica-update \
+  lyrica-probation lyrica-rollback 2>/dev/null
 cd /etc/systemd/system && rm -f lyricad.service lyrica-caddy.service \
-  lyrica-tailscaled.service lyrica-searxng.service lyrica-update.path \
-  lyrica-update.service lyrica-probation.service lyrica-rollback.service
+  lyrica-tailscaled.service lyrica-searxng.service lyrica-kiwix.service \
+  lyrica-update.path lyrica-update.service lyrica-probation.service \
+  lyrica-rollback.service
 rm -f /etc/sysctl.d/60-lyrica.conf
 systemctl daemon-reload
 docker rm -f lyrica-searxng 2>/dev/null   # if you said yes to SearXNG
 rm -rf /opt/lyrica /etc/lyrica /usr/local/lib/lyrica-update \
   /usr/local/lib/lyrica-chromium /usr/local/lib/lyrica-caddy.stamp \
   /usr/local/bin/lyrica /usr/local/bin/lyrica-caddy \
-  /usr/local/bin/chromium-headless-shell
-# Her data, the update snapshots, Caddy's certificates and her Tailscale
-# node: only once you're sure.
+  /usr/local/bin/chromium-headless-shell /usr/local/sbin/lyrica-kiwix-start
+# Her data, the update snapshots, Caddy's certificates, her Tailscale
+# node and the Wikipedia ZIM files: only once you're sure.
 rm -rf /var/lib/lyrica /var/lib/lyrica-snapshots /var/lib/lyrica-update \
-  /var/lib/lyrica-caddy /var/lib/lyrica-tailscale
+  /var/lib/lyrica-caddy /var/lib/lyrica-tailscale /var/lib/lyrica-kiwix
 userdel lyrica; userdel lyrica-build; userdel lyrica-caddy
 ```
 
 `install.sh` also installed packages (bubblewrap, gocryptfs, Node and the
-rest in "On Debian or Ubuntu") and, when they were missing, Claude Code,
-Codex and headless Chromium in `/usr/local/bin`; remove those with `apt`
-or by hand only if nothing else uses them. Remove her node from your
-tailnet's admin console, and the deploy key from the repository on
-GitHub.
+rest in "On Debian or Ubuntu", `kiwix-tools` with ZIM files present)
+and, when they were missing, Claude Code, Codex and headless Chromium in
+`/usr/local/bin`; remove those with `apt` or by hand only if nothing else
+uses them. Remove her node from your tailnet's admin console, and the
+deploy key from the repository on GitHub.
 
 ## Checklist for the first install on your machine
 

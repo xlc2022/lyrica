@@ -59,23 +59,36 @@ const OFFERED = "web.searxng.offered";
  * changes it isn't overridden later. True when it was stored.
  */
 export function adoptLocalSearxng(self: Db, address: string): boolean {
-  const a = checkSearxng(address);
-  if (!a) return false;
-  const offered = self.prepare("SELECT value FROM settings WHERE key = ?").get(OFFERED) as { value: string } | undefined;
-  if (offered?.value === a) return false;
-  self.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(OFFERED, a);
-  if (searxngAddress(self)) return false;
-  setSearxngAddress(self, a);
+  return adoptLocalAddress(self, { key: KEY, offered: OFFERED, address: checkSearxng(address) });
+}
+
+/**
+ * Stores a checked address under `key` while none is set, once per
+ * address (`offered` records the last one), so an administrator who clears
+ * or changes it isn't overridden later. True when it was stored. Shared by
+ * SearXNG and kiwix-serve (kiwix.ts).
+ */
+export function adoptLocalAddress(self: Db, o: { key: string; offered: string; address: string | null }): boolean {
+  if (!o.address) return false;
+  const offered = self.prepare("SELECT value FROM settings WHERE key = ?").get(o.offered) as { value: string } | undefined;
+  if (offered?.value === o.address) return false;
+  self.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(o.offered, o.address);
+  const set = self.prepare("SELECT value FROM settings WHERE key = ?").get(o.key) as { value: string } | undefined;
+  if (set?.value) return false;
+  self.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(o.key, o.address);
   return true;
 }
 
-function checkSearxng(address: string | null): string | null {
+const checkSearxng = (address: string | null) => checkAddress(address, "SearXNG");
+
+/** A service's address: an http(s) URL without query or fragment, kept without a trailing slash; null for none. */
+export function checkAddress(address: string | null, what: string): string | null {
   const a = String(address ?? "").trim();
   if (!a) return null;
   let url: URL;
-  try { url = new URL(a); } catch { throw new Error("the SearXNG address is a URL, like https://search.example.org"); }
-  if (url.protocol !== "http:" && url.protocol !== "https:") throw new Error("the SearXNG address starts with http:// or https://");
-  if (url.search || url.hash) throw new Error("the SearXNG address has no query or fragment");
+  try { url = new URL(a); } catch { throw new Error(`the ${what} address is a URL, like ${what === "Kiwix" ? "http://127.0.0.1:8889" : "https://search.example.org"}`); }
+  if (url.protocol !== "http:" && url.protocol !== "https:") throw new Error(`the ${what} address starts with http:// or https://`);
+  if (url.search || url.hash) throw new Error(`the ${what} address has no query or fragment`);
   return url.href.replace(/\/+$/, "");
 }
 
@@ -129,8 +142,8 @@ async function searchJson(address: string, query: string, o: Omit<WebSearchOptio
   }
 }
 
-interface SearxngReply {
-  results?: { title?: string; url?: string; content?: string; publishedDate?: string | null }[];
+export interface SearxngReply {
+  results?: { title?: string; url?: string; content?: string; publishedDate?: string | null; engine?: string; engines?: string[] }[];
   answers?: (string | { answer?: string })[];
   infoboxes?: { infobox?: string; content?: string }[];
   /** Engines that failed this search, as [name, why]. */
@@ -155,16 +168,93 @@ const day = (s: string | null | undefined) => {
   return d && !Number.isNaN(d.getTime()) ? d.toISOString().slice(0, 10) : "";
 };
 
+/** SearXNG's words (webutils.get_translated_errors) for an engine that refused, which it then rests; a retry now can't reach it. */
+const REFUSED = /^(Suspended: |CAPTCHA$|too many requests$|access denied$)/;
+/** The least time between two requests to SearXNG, so a fan-out of searches doesn't hit every engine at once. */
+const GAP_MS = 1_000;
+/** How long the same search is answered from its last reply instead of asked again. */
+const SAME_MS = 60_000;
+
+/**
+ * What one lyricad remembers between searches: when to send the next one,
+ * the replies of the last minute, and since when each engine has refused.
+ * In memory only.
+ */
+export class SearchGate {
+  private queue: Promise<void> = Promise.resolve();
+  private sentAt = -Infinity;
+  private recent = new Map<string, { at: number; reply: Promise<SearxngReply> }>();
+  private refused = new Map<string, { since: number; why: string }>();
+  constructor(private now: () => number = Date.now, private gapMs = GAP_MS) {}
+
+  /** Waits for the next turn to send, `gapMs` after the last; the request itself runs alongside others. */
+  private async turn(): Promise<void> {
+    const mine = this.queue.then(async () => {
+      const wait = this.sentAt + this.gapMs - this.now();
+      if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+      this.sentAt = this.now();
+    });
+    this.queue = mine;
+    await mine;
+  }
+
+  /** One search, the same one within a minute answered from the last reply. Asks once more when an engine failed only passingly. */
+  reply(address: string, query: string, o: Omit<WebSearchOptions, "count">, signal?: AbortSignal, f: typeof fetch = fetch): Promise<SearxngReply> {
+    const now = this.now();
+    for (const [k, r] of this.recent) if (r.at + SAME_MS < now) this.recent.delete(k);
+    const key = JSON.stringify([address, query, o.time ?? "", o.category ?? "", o.page ?? 1]);
+    const had = this.recent.get(key);
+    if (had) return had.reply;
+    const ask = async () => { await this.turn(); return this.note(await searchJson(address, query, o, signal, f)); };
+    const reply = (async () => {
+      let r = await ask();
+      if (!r.results?.some((x) => x.url) && (r.unresponsive_engines ?? []).some(([, why]) => !REFUSED.test(why ?? ""))) r = await ask();
+      return r;
+    })();
+    this.recent.set(key, { at: now, reply });
+    reply.catch(() => this.recent.delete(key));
+    return reply;
+  }
+
+  /** Remembers which engines refused and since when, and forgets one that answered. */
+  private note(r: SearxngReply): SearxngReply {
+    const now = this.now();
+    for (const x of r.results ?? []) for (const e of x.engines ?? (x.engine ? [x.engine] : [])) this.refused.delete(e);
+    for (const e of r.unresponsive_engines ?? []) {
+      if (!Array.isArray(e) || !e[0]) continue;
+      const why = (e[1] ?? "").replace(/^Suspended: /, "");
+      if (!REFUSED.test(e[1] ?? "")) this.refused.delete(e[0]);
+      else this.refused.set(e[0], { since: this.refused.get(e[0])?.since ?? now, why });
+    }
+    return r;
+  }
+
+  /** The failed engines of a reply as "name (why)", with how long a refusing one has been seen refusing. */
+  failed(r: SearxngReply): { line: string; allRefused: boolean } {
+    const now = this.now();
+    const failed = (r.unresponsive_engines ?? []).filter((e) => Array.isArray(e) && e[0]);
+    const parts = failed.map(([e, why]) => {
+      const seen = this.refused.get(e);
+      if (!seen) return why ? `${e} (${why})` : e;
+      const min = Math.round((now - seen.since) / 60_000);
+      return `${e} (${seen.why}${min >= 1 ? ` for ${min >= 90 ? `${Math.round(min / 60)} hours` : `${min} minute${min === 1 ? "" : "s"}`}` : ""})`;
+    });
+    return { line: parts.join(", "), allRefused: failed.length > 0 && failed.every(([e]) => this.refused.has(e)) };
+  }
+}
+
+const gate = new SearchGate();
+
 /**
  * `web_search`: up to `count` results as title, date, URL and snippet, after
- * an answer or infobox if SearXNG has one. A search that finds nothing while
- * engines failed is tried once more; still nothing, it says which engines
- * failed and what SearXNG suggests.
+ * an answer or infobox if SearXNG has one. Searches go a second apart, and
+ * the same one within a minute is answered from its last reply. A search
+ * that finds nothing while an engine failed passingly is tried once more;
+ * still nothing, it says which engines failed, why, and for how long
+ * SearXNG has seen each refuse, and what SearXNG suggests.
  */
-export async function searxngSearch(address: string, query: string, o: WebSearchOptions, signal?: AbortSignal, f: typeof fetch = fetch): Promise<string> {
-  const found = (r: SearxngReply) => (r.results ?? []).filter((x) => x.url);
-  let reply = await searchJson(address, query, o, signal, f);
-  if (!found(reply).length && reply.unresponsive_engines?.length) reply = await searchJson(address, query, o, signal, f);
+export async function searxngSearch(address: string, query: string, o: WebSearchOptions, signal?: AbortSignal, f: typeof fetch = fetch, g: SearchGate = gate): Promise<string> {
+  const reply = await g.reply(address, query, o, signal, f);
   const oneLine = (s: string | undefined) => (s ?? "").replace(/\s+/g, " ").trim();
   const lines: string[] = [];
   const answer = reply.answers?.map((a) => oneLine(typeof a === "string" ? a : a.answer)).find(Boolean);
@@ -173,7 +263,7 @@ export async function searxngSearch(address: string, query: string, o: WebSearch
   const boxLine = box && oneLine(box.content).split(/(?<=\.)\s/)[0];
   if (boxLine) lines.push(`${oneLine(box.infobox) || "Infobox"}: ${boxLine}`);
   if (lines.length) lines.push("");
-  const results = found(reply).slice(0, o.count);
+  const results = (reply.results ?? []).filter((x) => x.url).slice(0, o.count);
   results.forEach((r, i) => {
     const date = day(r.publishedDate);
     lines.push(`${i + 1}. ${oneLine(r.title) || r.url}${date ? ` (${date})` : ""}`, `   ${r.url}`);
@@ -182,8 +272,9 @@ export async function searxngSearch(address: string, query: string, o: WebSearch
   });
   if (!results.length) {
     lines.push(`No results for "${query}"${o.page && o.page > 1 ? ` on page ${o.page}` : ""}.`);
-    const failed = (reply.unresponsive_engines ?? []).filter((e) => Array.isArray(e) && e[0]);
-    if (failed.length) lines.push(`These search engines didn't answer: ${failed.map(([e, why]) => (why ? `${e} (${why})` : e)).join(", ")}.`);
+    const failed = g.failed(reply);
+    if (failed.line) lines.push(`These search engines didn't answer: ${failed.line}.`);
+    if (failed.allRefused) lines.push("SearXNG rests an engine that refused, for minutes to a day (its search.suspended_times): the same search again now gets the same answer. Try another category, or later.");
     const tries = [...new Set([...(reply.corrections ?? []), ...(reply.suggestions ?? [])].map(oneLine).filter(Boolean))].slice(0, 5);
     if (tries.length) lines.push(`SearXNG suggests: ${tries.map((t) => `"${t}"`).join(", ")}.`);
   }
@@ -197,6 +288,14 @@ export const clamp = (n: number | undefined, fallback: number, max: number): num
 /** A browser's user agent: many sites refuse curl's. */
 export const FETCH_UA = "Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140.0";
 const MAX_MB = 10;
+/**
+ * Most bytes a fetch may hand back, as the sandbox counts them. curl's
+ * --max-filesize measures the bytes on the wire, so a compressed body that
+ * inflates past it still comes through; the run's own cap stops it there.
+ */
+export const FETCH_BYTES = MAX_MB * 1_000_000;
+/** The error a fetch gives when the run's output cap stopped it. */
+export const FETCH_TOO_LARGE = `the page is larger than ${MAX_MB} MB`;
 
 /**
  * The command `web_fetch` runs in the thread's sandbox: the URL is one argv

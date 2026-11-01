@@ -1033,7 +1033,10 @@ it's off.
   defaults such as the scale and the largest size. The task
   `image.upscale` has its own list in each preset (7B on the Blackwell,
   3B on the 3090), and the `image` tool offers `upscale`. Portrait photos
-  follow the same rule as for edits.
+  follow the same rule as for edits. The same recipe upscales whole clips
+  (`upscale_video`, 2026-10-31): the host runs a clip's frames through
+  SeedVR2 in batches and keeps its frame rate and sound, from the same
+  list, so no clip reaches a cloud model.
 - **Videos** (2026-10-28): video models are recipes too, on the same
   ComfyUI: Wan 2.2 (TI2V 5B for a 24 GB card; T2V and I2V 14B, whose two
   experts and their speed LoRAs are one recipe, in fp8 or as Q5 GGUF
@@ -1592,12 +1595,22 @@ Decided 2026-10-12 (docs/briefs/mcp.md).
 - **Pi's own client** (principle 3). Each granted server is registered for
   the session; nothing about servers is written to disk outside the
   user's encrypted database.
-- **Remote servers only:** a URL (streamable HTTP) and an optional token,
+- **Remote servers first:** a URL (streamable HTTP) and an optional token,
   sent as a bearer token (over https only, for a general server) and
-  stored like a Git account's. A local (stdio)
-  server would be a process running for the whole session, which the
-  process budget and "nothing runs inside lyricad's process" rule out; she
-  has `bash` for local work. OAuth sign-in comes later.
+  stored like a Git account's. A local (stdio) server, a program she
+  starts herself, is allowed in principle but not built yet (the owner
+  lifted the rule against it on 2026-11-01: a server that only ships
+  stdio shouldn't be out of her reach). When it is built it keeps the same
+  guards as everything else she runs: the program runs as an unprivileged
+  user in a sandbox, never inside `lyricad`'s process, with no log or
+  temporary file of its text on disk; it counts against the process
+  budget (principle 8) like a background job; and it is added, granted
+  and gated exactly as a remote server is. Before building it, the thread
+  checks whether starting the program per session and discarding its
+  output stream break the server or make its answers useless (lost state,
+  slow starts, warnings that go nowhere), and tells the owner. Until then
+  a `command` is refused, and she has `bash` for local work. OAuth sign-in
+  comes later.
 - **Added like Git accounts, granted like repositories.** Settings → MCP
   servers holds each user's servers, each in one pool, checked before it
   is saved. A thread gets a server only when granted: an MCP servers row
@@ -2047,7 +2060,15 @@ Details in [docs/sleep.md](docs/sleep.md).
   the thread's sandbox under its network switches. SearXNG hides who is
   asking from the search engines it uses, but forwards the query text to
   them, so a private thread's query leaves her network as an anonymous
-  query. A switch that's off removes the tools from the session, so she
+  query. An offline copy of Wikipedia (a ZIM file served by kiwix-serve,
+  the Kiwix address in the same section; the NixOS module's `zimDir` and
+  install.sh's ZIM folder run one) joins every plain search and answers a
+  fetch of a wikipedia.org page, and its pictures, before the sandbox goes
+  online. With kiwix-serve on this machine, as the install sets it up,
+  that part never leaves it, so it works with the internet off, in a
+  local-only thread, and when every search engine is resting; a copy on
+  another machine is reached by lyricad like SearXNG, outside the thread's
+  switches, and sees the query and the article's title (decided 2026-10-31). A switch that's off removes the tools from the session, so she
   can't use them; a subagent or child thread can't turn back on what its
   parent turned off, even later. Local-only and the pool are not switches here: they
   stay in the thread's settings, where changing them is deliberate.

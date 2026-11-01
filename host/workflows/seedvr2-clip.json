@@ -1,0 +1,93 @@
+{
+  "upscalesClipsFor": "seedvr2",
+  "workflow": {
+    "load": {
+      "class_type": "LoadVideo",
+      "inputs": {
+        "file": "$source"
+      }
+    },
+    "parts": {
+      "class_type": "GetVideoComponents",
+      "inputs": {
+        "video": [
+          "load",
+          0
+        ]
+      }
+    },
+    "dit": {
+      "class_type": "SeedVR2LoadDiTModel",
+      "inputs": {
+        "model": "$upscalerName",
+        "device": "cuda:0",
+        "offload_device": "cpu"
+      }
+    },
+    "vae": {
+      "class_type": "SeedVR2LoadVAEModel",
+      "inputs": {
+        "model": "$vaeName",
+        "device": "cuda:0",
+        "encode_tiled": true,
+        "encode_tile_size": 1024,
+        "encode_tile_overlap": 128,
+        "decode_tiled": true,
+        "decode_tile_size": 768,
+        "decode_tile_overlap": 128,
+        "offload_device": "cpu"
+      }
+    },
+    "upscale": {
+      "class_type": "SeedVR2VideoUpscaler",
+      "inputs": {
+        "image": [
+          "parts",
+          0
+        ],
+        "dit": [
+          "dit",
+          0
+        ],
+        "vae": [
+          "vae",
+          0
+        ],
+        "seed": "$seed",
+        "resolution": "$resolution",
+        "max_resolution": "$maxSize",
+        "batch_size": "$batchSize",
+        "uniform_batch_size": true,
+        "temporal_overlap": "$temporalOverlap",
+        "color_correction": "$colorMatch",
+        "offload_device": "cpu"
+      }
+    },
+    "video": {
+      "class_type": "CreateVideo",
+      "inputs": {
+        "images": [
+          "upscale",
+          0
+        ],
+        "fps": [
+          "parts",
+          2
+        ],
+        "audio": [
+          "parts",
+          1
+        ]
+      }
+    },
+    "save": {
+      "class_type": "SaveVideoWebsocket",
+      "inputs": {
+        "video": [
+          "video",
+          0
+        ]
+      }
+    }
+  }
+}
