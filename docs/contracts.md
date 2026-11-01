@@ -1596,9 +1596,11 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     `GET <kiwix>/suggest?content=<book>&term=<title>&count=10` gives for
     that title), and any `<kiwix>/content/<book>/<path>` of its own. A
     page becomes Markdown as below, links absolute on wikipedia.org (so
-    they are read offline too), then "Pictures, each readable with
-    web_fetch:" listing up to 12 of its images by their `<kiwix>/content/…`
-    addresses (a maxi copy has them, a nopic one none), and the result's
+    they are read offline too), with "Pictures, each readable with
+    web_fetch and shown in a reply as a Markdown image:" under its title
+    and address (so the first window of a long article has it), listing up
+    to 12 of its images by their `<kiwix>/content/…` addresses (a maxi
+    copy has them, a nopic one none), and the result's
     "from" names the copy and its month. A listed picture (png, jpeg, gif
     or webp, 5 MB at most) comes back as an image part, WebP as PNG
     through ImageMagick on lyricad's PATH (`pictureForModel`; as WebP
@@ -1627,6 +1629,11 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     text wins. HTML from curl or Chromium is cut to 3,000,000 characters
     before it is parsed on lyricad's thread. `cutPage` cuts to `maxChars` (20,000 by default, 50,000 at
     most) from `offset`, with a note naming the offset to read on from.
+    A cut page also gets "Sections further on:" (`sections`): the headings
+    (`#` to `###`, up to 40, each cut to 80 characters) past the window,
+    each with its offset, so she can read a later section directly; being
+    the page's words, they go inside the markers, and only the note stays
+    outside.
     Both tools' results go between `<<<web CODE>>>` and `<<<end web
     CODE>>>` (`outside`; CODE is 8 random hex digits per call, and
     marker-shaped text inside is removed), headed by where they came from;
