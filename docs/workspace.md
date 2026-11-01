@@ -547,8 +547,31 @@ takes is `lyrica@pve!agent=<that secret>`.
   can reach exactly what she can and nothing else: a path outside, a symlink
   out, a root, the panel's own `.lyrica` folder, and any change in a
   read-only grant are refused (`FilesRefused`). Uploads land under a free name,
-  as in the message box. Adds and removes are noted (`panel_files` in
+  as in the message box. Adds, removes and renames are noted (`panel_files` in
   `user.db`) and told to her once, at her next turn, by `ThreadTools.fileNotes`.
+- **Renaming keeps links.** A file or folder renamed or moved in the panel
+  (the thread's Files panel, or a project's Files and images) keeps its real
+  name on disk, since that path is what her tools use, and every stored
+  mention of the old path follows it (`daemon/src/relink.ts`,
+  `core/src/workspace/renames.ts`). For each thread that can reach the
+  file (its family, for the thread folder and `/shared`; every thread of
+  the pool that names it, for a grant), `Workspace.respellings` gives the
+  old and new path as that thread writes it (`/workspace/…`, `/shared/…`,
+  `/workspace/shared/…` in the project chat, a checkout thread's family
+  path, and relative to the folder as a markdown link's target), and
+  `PoolStore.rewriteMentions` rewrites them, with their percent-encoded
+  twins, wherever one starts a word: in the stored entries' text, tool
+  calls and results (so a made image still shows in its message) and the
+  thread's draft, in one transaction, not in her reasoning (a provider
+  checks it against its signature) or an image's bytes. A folder's files
+  follow it; `cat.png.bak` is another file. A changed entry gets a new
+  search row and loses its vector until the embedder makes one. Each
+  changed thread's open session reopens on the new text at its next turn
+  (one cache miss), its open views reload their messages (`renamed`), and
+  her next turn there is told the old and new path and that earlier
+  messages use the new one. Only the request's pool is touched; text she
+  copied into a memory, a note or another file keeps the old path. A move
+  into another folder respells it only in the renaming thread.
 - **Which thread wrote each file** is recorded in `user.db` (`file_origins`:
   the folder's thread, the path in it, the thread, the time; never content),
   so the file viewer shows that thread beside the file. Her sandbox `write`

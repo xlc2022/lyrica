@@ -498,7 +498,7 @@ describe.skipIf(!runnable)("the Files panel", () => {
     expect(readdirSync(p("work", "notes"))).toEqual(["plan.md"]);
     expect(notes).toEqual([
       ["added", ["/workspace/notes/x.txt"]], ["added", ["/workspace/notes/x-2.txt"]], ["added", ["/workspace/pout"]],
-      ["removed", ["/workspace/notes/x-2.txt"]], ["added", ["/workspace/pout/y.txt"]], ["removed", ["/workspace/pout", "/workspace/notes/x.txt"]],
+      ["renamed", ["/workspace/notes/x-2.txt", "/workspace/pout/y.txt"]], ["removed", ["/workspace/pout", "/workspace/notes/x.txt"]],
     ]);
     // The record of which thread wrote a file hears of uploads, the rename and the delete, never of a new folder.
     expect(origins).toEqual([

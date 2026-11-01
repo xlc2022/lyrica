@@ -41,7 +41,7 @@ function fakeFiles() {
       return `${dir}/${name}`;
     },
     mkdir: async (path: string) => { calls.push(["mkdir", path]); },
-    rename: async (from: string, to: string) => { calls.push(["rename", from, to]); if (to.endsWith("taken")) throw new Error(`${to} is already there`); },
+    rename: async (from: string, to: string) => { calls.push(["rename", from, to]); if (to.endsWith("taken")) throw new Error(`${to} is already there`); return { from, to }; },
     remove: async (paths: string[]) => { calls.push(["remove", paths]); },
     thumb: async (path: string) => (path.startsWith("/workspace/") ? { bytes: Buffer.from("tiny"), type: "image/png" } : undefined),
     zip: async (paths: string[]) => {
@@ -101,6 +101,37 @@ describe("the Files panel's routes", () => {
       ["upload", "/workspace/notes", "plan.md", "# plan"], ["mkdir", "/workspace/out"],
       ["rename", "/workspace/a.txt", "/workspace/b.txt"], ["remove", ["/workspace/b.txt", "/workspace/out"]],
     ]);
+  });
+
+  it("rewrites the stored mentions of a renamed file in the thread and its family, and leaves other threads and similar names alone", async () => {
+    const { ada, d, rt, thread, path } = await setup();
+    fakeFiles();
+    const view = d.services!.memory.openThreadView(rt.ada.id, "general");
+    let other = "";
+    try {
+      const said = "Here: /workspace/uploads/cat.png, and [the same](uploads/cat.png). Not /workspace/uploads/cat.png.bak.";
+      view.own.appendEntry(thread.id, { piId: "u1", role: "user", data: { type: "message", message: { role: "user", content: said } }, text: said });
+      const call = { type: "toolCall", id: "c1", name: "bash", arguments: { command: "file /workspace/uploads/cat.png" } };
+      view.own.appendEntry(thread.id, { piId: "a1", role: "assistant", text: `bash(${JSON.stringify(call.arguments)})`,
+        data: { type: "message", message: { role: "assistant", content: [{ type: "thinking", thinking: "/workspace/uploads/cat.png", thinkingSignature: "sig" }, call] } } });
+      view.own.setDraft(thread.id, "/workspace/uploads/cat.png\nlook");
+      other = view.own.createThread({ interface: "web", title: "elsewhere" }).id;
+      view.own.appendEntry(other, { piId: "o1", role: "user", data: { type: "message", message: { role: "user", content: "/workspace/uploads/cat.png" } }, text: "/workspace/uploads/cat.png" });
+    } finally { view.close(); }
+    expect((await ada.post(`${path}/rename`, { from: "/workspace/uploads/cat.png", to: "/workspace/uploads/tabby.png" })).body).toEqual({ ok: true });
+    const after = d.services!.memory.openThreadView(rt.ada.id, "general");
+    try {
+      const [user, reply] = after.own.loadEntries(thread.id) as { message: { content: unknown } }[];
+      expect(user!.message.content).toBe("Here: /workspace/uploads/tabby.png, and [the same](uploads/tabby.png). Not /workspace/uploads/cat.png.bak.");
+      // Her tool call follows the file; her reasoning is left word for word (a provider checks it against its signature).
+      expect(reply!.message.content).toEqual([{ type: "thinking", thinking: "/workspace/uploads/cat.png", thinkingSignature: "sig" },
+        { type: "toolCall", id: "c1", name: "bash", arguments: { command: "file /workspace/uploads/tabby.png" } }]);
+      expect(after.own.draft(thread.id)?.text).toBe("/workspace/uploads/tabby.png\nlook");
+      // Another thread's /workspace is another folder.
+      expect((after.own.loadEntries(other)[0] as { message: { content: string } }).message.content).toBe("/workspace/uploads/cat.png");
+    } finally { after.close(); }
+    // Search finds the new name.
+    expect((await ada.get<{ snippet: string }[]>(`/api/u/${rt.ada.id}/memory/search?kinds=entry&q=tabby`)).body.length).toBeGreaterThan(0);
   });
 
   it("serves a file's bytes with its type, inline or as a download, never to be run, and streams a zip", async () => {

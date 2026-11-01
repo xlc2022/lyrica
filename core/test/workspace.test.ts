@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import ssh2 from "ssh2";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { testMcpServer } from "./mcp-server.ts";
-import { gitEnv, hostAddresses, keepResult, noReplyEmail, MCP_RESULT_BYTES, generateSshKey, helperSandbox, nftRules, resolveAddresses, sandboxedTransport, SshTarget, subnetOf, migrate, Users, Workspace, WorkspaceSettings, type HelperSandbox, type MachineConfig, type SandboxSpec } from "../src/index.ts";
+import { gitEnv, hostAddresses, keepResult, noReplyEmail, MCP_RESULT_BYTES, generateSshKey, helperSandbox, nftRules, resolveAddresses, sandboxedTransport, SshTarget, subnetOf, migrate, pathRewriter, Users, Workspace, WorkspaceSettings, type HelperSandbox, type MachineConfig, type SandboxSpec } from "../src/index.ts";
 import { freshKeyring, profile } from "./helpers.ts";
 
 const dirs: string[] = [];
@@ -794,6 +794,37 @@ describe("code preference", () => {
     settings.setThread("parent", "general", { code: false });
     settings.setThread("child", "general", { code: true });
     expect(settings.effective("child")).toMatchObject({ code: true, mode: "ask" });
+  });
+});
+
+describe("renaming keeps links", () => {
+  it("spells a renamed file as each thread of the family writes it, and a link's target relative to its folder", async () => {
+    const { ada, workspace, settings } = await setup();
+    settings.startThread("web/project", "general");
+    settings.inheritSettings("web/project", "web/child", "general");
+    settings.startThread("web/other", "general");
+    const child = { userId: ada.id, pool: "general" as const, threadId: "web/child" };
+    const project = { ...child, threadId: "web/project" };
+    const other = { ...child, threadId: "web/other" };
+    // Renamed from the child, in /shared: the project chat names it under its own folder's shared/.
+    expect(workspace.respellings(child, "/shared/a.png", "/shared/b.png", project)).toEqual([
+      { from: "/workspace/shared/a.png", to: "/workspace/shared/b.png" }, { from: "shared/a.png", to: "shared/b.png", link: true },
+      { from: "/shared/a.png", to: "/shared/b.png" },
+    ]);
+    expect(workspace.respellings(project, "/workspace/shared/a.png", "/workspace/shared/b.png", child)).toContainEqual({ from: "/shared/a.png", to: "/shared/b.png" });
+    // Another family's /workspace and /shared are other folders.
+    expect(workspace.respellings(child, "/shared/a.png", "/shared/b.png", other)).toEqual([]);
+    expect(workspace.respellings(project, "/workspace/a.png", "/workspace/b.png", other)).toEqual([]);
+  });
+
+  it("rewrites a path where it starts a word, a folder's files with it, and its percent-encoded twin", () => {
+    const rewrite = pathRewriter([{ from: "/workspace/my cat.png", to: "/workspace/tabby.png" }, { from: "/workspace/pics", to: "/workspace/photos" }]);
+    expect(rewrite("See /workspace/my cat.png. And ![x](/workspace/my%20cat.png) or file:///workspace/my cat.png!")).toBe(
+      "See /workspace/tabby.png. And ![x](/workspace/tabby.png) or file:///workspace/tabby.png!");
+    expect(rewrite("/workspace/pics/a.png /workspace/pics2/a.png /home/ada/workspace/pics /workspace/my cat.pngs")).toBe(
+      "/workspace/photos/a.png /workspace/pics2/a.png /home/ada/workspace/pics /workspace/my cat.pngs");
+    const link = pathRewriter([{ from: "pics/a.png", to: "pics/b.png", link: true }]);
+    expect(link("[a](pics/a.png) and pics/a.png and [a](pics/a.png#top)")).toBe("[a](pics/b.png) and pics/a.png and [a](pics/b.png#top)");
   });
 });
 
