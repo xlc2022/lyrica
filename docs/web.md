@@ -1232,6 +1232,9 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   from New thread) can still load a message the stream then shows too, so a
   stored message that shares a tool call with a live one is hidden until the
   turn's end replaces the live copy (`storedLiveCopies` in `src/live.ts`).
+  Coming back to a thread mid-message, the stream first sends the message
+  so far (docs/daemon.md, The event stream), so the reply and its reasoning
+  show from their start.
   An `error` marked `reply` is the error of the reply that just ended, and
   shows under that reply as its stored copy does, so a retry Pi makes goes
   on below it; the turn's other errors show after the live turn until the

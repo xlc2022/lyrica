@@ -28,6 +28,18 @@ describe("the live view of a thread's stream", () => {
     expect(run([{ type: "turn_end", aborted: false }], s).gpuWait).toBeUndefined();
   });
 
+  it("shows a message she comes back to mid-reasoning from its start, and keeps adding to it", () => {
+    // lyricad sends the message so far, joined, before hello; the stream then goes on.
+    const s = run([
+      { type: "message_start", model: "m" },
+      { type: "thinking", delta: "First I weigh it." },
+      { type: "hello", busy: true, queued: [], permissions: [], making: [] },
+      { type: "thinking", delta: " Then I answer." },
+    ]);
+    expect(s.busy).toBe(true);
+    expect(s.items).toEqual([{ role: "assistant", model: "m", parts: [{ type: "thinking", text: "First I weigh it. Then I answer." }] }]);
+  });
+
   it("builds her reply from deltas, markers and tool results, and drops it once the stored copy is loaded", () => {
     const s = run([
       { type: "hello", busy: false, queued: [], permissions: [], making: [] },

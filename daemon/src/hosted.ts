@@ -71,6 +71,8 @@ const makes = (tool: string, args: unknown) => tool === "image" && ["create", "e
 const BUFFER = 500;
 /** Each lyricad run gets its own epoch, so an event ID from before a restart is never mistaken for a current one. */
 const EPOCH = randomBytes(4).toString("hex");
+/** Besides text and reasoning, the events that draw a message being written (web/src/live.ts). */
+const WRITING = new Set<ThreadEvent["type"]>(["tool_call", "tool_start", "tool_end", "recall", "remember"]);
 
 type Client = (id: string, event: ThreadEvent) => void;
 type Outcome = "answered" | "timeout" | "stopped";
@@ -309,13 +311,17 @@ export class HostedThread {
   subscribe(client: Client, lastEventId?: string): () => void {
     const hello: ThreadEvent = { type: "hello", busy: this.busy, queued: [...this.queued], permissions: [...this.pending.values()].map((p) => p.request),
       making: [...this.making.values(), ...this.o.clipsMaking?.(this.userId, this.pool, this.threadId) ?? []], ...(this.gpuWait ? { gpuWait: this.gpuWait } : {}) };
+    let replayed = false;
     if (lastEventId) {
       const [epoch, num] = lastEventId.split("-");
       const after = Number(num);
       const oldest = this.buffer[0]?.n ?? this.n + 1;
       if (epoch !== EPOCH || !Number.isInteger(after) || after < oldest - 1 || after > this.n) client(this.id(this.n), { type: "reset" });
-      else for (const b of this.buffer) if (b.n > after) client(this.id(b.n), b.event);
+      else { for (const b of this.buffer) if (b.n > after) client(this.id(b.n), b.event); replayed = true; }
     }
+    // A view that opens mid-message (she came back to the thread, or the buffer ran out) gets the message so far,
+    // its reasoning and text each as one delta, so it doesn't start in the middle of a sentence.
+    if (!replayed) for (const event of this.writing) client(this.id(this.n), event);
     client(this.id(this.n), hello);
     this.clients.add(client);
     this.stopIdle();
@@ -344,7 +350,20 @@ export class HostedThread {
   /** Her message being written now: its text so far (in memory only), and who is following it. */
   private live: { text: string; done: boolean; wake: Set<() => void> } | undefined;
 
+  /**
+   * The message being written now, as the events that drew it (in memory only), with runs of text and of reasoning
+   * each joined into one: what a view that opens mid-message is sent before `hello`. Emptied when the turn ends.
+   */
+  private writing: ThreadEvent[] = [];
+
   private track(event: ThreadEvent): void {
+    if (event.type === "message_start") this.writing = [event];
+    else if (event.type === "turn_end" || event.type === "rewound" || event.type === "reset") this.writing = [];
+    else if (this.writing.length && (event.type === "text" || event.type === "thinking")) {
+      const last = this.writing.at(-1)!;
+      if (last.type === event.type) this.writing[this.writing.length - 1] = { type: event.type, delta: last.delta + event.delta };
+      else this.writing.push(event);
+    } else if (this.writing.length && WRITING.has(event.type)) this.writing.push(event);
     const end = () => { if (this.live) { this.live.done = true; for (const w of this.live.wake) w(); } };
     if (event.type === "message_start") { end(); this.live = { text: "", done: false, wake: new Set() }; }
     else if (event.type === "text" && this.live && !this.live.done) { this.live.text += event.delta; for (const w of this.live.wake) w(); }

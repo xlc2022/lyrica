@@ -1607,7 +1607,9 @@ export interface FilePathsInput { paths: string[] }
  * GET /api/u/:userId/threads/:pool/:threadId/events: one SSE stream per thread.
  * Each event's `id` is `<epoch>-<n>`. Reconnecting with `Last-Event-ID` replays
  * what was missed from a small buffer; if that's no longer possible the stream
- * starts with `reset`, and the UI reloads messages. The SSE `event` field is
+ * starts with `reset`, and the UI reloads messages. A stream that opens without a replay while a message is
+ * being written gets that message so far first (its `message_start`, then its events, text and thinking each
+ * joined into one delta), then `hello`. The SSE `event` field is
  * the `type` below, and `data` is the JSON of the whole event.
  */
 /**
@@ -1621,7 +1623,7 @@ export interface Making { toolCallId: string; startedAt: string; queued?: true; 
 export interface GpuWait { busyWith?: string; loading?: true }
 
 export type ThreadEvent =
-  /** First event on every connection: the thread's state now, with what is being made. */
+  /** On every connection, after any replay or message so far: the thread's state now, with what is being made. */
   | { type: "hello"; busy: boolean; queued: string[]; permissions: PermissionRequest[]; making: Making[]; gpuWait?: GpuWait }
   /** Missed events can't be replayed: reload messages. */
   | { type: "reset" }
