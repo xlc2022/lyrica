@@ -56,10 +56,20 @@ and store actions describe that machine, not Lyrica's.
 
 Settings → **MCP servers** → **Add server**: a name (`nixos`), the URL
 (`http://127.0.0.1:8001/mcp`, or the other machine's address and port),
-Pool **Private**, no token. Lyrica checks the server before saving; the row
-then shows its host, Private and 2 tools (`nix` and `nix_versions`). Grant
-it in a thread's drawer under MCP servers, or under **Workspace** on
+Pool **General**, no token. Lyrica checks the server before saving; the
+row then shows its host, General and 2 tools (`nix` and `nix_versions`).
+Grant it in a thread's drawer under MCP servers, or under **Workspace** on
 Project settings so every thread of the project has it.
+
+The pool is the pool of the threads that may use it, not where it runs: a
+general thread takes only General servers, a private or local-only thread
+only Private ones. Lyrica's own project and most coding threads are
+general, so General is the pool to pick. A loopback address passes the
+General pool's checks since there is no token (a General server with a
+token must use https). If private threads should have it too, add it a
+second time under another name as **Private**: that copy's lookups still
+leave the machine for search.nixos.org and the other sites, so a
+local-only thread's question does reach them.
 
 The server doesn't mark its tools read-only, so the first call to each
 tool in a thread asks with a permission card; **Allow in this thread**

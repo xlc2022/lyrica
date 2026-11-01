@@ -9,8 +9,11 @@ unit the operator turns on.
 
 Survey and decision: thread "Add a NixOS MCP server for Lyrica", report at
 https://claude.ai/artifact/98s8WPjYPUPCoaD87o6UXC. utensils/mcp-nixos
-(MIT, in nixpkgs: 2.4.3 on nixos-26.05) over its HTTP transport, as a
-Private server on loopback. No server that rebuilds the host (nix-agent):
+(MIT, in nixpkgs: 2.4.3 on nixos-26.05) over its HTTP transport, on
+loopback; added in the General pool, since a server's pool is the pool of
+the threads that may use it and the owner's own project is general (the
+first guide said Private, which couldn't be granted to that project; the
+development machine switched it to General on 2026-11-01). No server that rebuilds the host (nix-agent):
 on her own machine a rebuild rewrites what confines her, and for another
 machine the Machines design (SSH, mode limit, root steps on cards) is the
 path. The rule against stdio servers was lifted the same day (#732) and
@@ -32,7 +35,8 @@ changed none of this: mcp-nixos speaks HTTP and keeps no state.
   on beside her. `nix flake check`'s system has it on. `check-host.sh`
   checks it answers.
 - Nothing fills the address in: the user adds it under Settings → MCP
-  servers (Private). docs/guides/nixos-mcp.md, docs/daemon.md,
+  servers (General for general threads, a second Private copy for private
+  ones). docs/guides/nixos-mcp.md, docs/daemon.md,
   docs/workspace.md, the getting-started guide.
 
 ## Out of scope
@@ -52,9 +56,10 @@ is what `check-host.sh` accepts.
 
 ## Handoff
 
-Done: the module, docs and check. Next: the operator turns it on
-(`services.lyrica.mcpNixos = true` on the development machine) and adds
-the server in Settings; then the first real use decides whether the
-permission card is a nuisance worth the upstream PR. Open: whether to
+Done: the module, docs and check (#733), and on 2026-11-01 the development
+machine runs it (`services.lyrica.mcpNixos = true`), with the server added
+as `nixos` in the General pool and granted on the owner's project. Next:
+the first real use decides whether the permission card is a nuisance worth
+the upstream PR. Open: whether to
 teach her, in project instructions or memory, that a Machine is NixOS and
 where its flake lives, so remote NixOS work goes smoothly.

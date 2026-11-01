@@ -140,7 +140,8 @@ in {
         server on 127.0.0.1:8001 for NixOS package, option, flake and Nix
         function lookups, and for reading this machine's flake inputs and
         /nix/store. A user adds http://127.0.0.1:8001/mcp in Settings →
-        MCP servers as a Private server; nothing fills it in by itself.
+        MCP servers, in the pool of the threads that may use it (General
+        for most); nothing fills it in by itself.
       '';
     };
 

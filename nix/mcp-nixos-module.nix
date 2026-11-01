@@ -6,7 +6,8 @@
 # nixosModules.mcp-nixos, for a machine that only runs the server. It
 # listens on loopback by default and has no authentication of its own, so
 # another address must stay inside the operator's network. The user adds
-# it in Settings → MCP servers as a Private server (docs/guides/nixos-mcp.md).
+# it in Settings → MCP servers, General for general threads
+# (docs/guides/nixos-mcp.md).
 { config, lib, pkgs, ... }:
 
 let
