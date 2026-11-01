@@ -129,7 +129,7 @@ Rules:
   Image models, Hosts and endpoints, Downloads, Clean up, Recent calls,
   Model hosts, Plain endpoints, Add endpoint, ChatGPT plan, Grok plan, OpenRouter, Sign in with ChatGPT, Sign in with Grok, Sign in with OpenRouter, Redirect URL, Code, Finish, Signed out, Sign in again, Add model host, Pairing code,
   Pair, Pair again…, Unpaired, Dashboard, Pause, Resume, update available, Read its models, Add a model
-  by hand, Reset IDs…, Merge into…, Replace with, All details, All calls,
+  by hand, Enabled, Disable all models, Enable all models, Reset IDs…, Merge into…, Replace with, All details, All calls,
   Answered by, Sidebar width, Panel width, Time zone,
   Settings, Administration, Files, Images, Thread folder, Shared folder, Blocked, Attach to message,
   Download, Download as zip, Copy path, Show in thread, Upload…, New folder…, New folder, Uploaded,
