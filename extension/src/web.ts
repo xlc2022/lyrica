@@ -105,7 +105,7 @@ export function createWebExtension(web: WebTools): ExtensionFactory {
               if (local.isError) return text(local.text, true);
               const part = cutPage(local.text, clamp(p.maxChars, 20_000, 50_000), p.offset ?? 0);
               if (part.isError) return text(part.text, true);
-              return text(`${outside(`${url.href} (${local.copy})`, part.text)}${part.note ? `\n${part.note}` : ""}`);
+              return text(`${outside(`${url.href} (${local.copy})`, withSections(part))}${part.note ? `\n${part.note}` : ""}`);
             }
           } catch { /* online instead */ }
         }
@@ -136,8 +136,8 @@ export function createWebExtension(web: WebTools): ExtensionFactory {
           if (secrets.length) page = { text: maskSecrets(Buffer.from(page.text), secrets).toString("utf8") };
           const part = cutPage(page.text, clamp(p.maxChars, 20_000, 50_000), p.offset ?? 0);
           if (part.isError) return text(part.text, true);
-          // The note on where to read on is outside the markers, so a page can't fake it.
-          return text(`${outside(url.href, part.text)}${part.note ? `\n${part.note}` : ""}`);
+          // The note on where to read on is outside the markers, so a page can't fake it; its headings stay inside.
+          return text(`${outside(url.href, withSections(part))}${part.note ? `\n${part.note}` : ""}`);
         } catch (err) {
           return text(`Couldn't fetch ${url.href}: ${(err as Error).message}.`, true);
         }
@@ -147,4 +147,9 @@ export function createWebExtension(web: WebTools): ExtensionFactory {
     pi.on("session_start", (_event, ctx) => gate(ctx));
     pi.on("before_agent_start", (_event, ctx) => { gate(ctx); });
   };
+}
+
+/** A cut page's text with the headings past its window after it, both the page's own words. */
+function withSections(part: { text: string; sections?: string }): string {
+  return part.sections ? `${part.text}\n\n${part.sections}` : part.text;
 }

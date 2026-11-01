@@ -1628,9 +1628,12 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     over the DevTools pipe without images, media or fonts, and the longer
     text wins. HTML from curl or Chromium is cut to 3,000,000 characters
     before it is parsed on lyricad's thread. `cutPage` cuts to `maxChars` (20,000 by default, 50,000 at
-    most) from `offset`, with a note naming the offset to read on from
-    and the headings (`#` to `###`, up to 40) past the window, each with
-    its offset, so she can read a later section directly.
+    most) from `offset`, with a note naming the offset to read on from.
+    A cut page also gets "Sections further on:" (`sections`): the headings
+    (`#` to `###`, up to 40, each cut to 80 characters) past the window,
+    each with its offset, so she can read a later section directly; being
+    the page's words, they go inside the markers, and only the note stays
+    outside.
     Both tools' results go between `<<<web CODE>>>` and `<<<end web
     CODE>>>` (`outside`; CODE is 8 random hex digits per call, and
     marker-shaped text inside is removed), headed by where they came from;
