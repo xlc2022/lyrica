@@ -351,15 +351,16 @@ answers ahead; without a terminal the answer is no), then:
    alone). It makes her tool prefix, `/opt/lyrica/tools`: root-owned,
    mounted read-only into every sandbox with its `bin` first on the PATH,
    so programs installed only for her never touch the host's own `/usr`
-   or `/usr/local`. There it installs IBM Plex and
-   Playwright's headless Chromium with the libraries it needs
-   (`/opt/lyrica/tools/lib/chromium`), so her sandboxes can take
-   screenshots, Anthropic's Claude Code
+   or `/usr/local`. There it installs Playwright's headless Chromium with
+   the libraries it needs (`/opt/lyrica/tools/lib/chromium`), so her
+   sandboxes can take screenshots, Anthropic's Claude Code
    (`@anthropic-ai/claude-code`, at the version the script pins) with
    `npm install -g --prefix /opt/lyrica/tools`, and OpenAI's Codex
    (`@openai/codex`, also pinned) for ChatGPT Images; if either fails it
-   only prints a warning. An install from before 2026-11-01 had those
-   three in `/usr/local`; this run moves them and removes the old copies. When
+   only prints a warning. IBM Plex, the web UI's and her screenshots'
+   font, comes from apt (`fonts-ibm-plex`). An install from before
+   2026-11-01 had those three programs in `/usr/local`; this run moves
+   them and removes the old copies. When
    Tailscale's binaries are missing it adds Tailscale's apt repository
    and installs `tailscale`; the package turns on the host's own
    `tailscaled`,
