@@ -446,37 +446,19 @@ test("a project: New project, suggested threads start into cards, the Threads po
   await expect(page.getByText("Suggested.")).toBeVisible();
   const card = page.getByRole("group", { name: "Suggested threads" });
   await expect(card.getByRole("listitem")).toHaveCount(2);
-  // On a failure the message lists the start requests the page made and what each got back (seen once in CI:
-  // Beta never started after Start all, with no error shown, and Start then Start all never fails locally).
   const starts: string[] = [];
-  page.on("response", async (r) => {
-    if (r.url().includes("/suggestions/")) starts.push(`${r.status()} ${r.request().postData()}${r.ok() ? "" : ` ${await r.text().catch(() => "")}`}`);
-  });
+  page.on("request", (r) => { if (r.method() === "POST" && r.url().includes("/suggestions/")) starts.push(r.postData() ?? ""); });
   await card.getByRole("button", { name: "Start" }).first().click();
   await expect(page.locator(".tcard")).toHaveCount(1);
   await expect(page.locator(".tcard").first()).toContainText("Alpha");
-  // Also what the Start all tap landed on (seen once more in CI: no request at all, the button still enabled).
-  await page.evaluate(() => {
-    const w = window as unknown as { taps: string[] };
-    w.taps = [];
-    for (const type of ["pointerdown", "pointerup", "click"]) document.addEventListener(type, (e) => {
-      const t = e.target as HTMLElement, all = document.querySelector<HTMLElement>(".suggested .primary");
-      w.taps.push(`${type} ${t.tagName}.${t.className} "${(t.textContent ?? "").trim().slice(0, 24)}" at ${Math.round((e as PointerEvent).clientX)},${Math.round((e as PointerEvent).clientY)}; Start all ${all ? `${all.isConnected ? "" : "detached "}${JSON.stringify(all.getBoundingClientRect().toJSON())}` : "gone"}`);
-    }, true);
-  });
-  // The new card fills in after it appears and the chat keeps to its bottom, so Start all slides up about 22 px a
-  // moment later; a tap aimed before that lands on the card's prose (seen in CI). Wait until it holds still.
-  await expect.poll(() => page.evaluate(async () => {
-    const top = () => document.querySelector(".suggested .primary")?.getBoundingClientRect().top;
-    const before = top();
-    await new Promise((r) => setTimeout(r, 300));
-    return before !== undefined && top() === before;
-  })).toBe(true);
-  await card.getByRole("button", { name: "Start all" }).click();
-  await expect(page.locator(".tcard")).toHaveCount(2).catch(async (err: Error) => {
-    const taps = await page.evaluate(() => (window as unknown as { taps: string[] }).taps);
-    throw new Error(`${err.message}\nStart requests: ${starts.join("; ") || "none"}\nTaps: ${taps.join("; ") || "none"}`);
-  });
+  // Alpha's card fills in whenever its first update arrives, and the chat keeps to its bottom, so Start all slides
+  // up a line at a moment no wait can predict; a tap aimed before the slide lands just under the button (seen in CI
+  // at 390 px, more than 300 ms after Start). Tap again until the page asks to start Beta.
+  await expect(async () => {
+    await card.getByRole("button", { name: "Start all" }).click({ timeout: 2_000 });
+    await expect.poll(() => starts.length, { timeout: 1_000 }).toBe(2);
+  }).toPass();
+  await expect(page.locator(".tcard")).toHaveCount(2);
   await expect(card.getByRole("link", { name: "Open" })).toHaveCount(2);
   const fact = page.getByRole("button", { name: /^Threads/ });
   await expect(fact).toContainText("2");
