@@ -170,9 +170,11 @@ export interface Env {
 export interface Quiet { key: string; n?: number; parts: MessagePart[]; streaming: boolean }
 
 /** A part that is one of her inner workings: a marker, never text, an image or a card. */
-function isMarker(p: MessagePart): boolean {
+export function isMarker(p: MessagePart): boolean {
   if (p.type === "thinking" || p.type === "recall" || p.type === "remember") return true;
   if (p.type !== "tool") return false;
+  // A root step is a question card once its call has returned (its Run as root card), so it ends a run; while it runs, or when it failed, a marker.
+  if (p.name === ROOT_TOOL) return !!p.isError || p.result === undefined;
   // Rejecting or clearing attempts shows no image: a marker, which can fold into a run. Her other image calls show an image.
   if (p.name === "image") return ["reject", "clear_rejected"].includes((p.args as { action?: string } | null)?.action ?? "");
   if (p.name === "delegate" || p.name === "propose_plan") return false;
