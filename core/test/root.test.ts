@@ -46,7 +46,8 @@ describe("a root step", () => {
   it("hashes what was read and builds a command that checks the hash before running it", () => {
     const step = rootStep({ machine: "box", path: "/home/lyrica/it's.sh", why: " Installs Docker. " }, Buffer.from("echo hi\n"), "lyrica");
     expect(step.sha256).toBe(createHash("sha256").update("echo hi\n").digest("hex"));
-    expect(step.command).toBe(`f=$(mktemp) && cat '/home/lyrica/it'\\''s.sh' > "$f" && echo '${step.sha256}  '"$f" | sha256sum -c --quiet - && sudo bash "$f"; rm -f "$f"`);
+    // The cleanup keeps the chain's status: a refused hash exits 1 for the person, not the rm's 0.
+    expect(step.command).toBe(`f=$(mktemp) && cat '/home/lyrica/it'\\''s.sh' > "$f" && echo '${step.sha256}  '"$f" | sha256sum -c --quiet - && sudo bash "$f"; rc=$?; rm -f "$f"; (exit $rc)`);
     expect(step.why).toBe("Installs Docker.");
     expect(step.sudoers).toBeUndefined();
     // The copy runs under the shell the first line asks for: sh or dash as sh, anything else (or no shebang) as bash.
@@ -64,7 +65,7 @@ describe("a root step", () => {
     expect(step.sudoers?.map((l) => l.line)).toEqual([l1, l2]);
     expect(step.sudoersCommand).toBe("f=$(mktemp) && { sudo cat /etc/sudoers.d/lyrica 2>/dev/null; printf '%s\\n' "
       + `'${l1}' '${l2}'; } | awk '!seen[$0]++' > "$f" && sudo install -m 0440 -o root -g root "$f" /etc/sudoers.d/lyrica.new`
-      + ' && sudo visudo -c -f /etc/sudoers.d/lyrica.new && sudo mv -f /etc/sudoers.d/lyrica.new /etc/sudoers.d/lyrica; sudo rm -f /etc/sudoers.d/lyrica.new; rm -f "$f"');
+      + ' && sudo visudo -c -f /etc/sudoers.d/lyrica.new && sudo mv -f /etc/sudoers.d/lyrica.new /etc/sudoers.d/lyrica; rc=$?; sudo rm -f /etc/sudoers.d/lyrica.new; rm -f "$f"; (exit $rc)');
     // The lines are checked first, so a refused one never reaches the command.
     expect(() => rootStep({ machine: "box", path: "/x.sh", why: "w", sudoers: [line("/usr/bin/apt-get install *")] }, Buffer.from("a"), "lyrica")).toThrow();
   });

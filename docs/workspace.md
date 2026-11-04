@@ -302,10 +302,11 @@ the card is for machines without it. The lines she may *offer* on a card
   tool's result (`RootStep`): her `why`, the command, the hash and the
   script. Her account owns the script, so the command copies it first and
   checks and runs the copy: `f=$(mktemp) && cat '<path>' > "$f" && echo
-  '<sha256>  '"$f" | sha256sum -c --quiet - && sudo bash "$f"; rm -f "$f"`
-  (`sudo sh` when the script's first line is `#!/bin/sh` or dash,
-  `scriptShell`). A script changed after the card was made, or during the
-  run, doesn't reach root.
+  '<sha256>  '"$f" | sha256sum -c --quiet - && sudo bash "$f"; rc=$?; rm -f
+  "$f"; (exit $rc)` (`sudo sh` when the script's first line is `#!/bin/sh`
+  or dash, `scriptShell`; the cleanup keeps the chain's exit status, so a
+  refused hash shows as a failure). A script changed after the card was
+  made, or during the run, doesn't reach root.
 - `sudoers`, when the same root command will be needed again: at most 8
   lines for `/etc/sudoers.d/lyrica`, which the card shows with the command
   that adds them, ready to paste (`sudoersCommand`): it builds the file

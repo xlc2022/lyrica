@@ -39,7 +39,7 @@ const quote = (s: string) => `'${s.replaceAll("'", "'\\''")}'`;
  */
 export const sudoersCommand = (lines: string[]): string =>
   `f=$(mktemp) && { sudo cat ${SUDOERS_FILE} 2>/dev/null; printf '%s\\n' ${lines.map(quote).join(" ")}; } | awk '!seen[$0]++' > "$f"`
-  + ` && sudo install -m 0440 -o root -g root "$f" ${SUDOERS_FILE}.new && sudo visudo -c -f ${SUDOERS_FILE}.new && sudo mv -f ${SUDOERS_FILE}.new ${SUDOERS_FILE}; sudo rm -f ${SUDOERS_FILE}.new; rm -f "$f"`;
+  + ` && sudo install -m 0440 -o root -g root "$f" ${SUDOERS_FILE}.new && sudo visudo -c -f ${SUDOERS_FILE}.new && sudo mv -f ${SUDOERS_FILE}.new ${SUDOERS_FILE}; rc=$?; sudo rm -f ${SUDOERS_FILE}.new; rm -f "$f"; (exit $rc)`;
 
 /** The shell the card runs a script with: `sh` when its first line asks for sh or dash, else bash. */
 export const scriptShell = (script: string): "sh" | "bash" => (/^#!\s*(?:\/usr)?\/bin\/(?:env\s+)?(?:sh|dash)(?:\s|$)/.test(script) ? "sh" : "bash");
@@ -48,10 +48,12 @@ export const scriptShell = (script: string): "sh" | "bash" => (/^#!\s*(?:\/usr)?
  * The command on the card for a script at `path` with this hash. Her account
  * owns the script, so it is copied first and the copy is checked and run:
  * a change after the check can't reach root. The copy runs under `sh` when
- * the script's first line says so, else bash.
+ * the script's first line says so, else bash. The cleanup keeps the chain's
+ * exit status (`(exit $rc)` sets it without leaving the person's shell), so
+ * a refused hash or a failed script shows as a failure, not as the rm's 0.
  */
 export const rootCommand = (path: string, sha256: string, shell: "sh" | "bash" = "bash"): string =>
-  `f=$(mktemp) && cat ${quote(path)} > "$f" && echo ${quote(`${sha256}  `)}"$f" | sha256sum -c --quiet - && sudo ${shell} "$f"; rm -f "$f"`;
+  `f=$(mktemp) && cat ${quote(path)} > "$f" && echo ${quote(`${sha256}  `)}"$f" | sha256sum -c --quiet - && sudo ${shell} "$f"; rc=$?; rm -f "$f"; (exit $rc)`;
 
 /** Programs a sudoers line may never name: they run anything. */
 const NEVER = new Set(["bash", "sh", "dash", "zsh", "fish", "ksh", "csh", "tcsh", "ash", "mksh", "yash", "rbash", "pwsh", "su", "sudo", "doas", "runuser", "env",
