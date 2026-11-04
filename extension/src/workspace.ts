@@ -219,15 +219,15 @@ export function pathArguments(tool: string, input: unknown, last?: LastFile): un
   throw new Error(`${tool} needs \`path\`, the file to ${tool === "edit" ? "change" : "write"}; ${last ? `you last ${last.verb} ${last.path} this turn: add \`path\`` : "add `path`"}`);
 }
 
+/** What a call she isn't allowed is told: the person said no, or nobody answered, and neither is a reason to do it another way. */
+export const NOT_APPROVED = "Not approved: the person declined it, or nobody answered in time. Don't do it another way or guess why; say they declined, and ask what to do instead.";
+
 /**
  * Lyrica's read, write, edit and bash: Pi's own tools, with every operation
  * sent to the thread's execution target. Nothing runs in this process. It
  * also enforces the thread's mode and switches: what they turn off isn't
  * offered, and a call to it is refused.
  */
-/** What a call she isn't allowed is told: the person said no, or nobody answered, and neither is a reason to do it another way. */
-export const NOT_APPROVED = "Not approved: the person declined it, or nobody answered in time. Don't do it another way or guess why; say they declined, and ask what to do instead.";
-
 export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
   return (pi) => {
     /** An MCP tool's server (one of the thread's, or none) and its own name there, and whether the server marks it read-only. */

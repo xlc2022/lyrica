@@ -309,11 +309,14 @@ the card is for machines without it. The lines she may *offer* on a card
   made, or during the run, doesn't reach root.
 - `sudoers`, when the same root command will be needed again: at most 8
   lines for `/etc/sudoers.d/lyrica`, which the card shows with the command
-  that adds them, ready to paste (`sudoersCommand`): it builds the file
-  from the lines it already has and these, each once, puts it beside the
-  file as `lyrica.new` with root's ownership and mode 0440 (sudo ignores a
-  name with a dot, so a bad file locks nobody out), checks it there with
-  `visudo -c`, and moves it over the file only when the check passes. The
+  that adds them, ready to paste (`sudoersCommand`, built from the checked
+  lines as the card shows them): it reads the file's own lines in a step
+  that can fail (a mistyped password stops it, so the file is never
+  replaced by the new lines alone), adds these, each once, puts the result
+  beside the file as `lyrica.new` with root's ownership and mode 0440 (sudo
+  ignores a name with a dot, so a bad file locks nobody out), checks it
+  there with `visudo -c`, and moves it over the file only when the check
+  passes; the cleanup keeps the chain's exit status and never prompts. The
   person never opens an editor. `checkSudoers` refuses a line that isn't
   `<account> ALL=(root) NOPASSWD: <program> <fixed arguments>` for the
   machine's account, with the program in `/usr/bin`, `/usr/sbin`, `/bin`,

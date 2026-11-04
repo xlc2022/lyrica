@@ -32,14 +32,17 @@ export const SUDOERS_HOW = "it keeps the lines the file already has, checks the 
 const quote = (s: string) => `'${s.replaceAll("'", "'\\''")}'`;
 
 /**
- * The command on the card that adds offered lines to the sudoers file, ready to paste: the file's own lines and
- * then these, each once; put beside the file as `lyrica.new` with root's ownership and mode (sudo ignores a
- * name with a dot, so a bad file can't lock anyone out); checked there by `visudo -c`; moved over the file only
- * when the check passes. The person never opens an editor, and nothing unchecked reaches sudo.
+ * The command on the card that adds offered lines to the sudoers file, ready to paste. It reads the file's own
+ * lines in a step of its own, so a failed sudo (a mistyped password) stops the chain instead of installing the
+ * new lines alone; then the old lines (their last one given its newline) and the new, each once; put beside the
+ * file as `lyrica.new` with root's ownership and mode (sudo ignores a name with a dot, so a bad file can't lock
+ * anyone out); checked there by `visudo -c`; moved over the file only when the check passes. The cleanup keeps
+ * the chain's status and never prompts (`sudo -n`). The person never opens an editor, and nothing unchecked
+ * reaches sudo. `file` is the card's `/etc/sudoers.d/lyrica`; a test gives its own.
  */
-export const sudoersCommand = (lines: string[]): string =>
-  `f=$(mktemp) && { sudo cat ${SUDOERS_FILE} 2>/dev/null; printf '%s\\n' ${lines.map(quote).join(" ")}; } | awk '!seen[$0]++' > "$f"`
-  + ` && sudo install -m 0440 -o root -g root "$f" ${SUDOERS_FILE}.new && sudo visudo -c -f ${SUDOERS_FILE}.new && sudo mv -f ${SUDOERS_FILE}.new ${SUDOERS_FILE}; rc=$?; sudo rm -f ${SUDOERS_FILE}.new; rm -f "$f"; (exit $rc)`;
+export const sudoersCommand = (lines: string[], file = SUDOERS_FILE): string =>
+  `f=$(mktemp) && g=$(mktemp) && { sudo test ! -e ${file} || sudo cat ${file}; } > "$f" && { awk 1 "$f"; printf '%s\\n' ${lines.map(quote).join(" ")}; } | awk '!seen[$0]++' > "$g"`
+  + ` && sudo install -m 0440 -o root -g root "$g" ${file}.new && sudo visudo -c -f ${file}.new && sudo mv -f ${file}.new ${file}; rc=$?; sudo -n rm -f ${file}.new 2>/dev/null; rm -f "$f" "$g"; (exit $rc)`;
 
 /** The shell the card runs a script with: `sh` when its first line asks for sh or dash, else bash. */
 export const scriptShell = (script: string): "sh" | "bash" => (/^#!\s*(?:\/usr)?\/bin\/(?:env\s+)?(?:sh|dash)(?:\s|$)/.test(script) ? "sh" : "bash");
@@ -138,8 +141,10 @@ export function rootStep(input: { machine: string; path: string; why: string; su
   // What the card shows must be what bash reads: no control or invisible format characters besides tab and newline.
   if (HIDDEN.test(script)) throw new Error("the script has control or invisible characters (other than tab and newline), so the card couldn't show what runs");
   const sha256 = createHash("sha256").update(bytes).digest("hex");
+  // The command carries the lines as the card shows them: checked and trimmed.
+  const sudoers = input.sudoers?.length ? checkSudoers(input.sudoers, account) : undefined;
   return {
     machine: input.machine, path: input.path, sha256, command: rootCommand(input.path, sha256, scriptShell(script)), script, why,
-    ...(input.sudoers?.length ? { sudoers: checkSudoers(input.sudoers, account), sudoersCommand: sudoersCommand(input.sudoers) } : {}),
+    ...(sudoers ? { sudoers, sudoersCommand: sudoersCommand(sudoers.map((l) => l.line)) } : {}),
   };
 }

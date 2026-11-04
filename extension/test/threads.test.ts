@@ -298,11 +298,13 @@ describe("code mode nudge", () => {
     const host: ThreadsHost = { limits: DEFAULT_THREADS_LIMITS, start: async () => { throw new Error("unused"); }, message: async () => "started" as const, list: () => [], code: () => {}, codeOn: () => on };
     const handlers = new Map<string, (e: unknown) => unknown>();
     createThreadsExtension(t.context, host)({ on: (name: string, h: (e: unknown) => unknown) => handlers.set(name, h), registerTool: () => {} } as unknown as ExtensionAPI);
-    const result = (toolName: string) => handlers.get("tool_result")!({ toolName, content: [{ type: "text", text: "ok" }], isError: false }) as { content: { text: string }[] } | undefined;
+    const result = (toolName: string, input: Record<string, unknown> = { path: "/w/x.ts" }) => handlers.get("tool_result")!({ toolName, input, content: [{ type: "text", text: "ok" }], isError: false }) as { content: { text: string }[] } | undefined;
     expect(result("read")).toBeUndefined();
     on = true;
     expect(result("edit")).toBeUndefined();
     on = false;
+    // A file written on a machine (a root step's script) isn't her coding.
+    expect(result("write", { machine: "box", path: "/home/lyrica/x.sh" })).toBeUndefined();
     expect(result("write")!.content.at(-1)!.text).toBe(CODE_NUDGE);
     expect(result("edit")).toBeUndefined();
   });
