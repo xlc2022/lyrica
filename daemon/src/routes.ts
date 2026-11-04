@@ -782,7 +782,7 @@ export function apiRoutes(d: Lyricad): Route[] {
     route("POST", `${u}/machines/probe`, async (r): Promise<Api.MachineProbe> => {
       const user = d.userFor(r);
       const input = await r.json<Api.MachineProbeInput>();
-      return s().workspace.probeMachine(user.id, user.login, { kind: checkKind(input.kind), name: String(input.name ?? ""), address: String(input.address ?? ""), draft: input.draft, asUser: input.asUser === true });
+      return s().workspace.probeMachine(user.id, user.login, { kind: checkKind(input.kind), name: String(input.name ?? ""), address: String(input.address ?? ""), draft: input.draft, asUser: input.asUser === true, replace: input.replace === true });
     }),
     route("POST", `${u}/machines`, async (r) => {
       const user = d.userFor(r);

@@ -729,16 +729,18 @@ export interface MachineInfo {
 /** GET /api/u/:userId/machines → MachineInfo[] */
 /**
  * POST /api/u/:userId/machines/probe → MachineProbe. The Test step of Add
- * machine, and of Replace key: makes a key pair for the machine and keeps it
- * in memory (pass `draft` back to keep using it), then reads the host key and
- * tries the login. Nothing is saved.
+ * machine: makes a key pair for the machine and keeps it in memory (pass
+ * `draft` back to keep using it), then reads the host key and tries the
+ * login. With `replace` (Replace key), an SSH machine is tried as saved,
+ * with `name`'s own key, account and address, and no pair is made: the
+ * address and `draft` sent are ignored. Nothing is saved.
  */
 /**
  * For Proxmox (`kind: "proxmox"`, address https://host:8006) the Test step
  * reads only the certificate's fingerprint and gives the pveum setup steps;
  * the token isn't sent until Confirm.
  */
-export interface MachineProbeInput { kind?: "ssh" | "proxmox"; name: string; address: string; draft?: string; asUser?: boolean }
+export interface MachineProbeInput { kind?: "ssh" | "proxmox"; name: string; address: string; draft?: string; asUser?: boolean; replace?: boolean }
 export interface MachineProbe {
   /** SSH only. */
   draft?: string;

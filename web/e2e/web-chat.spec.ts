@@ -1717,6 +1717,28 @@ test("Machines lists none, and Add machine reaches a machine before anything is 
   await expect(page.getByRole("region", { name: "Machines", exact: true })).toContainText("None yet.");
 });
 
+test("Replace key tries the machine as saved and shows what it answered", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  // A machine nothing listens for: port 1 refuses, and that answer is what the page must show.
+  await page.evaluate(async (userId) => {
+    const call = async (path: string, body: unknown) => (await fetch(`/api/u/${userId}${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) })).json() as Promise<{ draft: unknown }>;
+    const probe = await call("/machines/probe", { name: "garden-pi", address: "pi@127.0.0.1:1" });
+    await call("/machines", { name: "garden-pi", address: "pi@127.0.0.1:1", pool: "general", draft: probe.draft, hostKey: `SHA256:${"A".repeat(43)}` });
+  }, userId);
+  await page.goto(`/#/u/${userId}/settings/machines`);
+  await page.getByRole("region", { name: "Machines", exact: true }).getByRole("button", { name: "Actions for garden-pi" }).click();
+  const probed = page.waitForRequest((r) => r.method() === "POST" && r.url().endsWith("/machines/probe"));
+  await page.getByRole("menuitem", { name: "Replace key" }).click();
+  // The probe names the machine as saved, not the page's empty form, and tries her own key rather than a new one.
+  expect((await probed).postDataJSON()).toEqual({ kind: "ssh", name: "garden-pi", address: "pi@127.0.0.1:1", replace: true });
+  await expect(page.getByRole("heading", { level: 2, name: "Replace key" })).toBeVisible();
+  await expect(page.getByText("garden-pi · pi@127.0.0.1:1")).toBeVisible();
+  // Nothing answers on port 1, so the Fingerprint step shows the problem and Confirm waits.
+  await expect(page.getByRole("alert").first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "Confirm" })).toBeDisabled();
+  await noHorizontalScroll(page);
+});
+
 test("Git accounts lists none, and Add account checks the token with the host before anything is saved", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   await page.goto(`/#/u/${userId}/settings/git`);

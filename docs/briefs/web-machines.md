@@ -77,4 +77,8 @@ project chat.
 
 ## Handoff notes
 
-(The thread fills this in if it stops before it's done.)
+Replace key, found broken by the remote control tests (2026-11-04): the page
+probed with an empty address, and the server tried a new key instead of hers,
+so the page never reached Fingerprint. Fixed the same day: the probe takes
+`replace` and tries the machine as saved, and the Fingerprint step says
+whether her login worked.

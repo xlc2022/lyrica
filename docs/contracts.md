@@ -2493,9 +2493,10 @@ targetFor(t, machine?): ExecutionTarget  // the sandbox, or an SSH machine the t
 machinesFor(t): ThreadMachine[]           // { name, kind, limit, root, asUser? }: granted by it and every ancestor, of its pool
 proxmox(t, machine, action, vm?): Promise<string>  // one PROXMOX_ACTIONS call on a thread's Proxmox machine, token sent only to the pinned certificate
 callMode(t, machine?): PermissionMode     // on a machine, stricterMode(effective(t).mode, its limit)
-probeMachine(userId, login, { kind?, name, address, draft?, asUser? }): Promise<MachineProbe>
+probeMachine(userId, login, { kind?, name, address, draft?, asUser?, replace? }): Promise<MachineProbe>
   // SSH: a key pair kept in memory for an hour (by `draft`), its keyLine and setup steps, the host key seen,
   // whether the login worked, offNetwork; asUser gives the own-account setup (no root); account root refused. Proxmox: the certificate's fingerprint and the pveum setup, no token sent.
+  // replace (Replace key): the saved SSH machine `name` tried as saved, its own key, account and address; no pair made, address and draft ignored.
   // Saves nothing.
 addMachine(userId, { kind?, name, address, root, pool, limit?, draft? | token?, hostKey, offNetworkConfirmed?, asUser? }): Promise<MachineConfig>
   // Proxmox: tries the token against the confirmed certificate and refuses the Proxmox running Lyrica (ownNode)
@@ -2731,7 +2732,7 @@ selfTest(): Promise<string | undefined>   // lyricad calls this at startup
   `claudeCodeInstalled()` says whether the program is among the sandbox's
   tools.
 - **Machines API:** `lyricad`'s `/api/u/:userId/machines` (`GET`; `POST
-  …/machines/probe` for the Test step; `POST …/machines` to confirm;
+  …/machines/probe` for the Test step, with `replace` for Replace key; `POST …/machines` to confirm;
   `PATCH …/machines/:name` for address, root, pool and limit; `POST
   …/machines/:name/key` with a confirmed host key; `POST
   …/machines/:name/confirm-off-network`; `DELETE`). The probe and the
