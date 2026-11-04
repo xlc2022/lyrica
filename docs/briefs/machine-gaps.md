@@ -115,6 +115,8 @@ tool each for A and B, prompt lines only where the thread has a machine).
 - From the remote control tests (2026-11-04): her own account added as Mine
   can't log in (her setup's Match block), so the test now says why; and a
   `write` or `edit` on the floor is refused before any card, not after it.
+- Also from that run: a card nobody answered in time told her the person
+  declined; now her result says nobody answered, so she says it timed out.
 
 ## C. Model host install from a machine
 

@@ -46,7 +46,8 @@ export interface ThreadTools {
    * Asks whoever is watching the thread whether a tool call may run. lyricad
    * supplies it; without it, Pi's own UI asks, and with no UI the call is blocked.
    */
-  approve?(request: ApprovalRequest): Promise<boolean>;
+  /** true runs it; false is the person's no; "timeout" is nobody answering in time, which her result says. */
+  approve?(request: ApprovalRequest): Promise<Approval>;
   /** Switches the thread's mode when a plan is approved. Without it (a subagent), there is no propose_plan. */
   setMode?(mode: PermissionMode): void;
   /**
@@ -219,8 +220,12 @@ export function pathArguments(tool: string, input: unknown, last?: LastFile): un
   throw new Error(`${tool} needs \`path\`, the file to ${tool === "edit" ? "change" : "write"}; ${last ? `you last ${last.verb} ${last.path} this turn: add \`path\`` : "add `path`"}`);
 }
 
+/** An approval's answer: yes, the person's no, or nobody answering in time. */
+export type Approval = boolean | "timeout";
 /** What a call she isn't allowed is told: the person said no, or nobody answered, and neither is a reason to do it another way. */
-export const NOT_APPROVED = "Not approved: the person declined it, or nobody answered in time. Don't do it another way or guess why; say they declined, and ask what to do instead.";
+export const NOT_APPROVED = "Not approved: the person declined it. Don't do it another way or guess why; say they declined, and ask what to do instead.";
+export const NO_ANSWER = "Not approved: nobody answered in time. Don't do it another way or guess why; say the request timed out, and ask again when they're back.";
+const refusal = (answer: Approval) => ({ block: true, reason: answer === "timeout" ? NO_ANSWER : NOT_APPROVED });
 
 /**
  * Lyrica's read, write, edit and bash: Pi's own tools, with every operation
@@ -404,8 +409,8 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
         if (!mcp.server) return { block: true, reason: `${event.toolName} isn't a tool of this thread's MCP servers.` };
         if (mcp.readOnly || tools.toolAllowedInThread?.(mcp.server, mcp.tool)) return undefined;
         const request: ApprovalRequest = { toolCallId: event.toolCallId, tool: event.toolName, input, server: mcp.server, serverTool: mcp.tool };
-        const allowed = tools.approve ? await tools.approve(request) : await approve(ctx, request);
-        return allowed ? undefined : { block: true, reason: NOT_APPROVED };
+        const answer = tools.approve ? await tools.approve(request) : await approve(ctx, request);
+        return answer === true ? undefined : refusal(answer);
       }
       const pve = event.toolName === "proxmox";
       const page = event.toolName === "page";
@@ -448,8 +453,8 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
       }
       const request: ApprovalRequest = { toolCallId: event.toolCallId, tool: event.toolName, input };
       if (machine) Object.assign(request, { machine: machine.name }, pve ? {} : { cwd: await tools.target(machine.name).cwd() }, suspect ? { warning } : {});
-      const allowed = tools.approve ? await tools.approve(request) : await approve(ctx, request);
-      if (!allowed) return { block: true, reason: NOT_APPROVED };
+      const answer = tools.approve ? await tools.approve(request) : await approve(ctx, request);
+      if (answer !== true) return refusal(answer);
       if (place) {
         places.add(place);
         const { machine: _, ...rest } = input;

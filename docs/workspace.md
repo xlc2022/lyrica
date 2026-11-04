@@ -127,10 +127,11 @@ existed before became general machines at Ask.
 - **Approvals are bound to what was shown.** A request for a machine carries
   the machine, the command or path, and the folder a command runs in. The
   call runs only if its arguments are still exactly those; anything else is
-  refused. A refused call's result tells her the person declined it, or
-  nobody answered in time, and not to do it another way or guess why
-  (`NOT_APPROVED`). A request is denied on Stop, on timeout, or with nobody to ask, so
-  none outlives its turn.
+  refused. A refused call's result tells her which it was, the person
+  declining it (`NOT_APPROVED`) or nobody answering in time (`NO_ANSWER`,
+  so she says the request timed out rather than that they declined), and
+  not to do it another way or guess why. A request is denied on Stop, on
+  timeout, or with nobody to ask, so none outlives its turn.
 - **Suspect commands always ask** on a machine, in every mode, with a warning
   sentence (`suspectCommand`, `SUSPECT_COMMANDS` in
   `core/src/workspace/machines.ts`): deleting `/`, `/*`, a home folder or a

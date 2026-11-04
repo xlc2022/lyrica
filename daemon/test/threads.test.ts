@@ -255,6 +255,8 @@ describe("permission prompts", () => {
     await ada.post(`${path}/messages`, { text: "say hi" });
     await stream.until(is("turn_end"));
     expect(stream.events.find((e) => e.event.type === "permission_end")!.event).toMatchObject({ allowed: false, reason: "timeout" });
+    // Her result says nobody answered, not that the person declined.
+    expect(JSON.stringify(model.requests[1]!.messages)).toContain("nobody answered in time");
     stream.close();
   });
 

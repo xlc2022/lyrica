@@ -545,6 +545,13 @@ describe("workspace tools on a machine", () => {
     expect(commands).toEqual(["nas: uptime"]);
   });
 
+  it("tell her when nobody answered in time, not that the person declined", async () => {
+    const { commands, results } = await run("auto", [fauxToolCall("bash", { command: "uptime", machine: "nas" }, { id: "1" })], { machines: [nas], approve: async () => "timeout" });
+    expect(commands).toEqual([]);
+    expect(results[0]).toContain("nobody answered in time");
+    expect(results[0]).not.toContain("declined");
+  });
+
   it("let Plan mode read on a machine and nothing else", async () => {
     const { offered, results } = await run("plan", [fauxToolCall("read", { path: "notes.txt", machine: "nas" }, { id: "1" })], { machines: [nas], approve: yes });
     expect(results[0]).toContain("one\ntwo");

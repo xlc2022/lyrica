@@ -1847,8 +1847,10 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   entry (`appendNotice`, shown as its last reply's error), and their parents
   are told and woken.
 - **Permission prompts:** the workspace extension's `tool_call` hook calls
-  `ThreadTools.approve?(request)`; `lyricad` supplies it and waits for an
-  answer from any open view, denying on timeout or Stop. `proposePlan`
+  `ThreadTools.approve?(request)`, answered `true`, `false` (the person's no,
+  or Stop) or `"timeout"` (`Approval`); `lyricad` supplies it and waits for an
+  answer from any open view, so her result says whether the person declined
+  or nobody answered in time. `proposePlan`
   takes the same path: `PermissionAnswer { allow, mode?: GoAhead,
   allowInThread?, alwaysAllow?: true }`, and approving a plan without `mode` is `400`. A
   request on a machine carries `machine` and `cwd`, a suspect one `suspect:
