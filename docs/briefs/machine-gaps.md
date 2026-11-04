@@ -112,6 +112,9 @@ tool each for A and B, prompt lines only where the thread has a machine).
   the machine logs in as the person's own account.
 - Changes DESIGN.md (each machine uses a dedicated account) and
   docs/workspace.md: PR review.
+- From the remote control tests (2026-11-04): her own account added as Mine
+  can't log in (her setup's Match block), so the test now says why; and a
+  `write` or `edit` on the floor is refused before any card, not after it.
 
 ## C. Model host install from a machine
 
