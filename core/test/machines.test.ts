@@ -12,7 +12,7 @@ import { freshKeyring, profile } from "./helpers.ts";
 const KEY = `SHA256:${"A".repeat(43)}`;
 const OTHER = `SHA256:${"B".repeat(43)}`;
 
-interface FakeMachine { hostKey: string; files: Map<string, string>; commands: string[]; output?: string; connects: string[]; keys: string[]; down?: boolean }
+interface FakeMachine { hostKey: string; files: Map<string, string>; commands: string[]; output?: string; connects: string[]; keys: string[]; down?: boolean; accepts?: string[] }
 
 function fakeTransport(machine: FakeMachine): SshTransport {
   return {
@@ -21,6 +21,7 @@ function fakeTransport(machine: FakeMachine): SshTransport {
       machine.keys.push(to.privateKey);
       if (machine.down) throw new Error("connect ECONNREFUSED");
       if (!verify(machine.hostKey)) throw new Error("host key refused");
+      if (machine.accepts && !machine.accepts.includes(to.privateKey)) throw new Error("All configured authentication methods failed");
       const missing = (p: string) => new RemoteMissing(`${p}: no such file`);
       const session: SshSession = {
         home: "/home/lyrica",
@@ -96,6 +97,19 @@ describe("machines", () => {
     await expect(workspace.updateMachine(ada.id, "box", { address: "ada@127.0.0.1" })).rejects.toThrow(/account can't change/);
     expect((await workspace.updateMachine(ada.id, "box", { address: "lyrica@127.0.0.1:2222" })).port).toBe(2222);
     await expect(workspace.probeMachine(ada.id, "ada", { name: "srv", address: "root@127.0.0.1", asUser: true })).rejects.toThrow(/never logs in as root/);
+  });
+
+  it("say why the user's own account can't log in when it is already hers on that machine", async () => {
+    const { workspace, add, ada, fake } = await setup();
+    const hers = generateSshKey("test");
+    add({ name: "box", username: "lyrica", privateKey: hers.privateKey });
+    fake.accepts = [hers.privateKey];
+    const own = await workspace.probeMachine(ada.id, "ada", { name: "mine", address: "lyrica@127.0.0.1", asUser: true });
+    expect(own.login).toBe(false);
+    expect(own.problem).toBe("lyrica is already her account on box: sshd reads its keys from /etc/ssh/authorized_keys/lyrica, never ~/.ssh, so a key added as your own can't log in. Use your own account, or box as it is.");
+    // Another account there, or the same one not as the user's own, gets sshd's own words.
+    expect((await workspace.probeMachine(ada.id, "ada", { name: "mine", address: "ada@127.0.0.1", asUser: true })).problem).toBe("All configured authentication methods failed");
+    expect((await workspace.probeMachine(ada.id, "ada", { name: "again", address: "lyrica@127.0.0.1" })).problem).toBe("All configured authentication methods failed");
   });
 
   it("are tried as saved by Replace key: their own key, account and address, with no new pair", async () => {

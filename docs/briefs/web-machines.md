@@ -81,4 +81,6 @@ Replace key, found broken by the remote control tests (2026-11-04): the page
 probed with an empty address, and the server tried a new key instead of hers,
 so the page never reached Fingerprint. Fixed the same day in #780: the probe takes
 `replace` and tries the machine as saved, and the Fingerprint step says
-whether her login worked.
+whether her login worked. The same tests found the Name and address step
+had no button (only blur or Enter reached the machine; now **Next**), and the
+drawer's pool warning was a tooltip only (now warn text under the field).

@@ -1570,7 +1570,7 @@ NAS, and Proxmox nodes. Decided 2026-10-11 from
   turn ran somewhere else (the sandbox or another machine), whatever the
   modes, so output from one place can't quietly steer her onto another.
 - **A floor no mode lifts** for `write` and `edit` on a machine: `~/.ssh/`,
-  `/etc/ssh/` and `/etc/sudoers*` are refused.
+  `/etc/ssh/` and `/etc/sudoers*` are refused, before any approval card.
 - **Output** is capped as in the sandbox, stripped of terminal control
   sequences, and private-key blocks in it are replaced with a marker before
   she or memory sees them. Secrets live on machines, which is why a machine

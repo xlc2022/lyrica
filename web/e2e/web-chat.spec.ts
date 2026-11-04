@@ -1705,7 +1705,7 @@ test("Machines lists none, and Add machine reaches a machine before anything is 
   await expect(page.getByRole("button", { name: "Copy" })).toHaveCount(0);
   await page.getByRole("textbox", { name: "Name" }).fill("nowhere");
   await page.getByRole("textbox", { name: "Address" }).fill("lyrica@nowhere.invalid");
-  await page.getByRole("textbox", { name: "Address" }).press("Enter");
+  await page.getByRole("button", { name: "Next" }).click();
   // The key and its setup commands come even when the host can't be resolved; Test says why.
   await expect(page.getByRole("button", { name: "Copy" })).toBeVisible();
   await expect(page.getByText("/etc/ssh/authorized_keys")).toBeVisible();

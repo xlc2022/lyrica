@@ -148,7 +148,8 @@ existed before became general machines at Ask.
   root-owned keys file.
 - **A floor no mode lifts:** `write` and `edit` on a machine refuse any path
   in a `.ssh` folder, under `/etc/ssh/`, or `/etc/sudoers*`, before and after
-  following symlinks.
+  following symlinks. The path as given is refused before any approval card
+  (`onFloor`, in the extension's gate), the resolved one at the machine.
 - **Commands** run as `ssh <machine> <command>` would run them, in the
   account's own environment after a `cd` to the folder given, with
   `/usr/sbin` and `/sbin` added to the end of its PATH (Debian's sshd leaves
@@ -265,6 +266,11 @@ lists what it gives her (`accountWarnings` in `web/src/Machines.tsx`):
 - in a general thread on a cloud model, what she reads there can reach the
   cloud provider. A private machine keeps its rules: private threads only,
   so no cloud model.
+
+An account that is already hers on that machine (a saved machine with the
+same address and account) can't be added as the user's own: her setup's
+`Match` block makes sshd read `/etc/ssh/authorized_keys/<account>`, never
+`~/.ssh`, so the test fails and says why.
 
 Saving needs the machine's name typed. The account is fixed once added:
 a changed address may not name another account (remove the machine and add

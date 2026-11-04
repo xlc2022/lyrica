@@ -553,6 +553,13 @@ describe("workspace tools on a machine", () => {
     expect(asked).toEqual([]);
   });
 
+  it("refuse a write to SSH's or sudo's files on a machine before asking", async () => {
+    const { commands, results } = await run("auto", [fauxToolCall("write", { path: "/home/lyrica/.ssh/authorized_keys", content: "x", machine: "nas" }, { id: "1" })], { machines: [nas], approve: yes });
+    expect(results[0]).toContain("/home/lyrica/.ssh/authorized_keys is SSH's or sudo's; write and edit never change it on a machine");
+    expect(asked).toEqual([]);
+    expect(commands).toEqual([]);
+  });
+
   it("ask before a suspect command in Auto, unless it was allowed in this thread", async () => {
     const auto: ThreadMachine = { name: "nas", kind: "ssh", limit: "auto", root: null };
     const first = await run("auto", [fauxToolCall("bash", { command: "sudo reboot", machine: "nas" }, { id: "1" })], { machines: [auto], approve: yes });

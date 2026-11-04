@@ -186,6 +186,7 @@ function MachineDrawer({ userId, machine, onSaved, onClose }: { userId: string; 
               {(Object.keys(POOLS) as Pool[]).map((p) => <option key={p} value={p}>{POOLS[p]}</option>)}
             </select>
           </label>
+          {pool !== machine.pool && <p className="warn-text" role="note">A new pool takes it from every thread that has it.</p>}
         </fieldset>
         <fieldset className="group" disabled={busy}>
           <legend>Mode limit</legend>
@@ -195,7 +196,7 @@ function MachineDrawer({ userId, machine, onSaved, onClose }: { userId: string; 
         </fieldset>
         <ErrorText error={error} />
         <div className="row drawer-foot">
-          <button type="submit" className="primary" disabled={busy || !changed} title={pool !== machine.pool ? "A new pool takes it from every thread that has it" : undefined}>Save</button>
+          <button type="submit" className="primary" disabled={busy || !changed}>Save</button>
         </div>
       </form>
     </aside>
@@ -342,6 +343,9 @@ export function MachinePage({ ctx, name }: { ctx: ShellContext; name?: string })
                 {accountWarnings(form.pool).map((w) => <li key={w}>{w}</li>)}
               </ul>
             )}
+            <div className="row">
+              <button type="submit" className={step === "address" ? "primary" : ""} disabled={!ready || probingBusy}>Next</button>
+            </div>
             {step === "address" && <ErrorText error={probeError} />}
           </form>
         )}

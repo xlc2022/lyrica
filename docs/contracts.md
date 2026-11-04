@@ -2495,7 +2495,7 @@ proxmox(t, machine, action, vm?): Promise<string>  // one PROXMOX_ACTIONS call o
 callMode(t, machine?): PermissionMode     // on a machine, stricterMode(effective(t).mode, its limit)
 probeMachine(userId, login, { kind?, name, address, draft?, asUser?, replace? }): Promise<MachineProbe>
   // SSH: a key pair kept in memory for an hour (by `draft`), its keyLine and setup steps, the host key seen,
-  // whether the login worked, offNetwork; asUser gives the own-account setup (no root); account root refused. Proxmox: the certificate's fingerprint and the pveum setup, no token sent.
+  // whether the login worked, offNetwork; asUser gives the own-account setup (no root), and a failed login on an account that is already hers there (a saved machine with the same address and account) says why; account root refused. Proxmox: the certificate's fingerprint and the pveum setup, no token sent.
   // replace (Replace key): the saved SSH machine `name` tried as saved, its own key, account and address; no pair made, address and draft ignored.
   // Saves nothing.
 addMachine(userId, { kind?, name, address, root, pool, limit?, draft? | token?, hostKey, offNetworkConfirmed?, asUser? }): Promise<MachineConfig>
