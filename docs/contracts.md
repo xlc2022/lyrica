@@ -1341,7 +1341,8 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   the same result, or of which two run together in the same batch, returns
   an error telling the model it already has the result and should answer
   or try something different; while the result keeps changing (a running
-  job's output, say) the call runs. Only a digest
+  job's output, say) the call runs, and a `bash` call with `background:
+  true` always runs, since each is its own job. Only a digest
   of each result is kept, in memory, for the run. A plain `sleep` (a `bash` call that only sleeps) starts the
   count over for every call, so polling isn't refused. Two replies in a row
   cut off at the reply limit with a tool call in them also stop the turn (Pi

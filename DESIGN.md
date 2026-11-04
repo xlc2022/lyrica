@@ -421,7 +421,8 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
 - **A turn stops after 100 attempted tool calls or 25 consecutive calls to
   one tool.** The third identical call to a tool is refused with an error
   asking her to answer or try something different, unless a plain sleep
-  came between, as when she polls. Invalid arguments are
+  came between, as when she polls, or the call starts a background
+  command, which is a new job each time. Invalid arguments are
   rejected before execution. Each subagent turn counts separately. A
   stopped turn shows a plain notice with the number of calls; the runtime
   ends the loop, rather than relying on a prompt instruction.

@@ -34,7 +34,7 @@ async function scenario(calls: { name: string; args: JsonObject }[], prompts = 1
       pi.registerProvider(faux.provider);
       // `log` is a running job's output: each call returns more of it.
       for (const name of ["search", "other", "threads", "bash", "log"]) pi.registerTool({ name, label: name, description: name,
-        parameters: Type.Object({ query: Type.Optional(Type.String()), command: Type.Optional(Type.String()), nested: Type.Optional(Type.Object({ a: Type.Number(), b: Type.Number() })) }),
+        parameters: Type.Object({ query: Type.Optional(Type.String()), command: Type.Optional(Type.String()), background: Type.Optional(Type.Boolean()), nested: Type.Optional(Type.Object({ a: Type.Number(), b: Type.Number() })) }),
         execute: async () => { executed++; return { content: [{ type: "text", text: name === "log" ? `line ${executed}` : "result" }], details: {} }; } });
     }, createImageExtension({ enabled: () => { executed++; throw new Error("must not execute"); } } as unknown as ImageTools)] });
   try {
@@ -119,6 +119,12 @@ it("lets a plain sleep repeat, and a call made again after one, since time has p
 it("refuses the third identical call in one batch", async () => {
   const cat = { name: "bash", args: { command: "cat package.json" } };
   expect((await scenario([cat, cat, cat], 1, true)).executed).toBe(2);
+});
+
+it("lets the same command start in the background again and again, in one batch or in turn: each is its own job", async () => {
+  const job = { name: "bash", args: { command: "sleep 600", background: true } };
+  expect((await scenario([job, job, job, job, job], 1, true)).executed).toBe(5);
+  expect((await scenario([job, job, job, job])).executed).toBe(4);
 });
 
 it("lets a call be made again while its result keeps changing, as a running job's output does", async () => {

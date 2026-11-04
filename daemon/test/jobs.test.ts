@@ -57,7 +57,7 @@ describe("background commands", () => {
 });
 
 describe("a stopped background command", () => {
-  it("leaves its notice without waking the thread", async () => {
+  it("leaves no notice when she stopped it herself, and lyricad's stop leaves its notice without waking the thread", async () => {
     const rt = await runtime();
     const dm = await daemon(rt);
     await browser(dm.base).post("/api/unlock", { passphrase: "passphrase" });
@@ -70,7 +70,13 @@ describe("a stopped background command", () => {
     const t = { userId: rt.ada.id, pool: "general", threadId: thread.id };
     const jobs = dm.d.services!.workspace.jobs;
     jobs.start(t, "box", slowTarget().target, "docker compose pull", "/home/lyrica");
-    expect(jobs.stop(t, "j1", "stopped by her")).toBe(true);
+    expect(jobs.stop(t, "j1")).toBe(true);
+    await new Promise((r) => setTimeout(r, 300));
+    expect(model.requests).toHaveLength(0);
+    // Her jobs stop told her already: nothing lands in the thread.
+    expect((await ada.get<MessagePage>(`${path}/messages`)).body.messages.filter((m) => m.role === "notice")).toEqual([]);
+    jobs.start(t, "box", slowTarget().target, "docker compose pull", "/home/lyrica");
+    expect(jobs.stop(t, "j2", "the thread was forgotten")).toBe(true);
     await new Promise((r) => setTimeout(r, 300));
     expect(model.requests).toHaveLength(0);
     const page = (await ada.get<MessagePage>(`${path}/messages`)).body;
