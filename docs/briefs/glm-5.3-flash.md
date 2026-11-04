@@ -1,6 +1,8 @@
 # Brief: GLM 5.3 Flash as a starter
 
-**Status:** Starter merged as #656 (d020902); download retries as #661 (9c7752e).
+**Status:** Starter merged as #656 (d020902); download retries as #661 (9c7752e);
+measurements over a GPU's room set aside in #681 (46b5674); the Q4 starter
+in progress.
 
 Owner: the "Add GLM 5.3 Flash" thread. Tests: on the development
 deployment's host with two RTX PRO 6000 Blackwell cards (102 GB each).
@@ -23,12 +25,15 @@ llama.cpp reads it as `glm5-next`.
 |---|---|---|---|
 | UD-Q2_K_XL | 4 | 108.7 GB | yes, with room to spare |
 | UD-Q3_K_XL | 4 | 147.5 GB | yes, about 40 GiB left for context |
-| UD-Q4_K_XL | 6 | 199.7 GB | no: needs system RAM (out of scope) |
+| UD-Q4_K_XL | 6 | 199.7 GB | no: about 20 GiB of experts stay in system RAM |
 
 The starter is **UD-Q3_K_XL** with `mmproj-F16.gguf`, from
 `unsloth/GLM-5.3-Flash-GGUF` at `a38483c8cd5df544f53d70fb281afe97369d5ab6`:
-the largest that runs wholly on the GPUs. The host checks each file's
-SHA-256 against the hub's as it downloads.
+the largest that runs wholly on the GPUs. A second starter, **GLM 5.3
+Flash (Q4)**, is UD-Q4_K_XL from the same revision, for a host whose
+system RAM allowance (the "System RAM spill" brief) covers what its GPUs
+lack; the dashboard marks it *uses system RAM*. The host checks each
+file's SHA-256 against the hub's as it downloads.
 
 ## What
 
@@ -49,10 +54,14 @@ SHA-256 against the hub's as it downloads.
    only after five tries in a row get no further. A refusal (a missing
    token, a bad link) still fails at once.
 
+4. **The Q4 starter.** Once system RAM spill landed (#663), the operator
+   asked for the next quant up: UD-Q4_K_XL, six parts and the projector,
+   needing 208 GiB, so on two 96 GB GPUs about 20 GiB of expert weights
+   stay in RAM.
+
 ## Out of scope
 
-- Spilling into system RAM, for this model's Q4 or any other: its own
-  thread ("Let models spill into system RAM").
+- How spilling works: its own thread ("Let models spill into system RAM").
 - A vLLM starter (an FP8 copy is about 320 GB).
 
 ## Open
@@ -69,7 +78,8 @@ SHA-256 against the hub's as it downloads.
 
 ## Handoff
 
-Done: starter, fit check, docs (#656); download retries (#661). The
-starter's download on the development host was restarted after drops.
-Next: load the starter there, check the context the host picks, and
-record the result here.
+Done: starter, fit check, docs (#656); download retries (#661); a saved
+measurement over a GPU's room no longer blocks a model (#681); the Q4
+starter. Next: load both starters on the development host, check the
+context the host picks and the Q4's speed with its experts in RAM, and
+record the results here.
