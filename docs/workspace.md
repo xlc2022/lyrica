@@ -897,8 +897,10 @@ background, so it doesn't hold her turn (`core/src/workspace/jobs.ts`).
   (`JOB_WAKE_MS`), so jobs that end close together wake it once with all
   their notices, unless its project is paused or it
   waits for a child slot, when the notice waits in the thread for its next
-  turn. A stopped job never wakes it: she stopped it herself, or `lyricad`
-  did.
+  turn. A job she stopped herself (`jobs stop`, reason `STOPPED_BY_HER`)
+  leaves no notice at all: its result told her, and a notice would cost her
+  a turn for each. One `lyricad` stopped leaves its notice and never wakes
+  it.
 - Lock, a memory wipe, forgetting the thread and stopping `lyricad` stop
   its jobs, and the notice says why where the thread still exists. A crash
   loses them unreported: a sandbox runs with

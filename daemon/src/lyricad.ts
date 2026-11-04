@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   adoptLocalKiwix, adoptLocalSearxng, bootstrap, kiwixAddress, isMounted, codexImage, DEFAULT_NAME, HostRefused, isRestricted, Keyring, Memory, Models, Offline, PersonaProposals, PersonaStore, PRONOUN_PRESETS, searxngAddress, selfName, setSelfName,
-  SystemdCredentials, ThreadPrefs, ThreadShares, Users, WrongPassword, Workspace, finishWipe, jobNotice, homeWiped, homeWipePending, useTailnetProxy, wipePending, wipePools,
+  SystemdCredentials, ThreadPrefs, ThreadShares, Users, WrongPassword, Workspace, finishWipe, jobNotice, STOPPED_BY_HER, homeWiped, homeWipePending, useTailnetProxy, wipePending, wipePools,
   localDate, localTime, serverZone, zoneOf,
   type Argon2Params, type CredentialStore, type Pool, type ThreadsLimits, type User,
 } from "@lyrica/core";
@@ -545,12 +545,14 @@ export class Lyricad implements Drainable {
       },
       // A background command ended: its thread gets a notice, as a background subagent's result, and an idle thread wakes once.
       onJobEnd: (t, job, output) => {
+        // A job she stopped herself: her jobs stop already told her, and a notice would only cost her a turn each.
+        if (job.state === "stopped" && job.reason === STOPPED_BY_HER) return;
         const content = jobNotice(job, output);
         const details = { status: "job", id: randomBytes(8).toString("hex") };
         try {
           delegation.deliver({ user: { id: t.userId }, pool: t.pool, threadId: t.threadId } as Parameters<Delegation["deliver"]>[0], content, details);
           host.delivered(t.userId, t.pool, t.threadId, content, details);
-          // A job she or lyricad stopped (her jobs stop, Lock, shutdown) only leaves its notice: waking then would spend a turn on nothing.
+          // A job lyricad stopped (Lock, shutdown, a forgotten thread) only leaves its notice: waking then would spend a turn on nothing.
           if (job.state === "stopped") return;
           // Jobs that end close together wake the thread once, a few seconds after the first, with all their notices.
           wakeSoon(t, "job", JOB_WAKE);

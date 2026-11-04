@@ -44,7 +44,8 @@ tool each for A and B, prompt lines only where the thread has a machine).
 - A new `jobs` tool: `list` (this thread's jobs: id, where, command, state,
   how long), `output` (a job's kept output so far), `stop` (kills it). Ended
   jobs are kept until 10 newer ones have ended in that thread.
-- When a job ends (exit, killed, timed out, stopped), `lyricad` delivers a
+- When a job ends (exit, killed, timed out, stopped by `lyricad`; a job she
+  stopped herself leaves none, since 2026-11-04), `lyricad` delivers a
   notice into the thread (`status: "job"`), the same encrypted path a
   background subagent's result takes, with the exit code, how long it ran and
   its last 40 lines. An idle thread is woken once to carry on, through the

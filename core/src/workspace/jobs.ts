@@ -11,6 +11,9 @@ export const JOB_LIMITS = { running: 4, kept: 10, timeoutS: 4 * 3600, maxTimeout
 
 export type JobState = "running" | "exited" | "failed" | "timed out" | "stopped";
 
+/** The reason on a job she stopped with `jobs stop`: its result told her, so the end leaves no notice. */
+export const STOPPED_BY_HER = "stopped by her";
+
 export interface JobInfo {
   /** `j<n>`, counted per thread. */
   id: string;
@@ -152,7 +155,7 @@ export class Jobs {
   }
 
   /** Stops a running job. False if it had already ended. */
-  stop(thread: JobThread, id: string, reason = "stopped by her"): boolean {
+  stop(thread: JobThread, id: string, reason: string = STOPPED_BY_HER): boolean {
     const job = this.find(thread, id);
     if (job.state !== "running") return false;
     this.end(job, "stopped", null, reason);

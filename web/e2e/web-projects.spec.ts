@@ -1076,6 +1076,8 @@ test("watching threads: writing in a project's thread leads to a look, shown as 
   const look = page.locator("main .marker[data-type='watching']");
   await expect(look.getByRole("button")).toContainText("Checked the other threads", { timeout: 20_000 });
   await expect(look.getByRole("button")).toContainText("told 1", { timeout: 20_000 });
+  // The look shows live first and its stored copy replaces it, a new element that opens closed: wait for the stored one (it alone has a number).
+  await expect(look).toHaveAttribute("id", /^m-\d+$/);
   await look.getByRole("button").click();
   await expect(look.getByText("Heads up: the plan changed.")).toBeVisible();
   // Looked at Alpha, told Beta.
