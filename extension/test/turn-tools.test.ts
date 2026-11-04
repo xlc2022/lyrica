@@ -35,7 +35,13 @@ async function scenario(calls: { name: string; args: JsonObject }[], prompts = 1
       // `log` is a running job's output: each call returns more of it.
       for (const name of ["search", "other", "threads", "bash", "log"]) pi.registerTool({ name, label: name, description: name,
         parameters: Type.Object({ query: Type.Optional(Type.String()), command: Type.Optional(Type.String()), background: Type.Optional(Type.Boolean()), nested: Type.Optional(Type.Object({ a: Type.Number(), b: Type.Number() })) }),
-        execute: async () => { executed++; return { content: [{ type: "text", text: name === "log" ? `line ${executed}` : "result" }], details: {} }; } });
+        execute: async (_id: string, args: { background?: boolean; query?: string }) => {
+          executed++;
+          // A background bash starts a new job each time, unless the running-jobs cap refuses it, the same way every time.
+          if (name === "bash" && args.background) return args.query === "full" ? { content: [{ type: "text", text: "this thread already has 4 background commands running (j1, j2, j3, j4)" }], isError: true, details: {} }
+            : { content: [{ type: "text", text: `started j${executed}` }], details: {} };
+          return { content: [{ type: "text", text: name === "log" ? `line ${executed}` : "result" }], details: {} };
+        } });
     }, createImageExtension({ enabled: () => { executed++; throw new Error("must not execute"); } } as unknown as ImageTools)] });
   try {
     await loader.reload();
@@ -125,6 +131,11 @@ it("lets the same command start in the background again and again, in one batch 
   const job = { name: "bash", args: { command: "sleep 600", background: true } };
   expect((await scenario([job, job, job, job, job], 1, true)).executed).toBe(5);
   expect((await scenario([job, job, job, job])).executed).toBe(4);
+  // Refused by the running-jobs cap the same way each time, it is a repeat like any other: the third is refused.
+  const full = { name: "bash", args: { command: "tail -f build.log", background: true, query: "full" } };
+  const r = await scenario([full, full, full]);
+  expect(r.executed).toBe(2);
+  expect(r.results[2]).toContain("already have this result");
 });
 
 it("lets a call be made again while its result keeps changing, as a running job's output does", async () => {

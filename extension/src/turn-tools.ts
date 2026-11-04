@@ -106,8 +106,8 @@ export function createTurnToolsExtension(): ExtensionFactory {
       const seen = repeats.get(key) ?? [];
       const last = seen.slice(-(MAX_IDENTICAL_TOOL_CALLS - 1));
       const together = [...running.values()].filter((k) => k === key).length;
-      if (isBackground(e.toolName, e.args)) { /* a job each time, never the same result */ }
-      else if (together >= MAX_IDENTICAL_TOOL_CALLS - 1 || (last.length === MAX_IDENTICAL_TOOL_CALLS - 1 && last.every((r) => r === last[0]))) refused.set(e.toolCallId, isThreadRead(e.toolName, e.args)
+      // A background call is a job each time, so identical ones in a batch each start; a repeated result (the jobs cap's refusal, say) is still a repeat.
+      if ((!isBackground(e.toolName, e.args) && together >= MAX_IDENTICAL_TOOL_CALLS - 1) || (last.length === MAX_IDENTICAL_TOOL_CALLS - 1 && last.every((r) => r === last[0]))) refused.set(e.toolCallId, isThreadRead(e.toolName, e.args)
         ? `You already read this thread twice with these arguments. If it is still working: ${CHILD_WAKES}`
         : "You already have this result: this tool was called with identical arguments twice and returned the same both times. Answer or try something different.");
       else running.set(e.toolCallId, key);
