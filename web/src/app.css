@@ -383,8 +383,9 @@ button.jump-latest { font-size: 13px; min-height: var(--tap); }
 .code-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 4px 0 12px; }
 .code-lang { font: 12px/1 var(--mono); color: var(--muted); }
 .code-copy { margin-left: auto; }
-.prose .code-block pre { margin: 0; padding: 2px 12px 10px; border: 0; border-radius: 0; background: none; font-size: 12px; line-height: 1.5; white-space: pre; overflow-x: auto; }
-.prose .code-block pre code { font-size: inherit; }
+/* A root step's card has the same blocks outside a message (docs/ux.md §6), so a long command scrolls there too. */
+.prose .code-block pre, .question-card .code-block pre { margin: 0; padding: 2px 12px 10px; border: 0; border-radius: 0; background: none; font-size: 12px; line-height: 1.5; white-space: pre; overflow-x: auto; }
+.prose .code-block pre code, .question-card .code-block pre code { font-size: inherit; }
 .prose blockquote { margin-left: 0; padding-left: 12px; border-left: 3px solid var(--line); color: var(--muted); }
 .prose table { border-collapse: collapse; display: block; overflow-x: auto; font-size: 13px; }
 .prose th, .prose td { border: 1px solid var(--line); padding: 4px 8px; text-align: left; vertical-align: top; overflow-wrap: break-word; }
