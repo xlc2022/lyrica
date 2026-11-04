@@ -19,23 +19,39 @@ export interface RootStep {
   script: string;
   why: string;
   sudoers?: SudoersLine[];
+  /** With `sudoers`: what the user runs to add the lines, checked by visudo before they reach sudo (`sudoersCommand`). */
+  sudoersCommand?: string;
 }
 
 export interface SudoersLine { line: string; warning?: string }
 
-/** The file and the way to add lines to it. */
+/** The file her offered lines go to, and what the card's command does with them. */
 export const SUDOERS_FILE = "/etc/sudoers.d/lyrica";
-export const SUDOERS_HOW = `sudo visudo -f ${SUDOERS_FILE}, then sudo visudo -c`;
+export const SUDOERS_HOW = "it keeps the lines the file already has, checks the result with visudo -c and installs it only when that passes";
 
 const quote = (s: string) => `'${s.replaceAll("'", "'\\''")}'`;
 
 /**
+ * The command on the card that adds offered lines to the sudoers file, ready to paste: the file's own lines and
+ * then these, each once; put beside the file as `lyrica.new` with root's ownership and mode (sudo ignores a
+ * name with a dot, so a bad file can't lock anyone out); checked there by `visudo -c`; moved over the file only
+ * when the check passes. The person never opens an editor, and nothing unchecked reaches sudo.
+ */
+export const sudoersCommand = (lines: string[]): string =>
+  `f=$(mktemp) && { sudo cat ${SUDOERS_FILE} 2>/dev/null; printf '%s\\n' ${lines.map(quote).join(" ")}; } | awk '!seen[$0]++' > "$f"`
+  + ` && sudo install -m 0440 -o root -g root "$f" ${SUDOERS_FILE}.new && sudo visudo -c -f ${SUDOERS_FILE}.new && sudo mv -f ${SUDOERS_FILE}.new ${SUDOERS_FILE}; sudo rm -f ${SUDOERS_FILE}.new; rm -f "$f"`;
+
+/** The shell the card runs a script with: `sh` when its first line asks for sh or dash, else bash. */
+export const scriptShell = (script: string): "sh" | "bash" => (/^#!\s*(?:\/usr)?\/bin\/(?:env\s+)?(?:sh|dash)(?:\s|$)/.test(script) ? "sh" : "bash");
+
+/**
  * The command on the card for a script at `path` with this hash. Her account
  * owns the script, so it is copied first and the copy is checked and run:
- * a change after the check can't reach root.
+ * a change after the check can't reach root. The copy runs under `sh` when
+ * the script's first line says so, else bash.
  */
-export const rootCommand = (path: string, sha256: string): string =>
-  `f=$(mktemp) && cat ${quote(path)} > "$f" && echo ${quote(`${sha256}  `)}"$f" | sha256sum -c --quiet - && sudo bash "$f"; rm -f "$f"`;
+export const rootCommand = (path: string, sha256: string, shell: "sh" | "bash" = "bash"): string =>
+  `f=$(mktemp) && cat ${quote(path)} > "$f" && echo ${quote(`${sha256}  `)}"$f" | sha256sum -c --quiet - && sudo ${shell} "$f"; rm -f "$f"`;
 
 /** Programs a sudoers line may never name: they run anything. */
 const NEVER = new Set(["bash", "sh", "dash", "zsh", "fish", "ksh", "csh", "tcsh", "ash", "mksh", "yash", "rbash", "pwsh", "su", "sudo", "doas", "runuser", "env",
@@ -121,7 +137,7 @@ export function rootStep(input: { machine: string; path: string; why: string; su
   if (HIDDEN.test(script)) throw new Error("the script has control or invisible characters (other than tab and newline), so the card couldn't show what runs");
   const sha256 = createHash("sha256").update(bytes).digest("hex");
   return {
-    machine: input.machine, path: input.path, sha256, command: rootCommand(input.path, sha256), script, why,
-    ...(input.sudoers?.length ? { sudoers: checkSudoers(input.sudoers, account) } : {}),
+    machine: input.machine, path: input.path, sha256, command: rootCommand(input.path, sha256, scriptShell(script)), script, why,
+    ...(input.sudoers?.length ? { sudoers: checkSudoers(input.sudoers, account), sudoersCommand: sudoersCommand(input.sudoers) } : {}),
   };
 }

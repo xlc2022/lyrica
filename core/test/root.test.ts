@@ -49,6 +49,24 @@ describe("a root step", () => {
     expect(step.command).toBe(`f=$(mktemp) && cat '/home/lyrica/it'\\''s.sh' > "$f" && echo '${step.sha256}  '"$f" | sha256sum -c --quiet - && sudo bash "$f"; rm -f "$f"`);
     expect(step.why).toBe("Installs Docker.");
     expect(step.sudoers).toBeUndefined();
+    // The copy runs under the shell the first line asks for: sh or dash as sh, anything else (or no shebang) as bash.
+    for (const first of ["#!/bin/sh", "#!/usr/bin/sh", "#!/usr/bin/env sh", "#!/bin/dash", "#! /bin/sh -e"]) {
+      expect(rootStep({ machine: "box", path: "/x.sh", why: "w" }, Buffer.from(`${first}\necho hi\n`), "u").command).toContain('sudo sh "$f"');
+    }
+    for (const first of ["#!/bin/bash", "#!/usr/bin/env bash", "#!/bin/shell", "echo hi"]) {
+      expect(rootStep({ machine: "box", path: "/x.sh", why: "w" }, Buffer.from(`${first}\necho hi\n`), "u").command).toContain('sudo bash "$f"');
+    }
+  });
+
+  it("carries the command that adds offered lines: the file's own lines first, each line quoted, checked beside the file by visudo before it replaces it", () => {
+    const l1 = line("/usr/bin/systemctl restart ssh"), l2 = line("/usr/bin/nvidia-smi \"\"");
+    const step = rootStep({ machine: "box", path: "/home/lyrica/x.sh", why: "w", sudoers: [l1, l2] }, Buffer.from("echo hi\n"), "lyrica");
+    expect(step.sudoers?.map((l) => l.line)).toEqual([l1, l2]);
+    expect(step.sudoersCommand).toBe("f=$(mktemp) && { sudo cat /etc/sudoers.d/lyrica 2>/dev/null; printf '%s\\n' "
+      + `'${l1}' '${l2}'; } | awk '!seen[$0]++' > "$f" && sudo install -m 0440 -o root -g root "$f" /etc/sudoers.d/lyrica.new`
+      + ' && sudo visudo -c -f /etc/sudoers.d/lyrica.new && sudo mv -f /etc/sudoers.d/lyrica.new /etc/sudoers.d/lyrica; sudo rm -f /etc/sudoers.d/lyrica.new; rm -f "$f"');
+    // The lines are checked first, so a refused one never reaches the command.
+    expect(() => rootStep({ machine: "box", path: "/x.sh", why: "w", sudoers: [line("/usr/bin/apt-get install *")] }, Buffer.from("a"), "lyrica")).toThrow();
   });
 
   it("refuses a script too long or not text, a relative path and an empty reason", () => {

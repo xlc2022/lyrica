@@ -172,7 +172,7 @@ describe("machines", () => {
     workspace.setHostKey(thread("g").userId, "nas", OTHER);
     expect(settings.machine("nas")!.state).toBeNull();
     await workspace.targetFor(thread("g"), "nas").ops().bash.exec("uptime", "/", { onData: () => {} });
-    expect(fake.commands).toEqual(["cd '/home/lyrica' && uptime"]);
+    expect(fake.commands).toEqual([`export PATH="$PATH:/usr/sbin:/sbin" && cd '/home/lyrica' && uptime`]);
     expect(settings.machine("nas")!.state?.kind).toBe("online");
   });
 

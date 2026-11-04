@@ -83,7 +83,9 @@ tool each for A and B, prompt lines only where the thread has a machine).
   line whose program can reach root anyway (package managers, `docker`,
   `systemctl edit`/`link`, `chmod`, `chown`, `cp`, `mv`, `tee`, `dd`,
   `install`, `rsync`, `tar`, `mount`). The card shows the lines, the warnings
-  and `visudo -f /etc/sudoers.d/lyrica` then `visudo -c`. She never writes
+  and, since the remote control tests (2026-11-04), the command that adds
+  them: checked by `visudo -c` before it replaces the file, so the person
+  pastes one command instead of opening visudo. She never writes
   sudoers herself: the existing floor refuses `/etc/sudoers*` to `write` and
   `edit`.
 - Off in Plan mode. On a machine the tool counts as a `read` for the mode.
