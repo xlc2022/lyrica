@@ -206,7 +206,8 @@ export class SshTarget implements ExecutionTarget {
           const out = capOutput(onData);
           const clean = cleanOutput((d) => out.push(d));
           try {
-            const code = await (await this.session()).exec(`cd ${quote(dir)} && ${command}`, { onData: (d) => clean.push(d), signal, timeout });
+            // As `ssh host cmd` runs it, in the account's own environment; Debian's sshd leaves /usr/sbin and /sbin off a plain user's PATH, so they go on its end.
+            const code = await (await this.session()).exec(`export PATH="$PATH:/usr/sbin:/sbin" && cd ${quote(dir)} && ${command}`, { onData: (d) => clean.push(d), signal, timeout });
             return { exitCode: code };
           } finally {
             clean.end();

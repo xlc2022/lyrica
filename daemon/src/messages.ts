@@ -50,7 +50,8 @@ export function rootPart(tool: string, details: unknown): RootStep | undefined {
   const str = (v: unknown): v is string => typeof v === "string";
   if (![r.machine, r.path, r.sha256, r.command, r.script, r.why].every(str)) return undefined;
   const sudoers = Array.isArray(r.sudoers) ? r.sudoers.filter((l) => str(l?.line)).map((l) => ({ line: l.line, ...(str(l.warning) ? { warning: l.warning } : {}) })) : undefined;
-  return { machine: r.machine!, path: r.path!, sha256: r.sha256!, command: r.command!, script: r.script!, why: r.why!, ...(sudoers?.length ? { sudoers } : {}) };
+  return { machine: r.machine!, path: r.path!, sha256: r.sha256!, command: r.command!, script: r.script!, why: r.why!,
+    ...(sudoers?.length ? { sudoers, ...(str(r.sudoersCommand) ? { sudoersCommand: r.sudoersCommand } : {}) } : {}) };
 }
 
 /** Fixed refusal metadata only; no provider text passes into the API. */

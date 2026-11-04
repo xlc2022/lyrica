@@ -1688,8 +1688,9 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   `ThreadsHost.rootScript?(from, machine, path): Promise<{ bytes, account }>`
   exists, never in an ordinary child thread): `rootStep(input, bytes,
   account)` builds the `RootStep` `{ machine, path, sha256, command, script,
-  why, sudoers?: { line, warning? }[] }` (`checkSudoers`, `rootCommand`,
-  `ROOT_LIMITS`), returned as the result's `details.root`; the daemon passes
+  why, sudoers?: { line, warning? }[], sudoersCommand? }` (`checkSudoers`,
+  `rootCommand`, `scriptShell`, `sudoersCommand`, `ROOT_LIMITS`), returned as the result's
+  `details.root`; the daemon passes
   it on as `root` on the tool part and the `tool_end` event (`rootPart`).
   See [workspace.md](workspace.md#root-steps).
 - **Workspace extension** (`createWorkspaceExtension(tools: ThreadTools)`):

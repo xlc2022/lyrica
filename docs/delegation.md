@@ -234,7 +234,8 @@ thread itself: before her first edit, however small, she turns on code mode
 with a task, and turns it off when the coding is done. Outside a project
 chat, her first `edit` or `write` of a session with code mode off carries
 `CODE_NUDGE` (`ThreadsHost.codeOn`), since she once coded a whole change
-without it. She starts a `code: true` child only when the user asks for
+without it; a write on a machine (a root step's script, a config file)
+doesn't, since that isn't her coding. She starts a `code: true` child only when the user asks for
 one, and delegates a small side change to coder. A project chat splits a
 build with several parts even when they fit together: one `code: true`
 thread first sets up the repository and the shared interfaces, then one

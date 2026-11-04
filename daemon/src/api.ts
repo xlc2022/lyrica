@@ -1318,10 +1318,12 @@ export type MessagePart =
   /** The thread was compacted: tokens before and (estimated) after, and the summary that replaced the older messages. */
   | { type: "compacted"; before: number; after?: number; summary: string };
 
-/** A root step's card (core RootStep): the script she wrote on a machine, its hash, the command that checks it and runs it, and any sudoers lines offered. */
+/** A root step's card (core RootStep): the script she wrote on a machine, its hash, the command that checks it and runs it, and any sudoers lines offered with the command that adds them. */
 export interface RootStep {
   machine: string; path: string; sha256: string; command: string; script: string; why: string;
   sudoers?: { line: string; warning?: string }[];
+  /** With `sudoers`: the command that adds the lines, checked by visudo first (absent on a card from before it existed). */
+  sudoersCommand?: string;
 }
 
 /** A `delegate` call's subagent threads, so its card can open them; a subagent's carries its role and the model it ran on. */

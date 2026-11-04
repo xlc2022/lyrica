@@ -32,7 +32,7 @@ function Block({ label, text }: { label: string; text: string }) {
   </div>;
 }
 
-/** What a root step's card shows: why, the command (which checks the hash first), the hash, the script, and any sudoers lines. */
+/** What a root step's card shows: why, the command (which checks the hash first), the hash, the script, and any sudoers lines with the command that adds them (a card from before that command existed names visudo instead). */
 function RootDetails({ root }: { root: RootStep }) {
   return <div className="root-step">
     <p>{root.why}</p>
@@ -42,7 +42,7 @@ function RootDetails({ root }: { root: RootStep }) {
     {root.sudoers && <>
       <Block label="Sudoers" text={root.sudoers.map((l) => l.line).join("\n")} />
       {root.sudoers.filter((l) => l.warning).map((l, i) => <p key={i} className="warn-text">{`${l.line.split(" ").slice(3).join(" ")}: ${l.warning}.`}</p>)}
-      <p className="muted mono">sudo visudo -f /etc/sudoers.d/lyrica</p>
+      {root.sudoersCommand ? <Block label="Command" text={root.sudoersCommand} /> : <p className="muted mono">sudo visudo -f /etc/sudoers.d/lyrica</p>}
     </>}
   </div>;
 }

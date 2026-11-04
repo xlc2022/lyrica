@@ -46,6 +46,19 @@ describe("question cards", () => {
     expect(html).not.toContain(args.context);
     if (typeof answer === "number") expect(html).toContain("<svg");
   });
+  it("shows a root step's sudoers lines with the command that adds them, or visudo on a card from before that command", () => {
+    const root = { machine: "box", path: "/home/ada/x.sh", sha256: "ab", command: "f=$(mktemp) && sudo bash \"$f\"", script: "echo hi", why: "Restarts ssh.",
+      sudoers: [{ line: "ada ALL=(root) NOPASSWD: /usr/bin/apt-get update", warning: "a package can run any script as root" }] };
+    const html = (r: typeof root & { sudoersCommand?: string }) =>
+      renderToStaticMarkup(createElement(QuestionCard, { args: { machine: "box", why: "Restarts ssh." }, name: "run_as_root", root: r, state, base: "/thread", onChange: vi.fn() }));
+    const withCommand = html({ ...root, sudoersCommand: "f=$(mktemp) && sudo visudo -c -f /etc/sudoers.d/lyrica.new" });
+    expect(withCommand).toContain("Run as root on box?");
+    expect(withCommand).toContain("sudo visudo -c -f /etc/sudoers.d/lyrica.new");
+    expect(withCommand).toContain("apt-get update: a package can run any script as root.");
+    expect(withCommand.match(/class="code-lang">Command</g)).toHaveLength(2);
+    expect(withCommand).not.toContain("sudo visudo -f /etc/sudoers.d/lyrica<");
+    expect(html(root)).toContain("sudo visudo -f /etc/sudoers.d/lyrica");
+  });
   it("uses the same question and controls on the project card", () => {
     vi.mocked(useLoad).mockReturnValue(loaded({ args, state }));
     const html = renderToStaticMarkup(createElement(ProjectQuestion, { base: "/thread", n: 12, onChange: vi.fn() }));

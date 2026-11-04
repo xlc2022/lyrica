@@ -2,7 +2,7 @@ import type { ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import { Type, type Static } from "typebox";
 import { StringEnum } from "@earendil-works/pi-ai";
 import {
-  ASK_GUIDELINE, CHILD_WAKES, isQuestionCall, ROOT_LIMITS, ROOT_TOOL, rootStep, SUDOERS_HOW, normalizeThreadArguments, cleanAsk, CHILD_THREAD_GUIDELINES, cleanSteps, MENTION_GUIDELINE, pickThread, PROJECT_CHAT_GUIDELINES, PROJECT_THREAD_GUIDELINES, STEPS_GUIDELINE, STEPS_LIMITS, threadLine, describe, parseSchedule, ROUTINE_GUIDELINE, WAKEUP_GUIDELINE, WAKEUP_LIMITS, WATCH_GUIDELINE,
+  ASK_GUIDELINE, CHILD_WAKES, isQuestionCall, ROOT_LIMITS, ROOT_TOOL, rootStep, SUDOERS_FILE, SUDOERS_HOW, normalizeThreadArguments, cleanAsk, CHILD_THREAD_GUIDELINES, cleanSteps, MENTION_GUIDELINE, pickThread, PROJECT_CHAT_GUIDELINES, PROJECT_THREAD_GUIDELINES, STEPS_GUIDELINE, STEPS_LIMITS, threadLine, describe, parseSchedule, ROUTINE_GUIDELINE, WAKEUP_GUIDELINE, WAKEUP_LIMITS, WATCH_GUIDELINE,
   type ChildInfo, type StartRequest, type ThreadsLimits,
 } from "@lyrica/core";
 import { askCompaction, COMPACT_GUIDELINES, type ContextMeter } from "./context.ts";
@@ -209,6 +209,8 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
     let codeNudged = false;
     pi.on("tool_result", (e) => {
       if (codeNudged || !host?.code || !host.codeOn || inProjectChat() || e.isError || (e.toolName !== "edit" && e.toolName !== "write")) return;
+      // A file on a machine (a script for a root step, a config) isn't her coding: the nudge is for the thread's own workspace.
+      if (e.input.machine) return;
       if (host.codeOn(thread)) return;
       codeNudged = true;
       return { content: [...e.content, { type: "text" as const, text: CODE_NUDGE }] };
@@ -498,7 +500,7 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
       pi.registerTool({
         name: ROOT_TOOL,
         label: "Run as root",
-        description: `Ask the person, on a card, to run as root a script you wrote with write on one of your machines; the answer comes in a later turn. Optionally offer sudoers lines for a root command needed again (one command, full path, fixed arguments).`,
+        description: `Ask the person, on a card, to run as root a script you wrote with write on one of your machines; the answer comes in a later turn. Optionally offer sudoers lines for a root command needed again (one command, full path, fixed arguments); the card carries the command that adds them.`,
         promptSnippet: "hand a root step on a machine to the person, on a card",
         parameters: Type.Object({
           machine: Type.String({ description: "One of your machines, by name." }),
@@ -515,7 +517,7 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
           store.askQuestion(thread.threadId, n);
           await host.asked?.(thread);
           return {
-            content: [{ type: "text" as const, text: `The root step is on a card, with the hash ${step.sha256}: \`${step.command}\`${step.sudoers ? `, and ${step.sudoers.length} sudoers line(s) to add with ${SUDOERS_HOW}` : ""}. Carry on with what doesn't depend on it, or end the turn; the answer arrives in a later turn, and then check that it worked.` }],
+            content: [{ type: "text" as const, text: `The root step is on a card, with the hash ${step.sha256}: \`${step.command}\`${step.sudoers ? `, and ${step.sudoers.length} sudoers line(s) with the command that adds them to ${SUDOERS_FILE} (${SUDOERS_HOW})` : ""}. Carry on with what doesn't depend on it, or end the turn; the answer arrives in a later turn, and then check that it worked.` }],
             details: { root: step },
           };
         },

@@ -19,23 +19,44 @@ export interface RootStep {
   script: string;
   why: string;
   sudoers?: SudoersLine[];
+  /** With `sudoers`: what the user runs to add the lines, checked by visudo before they reach sudo (`sudoersCommand`). */
+  sudoersCommand?: string;
 }
 
 export interface SudoersLine { line: string; warning?: string }
 
-/** The file and the way to add lines to it. */
+/** The file her offered lines go to, and what the card's command does with them. */
 export const SUDOERS_FILE = "/etc/sudoers.d/lyrica";
-export const SUDOERS_HOW = `sudo visudo -f ${SUDOERS_FILE}, then sudo visudo -c`;
+export const SUDOERS_HOW = "it keeps the lines the file already has, checks the result with visudo -c and installs it only when that passes";
 
 const quote = (s: string) => `'${s.replaceAll("'", "'\\''")}'`;
 
 /**
+ * The command on the card that adds offered lines to the sudoers file, ready to paste. It reads the file's own
+ * lines in a step of its own, so a failed sudo (a mistyped password) stops the chain instead of installing the
+ * new lines alone; then the old lines (their last one given its newline) and the new, each once; put beside the
+ * file as `lyrica.new` with root's ownership and mode (sudo ignores a name with a dot, so a bad file can't lock
+ * anyone out); checked there by `visudo -c`; moved over the file only when the check passes. The cleanup keeps
+ * the chain's status and never prompts (`sudo -n`). The person never opens an editor, and nothing unchecked
+ * reaches sudo. `file` is the card's `/etc/sudoers.d/lyrica`; a test gives its own.
+ */
+export const sudoersCommand = (lines: string[], file = SUDOERS_FILE): string =>
+  `f=$(mktemp) && g=$(mktemp) && { sudo test ! -e ${file} || sudo cat ${file}; } > "$f" && { awk 1 "$f"; printf '%s\\n' ${lines.map(quote).join(" ")}; } | awk '!seen[$0]++' > "$g"`
+  + ` && sudo install -m 0440 -o root -g root "$g" ${file}.new && sudo visudo -c -f ${file}.new && sudo mv -f ${file}.new ${file}; rc=$?; sudo -n rm -f ${file}.new 2>/dev/null; rm -f "$f" "$g"; (exit $rc)`;
+
+/** The shell the card runs a script with: `sh` when its first line asks for sh or dash, else bash. */
+export const scriptShell = (script: string): "sh" | "bash" => (/^#!\s*(?:\/usr)?\/bin\/(?:env\s+)?(?:sh|dash)(?:\s|$)/.test(script) ? "sh" : "bash");
+
+/**
  * The command on the card for a script at `path` with this hash. Her account
  * owns the script, so it is copied first and the copy is checked and run:
- * a change after the check can't reach root.
+ * a change after the check can't reach root. The copy runs under `sh` when
+ * the script's first line says so, else bash. The cleanup keeps the chain's
+ * exit status (`(exit $rc)` sets it without leaving the person's shell), so
+ * a refused hash or a failed script shows as a failure, not as the rm's 0.
  */
-export const rootCommand = (path: string, sha256: string): string =>
-  `f=$(mktemp) && cat ${quote(path)} > "$f" && echo ${quote(`${sha256}  `)}"$f" | sha256sum -c --quiet - && sudo bash "$f"; rm -f "$f"`;
+export const rootCommand = (path: string, sha256: string, shell: "sh" | "bash" = "bash"): string =>
+  `f=$(mktemp) && cat ${quote(path)} > "$f" && echo ${quote(`${sha256}  `)}"$f" | sha256sum -c --quiet - && sudo ${shell} "$f"; rc=$?; rm -f "$f"; (exit $rc)`;
 
 /** Programs a sudoers line may never name: they run anything. */
 const NEVER = new Set(["bash", "sh", "dash", "zsh", "fish", "ksh", "csh", "tcsh", "ash", "mksh", "yash", "rbash", "pwsh", "su", "sudo", "doas", "runuser", "env",
@@ -120,8 +141,10 @@ export function rootStep(input: { machine: string; path: string; why: string; su
   // What the card shows must be what bash reads: no control or invisible format characters besides tab and newline.
   if (HIDDEN.test(script)) throw new Error("the script has control or invisible characters (other than tab and newline), so the card couldn't show what runs");
   const sha256 = createHash("sha256").update(bytes).digest("hex");
+  // The command carries the lines as the card shows them: checked and trimmed.
+  const sudoers = input.sudoers?.length ? checkSudoers(input.sudoers, account) : undefined;
   return {
-    machine: input.machine, path: input.path, sha256, command: rootCommand(input.path, sha256), script, why,
-    ...(input.sudoers?.length ? { sudoers: checkSudoers(input.sudoers, account) } : {}),
+    machine: input.machine, path: input.path, sha256, command: rootCommand(input.path, sha256, scriptShell(script)), script, why,
+    ...(sudoers ? { sudoers, sudoersCommand: sudoersCommand(sudoers.map((l) => l.line)) } : {}),
   };
 }

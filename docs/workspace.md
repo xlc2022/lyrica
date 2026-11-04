@@ -127,7 +127,9 @@ existed before became general machines at Ask.
 - **Approvals are bound to what was shown.** A request for a machine carries
   the machine, the command or path, and the folder a command runs in. The
   call runs only if its arguments are still exactly those; anything else is
-  refused. A request is denied on Stop, on timeout, or with nobody to ask, so
+  refused. A refused call's result tells her the person declined it, or
+  nobody answered in time, and not to do it another way or guess why
+  (`NOT_APPROVED`). A request is denied on Stop, on timeout, or with nobody to ask, so
   none outlives its turn.
 - **Suspect commands always ask** on a machine, in every mode, with a warning
   sentence (`suspectCommand`, `SUSPECT_COMMANDS` in
@@ -147,6 +149,10 @@ existed before became general machines at Ask.
 - **A floor no mode lifts:** `write` and `edit` on a machine refuse any path
   in a `.ssh` folder, under `/etc/ssh/`, or `/etc/sudoers*`, before and after
   following symlinks.
+- **Commands** run as `ssh <machine> <command>` would run them, in the
+  account's own environment after a `cd` to the folder given, with
+  `/usr/sbin` and `/sbin` added to the end of its PATH (Debian's sshd leaves
+  them off a plain user's), so `shutdown` or `sshd -T` is found.
 - **Output** of commands is capped as in the sandbox, stripped of terminal
   control sequences, and private-key blocks are replaced with `[private key
   removed]` (PEM and OpenSSH keys, and PGP private key blocks). `read`
@@ -296,12 +302,22 @@ the card is for machines without it. The lines she may *offer* on a card
   tool's result (`RootStep`): her `why`, the command, the hash and the
   script. Her account owns the script, so the command copies it first and
   checks and runs the copy: `f=$(mktemp) && cat '<path>' > "$f" && echo
-  '<sha256>  '"$f" | sha256sum -c --quiet - && sudo bash "$f"; rm -f "$f"`.
-  A script changed after the card was made, or during the run, doesn't
-  reach root.
+  '<sha256>  '"$f" | sha256sum -c --quiet - && sudo bash "$f"; rc=$?; rm -f
+  "$f"; (exit $rc)` (`sudo sh` when the script's first line is `#!/bin/sh`
+  or dash, `scriptShell`; the cleanup keeps the chain's exit status, so a
+  refused hash shows as a failure). A script changed after the card was
+  made, or during the run, doesn't reach root.
 - `sudoers`, when the same root command will be needed again: at most 8
-  lines for `/etc/sudoers.d/lyrica`, which the card shows with `sudo visudo
-  -f /etc/sudoers.d/lyrica`. `checkSudoers` refuses a line that isn't
+  lines for `/etc/sudoers.d/lyrica`, which the card shows with the command
+  that adds them, ready to paste (`sudoersCommand`, built from the checked
+  lines as the card shows them): it reads the file's own lines in a step
+  that can fail (a mistyped password stops it, so the file is never
+  replaced by the new lines alone), adds these, each once, puts the result
+  beside the file as `lyrica.new` with root's ownership and mode 0440 (sudo
+  ignores a name with a dot, so a bad file locks nobody out), checks it
+  there with `visudo -c`, and moves it over the file only when the check
+  passes; the cleanup keeps the chain's exit status and never prompts. The
+  person never opens an editor. `checkSudoers` refuses a line that isn't
   `<account> ALL=(root) NOPASSWD: <program> <fixed arguments>` for the
   machine's account, with the program in `/usr/bin`, `/usr/sbin`, `/bin`,
   `/sbin` or `/usr/local/{bin,sbin}` and at least one argument (`""` alone
