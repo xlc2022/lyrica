@@ -1,5 +1,23 @@
 import { describe, expect, it } from "vitest";
-import { isPoll, offlineCopyOf, readImage, readText, runKey, sourcesOf, summarizeArgs, type Quiet } from "../src/Messages.tsx";
+import { isMarker, isPoll, offlineCopyOf, readImage, readText, runKey, sourcesOf, summarizeArgs, type Quiet } from "../src/Messages.tsx";
+
+describe("a part that can fold into a run of tool calls", () => {
+  const tool = (name: string, args: unknown, extra: Record<string, unknown> = {}) => ({ type: "tool" as const, toolCallId: "c1", name, args, ...extra });
+  it("is her thinking, a recall and an ordinary call, running or done", () => {
+    expect(isMarker({ type: "thinking", text: "hm" })).toBe(true);
+    expect(isMarker(tool("bash", { command: "ls" }))).toBe(true);
+    expect(isMarker(tool("bash", { command: "ls" }, { result: "a\nb", isError: false }))).toBe(true);
+  });
+  it("is not a card the person answers: a root step once its call returned, or a question, so neither hides inside a run", () => {
+    const root = { machine: "box", path: "/home/ada/mark.sh", why: "/etc isn't writable by her account." };
+    expect(isMarker(tool("run_as_root", root, { result: "Asked.", isError: false }))).toBe(false);
+    expect(isMarker(tool("threads", { action: "ask", question: "Which scope?", options: [], recommended: 0 }, { result: "Asked.", isError: false }))).toBe(false);
+  });
+  it("is a root step still running, or one refused, which is an error line", () => {
+    expect(isMarker(tool("run_as_root", { machine: "box", path: "mark.sh", why: "x" }))).toBe(true);
+    expect(isMarker(tool("run_as_root", { machine: "box", path: "mark.sh", why: "x" }, { result: "the path must be absolute", isError: true }))).toBe(true);
+  });
+});
 
 describe("a tool call's marker line", () => {
   it("is empty for a call she is still writing, and the main argument once it runs", () => {
