@@ -161,8 +161,14 @@ existed before became general machines at Ask.
 - **The host key is confirmed when the machine is added**, never pinned on
   first use: a machine with no key from before can't be reached until the user
   confirms one; a key pinned on first use before machines existed is kept
-  as confirmed. A different key fails every call, with no
-  fallback, until the user confirms the new one (`setHostKey`). Strict key
+  as confirmed. A different key fails every new connection, with no
+  fallback, until the user confirms the new one (`setHostKey`). A connection
+  is checked when it is made and then kept for the thread's session (one per
+  machine), so a key that changes on the server is caught at the next
+  connection, once the session idles out, `lyricad` restarts or the
+  connection drops; the connection already open was checked against the
+  confirmed key and stays with the server it reached, as OpenSSH's own kept
+  connections do (seen in the remote control tests, 2026-11-04). Strict key
   exchange (`kex-strict-*`) is required. No agent, no forwarding.
 - **Off network.** Before each connection the address is resolved and the
   connection goes to that address. If it resolves outside the owner's LAN,
