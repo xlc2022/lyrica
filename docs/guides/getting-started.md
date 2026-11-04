@@ -941,7 +941,10 @@ steps:
    commands as root there, give the account exact commands with `visudo -f
    /etc/sudoers.d/lyrica`, or on a machine you really trust `<account>
    ALL=(root) NOPASSWD: ALL`. She never takes a sudo password; a root step
-   she can't run there comes to you on a card.
+   she can't run there comes to you on a card. When the card offers
+   sudoers lines, it also carries one command to paste on the machine: it
+   adds them, keeps the file's other lines and installs the result only
+   once `visudo -c` passes, so you never open an editor.
 2. Press Enter. She connects, prints the machine's host key fingerprint
    and whether her key was accepted, and asks you to confirm the
    fingerprint. Compare it with what the machine prints:
