@@ -4,7 +4,7 @@ import { CloudModelForbidden, HostRefused, isRestricted, NoModel, loraFiles, lor
   type ThreadImages, type VideoRequest, type VideoUpscaleRequest, type WorkspaceSettings, LONGEST_VIDEO_SECONDS } from "@lyrica/core";
 import { Type, type Static } from "typebox";
 import { StringEnum } from "@earendil-works/pi-ai";
-import type { ApprovalRequest } from "./workspace.ts";
+import type { Approval, ApprovalRequest } from "./workspace.ts";
 
 /** `picked`: her pick among attempts made earlier, shown again last; its model is the earlier part's, so empty here. */
 export interface ImagePart { type: "image"; paths: string[]; model: string; tier?: "fast" | "quality"; picked?: true }
@@ -17,7 +17,8 @@ export interface ImageTools {
   files: ThreadImages;
   settings(): WorkspaceSettings;
   enabled(): boolean;
-  approve?(request: ApprovalRequest): Promise<boolean>;
+  /** As ThreadTools.approve: only true sends them; a timeout is a no for the day like any. */
+  approve?(request: ApprovalRequest): Promise<Approval>;
   now?: () => Date;
   /**
    * Runs a clip in the background (lyricad's clip jobs), under its call's ID: the call returns at once and the
@@ -144,7 +145,7 @@ async function allowPortrait(o: ImageTools, r: Resolution, id: string, ctx: Exte
     const text = `Send photos of you to ${r.endpoint.name}?`;
     const request: ApprovalRequest = { toolCallId: id, tool: "image", input: { question: text, provider: r.endpoint.name, model: r.label }, warning: text };
     question = (async () => {
-      const allowed = o.approve ? await o.approve(request) : ctx?.hasUI ? await ctx.ui.confirm(text, "An approval lasts until the end of today.") : false;
+      const allowed = o.approve ? (await o.approve(request)) === true : ctx?.hasUI ? await ctx.ui.confirm(text, "An approval lasts until the end of today.") : false;
       signal?.throwIfAborted();
       if (!allowed || day !== dayOf(o.now?.() ?? new Date()) || s.photoCloudPolicy() === "never") return false;
       if (s.photoCloudPolicy() === "ask") s.approvePhotoCloud(day);

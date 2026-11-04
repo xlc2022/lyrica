@@ -7,7 +7,7 @@ import {
 } from "@lyrica/core";
 import {
   BUILTIN_SKILLS, checkoutsOf, codeRepositories, repoSkills, skillsIndex, type ListedSkill, createChecksExtension, createSyntaxExtension, codeTaskText, formatEntry, repoRules, appendUserMessage, executeImage, ContextMeter, createDelegateExtension, createDownloadsExtension, createImageExtension, createLyricaExtension, createMcpServersExtension, createModelsExtension, createReactExtension, createThreadsExtension, createTopExtension, createWebExtension, createWorkspaceExtension, createWaitForReportsExtension, DELEGATE_MESSAGE, EMPTY_REPLY_NOTICE, TURN_TOOL_NOTICE, OPENING, openThreadSession, type ClipMade, piModelFor, syncEntries, timedReply,
-  GO_AHEAD, type ApprovalRequest, type ThreadsHost, type Delegation, type DelegationEvent, type GoAhead, type DownloadsHost, type HubListing, type ModelsHost, type PlanRequest, type SubagentApproval, type ThreadContext, type UserReaction,
+  GO_AHEAD, type Approval, type ApprovalRequest, type ThreadsHost, type Delegation, type DelegationEvent, type GoAhead, type DownloadsHost, type HubListing, type ModelsHost, type PlanRequest, type SubagentApproval, type ThreadContext, type UserReaction,
 } from "@lyrica/extension";
 import type * as Api from "./api.ts";
 import type { PermissionRequest, ThreadEvent } from "./api.ts";
@@ -132,7 +132,7 @@ export class ThreadHost {
    * its parent's. The first answer from either wins and both views update; a
    * timeout, Stop in either thread, or the subagent being stopped refuses it.
    */
-  approveSubagent(r: SubagentApproval, signal: AbortSignal): Promise<boolean> {
+  approveSubagent(r: SubagentApproval, signal: AbortSignal): Promise<Approval> {
     const request: PermissionRequest = {
       requestId: randomBytes(8).toString("hex"), toolCallId: r.toolCallId, tool: r.tool, args: r.input, ...onMachine(r), ...commandApproval(this.opts, r.userId, r.pool, r.threadId, r.tool, r.input),
       expiresAt: new Date(Date.now() + this.opts.permissionMs).toISOString(),
@@ -147,7 +147,7 @@ export class ThreadHost {
         clearTimeout(timer);
         signal.removeEventListener("abort", stopped);
         for (const t of threads) t.endPermission(request.requestId, allowed, reason);
-        resolve(allowed);
+        resolve(allowed || (reason === "timeout" ? "timeout" : false));
       };
       const timer = setTimeout(() => done(false, "timeout"), this.opts.permissionMs);
       const stopped = () => done(false, "stopped");
@@ -995,9 +995,10 @@ export class HostedThread {
     };
   }
 
-  /** Asks every open view of the thread. A timeout or Stop denies. */
-  private async approve(r: ApprovalRequest): Promise<boolean> {
-    return (await this.ask(r.toolCallId, r.tool, r.input, { ...onMachine(r), ...commandApproval(this.o, this.userId, this.pool, this.threadId, r.tool, r.input) })).allowed;
+  /** Asks every open view of the thread. Stop denies; a timeout answers "timeout", so her result says nobody answered. */
+  private async approve(r: ApprovalRequest): Promise<Approval> {
+    const { allowed, reason } = await this.ask(r.toolCallId, r.tool, r.input, { ...onMachine(r), ...commandApproval(this.o, this.userId, this.pool, this.threadId, r.tool, r.input) });
+    return allowed || (reason === "timeout" ? "timeout" : false);
   }
 
   /** A plan, the same way: approving it says which mode to go ahead in; anything else keeps planning. */
@@ -1006,7 +1007,7 @@ export class HostedThread {
     return allowed ? mode : undefined;
   }
 
-  private ask(toolCallId: string, tool: string, args: unknown, where: Partial<PermissionRequest> = {}): Promise<{ allowed: boolean; mode?: GoAhead }> {
+  private ask(toolCallId: string, tool: string, args: unknown, where: Partial<PermissionRequest> = {}): Promise<{ allowed: boolean; reason: Outcome; mode?: GoAhead }> {
     const requestId = randomBytes(8).toString("hex");
     const request: PermissionRequest = { requestId, toolCallId, tool, args, ...where, expiresAt: new Date(Date.now() + this.o.permissionMs).toISOString() };
     return new Promise((resolve) => {
@@ -1015,7 +1016,7 @@ export class HostedThread {
         if (!this.pending.has(requestId)) return;
         clearTimeout(timer);
         this.endPermission(requestId, allowed, reason);
-        resolve({ allowed, mode });
+        resolve({ allowed, reason, mode });
       };
       this.addPermission(request, done);
     });

@@ -17,7 +17,7 @@ import { createWebExtension } from "../web.ts";
 import { checkoutsOf, repoRules } from "../code-repositories.ts";
 import { createImageExtension } from "../images.ts";
 import { createSyntaxExtension } from "../syntax.ts";
-import { createWorkspaceExtension, type ApprovalRequest } from "../workspace.ts";
+import { createWorkspaceExtension, type Approval, type ApprovalRequest } from "../workspace.ts";
 import { rolesFor } from "./roles.ts";
 import { CLAUDE_ROLE, claudeBody, claudeModelLabel } from "./claude.ts";
 import { createDelegateExtension, createSubagentExtension } from "./tool.ts";
@@ -64,7 +64,7 @@ export interface DelegationOptions {
    * supplies it. Without it, every such call is refused. The signal aborts
    * when the subagent is stopped: the answer is then a refusal.
    */
-  approve?: (request: SubagentApproval, signal: AbortSignal) => Promise<boolean>;
+  approve?: (request: SubagentApproval, signal: AbortSignal) => Promise<Approval>;
   /** Her name for this deployment, for the subagents' preamble and the ask_parent label. Lyrica without it. */
   name?: () => string;
   /** The server's SearXNG address, for a subagent's web_search. */
@@ -703,13 +703,14 @@ export class Delegation {
   }
 
   /** Asks about a subagent's tool call, through lyricad. Refused if nobody can be asked, or once it is stopped. */
-  private async approve(sub: Subagent, r: ApprovalRequest): Promise<boolean> {
+  private async approve(sub: Subagent, r: ApprovalRequest): Promise<Approval> {
     const signal = sub.signal;
     if (!this.o.approve || signal.aborted) return false;
     const refused = new Promise<false>((resolve) => signal.addEventListener("abort", () => resolve(false), { once: true }));
     sub.approving++;
     try {
-      return await Promise.race([this.o.approve({ ...sub.ref, role: sub.role.name, ...r }, signal), refused]) && !signal.aborted;
+      const answer = await Promise.race([this.o.approve({ ...sub.ref, role: sub.role.name, ...r }, signal), refused]);
+      return signal.aborted ? false : answer;
     } catch {
       return false;
     } finally {
