@@ -34,7 +34,7 @@ import {
 } from "./settings.ts";
 import { AllowedPaths } from "./paths.ts";
 import type { Respelling } from "./renames.ts";
-import { generateSshKey, SshTarget } from "./ssh.ts";
+import { generateSshKey, publicKeyOf, SshTarget } from "./ssh.ts";
 import { Jobs, type JobInfo } from "./jobs.ts";
 import { sandboxedTransport, type SshTransport } from "./transport.ts";
 
@@ -1479,8 +1479,9 @@ export class Workspace {
    * (or the one from an earlier probe), its setup steps, and a test that
    * reads the host key and tries the key. Nothing is saved.
    */
-  async probeMachine(userId: string, login: string, input: { kind?: MachineKind; name: string; address: string; draft?: string; asUser?: boolean }): Promise<MachineProbe> {
+  async probeMachine(userId: string, login: string, input: { kind?: MachineKind; name: string; address: string; draft?: string; asUser?: boolean; replace?: boolean }): Promise<MachineProbe> {
     if (input.kind === "proxmox") return this.probeProxmox(input.address);
+    if (input.replace) return this.probeSaved(userId, input.name);
     const now = Date.now();
     for (const [id, d] of this.drafts) if (d.expires < now) this.drafts.delete(id);
     const { username, host, port } = parseMachineAddress(input.address);
@@ -1494,18 +1495,33 @@ export class Workspace {
     }
     pair.expires = now + DRAFT_MS;
     const keyLine = authorizedKeysLine(pair.publicKey);
-    const base = { draft: draft!, keyLine, setup: machineSetup(username, keyLine, input.asUser) };
+    return this.reach({ draft: draft!, keyLine, setup: machineSetup(username, keyLine, input.asUser) }, { host, port, username, privateKey: pair.privateKey });
+  }
+
+  /**
+   * Replace key's test: a saved machine, tried with its own key, account and
+   * address, so the user sees the key it shows now and whether her login
+   * still works. No new pair is made.
+   */
+  private async probeSaved(userId: string, name: string): Promise<MachineProbe> {
+    const cfg = this.settings(userId).machine(name);
+    if (!cfg || cfg.kind !== "ssh") throw new Error(`no machine ${name}`);
+    const keyLine = authorizedKeysLine(publicKeyOf(cfg.privateKey));
+    return this.reach({ keyLine, setup: machineSetup(cfg.username, keyLine, cfg.asUser) }, cfg);
+  }
+
+  /** Resolves the host and logs in. The key it shows is only reported: nothing runs, and the connection closes once she's in. */
+  private async reach(base: { draft?: string; keyLine: string; setup: string }, to: { host: string; port: number; username: string; privateKey: string }): Promise<MachineProbe> {
     let resolved: { addresses: string[]; outside: boolean };
     try {
-      resolved = await resolveHost(host);
+      resolved = await resolveHost(to.host);
     } catch (err) {
       return { ...base, login: false, offNetwork: false, problem: (err as Error).message };
     }
     let fingerprint: string | undefined;
     try {
-      // The key it shows is only reported: nothing runs, and the connection closes once she's in.
       const session = await this.sshTransport.connect(
-        { host: resolved.addresses[0]!, port, username, privateKey: pair.privateKey }, (fp) => { fingerprint = fp; return true; });
+        { host: resolved.addresses[0]!, port: to.port, username: to.username, privateKey: to.privateKey }, (fp) => { fingerprint = fp; return true; });
       session.close();
       return { ...base, fingerprint, login: true, offNetwork: resolved.outside };
     } catch (err) {

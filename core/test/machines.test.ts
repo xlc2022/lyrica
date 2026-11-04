@@ -12,12 +12,13 @@ import { freshKeyring, profile } from "./helpers.ts";
 const KEY = `SHA256:${"A".repeat(43)}`;
 const OTHER = `SHA256:${"B".repeat(43)}`;
 
-interface FakeMachine { hostKey: string; files: Map<string, string>; commands: string[]; output?: string; connects: string[]; down?: boolean }
+interface FakeMachine { hostKey: string; files: Map<string, string>; commands: string[]; output?: string; connects: string[]; keys: string[]; down?: boolean }
 
 function fakeTransport(machine: FakeMachine): SshTransport {
   return {
     async connect(to, verify) {
       machine.connects.push(to.host);
+      machine.keys.push(to.privateKey);
       if (machine.down) throw new Error("connect ECONNREFUSED");
       if (!verify(machine.hostKey)) throw new Error("host key refused");
       const missing = (p: string) => new RemoteMissing(`${p}: no such file`);
@@ -53,7 +54,7 @@ async function setup(machine: Partial<FakeMachine> = {}) {
   const users = new Users(keyring);
   const ada = await users.createUser("ada", "pw", profile("Ada"), { admin: true });
   await users.authenticate("ada", "pw");
-  const fake: FakeMachine = { hostKey: KEY, files: new Map(), commands: [], connects: [], ...machine };
+  const fake: FakeMachine = { hostKey: KEY, files: new Map(), commands: [], connects: [], keys: [], ...machine };
   const workspace = new Workspace(keyring, users, { excludePorts: [], sshTransport: fakeTransport(fake) });
   const settings = workspace.settings(ada.id);
   const add = (m: Partial<NewMachine> & { name: string }) => settings.addMachine({
@@ -95,6 +96,22 @@ describe("machines", () => {
     await expect(workspace.updateMachine(ada.id, "box", { address: "ada@127.0.0.1" })).rejects.toThrow(/account can't change/);
     expect((await workspace.updateMachine(ada.id, "box", { address: "lyrica@127.0.0.1:2222" })).port).toBe(2222);
     await expect(workspace.probeMachine(ada.id, "ada", { name: "srv", address: "root@127.0.0.1", asUser: true })).rejects.toThrow(/never logs in as root/);
+  });
+
+  it("are tried as saved by Replace key: their own key, account and address, with no new pair", async () => {
+    const { workspace, add, ada, fake } = await setup();
+    const own = generateSshKey("test");
+    add({ name: "nas", host: "127.0.0.2", port: 2222, privateKey: own.privateKey });
+    const again = await workspace.probeMachine(ada.id, "ada", { name: "nas", address: "elsewhere@127.0.0.1", replace: true });
+    expect(again).toMatchObject({ fingerprint: KEY, login: true, offNetwork: false });
+    expect(again.draft).toBeUndefined();
+    expect(again.keyLine).toContain(own.publicKey.split(" ")[1]);
+    expect(fake.connects).toEqual(["127.0.0.2"]);
+    expect(fake.keys).toEqual([own.privateKey]);
+    // Whatever key it shows now is reported: that is what the user compares and confirms.
+    fake.hostKey = OTHER;
+    expect(await workspace.probeMachine(ada.id, "ada", { name: "nas", address: "", replace: true })).toMatchObject({ fingerprint: OTHER, login: true });
+    await expect(workspace.probeMachine(ada.id, "ada", { name: "nope", address: "", replace: true })).rejects.toThrow(/no machine nope/);
   });
 
   it("leave every thread that granted them when their pool changes", async () => {

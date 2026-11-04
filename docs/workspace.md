@@ -241,8 +241,10 @@ The test then reads the host key the machine shows and tries the login,
 and the user compares the fingerprint with `ssh-keygen -lf
 /etc/ssh/ssh_host_ed25519_key.pub` on the machine before confirming. A
 private machine that resolves off network needs a second confirmation.
-Replacing the key (`setHostKey`) re-confirms the host key only; her own key
-pair stays as it was. A test answers whatever the machine said (refused,
+Replacing the key (`probeMachine` with `replace`, then `setHostKey`) tries
+the machine as saved, with her own key, account and address, and shows the
+key it answers with and whether her login still works; confirming
+re-confirms the host key only, and her key pair stays as it was. A test answers whatever the machine said (refused,
 timed out), so any signed-in user can learn whether an address answers on
 a port, as they could from a sandbox with network.
 

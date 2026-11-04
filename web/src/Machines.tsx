@@ -217,6 +217,8 @@ export function accountWarnings(pool: Pool): string[] {
   ];
 }
 type Step = "address" | "key" | "test" | "fingerprint";
+/** The probe's body: the form as typed, or for Replace key the machine as saved with `replace`. */
+type ProbeInput = { kind: Kind; name: string; address: string; draft?: string; asUser?: boolean; replace?: boolean };
 
 /**
  * Add machine, and Replace key (`name` set): one card in the Machines
@@ -246,18 +248,14 @@ export function MachinePage({ ctx, name }: { ctx: ShellContext; name?: string })
   const setField = (k: keyof typeof form, v: string) => { setForm((f) => ({ ...f, [k]: v })); if (k === "address" || k === "name" || k === "account") { setProbe(undefined); setCopied(false); setTested(false); } };
   const ready = form.name.trim() !== "" && form.address.trim() !== "";
   const mine = kind === "ssh" && form.account === "mine" && !replacing;
-  const probeNow = (draft?: string) => probing(async () => {
-    const p = await post<MachineProbe>(u(userId, "machines", "probe"), { kind, name: form.name.trim(), address: form.address.trim(), draft, ...(mine ? { asUser: true } : {}) });
-    setProbe(p);
-    return p;
+  const probeWith = (input: ProbeInput, then?: () => void) => probing(async () => {
+    setProbe(await post<MachineProbe>(u(userId, "machines", "probe"), input));
+    then?.();
   });
+  const typed = (draft?: string): ProbeInput => ({ kind, name: form.name.trim(), address: form.address.trim(), draft, ...(mine ? { asUser: true } : {}) });
   // Leaving the address, or Enter in it, fetches her key for the machine, so the Key step can show its setup steps.
-  const reach = () => { if (ready && !probe && !probingBusy) void probeNow(); };
-  const test = () => probing(async () => {
-    const p = await post<MachineProbe>(u(userId, "machines", "probe"), { kind, name: form.name.trim(), address: form.address.trim(), draft: probe?.draft, ...(mine ? { asUser: true } : {}) });
-    setProbe(p);
-    setTested(true);
-  });
+  const reach = () => { if (ready && !probe && !probingBusy) void probeWith(typed()); };
+  const test = () => probeWith(typed(probe?.draft), () => setTested(true));
   // Where the clipboard is refused (no HTTPS, say), the block is selected so it can be copied by hand; the step is done either way.
   const setupRef = useRef<HTMLPreElement>(null);
   const copy = () => {
@@ -273,8 +271,8 @@ export function MachinePage({ ctx, name }: { ctx: ShellContext; name?: string })
   // Her login on the user's own account needs the machine's name typed, after its warnings.
   const typedOk = !mine || form.typed.trim() === form.name.trim();
   const step: Step = !probe ? "address" : !copied && !replacing ? "key" : !tested || !loginOk ? "test" : "fingerprint";
-  // Replace key goes straight to the fingerprint: the machine is known, only its key is confirmed again.
-  useEffect(() => { if (machine && !probe && !probingBusy) void probeNow(); }, [machine]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Replace key goes straight to the fingerprint: the machine is tried as saved (its own key, account and address), and only its host key is confirmed again.
+  useEffect(() => { if (machine && !probe && !probingBusy) void probeWith({ kind: machine.kind, name: machine.name, address: machine.address, replace: true }); }, [machine]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const save = (offNetworkConfirmed = false) => run(async () => {
     if (!probe?.fingerprint) return;
@@ -384,6 +382,9 @@ export function MachinePage({ ctx, name }: { ctx: ShellContext; name?: string })
           <section className="step" aria-labelledby="step-fingerprint">
             <h2 className="eyebrow" id="step-fingerprint">Fingerprint</h2>
             {probe?.fingerprint ? <p className="fingerprint mono">{probe.fingerprint}</p> : replacing && probe?.problem ? <ErrorText error={probe.problem} /> : <p className="muted">Reaching it…</p>}
+            {replacing && kind === "ssh" && probe?.fingerprint && (probe.login
+              ? <span className="state-word"><span className="dot up" aria-hidden="true" />Logged in</span>
+              : <ErrorText error={probe.problem ?? "The login didn't work."} />)}
             {replacing && probeError && <ErrorText error={probeError} />}
             {mine && (
               <label className="field"><span>Type {form.name.trim()} to let {her()} log in as you</span>
