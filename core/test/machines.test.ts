@@ -88,6 +88,10 @@ describe("machines", () => {
     expect(own.setup).not.toMatch(/sshd_config|sudoers|NOPASSWD/);
     const hers = await workspace.probeMachine(ada.id, "ada", { name: "box", address: "lyrica@127.0.0.1" });
     expect(hers.setup).toContain("/etc/ssh/authorized_keys/lyrica");
+    // Her line is added beside any key already there, never written over it, and each account has its own sshd file.
+    expect(hers.setup).toMatch(/grep -qxF -- 'restrict,[^\n]* \|\| printf '%s\\n' 'restrict,[^\n]* >> \/etc\/ssh\/authorized_keys\/lyrica/);
+    expect(hers.setup).not.toMatch(/[^>]> \/etc\/ssh\/authorized_keys/);
+    expect(hers.setup).toContain("> /etc/ssh/sshd_config.d/lyrica-lyrica.conf");
     const m = await workspace.addMachine(ada.id, { name: "laptop", address: "ada@127.0.0.1", root: null, pool: "private", draft: own.draft, hostKey: KEY, asUser: true });
     expect(m).toMatchObject({ asUser: true, pool: "private", limit: "ask", username: "ada" });
     expect((await workspace.addMachine(ada.id, { name: "box", address: "lyrica@127.0.0.1", root: null, pool: "general", draft: hers.draft, hostKey: KEY })).asUser).toBe(false);
@@ -126,6 +130,26 @@ describe("machines", () => {
     fake.hostKey = OTHER;
     expect(await workspace.probeMachine(ada.id, "ada", { name: "nas", address: "", replace: true })).toMatchObject({ fingerprint: OTHER, login: true });
     await expect(workspace.probeMachine(ada.id, "ada", { name: "nope", address: "", replace: true })).rejects.toThrow(/no machine nope/);
+  });
+
+  it("get a new key pair from Replace key: the tested draft replaces her key, and a stale draft is refused", async () => {
+    const { workspace, settings, add, ada, fake } = await setup();
+    const old = generateSshKey("test");
+    add({ name: "nas", privateKey: old.privateKey });
+    // New key pair: the probe without `replace` makes a pair for the machine, as when adding it.
+    const fresh = await workspace.probeMachine(ada.id, "ada", { name: "nas", address: "lyrica@127.0.0.1" });
+    expect(fresh.draft).toBeDefined();
+    expect(fresh.keyLine).not.toContain(old.publicKey.split(" ")[1]);
+    expect(fresh.setup).toContain(">> /etc/ssh/authorized_keys/lyrica");
+    await expect(workspace.setHostKey(ada.id, "nas", KEY, undefined, "nope")).rejects.toThrow(/key pair has expired/);
+    expect(settings.machine("nas")!.privateKey).toBe(old.privateKey);
+    await workspace.setHostKey(ada.id, "nas", OTHER, undefined, fresh.draft);
+    const saved = settings.machine("nas")!;
+    expect(saved.privateKey).toBe(fake.keys.at(-1));
+    expect(saved.privateKey).not.toBe(old.privateKey);
+    expect(saved.hostKey).toBe(OTHER);
+    // The pair is hers now, and is used once: the same draft can't be saved twice.
+    await expect(workspace.setHostKey(ada.id, "nas", OTHER, undefined, fresh.draft)).rejects.toThrow(/key pair has expired/);
   });
 
   it("leave every thread that granted them when their pool changes", async () => {

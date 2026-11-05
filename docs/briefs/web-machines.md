@@ -84,3 +84,7 @@ so the page never reached Fingerprint. Fixed the same day in #780: the probe tak
 whether her login worked. The same tests found the Name and address step
 had no button (only blur or Enter reached the machine; now **Next**), and the
 drawer's pool warning was a tooltip only (now warn text under the field).
+Replace key shows her key's setup block again, with Test, when the login
+fails (2026-11-05: a machine whose keys file was written over, or reinstalled),
+and has **New key pair**, since the name promised one: a fresh pair, the Key
+and Test steps as when adding, Confirm saving it (`…/key` takes `draft`).

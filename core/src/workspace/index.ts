@@ -1666,19 +1666,29 @@ export class Workspace {
   /**
    * Re-pairs a machine whose host key (or certificate) changed, with the one
    * the user confirmed. A Proxmox machine may get a new token too, tried against
-   * that certificate before anything is saved.
+   * that certificate before anything is saved. An SSH machine may get a new key
+   * pair: `draft` names the pair `probeMachine` made for it (New key pair on
+   * Replace key), which was tested and installed in place of the old one; its old
+   * line stays on the machine until removed by hand.
    */
-  async setHostKey(userId: string, name: string, confirmedHostKey: string, token?: string): Promise<MachineConfig> {
+  async setHostKey(userId: string, name: string, confirmedHostKey: string, token?: string, draft?: string): Promise<MachineConfig> {
     const s = this.settings(userId);
     const m = s.machine(name);
     if (!m) throw new Error(`no machine ${name}`);
     if (token !== undefined && m.kind !== "proxmox") throw new Error(`${name} isn't a Proxmox machine`);
+    if (draft !== undefined && m.kind !== "ssh") throw new Error(`${name} isn't an SSH machine`);
+    const pair = draft === undefined ? undefined : this.drafts.get(draft);
+    if (draft !== undefined && (!pair || pair.userId !== userId)) throw new Error("that key pair has expired: make a new one and test it again");
     if (m.kind === "proxmox") {
       const pinned = certFingerprint(confirmedHostKey);
       const next = token?.trim() || m.privateKey;
       const id = tokenId(next);
       await this.checkProxmox([await this.checkAddress(userId, name)], m.port, next, pinned);
       if (token !== undefined) s.setToken(name, next, id);
+    }
+    if (pair && draft !== undefined) {
+      s.setPrivateKey(name, pair.privateKey);
+      this.drafts.delete(draft);
     }
     const done = s.setHostKey(name, confirmedHostKey);
     this.disconnect(userId, name);

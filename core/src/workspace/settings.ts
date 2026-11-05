@@ -988,6 +988,13 @@ export class WorkspaceSettings {
     return this.need(name);
   }
 
+  /** A new key pair for an SSH machine: the private key is replaced, the account stays. */
+  setPrivateKey(name: string, privateKey: string): MachineConfig {
+    if (this.need(name).kind !== "ssh") throw new Error(`${name} isn't an SSH machine`);
+    this.db.prepare("UPDATE machines SET private_key = ? WHERE name = ?").run(privateKey, name);
+    return this.need(name);
+  }
+
   /** Records whether the address resolved outside the operator's network at the last check. */
   setOffNetwork(name: string, off: boolean): void {
     this.db.prepare("UPDATE machines SET off_network = ? WHERE name = ?").run(off ? 1 : 0, name);

@@ -117,6 +117,12 @@ tool each for A and B, prompt lines only where the thread has a machine).
   `write` or `edit` on the floor is refused before any card, not after it.
 - Also from that run: a card nobody answered in time told her the person
   declined; now her result says nobody answered, so she says it timed out.
+- And (2026-11-05): the setup block wrote `/etc/ssh/authorized_keys/<account>`
+  and `sshd_config.d/lyrica.conf` over, so a second machine on the same
+  account replaced the first's key (the tests' step 12 did exactly that, and
+  lunasa-slave lost its key). It now adds the line beside any there and
+  writes `lyrica-<account>.conf`; Replace key shows the block again when her
+  login fails.
 
 ## C. Model host install from a machine
 

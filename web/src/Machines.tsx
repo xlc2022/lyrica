@@ -236,6 +236,8 @@ export function MachinePage({ ctx, name }: { ctx: ShellContext; name?: string })
   const [probe, setProbe] = useState<MachineProbe>();
   const [copied, setCopied] = useState(false);
   const [tested, setTested] = useState(false);
+  // Replace key, New key pair: a fresh pair is being made for the saved machine, so the page runs the Key and Test steps as when adding it.
+  const [fresh, setFresh] = useState(false);
   const [offNetwork, setOffNetwork] = useState(false);
   const [run, busy, error] = useAction();
   const [probing, probingBusy, probeError] = useAction();
@@ -253,10 +255,13 @@ export function MachinePage({ ctx, name }: { ctx: ShellContext; name?: string })
     setProbe(await post<MachineProbe>(u(userId, "machines", "probe"), input));
     then?.();
   });
-  const typed = (draft?: string): ProbeInput => ({ kind, name: form.name.trim(), address: form.address.trim(), draft, ...(mine ? { asUser: true } : {}) });
+  const typed = (draft?: string): ProbeInput => replacing && machine
+    ? { kind, name: machine.name, address: machine.address, draft, ...(machine.asUser ? { asUser: true } : {}) }
+    : { kind, name: form.name.trim(), address: form.address.trim(), draft, ...(mine ? { asUser: true } : {}) };
   // Leaving the address, or Enter in it, fetches her key for the machine, so the Key step can show its setup steps.
   const reach = () => { if (ready && !probe && !probingBusy) void probeWith(typed()); };
   const test = () => probeWith(typed(probe?.draft), () => setTested(true));
+  const newPair = () => { setFresh(true); setProbe(undefined); setCopied(false); setTested(false); void probeWith(typed()); };
   // Where the clipboard is refused (no HTTPS, say), the block is selected so it can be copied by hand; the step is done either way.
   const setupRef = useRef<HTMLPreElement>(null);
   const copy = () => {
@@ -271,14 +276,16 @@ export function MachinePage({ ctx, name }: { ctx: ShellContext; name?: string })
   const tokenOk = kind === "ssh" || form.token.trim() !== "" || replacing;
   // Her login on the user's own account needs the machine's name typed, after its warnings.
   const typedOk = !mine || form.typed.trim() === form.name.trim();
-  const step: Step = !probe ? "address" : !copied && !replacing ? "key" : !tested || !loginOk ? "test" : "fingerprint";
+  const adding = !replacing || fresh;
+  const step: Step = !probe ? "address" : !copied && adding ? "key" : !tested || !loginOk ? "test" : "fingerprint";
   // Replace key goes straight to the fingerprint: the machine is tried as saved (its own key, account and address), and only its host key is confirmed again.
-  useEffect(() => { if (machine && !probe && !probingBusy) void probeWith({ kind: machine.kind, name: machine.name, address: machine.address, replace: true }); }, [machine]); // eslint-disable-line react-hooks/exhaustive-deps
+  const again = () => { if (machine) void probeWith({ kind: machine.kind, name: machine.name, address: machine.address, replace: true }); };
+  useEffect(() => { if (!probe && !probingBusy) again(); }, [machine]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const save = (offNetworkConfirmed = false) => run(async () => {
     if (!probe?.fingerprint) return;
     if (replacing) {
-      await post(u(userId, "machines", name, "key"), { hostKey: probe.fingerprint, ...(kind === "proxmox" && form.token.trim() ? { token: form.token.trim() } : {}) });
+      await post(u(userId, "machines", name, "key"), { hostKey: probe.fingerprint, ...(kind === "proxmox" && form.token.trim() ? { token: form.token.trim() } : {}), ...(fresh ? { draft: probe.draft } : {}) });
     } else {
       const input: MachineInput = {
         kind, name: form.name.trim(), address: form.address.trim(), root: kind === "ssh" && form.root.trim() ? form.root.trim() : undefined, pool: form.pool,
@@ -349,7 +356,7 @@ export function MachinePage({ ctx, name }: { ctx: ShellContext; name?: string })
             {step === "address" && <ErrorText error={probeError} />}
           </form>
         )}
-        {probe && !replacing && (
+        {probe && adding && (
           <section className="step" aria-labelledby="step-key">
             <h2 className="eyebrow" id="step-key">{keyLabel}</h2>
             <pre className="setup" ref={setupRef}><code>{probe.setup}</code></pre>
@@ -363,7 +370,7 @@ export function MachinePage({ ctx, name }: { ctx: ShellContext; name?: string })
             )}
           </section>
         )}
-        {probe && !replacing && (
+        {probe && adding && (
           <section className="step" aria-labelledby="step-test">
             <h2 className="eyebrow" id="step-test">Test</h2>
             <div className="row">
@@ -382,21 +389,33 @@ export function MachinePage({ ctx, name }: { ctx: ShellContext; name?: string })
             </label>
           </section>
         )}
-        {(replacing || (tested && loginOk)) && (
+        {replacing && !fresh && kind === "ssh" && probe?.fingerprint && !probe.login && (
+          <section className="step" aria-labelledby="step-key">
+            <h2 className="eyebrow" id="step-key">Key</h2>
+            <p className="muted">{her()}'s key isn't accepted there any more (a reinstalled machine loses it). Run this as root on the machine, then test again, or make a new key pair below.</p>
+            <pre className="setup" ref={setupRef}><code>{probe.setup}</code></pre>
+            <div className="row">
+              <button type="button" onClick={copy}>{copied ? "Copied" : "Copy"}</button>
+              <button type="button" disabled={probingBusy} onClick={again}>Test</button>
+            </div>
+          </section>
+        )}
+        {((replacing && !fresh) || (tested && loginOk)) && (
           <section className="step" aria-labelledby="step-fingerprint">
             <h2 className="eyebrow" id="step-fingerprint">Fingerprint</h2>
-            {probe?.fingerprint ? <p className="fingerprint mono">{probe.fingerprint}</p> : replacing && probe?.problem ? <ErrorText error={probe.problem} /> : <p className="muted">Reaching it…</p>}
-            {replacing && kind === "ssh" && probe?.fingerprint && (probe.login
+            {probe?.fingerprint ? <p className="fingerprint mono">{probe.fingerprint}</p> : replacing && !fresh && probe?.problem ? <ErrorText error={probe.problem} /> : <p className="muted">Reaching it…</p>}
+            {replacing && !fresh && kind === "ssh" && probe?.fingerprint && (probe.login
               ? <span className="state-word"><span className="dot up" aria-hidden="true" />Logged in</span>
               : <ErrorText error={probe.problem ?? "The login didn't work."} />)}
-            {replacing && probeError && <ErrorText error={probeError} />}
+            {replacing && !fresh && probeError && <ErrorText error={probeError} />}
             {mine && (
               <label className="field"><span>Type {form.name.trim()} to let {her()} log in as you</span>
                 <input className="mono" value={form.typed} autoComplete="off" spellCheck={false} onChange={(e) => setForm((f) => ({ ...f, typed: e.target.value }))} />
               </label>
             )}
             <div className="row">
-              <button type="button" className={step === "fingerprint" || replacing ? "primary" : ""} disabled={busy || !probe?.fingerprint || !tokenOk || !typedOk} onClick={confirm}>Confirm</button>
+              <button type="button" className={step === "fingerprint" || (replacing && !fresh) ? "primary" : ""} disabled={busy || !probe?.fingerprint || !tokenOk || !typedOk} onClick={confirm}>Confirm</button>
+              {replacing && !fresh && kind === "ssh" && <button type="button" disabled={probingBusy} onClick={newPair}>New key pair</button>}
               {replacing && <button type="button" onClick={() => go({ page: "settings", userId, section: "machines" })}>Cancel</button>}
             </div>
             <ErrorText error={error} />
