@@ -1739,6 +1739,60 @@ test("Replace key tries the machine as saved and shows what it answered", async 
   await noHorizontalScroll(page);
 });
 
+test("Replace key shows her key's setup again when the machine answers but refuses her login", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  await page.evaluate(async (userId) => {
+    const call = async (path: string, body: unknown) => (await fetch(`/api/u/${userId}${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) })).json() as Promise<{ draft: unknown }>;
+    const probe = await call("/machines/probe", { name: "garden-pi", address: "pi@127.0.0.1:1" });
+    await call("/machines", { name: "garden-pi", address: "pi@127.0.0.1:1", pool: "general", draft: probe.draft, hostKey: `SHA256:${"A".repeat(43)}` });
+  }, userId);
+  // A reinstalled machine: it shows a host key, but her key isn't in its keys file any more.
+  const probes: { replace?: boolean; draft?: string }[] = [];
+  await page.route(/\/api\/u\/[^/]+\/machines\/probe$/, async (route) => {
+    const body = route.request().postDataJSON() as { replace?: boolean; draft?: string };
+    probes.push(body);
+    const fingerprint = `SHA256:${"B".repeat(43)}`;
+    if (body.replace) {
+      await route.fulfill({ json: { setup: "# 1. Her key, in a file only root can change, beside any key already there\ntouch /etc/ssh/authorized_keys/pi\ngrep -qxF -- 'restrict ssh-ed25519 AAAA' /etc/ssh/authorized_keys/pi || printf '%s\\n' 'restrict ssh-ed25519 AAAA' >> /etc/ssh/authorized_keys/pi", fingerprint, login: false, problem: "All configured authentication methods failed", offNetwork: false } });
+      return;
+    }
+    // New key pair: a fresh draft, which logs in once its line is on the machine (the Test step).
+    await route.fulfill({ json: { draft: "d1", keyLine: "restrict ssh-ed25519 NEWKEY", setup: "# 1. Her key\nprintf '%s\\n' 'restrict ssh-ed25519 NEWKEY' >> /etc/ssh/authorized_keys/pi", fingerprint, login: body.draft === "d1", ...(body.draft === "d1" ? {} : { problem: "All configured authentication methods failed" }), offNetwork: false } });
+  });
+  await page.goto(`/#/u/${userId}/settings/machines`);
+  await page.getByRole("region", { name: "Machines", exact: true }).getByRole("button", { name: "Actions for garden-pi" }).click();
+  await page.getByRole("menuitem", { name: "Replace key" }).click();
+  await expect(page.getByRole("heading", { level: 2, name: "Replace key" })).toBeVisible();
+  // The Key step comes back with the setup for her existing key, Copy and Test; the Fingerprint step says why the login failed, and Confirm still works for the host key alone.
+  const key = page.getByRole("region", { name: "Key" });
+  await expect(key.getByText("isn't accepted there any more")).toBeVisible();
+  await expect(key.getByText("/etc/ssh/authorized_keys/pi").first()).toBeVisible();
+  await expect(key.getByRole("button", { name: "Copy" })).toBeVisible();
+  await expect(page.getByRole("alert").first()).toHaveText(/authentication methods failed/);
+  await expect(page.getByRole("button", { name: "Confirm" })).toBeEnabled();
+  await key.getByRole("button", { name: "Test" }).click();
+  await expect.poll(() => probes.length).toBe(2);
+  expect(probes[1]).toEqual({ kind: "ssh", name: "garden-pi", address: "pi@127.0.0.1:1", replace: true });
+  await noHorizontalScroll(page);
+  // New key pair: a fresh pair for the machine as saved, then the Key, Test and Fingerprint steps as when adding it; Confirm saves the pair.
+  await page.getByRole("button", { name: "New key pair" }).click();
+  await expect.poll(() => probes.length).toBe(3);
+  expect(probes[2]).toEqual({ kind: "ssh", name: "garden-pi", address: "pi@127.0.0.1:1" });
+  await expect(page.getByRole("heading", { level: 2, name: "Replace key" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "New key pair" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Confirm" })).toHaveCount(0);
+  await expect(page.getByText("ssh-ed25519 NEWKEY")).toBeVisible();
+  await page.getByRole("button", { name: "Copy" }).click();
+  await page.getByRole("button", { name: "Test" }).click();
+  await expect.poll(() => probes.length).toBe(4);
+  expect(probes[3]).toEqual({ kind: "ssh", name: "garden-pi", address: "pi@127.0.0.1:1", draft: "d1" });
+  await expect(page.getByText("Logged in")).toBeVisible();
+  const saved = page.waitForRequest((r) => r.method() === "POST" && r.url().endsWith("/machines/garden-pi/key"));
+  await page.getByRole("button", { name: "Confirm" }).click();
+  expect((await saved).postDataJSON()).toEqual({ hostKey: `SHA256:${"B".repeat(43)}`, draft: "d1" });
+  await noHorizontalScroll(page);
+});
+
 test("Git accounts lists none, and Add account checks the token with the host before anything is saved", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   await page.goto(`/#/u/${userId}/settings/git`);

@@ -934,8 +934,8 @@ steps:
 
 1. She makes a key pair and prints the setup to run **as root on the
    machine**: her public key into `/etc/ssh/authorized_keys/<account>`, a
-   file only root can change, with a `Match User` block in
-   `/etc/ssh/sshd_config.d/lyrica.conf`, then `sshd -t && systemctl reload
+   file only root can change (beside any key already there), with a `Match
+   User` block in `/etc/ssh/sshd_config.d/lyrica-<account>.conf`, then `sshd -t && systemctl reload
    ssh` (the unit is `sshd` on Fedora and RHEL). The key line is
    restricted to connections from this computer. If she should run some
    commands as root there, give the account exact commands with `visudo -f

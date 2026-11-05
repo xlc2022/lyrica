@@ -2736,7 +2736,8 @@ selfTest(): Promise<string | undefined>   // lyricad calls this at startup
 - **Machines API:** `lyricad`'s `/api/u/:userId/machines` (`GET`; `POST
   …/machines/probe` for the Test step, with `replace` for Replace key; `POST …/machines` to confirm;
   `PATCH …/machines/:name` for address, root, pool and limit; `POST
-  …/machines/:name/key` with a confirmed host key; `POST
+  …/machines/:name/key` with a confirmed host key, and for a new key pair the
+  `draft` of a probe without `replace` that the Test step logged in with; `POST
   …/machines/:name/confirm-off-network`; `DELETE`). The probe and the
   confirm take `asUser` for the user's own account, and such a machine
   carries `asUser: true`. A machine carries

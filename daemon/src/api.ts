@@ -778,9 +778,12 @@ export interface MachineChange { address?: string; root?: string | null; pool?: 
 /**
  * POST /api/u/:userId/machines/:name/key → MachineInfo. Replace key: the host
  * key (or Proxmox certificate) the user confirmed after a probe. A Proxmox machine
- * may take a new `token`, tried against that certificate before saving.
+ * may take a new `token`, tried against that certificate before saving. An SSH
+ * machine may take the `draft` of a new key pair (New key pair: a probe of the
+ * machine without `replace` made it, and the Test step logged in with it), which
+ * replaces her key for the machine.
  */
-export interface MachineKey { hostKey: string; token?: string }
+export interface MachineKey { hostKey: string; token?: string; draft?: string }
 /** POST /api/u/:userId/machines/:name/confirm-off-network → MachineInfo. A private machine gone off network can be used again. */
 /** DELETE /api/u/:userId/machines/:name → Ok. Every thread's grant of it goes too. */
 

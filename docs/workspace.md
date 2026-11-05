@@ -226,11 +226,12 @@ an hour; nothing is saved until the user confirms the host key. The key's
 …`, usable only from this computer. The setup, run as root on the machine:
 
 ```sh
-# 1. Her key, in a file only root can change
+# 1. Her key, in a file only root can change, beside any key already there
 install -d -m 755 /etc/ssh/authorized_keys
-printf '%s\n' '<the key line>' > /etc/ssh/authorized_keys/<account>
+touch /etc/ssh/authorized_keys/<account>
+grep -qxF -- '<the key line>' /etc/ssh/authorized_keys/<account> || printf '%s\n' '<the key line>' >> /etc/ssh/authorized_keys/<account>
 chmod 644 /etc/ssh/authorized_keys/<account>
-printf 'Match User <account>\n    AuthorizedKeysFile /etc/ssh/authorized_keys/%%u\n' > /etc/ssh/sshd_config.d/lyrica.conf
+printf 'Match User <account>\n    AuthorizedKeysFile /etc/ssh/authorized_keys/%%u\n' > /etc/ssh/sshd_config.d/lyrica-<account>.conf
 sshd -t && systemctl reload ssh
 
 # 2. Optional: sudo without a password, for exact commands (visudo -f /etc/sudoers.d/lyrica)
@@ -239,6 +240,12 @@ sshd -t && systemctl reload ssh
 # <account> ALL=(root) NOPASSWD: ALL
 ```
 
+A second machine on the same account adds its line beside the first, and
+each account gets its own `sshd_config.d` file (before 2026-11-05 the block
+wrote both files over, so adding a machine replaced another's key on the
+same account, or another account's `Match` block). Removing a machine
+leaves its line on the machine; no key matches it any more.
+
 The test then reads the host key the machine shows and tries the login,
 and the user compares the fingerprint with `ssh-keygen -lf
 /etc/ssh/ssh_host_ed25519_key.pub` on the machine before confirming. A
@@ -246,7 +253,13 @@ private machine that resolves off network needs a second confirmation.
 Replacing the key (`probeMachine` with `replace`, then `setHostKey`) tries
 the machine as saved, with her own key, account and address, and shows the
 key it answers with and whether her login still works; confirming
-re-confirms the host key only, and her key pair stays as it was. A test answers whatever the machine said (refused,
+re-confirms the host key only, and her key pair stays as it was. When
+her login fails there (a reinstalled machine, or its keys file written
+over), the page shows the setup block for her existing key again, with
+Test. **New key pair** on that page makes a fresh pair for the machine
+and runs the Key and Test steps as when adding it; confirming (`setHostKey`
+with the pair's `draft`) saves the new key in place of the old, whose line
+stays on the machine until removed by hand. A test answers whatever the machine said (refused,
 timed out), so any signed-in user can learn whether an address answers on
 a port, as they could from a sandbox with network.
 

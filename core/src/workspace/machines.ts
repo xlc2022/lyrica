@@ -239,11 +239,12 @@ export function machineSetup(account: string, keyLine: string, asUser = false): 
     ].join("\n");
   }
   return [
-    "# 1. Her key, in a file only root can change",
+    "# 1. Her key, in a file only root can change, beside any key already there",
     "install -d -m 755 /etc/ssh/authorized_keys",
-    `printf '%s\\n' '${line}' > /etc/ssh/authorized_keys/${account}`,
+    `touch /etc/ssh/authorized_keys/${account}`,
+    `grep -qxF -- '${line}' /etc/ssh/authorized_keys/${account} || printf '%s\\n' '${line}' >> /etc/ssh/authorized_keys/${account}`,
     `chmod 644 /etc/ssh/authorized_keys/${account}`,
-    `printf 'Match User ${account}\\n    AuthorizedKeysFile /etc/ssh/authorized_keys/%%u\\n' > /etc/ssh/sshd_config.d/lyrica.conf`,
+    `printf 'Match User ${account}\\n    AuthorizedKeysFile /etc/ssh/authorized_keys/%%u\\n' > /etc/ssh/sshd_config.d/lyrica-${account}.conf`,
     "sshd -t && systemctl reload ssh",
     "",
     "# 2. Optional: sudo without a password, for exact commands (visudo -f /etc/sudoers.d/lyrica)",

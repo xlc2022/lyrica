@@ -799,8 +799,8 @@ export function apiRoutes(d: Lyricad): Route[] {
       return machineInfo(await s().workspace.updateMachine(d.userFor(r).id, r.params.name!, change));
     }),
     route("POST", `${u}/machines/:name/key`, async (r) => {
-      const { hostKey, token } = await r.json<Api.MachineKey>();
-      return machineInfo(await s().workspace.setHostKey(d.userFor(r).id, r.params.name!, String(hostKey ?? ""), token === undefined ? undefined : String(token)));
+      const { hostKey, token, draft } = await r.json<Api.MachineKey>();
+      return machineInfo(await s().workspace.setHostKey(d.userFor(r).id, r.params.name!, String(hostKey ?? ""), token === undefined ? undefined : String(token), draft === undefined ? undefined : String(draft)));
     }),
     route("POST", `${u}/machines/:name/confirm-off-network`, (r) => machineInfo(s().workspace.confirmOffNetwork(d.userFor(r).id, r.params.name!))),
     route("DELETE", `${u}/machines/:name`, (r) => {
