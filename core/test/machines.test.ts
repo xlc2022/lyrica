@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   cleanOutput, generateSshKey, maskKeys, migrate, RemoteMissing, suspectCommand, Users, writtenFiles, Workspace, WorkspaceSettings,
   type Db, type NewMachine, type SshSession, type SshTransport,
@@ -142,6 +142,11 @@ describe("machines", () => {
     expect(fresh.keyLine).not.toContain(old.publicKey.split(" ")[1]);
     expect(fresh.setup).toContain(">> /etc/ssh/authorized_keys/lyrica");
     await expect(workspace.setHostKey(ada.id, "nas", KEY, undefined, "nope")).rejects.toThrow(/key pair has expired/);
+    // A pair tested more than an hour ago has expired, even before the next probe prunes it.
+    const now = Date.now();
+    vi.spyOn(Date, "now").mockReturnValue(now + 61 * 60_000);
+    await expect(workspace.setHostKey(ada.id, "nas", KEY, undefined, fresh.draft)).rejects.toThrow(/key pair has expired/);
+    vi.restoreAllMocks();
     expect(settings.machine("nas")!.privateKey).toBe(old.privateKey);
     await workspace.setHostKey(ada.id, "nas", OTHER, undefined, fresh.draft);
     const saved = settings.machine("nas")!;

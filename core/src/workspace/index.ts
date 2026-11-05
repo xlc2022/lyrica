@@ -1678,7 +1678,7 @@ export class Workspace {
     if (token !== undefined && m.kind !== "proxmox") throw new Error(`${name} isn't a Proxmox machine`);
     if (draft !== undefined && m.kind !== "ssh") throw new Error(`${name} isn't an SSH machine`);
     const pair = draft === undefined ? undefined : this.drafts.get(draft);
-    if (draft !== undefined && (!pair || pair.userId !== userId)) throw new Error("that key pair has expired: make a new one and test it again");
+    if (draft !== undefined && (!pair || pair.userId !== userId || pair.expires < Date.now())) throw new Error("that key pair has expired: make a new one and test it again");
     if (m.kind === "proxmox") {
       const pinned = certFingerprint(confirmedHostKey);
       const next = token?.trim() || m.privateKey;
