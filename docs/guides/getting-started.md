@@ -935,8 +935,9 @@ steps:
 1. She makes a key pair and prints the setup to run **as root on the
    machine**: her public key into `/etc/ssh/authorized_keys/<account>`, a
    file only root can change (beside any key already there), with a `Match
-   User` block in `/etc/ssh/sshd_config.d/lyrica-<account>.conf`, then `sshd -t && systemctl reload
-   ssh` (the unit is `sshd` on Fedora and RHEL). The key line is
+   User` block in `/etc/ssh/sshd_config.d/lyrica-<account>.conf`, then
+   `sshd -t && systemctl reload ssh` (the unit is `sshd` on Fedora and
+   RHEL). The key line is
    restricted to connections from this computer. If she should run some
    commands as root there, give the account exact commands with `visudo -f
    /etc/sudoers.d/lyrica`, or on a machine you really trust `<account>
@@ -975,7 +976,10 @@ script installs them, and NixOS's module brings its own)
 and a passed network self-test: when the journal says "network is off for
 every thread", every machine call fails too, with nothing to fall back to.
 If a machine's host key ever changes, every call fails until you confirm
-the new key (Replace key in its ⋯ menu); `lyrica
+the new key (Replace key in its ⋯ menu). When her login fails there, as
+on a reinstalled machine, the page shows her key's setup block again to
+run and **Test**; **New key pair** makes a fresh pair instead, and the
+old key line stays on the machine until you remove it by hand. `lyrica
 admin ssh list` shows each machine's pool, limit and confirmed key, and
 `ssh remove` takes one away. SSH targets added before machines existed
 became general machines at Ask; one that had never connected has no
