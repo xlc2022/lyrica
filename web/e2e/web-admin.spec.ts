@@ -2378,10 +2378,15 @@ test("Updates: the last kept release's ⋯ opens Roll back below the list, not c
   await page.route(/\/api\/u\/[^/]+\/admin\/updates$/, (route) => route.fulfill({ json: body }));
   await page.goto(`/#/u/${userId}/admin/updates`);
   const section = page.getByRole("region", { name: "Updates" });
+  // A release is one row: commit, date and state on one line, not stacked.
+  const row = section.getByRole("listitem").filter({ hasText: "Running" });
+  const [commit, state] = await Promise.all([row.locator(".mono").boundingBox(), row.locator(".state-word").boundingBox()]);
+  expect(Math.abs(commit!.y + commit!.height / 2 - (state!.y + state!.height / 2))).toBeLessThan(4);
   await section.getByRole("button", { name: "Release actions" }).click();
   const item = section.getByRole("menuitem", { name: "Roll back" });
   await expect(item).toBeVisible();
   await item.scrollIntoViewIfNeeded();
+  await noHorizontalScroll(page);
   if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/updates-menu-${page.viewportSize()!.width}.png` });
   // The menu hangs past the list's bottom edge; the item is what a tap at its centre reaches.
   const list = await section.getByRole("list", { name: "Kept releases" }).boundingBox();
