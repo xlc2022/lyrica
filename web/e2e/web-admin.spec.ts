@@ -2364,3 +2364,28 @@ test("Status reads each pool's last sleep on one line", async ({ page, baseURL, 
   if (page.viewportSize()!.width > 600) expect((await run.boundingBox())!.height).toBeLessThan(30);
   await noHorizontalScroll(page);
 });
+
+test("Updates: the last kept release's ⋯ opens Roll back below the list, not cut off by it", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  const now = new Date().toISOString();
+  const body = {
+    available: true, running: { version: "0.1.0", build: "b03dde0aaaaaaaa" }, note: null, state: { state: "idle", since: now }, lastRollback: null,
+    releases: [
+      { commit: "b03dde0aaaaaaaa", builtAt: now, running: true, previous: false, rollback: { possible: false } },
+      { commit: "05bf05dbbbbbbbb", builtAt: "2026-10-13T12:00:00Z", running: false, previous: true, rollback: { possible: true } },
+    ],
+  };
+  await page.route(/\/api\/u\/[^/]+\/admin\/updates$/, (route) => route.fulfill({ json: body }));
+  await page.goto(`/#/u/${userId}/admin/updates`);
+  const section = page.getByRole("region", { name: "Updates" });
+  await section.getByRole("button", { name: "Release actions" }).click();
+  const item = section.getByRole("menuitem", { name: "Roll back" });
+  await expect(item).toBeVisible();
+  await item.scrollIntoViewIfNeeded();
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/updates-menu-${page.viewportSize()!.width}.png` });
+  // The menu hangs past the list's bottom edge; the item is what a tap at its centre reaches.
+  const list = await section.getByRole("list", { name: "Kept releases" }).boundingBox();
+  const box = (await item.boundingBox())!;
+  expect(box.y + box.height).toBeGreaterThan(list!.y + list!.height);
+  expect(await item.evaluate((el) => { const r = el.getBoundingClientRect(); return el.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)); })).toBe(true);
+});
