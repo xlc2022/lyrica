@@ -1417,9 +1417,8 @@ her account is general.
   1. Her GitHub account as a collaborator with **Write**.
   2. Under her account, a classic token with only the `public_repo`
      scope, added in Settings → Git accounts as a GitHub account. Each
-     deployment that runs her project has its own account and token, and
-     only one runs it at a time (docs/briefs/lyrica-project.md, "Which
-     deployment runs her project"). A
+     deployment that runs her project has its own account and token
+     (docs/briefs/lyrica-project.md, "More than one deployment"). A
      fine-grained token can't write to a repository another personal
      account owns, even with Write access; it reads only because the
      repository is public. It covers every public repository her account

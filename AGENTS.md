@@ -93,6 +93,11 @@ on the PR or issue and asks her for work with an issue assigned to her,
 never with a message into her threads. After she merges,
 she reports it as in step 4 below. See
 [the project handoff](docs/briefs/lyrica-project.md#claudes-side).
+When she runs on more than one deployment, each has its own GitHub
+account: she works only on issues assigned to her own account, checks a
+new `lyrica/*` name isn't on GitHub before pushing it, and never pushes to
+a branch another account created
+([More than one deployment](docs/briefs/lyrica-project.md#more-than-one-deployment)).
 
 For other contributors, the existing path remains:
 
