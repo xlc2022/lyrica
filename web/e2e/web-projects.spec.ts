@@ -868,7 +868,8 @@ test("the split view: a thread from its card opens in the panel, links inside it
   expect(page.url()).not.toContain("/panel/");
   // A link inside the panel replaces what it shows and the breadcrumb grows: a mention of Beta, written in Alpha's box.
   await send(page, "start: Beta");
-  const betaHref = (await page.locator(".side .children a.thread").filter({ has: page.locator(".title", { hasText: /^Beta$/ }) }).getAttribute("href"))!;
+  // Read Beta's link from this project's card: the sidebar can also list an earlier test's project with its own Beta.
+  const betaHref = (await page.locator("main .tcard").getByRole("link", { name: "Beta", exact: true }).getAttribute("href"))!;
   const betaId = decodeURIComponent(betaHref.split("/t/general/")[1]!);
   await card.getByRole("link", { name: "Alpha" }).click();
   await expect(panel).toBeVisible();
