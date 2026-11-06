@@ -472,8 +472,18 @@ test("a project: New project, suggested threads start into cards, the Threads po
   if (split) { await expect(fact).toHaveAttribute("aria-pressed", "true"); await fact.click(); await expect(pop).toHaveCount(0); } else await page.keyboard.press("Escape");
 
   // Start a thread from a message's menu; the sidebar nests the project's threads with their state.
-  await page.locator(".msg.user").first().getByRole("button", { name: "More actions" }).click();
-  await page.getByRole("menuitem", { name: "Start a thread" }).click();
+  // Start a thread is disabled while a notice from Alpha or Beta is being swapped into the chat (live.ts `ended`), so a
+  // tap can land in the moment between Playwright's enabled check and the click and do nothing (seen in CI). Open the
+  // menu and tap again until the page asks to start the thread.
+  const started: string[] = [];
+  page.on("request", (r) => { if (r.method() === "POST" && /\/messages\/\d+\/thread$/.test(r.url())) started.push(r.url()); });
+  await expect(async () => {
+    if (started.length) return;
+    const item = page.getByRole("menuitem", { name: "Start a thread" });
+    if (!(await item.isVisible())) await page.locator(".msg.user").first().getByRole("button", { name: "More actions" }).click();
+    await item.click({ timeout: 2_000 });
+    await expect.poll(() => started.length, { timeout: 1_000 }).toBe(1);
+  }).toPass();
   await expect(page.locator(".tcard")).toHaveCount(3);
   if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
   await expect(page.locator(".side .children .thread")).toHaveCount(3);
