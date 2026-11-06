@@ -1794,7 +1794,7 @@ test("project question cards answer in place and withdraw on Resolve", async ({ 
   let asked = false;
   await page.route("**/overview", async (route) => {
     if (asked) { await released; return route.continue(); }
-    const response = await route.fetch();
+    const response = await fetchReal(route);
     const body = await response.text();
     if (!body.includes("\"question\"")) return route.fulfill({ response, body });
     asked = true;
