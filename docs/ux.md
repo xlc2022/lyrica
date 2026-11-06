@@ -395,6 +395,11 @@ spot.
   buttons with labels for screen readers. There is no panel: what would open
   in it is the page, at the same address.
 - No horizontal scrolling, anywhere, ever.
+- Long unbroken text (paths, URLs, file names, fingerprints) wraps inside its
+  box: cards, drawers and their headers, dialogs, error lines, toasts, approval
+  cards and chart tips break it anywhere rather than spill past the edge or
+  push a button off screen. Only a code block keeps its lines and scrolls
+  sideways inside itself.
 - A long press does what a right-click does.
 - Touch targets are 44 px.
 
