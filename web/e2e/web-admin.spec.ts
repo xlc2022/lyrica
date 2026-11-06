@@ -1729,8 +1729,9 @@ test("question cards answer in chat and Notifications and close on words", async
 /**
  * What the project page saw while the card should turn "Waiting on you": each /overview answer (the card's state and
  * whether it carries the question), each failed /overview request, and every stream event with the stream's opens and
- * errors. The card has stuck on "Working" on a phone in CI three times (#692, run 42168922052), never locally, so a
- * failure prints these to name the cause.
+ * errors. The card stuck on "Working" on a phone in CI three times (#692, run 42168922052): the overview answers that
+ * carried the question were dropped because a newer reload had started, which never came back. useLoad now shows any
+ * answer newer than the one shown, and the test below forces that race; a failure still prints these.
  */
 async function watchProjectCard(page: Page, title: string) {
   const start = Date.now();
@@ -1785,10 +1786,26 @@ test("project question cards answer in place and withdraw on Resolve", async ({ 
     if (!r.ok) throw new Error(`Create project: ${r.status}`);
     return r.json();
   }, userId);
+  // CI's race (run 42168922052): the overview that first carries the question comes back after the next one was sent,
+  // and that next one never comes back. Here the first answer with the question waits a second and a half, while
+  // the turn's later events send more; those are held until the card has turned. It must still show.
+  let release!: () => void;
+  const released = new Promise<void>((resolve) => { release = resolve; });
+  let asked = false;
+  await page.route("**/overview", async (route) => {
+    if (asked) { await released; return route.continue(); }
+    const response = await fetchReal(route);
+    const body = await response.text();
+    if (!body.includes("\"question\"")) return route.fulfill({ response, body });
+    asked = true;
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    return route.fulfill({ response, body });
+  });
   await page.goto(`/#/u/${userId}/t/general/${encodeURIComponent(project.id)}`);
   await send(page, "start ask: Planting scope");
   const card = page.locator(".tcard").filter({ has: page.locator(".tcard-title", { hasText: "Planting scope" }) });
   await watch.explain(() => expect(card).toContainText("Waiting on you"));
+  release();
   await expect(card.getByRole("button", { name: /^Small/ })).toBeEnabled();
   const childId = threadIdOf((await card.locator(".tcard-title").getAttribute("href"))!);
   const projectBase = `/api/u/${userId}/threads/general/${encodeURIComponent(project.id)}`;

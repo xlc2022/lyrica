@@ -9,6 +9,7 @@ import remarkMath from "remark-math";
 import { prepareMarkdown } from "./markdown.ts";
 import { RichCode, richPre } from "./RichBlock.tsx";
 import type { Display, Pool } from "./api.ts";
+import { answers } from "./answers.ts";
 
 /** Whether the display filters hide a pool. Hiding only changes what's shown. */
 export const hidden = (d: Display, pool: Pool) => (pool === "private" ? !d.showPrivate : !d.showGeneral);
@@ -26,17 +27,26 @@ export function useAction(): [(fn: () => Promise<unknown>) => Promise<boolean>, 
   return [run, busy, error];
 }
 
-/** Loads something, and reloads when `deps` change or `reload()` is called. */
-export function useLoad<T>(fn: () => Promise<T>, deps: unknown[]): { data?: T; error: string; reload: () => void; set: (t: T) => void } {
+/**
+ * Loads something, and reloads when `deps` change or `reload()` is called. `refresh` holds values that only mean
+ * "fetch it again" (an event counter, say), not a different thing: while one fetch is still on its way, an earlier
+ * one's answer that comes back first still shows, since it is newer than what is shown (answers.ts).
+ */
+export function useLoad<T>(fn: () => Promise<T>, deps: unknown[], refresh: unknown[] = []): { data?: T; error: string; reload: () => void; set: (t: T) => void } {
   const [data, setData] = useState<T>();
   const [error, setError] = useState("");
   const [tick, setTick] = useState(0);
+  const order = useRef<ReturnType<typeof answers>>(undefined);
+  order.current ??= answers();
+  // A different resource: answers to the last one's fetches no longer show. Declared first, so it runs before the fetch.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => order.current!.reset(), deps);
   useEffect(() => {
-    let live = true;
-    fn().then((d) => { if (live) { setData(d); setError(""); } }, (e: Error) => { if (live) setError(e.message); });
-    return () => { live = false; };
+    const o = order.current!;
+    const a = o.send();
+    fn().then((d) => { if (o.take(a)) { setData(d); setError(""); } }, (e: Error) => { if (o.latest(a)) setError(e.message); });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [...deps, tick]);
+  }, [...deps, ...refresh, tick]);
   return { data, error, reload: useCallback(() => setTick((t) => t + 1), []), set: setData };
 }
 

@@ -75,7 +75,7 @@ export const tokenCount = (n: number) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` 
 /** The project's threads, how many wait on the user and its tokens; reloaded when `tick` changes. Nothing for a plain thread. */
 export function useOverview(userId: string, pool: Pool, threadId: string, project: boolean, tick: number) {
   const base = threadPath(userId, pool, threadId);
-  return useLoad(() => (project ? get<ProjectOverview>(`${base}/overview`) : Promise.resolve(undefined)), [base, project, tick]);
+  return useLoad(() => (project ? get<ProjectOverview>(`${base}/overview`) : Promise.resolve(undefined)), [base, project], [tick]);
 }
 
 /** What a project chat gives its conversation: the threads for the cards, and what to do after one changes. */

@@ -472,8 +472,14 @@ test("a project: New project, suggested threads start into cards, the Threads po
   if (split) { await expect(fact).toHaveAttribute("aria-pressed", "true"); await fact.click(); await expect(pop).toHaveCount(0); } else await page.keyboard.press("Escape");
 
   // Start a thread from a message's menu; the sidebar nests the project's threads with their state.
+  // Start a thread is disabled while a notice is being swapped into the chat (live.ts `ended`), and Alpha's and Beta's
+  // first updates land about now, so a tap could do nothing (seen in CI). Their notices don't show in a project chat,
+  // so wait for both updates on their cards and for the item to be enabled, then tap once.
+  await expect(page.locator(".tcard .tcard-line")).toHaveCount(2);
   await page.locator(".msg.user").first().getByRole("button", { name: "More actions" }).click();
-  await page.getByRole("menuitem", { name: "Start a thread" }).click();
+  const startItem = page.getByRole("menuitem", { name: "Start a thread" });
+  await expect(startItem).toBeEnabled();
+  await startItem.click();
   await expect(page.locator(".tcard")).toHaveCount(3);
   if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
   await expect(page.locator(".side .children .thread")).toHaveCount(3);
@@ -868,7 +874,8 @@ test("the split view: a thread from its card opens in the panel, links inside it
   expect(page.url()).not.toContain("/panel/");
   // A link inside the panel replaces what it shows and the breadcrumb grows: a mention of Beta, written in Alpha's box.
   await send(page, "start: Beta");
-  const betaHref = (await page.locator(".side .children a.thread").filter({ has: page.locator(".title", { hasText: /^Beta$/ }) }).getAttribute("href"))!;
+  // Read Beta's link from this project's card: the sidebar can also list an earlier test's project with its own Beta.
+  const betaHref = (await page.locator("main .tcard").getByRole("link", { name: "Beta", exact: true }).getAttribute("href"))!;
   const betaId = decodeURIComponent(betaHref.split("/t/general/")[1]!);
   await card.getByRole("link", { name: "Alpha" }).click();
   await expect(panel).toBeVisible();

@@ -206,8 +206,11 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   pressed while it shows (`aria-pressed`); below 1180 px it opens that
   page. The overview's header holds one link, **Project settings**, to the
   project settings page (one crumb deeper in the panel). The
-  `child` stream event reloads the overview (`GET …/overview`) and the
-  thread list, so cards and state words follow. A resolved project thread
+  `child` stream event, and a child's update or wait notice, reload the
+  overview (`GET …/overview`) and the thread list, so cards and state words
+  follow. A reload that is still on its way never hides an answer that
+  already came back: `useLoad` shows each answer newer than the one shown
+  (`answers.ts`). A resolved project thread
   has a **Reopen** link where its message box was.
 - **The panel** (`Shell.tsx`, docs/ux.md §6): from 1180 px up, a link in a
   conversation to a thread or a project's settings (a thread card or its
