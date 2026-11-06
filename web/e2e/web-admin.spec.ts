@@ -1726,7 +1726,59 @@ test("question cards answer in chat and Notifications and close on words", async
 });
 
 
+/**
+ * What the project page saw while the card should turn "Waiting on you": each /overview answer (the card's state and
+ * whether it carries the question), each failed /overview request, and every stream event with the stream's opens and
+ * errors. The card has stuck on "Working" on a phone in CI three times (#692, run 42168922052), never locally, so a
+ * failure prints these to name the cause.
+ */
+async function watchProjectCard(page: Page, title: string) {
+  const start = Date.now();
+  const log: string[] = [];
+  const at = () => `${Date.now() - start}ms`;
+  page.on("response", async (r) => {
+    if (!r.url().includes("/overview")) return;
+    const body = await r.json().catch(() => undefined) as { threads?: { title?: string; state?: string; question?: unknown; needsYou?: boolean }[] } | undefined;
+    const t = body?.threads?.find((x) => x.title === title);
+    log.push(`${at()} overview ${r.status()} ${t ? `state=${t.state} question=${!!t.question} needsYou=${!!t.needsYou}` : "no card"}`);
+  });
+  page.on("requestfailed", (r) => { if (r.url().includes("/overview")) log.push(`${at()} overview failed: ${r.failure()?.errorText}`); });
+  await page.addInitScript(() => {
+    const w = window as unknown as { __streamLog: string[] };
+    w.__streamLog = [];
+    const t0 = Date.now();
+    const proto = EventSource.prototype as unknown as { addEventListener: (this: EventSource, type: string, fn: EventListenerOrEventListenerObject, opts?: boolean | AddEventListenerOptions) => void };
+    const add = proto.addEventListener;
+    proto.addEventListener = function (this: EventSource, type: string, fn: EventListenerOrEventListenerObject, opts?: boolean | AddEventListenerOptions) {
+      if (type === "hello") {
+        this.addEventListener("open", () => w.__streamLog.push(`${Date.now() - t0}ms open ${this.url.split("/").slice(-2).join("/")}`));
+        this.addEventListener("error", (e) => { if (!(e instanceof MessageEvent)) w.__streamLog.push(`${Date.now() - t0}ms stream error, readyState ${this.readyState}`); });
+      }
+      return add.call(this, type, (e: Event) => {
+        const data = (e as MessageEvent<string>).data;
+        if (typeof data === "string") {
+          let note = "";
+          try { const d = JSON.parse(data) as { status?: string; threadId?: string }; note = [d.status, d.threadId].filter(Boolean).join(" "); } catch { /* not JSON */ }
+          w.__streamLog.push(`${Date.now() - t0}ms ${type}${note ? ` ${note}` : ""}`);
+        }
+        if (typeof fn === "function") fn.call(this, e); else fn.handleEvent(e);
+      }, opts);
+    };
+  });
+  return {
+    /** Runs `check`; if it fails, adds the overview answers and stream events to its error. */
+    async explain(check: () => Promise<void>) {
+      try { await check(); } catch (err) {
+        const stream = await page.evaluate(() => (window as unknown as { __streamLog?: string[] }).__streamLog ?? []).catch(() => [] as string[]);
+        (err as Error).message += `\n\nOverview answers:\n${log.join("\n") || "(none)"}\n\nStream events:\n${stream.join("\n") || "(none)"}`;
+        throw err;
+      }
+    },
+  };
+}
+
 test("project question cards answer in place and withdraw on Resolve", async ({ page, baseURL }) => {
+  const watch = await watchProjectCard(page, "Planting scope");
   const userId = await enter(page, baseURL!);
   const project = await page.evaluate(async userId => {
     const r = await fetch(`/api/u/${userId}/threads`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ pool: "general", project: true, title: "Question garden" }) });
@@ -1736,7 +1788,7 @@ test("project question cards answer in place and withdraw on Resolve", async ({ 
   await page.goto(`/#/u/${userId}/t/general/${encodeURIComponent(project.id)}`);
   await send(page, "start ask: Planting scope");
   const card = page.locator(".tcard").filter({ has: page.locator(".tcard-title", { hasText: "Planting scope" }) });
-  await expect(card).toContainText("Waiting on you");
+  await watch.explain(() => expect(card).toContainText("Waiting on you"));
   await expect(card.getByRole("button", { name: /^Small/ })).toBeEnabled();
   const childId = threadIdOf((await card.locator(".tcard-title").getAttribute("href"))!);
   const projectBase = `/api/u/${userId}/threads/general/${encodeURIComponent(project.id)}`;
