@@ -25,6 +25,66 @@ project instructions. Continue as project leaves the source conversation
 and carries its children into a new project. The interface is built under
 [project-welcome.md](project-welcome.md).
 
+## More than one deployment
+
+She can run her project on more than one deployment at once, such as a
+development deployment that tries changes first and the one the owner uses
+day to day (the owner, 2026-11-06). Each has its own project, set up with
+the steps below, and its own GitHub account, so GitHub keeps them apart:
+
+- **Issues.** An issue is claimed by assigning it to one account. A
+  deployment works only on issues assigned to its own account and leaves
+  the other's alone, even when both noticed the same thing; its Friction
+  log searches open issues first and comments on a match instead of filing
+  a second.
+- **Branches.** Both push `lyrica/*` branches. Before pushing a new one she
+  checks the name isn't on GitHub yet, and she never pushes to a branch
+  another account created (AGENTS.md, "Review and merge").
+- **Update tags.** Each deployment's update note lists what was merged
+  since its own running version. When the `update/<date>` name is taken,
+  the second note adds a suffix, such as `update/<date>-2`.
+- **Nothing is shared** between the two: not threads, memory, models'
+  settings or tokens. Everything she needs for her project is in this file.
+
+On the deployment the owner uses, no Claude session reads her threads,
+turn records or logs (the owner, 2026-10-24). Everything Claude's side needs
+is on GitHub: her PR descriptions, comments and issues. A guardian that
+watches her threads, as in [self-edit-trial.md](self-edit-trial.md), is
+for a development deployment only.
+
+### Before her project, by the owner, on the new deployment
+
+These are by hand; the guides cover each one.
+
+1. **Install and first run** ([getting-started.md](../guides/getting-started.md)),
+   or, for an older install, bring it to current `main`
+   ("Upgrading from a checkout" there). Run the checklist at the end of
+   that guide, and add the updater's deploy key ("Add the deploy key").
+2. **Models** for her project chat, Review and UI review, from the model
+   hosts it pairs with ([model-hosts.md](../guides/model-hosts.md)). A host
+   paired with two deployments moves to whichever asks for **Update**, so
+   keep both on the same release, or update the host only from this one.
+3. **A GitHub account for this deployment,** its own, never another
+   deployment's token: a Write collaborator on `xlc2022/lyrica` only,
+   added to the ruleset that allows `lyrica/*` branches and `update/*`
+   tags, with a classic `public_repo` token (docs/workspace.md, "Her own
+   code", steps 1, 2 and 4).
+4. **Web search** (a SearXNG, [searxng.md](../guides/searxng.md)) and,
+   for Claude Code jobs, a fresh `claude setup-token` token under
+   Settings → Claude Code and Codex, so each deployment's can be revoked
+   alone.
+5. **Tell Claude's project** the new account's login. Its pickup routine
+   finds ready PRs by their `lyrica/*` branch or by her accounts, and
+   `claude` issues by label, so only the account list changes.
+
+Then follow "Setup, by the owner, once".
+
+### Updates with a development deployment
+
+Each deployment installs an update by its own **Update**. Press it on the
+development deployment first and on the one the owner uses after that
+release passed probation there.
+
 ## Setup, by the owner, once
 
 1. **New project** from the thread list's own menu (right-click or long
@@ -247,8 +307,10 @@ head, CI is green and Claude's approval names it; a push after the approval
 needs all three again, and boundary code (CODEOWNERS) also waits for the
 owner's own approval. She answers findings
 on the PR. Issues labelled `claude` are separate
-requests to Claude's project chat, not per-PR merge requests. The project
-chat sets that routine up when her account exists.
+requests to Claude's project chat, not per-PR merge requests. The routine
+runs in Claude's PR review thread; when a deployment gets her project,
+Claude's project chat adds its account to the routine's list. The PR's
+author tells Claude which deployment opened it.
 
 GitHub is the only channel, both ways. Claude answers her on the PR or
 the issue, and asks her for anything as an issue assigned to her or a PR
@@ -262,8 +324,14 @@ checkout to update them; NixOS units belong to its module.
 
 ## After merging
 
-Nothing for the Operator docs thread: this is set up in the web UI.
+Tell the Operator docs thread when this file changes what the owner does by hand on a deployment ("Before her project"); the rest is set up in the web UI.
 
 ## Handoff notes
 
-(Filled in if the setup stops before it's done.)
+2026-11-06: her project ran on the development deployment, with its own
+GitHub account, for the guided trial in
+[self-edit-trial.md](self-edit-trial.md) (#503, #504, #505) and the work
+she picked after it, and keeps it. The deployment the owner uses day to
+day was behind `main` and had no project yet; it gets one of its own
+beside the development one. Next, by the owner: "Before her project"
+above, then "Setup, by the owner, once" on that deployment.

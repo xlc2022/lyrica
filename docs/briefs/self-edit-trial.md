@@ -4,7 +4,10 @@
 that watches; Lyrica on lunasa, who builds. **Model:** hers is the local
 model the owner picks (gpt-6.1-sol for the first trial); the guardian is
 Opus. **Status:** first trial done (#503, #504, #505 merged); she now picks
-her own work from her issues, and the guardian only monitors.
+her own work from her issues, and the guardian only monitors. The
+guardian is for the development deployment only: her project on the
+deployment the owner uses ([lyrica-project.md](lyrica-project.md), "More
+than one deployment") has no guardian and no thread view.
 
 **Read first:** AGENTS.md, [lyrica-project.md](lyrica-project.md) (how her
 project is set up and how her work reaches review), docs/workspace.md "Her

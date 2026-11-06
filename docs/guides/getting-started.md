@@ -894,7 +894,10 @@ tokens; **Off** never ([docs/workspace.md](../workspace.md#the-evidence-judge)).
 For her own code, the one-time setup on GitHub (her account as a
 collaborator, its token as a Git account, rules for `main` and her
 `lyrica/*` branches, CODEOWNERS) is in
-[docs/workspace.md](../workspace.md#her-own-code).
+[docs/workspace.md](../workspace.md#her-own-code). Each deployment that
+works on her own code has a GitHub account of its own; running it on a
+development deployment and the one you use side by side is in
+[docs/briefs/lyrica-project.md](../briefs/lyrica-project.md#more-than-one-deployment).
 
 ## Give her Claude Code
 
