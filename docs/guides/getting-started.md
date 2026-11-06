@@ -1150,7 +1150,9 @@ refused. To replace the destination, enter the full URL and token again;
   read, asking first (`--yes` skips the question), or refuses and names the
   oldest release it could go back to.
 - **Upgrading from a checkout** (Debian or Ubuntu; on NixOS it is the
-  flake update in "On NixOS"): as root:
+  flake update in "On NixOS"): this is the way to bring an older install
+  up to date by hand, and the only way to get new packages and units,
+  since an Update installs neither. As root:
 
   ```sh
   cd /root/lyrica && git pull
@@ -1159,43 +1161,42 @@ refused. To replace the destination, enter the full URL and token again;
 
   The script installs that commit as a release the same way: turns finish,
   a snapshot, the switch and a restart, which logs everyone out. It
-  rebuilds Caddy only if a pin changed. Its first run over an install from
-  before releases can't wait for turns, because the old `lyricad` has no
-  update socket: stop `lyricad` first, or let turns finish. That run moves
-  the old code to `/opt/lyrica/before-releases`; delete it once the new
-  release runs. An install made before
-  2026-10-11 gets the `lyrica` command and ImageMagick on this run; until
-  then the Files panel shows images themselves instead of thumbnails. On
-  NixOS the next `nixos-rebuild switch` brings ImageMagick in with the
-  default `sandboxPackages`. An existing install gets Tailscale and her
-  `tailscaled` on its next run and keeps its web access as it was; Direct
-  comes only with a fresh install. An install made before 2026-10-31
-  needs one more `install.sh` run before Web access, Tailnet can get its
-  certificate (her `tailscaled` unit gained `--statedir`); NixOS gets it
-  on its next rebuild. An install made before 2026-10-12
-  needs `apt-get install gh`, and `apt-get install tea` where it is
-  packaged (or this run), for threads with repositories; on NixOS the next
-  rebuild brings them. An install without
-  `/opt/lyrica/tools/bin/chromium-headless-shell` gets headless Chromium and IBM
-  Plex for her screenshots on this run (an install from before 2026-11-01
-  had it, Claude Code and Codex in `/usr/local`: this run moves them into
-  her tool prefix and removes the old copies); on NixOS the next rebuild brings
-  them. An existing install gets Claude Code and Codex on its next
-  `install.sh` run (Update on Administration, Updates doesn't install
-  them), and NixOS on the next rebuild. An existing install gets ffmpeg
-  and ffprobe on its next `install.sh` run (or `apt-get install
-  ffmpeg`), and NixOS on the next rebuild; until then she can't check a
-  clip's length or streams herself. An existing install gets the Python
-  baseline (python3-bs4, python3-lxml, python3-requests, python3-html5lib,
-  python3-yaml) on its next `install.sh` run (or `apt-get install` of
-  them), and NixOS on the next rebuild; until then `import bs4` fails in
-  her sandbox and her prompt doesn't name the libraries. A SearXNG that
-  `install.sh` set up before 2026-10-31 keeps its old `settings.yml`, so
-  its engines rest for up to a day after one CAPTCHA: copy the new
-  sections in by hand ([searxng.md](searxng.md#engines-that-refuse)); the
-  NixOS module applies them on its rebuild. On NixOS that rebuild also
-  starts SearXNG for her web search unless `services.lyrica.searxng =
-  false`.
+  rebuilds Caddy only if a pin changed, and installs whatever packages,
+  units and tools the install is missing, so one run catches up an
+  install of any age. Check Node first: releases since 2026-10-29 need
+  22.12 or later (NodeSource, as in "On Debian or Ubuntu"). What one run
+  brings to an older install:
+
+  - **Before releases** (no `/opt/lyrica/releases`): the old `lyricad`
+    has no update socket, so the run can't wait for turns: stop
+    `lyricad` first, or let turns finish. It moves the old code to
+    `/opt/lyrica/before-releases`; delete that once the new release runs.
+  - **Before 2026-10-11:** the `lyrica` command and ImageMagick; until
+    then the Files panel shows images themselves instead of thumbnails.
+  - **Before 2026-10-12:** `gh`, and `tea` where it is packaged, for
+    threads with repositories.
+  - **Before Tailscale was added:** Tailscale and her `tailscaled`; the
+    install keeps its web access as it was, and Direct comes only with a
+    fresh install.
+  - **Before 2026-10-31:** her `tailscaled` unit gains `--statedir`, which
+    Web access, Tailnet needs for its certificate. A SearXNG that
+    `install.sh` set up keeps its old `settings.yml`, so its engines rest
+    for up to a day after one CAPTCHA: copy the new sections in by hand
+    ([searxng.md](searxng.md#engines-that-refuse)).
+  - **Before 2026-11-01:** headless Chromium, Claude Code and Codex move
+    from `/usr/local` into her tool prefix `/opt/lyrica/tools`, and the
+    old copies are removed.
+  - **Any install missing them:** headless Chromium and IBM Plex for her
+    screenshots, Claude Code and Codex, ffmpeg and ffprobe (until then
+    she can't check a clip's length or streams), and the Python baseline
+    (python3-bs4, python3-lxml, python3-requests, python3-html5lib,
+    python3-yaml; until then `import bs4` fails in her sandbox).
+
+  On NixOS the next `nixos-rebuild switch` brings all of these, applies
+  the SearXNG settings, and starts SearXNG for her web search unless
+  `services.lyrica.searxng = false`. Update her model hosts too, so their
+  recipes match her release ("Operating a host" in
+  [model-hosts.md](model-hosts.md#operating-a-host)).
   The home page header (the greeting, then the date, the time and
   "0.1.0 · <build>") shows the git commit that is running.
 
