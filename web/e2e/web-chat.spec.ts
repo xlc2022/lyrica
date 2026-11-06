@@ -939,7 +939,8 @@ test("a child thread nests under its parent, opens from its card, and goes with 
   const early = await deleteThread(page);
   await expect(early.getByLabel("Also delete its child thread")).toBeChecked();
   await early.getByRole("button", { name: "Cancel" }).click();
-  await page.unrouteAll();
+  // Lists still held by the slow route may be on their way; the menu already counted the child from an earlier one.
+  await page.unrouteAll({ behavior: "ignoreErrors" });
   const card = page.locator(".threads-card");
   await expect(card).toContainText("Child thread: Seed list");
   await card.getByRole("link", { name: "Open" }).click();
