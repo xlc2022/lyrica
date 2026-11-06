@@ -1186,7 +1186,11 @@ come from the user's Git accounts (DESIGN.md, "Updates and self-editing").
   `node_modules`, `.venv` or Yarn's `.pnp.cjs` must still be there when no
   Setup is set). Before installing it adds `/node_modules/` and `/.venv/`
   to the clone's `.git/info/exclude`, so they stay out of `git status`,
-  the changes view and her commits without changing the repository. A
+  the changes view and her commits without changing the repository. When
+  the sandbox's `HOME` isn't writable (a project chat's `/workspace` is
+  read-only), the install runs with `HOME` at `/tmp/lyrica-home`, the
+  chat's own lasting `/tmp`, so npm and the others have somewhere for their
+  caches. A
   failure, a missing installer (exit 127) or 10 minutes passing is a line
   in the turn's prompt, like a failed clone: "dependencies didn't install",
   the command, its exit code and its last 20 lines, the thread's secrets

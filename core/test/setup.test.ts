@@ -12,8 +12,8 @@ const fake = (name: string, body = "") => {
   writeFileSync(join(bin, name), `#!/bin/sh\necho "${name} $*" >> ${join(dir, "runs")}\n${body}\n`);
   chmodSync(join(bin, name), 0o755);
 };
-const setup = (command = "", skip = "") => {
-  const r = spawnSync("sh", ["-c", SETUP_SCRIPT, "sh", clone, command, skip], { env: { PATH: `${bin}:/usr/bin:/bin` }, encoding: "utf8" });
+const setup = (command = "", skip = "", env: Record<string, string> = {}) => {
+  const r = spawnSync("sh", ["-c", SETUP_SCRIPT, "sh", clone, command, skip], { env: { PATH: `${bin}:/usr/bin:/bin`, ...env }, encoding: "utf8" });
   return { code: r.status, stderr: r.stderr };
 };
 
@@ -92,6 +92,22 @@ describe("a clone's dependencies", () => {
       .toMatch(/^ada\/garden: dependencies didn't install \(`pnpm install --frozen-lockfile --ignore-scripts` exited 127, a program it needs isn't installed in the sandbox\)\. Its last lines:\n {4}.*pnpm/);
     const leaked = { code: 1, stderr: `lyrica-setup ${"a".repeat(64)} npm ci\nfetch https://tok3n@registry failed\n` };
     expect(setupOutcome("ada/garden", leaked, (s) => s.replaceAll("tok3n", "[credential hidden]"))).toMatchObject({ problem: expect.stringContaining("https://[credential hidden]@registry") });
+  });
+
+  it("gives the install a writable home for its cache when the sandbox's HOME is read-only, as in a project chat", () => {
+    writeFileSync(join(clone, "package-lock.json"), "{}");
+    // A path under a file can't be written even by root, which runs CI's tests in some containers.
+    writeFileSync(join(dir, "file"), "");
+    fake("npm", 'mkdir -p "$HOME/.npm" && echo "home $HOME" >> ' + join(dir, "runs") + " && mkdir -p node_modules");
+    const r = setup("", "", { HOME: join(dir, "file", "home"), TMPDIR: dir });
+    expect(r.code, r.stderr).toBe(0);
+    expect(runs()).toEqual(["npm ci --ignore-scripts --no-audit --no-fund", `home ${join(dir, "lyrica-home")}`]);
+    // A writable HOME is left as it is.
+    rmSync(join(clone, "node_modules"), { recursive: true });
+    rmSync(join(dir, "runs"));
+    mkdirSync(join(dir, "home"));
+    expect(setup("", "", { HOME: join(dir, "home"), TMPDIR: dir }).code).toBe(0);
+    expect(runs()[1]).toBe(`home ${join(dir, "home")}`);
   });
 
   it("keeps node_modules and .venv out of git status without changing the repository, and treats Yarn PnP as installed", () => {

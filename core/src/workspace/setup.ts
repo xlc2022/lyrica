@@ -41,6 +41,8 @@ key=$( { printf '%s\\n' "$cmd"; cat ${[...new Set(DEFAULT_SETUPS.map((d) => d.lo
 echo "lyrica-setup $key $cmd" >&2
 if [ "$key" = "$3" ]; then echo lyrica-setup-same >&2; exit 0; fi
 if [ "$(cat .git/lyrica-setup 2>/dev/null)" = "$key" ] && { [ -n "$2" ] || [ -d node_modules ] || [ -d .venv ] || [ -f .pnp.cjs ]; }; then exit 0; fi
+# A project chat's HOME (the read-only /workspace) can't hold npm's, pnpm's, yarn's, uv's or pip's cache, so they go under its /tmp, which lasts.
+[ -w "$HOME" ] || { export HOME="\${TMPDIR:-/tmp}/lyrica-home"; mkdir -p "$HOME" || exit $?; }
 # What the install makes stays out of git status and her commits, without changing the repository.
 mkdir -p .git/info && for d in /node_modules/ /.venv/; do grep -qxF "$d" .git/info/exclude 2>/dev/null || echo "$d" >> .git/info/exclude; done
 sh -c "$cmd" >&2 || exit $?
