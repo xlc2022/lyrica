@@ -32,7 +32,8 @@ the user notices the first update that goes wrong).
 2. **`lyrica-update`** (`/usr/local/sbin`, bash, installed only by
    `install.sh`), run by `lyrica-update.service` (oneshot, root), started by
    `lyrica-update.path` on a request file. It fetches into
-   `/opt/lyrica/repo.git` with a read-only deploy key (root-owned), takes an
+   `/opt/lyrica/repo.git` (root-owned) over HTTPS while the repository is
+   public, otherwise with a read-only deploy key, takes an
    annotated tag `update/*`, refuses a tag whose commit isn't on `main`,
    and then: builds as an unprivileged build user with no access to
    `/var/lib/lyrica`; smoke-tests the release on a spare port with a scratch
