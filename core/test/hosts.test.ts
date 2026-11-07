@@ -132,11 +132,26 @@ describe("host updates", () => {
   it("asks the host for Lyrica's release, and keeps showing it updating while it restarts", async () => {
     const s = await setup();
     const ep = await s.models.pairHost(s.ada, { name: "blackwell", addresses: [s.host.address], code: s.host.newCode() });
-    await expect(s.models.hostUpdate(s.ada, ep.id, "../x")).rejects.toThrow("update/");
-    expect(await s.models.hostUpdate(s.ada, ep.id, "update/2026-10-18")).toMatchObject({ update: { state: "requested" } });
-    expect(s.host.updates).toEqual(["update/2026-10-18"]);
+    const sha = "c".repeat(40);
+    await expect(s.models.hostUpdate(s.ada, ep.id, { tag: "../x", commit: sha })).rejects.toThrow("update/");
+    await expect(s.models.hostUpdate(s.ada, ep.id, { commit: "main" })).rejects.toThrow("full commit");
+    expect(await s.models.hostUpdate(s.ada, ep.id, { tag: "update/2026-10-18", commit: sha })).toMatchObject({ update: { state: "requested" } });
+    // A tag goes with the commit it must point at; the latest merge is the commit alone.
+    expect(s.host.updates).toEqual([`update/2026-10-18 ${sha}`]);
+    s.host.updates.length = 0;
+    await s.models.hostUpdate(s.ada, ep.id, { commit: sha });
+    expect(s.host.updates).toEqual([sha]);
     await s.host.stop();
     expect(await s.models.pageStatus(s.ada.id, ep.id)).toMatchObject({ state: "down", status: { update: { state: "requested" } } });
+  });
+
+  it("asks an updater from before commits for the tag alone, and refuses it a latest merge", async () => {
+    const s = await setup();
+    s.host.oldUpdater();
+    const ep = await s.models.pairHost(s.ada, { name: "blackwell", addresses: [s.host.address], code: s.host.newCode() });
+    await expect(s.models.hostUpdate(s.ada, ep.id, { commit: "c".repeat(40) })).rejects.toThrow("run install.sh on the host again");
+    await s.models.hostUpdate(s.ada, ep.id, { tag: "update/2026-10-18", commit: "c".repeat(40) });
+    expect(s.host.updates).toEqual(["update/2026-10-18"]);
   });
 
   it("asks the host's updater for another models folder", async () => {

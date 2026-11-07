@@ -931,7 +931,25 @@ test("Update… is always in a host's ⋯: greyed out with why until it can run,
   update = { available: true, changesFolder: true, state: "idle" };
   release = undefined;
   await page.reload();
-  await why("Lyrica isn't running a tagged release. Update her to one first, in Administration → Updates.");
+  await why("Lyrica isn't running a release from her updater. Update her first, in Administration → Updates.");
+  // Her latest merge: only for an updater that takes a commit.
+  release = { commit: "c".repeat(40) };
+  await page.reload();
+  await why("This host's updater can't install a latest merge yet: run install.sh on the host again.");
+  update = { available: true, changesFolder: true, commits: true, state: "idle" };
+  await page.reload();
+  await card.getByRole("button", { name: "Actions for box" }).click();
+  await item.click();
+  const latest = page.getByRole("dialog");
+  await expect(latest.getByRole("heading")).toHaveText("Update box to the latest merge? cccccccccccc");
+  await expect(latest).toContainText("Not tagged as a release yet, so less tested.");
+  await shot("latest-merge");
+  await latest.getByRole("button", { name: "Cancel" }).click();
+  update = { available: true, changesFolder: true, commits: true, state: "fetching", tag: "main" };
+  await page.reload();
+  await expect(card.locator(".status-word")).toHaveText("Fetching");
+  await expect(card.locator(".status-word")).toHaveAttribute("title", "Updating to the latest merge");
+  update = { available: true, changesFolder: true, state: "idle" };
   release = { tag: "update/2026-11-06", commit: "aaaa" };
   await page.reload();
   await why("This host already runs update/2026-11-06.");

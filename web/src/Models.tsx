@@ -72,7 +72,7 @@ export function stateOf(ep: Endpoint, host?: Host): { dot: string; word: string;
     const s = host.status.state;
     if (hostUpdating(host.status)) {
       const u = host.status.update!;
-      return u.models ? { dot: "info", word: "Moving" } : { dot: "info", word: UPDATE_STEPS[u.state] ?? "Updating", ...(u.tag ? { tip: `Updating to ${u.tag}` } : {}) };
+      return u.models ? { dot: "info", word: "Moving" } : { dot: "info", word: UPDATE_STEPS[u.state] ?? "Updating", ...(u.tag ? { tip: `Updating to ${releaseName(u.tag)}` } : {}) };
     }
     if (s === "running") return { dot: "up", word: "Online" };
     if (s === "restarting") return { dot: "info", word: "Restarting" };
@@ -105,6 +105,7 @@ function updateFailure(step: string | undefined): string {
   if (step === "drain") return "jobs were still running after 10 minutes, so nothing changed";
   if (step === "probation") return "the new version didn't start, so it went back to the one before";
   if (step?.startsWith("no ")) return "the host's updater isn't set up; run install.sh on the host again";
+  if (step === "not the tag's commit") return "the release's tag no longer points at the commit Lyrica runs, so nothing changed";
   if (step?.startsWith("not ")) return "the host refused the release, so nothing changed";
   return "something went wrong on the host, so nothing changed";
 }
@@ -125,16 +126,20 @@ function folderHow(s: HostStatus): string | undefined {
   if (s.update?.available) return "Run install.sh on the host again to change it from here.";
   return "Change it on the host: host/install.sh --models <folder>.";
 }
+/** A release by its name: its update tag, or "the latest merge" for a commit with none (the updater labels it "main"). */
+const releaseName = (tag: string | undefined) => (tag?.startsWith("update/") ? tag : "the latest merge");
 /**
- * Update… in a host's ⋯: Lyrica's release when the host can go to it (she runs one, the host has an updater, isn't
- * updating and runs another commit), otherwise why not, as the disabled item's tooltip.
+ * Update… in a host's ⋯: what Lyrica runs, a tagged release or her latest merge, when the host can go to it (she runs
+ * one from her updater, the host has an updater that takes it, isn't updating and runs another commit), otherwise why
+ * not, as the disabled item's tooltip.
  */
-function updateOffer(p: ModelsPage | undefined, s: HostStatus | undefined): { release: { tag: string; commit: string } } | { why: string } {
+function updateOffer(p: ModelsPage | undefined, s: HostStatus | undefined): { release: { tag?: string; commit: string } } | { why: string } {
   if (!s) return { why: "The host isn't answering." };
   if (hostUpdating(s)) return { why: "An update is running." };
   if (!s.update?.available) return { why: s.update?.reason ?? "This host has no updater: run install.sh on the host again." };
-  if (!p?.release) return { why: "Lyrica isn't running a tagged release. Update her to one first, in Administration → Updates." };
-  if (s.commit === p.release.commit) return { why: `This host already runs ${p.release.tag}.` };
+  if (!p?.release) return { why: "Lyrica isn't running a release from her updater. Update her first, in Administration → Updates." };
+  if (!p.release.tag && !s.update.commits) return { why: "This host's updater can't install a latest merge yet: run install.sh on the host again." };
+  if (s.commit === p.release.commit) return { why: `This host already runs ${releaseName(p.release.tag)}.` };
   return { release: p.release };
 }
 
@@ -1177,7 +1182,7 @@ function HostCard({ ctx, ep, host, others, onVoice, onEdit }: { ctx: MCtx; ep: E
     <article className="card host" data-endpoint={ep.id} aria-labelledby={id}>
       <div className="host-top">
         <h3 id={id} title={`ID ${ep.id}`}>{ep.name}</h3><StateWord ep={ep} host={host} />
-        {editable && offer && <span className="pill info" title={`Lyrica runs ${offer.tag}; this host runs ${status!.version}`}>update available</span>}
+        {editable && offer && <span className="pill info" title={`Lyrica runs ${releaseName(offer.tag)}; this host runs ${status!.version}`}>update available</span>}
         <span className="spacer" />
         {editable && (
           <div className="actions">
@@ -1203,11 +1208,14 @@ function HostCard({ ctx, ep, host, others, onVoice, onEdit }: { ctx: MCtx; ep: E
       <ErrorText error={error} />
       {failed && (failed.models
         ? <p className="warn-text" role="note">Moving to <code>{failed.models}</code> failed: {folderFailure(failed.error)}.</p>
-        : <p className="warn-text" role="note">The update to <code>{failed.tag}</code> failed: {updateFailure(failed.error)}.</p>)}
+        : <p className="warn-text" role="note">The update to {failed.tag?.startsWith("update/") ? <code>{failed.tag}</code> : "the latest merge"} failed: {updateFailure(failed.error)}.</p>)}
       {actions.forms}
-      {confirming && offer && (
-        <ConfirmDialog title={`Update ${ep.name}?`}
+      {confirming && offer && (offer.tag
+        ? <ConfirmDialog title={`Update ${ep.name}?`}
           sentence={`It goes to ${offer.tag}, the release Lyrica runs. It pauses once running jobs finish (up to 10 minutes), installs the release and restarts. If it doesn't come back within 5 minutes, it goes back to ${status!.version}.`}
+          confirm="Update" onCancel={() => setConfirming(false)} onConfirm={() => { setConfirming(false); void update(); }} />
+        : <ConfirmDialog title={`Update ${ep.name} to the latest merge?`} commit={offer.commit.slice(0, 12)}
+          sentence={`Not tagged as a release yet, so less tested. It pauses once running jobs finish (up to 10 minutes), installs it and restarts. If it doesn't come back within 5 minutes, it goes back to ${status!.version}.`}
           confirm="Update" onCancel={() => setConfirming(false)} onConfirm={() => { setConfirming(false); void update(); }} />
       )}
       {status?.gpus.map((g) => <GpuBlock key={g.index} g={g} />)}

@@ -138,6 +138,36 @@ describe("lyrica-host-update", () => {
     expect(w.api.calls).not.toContain("POST /host/v1/pause");
   });
 
+  it("installs Lyrica's latest merge, a commit on main with no tag, labelled main", async () => {
+    const w = await world();
+    const two = w.release("two");
+    writeFileSync(join(w.dir, "inbox", "request.json"), JSON.stringify({ commit: two }));
+    const r = await w.run("--request");
+    expect(r.code, r.err).toBe(0);
+    expect(w.commitNow()).toBe(two);
+    expect(w.installs()).toEqual([`two ${join(w.releases, two, "host")} HOST_NAME=box --yes`]);
+    expect(w.state()).toMatchObject({ state: "idle", last: { tag: "main", commit: two, ok: true } });
+  });
+
+  it("checks that a tag still points at the commit Lyrica named, and refuses a commit off main", async () => {
+    const w = await world();
+    const two = w.release("two");
+    const side = w.release("side", { branch: "side" });
+    expect((await w.run("--tag", "update/two", "--commit", w.first)).code).not.toBe(0);
+    expect(w.state()).toMatchObject({ state: "failed", error: "not the tag's commit" });
+    expect((await w.run("--commit", side)).code).not.toBe(0);
+    expect(w.state()).toMatchObject({ state: "failed", error: "not on main", tag: "main" });
+    expect((await w.run("--commit", "main")).code).not.toBe(0);
+    expect(w.state()).toMatchObject({ state: "failed", error: "not a commit" });
+    expect((await w.run("--commit", "f".repeat(40))).code).not.toBe(0);
+    expect(w.state()).toMatchObject({ state: "failed", error: "not on main" });
+    expect(w.installs()).toEqual([]);
+    expect(w.api.calls).not.toContain("POST /host/v1/pause");
+    const r = await w.run("--tag", "update/two", "--commit", two);
+    expect(r.code, r.err).toBe(0);
+    expect(w.commitNow()).toBe(two);
+  });
+
   it("goes back to the running commit when the new one doesn't come up", async () => {
     const w = await world();
     w.release("broken", { broken: true });
@@ -233,6 +263,16 @@ describe("POST /host/v1/update", () => {
     writeFileSync(join(dir, "status", "state.json"), JSON.stringify({ available: false, reason: "Update this host from its NixOS configuration." }));
     expect(await post("update/two")).toMatchObject({ status: 409, body: { error: { code: "unavailable", message: "Update this host from its NixOS configuration." } } });
 
+    // An updater from before commits takes no commit.
+    writeFileSync(join(dir, "status", "state.json"), JSON.stringify({ available: true, state: "idle" }));
+    const withCommit = (body: Record<string, unknown>) => call({ port: tls, path: "/host/v1/update", identity: me, pinned: fp, method: "POST", body });
+    expect(await withCommit({ commit: "b".repeat(40) })).toMatchObject({ status: 409, body: { error: { code: "unavailable" } } });
+    writeFileSync(join(dir, "status", "state.json"), JSON.stringify({ available: true, commits: true, state: "idle" }));
+    expect((await withCommit({ commit: "main" })).status).toBe(400);
+    expect((await withCommit({})).status).toBe(400);
+    expect((await withCommit({ tag: "update/two", commit: "b".repeat(40) })).status).toBe(202);
+    expect(JSON.parse(readFileSync(join(dir, "inbox", "request.json"), "utf8"))).toEqual({ tag: "update/two", commit: "b".repeat(40) });
+    rmSync(join(dir, "inbox", "request.json"));
     writeFileSync(join(dir, "status", "state.json"), JSON.stringify({ available: true, state: "idle" }));
     expect((await post("../x")).status).toBe(400);
     const ok = await post("update/two");

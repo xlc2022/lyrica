@@ -1,6 +1,7 @@
 # Brief: Update a host from its ⋯ menu
 
-**Status:** In review. **Branch:** `claude/project-thread-uy30v4`.
+**Status:** Merged as #797 (7c911444); the follow-up below is in review.
+**Branch:** `claude/project-thread-uy30v4`.
 **Builds on:** [host-updates.md](host-updates.md) (#311), which made the
 updater and a hidden **Update**.
 
@@ -44,10 +45,37 @@ Permissions are unchanged: host-api can only write a tag into the inbox;
 the root path unit runs the fixed updater; Lyrica's server lets an
 administrator update a shared host and the owner a private one.
 
+## Follow-up: hosts follow the latest merge
+
+Lyrica can run her latest merge, a commit on `main` with no tag
+([latest-merge.md](latest-merge.md)); a host follows what she runs.
+
+1. **The request names the commit.** `runningRelease` returns `{ tag?,
+   commit }`: the `update/*` tag with its commit, or the commit alone.
+   `POST /host/v1/update` takes `{ tag?, commit? }`. With both, the updater
+   refuses a tag that no longer points at that commit (`not the tag's
+   commit`), which pins what was fetched to what Lyrica runs. A commit
+   alone must be on `main` after the fetch; it is labelled `main` (state
+   and `last.tag`), as Lyrica's updater labels it, and installed as
+   version `main-<12 hex>`. CLI: `--commit <sha>`, alone or after `--tag`.
+2. **Older updaters.** An update never replaces the updater, so
+   `install.sh` writes `commits: true` with the updater, and host-api
+   reports it. Lyrica sends the commit only to a host with `commits`; an
+   older one gets the tag alone and can't take a latest merge (Update… is
+   greyed out: "This host's updater can't install a latest merge yet: run
+   install.sh on the host again.").
+3. **Web:** the latest merge's dialog is "Update <host> to the latest
+   merge?" with the commit in mono after the title and "Not tagged as a
+   release yet, so less tested." first, then the pause and rollback
+   sentences. Tooltips and the failure line say "the latest merge" in
+   place of a tag. No release from her updater: "Lyrica isn't running a
+   release from her updater. Update her first, in Administration →
+   Updates."
+
 ## Out of scope
 
 Lyrica's own updater's deploy key (its own thread); NixOS hosts; updating
-hosts to anything but Lyrica's release.
+hosts to anything but what Lyrica runs.
 
 ## Docs
 
@@ -57,5 +85,6 @@ as before.
 
 ## Handoff
 
-Done: menu, dialog, step words, HTTPS fetch, e2e. Next: PR review and UI
-review; tell Operator docs after merge.
+Done: #797 (menu, dialog, step words, HTTPS fetch, e2e). Follow-up: the
+commit request, built with host, core and e2e tests; next is PR review and
+UI review, then tell Operator docs after merge.

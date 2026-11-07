@@ -379,6 +379,8 @@ export interface HostUpdate {
   reason?: string;
   /** It also moves the host to another models folder (POST /api/u/:userId/hosts/:endpointId/models-folder). */
   changesFolder?: boolean;
+  /** It also takes a commit: Lyrica's latest merge, or the commit her tag must point at. */
+  commits?: boolean;
   state: "idle" | "requested" | "fetching" | "draining" | "building" | "rolling-back" | "failed";
   since?: string;
   tag?: string;
@@ -545,8 +547,8 @@ export interface ModelsPage {
   notice: string[];
   /** How many items Clean up lists. */
   cleanup: number;
-  /** The release Lyrica runs, when she runs one: a host whose commit differs can update to it. */
-  release?: { tag: string; commit: string };
+  /** What Lyrica runs, when it came from her updater: a tagged release, or her latest merge (no tag). A host whose commit differs can update to it. */
+  release?: { tag?: string; commit: string };
 }
 
 /** PATCH /api/u/:userId/endpoints/:endpointId/models → EndpointInfo. Switches the named models (every model of the endpoint when `offeringIds` is left out) off or on in its list. A shared endpoint needs an administrator. */

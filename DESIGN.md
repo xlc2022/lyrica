@@ -2349,7 +2349,9 @@ from Monika's runbooks.
 - **Updates are manual.** An administrator presses **Update** in
   Administration. She can say an update is ready; she can't press it.
 - **Model hosts follow her release.** A host's **Update** on the Models page
-  asks it for the release she runs, never another. Its updater runs as root
+  asks it for what she runs, never another: her tagged release with its
+  commit (the tag must still point at it), or her latest merge, the commit
+  alone, which must be on `main`. Its updater runs as root
   outside host-api, which keeps no route out, and makes the same tag checks
   on what it fetches: over HTTPS while the repository is public (GitHub
   authenticated by its certificate), otherwise with its own read-only
