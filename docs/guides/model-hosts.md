@@ -63,7 +63,7 @@ answer to start, so a long prompt on a slow model can still be read.
   Docker restart.
 - A user in the `docker` group to run the script as: it runs `docker
   compose` as you, and uses `sudo` only for the egress rules, their unit
-  and the updater (its state folder, deploy key, script and units).
+  and the updater (its state folder, any deploy key, script and units).
 - A **models folder**, `/srv/models` by default, on a disk with room for
   what you'll download. It must exist before the script runs, and you must
   be able to create its `lyrica/` subfolder:
@@ -709,9 +709,10 @@ second pairing. Then:
   in [host/README.md](../../host/README.md#the-models-folder).
 - **Hosts installed before the updater** need `git pull &&
   host/install.sh` once more: it installs the updater (printing a deploy
-  key to add only while the repository isn't public), and brings the host-api image that opens from Lyrica's
-  Dashboard link, recognises a model's vision projector and MTP file,
-  and waits for a model's memory to free before loading the next. A host
+  key to add only while the repository isn't public), and brings the
+  host-api image that opens from Lyrica's Dashboard link, recognises a
+  model's vision projector and MTP file, and waits for a model's memory
+  to free before loading the next. A host
   installed before the image server got its `/triton` scratch space needs
   this too, or image jobs fail with an `ImportError` (seen on NVIDIA).
 - **On NixOS** the updater isn't installed: upgrade with `git pull &&
@@ -757,9 +758,10 @@ It says what it will remove and asks first. It removes:
   Docker's build cache are left alone (on a shared machine, leave the
   build cache too);
 - the egress rules, `/usr/local/sbin/lyrica-host-update`,
-  `/etc/lyrica-host` (the deploy key), `/var/lib/lyrica-host-update` and
-  the release trees in `/opt/lyrica-host`, and on Debian or Ubuntu the
-  egress and updater units.
+  `/etc/lyrica-host` (a deploy key, if one was made),
+  `/var/lib/lyrica-host-update` and the release trees in
+  `/opt/lyrica-host`, and on Debian or Ubuntu the egress and updater
+  units.
 
 It asks before deleting the models folder's `lyrica/` downloads; your own
 model files beside them stay. `--delete-downloads` deletes them without
