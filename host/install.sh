@@ -453,8 +453,8 @@ GITHUB_HOST_KEY="github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6
 NEW_DEPLOY_KEY=0
 # Where the updater fetches from: LYRICA_REPO as given, otherwise the public
 # repository over HTTPS when it answers without credentials, otherwise SSH
-# with a deploy key. The checks on the tag, not the transport, are what make
-# an update safe; HTTPS and the pinned host key both authenticate GitHub.
+# with a deploy key. Either way the trust is that the fetch reached GitHub:
+# its certificate over HTTPS, its pinned host key over SSH.
 repo_url() {
   if [[ -n ${LYRICA_REPO:-} ]]; then printf '%s\n' "$LYRICA_REPO"; return; fi
   if GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=/bin/false timeout 60 git ls-remote --exit-code -q https://github.com/xlc2022/lyrica.git refs/heads/main >/dev/null 2>&1; then
@@ -487,7 +487,10 @@ else
     "${SUDO[@]}" git init -q --bare "$UPDATER/repo.git"
     "${SUDO[@]}" git --git-dir="$UPDATER/repo.git" remote add origin "$REPO_URL"
   else
-    # Running install.sh again moves an existing updater to HTTPS, or back to SSH.
+    # Running install.sh again moves an existing updater to HTTPS, or back to
+    # SSH, when it shows the key again: it may never have been added.
+    OLD_URL=$("${SUDO[@]}" git --git-dir="$UPDATER/repo.git" remote get-url origin 2>/dev/null || true)
+    [[ $OLD_URL != "$REPO_URL" && $REPO_URL != https://* ]] && NEW_DEPLOY_KEY=1
     "${SUDO[@]}" git --git-dir="$UPDATER/repo.git" remote set-url origin "$REPO_URL"
   fi
   "${SUDO[@]}" install -m 0755 update.sh /usr/local/sbin/lyrica-host-update
@@ -571,6 +574,7 @@ say "  Key fingerprint:  $FINGERPRINT"
 say "To pair, open the dashboard, choose Pair with Lyrica, and paste the code into Lyrica's Add model host."
 if [[ $NEW_DEPLOY_KEY == 1 ]]; then
   say ""
-  say "The repository isn't public. For updates from Lyrica's Models page, add this as a read-only deploy key of $REPO_URL:"
+  say "The repository didn't answer over HTTPS without credentials: it isn't public, or the network is down (run install.sh again once it's up)."
+  say "For updates from Lyrica's Models page, add this as a read-only deploy key of $REPO_URL:"
   "${SUDO[@]}" cat /etc/lyrica-host/deploy-key.pub
 fi

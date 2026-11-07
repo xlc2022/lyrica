@@ -33,9 +33,12 @@ deploy key on GitHub, which a public repository doesn't need.
    answers, the updater fetches over HTTPS and no key is made. Otherwise it
    uses SSH with the read-only deploy key as before. `LYRICA_REPO` still
    overrides the URL. A rerun sets the updater repository's remote, so an
-   existing host switches. The updater fetches with prompts off. Safety
-   stays in the updater's checks (an annotated `update/*` tag on `main`,
-   root-owned trees), not the transport.
+   existing host switches, and shows the key again when it moves to SSH.
+   The updater fetches with prompts off. The tag checks run on what was
+   fetched, so the trust is that the fetch reached GitHub: its certificate
+   over HTTPS, its pinned host key over SSH. Having Lyrica send her commit
+   with the request, so the transport stops mattering, is a possible
+   follow-up.
 
 Permissions are unchanged: host-api can only write a tag into the inbox;
 the root path unit runs the fixed updater; Lyrica's server lets an
