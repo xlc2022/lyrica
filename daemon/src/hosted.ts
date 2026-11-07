@@ -976,6 +976,12 @@ export class HostedThread {
         this.reload(); this.publish({ type: "settings" });
         return { reloaded };
       },
+      workflowHosts: () => models.workflowHosts(actor(), ctx()),
+      workflowCall: (hostId, method, path, body) => {
+        if (!models.workflowHosts(actor(), ctx()).some((h) => h.id === hostId)) throw new Error("That isn't a model host whose workflows you can manage here.");
+        if (!path.startsWith("/host/v1/workflows")) throw new Error(`${path} isn't a workflow route.`);
+        return models.manageHost(actor(), hostId, method, path, body);
+      },
     };
   }
 
@@ -1191,7 +1197,7 @@ export class HostedThread {
           // Her reactions. Never a subagent's: the messages there are hers.
           ...(!thread.subagent ? [createReactExtension(ctx, { reacted: (n, reactions) => this.reacted(n, toReactions(reactions, this.userId) ?? []) })] : []),
           // The models tool: general threads only, for a user who can manage a host. Never a subagent's.
-          ...(!thread.subagent && (models.hostCopies(user, call).length || models.localCopies(user, call).length) ? [createModelsExtension(this.modelsHost())] : []),
+          ...(!thread.subagent && (models.hostCopies(user, call).length || models.localCopies(user, call).length || models.workflowHosts(user, call).length) ? [createModelsExtension(this.modelsHost())] : []),
           // Downloading models when asked: general threads only, for a user who can manage a host. Never a subagent's.
           ...(!thread.subagent && models.downloadHosts(user, call).length ? [createDownloadsExtension(this.downloadsHost())] : []),
           // A project chat with Check in on threads off doesn't wait in its turn: its threads' reports wake it.
