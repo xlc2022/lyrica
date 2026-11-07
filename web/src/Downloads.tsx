@@ -335,7 +335,7 @@ export function UploadFields({ files, setFiles, free }: { files: File[]; setFile
   const id = useId();
   const total = files.reduce((n, f) => n + f.size, 0);
   return (
-    <div className="field">
+    <div className="field upload-files">
       <span id={id}>Files</span>
       <div className="row">
         <button type="button" className="sm" aria-describedby={id} onClick={() => picker.current?.click()}>Choose files…</button>

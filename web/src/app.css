@@ -1626,6 +1626,7 @@ code.raw { font-size: 12px; overflow-wrap: anywhere; }
 /* A row with nothing to tick: an upload's picked file. */
 .choice.plain { grid-template-columns: minmax(0, 1fr) auto; cursor: default; }
 ul.choices { list-style: none; margin: 0; padding: 0; }
+@media (pointer: coarse) { .upload-files button.sm { min-height: var(--tap); } }
 .choice-name { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; min-width: 0; }
 .choice-name .mono { overflow-wrap: anywhere; min-width: 0; }
 @media (max-width: 760px) {

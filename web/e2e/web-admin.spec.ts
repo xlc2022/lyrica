@@ -717,6 +717,7 @@ test("Upload sends a model file from this computer in pieces, and Downloads show
   const file = Buffer.concat([Buffer.from("GGUF"), Buffer.alloc(5000)]);
   await page.locator("input[type=file]").setInputFiles([{ name: "mine-Q4_K_M.gguf", mimeType: "application/octet-stream", buffer: file }]);
   await expect(page.locator(".choice.plain")).toContainText("mine-Q4_K_M.gguf");
+  if (phone(page)) expect((await page.getByRole("button", { name: "Choose files…" }).boundingBox())!.height).toBeGreaterThanOrEqual(44);
   await noHorizontalScroll(page);
   await shot("text");
   await page.getByRole("button", { name: "Upload", exact: true }).last().click();
