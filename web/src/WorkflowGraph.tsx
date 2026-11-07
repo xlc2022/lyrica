@@ -76,8 +76,11 @@ interface Props {
 }
 
 /** The least zoom a fitted graph gets: node text is 13 px, so it stays 11 px or more. A bigger graph pans instead. */
-const FIT = { minZoom: 0.85, maxZoom: 1, padding: 0.08 };
-const GAP = 48;
+const MIN_FIT = 0.85;
+/** The margin a fitted graph keeps inside the canvas, in px; at the top it also clears the zoom controls' row. */
+const INSET = 16;
+const TOP = 60;
+const GAP = 32;
 
 function Canvas({ graph, layout, blanks, types, editable, guessed, onChange, onLayout }: Props) {
   const flow = useReactFlow();
@@ -85,14 +88,25 @@ function Canvas({ graph, layout, blanks, types, editable, guessed, onChange, onL
   const sizes = useRef(new Map<string, { w: number; h: number }>());
   const [drawn, setDrawn] = useState(false);
   const settled = useRef(false);
+  const canvasRef = useRef<HTMLDivElement>(null);
   const [fit, setFit] = useState(false);
-  // Fitted once the nodes have their sizes; a guessed layout first closes up its columns to those sizes.
+  const latest = useRef(layout);
+  latest.current = layout;
+  // Fitted once the nodes have their sizes, measured again after the fonts load (the monospace font is wider than its
+  // fallback); a guessed layout first closes up its columns to those sizes.
   useEffect(() => {
     if (!drawn || settled.current) return;
+    let alive = true;
+    let frame = 0;
+    void document.fonts.ready.then(() => { if (alive) frame = requestAnimationFrame(settle); });
+    return () => { alive = false; cancelAnimationFrame(frame); };
+  }, [drawn]);
+  const settle = () => {
+    if (settled.current) return;
     settled.current = true;
     if (guessed) {
       const columns = new Map<number, { id: string; y: number; w: number; h: number }[]>();
-      for (const [id, [x, y]] of Object.entries(layout)) {
+      for (const [id, [x, y]] of Object.entries(latest.current)) {
         const col = Math.round(x / 320);
         const size = sizes.current.get(id) ?? { w: 200, h: 100 };
         columns.set(col, [...(columns.get(col) ?? []), { id, y, ...size }]);
@@ -108,17 +122,25 @@ function Canvas({ graph, layout, blanks, types, editable, guessed, onChange, onL
       onLayout(next);
     }
     setFit(true);
-  }, [drawn]);
+  };
   useEffect(() => {
     if (!fit) return;
     const frame = requestAnimationFrame(() => {
-      void flow.fitView(FIT).then(() => {
-        // Too big to fit at the least zoom: start from its top left, the graph's start, rather than its middle.
-        const zoom = flow.getZoom();
-        if (zoom > FIT.minZoom + 0.001) return;
-        const box = flow.getNodesBounds(flow.getNodes());
-        void flow.setViewport({ x: 16 - box.x * zoom, y: 16 - box.y * zoom, zoom });
-      });
+      // At zoom 1 when it fits inside the margin, down to MIN_FIT before clipping; centred when it fits, else from its
+      // top left, the graph's start, to pan from.
+      // Measured from the layout and the drawn sizes, since React Flow's own copy of the positions may lag a frame.
+      const canvas = canvasRef.current?.getBoundingClientRect();
+      const ids = Object.keys(graph).filter((id) => layout[id]);
+      if (canvas && ids.length) {
+        const x0 = Math.min(...ids.map((id) => layout[id]![0]));
+        const y0 = Math.min(...ids.map((id) => layout[id]![1]));
+        const x1 = Math.max(...ids.map((id) => layout[id]![0] + (sizes.current.get(id)?.w ?? 200)));
+        const y1 = Math.max(...ids.map((id) => layout[id]![1] + (sizes.current.get(id)?.h ?? 100)));
+        const room = { w: canvas.width - 2 * INSET, h: canvas.height - TOP - INSET };
+        const zoom = Math.min(1, Math.max(MIN_FIT, Math.min(room.w / (x1 - x0), room.h / (y1 - y0))));
+        const along = (space: number, size: number, from: number) => (size * zoom <= space ? (space - size * zoom) / 2 : 0) - from * zoom;
+        void flow.setViewport({ x: INSET + along(room.w, x1 - x0, x0), y: TOP + along(room.h, y1 - y0, y0), zoom });
+      }
       setFit(false);
     });
     return () => cancelAnimationFrame(frame);
@@ -229,12 +251,12 @@ function Canvas({ graph, layout, blanks, types, editable, guessed, onChange, onL
           )}
         </div>
       )}
-      <div className="wf-graph" role="group" aria-label="Graph">
+      <div className="wf-graph" role="group" aria-label="Graph" ref={canvasRef}>
         <ReactFlow nodes={nodes} edges={edges} nodeTypes={NODE_TYPES} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect}
           isValidConnection={fits} nodesDraggable={editable} nodesConnectable={editable} elementsSelectable deleteKeyCode={editable ? ["Backspace", "Delete"] : null}
           minZoom={0.1} proOptions={{ hideAttribution: true }}>
           <Background gap={20} size={1} />
-          <Controls showInteractive={false} />
+          <Controls showInteractive={false} position="top-right" orientation="horizontal" />
         </ReactFlow>
       </div>
       {node && selected && (

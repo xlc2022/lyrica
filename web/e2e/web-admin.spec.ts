@@ -1428,6 +1428,10 @@ test("Custom workflows: Graph draws the nodes and links; on a wide screen nodes 
   await expect(canvas.locator(".react-flow__node")).toHaveCount(6);
   await expect(canvas.locator(".react-flow__edge")).toHaveCount(5);
   await expect(canvas.getByLabel("Node 3, KSampler")).toContainText("Seed");
+  // Fitted once the nodes are drawn: inset from the canvas's edge, and never below zoom 0.85.
+  const viewport = canvas.locator(".react-flow__viewport");
+  await expect(viewport).not.toHaveAttribute("style", /translate\(0px, 0px\)/);
+  expect(Number((await viewport.getAttribute("style"))!.match(/scale\(([\d.]+)\)/)![1])).toBeGreaterThanOrEqual(0.85);
   await noHorizontalScroll(page);
   await shot("graph");
   if (page.viewportSize()!.width <= 640) {
