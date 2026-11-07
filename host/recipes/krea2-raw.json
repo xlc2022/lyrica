@@ -1,12 +1,14 @@
 {
-  "name": "Krea 2",
+  "name": "Krea 2 Raw",
   "template": "krea2",
   "parts": [
     {
       "role": "diffusion",
       "source": "huggingface",
       "repo": "Comfy-Org/Krea-2",
-      "path": "diffusion_models/krea2_raw_fp8_scaled.safetensors"
+      "path": "diffusion_models/krea2_raw_fp8_scaled.safetensors",
+      "sha256": "48cd5d6c100297968349b41a8e77c6591d1dac18a215807f5f25f59e5c54cd61",
+      "size": 13141730784
     },
     {
       "role": "text_encoder",

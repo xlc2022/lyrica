@@ -624,9 +624,10 @@ describe("recipes", () => {
       { role: "diffusion", slot: null, file: "k.safetensors", added: false },
       { role: "text_encoder", slot: "qwen3vl", file: "vl.safetensors", added: false },
       { role: "vae", slot: null, file: "v.safetensors", added: false },
-    ], [], { prompt: "x", width: 1024, height: 1024, count: 1, steps: 8, cfg: 1, seed: 1, sampler: "euler", scheduler: "simple" });
+    ], [], { prompt: "x", negativePrompt: "blurry", width: 1024, height: 1024, count: 1, steps: 28, cfg: 4.5, seed: 1, sampler: "euler", scheduler: "simple" });
     expect(krea.load_clip).toEqual({ class_type: "CLIPLoader", inputs: { clip_name: "vl.safetensors", type: "krea2" } });
-    expect(krea.neg!.inputs.conditioning).toEqual(["pos", 0]);
+    // Krea 2 (Raw) samples with real CFG, so the negative prompt is encoded; Turbo's CFG 1 skips it.
+    expect(krea.neg!.inputs).toEqual({ text: "blurry", clip: ["load_clip", 0] });
     expect(JSON.stringify(krea)).not.toContain("$");
   });
 
@@ -1382,7 +1383,7 @@ describe("the image API", () => {
     // The test folder holds two of its parts at their download paths, but not its diffusion model.
     expect(z.parts.map((p: { present: boolean }) => p.present)).toEqual([false, true, true]);
     expect(body.starters.map((st: { id: string }) => st.id)).toEqual([
-      "flux-schnell", "krea2-turbo", "ltx-2.5-distilled", "minimax-h3-turbo", "qwen-image-2.1-turbo", "qwen-image-edit", "qwen-image", "scail-2", "sdxl", "seedvr2-3b", "seedvr2-7b",
+      "flux-schnell", "krea2-raw", "krea2-turbo", "ltx-2.5-distilled", "minimax-h3-turbo", "qwen-image-2.1-turbo", "qwen-image-edit", "qwen-image", "scail-2", "sdxl", "seedvr2-3b", "seedvr2-7b",
       "wan2.2-i2v-14b-q5", "wan2.2-i2v-14b", "wan2.2-t2v-14b-q5", "wan2.2-t2v-14b", "wan2.2-ti2v-5b", "z-image-turbo",
     ]);
   });
