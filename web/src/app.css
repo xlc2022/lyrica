@@ -1357,6 +1357,7 @@ pre.note { white-space: pre-wrap; max-height: 40vh; overflow: auto; }
 .update-output .chev-ic { width: 12px; height: 12px; transition: transform 0.15s; }
 .update-output .chev-ic.open { transform: rotate(90deg); }
 .update-output:has(.output-toggle[aria-expanded="false"]) .code-head { padding-bottom: 4px; }
+@media (pointer: coarse) { .update-output .output-toggle { min-height: var(--tap); } }
 .update-output pre { margin: 0; padding: 2px 12px 10px; font-size: 12px; line-height: 1.5; white-space: pre; overflow: auto; max-height: 40vh; }
 .dlg-commit { font-weight: 400; font-size: 15px; color: var(--muted); }
 /* Sleep (docs/sleep.md "Sleep in the UI"): her items, then the runs as disclosures, then Sleep now. */
