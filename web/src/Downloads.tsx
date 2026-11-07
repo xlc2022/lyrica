@@ -10,6 +10,7 @@ import { clearFinished, companionsOf, downloadWords, fileChoices, fileLink, HUB_
 import { canEdit, Frame, hostOf, type MCtx } from "./ModelsFrame.tsx";
 import { cameFrom, go, href, type Route } from "./route.ts";
 import { ErrorText, useAction, useLoad } from "./ui.tsx";
+import { isSending, MARGIN, stopSending, upload, useSending, whyStopped } from "./uploads.ts";
 
 type Endpoint = ModelsPage["endpoints"][number];
 
@@ -43,6 +44,7 @@ export function Downloads({ ctx, history = false, route }: { ctx: MCtx; history?
   const groups = useLoad(() => get<GroupInfo[]>(u(userId, "groups")), [userId]);
   const suggestions = useLoad(() => get<GroupSuggestion[]>(u(userId, "groups", "suggestions")), [userId]);
   const [run, busy, error] = useAction();
+  useSending();
   const items = useMemo(() => (lists.data ?? []).flatMap(({ ep, downloads }) => downloads.map((d) => ({ ep, d })))
     .sort((a, b) => b.d.startedAt.localeCompare(a.d.startedAt)), [lists.data]);
   const active = items.filter(({ d }) => isRunning(d));
@@ -53,12 +55,15 @@ export function Downloads({ ctx, history = false, route }: { ctx: MCtx; history?
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [lists.data]);
   const { reload } = lists, { reload: reloadModels } = ctx.models, { reload: reloadGroups } = groups, { reload: reloadSuggestions } = suggestions;
+  // An upload no tab is sending only waits, so it isn't read again for.
+  const paused = (ep: Endpoint, d: HostDownload) => d.state === "uploading" && !isSending(ep.id, d.id);
+  const moving = active.filter(({ ep, d }) => !paused(ep, d)).length;
   // Every 2 s while anything runs, counted from the last answer so a slow host never stacks requests.
   useEffect(() => {
-    if (!active.length) return;
+    if (!moving) return;
     const t = setTimeout(reload, 2000);
     return () => clearTimeout(t);
-  }, [lists.data, active.length, reload]);
+  }, [lists.data, moving, reload]);
   // A download that finished is a model now: the page's endpoints and the groups learn of it.
   const was = useRef(new Set<string>());
   useEffect(() => {
@@ -67,7 +72,7 @@ export function Downloads({ ctx, history = false, route }: { ctx: MCtx; history?
     was.current = now;
   }, [active, reloadModels, reloadGroups, reloadSuggestions]);
 
-  const cancel = (ep: Endpoint, d: HostDownload) => run(async () => { await del(u(userId, "hosts", ep.id, "downloads", d.id)); reload(); });
+  const cancel = (ep: Endpoint, d: HostDownload) => run(async () => { stopSending(ep.id, d.id); await del(u(userId, "hosts", ep.id, "downloads", d.id)); reload(); });
   const clear = () => run(async () => {
     await clearFinished(
       (offset) => get<DownloadHistory>(`${u(userId, "models", "downloads", "history")}?limit=100&offset=${offset}`),
@@ -119,7 +124,7 @@ export function Downloads({ ctx, history = false, route }: { ctx: MCtx; history?
           {active.length ? (
             <ul className="list downloads">
               {active.length > 0 && <li className="group-head eyebrow">In progress</li>}
-              {active.map(({ ep, d }) => <Item key={`${ep.id}/${d.id}`} ep={ep} d={d} busy={busy} rate={rates.get(`${ep.id}/${d.id}`)} onCancel={() => void cancel(ep, d)} />)}
+              {active.map(({ ep, d }) => <Item key={`${ep.id}/${d.id}`} ep={ep} d={d} busy={busy} paused={paused(ep, d)} rate={paused(ep, d) ? undefined : rates.get(`${ep.id}/${d.id}`)} onCancel={() => void cancel(ep, d)} />)}
             </ul>
           ) : lists.data && !finished.length && (
             <p className="list empty">No downloads yet. Start one from a library's <b>Download model</b> button, or here.</p>
@@ -143,9 +148,12 @@ const Dot = ({ dot, word }: { dot: string; word: string }) => <span className="s
 export const Size = ({ text }: { text: string }) => { const [n, unit] = text.split(" "); return <><span className="num">{n}</span> {unit}</>; };
 const SEP = "\u00a0· ";
 
+/** Why an upload is paused, and how to carry on, for its phase's tooltip. */
+const pausedTip = (ep: Endpoint, d: HostDownload) => [whyStopped(ep.id, d.id), "Choose the same file under Upload to carry on."].filter(Boolean).join(" ");
+
 /** One download: its file, where from and to, and its progress and speed with Cancel, or how it ended. */
-function Item({ ep, d, busy, rate, onCancel, children }: { ep: Endpoint; d: HostDownload; busy: boolean; rate?: number; onCancel?: () => void; children?: React.ReactNode }) {
-  const w = downloadWords(d, ep.name);
+function Item({ ep, d, busy, rate, paused, onCancel, children }: { ep: Endpoint; d: HostDownload; busy: boolean; rate?: number; paused?: boolean; onCancel?: () => void; children?: React.ReactNode }) {
+  const w = downloadWords(d, ep.name, paused);
   return (
     <li className="dl" data-download={d.id}>
       <div className="dl-top"><b>{w.label}</b><span className="meta">{w.from}</span></div>
@@ -154,7 +162,7 @@ function Item({ ep, d, busy, rate, onCancel, children }: { ep: Endpoint; d: Host
           <span className="seg-loaded" style={{ width: `${w.percent ?? 0}%` }} />
         </div>
         <div className="dl-foot">
-          <span className="meta">{w.progress.phase} · <Size text={w.progress.got} />{w.progress.of && <> of <Size text={w.progress.of} /></>}{rate !== undefined && <> · <Size text={speed(rate)} /></>}</span>
+          <span className="meta"><span title={paused ? pausedTip(ep, d) : undefined}>{w.progress.phase}</span> · <Size text={w.progress.got} />{w.progress.of && <> of <Size text={w.progress.of} /></>}{rate !== undefined && <> · <Size text={speed(rate)} /></>}</span>
           <button type="button" className="sm" aria-label={`Cancel ${w.label}`} disabled={busy} onClick={onCancel}>Cancel</button>
         </div>
       </> : w.ending && (
@@ -321,6 +329,49 @@ export function LinkFields({ link, setLink, sha, setSha }: { link: string; setLi
   </>;
 }
 
+/** Upload: the files picked on this computer, each with its size, and whether they fit on the host. */
+export function UploadFields({ files, setFiles, free }: { files: File[]; setFiles: (f: File[]) => void; free: number }) {
+  const picker = useRef<HTMLInputElement>(null);
+  const id = useId();
+  const total = files.reduce((n, f) => n + f.size, 0);
+  return (
+    <div className="field">
+      <span id={id}>Files</span>
+      <div className="row">
+        <button type="button" className="sm" aria-describedby={id} onClick={() => picker.current?.click()}>Choose files…</button>
+      </div>
+      <input ref={picker} type="file" multiple hidden aria-labelledby={id} accept=".gguf,.safetensors" onChange={(e) => { setFiles([...(e.target.files ?? [])]); e.target.value = ""; }} />
+      {files.length > 0 && (
+        <ul className="choices" aria-labelledby={id}>
+          {files.map((f) => (
+            <li key={f.name} className="choice plain">
+              <span className="choice-name"><span className="mono">{f.name}</span></span>
+              <span className="muted"><Size text={size(f.size)} /></span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {(files.length > 1 || total + MARGIN > free) && (
+        <p className="meta">{files.length > 1 && <><Size text={size(total)} /> in all </>}{total + MARGIN > free && <span className="pill warn">not enough space</span>}</p>
+      )}
+    </div>
+  );
+}
+
+/** Why the picked files can't be uploaded to a host, or "" when they can. */
+export function uploadProblem(files: File[], free: number, host: string): string {
+  if (!files.length) return "Choose a file.";
+  if (files.some((f) => !/\.(gguf|safetensors)$/i.test(f.name))) return "Only .gguf and .safetensors files can be uploaded.";
+  if (new Set(files.map((f) => f.name)).size < files.length) return "Two files have the same name.";
+  if (files.reduce((n, f) => n + f.size, 0) + MARGIN > free) return `Not enough space on ${host}.`;
+  return "";
+}
+
+/** Starts each picked file's upload; the sending carries on in the background while the page moves to Downloads. */
+export async function startUploads(userId: string, hostId: string, files: File[]) {
+  for (const f of files) await upload(userId, hostId, f);
+}
+
 /** Why a link can't be downloaded, or "" when it can. */
 export function linkProblem(link: string, sha: string): string {
   if (!fileLink(link)) return "Use an https link to one .gguf or .safetensors file.";
@@ -354,8 +405,9 @@ export function DownloadText({ ctx }: { ctx: MCtx }) {
   const hosts = managedHosts(ctx).filter((h) => h.status);
   const [hostId, setHostId] = useState<string>();
   const host = hosts.find((h) => h.ep.id === hostId) ?? hosts[0];
-  const [source, setSource] = useState<Hub | "url">("huggingface");
-  const look = useLookup(userId, host?.ep.id, source);
+  const [source, setSource] = useState<Hub | "url" | "upload">("huggingface");
+  const look = useLookup(userId, host?.ep.id, source === "upload" ? "url" : source);
+  const [files, setFiles] = useState<File[]>([]);
   const tokens = useLoad(() => get<HubTokenInfo[]>(u(userId, "hub-tokens")), [userId]);
   // The ticked files, and the companions ticked for a model rather than by hand.
   const [picked, setPicked] = useState<string[]>([]);
@@ -392,10 +444,16 @@ export function DownloadText({ ctx }: { ctx: MCtx }) {
       if (!modelLeft) setAuto([]);
     }
   };
-  const saved = source === "url" ? undefined : tokenFor(tokens.data, source);
+  const saved = source === "url" || source === "upload" ? undefined : tokenFor(tokens.data, source);
 
   const download = () => {
     if (!host) return;
+    if (source === "upload") {
+      const why = uploadProblem(files, host.status!.modelsFolder.free, host.ep.name);
+      setProblem(why);
+      if (!why) void run(async () => { await startUploads(userId, host.ep.id, files); go({ page: "models", userId, tab: "downloads" }); });
+      return;
+    }
     let body: Parameters<typeof startDownload>[2];
     if (source === "url") {
       const why = linkProblem(link, sha);
@@ -429,11 +487,12 @@ export function DownloadText({ ctx }: { ctx: MCtx }) {
         <div className="card dl-form">
           <HostField hosts={hosts} value={host.ep.id} onChange={setHostId} />
           <div className="seg" role="group" aria-label="Source">
-            {(["huggingface", "modelscope", "url"] as const).map((s) => (
-              <button key={s} type="button" aria-pressed={source === s} onClick={() => { setSource(s); setProblem(""); }}>{s === "url" ? "Link" : HUB_WORD[s]}</button>
+            {(["huggingface", "modelscope", "url", "upload"] as const).map((s) => (
+              <button key={s} type="button" aria-pressed={source === s} onClick={() => { setSource(s); setProblem(""); }}>{s === "url" ? "Link" : s === "upload" ? "Upload" : HUB_WORD[s]}</button>
             ))}
           </div>
-          {source === "url" ? <LinkFields link={link} setLink={(t) => { setLink(t); setProblem(""); }} sha={sha} setSha={setSha} /> : <>
+          {source === "upload" ? <UploadFields files={files} setFiles={(f) => { setFiles(f); setProblem(""); }} free={host.status!.modelsFolder.free} />
+          : source === "url" ? <LinkFields link={link} setLink={(t) => { setLink(t); setProblem(""); }} sha={sha} setSha={setSha} /> : <>
             <RepoField look={look} placeholder={source === "huggingface" ? "unsloth/Qwen3.8-27B-GGUF, or the page's link" : "Qwen/Qwen3.8-27B-GGUF, or the page's link"} />
             {found && offered && <>
               {found.gated && <GatedNote hub={source} saved={saved} token={token} setToken={setToken} keep={keep} setKeep={setKeep} />}
@@ -459,9 +518,9 @@ export function DownloadText({ ctx }: { ctx: MCtx }) {
               {offered.refused.map((line) => <p key={line} className="meta">{line}</p>)}
             </>}
           </>}
-          <ErrorText error={problem || (source === "url" ? "" : look.error) || error} />
+          <ErrorText error={problem || (source === "url" || source === "upload" ? "" : look.error) || error} />
           <div className="row">
-            <button type="button" className="primary" disabled={busy || look.busy} onClick={download}>Download</button>
+            <button type="button" className="primary" disabled={busy || look.busy} onClick={download}>{source === "upload" ? "Upload" : "Download"}</button>
             <button type="button" onClick={() => { location.hash = back; }}>Cancel</button>
           </div>
         </div>

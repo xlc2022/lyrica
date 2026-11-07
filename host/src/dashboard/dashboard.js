@@ -222,7 +222,7 @@ function renderHead() {
   $("problems").hidden = !problems.length;
   $("problems").replaceChildren(...problems.map((p) => h("p", { class: "warn-text" }, p)));
 
-  const counts = { models: S.models.length, images: S.recipes.length, downloads: S.downloads.filter((d) => ["queued", "downloading", "verifying"].includes(d.state)).length || null };
+  const counts = { models: S.models.length, images: S.recipes.length, downloads: S.downloads.filter((d) => ["queued", "downloading", "uploading", "verifying"].includes(d.state)).length || null };
   const current = section();
   $("subnav").replaceChildren(...SECTIONS.filter(([k]) => me.access !== "client" || !ownerOnly.has(k)).map(([k, label]) =>
     h("a", { href: `#${k}`, "aria-current": k === current ? "page" : undefined }, label, counts[k] ? h("span", { class: "count" }, String(counts[k])) : null)));
@@ -584,16 +584,17 @@ async function listFiles() {
 }
 
 function downloadRow(d) {
-  const going = ["queued", "downloading", "verifying"].includes(d.state);
+  const going = ["queued", "downloading", "uploading", "verifying"].includes(d.state);
   const pct = d.size ? Math.floor((100 * d.received) / d.size) : null;
-  const word = d.state === "downloading" ? state(pct == null ? "Downloading" : h("span", {}, "Downloading ", num(`${pct}%`)), "info")
+  // An upload is sent from a browser through Lyrica; it waits here between pieces.
+  const word = d.state === "downloading" || d.state === "uploading" ? state(pct == null ? "Downloading" : h("span", {}, d.state === "uploading" ? "Uploading " : "Downloading ", num(`${pct}%`)), "info")
     : d.state === "queued" ? state("Queued", "") : d.state === "verifying" ? state("Verifying", "info")
-    : d.state === "done" ? (d.verified === false ? state("Done, unverified", "away", "No SHA-256 to check it against.") : state("Done", "up"))
+    : d.state === "done" ? (d.source === "upload" ? state("Uploaded", "up") : d.verified === false ? state("Done, unverified", "away", "No SHA-256 to check it against.") : state("Done", "up"))
     : state(d.state === "failed" ? "Failed" : d.state, "down");
   return h("li", {},
     h("div", { class: "main" }, h("div", { class: "name" }, h("code", {}, d.path)), d.url ? h("p", { class: "facts" }, h("code", { class: "muted" }, d.url)) : null),
     h("div", { class: "actions" }, word, button(going ? "Cancel" : "Clear", () => api(`/host/v1/downloads/${d.id}`, { method: "DELETE" }))),
-    d.state === "downloading" && pct != null ? h("div", { class: "progress wide" }, h("span", { style: `width:${pct}%` })) : null,
+    (d.state === "downloading" || d.state === "uploading") && pct != null ? h("div", { class: "progress wide" }, h("span", { style: `width:${pct}%` })) : null,
     d.error ? h("p", { class: "warn-text wide" }, d.error) : null);
 }
 

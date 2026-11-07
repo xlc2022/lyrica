@@ -874,6 +874,11 @@ needs an administrator.
   a link that is https, at most 1024 characters, with no user name or
   password. A download that finished since the last look is read as an
   offering at once, and the group suggestions pick it up.
+- `startUpload` and `uploadPiece` pass an upload from the user's computer
+  to the host (host/API.md, "Uploads"): the name and size, then each piece
+  of at most 64 MiB as the bytes that came, held in memory for that request
+  only. The host's answer, refusals included, goes back as it said it. A
+  finished upload becomes an offering like a download.
 - **Hub tokens** for Hugging Face and ModelScope: a user's own in `user.db`,
   or one an administrator shares in `self.db` (`hub_tokens`). The API shows
   only the last four characters (`hubTokens`). A token goes to the host in
