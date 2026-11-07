@@ -983,8 +983,9 @@ it's off.
     nodes.
   - **Custom workflows** live in the host's data folder, per host. A
     manager imports ComfyUI's Export (API) file or copies a built-in
-    template, and edits it on Image models' Edit workflow page as a form or
-    as JSON. Lyrica may change an existing one's settings when the user
+    template, and edits it on Image models' Edit workflow page as a form,
+    as a node graph like ComfyUI's (adding, linking and deleting nodes
+    from the host's node list) or as JSON. Lyrica may change an existing one's settings when the user
     asks (`models` tool), never add nodes. The host checks every save: only
     blanks it fills, its own websocket outputs and no other node that
     writes files, input files only through blanks, and node types

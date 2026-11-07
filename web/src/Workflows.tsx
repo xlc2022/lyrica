@@ -1,8 +1,8 @@
 // Custom ComfyUI workflows (docs/ux.md §6, "Image models, recipes and parts"; host/API.md, "Custom workflows"):
 // Download image model's Workflow source imports a ComfyUI Export (API) file, and Edit workflow shows the draft or a
-// saved workflow as a form, as JSON, and by its revisions. Every call goes through the host's manage route, which on
+// saved workflow as a form, as a graph (WorkflowGraph.tsx), as JSON, and by its revisions. Every call goes through the host's manage route, which on
 // a shared host is for administrators; the host checks each save.
-import { useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { post, u } from "./api.ts";
 import { CopyButton } from "./CopyButton.tsx";
 import { Frame, type MCtx } from "./ModelsFrame.tsx";
@@ -24,16 +24,23 @@ const BLANKS: Record<string, string[]> = {
   video: ["prompt", "negativePrompt", ...SIZE, ...SAMPLING, "frames", "fps"],
   animate: ["prompt", "negativePrompt", ...SIZE, ...SAMPLING, "frames", "fps", "image"],
 };
-const BLANK_WORD: Record<string, string> = {
+export const BLANK_WORD: Record<string, string> = {
   prompt: "Prompt", negativePrompt: "Negative prompt", width: "Width", height: "Height", count: "Count", seed: "Seed", steps: "Steps", cfg: "CFG",
   sampler: "Sampler", scheduler: "Scheduler", shift: "Shift", guidance: "Guidance", image: "Image", frames: "Frames", fps: "Frame rate",
   reference1: "Reference 1", reference2: "Reference 2", reference3: "Reference 3", reference4: "Reference 4", model: "Model", clip: "Text encoder", vae: "VAE",
 };
 const TEXT_BLANKS = new Set(["prompt", "negativePrompt", "sampler", "scheduler", "image", ...REFERENCES]);
 
-type Value = string | number | boolean | null | unknown[] | { $pick: unknown[] };
-interface WNode { class_type: string; inputs: Record<string, Value>; _if?: string | string[]; _unless?: string }
-type Graph = Record<string, WNode>;
+export type Value = string | number | boolean | null | unknown[] | { $pick: unknown[] };
+export interface WNode { class_type: string; inputs: Record<string, Value>; _if?: string | string[]; _unless?: string }
+export type Graph = Record<string, WNode>;
+/** This host's ComfyUI node types, as it last reported them (host/API.md, "Custom workflows"). */
+export type NodeTypes = Record<string, {
+  inputs: Record<string, unknown>; output: boolean; outputs?: string[]; outputNames?: string[]; category?: string; defaults?: Record<string, string | number | boolean>;
+}>;
+type Layout = Record<string, [number, number]>;
+const WorkflowGraph = lazy(() => import("./WorkflowGraph.tsx"));
+const narrow = () => typeof matchMedia === "function" && matchMedia("(max-width: 640px)").matches;
 interface VideoSpec { fps: number; frameStep: number; frameOffset: number; sizeStep: number; maxSeconds: number; audio: boolean }
 interface Draft {
   label: string; does: WorkflowDoes; arch: string; workflow: Graph; loaders: "template" | null; clipType: string | null; video: VideoSpec | null;
@@ -42,7 +49,7 @@ interface Draft {
 interface Info {
   name: string; label: string; from: "import" | "copy"; base: string | null; revision: number; saved: string; by: "app" | "lyrica"; does: string[];
   video: VideoSpec | null; recipes: { id: string; name: string }[]; nodesChecked: boolean; workflow: Graph; problems: string[]; missingNodes: string[] | null;
-  nodes: Record<string, Record<string, unknown>> | null;
+  nodes: Record<string, Record<string, unknown>> | null; layout: Layout | null;
 }
 interface Revision { revision: number; saved: string | null; by: "app" | "lyrica"; name: string }
 
@@ -52,8 +59,34 @@ let pending: { hostId: string; draft: Draft; problems: string[]; missingNodes: s
 const manage = <T,>(userId: string, hostId: string, method: "GET" | "POST" | "PUT", path: string, body?: unknown) =>
   post<T>(u(userId, "hosts", hostId, "manage"), { method, path, ...(body !== undefined ? { body } : {}) });
 
-const isLink = (v: unknown): v is [string, number] => Array.isArray(v) && v.length === 2 && typeof v[0] === "string" && typeof v[1] === "number";
-const blankOf = (v: unknown) => (typeof v === "string" && v.startsWith("$") ? v.slice(1) : null);
+export const isLink = (v: unknown): v is [string, number] => Array.isArray(v) && v.length === 2 && typeof v[0] === "string" && typeof v[1] === "number";
+export const blankOf = (v: unknown) => (typeof v === "string" && v.startsWith("$") ? v.slice(1) : null);
+
+/** Where nodes go when the workflow has no layout yet: in columns by how far each is from the graph's start. */
+export function autoLayoutOf(graph: Graph): Layout {
+  const depth: Record<string, number> = {};
+  const seen = new Set<string>();
+  const of = (id: string): number => {
+    if (id in depth) return depth[id]!;
+    if (seen.has(id) || !graph[id]) return 0;
+    seen.add(id);
+    const from = Object.values(graph[id]!.inputs).filter(isLink).map((v) => of(v[0]) + 1);
+    return (depth[id] = Math.max(0, ...from));
+  };
+  const columns: string[][] = [];
+  for (const id of Object.keys(graph).sort((a, b) => (Number(a) - Number(b)) || a.localeCompare(b))) (columns[of(id)] ??= []).push(id);
+  const out: Layout = {};
+  columns.forEach((ids, x) => {
+    let y = 0;
+    for (const id of ids) {
+      out[id] = [x * 320, y];
+      // A node's height: its title, then a row per output and per input.
+      const outs = Object.values(graph).some((m) => Object.values(m.inputs).some((v) => isLink(v) && v[0] === id)) ? 1 : 0;
+      y += 80 + 24 * (Object.keys(graph[id]!.inputs).length + outs);
+    }
+  });
+  return out;
+}
 
 /** The text Copy request puts on the clipboard: what to give Lyrica, or a pull request, to add the nodes. */
 export const nodeRequest = (label: string, nodes: string[]) =>
@@ -128,7 +161,7 @@ function Num({ label, value, min, max, onChange }: { label: string; value: numbe
 }
 
 /** One scalar input: Fixed with its value, or a blank the job fills. */
-function InputRow({ id, k, v, blanks, options, onChange }: { id: string; k: string; v: Value; blanks: string[]; options?: unknown; onChange: (v: Value) => void }) {
+export function InputRow({ id, k, v, blanks, options, onChange }: { id: string; k: string; v: Value; blanks: string[]; options?: unknown; onChange: (v: Value) => void }) {
   const blank = blankOf(v);
   const choices = blank && !blanks.includes(blank) ? [blank, ...blanks] : blanks;
   const name = `${k} of node ${id}`;
@@ -196,7 +229,9 @@ export function EditWorkflow({ ctx, hostId, name }: { ctx: MCtx; hostId?: string
   const [graph, setGraph] = useState<Graph>();
   const [label, setLabel] = useState("");
   const [video, setVideo] = useState<VideoSpec | null>(null);
-  const [view, setView] = useState<"form" | "json" | "revisions">("form");
+  const [view, setView] = useState<"form" | "graph" | "json" | "revisions">("form");
+  const [layout, setLayout] = useState<Layout | null>(null);
+  const types = useLoad(() => (hostId && view === "graph" ? manage<{ nodes: NodeTypes | null }>(userId, hostId, "GET", "/host/v1/workflows/nodes") : Promise.resolve(undefined)), [userId, hostId, view === "graph"]);
   const [json, setJson] = useState("");
   const [jsonProblem, setJsonProblem] = useState("");
   const [restoring, setRestoring] = useState<Revision>();
@@ -207,6 +242,7 @@ export function EditWorkflow({ ctx, hostId, name }: { ctx: MCtx; hostId?: string
     setGraph(structuredClone(from.workflow));
     setLabel(draft ? draft.draft.label : info!.label);
     setVideo(from.video);
+    setLayout(draft ? null : info!.layout);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [info, draft?.draft]);
   const revisions = useLoad(() => (name && hostId && view === "revisions" ? manage<{ current: number; revisions: Revision[] }>(userId, hostId, "GET", `/host/v1/workflows/${name}/revisions`) : Promise.resolve(undefined)), [userId, hostId, name, view, info?.revision]);
@@ -239,12 +275,13 @@ export function EditWorkflow({ ctx, hostId, name }: { ctx: MCtx; hostId?: string
         const d = draft.draft;
         const r = await manage<{ workflow: Info }>(userId, hostId, "POST", "/host/v1/workflows", {
           name: label.trim(), does: d.does, arch: d.arch, workflow: g, loaders: d.loaders, clipType: d.clipType, video, parts: d.parts, loras: d.loras, defaults: d.defaults,
+          ...(layout ? { layout } : {}),
         });
         pending = null;
         ctx.models.reload();
         location.replace(href({ page: "models", userId, tab: "images", add: "workflow", host: hostId, workflow: r.workflow.name }));
       } else {
-        const r = await manage<Info>(userId, hostId, "PUT", `/host/v1/workflows/${name}`, { workflow: g, name: label.trim(), ...(video ? { video } : {}) });
+        const r = await manage<Info>(userId, hostId, "PUT", `/host/v1/workflows/${name}`, { workflow: g, name: label.trim(), ...(video ? { video } : {}), ...(layout ? { layout } : {}) });
         saved.set(r);
         ctx.models.reload();
       }
@@ -281,6 +318,7 @@ export function EditWorkflow({ ctx, hostId, name }: { ctx: MCtx; hostId?: string
           <label className="field"><span>Name</span><input value={label} maxLength={80} onChange={(e) => setLabel(e.target.value)} /></label>
           <div className="seg" role="group" aria-label="View">
             <button type="button" aria-pressed={view === "form"} onClick={() => { const g = view === "json" ? current() : graph; if (g) { setGraph(g); setView("form"); } }}>Form</button>
+            <button type="button" aria-pressed={view === "graph"} onClick={() => { const g = view === "json" ? current() : graph; if (g) { setGraph(g); setView("graph"); } }}>Graph</button>
             <button type="button" aria-pressed={view === "json"} onClick={() => { setJson(toJson(graph)); setJsonProblem(""); setView("json"); }}>JSON</button>
             {!draft && <button type="button" aria-pressed={view === "revisions"} onClick={() => { const g = view === "json" ? current() : graph; if (g) { setGraph(g); setView("revisions"); } }}>Revisions</button>}
           </div>
@@ -297,6 +335,14 @@ export function EditWorkflow({ ctx, hostId, name }: { ctx: MCtx; hostId?: string
             )}
             <NodeForm graph={graph} blanks={blanks} nodes={info?.nodes ?? null} onChange={setGraph} />
           </>}
+          {view === "graph" && (
+            <Suspense fallback={<div className="wf-graph" />}>
+              <ErrorText error={types.error} />
+              <WorkflowGraph graph={graph} blanks={blanks} types={types.data?.nodes ?? null} editable={!narrow()} guessed={!layout}
+                layout={layout && Object.keys(graph).every((id) => layout[id]) ? layout : { ...autoLayoutOf(graph), ...layout }}
+                onChange={setGraph} onLayout={setLayout} />
+            </Suspense>
+          )}
           {view === "json" && (
             <textarea className="mono wf-json" aria-label="Workflow JSON" rows={24} spellCheck={false} autoComplete="off" value={json} onChange={(e) => { setJson(e.target.value); setJsonProblem(""); }} />
           )}

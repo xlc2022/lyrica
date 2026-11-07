@@ -1958,3 +1958,26 @@ ul.choices { list-style: none; margin: 0; padding: 0; }
   .wf-revisions .wf-rev-meta { order: 3; flex-basis: 100%; }
 }
 @media (pointer: coarse) { .wf-choose button.sm, .wf-revisions button.sm { min-height: var(--tap); } }
+/* Edit workflow's Graph view (WorkflowGraph.tsx): React Flow drawn in the app's own colours. */
+.wf-graph {
+  height: min(70vh, 640px); min-height: 360px; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--bg);
+  --xy-background-color: var(--bg); --xy-background-pattern-color: var(--line); --xy-edge-stroke: var(--edge); --xy-edge-stroke-selected: var(--accent);
+  --xy-connectionline-stroke: var(--accent); --xy-handle-background-color: var(--edge); --xy-handle-border-color: var(--panel);
+  --xy-controls-button-background-color: var(--panel); --xy-controls-button-background-color-hover: var(--tool); --xy-controls-button-color: var(--fg);
+  --xy-controls-button-color-hover: var(--fg); --xy-controls-button-border-color: var(--line); --xy-node-boxshadow-selected: none;
+}
+.wf-graph .react-flow__controls { box-shadow: none; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.wf-gnode { min-width: 160px; max-width: 260px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; font-size: 13px; padding-bottom: 6px; }
+.wf-gnode.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.wf-gnode-head { padding: 6px 10px; border-bottom: 1px solid var(--line); margin-bottom: 4px; overflow-wrap: anywhere; }
+.wf-gport, .wf-gset { position: relative; display: flex; gap: 8px; align-items: center; justify-content: space-between; padding: 2px 10px; min-height: 22px; }
+.wf-gport.out { justify-content: flex-end; }
+.wf-gport .react-flow__handle { width: 10px; height: 10px; }
+.wf-gval { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 140px; font-family: var(--mono); }
+.wf-gset .pill { font-size: 12px; }
+.wf-gadd { display: grid; gap: 6px; }
+.wf-gmatches { max-height: 240px; overflow: auto; }
+.wf-gmatches button { all: unset; cursor: pointer; display: block; width: 100%; padding: 6px 10px; box-sizing: border-box; overflow-wrap: anywhere; }
+.wf-gmatches button:hover, .wf-gmatches button:focus-visible { background: var(--tool); }
+@media (pointer: coarse) { .wf-gmatches button { min-height: var(--tap); } }
+@media (max-width: 640px) { .wf-graph { height: 420px; min-height: 0; } }

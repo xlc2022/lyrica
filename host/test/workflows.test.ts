@@ -134,7 +134,7 @@ describe("the workflow API", () => {
       writeFileSync(join(models, path), data);
     }
     const classes = ["CLIPTextEncode", "EmptyLatentImage", "KSampler", "VAEDecode", "SaveImageWebsocket", "CheckpointLoaderSimple", "LoraLoaderModelOnly", "FluxGuidance", "ModelSamplingFlux", ...(o.extra ?? [])];
-    const objectInfo = Object.fromEntries(classes.map((c) => [c, { input: { required: { x: ["INT", {}] } }, output_node: c.startsWith("Save") || c.startsWith("Preview") }]));
+    const objectInfo = Object.fromEntries(classes.map((c) => [c, { input: { required: { x: ["INT", { default: 3 }] } }, output_node: c.startsWith("Save") || c.startsWith("Preview"), output: ["LATENT"], output_name: ["LATENT"], category: "test" }]));
     const comfyFake = await fakeComfy(o.noNodes ? {} : { objectInfo });
     open.push(comfyFake);
     const h = await startHost({ modelsDir: models });
@@ -241,6 +241,26 @@ describe("the workflow API", () => {
     // And the recipe now says so.
     const listed = (await s.api("/host/v1/recipes")).body.recipes.find((r: { id: string }) => r.id === recipe.id);
     expect(listed).toMatchObject({ does: [], unsupported: expect.stringContaining("PreviewImage") });
+  });
+
+  it("lists ComfyUI's nodes for the Graph view and keeps a workflow's layout through saves and restores", async () => {
+    const s = await stack();
+    expect((await s.api("/host/v1/workflows/nodes")).body).toEqual({ nodes: null });
+    const { workflow, recipe } = (await saveImported(s)).body;
+    await s.api("/host/v1/images/create", { body: { recipe: recipe.id, prompt: "x" } });
+    const nodes = (await s.api("/host/v1/workflows/nodes")).body.nodes;
+    expect(nodes.KSampler).toEqual({ inputs: { x: "INT" }, output: false, outputs: ["LATENT"], outputNames: ["LATENT"], category: "test", defaults: { x: 3 } });
+    const got = (await s.api(`/host/v1/workflows/${workflow.name}`)).body;
+    expect(got.layout).toBeNull();
+    // Only nodes the workflow has, as whole numbers; a bad position is dropped.
+    const put = await s.api(`/host/v1/workflows/${workflow.name}`, { method: "PUT", body: { workflow: got.workflow, layout: { "3": [10.4, 20], "99": [0, 0], "8": ["a", 1] } } });
+    expect(put.body.layout).toEqual({ "3": [10, 20] });
+    // A save without a layout keeps it; restoring brings back the revision's.
+    const kept = await s.api(`/host/v1/workflows/${workflow.name}`, { method: "PUT", body: { workflow: got.workflow, name: "Renamed" } });
+    expect(kept.body.layout).toEqual({ "3": [10, 20] });
+    const restored = await s.api(`/host/v1/workflows/${workflow.name}/revisions/1/restore`, { body: {} });
+    expect(restored.body.layout).toBeNull();
+    expect((await s.api(`/host/v1/workflows/${workflow.name}/revisions/2`)).body.layout).toEqual({ "3": [10, 20] });
   });
 
   it("runs no custom workflow while ComfyUI hasn't reported its nodes", async () => {

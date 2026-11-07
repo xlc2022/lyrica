@@ -138,7 +138,8 @@ export async function noHorizontalScroll(page: Page) {
       .filter((el) => el.scrollWidth > el.clientWidth + 1)
       .map((el) => `${el.className}: ${el.scrollWidth} > ${el.clientWidth}`);
     const past = [...document.querySelectorAll<HTMLElement>("body *")]
-      .filter((el) => el.offsetParent && el.closest("pre, table, .side, .menu, .subnav") === null && el.getBoundingClientRect().right > innerWidth + 1)
+      // A graph canvas (.react-flow) clips what it draws and pans: its nodes may sit past the edge.
+      .filter((el) => el.offsetParent && el.closest("pre, table, .side, .menu, .subnav, .react-flow") === null && el.getBoundingClientRect().right > innerWidth + 1)
       .map((el) => `${el.tagName}.${el.className}`);
     return { wide, past };
   });

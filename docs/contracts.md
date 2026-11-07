@@ -550,7 +550,7 @@ class Models {                                              // new Models(keyrin
   // Discovery caches useFor in offerings' existing found JSON; no database schema change.
   // Host management and serving
   manageHost(actor, hostId, method, path, body?)            // only models/load|unload|pin|reload, gpus/<n>, memory, scan, usage,
-                                                            // and workflows[/import|copy|<name>[/revisions[/<n>[/restore]]]]
+                                                            // and workflows[/import|copy|nodes|<name>[/revisions[/<n>[/restore]]]]
                                                             // (host/API.md, "Custom workflows"), rediscovering after a change
   workflowHosts(actor, ctx): { id, name }[]                 // hosts with recipes the actor manages, for the models tool; [] when private or local-only
   servingSettings(userId, offeringId) / setServingSettings(actor, offeringId, settings) / reloadModel(actor, offeringId)

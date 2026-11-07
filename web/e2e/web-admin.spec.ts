@@ -1389,6 +1389,96 @@ test("Custom workflows: Workflow imports an export into a draft, Edit workflow s
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
 
+test("Custom workflows: Graph draws the nodes and links; on a wide screen nodes are added, linked, unlinked and deleted, and the layout saves; on a phone it only shows", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  const images = await fakeImages(page);
+  await fakeHost(page, [], [images.offering]);
+  const shot = async (name: string) => { if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/workflow-${name}-${page.viewportSize()!.width}.png`, fullPage: true }); };
+  const json = (body: unknown) => ({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
+  const graph = {
+    "3": { class_type: "KSampler", inputs: { model: "$model", positive: ["6", 0], negative: ["7", 0], latent_image: ["5", 0], seed: "$seed", steps: "$steps", cfg: "$cfg", sampler_name: "$sampler", scheduler: "$scheduler", denoise: 1 } },
+    "5": { class_type: "EmptyLatentImage", inputs: { width: "$width", height: "$height", batch_size: "$count" } },
+    "6": { class_type: "CLIPTextEncode", inputs: { text: "$prompt", clip: "$clip" } },
+    "7": { class_type: "CLIPTextEncode", inputs: { text: "$negativePrompt", clip: "$clip" } },
+    "8": { class_type: "VAEDecode", inputs: { samples: ["3", 0], vae: "$vae" } },
+    "9": { class_type: "SaveImageWebsocket", inputs: { images: ["8", 0] } },
+  };
+  const types = {
+    KSampler: { inputs: { model: "MODEL", positive: "CONDITIONING", negative: "CONDITIONING", latent_image: "LATENT", seed: "INT", steps: "INT", cfg: "FLOAT", sampler_name: ["euler"], scheduler: ["simple"], denoise: "FLOAT" }, output: false, outputs: ["LATENT"], outputNames: ["LATENT"], category: "sampling" },
+    EmptyLatentImage: { inputs: { width: "INT", height: "INT", batch_size: "INT" }, output: false, outputs: ["LATENT"], outputNames: ["LATENT"], category: "latent" },
+    CLIPTextEncode: { inputs: { text: "STRING", clip: "CLIP" }, output: false, outputs: ["CONDITIONING"], outputNames: ["CONDITIONING"], category: "conditioning" },
+    VAEDecode: { inputs: { samples: "LATENT", vae: "VAE" }, output: false, outputs: ["IMAGE"], outputNames: ["IMAGE"], category: "latent" },
+    SaveImageWebsocket: { inputs: { images: "IMAGE" }, output: true, outputs: [], outputNames: [], category: "image" },
+    ImageSharpen: { inputs: { image: "IMAGE", sharpen_radius: "INT", sigma: "FLOAT", alpha: "FLOAT" }, output: false, outputs: ["IMAGE"], outputNames: ["IMAGE"], category: "image/postprocessing", defaults: { sharpen_radius: 1, sigma: 1, alpha: 1 } },
+  };
+  const sent: { method: string; path: string; body?: Record<string, unknown> }[] = [];
+  const current = { name: "custom-0a1b2c3d", label: "Z styled", from: "import", base: null, revision: 1, saved: "2026-11-07T14:00:00Z", by: "app", does: ["create"], video: null,
+    recipes: [{ id: "r1", name: "Z styled" }], nodesChecked: true, workflow: graph, problems: [], missingNodes: [], nodes: { KSampler: { sampler_name: ["euler"] } }, layout: null };
+  await page.route(/\/api\/u\/[^/]+\/hosts\/ep-box\/manage$/, (route) => {
+    const m = route.request().postDataJSON() as { method: string; path: string; body?: Record<string, unknown> };
+    if (!m.path.startsWith("/host/v1/workflows")) return route.fallback();
+    sent.push(m);
+    if (m.path === "/host/v1/workflows/nodes") return route.fulfill(json({ nodes: types }));
+    if (m.method === "PUT") return route.fulfill(json({ ...current, revision: 2, workflow: m.body!.workflow, layout: m.body!.layout }));
+    return route.fulfill(json(current));
+  });
+  await page.goto(`/#/u/${userId}/models/images/workflow?host=ep-box&workflow=custom-0a1b2c3d`);
+  await page.getByRole("group", { name: "View" }).getByRole("button", { name: "Graph" }).click();
+  const canvas = page.getByRole("group", { name: "Graph" });
+  await expect(canvas.locator(".react-flow__node")).toHaveCount(6);
+  await expect(canvas.locator(".react-flow__edge")).toHaveCount(5);
+  await expect(canvas.getByLabel("Node 3, KSampler")).toContainText("Seed");
+  // Fitted once the nodes are drawn: inset from the canvas's edge, and never below zoom 0.85.
+  const viewport = canvas.locator(".react-flow__viewport");
+  await expect(viewport).not.toHaveAttribute("style", /translate\(0px, 0px\)/);
+  expect(Number((await viewport.getAttribute("style"))!.match(/scale\(([\d.]+)\)/)![1])).toBeGreaterThanOrEqual(0.85);
+  await noHorizontalScroll(page);
+  await shot("graph");
+  if (page.viewportSize()!.width <= 640) {
+    // On a phone: the graph only shows; Form edits.
+    await expect(page.getByLabel("Add node")).toHaveCount(0);
+    await expect(canvas.locator(".react-flow__node.draggable")).toHaveCount(0);
+    await page.unrouteAll({ behavior: "ignoreErrors" });
+    return;
+  }
+  // A node from this host's list, set in the panel below the graph.
+  await page.getByLabel("Add node").fill("sharp");
+  await page.getByRole("list", { name: "Nodes" }).getByRole("button", { name: /ImageSharpen/ }).click();
+  await expect(canvas.locator(".react-flow__node")).toHaveCount(7);
+  const panel = page.getByRole("region", { name: "Node 10, ImageSharpen" });
+  await panel.getByLabel("sigma of node 10", { exact: true }).fill("0.5");
+  await shot("graph-edit");
+  // Linked between the decoder and the output: drag from an output to an input.
+  const drag = async (from: string, to: string) => {
+    const a = (await canvas.locator(from).boundingBox())!;
+    const b = (await canvas.locator(to).boundingBox())!;
+    await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 8 });
+    await page.mouse.up();
+  };
+  await canvas.locator('.react-flow__edge[data-id="8:0>9:images"]').click({ force: true });
+  await page.keyboard.press("Delete");
+  await expect(canvas.locator(".react-flow__edge")).toHaveCount(4);
+  await drag('[data-id="8"] [data-handleid="o0"]', '[data-id="10"] [data-handleid="i:image"]');
+  await drag('[data-id="10"] [data-handleid="o0"]', '[data-id="9"] [data-handleid="i:images"]');
+  await expect(canvas.locator(".react-flow__edge")).toHaveCount(6);
+  // A link of the wrong type isn't drawn.
+  await drag('[data-id="6"] [data-handleid="o0"]', '[data-id="8"] [data-handleid="i:samples"]');
+  await expect(canvas.locator(".react-flow__edge")).toHaveCount(6);
+  await page.getByRole("button", { name: "Save" }).click();
+  const put = sent.find((m) => m.method === "PUT")!.body!;
+  expect((put.workflow as Record<string, unknown>)["10"]).toEqual({ class_type: "ImageSharpen", inputs: { sharpen_radius: 1, sigma: 0.5, alpha: 1, image: ["8", 0] } });
+  expect((put.workflow as Record<string, { inputs: unknown }>)["9"]!.inputs).toEqual({ images: ["10", 0] });
+  expect(Object.keys(put.layout as object).sort()).toEqual(["10", "3", "5", "6", "7", "8", "9"]);
+  // Deleting a node takes its links with it.
+  await canvas.getByLabel("Node 10, ImageSharpen").click();
+  await page.getByRole("region", { name: "Node 10, ImageSharpen" }).getByRole("button", { name: "Delete node" }).click();
+  await expect(canvas.locator(".react-flow__node")).toHaveCount(6);
+  await expect(canvas.locator(".react-flow__edge")).toHaveCount(4);
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
 test("Web search: the administrator sets the SearXNG and Kiwix addresses and sees whether they answer; without one the switch says why", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   const shot = async (name: string) => {
