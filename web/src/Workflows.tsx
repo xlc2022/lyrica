@@ -8,7 +8,7 @@ import { CopyButton } from "./CopyButton.tsx";
 import { Frame, type MCtx } from "./ModelsFrame.tsx";
 import { her } from "./name.ts";
 import { go, href } from "./route.ts";
-import { Dialog, ErrorText, useAction, useLoad } from "./ui.tsx";
+import { clock, dateText, dayNumber, Dialog, ErrorText, useAction, useLoad } from "./ui.tsx";
 
 export type WorkflowDoes = "create" | "edit" | "video" | "animate";
 const DOES: [WorkflowDoes, string][] = [["create", "Create"], ["edit", "Edit"], ["video", "Video"], ["animate", "Animate"]];
@@ -99,7 +99,7 @@ export function WorkflowImport({ ctx, hostId, onCancel }: { ctx: MCtx; hostId: s
       <textarea className="mono wf-json" aria-label="Workflow" rows={8} value={text} spellCheck={false} autoComplete="off" placeholder="ComfyUI's Export (API) file"
         onChange={(e) => { setText(e.target.value); setProblem(""); }} />
     </label>
-    <div className="row">
+    <div className="row wf-choose">
       <button type="button" className="sm" onClick={() => picker.current?.click()}>Choose file…</button>
     </div>
     <input ref={picker} type="file" hidden aria-label="Workflow file" accept=".json,application/json" onChange={(e) => { void choose(e.target.files?.[0]); e.target.value = ""; }} />
@@ -306,7 +306,12 @@ export function EditWorkflow({ ctx, hostId, name }: { ctx: MCtx; hostId?: string
               {revisions.data?.revisions.map((r) => (
                 <li key={r.revision} className="row">
                   <span>Revision <span className="num">{r.revision}</span></span>
-                  <span className="muted">{[r.saved ? new Date(r.saved).toLocaleString() : "", r.by === "lyrica" ? `by ${her()}` : "in the app"].filter(Boolean).join(" · ")}</span>
+                  <span className="muted wf-rev-meta">
+                    {r.saved && <>{dateText(r.saved, { day: "numeric", month: "long" })}
+                      {revisions.data!.revisions.some((o) => o !== r && o.saved && dayNumber(o.saved) === dayNumber(r.saved!)) && <> at <span className="num">{clock(r.saved)}</span></>}
+                      {" · "}</>}
+                    {r.by === "lyrica" ? `by ${her()}` : "in the app"}
+                  </span>
                   {r.revision === revisions.data!.current
                     ? <span className="pill">current</span>
                     : <button type="button" className="sm" disabled={busy} onClick={() => setRestoring(r)}>Restore…</button>}

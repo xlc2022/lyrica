@@ -178,6 +178,7 @@ Rules:
   to confirm, parts missing, Parts missing, Use, Download parts, Select,
   Details, Strength, Download image model, Scan (tooltip "Reads each host's models folder again."), Scan folder, Scan now, Found,
   Upload, Uploading, Paused, Uploaded, Checking the file,
+  Workflow, Edit workflow, Copy workflow to edit, Does, Create, Video, Animate, Choose file…, Form, JSON, Revisions, Fixed, Restore…, current (a revision's pill), Copy request, Nodes not checked yet, Sound, Frame rate, Frame step, Frame offset, Size step, Longest clip,
   Files to download, Starter recipes, Add model, added, Download the missing parts?, Portrait photos, Add photos, Send today, Not today,
   Edit…, Making an image, Editing an image, Upscaling an image, Rejecting an image, Rejecting <n> images, Picking an image, Deleting rejected images, <n> rejected, deleted, Show in Files, No longer in Files,
   Use for, Fast, Quality, Both, Text, Vision, Image, API key, Role, Generate,
