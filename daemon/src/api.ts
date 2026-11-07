@@ -421,7 +421,7 @@ export interface OfferingSettingsChange { scope?: "shared" | "mine"; values: { [
 
 // --- The model libraries, downloads and host management ---
 
-export type Hub = "huggingface" | "modelscope";
+export type Hub = "huggingface" | "modelscope" | "civitai";
 /** One model in the text library, with its copies on every endpoint. */
 export interface LibraryEntry {
   key: string; name: string;

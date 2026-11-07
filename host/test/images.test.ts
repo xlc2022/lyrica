@@ -548,6 +548,21 @@ describe("recipes", () => {
     expect(c.all()).toHaveLength(1);
   });
 
+  it("keeps a scan's recipe that shares only the main file with a starter, and makes the starter its own", () => {
+    const K = "lyrica/huggingface/Comfy-Org/Krea-2";
+    const dir = folder({ [`${K}/diffusion_models/krea2_turbo_fp8_scaled.safetensors`]: KREA2_DIFFUSION, [`${K}/text_encoders/qwen3vl_4b_fp8_scaled.safetensors`]: QWEN3VL });
+    const b = book();
+    b.propose(scanParts(dir));
+    b.setState([b.all()[0]!.id], "confirmed");
+    const scanned = b.all()[0]!;
+    // Turbo Uncensored has Turbo's diffusion model but its own (Civitai) encoder: a second recipe, and the encoder downloads.
+    const { recipe, toDownload } = b.fromStarter(STARTERS.find((s) => s.id === "krea2-turbo-uncensored")!, () => null);
+    expect(recipe.id).not.toBe(scanned.id);
+    expect(b.get(scanned.id).starter).toBeNull();
+    expect(toDownload.map((p) => p.source)).toContain("civitai");
+    expect(b.all()).toHaveLength(2);
+  });
+
   it("fills a template with loaders, LoRAs and values, and nothing else", () => {
     const t = TEMPLATES.get("z-image")!;
     const wf = fill(t, [
@@ -629,6 +644,33 @@ describe("recipes", () => {
     // Krea 2 (Raw) samples with real CFG, so the negative prompt is encoded; Turbo's CFG 1 skips it.
     expect(krea.neg!.inputs).toEqual({ text: "blurry", clip: ["load_clip", 0] });
     expect(JSON.stringify(krea)).not.toContain("$");
+    // Plain Krea 2: one KSampler on the model as loaded, decoded.
+    expect(Object.keys(krea).filter((k) => !k.startsWith("load_"))).toEqual(["pos", "neg", "latent", "sample", "decode", "save"]);
+    expect(krea.sample!.inputs.model).toEqual(["load_model", 0]);
+    expect(krea.decode!.inputs.samples).toEqual(["sample", 0]);
+
+    // The workflow the operator picked: the enhancer patches the model, and a second pass reworks the first's latent.
+    const kreaParts = [
+      { role: "diffusion" as const, slot: null, file: "k.safetensors", added: false },
+      { role: "text_encoder" as const, slot: "qwen3vl", file: "vl.safetensors", added: false },
+      { role: "vae" as const, slot: null, file: "v.safetensors", added: false },
+    ];
+    const starterOf = (id: string) => JSON.parse(readFileSync(new URL(`../recipes/${id}.json`, import.meta.url), "utf8"));
+    const base = { prompt: "x", negativePrompt: "", count: 1, seed: 1, refineSteps: 8, refineSampler: "res_2s", refineScheduler: "bong_tangent", refineEta: 0.9 };
+    const tuned = fill(TEMPLATES.get("krea2")!, kreaParts, [{ file: "style.safetensors", strength: 0.8 }], { ...base, ...starterOf("krea2-turbo-uncensored").defaults });
+    expect(tuned.enhance).toEqual({ class_type: "ComfyUI-Krea2T-Enhancer", inputs: { model: ["lora_0", 0], enabled: true, strength: 1.5, debug: false } });
+    expect(tuned.sample!.inputs.model).toEqual(["enhance", 0]);
+    expect(tuned.refine_rk).toMatchObject({
+      class_type: "ClownsharKSampler_Beta",
+      inputs: { model: ["enhance", 0], latent_image: ["sample", 0], sampler_name: "res_2s", scheduler: "bong_tangent", eta: 0.9, steps: 8, denoise: 0.2 },
+    });
+    expect(tuned.decode!.inputs.samples).toEqual(["refine_rk", 0]);
+    expect(tuned).not.toHaveProperty("sample_rk");
+    // With `eta`, the first pass is RES4LYF's sampler instead of KSampler.
+    const rk = fill(TEMPLATES.get("krea2")!, kreaParts, [], { ...base, steps: 8, cfg: 1, sampler: "res_2s", scheduler: "bong_tangent", eta: 0.7, width: 1024, height: 1024 });
+    expect(rk).not.toHaveProperty("sample");
+    expect(rk.sample_rk).toMatchObject({ class_type: "ClownsharKSampler_Beta", inputs: { model: ["load_model", 0], eta: 0.7, sampler_name: "res_2s" } });
+    expect(rk.decode!.inputs.samples).toEqual(["sample_rk", 0]);
   });
 
   it("sizes a recipe by its largest stage plus the VAE, as ComfyUI loads one stage at a time", () => {
@@ -1383,7 +1425,7 @@ describe("the image API", () => {
     // The test folder holds two of its parts at their download paths, but not its diffusion model.
     expect(z.parts.map((p: { present: boolean }) => p.present)).toEqual([false, true, true]);
     expect(body.starters.map((st: { id: string }) => st.id)).toEqual([
-      "flux-schnell", "krea2-raw", "krea2-turbo", "ltx-2.5-distilled", "minimax-h3-turbo", "qwen-image-2.1-turbo", "qwen-image-edit", "qwen-image", "scail-2", "sdxl", "seedvr2-3b", "seedvr2-7b",
+      "flux-schnell", "krea2-raw", "krea2-turbo-uncensored", "krea2-turbo", "ltx-2.5-distilled", "minimax-h3-turbo", "qwen-image-2.1-turbo", "qwen-image-edit", "qwen-image", "scail-2", "sdxl", "seedvr2-3b", "seedvr2-7b",
       "wan2.2-i2v-14b-q5", "wan2.2-i2v-14b", "wan2.2-t2v-14b-q5", "wan2.2-t2v-14b", "wan2.2-ti2v-5b", "z-image-turbo",
     ]);
   });

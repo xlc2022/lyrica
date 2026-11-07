@@ -544,14 +544,14 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     - each picker offers only models suited to its task, so the embeddings
       task lists only embedding models;
     - **Download model**, in each library's header: ask a paired host to
-      download one, from Hugging Face, ModelScope or a link (see Downloads
+      download one, from Hugging Face, ModelScope, Civitai (image models) or a link (see Downloads
       under the model host);
     - **Delete** a copy Lyrica downloaded herself, after a confirmation that
       says where it's used. Nothing else can be deleted from the library. Lists that named it skip it, and its ID is
       kept as removed so other users' lists are tidied when they next
       unlock;
     - **Accounts:** saved tokens for gated repositories on Hugging Face and
-      ModelScope. Like endpoint keys, a user's own token is encrypted in
+      ModelScope, and for Civitai. Like endpoint keys, a user's own token is encrypted in
       their `user.db`, and an administrator can share one for every user in
       `self.db`. A read-only token is enough;
   - each model host's GPUs, roles, pinned and loaded models, VRAM and queue,
@@ -1007,7 +1007,7 @@ it's off.
       parts missing, with **Use**, **Download parts** and **Ignore** for one
       or many at once, so a scan that finds dozens of files stays easy. A
       file with no template for its architecture is kept as a file.
-    - Hugging Face, ModelScope and links, as for text models.
+    - Hugging Face, ModelScope and links, as for text models, and Civitai.
     - Unlike Invoke, parts are fixed in the recipe rather than chosen for
       each image, because Lyrica, not a person, makes the call. LoRAs are
       the exception, and only when the user asks for one.
@@ -2347,7 +2347,9 @@ from Monika's runbooks.
 - **Model hosts follow her release.** A host's **Update** on the Models page
   asks it for the release she runs, never another. Its updater runs as root
   outside host-api, which keeps no route out, and makes the same tag checks
-  with its own read-only deploy key; it pauses the host so running jobs
+  on what it fetches: over HTTPS while the repository is public (GitHub
+  authenticated by its certificate), otherwise with its own read-only
+  deploy key and GitHub's pinned host key; it pauses the host so running jobs
   finish, installs the release from a root-owned tree of its own (never from
   a person's checkout), and goes back to the commit before if host-api
   doesn't come up on the new one within 5 minutes (host/README.md,

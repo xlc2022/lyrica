@@ -13,7 +13,7 @@ export interface HubFiles {
   files: { path: string; size: number; allowed: boolean; reason: string | null; present: boolean; fits: boolean }[];
 }
 
-export const HUB_WORD: Record<Hub, string> = { huggingface: "Hugging Face", modelscope: "ModelScope" };
+export const HUB_WORD: Record<Hub, string> = { huggingface: "Hugging Face", modelscope: "ModelScope", civitai: "Civitai" };
 
 export const isRunning = (d: Pick<HostDownload, "state">) => d.state === "queued" || d.state === "downloading" || d.state === "verifying";
 
@@ -91,6 +91,13 @@ export function repoName(text: string): string | undefined {
     .replace(/\/(tree|blob|resolve|files|summary)(\/.*)?$/, "")
     .replace(/\/+$/, "");
   return /^[\w.-]+\/[\w.-]+$/.test(name) ? name : undefined;
+}
+
+/** A Civitai model by its number: the number itself, or its page's link (civitai.com/models/<number>/…). */
+export function civitaiModel(text: string): string | undefined {
+  const t = text.trim();
+  if (/^\d{1,12}$/.test(t)) return t;
+  return t.match(/^https?:\/\/(?:www\.)?civitai\.(?:com|red)\/models\/(\d{1,12})(?:[/?#].*)?$/i)?.[1];
 }
 
 /** An https link to one .gguf or .safetensors file. */

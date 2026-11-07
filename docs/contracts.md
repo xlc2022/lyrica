@@ -414,7 +414,7 @@ interface AnswerSettings { temperature?; topP?; topK?; minP?; repeatPenalty?; pr
                            frequencyPenalty?; maxTokens?; seed?; stop?: string[];
                            voices?: Record<language, voiceId>; speed? }   // the last two for speak models
 type SettingSource = "shared" | "yours";                   // absent: the server's default
-type Hub = "huggingface" | "modelscope";
+type Hub = "huggingface" | "modelscope" | "civitai";
 interface ModelIdentity { basename?; sizeLabel?; finetune?; baseModels?: { name?; organization?; repoUrl? }[]; card?: { baseModel?: string[]; baseModelRelation? } }
 interface LibraryEntry { key; name; base?: { key; name }; starred; groups: string[]; copies: { offeringId; label; rawName;
                          endpointId; endpointName; kind; shared; status; downloaded; capabilities; groups; flagged?; size? }[] }

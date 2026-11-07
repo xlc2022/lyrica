@@ -624,6 +624,8 @@ test("Downloads History: the queue shows progress with Cancel and how each ended
   await expect(page.getByText("No downloads yet. Start one from a library's Download model button, or here.")).toBeVisible();
 
   // Accounts: a token is a password field, and afterwards only its last four show.
+  await expect(page.locator("li.acct[data-hub=civitai]")).toContainText("No token");
+  await expect(page.locator("li.acct[data-hub=civitai]").getByRole("button", { name: "Add a Civitai token" })).toBeVisible();
   const hf = page.locator("li.acct[data-hub=huggingface]");
   await expect(hf).toContainText("No token");
   await hf.getByRole("button", { name: "Add a Hugging Face token" }).click();
@@ -827,6 +829,81 @@ test("a host card has one facts line and Pause, Edit and ⋯; Edit opens a drawe
 });
 
 
+
+test("Update… is always in a host's ⋯: greyed out with why until it can run, then a dialog, then the updater's steps as its state", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  const json = (body: unknown) => ({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
+  const shot = async (name: string) => { if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/host-update-${name}-${page.viewportSize()!.width}.png`, fullPage: true }); };
+  let update: Record<string, unknown> = { available: false, reason: "Update this host from its NixOS configuration.", state: "idle" };
+  let release: Record<string, unknown> | undefined = { tag: "update/2026-11-06", commit: "bbbb" };
+  const status = () => ({ name: "box", version: "update/2026-10-01-0-gaaaa", commit: "aaaa", fingerprint: "SHA256:aaaa", state: "running", gpus: [], downloads: { active: 0 }, modelsFolder: { path: "/srv/models", free: 2 ** 40 }, update });
+  await page.route(/\/api\/u\/[^/]+\/models\/page$/, async (route) => {
+    const real = await (await fetchReal(route)).json() as { endpoints: Record<string, unknown>[]; hosts: unknown[]; release?: unknown };
+    const local = real.endpoints.find((e) => e.kind === "local")!;
+    real.endpoints.push({ ...local, id: "ep-box", name: "box", api: "host", addresses: ["box.lan:7236"], fingerprint: "SHA256:aaaa", state: "up", shared: false, models: [] });
+    real.hosts.push({ endpointId: "ep-box", status: status() });
+    if (release) real.release = release; else delete real.release;
+    await route.fulfill(json(real));
+  });
+  const asked: string[] = [];
+  await page.route(/\/api\/u\/[^/]+\/hosts\/ep-box\/update$/, async (route) => {
+    asked.push(route.request().method());
+    update = { available: true, changesFolder: true, state: "draining", tag: "update/2026-11-06" };
+    await route.fulfill(json(status()));
+  });
+  await page.goto(`/#/u/${userId}/models/hosts`);
+  const card = page.locator("article.host[data-endpoint=ep-box]");
+  const item = page.getByRole("menuitem", { name: "Update…" });
+  const why = async (text: string, name?: string) => {
+    await card.getByRole("button", { name: "Actions for box" }).click();
+    await expect(item).toHaveAttribute("aria-disabled", "true");
+    await expect(item).toHaveAttribute("title", text);
+    await item.click({ force: true });
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    if (name) await shot(name);
+    await page.keyboard.press("Escape");
+  };
+  // A host with no updater says its own reason; no pill.
+  await why("Update this host from its NixOS configuration.", "no-updater");
+  await expect(card.locator(".pill", { hasText: "update available" })).toHaveCount(0);
+  // Lyrica on no release, then the host already on hers.
+  update = { available: true, changesFolder: true, state: "idle" };
+  release = undefined;
+  await page.reload();
+  await why("Lyrica isn't running a release yet. Update her first, in Administration → Updates.");
+  release = { tag: "update/2026-11-06", commit: "aaaa" };
+  await page.reload();
+  await why("This host already runs update/2026-11-06.");
+
+  // Another commit: the pill, then Update… asks first.
+  release = { tag: "update/2026-11-06", commit: "bbbb" };
+  await page.reload();
+  await expect(card.locator(".pill", { hasText: "update available" })).toBeVisible();
+  await card.getByRole("button", { name: "Actions for box" }).click();
+  await expect(item).not.toHaveAttribute("aria-disabled", "true");
+  await item.click();
+  const ask = page.getByRole("dialog");
+  await expect(ask.getByRole("heading")).toHaveText("Update box?");
+  await expect(ask).toContainText("It goes to update/2026-11-06, the release Lyrica runs.");
+  await expect(ask).toContainText("goes back to update/2026-10-01-0-gaaaa");
+  await shot("dialog");
+  await ask.getByRole("button", { name: "Cancel" }).click();
+  expect(asked).toEqual([]);
+  await card.getByRole("button", { name: "Actions for box" }).click();
+  await item.click();
+  await ask.getByRole("button", { name: "Update" }).click();
+  expect(asked).toEqual(["POST"]);
+  await expect(card.locator(".status-word")).toHaveText("Draining");
+  await expect(card.locator(".status-word")).toHaveAttribute("title", "Updating to update/2026-11-06");
+  await shot("draining");
+  update = { available: true, changesFolder: true, state: "rolling-back", tag: "update/2026-11-06" };
+  await page.reload();
+  await expect(card.locator(".status-word")).toHaveText("Rolling back");
+  await card.getByRole("button", { name: "Actions for box" }).click();
+  await expect(item).toHaveAttribute("title", "An update is running.");
+  await page.keyboard.press("Escape");
+  await noHorizontalScroll(page);
+});
 
 test("a host's System RAM: off until set in its drawer, then a block on its card with what spilled models keep there", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
@@ -1126,6 +1203,17 @@ test("Image models: groups by architecture with Role and Where; a recipe opens t
   await page.getByRole("button", { name: "Scan now" }).click();
   await expect(page.getByRole("list", { name: "Found" }).locator("li.rvrow")).toContainText("Qwen-Image");
   expect(post("manage")).toEqual([{ method: "POST", path: "/host/v1/scan" }, { method: "POST", path: "/host/v1/scan" }]);
+  // Civitai names a model by its number or its page's link.
+  await page.getByRole("group", { name: "Source" }).getByRole("button", { name: "Civitai" }).click();
+  await page.getByLabel("Model", { exact: true }).fill("a/b");
+  await page.getByRole("button", { name: "Look up" }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "That isn't a Civitai model." })).toHaveText("That isn't a Civitai model. Use its number, or paste its page's link.");
+  await page.getByLabel("Model", { exact: true }).fill("https://civitai.com/models/2731465/krea2-uncensored");
+  const asked = page.waitForRequest(/\/hub\/files\?/);
+  await page.getByRole("button", { name: "Look up" }).click();
+  expect(Object.fromEntries(new URL((await asked).url()).searchParams)).toEqual({ source: "civitai", repo: "2731465" });
+  await expect(page.getByRole("group", { name: "Files to download" }).getByRole("checkbox")).toHaveCount(2);
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/image-civitai-${page.viewportSize()!.width}.png`, fullPage: true });
   await page.getByRole("group", { name: "Source" }).getByRole("button", { name: "Hugging Face" }).click();
   await page.getByLabel("Repository").fill("Comfy-Org/Qwen-Image_ComfyUI");
   await page.getByRole("button", { name: "Look up" }).click();

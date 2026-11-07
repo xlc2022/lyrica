@@ -63,7 +63,7 @@ answer to start, so a long prompt on a slow model can still be read.
   Docker restart.
 - A user in the `docker` group to run the script as: it runs `docker
   compose` as you, and uses `sudo` only for the egress rules, their unit
-  and the updater (its state folder, deploy key, script and units).
+  and the updater (its state folder, any deploy key, script and units).
 - A **models folder**, `/srv/models` by default, on a disk with room for
   what you'll download. It must exist before the script runs, and you must
   be able to create its `lyrica/` subfolder:
@@ -236,11 +236,12 @@ detected one is private), and the models folder. Then it:
 6. Prints the dashboard addresses and the host's **key fingerprint**. Keep
    the fingerprint: you check it against what Lyrica shows after pairing.
 7. On a systemd machine other than NixOS, installs the updater (see
-   Upgrade below). The first time, it makes a key and prints it from
-   `/etc/lyrica-host/deploy-key.pub`: add it to the GitHub repository as a
-   read-only deploy key (Settings → Deploy keys). The updater needs `jq`,
-   `git` and `ssh`; without them the host reports it unavailable and says
-   which to install.
+   Upgrade below). While the repository is public the updater fetches over
+   HTTPS and needs no key. If it isn't, the first run makes a key and
+   prints it from `/etc/lyrica-host/deploy-key.pub`: add it to the GitHub
+   repository as a read-only deploy key (Settings → Deploy keys). The
+   updater needs `jq` and `git`, and `ssh` for a deploy key; without them
+   the host reports it unavailable and says which to install.
 
 Options, for a second run or a non-interactive one (`host/install.sh --help`):
 
@@ -335,7 +336,10 @@ Three ways a model gets into the library:
   repository when it has none), and it starts on that host. Ticking a
   GGUF model also ticks its vision projector and MTP file, marked
   **Vision** and **MTP**. A link to one `.gguf` or `.safetensors` file,
-  with an optional SHA-256, works too.
+  with an optional SHA-256, works too. Image models, **Download model**
+  also takes a **Civitai** model by its number or page link; its files are
+  listed per version and checked against Civitai's SHA-256. A Civitai
+  token, if a model needs one, goes under Downloads → Accounts.
   Models, **Downloads** shows every host's queue, with Cancel, Clear
   finished and Add to the group. A download that loses its connection,
   stalls or meets a busy server retries by itself from where it stopped,
@@ -470,7 +474,12 @@ only once the host unloads the chat model, which it never does to a
 pinned or busy one. The Krea 2 Raw starter is Krea 2's undistilled model
 at the same size, sharing Turbo's encoder and VAE (about 13.1 GB more to
 download beside Turbo); it takes 52 steps at CFG 3.5 instead of 8, so an
-image takes several times as long. The Qwen-Image 2.1 Turbo starter, which edits and
+image takes several times as long. The Krea 2 Turbo Uncensored starter
+(ComfyUI hosts) follows a community workflow: Turbo's diffusion model with
+an abliterated Qwen3-VL 4B encoder from Civitai, the Krea2T-Enhancer patch
+and a second pass for detail (a little more time per image). It needs a
+host updated to a ComfyUI image with the RES4LYF and Krea2T-Enhancer
+nodes. The Qwen-Image 2.1 Turbo starter, which edits and
 creates (bf16 diffusion model, int8 Qwen3-VL 8B encoder, about 24.3 GB
 of files), is 14.9 GB at its largest stage and takes turns the same way.
 It replaces Qwen-Image-Edit 2509 for edits: once installed, put it first
@@ -666,10 +675,13 @@ second pairing. Then:
   servers log nothing at all, so `docker logs` on them fails. To see what
   holds the GPU, `nvidia-smi --query-compute-apps=pid,process_name,used_memory
   --format=csv`.
-- **Upgrade:** **Update** in the host's ⋯ on Models (an administrator, for
-  a shared host) moves it to the release Lyrica runs. It shows when
-  Lyrica runs a release (Administration → Updates), the host has the
-  updater, and the host runs another commit. The host pauses (running
+- **Upgrade:** **Update…** in the host's ⋯ on Models (an administrator, for
+  a shared host) moves it to the release Lyrica runs, after a dialog
+  confirms it. It works when Lyrica runs a release (Administration →
+  Updates), the host has the updater, and the host runs another commit;
+  otherwise it's greyed out and its tooltip says which is missing. The
+  card's state word follows the steps: Fetching, Draining, Building, and
+  Rolling back if it goes back. The host pauses (running
   jobs finish first), installs the release into a root-owned tree,
   `/opt/lyrica-host/<commit>`, and is rolled back if host-api doesn't
   report the new commit within 5 minutes; a host paused before stays
@@ -704,15 +716,17 @@ second pairing. Then:
   --models <folder>`; any host can still change it that way. Details are
   in [host/README.md](../../host/README.md#the-models-folder).
 - **Hosts installed before the updater** need `git pull &&
-  host/install.sh` once more: it installs the updater, prints the deploy
-  key to add, and brings the host-api image that opens from Lyrica's
-  Dashboard link, recognises a model's vision projector and MTP file,
-  and waits for a model's memory to free before loading the next. A host
+  host/install.sh` once more: it installs the updater (printing a deploy
+  key to add only while the repository isn't public), and brings the
+  host-api image that opens from Lyrica's Dashboard link, recognises a
+  model's vision projector and MTP file, and waits for a model's memory
+  to free before loading the next. A host
   installed before the image server got its `/triton` scratch space needs
   this too, or image jobs fail with an `ImportError` (seen on NVIDIA).
 - **On NixOS** the updater isn't installed: upgrade with `git pull &&
   host/install.sh` in the `checkout` folder. Lyrica shows the host's
-  version but has no Update.
+  version, and Update… is greyed out with "Update this host from its
+  NixOS configuration." as its tooltip.
 - **Restarting host-api alone** (a re-run of `install.sh` that leaves
   llama.cpp running): host-api unloads whatever llama.cpp still holds when
   it starts, then loads pinned models again. If llama.cpp wasn't answering
@@ -752,9 +766,10 @@ It says what it will remove and asks first. It removes:
   Docker's build cache are left alone (on a shared machine, leave the
   build cache too);
 - the egress rules, `/usr/local/sbin/lyrica-host-update`,
-  `/etc/lyrica-host` (the deploy key), `/var/lib/lyrica-host-update` and
-  the release trees in `/opt/lyrica-host`, and on Debian or Ubuntu the
-  egress and updater units.
+  `/etc/lyrica-host` (a deploy key, if one was made),
+  `/var/lib/lyrica-host-update` and the release trees in
+  `/opt/lyrica-host`, and on Debian or Ubuntu the egress and updater
+  units.
 
 It asks before deleting the models folder's `lyrica/` downloads; your own
 model files beside them stay. `--delete-downloads` deletes them without

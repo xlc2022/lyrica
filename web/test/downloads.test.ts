@@ -1,6 +1,6 @@
 // A download's words, a repository's name and the files it offers (web/src/downloads.ts), as the Downloads tab shows them.
 import { describe, expect, it } from "vitest";
-import { clearFinished, companionsOf, downloadWords, fileChoices, repoName, size, speed, speeds, type HostDownload, type HubFiles } from "../src/downloads.ts";
+import { civitaiModel, clearFinished, companionsOf, downloadWords, fileChoices, repoName, size, speed, speeds, type HostDownload, type HubFiles } from "../src/downloads.ts";
 
 const GB = 2 ** 30;
 const download = (d: Partial<HostDownload>): HostDownload => ({
@@ -43,6 +43,10 @@ describe("a download in words", () => {
 
 describe("a repository's name", () => {
   it("takes owner/name, or a page's link on either hub", () => {
+    expect(civitaiModel(" 2731465 ")).toBe("2731465");
+    expect(civitaiModel("https://civitai.com/models/2731465/qwen3-vl-4b-abliterated?modelVersionId=3071760")).toBe("2731465");
+    expect(civitaiModel("https://example.com/models/2731465")).toBeUndefined();
+    expect(civitaiModel("org/repo")).toBeUndefined();
     expect(repoName(" unsloth/Qwen3-8B-GGUF ")).toBe("unsloth/Qwen3-8B-GGUF");
     expect(repoName("https://huggingface.co/unsloth/Qwen3-8B-GGUF/tree/main")).toBe("unsloth/Qwen3-8B-GGUF");
     expect(repoName("https://huggingface.co/unsloth/Qwen3-8B-GGUF/blob/main/Qwen3-8B-Q4_K_M.gguf")).toBe("unsloth/Qwen3-8B-GGUF");

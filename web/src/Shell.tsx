@@ -258,11 +258,18 @@ interface Trail { crumbs: Panel[]; set: (crumbs: Panel[]) => void }
 
 function usePanelTrail(route: Route): Trail {
   const ref = useRef<Panel[]>([]);
+  // The panel's address at the last render: the trail is checked only when it changes, since a link sets the
+  // trail before the address catches up (on hashchange), and a render in between still shows the old panel.
+  const seen = useRef<string>(undefined);
   const cur = route.page === "thread" ? route.panel : undefined;
-  const last = ref.current.at(-1);
-  // A panel reached any other way than a link inside it starts a new trail.
-  if (!cur) ref.current = [];
-  else if (!last || href(panelRoute("", last)) !== href(panelRoute("", cur))) ref.current = [cur];
+  const key = cur ? href(panelRoute("", cur)) : "";
+  if (key !== seen.current) {
+    seen.current = key;
+    const last = ref.current.at(-1);
+    // A panel reached any other way than a link inside it starts a new trail.
+    if (!cur) ref.current = [];
+    else if (!last || href(panelRoute("", last)) !== key) ref.current = [cur];
+  }
   return { crumbs: ref.current, set: (c) => { ref.current = c; } };
 }
 

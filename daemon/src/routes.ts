@@ -488,7 +488,7 @@ export function apiRoutes(d: Lyricad): Route[] {
     }),
     route("GET", `${u}/hosts/:endpointId/hub/files`, async (r) => {
       const source = r.query.get("source");
-      if (source !== "huggingface" && source !== "modelscope") throw new HttpError(400, "source is huggingface or modelscope");
+      if (source !== "huggingface" && source !== "modelscope" && source !== "civitai") throw new HttpError(400, "source is huggingface, modelscope or civitai");
       return s().models.hubFiles(d.userFor(r), r.params.endpointId!, { source, repo: String(r.query.get("repo") ?? ""), ...(r.query.get("revision") ? { revision: r.query.get("revision")! } : {}) });
     }),
     route("POST", `${u}/hosts/:endpointId/downloads`, async (r) => s().models.startDownload(d.userFor(r), r.params.endpointId!, await r.json<Api.DownloadInput>())),
