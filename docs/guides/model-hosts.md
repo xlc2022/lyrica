@@ -611,6 +611,10 @@ copies a request to add it: give it to Lyrica, who opens a pull request
 pinning the node, and update the host once that is merged. The first time
 after an update, the node check happens when ComfyUI next runs a job.
 
+Workflows are per host and only on a host you manage (an administrator
+for a shared host). A ComfyUI host from before 2026-11-07 takes them only
+once it is updated (**Upgrade** in [Operating a host](#operating-a-host)).
+
 ### Video recipes
 
 ComfyUI hosts list seven video starters: Wan 2.2 TI2V 5B (about 18 GB of
