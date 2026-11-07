@@ -1,6 +1,6 @@
 # Brief: Upload a model file from the browser
 
-**Status:** Building.
+**Status:** Merged as #799 (3f28f96).
 
 **Thread:** Add model upload from the browser.
 
@@ -74,6 +74,12 @@ as a download.
 
 ## Handoff notes
 
-**Done:** brief.
+**Done (2026-11-07):** merged as #799. Host fetch `startUpload` and
+`receivePiece` (restart trims and checks), host-api and lyricad routes,
+`web/src/uploads.ts`, the Upload segment on both pages, the Downloads
+wording. Tests: host/test/downloads.test.ts, daemon/test/daemon.test.ts
+"model uploads", web/test/downloads.test.ts, e2e "Upload sends…".
 
-**Next:** build, PR, PR review and UI review.
+**Next:** hosts need an update to main before Upload works on them.
+Optional follow-up from review: catch an ELOOP on a planted part at
+fetch start and fail that upload instead of fetch.
