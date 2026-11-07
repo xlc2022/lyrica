@@ -2278,8 +2278,10 @@ from Monika's runbooks.
 - **The updater runs as root, outside her.** `lyrica-update` and
   `lyrica-rollback` are oneshot systemd units, not daemons, installed by
   `install.sh` only, never by an update, so a broken release can't break
-  what removes it. The updater installs only a commit on `main`, fetched
-  with a read-only deploy key; that is the line she can't cross.
+  what removes it. The updater installs only an annotated `update/*` tag's
+  commit on `main`, fetched over HTTPS while the repository is public
+  (GitHub authenticated by its certificate), otherwise with a read-only
+  deploy key and GitHub's pinned host key; that is the line she can't cross.
 - On Debian and Ubuntu, stale systemd units are reported, never rewritten,
   because a root rewrite of `lyricad.service` could loosen her confinement.
 - **An update**, in order: build the release as an unprivileged build

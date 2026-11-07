@@ -468,7 +468,10 @@ and images take turns: pin only what must answer at once. The Krea 2
 Turbo starter (fp8, about 18.6 GB of files) loads one stage at a time,
 about 13.5 GB at its largest; beside a 27B chat model on 24 GB it runs
 only once the host unloads the chat model, which it never does to a
-pinned or busy one. The Qwen-Image 2.1 Turbo starter, which edits and
+pinned or busy one. The Krea 2 Raw starter is Krea 2's undistilled model
+at the same size, sharing Turbo's encoder and VAE (about 13.1 GB more to
+download beside Turbo); it takes 52 steps at CFG 3.5 instead of 8, so an
+image takes several times as long. The Qwen-Image 2.1 Turbo starter, which edits and
 creates (bf16 diffusion model, int8 Qwen3-VL 8B encoder, about 24.3 GB
 of files), is 14.9 GB at its largest stage and takes turns the same way.
 It replaces Qwen-Image-Edit 2509 for edits: once installed, put it first
@@ -478,7 +481,7 @@ node, GPL-3.0), which takes about two and a half times as long as a
 plain edit. Whisper on vLLM wants a memory share of about 0.1 of a 24 GB
 card.
 
-Krea 2 Turbo's weights are under the Krea 2 Community License: free for
+Krea 2's weights (Turbo and Raw) are under the Krea 2 Community License: free for
 non-commercial use and for commercial use under $1M a year in revenue,
 and section 4.2 requires content filtering wherever it runs. The host
 filters nothing, so an operator who installs it sets up that filter.

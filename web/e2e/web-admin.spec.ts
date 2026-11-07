@@ -2469,3 +2469,27 @@ test("Updates: the last kept release's ⋯ opens Roll back below the list, not c
   expect(box.y + box.height).toBeGreaterThan(list!.y + list!.height);
   expect(await item.evaluate((el) => { const r = el.getBoundingClientRect(); return el.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)); })).toBe(true);
 });
+
+test("Updates: one Check shows Fetching, then the update note the updater fetched", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  const now = new Date().toISOString();
+  const idle = {
+    available: true, running: { version: "0.1.0", build: "b03dde0aaaaaaaa" }, note: null, state: { state: "idle", since: now }, lastRollback: null,
+    releases: [{ commit: "b03dde0aaaaaaaa", builtAt: now, running: true, previous: false, rollback: { possible: false } }],
+  };
+  // lyricad answers a waiting request as the step it starts with; the updater takes it a moment later.
+  let checked = 0, reads = 0;
+  await page.route(/\/api\/u\/[^/]+\/admin\/updates\/check$/, (route) => { checked++; return route.fulfill({ json: { ...idle, state: { state: "fetching", since: now } } }); });
+  await page.route(/\/api\/u\/[^/]+\/admin\/updates$/, (route) => {
+    if (checked && ++reads > 1) return route.fulfill({ json: { ...idle, note: { tag: "update/2026-11-07", commit: "ec6f4236aaaaaaa", message: "Updates fixes" } } });
+    return route.fulfill({ json: checked ? { ...idle, state: { state: "fetching", since: now } } : idle });
+  });
+  await page.goto(`/#/u/${userId}/admin/updates`);
+  const section = page.getByRole("region", { name: "Updates" });
+  await section.getByRole("button", { name: "Check" }).click();
+  await expect(section.locator(".state-line")).toContainText("Fetching");
+  await expect(section.getByRole("button", { name: "Check" })).toBeDisabled();
+  await expect(section).toContainText("update/2026-11-07");
+  await expect(section.getByRole("button", { name: "Update" })).toBeEnabled();
+  expect(checked).toBe(1);
+});

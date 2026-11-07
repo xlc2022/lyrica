@@ -18,16 +18,20 @@ exec 9>"$UPDATE/update.lock"
 # An Update holds the lock through its switch and start: it chose the profile already.
 flock -n 9 || { say "an update is running; starting what it chose"; exit 0; }
 
-# The updater's deploy key and repository, as install.sh makes them on Debian.
+# The updater's repository, as install.sh sets it up on Debian: over HTTPS while
+# the repository is public, otherwise SSH with a deploy key. Chosen when there
+# is no repository yet, when it still uses the old default SSH remote, or after
+# a failed fetch (the repository may have gone private).
 KEY=${LYRICA_DEPLOY_KEY:-/etc/lyrica/deploy-key}
-if [ ! -f "$KEY" ]; then
-  mkdir -p -m 0755 "$(dirname "$KEY")"
-  ssh-keygen -q -t ed25519 -N "" -C "lyrica-update@$(uname -n)" -f "$KEY"
-  say "add $KEY.pub to the repository as a read-only deploy key"
-fi
-if [ ! -d "$PREFIX/repo.git" ]; then
-  git init -q --bare "$PREFIX/repo.git"
-  git --git-dir="$PREFIX/repo.git" remote add origin "${LYRICA_REPO:-git@github.com:xlc2022/lyrica.git}"
+ORIGIN=$(git --git-dir="$PREFIX/repo.git" remote get-url origin 2>/dev/null || true)
+if [ -z "$ORIGIN" ] || { [ -z "${LYRICA_REPO:-}" ] && [ "$ORIGIN" = git@github.com:xlc2022/lyrica.git ]; } \
+  || jq -e '.state == "failed" and .error == "fetch"' "$UPDATE/state.json" >/dev/null 2>&1; then
+  # lyricad's start waits for this: a short check.
+  URL=$(repo_url 10)
+  if [ "$(set_remote "$URL" "$KEY")" = new ]; then
+    [ -n "${LYRICA_REPO:-}" ] || say "the repository didn't answer over HTTPS without credentials: it isn't public, or the network is down (restart lyricad once it's up)"
+    say "add $KEY.pub to $URL as a read-only deploy key"
+  fi
 fi
 
 [ "$(cat "$UPDATE/module-package" 2>/dev/null || true)" != "$PKG" ] || [ ! -e "$PROFILE" ] || exit 0
@@ -41,7 +45,7 @@ older() {
   local repo=(git --git-dir="$PREFIX/repo.git")
   [ "$1" != "$2" ] || return 1
   "${repo[@]}" cat-file -e "$1^{commit}" 2>/dev/null && "${repo[@]}" cat-file -e "$2^{commit}" 2>/dev/null \
-    || GIT_SSH_COMMAND="ssh -i $KEY -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o BatchMode=yes -o UserKnownHostsFile=${LYRICA_KNOWN_HOSTS:-/etc/lyrica/known_hosts}" \
+    || GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=/bin/false GIT_SSH_COMMAND="ssh -i $KEY -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o BatchMode=yes -o UserKnownHostsFile=${LYRICA_KNOWN_HOSTS:-/etc/lyrica/known_hosts}" \
       timeout 30 "${repo[@]}" fetch -q origin 2>/dev/null || true
   [ "$("${repo[@]}" rev-parse -q --verify "$1^{commit}" 2>/dev/null)" != "$("${repo[@]}" rev-parse -q --verify "$2^{commit}" 2>/dev/null)" ] \
     && "${repo[@]}" merge-base --is-ancestor "$1" "$2" 2>/dev/null

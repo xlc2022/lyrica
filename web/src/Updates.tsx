@@ -24,10 +24,10 @@ export function UpdatesSection({ ctx }: { ctx: ShellContext }) {
   const [rollback, setRollback] = useState<KeptRelease>();
   const up = updates.data;
   const running = !!up && RUNNING.includes(up.state.state);
-  // While the updater works, the section follows it.
+  // While the updater works, or a request waits for it (shown as the step it starts with), the section follows it.
   useEffect(() => {
     if (!running) return;
-    const t = setInterval(updates.reload, 5000);
+    const t = setInterval(updates.reload, 2000);
     return () => clearInterval(t);
   }, [running, updates.reload]);
   const act = (p: string, body: unknown) => run(async () => updates.set(await post<Updates>(p, body)));
@@ -88,7 +88,7 @@ function StateLine({ up, userId }: { up: Updates; userId: string }) {
     <div className="stack state-line">
       <span className="state-word" title={up.state.error}>
         {cls && <span className={`dot ${cls}`} aria-hidden="true" />}{word}
-        {up.state.state === "draining" && <> · waiting for <span className="num">{busy.length}</span> {busy.length === 1 ? "thread" : "threads"}</>}
+        {up.state.state === "draining" && busy.length > 0 && <> · waiting for <span className="num">{busy.length}</span> {busy.length === 1 ? "thread" : "threads"}</>}
         {up.state.tag && <span className="muted mono"> · {up.state.tag}</span>}
       </span>
       {up.state.state === "failed" && up.state.error && <span className="error small">{up.state.error}</span>}
