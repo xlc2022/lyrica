@@ -2299,11 +2299,14 @@ export interface Drain { busy: BusyItem[] }
 export type UpdaterState = "idle" | "fetching" | "building" | "testing" | "draining" | "switching" | "probation" | "failed";
 /** An update note: an annotated `update/*` tag on a commit on main. */
 export interface UpdateNote { tag: string; commit: string; message: string }
+/** main's head at the updater's last fetch: `at` its commit time, `title` its pull request's title (`#795 …`) or subject. */
+export interface LatestMerge { commit: string; at: string; title: string }
 export interface KeptRelease {
   commit: string;
   builtAt: string;
+  /** Its update tag, or `main` for a latest merge. */
   tag?: string;
-  /** The first line of its update note; absent for a build with no note. */
+  /** The first line of its update note (a latest merge's title); absent for a build with no note. */
   summary?: string;
   running: boolean;
   previous: boolean;
@@ -2330,6 +2333,8 @@ export interface Updates {
   available: boolean;
   running: { version: string; build: string };
   note: UpdateNote | null;
+  /** The latest merge, offered as less tested than a note; null before the first fetch. */
+  latest: LatestMerge | null;
   /**
    * `steps`: an update's steps so far (absent for a check, a rollback, or a
    * request the updater hasn't taken yet). `output`: the last lines of the
@@ -2339,8 +2344,8 @@ export interface Updates {
   releases: KeptRelease[];
   lastRollback: RollbackInfo | null;
 }
-/** POST …/admin/updates → Updates: installs the tag's commit, once it is on main. */
-export interface UpdateRequest { tag: string }
+/** POST …/admin/updates → Updates: installs the tag's commit, once it is on main; or `commit`, the whole commit of the latest merge, once it is on main. */
+export type UpdateRequest = { tag: string } | { commit: string };
 /** POST …/admin/updates/rollback → Updates: goes back to a kept release. */
 export interface RollbackRequest { commit: string }
 /** POST …/admin/updates/check → Updates: fetches, so the newest update note shows. */

@@ -2338,13 +2338,15 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   `409` with `{ updating: true }` (`Updating`; `503` stays "locked"). An
   administrator's `GET /api/u/:userId/admin/updates` (`Updates`: running
   release, kept releases with whether each can be rolled back to, the
-  newest update note, the updater's state, `lastRollback`); `POST
-  …/updates` with `{ tag }`, `POST …/updates/rollback` with `{ commit }`
+  newest update note, `latest` (main's head at the last fetch: `commit`,
+  `at`, `title`), the updater's state, `lastRollback`); `POST
+  …/updates` with `{ tag }` or, for the latest merge, `{ commit }` (all 40
+  hex; the updater checks it is on `main` and labels it `main`), `POST …/updates/rollback` with `{ commit }`
   and `POST …/updates/check` write `<runtime>/updates/request.json` for the
   updater's path unit (`409` while an update runs, except a rollback on
   probation). While that request waits and the updater is idle or failed,
-  `Updates.state` shows the step it starts with: `fetching` (with the tag)
-  for a check or an update, `draining` (with the commit) for a rollback,
+  `Updates.state` shows the step it starts with: `fetching` (with the tag,
+  or `main` and the commit) for a check or an update, `draining` (with the commit) for a rollback,
   its `since` when the request was written. An update's state also carries
   `steps` (`UpdateStep[]`: each state it went through, `started`, `ended`
   once over, `failed` on the one it stopped in or the probation that rolled

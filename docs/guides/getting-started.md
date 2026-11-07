@@ -51,7 +51,8 @@ Ubuntu VM or LXC container), running:
   It is built once by the install script, with DNS plugins, and configured
   by `lyricad` through a Unix socket.
 - The updater (`lyrica-update`, `lyrica-rollback` and their units), run as
-  root. It installs releases from annotated `update/*` tags on `main`,
+  root. It installs releases from annotated `update/*` tags on `main`, or
+  the latest merge on `main` when you ask for it,
   built by the `lyrica-build` user, with a snapshot of her databases before
   each switch.
 
@@ -1139,10 +1140,14 @@ refused. To replace the destination, enter the full URL and token again;
 - **Updates:** an update is an annotated `update/<name>` tag on a `main`
   commit, whose message is the update note. Administration, **Updates**
   shows the running version and the newest note; **Check** looks for one
-  and **Update** installs it. From a terminal, as root:
+  and **Update** installs it. Tick **Latest merge** to install the newest
+  commit on `main` instead, without waiting for a tag: it went through
+  review, but nobody has tagged it as a release yet, so it is less tested.
+  From a terminal, as root:
 
   ```sh
   lyrica-update --tag update/<name>
+  lyrica-update --commit <whole commit on main>   # the latest merge
   ```
 
   It fetches from GitHub, builds the release as `lyrica-build`,

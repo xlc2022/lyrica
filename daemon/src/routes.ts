@@ -559,7 +559,7 @@ export function apiRoutes(d: Lyricad): Route[] {
     }),
     route("POST", `${u}/hosts/:endpointId/update`, async (r) => {
       const release = runningRelease(d);
-      if (!release) throw new HttpError(409, "Lyrica isn't running a release yet: update her first, from Administration → Updates.");
+      if (!release) throw new HttpError(409, "Lyrica isn't running a tagged release: update her to one first, from Administration → Updates.");
       return (await s().models.hostUpdate(d.userFor(r), r.params.endpointId!, release.tag)) as Api.HostStatus;
     }),
     route("POST", `${u}/hosts/:endpointId/models-folder`, async (r) => {
@@ -2104,8 +2104,10 @@ export function apiRoutes(d: Lyricad): Route[] {
     route("GET", `${u}/admin/updates`, (r) => { d.adminFor(r); return updates(d); }),
     route("POST", `${u}/admin/updates`, async (r) => {
       d.adminFor(r);
-      const { tag } = await r.json<Api.UpdateRequest>();
-      writeRequest(d.updatePaths, { action: "update", tag: String(tag ?? "") });
+      const body = (await r.json<Partial<{ tag: unknown; commit: unknown }> | null>()) ?? {};
+      writeRequest(d.updatePaths, body.commit !== undefined && body.tag === undefined
+        ? { action: "update", commit: String(body.commit) }
+        : { action: "update", tag: String(body.tag ?? "") });
       return updates(d);
     }),
     route("POST", `${u}/admin/updates/rollback`, async (r) => {
@@ -2649,10 +2651,10 @@ function machineInfo(m: MachineConfig): Api.MachineInfo {
   };
 }
 
-/** The release Lyrica runs, by its update tag: what a model host updates to. */
+/** The release Lyrica runs, by its update tag: what a model host updates to. A latest merge (tag `main`) has none. */
 function runningRelease(d: Lyricad): { tag: string; commit: string } | undefined {
   const r = updates(d).releases.find((x) => x.running);
-  return r?.tag ? { tag: r.tag, commit: r.commit } : undefined;
+  return r?.tag?.startsWith("update/") ? { tag: r.tag, commit: r.commit } : undefined;
 }
 
 function updates(d: Lyricad): Api.Updates {

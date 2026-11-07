@@ -1,5 +1,5 @@
-// Administration → Updates (docs/ux.md §6 "Updates"): the running version, the newest update note, Update as the one
-// primary, the updater's state as a dot and a word (or, for an update, its steps in a box), and the kept releases with
+// Administration → Updates (docs/ux.md §6 "Updates"): the running version, the newest update note (or, with Latest merge
+// ticked, main's newest commit, less tested), Update as the one primary, the updater's state as a dot and a word (or, for an update, its steps in a box), and the kept releases with
 // Roll back behind each row's ⋯.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { get, post, u, type BusyItem, type KeptRelease, type Updates, type UpdaterState, type UpdateStep } from "./api.ts";
@@ -17,6 +17,12 @@ const WORDS: Record<UpdaterState, [string, string]> = {
 const RUNNING: UpdaterState[] = ["fetching", "building", "testing", "draining", "switching", "probation"];
 const short = (commit: string) => commit.slice(0, 7);
 const day = (iso: string) => dateText(iso, { day: "numeric", month: "long" });
+/** The updater labels an update to the latest merge `main`, a name no update tag has. */
+const MAIN = "main";
+/** What an update is to, in words: its tag, or the latest merge. */
+const target = (tag?: string) => tag === MAIN ? "the latest merge" : tag;
+/** Not tagged yet: the latest merge's caution, in its tooltip and its dialog. */
+const UNTESTED = "Not tagged as a release yet, so less tested.";
 
 export function UpdatesSection({ ctx }: { ctx: ShellContext }) {
   const userId = ctx.user.id;
@@ -24,8 +30,13 @@ export function UpdatesSection({ ctx }: { ctx: ShellContext }) {
   const updates = useLoad(() => get<Updates>(path), [path]);
   const [run, busy, error] = useAction();
   const [rollback, setRollback] = useState<KeptRelease>();
+  // Latest merge: Update installs main's newest commit instead of the update note, after a dialog.
+  const [merge, setMerge] = useState(false);
+  const [confirmMerge, setConfirmMerge] = useState(false);
   const up = updates.data;
   const running = !!up && RUNNING.includes(up.state.state);
+  const runs = (commit: string) => !!up && /^[0-9a-f]{7,}$/.test(up.running.build) && commit.startsWith(up.running.build);
+  const latest = up?.latest ?? null;
   // While the updater works, or a request waits for it (shown as the step it starts with), the section follows it.
   useEffect(() => {
     if (!running) return;
@@ -41,14 +52,24 @@ export function UpdatesSection({ ctx }: { ctx: ShellContext }) {
       {up && (
         <dl className="facts">
           <dt>Running</dt><dd className="mono">{up.running.version} · {up.running.build}</dd>
-          {up.note && <><dt>Update</dt><dd><span className="mono">{up.note.tag}</span> <span className="muted mono small">{short(up.note.commit)}</span></dd></>}
+          {!merge && up.note && <><dt>Update</dt><dd><span className="mono">{up.note.tag}</span> <span className="muted mono small">{short(up.note.commit)}</span></dd></>}
+          {merge && latest && <><dt>Latest merge</dt><dd className="latest-merge"><span className="mono">{short(latest.commit)}</span> <span className="muted small">{day(latest.at)}</span>{latest.title && <> <MergeTitle title={latest.title} /></>}</dd></>}
         </dl>
       )}
-      {up?.note && <pre className="setup note"><code>{up.note.message}</code></pre>}
+      {!merge && up?.note && <pre className="setup note"><code>{up.note.message}</code></pre>}
       {up && !up.available && <p className="muted small">No updater is installed on this machine, so updates and rollbacks are done by hand.</p>}
       {up?.available && (
         <div className="row">
-          <button type="button" className="primary" disabled={busy || running || !up.note || up.note.commit === up.running.build} onClick={() => void act(path, { tag: up.note!.tag })}>Update</button>
+          {merge
+            ? <button type="button" className="primary" disabled={busy || running || !latest || runs(latest.commit)} title={latest && runs(latest.commit) ? "Running it already" : undefined} onClick={() => setConfirmMerge(true)}>Update</button>
+            : <button type="button" className="primary" disabled={busy || running || !up.note || runs(up.note.commit)} onClick={() => void act(path, { tag: up.note!.tag })}>Update</button>}
+          <label className="check" title={`Updates to main's newest commit instead of the update note. ${UNTESTED}`}>
+            <input type="checkbox" checked={merge} disabled={busy || running} onChange={(e) => {
+              setMerge(e.target.checked);
+              // Main's head is known from the last fetch; with none yet, Check fetches it.
+              if (e.target.checked && !latest) void act(`${path}/check`, {});
+            }} /> Latest merge
+          </label>
           {!progress(up) && <StateLine up={up} userId={userId} />}
         </div>
       )}
@@ -73,6 +94,10 @@ export function UpdatesSection({ ctx }: { ctx: ShellContext }) {
           ))}
         </ul>
       )}
+      {confirmMerge && latest && (
+        <ConfirmDialog title="Update to the latest merge?" commit={short(latest.commit)} sentence={UNTESTED} confirm="Update"
+          onCancel={() => setConfirmMerge(false)} onConfirm={() => { setConfirmMerge(false); void act(path, { commit: latest.commit }); }} />
+      )}
       {rollback && (
         <ConfirmDialog title={`Roll back to the release from ${day(rollback.builtAt)}?`} commit={short(rollback.commit)}
           sentence={rollback.rollback.restores ? `Messages since ${clock(rollback.rollback.restores)} will be lost.` : `${her()} restarts on it.`} confirm="Roll back" danger
@@ -82,9 +107,15 @@ export function UpdatesSection({ ctx }: { ctx: ShellContext }) {
   );
 }
 
+/** A merge's title on one line, its whole text in a tooltip; a leading pull request number in mono, as elsewhere. */
+function MergeTitle({ title }: { title: string }) {
+  const m = /^(#\d+) (.*)$/.exec(title);
+  return <span className="release-summary" title={title}>{m ? <><span className="mono">{m[1]}</span> {m[2]}</> : title}</span>;
+}
+
 /** The steps of an update, in the order the updater goes through them, with their names on the card and what each does. */
 const STEPS: [UpdateStep["step"], string, string][] = [
-  ["fetching", "Download", "Fetches main and the update tags with the deploy key."],
+  ["fetching", "Download", "Fetches main and the update tags from GitHub."],
   ["building", "Build", "Builds the release as the build user, which can't read any data."],
   ["testing", "Smoke test", "Starts the new release in a scratch home and runs its checks."],
   ["draining", "Finishing turns", "New messages wait while running turns finish. After 10 minutes it gives up and changes nothing."],
@@ -143,7 +174,7 @@ function Progress({ up, userId }: { up: Updates; userId: string }) {
   return (
     <div className="update-progress" role="group" aria-labelledby="h-update-progress">
       <div className="row between">
-        <h3 id="h-update-progress" className="update-progress-title">Update to <span className="mono">{st.tag}</span></h3>
+        <h3 id="h-update-progress" className="update-progress-title">Update to {st.tag === MAIN ? target(st.tag) : <span className="mono">{st.tag}</span>}</h3>
         <span className="state-word" role="status" title={steps[0] ? `Started at ${clock(steps[0].started)}` : undefined}><span className={`dot ${cls}`} aria-hidden="true" />{word}</span>
       </div>
       <ol className="checklist update-steps">
@@ -200,7 +231,7 @@ function StateLine({ up, userId }: { up: Updates; userId: string }) {
       <span className="state-word" title={up.state.error}>
         {cls && <span className={`dot ${cls}`} aria-hidden="true" />}{word}
         {up.state.state === "draining" && busy.length > 0 && <> · waiting for <span className="num">{busy.length}</span> {busy.length === 1 ? "thread" : "threads"}</>}
-        {up.state.tag && <span className="muted mono"> · {up.state.tag}</span>}
+        {up.state.tag && <span className={up.state.tag === MAIN ? "muted" : "muted mono"}> · {target(up.state.tag)}</span>}
       </span>
       {up.state.state === "failed" && up.state.error && <span className="error small">{up.state.error}</span>}
       {mine.length > 0 && (

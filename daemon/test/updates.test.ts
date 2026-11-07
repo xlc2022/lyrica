@@ -137,6 +137,15 @@ describe("Administration's updates API", () => {
     expect(statSync(request).mode & 0o777).toBe(0o600);
     expect((await ada.post(`${u}/rollback`, { commit: "bbbbbbb" })).status).toBe(409);
     rmSync(request);
+    // The latest merge: main's head from the last fetch, installed by its whole commit, waiting as "main".
+    const head = "e".repeat(40);
+    writeFileSync(join(state, "state.json"), JSON.stringify({ state: "idle", since: "2026-10-09T14:12:00Z", latest: { commit: head, at: "2026-10-13T09:00:00Z", title: "#900 Updates: install the latest merge" } }));
+    expect((await ada.get<Updates>(u)).body.latest).toEqual({ commit: head, at: "2026-10-13T09:00:00Z", title: "#900 Updates: install the latest merge" });
+    expect((await ada.post(u, { commit: "eeeeeee" })).status).toBe(400);
+    expect(existsSync(request)).toBe(false);
+    expect((await ada.post<Updates>(u, { commit: head })).body.state).toMatchObject({ state: "fetching", tag: "main", commit: head });
+    expect(JSON.parse(readFileSync(request, "utf8"))).toEqual({ action: "update", commit: head });
+    rmSync(request);
     // While an update runs, only a rollback during probation is taken.
     writeFileSync(join(state, "state.json"), JSON.stringify({ state: "building", since: "2026-10-12T00:00:00Z" }));
     expect((await ada.get<AdminStatus>(statusPath)).body).not.toHaveProperty("unitsStale");
