@@ -30,8 +30,6 @@ ZIM_DIR=${LYRICA_ZIM_DIR:-/var/lib/lyrica-kiwix}
 
 PREFIX=/opt/lyrica
 STATE=/var/lib/lyrica
-# The updater fetches update tags from here with a read-only deploy key.
-REPO_URL=${LYRICA_REPO:-git@github.com:xlc2022/lyrica.git}
 # GitHub's published SSH host key, so the updater never trusts a first answer.
 GITHUB_HOST_KEY="github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl"
 CADDY=/usr/local/bin/lyrica-caddy
@@ -190,22 +188,16 @@ for t in lyrica-update lyrica-snapshot lyrica-restore lyrica-rollback; do
   install -m 0755 "$SRC/daemon/deploy/updater/$t" "/usr/local/sbin/$t"
 done
 install -d -m 0755 /etc/lyrica
-if [ ! -f /etc/lyrica/deploy-key ]; then
-  ssh-keygen -q -t ed25519 -N "" -C "lyrica-update@$(hostname)" -f /etc/lyrica/deploy-key
-  NEW_DEPLOY_KEY=yes
-fi
-chmod 0600 /etc/lyrica/deploy-key
 printf '%s\n' "$GITHUB_HOST_KEY" >/etc/lyrica/known_hosts
-if [ ! -d "$PREFIX/repo.git" ]; then
-  git init -q --bare "$PREFIX/repo.git"
-  git --git-dir="$PREFIX/repo.git" remote add origin "$REPO_URL"
-fi
+# The common functions the updater uses: releases.json, switching, snapshots, its remote.
+. /usr/local/lib/lyrica-update/common.sh
+say() { printf '%s\n' "$*"; }
+# Over HTTPS while the repository is public, otherwise SSH with a read-only deploy key.
+REPO_URL=$(repo_url)
+NEW_DEPLOY_KEY=$(set_remote "$REPO_URL" /etc/lyrica/deploy-key)
 git --git-dir="$PREFIX/repo.git" fetch -q "$SRC" HEAD
 
 # --- lyricad's code: a release ---
-# The common functions the updater uses: releases.json, switching, snapshots.
-. /usr/local/lib/lyrica-update/common.sh
-say() { printf '%s\n' "$*"; }
 COMMIT=$(git -C "$SRC" rev-parse HEAD 2>/dev/null) || die "run it from a git checkout: a release is named by its commit"
 [ -z "$(git -C "$SRC" status --porcelain --untracked-files=no)" ] || die "the checkout has uncommitted changes: a release is exactly one commit"
 REL="$PREFIX/releases/$COMMIT"
@@ -384,8 +376,8 @@ if [ -d /run/systemd/system ]; then
 else
   say "systemd isn't running here: the units are installed but not started."
 fi
-if [ "${NEW_DEPLOY_KEY:-}" = yes ]; then
-  say "For Administration → Updates, add this as a read-only deploy key of $REPO_URL:"
+if [ "$NEW_DEPLOY_KEY" = new ]; then
+  say "The repository isn't public. For Administration → Updates, add this as a read-only deploy key of $REPO_URL:"
   cat /etc/lyrica/deploy-key.pub
 fi
 say "Running release ${COMMIT:0:12}. Go back with: sudo lyrica-rollback"

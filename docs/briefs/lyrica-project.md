@@ -59,7 +59,8 @@ These are by hand; the guides cover each one.
 1. **Install and first run** ([getting-started.md](../guides/getting-started.md)),
    or, for an older install, bring it to current `main`
    ("Upgrading from a checkout" there). Run the checklist at the end of
-   that guide, and add the updater's deploy key ("Add the deploy key").
+   that guide, and add the updater's deploy key if install.sh printed one
+   ("Updates from GitHub").
 2. **Models** for her project chat, Review and UI review, from the model
    hosts it pairs with ([model-hosts.md](../guides/model-hosts.md)). A host
    paired with two deployments moves to whichever asks for **Update**, so

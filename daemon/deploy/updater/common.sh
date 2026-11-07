@@ -45,6 +45,35 @@ write_json() { # file, then jq arguments producing the new content from the old 
   chmod 0644 "$tmp"
   mv -f "$tmp" "$file"
 }
+# Where the updater fetches from: LYRICA_REPO as given, otherwise the public
+# repository over HTTPS when it answers without credentials, otherwise SSH
+# with a deploy key. The checks on the tag, not the transport, are what make
+# an update safe; HTTPS and the pinned host key both authenticate GitHub.
+# As repo_url in host/install.sh.
+repo_url() {
+  if [ -n "${LYRICA_REPO:-}" ]; then printf '%s\n' "$LYRICA_REPO"; return; fi
+  if GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=/bin/false timeout 60 git ls-remote --exit-code -q https://github.com/xlc2022/lyrica.git refs/heads/main >/dev/null 2>&1; then
+    printf '%s\n' https://github.com/xlc2022/lyrica.git
+  else
+    printf '%s\n' git@github.com:xlc2022/lyrica.git
+  fi
+}
+# Points repo.git's origin at URL (made if missing); prints "new" when it made a deploy key for it.
+set_remote() { # url key
+  if [ "${1#https://}" = "$1" ] && [ ! -f "$2" ]; then
+    mkdir -p -m 0755 "$(dirname "$2")"
+    ssh-keygen -q -t ed25519 -N "" -C "lyrica-update@$(uname -n)" -f "$2"
+    echo new
+  fi
+  [ ! -f "$2" ] || chmod 0600 "$2"
+  if [ ! -d "$PREFIX/repo.git" ]; then
+    git init -q --bare "$PREFIX/repo.git"
+    git --git-dir="$PREFIX/repo.git" remote add origin "$1"
+  else
+    # Running install.sh again moves an existing updater to HTTPS, or back to SSH.
+    git --git-dir="$PREFIX/repo.git" remote set-url origin "$1"
+  fi
+}
 releases_json() { [ -f "$UPDATE/releases.json" ] && cat "$UPDATE/releases.json" || echo '{}'; }
 
 # The updater's state, for Administration → Updates.

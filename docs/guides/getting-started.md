@@ -256,8 +256,9 @@ read it for anything not covered here.
 
 Everything from "Save the passphrase" on applies unchanged. `lyricad`
 runs from the profile `/nix/var/nix/profiles/lyrica`, and its first start
-makes `/etc/lyrica/deploy-key`: add its `.pub` as in "Add the deploy key"
-below. Keep a scheduled Proxmox backup of the VM, for the reason given
+sets up the updater's repository as install.sh does (see "Updates from
+GitHub" below); when the repository isn't public it makes
+`/etc/lyrica/deploy-key` and logs where to add its `.pub`. Keep a scheduled Proxmox backup of the VM, for the reason given
 there. Upgrading is
 `nix flake update lyrica` in `/etc/nixos` and `nixos-rebuild switch`,
 which restarts `lyricad` (which logs everyone out). Before that start,
@@ -321,7 +322,8 @@ shows the commit that is running, as on Debian.
    Caddy build, Playwright's download servers for headless Chromium, and
    `pkgs.tailscale.com` when Tailscale isn't installed yet, and Docker Hub
    for the SearXNG image when you say yes to it. Updates later
-   fetch from GitHub over SSH with a deploy key.
+   fetch from GitHub over HTTPS (over SSH with a deploy key if the
+   repository isn't public).
 7. As root, from a git checkout of the repository outside `/opt/lyrica`:
 
    ```sh
@@ -370,9 +372,11 @@ answers ahead; without a terminal the answer is no), then:
    reach Caddy's admin socket. `lyrica-build` builds releases with no
    access to her data.
 3. Installs the updater, its units, the bare repository
-   `/opt/lyrica/repo.git`, GitHub's pinned host key in
-   `/etc/lyrica/known_hosts`, and (the first time) a deploy key in
-   `/etc/lyrica/deploy-key`, whose public half it prints at the end.
+   `/opt/lyrica/repo.git`, and GitHub's pinned host key in
+   `/etc/lyrica/known_hosts`. Its remote is the repository over HTTPS when
+   GitHub answers without credentials; otherwise it is SSH, and the first
+   time install.sh makes a deploy key in `/etc/lyrica/deploy-key` and
+   prints its public half at the end.
 4. Builds the checkout's commit, as `lyrica-build`, into
    `/opt/lyrica/releases/<commit>`, makes it root-owned and read-only, and
    points `/opt/lyrica/current` at it (`previous` at the one before). When
@@ -397,14 +401,22 @@ answers ahead; without a terminal the answer is no), then:
    restarts `lyricad`. On a fresh install `lyricad` starts setting up,
    and the script prints a one-time setup code, the addresses to open
    and the certificate's fingerprint (see "First run"), then the deploy
-   key's public half (see "Add the deploy key").
+   key's public half if it made one (see "Updates from GitHub").
 
 Running it again later installs the checkout's commit as a new release
 (see "Upgrading").
 
-**Add the deploy key.** Updates fetch from GitHub with that key. Add the
+**Updates from GitHub.** While the repository is public, updates fetch it
+over HTTPS with no key, and there is nothing to add. LYRICA_REPO, set when
+running install.sh, picks another repository; an SSH URL there uses the
+deploy key. If install.sh printed "The repository isn't public", add the
 printed line (also in `/etc/lyrica/deploy-key.pub`) to the repository on
-GitHub under Settings, Deploy keys, without write access.
+GitHub under Settings, Deploy keys, without write access. If the
+repository goes private later, fetches fail: run install.sh again (on
+NixOS, `systemctl restart lyricad` after the failed fetch), and add the
+deploy key it prints. An install from before this keeps its SSH remote
+and key until install.sh runs again, which moves it to HTTPS; the old
+deploy key can then come off the repository.
 
 **Keep a scheduled Proxmox backup of the container.** The updater
 snapshots her databases, but it can't snapshot the container it runs in.
@@ -1122,7 +1134,7 @@ refused. To replace the destination, enter the full URL and token again;
   lyrica-update --tag update/<name>
   ```
 
-  It fetches with the deploy key, builds the release as `lyrica-build`,
+  It fetches from GitHub, builds the release as `lyrica-build`,
   smoke-tests it in a scratch home, lets running turns finish (up to 10
   minutes, or it changes nothing), stops `lyricad`, snapshots her
   databases, switches and starts her. She is then on probation until she
@@ -1239,7 +1251,8 @@ apt repository install.sh added when Tailscale was missing
 (`/etc/apt/sources.list.d/tailscale.list` and
 `/usr/share/keyrings/tailscale-archive-keyring.gpg`); remove those only
 if nothing else uses them. Remove her node from your tailnet's
-admin console, and the deploy key from the repository on GitHub.
+admin console, and the deploy key from the repository on GitHub if you
+added one.
 
 ## Checklist for the first install on your machine
 
@@ -1276,10 +1289,11 @@ item 5 once she has been unlocked: see step 10 of "On NixOS"), and item
    unlocked. If the button is disabled, note the reason it shows.
 9. Web access with the built-in Caddy: the name gets a certificate, and the
    unlock page is reachable at it after a restart.
-10. Add the deploy key, push an annotated `update/<name>` tag on `main`, and
-    Update on Administration, Updates runs through probation. Then Roll
-    back goes back to the release before; `lyrica-update` and
-    `lyrica-rollback` do the same from a terminal.
+10. Add the deploy key if install.sh printed one, push an annotated
+    `update/<name>` tag on `main`, and Update on Administration, Updates
+    runs through probation. Then Roll back goes back to the release
+    before; `lyrica-update` and `lyrica-rollback` do the same from a
+    terminal.
 11. Add a Git account and give a thread a repository: it is cloned into
     `/workspace/repos`, and with internet on `gh pr list` works there.
 12. Say yes to SearXNG when `install.sh` asks (Docker installed first; on
