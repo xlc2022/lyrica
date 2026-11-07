@@ -47,23 +47,31 @@ write_json() { # file, then jq arguments producing the new content from the old 
 }
 # Where the updater fetches from: LYRICA_REPO as given, otherwise the public
 # repository over HTTPS when it answers without credentials, otherwise SSH
-# with a deploy key. The checks on the tag, not the transport, are what make
-# an update safe; HTTPS and the pinned host key both authenticate GitHub.
-# As repo_url in host/install.sh.
+# with a deploy key. Either way the trust is that the fetch reached GitHub:
+# its certificate over HTTPS, its pinned host key over SSH.
+# As repo_url in host/install.sh. Optional: the check's timeout in seconds (60).
 repo_url() {
   if [ -n "${LYRICA_REPO:-}" ]; then printf '%s\n' "$LYRICA_REPO"; return; fi
-  if GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=/bin/false timeout 60 git ls-remote --exit-code -q https://github.com/xlc2022/lyrica.git refs/heads/main >/dev/null 2>&1; then
+  if GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=/bin/false timeout "${1:-60}" git ls-remote --exit-code -q https://github.com/xlc2022/lyrica.git refs/heads/main >/dev/null 2>&1; then
     printf '%s\n' https://github.com/xlc2022/lyrica.git
   else
     printf '%s\n' git@github.com:xlc2022/lyrica.git
   fi
 }
-# Points repo.git's origin at URL (made if missing); prints "new" when it made a deploy key for it.
+# Points repo.git's origin at URL (made if missing). Prints "new" when the
+# deploy key needs adding: it made one, or the remote moved to SSH (the key
+# may never have been added).
 set_remote() { # url key
-  if [ "${1#https://}" = "$1" ] && [ ! -f "$2" ]; then
-    mkdir -p -m 0755 "$(dirname "$2")"
-    ssh-keygen -q -t ed25519 -N "" -C "lyrica-update@$(uname -n)" -f "$2"
-    echo new
+  local old
+  old=$(git --git-dir="$PREFIX/repo.git" remote get-url origin 2>/dev/null || true)
+  if [ "${1#https://}" = "$1" ]; then
+    if [ ! -f "$2" ]; then
+      mkdir -p -m 0755 "$(dirname "$2")"
+      ssh-keygen -q -t ed25519 -N "" -C "lyrica-update@$(uname -n)" -f "$2"
+      echo new
+    elif [ "$old" != "$1" ]; then
+      echo new
+    fi
   fi
   [ ! -f "$2" ] || chmod 0600 "$2"
   if [ ! -d "$PREFIX/repo.git" ]; then

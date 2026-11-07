@@ -1407,10 +1407,12 @@ home, the flake's module does the same ("On NixOS" below).
   `/opt/lyrica/repo.git`. Its remote (`repo_url` in `common.sh`, as in
   `host/install.sh`): `LYRICA_REPO` as given, otherwise the repository over
   HTTPS when `git ls-remote` answers with no credentials, otherwise SSH with
-  a deploy key (`/etc/lyrica/deploy-key`, made the first time; it prints
-  "The repository isn't public" and the `.pub` to add as a read-only deploy
-  key). A rerun sets the remote again, so an install moves to HTTPS, or back
-  to SSH when the repository went private.
+  a deploy key (`/etc/lyrica/deploy-key`, made the first time). When the
+  remote is SSH and the key is new or the remote just moved there, it prints
+  the `.pub` to add as a read-only deploy key, after "The repository didn't
+  answer over HTTPS without credentials" unless `LYRICA_REPO` chose it. A
+  rerun sets the remote again, so an install moves to HTTPS, or back to SSH
+  when the repository went private.
 - It puts `lyrica` in `/usr/local/bin`: the CLI, run as the `lyrica` user
   (through `runuser` from root, `sudo` from anyone else) with
   `LYRICA_HOME=/var/lib/lyrica`, so `lyrica admin …` works from any shell.
@@ -1607,8 +1609,9 @@ system with the module on. Only x86_64-linux.
   runs the profile below. The updater, its units, the `lyrica-build` user
   and GitHub's host key come from the module too; `lyrica-nixos-start`
   sets up the remote as install.sh does when `repo.git` has none, still has
-  the old default SSH remote, or the last fetch failed, making the deploy
-  key only for an SSH remote.
+  the old default SSH remote, or the last fetch failed (with a 10 s check,
+  since lyricad's start waits for it), making the deploy key only for an SSH
+  remote.
 - **Firewall.** `openFirewall` (default on, unlike most NixOS modules) opens
   Direct's port, 7340 whatever `port` is: a headless host is set up from another machine through it,
   as on Debian, and it answers only while setting up or in Direct.

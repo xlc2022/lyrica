@@ -454,7 +454,7 @@ describe("lyrica-nixos-start", () => {
     // A failed fetch sets it up again: here an SSH remote, with a new deploy key.
     writeFileSync(join(w.update, "state.json"), JSON.stringify({ state: "failed", error: "fetch" }));
     const r = await start(a, "aaaaaaa", { LYRICA_REPO: "git@example.invalid:o/lyrica.git" });
-    expect(r.err).toContain("the repository isn't public");
+    expect(r.err).toContain("as a read-only deploy key");
     expect(origin()).toBe("git@example.invalid:o/lyrica.git");
     expect(existsSync(key)).toBe(true);
   });
