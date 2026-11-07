@@ -133,7 +133,7 @@ function updateOffer(p: ModelsPage | undefined, s: HostStatus | undefined): { re
   if (!s) return { why: "The host isn't answering." };
   if (hostUpdating(s)) return { why: "An update is running." };
   if (!s.update?.available) return { why: s.update?.reason ?? "This host has no updater: run install.sh on the host again." };
-  if (!p?.release) return { why: "Lyrica isn't running a release yet. Update her first, in Administration → Updates." };
+  if (!p?.release) return { why: "Lyrica isn't running a tagged release. Update her to one first, in Administration → Updates." };
   if (s.commit === p.release.commit) return { why: `This host already runs ${p.release.tag}.` };
   return { release: p.release };
 }

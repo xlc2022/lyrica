@@ -870,7 +870,7 @@ test("Update… is always in a host's ⋯: greyed out with why until it can run,
   update = { available: true, changesFolder: true, state: "idle" };
   release = undefined;
   await page.reload();
-  await why("Lyrica isn't running a release yet. Update her first, in Administration → Updates.");
+  await why("Lyrica isn't running a tagged release. Update her to one first, in Administration → Updates.");
   release = { tag: "update/2026-11-06", commit: "aaaa" };
   await page.reload();
   await why("This host already runs update/2026-11-06.");
