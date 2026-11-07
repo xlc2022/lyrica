@@ -2475,8 +2475,17 @@ test("Updates: an update's steps show in a box under Update, and a failed build 
   expect(await pre.evaluate((el) => el.scrollHeight <= el.clientHeight || el.scrollTop > 0)).toBe(true);
   await noHorizontalScroll(page);
   await expect(done.getByRole("button", { name: "Copy output" })).toBeVisible();
-  await expect(section.getByRole("button", { name: "Update" })).toBeEnabled();
+  // The output folds away and back.
+  const toggle = done.getByRole("button", { name: "Output", exact: true });
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
   if (process.env.SCREENSHOTS) await done.screenshot({ path: `${process.env.SCREENSHOTS}/update-failed-${page.viewportSize()!.width}.png` });
+  await toggle.click();
+  await expect(pre).toHaveCount(0);
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  if (process.env.SCREENSHOTS) await done.screenshot({ path: `${process.env.SCREENSHOTS}/update-failed-hidden-${page.viewportSize()!.width}.png` });
+  await toggle.click();
+  await expect(pre).toContainText("npm error code ENOSPC");
+  await expect(section.getByRole("button", { name: "Update" })).toBeEnabled();
 });
 
 test("Updates: an update the updater hasn't taken says so after a minute", async ({ page, baseURL }) => {

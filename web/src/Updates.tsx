@@ -137,7 +137,9 @@ function Progress({ up, userId }: { up: Updates; userId: string }) {
   const [cls, word] = waiting ? ["info", "Waiting"] : WORDS[st.state];
   // The output's last lines say what went wrong: the block opens scrolled to its end.
   const out = useRef<HTMLPreElement>(null);
-  useEffect(() => { if (out.current) out.current.scrollTop = out.current.scrollHeight; }, [st.output]);
+  // Output can be folded away; it shows by default.
+  const [shown, setShown] = useState(true);
+  useEffect(() => { if (out.current) out.current.scrollTop = out.current.scrollHeight; }, [st.output, shown]);
   return (
     <div className="update-progress" role="group" aria-labelledby="h-update-progress">
       <div className="row between">
@@ -174,8 +176,13 @@ function Progress({ up, userId }: { up: Updates; userId: string }) {
       )}
       {failed && st.output && (
         <div className="code-block update-output">
-          <div className="code-head"><span className="muted small">Output</span><CopyButton text={st.output} label="Copy" ariaLabel="Copy output" /></div>
-          <pre ref={out}><code>{st.output}</code></pre>
+          <div className="code-head">
+            <button type="button" className="link output-toggle" aria-expanded={shown} aria-controls="update-output" onClick={() => setShown(!shown)}>
+              Output <Icon name="right" className={shown ? "chev-ic open" : "chev-ic"} />
+            </button>
+            <CopyButton text={st.output} label="Copy" ariaLabel="Copy output" />
+          </div>
+          {shown && <pre ref={out} id="update-output"><code>{st.output}</code></pre>}
         </div>
       )}
     </div>

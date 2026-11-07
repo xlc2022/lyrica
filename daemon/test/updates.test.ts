@@ -159,6 +159,10 @@ describe("Administration's updates API", () => {
     const steps = [{ step: "fetching", started: "2026-10-12T02:00:00Z", ended: "2026-10-12T02:00:05Z" }, { step: "building", started: "2026-10-12T02:00:05Z", ended: "2026-10-12T02:03:00Z", failed: true }];
     writeFileSync(join(state, "state.json"), JSON.stringify({ state: "failed", since: "2026-10-12T02:03:00Z", tag: "update/2026-10-12", error: "build", steps, output: "npm error" }));
     expect((await ada.get<Updates>(u)).body.state).toMatchObject({ state: "failed", error: "build", steps, output: "npm error" });
+    // An automatic rollback's state, as lyrica-rollback leaves it: the update's tag and steps, probation failed.
+    const rolled = [{ step: "fetching", started: "2026-10-12T02:00:00Z", ended: "2026-10-12T02:00:05Z" }, { step: "probation", started: "2026-10-12T02:05:00Z", ended: "2026-10-12T02:06:00Z", failed: true }];
+    writeFileSync(join(state, "state.json"), JSON.stringify({ state: "failed", since: "2026-10-12T02:06:00Z", tag: "update/2026-10-12", commit: "aaaaaaa", error: "probation failed: web", steps: rolled, lastRollback: { from: "bbbbbbb", to: "aaaaaaa", automatic: true, check: "web", at: "2026-10-12T02:06:00Z" } }));
+    expect((await ada.get<Updates>(u)).body.state).toMatchObject({ state: "failed", tag: "update/2026-10-12", error: "probation failed: web", steps: rolled });
     writeFileSync(join(state, "state.json"), JSON.stringify({ state: "idle", since: "2026-10-12T02:03:00Z", output: "old" }));
     expect((await ada.get<Updates>(u)).body.state).toEqual({ state: "idle", since: "2026-10-12T02:03:00Z" });
   });

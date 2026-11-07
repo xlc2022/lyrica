@@ -18,8 +18,8 @@ that part (a waiting request shows as the step it starts with).
 - **Updater.** `set_state` keeps `steps` in `state.json` for an update
   (a state with its tag): each state it went through with `started` and
   `ended`, the one it failed in marked `failed`. A fetch with a tag starts
-  them over; a check or a rollback drops them. An automatic rollback marks
-  the probation step failed. `fail` takes the output's last 40 lines (the
+  them over; a check or an asked-for rollback drops them. An automatic
+  rollback keeps the tag and marks the probation step failed. `fail` takes the output's last 40 lines (the
   fetch's git error, the build log, the smoke test's checks) as `output`,
   at most 8,000 characters. Never message text: the build user can't read
   her data and the smoke test runs in a scratch home.
@@ -29,7 +29,8 @@ that part (a waiting request shows as the step it starts with).
 - **Web.** A box under Update in the state line's place, per docs/ux.md
   §6 "Updates": tag, state word, the six steps as a checklist with
   durations, a stalled-request warning after a minute, and after a failure
-  the reason and the output in a code block with Copy.
+  the reason and the output in a code block with Copy, which the operator
+  can fold away (asked for in review).
 
 Out of scope: a live build log while it runs (the step and its time are
 enough to see it's moving), and host updates (Models → Hosts has its own

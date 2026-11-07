@@ -978,7 +978,8 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   took, ✱ with how long so far, ticking each second, ✕ where it failed, ○
   to come), "Waiting for the updater to start." before the updater takes
   the request and a warn line after a minute, and after a failure the
-  reason and `output` in a code block opened at its end, with Copy. Load
+  reason and `output` in a code block opened at its end, with Copy, its
+  Output head folding the lines away and back. Load
   errors don't show while an update runs, since lyricad restarts. Then the last
   rollback as a sentence, and the kept releases as rows (commit in mono,
   date, the first line of its update note when it has one, Running) with **Roll back** in the row's ⋯, asked in a dialog that

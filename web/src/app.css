@@ -1353,6 +1353,10 @@ pre.note { white-space: pre-wrap; max-height: 40vh; overflow: auto; }
 .update-steps li[data-state="failed"], .update-steps li[data-state="failed"] .step-mark { color: var(--danger); }
 .update-steps .update-threads { grid-column: 2; list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
 .update-output { margin: 0; }
+.update-output .output-toggle { display: inline-flex; align-items: center; gap: 4px; min-height: 28px; font-size: 12px; color: var(--muted); }
+.update-output .chev-ic { width: 12px; height: 12px; transition: transform 0.15s; }
+.update-output .chev-ic.open { transform: rotate(90deg); }
+.update-output:has(.output-toggle[aria-expanded="false"]) .code-head { padding-bottom: 4px; }
 .update-output pre { margin: 0; padding: 2px 12px 10px; font-size: 12px; line-height: 1.5; white-space: pre; overflow: auto; max-height: 40vh; }
 .dlg-commit { font-weight: 400; font-size: 15px; color: var(--muted); }
 /* Sleep (docs/sleep.md "Sleep in the UI"): her items, then the runs as disclosures, then Sleep now. */

@@ -88,7 +88,9 @@ AT=$(now)
 write_json "$UPDATE/state.json" --arg f "$FROM" --arg t "$TARGET" --argjson a "$AUTO" --arg c "$CHECK" --arg at "$AT" --arg r "$RESTORED_FROM" '
   .lastRollback = ({from: $f, to: $t, automatic: $a, at: $at}
     + (if $c != "" then {check: $c} else {} end) + (if $r != "" then {restoredFrom: $r} else {} end))
-  | .state = (if $a then "failed" else "idle" end) | .since = $at | del(.busy, .tag, .commit)
+  | .state = (if $a then "failed" else "idle" end) | .since = $at | del(.busy, .commit)
+  # An automatic rollback ends an update: its tag stays, so Administration shows its steps with probation failed.
+  | if $a then . else del(.tag) end
   | if .steps then .steps |= map(if .ended then . else .ended = $at | (if $a then .failed = true else . end) end) else . end
   | if $a then .error = "probation failed: \($c)" | .commit = $f else del(.error) end'
 say "running ${TARGET:0:12}${RESTORED_FROM:+, databases from $RESTORED_FROM}"

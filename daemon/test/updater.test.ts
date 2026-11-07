@@ -174,6 +174,7 @@ describe("lyrica-update", () => {
     expect(after).toMatchObject({ state: "failed", lastRollback: { from: b, to: a, automatic: true, check: "web" } });
     expect(after.lastRollback.restoredFrom).toBeUndefined();
     expect(after.steps.at(-1)).toMatchObject({ step: "probation", failed: true, ended: expect.any(String) });
+    expect(after.tag).toBe("update/b");
     expect(existsSync(join(w.update, "probation.json"))).toBe(false);
     // Logs name commits, tags and checks: no update note text, no data.
     expect(second.err).not.toContain("what it changes");
