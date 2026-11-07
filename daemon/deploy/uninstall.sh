@@ -32,7 +32,8 @@ fi
 for u in $UNITS; do
   case "$u" in *.path) rm -f "/etc/systemd/system/$u" ;; *) rm -f "/etc/systemd/system/$u.service" ;; esac
 done
-rm -f /etc/sysctl.d/60-lyrica.conf
+rm -f /etc/sysctl.d/60-lyrica.conf /etc/tmpfiles.d/lyrica-clients.conf
+rm -rf /run/lyrica-clients
 [ -d /run/systemd/system ] && systemctl daemon-reload
 
 if command -v docker >/dev/null 2>&1; then
@@ -61,12 +62,12 @@ if [ "$PURGE" = yes ]; then
   # shellcheck disable=SC2086
   rm -rf $DATA
   for u in lyrica lyrica-build lyrica-caddy; do userdel "$u" 2>/dev/null || true; done
-  groupdel lyrica-caddy 2>/dev/null || true
+  for g in lyrica-caddy lyrica-clients; do groupdel "$g" 2>/dev/null || true; done
   say "Done. Her node is still listed in your tailnet's admin console, and the deploy key in the repository on GitHub if you added one: remove those by hand."
 else
   say "Done. Kept, since they hold her data or were not installed by install.sh:"
   for d in $DATA; do [ -e "$d" ] && say "  $d"; done
-  say "  the lyrica, lyrica-build and lyrica-caddy users"
+  say "  the lyrica, lyrica-build and lyrica-caddy users, and the lyrica-clients group"
   say "Run $0 --purge to delete those too; copy /var/lib/lyrica first if anyone may want their memories back."
 fi
 say "apt packages (bubblewrap, gocryptfs, passt, nftables, Node, tailscale, kiwix-tools, ...) stay; remove them with apt only if nothing else uses them."

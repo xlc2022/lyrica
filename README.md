@@ -67,8 +67,7 @@ The repository was rebuilt from scratch starting 2026-10-09.
   through the sandbox's Chromium.
 - Releases with automatic rollback, and numbered database migrations.
 
-Not built yet: `lyrica chat` and `lyrica mem` (clients of `lyricad`). A calendar and
-sorting data wait until real use asks. Next
+Not built yet: a calendar and sorting data, which wait until real use asks. Next
 comes living with her for a few weeks while keeping the evals and a friction
 log.
 

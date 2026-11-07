@@ -1036,7 +1036,7 @@ export function apiRoutes(d: Lyricad): Route[] {
       const pool = checkPool(input.pool);
       return owner(d, user, (o) => {
         const thread = o[pool].createThread({
-          interface: "web", title: input.title?.trim() || undefined,
+          interface: input.interface === "cli" ? "cli" : "web", title: input.title?.trim() || undefined,
           ...(input.project ? { project: true, ...(typeof input.goal === "string" && input.goal.trim() ? { goal: input.goal } : {}) } : {}),
         });
         s().workspace.settings(user.id).setThread(thread.id, pool, newThreadDefaults(d, user));

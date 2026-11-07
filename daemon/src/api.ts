@@ -973,8 +973,8 @@ export interface ProjectSettingsInfo {
  * display filters (pools, hidden); `?all=1` ignores them. Child threads
  * appear only under their parent; subagents not at all (their delegate cards show them).
  */
-/** POST /api/u/:userId/threads → ThreadSummary. Its interface is `web`. A new project starts pinned. */
-export interface NewThread { pool: Pool; title?: string; project?: boolean; goal?: string }
+/** POST /api/u/:userId/threads → ThreadSummary. `interface`: `cli` for `lyrica chat`'s threads, else `web`. A new project starts pinned. */
+export interface NewThread { pool: Pool; title?: string; project?: boolean; goal?: string; interface?: "web" | "cli" }
 /** GET /api/u/:userId/threads/:pool/:threadId → ThreadSummary */
 /**
  * PATCH /api/u/:userId/threads/:pool/:threadId → ThreadSummary. Rename, hide or unhide; make a
