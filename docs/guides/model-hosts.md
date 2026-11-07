@@ -359,8 +359,8 @@ Three ways a model gets into the library:
   finishes (the browser asks before closing it). An upload that stopped
   shows **Paused**; choose the same file again for the same host to carry
   on. It is checked like a download, but has no checksum to compare with.
-  A host from before 2026-11-07 needs updating (its ⋯ **Update…**) before
-  it takes uploads.
+  A host from before 2026-11-07 takes uploads only once it is updated
+  (**Upgrade** in [Operating a host](#operating-a-host)).
 
 ### The voice and dictation starters
 
@@ -686,9 +686,10 @@ second pairing. Then:
   --format=csv`.
 - **Upgrade:** **Update…** in the host's ⋯ on Models (an administrator, for
   a shared host) moves it to the release Lyrica runs, after a dialog
-  confirms it. It works when Lyrica runs a release (Administration →
-  Updates), the host has the updater, and the host runs another commit;
-  otherwise it's greyed out and its tooltip says which is missing. The
+  confirms it. It works when Lyrica runs a tagged release (Administration →
+  Updates; a latest merge doesn't count), the host has the updater, and the
+  host runs another commit; otherwise it's greyed out and its tooltip says
+  which is missing. The
   card's state word follows the steps: Fetching, Draining, Building, and
   Rolling back if it goes back. The host pauses (running
   jobs finish first), installs the release into a root-owned tree,
