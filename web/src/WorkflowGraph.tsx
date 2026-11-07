@@ -7,7 +7,7 @@ import {
   Background, Controls, Handle, Position, ReactFlow, ReactFlowProvider, useReactFlow,
   type Connection, type Edge, type EdgeChange, type Node, type NodeChange, type NodeProps,
 } from "@xyflow/react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { blankOf, BLANK_WORD, InputRow, isLink, type Graph, type NodeTypes, type Value, type WNode } from "./Workflows.tsx";
 
 export type Layout = Record<string, [number, number]>;
@@ -70,11 +70,59 @@ const NODE_TYPES = { comfy: ComfyNode };
 
 interface Props {
   graph: Graph; layout: Layout; blanks: string[]; types: NodeTypes | null; editable: boolean;
+  /** The layout was guessed (autoLayoutOf): once the nodes are drawn, their columns close up to the drawn sizes. */
+  guessed: boolean;
   onChange: (g: Graph) => void; onLayout: (l: Layout) => void;
 }
 
-function Canvas({ graph, layout, blanks, types, editable, onChange, onLayout }: Props) {
+/** The least zoom a fitted graph gets: node text is 13 px, so it stays 11 px or more. A bigger graph pans instead. */
+const FIT = { minZoom: 0.85, maxZoom: 1, padding: 0.08 };
+const GAP = 48;
+
+function Canvas({ graph, layout, blanks, types, editable, guessed, onChange, onLayout }: Props) {
   const flow = useReactFlow();
+  // Each node's drawn size, as React Flow measures it.
+  const sizes = useRef(new Map<string, { w: number; h: number }>());
+  const [drawn, setDrawn] = useState(false);
+  const settled = useRef(false);
+  const [fit, setFit] = useState(false);
+  // Fitted once the nodes have their sizes; a guessed layout first closes up its columns to those sizes.
+  useEffect(() => {
+    if (!drawn || settled.current) return;
+    settled.current = true;
+    if (guessed) {
+      const columns = new Map<number, { id: string; y: number; w: number; h: number }[]>();
+      for (const [id, [x, y]] of Object.entries(layout)) {
+        const col = Math.round(x / 320);
+        const size = sizes.current.get(id) ?? { w: 200, h: 100 };
+        columns.set(col, [...(columns.get(col) ?? []), { id, y, ...size }]);
+      }
+      const next: Layout = {};
+      let x = 0;
+      for (const col of [...columns.keys()].sort((a, b) => a - b)) {
+        const ns = columns.get(col)!.sort((a, b) => a.y - b.y);
+        let y = 0;
+        for (const n of ns) { next[n.id] = [x, y]; y += n.h + GAP / 2; }
+        x += Math.max(...ns.map((n) => n.w)) + GAP;
+      }
+      onLayout(next);
+    }
+    setFit(true);
+  }, [drawn]);
+  useEffect(() => {
+    if (!fit) return;
+    const frame = requestAnimationFrame(() => {
+      void flow.fitView(FIT).then(() => {
+        // Too big to fit at the least zoom: start from its top left, the graph's start, rather than its middle.
+        const zoom = flow.getZoom();
+        if (zoom > FIT.minZoom + 0.001) return;
+        const box = flow.getNodesBounds(flow.getNodes());
+        void flow.setViewport({ x: 16 - box.x * zoom, y: 16 - box.y * zoom, zoom });
+      });
+      setFit(false);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [fit, layout]);
   const [selected, setSelected] = useState<string | null>(null);
   const [link, setLink] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -107,8 +155,10 @@ function Canvas({ graph, layout, blanks, types, editable, onChange, onLayout }: 
     for (const c of changes) {
       if (c.type === "position" && c.position) (moved ??= { ...layout })[c.id] = [Math.round(c.position.x), Math.round(c.position.y)];
       if (c.type === "select") setSelected((s) => (c.selected ? c.id : s === c.id ? null : s));
+      if (c.type === "dimensions" && c.dimensions) sizes.current.set(c.id, { w: c.dimensions.width, h: c.dimensions.height });
     }
     if (moved) onLayout(moved);
+    if (!drawn && Object.keys(graph).every((id) => sizes.current.has(id))) setDrawn(true);
     const removed = changes.filter((c) => c.type === "remove").map((c) => c.id);
     if (removed.length) remove(removed);
   };
@@ -182,7 +232,7 @@ function Canvas({ graph, layout, blanks, types, editable, onChange, onLayout }: 
       <div className="wf-graph" role="group" aria-label="Graph">
         <ReactFlow nodes={nodes} edges={edges} nodeTypes={NODE_TYPES} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect}
           isValidConnection={fits} nodesDraggable={editable} nodesConnectable={editable} elementsSelectable deleteKeyCode={editable ? ["Backspace", "Delete"] : null}
-          fitView minZoom={0.1} proOptions={{ hideAttribution: true }}>
+          minZoom={0.1} proOptions={{ hideAttribution: true }}>
           <Background gap={20} size={1} />
           <Controls showInteractive={false} />
         </ReactFlow>

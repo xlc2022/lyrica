@@ -338,7 +338,7 @@ export function EditWorkflow({ ctx, hostId, name }: { ctx: MCtx; hostId?: string
           {view === "graph" && (
             <Suspense fallback={<div className="wf-graph" />}>
               <ErrorText error={types.error} />
-              <WorkflowGraph graph={graph} blanks={blanks} types={types.data?.nodes ?? null} editable={!narrow()}
+              <WorkflowGraph graph={graph} blanks={blanks} types={types.data?.nodes ?? null} editable={!narrow()} guessed={!layout}
                 layout={layout && Object.keys(graph).every((id) => layout[id]) ? layout : { ...autoLayoutOf(graph), ...layout }}
                 onChange={setGraph} onLayout={setLayout} />
             </Suspense>

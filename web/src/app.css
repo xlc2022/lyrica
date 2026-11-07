@@ -1967,14 +1967,14 @@ ul.choices { list-style: none; margin: 0; padding: 0; }
   --xy-controls-button-color-hover: var(--fg); --xy-controls-button-border-color: var(--line); --xy-node-boxshadow-selected: none;
 }
 .wf-graph .react-flow__controls { box-shadow: none; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
-.wf-gnode { min-width: 200px; max-width: 280px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; font-size: 12px; padding-bottom: 6px; }
+.wf-gnode { min-width: 160px; max-width: 260px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; font-size: 13px; padding-bottom: 6px; }
 .wf-gnode.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
 .wf-gnode-head { padding: 6px 10px; border-bottom: 1px solid var(--line); margin-bottom: 4px; overflow-wrap: anywhere; }
 .wf-gport, .wf-gset { position: relative; display: flex; gap: 8px; align-items: center; justify-content: space-between; padding: 2px 10px; min-height: 22px; }
 .wf-gport.out { justify-content: flex-end; }
 .wf-gport .react-flow__handle { width: 10px; height: 10px; }
 .wf-gval { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 140px; font-family: var(--mono); }
-.wf-gset .pill { font-size: 11px; }
+.wf-gset .pill { font-size: 12px; }
 .wf-gadd { display: grid; gap: 6px; }
 .wf-gmatches { max-height: 240px; overflow: auto; }
 .wf-gmatches button { all: unset; cursor: pointer; display: block; width: 100%; padding: 6px 10px; box-sizing: border-box; overflow-wrap: anywhere; }
