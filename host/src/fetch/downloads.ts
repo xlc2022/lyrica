@@ -116,7 +116,13 @@ export class Downloader {
     // Interrupted downloads resume. An upload waits for its next piece from what is on disk, or is checked again.
     for (const d of this.downloads) {
       if (d.source === "upload") {
-        if (d.state === "uploading" || d.state === "verifying") d.received = this.partSize(d);
+        if (d.state === "uploading" || d.state === "verifying") {
+          // A stop between a piece's write and its trim can leave the part past the file's size.
+          if (this.partSize(d) > d.size) truncateSync(partName(join(this.o.models, d.path)), d.size);
+          d.received = this.partSize(d);
+          // A whole upload whose last piece arrived just before the stop is checked now.
+          if (d.received === d.size) d.state = "verifying";
+        }
       } else if (d.state === "downloading" || d.state === "verifying") d.state = "queued";
     }
     this.save();

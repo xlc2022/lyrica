@@ -208,6 +208,30 @@ describe("downloads through host-api", () => {
     expect(readdirSync(join(s.models, "lyrica", "upload"))).toEqual([]);
   });
 
+  it("carries an upload on across a restart, and checks one whose last piece arrived before it", async () => {
+    const models = mkdtempSync(join(tmpdir(), "lyrica-up-models-"));
+    const data = mkdtempSync(join(tmpdir(), "lyrica-up-data-"));
+    const net = new Net({ allowed: () => false });
+    const make = () => new Downloader({ models, data, net, hubs: { huggingface: huggingFace(net, "https://x"), modelscope: modelScope(net, "https://x") }, log: () => {}, free: () => 1e12 });
+    const file = Buffer.concat([ggufBytes({ "general.architecture": "llama", "tokenizer.ggml.model": "gpt2" }), Buffer.alloc(2000)]);
+    const first = make();
+    const half = first.startUpload({ name: "half.gguf", size: file.length });
+    await first.receivePiece(half.id, 0, [file.subarray(0, 1000)]);
+    const whole = first.startUpload({ name: "whole.gguf", size: file.length });
+    await first.receivePiece(whole.id, 0, [file.subarray(0, 1000)]);
+    // The stop came after the last piece was written, past the file's size, before anything else.
+    const part = join(models, "lyrica", "upload", ".whole.gguf.lyrica-part");
+    writeFileSync(part, Buffer.concat([file, Buffer.alloc(10)]));
+
+    const again = make();
+    expect(again.get(half.id)).toMatchObject({ state: "uploading", received: 1000 });
+    await again.receivePiece(half.id, 1000, [file.subarray(1000)]);
+    for (const until = Date.now() + 10_000; Date.now() < until && [half.id, whole.id].some((id) => again.get(id)!.state !== "done"); ) await new Promise((r) => setTimeout(r, 20));
+    expect(again.get(half.id)).toMatchObject({ state: "done", received: file.length });
+    expect(again.get(whole.id)).toMatchObject({ state: "done", received: file.length });
+    expect(readFileSync(join(models, "lyrica", "upload", "whole.gguf")).equals(file)).toBe(true);
+  });
+
   it("fetch answers only host-api", async () => {
     const s = await stack();
     s.setCallers(["10.9.9.9"]);

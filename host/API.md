@@ -719,7 +719,8 @@ listed with the downloads (`source: "upload"`, no `url` or `repo`).
   it gets its real name and a line in the download record, `verified:
   false` (there is no published checksum to compare with), and is `done`.
 - An `uploading` upload waits for its next piece as long as it is listed,
-  across restarts, and counts against free space until it is cancelled
+  across restarts (a restart trims a part past its size, and checks one
+  whose last piece had arrived), and counts against free space until it is cancelled
   (`DELETE /host/v1/downloads/<id>`, which deletes what arrived).
 
 ### The download record and deleting
