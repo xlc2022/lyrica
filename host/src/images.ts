@@ -15,7 +15,7 @@ import { clipSpec, COLOR_MATCH, loraFits, present, RecipeBook, starterPath, type
 import type { Runtime } from "./runtime.ts";
 import { sdcppArgs, type SdCpp } from "./sdcpp.ts";
 import { fill, LONGEST_SECONDS, longestSeconds, type Action, type Continuation, type Lora, type Template, type Values, type VideoSpec } from "./templates.ts";
-import { checkTemplate, CUSTOM_ACTIONS, customAction, filesIn, importWorkflow, label, parseWorkflow, partSpecs, recipeParts, videoSpec, type NodeList, type Workflows } from "./workflows.ts";
+import { checkTemplate, CUSTOM_ACTIONS, customAction, filesIn, importWorkflow, label, parseWorkflow, partSpecs, recipeParts, videoSpec, layoutOf, type NodeList, type Workflows } from "./workflows.ts";
 import { checkDefault, DEFAULT_KEYS } from "./recipes.ts";
 
 /** How many reference images a workflow's blanks take: its highest `$reference<n>`. */
@@ -367,7 +367,7 @@ export class Images {
     const info = {
       name: t.name, label: t.custom!.name, from: t.custom!.from, base: t.custom!.base ?? null, made: t.custom!.made,
       revision: t.custom!.revision ?? 1, saved: t.custom!.saved ?? t.custom!.made, by: t.custom!.by ?? "app", does: t.does, arch: t.arch,
-      loaders: t.loaders ?? null, video: t.video ?? null, references: t.references, files: t.files ?? [],
+      loaders: t.loaders ?? null, video: t.video ?? null, references: t.references, files: t.files ?? [], layout: t.custom!.layout ?? null,
       recipes: this.book.all().filter((r) => r.template === t.name).map((r) => ({ id: r.id, name: r.name })), nodesChecked: !!nodes,
     };
     if (!full) return info;
@@ -393,6 +393,7 @@ export class Images {
     if (path === "/host/v1/workflows" && method === "GET") {
       return sendJson(res, 200, { workflows: [...templates.values()].filter((t) => t.custom).map((t) => this.workflowInfo(t)), nodesChecked: !!nodes }), true;
     }
+    if (path === "/host/v1/workflows/nodes" && method === "GET") return sendJson(res, 200, { nodes }), true;
     if (path === "/host/v1/workflows/import" && method === "POST") {
       const body = await readJson(req, WORKFLOW_LIMIT);
       onlyFields(body, ["workflow", "name", "does"]);
@@ -402,7 +403,7 @@ export class Images {
     }
     if (path === "/host/v1/workflows" && method === "POST") {
       const body = await readJson(req, WORKFLOW_LIMIT);
-      onlyFields(body, ["name", "does", "arch", "workflow", "loaders", "clipType", "video", "parts", "loras", "defaults"]);
+      onlyFields(body, ["name", "does", "arch", "workflow", "loaders", "clipType", "video", "parts", "loras", "defaults", "layout"]);
       const name = label(body.name);
       const does = customAction(body.does);
       const workflow = parseWorkflow(body.workflow);
@@ -420,7 +421,7 @@ export class Images {
       const t: Template = {
         name: store.newName(templates), arch: body.arch, does: [does], checkpoint: parts.some((p) => p.role === "checkpoint"), clipType: (body.clipType as string | null) ?? null,
         ...(own ? { loaders: "template" as const } : {}), parts: own ? [] : partSpecs(parts), references, mask: false, ...(video ? { video } : {}), workflow,
-        custom: { name, from: "import", made: new Date().toISOString() }, files: fileList,
+        custom: { name, from: "import", made: new Date().toISOString(), ...withLayout(layoutOf(body.layout, workflow)) }, files: fileList,
       };
       const check = checkTemplate(t, nodes);
       if (check.problems.length) throw invalid(check.problems.join(" "));
@@ -458,11 +459,11 @@ export class Images {
       const n = Number(one[2]);
       const old = n === (t.custom.revision ?? 1) ? t : store.revisions(t.name).find((r) => (r.custom?.revision ?? 1) === n);
       if (!old) throw notFound("No such revision.");
-      if (!one[3] && method === "GET") return sendJson(res, 200, { revision: n, workflow: old.workflow, video: old.video ?? null, name: old.custom?.name ?? "" }), true;
+      if (!one[3] && method === "GET") return sendJson(res, 200, { revision: n, workflow: old.workflow, video: old.video ?? null, name: old.custom?.name ?? "", layout: old.custom?.layout ?? null }), true;
       if (one[3] && method === "POST") {
         const body = await readJson(req);
         onlyFields(body, ["by"]);
-        const restored = this.updateWorkflow(t, { workflow: old.workflow, ...(old.video ? { video: old.video } : {}), name: old.custom?.name ?? t.custom.name }, body.by);
+        const restored = this.updateWorkflow(t, { workflow: old.workflow, ...(old.video ? { video: old.video } : {}), name: old.custom?.name ?? t.custom.name, layout: old.custom?.layout ?? null }, body.by);
         return sendJson(res, 200, this.workflowInfo(restored, true)), true;
       }
       return false;
@@ -471,7 +472,7 @@ export class Images {
     if (method === "GET") return sendJson(res, 200, this.workflowInfo(t, true)), true;
     if (method === "PUT") {
       const body = await readJson(req, WORKFLOW_LIMIT);
-      onlyFields(body, ["name", "workflow", "video", "by"]);
+      onlyFields(body, ["name", "workflow", "video", "by", "layout"]);
       return sendJson(res, 200, this.workflowInfo(this.updateWorkflow(t, body, body.by), true)), true;
     }
     return false;
@@ -488,7 +489,10 @@ export class Images {
     const workflow = body.workflow === undefined ? t.workflow : parseWorkflow(body.workflow);
     const video = body.video === undefined ? t.video : videoSpec(body.video);
     if (video && !t.video) throw invalid("This workflow doesn't make videos.");
-    const next: Template = { ...t, workflow, ...(video ? { video } : {}), files: filesIn(workflow), custom: { ...t.custom!, ...(body.name !== undefined ? { name: label(body.name) } : {}) } };
+    // A layout not sent keeps the nodes that are still there where they were.
+    const { layout: _old, ...custom } = t.custom!;
+    const layout = layoutOf(body.layout === undefined ? t.custom!.layout : body.layout, workflow);
+    const next: Template = { ...t, workflow, ...(video ? { video } : {}), files: filesIn(workflow), custom: { ...custom, ...(body.name !== undefined ? { name: label(body.name) } : {}), ...withLayout(layout) } };
     if (t.custom!.from === "import") next.references = referenceCount(workflow);
     const check = checkTemplate(next, store.nodes, base);
     if (check.problems.length) throw invalid(check.problems.join(" "));
@@ -1006,3 +1010,5 @@ export function clipPlan(spec: VideoSpec, chain: Continuation | undefined, secon
   // Just under each count, so videoValues rounds back to it whatever the float error.
   return made.map((f) => (f - 0.5) / spec.fps);
 }
+
+const withLayout = (layout: Record<string, [number, number]> | undefined) => (layout ? { layout } : {});

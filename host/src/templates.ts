@@ -78,6 +78,8 @@ export interface Template {
     base?: string;
     /** This version's number (1 for the first), when it was saved and by whom. */
     revision?: number; saved?: string; by?: "app" | "lyrica";
+    /** Where each node sits in the app's Graph view, by node ID: only for drawing it. */
+    layout?: Record<string, [number, number]>;
   };
   /** Model files the workflow's own nodes load, by their path in the models folder: a recipe is ready only with each. */
   files?: string[];

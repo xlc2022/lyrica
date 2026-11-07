@@ -353,7 +353,7 @@ export interface Recommended {
 }
 
 /** A host's custom workflow routes (host/API.md, "Custom workflows"): a change to one changes its recipes, so discovery runs after. */
-const WORKFLOWS = /^\/host\/v1\/workflows(\/(import|copy|custom-[0-9a-f]{8}(\/revisions(\/\d{1,6}(\/restore)?)?)?))?$/;
+const WORKFLOWS = /^\/host\/v1\/workflows(\/(import|copy|nodes|custom-[0-9a-f]{8}(\/revisions(\/\d{1,6}(\/restore)?)?)?))?$/;
 const MANAGE = [/^\/host\/v1\/models\/(load|unload|pin|reload)$/, /^\/host\/v1\/gpus\/\d+$/, /^\/host\/v1\/memory$/, /^\/host\/v1\/scan$/, /^\/host\/v1\/usage$/, WORKFLOWS];
 
 export interface CleanupItem {

@@ -970,7 +970,15 @@ body may be up to 2 MB. Not on a host using stable-diffusion.cpp.
   (`app` or `lyrica`), `does`, `arch`, `loaders` (`"template"` when it
   loads its own files), `video`, `references`, `files` (the model files its
   own nodes load), `recipes` (`[{ id, name }]`), `nodesChecked` (ComfyUI has
-  reported its nodes since the host started using this data folder).
+  reported its nodes since the host started using this data folder),
+  `layout` (where each node sits in the app's Graph view, `{ <node ID>: [x,
+  y] }`, or null).
+- `GET /host/v1/workflows/nodes` → `{ nodes }`: ComfyUI's node types as it
+  last reported them, or null before it has run. Each has `inputs` (a link's
+  type such as `MODEL`, a setting's kind such as `INT`, or a choice's
+  options, at most 200), `output` (it is an output node), `outputs` and
+  `outputNames` (its outputs' types and names), `category` and `defaults`
+  (its settings' defaults). For the app's Graph view.
 - `POST /host/v1/workflows/import` `{ workflow, name, does }` → `{ draft,
   problems, missingNodes }`, saving nothing. `workflow` is ComfyUI's Export
   (API) object (ComfyUI's UI file is refused, saying so); `does` is
@@ -997,7 +1005,7 @@ body may be up to 2 MB. Not on a host using stable-diffusion.cpp.
     `$image` and the next ones `$reference1…4`. The values replaced become
     the recipe's defaults; the prompt is dropped.
 - `POST /host/v1/workflows` `{ name, does, arch, workflow, loaders,
-  clipType, video, parts, loras, defaults }` (a draft, edited) → `{
+  clipType, video, parts, loras, defaults, layout? }` (a draft, edited) → `{
   workflow: WorkflowInfo & { workflow, problems, missingNodes, nodes },
   recipe }`: saves revision 1 and a confirmed recipe on it. Every save is
   refused (`invalid`, naming each problem) unless: each `$name` is a blank
@@ -1020,13 +1028,14 @@ body may be up to 2 MB. Not on a host using stable-diffusion.cpp.
   `problems`, `missingNodes` (node types ComfyUI didn't report, or null
   before it has run) and `nodes` (the inputs of the node types it uses: a
   choice's options, at most 200).
-- `PUT /host/v1/workflows/<name>` `{ workflow?, video?, name?, by? }` → the
-  same: a new revision, checked as above; the one it replaces is kept (50
-  at most). `by: "lyrica"` marks a change Lyrica made when asked.
+- `PUT /host/v1/workflows/<name>` `{ workflow?, video?, name?, by?, layout?
+  }` → the same: a new revision, checked as above; the one it replaces is
+  kept (50 at most). A `layout` keeps only the nodes the workflow has, each
+  `[x, y]` in whole numbers; left out, the last one stays. `by: "lyrica"` marks a change Lyrica made when asked.
 - `GET /host/v1/workflows/<name>/revisions` → `{ current, revisions: [{
   revision, saved, by, name }] }`, newest first; `GET …/revisions/<n>` → `{
-  revision, workflow, video, name }`; `POST …/revisions/<n>/restore` `{ by?
-  }` → as PUT, that revision saved as a new one.
+  revision, workflow, video, name, layout }`; `POST …/revisions/<n>/restore`
+  `{ by? }` → as PUT, that revision (and its layout) saved as a new one.
 - A recipe on a custom workflow lists `custom: true`; one whose workflow
   needs node types ComfyUI lacks does nothing, its `unsupported` naming
   them. A workflow that loads its own files can't have parts changed or

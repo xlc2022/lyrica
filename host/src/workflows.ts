@@ -46,8 +46,38 @@ export const MAX_REVISIONS = 50;
 /** Who saved a version: the manager in Lyrica's app, or Lyrica at the user's word in a thread. */
 export type Revision = { by: "app" | "lyrica" };
 
-/** ComfyUI's node types as it last reported them (`/object_info`): each one's inputs, and whether it is an output. */
-export type NodeList = Record<string, { inputs: Record<string, unknown>; output: boolean }>;
+/**
+ * ComfyUI's node types as it last reported them (`/object_info`): each one's inputs (a type such as "MODEL", or a
+ * setting's kind or choices), whether it is an output, and for the Graph view its outputs' types and names, its
+ * category and its settings' defaults. A list saved before the Graph view has only the first two.
+ */
+export type NodeList = Record<string, {
+  inputs: Record<string, unknown>; output: boolean;
+  outputs?: string[]; outputNames?: string[]; category?: string; defaults?: Record<string, string | number | boolean>;
+}>;
+
+type ObjectInfo = Record<string, {
+  input?: { required?: Record<string, unknown>; optional?: Record<string, unknown> }; output_node?: boolean;
+  output?: unknown; output_name?: unknown; category?: unknown;
+}>;
+
+const short = (v: unknown, max: number) => (typeof v === "string" ? v.slice(0, max) : "");
+
+/**
+ * Where nodes sit in the Graph view: kept only for nodes the workflow has, each an x and y within reach. Anything
+ * else in it is dropped rather than refused, since it only draws the workflow.
+ */
+export function layoutOf(v: unknown, workflow: Record<string, Node>): Record<string, [number, number]> | undefined {
+  if (v === undefined || v === null) return undefined;
+  if (typeof v !== "object" || Array.isArray(v)) throw invalid("layout must be an object of node ID to [x, y].");
+  const out: Record<string, [number, number]> = {};
+  for (const [id, p] of Object.entries(v)) {
+    if (!(id in workflow) || !Array.isArray(p) || p.length !== 2) continue;
+    const [x, y] = p;
+    if (typeof x === "number" && typeof y === "number" && Number.isFinite(x) && Number.isFinite(y) && Math.abs(x) < 1e6 && Math.abs(y) < 1e6) out[id] = [Math.round(x), Math.round(y)];
+  }
+  return Object.keys(out).length ? out : undefined;
+}
 
 /** An export turned into a workflow the manager reviews before saving it. */
 export interface Draft {
@@ -514,15 +544,24 @@ export class Workflows {
   }
 
   /** ComfyUI's `/object_info`, kept small: each type's inputs (a choice's first 200 options) and whether it is an output. */
-  saveNodes(info: Record<string, { input?: { required?: Record<string, unknown>; optional?: Record<string, unknown> }; output_node?: boolean }>): void {
+  saveNodes(info: ObjectInfo): void {
     const list: NodeList = {};
     for (const [cls, n] of Object.entries(info)) {
       const inputs: Record<string, unknown> = {};
+      const defaults: Record<string, string | number | boolean> = {};
       for (const [k, spec] of Object.entries({ ...n.input?.required, ...n.input?.optional })) {
         const kind = Array.isArray(spec) ? spec[0] : spec;
         inputs[k] = Array.isArray(kind) ? kind.filter((o) => typeof o === "string").slice(0, 200) : typeof kind === "string" ? kind : "unknown";
+        const opts = Array.isArray(spec) ? spec[1] as { default?: unknown } | undefined : undefined;
+        const d = opts && typeof opts === "object" ? opts.default : undefined;
+        if (typeof d === "number" || typeof d === "boolean" || (typeof d === "string" && d.length <= 1000)) defaults[k] = d;
       }
-      list[cls] = { inputs, output: n.output_node === true };
+      const outputs = Array.isArray(n.output) ? n.output.slice(0, 32).map((o) => (Array.isArray(o) ? "COMBO" : short(o, 64) || "*")) : [];
+      const names = Array.isArray(n.output_name) ? n.output_name.slice(0, 32).map((o) => short(o, 64)) : [];
+      list[cls] = {
+        inputs, output: n.output_node === true, outputs, outputNames: outputs.map((t, i) => names[i] || t),
+        category: short(n.category, 128), ...(Object.keys(defaults).length ? { defaults } : {}),
+      };
     }
     this.nodeList = list;
     writeFileSync(`${this.nodesPath}.tmp`, JSON.stringify(list), { mode: 0o600 });
