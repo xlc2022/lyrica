@@ -80,7 +80,10 @@ the project. The welcome web interface is a separate build.
 `lyrica serve [--runtime <dir>] [--port <port>]` starts it. It listens on
 `127.0.0.1` only (default port 7340) and on a Unix socket,
 `<runtime>/lyricad.sock`, mode `0600`. The socket serves the same API to local
-clients; they still log in. A second loopback port (7342) is the one only her
+clients; they still log in. With `LYRICA_CLIENT_SOCKET` set (the unit sets
+`/run/lyrica-clients/lyricad.sock`) a second socket, mode `0660`, serves it
+to the `lyrica-clients` group ("Terminal clients" below); if its folder is
+missing, lyricad logs that and starts without it. A second loopback port (7342) is the one only her
 tailscaled's `tailscale serve` targets (Web access, Tailnet); a request on it
 came through her tailnet address. Both ports speak plain HTTP, so a request
 on either addressed to a name that isn't this machine (anything but
@@ -1358,6 +1361,40 @@ Plain-HTTP listeners stay HTTP/1.1.
   sandbox gets no network for that run
   ([workspace.md](workspace.md#network-access-from-tools)).
 
+## Terminal clients
+
+`lyrica chat` and `lyrica mem` (bin/chat.ts, bin/mem.ts, bin/client.ts) are
+clients of a running lyricad over a Unix socket: `--socket`, else
+`LYRICA_SOCKET`, else `/run/lyrica-clients/lyricad.sock` when this account
+may use it, else `<runtime>/lyricad.sock`.
+
+- **Who reaches the prompt:** root and `lyrica` (the `lyrica` wrapper runs
+  root's call as `lyrica`), and accounts the operator adds to the
+  `lyrica-clients` group, which install.sh and the NixOS module make empty.
+  `/run/lyrica-clients` is `2750 lyrica:lyrica-clients` (a tmpfiles rule),
+  so the socket in it takes that group. The wrapper runs anyone else's
+  `chat` and `mem` as themselves, not through sudo.
+- **Who you are:** the Lyrica login and password, at a hidden prompt, through
+  `POST /api/login` with its rate limits. The machine account is never mapped
+  to a Lyrica user. The session cookie lives in the process only; a clean exit
+  logs out. A locked or setting-up lyricad gets a one-line answer.
+- **Nothing on disk.** No session, history or cache file. readline's history
+  stays in the process. `mem edit` is a line editor prefilled with the text,
+  with mention tokens as `{Name}` and saved back as tokens, so no `$EDITOR`
+  and no temp file. `mem export` prints Markdown to standard output.
+- **`lyrica chat [--private] [<thread id>]`** lists the user's recent `cli`
+  threads in the pool, or makes one with `interface: "cli"`. It streams the
+  thread's events: text as it comes, reasoning as one line, a line per tool
+  call and per failed one, recall as a count. Permission cards and question
+  cards are answered at the prompt; Ctrl-C stops the turn (`POST …/stop`),
+  Ctrl-D or `/exit` leaves. Terminal control characters are stripped from
+  everything printed.
+- **`lyrica mem`** maps to the memory browser's routes: `search`, `show`,
+  `history`, `edit`, `restore`, `archive`/`unarchive`, `delete` (y/N),
+  `note`, `forget <words>` (lists the note and page matches, the user picks
+  all, none or numbers, confirms once, then `POST …/memory/:pool/forget`
+  per pool) and `export`.
+
 ## Deployment
 
 `daemon/deploy/install.sh`, run as root on Debian or Ubuntu from a clean git
@@ -1390,8 +1427,11 @@ home, the flake's module does the same ("On NixOS" below).
   `lyrica` runs `lyricad`, `lyrica-caddy` runs Caddy, `lyrica-build` builds
   releases and runs their smoke tests with no access to her data. The `lyrica-caddy`
   group shares Caddy's admin socket (mode `0660`) and TLS log; lyricad's unit
-  joins it (`SupplementaryGroups`), and nobody else can use them. An allowed
-  path that overlaps `/run/lyrica-caddy` is refused, since sandboxes run with
+  joins it (`SupplementaryGroups`), and nobody else can use them. It also
+  makes the empty `lyrica-clients` group and installs
+  `/etc/tmpfiles.d/lyrica-clients.conf` for the terminal clients' socket
+  folder ("Terminal clients" above). An allowed
+  path that overlaps `/run/lyrica-caddy` or `/run/lyrica-clients` is refused, since sandboxes run with
   lyricad's groups.
 - It builds the checkout's commit into `/opt/lyrica/releases/<commit>` as
   `lyrica-build` (`npm ci`, the web build, `npm prune --omit=dev`), writes

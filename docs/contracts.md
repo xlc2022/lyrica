@@ -1978,7 +1978,10 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     No text, IDs or replay; clients re-read existing routes. Requires the
     addressed user's session and key; checks each event and every 25 seconds,
     ending on logout or Lock;
-  - threads (list, create, hide, forget); the user's own view of them:
+  - threads (list, create, hide, forget): `GET threads?interface=` lists one
+    interface's threads (default `web`), and `NewThread.interface` (`web`
+    or `cli`, default `web`) picks a new thread's, so the web and `lyrica
+    chat` each list their own; the user's own view of them:
     `Display.sort` (`ThreadSort`), `ThreadSummary.group` and `unread`,
     `ThreadChange.group` and `unread`, `ThreadGroup` with `GET`/`POST
     thread-groups` and `PATCH`/`DELETE thread-groups/:id` (in `user.db`,
@@ -2306,10 +2309,12 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   - sleep: overview (newest run per pool only), run detail, items (start a chat, dismiss), `sleep.mode`,
     start a run, and an event stream. `/sleep` typed in a thread is
     `SendRequest.confirm` and `SendResponse.sleep`.
-- **Local socket:** a Unix socket (mode `0600`, owned by the service user)
-  serves the same API to local clients; no `lyrica` subcommand uses it. The
-  user still logs in with a password over the socket. Being on the machine
-  isn't enough.
+- **Local sockets:** a Unix socket (mode `0600`, owned by the service user)
+  serves the same API to local clients, and with `LYRICA_CLIENT_SOCKET` a
+  second one (mode `0660`, group `lyrica-clients` from its setgid folder,
+  `/run/lyrica-clients` when installed) serves it to accounts in that group.
+  `lyrica chat` and `lyrica mem` use them. The user still logs in with a
+  password over either socket. Being on the machine isn't enough.
 - **Scheduler:** at `sleep.time` (default 04:00) in each user's own time
   zone (`Profile.timeZone`, else the server's), for each user not in manual
   mode, sleep each pool, one run at a time across all users. The night's
@@ -2365,7 +2370,8 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
 ## bin/lyrica
 
 One entry point with subcommands: `serve`, `admin`, `dev`, `version` and
-`smoke-test`. `chat` and `mem` are reserved and not built (see
+`smoke-test`, and the clients `chat` and `mem` (bin/chat.ts, bin/mem.ts,
+bin/client.ts; docs/daemon.md, "Terminal clients"; see
 [DESIGN.md](../DESIGN.md#runtime)).
 - `dev` refuses to start unless it is pointed at a development runtime: a
   directory with a marker file, created by `lyrica dev --init`.
@@ -2554,7 +2560,7 @@ settings(userId).effective(threadId): ThreadWorkspace  // strictest mode and swi
 //   (read-only where any ancestor's is), machines and repositories every ancestor grants. Sandbox, Files panel, grantsFor and folders() use it.
 //   setThread on a parent writes the narrowing into its descendants' rows; checkInherited no longer refuses a dropped folder.
 allowedPaths.allow(actor, userId, pool, path) / disallow(...) / list(userId)
-  // NEVER_GRANTED (Caddy's runtime, /opt/lyrica, the updater's state and snapshots) and LYRICA_HOME are refused, and rows
+  // NEVER_GRANTED (Caddy's runtime, the terminal clients' socket folder, /opt/lyrica, the updater's state and snapshots) and LYRICA_HOME are refused, and rows
   //   overlapping them are left out of list()
 credentialsFor(t): Credentials            // the thread's reachable repositories' tokens and Claude Code's, for SandboxSpec.credentials, never the env (Git accounts below); targetFor
   // passes it as the sandbox's env, never argv, and `repos` (reposDir(t)) mounted at /workspace/repos
@@ -2786,7 +2792,7 @@ selfTest(): Promise<string | undefined>   // lyricad calls this at startup
   renames and deletes.
 - **Allowed paths** live in `self.db` (`workspace_paths`, keyed by user ID)
   and change only with an administrator actor. Paths overlapping
-  `NEVER_GRANTED` (`/run/lyrica-caddy`, `/var/lib/lyrica-update`, `/var/lib/lyrica-snapshots`) are refused, because sandboxes run with
+  `NEVER_GRANTED` (`/run/lyrica-caddy`, `/run/lyrica-clients`, `/opt/lyrica`, `/var/lib/lyrica-update`, `/var/lib/lyrica-snapshots`) are refused, because sandboxes run with
   `lyricad`'s groups.
 - See [workspace.md](workspace.md).
 

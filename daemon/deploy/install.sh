@@ -176,6 +176,8 @@ fi
 # lyrica runs lyricad; lyrica-caddy runs Caddy. The lyrica-caddy group shares
 # Caddy's admin socket and TLS log with lyricad, and with nobody else.
 getent group lyrica-caddy >/dev/null || groupadd --system lyrica-caddy
+# Accounts the operator adds may run `lyrica chat` and `lyrica mem` (empty at first).
+getent group lyrica-clients >/dev/null || groupadd --system lyrica-clients
 id lyrica-caddy >/dev/null 2>&1 || useradd --system --gid lyrica-caddy --home-dir /var/lib/lyrica-caddy --no-create-home --shell /usr/sbin/nologin lyrica-caddy
 id lyrica >/dev/null 2>&1 || useradd --system --user-group --home-dir "$STATE" --no-create-home --shell /usr/sbin/nologin lyrica
 # lyrica-build builds releases and runs their smoke tests: no access to her data.
@@ -252,6 +254,9 @@ install -d -o lyrica -g lyrica -m 0700 "$STATE"
 # `lyrica` on the PATH runs the CLI as the lyrica user with her state folder.
 sed -e "s|@CLI@|$PREFIX/current/bin/lyrica|" -e "s|@STATE@|$STATE|" "$REL/daemon/deploy/lyrica" >/usr/local/bin/lyrica
 chmod 0755 /usr/local/bin/lyrica
+# The folder of the socket those clients use, kept across reboots.
+install -m 0644 "$REL/daemon/deploy/lyrica-clients.conf" /etc/tmpfiles.d/lyrica-clients.conf
+command -v systemd-tmpfiles >/dev/null && systemd-tmpfiles --create /etc/tmpfiles.d/lyrica-clients.conf
 
 # --- The built-in Caddy ---
 MODULES=$(sed -n 's/.*module: "\([^"]*\)".*/\1/p' "$REL/daemon/src/web/providers.ts" | sort)

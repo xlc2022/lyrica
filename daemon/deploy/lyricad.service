@@ -19,6 +19,9 @@ Group=lyrica
 # The built-in Caddy's admin socket and TLS log are this group's.
 SupplementaryGroups=lyrica-caddy
 Environment=LYRICA_HOME=/var/lib/lyrica
+# A second API socket for `lyrica chat` and `lyrica mem` run by accounts in the
+# lyrica-clients group; its folder comes from /etc/tmpfiles.d/lyrica-clients.conf.
+Environment=LYRICA_CLIENT_SOCKET=/run/lyrica-clients/lyricad.sock
 # Creates both directories, owned by lyrica, before the service starts.
 StateDirectory=lyrica lyrica/credentials
 StateDirectoryMode=0700

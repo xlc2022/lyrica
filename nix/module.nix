@@ -188,6 +188,8 @@ in {
 
     users.groups.lyrica = { };
     users.groups.lyrica-caddy = { };
+    # Accounts the operator adds may run `lyrica chat` and `lyrica mem` (daemon/deploy/lyrica-clients.conf).
+    users.groups.lyrica-clients = { };
     users.users.lyrica = {
       isSystemUser = true;
       group = "lyrica";
@@ -211,6 +213,7 @@ in {
       "d /var/lib/lyrica-update 0755 root root -"
       "d /var/lib/lyrica-snapshots 0700 root root -"
       "d /opt/lyrica 0755 root root -"
+      "d /run/lyrica-clients 2750 lyrica lyrica-clients -"
       # The address lyricad offers Administration → Web search (core/src/web.ts, adoptLocalSearxng).
       (if cfg.searxng then "f+ ${state}/searxng-address 0600 lyrica lyrica - http://127.0.0.1:${toString searxngPort}"
        else "r ${state}/searxng-address")
@@ -435,6 +438,7 @@ in {
       onFailure = [ "lyrica-rollback.service" ];
       environment = {
         LYRICA_HOME = state;
+        LYRICA_CLIENT_SOCKET = "/run/lyrica-clients/lyricad.sock";
         LYRICA_SANDBOX_TOOLS = "${sandboxTools}";
         LYRICA_SANDBOX_CLOSURE = "${sandboxClosure}/store-paths";
         # The setuid wrappers first: fusermount3 must be the setuid one.

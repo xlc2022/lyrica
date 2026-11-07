@@ -3,6 +3,11 @@
 # so the files it makes are hers. install.sh fills in the two paths.
 cli=@CLI@
 home=@STATE@
+case "$1" in
+  # Clients of lyricad over its socket: run as the caller, who logs in with a
+  # Lyrica password (docs/daemon.md, "Local clients").
+  chat|mem) [ "$(id -u)" = 0 ] || exec "$cli" "$@" ;;
+esac
 if [ "$(id -un)" = lyrica ]; then
   exec env LYRICA_HOME="$home" "$cli" "$@"
 elif [ "$(id -u)" = 0 ]; then

@@ -2248,9 +2248,13 @@ Details in [docs/sleep.md](docs/sleep.md).
   | `lyrica dev` | The developer bench. See below. |
   | `lyrica version` | The build, and each database's schema version and oldest reader. |
   | `lyrica smoke-test` | The updater's check of a release, with test data only. |
+  | `lyrica chat` | Her threads in a terminal: the `cli` interface, kept apart from the web's. |
+  | `lyrica mem` | Search, read, correct, archive, delete, note, forget and export memories at the prompt. |
 
-  `lyrica chat` (a terminal client) and `lyrica mem` (memory editing at the
-  prompt) are reserved names and not built.
+  `chat` and `mem` are clients of a running `lyricad` over its Unix socket.
+  The user still logs in with their Lyrica password; root, the service user
+  and accounts in the `lyrica-clients` group reach the prompt. They write
+  no file: no session, history, cache or editor temp file.
 
   Passwords and passphrases are only ever typed at a hidden prompt, never
   passed as arguments or environment variables.

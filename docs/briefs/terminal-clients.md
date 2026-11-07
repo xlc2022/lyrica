@@ -1,10 +1,10 @@
 # Brief: `lyrica chat` and `lyrica mem`
 
-**Status:** agreed, not built. The user decided (2026-11-07): build it
-now, keep the terminal's threads separate, add Forget a topic to `mem`,
-and let a `lyrica-clients` group reach it (option b under A).
+**Status:** built (2026-11-07), in review. The user decided (2026-11-07):
+build it now, keep the terminal's threads separate, add Forget a topic to
+`mem`, and let a `lyrica-clients` group reach it (option b under A).
 
-**Branch:** `feature/terminal-clients`, once the brief is agreed.
+**Branch:** `claude/project-thread-vsoj89` (this session's branch).
 **Read first:** AGENTS.md, PRINCIPLES.md (2, 8, 10), DESIGN.md ("One
 command, `lyrica`", "Each interface keeps its own threads"),
 docs/contracts.md (Interface, Local socket, the thread and memory routes),
@@ -154,7 +154,13 @@ paragraph, through Operator docs), and this brief's status.
 
 ## Handoff
 
-- **Done:** the brief, with the user's answers to all four questions.
-- **Next:** a build on
-  `feature/terminal-clients` with PR review (it touches `bin/` and the
-  daemon's routes).
+- **Done:** the brief, with the user's answers to all four questions; the
+  build (bin/client.ts, bin/chat.ts, bin/mem.ts, the second socket, the
+  group in install.sh, uninstall.sh and the NixOS module, tests in
+  bin/test/terminal-clients.test.ts, docs).
+- **Next:** PR review; Operator docs adds the getting-started paragraph
+  (add an account with `usermod -aG lyrica-clients <account>`, or
+  `users.users.<account>.extraGroups` on NixOS, then log in again).
+- **Open:** the EACCES test runs only as an ordinary account (CI), not
+  as root. tsx, which runs the CLI, keeps its compiled-code cache in the
+  temp folder; that holds code, never memory or thread text.

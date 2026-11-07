@@ -9,6 +9,9 @@ import {
 import { AgentSessionRuntime, InteractiveMode } from "@earendil-works/pi-coding-agent";
 import { BUILD, Lyricad, smokeTest } from "@lyrica/daemon";
 import { openBench } from "./bench.ts";
+import { askLine, Interrupted } from "./client.ts";
+import { chat, CHAT_USAGE } from "./chat.ts";
+import { mem, MEM_USAGE } from "./mem.ts";
 import { modelsAdmin, MODELS_USAGE } from "./models.ts";
 
 const USAGE = `usage:
@@ -34,19 +37,19 @@ ${MODELS_USAGE}
   lyrica dev --init <dir>
   lyrica dev --runtime <dir> --user <login> [--private | --local-only] [--debug-prompt]
   lyrica serve [--port <port>]   (default 7340)
-  lyrica chat | mem              (not built yet)
+${CHAT_USAGE}
+${MEM_USAGE}
   lyrica version [--json]        (the build, and each database's schema version and oldest reader)
   lyrica smoke-test <empty dir> [--port <port>]   (the updater's check of a release, with test data only)
 
 serve and admin commands use --runtime <dir>, else LYRICA_HOME, else ./runtime.
+chat and mem talk to a running lyricad over its socket: --socket <path>, else
+LYRICA_SOCKET, else /run/lyrica-clients/lyricad.sock when this account may use
+it, else <runtime>/lyricad.sock. They still ask for the user's password.
 Passwords are only read at a hidden prompt.`;
 
 const SEED = fileURLToPath(new URL("../persona", import.meta.url));
 const DEV_MARKER = "LYRICA_DEVELOPMENT_RUNTIME";
-const STUBS: Record<string, string> = {
-  chat: "lyrica chat, a client of lyricad, isn't built yet.",
-  mem: "lyrica mem, a client of lyricad, isn't built yet.",
-};
 
 async function run(argv: string[]): Promise<void> {
   const flag = (name: string) => {
@@ -58,7 +61,10 @@ async function run(argv: string[]): Promise<void> {
     return value;
   };
   const [cmd] = argv;
-  if (cmd && cmd in STUBS) throw new Error(STUBS[cmd]);
+  if (cmd === "chat" || cmd === "mem") {
+    const socket = flag("--socket"), runtime = flag("--runtime");
+    return (cmd === "chat" ? chat : mem)(argv.slice(1), { socket, runtime });
+  }
   if (cmd === "admin") {
     const home = flag("--runtime") ?? process.env.LYRICA_HOME ?? "runtime";
     return admin(argv.slice(1), home);
@@ -93,7 +99,7 @@ async function run(argv: string[]): Promise<void> {
  */
 async function serve(home: string, port: number): Promise<void> {
   // Her tailscaled's proxy (lyrica-tailscaled.service): calls to tailnet hosts go through it.
-  const daemon = new Lyricad({ home, port, tailnet: { proxy: "127.0.0.1:1056" } });
+  const daemon = new Lyricad({ home, port, tailnet: { proxy: "127.0.0.1:1056" }, clientSocket: process.env.LYRICA_CLIENT_SOCKET || undefined });
   let stopping = false;
   const stop = async () => {
     if (stopping) return;
@@ -416,36 +422,14 @@ async function askProfile(current: { displayName: string; pronouns?: Pronouns })
   return { displayName, pronouns };
 }
 
-/** Reads one line from the terminal; hidden input isn't echoed. */
+/** Reads one line from the terminal; hidden input isn't echoed. Ctrl-C exits. */
 async function ask(question: string, hidden = false): Promise<string> {
-  if (!process.stdin.isTTY) throw new Error("lyrica reads passwords only at a terminal prompt");
-  process.stderr.write(question);
-  return new Promise((resolve) => {
-    let buf = "";
-    process.stdin.setRawMode(true);
-    process.stdin.setEncoding("utf8");
-    process.stdin.resume();
-    const onData = (chunk: string) => {
-      for (const ch of chunk) {
-        if (ch === "\r" || ch === "\n") {
-          process.stdin.setRawMode(false);
-          process.stdin.pause();
-          process.stdin.off("data", onData);
-          process.stderr.write("\n");
-          return resolve(hidden ? buf : buf.trim());
-        }
-        if (ch === "\u0003") process.exit(130);
-        if (ch === "\u007f" || ch === "\b") {
-          if (buf && !hidden) process.stderr.write("\b \b");
-          buf = buf.slice(0, -1);
-        } else {
-          buf += ch;
-          if (!hidden) process.stderr.write(ch);
-        }
-      }
-    };
-    process.stdin.on("data", onData);
-  });
+  try {
+    return await askLine(question, hidden);
+  } catch (err) {
+    if (err instanceof Interrupted) process.exit(130);
+    throw err;
+  }
 }
 
 async function askNew(question: string): Promise<string> {
