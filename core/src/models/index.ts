@@ -262,7 +262,7 @@ export interface Group {
 }
 
 export type Profiles = Partial<Record<Task, Entry>>;
-export type Hub = "huggingface" | "modelscope";
+export type Hub = "huggingface" | "modelscope" | "civitai";
 
 /** A named task-to-model table. The built-ins Local and Cloud have a non-null `builtin`; a user preset's is null. */
 export interface Preset {
@@ -1104,9 +1104,9 @@ export class Models {
     return [...this.withUser(userId, (db) => read(db, false)), ...read(this.self(), true)];
   }
 
-  /** Saves or replaces a token for Hugging Face or ModelScope: the user's own, or (administrators) one shared with every user. */
+  /** Saves or replaces a token for Hugging Face, ModelScope or Civitai: the user's own, or (administrators) one shared with every user. */
   setHubToken(actor: User, hub: Hub, token: string, opts: { shared?: boolean } = {}): void {
-    if (hub !== "huggingface" && hub !== "modelscope") throw new Error("tokens are for huggingface or modelscope");
+    if (hub !== "huggingface" && hub !== "modelscope" && hub !== "civitai") throw new Error("tokens are for huggingface, modelscope or civitai");
     const t = String(token ?? "").trim();
     if (t.length < 8 || /\s/.test(t)) throw new Error("that doesn't look like an access token");
     this.place(actor, !!opts.shared, (db) => db.prepare("INSERT OR REPLACE INTO hub_tokens (hub, token) VALUES (?, ?)").run(hub, t));
@@ -1218,8 +1218,7 @@ export class Models {
     const starter = all.find((s) => s.id === starterId);
     if (!starter) throw new Error(`${ep.name} has no starter ${starterId}`);
     const hubs = new Set((starter.parts ?? []).filter((p) => !p.present).map((p) => p.source));
-    const hub = hubs.has("huggingface") ? "huggingface" : hubs.has("modelscope") ? "modelscope" : undefined;
-    const result = await this.hostCall(ep, "POST", `/host/v1/starters/${encodeURIComponent(starterId)}/install`, undefined, hub ? this.hubHeader(actor.id, hub) : undefined);
+    const result = await this.hostCall(ep, "POST", `/host/v1/starters/${encodeURIComponent(starterId)}/install`, undefined, this.partsTokens(actor.id, hubs));
     await this.discover(actor, hostId).catch(() => {});
     return result;
   }
@@ -1473,12 +1472,21 @@ export class Models {
     return ep;
   }
 
-  /** The token for a recipe's missing parts: the hub they come from (Hugging Face when they come from both). */
+  /** The tokens for a recipe's missing parts: the hubs they come from. */
   private async partsHeader(userId: string, ep: Endpoint, path: string): Promise<Record<string, string> | undefined> {
     const r = (await this.hostCall(ep, "GET", path)) as { parts?: { missing?: { source?: string } | null }[] };
-    const hubs = new Set((r.parts ?? []).map((p) => p.missing?.source).filter((h): h is Hub => h === "huggingface" || h === "modelscope"));
+    return this.partsTokens(userId, new Set((r.parts ?? []).map((p) => p.missing?.source)));
+  }
+
+  /**
+   * Parts from several hubs: Hugging Face's token (else ModelScope's) as x-hub-token, and Civitai's apart as
+   * x-civitai-token, so the host sends each only to its own hub's parts.
+   */
+  private partsTokens(userId: string, hubs: Set<string | undefined>): Record<string, string> | undefined {
     const hub = hubs.has("huggingface") ? "huggingface" : hubs.has("modelscope") ? "modelscope" : undefined;
-    return hub ? this.hubHeader(userId, hub) : undefined;
+    const civitai = hubs.has("civitai") ? this.tokenFor(userId, "civitai") : undefined;
+    const headers = { ...(hub ? this.hubHeader(userId, hub) : {}), ...(civitai ? { "x-civitai-token": civitai } : {}) };
+    return Object.keys(headers).length ? headers : undefined;
   }
 
   private hubHeader(userId: string, hub: string): Record<string, string> | undefined {
@@ -3732,7 +3740,7 @@ function downloadBody(b: unknown): { source: Hub; repo: string; revision?: strin
     if (d.sha256 !== undefined && (typeof d.sha256 !== "string" || !/^[0-9a-f]{64}$/i.test(d.sha256))) throw new Error("sha256 is 64 hex characters");
     return { source: "url", url, ...(d.sha256 ? { sha256: d.sha256 as string } : {}) };
   }
-  if (d.source !== "huggingface" && d.source !== "modelscope") throw new Error("source is huggingface, modelscope or url");
+  if (d.source !== "huggingface" && d.source !== "modelscope" && d.source !== "civitai") throw new Error("source is huggingface, modelscope, civitai or url");
   if (typeof d.repo !== "string" || !d.repo.trim()) throw new Error("say which repository");
   if (!Array.isArray(d.files) || !d.files.length || !d.files.every((f) => typeof f === "string" && f)) throw new Error("say which files");
   if (d.revision !== undefined && (typeof d.revision !== "string" || !d.revision)) throw new Error("revision is a branch, tag or commit");

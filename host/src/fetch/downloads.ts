@@ -53,7 +53,7 @@ export interface Download {
 }
 
 export type DownloadRequest =
-  | { source: "huggingface" | "modelscope"; repo: string; revision?: string; files: string[] }
+  | { source: "huggingface" | "modelscope" | "civitai"; repo: string; revision?: string; files: string[] }
   | { source: "url"; url: string; sha256?: string };
 
 const MARGIN = 1024 ** 3;
@@ -75,7 +75,7 @@ export interface DownloaderOptions {
   /** Where the record and the download list are kept. */
   data: string;
   net: Net;
-  hubs: { huggingface: Hub; modelscope: Hub };
+  hubs: { huggingface: Hub; modelscope: Hub; civitai: Hub };
   log: (event: string, fields?: Record<string, string | number | boolean | null>) => void;
   free?: () => number;
   /** The waits before each automatic retry after a temporary failure; tests shorten them. */
@@ -184,12 +184,14 @@ export class Downloader {
   private hub(source: Source): Hub {
     if (source === "huggingface") return this.o.hubs.huggingface;
     if (source === "modelscope") return this.o.hubs.modelscope;
+    if (source === "civitai") return this.o.hubs.civitai;
     throw new DownloadError("Unknown source.");
   }
 
   /** A repository's files, each marked allowed or not, present or not, fitting or not. */
   async listRepo(source: Source, repo: string, revision: string | undefined, token?: string) {
-    const listing = await this.hub(source).list(checkRepo(repo), revision, token);
+    const hub = this.hub(source);
+    const listing = await hub.list(checkRepo(repo, hub), revision, token);
     const record = this.record();
     const free = this.free();
     return {
@@ -224,7 +226,7 @@ export class Downloader {
   async readFile(source: Source, repo: string, revision: string | undefined, path: string, token?: string) {
     if (!READABLE.includes(path)) throw new DownloadError(`Only ${READABLE.join(", ")} can be read.`, 403);
     const hub = this.hub(source);
-    const listing = await hub.list(checkRepo(repo), revision, token);
+    const listing = await hub.list(checkRepo(repo, hub), revision, token);
     const file = listing.files.find((f) => f.path === path);
     if (!file) throw new DownloadError(`${path} isn't in that repository.`, 404);
     if (file.size > READ_LIMIT) throw new DownloadError(`${path} is larger than 1 MB.`, 403);
@@ -292,7 +294,7 @@ export class Downloader {
         const v = verdict(checkRepoPath(f));
         if (!v.allowed) throw new DownloadError(`${f}: ${v.reason}`, 403);
       }
-      const listing = await hub.list(checkRepo(req.repo), req.revision, token);
+      const listing = await hub.list(checkRepo(req.repo, hub), req.revision, token);
       for (const want of req.files) {
         const f: HubFile | undefined = listing.files.find((x) => x.path === want);
         if (!f) throw new DownloadError(`${want} isn't in that repository.`);

@@ -242,7 +242,7 @@ updater: there, set `modelsDir` and run `install.sh --models`.
 
 ## Downloads
 
-Downloads come from Hugging Face, ModelScope or an https link, asked for by
+Downloads come from Hugging Face, ModelScope, Civitai or an https link, asked for by
 Lyrica or on the dashboard. They go into the models folder's `lyrica/`
 subfolder, under `lyrica/<source>/<repository>/`.
 - Only GGUF, safetensors and ONNX files are downloaded, with the small
@@ -315,6 +315,16 @@ per host, and Lyrica's router filters create tiers by it.
   Krea 2 Raw is Krea 2's undistilled model beside Turbo, sharing its
   encoder and VAE: 52 steps at CFG 3.5 (Krea's own figures) with a negative prompt, against
   Turbo's 8 at CFG 1, so an image takes several times as long.
+  Krea 2 Turbo Uncensored (ComfyUI hosts only) is the community workflow
+  the operator picked: Turbo's diffusion model with an abliterated Qwen3-VL
+  4B encoder from Civitai (a model without Krea 2's refusals), the
+  Krea2T-Enhancer patch at 1.5 for prompt adherence, and a second pass at
+  denoise 0.2 on RES4LYF's `res_2s` sampler for detail. The ComfyUI image
+  carries both custom nodes at pinned commits. RES4LYF is AGPL-3.0 with a
+  clause forbidding its use for a commercial image service without its
+  author's licence; Krea2T-Enhancer is MIT, fetched from a copy at its
+  author's own commit since the author's repository is gone. Civitai may
+  ask for a token: save one under Models → Downloads → Accounts.
   Krea 2's weights (Turbo and Raw) are under the Krea 2 Community License, which
   requires content filtering wherever it runs; the host filters nothing,
   so the operator who installs it sets that up. Qwen-Image 2.1 Turbo's

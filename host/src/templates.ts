@@ -37,7 +37,10 @@ export interface PartSpec {
 interface Node {
   class_type: string;
   inputs: Record<string, unknown>;
-  _if?: string;
+  /** Values, or optional parts' links, the node needs: without any of them it is left out. */
+  _if?: string | string[];
+  /** A value whose presence leaves the node out: the other of two ways to do a step. */
+  _unless?: string;
 }
 
 export interface Template {
@@ -212,8 +215,10 @@ export function fill(t: Template, parts: FilledPart[], loras: Lora[], values: Va
   const linkName = (v: string) => /^\$(model|clip|vae|latentUpscaler|interpolator|clipVision|segmenter|segmenterClip)(_\w+)?$/.test(v);
   const graph: Record<string, Node> = {};
   for (const [id, node] of Object.entries(t.workflow)) {
-    // `_if` names a value, or an optional part's link: without it the node is left out.
-    if (node._if && values[node._if] === undefined && !links[`$${node._if}`]) continue;
+    // `_if` names values or optional parts' links: without any of them the node is left out.
+    const needs = node._if === undefined ? [] : Array.isArray(node._if) ? node._if : [node._if];
+    if (needs.some((n) => values[n] === undefined && !links[`$${n}`])) continue;
+    if (node._unless && values[node._unless] !== undefined) continue;
     graph[id] = { class_type: node.class_type, inputs: { ...node.inputs } };
   }
   const resolve = (v: unknown): unknown => {
@@ -227,7 +232,10 @@ export function fill(t: Template, parts: FilledPart[], loras: Lora[], values: Va
       if (values[key] === undefined) throw new Error(`missing value ${key}`);
       return values[key];
     }
-    if (v && typeof v === "object" && "$pick" in v) return (v.$pick as Link[]).find((l) => l[0] in graph);
+    // `$pick`: the first of these nodes left in, or of loader links (`$model`) the recipe gives.
+    if (v && typeof v === "object" && "$pick" in v) {
+      return (v.$pick as (Link | string)[]).map((l) => (typeof l === "string" ? links[l] ?? undefined : l)).find((l) => !!l && (l[0] in graph || l[0] in nodes));
+    }
     return v;
   };
   for (const node of Object.values(graph)) {

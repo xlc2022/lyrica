@@ -10,6 +10,13 @@ ARG GGUF_COMMIT=6ea2651e7df66d7585f6ffee804b20e92fb38b8a
 ARG SEEDVR2_COMMIT=4490bd1f482e026674543386bb2a4d176da245b9
 # LanPaint 2.2.0: masked edits on models without an inpainting checkpoint (Qwen-Image 2.1).
 ARG LANPAINT_COMMIT=2d7912f9a5efe5ece8de334c7ca18317b8288c39
+# RES4LYF (AGPL-3.0 plus a no-commercial-service clause): its ClownsharKSampler
+# and res_2s / bong_tangent, for Krea 2. Krea2T-Enhancer (MIT): Krea 2's prompt
+# adherence patch. Its author's repository is gone; the commit is the author's
+# own, fetched from a copy. RES4LYF's config, written here, names its samplers
+# without folders (res_2s, not exponential/res_2s), so it never writes one.
+ARG RES4LYF_COMMIT=119679d8d8d26e6db52757e705488abb6399d7d4
+ARG KREA2T_COMMIT=75a14cb93487d0fea7985f199717da46ab5cb53d
 
 RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
 
@@ -20,6 +27,9 @@ RUN set -eux; \
     fetch city96/ComfyUI-GGUF /opt/comfyui/custom_nodes/ComfyUI-GGUF "$GGUF_COMMIT"; \
     fetch numz/ComfyUI-SeedVR2_VideoUpscaler /opt/comfyui/custom_nodes/ComfyUI-SeedVR2_VideoUpscaler "$SEEDVR2_COMMIT"; \
     fetch scraed/LanPaint /opt/comfyui/custom_nodes/LanPaint "$LANPAINT_COMMIT"; \
+    fetch ClownsharkBatwing/RES4LYF /opt/comfyui/custom_nodes/RES4LYF "$RES4LYF_COMMIT"; \
+    fetch Titof974/ComfyUI-Krea2T-Enhancer /opt/comfyui/custom_nodes/ComfyUI-Krea2T-Enhancer "$KREA2T_COMMIT"; \
+    printf '{"name": "RES4LYF", "topClownDog": true, "enableDebugLogs": false, "displayCategory": false}\n' > /opt/comfyui/custom_nodes/RES4LYF/res4lyf.config.json; \
     rm -f /opt/comfyui/custom_nodes/example_node.py.example
 
 # The packages go into a venv that also sees the base image's torch. Every
@@ -55,5 +65,5 @@ ENV HOME=/tmp HF_HUB_OFFLINE=1 DO_NOT_TRACK=1
 # under /tmp/comfy, so a paused or idle host holds no GPU memory here.
 ENTRYPOINT ["python3", "/opt/gate.py", "/opt/venv/bin/python", "main.py", \
   "--listen", "0.0.0.0", "--disable-auto-launch", "--disable-metadata", "--disable-api-nodes", "--preview-method", "none", \
-  "--disable-all-custom-nodes", "--whitelist-custom-nodes", "websocket_image_save.py", "websocket_video_save.py", "video_frames.py", "clip_chain.py", "ComfyUI-GGUF", "ComfyUI-SeedVR2_VideoUpscaler", "LanPaint", \
+  "--disable-all-custom-nodes", "--whitelist-custom-nodes", "websocket_image_save.py", "websocket_video_save.py", "video_frames.py", "clip_chain.py", "ComfyUI-GGUF", "ComfyUI-SeedVR2_VideoUpscaler", "LanPaint", "RES4LYF", "ComfyUI-Krea2T-Enhancer", \
   "--extra-model-paths-config", "/opt/comfyui/extra_model_paths.yaml"]

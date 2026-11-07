@@ -48,10 +48,29 @@
         "batch_size": "$count"
       }
     },
-    "sample": {
-      "class_type": "KSampler",
+    "enhance": {
+      "class_type": "ComfyUI-Krea2T-Enhancer",
+      "_if": "enhance",
       "inputs": {
         "model": "$model",
+        "enabled": true,
+        "strength": "$enhance",
+        "debug": false
+      }
+    },
+    "sample": {
+      "class_type": "KSampler",
+      "_unless": "eta",
+      "inputs": {
+        "model": {
+          "$pick": [
+            [
+              "enhance",
+              0
+            ],
+            "$model"
+          ]
+        },
         "seed": "$seed",
         "steps": "$steps",
         "cfg": "$cfg",
@@ -72,13 +91,107 @@
         "denoise": 1
       }
     },
+    "sample_rk": {
+      "class_type": "ClownsharKSampler_Beta",
+      "_if": "eta",
+      "inputs": {
+        "model": {
+          "$pick": [
+            [
+              "enhance",
+              0
+            ],
+            "$model"
+          ]
+        },
+        "positive": [
+          "pos",
+          0
+        ],
+        "negative": [
+          "neg",
+          0
+        ],
+        "latent_image": [
+          "latent",
+          0
+        ],
+        "eta": "$eta",
+        "sampler_name": "$sampler",
+        "scheduler": "$scheduler",
+        "steps": "$steps",
+        "steps_to_run": -1,
+        "denoise": 1,
+        "cfg": "$cfg",
+        "seed": "$seed",
+        "sampler_mode": "standard",
+        "bongmath": true
+      }
+    },
+    "refine_rk": {
+      "class_type": "ClownsharKSampler_Beta",
+      "_if": "refine",
+      "inputs": {
+        "model": {
+          "$pick": [
+            [
+              "enhance",
+              0
+            ],
+            "$model"
+          ]
+        },
+        "positive": [
+          "pos",
+          0
+        ],
+        "negative": [
+          "neg",
+          0
+        ],
+        "latent_image": {
+          "$pick": [
+            [
+              "sample_rk",
+              0
+            ],
+            [
+              "sample",
+              0
+            ]
+          ]
+        },
+        "eta": "$refineEta",
+        "sampler_name": "$refineSampler",
+        "scheduler": "$refineScheduler",
+        "steps": "$refineSteps",
+        "steps_to_run": -1,
+        "denoise": "$refine",
+        "cfg": "$cfg",
+        "seed": "$seed",
+        "sampler_mode": "standard",
+        "bongmath": true
+      }
+    },
     "decode": {
       "class_type": "VAEDecode",
       "inputs": {
-        "samples": [
-          "sample",
-          0
-        ],
+        "samples": {
+          "$pick": [
+            [
+              "refine_rk",
+              0
+            ],
+            [
+              "sample_rk",
+              0
+            ],
+            [
+              "sample",
+              0
+            ]
+          ]
+        },
         "vae": "$vae"
       }
     },

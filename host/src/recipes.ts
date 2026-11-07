@@ -50,12 +50,14 @@ export interface Starter {
   backend?: "comfyui" | "sdcpp";
 }
 
-export const DEFAULT_KEYS = ["steps", "cfg", "sampler", "scheduler", "width", "height", "shift", "guidance", "negativePrompt", "scale", "maxSize", "colorMatch", "duration"];
+export const DEFAULT_KEYS = ["steps", "cfg", "sampler", "scheduler", "width", "height", "shift", "guidance", "negativePrompt", "scale", "maxSize", "colorMatch", "duration", "eta", "enhance", "refine", "refineSteps", "refineSampler", "refineScheduler", "refineEta"];
 
 // The same ranges a request may ask for (images.ts), so a default is always one a request could give.
 const DEFAULT_RANGES: Record<string, [number, number, number?]> = {
   steps: [1, 150, 1], cfg: [0, 30], width: [256, 2048, 16], height: [256, 2048, 16],
   shift: [0, 20], guidance: [0, 30], scale: [1, 4], maxSize: [256, 8192, 1], duration: [1, 15],
+  // Krea 2's (host/workflows/krea2.json): RES4LYF's eta, the Krea2T-Enhancer's strength, and the second pass.
+  eta: [0, 2], enhance: [0, 2], refine: [0.01, 1], refineSteps: [1, 150, 1], refineEta: [0, 2],
 };
 /** Recipes a LoRA's architecture fits beside its own: Wan 2.1 and 2.2 14B LoRAs share one layout ("wan"). */
 const LORA_FITS: Record<string, string[]> = { wan: ["wan2.2-t2v-14b", "wan2.2-i2v-14b", "scail2"] };
@@ -72,7 +74,7 @@ function checkDefault(k: string, v: unknown): void {
     }
   } else if (k === "colorMatch") {
     if (!COLOR_MATCH.includes(v as string)) throw invalid(`colorMatch must be one of ${COLOR_MATCH.join(", ")}.`);
-  } else if (k === "sampler" || k === "scheduler") {
+  } else if (k === "sampler" || k === "scheduler" || k === "refineSampler" || k === "refineScheduler") {
     if (typeof v !== "string" || !/^[a-z0-9_]{1,64}$/.test(v)) throw invalid(`${k} must be a ComfyUI ${k} name.`);
   } else if (typeof v !== "string" || v.length > 4096) throw invalid(`${k} must be text of at most 4096 characters.`);
 }
@@ -366,9 +368,11 @@ export class RecipeBook {
       if (!file && !downloading(p)) toDownload.push(p);
       return { role: p.role, slot: p.slot ?? null, file: file ?? starterPath(p), added: false };
     });
-    // A scan may already have made a recipe from the starter's main file: that one becomes the starter's.
+    // A scan may already have made a recipe from the starter's main file: that one becomes the starter's, when its
+    // other parts are the starter's too (Krea 2 Turbo Uncensored shares Turbo's diffusion model, not its encoder).
     const main = parts.find((p) => p.role === "checkpoint" || p.role === "diffusion" || p.role === "upscaler")?.file;
-    const found = this.recipes.find((r) => !r.starter && !r.base && r.parts.some((p) => !p.added && p.file === main));
+    const same = (r: Recipe) => parts.every((p) => r.parts.some((q) => q.role === p.role && q.slot === p.slot && (q.file === p.file || q.file === null)));
+    const found = this.recipes.find((r) => !r.starter && !r.base && r.parts.some((p) => !p.added && p.file === main) && same(r));
     if (found?.state === "confirmed") {
       found.starter = starter.id;
       this.save();

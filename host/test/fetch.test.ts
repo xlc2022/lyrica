@@ -4,9 +4,9 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { Downloader } from "../src/fetch/downloads.ts";
 import { isPublic } from "../src/fetch/guard.ts";
-import { huggingFace, modelScope } from "../src/fetch/hubs.ts";
+import { civitai, huggingFace, modelScope } from "../src/fetch/hubs.ts";
 import { Net } from "../src/fetch/net.ts";
-import { TOKEN, fakeHub as makeHub, sha256 } from "./fakes.ts";
+import { TOKEN, civitaiFile, fakeHub as makeHub, sha256 } from "./fakes.ts";
 
 const open: { close(): unknown }[] = [];
 afterEach(async () => {
@@ -27,7 +27,7 @@ function setup(hub: { base: string; ca: string }, free = 100 * 1024 ** 3, retryD
   // The fake hub is on loopback; everything else follows the real rule.
   const net = new Net({ allowed: (a) => a === "127.0.0.1" || a === "::1" || isPublic(a), ca: hub.ca });
   const make = () =>
-    new Downloader({ models, data, net, hubs: { huggingface: huggingFace(net, hub.base), modelscope: modelScope(net, hub.base) }, log: (e, f) => void lines.push(JSON.stringify({ e, ...f })), free: () => free, retryDelays });
+    new Downloader({ models, data, net, hubs: { huggingface: huggingFace(net, hub.base), modelscope: modelScope(net, hub.base), civitai: civitai(net, hub.base) }, log: (e, f) => void lines.push(JSON.stringify({ e, ...f })), free: () => free, retryDelays });
   return { models, data, lines, make, d: make() };
 }
 
@@ -70,6 +70,30 @@ describe("downloads", () => {
     expect(listing.card).toEqual({ baseModel: ["org/base"], baseModelRelation: "quantized" });
     expect(listing.files.find((f) => f.path === "pytorch_model.bin")).toMatchObject({ allowed: false, reason: "Pickle files can run code when loaded." });
     expect(listing.files.find((f) => f.path === "model-Q4_K_M.gguf")).toMatchObject({ allowed: true, present: false, fits: true });
+  });
+
+  it("lists a Civitai model's files by version and downloads one, checked against Civitai's checksum", async () => {
+    const hub = await fakeHub();
+    const { d, models } = setup(hub);
+    await expect(d.listRepo("civitai", "org/repo", undefined)).rejects.toThrow("That isn't a Civitai model");
+    const listing = await d.listRepo("civitai", "42", undefined);
+    // A file whose link isn't Civitai's own isn't offered.
+    expect(listing.files.map((f) => f.path)).toEqual(["7/enc.safetensors"]);
+    expect(listing.files[0]).toMatchObject({ size: civitaiFile().length, sha256: sha256(civitaiFile()), allowed: true });
+    const [x] = await d.request({ source: "civitai", repo: "42", files: ["7/enc.safetensors"] }, TOKEN);
+    await settle(d);
+    expect(d.get(x!.id)).toMatchObject({ state: "done", verified: true, path: "lyrica/civitai/42/7/enc.safetensors" });
+    expect(readFileSync(join(models, "lyrica/civitai/42/7/enc.safetensors"))).toEqual(civitaiFile());
+    expect(hub.seen).toContain(`Bearer ${TOKEN}`);
+  });
+
+  it("refuses a Civitai file that isn't the one Civitai's checksum names", async () => {
+    const hub = await fakeHub({ lie: true });
+    const { d } = setup(hub);
+    const [x] = await d.request({ source: "civitai", repo: "42", files: ["7/enc.safetensors"] });
+    await settle(d);
+    expect(d.get(x!.id)).toMatchObject({ state: "failed" });
+    expect(d.get(x!.id)!.error).toMatch(/checksum/i);
   });
 
   it("refuses a pickle file", async () => {

@@ -169,6 +169,19 @@ export async function fakeHub(opts: { lie?: boolean; redirectTo?: string; gated?
     const url = new URL(req.url!, "https://localhost");
     if (opts.gated && req.headers.authorization !== `Bearer ${TOKEN}`) return void res.writeHead(401).end();
     const json = (v: unknown) => res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(v));
+    // Civitai: model 42, its version 7 with one file, downloaded through a redirect to its storage.
+    if (url.pathname === "/api/v1/models/42") {
+      const enc = civitaiFile();
+      return json({ id: 42, modelVersions: [{ id: 7, files: [
+        { name: "enc.safetensors", sizeKB: enc.length / 1024, hashes: { SHA256: (opts.lie ? "0".repeat(64) : sha256(enc)).toUpperCase() }, downloadUrl: `https://${req.headers.host}/api/download/models/7?type=Model` },
+        { name: "elsewhere.safetensors", sizeKB: 1, hashes: {}, downloadUrl: "https://example.com/elsewhere.safetensors" },
+      ] }] });
+    }
+    if (url.pathname === "/api/download/models/7") return void res.writeHead(307, { location: "/storage/enc.safetensors" }).end();
+    if (url.pathname === "/storage/enc.safetensors") {
+      const enc = civitaiFile();
+      return void res.writeHead(200, { "content-length": enc.length }).end(enc);
+    }
     if (url.pathname === "/api/models/org/repo/revision/main" || url.pathname === "/api/models/org/repo/revision/abc123") return json({ sha: "abc123", gated: !!opts.gated, cardData: { base_model: "org/base", base_model_relation: "quantized" } });
     if (opts.base && url.pathname === "/api/models/org/base/revision/main") return json({ sha: "def456", gated: false, cardData: {} });
     if (opts.base && url.pathname === "/api/models/org/base/tree/def456") return json(Object.entries(base).map(([path, b]) => ({ type: "file", path, size: b.length, oid: gitSha1(b) })));
@@ -213,6 +226,9 @@ export async function fakeHub(opts: { lie?: boolean; redirectTo?: string; gated?
   return { base: `https://localhost:${(server.address() as AddressInfo).port}`, files, seen, ca: id.cert, close };
 }
 
+
+/** The fake Civitai model's one file: a safetensors header and some weights. */
+export const civitaiFile = () => Buffer.concat([safetensors({ "w": { dtype: "F16", shape: [4] } }), Buffer.alloc(8, 1)]);
 
 /** A safetensors file with just a header: tensor names, types and shapes. */
 export function safetensors(tensors: Record<string, { dtype?: string; shape?: number[] }>, metadata?: Record<string, string>): Buffer {
