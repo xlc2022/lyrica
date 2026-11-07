@@ -63,7 +63,10 @@ only by a reviewed pull request that pins them (no install from the app).
 - **Nodes.** The host keeps the node list ComfyUI reported the last time it
   ran (`comfy-nodes.json`). A workflow naming a node type not on it saves,
   but its recipe says which nodes it needs and does nothing until a host
-  update brings them. The editor lists them with **Copy request**: text to
+  update brings them. Every job checks the workflow again after ComfyUI
+  starts and reports its nodes, and runs nothing without that list, so a
+  workflow saved before the list was known can't keep a node that writes
+  files. The editor lists them with **Copy request**: text to
   give Lyrica or a pull request, which adds each node to
   `host/comfyui/Dockerfile` at a reviewed commit.
 

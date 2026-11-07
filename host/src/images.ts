@@ -15,7 +15,7 @@ import { clipSpec, COLOR_MATCH, loraFits, present, RecipeBook, starterPath, type
 import type { Runtime } from "./runtime.ts";
 import { sdcppArgs, type SdCpp } from "./sdcpp.ts";
 import { fill, LONGEST_SECONDS, longestSeconds, type Action, type Continuation, type Lora, type Template, type Values, type VideoSpec } from "./templates.ts";
-import { checkTemplate, CUSTOM_ACTIONS, customAction, filesIn, importWorkflow, label, parseWorkflow, partSpecs, recipeParts, videoSpec, type Workflows } from "./workflows.ts";
+import { checkTemplate, CUSTOM_ACTIONS, customAction, filesIn, importWorkflow, label, parseWorkflow, partSpecs, recipeParts, videoSpec, type NodeList, type Workflows } from "./workflows.ts";
 import { checkDefault, DEFAULT_KEYS } from "./recipes.ts";
 
 /** How many reference images a workflow's blanks take: its highest `$reference<n>`. */
@@ -186,8 +186,8 @@ export class Images {
     const book = this.book.describe(r, files);
     if ("unsupported" in book) return book;
     const t = this.book.templates.get(r.template)!;
-    const missing = t.custom && this.workflows?.nodes ? checkTemplate(t, this.workflows.nodes).missingNodes ?? [] : [];
-    if (missing.length) return { ...book, does: [], unsupported: `Its workflow needs ComfyUI nodes this host doesn't have: ${missing.join(", ")}.` };
+    const unready = t.custom && this.workflows?.nodes ? this.workflowProblem(t, this.workflows.nodes) : null;
+    if (unready) return { ...book, does: [], unsupported: unready };
     const d = { ...book, takesLoras: this.sdcpp ? [] : this.takesLoras(r).map((p) => p.file) };
     const reasons = r.parts.every((p) => p.file) ? this.gpus.map((gpu) => this.runtime.scheduler.neverFits({ model: this.asModel(r, gpu), gpu })) : [];
     const tooBig = reasons.length && reasons.every((x) => x) ? reasons[0]! : null;
@@ -199,6 +199,29 @@ export class Images {
       return { ...d, does: [], unsupported: (e as Error).message };
     }
     return { ...d, does: r.does.filter((a) => a === "create") };
+  }
+
+  /** The built-in template a copied workflow came from, whose own nodes it may keep. */
+  private baseOf(t: Template): Template | undefined {
+    return t.custom?.base ? this.book.templates.get(t.custom.base) : undefined;
+  }
+
+  /** Why a custom workflow can't run against ComfyUI's node list, or null when it can. */
+  private workflowProblem(t: Template, nodes: NodeList): string | null {
+    const check = checkTemplate(t, nodes, this.baseOf(t));
+    if (check.missingNodes?.length) return `Its workflow needs ComfyUI nodes this host doesn't have: ${check.missingNodes.join(", ")}.`;
+    return check.problems.length ? `Its workflow can't run here: ${check.problems[0]}` : null;
+  }
+
+  /**
+   * Checked again as a custom workflow's job starts, after ComfyUI has started and reported its nodes:
+   * one saved before the host knew them may hold a node that writes files.
+   */
+  private checkBeforeRun(t: Template): void {
+    if (!t.custom) return;
+    const nodes = this.workflows?.nodes;
+    const problem = nodes ? this.workflowProblem(t, nodes) : "ComfyUI hasn't reported its nodes yet.";
+    if (problem) throw new HostError(503, "model_unavailable", problem);
   }
 
   /**
@@ -340,7 +363,7 @@ export class Images {
   /** A custom workflow as the API lists it; `full` adds its nodes, its check and the node types' inputs it uses. */
   private workflowInfo(t: Template, full = false) {
     const nodes = this.workflows?.nodes ?? null;
-    const base = t.custom?.base ? this.book.templates.get(t.custom.base) : undefined;
+    const base = this.baseOf(t);
     const info = {
       name: t.name, label: t.custom!.name, from: t.custom!.from, base: t.custom!.base ?? null, made: t.custom!.made,
       revision: t.custom!.revision ?? 1, saved: t.custom!.saved ?? t.custom!.made, by: t.custom!.by ?? "app", does: t.does, arch: t.arch,
@@ -653,6 +676,7 @@ export class Images {
       job.running();
       return scheduler.measuring(model, () =>
         sdcpp ? sdcpp.create(model.id, recipe.template, values, abort.signal) : comfy.run(uploads, (names) => {
+          this.checkBeforeRun(template);
           const parts = recipe.parts.filter((p): p is typeof p & { file: string } => !!p.file);
           return fill(template, parts, loras, { ...values, ...names });
         }, abort.signal, job.progress));
@@ -784,7 +808,7 @@ export class Images {
           const ref = first ? undefined : uploads.image && chain!.reference;
           const t = first ? template : { ...template, workflow: { ...chain!.workflow, ...ref?.workflow } };
           const step = { ...values, ...clip, seed: Number(values.seed) + i, ...(first ? {} : { overlap: chain!.overlap, prompt: `${ref?.promptPrefix ?? ""}${chain!.promptPrefix ?? ""}${values.prompt}` }) };
-          const made = await comfy.runVideo(first ? uploads : { previous: video!, ...(ref ? { reference: uploads.image! } : {}) }, (names) => fill(t, parts, loras, { ...step, ...names }),
+          const made = await comfy.runVideo(first ? uploads : { previous: video!, ...(ref ? { reference: uploads.image! } : {}) }, (names) => (this.checkBeforeRun(t), fill(t, parts, loras, { ...step, ...names })),
             VIDEO_TIMEOUT_MS, abort.signal, (f) => job.progress((done + f * Number(clip.frames)) / total));
           video = made.video;
           poster = made.poster ?? poster;

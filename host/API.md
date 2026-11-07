@@ -1009,7 +1009,10 @@ body may be up to 2 MB. Not on a host using stable-diffusion.cpp.
   it has the action's websocket output and no other node that writes files
   or is an output (by name, and by ComfyUI's node list); a `Load…` node's
   file is a blank; and no value names a path outside the models folder. A
-  custom workflow's references are all required in a job.
+  custom workflow's references are all required in a job. Each job checks
+  the workflow again once ComfyUI has started and reported its nodes, and
+  fails with `503 model_unavailable` if it hasn't reported them or the
+  check finds a problem; the recipe then lists as `unsupported`.
 - `POST /host/v1/workflows/copy` `{ recipe, name }` → as above: a copy of
   that recipe's template (create, edit, video or animate) and a copy of the
   recipe on it. A copy may keep its built-in's own blanks and nodes.

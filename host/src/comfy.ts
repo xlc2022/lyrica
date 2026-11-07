@@ -211,7 +211,8 @@ export class Comfy implements Backend {
     this.ask(attempt);
     try {
       await poll(async () => this.started(attempt) && (await fetch(`${this.base}/system_stats`, { signal: AbortSignal.timeout(5_000) })).ok, this.startMs, "ComfyUI");
-      if (this.onNodes) void this.readNodes(this.onNodes);
+      // Read before the first job, so a custom workflow is checked against the nodes of this start.
+      if (this.onNodes) await this.readNodes(this.onNodes);
     } catch (e) {
       // A start that failed doesn't keep it asked for.
       this.loaded.delete(model.id);

@@ -127,14 +127,15 @@ describe("importing a workflow", () => {
 });
 
 describe("the workflow API", () => {
-  async function stack() {
+  async function stack(o: { extra?: string[]; noNodes?: boolean } = {}) {
     const models = mkdtempSync(join(tmpdir(), "lyrica-wf-models-"));
     for (const [path, data] of Object.entries({ "shared/flux1-schnell-fp8.safetensors": FLUX_CKPT, "shared/flux-style.safetensors": FLUX_LORA })) {
       mkdirSync(dirname(join(models, path)), { recursive: true });
       writeFileSync(join(models, path), data);
     }
-    const classes = ["CLIPTextEncode", "EmptyLatentImage", "KSampler", "VAEDecode", "SaveImageWebsocket", "CheckpointLoaderSimple", "LoraLoaderModelOnly", "FluxGuidance", "ModelSamplingFlux"];
-    const comfyFake = await fakeComfy({ objectInfo: Object.fromEntries(classes.map((c) => [c, { input: { required: { x: ["INT", {}] } }, output_node: c.startsWith("Save") }])) });
+    const classes = ["CLIPTextEncode", "EmptyLatentImage", "KSampler", "VAEDecode", "SaveImageWebsocket", "CheckpointLoaderSimple", "LoraLoaderModelOnly", "FluxGuidance", "ModelSamplingFlux", ...(o.extra ?? [])];
+    const objectInfo = Object.fromEntries(classes.map((c) => [c, { input: { required: { x: ["INT", {}] } }, output_node: c.startsWith("Save") || c.startsWith("Preview") }]));
+    const comfyFake = await fakeComfy(o.noNodes ? {} : { objectInfo });
     open.push(comfyFake);
     const h = await startHost({ modelsDir: models });
     open.push(h.host);
@@ -221,8 +222,38 @@ describe("the workflow API", () => {
     expect((await s.api(`/host/v1/workflows/${workflow.name}`)).status).toBe(404);
   });
 
+  async function saveImported(s: Awaited<ReturnType<typeof stack>>, extra: Record<string, unknown> = {}) {
+    const d = (await s.api("/host/v1/workflows/import", { body: { workflow: exported(), name: "Flux styled", does: "create" } })).body.draft;
+    return s.api("/host/v1/workflows", { body: { name: d.label, does: d.does, arch: d.arch, workflow: { ...d.workflow, ...extra }, loaders: d.loaders, clipType: d.clipType, video: d.video, parts: d.parts, loras: d.loras, defaults: d.defaults } });
+  }
+
+  it("refuses to run a workflow saved before ComfyUI reported its nodes when one of them writes files", async () => {
+    const s = await stack({ extra: ["PreviewImage"] });
+    // ComfyUI hasn't run yet, so only the name test applies and PreviewImage passes it.
+    const saved = await saveImported(s, { "12": { class_type: "PreviewImage", inputs: { images: ["8", 0] } } });
+    expect(saved.status).toBe(200);
+    const { recipe } = saved.body;
+    // The job starts ComfyUI, which reports PreviewImage as an output: nothing is queued.
+    const made = await s.api("/host/v1/images/create", { body: { recipe: recipe.id, prompt: "x" } });
+    expect(made.status).toBe(503);
+    expect(made.body.error.message).toMatch(/Node 12 \(PreviewImage\) writes files/);
+    expect(s.comfyFake.seen.prompts).toEqual([]);
+    // And the recipe now says so.
+    const listed = (await s.api("/host/v1/recipes")).body.recipes.find((r: { id: string }) => r.id === recipe.id);
+    expect(listed).toMatchObject({ does: [], unsupported: expect.stringContaining("PreviewImage") });
+  });
+
+  it("runs no custom workflow while ComfyUI hasn't reported its nodes", async () => {
+    const s = await stack({ noNodes: true });
+    const { recipe } = (await saveImported(s)).body;
+    const made = await s.api("/host/v1/images/create", { body: { recipe: recipe.id, prompt: "x" } });
+    expect(made.status).toBe(503);
+    expect(made.body.error.message).toMatch(/hasn't reported its nodes/);
+    expect(s.comfyFake.seen.prompts).toEqual([]);
+  });
+
   it("copies a built-in recipe's workflow to edit, keeping its blanks", async () => {
-    const s = await stack();
+    const s = await stack({ extra: ["ConditioningZeroOut", "EmptySD3LatentImage"] });
     const proposed = (await s.api("/host/v1/recipes?state=proposed")).body.recipes;
     const flux = proposed.find((r: { arch: string }) => r.arch === "flux");
     await s.api(`/host/v1/recipes/${flux.id}/confirm`, { body: {} });

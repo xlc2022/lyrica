@@ -306,7 +306,10 @@ per host, and Lyrica's router filters create tiers by it.
   websocket outputs, standard loaders into the recipe's parts (anything
   else loads its own files) and matches file names to this host's files;
   every save is checked (API.md, "Custom workflows"). ComfyUI's node list is
-  read each time it starts and kept in `<data>/comfy-nodes.json`; a
+  read each time it starts, before its first job, and kept in
+  `<data>/comfy-nodes.json`. A custom workflow's job is checked against it
+  again and refused without it, so a workflow saved before the list was
+  known can't keep a node that writes files. A
   workflow using a node not on it does nothing until a ComfyUI image
   update brings the node, which is added to `comfyui/Dockerfile` at a
   reviewed commit like the others.

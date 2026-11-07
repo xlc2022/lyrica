@@ -989,7 +989,8 @@ it's off.
     blanks it fills, its own websocket outputs and no other node that
     writes files, input files only through blanks, and node types
     ComfyUI reported; a workflow needing a node ComfyUI lacks saves but
-    does nothing. Each save keeps the version it replaced (50 at most), and
+    does nothing, and every job checks the workflow again against the
+    nodes ComfyUI reported on that start. Each save keeps the version it replaced (50 at most), and
     any revision can be restored. A missing custom node joins the ComfyUI
     image only through a reviewed pull request that pins it; there is still
     no plugin manager. See
