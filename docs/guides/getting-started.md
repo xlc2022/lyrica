@@ -258,9 +258,9 @@ Everything from "Save the passphrase" on applies unchanged. `lyricad`
 runs from the profile `/nix/var/nix/profiles/lyrica`, and its first start
 sets up the updater's repository as install.sh does (see "Updates from
 GitHub" below); when the repository isn't public it makes
-`/etc/lyrica/deploy-key` and logs where to add its `.pub`. Keep a scheduled Proxmox backup of the VM, for the reason given
-there. Upgrading is
-`nix flake update lyrica` in `/etc/nixos` and `nixos-rebuild switch`,
+`/etc/lyrica/deploy-key` and logs where to add its `.pub`. Keep a
+scheduled Proxmox backup of the VM, for the reason given there. Upgrading
+is `nix flake update lyrica` in `/etc/nixos` and `nixos-rebuild switch`,
 which restarts `lyricad` (which logs everyone out). Before that start,
 when the package changed, her databases are snapshotted and the profile
 moves to it; if the new package can't read them, the newest snapshot it
@@ -412,13 +412,14 @@ running install.sh, picks another repository; an SSH URL there uses the
 deploy key. If install.sh printed a deploy key (after "The repository
 didn't answer over HTTPS without credentials": it isn't public, or the
 network was down, and then running install.sh again once it's up moves it
-to HTTPS), add the printed line (also in `/etc/lyrica/deploy-key.pub`) to the repository on
-GitHub under Settings, Deploy keys, without write access. If the
-repository goes private later, fetches fail: run install.sh again (on
-NixOS, `systemctl restart lyricad` after the failed fetch), and add the
-deploy key it prints. An install from before this keeps its SSH remote
-and key until install.sh runs again, which moves it to HTTPS; the old
-deploy key can then come off the repository.
+to HTTPS), add the printed line (also in `/etc/lyrica/deploy-key.pub`)
+to the repository on GitHub under Settings, Deploy keys, without write
+access. If the repository goes private later, fetches fail: run
+install.sh again (on NixOS, `systemctl restart lyricad` after the failed
+fetch), and add the deploy key it prints. An install from before
+2026-11-07 keeps its SSH remote and key until install.sh runs again,
+which moves it to HTTPS; the old deploy key can then come off the
+repository.
 
 **Keep a scheduled Proxmox backup of the container.** The updater
 snapshots her databases, but it can't snapshot the container it runs in.
