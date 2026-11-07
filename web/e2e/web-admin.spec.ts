@@ -1447,6 +1447,7 @@ test("Custom workflows: Graph draws the nodes and links; on a wide screen nodes 
   await expect(canvas.locator(".react-flow__node")).toHaveCount(7);
   const panel = page.getByRole("region", { name: "Node 10, ImageSharpen" });
   await panel.getByLabel("sigma of node 10", { exact: true }).fill("0.5");
+  await shot("graph-edit");
   // Linked between the decoder and the output: drag from an output to an input.
   const drag = async (from: string, to: string) => {
     const a = (await canvas.locator(from).boundingBox())!;
@@ -1465,7 +1466,6 @@ test("Custom workflows: Graph draws the nodes and links; on a wide screen nodes 
   // A link of the wrong type isn't drawn.
   await drag('[data-id="6"] [data-handleid="o0"]', '[data-id="8"] [data-handleid="i:samples"]');
   await expect(canvas.locator(".react-flow__edge")).toHaveCount(6);
-  await shot("graph-edit");
   await page.getByRole("button", { name: "Save" }).click();
   const put = sent.find((m) => m.method === "PUT")!.body!;
   expect((put.workflow as Record<string, unknown>)["10"]).toEqual({ class_type: "ImageSharpen", inputs: { sharpen_radius: 1, sigma: 0.5, alpha: 1, image: ["8", 0] } });

@@ -221,10 +221,24 @@ function Canvas({ graph, layout, blanks, types, editable, guessed, onChange, onL
       const d = t.defaults?.[k];
       inputs[k] = d !== undefined ? d : Array.isArray(kind) ? (kind[0] as string) ?? "" : kind === "STRING" ? "" : kind === "BOOLEAN" ? false : 0;
     }
-    const box = document.querySelector(".wf-graph")?.getBoundingClientRect();
-    const at = box ? flow.screenToFlowPosition({ x: box.left + box.width / 2, y: box.top + box.height / 3 }) : { x: 0, y: 0 };
+    // Where nothing is: under the lowest node of the last column; then panned to if that's out of view.
+    const placed = Object.keys(graph).filter((n) => layout[n]);
+    const right = Math.max(...placed.map((n) => layout[n]![0]));
+    const last = placed.filter((n) => layout[n]![0] >= right - 40);
+    const bottom = Math.max(...last.map((n) => layout[n]![1] + (sizes.current.get(n)?.h ?? 100)));
+    const at = placed.length ? { x: Math.min(...last.map((n) => layout[n]![0])), y: bottom + GAP / 2 } : { x: 0, y: 0 };
     onChange({ ...graph, [id]: { class_type: cls, inputs } });
     onLayout({ ...layout, [id]: [Math.round(at.x), Math.round(at.y)] });
+    requestAnimationFrame(() => {
+      const el = canvasRef.current;
+      if (!el) return;
+      // In the canvas's own pixels, so the page scrolling under it doesn't count.
+      const { x, y, zoom } = flow.getViewport();
+      const left = at.x * zoom + x, top = at.y * zoom + y;
+      if (left < 0 || top < 0 || left + 160 * zoom > el.clientWidth || top + 120 * zoom > el.clientHeight) {
+        void flow.setCenter(at.x + 80, at.y + 60, { zoom });
+      }
+    });
     setSelected(id);
     setQuery("");
   };
