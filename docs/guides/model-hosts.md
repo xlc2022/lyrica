@@ -469,7 +469,7 @@ about 13.5 GB at its largest; beside a 27B chat model on 24 GB it runs
 only once the host unloads the chat model, which it never does to a
 pinned or busy one. The Krea 2 Raw starter is Krea 2's undistilled model
 at the same size, sharing Turbo's encoder and VAE (about 13.1 GB more to
-download beside Turbo); it takes 28 steps at CFG 4.5 instead of 8, so an
+download beside Turbo); it takes 52 steps at CFG 3.5 instead of 8, so an
 image takes several times as long. The Qwen-Image 2.1 Turbo starter, which edits and
 creates (bf16 diffusion model, int8 Qwen3-VL 8B encoder, about 24.3 GB
 of files), is 14.9 GB at its largest stage and takes turns the same way.

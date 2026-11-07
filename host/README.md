@@ -313,7 +313,7 @@ per host, and Lyrica's router filters create tiers by it.
   that use follows the law (privacy law included) and trade controls, and
   that SAM isn't reverse engineered.
   Krea 2 Raw is Krea 2's undistilled model beside Turbo, sharing its
-  encoder and VAE: 28 steps at CFG 4.5 with a negative prompt, against
+  encoder and VAE: 52 steps at CFG 3.5 (Krea's own figures) with a negative prompt, against
   Turbo's 8 at CFG 1, so an image takes several times as long.
   Krea 2's weights (Turbo and Raw) are under the Krea 2 Community License, which
   requires content filtering wherever it runs; the host filters nothing,

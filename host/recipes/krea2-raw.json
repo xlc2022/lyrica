@@ -30,8 +30,8 @@
   ],
   "loras": [],
   "defaults": {
-    "steps": 28,
-    "cfg": 4.5,
+    "steps": 52,
+    "cfg": 3.5,
     "sampler": "euler",
     "scheduler": "simple",
     "width": 1024,
