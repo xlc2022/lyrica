@@ -131,7 +131,7 @@ describe("lyrica chat and lyrica mem", () => {
     await mem(["forget", "quokka", "--login", "ada"], { socket: s.socket }, t.io);
     // The numbers as the list showed them.
     const listed = t.err.filter((l) => /^ +\d+\. /.test(l)).map((l) => ids.find((id) => l.includes(id))!);
-    expect(listed.sort()).toEqual([...ids].sort());
+    expect([...listed].sort()).toEqual([...ids].sort());
     const gone = [listed[0]!, listed[2]!], kept = listed[1]!;
     expect(t.err.join("\n")).toContain("Forgot 2.");
     for (const id of gone) expect((await s.ada.get(`${s.u}/memory/general/${encodeURIComponent(id)}`)).status).toBe(404);
