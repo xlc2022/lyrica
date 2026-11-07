@@ -2501,3 +2501,44 @@ test("Updates: an update the updater hasn't taken says so after a minute", async
   await expect(box).toContainText("The updater hasn't started.");
   await expect(box.getByRole("listitem").first()).toHaveAttribute("data-state", "todo");
 });
+
+test("Updates: Latest merge installs main's newest commit after a dialog that says it is less tested", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  const now = new Date().toISOString();
+  const head = "9e8353d33a51d7a2c8257bb7be70a40111e4ff51";
+  const idle = {
+    available: true, running: { version: "0.1.0", build: "ec6f4236b1ac" }, lastRollback: null, state: { state: "idle", since: now },
+    note: { tag: "update/2026-11-06", commit: "ec6f4236b1ac371ea33b15ec5b88a59b06542830", message: "Updates fixes" },
+    latest: { commit: head, at: "2026-11-07T11:20:00Z", title: "#795 Brief: terminal clients agreed, a lyrica-clients group reaches the socket" },
+    releases: [{ commit: "ec6f4236b1ac371ea33b15ec5b88a59b06542830", builtAt: now, tag: "update/2026-11-06", running: true, previous: false, rollback: { possible: false } }],
+  };
+  let posted: unknown;
+  let body: unknown = idle;
+  await page.route(/\/api\/u\/[^/]+\/admin\/updates$/, (route) => {
+    if (route.request().method() === "POST") {
+      posted = route.request().postDataJSON();
+      body = { ...idle, state: { state: "fetching", since: now, tag: "main", commit: head } };
+    }
+    return route.fulfill({ json: body });
+  });
+  await page.goto(`/#/u/${userId}/admin/updates`);
+  const section = page.getByRole("region", { name: "Updates" });
+  // The note's Update runs it already; ticking Latest merge shows main's head and offers it.
+  await expect(section.getByRole("button", { name: "Update", exact: true })).toBeDisabled();
+  const tick = section.getByRole("checkbox", { name: "Latest merge" });
+  await expect(tick).not.toBeChecked();
+  await tick.check();
+  await expect(section.locator(".facts")).toContainText("9e8353d");
+  await expect(section.locator(".facts")).toContainText("#795 Brief: terminal clients");
+  await expect(section.locator(".setup.note")).toHaveCount(0);
+  await noHorizontalScroll(page);
+  if (process.env.SCREENSHOTS) await section.screenshot({ path: `${process.env.SCREENSHOTS}/updates-latest-${page.viewportSize()!.width}.png` });
+  await section.getByRole("button", { name: "Update", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toContainText("Update to the latest merge?");
+  await expect(dialog).toContainText("Not tagged as a release yet, so less tested.");
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/updates-latest-dialog-${page.viewportSize()!.width}.png` });
+  await dialog.getByRole("button", { name: "Update" }).click();
+  await expect(section.getByRole("group", { name: "Update to the latest merge" })).toBeVisible();
+  expect(posted).toEqual({ commit: head });
+});

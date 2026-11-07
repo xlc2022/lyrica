@@ -226,6 +226,40 @@ describe("lyrica-update", () => {
     expect(w.json("state.json").output).toBeUndefined();
   });
 
+  it("installs the latest merge, a commit on main with no tag, labelled main; refuses one off main or not named in full", async () => {
+    const w = await world();
+    const a = w.release("a", S(1, 1, 1), S(1, 1, 1));
+    await w.run("lyrica-update", "--tag", "update/a");
+    // A merge after the tag: main's head, its title from the merge commit's body.
+    w.git("commit", "-q", "--allow-empty", "-m", "Merge pull request #900 from someone/branch", "-m", "Updates: install the latest merge");
+    w.git("push", "-q", "origin", "main");
+    const head = w.git("rev-parse", "HEAD");
+    expect((await w.run("lyrica-update", "--check")).code).toBe(0);
+    expect(w.json("state.json").latest).toMatchObject({ commit: head, title: "#900 Updates: install the latest merge", at: expect.any(String) });
+    expect(w.json("state.json").note).toMatchObject({ tag: "update/a", commit: a });
+
+    mkdirSync(join(w.state, "updates"));
+    writeFileSync(join(w.state, "updates", "request.json"), JSON.stringify({ action: "update", commit: head }));
+    const r = await w.run("lyrica-update", "--request");
+    expect(r.err).toContain("passed probation");
+    expect(w.current()).toBe(head);
+    expect(w.json("state.json")).toMatchObject({ state: "idle" });
+    expect(w.json("state.json").steps.map((s: { step: string }) => s.step)).toEqual(["fetching", "building", "testing", "draining", "switching", "probation"]);
+    expect(w.json("releases.json").releases).toEqual(expect.arrayContaining([expect.objectContaining({ commit: head, tag: "main" })]));
+    expect(readFileSync(join(w.update, "notes", `${head}.txt`), "utf8").trim()).toBe("#900 Updates: install the latest merge");
+    expect(w.json("releases.json").snapshots.length).toBeGreaterThan(0);
+
+    // A commit that isn't on main, or a short one, changes nothing.
+    w.git("checkout", "-q", "-b", "side");
+    w.git("commit", "-q", "--allow-empty", "-m", "side");
+    w.git("push", "-q", "origin", "side");
+    const side = w.git("rev-parse", "HEAD");
+    w.git("checkout", "-q", "main");
+    expect((await w.run("lyrica-update", "--commit", side)).err).toContain("not on main");
+    expect((await w.run("lyrica-update", "--commit", head.slice(0, 12))).err).toContain("a full commit on main");
+    expect(w.current()).toBe(head);
+  });
+
   it("takes a request lyricad wrote, and refuses a request that is a link", async () => {
     const w = await world();
     const a = w.release("a", S(1, 1, 1), S(1, 1, 1));

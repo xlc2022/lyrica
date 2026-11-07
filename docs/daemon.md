@@ -1485,6 +1485,8 @@ check names and counts, never text.
 
 - **Kept state.** `/var/lib/lyrica-update` (root's, readable): `state.json`
   (the updater's state, busy work while draining, the newest update note,
+  `latest` (main's head at each fetch: commit, commit time and title, a
+  merge commit's title as `#<number> <pull request title>`),
   `lastRollback`, an update's `steps` (each state it went through, with
   when it started and ended, the failed one marked) and after a failed
   fetch, build or smoke test that output's last 40 lines as `output`
@@ -1509,11 +1511,14 @@ check names and counts, never text.
   there (random passphrase, a test admin, no saved credentials), unlocks,
   logs in, reads the health checks over its socket and fetches the web UI,
   printing `ok` or `FAIL` per check.
-- **`lyrica-update`** (`--tag update/<name>`, `--check`, or `--request`
-  from the path unit), one at a time: fetch `main` and `update/*` tags
+- **`lyrica-update`** (`--tag update/<name>`, `--commit <sha>`, `--check`,
+  or `--request` from the path unit), one at a time: fetch `main` and `update/*` tags
   (never prompting; over SSH only with the deploy key; a failed fetch logs
   that a repository gone private needs install.sh again, or a restart of
-  `lyricad` on NixOS); the tag must be annotated and on `main`; build as
+  `lyricad` on NixOS); the tag must be annotated and on `main`, or a
+  `--commit` (the latest merge, a whole commit with no tag) must be on
+  `main`, labelled `main` in its state and RELEASE.json, with its title as
+  its note; build as
   `lyrica-build`; smoke test; drain (10 minutes, then undrain and give up);
   stop; `lyrica-snapshot` (pinned when the release raises `min_reader`);
   switch `current` and `previous`; start; probation.

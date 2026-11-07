@@ -967,13 +967,17 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   from leaving over the tailnet itself is shown as its sentence. **Updates**
   (`src/Updates.tsx`; docs/ux.md §6 "Updates"): the running version in mono,
   **Check**, the newest update note (its tag in mono, its text in a block),
-  **Update** as the one primary (disabled while an update runs), a state
+  **Update** as the one primary (disabled while an update runs or when what
+  it installs already runs), the **Latest merge** checkbox beside it (ticked:
+  `latest` in the note's place, Check run when there is none yet, and
+  Update asks in a dialog that says it is less tested, then posts
+  `{ commit }`), a state
   line beneath (Fetching, Draining with the count of busy threads when
   there are any and the user's own linked, Building, Testing, Probation,
   Failed with the error; while one shows, the section reloads every 2
   seconds, so a Check or Update follows through to its result). An
   update shows a box in the state line's place instead (`Progress`): its
-  tag and state word, then its `steps` as a checklist (Download, Build,
+  tag ("the latest merge" for tag `main`) and state word, then its `steps` as a checklist (Download, Build,
   Smoke test, Finishing turns, Restart, Probation; ✓ with how long it
   took, ✱ with how long so far, ticking each second, ✕ where it failed, ○
   to come), "Waiting for the updater to start." before the updater takes

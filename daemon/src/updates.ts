@@ -1,7 +1,7 @@
 import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import { join } from "node:path";
-import type { BusyItem, Health, KeptRelease, RollbackInfo, UpdateNote, Updates, UpdaterState, UpdateStep } from "./api.ts";
+import type { BusyItem, Health, KeptRelease, LatestMerge, RollbackInfo, UpdateNote, Updates, UpdaterState, UpdateStep } from "./api.ts";
 import { HttpError, sendJson } from "./http.ts";
 
 // lyricad's side of updates (docs/daemon.md "Updates"). The updater runs as
@@ -41,6 +41,8 @@ interface StateFile {
   steps?: UpdateStep[];
   output?: string;
   note?: UpdateNote;
+  /** main's head at the last fetch: the latest merge. */
+  latest?: LatestMerge;
   lastRollback?: RollbackInfo;
 }
 
@@ -90,6 +92,7 @@ export function readUpdates(paths: UpdatePaths, running: { version: string; buil
     available: !!file,
     running,
     note: state.note ?? null,
+    latest: state.latest?.commit && FULL.test(state.latest.commit) ? state.latest : null,
     state: waiting(paths, state) ?? {
       state: state.state ?? "idle", since: state.since ?? "",
       ...(state.tag ? { tag: state.tag } : {}), ...(state.commit ? { commit: state.commit } : {}),
@@ -116,17 +119,21 @@ function waiting(paths: UpdatePaths, state: StateFile): Updates["state"] | undef
   let since: string;
   try { since = statSync(file).mtime.toISOString(); } catch { since = new Date().toISOString(); }
   if (req.action === "rollback") return { state: "draining", since, ...(req.commit ? { commit: req.commit } : {}) };
+  // A latest merge waits as the updater will label it: `main`, with its commit.
+  if (!req.tag && req.commit) return { state: "fetching", since, tag: "main", commit: req.commit };
   return { state: "fetching", since, ...(req.tag ? { tag: req.tag } : {}) };
 }
 
 const TAG = /^update\/[A-Za-z0-9._-]{1,64}$/;
 const COMMIT = /^[0-9a-f]{7,40}$/;
+/** The latest merge is named by its whole commit: the updater checks it is on main. */
+const FULL = /^[0-9a-f]{40}$/;
 
-export type UpdateAction = { action: "update"; tag: string } | { action: "rollback"; commit: string } | { action: "check" };
+export type UpdateAction = { action: "update"; tag: string } | { action: "update"; commit: string } | { action: "rollback"; commit: string } | { action: "check" };
 
 /** Writes the request lyrica-update.path picks up. One at a time; the updater checks it again as root. */
 export function writeRequest(paths: UpdatePaths, req: UpdateAction): void {
-  if (req.action === "update" && !TAG.test(req.tag)) throw new HttpError(400, "an update is an update/… tag");
+  if (req.action === "update" && ("tag" in req ? !TAG.test(req.tag) : !FULL.test(req.commit))) throw new HttpError(400, "an update is an update/… tag or a full commit on main");
   if (req.action === "rollback" && !COMMIT.test(req.commit)) throw new HttpError(400, "name the release by its commit");
   const busy = readJson<StateFile>(join(paths.state, "state.json"))?.state;
   if (req.action !== "check" && busy && busy !== "idle" && busy !== "failed" && !(busy === "probation" && req.action === "rollback")) {
