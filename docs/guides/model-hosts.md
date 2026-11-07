@@ -601,6 +601,15 @@ and the like mark what each image fills in. Check them, change what you
 want, and **Save**; it becomes an image model like the others. A built-in
 model's **Copy workflow to edit** gives you a copy to change instead.
 
+**Graph** shows the workflow as nodes and links, as ComfyUI does. On a
+computer you move nodes, drag from an output to an input to link them
+(only matching types connect), select a link and press Delete to remove
+it, add a node from **Add node** (the nodes this host's ComfyUI has; it
+needs ComfyUI to have run once) and set the selected node's settings or
+**Delete node** below the graph. Where the nodes sit is saved with the
+workflow. On a phone the graph only shows; edit in Form. The host checks a
+graph like any save, so a node that writes files is still refused.
+
 Each save keeps the version before it, under **Revisions**. You can also ask
 Lyrica in a thread to change a workflow's settings ("raise the second pass
 to 0.3 on my Krea workflow"); she saves it as a new revision.
