@@ -43,9 +43,13 @@ other than NixOS, `install.sh` installs the updater: a copy of `update.sh` at
 `lyrica-host-update.path`, which runs it as root when host-api writes a
 request into `/var/lib/lyrica-host-update/inbox/`. host-api keeps no route
 out: the updater fetches `main` and the `update/*` tags into its own
-repository there with a read-only deploy key, `/etc/lyrica-host/deploy-key`,
-which `install.sh` prints the first time: add it to the repository as a
-deploy key. Then the updater refuses a tag that isn't annotated or isn't on
+repository there. While the repository is public it fetches over HTTPS
+with no key: `install.sh` checks with `git ls-remote` without credentials.
+Otherwise it uses SSH with a read-only deploy key,
+`/etc/lyrica-host/deploy-key`, which `install.sh` makes and prints the
+first time: add it to the repository as a deploy key. `LYRICA_REPO` sets
+another repository URL, an `ssh` one getting the key. Running `install.sh`
+again moves an existing updater between the two. Then the updater refuses a tag that isn't annotated or isn't on
 `main`; pauses the host (running jobs finish, up to 10 minutes, or nothing
 changes); unpacks the release from its own repository into a root-owned
 tree, `/opt/lyrica-host/<commit>`; carries `.env` over from the installed

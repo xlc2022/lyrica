@@ -2343,7 +2343,9 @@ from Monika's runbooks.
 - **Model hosts follow her release.** A host's **Update** on the Models page
   asks it for the release she runs, never another. Its updater runs as root
   outside host-api, which keeps no route out, and makes the same tag checks
-  with its own read-only deploy key; it pauses the host so running jobs
+  on what it fetches: over HTTPS while the repository is public (GitHub
+  authenticated by its certificate), otherwise with its own read-only
+  deploy key and GitHub's pinned host key; it pauses the host so running jobs
   finish, installs the release from a root-owned tree of its own (never from
   a person's checkout), and goes back to the commit before if host-api
   doesn't come up on the new one within 5 minutes (host/README.md,
