@@ -1,6 +1,6 @@
 # Brief: Custom ComfyUI workflows
 
-**Status:** In review. **Thread:** Add custom ComfyUI workflow editing.
+**Status:** Done: #812 (custom workflows) and #813 (Graph view). **Thread:** Add custom ComfyUI workflow editing.
 **Branch:** `claude/project-thread-kocpz1`.
 
 **Read first:** AGENTS.md, DESIGN.md ("Local images", "Image models are
@@ -96,7 +96,7 @@ Lyrica proposing workflows.
 
 ## Handoff note
 
-Done (PR open): everything in scope, with host tests
+Done (#812, #813 merged): everything in scope and the Graph view, with host tests
 (`host/test/workflows.test.ts`), the models tool's test
 (`extension/test/workspace.test.ts`) and an e2e
 (`web/e2e/web-admin.spec.ts`, "Custom workflows").
