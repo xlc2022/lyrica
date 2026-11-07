@@ -1492,7 +1492,9 @@ check names and counts, never text.
   scheduled sleep and watcher looks wait; work a running turn starts (a
   child thread, a subagent) finishes, since the drain waits for it.
   Administration's requests go to `<home>/updates/request.json`, which
-  `lyrica-update.path` picks up.
+  `lyrica-update.path` picks up a moment later; until it does, Updates
+  shows an idle or failed updater as the step the request starts with
+  (Fetching, or Draining for a rollback), so the page follows it.
 - **`lyrica version --json`** prints the version, build (commit), schema and
   `minReader`; **`lyrica smoke-test <empty dir>`** starts a scratch lyricad
   there (random passphrase, a test admin, no saved credentials), unlocks,
