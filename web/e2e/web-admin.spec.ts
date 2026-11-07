@@ -2506,3 +2506,86 @@ test("Updates: one Check shows Fetching, then the update note the updater fetche
   await expect(section.getByRole("button", { name: "Update" })).toBeEnabled();
   expect(checked).toBe(1);
 });
+
+test("Updates: an update's steps show in a box under Update, and a failed build its output in a block that scrolls", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  const at = (s: number) => new Date(Date.now() - s * 1000).toISOString();
+  const base = {
+    available: true, running: { version: "0.1.0", build: "b03dde0aaaaaaaa" }, lastRollback: null,
+    note: { tag: "update/2026-11-06", commit: "ec6f4236aaaaaaa", message: "Updates fixes" },
+    releases: [{ commit: "b03dde0aaaaaaaa", builtAt: at(86400), running: true, previous: false, rollback: { possible: false } }],
+  };
+  const running = {
+    ...base,
+    state: {
+      state: "building", since: at(95), tag: "update/2026-11-06", commit: "ec6f4236aaaaaaa",
+      steps: [{ step: "fetching", started: at(100), ended: at(95) }, { step: "building", started: at(95) }],
+    },
+  };
+  const output = Array.from({ length: 30 }, (_, i) => `npm warn line ${i + 1} ${"x".repeat(i === 29 ? 300 : 20)}`).join("\n") + "\nnpm error code ENOSPC";
+  const failed = {
+    ...base,
+    state: {
+      state: "failed", since: at(10), tag: "update/2026-11-06", commit: "ec6f4236aaaaaaa", error: "build", output,
+      steps: [{ step: "fetching", started: at(100), ended: at(95) }, { step: "building", started: at(95), ended: at(10), failed: true }],
+    },
+  };
+  let body: unknown = running;
+  await page.route(/\/api\/u\/[^/]+\/admin\/updates$/, (route) => route.fulfill({ json: body }));
+  await page.goto(`/#/u/${userId}/admin/updates`);
+  const section = page.getByRole("region", { name: "Updates" });
+  const box = section.getByRole("group", { name: "Update to update/2026-11-06" });
+  await expect(box).toBeVisible();
+  const steps = box.getByRole("listitem");
+  await expect(steps).toHaveCount(6);
+  await expect(steps.nth(0)).toHaveAttribute("data-state", "done");
+  await expect(steps.nth(0)).toContainText("5 s");
+  await expect(steps.nth(1)).toHaveAttribute("data-state", "doing");
+  await expect(steps.nth(1)).toContainText("1 min 3");
+  await expect(steps.nth(2)).toHaveAttribute("data-state", "todo");
+  await expect(box.locator(".state-word")).toHaveText("Building");
+  // The box takes the state line's place, and Update and Check wait for it.
+  await expect(section.locator(".state-line")).toHaveCount(0);
+  await expect(section.getByRole("button", { name: "Update" })).toBeDisabled();
+  await noHorizontalScroll(page);
+  if (process.env.SCREENSHOTS) await box.screenshot({ path: `${process.env.SCREENSHOTS}/update-running-${page.viewportSize()!.width}.png` });
+
+  body = failed;
+  const done = section.getByRole("group", { name: "Update to update/2026-11-06" });
+  await expect(done.getByRole("listitem").nth(1)).toHaveAttribute("data-state", "failed", { timeout: 10_000 });
+  await expect(done.locator(".state-word")).toHaveText("Failed");
+  await expect(done).toContainText("Build failed. Nothing changed.");
+  const pre = done.locator(".update-output pre");
+  await expect(pre).toContainText("npm error code ENOSPC");
+  // The long line scrolls inside the block; the page doesn't.
+  expect(await pre.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
+  // It opens at its end, where the error is.
+  expect(await pre.evaluate((el) => el.scrollHeight <= el.clientHeight || el.scrollTop > 0)).toBe(true);
+  await noHorizontalScroll(page);
+  await expect(done.getByRole("button", { name: "Copy output" })).toBeVisible();
+  // The output folds away and back.
+  const toggle = done.getByRole("button", { name: "Output", exact: true });
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+  if (process.env.SCREENSHOTS) await done.screenshot({ path: `${process.env.SCREENSHOTS}/update-failed-${page.viewportSize()!.width}.png` });
+  await toggle.click();
+  await expect(pre).toHaveCount(0);
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  if (process.env.SCREENSHOTS) await done.screenshot({ path: `${process.env.SCREENSHOTS}/update-failed-hidden-${page.viewportSize()!.width}.png` });
+  await toggle.click();
+  await expect(pre).toContainText("npm error code ENOSPC");
+  await expect(section.getByRole("button", { name: "Update" })).toBeEnabled();
+});
+
+test("Updates: an update the updater hasn't taken says so after a minute", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  const body = {
+    available: true, running: { version: "0.1.0", build: "b03dde0aaaaaaaa" }, lastRollback: null, releases: [],
+    note: { tag: "update/2026-11-06", commit: "ec6f4236aaaaaaa", message: "Updates fixes" },
+    state: { state: "fetching", since: new Date(Date.now() - 120_000).toISOString(), tag: "update/2026-11-06" },
+  };
+  await page.route(/\/api\/u\/[^/]+\/admin\/updates$/, (route) => route.fulfill({ json: body }));
+  await page.goto(`/#/u/${userId}/admin/updates`);
+  const box = page.getByRole("group", { name: "Update to update/2026-11-06" });
+  await expect(box).toContainText("The updater hasn't started.");
+  await expect(box.getByRole("listitem").first()).toHaveAttribute("data-state", "todo");
+});

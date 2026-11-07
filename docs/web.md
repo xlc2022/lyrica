@@ -971,7 +971,16 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   line beneath (Fetching, Draining with the count of busy threads when
   there are any and the user's own linked, Building, Testing, Probation,
   Failed with the error; while one shows, the section reloads every 2
-  seconds, so a Check or Update follows through to its result), the last
+  seconds, so a Check or Update follows through to its result). An
+  update shows a box in the state line's place instead (`Progress`): its
+  tag and state word, then its `steps` as a checklist (Download, Build,
+  Smoke test, Finishing turns, Restart, Probation; ✓ with how long it
+  took, ✱ with how long so far, ticking each second, ✕ where it failed, ○
+  to come), "Waiting for the updater to start." before the updater takes
+  the request and a warn line after a minute, and after a failure the
+  reason and `output` in a code block opened at its end, with Copy, its
+  Output head folding the lines away and back. Load
+  errors don't show while an update runs, since lyricad restarts. Then the last
   rollback as a sentence, and the kept releases as rows (commit in mono,
   date, the first line of its update note when it has one, Running) with **Roll back** in the row's ⋯, asked in a dialog that
   names the commit and says when messages since the snapshot are lost.

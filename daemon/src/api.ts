@@ -2313,11 +2313,22 @@ export interface RollbackInfo { from: string; to: string; automatic: boolean; ch
  * GET /api/u/:userId/admin/updates → Updates. Administrators only.
  * `available` is false where no updater is installed (a development run).
  */
+/**
+ * One step of an update, as the updater went through it: `step` is the state
+ * it was in, `ended` absent while it runs, `failed` on the step the update
+ * stopped in (or the probation that rolled back).
+ */
+export interface UpdateStep { step: Exclude<UpdaterState, "idle" | "failed">; started: string; ended?: string; failed?: boolean }
 export interface Updates {
   available: boolean;
   running: { version: string; build: string };
   note: UpdateNote | null;
-  state: { state: UpdaterState; since: string; tag?: string; commit?: string; busy?: BusyItem[]; error?: string };
+  /**
+   * `steps`: an update's steps so far (absent for a check, a rollback, or a
+   * request the updater hasn't taken yet). `output`: the last lines of the
+   * build's or a check's output when the update failed there.
+   */
+  state: { state: UpdaterState; since: string; tag?: string; commit?: string; busy?: BusyItem[]; error?: string; steps?: UpdateStep[]; output?: string };
   releases: KeptRelease[];
   lastRollback: RollbackInfo | null;
 }

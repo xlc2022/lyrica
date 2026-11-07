@@ -160,6 +160,10 @@ describe("lyrica-update", () => {
     expect(w.json("releases.json")).toMatchObject({ current: a, minReader: S(1, 1, 1), releases: [{ commit: a, tag: "update/a", schema: S(1, 1, 1) }] });
     expect(w.calls()).toEqual(expect.arrayContaining(["stop lyricad", "start lyricad"]));
     expect(w.json("releases.json").snapshots).toHaveLength(1);
+    // Administration's step list: each state it went through, in order, all ended.
+    const steps = w.json("state.json").steps as { step: string; started: string; ended?: string; failed?: boolean }[];
+    expect(steps.map((s) => s.step)).toEqual(["fetching", "building", "testing", "draining", "switching", "probation"]);
+    expect(steps.every((s) => s.ended && !s.failed)).toBe(true);
 
     const b = w.release("b", S(1, 1, 1), S(1, 1, 1), { broken: true });
     const second = await w.run("lyrica-update", "--tag", "update/b");
@@ -169,6 +173,8 @@ describe("lyrica-update", () => {
     const after = w.json("state.json");
     expect(after).toMatchObject({ state: "failed", lastRollback: { from: b, to: a, automatic: true, check: "web" } });
     expect(after.lastRollback.restoredFrom).toBeUndefined();
+    expect(after.steps.at(-1)).toMatchObject({ step: "probation", failed: true, ended: expect.any(String) });
+    expect(after.tag).toBe("update/b");
     expect(existsSync(join(w.update, "probation.json"))).toBe(false);
     // Logs name commits, tags and checks: no update note text, no data.
     expect(second.err).not.toContain("what it changes");
@@ -200,6 +206,24 @@ describe("lyrica-update", () => {
     expect(w.calls().filter((c) => c === "stop lyricad").length).toBe(stops);
     expect(w.current()).toBe(a);
     expect(w.json("state.json")).toMatchObject({ state: "failed", error: "drain timed out" });
+    expect(w.json("state.json").steps.map((s: { step: string; failed?: boolean }) => `${s.step}${s.failed ? " failed" : ""}`))
+      .toEqual(["fetching", "building", "testing", "draining failed"]);
+  });
+
+  it("keeps a failed build's last lines for Administration, and a check drops the last update's steps", async () => {
+    const w = await world();
+    writeFileSync(join(w.fake, "build"), "#!/usr/bin/env bash\nfor i in $(seq 1 60); do echo \"npm line $i\"; done\necho 'npm error: no space left' >&2\nexit 1\n");
+    w.release("a", S(1, 1, 1), S(1, 1, 1));
+    expect((await w.run("lyrica-update", "--tag", "update/a")).code).not.toBe(0);
+    const failed = w.json("state.json");
+    expect(failed).toMatchObject({ state: "failed", error: "build", steps: [{ step: "fetching" }, { step: "building", failed: true }] });
+    expect(failed.output).toContain("npm error: no space left");
+    expect(failed.output).not.toContain("npm line 1\n");
+    expect(failed.output.split("\n").length).toBeLessThanOrEqual(40);
+    expect((await w.run("lyrica-update", "--check")).code).toBe(0);
+    expect(w.json("state.json")).toMatchObject({ state: "idle" });
+    expect(w.json("state.json").steps).toBeUndefined();
+    expect(w.json("state.json").output).toBeUndefined();
   });
 
   it("takes a request lyricad wrote, and refuses a request that is a link", async () => {

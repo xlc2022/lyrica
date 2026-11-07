@@ -2334,7 +2334,12 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   updater's path unit (`409` while an update runs, except a rollback on
   probation). While that request waits and the updater is idle or failed,
   `Updates.state` shows the step it starts with: `fetching` (with the tag)
-  for a check or an update, `draining` (with the commit) for a rollback. `GET …/admin/status` (`AdminStatus`) carries optional
+  for a check or an update, `draining` (with the commit) for a rollback,
+  its `since` when the request was written. An update's state also carries
+  `steps` (`UpdateStep[]`: each state it went through, `started`, `ended`
+  once over, `failed` on the one it stopped in or the probation that rolled
+  back) and, while failed, `output` (the last 40 lines of the fetch's,
+  build's or smoke test's output, at most 8,000 characters). `GET …/admin/status` (`AdminStatus`) carries optional
   `unitsStale: string[]` from the updater's `state.json`: Debian units that
   were missing or differed at the last update switch, shown in Status with
   the action to run `install.sh`. The updater never rewrites these units;
