@@ -50,8 +50,10 @@ only by a reviewed pull request that pins them (no install from the app).
   (`@xyflow/react`, MIT, loaded only when Graph opens). Nodes come from the
   host's node list (`GET /host/v1/workflows/nodes`, now with each node's
   output types, category and defaults), links only join matching types,
-  and the node positions save as the workflow's `layout`. On a phone it
-  only shows. Asked for by the operator on 2026-11-07, after the first PR.
+  and the node positions save as the workflow's `layout`. Settings are
+  edited on the node itself, as Form's rows (a follow-up the operator asked
+  for the same day). On a phone it only shows. Asked for by the operator on
+  2026-11-07, after the first PR.
 - **Revisions.** Each save keeps the version it replaced
   (`<name>.revisions.json`, 50 at most), marked as saved in the app or by
   Lyrica; Revisions lists them and **Restore…** saves one again as a new

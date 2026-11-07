@@ -1389,7 +1389,7 @@ test("Custom workflows: Workflow imports an export into a draft, Edit workflow s
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
 
-test("Custom workflows: Graph draws the nodes and links; on a wide screen nodes are added, linked, unlinked and deleted, and the layout saves; on a phone it only shows", async ({ page, baseURL }) => {
+test("Custom workflows: Graph draws the nodes and links; on a wide screen nodes are added, set on the node, linked, unlinked and deleted, and the layout saves; on a phone it only shows", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   const images = await fakeImages(page);
   await fakeHost(page, [], [images.offering]);
@@ -1441,12 +1441,22 @@ test("Custom workflows: Graph draws the nodes and links; on a wide screen nodes 
     await page.unrouteAll({ behavior: "ignoreErrors" });
     return;
   }
-  // A node from this host's list, set in the panel below the graph.
+  // A node from this host's list, its settings set on the node itself.
   await page.getByLabel("Add node").fill("sharp");
   await page.getByRole("list", { name: "Nodes" }).getByRole("button", { name: /ImageSharpen/ }).click();
   await expect(canvas.locator(".react-flow__node")).toHaveCount(7);
-  const panel = page.getByRole("region", { name: "Node 10, ImageSharpen" });
-  await panel.getByLabel("sigma of node 10", { exact: true }).fill("0.5");
+  const sharpen = canvas.locator('.react-flow__node[data-id="10"]');
+  const at = async () => (await sharpen.getAttribute("style"))!.match(/translate\([^)]*\)/)![0];
+  const before = await at();
+  await canvas.getByLabel("sigma of node 10", { exact: true }).fill("0.5");
+  // A blank made a fixed value, and a fixed value made a blank, on the sampler.
+  await canvas.getByLabel("How steps of node 3 is set").selectOption({ label: "Fixed" });
+  await canvas.getByLabel("steps of node 3", { exact: true }).fill("30");
+  await canvas.getByLabel("How denoise of node 3 is set").selectOption({ label: "Shift" });
+  // Editing on a node doesn't move it, and the panel below doesn't repeat the settings.
+  expect(await at()).toBe(before);
+  await expect(sharpen).toBeVisible();
+  await expect(page.getByRole("region", { name: "Node 10, ImageSharpen" }).getByLabel("sigma of node 10")).toHaveCount(0);
   await shot("graph-edit");
   // Linked between the decoder and the output: drag from an output to an input.
   const drag = async (from: string, to: string) => {
@@ -1471,6 +1481,7 @@ test("Custom workflows: Graph draws the nodes and links; on a wide screen nodes 
   expect((put.workflow as Record<string, unknown>)["10"]).toEqual({ class_type: "ImageSharpen", inputs: { sharpen_radius: 1, sigma: 0.5, alpha: 1, image: ["8", 0] } });
   expect((put.workflow as Record<string, { inputs: unknown }>)["9"]!.inputs).toEqual({ images: ["10", 0] });
   expect(Object.keys(put.layout as object).sort()).toEqual(["10", "3", "5", "6", "7", "8", "9"]);
+  expect((put.workflow as Record<string, { inputs: Record<string, unknown> }>)["3"]!.inputs).toMatchObject({ steps: 30, denoise: "$shift" });
   // Deleting a node takes its links with it.
   await canvas.getByLabel("Node 10, ImageSharpen").click();
   await page.getByRole("region", { name: "Node 10, ImageSharpen" }).getByRole("button", { name: "Delete node" }).click();
