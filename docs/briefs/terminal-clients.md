@@ -1,8 +1,8 @@
 # Brief: `lyrica chat` and `lyrica mem`
 
-**Status:** draft. Not built. The user answered (2026-11-07): build it
+**Status:** agreed, not built. The user decided (2026-11-07): build it
 now, keep the terminal's threads separate, add Forget a topic to `mem`,
-and choose who may run it from the options under A.
+and let a `lyrica-clients` group reach it (option b under A).
 
 **Branch:** `feature/terminal-clients`, once the brief is agreed.
 **Read first:** AGENTS.md, PRINCIPLES.md (2, 8, 10), DESIGN.md ("One
@@ -52,7 +52,7 @@ Principles:
   | Option | Who reaches the prompt | Cost |
   |---|---|---|
   | **a. Service user only** | root, or `sudo -u lyrica lyrica chat` | Nothing to build; the user needs sudo every time |
-  | **b. A group on the socket** (recommended) | Accounts the operator adds to a `lyrica-clients` group; the socket becomes `0660` with that group | install.sh and the NixOS module make the group (empty by default); one line in the getting-started guide |
+  | **b. A group on the socket** (chosen) | Accounts the operator adds to a `lyrica-clients` group; the socket becomes `0660` with that group | install.sh and the NixOS module make the group (empty by default); one line in the getting-started guide |
   | **c. Loopback** | Every local account, through `127.0.0.1:7340` | Nothing to build; no way to narrow it |
   | **d. Another machine** | Anyone who can reach her HTTPS front door (LAN, tailnet) | A login flow that works without a browser, and the front door's own rules; a later brief |
 
@@ -152,15 +152,9 @@ names and not built"), README (its "Not built yet" line), docs/contracts.md
 terminal as a second way to edit), the getting-started guide (one
 paragraph, through Operator docs), and this brief's status.
 
-## Open question for the user
-
-**Who may run it** (A): options a to d. Answered so far: build now,
-separate `cli` threads, and Forget a topic in `mem`.
-
 ## Handoff
 
-- **Done:** this draft, with the user's answers to three of its four
-  questions.
-- **Next:** the user's choice of who may run it, then a build on
+- **Done:** the brief, with the user's answers to all four questions.
+- **Next:** a build on
   `feature/terminal-clients` with PR review (it touches `bin/` and the
   daemon's routes).
