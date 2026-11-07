@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { Downloader } from "../src/fetch/downloads.ts";
 import { isPublic } from "../src/fetch/guard.ts";
-import { huggingFace, modelScope } from "../src/fetch/hubs.ts";
+import { civitai, huggingFace, modelScope } from "../src/fetch/hubs.ts";
 import { Net } from "../src/fetch/net.ts";
 import { ggufBytes } from "../src/gguf.ts";
 import { scanTextModels } from "../src/library.ts";
@@ -145,7 +145,7 @@ describe("reading a card through fetch", () => {
     const models = mkdtempSync(join(tmpdir(), "lyrica-read-"));
     const d = new Downloader({
       models, data: mkdtempSync(join(tmpdir(), "lyrica-read-data-")), net,
-      hubs: { huggingface: huggingFace(net, hub.base), modelscope: modelScope(net, hub.base) }, log: () => {}, free: () => 1e12,
+      hubs: { huggingface: huggingFace(net, hub.base), modelscope: modelScope(net, hub.base), civitai: civitai(net, hub.base) }, log: () => {}, free: () => 1e12,
     });
     return { d, models };
   }

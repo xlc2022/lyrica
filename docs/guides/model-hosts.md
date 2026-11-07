@@ -335,7 +335,10 @@ Three ways a model gets into the library:
   repository when it has none), and it starts on that host. Ticking a
   GGUF model also ticks its vision projector and MTP file, marked
   **Vision** and **MTP**. A link to one `.gguf` or `.safetensors` file,
-  with an optional SHA-256, works too.
+  with an optional SHA-256, works too. Image models, **Download model**
+  also takes a **Civitai** model by its number or page link; its files are
+  listed per version and checked against Civitai's SHA-256. A Civitai
+  token, if a model needs one, goes under Downloads → Accounts.
   Models, **Downloads** shows every host's queue, with Cancel, Clear
   finished and Add to the group. A download that loses its connection,
   stalls or meets a busy server retries by itself from where it stopped,
@@ -470,7 +473,12 @@ only once the host unloads the chat model, which it never does to a
 pinned or busy one. The Krea 2 Raw starter is Krea 2's undistilled model
 at the same size, sharing Turbo's encoder and VAE (about 13.1 GB more to
 download beside Turbo); it takes 52 steps at CFG 3.5 instead of 8, so an
-image takes several times as long. The Qwen-Image 2.1 Turbo starter, which edits and
+image takes several times as long. The Krea 2 Turbo Uncensored starter
+(ComfyUI hosts) follows a community workflow: Turbo's diffusion model with
+an abliterated Qwen3-VL 4B encoder from Civitai, the Krea2T-Enhancer patch
+and a second pass for detail (a little more time per image). It needs a
+host updated to a ComfyUI image with the RES4LYF and Krea2T-Enhancer
+nodes. The Qwen-Image 2.1 Turbo starter, which edits and
 creates (bf16 diffusion model, int8 Qwen3-VL 8B encoder, about 24.3 GB
 of files), is 14.9 GB at its largest stage and takes turns the same way.
 It replaces Qwen-Image-Edit 2509 for edits: once installed, put it first

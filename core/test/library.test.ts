@@ -140,6 +140,12 @@ describe("hub tokens and downloads", () => {
     await s.models.installStarter(s.ada, s.bigEp.id, "sdxl");
     expect(s.big.tokens).toEqual(["hf_adatoken1234", undefined]);
     await expect(s.models.installStarter(s.ada, s.bigEp.id, "nope")).rejects.toThrow(/no starter nope/);
+    // Parts from Hugging Face and Civitai: each hub's token, apart, so the host sends each only to its own parts.
+    s.big.starters.push({ id: "krea", name: "Krea", template: "krea2", parts: [part("k.safetensors", false), { ...part("7/enc.safetensors", false), source: "civitai", repo: "42" }], loras: [], defaults: {} });
+    s.models.setHubToken(s.ada, "civitai", "civitai_adatoken5678");
+    await s.models.installStarter(s.ada, s.bigEp.id, "krea");
+    expect(s.big.tokens.at(-1)).toBe("hf_adatoken1234");
+    expect(s.big.civitaiTokens).toEqual([undefined, undefined, "civitai_adatoken5678"]);
   });
 
   it("deletes every shard of a split copy, and says what's left when one is in use", async () => {

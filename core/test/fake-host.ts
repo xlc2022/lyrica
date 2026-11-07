@@ -39,6 +39,8 @@ export async function fakeHost(opts: { name?: string; models?: HostModel[]; port
   const served = new Map<string, unknown>();
   const parts: { file: string; role: string; downloaded: boolean }[] = [];
   const tokens: (string | undefined)[] = [];
+  /** The Civitai token each starter install carried, apart from the other hubs' one. */
+  const civitaiTokens: (string | undefined)[] = [];
   /** The starter recipes it ships, as host/API.md lists them. */
   const starters: { id: string; name: string; template: string; parts: { role: string; source: string; repo: string; path: string; sha256: string; size?: number; present: boolean }[]; loras: []; defaults: Record<string, number> }[] = [];
   const lookups: { model: string; repo?: string; hub?: string; token?: string }[] = [];
@@ -132,6 +134,7 @@ export async function fakeHost(opts: { name?: string; models?: HostModel[]; port
         const st = starters.find((x) => x.id === install[1]);
         if (!st) return json(res, 404, { error: { code: "not_found", message: "No such starter." } });
         tokens.push(req.headers["x-hub-token"] as string | undefined);
+        civitaiTokens.push(req.headers["x-civitai-token"] as string | undefined);
         const made = st.parts.filter((p) => !p.present).map((p) => ({ id: randomBytes(4).toString("hex"), path: `lyrica/${p.source}/${p.repo}/${p.path}`, state: "downloading" }));
         downloads.push(...made);
         const recipe = { id: `starter-${st.id}`, name: st.name, state: "confirmed", does: ["create"], parts: [] } as unknown as Recipe;
@@ -233,6 +236,7 @@ export async function fakeHost(opts: { name?: string; models?: HostModel[]; port
     recipes,
     parts,
     tokens,
+    civitaiTokens,
     starters,
     lookups,
     downloads,
