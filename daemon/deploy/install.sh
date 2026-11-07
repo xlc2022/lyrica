@@ -377,7 +377,8 @@ else
   say "systemd isn't running here: the units are installed but not started."
 fi
 if [ "$NEW_DEPLOY_KEY" = new ]; then
-  say "The repository isn't public. For Administration → Updates, add this as a read-only deploy key of $REPO_URL:"
+  [ -n "${LYRICA_REPO:-}" ] || say "The repository didn't answer over HTTPS without credentials: it isn't public, or the network is down (run install.sh again once it's up)."
+  say "For Administration → Updates, add this as a read-only deploy key of $REPO_URL:"
   cat /etc/lyrica/deploy-key.pub
 fi
 say "Running release ${COMMIT:0:12}. Go back with: sudo lyrica-rollback"

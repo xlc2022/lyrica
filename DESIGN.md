@@ -2281,10 +2281,11 @@ from Monika's runbooks.
   what removes it. The updater installs only a commit on `main`: an
   annotated `update/*` tag's, or, when an administrator ticks Latest merge
   in Administration, main's newest commit (less tested: merged after
-  review, but no release note vouches for it yet; decided 2026-11-07), fetched over HTTPS while the repository is public, otherwise with
-  a read-only deploy key; those checks (on `main`, and only an
-  administrator's request), not the transport, are the line she can't
-  cross.
+  review, but no release note vouches for it yet; decided 2026-11-07). It
+  fetches over HTTPS while the repository is public (GitHub authenticated
+  by its certificate), otherwise with a read-only deploy key and GitHub's
+  pinned host key; a commit on `main`, asked for by an administrator, is
+  the line she can't cross.
 - On Debian and Ubuntu, stale systemd units are reported, never rewritten,
   because a root rewrite of `lyricad.service` could loosen her confinement.
 - **An update**, in order: build the release as an unprivileged build

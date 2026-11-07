@@ -410,8 +410,10 @@ Running it again later installs the checkout's commit as a new release
 **Updates from GitHub.** While the repository is public, updates fetch it
 over HTTPS with no key, and there is nothing to add. LYRICA_REPO, set when
 running install.sh, picks another repository; an SSH URL there uses the
-deploy key. If install.sh printed "The repository isn't public", add the
-printed line (also in `/etc/lyrica/deploy-key.pub`) to the repository on
+deploy key. If install.sh printed a deploy key (after "The repository
+didn't answer over HTTPS without credentials": it isn't public, or the
+network was down, and then running install.sh again once it's up moves it
+to HTTPS), add the printed line (also in `/etc/lyrica/deploy-key.pub`) to the repository on
 GitHub under Settings, Deploy keys, without write access. If the
 repository goes private later, fetches fail: run install.sh again (on
 NixOS, `systemctl restart lyricad` after the failed fetch), and add the
