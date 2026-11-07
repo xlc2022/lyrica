@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Readable } from "node:stream";
 import { afterEach, describe, expect, it } from "vitest";
 import { Downloads } from "../src/downloads.ts";
 import { Downloader } from "../src/fetch/downloads.ts";
@@ -216,16 +217,16 @@ describe("downloads through host-api", () => {
     const file = Buffer.concat([ggufBytes({ "general.architecture": "llama", "tokenizer.ggml.model": "gpt2" }), Buffer.alloc(2000)]);
     const first = make();
     const half = first.startUpload({ name: "half.gguf", size: file.length });
-    await first.receivePiece(half.id, 0, [file.subarray(0, 1000)]);
+    await first.receivePiece(half.id, 0, Readable.from([file.subarray(0, 1000)]));
     const whole = first.startUpload({ name: "whole.gguf", size: file.length });
-    await first.receivePiece(whole.id, 0, [file.subarray(0, 1000)]);
+    await first.receivePiece(whole.id, 0, Readable.from([file.subarray(0, 1000)]));
     // The stop came after the last piece was written, past the file's size, before anything else.
     const part = join(models, "lyrica", "upload", ".whole.gguf.lyrica-part");
     writeFileSync(part, Buffer.concat([file, Buffer.alloc(10)]));
 
     const again = make();
     expect(again.get(half.id)).toMatchObject({ state: "uploading", received: 1000 });
-    await again.receivePiece(half.id, 1000, [file.subarray(1000)]);
+    await again.receivePiece(half.id, 1000, Readable.from([file.subarray(1000)]));
     for (const until = Date.now() + 10_000; Date.now() < until && [half.id, whole.id].some((id) => again.get(id)!.state !== "done"); ) await new Promise((r) => setTimeout(r, 20));
     expect(again.get(half.id)).toMatchObject({ state: "done", received: file.length });
     expect(again.get(whole.id)).toMatchObject({ state: "done", received: file.length });
