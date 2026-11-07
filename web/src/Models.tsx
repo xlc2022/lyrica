@@ -66,11 +66,14 @@ function textModels(eps: EndpointInfo[]): number {
 }
 
 /** An endpoint's one state: a dot's class and its word, with a duration in mono where there is one. The sidebar's status panel shares these words (SideStatus.tsx). */
-export function stateOf(ep: Endpoint, host?: Host): { dot: string; word: string; since?: string } {
+export function stateOf(ep: Endpoint, host?: Host): { dot: string; word: string; since?: string; tip?: string } {
   const since = ep.downSince ? duration(Date.now() - Date.parse(ep.downSince)) : undefined;
   if (ep.api === "host" && host && "status" in host) {
     const s = host.status.state;
-    if (hostUpdating(host.status)) return { dot: "info", word: host.status.update!.models ? "Moving" : "Updating" };
+    if (hostUpdating(host.status)) {
+      const u = host.status.update!;
+      return u.models ? { dot: "info", word: "Moving" } : { dot: "info", word: UPDATE_STEPS[u.state] ?? "Updating", ...(u.tag ? { tip: `Updating to ${u.tag}` } : {}) };
+    }
     if (s === "running") return { dot: "up", word: "Online" };
     if (s === "restarting") return { dot: "info", word: "Restarting" };
     return { dot: "away", word: s === "pausing" ? "Pausing" : "Paused" };
@@ -86,12 +89,14 @@ export function stateOf(ep: Endpoint, host?: Host): { dot: string; word: string;
 export function StateWord({ ep, host }: { ep: Endpoint; host?: Host }) {
   const s = stateOf(ep, host);
   return (
-    <span className="status-word" data-state={s.word} title={host && "error" in host ? host.error : undefined}>
+    <span className="status-word" data-state={s.word} title={host && "error" in host ? host.error : s.tip}>
       <span className={`dot ${s.dot}`} aria-hidden="true" />{s.word}{s.since && <> <span className="num">{s.since}</span></>}
     </span>
   );
 }
 
+/** A host update's step as its state word (host/update.sh's states); "requested" waits for the updater to pick it up. */
+const UPDATE_STEPS: Partial<Record<string, string>> = { requested: "Updating", fetching: "Fetching", draining: "Draining", building: "Building", "rolling-back": "Rolling back" };
 /** The host's updater is at work: it pauses, restarts and comes back on Lyrica's release. */
 const hostUpdating = (s: HostStatus) => !!s.update && ["requested", "fetching", "draining", "building", "rolling-back"].includes(s.update.state);
 /** Why a host's update failed, from the updater's step (host/API.md, "POST /host/v1/update"). */
@@ -120,9 +125,18 @@ function folderHow(s: HostStatus): string | undefined {
   if (s.update?.available) return "Run install.sh on the host again to change it from here.";
   return "Change it on the host: host/install.sh --models <folder>.";
 }
-/** Update in a host's ⋯: when Lyrica runs a release, the host has an updater and runs another commit. */
-const updateOffer = (p: ModelsPage | undefined, s: HostStatus | undefined) =>
-  !!p?.release && !!s?.update?.available && !hostUpdating(s) && s.commit !== p.release.commit ? p.release : undefined;
+/**
+ * Update… in a host's ⋯: Lyrica's release when the host can go to it (she runs one, the host has an updater, isn't
+ * updating and runs another commit), otherwise why not, as the disabled item's tooltip.
+ */
+function updateOffer(p: ModelsPage | undefined, s: HostStatus | undefined): { release: { tag: string; commit: string } } | { why: string } {
+  if (!s) return { why: "The host isn't answering." };
+  if (hostUpdating(s)) return { why: "An update is running." };
+  if (!s.update?.available) return { why: s.update?.reason ?? "This host has no updater: run install.sh on the host again." };
+  if (!p?.release) return { why: "Lyrica isn't running a release yet. Update her first, in Administration → Updates." };
+  if (s.commit === p.release.commit) return { why: `This host already runs ${p.release.tag}.` };
+  return { release: p.release };
+}
 
 const loadedNothing = (h?: Host) => !!h && "status" in h && h.status.gpus.every((g) => !g.models.length);
 const paused = (h?: Host) => !!h && "status" in h && !hostUpdating(h.status) && (h.status.state === "paused" || h.status.state === "pausing");
@@ -1146,13 +1160,16 @@ function HostCard({ ctx, ep, host, others, onVoice, onEdit }: { ctx: MCtx; ep: E
   const revoked = unpaired(host);
   const id = `h-host-${ep.id}`;
   const pairAgain = () => go({ page: "models", userId, tab: "hosts", add: "host", host: ep.id });
-  const offer = updateOffer(ctx.models.page, status);
+  const can = updateOffer(ctx.models.page, status);
+  const offer = "release" in can ? can.release : undefined;
+  const [confirming, setConfirming] = useState(false);
   const update = () => run(async () => {
     const next = await post<HostStatus>(u(userId, "hosts", ep.id, "update"));
     const p = ctx.models.page;
     if (p) ctx.models.set({ ...p, hosts: p.hosts.map((h) => (h.endpointId === ep.id ? { endpointId: ep.id, status: next } : h)) });
   });
-  const menu = revoked ? actions.items : [...(offer ? [{ label: "Update", onPick: () => void update() }] : []), actions.items[0]!, { label: "Pair again…", onPick: pairAgain }, ...actions.items.slice(1)];
+  const updateItem = { label: "Update…", onPick: () => setConfirming(true), ...("why" in can ? { disabled: true, title: can.why } : {}) };
+  const menu = revoked ? actions.items : [updateItem, actions.items[0]!, { label: "Pair again…", onPick: pairAgain }, ...actions.items.slice(1)];
   const failed = status?.update?.state === "failed" ? status.update : undefined;
   const addresses = ep.addresses ?? [];
   const why = status?.update && !status.update.available ? status.update.reason : undefined;
@@ -1188,6 +1205,11 @@ function HostCard({ ctx, ep, host, others, onVoice, onEdit }: { ctx: MCtx; ep: E
         ? <p className="warn-text" role="note">Moving to <code>{failed.models}</code> failed: {folderFailure(failed.error)}.</p>
         : <p className="warn-text" role="note">The update to <code>{failed.tag}</code> failed: {updateFailure(failed.error)}.</p>)}
       {actions.forms}
+      {confirming && offer && (
+        <ConfirmDialog title={`Update ${ep.name}?`}
+          sentence={`It goes to ${offer.tag}, the release Lyrica runs. It pauses once running jobs finish (up to 10 minutes), installs the release and restarts. If it doesn't come back within 5 minutes, it goes back to ${status!.version}.`}
+          confirm="Update" onCancel={() => setConfirming(false)} onConfirm={() => { setConfirming(false); void update(); }} />
+      )}
       {status?.gpus.map((g) => <GpuBlock key={g.index} g={g} />)}
       {status && <CpuBlock status={status} />}
       {status && <RamBlock status={status} onEdit={editable ? onEdit : undefined} />}

@@ -430,8 +430,9 @@ fi
 
 # Updates from Lyrica (README.md, "Updates"): host-api may write a request into
 # inbox/ and read status/; the updater runs as root, outside it, from a copy in
-# /usr/local/sbin that an update never replaces. It fetches with a read-only
-# deploy key, into its own repository, and installs root-owned trees from it.
+# /usr/local/sbin that an update never replaces. It fetches into its own
+# repository, over HTTPS while the repository is public and otherwise with a
+# read-only deploy key, and installs root-owned trees from it.
 # Run by the updater (LYRICA_HOST_UPDATING), this leaves the updater alone.
 UPDATER=/var/lib/lyrica-host-update
 "${SUDO[@]}" mkdir -p "$UPDATER/inbox" "$UPDATER/status"
@@ -448,28 +449,49 @@ updater_status() { # available, then the reason when it isn't
   printf '%s\n' "$json" | "${SUDO[@]}" tee "$UPDATER/status/state.json" >/dev/null
   "${SUDO[@]}" chmod 0644 "$UPDATER/status/state.json"
 }
-REPO_URL=${LYRICA_REPO:-git@github.com:xlc2022/lyrica.git}
 GITHUB_HOST_KEY="github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl"
 NEW_DEPLOY_KEY=0
+# Where the updater fetches from: LYRICA_REPO as given, otherwise the public
+# repository over HTTPS when it answers without credentials, otherwise SSH
+# with a deploy key. Either way the trust is that the fetch reached GitHub:
+# its certificate over HTTPS, its pinned host key over SSH.
+repo_url() {
+  if [[ -n ${LYRICA_REPO:-} ]]; then printf '%s\n' "$LYRICA_REPO"; return; fi
+  if GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=/bin/false timeout 60 git ls-remote --exit-code -q https://github.com/xlc2022/lyrica.git refs/heads/main >/dev/null 2>&1; then
+    printf '%s\n' https://github.com/xlc2022/lyrica.git
+  else
+    printf '%s\n' git@github.com:xlc2022/lyrica.git
+  fi
+}
 if [[ -e /etc/NIXOS ]]; then
   updater_status false "Update this host from its NixOS configuration."
 elif [[ ! -d /run/systemd/system ]]; then
   updater_status false "This host has no systemd: update it with git pull and install.sh."
-elif ! command -v jq >/dev/null || ! command -v git >/dev/null || ! command -v ssh >/dev/null; then
-  updater_status false "Install jq, git and ssh on the host, then run install.sh again."
+elif ! command -v jq >/dev/null || ! command -v git >/dev/null; then
+  updater_status false "Install jq and git on the host, then run install.sh again."
 elif [[ -n ${LYRICA_HOST_UPDATING:-} ]]; then
   :
+elif REPO_URL=$(repo_url) && [[ $REPO_URL != https://* ]] && ! command -v ssh >/dev/null; then
+  updater_status false "Install ssh on the host for its deploy key, then run install.sh again."
 else
   "${SUDO[@]}" mkdir -p /etc/lyrica-host
-  if ! "${SUDO[@]}" test -f /etc/lyrica-host/deploy-key; then
-    "${SUDO[@]}" ssh-keygen -q -t ed25519 -N "" -C "lyrica-host-update@$(hostname)" -f /etc/lyrica-host/deploy-key
-    NEW_DEPLOY_KEY=1
+  if [[ $REPO_URL != https://* ]]; then
+    if ! "${SUDO[@]}" test -f /etc/lyrica-host/deploy-key; then
+      "${SUDO[@]}" ssh-keygen -q -t ed25519 -N "" -C "lyrica-host-update@$(hostname)" -f /etc/lyrica-host/deploy-key
+      NEW_DEPLOY_KEY=1
+    fi
+    "${SUDO[@]}" chmod 0600 /etc/lyrica-host/deploy-key
+    printf '%s\n' "$GITHUB_HOST_KEY" | "${SUDO[@]}" tee /etc/lyrica-host/known_hosts >/dev/null
   fi
-  "${SUDO[@]}" chmod 0600 /etc/lyrica-host/deploy-key
-  printf '%s\n' "$GITHUB_HOST_KEY" | "${SUDO[@]}" tee /etc/lyrica-host/known_hosts >/dev/null
   if ! "${SUDO[@]}" test -d "$UPDATER/repo.git"; then
     "${SUDO[@]}" git init -q --bare "$UPDATER/repo.git"
     "${SUDO[@]}" git --git-dir="$UPDATER/repo.git" remote add origin "$REPO_URL"
+  else
+    # Running install.sh again moves an existing updater to HTTPS, or back to
+    # SSH, when it shows the key again: it may never have been added.
+    OLD_URL=$("${SUDO[@]}" git --git-dir="$UPDATER/repo.git" remote get-url origin 2>/dev/null || true)
+    [[ $OLD_URL != "$REPO_URL" && $REPO_URL != https://* ]] && NEW_DEPLOY_KEY=1
+    "${SUDO[@]}" git --git-dir="$UPDATER/repo.git" remote set-url origin "$REPO_URL"
   fi
   "${SUDO[@]}" install -m 0755 update.sh /usr/local/sbin/lyrica-host-update
   "${SUDO[@]}" install -m 0644 lyrica-host-update.service /etc/systemd/system/lyrica-host-update.service
@@ -552,6 +574,7 @@ say "  Key fingerprint:  $FINGERPRINT"
 say "To pair, open the dashboard, choose Pair with Lyrica, and paste the code into Lyrica's Add model host."
 if [[ $NEW_DEPLOY_KEY == 1 ]]; then
   say ""
+  say "The repository didn't answer over HTTPS without credentials: it isn't public, or the network is down (run install.sh again once it's up)."
   say "For updates from Lyrica's Models page, add this as a read-only deploy key of $REPO_URL:"
   "${SUDO[@]}" cat /etc/lyrica-host/deploy-key.pub
 fi
