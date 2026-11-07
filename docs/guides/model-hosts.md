@@ -588,6 +588,29 @@ rollback), is unsupported: `GET
 offers it for a task, and a job for it fails as too big. A host gets
 this with its next Update or `host/install.sh`.
 
+### Custom workflows
+
+To use a workflow you built in ComfyUI on your own machine, export it there
+with **Export (API)** (not the plain Save, which Lyrica refuses), then in
+**Models → Image models → Download model** pick the host and **Workflow**:
+give it a name, say what it does (Create, Edit, Video or Animate), paste the
+file or choose it, and **Import**. Edit workflow shows what the host made of
+it: model files it couldn't find on the host (download them first, under
+the same file names), and each node's settings, where Prompt, Seed, Steps
+and the like mark what each image fills in. Check them, change what you
+want, and **Save**; it becomes an image model like the others. A built-in
+model's **Copy workflow to edit** gives you a copy to change instead.
+
+Each save keeps the version before it, under **Revisions**. You can also ask
+Lyrica in a thread to change a workflow's settings ("raise the second pass
+to 0.3 on my Krea workflow"); she saves it as a new revision.
+
+A workflow that needs a custom node the host's ComfyUI doesn't have saves
+but does nothing until a host update brings the node. **Copy request**
+copies a request to add it: give it to Lyrica, who opens a pull request
+pinning the node, and update the host once that is merged. The first time
+after an update, the node check happens when ComfyUI next runs a job.
+
 ### Video recipes
 
 ComfyUI hosts list seven video starters: Wan 2.2 TI2V 5B (about 18 GB of

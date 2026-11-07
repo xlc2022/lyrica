@@ -679,8 +679,10 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     copy's administrator or owner on a card, since one loaded copy serves
     every thread, and applies on Allow: on a host it saves and reloads, and
     on LM Studio it loads the model again with the new context. The Models
-    page shows the change at once (live sync). Private and local-only
-    threads have no `models` tool. See
+    page shows the change at once (live sync). The same tool lists, reads
+    and changes the settings of custom workflows on hosts the user manages,
+    and restores their revisions (above, "Custom workflows"). Private and
+    local-only threads have no `models` tool. See
     [docs/briefs/model-settings-by-asking.md](docs/briefs/model-settings-by-asking.md). She also has
     `model_files` and `download_model` there, for a user who manages a
     host: she downloads a model when asked, asking which host when there
@@ -975,8 +977,23 @@ it's off.
     results come back over its websocket, and its history is cleared after
     every job;
   - Lyrica reaches it only through the model host's paired API (mutual
-    TLS), which fills workflow templates kept in Lyrica's repository. She can
-    never send ComfyUI a workflow of her own.
+    TLS), which fills workflow templates: those kept in Lyrica's
+    repository, and **custom workflows** a host's manager added (decided
+    2026-11-07). A job names a recipe and gives values; it never carries
+    nodes.
+  - **Custom workflows** live in the host's data folder, per host. A
+    manager imports ComfyUI's Export (API) file or copies a built-in
+    template, and edits it on Image models' Edit workflow page as a form or
+    as JSON. Lyrica may change an existing one's settings when the user
+    asks (`models` tool), never add nodes. The host checks every save: only
+    blanks it fills, its own websocket outputs and no other node that
+    writes files, input files only through blanks, and node types
+    ComfyUI reported; a workflow needing a node ComfyUI lacks saves but
+    does nothing. Each save keeps the version it replaced (50 at most), and
+    any revision can be restored. A missing custom node joins the ComfyUI
+    image only through a reviewed pull request that pins it; there is still
+    no plugin manager. See
+    [docs/briefs/custom-workflows.md](docs/briefs/custom-workflows.md).
 - **Image models are recipes.** An image model isn't one file: most need a
   diffusion model, one or two text encoders and a VAE, unless a checkpoint
   holds them all. A recipe names each part by its role (and an encoder by its

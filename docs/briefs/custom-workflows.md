@@ -1,6 +1,6 @@
 # Brief: Custom ComfyUI workflows
 
-**Status:** Building. **Thread:** Add custom ComfyUI workflow editing.
+**Status:** In review. **Thread:** Add custom ComfyUI workflow editing.
 **Branch:** `claude/project-thread-kocpz1`.
 
 **Read first:** AGENTS.md, DESIGN.md ("Local images", "Image models are
@@ -17,8 +17,9 @@ containment: Lyrica herself still never writes a workflow, and ComfyUI still
 runs only the custom nodes pinned in its image.
 
 The operator chose (2026-11-07): import, a form editor, a raw JSON editor,
-copy to edit, images and videos, and missing custom nodes added only by a
-reviewed pull request that pins them (no install from the app).
+copy to edit, images and videos, revisions of every workflow, Lyrica able to
+change a workflow when asked in a thread, and missing custom nodes added
+only by a reviewed pull request that pins them (no install from the app).
 
 ## How it works
 
@@ -45,6 +46,14 @@ reviewed pull request that pins them (no install from the app).
   checks every save: known blanks only, links that resolve, an output, no
   file-writing node, every image loader a blank, and the blanks its action
   needs.
+- **Revisions.** Each save keeps the version it replaced
+  (`<name>.revisions.json`, 50 at most), marked as saved in the app or by
+  Lyrica; Revisions lists them and **Restore…** saves one again as a new
+  revision.
+- **Lyrica.** Her `models` tool lists the custom workflows on hosts the user
+  manages, reads one, sets settings its nodes already have (never links,
+  so she adds or rewires nothing) and restores revisions, in general
+  threads only. No card: the user asked, and every change can be undone.
 - **Copy to edit.** A built-in recipe's **Copy workflow to edit** makes a
   custom copy of its template and a recipe on it, then opens the editor.
 - **Where it lives.** Per host, in its data folder (`workflows/`), next to
@@ -78,4 +87,14 @@ Lyrica proposing workflows.
 
 ## Handoff note
 
-(Filled in as the work lands.)
+Done (PR open): everything in scope, with host tests
+(`host/test/workflows.test.ts`), the models tool's test
+(`extension/test/workspace.test.ts`) and an e2e
+(`web/e2e/web-admin.spec.ts`, "Custom workflows").
+
+Not yet checked: an export from a real ComfyUI run on a GPU host. The
+blank guesses follow the common node names; an unusual workflow may need
+its blanks set by hand in the form, which is the point of the form.
+
+Next, if wanted: Lyrica copying a built-in workflow herself; masks and
+upscale workflows; moving a workflow to another host.
