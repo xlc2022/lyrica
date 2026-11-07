@@ -2,7 +2,7 @@
 # lyrica-update [--tag update/<name> | --check | --request | --resume]
 # Installs an update note's commit, run as root by lyrica-update.service when
 # lyricad writes a request (lyrica-update.path), or by hand. In order: fetch
-# with the read-only deploy key; refuse a tag that isn't annotated or whose
+# (over HTTPS from a public repository, otherwise with the read-only deploy key); refuse a tag that isn't annotated or whose
 # commit isn't on main; build the release as an unprivileged build user with
 # no access to her data; smoke-test it in a scratch home; drain lyricad (up to
 # 10 minutes, else undrain and change nothing); stop it; snapshot; switch;
@@ -146,13 +146,17 @@ fail() { # check name, then optional output (the build's last lines): the update
 }
 
 # --- Fetch, and the newest update note ---
-git_() { GIT_SSH_COMMAND="ssh -i $KEY -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$KNOWN" git --git-dir="$REPO" "$@"; }
+# Over HTTPS (a public repository) no key is used and nothing may prompt; over SSH, only the deploy key.
+git_() { GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=/bin/false GIT_SSH_COMMAND="ssh -i $KEY -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$KNOWN" git --git-dir="$REPO" "$@"; }
 fetch() {
   set_state fetching "$TAG"
-  [ -d "$REPO" ] || die "no $REPO: install.sh sets it up with the deploy key"
+  [ -d "$REPO" ] || die "no $REPO: install.sh sets it up"
   local err
-  err=$(git_ fetch --quiet --prune --prune-tags --force origin '+refs/heads/main:refs/heads/main' '+refs/tags/update/*:refs/tags/update/*' 2>&1) \
-    || fail "fetch" "$(tail -40 <<<"$err")"
+  if ! err=$(git_ fetch --quiet --prune --prune-tags --force origin '+refs/heads/main:refs/heads/main' '+refs/tags/update/*:refs/tags/update/*' 2>&1); then
+    # A repository that went private, or a deploy key not added yet: setting up the remote again picks the way in.
+    say "couldn't fetch from $(git_ remote get-url origin 2>/dev/null || echo origin): if the repository went private, run install.sh again (on NixOS, restart lyricad) and add the deploy key it prints"
+    fail "fetch" "$(tail -40 <<<"$err")"
+  fi
   local newest
   newest=$(git_ for-each-ref --sort=-creatordate --format='%(refname:short)' 'refs/tags/update/*' | while read -r t; do
     [ "$(git_ cat-file -t "refs/tags/$t")" = tag ] && git_ merge-base --is-ancestor "$t^{commit}" main && { echo "$t"; break; }
