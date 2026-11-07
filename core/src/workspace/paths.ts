@@ -7,11 +7,12 @@ import { cleanPath, overlaps } from "./settings.ts";
 /**
  * Never grantable: the built-in Caddy's runtime directory (sandboxes run as
  * lyricad's user, which is in its group, so a grant there would hand them
- * Caddy's admin socket), the releases, and the updater's state and snapshots
+ * Caddy's admin socket), the folder of lyricad's socket for terminal
+ * clients (lyrica owns it, and a sandbox there could reach her API), the releases, and the updater's state and snapshots
  * (root's; docs/daemon.md, "Updates"). Update requests are written inside
  * LYRICA_HOME, which is refused as the runtime directory.
  */
-export const NEVER_GRANTED = ["/run/lyrica-caddy", "/opt/lyrica", "/var/lib/lyrica-update", "/var/lib/lyrica-snapshots"];
+export const NEVER_GRANTED = ["/run/lyrica-caddy", "/run/lyrica-clients", "/opt/lyrica", "/var/lib/lyrica-update", "/var/lib/lyrica-snapshots"];
 
 /** The folders each user may grant to their threads, kept in self.db. */
 export class AllowedPaths {

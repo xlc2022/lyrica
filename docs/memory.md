@@ -471,6 +471,10 @@ both pools.
   chip with their current name, and saves it as the token. Typing `{user}`
   also works. Saving never turns a token into plain text, so a later rename
   still applies.
+- **A terminal is a second way.** `lyrica mem` searches, shows, edits,
+  restores, archives, deletes, notes, forgets a topic and exports through the
+  same routes (docs/daemon.md, "Terminal clients"). Its editor works on the
+  text in the process, with each mention as `{Name}`, and writes no file.
 - **Lineage follows the text.** Citations are read from the edited text, so
   adding or removing a citation updates "came from" and "used in". The search
   index is refreshed at the same moment.

@@ -77,6 +77,12 @@ export interface LyricadOptions {
   seed?: string;
   /** The Unix socket for local clients; false for none. Defaults to `<home>/lyricad.sock`. */
   socket?: string | false;
+  /**
+   * A second socket for `lyrica chat` and `lyrica mem` run by accounts in the
+   * `lyrica-clients` group (LYRICA_CLIENT_SOCKET). It is mode 0660 and takes
+   * its group from its folder, which is setgid `lyrica-clients`; they still log in.
+   */
+  clientSocket?: string;
   /** The built web UI. Defaults to `web/dist` in the repository. */
   webDir?: string;
   /** Where saved credentials live. Defaults to systemd credentials under `<home>/credentials`. */
@@ -271,6 +277,20 @@ export class Lyricad implements Drainable {
   private get codePath(): string { return join(this.opts.home, "setup-code"); }
   private get namePath(): string { return join(this.opts.home, "name"); }
 
+  /** A Unix socket serving the API, created with `mode` and no wider window. */
+  private async listenLocal(path: string, mode: number) {
+    rmSync(path, { force: true });
+    const server = createServer((req, res) => void this.handle(req, res));
+    const umask = process.umask(0o777 & ~mode);
+    try {
+      await new Promise<void>((resolve, reject) => { server.once("error", reject); server.listen(path, resolve); });
+    } finally {
+      process.umask(umask);
+    }
+    chmodSync(path, mode);
+    return server;
+  }
+
   /** Listens, then unseals a saved passphrase and unlocks if it is available. */
   async start(): Promise<void> {
     const tcp = createServer((req, res) => void this.handle(req, res, this.behind("builtin"), undefined, true));
@@ -290,6 +310,11 @@ export class Lyricad implements Drainable {
       }
       chmodSync(socket, 0o600);
       this.servers.push(local);
+    }
+    // Missing its folder (an install from before the group), lyricad still starts.
+    if (this.opts.clientSocket) {
+      await this.listenLocal(this.opts.clientSocket, 0o660).then((s) => this.servers.push(s),
+        (err: Error) => this.log(`the lyrica-clients socket ${this.opts.clientSocket} didn't open: ${firstLine(err)}`));
     }
     const updateSocket = this.opts.update?.socket === false ? undefined : this.opts.update?.socket ?? join(this.opts.home, "update.sock");
     if (updateSocket) this.servers.push(await listenUpdateSocket(updateSocket, this, this.log));
