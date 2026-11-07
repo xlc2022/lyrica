@@ -588,7 +588,8 @@ Fetching is done by the host's `fetch` service. It is the only part of
 the host that downloads, and nothing that sees prompts (host-api, the model
 servers) has a route out.
 
-- Sources: `huggingface`, `modelscope`, or `url` (https only).
+- Sources: `huggingface`, `modelscope`, or `url` (https only); and
+  `upload` for a file sent from the user's computer ("Uploads" below).
 - A gated repository's token travels in the `X-Hub-Token` header of the
   request that needs it. The host passes it to `fetch` for that request and
   never stores or logs it. It is sent only to that hub's own host
@@ -676,8 +677,8 @@ A **download**:
   "startedAt": "...", "finishedAt": null }
 ```
 
-- `state`: `queued`, `downloading`, `verifying`, `done`, `failed` or
-  `cancelled`. A download that lost its connection or met a busy server
+- `state`: `queued`, `downloading`, `uploading` (an upload, "Uploads"
+  below), `verifying`, `done`, `failed` or `cancelled`. A download that lost its connection or met a busy server
   stays `downloading` while it waits to try again (host/README.md,
   Downloads); it is `failed` only after five tries in a row get no further.
 - `verified`: `true` (checksum matched), `false` (no checksum was given; the
@@ -693,6 +694,34 @@ A **download**:
 - `DELETE /host/v1/downloads/<id>`: cancels an unfinished download and
   deletes its partial file, or clears a finished one from the list (a
   failed one's partial file is deleted then too).
+
+### Uploads
+
+A file from the user's own computer comes through Lyrica in pieces and is
+listed with the downloads (`source: "upload"`, no `url` or `repo`).
+
+- `POST /host/v1/uploads` `{ "name": "mine-Q4_K_M.gguf", "size": 30000000000 }`:
+  answers `201` with a download in state `uploading` and its `received`
+  bytes. Only `.gguf` and `.safetensors` names, with no folder, go
+  (`refused` otherwise); the file goes to `lyrica/upload/<name>`. Free space
+  is checked for the whole file (`no_space`). Asking again with the same
+  name and size while that upload is unfinished answers the same upload with
+  what has arrived, so a browser that lost its place carries on from there.
+  A name already on the host is `invalid` until that file is deleted.
+- `PUT /host/v1/uploads/<id>?offset=<bytes>`, body
+  `application/octet-stream`: the next piece, at most 64 MiB, starting at
+  `offset`, which must equal what has arrived (`in_use` otherwise, as it is
+  while another piece of the same upload is arriving). Nothing past the
+  file's size is kept (`invalid`). A piece cut off part way keeps what
+  arrived. Answers the download.
+- When the last byte arrives the upload is `verifying`: the file must be
+  what its name says (as a download), or it is deleted and `failed`. Then
+  it gets its real name and a line in the download record, `verified:
+  false` (there is no published checksum to compare with), and is `done`.
+- An `uploading` upload waits for its next piece as long as it is listed,
+  across restarts (a restart trims a part past its size, and checks one
+  whose last piece had arrived), and counts against free space until it is cancelled
+  (`DELETE /host/v1/downloads/<id>`, which deletes what arrived).
 
 ### The download record and deleting
 

@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, writeFileSync, statSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { fakeHost } from "../../core/test/fake-host.ts";
 import { fakeOpenAI } from "../../core/test/fake-openai.ts";
-import type { CleanupItem, EndpointInfo, HostStatus, HubTokenInfo, ModelsPage, LoginResponse, Me, ModelsNotice, OfferingInfo, Presets, MemoryDetail, MemoryHit, MemoryOverview, MemoryTag, State, ThreadSettings, ThreadSummary } from "../src/api.ts";
+import type { CleanupItem, EndpointInfo, HostDownload, HostStatus, HubTokenInfo, ModelsPage, LoginResponse, Me, ModelsNotice, OfferingInfo, Presets, MemoryDetail, MemoryHit, MemoryOverview, MemoryTag, State, ThreadSettings, ThreadSummary } from "../src/api.ts";
 import { browser, daemon, enc, localModel, login, runtime } from "./helpers.ts";
 
 describe("lyricad, locked", () => {
@@ -292,6 +292,36 @@ describe("hub tokens", () => {
     const page = (await ada.get<ModelsPage>(`${u}/models/page`)).body;
     expect(page.endpoints.find((e) => e.id === ep.id)).toMatchObject({ api: "host", state: "up" });
     expect(page.hosts).toEqual([{ endpointId: ep.id, status: expect.objectContaining({ state: "running" }) }]);
+  });
+});
+
+describe("model uploads", () => {
+  it("passes each piece on to the host as it came, and only for someone who manages the host", async () => {
+    const rt = await runtime();
+    const { base, logs } = await daemon(rt);
+    await browser(base).post("/api/unlock", { passphrase: "passphrase" });
+    const ada = await login(base, "ada", "pw");
+    const sam = await login(base, "sam", "pw2");
+    const u = `/api/u/${rt.ada.id}`;
+    const host = await fakeHost({ name: "lyrica-blackwell" });
+    const ep = (await ada.post<EndpointInfo>(`${u}/hosts`, { name: "blackwell", addresses: [host.address], code: host.newCode(), shared: true })).body;
+    // A shared host's uploads need an administrator.
+    expect((await sam.post(`/api/u/${rt.sam.id}/hosts/${ep.id}/uploads`, { name: "mine.gguf", size: 10 })).status).toBe(403);
+
+    const started = await ada.post<HostDownload>(`${u}/hosts/${ep.id}/uploads`, { name: "mine.gguf", size: 10 });
+    expect(started.body).toMatchObject({ source: "upload", state: "uploading", received: 0 });
+    const id = started.body.id;
+    const send = (offset: number, text: string) => ada.call<HostDownload>("PUT", `${u}/hosts/${ep.id}/uploads/${id}?offset=${offset}`, Buffer.from(text));
+    expect((await send(0, "GGUFabc")).body).toMatchObject({ received: 7 });
+    // Out of step: the host's refusal comes back as it said it.
+    expect(await send(0, "GGUF")).toMatchObject({ status: 409, body: { error: "The upload has 7 bytes; send from there." } });
+    expect((await send(7, "def")).body).toMatchObject({ received: 10, state: "done" });
+    expect(host.pieces).toEqual([
+      { id, offset: 0, text: "GGUFabc", type: "application/octet-stream" },
+      { id, offset: 7, text: "def", type: "application/octet-stream" },
+    ]);
+    expect((await ada.call("PUT", `${u}/hosts/${ep.id}/uploads/${id}?offset=-1`, Buffer.from("x"))).status).toBe(400);
+    expect(logs.join("\n")).not.toContain("GGUFabc");
   });
 });
 

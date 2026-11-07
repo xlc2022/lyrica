@@ -8,6 +8,9 @@ import type { TextModel } from "./library.ts";
 import { parseRecipe, parseRepo, repoOf, type HubName, type Recommended } from "./recommended.ts";
 import type { Runtime } from "./runtime.ts";
 
+/** The most one upload request may carry (fetch holds the same limit). */
+const UPLOAD_PIECE = 64 * 1024 * 1024;
+
 export interface RecordEntry {
   path: string;
   size: number;
@@ -39,14 +42,15 @@ export class Downloads {
     this.log = o.log;
   }
 
-  private async call(path: string, init: { method?: string; body?: unknown } = {}): Promise<any> {
+  private async call(path: string, init: { method?: string; body?: unknown; stream?: IncomingMessage } = {}): Promise<any> {
     let res: Response;
     try {
       res = await fetch(this.url + path, {
         method: init.method ?? (init.body === undefined ? "GET" : "POST"),
-        headers: { "content-type": "application/json" },
-        body: init.body === undefined ? undefined : JSON.stringify(init.body),
-      });
+        headers: { "content-type": init.stream ? "application/octet-stream" : "application/json" },
+        body: init.stream ? (init.stream as unknown as ReadableStream) : init.body === undefined ? undefined : JSON.stringify(init.body),
+        ...(init.stream ? { duplex: "half" } : {}),
+      } as RequestInit);
     } catch {
       throw new HostError(503, "unavailable", "The download service isn't running.");
     }
@@ -60,8 +64,9 @@ export class Downloads {
     const [{ files }, { downloads }] = await Promise.all([this.call("/record"), this.call("/downloads")]);
     this.runtime.record = new Map((files as RecordEntry[]).map((r) => [r.path, r]));
     const going = (downloads as { state: string; path: string }[]).filter((d) => ["queued", "downloading", "verifying"].includes(d.state));
+    // An upload waiting for its next piece may wait for days: it holds its path, but isn't watched.
     this.active = going.length;
-    this.inFlight = new Set(going.map((d) => d.path));
+    this.inFlight = new Set([...going, ...(downloads as { state: string; path: string }[]).filter((d) => d.state === "uploading")].map((d) => d.path));
     const finished = (downloads as { id: string; state: string }[]).filter((d) => d.state === "done" && !this.done.has(d.id));
     if (finished.length) {
       for (const d of finished) this.done.add(d.id);
@@ -207,6 +212,26 @@ export class Downloads {
       if (!SOURCES.includes(body.source as string)) throw invalid("source must be huggingface, modelscope or url.");
       // A hub token is for that hub: never sent along with a link.
       sendJson(res, 202, await this.request(body, body.source === "url" ? undefined : this.token(req)));
+      return true;
+    }
+    if (path === "/host/v1/uploads" && method === "POST") {
+      const body = await readJson(req);
+      onlyFields(body, ["name", "size"]);
+      const made = await this.call("/uploads", { body });
+      this.log("upload started", {});
+      await this.refresh().catch(() => {});
+      sendJson(res, 201, made);
+      return true;
+    }
+    const piece = path.match(/^\/host\/v1\/uploads\/([0-9a-f-]{36})$/);
+    if (piece && method === "PUT") {
+      const offset = url.searchParams.get("offset") ?? "";
+      if (!/^\d{1,16}$/.test(offset)) throw invalid("offset must be a byte count.");
+      if (Number(req.headers["content-length"] ?? 0) > UPLOAD_PIECE) throw invalid("A piece may be at most 64 MiB.");
+      // Streamed straight on to fetch, which alone writes the models folder and holds the size limits.
+      const d = await this.call(`/uploads/${piece[1]}?offset=${offset}`, { method: "PUT", stream: req });
+      if (d.state !== "uploading") await this.refresh().catch(() => {});
+      sendJson(res, 200, d);
       return true;
     }
     if (path === "/host/v1/downloads" && method === "GET") {

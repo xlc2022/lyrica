@@ -25,6 +25,14 @@ describe("a download in words", () => {
     });
   });
 
+  it("says an upload comes from your computer, and is paused while no tab sends it", () => {
+    const up = download({ source: "upload", repo: null, path: "lyrica/upload/mine.gguf", state: "uploading" });
+    expect(downloadWords(up, "box")).toMatchObject({ label: "mine.gguf", from: "from your computer to box", progress: { phase: "Uploading" }, percent: 25 });
+    expect(downloadWords(up, "box", true).progress?.phase).toBe("Paused");
+    expect(downloadWords({ ...up, state: "verifying" }, "box").progress?.phase).toBe("Checking the file");
+    expect(downloadWords({ ...up, state: "done", verified: false }, "box").ending).toEqual({ dot: "up", word: "Uploaded" });
+  });
+
   it("says how it ended", () => {
     expect(downloadWords(download({ state: "done", verified: true }), "box").ending).toEqual({ dot: "up", word: "Verified" });
     expect(downloadWords(download({ state: "cancelled" }), "box").ending).toEqual({ dot: "none", word: "Cancelled", note: "Nothing was kept." });

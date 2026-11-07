@@ -272,6 +272,12 @@ subfolder, under `lyrica/<source>/<repository>/`.
   partial file too, and on start fetch deletes any partial file no listed
   download can resume. A sharded model appears once all its
   shards are here.
+- **Uploads**: a GGUF or safetensors file from the user's computer comes
+  through Lyrica in pieces of at most 64 MiB to `lyrica/upload/<name>`,
+  written by fetch like a download, and is listed with the downloads. It
+  waits for its next piece across restarts until it is whole or cancelled,
+  then is checked like a download and recorded, unverified (API.md,
+  "Uploads").
 - The **download record** (`GET /host/v1/files`) lists each file downloaded,
   with its size and checksum. `DELETE /host/v1/files` removes only a file in
   it, inside `lyrica/` with no symlink on the way, unchanged since it was

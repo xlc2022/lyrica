@@ -9,7 +9,7 @@ import { CloudImageControls } from "./CloudImageControls.tsx";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { get, post, put, u, type DeleteCopy, type GroupInfo, type HostStarter, type HubTokenInfo, type ModelsPage, type ModelUse, type OfferingInfo, type RecipeAction } from "./api.ts";
 import { fileChoices, size } from "./downloads.ts";
-import { GatedNote, HostField, LinkFields, linkProblem, managedHosts, RepoField, Size, startDownload, tokenFor, useLookup, wayBack } from "./Downloads.tsx";
+import { GatedNote, HostField, LinkFields, linkProblem, managedHosts, RepoField, Size, startDownload, startUploads, tokenFor, UploadFields, uploadProblem, useLookup, wayBack } from "./Downloads.tsx";
 import { Icon } from "./icons.tsx";
 import {
   addableRoles, archWord, defaultsWords, deletePlan, fileName, missingOf, precisionWord, recipeFiles, recipeRows, ROLE_WORD, roleWord, slotWord, starredFirst, withLora,
@@ -834,10 +834,10 @@ export function ImageReview({ ctx }: { ctx: MCtx }) {
   );
 }
 
-/* ---- Download image model: a starter recipe, files from Hugging Face, a link, or a scan of the host's models folder ---- */
+/* ---- Download image model: a starter recipe, files from Hugging Face, a link, a scan of the host's models folder, or files from this computer ---- */
 
-type ImageSource = "starters" | "huggingface" | "url" | "scan";
-const SOURCES: [ImageSource, string][] = [["starters", "Starter recipes"], ["huggingface", "Hugging Face"], ["url", "Link"], ["scan", "Scan folder"]];
+type ImageSource = "starters" | "huggingface" | "url" | "scan" | "upload";
+const SOURCES: [ImageSource, string][] = [["starters", "Starter recipes"], ["huggingface", "Hugging Face"], ["url", "Link"], ["scan", "Scan folder"], ["upload", "Upload"]];
 
 /** A starter's parts not on the host yet, and their bytes. */
 const toFetch = (s: HostStarter) => { const parts = s.parts.filter((p) => !p.present); return { parts, bytes: parts.reduce((n, p) => n + (p.size ?? 0), 0) }; };
@@ -886,6 +886,7 @@ export function DownloadImage({ ctx }: { ctx: MCtx }) {
   const [sha, setSha] = useState("");
   const [problem, setProblem] = useState("");
   const [scanned, setScanned] = useState<HostLibrary>();
+  const [uploads, setUploads] = useState<File[]>([]);
   const rows = useRowState();
   const [run, busy, error] = useAction();
   const [back] = useState(() => wayBack(href({ page: "models", userId, tab: "images" })));
@@ -905,6 +906,12 @@ export function DownloadImage({ ctx }: { ctx: MCtx }) {
   });
   const download = () => {
     if (!host) return;
+    if (source === "upload") {
+      const why = uploadProblem(uploads, host.status!.modelsFolder.free, host.ep.name);
+      setProblem(why);
+      if (!why) void run(async () => { await startUploads(userId, host.ep.id, uploads); go({ page: "models", userId, tab: "downloads" }); });
+      return;
+    }
     if (source === "starters") {
       const s = starters.data?.[0].find((x) => x.id === starter);
       if (!s) { setProblem("Choose a starter recipe."); return; }
@@ -986,6 +993,7 @@ export function DownloadImage({ ctx }: { ctx: MCtx }) {
             <ErrorText error={starters.error} />
             {starters.data && <Starters list={starters.data[0]} added={starters.data[1]} picked={starter} setPicked={(id) => { setStarter(id); setProblem(""); }} />}
           </>}
+          {source === "upload" && <UploadFields files={uploads} setFiles={(f) => { setUploads(f); setProblem(""); }} free={host.status!.modelsFolder.free} />}
           {source === "url" && <LinkFields link={link} setLink={(t) => { setLink(t); setProblem(""); }} sha={sha} setSha={setSha} />}
           {source === "scan" && <>
             <div className="row"><button type="button" disabled={busy} title={host.status!.modelsFolder.path} onClick={() => void scan()}>Scan now</button></div>
@@ -1000,7 +1008,7 @@ export function DownloadImage({ ctx }: { ctx: MCtx }) {
           </>}
           <ErrorText error={problem || (source === "huggingface" ? look.error : "") || error} />
           <div className="row">
-            {source !== "scan" && <button type="button" className="primary" disabled={busy || look.busy} onClick={download}>{source === "starters" ? "Add model" : "Download"}</button>}
+            {source !== "scan" && <button type="button" className="primary" disabled={busy || look.busy} onClick={download}>{source === "starters" ? "Add model" : source === "upload" ? "Upload" : "Download"}</button>}
             <button type="button" onClick={() => { location.hash = back; }}>{source === "scan" ? "Back" : "Cancel"}</button>
           </div>
         </div>

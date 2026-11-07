@@ -2,7 +2,8 @@
 // size and checksum as the hub publishes them.
 import { DownloadError, type Net } from "./net.ts";
 
-export type Source = "huggingface" | "modelscope" | "url";
+/** Where a file came from: a hub, a link, or the user's own computer through Lyrica (`upload`). */
+export type Source = "huggingface" | "modelscope" | "url" | "upload";
 
 export interface Card {
   baseModel: string[];

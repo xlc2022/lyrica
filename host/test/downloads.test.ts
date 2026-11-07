@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Readable } from "node:stream";
 import { afterEach, describe, expect, it } from "vitest";
 import { Downloads } from "../src/downloads.ts";
 import { Downloader } from "../src/fetch/downloads.ts";
@@ -60,7 +61,7 @@ async function stack(opts: Parameters<typeof fakeHub>[0] = {}) {
   });
   const me = lyrica();
   const pinned = await pair(h.tls, me, code);
-  const api = (path: string, init: { method?: string; body?: unknown; headers?: Record<string, string> } = {}) =>
+  const api = (path: string, init: { method?: string; body?: unknown; raw?: Buffer; headers?: Record<string, string> } = {}) =>
     call({ port: h.tls, path, identity: me, pinned, ...init });
   return { ...h, hub, models, lines, api, fetchUrl, backend, setCallers: (c: string[]) => (callers = c) };
 }
@@ -160,6 +161,76 @@ describe("downloads through host-api", () => {
     await s.api("/host/v1/scan", { method: "POST" });
     const asked = await s.api("/host/v1/models/lookup", { body: { model: "found.gguf" } });
     expect(asked.body.error.code).toBe("need_repo");
+  });
+
+  it("takes an upload in pieces, carries on from what arrived, and offers the model once it's whole", async () => {
+    const s = await stack();
+    const file = Buffer.concat([ggufBytes({ "general.architecture": "llama", "general.basename": "Mine", "tokenizer.ggml.model": "gpt2" }), Buffer.alloc(3000, 7)]);
+    const piece = (id: string, offset: number, bytes: Buffer) => s.api(`/host/v1/uploads/${id}?offset=${offset}`, { method: "PUT", raw: bytes, headers: { "content-type": "application/octet-stream" } });
+
+    expect((await s.api("/host/v1/uploads", { body: { name: "model.bin", size: 10 } })).body.error.code).toBe("refused");
+    expect((await s.api("/host/v1/uploads", { body: { name: "../x.gguf", size: 10 } })).body.error.code).toBe("invalid");
+    const started = await s.api("/host/v1/uploads", { body: { name: "mine.gguf", size: file.length } });
+    expect(started.status).toBe(201);
+    expect(started.body).toMatchObject({ source: "upload", state: "uploading", path: "lyrica/upload/mine.gguf", size: file.length, received: 0 });
+    const id = started.body.id;
+
+    expect((await piece(id, 0, file.subarray(0, 1000))).body).toMatchObject({ state: "uploading", received: 1000 });
+    // A piece from the wrong place is refused; starting again with the same name and size says where it stands.
+    expect((await piece(id, 0, file.subarray(0, 1000))).body.error.code).toBe("in_use");
+    expect((await s.api("/host/v1/uploads", { body: { name: "mine.gguf", size: file.length } })).body).toMatchObject({ id, received: 1000 });
+    // Never past the file's size.
+    expect((await piece(id, 1000, Buffer.alloc(file.length))).body.error.code).toBe("invalid");
+    expect((await piece(id, 1000, file.subarray(1000))).status).toBe(200);
+    const [done] = await finished(s.api);
+    expect(done).toMatchObject({ id, state: "done", verified: false, size: file.length });
+
+    await s.host.downloads!.refresh();
+    expect((await s.api("/host/v1/models")).body.models).toEqual([expect.objectContaining({ id: "lyrica/upload/mine.gguf", downloaded: true })]);
+    expect((await s.api("/host/v1/files")).body.files).toEqual([expect.objectContaining({ path: "lyrica/upload/mine.gguf", source: "upload", verified: false })]);
+    expect((await s.api("/host/v1/uploads", { body: { name: "mine.gguf", size: file.length } })).body.error.message).toContain("already on this host");
+    // It is deleted like any download.
+    expect((await s.api(`/host/v1/files?path=${encodeURIComponent("lyrica/upload/mine.gguf")}`, { method: "DELETE" })).body.deleted).toBe("lyrica/upload/mine.gguf");
+  });
+
+  it("deletes an upload that isn't what its name says, and cancels one part way", async () => {
+    const s = await stack();
+    const fake = Buffer.alloc(500, 1);
+    const bad = await s.api("/host/v1/uploads", { body: { name: "fake.gguf", size: fake.length } });
+    await s.api(`/host/v1/uploads/${bad.body.id}?offset=0`, { method: "PUT", raw: fake, headers: { "content-type": "application/octet-stream" } });
+    const [failed] = await finished(s.api);
+    expect(failed).toMatchObject({ state: "failed", error: "The file isn't a valid model file, so it was deleted." });
+    expect(readdirSync(join(s.models, "lyrica", "upload"))).toEqual([]);
+
+    const half = await s.api("/host/v1/uploads", { body: { name: "half.safetensors", size: 1000 } });
+    await s.api(`/host/v1/uploads/${half.body.id}?offset=0`, { method: "PUT", raw: Buffer.alloc(400), headers: { "content-type": "application/octet-stream" } });
+    await s.api(`/host/v1/downloads/${half.body.id}`, { method: "DELETE" });
+    expect((await s.api(`/host/v1/downloads/${half.body.id}`)).body.state).toBe("cancelled");
+    expect(readdirSync(join(s.models, "lyrica", "upload"))).toEqual([]);
+  });
+
+  it("carries an upload on across a restart, and checks one whose last piece arrived before it", async () => {
+    const models = mkdtempSync(join(tmpdir(), "lyrica-up-models-"));
+    const data = mkdtempSync(join(tmpdir(), "lyrica-up-data-"));
+    const net = new Net({ allowed: () => false });
+    const make = () => new Downloader({ models, data, net, hubs: { huggingface: huggingFace(net, "https://x"), modelscope: modelScope(net, "https://x") }, log: () => {}, free: () => 1e12 });
+    const file = Buffer.concat([ggufBytes({ "general.architecture": "llama", "tokenizer.ggml.model": "gpt2" }), Buffer.alloc(2000)]);
+    const first = make();
+    const half = first.startUpload({ name: "half.gguf", size: file.length });
+    await first.receivePiece(half.id, 0, Readable.from([file.subarray(0, 1000)]));
+    const whole = first.startUpload({ name: "whole.gguf", size: file.length });
+    await first.receivePiece(whole.id, 0, Readable.from([file.subarray(0, 1000)]));
+    // The stop came after the last piece was written, past the file's size, before anything else.
+    const part = join(models, "lyrica", "upload", ".whole.gguf.lyrica-part");
+    writeFileSync(part, Buffer.concat([file, Buffer.alloc(10)]));
+
+    const again = make();
+    expect(again.get(half.id)).toMatchObject({ state: "uploading", received: 1000 });
+    await again.receivePiece(half.id, 1000, Readable.from([file.subarray(1000)]));
+    for (const until = Date.now() + 10_000; Date.now() < until && [half.id, whole.id].some((id) => again.get(id)!.state !== "done"); ) await new Promise((r) => setTimeout(r, 20));
+    expect(again.get(half.id)).toMatchObject({ state: "done", received: file.length });
+    expect(again.get(whole.id)).toMatchObject({ state: "done", received: file.length });
+    expect(readFileSync(join(models, "lyrica", "upload", "whole.gguf")).equals(file)).toBe(true);
   });
 
   it("fetch answers only host-api", async () => {

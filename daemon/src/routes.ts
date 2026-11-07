@@ -32,6 +32,9 @@ import { redactUrl, unredactUrl } from "./redact.ts";
 import { isPdf, VIEW_LIMIT, viewHeaders, viewKind, withConsole } from "./file-view.ts";
 import { relinkFiles, type Relinked } from "./relink.ts";
 
+/** The most one upload piece may carry, as the host allows (host/API.md, "Uploads"). */
+const UPLOAD_PIECE = 64 * 1024 * 1024;
+
 const DISPLAY_DEFAULTS: Api.Display = { theme: "device", showGeneral: true, showPrivate: true, showHidden: false, sort: "date", projects: "all", checklists: true };
 const THREAD_SORTS: Api.ThreadSort[] = ["date", "activity", "started", "title", "groups"];
 const DISPLAY_DEFAULTS_ALL: Api.Display = { ...DISPLAY_DEFAULTS, showPrivate: true, showGeneral: true, showHidden: true };
@@ -496,9 +499,16 @@ export function apiRoutes(d: Lyricad): Route[] {
       const result = await s().models.downloads(d.userFor(r), r.params.endpointId!);
       if (r.query.get("preview") !== "1") return result;
       const downloads = result.downloads as Api.HostDownload[];
-      const active = downloads.filter((x) => ["queued", "downloading", "verifying"].includes(x.state));
+      const active = downloads.filter((x) => ["queued", "downloading", "uploading", "verifying"].includes(x.state));
       const finished = downloads.filter((x) => !active.includes(x)).sort((a, b) => b.startedAt.localeCompare(a.startedAt));
       return { downloads: [...active, ...finished.slice(0, 1)], finishedTotal: finished.length };
+    }),
+    route("POST", `${u}/hosts/:endpointId/uploads`, async (r) => s().models.startUpload(d.userFor(r), r.params.endpointId!, await r.json<Api.UploadInput>())),
+    route("PUT", `${u}/hosts/:endpointId/uploads/:uploadId`, async (r) => {
+      const offset = Number(r.query.get("offset"));
+      if (!Number.isSafeInteger(offset) || offset < 0) throw new HttpError(400, "offset is a byte count");
+      // One piece is held in memory at a time per request, never written to disk here.
+      return s().models.uploadPiece(d.userFor(r), r.params.endpointId!, r.params.uploadId!, offset, await r.bytes(UPLOAD_PIECE));
     }),
     route("DELETE", `${u}/hosts/:endpointId/downloads/:downloadId`, async (r) => s().models.cancelDownload(d.userFor(r), r.params.endpointId!, r.params.downloadId!)),
     route("GET", `${u}/hosts/:endpointId/images`, async (r) => s().models.imageLibrary(d.userFor(r).id, r.params.endpointId!)),
@@ -622,7 +632,7 @@ export function apiRoutes(d: Lyricad): Route[] {
       const hosts = s().models.endpoints(user.id).filter((ep) => ep.api === "host" && (!ep.shared || user.admin));
       const lists = await Promise.all(hosts.map(async (ep) => {
         const result = await s().models.downloads(user, ep.id);
-        return (result.downloads as Api.HostDownload[]).filter((x) => !["queued", "downloading", "verifying"].includes(x.state))
+        return (result.downloads as Api.HostDownload[]).filter((x) => !["queued", "downloading", "uploading", "verifying"].includes(x.state))
           .filter((x) => [ep.name, x.path, x.source, x.repo, x.state, x.startedAt, x.error].join(" ").toLowerCase().includes(opts.q.toLowerCase()))
           .map((download) => ({ endpointId: ep.id, download }));
       }));

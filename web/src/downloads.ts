@@ -15,7 +15,7 @@ export interface HubFiles {
 
 export const HUB_WORD: Record<Hub, string> = { huggingface: "Hugging Face", modelscope: "ModelScope" };
 
-export const isRunning = (d: Pick<HostDownload, "state">) => d.state === "queued" || d.state === "downloading" || d.state === "verifying";
+export const isRunning = (d: Pick<HostDownload, "state">) => d.state === "queued" || d.state === "downloading" || d.state === "uploading" || d.state === "verifying";
 
 /** A size as "4.7 GB", "1.25 TB" or, under a tenth of a gigabyte, "180 MB"; nothing yet is "0 GB". */
 export function size(bytes: number): string {
@@ -38,7 +38,7 @@ export function speed(bytesPerSecond: number): string {
 export function speeds(downloads: Pick<HostDownload, "id" | "state" | "received">[], seen: Map<string, { received: number; at: number; rate?: number }>, at: number): Map<string, number> {
   const out = new Map<string, number>();
   for (const d of downloads) {
-    if (d.state !== "downloading") { seen.delete(d.id); continue; }
+    if (d.state !== "downloading" && d.state !== "uploading") { seen.delete(d.id); continue; }
     const last = seen.get(d.id);
     let rate = last?.rate;
     if (last && at > last.at && d.received >= last.received) {
@@ -51,30 +51,33 @@ export function speeds(downloads: Pick<HostDownload, "id" | "state" | "received"
   return out;
 }
 
-const PHASE = { queued: "Queued", downloading: "Downloading", verifying: "Checking the checksum" } as const;
+const PHASE = { queued: "Queued", downloading: "Downloading", uploading: "Uploading", verifying: "Checking the checksum" } as const;
 
 /** How a finished download ended: its dot (§5's colours; none is grey) and word, and what follows the word, muted. */
 export interface Ending { dot: "up" | "away" | "down" | "none"; word: string; note?: string }
 
 /**
  * A download in words: its label (the file's name), "from <source> to <host>", and either its progress ("<phase> ·
- * <GB> of <GB>", the sizes apart so the page sets them in mono, and the percent for the bar) or how it ended.
+ * <GB> of <GB>", the sizes apart so the page sets them in mono, and the percent for the bar) or how it ended. An upload
+ * comes "from your computer"; one no tab is sending now (`paused`) is Paused.
  */
-export function downloadWords(d: HostDownload, host: string): {
+export function downloadWords(d: HostDownload, host: string, paused = false): {
   label: string; from: string; progress?: { phase: string; got: string; of?: string }; percent?: number; ending?: Ending;
 } {
   const label = d.path.split("/").pop() || d.path;
-  const site = d.source === "url" ? (d.url ? hostname(d.url) : d.path.split("/")[2]) || "a link" : HUB_WORD[d.source];
+  const site = d.source === "upload" ? "your computer" : d.source === "url" ? (d.url ? hostname(d.url) : d.path.split("/")[2]) || "a link" : HUB_WORD[d.source];
   const from = `from ${site} to ${host}`;
   if (isRunning(d)) {
+    const phase = d.state === "uploading" && paused ? "Paused" : d.source === "upload" && d.state === "verifying" ? "Checking the file" : PHASE[d.state as keyof typeof PHASE];
     return {
       label, from,
-      progress: { phase: PHASE[d.state as keyof typeof PHASE], got: size(d.received), ...(d.size ? { of: size(d.size) } : {}) },
+      progress: { phase, got: size(d.received), ...(d.size ? { of: size(d.size) } : {}) },
       ...(d.size ? { percent: Math.min(100, Math.floor((d.received / d.size) * 100)) } : {}),
     };
   }
   if (d.state === "cancelled") return { label, from, ending: { dot: "none", word: "Cancelled", note: "Nothing was kept." } };
   if (d.state === "failed") return { label, from, ending: { dot: "down", word: "Failed", ...(d.error ? { note: d.error } : {}) } };
+  if (d.source === "upload") return { label, from, ending: { dot: "up", word: "Uploaded" } };
   return { label, from, ending: d.verified ? { dot: "up", word: "Verified" } : { dot: "away", word: "Unverified", note: "no checksum given" } };
 }
 
