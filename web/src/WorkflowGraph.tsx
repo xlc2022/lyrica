@@ -1,8 +1,7 @@
 // Edit workflow's Graph view (docs/ux.md §6, "Image models, recipes and parts"): a custom workflow's nodes and links
 // drawn as ComfyUI draws them. On a wide screen nodes move, their settings are edited on them, links are drawn from an
-// output to an input, nodes are
-// added from the host's node list and deleted; on a phone it only shows the graph. Every save is still checked by the
-// host, so nothing drawn here can add a node that writes files. Loaded only when the Graph view opens.
+// output to an input, nodes are added from the host's node list and deleted; on a phone it only shows the graph. Every
+// save is still checked by the host, so nothing drawn here can add a node that writes files. Loaded only when the Graph view opens.
 import "@xyflow/react/dist/style.css";
 import {
   Background, Controls, Handle, Position, ReactFlow, ReactFlowProvider, useReactFlow,
