@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { request } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -150,6 +150,17 @@ describe("Administration's updates API", () => {
     rmSync(request);
     writeFileSync(join(state, "state.json"), JSON.stringify({ state: "failed", since: "2026-10-12T00:00:00Z", error: "fetch" }));
     expect((await ada.post<Updates>(`${u}/rollback`, { commit: "bbbbbbb" })).body.state).toMatchObject({ state: "draining", commit: "bbbbbbb" });
+    // A waiting request's since is when it was written, so the page can tell the updater hasn't started.
+    utimesSync(request, new Date("2026-10-12T01:00:00Z"), new Date("2026-10-12T01:00:00Z"));
+    expect((await ada.get<Updates>(u)).body.state.since).toBe("2026-10-12T01:00:00.000Z");
+    rmSync(request);
+
+    // An update's steps pass through, and a failure's output only while failed.
+    const steps = [{ step: "fetching", started: "2026-10-12T02:00:00Z", ended: "2026-10-12T02:00:05Z" }, { step: "building", started: "2026-10-12T02:00:05Z", ended: "2026-10-12T02:03:00Z", failed: true }];
+    writeFileSync(join(state, "state.json"), JSON.stringify({ state: "failed", since: "2026-10-12T02:03:00Z", tag: "update/2026-10-12", error: "build", steps, output: "npm error" }));
+    expect((await ada.get<Updates>(u)).body.state).toMatchObject({ state: "failed", error: "build", steps, output: "npm error" });
+    writeFileSync(join(state, "state.json"), JSON.stringify({ state: "idle", since: "2026-10-12T02:03:00Z", output: "old" }));
+    expect((await ada.get<Updates>(u)).body.state).toEqual({ state: "idle", since: "2026-10-12T02:03:00Z" });
   });
 });
 

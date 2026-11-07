@@ -138,8 +138,10 @@ case "$ACTION" in
   *) die "refused an unknown request" ;;
 esac
 
-fail() { # check name: the update stops here, and the running release is untouched
+fail() { # check name, then optional output (the build's last lines): the update stops here, and the running release is untouched
   set_state failed "$TAG" "$COMMIT" "$1"
+  # Administration shows the output in a block: build and check output, never her data.
+  [ -z "${2:-}" ] || write_json "$UPDATE/state.json" --arg o "$2" '.output = ($o | .[-8000:])'
   die "update ${TAG:-} failed: $1"
 }
 
@@ -148,8 +150,9 @@ git_() { GIT_SSH_COMMAND="ssh -i $KEY -o IdentitiesOnly=yes -o StrictHostKeyChec
 fetch() {
   set_state fetching "$TAG"
   [ -d "$REPO" ] || die "no $REPO: install.sh sets it up with the deploy key"
-  git_ fetch --quiet --prune --prune-tags --force origin '+refs/heads/main:refs/heads/main' '+refs/tags/update/*:refs/tags/update/*' \
-    || fail "fetch"
+  local err
+  err=$(git_ fetch --quiet --prune --prune-tags --force origin '+refs/heads/main:refs/heads/main' '+refs/tags/update/*:refs/tags/update/*' 2>&1) \
+    || fail "fetch" "$(tail -40 <<<"$err")"
   local newest
   newest=$(git_ for-each-ref --sort=-creatordate --format='%(refname:short)' 'refs/tags/update/*' | while read -r t; do
     [ "$(git_ cat-file -t "refs/tags/$t")" = tag ] && git_ merge-base --is-ancestor "$t^{commit}" main && { echo "$t"; break; }
@@ -180,13 +183,13 @@ build_debian() {
   rm -rf -- "$work"; mkdir -p "$work/src" "$work/home"
   git_ archive "$COMMIT" | tar -x -C "$work/src"
   if [ -n "${LYRICA_UPDATE_BUILD:-}" ]; then
-    "$LYRICA_UPDATE_BUILD" "$work/src" || return 1  # tests: a stand-in for npm
+    "$LYRICA_UPDATE_BUILD" "$work/src" >"$work/build.log" 2>&1  # tests: a stand-in for npm
   else
     chown -R "$BUILD_USER:" "$work"
     runuser -u "$BUILD_USER" -- env -i HOME="$work/home" PATH=/usr/local/bin:/usr/bin:/bin npm_config_cache="$work/home/.npm" \
       sh -c 'cd "$1" && npm ci --no-audit --no-fund --loglevel=error && npm run build --silent && npm prune --omit=dev --no-audit --no-fund --loglevel=error' \
-      sh "$work/src" >"$work/build.log" 2>&1 || { tail -20 "$work/build.log" >&2; return 1; }
-  fi
+      sh "$work/src" >"$work/build.log" 2>&1
+  fi || { OUTPUT=$(tail -40 "$work/build.log"); printf '%s\n' "$OUTPUT" >&2; return 1; }
   (cd "$work/src" && ${LYRICA_NODE:-node} bin/lyrica version --json) \
     | jq --arg c "$COMMIT" --arg t "$TAG" --arg at "$(now)" '{commit: $c, tag: $t, builtAt: $at, version, schema, minReader}' >"$work/src/RELEASE.json" \
     || return 1
@@ -203,7 +206,8 @@ build_nix() {
   local out
   # On the host's nixpkgs (the module's LYRICA_NIXPKGS), so Node is the one in the sandbox closure.
   local nixpkgs=(); [ -n "${LYRICA_NIXPKGS:-}" ] && nixpkgs=(--override-input nixpkgs "path:$LYRICA_NIXPKGS")
-  out=$(nix --extra-experimental-features "nix-command flakes" build --no-link --print-out-paths "${nixpkgs[@]}" "git+file://$REPO?rev=$COMMIT#lyrica") || return 1
+  out=$(nix --extra-experimental-features "nix-command flakes" build --no-link --print-out-paths "${nixpkgs[@]}" "git+file://$REPO?rev=$COMMIT#lyrica" 2>"$UPDATE/build.log") \
+    || { OUTPUT=$(tail -40 "$UPDATE/build.log"); printf '%s\n' "$OUTPUT" >&2; return 1; }
   # The package records no commit (so an unchanged one isn't rebuilt): RELEASE.json goes beside it.
   local info="$UPDATE/releases/$COMMIT"
   mkdir -p "$info"
@@ -213,15 +217,16 @@ build_nix() {
   NIX_OUT=$out
 }
 set_state building "$TAG" "$COMMIT"
-if [ -n "$NIX" ]; then build_nix || fail "build"; REL_PATH="$UPDATE/releases/$COMMIT"; BIN="$NIX_OUT/bin/lyrica"
-else build_debian || fail "build"; REL_PATH=$(release_dir "$COMMIT"); BIN="$REL_PATH/bin/lyrica"; fi
+OUTPUT=
+if [ -n "$NIX" ]; then build_nix || fail "build" "$OUTPUT"; REL_PATH="$UPDATE/releases/$COMMIT"; BIN="$NIX_OUT/bin/lyrica"
+else build_debian || fail "build" "$OUTPUT"; REL_PATH=$(release_dir "$COMMIT"); BIN="$REL_PATH/bin/lyrica"; fi
 add_release "$COMMIT" "$REL_PATH"
 INFO=$(cat "$REL_PATH/RELEASE.json")
 
 # --- Smoke test: a scratch home and a test user, never her data ---
 set_state testing "$TAG" "$COMMIT"
 if [ -n "${LYRICA_UPDATE_SMOKE:-}" ]; then
-  "$LYRICA_UPDATE_SMOKE" "$BIN" || fail "smoke test"
+  out=$("$LYRICA_UPDATE_SMOKE" "$BIN" 2>&1) || fail "smoke test" "$(tail -40 <<<"$out")"
 else
   SCRATCH=$(mktemp -d /tmp/lyrica-smoke.XXXXXX)
   chown "$BUILD_USER:" "$SCRATCH"
@@ -229,7 +234,7 @@ else
   sandbox=(); for v in LYRICA_SANDBOX_TOOLS LYRICA_SANDBOX_CLOSURE; do [ -n "${!v:-}" ] && sandbox+=("$v=${!v}"); done
   if ! out=$(runuser -u "$BUILD_USER" -- env -i HOME="$SCRATCH" PATH="${LYRICA_SMOKE_PATH:-/usr/local/bin:/usr/bin:/bin}" "${sandbox[@]}" "$BIN" smoke-test "$SCRATCH/home" 2>&1); then
     rm -rf -- "$SCRATCH"
-    fail "smoke test: $(grep '^FAIL' <<<"$out" | sed 's/:.*//; s/^FAIL *//' | paste -sd, -)"
+    fail "smoke test: $(grep '^FAIL' <<<"$out" | sed 's/:.*//; s/^FAIL *//' | paste -sd, -)" "$(tail -40 <<<"$out")"
   fi
   rm -rf -- "$SCRATCH"
 fi

@@ -1,7 +1,9 @@
 // Administration → Updates (docs/ux.md §6 "Updates"): the running version, the newest update note, Update as the one
-// primary, the updater's state as a dot and a word, and the kept releases with Roll back behind each row's ⋯.
+// primary, the updater's state as a dot and a word (or, for an update, its steps in a box), and the kept releases with
+// Roll back behind each row's ⋯.
 import { useCallback, useEffect, useRef, useState } from "react";
-import { get, post, u, type BusyItem, type KeptRelease, type Updates, type UpdaterState } from "./api.ts";
+import { get, post, u, type BusyItem, type KeptRelease, type Updates, type UpdaterState, type UpdateStep } from "./api.ts";
+import { CopyButton } from "./CopyButton.tsx";
 import { Icon } from "./icons.tsx";
 import { her } from "./name.ts";
 import { href } from "./route.ts";
@@ -34,7 +36,8 @@ export function UpdatesSection({ ctx }: { ctx: ShellContext }) {
   return (
     <section className="card" aria-labelledby="h-updates">
       <div className="section-head"><h2 id="h-updates">Updates</h2>{up?.available && <button type="button" className="sm" disabled={busy || running} onClick={() => void act(`${path}/check`, {})}>Check</button>}</div>
-      <ErrorText error={updates.error || error} />
+      {/* While an update runs lyricad restarts, so a reload that fails then isn't news: the box keeps the last answer. */}
+      <ErrorText error={(running ? "" : updates.error) || error} />
       {up && (
         <dl className="facts">
           <dt>Running</dt><dd className="mono">{up.running.version} · {up.running.build}</dd>
@@ -46,9 +49,10 @@ export function UpdatesSection({ ctx }: { ctx: ShellContext }) {
       {up?.available && (
         <div className="row">
           <button type="button" className="primary" disabled={busy || running || !up.note || up.note.commit === up.running.build} onClick={() => void act(path, { tag: up.note!.tag })}>Update</button>
-          <StateLine up={up} userId={userId} />
+          {!progress(up) && <StateLine up={up} userId={userId} />}
         </div>
       )}
+      {up?.available && progress(up) && <Progress up={up} userId={userId} />}
       {up?.lastRollback && (
         <p className="muted small">
           Rolled back from <span className="mono">{short(up.lastRollback.from)}</span> to <span className="mono">{short(up.lastRollback.to)}</span> on {day(up.lastRollback.at)} at <span className="num">{clock(up.lastRollback.at)}</span>
@@ -75,6 +79,106 @@ export function UpdatesSection({ ctx }: { ctx: ShellContext }) {
           onCancel={() => setRollback(undefined)} onConfirm={() => { const c = rollback.commit; setRollback(undefined); void act(`${path}/rollback`, { commit: c }); }} />
       )}
     </section>
+  );
+}
+
+/** The steps of an update, in the order the updater goes through them, with their names on the card and what each does. */
+const STEPS: [UpdateStep["step"], string, string][] = [
+  ["fetching", "Download", "Fetches main and the update tags with the deploy key."],
+  ["building", "Build", "Builds the release as the build user, which can't read any data."],
+  ["testing", "Smoke test", "Starts the new release in a scratch home and runs its checks."],
+  ["draining", "Finishing turns", "New messages wait while running turns finish. After 10 minutes it gives up and changes nothing."],
+  ["switching", "Restart", "Stops Lyrica, snapshots the databases, switches to the new release and starts it. Database changes run here."],
+  ["probation", "Probation", "Ten minutes on the new release with every check ok. A failed check goes back to the release before."],
+];
+/** An update has a box while it runs, waits for the updater, or failed with its steps on record. */
+const progress = (up: Updates) => !!up.state.tag && (up.state.steps ? up.state.steps.length > 0 : up.state.state === "fetching");
+/** The updater should take a request within seconds; past this the box says it hasn't. */
+const STALL_MS = 60_000;
+
+/** The updater's error past the step's own name: "probation failed: web" is "web"; "build" alone says nothing more. */
+function reason(error?: string): string {
+  const e = (error ?? "").replace(/^(probation failed|smoke test): ?/, "");
+  if (["", "fetch", "build", "smoke test", "snapshot"].includes(e)) return e === "snapshot" ? "the snapshot couldn't be taken" : "";
+  if (e === "drain timed out") return "turns were still running after 10 minutes";
+  return e;
+}
+
+/** "4 s", "2 min 05 s", "1 h 03 min": how long a step took or has run. */
+export function span(ms: number): string {
+  const s = Math.max(0, Math.round(ms / 1000));
+  if (s < 60) return `${s} s`;
+  if (s < 3600) return `${Math.floor(s / 60)} min ${String(s % 60).padStart(2, "0")} s`;
+  return `${Math.floor(s / 3600)} h ${String(Math.floor(s / 60) % 60).padStart(2, "0")} min`;
+}
+
+/**
+ * An update's progress: a box under Update with its tag, a checklist of the steps (✓ done with how long it took,
+ * ✱ the one running with how long so far, ✕ the one it failed in, ○ still to come), and after a failure the reason
+ * and the output's last lines in a block that scrolls, with Copy.
+ */
+function Progress({ up, userId }: { up: Updates; userId: string }) {
+  const st = up.state;
+  const steps = st.steps ?? [];
+  const failed = st.state === "failed";
+  // The running step's time moves on between the section's reloads.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (failed) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [failed]);
+  const waiting = steps.length === 0;
+  const stalled = waiting && now - Date.parse(st.since) > STALL_MS;
+  const busy: BusyItem[] = st.busy ?? [];
+  const mine = busy.filter((b) => b.userId === userId && b.threadId && b.pool);
+  const label = (step: string) => STEPS.find(([s]) => s === step)?.[1] ?? step;
+  const failedStep = steps.find((s) => s.failed);
+  const [cls, word] = waiting ? ["info", "Waiting"] : WORDS[st.state];
+  // The output's last lines say what went wrong: the block opens scrolled to its end.
+  const out = useRef<HTMLPreElement>(null);
+  useEffect(() => { if (out.current) out.current.scrollTop = out.current.scrollHeight; }, [st.output]);
+  return (
+    <div className="update-progress" role="group" aria-labelledby="h-update-progress">
+      <div className="row between">
+        <h3 id="h-update-progress" className="update-progress-title">Update to <span className="mono">{st.tag}</span></h3>
+        <span className="state-word" role="status" title={steps[0] ? `Started at ${clock(steps[0].started)}` : undefined}><span className={`dot ${cls}`} aria-hidden="true" />{word}</span>
+      </div>
+      <ol className="checklist update-steps">
+        {STEPS.map(([step, name, what]) => {
+          const s = steps.find((x) => x.step === step);
+          const state = !s ? "todo" : s.failed ? "failed" : s.ended ? "done" : failed ? "done" : "doing";
+          const mark = state === "done" ? "✓" : state === "doing" ? "✱" : state === "failed" ? "✕" : "○";
+          const spoken = state === "done" ? "done" : state === "doing" ? "running" : state === "failed" ? "failed" : "to come";
+          return (
+            <li key={step} data-state={state}>
+              <span className="step-mark" aria-hidden="true">{mark}</span>
+              <span className="update-step">
+                <span title={what}>{name}<span className="sr-only"> · {spoken}</span></span>
+                {s && (state === "doing" || s.ended) && <span className="num muted">{span((s.ended ? Date.parse(s.ended) : now) - Date.parse(s.started))}</span>}
+                {state === "doing" && step === "draining" && busy.length > 0 && <span className="muted">waiting for <span className="num">{busy.length}</span> {busy.length === 1 ? "thread" : "threads"}</span>}
+              </span>
+              {state === "doing" && step === "draining" && mine.length > 0 && (
+                <ul className="plain small update-threads">
+                  {mine.map((b) => <li key={`${b.pool}/${b.threadId}`}><a href={href({ page: "thread", userId, pool: b.pool!, threadId: b.threadId! })}>{b.kind === "sleep" ? "Sleep" : b.kind === "subagent" ? "A subagent" : "A turn"} in <span className="mono">{b.threadId}</span></a></li>)}
+                </ul>
+              )}
+            </li>
+          );
+        })}
+      </ol>
+      {waiting && !stalled && <p className="muted small">Waiting for the updater to start.</p>}
+      {stalled && <p className="warn-text">The updater hasn't started. On the server, <span className="mono">systemctl status lyrica-update.path</span> says why.</p>}
+      {failed && (
+        <p className="error small">{failedStep ? `${label(failedStep.step)} failed` : "Failed"}{reason(st.error) ? `: ${reason(st.error)}` : ""}.{failedStep?.step === "probation" ? " It went back to the release before." : " Nothing changed."}</p>
+      )}
+      {failed && st.output && (
+        <div className="code-block update-output">
+          <div className="code-head"><span className="muted small">Output</span><CopyButton text={st.output} label="Copy" ariaLabel="Copy output" /></div>
+          <pre ref={out}><code>{st.output}</code></pre>
+        </div>
+      )}
+    </div>
   );
 }
 

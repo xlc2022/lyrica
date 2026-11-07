@@ -1,7 +1,7 @@
-import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import { join } from "node:path";
-import type { BusyItem, Health, KeptRelease, RollbackInfo, UpdateNote, Updates, UpdaterState } from "./api.ts";
+import type { BusyItem, Health, KeptRelease, RollbackInfo, UpdateNote, Updates, UpdaterState, UpdateStep } from "./api.ts";
 import { HttpError, sendJson } from "./http.ts";
 
 // lyricad's side of updates (docs/daemon.md "Updates"). The updater runs as
@@ -38,6 +38,8 @@ interface StateFile {
   commit?: string;
   busy?: BusyItem[];
   error?: string;
+  steps?: UpdateStep[];
+  output?: string;
   note?: UpdateNote;
   lastRollback?: RollbackInfo;
 }
@@ -92,6 +94,8 @@ export function readUpdates(paths: UpdatePaths, running: { version: string; buil
       state: state.state ?? "idle", since: state.since ?? "",
       ...(state.tag ? { tag: state.tag } : {}), ...(state.commit ? { commit: state.commit } : {}),
       ...(state.busy ? { busy: state.busy } : {}), ...(state.error ? { error: state.error } : {}),
+      ...(state.tag && Array.isArray(state.steps) ? { steps: state.steps } : {}),
+      ...(state.state === "failed" && typeof state.output === "string" ? { output: state.output } : {}),
     },
     releases,
     lastRollback: state.lastRollback ?? null,
@@ -105,9 +109,12 @@ export function readUpdates(paths: UpdatePaths, running: { version: string; buil
  */
 function waiting(paths: UpdatePaths, state: StateFile): Updates["state"] | undefined {
   if (state.state && state.state !== "idle" && state.state !== "failed") return undefined;
-  const req = readJson<{ action?: string; tag?: string; commit?: string }>(join(paths.requests, "request.json"));
+  const file = join(paths.requests, "request.json");
+  const req = readJson<{ action?: string; tag?: string; commit?: string }>(file);
   if (!req?.action) return undefined;
-  const since = new Date().toISOString();
+  // Since the request was written, so the page can tell when the updater hasn't started.
+  let since: string;
+  try { since = statSync(file).mtime.toISOString(); } catch { since = new Date().toISOString(); }
   if (req.action === "rollback") return { state: "draining", since, ...(req.commit ? { commit: req.commit } : {}) };
   return { state: "fetching", since, ...(req.tag ? { tag: req.tag } : {}) };
 }

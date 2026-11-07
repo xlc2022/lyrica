@@ -89,5 +89,6 @@ write_json "$UPDATE/state.json" --arg f "$FROM" --arg t "$TARGET" --argjson a "$
   .lastRollback = ({from: $f, to: $t, automatic: $a, at: $at}
     + (if $c != "" then {check: $c} else {} end) + (if $r != "" then {restoredFrom: $r} else {} end))
   | .state = (if $a then "failed" else "idle" end) | .since = $at | del(.busy, .tag, .commit)
+  | if .steps then .steps |= map(if .ended then . else .ended = $at | (if $a then .failed = true else . end) end) else . end
   | if $a then .error = "probation failed: \($c)" | .commit = $f else del(.error) end'
 say "running ${TARGET:0:12}${RESTORED_FROM:+, databases from $RESTORED_FROM}"
