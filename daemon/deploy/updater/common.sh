@@ -84,11 +84,22 @@ set_remote() { # url key
 }
 releases_json() { [ -f "$UPDATE/releases.json" ] && cat "$UPDATE/releases.json" || echo '{}'; }
 
-# The updater's state, for Administration → Updates.
+# The updater's state, for Administration → Updates. An update (a state with
+# its tag) also keeps `steps`, one per state it went through with when it
+# started and ended, the step it failed in marked `failed`; a fetch with a tag
+# starts them over, and a run without one (a check, a rollback) drops them.
 set_state() { # state, then optional: tag commit error
   write_json "$UPDATE/state.json" --arg s "$1" --arg t "${2:-}" --arg c "${3:-}" --arg e "${4:-}" --arg at "$(now)" \
     '(. // {}) | .state = $s | .since = $at | del(.busy, .error, .tag, .commit)
-     | if $t != "" then .tag = $t else . end | if $c != "" then .commit = $c else . end | if $e != "" then .error = $e else . end'
+     | if $t != "" then .tag = $t else . end | if $c != "" then .commit = $c else . end | if $e != "" then .error = $e else . end
+     | ($s == "idle" or $s == "failed") as $end
+     | if $s == "fetching" and $t != "" then .steps = [{step: $s, started: $at}] | del(.output)
+       elif $t == "" and ($end | not) then del(.steps, .output)
+       elif .steps == null then .
+       elif (.steps[-1].step == $s and (.steps[-1].ended | not)) then .
+       else .steps |= (map(if .ended then . else .ended = $at | (if $s == "failed" then .failed = true else . end) end)
+                       + (if $end then [] else [{step: $s, started: $at}] end))
+       end'
 }
 
 # --- The update socket (lyricad's update.sock: /health, /drain, /undrain) ---

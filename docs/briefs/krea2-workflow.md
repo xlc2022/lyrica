@@ -1,6 +1,6 @@
 # Brief: Krea 2 workflow and Civitai downloads
 
-**Status:** In progress. **Thread:** Add Krea 2 to starter image models.
+**Status:** Done (#802). **Thread:** Add Krea 2 to starter image models.
 **Branch:** `claude/project-thread-vpx06a` (after #794, the Krea 2 Raw starter).
 
 **Read first:** AGENTS.md, `host/README.md` (Images, Starters, Downloads),
@@ -53,4 +53,12 @@ Download sheet beyond a link; Civitai LoRAs as starters.
 
 ## Handoff note
 
-(none yet)
+Done: everything in scope landed in #802. Hosts get the new nodes with a
+ComfyUI image update.
+
+Not yet checked: a real image on a GPU host with the Uncensored starter, the
+enhancer and the second pass. If the second pass looks wrong, tune `refine`,
+`refineSteps` and `refineEta` in the starter's defaults first.
+
+Open: #799 adds Upload as a sixth Source option on Download image model; UI
+review asked for a 390-wide screenshot of the six once both are in.

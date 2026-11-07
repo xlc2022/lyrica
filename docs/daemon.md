@@ -1487,7 +1487,11 @@ check names and counts, never text.
 
 - **Kept state.** `/var/lib/lyrica-update` (root's, readable): `state.json`
   (the updater's state, busy work while draining, the newest update note,
-  `lastRollback`, and `unitsStale` when installed Debian units differ, which install.sh clears when it installs the units), `releases.json` (kept releases, `current`, `previous`,
+  `lastRollback`, an update's `steps` (each state it went through, with
+  when it started and ended, the failed one marked) and after a failed
+  fetch, build or smoke test that output's last 40 lines as `output`
+  (build and check output only, never her data; a check or an asked-for rollback drops
+  both; an automatic rollback keeps them with probation failed), and `unitsStale` when installed Debian units differ, which install.sh clears when it installs the units), `releases.json` (kept releases, `current`, `previous`,
   the snapshots, and the highest `min_reader` any release has written),
   `notes/<commit>.txt` (the tag message; its first line is the release's summary in the Updates list, so write it as one). Snapshots are in `/var/lib/lyrica-snapshots`
   (root's, `0700`). Neither is ever granted to a thread.

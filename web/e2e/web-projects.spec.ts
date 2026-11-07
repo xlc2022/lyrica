@@ -845,6 +845,17 @@ test("Project settings → Files and images: the project folder one folder at a 
 
 test("the split view: a thread from its card opens in the panel, links inside it grow the breadcrumb, Open as a page, Open in panel and Close panel; Open beside, View thread and the Threads list open beside at 1180 px up, and below it they navigate", async ({ page, baseURL }) => {
   test.skip(phone(page), "the panel starts at 1180 px");
+  // While window.holdHash is set, the next address change reaches the app that many ms late, so the race below can be forced.
+  await page.addInitScript(() => {
+    const w = window as unknown as { holdHash?: number };
+    addEventListener("hashchange", (e) => {
+      const ms = w.holdHash;
+      if (!ms) return;
+      w.holdHash = undefined;
+      e.stopImmediatePropagation();
+      setTimeout(() => dispatchEvent(new HashChangeEvent("hashchange", { oldURL: e.oldURL, newURL: e.newURL })), ms);
+    });
+  });
   await enter(page, baseURL!);
   const list = page.locator(".threads");
   const box = (await list.boundingBox())!;
@@ -881,7 +892,12 @@ test("the split view: a thread from its card opens in the panel, links inside it
   await expect(panel).toBeVisible();
   await panel.getByLabel("Message", { exact: true }).fill(`[t:${betaId}]`);
   await panel.getByRole("button", { name: "Send" }).click();
-  await panel.locator(".msg.her").last().getByRole("link", { name: "Beta" }).click();
+  // The list reloads as her reply lands: one that re-renders the page before the address catches up mustn't drop the crumbs.
+  const betaLink = panel.locator(".msg.her").last().getByRole("link", { name: "Beta" });
+  await expect(betaLink).toBeVisible();
+  await page.evaluate(() => { (window as unknown as { holdHash?: number }).holdHash = 1000; });
+  await betaLink.click();
+  await page.evaluate(() => dispatchEvent(new Event("focus")));
   const beta = page.getByRole("complementary", { name: "Alpha › Beta" });
   await expect(beta.getByRole("heading", { level: 1, name: "Beta" })).toBeFocused();
   await expect(beta.getByRole("navigation", { name: "Opened from" })).toContainText("Alpha");
