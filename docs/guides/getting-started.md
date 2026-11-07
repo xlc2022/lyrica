@@ -1108,6 +1108,14 @@ refused. To replace the destination, enter the full URL and token again;
   sleep, unmounts home workspaces and drops keys. With no saved passphrase,
   she comes back locked; browser sessions don't survive a restart, so
   everyone logs in again.
+- **From a terminal:** `lyrica chat` talks to her and `lyrica mem`
+  browses and edits memory, both asking for your Lyrica login and
+  password and keeping nothing on disk. Root can run them as they are. To
+  let another account run them, add it to the `lyrica-clients` group
+  (`usermod -aG lyrica-clients <account>` on Debian and Ubuntu, or
+  `"lyrica-clients"` in `users.users.<account>.extraGroups` on NixOS),
+  then log out and back in. The commands are in
+  [daemon.md](../daemon.md#terminal-clients).
 - **Her name** is under Administration, Her name, Name. Memories and threads
   written so far keep the old one.
 - **Sleep** runs at `sleep.time` (04:00 by default; Administration,
@@ -1204,6 +1212,9 @@ refused. To replace the destination, enter the full URL and token again;
   - **Before 2026-11-01:** headless Chromium, Claude Code and Codex move
     from `/usr/local` into her tool prefix `/opt/lyrica/tools`, and the
     old copies are removed.
+  - **Before 2026-11-07:** the `lyrica-clients` group and the
+    `/run/lyrica-clients` folder for `lyrica chat` and `lyrica mem` from
+    other accounts; until then she starts without that socket.
   - **Any install missing them:** headless Chromium and IBM Plex for her
     screenshots, Claude Code and Codex, ffmpeg and ffprobe (until then
     she can't check a clip's length or streams), and the Python baseline
