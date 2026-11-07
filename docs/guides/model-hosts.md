@@ -605,7 +605,8 @@ model's **Copy workflow to edit** gives you a copy to change instead.
 computer you move nodes, drag from an output to an input to link them
 (only matching types connect), select a link and press Delete to remove
 it, add a node from **Add node** (the nodes this host's ComfyUI has; it
-needs ComfyUI to have run once) and set the selected node's settings or
+needs ComfyUI to have run once), set each setting on the node itself
+(Fixed with its value, or a blank such as Seed), and select a node to
 **Delete node** below the graph. Where the nodes sit is saved with the
 workflow. On a phone the graph only shows; edit in Form. The host checks a
 graph like any save, so a node that writes files is still refused.

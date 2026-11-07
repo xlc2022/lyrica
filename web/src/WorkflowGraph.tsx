@@ -1,5 +1,6 @@
 // Edit workflow's Graph view (docs/ux.md §6, "Image models, recipes and parts"): a custom workflow's nodes and links
-// drawn as ComfyUI draws them. On a wide screen nodes move, links are drawn from an output to an input, nodes are
+// drawn as ComfyUI draws them. On a wide screen nodes move, their settings are edited on them, links are drawn from an
+// output to an input, nodes are
 // added from the host's node list and deleted; on a phone it only shows the graph. Every save is still checked by the
 // host, so nothing drawn here can add a node that writes files. Loaded only when the Graph view opens.
 import "@xyflow/react/dist/style.css";
@@ -11,7 +12,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { blankOf, BLANK_WORD, InputRow, isLink, type Graph, type NodeTypes, type Value, type WNode } from "./Workflows.tsx";
 
 export type Layout = Record<string, [number, number]>;
-type NodeData = { id: string; node: WNode; types: NodeTypes | null; inputs: string[]; outputs: { type: string; name: string }[] };
+type NodeData = {
+  id: string; node: WNode; types: NodeTypes | null; inputs: string[]; outputs: { type: string; name: string }[];
+  /** On a wide screen: settings are edited on the node itself, as the Form's rows. */
+  edit?: { blanks: string[]; set: (k: string, v: Value) => void };
+};
 
 /** A setting's kind as ComfyUI reports it: anything that isn't one is a type a link carries, such as MODEL. */
 const SETTING = new Set(["INT", "FLOAT", "STRING", "BOOLEAN", "COMBO", "unknown"]);
@@ -36,7 +41,7 @@ function outputsOf(id: string, n: WNode, graph: Graph, types: NodeTypes | null):
 }
 
 function ComfyNode({ data, selected }: NodeProps<Node<NodeData>>) {
-  const { id, node, inputs, outputs } = data;
+  const { id, node, inputs, outputs, types, edit } = data;
   const settings = Object.entries(node.inputs).filter(([, v]) => !isLink(v));
   return (
     <div className={`wf-gnode${selected ? " selected" : ""}`} aria-label={`Node ${id}, ${node.class_type}`}>
@@ -54,6 +59,14 @@ function ComfyNode({ data, selected }: NodeProps<Node<NodeData>>) {
         </div>
       ))}
       {settings.map(([k, v]) => {
+        if (edit && !(v && typeof v === "object")) {
+          // nodrag and nowheel: typing, selecting and scrolling a list here mustn't move the node or zoom the canvas.
+          return (
+            <div key={`s${k}`} className="wf-gedit nodrag nowheel">
+              <InputRow id={id} k={k} v={v} blanks={edit.blanks} options={types?.[node.class_type]?.inputs?.[k]} onChange={(next) => edit.set(k, next)} />
+            </div>
+          );
+        }
         const blank = blankOf(v);
         const shown = blank ? BLANK_WORD[blank] ?? blank : typeof v === "object" && v !== null ? (Array.isArray(v) ? "a list" : "picked by the host") : String(v);
         return (
@@ -153,9 +166,12 @@ function Canvas({ graph, layout, blanks, types, editable, guessed, onChange, onL
     const [x, y] = layout[id] ?? [0, 0];
     return {
       id, type: "comfy", position: { x, y }, selected: id === selected, deletable: editable,
-      data: { id, node: n, types, inputs: portsOf(n, types), outputs: outputsOf(id, n, graph, types) },
+      data: {
+        id, node: n, types, inputs: portsOf(n, types), outputs: outputsOf(id, n, graph, types),
+        edit: editable ? { blanks, set: (k, v) => onChange({ ...graph, [id]: { ...n, inputs: { ...n.inputs, [k]: v } } }) } : undefined,
+      },
     };
-  }), [graph, layout, types, selected, editable]);
+  }), [graph, layout, types, selected, editable, blanks, onChange]);
   const edges: Edge[] = useMemo(() => Object.entries(graph).flatMap(([id, n]) => Object.entries(n.inputs).filter((e): e is [string, [string, number]] => isLink(e[1]))
     .map(([k, [from, i]]) => {
       const key = `${from}:${i}>${id}:${k}`;
@@ -279,7 +295,7 @@ function Canvas({ graph, layout, blanks, types, editable, guessed, onChange, onL
             <span><b className="mono">{node.class_type}</b> <span className="muted num">{selected}</span></span>
             {editable && <button type="button" className="sm danger" onClick={() => remove([selected])}>Delete node</button>}
           </div>
-          {Object.entries(node.inputs).filter(([, v]) => !isLink(v) && !(v && typeof v === "object")).map(([k, v]) => (
+          {!editable && Object.entries(node.inputs).filter(([, v]) => !isLink(v) && !(v && typeof v === "object")).map(([k, v]) => (
             <InputRow key={k} id={selected} k={k} v={v} blanks={blanks} options={types?.[node.class_type]?.inputs?.[k]}
               onChange={(next) => onChange({ ...graph, [selected]: { ...node, inputs: { ...node.inputs, [k]: next } } })} />
           ))}
