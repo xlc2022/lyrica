@@ -624,6 +624,8 @@ test("Downloads History: the queue shows progress with Cancel and how each ended
   await expect(page.getByText("No downloads yet. Start one from a library's Download model button, or here.")).toBeVisible();
 
   // Accounts: a token is a password field, and afterwards only its last four show.
+  await expect(page.locator("li.acct[data-hub=civitai]")).toContainText("No token");
+  await expect(page.locator("li.acct[data-hub=civitai]").getByRole("button", { name: "Add a Civitai token" })).toBeVisible();
   const hf = page.locator("li.acct[data-hub=huggingface]");
   await expect(hf).toContainText("No token");
   await hf.getByRole("button", { name: "Add a Hugging Face token" }).click();
@@ -1126,6 +1128,17 @@ test("Image models: groups by architecture with Role and Where; a recipe opens t
   await page.getByRole("button", { name: "Scan now" }).click();
   await expect(page.getByRole("list", { name: "Found" }).locator("li.rvrow")).toContainText("Qwen-Image");
   expect(post("manage")).toEqual([{ method: "POST", path: "/host/v1/scan" }, { method: "POST", path: "/host/v1/scan" }]);
+  // Civitai names a model by its number or its page's link.
+  await page.getByRole("group", { name: "Source" }).getByRole("button", { name: "Civitai" }).click();
+  await page.getByLabel("Model", { exact: true }).fill("a/b");
+  await page.getByRole("button", { name: "Look up" }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "That isn't a Civitai model." })).toHaveText("That isn't a Civitai model. Use its number, or paste its page's link.");
+  await page.getByLabel("Model", { exact: true }).fill("https://civitai.com/models/2731465/krea2-uncensored");
+  const asked = page.waitForRequest(/\/hub\/files\?/);
+  await page.getByRole("button", { name: "Look up" }).click();
+  expect(Object.fromEntries(new URL((await asked).url()).searchParams)).toEqual({ source: "civitai", repo: "2731465" });
+  await expect(page.getByRole("group", { name: "Files to download" }).getByRole("checkbox")).toHaveCount(2);
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/image-civitai-${page.viewportSize()!.width}.png`, fullPage: true });
   await page.getByRole("group", { name: "Source" }).getByRole("button", { name: "Hugging Face" }).click();
   await page.getByLabel("Repository").fill("Comfy-Org/Qwen-Image_ComfyUI");
   await page.getByRole("button", { name: "Look up" }).click();

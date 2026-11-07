@@ -999,7 +999,7 @@ export function DownloadImage({ ctx }: { ctx: MCtx }) {
               </ul>
             ) : <p className="muted">Nothing new in <code>{host.status!.modelsFolder.path}</code>.</p>)}
           </>}
-          <ErrorText error={problem || (source === "huggingface" ? look.error : "") || error} />
+          <ErrorText error={problem || (source === "huggingface" || source === "civitai" ? look.error : "") || error} />
           <div className="row">
             {source !== "scan" && <button type="button" className="primary" disabled={busy || look.busy} onClick={download}>{source === "starters" ? "Add model" : "Download"}</button>}
             <button type="button" onClick={() => { location.hash = back; }}>{source === "scan" ? "Back" : "Cancel"}</button>
