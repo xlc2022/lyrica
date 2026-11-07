@@ -34,12 +34,10 @@
       }
     },
     "neg": {
-      "class_type": "ConditioningZeroOut",
+      "class_type": "CLIPTextEncode",
       "inputs": {
-        "conditioning": [
-          "pos",
-          0
-        ]
+        "text": "$negativePrompt",
+        "clip": "$clip"
       }
     },
     "latent": {

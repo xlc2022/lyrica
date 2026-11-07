@@ -1442,10 +1442,17 @@ home, the flake's module does the same ("On NixOS" below).
   `/opt/lyrica/before-releases`, kept for the operator to delete.
 - It installs the updater (`/usr/local/sbin/lyrica-update`,
   `lyrica-snapshot`, `lyrica-restore`, `lyrica-rollback`, and
-  `/usr/local/lib/lyrica-update/common.sh`), its units, a deploy key
-  (`/etc/lyrica/deploy-key`; it prints the `.pub` to add to the repository
-  as a read-only deploy key), GitHub's pinned host key
-  (`/etc/lyrica/known_hosts`) and the bare repository `/opt/lyrica/repo.git`.
+  `/usr/local/lib/lyrica-update/common.sh`), its units, GitHub's pinned
+  host key (`/etc/lyrica/known_hosts`) and the bare repository
+  `/opt/lyrica/repo.git`. Its remote (`repo_url` in `common.sh`, as in
+  `host/install.sh`): `LYRICA_REPO` as given, otherwise the repository over
+  HTTPS when `git ls-remote` answers with no credentials, otherwise SSH with
+  a deploy key (`/etc/lyrica/deploy-key`, made the first time). When the
+  remote is SSH and the key is new or the remote just moved there, it prints
+  the `.pub` to add as a read-only deploy key, after "The repository didn't
+  answer over HTTPS without credentials" unless `LYRICA_REPO` chose it. A
+  rerun sets the remote again, so an install moves to HTTPS, or back to SSH
+  when the repository went private.
 - It puts `lyrica` in `/usr/local/bin`: the CLI, run as the `lyrica` user
   (through `runuser` from root, `sudo` from anyone else) with
   `LYRICA_HOME=/var/lib/lyrica`, so `lyrica admin …` works from any shell.
@@ -1532,15 +1539,19 @@ check names and counts, never text.
   scheduled sleep and watcher looks wait; work a running turn starts (a
   child thread, a subagent) finishes, since the drain waits for it.
   Administration's requests go to `<home>/updates/request.json`, which
-  `lyrica-update.path` picks up.
+  `lyrica-update.path` picks up a moment later; until it does, Updates
+  shows an idle or failed updater as the step the request starts with
+  (Fetching, or Draining for a rollback), so the page follows it.
 - **`lyrica version --json`** prints the version, build (commit), schema and
   `minReader`; **`lyrica smoke-test <empty dir>`** starts a scratch lyricad
   there (random passphrase, a test admin, no saved credentials), unlocks,
   logs in, reads the health checks over its socket and fetches the web UI,
   printing `ok` or `FAIL` per check.
 - **`lyrica-update`** (`--tag update/<name>`, `--check`, or `--request`
-  from the path unit), one at a time: fetch `main` and `update/*` tags with
-  the deploy key; the tag must be annotated and on `main`; build as
+  from the path unit), one at a time: fetch `main` and `update/*` tags
+  (never prompting; over SSH only with the deploy key; a failed fetch logs
+  that a repository gone private needs install.sh again, or a restart of
+  `lyricad` on NixOS); the tag must be annotated and on `main`; build as
   `lyrica-build`; smoke test; drain (10 minutes, then undrain and give up);
   stop; `lyrica-snapshot` (pinned when the release raises `min_reader`);
   switch `current` and `previous`; start; probation.
@@ -1586,7 +1597,8 @@ check names and counts, never text.
   `lyrica-probation.service` (`--resume` at boot when `probation.json`
   exists; `Type=exec`, since probation waits for the first unlock and a
   oneshot would hold up boot and `nixos-rebuild`).
-- **The operator's part:** add the deploy key to the repository; keep a
+- **The operator's part:** add the deploy key to the repository when
+  install.sh printed one; keep a
   scheduled Proxmox backup of the VM or container, which the updater can't
   snapshot; delete `/opt/lyrica/before-releases` once the first release
   runs.
@@ -1638,7 +1650,10 @@ system with the module on. Only x86_64-linux.
   nothing prints the code or the fingerprint at `nixos-rebuild`. The wrapper
   runs the profile below. The updater, its units, the `lyrica-build` user
   and GitHub's host key come from the module too; `lyrica-nixos-start`
-  makes the deploy key.
+  sets up the remote as install.sh does when `repo.git` has none, still has
+  the old default SSH remote, or the last fetch failed (with a 10 s check,
+  since lyricad's start waits for it), making the deploy key only for an SSH
+  remote.
 - **Firewall.** `openFirewall` (default on, unlike most NixOS modules) opens
   Direct's port, 7340 whatever `port` is: a headless host is set up from another machine through it,
   as on Debian, and it answers only while setting up or in Direct.

@@ -63,7 +63,7 @@ if [ "$PURGE" = yes ]; then
   rm -rf $DATA
   for u in lyrica lyrica-build lyrica-caddy; do userdel "$u" 2>/dev/null || true; done
   for g in lyrica-caddy lyrica-clients; do groupdel "$g" 2>/dev/null || true; done
-  say "Done. Her node is still listed in your tailnet's admin console, and the deploy key in the repository on GitHub: remove those by hand."
+  say "Done. Her node is still listed in your tailnet's admin console, and the deploy key in the repository on GitHub if you added one: remove those by hand."
 else
   say "Done. Kept, since they hold her data or were not installed by install.sh:"
   for d in $DATA; do [ -e "$d" ] && say "  $d"; done
