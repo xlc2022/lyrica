@@ -52,6 +52,48 @@ export interface ModelsHost {
   propose(p: ServingProposal): Promise<boolean>;
   /** Saves the settings whole, then reloads the model if it is loaded and idle; false when it applies at its next load. */
   apply(offering: string, settings: Record<string, unknown>, anyway: boolean): Promise<{ reloaded: boolean }>;
+  /** Model hosts whose custom ComfyUI workflows she may read and change: those the person manages. Empty in a private or local-only thread. */
+  workflowHosts(): { id: string; name: string }[];
+  /** One of those hosts' workflow routes (host/API.md, "Custom workflows"), as the person. */
+  workflowCall(host: string, method: "GET" | "PUT" | "POST", path: string, body?: unknown): Promise<unknown>;
+}
+
+/** At most this many inputs change in one edit. */
+const MAX_CHANGES = 50;
+type WorkflowNode = { class_type: string; inputs: Record<string, unknown> };
+type WorkflowInfo = { name: string; label: string; does: string[]; revision: number; recipes: { id: string; name: string }[]; workflow: Record<string, WorkflowNode>; problems: string[]; missingNodes: string[] | null; nodes: Record<string, Record<string, unknown>> | null };
+const isLink = (v: unknown) => Array.isArray(v) && v.length === 2 && typeof v[0] === "string" && typeof v[1] === "number";
+
+/** A workflow as she reads it: each node's settings, links shown as the node they come from, a choice's options. */
+export function workflowView(w: WorkflowInfo, revisions: unknown): Record<string, unknown> {
+  return {
+    workflow: w.name, name: w.label, does: w.does, revision: w.revision, recipes: w.recipes.map((r) => r.name), problems: w.problems, missingNodes: w.missingNodes, revisions,
+    nodes: Object.entries(w.workflow).map(([id, n]) => {
+      const options: Record<string, unknown> = {};
+      for (const [k, spec] of Object.entries(w.nodes?.[n.class_type] ?? {})) if (Array.isArray(spec) && spec.length && typeof n.inputs[k] === "string") options[k] = spec.slice(0, 30);
+      return {
+        id, class: n.class_type,
+        inputs: Object.fromEntries(Object.entries(n.inputs).map(([k, v]) => [k, isLink(v) ? `<- node ${(v as [string, number])[0]}` : v && typeof v === "object" ? "(picked by the host)" : v])),
+        ...(Object.keys(options).length ? { options } : {}),
+      };
+    }),
+  };
+}
+
+/** The workflow with these inputs changed: only settings a node already has, never its links. */
+export function changeInputs(wf: Record<string, WorkflowNode>, changes: { node: string; input: string; value: unknown }[]): Record<string, WorkflowNode> {
+  if (!changes.length || changes.length > MAX_CHANGES) throw new Error(`Give 1 to ${MAX_CHANGES} changes.`);
+  const next = structuredClone(wf);
+  for (const c of changes) {
+    const n = next[c.node];
+    if (!n) throw new Error(`The workflow has no node ${c.node}.`);
+    if (!(c.input in n.inputs)) throw new Error(`Node ${c.node} (${n.class_type}) has no input ${c.input}.`);
+    const was = n.inputs[c.input];
+    if (isLink(was) || (was && typeof was === "object")) throw new Error(`Node ${c.node}'s ${c.input} is a link between nodes; only settings can change.`);
+    if (!["string", "number", "boolean"].includes(typeof c.value)) throw new Error(`${c.node}.${c.input} must be a number, text or true/false.`);
+    n.inputs[c.input] = c.value;
+  }
+  return next;
 }
 
 const text = (t: string, isError = false) => ({ content: [{ type: "text" as const, text: t }], details: undefined, ...(isError ? { isError: true } : {}) });
@@ -81,17 +123,26 @@ export function createModelsExtension(host: ModelsHost): ExtensionFactory {
     pi.registerTool({
       name: "models",
       label: "Models",
-      description: "Text models' context: `lookup` reads a host model's recommended context and YaRN stretch from its card on Hugging Face or ModelScope, "
+      description: "Text models' context, and custom ComfyUI workflows on model hosts the person manages. Context: `lookup` reads a host model's recommended context and YaRN stretch from its card on Hugging Face or ModelScope, "
         + "with the host's KV cache estimate; `propose` sets a context length. At or under what this thread's own model is served with, it limits this thread "
-        + "and its children, with no card; above it, or for another model, it asks the person on a card to serve the model so for everyone, and applies it if they allow it.",
+        + "and its children, with no card; above it, or for another model, it asks the person on a card to serve the model so for everyone, and applies it if they allow it. "
+        + "Workflows: `workflows` lists them; `read_workflow` shows one's nodes and settings (a value like $prompt or $steps is a blank each job fills) and its revisions; "
+        + "`edit_workflow` changes settings nodes already have, as a new revision the host checks; `restore_workflow` brings back an earlier revision.",
       promptSnippet: "look up a host model's recommended context, or propose serving it with a longer one",
       promptGuidelines: [
         "Look a model up before proposing, and propose only what its card recommends unless the person asked for more; a stretch costs a little quality on short prompts.",
+        "Change a workflow only when the person asks for that change, read it first, and say what you changed and the revision to go back to.",
       ],
       // Reads the internet and, on Allow, changes the host. propose asks on its own card (OWN_CARD in workspace.ts).
       annotations: { openWorldHint: true, readOnlyHint: false },
       parameters: Type.Object({
-        action: StringEnum(["lookup", "propose"] as const),
+        action: StringEnum(["lookup", "propose", "workflows", "read_workflow", "edit_workflow", "restore_workflow"] as const),
+        host: Type.Optional(Type.String({ description: "Workflows: the model host's ID, from `workflows`." })),
+        workflow: Type.Optional(Type.String({ description: "Workflows: the workflow's ID (custom-…), from `workflows`." })),
+        changes: Type.Optional(Type.Array(Type.Object({
+          node: Type.String(), input: Type.String(), value: Type.Union([Type.String(), Type.Number(), Type.Boolean()]),
+        }), { description: "edit_workflow: each node input to set; a value $name makes it a blank." })),
+        revision: Type.Optional(Type.Integer({ description: "restore_workflow: the revision to bring back." })),
         offering: Type.Optional(Type.String({ description: "The model's offering ID; this thread's own model if left out." })),
         repo: Type.Optional(Type.String({ description: "lookup: the repository to read, owner/name or modelscope:owner/name, when the host doesn't know it." })),
         contextLength: Type.Optional(Type.Integer({ description: "propose: the context length to serve, in tokens." })),
@@ -99,6 +150,13 @@ export function createModelsExtension(host: ModelsHost): ExtensionFactory {
         originalContext: Type.Optional(Type.Integer({ description: "propose: the context the stretch starts from; the trained length if left out." })),
       }),
       async execute(id, p) {
+        if (["workflows", "read_workflow", "edit_workflow", "restore_workflow"].includes(p.action)) {
+          try {
+            return text(JSON.stringify(await workflowAction(host, p)));
+          } catch (err) {
+            return text((err as Error).message, true);
+          }
+        }
         const offering = p.offering ?? host.current();
         if (!offering) return text("This thread has no model yet; name an offering.", true);
         const copy = host.copies().find((c) => c.offering === offering);
@@ -151,4 +209,32 @@ export function createModelsExtension(host: ModelsHost): ExtensionFactory {
       },
     });
   };
+}
+
+/** The `models` tool's workflow actions: every change goes through the host's own checks and keeps the version it replaces. */
+async function workflowAction(host: ModelsHost, p: { action: string; host?: string; workflow?: string; changes?: { node: string; input: string; value: unknown }[]; revision?: number }): Promise<unknown> {
+  const hosts = host.workflowHosts();
+  if (!hosts.length) throw new Error("There is no model host whose workflows you can manage here.");
+  if (p.action === "workflows") {
+    const all = await Promise.all(hosts.map(async (h) => {
+      const list = ((await host.workflowCall(h.id, "GET", "/host/v1/workflows")) as { workflows?: { name: string; label: string; does: string[]; revision: number; recipes: { name: string }[] }[] }).workflows ?? [];
+      return list.map((w) => ({ host: h.id, hostName: h.name, workflow: w.name, name: w.label, does: w.does, revision: w.revision, models: w.recipes.map((r) => r.name) }));
+    }));
+    return { workflows: all.flat() };
+  }
+  const h = hosts.find((x) => x.id === p.host);
+  if (!h) throw new Error(`Name a host: ${hosts.map((x) => `${x.id} (${x.name})`).join(", ")}.`);
+  if (!p.workflow || !/^custom-[0-9a-f]{8}$/.test(p.workflow)) throw new Error("Name a workflow by its ID from `workflows`.");
+  const path = `/host/v1/workflows/${p.workflow}`;
+  const revisions = async () => (((await host.workflowCall(h.id, "GET", `${path}/revisions`)) as { revisions?: unknown[] }).revisions ?? []).slice(0, 10);
+  if (p.action === "read_workflow") return workflowView((await host.workflowCall(h.id, "GET", path)) as WorkflowInfo, await revisions());
+  if (p.action === "restore_workflow") {
+    if (!p.revision) throw new Error("restore_workflow needs revision.");
+    const w = (await host.workflowCall(h.id, "POST", `${path}/revisions/${p.revision}/restore`, { by: "lyrica" })) as WorkflowInfo;
+    return { restored: p.revision, revision: w.revision };
+  }
+  const current = (await host.workflowCall(h.id, "GET", path)) as WorkflowInfo;
+  const next = changeInputs(current.workflow, p.changes ?? []);
+  const w = (await host.workflowCall(h.id, "PUT", path, { workflow: next, by: "lyrica" })) as WorkflowInfo;
+  return { saved: true, revision: w.revision, previous: current.revision, changed: (p.changes ?? []).length, missingNodes: w.missingNodes };
 }

@@ -361,6 +361,7 @@ describe("workspace tools in a Pi session", () => {
     const applied: [Record<string, unknown>, boolean][] = [];
     let allow = false;
     const host: ModelsHost = {
+      workflowHosts: () => [], workflowCall: async () => ({}),
       copies: () => [{ offering: "o1", name: "M", host: "blackwell" }],
       localCopies: () => [], current: () => "other", window: () => undefined, localContext: async () => null, loadLocal: async () => {}, limit: () => {},
       serving: async () => entry, lookup: async () => entry,
@@ -397,6 +398,7 @@ describe("workspace tools in a Pi session", () => {
     const limits: (number | null)[] = [];
     const applied: Record<string, unknown>[] = [];
     const host: ModelsHost = {
+      workflowHosts: () => [], workflowCall: async () => ({}),
       copies: () => [{ offering: "o1", name: "M", host: "blackwell" }],
       localCopies: () => [], current: () => "o1", window: () => undefined, localContext: async () => null, loadLocal: async () => {},
       limit: (t) => void limits.push(t),
@@ -422,6 +424,7 @@ describe("workspace tools in a Pi session", () => {
     const cards: ServingProposal[] = [];
     const loads: [string, number][] = [];
     const host: ModelsHost = {
+      workflowHosts: () => [], workflowCall: async () => ({}),
       copies: () => [], localCopies: () => [{ offering: "l1", name: "qwen-flash", host: "studio" }], current: () => "l1", window: () => 4096,
       localContext: async () => ({ served: 4096, max: 131072 }), loadLocal: async (o, c) => void loads.push([o, c]), limit: () => {},
       serving: async () => { throw new Error("not a host"); }, lookup: async () => { throw new Error("not a host"); },
@@ -437,6 +440,46 @@ describe("workspace tools in a Pi session", () => {
     expect(results[1]).toContain("qwen-flash supports 131072 tokens at most.");
     // The card on Hugging Face is read for host models only.
     expect(results[2]).toContain("isn't a model you can manage here");
+  });
+
+  it("reads and changes a host's custom workflow: settings only, saved by the host as a revision she can restore", async () => {
+    const wf = {
+      "3": { class_type: "KSampler", inputs: { model: "$model", positive: ["6", 0], steps: "$steps", denoise: 1, sampler_name: "$sampler" } },
+      "6": { class_type: "CLIPTextEncode", inputs: { text: "$prompt", clip: "$clip" } },
+    };
+    const calls: [string, string, string, unknown][] = [];
+    const host: ModelsHost = {
+      workflowHosts: () => [{ id: "h1", name: "blackwell" }],
+      workflowCall: async (h, method, path, body) => {
+        calls.push([h, method, path, body]);
+        if (path === "/host/v1/workflows") return { workflows: [{ name: "custom-0a1b2c3d", label: "Flux styled", does: ["create"], revision: 2, recipes: [{ name: "Flux styled" }] }] };
+        if (path.endsWith("/revisions")) return { revisions: [{ revision: 2, by: "app" }, { revision: 1, by: "app" }] };
+        if (path.endsWith("/restore")) return { revision: 4 };
+        if (method === "PUT") return { revision: 3, missingNodes: [] };
+        return { name: "custom-0a1b2c3d", label: "Flux styled", does: ["create"], revision: 2, recipes: [{ name: "Flux styled" }], workflow: wf, problems: [], missingNodes: [], nodes: { KSampler: { sampler_name: ["euler", "res_2s"] } } };
+      },
+      copies: () => [], localCopies: () => [], current: () => undefined, window: () => undefined, localContext: async () => null, loadLocal: async () => {}, limit: () => {},
+      serving: async () => { throw new Error("no"); }, lookup: async () => { throw new Error("no"); }, propose: async () => false, apply: async () => ({ reloaded: false }),
+    };
+    const results = (await run("ask", [], { extensions: [createModelsExtension(host)], steps: [
+      [fauxToolCall("models", { action: "workflows" }, { id: "1" })],
+      [fauxToolCall("models", { action: "read_workflow", host: "h1", workflow: "custom-0a1b2c3d" }, { id: "2" })],
+      [fauxToolCall("models", { action: "edit_workflow", host: "h1", workflow: "custom-0a1b2c3d", changes: [{ node: "3", input: "denoise", value: 0.85 }] }, { id: "3" })],
+      [fauxToolCall("models", { action: "edit_workflow", host: "h1", workflow: "custom-0a1b2c3d", changes: [{ node: "3", input: "positive", value: "x" }] }, { id: "4" })],
+      [fauxToolCall("models", { action: "restore_workflow", host: "h1", workflow: "custom-0a1b2c3d", revision: 1 }, { id: "5" })],
+    ] })).results;
+    const json = (r: string) => JSON.parse(r.slice("models: ".length));
+    expect(json(results[0]!)).toEqual({ workflows: [{ host: "h1", hostName: "blackwell", workflow: "custom-0a1b2c3d", name: "Flux styled", does: ["create"], revision: 2, models: ["Flux styled"] }] });
+    // Links read as where they come from; a choice lists its options.
+    expect(json(results[1]!).nodes[0]).toEqual({ id: "3", class: "KSampler", inputs: { model: "$model", positive: "<- node 6", steps: "$steps", denoise: 1, sampler_name: "$sampler" }, options: { sampler_name: ["euler", "res_2s"] } });
+    expect(json(results[2]!)).toEqual({ saved: true, revision: 3, previous: 2, changed: 1, missingNodes: [] });
+    const put = calls.find(([, m]) => m === "PUT")!;
+    expect(put[3]).toEqual({ workflow: { ...wf, "3": { ...wf["3"], inputs: { ...wf["3"].inputs, denoise: 0.85 } } }, by: "lyrica" });
+    // A link between nodes never changes.
+    expect(results[3]).toContain("is a link between nodes");
+    expect(calls.filter(([, m]) => m === "PUT")).toHaveLength(1);
+    expect(json(results[4]!)).toEqual({ restored: 1, revision: 4 });
+    expect(calls.at(-1)).toEqual(["h1", "POST", "/host/v1/workflows/custom-0a1b2c3d/revisions/1/restore", { by: "lyrica" }]);
   });
 
   it("lists a repository's files without asking, and downloads a model with its projector and MTP file only once allowed", async () => {

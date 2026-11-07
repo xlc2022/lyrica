@@ -549,7 +549,10 @@ class Models {                                              // new Models(keyrin
   // recipe action { do: "change", change: { op: "useFor", useFor } } forwards to the host's PATCH and refreshes offerings.
   // Discovery caches useFor in offerings' existing found JSON; no database schema change.
   // Host management and serving
-  manageHost(actor, hostId, method, path, body?)            // only models/load|unload|pin|reload, gpus/<n>, memory, scan, usage
+  manageHost(actor, hostId, method, path, body?)            // only models/load|unload|pin|reload, gpus/<n>, memory, scan, usage,
+                                                            // and workflows[/import|copy|<name>[/revisions[/<n>[/restore]]]]
+                                                            // (host/API.md, "Custom workflows"), rediscovering after a change
+  workflowHosts(actor, ctx): { id, name }[]                 // hosts with recipes the actor manages, for the models tool; [] when private or local-only
   servingSettings(userId, offeringId) / setServingSettings(actor, offeringId, settings) / reloadModel(actor, offeringId)
   // settings may carry stretch: { type: "yarn"; factor; originalContext } (host models only); servingSettings returns
   // recommended: { native, stretched?, factor?, originalContext?, source: { hub, repo, revision, at } } | null
@@ -1670,8 +1673,12 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     goes through `sameFile`) and the others as `read`; it isn't in
     `PLAN_TOOLS`, and an approval binds its action, path and out;
   - `models`, with `lookup { offering, repo? }` and `propose { offering,
-    stretch, contextLength, originalContext? }`, in general threads only (Context stretching;
-    see [docs/briefs/context-stretch.md](briefs/context-stretch.md));
+    stretch, contextLength, originalContext? }`, and for custom workflows
+    `workflows`, `read_workflow { host, workflow }`, `edit_workflow { host,
+    workflow, changes }` and `restore_workflow { host, workflow, revision
+    }`, in general threads only (Context stretching; see
+    [docs/briefs/context-stretch.md](briefs/context-stretch.md), and
+    [models.md](models.md));
   - in sleep sessions only: `write_page`, `write_journal`, `write_wake`,
     `raise` and `propose_persona` (Sleep thread; see [sleep.md](sleep.md)).
   - `tool_search`, Pi's, in a thread with a granted MCP server: it loads
@@ -2166,7 +2173,8 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
       `POST …/models-folder` (`{ path }` → `HostStatus`: the host's updater
       moves it to that folder on the host machine; administrators on a
       shared host);
-      `GET …/dashboard` (→ `{ url }`); `POST …/manage`;
+      `GET …/dashboard` (→ `{ url }`); `POST …/manage` (also a host's
+      custom workflow routes, host/API.md "Custom workflows");
       `GET …/hub/files`; `POST`/`GET …/downloads`, `DELETE …/downloads/:id`;
       `POST …/uploads` (`UploadInput { name, size }` → `HostDownload`, or the
       unfinished upload with that name and size) and
