@@ -736,11 +736,11 @@ test("Upload sends a model file from this computer in pieces, and Downloads show
   await noHorizontalScroll(page);
   await shot("queue");
 
-  // The image page has Upload too, last.
+  // The image page has Upload too, before Workflow.
   await page.goto(`/#/u/${userId}/models/images/download`);
   const sources = page.getByRole("group", { name: "Source" }).getByRole("button");
-  await expect(sources).toHaveText(["Starter recipes", "Hugging Face", "Civitai", "Link", "Scan folder", "Upload"]);
-  await sources.last().click();
+  await expect(sources).toHaveText(["Starter recipes", "Hugging Face", "Civitai", "Link", "Scan folder", "Upload", "Workflow"]);
+  await sources.getByText("Upload", { exact: true }).click();
   await expect(page.getByRole("button", { name: "Choose files…" })).toBeVisible();
   await noHorizontalScroll(page);
   await shot("image");
