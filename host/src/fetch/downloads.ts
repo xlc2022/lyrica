@@ -5,7 +5,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { constants as fsConstants } from "node:fs";
 import {
-  closeSync, createReadStream, createWriteStream, existsSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, readdirSync,
+  closeSync, ftruncateSync, createReadStream, createWriteStream, existsSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, readdirSync,
   renameSync, rmdirSync, statSync, statfsSync, truncateSync, unlinkSync, writeFileSync,
 } from "node:fs";
 import { basename, dirname, join, posix, relative, resolve, sep } from "node:path";
@@ -118,7 +118,7 @@ export class Downloader {
       if (d.source === "upload") {
         if (d.state === "uploading" || d.state === "verifying") {
           // A stop between a piece's write and its trim can leave the part past the file's size.
-          if (this.partSize(d) > d.size) truncateSync(partName(join(this.o.models, d.path)), d.size);
+          if (this.partSize(d) > d.size) trimPart(partName(join(this.o.models, d.path)), d.size);
           d.received = this.partSize(d);
           // A whole upload whose last piece arrived just before the stop is checked now.
           if (d.received === d.size) d.state = "verifying";
@@ -453,7 +453,7 @@ export class Downloader {
       if (d.state === "uploading") {
         // A refused or broken piece keeps only whole bytes up to the size; the next piece starts from there.
         const now = this.partSize(d);
-        if (now > d.size) truncateSync(part, d.size);
+        if (now > d.size) trimPart(part, d.size);
         d.received = Math.min(now, d.size);
         this.save();
       }
@@ -704,6 +704,16 @@ export class Downloader {
 }
 
 class ChecksumMismatch extends DownloadError {}
+
+/** Trims an upload's partial file to its size, through an O_NOFOLLOW descriptor like every other write to it. */
+function trimPart(part: string, size: number): void {
+  const fd = openSync(part, fsConstants.O_WRONLY | fsConstants.O_NOFOLLOW);
+  try {
+    ftruncateSync(fd, size);
+  } finally {
+    closeSync(fd);
+  }
+}
 
 /** The file is what its name says: a GGUF header, a readable safetensors header, an ONNX file, a plain voice array or a whisper.cpp file. */
 function checkFormat(path: string, name: string): void {
