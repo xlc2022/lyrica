@@ -542,6 +542,7 @@ class Models {                                              // new Models(keyrin
   star(userId, offeringId, on) / starredIds(userId): Set<offeringId> / notThisModel(actor, offeringId, separate = true)
   hubTokens(userId): { hub; shared; last4 }[] / setHubToken(actor, hub, token, { shared? }) / removeHubToken(actor, hub, { shared? })
   hubFiles(actor, hostId, { source, repo, revision? }) / startDownload(actor, hostId, body) / downloads(actor, hostId) / cancelDownload(actor, hostId, downloadId)
+  startUpload(actor, hostId, { name, size }) / uploadPiece(actor, hostId, uploadId, offset, bytes)   // host/API.md "Uploads"
   deleteCopy(actor, offeringId, { confirm? }): Promise<{ usedIn: Use[]; deleted?: string[]; left?: { files; reason } }>
   imageLibrary(userId, hostId): { recipes; parts (by role) } / recipe(actor, hostId, recipeId, action)
   // Recipes live in the host's recipes.json; optional useFor: "fast" | "quality" | "both", absent reads as both.
@@ -2167,6 +2168,10 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
       shared host);
       `GET …/dashboard` (→ `{ url }`); `POST …/manage`;
       `GET …/hub/files`; `POST`/`GET …/downloads`, `DELETE …/downloads/:id`;
+      `POST …/uploads` (`UploadInput { name, size }` → `HostDownload`, or the
+      unfinished upload with that name and size) and
+      `PUT …/uploads/:uploadId?offset=` (raw bytes, at most 64 MiB, →
+      `HostDownload`; held in memory for the request only, never written);
       `GET …/images`; `GET …/starters` (→ `{ starters: HostStarter[] }`);
       `POST …/starters/:starterId/install` (→ `{ recipe, downloads }`);
       `POST …/recipes/:recipeId` (including

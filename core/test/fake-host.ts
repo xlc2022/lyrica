@@ -1,4 +1,4 @@
-import { randomBytes, timingSafeEqual } from "node:crypto";
+import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { createServer, type Server } from "node:https";
 import type { AddressInfo } from "node:net";
 import type { TLSSocket } from "node:tls";
@@ -45,6 +45,8 @@ export async function fakeHost(opts: { name?: string; models?: HostModel[]; port
   const starters: { id: string; name: string; template: string; parts: { role: string; source: string; repo: string; path: string; sha256: string; size?: number; present: boolean }[]; loras: []; defaults: Record<string, number> }[] = [];
   const lookups: { model: string; repo?: string; hub?: string; token?: string }[] = [];
   const downloads: { id: string; path: string; state: string }[] = [];
+  /** Upload pieces as they arrived: the upload, its offset, the bytes (as text) and their content type. */
+  const pieces: { id: string; offset: number; text: string; type?: string }[] = [];
   /** More files in the download record (a split model's other shards), and files a running request holds. */
   const record: string[] = [];
   const busy = new Set<string>();
@@ -128,6 +130,23 @@ export async function fakeHost(opts: { name?: string; models?: HostModel[]; port
         return json(res, 202, { downloads: made });
       }
       if (req.method === "GET" && url.pathname === "/host/v1/downloads") return json(res, 200, downloads);
+      if (req.method === "POST" && url.pathname === "/host/v1/uploads") {
+        const body = JSON.parse(raw) as { name: string; size: number };
+        const d = { id: randomUUID(), source: "upload", path: `lyrica/upload/${body.name}`, size: body.size, received: 0, state: "uploading" };
+        downloads.push(d);
+        return json(res, 201, d);
+      }
+      const piece = /^\/host\/v1\/uploads\/([0-9a-f-]{36})$/.exec(url.pathname);
+      if (req.method === "PUT" && piece) {
+        const d = downloads.find((x) => x.id === piece[1]) as { received: number; size: number; state: string } | undefined;
+        if (!d) return json(res, 404, { error: { code: "not_found", message: "No such upload." } });
+        const offset = Number(url.searchParams.get("offset"));
+        if (offset !== d.received) return json(res, 409, { error: { code: "in_use", message: `The upload has ${d.received} bytes; send from there.` } });
+        pieces.push({ id: piece[1]!, offset, text: raw, type: req.headers["content-type"] });
+        d.received += Buffer.byteLength(raw);
+        if (d.received === d.size) d.state = "done";
+        return json(res, 200, d);
+      }
       if (req.method === "GET" && url.pathname === "/host/v1/starters") return json(res, 200, { starters });
       const install = /^\/host\/v1\/starters\/([\w.-]+)\/install$/.exec(url.pathname);
       if (install && req.method === "POST") {
@@ -240,6 +259,7 @@ export async function fakeHost(opts: { name?: string; models?: HostModel[]; port
     starters,
     lookups,
     downloads,
+    pieces,
     record,
     busy,
     /** Shows a new pairing code on the "dashboard", as typed by a person. */

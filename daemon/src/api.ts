@@ -462,6 +462,13 @@ export interface HubTokenInput { token: string; shared?: boolean }
 /** GET /api/u/:userId/hosts/:endpointId/hub/files?source=&repo=&revision= → the host's answer (host/API.md). A shared host needs an administrator. */
 /** POST /api/u/:userId/hosts/:endpointId/downloads → the host's answer. GET lists them (a finished one becomes an offering at once); DELETE …/downloads/:id cancels or clears. */
 export type DownloadInput = { source: Hub; repo: string; revision?: string; files: string[] } | { source: "url"; url: string; sha256?: string };
+/**
+ * POST /api/u/:userId/hosts/:endpointId/uploads → HostDownload: starts an upload of one file from the user's computer, or
+ * answers the unfinished one with the same name and size, with what has arrived. A shared host needs an administrator.
+ * PUT …/uploads/:uploadId?offset=<bytes>, body application/octet-stream of at most 64 MiB (the web app sends 32 MiB) → HostDownload: the
+ * next piece, from `offset`, which must equal `received` (409 otherwise: ask POST again to learn where it stands).
+ */
+export interface UploadInput { name: string; size: number }
 /** GET /api/u/:userId/hosts/:endpointId/images → { recipes, parts by role }, as the host reports them. */
 /** POST /api/u/:userId/hosts/:endpointId/recipes/:recipeId → the host's answer. Confirmed recipes become image offerings. */
 export type RecipeUseFor = "fast" | "quality" | "both";
@@ -2408,15 +2415,17 @@ export interface MemoryHistory extends HistoryPage<MemoryRevision> { detail: Mem
 /** A download as the host reports it (host/API.md, "POST /host/v1/downloads"). */
 export interface HostDownload {
   id: string;
-  source: Hub | "url";
+  /** `upload`: a file sent from the user's computer, piece by piece (UploadInput). */
+  source: Hub | "url" | "upload";
   repo: string | null;
   url: string | null;
-  /** Where it goes in the host's models folder: `lyrica/<source>/<repo>/<file>`, or `lyrica/url/<hostname>/<file>`. */
+  /** Where it goes in the host's models folder: `lyrica/<source>/<repo>/<file>`, `lyrica/url/<hostname>/<file>` or `lyrica/upload/<file>`. */
   path: string;
   size: number | null;
   received: number;
-  state: "queued" | "downloading" | "verifying" | "done" | "failed" | "cancelled";
-  /** true: the checksum matched; false: none was given; null until done. */
+  /** `uploading`: an upload waiting for, or receiving, its next piece. */
+  state: "queued" | "downloading" | "uploading" | "verifying" | "done" | "failed" | "cancelled";
+  /** true: the checksum matched; false: none was given (always, for an upload); null until done. */
   verified: boolean | null;
   error: string | null;
   startedAt: string;

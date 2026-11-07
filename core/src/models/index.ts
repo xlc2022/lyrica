@@ -1154,6 +1154,23 @@ export class Models {
     return { downloads };
   }
 
+  /** Starts an upload of one file from the user's computer on a host, or answers the unfinished one with that name and size (host/API.md, "Uploads"). */
+  async startUpload(actor: User, hostId: string, body: { name: string; size: number }): Promise<unknown> {
+    const ep = this.manageable(actor, hostId);
+    const b = (body && typeof body === "object" ? body : {}) as Record<string, unknown>;
+    if (typeof b.name !== "string" || !b.name || b.name.length > 255) throw new Error("say the file's name");
+    if (typeof b.size !== "number" || !Number.isSafeInteger(b.size) || b.size <= 0) throw new Error("say the file's size in bytes");
+    return this.hostCall(ep, "POST", "/host/v1/uploads", { name: b.name, size: b.size });
+  }
+
+  /** Passes one piece of an upload on to its host, as it came. */
+  async uploadPiece(actor: User, hostId: string, uploadId: string, offset: number, piece: Uint8Array): Promise<unknown> {
+    const ep = this.manageable(actor, hostId);
+    if (!/^[0-9a-f-]{36}$/.test(uploadId)) throw new Error("that isn't an upload");
+    // A piece on a slow link to the host may take a while; two minutes, as a download's look-up never does.
+    return this.hostCall(ep, "PUT", `/host/v1/uploads/${uploadId}?offset=${offset}`, piece, { "content-type": "application/octet-stream" }, 120_000);
+  }
+
   /** Cancels an unfinished download (its partial file goes), or clears a finished one from the list. */
   async cancelDownload(actor: User, hostId: string, downloadId: string): Promise<unknown> {
     return this.hostCall(this.manageable(actor, hostId), "DELETE", `/host/v1/downloads/${encodeURIComponent(downloadId)}`);
@@ -1733,11 +1750,13 @@ export class Models {
   }
 
   /** One call to a host's API, with its error as a plain reason. */
+  /** A call to a host's management API: a JSON body, or bytes (an upload's piece) sent as they are. */
   private async hostCall(ep: Endpoint, method: string, path: string, body?: unknown, headers?: Record<string, string>, timeoutMs = 30_000): Promise<unknown> {
+    const raw = body instanceof Uint8Array;
     const res = await this.fetchFor(ep)!(`${hostOrigin(ep.addresses![0]!)}${path}`, {
       method, signal: AbortSignal.timeout(timeoutMs),
       headers: { ...(body === undefined ? {} : { "content-type": "application/json" }), ...headers },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      ...(body === undefined ? {} : { body: raw ? (body as unknown as NonNullable<RequestInit["body"]>) : JSON.stringify(body) }),
     }).catch((e: Error) => {
       // A host that can't be reached, or doesn't answer in time, is a plain reason, not an internal error.
       throw new HostRefused("unreachable", `${ep.name} can't be reached${e.name === "TimeoutError" ? " (it didn't answer in time)" : ""}.`);

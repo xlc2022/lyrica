@@ -5,12 +5,12 @@
 import { createHash, randomUUID } from "node:crypto";
 import { constants as fsConstants } from "node:fs";
 import {
-  closeSync, createReadStream, createWriteStream, existsSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, readdirSync,
+  closeSync, ftruncateSync, createReadStream, createWriteStream, existsSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, readdirSync,
   renameSync, rmdirSync, statSync, statfsSync, truncateSync, unlinkSync, writeFileSync,
 } from "node:fs";
 import { basename, dirname, join, posix, relative, resolve, sep } from "node:path";
 import { pipeline } from "node:stream/promises";
-import { Transform } from "node:stream";
+import { Transform, type Readable } from "node:stream";
 import { VOICE_FILE, WHISPER_FILE, checkRepo, checkRepoPath, verdict, type Card, type Hub, type HubFile, type Source } from "./hubs.ts";
 import { DownloadError, plainError, type Net } from "./net.ts";
 
@@ -27,7 +27,16 @@ export interface RecordEntry {
   card: Card | null;
 }
 
-export type DownloadState = "queued" | "downloading" | "verifying" | "done" | "failed" | "cancelled";
+/** `uploading`: an upload waiting for, or receiving, its next piece; the browser sends them, nothing here fetches. */
+export type DownloadState = "queued" | "downloading" | "uploading" | "verifying" | "done" | "failed" | "cancelled";
+
+/** States in which a download or upload still owns its path and its share of the free space. */
+const UNFINISHED: DownloadState[] = ["queued", "downloading", "uploading", "verifying"];
+
+/** The most one upload request may carry. The browser sends 32 MiB pieces. */
+export const UPLOAD_PIECE = 64 * 1024 * 1024;
+/** What can be uploaded: model weights, never the small files of a folder. */
+const UPLOADABLE = [".gguf", ".safetensors"];
 
 export interface Download {
   id: string;
@@ -104,10 +113,29 @@ export class Downloader {
     mkdirSync(this.root, { recursive: true });
     mkdirSync(o.data, { recursive: true });
     this.downloads = this.readJson("downloads.json", []);
-    // Interrupted downloads resume.
-    for (const d of this.downloads) if (d.state === "downloading" || d.state === "verifying") d.state = "queued";
+    // Interrupted downloads resume. An upload waits for its next piece from what is on disk, or is checked again.
+    for (const d of this.downloads) {
+      if (d.source === "upload") {
+        if (d.state === "uploading" || d.state === "verifying") {
+          // A stop between a piece's write and its trim can leave the part past the file's size.
+          if (this.partSize(d) > d.size) trimPart(partName(join(this.o.models, d.path)), d.size);
+          d.received = this.partSize(d);
+          // A whole upload whose last piece arrived just before the stop is checked now.
+          if (d.received === d.size) d.state = "verifying";
+        }
+      } else if (d.state === "downloading" || d.state === "verifying") d.state = "queued";
+    }
     this.save();
     this.removeStrayParts();
+    for (const d of this.downloads) if (d.source === "upload" && d.state === "verifying") void this.finishUpload(d);
+  }
+
+  private partSize(d: Download): number {
+    try {
+      return statSync(partName(join(this.o.models, d.path))).size;
+    } catch {
+      return 0;
+    }
   }
 
   /** A partial file is kept while a download may still resume it: one queued, under way, or failed and still listed. */
@@ -310,7 +338,7 @@ export class Downloader {
     for (const d of made) {
       const full = join(this.o.models, d.path);
       if (existsSync(full) && !record.some((r) => r.path === d.path)) throw new DownloadError(`${d.path} is already there, and the host didn't download it.`);
-      if (this.downloads.some((x) => x.path === d.path && (x.state === "queued" || x.state === "downloading" || x.state === "verifying"))) {
+      if (this.downloads.some((x) => x.path === d.path && UNFINISHED.includes(x.state))) {
         throw new DownloadError(`${d.path} is already downloading.`);
       }
     }
@@ -329,7 +357,7 @@ export class Downloader {
   /** Bytes still to come for the downloads queued or under way. */
   private reserved(except?: Download): number {
     return this.downloads
-      .filter((d) => d !== except && (d.state === "queued" || d.state === "downloading" || d.state === "verifying"))
+      .filter((d) => d !== except && UNFINISHED.includes(d.state))
       .reduce((n, d) => n + Math.max(d.size - d.received, 0), 0);
   }
 
@@ -337,7 +365,7 @@ export class Downloader {
   cancel(id: string): void {
     const d = this.get(id);
     if (!d) throw new DownloadError("No such download.", 404);
-    if (d.state === "queued" || d.state === "downloading" || d.state === "verifying") {
+    if (UNFINISHED.includes(d.state)) {
       if (this.current?.id === id) this.current.abort.abort();
       d.state = "cancelled";
       d.finishedAt = new Date().toISOString();
@@ -349,6 +377,123 @@ export class Downloader {
       if (d.state === "failed" && !this.ownsPart(d.path)) this.removePart(d);
     }
     this.save();
+  }
+
+  /**
+   * Starts an upload of one file from the user's computer, to
+   * lyrica/upload/<name>, or carries on an unfinished one with the same name
+   * and size from what arrived. Free space is checked for the whole file.
+   */
+  startUpload(req: { name?: unknown; size?: unknown }): Download {
+    const { name, size } = req;
+    if (typeof name !== "string" || !name || name.length > 255 || /[/\\\0]/.test(name) || name.startsWith(".")) throw new DownloadError("That isn't a file name.");
+    if (!UPLOADABLE.some((e) => name.toLowerCase().endsWith(e))) throw new DownloadError("Only GGUF and safetensors files can be uploaded.", 403);
+    if (typeof size !== "number" || !Number.isSafeInteger(size) || size <= 0) throw new DownloadError("size must be the file's size in bytes.");
+    const path = posix.join("lyrica", "upload", name);
+    const going = this.downloads.find((d) => d.path === path && UNFINISHED.includes(d.state));
+    if (going) {
+      if (going.source !== "upload" || going.state !== "uploading" || going.size !== size) throw new DownloadError(`${name} is already ${going.source === "upload" ? "uploading" : "downloading"}.`, 409);
+      going.received = this.partSize(going);
+      this.save();
+      return going;
+    }
+    const full = join(this.o.models, path);
+    if (existsSync(full)) {
+      throw new DownloadError(this.record().some((r) => r.path === path) ? `${name} is already on this host. Delete it first to upload it again.` : `${path} is already there, and the host didn't put it there.`);
+    }
+    if (size + MARGIN > this.free() - this.reserved()) throw new DownloadError("There isn't enough free space for this upload.", 507);
+    this.makeDirs(dirname(full));
+    const part = partName(full);
+    // An empty partial file, replacing any stray one; O_NOFOLLOW so a planted symlink isn't followed.
+    closeSync(openSync(part, fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_TRUNC | fsConstants.O_NOFOLLOW, 0o644));
+    const d: Download = {
+      id: randomUUID(), source: "upload", repo: null, revision: null, url: null, path, size, received: 0,
+      state: "uploading", verified: null, error: null, startedAt: new Date().toISOString(), finishedAt: null,
+      from: "", sha256: null, gitSha1: null, gated: false, card: null, tokenHost: null,
+    };
+    this.downloads.push(d);
+    this.save();
+    this.o.log("upload started", { id: d.id });
+    return d;
+  }
+
+  /** Uploads receiving a piece now: one piece at a time each. */
+  private readonly receiving = new Set<string>();
+
+  /**
+   * Appends one piece of an upload, which must start where the partial file
+   * ends (`offset`) and never run past the file's size or UPLOAD_PIECE. A
+   * piece cut off part way keeps what arrived. The last piece starts the
+   * check.
+   */
+  async receivePiece(id: string, offset: number, body: Readable | AsyncIterable<Buffer>): Promise<Download> {
+    const d = this.get(id);
+    if (!d || d.source !== "upload") throw new DownloadError("No such upload.", 404);
+    if (d.state !== "uploading") throw new DownloadError("This upload isn't waiting for more.", 409);
+    if (this.receiving.has(id)) throw new DownloadError("A piece of this upload is already arriving.", 409);
+    const part = partName(join(this.o.models, d.path));
+    const have = this.partSize(d);
+    if (offset !== have) {
+      d.received = have;
+      throw new DownloadError(`The upload has ${have} bytes; send from there.`, 409);
+    }
+    this.receiving.add(id);
+    let got = 0;
+    try {
+      const count = new Transform({
+        transform: (chunk: Buffer, _enc, done) => {
+          got += chunk.length;
+          if (got > UPLOAD_PIECE) return done(new DownloadError("A piece may be at most 64 MiB."));
+          if (have + got > d.size) return done(new DownloadError("That is more than the file's size."));
+          done(null, chunk);
+        },
+      });
+      const fd = openSync(part, fsConstants.O_WRONLY | fsConstants.O_APPEND | fsConstants.O_NOFOLLOW);
+      await pipeline(body, count, createWriteStream(part, { fd }));
+    } finally {
+      this.receiving.delete(id);
+      if (d.state === "uploading") {
+        // A refused or broken piece keeps only whole bytes up to the size; the next piece starts from there.
+        const now = this.partSize(d);
+        if (now > d.size) trimPart(part, d.size);
+        d.received = Math.min(now, d.size);
+        this.save();
+      }
+    }
+    if (d.state === "uploading" && d.received === d.size) void this.finishUpload(d);
+    return d;
+  }
+
+  /** The whole upload arrived: it must be what its name says, then it gets its real name and a line in the record, unverified. */
+  private async finishUpload(d: Download): Promise<void> {
+    const final = join(this.o.models, d.path);
+    const part = partName(final);
+    d.state = "verifying";
+    this.save();
+    try {
+      checkFormat(part, d.path);
+      const hash = createHash("sha256");
+      await pipeline(createReadStream(part), hash);
+      if ((d.state as DownloadState) === "cancelled") return;
+      renameSync(part, final);
+      const entry: RecordEntry = {
+        path: d.path, size: d.size, sha256: hash.digest("hex"), verified: false, downloadedAt: new Date().toISOString(),
+        source: "upload", repo: null, revision: null, url: null, card: null,
+      };
+      this.writeJson("record.json", [...this.record().filter((r) => r.path !== d.path), entry]);
+      d.state = "done";
+      d.verified = false;
+      this.o.log("uploaded", { id: d.id });
+    } catch (e) {
+      if ((d.state as DownloadState) === "cancelled") return;
+      d.state = "failed";
+      d.error = plainError(e).message;
+      this.removePart(d);
+      this.o.log("upload failed", { id: d.id });
+    } finally {
+      d.finishedAt = d.finishedAt ?? new Date().toISOString();
+      this.save();
+    }
   }
 
   private removePart(d: Download): void {
@@ -564,6 +709,16 @@ export class Downloader {
 }
 
 class ChecksumMismatch extends DownloadError {}
+
+/** Trims an upload's partial file to its size, through an O_NOFOLLOW descriptor like every other write to it. */
+function trimPart(part: string, size: number): void {
+  const fd = openSync(part, fsConstants.O_WRONLY | fsConstants.O_NOFOLLOW);
+  try {
+    ftruncateSync(fd, size);
+  } finally {
+    closeSync(fd);
+  }
+}
 
 /** The file is what its name says: a GGUF header, a readable safetensors header, an ONNX file, a plain voice array or a whisper.cpp file. */
 function checkFormat(path: string, name: string): void {

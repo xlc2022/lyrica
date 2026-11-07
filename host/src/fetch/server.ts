@@ -52,6 +52,13 @@ export function fetchServer(d: Downloader, isCaller: (address: string) => Promis
         d.cancel(one[1]!);
         return send(res, 200, {});
       }
+      if (path === "/uploads" && method === "POST") return send(res, 201, d.shown(d.startUpload(await body(req))));
+      const piece = path.match(/^\/uploads\/([0-9a-f-]{36})$/);
+      if (piece && method === "PUT") {
+        const offset = Number(url.searchParams.get("offset"));
+        if (!Number.isSafeInteger(offset) || offset < 0) throw new DownloadError("offset must be a byte count.");
+        return send(res, 200, d.shown(await d.receivePiece(piece[1]!, offset, req)));
+      }
       if (path === "/record" && method === "GET") return send(res, 200, { files: d.record() });
       if (path === "/delete" && method === "POST") return send(res, 200, { deleted: await d.remove((await body(req)).path) });
       if (path === "/space" && method === "GET") return send(res, 200, { free: d.free() });

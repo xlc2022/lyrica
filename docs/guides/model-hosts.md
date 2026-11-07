@@ -340,6 +340,13 @@ Three ways a model gets into the library:
   also takes a **Civitai** model by its number or page link; its files are
   listed per version and checked against Civitai's SHA-256. A Civitai
   token, if a model needs one, goes under Downloads → Accounts.
+- **Upload from your computer**: both Download pages have **Upload**. Pick
+  `.gguf` or `.safetensors` files and the host in **Download to**; each
+  goes up in 32 MiB pieces through Lyrica to `lyrica/upload/<name>` and
+  shows in Downloads as "from your computer". Keep the tab open until it
+  finishes (the browser asks before closing it). An upload that stopped
+  shows **Paused**; choose the same file again for the same host to carry
+  on. It is checked like a download, but has no checksum to compare with.
   Models, **Downloads** shows every host's queue, with Cancel, Clear
   finished and Add to the group. A download that loses its connection,
   stalls or meets a busy server retries by itself from where it stopped,

@@ -535,7 +535,7 @@ async function fakeHost(page: Page, downloads: Record<string, unknown>[], models
     const method = route.request().method();
     const id = /downloads\/([^/]+)$/.exec(route.request().url())?.[1];
     if (method === "GET") {
-      const finished = downloads.filter((d) => !["queued", "downloading", "verifying"].includes(String(d.state)));
+      const finished = downloads.filter((d) => !["queued", "downloading", "uploading", "verifying"].includes(String(d.state)));
       return route.fulfill(json({ downloads: new URL(route.request().url()).searchParams.has("preview") ? [...downloads.filter((d) => !finished.includes(d)), ...finished.sort((a, b) => String(b.startedAt).localeCompare(String(a.startedAt))).slice(0, 1)] : downloads, finishedTotal: finished.length }));
     }
     if (method === "POST") { started.push(route.request().postDataJSON()); return route.fulfill(json({ downloads: [] })); }
@@ -683,6 +683,67 @@ test("Downloads History: the queue shows progress with Cancel and how each ended
   await page.getByLabel("Link to the file").fill("http://example.org/m.bin");
   await page.getByRole("button", { name: "Download", exact: true }).click();
   await expect(page.getByRole("alert").filter({ hasText: "Use an https link to one .gguf or .safetensors file." })).toHaveText("Use an https link to one .gguf or .safetensors file.");
+});
+
+test("Upload sends a model file from this computer in pieces, and Downloads shows it, or Paused when no tab sends it", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  const GB = 2 ** 30;
+  const shot = async (name: string) => { if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/upload-${name}-${page.viewportSize()!.width}.png`, fullPage: true }); };
+  const downloads: Record<string, unknown>[] = [
+    { id: "00000000-0000-4000-8000-0000000000aa", source: "upload", repo: null, url: null, path: "lyrica/upload/old-lora.safetensors", size: 2 * GB, received: 0.5 * GB,
+      state: "uploading", verified: null, error: null, startedAt: "2026-11-01T10:00:00Z" },
+  ];
+  await fakeHost(page, downloads);
+  const pieces: { offset: string; bytes: number }[] = [];
+  const json = (body: unknown, status = 200) => ({ status, contentType: "application/json", body: JSON.stringify(body) });
+  await page.route(/\/api\/u\/[^/]+\/hosts\/ep-box\/uploads(\/[^/?]+)?(\?.*)?$/, async (route) => {
+    const req = route.request();
+    if (req.method() === "POST") {
+      const { name, size } = req.postDataJSON() as { name: string; size: number };
+      const d = { id: "00000000-0000-4000-8000-0000000000bb", source: "upload", repo: null, url: null, path: `lyrica/upload/${name}`, size, received: 0,
+        state: "uploading", verified: null, error: null, startedAt: new Date().toISOString() };
+      downloads.unshift(d);
+      return route.fulfill(json(d, 201));
+    }
+    const d = downloads[0]!;
+    const bytes = req.postDataBuffer()?.length ?? 0;
+    pieces.push({ offset: new URL(req.url()).searchParams.get("offset")!, bytes });
+    Object.assign(d, { received: Number(d.received) + bytes, state: Number(d.received) + bytes === d.size ? "done" : "uploading", verified: false });
+    return route.fulfill(json(d));
+  });
+
+  await page.goto(`/#/u/${userId}/models/downloads/text`);
+  await page.getByRole("group", { name: "Source" }).getByRole("button", { name: "Upload" }).click();
+  await page.getByRole("button", { name: "Upload", exact: true }).last().click();
+  await expect(page.getByRole("alert").filter({ hasText: "Choose a file." })).toHaveText("Choose a file.");
+  const file = Buffer.concat([Buffer.from("GGUF"), Buffer.alloc(5000)]);
+  await page.locator("input[type=file]").setInputFiles([{ name: "mine-Q4_K_M.gguf", mimeType: "application/octet-stream", buffer: file }]);
+  await expect(page.locator(".choice.plain")).toContainText("mine-Q4_K_M.gguf");
+  if (phone(page)) expect((await page.getByRole("button", { name: "Choose files…" }).boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  await noHorizontalScroll(page);
+  await shot("text");
+  await page.getByRole("button", { name: "Upload", exact: true }).last().click();
+  await expect(page).toHaveURL(new RegExp(`#/u/${userId}/models/downloads$`));
+  await expect.poll(() => pieces).toEqual([{ offset: "0", bytes: file.length }]);
+
+  // The one this tab sent finished; the older one no tab is sending is Paused, with how to carry on.
+  const mine = page.locator("li.dl[data-download='00000000-0000-4000-8000-0000000000bb']");
+  await expect(mine).toContainText("from your computer to box");
+  await expect(mine.locator(".dl-end")).toContainText("Uploaded");
+  const old = page.locator("li.dl[data-download='00000000-0000-4000-8000-0000000000aa']");
+  await expect(old).toContainText("Paused · 0.5 GB of 2.0 GB");
+  await expect(old.getByText("Paused", { exact: true })).toHaveAttribute("title", "Choose the same file under Upload to carry on.");
+  await noHorizontalScroll(page);
+  await shot("queue");
+
+  // The image page has Upload too, last.
+  await page.goto(`/#/u/${userId}/models/images/download`);
+  const sources = page.getByRole("group", { name: "Source" }).getByRole("button");
+  await expect(sources).toHaveText(["Starter recipes", "Hugging Face", "Civitai", "Link", "Scan folder", "Upload"]);
+  await sources.last().click();
+  await expect(page.getByRole("button", { name: "Choose files…" })).toBeVisible();
+  await noHorizontalScroll(page);
+  await shot("image");
 });
 
 /** The made-up host's image library: one recipe, one proposal missing its VAE, and the parts; what the page asks of it is kept. */
