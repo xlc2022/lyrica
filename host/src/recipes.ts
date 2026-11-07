@@ -65,7 +65,7 @@ export const loraFits = (recipeArch: string, loraArch: string | null) => !!loraA
 
 export const COLOR_MATCH = ["lab", "wavelet", "wavelet_adaptive", "hsv", "adain", "none"];
 
-function checkDefault(k: string, v: unknown): void {
+export function checkDefault(k: string, v: unknown): void {
   const range = DEFAULT_RANGES[k];
   if (range) {
     const [min, max, step] = range;
@@ -138,6 +138,8 @@ export class RecipeBook {
     const t = this.template(r);
     const optional = (p: RecipePart) => t.parts.some((s) => s.optional && s.role === p.role && (s.slot ?? null) === p.slot);
     if (r.parts.some((p) => (!p.file || !files.has(p.file)) && !optional(p)) || r.loras.some((l) => !files.has(l.file))) return false;
+    // A custom workflow's own loaders need their files too.
+    if ((t.files ?? []).some((f) => !files.has(f))) return false;
     if (r.parts.some((p) => p.role === "checkpoint" && !p.added)) {
       // A checkpoint's own encoders are replaced only as a whole set.
       const added = r.parts.filter((p) => p.added && p.role === "text_encoder").length;
@@ -154,7 +156,7 @@ export class RecipeBook {
     const extend = t.continuation && r.does.some((a) => a === "video" || a === "animate") ? ["extend" as const] : [];
     // An upscaler whose template has a clip workflow upscales clips too.
     const clips = t.clipWorkflow && r.does.includes("upscale") ? ["upscale_video" as const] : [];
-    return { ...r, does: [...r.does, ...extend, ...clips], useFor: r.useFor ?? "both", ready: this.ready(r, files), mask: t.mask, references: t.references,
+    return { ...r, does: [...r.does, ...extend, ...clips], useFor: r.useFor ?? "both", ready: this.ready(r, files), mask: t.mask, references: t.references, custom: !!t.custom,
       ...(t.video ? { video: { ...clipSpec(t.video, present(r, files)), longestSeconds: longestSeconds(t) } } : {}) };
   }
 
@@ -234,6 +236,14 @@ export class RecipeBook {
     return { done, failed };
   }
 
+  /** A new confirmed recipe, for a custom workflow its manager saved. */
+  add(r: Omit<Recipe, "id">): Recipe {
+    const recipe = { ...r, id: randomUUID() };
+    this.recipes.push(recipe);
+    this.save();
+    return recipe;
+  }
+
   copy(id: string, name: unknown): Recipe {
     if (typeof name !== "string" || !name.trim()) throw invalid("name is missing.");
     const from = this.get(id);
@@ -260,6 +270,7 @@ export class RecipeBook {
         r.useFor = body.useFor as Recipe["useFor"];
         break;
       case "swap": {
+        if (t.custom && t.loaders === "template") throw invalid("This recipe's workflow loads its own files: change them in Edit workflow.");
         const current = r.parts.find((p) => p.role === body.role && p.slot === slot);
         if (!current) throw invalid("The recipe has no part with that role and slot.");
         const next = part(body.file);
@@ -272,6 +283,7 @@ export class RecipeBook {
         break;
       }
       case "addPart": {
+        if (t.custom && t.loaders === "template") throw invalid("This recipe's workflow loads its own files: change them in Edit workflow.");
         if (!r.parts.some((p) => p.role === "checkpoint")) throw invalid("Only a checkpoint's own VAE or text encoders can be replaced by adding a part.");
         if (body.role !== "vae" && body.role !== "text_encoder") throw invalid("Only a VAE or a text encoder can be added.");
         const next = part(body.file);

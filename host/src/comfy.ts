@@ -35,6 +35,8 @@ export class Comfy implements Backend {
   private readonly gate?: { state: string; status: string };
   private stopping: NodeJS.Timeout | null = null;
   private readonly startMs: number;
+  /** Given ComfyUI's node types (`/object_info`) each time it starts, for checking custom workflows. */
+  onNodes?: (info: Record<string, never>) => void;
 
   constructor(base: string, timeoutMs = 30 * 60_000, callMs = CALL_MS, gate?: { state: string; status: string }, startMs = 5 * 60_000) {
     this.base = base;
@@ -209,6 +211,7 @@ export class Comfy implements Backend {
     this.ask(attempt);
     try {
       await poll(async () => this.started(attempt) && (await fetch(`${this.base}/system_stats`, { signal: AbortSignal.timeout(5_000) })).ok, this.startMs, "ComfyUI");
+      if (this.onNodes) void this.readNodes(this.onNodes);
     } catch (e) {
       // A start that failed doesn't keep it asked for.
       this.loaded.delete(model.id);
@@ -216,6 +219,14 @@ export class Comfy implements Backend {
       throw e;
     }
   }
+  /** ComfyUI's node types, read after it starts; a failed read leaves the last list as it was. */
+  private async readNodes(onNodes: (info: Record<string, never>) => void): Promise<void> {
+    try {
+      const res = await fetch(`${this.base}/object_info`, { signal: AbortSignal.timeout(this.callMs) });
+      if (res.ok) onNodes((await res.json()) as Record<string, never>);
+    } catch {}
+  }
+
   async unload(model: TextModel): Promise<void> {
     this.loaded.delete(model.id);
     await this.post("/free", { unload_models: true, free_memory: true });
