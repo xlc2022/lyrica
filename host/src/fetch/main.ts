@@ -1,6 +1,6 @@
 // fetch's entry point, run in its own container: the only one with a route out.
 import { lookup } from "node:dns/promises";
-import { huggingFace, modelScope } from "./hubs.ts";
+import { civitai, huggingFace, modelScope } from "./hubs.ts";
 import { Downloader } from "./downloads.ts";
 import { Net } from "./net.ts";
 import { fetchServer } from "./server.ts";
@@ -13,7 +13,7 @@ const downloader = new Downloader({
   models: process.env.MODELS_DIR || "/models",
   data: process.env.DATA_DIR || "/data",
   net,
-  hubs: { huggingface: huggingFace(net), modelscope: modelScope(net) },
+  hubs: { huggingface: huggingFace(net), modelscope: modelScope(net), civitai: civitai(net) },
   log,
 });
 

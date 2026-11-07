@@ -836,8 +836,8 @@ export function ImageReview({ ctx }: { ctx: MCtx }) {
 
 /* ---- Download image model: a starter recipe, files from Hugging Face, a link, or a scan of the host's models folder ---- */
 
-type ImageSource = "starters" | "huggingface" | "url" | "scan";
-const SOURCES: [ImageSource, string][] = [["starters", "Starter recipes"], ["huggingface", "Hugging Face"], ["url", "Link"], ["scan", "Scan folder"]];
+type ImageSource = "starters" | "huggingface" | "civitai" | "url" | "scan";
+const SOURCES: [ImageSource, string][] = [["starters", "Starter recipes"], ["huggingface", "Hugging Face"], ["civitai", "Civitai"], ["url", "Link"], ["scan", "Scan folder"]];
 
 /** A starter's parts not on the host yet, and their bytes. */
 const toFetch = (s: HostStarter) => { const parts = s.parts.filter((p) => !p.present); return { parts, bytes: parts.reduce((n, p) => n + (p.size ?? 0), 0) }; };
@@ -869,7 +869,8 @@ export function DownloadImage({ ctx }: { ctx: MCtx }) {
   const [hostId, setHostId] = useState<string>();
   const host = hosts.find((h) => h.ep.id === hostId) ?? hosts[0];
   const [source, setSource] = useState<ImageSource>("starters");
-  const look = useLookup(userId, host?.ep.id, source === "huggingface" ? "huggingface" : "url");
+  const hub = source === "civitai" ? "civitai" : "huggingface";
+  const look = useLookup(userId, host?.ep.id, source === "huggingface" || source === "civitai" ? source : "url");
   const starterHost = host?.ep;
   // The host's starters, and which it has made a recipe from already.
   const starters = useLoad(() => (starterHost ? Promise.all([
@@ -892,7 +893,7 @@ export function DownloadImage({ ctx }: { ctx: MCtx }) {
   const found = look.found;
   useEffect(() => { setPicked(new Set()); setProblem(""); }, [found, look.repo]);
   useEffect(() => { setScanned(undefined); setStarter(undefined); }, [host?.ep.id]);
-  const saved = tokenFor(tokens.data, "huggingface");
+  const saved = tokenFor(tokens.data, hub);
   const files = found?.files.filter((f) => f.allowed) ?? [];
   const refused = useMemo(() => (found ? fileChoices(found).refused : []), [found]);
 
@@ -924,7 +925,7 @@ export function DownloadImage({ ctx }: { ctx: MCtx }) {
         : found.gated && !saved && !token.trim() ? "This repository needs a token."
         : chosen.reduce((n, f) => n + f.size, 0) > found.free ? `Not enough space on ${host.ep.name}.` : "";
       if (why || !found) { setProblem(why); return; }
-      body = { source: "huggingface", repo: found.repo, files: chosen.map((f) => f.path) };
+      body = { source: hub, repo: found.repo, files: chosen.map((f) => f.path) };
     }
     setProblem("");
     void run(async () => {
@@ -957,10 +958,10 @@ export function DownloadImage({ ctx }: { ctx: MCtx }) {
           <div className="seg" role="group" aria-label="Source">
             {SOURCES.map(([s, label]) => <button key={s} type="button" aria-pressed={source === s} onClick={() => { setSource(s); setProblem(""); }}>{label}</button>)}
           </div>
-          {source === "huggingface" && <>
-            <RepoField look={look} placeholder="Comfy-Org/Qwen-Image_ComfyUI, or the page's link" />
+          {(source === "huggingface" || source === "civitai") && <>
+            <RepoField look={look} label={source === "civitai" ? "Model" : undefined} placeholder={source === "civitai" ? "2731465, or the model page's link" : "Comfy-Org/Qwen-Image_ComfyUI, or the page's link"} />
             {found && <>
-              {found.gated && <GatedNote hub="huggingface" saved={saved} token={token} setToken={setToken} keep={keep} setKeep={setKeep} />}
+              {found.gated && <GatedNote hub={hub} saved={saved} token={token} setToken={setToken} keep={keep} setKeep={setKeep} />}
               <div className="field">
                 <span id="h-files">Files to download</span>
                 {files.length ? (
@@ -998,7 +999,7 @@ export function DownloadImage({ ctx }: { ctx: MCtx }) {
               </ul>
             ) : <p className="muted">Nothing new in <code>{host.status!.modelsFolder.path}</code>.</p>)}
           </>}
-          <ErrorText error={problem || (source === "huggingface" ? look.error : "") || error} />
+          <ErrorText error={problem || (source === "huggingface" || source === "civitai" ? look.error : "") || error} />
           <div className="row">
             {source !== "scan" && <button type="button" className="primary" disabled={busy || look.busy} onClick={download}>{source === "starters" ? "Add model" : "Download"}</button>}
             <button type="button" onClick={() => { location.hash = back; }}>{source === "scan" ? "Back" : "Cancel"}</button>
