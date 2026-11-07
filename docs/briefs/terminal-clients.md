@@ -1,7 +1,8 @@
 # Brief: `lyrica chat` and `lyrica mem`
 
-**Status:** draft for the user's review. Not built. Nothing here is
-decided until the open questions at the end are answered.
+**Status:** draft. Not built. The user answered (2026-11-07): build it
+now, keep the terminal's threads separate, add Forget a topic to `mem`,
+and choose who may run it from the options under A.
 
 **Branch:** `feature/terminal-clients`, once the brief is agreed.
 **Read first:** AGENTS.md, PRINCIPLES.md (2, 8, 10), DESIGN.md ("One
@@ -28,8 +29,7 @@ Principles:
   interface, which the contracts already name; they are not web threads
   shown in a terminal. She is continuous across the two because she
   remembers. Principle 10 also says the next interface starts only once
-  the previous one works well, so starting this one is the user's call
-  (question 1).
+  the previous one works well; the user judged the web ready for it.
 - **2.** Both are clients. They hold nothing: no session file, no
   history file, no cache, no temp file. Memory and thread text pass
   through the process and the terminal, and nothing else.
@@ -41,9 +41,24 @@ Principles:
 **A. Reaching `lyricad` and signing in** (shared by both commands).
 
 - Connect to `<runtime>/lyricad.sock`. It serves the same API and no
-  subcommand uses it yet. It is mode `0600` and owned by the service user,
-  so the command runs as that user (`sudo -u lyrica lyrica chat`) or as
-  root. `--runtime <dir>` picks another runtime, as `serve` does.
+  subcommand uses it yet. `--runtime <dir>` picks another runtime, as
+  `serve` does. Who may connect is the open choice below.
+- **Who may run it.** Being on the machine is never enough to get in:
+  every option still asks for the Lyrica user's password. What differs is
+  which machine accounts get as far as the password prompt. Note that the
+  loopback port 7340 already answers every local account, so any of them
+  can already try a password there, under the same rate limits.
+
+  | Option | Who reaches the prompt | Cost |
+  |---|---|---|
+  | **a. Service user only** | root, or `sudo -u lyrica lyrica chat` | Nothing to build; the user needs sudo every time |
+  | **b. A group on the socket** (recommended) | Accounts the operator adds to a `lyrica-clients` group; the socket becomes `0660` with that group | install.sh and the NixOS module make the group (empty by default); one line in the getting-started guide |
+  | **c. Loopback** | Every local account, through `127.0.0.1:7340` | Nothing to build; no way to narrow it |
+  | **d. Another machine** | Anyone who can reach her HTTPS front door (LAN, tailnet) | A login flow that works without a browser, and the front door's own rules; a later brief |
+
+  The machine account is never mapped to a Lyrica user (no peer-credential
+  sign-in): the password decides who you are, as it does on the web, so a
+  shared machine account can't open someone else's memory.
 - Sign in with `POST /api/login`: the login name as an argument or a
   prompt, the password only at a hidden prompt, never as an argument or
   environment variable (DESIGN.md's rule for every `lyrica` subcommand).
@@ -85,11 +100,15 @@ go through `openOwnerView` already:
 | `lyrica mem restore <id> <rev>` | `POST …/restore` | Brings back an earlier revision |
 | `lyrica mem archive <id>` / `delete <id>` | `POST …/archive`, `DELETE` | Two of the four deletion levels, each confirmed with y/N |
 | `lyrica mem note` | `POST …/memory/:pool/notes` | A note of the user's own |
+| `lyrica mem forget <words>` | `GET …/memory/search`, then `POST …/memory/:pool/forget` | Forget a topic: lists the matches, the user picks which go (all, none, or numbers), then confirms once |
 
 - **Editing never touches disk.** There is no `$EDITOR`, since an editor
   needs a temp file. The edit is a line editor in the terminal, prefilled
   with the current text; mention tokens show as `{Name}` and are saved
   back as tokens, as the web editor does.
+- **Forget a topic** deletes for good, as on the web: each removed memory
+  leaves a tombstone, and pages that cited it are flagged for the next
+  sleep. The confirmation names how many memories go.
 - **Export** (`lyrica mem export <ids…>`) prints Markdown to standard
   output and never writes a file itself. Where it goes after that is the
   user's choice, as with a download from the web.
@@ -103,18 +122,17 @@ go through `openOwnerView` already:
   list, and the reverse.
 - A memory edited with `lyrica mem edit` keeps its mention tokens and
   shows as a revision in the web.
+- `lyrica mem forget` removes only the matches the user picked, and leaves
+  tombstones.
 - Neither command writes a file anywhere (run with a fresh `HOME` and
   temp folder, and check both stay empty).
 
 ## Out of scope
 
-- Using either command from another machine. The socket is local; a
-  remote terminal client would need the HTTPS front door and its own
-  sign-in story.
 - Moving a thread between the web and the terminal (an explicit export,
   per principle 10, and a separate brief).
-- Forgetting a thread or a topic from the terminal; the web keeps those
-  two deletion levels for now.
+- Forgetting a thread from the terminal; the web keeps that one.
+- Using it from another machine (option d) in this build.
 - Images, uploads, voice, projects and subagent drawers in `chat`.
 - Pi's own terminal interface: it writes plaintext session files, which is
   why only `lyrica dev` uses it, against test data.
@@ -134,23 +152,15 @@ names and not built"), README (its "Not built yet" line), docs/contracts.md
 terminal as a second way to edit), the getting-started guide (one
 paragraph, through Operator docs), and this brief's status.
 
-## Open questions for the user
+## Open question for the user
 
-1. **Now, or after the web settles?** Principle 10 says the next interface
-   starts once the previous one works well. Is the web there?
-2. **Its own threads, or the web's?** This brief keeps the rooms separate
-   (`cli` threads), as principle 10 and DESIGN.md say. If the user wants
-   to pick up a web thread in the terminal, that changes principle 10 and
-   needs a DESIGN.md change first.
-3. **Service user only?** Running as `sudo -u lyrica` is what the socket's
-   permissions give today. Letting any local account in would mean a
-   group on the socket, which widens who can try a password.
-4. **`mem` scope.** Is search, show, edit, restore, archive, delete, note
-   and export the right set, or should forgetting a topic come too?
+**Who may run it** (A): options a to d. Answered so far: build now,
+separate `cli` threads, and Forget a topic in `mem`.
 
 ## Handoff
 
-- **Done:** this draft.
-- **Next:** the user's answers to the questions above, then a build on
+- **Done:** this draft, with the user's answers to three of its four
+  questions.
+- **Next:** the user's choice of who may run it, then a build on
   `feature/terminal-clients` with PR review (it touches `bin/` and the
   daemon's routes).
