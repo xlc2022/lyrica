@@ -53,7 +53,7 @@ export function UpdatesSection({ ctx }: { ctx: ShellContext }) {
         <dl className="facts">
           <dt>Running</dt><dd className="mono">{up.running.version} · {up.running.build}</dd>
           {!merge && up.note && <><dt>Update</dt><dd><span className="mono">{up.note.tag}</span> <span className="muted mono small">{short(up.note.commit)}</span></dd></>}
-          {merge && latest && <><dt>Latest merge</dt><dd><span className="mono">{short(latest.commit)}</span> <span className="muted small">{day(latest.at)}</span>{latest.title && <> <span className="release-summary" title={latest.title}>{latest.title}</span></>}</dd></>}
+          {merge && latest && <><dt>Latest merge</dt><dd className="latest-merge"><span className="mono">{short(latest.commit)}</span> <span className="muted small">{day(latest.at)}</span>{latest.title && <> <MergeTitle title={latest.title} /></>}</dd></>}
         </dl>
       )}
       {!merge && up?.note && <pre className="setup note"><code>{up.note.message}</code></pre>}
@@ -105,6 +105,12 @@ export function UpdatesSection({ ctx }: { ctx: ShellContext }) {
       )}
     </section>
   );
+}
+
+/** A merge's title on one line, its whole text in a tooltip; a leading pull request number in mono, as elsewhere. */
+function MergeTitle({ title }: { title: string }) {
+  const m = /^(#\d+) (.*)$/.exec(title);
+  return <span className="release-summary" title={title}>{m ? <><span className="mono">{m[1]}</span> {m[2]}</> : title}</span>;
 }
 
 /** The steps of an update, in the order the updater goes through them, with their names on the card and what each does. */
