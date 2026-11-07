@@ -16,7 +16,9 @@
       "slot": "qwen3vl",
       "source": "civitai",
       "repo": "2731465",
-      "path": "0/qwen3vl-4b-abliterated_fp8_e4m3fn.safetensors"
+      "path": "3070870/qwen3vl-4b-abliterated_fp8_e4m3fn.safetensors",
+      "sha256": "1cc1120f54f04736e4dee3b8b22744637332cb34e645a1e4c51196191861ae9d",
+      "size": 4831356160
     },
     {
       "role": "vae",

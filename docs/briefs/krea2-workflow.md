@@ -40,7 +40,9 @@ same tool) through the host's known-good recipes.
    revision its version id, a path a file name; SHA-256 from Civitai's API;
    a Civitai token under Downloads → Accounts, sent only to civitai.com.
    Starter installs send each hub's token for its own parts.
-4. A starter, Krea 2 Turbo Enhanced, with the workflow's defaults.
+4. A starter, Krea 2 Turbo Uncensored, with the workflow's defaults and its
+   encoder from Civitai. Starter adoption checks every part, since it shares
+   Turbo's diffusion file.
 5. Docs: host/README.md, host/API.md, docs/guides/model-hosts.md, docs/ux.md
    (the Accounts row), DESIGN.md if it lists the hubs.
 

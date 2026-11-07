@@ -400,6 +400,9 @@ export class Downloader {
         have = 0;
         return this.restartFresh(d);
       }
+      // Civitai gives sizes in kilobytes, as fractions: the transfer's own length is the exact one.
+      const exact = Number(res.headers["content-length"]);
+      if (d.source === "civitai" && !have && Number.isFinite(exact) && exact > 0) d.size = exact;
       if (!d.size) {
         // A link: its size is known only now. Refuse one that doesn't say, and check the space again.
         const length = Number(res.headers["content-length"]);
