@@ -396,11 +396,11 @@ async function nixosWorld() {
     chmodSync(join(dir, "bin", "lyrica"), 0o755);
     return dir;
   };
-  const start = (p: string, commit: string) => new Promise<{ code: number; err: string }>((resolve) => {
+  const start = (p: string, commit: string, more: Record<string, string> = {}) => new Promise<{ code: number; err: string }>((resolve) => {
     execFile(join(UPDATER, "lyrica-nixos-start"), [p, commit], {
       env: { ...process.env, PATH: `${w.fake}:${process.env.PATH}`, LYRICA_USER: userInfo().username, LYRICA_UPDATER_LIB: UPDATER, LYRICA_UPDATER_BIN: UPDATER,
         LYRICA_PREFIX: w.prefix, LYRICA_STATE: w.state, LYRICA_UPDATE_DIR: w.update, LYRICA_SNAPSHOTS: w.snapshots, LYRICA_SYSTEMCTL: join(w.fake, "systemctl"),
-        LYRICA_NIX: "1", LYRICA_PROFILE: profile, LYRICA_DEPLOY_KEY: join(w.root, "deploy-key") },
+        LYRICA_NIX: "1", LYRICA_PROFILE: profile, LYRICA_DEPLOY_KEY: join(w.root, "deploy-key"), ...more },
       timeout: 60_000,
     }, (err, _out, errOut) => resolve({ code: err ? 1 : 0, err: errOut }));
   });
@@ -414,7 +414,6 @@ describe("lyrica-nixos-start", () => {
     expect((await start(a, "aaaaaaa")).code).toBe(0);
     expect(readlinkSync(profile)).toBe(a);
     expect(readFileSync(join(w.update, "build.env"), "utf8")).toBe("LYRICA_BUILD=aaaaaaa\n");
-    expect(existsSync(join(w.root, "deploy-key.pub"))).toBe(true);
     const snaps = () => (w.json("releases.json").snapshots ?? []).filter((s: { kind: string }) => s.kind === "snapshot").length;
     const first = snaps();
 
@@ -437,6 +436,27 @@ describe("lyrica-nixos-start", () => {
     expect(readFileSync(join(w.state, "self.db"), "utf8")).toBe("self v0");
     expect(readlinkSync(profile)).toBe(a);
     expect(w.json("releases.json").minReader).toEqual(S(1, 1, 1));
+  });
+
+  it("sets up the updater's remote: HTTPS with no deploy key, SSH with one, and moves an old default SSH remote", async () => {
+    const { w, pkg, start } = await nixosWorld();
+    const a = pkg("a", S(1, 1, 1), S(1, 1, 1));
+    const repo = join(w.prefix, "repo.git");
+    const origin = () => execFileSync("git", ["--git-dir", repo, "remote", "get-url", "origin"]).toString().trim();
+    const key = join(w.root, "deploy-key.pub");
+    rmSync(repo, { recursive: true, force: true });
+    expect((await start(a, "aaaaaaa", { LYRICA_REPO: "https://example.invalid/lyrica.git" })).code).toBe(0);
+    expect(origin()).toBe("https://example.invalid/lyrica.git");
+    expect(existsSync(key)).toBe(false);
+    // A remote that is already set up stays as it is, with no new check.
+    expect((await start(a, "aaaaaaa", { LYRICA_REPO: "git@example.invalid:o/lyrica.git" })).code).toBe(0);
+    expect(origin()).toBe("https://example.invalid/lyrica.git");
+    // A failed fetch sets it up again: here an SSH remote, with a new deploy key.
+    writeFileSync(join(w.update, "state.json"), JSON.stringify({ state: "failed", error: "fetch" }));
+    const r = await start(a, "aaaaaaa", { LYRICA_REPO: "git@example.invalid:o/lyrica.git" });
+    expect(r.err).toContain("as a read-only deploy key");
+    expect(origin()).toBe("git@example.invalid:o/lyrica.git");
+    expect(existsSync(key)).toBe(true);
   });
 
   it("keeps a newer release an Update installed when a rebuild brings an older commit of its history, and follows a newer one", async () => {

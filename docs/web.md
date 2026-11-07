@@ -976,8 +976,10 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   (`src/Updates.tsx`; docs/ux.md §6 "Updates"): the running version in mono,
   **Check**, the newest update note (its tag in mono, its text in a block),
   **Update** as the one primary (disabled while an update runs), a state
-  line beneath (Draining with the count of busy threads and the user's own
-  linked, Building, Testing, Probation, Failed with the error), the last
+  line beneath (Fetching, Draining with the count of busy threads when
+  there are any and the user's own linked, Building, Testing, Probation,
+  Failed with the error; while one shows, the section reloads every 2
+  seconds, so a Check or Update follows through to its result), the last
   rollback as a sentence, and the kept releases as rows (commit in mono,
   date, the first line of its update note when it has one, Running) with **Roll back** in the row's ⋯, asked in a dialog that
   names the commit and says when messages since the snapshot are lost.

@@ -588,13 +588,19 @@ Fetching is done by the host's `fetch` service. It is the only part of
 the host that downloads, and nothing that sees prompts (host-api, the model
 servers) has a route out.
 
-- Sources: `huggingface`, `modelscope`, or `url` (https only); and
-  `upload` for a file sent from the user's computer ("Uploads" below).
+- Sources: `huggingface`, `modelscope`, `civitai`, or `url` (https only).
+  On Civitai a repository is a model's number, and its files are every
+  version's, each at `<version id>/<file name>` with the SHA-256 Civitai
+  publishes; only files whose download link is on `civitai.com` are listed.
+- `upload` is a file sent from the user's computer ("Uploads" below).
 - A gated repository's token travels in the `X-Hub-Token` header of the
   request that needs it. The host passes it to `fetch` for that request and
   never stores or logs it. It is sent only to that hub's own host
-  (`huggingface.co` or `modelscope.cn`), never to a CDN it redirects to,
-  and never with a link.
+  (`huggingface.co`, `modelscope.cn` or `civitai.com`), never to a CDN it
+  redirects to, and never with a link. A starter install or a recipe's
+  missing parts can come from two hubs: Hugging Face's or ModelScope's
+  token is `X-Hub-Token`, and Civitai's travels apart in `X-Civitai-Token`,
+  each used only for its own hub's parts.
 - Allowed files: `.gguf`, `.safetensors` and `.onnx`, plus the small files
   a model folder needs (`.json`, `.txt`, `.jinja`, `.model`, `.tiktoken`).
   Pickle formats (`.bin`, `.pt`, `.pth`, `.ckpt`, `.pkl`, `.pickle`) and
@@ -801,7 +807,9 @@ as `{ "parts": [...] }`, each entry like this:
   takes its true shape from `comfy.gguf.orig_shape.<name>`. Files are used
   where they are.
 - Architectures with templates: `sdxl` and `flux` (a checkpoint, or
-  diffusion model, encoders and VAE), `z-image`, `krea2` (create),
+  diffusion model, encoders and VAE), `z-image`, `krea2` (create; with
+  recipe defaults for the Krea2T-Enhancer, RES4LYF's sampler and a second
+  pass, below),
   `qwen-image` (create, and edit for a diffusion model whose file name
   says "edit"), `qwen-image-2.1` (create and edit from one recipe, with
   the Turbo's 8-step schedule from the recipe's defaults), `seedvr2`
@@ -897,9 +905,12 @@ Calls:
   `{ "recipe": <recipe>, "downloads": [<download>] }`. Installing it again
   answers with the same recipe, downloading only the parts neither here
   nor already downloading. A recipe a scan already made from the starter's main
-  file becomes the starter's recipe instead of a second one: a proposal
-  takes the starter's name, parts and defaults; a confirmed one is kept as
-  it is.
+  file, with the starter's other parts or none for them, becomes the
+  starter's recipe instead of a second one: a proposal takes the starter's
+  name, parts and defaults; a confirmed one is kept as it is. (Krea 2 Turbo
+  Uncensored shares Turbo's diffusion model but not its encoder, so it
+  never takes over a Turbo recipe.) Parts from Civitai use the
+  `X-Civitai-Token` header.
 - `POST /host/v1/recipes/<id>/confirm`, `POST /host/v1/recipes/<id>/ignore`:
   for proposals. One already in that state answers as it is, so a retry is
   harmless; another state is `invalid`. Several at once:
@@ -925,7 +936,15 @@ Calls:
   - `{ "op": "defaults", "defaults": { "steps": 30 } }`: merged into the
     defaults. Each must be one a request could give (the ranges below;
     `shift` 0 to 20, `guidance` 0 to 30, `duration` 1 to 15, `sampler` and
-    `scheduler` ComfyUI names, `negativePrompt` at most 4096 characters);
+    `scheduler` ComfyUI names, `negativePrompt` at most 4096 characters).
+    Krea 2 recipes also take `enhance` (0 to 2: the Krea2T-Enhancer's
+    strength, which patches the model for prompt adherence), `eta` (0 to 2:
+    the first pass runs on RES4LYF's ClownsharKSampler, so `sampler` and
+    `scheduler` can be RES4LYF's, such as `res_2s` and `bong_tangent`) and
+    `refine` (0.01 to 1: a second pass over the first one's latent at this
+    denoise, on ClownsharKSampler with `refineSteps` 8, `refineSampler`
+    `res_2s`, `refineScheduler` `bong_tangent` and `refineEta` 0.9 unless
+    the recipe says otherwise). Without them it is one KSampler pass;
   - `{ "op": "rename", "name": "..." }`;
   - `{ "op": "useFor", "useFor": "fast" }`: `fast`, `quality` or `both`,
     saved in `recipes.json`.

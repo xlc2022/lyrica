@@ -20,7 +20,11 @@ const IMAGE_LIMIT = 20 * 1024 * 1024;
 const MAX_SIDE = 8192;
 const MAX_PIXELS = 36_000_000;
 const MAX_RESOLUTION = 4096;
-const BASE_DEFAULTS: Values = { negativePrompt: "", steps: 20, cfg: 1, sampler: "euler", scheduler: "simple", width: 1024, height: 1024, shift: 3, guidance: 3.5, scale: 2, maxSize: 4096, colorMatch: "lab" };
+const BASE_DEFAULTS: Values = {
+  negativePrompt: "", steps: 20, cfg: 1, sampler: "euler", scheduler: "simple", width: 1024, height: 1024, shift: 3, guidance: 3.5, scale: 2, maxSize: 4096, colorMatch: "lab",
+  // Krea 2's second pass (host/workflows/krea2.json), which runs only when a recipe sets `refine`, its denoise.
+  refineSteps: 8, refineSampler: "res_2s", refineScheduler: "bong_tangent", refineEta: 0.9,
+};
 const IDLE_FREE_MS = 10 * 60_000;
 /** How long one clip may take: a 14B model on a 24 GB card can take most of an hour. */
 const VIDEO_TIMEOUT_MS = 2 * 60 * 60_000;
@@ -340,13 +344,16 @@ export class Images {
   private async download(parts: { source: string; repo: string; path: string; sha256: string }[], req: IncomingMessage): Promise<unknown[]> {
     if (!parts.length) return [];
     if (!this.downloads) throw new HostError(503, "unavailable", "The download service isn't running.");
-    const token = typeof req.headers["x-hub-token"] === "string" ? req.headers["x-hub-token"] : undefined;
+    // Hugging Face's or ModelScope's token, and Civitai's apart: each goes only to its own hub's parts.
+    const header = (name: string) => (typeof req.headers[name] === "string" && req.headers[name] ? (req.headers[name] as string) : undefined);
+    const tokenFor = (source: string) => (source === "civitai" ? header("x-civitai-token") : source === "url" ? undefined : header("x-hub-token"));
     const groups = new Map<string, typeof parts>();
     for (const p of parts) groups.set(`${p.source} ${p.repo}`, [...(groups.get(`${p.source} ${p.repo}`) ?? []), p]);
     const made: unknown[] = [];
     for (const group of groups.values()) {
       const { source, repo } = group[0]!;
-      if (source === "huggingface" || source === "modelscope") {
+      const token = tokenFor(source);
+      if (source === "huggingface" || source === "modelscope" || source === "civitai") {
         const listing = await this.downloads.list(source, repo, undefined, token);
         for (const p of group) {
           const f = listing.files.find((x: { path: string }) => x.path === p.path);

@@ -121,9 +121,18 @@ describe("Administration's updates API", () => {
 
     expect(got.releases.map((r) => r.summary)).toEqual(["Releases and rollback ".repeat(6).trim(), undefined, undefined]);
 
-    expect((await ada.post(u, { tag: "main" })).status).toBe(400);
-    expect((await ada.post(u, { tag: "update/2026-10-12" })).status).toBe(200);
+    // A request the updater hasn't taken yet shows as the step it starts with, so the page
+    // follows it instead of answering idle until the next reload (Check needed two clicks).
     const request = join(rt.home, "updates", "request.json");
+    const checked = await ada.post<Updates>(`${u}/check`, {});
+    expect(checked.status).toBe(200);
+    expect(checked.body.state.state).toBe("fetching");
+    expect((await ada.get<Updates>(u)).body.state.state).toBe("fetching");
+    rmSync(request);
+    expect((await ada.get<Updates>(u)).body.state).toEqual({ state: "idle", since: "2026-10-09T14:12:00Z" });
+
+    expect((await ada.post(u, { tag: "main" })).status).toBe(400);
+    expect((await ada.post<Updates>(u, { tag: "update/2026-10-12" })).body.state).toMatchObject({ state: "fetching", tag: "update/2026-10-12" });
     expect(JSON.parse(readFileSync(request, "utf8"))).toEqual({ action: "update", tag: "update/2026-10-12" });
     expect(statSync(request).mode & 0o777).toBe(0o600);
     expect((await ada.post(`${u}/rollback`, { commit: "bbbbbbb" })).status).toBe(409);
@@ -136,6 +145,11 @@ describe("Administration's updates API", () => {
     writeFileSync(join(state, "state.json"), JSON.stringify({ state: "probation", since: "2026-10-12T00:00:00Z" }));
     expect((await ada.post(`${u}/rollback`, { commit: "bbbbbbb" })).status).toBe(200);
     expect(JSON.parse(readFileSync(request, "utf8"))).toEqual({ action: "rollback", commit: "bbbbbbb" });
+    // While the updater is already at work, its own state shows, not the waiting request.
+    expect((await ada.get<Updates>(u)).body.state.state).toBe("probation");
+    rmSync(request);
+    writeFileSync(join(state, "state.json"), JSON.stringify({ state: "failed", since: "2026-10-12T00:00:00Z", error: "fetch" }));
+    expect((await ada.post<Updates>(`${u}/rollback`, { commit: "bbbbbbb" })).body.state).toMatchObject({ state: "draining", commit: "bbbbbbb" });
   });
 });
 

@@ -88,7 +88,7 @@ export function readUpdates(paths: UpdatePaths, running: { version: string; buil
     available: !!file,
     running,
     note: state.note ?? null,
-    state: {
+    state: waiting(paths, state) ?? {
       state: state.state ?? "idle", since: state.since ?? "",
       ...(state.tag ? { tag: state.tag } : {}), ...(state.commit ? { commit: state.commit } : {}),
       ...(state.busy ? { busy: state.busy } : {}), ...(state.error ? { error: state.error } : {}),
@@ -96,6 +96,20 @@ export function readUpdates(paths: UpdatePaths, running: { version: string; buil
     releases,
     lastRollback: state.lastRollback ?? null,
   };
+}
+
+/**
+ * A request the updater hasn't taken yet, shown as the step it starts with: the path unit
+ * starts the updater a moment after lyricad answers, so without this a Check or an Update
+ * would come back still idle and nothing on the page would follow it.
+ */
+function waiting(paths: UpdatePaths, state: StateFile): Updates["state"] | undefined {
+  if (state.state && state.state !== "idle" && state.state !== "failed") return undefined;
+  const req = readJson<{ action?: string; tag?: string; commit?: string }>(join(paths.requests, "request.json"));
+  if (!req?.action) return undefined;
+  const since = new Date().toISOString();
+  if (req.action === "rollback") return { state: "draining", since, ...(req.commit ? { commit: req.commit } : {}) };
+  return { state: "fetching", since, ...(req.tag ? { tag: req.tag } : {}) };
 }
 
 const TAG = /^update\/[A-Za-z0-9._-]{1,64}$/;

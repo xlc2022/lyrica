@@ -870,7 +870,7 @@ needs an administrator.
 - `hubFiles` lists a repository's files (present, fitting the free space);
   `startDownload`, `downloads` and `cancelDownload` start, follow and
   cancel. A download is checked as the host would before it's sent: a
-  source of `huggingface`, `modelscope` or `url`, a repository and files, or
+  source of `huggingface`, `modelscope`, `civitai` or `url`, a repository and files, or
   a link that is https, at most 1024 characters, with no user name or
   password. A download that finished since the last look is read as an
   offering at once, and the group suggestions pick it up.
@@ -879,11 +879,13 @@ needs an administrator.
   of at most 64 MiB as the bytes that came, held in memory for that request
   only. The host's answer, refusals included, goes back as it said it. A
   finished upload becomes an offering like a download.
-- **Hub tokens** for Hugging Face and ModelScope: a user's own in `user.db`,
+- **Hub tokens** for Hugging Face, ModelScope and Civitai: a user's own in `user.db`,
   or one an administrator shares in `self.db` (`hub_tokens`). The API shows
   only the last four characters (`hubTokens`). A token goes to the host in
   `X-Hub-Token` with each request that needs it, the user's own before the
-  shared one, and never into a response, a log or a call record.
+  shared one, and never into a response, a log or a call record. A starter
+  or a recipe's missing parts from Civitai and another hub send Civitai's
+  apart, in `X-Civitai-Token`.
 - `deleteCopy` first says where a copy is used; confirmed, it deletes only
   files in the host's download record (anything else, such as a shared
   models folder, is refused) and leaves a tombstone, so lists skip it. A

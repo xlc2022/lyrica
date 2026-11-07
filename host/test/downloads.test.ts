@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { Downloads } from "../src/downloads.ts";
 import { Downloader } from "../src/fetch/downloads.ts";
 import { isPublic } from "../src/fetch/guard.ts";
-import { huggingFace, modelScope } from "../src/fetch/hubs.ts";
+import { civitai, huggingFace, modelScope } from "../src/fetch/hubs.ts";
 import { Net } from "../src/fetch/net.ts";
 import { fetchServer } from "../src/fetch/server.ts";
 import { ggufBytes } from "../src/gguf.ts";
@@ -33,7 +33,7 @@ async function stack(opts: Parameters<typeof fakeHub>[0] = {}) {
   const net = new Net({ allowed: (a) => a === "127.0.0.1" || a === "::1" || isPublic(a), ca: hub.ca });
   const downloader = new Downloader({
     models, data: mkdtempSync(join(tmpdir(), "lyrica-dl-data-")), net,
-    hubs: { huggingface: huggingFace(net, hub.base), modelscope: modelScope(net, hub.base) }, log, free: () => 1e12,
+    hubs: { huggingface: huggingFace(net, hub.base), modelscope: modelScope(net, hub.base), civitai: civitai(net, hub.base) }, log, free: () => 1e12,
   });
   let callers = ["127.0.0.1"];
   const fetchSrv = fetchServer(downloader, async (a) => callers.includes(a));
@@ -213,7 +213,7 @@ describe("downloads through host-api", () => {
     const models = mkdtempSync(join(tmpdir(), "lyrica-up-models-"));
     const data = mkdtempSync(join(tmpdir(), "lyrica-up-data-"));
     const net = new Net({ allowed: () => false });
-    const make = () => new Downloader({ models, data, net, hubs: { huggingface: huggingFace(net, "https://x"), modelscope: modelScope(net, "https://x") }, log: () => {}, free: () => 1e12 });
+    const make = () => new Downloader({ models, data, net, hubs: { huggingface: huggingFace(net, "https://x"), modelscope: modelScope(net, "https://x"), civitai: civitai(net, "https://x") }, log: () => {}, free: () => 1e12 });
     const file = Buffer.concat([ggufBytes({ "general.architecture": "llama", "tokenizer.ggml.model": "gpt2" }), Buffer.alloc(2000)]);
     const first = make();
     const half = first.startUpload({ name: "half.gguf", size: file.length });

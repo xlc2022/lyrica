@@ -24,7 +24,7 @@ export interface RecordEntry {
   card: { baseModel: string[]; baseModelRelation: string | null } | null;
 }
 
-const SOURCES = ["huggingface", "modelscope", "url"];
+const SOURCES = ["huggingface", "modelscope", "civitai", "url"];
 
 export class Downloads {
   private readonly url: string;
@@ -187,7 +187,7 @@ export class Downloads {
     const path = url.pathname;
     if (path === "/host/v1/hub/files" && method === "GET") {
       const source = url.searchParams.get("source");
-      if (source !== "huggingface" && source !== "modelscope") throw invalid("source must be huggingface or modelscope.");
+      if (source !== "huggingface" && source !== "modelscope" && source !== "civitai") throw invalid("source must be huggingface, modelscope or civitai.");
       sendJson(res, 200, await this.list(source, url.searchParams.get("repo"), url.searchParams.get("revision") ?? undefined, this.token(req)));
       return true;
     }
@@ -209,7 +209,7 @@ export class Downloads {
     if (path === "/host/v1/downloads" && method === "POST") {
       const body = await readJson(req);
       onlyFields(body, ["source", "repo", "revision", "files", "url", "sha256"]);
-      if (!SOURCES.includes(body.source as string)) throw invalid("source must be huggingface, modelscope or url.");
+      if (!SOURCES.includes(body.source as string)) throw invalid("source must be huggingface, modelscope, civitai or url.");
       // A hub token is for that hub: never sent along with a link.
       sendJson(res, 202, await this.request(body, body.source === "url" ? undefined : this.token(req)));
       return true;

@@ -3,7 +3,7 @@
 import { DownloadError, type Net } from "./net.ts";
 
 /** Where a file came from: a hub, a link, or the user's own computer through Lyrica (`upload`). */
-export type Source = "huggingface" | "modelscope" | "url" | "upload";
+export type Source = "huggingface" | "modelscope" | "civitai" | "url" | "upload";
 
 export interface Card {
   baseModel: string[];
@@ -30,11 +30,14 @@ export interface Hub {
   host: string;
   list(repo: string, revision: string | undefined, token?: string): Promise<Listing>;
   fileUrl(repo: string, revision: string, path: string): string;
+  /** The hub's own repository names, when they aren't owner/name. */
+  checkRepo?(repo: unknown): string;
 }
 
 const REPO = /^[A-Za-z0-9][\w.-]*\/[\w.-]+$/;
 
-export function checkRepo(repo: unknown): string {
+export function checkRepo(repo: unknown, hub?: Hub): string {
+  if (hub?.checkRepo) return hub.checkRepo(repo);
   if (typeof repo !== "string" || !REPO.test(repo) || repo.includes("..")) throw new DownloadError("That isn't a repository name (owner/name).");
   return repo;
 }
@@ -119,6 +122,49 @@ export function modelScope(net: Net, base = "https://modelscope.cn"): Hub {
     },
     fileUrl(repo, revision, path) {
       return `${base}/api/v1/models/${repo}/repo?Revision=${encodeURIComponent(revision)}&FilePath=${encodeURIComponent(path)}`;
+    },
+  };
+}
+
+/**
+ * Civitai: a "repository" is a model, by its number; its files are every
+ * version's, each at `<version>/<file name>`, with the SHA-256 Civitai
+ * publishes. The download links come from the listing, so a file is listed
+ * before it is fetched (as every download is).
+ */
+export function civitai(net: Net, base = "https://civitai.com"): Hub {
+  const host = new URL(base).hostname;
+  const links = new Map<string, string>();
+  return {
+    host,
+    checkRepo(repo) {
+      if (typeof repo !== "string" || !/^\d{1,12}$/.test(repo)) throw new DownloadError("That isn't a Civitai model (its number, or its page's link).");
+      return repo;
+    },
+    async list(repo, _revision, token) {
+      this.checkRepo!(repo);
+      const model = await net.json({ url: `${base}/api/v1/models/${repo}`, token, tokenHost: host });
+      const files: HubFile[] = [];
+      for (const v of Array.isArray(model?.modelVersions) ? model.modelVersions : []) {
+        if (!Number.isInteger(v?.id)) continue;
+        for (const f of Array.isArray(v.files) ? v.files : []) {
+          if (typeof f?.name !== "string" || f.name.includes("/") || typeof f.downloadUrl !== "string") continue;
+          const url = new URL(f.downloadUrl, base);
+          // Only Civitai's own download links, which take the token and redirect to its storage.
+          if (url.protocol !== "https:" || url.hostname !== host) continue;
+          const path = `${v.id}/${f.name}`;
+          const sha = typeof f.hashes?.SHA256 === "string" && /^[0-9a-f]{64}$/i.test(f.hashes.SHA256) ? f.hashes.SHA256.toLowerCase() : null;
+          links.set(`${repo}/${path}`, url.href);
+          files.push({ path, size: Math.round(Number(f.sizeKB ?? 0) * 1024), sha256: sha, gitSha1: null });
+        }
+      }
+      const latest = model?.modelVersions?.[0]?.id;
+      return { revision: Number.isInteger(latest) ? String(latest) : "latest", gated: false, card: null, files };
+    },
+    fileUrl(repo, _revision, path) {
+      const link = links.get(`${repo}/${path}`);
+      if (!link) throw new DownloadError(`${path} isn't in that model.`);
+      return link;
     },
   };
 }

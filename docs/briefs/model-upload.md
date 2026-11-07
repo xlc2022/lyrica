@@ -24,7 +24,7 @@ as a download.
 
 ## Design
 
-- **Where:** a fourth (text) or fifth (image) segment, **Upload**, after
+- **Where:** a fourth (text) or last (image) segment, **Upload**, after
   Link (text) or Scan folder (image). Same **Download to** select.
 - **Upload segment:** a **Files** picker (several at once; `.gguf`,
   `.safetensors`), then the picked files as rows with their sizes,

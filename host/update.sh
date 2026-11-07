@@ -142,7 +142,8 @@ fi
 set_state fetching "$TAG"
 [ -d "$REPO" ] || fail "no deploy repository (run install.sh)"
 fetch() {
-  GIT_SSH_COMMAND="ssh -i $KEY -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$KNOWN" \
+  # Over HTTPS (a public repository) no key is used and nothing may prompt; over SSH, only the deploy key.
+  GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=/bin/false GIT_SSH_COMMAND="ssh -i $KEY -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$KNOWN" \
     rgit fetch --quiet --prune --force origin '+refs/heads/main:refs/heads/main' '+refs/tags/update/*:refs/tags/update/*'
 }
 if [ -n "$MODELS" ]; then

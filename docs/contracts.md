@@ -414,7 +414,7 @@ interface AnswerSettings { temperature?; topP?; topK?; minP?; repeatPenalty?; pr
                            frequencyPenalty?; maxTokens?; seed?; stop?: string[];
                            voices?: Record<language, voiceId>; speed? }   // the last two for speak models
 type SettingSource = "shared" | "yours";                   // absent: the server's default
-type Hub = "huggingface" | "modelscope";
+type Hub = "huggingface" | "modelscope" | "civitai";
 interface ModelIdentity { basename?; sizeLabel?; finetune?; baseModels?: { name?; organization?; repoUrl? }[]; card?: { baseModel?: string[]; baseModelRelation? } }
 interface LibraryEntry { key; name; base?: { key; name }; starred; groups: string[]; copies: { offeringId; label; rawName;
                          endpointId; endpointName; kind; shared; status; downloaded; capabilities; groups; flagged?; size? }[] }
@@ -2337,7 +2337,9 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   …/updates` with `{ tag }`, `POST …/updates/rollback` with `{ commit }`
   and `POST …/updates/check` write `<runtime>/updates/request.json` for the
   updater's path unit (`409` while an update runs, except a rollback on
-  probation). `GET …/admin/status` (`AdminStatus`) carries optional
+  probation). While that request waits and the updater is idle or failed,
+  `Updates.state` shows the step it starts with: `fetching` (with the tag)
+  for a check or an update, `draining` (with the commit) for a rollback. `GET …/admin/status` (`AdminStatus`) carries optional
   `unitsStale: string[]` from the updater's `state.json`: Debian units that
   were missing or differed at the last update switch, shown in Status with
   the action to run `install.sh`. The updater never rewrites these units;

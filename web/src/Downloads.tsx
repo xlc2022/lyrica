@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { del, get, patch, post, put, u, type DownloadHistory, type GroupInfo, type GroupSuggestion, type HostStatus, type Hub, type HubTokenInfo, type ModelsPage } from "./api.ts";
 import { HistoryHead, HistoryList } from "./History.tsx";
-import { clearFinished, companionsOf, downloadWords, fileChoices, fileLink, HUB_WORD, isRunning, repoName, size, speed, speeds, type HostDownload, type HubFiles } from "./downloads.ts";
+import { civitaiModel, clearFinished, companionsOf, downloadWords, fileChoices, fileLink, HUB_WORD, isRunning, repoName, size, speed, speeds, type HostDownload, type HubFiles } from "./downloads.ts";
 import { canEdit, Frame, hostOf, type MCtx } from "./ModelsFrame.tsx";
 import { cameFrom, go, href, type Route } from "./route.ts";
 import { ErrorText, useAction, useLoad } from "./ui.tsx";
@@ -178,7 +178,7 @@ function Item({ ep, d, busy, rate, paused, onCancel, children }: { ep: Endpoint;
 
 /* ---- Accounts: a token per hub, for gated repositories ---- */
 
-const HUBS: Hub[] = ["huggingface", "modelscope"];
+const HUBS: Hub[] = ["huggingface", "modelscope", "civitai"];
 
 /** The token a download from `hub` uses: the user's own, else one an administrator shared. */
 export const tokenFor = (tokens: HubTokenInfo[] | undefined, hub: Hub) => tokens?.find((t) => t.hub === hub && !t.shared) ?? tokens?.find((t) => t.hub === hub);
@@ -277,8 +277,8 @@ export function useLookup(userId: string, hostId: string | undefined, source: Hu
   useEffect(() => { setFound(undefined); setProblem(""); }, [hostId, source]);
   const type = useCallback((text: string) => { setRepo(text); setFound(undefined); setProblem(""); }, []);
   const lookUp = () => {
-    const name = repoName(repo);
-    if (!name) { setProblem("That isn't a repository. Use owner/name, or paste the page's link."); return; }
+    const name = source === "civitai" ? civitaiModel(repo) : repoName(repo);
+    if (!name) { setProblem(source === "civitai" ? "That isn't a Civitai model. Use its number, or paste its page's link." : "That isn't a repository. Use owner/name, or paste the page's link."); return; }
     setProblem("");
     if (!hostId || source === "url") return;
     void run(async () => setFound(await get<HubFiles>(`${u(userId, "hosts", hostId, "hub", "files")}?${new URLSearchParams({ source, repo: name })}`)));
@@ -286,12 +286,12 @@ export function useLookup(userId: string, hostId: string | undefined, source: Hu
   return { repo, type, found, lookUp, busy, error: problem || error };
 }
 
-/** The Repository field and Look up, for Hugging Face and ModelScope. */
-export function RepoField({ look, placeholder }: { look: ReturnType<typeof useLookup>; placeholder: string }) {
+/** The Repository field and Look up, for Hugging Face and ModelScope (and Civitai, where it names a model). */
+export function RepoField({ look, placeholder, label = "Repository" }: { look: ReturnType<typeof useLookup>; placeholder: string; label?: string }) {
   const id = useId();
   return (
     <form className="field repo" onSubmit={(e) => { e.preventDefault(); look.lookUp(); }}>
-      <label htmlFor={id}>Repository</label>
+      <label htmlFor={id}>{label}</label>
       <div className="lookup">
         <input id={id} className="mono" autoCapitalize="none" spellCheck={false} placeholder={placeholder} value={look.repo} onChange={(e) => look.type(e.target.value)} />
         <button disabled={look.busy || !look.repo.trim()}>Look up</button>
