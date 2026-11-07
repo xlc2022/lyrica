@@ -236,11 +236,12 @@ detected one is private), and the models folder. Then it:
 6. Prints the dashboard addresses and the host's **key fingerprint**. Keep
    the fingerprint: you check it against what Lyrica shows after pairing.
 7. On a systemd machine other than NixOS, installs the updater (see
-   Upgrade below). The first time, it makes a key and prints it from
-   `/etc/lyrica-host/deploy-key.pub`: add it to the GitHub repository as a
-   read-only deploy key (Settings → Deploy keys). The updater needs `jq`,
-   `git` and `ssh`; without them the host reports it unavailable and says
-   which to install.
+   Upgrade below). While the repository is public the updater fetches over
+   HTTPS and needs no key. If it isn't, the first run makes a key and
+   prints it from `/etc/lyrica-host/deploy-key.pub`: add it to the GitHub
+   repository as a read-only deploy key (Settings → Deploy keys). The
+   updater needs `jq` and `git`, and `ssh` for a deploy key; without them
+   the host reports it unavailable and says which to install.
 
 Options, for a second run or a non-interactive one (`host/install.sh --help`):
 
@@ -663,10 +664,13 @@ second pairing. Then:
   servers log nothing at all, so `docker logs` on them fails. To see what
   holds the GPU, `nvidia-smi --query-compute-apps=pid,process_name,used_memory
   --format=csv`.
-- **Upgrade:** **Update** in the host's ⋯ on Models (an administrator, for
-  a shared host) moves it to the release Lyrica runs. It shows when
-  Lyrica runs a release (Administration → Updates), the host has the
-  updater, and the host runs another commit. The host pauses (running
+- **Upgrade:** **Update…** in the host's ⋯ on Models (an administrator, for
+  a shared host) moves it to the release Lyrica runs, after a dialog
+  confirms it. It works when Lyrica runs a release (Administration →
+  Updates), the host has the updater, and the host runs another commit;
+  otherwise it's greyed out and its tooltip says which is missing. The
+  card's state word follows the steps: Fetching, Draining, Building, and
+  Rolling back if it goes back. The host pauses (running
   jobs finish first), installs the release into a root-owned tree,
   `/opt/lyrica-host/<commit>`, and is rolled back if host-api doesn't
   report the new commit within 5 minutes; a host paused before stays
@@ -701,15 +705,16 @@ second pairing. Then:
   --models <folder>`; any host can still change it that way. Details are
   in [host/README.md](../../host/README.md#the-models-folder).
 - **Hosts installed before the updater** need `git pull &&
-  host/install.sh` once more: it installs the updater, prints the deploy
-  key to add, and brings the host-api image that opens from Lyrica's
+  host/install.sh` once more: it installs the updater (printing a deploy
+  key to add only while the repository isn't public), and brings the host-api image that opens from Lyrica's
   Dashboard link, recognises a model's vision projector and MTP file,
   and waits for a model's memory to free before loading the next. A host
   installed before the image server got its `/triton` scratch space needs
   this too, or image jobs fail with an `ImportError` (seen on NVIDIA).
 - **On NixOS** the updater isn't installed: upgrade with `git pull &&
   host/install.sh` in the `checkout` folder. Lyrica shows the host's
-  version but has no Update.
+  version, and Update… is greyed out with "Update this host from its
+  NixOS configuration." as its tooltip.
 - **Restarting host-api alone** (a re-run of `install.sh` that leaves
   llama.cpp running): host-api unloads whatever llama.cpp still holds when
   it starts, then loads pinned models again. If llama.cpp wasn't answering
