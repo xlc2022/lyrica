@@ -158,6 +158,18 @@ switch_to() { # commit
   fi
   write_json "$UPDATE/releases.json" --arg c "$commit" --arg f "$from" \
     '.current = $c | if $f != "" and $f != $c then .previous = $f else . end'
+  drop_older_note
+}
+
+# The update note is no update when the running release already has its commit and
+# more (a latest merge past the tag): Administration then offers none until a newer tag.
+drop_older_note() {
+  local note cur
+  note=$(jq -r '.note.commit // empty' "$UPDATE/state.json" 2>/dev/null || true)
+  cur=$(current_commit)
+  [ -n "$note" ] && [ -n "$cur" ] && [ "$note" != "$cur" ] || return 0
+  git --git-dir="$PREFIX/repo.git" merge-base --is-ancestor "$note" "$cur" 2>/dev/null || return 0
+  write_json "$UPDATE/state.json" 'del(.note)'
 }
 
 # Records a built release in releases.json.

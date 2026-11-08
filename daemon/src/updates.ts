@@ -93,7 +93,7 @@ export function readUpdates(paths: UpdatePaths, running: { version: string; buil
     running,
     note: state.note ?? null,
     latest: state.latest?.commit && FULL.test(state.latest.commit) ? state.latest : null,
-    state: waiting(paths, state) ?? {
+    state: waiting(paths, state) ?? cutOff(state) ?? {
       state: state.state ?? "idle", since: state.since ?? "",
       ...(state.tag ? { tag: state.tag } : {}), ...(state.commit ? { commit: state.commit } : {}),
       ...(state.busy ? { busy: state.busy } : {}), ...(state.error ? { error: state.error } : {}),
@@ -111,18 +111,37 @@ export function readUpdates(paths: UpdatePaths, running: { version: string; buil
  * would come back still idle and nothing on the page would follow it.
  */
 function waiting(paths: UpdatePaths, state: StateFile): Updates["state"] | undefined {
-  if (state.state && state.state !== "idle" && state.state !== "failed") return undefined;
+  if (!settled(state)) return undefined;
   const file = join(paths.requests, "request.json");
   const req = readJson<{ action?: string; tag?: string; commit?: string }>(file);
   if (!req?.action) return undefined;
   // Since the request was written, so the page can tell when the updater hasn't started.
   let since: string;
   try { since = statSync(file).mtime.toISOString(); } catch { since = new Date().toISOString(); }
-  if (req.action === "rollback") return { state: "draining", since, ...(req.commit ? { commit: req.commit } : {}) };
-  // A latest merge waits as the updater will label it: `main`, with its commit.
-  if (!req.tag && req.commit) return { state: "fetching", since, tag: "main", commit: req.commit };
-  return { state: "fetching", since, ...(req.tag ? { tag: req.tag } : {}) };
+  const what = req.action === "rollback" ? { ...(req.commit ? { commit: req.commit } : {}) }
+    // A latest merge waits as the updater will label it: `main`, with its commit.
+    : !req.tag && req.commit ? { tag: "main", commit: req.commit } : { ...(req.tag ? { tag: req.tag } : {}) };
+  // The updater takes a request within seconds. One still waiting long after never will by itself
+  // (the path unit stopped, say): it fails, so the page stops following it and the button works again.
+  if (Date.now() - Date.parse(since) > UNTAKEN_MS) return { state: "failed", since, ...what, error: NOT_STARTED };
+  return { state: req.action === "rollback" ? "draining" : "fetching", since, ...what };
 }
+
+/** The updater takes a request within seconds; past this it isn't going to. */
+const UNTAKEN_MS = 2 * 60_000;
+const NOT_STARTED = "The updater hasn't started. On the server, systemctl status lyrica-update.path says why.";
+/** lyrica-update gives a fetch 10 minutes; a fetch still on record well past that was cut off before it could say so. */
+const FETCH_MS = 15 * 60_000;
+const CUT_OFF = "The updater stopped while fetching.";
+
+/** A fetch on record long past the updater's own limit (killed, or the disk full): failed, so Check works again. */
+function cutOff(state: StateFile): Updates["state"] | undefined {
+  if (state.state !== "fetching" || !state.since || !(Date.now() - Date.parse(state.since) > FETCH_MS)) return undefined;
+  return { state: "failed", since: state.since, ...(state.tag ? { tag: state.tag } : {}), ...(state.commit ? { commit: state.commit } : {}), error: CUT_OFF };
+}
+
+/** Nothing running: idle, failed, or a fetch that was cut off. */
+const settled = (state: StateFile) => !state.state || state.state === "idle" || state.state === "failed" || !!cutOff(state);
 
 const TAG = /^update\/[A-Za-z0-9._-]{1,64}$/;
 const COMMIT = /^[0-9a-f]{7,40}$/;
@@ -135,13 +154,14 @@ export type UpdateAction = { action: "update"; tag: string } | { action: "update
 export function writeRequest(paths: UpdatePaths, req: UpdateAction): void {
   if (req.action === "update" && ("tag" in req ? !TAG.test(req.tag) : !FULL.test(req.commit))) throw new HttpError(400, "an update is an update/… tag or a full commit on main");
   if (req.action === "rollback" && !COMMIT.test(req.commit)) throw new HttpError(400, "name the release by its commit");
-  const busy = readJson<StateFile>(join(paths.state, "state.json"))?.state;
-  if (req.action !== "check" && busy && busy !== "idle" && busy !== "failed" && !(busy === "probation" && req.action === "rollback")) {
+  const state = readJson<StateFile>(join(paths.state, "state.json")) ?? {};
+  if (req.action !== "check" && !settled(state) && !(state.state === "probation" && req.action === "rollback")) {
     throw new HttpError(409, "an update is running");
   }
   mkdirSync(paths.requests, { recursive: true, mode: 0o700 });
   const target = join(paths.requests, "request.json");
-  if (existsSync(target)) throw new HttpError(409, "a request is already waiting for the updater");
+  // A request the updater never took (shown as failed) is replaced, so pressing again tries again.
+  if (existsSync(target) && waiting(paths, state)?.state !== "failed") throw new HttpError(409, "a request is already waiting for the updater");
   const tmp = join(paths.requests, ".request.json");
   writeFileSync(tmp, `${JSON.stringify(req)}\n`, { mode: 0o600 });
   renameSync(tmp, target);

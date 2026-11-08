@@ -33,6 +33,19 @@ case "${1:-}" in
   *) flock -n 9 || die "an update is already running" ;;
 esac
 PROBATION_FILE="$UPDATE/probation.json"
+# A run that stops before it says why (an error no step catches, or a kill) leaves no
+# step running on the card forever: a fetch, build or smoke test still on record fails.
+TAG= COMMIT=
+stopped() {
+  local code=$?
+  [ "$code" = 0 ] && return 0
+  case "$(jq -r '.state // empty' "$UPDATE/state.json" 2>/dev/null || true)" in
+    fetching|building|testing) set_state failed "${TAG:-}" "${COMMIT:-}" "stopped unexpectedly" 2>/dev/null || true ;;
+  esac
+  return "$code"
+}
+trap stopped EXIT
+trap 'exit 143' TERM INT HUP
 
 take_request() {
   local f="$STATE/updates/request.json" req
@@ -153,12 +166,21 @@ fail() { # check name, then optional output (the build's last lines): the update
 
 # --- Fetch, and the newest update note ---
 # Over HTTPS (a public repository) no key is used and nothing may prompt; over SSH, only the deploy key.
-git_() { GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=/bin/false GIT_SSH_COMMAND="ssh -i $KEY -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$KNOWN" git --git-dir="$REPO" "$@"; }
+GIT_ENV=(GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=/bin/false "GIT_SSH_COMMAND=ssh -i $KEY -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$KNOWN -o ConnectTimeout=30 -o ServerAliveInterval=15 -o ServerAliveCountMax=4")
+git_() { env "${GIT_ENV[@]}" git --git-dir="$REPO" "$@"; }
+# A fetch that stalls (a network that drops packets, a proxy that never answers) gives up:
+# under 1 KB/s for a minute, or FETCH_SECONDS in all.
+FETCH_SECONDS=${LYRICA_FETCH_SECONDS:-600}
 fetch() {
   set_state fetching "$TAG"
-  [ -d "$REPO" ] || die "no $REPO: install.sh sets it up"
-  local err
-  if ! err=$(git_ fetch --quiet --prune --prune-tags --force origin '+refs/heads/main:refs/heads/main' '+refs/tags/update/*:refs/tags/update/*' 2>&1); then
+  [ -d "$REPO" ] || fail "fetch" "no $REPO: install.sh sets it up"
+  local err code=0
+  err=$(timeout --kill-after=10 "$FETCH_SECONDS" env "${GIT_ENV[@]}" git --git-dir="$REPO" -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=60 \
+    fetch --quiet --prune --prune-tags --force origin '+refs/heads/main:refs/heads/main' '+refs/tags/update/*:refs/tags/update/*' 2>&1) || code=$?
+  if [ "$code" = 124 ] || [ "$code" = 137 ]; then
+    say "the fetch from $(git_ remote get-url origin 2>/dev/null || echo origin) took more than ${FETCH_SECONDS}s"
+    fail "fetch" "$(tail -40 <<<"$err")${err:+$'\n'}Timed out after ${FETCH_SECONDS} s: GitHub didn't answer."
+  elif [ "$code" != 0 ]; then
     # A repository that went private, or a deploy key not added yet: setting up the remote again picks the way in.
     say "couldn't fetch from $(git_ remote get-url origin 2>/dev/null || echo origin): if the repository went private, run install.sh again (on NixOS, restart lyricad) and add the deploy key it prints"
     fail "fetch" "$(tail -40 <<<"$err")"
@@ -177,6 +199,7 @@ fetch() {
     write_json "$UPDATE/state.json" --arg t "$newest" --arg c "$(git_ rev-parse "$newest^{commit}")" \
       --arg m "$(git_ for-each-ref --format='%(contents)' "refs/tags/$newest")" '.note = {tag: $t, commit: $c, message: $m}'
   fi
+  drop_older_note
 }
 fetch
 if [ "$ACTION" = check ]; then set_state idle; say "fetched; newest update note: $(jq -r '.note.tag // "none"' "$UPDATE/state.json")"; exit 0; fi

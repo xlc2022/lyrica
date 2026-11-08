@@ -85,7 +85,7 @@ esac
     return git("rev-parse", "HEAD" + (o.branch ? `@{0}` : ""));
   };
 
-  const env = {
+  const env: NodeJS.ProcessEnv = {
     ...process.env, PATH: `${fake}:${process.env.PATH}`, LYRICA_TEST: "1", LYRICA_USER: userInfo().username,
     LYRICA_UPDATER_LIB: UPDATER, LYRICA_UPDATER_BIN: UPDATER, LYRICA_PREFIX: prefix, LYRICA_STATE: state, LYRICA_UPDATE_DIR: update,
     LYRICA_SNAPSHOTS: snapshots, LYRICA_SYSTEMCTL: join(fake, "systemctl"), LYRICA_NIX: nix ? "1" : "", LYRICA_SYSTEMD_DIR: systemd, LYRICA_PROFILE: join(root, "profile"), LYRICA_NODE: join(fake, "node"),
@@ -108,7 +108,7 @@ esac
   const json = (f: string) => JSON.parse(readFileSync(join(update, f), "utf8"));
   const current = () => readlinkSync(join(prefix, "current")).replace("releases/", "");
   const calls = () => (existsSync(join(fake, "calls")) ? readFileSync(join(fake, "calls"), "utf8").trim().split("\n") : []);
-  return { root, prefix, state, update, snapshots, fake, systemd, lyricad, release, run, json, current, calls, git };
+  return { root, prefix, state, update, snapshots, fake, systemd, lyricad, release, run, json, current, calls, git, env };
 }
 
 describe("lyrica-update", () => {
@@ -248,6 +248,10 @@ describe("lyrica-update", () => {
     expect(w.json("releases.json").releases).toEqual(expect.arrayContaining([expect.objectContaining({ commit: head, tag: "main" })]));
     expect(readFileSync(join(w.update, "notes", `${head}.txt`), "utf8").trim()).toBe("#900 Updates: install the latest merge");
     expect(w.json("releases.json").snapshots.length).toBeGreaterThan(0);
+    // Running past update/a, its note is no update any more; a check doesn't bring it back.
+    expect(w.json("state.json").note).toBeUndefined();
+    expect((await w.run("lyrica-update", "--check")).code).toBe(0);
+    expect(w.json("state.json").note).toBeUndefined();
 
     // A commit that isn't on main, or a short one, changes nothing.
     w.git("checkout", "-q", "-b", "side");
@@ -258,6 +262,27 @@ describe("lyrica-update", () => {
     expect((await w.run("lyrica-update", "--commit", side)).err).toContain("not on main");
     expect((await w.run("lyrica-update", "--commit", head.slice(0, 12))).err).toContain("a full commit on main");
     expect(w.current()).toBe(head);
+  });
+
+  it("gives up on a fetch that hangs, and fails a run that is killed, so no step stays running", async () => {
+    const w = await world();
+    w.release("a", S(1, 1, 1), S(1, 1, 1));
+    // A fetch that never answers: git stalls until the updater's limit cuts it off.
+    const real = execFileSync("bash", ["-c", "command -v git"]).toString().trim();
+    writeFileSync(join(w.fake, "git"), `#!/usr/bin/env bash\nfor a; do [ "$a" = fetch ] && exec sleep 30; done\nexec ${real} "$@"\n`);
+    chmodSync(join(w.fake, "git"), 0o755);
+    w.env.LYRICA_FETCH_SECONDS = "1";
+    const started = Date.now();
+    expect((await w.run("lyrica-update", "--check")).code).not.toBe(0);
+    expect(Date.now() - started).toBeLessThan(20_000);
+    expect(w.json("state.json")).toMatchObject({ state: "failed", error: "fetch" });
+    expect(w.json("state.json").output).toContain("Timed out after 1 s");
+    rmSync(join(w.fake, "git"));
+
+    // Killed while building: the build step fails instead of running on the card for good.
+    writeFileSync(join(w.fake, "build"), "#!/usr/bin/env bash\nkill -TERM $PPID\n");
+    expect((await w.run("lyrica-update", "--tag", "update/a")).code).not.toBe(0);
+    expect(w.json("state.json")).toMatchObject({ state: "failed", error: "stopped unexpectedly", tag: "update/a", steps: [{ step: "fetching" }, { step: "building", failed: true }] });
   });
 
   it("takes a request lyricad wrote, and refuses a request that is a link", async () => {
