@@ -731,3 +731,117 @@ describe("project pages", () => {
     v.close();
   });
 });
+
+describe("undoing a night, and a line for tonight", () => {
+  const tick = () => new Promise((r) => setTimeout(r, 2));
+
+  it("takes the newest night back: its notes, pages, dream and WAKE go back to before it, and the next sleep covers its time again", async () => {
+    const s = await setup();
+    const v = s.view();
+    const first = s.talk(v, "My homelab has three nodes.", "{user}'s homelab has three nodes");
+    s.script({
+      consolidate: [call("write_page", { slug: "homelab", title: "Homelab", summary: "the homelab", text: `Three nodes [${first.note}].` })],
+      dream: [call("write_journal", { text: "Humming racks." })],
+      wake: [call("write_wake", { text: `First morning. ${words(400)}` })],
+    });
+    const night1 = await s.sleep.run(s.ada.id, "general", "manual");
+    expect(night1.status).toBe("complete");
+    await tick();
+
+    const later = s.talk(v, "Now it's four nodes, and I want a NAS next.", "{user}'s homelab has four nodes");
+    s.script({
+      consolidate: [
+        call("remember", { notes: [{ text: `{user} wants a NAS next [${later.entry}]` }] }),
+        (c) => {
+          const nas = /Saved (n:[\w-]+)/.exec(said(c))![1]!;
+          return call("write_page", { slug: "plans", title: "Plans", summary: "what's next", text: `A NAS [${nas}].` });
+        },
+        call("supersede", { notes: [first.note], by: later.note }),
+        call("write_page", { slug: "homelab", title: "Homelab", summary: "the homelab", text: `Four nodes [${later.note}].` }),
+        call("raise", { text: "Which NAS are you thinking of?" }),
+      ],
+      dream: [call("write_journal", { text: "A dream of disks." })],
+      wake: [call("write_wake", { text: `Second morning. ${words(400)}` })],
+    });
+    const night2 = await s.sleep.run(s.ada.id, "general", "manual");
+    expect(night2.status).toBe("complete");
+    const nas = v.own.notesSince(night2.startedAt).find((n) => n.origin === "sleep")!.id;
+    expect(v.own.get(first.note!)!.supersededBy).toBe(later.note);
+    expect(v.own.listItems()).toHaveLength(1);
+
+    const owner = s.memory.openOwnerView(s.ada.id);
+    // Only the newest night can go.
+    expect(owner.general.sleepUndoBlock(night1.id)).toBe("Only the newest night can be undone.");
+    expect(owner.general.undoableRun()!.id).toBe(night2.id);
+    owner.general.undoSleepRun(night2.id, `user:${s.ada.id}`);
+    owner.close();
+
+    // What the night made is gone without a tombstone; what it changed is back, with no revision of its own.
+    expect(v.own.get(nas)).toBeUndefined();
+    expect(v.own.isFree(nas)).toBe(true);
+    expect(v.own.get("p:plans")).toBeUndefined();
+    expect(v.own.get("p:homelab")!.text).toBe(`Three nodes [${first.note}].`);
+    expect(v.own.revisions("p:homelab")).toHaveLength(1);
+    expect(v.own.cameFrom("p:homelab")).toEqual([first.note]);
+    expect(v.own.get(first.note!)!.supersededBy).toBeUndefined();
+    expect(v.own.get(later.note!)).toBeDefined();
+    expect(v.own.listJournal().map((j) => j.text)).toEqual([expect.stringContaining("Humming racks.")]);
+    expect(v.own.get("wake")!.text.startsWith("First morning.")).toBe(true);
+    expect(v.own.search("NAS", { kinds: ["note", "page"] })).toEqual([]);
+    expect(v.own.listItems()).toEqual([]);
+    expect(v.own.getSleepRun(night2.id)).toMatchObject({ status: "skipped", skipReason: "undone" });
+    // The watermark goes back, so the next sleep covers the undone night's conversation again; the night before can go now.
+    expect(v.own.watermark()).toBe(night1.until);
+    expect(v.own.sleepMaterial(v.own.watermark(), new Date().toISOString()).threads.map((t) => t.id)).toContain(later.thread);
+    expect(v.own.undoableRun()!.id).toBe(night1.id);
+    v.close();
+  });
+
+  it("refuses when someone changed what the night wrote, naming it, and while she's still asleep", async () => {
+    const s = await setup();
+    const v = s.view();
+    const t = s.talk(v, "The garden has tomatoes.", "{user} grows tomatoes");
+    s.script({ consolidate: [call("write_page", { slug: "garden", title: "Garden", summary: "the garden", text: `Tomatoes [${t.note}].` })] });
+    const night = await s.sleep.run(s.ada.id, "general", "manual");
+    await tick();
+    const owner = s.memory.openOwnerView(s.ada.id);
+    owner.general.edit("p:garden", { text: `Tomatoes and beans [${t.note}].` }, `user:${s.ada.id}`);
+    expect(owner.general.sleepUndoBlock(night.id)).toBe("p:garden changed after that night: restore it from its History instead.");
+    expect(() => owner.general.undoSleepRun(night.id, `user:${s.ada.id}`)).toThrow("p:garden changed after that night");
+    expect(owner.general.get("p:garden")!.text).toBe(`Tomatoes and beans [${t.note}].`);
+    // A running night can't be undone at all.
+    const running = owner.general.startSleepRun("manual", new Date().toISOString());
+    expect(owner.general.undoableRun()).toBeUndefined();
+    expect(owner.general.sleepUndoBlock(running)).toBe("She's still asleep.");
+    owner.close();
+    v.close();
+  });
+
+  it("puts the person's line into that pool's dream only, sleeps for it alone, and clears it once she has dreamed", async () => {
+    const s = await setup();
+    const owner = s.memory.openOwnerView(s.ada.id);
+    owner.general.setSleepFocus("  the trip to   Lisbon ", `user:${s.ada.id}`);
+    owner.private.setSleepFocus("the letter I haven't sent", `user:${s.ada.id}`);
+    expect(() => owner.general.setSleepFocus("x".repeat(301), `user:${s.ada.id}`)).toThrow("at most 300 characters");
+    expect(owner.general.sleepFocus()!.text).toBe("the trip to Lisbon");
+    owner.close();
+    const v = s.view();
+    let consolidate = "";
+    let dream = "";
+    s.script({
+      consolidate: [(c) => { consolidate = said(c); return { text: "Done." }; }],
+      dream: [(c) => { dream = said(c); return call("write_journal", { text: "Tiled streets." }); }],
+    });
+    // Nothing else is new: the line alone is reason to sleep.
+    expect((await s.sleep.run(s.ada.id, "general", "scheduled")).status).toBe("complete");
+    expect(dream).toContain("left you something to think about tonight");
+    expect(dream).toContain("the trip to Lisbon");
+    expect(dream).not.toContain("letter");
+    expect(consolidate).not.toContain("Lisbon");
+    expect(v.own.sleepFocus()).toBeUndefined();
+    const p = s.view("private");
+    expect(p.own.sleepFocus()!.text).toBe("the letter I haven't sent");
+    p.close();
+    v.close();
+  });
+});

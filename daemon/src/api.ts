@@ -2210,7 +2210,8 @@ export interface ProposalDecision { approve: boolean; overwrite?: boolean }
 
 export type SleepMode = "scheduled" | "manual";
 export type SleepPhase = "consolidate" | "dream" | "wake";
-export type SkipReason = "no-key" | "endpoint-down" | "no-activity" | "plan-limit";
+/** `undone`: a person took the night back. */
+export type SkipReason = "no-key" | "endpoint-down" | "no-activity" | "plan-limit" | "undone";
 
 export interface SleepRunInfo {
   pool: Pool;
@@ -2242,8 +2243,13 @@ export interface SleepItemInfo {
   createdAt: string;
 }
 
-/** GET /api/u/:userId/sleep → SleepOverview: the mode, the sleep time, open items and the newest run of each pool, newest first. */
-export interface SleepOverview { mode: SleepMode; time: string; items: SleepItemInfo[]; runs: SleepRunInfo[] }
+/**
+ * GET /api/u/:userId/sleep → SleepOverview: the mode, the sleep time, open items, the newest run of each pool, newest
+ * first, and each pool's line for tonight's dream, where the person left one.
+ */
+export interface SleepOverview { mode: SleepMode; time: string; items: SleepItemInfo[]; runs: SleepRunInfo[]; focus: Partial<Record<Pool, string>> }
+/** PUT /api/u/:userId/sleep/:pool/focus → SleepOverview. Empty text clears the line; at most 300 characters. */
+export interface SleepFocusChange { text: string }
 /** PUT /api/u/:userId/sleep/mode → SleepOverview */
 export interface SleepModeChange { mode: SleepMode }
 
@@ -2259,6 +2265,11 @@ export interface SleepRunDetail extends SleepRunInfo {
   dream: { id: string; text: string }[];
   wake?: string;
   users: UserMap;
+  /**
+   * Present on the pool's newest run that wasn't skipped, once it ended: it can be undone, unless `blocked` says why not.
+   * POST /api/u/:userId/sleep/:pool/runs/:runId/undo → SleepRunDetail (the run, now skipped as `undone`); a refusal is a 409.
+   */
+  undo?: { blocked?: string };
 }
 
 /**

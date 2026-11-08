@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { isThreadView, Memory, projectSlug, readView, searchView, Users, type PoolStore } from "../src/index.ts";
+import { isThreadView, Memory, openEncrypted, projectSlug, readView, searchView, Users, type PoolStore } from "../src/index.ts";
 import { stem } from "../src/store/refs.ts";
 import { freshKeyring, profile } from "./helpers.ts";
 
@@ -853,6 +853,28 @@ describe("credentials stay out of memory", () => {
   });
 });
 
+
+describe("undoing a night", () => {
+  it("refuses a night from before pool step 14, which never recorded what it replaced, and records nothing onto it", async () => {
+    const { keyring, users, memory, ada } = await setup();
+    const view = memory.openThreadView(ada.id, "general");
+    const run = view.own.startSleepRun("manual", new Date().toISOString());
+    view.own.putPage({ slug: "garden", title: "Garden", summary: "", text: "Tomatoes." }, "sleep");
+    view.own.updateSleepRun(run, { status: "complete", finished: true });
+    view.close();
+    // As the release before step 14 leaves it, or a rollback writes it.
+    const raw = openEncrypted(join(users.userDir(ada.id), "general.db"), { raw: keyring.subkey(ada.id, "pool:general") });
+    raw.prepare("UPDATE sleep_runs SET superseded = NULL WHERE id = ?").run(run);
+    raw.close();
+    const owner = memory.openOwnerView(ada.id);
+    try {
+      expect(owner.general.undoableRun()?.id).toBe(run);
+      expect(owner.general.sleepUndoBlock(run)).toBe("That night was before nights could be undone.");
+      expect(() => owner.general.undoSleepRun(run, `user:${ada.id}`)).toThrow("before nights could be undone");
+      expect(owner.general.get("p:garden")?.text).toBe("Tomatoes.");
+    } finally { owner.close(); }
+  });
+});
 
 describe("code-mode core storage", () => {
   it("filters before the candidate cut, keeping project items or whole working tags only", async () => {

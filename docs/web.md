@@ -460,7 +460,14 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   a skipped run is one line and does not open, unless its renamed-files step
   respelled memories first (it began before it ended; docs/sleep.md step 0),
   when it opens to them. Notes lists the notes the run made, then those it
-  edited. **Sleep now** ▾ picks the
+  edited. The newest run of a pool ends with **Undo this night…** when its
+  detail has `undo`: greyed (`aria-disabled`) with `blocked` as its tooltip,
+  otherwise a dialog ("Undo this night?") whose **Undo** posts
+  `…/runs/<id>/undo`; the row then reads "Undone" from the detail it returns.
+  Between the items and History, **Tonight** has a form per shown pool (the
+  pool word after it when both show): a text field of at most 300 characters,
+  **Save** (`PUT …/sleep/<pool>/focus`) and, while a line is set, **Clear**.
+  **Sleep now** ▾ picks the
   pool (`POST …/sleep/<pool>`); a `confirm` answer becomes a dialog whose
   **Sleep now** resends with `confirm: true`; a 409 is shown as a toast in
   `lyricad`'s words. Text arrives in stored form and is shown with the users of

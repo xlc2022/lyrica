@@ -197,6 +197,28 @@ describe("sleep in lyricad", () => {
     expect((await s.ada.post(`${s.u}/sleep/general/items/${enc(item.id)}/chat`)).status).toBe(409);
   });
 
+  it("keeps a line for tonight per pool, and undoes the newest night through the Sleep section's API", async () => {
+    const s = await setup();
+    const set = await s.ada.put<SleepOverview>(`${s.u}/sleep/general/focus`, { text: "the harbour" });
+    expect(set.body.focus).toEqual({ general: "the harbour" });
+    expect((await s.ada.put(`${s.u}/sleep/general/focus`, { text: "x".repeat(301) })).status).toBe(400);
+    await s.talk();
+    await s.d.sleepNight();
+    // Dreamt on, so it's spent.
+    expect((await s.ada.get<SleepOverview>(`${s.u}/sleep`)).body.focus).toEqual({});
+    const run = (await s.ada.get<SleepOverview>(`${s.u}/sleep`)).body.runs.find((r) => r.pool === "general")!;
+    const detail = (await s.ada.get<SleepRunDetail>(`${s.u}/sleep/general/runs/${enc(run.id)}`)).body;
+    expect(detail.undo).toEqual({});
+    expect(detail.pages.map((p) => p.id)).toEqual(["p:birds"]);
+    const undone = await s.ada.post<SleepRunDetail>(`${s.u}/sleep/general/runs/${enc(run.id)}/undo`);
+    expect(undone.status).toBe(200);
+    expect(undone.body).toMatchObject({ status: "skipped", skipReason: "undone", pages: [], dream: [], items: [] });
+    expect(undone.body.undo).toBeUndefined();
+    expect((await s.ada.post(`${s.u}/sleep/general/runs/${enc(run.id)}/undo`)).status).toBe(409);
+    const o = s.d.services!.memory.openOwnerView(s.rt.ada.id);
+    try { expect(o.general.get("p:birds")).toBeUndefined(); } finally { o.close(); }
+  });
+
   it("retries an interrupted item opening after restart", async () => {
     const s = await setup();
     const owner = s.d.services!.memory.openOwnerView(s.rt.ada.id);
