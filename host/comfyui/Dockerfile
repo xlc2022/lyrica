@@ -13,8 +13,10 @@ ARG LANPAINT_COMMIT=2d7912f9a5efe5ece8de334c7ca18317b8288c39
 # RES4LYF (AGPL-3.0 plus a no-commercial-service clause): its ClownsharKSampler
 # and res_2s / bong_tangent, for Krea 2. Krea2T-Enhancer (MIT): Krea 2's prompt
 # adherence patch. Its author's repository is gone; the commit is the author's
-# own, fetched from a copy. RES4LYF's config, written here, names its samplers
-# without folders (res_2s, not exponential/res_2s), so it never writes one.
+# own, fetched from a copy. RES4LYF rewrites its config each time it loads,
+# and the container is read-only, so the config is a link into /tmp (a tmpfs)
+# and starts from its defaults file, written here: sampler names without
+# folders (res_2s, not exponential/res_2s).
 ARG RES4LYF_COMMIT=119679d8d8d26e6db52757e705488abb6399d7d4
 ARG KREA2T_COMMIT=75a14cb93487d0fea7985f199717da46ab5cb53d
 
@@ -29,7 +31,8 @@ RUN set -eux; \
     fetch scraed/LanPaint /opt/comfyui/custom_nodes/LanPaint "$LANPAINT_COMMIT"; \
     fetch ClownsharkBatwing/RES4LYF /opt/comfyui/custom_nodes/RES4LYF "$RES4LYF_COMMIT"; \
     fetch Titof974/ComfyUI-Krea2T-Enhancer /opt/comfyui/custom_nodes/ComfyUI-Krea2T-Enhancer "$KREA2T_COMMIT"; \
-    printf '{"name": "RES4LYF", "topClownDog": true, "enableDebugLogs": false, "displayCategory": false}\n' > /opt/comfyui/custom_nodes/RES4LYF/res4lyf.config.json; \
+    printf '{"name": "RES4LYF", "topClownDog": true, "enableDebugLogs": false, "displayCategory": false}\n' > /opt/comfyui/custom_nodes/RES4LYF/web/js/res4lyf.default.json; \
+    ln -s /tmp/res4lyf.config.json /opt/comfyui/custom_nodes/RES4LYF/res4lyf.config.json; \
     rm -f /opt/comfyui/custom_nodes/example_node.py.example
 
 # The packages go into a venv that also sees the base image's torch. Every

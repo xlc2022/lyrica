@@ -174,7 +174,7 @@ export class Comfy implements Backend {
           }).catch(() => {
             throw unavailable();
           });
-          if (!res.ok) throw new HostError(503, "model_unavailable", "ComfyUI refused the workflow.");
+          if (!res.ok) throw new HostError(503, "model_unavailable", `ComfyUI refused the workflow${await refusal(res, prompt)}.`);
           promptId = ((await res.json()) as { prompt_id: string }).prompt_id;
           await done;
           finished = true;
@@ -425,4 +425,22 @@ export function samplingProgress(prompt: object, report: (fraction: number) => v
     done.set(node, Math.min(1, Math.max(done.get(node) ?? 0, value / max)));
     report(0.95 * [...done.values()].reduce((a, b) => a + b, 0) / samplers.length);
   };
+}
+
+/**
+ * Why ComfyUI refused a workflow, as " (<error type>: <node types>)": the types of the nodes it
+ * names (a custom node that didn't load, a node with a bad input), never an input's value, which can be the prompt.
+ */
+async function refusal(res: Response, prompt: object): Promise<string> {
+  try {
+    const body = (await res.json()) as { error?: { type?: unknown; extra_info?: { class_type?: unknown } }; node_errors?: Record<string, unknown> };
+    const graph = prompt as Record<string, { class_type?: unknown }>;
+    const word = (v: unknown) => (typeof v === "string" && /^[\w .-]{1,80}$/.test(v) ? v : null);
+    const types = [body.error?.extra_info?.class_type, ...Object.keys(body.node_errors ?? {}).map((id) => graph[id]?.class_type)].map(word).filter((t): t is string => !!t);
+    const type = word(body.error?.type);
+    const named = [...new Set(types)].join(", ");
+    return type || named ? ` (${[type, named].filter(Boolean).join(": ")})` : "";
+  } catch {
+    return "";
+  }
 }
