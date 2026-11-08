@@ -273,10 +273,19 @@ export class Scheduler {
     return model.server === "vllm" ? this.o.backends.vllm : this.o.backends.llamacpp;
   }
 
+  /** The GPUs as read now; when the reading fails (nvidia-smi busy or gone), the last one stands and the log says so once per outage. */
   private async readGpus(): Promise<Gpu[]> {
-    this.gpus = await this.o.monitor.read().catch(() => this.gpus);
+    this.gpus = await this.o.monitor.read().then(
+      (gpus) => ((this.gpusStale = false), gpus),
+      (e: unknown) => {
+        if (!this.gpusStale) this.o.log("gpus not read", { error: e instanceof Error ? (e.message.split("\n")[0] ?? e.name) : "error" });
+        this.gpusStale = true;
+        return this.gpus;
+      },
+    );
     return this.gpus;
   }
+  private gpusStale = false;
 
   /**
    * Why a job's model can never run here, even with its GPUs empty: no GPU

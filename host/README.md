@@ -605,7 +605,12 @@ revoked. A revoked server must pair again.
   file size times 1.05, the cache for its context, and 0.5 GiB per GPU;
   should the router then unload an idle model of the host's to make its
   own room, the host learns of it at that model's next request, which
-  fails once ("try again") and loads it afresh.
+  fails once ("try again") and loads it afresh. A llama.cpp server that
+  dies while loading fails the load within a second, and the error names
+  its exit code; one still loading after 10 minutes fails saying so. The
+  host reads GPU memory anew for every status answer; when the reading
+  fails (`nvidia-smi` busy or gone) the last one stands and the log says
+  so once per outage.
   VRAM use is then measured per GPU at load and after the first attributable
   request, completed or failed (an image recipe's on its first job). The host keeps the
   larger measurement, including buffers grown on first use, until settings
