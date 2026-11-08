@@ -1898,7 +1898,10 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   an extra listener whose settings and TLS key are in
   `<runtime>/web-external.json` (0600) and which opens before unlock, and
   `<runtime>/web-front` (0600) naming the plain listener with a proxy in
-  front, for the time before unlock. Settings
+  front, and `<runtime>/web-front-names` (0600, one per line) naming the
+  names that proxy is reached by, for the time before unlock. Behind its
+  proxy a plain listener accepts only loopback's or those names in Host,
+  and only those names in `X-Forwarded-Host`. Settings
   and DNS credentials live in `self.db`. See [daemon.md](daemon.md).
 - **Unlocking:** when started as a service, `lyricad` starts locked, and the
   API serves only the unlock endpoint until `self.db` is unlocked.

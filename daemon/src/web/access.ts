@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { generateKeyPairSync, X509Certificate } from "node:crypto";
 import { chmodSync, closeSync, existsSync, openSync, readFileSync, readSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { isIP } from "node:net";
 import { networkInterfaces } from "node:os";
 import { checkServerIdentity, connect as connectTls, type PeerCertificate } from "node:tls";
@@ -87,11 +87,35 @@ export function readFront(path: string): Front | undefined {
   }
 }
 
-export function writeFront(path: string, front: Front): void {
-  const tmp = join(dirname(path), `.${FRONT_FILE}.tmp`);
-  writeFileSync(tmp, `${front}\n`, { mode: 0o600 });
-  chmodSync(tmp, 0o600);
-  renameSync(tmp, path);
+/**
+ * The names the front's proxy is reached by (the built-in Caddy's name, or
+ * the Tailnet mode's name and address), kept beside the front's own file so
+ * the listeners know them before unlock too. Behind its proxy, a plain
+ * listener accepts only these names (and loopback's) in Host and
+ * X-Forwarded-Host: a page that rebinds its own name to 127.0.0.1 can forge
+ * the forwarded headers, but not the Host its browser sends.
+ */
+export const FRONT_NAMES_FILE = "web-front-names";
+
+/** The front's names as last saved, or undefined when the file isn't there (an install from before it, until its first unlock). */
+export function readFrontNames(path: string): string[] | undefined {
+  try {
+    return readFileSync(path, "utf8").split("\n").map((n) => n.trim().toLowerCase()).filter(Boolean);
+  } catch {
+    return undefined;
+  }
+}
+
+export function writeFront(path: string, front: Front, names: string[] = []): void {
+  const put = (file: string, text: string) => {
+    const tmp = join(dirname(file), `.${basename(file)}.tmp`);
+    writeFileSync(tmp, text, { mode: 0o600 });
+    chmodSync(tmp, 0o600);
+    renameSync(tmp, file);
+  };
+  // The names first: a crash between the two leaves the old front with names that are at worst too few.
+  put(join(dirname(path), FRONT_NAMES_FILE), names.map((n) => `${n}\n`).join(""));
+  put(path, `${front}\n`);
 }
 
 const frontOf = (mode: Api.WebMode): Front => (mode === "builtin" || mode === "tailnet" ? mode : "none");
@@ -300,6 +324,7 @@ export class WebAccess {
   private save(s: Stored): void {
     this.o.self().prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(KEY, JSON.stringify(s));
     this.cachedFront = undefined;
+    this.cachedNames = undefined;
   }
 
   private addresses(): Api.HostAddress[] { return (this.o.addresses ?? hostAddresses)(); }
@@ -357,9 +382,17 @@ export class WebAccess {
   /** Writes the front to its file, so the listeners know it before the next unlock. */
   rememberFront(): Front {
     const f = this.front();
-    if (this.o.frontFile) writeFront(this.o.frontFile, f);
+    if (this.o.frontFile) writeFront(this.o.frontFile, f, this.frontNames());
     return f;
   }
+
+  /** The names the front's proxy is reached by: what a plain listener behind it accepts in Host and X-Forwarded-Host. */
+  frontNames(): string[] {
+    return this.cachedNames ??= ((s) => s.mode === "builtin" ? [s.name.toLowerCase()]
+      : s.mode === "tailnet" && s.tailnet ? [s.tailnet.dnsName.toLowerCase(), ...(s.tailnet.address ? [s.tailnet.address] : [])]
+      : [])(this.load());
+  }
+  private cachedNames: string[] | undefined;
 
   private async validate(c: Api.WebAccessChange, prev: Stored): Promise<{ next: Stored; external?: External | Direct }> {
     if (!["off", "direct", "tailnet", "builtin", "external"].includes(c.mode)) throw new Error("the mode is off, direct, tailnet, builtin or external");

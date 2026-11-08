@@ -2172,7 +2172,10 @@ Details in [docs/sleep.md](docs/sleep.md).
     front door, or told how to turn one on, and never logged in. Each
     listener believes loopback's forwarded headers only while its own proxy
     is in front (the built-in Caddy on the main port, `tailscale serve` on
-    the serve port), read from `<runtime>/web-front` before unlock. A
+    the serve port), read from `<runtime>/web-front` before unlock, and
+    even then only for the front's own names in Host and
+    `X-Forwarded-Host`, so a web page that rebinds its name to 127.0.0.1
+    can't pose as the proxy (2026-11-08). A
     Tailscale ACL allowing only port 443 to the machine closes the plain
     ports to peers (docs/daemon.md, "Starting and unlocking", "The tailnet").
   - The name is a subdomain of the owner's domain (for example
