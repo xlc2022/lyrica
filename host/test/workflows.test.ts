@@ -272,18 +272,42 @@ describe("the workflow API", () => {
     expect(s.comfyFake.seen.prompts).toEqual([]);
   });
 
-  it("copies a built-in recipe's workflow to edit, keeping its blanks", async () => {
+  it("edits a built-in recipe's workflow in place: the model gets its own revision, the built-in stays, and Reset puts it back", async () => {
     const s = await stack({ extra: ["ConditioningZeroOut", "EmptySD3LatentImage"] });
     const proposed = (await s.api("/host/v1/recipes?state=proposed")).body.recipes;
     const flux = proposed.find((r: { arch: string }) => r.arch === "flux");
     await s.api(`/host/v1/recipes/${flux.id}/confirm`, { body: {} });
-    const copied = await s.api("/host/v1/workflows/copy", { body: { recipe: flux.id, name: "Flux, my way" } });
-    expect(copied.status).toBe(200);
-    expect(copied.body.workflow).toMatchObject({ from: "copy", base: "flux", label: "Flux, my way", problems: [] });
-    expect(copied.body.recipe).toMatchObject({ name: "Flux, my way", template: copied.body.workflow.name, base: flux.id, custom: true });
-    // The built-in is untouched, and the copy still fills and runs.
+    // Read: the built-in as it ships.
+    const shipped = await s.api(`/host/v1/recipes/${flux.id}/workflow`, { method: "GET" });
+    expect(shipped.status).toBe(200);
+    expect(shipped.body).toMatchObject({ builtIn: true, name: "flux", base: "flux", label: flux.name, revision: 0, problems: [] });
+    // Save: a workflow of the model's own, named after it, on the built-in as its base; the built-in is untouched.
+    const workflow = structuredClone(shipped.body.workflow) as Record<string, { inputs: Record<string, unknown> }>;
+    const sampler = Object.entries(workflow).find(([, n]) => "steps" in n.inputs)!;
+    sampler[1].inputs.denoise = 0.9;
+    const edited = await s.api(`/host/v1/recipes/${flux.id}/workflow`, { method: "PUT", body: { workflow } });
+    expect(edited.status).toBe(200);
+    expect(edited.body).toMatchObject({ builtIn: false, from: "copy", base: "flux", label: flux.name, revision: 1, problems: [], recipes: [{ id: flux.id, name: flux.name }] });
+    expect(edited.body.workflow[sampler[0]].inputs.denoise).toBe(0.9);
     expect(s.templates.get("flux")!.custom).toBeUndefined();
-    const made = await s.api("/host/v1/images/create", { body: { recipe: copied.body.recipe.id, prompt: "x" } });
-    expect(made.status).toBe(200);
+    const recipe = (await s.api(`/host/v1/recipes/${flux.id}`, { method: "GET" })).body;
+    expect(recipe).toMatchObject({ name: flux.name, template: edited.body.name, custom: true, workflowBase: "flux" });
+    // The model still fills and runs; a second save is revision 2 of the same workflow.
+    expect((await s.api("/host/v1/images/create", { body: { recipe: flux.id, prompt: "x" } })).status).toBe(200);
+    sampler[1].inputs.denoise = 0.8;
+    const again = await s.api(`/host/v1/recipes/${flux.id}/workflow`, { method: "PUT", body: { workflow } });
+    expect(again.body).toMatchObject({ name: edited.body.name, revision: 2 });
+    expect(readdirSync(join(s.dataDir, "workflows")).sort()).toEqual([`${edited.body.name}.json`, `${edited.body.name}.revisions.json`]);
+    // Reset: back on the built-in, the model's own workflow and revisions gone.
+    const reset = await s.api(`/host/v1/recipes/${flux.id}/workflow`, { method: "DELETE" });
+    expect(reset.status).toBe(200);
+    expect(reset.body).toMatchObject({ builtIn: true, name: "flux" });
+    expect((await s.api(`/host/v1/recipes/${flux.id}`, { method: "GET" })).body).toMatchObject({ template: "flux", custom: false, workflowBase: null });
+    expect(s.templates.has(edited.body.name)).toBe(false);
+    expect(readdirSync(join(s.dataDir, "workflows"))).toEqual([]);
+    // An imported workflow has no template to go back to.
+    const resetAgain = await s.api(`/host/v1/recipes/${flux.id}/workflow`, { method: "DELETE" });
+    expect(resetAgain.status).toBe(400);
+    expect(resetAgain.body.error.message).toMatch(/on its template already/);
   });
 });

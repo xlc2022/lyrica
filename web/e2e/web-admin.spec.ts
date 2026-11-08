@@ -2,7 +2,7 @@
 // The phone check, Models, tasks, downloads, images, administration, questions, push and Code mode.
 // Tests run in order on this file's own lyricad per size.
 import { createServer } from "node:http";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import { phone, enter, newThread, send, openSettings, openProjectSettings, threadIdOf, sendTo, hitHeight, noHorizontalScroll, fetchReal, SLEEP_FIXTURE } from "./helpers.ts";
 import type { ModelsPage } from "../src/api.ts";
 
@@ -915,7 +915,7 @@ test("a host card has one facts line and Pause, Edit and ⋯; Edit opens a drawe
   await page.getByRole("menuitem", { name: "Pair again…" }).click();
   await expect(page).toHaveURL(/\/models\/hosts\/add-host\?host=ep-box$/);
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Pair box again");
-  await expect(page.getByLabel("Name")).toHaveCount(0);
+  await expect(page.getByLabel("Name", { exact: true })).toHaveCount(0);
   await expect(page.getByLabel("Pairing code")).toBeVisible();
   await shot("pair-again");
   await noHorizontalScroll(page);
@@ -1177,11 +1177,16 @@ test("Image models: groups by architecture with Role and Where; a recipe opens t
   await expect.poll(() => post(`recipes/${images.zi}`).at(-1)).toEqual({ do: "change", change: { op: "defaults", defaults: { steps: 20 } } });
   await expect(block.locator(".copyhead")).toContainText("20 steps");
   if (process.env.SCREENSHOTS) await block.screenshot({ path: `${process.env.SCREENSHOTS}/image-models-steps-${page.viewportSize()!.width}.png` });
-  // Its label stays on its input, as Use for's does on its segments.
-  const label = (await block.locator(".field.steps > span").first().boundingBox())!;
-  const input = (await steps.boundingBox())!;
-  expect(input.y - (label.y + label.height)).toBeLessThanOrEqual(8);
-  if (phone(page)) expect(input.height).toBeGreaterThanOrEqual(44);
+  // The foot's controls share a baseline: each label beside its control, Use for level with Steps and "of 150", and the
+  // actions level with each other (on one line with the settings when the block is wide enough, else on the next).
+  const middle = async (l: Locator) => { const b = (await l.boundingBox())!; return b.y + b.height / 2; };
+  const mid = await middle(steps);
+  for (const l of [block.locator(".field.steps > span").first(), block.locator(".field.steps .muted")]) expect(Math.abs((await middle(l)) - mid)).toBeLessThanOrEqual(2);
+  expect(Math.abs((await middle(block.locator(".copyfoot-settings .field > span").first())) - (await middle(useFor)))).toBeLessThanOrEqual(2);
+  const addPart = await middle(block.getByRole("button", { name: "Add part" }));
+  for (const l of [block.getByRole("link", { name: "Edit workflow" }), block.getByRole("button", { name: "Delete model…" })]) expect(Math.abs((await middle(l)) - addPart)).toBeLessThanOrEqual(2);
+  if (!phone(page)) for (const m of [await middle(useFor), addPart]) expect(Math.abs(m - mid)).toBeLessThanOrEqual(2);
+  if (phone(page)) expect((await steps.boundingBox())!.height).toBeGreaterThanOrEqual(44);
   await noHorizontalScroll(page);
 
   // Change: the host's other VAEs for the architecture, or Download another….
@@ -1197,7 +1202,7 @@ test("Image models: groups by architecture with Role and Where; a recipe opens t
   await expect(drawer.getByRole("group", { name: "Part" }).getByRole("button")).toHaveText(["LoRA"]);
   await expect(drawer.getByRole("radio", { name: /pixel-art\.safetensors/ })).toBeChecked();
   await expect(drawer.getByRole("radio", { name: /pixel-art\.safetensors/ })).toHaveAccessibleName(/Not used by any model/);
-  await expect(drawer.getByLabel("Save as a new model, keeping Z-Image Turbo as it is")).toBeChecked();
+  await expect(drawer.getByLabel("Add to a new model")).toBeChecked();
   // Strength clamps to -4 to 4 when the field is left, as the host takes.
   await drawer.getByLabel("Strength").fill("9");
   await drawer.getByLabel("Strength").blur();
@@ -1213,7 +1218,7 @@ test("Image models: groups by architecture with Role and Where; a recipe opens t
 
   // Into the model itself, with the box unticked; then its strength is typed in its row, clamped and saved.
   await block.getByRole("button", { name: "Add part" }).click();
-  await drawer.getByLabel("Save as a new model, keeping Z-Image Turbo as it is").uncheck();
+  await drawer.getByLabel("Add to a new model").uncheck();
   await drawer.getByLabel("Strength").fill("0.6");
   await drawer.getByRole("button", { name: "Add" }).click();
   await expect.poll(() => post(`recipes/${images.zi}`).at(-1)).toEqual({ do: "change", change: { op: "addLora", file: "comfy/loras/pixel-art.safetensors", strength: 0.6 } });
@@ -1342,7 +1347,7 @@ test("Image models: groups by architecture with Role and Where; a recipe opens t
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
 
-test("Custom workflows: Workflow imports an export into a draft, Edit workflow saves it as a form or JSON, keeps revisions and restores one; Copy workflow to edit opens the copy", async ({ page, baseURL }) => {
+test("Custom workflows: Workflow imports an export into a draft, Edit workflow saves it as a form or JSON, keeps revisions and restores one; a built-in's workflow is edited in place, reset to its template or saved as a new workflow", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   const images = await fakeImages(page);
   await fakeHost(page, [], [images.offering]);
@@ -1359,18 +1364,26 @@ test("Custom workflows: Workflow imports an export into a draft, Edit workflow s
   const draft = { label: "Z styled", does: "create", arch: "z-image", workflow: graph(1), loaders: null, clipType: "lumina2", video: null, parts: [], loras: [], defaults: { steps: 6 }, unmatched: ["my-style.safetensors"], dropped: ["11 (PreviewImage)"] };
   const sent: { method: string; path: string; body?: unknown }[] = [];
   let current = { name: "custom-0a1b2c3d", label: "Z styled", from: "import", base: null, revision: 1, saved: "2026-11-07T14:00:00Z", by: "app", does: ["create"], video: null,
-    recipes: [{ id: "r1", name: "Z styled" }], nodesChecked: true, workflow: graph(1), problems: [], missingNodes: ["FancyNode"], nodes: { KSampler: { sampler_name: ["euler", "res_2s"] } } };
+    recipes: [{ id: "r1", name: "Z styled" }], nodesChecked: true, workflow: graph(1), problems: [], missingNodes: ["FancyNode"], nodes: { KSampler: { sampler_name: ["euler", "res_2s"] } }, builtIn: false };
+  // Z-Image Turbo's workflow: the built-in as it ships, until a save gives the model its own revision of it.
+  const shipped = { ...current, name: "z-image", label: "Z-Image Turbo", from: "template", base: "z-image", revision: 0, saved: null as string | null, recipes: [{ id: images.zi, name: "Z-Image Turbo" }], workflow: graph(1), missingNodes: [], builtIn: true };
+  let turbo: typeof shipped = shipped;
   await page.route(/\/api\/u\/[^/]+\/hosts\/ep-box\/manage$/, (route) => {
-    const m = route.request().postDataJSON() as { method: string; path: string; body?: { workflow?: ReturnType<typeof graph> } };
-    if (!m.path.startsWith("/host/v1/workflows")) return route.fallback();
+    const m = route.request().postDataJSON() as { method: string; path: string; body?: { workflow?: ReturnType<typeof graph>; name?: string } };
+    if (!m.path.startsWith("/host/v1/workflows") && !m.path.endsWith("/workflow")) return route.fallback();
     sent.push(m);
     if (m.path === "/host/v1/workflows/import") return route.fulfill(json({ draft, problems: [], missingNodes: [] }));
     if (m.path === "/host/v1/workflows" && m.method === "POST") return route.fulfill(json({ workflow: current, recipe: { id: "r1" } }));
-    if (m.path === "/host/v1/workflows/copy") return route.fulfill(json({ workflow: { ...current, name: "custom-0e0e0e0e", from: "copy", base: "z-image", label: "Z-Image Turbo copy" }, recipe: { id: "r2" } }));
+    if (m.path === "/host/v1/workflows/copy") return route.fulfill(json({ workflow: { ...current, name: "custom-0e0e0e0e", from: "copy", base: "z-image", label: m.body!.name }, recipe: { id: "r2" } }));
+    if (m.path === `/host/v1/recipes/${images.zi}/workflow`) {
+      if (m.method === "PUT") turbo = { ...turbo, name: "custom-0e0e0e0e", from: "copy", revision: turbo.revision + 1, saved: "2026-11-08T14:00:00Z", workflow: m.body!.workflow!, builtIn: false };
+      if (m.method === "DELETE") turbo = shipped;
+      return route.fulfill(json(turbo));
+    }
     if (m.path.endsWith("/revisions")) return route.fulfill(json({ current: current.revision, revisions: Array.from({ length: current.revision }, (_, i) => ({ revision: current.revision - i, saved: "2026-11-07T14:00:00Z", by: i === 0 && current.revision === 2 ? "lyrica" : "app", name: "Z styled" })) }));
     if (m.path.endsWith("/restore")) { current = { ...current, revision: current.revision + 1, workflow: graph(1) }; return route.fulfill(json(current)); }
     if (m.method === "PUT") { current = { ...current, revision: current.revision + 1, workflow: m.body!.workflow! }; return route.fulfill(json(current)); }
-    return route.fulfill(json(current.name === m.path.split("/").pop() ? current : { ...current, name: m.path.split("/").pop(), label: "Z-Image Turbo copy", from: "copy", base: "z-image" }));
+    return route.fulfill(json(current));
   });
 
   // Workflow: a name, what it does, and the export.
@@ -1398,8 +1411,8 @@ test("Custom workflows: Workflow imports an export into a draft, Edit workflow s
   await sampler.getByLabel("denoise of node 3", { exact: true }).fill("0.8");
   await noHorizontalScroll(page);
   await shot("draft");
-  await page.getByRole("button", { name: "Save" }).click();
-  await expect(page).toHaveURL(new RegExp(`workflow\\?host=ep-box&workflow=custom-0a1b2c3d$`));
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`workflow\\?host=ep-box&recipe=r1$`));
   expect(sent.find((m) => m.path === "/host/v1/workflows" && m.method === "POST")!.body).toMatchObject({ name: "Z styled", does: "create", arch: "z-image", clipType: "lumina2", workflow: graph(0.8) });
 
   // Saved: a node ComfyUI lacks has Copy request; a setting made a blank, then JSON.
@@ -1411,8 +1424,9 @@ test("Custom workflows: Workflow imports an export into a draft, Edit workflow s
   await page.getByRole("region", { name: "Node 3, KSampler" }).getByLabel("sampler_name of node 3", { exact: true }).selectOption("res_2s");
   await page.getByRole("group", { name: "View" }).getByRole("button", { name: "JSON" }).click();
   await expect(page.getByLabel("Workflow JSON")).toHaveValue(/"sampler_name": "res_2s"/);
-  await page.getByRole("button", { name: "Save" }).click();
+  await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.locator(".head .cap")).toHaveText("generate · box · revision 2");
+  expect(sent.at(-1)!.path).toBe("/host/v1/recipes/r1/workflow");
   expect((sent.at(-1)!.body as { workflow: ReturnType<typeof graph> }).workflow["3"]!.inputs.sampler_name).toBe("res_2s");
 
   // Revisions: restore one, after asking.
@@ -1430,12 +1444,43 @@ test("Custom workflows: Workflow imports an export into a draft, Edit workflow s
   // The list reads again, newest first.
   await expect(revs.getByRole("listitem")).toHaveCount(3);
 
-  // A built-in recipe's block has Copy workflow to edit, which opens the copy.
+  // A built-in recipe's Edit workflow opens the template as it ships; Save gives the model its own revision of it, with no copy.
   await page.goto(`/#/u/${userId}/models/images`);
   await page.getByRole("list", { name: "Z-Image models" }).getByRole("button", { name: /^Z-Image Turbo/ }).click();
-  await page.getByRole("region", { name: "Z-Image Turbo on box" }).getByRole("button", { name: "Copy workflow to edit" }).click();
-  await expect(page).toHaveURL(new RegExp(`workflow\\?host=ep-box&workflow=custom-0e0e0e0e$`));
-  expect(sent.find((m) => m.path === "/host/v1/workflows/copy")!.body).toEqual({ recipe: images.zi, name: "Z-Image Turbo copy" });
+  const block = page.getByRole("region", { name: "Z-Image Turbo on box" });
+  await expect(block.locator(".copyhead")).toContainText("template z-image · 8 steps");
+  await block.getByRole("link", { name: "Edit workflow" }).click();
+  await expect(page).toHaveURL(new RegExp(`workflow\\?host=ep-box&recipe=${images.zi}$`));
+  await expect(page.getByRole("heading", { level: 1, name: "Z-Image Turbo" })).toBeVisible();
+  await expect(page.locator(".head .cap")).toHaveText("generate · box · template z-image");
+  await expect(page.getByLabel("Name", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("group", { name: "View" }).getByRole("button", { name: "Revisions" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Reset to template…" })).toHaveCount(0);
+  await page.getByRole("region", { name: "Node 3, KSampler" }).getByLabel("denoise of node 3", { exact: true }).fill("0.7");
+  await shot("built-in");
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.locator(".head .cap")).toHaveText("generate · box · built on template z-image · revision 1");
+  await expect(page).toHaveURL(new RegExp(`workflow\\?host=ep-box&recipe=${images.zi}$`));
+  expect(sent.at(-1)).toMatchObject({ method: "PUT", path: `/host/v1/recipes/${images.zi}/workflow`, body: { workflow: graph(0.7) } });
+  expect((sent.at(-1)!.body as { name?: string }).name).toBeUndefined();
+  await expect(page.getByRole("group", { name: "View" }).getByRole("button", { name: "Revisions" })).toBeVisible();
+  await shot("edited");
+  // Reset to template asks, then puts the model back on the built-in.
+  await page.getByRole("button", { name: "Reset to template…" }).click();
+  const resetAsk = page.getByRole("dialog", { name: "Reset to template?" });
+  await expect(resetAsk).toContainText("Z-Image Turbo goes back to the z-image template as Lyrica ships it. Its revision is deleted.");
+  await shot("reset");
+  await resetAsk.getByRole("button", { name: "Reset" }).click();
+  await expect(page.locator(".head .cap")).toHaveText("generate · box · template z-image");
+  expect(sent.at(-1)).toMatchObject({ method: "DELETE", path: `/host/v1/recipes/${images.zi}/workflow` });
+  // Save as new workflow: a copy of the model on this workflow, named in the dialog, which opens.
+  await page.getByRole("button", { name: "Save as new workflow…" }).click();
+  const asNew = page.getByRole("dialog", { name: "Save as new workflow" });
+  await expect(asNew.getByLabel("Name", { exact: true })).toHaveValue("Z-Image Turbo copy");
+  await asNew.getByLabel("Name", { exact: true }).fill("Z-Image Turbo, my way");
+  await asNew.getByRole("button", { name: "Save" }).click();
+  await expect(page).toHaveURL(new RegExp(`workflow\\?host=ep-box&recipe=r2$`));
+  expect(sent.find((m) => m.path === "/host/v1/workflows/copy")!.body).toMatchObject({ recipe: images.zi, name: "Z-Image Turbo, my way", workflow: graph(1) });
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
 
@@ -1466,13 +1511,13 @@ test("Custom workflows: Graph draws the nodes and links; on a wide screen nodes 
     recipes: [{ id: "r1", name: "Z styled" }], nodesChecked: true, workflow: graph, problems: [], missingNodes: [], nodes: { KSampler: { sampler_name: ["euler"] } }, layout: null };
   await page.route(/\/api\/u\/[^/]+\/hosts\/ep-box\/manage$/, (route) => {
     const m = route.request().postDataJSON() as { method: string; path: string; body?: Record<string, unknown> };
-    if (!m.path.startsWith("/host/v1/workflows")) return route.fallback();
+    if (!m.path.startsWith("/host/v1/workflows") && !m.path.endsWith("/workflow")) return route.fallback();
     sent.push(m);
     if (m.path === "/host/v1/workflows/nodes") return route.fulfill(json({ nodes: types }));
     if (m.method === "PUT") return route.fulfill(json({ ...current, revision: 2, workflow: m.body!.workflow, layout: m.body!.layout }));
     return route.fulfill(json(current));
   });
-  await page.goto(`/#/u/${userId}/models/images/workflow?host=ep-box&workflow=custom-0a1b2c3d`);
+  await page.goto(`/#/u/${userId}/models/images/workflow?host=ep-box&recipe=r1`);
   await page.getByRole("group", { name: "View" }).getByRole("button", { name: "Graph" }).click();
   const canvas = page.getByRole("group", { name: "Graph" });
   await expect(canvas.locator(".react-flow__node")).toHaveCount(6);
@@ -1526,7 +1571,7 @@ test("Custom workflows: Graph draws the nodes and links; on a wide screen nodes 
   // A link of the wrong type isn't drawn.
   await drag('[data-id="6"] [data-handleid="o0"]', '[data-id="8"] [data-handleid="i:samples"]');
   await expect(canvas.locator(".react-flow__edge")).toHaveCount(6);
-  await page.getByRole("button", { name: "Save" }).click();
+  await page.getByRole("button", { name: "Save", exact: true }).click();
   const put = sent.find((m) => m.method === "PUT")!.body!;
   expect((put.workflow as Record<string, unknown>)["10"]).toEqual({ class_type: "ImageSharpen", inputs: { sharpen_radius: 1, sigma: 0.5, alpha: 1, image: ["8", 0] } });
   expect((put.workflow as Record<string, { inputs: unknown }>)["9"]!.inputs).toEqual({ images: ["10", 0] });

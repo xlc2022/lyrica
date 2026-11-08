@@ -20,7 +20,7 @@ import { canEdit, Frame, plural, UsedIn, type MCtx } from "./ModelsFrame.tsx";
 import { her } from "./name.ts";
 import { go, href } from "./route.ts";
 import { Dialog, ErrorText, useAction, useLoad, useLongPress, useSelection } from "./ui.tsx";
-import { copyWorkflow, WorkflowImport } from "./Workflows.tsx";
+import { WorkflowImport } from "./Workflows.tsx";
 
 type Endpoint = ModelsPage["endpoints"][number];
 /** One host's library with its endpoint, or why it couldn't be read. */
@@ -414,8 +414,9 @@ function ArchParts({ arch, libs }: { arch: string; libs: HostLibrary[] }) {
 }
 
 /**
- * A recipe on one host: its template and defaults, a row per part with Change or Remove at its right, then Add part,
- * Use for and Delete model…; a proposal has Use this recipe or Download the missing parts, and Ignore, instead.
+ * A recipe on one host: its template and defaults, a row per part with Change or Remove at its right, then a foot with
+ * Use for and Steps at its left and Add part, Edit workflow and Delete model… at its right; a proposal has Use this
+ * recipe or Download the missing parts, and Ignore, instead.
  * `details` leaves the actions out.
  */
 /**
@@ -458,8 +459,6 @@ const LORA_MAX = 4;
 function CopyBlock({ L, c, details }: { L: Lib; c: RecipeCopy; details?: boolean }) {
   const r = c.recipe;
   const [changing, setChanging] = useState<number>();
-  const [copying, setCopying] = useState(false);
-  const [copyError, setCopyError] = useState("");
   const editable = !details && L.editable(c.hostId);
   const proposed = r.state === "proposed";
   const miss = missingOf(r);
@@ -501,7 +500,7 @@ function CopyBlock({ L, c, details }: { L: Lib; c: RecipeCopy; details?: boolean
     <section className="copyblock" aria-label={`${r.name} on ${c.host}`} data-recipe={r.id}>
       <div className="copyhead">
         <b>{c.host}</b>
-        <span className="cap">{[r.custom ? "custom workflow" : `template ${r.template}`, defaultsWords(r.defaults)].filter(Boolean).join(" · ")}</span>
+        <span className="cap">{[r.custom ? (r.workflowBase ? `template ${r.workflowBase} · edited` : "custom workflow") : `template ${r.template}`, defaultsWords(r.defaults)].filter(Boolean).join(" · ")}</span>
         {actions && <div className="actions">{actions}</div>}
       </div>
       {proposed && !details && (
@@ -544,17 +543,18 @@ function CopyBlock({ L, c, details }: { L: Lib; c: RecipeCopy; details?: boolean
           </PartRow>
         ))}
       </ul>
-      {copyError && <div className="copy-note"><ErrorText error={copyError} /></div>}
       {!details && (editable && !proposed || useFor || steps) && (
         <div className="copyfoot">
-          {editable && !proposed && <button type="button" className="sm" disabled={L.busy} onClick={() => L.onAddPart?.(c)}>Add part</button>}
-          {useFor}
-          {steps}
-          {editable && !proposed && r.custom && <a className="link" href={href({ page: "models", userId: L.ctx.user.id, tab: "images", add: "workflow", host: c.hostId, workflow: r.template })}>Edit workflow</a>}
-          {editable && !proposed && !r.custom && r.does.some((d) => d === "create" || d === "edit" || d === "video" || d === "animate") && (
-            <button type="button" className="link" disabled={L.busy || copying} onClick={() => { setCopying(true); void copyWorkflow(L.ctx, c.hostId, r).catch((e) => { setCopying(false); setCopyError((e as Error).message); }); }}>Copy workflow to edit</button>
+          {(useFor || steps) && <div className="copyfoot-settings">{useFor}{steps}</div>}
+          {editable && !proposed && (
+            <div className="copyfoot-actions">
+              <button type="button" className="sm" disabled={L.busy} onClick={() => L.onAddPart?.(c)}>Add part</button>
+              {(r.custom || r.does.some((d) => d === "create" || d === "edit" || d === "video" || d === "animate")) && (
+                <a className="sm" href={href({ page: "models", userId: L.ctx.user.id, tab: "images", add: "workflow", host: c.hostId, recipe: r.id })}>Edit workflow</a>
+              )}
+              {mainPart?.downloaded && <button type="button" className="sm danger" disabled={L.busy} onClick={() => L.onDelete?.(c)}>Delete model…</button>}
+            </div>
           )}
-          {editable && !proposed && mainPart?.downloaded && <button type="button" className="link danger" disabled={L.busy} onClick={() => L.onDelete?.(c)}>Delete model…</button>}
         </div>
       )}
     </section>
@@ -668,7 +668,7 @@ function AddPart({ L, c, onAdd, onCancel }: {
             <input type="number" min={-LORA_MAX} max={LORA_MAX} step={0.05} value={strength} onChange={(e) => setStrength(e.target.value)} onBlur={() => setStrength(String(clamp(strength)))} />
             <span className="muted">of <span className="num">{LORA_MAX}</span></span>
           </label>
-          <label className="check"><input type="checkbox" checked={asNew} onChange={(e) => setAsNew(e.target.checked)} /> Save as a new model, keeping {r.name} as it is</label>
+          <label className="check"><input type="checkbox" checked={asNew} onChange={(e) => setAsNew(e.target.checked)} /> <span title={`${r.name} stays as it is.`}>Add to a new model</span></label>
         </> : <p className="meta">Replaces the {roleWord(role)} this model uses now.</p>}
         <div className="drawer-foot row">
           <button type="submit" className="primary" disabled={L.busy || !chosen}>{lora ? "Add" : "Replace"}</button>

@@ -1,7 +1,6 @@
 # Brief: Custom ComfyUI workflows
 
-**Status:** Done: #812 (custom workflows) and #813 (Graph view). **Thread:** Add custom ComfyUI workflow editing.
-**Branch:** `claude/project-thread-kocpz1`.
+**Status:** Done: #812 (custom workflows), #813 (Graph view), #816 (values on the node), and the follow-up that edits a built-in's workflow in place and tidies the recipe foot (thread "Clean up the image model card and edit workflows in place", branch `claude/project-thread-wcp40c`). **Thread:** Add custom ComfyUI workflow editing.
 
 **Read first:** AGENTS.md, DESIGN.md ("Local images", "Image models are
 recipes"), `host/README.md` (Images), `host/API.md` ("Image models"),
@@ -11,7 +10,8 @@ docs/ux.md ("Image models, recipes and parts").
 
 A person who manages a model host can add an image or video workflow they
 built in ComfyUI, adjust it by hand, and use it as an image model like any
-other. They can also copy a built-in workflow and change the copy. Serves
+other. They can also change a built-in model's workflow, for that model
+alone, without making a copy first. Serves
 principle 1 (better images through the same tool) while keeping the host's
 containment: Lyrica herself still never writes a workflow, and ComfyUI still
 runs only the custom nodes pinned in its image.
@@ -62,8 +62,20 @@ only by a reviewed pull request that pins them (no install from the app).
   manages, reads one, sets settings its nodes already have (never links,
   so she adds or rewires nothing) and restores revisions, in general
   threads only. No card: the user asked, and every change can be undone.
-- **Copy to edit.** A built-in recipe's **Copy workflow to edit** makes a
-  custom copy of its template and a recipe on it, then opens the editor.
+- **Editing a built-in in place.** A built-in template is shared by every
+  model on it and ships with the repository, so it is never changed on
+  disk. Instead, **Edit workflow** on a built-in model opens the template
+  as it ships, and the first Save gives that model its own revision of it
+  behind the scenes: a custom workflow named after the model, with the
+  built-in as its `base` (so it keeps the built-in's blanks and nodes),
+  and the model moves onto it (`recipes/<id>/workflow`). Nothing is stored
+  before Save, no copy appears, the other models on the template are
+  untouched, and updates still ship the built-in. **Reset to template…**
+  puts the model back and deletes its revisions. **Save as new workflow…**
+  (the old Copy workflow to edit, moved into the editor) makes a second
+  model on a copy of the workflow as edited. Asked for by the operator on
+  2026-11-08 ("we should just be able to edit a workflow without making a
+  copy of it").
 - **Where it lives.** Per host, in its data folder (`workflows/`), next to
   `recipes.json`; it moves with the host, not the repository. Only the
   host's managers add or change one: an administrator on a shared host, the
@@ -84,8 +96,10 @@ only by a reviewed pull request that pins them (no install from the app).
    `/host/v1/workflows`, the node list cache, recipe readiness and
    `describe` for custom templates.
 2. Core: the routes passed on through `manage`, rediscovery after a change.
-3. Web: Workflow source, Edit workflow page, Copy workflow to edit and Edit
-   workflow on a recipe's host block.
+3. Web: Workflow source, Edit workflow page (by model), Save as new
+   workflow, Reset to template, and Edit workflow on a recipe's host
+   block, whose foot has the settings at its left and the actions at its
+   right on one baseline.
 4. Docs: DESIGN.md, host/API.md, host/README.md, docs/ux.md,
    docs/contracts.md, docs/guides/model-hosts.md.
 
@@ -98,10 +112,12 @@ Lyrica proposing workflows.
 
 ## Handoff note
 
-Done (#812, #813 merged): everything in scope and the Graph view, with host tests
-(`host/test/workflows.test.ts`), the models tool's test
-(`extension/test/workspace.test.ts`) and an e2e
-(`web/e2e/web-admin.spec.ts`, "Custom workflows").
+Done (#812, #813, #816 merged; in-place editing in review): everything in
+scope and the Graph view, with host tests (`host/test/workflows.test.ts`,
+"edits a built-in recipe's workflow in place"), the models tool's test
+(`extension/test/workspace.test.ts`) and e2e tests
+(`web/e2e/web-admin.spec.ts`, "Custom workflows" and the Image models
+test's foot checks).
 
 Not yet checked: an export from a real ComfyUI run on a GPU host. The
 blank guesses follow the common node names; an unusual workflow may need

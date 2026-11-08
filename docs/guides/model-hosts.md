@@ -610,8 +610,13 @@ file or choose it, and **Import**. Edit workflow shows what the host made of
 it: model files it couldn't find on the host (download them first, under
 the same file names), and each node's settings, where Prompt, Seed, Steps
 and the like mark what each image fills in. Check them, change what you
-want, and **Save**; it becomes an image model like the others. A built-in
-model's **Copy workflow to edit** gives you a copy to change instead.
+want, and **Save**; it becomes an image model like the others.
+
+A built-in model's **Edit workflow** opens the workflow it runs on, and
+Save keeps your version for that model alone: the other models on the same
+template and future updates are untouched. **Reset to template…** puts it
+back on the shipped workflow. **Save as new workflow…** makes a second
+model on a copy of the workflow instead, leaving the first as it is.
 
 **Graph** shows the workflow as nodes and links, as ComfyUI does. On a
 computer you move nodes, drag from an output to an input to link them

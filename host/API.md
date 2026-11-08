@@ -1038,9 +1038,33 @@ body may be up to 2 MB. Not on a host using stable-diffusion.cpp.
   the workflow again once ComfyUI has started and reported its nodes, and
   fails with `503 model_unavailable` if it hasn't reported them or the
   check finds a problem; the recipe then lists as `unsupported`.
-- `POST /host/v1/workflows/copy` `{ recipe, name }` → as above: a copy of
-  that recipe's template (create, edit, video or animate) and a copy of the
-  recipe on it. A copy may keep its built-in's own blanks and nodes.
+- `POST /host/v1/workflows/copy` `{ recipe, name, workflow?, video?,
+  layout? }` → as above: a copy of that recipe's template (create, edit,
+  video or animate), with the edits given, and a copy of the recipe on it
+  (the app's Save as new workflow). A copy may keep its built-in's own
+  blanks and nodes.
+- A recipe's workflow, for the app's Edit workflow:
+  - `GET /host/v1/recipes/<id>/workflow` → for a recipe on a custom
+    workflow its `WorkflowInfo` in full (as `GET /host/v1/workflows/<name>`)
+    with `builtIn: false`; for one on a built-in template the template as
+    it ships: `builtIn: true`, `name` and `base` the template, `label` the
+    recipe's name, `from: "template"`, `revision: 0`, `saved` and `made`
+    null, `recipes` this one, `workflow`, `missingNodes`, `nodes` and
+    `problems: []` as for a custom one.
+  - `PUT /host/v1/recipes/<id>/workflow` `{ workflow?, video?, name?, by?,
+    layout? }` → the same. On a custom workflow, as `PUT
+    /host/v1/workflows/<name>`. On a built-in template (confirmed; create,
+    edit, video or animate), the recipe gets its own custom workflow first:
+    a copy of the template named after the recipe, `from: "copy"` with the
+    template as `base`, checked and saved as revision 1 with the edits, and
+    the recipe moves onto it (`name` is ignored: it follows the recipe).
+    The built-in stays as shipped, for the other recipes on it and for
+    updates.
+  - `DELETE /host/v1/recipes/<id>/workflow` → the built-in as GET gives it:
+    a recipe on a custom workflow with a `base` goes back on that template,
+    and its workflow and revisions are deleted when no other recipe is on
+    it. `400 invalid` for an import (no template to go back to) or a recipe
+    on its template already.
 - `GET /host/v1/workflows/<name>` → `WorkflowInfo` with `workflow`,
   `problems`, `missingNodes` (node types ComfyUI didn't report, or null
   before it has run) and `nodes` (the inputs of the node types it uses: a
@@ -1053,8 +1077,10 @@ body may be up to 2 MB. Not on a host using stable-diffusion.cpp.
   revision, saved, by, name }] }`, newest first; `GET …/revisions/<n>` → `{
   revision, workflow, video, name, layout }`; `POST …/revisions/<n>/restore`
   `{ by? }` → as PUT, that revision (and its layout) saved as a new one.
-- A recipe on a custom workflow lists `custom: true`; one whose workflow
-  needs node types ComfyUI lacks does nothing, its `unsupported` naming
+- A recipe on a custom workflow lists `custom: true` and `workflowBase`
+  (the built-in template it was made from, or null for an import; null on
+  a built-in's own recipe); one whose workflow needs node types ComfyUI
+  lacks does nothing, its `unsupported` naming
   them. A workflow that loads its own files can't have parts changed or
   added (change them in the workflow); deleting its last recipe deletes it
   and its revisions.

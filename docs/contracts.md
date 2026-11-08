@@ -551,7 +551,7 @@ class Models {                                              // new Models(keyrin
   // Host management and serving
   manageHost(actor, hostId, method, path, body?)            // only models/load|unload|pin|reload, gpus/<n>, memory, scan, usage,
                                                             // and workflows[/import|copy|nodes|<name>[/revisions[/<n>[/restore]]]]
-                                                            // (host/API.md, "Custom workflows"), rediscovering after a change
+                                                            // and recipes/<id>/workflow (host/API.md, "Custom workflows"), rediscovering after a change
   workflowHosts(actor, ctx): { id, name }[]                 // hosts with recipes the actor manages, for the models tool; [] when private or local-only
   servingSettings(userId, offeringId) / setServingSettings(actor, offeringId, settings) / reloadModel(actor, offeringId)
   // settings may carry stretch: { type: "yarn"; factor; originalContext } (host models only); servingSettings returns
