@@ -1172,7 +1172,11 @@ refused. To replace the destination, enter the full URL and token again;
   reports any installed units that differ from the new release or are missing;
   run `install.sh` from a current checkout to update them. Updates never
   rewrite units, since `lyricad.service` defines her confinement. NixOS units
-  are managed by its module instead.
+  are managed by its module instead. If Check or Update fails with "The
+  updater hasn't started", `systemctl status lyrica-update.path` and
+  `journalctl -u lyrica-update` say why; a fetch that hangs gives up after
+  10 minutes. The updater itself changes only when `install.sh` runs again
+  (NixOS: a rebuild), never through an update.
 - **Rollback:** under Updates, **Roll back** in a kept release's ⋯ goes
   back to it. As root, `lyrica-rollback` goes back to the previous
   release, or `lyrica-rollback <commit>` to another kept one, older or

@@ -2356,7 +2356,11 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   probation). While that request waits and the updater is idle or failed,
   `Updates.state` shows the step it starts with: `fetching` (with the tag,
   or `main` and the commit) for a check or an update, `draining` (with the commit) for a rollback,
-  its `since` when the request was written. An update's state also carries
+  its `since` when the request was written; a request still waiting after
+  2 minutes shows as `failed` with an error naming `lyrica-update.path`, and
+  pressing again replaces it. A `fetching` state on record for more than 15
+  minutes (the updater gives a fetch 10) shows as `failed` too, and takes
+  requests again. An update's state also carries
   `steps` (`UpdateStep[]`: each state it went through, `started`, `ended`
   once over, `failed` on the one it stopped in or the probation that rolled
   back) and, while failed, `output` (the last 40 lines of the fetch's,

@@ -160,9 +160,19 @@ describe("Administration's updates API", () => {
     writeFileSync(join(state, "state.json"), JSON.stringify({ state: "failed", since: "2026-10-12T00:00:00Z", error: "fetch" }));
     expect((await ada.post<Updates>(`${u}/rollback`, { commit: "bbbbbbb" })).body.state).toMatchObject({ state: "draining", commit: "bbbbbbb" });
     // A waiting request's since is when it was written, so the page can tell the updater hasn't started.
+    // One the updater never took fails (the path unit stopped, say), and pressing again replaces it.
     utimesSync(request, new Date("2026-10-12T01:00:00Z"), new Date("2026-10-12T01:00:00Z"));
-    expect((await ada.get<Updates>(u)).body.state.since).toBe("2026-10-12T01:00:00.000Z");
+    expect((await ada.get<Updates>(u)).body.state).toMatchObject({ state: "failed", since: "2026-10-12T01:00:00.000Z", commit: "bbbbbbb", error: expect.stringContaining("lyrica-update.path") });
+    expect((await ada.post<Updates>(`${u}/check`, {})).body.state.state).toBe("fetching");
+    expect(JSON.parse(readFileSync(request, "utf8"))).toEqual({ action: "check" });
     rmSync(request);
+    // A fetch on record long past the updater's own limit was cut off: failed, and Update works again.
+    writeFileSync(join(state, "state.json"), JSON.stringify({ state: "fetching", since: "2026-10-12T00:00:00Z" }));
+    expect((await ada.get<Updates>(u)).body.state).toMatchObject({ state: "failed", error: "The updater stopped while fetching." });
+    expect((await ada.post<Updates>(u, { tag: "update/2026-10-12" })).body.state).toMatchObject({ state: "fetching", tag: "update/2026-10-12" });
+    rmSync(request);
+    writeFileSync(join(state, "state.json"), JSON.stringify({ state: "fetching", since: new Date().toISOString() }));
+    expect((await ada.get<Updates>(u)).body.state.state).toBe("fetching");
 
     // An update's steps pass through, and a failure's output only while failed.
     const steps = [{ step: "fetching", started: "2026-10-12T02:00:00Z", ended: "2026-10-12T02:00:05Z" }, { step: "building", started: "2026-10-12T02:00:05Z", ended: "2026-10-12T02:03:00Z", failed: true }];

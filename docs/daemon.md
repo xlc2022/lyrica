@@ -1547,7 +1547,11 @@ check names and counts, never text.
   Administration's requests go to `<home>/updates/request.json`, which
   `lyrica-update.path` picks up a moment later; until it does, Updates
   shows an idle or failed updater as the step the request starts with
-  (Fetching, or Draining for a rollback), so the page follows it.
+  (Fetching, or Draining for a rollback), so the page follows it. A
+  request still waiting after 2 minutes shows as failed ("The updater
+  hasn't started", naming `lyrica-update.path` between backticks, which the page sets in mono) and a new one replaces it;
+  a fetch still on record after 15 minutes shows as failed ("The updater
+  stopped while fetching") and Check and Update work again.
 - **`lyrica version --json`** prints the version, build (commit), schema and
   `minReader`; **`lyrica smoke-test <empty dir>`** starts a scratch lyricad
   there (random passphrase, a test admin, no saved credentials), unlocks,
@@ -1555,15 +1559,22 @@ check names and counts, never text.
   printing `ok` or `FAIL` per check.
 - **`lyrica-update`** (`--tag update/<name>`, `--commit <sha>`, `--check`,
   or `--request` from the path unit), one at a time: fetch `main` and `update/*` tags
-  (never prompting; over SSH only with the deploy key; a failed fetch logs
+  (never prompting; over SSH only with the deploy key; given up under 1 KB/s
+  for a minute or after 10 minutes in all, `LYRICA_FETCH_SECONDS`; a failed fetch logs
   that a repository gone private needs install.sh again, or a restart of
-  `lyricad` on NixOS); the tag must be annotated and on `main`, or a
+  `lyricad` on NixOS); the newest update note is dropped when the running
+  release already has its commit and more (a latest merge past the tag),
+  at the fetch and at every switch, so Updates never offers an older
+  release; the tag must be annotated and on `main`, or a
   `--commit` (the latest merge, a whole commit with no tag) must be on
   `main`, labelled `main` in its state and RELEASE.json, with its title as
   its note; build as
   `lyrica-build`; smoke test; drain (10 minutes, then undrain and give up);
   stop; `lyrica-snapshot` (pinned when the release raises `min_reader`);
-  switch `current` and `previous`; start; probation.
+  switch `current` and `previous`; start; probation. A run that ends
+  without saying why (an error no step catches, or a kill) while fetching,
+  building or smoke-testing leaves the state `failed` with "stopped
+  unexpectedly", never a step still running.
 - **Stale units (Debian/Ubuntu).** At the release switch, the updater byte-compares
   all seven units installed by `install.sh` against the new release's
   `daemon/deploy/` files. Missing or different units are recorded as

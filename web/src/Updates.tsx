@@ -233,7 +233,7 @@ function StateLine({ up, userId }: { up: Updates; userId: string }) {
         {up.state.state === "draining" && busy.length > 0 && <> · waiting for <span className="num">{busy.length}</span> {busy.length === 1 ? "thread" : "threads"}</>}
         {up.state.tag && <span className={up.state.tag === MAIN ? "muted" : "muted mono"}> · {target(up.state.tag)}</span>}
       </span>
-      {up.state.state === "failed" && up.state.error && <span className="error small">{up.state.error}</span>}
+      {up.state.state === "failed" && up.state.error && <span className="error small">{withCode(up.state.error)}</span>}
       {mine.length > 0 && (
         <ul className="plain small">
           {mine.map((b) => <li key={`${b.pool}/${b.threadId}`}><a href={href({ page: "thread", userId, pool: b.pool!, threadId: b.threadId! })}>{b.kind === "sleep" ? "Sleep" : b.kind === "subagent" ? "A subagent" : "A turn"} in <span className="mono">{b.threadId}</span></a></li>)}
@@ -241,6 +241,11 @@ function StateLine({ up, userId }: { up: Updates; userId: string }) {
       )}
     </div>
   );
+}
+
+/** The updater's error, a command in it (between backticks) in mono. */
+function withCode(text: string) {
+  return text.split("`").map((part, i) => (i % 2 ? <span key={i} className="mono">{part}</span> : part));
 }
 
 function RowDots({ disabled, title, onRollback }: { disabled: boolean; title?: string; onRollback: () => void }) {
