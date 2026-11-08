@@ -519,7 +519,7 @@ class Models {                                              // new Models(keyrin
   pairHost(actor, { name, addresses, code }, { shared?, endpointId? }): Promise<Endpoint>   // endpointId: pair again, IDs kept
   setHostAddresses(actor, id, addresses): Endpoint / fetchFor(endpoint): typeof fetch | undefined   // undefined for a plain endpoint
   hostStatus(userId, id) / hostControl(actor, id, "pause" | "resume" | "restart")   // hostControl answers the whole status after
-  hostUpdate(actor, id, tag): Promise<HostStatus>   // tag: Lyrica's running update/… tag; a shared host needs an administrator
+  hostUpdate(actor, id, { tag?, commit }): Promise<HostStatus>   // what Lyrica runs: an update/… tag and its commit, or the commit alone (her latest merge); a shared host needs an administrator
   // editEndpoint(actor, id, { name?, baseUrl?, apiKey?, paused? }): paused pauses a plain endpoint or plan (Endpoint.pausedAt); the router skips it
   // Speech: the only way audio reaches a model
   embed(ctx, texts, { query?, signal?, timeoutMs? }): Promise<{ model; vectors: Float32Array[]; resolution }>   // the Embeddings list, POST /embeddings (OpenAI shape), at most EMBED_BATCH texts; query wraps each in queryText; model is the offering's model ID; CloudModelForbidden, NoModel, Offline
@@ -2168,8 +2168,9 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
       openrouter/sign-in/:id`.
     - **Hosts:** `POST hosts` (pair, then discover); `POST hosts/:id/pair`
       (again, same addresses); `PUT …/addresses`; `GET …/status`; `POST
-      …/pause|resume|restart`; `POST …/update` (→ `HostStatus`, to the release
-      Lyrica runs, `409` when she runs none; administrators on a shared host);
+      …/pause|resume|restart`; `POST …/update` (→ `HostStatus`, to what
+      Lyrica runs from her updater, a tagged release or her latest merge,
+      `409` when she runs neither; administrators on a shared host);
       `POST …/models-folder` (`{ path }` → `HostStatus`: the host's updater
       moves it to that folder on the host machine; administrators on a
       shared host);
@@ -2187,7 +2188,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
       saves on the host and refreshes discovery). Unpair is `DELETE
       endpoints/:id`. Types: `HostInput`, `HostRepair`, `HostAddresses`,
       `HostStatus` (with `commit` and `update` when the host has an updater),
-      `HostUpdate` (`available`, `reason`, `changesFolder`, `state`, `tag`,
+      `HostUpdate` (`available`, `reason`, `changesFolder`, `commits`, `state`, `tag`,
       `models`, `error`, `last`),
       `HostManage`, `DownloadInput`, `RecipeAction`.
     - **Offerings:** `PATCH`/`DELETE offerings/:id`; `POST …/replace`; `GET

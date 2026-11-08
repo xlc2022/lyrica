@@ -209,9 +209,9 @@ export class Host {
     if (pathname === "/host/v1/status" && method === "GET") return sendJson(res, 200, await this.status());
     if (pathname === "/host/v1/update" && method === "POST") {
       const body = await readJson(req);
-      onlyFields(body, ["tag"]);
-      const update = this.updates.request(body.tag);
-      this.opts.log("update requested", { tag: String(body.tag) });
+      onlyFields(body, ["tag", "commit"]);
+      const update = this.updates.request(body.tag, body.commit);
+      this.opts.log("update requested", { tag: String(body.tag ?? "main"), commit: String(body.commit ?? "") });
       return sendJson(res, 202, { update });
     }
     if (pathname === "/host/v1/models-folder" && method === "POST") {

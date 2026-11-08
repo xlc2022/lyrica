@@ -559,8 +559,8 @@ export function apiRoutes(d: Lyricad): Route[] {
     }),
     route("POST", `${u}/hosts/:endpointId/update`, async (r) => {
       const release = runningRelease(d);
-      if (!release) throw new HttpError(409, "Lyrica isn't running a tagged release: update her to one first, from Administration → Updates.");
-      return (await s().models.hostUpdate(d.userFor(r), r.params.endpointId!, release.tag)) as Api.HostStatus;
+      if (!release) throw new HttpError(409, "Lyrica isn't running a release from her updater: update her first, from Administration → Updates.");
+      return (await s().models.hostUpdate(d.userFor(r), r.params.endpointId!, release)) as Api.HostStatus;
     }),
     route("POST", `${u}/hosts/:endpointId/models-folder`, async (r) => {
       const path = (await r.json<{ path?: unknown } | null>())?.path;
@@ -2652,9 +2652,11 @@ function machineInfo(m: MachineConfig): Api.MachineInfo {
 }
 
 /** The release Lyrica runs, by its update tag: what a model host updates to. A latest merge (tag `main`) has none. */
-function runningRelease(d: Lyricad): { tag: string; commit: string } | undefined {
+function runningRelease(d: Lyricad): { tag?: string; commit: string } | undefined {
   const r = updates(d).releases.find((x) => x.running);
-  return r?.tag?.startsWith("update/") ? { tag: r.tag, commit: r.commit } : undefined;
+  if (!r || !/^[0-9a-f]{40}$/.test(r.commit)) return undefined;
+  // A latest merge is labelled "main": the host gets its commit alone.
+  return r.tag?.startsWith("update/") ? { tag: r.tag, commit: r.commit } : { commit: r.commit };
 }
 
 function updates(d: Lyricad): Api.Updates {

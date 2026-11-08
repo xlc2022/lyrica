@@ -31,6 +31,7 @@ export async function fakeHost(opts: { name?: string; models?: HostModel[]; port
   let tries = 0;
   let paused = false;
   const updates: string[] = [];
+  let commits = true;
   let badProof = false;
   let lieAboutKey = false;
   const pinned = new Map<string, string>();
@@ -101,9 +102,12 @@ export async function fakeHost(opts: { name?: string; models?: HostModel[]; port
       }
       const status = () => ({
         name: opts.name ?? "fake-host", version: "0.1.0", fingerprint: identity.fingerprint, state: paused ? "paused" : "running", gpus: [], downloads: { active: 0 }, modelsFolder: { path: "/srv/models", free: 1 },
-        update: { available: true, state: updates.length ? "requested" : "idle" },
+        update: { available: true, commits, state: updates.length ? "requested" : "idle" },
       });
-      if (req.method === "POST" && url.pathname === "/host/v1/update") { updates.push(JSON.parse(raw).tag); return json(res, 202, { update: status().update }); }
+      if (req.method === "POST" && url.pathname === "/host/v1/update") { const b = JSON.parse(raw) as { tag?: string; commit?: string };
+        // An older host-api took the tag alone and refused other fields.
+        if (b.commit && !commits) return json(res, 400, { error: { code: "invalid", message: "unknown field commit" } });
+        updates.push([b.tag, b.commit].filter(Boolean).join(" ")); return json(res, 202, { update: status().update }); }
       if (req.method === "POST" && url.pathname === "/host/v1/models-folder") { updates.push(`models ${JSON.parse(raw).path}`); return json(res, 202, { update: status().update }); }
       if (req.method === "GET" && url.pathname === "/host/v1/status") return json(res, 200, status());
       if (req.method === "POST" && url.pathname === "/host/v1/pause") { paused = true; return json(res, 200, status()); }
@@ -270,8 +274,10 @@ export async function fakeHost(opts: { name?: string; models?: HostModel[]; port
       return `${code.slice(0, 4)}-${code.slice(4, 8)}-${code.slice(8, 12)}-${code.slice(12)}`.toLowerCase();
     },
     pause(on = true) { paused = on; },
-    /** The update tags Lyrica asked for. */
+    /** The updates Lyrica asked for: "tag commit", the tag or the commit alone. */
     updates,
+    /** An updater from before commits (`update.commits` false). */
+    oldUpdater() { commits = false; },
     speech,
     /** The speech server is off: requests answer `code` (model_unavailable, or unavailable for an older host). */
     speechOff(code: string | false = "model_unavailable") { speechDown = code; },

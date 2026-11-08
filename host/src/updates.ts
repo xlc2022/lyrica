@@ -15,6 +15,8 @@ export interface UpdateStatus {
   reason?: string;
   /** The updater also takes a new models folder (installed by a recent install.sh). */
   changesFolder: boolean;
+  /** The updater also takes a commit: Lyrica's latest merge, or the commit her tag must point at (a recent install.sh). */
+  commits: boolean;
   state: UpdateState;
   since?: string;
   tag?: string;
@@ -27,6 +29,7 @@ export interface UpdateStatus {
 }
 
 const TAG = /^update\/[A-Za-z0-9._-]{1,64}$/;
+const COMMIT = /^[0-9a-f]{40}$/;
 const BUSY = new Set<UpdateState>(["requested", "fetching", "draining", "building", "rolling-back"]);
 
 export class Updates {
@@ -47,6 +50,7 @@ export class Updates {
       available,
       ...(!available ? { reason: typeof file.reason === "string" ? file.reason : "This host has no updater: run install.sh again." } : {}),
       changesFolder: available && file.changesFolder === true,
+      commits: available && file.commits === true,
       state,
       ...(file.since ? { since: file.since } : {}),
       ...(file.tag ? { tag: file.tag } : {}),
@@ -57,9 +61,17 @@ export class Updates {
   }
 
   /** Asks the updater for this release. It checks the tag again, as root. */
-  request(tag: unknown): UpdateStatus {
-    if (typeof tag !== "string" || !TAG.test(tag)) throw invalid("tag must be an update/… tag.");
-    return this.ask({ tag });
+  /**
+   * Asks the updater for Lyrica's release: an update/… tag, her commit (the latest merge), or both, when the tag
+   * must point at that commit. A commit needs an updater that takes one (`commits`); Lyrica sends the tag alone otherwise.
+   */
+  request(tag: unknown, commit?: unknown): UpdateStatus {
+    if (tag !== undefined && (typeof tag !== "string" || !TAG.test(tag))) throw invalid("tag must be an update/… tag.");
+    if (commit !== undefined && (typeof commit !== "string" || !COMMIT.test(commit))) throw invalid("commit must be a full commit hash.");
+    if (tag === undefined && commit === undefined) throw invalid("tag or commit is required.");
+    const now = this.status();
+    if (commit !== undefined && now.available && !now.commits) throw new HostError(409, "unavailable", "This host's updater can't take a commit yet: run install.sh on the host again.");
+    return this.ask({ ...(tag !== undefined ? { tag: tag as string } : {}), ...(commit !== undefined ? { commit: commit as string } : {}) });
   }
 
   /** Asks the updater to move the host to another models folder. It checks the folder again, as root. */
@@ -70,7 +82,7 @@ export class Updates {
     return this.ask({ models: path });
   }
 
-  private ask(request: { tag: string } | { models: string }): UpdateStatus {
+  private ask(request: { tag?: string; commit?: string } | { models: string }): UpdateStatus {
     const now = this.status();
     if (!now.available) throw new HostError(409, "unavailable", now.reason!);
     if (BUSY.has(now.state)) throw new HostError(409, "updating", "An update is already running.");

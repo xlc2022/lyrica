@@ -37,7 +37,8 @@ Options: `host/install.sh --help`.
 
 ### Updates
 
-Lyrica updates a host to the release she runs herself. On systemd machines
+Lyrica updates a host to what she runs herself: a tagged release, or her
+latest merge (a commit on `main` with no tag). On systemd machines
 other than NixOS, `install.sh` installs the updater: a copy of `update.sh` at
 `/usr/local/sbin/lyrica-host-update` (an update never replaces it) and
 `lyrica-host-update.path`, which runs it as root when host-api writes a
@@ -50,7 +51,9 @@ Otherwise it uses SSH with a read-only deploy key,
 first time: add it to the repository as a deploy key. `LYRICA_REPO` sets
 another repository URL, an `ssh` one getting the key. Running `install.sh`
 again moves an existing updater between the two. Then the updater refuses a tag that isn't annotated or isn't on
-`main`; pauses the host (running jobs finish, up to 10 minutes, or nothing
+`main`, a tag that doesn't point at the commit Lyrica named with it, and a
+commit that isn't on `main` (a commit alone, the latest merge, is labelled
+`main` and installed as version `main-<commit>`); pauses the host (running jobs finish, up to 10 minutes, or nothing
 changes); unpacks the release from its own repository into a root-owned
 tree, `/opt/lyrica-host/<commit>`; carries `.env` over from the installed
 folder; runs that tree's `install.sh --yes`; and waits up to 5 minutes for
@@ -63,7 +66,7 @@ one is the installed folder from then on: change a setting by running
 records), or `git pull && host/install.sh` in your checkout to go
 back to it. The host resumes unless it was paused before. Its progress is in
 `/var/lib/lyrica-host-update/status/state.json` and the host's status; by
-hand: `sudo lyrica-host-update --tag update/<name>`.
+hand: `sudo lyrica-host-update --tag update/<name>`, or `--commit <sha>`.
 
 ### On NixOS
 

@@ -1731,11 +1731,17 @@ export class Models {
    * (host/README.md, "Updates"). The host's updater checks the tag again; the
    * host pauses while it updates and reports its progress in its status.
    */
-  async hostUpdate(actor: User, id: string, tag: string): Promise<unknown> {
+  async hostUpdate(actor: User, id: string, release: { tag?: string; commit: string }): Promise<unknown> {
     const ep = this.needHost(actor.id, id);
     if (ep.shared && !this.users.get(actor.id)?.admin) throw new Forbidden("only an administrator can manage a shared model host");
-    if (!/^update\/[A-Za-z0-9._-]{1,64}$/.test(tag)) throw new Error("a host updates to an update/… tag");
-    await this.hostCall(ep, "POST", "/host/v1/update", { tag });
+    if (release.tag !== undefined && !/^update\/[A-Za-z0-9._-]{1,64}$/.test(release.tag)) throw new Error("a host updates to an update/… tag");
+    if (!/^[0-9a-f]{40}$/.test(release.commit)) throw new Error("a host updates to a full commit");
+    // The commit pins what the tag must point at; alone, it is Lyrica's latest merge. A host whose updater
+    // predates commits (and whose host-api refuses the field) gets the tag alone, and can't take a latest merge.
+    const before = await this.hostCall(ep, "GET", "/host/v1/status") as { update?: { commits?: boolean } };
+    const commits = before.update?.commits === true;
+    if (!commits && !release.tag) throw new Error("This host's updater can't install a latest merge yet: run install.sh on the host again.");
+    await this.hostCall(ep, "POST", "/host/v1/update", { ...(release.tag ? { tag: release.tag } : {}), ...(commits ? { commit: release.commit } : {}) });
     const status = await this.hostCall(ep, "GET", "/host/v1/status");
     // It pauses and restarts as it updates: chats go elsewhere meanwhile.
     this.awayStatus.set(ep.id, status);

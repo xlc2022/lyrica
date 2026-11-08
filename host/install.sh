@@ -441,10 +441,11 @@ UPDATER=/var/lib/lyrica-host-update
 "${SUDO[@]}" chmod 0755 "$UPDATER" "$UPDATER/status"
 updater_status() { # available, then the reason when it isn't
   local json
-  # changesFolder: this updater also takes a new models folder from Lyrica.
-  if [[ $1 == true ]]; then json='{"available":true,"changesFolder":true}'; else json=$(jq -cn --arg r "$2" '{available:false, reason:$r}' 2>/dev/null || printf '{"available":false}'); fi
+  # changesFolder: this updater also takes a new models folder from Lyrica;
+  # commits: a commit, Lyrica's latest merge or the one her tag must point at.
+  if [[ $1 == true ]]; then json='{"available":true,"changesFolder":true,"commits":true}'; else json=$(jq -cn --arg r "$2" '{available:false, reason:$r}' 2>/dev/null || printf '{"available":false}'); fi
   if [[ -f $UPDATER/status/state.json ]] && command -v jq >/dev/null; then
-    json=$("${SUDO[@]}" jq -c --argjson a "$json" 'del(.available, .reason, .changesFolder) + $a' "$UPDATER/status/state.json")
+    json=$("${SUDO[@]}" jq -c --argjson a "$json" 'del(.available, .reason, .changesFolder, .commits) + $a' "$UPDATER/status/state.json")
   fi
   printf '%s\n' "$json" | "${SUDO[@]}" tee "$UPDATER/status/state.json" >/dev/null
   "${SUDO[@]}" chmod 0644 "$UPDATER/status/state.json"

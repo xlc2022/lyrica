@@ -15,17 +15,17 @@ within DESIGN.md "Updates and self-editing".
   the release's note, so it shows in the kept releases. Build, smoke test,
   drain, snapshot, switch, probation and rollback are unchanged.
 - **lyricad:** `Updates.latest`; `POST …/admin/updates` takes `{ commit }`
-  (40 hex) in place of `{ tag }`. A model host still updates only to a
-  tagged release: `runningRelease` returns only `update/*` tags.
+  (40 hex) in place of `{ tag }`. `runningRelease` returns the
+  running `update/*` tag with its commit, or the commit alone for a latest
+  merge, which model hosts take too (host-update-menu.md, follow-up).
 - **Web:** a **Latest merge** checkbox beside Update. When it is ticked,
   the facts show main's head, and Update asks in a dialog: "Not tagged as
   a release yet, so less tested."
 
 ## Out of scope
 
-Model hosts following the latest merge. The host-update thread will build
-it after #797, using the same rule (a whole commit that is an ancestor of
-`main`, labelled `main`) and the same wording.
+Model hosts following the latest merge: built separately, see
+[host-update-menu.md](host-update-menu.md) (follow-up).
 
 ## Handoff
 

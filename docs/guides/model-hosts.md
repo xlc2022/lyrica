@@ -722,11 +722,12 @@ second pairing. Then:
   holds the GPU, `nvidia-smi --query-compute-apps=pid,process_name,used_memory
   --format=csv`.
 - **Upgrade:** **Update…** in the host's ⋯ on Models (an administrator, for
-  a shared host) moves it to the release Lyrica runs, after a dialog
-  confirms it. It works when Lyrica runs a tagged release (Administration →
-  Updates; a latest merge doesn't count), the host has the updater, and the
-  host runs another commit; otherwise it's greyed out and its tooltip says
-  which is missing. The
+  a shared host) moves it to what Lyrica runs, her tagged release or her
+  latest merge, after a dialog confirms it. It works when Lyrica runs a
+  release from her updater (Administration → Updates), the host has the
+  updater (for a latest merge, one installed by a recent `install.sh`), and
+  the host runs another commit; otherwise it's greyed out and its tooltip
+  says which is missing. The
   card's state word follows the steps: Fetching, Draining, Building, and
   Rolling back if it goes back. The host pauses (running
   jobs finish first), installs the release into a root-owned tree,

@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
-# lyrica-host-update [--request | --tag update/<name> | --models DIR]
-# Updates this model host to one of Lyrica's releases, or moves it to another
+# lyrica-host-update [--request | --tag update/<name> [--commit <sha>] | --commit <sha> | --models DIR]
+# Updates this model host to one of Lyrica's releases or her latest merge (a
+# commit on main with no tag), or moves it to another
 # models folder, run as root by lyrica-host-update.service when host-api
 # writes a request (Lyrica's Models page: Update, or the host's models
 # folder), or by hand. install.sh installs it as
 # /usr/local/sbin/lyrica-host-update; an update never replaces it, so a broken
 # release can't break what takes it back. In order: fetch main and the update
-# tags with the read-only deploy key; refuse a tag that isn't annotated or
-# whose commit isn't on main; pause host-api (running jobs finish, up to 10
+# tags; refuse a tag that isn't annotated, a tag that doesn't point at the
+# commit Lyrica named, or a commit that isn't on main; pause host-api (running jobs finish, up to 10
 # minutes, else resume and change nothing); unpack the commit from the
 # updater's own repository into a root-owned tree under /opt/lyrica-host;
 # run that tree's install.sh, with the settings carried over; probation
@@ -71,7 +72,10 @@ host_commit() { api GET /host/v1/status | jq -r '.commit // empty' 2>/dev/null |
 host_models() { api GET /host/v1/status | jq -r '.modelsFolder.path // empty' 2>/dev/null || true; }
 rgit() { git --git-dir="$REPO" "$@"; }
 
-TAG= MODELS=
+# An update names a tag, a commit (Lyrica's latest merge), or both (the
+# tag's commit must be that one); a models folder comes alone.
+TAG= WANT= MODELS=
+usage() { die "usage: $ME --request | --tag update/<name> [--commit <sha>] | --commit <sha> | --models DIR"; }
 case "${1:-}" in
   --request)
     f=$UPDATE/inbox/request.json
@@ -79,14 +83,30 @@ case "${1:-}" in
     # Written by host-api, read by root: a small regular file, never a link.
     if [ -L "$f" ] || [ ! -f "$f" ] || [ "$(stat -c %s "$f")" -gt 8192 ]; then rm -f -- "$f"; die "refused a malformed request"; fi
     TAG=$(jq -r '.tag // empty' "$f" 2>/dev/null || true)
+    WANT=$(jq -r '.commit // empty' "$f" 2>/dev/null || true)
     MODELS=$(jq -r '.models // empty' "$f" 2>/dev/null || true)
     rm -f -- "$f" ;;
-  --tag) TAG=${2:-} ;;
+  --tag|--commit)
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --tag) TAG=${2:-} ;;
+        --commit) WANT=${2:-} ;;
+        *) usage ;;
+      esac
+      shift 2 || usage
+    done ;;
   --models) MODELS=${2:-} ;;
-  *) die "usage: $ME --request | --tag update/<name> | --models DIR" ;;
+  *) usage ;;
 esac
-[ -n "$TAG" ] && [ -n "$MODELS" ] && { MODELS=; fail "not one request"; }
-[ -n "$MODELS" ] || [[ $TAG =~ ^update/[A-Za-z0-9._-]{1,64}$ ]] || fail "not an update tag"
+if [ -n "$MODELS" ]; then
+  [ -z "$TAG$WANT" ] || { MODELS=; fail "not one request"; }
+else
+  [ -z "$TAG" ] || [[ $TAG =~ ^update/[A-Za-z0-9._-]{1,64}$ ]] || fail "not an update tag"
+  [ -z "$WANT" ] || [[ $WANT =~ ^[0-9a-f]{40}$ ]] || fail "not a commit"
+  [ -n "$TAG$WANT" ] || fail "not an update tag"
+  # The latest merge: a commit alone, labelled "main" as Lyrica's updater labels it.
+  LATEST=; [ -n "$TAG" ] || { LATEST=1; TAG=main; }
+fi
 
 # The installed host folder, as install.sh last recorded it: a checkout the
 # first time, a tree under $RELEASES after an update. Root only reads its settings.
@@ -154,8 +174,16 @@ if [ -n "$MODELS" ]; then
   say "moving the models folder from $OLD_MODELS to $MODELS"
 else
   fetch || fail "fetch"
-  [ "$(rgit cat-file -t "refs/tags/$TAG" 2>/dev/null)" = tag ] || fail "not an annotated update tag"
-  COMMIT=$(rgit rev-parse "$TAG^{commit}")
+  if [ -z "$LATEST" ]; then
+    [ "$(rgit cat-file -t "refs/tags/$TAG" 2>/dev/null)" = tag ] || fail "not an annotated update tag"
+    COMMIT=$(rgit rev-parse "$TAG^{commit}")
+    # Lyrica named the commit she runs: the tag must still point at it.
+    [ -z "$WANT" ] || [ "$COMMIT" = "$WANT" ] || fail "not the tag's commit"
+    VERSION=$TAG
+  else
+    rgit cat-file -e "$WANT^{commit}" 2>/dev/null || fail "not on main"
+    COMMIT=$WANT VERSION=main-${WANT:0:12}
+  fi
   rgit merge-base --is-ancestor "$COMMIT" main || fail "not on main"
   if [ "$COMMIT" = "$OLD" ]; then set_state idle; say "${COMMIT:0:12} is already running"; exit 0; fi
   say "updating to ${COMMIT:0:12} ($TAG) from ${OLD:0:12}"
@@ -227,7 +255,7 @@ last() { # ok
   jq -n --arg t "$TAG" --arg c "$COMMIT" --arg m "$MODELS" --arg at "$(now)" --argjson ok "$1" \
     '{commit: $c, at: $at, ok: $ok} + (if $m != "" then {models: $m} else {tag: $t} end)'
 }
-if switch "$COMMIT" "$TAG" "$MODELS"; then
+if switch "$COMMIT" "${VERSION:-$TAG}" "$MODELS"; then
   resume
   prune
   write_json "$STATE_FILE" --arg s idle --arg at "$(now)" --argjson l "$(last true)" \

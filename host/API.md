@@ -536,8 +536,10 @@ Only the repository's name and revision leave the host.
   another, never interleaved.
 - `POST /host/v1/restart`: fails queued requests with `restarting`, unloads
   everything, asks each server to reset, and loads pinned models again.
-- `POST /host/v1/update` with `{ "tag": "update/<name>" }` (a paired
-  Lyrica, or the dashboard): asks the host's updater (README.md, "Updates") for that release, and answers `202`
+- `POST /host/v1/update` with `{ "tag": "update/<name>", "commit": "<sha>" }`,
+  the tag alone, or `{ "commit": "<sha>" }` alone for Lyrica's latest merge
+  (a paired Lyrica, or the dashboard): asks the host's updater (README.md,
+  "Updates") for that release, and answers `202`
   with `{ "update": … }`. `409 unavailable` when the host has no updater
   (NixOS, no systemd, or an install from before updates), with the reason;
   `409 updating` while one runs. `update` is `{ available, reason?, state,
@@ -547,7 +549,10 @@ Only the repository's name and revision leave the host.
   main`); `last` is the last update, `{ tag, commit, at, ok }`. While it
   updates the host pauses, restarts and, unless it was paused before,
   resumes. `changesFolder` is true when the updater also takes a models
-  folder.
+  folder, and `commits` when it takes a commit (a 40-hex hash; `409
+  unavailable` otherwise). With both, the tag must point at the commit
+  (`not the tag's commit`); a commit alone is labelled `main` in `tag` and
+  `last.tag`.
 - `POST /host/v1/models-folder` with `{ "path": "/mnt/big/models" }` (a
   paired Lyrica, or the dashboard): asks the updater to move the host to
   that folder on the host machine (README.md, "The models folder"), and
