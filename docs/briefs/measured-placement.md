@@ -48,15 +48,22 @@ estimate with special cases.
    its measurement (its own TODO); the host adds the projector's size, times
    1.1, on the first GPU when vision is on.
 3. **Plan from it.** The scheduler, having picked a way to run (unloading
-   idle models as now), measures it before loading. If every GPU has room
-   for the measured need, the load goes ahead with that need, and the
-   measurement is saved under the placement's VRAM key, so later plans start
-   from it. If a GPU is short and the model may spill, the planner is run
-   again with each GPU's measured cache and compute as that GPU's overhead
-   (in place of the flat 0.5 GiB), which moves more experts to RAM, and the
-   new placement is measured again, at most twice. If nothing fits, the
-   load is refused with `too_big` naming the measured need, not the
-   estimate.
+   idle models as now), measures it before loading. The measured need is
+   the server's bytes plus the flat 0.5 GiB, which now stands for the
+   driver's context and workspace that llama.cpp's breakdown leaves out. If
+   every GPU has room for it, the load goes ahead with that need, and the
+   measurement is saved under the placement's VRAM key (keeping the larger
+   saved value), so later plans start from it. If a GPU is short, each GPU's
+   measured cache and compute (plus the 0.5 GiB) becomes the model's
+   overhead in the planner, in place of the flat allowance, and the load is
+   planned again from the top: the usual plan then unloads idle models or
+   moves more experts to RAM, and the new placement is measured. After two
+   such rounds a GPU still short refuses the load with `too_big` naming the
+   measured need, not the estimate. Reload takes the same path as a queued
+   request. A measurement not done within a minute leaves the estimate in
+   charge for that load; if the router then unloads an idle model of the
+   host's to make its own room, the host notices at that model's next
+   request, which fails once with "try again" and loads it again.
 4. **Docs.** host/README.md (the VRAM bullet and the llama.cpp line under
    "How it's put together"), DESIGN.md's VRAM bullet, this brief.
 5. **Tests.** scheduler.test.ts with a fake backend whose measurement
@@ -71,6 +78,7 @@ estimate with special cases.
   host's own `autoContext` stays.
 - Keeping llama-server's log lines anywhere: the operator keeps the model
   servers' logs off so prompts and answers never reach disk.
+- Noticing a router-side unload before the model's next request.
 
 ## Handoff
 

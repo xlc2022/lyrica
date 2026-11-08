@@ -577,13 +577,19 @@ revoked. A revoked server must pair again.
   and the preset and reports, per GPU, the weights, cache and compute
   buffers at that context without allocating anything (`--models-memory-margin`,
   llama.cpp's README "Memory-based unloading"; the vision projector, which
-  it leaves out, is added on the first GPU). A GPU it finds short has more
-  of the model moved to system RAM, with its measured cache and buffers as
-  that GPU's overhead, and the new placement is measured again, twice at
-  most; when nothing fits, the load is refused naming the measured need.
-  Without a measurement (failed, or not done within a minute) the estimate
-  stands: file size times 1.05, the cache for its context, and 0.5 GiB per
-  GPU. VRAM use is then measured per GPU at load and after the first attributable
+  it leaves out, is added on the first GPU), plus 0.5 GiB per GPU for the
+  driver's own context, which the measurement leaves out. When it finds a
+  GPU short, its measured cache and buffers become that GPU's overhead in
+  the planner and the load is planned again from the top, so idle models
+  are unloaded or more of the model moves to system RAM, and the new
+  placement is measured; after two such rounds a short GPU refuses the
+  load, naming the measured need. Reload takes the same path. Without a
+  measurement (failed, or not done within a minute) the estimate stands:
+  file size times 1.05, the cache for its context, and 0.5 GiB per GPU;
+  should the router then unload an idle model of the host's to make its
+  own room, the host learns of it at that model's next request, which
+  fails once ("try again") and loads it afresh.
+  VRAM use is then measured per GPU at load and after the first attributable
   request, completed or failed (an image recipe's on its first job). The host keeps the
   larger measurement, including buffers grown on first use, until settings
   change. If another model serves or memory changes during the request, the

@@ -86,8 +86,8 @@ export const tableInRam = (model: TextModel, s: ModelSettings) => (s.layerTable 
 /** What `layerTable: "ram"` would keep in system RAM: a per-layer embedding table over 4 GiB and the input embeddings; 0 for a model without one. */
 export const tableBytes = (model: TextModel) =>
   model.server === "llamacpp" && (model.layerTable ?? 0) > LAZY_TABLE ? model.layerTable! + (model.inputBytes ?? 0) : 0;
-/** Each GPU a model uses needs room for the server's own buffers. */
-const OVERHEAD = GIB / 2;
+/** Each GPU a model uses needs room for the server's own buffers; with a measurement of those, for the driver's context and workspace. */
+export const OVERHEAD = GIB / 2;
 /** What a GPU needs besides the weights: llama.cpp's own measurement of its cache and compute buffers there, else the flat allowance. */
 export type Overhead = Record<number, number>;
 const overheadOn = (overhead: Overhead | undefined, g: number) => overhead?.[g] ?? OVERHEAD;

@@ -238,11 +238,13 @@ describe("reading a GGUF's experts", () => {
 
     it("spills more when the measurement finds a GPU short, and loads with the measured bytes", async () => {
       // llama.cpp finds 3.5 GB of cache and buffers per GPU where the estimate allowed 0.5; the second plan, made with
-      // that overhead, moves 3 GB more of experts to RAM on each GPU and measures as planned.
+      // that overhead (plus the 0.5 GB kept for the driver), moves more experts to RAM on each GPU and measures as planned.
       let rounds = 0;
       const { llamacpp, state, scheduler, m } = await measuredSetup((_, at) => {
         rounds++;
-        return Object.fromEntries(at.gpus.map((g) => [g, { bytes: at.need[g]! + (rounds === 1 ? 3 * GIB : 0), extra: 3.5 * GIB }]));
+        // The weights the plan put on the GPU, as the planner's overhead left them, plus what llama.cpp says it needs besides.
+        const weights = (g: number) => at.need[g]! - (rounds === 1 ? 0.5 : 4) * GIB;
+        return Object.fromEntries(at.gpus.map((g) => [g, { bytes: weights(g) + 3.5 * GIB, extra: 3.5 * GIB }]));
       });
       await scheduler.run(m, "chat", async () => {});
       expect(rounds).toBe(2);
@@ -256,12 +258,48 @@ describe("reading a GGUF's experts", () => {
       expect(llamacpp.forgotten).toEqual([]);
     });
 
-    it("refuses with the measured need when no spill can make room", async () => {
-      // Buffers bigger than a GPU: nothing in RAM can help.
+    it("refuses when no spill can make the room the measurement asks for", async () => {
+      // Buffers bigger than a GPU: nothing in RAM can help, and the plan made with that overhead says so.
       const { llamacpp, scheduler, m } = await measuredSetup((_, at) => Object.fromEntries(at.gpus.map((g) => [g, { bytes: at.need[g]! + 50 * GIB, extra: 50 * GIB }])));
-      await expect(scheduler.run(m, "chat", async () => {})).rejects.toMatchObject({ code: "too_big", message: expect.stringMatching(/by llama.cpp's measurement/) });
+      await expect(scheduler.run(m, "chat", async () => {})).rejects.toMatchObject({ code: "too_big" });
       expect(llamacpp.forgotten).toEqual(["big"]);
       expect(llamacpp.placements.has("big")).toBe(false);
+    });
+
+    it("refuses with the measured need when two more plans still leave a GPU short", async () => {
+      // Each measurement asks a little more than the last plan gave, so no plan ever satisfies it.
+      let rounds = 0;
+      const { llamacpp, scheduler, m } = await measuredSetup((_, at) => {
+        rounds++;
+        return Object.fromEntries(at.gpus.map((g) => [g, { bytes: at.need[g]! + rounds * GIB, extra: 2 * rounds * GIB }]));
+      });
+      await expect(scheduler.run(m, "chat", async () => {})).rejects.toMatchObject({ code: "too_big", message: expect.stringMatching(/by llama.cpp's measurement/) });
+      expect(rounds).toBe(3);
+      expect(llamacpp.forgotten).toEqual(["big"]);
+    });
+
+    it("unloads an idle model when the measurement needs its room, where the estimate didn't", async () => {
+      const dir = mkdtempSync(join(tmpdir(), "lyrica-measured-"));
+      const gpus = new FakeGpus([48]);
+      const llamacpp = new FakeBackend(gpus);
+      const scheduler = new Scheduler({ monitor: gpus, backends: { llamacpp, vllm: new FakeBackend(gpus) }, state: new StateFile(dir), log: () => {} });
+      await scheduler.start([]);
+      const idle = textModel("idle", 10, { contextLength: 8192 });
+      await scheduler.run(idle, "chat", async () => {});
+      // 30 GB fits beside the idle model on the estimate; llama.cpp's 8.5 GB of buffers don't, so the idle model has to go.
+      let rounds = 0;
+      llamacpp.measurements = (model, at) => {
+        if (model.id !== "big") return null;
+        rounds++;
+        const weights = at.need[0]! - (rounds === 1 ? 0.5 : 9) * GIB;
+        return { 0: { bytes: weights + 8.5 * GIB, extra: 8.5 * GIB } };
+      };
+      const big = textModel("big", 30, { contextLength: 8192 });
+      await scheduler.run(big, "chat", async () => {});
+      expect(rounds).toBe(2);
+      expect(llamacpp.calls).toContain("unload idle");
+      expect(llamacpp.placements.has("big")).toBe(true);
+      expect(gpus.loaded.has("idle")).toBe(false);
     });
 
     it("loads on the estimate when the server has no measurement", async () => {
