@@ -545,7 +545,7 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   reads **Signed out**. Each row's ⋯: Sign in again (plans), Read its models, Add a model by hand,
   Disable all models and Enable all models (each while it would change a
   model; `PATCH …/endpoints/:id/models` with no `offeringIds`), Pair
-  again… (hosts), Reset IDs…, Merge into… (same kind and sharing), Remove,
+  again… (hosts), Reset IDs…, Merge duplicate host… (Merge duplicate… on other endpoints; same kind and sharing), Remove,
   the last three confirmed by a dialog. Clean up: a row per item with a
   stale, gone or empty pill, "Unreachable for N days." / "Missing for N
   days." / "No members left.", where it is used or "Nothing uses it.",
