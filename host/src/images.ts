@@ -37,10 +37,10 @@ const BASE_DEFAULTS: Values = {
 const IDLE_FREE_MS = 10 * 60_000;
 /** How long one clip may take: a 14B model on a 24 GB card can take most of an hour. */
 const VIDEO_TIMEOUT_MS = 2 * 60 * 60_000;
-const VIDEO_FIELDS = ["recipe", "prompt", "negativePrompt", "image", "drive", "extend", "width", "height", "duration", "steps", "cfg", "seed", "aspectRatio", "loras"];
+const VIDEO_FIELDS = ["recipe", "prompt", "negativePrompt", "image", "drive", "extend", "source", "width", "height", "duration", "steps", "cfg", "seed", "aspectRatio", "loras"];
 /** A request names at most this many LoRA files of the host's for one job (API.md, "LoRAs for one job"): four LoRAs, each maybe a high and low noise pair. */
 const MAX_REQUEST_LORAS = 8;
-/** A driving clip (`motion`): only its first seconds are used. */
+/** A driving clip (`motion`), a clip to extend or one to edit (`edit_video`): only its first seconds are used. */
 const DRIVE_LIMIT = 64 * 1024 * 1024;
 const CLIP_UPSCALE_FIELDS = ["recipe", "video", "scale", "maxSize", "colorMatch", "seed"];
 /**
@@ -625,6 +625,8 @@ export class Images {
         values.negativePrompt = body.negativePrompt;
       }
       values.count = int(body, "count", 1, 4) ?? 1;
+      // A template that makes one image a job (P-H3-Image's latent can't be batched) says so rather than making fewer.
+      if (Number(values.count) > 1 && !JSON.stringify(template.workflow).includes('"$count"')) throw invalid("This recipe makes one image at a time: ask for one.");
       values.steps = int(body, "steps", 1, 150) ?? values.steps!;
       values.cfg = num(body, "cfg", 0, 30) ?? values.cfg!;
       if (action === "create") {
@@ -703,7 +705,7 @@ export class Images {
   /**
    * One clip from a video recipe: from the prompt alone (`video`), from a
    * first frame (`animate`), or from an image moved as a driving clip moves
-   * (`motion`). The template times it: the duration becomes the model's frame
+   * (`motion`), or a clip edited as the prompt says (`edit_video`, from `source`). The template times it: the duration becomes the model's frame
    * count, and width and height multiples of its size step. Past its longest
    * clip, or with `extend` (a clip to add to), a template with a continuation
    * chains clips into one (clipPlan).
@@ -716,9 +718,12 @@ export class Images {
     if (!recipe || !this.book.ready(recipe, this.files())) throw notFound("No confirmed, ready recipe with that ID.");
     const extending = body.extend !== undefined;
     if (extending && (body.image !== undefined || body.drive !== undefined)) throw invalid("extend takes no image or driving clip: the clip's own last frames start the next.");
-    const action: Action = body.drive !== undefined ? "motion" : body.image === undefined ? "video" : "animate";
+    if (body.source !== undefined && (extending || body.image !== undefined || body.drive !== undefined)) throw invalid("source takes no image, driving clip or clip to extend: the edit is of that clip alone.");
+    const action: Action = body.source !== undefined ? "edit_video" : body.drive !== undefined ? "motion" : body.image === undefined ? "video" : "animate";
     if (!extending && !recipe.does.includes(action)) {
       throw invalid(action === "motion" ? (recipe.does.some((a) => a === "video" || a === "animate") ? "That recipe doesn't move an image as a clip does." : "That recipe doesn't make videos.")
+        : action === "edit_video" ? "That recipe doesn't edit clips."
+        : recipe.does.includes("edit_video") ? "That recipe edits a clip: give it source."
         : recipe.does.includes("motion") ? "That recipe moves an image as a clip does: give it both."
         : recipe.does.includes("animate") ? "That recipe animates an image: give it one." : recipe.does.includes("video") ? "That recipe doesn't animate images." : "That recipe doesn't make videos.");
     }
@@ -741,7 +746,7 @@ export class Images {
     values.steps = int(body, "steps", 1, 150) ?? values.steps!;
     values.cfg = num(body, "cfg", 0, 30) ?? values.cfg!;
     const uploads: Record<string, Buffer> = {};
-    if (action !== "video") uploads.image = inputImage(body.image, "image");
+    if (action === "animate" || action === "motion") uploads.image = inputImage(body.image, "image");
     let driveSeconds = Infinity;
     if (action === "motion") {
       if (typeof body.drive !== "string") throw invalid("drive must be a base64 MP4.");
@@ -751,11 +756,22 @@ export class Images {
       if (seconds === null) throw invalid("drive isn't an MP4 or QuickTime clip whose length can be read.");
       driveSeconds = seconds;
     }
+    // A clip to edit: its own shape and length, at most the recipe's longest clip.
+    let source: { width: number; height: number; frames: number; fps: number } | null = null;
+    if (action === "edit_video") {
+      if (typeof body.source !== "string") throw invalid("source must be a base64 MP4.");
+      uploads.source = Buffer.from(body.source, "base64");
+      if (uploads.source.length > DRIVE_LIMIT) throw invalid("source is larger than 64 MB.");
+      source = mp4Video(uploads.source);
+      if (!source || !source.fps) throw invalid("source isn't an MP4 clip whose video track can be read.");
+      if (Math.floor(source.frames * spec.fps / source.fps) < spec.frameStep + spec.frameOffset) throw invalid(`That clip is too short to edit: it needs at least ${Math.ceil((spec.frameStep + spec.frameOffset) / spec.fps * 10) / 10} s.`);
+    }
     let previous: Buffer | null = null;
     const width = int(body, "width", 256, 2048);
     const height = int(body, "height", 256, 2048);
     const ratio = aspectRatio(body.aspectRatio);
     if (ratio !== undefined && (width !== undefined || height !== undefined)) throw invalid("Give a size or an aspect ratio, not both.");
+    if (source && (width !== undefined || height !== undefined || ratio !== undefined)) throw invalid("An edited clip keeps its own shape.");
     if (extending) {
       // The next clip continues this one: its size and frame rate must be the recipe's own.
       if (typeof body.extend !== "string") throw invalid("extend must be a base64 MP4.");
@@ -775,16 +791,24 @@ export class Images {
       const snap = (n: number) => Math.min(2048, Math.max(256, Math.round(n / spec.sizeStep) * spec.sizeStep));
       const frame = uploads.image ? imageSize(uploads.image)! : null;
       const area = Number(values.width) * Number(values.height);
-      const shape = ratio ?? (frame && width === undefined && height === undefined ? frame.width / frame.height : Number(values.width) / Number(values.height));
+      const shape = ratio ?? (source ? source.width / source.height : frame && width === undefined && height === undefined ? frame.width / frame.height : Number(values.width) / Number(values.height));
       values.width = snap(width ?? (height !== undefined ? height * shape : Math.sqrt(area * shape)));
       values.height = snap(height ?? (width !== undefined ? width / shape : Math.sqrt(area / shape)));
     }
     // A driving clip can't give more moves than it has. Extending, the duration is what's added.
     const longest = extending ? LONGEST_SECONDS : longestSeconds(template);
-    const duration = Math.min(num(body, "duration", 1, longest) ?? Math.min(Number(values.duration), longest), driveSeconds);
+    let duration = Math.min(num(body, "duration", 1, longest) ?? Math.min(Number(values.duration), longest), driveSeconds);
+    if (source) {
+      // The whole clip unless fewer seconds are asked for, in the model's frame counts, never past the clip's own frames.
+      const have = Math.min(Math.floor(source.frames * spec.fps / source.fps), Number(videoValues(spec, spec.maxSeconds, 0, 0, 1).frames));
+      const fit = Math.floor((have - spec.frameOffset) / spec.frameStep) * spec.frameStep + spec.frameOffset;
+      const asked = body.duration === undefined ? fit : Math.min(fit, Number(videoValues(spec, duration, 0, 0, 1).frames));
+      // Just under the count, so videoValues rounds back to it whatever the float error.
+      duration = (asked - 0.5) / spec.fps;
+    }
     const parts = present(recipe, this.files());
     const multiplier = parts.some((p) => p.role === "interpolator") ? spec.interpolate ?? 1 : 1;
-    const plan = clipPlan(spec, chain, duration, extending);
+    const plan = source ? [duration] : clipPlan(spec, chain, duration, extending);
     const clips = plan.map((seconds) => videoValues(spec, seconds, Number(values.width), Number(values.height), Number(values.steps), multiplier));
     values.seed = int(body, "seed", 0, 2 ** 48) ?? randomInt(2 ** 47);
 

@@ -496,7 +496,18 @@ It replaces Qwen-Image-Edit 2509 for edits: once installed, put it first
 in a column's Image edits list, and in its Images list too if you like
 its images. A masked edit on it runs through LanPaint (a pinned ComfyUI
 node, GPL-3.0), which takes about two and a half times as long as a
-plain edit. Whisper on vLLM wants a memory share of about 0.1 of a 24 GB
+plain edit. The P-H3-Image starters (ComfyUI hosts) create and edit
+pictures with PrunaAI's fine-tune of MiniMax H3: the int8 one is about
+29.5 GB of files and peaks near 31 GB of VRAM, so it wants a 32 GB or
+larger card; the w4a8 one is about 20 GB and peaks near 21 GB, so it fits
+24 GB when nothing else is loaded. It makes one image per request. Both
+need ComfyUI 0.44 or later: once the starters show up in Add model, run
+an Update on the host (or `git pull && host/install.sh`), which rebuilds
+its ComfyUI image at 0.44.2; an older image doesn't have their nodes.
+Their weights are under the MiniMax H3 Community License, as H3 Turbo's
+are.
+
+Whisper on vLLM wants a memory share of about 0.1 of a 24 GB
 card.
 
 Krea 2's weights (Turbo and Raw) are under the Krea 2 Community License: free for
@@ -681,6 +692,17 @@ people with SAM 3.1, under Meta's SAM License (commercial use allowed,
 with an acknowledgement in publications, lawful use including privacy
 law, and trade controls). Its frame-reading node is another addition to
 the ComfyUI image, so the next Update rebuilds it again.
+
+ComfyUI hosts also list **MiniMax H3 VFX Edit** (about 42 GB of files; the
+text encoder and VAEs are H3 Turbo's, so with Turbo installed it fetches
+about 24 GB). Put it in the **Videos** list too: given a clip (an MP4 of at
+most 64 MB) and an instruction ("make it night"), her `image` tool changes
+the clip and keeps its motion, timing, camera and sound, for up to 15 s of
+it. It is H3's ref2va checkpoint with a 4-step turbo LoRA and the
+community VFX Edit LoRA, an experimental research release under H3's
+licence, so the same places are excluded. It fits a 96 GB card. Its
+clip-reading node is new in the ComfyUI image, so update the host (the
+Update menu, or `git pull && host/install.sh`) before installing it.
 
 ## More than one host
 

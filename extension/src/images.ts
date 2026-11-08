@@ -37,15 +37,15 @@ const path = (description: string) => Type.Optional(Type.String({ description })
  * refuses such a tool, and smaller models' chat templates show it no fields.
  */
 export const imageParameters = Type.Object({
-  action: StringEnum(["create", "edit", "upscale", "reject", "pick", "clear_rejected", "video", "animate", "motion", "extend", "upscale_video"] as const),
+  action: StringEnum(["create", "edit", "upscale", "reject", "pick", "clear_rejected", "video", "animate", "motion", "edit_video", "extend", "upscale_video"] as const),
   prompt: videoPrompt(),
   tier: Type.Optional(StringEnum(["fast", "quality"] as const, { description: "For create: fast or quality (the default)." })),
   model: modelParameter(),
   loras: loraParameter(),
   image: path("For edit, upscale, pick, animate and motion: the image's path (animate's first frame; motion's subject, who moves)."),
-  video: path("For motion: the driving clip's path, an MP4 whose person makes the moves. For extend: the clip to make longer. For upscale_video: the clip to upscale."),
+  video: path("For motion: the driving clip's path, an MP4 whose person makes the moves. For edit_video: the clip to change. For extend: the clip to make longer. For upscale_video: the clip to upscale."),
   images: Type.Optional(Type.Array(Type.String(), { maxItems: 16, description: "For reject: the attempts to set aside." })),
-  instruction: Type.Optional(Type.String({ description: "For edit: the change, and what stays the same. The edited image is image 1; references are image 2 and on." })),
+  instruction: Type.Optional(Type.String({ description: "For edit: the change, and what stays the same. The edited image is image 1; references are image 2 and on. For edit_video: one English sentence, the change first, then what stays the same." })),
   mask: path("For edit: a mask image's path."),
   replace: Type.Optional(Type.Boolean({ description: "For a masked edit: true when what's under the mask becomes something new; omit when it changes what's there." })),
   references: Type.Optional(Type.Array(Type.String(), { maxItems: 16, description: "For create and edit: reference images' paths." })),
@@ -98,14 +98,14 @@ export function loraParameter(names: readonly string[] = []) {
 export function videoDuration(model?: { name: string; longestSeconds?: number; extend: boolean }) {
   const longest = model?.longestSeconds ?? LONGEST_VIDEO_SECONDS;
   const most = model?.longestSeconds ? ` ${model.name} makes up to ${longest} s${model.extend ? ", joining clips into one past a clip's length" : ""}.` : "";
-  return Type.Optional(Type.Number({ minimum: 1, maximum: longest, description: `For video and animate: seconds, the whole length they asked for; omit for the model's default.${most} For extend: the seconds to add. For motion, leave it out: the host uses the driving clip's own length, up to the model's longest.` }));
+  return Type.Optional(Type.Number({ minimum: 1, maximum: longest, description: `For video and animate: seconds, the whole length they asked for; omit for the model's default.${most} For extend: the seconds to add. For motion and edit_video, leave it out: the host uses the clip's own length, up to the model's longest.` }));
 }
 
-const NEEDS = { create: ["prompt"], edit: ["image", "instruction"], upscale: ["image"], reject: ["images"], pick: ["image"], clear_rejected: [], video: ["prompt"], animate: ["image", "prompt"], motion: ["image", "video", "prompt"], extend: ["video", "prompt"], upscale_video: ["video"] } as const;
+const NEEDS = { create: ["prompt"], edit: ["image", "instruction"], upscale: ["image"], reject: ["images"], pick: ["image"], clear_rejected: [], video: ["prompt"], animate: ["image", "prompt"], motion: ["image", "video", "prompt"], edit_video: ["video", "instruction"], extend: ["video", "prompt"], upscale_video: ["video"] } as const;
 
 /** The files each action reads; any other file it is given is refused, not ignored, so a model doesn't take one clip for another. */
-const FILES = { create: ["references"], edit: ["image", "mask", "references"], upscale: ["image"], reject: ["images"], pick: ["image"], clear_rejected: [], video: [], animate: ["image"], motion: ["image", "video"], extend: ["video"], upscale_video: ["video"] } as const;
-const FILE_USE = { image: "edit, upscale and pick take an image, and animate starts a clip from one", video: "extend makes a clip longer, motion copies a clip's moves and upscale_video upscales a clip", mask: "edit takes a mask", images: "reject takes images", references: "create and edit take references" } as const;
+const FILES = { create: ["references"], edit: ["image", "mask", "references"], upscale: ["image"], reject: ["images"], pick: ["image"], clear_rejected: [], video: [], animate: ["image"], motion: ["image", "video"], edit_video: ["video"], extend: ["video"], upscale_video: ["video"] } as const;
+const FILE_USE = { image: "edit, upscale and pick take an image, and animate starts a clip from one", video: "extend makes a clip longer, motion copies a clip's moves, edit_video changes a clip and upscale_video upscales a clip", mask: "edit takes a mask", images: "reject takes images", references: "create and edit take references" } as const;
 
 /** Whether a field was given: an empty string or list, which smaller models send for fields they don't use, wasn't. */
 const given = (v: unknown) => v !== undefined && v !== "" && !(Array.isArray(v) && !v.length);
@@ -178,7 +178,7 @@ export function createImageExtension(o: ImageTools): ExtensionFactory {
     const rejects = new Set<string>();
     pi.on("agent_start", () => { refused = false; rejects.clear(); });
     pi.registerTool({
-      name: "image", label: "Image", description: "Create, edit or upscale images from workspace paths or /photos-of-me/<file>; results go to images/ (shared/images/ in a project chat). Reject sets attempts aside in images/rejected/; pick shows the one you keep last; clear_rejected deletes the rejected ones for good. Video makes a clip from a prompt, animate one from an image, motion one of an image's subject moving as the person in a clip moves, extend makes a clip longer, and upscale_video makes a clip sharper and larger; clips go to videos/ (shared/videos/), are made in the background, and you are told here when one is ready.",
+      name: "image", label: "Image", description: "Create, edit or upscale images from workspace paths or /photos-of-me/<file>; results go to images/ (shared/images/ in a project chat). Reject sets attempts aside in images/rejected/; pick shows the one you keep last; clear_rejected deletes the rejected ones for good. Video makes a clip from a prompt, animate one from an image, motion one of an image's subject moving as the person in a clip moves, edit_video changes a clip as an instruction says, extend makes a clip longer, and upscale_video makes a clip sharper and larger; clips go to videos/ (shared/videos/), are made in the background, and you are told here when one is ready.",
       promptSnippet: "create, edit or upscale images, and make and upscale short clips",
       promptGuidelines: ["Write prompts from the conversation; inspect results and retry if needed.",
         "Before retrying, reject the attempts that miss; the chat folds them away. If an earlier attempt is best, pick it.",
@@ -197,7 +197,8 @@ export function createImageExtension(o: ImageTools): ExtensionFactory {
         "Make a clip only when they ask for one: it holds the model host's GPU for minutes. It is made in the background: say it's on its way and end your reply; you'll be told when it's ready. For video and animate, write the prompt as a detailed shot even when they gave a few words: the subject and what it does, how things move, the camera's move and lens, the light and the mood, in one paragraph of about 80 to 120 words; for animate, say what moves and what stays. For a video longer than one clip with a person in it, first make a still of them with create, then animate it: the still keeps their face across the clips, which a prompt alone doesn't.",
         "For a long video, give the whole length as duration: the host joins clips into one. To make an existing clip longer, use extend with its path, the seconds to add and a prompt for what happens next.",
         "Use upscale_video only when they ask for a sharper or larger clip: it holds the model host's GPU for longer than making the clip did. Upscale a clip once it is final, after any extend.",
-        "Use motion when they want someone to move as a given clip shows (a dance, a gesture), or when a clip of a person from a prompt alone would move badly: make a plain clip of someone doing the moves first (video), then motion with it. For motion, the prompt says the scene, light and look; the moves come from the clip. Don't measure the clip first: leave duration out and the host takes its length."],
+        "Use motion when they want someone to move as a given clip shows (a dance, a gesture), or when a clip of a person from a prompt alone would move badly: make a plain clip of someone doing the moves first (video), then motion with it. For motion, the prompt says the scene, light and look; the moves come from the clip. Don't measure the clip first: leave duration out and the host takes its length.",
+        "Use edit_video when they want a clip changed but its motion, timing and camera kept (night instead of day, a red coat, snow falling, a different style): pass the clip as video and write the instruction as one English sentence, the change first, then what stays (identity, pose, motion, clothing, framing, light, background), never asking to keep what changes. One change per edit; for two, edit the result again."],
       parameters: videoModelParameters(o),
       async execute(id, p, signal, update, ctx) {
         if (refused) throw new Error(REFUSED_THIS_TURN);
@@ -215,7 +216,7 @@ export function createImageExtension(o: ImageTools): ExtensionFactory {
   };
 }
 
-const isVideo = (a: string): a is "video" | "animate" | "motion" | "extend" | "upscale_video" => ["video", "animate", "motion", "extend", "upscale_video"].includes(a);
+const isVideo = (a: string): a is "video" | "animate" | "motion" | "edit_video" | "extend" | "upscale_video" => ["video", "animate", "motion", "edit_video", "extend", "upscale_video"].includes(a);
 
 /**
  * The tool's fields, its duration saying the thread's Videos model's longest, its model the image models on her
@@ -239,7 +240,7 @@ function videoModelParameters(o: ImageTools) {
  */
 function loraModels(o: ImageTools, call: CallContext, action: string, asks: LoraAsk[] | undefined): string[] {
   if (!asks?.length) return [];
-  if (action === "upscale" || action === "motion" || action === "extend" || action === "upscale_video") throw new Error(`${action} takes no LoRAs: create, edit, video and animate do.`);
+  if (action === "upscale" || action === "motion" || action === "edit_video" || action === "extend" || action === "upscale_video") throw new Error(`${action} takes no LoRAs: create, edit, video and animate do.`);
   const task = action === "create" || action === "edit" ? `image.${action}` as const : "video" as const;
   const found = o.models.loraModels(call, task, asks);
   if (found.ids.length) return found.ids;
@@ -355,8 +356,10 @@ async function executeVideo(o: ImageTools, id: string, p: ImageArgs, signal?: Ab
   if (p.action === "upscale_video") return executeUpscaleVideo(o, id, p, signal, onProgress);
   if (p.size && p.aspectRatio) throw new Error("Give a size or an aspect ratio, not both.");
   // An aspect ratio goes to the host as it is, which keeps the recipe's area and snaps to its size step.
-  const request: VideoRequest = { prompt: p.prompt!, ...(p.action === "animate" || p.action === "motion" ? { image: (await o.files.read(p.image!)).input } : {}),
+  if (p.action === "edit_video" && (p.size || p.aspectRatio)) throw new Error("edit_video keeps the clip's own shape: leave size and aspectRatio out.");
+  const request: VideoRequest = { prompt: p.action === "edit_video" ? p.instruction! : p.prompt!, ...(p.action === "animate" || p.action === "motion" ? { image: (await o.files.read(p.image!)).input } : {}),
     ...(p.action === "motion" ? { drive: await o.files.readClip(p.video!) } : {}), ...(p.action === "extend" ? { extend: await o.files.readClip(p.video!) } : {}),
+    ...(p.action === "edit_video" ? { source: await o.files.readClip(p.video!) } : {}),
     ...(p.size ? { size: p.size } : {}), ...(p.aspectRatio ? { aspectRatio: p.aspectRatio } : {}), ...(p.duration === undefined ? {} : { duration: p.duration }),
     ...(p.steps === undefined ? {} : { steps: p.steps }), ...(p.loras?.length ? { loras: p.loras } : {}) };
   const call = o.call();
@@ -379,7 +382,7 @@ async function executeVideo(o: ImageTools, id: string, p: ImageArgs, signal?: Ab
   // A clip holds the host's GPU for minutes: in the background her turn ends, and the chat goes on.
   if (o.background) {
     // Its prompt names it, so she can tell clips that were made side by side apart.
-    const prompt = p.prompt ?? "";
+    const prompt = (p.action === "edit_video" ? p.instruction : p.prompt) ?? "";
     const named = prompt.length > 60 ? `${prompt.slice(0, 59).trimEnd()}…` : prompt;
     o.background(async (signal, progress) => { const { text, video } = await make(signal, progress); return { text: `The clip for "${named}" is ready. ${text}`, video, args: p }; }, id);
     return { content: [{ type: "text" as const, text: "Making the clip in the background; it takes minutes. You'll be told here when it is ready, and the chat shows it then. Don't wait for it: finish this reply." }],

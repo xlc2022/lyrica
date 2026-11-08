@@ -42,7 +42,7 @@ const levelName = (l: ThinkingLevel) => l[0]!.toUpperCase() + l.slice(1);
 const fallbackCount = (n: number) => (n ? <><span className="num">+{n}</span> fallback{n === 1 ? "" : "s"}</> : "no fallback");
 /** Whether a model can do a thread task: the image, video and speech tasks need their capability; every other one is text. */
 const fits = (task: ThreadTask, m: EndpointInfo["models"][number]) => (task === "image.create" ? !!m.image : task === "image.edit" ? !!m.edit : task === "image.upscale" ? !!m.upscale
-  : task === "video" ? !!(m.video || m.animate || m.motion) : task === "speech.transcribe" ? !!m.transcribe : task === "speech.speak" ? !!m.speak?.voices.length : isChatModel(m));
+  : task === "video" ? !!(m.video || m.animate || m.motion || m.videoEdit) : task === "speech.transcribe" ? !!m.transcribe : task === "speech.speak" ? !!m.speak?.voices.length : isChatModel(m));
 
 
 const refKey = (m?: { offeringId: string }) => m?.offeringId ?? "";

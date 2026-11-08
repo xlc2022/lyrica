@@ -408,6 +408,20 @@ describe("video calls through the router (principles 1 and 2)", () => {
     const ids = s.models.offerings(s.ada.id, s.workstation.ep.id).map((o) => o.modelId);
     expect(ids).toContain("recipe/moves");
   });
+  it("edits a clip only on a recipe that edits clips, at the clip's own shape and length", async () => {
+    const s = await setup(), ctx = s.ctx({ pool: "private", localOnly: true });
+    s.models.setColumnTask(s.ada.id, "private", "video", [s.workstation.clip, s.workstation.restyle]);
+    const out = await s.models.video(ctx, { prompt: "Make it night, keeping her face, motion and framing", source: mp4 });
+    expect(out.resolution.ref).toEqual(s.workstation.restyle);
+    expect(s.workstation.server.videos).toEqual([{ recipe: "restyle", prompt: "Make it night, keeping her face, motion and framing", source: mp4.toString("base64") }]);
+    // A duration edits the clip's start, whatever the recipe's longest; a clip from a prompt still goes to the clip recipe.
+    expect((await s.models.video(ctx, { prompt: "x", source: mp4, duration: 20 })).resolution.ref).toEqual(s.workstation.restyle);
+    expect((await s.models.video(ctx, { prompt: "A fox" })).resolution.ref).toEqual(s.workstation.clip);
+    s.models.setColumnTask(s.ada.id, "private", "video", [s.workstation.clip]);
+    await expect(s.models.video(ctx, { prompt: "x", source: mp4 })).rejects.toThrow(/doesn't edit clips/);
+    await expect(s.models.video(ctx, { prompt: "x", source: mp4, aspectRatio: "1:1" })).rejects.toThrow(/keeps its own/);
+    await expect(s.models.video(ctx, { prompt: "x", source: png })).rejects.toThrow(/MP4/);
+  });
   it("sends a video past a model's longest, and a clip to extend, only to a recipe that chains clips, and names the longest", async () => {
     const s = await setup(), ctx = s.ctx({ pool: "private", localOnly: true });
     s.models.setColumnTask(s.ada.id, "private", "video", [s.workstation.clip, s.workstation.long]);

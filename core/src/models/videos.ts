@@ -6,13 +6,14 @@ import { withProgress, type JobProgress } from "./progress.ts";
 
 /**
  * One clip: from a prompt, from `image` as its first frame, or with `drive` (an MP4) too, `image`'s subject moved as the
- * person in that clip moves. Or `extend` (an MP4) continued for `duration` more seconds, as one clip. `duration` is
+ * person in that clip moves. Or `extend` (an MP4) continued for `duration` more seconds, as one clip. Or `source` (an MP4)
+ * edited as the prompt says, keeping its shape, motion and sound: all of it up to the model's longest clip, or its first `duration` seconds. `duration` is
  * seconds, past a model's longest clip only on a recipe that chains clips; `aspectRatio` (width:height) keeps the recipe's area; `steps` replaces the recipe's.
  */
-export interface VideoRequest { prompt: string; image?: ImageInput; drive?: Uint8Array; extend?: Uint8Array; size?: { width: number; height: number }; aspectRatio?: string; duration?: number; steps?: number; loras?: LoraAsk[] }
+export interface VideoRequest { prompt: string; image?: ImageInput; drive?: Uint8Array; extend?: Uint8Array; source?: Uint8Array; size?: { width: number; height: number }; aspectRatio?: string; duration?: number; steps?: number; loras?: LoraAsk[] }
 /** A host makes videos of at most this many seconds, chained clips included (host/API.md, "Making videos"). */
 export const LONGEST_VIDEO_SECONDS = 60;
-/** A driving clip's, or a clip to extend's, largest size (host/API.md, "Making videos"). */
+/** A driving clip's, a clip to extend's or a clip to edit's largest size (host/API.md, "Making videos"). */
 export const MAX_DRIVE_BYTES = 64 * 1024 * 1024;
 export interface GeneratedVideo {
   bytes: Uint8Array; type: "video/mp4"; width: number; height: number; frames: number; fps: number; duration: number; audio: boolean; seed?: number;
@@ -34,6 +35,8 @@ export function validateVideoRequest(r: VideoRequest): void {
   if (r.duration !== undefined && !(r.duration >= 1 && r.duration <= LONGEST_VIDEO_SECONDS)) throw new HostRefused("invalid", `a video is 1 to ${LONGEST_VIDEO_SECONDS} seconds`);
   if (r.extend && (r.image || r.drive || r.size || r.aspectRatio)) throw new HostRefused("invalid", "an extended clip takes no image, driving clip or size: it keeps its own");
   if (r.extend && (!isMp4(r.extend) || r.extend.length > MAX_DRIVE_BYTES)) throw new HostRefused("invalid", "a clip to extend is an MP4 of at most 64 MB");
+  if (r.source && (r.image || r.drive || r.extend || r.size || r.aspectRatio)) throw new HostRefused("invalid", "a clip to edit takes no image, other clip or size: it keeps its own");
+  if (r.source && (!isMp4(r.source) || r.source.length > MAX_DRIVE_BYTES)) throw new HostRefused("invalid", "a clip to edit is an MP4 of at most 64 MB");
   if (r.steps !== undefined && !(Number.isInteger(r.steps) && r.steps >= 1 && r.steps <= 150)) throw new HostRefused("invalid", "a video takes 1 to 150 steps");
   const loras = validateLoras(r.loras);
   if (loras) throw new HostRefused("invalid", loras);
@@ -59,6 +62,7 @@ export async function videoAt(t: { fetch: typeof fetch; baseUrl: string; modelId
   // Explicit fields only: the recipe's defaults apply, and callers cannot name parts. LoRAs are only those the recipe takes.
   const body = JSON.stringify({ recipe: t.modelId.slice(7), prompt: r.prompt, ...(t.loras?.length ? { loras: t.loras } : {}), ...(r.image ? { image: Buffer.from(r.image.bytes).toString("base64") } : {}),
     ...(r.drive ? { drive: Buffer.from(r.drive).toString("base64") } : {}), ...(r.extend ? { extend: Buffer.from(r.extend).toString("base64") } : {}),
+    ...(r.source ? { source: Buffer.from(r.source).toString("base64") } : {}),
     ...(r.size ?? {}), ...(r.aspectRatio ? { aspectRatio: r.aspectRatio } : {}), ...(r.duration === undefined ? {} : { duration: r.duration }),
     ...(r.steps === undefined ? {} : { steps: r.steps }) });
   return postVideo(t, "/host/v1/videos/create", body, videoTimeout(r), signal, onProgress);

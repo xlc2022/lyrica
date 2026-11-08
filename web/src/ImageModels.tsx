@@ -62,7 +62,7 @@ const WHERE: ["all" | "local" | "cloud", string][] = [["all", "All"], ["local", 
 const CLOUD = "\u0000cloud", OTHER = "\u0000other";
 const groupWord = (a: string) => (a === CLOUD ? "Cloud" : a === OTHER ? "Other" : archWord(a));
 /** A recipe's `does` as its facts line says it. */
-const doesWord = (d: HostRecipe["does"][number]) => (d === "create" ? "generate" : d === "upscale_video" ? "upscale clips" : d);
+const doesWord = (d: HostRecipe["does"][number]) => (d === "create" ? "generate" : d === "upscale_video" ? "upscale clips" : d === "edit_video" ? "edit clips" : d);
 const plainDoes = (m: OfferingInfo, d: Does) => (d === "create" ? !!m.image : d === "edit" ? !!m.edit : !!m.upscale);
 
 /** The architectures the hosts report, for the chips. */

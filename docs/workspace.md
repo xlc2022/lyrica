@@ -751,11 +751,14 @@ image as the first frame, and `motion` from an image and a driving clip (a
 workspace MP4 of at most 64 MB, read with `ThreadImages.readClip`): the
 image's subject moves as the person in the clip moves, and the prompt says
 the scene; and `extend` from a workspace clip and a prompt, which adds
-`duration` seconds to it and saves the whole clip as a new one. Each takes
-an optional size or ratio (not `extend`) and `duration` in seconds (up to
+`duration` seconds to it and saves the whole clip as a new one; and
+`edit_video` from a workspace clip and an `instruction` (one English
+sentence, the change and then what stays), which changes the clip and keeps
+its motion, timing, camera and sound, saved as a new clip. Each takes
+an optional size or ratio (not `extend` or `edit_video`) and `duration` in seconds (up to
 the Videos model's longest, which the tool's description names: 60 for a
 model that joins clips, else its longest clip; the recipe's default when
-left out; for `motion`, no longer than the clip, so she leaves it out
+left out; for `motion` and `edit_video`, no longer than the clip, so she leaves it out
 rather than measuring the clip). A file the action doesn't read (a clip
 given to `video`, say) is refused with the action that takes it, not
 ignored. The prompt's description says whether the Videos model renders

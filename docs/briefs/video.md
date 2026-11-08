@@ -118,6 +118,8 @@ The owner chose, in order:
 - HunyuanVideo 1.5 (its licence excludes the EU).
 - Clips that move like another clip: their own brief,
   [motion-video.md](motion-video.md).
+- Editing a clip from an instruction (H3's VFX Edit): its own brief,
+  [video-edit.md](video-edit.md).
 
 ## Handoff
 
