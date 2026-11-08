@@ -394,6 +394,9 @@ per host, and Lyrica's router filters create tiers by it.
   (`comfyui/lock.sh` remakes it); torch is the base image's. It has no
   route out, logs nothing, keeps its input, output and temp folders in
   memory, saves no metadata, and its history is cleared after every job.
+  The container is read-only; SeedVR2's upscaler insists on its own
+  `models/SEEDVR2` folder before it reads a file, so the image links that
+  folder to host-api's SeedVR2 links on the serving volume.
   A job's uploads are overwritten with a blank image after it, and
   `gate.py` empties those folders whenever it starts or stops ComfyUI, so a
   crash mid-job leaves no photo behind either.
