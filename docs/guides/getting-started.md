@@ -1244,7 +1244,11 @@ refused. To replace the destination, enter the full URL and token again;
 
   On NixOS the next `nixos-rebuild switch` brings all of these, applies
   the SearXNG settings, and starts SearXNG for her web search unless
-  `services.lyrica.searxng = false`. Update her model hosts too, so their
+  `services.lyrica.searxng = false`. A NixOS install rebuilt on 2026-11-07
+  or 2026-11-08 has an updater without `awk`, so Check and Update fail
+  ("stopped unexpectedly") until one more `nix flake update lyrica` and
+  `nixos-rebuild switch`; an Update can't fix it, since the updater comes
+  from the module. Update her model hosts too, so their
   recipes match her release ("Operating a host" in
   [model-hosts.md](model-hosts.md#operating-a-host)).
   The home page header (the greeting, then the date, the time and
