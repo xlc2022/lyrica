@@ -330,6 +330,27 @@ describe("the vLLM backend", () => {
     expect(preset(32)).not.toContain("cache-ram");
   });
 
+  it("names the exit code when llama.cpp's server dies while loading, and the wait when it never finishes", async () => {
+    const m = { ...(model as object), server: "llamacpp", format: "gguf" } as never;
+    const crashed = await fakeLlamaRouter("crashed");
+    const serving = mkdtempSync(join(tmpdir(), "lyrica-serving-"));
+    try {
+      const llama = new LlamaCpp({ url: crashed.url, serving, models: "/models", device: (i) => `CUDA${i}`, loadTimeoutMs: 2000 });
+      await expect(llama.load(m, at, { placement: { mode: "auto" } })).rejects.toMatchObject({ code: "model_unavailable", message: "llama.cpp's server for this model exited with code 134 while loading." });
+      // Nothing is left half loaded.
+      expect(readFileSync(join(serving, "llamacpp.ini"), "utf8")).not.toContain(`[${(model as { id: string }).id}]`);
+    } finally {
+      crashed.server.close();
+    }
+    const stuck = await fakeLlamaRouter("loading");
+    try {
+      const llama = new LlamaCpp({ url: stuck.url, serving, models: "/models", device: (i) => `CUDA${i}`, loadTimeoutMs: 600 });
+      await expect(llama.load(m, at, { placement: { mode: "auto" } })).rejects.toMatchObject({ code: "model_unavailable", message: "llama.cpp was still loading this model after 0 minutes." });
+    } finally {
+      stuck.server.close();
+    }
+  });
+
   it("removes chat templates no model uses any more", async () => {
     const serving = mkdtempSync(join(tmpdir(), "lyrica-serving-"));
     const llama = new LlamaCpp({ url: "http://127.0.0.1:1", serving, models: "/models", device: (i) => `CUDA${i}`, loadTimeoutMs: 50 });

@@ -157,9 +157,9 @@ export class LlamaCpp implements Backend {
     writeAtomic(this.presetPath, lines.join("\n"));
     this.templates.done();
   }
-  private async status(id: string): Promise<{ value: string; failed?: boolean } | null> {
+  private async status(id: string): Promise<{ value: string; failed?: boolean; exit_code?: number } | null> {
     const res = await fetch(`${this.o.url}/models`);
-    const body = (await res.json()) as { data: { id: string; status: { value: string; failed?: boolean } }[] };
+    const body = (await res.json()) as { data: { id: string; status: { value: string; failed?: boolean; exit_code?: number } }[] };
     return body.data.find((m) => m.id === id)?.status ?? null;
   }
 
@@ -236,14 +236,20 @@ export class LlamaCpp implements Backend {
     try {
       await this.reload();
       await this.post("/models/load", { model: model.id });
-      let failed = false;
+      // The router marks a server that exited while loading as unloaded with its exit code.
+      let failed: { exit_code?: number } | null = null;
+      let timedOut = false;
       await poll(async () => {
         const s = await this.status(model.id);
-        if (!s || s.failed || s.value === "unloaded") failed = true;
-        return s?.value === "loaded" || failed;
-      }, this.o.loadTimeoutMs, "llama.cpp");
-      if ((await this.status(model.id))?.value !== "loaded") failed = true;
-      if (failed) throw new HostError(503, "model_unavailable", "llama.cpp couldn't load this model.");
+        if (!s || s.failed || s.value === "unloaded") failed = s ?? {};
+        return s?.value === "loaded" || !!failed;
+      }, this.o.loadTimeoutMs, "llama.cpp").catch(() => (timedOut = true));
+      if (timedOut) throw new HostError(503, "model_unavailable", `llama.cpp was still loading this model after ${Math.round(this.o.loadTimeoutMs / 60_000)} minutes.`);
+      if (!failed && (await this.status(model.id))?.value !== "loaded") failed = {};
+      if (failed) {
+        const { exit_code } = failed as { exit_code?: number };
+        throw new HostError(503, "model_unavailable", exit_code ? `llama.cpp's server for this model exited with code ${exit_code} while loading.` : "llama.cpp couldn't load this model.");
+      }
     } catch (e) {
       // Leave nothing half-loaded behind.
       await this.post("/models/unload", { model: model.id }).catch(() => {});

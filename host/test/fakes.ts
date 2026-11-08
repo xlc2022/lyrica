@@ -111,7 +111,8 @@ export async function fakeLlamaRouter(loadState = "loaded") {
       res.writeHead(code, { "content-type": "application/json" });
       res.end(JSON.stringify(b));
     };
-    if (url.pathname === "/models") return json(200, { data: [...status].map(([id, value]) => ({ id, status: { value } })) });
+    // loadState "crashed": the server exited while loading, as the router reports it.
+    if (url.pathname === "/models") return json(200, { data: [...status].map(([id, value]) => ({ id, status: value === "crashed" ? { value: "unloaded", failed: true, exit_code: 134 } : { value } })) });
     if (url.pathname === "/models/load") {
       status.set(body.model, loadState);
       return json(200, { success: true });
