@@ -17,7 +17,7 @@ to `main` until CI moved to GitHub's hosted runners.
   newer release all at once, after trying one VM under a label of its own.
 - **x86-64.** The script accepts arm64, but the model host's images and
   pinned wheels are x86 only, so an ARM runner could run only the `check`
-  job and would need a label of its own.
+  and `e2e` jobs and would need a label of its own.
 - About 4 cores, 8 GB of memory and 150 GB of disk: the ROCm image build
   needs about 45 GB free. Ubuntu's installer gives the root volume only
   part of the disk, so give it the rest before running the script:
@@ -59,7 +59,7 @@ The script, in order:
    plugins. The jobs install the rest themselves with sudo, as they do on
    GitHub's runners. It also tells needrestart to only list services (it
    once restarted the runner mid-job) and apt to wait up to ten minutes for
-   a busy dpkg lock; the check job writes the same two settings, so runners
+   a busy dpkg lock; the check and e2e jobs write the same two settings, so runners
    set up before 2026-10-11 need nothing.
 2. Creates the `runner` user with passwordless sudo and Docker access.
 3. Downloads the latest GitHub Actions runner, checked against the
@@ -68,9 +68,9 @@ The script, in order:
 4. Registers it with the repository under the name of the VM's hostname
    and the label `lyrica-ci`, and installs it as a systemd service. A runner
    on a fast machine also needs the label `lyrica-fast`, which the `check`
-   job requires: add it on the repository's Settings, Actions, Runners page
+   and `e2e` jobs require: add it on the repository's Settings, Actions, Runners page
    (the runner's labels), since `setup.sh` does not set it. Without a
-   `lyrica-fast` runner, `check` waits in the queue.
+   `lyrica-fast` runner, they wait in the queue.
 5. Installs `lyrica-ci-firewall`: an nftables table applied at boot before
    the runner starts, which lets the VM reach the internet, its DHCP
    resolvers on port 53 and DHCP, and rejects any new connection to a

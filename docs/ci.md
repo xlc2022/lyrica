@@ -25,7 +25,7 @@ self-hosted runners, which no workflow uses at the moment.
 - The jobs install their own packages with sudo, so the VM is theirs to
   change. needrestart only lists services (it once restarted the runner
   mid-job), and apt waits up to 10 minutes for a busy dpkg lock; setup.sh,
-  the check job and the nix job all set this. The VM holds nothing else: never
+  the check, e2e and nix jobs all set this. The VM holds nothing else: never
   the lyricad machine (the owner's memory) or the model host (the host-stack job
   installs its own stack).
 - The nix job installs Nix once (pinned installer, kept between runs), runs
@@ -40,8 +40,8 @@ self-hosted runners, which no workflow uses at the moment.
 - Leftovers: a cancelled job can leave its test servers, browsers and
   sandbox helpers running, and enough of them use up the runner user's
   threads, so Chromium fails to start (`pthread_create: Resource
-  temporarily unavailable`, `spawn EAGAIN`). The check, nix and host-stack
-  jobs start with `.github/runner/clear-leftovers.sh`, which stops the
+  temporarily unavailable`, `spawn EAGAIN`). The check, e2e, nix and
+  host-stack jobs start with `.github/runner/clear-leftovers.sh`, which stops the
   runner user's processes of those kinds whose parent is init or the
   user's systemd (the running job's descend from the runner), with
   everything under them, and logs the user's thread count before and after.
@@ -49,12 +49,13 @@ self-hosted runners, which no workflow uses at the moment.
   the egress and updater units and rules, the updater's folders and deploy
   key, Docker's daemon.json) when it ends.
 - Runner speed: the runners sit on three machines of different speed. On
-  them, the `check` job (unit tests and e2e) needs the extra label `lyrica-fast` and
-  so runs only on the faster machines; it timed out and flaked on the slowest
-  (4 cores), where it took twice as long. The other jobs run on any runner.
+  them, the `check` and `e2e` jobs (unit tests, and the Playwright tests)
+  need the extra label `lyrica-fast` and so run only on the faster machines;
+  they timed out and flaked on the slowest (4 cores), where they took twice
+  as long. The other jobs run on any runner.
   Give a runner the label with `--labels lyrica-ci,lyrica-fast` when
   registering it, or add it in Settings, Actions, Runners. With no runner
-  carrying `lyrica-fast`, `check` waits in the queue.
+  carrying `lyrica-fast`, they wait in the queue.
 - One runner runs one job at a time. A new push to a pull request
   cancels its older runs. Main runs its newest merge only: a main run
   still waiting for a runner gives way to the next merge, and one already
@@ -62,15 +63,19 @@ self-hosted runners, which no workflow uses at the moment.
   the last commit whose run passed, so merges that gave way are covered)
   and runs only the jobs it touches; the others show as skipped, which
   counts as passed:
-  - check: anything but `docs/` and the top-level Markdown files.
-    `persona/` is her seed, so it counts.
+  - check (typecheck and unit tests) and e2e (the Playwright tests), side
+    by side: anything but `docs/` and the top-level Markdown files.
+    `persona/` is her seed, so it counts. Together on one runner they took
+    about 14.5 minutes, 9 of them Playwright; apart, each sets up its own
+    runner (apt, Node, `npm ci`, about a minute) and the run ends when the
+    slower one does.
   - nix: the same, less `evals/` and the tests the flake leaves out of its
     source (`web/e2e/` and each `test/` but `core/test/`, which holds the
     sandbox tests).
   - host-stack: `host/` only.
 
   A change under `.github/`, or a diff that can't be read, runs all three.
-  The e2e tests run seven Playwright projects side by side, each against
+  The e2e job runs seven Playwright projects side by side, each against
   its own lyricad: each `web/e2e/web-*.spec.ts` file (chat, projects,
   admin) at phone and at desktop size, and the setup page. The slowest
   project sets the step's time. When an e2e test fails, the run keeps its
@@ -141,7 +146,7 @@ compile on a hosted runner, so the job may run for hours.
 
 Only with the approval setting above in place: to move a workflow back to
 the self-hosted runners, set each job's `runs-on` to `lyrica-ci`, and the
-`check` job's to `[lyrica-ci, lyrica-fast]`. To move one to GitHub's
+`check` and `e2e` jobs' to `[lyrica-ci, lyrica-fast]`. To move one to GitHub's
 runners, set them to `ubuntu-latest`. On a hosted runner the "Stop what
 earlier jobs left running" step finds nothing, and the nix job installs Nix
 on every run. Claude Code is unfree, so no binary cache has it, and its
