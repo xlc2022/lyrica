@@ -129,7 +129,7 @@ function waiting(paths: UpdatePaths, state: StateFile): Updates["state"] | undef
 
 /** The updater takes a request within seconds; past this it isn't going to. */
 const UNTAKEN_MS = 2 * 60_000;
-const NOT_STARTED = "The updater hasn't started. On the server, systemctl status lyrica-update.path says why.";
+const NOT_STARTED = "The updater hasn't started. On the server, `systemctl status lyrica-update.path` says why.";
 /** lyrica-update gives a fetch 10 minutes; a fetch still on record well past that was cut off before it could say so. */
 const FETCH_MS = 15 * 60_000;
 const CUT_OFF = "The updater stopped while fetching.";

@@ -1549,7 +1549,7 @@ check names and counts, never text.
   shows an idle or failed updater as the step the request starts with
   (Fetching, or Draining for a rollback), so the page follows it. A
   request still waiting after 2 minutes shows as failed ("The updater
-  hasn't started", naming `lyrica-update.path`) and a new one replaces it;
+  hasn't started", naming `lyrica-update.path` between backticks, which the page sets in mono) and a new one replaces it;
   a fetch still on record after 15 minutes shows as failed ("The updater
   stopped while fetching") and Check and Update work again.
 - **`lyrica version --json`** prints the version, build (commit), schema and
