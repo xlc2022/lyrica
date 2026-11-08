@@ -114,8 +114,9 @@ host runs from `/opt/lyrica-host/<commit>`, and the egress unit runs that
 tree's `egress.sh` (it reads `/var/lib/lyrica-host-update/current`, and
 falls back to `checkout`). The updater itself changes only with a
 `nixos-rebuild`, never with an update. A host set up before the module
-declared the updater needs one `nix flake update lyrica && nixos-rebuild
-switch`, then one `git pull && host/install.sh` in its checkout, before
+declared the updater needs one `nix flake update <input> && nixos-rebuild
+switch` (the name your flake gives the Lyrica input; `nix flake metadata`
+lists them), then one `git pull && host/install.sh` in its checkout, before
 **Update** works there; until then it's greyed out and says so.
 
 ### gpu-unlock
