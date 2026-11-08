@@ -1,0 +1,41 @@
+{
+  "name": "P-H3-Image",
+  "template": "p-h3-image",
+  "parts": [
+    {
+      "role": "diffusion",
+      "source": "huggingface",
+      "repo": "PrunaAI/P-H3-Image-Comfy",
+      "path": "diffusion_models/p-h3-image_int8_convrot.safetensors",
+      "sha256": "",
+      "size": 21213068840
+    },
+    {
+      "role": "text_encoder",
+      "slot": "ph3",
+      "source": "huggingface",
+      "repo": "PrunaAI/P-H3-Image-Comfy",
+      "path": "text_encoders/p-h3-image_text_encoder_int8_convrot.safetensors",
+      "sha256": "",
+      "size": 5120870504
+    },
+    {
+      "role": "vae",
+      "source": "huggingface",
+      "repo": "PrunaAI/P-H3-Image-Comfy",
+      "path": "vae/p-h3-image_vae_int8_convrot.safetensors",
+      "sha256": "",
+      "size": 3146996440
+    }
+  ],
+  "loras": [],
+  "defaults": {
+    "cfg": 1,
+    "sampler": "euler",
+    "width": 2048,
+    "height": 2048,
+    "editMegapixels": 4,
+    "sigmas": "1.0, 0.984753, 0.967905, 0.951688, 0.925372, 0.881923, 0.810083, 0.528718, 0.0"
+  },
+  "backend": "comfyui"
+}

@@ -625,6 +625,8 @@ export class Images {
         values.negativePrompt = body.negativePrompt;
       }
       values.count = int(body, "count", 1, 4) ?? 1;
+      // A template that makes one image a job (P-H3-Image's latent can't be batched) says so rather than making fewer.
+      if (Number(values.count) > 1 && !JSON.stringify(template.workflow).includes('"$count"')) throw invalid("This recipe makes one image at a time: ask for one.");
       values.steps = int(body, "steps", 1, 150) ?? values.steps!;
       values.cfg = num(body, "cfg", 0, 30) ?? values.cfg!;
       if (action === "create") {

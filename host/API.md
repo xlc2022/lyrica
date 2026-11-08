@@ -785,7 +785,8 @@ as `{ "parts": [...] }`, each entry like this:
   tracks people for SCAIL-2), or `unknown`.
 - `slot`: for a text encoder, which one: `clip_l`, `clip_g`, `t5`, `umt5`
   (Wan's), `qwen2.5vl`, `qwen3`, `qwen3vl` (Qwen3-VL 4B), `qwen3vl_8b`,
-  `qwen3vl_32b` (MiniMax H3's), `gemma4_12b` (LTX-2.5's), …. For Wan 2.2
+  `qwen3vl_32b` (MiniMax H3's), `gemma4_12b` (LTX-2.5's), `ph3`
+  (P-H3-Image's Qwen3-VL 4B, told by its text connector), …. For Wan 2.2
   14B's two experts and their LoRAs, `high` or `low` (read from the file
   name, as their tensors are alike); a speed LoRA otherwise, `speed`;
   SCAIL-2's DPO LoRA (by name), `dpo`; MiniMax H3's VFX Edit LoRA (by
@@ -794,7 +795,9 @@ as `{ "parts": [...] }`, each entry like this:
 - `arch`: the architecture read from the tensor names (`sdxl`, `flux`,
   `z-image`, `qwen-image`, `qwen-image-2.1`, `krea2`, `seedvr2`,
   `wan2.2-5b`, `wan2.2-t2v-14b`, `wan2.2-i2v-14b`, `ltx2`, `minimax-h3`,
-  `minimax-h3-ref2va`, `scail2`, `clip-vision-h`, `sam3`, …), or `null`.
+  `minimax-h3-ref2va`, `p-h3-image` (H3's tensors plus a timestep table;
+  its VAE by a single-frame decoder), `scail2`, `clip-vision-h`, `sam3`,
+  …), or `null`.
   MiniMax H3's two checkpoints have the same tensors, so a file whose name
   says `ref2va` (or a LoRA's `ref2v`) is `minimax-h3-ref2va`, the other
   `minimax-h3`. Wan 2.2 14B's VAE is Wan 2.1's, which reads as
@@ -821,7 +824,10 @@ as `{ "parts": [...] }`, each entry like this:
   pass, below),
   `qwen-image` (create, and edit for a diffusion model whose file name
   says "edit"), `qwen-image-2.1` (create and edit from one recipe, with
-  the Turbo's 8-step schedule from the recipe's defaults), `seedvr2`
+  the Turbo's 8-step schedule from the recipe's defaults), `p-h3-image`
+  (create and edit from one recipe, up to 3 references, one image per
+  request; the picture to edit scaled to the recipe's `editMegapixels`
+  first and its sigmas from the recipe's defaults), `seedvr2`
   (upscale), and the video ones: `wan2.2-5b`, `ltx2` and `minimax-h3`
   (video and animate), `wan2.2-t2v-14b` (video), `wan2.2-i2v-14b`
   (animate), `scail2` (motion) and `minimax-h3-edit` (edit_video, on H3's
@@ -1072,7 +1078,8 @@ the action is `invalid`.
   ```
 
   Only `recipe` and `prompt` are required; the rest fall back to the
-  recipe's defaults. `count` is 1 to 4. `width` and `height` are multiples
+  recipe's defaults. `count` is 1 to 4, or only 1 for a template that
+  makes one image at a time (no `$count`; P-H3-Image). `width` and `height` are multiples
   of 16 from 256 to 2048. `steps` is 1 to 150, `cfg` 0 to 30, `seed` 0 to
   2^48 (random when left out; every image of one request shares it).
   `references` only for a template that takes them (otherwise `invalid`).

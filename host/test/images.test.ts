@@ -118,6 +118,9 @@ const H3_LORA = safetensors({ "diffusion_model.blocks.0.attn.to_q.lora_A.weight"
 const QWEN3VL_32B = safetensors({ "model.language_model.layers.0.self_attn.q_proj.weight": { dtype: "U8" }, "model.language_model.layers.0.self_attn.q_norm.weight": {}, "model.language_model.layers.63.self_attn.q_proj.weight": { dtype: "U8" } });
 const H3_VAE = safetensors({ "decoder.transformer_blocks.0.scale1": {}, "encoder.down.5.block.0.conv1.weight": { dtype: "I8" } });
 const H3_AUDIO_VAE = safetensors({ "pre_block.attn.zero_k_bias": { dtype: "F32" } });
+const PH3 = safetensors({ "video_patch_proj.weight": { dtype: "I8" }, "audio_patch_proj.weight": {}, "adaln_t_table": { dtype: "F32" } });
+const PH3_TE = safetensors({ "model.language_model.layers.0.self_attn.q_proj.weight": { dtype: "I8" }, "model.visual.merger.linear_fc2.weight": { shape: [2560, 4096] }, "text_connector.proj.weight": {} });
+const PH3_VAE = safetensors({ "decoder.transformer_blocks.0.scale1": {}, "encoder.down.5.block.0.conv1.weight": { dtype: "I8" }, "decoder.proj_out.weight": { shape: [768, 1024] } });
 
 function folder(files: Record<string, Buffer>): string {
   const dir = mkdtempSync(join(tmpdir(), "lyrica-img-"));
@@ -184,6 +187,7 @@ describe("video parts", () => {
       "v/minimax_h3_audio_vae_fp32.safetensors": H3_AUDIO_VAE, "v/rife_v4.26.safetensors": RIFE,
       "v/minimax_h3_ref2va_pruned_int8_convrot.safetensors": H3, "v/minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors": H3_LORA,
       "v/minimax_h3_vfx_edit_v1.0_r128.safetensors": H3_LORA,
+      "v/p-h3-image_int8_convrot.safetensors": PH3, "v/p-h3-image_text_encoder_int8_convrot.safetensors": PH3_TE, "v/p-h3-image_vae_int8_convrot.safetensors": PH3_VAE,
       "v/Wan2.2-T2V-A14B-HighNoise-Q5_K_M.gguf": wanGguf(16), "v/Wan2.2-I2V-A14B-LowNoise-Q5_K_M.gguf": wanGguf(36, true),
       "v/wan2.1_14B_SCAIL_2_int8_convrot.safetensors": SCAIL2, "v/wan2.1_SCAIL_2_DPO_lora_bf16.safetensors": WAN_LORA,
       "v/lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors": WAN_LORA, "v/clip_vision_h.safetensors": CLIP_VISION_H,
@@ -216,6 +220,10 @@ describe("video parts", () => {
       "minimax_h3_ref2va_pruned_int8_convrot.safetensors": ["diffusion", null, "minimax-h3-ref2va"],
       "minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors": ["lora", "speed", "minimax-h3-ref2va"],
       "minimax_h3_vfx_edit_v1.0_r128.safetensors": ["lora", "edit", "minimax-h3"],
+      // P-H3-Image: H3's keys with a timestep table, a Qwen3-VL 4B with a text connector, and a single-frame decoder.
+      "p-h3-image_int8_convrot.safetensors": ["diffusion", null, "p-h3-image"],
+      "p-h3-image_text_encoder_int8_convrot.safetensors": ["text_encoder", "ph3", "qwen3vl"],
+      "p-h3-image_vae_int8_convrot.safetensors": ["vae", null, "p-h3-image"],
       // A GGUF expert is told by the same tensors.
       "Wan2.2-T2V-A14B-HighNoise-Q5_K_M.gguf": ["diffusion", "high", "wan2.2-t2v-14b"],
       "Wan2.2-I2V-A14B-LowNoise-Q5_K_M.gguf": ["diffusion", "low", "wan2.2-i2v-14b"],
@@ -640,6 +648,32 @@ describe("recipes", () => {
     const qi21Replace = fill(TEMPLATES.get("qwen-image-2.1")!, qi21Parts, [], { negativePrompt: "", ...starter.defaults, prompt: "x", count: 1, seed: 1, image: "lyrica-image.png", mask: "lyrica-mask.png" });
     expect(qi21Replace.encode!.inputs).not.toHaveProperty("images.image_1");
     expect(qi21Replace.masked!.inputs.image).toEqual(["fit", 0]);
+
+    // P-H3-Image: an edit at the image's own shape, scaled to 4 MP, with references after it; a create on the recipe's canvas.
+    const ph3Starter = STARTERS.find((s) => s.id === "p-h3-image")!;
+    const ph3Parts = [
+      { role: "diffusion" as const, slot: null, file: "p.safetensors", added: false },
+      { role: "text_encoder" as const, slot: "ph3", file: "te.safetensors", added: false },
+      { role: "vae" as const, slot: null, file: "v.safetensors", added: false },
+    ];
+    const ph3Edit = fill(TEMPLATES.get("p-h3-image")!, ph3Parts, [], { negativePrompt: "", ...ph3Starter.defaults, prompt: "x", count: 1, seed: 1, image: "lyrica-image.png", reference1: "lyrica-ref.png", seen: 1 });
+    expect(ph3Edit.load_clip).toEqual({ class_type: "CLIPLoader", inputs: { clip_name: "te.safetensors", type: "minimax" } });
+    expect(ph3Edit.fit!.inputs).toMatchObject({ image: ["load", 0], megapixels: 4, resolution_steps: 32 });
+    expect(ph3Edit.edit!.inputs).toMatchObject({ width: 0, height: 0, "images.image_1": ["fit", 0], "images.image_2": ["ref1", 0], vae: ["load_vae", 0] });
+    expect(ph3Edit.edit!.inputs).not.toHaveProperty("images.image_3");
+    expect(Object.keys(ph3Edit)).not.toContain("create");
+    // Guidance-distilled: no CFG, the shift at 1/1 and Pruna's 8 sigmas.
+    expect(ph3Edit.shift!.inputs).toEqual({ model: ["load_model", 0], shift_video: 1, shift_audio: 1 });
+    expect(ph3Edit.guide!.inputs).toEqual({ model: ["shift", 0], conditioning: ["edit", 0] });
+    expect(ph3Edit.sample!.inputs.latent_image).toEqual(["edit", 1]);
+    expect(ph3Edit.sigmas!.inputs.sigmas).toMatch(/^1\.0, .*0\.528718, 0\.0$/);
+    expect(JSON.stringify(ph3Edit)).not.toContain("$");
+    const ph3New = fill(TEMPLATES.get("p-h3-image")!, ph3Parts, [], { negativePrompt: "", ...ph3Starter.defaults, prompt: "x", count: 1, seed: 1 });
+    expect(ph3New.create!.inputs).toMatchObject({ width: 2048, height: 2048 });
+    expect(ph3New.create!.inputs).not.toHaveProperty("images.image_1");
+    expect(ph3New.sample!.inputs.latent_image).toEqual(["create", 1]);
+    expect(Object.keys(ph3New)).not.toContain("load");
+    expect(JSON.stringify(ph3New)).not.toContain("$");
 
     const krea = fill(TEMPLATES.get("krea2")!, [
       { role: "diffusion", slot: null, file: "k.safetensors", added: false },
@@ -1502,7 +1536,7 @@ describe("the image API", () => {
     // The test folder holds two of its parts at their download paths, but not its diffusion model.
     expect(z.parts.map((p: { present: boolean }) => p.present)).toEqual([false, true, true]);
     expect(body.starters.map((st: { id: string }) => st.id)).toEqual([
-      "flux-schnell", "krea2-raw", "krea2-turbo-uncensored", "krea2-turbo", "ltx-2.5-distilled", "minimax-h3-edit", "minimax-h3-turbo", "qwen-image-2.1-turbo", "qwen-image-edit", "qwen-image", "scail-2", "sdxl", "seedvr2-3b", "seedvr2-7b",
+      "flux-schnell", "krea2-raw", "krea2-turbo-uncensored", "krea2-turbo", "ltx-2.5-distilled", "minimax-h3-edit", "minimax-h3-turbo", "p-h3-image-w4a8", "p-h3-image", "qwen-image-2.1-turbo", "qwen-image-edit", "qwen-image", "scail-2", "sdxl", "seedvr2-3b", "seedvr2-7b",
       "wan2.2-i2v-14b-q5", "wan2.2-i2v-14b", "wan2.2-t2v-14b-q5", "wan2.2-t2v-14b", "wan2.2-ti2v-5b", "z-image-turbo",
     ]);
   });

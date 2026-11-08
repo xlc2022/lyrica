@@ -122,7 +122,8 @@ export function classify(names: string[], shapes: Record<string, number[]>, file
   if (hasBare(/^txtfusion\.projector\.weight$/)) return { role: "diffusion", slot: null, arch: "krea2" };
   if (hasBare(/^input_blocks\.0\.0\./) && hasBare(/^label_emb\./)) return { role: "diffusion", slot: null, arch: "sdxl" };
   // Video models, by the keys ComfyUI's model detection reads.
-  if (hasBare(/^video_patch_proj\.weight$/) && hasBare(/^audio_patch_proj\.weight$/)) return { role: "diffusion", slot: null, arch: h3 };
+  // P-H3-Image is H3 fine-tuned for stills, its timestep branch a precomputed table.
+  if (hasBare(/^video_patch_proj\.weight$/) && hasBare(/^audio_patch_proj\.weight$/)) return { role: "diffusion", slot: null, arch: hasBare(/^adaln_t_table$/) ? "p-h3-image" : h3 };
   if (hasBare(/^adaln_single\.emb\.timestep_embedder\.linear_1\.bias$/) && hasBare(/^audio_adaln_single\.linear\.weight$/)) return { role: "diffusion", slot: null, arch: "ltx2" };
   // SCAIL-2: Wan 2.1 I2V 14B with its own patch embeddings for the pose and mask videos.
   if (hasBare(/^head\.modulation$/) && hasBare(/^patch_embedding_pose\.weight$/)) return { role: "diffusion", slot: null, arch: "scail2" };
@@ -153,6 +154,8 @@ export function classify(names: string[], shapes: Record<string, number[]>, file
     const gemma4 = has(/(^|\.)layers\.47\.self_attn\.q_norm\.weight$/) && !has(/(^|\.)layers\.5\.self_attn\.v_proj\.weight$/) && !has(/(^|\.)layers\.59\./);
     return gemma4 ? { role: "text_encoder", slot: "gemma4_12b", arch: "gemma4" } : unknown;
   }
+  // P-H3-Image's Qwen3-VL 4B with its text connector.
+  if (has(/(^|\.)text_connector\.proj\.weight$/)) return { role: "text_encoder", slot: "ph3", arch: "qwen3vl" };
   if (has(/(^|\.)layers\.0\.self_attn\.q_proj\.weight$/)) {
     // Qwen3-VL 32B (MiniMax H3's), by its 64 layers: quantized weights don't keep their shapes.
     if (has(/(^|\.)layers\.63\.self_attn\./)) return { role: "text_encoder", slot: "qwen3vl_32b", arch: "qwen3vl" };
@@ -163,7 +166,9 @@ export function classify(names: string[], shapes: Record<string, number[]>, file
     if (has(/(^|\.)layers\.0\.self_attn\.q_norm\.weight$/)) return { role: "text_encoder", slot: "qwen3", arch: "qwen3" };
   }
 
-  // Video VAEs, by the keys ComfyUI's VAE loader reads; an audio VAE takes the audio slot.
+  // Video VAEs, by the keys ComfyUI's VAE loader reads; an audio VAE takes the audio slot. P-H3-Image's has H3's
+  // encoder and a single-frame decoder, 768 wide at its output.
+  if (has(/^decoder\.proj_out\.weight$/) && shapes["decoder.proj_out.weight"]?.[0] === 768) return { role: "vae", slot: null, arch: "p-h3-image" };
   if (has(/^decoder\.transformer_blocks\.0\.scale1$/) && has(/^encoder\.down\.5\.block\.0\.conv1\.weight$/)) return { role: "vae", slot: null, arch: "minimax-h3" };
   if (has(/^pre_block\.attn\.zero_k_bias$/)) return { role: "vae", slot: "audio", arch: "minimax-h3" };
   if (has(/^decoder\.up_blocks\.0\.res_blocks\.0\.conv1\.conv\.weight$/) || has(/^decoder\.conv_in_x_t\.weight$/)) return { role: "vae", slot: null, arch: "ltx2" };

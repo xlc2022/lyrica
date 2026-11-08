@@ -14,6 +14,8 @@ hardware. It builds on [video.md](video.md) and
 background clips. The other reading, the H3Studio timeline node
 (`shootthesound/ComfyUI-H3Studio`), is an editor for a person in
 ComfyUI's own interface, which the host doesn't serve, so it isn't used.
+The owner also meant the H3 image editor, P-H3-Image: see
+[h3-image.md](h3-image.md).
 
 ## The host
 
