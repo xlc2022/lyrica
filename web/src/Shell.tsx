@@ -662,9 +662,6 @@ function Sidebar({ ctx, users, route, trail, threads, error, checkedAt, onAuthCh
           <Icon name="moon" />Sleep{ctx.sleep.fresh > 0 ? <span className="count" aria-label={`${ctx.sleep.fresh} new`}>{ctx.sleep.fresh}</span>
             : ctx.sleep.running && <span className="busy" title="Sleeping"><span className="sr-only">Sleeping</span></span>}
         </a>
-        <a href={href({ page: "models", userId: user.id })} aria-current={route.page === "models" ? "page" : undefined} data-nav="models">
-          <Icon name="models" />Models{ctx.cleanup.count > 0 && <span className="count" aria-label={`${ctx.cleanup.count} to clean up`}>{ctx.cleanup.count}</span>}
-        </a>
       </nav>
       <div className="thread-tools">
         <details className="showing">
@@ -977,7 +974,7 @@ export function ThreadLink({ t, userId, on, shown, menu, child, openBeside, besi
   );
 }
 
-/** The user's button at the sidebar's foot: Settings, Administration, Switch user, Lock and Log out. */
+/** The user's button at the sidebar's foot: Models, Settings, Administration, Switch user, Lock and Log out. The button carries Clean up's count while there is one. */
 function UserMenu({ ctx, users, onAuthChange }: { ctx: ShellContext; users: UserCard[]; onAuthChange: (notice?: string) => void }) {
   const { user } = ctx;
   const [open, setOpen] = useState(false);
@@ -1004,10 +1001,14 @@ function UserMenu({ ctx, users, onAuthChange }: { ctx: ShellContext; users: User
       : undefined);
   });
   const others = users.filter((x) => x.id !== user.id);
+  const cleanup = ctx.cleanup.count;
   return (
     <div className="user-wrap" ref={ref}>
       {open && (
         <div className="menu above" role="menu">
+          <a href={href({ page: "models", userId: user.id })} role="menuitem" onClick={close} data-nav="models">
+            Models{cleanup > 0 && <span className="count" aria-label={`${cleanup} to clean up`}>{cleanup}</span>}
+          </a>
           <a href={href({ page: "settings", userId: user.id })} role="menuitem" onClick={close}>Settings</a>
           {user.admin && <a href={href({ page: "admin", userId: user.id })} role="menuitem" onClick={close}>Administration</a>}
           <div className="sep" role="separator" />
@@ -1027,6 +1028,7 @@ function UserMenu({ ctx, users, onAuthChange }: { ctx: ShellContext; users: User
       <button type="button" className="user-switch" aria-expanded={open} aria-haspopup="menu" onClick={() => setOpen(!open)}>
         <span className="avatar" aria-hidden="true">{monogram(user)}</span>
         <span><b>{user.displayName}</b><small>Switch user</small></span>
+        {cleanup > 0 && <span className="count" aria-label={`${cleanup} to clean up`}>{cleanup}</span>}
         <span className="caret" aria-hidden="true">▾</span>
       </button>
     </div>
