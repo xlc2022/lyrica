@@ -1836,7 +1836,9 @@ Details in [docs/memory.md](docs/memory.md).
 - **Review and editing:** users can search, edit, restore and delete any of
   their memories (notes, pages, WAKE, journal) in a memory browser in the web
   UI.
-  - Every edit is a revision.
+  - Every edit is a revision. The one exception (agreed 2026-11-08): undoing
+    the newest night removes the revisions sleep wrote that night, since they
+    were its own unreviewed draft (docs/sleep.md, "Undo").
   - Name tokens survive edits.
   - Sleep treats user edits as authoritative and asks rather than overwriting
     them.

@@ -38,7 +38,9 @@ coding-style preferences"). The user asked for both on 2026-11-08.
 - **Only the newest run** in that pool that wasn't skipped, once it has
   ended, and not while sleep is running for that user. After an undo, the
   run before it becomes the newest and can be undone too.
-- **Refused** when a memory the night changed has a newer revision (someone
+- **Refused** for a night from before pool step 14 or made under a rollback
+  (`superseded` is NULL: the column has no default, and new runs write `[]`).
+  Also **refused** when a memory the night changed has a newer revision (someone
   edited it since, or a later run respelled it), or something the night
   didn't write cites a note the night made. The refusal names the memory, so
   the person can restore it by hand from its History.

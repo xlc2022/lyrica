@@ -1823,7 +1823,7 @@ export class PoolStore extends PoolReader {
   /** `startedAt`: when the run began, before its renamed-files step, so the night's changes include those edits. */
   startSleepRun(reason: SleepRunRecord["reason"], until: string, startedAt = now()): string {
     const id = this.newSleepId("s", "sleep_runs");
-    this.db.prepare("INSERT INTO sleep_runs (id, reason, status, until, started_at) VALUES (?, ?, 'running', ?, ?)").run(id, reason, until, startedAt);
+    this.db.prepare("INSERT INTO sleep_runs (id, reason, status, until, started_at, superseded) VALUES (?, ?, 'running', ?, ?, '[]')").run(id, reason, until, startedAt);
     return id;
   }
 
@@ -1838,7 +1838,7 @@ export class PoolStore extends PoolReader {
   /** `startedAt`: earlier than `at` only when the skipped run still respelled renamed files, which its changes then list. */
   recordSleepRun(reason: SleepRunRecord["reason"], skipReason: SkipReason, at = now(), startedAt = at): string {
     const id = this.newSleepId("s", "sleep_runs");
-    this.db.prepare("INSERT INTO sleep_runs (id, reason, status, skip_reason, until, started_at, finished_at) VALUES (?, ?, 'skipped', ?, ?, ?, ?)")
+    this.db.prepare("INSERT INTO sleep_runs (id, reason, status, skip_reason, until, started_at, finished_at, superseded) VALUES (?, ?, 'skipped', ?, ?, ?, ?, '[]')")
       .run(id, reason, skipReason, at, startedAt, at);
     return id;
   }
@@ -1951,11 +1951,13 @@ export class PoolStore extends PoolReader {
   /** What undoing `runId` would take back, per memory, and why it can't be, if it can't. */
   private undoPlan(runId: string): { block?: string; items: Map<string, number[]>; superseded: { note: string; was: string | null }[] } {
     const items = new Map<string, number[]>();
-    const run = this.db.prepare("SELECT * FROM sleep_runs WHERE id = ?").get(runId) as (SleepRunRow & { superseded: string }) | undefined;
+    const run = this.db.prepare("SELECT * FROM sleep_runs WHERE id = ?").get(runId) as (SleepRunRow & { superseded: string | null }) | undefined;
     if (!run) return { block: "There's no such night.", items, superseded: [] };
     if (this.undoableRun()?.id !== runId) {
       return { block: run.status === "running" ? "She's still asleep." : "Only the newest night can be undone.", items, superseded: [] };
     }
+    // A run from before pool step 14, or made under a rollback, never recorded what it replaced.
+    if (run.superseded === null) return { block: "That night was before nights could be undone.", items, superseded: [] };
     const superseded = json<{ note: string; was: string | null }[]>(run.superseded);
     const revs = this.db.prepare("SELECT * FROM revisions WHERE author = 'sleep' AND created_at >= ? AND created_at <= ? ORDER BY id")
       .all(run.started_at, run.finished_at) as RevisionRow[];
@@ -1977,7 +1979,8 @@ export class PoolStore extends PoolReader {
   }
 
   private recordSuperseded(run: string, note: string, was: string | undefined): void {
-    this.db.prepare("UPDATE sleep_runs SET superseded = json_insert(superseded, '$[#]', json(?)) WHERE id = ?").run(JSON.stringify({ note, was: was ?? null }), run);
+    // A run that began before pool step 14 stays unrecorded (NULL), so a resumed one can't look complete.
+    this.db.prepare("UPDATE sleep_runs SET superseded = json_insert(superseded, '$[#]', json(?)) WHERE id = ? AND superseded IS NOT NULL").run(JSON.stringify({ note, was: was ?? null }), run);
   }
 
   // Editing

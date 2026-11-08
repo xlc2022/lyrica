@@ -137,7 +137,9 @@ its time again; the run before it can then be undone too. It is refused, in
 words that name the memory, when something the night changed has a newer
 revision (someone edited it, or a later run respelled it), or when something it
 didn't write cites a memory it made: the person restores that one from its
-History instead. A note pruned as superseded (`pruneSuperseded`) isn't brought
+History instead. A night from before pool step 14, or one made while a rollback
+ran the release before, never recorded what it replaced (its `superseded` is
+NULL), so it can't be undone ("That night was before nights could be undone."). A note pruned as superseded (`pruneSuperseded`) isn't brought
 back: only notes replaced two weeks earlier go that way.
 
 **Waking up.** A new thread starts with persona, WAKE, the page index, and how

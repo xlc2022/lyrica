@@ -384,7 +384,8 @@ export const STEPS: Record<DbKind, MigrationStep[]> = {
     // person's line for tonight's dream, kept in its own pool (docs/briefs/sleep-undo-focus.md). Adds a column and a table only.
     version: 14,
     run(db) {
-      addColumns(db, [["sleep_runs", "superseded", "TEXT NOT NULL DEFAULT '[]'"]]);
+      // No default: a run from before this step, or made under a rollback, reads NULL, so Undo knows it wasn't recorded.
+      addColumns(db, [["sleep_runs", "superseded", "TEXT"]]);
       db.exec(`CREATE TABLE sleep_focus (
         id     INTEGER PRIMARY KEY CHECK (id = 1),
         text   TEXT NOT NULL,
