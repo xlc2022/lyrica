@@ -455,3 +455,119 @@ export function useTheme(): "dark" | "light" {
   }, []);
   return theme;
 }
+
+/** `list` with the item at `from` taken out and put back at `to`. */
+export const moved = <T,>(list: readonly T[], from: number, to: number): T[] => {
+  const next = [...list];
+  const [x] = next.splice(from, 1);
+  next.splice(to, 0, x!);
+  return next;
+};
+
+/**
+ * Drag to reorder a list whose rows also have Move up and Move down. A mouse or pen drags a row from anywhere but a
+ * control; a finger holds the row for a moment first, so a swipe still scrolls. Other rows slide aside while it moves,
+ * and on release `onMove(from, to)` gets the old and new index. The rows stay where they were dropped until `order`
+ * (the list's identity, as shown) changes or the save ends. Pointer events, so mouse, pen and touch alike.
+ */
+export function useReorder(count: number, order: string, busy: boolean, onMove: (from: number, to: number) => void) {
+  type Drag = { from: number; to: number; dy: number; held?: string };
+  type Press = { id: number; from: number; x: number; y: number; on: boolean; touch: boolean; rects: DOMRect[]; timer?: ReturnType<typeof setTimeout> };
+  const [drag, setDrag] = useState<Drag | null>(null);
+  const rows = useRef<(HTMLElement | null)[]>([]);
+  const press = useRef<Press | null>(null);
+  const container = useRef<HTMLElement | null>(null);
+  const moveRef = useRef(onMove);
+  moveRef.current = onMove;
+  const orderRef = useRef(order);
+  orderRef.current = order;
+  const dragRef = useRef(drag);
+  dragRef.current = drag;
+  // A dropped row stays put until the list comes back in its new order, or the save fails.
+  useEffect(() => { setDrag((d) => (d?.held !== undefined && d.held !== order ? null : d)); }, [order]);
+  const wasBusy = useRef(busy);
+  useEffect(() => { if (wasBusy.current && !busy) setDrag((d) => (d?.held !== undefined ? null : d)); wasBusy.current = busy; }, [busy]);
+  // While a finger drags, the page mustn't scroll: only a listener that isn't passive can stop it, so not React's.
+  const stop = useRef((e: TouchEvent) => { if (press.current?.on) e.preventDefault(); });
+  const list = useCallback((el: HTMLElement | null) => {
+    container.current?.removeEventListener("touchmove", stop.current);
+    container.current = el;
+    el?.addEventListener("touchmove", stop.current, { passive: false });
+  }, []);
+  const target = (p: Press, dy: number) => {
+    const r = p.rects[p.from]!;
+    const mid = r.top + r.height / 2 + dy;
+    let to = 0;
+    p.rects.forEach((x, j) => { const m = x.top + x.height / 2; if (j < p.from ? m < mid - 0.5 : j > p.from && m <= mid + 0.5) to++; });
+    return to;
+  };
+  const begin = (p: Press) => {
+    p.on = true;
+    getSelection()?.removeAllRanges();
+    if (p.touch) navigator.vibrate?.(10);
+    setDrag(dragRef.current = { from: p.from, to: p.from, dy: 0 });
+  };
+  const end = (drop: boolean) => {
+    const p = press.current;
+    press.current = null;
+    if (!p) return;
+    clearTimeout(p.timer);
+    if (!p.on) return;
+    const d = dragRef.current;
+    if (!d || !drop || d.to === d.from) { setDrag(null); return; }
+    const a = p.rects[d.from]!, b = p.rects[d.to]!;
+    setDrag({ ...d, dy: d.to > d.from ? b.bottom - a.bottom : b.top - a.top, held: orderRef.current });
+    moveRef.current(d.from, d.to);
+  };
+  const row = (i: number) => ({
+    ref: (el: HTMLElement | null) => { rows.current[i] = el; },
+    onPointerDown: (e: React.PointerEvent) => {
+      if (busy || count < 2 || !e.isPrimary || e.button !== 0) return;
+      if ((e.target as Element).closest("button, a, input, select, textarea, label, [role=menu]")) return;
+      const rects = rows.current.slice(0, count).map((el) => el!.getBoundingClientRect());
+      const p: Press = { id: e.pointerId, from: i, x: e.clientX, y: e.clientY, on: false, touch: e.pointerType === "touch", rects };
+      press.current = p;
+      if (p.touch) p.timer = setTimeout(() => { if (press.current === p) begin(p); }, 250);
+    },
+    onPointerMove: (e: React.PointerEvent) => {
+      const p = press.current;
+      if (!p || e.pointerId !== p.id) return;
+      const dy = e.clientY - p.y;
+      if (!p.on) {
+        // A finger that moves before the hold is a scroll; a mouse that moves a few pixels is a drag.
+        if (Math.hypot(e.clientX - p.x, dy) < (p.touch ? 8 : 4)) return;
+        if (p.touch) { end(false); return; }
+        begin(p);
+        (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
+      }
+      const first = p.rects[0]!, last = p.rects[count - 1]!, r = p.rects[p.from]!;
+      const clamped = Math.max(first.top - r.top, Math.min(last.bottom - r.bottom, dy));
+      setDrag(dragRef.current = { from: p.from, to: target(p, clamped), dy: clamped });
+    },
+    onPointerUp: (e: React.PointerEvent) => { if (press.current?.id === e.pointerId) end(true); },
+    onPointerCancel: () => end(false),
+    onLostPointerCapture: (e: React.PointerEvent) => { if (press.current?.id === e.pointerId && press.current.on) end(true); },
+    onContextMenu: (e: React.MouseEvent) => { if (press.current?.touch) e.preventDefault(); },
+    style: shift(i),
+    "data-reorder": "",
+    "data-dragging": drag && drag.held === undefined && drag.from === i ? "" : undefined,
+  });
+  // The dragged row follows the pointer; those between its old and new place slide over by its height and the gap.
+  // Once the list comes back in another order the drop is done, and the rows sit in their new places untransformed.
+  const shift = (i: number): React.CSSProperties | undefined => {
+    const d = drag && (drag.held === undefined || drag.held === order) ? drag : null;
+    const rects = press.current?.rects ?? lastRects.current;
+    // A row that can be dragged says so with the cursor; its text isn't selectable, as a press drags or holds instead.
+    if (!d || !rects?.[d.from]) return count > 1 && !busy ? { cursor: "grab", userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none" } as React.CSSProperties : undefined;
+    const moving = { transition: "transform 0.15s ease" };
+    if (i === d.from) return { transform: `translateY(${d.dy}px)`, ...(d.held ? moving : { cursor: "grabbing" }) };
+    const a = rects[d.from]!;
+    const between = d.to > d.from ? i > d.from && i <= d.to : i < d.from && i >= d.to;
+    const step = !between ? 0 : d.to > d.from ? -(rects[d.from + 1]!.top - a.top) : a.bottom - rects[d.from - 1]!.bottom;
+    return { transform: `translateY(${step}px)`, ...moving };
+  };
+  // The rects of the last drag, for the rows held after a drop.
+  const lastRects = useRef<DOMRect[]>(undefined);
+  if (press.current?.rects) lastRects.current = press.current.rects;
+  return { list, row, active: !!drag && drag.held === undefined };
+}

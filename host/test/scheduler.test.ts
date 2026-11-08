@@ -251,6 +251,24 @@ describe("the GPU queue", () => {
     expect(gpus.on("image")).toEqual([0]);
   });
 
+  it("remeasures after a job that failed, so what the server kept can still be evicted", async () => {
+    const { scheduler, state, gpus, llamacpp } = setup([24]);
+    await scheduler.start([]);
+    const chat = textModel("chat", 17);
+    await scheduler.loadNow(chat);
+    const initial = state.get().vram["chat@0~8192"]![0]!;
+    // The job loads more, then breaks (a ComfyUI node that fails after loading its model).
+    const failed = await scheduler.run(chat, "chat", async () => {
+      gpus.loaded.get("chat")![0] = initial + 1.9 * GIB;
+      throw new Error("a node failed");
+    }).catch((e: Error) => e);
+    expect((failed as Error).message).toBe("a node failed");
+    expect(state.get().vram["chat@0~8192"]![0]).toBe(initial + 1.9 * GIB);
+    const image = textModel("image", 21.2 / 1.1, { kind: "image", contextLength: 0 });
+    await scheduler.run(image, "image", async () => {});
+    expect(llamacpp.calls).toEqual(["load chat@0", "unload chat", "load image@0"]);
+  });
+
   it("runs a model its measurement fits, though its estimate no longer would", async () => {
     const { scheduler, state } = setup([24]);
     await scheduler.start([]);

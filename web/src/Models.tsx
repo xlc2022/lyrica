@@ -24,7 +24,7 @@ import {
 import { go, href, type ModelsPageUnder, type ModelsTab, type Route } from "./route.ts";
 import type { ShellContext } from "./Shell.tsx";
 import { TextModels } from "./TextModels.tsx";
-import { clock, ConfirmDialog, ErrorText, hidden, shortTime, Switch, useAction, useDismiss, useLoad } from "./ui.tsx";
+import { clock, ConfirmDialog, ErrorText, hidden, moved, shortTime, Switch, useAction, useDismiss, useLoad, useReorder } from "./ui.tsx";
 
 /** The sidebar's Clean up count, from GET …/models/cleanup: a plain read, so the shell can poll it without probing any endpoint. */
 export function useCleanupCount(userId: string): { count: number; reload: () => void } {
@@ -770,6 +770,7 @@ function TaskDrawer({ ctx, p, all, groups, column, task, onClose }: {
   });
   const saveList = (next: ModelRef[]) => save({ models: next });
   const move = (i: number, by: number) => { const next = [...list]; [next[i], next[i + by]] = [next[i + by]!, next[i]!]; void saveList(next); };
+  const reorder = useReorder(list.length, list.map(refKey).join(" "), busy, (from, to) => void saveList(moved(list, from, to)));
   const add = (r: ModelRef) => { setPicking(false); setQ(""); void saveList([...list, r]); };
   const about = `${column === "private" ? "Private threads" : "General threads"} column · ${col.preset?.name ?? "Custom"}`;
   // Why Same as is off: other tasks follow this one. A fact about the list, so it stays in view (a tooltip doesn't show on a phone).
@@ -799,7 +800,7 @@ function TaskDrawer({ ctx, p, all, groups, column, task, onClose }: {
         {own && (
           <>
             {list.length > 0 && (
-              <ol className="olist" aria-label={`${name} list`}>
+              <ol ref={reorder.list} className="olist" data-reordering={reorder.active ? "" : undefined} aria-label={`${name} list`}>
                 {list.map((r, i) => {
                   const ms = membersOf(r, all, groups);
                   const kind = refKind(ms);
@@ -809,7 +810,7 @@ function TaskDrawer({ ctx, p, all, groups, column, task, onClose }: {
                   return (
                     <Fragment key={refKey(r)}>
                       {cross && <li className="crossline">Falls back to {kind} from here</li>}
-                      <li className="oentry" data-ref={refKey(r)}>
+                      <li className="oentry" data-ref={refKey(r)} {...reorder.row(i)}>
                         <span className="onum num">{i + 1}</span>
                         <div className="obody">
                           <div className="oname">

@@ -1989,6 +1989,13 @@ ul.choices { list-style: none; margin: 0; padding: 0; }
 .wf-gmatches button:hover, .wf-gmatches button:focus-visible { background: var(--tool); }
 @media (pointer: coarse) { .wf-gmatches button { min-height: var(--tap); } }
 @media (max-width: 640px) { .wf-graph { height: 420px; min-height: 0; } }
+/* Drag to reorder (useReorder in ui.tsx): the dragged row lifts above the rows sliding aside. */
+[data-reorder][data-dragging] { position: relative; z-index: 2; box-shadow: 0 6px 20px rgb(0 0 0 / 0.16); }
+/* A table row doesn't lift over its siblings on every engine, so its cells do (on a phone the rows are stacked blocks, which lift). */
+.copies tr[data-dragging] { background: var(--panel); }
+@media (min-width: 761px) { .copies tr[data-dragging] > td { position: relative; z-index: 2; background: var(--panel); box-shadow: 0 10px 14px -8px rgb(0 0 0 / 0.22); } }
+@media (prefers-reduced-motion: reduce) { [data-reorder] { transition: none !important; } }
+[data-reordering] .crossline { visibility: hidden; }
 .sleep-tonight form.inline { flex-wrap: nowrap; }
 .sleep-tonight .field { flex: 1 1 0; min-width: 0; }
 .sleep-tonight .field input { width: 100%; }

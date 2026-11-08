@@ -582,6 +582,10 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   shared task. Dictation has a Private cell only. The drawer names the
   column and preset, with **Its own list** or **Same as**, **Task to share
   with**, ordered models with Move up, Move down and Remove, and **Add…**.
+  A row also drags to a new place (`useReorder` in `src/ui.tsx`, pointer
+  events: a mouse or pen from anywhere but a control, a finger after a
+  250 ms hold so a swipe still scrolls); the others slide aside, and the drop
+  saves the whole order as the arrows do.
   General lists mark where fallback crosses local/cloud; Private offers
   local models only. Changes send `PUT …/columns/:column/:task` at once.
   The model picker, Tasks entries, Text models copies and Image models show
@@ -605,8 +609,8 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   **Unstar** (`PUT …/star` on every copy), the name with finetune and gone
   pills, "<kind> · group of <n> | <n> copies · built on <base> ·
   <endpoints>", opening in place to a table of its copies, the group's
-  members first in order (Move up, Move down, Remove from the group: `PATCH
-  …/groups/:id`), then the others (**Add to group** when the row's group is
+  members first in order (Move up, Move down, Remove from the group, or a
+  member's row dragged as in Tasks: `PATCH …/groups/:id`), then the others (**Add to group** when the row's group is
   the user's to change). A Copy cell: raw model name with its endpoint muted
   after it, kind, status and "same file" pills (the Models page's checksum),
   "downloaded by Lyrica" or "shared folder", tok/s, the price and retirement
