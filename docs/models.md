@@ -365,7 +365,9 @@ Fallback off only the named model is tried. `Resolution.passedOver` lists
 the skipped models that could have answered (their machine was away, a call
 to them failed, Free models only ruled them out, they were named, or they
 lack a LoRA the call names), not those that don't do the call; `callWithFallback` adds the models its calls
-failed on to it and to `skipped`.
+failed on to it and to `skipped`, with the host's own reason when it answered
+but failed the job ("its host said: ComfyUI refused the workflow"), else
+"it couldn't be reached".
 
 `resolveLive` first probes the chosen endpoint (2 seconds) when its health
 isn't known lately and there is a later model to fall back to (or always,

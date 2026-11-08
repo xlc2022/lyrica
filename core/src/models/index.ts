@@ -2765,7 +2765,8 @@ export class Models {
         // A host that answered but couldn't run this one model stays up for its others.
         if (err instanceof HostRefused && err.code === "model_unavailable") this.modelDown.set(r.offering.id, Date.now());
         else this.reportDown(r.endpoint.id);
-        tried.push({ label: r.label, reason: "it couldn't be reached" });
+        // A host that answered says why in plain words, never with the prompt (host/API.md, errors).
+        tried.push({ label: r.label, reason: err instanceof HostRefused && err.code === "model_unavailable" ? `its host said: ${err.message.replace(/\.$/, "")}` : "it couldn't be reached" });
       }
     }
   }
