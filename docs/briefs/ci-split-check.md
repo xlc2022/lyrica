@@ -1,6 +1,6 @@
 # Brief: the unit tests and the e2e tests as two CI jobs
 
-**Status:** Built, in review.
+**Status:** Merged as #833 (1f708d51).
 
 **Branch:** `claude/project-thread-5aac8y`. **Asked for:** by the operator,
 2026-11-08, after an audit of the workflow.
@@ -38,5 +38,6 @@ be added beside it, or a red Playwright run would not block a merge.
 
 ## Handoff
 
-Done: the split, the docs. Next: PR review, then measure a few runs and
-record the time here. Open questions: none.
+Done: the split, the docs, merged. The PR's own run took 9 min 43 s from
+start to end (check 5 min 20 s, e2e 9 min 32 s, both from runner start)
+against about 15 min before. Open questions: none.
