@@ -121,6 +121,20 @@ describe("ordered fallbacks", () => {
 });
 
 describe("an image model asked for by name", () => {
+  it("says a host's own reason when it answered but failed the job", async () => {
+    const s = await setup();
+    const krea = s.models.addModel(s.ada, s.spare.ep.id, { modelId: "Krea 2 Turbo", image: true });
+    const zimage = s.models.addModel(s.ada, s.blackwell.ep.id, { modelId: "z-image", image: true });
+    s.models.setColumnTask(s.ada.id, "private", "image.create", [{ offeringId: zimage.id }]);
+    const priv = s.ctx({ pool: "private", localOnly: true });
+    const r = await s.models.callWithFallback("image.create", priv, { first: [krea.id] }, async (r) => {
+      if (r.offering.id === krea.id) throw new HostRefused("model_unavailable", "ComfyUI refused the workflow.");
+      return r;
+    });
+    expect(r.ref).toEqual({ offeringId: zimage.id });
+    expect(r.passedOver).toEqual([{ label: "spare/Krea 2 Turbo", reason: "its host said: ComfyUI refused the workflow" }]);
+  });
+
   it("goes before the list for one call, whatever its tier, and every model passed over is said", async () => {
     const s = await setup();
     const krea = s.models.addModel(s.ada, s.spare.ep.id, { modelId: "Krea 2 Turbo", image: true, useFor: "fast" });

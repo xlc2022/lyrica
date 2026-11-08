@@ -718,6 +718,19 @@ describe("ComfyUI jobs", () => {
     expect(fake.seen.interrupted).toEqual([]);
   });
 
+  it("says which nodes ComfyUI refused a workflow over, never an input's value", async () => {
+    // A custom node that didn't load (RES4LYF on a read-only disk), and a bad input on another node.
+    const fake = await fakeComfy({ refuse: () => ({
+      error: { type: "missing_node_type", message: "Node 'secret words' not found.", extra_info: { node_id: "s", class_type: "ClownsharKSampler_Beta" } },
+      node_errors: { pos: { errors: [{ details: "text: secret words" }], class_type: "CLIPTextEncode" } },
+    }) });
+    open.push(fake);
+    const graph = { s: { class_type: "ClownsharKSampler_Beta", inputs: {} }, pos: { class_type: "CLIPTextEncode", inputs: { text: "secret words" } } };
+    const err = await new Comfy(fake.url).run({}, () => graph).catch((e: Error) => e);
+    expect(err).toMatchObject({ status: 503, code: "model_unavailable", message: "ComfyUI refused the workflow (missing_node_type: ClownsharKSampler_Beta, CLIPTextEncode)." });
+    expect(String((err as Error).message)).not.toMatch(/secret/);
+  });
+
   it("runs ComfyUI only while a recipe is loaded, and stops it at once on pause", async () => {
     const fake = await fakeComfy();
     open.push(fake);
