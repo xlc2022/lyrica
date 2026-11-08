@@ -50,5 +50,5 @@ Image edits lists.
 ## Handoff
 
 - 2026-11-08: built on `claude/project-thread-k2qybw` with the clip
-  editor, in the same PR. Next: pin checksums from CI, PR review (the
+  editor, in the same PR; checksums pinned from CI. Next: PR review (the
   ComfyUI bump), a GPU run after the host update.

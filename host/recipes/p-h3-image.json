@@ -7,7 +7,7 @@
       "source": "huggingface",
       "repo": "PrunaAI/P-H3-Image-Comfy",
       "path": "diffusion_models/p-h3-image_int8_convrot.safetensors",
-      "sha256": "",
+      "sha256": "b156fd4fe9d169e58cb2b07f9594ec740ff8f0e052d62b009e6dd034de5865e7",
       "size": 21213068840
     },
     {
@@ -16,7 +16,7 @@
       "source": "huggingface",
       "repo": "PrunaAI/P-H3-Image-Comfy",
       "path": "text_encoders/p-h3-image_text_encoder_int8_convrot.safetensors",
-      "sha256": "",
+      "sha256": "fb42c9ff0597e61729475d0b48b69b591ffe06d0b442a79dde22b14fadbe1c0f",
       "size": 5120870504
     },
     {
@@ -24,7 +24,7 @@
       "source": "huggingface",
       "repo": "PrunaAI/P-H3-Image-Comfy",
       "path": "vae/p-h3-image_vae_int8_convrot.safetensors",
-      "sha256": "",
+      "sha256": "583e0d43354b6b833aa9a0815a5fac831b1ef6d0c19a7eaa0616980a3dab5ffe",
       "size": 3146996440
     }
   ],
