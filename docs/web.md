@@ -1269,7 +1269,11 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   user message already in the stored page is shown only there, even before
   turn end or if the send response arrives after the reload. Copies match by
   text in send order, using the last stored message number before sending
-  so an earlier identical message does not hide a new one.
+  so an earlier identical message does not hide a new one. A follow-up taken
+  from the queue, or one Pi took mid-turn (`received`), is stored as the next
+  turn starts, which can be before the reload the last turn's end started
+  lands; `src/stream.ts` gives its live copy the last stored message number
+  the view had, so it is matched the same way.
   `src/stream.ts` listens for every `ThreadEvent` type by name, from a
   record keyed by the type, so a new type fails the typecheck until it's
   listed.

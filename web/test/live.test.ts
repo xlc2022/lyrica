@@ -318,6 +318,18 @@ describe("stored user messages replacing live copies", () => {
     expect(storedUserItems(live.items, [{ ...message(8, text), from: { kind: "parent", threadId: "web/parent" } }])).toEqual(new Set());
     expect(storedUserItems(live.items, [message(8, "another file")])).toEqual(new Set());
   });
+
+  it("replaces a follow-up taken from the queue once a reload brings its stored copy mid-turn", () => {
+    // The last turn's end starts a reload; the follow-up is taken and stored before that reload lands.
+    const follow = "Another one, with a more dynamic pose.";
+    const live = run([{ type: "hello", busy: true, queued: [], permissions: [], making: [] }, { type: "queue", queued: [follow] },
+      { type: "turn_end", aborted: false }, { type: "queue", queued: [], afterN: 7 }, { type: "turn_start" }, { type: "stored" },
+      { type: "text", delta: "Making it." }]);
+    expect(storedUserItems(live.items, [message(7, "first")])).toEqual(new Set());
+    expect(storedUserItems(live.items, [message(7, "first"), message(9, follow)])).toEqual(new Set([0]));
+    const took = run([{ type: "received", text: follow, afterN: 7 }]);
+    expect(storedUserItems(took.items, [message(9, follow)])).toEqual(new Set([0]));
+  });
 });
 
 // Principle 1: a thread opened mid-turn shows her question card once, not its stored copy beside the live one.
