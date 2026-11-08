@@ -72,9 +72,9 @@ const ADMIN: SectionDef[] = [
   { key: "tailnet", label: "Tailnet", body: (ctx) => <TailnetSection ctx={ctx} /> },
   { key: "web", label: "Web access", body: (ctx) => <Section title="Web access"><WebAccessSection userId={ctx.user.id} /></Section> },
   { key: "search", label: "Web search", body: (ctx) => <WebSearchSection ctx={ctx} /> },
-  { key: "updates", label: "Updates", body: (ctx) => <UpdatesSection ctx={ctx} /> },
   { key: "persona", label: "Persona", body: (ctx) => <ProposalsSection ctx={ctx} /> },
   { key: "reset", label: "Reset", body: (ctx) => <WipeSection ctx={ctx} /> },
+  { key: "updates", label: "Updates", body: (ctx) => <UpdatesSection ctx={ctx} /> },
 ];
 
 /** The user's own settings: a page with its sections listed at the left (docs/ux.md §6). */
