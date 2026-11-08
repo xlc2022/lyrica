@@ -961,7 +961,7 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   (the offline copy of Wikipedia) and its own state word, whose
   Reachable tooltip lists the books kiwix-serve has; one Save for both,
   enabled once either changed; `GET`/`PUT …/admin/web-search`),
-  **Updates**, **Persona**: the persona changes that users sent on, the
+  **Persona**: the persona changes that users sent on, the
   file now and the proposed text side by side, rendered as Markdown
   (who sent them, whether they edited them, and a confirmation when the file
   changed since), and **Reset** (`src/Wipe.tsx`): **Wipe memory…** opens a
@@ -972,7 +972,7 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   spinner beside its sentence and "<n> running" as a disclosure listing each
   (Reply, Subagent or Sleep · user · pool), polling `GET …/admin/wipe` until
   nothing runs, when it says **Everything has stopped** and **Wipe memory**
-  enables again. Done, the section says "Memory wiped.". Settings ends with
+  enables again. Done, the section says "Memory wiped.". **Updates** comes last. Settings ends with
   its own **Reset**: **Wipe my memory…** opens the same dialog, "Wipe your
   memory?", with **Keep my skills**, on `POST`/`GET …/me/wipe`, which wipes and lists only the user's
   own; its stopping state is titled **Stopping your work**. Her name (`src/name.ts`, `her()`) is what every label,
