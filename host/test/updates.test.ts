@@ -260,8 +260,8 @@ describe("POST /host/v1/update", () => {
     const fp = await pair(tls, me, made.code);
     const post = (tag: unknown) => call({ port: tls, path: "/host/v1/update", identity: me, pinned: fp, method: "POST", body: { tag } });
 
-    writeFileSync(join(dir, "status", "state.json"), JSON.stringify({ available: false, reason: "Update this host from its NixOS configuration." }));
-    expect(await post("update/two")).toMatchObject({ status: 409, body: { error: { code: "unavailable", message: "Update this host from its NixOS configuration." } } });
+    writeFileSync(join(dir, "status", "state.json"), JSON.stringify({ available: false, reason: "This host has no systemd: update it with git pull and install.sh." }));
+    expect(await post("update/two")).toMatchObject({ status: 409, body: { error: { code: "unavailable", message: "This host has no systemd: update it with git pull and install.sh." } } });
 
     // An updater from before commits takes no commit.
     writeFileSync(join(dir, "status", "state.json"), JSON.stringify({ available: true, state: "idle" }));

@@ -1,6 +1,6 @@
 # Brief: Update a NixOS model host from Lyrica
 
-**Status:** Not started.
+**Status:** In review (branch `claude/project-thread-u1rb3n`).
 **Branch:** a `feature/*` branch of the building thread's choosing.
 **Model:** Opus. **Reviews:** PR review (`nix/`, `host/install.sh`, the
 updater: all risky). No UI review: nothing a user sees changes except that
@@ -110,8 +110,27 @@ Building the host's images with Nix, or putting host code in the Nix store.
 The host stays a Docker stack built by `install.sh`. lyricad's own updater
 doesn't change.
 
-## Until this is built
+## Handoff
 
-A NixOS host takes a fix with `git pull && host/install.sh` in its checkout
-(mystria: `/srv/lyrica-host`). A small separate PR can fix the tooltip now
-so it says that, not "from its NixOS configuration".
+**Done:** `nix/host-module.nix` declares `updates.enable` (default on):
+`lyrica-host-update` from the store (`host/update.sh` with a fixed PATH;
+`host/test/updater-path.test.ts` checks every command the host scripts run
+is on it), the service and path units, and the updater's folders as
+tmpfiles. The egress unit runs `egress.sh` from the folder in
+`/var/lib/lyrica-host-update/current`, falling back to `checkout`, and
+carries `checkout` in `LYRICA_HOST_CHECKOUT` for `install.sh`'s check.
+`install.sh` on NixOS uses the module's updater when its path unit exists
+(and installs no script or unit), else reports "Set
+services.lyrica-host.updates.enable and rebuild, or update with git pull
+and install.sh in the host's folder." `changesFolder` stays true: the
+module's `modelsDir` rule only creates the folder, so a stale one is
+harmless (documented). `flake.nix` evaluates `model-host` with the updater
+on and off. Docs: host/README.md, host/API.md, docs/guides/model-hosts.md,
+docs/ux.md.
+
+**Next:** merge; each NixOS host (mystria, lunasa's host) runs `nix flake
+update lyrica && nixos-rebuild switch`, then `git pull && host/install.sh`
+in its checkout once; then the first real Update from Lyrica, on lunasa's
+host first.
+
+**Open:** none.

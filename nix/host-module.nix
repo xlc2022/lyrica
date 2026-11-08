@@ -1,14 +1,40 @@
 # services.lyrica-host: what the model host (host/README.md) needs from a
 # NixOS machine, declared here because NixOS's /etc is read-only and
-# host/install.sh can't install packages or units on it. host/install.sh
-# still builds and starts the Compose stack from a checkout, as on Debian.
-# See host/README.md, "On NixOS".
+# host/install.sh can't install packages or units on it: Docker, the driver,
+# the egress unit, the models folder and the updater (host/update.sh, which
+# install.sh installs itself on other systems). host/install.sh still builds
+# and starts the Compose stack from a checkout, as on Debian. See
+# host/README.md, "On NixOS".
 { config, lib, pkgs, ... }:
 
 let
   cfg = config.services.lyrica-host;
   gpuUnlock = config.boot.kernelPackages.callPackage ./gpu-unlock.nix { };
   cmpUnlock = config.boot.kernelPackages.callPackage ./cmp-unlock.nix { };
+  # The updater, from the store: never part of an update, as on Debian. Its
+  # PATH holds every command host/update.sh runs, and every command the
+  # install.sh --yes it runs in the new tree runs (host/test/updater-path.test.ts).
+  updaterPath = lib.makeBinPath (with pkgs; [
+    bash coreutils findutils gnugrep gnused gawk gnutar jq curl git openssh util-linux
+    iptables iproute2 kmod nettools getent systemd config.virtualisation.docker.package
+  ] ++ lib.optional (cfg.gpu == "nvidia") config.hardware.nvidia.package.bin);
+  updater = pkgs.writeTextFile {
+    name = "lyrica-host-updater";
+    destination = "/bin/lyrica-host-update";
+    executable = true;
+    text = "#!${pkgs.bash}/bin/bash\nexport PATH=${updaterPath}:$PATH\n" + builtins.readFile ../host/update.sh;
+  };
+  # The folder the host runs from: an update's tree once updates have run
+  # (/var/lib/lyrica-host-update/current, as host/update.sh and install.sh
+  # write it), else the checkout. Its egress.sh applies the rules.
+  egressRun = pkgs.writeShellScript "lyrica-host-egress" ''
+    set -euo pipefail
+    dir=${cfg.checkout}/host
+    if current=$(cat /var/lib/lyrica-host-update/current 2>/dev/null) && [ -f "$current/.env" ]; then dir=$current; fi
+    # Until install.sh has written .env there is no address to name.
+    if [ ! -f "$dir/.env" ]; then echo "no host installed yet ($dir/.env is missing): nothing to apply"; exit 0; fi
+    exec ${pkgs.bash}/bin/bash "$dir/egress.sh" apply
+  '';
   # Runs cmp100-unlock on the machine's CMP 100-210 cards (10de:1df4 or
   # 10de:1d84, as host/src/gpus.ts), or does nothing if it has none. The
   # script copies payloads over gv100's firmware for the run, so the kernel
@@ -45,9 +71,11 @@ in {
       type = lib.types.str;
       default = "/srv/lyrica-host";
       description = ''
-        The clone of the Lyrica repository host/install.sh runs from. The
-        egress unit runs its host/egress.sh with the address in host/.env.
-        Never /opt/lyrica, which is lyricad's own (releases and repo.git).
+        The clone of the Lyrica repository host/install.sh is first run from.
+        The egress unit runs host/egress.sh from the folder the host runs
+        from: this checkout until the first update from Lyrica, then the
+        update's tree under /opt/lyrica-host. Never /opt/lyrica, which is
+        lyricad's own (releases and repo.git).
       '';
     };
 
@@ -55,6 +83,19 @@ in {
       type = lib.types.str;
       default = "/srv/models";
       description = "The models folder (install.sh's --models), created if missing.";
+    };
+
+    updates.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Updates from Lyrica's Models page (host/README.md, "Updates"): the
+        updater, lyrica-host-update, from the store with a fixed PATH, and
+        the units that run it as root when host-api writes a request. The
+        same updater install.sh installs on other systems; an update never
+        replaces it. With it off, upgrade with git pull and host/install.sh
+        in the checkout.
+      '';
     };
 
     gpu = lib.mkOption {
@@ -161,19 +202,56 @@ in {
     hardware.amdgpu.initrd.enable = lib.mkIf (cfg.gpu == "amd") true;
     hardware.graphics.enable = lib.mkIf (cfg.gpu != "none") true;
 
-    # What install.sh runs besides Docker.
-    environment.systemPackages = with pkgs; [ git curl iptables iproute2 kmod gawk ]
-      ++ lib.optional cfg.cmpUnlock.enable cmpUnlock;
+    # What install.sh runs besides Docker, and the updater for a run by hand
+    # (sudo lyrica-host-update --tag update/<name>).
+    environment.systemPackages = with pkgs; [ git curl jq iptables iproute2 kmod gawk ]
+      ++ lib.optional cfg.cmpUnlock.enable cmpUnlock
+      ++ lib.optional cfg.updates.enable updater;
 
     # lyrica/ too, so install.sh needn't be root to make it; the fetch
     # container takes it over (10001) on its first run.
+    # The updater's folders as install.sh makes them: inbox/ is the one folder
+    # of the updater's host-api (10001) can write; /etc/lyrica-host holds the
+    # deploy key and known_hosts (NixOS leaves unmanaged files in /etc alone);
+    # /opt/lyrica-host the release trees.
     systemd.tmpfiles.rules = [
       "d ${cfg.modelsDir} 0755 root root -"
       "d ${cfg.modelsDir}/lyrica 0755 10001 10001 -"
+    ] ++ lib.optionals cfg.updates.enable [
+      "d /var/lib/lyrica-host-update 0755 root root -"
+      "d /var/lib/lyrica-host-update/inbox 0700 10001 10001 -"
+      "d /var/lib/lyrica-host-update/status 0755 root root -"
+      "d /etc/lyrica-host 0700 root root -"
+      "d /opt/lyrica-host 0755 root root -"
     ];
 
+    # As host/lyrica-host-update.service and .path, which install.sh installs on
+    # other systems: one update per request, as root, outside host-api (which
+    # has no route out). install.sh sees the path unit and leaves the updater
+    # to the module.
+    systemd.services.lyrica-host-update = lib.mkIf cfg.updates.enable {
+      description = "Lyrica model host: updater (fetch, pause, switch, install, probation)";
+      after = [ "network-online.target" "docker.service" ];
+      wants = [ "network-online.target" ];
+      serviceConfig = {
+        Type = "oneshot";
+        ExecStart = "${updater}/bin/lyrica-host-update --request";
+        TimeoutStartSec = "infinity";
+        Nice = 10;
+        PrivateTmp = true;
+      };
+    };
+    systemd.paths.lyrica-host-update = lib.mkIf cfg.updates.enable {
+      description = "Lyrica model host: update requests";
+      wantedBy = [ "multi-user.target" ];
+      pathConfig.PathExists = "/var/lib/lyrica-host-update/inbox/request.json";
+    };
+
     # As host/lyrica-host-egress.service, which install.sh installs on other
-    # systems: host-api's rules before Docker starts, after every reboot.
+    # systems: host-api's rules before Docker starts, after every reboot. On
+    # other systems install.sh writes the unit with its own folder each run;
+    # here egressRun reads the folder the host runs from. install.sh reads
+    # LYRICA_HOST_CHECKOUT to check that checkout names the clone it runs from.
     systemd.services.lyrica-host-egress = {
       description = "Lyrica model host: no outbound connections from host-api";
       before = [ "docker.service" ];
@@ -181,12 +259,11 @@ in {
       partOf = [ "docker.service" ];
       wantedBy = [ "docker.service" ];
       path = with pkgs; [ bash coreutils gnused iptables ];
-      # Until install.sh has written host/.env there is no address to name.
-      unitConfig.ConditionPathExists = "${cfg.checkout}/host/.env";
+      environment.LYRICA_HOST_CHECKOUT = cfg.checkout;
       serviceConfig = {
         Type = "oneshot";
         RemainAfterExit = true;
-        ExecStart = "${pkgs.bash}/bin/bash ${cfg.checkout}/host/egress.sh apply";
+        ExecStart = egressRun;
       };
     };
   };

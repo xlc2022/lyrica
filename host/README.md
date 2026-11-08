@@ -38,11 +38,14 @@ Options: `host/install.sh --help`.
 ### Updates
 
 Lyrica updates a host to what she runs herself: a tagged release, or her
-latest merge (a commit on `main` with no tag). On systemd machines
-other than NixOS, `install.sh` installs the updater: a copy of `update.sh` at
+latest merge (a commit on `main` with no tag). On systemd machines,
+`install.sh` installs the updater: a copy of `update.sh` at
 `/usr/local/sbin/lyrica-host-update` (an update never replaces it) and
 `lyrica-host-update.path`, which runs it as root when host-api writes a
-request into `/var/lib/lyrica-host-update/inbox/`. host-api keeps no route
+request into `/var/lib/lyrica-host-update/inbox/`. On NixOS the module
+declares the same updater from the Nix store, with a fixed PATH, and its
+units (On NixOS below); `install.sh` sees the path unit and does the rest.
+host-api keeps no route
 out: the updater fetches `main` and the `update/*` tags into its own
 repository there. While the repository is public it fetches over HTTPS
 with no key: `install.sh` checks with `git ls-remote` without credentials.
@@ -72,8 +75,13 @@ hand: `sudo lyrica-host-update --tag update/<name>`, or `--commit <sha>`.
 
 NixOS can't have packages or units installed by a script, so the flake's
 `model-host` module declares what `install.sh` needs: Docker (iptables
-backend), the GPU driver, `iptables`, `git` and `curl`, the models folder,
-and `lyrica-host-egress.service`. Add it to the machine's flake
+backend), the GPU driver, `iptables`, `git`, `curl` and `jq`, the models
+folder, `lyrica-host-egress.service`, and the updater (Updates above):
+`lyrica-host-update` from the store with a fixed PATH that holds every
+command `update.sh` and `install.sh` run (`host/test/updater-path.test.ts`
+checks it), `lyrica-host-update.service` and `.path`, and the updater's
+folders. `services.lyrica-host.updates.enable = false` leaves the updater
+out. Add it to the machine's flake
 configuration, beside `services.lyrica` if Lyrica runs there too:
 
 ```nix
@@ -100,8 +108,15 @@ through the container toolkit's CDI devices: `install.sh` sees the CDI spec
 and adds `compose.cdi.yaml`. With `gpu = "amd"`, `amdgpu` loads at boot;
 ROCm and Vulkan come inside the images. In a VM, pass the whole GPU through
 (on Proxmox, a PCI device with All Functions and PCI-Express on a q35
-machine). Upgrading is `git pull && host/install.sh`: Lyrica shows the
-host's version but can't update it, since the configuration names the checkout.
+machine). Upgrading is **Update** in Lyrica's Models page, as on Debian, or
+`git pull && host/install.sh` in the checkout. After the first update the
+host runs from `/opt/lyrica-host/<commit>`, and the egress unit runs that
+tree's `egress.sh` (it reads `/var/lib/lyrica-host-update/current`, and
+falls back to `checkout`). The updater itself changes only with a
+`nixos-rebuild`, never with an update. A host set up before the module
+declared the updater needs one `nix flake update lyrica && nixos-rebuild
+switch`, then one `git pull && host/install.sh` in its checkout, before
+**Update** works there; until then it's greyed out and says so.
 
 ### gpu-unlock
 
@@ -151,8 +166,8 @@ left alone.
 It asks before starting and before deleting the models folder's `lyrica/`
 downloads (`--delete-downloads` deletes them, `--yes` keeps them unless
 given it); the operator's own model files stay. On NixOS the module owns
-the units: remove `services.lyrica-host` and rebuild. gpu-unlock and the
-CMP unlock have their own `--remove`.
+the units and the updater: remove `services.lyrica-host` and rebuild.
+gpu-unlock and the CMP unlock have their own `--remove`.
 
 ### AMD GPUs
 
@@ -244,8 +259,10 @@ again from its own tree with `install.sh --yes --models <folder>`, and goes
 back to the old folder if host-api doesn't answer with the new one within 5
 minutes. No files move. By hand: `sudo lyrica-host-update --models <folder>`.
 Only an updater installed by a `host/install.sh` run from this release on
-takes a folder (an update never replaces the updater), and NixOS has no
-updater: there, set `modelsDir` and run `install.sh --models`.
+takes a folder (an update never replaces the updater). On NixOS the
+module's updater takes one too; its `modelsDir` then names the old folder,
+which the module only creates if missing, so set it to the new one at the
+next rebuild.
 
 ## Downloads
 

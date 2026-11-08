@@ -137,7 +137,7 @@ uninstall() {
   # remove needs no address, but egress.sh wants one when .env has none.
   "${SUDO[@]}" ./egress.sh remove none
   if [[ -e /etc/NIXOS ]]; then
-    say "On NixOS, remove services.lyrica-host (and its gpuUnlock) from this machine's configuration and rebuild: the module owns the units."
+    say "On NixOS, remove services.lyrica-host (with its updates, gpuUnlock and cmpUnlock) from this machine's configuration and rebuild: the module owns the units and the updater."
   elif [[ -d /run/systemd/system ]]; then
     local unit
     for unit in lyrica-host-update.path lyrica-host-update.service lyrica-host-egress.service; do
@@ -402,9 +402,14 @@ command -v iptables >/dev/null || fail "iptables is needed to keep host-api with
 "${SUDO[@]}" ./egress.sh apply "$HOST_API_IP"
 if [[ -e /etc/NIXOS ]]; then
   # NixOS's /etc is read-only: services.lyrica-host declares the unit (nix/host-module.nix).
+  # It runs egress.sh from the folder the host runs from (the updater's `current`,
+  # else `checkout`), so an update's tree is followed; run from a checkout, this
+  # checks that `checkout` names it (an older module names it in ExecStart).
   systemctl cat lyrica-host-egress.service >/dev/null 2>&1 ||
     fail "add services.lyrica-host to this machine's NixOS configuration (host/README.md, \"On NixOS\"), rebuild, and run install.sh again."
-  [[ $(systemctl show -p ExecStart --value lyrica-host-egress.service) == *"$PWD/egress.sh"* ]] ||
+  CHECKOUT=$(systemctl show -p Environment --value lyrica-host-egress.service | tr ' ' '\n' | sed -n 's/^LYRICA_HOST_CHECKOUT=//p')
+  [[ -n ${LYRICA_HOST_UPDATING:-} || $CHECKOUT == "$(dirname "$PWD")" ]] ||
+    [[ -z $CHECKOUT && $(systemctl show -p ExecStart --value lyrica-host-egress.service) == *"$PWD/egress.sh"* ]] ||
     fail "services.lyrica-host.checkout doesn't name this clone ($(dirname "$PWD")). Set it, rebuild, and run install.sh again."
   "${SUDO[@]}" systemctl restart lyrica-host-egress.service
 elif [[ -d /run/systemd/system ]]; then
@@ -430,7 +435,9 @@ fi
 
 # Updates from Lyrica (README.md, "Updates"): host-api may write a request into
 # inbox/ and read status/; the updater runs as root, outside it, from a copy in
-# /usr/local/sbin that an update never replaces. It fetches into its own
+# /usr/local/sbin that an update never replaces (on NixOS, from the store:
+# services.lyrica-host.updates declares it and its units, and this script
+# installs neither). It fetches into its own
 # repository, over HTTPS while the repository is public and otherwise with a
 # read-only deploy key, and installs root-owned trees from it.
 # Run by the updater (LYRICA_HOST_UPDATING), this leaves the updater alone.
@@ -464,8 +471,8 @@ repo_url() {
     printf '%s\n' git@github.com:xlc2022/lyrica.git
   fi
 }
-if [[ -e /etc/NIXOS ]]; then
-  updater_status false "Update this host from its NixOS configuration."
+if [[ -e /etc/NIXOS ]] && ! systemctl cat lyrica-host-update.path >/dev/null 2>&1; then
+  updater_status false "Set services.lyrica-host.updates.enable and rebuild, or update with git pull and install.sh in the host's folder."
 elif [[ ! -d /run/systemd/system ]]; then
   updater_status false "This host has no systemd: update it with git pull and install.sh."
 elif ! command -v jq >/dev/null || ! command -v git >/dev/null; then
@@ -494,11 +501,16 @@ else
     [[ $OLD_URL != "$REPO_URL" && $REPO_URL != https://* ]] && NEW_DEPLOY_KEY=1
     "${SUDO[@]}" git --git-dir="$UPDATER/repo.git" remote set-url origin "$REPO_URL"
   fi
-  "${SUDO[@]}" install -m 0755 update.sh /usr/local/sbin/lyrica-host-update
-  "${SUDO[@]}" install -m 0644 lyrica-host-update.service /etc/systemd/system/lyrica-host-update.service
-  "${SUDO[@]}" install -m 0644 lyrica-host-update.path /etc/systemd/system/lyrica-host-update.path
-  "${SUDO[@]}" systemctl daemon-reload
-  "${SUDO[@]}" systemctl enable --now lyrica-host-update.path >/dev/null
+  if [[ -e /etc/NIXOS ]]; then
+    # The module's updater and units; its path unit starts at boot.
+    "${SUDO[@]}" systemctl start lyrica-host-update.path >/dev/null 2>&1 || true
+  else
+    "${SUDO[@]}" install -m 0755 update.sh /usr/local/sbin/lyrica-host-update
+    "${SUDO[@]}" install -m 0644 lyrica-host-update.service /etc/systemd/system/lyrica-host-update.service
+    "${SUDO[@]}" install -m 0644 lyrica-host-update.path /etc/systemd/system/lyrica-host-update.path
+    "${SUDO[@]}" systemctl daemon-reload
+    "${SUDO[@]}" systemctl enable --now lyrica-host-update.path >/dev/null
+  fi
   # The folder the updater carries the settings from.
   printf '%s\n' "$PWD" | "${SUDO[@]}" tee "$UPDATER/current" >/dev/null
   updater_status true

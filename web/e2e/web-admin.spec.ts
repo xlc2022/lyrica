@@ -929,7 +929,7 @@ test("Update… is always in a host's ⋯: greyed out with why until it can run,
   const userId = await enter(page, baseURL!);
   const json = (body: unknown) => ({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
   const shot = async (name: string) => { if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/host-update-${name}-${page.viewportSize()!.width}.png`, fullPage: true }); };
-  let update: Record<string, unknown> = { available: false, reason: "Update this host from its NixOS configuration.", state: "idle" };
+  let update: Record<string, unknown> = { available: false, reason: "This host has no systemd: update it with git pull and install.sh.", state: "idle" };
   let release: Record<string, unknown> | undefined = { tag: "update/2026-11-06", commit: "bbbb" };
   const status = () => ({ name: "box", version: "update/2026-10-01-0-gaaaa", commit: "aaaa", fingerprint: "SHA256:aaaa", state: "running", gpus: [], downloads: { active: 0 }, modelsFolder: { path: "/srv/models", free: 2 ** 40 }, update });
   await page.route(/\/api\/u\/[^/]+\/models\/page$/, async (route) => {
@@ -959,7 +959,7 @@ test("Update… is always in a host's ⋯: greyed out with why until it can run,
     await page.keyboard.press("Escape");
   };
   // A host with no updater says its own reason; no pill.
-  await why("Update this host from its NixOS configuration.", "no-updater");
+  await why("This host has no systemd: update it with git pull and install.sh.", "no-updater");
   await expect(card.locator(".pill", { hasText: "update available" })).toHaveCount(0);
   // Lyrica on no release, then the host already on hers.
   update = { available: true, changesFolder: true, state: "idle" };
