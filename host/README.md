@@ -556,7 +556,7 @@ revoked. A revoked server must pair again.
   is busy with …", except a `/v1` request tagged with `X-Lyrica-Job`,
   which waits up to 15 minutes (API.md, "Job progress").
 - **VRAM** use is measured per GPU at load and after the first attributable
-  completed request (an image recipe's on its first job). The host keeps the
+  request, completed or failed (an image recipe's on its first job). The host keeps the
   larger measurement, including buffers grown on first use, until settings
   change. If another model serves or memory changes during the request, the
   host retries measurement on a later request. A measurement larger than a

@@ -178,8 +178,8 @@ seconds of audio.
   (`gpus` names them all). A model's `kind` is `chat`, `embedding`,
   `image`, `transcribe` or `speak`; `state` is `loading` or `loaded`; `vram` is what it takes on
   this GPU, measured at load with this placement (keeping the larger saved value), then increased
-  after its first attributable completed request to include buffers allocated
-  on first use. The host compares GPU usage before and after the request only
+  after its first attributable request, completed or failed, to include buffers allocated
+  on first use (a failed image job can leave its model loaded). The host compares GPU usage before and after the request only
   when no other model serves or loads/unloads during that interval; otherwise
   it retries on a later request. It keeps the larger measurement for eviction
   accounting; unmeasured models use their expected size, and vLLM uses its
