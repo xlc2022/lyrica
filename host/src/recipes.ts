@@ -156,7 +156,7 @@ export class RecipeBook {
     const extend = t.continuation && r.does.some((a) => a === "video" || a === "animate") ? ["extend" as const] : [];
     // An upscaler whose template has a clip workflow upscales clips too.
     const clips = t.clipWorkflow && r.does.includes("upscale") ? ["upscale_video" as const] : [];
-    return { ...r, does: [...r.does, ...extend, ...clips], useFor: r.useFor ?? "both", ready: this.ready(r, files), mask: t.mask, references: t.references, custom: !!t.custom,
+    return { ...r, does: [...r.does, ...extend, ...clips], useFor: r.useFor ?? "both", ready: this.ready(r, files), mask: t.mask, references: t.references, custom: !!t.custom, workflowBase: t.custom?.base ?? null,
       ...(t.video ? { video: { ...clipSpec(t.video, present(r, files)), longestSeconds: longestSeconds(t) } } : {}) };
   }
 

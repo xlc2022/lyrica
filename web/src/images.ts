@@ -33,6 +33,8 @@ export interface HostRecipe {
   starter?: string | null;
   /** Its template is a custom workflow, added on its host (host/API.md, "Custom workflows"). */
   custom?: boolean;
+  /** For a custom workflow made from a built-in template (a model's own edit of it, or a copy): that template. */
+  workflowBase?: string | null;
 }
 
 /** One host's image library, as GET …/hosts/:id/images gives it (its parts flattened from by-role). */

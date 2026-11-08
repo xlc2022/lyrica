@@ -27,11 +27,11 @@ export type Route =
    * under Hosts and endpoints (`…/hosts/add-host`), "text" is Download text model under Downloads (`…/downloads/text`),
    * "image" Download image model (`…/images/download`) and "review" To review (`…/images/review`) under Image models;
    * "history" is Download history (`…/downloads/history`). `host` on Add model host pairs that host again (`?host=`).
-   * "workflow" is Edit workflow under Image models (`…/images/workflow?host=&workflow=`): a host's custom workflow, or
-   * with no `workflow` the draft an import just made.
+   * "workflow" is Edit workflow under Image models (`…/images/workflow?host=&recipe=`): the workflow of a model on that
+   * host (its own custom one, or the built-in template it runs on), or with no `recipe` the draft an import just made.
    * `q` and `at` (the page number) ride in the address as `?q=&page=` on Call history and Download history, so Back returns to the same search and page.
    */
-  | { page: "models"; userId: string; tab?: ModelsTab; add?: ModelsPageUnder; host?: string; workflow?: string; project?: string; pool?: Pool; q?: string; at?: number }
+  | { page: "models"; userId: string; tab?: ModelsTab; add?: ModelsPageUnder; host?: string; recipe?: string; project?: string; pool?: Pool; q?: string; at?: number }
   | { page: "settings"; userId: string; section?: string }
   | { page: "admin"; userId: string; section?: string };
 
@@ -100,7 +100,7 @@ export function parse(hash: string): Route {
   if (section === "models") {
     const tab = MODELS_TABS.find((t) => t === a);
     const add = UNDER.find((x) => x.tab === tab && x.part === b)?.add;
-    return { page: "models", userId, ...(tab && tab !== "overview" ? { tab } : {}), ...(add ? { add } : {}), ...((add === "host" || add === "workflow") && params.get("host") ? { host: params.get("host")! } : {}), ...(add === "workflow" && params.get("workflow") ? { workflow: params.get("workflow")! } : {}), ...(tab === "calls" && params.get("project") ? { project: params.get("project")!, pool: params.get("pool") === "private" ? "private" as const : "general" as const } : {}), ...(q ? { q } : {}), ...(pageNum ? { at: pageNum } : {}) };
+    return { page: "models", userId, ...(tab && tab !== "overview" ? { tab } : {}), ...(add ? { add } : {}), ...((add === "host" || add === "workflow") && params.get("host") ? { host: params.get("host")! } : {}), ...(add === "workflow" && params.get("recipe") ? { recipe: params.get("recipe")! } : {}), ...(tab === "calls" && params.get("project") ? { project: params.get("project")!, pool: params.get("pool") === "private" ? "private" as const : "general" as const } : {}), ...(q ? { q } : {}), ...(pageNum ? { at: pageNum } : {}) };
   }
   // Settings → Endpoints moved to Models → Hosts and endpoints, and Settings → Model presets to Models → Tasks.
   if (section === "settings" && a === "endpoints") return { page: "models", userId, tab: "hosts" };
@@ -141,7 +141,7 @@ export function href(r: Route): string {
     case "notifications": return `#/u/${e(r.userId)}/notifications`;
     case "models": {
       const under = UNDER.find((x) => x.tab === r.tab && x.add === r.add);
-      return `#/u/${e(r.userId)}/models` + (r.tab && r.tab !== "overview" ? `/${r.tab}` : "") + (under ? `/${under.part}` : "") + pageQuery(r, r.tab === "calls" && r.project ? { project: r.project, pool: r.pool ?? "general" } : r.add === "host" && r.host ? { host: r.host } : r.add === "workflow" && r.host ? { host: r.host, ...(r.workflow ? { workflow: r.workflow } : {}) } : {});
+      return `#/u/${e(r.userId)}/models` + (r.tab && r.tab !== "overview" ? `/${r.tab}` : "") + (under ? `/${under.part}` : "") + pageQuery(r, r.tab === "calls" && r.project ? { project: r.project, pool: r.pool ?? "general" } : r.add === "host" && r.host ? { host: r.host } : r.add === "workflow" && r.host ? { host: r.host, ...(r.recipe ? { recipe: r.recipe } : {}) } : {});
     }
     case "settings": return `#/u/${e(r.userId)}/settings` + (r.section ? `/${r.section.split("/").map(e).join("/")}` : "");
     case "admin": return `#/u/${e(r.userId)}/admin` + (r.section ? `/${r.section.split("/").map(e).join("/")}` : "");

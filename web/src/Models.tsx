@@ -160,7 +160,7 @@ export function ModelsArea({ ctx: shell, tab = "overview", add, project, pool, r
   if (tab === "text") return <TextModels ctx={ctx} />;
   if (tab === "images" && add === "review") return <ImageReview ctx={ctx} />;
   if (tab === "images" && add === "image") return <DownloadImage ctx={ctx} />;
-  if (tab === "images" && add === "workflow") return <EditWorkflow ctx={ctx} hostId={route?.host} name={route?.workflow} />;
+  if (tab === "images" && add === "workflow") return <EditWorkflow ctx={ctx} hostId={route?.host} recipeId={route?.recipe} />;
   if (tab === "images") return <ImageModels ctx={ctx} />;
   if (tab === "hosts") return <Hosts ctx={ctx} />;
   if (tab === "downloads" && add === "text") return <DownloadText ctx={ctx} />;

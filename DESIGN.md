@@ -982,8 +982,11 @@ it's off.
     2026-11-07). A job names a recipe and gives values; it never carries
     nodes.
   - **Custom workflows** live in the host's data folder, per host. A
-    manager imports ComfyUI's Export (API) file or copies a built-in
-    template, and edits it on Image models' Edit workflow page as a form,
+    manager imports ComfyUI's Export (API) file or edits a built-in
+    template's workflow for one model (the model gets its own revision of
+    it on first save; the built-in stays as shipped for the other models
+    on it and for updates, and the model can go back to it), and edits it
+    on Image models' Edit workflow page as a form,
     as a node graph like ComfyUI's (adding, linking and deleting nodes
     from the host's node list) or as JSON. Lyrica may change an existing one's settings when the user
     asks (`models` tool), never add nodes. The host checks every save: only

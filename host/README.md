@@ -305,7 +305,9 @@ per host, and Lyrica's router filters create tiers by it.
 - **Custom workflows** (`<data>/workflows/custom-<id>.json`, with
   `custom-<id>.revisions.json` holding up to 50 earlier versions) are
   templates the host's manager added: an import of ComfyUI's Export (API)
-  file, or a copy of a built-in template. Import turns saves into the
+  file, or one model's own revision of a built-in template (made on its
+  first save through `recipes/<id>/workflow`, with the built-in as its
+  base; a copy made by Save as new workflow the same). Import turns saves into the
   websocket outputs, standard loaders into the recipe's parts (anything
   else loads its own files) and matches file names to this host's files;
   every save is checked (API.md, "Custom workflows"). ComfyUI's node list is

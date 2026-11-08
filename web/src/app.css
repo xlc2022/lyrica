@@ -1710,11 +1710,20 @@ ul.choices { list-style: none; margin: 0; padding: 0; }
 .arch-partlist li { display: flex; gap: 10px; flex-wrap: wrap; min-width: 0; }
 .arch-partlist .role { width: 100px; flex: none; color: var(--muted); }
 .arch-partlist code { overflow-wrap: anywhere; min-width: 0; }
-.copyfoot { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; padding: 8px 12px; border-top: 1px solid var(--line); }
-.copyfoot .field { margin: 0; }
-.copyfoot .link.danger { margin-left: auto; color: var(--danger); }
-/* Change, Remove and Delete model… are plain underlined links at the right of their line. */
-.partrow .actions button.link, .copyfoot button.link { text-decoration: underline; text-underline-offset: 2px; min-height: var(--tap); padding: 0 2px; font-size: 13px; }
+/* The foot: settings (Use for, Steps) at the left, actions (Add part, Edit workflow, Delete model…) at the right, every control on one baseline, 32 px tall; on a narrow block the actions take the next line. */
+.copyfoot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 16px; align-items: center; padding: 8px 12px; border-top: 1px solid var(--line); }
+.copyfoot-settings, .copyfoot-actions { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; min-width: 0; }
+.copyfoot-actions { margin-left: auto; gap: 6px; }
+.copyfoot .field, .copyfoot .field.steps { display: flex; flex-direction: row; align-items: center; gap: 8px; margin: 0; }
+.copyfoot .field > span:first-child { font-size: 13px; }
+.copyfoot .field.steps .steps-in { gap: 6px; flex-wrap: nowrap; }
+.copyfoot .field.steps .steps-in > .muted { white-space: nowrap; }
+.copyfoot .field.steps input { width: 64px; min-height: 32px; }
+.copyfoot button.sm, .copyfoot a.sm { min-height: 32px; }
+.copyfoot a.sm { padding: 0 9px; font-size: 13px; border-radius: 7px; border: 1px solid var(--edge); background: var(--panel); color: var(--fg); display: inline-flex; align-items: center; }
+.copyfoot a.sm:hover { border-color: color-mix(in oklab, var(--fg) 25%, var(--line)); text-decoration: none; }
+/* Change and Remove are plain underlined links at the right of their part row. */
+.partrow .actions button.link { text-decoration: underline; text-underline-offset: 2px; min-height: var(--tap); padding: 0 2px; font-size: 13px; }
 .cloud-image-controls .checks { display: flex; flex-wrap: wrap; gap: 16px; }
 .head .cap a.nowrap { white-space: nowrap; }
 @media (max-width: 760px) {
@@ -1726,7 +1735,7 @@ ul.choices { list-style: none; margin: 0; padding: 0; }
   .list[data-selecting] .rvrow > .actions { display: none; }
 }
 @media (pointer: coarse) {
-  .copyblock .seg button, .copyblock button.sm, .rvrow button.sm, .review-bar button.sm, .add-part .seg button, .img-filters .seg button, .partrow select { min-height: 44px; }
+  .copyblock .seg button, .copyblock button.sm, .copyfoot a.sm, .copyfoot .field.steps input, .rvrow button.sm, .review-bar button.sm, .add-part .seg button, .img-filters .seg button, .partrow select { min-height: 44px; }
   /* A link inside a line keeps the line's height; its target reaches past it. */
   .prow .cap button.link { display: inline-flex; min-height: 44px; align-items: center; margin-block: -14px; vertical-align: middle; }
 }

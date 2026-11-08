@@ -1,7 +1,8 @@
 // Custom ComfyUI workflows (docs/ux.md §6, "Image models, recipes and parts"; host/API.md, "Custom workflows"):
 // Download image model's Workflow source imports a ComfyUI Export (API) file, and Edit workflow shows the draft or a
-// saved workflow as a form, as a graph (WorkflowGraph.tsx), as JSON, and by its revisions. Every call goes through the host's manage route, which on
-// a shared host is for administrators; the host checks each save.
+// model's workflow (its own custom one, or the built-in template it runs on, which a save turns into the model's own
+// revision of it) as a form, as a graph (WorkflowGraph.tsx), as JSON, and by its revisions. Every call goes through the
+// host's manage route, which on a shared host is for administrators; the host checks each save.
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { post, u } from "./api.ts";
 import { CopyButton } from "./CopyButton.tsx";
@@ -46,17 +47,18 @@ interface Draft {
   label: string; does: WorkflowDoes; arch: string; workflow: Graph; loaders: "template" | null; clipType: string | null; video: VideoSpec | null;
   parts: unknown[]; loras: unknown[]; defaults: Record<string, string | number>; unmatched: string[]; dropped: string[];
 }
+/** A workflow as GET …/recipes/<id>/workflow gives it: `builtIn` is the template as it ships, which the model's first save replaces with its own revision. */
 interface Info {
-  name: string; label: string; from: "import" | "copy"; base: string | null; revision: number; saved: string; by: "app" | "lyrica"; does: string[];
+  name: string; label: string; from: "import" | "copy" | "template"; base: string | null; revision: number; saved: string | null; by: "app" | "lyrica"; does: string[];
   video: VideoSpec | null; recipes: { id: string; name: string }[]; nodesChecked: boolean; workflow: Graph; problems: string[]; missingNodes: string[] | null;
-  nodes: Record<string, Record<string, unknown>> | null; layout: Layout | null;
+  nodes: Record<string, Record<string, unknown>> | null; layout: Layout | null; builtIn?: boolean;
 }
 interface Revision { revision: number; saved: string | null; by: "app" | "lyrica"; name: string }
 
 /** An import's draft, until it is saved or left: only in this page's memory, never stored. */
 let pending: { hostId: string; draft: Draft; problems: string[]; missingNodes: string[] | null } | null = null;
 
-const manage = <T,>(userId: string, hostId: string, method: "GET" | "POST" | "PUT", path: string, body?: unknown) =>
+const manage = <T,>(userId: string, hostId: string, method: "GET" | "POST" | "PUT" | "DELETE", path: string, body?: unknown) =>
   post<T>(u(userId, "hosts", hostId, "manage"), { method, path, ...(body !== undefined ? { body } : {}) });
 
 export const isLink = (v: unknown): v is [string, number] => Array.isArray(v) && v.length === 2 && typeof v[0] === "string" && typeof v[1] === "number";
@@ -219,13 +221,16 @@ function NodeForm({ graph, blanks, nodes, onChange }: { graph: Graph; blanks: st
   );
 }
 
-/** Edit workflow: the draft an import made, or a saved custom workflow, as a form, JSON and its revisions. */
-export function EditWorkflow({ ctx, hostId, name }: { ctx: MCtx; hostId?: string; name?: string }) {
+/** Edit workflow: the draft an import made, or a model's workflow, as a form, JSON and its revisions. */
+export function EditWorkflow({ ctx, hostId, recipeId }: { ctx: MCtx; hostId?: string; recipeId?: string }) {
   const userId = ctx.user.id;
   const host = ctx.models.page?.endpoints.find((ep) => ep.id === hostId);
-  const draft = !name && pending && pending.hostId === hostId ? pending : null;
-  const saved = useLoad(() => (name && hostId ? manage<Info>(userId, hostId, "GET", `/host/v1/workflows/${name}`) : Promise.resolve(undefined)), [userId, hostId, name]);
+  const draft = !recipeId && pending && pending.hostId === hostId ? pending : null;
+  const saved = useLoad(() => (recipeId && hostId ? manage<Info>(userId, hostId, "GET", `/host/v1/recipes/${recipeId}/workflow`) : Promise.resolve(undefined)), [userId, hostId, recipeId]);
   const info = saved.data;
+  const name = info?.builtIn ? undefined : info?.name;
+  const [resetting, setResetting] = useState(false);
+  const [asNew, setAsNew] = useState<string>();
   const [graph, setGraph] = useState<Graph>();
   const [label, setLabel] = useState("");
   const [video, setVideo] = useState<VideoSpec | null>(null);
@@ -250,7 +255,7 @@ export function EditWorkflow({ ctx, hostId, name }: { ctx: MCtx; hostId?: string
   const blanks = useMemo(() => [...new Set(does.flatMap((d) => BLANKS[d] ?? []))], [does.join()]);
   const back = href({ page: "models", userId, tab: "images" });
 
-  if (!hostId || (!name && !draft)) {
+  if (!hostId || (!recipeId && !draft)) {
     return (
       <Frame ctx={ctx} tab="images" title="Edit workflow">
         <p className="empty">Nothing to edit. <a href={href({ page: "models", userId, tab: "images", add: "image" })}>Download image model</a> imports a workflow.</p>
@@ -273,20 +278,39 @@ export function EditWorkflow({ ctx, hostId, name }: { ctx: MCtx; hostId?: string
     void run(async () => {
       if (draft) {
         const d = draft.draft;
-        const r = await manage<{ workflow: Info }>(userId, hostId, "POST", "/host/v1/workflows", {
+        const r = await manage<{ workflow: Info; recipe: { id: string } }>(userId, hostId, "POST", "/host/v1/workflows", {
           name: label.trim(), does: d.does, arch: d.arch, workflow: g, loaders: d.loaders, clipType: d.clipType, video, parts: d.parts, loras: d.loras, defaults: d.defaults,
           ...(layout ? { layout } : {}),
         });
         pending = null;
         ctx.models.reload();
-        location.replace(href({ page: "models", userId, tab: "images", add: "workflow", host: hostId, workflow: r.workflow.name }));
+        location.replace(href({ page: "models", userId, tab: "images", add: "workflow", host: hostId, recipe: r.recipe.id }));
       } else {
-        const r = await manage<Info>(userId, hostId, "PUT", `/host/v1/workflows/${name}`, { workflow: g, name: label.trim(), ...(video ? { video } : {}), ...(layout ? { layout } : {}) });
+        const r = await manage<Info>(userId, hostId, "PUT", `/host/v1/recipes/${recipeId}/workflow`, { workflow: g, ...(info?.base ? {} : { name: label.trim() }), ...(video ? { video } : {}), ...(layout ? { layout } : {}) });
         saved.set(r);
         ctx.models.reload();
       }
     });
   };
+  // Save as new workflow: a copy of the model on a copy of this workflow as edited here; the model itself stays as it is.
+  const saveAsNew = (newName: string) => {
+    const g = current();
+    if (!g) { setAsNew(undefined); return; }
+    void run(async () => {
+      const r = await manage<{ recipe: { id: string } }>(userId, hostId, "POST", "/host/v1/workflows/copy", { recipe: recipeId, name: newName, workflow: g, ...(video ? { video } : {}), ...(layout ? { layout } : {}) });
+      setAsNew(undefined);
+      ctx.models.reload();
+      go({ page: "models", userId, tab: "images", add: "workflow", host: hostId, recipe: r.recipe.id });
+    });
+  };
+  // Reset to template: the model goes back on the built-in as it ships; its own revisions go.
+  const reset = () => void run(async () => {
+    setResetting(false);
+    const r = await manage<Info>(userId, hostId, "DELETE", `/host/v1/recipes/${recipeId}/workflow`);
+    saved.set(r);
+    setView((v) => (v === "revisions" ? "form" : v));
+    ctx.models.reload();
+  });
   const restore = (rev: Revision) => void run(async () => {
     setRestoring(undefined);
     const r = await manage<Info>(userId, hostId, "POST", `/host/v1/workflows/${name}/revisions/${rev.revision}/restore`, {});
@@ -295,7 +319,8 @@ export function EditWorkflow({ ctx, hostId, name }: { ctx: MCtx; hostId?: string
   });
   const facts = [
     does.map((d) => DOES_WORD[d] ?? d).join(" and "), host?.name,
-    draft ? "not saved yet" : info ? `revision ${info.revision}` : "", info?.from === "copy" && info.base ? `copied from ${info.base}` : "",
+    info?.base ? (info.builtIn ? `template ${info.base}` : `built on template ${info.base}`) : "",
+    draft ? "not saved yet" : info && !info.builtIn ? `revision ${info.revision}` : "",
   ].filter(Boolean).join(" · ");
   const setVid = (k: keyof VideoSpec, v: number | boolean) => setVideo((x) => (x ? { ...x, [k]: v } : x));
 
@@ -314,13 +339,13 @@ export function EditWorkflow({ ctx, hostId, name }: { ctx: MCtx; hostId?: string
           )}
           {!checked && <p className="meta" title="ComfyUI reports its nodes each time it starts.">Nodes not checked yet</p>}
           {!!draft?.draft.dropped.length && <p className="meta">Left out: {draft.draft.dropped.join(", ")}</p>}
-          {info && !!info.recipes.length && <p className="meta">Used by {info.recipes.map((r) => r.name).join(", ")}</p>}
-          <label className="field"><span>Name</span><input value={label} maxLength={80} onChange={(e) => setLabel(e.target.value)} /></label>
+          {info && !info.base && !!info.recipes.length && <p className="meta">Used by {info.recipes.map((r) => r.name).join(", ")}</p>}
+          {!info?.base && <label className="field"><span>Name</span><input value={label} maxLength={80} onChange={(e) => setLabel(e.target.value)} /></label>}
           <div className="seg" role="group" aria-label="View">
             <button type="button" aria-pressed={view === "form"} onClick={() => { const g = view === "json" ? current() : graph; if (g) { setGraph(g); setView("form"); } }}>Form</button>
             <button type="button" aria-pressed={view === "graph"} onClick={() => { const g = view === "json" ? current() : graph; if (g) { setGraph(g); setView("graph"); } }}>Graph</button>
             <button type="button" aria-pressed={view === "json"} onClick={() => { setJson(toJson(graph)); setJsonProblem(""); setView("json"); }}>JSON</button>
-            {!draft && <button type="button" aria-pressed={view === "revisions"} onClick={() => { const g = view === "json" ? current() : graph; if (g) { setGraph(g); setView("revisions"); } }}>Revisions</button>}
+            {!draft && !info?.builtIn && <button type="button" aria-pressed={view === "revisions"} onClick={() => { const g = view === "json" ? current() : graph; if (g) { setGraph(g); setView("revisions"); } }}>Revisions</button>}
           </div>
           {view === "form" && <>
             {video && (
@@ -367,12 +392,35 @@ export function EditWorkflow({ ctx, hostId, name }: { ctx: MCtx; hostId?: string
           )}
           <ErrorText error={jsonProblem || error} />
           {view !== "revisions" && (
-            <div className="row">
+            <div className="row wf-actions">
               <button type="button" className="primary" disabled={busy} onClick={save}>Save</button>
+              {!draft && <button type="button" disabled={busy} onClick={() => setAsNew(`${label.trim()} copy`)}>Save as new workflow…</button>}
+              {info?.base && !info.builtIn && <button type="button" disabled={busy} onClick={() => setResetting(true)}>Reset to template…</button>}
               <button type="button" onClick={() => { if (draft) pending = null; location.hash = back; }}>{draft ? "Cancel" : "Back"}</button>
             </div>
           )}
         </div>
+      )}
+      {asNew !== undefined && (
+        <Dialog labelledBy="wf-asnew-title" onCancel={() => setAsNew(undefined)} onSubmit={() => { if (asNew.trim()) saveAsNew(asNew.trim()); }}>
+          <h2 id="wf-asnew-title">Save as new workflow</h2>
+          <p>A new model with this workflow as it is here. {label} stays as it is.</p>
+          <label className="field"><span>Name</span><input value={asNew} maxLength={80} autoFocus onChange={(e) => setAsNew(e.target.value)} /></label>
+          <div className="dlg-actions">
+            <button type="button" onClick={() => setAsNew(undefined)}>Cancel</button>
+            <button type="submit" className="primary" disabled={busy || !asNew.trim()}>Save</button>
+          </div>
+        </Dialog>
+      )}
+      {resetting && info?.base && (
+        <Dialog labelledBy="wf-reset-title" onCancel={() => setResetting(false)} onSubmit={reset}>
+          <h2 id="wf-reset-title">Reset to template?</h2>
+          <p>{label} goes back to the {info.base} template as {her()} ships it. Its {info.revision === 1 ? "revision is" : `${info.revision} revisions are`} deleted.</p>
+          <div className="dlg-actions">
+            <button type="button" onClick={() => setResetting(false)}>Cancel</button>
+            <button type="submit" className="danger" disabled={busy} autoFocus>Reset</button>
+          </div>
+        </Dialog>
       )}
       {restoring && (
         <Dialog labelledBy="wf-restore-title" onCancel={() => setRestoring(undefined)} onSubmit={() => restore(restoring)}>
@@ -386,11 +434,4 @@ export function EditWorkflow({ ctx, hostId, name }: { ctx: MCtx; hostId?: string
       )}
     </Frame>
   );
-}
-
-/** Copy workflow to edit: a custom copy of a built-in recipe's workflow, then its editor. */
-export async function copyWorkflow(ctx: MCtx, hostId: string, recipe: { id: string; name: string }): Promise<void> {
-  const r = await manage<{ workflow: Info }>(ctx.user.id, hostId, "POST", "/host/v1/workflows/copy", { recipe: recipe.id, name: `${recipe.name} copy` });
-  ctx.models.reload();
-  go({ page: "models", userId: ctx.user.id, tab: "images", add: "workflow", host: hostId, workflow: r.workflow.name });
 }

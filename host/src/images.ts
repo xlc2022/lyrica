@@ -303,9 +303,10 @@ export class Images {
       sendJson(res, 200, { recipes: done.map((r) => this.describe(r, files)), failed });
       return true;
     }
-    const one = path.match(/^\/host\/v1\/recipes\/([0-9a-f-]{36})(?:\/(confirm|ignore|copy|download-parts))?$/);
+    const one = path.match(/^\/host\/v1\/recipes\/([0-9a-f-]{36})(?:\/(confirm|ignore|copy|download-parts|workflow))?$/);
     if (one) {
       const [, id, action] = one;
+      if (action === "workflow") return this.recipeWorkflowRoute(req, res, method, id!);
       if (!action && method === "GET") return sendJson(res, 200, this.describe(this.book.get(id!), files)), true;
       if (!action && method === "PATCH") {
         const body = await readJson(req);
@@ -430,8 +431,8 @@ export class Images {
       return sendJson(res, 200, { workflow: this.workflowInfo(t, true), recipe: this.describe(recipe, files) }), true;
     }
     if (path === "/host/v1/workflows/copy" && method === "POST") {
-      const body = await readJson(req);
-      onlyFields(body, ["recipe", "name"]);
+      const body = await readJson(req, WORKFLOW_LIMIT);
+      onlyFields(body, ["recipe", "name", "workflow", "video", "layout"]);
       const name = label(body.name);
       const from = this.book.get(String(body.recipe ?? ""));
       const source = templates.get(from.template);
@@ -440,11 +441,12 @@ export class Images {
       const baseName = source.custom ? source.custom.base : source.name;
       const t: Template = { ...structuredClone(source), name: store.newName(templates), custom: { name, from: "copy", made: new Date().toISOString(), ...(baseName ? { base: baseName } : {}) } };
       t.files = filesIn(t.workflow);
-      templates.set(t.name, store.save(t));
+      const { recipe: _r, name: _n, ...edits } = body;
+      const saved = this.updateWorkflow(t, edits, undefined, true);
       const recipe = this.book.copy(from.id, name);
-      recipe.template = t.name;
+      recipe.template = saved.name;
       this.book.save();
-      return sendJson(res, 200, { workflow: this.workflowInfo(t, true), recipe: this.describe(recipe, files) }), true;
+      return sendJson(res, 200, { workflow: this.workflowInfo(saved, true), recipe: this.describe(recipe, files) }), true;
     }
     const one = path.match(/^\/host\/v1\/workflows\/(custom-[0-9a-f]{8})(?:\/revisions(?:\/(\d{1,6})(\/restore)?)?)?$/);
     if (!one) return false;
@@ -479,10 +481,67 @@ export class Images {
   }
 
   /**
-   * A new version of a custom workflow: its nodes, clip settings or name changed, checked as any save, the version it
-   * replaces kept as a revision. `by` "lyrica" marks a change Lyrica made at the user's word.
+   * A model's workflow (API.md, "Custom workflows"): the built-in template it runs on, or its own custom workflow.
+   * GET reads it; PUT saves it, giving a model on a built-in template a workflow of its own first (the built-in stays
+   * as shipped, for the other models on it and for updates); DELETE puts such a model back on the built-in.
    */
-  private updateWorkflow(t: Template, body: Record<string, unknown>, by: unknown): Template {
+  private async recipeWorkflowRoute(req: IncomingMessage, res: ServerResponse, method: string, id: string): Promise<boolean> {
+    const store = this.workflows;
+    if (!store) throw notFound("This host keeps no custom workflows.");
+    if (this.sdcpp) throw invalid("This host makes images with stable-diffusion.cpp, which runs no ComfyUI workflows.");
+    const templates = this.book.templates;
+    const r = this.book.get(id);
+    const t = templates.get(r.template);
+    if (!t) throw notFound(`This host has no template ${r.template}.`);
+    if (method === "GET") return sendJson(res, 200, this.recipeWorkflowInfo(r, t)), true;
+    if (method === "PUT") {
+      const body = await readJson(req, WORKFLOW_LIMIT);
+      onlyFields(body, ["workflow", "video", "by", "layout", "name"]);
+      if (t.custom) return sendJson(res, 200, this.recipeWorkflowInfo(r, this.updateWorkflow(t, body, body.by))), true;
+      if (r.state !== "confirmed") throw invalid("Confirm the model first.");
+      if (!t.does.some((a) => CUSTOM_ACTIONS.includes(a))) throw invalid("Only workflows that make, edit or animate can be edited.");
+      // The model's own revision of the built-in: its name, the built-in as its base (whose blanks and nodes it may keep).
+      const own: Template = { ...structuredClone(t), name: store.newName(templates), custom: { name: r.name, from: "copy", made: new Date().toISOString(), base: t.name } };
+      own.files = filesIn(own.workflow);
+      const { name: _n, ...edits } = body;
+      const saved = this.updateWorkflow(own, edits, body.by, true);
+      r.template = saved.name;
+      this.book.save();
+      return sendJson(res, 200, this.recipeWorkflowInfo(r, saved)), true;
+    }
+    if (method === "DELETE") {
+      const base = t.custom?.base ? templates.get(t.custom.base) : undefined;
+      if (!t.custom || !base) throw invalid(t.custom ? "This workflow was imported: it has no template to go back to." : "This model is on its template already.");
+      r.template = base.name;
+      this.book.save();
+      if (!this.book.all().some((o) => o.template === t.name)) {
+        templates.delete(t.name);
+        store.remove(t.name);
+      }
+      return sendJson(res, 200, this.recipeWorkflowInfo(r, base)), true;
+    }
+    return false;
+  }
+
+  /** A model's workflow as GET …/recipes/<id>/workflow gives it: a custom one in full, or the built-in template as it ships. */
+  private recipeWorkflowInfo(r: Recipe, t: Template) {
+    if (t.custom) return { ...this.workflowInfo(t, true), builtIn: false };
+    const nodes = this.workflows?.nodes ?? null;
+    const used = new Set(Object.values(t.workflow).map((n) => n.class_type));
+    return {
+      name: t.name, label: r.name, from: "template", base: t.name, made: null, revision: 0, saved: null, by: "app", does: t.does, arch: t.arch,
+      loaders: t.loaders ?? null, video: t.video ?? null, references: t.references, files: [], layout: null, recipes: [{ id: r.id, name: r.name }], nodesChecked: !!nodes,
+      workflow: t.workflow, problems: [], missingNodes: nodes ? [...used].filter((c) => !nodes[c]) : null,
+      nodes: nodes ? Object.fromEntries([...used].filter((c) => nodes[c]).map((c) => [c, nodes[c]!.inputs])) : null, builtIn: true,
+    };
+  }
+
+  /**
+   * A new version of a custom workflow: its nodes, clip settings or name changed, checked as any save, the version it
+   * replaces kept as a revision. `by` "lyrica" marks a change Lyrica made at the user's word. `first`: the workflow's
+   * first save (a model's own revision of a built-in, or a copy), revision 1 with nothing to keep.
+   */
+  private updateWorkflow(t: Template, body: Record<string, unknown>, by: unknown, first = false): Template {
     const store = this.workflows!;
     const templates = this.book.templates;
     const base = t.custom!.base ? templates.get(t.custom!.base) : undefined;
@@ -496,7 +555,7 @@ export class Images {
     if (t.custom!.from === "import") next.references = referenceCount(workflow);
     const check = checkTemplate(next, store.nodes, base);
     if (check.problems.length) throw invalid(check.problems.join(" "));
-    const saved = store.save(next, t, by === "lyrica" ? "lyrica" : "app");
+    const saved = store.save(next, first ? undefined : t, by === "lyrica" ? "lyrica" : "app");
     templates.set(t.name, saved);
     // A workflow that loads its own files: its recipes' parts follow the files it now names.
     if (saved.loaders === "template" && t.custom!.from === "import") {
