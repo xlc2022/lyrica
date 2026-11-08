@@ -145,6 +145,9 @@ export function checkOrigin(req: IncomingMessage, trusted = false, also: string[
 
 const LOOPBACK_NAME = /^(localhost|127(\.\d{1,3}){3}|\[::1\]|::1)$/i;
 
+/** A Host or X-Forwarded-Host value without its port, in lower case. IPv6 keeps its brackets. */
+const bareName = (host: string): string => host.trim().replace(/:\d+$/, "").toLowerCase();
+
 /**
  * Whether a plain-HTTP request was addressed to a name that isn't this
  * machine: it came through something that forwards to loopback, such as her
@@ -153,13 +156,25 @@ const LOOPBACK_NAME = /^(localhost|127(\.\d{1,3}){3}|\[::1\]|::1)$/i;
  * (the built-in Caddy, `tailscale serve`) terminated TLS itself. A request
  * with no Host header (HTTP/1.0) names no door at all, so it is the wrong
  * one too: the answer is the empty name.
+ *
+ * `names`: the front's own names (WebAccess.frontNames). Behind the proxy,
+ * Host must be one of them or loopback's, and X-Forwarded-Host one of them:
+ * a page that rebinds its own name to 127.0.0.1 can set the forwarded
+ * headers but not the Host its browser sends. Undefined only on an install
+ * from before the names were kept, until its first unlock.
  */
-export function wrongDoor(req: IncomingMessage, trusted: boolean): string | undefined {
+export function wrongDoor(req: IncomingMessage, trusted: boolean, names?: string[]): string | undefined {
   if (!req.socket.remoteAddress) return undefined; // the Unix socket
-  if (trusted && req.headers["x-forwarded-proto"] === "https") return undefined;
   const host = req.headers.host;
   if (!host) return "";
-  const name = host.replace(/:\d+$/, "");
+  const name = bareName(host);
+  if (trusted && req.headers["x-forwarded-proto"] === "https") {
+    if (!names) return undefined;
+    if (!LOOPBACK_NAME.test(name) && !names.includes(name)) return name;
+    const forwarded = req.headers["x-forwarded-host"];
+    const fwd = typeof forwarded === "string" ? bareName(forwarded.split(",")[0]!) : undefined;
+    return fwd === undefined || names.includes(fwd) ? undefined : fwd;
+  }
   return LOOPBACK_NAME.test(name) ? undefined : name;
 }
 

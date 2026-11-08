@@ -425,7 +425,7 @@ describe("the tailnet", () => {
   }
 
   it("sends a plain-HTTP request at her tailnet address to the HTTPS front door, and believes a proxy's forwarded host for the origin check", async () => {
-    const { d, ada, url, web, home } = await joined();
+    const { d, ada, url, web, home, secrets, stop } = await joined();
     await ada.put(url, { authKey: KEY });
     const login = JSON.stringify({ login: "ada", password: "pw" });
     // Her userspace tailscaled hands <her address>:7340 and :7342 to the same loopback ports: Direct is on, but not at that address.
@@ -470,6 +470,30 @@ describe("the tailnet", () => {
     r = await raw(d.servePort, "POST", "/api/login", { host: `127.0.0.1:${d.servePort}`, "x-forwarded-proto": "https", "x-forwarded-host": "lyrica.example.ts.net", origin: "https://evil.example" }, login);
     expect(r.status).toBe(403);
     expect(JSON.parse(r.text).error).toBe("cross-origin requests are refused");
+    // DNS rebinding: a page at evil.example:7342 whose name now points at 127.0.0.1. Its script can forge
+    // the forwarded headers, but the browser sends its own Host, which isn't the front's name or loopback's.
+    expect(readFileSync(join(home, "web-front-names"), "utf8").split("\n").filter(Boolean)).toEqual(["lyrica.example.ts.net", "100.101.102.103"]);
+    const rebound = { "x-forwarded-proto": "https", "x-forwarded-for": "203.0.113.7", origin: "http://evil.example:7342" };
+    r = await raw(d.servePort, "POST", "/api/login", { ...rebound, host: "evil.example:7342", "x-forwarded-host": "evil.example:7342" }, login);
+    expect(r.status).toBe(403);
+    expect(JSON.parse(r.text).error).toMatch(/plain HTTP, so you can't log in here/);
+    r = await raw(d.servePort, "POST", "/api/unlock", { ...rebound, host: "evil.example:7342", "x-forwarded-host": "lyrica.example.ts.net" }, JSON.stringify({ passphrase: "x" }));
+    expect(r.status).toBe(403);
+    // A forwarded host that isn't the front's name is refused too, whatever Host says.
+    r = await raw(d.servePort, "GET", "/api/state", { host: `127.0.0.1:${d.servePort}`, "x-forwarded-proto": "https", "x-forwarded-host": "evil.example" });
+    expect(r.status).toBe(403);
+    // The real front's names still pass, in any case and with a port.
+    r = await raw(d.servePort, "GET", "/api/state", { host: "Lyrica.Example.TS.net:443", "x-forwarded-proto": "https", "x-forwarded-host": "lyrica.example.ts.net" });
+    expect(r.status).toBe(200);
+    // Locked after a restart, the names come from their file: unlock is what a rebinding page would guess at.
+    await stop();
+    const again = await fresh({ home, secrets });
+    expect(again.d.locked).toBe(true);
+    r = await raw(again.d.servePort, "POST", "/api/unlock", { ...rebound, host: "evil.example:7342", "x-forwarded-host": "lyrica.example.ts.net" }, JSON.stringify({ passphrase: "x" }));
+    expect(r.status).toBe(403);
+    expect(JSON.parse(r.text).error).toMatch(/plain HTTP, so you can't log in here/);
+    r = await raw(again.d.servePort, "GET", "/api/state", { host: "lyrica.example.ts.net", "x-forwarded-proto": "https" });
+    expect(r.status).toBe(200);
   });
 
   it("names MagicDNS or HTTPS certificates when the tailnet has them off", async () => {

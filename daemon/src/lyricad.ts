@@ -43,7 +43,7 @@ import {
 } from "./http.ts";
 import { TailnetControl } from "./tailnet.ts";
 import { listenUpdateSocket, type Drainable, type UpdatePaths } from "./updates.ts";
-import { DIRECT_PORT, directFor, ExternalListener, FRONT_FILE, hostAddresses, readFront, WebAccess, writeFront, type Bind, type Front } from "./web/access.ts";
+import { DIRECT_PORT, directFor, ExternalListener, FRONT_FILE, FRONT_NAMES_FILE, hostAddresses, readFront, readFrontNames, WebAccess, writeFront, type Bind, type Front } from "./web/access.ts";
 import { apiRoutes } from "./routes.ts";
 import { sweepUser, wipeHome } from "./sweep.ts";
 
@@ -205,6 +205,8 @@ export class Lyricad implements Drainable {
   readonly external: ExternalListener;
   /** Which plain listener has its proxy in front, as last saved to its file: for `behind` before unlock. */
   private frontSaved: Front | undefined;
+  /** The front's names, as last saved to their file: what Host and X-Forwarded-Host may say behind the proxy before unlock. */
+  private frontNamesSaved: string[] | undefined;
   readonly tailnet: TailnetControl;
   port = 0;
   /** The loopback port only `tailscale serve` targets: requests on it came through her tailnet address. */
@@ -248,6 +250,7 @@ export class Lyricad implements Drainable {
     this.routes = apiRoutes(this);
     this.external = new ExternalListener(join(opts.home, "web-external.json"), (o) => this.listenExternal(o));
     this.frontSaved = readFront(this.frontFile);
+    this.frontNamesSaved = readFrontNames(join(opts.home, FRONT_NAMES_FILE));
     this.updatePaths = { state: opts.update?.state ?? "/var/lib/lyrica-update", requests: opts.update?.requests ?? join(opts.home, "updates") };
     this.tailnet = new TailnetControl({ binary: opts.tailnet?.binary, socket: opts.tailnet?.socket, runtime: opts.home });
     if (opts.tailnet?.proxy) {
@@ -326,7 +329,7 @@ export class Lyricad implements Drainable {
     this.log(`lyricad listening on 127.0.0.1:${this.port}${socket ? ` and ${socket}` : ""}, and on 127.0.0.1:${this.servePort} for her tailnet`);
     mkdirSync(this.opts.home, { recursive: true, mode: 0o700 });
     // A fresh install has no proxy in front of either listener; an older one says so at its first unlock.
-    if (this.settingUp && this.frontSaved === undefined) writeFront(this.frontFile, this.frontSaved = "none");
+    if (this.settingUp && this.frontSaved === undefined) writeFront(this.frontFile, this.frontSaved = "none", this.frontNamesSaved = []);
     if (this.settingUp) await this.beginSetup();
     await this.directAddresses();
     // While locked it answers only state, unlock and the web UI's files here too, so the proxy can show the unlock page.
@@ -511,6 +514,7 @@ export class Lyricad implements Drainable {
       external: this.external, frontFile: this.frontFile, certWaitMs: w.certWaitMs, trustCa: w.trustCa, log: this.log,
     });
     this.frontSaved = web.rememberFront();
+    this.frontNamesSaved = web.frontNames();
     // A pending wake for background jobs that ended, by `user/pool/thread`: those ending close together wake it once.
     const jobWakes = new Map<string, NodeJS.Timeout>();
     /** Wakes an idle thread once, a few seconds after the first of the endings `kind` names, with all their notices. */
@@ -1125,6 +1129,7 @@ export class Lyricad implements Drainable {
       for (const id of this.mounted) await s.workspace.unmountHome(id).catch(() => {});
       for (const u of s.users.all()) this.keyring.lockUser(u.id);
       this.frontSaved = s.web.front();
+      this.frontNamesSaved = s.web.frontNames();
     }
     this.userEvents.close();
     this.mounted.clear();
@@ -1167,7 +1172,7 @@ export class Lyricad implements Drainable {
       const url = new URL(req.url ?? "/", "http://lyricad");
       const path = url.pathname;
       const trusted = trust(req.socket.remoteAddress ?? "");
-      const name = plain ? wrongDoor(req, trusted) : undefined;
+      const name = plain ? wrongDoor(req, trusted, this.services?.web.frontNames() ?? this.frontNamesSaved) : undefined;
       if (name !== undefined) {
         routeName = "(wrong door)";
         this.wrongDoor(name, path, url.search, method, res);
@@ -1247,7 +1252,8 @@ export class Lyricad implements Drainable {
     const sentence = to
       ? `This address is plain HTTP, so you can't log in here. Use ${to}/ instead.`
       : "This address is plain HTTP, so you can't log in here. Turn on Tailnet or Direct in Administration › Web access, then use its https address.";
-    if (!this.wrongDoors.has(name)) {
+    // Once per name, and at most 64 names: anyone who reaches the port picks the name.
+    if (!this.wrongDoors.has(name) && this.wrongDoors.size < 64) {
       this.wrongDoors.add(name);
       this.log(`a plain-HTTP request ${name ? `addressed to ${name}` : "with no Host header"}: ${to ? `sent to ${to}` : "no HTTPS front door to send it to"}`);
     }

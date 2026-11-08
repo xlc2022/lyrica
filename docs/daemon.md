@@ -99,11 +99,19 @@ tailnet, below). The mode is read from `self.db` once unlocked, and before
 that from `<runtime>/web-front` (`builtin`, `tailnet` or `none`, mode
 `0600`), which `lyricad` writes at setup, at each unlock and at each change
 of mode; an install from before that file believes loopback as it did,
-until its first unlock writes it. A page load is redirected to the HTTPS front door
+until its first unlock writes it. Behind its proxy, the Host header must
+still be loopback's or one of the front's own names (Built-in's name, or
+the Tailnet mode's MagicDNS name and address), and `X-Forwarded-Host` one
+of those names, or the request is a wrong door: a web page that rebinds its
+own name to 127.0.0.1 (DNS rebinding) can set the forwarded headers from
+script, but not the Host its browser sends. The names are kept beside the
+mode in `<runtime>/web-front-names` (one per line, mode `0600`), written
+with it; without that file (an install from before it) the forwarded
+headers are believed as before, until the first unlock. A page load is redirected to the HTTPS front door
 when one is known (Direct at that very address, or the Tailnet mode's name),
 else answered 403 with one sentence saying how to turn one on; an API call
 gets the sentence as its 403 error, so an open login page shows it. Each
-name is logged once.
+name is logged once, up to 64 names.
 
 - **Setting up.** Without `<runtime>/self.db` it starts anyway, setting up:
   `GET /api/state` says `{ locked: true, setup: true, name, users: [],
@@ -1354,8 +1362,9 @@ Plain-HTTP listeners stay HTTP/1.1.
   request that asked for the change gets its answer; if the new one can't
   open, the old one stays.
 - Which plain listener has its proxy in front (`builtin`, `tailnet` or
-  `none`) is kept in `<runtime>/web-front`, mode `0600`, for the listeners
-  before unlock (Starting and unlocking).
+  `none`) is kept in `<runtime>/web-front`, and that proxy's names in
+  `<runtime>/web-front-names`, both mode `0600`, for the listeners before
+  unlock (Starting and unlocking).
 - **Sandboxes never reach the front door.** `Workspace` reads it at every
   sandbox start (`frontDoor`): the front port (443, or the external proxy's
   own port) and Direct's port on this machine's addresses, on every address
