@@ -1699,6 +1699,10 @@ system with the module on. Only x86_64-linux.
 - **PATH.** lyricad's starts with `/run/wrappers/bin`, so `fusermount3` is
   the setuid wrapper (`programs.fuse`), then gocryptfs, OpenSSL, systemd
   (`systemd-creds`), the sandbox tools and, with `tailscale` on, `tailscale`.
+  The updater's scripts get their own PATH from the module (bash, coreutils,
+  findutils, gawk, grep, sed, tar, diffutils, jq, curl, git, OpenSSH,
+  util-linux, nix and systemd); `daemon/test/updater-path.test.ts` fails
+  when a script runs a command that isn't on it.
 - **Caddy** is nixpkgs' Caddy with the DNS plugins read from
   `daemon/src/web/providers.ts` (`caddy.withPlugins`). Its `hash` in
   `nix/module.nix` changes when that list or nixpkgs' Caddy does; `nix flake
