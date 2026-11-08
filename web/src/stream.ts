@@ -105,7 +105,11 @@ export function useThread(userId: string, pool: Pool, threadId: string) {
             // A reaction, hers or from another tab, lands on the stored message at once.
             if (e.type === "renamed") reloadShown().catch(() => {});
             if (e.type === "reactions") setMessages((old) => old.map((x) => (x.n === e.n ? { ...x, reactions: e.reactions.length ? e.reactions : undefined } : x)));
-            dispatch(e);
+            // A follow-up taken from the queue, or a message Pi took mid-turn, is stored as the turn goes, and the reload
+            // that the last turn's end started can bring it while its live copy shows: the live copy notes where the view
+            // stood, so the stored copy replaces it (storedUserItems).
+            if (e.type === "queue" || e.type === "received") dispatch({ ...e, afterN: shown.current.at(-1)?.n ?? 0 });
+            else dispatch(e);
             // The re-sent message is stored at or after the rewind point, so its stored copy replaces this one as a send's does.
             if (e.type === "rewound" && e.resend && resending.current !== undefined) dispatch({ type: "sent", text: resending.current, afterN: e.from - 1 });
             if (e.type === "rewound") resending.current = undefined;
