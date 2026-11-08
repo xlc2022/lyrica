@@ -261,8 +261,10 @@ sets up the updater's repository as install.sh does (see "Updates from
 GitHub" below); when the repository isn't public it makes
 `/etc/lyrica/deploy-key` and logs where to add its `.pub`. Keep a
 scheduled Proxmox backup of the VM, for the reason given there. Upgrading
-is `nix flake update lyrica` in `/etc/nixos` and `nixos-rebuild switch`,
-which restarts `lyricad` (which logs everyone out). Before that start,
+is `nix flake update lyrica` in `/etc/nixos` and `nixos-rebuild switch`
+(`lyrica` is the input's name in step 6's flake; if yours names it
+differently, `nix flake metadata` lists the inputs), which restarts
+`lyricad` (which logs everyone out). Before that start,
 when the package changed, her databases are snapshotted and the profile
 moves to it; if the new package can't read them, the newest snapshot it
 can read is restored. The package is rebuilt only when the code it ships
