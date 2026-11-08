@@ -310,6 +310,8 @@ function RunDetail({ d, userId, users, undone }: { d: SleepRunDetail; userId: st
   );
 }
 
+const UNDO_TIP = "Its notes, pages, dream and WAKE go back to how they were before it. Its questions and thoughts are dismissed; a persona suggestion stays.";
+
 /** The newest night's Undo: confirmed in a dialog; greyed with the reason as its tooltip when it can't. */
 function UndoNight({ d, userId, undone }: { d: SleepRunDetail; userId: string; undone: (d: SleepRunDetail) => void }) {
   const [asking, setAsking] = useState(false);
@@ -319,12 +321,12 @@ function UndoNight({ d, userId, undone }: { d: SleepRunDetail; userId: string; u
   return (
     <div className="sleep-undo">
       {/* aria-disabled, not disabled: it stays focusable, so its tooltip says why. */}
-      <button type="button" className="sm" aria-disabled={blocked ? "true" : undefined} title={blocked} disabled={busy}
+      <button type="button" className="sm" aria-disabled={blocked ? "true" : undefined} title={blocked ?? UNDO_TIP} disabled={busy}
         onClick={(e) => { if (blocked) e.preventDefault(); else setAsking(true); }}>Undo this night…</button>
       <ErrorText error={error} />
       {asking && (
         <ConfirmDialog title="Undo this night?" confirm="Undo"
-          sentence="What sleep wrote that night goes back to how it was before: its notes, pages, dream and WAKE. Its questions and thoughts are dismissed; a persona suggestion stays. The next sleep covers that time again."
+          sentence="What sleep wrote that night goes back to how it was before. The next sleep covers that time again."
           onCancel={() => setAsking(false)} onConfirm={() => void go()} />
       )}
     </div>
