@@ -640,7 +640,8 @@ after an update, the node check happens when ComfyUI next runs a job.
 
 Workflows are per host and only on a host you manage (an administrator
 for a shared host). A ComfyUI host from before 2026-11-07 takes them only
-once it is updated (**Upgrade** in [Operating a host](#operating-a-host)).
+once it is updated, and editing a built-in model's workflow needs one
+from 2026-11-08 on (**Upgrade** in [Operating a host](#operating-a-host)).
 
 ### Video recipes
 
