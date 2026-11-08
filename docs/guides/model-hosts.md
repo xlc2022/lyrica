@@ -501,9 +501,9 @@ pictures with PrunaAI's fine-tune of MiniMax H3: the int8 one is about
 29.5 GB of files and peaks near 31 GB of VRAM, so it wants a 32 GB or
 larger card; the w4a8 one is about 20 GB and peaks near 21 GB, so it fits
 24 GB when nothing else is loaded. It makes one image per request. Both
-need ComfyUI 0.44 or later: once the starters show up in Add model, run
-an Update on the host (or `git pull && host/install.sh`), which rebuilds
-its ComfyUI image at 0.44.2; an older image doesn't have their nodes.
+need ComfyUI 0.44 or later, so update the host before adding them (an
+Update, or `git pull && host/install.sh`), which rebuilds its ComfyUI
+image at 0.44.2; an older image doesn't have their nodes.
 Their weights are under the MiniMax H3 Community License, as H3 Turbo's
 are.
 
