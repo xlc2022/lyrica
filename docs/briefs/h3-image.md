@@ -1,6 +1,6 @@
 # Making and editing pictures with P-H3-Image
 
-**Status:** built, in review.
+**Status:** merged (#828, 2026-11-08).
 
 The owner asked (2026-11-08) for "the MiniMax H3 editor", then added that
 they also meant the H3 image editor: **P-H3-Image** (PrunaAI), a fine-tune
@@ -41,9 +41,11 @@ Image edits lists.
 
 ## Open questions
 
-- Not yet run on a GPU. The first run should check an edit and a create
-  on the w4a8 starter on a 24 GB card and the int8 one on the workstation,
-  and the time per image.
+- First GPU run (2026-11-08, RTX 3090, w4a8): a 2048² create in 18 s and
+  an edit in 29 s, the change made and the rest kept. An edit comes back
+  at about 4 MP whatever the input's size, as Pruna's graphs do. Krea 2
+  Turbo and Turbo Uncensored still work on ComfyUI 0.44.2. The int8
+  starter is not yet run.
 - Licence: the MiniMax H3 Community License, as for H3 Turbo, which the
   owner already chose to use.
 
