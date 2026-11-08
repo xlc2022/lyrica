@@ -2907,3 +2907,44 @@ test("Updates: Latest merge installs main's newest commit after a dialog that sa
   await expect(section.getByRole("group", { name: "Update to the latest merge" })).toBeVisible();
   expect(posted).toEqual({ commit: head });
 });
+
+// Undo this night and Tonight (docs/briefs/sleep-undo-focus.md). Last in the file, so its fixture night is not on the
+// Sleep page for the tests above.
+test("the newest night can be undone after a dialog, and a line for tonight saves and clears", async ({ page, baseURL, request }) => {
+  const userId = await enter(page, baseURL!);
+  expect((await request.post(`http://127.0.0.1:${Number(new URL(baseURL!).port) + 10}/sleep-night-fixture`, { data: { userId } })).ok()).toBe(true);
+  await page.goto(`/#/u/${userId}/sleep`);
+  const w = page.viewportSize()!.width;
+
+  // Tonight: Save waits for a change; a saved line offers Clear.
+  const tonight = page.getByRole("region", { name: "Tonight" });
+  const field = tonight.getByRole("textbox").first();
+  await expect(tonight.getByRole("button", { name: "Save" }).first()).toBeDisabled();
+  await field.fill("the trip to Lisbon");
+  await tonight.getByRole("button", { name: "Save" }).first().click();
+  await expect(tonight.getByRole("button", { name: "Clear" }).first()).toBeVisible();
+  expect(await page.evaluate(async (path) => (await (await fetch(path)).json()).focus, `/api/u/${userId}/sleep`)).toEqual({ general: "the trip to Lisbon" });
+  await noHorizontalScroll(page);
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/sleep-tonight-${w}.png` });
+
+  // The newest night opens to its Undo, confirmed in a dialog; afterwards it reads Undone and its page is gone.
+  const row = page.locator("details.sleep-run").first();
+  await row.locator("summary").click();
+  const undo = row.getByRole("button", { name: "Undo this night…" });
+  await expect(undo).toBeVisible();
+  await expect(row).toContainText("Fixture garden");
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/sleep-undo-${w}.png` });
+  await undo.click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toContainText("Undo this night?");
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/sleep-undo-dialog-${w}.png` });
+  await dialog.getByRole("button", { name: "Undo", exact: true }).click();
+  await expect(row.locator(".meta")).toHaveText("Undone");
+  await expect(row).not.toContainText("Fixture garden");
+  await expect(row.getByRole("button", { name: "Undo this night…" })).toHaveCount(0);
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/sleep-undone-${w}.png` });
+
+  await tonight.getByRole("button", { name: "Clear" }).first().click();
+  await expect(field).toHaveValue("");
+  await expect(tonight.getByRole("button", { name: "Clear" })).toHaveCount(0);
+});

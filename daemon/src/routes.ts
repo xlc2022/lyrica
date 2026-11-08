@@ -1924,6 +1924,23 @@ export function apiRoutes(d: Lyricad): Route[] {
       }
       return owner(d, user, (o) => summary(d, user, pool, o[pool], o[pool].getThread(thread.id)!, []));
     }),
+    route("PUT", `${u}/sleep/:pool/focus`, async (r) => {
+      const user = d.userFor(r);
+      const { text } = await r.json<Api.SleepFocusChange>();
+      if (typeof text !== "string") throw new HttpError(400, "the line for tonight is text");
+      owner(d, user, (o) => {
+        try { o[poolOf(r)].setSleepFocus(text, `user:${user.id}`); } catch (err) { throw new HttpError(400, (err as Error).message); }
+      });
+      return sleepOverview(d, user);
+    }),
+    route("POST", `${u}/sleep/:pool/runs/:runId/undo`, (r) => {
+      const user = d.userFor(r);
+      if (s().sleep.working().includes(user.id)) throw new HttpError(409, "She's asleep now. Undo once she wakes.");
+      return owner(d, user, (o) => {
+        try { o[poolOf(r)].undoSleepRun(r.params.runId!, `user:${user.id}`); } catch (err) { throw new HttpError(409, (err as Error).message); }
+        return sleepRunDetail(d, o, poolOf(r), r.params.runId!);
+      });
+    }),
     route("DELETE", `${u}/sleep/:pool/items/:itemId`, (r) => {
       owner(d, d.userFor(r), (o) => o[poolOf(r)].dismissItem(r.params.itemId!));
       return { ok: true };
@@ -2716,6 +2733,7 @@ function sleepOverview(d: Lyricad, user: User): Api.SleepOverview {
       time: d.sleepTime(),
       items: pools.flatMap((p) => o[p].listItems().map((i) => sleepItemInfo(p, i))).sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
       runs: pools.flatMap((p) => o[p].listSleepRuns(1).map((r) => sleepRunInfo(p, r))).sort((a, b) => b.startedAt.localeCompare(a.startedAt)),
+      focus: Object.fromEntries(pools.flatMap((p) => { const f = o[p].sleepFocus(); return f ? [[p, f.text]] : []; })),
     };
   });
 }
@@ -2727,7 +2745,10 @@ function sleepRunDetail(d: Lyricad, o: OwnerView, pool: Pool, runId: string): Ap
   // A skipped run lists what its renamed-files step respelled (docs/sleep.md, step 0); otherwise it wrote nothing.
   const changes = run.status === "skipped" && run.startedAt === run.finishedAt ? { notes: [], edited: [], pages: [], journal: [] } : store.sleepChanges(run.startedAt, run.finishedAt ?? new Date().toISOString());
   const raw = (id: string) => store.get(id, { raw: true });
-  const items = store.listItems({ run: run.id, includeDismissed: true }).map((i) => sleepItemInfo(pool, i));
+  // An undone night's items went with it.
+  const items = run.skipReason === "undone" ? [] : store.listItems({ run: run.id, includeDismissed: true }).map((i) => sleepItemInfo(pool, i));
+  const undoable = store.undoableRun()?.id === run.id;
+  const blocked = undoable ? store.sleepUndoBlock(run.id) ?? (d.services!.sleep.working().includes(o.userId) ? "She's asleep now. Undo once she wakes." : undefined) : undefined;
   return {
     ...sleepRunInfo(pool, run),
     // Notes it made, then notes it edited (a renamed file respelled).
@@ -2738,6 +2759,7 @@ function sleepRunDetail(d: Lyricad, o: OwnerView, pool: Pool, runId: string): Ap
     dream: changes.journal.map((id) => ({ id, text: raw(id)?.text ?? "" })),
     ...("wake" in changes && changes.wake !== undefined ? { wake: changes.wake } : {}),
     users: Object.fromEntries(d.services!.users.all().map((u) => [u.id, { displayName: u.profile.displayName, pronouns: u.profile.pronouns }])),
+    ...(undoable ? { undo: blocked ? { blocked } : {} } : {}),
   };
 }
 

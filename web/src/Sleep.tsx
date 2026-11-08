@@ -1,11 +1,12 @@
 // Sleep (docs/sleep.md "Sleep in the UI"): her items from the night at the top, each with Start a chat
 // and Dismiss; then the newest run, with Show all beside History, opening to its notes, pages with their word
-// differences, questions, dream and WAKE, each linking into the memory browser; Sleep now at the foot.
+// differences, questions, dream and WAKE, each linking into the memory browser, the newest with Undo this night…;
+// Tonight's line for her dream per pool above History; Sleep now at the foot.
 // Also the per-user mode (Settings → Sleep) and the administrator's sleep time.
 import { Fragment, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   del, get, HttpError, post, put, u,
-  type Display, type HistoryPage, type Pool, type SleepEvent, type SleepItemInfo, type SleepMode, type SleepOverview, type SleepRunDetail, type SleepRunInfo, type SleepStarted, type SleepTime, type ThreadSummary, type UserMap,
+  type Display, type HistoryPage, type Pool, type SleepEvent, type SleepFocusChange, type SleepItemInfo, type SleepMode, type SleepOverview, type SleepRunDetail, type SleepRunInfo, type SleepStarted, type SleepTime, type ThreadSummary, type UserMap,
 } from "./api.ts";
 import { HistoryHead, HistoryList } from "./History.tsx";
 import { Icon } from "./icons.tsx";
@@ -38,7 +39,9 @@ export function useSleepOverview(userId: string, display?: Display): SleepState 
   };
 }
 
-export const SKIPPED: Record<NonNullable<SleepRunInfo["skipReason"]>, string> = { "no-key": "Skipped: no key", "endpoint-down": "Skipped: the endpoint was down", "no-activity": "Skipped: nothing new", "plan-limit": "Waiting: the plan's usage limit" };
+export const SKIPPED: Record<NonNullable<SleepRunInfo["skipReason"]>, string> = { "no-key": "Skipped: no key", "endpoint-down": "Skipped: the endpoint was down", "no-activity": "Skipped: nothing new", "plan-limit": "Waiting: the plan's usage limit", undone: "Undone" };
+/** The longest line for tonight the server takes (core's SLEEP_FOCUS_LIMIT). */
+const SLEEP_FOCUS_MAX = 300;
 const PHASE_WORD = { consolidate: "consolidating", dream: "dreaming", wake: "waking" } as const;
 const KIND_WORD: Record<SleepItemInfo["kind"], string> = { thought: "thought", question: "question", persona: "persona suggestion" };
 const plural = (n: number, one: string, many: string) => <><span className="num">{n}</span> {n === 1 ? one : many}</>;
@@ -162,7 +165,8 @@ export function SleepPage({ ctx }: { ctx: ShellContext }) {
     reload();
   });
 
-  const row = (r: SleepRunInfo) => <RunRow key={`${r.pool}/${r.id}`} run={r} detail={details[`${r.pool}/${r.id}`]} userId={userId} users={users} load={load} />;
+  const row = (r: SleepRunInfo) => <RunRow key={`${r.pool}/${r.id}`} run={r} detail={details[`${r.pool}/${r.id}`]} userId={userId} users={users} load={load}
+    undone={(d) => { setDetails((m) => ({ ...m, [`${d.pool}/${d.id}`]: d })); reload(); }} />;
   return (
     <main className="main">
       <PageHead ctx={ctx} title="Sleep" facts={items.length > 0 ? <><span className="num">{items.length}</span> new</> : undefined} />
@@ -193,6 +197,7 @@ export function SleepPage({ ctx }: { ctx: ShellContext }) {
               <p key={p} className="muted small">{poolWord(p)} is hidden. Turn on {poolWord(p)} in the Sort menu to see it.</p>
             ))}
           </section>
+          {o && <Tonight ctx={ctx} />}
           <section aria-label="History" className="sleep-block">
             <HistoryHead to={{ page: "history", userId, kind: "sleep" }} count={runTotal.data?.total} />
             <div className="list sleep-runs">{last.map(row)}</div>
@@ -218,16 +223,20 @@ export function SleepHistoryPage({ ctx, route }: { ctx: ShellContext; route?: Ex
         return <div className="stack">{[...days].map(([day, runs]) => <div className="sleep-day" key={day}>
           <div className="eyebrow num">{day}</div>
           <div className="list sleep-runs">{runs.map((r) => <RunRow key={`${r.pool}/${r.id}`} run={r} detail={details[`${r.pool}/${r.id}`]} userId={userId}
-            users={{ [userId]: { displayName: ctx.user.displayName, pronouns: ctx.user.pronouns } }} load={load} />)}</div>
+            users={{ [userId]: { displayName: ctx.user.displayName, pronouns: ctx.user.pronouns } }} load={load}
+            undone={(d) => { setDetails((all) => ({ ...all, [`${d.pool}/${d.id}`]: d })); ctx.sleep.reload(); }} />)}</div>
         </div>)}</div>;
       }} />
     </div></div>
   </main>;
 }
 
-/** One run: the pool, the time, its line; it opens to what it wrote. */
-function RunRow({ run, detail, userId, users, load }: { run: SleepRunInfo; detail?: SleepRunDetail; userId: string; users: UserMap; load: (r: SleepRunInfo) => Promise<void> }) {
+/** One run: the pool, the time, its line; it opens to what it wrote. An undone run's detail carries its new status. */
+function RunRow({ run: listed, detail, userId, users, load, undone }: {
+  run: SleepRunInfo; detail?: SleepRunDetail; userId: string; users: UserMap; load: (r: SleepRunInfo) => Promise<void>; undone: (d: SleepRunDetail) => void;
+}) {
   const [error, setError] = useState("");
+  const run: SleepRunInfo = detail && detail.status !== listed.status && detail.skipReason === "undone" ? detail : listed;
   const open = (e: React.SyntheticEvent<HTMLDetailsElement>) => {
     if (e.currentTarget.open && !detail) load(run).catch((err: Error) => setError(err.message));
   };
@@ -242,13 +251,13 @@ function RunRow({ run, detail, userId, users, load }: { run: SleepRunInfo; detai
       <summary className="sleep-sum">{head}</summary>
       <div className="sleep-detail">
         <ErrorText error={error} />
-        {detail ? <RunDetail d={detail} userId={userId} users={users} /> : !error && <p className="muted small">Loading…</p>}
+        {detail ? <RunDetail d={detail} userId={userId} users={users} undone={undone} /> : !error && <p className="muted small">Loading…</p>}
       </div>
     </details>
   );
 }
 
-function RunDetail({ d, userId, users }: { d: SleepRunDetail; userId: string; users: UserMap }) {
+function RunDetail({ d, userId, users, undone }: { d: SleepRunDetail; userId: string; users: UserMap; undone: (d: SleepRunDetail) => void }) {
   const all = { ...users, ...d.users };
   const text = (t: string) => plain(t, all);
   const empty = !d.notes.length && !d.pages.length && !d.questions.length && !d.items.length && !d.dream.length && !d.wake;
@@ -296,7 +305,62 @@ function RunDetail({ d, userId, users }: { d: SleepRunDetail; userId: string; us
           <div className="prose small"><Prose text={text(d.wake)} /></div>
         </div>
       )}
+      {d.undo && <UndoNight d={d} userId={userId} undone={undone} />}
     </>
+  );
+}
+
+/** The newest night's Undo: confirmed in a dialog; greyed with the reason as its tooltip when it can't. */
+function UndoNight({ d, userId, undone }: { d: SleepRunDetail; userId: string; undone: (d: SleepRunDetail) => void }) {
+  const [asking, setAsking] = useState(false);
+  const [run, busy, error] = useAction();
+  const blocked = d.undo?.blocked;
+  const go = () => run(async () => { setAsking(false); undone(await post<SleepRunDetail>(u(userId, "sleep", d.pool, "runs", d.id, "undo"))); });
+  return (
+    <div className="sleep-undo">
+      {/* aria-disabled, not disabled: it stays focusable, so its tooltip says why. */}
+      <button type="button" className="sm" aria-disabled={blocked ? "true" : undefined} title={blocked} disabled={busy}
+        onClick={(e) => { if (blocked) e.preventDefault(); else setAsking(true); }}>Undo this night…</button>
+      <ErrorText error={error} />
+      {asking && (
+        <ConfirmDialog title="Undo this night?" confirm="Undo"
+          sentence="What sleep wrote that night goes back to how it was before: its notes, pages, dream and WAKE. Its questions and thoughts are dismissed; a persona suggestion stays. The next sleep covers that time again."
+          onCancel={() => setAsking(false)} onConfirm={() => void go()} />
+      )}
+    </div>
+  );
+}
+
+/** Tonight: one line per shown pool for her next dream, saved with its own Save; Clear takes it back. */
+function Tonight({ ctx }: { ctx: ShellContext }) {
+  const userId = ctx.user.id;
+  const o = ctx.sleep.overview!;
+  const pools = (["general", "private"] as const).filter((p) => !hidden(ctx.me.display, p));
+  const [draft, setDraft] = useState<Partial<Record<Pool, string>>>({});
+  const [run, busy, error] = useAction();
+  const save = (pool: Pool, text: string) => run(async () => {
+    ctx.sleep.set(await put<SleepOverview>(u(userId, "sleep", pool, "focus"), { text } satisfies SleepFocusChange));
+    setDraft((m) => { const { [pool]: _, ...rest } = m; return rest; });
+  });
+  if (!pools.length) return null;
+  return (
+    <section aria-label="Tonight" className="sleep-block sleep-tonight">
+      <ErrorText error={error} />
+      {pools.map((pool) => {
+        const set = o.focus[pool] ?? "";
+        const value = draft[pool] ?? set;
+        return (
+          <form key={pool} className="inline" data-pool={pool} onSubmit={(e) => { e.preventDefault(); void save(pool, value); }}>
+            <label className="field">
+              <span title="A line for her to think about in tonight's dream. It clears once she has dreamed.">Tonight{pools.length > 1 && <> · <PoolName pool={pool} /></>}</span>
+              <input type="text" name={`tonight-${pool}`} maxLength={SLEEP_FOCUS_MAX} value={value} onChange={(e) => setDraft((m) => ({ ...m, [pool]: e.target.value }))} />
+            </label>
+            <button disabled={busy || value.trim() === set}>Save</button>
+            {set && <button type="button" disabled={busy} onClick={() => void save(pool, "")}>Clear</button>}
+          </form>
+        );
+      })}
+    </section>
   );
 }
 

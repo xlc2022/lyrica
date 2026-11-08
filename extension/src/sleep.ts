@@ -240,7 +240,10 @@ export class Sleep {
       for (const phase of plan.phases) {
         if (state.stopped) { ok = false; break; }
         this.emit({ type: "phase", userId, pool, runId, phase, state: "started" });
+        const began = new Date().toISOString();
         const result = await this.phase(view, userId, pool, runId, phase, plan.material, state);
+        // The person's line for tonight is spent once a dream that saw it has written its entry.
+        if (phase === "dream" && result.ok) view.own.clearSleepFocus(began);
         phases[phase] = { thread: result.thread, done: result.ok, ...(result.limit ? { limit: result.limit } : {}) };
         view.own.updateSleepRun(runId, { phases });
         this.emit({ type: "phase", userId, pool, runId, phase, state: result.ok ? "done" : "stopped" });
@@ -319,7 +322,8 @@ export class Sleep {
     const material = view.own.sleepMaterial(view.own.watermark(), until);
     material.flagged.push(...danglingPages(view));
     // In private, general's page about the user changing is reason enough to sleep: it may now repeat the private one.
-    const any = material.threads.length || material.notes.length || material.edited.length || material.flagged.length || aboutToTidy(view);
+    // A line the person left for tonight is reason enough too.
+    const any = material.threads.length || material.notes.length || material.edited.length || material.flagged.length || aboutToTidy(view) || view.own.sleepFocus();
     return any ? { phases: [...PHASES], until, material } : undefined;
   }
 
@@ -489,7 +493,7 @@ export function sleepTools(phase: SleepPhase, s: SleepTools): ExtensionFactory {
             if (same) copies.push(same);
             return !same;
           });
-          const ids = fresh.length ? own.addNotes(fresh, { author: "sleep" }) : [];
+          const ids = fresh.length ? own.addNotes(fresh, { author: "sleep", run: s.runId }) : [];
           const already = copies.length ? `${ids.length ? " " : ""}Already noted, so not saved again: ${[...new Set(copies)].map((id) => `[${id}]`).join(", ")}.` : "";
           return text(`${ids.length ? `Saved ${ids.join(", ")}.` : ""}${already}`);
         },
@@ -504,7 +508,7 @@ export function sleepTools(phase: SleepPhase, s: SleepTools): ExtensionFactory {
           by: Type.String({ description: "The newer note that replaces them, like n:20261024-a1b2c3d4." }),
         }),
         async execute(_id, params) {
-          own.supersede(params.notes, params.by, "sleep");
+          own.supersede(params.notes, params.by, "sleep", s.runId);
           const pages = [...new Set(params.notes.flatMap((n) => own.usedIn(n)).filter((id) => id.startsWith("p:")))];
           return text(`Superseded by ${params.by}.${pages.length ? ` Rewrite ${pages.map((p) => `[${p}]`).join(", ")} from current notes.` : ""}`);
         },

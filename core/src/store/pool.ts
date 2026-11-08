@@ -230,7 +230,8 @@ export interface Edited {
 }
 
 export type SleepStatus = "running" | "complete" | "partial" | "skipped";
-export type SkipReason = "no-key" | "endpoint-down" | "no-activity" | "plan-limit";
+/** `undone`: a person took the night back (`undoSleepRun`), so it counts as a skip. */
+export type SkipReason = "no-key" | "endpoint-down" | "no-activity" | "plan-limit" | "undone";
 export type SleepPhase = "consolidate" | "dream" | "wake";
 /** The limit a sleep phase stopped at. */
 export type SleepLimit = "turns" | "tokens" | "time";
@@ -306,6 +307,8 @@ const revisionBody = (raw: string): Body => { const { renamed: _, ...body } = JS
 const respeller = (renames: Respelling[][]) => { const fs = renames.map(pathRewriter); return (s: string) => fs.reduce((t, f) => f(t), s); };
 const TOOL_TEXT_LIMIT = 2000;
 const GOAL_LIMIT = 2000;
+/** The most a person's line for tonight's dream holds. */
+export const SLEEP_FOCUS_LIMIT = 300;
 /** Well under the project section's budget, so the notes and threads after them always fit. */
 const INSTRUCTIONS_LIMIT = 2000;
 /** How much more a project's own memories weigh in recall from inside that project. A boost, never a filter. */
@@ -1632,7 +1635,8 @@ export class PoolStore extends PoolReader {
    * Saves notes. `{user}` mentions become tokens. From a thread view the
    * thread must be logged, and each note cites its source entry.
    */
-  addNotes(notes: NoteInput[], opts: { author: Author; thread?: string }): string[] {
+  /** `run`: the sleep run saving them, which records the notes they replace, so the night can be undone. */
+  addNotes(notes: NoteInput[], opts: { author: Author; thread?: string; run?: string }): string[] {
     this.checkAuthor(opts.author);
     if (opts.thread !== undefined && this.mustThread(opts.thread).unlogged) {
       throw new Error("this thread isn't logged in memory, so notes can't be written from it");
@@ -1649,7 +1653,9 @@ export class PoolStore extends PoolReader {
         .run(id, text, about.join(", "), originOf(opts.author), opts.author, at, at);
       this.written(id, { text, about }, opts.author, at);
       for (const old of note.supersedes ?? []) {
-        if (!this.load(old) || kindOf(old) !== "note") throw new Error(`no such note to supersede: ${old}`);
+        const was = this.load(old);
+        if (!was || was.kind !== "note") throw new Error(`no such note to supersede: ${old}`);
+        if (opts.run) this.recordSuperseded(opts.run, old, was.supersededBy);
         this.db.prepare("UPDATE notes SET superseded_by = ? WHERE id = ?").run(id, old);
       }
       return id;
@@ -1661,7 +1667,7 @@ export class PoolStore extends PoolReader {
    * stay readable and citable; pages citing them are flagged for a rewrite.
    * Only a user replaces a note a user added.
    */
-  supersede(old: string[], by: string, author: Author): void {
+  supersede(old: string[], by: string, author: Author, run?: string): void {
     this.checkAuthor(author);
     const newer = this.load(by);
     if (!newer || newer.kind !== "note" || newer.supersededBy) throw new Error(`no current note ${by} to replace them with`);
@@ -1671,6 +1677,7 @@ export class PoolStore extends PoolReader {
         if (!note || note.kind !== "note") throw new Error(`no such note to supersede: ${id}`);
         if (id === by) throw new Error("a note can't replace itself");
         if (note.origin === "user" && !author.startsWith("user:")) throw new Error(`${id} was added by a user: raise a question instead`);
+        if (run) this.recordSuperseded(run, id, note.supersededBy);
         this.db.prepare("UPDATE notes SET superseded_by = ? WHERE id = ?").run(by, id);
         this.db.prepare("UPDATE pages SET flagged = 1 WHERE 'p:' || slug IN (SELECT src FROM citations WHERE dst = ?)").run(id);
       }
@@ -1857,6 +1864,122 @@ export class PoolStore extends PoolReader {
     if (!this.db.prepare("UPDATE sleep_items SET dismissed = 1 WHERE id = ?").run(id).changes) throw new Error(`no item ${id}`);
   }
 
+  // A line for tonight's dream (docs/sleep.md, "Tonight")
+
+  /** The person's line for tonight's dream in this pool, if they left one. */
+  sleepFocus(): { text: string; setAt: string } | undefined {
+    const r = this.db.prepare("SELECT text, set_at FROM sleep_focus WHERE id = 1").get() as { text: string; set_at: string } | undefined;
+    return r && { text: r.text, setAt: r.set_at };
+  }
+
+  /** Sets the line, or clears it with empty text. Only a person does. */
+  setSleepFocus(text: string, author: Author): void {
+    this.checkAuthor(author);
+    if (!author.startsWith("user:")) throw new Error("only a person leaves a line for tonight");
+    const clean = removeSecrets(text.trim().replace(/\s+/g, " "));
+    if (clean.length > SLEEP_FOCUS_LIMIT) throw new Error(`a line for tonight has at most ${SLEEP_FOCUS_LIMIT} characters`);
+    if (!clean) this.db.prepare("DELETE FROM sleep_focus").run();
+    else this.db.prepare("INSERT OR REPLACE INTO sleep_focus (id, text, set_at) VALUES (1, ?, ?)").run(clean, now());
+  }
+
+  /** Sleep clears the line once a dream that began after it was set has written its entry; a line set since stays. */
+  clearSleepFocus(before: string): void {
+    this.db.prepare("DELETE FROM sleep_focus WHERE set_at < ?").run(before);
+  }
+
+  // Undoing a night (docs/sleep.md, "Undo")
+
+  /** The run a person could undo in this pool: the newest that wasn't skipped, once it has ended. */
+  undoableRun(): SleepRunRecord | undefined {
+    const row = this.db.prepare("SELECT * FROM sleep_runs WHERE status != 'skipped' ORDER BY started_at DESC, rowid DESC LIMIT 1").get() as SleepRunRow | undefined;
+    return row && row.status !== "running" && row.finished_at ? toRun(row) : undefined;
+  }
+
+  /** Why `runId` can't be undone now, in plain words, or undefined when it can. */
+  sleepUndoBlock(runId: string): string | undefined {
+    return this.undoPlan(runId).block;
+  }
+
+  /**
+   * Takes a night back: every revision sleep wrote in the run but its
+   * renamed-files respellings goes, a memory with none left goes without a
+   * tombstone, the rest get their newest remaining revision back as their
+   * text; the notes it marked replaced get back what replaced them before; its
+   * items are dismissed. The run becomes skipped as `undone`, so the next sleep
+   * covers its time again. Throws with the reason when it can't.
+   */
+  undoSleepRun(runId: string, author: Author): { removed: string[]; restored: string[] } {
+    this.checkAuthor(author);
+    if (!author.startsWith("user:")) throw new Error("only a person undoes a night");
+    const plan = this.undoPlan(runId);
+    if (plan.block) throw new Error(plan.block);
+    const removed: string[] = [];
+    const restored: string[] = [];
+    this.tx(() => {
+      const drop = this.db.prepare("DELETE FROM revisions WHERE id = ?");
+      for (const [id, revs] of plan.items) {
+        for (const r of revs) drop.run(r);
+        const left = this.db.prepare("SELECT * FROM revisions WHERE item = ? ORDER BY id DESC LIMIT 1").get(id) as RevisionRow | undefined;
+        if (left) {
+          this.putBack(id, revisionBody(left.body), left.created_at);
+          restored.push(id);
+        } else {
+          this.drop(id);
+          removed.push(id);
+        }
+      }
+      // What the night replaced gets back what replaced it before, newest change first; a note replaced by one that went is current again.
+      for (const s of [...plan.superseded].reverse()) {
+        const by = s.was && this.load(s.was) ? s.was : null;
+        this.db.prepare("UPDATE notes SET superseded_by = ? WHERE id = ?").run(by, s.note);
+      }
+      for (const id of removed) if (kindOf(id) === "note") this.db.prepare("UPDATE notes SET superseded_by = NULL WHERE superseded_by = ?").run(id);
+      // A page back at a version citing something since deleted or replaced comes up for a rewrite.
+      for (const id of restored) {
+        if (kindOf(id) !== "page") continue;
+        const stale = (this.db.prepare("SELECT dst FROM citations WHERE src = ?").all(id) as { dst: string }[])
+          .some(({ dst }) => this.db.prepare("SELECT 1 FROM tombstones WHERE id = ?").get(dst) || this.db.prepare("SELECT 1 FROM notes WHERE id = ? AND superseded_by IS NOT NULL").get(dst));
+        this.db.prepare("UPDATE pages SET flagged = ? WHERE slug = ?").run(stale ? 1 : 0, id.slice(2));
+      }
+      this.db.prepare("UPDATE sleep_items SET dismissed = 1 WHERE run = ?").run(runId);
+      this.db.prepare("UPDATE sleep_runs SET status = 'skipped', skip_reason = 'undone', superseded = '[]' WHERE id = ?").run(runId);
+      this.optimize();
+    });
+    return { removed, restored };
+  }
+
+  /** What undoing `runId` would take back, per memory, and why it can't be, if it can't. */
+  private undoPlan(runId: string): { block?: string; items: Map<string, number[]>; superseded: { note: string; was: string | null }[] } {
+    const items = new Map<string, number[]>();
+    const run = this.db.prepare("SELECT * FROM sleep_runs WHERE id = ?").get(runId) as (SleepRunRow & { superseded: string }) | undefined;
+    if (!run) return { block: "There's no such night.", items, superseded: [] };
+    if (this.undoableRun()?.id !== runId) {
+      return { block: run.status === "running" ? "She's still asleep." : "Only the newest night can be undone.", items, superseded: [] };
+    }
+    const superseded = json<{ note: string; was: string | null }[]>(run.superseded);
+    const revs = this.db.prepare("SELECT * FROM revisions WHERE author = 'sleep' AND created_at >= ? AND created_at <= ? ORDER BY id")
+      .all(run.started_at, run.finished_at) as RevisionRow[];
+    // The renamed-files step's respellings record files the person renamed: they stay.
+    for (const r of revs) if (!json<{ renamed?: unknown }>(r.body).renamed) items.set(r.item, [...(items.get(r.item) ?? []), r.id]);
+    for (const [id, ids] of items) {
+      if (this.db.prepare("SELECT 1 FROM revisions WHERE item = ? AND id > ?").get(id, ids[ids.length - 1])) {
+        return { block: `${id} changed after that night: restore it from its History instead.`, items, superseded };
+      }
+    }
+    // A memory the night made that something else cites can't go quietly.
+    for (const [id, ids] of items) {
+      const total = (this.db.prepare("SELECT count(*) AS n FROM revisions WHERE item = ?").get(id) as { n: number }).n;
+      if (total > ids.length) continue;
+      const by = (this.db.prepare("SELECT src FROM citations WHERE dst = ? OR dst = ?").all(id, `${this.pool}/${id}`) as { src: string }[]).find((c) => !items.has(c.src));
+      if (by) return { block: `${by.src} cites ${id}, which that night wrote.`, items, superseded };
+    }
+    return { items, superseded };
+  }
+
+  private recordSuperseded(run: string, note: string, was: string | undefined): void {
+    this.db.prepare("UPDATE sleep_runs SET superseded = json_insert(superseded, '$[#]', json(?)) WHERE id = ?").run(JSON.stringify({ note, was: was ?? null }), run);
+  }
+
   // Editing
 
   /**
@@ -1992,9 +2115,45 @@ export class PoolStore extends PoolReader {
     this.db.prepare("DELETE FROM vectors WHERE id = ?").run(id);
   }
 
+  /** An undone night: the memory holds `body` again, as of `at`, with no new revision. */
+  private putBack(id: string, body: Body, at: string): void {
+    switch (kindOf(id)) {
+      case "note":
+        this.db.prepare("UPDATE notes SET text = ?, about = ?, updated_at = ? WHERE id = ?").run(body.text, (body.about ?? []).join(", "), at, id);
+        break;
+      case "page":
+        this.db.prepare("UPDATE pages SET text = ?, title = ?, summary = ?, folders = ?, instructions = ?, updated_at = ? WHERE slug = ?")
+          .run(body.text, body.title, body.summary, JSON.stringify(body.folders ?? []), body.instructions || null, at, id.slice(2));
+        break;
+      case "journal":
+        this.db.prepare("UPDATE journal SET text = ?, updated_at = ? WHERE id = ?").run(body.text, at, id);
+        break;
+      case "wake":
+        this.db.prepare("UPDATE wake SET text = ?, updated_at = ? WHERE id = 1").run(body.text, at);
+        break;
+    }
+    this.reindexed(id, body);
+  }
+
+  /** An undone night's own memory goes without a tombstone: nothing was forgotten on purpose. */
+  private drop(id: string): void {
+    if (kindOf(id) === "note") this.db.prepare("DELETE FROM notes WHERE id = ?").run(id);
+    if (kindOf(id) === "page") this.db.prepare("DELETE FROM pages WHERE slug = ?").run(id.slice(2));
+    if (kindOf(id) === "journal") this.db.prepare("DELETE FROM journal WHERE id = ?").run(id);
+    if (kindOf(id) === "wake") this.db.prepare("DELETE FROM wake").run();
+    this.db.prepare("DELETE FROM citations WHERE src = ?").run(id);
+    this.db.prepare("DELETE FROM search WHERE id = ?").run(id);
+    this.db.prepare("DELETE FROM vectors WHERE id = ?").run(id);
+  }
+
   /** Records a new version: a revision, its citations and its search row. */
   private written(id: string, body: Body, author: Author, at: string, renamed?: Respelling[][]): void {
     this.db.prepare("INSERT INTO revisions (item, body, author, created_at) VALUES (?, ?, ?, ?)").run(id, JSON.stringify(renamed ? { ...body, renamed } : body), author, at);
+    this.reindexed(id, body);
+  }
+
+  /** A memory's citations and search row, from its current text. */
+  private reindexed(id: string, body: Body): void {
     this.db.prepare("DELETE FROM citations WHERE src = ?").run(id);
     const cite = this.db.prepare("INSERT OR IGNORE INTO citations (src, dst) VALUES (?, ?)");
     for (const dst of citationsIn(body.text, this.pool)) if (dst !== id) cite.run(id, dst);

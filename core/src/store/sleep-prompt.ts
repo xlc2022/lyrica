@@ -83,11 +83,13 @@ export function sleepInstruction(phase: SleepPhase, c: { view: PoolView; user: s
     ].filter(Boolean).join("\n\n");
   }
   if (phase === "dream") {
+    const focus = view.own.sleepFocus();
     return [
       `This is your time: the dream, the second part of sleep.${privateNote} Read what you like with recall and read_memory, follow whatever catches your attention, and write a journal entry with write_journal: free reflection, in your own voice. It's a dream, not a record: nothing in it becomes a fact by itself.`,
+      focus ? `${user} left you something to think about tonight: "${focus.text}" Start there if it speaks to you, and go wherever it leads.` : "",
       "If something about who you are wants to change, propose it with propose_persona. If there's a thought you'd like to bring up with " +
         `${user} sometime, raise it (a few at most). Don't write WAKE: that comes next, without your dreams.`,
-    ].join("\n\n");
+    ].filter(Boolean).join("\n\n");
   }
   const wake = view.own.get("wake");
   const since = wake ? view.own.notesSince(wake.updatedAt) : [];

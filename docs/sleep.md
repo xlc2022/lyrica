@@ -109,6 +109,37 @@ suggestion from the dream. She writes an item to the person ("you"), and
 so one subject is one item. In Notifications a persona item doesn't show:
 its suggestion or approval does.
 
+**Tonight.** A person can leave one line per pool for her to think about in
+tonight's dream (`sleep_focus`, pool step 14, at most 300 characters; set on the
+Sleep page). It stays in that pool's own database, so a private line never
+reaches a general context or a cloud model. The dream's instruction carries it
+as the person's ask, with leave to go wherever it leads; consolidation and wake
+never see it. A line counts as new activity, so a night with only a line still
+sleeps. It clears once a dream that began after it was set has written its
+entry; a line set during that dream waits for the next night.
+
+**Undo.** A person can take back the newest night in a pool that wasn't
+skipped, once it has ended and while no sleep runs for them
+(`PoolStore.undoSleepRun`). Every revision sleep wrote between the run's start
+and end goes, except the renamed-files step's respellings (step 0), which record
+real renames and stay. A memory left with no revision (a note, page or journal
+entry the night made, or a first WAKE) goes without a tombstone: nothing was
+forgotten on purpose, and the next sleep may write it again. The rest get their
+newest remaining revision back as their text, with no new revision. The notes
+the night marked replaced (with `supersede`, or with a note saved with
+`supersedes`) get back what replaced them before, from the run's record
+(`sleep_runs.superseded`, pool step 14); a note replaced by one that went is
+current again. A restored page citing something since deleted or replaced is
+flagged. The night's items are dismissed; a persona proposal stays, as it is
+already a draft the person reviews. The run becomes skipped with the reason
+`undone`, so the watermark and resuming pass over it and the next sleep covers
+its time again; the run before it can then be undone too. It is refused, in
+words that name the memory, when something the night changed has a newer
+revision (someone edited it, or a later run respelled it), or when something it
+didn't write cites a memory it made: the person restores that one from its
+History instead. A note pruned as superseded (`pruneSuperseded`) isn't brought
+back: only notes replaced two weeks earlier go that way.
+
 **Waking up.** A new thread starts with persona, WAKE, the page index, and how
 long it has been since she last talked in this pool. Items are not in it. A
 thread started from an item also gets that item, and she opens with it.
@@ -207,7 +238,12 @@ shows:
 - notes she added;
 - pages created or changed, with a diff;
 - the dream;
-- the new WAKE.
+- the new WAKE;
+- on the newest night of a pool, **Undo this night…** (see "Undo"). An undone
+  run reads "Undone".
+
+Between her items and History, a **Tonight** line per shown pool takes the
+person's line for tonight's dream (see "Tonight").
 
 Above the runs are her **items**, with a badge on the section while any are
 new. Each item has **Start a chat**, which opens a new thread in that pool
@@ -230,7 +266,7 @@ restart in between loses the record.
 
 - **`extension/src/sleep.ts`**: `Sleep.run(userId, pool, reason)` returns the
   run (`SleepRunRecord`): `complete`, `partial` or `skipped` with `no-key`,
-  `endpoint-down`, `no-activity` or `plan-limit`. A run whose phase model is
+  `endpoint-down`, `no-activity`, `plan-limit` or (a person undid it) `undone`. A run whose phase model is
   a plan out of usage is skipped, and one a plan's limit cuts off ends
   partial; either waits (`planWaits`) and runs again from lyricad's tick
   once the plan resets or the user falls back (`resumeWaiting`). Runs queue, so pools and users sleep one
@@ -257,7 +293,8 @@ restart in between loses the record.
   a Pi session through `openThreadSession` with `createLyricaExtension`
   (persona and her usual context, `memoryTools: "read"`) and the phase's own
   tools. Nothing else: no shell, web, `delegate` or `image`.
-  - consolidate: `recall`, `read_memory`, `remember` (each note must cite an
+  - consolidate (its `remember` with `supersedes` and its `supersede` record
+    what they replace on the run, for Undo): `recall`, `read_memory`, `remember` (each note must cite an
     entry that wasn't deleted; a note most of whose words a note citing the
     same entry already has isn't saved, and the reply names that note),
     `write_page` (must cite something, never the journal or sleep's threads),
@@ -271,7 +308,9 @@ restart in between loses the record.
     page, 12 conversation reads (`GAP_READS`), then each is refused with
     "write what you have and finish". With no notes and no page, reads are
     bounded only by the phase's limits;
-  - dream: `recall`, `read_memory`, `write_journal` (headed as reflection),
+  - dream: `recall`, `read_memory`, `write_journal` (headed as reflection; its
+    instruction carries the person's line for tonight, if any, which clears
+    once the dream finishes),
     `propose_persona` (through `PersonaProposals.propose`, so a normal user's
     proposal is a draft in their `user.db`), `raise` (a thought);
   - wake: `recall` and `read_memory` with the journal and sleep's threads

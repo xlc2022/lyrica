@@ -130,6 +130,21 @@ function fakeModel() {
         } finally { view.close(); }
         res.writeHead(204); return res.end();
       }
+      // Test-only: a finished night in General that wrote a page, a dream, WAKE and a question, so Undo this night can be shown.
+      if (req.method === "POST" && req.url === "/sleep-night-fixture") {
+        const { userId } = JSON.parse(body) as { userId: string };
+        const view = daemon.services!.memory.openThreadView(userId, "general");
+        try {
+          const run = view.own.startSleepRun("scheduled", new Date().toISOString(), new Date(Date.now() - 60_000).toISOString());
+          const [note] = view.own.addNotes([{ text: "Fixture note: the beds by the north wall get afternoon sun" }], { author: "sleep", run });
+          view.own.putPage({ slug: "garden-fixture", title: "Fixture garden", summary: "the garden", text: `The north beds get afternoon sun [${note}].` }, "sleep");
+          view.own.addJournal("Fixture dream of a garden at dusk.", "sleep");
+          view.own.putWake("Fixture morning: the garden plan is in motion.", "sleep");
+          view.own.addItem(run, { kind: "question", text: "Fixture question: tomatoes or beans by the north wall?" });
+          view.own.updateSleepRun(run, { status: "complete", finished: true });
+        } finally { view.close(); }
+        res.writeHead(204); return res.end();
+      }
       if (req.url === "/speech/down" || req.url === "/speech/up") { speechDown = req.url === "/speech/down"; res.writeHead(204); return res.end(); }
       if (req.url?.startsWith("/speech/v1/")) {
         const rest = req.url.slice("/speech/v1".length);

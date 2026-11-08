@@ -1060,6 +1060,11 @@ is recorded as a call and only counts are logged.
   A stored unanswered hidden opening is answered without appending another
   user entry. After her reply it sends nothing. `409` means the linked thread is
   gone. Opening a thread never re-sends the opening. `DELETE` dismisses one.
+  `PUT …/sleep/:pool/focus` sets or clears the pool's line for tonight's dream
+  (in the overview as `focus`). A run's detail carries `undo` on the pool's
+  newest run that can be undone, with `blocked` saying why not when it can't;
+  `POST …/sleep/:pool/runs/:runId/undo` undoes it and returns the detail, and
+  answers `409` in the store's words, or while sleep runs for that user.
   `GET …/sleep/events` streams `started`, `phase`, `finished` and `thread`.
 
 Lock and shutdown stop a running sleep before the key goes; the run is

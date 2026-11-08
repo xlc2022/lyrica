@@ -85,7 +85,10 @@ pool step in `core/src/migrations.ts` (step 2 adds `entries.reactions`, step 3
 the table `drafts`: the composer's unsent text, one row per thread; step 4 the
 table `wakeups`; step 5 `thread_steps` for checklists; step 6 `routines`
 for recurring turns; step 13 `renames`, files renamed in the Files panel until
-sleep respells the memories citing their threads), never DDL in the memory module.
+sleep respells the memories citing their threads; step 14 `sleep_runs.superseded`,
+the notes a run marked replaced and what replaced them before, so the night can
+be undone, and `sleep_focus`, the person's line for tonight's dream), never DDL
+in the memory module.
 `citations` and `search` are derived from the text. Deleting runs with
 `secure_delete` on and merges the index, so removed text doesn't linger in
 free pages.
@@ -466,7 +469,9 @@ both pools.
 - **Every edit is a revision.** The previous text is kept, with the author
   (`user:<id>`, `lyrica` or `sleep`) and the time. Any earlier version can be
   restored, which is itself recorded as a new revision. Deleting a memory
-  still removes all of its revisions.
+  still removes all of its revisions. Undoing a night (docs/sleep.md, "Undo")
+  is the one exception: it removes that night's revisions and puts the version
+  before them back, as if the night never wrote.
 - **Edits keep name tokens.** The editor shows each mention of a user as a
   chip with their current name, and saves it as the token. Typing `{user}`
   also works. Saving never turns a token into plain text, so a later rename
