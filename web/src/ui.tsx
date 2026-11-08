@@ -549,6 +549,7 @@ export function useReorder(count: number, order: string, busy: boolean, onMove: 
     onLostPointerCapture: (e: React.PointerEvent) => { if (press.current?.id === e.pointerId && press.current.on) end(true); },
     onContextMenu: (e: React.MouseEvent) => { if (press.current?.touch) e.preventDefault(); },
     style: shift(i),
+    "data-reorder": "",
     "data-dragging": drag && drag.held === undefined && drag.from === i ? "" : undefined,
   });
   // The dragged row follows the pointer; those between its old and new place slide over by its height and the gap.

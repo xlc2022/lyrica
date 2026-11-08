@@ -317,14 +317,14 @@ test("Tasks: the table shows each column's models; a cell's drawer adds, reorder
       await touch("touchStart", y0);
       await page.waitForTimeout(400);
       for (let k = 1; k <= 5; k++) await touch("touchMove", at(k));
-      if (name) await shot(name);
+      if (name) { await page.waitForTimeout(300); await shot(name); }
       await touch("touchEnd");
       return;
     }
     await page.mouse.move(x, y0);
     await page.mouse.down();
     for (let k = 1; k <= 5; k++) await page.mouse.move(x, at(k));
-    if (name) await shot(name);
+    if (name) { await page.waitForTimeout(300); await shot(name); }
     await page.mouse.up();
   };
   saved = put();
@@ -2962,11 +2962,15 @@ test("Text models: a group's copies reorder by dragging a row, as with Move up a
   await row.locator(".lrow-main").click();
   const trs = row.locator("tr[data-offering]");
   await expect(trs).toHaveCount(3);
+  await trs.nth(1).evaluate((el) => el.scrollIntoView({ block: "center" }));
   const a = (await trs.nth(0).locator(".copy-name").boundingBox())!, b = (await trs.nth(2).boundingBox())!;
   await page.mouse.move(a.x + 4, a.y + a.height / 2);
   await page.mouse.down();
   for (let k = 1; k <= 8; k++) await page.mouse.move(a.x + 4, a.y + a.height / 2 + (b.y + b.height * 0.8 - a.y - a.height / 2) * k / 8);
-  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/text-models-group-drag-${page.viewportSize()!.width}.png` });
+  // The rows between slide up while the lifted one is over the last place.
+  await expect(trs.nth(2)).toHaveAttribute("style", /translateY\(-/);
+  if (process.env.SCREENSHOTS) await page.waitForTimeout(300); // past the slide
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/text-models-group-drag-${page.viewportSize()!.width}.png`, fullPage: true });
   await page.mouse.up();
   await expect.poll(() => patches.length).toBe(1);
   expect(patches[0]).toEqual({ members: ["c2", "c3", "c1"] });
