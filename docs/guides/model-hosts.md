@@ -725,11 +725,14 @@ second pairing. Then:
   a shared host) moves it to what Lyrica runs, her tagged release or her
   latest merge, after a dialog confirms it. It works when Lyrica runs a
   release from her updater (Administration → Updates), the host has the
-  updater (for a latest merge, one installed by a recent `install.sh`), and
-  the host runs another commit; otherwise it's greyed out and its tooltip
-  says which is missing. The
-  card's state word follows the steps: Fetching, Draining, Building, and
-  Rolling back if it goes back. The host pauses (running
+  updater, and the host runs another commit; otherwise it's greyed out and
+  its tooltip says which is missing. A latest merge also needs an updater
+  from 2026-11-08 or later: on an older one, run `git pull &&
+  host/install.sh` once more. By hand, `sudo lyrica-host-update --tag
+  update/<name>` or `--commit <whole commit on main>`; a latest merge
+  shows as version `main-<commit>`. The card's state word follows the
+  steps: Fetching, Draining, Building, and Rolling back if it goes back.
+  The host pauses (running
   jobs finish first), installs the release into a root-owned tree,
   `/opt/lyrica-host/<commit>`, and is rolled back if host-api doesn't
   report the new commit within 5 minutes; a host paused before stays
