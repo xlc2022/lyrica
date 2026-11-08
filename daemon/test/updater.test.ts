@@ -546,19 +546,23 @@ describe("lyrica-nixos-start", () => {
     const { w, profile, pkg, start } = await nixosWorld();
     const c1 = w.release("one", S(1, 1, 1), S(1, 1, 1)), c2 = w.release("two", S(1, 1, 1), S(1, 1, 1));
     const one = pkg("one", S(1, 1, 1), S(1, 1, 1)), two = pkg("two", S(1, 1, 1), S(1, 1, 1));
-    expect((await start(two, c2.slice(0, 7))).code).toBe(0);
+    // The module passes the whole commit, and it is recorded whole: a model host's
+    // updater takes nothing shorter. lyricad's build label stays 12 characters.
+    expect((await start(two, c2)).code).toBe(0);
     expect(readlinkSync(profile)).toBe(two);
+    expect(w.json("releases.json").current).toBe(c2);
+    expect(readFileSync(join(w.update, "build.env"), "utf8")).toBe(`LYRICA_BUILD=${c2.slice(0, 12)}\n`);
     // repo.git has neither commit yet: the script fetches before deciding.
-    const r = await start(one, c1.slice(0, 7));
+    const r = await start(one, c1);
     expect(r.code).toBe(0);
-    expect(r.err).toContain(`is older than the running release (${c2.slice(0, 7)})`);
+    expect(r.err).toContain(`is older than the running release (${c2.slice(0, 12)})`);
     expect(readlinkSync(profile)).toBe(two);
-    expect(w.json("releases.json").current).toBe(c2.slice(0, 7));
+    expect(w.json("releases.json").current).toBe(c2);
     // Recorded, so the next start doesn't ask again; a newer package is followed as before.
-    expect((await start(one, c1.slice(0, 7))).err).toBe("");
+    expect((await start(one, c1)).err).toBe("");
     const c3 = w.release("three", S(1, 1, 1), S(1, 1, 1));
     const three = pkg("three", S(1, 1, 1), S(1, 1, 1));
-    expect((await start(three, c3.slice(0, 7))).code).toBe(0);
+    expect((await start(three, c3)).code).toBe(0);
     expect(readlinkSync(profile)).toBe(three);
   });
 });

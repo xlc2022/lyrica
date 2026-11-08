@@ -128,9 +128,22 @@ harmless (documented). `flake.nix` evaluates `model-host` with the updater
 on and off. Docs: host/README.md, host/API.md, docs/guides/model-hosts.md,
 docs/ux.md.
 
-**Next:** merge; each NixOS host (mystria, lunasa's host) runs `nix flake
-update lyrica && nixos-rebuild switch`, then `git pull && host/install.sh`
-in its checkout once; then the first real Update from Lyrica, on lunasa's
-host first.
+**Merged** as #847 (53e2d4db, 2026-11-08). Lunasa's host rebuilt and
+reported its updater available.
+
+**Found on the first real test:** Update… on lunasa's host answered "Lyrica
+isn't running a release from her updater". Lunasa's Lyrica is built from
+the flake, and `lyrica-nixos-start` recorded the running release with the
+module's 7-character commit (`package.build`), while `runningRelease` and
+the host's updater take only a whole commit they can check is on `main`.
+Fix (follow-up PR): `package.build` is the whole commit, recorded whole;
+`LYRICA_BUILD` stays 12 characters. A flake-built Lyrica needs one rebuild
+to a flake from that fix on before Update… works on any host.
+
+**Next:** each NixOS host (mystria, lunasa's host) runs `nix flake update
+<the lyrica input> && nixos-rebuild switch` (the input's name is the
+operator's; mystria's isn't `lyrica`), then `git pull && host/install.sh`
+in its checkout once; a flake-built Lyrica rebuilds too; then the first
+real Update from Lyrica, on lunasa's host first.
 
 **Open:** none.

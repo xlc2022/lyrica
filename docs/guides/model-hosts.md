@@ -810,13 +810,17 @@ second pairing. Then:
   this too, or image jobs fail with an `ImportError` (seen on NVIDIA).
 - **On NixOS** the module declares the updater (since 2026-11-08), so
   **Update…** works as above. A host set up before that needs one
-  `nix flake update lyrica && nixos-rebuild switch`, then one `git pull &&
+  `nix flake update <input> && nixos-rebuild switch` (`<input>` is the
+  name your flake gives the Lyrica input), then one `git pull &&
   host/install.sh` in its `checkout` folder; until then Update… is greyed
   out with "Set services.lyrica-host.updates.enable and rebuild, or update
   with git pull and install.sh in the host's folder." as its tooltip. The
   updater itself comes from the Nix store and changes only with a rebuild,
   never with an update. `git pull && host/install.sh` in the checkout
-  still works at any time.
+  still works at any time. A Lyrica that is herself built from the flake
+  (`services.lyrica`) also needs a rebuild to a flake from 2026-11-08 on:
+  before that her NixOS start recorded a shortened commit, and Update… on
+  every host says "Lyrica isn't running a release from her updater".
 - **Restarting host-api alone** (a re-run of `install.sh` that leaves
   llama.cpp running): host-api unloads whatever llama.cpp still holds when
   it starts, then loads pinned models again. If llama.cpp wasn't answering

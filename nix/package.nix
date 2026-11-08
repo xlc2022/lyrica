@@ -39,8 +39,10 @@ buildNpmPackage {
 
   # The SSH helper runs on this Node; the module adds it to the sandbox closure.
   # The commit goes to lyricad as LYRICA_BUILD (the module), not into the
-  # build, so a new commit that leaves src alone rebuilds nothing.
-  passthru = { nodejs = nodejs_24; build = builtins.substring 0 7 rev; };
+  # build, so a new commit that leaves src alone rebuilds nothing. It is the
+  # whole commit: lyrica-nixos-start records it as the running release, and a
+  # model host's updater takes only a whole commit it can check is on main.
+  passthru = { nodejs = nodejs_24; build = rev; };
 
   meta = {
     description = "Lyrica, a personal AI companion (lyricad and the lyrica CLI)";
