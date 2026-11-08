@@ -1105,6 +1105,13 @@ refused. To replace the destination, enter the full URL and token again;
   route pattern and status; never message or memory text. Caddy's TLS
   errors go to `/run/lyrica-caddy/tls.log` instead of the journal, since a
   DNS plugin can quote its token in one.
+- **Kernel updates matter for the built-in Caddy.** It takes HTTPS from the
+  network, so a kernel TCP bug reaches it first (CVE-2026-98432, fixed in
+  Linux 6.1.190, 6.12.113 and 6.18.56; Debian 13's `linux-image` 6.12.113-1
+  and Debian 12's 6.1.190-1 have it). Keep the kernel current and reboot
+  into it: `apt upgrade` on Debian, `nix flake update` and
+  `nixos-rebuild switch` on NixOS. Caddy's unit turns Multipath TCP off,
+  which closes the shown attack path but doesn't fix the kernel.
 - **Restart:** `systemctl restart lyricad`. On stop she ends every turn and
   sleep, unmounts home workspaces and drops keys. With no saved passphrase,
   she comes back locked; browser sessions don't survive a restart, so
@@ -1227,6 +1234,9 @@ refused. To replace the destination, enter the full URL and token again;
   - **Before 2026-11-08:** an updater that gives up a fetch after 10
     minutes and always records how Check or Update ended; until then a
     fetch that hangs is never stopped.
+  - **Before 2026-11-08 (later that day):** the built-in Caddy's unit turns
+    Multipath TCP off (`GODEBUG=multipathtcp=0`); restart `lyrica-caddy`
+    after the run.
   - **Any install missing them:** headless Chromium and IBM Plex for her
     screenshots, Claude Code and Codex, ffmpeg and ffprobe (until then
     she can't check a clip's length or streams), and the Python baseline
