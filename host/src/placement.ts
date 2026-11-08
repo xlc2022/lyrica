@@ -88,6 +88,9 @@ export const tableBytes = (model: TextModel) =>
   model.server === "llamacpp" && (model.layerTable ?? 0) > LAZY_TABLE ? model.layerTable! + (model.inputBytes ?? 0) : 0;
 /** Each GPU a model uses needs room for the server's own buffers. */
 const OVERHEAD = GIB / 2;
+/** What a GPU needs besides the weights: llama.cpp's own measurement of its cache and compute buffers there, else the flat allowance. */
+export type Overhead = Record<number, number>;
+const overheadOn = (overhead: Overhead | undefined, g: number) => overhead?.[g] ?? OVERHEAD;
 const KV_BYTES = { f16: 2, q8_0: 1.0625, q4_0: 0.5625 };
 
 export const defaultGpu = (): GpuSettings => ({ servers: [...SERVERS], keepFree: GIB / 2, excluded: false });
@@ -181,7 +184,7 @@ const room = (g: Gpu, gs: GpuSettings) => g.total - gs.keepFree;
 const matching = (gpus: Gpu[]) => gpus.every((g) => g.name === gpus[0]!.name && g.total === gpus[0]!.total);
 const powerOfTwo = (n: number) => (n & (n - 1)) === 0;
 
-function option(model: TextModel, s: ModelSettings, gpus: Gpu[], settings: (i: number) => GpuSettings, split?: number[], parallel?: "tensor" | "pipeline"): Option {
+function option(model: TextModel, s: ModelSettings, gpus: Gpu[], settings: (i: number) => GpuSettings, split?: number[], parallel?: "tensor" | "pipeline", overhead?: Overhead): Option {
   const { weights, kv } = sizes(model, s);
   const total = weights + kv;
   const ids = gpus.map((g) => g.index);
@@ -204,7 +207,7 @@ function option(model: TextModel, s: ModelSettings, gpus: Gpu[], settings: (i: n
     split: gpus.length > 1 ? ratios : null,
     parallel: null,
     share: null,
-    need: Object.fromEntries(gpus.map((g, i) => [g.index, Math.round(((total - off) * ratios[i]!) / sum + OVERHEAD)])),
+    need: Object.fromEntries(gpus.map((g, i) => [g.index, Math.round(((total - off) * ratios[i]!) / sum + overheadOn(overhead, g.index))])),
     ...(ram ? { ram } : {}),
     ...(off ? { gpuLayers: s.gpuLayers } : {}),
   };
@@ -219,9 +222,9 @@ const spills = (model: TextModel, s: ModelSettings) => model.server === "llamacp
  * cheapest to run from RAM, else whole layers with their cache. Null when it
  * would leave no layer on the GPUs.
  */
-export function spill(model: TextModel, s: ModelSettings, o: Option, gpus: Gpu[], settings: (i: number) => GpuSettings): Option | null {
+export function spill(model: TextModel, s: ModelSettings, o: Option, gpus: Gpu[], settings: (i: number) => GpuSettings, overhead?: Overhead): Option | null {
   const layers = model.layers!;
-  const avail = o.gpus.map((i) => { const g = gpus.find((x) => x.index === i)!; return room(g, settings(i)) - Math.max(0, g.used) - OVERHEAD; });
+  const avail = o.gpus.map((i) => { const g = gpus.find((x) => x.index === i)!; return room(g, settings(i)) - Math.max(0, g.used) - overheadOn(overhead, i); });
   const { weights, kv } = sizes(model, s);
   const experts = model.expertLayers ?? [];
   const expertSum = experts.reduce((a, b) => a + b, 0);
@@ -244,7 +247,7 @@ export function spill(model: TextModel, s: ModelSettings, o: Option, gpus: Gpu[]
       const ram = Math.round(experts.slice(0, n).reduce((a, x) => a + x, 0)) + (o.ram ?? 0);
       return {
         ...o,
-        need: Object.fromEntries(o.gpus.map((i, k) => [i, Math.round(held[k]! + OVERHEAD)])),
+        need: Object.fromEntries(o.gpus.map((i, k) => [i, Math.round(held[k]! + overheadOn(overhead, i))])),
         // In slots, the output layer's on the last GPU, so llama.cpp gives each GPU the layers planned for it.
         ...(o.gpus.length > 1 && !fixed ? { split: counts.map((c, k) => c + (k === outOn ? 1 : 0)) } : {}),
         ram, cpuMoe: n,
@@ -253,7 +256,7 @@ export function spill(model: TextModel, s: ModelSettings, o: Option, gpus: Gpu[]
   }
   // Whole layers: llama.cpp spreads the layers left on the GPUs by the split, so each GPU sheds its share.
   const sum = Object.values(o.need).reduce((a, b) => a + b, 0);
-  const lack = Math.max(0, ...o.gpus.map((i, k) => ((o.need[i]! - OVERHEAD - avail[k]!) * sum) / o.need[i]!));
+  const lack = Math.max(0, ...o.gpus.map((i, k) => ((o.need[i]! - overheadOn(overhead, i) - avail[k]!) * sum) / o.need[i]!));
   if (lack <= 0) return null;
   const perLayer = (weights + kv) / layers;
   const n = Math.ceil(lack / perLayer);
@@ -303,24 +306,24 @@ function heldBy(bytes: number[], counts: number[]): number[] {
  * of them together. With an allowance, a way that can't fit `gpus` (their
  * `used` being what other programs hold) keeps what doesn't in system RAM.
  */
-export function options(model: TextModel, s: ModelSettings, gpus: Gpu[], settings: (i: number) => GpuSettings, allowance = 0): Option[] {
-  const found = gpuOptions(model, s, gpus, settings);
+export function options(model: TextModel, s: ModelSettings, gpus: Gpu[], settings: (i: number) => GpuSettings, allowance = 0, overhead?: Overhead): Option[] {
+  const found = gpuOptions(model, s, gpus, settings, overhead);
   if (!allowance || !spills(model, s)) return found;
   // Only a way that can't fit even once the host's other models are unloaded keeps part of the model in system RAM.
-  return found.map((o) => (neverFits(model, s, o, gpus, settings) ? spill(model, s, o, gpus, settings) ?? o : o));
+  return found.map((o) => (neverFits(model, s, o, gpus, settings) ? spill(model, s, o, gpus, settings, overhead) ?? o : o));
 }
 
-function gpuOptions(model: TextModel, s: ModelSettings, gpus: Gpu[], settings: (i: number) => GpuSettings): Option[] {
+function gpuOptions(model: TextModel, s: ModelSettings, gpus: Gpu[], settings: (i: number) => GpuSettings, overhead?: Overhead): Option[] {
   const server = serverOf(model);
   const allowed = gpus.filter((g) => !settings(g.index).excluded && settings(g.index).servers.includes(server));
   const p = s.placement;
   if (p.mode === "gpus") {
     const chosen = p.gpus.map((i) => allowed.find((g) => g.index === i)).filter((g): g is Gpu => !!g);
-    return chosen.length === p.gpus.length ? [option(model, s, chosen, settings, p.split, p.parallel)] : [];
+    return chosen.length === p.gpus.length ? [option(model, s, chosen, settings, p.split, p.parallel, overhead)] : [];
   }
-  const singles = [...allowed].sort((a, b) => room(b, settings(b.index)) - room(a, settings(a.index))).map((g) => option(model, s, [g], settings));
+  const singles = [...allowed].sort((a, b) => room(b, settings(b.index)) - room(a, settings(a.index))).map((g) => option(model, s, [g], settings, undefined, undefined, overhead));
   // The speech server runs a voice model on one GPU.
-  return allowed.length > 1 && server !== "speech" ? [...singles, option(model, s, allowed, settings)] : singles;
+  return allowed.length > 1 && server !== "speech" ? [...singles, option(model, s, allowed, settings, undefined, undefined, overhead)] : singles;
 }
 
 /** Why an option can never fit, even with its GPUs empty and the system RAM allowance unused; null if it can. */

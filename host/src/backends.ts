@@ -10,9 +10,19 @@ import { HostError } from "./http.ts";
 import type { TextModel } from "./library.ts";
 import { concurrentOf, contextOf, tableInRam, usesMtp, usesVision, type ModelSettings, type Option } from "./placement.ts";
 
+/** What the server says a model takes on a GPU with a placement: all of it, and the part that isn't weights (cache and compute buffers). */
+export interface Measured { bytes: number; extra: number }
+
 export interface Backend {
   /** Loads the model on the placement's GPUs with its settings, and resolves when it answers. */
   load(model: TextModel, placement: Option, settings: ModelSettings): Promise<void>;
+  /**
+   * The server's own measurement of what the model would take on each of the
+   * placement's GPUs, before loading it; null when the server has none.
+   */
+  measure?(model: TextModel, placement: Option, settings: ModelSettings): Promise<Record<number, Measured> | null>;
+  /** Forgets a placement that was measured but won't be loaded. */
+  forget?(model: TextModel): void;
   unload(model: TextModel): Promise<void>;
   /** Base URL for the model's OpenAI-compatible API. */
   url(model: TextModel): string;
@@ -82,6 +92,8 @@ export interface LlamaCppOptions {
   models: string; // the models folder as the router sees it
   device: (gpu: number) => string; // CUDA0, ROCm0, Vulkan0
   loadTimeoutMs?: number;
+  /** Longest wait, in ms, for the router to measure a model's memory. */
+  measureTimeoutMs?: number;
   /** The machine's memory in bytes, for the prompt cache each loaded model keeps in it. */
   memoryBytes?: number;
   /** Whether a GPU is a CMP 100-210, which reads prompts faster in bigger steps. */
@@ -98,7 +110,7 @@ export class LlamaCpp implements Backend {
   private readonly templates: Templates;
 
   constructor(o: LlamaCppOptions) {
-    this.o = { loadTimeoutMs: 10 * 60_000, memoryBytes: totalmem(), cmp: () => false, ...o };
+    this.o = { loadTimeoutMs: 10 * 60_000, measureTimeoutMs: 60_000, memoryBytes: totalmem(), cmp: () => false, ...o };
     this.templates = new Templates(o.serving, "llamacpp");
     this.writePreset();
   }
@@ -169,14 +181,60 @@ export class LlamaCpp implements Backend {
     throw new HostError(503, "model_unavailable", res.status === 400 ? "llama.cpp doesn't know this model." : "llama.cpp didn't answer.");
   }
 
+  /** Makes the router read the preset file again. */
+  private async reload(): Promise<void> {
+    await fetch(`${this.o.url}/models?reload=1`).catch(() => {
+      throw unavailable("llama.cpp");
+    });
+  }
+
+  /**
+   * The router's measurement of the model with this placement (its preset
+   * section): a short child reads the GGUF and reports, per device, the
+   * weights, cache and compute buffers at the preset's context, allocating
+   * nothing. Null when the router has none (measurement off, failed, or not
+   * done in time), so the estimate stands. The router leaves the vision
+   * projector out, so it is added on the first GPU.
+   */
+  async measure(model: TextModel, at: Option, settings: ModelSettings): Promise<Record<number, Measured> | null> {
+    this.placed.set(model.id, { model, at, settings });
+    this.writePreset();
+    await this.reload();
+    type Device = { kind: string; name: string; model: number; context: number; compute: number };
+    type Memory = { status: string; min?: { devices: Device[] } | null };
+    const end = Date.now() + this.o.measureTimeoutMs;
+    let memory: Memory | undefined;
+    for (;;) {
+      const res = await fetch(`${this.o.url}/models`).catch(() => null);
+      const body = res ? ((await res.json().catch(() => null)) as { data?: { id: string; memory?: Memory }[] } | null) : null;
+      memory = body?.data?.find((m) => m.id === model.id)?.memory;
+      if (!memory || memory.status === "measured" || memory.status === "failed" || Date.now() > end) break;
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    if (memory?.status !== "measured" || !memory.min) return null;
+    const measured: Record<number, Measured> = {};
+    for (const g of at.gpus) {
+      const d = memory.min.devices.find((x) => x.kind === "device" && x.name === this.o.device(g));
+      if (!d) return null;
+      measured[g] = { bytes: d.model + d.context + d.compute, extra: d.context + d.compute };
+    }
+    if (usesVision(model, settings) && model.mmprojSize) {
+      const first = at.gpus[0]!;
+      const projector = Math.round(model.mmprojSize * 1.1);
+      measured[first] = { bytes: measured[first]!.bytes + projector, extra: measured[first]!.extra + projector };
+    }
+    return measured;
+  }
+
+  forget(model: TextModel): void {
+    if (this.placed.delete(model.id)) this.writePreset();
+  }
+
   async load(model: TextModel, at: Option, settings: ModelSettings): Promise<void> {
     this.placed.set(model.id, { model, at, settings });
     this.writePreset();
     try {
-      // ?reload=1 makes the router read the preset file again.
-      await fetch(`${this.o.url}/models?reload=1`).catch(() => {
-        throw unavailable("llama.cpp");
-      });
+      await this.reload();
       await this.post("/models/load", { model: model.id });
       let failed = false;
       await poll(async () => {

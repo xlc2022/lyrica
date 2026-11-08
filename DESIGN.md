@@ -911,7 +911,12 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
       and embedding requests wait up to 15 minutes first, so a very large
       model can load, and a chat thread says what it waits for; then the
       next model in the list is tried.
-    - Each model's VRAM use is measured per GPU at load with each
+    - A llama.cpp model's placement is measured by llama.cpp itself before
+      it loads (the router reads the file and the preset and reports each
+      GPU's weights, cache and compute buffers, allocating nothing), and a
+      GPU found short moves more of the model to system RAM; the estimate
+      decides only when there is no measurement. Each model's VRAM use is
+      then measured per GPU at load with each
       placement, keeping the larger saved value. After its first attributable completed request,
       the host keeps the larger measurement, including buffers grown on first
       use, so eviction counts the memory they free. A measurement larger

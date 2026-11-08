@@ -177,7 +177,8 @@ seconds of audio.
 - A GPU lists every model on it, including one split over several GPUs
   (`gpus` names them all). A model's `kind` is `chat`, `embedding`,
   `image`, `transcribe` or `speak`; `state` is `loading` or `loaded`; `vram` is what it takes on
-  this GPU, measured at load with this placement (keeping the larger saved value), then increased
+  this GPU, as llama.cpp measured it for this placement before loading where it could, else
+  measured at load with this placement (keeping the larger saved value), then increased
   after its first attributable request, completed or failed, to include buffers allocated
   on first use (a failed image job can leave its model loaded). The host compares GPU usage before and after the request only
   when no other model serves or loads/unloads during that interval; otherwise
@@ -362,7 +363,10 @@ embeddings and dictation receive neither parser.
   with the reason, such as "GPU 2 doesn't allow vLLM.", "This model needs
   about 41.2 GB on GPU 0, which has 23.5 GB to give." or "A context of
   131072 tokens needs about 9.0 GB more than GPU 0 has; lower the context
-  length."
+  length." A load that llama.cpp's own measurement finds too big is
+  refused the same way, naming it: "This model needs about 99.7 GB on GPU
+  1 by llama.cpp's measurement, of it 9.2 GB for its cache and buffers;
+  the GPU has 95.1 GB free."
 
 `settings`:
 

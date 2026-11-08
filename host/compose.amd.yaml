@@ -14,7 +14,7 @@ services:
     <<: *server
     image: ghcr.io/ggml-org/llama.cpp:server-rocm-b11960@sha256:be8c5b9a0cece64e7c082c1bb7106adc243af2c0b2aa076713b3a9c2681b3446
     # --no-slots: no endpoint that would show what's being generated.
-    command: [--models-preset, /serving/llamacpp.ini, --no-models-autoload, --models-max, "0", --no-slots, --host, 0.0.0.0, --port, "8080"]
+    command: [--models-preset, /serving/llamacpp.ini, --no-models-autoload, --models-max, "0", --models-memory-margin, "1", --no-slots, --host, 0.0.0.0, --port, "8080"]
     volumes:
       - ${MODELS_DIR}:/models:ro
       - serving:/serving:ro

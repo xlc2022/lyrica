@@ -314,6 +314,52 @@ export class Scheduler {
   }
 
   /**
+   * The option as the model's server measures it, before loading: with the
+   * server's own bytes per GPU, saved under the placement's VRAM key so later
+   * plans start from them. A GPU the measurement finds short has more of the
+   * model moved to system RAM, with its measured cache and compute buffers
+   * as that GPU's overhead, and the new placement is measured again, twice
+   * at most. When nothing fits, the load is refused with the measured need.
+   * Without a measurement (none, failed, or late) the estimate stands.
+   */
+  private async measured(model: TextModel, o: Option, s = this.served(model)): Promise<Option> {
+    const backend = this.backend(model);
+    if (!backend.measure || this.onCpu(model) || !o.gpus.length) return o;
+    const gb = (n: number) => (n / GIB).toFixed(1);
+    let option = o;
+    for (let round = 0; ; round++) {
+      const m = await backend.measure(model, option, s);
+      if (!m) return option;
+      const view = this.gpusFor(serverOf(model));
+      const free = (g: number) => {
+        const gpu = view.find((x) => x.index === g)!;
+        return gpu.total - gpu.used - this.gpuSettings(g).keepFree;
+      };
+      const need = Object.fromEntries(option.gpus.map((g) => [g, m[g]!.bytes]));
+      const short = option.gpus.find((g) => need[g]! > free(g));
+      if (short === undefined) {
+        this.o.state.update((st) => {
+          st.vram[this.vramKey(model, option, s)] = need;
+        });
+        return { ...option, need };
+      }
+      // Plan again with what the server says each GPU needs besides the weights; only a spill can give.
+      const overhead = Object.fromEntries(option.gpus.map((g) => [g, m[g]!.extra]));
+      const same = (x: Option) => x.gpus.join(",") === option.gpus.join(",");
+      const again = round < 2 ? options(model, s, this.othersView(model), (i) => this.gpuSettings(i), this.ramAllowance, overhead).find(same) : undefined;
+      if (!again || (placementKey(again) === placementKey(option) && (again.ram ?? 0) === (option.ram ?? 0))) {
+        backend.forget?.(model);
+        throw new HostError(413, "too_big", `This model needs about ${gb(need[short]!)} GB on GPU ${short} by llama.cpp's measurement, of it ${gb(m[short]!.extra)} GB for its cache and buffers; the GPU has ${gb(free(short))} GB free.`);
+      }
+      if (again.ram && again.ram > this.ramAllowance - this.ramUsed()) {
+        backend.forget?.(model);
+        throw new HostError(413, "too_big", `This model needs about ${gb(again.ram)} GB of system RAM by llama.cpp's measurement; the allowance is ${gb(this.ramAllowance)} GB, of which ${gb(this.ramUsed())} GB is in use.`);
+      }
+      option = again;
+    }
+  }
+
+  /**
    * What a model takes on each GPU of an option: measured with that placement
    * (and automatic context), else expected. A measurement over a GPU's room
    * is set aside for the estimate: the model loaded within that room, so the
@@ -493,7 +539,7 @@ export class Scheduler {
                 break;
               }
             }
-            await this.load(job.model, plan.option);
+            await this.load(job.model, await this.measured(job.model, plan.option));
           } catch (e) {
             this.finish(job, e instanceof HostError ? e : new HostError(503, "model_unavailable", "The model server couldn't load this model."));
           }

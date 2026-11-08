@@ -220,4 +220,56 @@ describe("reading a GGUF's experts", () => {
     // Layer 0's expert runs to layer 1's, and layer 1's to the output layer, the last; layer 2 is dense.
     expect(m).toMatchObject({ layers: 3, expertLayers: [4096, 4096, 0], outputBytes: 512 });
   });
+
+  describe("planned from llama.cpp's own measurement", () => {
+    /** Two 48 GB GPUs, a 64 GB allowance, and a model that spills onto both. */
+    async function measuredSetup(measurements: FakeBackend["measurements"]) {
+      const dir = mkdtempSync(join(tmpdir(), "lyrica-measured-"));
+      const gpus = new FakeGpus([48, 48]);
+      const llamacpp = new FakeBackend(gpus);
+      llamacpp.measurements = measurements;
+      const state = new StateFile(dir);
+      const scheduler = new Scheduler({ monitor: gpus, backends: { llamacpp, vllm: new FakeBackend(gpus) }, state, log: () => {}, memoryBytes: 128 * GIB });
+      await scheduler.start([]);
+      await scheduler.setRamAllowance(64 * GIB);
+      const m = textModel("big", 100, { layers: 80, expertLayers: experts(80, 85), outputBytes: 2 * GIB, contextLength: 8192 });
+      return { gpus, llamacpp, state, scheduler, m };
+    }
+
+    it("spills more when the measurement finds a GPU short, and loads with the measured bytes", async () => {
+      // llama.cpp finds 3.5 GB of cache and buffers per GPU where the estimate allowed 0.5; the second plan, made with
+      // that overhead, moves 3 GB more of experts to RAM on each GPU and measures as planned.
+      let rounds = 0;
+      const { llamacpp, state, scheduler, m } = await measuredSetup((_, at) => {
+        rounds++;
+        return Object.fromEntries(at.gpus.map((g) => [g, { bytes: at.need[g]! + (rounds === 1 ? 3 * GIB : 0), extra: 3.5 * GIB }]));
+      });
+      await scheduler.run(m, "chat", async () => {});
+      expect(rounds).toBe(2);
+      const first = llamacpp.placements.get("big")!;
+      expect(first.cpuMoe).toBeGreaterThan(0);
+      // Loaded with what llama.cpp measured, and that measurement saved for later plans.
+      const key = Object.keys(state.get().vram).find((k) => k.startsWith("big@"))!;
+      expect(state.get().vram[key]).toEqual(first.need);
+      // Within each GPU's room: 48 GB less 1 GB of other programs and 0.5 GB kept free.
+      for (const g of first.gpus) expect(first.need[g]!).toBeLessThanOrEqual(46.5 * GIB);
+      expect(llamacpp.forgotten).toEqual([]);
+    });
+
+    it("refuses with the measured need when no spill can make room", async () => {
+      // Buffers bigger than a GPU: nothing in RAM can help.
+      const { llamacpp, scheduler, m } = await measuredSetup((_, at) => Object.fromEntries(at.gpus.map((g) => [g, { bytes: at.need[g]! + 50 * GIB, extra: 50 * GIB }])));
+      await expect(scheduler.run(m, "chat", async () => {})).rejects.toMatchObject({ code: "too_big", message: expect.stringMatching(/by llama.cpp's measurement/) });
+      expect(llamacpp.forgotten).toEqual(["big"]);
+      expect(llamacpp.placements.has("big")).toBe(false);
+    });
+
+    it("loads on the estimate when the server has no measurement", async () => {
+      const { llamacpp, state, scheduler, m } = await measuredSetup(() => null);
+      await scheduler.run(m, "chat", async () => {});
+      expect(llamacpp.placements.has("big")).toBe(true);
+      // Measured at load as before, not from the server.
+      expect(Object.keys(state.get().vram).some((k) => k.startsWith("big@"))).toBe(true);
+    });
+  });
 });

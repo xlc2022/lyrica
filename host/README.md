@@ -572,7 +572,18 @@ revoked. A revoked server must pair again.
   then background work. A request that waits too long fails with "The GPU
   is busy with …", except a `/v1` request tagged with `X-Lyrica-Job`,
   which waits up to 15 minutes (API.md, "Job progress").
-- **VRAM** use is measured per GPU at load and after the first attributable
+- **VRAM** is planned from llama.cpp's own measurement where it has one:
+  before a llama.cpp model loads, the router's measure child reads the GGUF
+  and the preset and reports, per GPU, the weights, cache and compute
+  buffers at that context without allocating anything (`--models-memory-margin`,
+  llama.cpp's README "Memory-based unloading"; the vision projector, which
+  it leaves out, is added on the first GPU). A GPU it finds short has more
+  of the model moved to system RAM, with its measured cache and buffers as
+  that GPU's overhead, and the new placement is measured again, twice at
+  most; when nothing fits, the load is refused naming the measured need.
+  Without a measurement (failed, or not done within a minute) the estimate
+  stands: file size times 1.05, the cache for its context, and 0.5 GiB per
+  GPU. VRAM use is then measured per GPU at load and after the first attributable
   request, completed or failed (an image recipe's on its first job). The host keeps the
   larger measurement, including buffers grown on first use, until settings
   change. If another model serves or memory changes during the request, the
@@ -632,8 +643,8 @@ revoked. A revoked server must pair again.
     `compose.cmp.build.yaml` (or `compose.sdcpp.build.yaml`) and builds
     the image for the host's GPUs, which takes a while, saying why.
   - llama.cpp runs in router mode. host-api writes its preset file (each
-    model's file, GPU and context), then loads and unloads models through
-    its API. Each loaded model keeps prompts in host memory (`cache-ram`),
+    model's file, GPU and context), reads the router's measurement of it
+    (above), then loads and unloads models through its API. Each loaded model keeps prompts in host memory (`cache-ram`),
     an eighth of the machine's memory up to 64 GiB, where that is more than
     llama.cpp's own 8 GiB, so threads taking turns on a model don't each
     re-read their whole conversation. It leaves llama.cpp's CPU threads to
