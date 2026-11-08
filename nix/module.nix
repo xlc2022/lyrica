@@ -36,10 +36,11 @@ let
   # Releases: lyricad runs from this profile, which an Update (Administration →
   # Updates) or `lyrica-rollback` switches and nixos-rebuild resets to cfg.package.
   profile = "/nix/var/nix/profiles/lyrica";
-  # The updater, from the store: never part of an update, as on Debian.
+  # The updater, from the store: never part of an update, as on Debian. Its PATH
+  # holds every command the updater scripts run (daemon/test/updater-path.test.ts).
   updater = pkgs.runCommand "lyrica-updater" { } ''
     mkdir -p $out/lib/lyrica-update $out/bin
-    { echo 'PATH=${lib.makeBinPath (with pkgs; [ bash coreutils findutils gnugrep gnused jq curl git openssh util-linux config.nix.package systemd ])}:$PATH'
+    { echo 'PATH=${lib.makeBinPath (with pkgs; [ bash coreutils findutils gawk gnugrep gnused gnutar diffutils jq curl git openssh util-linux config.nix.package systemd ])}:$PATH'
       cat ${../daemon/deploy/updater/common.sh}; } >$out/lib/lyrica-update/common.sh
     for t in lyrica-update lyrica-snapshot lyrica-restore lyrica-rollback lyrica-nixos-start; do
       install -m755 ${../daemon/deploy/updater}/$t $out/bin/$t
