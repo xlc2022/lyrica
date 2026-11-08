@@ -541,7 +541,8 @@ Only the repository's name and revision leave the host.
   (a paired Lyrica, or the dashboard): asks the host's updater (README.md,
   "Updates") for that release, and answers `202`
   with `{ "update": … }`. `409 unavailable` when the host has no updater
-  (NixOS, no systemd, or an install from before updates), with the reason;
+  (no systemd, NixOS with `services.lyrica-host.updates.enable` off, or an
+  install from before updates), with the reason;
   `409 updating` while one runs. `update` is `{ available, reason?, state,
   since?, tag?, error?, last? }`: `state` is `idle`, `requested`, `fetching`,
   `draining`, `building`, `rolling-back` or `failed`; `error` names the

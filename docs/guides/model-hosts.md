@@ -235,8 +235,9 @@ detected one is private), and the models folder. Then it:
 5. Offers to set a dashboard password.
 6. Prints the dashboard addresses and the host's **key fingerprint**. Keep
    the fingerprint: you check it against what Lyrica shows after pairing.
-7. On a systemd machine other than NixOS, installs the updater (see
-   Upgrade below). While the repository is public the updater fetches over
+7. On a systemd machine, installs the updater (see Upgrade below); on
+   NixOS the module declares it, and this step sets up the rest. While the
+   repository is public the updater fetches over
    HTTPS and needs no key. If it isn't, the first run makes a key and
    prints it from `/etc/lyrica-host/deploy-key.pub`: add it to the GitHub
    repository as a read-only deploy key (Settings → Deploy keys). The
@@ -793,9 +794,11 @@ second pairing. Then:
   `lyrica/` subfolder must be a folder, not a link or a file. An updater
   installed before this was added can't move the folder, and an update
   never replaces the updater, so run `host/install.sh` once more; until
-  then the card's tooltip says "Run install.sh on the host again". On
-  NixOS, which has no updater, set `modelsDir` and run `host/install.sh
-  --models <folder>`; any host can still change it that way. Details are
+  then the card's tooltip says "Run install.sh on the host again". Any
+  host can also change it with `host/install.sh --models <folder>`. On
+  NixOS, set the module's `modelsDir` to the new folder at the next
+  rebuild too: it only creates the folder, so nothing breaks meanwhile.
+  Details are
   in [host/README.md](../../host/README.md#the-models-folder).
 - **Hosts installed before the updater** need `git pull &&
   host/install.sh` once more: it installs the updater (printing a deploy
@@ -805,10 +808,15 @@ second pairing. Then:
   to free before loading the next. A host
   installed before the image server got its `/triton` scratch space needs
   this too, or image jobs fail with an `ImportError` (seen on NVIDIA).
-- **On NixOS** the updater isn't installed: upgrade with `git pull &&
-  host/install.sh` in the `checkout` folder. Lyrica shows the host's
-  version, and Update… is greyed out with "Update this host from its
-  NixOS configuration." as its tooltip.
+- **On NixOS** the module declares the updater (since 2026-11-08), so
+  **Update…** works as above. A host set up before that needs one
+  `nix flake update lyrica && nixos-rebuild switch`, then one `git pull &&
+  host/install.sh` in its `checkout` folder; until then Update… is greyed
+  out with "Set services.lyrica-host.updates.enable and rebuild, or update
+  with git pull and install.sh in the host's folder." as its tooltip. The
+  updater itself comes from the Nix store and changes only with a rebuild,
+  never with an update. `git pull && host/install.sh` in the checkout
+  still works at any time.
 - **Restarting host-api alone** (a re-run of `install.sh` that leaves
   llama.cpp running): host-api unloads whatever llama.cpp still holds when
   it starts, then loads pinned models again. If llama.cpp wasn't answering
@@ -851,7 +859,7 @@ It says what it will remove and asks first. It removes:
   `/etc/lyrica-host` (a deploy key, if one was made),
   `/var/lib/lyrica-host-update` and the release trees in
   `/opt/lyrica-host`, and on Debian or Ubuntu the egress and updater
-  units.
+  units (on NixOS the module owns the units and the updater).
 
 It asks before deleting the models folder's `lyrica/` downloads; your own
 model files beside them stay. `--delete-downloads` deletes them without

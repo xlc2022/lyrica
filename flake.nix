@@ -46,7 +46,27 @@
       # (docs/guides/nixos-mcp.md). services.lyrica.mcpNixos runs it beside her.
       nixosModules.mcp-nixos = ./nix/mcp-nixos-module.nix;
 
-      checks.${system} = {
+      checks.${system} = let
+        modelHostSystem = name: settings: pkgs.writeText name (builtins.unsafeDiscardStringContext
+          (nixpkgs.lib.nixosSystem {
+            inherit system;
+            modules = [
+              self.nixosModules.default
+              self.nixosModules.model-host
+              settings
+              {
+                services.lyrica.enable = true;
+                services.lyrica-host.enable = true;
+                services.lyrica-host.gpuUnlock.enable = true;
+                services.lyrica-host.cmpUnlock.enable = true;
+                nixpkgs.config.allowUnfree = true;
+                boot.loader.grub.enable = false;
+                fileSystems."/" = { device = "/dev/null"; fsType = "ext4"; };
+                system.stateVersion = "26.05";
+              }
+            ];
+          }).config.system.build.toplevel.drvPath);
+      in {
         package = self.packages.${system}.lyrica;
         gpu-unlock-module = self.packages.${system}.gpu-unlock-module;
         cmp-unlock = self.packages.${system}.cmp-unlock;
@@ -65,26 +85,12 @@
           ];
         }).config.system.build.toplevel;
         # A machine with both modules, the NVIDIA driver, gpu-unlock and
-        # cmp100-unlock: it evaluates.
-        # Only evaluated, so CI never builds the unfree driver.
-        model-host = pkgs.writeText "lyrica-model-host-system" (builtins.unsafeDiscardStringContext
-          (nixpkgs.lib.nixosSystem {
-            inherit system;
-            modules = [
-              self.nixosModules.default
-              self.nixosModules.model-host
-              {
-                services.lyrica.enable = true;
-                services.lyrica-host.enable = true;
-                services.lyrica-host.gpuUnlock.enable = true;
-                services.lyrica-host.cmpUnlock.enable = true;
-                nixpkgs.config.allowUnfree = true;
-                boot.loader.grub.enable = false;
-                fileSystems."/" = { device = "/dev/null"; fsType = "ext4"; };
-                system.stateVersion = "26.05";
-              }
-            ];
-          }).config.system.build.toplevel.drvPath);
+        # cmp100-unlock: it evaluates, with the host's updater (the default)
+        # and without it. Only evaluated, so CI never builds the unfree driver.
+        model-host = modelHostSystem "lyrica-model-host-system" { };
+        model-host-no-updater = modelHostSystem "lyrica-model-host-system-no-updater" {
+          services.lyrica-host.updates.enable = false;
+        };
         # Everything a CI run builds and fetches, in one path: the nix job keeps
         # the last 10 of these on each runner and collects the rest.
         roots = pkgs.linkFarm "lyrica-ci-roots" {
