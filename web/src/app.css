@@ -1710,7 +1710,7 @@ ul.choices { list-style: none; margin: 0; padding: 0; }
 .arch-partlist li { display: flex; gap: 10px; flex-wrap: wrap; min-width: 0; }
 .arch-partlist .role { width: 100px; flex: none; color: var(--muted); }
 .arch-partlist code { overflow-wrap: anywhere; min-width: 0; }
-/* The foot: settings (Use for, Steps) at the left, actions (Add part, Edit workflow, Delete model…) at the right, every control on one baseline, 32 px tall; on a narrow block the actions take the next line. */
+/* The foot: settings (Use for, Steps) at the left, actions (Add part, Edit workflow, Delete model…) at the right, every control on one baseline, 36 px tall (docs/ux.md §3; the tap height on touch); on a narrow block the actions take the next line. */
 .copyfoot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 16px; align-items: center; padding: 8px 12px; border-top: 1px solid var(--line); }
 .copyfoot-settings, .copyfoot-actions { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; min-width: 0; }
 .copyfoot-actions { margin-left: auto; gap: 6px; }
@@ -1718,8 +1718,8 @@ ul.choices { list-style: none; margin: 0; padding: 0; }
 .copyfoot .field > span:first-child { font-size: 13px; }
 .copyfoot .field.steps .steps-in { gap: 6px; flex-wrap: nowrap; }
 .copyfoot .field.steps .steps-in > .muted { white-space: nowrap; }
-.copyfoot .field.steps input { width: 64px; min-height: 32px; }
-.copyfoot button.sm, .copyfoot a.sm { min-height: 32px; }
+.copyfoot .field.steps input { width: 64px; min-height: 36px; }
+.copyfoot button.sm, .copyfoot a.sm, .copyfoot .seg button { min-height: 36px; }
 .copyfoot a.sm { padding: 0 9px; font-size: 13px; border-radius: 7px; border: 1px solid var(--edge); background: var(--panel); color: var(--fg); display: inline-flex; align-items: center; }
 .copyfoot a.sm:hover { border-color: color-mix(in oklab, var(--fg) 25%, var(--line)); text-decoration: none; }
 /* Change and Remove are plain underlined links at the right of their part row. */
