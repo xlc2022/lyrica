@@ -36,7 +36,8 @@ fi
 
 [ "$(cat "$UPDATE/module-package" 2>/dev/null || true)" != "$PKG" ] || [ ! -e "$PROFILE" ] || exit 0
 
-# The flake's short commit; a dirty tree's build is named by its store hash.
+# The flake's commit, whole, so Lyrica can send it to a model host (its updater
+# checks a whole commit is on main); a dirty tree's build is named by its store hash.
 COMMIT=$2
 case "$COMMIT" in *[!0-9a-f]*|"") COMMIT=$(basename "$PKG" | cut -c1-12) ;; esac
 

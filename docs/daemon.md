@@ -1711,7 +1711,11 @@ system with the module on. Only x86_64-linux.
 - **Rebuilds.** The package reads only the code it ships (no docs, evals,
   tests or `nix/`), and the commit reaches lyricad as `LYRICA_BUILD` from
   `/var/lib/lyrica-update/build.env`, so a commit that changes none of that
-  code reuses the built package.
+  code reuses the built package. The module hands `lyrica-nixos-start` the
+  flake's whole commit (`package.build`), which it records as the running
+  release, so a model host can be sent it (host/README.md, "Updates": a
+  host's updater takes only a whole commit on `main`); `LYRICA_BUILD` and
+  the version shown stay its first 12 characters.
 - **Sandboxes.** NixOS has no `/usr` to share. The module sets
   `LYRICA_SANDBOX_TOOLS` to one directory of `sandboxPackages`
   (`nix/sandbox-tools.nix`: a shell, the usual command-line tools, git,
