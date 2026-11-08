@@ -373,8 +373,9 @@ export class Scheduler {
       [...this.loaded.values()].every((l) => l === loaded || l.active === 0);
     const before = measure && !loaded.warmed && loaded.loadVram && model.server !== "vllm" && loaded.option.gpus.length && exclusive()
       ? await this.o.monitor.read().catch(() => null) : null;
-    try {
-      const result = await fn(this.backend(model).url(model));
+    // Measured after a job that failed too: a model server (ComfyUI) can hold what it loaded for a
+    // job that broke, and memory not counted as this model's would look like other programs'.
+    const warm = async () => {
       if (before && exclusive()) {
         const after = await this.o.monitor.read().catch(() => null);
         if (after && exclusive() && this.loaded.get(model.id) === loaded &&
@@ -393,6 +394,16 @@ export class Scheduler {
           });
         }
       }
+    };
+    try {
+      let result: T;
+      try {
+        result = await fn(this.backend(model).url(model));
+      } catch (e) {
+        await warm();
+        throw e;
+      }
+      await warm();
       return result;
     } finally {
       loaded.active--;

@@ -18,7 +18,7 @@ ARG LANPAINT_COMMIT=2d7912f9a5efe5ece8de334c7ca18317b8288c39
 # and starts from its defaults file, written here: sampler names without
 # folders (res_2s, not exponential/res_2s).
 ARG RES4LYF_COMMIT=119679d8d8d26e6db52757e705488abb6399d7d4
-ARG KREA2T_COMMIT=75a14cb93487d0fea7985f199717da46ab5cb53d
+ARG KREA2T_COMMIT=958898e947ce691dc66218bcb655f0a4615b07aa
 
 RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
 
