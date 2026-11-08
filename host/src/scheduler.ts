@@ -8,13 +8,13 @@
 // with a plain reason instead of running out of memory.
 import { totalmem } from "node:os";
 import { HostError, invalid } from "./http.ts";
-import type { Backend } from "./backends.ts";
+import type { Backend, Measured } from "./backends.ts";
 import { isCmp, type Gpu, type GpuMonitor } from "./gpus.ts";
 import type { TextModel } from "./library.ts";
 import type { Logger } from "./log.ts";
 import {
-  autoContext, CPU_OPTION, defaultGpu, neverFits, options, placementKey, ramMost, serverOf, sizes, SERVER_NAMES, SERVERS,
-  type GpuSettings, type ModelSettings, type Option, type Server,
+  autoContext, CPU_OPTION, defaultGpu, neverFits, options, OVERHEAD, placementKey, ramMost, serverOf, sizes, SERVER_NAMES, SERVERS,
+  type GpuSettings, type ModelSettings, type Option, type Overhead, type Server,
 } from "./placement.ts";
 import type { StateFile } from "./state.ts";
 
@@ -68,6 +68,8 @@ interface Job {
   last?: string;
   /** The GPUs it is waiting for, once known: for the queue counts and the busy message. */
   waitingOn: number[];
+  /** Plans the server's measurement sent back for more room; after two, the measured need is final. */
+  rounds?: number;
 }
 
 export interface SchedulerOptions {
@@ -305,12 +307,65 @@ export class Scheduler {
     const s = this.served(job.model);
     const gpus = this.gpusFor(serverOf(job.model));
     // A spill is sized for the GPUs once the models that can be unloaded are.
-    if (job.gpu === undefined) return options(job.model, s, this.othersView(job.model), (i) => this.gpuSettings(i), this.ramAllowance);
+    if (job.gpu === undefined) return options(job.model, s, this.othersView(job.model), (i) => this.gpuSettings(i), this.ramAllowance, this.overheads.get(job.model.id));
     // ComfyUI: its one GPU, which must allow images.
     const g = gpus.find((x) => x.index === job.gpu);
     const gs = this.gpuSettings(job.gpu);
     if (!g || gs.excluded || !gs.servers.includes(serverOf(job.model))) return [];
     return [{ gpus: [g.index], split: null, parallel: null, share: null, need: { [g.index]: sizes(job.model, s).weights + GIB / 2 } }];
+  }
+
+  /** What the server measured each GPU needs besides a model's weights (its cache and compute buffers, plus the driver's allowance), for the planner. */
+  private readonly overheads = new Map<string, Overhead>();
+
+  /**
+   * The option as the model's server measures it, before loading: with the
+   * server's own bytes per GPU plus the flat allowance for the driver's
+   * context, saved under the placement's VRAM key so later plans start from
+   * them. When the measurement finds a GPU short, null: the measured cache
+   * and compute buffers become the model's overhead in the planner, and the
+   * caller plans again from the top, so it can unload idle models or move
+   * more of the model to system RAM, and measures that. On the `final`
+   * round a short GPU refuses the load with the measured need instead.
+   * Without a measurement (none, failed, or late) the estimate stands.
+   */
+  private async measured(model: TextModel, o: Option, s = this.served(model), final = false): Promise<Option | null> {
+    const backend = this.backend(model);
+    if (!backend.measure || this.onCpu(model) || !o.gpus.length) return o;
+    let m: Record<number, Measured> | null;
+    try {
+      m = await backend.measure(model, o, s);
+    } catch (e) {
+      backend.forget?.(model);
+      throw e;
+    }
+    if (!m) return o;
+    const view = this.gpusFor(serverOf(model));
+    const free = (g: number) => {
+      const gpu = view.find((x) => x.index === g)!;
+      return gpu.total - gpu.used - this.gpuSettings(g).keepFree;
+    };
+    // The measurement covers llama.cpp's own buffers; the driver's context and workspace on each GPU stay in the flat allowance.
+    const need = Object.fromEntries(o.gpus.map((g) => [g, m[g]!.bytes + OVERHEAD]));
+    const short = o.gpus.find((g) => need[g]! > free(g));
+    if (short === undefined) {
+      const key = this.vramKey(model, o, s);
+      // Keep the larger saved value: a measurement after the first request includes buffers grown on first use.
+      const saved = this.o.state.get().vram[key];
+      const larger = Object.fromEntries(o.gpus.map((g) => [g, Math.max(need[g]!, saved?.[g] ?? 0)]));
+      this.o.state.update((st) => {
+        st.vram[key] = larger;
+      });
+      return { ...o, need: larger };
+    }
+    if (final) {
+      backend.forget?.(model);
+      const gb = (n: number) => (n / GIB).toFixed(1);
+      throw new HostError(413, "too_big", `This model needs about ${gb(need[short]!)} GB on GPU ${short} by llama.cpp's measurement, of it ${gb(m[short]!.extra)} GB for its cache and buffers; the GPU has ${gb(free(short))} GB free.`);
+    }
+    const prev = this.overheads.get(model.id) ?? {};
+    this.overheads.set(model.id, { ...prev, ...Object.fromEntries(o.gpus.map((g) => [g, Math.max(prev[g] ?? 0, m[g]!.extra + OVERHEAD)])) });
+    return null;
   }
 
   /**
@@ -464,6 +519,8 @@ export class Scheduler {
             continue;
           }
           const plan = this.plan(job, held);
+          // A placement measured but not loaded leaves the preset.
+          if (job.rounds && !("option" in plan)) this.backend(job.model).forget?.(job.model);
           if (plan instanceof HostError) {
             // Too big while an unloaded model's memory is still coming back: wait for it before saying so.
             const releasing = plan.code === "too_big" ? this.stillReleasing() : [];
@@ -493,7 +550,14 @@ export class Scheduler {
                 break;
               }
             }
-            await this.load(job.model, plan.option);
+            const option = await this.measured(job.model, plan.option, undefined, (job.rounds ?? 0) >= 2);
+            if (!option) {
+              // The server found a GPU short: plan again from the top with what it measured.
+              job.rounds = (job.rounds ?? 0) + 1;
+              this.again = true;
+              break;
+            }
+            await this.load(job.model, option);
           } catch (e) {
             this.finish(job, e instanceof HostError ? e : new HostError(503, "model_unavailable", "The model server couldn't load this model."));
           }
@@ -716,8 +780,22 @@ export class Scheduler {
       if ("wait" in plan) throw new HostError(503, "busy", "The GPU is busy with other work.");
       await this.unload(previous);
       try {
-        for (const l of plan.evict) await this.unload(l);
-        await this.load(model, plan.option);
+        let next = plan;
+        for (let round = 0; ; round++) {
+          for (const l of next.evict) await this.unload(l);
+          const option = await this.measured(model, next.option, undefined, round >= 2);
+          if (option) {
+            await this.load(model, option);
+            break;
+          }
+          // The server found a GPU short: plan again with what it measured.
+          await this.readGpus();
+          const again = this.plan({ model }, new Set());
+          if (!("option" in again)) this.backend(model).forget?.(model);
+          if (again instanceof HostError) throw again;
+          if ("wait" in again) throw new HostError(503, "busy", "The GPU is busy with other work.");
+          next = again;
+        }
       } catch (e) {
         const { contextLength: _, ...rest } = previous.settings;
         this.saveSettings(model, previous.auto ? rest : previous.settings);
@@ -767,6 +845,7 @@ export class Scheduler {
       // Context, KV type, layers and batch change what it takes: measure again.
       for (const k of Object.keys(st.vram)) if (k.startsWith(`${model.id}@`)) delete st.vram[k];
     });
+    this.overheads.delete(model.id);
   }
 
   get knownGpus(): Gpu[] {

@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import http from "node:http";
 import https from "node:https";
 import type { AddressInfo } from "node:net";
-import type { Backend } from "../src/backends.ts";
+import type { Backend, Measured } from "../src/backends.ts";
 import type { Gpu, GpuMonitor } from "../src/gpus.ts";
 import { makeIdentity } from "../src/identity.ts";
 import type { TextModel } from "../src/library.ts";
@@ -42,6 +42,18 @@ export class FakeBackend implements Backend {
   }
 
   readonly placements = new Map<string, Option>();
+  /** The server's own measurement of a placement, when set: what each GPU needs, and how much of it isn't weights. */
+  measurements?: (model: TextModel, at: Option) => Record<number, Measured> | null;
+  forgotten: string[] = [];
+
+  async measure(model: TextModel, at: Option) {
+    if (!this.measurements) return null;
+    this.calls.push(`measure ${model.id}@${at.gpus.join("+")}`);
+    return this.measurements(model, at);
+  }
+  forget(model: TextModel) {
+    this.forgotten.push(model.id);
+  }
 
   async load(model: TextModel, at: Option) {
     this.calls.push(`load ${model.id}@${at.gpus.join("+")}`);
