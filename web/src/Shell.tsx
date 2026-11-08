@@ -411,8 +411,11 @@ function forgetBeside(route: Route) {
   if (beside && (!panel || pageKey(panel) !== beside.page)) keepBeside(undefined);
 }
 
-/** Open as a page and Close panel (when the panel can close, or `closeLabel`) at the end of the panel's header; on a page opened that way, Open in panel in their place, from 1180 px up. */
-export function PanelButtons() {
+/**
+ * Open as a page and Close panel (when the panel can close, or `closeLabel`) at the end of the panel's header; on a page opened that way, Open in panel in their place, from 1180 px up.
+ * `onExpand`: Expand in place of Open as a page, for a page that opens large in a dialog over the conversation instead (the Files panel).
+ */
+export function PanelButtons({ onExpand }: { onExpand?: () => void } = {}) {
   const p = usePanel();
   const wide = useWide();
   const back = !p && wide ? besideRoute(parse(location.hash)) : undefined;
@@ -438,7 +441,8 @@ export function PanelButtons() {
   if (!p) return null;
   return (
     <div className="head-actions panel-actions">
-      <a className="icon sm" href={p.expand} aria-label="Open as a page" title="Open as a page" onClick={p.noReturn ? undefined : () => keepBeside({ from: location.hash, page: pageKey(asPanel(parse(p.expand))!) })}><Icon name="expand" /></a>
+      {onExpand ? <button type="button" className="icon sm" aria-label="Expand" title="Expand" onClick={onExpand}><Icon name="expand" /></button>
+        : <a className="icon sm" href={p.expand} aria-label="Open as a page" title="Open as a page" onClick={p.noReturn ? undefined : () => keepBeside({ from: location.hash, page: pageKey(asPanel(parse(p.expand))!) })}><Icon name="expand" /></a>}
       {p.close && <button type="button" className="icon sm" aria-label={p.closeLabel ?? "Close panel"} title={p.closeLabel ?? "Close panel"} onClick={p.close}><Icon name="close" /></button>}
     </div>
   );

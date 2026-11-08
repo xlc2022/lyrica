@@ -2,8 +2,10 @@
 // folder and its granted folders, one folder at a time, with a search, a
 // file opened in the viewer (Viewer.tsx), Images and Videos tabs, and every action in a
 // right-click menu (a long press on a phone, or the ⋯ beside a file).
-// Beside the conversation from the split width; the page on its own below it.
+// Beside the conversation from the split width, where Expand opens it in a dialog
+// over the conversation; the page on its own below it.
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { get, post, threadPath, upload, type FileEntry, type FileListing, type FileRoot, type FileSearch, type ImageEntry, type Pool, type ThreadSummary } from "./api.ts";
 import { ask, ATTACH_EVENT, ATTACH_KEY, keep, SHOW_EVENT, SHOW_KEY, type AttachRequest, type ShowRequest } from "./links.ts";
 import { isUnderWorkdir, SHARED, shown, Thumb, useFileLinks, VideoThumb, WORKDIR, type FileLinks } from "./paths.tsx";
@@ -11,7 +13,7 @@ import { Viewer } from "./Viewer.tsx";
 import { Icon } from "./icons.tsx";
 import { her } from "./name.ts";
 import { go } from "./route.ts";
-import { Crumbs, Main, PanelButtons, type ShellContext } from "./Shell.tsx";
+import { Crumbs, Main, PanelButtons, usePanel, type ShellContext } from "./Shell.tsx";
 import { ConfirmDialog, ErrorText, InlineRename, menuArrows, useLongPress, useSelection } from "./ui.tsx";
 
 type Tab = "files" | MediaTab;
@@ -61,6 +63,10 @@ export function FilesPage({ ctx, pool, threadId, threads, path }: { ctx: ShellCo
   /** Where an upload or a new folder goes when nothing more specific was picked: the last folder opened. */
   const [cwd, setCwd] = useState(WORKDIR);
   const [dropping, setDropping] = useState(false);
+  /** Opened large in a dialog over the conversation, from the panel's Expand. */
+  const inPanel = !!usePanel();
+  const [big, setBig] = useState(false);
+  const closeBig = useCallback(() => setBig(false), []);
   const picker = useRef<HTMLInputElement>(null);
   const uploadTo = useRef(WORKDIR);
   const writable = useCallback((p: string) => roots.some((r) => under(p, r.path) && r.writable), [roots]);
@@ -180,6 +186,7 @@ export function FilesPage({ ctx, pool, threadId, threads, path }: { ctx: ShellCo
   // The actions, each from the menu.
   const contentUrl = (p: string, download = false) => `${base}/content?path=${encodeURIComponent(p)}${download ? "&download=1" : ""}`;
   const attach = (paths: string[]) => {
+    setBig(false);
     const req: AttachRequest = { base: thread, paths };
     if (ask(ATTACH_EVENT, req)) return;
     // No message box on this page (a phone): the thread's box takes them when it shows.
@@ -188,6 +195,7 @@ export function FilesPage({ ctx, pool, threadId, threads, path }: { ctx: ShellCo
   };
   /** Show in thread: the conversation beside the panel scrolls to the message that names the file; on a phone, the thread page does. */
   const showInThread = (path: string) => {
+    setBig(false);
     const req: ShowRequest = { base: thread, path };
     if (ask(SHOW_EVENT, req)) { if (!req.found) setError("That file isn't named in the messages shown."); return; }
     keep(SHOW_KEY, req);
@@ -304,11 +312,14 @@ export function FilesPage({ ctx, pool, threadId, threads, path }: { ctx: ShellCo
       onDelete={(ps) => act(() => remove(ps))} />
   );
 
-  return (
-    <Main className={`main files-page${dropping ? " drop" : ""}`} aria-label={`${title}: files`}
-      onDragOver={(e) => { if (e.dataTransfer.types.includes("Files")) { e.preventDefault(); setDropping(true); } }}
-      onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDropping(false); }}
-      onDrop={(e) => { e.preventDefault(); setDropping(false); send(dropDir, e.dataTransfer.files); }}>
+  // Dropping files on the browser uploads them, wherever it shows: the panel, the page or the dialog.
+  const drop = {
+    onDragOver: (e: React.DragEvent) => { if (e.dataTransfer.types.includes("Files")) { e.preventDefault(); setDropping(true); } },
+    onDragLeave: (e: React.DragEvent) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDropping(false); },
+    onDrop: (e: React.DragEvent) => { e.preventDefault(); setDropping(false); send(dropDir, e.dataTransfer.files); },
+  };
+  const body = (
+    <>
       <header className="head">
         <button type="button" className="menu-btn icon" aria-label="Show threads" onClick={ctx.openSide}><Icon name="menu" /></button>
         <div className="head-title">
@@ -323,7 +334,11 @@ export function FilesPage({ ctx, pool, threadId, threads, path }: { ctx: ShellCo
             ))}
           </div>
         </div>
-        <PanelButtons />
+        {big ? (
+          <div className="head-actions panel-actions">
+            <button type="button" className="icon sm" aria-label="Close" title="Close" onClick={closeBig}><Icon name="close" /></button>
+          </div>
+        ) : <PanelButtons onExpand={inPanel ? () => setBig(true) : undefined} />}
       </header>
       <ErrorText error={error} />
       {tab === "files" ? (
@@ -353,7 +368,34 @@ export function FilesPage({ ctx, pool, threadId, threads, path }: { ctx: ShellCo
         </Viewer>
       )}
       {menu && !current && fileMenu}
-    </Main>
+    </>
+  );
+  const cls = `main files-page${dropping ? " drop" : ""}`;
+  if (big) {
+    // Out of the panel's column into the body, so the panel's narrow-column rules don't reach it; React events still reach this page.
+    return (
+      <Main className="main files-page" aria-label={`${title}: files`}>
+        {createPortal(<FilesDialog label={`${title}: files`} onClose={closeBig}><div className={cls} {...drop}>{body}</div></FilesDialog>, document.body)}
+      </Main>
+    );
+  }
+  return <Main className={cls} aria-label={`${title}: files`} {...drop}>{body}</Main>;
+}
+
+/** The Files panel opened large over the conversation (Expand in its header); Close, Escape or the scrim puts it back in the panel. */
+function FilesDialog({ label, onClose, children }: { label: string; onClose: () => void; children: ReactNode }) {
+  const ref = useRef<HTMLDialogElement>(null);
+  useEffect(() => { const el = ref.current; if (el && !el.open) el.showModal(); return () => el?.close(); }, []);
+  // Going anywhere else (a link inside it, Show in thread) puts it back.
+  useEffect(() => { addEventListener("hashchange", onClose); return () => removeEventListener("hashchange", onClose); }, [onClose]);
+  return (
+    <dialog ref={ref} className="files-dialog" aria-label={label}
+      // A click on the scrim (the dialog itself, outside its content) closes it, as every dialog does.
+      onClick={(e) => { if (e.target === ref.current) onClose(); }}
+      // Escape closes the topmost thing: a menu or drawer inside first, then the dialog.
+      onCancel={(e) => { e.preventDefault(); if (!document.activeElement?.closest("[role='menu'], .ctx-menu, .drawer")) onClose(); }}>
+      {children}
+    </dialog>
   );
 }
 

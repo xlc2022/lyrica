@@ -1070,6 +1070,9 @@ form.drawer-body { flex: 1; }
 .fhead { display: flex; gap: 8px; align-items: center; min-width: 0; }
 .fhead .fname { font-size: 13px; margin-right: auto; flex: 1; }
 .files-page .head .cap { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Expand opens the panel large over the conversation (from 1180 px up, where the panel shows): the viewer's size. */
+dialog.files-dialog { width: calc(100vw - 32px); height: calc(100vh - 32px); max-width: none; max-height: none; margin: auto; display: flex; flex-direction: column; overflow: hidden; }
+dialog.files-dialog > .files-page { flex: 1; }
 /* ---- The file viewer (docs/ux.md §6, A file opened from a library): the file large, the thread whose library it is beside it. ---- */
 dialog.viewer { width: calc(100vw - 32px); height: calc(100vh - 32px); max-width: none; max-height: none; margin: auto; display: grid; grid-template-columns: minmax(0, 1fr); overflow: hidden; }
 dialog.viewer[data-split] { grid-template-columns: minmax(0, 1fr) clamp(360px, 32vw, 520px); }
