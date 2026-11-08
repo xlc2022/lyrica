@@ -15,7 +15,7 @@ import { RowMenu } from "./Machines.tsx";
 import { canEdit, Frame, GB, gb, hostOf, Kind, plural, Price, Retires, UsedIn, VoiceDrawer, type MCtx } from "./ModelsFrame.tsx";
 import { replyCap } from "../../core/src/models/settings.ts";
 import { go } from "./route.ts";
-import { ConfirmDialog, Dialog, ErrorText, useAction, useDismiss, useLoad } from "./ui.tsx";
+import { ConfirmDialog, Dialog, ErrorText, moved, useAction, useDismiss, useLoad, useReorder } from "./ui.tsx";
 import { companionsOf, fileChoices, HUB_WORD, size, type FileChoice, type HubFiles } from "./downloads.ts";
 
 type Entry = LibraryEntry;
@@ -288,6 +288,7 @@ function Detail({ L, e, group }: { L: Lib; e: Entry; group?: GroupInfo }) {
   const digest = (id: string) => L.offering(id)?.digest;
   const setMembers = (next: string[]) => run(async () => { await patch(u(userId, "groups", group!.id), { members: next }); await L.refresh(); });
   const move = (at: number, by: number) => { const next = [...group!.members]; [next[at], next[at + by]] = [next[at + by]!, next[at]!]; void setMembers(next); };
+  const reorder = useReorder(editGroup ? members.length : 0, group?.members.join(" ") ?? "", busy, (from, to) => void setMembers(moved(group!.members, rows[from]!.order!, rows[to]!.order!)));
   const separate = (c: Copy, on: boolean) => run(async () => {
     await put(u(userId, "offerings", c.offeringId, "separate"), { separate: on });
     L.setSeparated(c.offeringId, on ? e.name : false);
@@ -315,8 +316,8 @@ function Detail({ L, e, group }: { L: Lib; e: Entry; group?: GroupInfo }) {
           <thead>
             <tr>{group && <th>Order</th>}<th>Copy</th><th>Context</th><th>Vision</th><th><span className="sr-only">Actions</span></th></tr>
           </thead>
-          <tbody>
-            {rows.map(({ c, order }) => {
+          <tbody ref={reorder.list} data-reordering={reorder.active ? "" : undefined}>
+            {rows.map(({ c, order }, i) => {
               const own = canEdit(ctx, c);
               const host = L.onHost(c.endpointId);
               const sameFile = order === undefined && !!group && !!digest(c.offeringId) && group.members.some((m) => digest(m) === digest(c.offeringId));
@@ -334,7 +335,7 @@ function Detail({ L, e, group }: { L: Lib; e: Entry; group?: GroupInfo }) {
                 c.flagged ? <span className="warn-text" title={c.flagged}>the file records no finetune, but its name suggests one</span> : null,
               ].filter(Boolean);
               return (
-                <tr key={c.offeringId} data-offering={c.offeringId}>
+                <tr key={c.offeringId} data-offering={c.offeringId} {...(order !== undefined && editGroup ? reorder.row(i) : {})}>
                   {group && <td className="num" data-h="Order">{order !== undefined ? order + 1 : null}</td>}
                   <td className="copy">
                     <div className="copy-name">

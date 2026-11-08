@@ -1989,3 +1989,7 @@ ul.choices { list-style: none; margin: 0; padding: 0; }
 .wf-gmatches button:hover, .wf-gmatches button:focus-visible { background: var(--tool); }
 @media (pointer: coarse) { .wf-gmatches button { min-height: var(--tap); } }
 @media (max-width: 640px) { .wf-graph { height: 420px; min-height: 0; } }
+/* Drag to reorder (useReorder in ui.tsx): the dragged row lifts above the rows sliding aside. */
+[data-dragging] { position: relative; z-index: 2; box-shadow: 0 6px 20px rgb(0 0 0 / 0.16); }
+.copies tr[data-dragging] { background: var(--panel); }
+[data-reordering] .crossline { visibility: hidden; }

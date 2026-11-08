@@ -305,6 +305,38 @@ test("Tasks: the table shows each column's models; a cell's drawer adds, reorder
   expect((await saved).ok()).toBe(true);
   await expect(entries.nth(0)).toContainText("cloud-mini");
   await expect(general.locator(".m")).toContainText("cloud-mini");
+  // Dragging a row by its number does what the arrows do, down and back up again: a mouse on a desktop, and on a
+  // phone a finger that holds the row first.
+  const cdp = phone(page) ? await page.context().newCDPSession(page) : undefined;
+  const drag = async (from: number, to: number, name?: string) => {
+    const a = (await entries.nth(from).locator(".onum").boundingBox())!, b = (await entries.nth(to).boundingBox())!;
+    const x = a.x + a.width / 2, y0 = a.y + a.height / 2, y1 = to > from ? b.y + b.height * 0.8 : b.y + b.height * 0.2;
+    const at = (k: number) => y0 + ((y1 - y0) * k) / 5;
+    if (cdp) {
+      const touch = (type: string, y?: number) => cdp.send("Input.dispatchTouchEvent", { type, touchPoints: y === undefined ? [] : [{ x, y }] });
+      await touch("touchStart", y0);
+      await page.waitForTimeout(400);
+      for (let k = 1; k <= 5; k++) await touch("touchMove", at(k));
+      if (name) await shot(name);
+      await touch("touchEnd");
+      return;
+    }
+    await page.mouse.move(x, y0);
+    await page.mouse.down();
+    for (let k = 1; k <= 5; k++) await page.mouse.move(x, at(k));
+    if (name) await shot(name);
+    await page.mouse.up();
+  };
+  saved = put();
+  await drag(0, 1, "drawer-drag");
+  expect((await saved).ok()).toBe(true);
+  await expect(entries.nth(1)).toContainText("cloud-mini");
+  await expect(general.locator(".m")).toContainText("cloud-model");
+  saved = put();
+  await drag(1, 0);
+  expect((await saved).ok()).toBe(true);
+  await expect(entries.nth(0)).toContainText("cloud-mini");
+  await expect(general.locator(".m")).toContainText("cloud-mini");
   saved = put();
   await entries.nth(0).getByRole("button", { name: "Remove" }).click();
   expect((await saved).ok()).toBe(true);
@@ -2906,4 +2938,38 @@ test("Updates: Latest merge installs main's newest commit after a dialog that sa
   await dialog.getByRole("button", { name: "Update" }).click();
   await expect(section.getByRole("group", { name: "Update to the latest merge" })).toBeVisible();
   expect(posted).toEqual({ commit: head });
+});
+
+test("Text models: a group's copies reorder by dragging a row, as with Move up and Move down", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  const json = (body: unknown) => ({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
+  // local-model as three copies in one group, the order kept by the routes below.
+  let members = ["c1", "c2", "c3"];
+  const patches: unknown[] = [];
+  await page.route(/\/api\/u\/[^/]+\/library\/text(\?.*)?$/, async (route) => {
+    const real = await (await fetchReal(route)).json() as { total: number; entries: { key: string; copies: Record<string, unknown>[]; groups: string[] }[] };
+    const e = real.entries.find((x) => x.key.includes("local-model"))!;
+    const c = e.copies[0]!;
+    e.copies = ["c1", "c2", "c3"].map((id, i) => ({ ...c, offeringId: id, rawName: `copy-${i + 1}`, groups: ["g1"] }));
+    e.groups = ["g1"];
+    await route.fulfill(json(real));
+  });
+  await page.route(/\/api\/u\/[^/]+\/groups$/, (route) => route.fulfill(json([{ id: "g1", name: "Trio", shared: false, members }])));
+  await page.route(/\/api\/u\/[^/]+\/groups\/suggestions$/, (route) => route.fulfill(json([])));
+  await page.route(/\/api\/u\/[^/]+\/groups\/g1$/, (route) => { const b = route.request().postDataJSON(); patches.push(b); members = b.members; return route.fulfill(json({ id: "g1", name: "Trio", shared: false, members })); });
+  await page.goto(`/#/u/${userId}/models/text`);
+  const row = page.locator("li.lrow").filter({ hasText: "local-model" }).first();
+  await row.locator(".lrow-main").click();
+  const trs = row.locator("tr[data-offering]");
+  await expect(trs).toHaveCount(3);
+  const a = (await trs.nth(0).locator(".copy-name").boundingBox())!, b = (await trs.nth(2).boundingBox())!;
+  await page.mouse.move(a.x + 4, a.y + a.height / 2);
+  await page.mouse.down();
+  for (let k = 1; k <= 8; k++) await page.mouse.move(a.x + 4, a.y + a.height / 2 + (b.y + b.height * 0.8 - a.y - a.height / 2) * k / 8);
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/text-models-group-drag-${page.viewportSize()!.width}.png` });
+  await page.mouse.up();
+  await expect.poll(() => patches.length).toBe(1);
+  expect(patches[0]).toEqual({ members: ["c2", "c3", "c1"] });
+  await expect(trs.nth(2)).toContainText("copy-1");
+  await expect(trs.nth(0).locator("td").first()).toHaveText("1");
 });
