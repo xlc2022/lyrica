@@ -18,8 +18,8 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
 `…/t/<pool>/<project-thread>/threads`: what the panel shows beside its chat from 1180 px up.
 
 - **Unlock** while `lyricad` is locked, then **login**. A browser holds one
-  person's users: the user menu at the foot of the sidebar opens Settings and
-  Administration, switches between linked personas (separate users of the same
+  person's users: the user menu at the foot of the sidebar opens Models,
+  Settings and Administration, switches between linked personas (separate users of the same
   person), logs in as another, and has **Lock** and **Log out** for the
   current user. Logging in as a
   user who isn't linked signs the browser's users out first, and a short
@@ -481,7 +481,8 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
 - **Models** (`src/Models.tsx`, its frame and what the tabs share in
   `src/ModelsFrame.tsx`; [models.md](models.md); docs/ux.md §6
   "Models, hosts, downloads, clean-up"): `#/u/<user>/models[/<tab>]`, from
-  the sidebar's Models link, whose badge counts Clean up's items
+  **Models** in the sidebar's user menu, whose badge (also on the user
+  button) counts Clean up's items
   (`GET …/models/cleanup`, reread with `…/models/page` in the shell's tick,
   every 30 s and on focus). Tabs down the left (a scrolling row
   on a phone): **Overview**, **Tasks**, **Text models**, **Image models**,
