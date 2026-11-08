@@ -34,7 +34,7 @@ test("no horizontal scrolling and big enough tap targets on a phone", async ({ p
   }
 });
 
-test("Models: the sidebar link opens Overview, Hosts and endpoints lists the endpoints and Edit renames one, Recent calls names the chat call, Clean up is empty, and Settings → Endpoints lands on the hosts tab", async ({ page, baseURL }) => {
+test("Models: the user menu's Models opens Overview, Hosts and endpoints lists the endpoints and Edit renames one, Recent calls names the chat call, Clean up is empty, and Settings → Endpoints lands on the hosts tab", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   const shot = async (name: string) => { if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/models-${name}-${page.viewportSize()!.width}.png`, fullPage: true }); };
   // A chat call for Recent calls.
@@ -47,6 +47,7 @@ test("Models: the sidebar link opens Overview, Hosts and endpoints lists the end
   const answered = `${chat.label.replace(/^(?:shared\.)?[^/]+\//, "")} · ${chat.endpointName}`;
 
   if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
+  await page.locator(".user-switch").click();
   await page.locator('a[data-nav="models"]').click();
   await expect(page).toHaveURL(new RegExp(`#/u/${userId}/models$`));
   await expect(page.getByRole("heading", { level: 1, name: "Models" })).toBeVisible();

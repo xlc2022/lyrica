@@ -196,6 +196,8 @@ button.private { color: var(--private); border-color: color-mix(in oklab, var(--
 .user-switch b { display: block; }
 .user-switch small { color: var(--muted); font-size: 12px; }
 .user-switch .caret { margin-left: auto; }
+.user-switch .count { margin-left: auto; }
+.user-switch .count + .caret { margin-left: 0; }
 .avatar { width: 30px; height: 30px; flex: none; border-radius: 50%; display: grid; place-items: center; background: var(--accent); color: var(--accent-fg); font-weight: 600; font-size: 12px; }
 .avatar.small { width: 22px; height: 22px; font-size: 10px; color: #fff; }
 .menu { position: absolute; z-index: 12; left: 0; right: 0; top: calc(100% + 4px); background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 6px; display: grid; gap: 1px; box-shadow: 0 8px 30px rgb(0 0 0 / 0.15); }
@@ -204,6 +206,7 @@ button.private { color: var(--private); border-color: color-mix(in oklab, var(--
 .menu a:hover, .menu button:hover:not(:disabled) { background: var(--tool); text-decoration: none; border: 0; }
 .menu .sep { height: 1px; background: var(--line); margin: 4px 0; }
 .menu .cap { padding: 4px 10px 2px; }
+.menu a .count { margin-left: auto; }
 .menu button.danger { color: var(--danger); }
 .menu button[aria-disabled="true"] { opacity: 0.5; cursor: default; }
 .menu button[aria-disabled="true"]:hover { background: transparent; }
@@ -1070,6 +1073,9 @@ form.drawer-body { flex: 1; }
 .fhead { display: flex; gap: 8px; align-items: center; min-width: 0; }
 .fhead .fname { font-size: 13px; margin-right: auto; flex: 1; }
 .files-page .head .cap { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Expand opens the panel large over the conversation (from 1180 px up, where the panel shows): the viewer's size. */
+dialog.files-dialog { width: calc(100vw - 32px); height: calc(100vh - 32px); max-width: none; max-height: none; margin: auto; display: flex; flex-direction: column; overflow: hidden; }
+dialog.files-dialog > .files-page { flex: 1; }
 /* ---- The file viewer (docs/ux.md §6, A file opened from a library): the file large, the thread whose library it is beside it. ---- */
 dialog.viewer { width: calc(100vw - 32px); height: calc(100vh - 32px); max-width: none; max-height: none; margin: auto; display: grid; grid-template-columns: minmax(0, 1fr); overflow: hidden; }
 dialog.viewer[data-split] { grid-template-columns: minmax(0, 1fr) clamp(360px, 32vw, 520px); }

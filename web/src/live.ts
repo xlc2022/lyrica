@@ -85,7 +85,11 @@ export function tailKey(messages: Message[], live: Live): string {
 const STORED: string[] = ["started", "usage", "question", "note", "finished", "stopped", "interrupted"];
 
 export type LiveAction =
-  | ThreadEvent
+  /**
+   * `afterN` on a `queue` or `received`: the last stored message the view had when it came (stream.ts), so the
+   * user message it shows is replaced by its stored copy, as a send's is, if the stored messages reload mid-turn.
+   */
+  | (ThreadEvent & { afterN?: number })
   /** She sent a message that started a turn. */
   | { type: "sent"; text: string; afterN?: number }
   /** The stored messages were reloaded, so the live copy can go. */
@@ -155,11 +159,11 @@ export function liveReducer(s: Live, e: LiveAction): Live {
       if (e.steered) return { ...s, queued: e.queued };
       // A follow-up that leaves the queue is now being answered.
       const taken = s.queued.slice(0, Math.max(0, s.queued.length - e.queued.length));
-      return { ...s, queued: e.queued, items: [...s.items, ...taken.map((text) => ({ role: "user" as const, text }))] };
+      return { ...s, queued: e.queued, items: [...s.items, ...taken.map((text) => ({ role: "user" as const, text, ...(e.afterN !== undefined && { afterN: e.afterN }) }))] };
     }
     case "received":
       // From another thread or a look, where it reached the turn; drawn by its mark.
-      return { ...s, items: [...s.items, { role: "user", text: e.text }] };
+      return { ...s, items: [...s.items, { role: "user", text: e.text, ...(e.afterN !== undefined && { afterN: e.afterN }) }] };
     case "error": {
       // A reply's own error goes under that reply, so a retry that goes on writes below it instead of above it.
       const last = s.items.length > s.ended ? s.items.at(-1) : undefined;

@@ -411,8 +411,11 @@ function forgetBeside(route: Route) {
   if (beside && (!panel || pageKey(panel) !== beside.page)) keepBeside(undefined);
 }
 
-/** Open as a page and Close panel (when the panel can close, or `closeLabel`) at the end of the panel's header; on a page opened that way, Open in panel in their place, from 1180 px up. */
-export function PanelButtons() {
+/**
+ * Open as a page and Close panel (when the panel can close, or `closeLabel`) at the end of the panel's header; on a page opened that way, Open in panel in their place, from 1180 px up.
+ * `onExpand`: Expand in place of Open as a page, for a page that opens large in a dialog over the conversation instead (the Files panel).
+ */
+export function PanelButtons({ onExpand }: { onExpand?: () => void } = {}) {
   const p = usePanel();
   const wide = useWide();
   const back = !p && wide ? besideRoute(parse(location.hash)) : undefined;
@@ -438,7 +441,8 @@ export function PanelButtons() {
   if (!p) return null;
   return (
     <div className="head-actions panel-actions">
-      <a className="icon sm" href={p.expand} aria-label="Open as a page" title="Open as a page" onClick={p.noReturn ? undefined : () => keepBeside({ from: location.hash, page: pageKey(asPanel(parse(p.expand))!) })}><Icon name="expand" /></a>
+      {onExpand ? <button type="button" className="icon sm" aria-label="Expand" title="Expand" onClick={onExpand}><Icon name="expand" /></button>
+        : <a className="icon sm" href={p.expand} aria-label="Open as a page" title="Open as a page" onClick={p.noReturn ? undefined : () => keepBeside({ from: location.hash, page: pageKey(asPanel(parse(p.expand))!) })}><Icon name="expand" /></a>}
       {p.close && <button type="button" className="icon sm" aria-label={p.closeLabel ?? "Close panel"} title={p.closeLabel ?? "Close panel"} onClick={p.close}><Icon name="close" /></button>}
     </div>
   );
@@ -657,9 +661,6 @@ function Sidebar({ ctx, users, route, trail, threads, error, checkedAt, onAuthCh
         <a href={href({ page: "sleep", userId: user.id })} aria-current={route.page === "sleep" ? "page" : undefined} data-nav="sleep">
           <Icon name="moon" />Sleep{ctx.sleep.fresh > 0 ? <span className="count" aria-label={`${ctx.sleep.fresh} new`}>{ctx.sleep.fresh}</span>
             : ctx.sleep.running && <span className="busy" title="Sleeping"><span className="sr-only">Sleeping</span></span>}
-        </a>
-        <a href={href({ page: "models", userId: user.id })} aria-current={route.page === "models" ? "page" : undefined} data-nav="models">
-          <Icon name="models" />Models{ctx.cleanup.count > 0 && <span className="count" aria-label={`${ctx.cleanup.count} to clean up`}>{ctx.cleanup.count}</span>}
         </a>
       </nav>
       <div className="thread-tools">
@@ -973,7 +974,7 @@ export function ThreadLink({ t, userId, on, shown, menu, child, openBeside, besi
   );
 }
 
-/** The user's button at the sidebar's foot: Settings, Administration, Switch user, Lock and Log out. */
+/** The user's button at the sidebar's foot: Models, Settings, Administration, Switch user, Lock and Log out. The button carries Clean up's count while there is one. */
 function UserMenu({ ctx, users, onAuthChange }: { ctx: ShellContext; users: UserCard[]; onAuthChange: (notice?: string) => void }) {
   const { user } = ctx;
   const [open, setOpen] = useState(false);
@@ -1000,10 +1001,14 @@ function UserMenu({ ctx, users, onAuthChange }: { ctx: ShellContext; users: User
       : undefined);
   });
   const others = users.filter((x) => x.id !== user.id);
+  const cleanup = ctx.cleanup.count;
   return (
     <div className="user-wrap" ref={ref}>
       {open && (
         <div className="menu above" role="menu">
+          <a href={href({ page: "models", userId: user.id })} role="menuitem" onClick={close} data-nav="models">
+            Models{cleanup > 0 && <span className="count" aria-label={`${cleanup} to clean up`}>{cleanup}</span>}
+          </a>
           <a href={href({ page: "settings", userId: user.id })} role="menuitem" onClick={close}>Settings</a>
           {user.admin && <a href={href({ page: "admin", userId: user.id })} role="menuitem" onClick={close}>Administration</a>}
           <div className="sep" role="separator" />
@@ -1023,6 +1028,7 @@ function UserMenu({ ctx, users, onAuthChange }: { ctx: ShellContext; users: User
       <button type="button" className="user-switch" aria-expanded={open} aria-haspopup="menu" onClick={() => setOpen(!open)}>
         <span className="avatar" aria-hidden="true">{monogram(user)}</span>
         <span><b>{user.displayName}</b><small>Switch user</small></span>
+        {cleanup > 0 && <span className="count" aria-label={`${cleanup} to clean up`}>{cleanup}</span>}
         <span className="caret" aria-hidden="true">▾</span>
       </button>
     </div>

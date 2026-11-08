@@ -56,7 +56,13 @@ COPY host/comfyui/video_frames.py /opt/comfyui/custom_nodes/video_frames.py
 COPY host/comfyui/clip_chain.py /opt/comfyui/custom_nodes/clip_chain.py
 COPY host/comfyui/gate.py /opt/gate.py
 # /status is a volume gate.py writes to; a new volume takes this folder's owner.
-RUN useradd --uid 10002 --no-create-home --home-dir /tmp comfy && mkdir /status && chown 10002 /status
+# The SeedVR2 node's upscaler creates models/SEEDVR2 under ComfyUI's models
+# folder before it looks for its files (os.makedirs, uncaught), and the
+# container is read-only: an OSError on every upscale unless the folder
+# already exists. A link to host-api's SeedVR2 links on the serving volume
+# makes it exist, and points its fallback at the same files.
+RUN useradd --uid 10002 --no-create-home --home-dir /tmp comfy && mkdir /status && chown 10002 /status \
+    && mkdir -p /opt/comfyui/models && ln -s /serving/seedvr2 /opt/comfyui/models/SEEDVR2
 USER 10002
 WORKDIR /opt/comfyui
 ENV HOME=/tmp HF_HUB_OFFLINE=1 DO_NOT_TRACK=1
