@@ -1108,7 +1108,7 @@ function useEndpointActions(ctx: MCtx, ep: Endpoint, others: Endpoint[], onSignI
     ...(ep.models.some((m) => !m.disabled) ? [{ label: "Disable all models", onPick: () => void run(async () => { await patch(`${path}/models`, { disabled: true }); done(); }) }] : []),
     ...(ep.models.some((m) => m.disabled) ? [{ label: "Enable all models", onPick: () => void run(async () => { await patch(`${path}/models`, { disabled: false }); done(); }) }] : []),
     { label: "Reset IDs…", onPick: () => setAsking("reset") },
-    ...(targets.length ? [{ label: "Merge into…", onPick: () => setInto(targets[0]!.id) }] : []),
+    ...(targets.length ? [{ label: ep.api === "host" ? "Merge duplicate host…" : "Merge duplicate…", onPick: () => setInto(targets[0]!.id) }] : []),
     { label: "Remove", danger: true, onPick: () => setAsking("remove") },
   ];
   const target = targets.find((t) => t.id === into);
