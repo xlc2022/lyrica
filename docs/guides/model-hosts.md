@@ -588,8 +588,9 @@ fallback, and private threads only use local models. SeedVR2 recipes
 upscale images, and whole clips, from the same **Image upscaling** list.
 They need a host on a commit from 2026-11-08 or later (an Update, or `git
 pull && host/install.sh`), which rebuilds its ComfyUI image; an older
-image can't write SeedVR2's model folder, so upscaling fails. Before any cloud fallback, a portrait photo's cloud setting is
-checked. OpenAI setup and offline diagrams are in the [getting-started
+image can't write SeedVR2's model folder, so upscaling fails. Before any
+cloud fallback, a portrait photo's cloud setting is checked. OpenAI setup
+and offline diagrams are in the [getting-started
 guide](getting-started.md#image-models). Qwen-Image 2.1 edits (masked
 too) and Z-Image and Krea 2 Q5 on stable-diffusion.cpp have made real
 images; other starters haven't yet: item 9 of the checklist below.
