@@ -1078,8 +1078,9 @@ the action is `invalid`.
   ```
 
   Only `recipe` and `prompt` are required; the rest fall back to the
-  recipe's defaults. `count` is 1 to 4, or only 1 for a template that
-  makes one image at a time (no `$count`; P-H3-Image). `width` and `height` are multiples
+  recipe's defaults. `count` is 1 to 4, or only 1 for a template or
+  custom workflow without `$count`, which makes one image at a time
+  (P-H3-Image's). `width` and `height` are multiples
   of 16 from 256 to 2048. `steps` is 1 to 150, `cfg` 0 to 30, `seed` 0 to
   2^48 (random when left out; every image of one request shares it).
   `references` only for a template that takes them (otherwise `invalid`).
