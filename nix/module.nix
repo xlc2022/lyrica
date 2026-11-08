@@ -343,6 +343,8 @@ in {
       environment = {
         XDG_CONFIG_HOME = "/var/lib/lyrica-caddy/config";
         XDG_DATA_HOME = "/var/lib/lyrica-caddy/data";
+        # Plain TCP only, as daemon/deploy/lyrica-caddy.service: no Multipath TCP listener (CVE-2026-98432).
+        GODEBUG = "multipathtcp=0";
       };
       serviceConfig = {
         Type = "simple";

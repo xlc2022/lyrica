@@ -1099,7 +1099,11 @@ it's off.
   host, each starting from the last 22 frames and sound of the clip so
   far, joined into one MP4; the `image` tool's `extend` action makes an
   existing clip longer the same way. Each recipe's longest video is
-  listed, and a longer request skips models that can't make it.
+  listed, and a longer request skips models that can't make it. A MiniMax
+  H3 VFX Edit recipe (2026-11-08) does `edit_video`: a clip changed as an
+  instruction says (night for day, a red coat), keeping its motion, timing,
+  camera and sound, up to its longest clip; the `image` tool's
+  `edit_video` action uses it through the same Videos list.
 - **Looking at images** (2026-10-25): the task `vision`, **Look at
   images**, has its own list of models with vision in each preset, chosen
   by the person (a plan's model, a local one, or a paid one they add).

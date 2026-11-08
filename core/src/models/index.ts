@@ -180,6 +180,8 @@ export interface Capabilities {
   animate?: boolean;
   /** Moves an image's subject as the person in a driving clip moves (SCAIL-2). */
   motion?: boolean;
+  /** Edits a clip as an instruction says, keeping its motion, timing and sound (MiniMax H3's VFX Edit). */
+  videoEdit?: boolean;
   /** Image create tiers; absent means both. Stored in hand JSON for cloud models. */
   useFor?: "fast" | "quality" | "both";
   /** The thinking levels it offers, besides off. */
@@ -192,9 +194,9 @@ export interface Capabilities {
 /** One of a speech model's voices. `language` is a primary language tag, such as "en" or "zh". */
 export interface Voice { id: string; language: string }
 /** What a host recipe can be asked to do (host/API.md "Recipes"). */
-const RECIPE_ACTIONS = ["create", "edit", "upscale", "video", "animate", "motion"];
+const RECIPE_ACTIONS = ["create", "edit", "upscale", "video", "animate", "motion", "edit_video"];
 
-export const CAPABILITIES = ["contextWindow", "tools", "vision", "embedding", "image", "edit", "upscale", "video", "animate", "motion", "reasoning", "transcribe", "speak", "useFor"] as const satisfies readonly (keyof Capabilities)[];
+export const CAPABILITIES = ["contextWindow", "tools", "vision", "embedding", "image", "edit", "upscale", "video", "animate", "motion", "videoEdit", "reasoning", "transcribe", "speak", "useFor"] as const satisfies readonly (keyof Capabilities)[];
 
 /** One model on one endpoint, with a permanent ID. */
 export interface Offering extends Capabilities {
@@ -376,7 +378,7 @@ export interface CleanupItem {
  * `first`: models asked for by name, tried before the list for this one call (`namedImageModels`).
  * `after`: models tried after the list for this one call, unless Fallback is off (`referenceModels`).
  */
-export interface Need { tools?: boolean; tokens?: number; imageTier?: "fast" | "quality"; imageMask?: boolean; imageReferences?: number; animate?: boolean; motion?: boolean; extend?: boolean; clip?: boolean; seconds?: number; first?: string[]; after?: string[]; loras?: string[] }
+export interface Need { tools?: boolean; tokens?: number; imageTier?: "fast" | "quality"; imageMask?: boolean; imageReferences?: number; animate?: boolean; motion?: boolean; videoEdit?: boolean; extend?: boolean; clip?: boolean; seconds?: number; first?: string[]; after?: string[]; loras?: string[] }
 /** `evenIfDown`: ignore the health cache (stale still counts). `except`: endpoints to treat as down. */
 export interface ResolveOptions { evenIfDown?: boolean; except?: ReadonlySet<string> }
 
@@ -1815,7 +1817,7 @@ export class Models {
         modelId: `recipe/${r.id}`, recipe: r.name, useFor: r.useFor ?? "both", ...(r.does?.includes("create") ? { image: true } : {}), ...(r.does?.includes("edit") ? { edit: true, ...(typeof r.mask === "boolean" ? { mask: r.mask } : {}) } : {}), ...(r.does?.includes("upscale") ? { upscale: true, ...(r.does.includes("upscale_video") ? { upscalesClips: true } : {}) } : {}),
         ...((r.does?.includes("create") || r.does?.includes("edit")) && typeof r.references === "number" ? { references: r.references } : {}),
         ...(r.does?.includes("video") ? { video: true } : {}), ...(r.does?.includes("animate") ? { animate: true } : {}),
-        ...(r.does?.includes("motion") ? { motion: true } : {}), ...(r.does?.includes("extend") ? { extend: true } : {}),
+        ...(r.does?.includes("motion") ? { motion: true } : {}), ...(r.does?.includes("edit_video") ? { videoEdit: true } : {}), ...(r.does?.includes("extend") ? { extend: true } : {}),
         ...(typeof r.video?.longestSeconds === "number" && r.video.longestSeconds > 0 ? { longestSeconds: r.video.longestSeconds } : {}),
         ...(r.video?.audio === true ? { sound: true } : {}),
         ...(Array.isArray(r.takesLoras) && r.takesLoras.length ? { loras: r.takesLoras.filter((f): f is string => typeof f === "string") } : {}),
@@ -2936,10 +2938,10 @@ export class Models {
   async video(ctx: CallContext, request: VideoRequest, opts: { signal?: AbortSignal; beforeSend?: (resolution: Resolution) => Promise<void>; onProgress?: (p: JobProgress) => void; first?: string[] } = {}): Promise<{ video: GeneratedVideo; resolution: Resolution }> {
     validateVideoRequest(request);
     const asks = request.loras ?? [];
-    const need: Need = { ...request.extend ? { extend: true } : request.drive ? { motion: true } : { animate: !!request.image },
+    const need: Need = { ...request.extend ? { extend: true } : request.source ? { videoEdit: true } : request.drive ? { motion: true } : { animate: !!request.image },
       ...(asks.length ? { loras: asks.map((a) => a.name) } : {}), ...(opts.first?.length ? { first: opts.first } : {}) };
     // Extending, the duration is what's added, whatever the clip's length.
-    if (request.duration !== undefined && !request.extend && !request.drive) need.seconds = request.duration;
+    if (request.duration !== undefined && !request.extend && !request.drive && !request.source) need.seconds = request.duration;
     return this.callWithFallback("video", ctx, need, async (r) => {
       opts.signal?.throwIfAborted();
       await opts.beforeSend?.(r);
@@ -3364,9 +3366,10 @@ export class Models {
     if (task === "image.create" && !o.image) return "it doesn't make images";
     // Only a model host makes clips, and only one whose recipe does what the call needs.
     if (task === "video" && ep.api !== "host") return "only a model host makes videos";
-    if (task === "video" && !o.video && !o.animate && !o.motion) return "it doesn't make videos";
+    if (task === "video" && !o.video && !o.animate && !o.motion && !o.videoEdit) return "it doesn't make videos";
     // A call says what kind of clip it makes; a need without one (the thread drawer's Videos row) takes any video recipe.
     if (task === "video" && need.extend) { if (!o.extend) return "it doesn't extend clips"; }
+    else if (task === "video" && need.videoEdit) { if (!o.videoEdit) return "it doesn't edit clips"; }
     else if (task === "video" && need.motion && !o.motion) return "it doesn't move an image as a clip does";
     else if (task === "video" && !need.motion && need.animate !== undefined && (need.animate ? !o.animate : !o.video)) return need.animate ? "it doesn't animate images" : "it doesn't make videos from a prompt";
     if (task === "video" && need.seconds !== undefined && o.longestSeconds && need.seconds > o.longestSeconds) return `it makes videos of at most ${o.longestSeconds} s`;
@@ -3414,7 +3417,7 @@ export class Models {
     const c = this.catalog(userId);
     const out: ModelRef[] = [];
     const fits = (o: Offering) => (opts.task === "vision" ? !!o.vision : opts.task === "image.create" ? !!o.image : opts.task === "image.edit" ? !!o.edit : opts.task === "image.upscale" ? !!o.upscale
-      : opts.task === "video" ? !!(o.video || o.animate || o.motion) : opts.task === "speech.transcribe" ? !!o.transcribe : opts.task === "speech.speak" ? !!o.speak?.voices.length : true);
+      : opts.task === "video" ? !!(o.video || o.animate || o.motion || o.videoEdit) : opts.task === "speech.transcribe" ? !!o.transcribe : opts.task === "speech.speak" ? !!o.speak?.voices.length : true);
     for (const ref of list) {
       const id = ref && typeof ref === "object" ? refId(ref) : undefined;
       if (!id || typeof id !== "string") throw new NoModel("a list holds models or groups");
@@ -3470,7 +3473,7 @@ export class Models {
     // A plan's chat models don't make images, whatever an older switch set: its image model does.
     const plans = new Set([...own.endpoints, ...shared.endpoints].filter((e) => isPlan(e.api)).map((e) => e.id));
     for (const o of [...own.offerings, ...shared.offerings]) {
-      if (plans.has(o.endpointId) && o.modelId !== PLAN_IMAGE_MODEL) { delete o.image; delete o.edit; delete o.upscale; delete o.video; delete o.animate; delete o.motion; delete o.useFor; }
+      if (plans.has(o.endpointId) && o.modelId !== PLAN_IMAGE_MODEL) { delete o.image; delete o.edit; delete o.upscale; delete o.video; delete o.animate; delete o.motion; delete o.videoEdit; delete o.useFor; }
     }
     const all = [...own.offerings, ...shared.offerings];
     return {

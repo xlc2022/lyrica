@@ -82,15 +82,18 @@ export function classify(names: string[], shapes: Record<string, number[]>, file
   if (has(/^detector\.backbone\./) && has(/^tracker\.model\./)) return { role: "segmenter", slot: null, arch: "sam3" };
 
   // A video model's two experts (Wan 2.2 14B), and the speed LoRAs made for each, are told apart by name.
+  // So are MiniMax H3's two checkpoints, which share their keys: ref2va (references and guide clips, which the VFX
+  // Edit LoRA was trained on) and fl2va (first and last frames), and the speed LoRAs made for each.
+  const h3 = /ref2va?([^a-z]|$)/.test(name) ? "minimax-h3-ref2va" : "minimax-h3";
   const expert = /high[_-]?noise/.test(name) ? "high" : /low[_-]?noise/.test(name) ? "low" : null;
 
   if (has(/lora_(up|down|A|B)\b|\.lora_(up|down|A|B)\.|^lora_(unet|te)/)) {
-    const slot = expert ?? (/turbo|lightning|lightx2v|\d+[_-]?steps?/.test(name) ? "speed" : /(^|[^a-z])dpo([^a-z]|$)/.test(name) ? "dpo" : null);
+    const slot = expert ?? (/turbo|lightning|lightx2v|\d+[_-]?steps?/.test(name) ? "speed" : /(^|[^a-z])dpo([^a-z]|$)/.test(name) ? "dpo" : /vfx[_-]?edit/.test(name) ? "edit" : null);
     // Wan 2.2 5B's blocks are 3072 wide, the 14B's (and Wan 2.1's) 5120: a LoRA's down matrix is its rank by that width.
     const wanDown = Object.entries(shapes).find(([n]) => /blocks[._]\d+[._]self[._]attn[._]q[._.]lora_(down|A)\b/.test(n))?.[1];
     // Qwen-Image 2.1's LoRAs have Qwen-Image's tensor names; the trainer's metadata, or the file name, says which.
     const qwen21 = /qwen[_-]?image[_-]?2/.test(meta.ss_base_model_version ?? "") || /qwen[_-]?image[_-]?2[._-]?1/.test(name);
-    const arch = /minimax[_-]?h3/.test(name) ? "minimax-h3"
+    const arch = /minimax[_-]?h3/.test(name) ? h3
       : has(/blocks[._]\d+[._](self|cross)[._]attn[._][qkvo]\b/) ? (wanDown?.[1] === 3072 ? "wan2.2-5b" : "wan")
       : qwen21 ? "qwen-image-2.1"
       : has(/double_blocks|single_blocks/) ? "flux"
@@ -119,7 +122,8 @@ export function classify(names: string[], shapes: Record<string, number[]>, file
   if (hasBare(/^txtfusion\.projector\.weight$/)) return { role: "diffusion", slot: null, arch: "krea2" };
   if (hasBare(/^input_blocks\.0\.0\./) && hasBare(/^label_emb\./)) return { role: "diffusion", slot: null, arch: "sdxl" };
   // Video models, by the keys ComfyUI's model detection reads.
-  if (hasBare(/^video_patch_proj\.weight$/) && hasBare(/^audio_patch_proj\.weight$/)) return { role: "diffusion", slot: null, arch: "minimax-h3" };
+  // P-H3-Image is H3 fine-tuned for stills, its timestep branch a precomputed table.
+  if (hasBare(/^video_patch_proj\.weight$/) && hasBare(/^audio_patch_proj\.weight$/)) return { role: "diffusion", slot: null, arch: hasBare(/^adaln_t_table$/) ? "p-h3-image" : h3 };
   if (hasBare(/^adaln_single\.emb\.timestep_embedder\.linear_1\.bias$/) && hasBare(/^audio_adaln_single\.linear\.weight$/)) return { role: "diffusion", slot: null, arch: "ltx2" };
   // SCAIL-2: Wan 2.1 I2V 14B with its own patch embeddings for the pose and mask videos.
   if (hasBare(/^head\.modulation$/) && hasBare(/^patch_embedding_pose\.weight$/)) return { role: "diffusion", slot: null, arch: "scail2" };
@@ -150,6 +154,8 @@ export function classify(names: string[], shapes: Record<string, number[]>, file
     const gemma4 = has(/(^|\.)layers\.47\.self_attn\.q_norm\.weight$/) && !has(/(^|\.)layers\.5\.self_attn\.v_proj\.weight$/) && !has(/(^|\.)layers\.59\./);
     return gemma4 ? { role: "text_encoder", slot: "gemma4_12b", arch: "gemma4" } : unknown;
   }
+  // P-H3-Image's Qwen3-VL 4B with its text connector.
+  if (has(/(^|\.)text_connector\.proj\.weight$/)) return { role: "text_encoder", slot: "ph3", arch: "qwen3vl" };
   if (has(/(^|\.)layers\.0\.self_attn\.q_proj\.weight$/)) {
     // Qwen3-VL 32B (MiniMax H3's), by its 64 layers: quantized weights don't keep their shapes.
     if (has(/(^|\.)layers\.63\.self_attn\./)) return { role: "text_encoder", slot: "qwen3vl_32b", arch: "qwen3vl" };
@@ -160,7 +166,9 @@ export function classify(names: string[], shapes: Record<string, number[]>, file
     if (has(/(^|\.)layers\.0\.self_attn\.q_norm\.weight$/)) return { role: "text_encoder", slot: "qwen3", arch: "qwen3" };
   }
 
-  // Video VAEs, by the keys ComfyUI's VAE loader reads; an audio VAE takes the audio slot.
+  // Video VAEs, by the keys ComfyUI's VAE loader reads; an audio VAE takes the audio slot. P-H3-Image's has H3's
+  // encoder and a single-frame decoder, 768 wide at its output.
+  if (has(/^decoder\.proj_out\.weight$/) && shapes["decoder.proj_out.weight"]?.[0] === 768) return { role: "vae", slot: null, arch: "p-h3-image" };
   if (has(/^decoder\.transformer_blocks\.0\.scale1$/) && has(/^encoder\.down\.5\.block\.0\.conv1\.weight$/)) return { role: "vae", slot: null, arch: "minimax-h3" };
   if (has(/^pre_block\.attn\.zero_k_bias$/)) return { role: "vae", slot: "audio", arch: "minimax-h3" };
   if (has(/^decoder\.up_blocks\.0\.res_blocks\.0\.conv1\.conv\.weight$/) || has(/^decoder\.conv_in_x_t\.weight$/)) return { role: "vae", slot: null, arch: "ltx2" };

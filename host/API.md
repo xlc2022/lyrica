@@ -785,15 +785,22 @@ as `{ "parts": [...] }`, each entry like this:
   tracks people for SCAIL-2), or `unknown`.
 - `slot`: for a text encoder, which one: `clip_l`, `clip_g`, `t5`, `umt5`
   (Wan's), `qwen2.5vl`, `qwen3`, `qwen3vl` (Qwen3-VL 4B), `qwen3vl_8b`,
-  `qwen3vl_32b` (MiniMax H3's), `gemma4_12b` (LTX-2.5's), …. For Wan 2.2
+  `qwen3vl_32b` (MiniMax H3's), `gemma4_12b` (LTX-2.5's), `ph3`
+  (P-H3-Image's Qwen3-VL 4B, told by its text connector), …. For Wan 2.2
   14B's two experts and their LoRAs, `high` or `low` (read from the file
   name, as their tensors are alike); a speed LoRA otherwise, `speed`;
-  SCAIL-2's DPO LoRA (by name), `dpo`; an audio VAE, `audio`. Otherwise
+  SCAIL-2's DPO LoRA (by name), `dpo`; MiniMax H3's VFX Edit LoRA (by
+  name), `edit`; an audio VAE, `audio`. Otherwise
   `null`.
 - `arch`: the architecture read from the tensor names (`sdxl`, `flux`,
   `z-image`, `qwen-image`, `qwen-image-2.1`, `krea2`, `seedvr2`,
   `wan2.2-5b`, `wan2.2-t2v-14b`, `wan2.2-i2v-14b`, `ltx2`, `minimax-h3`,
-  `scail2`, `clip-vision-h`, `sam3`, …), or `null`. Wan 2.2 14B's VAE is Wan 2.1's, which reads as
+  `minimax-h3-ref2va`, `p-h3-image` (H3's tensors plus a timestep table;
+  its VAE by a single-frame decoder), `scail2`, `clip-vision-h`, `sam3`,
+  …), or `null`.
+  MiniMax H3's two checkpoints have the same tensors, so a file whose name
+  says `ref2va` (or a LoRA's `ref2v`) is `minimax-h3-ref2va`, the other
+  `minimax-h3`. Wan 2.2 14B's VAE is Wan 2.1's, which reads as
   `qwen-image`; the 5B's is `wan2.2`. A LoRA's is its model's, except that
   Wan 2.1 and 2.2 14B LoRAs share one layout, `wan`, which fits the 14B
   and SCAIL-2 recipes; a Wan LoRA 3072 wide (`self_attn.q`) is the 5B's,
@@ -817,10 +824,14 @@ as `{ "parts": [...] }`, each entry like this:
   pass, below),
   `qwen-image` (create, and edit for a diffusion model whose file name
   says "edit"), `qwen-image-2.1` (create and edit from one recipe, with
-  the Turbo's 8-step schedule from the recipe's defaults), `seedvr2`
+  the Turbo's 8-step schedule from the recipe's defaults), `p-h3-image`
+  (create and edit from one recipe, up to 3 references, one image per
+  request; the picture to edit scaled to the recipe's `editMegapixels`
+  first and its sigmas from the recipe's defaults), `seedvr2`
   (upscale), and the video ones: `wan2.2-5b`, `ltx2` and `minimax-h3`
   (video and animate), `wan2.2-t2v-14b` (video), `wan2.2-i2v-14b`
-  (animate) and `scail2` (motion). A model with two experts takes both in
+  (animate), `scail2` (motion) and `minimax-h3-edit` (edit_video, on H3's
+  ref2va model with the VFX Edit LoRA). A model with two experts takes both in
   one recipe, with the LoRAs its template names; any other LoRA goes onto
   both experts, or onto the one a `high` or `low` LoRA was made for. A file that names a
   template under `continues` (`minimax-h3-continue.json`) is that
@@ -861,7 +872,8 @@ as `{ "parts": [...] }`, each entry like this:
   confirmed, ready recipe runs.
 - `does`: what it can be used for: `create`, `edit`, `upscale`, or for a
   video recipe `video` (from a prompt), `animate` (from a first frame) and
-  `motion` (an image's subject moved as a driving clip's person moves).
+  `motion` (an image's subject moved as a driving clip's person moves) and
+  `edit_video` (a clip changed as the prompt says, keeping its motion).
   A video recipe whose template has a continuation (MiniMax H3) also
   lists `extend`: it adds to a clip, and chains clips past `maxSeconds`.
   An upscale recipe whose template has a clip workflow
@@ -1092,7 +1104,9 @@ the action is `invalid`.
   ```
 
   Only `recipe` and `prompt` are required; the rest fall back to the
-  recipe's defaults. `count` is 1 to 4. `width` and `height` are multiples
+  recipe's defaults. `count` is 1 to 4, or only 1 for a template or
+  custom workflow without `$count`, which makes one image at a time
+  (P-H3-Image's). `width` and `height` are multiples
   of 16 from 256 to 2048. `steps` is 1 to 150, `cfg` 0 to 30, `seed` 0 to
   2^48 (random when left out; every image of one request shares it).
   `references` only for a template that takes them (otherwise `invalid`).
@@ -1172,7 +1186,7 @@ newer host made, read after a rollback).
 
   ```json
   { "recipe": "<id>", "prompt": "...", "negativePrompt": "...",
-    "image": "<base64>", "drive": "<base64 MP4>", "extend": "<base64 MP4>", "width": 1280, "height": 704,
+    "image": "<base64>", "drive": "<base64 MP4>", "extend": "<base64 MP4>", "source": "<base64 MP4>", "width": 1280, "height": 704,
     "aspectRatio": "16:9", "duration": 5,
     "steps": 20, "cfg": 5.0, "seed": 1234,
     "loras": [{ "file": "<path>", "strength": 0.7 }] }
@@ -1214,7 +1228,17 @@ newer host made, read after a rollback).
   comes back. With `extend`, an MP4 of at most 64 MB at the recipe's frame
   rate and a size it makes (and no `image`, `drive` or size), the recipe
   must list `extend`: `duration` (1 to 60) is the seconds to add, made by
-  continuations only, and the answer is the whole clip. ComfyUI joins the
+  continuations only, and the answer is the whole clip. With `source`, an
+  MP4 of at most 64 MB (and no `image`, `drive`, `extend`, size or
+  `aspectRatio`), the recipe must do `edit_video`: the clip is changed as
+  the prompt says and keeps its motion, timing and camera. MiniMax H3's
+  VFX Edit takes the prompt after its `vfx_edit: ` trigger, which the
+  template adds, and the clip's frames at 24 fps and its sound as a guide
+  from frame 0. The new clip has the source's shape at the recipe's area,
+  and is as long as the source (or its first `duration` seconds), at most
+  the recipe's longest clip, in the most of the model's frame counts the
+  source holds; a source shorter than one frame step plus the offset
+  (0.9 s for H3) is `invalid`. ComfyUI joins the
   clips (our `clip_chain.py`), re-encoding one segment at a time.
   `steps`, `cfg`, `seed` and `loras` as for images (each clip of a chain takes the same LoRAs); a
   template whose model takes no CFG (MiniMax H3, LTX-2.5 distilled)
@@ -1229,7 +1253,7 @@ newer host made, read after a rollback).
   The clip is H.264 MP4, with AAC sound when `audio` is true (LTX-2.5,
   MiniMax H3). ComfyUI encodes it in memory (our `SaveVideoWebsocket`
   node) and sends it, and the poster, over its websocket, so nothing is
-  written to disk. A first frame, a driving clip and the clip so far go to ComfyUI's input
+  written to disk. A first frame, a driving clip, a clip to edit and the clip so far go to ComfyUI's input
   folder, which is in memory, and are written over once each clip is done. Each clip of a video may run for two hours before it times out;
   it holds its ComfyUI's GPU while it runs, like an image job. Errors are as
   for images; on a stable-diffusion.cpp host every video job is

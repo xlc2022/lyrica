@@ -340,7 +340,19 @@ per host, and Lyrica's router filters create tiers by it.
   weights are MIT; it finds people with SAM 3.1, under Meta's SAM License,
   which allows commercial use but asks that publications acknowledge SAM,
   that use follows the law (privacy law included) and trade controls, and
-  that SAM isn't reverse engineered.
+  that SAM isn't reverse engineered. MiniMax H3 VFX Edit (ComfyUI hosts
+  only, about 42 GB, of which the text encoder and VAEs are H3 Turbo's)
+  edits a clip as an instruction says: H3's ref2va checkpoint, its 4-step
+  turbo LoRA and the community VFX Edit LoRA (Alissonerdx, an
+  experimental research release made on H3, under H3's licence). It
+  fits a 96 GB card.
+  P-H3-Image (ComfyUI hosts only) is PrunaAI's fine-tune of H3 for still
+  pictures: it creates (2048×2048 by default) and edits, with up to 3
+  references, in 8 fixed steps without CFG, one image per request. Two
+  starters: int8 (about 29.5 GB, about 31 GB of VRAM at its peak) and
+  w4a8 (about 20 GB, about 21 GB). Its weights are under the MiniMax H3
+  Community License, as H3's are. It needs ComfyUI 0.44 or later, which
+  the host's ComfyUI image carries.
   Krea 2 Raw is Krea 2's undistilled model beside Turbo, sharing its
   encoder and VAE: 52 steps at CFG 3.5 (Krea's own figures) with a negative prompt, against
   Turbo's 8 at CFG 1, so an image takes several times as long.

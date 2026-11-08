@@ -648,7 +648,7 @@ reached, the queue, `received` (a marked message that reached the turn, or
 was kept), the title, `settings`
 when the thread's settings changed (an approved plan switching its mode),
 `making` (`toolCallId`, `startedAt`, `queued?`, `progress?`) from when an image call that makes something (create, edit,
-upscale, video, animate, motion) starts and each time its model host reports progress, then `made` when it ends (a clip made in
+upscale, video, animate, motion, edit_video) starts and each time its model host reports progress, then `made` when it ends (a clip made in
 the background keeps it: its clip job sends `making` and `made` until the clip arrives), `hello` carrying the
 `making` of now so a view that opens meanwhile shows the placeholders, and turn end, then the thread's `context` after each request that goes on with tools and after each turn, and a `compacted`
 marker when it compacts.
@@ -1324,6 +1324,10 @@ Plain-HTTP listeners stay HTTP/1.1.
   `127.0.0.1:<port>`. Caddy saves it (`--resume`), so it keeps serving while
   `lyricad` is locked; after unlock, `lyricad` loads it again only if Caddy's
   differs.
+  Caddy's units run it with `GODEBUG=multipathtcp=0`: it listens with plain
+  TCP, not Multipath TCP, which Go turns on by default and which the Linux
+  kernel bug CVE-2026-98432 was shown to reach for remote root. A patched
+  kernel is the fix; the setting only keeps the shown path closed.
 - **A new name never locks the administrator out.** While the name changes,
   Caddy serves the old and the new name together. `lyricad` waits up to 90
   seconds for a certificate for the new name that verifies (with staging, any

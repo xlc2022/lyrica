@@ -201,7 +201,7 @@ export interface CredentialsChange { save: boolean }
 /** What a model can do: discovered where the endpoint says, else set by hand. */
 export interface Capabilities {
   useFor?: "fast" | "quality" | "both";
-  contextWindow?: number; tools?: boolean; vision?: boolean; embedding?: boolean; image?: boolean; edit?: boolean; upscale?: boolean; video?: boolean; animate?: boolean; motion?: boolean;
+  contextWindow?: number; tools?: boolean; vision?: boolean; embedding?: boolean; image?: boolean; edit?: boolean; upscale?: boolean; video?: boolean; animate?: boolean; motion?: boolean; videoEdit?: boolean;
   /** The thinking levels it offers, besides off. */
   reasoning?: ("low" | "medium" | "high")[];
   /** Speech to text (Dictation). */
