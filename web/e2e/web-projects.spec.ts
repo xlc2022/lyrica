@@ -1338,7 +1338,7 @@ test("the Files panel: a tree one folder at a time, a file shown, search, the Im
   await noHorizontalScroll(page);
 });
 
-test("the Files panel's Expand opens it large in a dialog over the conversation, its tabs working there; Escape or Close puts it back in the panel", async ({ page, baseURL }) => {
+test("the Files panel's Expand opens it large in a dialog over the conversation, its tabs working there; Close, Escape or the scrim puts it back in the panel", async ({ page, baseURL }) => {
   test.skip(phone(page), "the panel shows from 1180 px up; below it Files is the page");
   await enter(page, baseURL!);
   await newThread(page, "General");
@@ -1374,6 +1374,11 @@ test("the Files panel's Expand opens it large in a dialog over the conversation,
   await panel.getByRole("button", { name: "Expand" }).click();
   await expect(big).toBeVisible();
   await big.getByRole("button", { name: "Close", exact: true }).click();
+  await expect(big).toHaveCount(0);
+  // A click on the scrim, outside the dialog, closes it too.
+  await panel.getByRole("button", { name: "Expand" }).click();
+  await expect(big).toBeVisible();
+  await page.mouse.click(4, 4);
   await expect(big).toHaveCount(0);
   await expect(panel.getByRole("button", { name: "Expand" })).toBeVisible();
   await noHorizontalScroll(page);

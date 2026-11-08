@@ -382,7 +382,7 @@ export function FilesPage({ ctx, pool, threadId, threads, path }: { ctx: ShellCo
   return <Main className={cls} aria-label={`${title}: files`} {...drop}>{body}</Main>;
 }
 
-/** The Files panel opened large over the conversation (Expand in its header); Escape or Close puts it back in the panel. */
+/** The Files panel opened large over the conversation (Expand in its header); Close, Escape or the scrim puts it back in the panel. */
 function FilesDialog({ label, onClose, children }: { label: string; onClose: () => void; children: ReactNode }) {
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => { const el = ref.current; if (el && !el.open) el.showModal(); return () => el?.close(); }, []);
@@ -390,6 +390,8 @@ function FilesDialog({ label, onClose, children }: { label: string; onClose: () 
   useEffect(() => { addEventListener("hashchange", onClose); return () => removeEventListener("hashchange", onClose); }, [onClose]);
   return (
     <dialog ref={ref} className="files-dialog" aria-label={label}
+      // A click on the scrim (the dialog itself, outside its content) closes it, as every dialog does.
+      onClick={(e) => { if (e.target === ref.current) onClose(); }}
       // Escape closes the topmost thing: a menu or drawer inside first, then the dialog.
       onCancel={(e) => { e.preventDefault(); if (!document.activeElement?.closest("[role='menu'], .ctx-menu, .drawer")) onClose(); }}>
       {children}

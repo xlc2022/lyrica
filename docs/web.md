@@ -247,7 +247,7 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   `onExpand`, in place of Open as a page) moves the same page's content into
   a modal `dialog.files-dialog` portalled to `body`, so the panel's
   narrow-column container rules don't reach it; its state stays, the address
-  doesn't change, and Close, Esc, a hash change, Attach to message or Show in
+  doesn't change, and Close, Esc, a click on the scrim, a hash change, Attach to message or Show in
   thread put it back in the panel. `…/files/<encoded path>` opens with that file shown
   and its folders open (a folder: opened), or says it wasn't found. A path in the thread folder
   that isn't there, as a relative link resolves, is looked for at the same place under `/shared`, then
