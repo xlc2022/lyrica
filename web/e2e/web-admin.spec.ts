@@ -313,7 +313,7 @@ test("Tasks: the table shows each column's models; a cell's drawer adds, reorder
     const x = a.x + a.width / 2, y0 = a.y + a.height / 2, y1 = to > from ? b.y + b.height * 0.8 : b.y + b.height * 0.2;
     const at = (k: number) => y0 + ((y1 - y0) * k) / 5;
     if (cdp) {
-      const touch = (type: string, y?: number) => cdp.send("Input.dispatchTouchEvent", { type, touchPoints: y === undefined ? [] : [{ x, y }] });
+      const touch = (type: "touchStart" | "touchMove" | "touchEnd", y?: number) => cdp.send("Input.dispatchTouchEvent", { type, touchPoints: y === undefined ? [] : [{ x, y }] });
       await touch("touchStart", y0);
       await page.waitForTimeout(400);
       for (let k = 1; k <= 5; k++) await touch("touchMove", at(k));
