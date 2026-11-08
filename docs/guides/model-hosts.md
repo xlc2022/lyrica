@@ -487,8 +487,9 @@ image takes several times as long. The Krea 2 Turbo Uncensored starter
 (ComfyUI hosts) follows a community workflow: Turbo's diffusion model with
 an abliterated Qwen3-VL 4B encoder from Civitai, the Krea2T-Enhancer patch
 and a second pass for detail (a little more time per image). It needs a
-host updated to a ComfyUI image with the RES4LYF and Krea2T-Enhancer
-nodes. The Qwen-Image 2.1 Turbo starter, which edits and
+host on a commit from 2026-11-08 or later (an Update, or `git pull &&
+host/install.sh`), which rebuilds its ComfyUI image: an older image can't
+load the RES4LYF node. The Qwen-Image 2.1 Turbo starter, which edits and
 creates (bf16 diffusion model, int8 Qwen3-VL 8B encoder, about 24.3 GB
 of files), is 14.9 GB at its largest stage and takes turns the same way.
 It replaces Qwen-Image-Edit 2509 for edits: once installed, put it first
