@@ -1224,6 +1224,9 @@ refused. To replace the destination, enter the full URL and token again;
   - **Before 2026-11-07:** the `lyrica-clients` group and the
     `/run/lyrica-clients` folder for `lyrica chat` and `lyrica mem` from
     other accounts; until then she starts without that socket.
+  - **Before 2026-11-08:** an updater that gives up a fetch after 10
+    minutes and always records how Check or Update ended; until then a
+    fetch that hangs is never stopped.
   - **Any install missing them:** headless Chromium and IBM Plex for her
     screenshots, Claude Code and Codex, ffmpeg and ffprobe (until then
     she can't check a clip's length or streams), and the Python baseline
