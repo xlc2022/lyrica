@@ -1324,6 +1324,10 @@ Plain-HTTP listeners stay HTTP/1.1.
   `127.0.0.1:<port>`. Caddy saves it (`--resume`), so it keeps serving while
   `lyricad` is locked; after unlock, `lyricad` loads it again only if Caddy's
   differs.
+  Caddy's units run it with `GODEBUG=multipathtcp=0`: it listens with plain
+  TCP, not Multipath TCP, which Go turns on by default and which the Linux
+  kernel bug CVE-2026-98432 was shown to reach for remote root. A patched
+  kernel is the fix; the setting only keeps the shown path closed.
 - **A new name never locks the administrator out.** While the name changes,
   Caddy serves the old and the new name together. `lyricad` waits up to 90
   seconds for a certificate for the new name that verifies (with staging, any

@@ -20,6 +20,10 @@ Group=lyrica-caddy
 ExecStartPre=/bin/sh -c 'f=/var/lib/lyrica-caddy/config/caddy/autosave.json; [ ! -f "$$f" ] || /usr/local/bin/lyrica-caddy validate --config "$$f" >/dev/null 2>&1 || mv -f "$$f" "$$f.bad"'
 ExecStart=/usr/local/bin/lyrica-caddy run --config /etc/lyrica/caddy.json --resume
 Environment=XDG_CONFIG_HOME=/var/lib/lyrica-caddy/config XDG_DATA_HOME=/var/lib/lyrica-caddy/data
+# Plain TCP only: Go listens with Multipath TCP by default (since Go 1.24), and
+# the kernel's MPTCP path is where CVE-2026-98432 was shown to give remote root.
+# The kernel update is the fix; this keeps the shown path closed on a LAN address.
+Environment=GODEBUG=multipathtcp=0
 # Its saved config holds the DNS token, so its state is its own.
 StateDirectory=lyrica-caddy
 StateDirectoryMode=0700
