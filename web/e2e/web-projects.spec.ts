@@ -1334,6 +1334,48 @@ test("the Files panel: a tree one folder at a time, a file shown, search, the Im
   await clip.click();
   await expect(page.getByRole("dialog", { name: "clip.mp4" }).locator(".viewer-media video")).toBeVisible();
   await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog", { name: "clip.mp4" })).toHaveCount(0);
+  await noHorizontalScroll(page);
+});
+
+test("the Files panel's Expand opens it large in a dialog over the conversation, its tabs working there; Escape or Close puts it back in the panel", async ({ page, baseURL }) => {
+  test.skip(phone(page), "the panel shows from 1180 px up; below it Files is the page");
+  await enter(page, baseURL!);
+  await newThread(page, "General");
+  await send(page, "hello dialog");
+  await expect(page.getByText("You said: hello dialog")).toBeVisible();
+  await page.getByRole("link", { name: "Files and images" }).click();
+  const panel = page.getByRole("complementary");
+  await expect(panel.getByRole("tab", { name: "Files" })).toHaveAttribute("aria-selected", "true");
+  // Expand in place of Open as a page; the address and the conversation stay.
+  await expect(panel.getByRole("link", { name: "Open as a page" })).toHaveCount(0);
+  await panel.getByRole("tab", { name: "Images" }).click();
+  const before = location_of(page);
+  await panel.getByRole("button", { name: "Expand" }).click();
+  const big = page.getByRole("dialog", { name: /: files$/ });
+  await expect(big).toBeVisible();
+  expect(location_of(page)).toBe(before);
+  await expect(page.locator(".app > main.main .msg.user", { hasText: "hello dialog" })).toBeAttached();
+  // It opens on the tab the panel showed, and its tabs switch there.
+  await expect(big.getByRole("heading", { level: 1, name: "Images" })).toBeVisible();
+  await expect(big.getByRole("tab", { name: "Images" })).toHaveAttribute("aria-selected", "true");
+  await big.getByRole("tab", { name: "Videos" }).click();
+  await expect(big.getByRole("heading", { level: 1, name: "Videos" })).toBeVisible();
+  await big.getByRole("tab", { name: "Files" }).click();
+  await expect(big.getByLabel("Search files")).toBeVisible();
+  // The dialog is nearly the window's size.
+  const box = (await big.boundingBox())!;
+  expect(box.width).toBeGreaterThan(page.viewportSize()!.width - 40);
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/files-dialog-${page.viewportSize()!.width}.png` });
+  await page.keyboard.press("Escape");
+  await expect(big).toHaveCount(0);
+  // Back in the panel, on the tab the dialog showed.
+  await expect(panel.getByRole("tab", { name: "Files" })).toHaveAttribute("aria-selected", "true");
+  await panel.getByRole("button", { name: "Expand" }).click();
+  await expect(big).toBeVisible();
+  await big.getByRole("button", { name: "Close", exact: true }).click();
+  await expect(big).toHaveCount(0);
+  await expect(panel.getByRole("button", { name: "Expand" })).toBeVisible();
   await noHorizontalScroll(page);
 });
 

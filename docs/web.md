@@ -243,7 +243,12 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
 - **The Files panel** (`Files.tsx`, docs/ux.md §6): **Files** in a thread's
   header is a link to `…/t/<pool>/<thread>/files`, which the split view opens
   in the panel column (and the same link closes it); below 1180 px, or on a
-  phone, it is the page. `…/files/<encoded path>` opens with that file shown
+  phone, it is the page. In the panel, **Expand** (`PanelButtons`'
+  `onExpand`, in place of Open as a page) moves the same page's content into
+  a modal `dialog.files-dialog` portalled to `body`, so the panel's
+  narrow-column container rules don't reach it; its state stays, the address
+  doesn't change, and Close, Esc, a hash change, Attach to message or Show in
+  thread put it back in the panel. `…/files/<encoded path>` opens with that file shown
   and its folders open (a folder: opened), or says it wasn't found. A path in the thread folder
   that isn't there, as a relative link resolves, is looked for at the same place under `/shared`, then
   under each grant, first. Files lists one folder at a time from
