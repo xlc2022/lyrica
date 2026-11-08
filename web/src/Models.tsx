@@ -451,13 +451,13 @@ const TASK_ROWS: { group: string; tasks: { task: Task; hint: string }[] }[] = [
     { task: "sleep.dream", hint: "Her own time" },
     { task: "sleep.wake", hint: "Writing WAKE" },
   ] },
-  { group: "Images", tasks: [{ task: "vision", hint: "Seeing an image her model can't" }, { task: "image.create", hint: "New images" }, { task: "image.edit", hint: "Changing an image" }, { task: "video", hint: "Short clips, on a model host" }] },
+  { group: "Images", tasks: [{ task: "vision", hint: "Seeing an image her model can't" }, { task: "image.create", hint: "New images" }, { task: "image.edit", hint: "Changing an image" }, { task: "image.upscale", hint: "Sharper, larger images" }, { task: "video", hint: "Short clips, on a model host" }] },
   { group: "Speech", tasks: [{ task: "speech.transcribe", hint: "Speech to text" }, { task: "speech.speak", hint: "Text to speech" }] },
 ];
 const TASK_ORDER = TASK_ROWS.flatMap((g) => g.tasks.map((t) => t.task));
 
 /** What a task needs (core/models): Same as stays within one, and pickers offer only models that have it. */
-const capability = (t: Task) => (t === "embedding" ? "embedding" : t === "vision" ? "vision" : t === "image.create" ? "image" : t === "image.edit" ? "edit"
+const capability = (t: Task) => (t === "embedding" ? "embedding" : t === "vision" ? "vision" : t === "image.create" ? "image" : t === "image.edit" ? "edit" : t === "image.upscale" ? "upscale"
   : t === "video" ? "video" : t === "speech.transcribe" ? "transcribe" : t === "speech.speak" ? "speak" : "text");
 const suits = (task: Task, m: OfferingInfo) => {
   if (m.status === "gone") return false;
@@ -466,10 +466,11 @@ const suits = (task: Task, m: OfferingInfo) => {
     case "vision": return !!m.vision && !m.embedding && !m.image && !m.edit && !m.transcribe && !m.speak && !m.recipe && !companion(m.modelId);
     case "image": return !!m.image;
     case "edit": return !!m.edit;
+    case "upscale": return !!m.upscale;
     case "video": return !!(m.video || m.animate || m.motion || m.videoEdit);
     case "transcribe": return !!m.transcribe;
     case "speak": return !!m.speak?.voices.length;
-    default: return !m.embedding && !m.image && !m.edit && !m.video && !m.animate && !m.motion && !m.videoEdit && !m.transcribe && !m.speak && !m.recipe && !companion(m.modelId);
+    default: return !m.embedding && !m.image && !m.edit && !m.upscale && !m.video && !m.animate && !m.motion && !m.videoEdit && !m.transcribe && !m.speak && !m.recipe && !companion(m.modelId);
   }
 };
 /** A vision projector or MTP draft a host listed before it knew them as companions (host/API.md): never a model to pick. */

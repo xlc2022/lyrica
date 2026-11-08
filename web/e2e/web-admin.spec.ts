@@ -265,6 +265,8 @@ test("Tasks: the table shows each column's models; a cell's drawer adds, reorder
   await page.locator('[data-tile="backend"]').click();
   await expect(page).toHaveURL(new RegExp(`#/u/${userId}/models/tasks$`));
   await expect(page.getByRole("heading", { level: 1, name: "Tasks" })).toBeVisible();
+  await expect(page.locator('tr[data-task="image.edit"] + tr[data-task="image.upscale"] + tr[data-task="video"]')).toHaveCount(1);
+  await expect(page.locator('tr[data-task="image.upscale"]')).toContainText("Image upscaling");
   const local = page.locator('tr[data-task="chat"] [data-col="Private threads"]'), general = page.locator('tr[data-task="chat"] [data-col="General threads"]');
   await expect(local).toContainText("local-model");
   await expect(general).toContainText("cloud-model");
