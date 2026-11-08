@@ -8,6 +8,7 @@ import { Downloads } from "./downloads.ts";
 import { Images } from "./images.ts";
 import { RecipeBook, loadStarters } from "./recipes.ts";
 import { loadTemplates } from "./templates.ts";
+import { Workflows } from "./workflows.ts";
 import { amdMonitor, isCmp, noGpus, nvidiaMonitor } from "./gpus.ts";
 import { stdoutLog } from "./log.ts";
 import { Runtime } from "./runtime.ts";
@@ -93,8 +94,12 @@ await host.listen(Number(env.TLS_PORT || 7443), Number(env.LOCAL_PORT || 7080));
 host.downloads = new Downloads({ url: env.FETCH_URL || "http://fetch:7300", runtime: host.runtime, log: stdoutLog });
 await host.downloads.start();
 const dataDir = env.DATA_DIR || "/data";
-const book = new RecipeBook(dataDir, loadTemplates(new URL("../workflows/", import.meta.url).pathname), loadStarters(new URL("../recipes/", import.meta.url).pathname));
-host.images = new Images({ book, runtime: host.runtime, comfy, sdcpp, downloads: host.downloads, modelsDir, serving, log: stdoutLog });
+const templates = loadTemplates(new URL("../workflows/", import.meta.url).pathname);
+// Custom workflows join the built-in templates (host/src/workflows.ts); each ComfyUI start refreshes the node list they're checked against.
+const workflows = new Workflows(dataDir, templates);
+for (const c of comfy.byGpu.values()) c.onNodes = (info) => workflows.saveNodes(info);
+const book = new RecipeBook(dataDir, templates, loadStarters(new URL("../recipes/", import.meta.url).pathname));
+host.images = new Images({ book, workflows, runtime: host.runtime, comfy, sdcpp, downloads: host.downloads, modelsDir, serving, log: stdoutLog });
 host.runtime.afterScan = () => host.images!.scan();
 await host.runtime.start();
 // fetch shares a network with host-api (for host-api's calls to it) and may not

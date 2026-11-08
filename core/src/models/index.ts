@@ -352,7 +352,9 @@ export interface Recommended {
   source: { hub: "huggingface" | "modelscope"; repo: string; revision: string; at: string };
 }
 
-const MANAGE = [/^\/host\/v1\/models\/(load|unload|pin|reload)$/, /^\/host\/v1\/gpus\/\d+$/, /^\/host\/v1\/memory$/, /^\/host\/v1\/scan$/, /^\/host\/v1\/usage$/];
+/** A host's custom workflow routes (host/API.md, "Custom workflows"): a change to one changes its recipes, so discovery runs after. */
+const WORKFLOWS = /^\/host\/v1\/workflows(\/(import|copy|nodes|custom-[0-9a-f]{8}(\/revisions(\/\d{1,6}(\/restore)?)?)?))?$/;
+const MANAGE = [/^\/host\/v1\/models\/(load|unload|pin|reload)$/, /^\/host\/v1\/gpus\/\d+$/, /^\/host\/v1\/memory$/, /^\/host\/v1\/scan$/, /^\/host\/v1\/usage$/, WORKFLOWS];
 
 export interface CleanupItem {
   /** For a stale endpoint, its uses are those of all its models. */
@@ -1269,7 +1271,10 @@ export class Models {
    */
   async manageHost(actor: User, hostId: string, method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE", path: string, body?: unknown): Promise<unknown> {
     if (!MANAGE.some((re) => re.test(path.split("?")[0]!))) throw new Error(`${path} isn't host management Lyrica passes on`);
-    return this.hostCall(this.manageable(actor, hostId), method, path, body);
+    const result = await this.hostCall(this.manageable(actor, hostId), method, path, body);
+    // A saved, changed or restored workflow changes its recipes: the image lists read them again.
+    if (method !== "GET" && WORKFLOWS.test(path.split("?")[0]!) && !path.endsWith("/import")) await this.discover(actor, hostId).catch(() => {});
+    return result;
   }
 
   /**
@@ -1347,6 +1352,18 @@ export class Models {
    * tool may load again with another context: none for a private or
    * local-only thread, like hostCopies.
    */
+  /**
+   * The model hosts whose custom workflows a thread's `models` tool may read and change: those the actor
+   * manages (an administrator for a shared one) that run ComfyUI workflows; none for a private or local-only thread.
+   */
+  workflowHosts(actor: User, ctx: CallContext): { id: string; name: string }[] {
+    if (isRestricted(ctx)) return [];
+    const admin = !!this.users.get(actor.id)?.admin;
+    return this.allowed(ctx)
+      .filter(({ endpoint, offerings }) => endpoint.api === "host" && (!endpoint.shared || admin) && offerings.some((o) => o.recipe))
+      .map(({ endpoint }) => ({ id: endpoint.id, name: endpoint.name }));
+  }
+
   localCopies(actor: User, ctx: CallContext): { offering: string; name: string; host: string }[] {
     if (isRestricted(ctx)) return [];
     const admin = !!this.users.get(actor.id)?.admin;

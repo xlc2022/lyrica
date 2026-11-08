@@ -359,8 +359,8 @@ Three ways a model gets into the library:
   finishes (the browser asks before closing it). An upload that stopped
   shows **Paused**; choose the same file again for the same host to carry
   on. It is checked like a download, but has no checksum to compare with.
-  A host from before 2026-11-07 needs updating (its ⋯ **Update…**) before
-  it takes uploads.
+  A host from before 2026-11-07 takes uploads only once it is updated
+  (**Upgrade** in [Operating a host](#operating-a-host)).
 
 ### The voice and dictation starters
 
@@ -588,6 +588,43 @@ rollback), is unsupported: `GET
 offers it for a task, and a job for it fails as too big. A host gets
 this with its next Update or `host/install.sh`.
 
+### Custom workflows
+
+To use a workflow you built in ComfyUI on your own machine, export it there
+with **Export (API)** (not the plain Save, which Lyrica refuses), then in
+**Models → Image models → Download model** pick the host and **Workflow**:
+give it a name, say what it does (Create, Edit, Video or Animate), paste the
+file or choose it, and **Import**. Edit workflow shows what the host made of
+it: model files it couldn't find on the host (download them first, under
+the same file names), and each node's settings, where Prompt, Seed, Steps
+and the like mark what each image fills in. Check them, change what you
+want, and **Save**; it becomes an image model like the others. A built-in
+model's **Copy workflow to edit** gives you a copy to change instead.
+
+**Graph** shows the workflow as nodes and links, as ComfyUI does. On a
+computer you move nodes, drag from an output to an input to link them
+(only matching types connect), select a link and press Delete to remove
+it, add a node from **Add node** (the nodes this host's ComfyUI has; it
+needs ComfyUI to have run once), set each setting on the node itself
+(Fixed with its value, or a blank such as Seed), and select a node to
+**Delete node** below the graph. Where the nodes sit is saved with the
+workflow. On a phone the graph only shows; edit in Form. The host checks a
+graph like any save, so a node that writes files is still refused.
+
+Each save keeps the version before it, under **Revisions**. You can also ask
+Lyrica in a thread to change a workflow's settings ("raise the second pass
+to 0.3 on my Krea workflow"); she saves it as a new revision.
+
+A workflow that needs a custom node the host's ComfyUI doesn't have saves
+but does nothing until a host update brings the node. **Copy request**
+copies a request to add it: give it to Lyrica, who opens a pull request
+pinning the node, and update the host once that is merged. The first time
+after an update, the node check happens when ComfyUI next runs a job.
+
+Workflows are per host and only on a host you manage (an administrator
+for a shared host). A ComfyUI host from before 2026-11-07 takes them only
+once it is updated (**Upgrade** in [Operating a host](#operating-a-host)).
+
 ### Video recipes
 
 ComfyUI hosts list seven video starters: Wan 2.2 TI2V 5B (about 18 GB of
@@ -686,9 +723,11 @@ second pairing. Then:
   --format=csv`.
 - **Upgrade:** **Update…** in the host's ⋯ on Models (an administrator, for
   a shared host) moves it to what Lyrica runs, her tagged release or her
-  latest merge, after a dialog confirms it. It works when Lyrica runs a release (Administration →
-  Updates), the host has the updater, and the host runs another commit;
-  otherwise it's greyed out and its tooltip says which is missing. The
+  latest merge, after a dialog confirms it. It works when Lyrica runs a
+  release from her updater (Administration → Updates), the host has the
+  updater (for a latest merge, one installed by a recent `install.sh`), and
+  the host runs another commit; otherwise it's greyed out and its tooltip
+  says which is missing. The
   card's state word follows the steps: Fetching, Draining, Building, and
   Rolling back if it goes back. The host pauses (running
   jobs finish first), installs the release into a root-owned tree,

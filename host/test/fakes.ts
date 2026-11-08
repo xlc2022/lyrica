@@ -249,7 +249,7 @@ export const MP4 = Buffer.concat([Buffer.from([0, 0, 0, 0x18]), Buffer.from("fty
  * A fake ComfyUI: /upload/image, /prompt, /history, /free, and a websocket
  * that sends one PNG per batch item and then "executing" with node null.
  */
-export async function fakeComfy(o: { hang?: boolean; hold?: () => Promise<void> } = {}) {
+export async function fakeComfy(o: { hang?: boolean; hold?: () => Promise<void>; objectInfo?: Record<string, unknown> } = {}) {
   const { createHash } = await import("node:crypto");
   const seen = { uploads: [] as string[], uploadBodies: [] as Buffer[], prompts: [] as any[], historyCleared: 0, freed: 0, interrupted: [] as string[], deleted: [] as string[] };
   const sockets = new Map<string, import("node:net").Socket>();
@@ -281,6 +281,7 @@ export async function fakeComfy(o: { hang?: boolean; hold?: () => Promise<void> 
       return res.writeHead(200).end();
     }
     if (url.pathname === "/system_stats") return res.writeHead(200, { "content-type": "application/json" }).end("{}");
+    if (url.pathname === "/object_info") return res.writeHead(o.objectInfo ? 200 : 404, { "content-type": "application/json" }).end(JSON.stringify(o.objectInfo ?? {}));
     if (url.pathname === "/free") {
       seen.freed++;
       return res.writeHead(200).end();

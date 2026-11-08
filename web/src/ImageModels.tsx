@@ -20,6 +20,7 @@ import { canEdit, Frame, plural, UsedIn, type MCtx } from "./ModelsFrame.tsx";
 import { her } from "./name.ts";
 import { go, href } from "./route.ts";
 import { Dialog, ErrorText, useAction, useLoad, useLongPress, useSelection } from "./ui.tsx";
+import { copyWorkflow, WorkflowImport } from "./Workflows.tsx";
 
 type Endpoint = ModelsPage["endpoints"][number];
 /** One host's library with its endpoint, or why it couldn't be read. */
@@ -457,6 +458,8 @@ const LORA_MAX = 4;
 function CopyBlock({ L, c, details }: { L: Lib; c: RecipeCopy; details?: boolean }) {
   const r = c.recipe;
   const [changing, setChanging] = useState<number>();
+  const [copying, setCopying] = useState(false);
+  const [copyError, setCopyError] = useState("");
   const editable = !details && L.editable(c.hostId);
   const proposed = r.state === "proposed";
   const miss = missingOf(r);
@@ -498,7 +501,7 @@ function CopyBlock({ L, c, details }: { L: Lib; c: RecipeCopy; details?: boolean
     <section className="copyblock" aria-label={`${r.name} on ${c.host}`} data-recipe={r.id}>
       <div className="copyhead">
         <b>{c.host}</b>
-        <span className="cap">{[`template ${r.template}`, defaultsWords(r.defaults)].filter(Boolean).join(" · ")}</span>
+        <span className="cap">{[r.custom ? "custom workflow" : `template ${r.template}`, defaultsWords(r.defaults)].filter(Boolean).join(" · ")}</span>
         {actions && <div className="actions">{actions}</div>}
       </div>
       {proposed && !details && (
@@ -541,11 +544,16 @@ function CopyBlock({ L, c, details }: { L: Lib; c: RecipeCopy; details?: boolean
           </PartRow>
         ))}
       </ul>
+      {copyError && <div className="copy-note"><ErrorText error={copyError} /></div>}
       {!details && (editable && !proposed || useFor || steps) && (
         <div className="copyfoot">
           {editable && !proposed && <button type="button" className="sm" disabled={L.busy} onClick={() => L.onAddPart?.(c)}>Add part</button>}
           {useFor}
           {steps}
+          {editable && !proposed && r.custom && <a className="link" href={href({ page: "models", userId: L.ctx.user.id, tab: "images", add: "workflow", host: c.hostId, workflow: r.template })}>Edit workflow</a>}
+          {editable && !proposed && !r.custom && r.does.some((d) => d === "create" || d === "edit" || d === "video" || d === "animate") && (
+            <button type="button" className="link" disabled={L.busy || copying} onClick={() => { setCopying(true); void copyWorkflow(L.ctx, c.hostId, r).catch((e) => { setCopying(false); setCopyError((e as Error).message); }); }}>Copy workflow to edit</button>
+          )}
           {editable && !proposed && mainPart?.downloaded && <button type="button" className="link danger" disabled={L.busy} onClick={() => L.onDelete?.(c)}>Delete model…</button>}
         </div>
       )}
@@ -836,8 +844,8 @@ export function ImageReview({ ctx }: { ctx: MCtx }) {
 
 /* ---- Download image model: a starter recipe, files from Hugging Face, a link, a scan of the host's models folder, or files from this computer ---- */
 
-type ImageSource = "starters" | "huggingface" | "civitai" | "url" | "scan" | "upload";
-const SOURCES: [ImageSource, string][] = [["starters", "Starter recipes"], ["huggingface", "Hugging Face"], ["civitai", "Civitai"], ["url", "Link"], ["scan", "Scan folder"], ["upload", "Upload"]];
+type ImageSource = "starters" | "huggingface" | "civitai" | "url" | "scan" | "upload" | "workflow";
+const SOURCES: [ImageSource, string][] = [["starters", "Starter recipes"], ["huggingface", "Hugging Face"], ["civitai", "Civitai"], ["url", "Link"], ["scan", "Scan folder"], ["upload", "Upload"], ["workflow", "Workflow"]];
 
 /** A starter's parts not on the host yet, and their bytes. */
 const toFetch = (s: HostStarter) => { const parts = s.parts.filter((p) => !p.present); return { parts, bytes: parts.reduce((n, p) => n + (p.size ?? 0), 0) }; };
@@ -994,6 +1002,7 @@ export function DownloadImage({ ctx }: { ctx: MCtx }) {
             <ErrorText error={starters.error} />
             {starters.data && <Starters list={starters.data[0]} added={starters.data[1]} picked={starter} setPicked={(id) => { setStarter(id); setProblem(""); }} />}
           </>}
+          {source === "workflow" && <WorkflowImport ctx={ctx} hostId={host.ep.id} onCancel={() => { location.hash = back; }} />}
           {source === "upload" && <UploadFields files={uploads} setFiles={(f) => { setUploads(f); setProblem(""); }} free={host.status!.modelsFolder.free} />}
           {source === "url" && <LinkFields link={link} setLink={(t) => { setLink(t); setProblem(""); }} sha={sha} setSha={setSha} />}
           {source === "scan" && <>
@@ -1007,11 +1016,11 @@ export function DownloadImage({ ctx }: { ctx: MCtx }) {
               </ul>
             ) : <p className="muted">Nothing new in <code>{host.status!.modelsFolder.path}</code>.</p>)}
           </>}
-          <ErrorText error={problem || (source === "huggingface" || source === "civitai" ? look.error : "") || error} />
-          <div className="row">
+          {source !== "workflow" && <ErrorText error={problem || (source === "huggingface" || source === "civitai" ? look.error : "") || error} />}
+          {source !== "workflow" && <div className="row">
             {source !== "scan" && <button type="button" className="primary" disabled={busy || look.busy} onClick={download}>{source === "starters" ? "Add model" : source === "upload" ? "Upload" : "Download"}</button>}
             <button type="button" onClick={() => { location.hash = back; }}>{source === "scan" ? "Back" : "Cancel"}</button>
-          </div>
+          </div>}
         </div>
       )}
       {confirming && <DownloadParts host={host!.ep.name} s={confirming} busy={busy} onConfirm={() => install(confirming)} onCancel={() => setConfirming(undefined)} />}

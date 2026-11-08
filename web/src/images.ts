@@ -31,6 +31,8 @@ export interface HostRecipe {
   base: string | null;
   /** The starter recipe it was made from. */
   starter?: string | null;
+  /** Its template is a custom workflow, added on its host (host/API.md, "Custom workflows"). */
+  custom?: boolean;
 }
 
 /** One host's image library, as GET …/hosts/:id/images gives it (its parts flattened from by-role). */

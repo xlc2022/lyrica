@@ -14,7 +14,16 @@ import { scanParts, type Part, type Role } from "./parts.ts";
 import { clipSpec, COLOR_MATCH, loraFits, present, RecipeBook, starterPath, type Recipe, type Starter } from "./recipes.ts";
 import type { Runtime } from "./runtime.ts";
 import { sdcppArgs, type SdCpp } from "./sdcpp.ts";
-import { fill, LONGEST_SECONDS, longestSeconds, type Action, type Continuation, type Lora, type Values, type VideoSpec } from "./templates.ts";
+import { fill, LONGEST_SECONDS, longestSeconds, type Action, type Continuation, type Lora, type Template, type Values, type VideoSpec } from "./templates.ts";
+import { checkTemplate, CUSTOM_ACTIONS, customAction, filesIn, importWorkflow, label, parseWorkflow, partSpecs, recipeParts, videoSpec, layoutOf, type NodeList, type Workflows } from "./workflows.ts";
+import { checkDefault, DEFAULT_KEYS } from "./recipes.ts";
+
+/** How many reference images a workflow's blanks take: its highest `$reference<n>`. */
+const referenceCount = (wf: Template["workflow"]) =>
+  Math.max(0, ...Object.values(wf).flatMap((n) => Object.values(n.inputs)).map((v) => (typeof v === "string" ? Number(/^\$reference(\d)$/.exec(v)?.[1] ?? 0) : 0)));
+
+/** A custom workflow's request body: an export, with room for its long prompts and many nodes. */
+const WORKFLOW_LIMIT = 2 * 1024 * 1024;
 
 const IMAGE_LIMIT = 20 * 1024 * 1024;
 const MAX_SIDE = 8192;
@@ -107,8 +116,12 @@ export class Images {
   /** Each SeedVR2 part's link name in its folder. */
   private seedvr2Names = new Map<string, string>();
 
-  constructor(o: { book: RecipeBook; runtime: Runtime; comfy: ComfyGpus; sdcpp?: SdCpp | null; downloads: Downloads | null; modelsDir: string; serving: string; log: Logger }) {
+  /** Custom workflows; absent, the host keeps none. */
+  private readonly workflows: Workflows | null;
+
+  constructor(o: { book: RecipeBook; workflows?: Workflows | null; runtime: Runtime; comfy: ComfyGpus; sdcpp?: SdCpp | null; downloads: Downloads | null; modelsDir: string; serving: string; log: Logger }) {
     this.book = o.book;
+    this.workflows = o.workflows ?? null;
     this.runtime = o.runtime;
     this.comfy = o.comfy;
     this.sdcpp = o.sdcpp ?? null;
@@ -172,6 +185,9 @@ export class Images {
   private describe(r: Recipe, files: Set<string>) {
     const book = this.book.describe(r, files);
     if ("unsupported" in book) return book;
+    const t = this.book.templates.get(r.template)!;
+    const unready = t.custom && this.workflows?.nodes ? this.workflowProblem(t, this.workflows.nodes) : null;
+    if (unready) return { ...book, does: [], unsupported: unready };
     const d = { ...book, takesLoras: this.sdcpp ? [] : this.takesLoras(r).map((p) => p.file) };
     const reasons = r.parts.every((p) => p.file) ? this.gpus.map((gpu) => this.runtime.scheduler.neverFits({ model: this.asModel(r, gpu), gpu })) : [];
     const tooBig = reasons.length && reasons.every((x) => x) ? reasons[0]! : null;
@@ -183,6 +199,29 @@ export class Images {
       return { ...d, does: [], unsupported: (e as Error).message };
     }
     return { ...d, does: r.does.filter((a) => a === "create") };
+  }
+
+  /** The built-in template a copied workflow came from, whose own nodes it may keep. */
+  private baseOf(t: Template): Template | undefined {
+    return t.custom?.base ? this.book.templates.get(t.custom.base) : undefined;
+  }
+
+  /** Why a custom workflow can't run against ComfyUI's node list, or null when it can. */
+  private workflowProblem(t: Template, nodes: NodeList): string | null {
+    const check = checkTemplate(t, nodes, this.baseOf(t));
+    if (check.missingNodes?.length) return `Its workflow needs ComfyUI nodes this host doesn't have: ${check.missingNodes.join(", ")}.`;
+    return check.problems.length ? `Its workflow can't run here: ${check.problems[0]}` : null;
+  }
+
+  /**
+   * Checked again as a custom workflow's job starts, after ComfyUI has started and reported its nodes:
+   * one saved before the host knew them may hold a node that writes files.
+   */
+  private checkBeforeRun(t: Template): void {
+    if (!t.custom) return;
+    const nodes = this.workflows?.nodes;
+    const problem = nodes ? this.workflowProblem(t, nodes) : "ComfyUI hasn't reported its nodes yet.";
+    if (problem) throw new HostError(503, "model_unavailable", problem);
   }
 
   /**
@@ -297,6 +336,7 @@ export class Images {
         return sendJson(res, 200, { recipe: this.describe(r, files), downloads }), true;
       }
     }
+    if (path === "/host/v1/workflows" || path.startsWith("/host/v1/workflows/")) return this.workflowRoute(req, res, path, method, files);
     const make = path.match(/^\/host\/v1\/images\/(create|edit|upscale)$/);
     if (make && method === "POST") {
       // A tagged job is readable from the start, so its client sees it queued while the request is read.
@@ -318,6 +358,173 @@ export class Images {
       return sendJson(res, 200, state), true;
     }
     return false;
+  }
+
+  /** A custom workflow as the API lists it; `full` adds its nodes, its check and the node types' inputs it uses. */
+  private workflowInfo(t: Template, full = false) {
+    const nodes = this.workflows?.nodes ?? null;
+    const base = this.baseOf(t);
+    const info = {
+      name: t.name, label: t.custom!.name, from: t.custom!.from, base: t.custom!.base ?? null, made: t.custom!.made,
+      revision: t.custom!.revision ?? 1, saved: t.custom!.saved ?? t.custom!.made, by: t.custom!.by ?? "app", does: t.does, arch: t.arch,
+      loaders: t.loaders ?? null, video: t.video ?? null, references: t.references, files: t.files ?? [], layout: t.custom!.layout ?? null,
+      recipes: this.book.all().filter((r) => r.template === t.name).map((r) => ({ id: r.id, name: r.name })), nodesChecked: !!nodes,
+    };
+    if (!full) return info;
+    const used = new Set(Object.values(t.workflow).map((n) => n.class_type));
+    return { ...info, workflow: t.workflow, ...checkTemplate(t, nodes, base), nodes: nodes ? Object.fromEntries([...used].filter((c) => nodes[c]).map((c) => [c, nodes[c]!.inputs])) : null };
+  }
+
+  /** The recipe parts of a workflow that loads its own files: those of them on this host, for sizing and "used by". */
+  private ownFileParts(files: string[]) {
+    return files.flatMap((f) => {
+      const p = this.parts.find((x) => x.file === f);
+      return p ? [{ role: p.role, slot: null, file: f, added: false }] : [];
+    });
+  }
+
+  /** The custom workflow routes (API.md, "Custom workflows"). */
+  private async workflowRoute(req: IncomingMessage, res: ServerResponse, path: string, method: string, files: Set<string>): Promise<boolean> {
+    const store = this.workflows;
+    if (!store) throw notFound("This host keeps no custom workflows.");
+    if (this.sdcpp) throw invalid("This host makes images with stable-diffusion.cpp, which runs no ComfyUI workflows.");
+    const templates = this.book.templates;
+    const nodes = store.nodes;
+    if (path === "/host/v1/workflows" && method === "GET") {
+      return sendJson(res, 200, { workflows: [...templates.values()].filter((t) => t.custom).map((t) => this.workflowInfo(t)), nodesChecked: !!nodes }), true;
+    }
+    if (path === "/host/v1/workflows/nodes" && method === "GET") return sendJson(res, 200, { nodes }), true;
+    if (path === "/host/v1/workflows/import" && method === "POST") {
+      const body = await readJson(req, WORKFLOW_LIMIT);
+      onlyFields(body, ["workflow", "name", "does"]);
+      const draft = importWorkflow(body.workflow, label(body.name), customAction(body.does), this.parts);
+      const check = checkTemplate({ workflow: draft.workflow, does: [draft.does], loaders: draft.loaders ?? undefined, parts: partSpecs(draft.parts), video: draft.video ?? undefined }, nodes);
+      return sendJson(res, 200, { draft, ...check }), true;
+    }
+    if (path === "/host/v1/workflows" && method === "POST") {
+      const body = await readJson(req, WORKFLOW_LIMIT);
+      onlyFields(body, ["name", "does", "arch", "workflow", "loaders", "clipType", "video", "parts", "loras", "defaults", "layout"]);
+      const name = label(body.name);
+      const does = customAction(body.does);
+      const workflow = parseWorkflow(body.workflow);
+      if (body.loaders !== null && body.loaders !== undefined && body.loaders !== "template") throw invalid("loaders must be \"template\" or null.");
+      const own = body.loaders === "template";
+      if (body.clipType !== null && body.clipType !== undefined && (typeof body.clipType !== "string" || !/^[a-z0-9_]{1,32}$/.test(body.clipType))) throw invalid("clipType must be a ComfyUI CLIP type or null.");
+      if (typeof body.arch !== "string" || !/^[\w.-]{1,40}$/.test(body.arch)) throw invalid("arch must be a short name.");
+      const fileList = filesIn(workflow);
+      const parts = own ? this.ownFileParts(fileList) : recipeParts(body.parts, this.parts);
+      if (!own && !parts.some((p) => p.role === "checkpoint" || p.role === "diffusion")) throw invalid("parts must include the model: a checkpoint or a diffusion model.");
+      const loras = own ? [] : this.customLoras(body.loras);
+      const defaults = this.customDefaults(body.defaults);
+      const video = does === "video" || does === "animate" ? videoSpec(body.video) : undefined;
+      const references = referenceCount(workflow);
+      const t: Template = {
+        name: store.newName(templates), arch: body.arch, does: [does], checkpoint: parts.some((p) => p.role === "checkpoint"), clipType: (body.clipType as string | null) ?? null,
+        ...(own ? { loaders: "template" as const } : {}), parts: own ? [] : partSpecs(parts), references, mask: false, ...(video ? { video } : {}), workflow,
+        custom: { name, from: "import", made: new Date().toISOString(), ...withLayout(layoutOf(body.layout, workflow)) }, files: fileList,
+      };
+      const check = checkTemplate(t, nodes);
+      if (check.problems.length) throw invalid(check.problems.join(" "));
+      templates.set(t.name, store.save(t));
+      const recipe = this.book.add({ name, state: "confirmed", arch: t.arch, template: t.name, does: [does], useFor: "both", parts, loras, defaults, base: null, starter: null });
+      return sendJson(res, 200, { workflow: this.workflowInfo(t, true), recipe: this.describe(recipe, files) }), true;
+    }
+    if (path === "/host/v1/workflows/copy" && method === "POST") {
+      const body = await readJson(req);
+      onlyFields(body, ["recipe", "name"]);
+      const name = label(body.name);
+      const from = this.book.get(String(body.recipe ?? ""));
+      const source = templates.get(from.template);
+      if (!source) throw notFound(`This host has no template ${from.template}.`);
+      if (!source.does.some((a) => CUSTOM_ACTIONS.includes(a))) throw invalid("Only workflows that make, edit or animate can be copied.");
+      const baseName = source.custom ? source.custom.base : source.name;
+      const t: Template = { ...structuredClone(source), name: store.newName(templates), custom: { name, from: "copy", made: new Date().toISOString(), ...(baseName ? { base: baseName } : {}) } };
+      t.files = filesIn(t.workflow);
+      templates.set(t.name, store.save(t));
+      const recipe = this.book.copy(from.id, name);
+      recipe.template = t.name;
+      this.book.save();
+      return sendJson(res, 200, { workflow: this.workflowInfo(t, true), recipe: this.describe(recipe, files) }), true;
+    }
+    const one = path.match(/^\/host\/v1\/workflows\/(custom-[0-9a-f]{8})(?:\/revisions(?:\/(\d{1,6})(\/restore)?)?)?$/);
+    if (!one) return false;
+    const t = templates.get(one[1]!);
+    if (!t?.custom) throw notFound("No such workflow.");
+    const revisionsPath = path.endsWith("/revisions");
+    if (revisionsPath && method === "GET") {
+      const list = [...store.revisions(t.name), t].map((r) => ({ revision: r.custom?.revision ?? 1, saved: r.custom?.saved ?? r.custom?.made ?? null, by: r.custom?.by ?? "app", name: r.custom?.name ?? "" }));
+      return sendJson(res, 200, { current: t.custom.revision ?? 1, revisions: list.reverse() }), true;
+    }
+    if (one[2]) {
+      const n = Number(one[2]);
+      const old = n === (t.custom.revision ?? 1) ? t : store.revisions(t.name).find((r) => (r.custom?.revision ?? 1) === n);
+      if (!old) throw notFound("No such revision.");
+      if (!one[3] && method === "GET") return sendJson(res, 200, { revision: n, workflow: old.workflow, video: old.video ?? null, name: old.custom?.name ?? "", layout: old.custom?.layout ?? null }), true;
+      if (one[3] && method === "POST") {
+        const body = await readJson(req);
+        onlyFields(body, ["by"]);
+        const restored = this.updateWorkflow(t, { workflow: old.workflow, ...(old.video ? { video: old.video } : {}), name: old.custom?.name ?? t.custom.name, layout: old.custom?.layout ?? null }, body.by);
+        return sendJson(res, 200, this.workflowInfo(restored, true)), true;
+      }
+      return false;
+    }
+    if (revisionsPath) return false;
+    if (method === "GET") return sendJson(res, 200, this.workflowInfo(t, true)), true;
+    if (method === "PUT") {
+      const body = await readJson(req, WORKFLOW_LIMIT);
+      onlyFields(body, ["name", "workflow", "video", "by", "layout"]);
+      return sendJson(res, 200, this.workflowInfo(this.updateWorkflow(t, body, body.by), true)), true;
+    }
+    return false;
+  }
+
+  /**
+   * A new version of a custom workflow: its nodes, clip settings or name changed, checked as any save, the version it
+   * replaces kept as a revision. `by` "lyrica" marks a change Lyrica made at the user's word.
+   */
+  private updateWorkflow(t: Template, body: Record<string, unknown>, by: unknown): Template {
+    const store = this.workflows!;
+    const templates = this.book.templates;
+    const base = t.custom!.base ? templates.get(t.custom!.base) : undefined;
+    const workflow = body.workflow === undefined ? t.workflow : parseWorkflow(body.workflow);
+    const video = body.video === undefined ? t.video : videoSpec(body.video);
+    if (video && !t.video) throw invalid("This workflow doesn't make videos.");
+    // A layout not sent keeps the nodes that are still there where they were.
+    const { layout: _old, ...custom } = t.custom!;
+    const layout = layoutOf(body.layout === undefined ? t.custom!.layout : body.layout, workflow);
+    const next: Template = { ...t, workflow, ...(video ? { video } : {}), files: filesIn(workflow), custom: { ...custom, ...(body.name !== undefined ? { name: label(body.name) } : {}), ...withLayout(layout) } };
+    if (t.custom!.from === "import") next.references = referenceCount(workflow);
+    const check = checkTemplate(next, store.nodes, base);
+    if (check.problems.length) throw invalid(check.problems.join(" "));
+    const saved = store.save(next, t, by === "lyrica" ? "lyrica" : "app");
+    templates.set(t.name, saved);
+    // A workflow that loads its own files: its recipes' parts follow the files it now names.
+    if (saved.loaders === "template" && t.custom!.from === "import") {
+      for (const r of this.book.all().filter((r) => r.template === t.name)) r.parts = this.ownFileParts(saved.files ?? []);
+      this.book.save();
+    }
+    return saved;
+  }
+
+  private customLoras(v: unknown): { file: string; strength: number }[] {
+    if (v === undefined) return [];
+    if (!Array.isArray(v) || v.length > 8) throw invalid("loras must be a list of at most 8.");
+    return v.map((l: Record<string, unknown>) => {
+      const p = this.parts.find((x) => x.file === l?.file && x.role === "lora");
+      if (!p) throw invalid(`${String(l?.file)} isn't a LoRA on this host.`);
+      if (typeof l.strength !== "number" || l.strength < -4 || l.strength > 4) throw invalid("A LoRA's strength must be a number from -4 to 4.");
+      return { file: p.file, strength: l.strength };
+    });
+  }
+
+  private customDefaults(v: unknown): Record<string, string | number> {
+    if (v === undefined) return {};
+    if (!v || typeof v !== "object" || Array.isArray(v)) throw invalid("defaults must be an object.");
+    for (const [k, x] of Object.entries(v)) {
+      if (!DEFAULT_KEYS.includes(k)) throw invalid(`Unknown default: ${k}.`);
+      checkDefault(k, x);
+    }
+    return { ...(v as Record<string, string | number>) };
   }
 
   /** The starters this host can run: a starter for one backend only shows on hosts using it. */
@@ -368,7 +575,13 @@ export class Images {
   }
 
   private async remove(id: string) {
+    const template = this.book.get(id).template;
     const { candidates, kept } = this.book.remove(id);
+    // A custom workflow goes with its last recipe, revisions and all.
+    if (this.book.templates.get(template)?.custom && !this.book.all().some((r) => r.template === template)) {
+      this.book.templates.delete(template);
+      this.workflows?.remove(template);
+    }
     const deleted: string[] = [];
     for (const file of candidates) {
       if (!this.runtime.record.has(file)) {
@@ -425,6 +638,10 @@ export class Images {
         }
         refs.forEach((r, i) => (uploads[`reference${i + 1}`] = inputImage(r, "references")));
       }
+      // A custom workflow loads each of its references: it can't leave one out as a built-in template can.
+      if (template.custom && template.references && (Array.isArray(refs) ? refs.length : 0) !== template.references) {
+        throw invalid(`This recipe's workflow takes ${template.references} reference image${template.references > 1 ? "s" : ""}.`);
+      }
     }
     if (action === "edit" || action === "upscale") uploads.image = inputImage(body.image, "image");
     if (action === "edit" && body.mask !== undefined) {
@@ -463,6 +680,7 @@ export class Images {
       job.running();
       return scheduler.measuring(model, () =>
         sdcpp ? sdcpp.create(model.id, recipe.template, values, abort.signal) : comfy.run(uploads, (names) => {
+          this.checkBeforeRun(template);
           const parts = recipe.parts.filter((p): p is typeof p & { file: string } => !!p.file);
           return fill(template, parts, loras, { ...values, ...names });
         }, abort.signal, job.progress));
@@ -594,7 +812,7 @@ export class Images {
           const ref = first ? undefined : uploads.image && chain!.reference;
           const t = first ? template : { ...template, workflow: { ...chain!.workflow, ...ref?.workflow } };
           const step = { ...values, ...clip, seed: Number(values.seed) + i, ...(first ? {} : { overlap: chain!.overlap, prompt: `${ref?.promptPrefix ?? ""}${chain!.promptPrefix ?? ""}${values.prompt}` }) };
-          const made = await comfy.runVideo(first ? uploads : { previous: video!, ...(ref ? { reference: uploads.image! } : {}) }, (names) => fill(t, parts, loras, { ...step, ...names }),
+          const made = await comfy.runVideo(first ? uploads : { previous: video!, ...(ref ? { reference: uploads.image! } : {}) }, (names) => (this.checkBeforeRun(t), fill(t, parts, loras, { ...step, ...names })),
             VIDEO_TIMEOUT_MS, abort.signal, (f) => job.progress((done + f * Number(clip.frames)) / total));
           video = made.video;
           poster = made.poster ?? poster;
@@ -792,3 +1010,5 @@ export function clipPlan(spec: VideoSpec, chain: Continuation | undefined, secon
   // Just under each count, so videoValues rounds back to it whatever the float error.
   return made.map((f) => (f - 0.5) / spec.fps);
 }
+
+const withLayout = (layout: Record<string, [number, number]> | undefined) => (layout ? { layout } : {});

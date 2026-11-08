@@ -961,6 +961,92 @@ Calls:
   "Used by Z-Image Turbo, watercolour." }] }`. Other reasons: "Not
   downloaded by the host." and "Changed since it was downloaded."
 
+### Custom workflows
+
+A host's manager adds templates of their own (DESIGN, "Custom
+workflows"): each one is a template named `custom-<8 hex>`, kept in the data
+folder, with one or more recipes. Lyrica passes these routes on through its
+`manage` route, so on a shared host they are for administrators. A request
+body may be up to 2 MB. Not on a host using stable-diffusion.cpp.
+
+- `GET /host/v1/workflows` → `{ workflows: [WorkflowInfo], nodesChecked }`.
+  `WorkflowInfo`: `name`, `label`, `from` (`import` or `copy`), `base` (the
+  built-in a copy came from, or null), `made`, `revision`, `saved`, `by`
+  (`app` or `lyrica`), `does`, `arch`, `loaders` (`"template"` when it
+  loads its own files), `video`, `references`, `files` (the model files its
+  own nodes load), `recipes` (`[{ id, name }]`), `nodesChecked` (ComfyUI has
+  reported its nodes since the host started using this data folder),
+  `layout` (where each node sits in the app's Graph view, `{ <node ID>: [x,
+  y] }`, or null).
+- `GET /host/v1/workflows/nodes` → `{ nodes }`: ComfyUI's node types as it
+  last reported them, or null before it has run. Each has `inputs` (a link's
+  type such as `MODEL`, a setting's kind such as `INT`, or a choice's
+  options, at most 200), `output` (it is an output node), `outputs` and
+  `outputNames` (its outputs' types and names), `category` and `defaults`
+  (its settings' defaults). For the app's Graph view.
+- `POST /host/v1/workflows/import` `{ workflow, name, does }` → `{ draft,
+  problems, missingNodes }`, saving nothing. `workflow` is ComfyUI's Export
+  (API) object (ComfyUI's UI file is refused, saying so); `does` is
+  `create`, `edit`, `video` or `animate`. The draft has `label`, `does`,
+  `arch`, `workflow`, `loaders`, `clipType`, `video` (a clip's `fps`,
+  `frameStep`, `frameOffset`, `sizeStep`, `maxSeconds`, `audio`, guessed),
+  `parts`, `loras`, `defaults`, `unmatched` (file names not on this host)
+  and `dropped` (previews and saves left out). Import:
+  - `SaveImage` (else `PreviewImage`) becomes `SaveImageWebsocket`; for a
+    video, `SaveVideo` becomes `SaveVideoWebsocket`, and a frames save
+    (`VHS_VideoCombine`, `SaveAnimatedWEBP`, …) a `CreateVideo` at `$fps`
+    feeding it; other saves and previews are left out.
+  - One checkpoint or diffusion model with one CLIP loader and a VAE (or a
+    checkpoint alone) become the recipe's parts and `$model`, `$clip`,
+    `$vae`, and model-only LoRAs chained straight off the model its LoRAs.
+    Anything else stays in the workflow (`loaders: "template"`). File names
+    are matched to this host's files by path, then by name.
+  - Blanks: the text of the nodes behind the first `positive` and
+    `negative` become `$prompt` and `$negativePrompt`; every `seed` and
+    `noise_seed` `$seed`; the first `steps`, `cfg`, `sampler_name`,
+    `scheduler`, `shift`, `guidance` theirs; the first empty latent's
+    `width`, `height` and `batch_size` (`$count`) or `length` (`$frames`);
+    a video's first `fps`; for `edit` and `animate` the first `LoadImage`
+    `$image` and the next ones `$reference1…4`. The values replaced become
+    the recipe's defaults; the prompt is dropped.
+- `POST /host/v1/workflows` `{ name, does, arch, workflow, loaders,
+  clipType, video, parts, loras, defaults, layout? }` (a draft, edited) → `{
+  workflow: WorkflowInfo & { workflow, problems, missingNodes, nodes },
+  recipe }`: saves revision 1 and a confirmed recipe on it. Every save is
+  refused (`invalid`, naming each problem) unless: each `$name` is a blank
+  its action fills (create: prompt, negativePrompt, width, height, count,
+  seed, steps, cfg, sampler, scheduler, shift, guidance; edit adds image and
+  reference1–4; video swaps count for frames and fps; animate adds image),
+  or a loader link when the recipe has the part; the action's own blanks
+  are there (`$prompt`, and `$image` or `$frames`); links name nodes in it;
+  it has the action's websocket output and no other node that writes files
+  or is an output (by name, and by ComfyUI's node list); a `Load…` node's
+  file is a blank; and no value names a path outside the models folder. A
+  custom workflow's references are all required in a job. Each job checks
+  the workflow again once ComfyUI has started and reported its nodes, and
+  fails with `503 model_unavailable` if it hasn't reported them or the
+  check finds a problem; the recipe then lists as `unsupported`.
+- `POST /host/v1/workflows/copy` `{ recipe, name }` → as above: a copy of
+  that recipe's template (create, edit, video or animate) and a copy of the
+  recipe on it. A copy may keep its built-in's own blanks and nodes.
+- `GET /host/v1/workflows/<name>` → `WorkflowInfo` with `workflow`,
+  `problems`, `missingNodes` (node types ComfyUI didn't report, or null
+  before it has run) and `nodes` (the inputs of the node types it uses: a
+  choice's options, at most 200).
+- `PUT /host/v1/workflows/<name>` `{ workflow?, video?, name?, by?, layout?
+  }` → the same: a new revision, checked as above; the one it replaces is
+  kept (50 at most). A `layout` keeps only the nodes the workflow has, each
+  `[x, y]` in whole numbers; left out, the last one stays. `by: "lyrica"` marks a change Lyrica made when asked.
+- `GET /host/v1/workflows/<name>/revisions` → `{ current, revisions: [{
+  revision, saved, by, name }] }`, newest first; `GET …/revisions/<n>` → `{
+  revision, workflow, video, name, layout }`; `POST …/revisions/<n>/restore`
+  `{ by? }` → as PUT, that revision (and its layout) saved as a new one.
+- A recipe on a custom workflow lists `custom: true`; one whose workflow
+  needs node types ComfyUI lacks does nothing, its `unsupported` naming
+  them. A workflow that loads its own files can't have parts changed or
+  added (change them in the workflow); deleting its last recipe deletes it
+  and its revisions.
+
 ### Making images
 
 All three answer `{ "images": [{ "png": "<base64>", "width": 1024,

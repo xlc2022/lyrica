@@ -972,9 +972,20 @@ model, else the router's first pick for chat).
   (`loadLocalContext`), and clears the thread's limit. The host's fit check
   runs on save, and LM Studio's on load. A refusal comes back as the result,
   with nothing changed.
-- lyricad registers the tool only when `hostCopies` or `localCopies` lists a
-  model: chat models on hosts, or LM Studio models, on endpoints the user
-  can manage (a shared one only as an administrator). A local server that
+- Custom ComfyUI workflows (host/API.md, "Custom workflows") on the hosts
+  `workflowHosts` lists: `workflows` lists them across those hosts;
+  `read_workflow { host, workflow }` gives each node's settings (a link
+  reads "<- node 6", a choice lists its options) and the last ten
+  revisions; `edit_workflow { host, workflow, changes: [{ node, input,
+  value }] }` sets up to 50 settings a node already has (never a link, so
+  no node is added or rewired) and saves through the host's checks as a
+  new revision marked `by: "lyrica"`; `restore_workflow { host, workflow,
+  revision }` brings one back. No card: the user asked, and every
+  revision can be restored.
+- lyricad registers the tool only when `hostCopies`, `localCopies` or
+  `workflowHosts` lists something: chat models on hosts, LM Studio models,
+  or hosts with recipes, on endpoints the user can manage (a shared one
+  only as an administrator). A local server that
   isn't LM Studio adds nothing, so the tool's definition costs those
   threads no tokens. It is never in a private or
   local-only thread, since a lookup is an outside call, and never in a

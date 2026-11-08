@@ -302,6 +302,20 @@ upscales whole clips with SeedVR2). Recipes
 live in `recipes.json`; the optional `useFor` tag is `fast`, `quality` or
 `both`, with older recipes reading as both. Models → Image models saves it
 per host, and Lyrica's router filters create tiers by it.
+- **Custom workflows** (`<data>/workflows/custom-<id>.json`, with
+  `custom-<id>.revisions.json` holding up to 50 earlier versions) are
+  templates the host's manager added: an import of ComfyUI's Export (API)
+  file, or a copy of a built-in template. Import turns saves into the
+  websocket outputs, standard loaders into the recipe's parts (anything
+  else loads its own files) and matches file names to this host's files;
+  every save is checked (API.md, "Custom workflows"). ComfyUI's node list is
+  read each time it starts, before its first job, and kept in
+  `<data>/comfy-nodes.json`. A custom workflow's job is checked against it
+  again and refused without it, so a workflow saved before the list was
+  known can't keep a node that writes files. A
+  workflow using a node not on it does nothing until a ComfyUI image
+  update brings the node, which is added to `comfyui/Dockerfile` at a
+  reviewed commit like the others.
 - **Starters** (`recipes/`) are known-good recipes, with each part's
   checksum. Install downloads only the parts that aren't here.
   A starter can be for one way of making images only: Krea 2 Turbo Q5

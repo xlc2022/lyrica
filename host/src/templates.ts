@@ -34,7 +34,7 @@ export interface PartSpec {
   strength?: number;
 }
 
-interface Node {
+export interface Node {
   class_type: string;
   inputs: Record<string, unknown>;
   /** Values, or optional parts' links, the node needs: without any of them it is left out. */
@@ -71,6 +71,18 @@ export interface Template {
    */
   clipWorkflow?: Record<string, Node>;
   workflow: Record<string, Node>;
+  /** A custom workflow (host/src/workflows.ts): added on this host by its manager, kept in its data folder. */
+  custom?: {
+    name: string; from: "import" | "copy"; made: string;
+    /** For a copy: the built-in template it came from, whose blanks and nodes it may keep. */
+    base?: string;
+    /** This version's number (1 for the first), when it was saved and by whom. */
+    revision?: number; saved?: string; by?: "app" | "lyrica";
+    /** Where each node sits in the app's Graph view, by node ID: only for drawing it. */
+    layout?: Record<string, [number, number]>;
+  };
+  /** Model files the workflow's own nodes load, by their path in the models folder: a recipe is ready only with each. */
+  files?: string[];
 }
 
 export interface FilledPart {
