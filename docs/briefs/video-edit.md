@@ -1,6 +1,6 @@
 # Editing a clip (MiniMax H3 VFX Edit)
 
-**Status:** built, in review.
+**Status:** merged (#828, 2026-11-08); not yet run on a GPU.
 
 The owner asked (2026-11-08) for "the MiniMax H3 editor". MiniMax has
 released no edit checkpoint of its own. The editor the H3 community uses

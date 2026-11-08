@@ -1114,8 +1114,11 @@ the action is `invalid`.
   `"image": "<base64>"` and an optional `"mask": "<base64>"` (its white
   part is changed). The result is about one megapixel, at the nearest
   shape the model was trained on (Qwen-Image-Edit) or the image's own
-  shape on a 32-pixel grid (Qwen-Image 2.1). Up to two `references` for
-  Qwen-Image-Edit, three for Qwen-Image 2.1. Qwen-Image 2.1 runs a masked
+  shape on a 32-pixel grid (Qwen-Image 2.1); about the recipe's
+  `editMegapixels` (4 by default) in the image's own shape on a 32-pixel
+  grid for P-H3-Image, so a small image comes back larger. Up to two
+  `references` for Qwen-Image-Edit, three for Qwen-Image 2.1 and
+  P-H3-Image. Qwen-Image 2.1 runs a masked
   edit through LanPaint's sampler on an image of about one megapixel, with
   the mask grown by 24 pixels, then puts only that part back into the
   original at its own size, blended over 31 pixels at its edge. With a
