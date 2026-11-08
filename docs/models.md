@@ -577,12 +577,15 @@ only the image, at that model's price: a cloud model is in the list only if
 the person put it there. With no list set, only local models are tried.
 
 The task `video` (Videos) has its own ordered list in each column and
-preset, of host recipes that do `video`, `animate` or `motion`; nothing follows it.
-It is a thread task, so a thread can pick its own. Resolved with no `animate`
-or `motion` in the need (the thread drawer naming it), any of the three fits.
+preset, of host recipes that do `video`, `animate`, `motion` or `edit_video`; nothing follows it.
+It is a thread task, so a thread can pick its own. Resolved with no `animate`,
+`motion` or `videoEdit` in the need (the thread drawer naming it), any of the four fits.
 `video(ctx, request, { signal?, beforeSend?, onProgress?, first? })` makes one clip from a prompt,
 or from `image` as its first frame, or with `drive` (an MP4 of at most
-64 MB) `image`'s subject moved as the person in that clip moves, with
+64 MB) `image`'s subject moved as the person in that clip moves, or
+`source` (an MP4 of at most 64 MB, with no image, other clip or size)
+changed as the prompt says, keeping its motion ("it doesn't edit clips"
+passes over a recipe that doesn't do `edit_video`), with
 optional `size`, `duration` (seconds, 1 to the model's longest video: 60
 on a recipe that chains clips, else its longest clip) and `steps` (a whole
 number from 1 to 150, in place of the recipe's) and `loras` (as for
@@ -853,7 +856,7 @@ the host's own, from `GET /host/v1/starters`, each part marked `present`;
 making one posts `…/starters/<id>/install` with the hub token when a part
 is missing, and the host downloads those and confirms the recipe. A shared
 host needs an administrator. Only confirmed recipes become offerings (`recipe/<id>`,
-with `image`, `edit`, `upscale`, `video`, `animate` or `motion` as the recipe does),
+with `image`, `edit`, `upscale`, `video`, `animate`, `motion` or `videoEdit` (`edit_video`) as the recipe does),
 so a proposal never resolves; a recipe that does none of these isn't one; a recipe deleted here
 leaves a tombstone. The tag is `fast`, `quality` or `both`, stored as an
 optional field in the host's `recipes.json`; absent reads as both. The daemon

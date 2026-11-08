@@ -682,6 +682,17 @@ with an acknowledgement in publications, lawful use including privacy
 law, and trade controls). Its frame-reading node is another addition to
 the ComfyUI image, so the next Update rebuilds it again.
 
+ComfyUI hosts also list **MiniMax H3 VFX Edit** (about 42 GB of files; the
+text encoder and VAEs are H3 Turbo's, so with Turbo installed it fetches
+about 24 GB). Put it in the **Videos** list too: given a clip (an MP4 of at
+most 64 MB) and an instruction ("make it night"), her `image` tool changes
+the clip and keeps its motion, timing, camera and sound, for up to 15 s of
+it. It is H3's ref2va checkpoint with a 4-step turbo LoRA and the
+community VFX Edit LoRA, an experimental research release under H3's
+licence, so the same places are excluded. It fits a 96 GB card. Its
+clip-reading node is new in the ComfyUI image, so update the host (the
+Update menu, or `git pull && host/install.sh`) before installing it.
+
 ## More than one host
 
 Deploying a second host is the same install, with a name of its own, and a

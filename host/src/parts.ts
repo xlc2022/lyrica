@@ -82,15 +82,18 @@ export function classify(names: string[], shapes: Record<string, number[]>, file
   if (has(/^detector\.backbone\./) && has(/^tracker\.model\./)) return { role: "segmenter", slot: null, arch: "sam3" };
 
   // A video model's two experts (Wan 2.2 14B), and the speed LoRAs made for each, are told apart by name.
+  // So are MiniMax H3's two checkpoints, which share their keys: ref2va (references and guide clips, which the VFX
+  // Edit LoRA was trained on) and fl2va (first and last frames), and the speed LoRAs made for each.
+  const h3 = /ref2va?([^a-z]|$)/.test(name) ? "minimax-h3-ref2va" : "minimax-h3";
   const expert = /high[_-]?noise/.test(name) ? "high" : /low[_-]?noise/.test(name) ? "low" : null;
 
   if (has(/lora_(up|down|A|B)\b|\.lora_(up|down|A|B)\.|^lora_(unet|te)/)) {
-    const slot = expert ?? (/turbo|lightning|lightx2v|\d+[_-]?steps?/.test(name) ? "speed" : /(^|[^a-z])dpo([^a-z]|$)/.test(name) ? "dpo" : null);
+    const slot = expert ?? (/turbo|lightning|lightx2v|\d+[_-]?steps?/.test(name) ? "speed" : /(^|[^a-z])dpo([^a-z]|$)/.test(name) ? "dpo" : /vfx[_-]?edit/.test(name) ? "edit" : null);
     // Wan 2.2 5B's blocks are 3072 wide, the 14B's (and Wan 2.1's) 5120: a LoRA's down matrix is its rank by that width.
     const wanDown = Object.entries(shapes).find(([n]) => /blocks[._]\d+[._]self[._]attn[._]q[._.]lora_(down|A)\b/.test(n))?.[1];
     // Qwen-Image 2.1's LoRAs have Qwen-Image's tensor names; the trainer's metadata, or the file name, says which.
     const qwen21 = /qwen[_-]?image[_-]?2/.test(meta.ss_base_model_version ?? "") || /qwen[_-]?image[_-]?2[._-]?1/.test(name);
-    const arch = /minimax[_-]?h3/.test(name) ? "minimax-h3"
+    const arch = /minimax[_-]?h3/.test(name) ? h3
       : has(/blocks[._]\d+[._](self|cross)[._]attn[._][qkvo]\b/) ? (wanDown?.[1] === 3072 ? "wan2.2-5b" : "wan")
       : qwen21 ? "qwen-image-2.1"
       : has(/double_blocks|single_blocks/) ? "flux"
@@ -119,7 +122,7 @@ export function classify(names: string[], shapes: Record<string, number[]>, file
   if (hasBare(/^txtfusion\.projector\.weight$/)) return { role: "diffusion", slot: null, arch: "krea2" };
   if (hasBare(/^input_blocks\.0\.0\./) && hasBare(/^label_emb\./)) return { role: "diffusion", slot: null, arch: "sdxl" };
   // Video models, by the keys ComfyUI's model detection reads.
-  if (hasBare(/^video_patch_proj\.weight$/) && hasBare(/^audio_patch_proj\.weight$/)) return { role: "diffusion", slot: null, arch: "minimax-h3" };
+  if (hasBare(/^video_patch_proj\.weight$/) && hasBare(/^audio_patch_proj\.weight$/)) return { role: "diffusion", slot: null, arch: h3 };
   if (hasBare(/^adaln_single\.emb\.timestep_embedder\.linear_1\.bias$/) && hasBare(/^audio_adaln_single\.linear\.weight$/)) return { role: "diffusion", slot: null, arch: "ltx2" };
   // SCAIL-2: Wan 2.1 I2V 14B with its own patch embeddings for the pose and mask videos.
   if (hasBare(/^head\.modulation$/) && hasBare(/^patch_embedding_pose\.weight$/)) return { role: "diffusion", slot: null, arch: "scail2" };

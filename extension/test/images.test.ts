@@ -258,6 +258,19 @@ describe("image tool results (principles 1 and 4)", () => {
     await expect(s.run({ action: "motion", prompt: "x", image: "/photos-of-me/portrait.png", video: "/workspace/uploads/landscape.png" })).rejects.toThrow(/isn't an MP4/);
     expect(s.heard).toEqual([]);
   });
+  it("edits a workspace clip as an instruction says, on a recipe that edits clips, and takes no image or LoRA for it", async () => {
+    const s = await setup();
+    s.models.setColumnTask(s.ada.id, "general", "video", [s.workstation.clip, s.workstation.restyle]);
+    writeFileSync(join(s.folder, "uploads", "walk.mp4"), mp4);
+    const out = await s.run({ action: "edit_video", instruction: "Make it snow, keeping his face, coat, motion and framing", video: "/workspace/uploads/walk.mp4" });
+    expect((out.details as { video: { model: string } }).video.model).toBe("shared.workstation/Restyle");
+    expect(s.workstation.server.videos).toEqual([{ recipe: "restyle", prompt: "Make it snow, keeping his face, coat, motion and framing", source: mp4.toString("base64") }]);
+    await expect(s.run({ action: "edit_video", video: "/workspace/uploads/walk.mp4" })).rejects.toThrow("edit_video needs instruction");
+    await expect(s.run({ action: "edit_video", instruction: "x", video: "/workspace/uploads/walk.mp4", image: "/photos-of-me/portrait.png" })).rejects.toThrow(/doesn't take image/);
+    await expect(s.run({ action: "edit_video", instruction: "x", video: "/workspace/uploads/walk.mp4", aspectRatio: "1:1" })).rejects.toThrow(/own shape/);
+    await expect(s.run({ action: "edit_video", instruction: "x", video: "/workspace/uploads/walk.mp4", loras: [{ name: "a", strength: 1 }] })).rejects.toThrow(/takes no LoRAs/);
+    expect(s.heard).toEqual([]);
+  });
   it("makes a workspace clip longer on a recipe that extends, and says the Videos model's longest in duration", async () => {
     const s = await setup();
     const tool = (o: ImageTools) => { let t!: ToolDefinition; createImageExtension(o)({ on: () => {}, registerTool: (d: ToolDefinition) => { t = d; } } as unknown as ExtensionAPI); return t; };

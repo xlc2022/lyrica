@@ -12,7 +12,7 @@ import { clock, dateText, dayNumber, Dialog, ErrorText, useAction, useLoad } fro
 
 export type WorkflowDoes = "create" | "edit" | "video" | "animate";
 const DOES: [WorkflowDoes, string][] = [["create", "Create"], ["edit", "Edit"], ["video", "Video"], ["animate", "Animate"]];
-const DOES_WORD: Record<string, string> = { create: "generate", edit: "edit", video: "video", animate: "animate", upscale: "upscale", motion: "motion", extend: "extend" };
+const DOES_WORD: Record<string, string> = { create: "generate", edit: "edit", video: "video", animate: "animate", upscale: "upscale", motion: "motion", edit_video: "edit clips", extend: "extend" };
 
 const SIZE = ["width", "height"];
 const SAMPLING = ["seed", "steps", "cfg", "sampler", "scheduler", "shift", "guidance"];

@@ -368,7 +368,7 @@ interface Endpoint {
   unencrypted: boolean;                     // local, plain HTTP, outside this machine and the tailnet
   downSince?: string; stale: boolean;       // stale: unreachable for STALE_DAYS (14)
 }
-interface Capabilities { contextWindow?; tools?; vision?; embedding?; image?; edit?; upscale?; video?; animate?; motion?; reasoning?: ("low" | "medium" | "high")[];
+interface Capabilities { contextWindow?; tools?; vision?; embedding?; image?; edit?; upscale?; video?; animate?; motion?; videoEdit?; reasoning?: ("low" | "medium" | "high")[];
                          transcribe?: boolean; speak?: { voices: Voice[] }; useFor?: "fast" | "quality" | "both" }
 interface Voice { id; language }                             // language: a primary tag, "en" or "zh"
 interface Offering extends Capabilities {   // one model on one endpoint, with a permanent id
@@ -404,7 +404,7 @@ interface CallContext {
   fallback?: boolean;                       // Fallback; false: only a list's first entry answers; absent is on
   contextLimit?: number;                    // the most context the thread plans for, below its model's window; inherited by children
 }
-interface Need { tools?; tokens?; imageTier?: "fast" | "quality"; imageMask?; imageReferences?; animate?; motion?; extend?; seconds?; loras?: string[];
+interface Need { tools?; tokens?; imageTier?: "fast" | "quality"; imageMask?; imageReferences?; animate?; motion?; videoEdit?; extend?; seconds?; loras?: string[];
                first?: string[]; after?: string[] }   // what the call needs from a model; first/after: offering IDs tried before/after the list for one call
 interface Resolution { ref: { offeringId }; endpoint; offering; label; profile: string;   // the preset's name, or "Custom"
                        source: "thread" | "preset" | "column"; skipped: { label; reason }[]; remaining: number }
@@ -489,9 +489,9 @@ class Models {                                              // new Models(keyrin
   // onProgress (image() takes it too): JobProgress { queued; progress?: 0-1; busyWith?; loading? } as a model host's job goes (models/progress.ts withProgress, exported):
   // the call carries X-Lyrica-Job: <random token> and GET /host/v1/jobs/<token> is read every 2 s until it ends; a host that
   // hasn't known the job after 5 reads isn't asked again. Cloud models report none.
-  // VideoRequest { prompt; image?: ImageInput (its first frame, or with drive the subject who moves); drive?: Uint8Array (an MP4 of at most 64 MB, MAX_DRIVE_BYTES); extend?: Uint8Array (a clip to add `duration` seconds to, an MP4 of at most 64 MB, with no image, drive or size); size?: { width, height } (multiples of 16, 256-2048) or aspectRatio?: "width:height" (the recipe's area in that shape); duration?: seconds, 1 to LONGEST_VIDEO_SECONDS (60); steps?: 1-150, in place of the recipe's; loras?: LoraAsk[], as for images }
+  // VideoRequest { prompt; image?: ImageInput (its first frame, or with drive the subject who moves); drive?: Uint8Array (an MP4 of at most 64 MB, MAX_DRIVE_BYTES); extend?: Uint8Array (a clip to add `duration` seconds to, an MP4 of at most 64 MB, with no image, drive or size); source?: Uint8Array (a clip to edit as the prompt says, an MP4 of at most 64 MB, with no image, drive, extend or size; `duration` takes its first seconds); size?: { width, height } (multiples of 16, 256-2048) or aspectRatio?: "width:height" (the recipe's area in that shape); duration?: seconds, 1 to LONGEST_VIDEO_SECONDS (60); steps?: 1-150, in place of the recipe's; loras?: LoraAsk[], as for images }
   // GeneratedVideo { bytes (H.264 MP4); type: "video/mp4"; width; height; frames; fps; duration; audio; seed?; poster: GeneratedImage }
-  // The `video` task's list; only a model host's recipe that does `video` (or `animate`, with an image; or `motion`, with drive; or `extend`,
+  // The `video` task's list; only a model host's recipe that does `video` (or `animate`, with an image; or `motion`, with drive; or `edit_video`, with source; or `extend`,
   // with extend) answers, so no clip or first frame reaches a cloud model. A recipe whose `longestSeconds` is under `duration` is skipped
   // ("it makes videos of at most N s"); a host recipe that chains clips (MiniMax H3) answers up to 60 s as one clip.
   // POST /host/v1/videos/create with explicit fields only; two hours at most, per 5 s asked (videoTimeout), since a chain gives each clip two hours.
@@ -1447,7 +1447,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     the user's reactions since her last turn; `reactionLines` puts them in
     the turn message as `<reactions>`;
   - `image` (`createImageExtension(ImageTools)`), one tool with `create`, `edit`,
-    `upscale`, `video`, `animate`, `motion`, `extend` and `upscale_video` (a workspace clip, optional
+    `upscale`, `video`, `animate`, `motion`, `edit_video`, `extend` and `upscale_video` (a workspace clip, optional
     `scale` and `maxSize`, through `Models.upscaleVideo`, in the background as other clips are, recorded as `image.upscale`). Create takes `prompt`, `tier` (`fast` or `quality`), optional
     `size: { width, height }` or `aspectRatio` (`width:height`), `count` and
     `references`; edit takes `image`, `instruction`, optional `mask`, `count`
@@ -1509,7 +1509,8 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     `video` (`prompt`, optional `size` or `aspectRatio`, which goes to the host
     as it is, `duration`, and `steps`, only when the user asks for a number) and
     `animate` (also `image`, the first frame), `motion` (also `image`, the subject, and
-    `video`, a workspace MP4 read with `ThreadImages.readClip`) and `extend` (`video`, the clip to
+    `video`, a workspace MP4 read with `ThreadImages.readClip`), `edit_video` (`video`, the clip to change, and
+    `instruction`, sent as the prompt; no size, ratio or LoRAs) and `extend` (`video`, the clip to
     make longer, and `prompt`; `duration` is the seconds to add) make one clip through
     `Models.video` and save it with `ThreadImages.saveVideo`. With
     `ImageTools.background(make, toolCallId)` (lyricad's `ClipJobs`, daemon/src/clips.ts)
@@ -1524,7 +1525,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     `ThreadSummary.making` is `true` (`ThreadHost.makingClip`), and the user's events report a change
     when it starts and ends. A clip delivered before `call` existed shows alone. Without it (an explicit retry) the call
     answers with its facts and its poster as image content, so she sees the first frame;
-    a host's progress (create, edit, upscale, video, animate, motion) goes to Pi as the call's update, details `{ progress: JobProgress }`;
+    a host's progress (create, edit, upscale, video, animate, motion, edit_video) goes to Pi as the call's update, details `{ progress: JobProgress }`;
     details `{ video: VideoPart }`, `VideoPart` being `{ type: "video", path,
     model, width, height, duration, audio }`. A video's error reads `Video
     failed with <label> [<code>]: …`. Saved messages carry the part beside its
@@ -2137,7 +2138,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     are 404, no login is 401. `GET`/`PUT /api/u/:userId/photo-cloud` → `PhotoCloudSetting`
     (`policy: "never" | "ask" | "always"`); PUT validates and clears daily
     approval. All follow session/key checks and mutations require same-origin.
-    HTTP `Capabilities` includes `upscale`, `video`, `animate` and `motion`, as core does.
+    HTTP `Capabilities` includes `upscale`, `video`, `animate`, `motion` and `videoEdit`, as core does.
     `GET …/file` also serves a clip (`video/mp4`) and answers one byte range
     (`Range: bytes=a-b` or `bytes=a-`) with 206 and `Content-Range`, or 416
     outside the file, so the browser's player can seek.

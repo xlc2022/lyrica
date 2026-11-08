@@ -6,7 +6,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { basename, join } from "node:path";
 import type { Role } from "./parts.ts";
 
-export type Action = "create" | "edit" | "upscale" | "video" | "animate" | "motion";
+export type Action = "create" | "edit" | "upscale" | "video" | "animate" | "motion" | "edit_video";
 
 /** How a video template's clips are timed and sized. */
 export interface VideoSpec {

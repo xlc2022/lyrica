@@ -182,6 +182,8 @@ describe("video parts", () => {
       "v/minimax_h3_fl2va_pruned_int8_convrot.safetensors": H3, "v/minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors": H3_LORA,
       "v/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors": QWEN3VL_32B, "v/minimax_h3_video_vae_int8_convrot.safetensors": H3_VAE,
       "v/minimax_h3_audio_vae_fp32.safetensors": H3_AUDIO_VAE, "v/rife_v4.26.safetensors": RIFE,
+      "v/minimax_h3_ref2va_pruned_int8_convrot.safetensors": H3, "v/minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors": H3_LORA,
+      "v/minimax_h3_vfx_edit_v1.0_r128.safetensors": H3_LORA,
       "v/Wan2.2-T2V-A14B-HighNoise-Q5_K_M.gguf": wanGguf(16), "v/Wan2.2-I2V-A14B-LowNoise-Q5_K_M.gguf": wanGguf(36, true),
       "v/wan2.1_14B_SCAIL_2_int8_convrot.safetensors": SCAIL2, "v/wan2.1_SCAIL_2_DPO_lora_bf16.safetensors": WAN_LORA,
       "v/lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors": WAN_LORA, "v/clip_vision_h.safetensors": CLIP_VISION_H,
@@ -210,6 +212,10 @@ describe("video parts", () => {
       "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors": ["lora", "speed", "minimax-h3"],
       "minimax_h3_video_vae_int8_convrot.safetensors": ["vae", null, "minimax-h3"],
       "minimax_h3_audio_vae_fp32.safetensors": ["vae", "audio", "minimax-h3"],
+      // H3's ref2va checkpoint has fl2va's keys: its name, and its speed LoRA's, say which; the VFX Edit LoRA is an edit.
+      "minimax_h3_ref2va_pruned_int8_convrot.safetensors": ["diffusion", null, "minimax-h3-ref2va"],
+      "minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors": ["lora", "speed", "minimax-h3-ref2va"],
+      "minimax_h3_vfx_edit_v1.0_r128.safetensors": ["lora", "edit", "minimax-h3"],
       // A GGUF expert is told by the same tensors.
       "Wan2.2-T2V-A14B-HighNoise-Q5_K_M.gguf": ["diffusion", "high", "wan2.2-t2v-14b"],
       "Wan2.2-I2V-A14B-LowNoise-Q5_K_M.gguf": ["diffusion", "low", "wan2.2-i2v-14b"],
@@ -1277,6 +1283,64 @@ describe("the image API", () => {
     expect(s.lines.join("\n")).not.toContain(MARKER);
   });
 
+  it("edits a clip as the prompt says on H3's ref2va model, the clip and its sound anchoring every frame, and leaves nothing of it", async () => {
+    const s = await stack({ files: {
+      "v/minimax_h3_fl2va_pruned_int8_convrot.safetensors": H3, "v/minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors": H3_LORA,
+      "e/minimax_h3_ref2va_pruned_int8_convrot.safetensors": H3, "e/minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors": H3_LORA,
+      "e/minimax_h3_vfx_edit_v1.0_r128.safetensors": H3_LORA,
+      "v/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors": QWEN3VL_32B, "v/minimax_h3_video_vae_int8_convrot.safetensors": H3_VAE,
+      "v/minimax_h3_audio_vae_fp32.safetensors": H3_AUDIO_VAE,
+    } });
+    const { body } = await s.api("/host/v1/recipes?state=proposed");
+    const h3r: Recipe = body.recipes.find((r: Recipe) => r.arch === "minimax-h3");
+    const edit: Recipe = body.recipes.find((r: Recipe) => r.arch === "minimax-h3-ref2va");
+    // Each checkpoint gets its own speed LoRA; the edit recipe shares the encoder and VAEs, and can't chain clips.
+    expect(edit).toMatchObject({ template: "minimax-h3-edit", does: ["edit_video"], ready: true, video: { fps: 24, maxSeconds: 15, longestSeconds: 15, audio: true } });
+    const file = (r: Recipe, role: string, slot: string | null = null) => r.parts.find((x) => x.role === role && x.slot === slot)?.file;
+    expect([file(edit, "diffusion"), file(edit, "lora", "speed"), file(edit, "lora", "edit")]).toEqual([
+      "e/minimax_h3_ref2va_pruned_int8_convrot.safetensors", "e/minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors", "e/minimax_h3_vfx_edit_v1.0_r128.safetensors"]);
+    expect([file(h3r, "diffusion"), file(h3r, "lora", "speed")]).toEqual(["v/minimax_h3_fl2va_pruned_int8_convrot.safetensors", "v/minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors"]);
+    await s.api("/host/v1/recipes/confirm", { body: { ids: [h3r.id, edit.id] } });
+
+    // A 5-second 30 fps clip at 1280×720: its own shape at the recipe's area, and the most of H3's 17k + 5 frames it holds (120 → 107).
+    const made = await s.api("/host/v1/videos/create", { body: { recipe: edit.id, prompt: MARKER, source: clip(1280, 720, 150, 30).toString("base64"), seed: 3 } });
+    expect(made.status).toBe(200);
+    expect(made.body.video).toMatchObject({ frames: 107, fps: 24, audio: true, seed: 3 });
+    const sent = s.comfyFake.seen.prompts[0];
+    expect(sent.source.inputs).toEqual({ file: "lyrica-source.mp4" });
+    expect(sent.frames.inputs).toEqual({ video: ["source", 0], fps: 24, frames: 107 });
+    // The VFX Edit LoRA is prompted after its trigger, and its clip is a guide from frame 0, never a reference video.
+    expect(sent.instruction.inputs).toEqual({ string_a: "vfx_edit: ", string_b: MARKER, delimiter: "" });
+    expect(sent.cond.class_type).toBe("MiniMaxH3ReferenceToVideo");
+    expect(sent.cond.inputs).toMatchObject({ prompt: ["instruction", 0], width: 1344, height: 768, length: 107 });
+    expect(Object.keys(sent.cond.inputs).filter((k) => k.startsWith("ref_"))).toEqual(["ref_image_size"]);
+    expect(sent.anchor.inputs).toEqual({ positive: ["cond", 0], vae: ["load_vae", 0], audio_vae: ["load_vae_audio", 0], latent: ["cond", 1], image: ["frames", 0], audio: ["frames", 1], frame_idx: 0 });
+    expect(sent.lora_speed.inputs).toMatchObject({ model: ["load_model", 0], lora_name: "e/minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors" });
+    expect(sent.lora_edit.inputs).toMatchObject({ model: ["lora_speed", 0], lora_name: "e/minimax_h3_vfx_edit_v1.0_r128.safetensors", strength_model: 1 });
+    expect(sent.guide.inputs).toEqual({ model: ["lora_edit", 0], conditioning: ["anchor", 0] });
+    expect(sent.schedule.inputs).toMatchObject({ steps: 4, scheduler: "simple" });
+    expect(sent.sampler.inputs.sampler_name).toBe("euler");
+    expect(JSON.stringify(sent)).not.toContain("$");
+    // The clip is written over once the job is done.
+    expect(s.comfyFake.seen.uploads).toEqual(["lyrica-source.mp4", "lyrica-source.mp4"]);
+    expect(s.comfyFake.seen.uploadBodies[1]!.includes("mvhd")).toBe(false);
+
+    // Fewer seconds edit the clip's start; a long clip is cut to H3's longest.
+    await s.api("/host/v1/videos/create", { body: { recipe: edit.id, prompt: "x", source: clip(1280, 720, 150, 30).toString("base64"), duration: 2 } });
+    expect(s.comfyFake.seen.prompts[1].cond.inputs.length).toBe(56);
+    await s.api("/host/v1/videos/create", { body: { recipe: edit.id, prompt: "x", source: clip(1344, 768, 480, 24).toString("base64") } });
+    expect(s.comfyFake.seen.prompts[2].cond.inputs.length).toBe(362);
+
+    const refused = async (extra: object, recipe = edit.id) => (await s.api("/host/v1/videos/create", { body: { recipe, prompt: "x", ...extra } })).body.error.message;
+    expect(await refused({})).toBe("That recipe edits a clip: give it source.");
+    expect(await refused({ source: clip(1280, 720, 150, 30).toString("base64") }, h3r.id)).toBe("That recipe doesn't edit clips.");
+    expect(await refused({ source: clip(1280, 720, 10, 30).toString("base64") })).toMatch(/too short to edit/);
+    expect(await refused({ source: clip(1280, 720, 150, 30).toString("base64"), aspectRatio: "1:1" })).toMatch(/keeps its own shape/);
+    expect(await refused({ source: clip(1280, 720, 150, 30).toString("base64"), image: PNG.toString("base64") })).toMatch(/source takes no image/);
+    expect(await refused({ source: PNG.toString("base64") })).toMatch(/video track/);
+    expect(s.lines.join("\n")).not.toContain(MARKER);
+  });
+
   it("makes a clip and its poster from a video recipe, timed and sized by its template", async () => {
     const W = "lyrica/huggingface/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/split_files";
     const s = await stack({ files: {
@@ -1438,7 +1502,7 @@ describe("the image API", () => {
     // The test folder holds two of its parts at their download paths, but not its diffusion model.
     expect(z.parts.map((p: { present: boolean }) => p.present)).toEqual([false, true, true]);
     expect(body.starters.map((st: { id: string }) => st.id)).toEqual([
-      "flux-schnell", "krea2-raw", "krea2-turbo-uncensored", "krea2-turbo", "ltx-2.5-distilled", "minimax-h3-turbo", "qwen-image-2.1-turbo", "qwen-image-edit", "qwen-image", "scail-2", "sdxl", "seedvr2-3b", "seedvr2-7b",
+      "flux-schnell", "krea2-raw", "krea2-turbo-uncensored", "krea2-turbo", "ltx-2.5-distilled", "minimax-h3-edit", "minimax-h3-turbo", "qwen-image-2.1-turbo", "qwen-image-edit", "qwen-image", "scail-2", "sdxl", "seedvr2-3b", "seedvr2-7b",
       "wan2.2-i2v-14b-q5", "wan2.2-i2v-14b", "wan2.2-t2v-14b-q5", "wan2.2-t2v-14b", "wan2.2-ti2v-5b", "z-image-turbo",
     ]);
   });
