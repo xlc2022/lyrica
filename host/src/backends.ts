@@ -233,13 +233,19 @@ export class LlamaCpp implements Backend {
       if (!memory || memory.status === "measured" || memory.status === "failed" || Date.now() > end) break;
       await new Promise((r) => setTimeout(r, 500));
     }
-    // Without one the scheduler plans from its estimate, so the log says why: the router's measurement failed
-    // (it doesn't say more), wasn't done within the wait, or the router has none for this model.
+    // A measurement that failed means the measure child couldn't build the model at this preset (it doesn't say
+    // more); the load would most likely die the same way, with the estimate as its only guide, so it is refused.
+    if (memory?.status === "failed") {
+      this.forget(model);
+      throw new HostError(413, "too_big", `llama.cpp couldn't measure this model with a context of ${contextOf(model, settings)} tokens, so its load would most likely fail; lower the context length or the batch size.`);
+    }
+    // Without one the scheduler plans from its estimate, so the log says why: the measurement wasn't done within
+    // the wait, the router has none for this model, or it gave no figure for a GPU.
     const missing = (reason: string) => {
       this.o.log("not measured", { model: model.id, reason });
       return null;
     };
-    if (memory?.status !== "measured" || !memory.min) return missing(memory?.status === "failed" ? "failed" : memory ? `still ${memory.status} after ${Math.round(this.o.measureTimeoutMs / 1000)} s` : "no measurement");
+    if (memory?.status !== "measured" || !memory.min) return missing(memory ? `still ${memory.status} after ${Math.round(this.o.measureTimeoutMs / 1000)} s` : "no measurement");
     const measured: Record<number, Measured> = {};
     for (const g of at.gpus) {
       const d = memory.min.devices.find((x) => x.kind === "device" && x.name === this.o.device(g));

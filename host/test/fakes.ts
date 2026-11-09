@@ -113,6 +113,8 @@ export function textModel(id: string, gb: number, over: Partial<TextModel> = {})
  */
 export async function fakeLlamaRouter(loadState = "loaded") {
   const status = new Map<string, string>();
+  // A model's measurement as the router reports it (`memory` on GET /models), where a test sets one.
+  const memory = new Map<string, { status: string; min?: unknown }>();
   const server = http.createServer(async (req, res) => {
     const chunks: Buffer[] = [];
     for await (const c of req) chunks.push(c as Buffer);
@@ -123,7 +125,7 @@ export async function fakeLlamaRouter(loadState = "loaded") {
       res.end(JSON.stringify(b));
     };
     // loadState "crashed": the server exited while loading, as the router reports it.
-    if (url.pathname === "/models") return json(200, { data: [...status].map(([id, value]) => ({ id, status: value === "crashed" ? { value: "unloaded", failed: true, exit_code: 134 } : { value } })) });
+    if (url.pathname === "/models") return json(200, { data: [...status].map(([id, value]) => ({ id, status: value === "crashed" ? { value: "unloaded", failed: true, exit_code: 134 } : { value }, ...(memory.has(id) ? { memory: memory.get(id) } : {}) })) });
     if (url.pathname === "/models/load") {
       status.set(body.model, loadState);
       return json(200, { success: true });
@@ -153,7 +155,7 @@ export async function fakeLlamaRouter(loadState = "loaded") {
     json(404, {});
   });
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
-  return { server, status, url: `http://127.0.0.1:${(server.address() as AddressInfo).port}` };
+  return { server, status, memory, url: `http://127.0.0.1:${(server.address() as AddressInfo).port}` };
 }
 
 export const TOKEN = "hf_marker_token_8812";
