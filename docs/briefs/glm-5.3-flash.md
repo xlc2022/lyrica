@@ -2,7 +2,7 @@
 
 **Status:** Starter merged as #656 (d020902); download retries as #661 (9c7752e);
 measurements over a GPU's room set aside in #681 (46b5674); the Q4 starter
-in progress.
+loaded on the two-card host on 2026-11-09 (below).
 
 Owner: the "Add GLM 5.3 Flash" thread. Tests: on the development
 deployment's host with two RTX PRO 6000 Blackwell cards (102 GB each).
@@ -59,6 +59,32 @@ file's SHA-256 against the hub's as it downloads.
    needing 208 GiB, so on two 96 GB GPUs about 20 GiB of expert weights
    stay in RAM.
 
+## Measured
+
+GLM 5.3 Flash (Q4) on the development deployment's two-card host, 2026-11-09,
+after the measured placement (#848), the load fixes (#850, #857) and load
+progress (#860). Settings: context 261632, MTP on, GPUs chosen
+automatically, system RAM allowance 32 GiB. The host read the model
+straight from disk (`load-mode = dio`), as its 200 GB is more than the
+host's RAM.
+
+| | Loaded |
+|---|---|
+| GPU 0 (RTX PRO 6000, 95.6 GiB) | 82.5 GB, next to a 4.8 GB embedding model |
+| GPU 1 (RTX PRO 6000 Max-Q, 95.6 GiB) | 87.5 GB |
+| System RAM (allowance 32 GiB) | 28.5 GB, as planned; llama-server 32 GiB resident |
+
+Both GPUs end up about 90 GB used, which the single-GPU estimate (file
+size × 1.05 plus a cache guess) could never have placed. Most of the load
+is reading the files from a SATA SSD at about 437 MB/s, about eight minutes
+for 200 GB, with the dashboard's percentage climbing the whole way.
+
+Speed, from the Models page after a few chats: the Q4 with its experts in
+RAM generates at about 30 tok/s and reads prompts at about 400 tok/s. The
+IQ3_XXS copy on the same host, wholly on the GPUs, does about 67 tok/s and
+900 tok/s. The spill costs a little over half the speed for a step up in
+quality.
+
 ## Out of scope
 
 - How spilling works: its own thread ("Let models spill into system RAM").
@@ -80,6 +106,5 @@ file's SHA-256 against the hub's as it downloads.
 
 Done: starter, fit check, docs (#656); download retries (#661); a saved
 measurement over a GPU's room no longer blocks a model (#681); the Q4
-starter. Next: load both starters on the development host, check the
-context the host picks and the Q4's speed with its experts in RAM, and
-record the results here.
+starter, loaded on the development host with 261632 of context (above).
+Its speed is recorded above. Nothing next.

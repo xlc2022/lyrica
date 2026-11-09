@@ -74,6 +74,56 @@ describe("the GPU queue", () => {
     expect((await gpu()).models[0]).not.toHaveProperty("loading");
   });
 
+  it("stops a load on Unload, frees its GPU and ends the requests waiting for it", async () => {
+    const logged: string[] = [];
+    const { scheduler, llamacpp, gpus } = setup([24], { log: (event) => logged.push(event) });
+    llamacpp.loadMs = 10_000;
+    const m = textModel("m", 10);
+    const load = scheduler.loadNow(m).catch((e) => e);
+    await until(() => scheduler.placement("m")?.state === "loading");
+    const chat = scheduler.run(m, "chat", async () => "x").catch((e) => e);
+    await scheduler.unloadNow("m");
+    expect(await load).toMatchObject({ code: "load_cancelled", message: "The model's load was cancelled." });
+    expect(await chat).toMatchObject({ code: "load_cancelled" });
+    expect(scheduler.placement("m")).toBeNull();
+    expect(gpus.loaded.size).toBe(0);
+    expect(llamacpp.calls).toEqual(["load m@0", "stopped m"]);
+    expect(logged).toContain("load cancelled");
+    expect(logged).not.toContain("load failed");
+    // The next Load starts afresh.
+    llamacpp.loadMs = 0;
+    await scheduler.loadNow(m);
+    expect(scheduler.placement("m")?.state).toBe("loaded");
+  });
+
+  it("unloads a model whose server can't stop mid-load once it has loaded", async () => {
+    const { scheduler, llamacpp, gpus } = setup();
+    llamacpp.loadMs = 100;
+    llamacpp.stoppable = false;
+    const load = scheduler.loadNow(textModel("m", 10)).catch((e) => e);
+    await until(() => scheduler.placement("m")?.state === "loading");
+    await scheduler.unloadNow("m");
+    expect(await load).toMatchObject({ code: "load_cancelled" });
+    expect(scheduler.placement("m")).toBeNull();
+    expect(gpus.loaded.size).toBe(0);
+    expect(llamacpp.calls).toEqual(["load m@0", "unload m"]);
+  });
+
+  it("leaves a model unloaded when Unload stops its reload", async () => {
+    const { scheduler, llamacpp, gpus } = setup();
+    const m = textModel("m", 10);
+    await scheduler.loadNow(m);
+    llamacpp.loadMs = 10_000;
+    const reload = scheduler.reload(m).catch((e) => e);
+    await until(() => llamacpp.calls.filter((c) => c.startsWith("load")).length === 2);
+    await scheduler.unloadNow("m");
+    expect(await reload).toMatchObject({ code: "load_cancelled" });
+    expect(scheduler.placement("m")).toBeNull();
+    expect(gpus.loaded.size).toBe(0);
+    // No restoring of the previous instance.
+    expect(llamacpp.calls.filter((c) => c.startsWith("load"))).toHaveLength(2);
+  });
+
   it("keeps the serving instance when reload cannot fit", async () => {
     const { scheduler, llamacpp } = setup();
     await scheduler.start([]);

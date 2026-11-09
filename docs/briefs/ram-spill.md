@@ -113,3 +113,13 @@ of the fit check, and the setting `layerTable: "ram"` (Serving, **Embedding
 table**) loads it into system RAM from the same allowance. Found when
 Qwen3.8-Flash-Next's 23 GiB table, crowded out of the page cache by
 downloads, made prompts read at about 3 tokens a second with the GPUs idle.
+
+Follow-up (prompt speed): GLM 5.3 Flash UD-Q4_K_XL with 28.5 GB of experts
+in RAM read prompts at about 400 tokens a second against 900 for a copy
+wholly on the GPUs. llama.cpp computes a prompt step of 32 tokens or more
+on the GPU, copying the experts in RAM across for each step, so with the
+default step of 512 tokens the 28.5 GB crossed PCIe once per 512 tokens.
+The host now gives such a model a prompt step of its whole batch
+(`ubatch-size` = `batchSize`, 2048 unless set); a larger **Batch size** in
+Serving goes further, at the cost of compute buffers the measurement
+counts. Generation speed is unchanged.

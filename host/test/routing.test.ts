@@ -351,6 +351,24 @@ describe("the vLLM backend", () => {
     }
   });
 
+  it("stops a llama.cpp load when its signal aborts, leaving the router unloaded", async () => {
+    const m = { ...(model as object), server: "llamacpp", format: "gguf" } as never;
+    const stuck = await fakeLlamaRouter("loading");
+    const serving = mkdtempSync(join(tmpdir(), "lyrica-serving-"));
+    try {
+      const llama = new LlamaCpp({ url: stuck.url, serving, models: "/models", device: (i) => `CUDA${i}` });
+      const abort = new AbortController();
+      const load = llama.load(m, at, { placement: { mode: "auto" } }, undefined, abort.signal);
+      await new Promise((r) => setTimeout(r, 200));
+      abort.abort();
+      await expect(load).rejects.toMatchObject({ code: "load_cancelled" });
+      expect(stuck.status.get((model as { id: string }).id)).toBe("unloaded");
+      expect(readFileSync(join(serving, "llamacpp.ini"), "utf8")).not.toContain(`[${(model as { id: string }).id}]`);
+    } finally {
+      stuck.server.close();
+    }
+  });
+
   it("gives a llama.cpp load time while it keeps reading, and names what was read when it stops", async () => {
     const m = { ...(model as object), server: "llamacpp", format: "gguf" } as never;
     const stuck = await fakeLlamaRouter("loading");

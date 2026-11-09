@@ -20,14 +20,17 @@ export interface Backend {
   /**
    * Loads the model on the placement's GPUs with its settings, and resolves
    * when it answers. With `progress`, a server that keeps reading is given
-   * time; without it, the load has a fixed time.
+   * time; without it, the load has a fixed time. A server that can stop
+   * mid-load stops when `signal` aborts (Unload while loading), leaving
+   * nothing loaded, and rejects; one that can't finishes and the scheduler
+   * unloads it.
    */
-  load(model: TextModel, placement: Option, settings: ModelSettings, progress?: LoadProgress): Promise<void>;
+  load(model: TextModel, placement: Option, settings: ModelSettings, progress?: LoadProgress, signal?: AbortSignal): Promise<void>;
   /**
    * The server's own measurement of what the model would take on each of the
    * placement's GPUs, before loading it; null when the server has none.
    */
-  measure?(model: TextModel, placement: Option, settings: ModelSettings): Promise<Record<number, Measured> | null>;
+  measure?(model: TextModel, placement: Option, settings: ModelSettings, signal?: AbortSignal): Promise<Record<number, Measured> | null>;
   /** Forgets a placement that was measured but won't be loaded. */
   forget?(model: TextModel): void;
   unload(model: TextModel): Promise<void>;
@@ -38,6 +41,8 @@ export interface Backend {
 }
 
 const unavailable = (what: string) => new HostError(503, "model_unavailable", `${what} didn't answer.`);
+/** A load stopped by Unload while it loaded: it and every request waiting on it end with this. */
+export const loadCancelled = () => new HostError(409, "load_cancelled", "The model's load was cancelled.");
 
 export function writeAtomic(path: string, text: string): void {
   writeFileSync(`${path}.tmp`, text, { mode: 0o644 });
@@ -152,8 +157,11 @@ export class LlamaCpp implements Backend {
       const parallel = concurrentOf(model, s);
       if (parallel) lines.push(`parallel = ${parallel}`, "kv-unified = true");
       if (s.batchSize) lines.push(`batch-size = ${s.batchSize}`);
+      // Experts kept in system RAM cross to a GPU once per step of a prompt (llama.cpp computes a step of 32 tokens or
+      // more there), so a prompt is read in steps of the whole batch, not llama.cpp's 512: each crossing serves more tokens.
+      if (at.cpuMoe) lines.push(`ubatch-size = ${s.batchSize ?? 2048}`);
       // A CMP reads a prompt about 6% faster in steps of 2048 tokens than in llama.cpp's 512, up to the batch size.
-      if (at.gpus.some(this.o.cmp)) lines.push(`ubatch-size = ${Math.min(s.batchSize ?? 2048, 2048)}`);
+      else if (at.gpus.some(this.o.cmp)) lines.push(`ubatch-size = ${Math.min(s.batchSize ?? 2048, 2048)}`);
       if (s.chatTemplate) lines.push(`chat-template-file = ${this.templates.write(s.chatTemplate)}`);
       if (model.kind === "embedding") lines.push("embeddings = true");
       if (usesVision(model, s)) lines.push(`mmproj = ${this.o.models}/${model.mmproj}`);
@@ -206,7 +214,7 @@ export class LlamaCpp implements Backend {
    * done in time), so the estimate stands. The router leaves the vision
    * projector out, so it is added on the first GPU.
    */
-  async measure(model: TextModel, at: Option, settings: ModelSettings): Promise<Record<number, Measured> | null> {
+  async measure(model: TextModel, at: Option, settings: ModelSettings, signal?: AbortSignal): Promise<Record<number, Measured> | null> {
     this.placed.set(model.id, { model, at, settings });
     this.writePreset();
     await this.reload();
@@ -218,6 +226,7 @@ export class LlamaCpp implements Backend {
       const res = await fetch(`${this.o.url}/models`).catch(() => null);
       const body = res ? ((await res.json().catch(() => null)) as { data?: { id: string; memory?: Memory }[] } | null) : null;
       memory = body?.data?.find((m) => m.id === model.id)?.memory;
+      if (signal?.aborted) throw loadCancelled();
       if (!memory || memory.status === "measured" || memory.status === "failed" || Date.now() > end) break;
       await new Promise((r) => setTimeout(r, 500));
     }
@@ -240,11 +249,12 @@ export class LlamaCpp implements Backend {
     if (this.placed.delete(model.id)) this.writePreset();
   }
 
-  async load(model: TextModel, at: Option, settings: ModelSettings, progress?: LoadProgress): Promise<void> {
+  async load(model: TextModel, at: Option, settings: ModelSettings, progress?: LoadProgress, signal?: AbortSignal): Promise<void> {
     this.placed.set(model.id, { model, at, settings });
     this.writePreset();
     try {
       await this.reload();
+      if (signal?.aborted) throw loadCancelled();
       await this.post("/models/load", { model: model.id });
       // The router marks a server that exited while loading as unloaded with its exit code.
       let failed: { exit_code?: number } | null = null;
@@ -256,6 +266,7 @@ export class LlamaCpp implements Backend {
       let since = Date.now();
       let read = 0;
       for (;;) {
+        if (signal?.aborted) throw loadCancelled();
         const s = await this.status(model.id).catch(() => undefined);
         if (s?.value === "loaded") break;
         if (s !== undefined && (!s || s.failed || s.value === "unloaded")) {
@@ -285,8 +296,9 @@ export class LlamaCpp implements Backend {
         throw new HostError(503, "model_unavailable", exit_code ? `llama.cpp's server for this model exited with code ${exit_code} while loading.` : "llama.cpp couldn't load this model.");
       }
     } catch (e) {
-      // Leave nothing half-loaded behind.
+      // Leave nothing half-loaded behind: the router stops a server still loading, and a cancelled load waits until it has gone.
       await this.post("/models/unload", { model: model.id }).catch(() => {});
+      if (signal?.aborted) await poll(async () => ((await this.status(model.id))?.value ?? "unloaded") === "unloaded", 60_000, "llama.cpp").catch(() => {});
       this.placed.delete(model.id);
       this.writePreset();
       throw e;
@@ -381,7 +393,7 @@ export class Vllm implements Backend {
     return this.o.url.replace("{port}", String(port));
   }
 
-  async load(model: TextModel, at: Option, settings: ModelSettings): Promise<void> {
+  async load(model: TextModel, at: Option, settings: ModelSettings, _progress?: LoadProgress, signal?: AbortSignal): Promise<void> {
     if (model.remoteCode) throw new HostError(403, "refused", "This model needs trust_remote_code, which the host never allows.");
     const port = this.freePort();
     const attempt = randomUUID();
@@ -389,6 +401,8 @@ export class Vllm implements Backend {
     this.write();
     try {
       await poll(async () => {
+        // Unload while it starts: taking it out of the file stops it.
+        if (signal?.aborted) throw loadCancelled();
         // A server that exited while starting won't come up: stop waiting.
         if (this.failed(model.id, attempt)) {
           throw new HostError(503, "model_unavailable", `vLLM couldn't start ${model.id} with these settings; try a lower context length or a larger memory share.`);

@@ -34,6 +34,7 @@ on `/v1`, where OpenAI clients read `error.message`.
 | 403 | `refused` | Not allowed: a pickle file, a delete outside the download record, a dashboard-only action. |
 | 404 | `not_found` | No such model, recipe, download or file. |
 | 409 | `in_use` | The model or file is in use by a running request, or a link is already downloading. |
+| 409 | `load_cancelled` | The model's load was stopped by an unload while it loaded: the Load itself and every request that was waiting for it. |
 | 409 | `above_recommended` | A stretch above the factor the model's card documents, saved without `anyway`. |
 | 413 | `too_big` | The model can't fit on any GPU it may use, even with everything idle unloaded. |
 | 503 | `paused` | The host is paused. Lyrica uses her fallbacks. |
@@ -306,7 +307,14 @@ seconds of audio.
   `load failed` with its code and message, for when the requester has given
   up waiting.
 - `POST /host/v1/models/unload` `{ "model": "<id>" }`: unloads it from all
-  its GPUs; `in_use` while a request is running on it.
+  its GPUs; `in_use` while a request is running on it. On a model still
+  loading (or being measured for its load, or reloading) it stops the load:
+  the server is told to unload it, which ends a llama.cpp server mid-read
+  (a vLLM one leaves the supervisor's file; a server that can't stop
+  mid-load finishes and is then unloaded), its GPUs are freed, the model
+  stays unloaded (a reload's previous instance isn't brought back), and the
+  Load and every request waiting for it end with `load_cancelled`. It
+  answers once the load has stopped.
 - `POST /host/v1/models/reload` `{ "model": "<id>" }`: applies its saved
   settings now, by unloading and loading it again; `in_use` while busy.
   A refused placement leaves the previous instance serving. If the new load
@@ -451,7 +459,8 @@ embeddings and dictation receive neither parser.
   context (llama.cpp gets `kv-unified = true`), and the model list reports
   the number as `parallel`, which the daemon never exceeds.
 - Both: `batchSize` (32 to 65536: llama.cpp's batch size, vLLM's batched
-  tokens; on a CMP 100-210 llama.cpp also reads prompts in steps of up to
+  tokens; a llama.cpp model with experts in system RAM reads prompts in
+  steps of the whole batch, and on a CMP 100-210 in steps of up to
   2048 of them), `chatTemplate` (a Jinja template, at most 64 kB, used instead of
   the model's own).
 - A setting for the other server, or one not listed, is `invalid`.

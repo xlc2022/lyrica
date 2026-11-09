@@ -15,8 +15,8 @@ which `install.sh` can run for you in Docker: [searxng.md](searxng.md).
 **What has and hasn't been exercised.** The NixOS way runs the
 development deployment, a real NixOS host; whether `nix/check-host.sh`
 has passed there isn't recorded, so run it on your own machine. CI also
-builds the module and runs the sandbox tests with its tools
-(`nix flake check`). The Debian way hasn't run on a real host: no
+builds the module (`nix flake check`) and runs the two sandbox tests that
+need its tools; the rest of the sandbox tests run with Ubuntu's. The Debian way hasn't run on a real host: no
 automated check runs `install.sh`, and it has never been run on a fresh
 Debian host, nor its unit and hardening on an LXC container (the daemon
 brief's handoff says so). Its steps below are read from the script and
