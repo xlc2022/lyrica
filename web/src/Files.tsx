@@ -164,6 +164,8 @@ export function FilesPage({ ctx, pool, threadId, threads, path }: { ctx: ShellCo
     return out;
   }, [tab, media, filter, hits, listings, open, roots]);
   const { sel, setSel, pick: choose } = useSelection(visible);
+  const treeEl = useRef<HTMLDivElement>(null);
+  const treeBox = useBoxSelect(treeEl, sel, setSel);
   const pick = (e: React.MouseEvent, entry: FileEntry) => choose(e, entry.path);
 
   const openMenu = (e: React.MouseEvent | { clientX: number; clientY: number }, target: Target) => {
@@ -255,7 +257,7 @@ export function FilesPage({ ctx, pool, threadId, threads, path }: { ctx: ShellCo
     }
     return (
       <div key={e.path} className="frow">
-        <button type="button" className={selected ? "sel" : undefined} style={{ paddingLeft: 6 + depth * 14 }}
+        <button type="button" className={selected ? "sel" : undefined} data-path={e.path} style={{ paddingLeft: 6 + depth * 14 }}
           aria-current={!isDir && current?.path === e.path ? "true" : undefined} aria-expanded={isDir ? open.has(e.path) : undefined} aria-pressed={selected || undefined}
           onClick={(ev) => { if (pick(ev, e)) return; if (isDir) toggle(e.path); else view(e); }}
           {...press(target)}>
@@ -346,7 +348,11 @@ export function FilesPage({ ctx, pool, threadId, threads, path }: { ctx: ShellCo
         <>
           <div className="fsearch"><input type="search" aria-label="Search files" placeholder="Search files" value={q} onChange={(e) => setQ(e.target.value)} /></div>
           <div className="fbody">
-            <div className="ftree" role="tree" aria-label="Folders and files" {...press({ kind: "space", dir: cwd })}>{tree}</div>
+            <div ref={treeEl} className="ftree" role="tree" aria-label="Folders and files" {...both(press({ kind: "space", dir: cwd }), treeBox.drag)}>
+              {tree}
+              {/* Last, so the tree's first-child rules still see the first folder. */}
+              {treeBox.box && <div className="selbox" aria-hidden="true" style={treeBox.box} />}
+            </div>
           </div>
         </>
       ) : (
@@ -420,24 +426,36 @@ function MediaGrid({ kind, entries, filter, onFilter, links, sel, onSelect, onPi
         </div>
       </div>
       <div ref={grid} className="igrid" aria-label={TAB_LABEL[kind]} {...drag}>
-        {box && <div className="selbox" aria-hidden="true" style={box} />}
         {!entries ? <p className="empty">Loading…</p> : !listed?.length ? <p className="empty">No {kind} yet</p> : listed.map((i) => (
           <button key={i.path} type="button" aria-label={i.name} data-path={i.path} className={sel.has(i.path) ? "sel" : undefined} aria-pressed={sel.has(i.path) || undefined}
             onClick={(e) => { if (!onPick(e, i)) onOpen(i); }} {...press(i)}>
             {kind === "videos" ? <VideoThumb path={i.path} files={links} /> : <Thumb path={i.path} alt="" files={links} />}<span className="meta mono">{i.name}</span>
           </button>
         ))}
+        {box && <div className="selbox" aria-hidden="true" style={box} />}
       </div>
     </>
   );
 }
+/** Two sets of event handlers as one: where both have a handler for an event, each runs, `a`'s first. */
+function both(a: Record<string, unknown>, b: Record<string, unknown>) {
+  const out: Record<string, unknown> = { ...a, ...b };
+  for (const k of Object.keys(a)) {
+    const f = a[k], g = b[k];
+    if (typeof f === "function" && typeof g === "function") out[k] = (...args: unknown[]) => { f(...args); g(...args); };
+  }
+  return out;
+}
+
 /** Past this many pixels a press that moves is a drag, not a click. */
 const DRAG_START = 5;
+/** How far into a row or tile the box must reach to take it. */
+const SLACK = 2;
 /** Within this many pixels of the grid's top or bottom edge a drag scrolls it. */
 const EDGE = 32;
 
 /**
- * Click and drag with a mouse across the grid draws a box, and the tiles it touches are the selection; holding Ctrl,
+ * Click and drag with a mouse across the Files tree or the Images and Videos grid draws a box, and the rows or tiles it touches are the selection; holding Ctrl,
  * Cmd or Shift adds them to the selection already there (docs/ux.md §6). A press that doesn't move stays a click, and
  * the click that ends a drag is swallowed so no tile opens. Touch keeps scrolling and the long press.
  */
@@ -463,7 +481,8 @@ function useBoxSelect(grid: React.RefObject<HTMLDivElement | null>, sel: Set<str
     for (const t of el.querySelectorAll<HTMLElement>("button[data-path]")) {
       const b = t.getBoundingClientRect();
       const tl = b.left - r.left + el.scrollLeft, tt = b.top - r.top + el.scrollTop;
-      if (tl < right && tl + b.width > left && tt < bottom && tt + b.height > top) next.add(t.dataset.path!);
+      // A row or tile counts once the box is a couple of pixels into it, not when their edges merely meet.
+      if (tl + SLACK < right && tl + b.width - SLACK > left && tt + SLACK < bottom && tt + b.height - SLACK > top) next.add(t.dataset.path!);
     }
     onSelect(next);
   };

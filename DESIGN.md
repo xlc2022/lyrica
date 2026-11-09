@@ -187,8 +187,9 @@ Each user has two pools of memory.
       Attach to message, Show in thread, Download, Copy path, Rename and
       Delete on a file; Upload and New folder on a folder or empty space.
     - Ctrl- or Cmd-click and Shift-click select several (Select in the menu
-      on a phone); on Images and Videos a mouse drag also draws a box that
-      selects the tiles it touches. The menu then acts on all of them:
+      on a phone); a mouse drag across the tree or the Images and Videos
+      grid also draws a box that selects what it touches. The menu then
+      acts on all of them:
       Attach, Download as zip, Copy paths, Delete.
     - Uploading from the panel, or dropping files on it, adds them to the
       thread's folder without sending a message. Her next turn gets one line
