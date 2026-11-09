@@ -3,9 +3,10 @@ import { chromium, defineConfig, devices } from "@playwright/test";
 
 // Each project gets its own lyricad (web/e2e/serve.ts), so every one starts locked, and the projects run side by
 // side, one worker each: each web-*.spec.ts file at phone and at desktop size, and the setup page. Keep one spec
-// file per project, since two files of a project would share its lyricad; a new web-*.spec.ts file goes in SPECS.
+// file per project, since two files of a project would share its lyricad; a new web-*.spec.ts file goes in SPECS
+// and in the e2e job's matrix (.github/workflows/ci.yml).
 // Build the UI first: npm run build && npm run e2e -w @lyrica/web
-const SPECS = ["chat", "projects", "admin"];
+const SPECS = ["chat", "workspace", "projects", "admin"];
 const sizes = [
   { size: "phone", use: { ...devices["iPhone 13"], viewport: { width: 390, height: 844 }, defaultBrowserType: "chromium" as const } },
   { size: "desktop", use: { viewport: { width: 1280, height: 800 } } },
@@ -19,7 +20,7 @@ const all = [
   { name: "setup", port: BASE + SPECS.length * 2, use: { viewport: { width: 1280, height: 800 } }, testMatch: /setup\.spec\.ts/, setup: true },
 ];
 // E2E_PROJECTS names the projects to run, comma-separated (E2E_PROJECTS=phone-chat,desktop-chat): only their lyricads
-// start, where --project alone would start all seven. CI runs each spec's two sizes as a job of its own this way.
+// start, where --project alone would start all nine. CI runs each spec's two sizes as a job of its own this way.
 const chosen = (process.env.E2E_PROJECTS ?? "").split(",").map((s) => s.trim()).filter(Boolean);
 const unknown = chosen.filter((name) => !all.some((s) => s.name === name));
 if (unknown.length) throw new Error(`E2E_PROJECTS names no project: ${unknown.join(", ")} (have ${all.map((s) => s.name).join(", ")})`);
