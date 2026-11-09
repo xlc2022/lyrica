@@ -1,6 +1,6 @@
 # Brief: one e2e job per spec file
 
-**Status:** Built, in review.
+**Status:** Merged as #864 (e9be3641).
 
 **Branch:** `claude/project-thread-5aac8y-e2e`. **Asked for:** by the
 operator, 2026-11-09, after the split in
@@ -38,6 +38,9 @@ docs/ci.md, AGENTS.md (running one e2e test), docs/web.md.
 
 ## Handoff
 
-Done: the matrix, the config variable, the docs. Next: PR review, then
-record the measured times here and decide whether the chat spec needs
-splitting. Open questions: none.
+Done: the matrix, the config variable, the docs, merged. The PR's own run
+took 6 min 34 s from start to end (was 9 min 43 s after #833): e2e chat
+5 min 23 s, admin 3 min 51 s, projects 2 min 52 s, check 4 min 40 s, nix
+6 min 23 s. The nix job is now the longest, and most of its time is
+restoring the Nix store cache (1 to 6 minutes across runs), so the chat
+spec needs no split until that is shorter. Open questions: none.
