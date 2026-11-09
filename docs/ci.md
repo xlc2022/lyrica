@@ -68,7 +68,8 @@ self-hosted runners, which no workflow uses at the moment.
   and runs only the jobs it touches; the others show as skipped, which
   counts as passed:
   - check (typecheck and unit tests) and e2e (the Playwright tests, one
-    job per spec file: `e2e (chat)`, `e2e (projects)`, `e2e (admin)`),
+    job per spec file: `e2e (chat)`, `e2e (workspace)`, `e2e (projects)`,
+    `e2e (admin)`),
     side by side: anything but `docs/` and the top-level Markdown files.
     `persona/` is her seed, so it counts. Together on one runner they took
     about 14.5 minutes, 9 of them Playwright; apart, each sets up its own
@@ -80,11 +81,15 @@ self-hosted runners, which no workflow uses at the moment.
   - host-stack: `host/` only.
 
   A change under `.github/`, or a diff that can't be read, runs all three.
-  Each e2e job runs one `web/e2e/web-*.spec.ts` file (chat, projects or
-  admin) at phone and at desktop size, two Playwright projects side by
-  side, each against its own lyricad; the `projects` job runs the setup
-  page too. A spec's tests run one after another, so the longest spec
-  sets the run's time. The job picks its projects with `E2E_PROJECTS`
+  Each e2e job runs one `web/e2e/web-*.spec.ts` file (chat, workspace,
+  projects or admin) at phone and at desktop size, two Playwright
+  projects side by side, each against its own lyricad; the `projects` job
+  runs the setup page too. A spec's tests run one after another, so the
+  longest spec sets the run's time: the chat tests were the longest and
+  are two files of about equal length, `web-chat.spec.ts` (a thread's
+  messages, cards, tools and modes) and `web-workspace.spec.ts` (the
+  composer and header, search, memory, settings, accounts, project
+  threads, sources). The job picks its projects with `E2E_PROJECTS`
   (`web/playwright.config.ts`), which also keeps the other lyricads from
   starting. When an e2e test fails, the run keeps its
   Playwright trace for 7 days as the artifact `e2e-traces-<spec>-<attempt>`
