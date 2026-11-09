@@ -1,6 +1,6 @@
 # Brief: the unit tests in three shards
 
-**Status:** Built, in review.
+**Status:** Merged as #875 (b4a94032).
 
 **Branch:** `claude/project-thread-5aac8y-check`. **Asked for:** by the
 operator, 2026-11-09, after [ci-chat-split.md](ci-chat-split.md) left the
@@ -43,5 +43,11 @@ docs/ci.md.
 
 ## Handoff
 
-Done: the matrix, the docs.
-Next: PR review, then record the measured time here. Open questions: none.
+Done: the matrix, the docs; merged 2026-11-09. Measured on the PR's
+run: 65 files in each shard, 712, 632 and 618 tests, Vitest 98 s, 78 s
+and 116 s, the jobs 2:22, 1:58 and 2:34; on main's first run with this
+and #872 (b4a94032), 2:12, 1:54 and 1:59. That run's jobs took 3:47 from
+first start to last end, where the audit began at about 15 minutes: the
+nix and host-stack jobs (3:46 each) and the e2e jobs (3:01 to 3:34) now
+end together, so the next second off needs all of them. Open questions:
+none.

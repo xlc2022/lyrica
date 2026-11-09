@@ -1,6 +1,6 @@
 # Brief: the chat e2e spec in two files
 
-**Status:** Built, in review.
+**Status:** Merged as #872 (e652a9a6).
 
 **Branch:** `claude/project-thread-5aac8y-chat`. **Asked for:** by the
 operator, 2026-11-09, after [ci-nix-job.md](ci-nix-job.md) left the chat
@@ -49,5 +49,10 @@ web/playwright.config.ts and web/e2e/helpers.ts comments.
 
 ## Handoff
 
-Done: the split, the matrix, the docs.
-Next: PR review, then record the measured time here. Open questions: none.
+Done: the split, the matrix, the docs; merged 2026-11-09. Measured on
+main's first run with this and #875 (b4a94032): `e2e (chat)` 3:27,
+`e2e (workspace)` 3:01, where the one chat job took 5:23; on the PR's
+run, 3:33 and 2:58. The PR needed one re-run of `e2e (projects)`, which
+failed on the phone test at `web-projects.spec.ts:427` (a sidebar scrim
+intercepting a click after "Hide threads"), in a spec this change did not
+touch. Open questions: none.
