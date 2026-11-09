@@ -1,6 +1,6 @@
 # Brief: Show how far a model's load has got
 
-**Status:** built, in review.
+**Status:** merged as #860.
 
 **Thread:** Run GLM 5.3 Flash on mystria. **Branch:**
 `claude/project-thread-tgy8sd`.
@@ -74,8 +74,8 @@ loading.
 ## Handoff
 
 Done: items 1 to 5 (host/src/disk.ts, backends.ts, scheduler.ts,
-runtime.ts, dashboard.js, daemon/src/api.ts, web/src/Models.tsx). Built
-before the Q4 load was confirmed, because that load (200 GB from a SATA SSD
-at 437 MB/s) cannot finish inside the fixed 10 minutes. Next: PR review and
-UI review, merge, a host update on the development deployment, then the Q4
-load with its progress watched.
+runtime.ts, dashboard.js, daemon/src/api.ts, web/src/Models.tsx), merged.
+Built before the Q4 load was confirmed, because that load (200 GB from a
+SATA SSD at 437 MB/s) cannot finish inside the fixed 10 minutes. With it on
+the development deployment's host the Q4 load ran to the end on 2026-11-09
+(the GLM brief has the figures). Nothing next.

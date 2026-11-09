@@ -1,6 +1,6 @@
 # Brief: Plan a llama.cpp load from llama.cpp's own measurement
 
-**Status:** built, in review.
+**Status:** merged as #848 (and the load errors as #850, #857).
 
 Owner: the "Run GLM 5.3 Flash on mystria" thread. Tests: the development
 deployment's two-card host (two RTX PRO 6000, 95.6 GiB each).
@@ -82,6 +82,6 @@ estimate with special cases.
 
 ## Handoff
 
-Done: items 1 to 5. Next: PR review, merge, a host update on the
-development deployment, then load GLM 5.3 Flash UD-Q4_K_XL there and record
-the measured per-GPU bytes and the context in the GLM brief.
+Done: items 1 to 5, merged. On the development deployment's two-card
+host GLM 5.3 Flash UD-Q4_K_XL loaded from the measurement on 2026-11-09
+(the GLM brief has the figures). Nothing next.
