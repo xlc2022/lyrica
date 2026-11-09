@@ -189,8 +189,7 @@ Each user has two pools of memory.
     - Ctrl- or Cmd-click and Shift-click select several (Select in the menu
       on a phone); a mouse drag across the tree or the Images and Videos
       grid also draws a box that selects what it touches. The menu then
-      acts on all of them:
-      Attach, Download as zip, Copy paths, Delete.
+      acts on all of them: Attach, Download as zip, Copy paths, Delete.
     - Uploading from the panel, or dropping files on it, adds them to the
       thread's folder without sending a message. Her next turn gets one line
       naming the files added or removed since her last turn. Files attached
