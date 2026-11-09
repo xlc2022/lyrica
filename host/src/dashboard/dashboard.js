@@ -37,10 +37,20 @@ async function api(path, options = {}) {
 }
 const post = (path, body = {}) => api(path, { method: "POST", body: JSON.stringify(body) });
 
-function show(error) {
+// An action's error stays in the banner until the user clicks it away or acts again; a refresh's error clears with the next good refresh.
+let kept = false;
+function show(error, keep = false) {
+  if (!error && kept) return;
+  kept = !!error && keep;
   $("error").textContent = error ? error.message ?? String(error) : "";
   $("error").hidden = !error;
 }
+const failed = (error) => show(error, true);
+function dismiss() {
+  kept = false;
+  show();
+}
+$("error").addEventListener("click", dismiss);
 
 /** Sizes as Lyrica writes them: "812.0 GB", "1.31 TB", "420 MB". */
 function size(bytes) {
@@ -62,7 +72,10 @@ const facts = (...parts) => h("p", { class: "facts" }, parts.filter(Boolean).fla
 const state = (word, dot, title) => h("span", { class: "state", title }, h("span", { class: `dot ${dot}` }), word);
 
 /** Runs an action, then refreshes; a failure shows in the banner. */
-const act = (fn) => () => Promise.resolve(fn()).then(() => refresh(true), show);
+const act = (fn) => () => {
+  dismiss();
+  return Promise.resolve(fn()).then(() => refresh(true), failed);
+};
 const button = (label, fn, cls = "sm") => h("button", { type: "button", class: cls, onclick: act(fn) }, label);
 
 // ---- Menus, the drawer and the confirmation dialog ----
@@ -349,7 +362,7 @@ function textModels() {
         state(word, dot), m.pinned ? h("span", { class: "pill" }, "pinned") : null,
         m.state === "unloaded" ? button("Load", () => post("/host/v1/models/load", { model: m.id }))
           : h("button", { type: "button", class: "sm", disabled: m.pinned, title: m.pinned ? "Unpin it first." : undefined, onclick: act(() => post("/host/v1/models/unload", { model: m.id })) }, "Unload"),
-        h("button", { type: "button", class: "sm", onclick: () => editModel(m).catch(show) }, "Settings"),
+        h("button", { type: "button", class: "sm", onclick: () => editModel(m).catch(failed) }, "Settings"),
         rowMenu(m.id, [
           [m.pinned ? "Unpin" : "Pin", () => post("/host/v1/models/pin", { model: m.id, pinned: !m.pinned })],
           m.state !== "unloaded" && ["Reload", () => post("/host/v1/models/reload", { model: m.id })],
@@ -563,7 +576,7 @@ function downloadsSection() {
       field("Link", bound("url", { type: "url", required: true, placeholder: "https://…/model.gguf" }), "A .gguf or .safetensors file."),
       field("SHA-256", bound("sha", { class: "num" }), "If the page lists one."),
       h("button", { type: "submit", class: "primary" }, "Download"))
-    : h("form", { class: "row", onsubmit: (e) => { e.preventDefault(); listFiles().catch(show); } },
+    : h("form", { class: "row", onsubmit: (e) => { e.preventDefault(); listFiles().catch(failed); } },
       field("Repository", bound("repo", { required: true, placeholder: "owner/name" })),
       field("Access token", bound("token", { type: "password", autocomplete: "off" }), "Only for a gated repository. Used for this download, never kept."),
       h("button", { type: "submit", class: "primary" }, "List files"));
