@@ -344,6 +344,12 @@ describe("the workflow API", () => {
     const shipped = await s.api(`/host/v1/recipes/${flux.id}/workflow`, { method: "GET" });
     expect(shipped.status).toBe(200);
     expect(shipped.body).toMatchObject({ builtIn: true, name: "flux", base: "flux", label: flux.name, revision: 0, problems: [] });
+    // A name on its own renames the model and leaves it on the built-in: nothing is written to workflows/.
+    const named = await s.api(`/host/v1/recipes/${flux.id}/workflow`, { method: "PUT", body: { name: "Flux dev" } });
+    expect(named.body).toMatchObject({ builtIn: true, name: "flux", label: "Flux dev", revision: 0, recipes: [{ id: flux.id, name: "Flux dev" }] });
+    expect((await s.api(`/host/v1/recipes/${flux.id}`, { method: "GET" })).body).toMatchObject({ name: "Flux dev", template: "flux", custom: false });
+    expect(readdirSync(join(s.dataDir, "workflows"))).toEqual([]);
+    flux.name = "Flux dev";
     // Save: a workflow of the model's own, named after it, on the built-in as its base; the built-in is untouched.
     const workflow = structuredClone(shipped.body.workflow) as Record<string, { inputs: Record<string, unknown> }>;
     const sampler = Object.entries(workflow).find(([, n]) => "steps" in n.inputs)!;
@@ -355,11 +361,17 @@ describe("the workflow API", () => {
     expect(s.templates.get("flux")!.custom).toBeUndefined();
     const recipe = (await s.api(`/host/v1/recipes/${flux.id}`, { method: "GET" })).body;
     expect(recipe).toMatchObject({ name: flux.name, template: edited.body.name, custom: true, workflowBase: "flux" });
+    // A name on its own renames the model and relabels its workflow, with no new revision; with edits, it rides along.
+    const renamed = await s.api(`/host/v1/recipes/${flux.id}/workflow`, { method: "PUT", body: { name: " Flux, my way " } });
+    expect(renamed.status).toBe(200);
+    expect(renamed.body).toMatchObject({ name: edited.body.name, label: "Flux, my way", revision: 1, recipes: [{ id: flux.id, name: "Flux, my way" }] });
+    expect((await s.api(`/host/v1/recipes/${flux.id}`, { method: "GET" })).body).toMatchObject({ name: "Flux, my way", template: edited.body.name });
+    expect((await s.api(`/host/v1/recipes/${flux.id}/workflow`, { method: "PUT", body: { name: "  " } })).status).toBe(400);
     // The model still fills and runs; a second save is revision 2 of the same workflow.
     expect((await s.api("/host/v1/images/create", { body: { recipe: flux.id, prompt: "x" } })).status).toBe(200);
     sampler[1].inputs.denoise = 0.8;
     const again = await s.api(`/host/v1/recipes/${flux.id}/workflow`, { method: "PUT", body: { workflow } });
-    expect(again.body).toMatchObject({ name: edited.body.name, revision: 2 });
+    expect(again.body).toMatchObject({ name: edited.body.name, revision: 2, label: "Flux, my way" });
     expect(readdirSync(join(s.dataDir, "workflows")).sort()).toEqual([`${edited.body.name}.json`, `${edited.body.name}.revisions.json`]);
     // Reset: back on the built-in, the model's own workflow and revisions gone.
     const reset = await s.api(`/host/v1/recipes/${flux.id}/workflow`, { method: "DELETE" });

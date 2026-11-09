@@ -1458,7 +1458,8 @@ test("Custom workflows: Workflow imports an export into a draft, Edit workflow s
     if (m.path === "/host/v1/workflows" && m.method === "POST") return route.fulfill(json({ workflow: current, recipe: { id: "r1" } }));
     if (m.path === "/host/v1/workflows/copy") return route.fulfill(json({ workflow: { ...current, name: "custom-0e0e0e0e", from: "copy", base: "z-image", label: m.body!.name }, recipe: { id: "r2" } }));
     if (m.path === `/host/v1/recipes/${images.zi}/workflow`) {
-      if (m.method === "PUT") turbo = { ...turbo, name: "custom-0e0e0e0e", from: "copy", revision: turbo.revision + 1, saved: "2026-11-08T14:00:00Z", workflow: m.body!.workflow!, builtIn: false };
+      if (m.method === "PUT" && !m.body!.workflow) turbo = { ...turbo, label: m.body!.name!, recipes: [{ id: images.zi, name: m.body!.name! }] };
+      else if (m.method === "PUT") turbo = { ...turbo, name: "custom-0e0e0e0e", from: "copy", revision: turbo.revision + 1, saved: "2026-11-08T14:00:00Z", workflow: m.body!.workflow!, builtIn: false, ...(m.body!.name ? { label: m.body!.name } : {}) };
       if (m.method === "DELETE") turbo = shipped;
       return route.fulfill(json(turbo));
     }
@@ -1536,7 +1537,7 @@ test("Custom workflows: Workflow imports an export into a draft, Edit workflow s
   await expect(page).toHaveURL(new RegExp(`workflow\\?host=ep-box&recipe=${images.zi}$`));
   await expect(page.getByRole("heading", { level: 1, name: "Z-Image Turbo" })).toBeVisible();
   await expect(page.locator(".head .cap")).toHaveText("generate · box · template z-image");
-  await expect(page.getByLabel("Name", { exact: true })).toHaveCount(0);
+  await expect(page.getByLabel("Name", { exact: true })).toHaveValue("Z-Image Turbo");
   await expect(page.getByRole("group", { name: "View" }).getByRole("button", { name: "Revisions" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Reset to template…" })).toHaveCount(0);
   // The Model blank's tooltip: the model file and the LoRA the host chains onto it on each job; Text encoder's and VAE's their files.
@@ -1560,10 +1561,16 @@ test("Custom workflows: Workflow imports an export into a draft, Edit workflow s
   await resetAsk.getByRole("button", { name: "Reset" }).click();
   await expect(page.locator(".head .cap")).toHaveText("generate · box · template z-image");
   expect(sent.at(-1)).toMatchObject({ method: "DELETE", path: `/host/v1/recipes/${images.zi}/workflow` });
+  // Name alone: Save renames the model and sends nothing else, so the built-in stays as it is.
+  await page.getByLabel("Name", { exact: true }).fill("Z-Image Turbo, fast");
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Z-Image Turbo, fast" })).toBeVisible();
+  await expect(page.locator(".head .cap")).toHaveText("generate · box · template z-image");
+  expect(sent.at(-1)).toEqual({ method: "PUT", path: `/host/v1/recipes/${images.zi}/workflow`, body: { name: "Z-Image Turbo, fast" } });
   // Save as new workflow: a copy of the model on this workflow, named in the dialog, which opens.
   await page.getByRole("button", { name: "Save as new workflow…" }).click();
   const asNew = page.getByRole("dialog", { name: "Save as new workflow" });
-  await expect(asNew.getByLabel("Name", { exact: true })).toHaveValue("Z-Image Turbo copy");
+  await expect(asNew.getByLabel("Name", { exact: true })).toHaveValue("Z-Image Turbo, fast copy");
   await asNew.getByLabel("Name", { exact: true }).fill("Z-Image Turbo, my way");
   await asNew.getByRole("button", { name: "Save" }).click();
   await expect(page).toHaveURL(new RegExp(`workflow\\?host=ep-box&recipe=r2$`));

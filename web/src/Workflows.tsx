@@ -298,7 +298,15 @@ export function EditWorkflow({ ctx, hostId, recipeId }: { ctx: MCtx; hostId?: st
         ctx.models.reload();
         location.replace(href({ page: "models", userId, tab: "images", add: "workflow", host: hostId, recipe: r.recipe.id }));
       } else {
-        const r = await manage<Info>(userId, hostId, "PUT", `/host/v1/recipes/${recipeId}/workflow`, { workflow: g, ...(info?.base ? {} : { name: label.trim() }), ...(video ? { video } : {}), ...(layout ? { layout } : {}) });
+        // A new name renames the model (its ID stays). With nothing else changed, only the name goes: no revision, and a
+        // built-in stays as it is.
+        const renamed = label.trim() !== info?.label;
+        const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+        const edited = !same(g, info?.workflow) || !same(video, info?.video) || (!!layout && !same(layout, info?.layout));
+        const body = edited || !renamed
+          ? { workflow: g, ...(renamed ? { name: label.trim() } : {}), ...(video ? { video } : {}), ...(layout ? { layout } : {}) }
+          : { name: label.trim() };
+        const r = await manage<Info>(userId, hostId, "PUT", `/host/v1/recipes/${recipeId}/workflow`, body);
         saved.set(r);
         ctx.models.reload();
       }
@@ -353,7 +361,7 @@ export function EditWorkflow({ ctx, hostId, recipeId }: { ctx: MCtx; hostId?: st
           {!checked && <p className="meta" title="ComfyUI reports its nodes each time it starts.">Nodes not checked yet</p>}
           {!!draft?.draft.dropped.length && <p className="meta">Left out: {draft.draft.dropped.join(", ")}</p>}
           {info && !info.base && !!info.recipes.length && <p className="meta">Used by {info.recipes.map((r) => r.name).join(", ")}</p>}
-          {!info?.base && <label className="field"><span>Name</span><input value={label} maxLength={80} onChange={(e) => setLabel(e.target.value)} /></label>}
+          <label className="field"><span>Name</span><input value={label} maxLength={80} onChange={(e) => setLabel(e.target.value)} /></label>
           <div className="seg" role="group" aria-label="View">
             <button type="button" aria-pressed={view === "form"} onClick={() => { const g = view === "json" ? current() : graph; if (g) { setGraph(g); setView("form"); } }}>Form</button>
             <button type="button" aria-pressed={view === "graph"} onClick={() => { const g = view === "json" ? current() : graph; if (g) { setGraph(g); setView("graph"); } }}>Graph</button>

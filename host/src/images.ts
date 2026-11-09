@@ -522,7 +522,22 @@ export class Images {
     if (method === "PUT") {
       const body = await readJson(req, WORKFLOW_LIMIT);
       onlyFields(body, ["workflow", "video", "by", "layout", "name"]);
-      if (t.custom) return sendJson(res, 200, this.recipeWorkflowInfo(r, this.updateWorkflow(t, body, body.by))), true;
+      // `name` renames the model (its ID stays, so its calls, LoRAs and copies on other hosts are untouched); a custom
+      // workflow's label follows it. On its own it changes nothing else: no revision, and a built-in stays a built-in.
+      if (body.name !== undefined) {
+        r.name = label(body.name);
+        this.book.save();
+      }
+      const nameOnly = Object.keys(body).every((k) => k === "name" || k === "by");
+      if (t.custom) {
+        if (nameOnly) {
+          const relabelled = store.relabel(t, r.name);
+          templates.set(t.name, relabelled);
+          return sendJson(res, 200, this.recipeWorkflowInfo(r, relabelled)), true;
+        }
+        return sendJson(res, 200, this.recipeWorkflowInfo(r, this.updateWorkflow(t, body, body.by))), true;
+      }
+      if (nameOnly) return sendJson(res, 200, this.recipeWorkflowInfo(r, t)), true;
       if (r.state !== "confirmed") throw invalid("Confirm the model first.");
       if (!t.does.some((a) => CUSTOM_ACTIONS.includes(a))) throw invalid("Only workflows that make, edit or animate can be edited.");
       // The model's own revision of the built-in: its name, the built-in as its base (whose blanks and nodes it may keep).

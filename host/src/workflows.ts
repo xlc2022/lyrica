@@ -501,6 +501,13 @@ export class Workflows {
     }
   }
 
+  /** Relabels a custom template in place: no new revision, since nothing it runs changed. */
+  relabel(t: Template, name: string): Template {
+    const saved: Template = { ...t, custom: { ...t.custom!, name } };
+    this.write(join(this.dir, `${t.name}.json`), { ...saved, name: undefined });
+    return saved;
+  }
+
   /**
    * Saves a custom template. With `previous`, the version it replaces joins the workflow's revisions
    * (`<name>.revisions.json`, the newest last, at most MAX_REVISIONS), and the new one gets the next number.
