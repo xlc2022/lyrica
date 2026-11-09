@@ -61,9 +61,14 @@ the right first ask; 4x of a 1 MP image won't fit a 24 GB card.
 ## Handoff
 
 Done: the Dockerfile line and README sentence (PR #842, merged 2026-11-08);
-the memory settings and the out-of-memory message (PR, 2026-11-09).
-Next: a 2x run on a 24 GB host after the hosts rebuild, and the peak the
-torch message reports, to decide whether `blocks_to_swap` is needed there
-and whether the host should cap `resolution` by the GPU's room.
-Open: clip upscaling and the seed-range fix from PR #712 still have no GPU
-run.
+the memory settings, the unmeasured SeedVR2 estimate and the out-of-memory
+message (PR #890, merged 2026-11-09). First GPU run, 2026-11-09, on an RTX
+3090: SeedVR2 3B took 1024×1024 to 2048×2048 in 16 s, GPU peak 19.5 GiB of
+24, output clean. So the file-size estimate (about 7 GB for the 3B)
+understates the working memory by about 12 GB at 2x on a 1 MP image, and
+the scheduler can still place SeedVR2 beside a model that leaves it too
+little; nothing else was loaded in that run.
+Next: a working-memory term for SeedVR2 in the estimate (it grows with
+output pixels: about 12 GB for 4 MP out), or a `resolution` cap from the
+GPU's room, and `blocks_to_swap` for 24 GB cards past 2x.
+Open: clip upscaling still has no GPU run.
