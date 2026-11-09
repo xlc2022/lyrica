@@ -137,6 +137,9 @@ export class LlamaCpp implements Backend {
       if (at.cpuMoe) lines.push(`n-cpu-moe = ${at.cpuMoe}`);
       // A per-layer embedding table loaded whole into RAM, not mapped from the file, so the page cache can't drop it.
       if (tableInRam(model, s)) lines.push("lazy-mode = off", "load-mode = none");
+      // A model larger than system RAM is read straight from disk: mapped, llama.cpp has the kernel pull all of it
+      // through a page cache that can't hold it (MAP_POPULATE) before anything reaches the GPUs, for the measurement and again for the load.
+      else if (model.size > this.o.memoryBytes) lines.push("load-mode = direct-io");
       if (s.kvCacheType) lines.push(`cache-type-k = ${s.kvCacheType}`, `cache-type-v = ${s.kvCacheType}`);
       // One cache of the whole context, shared by the requests it serves at once, as the daemon plans.
       const parallel = concurrentOf(model, s);

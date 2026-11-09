@@ -577,6 +577,12 @@ revoked. A revoked server must pair again.
     from; RAM takes it from the allowance), parallel requests, batch
     size, a chat template, and for vLLM a memory share, so several vLLM
     models can share one GPU (each is its own server).
+  - A llama.cpp model larger than the host's system RAM is read straight
+    from disk (llama.cpp's `load-mode = direct-io`). Mapped, as smaller
+    models are, the kernel would pull all of it through a page cache that
+    can't hold it before anything reached the GPUs, once for the
+    measurement and again for the load; a 200 GB model on a 96 GB machine
+    sat for ages at 80 GB of RAM with the GPUs empty.
   - A chat model serves 1 request at a time below a 200k context, 2 from
     200k and 4 from 500k, sharing one cache of its context, unless its
     parallel requests (llama.cpp) or max sequences (vLLM) say otherwise.

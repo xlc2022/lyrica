@@ -529,6 +529,11 @@ Only the repository's name and revision leave the host.
   Without mmap the input embeddings (`token_embd.weight`), which llama.cpp
   also keeps on the CPU, load whole too, so the allowance counts them with
   the table.
+- A model larger than the host's system RAM is read straight from disk
+  (`load-mode = direct-io`) rather than mapped, so the page cache never
+  holds it and the GPUs fill as the file is read (host/README.md,
+  Models). Its input embeddings then sit in RAM too, uncounted: at most a
+  few hundred MB.
 
 ### Pause, resume, restart
 
