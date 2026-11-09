@@ -1,7 +1,7 @@
 import { expect, it } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { hourly, hours, ModelCallFacts, seriesOf } from "../src/ModelCallFacts.tsx";
+import { hourly, hours, ModelCallFacts, seriesOf, speedSpec } from "../src/ModelCallFacts.tsx";
 import type { ModelCallFacts as Facts } from "../src/api.ts";
 
 // Synthetic facts only: no text of any real conversation.
@@ -85,4 +85,11 @@ it("buckets calls and output into the 24 hours on the user's clock, the oldest p
     { hour: h[23], model: "a", calls: 2, tokens: 35 },
     { hour: h[0], model: "a", calls: 1, tokens: 0 },
   ]);
+});
+
+it("starts the speed chart's time axis at the window's start, so a call before the first whole hour stays right of the axis", () => {
+  const f = facts([model({ offeringId: "a" })], [{ at: "2026-10-23T12:10:00Z", offeringId: "a", task: "chat", tokPerSec: 40 }]);
+  const x = (speedSpec(seriesOf(f.models, "light", "#888888"), f, "#ffffff").encoding.x.scale);
+  expect(x.domain).toEqual(["2026-10-23T12:00:00.000Z", "2026-10-24T13:00:00.000Z"]);
+  expect(x.padding).toBeGreaterThan(0);
 });
