@@ -302,7 +302,7 @@ describe("suspect commands", () => {
     }
     for (const c of ["rm build.log", "rm -f build.log", "dd if=/dev/zero of=file", "chmod -R 755 /srv/www", "ls /", "qm list",
       "systemctl restart nginx", "echo reboot", "git push", "git push -u origin main", "git push --follow-tags", "git reset --soft HEAD~1", "git checkout -b feature",
-      "git restore --staged src/a.ts", "git branch -d old", "git stash", "git stash pop"]) {
+      "git restore --staged src/a.ts", "git branch -d old", "git stash", "git stash pop", "git switch main", "git clean -n", "git clean --dry-run -d"]) {
       expect(suspectCommand(c), c).toBeUndefined();
     }
     expect(suspectCommand("sudo reboot")).toBe("This shuts the machine down or restarts it.");
@@ -322,7 +322,8 @@ describe("suspect commands", () => {
       ["rm -rf ./build", folder], ["rm -r node_modules", folder], ["rm --recursive -f dist", folder], ["sudo rm -fr /var/tmp/x", folder], ["rm -rf /", "This deletes everything, a home folder or a system folder."],
       ["git push --force", "This rewrites the branch on the remote: commits there that aren't here are lost."], ["git push -f origin main", "This rewrites the branch on the remote: commits there that aren't here are lost."],
       ["git -C repo push origin +main", "This rewrites the branch on the remote: commits there that aren't here are lost."], ["git push --force-with-lease", "This rewrites the branch on the remote: commits there that aren't here are lost."],
-      ["git reset --hard HEAD~1", changes], ["git checkout -- .", changes], ["git checkout .", changes], ["git restore src/a.ts", changes], ["git restore --staged --worktree .", changes],
+      ["git reset --hard HEAD~1", changes], ["git checkout -- .", changes], ["git checkout .", changes], ["git checkout -f main", changes], ["git switch --discard-changes main", changes], ["git switch -f main", changes],
+      ["git restore src/a.ts", changes], ["git restore --staged --worktree .", changes],
       ["git clean -fdx", "This deletes untracked files for good."],
       ["git branch -D feature", "This deletes a branch, or a stash with its changes."], ["git branch --delete --force feature", "This deletes a branch, or a stash with its changes."],
       ["git push origin --delete feature", "This deletes a branch, or a stash with its changes."], ["git stash drop", "This deletes a branch, or a stash with its changes."], ["git stash clear", "This deletes a branch, or a stash with its changes."],

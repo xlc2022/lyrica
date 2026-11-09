@@ -60,11 +60,16 @@ export const SUSPECT_COMMANDS: readonly SuspectCommand[] = [
       const g = gitSub(w);
       if (!g) return false;
       return (g[0] === "reset" && g.includes("--hard"))
-        || (g[0] === "checkout" && (g.includes("--") || g.slice(1).some((a) => a === "." || a === "*")))
+        || (g[0] === "checkout" && (g.includes("--") || g.includes("--force") || g.slice(1).some((a) => a === "." || a === "*" || short("f")(a))))
+        || (g[0] === "switch" && (g.includes("--discard-changes") || g.includes("--force") || g.slice(1).some(short("f"))))
         || (g[0] === "restore" && g.length > 1 && (!g.includes("--staged") && !g.slice(1).some(short("S")) || g.includes("--worktree") || g.slice(1).some(short("W"))));
     },
   },
-  { everywhere: true, warning: "This deletes untracked files for good.", test: (w) => gitSub(w)?.[0] === "clean" },
+  {
+    everywhere: true,
+    warning: "This deletes untracked files for good.",
+    test: (w) => { const g = gitSub(w); return g?.[0] === "clean" && !g.includes("--dry-run") && !g.slice(1).some(short("n")); },
+  },
   {
     everywhere: true,
     warning: "This deletes a branch, or a stash with its changes.",

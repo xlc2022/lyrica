@@ -24,8 +24,9 @@ owner chose three changes (01:14Z).
    `everywhere`; `suspectCommand(command, where)` applies every rule on a
    machine and only the `everywhere` ones in the sandbox. New `everywhere`
    rules: any recursive `rm`; `git push` with `--force…`, `-f` or `+ref`;
-   `git reset --hard`, `git checkout -- …`/`.`, `git restore` of the working
-   tree; `git clean`; `git branch -D`, `git push --delete`, `git stash
+   `git reset --hard`, `git checkout -- …`/`.`/`-f`, `git switch -f` or
+   `--discard-changes`, `git restore` of the working tree; `git clean` (not
+   a `-n` dry run); `git branch -D`, `git push --delete`, `git stash
    drop|clear`. The sweeping-delete rule is `everywhere` as well. The gate
    asks with the warning in every mode; **Allow in this thread** stores the
    exact command under `SANDBOX_ALLOW` (`:sandbox`, no machine's name has a

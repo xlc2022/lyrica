@@ -138,8 +138,9 @@ existed before became general machines at Ask.
   can't undo, wherever it runs** (`everywhere`; the sandbox gets only these):
   deleting `/`, `/*`, a home folder or a top-level system folder; any
   recursive `rm`; `git push` with `--force…`, `-f` or a `+refspec`; `git
-  reset --hard`, `git checkout -- …` or `.`, `git restore` of the working
-  tree; `git clean`; `git branch -D` (or `--delete --force`), `git push
+  reset --hard`, `git checkout -- …`, `.` or `-f`, `git switch -f` or
+  `--discard-changes`, `git restore` of the working tree; `git clean` (not
+  a `-n` dry run); `git branch -D` (or `--delete --force`), `git push
   --delete`, `git stash drop|clear`. **Commands almost never right on a
   machine** (machines only): `mkfs`; `dd` onto `/dev/…`; recursive `chmod`,
   `chown` or `chgrp` on `/`; `userdel` or `deluser`; `shutdown`, `reboot`,
