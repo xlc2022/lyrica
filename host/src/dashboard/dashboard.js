@@ -428,16 +428,25 @@ function starters() {
 /** A model's placement and serving settings; what isn't a field stays as JSON under Other settings. */
 async function editModel(m) {
   const info = await api(`/host/v1/models/settings?model=${encodeURIComponent(m.id)}`);
-  const { placement = { mode: "auto" }, contextLength, stretch, parallel, maxSeqs, kvCacheType, memoryShare, ...rest } = info.settings;
+  const { placement = { mode: "auto" }, contextLength, stretch, parallel, maxSeqs, kvCacheType, memoryShare, systemRam: ramSetting, ...rest } = info.settings;
   const { mode, gpus: chosen = [], ...placementRest } = placement;
   const llama = m.server === "llamacpp", vllm = m.server === "vllm", chat = m.kind === "chat";
   const usable = S.status.gpus.filter((g) => !g.settings.excluded);
 
-  const where = h("select", {}, h("option", { value: "auto" }, "Automatic"), h("option", { value: "gpus" }, "These GPUs"));
+  const where = h("select", {}, h("option", { value: "auto" }, "Automatic"), h("option", { value: "gpus" }, "Custom allocation"));
   where.value = mode === "gpus" ? "gpus" : "auto";
   const picks = usable.map((g) => [g.index, h("input", { type: "checkbox", checked: chosen.includes(g.index) })]);
-  const pickBox = h("fieldset", { hidden: where.value !== "gpus" }, h("legend", {}, "GPUs"), picks.map(([i, box]) => h("label", { class: "check" }, box, `GPU ${i} · ${usable.find((g) => g.index === i).name}`)));
-  where.onchange = () => (pickBox.hidden = where.value !== "gpus");
+  const gpuChecks = picks.map(([i, box]) => h("label", { class: "check", hidden: where.value !== "gpus" }, box, `GPU ${i} · ${usable.find((g) => g.index === i).name}`));
+  // llama.cpp can keep what its GPUs lack in the host's System RAM allowance, under either placement; unticked is systemRam: false.
+  const allowance = S.status.systemRam?.allowance ?? 0;
+  const ramBox = h("input", { type: "checkbox", checked: ramSetting !== false, disabled: !allowance });
+  const ramCheck = llama ? h("label", { class: "check", title: allowance ? "Runs slower: what the GPUs lack stays in system RAM." : "The host's System RAM allowance is off; set it in the System RAM card under GPUs." },
+    ramBox, h("span", {}, "System RAM · ", allowance ? h("span", {}, "up to ", num(size(allowance))) : "off")) : null;
+  const pickBox = h("fieldset", { hidden: where.value !== "gpus" && !llama }, h("legend", {}, "Memory"), gpuChecks, ramCheck);
+  where.onchange = () => {
+    gpuChecks.forEach((l) => (l.hidden = where.value !== "gpus"));
+    pickBox.hidden = where.value !== "gpus" && !llama;
+  };
 
   const ctx = h("input", { type: "number", min: "512", step: "1024", class: "num", value: contextLength ?? "", placeholder: String(info.contextLength ?? "") });
   const factor = h("input", { type: "number", min: "1", max: "8", step: llama ? "1" : "0.5", class: "num", value: stretch?.factor ?? "", placeholder: "none" });
@@ -473,6 +482,7 @@ async function editModel(m) {
     const { placement: extraPlacement, ...extraRest } = extra;
     const settings = { ...extraRest };
     settings.placement = where.value === "gpus" ? { ...extraPlacement, mode: "gpus", gpus: picks.filter(([, b]) => b.checked).map(([i]) => i) } : { mode: "auto" };
+    if (llama && !ramBox.checked) settings.systemRam = false;
     if (ctx.value) settings.contextLength = Number(ctx.value);
     if (chat && Number(factor.value) > 1) settings.stretch = { ...stretch, type: "yarn", factor: Number(factor.value) };
     if (atOnce.value) settings[llama ? "parallel" : "maxSeqs"] = Number(atOnce.value);
