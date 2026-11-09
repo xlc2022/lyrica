@@ -79,11 +79,15 @@ size × 1.05 plus a cache guess) could never have placed. Most of the load
 is reading the files from a SATA SSD at about 437 MB/s, about eight minutes
 for 200 GB, with the dashboard's percentage climbing the whole way.
 
-Speed, from the Models page after a few chats: the Q4 with its experts in
-RAM generates at about 30 tok/s and reads prompts at about 400 tok/s. The
-IQ3_XXS copy on the same host, wholly on the GPUs, does about 67 tok/s and
-900 tok/s. The spill costs a little over half the speed for a step up in
-quality.
+Speed: the Q4 with its experts in RAM generates at about 28 tok/s. Its
+prompt speed depends on the prompt step: with llama.cpp's step of 512 the
+Models page averaged about 400 tok/s over small calls, and with the step
+of 2048 that #871 gives a spilled model, a fresh 23,336-token paste read at
+958 tok/s (22.9 s to the first token). The IQ3_XXS copy on the same host,
+wholly on the GPUs, does about 67 tok/s and 900 tok/s. Lyrica's prompt
+figure is tokens newly read over the wall-clock time to the first token,
+so it means something only for a large fresh prompt on a loaded, idle
+model; llama-server's own per-request timings aren't read yet.
 
 ## Out of scope
 
