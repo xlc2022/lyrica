@@ -13,10 +13,12 @@ export interface MessageImages {
   groups: Map<number, RejectedImage[]>;
   /**
    * Set on the message that holds the group: the key of the last message that folds under its marker with it. The fold
-   * runs from this message through the last one holding a rejected attempt, and stops before any message holding an
-   * image she kept, so what she kept, and what she said about it, stays in view.
+   * runs from this message to the image she kept: through the message that made it, up to the call that made it
+   * (`foldParts`: how many of that message's parts fold; the rest, from the call on, stays in view), or when none
+   * was kept, through the last message holding a rejected attempt.
    */
   fold?: string;
+  foldParts?: number;
 }
 
 /** A rejected attempt where it lies now; `deleted` once she cleared the rejected images, at the person's word. */
@@ -85,12 +87,27 @@ export function sortImages(entries: TurnEntry[]): Map<string, MessageImages> {
     if (!anchor) return;
     const m = out.get(anchor.key)!;
     m.groups.set(anchor.i, group);
-    // The fold: from the anchor's message through the last rejected attempt before an image she kept. None when a kept image shares the anchor's message.
+    // The fold: from the anchor's message up to the call that made the image she kept, or through the last rejected
+    // attempt when she kept none. None when a kept image shares the anchor's message.
     const isRejected = (s: Seen) => rejected.has(nameOf(s.path)) || deleted.has(nameOf(s.path));
-    const firstKept = seen.filter((s) => s.at >= anchor!.at && kept.has(s.part)).reduce<number | undefined>((a, s) => (a === undefined ? s.at : Math.min(a, s.at)), undefined);
-    if (firstKept === anchor.at) return;
-    const lastRejected = seen.filter((s) => s.at >= anchor!.at && isRejected(s) && (firstKept === undefined || s.at < firstKept)).reduce((a, s) => Math.max(a, s.at), anchor.at);
-    m.fold = entries[lastRejected]!.key;
+    const firstKept = seen.filter((s) => s.at >= anchor!.at && kept.has(s.part)).sort((a, b) => a.at - b.at || a.i - b.i)[0];
+    if (firstKept?.at === anchor.at) return;
+    if (!firstKept) {
+      const lastRejected = seen.filter((s) => s.at >= anchor!.at && isRejected(s)).reduce((a, s) => Math.max(a, s.at), anchor.at);
+      m.fold = entries[lastRejected]!.key;
+      return;
+    }
+    // Her words before the kept image are about the attempts before it: they fold; from the call that made or picked it on stays.
+    const parts = entries[firstKept.at]!.parts ?? [];
+    let upTo = firstKept.i;
+    for (let i = firstKept.i - 1; i >= 0; i--) {
+      const p = parts[i]!;
+      const s = sorting(p);
+      if (p.type === "tool" && p.name === "image" && !p.isError && (!s || "pick" in s)) { upTo = i; break; }
+      if (p.type === "image" || p.type === "video") break;
+    }
+    if (upTo > 0) { m.fold = firstKept.key; m.foldParts = upTo; }
+    else m.fold = entries[firstKept.at - 1]!.key;
   };
   let seen: Seen[] = [];
   entries.forEach((e, at) => {
