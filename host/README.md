@@ -626,7 +626,10 @@ revoked. A revoked server must pair again.
   read more of the model from disk (`/proc/diskstats` for the models
   folder's device), and 10 more once it has read all of it, so a 200 GB
   model on a slow disk loads while a stuck one fails, saying how much was
-  read; the status reports the bytes read so far as the load's progress. The
+  read; the status reports the bytes read so far as the load's progress.
+  Unloading a model while it loads stops the load (`models/unload`): the
+  server is told to unload it, its GPUs count as releasing as after any
+  unload, and the requests waiting for it end with `load_cancelled`. The
   host reads GPU memory anew for every status answer; when the reading
   fails (`nvidia-smi` busy or gone) the last one stands and the log says
   so once per outage.

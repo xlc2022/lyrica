@@ -2243,7 +2243,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
       `Forbidden` is `403`; `SchemaTooNew` and `MigrationFailed` are `409`;
       `Offline` is `502`; `Locked` is `503`. A `HostRefused` keeps the
       host's meaning by `code`: `invalid` and `need_repo` 400, `refused` 403,
-      `not_found` 404, `in_use` and `above_recommended` 409, `too_big` 413,
+      `not_found` 404, `in_use`, `load_cancelled` and `above_recommended` 409, `too_big` 413,
       `no_space` 507; any other code (`unreachable`, `paused`, `busy`,
       `unpaired`, `identity_changed`, …) is `502` with the host's plain
       message.

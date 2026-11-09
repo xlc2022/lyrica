@@ -77,8 +77,13 @@ host's RAM.
 Both GPUs end up about 90 GB used, which the single-GPU estimate (file
 size × 1.05 plus a cache guess) could never have placed. Most of the load
 is reading the files from a SATA SSD at about 437 MB/s, about eight minutes
-for 200 GB, with the dashboard's percentage climbing the whole way. Speed
-with the experts in RAM: not measured yet.
+for 200 GB, with the dashboard's percentage climbing the whole way.
+
+Speed, from the Models page after a few chats: the Q4 with its experts in
+RAM generates at about 30 tok/s and reads prompts at about 400 tok/s. The
+IQ3_XXS copy on the same host, wholly on the GPUs, does about 67 tok/s and
+900 tok/s. The spill costs a little over half the speed for a step up in
+quality.
 
 ## Out of scope
 
@@ -102,5 +107,4 @@ with the experts in RAM: not measured yet.
 Done: starter, fit check, docs (#656); download retries (#661); a saved
 measurement over a GPU's room no longer blocks a model (#681); the Q4
 starter, loaded on the development host with 261632 of context (above).
-Next: record the Q4's speed with its experts in RAM once the operator has
-a figure.
+Its speed is recorded above. Nothing next.

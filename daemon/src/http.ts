@@ -242,7 +242,7 @@ export function statusOf(err: unknown): number {
   // A Git host that refused a token or didn't answer: said as the reason the account wasn't saved.
   if (err instanceof CloudModelForbidden || err instanceof NoModel || err instanceof PairingFailed || err instanceof GitAccountProblem || err instanceof McpServerProblem) return 400;
   // A model host's refusal keeps its meaning; anything else from it is a bad gateway.
-  if (err instanceof HostRefused) return ({ invalid: 400, need_repo: 400, refused: 403, not_found: 404, in_use: 409, above_recommended: 409, too_big: 413, no_space: 507 } as Record<string, number>)[err.code] ?? 502;
+  if (err instanceof HostRefused) return ({ invalid: 400, need_repo: 400, refused: 403, not_found: 404, in_use: 409, load_cancelled: 409, above_recommended: 409, too_big: 413, no_space: 507 } as Record<string, number>)[err.code] ?? 502;
   // A system error (ENOENT, EACCES, ...) is also a plain Error, but it is the server's, and its message names a server path.
   if (err instanceof Error && err.constructor === Error && !("errno" in err || "syscall" in err)) return 400;
   return 500;
