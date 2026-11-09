@@ -623,7 +623,8 @@ revoked. A revoked server must pair again.
   are unloaded or more of the model moves to system RAM, and the new
   placement is measured; after two such rounds a short GPU refuses the
   load, naming the measured need. Reload takes the same path. Without a
-  measurement (failed, or not done within a minute) the estimate stands:
+  measurement (failed, or not done within a minute) the estimate stands
+  and the log says `not measured` with the reason:
   file size times 1.05, the cache for its context, and 0.5 GiB per GPU;
   should the router then unload an idle model of the host's to make its
   own room, the host learns of it at that model's next request, which

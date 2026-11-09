@@ -393,6 +393,20 @@ describe("the vLLM backend", () => {
     }
   });
 
+  it("says in the log when the router gives no measurement, so a load planned from the estimate has a reason", async () => {
+    const router = await fakeLlamaRouter();
+    const serving = mkdtempSync(join(tmpdir(), "lyrica-serving-"));
+    const logged: [string, unknown][] = [];
+    try {
+      const llama = new LlamaCpp({ url: router.url, serving, models: "/models", device: (i) => `CUDA${i}`, measureTimeoutMs: 200, log: (event, fields) => void logged.push([event, fields]) });
+      // The fake router reports no memory for a model, as a router without measurement does.
+      expect(await llama.measure(model, at, { placement: { mode: "auto" } })).toBeNull();
+      expect(logged).toEqual([["not measured", { model: "m", reason: "no measurement" }]]);
+    } finally {
+      router.server.close();
+    }
+  });
+
   it("reads a model larger than system RAM straight from disk instead of mapping it", async () => {
     const router = await fakeLlamaRouter();
     const serving = mkdtempSync(join(tmpdir(), "lyrica-serving-"));
