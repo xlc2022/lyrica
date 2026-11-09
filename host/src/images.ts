@@ -42,7 +42,9 @@ const BASE_DEFAULTS: Values = {
 const IDLE_FREE_MS = 10 * 60_000;
 /** How long one clip may take: a 14B model on a 24 GB card can take most of an hour. */
 const VIDEO_TIMEOUT_MS = 2 * 60 * 60_000;
-const VIDEO_FIELDS = ["recipe", "prompt", "negativePrompt", "image", "drive", "extend", "source", "width", "height", "duration", "steps", "cfg", "seed", "aspectRatio", "loras"];
+/** Sampling settings a job may set in place of its recipe's, checked as a recipe's defaults are (API.md, "Making images"). */
+const JOB_SAMPLING = ["sampler", "scheduler", "shift", "guidance"];
+const VIDEO_FIELDS = ["recipe", "prompt", "negativePrompt", "image", "drive", "extend", "source", "width", "height", "duration", "steps", "cfg", "seed", ...JOB_SAMPLING, "aspectRatio", "loras"];
 /** A request names at most this many LoRA files of the host's for one job (API.md, "LoRAs for one job"): four LoRAs, each maybe a high and low noise pair. */
 const MAX_REQUEST_LORAS = 8;
 /** A driving clip (`motion`), a clip to extend or one to edit (`edit_video`): only its first seconds are used. */
@@ -57,10 +59,19 @@ const MAX_CLIP_UPSCALE_PIXELS = 1_500_000_000;
 const UPSCALE_SEEDS = 2 ** 32;
 
 const FIELDS: Record<"create" | "edit" | "upscale", string[]> = {
-  create: ["recipe", "prompt", "negativePrompt", "width", "height", "count", "steps", "cfg", "seed", "references", "loras"],
-  edit: ["recipe", "prompt", "negativePrompt", "count", "steps", "cfg", "seed", "references", "image", "mask", "replace", "loras"],
+  create: ["recipe", "prompt", "negativePrompt", "width", "height", "count", "steps", "cfg", "seed", ...JOB_SAMPLING, "references", "loras"],
+  edit: ["recipe", "prompt", "negativePrompt", "count", "steps", "cfg", "seed", ...JOB_SAMPLING, "references", "image", "mask", "replace", "loras"],
   upscale: ["recipe", "image", "scale", "maxSize", "colorMatch", "seed"],
 };
+
+/** A job's sampler, scheduler, shift and guidance, each in place of its recipe's for this job only. */
+function jobSampling(body: Record<string, unknown>, values: Values): void {
+  for (const k of JOB_SAMPLING) {
+    if (body[k] === undefined) continue;
+    checkDefault(k, body[k]);
+    values[k] = body[k] as string | number;
+  }
+}
 
 function int(body: Record<string, unknown>, key: string, min: number, max: number, step = 1): number | undefined {
   const v = body[key];
@@ -847,6 +858,7 @@ export class Images {
       if (Number(values.count) > 1 && !JSON.stringify(template.workflow).includes('"$count"')) throw invalid("This recipe makes one image at a time: ask for one.");
       values.steps = int(body, "steps", 1, 150) ?? values.steps!;
       values.cfg = num(body, "cfg", 0, 30) ?? values.cfg!;
+    jobSampling(body, values);
       if (action === "create") {
         values.width = int(body, "width", 256, 2048, 16) ?? values.width!;
         values.height = int(body, "height", 256, 2048, 16) ?? values.height!;
@@ -965,6 +977,7 @@ export class Images {
     }
     values.steps = int(body, "steps", 1, 150) ?? values.steps!;
     values.cfg = num(body, "cfg", 0, 30) ?? values.cfg!;
+    jobSampling(body, values);
     const uploads: Record<string, Buffer> = {};
     if (action === "animate" || action === "motion") uploads.image = inputImage(body.image, "image");
     let driveSeconds = Infinity;

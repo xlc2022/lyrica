@@ -1,6 +1,6 @@
 // Principle 2: video calls share the router's cloud boundary, and only model hosts make clips. No disk or logging.
 import { hostError, HostIdentityChanged, HostRefused } from "./host.ts";
-import { appliedLoras, cleanPng, samplingFields, samplingOf, validateSampling, type AppliedLora, type GeneratedImage, type ImageInput, type Sampling } from "./images.ts";
+import { appliedLoras, cleanPng, COLOR_MATCH, MAX_UPSCALE_SEED, samplingFields, samplingOf, validateSampling, type AppliedLora, type GeneratedImage, type JobSettings, type ImageInput, type Sampling } from "./images.ts";
 import { validateLoras, type LoraAsk } from "./loras.ts";
 import { withProgress, type JobProgress } from "./progress.ts";
 
@@ -8,9 +8,9 @@ import { withProgress, type JobProgress } from "./progress.ts";
  * One clip: from a prompt, from `image` as its first frame, or with `drive` (an MP4) too, `image`'s subject moved as the
  * person in that clip moves. Or `extend` (an MP4) continued for `duration` more seconds, as one clip. Or `source` (an MP4)
  * edited as the prompt says, keeping its shape, motion and sound: all of it up to the model's longest clip, or its first `duration` seconds. `duration` is
- * seconds, past a model's longest clip only on a recipe that chains clips; `aspectRatio` (width:height) keeps the recipe's area; `steps`, `cfg` and `seed` replace the recipe's.
+ * seconds, past a model's longest clip only on a recipe that chains clips; `aspectRatio` (width:height) keeps the recipe's area; its `JobSettings` replace the recipe's.
  */
-export interface VideoRequest { prompt: string; image?: ImageInput; drive?: Uint8Array; extend?: Uint8Array; source?: Uint8Array; size?: { width: number; height: number }; aspectRatio?: string; duration?: number; steps?: number; cfg?: number; seed?: number; loras?: LoraAsk[] }
+export type VideoRequest = { prompt: string; image?: ImageInput; drive?: Uint8Array; extend?: Uint8Array; source?: Uint8Array; size?: { width: number; height: number }; aspectRatio?: string; duration?: number; loras?: LoraAsk[] } & JobSettings
 /** A host makes videos of at most this many seconds, chained clips included (host/API.md, "Making videos"). */
 export const LONGEST_VIDEO_SECONDS = 60;
 /** A driving clip's, a clip to extend's or a clip to edit's largest size (host/API.md, "Making videos"). */
@@ -52,13 +52,18 @@ export function validateVideoRequest(r: VideoRequest): void {
 /** An MP4 starts with its `ftyp` box. */
 export const isMp4 = (b: Uint8Array) => b.length > 12 && Buffer.from(b.subarray(4, 8)).toString("latin1") === "ftyp";
 
-/** A clip to upscale: `scale` times its shorter side (1 to 4), its longer side at most `maxSize` (host/API.md, "Making videos"). */
-export interface VideoUpscaleRequest { video: Uint8Array; scale?: number; maxSize?: number }
+/**
+ * A clip to upscale: `scale` times its shorter side (1 to 4), its longer side at most `maxSize`, and `colorMatch` and
+ * `seed` in place of the recipe's (host/API.md, "Making videos").
+ */
+export interface VideoUpscaleRequest { video: Uint8Array; scale?: number; maxSize?: number; colorMatch?: typeof COLOR_MATCH[number]; seed?: number }
 
 export function validateVideoUpscale(r: VideoUpscaleRequest): void {
   if (!isMp4(r.video) || r.video.length > MAX_DRIVE_BYTES) throw new HostRefused("invalid", "a clip to upscale is an MP4 of at most 64 MB");
   if (r.scale !== undefined && !(r.scale >= 1 && r.scale <= 4)) throw new HostRefused("invalid", "upscale scale must be from 1 to 4");
   if (r.maxSize !== undefined && !(Number.isInteger(r.maxSize) && r.maxSize >= 256 && r.maxSize <= 8192)) throw new HostRefused("invalid", "upscale maxSize must be from 256 to 8192");
+  if (r.colorMatch !== undefined && !COLOR_MATCH.includes(r.colorMatch)) throw new HostRefused("invalid", `colour matching is ${COLOR_MATCH.join(", ")}`);
+  if (r.seed !== undefined && !(Number.isInteger(r.seed) && r.seed >= 0 && r.seed <= MAX_UPSCALE_SEED)) throw new HostRefused("invalid", `an upscale's seed is a whole number from 0 to ${MAX_UPSCALE_SEED}`);
 }
 
 /** A confirmed host recipe that makes videos: `POST /host/v1/videos/create`, in memory only. */
@@ -77,7 +82,8 @@ export async function videoAt(t: { fetch: typeof fetch; baseUrl: string; modelId
 export async function upscaleVideoAt(t: { fetch: typeof fetch; baseUrl: string; modelId: string }, r: VideoUpscaleRequest, signal?: AbortSignal, onProgress?: (p: JobProgress) => void): Promise<GeneratedVideo> {
   if (!t.modelId.startsWith("recipe/")) throw new HostRefused("invalid", "a host upscale model must be a confirmed recipe");
   const body = JSON.stringify({ recipe: t.modelId.slice(7), video: Buffer.from(r.video).toString("base64"),
-    ...(r.scale === undefined ? {} : { scale: r.scale }), ...(r.maxSize === undefined ? {} : { maxSize: r.maxSize }) });
+    ...(r.scale === undefined ? {} : { scale: r.scale }), ...(r.maxSize === undefined ? {} : { maxSize: r.maxSize }),
+    ...(r.colorMatch === undefined ? {} : { colorMatch: r.colorMatch }), ...(r.seed === undefined ? {} : { seed: r.seed }) });
   return postVideo(t, "/host/v1/videos/upscale", body, VIDEO_TIMEOUT_MS, signal, onProgress);
 }
 

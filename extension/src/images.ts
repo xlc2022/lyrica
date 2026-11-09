@@ -1,7 +1,7 @@
 // Principles 1, 2 and 8: one image tool, which also makes clips, with portrait consent checked at each resolved provider.
 import type { ExtensionContext, ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import { CloudModelForbidden, HostRefused, isRestricted, NoModel, loraFiles, loraName, MAX_LORAS, modelName, type AppliedLora, type CallContext, type LoraAsk, type ImageRequest, type JobProgress, type Models, type Resolution,
-  type ThreadImages, type VideoRequest, type VideoUpscaleRequest, type WorkspaceSettings, LONGEST_VIDEO_SECONDS, MAX_SEED } from "@lyrica/core";
+  type ThreadImages, type VideoRequest, type VideoUpscaleRequest, type WorkspaceSettings, LONGEST_VIDEO_SECONDS, MAX_SEED, MAX_UPSCALE_SEED, COLOR_MATCH, JOB_SETTINGS, type JobSettings } from "@lyrica/core";
 import { Type, type Static } from "typebox";
 import { StringEnum } from "@earendil-works/pi-ai";
 import type { Approval, ApprovalRequest } from "./workspace.ts";
@@ -30,6 +30,8 @@ export interface ImageTools {
 /** A clip made in the background: what she is told, the part the chat shows, and the call's arguments, shown with it. */
 export interface ClipMade { text: string; video: VideoPart; args?: unknown }
 
+const SETTING = "For create, edit, video, animate and motion:";
+const ASKED = " Only when they ask for it; omit for the model's own. Only model hosts take it.";
 const path = (description: string) => Type.Optional(Type.String({ description }));
 /**
  * One object with `action` and optional fields, checked per action in
@@ -53,9 +55,15 @@ export const imageParameters = Type.Object({
   size: Type.Optional(Type.Object({ width: Type.Integer(), height: Type.Integer() }, { description: "For create and video: exact pixels." })),
   aspectRatio: Type.Optional(Type.String({ description: "For create and video: width:height (16:9); omit for recipe defaults." })),
   duration: videoDuration(),
-  steps: Type.Optional(Type.Integer({ minimum: 1, maximum: 150, description: "For create, edit, video, animate and motion: sampling steps, only when they ask for a number; omit for the model's own. Only model hosts take it." })),
-  cfg: Type.Optional(Type.Number({ minimum: 0, maximum: 30, description: "For create, edit, video, animate and motion: CFG (guidance scale), only when they ask for a number; omit for the model's own. Only model hosts take it; a model without CFG ignores it." })),
-  seed: Type.Optional(Type.Integer({ minimum: 0, maximum: MAX_SEED, description: "For create, edit, video, animate and motion: the seed, to remake or vary an earlier result (its seed is in that call's result); omit for a random one. Only model hosts take it." })),
+  steps: Type.Optional(Type.Integer({ minimum: 1, maximum: 150, description: `${SETTING} sampling steps.${ASKED}` })),
+  cfg: Type.Optional(Type.Number({ minimum: 0, maximum: 30, description: `${SETTING} CFG (guidance scale).${ASKED} A model without CFG ignores it.` })),
+  seed: Type.Optional(Type.Integer({ minimum: 0, maximum: MAX_SEED, description: `${SETTING} the seed, to remake or vary an earlier result (its seed is in that call's result); omit for a random one. Only model hosts take it. For upscale and upscale_video too, up to ${MAX_UPSCALE_SEED}.` })),
+  sampler: Type.Optional(Type.String({ description: `${SETTING} a ComfyUI sampler name (euler, res_multistep, dpmpp_2m…).${ASKED}` })),
+  scheduler: Type.Optional(Type.String({ description: `${SETTING} a ComfyUI scheduler name (simple, beta, karras…).${ASKED}` })),
+  shift: Type.Optional(Type.Number({ minimum: 0, maximum: 20, description: `${SETTING} the model sampling shift, for flow models.${ASKED}` })),
+  guidance: Type.Optional(Type.Number({ minimum: 0, maximum: 30, description: `${SETTING} distilled guidance, for FLUX-style models.${ASKED}` })),
+  negativePrompt: Type.Optional(Type.String({ maxLength: 4096, description: `${SETTING} what to keep out of the picture, only when they ask to avoid something; most models ignore it at CFG 1. Only model hosts take it.` })),
+  colorMatch: Type.Optional(StringEnum(COLOR_MATCH, { description: "For upscale and upscale_video: how the result's colours are matched to the original; omit for the model's own." })),
   scale: Type.Optional(Type.Number({ minimum: 1, maximum: 4, description: "For upscale and upscale_video: the factor." })),
   maxSize: Type.Optional(Type.Integer({ minimum: 256, maximum: 8192, description: "For upscale and upscale_video: the longest side's limit." })),
 });
@@ -109,12 +117,18 @@ const NEEDS = { create: ["prompt"], edit: ["image", "instruction"], upscale: ["i
 const FILES = { create: ["references"], edit: ["image", "mask", "references"], upscale: ["image"], reject: ["images"], pick: ["image"], clear_rejected: [], video: [], animate: ["image"], motion: ["image", "video"], edit_video: ["video"], extend: ["video"], upscale_video: ["video"] } as const;
 const FILE_USE = { image: "edit, upscale and pick take an image, and animate starts a clip from one", video: "extend makes a clip longer, motion copies a clip's moves, edit_video changes a clip and upscale_video upscales a clip", mask: "edit takes a mask", images: "reject takes images", references: "create and edit take references" } as const;
 
-/** The steps, CFG and seed a call sets, replacing its model's for this job. */
-const sampling = (p: ImageArgs) => ({ ...(p.steps === undefined ? {} : { steps: p.steps }), ...(p.cfg === undefined ? {} : { cfg: p.cfg }), ...(p.seed === undefined ? {} : { seed: p.seed }) });
+/** An upscale's colour matching and seed, in place of its model's. */
+const upscaleSettings = (p: ImageArgs) => ({ ...(p.colorMatch === undefined ? {} : { colorMatch: p.colorMatch }), ...(p.seed === undefined ? {} : { seed: p.seed }) });
 
-/** The steps and CFG a call set, said after the model it was made with. */
+/** The settings a call sets, replacing its model's for this job. */
+const sampling = (p: ImageArgs): JobSettings => Object.fromEntries(JOB_SETTINGS.filter((k) => given(p[k])).map((k) => [k, p[k]]));
+
+/** The settings a call set, said after the model it was made with; never the negative prompt's words. */
 const samplingUsed = (p: ImageArgs) => {
-  const set = [...p.steps === undefined ? [] : [`${p.steps} steps`], ...p.cfg === undefined ? [] : [`CFG ${p.cfg}`]];
+  const set = [...p.steps === undefined ? [] : [`${p.steps} steps`], ...p.cfg === undefined ? [] : [`CFG ${p.cfg}`],
+    ...given(p.sampler) || given(p.scheduler) ? [[p.sampler, p.scheduler].filter(given).join("/")] : [],
+    ...p.shift === undefined ? [] : [`shift ${p.shift}`], ...p.guidance === undefined ? [] : [`guidance ${p.guidance}`],
+    ...given(p.negativePrompt) ? ["a negative prompt"] : []];
   return set.length ? ` at ${set.join(", ")}` : "";
 };
 
@@ -317,7 +331,7 @@ export async function executeImage(o: ImageTools, id: string, p: ImageArgs, sign
   };
   let request: ImageRequest;
   if (p.action === "upscale") {
-    request = { action: p.action, image: await read(p.image!), ...(p.scale === undefined ? {} : { scale: p.scale }), ...(p.maxSize === undefined ? {} : { maxSize: p.maxSize }) };
+    request = { action: p.action, image: await read(p.image!), ...(p.scale === undefined ? {} : { scale: p.scale }), ...(p.maxSize === undefined ? {} : { maxSize: p.maxSize }), ...upscaleSettings(p) };
   } else {
     const refs = p.references ? await Promise.all(p.references.map(read)) : undefined;
     const common = { ...(p.count === undefined ? {} : { count: p.count }), ...(refs ? { references: refs } : {}), ...sampling(p) };
@@ -422,7 +436,7 @@ async function executeVideo(o: ImageTools, id: string, p: ImageArgs, signal?: Ab
  * nothing goes to a cloud model. It is made in the background as other clips are, and saved as a new clip.
  */
 async function executeUpscaleVideo(o: ImageTools, id: string, p: ImageArgs, signal?: AbortSignal, onProgress?: (p: JobProgress) => void) {
-  const request: VideoUpscaleRequest = { video: await o.files.readClip(p.video!), ...(p.scale === undefined ? {} : { scale: p.scale }), ...(p.maxSize === undefined ? {} : { maxSize: p.maxSize }) };
+  const request: VideoUpscaleRequest = { video: await o.files.readClip(p.video!), ...(p.scale === undefined ? {} : { scale: p.scale }), ...(p.maxSize === undefined ? {} : { maxSize: p.maxSize }), ...upscaleSettings(p) };
   const call = o.call();
   loraModels(o, call, p.action, p.loras?.length ? p.loras : undefined);
   const named = p.model?.trim() ? o.models.namedImageModels(call, "upscale", p.model) : undefined;

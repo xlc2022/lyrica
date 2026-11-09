@@ -1,5 +1,5 @@
-import { CLOUD_IMAGE_PROVIDERS, imageAt, PLAN_IMAGE, PLAN_IMAGE_MODEL, validateImageRequest, type ImageRequest, type GeneratedImage, type Sampling, type AppliedLora } from "./images.ts";
-export { CLOUD_IMAGE_PROVIDERS, MAX_SEED, PLAN_IMAGE_MODEL, type ImageRequest, type GeneratedImage, type ImageInput, type Sampling, type AppliedLora } from "./images.ts";
+import { CLOUD_IMAGE_PROVIDERS, imageAt, PLAN_IMAGE, PLAN_IMAGE_MODEL, setsJob, validateImageRequest, type ImageRequest, type GeneratedImage, type Sampling, type AppliedLora } from "./images.ts";
+export { CLOUD_IMAGE_PROVIDERS, COLOR_MATCH, JOB_SETTINGS, MAX_SEED, MAX_UPSCALE_SEED, PLAN_IMAGE_MODEL, type JobSettings, type ImageRequest, type GeneratedImage, type ImageInput, type Sampling, type AppliedLora } from "./images.ts";
 import { upscaleVideoAt, validateVideoRequest, validateVideoUpscale, videoAt, type GeneratedVideo, type VideoRequest, type VideoUpscaleRequest } from "./videos.ts";
 import { loraFiles, loraName, type LoraAsk } from "./loras.ts";
 export { isMp4, LONGEST_VIDEO_SECONDS, type GeneratedVideo, type VideoRequest, type VideoUpscaleRequest } from "./videos.ts";
@@ -379,7 +379,7 @@ export interface CleanupItem {
  * What a call needs from a model: tools, room for the conversation, or an image create tier.
  * `first`: models asked for by name, tried before the list for this one call (`namedImageModels`).
  * `after`: models tried after the list for this one call, unless Fallback is off (`referenceModels`).
- * `sampling`: the call sets steps, CFG or a seed, which only a model host takes.
+ * `sampling`: the call sets its own steps, CFG, seed or other `JobSettings`, which only a model host takes.
  */
 export interface Need { tools?: boolean; tokens?: number; imageTier?: "fast" | "quality"; imageMask?: boolean; imageReferences?: number; animate?: boolean; motion?: boolean; videoEdit?: boolean; extend?: boolean; clip?: boolean; seconds?: number; first?: string[]; after?: string[]; loras?: string[]; sampling?: boolean }
 /** `evenIfDown`: ignore the health cache (stale still counts). `except`: endpoints to treat as down. */
@@ -3001,8 +3001,8 @@ export class Models {
     const asks = request.action === "upscale" ? [] : request.loras ?? [];
     const need: Need = { ...request.action === "create" ? { imageTier: request.tier } : request.action === "edit" ? { imageMask: !!request.mask } : {},
       ...(refs ? { imageReferences: refs } : {}), ...(asks.length ? { loras: asks.map((a) => a.name) } : {}) };
-    // Steps, CFG or a seed for this job: only a model host takes them, so a cloud model is passed over rather than ignoring them.
-    if (request.action !== "upscale" && (request.steps !== undefined || request.cfg !== undefined || request.seed !== undefined)) need.sampling = true;
+    // Settings for this job: only a model host takes them, so a cloud model is passed over rather than ignoring them.
+    if (request.action !== "upscale" && setsJob(request)) need.sampling = true;
     if (opts.first?.length) need.first = opts.first;
     // A create with references may find no Create model that takes them; an Edit model that also creates can.
     if (request.action === "create" && refs) { const after = this.referenceModels(ctx, refs); if (after.length) need.after = after; }
@@ -3497,7 +3497,7 @@ export class Models {
       if (!provider || task === "image.upscale" || (task === "image.create" && !provider.create) || (task === "image.edit" && !provider.edit)) return "this endpoint has no image provider for the task";
       if (task === "image.edit" && need.imageMask && !provider.mask) return "this image provider does not accept masks";
       if (need.imageReferences && !provider.references) return "this image provider does not take reference images";
-      if (need.sampling) return "this image provider does not take steps, CFG or a seed";
+      if (need.sampling) return "this image provider does not take steps, CFG, a seed or other sampling settings";
     }
     if (task === "image.create" && need.imageTier
       && o.useFor && o.useFor !== "both" && o.useFor !== need.imageTier) return `it is for ${o.useFor} images`;

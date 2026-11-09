@@ -43,17 +43,17 @@ export async function fakeImages() {
       const body = JSON.parse(String(opts.body));
       if (path === "/host/v1/videos/create") {
         if (!["clip", "moves", "long", "restyle"].includes(body.recipe)) return Response.json({ error: { code: "invalid", message: "That recipe doesn't make videos." } }, { status: 400 });
-        expect(Object.keys(body).every(k => ["recipe", "prompt", "image", "drive", "extend", "source", "width", "height", "aspectRatio", "duration", "steps", "cfg", "seed", "loras"].includes(k))).toBe(true);
+        expect(Object.keys(body).every(k => ["recipe", "prompt", "image", "drive", "extend", "source", "width", "height", "aspectRatio", "duration", "steps", "cfg", "seed", "sampler", "scheduler", "shift", "guidance", "negativePrompt", "loras"].includes(k))).toBe(true);
         videos.push(body);
         return Response.json({ video: { mp4: mp4.toString("base64"), width: 1280, height: 704, frames: 121, fps: 24, duration: 5.04, audio: false, seed: 7 }, poster: png.toString("base64"), ...applied(body), seconds: 300, sampling: { seconds: 240.5, steps: 20 } });
       }
       if (path === "/host/v1/videos/upscale") {
-        expect(Object.keys(body).every(k => ["recipe", "video", "scale", "maxSize"].includes(k))).toBe(true);
+        expect(Object.keys(body).every(k => ["recipe", "video", "scale", "maxSize", "colorMatch", "seed"].includes(k))).toBe(true);
         upscaled.push(body);
         return Response.json({ video: { mp4: mp4.toString("base64"), width: 2560, height: 1408, frames: 121, fps: 24, duration: 5.04, audio: true, seed: 7 }, poster: png.toString("base64"), seconds: 600 });
       }
       if (body.recipe !== "art") return Response.json({ error: { code: "not_found" } }, { status: 404 });
-      const allowed = ["recipe", "prompt", "count", "references", "loras", "steps", "cfg", "seed", ...(action === "create" ? ["width", "height"] : action === "edit" ? ["image", "mask", "replace"] : ["image", "scale", "maxSize"])];
+      const allowed = ["recipe", "prompt", "count", "references", "loras", "steps", "cfg", "seed", "sampler", "scheduler", "shift", "guidance", "negativePrompt", ...(action === "create" ? ["width", "height"] : action === "edit" ? ["image", "mask", "replace"] : ["image", "scale", "maxSize", "colorMatch"])];
       expect(Object.keys(body).every(k => allowed.includes(k))).toBe(true);
       images.push({ action, body });
       return Response.json({ images: Array.from({ length: body.count ?? 1 }, () => ({ png: output.toString("base64"), width: 1, height: 1, seed: 42 })), seconds: 0.1,

@@ -201,7 +201,7 @@ describe("image tool results (principles 1 and 4)", () => {
     expect(s.heard).toEqual([]);
   });
 
-  it("sends steps, CFG and a seed asked for to a model host for this job, passing over a cloud model, which can't take them", async () => {
+  it("sends steps, CFG, a seed and other settings asked for to a model host for this job, passing over a cloud model, which can't take them", async () => {
     const s = await setup(); s.settings.setPhotoCloudPolicy("always");
     s.models.setColumnTask(s.ada.id, "general", "image.create", [s.ref, s.workstation.ref]);
     s.models.setColumnTask(s.ada.id, "general", "image.edit", [s.ref, s.workstation.ref]);
@@ -215,13 +215,22 @@ describe("image tool results (principles 1 and 4)", () => {
     ]);
     // With only the cloud model listed, nothing can take them, and the error says why.
     s.models.setColumnTask(s.ada.id, "general", "image.create", [s.ref]);
-    await expect(s.run({ action: "create", prompt: "A garden", cfg: 1 })).rejects.toThrow(/does not take steps, CFG or a seed/);
-    await expect(s.run({ action: "create", prompt: "A garden", seed: 7 })).rejects.toThrow(/does not take steps, CFG or a seed/);
+    await expect(s.run({ action: "create", prompt: "A garden", cfg: 1 })).rejects.toThrow(/does not take steps, CFG, a seed or other sampling settings/);
+    await expect(s.run({ action: "create", prompt: "A garden", seed: 7 })).rejects.toThrow(/does not take steps, CFG, a seed or other sampling settings/);
     s.models.setColumnTask(s.ada.id, "general", "image.create", [s.ref, s.workstation.ref]);
     // Without them, the cloud model is first again and the recipe's own apply.
     await s.run({ action: "create", prompt: "A pond" });
     expect(s.heard).toHaveLength(1);
     s.models.setColumnTask(s.ada.id, "general", "video", [s.workstation.clip]);
+    await s.run({ action: "create", prompt: "A lake", sampler: "euler", scheduler: "beta", shift: 3.5, negativePrompt: "boats" }).then(r =>
+      expect((r.content as { type: string; text?: string }[]).find(c => c.type === "text")!.text).toMatch(/^Made with Art on workstation at euler\/beta, shift 3\.5, a negative prompt\. /));
+    expect(s.workstation.server.images.at(-1)!.body).toEqual({ recipe: "art", prompt: "A lake", sampler: "euler", scheduler: "beta", shift: 3.5, negativePrompt: "boats" });
+    await expect(s.run({ action: "create", prompt: "A lake", sampler: "Euler A" })).rejects.toThrow(/ComfyUI sampler name/);
+    // An upscale takes its own colour matching and seed, within SeedVR2's range.
+    s.models.setColumnTask(s.ada.id, "general", "image.upscale", [s.workstation.ref]);
+    await s.run({ action: "upscale", image: "/workspace/uploads/landscape.png", colorMatch: "wavelet", seed: 9 });
+    expect(s.workstation.server.images.at(-1)!.body).toMatchObject({ colorMatch: "wavelet", seed: 9 });
+    await expect(s.run({ action: "upscale", image: "/workspace/uploads/landscape.png", seed: 2 ** 40 })).rejects.toThrow(/upscale's seed/);
     const clip = await s.run({ action: "video", prompt: "A fox", cfg: 3, seed: 7 });
     expect(clip.content).toContainEqual({ type: "text", text: expect.stringContaining("Seed 7.") });
     expect(s.workstation.server.videos).toEqual([{ recipe: "clip", prompt: "A fox", cfg: 3, seed: 7 }]);
