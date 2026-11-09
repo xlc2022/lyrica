@@ -86,7 +86,7 @@ export function blankValuesOf(defaults: Record<string, unknown> | undefined): Re
 
 /**
  * A model setting a blank takes, edited in place: a select of the node's options, a number, or text. Saved when left
- * (or on Enter) if it changed; an emptied number takes the setting away, so a template pass kept for it is left out.
+ * (or on Enter) if it changed; emptied, it takes the setting away, so a template pass kept for it is left out.
  */
 function SettingField({ blank, options }: { blank: string; options?: unknown }) {
   const { values, set } = useContext(BlankValues);
@@ -112,8 +112,8 @@ function SettingField({ blank, options }: { blank: string; options?: unknown }) 
   const leave = () => {
     typing.current = false;
     const t = text.trim();
-    if (!numeric) { if (t !== String(value ?? "")) set?.(blank, t); return; }
     if (!t) { if (value !== undefined) set?.(blank, null); return; }
+    if (!numeric) { if (t !== String(value)) set?.(blank, t); return; }
     const n = Number(t);
     if (!Number.isFinite(n)) { setText(value === undefined ? "" : String(value)); return; }
     if (n !== value) set?.(blank, n);
