@@ -28,15 +28,17 @@ self-hosted runners, which no workflow uses at the moment.
   the check, e2e and nix jobs all set this. The VM holds nothing else: never
   the lyricad machine (the owner's memory) or the model host (the host-stack job
   installs its own stack).
-- The nix job installs Nix once (pinned installer, kept between runs), runs
-  `nix flake check` and the sandbox tests with the NixOS sandbox tools and
-  closure (docs/daemon.md "On NixOS"). Nix stays installed on the VM. If
-  an install was cancelled partway, the job stops and names the leftover
-  files; the Nix manual's multi-user uninstall steps clear it. Each run
-  ends by keeping its builds as one generation of a profile
-  (`~/.local/state/nix/profiles/lyrica-ci`), deleting all but the 10 newest
+- The nix job installs Nix once (pinned installer, kept between runs), then
+  runs `nix flake check` and the sandbox tests with the NixOS sandbox tools
+  and closure (docs/daemon.md "On NixOS") side by side in one step: the
+  check in the background with its log printed when it ends, since the
+  check is CPU-bound and the tests mostly wait. Nix stays installed on the
+  VM. If an install was cancelled partway, the job stops and names the
+  leftover files; the Nix manual's multi-user uninstall steps clear it.
+  Each run ends by keeping its builds as one generation of a profile
+  (`~/.local/state/nix/profiles/lyrica-ci`), deleting all but the 3 newest
   and collecting garbage; `keep-outputs` in `/etc/nix/nix.conf` keeps what
-  those 10 were built from, so the next run still finds them cached.
+  those 3 were built from, so the next run still finds them cached.
 - Leftovers: a cancelled job can leave its test servers, browsers and
   sandbox helpers running, and enough of them use up the runner user's
   threads, so Chromium fails to start (`pthread_create: Resource

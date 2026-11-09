@@ -229,25 +229,40 @@ jobs:
         with:
           path: ~/.cache/lyrica-ci/fixed
           key: claude-code-2-${{ hashFiles('flake.lock') }}
-      - run: nix --extra-experimental-features "nix-command flakes" flake check -L
-      - run: npm ci
-      - name: Sandbox tests with the NixOS sandbox tools
+      # The flake check (a minute, mostly the web build on the CPU) and the
+      # sandbox tests (two minutes, mostly waiting on sandboxes and network
+      # timeouts) run side by side: the check in the background, its log kept
+      # and printed when it ends, so the two don't interleave. Two nix
+      # commands share the daemon's locks, so neither builds twice.
+      - name: Flake check and sandbox tests with the NixOS sandbox tools
         run: |
           nix() { command nix --extra-experimental-features "nix-command flakes" "$@"; }
+          nix flake check -L >"$RUNNER_TEMP/flake-check.log" 2>&1 &
+          check=$!
+          npm ci
           tools=$(nix build --no-link --print-out-paths .#sandbox-tools)
           closure=$(nix build --no-link --print-out-paths .#sandbox-closure)/store-paths
-          PATH="$tools/bin:$PATH" LYRICA_SANDBOX_TOOLS="$tools" LYRICA_SANDBOX_CLOSURE="$closure" npx vitest --run core/test/sandbox.test.ts
+          tests=0
+          PATH="$tools/bin:$PATH" LYRICA_SANDBOX_TOOLS="$tools" LYRICA_SANDBOX_CLOSURE="$closure" npx vitest --run core/test/sandbox.test.ts || tests=$?
+          checked=0
+          wait "$check" || checked=$?
+          echo "::group::nix flake check (exit $checked)"
+          cat "$RUNNER_TEMP/flake-check.log"
+          echo "::endgroup::"
+          [ "$checked" = 0 ] || { echo "::error::nix flake check failed (exit $checked); its log is in the group above"; }
+          [ "$tests" = 0 ] || { echo "::error::sandbox tests failed (exit $tests)"; }
+          [ "$checked" = 0 ] && [ "$tests" = 0 ]
         env:
           LYRICA_SANDBOX_TESTS: require
-      # Each run's builds are one generation of a profile; the 10 newest stay, the rest are collected.
+      # Each run's builds are one generation of a profile; the 3 newest stay, the rest are collected.
       # On a hosted runner this is what the store cache above saves.
-      - name: Keep the last 10 builds
+      - name: Keep the last 3 builds
         run: |
           nix() { command nix --extra-experimental-features "nix-command flakes" "$@"; }
           profile="$HOME/.local/state/nix/profiles/lyrica-ci"
           mkdir -p "${profile%/*}"
           nix build --profile "$profile" .#checks.x86_64-linux.roots
-          nix-env --profile "$profile" --delete-generations +10
+          nix-env --profile "$profile" --delete-generations +3
           nix store gc
   # The model host's Compose stack, without a GPU: install, then check the networks.
   host-stack:
