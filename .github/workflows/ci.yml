@@ -66,11 +66,18 @@ jobs:
           printf 'code=%s\nnix=%s\nhost=%s\n' "$code" "$nix" "$host" | tee -a "$GITHUB_OUTPUT"
   # Unit tests and the e2e tests are separate jobs, side by side: together
   # they took 14.5 minutes on one runner, 9 of them Playwright. Each sets up
-  # the same runner (apt, Node, npm ci), about a minute.
+  # the same runner (apt, Node, npm ci), about a minute. The unit tests
+  # are three shards, dealt out by Vitest (a hash of each file's path), so
+  # a new test file needs no change here; the typecheck rides with the
+  # first.
   check:
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     steps:
       - uses: actions/checkout@v7
         with:
@@ -95,7 +102,8 @@ jobs:
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
       - run: npm ci
       - run: npm run typecheck
-      - run: npm test
+        if: matrix.shard == 1
+      - run: npm test -- --shard=${{ matrix.shard }}/3
         env:
           LYRICA_SANDBOX_TESTS: require
   # Playwright drives the web UI against a real lyricad (web/e2e/serve.ts).

@@ -73,7 +73,15 @@ self-hosted runners, which no workflow uses at the moment.
     `persona/` is her seed, so it counts. Together on one runner they took
     about 14.5 minutes, 9 of them Playwright; apart, each sets up its own
     runner (apt, Node, `npm ci`, about a minute) and the run ends when the
-    slowest one does.
+    slowest one does. The unit tests are three jobs, `check (1)` to
+    `check (3)`, each running a third of the test files (`npm test --
+    --shard=N/3`: Vitest deals the files out by a hash of their paths, so
+    a new file joins a shard on its own, and the shards' lengths differ
+    somewhat); the typecheck runs in the first. Alone, the 195 files took
+    4.6 minutes on one runner, 11 minutes of work on three workers, and
+    the four longest files (the daemon's children, projects and updater
+    tests, and the core sandbox tests) are a third of it, so a failing
+    test's job is the one whose log names its file.
   - nix: the same, less `evals/` and the tests the flake leaves out of its
     source (`web/e2e/` and each `test/` but `core/test/`, which holds the
     sandbox tests it runs).
