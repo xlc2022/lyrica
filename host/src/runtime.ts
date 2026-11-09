@@ -363,6 +363,7 @@ export class Runtime {
       kvBytes: this.servingEntry(m).kvBytes,
       stretch: this.scheduler.settings(m).stretch?.factor ?? null,
       state: at?.state ?? "unloaded",
+      ...(at?.loading ? { loading: at.loading } : {}),
       gpus: at?.gpus ?? null,
       placement: this.scheduler.settings(m).placement,
       pinned: s.pins.includes(m.id),

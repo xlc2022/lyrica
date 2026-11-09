@@ -349,7 +349,10 @@ function textModels() {
   const cpu = S.status.cpuServers ?? [];
   return [head, h("ul", { class: "list" }, S.models.map((m) => {
     const where = cpu.includes(m.server) ? "CPU" : m.placement.mode === "auto" ? "placed automatically" : `GPU ${m.placement.gpus.join("+")}`;
-    const [word, dot] = m.state === "loaded" ? ["Loaded", "up"] : m.state === "loading" ? ["Loading", "info"] : ["Unloaded", ""];
+    // While loading, how much of the model has been read from disk; a model already in the page cache reads nothing and shows no percent.
+    const pct = m.state === "loading" && m.loading?.of ? Math.min(100, Math.floor((100 * m.loading.read) / m.loading.of)) : null;
+    const [word, dot] = m.state === "loaded" ? ["Loaded", "up"] : m.state === "loading" ? [pct == null ? "Loading" : h("span", {}, "Loading ", num(`${pct}%`)), "info"] : ["Unloaded", ""];
+    const reading = pct == null ? undefined : `${size(m.loading.read)} of ${size(m.loading.of)} read from disk`;
     return h("li", {},
       h("div", { class: "main" },
         h("div", { class: "name" }, h("code", {}, m.id)),
@@ -359,7 +362,7 @@ function textModels() {
           m.stretch ? h("span", {}, "stretch ×", num(m.stretch)) : null,
           m.kvBytes ? h("span", {}, "KV ", num(size(m.kvBytes))) : null)),
       h("div", { class: "actions" },
-        state(word, dot), m.pinned ? h("span", { class: "pill" }, "pinned") : null,
+        state(word, dot, reading), m.pinned ? h("span", { class: "pill" }, "pinned") : null,
         m.state === "unloaded" ? button("Load", () => post("/host/v1/models/load", { model: m.id }))
           : h("button", { type: "button", class: "sm", disabled: m.pinned, title: m.pinned ? "Unpin it first." : undefined, onclick: act(() => post("/host/v1/models/unload", { model: m.id })) }, "Unload"),
         h("button", { type: "button", class: "sm", onclick: () => editModel(m).catch(failed) }, "Settings"),

@@ -354,7 +354,8 @@ export interface HostStatus {
     pciId?: string;
     vram: { total: number; used: number };
     /** `ram`: bytes it keeps in the host's system RAM, when it didn't fit its GPUs. */
-    models: { id: string; kind: string; state: string; pinned: boolean; busy: boolean; vram: number | null; ram?: number; lastUsed: string | null }[];
+    /** `loading`, while the state is `loading`: bytes read from the models disk so far, of the bytes the load reads. */
+    models: { id: string; kind: string; state: string; loading?: { read: number; of: number }; pinned: boolean; busy: boolean; vram: number | null; ram?: number; lastUsed: string | null }[];
     queue: { chat: number; image: number; background: number };
   }[];
   /**

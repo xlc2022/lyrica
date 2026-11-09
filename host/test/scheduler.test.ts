@@ -9,13 +9,13 @@ import { StateFile } from "../src/state.ts";
 import { FakeBackend, FakeGpus, GIB, textModel } from "./fakes.ts";
 
 type Srv = "llamacpp" | "vllm" | "images";
-function setup(totals = [24], opts: { waitLimits?: Record<Priority, number>; dir?: string; servers?: Srv[]; gpuBackend?: "rocm" | "vulkan"; sharedMemory?: Srv[]; log?: Logger } = {}) {
+function setup(totals = [24], opts: { waitLimits?: Record<Priority, number>; dir?: string; servers?: Srv[]; gpuBackend?: "rocm" | "vulkan"; sharedMemory?: Srv[]; log?: Logger; disk?: () => number } = {}) {
   const dir = opts.dir ?? mkdtempSync(join(tmpdir(), "lyrica-sched-"));
   const gpus = new FakeGpus(totals);
   const llamacpp = new FakeBackend(gpus);
   const vllm = new FakeBackend(gpus);
   const state = new StateFile(dir);
-  const scheduler = new Scheduler({ monitor: gpus, backends: { llamacpp, vllm }, state, log: opts.log ?? (() => {}), waitLimits: opts.waitLimits, servers: opts.servers, gpuBackend: opts.gpuBackend, sharedMemory: opts.sharedMemory });
+  const scheduler = new Scheduler({ monitor: gpus, backends: { llamacpp, vllm }, state, log: opts.log ?? (() => {}), waitLimits: opts.waitLimits, servers: opts.servers, gpuBackend: opts.gpuBackend, sharedMemory: opts.sharedMemory, disk: opts.disk });
   return { dir, gpus, llamacpp, vllm, state, scheduler };
 }
 
@@ -55,6 +55,24 @@ describe("the GPU queue", () => {
     expect(String(failed?.fields.message)).toContain("GB");
   });
 
+
+  it("reports how much of a loading model has been read from disk", async () => {
+    let diskRead = 7 * GIB; // the disk's running total when the host starts
+    const { scheduler, llamacpp } = setup([48], { disk: () => diskRead });
+    llamacpp.loadMs = 150;
+    const m = textModel("m", 10, { mmproj: "mm.gguf", mmprojSize: 2 * GIB });
+    const loading = scheduler.loadNow(m);
+    await until(() => scheduler.placement("m")?.state === "loading");
+    diskRead += 3 * GIB;
+    expect(scheduler.placement("m")?.loading).toEqual({ read: 3 * GIB, of: 12 * GIB });
+    const gpu = async () => (await scheduler.status())[0] as { models: Record<string, unknown>[] };
+    expect((await gpu()).models[0]).toMatchObject({ id: "m", state: "loading", loading: { read: 3 * GIB, of: 12 * GIB } });
+    diskRead += 20 * GIB; // other reading from the same disk can't take it past the model
+    expect(scheduler.placement("m")?.loading).toEqual({ read: 12 * GIB, of: 12 * GIB });
+    await loading;
+    expect(scheduler.placement("m")).toEqual({ state: "loaded", gpus: [0] });
+    expect((await gpu()).models[0]).not.toHaveProperty("loading");
+  });
 
   it("keeps the serving instance when reload cannot fit", async () => {
     const { scheduler, llamacpp } = setup();
