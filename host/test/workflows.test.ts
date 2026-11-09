@@ -350,6 +350,11 @@ describe("the workflow API", () => {
     expect((await s.api(`/host/v1/recipes/${flux.id}`, { method: "GET" })).body).toMatchObject({ name: "Flux dev", template: "flux", custom: false });
     expect(readdirSync(join(s.dataDir, "workflows"))).toEqual([]);
     flux.name = "Flux dev";
+    // A name with a workflow the check refuses renames nothing, and the model stays on the built-in.
+    const refusedBuiltIn = await s.api(`/host/v1/recipes/${flux.id}/workflow`, { method: "PUT", body: { name: "Never", workflow: { "1": { class_type: "KSampler", inputs: {} } } } });
+    expect(refusedBuiltIn.status).toBe(400);
+    expect((await s.api(`/host/v1/recipes/${flux.id}`, { method: "GET" })).body).toMatchObject({ name: "Flux dev", template: "flux", custom: false });
+    expect(readdirSync(join(s.dataDir, "workflows"))).toEqual([]);
     // Save: a workflow of the model's own, named after it, on the built-in as its base; the built-in is untouched.
     const workflow = structuredClone(shipped.body.workflow) as Record<string, { inputs: Record<string, unknown> }>;
     const sampler = Object.entries(workflow).find(([, n]) => "steps" in n.inputs)!;
@@ -367,6 +372,12 @@ describe("the workflow API", () => {
     expect(renamed.body).toMatchObject({ name: edited.body.name, label: "Flux, my way", revision: 1, recipes: [{ id: flux.id, name: "Flux, my way" }] });
     expect((await s.api(`/host/v1/recipes/${flux.id}`, { method: "GET" })).body).toMatchObject({ name: "Flux, my way", template: edited.body.name });
     expect((await s.api(`/host/v1/recipes/${flux.id}/workflow`, { method: "PUT", body: { name: "  " } })).status).toBe(400);
+    // A save the check refuses renames nothing.
+    const broken = structuredClone(workflow);
+    delete (broken as Record<string, unknown>)[sampler[0]];
+    const refused = await s.api(`/host/v1/recipes/${flux.id}/workflow`, { method: "PUT", body: { name: "Never", workflow: broken } });
+    expect(refused.status).toBe(400);
+    expect((await s.api(`/host/v1/recipes/${flux.id}`, { method: "GET" })).body).toMatchObject({ name: "Flux, my way" });
     // The model still fills and runs; a second save is revision 2 of the same workflow.
     expect((await s.api("/host/v1/images/create", { body: { recipe: flux.id, prompt: "x" } })).status).toBe(200);
     sampler[1].inputs.denoise = 0.8;
