@@ -763,10 +763,10 @@ function CopyToHost({ L, c, targets, onCopy, onCancel }: { L: Lib; c: RecipeCopy
       {!plan.data && !plan.error && <p className="muted">Asking {to.name}…</p>}
       {plan.data && <>
         <p>{plan.data.existing ? `${to.name} has this model from an earlier copy: copying again fetches only what is still missing.` : `The model, its workflow, LoRAs and settings go to ${to.name}. It is ready there once its files arrive.`}</p>
-        {of("here").length > 0 && <><p className="meta">On {to.name} already</p>{files(of("here"))}</>}
-        {of("download").length > 0 && <><p className="meta">Downloads from {hubs.map((h) => HUB_WORD[h]).join(" and ")}</p>{files(of("download"))}</>}
-        {of("copy").length > 0 && <><p className="meta">Copies from {c.host}</p>{files(of("copy"))}</>}
-        {of("unavailable").length > 0 && <><p className="warn-text">Can't be copied</p>{files(of("unavailable"))}</>}
+        {of("here").length > 0 && <><p className="eyebrow">On {to.name} already</p>{files(of("here"))}</>}
+        {of("download").length > 0 && <><p className="eyebrow">Downloads from {hubs.map((h) => HUB_WORD[h]).join(" and ")}</p>{files(of("download"))}</>}
+        {of("copy").length > 0 && <><p className="eyebrow">Copies from {c.host}</p>{files(of("copy"))}</>}
+        {of("unavailable").length > 0 && <><p className="eyebrow warn-text">Can't be copied</p>{files(of("unavailable"))}</>}
         {problems.map((x) => <p key={x} className="warn-text">{x}</p>)}
         {!!plan.data.missingNodes?.length && <p className="warn-text">{to.name}'s ComfyUI doesn't have these nodes: {plan.data.missingNodes.join(", ")}. The model does nothing there until they are added.</p>}
         {short && <p className="warn-text">Not enough space on {to.name}: <Size text={size(to.free!)} /> free.</p>}

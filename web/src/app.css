@@ -1884,6 +1884,9 @@ ul.choices { list-style: none; margin: 0; padding: 0; }
 .more-cloud .cloud-image-controls { padding: 0; }
 .dl-parts { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 13px; }
 .dl-parts code { overflow-wrap: anywhere; }
+/* Copy to host…: each group of files under its eyebrow; the warning one keeps the eyebrow's size. */
+dialog .eyebrow { margin: 10px 0 4px; }
+.eyebrow.warn-text { font-size: 11px; }
 
 /* Question cards: UX §6, the recommended answer is the card's primary action. */
 .question-card { border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; margin: 12px 0; min-width: 0; overflow-wrap: anywhere; }
