@@ -29,7 +29,7 @@ Measured against the last run's per-file times, today's shards hold 205,
 the balance drifts as files come and go. The other ways considered: four
 shards (about 2:35, one more runner per push) and a split by folder (the
 daemon's tests alone are two thirds of the work, so that job would still
-take about 3:50). Three shards were the recommendation.
+take about 3:50). The operator chose three.
 
 Expected: the run bounded by the e2e jobs, about 3:45 after #872.
 
