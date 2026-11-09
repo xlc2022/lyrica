@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { totalmem } from "node:os";
 import { HostError } from "./http.ts";
 import type { TextModel } from "./library.ts";
+import type { Logger } from "./log.ts";
 import { concurrentOf, contextOf, tableInRam, usesMtp, usesVision, type ModelSettings, type Option } from "./placement.ts";
 
 /** What the server says a model takes on a GPU with a placement: all of it, and the part that isn't weights (cache and compute buffers). */
@@ -110,6 +111,8 @@ export interface LlamaCppOptions {
   memoryBytes?: number;
   /** Whether a GPU is a CMP 100-210, which reads prompts faster in bigger steps. */
   cmp?: (gpu: number) => boolean;
+  /** Where to say that a measurement didn't happen, so a load planned from the estimate isn't a mystery. */
+  log?: Logger;
 }
 
 /** llama.cpp's own prompt cache in host memory, per loaded model, in MiB. */
@@ -122,7 +125,7 @@ export class LlamaCpp implements Backend {
   private readonly templates: Templates;
 
   constructor(o: LlamaCppOptions) {
-    this.o = { loadTimeoutMs: 10 * 60_000, measureTimeoutMs: 60_000, memoryBytes: totalmem(), cmp: () => false, ...o };
+    this.o = { loadTimeoutMs: 10 * 60_000, measureTimeoutMs: 60_000, memoryBytes: totalmem(), cmp: () => false, log: () => {}, ...o };
     this.templates = new Templates(o.serving, "llamacpp");
     this.writePreset();
   }
@@ -230,11 +233,17 @@ export class LlamaCpp implements Backend {
       if (!memory || memory.status === "measured" || memory.status === "failed" || Date.now() > end) break;
       await new Promise((r) => setTimeout(r, 500));
     }
-    if (memory?.status !== "measured" || !memory.min) return null;
+    // Without one the scheduler plans from its estimate, so the log says why: the router's measurement failed
+    // (it doesn't say more), wasn't done within the wait, or the router has none for this model.
+    const missing = (reason: string) => {
+      this.o.log("not measured", { model: model.id, reason });
+      return null;
+    };
+    if (memory?.status !== "measured" || !memory.min) return missing(memory?.status === "failed" ? "failed" : memory ? `still ${memory.status} after ${Math.round(this.o.measureTimeoutMs / 1000)} s` : "no measurement");
     const measured: Record<number, Measured> = {};
     for (const g of at.gpus) {
       const d = memory.min.devices.find((x) => x.kind === "device" && x.name === this.o.device(g));
-      if (!d) return null;
+      if (!d) return missing(`no figure for ${this.o.device(g)}`);
       measured[g] = { bytes: d.model + d.context + d.compute, extra: d.context + d.compute };
     }
     if (usesVision(model, settings) && model.mmprojSize) {

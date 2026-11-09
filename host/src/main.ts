@@ -81,7 +81,7 @@ const scheduler = new Scheduler({
   // when install.sh turned on unified memory (an APU without a discrete GPU).
   sharedMemory: backend === "vulkan" || (backend === "rocm" && env.LLAMA_UNIFIED_MEMORY === "1") ? ["llamacpp"] : [],
   backends: {
-    llamacpp: new LlamaCpp({ url: env.LLAMACPP_URL || "http://llamacpp:8080", serving, models: modelsDir, device: (i) => `${backend === "vulkan" ? "Vulkan" : backend === "rocm" ? "ROCm" : "CUDA"}${i}`, cmp: (i) => cmpGpus.has(i) }),
+    llamacpp: new LlamaCpp({ url: env.LLAMACPP_URL || "http://llamacpp:8080", serving, models: modelsDir, device: (i) => `${backend === "vulkan" ? "Vulkan" : backend === "rocm" ? "ROCm" : "CUDA"}${i}`, cmp: (i) => cmpGpus.has(i), log: stdoutLog }),
     vllm: new Vllm({ url: env.VLLM_URL || "http://vllm:{port}", serving, models: modelsDir }),
     comfyui: sdcpp ?? comfy,
     speech: new Speech({ url: env.SPEECH_URL || "http://speech:8000", models: modelsDir }),
