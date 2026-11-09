@@ -84,6 +84,7 @@ textarea { font: 13px/1.5 var(--mono); resize: vertical; width: 100%; }
 .facts code { color: var(--fg); }
 .head-actions { display: flex; gap: 6px; flex: none; }
 .banner { padding: 8px var(--gutter); border-bottom: 1px solid var(--line); display: grid; gap: 2px; }
+.error.banner { grid-template-columns: 1fr auto; align-items: center; gap: 8px; }
 
 /* Sections down the left, a scrolling row on a phone. */
 .page { display: grid; grid-template-columns: 196px minmax(0, 1fr); align-items: start; }

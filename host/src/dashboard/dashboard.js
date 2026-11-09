@@ -42,7 +42,7 @@ let kept = false;
 function show(error, keep = false) {
   if (!error && kept) return;
   kept = !!error && keep;
-  $("error").textContent = error ? error.message ?? String(error) : "";
+  $("error-text").textContent = error ? error.message ?? String(error) : "";
   $("error").hidden = !error;
 }
 const failed = (error) => show(error, true);
@@ -50,7 +50,8 @@ function dismiss() {
   kept = false;
   show();
 }
-$("error").addEventListener("click", dismiss);
+$("error-dismiss").replaceChildren(icon("close"));
+$("error-dismiss").addEventListener("click", dismiss);
 
 /** Sizes as Lyrica writes them: "812.0 GB", "1.31 TB", "420 MB". */
 function size(bytes) {
