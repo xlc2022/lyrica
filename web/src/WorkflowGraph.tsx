@@ -7,8 +7,8 @@ import {
   Background, Controls, Handle, Position, ReactFlow, ReactFlowProvider, useReactFlow,
   type Connection, type Edge, type EdgeChange, type Node, type NodeChange, type NodeProps,
 } from "@xyflow/react";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { blankOf, BLANK_WORD, InputRow, isLink, type Graph, type NodeTypes, type Value, type WNode } from "./Workflows.tsx";
+import { useContext, useEffect, useMemo, useRef, useState } from "react";
+import { blankOf, BLANK_WORD, InputRow, isLink, LoaderWords, type Graph, type NodeTypes, type Value, type WNode } from "./Workflows.tsx";
 
 export type Layout = Record<string, [number, number]>;
 type NodeData = {
@@ -42,6 +42,7 @@ function outputsOf(id: string, n: WNode, graph: Graph, types: NodeTypes | null):
 function ComfyNode({ data, selected }: NodeProps<Node<NodeData>>) {
   const { id, node, inputs, outputs, types, edit } = data;
   const settings = Object.entries(node.inputs).filter(([, v]) => !isLink(v));
+  const loads = useContext(LoaderWords);
   return (
     <div className={`wf-gnode${selected ? " selected" : ""}`} aria-label={`Node ${id}, ${node.class_type}`}>
       <div className="wf-gnode-head"><b className="mono">{node.class_type}</b> <span className="muted num">{id}</span></div>
@@ -71,7 +72,7 @@ function ComfyNode({ data, selected }: NodeProps<Node<NodeData>>) {
         return (
           <div key={`s${k}`} className="wf-gset">
             <span className="mono">{k}</span>
-            <span className={blank ? "pill" : "muted wf-gval"}>{shown}</span>
+            <span className={blank ? "pill" : "muted wf-gval"} title={blank ? loads[blank] : undefined}>{shown}</span>
           </div>
         );
       })}

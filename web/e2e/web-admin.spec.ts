@@ -842,7 +842,7 @@ async function fakeImages(page: Page) {
     asked.push({ path, body: route.request().postDataJSON() });
     return route.fulfill(json({ recipe: { ...recipes[0], id: "00000000-0000-4000-8000-000000000004", name: "FLUX.1 schnell" }, downloads: [] }));
   });
-  return { asked, zi, qi, hold, read, offering: { id: "off-z", modelId: `recipe/${zi}`, label: `box/recipe/${zi}`, manual: false, status: "listed", recipe: "Z-Image Turbo", image: true } };
+  return { asked, zi, qi, hold, read, recipes, offering: { id: "off-z", modelId: `recipe/${zi}`, label: `box/recipe/${zi}`, manual: false, status: "listed", recipe: "Z-Image Turbo", image: true } };
 }
 
 test("Copy to host… shows where each of a model's files would come from on the other host, copies it, and the copy waits for its files", async ({ page, baseURL }) => {
@@ -1522,6 +1522,7 @@ test("Custom workflows: Workflow imports an export into a draft, Edit workflow s
   await expect(revs.getByRole("listitem")).toHaveCount(3);
 
   // A built-in recipe's Edit workflow opens the template as it ships; Save gives the model its own revision of it, with no copy.
+  (images.recipes[0] as { loras: { file: string; strength: number }[] }).loras = [{ file: "comfy/loras/pixel-art.safetensors", strength: 0.6 }];
   await page.goto(`/#/u/${userId}/models/images`);
   await page.getByRole("list", { name: "Z-Image models" }).getByRole("button", { name: /^Z-Image Turbo/ }).click();
   const block = page.getByRole("region", { name: "Z-Image Turbo on box" });
@@ -1533,6 +1534,10 @@ test("Custom workflows: Workflow imports an export into a draft, Edit workflow s
   await expect(page.getByLabel("Name", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("group", { name: "View" }).getByRole("button", { name: "Revisions" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Reset to template…" })).toHaveCount(0);
+  // The Model blank's tooltip: the model file and the LoRA the host chains onto it on each job; Text encoder's and VAE's their files.
+  await expect(page.getByRole("region", { name: "Node 3, KSampler" }).getByLabel("How model of node 3 is set")).toHaveAttribute("title", "z_image_turbo_bf16 + LoRA pixel-art (0.6)");
+  await expect(page.getByRole("region", { name: "Node 6, CLIPTextEncode" }).getByLabel("How clip of node 6 is set")).toHaveAttribute("title", "qwen_3_4b");
+  await expect(page.getByRole("region", { name: "Node 8, VAEDecode" }).getByLabel("How vae of node 8 is set")).toHaveAttribute("title", "ae");
   await page.getByRole("region", { name: "Node 3, KSampler" }).getByLabel("denoise of node 3", { exact: true }).fill("0.7");
   await shot("built-in");
   await page.getByRole("button", { name: "Save", exact: true }).click();

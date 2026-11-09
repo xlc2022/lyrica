@@ -1029,7 +1029,11 @@ body may be up to 2 MB. Not on a host using stable-diffusion.cpp.
     checkpoint alone) become the recipe's parts and `$model`, `$clip`,
     `$vae`, and model-only LoRAs chained straight off the model its LoRAs.
     Anything else stays in the workflow (`loaders: "template"`). File names
-    are matched to this host's files by path, then by name.
+    are matched to this host's files by path, then by name. The saved
+    workflow keeps only the blanks: on each job the host adds the loader
+    nodes and one `LoraLoaderModelOnly` per LoRA (the recipe's, then the
+    request's), chained between the model loader and every `$model`
+    (`fill` in src/templates.ts), as for a built-in template.
   - Blanks: the text of the nodes behind the first `positive` and
     `negative` become `$prompt` and `$negativePrompt`; every `seed` and
     `noise_seed` `$seed`; the first `steps`, `cfg`, `sampler_name`,
