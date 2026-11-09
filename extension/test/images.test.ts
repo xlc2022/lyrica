@@ -189,8 +189,12 @@ describe("image tool results (principles 1 and 4)", () => {
     expect(loras.description).toContain("The LoRAs here: detail high noise, detail low noise, pixel art v2.");
     // The thread's list is a cloud model, which takes none: the model that takes it goes first.
     const made = await s.run({ action: "create", prompt: "A garden", loras: [{ name: "Pixel Art", strength: 0.7 }] });
-    expect((made.content as { type: string; text?: string }[]).find(c => c.type === "text")!.text).toMatch(/^Made with Art on styles\. With pixel art v2 at 0\.7\. Saved /);
+    expect((made.content as { type: string; text?: string }[]).find(c => c.type === "text")!.text).toMatch(/^Made with Art on styles\. With LoRA pixel art v2 \(0\.7\)\. Saved /);
     expect(styles.server.images.map(i => i.body)).toEqual([{ recipe: "art", prompt: "A garden", loras: [{ file: "l/pixel_art_v2.safetensors", strength: 0.7 }] }]);
+    // The recipe's own LoRAs, which the host adds to every job, are named too, before those asked for.
+    styles.server.recipeLoras([{ file: "l/film_grain.safetensors", strength: 1 }]);
+    const own = await s.run({ action: "create", prompt: "A garden", loras: [{ name: "Pixel Art", strength: 0.7 }] });
+    expect((own.content as { type: string; text?: string }[]).find(c => c.type === "text")!.text).toMatch(/^Made with Art on styles\. With LoRAs film grain \(1\), pixel art v2 \(0\.7\)\. Saved /);
     await expect(s.run({ action: "create", prompt: "A garden", loras: [{ name: "ink", strength: 1 }] }))
       .rejects.toThrow('No image model here takes "ink". The LoRAs here: detail high noise, detail low noise, pixel art v2.');
     await expect(s.run({ action: "upscale", image: "/workspace/uploads/landscape.png", loras: [{ name: "pixel art", strength: 1 }] })).rejects.toThrow(/upscale takes no LoRAs/);

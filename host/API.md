@@ -1174,7 +1174,10 @@ and gives it to the other, and carries the files only it can get.
 ### Making images
 
 All three answer `{ "images": [{ "png": "<base64>", "width": 1024,
-"height": 1024, "seed": 1234 }], "seconds": 6.2 }`. Input images are base64
+"height": 1024, "seed": 1234 }], "loras": [{ "file": "<path>", "strength":
+0.7 }], "seconds": 6.2 }`; `loras`, only when the job applied any, is the
+LoRAs it chained onto the model, the recipe's own and then the request's,
+at the strengths used. Input images are base64
 PNG, JPEG or WebP, at most 20 MB each and, by their header, at most 8192
 pixels a side and 36 megapixels. Any field not listed is `invalid`.
 A recipe that isn't confirmed and ready is `not_found`; one that doesn't do
@@ -1336,10 +1339,11 @@ newer host made, read after a rollback).
   ```json
   { "video": { "mp4": "<base64>", "width": 1280, "height": 704,
                "frames": 121, "fps": 24, "duration": 5.04, "audio": false, "seed": 1234 },
-    "poster": "<base64 PNG of the first frame>", "seconds": 312.4 }
+    "poster": "<base64 PNG of the first frame>",
+    "loras": [{ "file": "<path>", "strength": 0.7 }], "seconds": 312.4 }
   ```
 
-  The clip is H.264 MP4, with AAC sound when `audio` is true (LTX-2.5,
+  `loras` is as for images. The clip is H.264 MP4, with AAC sound when `audio` is true (LTX-2.5,
   MiniMax H3). ComfyUI encodes it in memory (our `SaveVideoWebsocket`
   node) and sends it, and the poster, over its websocket, so nothing is
   written to disk. A first frame, a driving clip, a clip to edit and the clip so far go to ComfyUI's input

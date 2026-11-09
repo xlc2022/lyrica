@@ -12,6 +12,8 @@ export type ImageRequest =
   | (Common & { action: "edit"; prompt: string; image: ImageInput; mask?: ImageInput; replace?: boolean })
   | { action: "upscale"; image: ImageInput; scale?: number; maxSize?: number };
 export interface GeneratedImage { bytes: Uint8Array; type: "image/png"; width: number; height: number; seed?: number }
+/** A LoRA a host job applied, as its answer names it: the recipe's own, then the request's. */
+export interface AppliedLora { file: string; strength: number }
 export interface Target {
   fetch: typeof fetch; baseUrl: string; host: boolean; modelId: string; apiKey?: string; api?: string;
   /** For a host recipe: the files of the LoRAs the request names, from those it takes. */
@@ -146,11 +148,12 @@ export const CLOUD_IMAGE_PROVIDERS: Readonly<Record<string, CloudImageProvider>>
   chatgpt: { run: (t, r, signal) => t.codex ? t.codex(r, signal) : Promise.reject(new HostRefused("unavailable", "Codex isn't set up on this server.")), create: true, edit: true, mask: false, references: true, sizes: true, count: 4, quality: QUALITY },
 };
 
-export async function imageAt(t: Target, r: ImageRequest, signal?: AbortSignal, onProgress?: (p: JobProgress) => void): Promise<GeneratedImage[]> {
+/** `loras`: those a host job applied, when its answer names them (an older host's doesn't). */
+export async function imageAt(t: Target, r: ImageRequest, signal?: AbortSignal, onProgress?: (p: JobProgress) => void): Promise<{ images: GeneratedImage[]; loras?: AppliedLora[] }> {
   if (!t.host) {
     const provider = CLOUD_IMAGE_PROVIDERS[t.api ?? "openai-compatible"];
     if (!provider) throw new HostRefused("unsupported", "This endpoint has no image provider.");
-    try { return await provider.run(t, r, signal); }
+    try { return { images: await provider.run(t, r, signal) }; }
     catch (e) {
       signal?.throwIfAborted();
       if (e instanceof HostRefused || e instanceof HostIdentityChanged) throw e;
@@ -166,5 +169,15 @@ export async function imageAt(t: Target, r: ImageRequest, signal?: AbortSignal, 
     }) };
   const out = await withProgress(t, onProgress, (tag) => answer(t, `/host/v1/images/${r.action}`, JSON.stringify(fields), { "content-type": "application/json", ...tag }, signal));
   if (!Array.isArray(out.images) || !out.images.length) throw new HostRefused("invalid", "image host returned no images");
-  return out.images.map((i: { png: string; seed?: number }) => ({ ...cleanPng(Buffer.from(i.png, "base64")), ...(i.seed === undefined ? {} : { seed: i.seed }) }));
+  const images = out.images.map((i: { png: string; seed?: number }) => ({ ...cleanPng(Buffer.from(i.png, "base64")), ...(i.seed === undefined ? {} : { seed: i.seed }) }));
+  const loras = appliedLoras(out.loras);
+  return { images, ...(loras ? { loras } : {}) };
+}
+
+/** The `loras` a host job's answer names, or undefined when it names none or isn't a list of them. */
+export function appliedLoras(v: unknown): AppliedLora[] | undefined {
+  if (!Array.isArray(v) || !v.length) return undefined;
+  const out = v.filter((l): l is AppliedLora => !!l && typeof l.file === "string" && typeof l.strength === "number" && Number.isFinite(l.strength))
+    .map((l) => ({ file: l.file, strength: l.strength }));
+  return out.length ? out : undefined;
 }
