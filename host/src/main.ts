@@ -2,6 +2,7 @@
 import { lookup } from "node:dns/promises";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { diskReads } from "./disk.ts";
 import { LlamaCpp, Vllm } from "./backends.ts";
 import { Comfy, ComfyGpus } from "./comfy.ts";
 import { Downloads } from "./downloads.ts";
@@ -69,6 +70,7 @@ const sdcpp = env.SDCPP_URL
 const whispercpp = env.WHISPER_URL ? new WhisperCpp(env.WHISPER_URL, { serving, status: env.WHISPER_STATUS || "/whisper-status/whisper.json", models: modelsDir }) : null;
 const cmpGpus = new Set(nvidiaGpus.filter((g) => isCmp(g.pciId)).map((g) => g.index));
 const scheduler = new Scheduler({
+  disk: diskReads(modelsDir) ?? undefined,
   monitor: vendor === "nvidia" ? nvidiaMonitor : vendor === "amd" ? amdMonitor("/sys", { order: backend === "vulkan" ? "pci" : "kfd" }) : noGpus,
   gpuBackend: backend,
   servers: backend === "vulkan" ? ["llamacpp"] : undefined,

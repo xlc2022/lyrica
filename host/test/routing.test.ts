@@ -351,6 +351,30 @@ describe("the vLLM backend", () => {
     }
   });
 
+  it("gives a llama.cpp load time while it keeps reading, and names what was read when it stops", async () => {
+    const m = { ...(model as object), server: "llamacpp", format: "gguf" } as never;
+    const stuck = await fakeLlamaRouter("loading");
+    const serving = mkdtempSync(join(tmpdir(), "lyrica-serving-"));
+    try {
+      const llama = new LlamaCpp({ url: stuck.url, serving, models: "/models", device: (i) => `CUDA${i}`, loadTimeoutMs: 400 });
+      // Reads 1 GB per poll up to 3 of 10 GB, then nothing: the load outlives its fixed time and fails naming the bytes.
+      let read = 0;
+      const started = Date.now();
+      await expect(llama.load(m, at, { placement: { mode: "auto" } }, { read: () => (read = Math.min(read + 2 ** 30, 3 * 2 ** 30)), of: 10 * 2 ** 30 })).rejects.toMatchObject({
+        code: "model_unavailable",
+        message: "llama.cpp read 3.0 GB of this model's 10.0 GB, then nothing more for 0 minutes.",
+      });
+      // Three polls of growth (two waits of 500 ms) before the 400 ms without any ran out.
+      expect(Date.now() - started).toBeGreaterThan(1300);
+      // Read whole, the server gets the time once more to finish.
+      await expect(llama.load(m, at, { placement: { mode: "auto" } }, { read: () => 10 * 2 ** 30, of: 10 * 2 ** 30 })).rejects.toMatchObject({
+        message: "llama.cpp read all 10.0 GB of this model but hadn't finished loading it 0 minutes later.",
+      });
+    } finally {
+      stuck.server.close();
+    }
+  });
+
   it("reads a model larger than system RAM straight from disk instead of mapping it", async () => {
     const router = await fakeLlamaRouter();
     const serving = mkdtempSync(join(tmpdir(), "lyrica-serving-"));

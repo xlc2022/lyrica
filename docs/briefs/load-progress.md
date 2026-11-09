@@ -1,6 +1,6 @@
 # Brief: Show how far a model's load has got
 
-**Status:** planned (the owner asked for it 2026-11-09).
+**Status:** built, in review.
 
 **Thread:** Run GLM 5.3 Flash on mystria. **Branch:**
 `claude/project-thread-tgy8sd`.
@@ -43,17 +43,27 @@ loading.
    `loading: { read, of }`: bytes read since then, capped at `of`, and the
    bytes to read (the model's files, its vision projector and its MTP
    draft where those are on). A model already in the page cache reads
-   nothing, so its bar reaches the end at once and waits for the upload;
-   the docs say so. Nothing is reported for vLLM, image recipes and voices.
-2. **Host dashboard.** The model row's state word gains a thin bar and
-   "128 of 200 GB read" in mono while loading, refreshed with the status.
+   nothing, so it shows no percent; the docs say so. Nothing is reported
+   for vLLM, image recipes and voices.
+   **The load's time runs from its progress.** The llama.cpp backend is
+   given the same figure: its 10 minutes run from the last time the read
+   count grew (and once more from when all of it is read), so a 200 GB
+   model on a SATA SSD (about 8 minutes of reading) loads, while a stuck
+   server still fails, with the error saying how much was read. Other
+   reading from the same disk can only stretch the wait by the model's own
+   size, since the count is capped at it.
+2. **Host dashboard.** The model row's state word reads "Loading 64%"
+   while loading, with "128.0 GB of 200.0 GB read from disk" as its
+   tooltip, refreshed with the page; the same shape as a download's
+   "Downloading 64%".
 3. **Models page.** The hosts summary's "(loading)" becomes "(loading, 64%)"
    from the same field, which the daemon already relays in `HostStatus`.
 4. **Docs.** host/API.md (the `models[]` entry in Status), host/README.md
    (one sentence under Queues or VRAM), docs/ux.md (both rows), this brief.
 5. **Tests.** scheduler.test.ts with a fake disk reader: a loading model
-   reports read/of and a loaded one reports nothing; the Models page test
-   shows the percent.
+   reports read/of and a loaded one reports nothing; routing.test.ts: a
+   llama.cpp load that keeps reading outlives the fixed time, one that
+   stops fails naming the bytes read.
 
 ## Out of scope
 
@@ -63,5 +73,9 @@ loading.
 
 ## Handoff
 
-Not started. Next: build once the GLM 5.3 Flash Q4 load on the development
-deployment is confirmed working after #857.
+Done: items 1 to 5 (host/src/disk.ts, backends.ts, scheduler.ts,
+runtime.ts, dashboard.js, daemon/src/api.ts, web/src/Models.tsx). Built
+before the Q4 load was confirmed, because that load (200 GB from a SATA SSD
+at 437 MB/s) cannot finish inside the fixed 10 minutes. Next: PR review and
+UI review, merge, a host update on the development deployment, then the Q4
+load with its progress watched.

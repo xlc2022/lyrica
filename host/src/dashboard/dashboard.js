@@ -37,10 +37,21 @@ async function api(path, options = {}) {
 }
 const post = (path, body = {}) => api(path, { method: "POST", body: JSON.stringify(body) });
 
-function show(error) {
-  $("error").textContent = error ? error.message ?? String(error) : "";
+// An action's error stays in the banner until the user clicks it away or acts again; a refresh's error clears with the next good refresh.
+let kept = false;
+function show(error, keep = false) {
+  if (!error && kept) return;
+  kept = !!error && keep;
+  $("error-text").textContent = error ? error.message ?? String(error) : "";
   $("error").hidden = !error;
 }
+const failed = (error) => show(error, true);
+function dismiss() {
+  kept = false;
+  show();
+}
+$("error-dismiss").replaceChildren(icon("close"));
+$("error-dismiss").addEventListener("click", dismiss);
 
 /** Sizes as Lyrica writes them: "812.0 GB", "1.31 TB", "420 MB". */
 function size(bytes) {
@@ -62,7 +73,10 @@ const facts = (...parts) => h("p", { class: "facts" }, parts.filter(Boolean).fla
 const state = (word, dot, title) => h("span", { class: "state", title }, h("span", { class: `dot ${dot}` }), word);
 
 /** Runs an action, then refreshes; a failure shows in the banner. */
-const act = (fn) => () => Promise.resolve(fn()).then(() => refresh(true), show);
+const act = (fn) => () => {
+  dismiss();
+  return Promise.resolve(fn()).then(() => refresh(true), failed);
+};
 const button = (label, fn, cls = "sm") => h("button", { type: "button", class: cls, onclick: act(fn) }, label);
 
 // ---- Menus, the drawer and the confirmation dialog ----
@@ -336,7 +350,10 @@ function textModels() {
   const cpu = S.status.cpuServers ?? [];
   return [head, h("ul", { class: "list" }, S.models.map((m) => {
     const where = cpu.includes(m.server) ? "CPU" : m.placement.mode === "auto" ? "placed automatically" : `GPU ${m.placement.gpus.join("+")}`;
-    const [word, dot] = m.state === "loaded" ? ["Loaded", "up"] : m.state === "loading" ? ["Loading", "info"] : ["Unloaded", ""];
+    // While loading, how much of the model has been read from disk; a model already in the page cache reads nothing and shows no percent.
+    const pct = m.state === "loading" && m.loading?.of ? Math.min(100, Math.floor((100 * m.loading.read) / m.loading.of)) : null;
+    const [word, dot] = m.state === "loaded" ? ["Loaded", "up"] : m.state === "loading" ? [pct == null ? "Loading" : h("span", {}, "Loading ", num(`${pct}%`)), "info"] : ["Unloaded", ""];
+    const reading = pct == null ? undefined : `${size(m.loading.read)} of ${size(m.loading.of)} read from disk`;
     return h("li", {},
       h("div", { class: "main" },
         h("div", { class: "name" }, h("code", {}, m.id)),
@@ -346,10 +363,10 @@ function textModels() {
           m.stretch ? h("span", {}, "stretch ×", num(m.stretch)) : null,
           m.kvBytes ? h("span", {}, "KV ", num(size(m.kvBytes))) : null)),
       h("div", { class: "actions" },
-        state(word, dot), m.pinned ? h("span", { class: "pill" }, "pinned") : null,
+        state(word, dot, reading), m.pinned ? h("span", { class: "pill" }, "pinned") : null,
         m.state === "unloaded" ? button("Load", () => post("/host/v1/models/load", { model: m.id }))
           : h("button", { type: "button", class: "sm", disabled: m.pinned, title: m.pinned ? "Unpin it first." : undefined, onclick: act(() => post("/host/v1/models/unload", { model: m.id })) }, "Unload"),
-        h("button", { type: "button", class: "sm", onclick: () => editModel(m).catch(show) }, "Settings"),
+        h("button", { type: "button", class: "sm", onclick: () => editModel(m).catch(failed) }, "Settings"),
         rowMenu(m.id, [
           [m.pinned ? "Unpin" : "Pin", () => post("/host/v1/models/pin", { model: m.id, pinned: !m.pinned })],
           m.state !== "unloaded" && ["Reload", () => post("/host/v1/models/reload", { model: m.id })],
@@ -563,7 +580,7 @@ function downloadsSection() {
       field("Link", bound("url", { type: "url", required: true, placeholder: "https://…/model.gguf" }), "A .gguf or .safetensors file."),
       field("SHA-256", bound("sha", { class: "num" }), "If the page lists one."),
       h("button", { type: "submit", class: "primary" }, "Download"))
-    : h("form", { class: "row", onsubmit: (e) => { e.preventDefault(); listFiles().catch(show); } },
+    : h("form", { class: "row", onsubmit: (e) => { e.preventDefault(); listFiles().catch(failed); } },
       field("Repository", bound("repo", { required: true, placeholder: "owner/name" })),
       field("Access token", bound("token", { type: "password", autocomplete: "off" }), "Only for a gated repository. Used for this download, never kept."),
       h("button", { type: "submit", class: "primary" }, "List files"));

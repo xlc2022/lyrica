@@ -39,7 +39,7 @@ on `/v1`, where OpenAI clients read `error.message`.
 | 503 | `paused` | The host is paused. Lyrica uses her fallbacks. |
 | 503 | `busy` | It could fit, but not within the wait limit, because the GPU is busy. The message names what with: "The GPU is busy with a chat model." |
 | 503 | `restarting` | A restart is under way. |
-| 503 | `model_unavailable` | The server for this model (llama.cpp, vLLM, ComfyUI, stable-diffusion.cpp or the speech server) isn't running, didn't answer or couldn't load it (a llama.cpp server that died while loading: "llama.cpp's server for this model exited with code 134 while loading."; one not up after 10 minutes: "llama.cpp was still loading this model after 10 minutes."), or ComfyUI refused or failed the job (the message names the error type and node types, never an input's value). The host itself is up: its other models may still work. |
+| 503 | `model_unavailable` | The server for this model (llama.cpp, vLLM, ComfyUI, stable-diffusion.cpp or the speech server) isn't running, didn't answer or couldn't load it (a llama.cpp server that died while loading: "llama.cpp's server for this model exited with code 134 while loading."; one that stopped reading: "llama.cpp read 128.0 GB of this model's 200.0 GB, then nothing more for 10 minutes."), or ComfyUI refused or failed the job (the message names the error type and node types, never an input's value). The host itself is up: its other models may still work. |
 | 503 | `unavailable` | A part of the host itself isn't running, such as the download service. |
 | 507 | `no_space` | Not enough free space for a download. |
 
@@ -176,7 +176,10 @@ seconds of audio.
   GPUs below).
 - A GPU lists every model on it, including one split over several GPUs
   (`gpus` names them all). A model's `kind` is `chat`, `embedding`,
-  `image`, `transcribe` or `speak`; `state` is `loading` or `loaded`; `vram` is what it takes on
+  `image`, `transcribe` or `speak`; `state` is `loading` or `loaded`; while a llama.cpp model is
+  `loading`, `loading` is `{ read, of }`: the bytes the server has read of the model's files (its
+  projector and MTP draft with them) from the models disk, by `/proc/diskstats`, of the bytes to
+  read (a model already in the page cache reads nothing and shows no progress); `vram` is what it takes on
   this GPU, as llama.cpp measured it for this placement before loading where it could, else
   measured at load with this placement (keeping the larger saved value), then increased
   after its first attributable request, completed or failed, to include buffers allocated
@@ -281,7 +284,7 @@ seconds of audio.
     `capabilities.vision` is true while it runs with its projector
     (`vision` below).
   - `state`: `unloaded`, `loading` or `loaded`; `gpus` lists where it is
-    loaded.
+    loaded; `loading` `{ read, of }` while loading, as in Status.
   - `vram`: bytes measured on each GPU, per placement it has been loaded
     with (keyed like `0`, `0+1:1,1` or `2@0.4`, with `/moe12` or `/ngl40`
     when part of it is in system RAM). Saving its settings
@@ -294,7 +297,11 @@ seconds of audio.
   placement says, and waits until it is loaded (up to 15 minutes, the time a
   measurement and a load of a large model can take; a chat request waits 2).
   Errors: `too_big`, `busy`, `model_unavailable` (the server couldn't load
-  it; the message says why), `paused`, `refused` (a vLLM model that would
+  it; the message says why: its exit code, or "llama.cpp read 128.0 GB of
+  this model's 200.0 GB, then nothing more for 10 minutes." when reading
+  stopped, since a llama.cpp load is given 10 minutes from the last time it
+  read more of the model, and the same again once it has read all of it,
+  rather than 10 minutes in all), `paused`, `refused` (a vLLM model that would
   need `trust_remote_code`). A load that fails is also in host-api's log as
   `load failed` with its code and message, for when the requester has given
   up waiting.

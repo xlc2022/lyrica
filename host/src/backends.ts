@@ -13,9 +13,16 @@ import { concurrentOf, contextOf, tableInRam, usesMtp, usesVision, type ModelSet
 /** What the server says a model takes on a GPU with a placement: all of it, and the part that isn't weights (cache and compute buffers). */
 export interface Measured { bytes: number; extra: number }
 
+/** How far a load's reading has got: bytes read from the models disk since it began (uncapped), and the bytes it has to read. */
+export interface LoadProgress { read(): number; of: number }
+
 export interface Backend {
-  /** Loads the model on the placement's GPUs with its settings, and resolves when it answers. */
-  load(model: TextModel, placement: Option, settings: ModelSettings): Promise<void>;
+  /**
+   * Loads the model on the placement's GPUs with its settings, and resolves
+   * when it answers. With `progress`, a server that keeps reading is given
+   * time; without it, the load has a fixed time.
+   */
+  load(model: TextModel, placement: Option, settings: ModelSettings, progress?: LoadProgress): Promise<void>;
   /**
    * The server's own measurement of what the model would take on each of the
    * placement's GPUs, before loading it; null when the server has none.
@@ -233,7 +240,7 @@ export class LlamaCpp implements Backend {
     if (this.placed.delete(model.id)) this.writePreset();
   }
 
-  async load(model: TextModel, at: Option, settings: ModelSettings): Promise<void> {
+  async load(model: TextModel, at: Option, settings: ModelSettings, progress?: LoadProgress): Promise<void> {
     this.placed.set(model.id, { model, at, settings });
     this.writePreset();
     try {
@@ -241,13 +248,37 @@ export class LlamaCpp implements Backend {
       await this.post("/models/load", { model: model.id });
       // The router marks a server that exited while loading as unloaded with its exit code.
       let failed: { exit_code?: number } | null = null;
-      let timedOut = false;
-      await poll(async () => {
-        const s = await this.status(model.id);
-        if (!s || s.failed || s.value === "unloaded") failed = s ?? {};
-        return s?.value === "loaded" || !!failed;
-      }, this.o.loadTimeoutMs, "llama.cpp").catch(() => (timedOut = true));
-      if (timedOut) throw new HostError(503, "model_unavailable", `llama.cpp was still loading this model after ${Math.round(this.o.loadTimeoutMs / 60_000)} minutes.`);
+      // The time allowed runs from the last time the server read more of the model (a model
+      // read whole gets the same time again to finish), so a slow disk isn't a stuck load.
+      const limit = this.o.loadTimeoutMs;
+      const minutes = Math.round(limit / 60_000);
+      const gb = (n: number) => (n / 2 ** 30).toFixed(1);
+      let since = Date.now();
+      let read = 0;
+      for (;;) {
+        const s = await this.status(model.id).catch(() => undefined);
+        if (s?.value === "loaded") break;
+        if (s !== undefined && (!s || s.failed || s.value === "unloaded")) {
+          failed = s ?? {};
+          break;
+        }
+        if (progress) {
+          const now = Math.min(progress.read(), progress.of);
+          if (now > read) {
+            read = now;
+            since = Date.now();
+          }
+        }
+        if (Date.now() - since > limit) {
+          const why = !progress
+            ? `llama.cpp was still loading this model after ${minutes} minutes.`
+            : read < progress.of
+              ? `llama.cpp read ${gb(read)} GB of this model's ${gb(progress.of)} GB, then nothing more for ${minutes} minutes.`
+              : `llama.cpp read all ${gb(progress.of)} GB of this model but hadn't finished loading it ${minutes} minutes later.`;
+          throw new HostError(503, "model_unavailable", why);
+        }
+        await new Promise((r) => setTimeout(r, 500));
+      }
       if (!failed && (await this.status(model.id))?.value !== "loaded") failed = {};
       if (failed) {
         const { exit_code } = failed as { exit_code?: number };

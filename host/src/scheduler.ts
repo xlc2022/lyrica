@@ -8,12 +8,12 @@
 // with a plain reason instead of running out of memory.
 import { totalmem } from "node:os";
 import { HostError, invalid } from "./http.ts";
-import type { Backend, Measured } from "./backends.ts";
+import type { Backend, LoadProgress, Measured } from "./backends.ts";
 import { isCmp, type Gpu, type GpuMonitor } from "./gpus.ts";
 import type { TextModel } from "./library.ts";
 import type { Logger } from "./log.ts";
 import {
-  autoContext, CPU_OPTION, defaultGpu, neverFits, options, OVERHEAD, placementKey, ramMost, serverOf, sizes, SERVER_NAMES, SERVERS,
+  autoContext, CPU_OPTION, defaultGpu, neverFits, options, OVERHEAD, placementKey, ramMost, serverOf, sizes, SERVER_NAMES, SERVERS, usesMtp, usesVision,
   type GpuSettings, type ModelSettings, type Option, type Overhead, type Server,
 } from "./placement.ts";
 import type { StateFile } from "./state.ts";
@@ -46,6 +46,8 @@ interface Loaded {
   warmed: boolean;
   /** Actual load delta, independent of a larger measurement saved from an earlier run. */
   loadVram?: Record<number, number>;
+  /** While loading: the disk's read total when the load began, and the bytes the load reads. */
+  loading?: { read0: number; of: number };
 }
 
 /** How long an explicit Load waits: a measurement, then a load of up to 10 minutes, with room for reading a large model from disk. */
@@ -103,7 +105,12 @@ export interface SchedulerOptions {
   quietMs?: number;
   /** The machine's memory, for the system RAM allowance's limit. */
   memoryBytes?: number;
+  /** Bytes read so far from the models folder's disk (a running total), for a load's progress; none where it can't be read. */
+  disk?: () => number;
 }
+
+/** What a loading model's progress looks like in the status. */
+export interface Loading { read: number; of: number }
 
 export type HostRunState = "running" | "pausing" | "paused" | "restarting";
 
@@ -684,11 +691,15 @@ export class Scheduler {
     const before = Object.fromEntries((await this.readGpus()).map((g) => [g.index, g.used]));
     const key = this.vramKey(model, o, settings);
     const entry: Loaded = { model, option: o, vram: { ...this.needOf(model, o, settings) }, settings, auto, ready: false, active: 0, lastUsed: this.now(), warmed: false };
+    // A llama.cpp load reads the model's files once (its projector and MTP draft with them); the disk's count says how far it has got.
+    const of = model.server === "llamacpp" ? model.size + (usesVision(model, settings) ? model.mmprojSize ?? 0 : 0) + (usesMtp(model, settings) ? model.mtpSize ?? 0 : 0) : 0;
+    const read0 = of && this.o.disk ? this.readDisk() : null;
+    if (read0 !== null) entry.loading = { read0, of };
     this.loaded.set(model.id, entry);
     this.memoryEpoch++;
     this.changing++;
     try {
-      await this.backend(model).load(model, o, settings);
+      await this.backend(model).load(model, o, settings, read0 === null ? undefined : { read: () => Math.max(0, this.readDisk() - read0), of });
     } catch (e) {
       this.loaded.delete(model.id);
       throw e;
@@ -696,6 +707,7 @@ export class Scheduler {
       this.changing--;
     }
     entry.ready = true;
+    delete entry.loading;
     // Measure each load; retain larger observations from first-use buffers. vLLM reserves its share.
     if (model.server !== "vllm" && o.gpus.length) {
       const after = await this.readGpus();
@@ -963,6 +975,7 @@ export class Scheduler {
             id: l.model.id,
             kind: l.model.kind,
             state: l.ready ? "loaded" : "loading",
+            ...(l.loading ? { loading: this.progressOf(l) } : {}),
             gpus: l.option.gpus,
             pinned: this.pinned(l.model.id),
             busy: l.active > 0,
@@ -1027,9 +1040,25 @@ export class Scheduler {
     }
   }
 
-  /** Where a model is, for the library listing. */
-  placement(id: string): { state: "loading" | "loaded"; gpus: number[] } | null {
+  /** Where a model is, for the library listing, and how far its load has got. */
+  placement(id: string): { state: "loading" | "loaded"; gpus: number[]; loading?: Loading } | null {
     const l = this.loaded.get(id);
-    return l ? { state: l.ready ? "loaded" : "loading", gpus: l.option.gpus } : null;
+    return l ? { state: l.ready ? "loaded" : "loading", gpus: l.option.gpus, ...(l.loading ? { loading: this.progressOf(l) } : {}) } : null;
+  }
+
+  /** The disk's read total now; the last known when it can't be read. */
+  private readDisk(): number {
+    try {
+      this.diskRead = this.o.disk?.() ?? this.diskRead;
+    } catch {
+      // Keep the last reading.
+    }
+    return this.diskRead;
+  }
+  private diskRead = 0;
+
+  private progressOf(l: Loaded): Loading {
+    const { read0, of } = l.loading!;
+    return { read: Math.min(Math.max(0, this.readDisk() - read0), of), of };
   }
 }

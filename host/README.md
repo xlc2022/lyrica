@@ -622,7 +622,11 @@ revoked. A revoked server must pair again.
   own room, the host learns of it at that model's next request, which
   fails once ("try again") and loads it afresh. A llama.cpp server that
   dies while loading fails the load within a second, and the error names
-  its exit code; one still loading after 10 minutes fails saying so. The
+  its exit code. A load is given 10 minutes from the last time the server
+  read more of the model from disk (`/proc/diskstats` for the models
+  folder's device), and 10 more once it has read all of it, so a 200 GB
+  model on a slow disk loads while a stuck one fails, saying how much was
+  read; the status reports the bytes read so far as the load's progress. The
   host reads GPU memory anew for every status answer; when the reading
   fails (`nvidia-smi` busy or gone) the last one stands and the log says
   so once per outage.

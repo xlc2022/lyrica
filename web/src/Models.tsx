@@ -1361,7 +1361,7 @@ export function GpuBlock({ g }: { g: Gpu }) {
       <Bar gpus={[g]} />
       <span className="meta">
         {g.models.length ? g.models.map((m, i) => (
-          <Fragment key={m.id}>{i > 0 && " · "}{shortId(m.id)} <span className="cap">({m.pinned ? "pinned" : m.state === "loading" ? "loading" : g.role === "vllm" ? "vLLM" : "loaded"})</span></Fragment>
+          <Fragment key={m.id}>{i > 0 && " · "}{shortId(m.id)} <span className="cap">({m.pinned ? "pinned" : m.state === "loading" ? <>loading{m.loading?.of ? <>, <span className="num">{Math.min(100, Math.floor((100 * m.loading.read) / m.loading.of))}%</span></> : null}</> : g.role === "vllm" ? "vLLM" : "loaded"})</span></Fragment>
         )) : "nothing loaded"}
       </span>
       {queued.length > 0 && <span className="cap">Waiting: {queued.map((k, i) => <Fragment key={k}>{i > 0 && " · "}<span className="num">{g.queue[k]}</span> {k}</Fragment>)}</span>}
