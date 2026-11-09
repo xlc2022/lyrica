@@ -45,7 +45,7 @@ export async function fakeImages() {
         if (!["clip", "moves", "long", "restyle"].includes(body.recipe)) return Response.json({ error: { code: "invalid", message: "That recipe doesn't make videos." } }, { status: 400 });
         expect(Object.keys(body).every(k => ["recipe", "prompt", "image", "drive", "extend", "source", "width", "height", "aspectRatio", "duration", "steps", "loras"].includes(k))).toBe(true);
         videos.push(body);
-        return Response.json({ video: { mp4: mp4.toString("base64"), width: 1280, height: 704, frames: 121, fps: 24, duration: 5.04, audio: false, seed: 7 }, poster: png.toString("base64"), ...applied(body), seconds: 300 });
+        return Response.json({ video: { mp4: mp4.toString("base64"), width: 1280, height: 704, frames: 121, fps: 24, duration: 5.04, audio: false, seed: 7 }, poster: png.toString("base64"), ...applied(body), seconds: 300, sampling: { seconds: 240.5, steps: 20 } });
       }
       if (path === "/host/v1/videos/upscale") {
         expect(Object.keys(body).every(k => ["recipe", "video", "scale", "maxSize"].includes(k))).toBe(true);
@@ -56,7 +56,8 @@ export async function fakeImages() {
       const allowed = ["recipe", "prompt", "count", "references", "loras", ...(action === "create" ? ["width", "height"] : action === "edit" ? ["image", "mask", "replace"] : ["image", "scale", "maxSize"])];
       expect(Object.keys(body).every(k => allowed.includes(k))).toBe(true);
       images.push({ action, body });
-      return Response.json({ images: Array.from({ length: body.count ?? 1 }, () => ({ png: output.toString("base64"), width: 1, height: 1, seed: 42 })), ...action === "upscale" ? {} : applied(body), seconds: 0.1 });
+      return Response.json({ images: Array.from({ length: body.count ?? 1 }, () => ({ png: output.toString("base64"), width: 1, height: 1, seed: 42 })), seconds: 0.1,
+        ...(action === "upscale" ? {} : { ...applied(body), sampling: { seconds: 6.25 * (body.count ?? 1), steps: 8 * (body.count ?? 1) } }) });
     }) as typeof fetch);
     const offerings = await models.discover(ada, ep.id);
     // Art, Clip, Long, Moves and Restyle: a proposal never resolves.

@@ -68,6 +68,25 @@ describe("model facts for the last 24 hours", () => {
     expect(r.models.map((m) => [m.label, m.offeringId])).toEqual([["a model", "m"], ["b model", "a"], ["b model", "z"]]);
   });
 
+  it("gives an image model its sampling speed from the rows its host measured: medians per image, in clips for a video model", () => {
+    const r = modelFacts([
+      // Two images in 10 s at 8 steps each; one image in 20 s at 8 steps; one row the host didn't measure; one too short to mean anything.
+      at("art", -1 * MIN, { task: "image.create", sampling: { ms: 10_000, steps: 16, images: 2, pixels: 1_048_576 } }),
+      at("art", -2 * MIN, { task: "image.edit", sampling: { ms: 20_000, steps: 8, images: 1, pixels: 2_097_152 } }),
+      at("art", -3 * MIN, { task: "image.upscale" }),
+      at("art", -4 * MIN, { task: "image.create", sampling: { ms: 10, steps: 1, images: 1 } }),
+      at("clip", -5 * MIN, { task: "video", sampling: { ms: 240_000, steps: 20, images: 1, pixels: 1280 * 704 } }),
+      at("chat", -6 * MIN, { pace: pace(12) }),
+    ], ["general"], NOW);
+    const by = Object.fromEntries(r.models.map((m) => [m.offeringId, m.sampling]));
+    expect(by.art).toEqual({ secondsPer: 12.5, steps: 8, stepsPerSec: 1, pixels: 1_572_864, samples: 2, unit: "image" });
+    expect(by.clip).toEqual({ secondsPer: 240, steps: 20, stepsPerSec: 20 / 240, pixels: 1280 * 704, samples: 1, unit: "clip" });
+    expect(by.chat).toBeUndefined();
+    // Sampling is no tok/s: the text speed stays unmeasured, and the speed chart gets no point from it.
+    expect(r.models.find((m) => m.offeringId === "art")).toMatchObject({ speedSamples: 0, promptSamples: 0, outputTokens: 0 });
+    expect(r.calls.filter((c) => c.offeringId === "art").every((c) => c.tokPerSec === undefined)).toBe(true);
+  });
+
   it("medians recorded speeds, averaging the central pair when there are an even number", () => {
     const odd = modelFacts(["10", "30", "20"].map((s, i) => at("odd", -(i + 1) * MIN, { pace: pace(Number(s)) })), ["general"], NOW);
     expect(odd.models.map((m) => [m.speedSamples, m.medianTokPerSec])).toEqual([[3, 20]]);

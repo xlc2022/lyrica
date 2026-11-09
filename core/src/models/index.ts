@@ -1,5 +1,5 @@
-import { CLOUD_IMAGE_PROVIDERS, imageAt, PLAN_IMAGE, PLAN_IMAGE_MODEL, validateImageRequest, type ImageRequest, type GeneratedImage, type AppliedLora } from "./images.ts";
-export { CLOUD_IMAGE_PROVIDERS, PLAN_IMAGE_MODEL, type ImageRequest, type GeneratedImage, type ImageInput, type AppliedLora } from "./images.ts";
+import { CLOUD_IMAGE_PROVIDERS, imageAt, PLAN_IMAGE, PLAN_IMAGE_MODEL, validateImageRequest, type ImageRequest, type GeneratedImage, type Sampling, type AppliedLora } from "./images.ts";
+export { CLOUD_IMAGE_PROVIDERS, PLAN_IMAGE_MODEL, type ImageRequest, type GeneratedImage, type ImageInput, type Sampling, type AppliedLora } from "./images.ts";
 import { upscaleVideoAt, validateVideoRequest, validateVideoUpscale, videoAt, type GeneratedVideo, type VideoRequest, type VideoUpscaleRequest } from "./videos.ts";
 import { loraFiles, loraName, type LoraAsk } from "./loras.ts";
 export { isMp4, LONGEST_VIDEO_SECONDS, type GeneratedVideo, type VideoRequest, type VideoUpscaleRequest } from "./videos.ts";
@@ -425,7 +425,15 @@ export interface CallRecord {
   pace?: Pace;
   /** A speech call's seconds of audio, heard or spoken. */
   audioSeconds?: number;
+  /** An image or video call's sampling on its host, once it ended: times and counts only. */
+  sampling?: CallSampling;
 }
+
+/**
+ * What a host measured of an image or video call: how long its samplers ran (`ms`), their `steps` in all, how many
+ * images (or clips) the call made and the first one's `pixels`. The chat's seconds per image are `ms / images`.
+ */
+export interface CallSampling { ms: number; steps: number; images: number; pixels?: number }
 
 /**
  * One turn's measurements. `promptTokens` is the last request's whole prompt
@@ -2971,7 +2979,7 @@ export class Models {
   /** `onProgress`: how far a model host's job has got (cloud models report none). */
   /** `first`: models asked for by name (`namedImageModels`), tried before the list. */
   /** `loras`: those a host job applied, when its answer names them. */
-  async image(ctx: CallContext, request: ImageRequest, opts: { signal?: AbortSignal; beforeSend?: (resolution: Resolution) => Promise<void>; onProgress?: (p: JobProgress) => void; first?: string[] } = {}): Promise<{ images: GeneratedImage[]; resolution: Resolution; loras?: AppliedLora[] }> {
+  async image(ctx: CallContext, request: ImageRequest, opts: { signal?: AbortSignal; beforeSend?: (resolution: Resolution) => Promise<void>; onProgress?: (p: JobProgress) => void; first?: string[] } = {}): Promise<{ images: GeneratedImage[]; resolution: Resolution; sampling?: Sampling; loras?: AppliedLora[] }> {
     validateImageRequest(request);
     await this.planImages(ctx.userId);
     const refs = request.action === "upscale" ? 0 : request.references?.length ?? 0;
@@ -3199,24 +3207,24 @@ export class Models {
   }
 
   /**
-   * Records which model answered a call. Never any of the conversation's
-   * text. A retry within the turn (`retry`) rewrites that turn's record, so
-   * a turn is one call.
+   * Records which model answered a call, and returns the record's id. Never
+   * any of the conversation's text. A retry within the turn (`retry`)
+   * rewrites that turn's record, so a turn is one call.
    */
-  recordCall(userId: string, call: { pool: Pool; threadId: string; task: Task; resolution: Resolution; note?: string; audioSeconds?: number }, opts: { retry?: boolean } = {}): void {
+  recordCall(userId: string, call: { pool: Pool; threadId: string; task: Task; resolution: Resolution; note?: string; audioSeconds?: number }, opts: { retry?: boolean } = {}): number {
     const r = call.resolution;
     const first = r.skipped[0];
     const fallback = first && `${first.label} was skipped (${first.reason.replace(/^it /, "")}), so ${r.label} answered${r.endpoint.kind === "cloud" && r.profile === "Custom" ? ", a cloud model" : ""}`;
-    this.withUser(userId, (db) => {
+    return this.withUser(userId, (db) => {
       const last = opts.retry ? (db.prepare("SELECT max(id) AS id FROM model_calls WHERE pool = ? AND thread = ? AND task = ?").get(call.pool, call.threadId, call.task) as { id: number | null }).id : null;
       if (last !== null) {
         db.prepare("UPDATE model_calls SET offering = ?, label = ?, endpoint = ?, kind = ?, fallback = ?, note = ? WHERE id = ?")
           .run(r.offering.id, r.label, r.endpoint.name, r.endpoint.kind, fallback ?? null, call.note ?? null, last);
-        return;
+        return last;
       }
       const seconds = call.audioSeconds !== undefined && Number.isFinite(call.audioSeconds) ? Math.max(0, Math.round(call.audioSeconds * 10) / 10) : null;
-      db.prepare("INSERT INTO model_calls (at, pool, thread, task, offering, label, endpoint, kind, fallback, note, audio_seconds) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-        .run(new Date().toISOString(), call.pool, call.threadId, call.task, r.offering.id, r.label, r.endpoint.name, r.endpoint.kind, fallback ?? null, call.note ?? null, seconds);
+      return Number(db.prepare("INSERT INTO model_calls (at, pool, thread, task, offering, label, endpoint, kind, fallback, note, audio_seconds) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+        .run(new Date().toISOString(), call.pool, call.threadId, call.task, r.offering.id, r.label, r.endpoint.name, r.endpoint.kind, fallback ?? null, call.note ?? null, seconds).lastInsertRowid);
     });
   }
 
@@ -3229,6 +3237,16 @@ export class Models {
     this.withUser(userId, (db) => db.prepare(`UPDATE model_calls SET read_tokens = ?, prompt_tokens = ?, output_tokens = ?, window = ?, ttft_ms = ?, gen_ms = ?, processed = ?
       WHERE id = (SELECT max(id) FROM model_calls WHERE thread = ? AND task = ? AND (? IS NULL OR pool = ?))`)
       .run(pace.readTokens === undefined ? null : n(pace.readTokens), n(pace.promptTokens), n(pace.outputTokens), n(pace.window), n(pace.ttftMs), n(pace.genMs), n(pace.processed), threadId, task, pool ?? null, pool ?? null));
+  }
+
+  /**
+   * Adds what the host measured of an image or video call to its record (`recordCall`'s id, so two calls from one
+   * thread never swap timings): sampling time, steps, how many it made and the first one's pixels. Never the prompt or the picture.
+   */
+  recordSampling(userId: string, callId: number, s: CallSampling): void {
+    const n = (v: number) => Math.max(0, Math.round(Number.isFinite(v) ? v : 0));
+    this.withUser(userId, (db) => db.prepare("UPDATE model_calls SET sampling_ms = ?, steps = ?, images = ?, pixels = ? WHERE id = ?")
+      .run(n(s.ms), n(s.steps), Math.max(1, n(s.images)), s.pixels === undefined ? null : n(s.pixels), callId));
   }
 
   /** The user's recent calls, newest first. With a thread, that thread's only; with `speech: false`, no Dictation or Read aloud. */
@@ -3885,12 +3903,14 @@ type CallRow = {
   at: string; pool: Pool; thread: string; task: Task; offering: string; label: string; endpoint: string; kind: "cloud" | "local"; fallback: string | null; note: string | null;
   read_tokens: number | null; prompt_tokens: number | null; output_tokens: number | null; window: number | null; ttft_ms: number | null; gen_ms: number | null; processed: number | null;
   audio_seconds?: number | null;
+  sampling_ms?: number | null; steps?: number | null; images?: number | null; pixels?: number | null;
 };
 
 const toCall = (r: CallRow): CallRecord => ({
   at: r.at, pool: r.pool, threadId: r.thread, task: r.task, offeringId: r.offering, label: r.label, endpointName: r.endpoint, kind: r.kind,
   ...(r.fallback ? { fallback: r.fallback } : {}), ...(r.note ? { note: r.note } : {}),
   ...(typeof r.audio_seconds === "number" ? { audioSeconds: r.audio_seconds } : {}),
+  ...(typeof r.sampling_ms === "number" && typeof r.steps === "number" ? { sampling: { ms: r.sampling_ms, steps: r.steps, images: r.images ?? 1, ...(typeof r.pixels === "number" ? { pixels: r.pixels } : {}) } } : {}),
   ...(r.gen_ms !== null ? { pace: speeds({ ...(r.read_tokens != null ? { readTokens: r.read_tokens } : {}), promptTokens: r.prompt_tokens ?? 0, outputTokens: r.output_tokens ?? 0, window: r.window ?? 0, ttftMs: r.ttft_ms ?? 0, genMs: r.gen_ms, processed: r.processed ?? 0 }) } : {}),
 });
 

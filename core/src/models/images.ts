@@ -14,6 +14,14 @@ export type ImageRequest =
 export interface GeneratedImage { bytes: Uint8Array; type: "image/png"; width: number; height: number; seed?: number }
 /** A LoRA a host job applied, as its answer names it: the recipe's own, then the request's. */
 export interface AppliedLora { file: string; strength: number }
+/** How long a host's samplers ran for a job and the steps they took, as the host measured it (host/API.md, "Making images"). */
+export interface Sampling { ms: number; steps: number }
+/** The host's `sampling`, when it reported one; anything else is left out. */
+export function samplingOf(out: unknown): Sampling | undefined {
+  const s = (out as { sampling?: { seconds?: unknown; steps?: unknown } } | null)?.sampling;
+  const ok = (n: unknown): n is number => typeof n === "number" && Number.isFinite(n) && n > 0;
+  return s && ok(s.seconds) && ok(s.steps) ? { ms: Math.round(s.seconds * 1000), steps: Math.round(s.steps) } : undefined;
+}
 export interface Target {
   fetch: typeof fetch; baseUrl: string; host: boolean; modelId: string; apiKey?: string; api?: string;
   /** For a host recipe: the files of the LoRAs the request names, from those it takes. */
@@ -149,7 +157,7 @@ export const CLOUD_IMAGE_PROVIDERS: Readonly<Record<string, CloudImageProvider>>
 };
 
 /** `loras`: those a host job applied, when its answer names them (an older host's doesn't). */
-export async function imageAt(t: Target, r: ImageRequest, signal?: AbortSignal, onProgress?: (p: JobProgress) => void): Promise<{ images: GeneratedImage[]; loras?: AppliedLora[] }> {
+export async function imageAt(t: Target, r: ImageRequest, signal?: AbortSignal, onProgress?: (p: JobProgress) => void): Promise<{ images: GeneratedImage[]; sampling?: Sampling; loras?: AppliedLora[] }> {
   if (!t.host) {
     const provider = CLOUD_IMAGE_PROVIDERS[t.api ?? "openai-compatible"];
     if (!provider) throw new HostRefused("unsupported", "This endpoint has no image provider.");
@@ -170,8 +178,8 @@ export async function imageAt(t: Target, r: ImageRequest, signal?: AbortSignal, 
   const out = await withProgress(t, onProgress, (tag) => answer(t, `/host/v1/images/${r.action}`, JSON.stringify(fields), { "content-type": "application/json", ...tag }, signal));
   if (!Array.isArray(out.images) || !out.images.length) throw new HostRefused("invalid", "image host returned no images");
   const images = out.images.map((i: { png: string; seed?: number }) => ({ ...cleanPng(Buffer.from(i.png, "base64")), ...(i.seed === undefined ? {} : { seed: i.seed }) }));
-  const loras = appliedLoras(out.loras);
-  return { images, ...(loras ? { loras } : {}) };
+  const sampling = samplingOf(out), loras = appliedLoras(out.loras);
+  return { images, ...(sampling ? { sampling } : {}), ...(loras ? { loras } : {}) };
 }
 
 /** The `loras` a host job's answer names, or undefined when it names none or isn't a list of them. */

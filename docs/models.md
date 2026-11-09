@@ -418,6 +418,14 @@ Never prompt text. The latest 500 per user are kept. Before pruning, a
 transaction folds counted turns into `call_totals` (pool, thread, label,
 kind, tokens, gpu_ms, calls); forgetting a thread removes its totals too.
 User schema step 10 adds this table and nullable `model_calls.read_tokens`.
+An image or video call made on a model host also keeps what the host measured
+of it (`recordSampling`, by the id `recordCall` returns; user step 23 adds the nullable
+columns `sampling_ms`, `steps`, `images`, `pixels`): how long the workflow's
+samplers ran and their steps (host/API.md, `sampling`), how many images the
+call made and the first one's pixels. Read back as `sampling` on the record;
+Status shows its seconds per image. Never the prompt or the picture, and no
+`pace`: sampling time is not generation time, so it counts in no tok/s and no
+GPU time.
 `endpointUses(userId, pools)` counts each endpoint's calls over these rows in
 the given pools; the Models page sends them so the sidebar can rank endpoints
 without leaning on the recent-calls preview. Each also carries the endpoint's

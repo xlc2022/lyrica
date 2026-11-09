@@ -1175,9 +1175,16 @@ and gives it to the other, and carries the files only it can get.
 
 All three answer `{ "images": [{ "png": "<base64>", "width": 1024,
 "height": 1024, "seed": 1234 }], "loras": [{ "file": "<path>", "strength":
-0.7 }], "seconds": 6.2 }`; `loras`, only when the job applied any, is the
-LoRAs it chained onto the model, the recipe's own and then the request's,
-at the strengths used. Input images are base64
+0.7 }], "seconds": 6.2, "sampling": { "seconds": 4.8, "steps": 8 } }`.
+`loras`, only when the job applied any, is the LoRAs it chained onto the
+model, the recipe's own and then the request's, at the strengths used.
+`seconds` is the whole request, queue and loading
+included. `sampling` is how long the workflow's samplers ran, from each
+sampler's `executing` event to its last `progress`, summed over the samplers
+that lead to the output, and their steps in all; it leaves out waiting, model
+loading, encoding and decoding, so it is the figure to compare models by. It
+is absent when nothing sampled (stable-diffusion.cpp, an upscaler's plain pass,
+a workflow without a sampler). Input images are base64
 PNG, JPEG or WebP, at most 20 MB each and, by their header, at most 8192
 pixels a side and 36 megapixels. Any field not listed is `invalid`.
 A recipe that isn't confirmed and ready is `not_found`; one that doesn't do
@@ -1340,10 +1347,14 @@ newer host made, read after a rollback).
   { "video": { "mp4": "<base64>", "width": 1280, "height": 704,
                "frames": 121, "fps": 24, "duration": 5.04, "audio": false, "seed": 1234 },
     "poster": "<base64 PNG of the first frame>",
-    "loras": [{ "file": "<path>", "strength": 0.7 }], "seconds": 312.4 }
+    "loras": [{ "file": "<path>", "strength": 0.7 }], "seconds": 312.4,
+    "sampling": { "seconds": 240.5, "steps": 20 } }
   ```
 
-  `loras` is as for images. The clip is H.264 MP4, with AAC sound when `audio` is true (LTX-2.5,
+  `loras` is as for images. `sampling` is as for images, summed over a
+  chain's clips; `POST /host/v1/videos/upscale` answers it too.
+
+  The clip is H.264 MP4, with AAC sound when `audio` is true (LTX-2.5,
   MiniMax H3). ComfyUI encodes it in memory (our `SaveVideoWebsocket`
   node) and sends it, and the poster, over its websocket, so nothing is
   written to disk. A first frame, a driving clip, a clip to edit and the clip so far go to ComfyUI's input

@@ -4,7 +4,7 @@ import net, { type AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { Comfy, ComfyGpus, mp4Seconds, mp4Sound, mp4Video, samplingProgress } from "../src/comfy.ts";
+import { Comfy, ComfyGpus, mp4Seconds, mp4Sound, mp4Video, samplingProgress, samplingTime } from "../src/comfy.ts";
 import { clipPlan, Images, inputImage, recipeSize, videoValues } from "../src/images.ts";
 import { ggufBytes } from "../src/gguf.ts";
 import { scanParts } from "../src/parts.ts";
@@ -749,7 +749,7 @@ describe("ComfyUI jobs", () => {
   it("blanks the uploads and clears the history after a job", async () => {
     const fake = await fakeComfy();
     open.push(fake);
-    const pngs = await new Comfy(fake.url).run({ image: PNG }, () => ({}));
+    const { pngs } = await new Comfy(fake.url).run({ image: PNG }, () => ({}));
     expect(pngs).toHaveLength(1);
     expect(fake.seen.uploads).toEqual(["lyrica-image.png", "lyrica-image.png"]);
     expect(fake.seen.uploadBodies[0]!.includes(PNG)).toBe(true);
@@ -1061,6 +1061,36 @@ describe("the image API", () => {
 
     expect(s.lines.join("\n")).not.toContain(MARKER);
     for (const f of readdirSync(s.dataDir)) expect(readFileSync(join(s.dataDir, f), "utf8")).not.toContain(MARKER);
+  });
+
+  it("times sampling from each output sampler's start to its last step, with the steps, and nothing without a sampler", () => {
+    const prompt = {
+      high: { class_type: "KSamplerAdvanced", inputs: {} }, low: { class_type: "KSamplerAdvanced", inputs: { latent: ["high", 0] } },
+      unused: { class_type: "KSampler", inputs: {} }, decode: { class_type: "VAEDecode", inputs: { samples: ["low", 0] } }, save: { class_type: "SaveImageWebsocket", inputs: { images: ["decode", 0] } },
+    };
+    let now = 1000;
+    const t = samplingTime(prompt, () => now)!;
+    t.started("high"); now += 400; t.stepped("high", 4); now += 600; t.stepped("high", 4);
+    // A sampler whose start went unseen counts from its first step; the unused one and the decoder count for nothing.
+    now += 300; t.stepped("low", 2); now += 500; t.stepped("low", 2); t.started("unused"); t.stepped("unused", 9); t.stepped("decode", 1);
+    expect(t.result()).toEqual({ ms: 1500, steps: 6 });
+    expect(samplingTime({ save: { class_type: "SaveImageWebsocket", inputs: {} } })).toBeUndefined();
+    // A sampler that started and never stepped (a job that failed in it) gives nothing.
+    const none = samplingTime(prompt, () => now)!;
+    none.started("high");
+    expect(none.result()).toBeUndefined();
+  });
+
+  it("answers an image with how long its sampling took and its steps, as ComfyUI reported them", async () => {
+    const s = await stack();
+    const { body } = await s.api("/host/v1/recipes?state=proposed");
+    const z: Recipe = body.recipes.find((r: Recipe) => r.arch === "z-image");
+    await s.api(`/host/v1/recipes/${z.id}/confirm`, { body: {} });
+    const made = await s.api("/host/v1/images/create", { body: { recipe: z.id, prompt: "x" } });
+    expect(made.status).toBe(200);
+    expect(made.body.sampling).toEqual({ seconds: expect.any(Number), steps: 2 });
+    expect(made.body.sampling.seconds).toBeGreaterThan(0);
+    expect(made.body.sampling.seconds).toBeLessThanOrEqual(made.body.seconds);
   });
 
   it("reports a tagged job's progress while it runs, and forgets it once it ends", async () => {

@@ -1,6 +1,6 @@
 // Principle 2: video calls share the router's cloud boundary, and only model hosts make clips. No disk or logging.
 import { hostError, HostIdentityChanged, HostRefused } from "./host.ts";
-import { appliedLoras, cleanPng, type AppliedLora, type GeneratedImage, type ImageInput } from "./images.ts";
+import { appliedLoras, cleanPng, samplingOf, type AppliedLora, type GeneratedImage, type ImageInput, type Sampling } from "./images.ts";
 import { validateLoras, type LoraAsk } from "./loras.ts";
 import { withProgress, type JobProgress } from "./progress.ts";
 
@@ -21,6 +21,8 @@ export interface GeneratedVideo {
   loras?: AppliedLora[];
   /** Its first frame, the clip's thumbnail. */
   poster: GeneratedImage;
+  /** How long the host's samplers ran for it, when the host said. */
+  sampling?: Sampling;
 }
 /** A host may take two hours over one clip (host/API.md, "Making videos"). */
 export const VIDEO_TIMEOUT_MS = 2 * 60 * 60 * 1000;
@@ -96,7 +98,7 @@ async function postVideo(t: { fetch: typeof fetch; baseUrl: string }, path: stri
   const bytes = typeof v?.mp4 === "string" ? Buffer.from(v.mp4, "base64") : undefined;
   if (!bytes || !isMp4(bytes) || typeof out.poster !== "string") throw new HostRefused("invalid", "video host returned no MP4");
   const num = (n: unknown) => typeof n === "number" && Number.isFinite(n) && n > 0 ? n : 0;
-  const loras = appliedLoras(out.loras);
+  const sampling = samplingOf(out), loras = appliedLoras(out.loras);
   return { bytes, type: "video/mp4", width: num(v.width), height: num(v.height), frames: num(v.frames), fps: num(v.fps), duration: num(v.duration), audio: v.audio === true,
-    ...(typeof v.seed === "number" ? { seed: v.seed } : {}), poster: cleanPng(Buffer.from(out.poster, "base64")), ...(loras ? { loras } : {}) };
+    ...(typeof v.seed === "number" ? { seed: v.seed } : {}), poster: cleanPng(Buffer.from(out.poster, "base64")), ...(sampling ? { sampling } : {}), ...(loras ? { loras } : {}) };
 }

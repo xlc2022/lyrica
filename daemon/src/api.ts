@@ -698,6 +698,8 @@ export interface CallInfo {
   pace?: PaceInfo;
   /** A speech call's seconds of audio, heard or spoken. */
   audioSeconds?: number;
+  /** An image or video call's sampling on its host: how long its samplers ran, their steps, what it made and the first one's pixels. */
+  sampling?: { ms: number; steps: number; images: number; pixels?: number };
 }
 /** GET /api/u/:userId/models/calls → CallInfo[], newest first. */
 
@@ -1985,6 +1987,12 @@ export interface ModelCallFacts {
     medianTokPerSec?: number; speedSamples: number;
     /** Median of recorded pace.promptTokPerSec; absent when promptSamples is zero. */
     medianPromptTokPerSec?: number; promptSamples: number;
+    /**
+     * An image or video model's speed, from calls whose host measured their sampling: median seconds per image (or
+     * clip), median steps per image and steps per second, the median pixels of one, and the sample count. Absent when
+     * nothing was measured.
+     */
+    sampling?: { secondsPer: number; steps: number; stepsPerSec: number; pixels?: number; samples: number; unit: "image" | "clip" };
     /** Recorded output tokens, over the records that have a pace. */
     outputTokens: number;
     /** Records with a nonempty fallback marker (skipped candidates, not errors/retries). */

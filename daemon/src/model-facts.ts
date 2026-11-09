@@ -17,6 +17,14 @@ const measuredSpeed = (c: CallInfo): number[] => measured(c.pace?.tokPerSec);
 const measuredPrompt = (c: CallInfo): number[] => measured(c.pace?.promptTokPerSec);
 const outputOf = (c: CallInfo): number[] => measured(c.pace?.outputTokens);
 
+/** What an image or video call's host measured, per image: seconds, steps, steps per second and pixels. */
+type Sample = { seconds: number; steps: number; stepsPerSec: number; pixels?: number; clip: boolean };
+const sampled = (c: CallInfo): Sample[] => {
+  const s = c.sampling;
+  if (!s || !(s.ms >= 50) || !(s.steps > 0) || !(s.images >= 1)) return [];
+  return [{ seconds: s.ms / 1000 / s.images, steps: s.steps / s.images, stepsPerSec: (s.steps * 1000) / s.ms, ...(s.pixels ? { pixels: s.pixels } : {}), clip: c.task === "video" }];
+};
+
 /** A recorded fallback marker: the first model in the list didn't answer. A note is never one. */
 const hasFallback = (c: CallInfo): boolean => typeof c.fallback === "string" && c.fallback.trim() !== "";
 
@@ -36,7 +44,9 @@ function median(xs: number[]): number | undefined {
  * `pace.tokPerSec` with its sample count — a turn's duration is not a speed — and
  * is absent rather than zero when nothing was measured; prompt speed is the same
  * over `pace.promptTokPerSec`, and output tokens add up what paced rows wrote.
- * `calls` gives each row's time, offering, task, output, speed and fallback mark,
+ * An image or video model's `sampling` comes from rows whose host measured the job:
+ * medians of seconds per image, steps and steps per second, in clips when its
+ * rows are clips. `calls` gives each row's time, offering, task, output, speed and fallback mark,
  * newest first, for the charts: no thread, note or text. Fallbacks count rows that
  * carry a recorded marker, never what a note says, so they are resolution skips,
  * not retries, failed attempts or errors. Rows outside `[now - 24h, now]`, with a
@@ -47,7 +57,7 @@ function median(xs: number[]): number | undefined {
 export function modelFacts(calls: CallInfo[], pools: Pool[], now: number = Date.now()): ModelCallFacts {
   const since = now - MODEL_FACTS_WINDOW_MS;
   const shown = new Set<Pool>(pools);
-  type Group = { id: string; at: number; label: string; endpointName: string; kind: Fact["kind"]; calls: number; speeds: number[]; prompts: number[]; output: number; fallbacks: number };
+  type Group = { id: string; at: number; label: string; endpointName: string; kind: Fact["kind"]; calls: number; speeds: number[]; prompts: number[]; samples: Sample[]; output: number; fallbacks: number };
   const groups = new Map<string, Group>();
   const points: Point[] = [];
   for (const c of calls) {
@@ -55,13 +65,14 @@ export function modelFacts(calls: CallInfo[], pools: Pool[], now: number = Date.
     const at = Date.parse(c.at);
     if (!Number.isFinite(at) || at < since || at > now) continue;
     let g = groups.get(c.offeringId);
-    if (!g) groups.set(c.offeringId, g = { id: c.offeringId, at, label: c.label, endpointName: c.endpointName, kind: c.kind, calls: 0, speeds: [], prompts: [], output: 0, fallbacks: 0 });
+    if (!g) groups.set(c.offeringId, g = { id: c.offeringId, at, label: c.label, endpointName: c.endpointName, kind: c.kind, calls: 0, speeds: [], prompts: [], samples: [], output: 0, fallbacks: 0 });
     // The name it goes by now, from the newest row: labels are kept with old rows for history's sake.
     else if (at > g.at) { g.at = at; g.label = c.label; g.endpointName = c.endpointName; g.kind = c.kind; }
     const [speed] = measuredSpeed(c), [output] = outputOf(c), fallback = hasFallback(c);
     g.calls += 1;
     if (speed !== undefined) g.speeds.push(speed);
     g.prompts.push(...measuredPrompt(c));
+    g.samples.push(...sampled(c));
     g.output += output ?? 0;
     if (fallback) g.fallbacks += 1;
     points.push({ at: new Date(at).toISOString(), offeringId: c.offeringId, task: c.task,
@@ -69,10 +80,16 @@ export function modelFacts(calls: CallInfo[], pools: Pool[], now: number = Date.
   }
   const models: Fact[] = [...groups.values()].map((g) => {
     const med = median(g.speeds), prompt = median(g.prompts);
+    const pixels = median(g.samples.flatMap((s) => (s.pixels ? [s.pixels] : [])));
+    const sampling: Fact["sampling"] = g.samples.length ? {
+      secondsPer: median(g.samples.map((s) => s.seconds))!, steps: median(g.samples.map((s) => s.steps))!, stepsPerSec: median(g.samples.map((s) => s.stepsPerSec))!,
+      ...(pixels !== undefined ? { pixels } : {}), samples: g.samples.length, unit: g.samples.filter((s) => s.clip).length * 2 > g.samples.length ? "clip" : "image",
+    } : undefined;
     return {
       offeringId: g.id, label: g.label, endpointName: g.endpointName, kind: g.kind, calls: g.calls,
       ...(med !== undefined ? { medianTokPerSec: med } : {}), speedSamples: g.speeds.length,
       ...(prompt !== undefined ? { medianPromptTokPerSec: prompt } : {}), promptSamples: g.prompts.length,
+      ...(sampling ? { sampling } : {}),
       outputTokens: g.output, fallbacks: g.fallbacks,
     };
   });
