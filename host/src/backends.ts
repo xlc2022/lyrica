@@ -158,8 +158,10 @@ export class LlamaCpp implements Backend {
       if (parallel) lines.push(`parallel = ${parallel}`, "kv-unified = true");
       if (s.batchSize) lines.push(`batch-size = ${s.batchSize}`);
       // Experts kept in system RAM cross to a GPU once per step of a prompt (llama.cpp computes a step of 32 tokens or
-      // more there), so a prompt is read in steps of the whole batch, not llama.cpp's 512: each crossing serves more tokens.
-      if (at.cpuMoe) lines.push(`ubatch-size = ${s.batchSize ?? 2048}`);
+      // more there), so a batch size the operator set is also the step: each crossing serves more tokens. Not by default:
+      // the compute buffers grow with the step times the context, and at a long context a step of 2048 pushed 60 GB more
+      // of a 200 GB model off its GPUs.
+      if (at.cpuMoe) { if (s.batchSize) lines.push(`ubatch-size = ${s.batchSize}`); }
       // A CMP reads a prompt about 6% faster in steps of 2048 tokens than in llama.cpp's 512, up to the batch size.
       else if (at.gpus.some(this.o.cmp)) lines.push(`ubatch-size = ${Math.min(s.batchSize ?? 2048, 2048)}`);
       if (s.chatTemplate) lines.push(`chat-template-file = ${this.templates.write(s.chatTemplate)}`);

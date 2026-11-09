@@ -578,12 +578,13 @@ revoked. A revoked server must pair again.
     size, a chat template, and for vLLM a memory share, so several vLLM
     models can share one GPU (each is its own server).
   - A llama.cpp model whose experts partly sit in system RAM reads prompts
-    in steps of its whole batch (`ubatch-size` = the batch size, 2048
-    unless set): llama.cpp computes a step of 32 tokens or more on the GPU,
-    so the experts in RAM cross to it once per step, and a bigger step
-    crosses them fewer times for the same prompt. A larger batch size
-    reads prompts faster still, at the cost of larger compute buffers on
-    the GPUs, which the measurement below counts.
+    in steps of its batch size when one is set (`ubatch-size` = the batch
+    size): llama.cpp computes a step of 32 tokens or more on the GPU, so
+    the experts in RAM cross to it once per step, and a bigger step
+    crosses them fewer times for the same prompt. The cost is compute
+    buffers that grow with the step times the context, which the
+    measurement below counts and which can push more of the model into
+    RAM; unset, llama.cpp's step of 512 stands.
   - A llama.cpp model larger than the host's system RAM is read straight
     from disk (llama.cpp's `load-mode = dio`). Mapped, as smaller
     models are, the kernel would pull all of it through a page cache that

@@ -119,7 +119,9 @@ in RAM read prompts at about 400 tokens a second against 900 for a copy
 wholly on the GPUs. llama.cpp computes a prompt step of 32 tokens or more
 on the GPU, copying the experts in RAM across for each step, so with the
 default step of 512 tokens the 28.5 GB crossed PCIe once per 512 tokens.
-The host now gives such a model a prompt step of its whole batch
-(`ubatch-size` = `batchSize`, 2048 unless set); a larger **Batch size** in
-Serving goes further, at the cost of compute buffers the measurement
-counts. Generation speed is unchanged.
+The host gave such a model a prompt step of its whole batch, 2048 unless
+set (#871), but llama.cpp's compute buffers grow with the step times the
+context, and at 261632 of context the measurement then pushed about 60 GB
+more of the model into RAM (90.9 GB, over any sane allowance). So the step
+follows **Batch size** in Serving only when the operator sets one, and the
+measurement shows what it costs in GPU room. Generation speed is unchanged.
