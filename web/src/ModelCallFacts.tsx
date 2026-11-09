@@ -6,7 +6,7 @@ import { drawChart, SERIES, tokens } from "./charts.ts";
 import { shortModel } from "./ModelLabel.tsx";
 import { TASK_WORD } from "./ModelsFrame.tsx";
 import { tokenCount } from "./Project.tsx";
-import { timeZone, useTheme } from "./ui.tsx";
+import { clock, ErrorText, timeZone, useAction, useTheme } from "./ui.tsx";
 
 const HOUR = 3_600_000;
 /** More copies than the categorical order holds: the busiest seven keep their colour, the rest are Other. */
@@ -19,6 +19,7 @@ const FALLBACK_WHY = "Records with a fallback marker: a resolution candidate was
 const UNMEASURED = "Not measured: no call in the window recorded a time long enough to mean anything.";
 const SAMPLING_WHY = "Median sampling time per image on its host, from ComfyUI's sampler steps; waiting, model loading and decoding aren't counted.";
 const NO_PROMPT = "An image model reads no prompt tokens.";
+const RESET_WHY = "Count calls from now on. Call records stay: thread usage, speeds and history still use them.";
 
 /** An image or video model's speed, for its Speed cell and tooltip: seconds per image with the steps, size and steps per second it ran at. */
 export function samplingWords(s: NonNullable<Facts["models"][number]["sampling"]>): { seconds: string; unit: string; title: string } {
@@ -162,16 +163,26 @@ function taskSpec(series: Series[], facts: Facts, panel: string) {
 
 const num = (n: number | undefined, digits = 1) => n === undefined ? undefined : n.toLocaleString(undefined, { maximumFractionDigits: digits });
 
-/** What her models did in the last 24 hours: a facts line, one legend, four charts and a row per model copy. */
-export function ModelCallFacts({ facts }: { facts: Facts }) {
+/**
+ * What her models did in the last 24 hours, or since the user's Reset: a facts line, one legend, four charts and a
+ * row per model copy. `onReset` restarts the count from now and reloads.
+ */
+export function ModelCallFacts({ facts, onReset }: { facts: Facts; onReset?: () => Promise<unknown> }) {
   const theme = useTheme();
+  const [act, busy, error] = useAction();
+  // A window shorter than 24 hours means a Reset inside it: the head says since when.
+  const reset = Date.parse(facts.until) - Date.parse(facts.since) < 24 * HOUR - 60_000;
   // No page (a test rendering to a string): the light tokens.
   const t = typeof document === "undefined" ? { edge: "#889494", panel: "#ffffff" } : tokens();
   const series = seriesOf(facts.models, theme, t.edge);
   const legend = [...new Map(series.map((s) => [s.name, s])).values()];
   const total = { calls: facts.models.reduce((n, m) => n + m.calls, 0), tokens: facts.models.reduce((n, m) => n + m.outputTokens, 0), fallbacks: facts.models.reduce((n, m) => n + m.fallbacks, 0) };
   return <section aria-label="Model calls" className="card model-calls">
-    <h2 title="Your own retained call records in displayed pools, across all recorded tasks. A turn's retries replace its record; tool requests update its pace. Claude Code relay totals are not call records. Deleted and pruned records are excluded.">Model calls · last <span className="num">24</span> hours</h2>
+    <div className="section-head">
+      <h2 title="Your own retained call records in displayed pools, across all recorded tasks. A turn's retries replace its record; tool requests update its pace. Claude Code relay totals are not call records. Deleted and pruned records are excluded.">Model calls · {reset ? <>since <span className="num">{clock(facts.since)}</span></> : <>last <span className="num">24</span> hours</>}</h2>
+      {onReset && <button type="button" className="link" title={RESET_WHY} disabled={busy} onClick={() => void act(onReset)}>Reset</button>}
+    </div>
+    {error && <ErrorText error={error} />}
     <p className="muted" title="Nightly pruning keeps the latest 500 records across both pools. Earlier calls within these 24 hours may be missing; counts are not complete daily activity.">Retained history · {facts.pools.map((p) => p === "general" ? "General" : "Private").join(" and ") || "No pools shown"} · pruned to latest <span className="num">500</span> records per user</p>
     {facts.models.length ? <>
       <p><span className="num">{total.calls.toLocaleString()}</span> {total.calls === 1 ? "call" : "calls"} · <span className="num">{tokenCount(total.tokens)}</span> output tokens · <span title={FALLBACK_WHY}>Recorded fallbacks</span> <span className="num">{total.fallbacks}</span></p>
@@ -203,6 +214,6 @@ export function ModelCallFacts({ facts }: { facts: Facts }) {
           </div>;
         })}
       </div>
-    </> : <p className="muted">No retained calls in the last <span className="num">24</span> hours.</p>}
+    </> : <p className="muted">{reset ? <>No calls since <span className="num">{clock(facts.since)}</span>.</> : <>No retained calls in the last <span className="num">24</span> hours.</>}</p>}
   </section>;
 }

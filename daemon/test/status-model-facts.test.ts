@@ -2,7 +2,7 @@ import { expect, it } from "vitest";
 import { apiRoutes } from "../src/routes.ts";
 import { match, statusOf, type Request } from "../src/http.ts";
 import { Lyricad } from "../src/lyricad.ts";
-import type { AdminStatus } from "../src/api.ts";
+import type { AdminStatus, AdminStatusReset } from "../src/api.ts";
 import { ARGON2, KDF_ITER, runtime } from "./helpers.ts";
 
 it("Status reads all retained calls, but only this administrator's displayed pools, with existing facts intact", async () => {
@@ -51,5 +51,38 @@ it("Status reads all retained calls, but only this administrator's displayed poo
     try { emptyDb.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('display', ?)").run(JSON.stringify({ showGeneral: false, showPrivate: false })); }
     finally { emptyDb.close(); }
     expect((await request(rt.ada.id)).body!.modelFacts).toMatchObject({ pools: [], models: [] });
+  } finally { await d.stop(); }
+});
+
+it("Reset on Model calls counts only later calls and keeps the records", async () => {
+  const rt = await runtime();
+  const d = new Lyricad({ home: rt.home, port: 0, selfTest: false, log: () => {}, argon2: ARGON2, kdfIter: KDF_ITER });
+  await d.unlock("passphrase");
+  try {
+    const users = d.services!.users;
+    await users.authenticate("ada", "pw");
+    const cookie = d.sessions.login(undefined, rt.ada.id, () => false).id;
+    const routes = apiRoutes(d);
+    const call = async <T>(method: string, path: string) => {
+      const url = new URL(`/api/u/${rt.ada.id}/admin/${path}`, "http://localhost");
+      const found = match(routes, method, url.pathname);
+      if (!found || found === "method") throw new Error("route not found");
+      return await found.route.handler({ params: found.params, query: url.searchParams, cookie, json: async () => ({}) } as unknown as Request) as T;
+    };
+    const insert = (at: string, n: number) => {
+      const db = users.openUserDb(rt.ada.id);
+      try { for (let i = 0; i < n; i++) db.prepare("INSERT INTO model_calls (at, pool, thread, task, offering, label, endpoint, kind) VALUES (?, 'general', 'fixture', 'chat', 'm', 'm', 'fixture', 'local')").run(at); }
+      finally { db.close(); }
+    };
+    insert(new Date(Date.now() - 60_000).toISOString(), 3);
+    expect((await call<AdminStatus>("GET", "status")).modelFacts!.models[0]!.calls).toBe(3);
+    const { since } = await call<AdminStatusReset>("POST", "status/reset");
+    const after = (await call<AdminStatus>("GET", "status")).modelFacts!;
+    expect(after.since).toBe(since);
+    expect(after.models).toEqual([]);
+    insert(new Date(Date.parse(since) + 1).toISOString(), 2);
+    expect((await call<AdminStatus>("GET", "status")).modelFacts!.models[0]!.calls).toBe(2);
+    // The records themselves stay for thread usage, speeds and history.
+    expect(d.services!.models.callHistory(rt.ada.id, { limit: -1, offset: 0, q: "", pools: ["general"] }).total).toBe(5);
   } finally { await d.stop(); }
 });

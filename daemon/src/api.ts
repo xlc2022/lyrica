@@ -1977,8 +1977,8 @@ export interface MemoryImportResult {
 
 // --- Administrators: /api/u/:userId/admin/… ---
 
-/** Retained model call records in the authenticated user's displayed pools, in [since, until].
- * Not a complete day: nightly pruning keeps the latest 500 records per user across pools. */
+/** Retained model call records in the authenticated user's displayed pools, in [since, until]: the last 24 hours,
+ * or less after the user's Reset. Not a complete day: nightly pruning keeps the latest 500 records per user across pools. */
 export interface ModelCallFacts {
   since: string; until: string; pools: Pool[];
   models: {
@@ -2001,6 +2001,9 @@ export interface ModelCallFacts {
   /** Each record in the window, newest first, for Status's charts: numbers and names only, never text or thread. */
   calls: { at: string; offeringId: string; task: Task; outputTokens?: number; tokPerSec?: number; fallback?: true }[];
 }
+
+/** POST /api/u/:userId/admin/status/reset → AdminStatusReset: Model calls counts only calls from `since` on. Records are kept. */
+export interface AdminStatusReset { since: string }
 
 /** GET /api/u/:userId/admin/status → AdminStatus */
 export interface AdminStatus {

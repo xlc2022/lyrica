@@ -2746,6 +2746,16 @@ test("Status model facts preserve existing facts and render empty, measured and 
     await expect(facts).toContainText("No pools shown");
     await expect(facts).toContainText("No retained calls in the last 24 hours.");
     await expect(facts).not.toContainText("fixture-measured");
+    // Reset counts from now on: the head says since when, and the seeded calls no longer count. Last, since it stays.
+    await show({ showGeneral: true, showPrivate: false });
+    await expect(facts).toContainText("37 calls");
+    await facts.locator(".section-head").screenshot({ path: `shots/model-calls-reset-${page.viewportSize()!.width}.png` });
+    const reset = page.waitForRequest((r) => r.method() === "POST" && r.url().endsWith(`/api/u/${userId}/admin/status/reset`));
+    await facts.getByRole("button", { name: "Reset", exact: true }).click();
+    await reset;
+    await expect(facts.getByRole("heading")).toHaveText(/^Model calls · since \d\d:\d\d$/);
+    await expect(facts).toContainText(/No calls since \d\d:\d\d\./);
+    await noHorizontalScroll(page);
   } finally { await show(original); }
 });
 

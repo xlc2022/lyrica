@@ -2124,7 +2124,11 @@ export function apiRoutes(d: Lyricad): Route[] {
       const user = d.adminFor(r), pools = shownPools(display(d, user.id));
       // SQLite LIMIT -1 reads every retained row, not a recent-calls preview.
       const calls = s().models.callHistory(user.id, { limit: -1, offset: 0, q: "", pools }).entries;
-      return { ...adminStatus(d), modelFacts: modelFacts(calls, pools) };
+      return { ...adminStatus(d), modelFacts: modelFacts(calls, pools, Date.now(), s().models.statsSince(user.id)) };
+    }),
+    route("POST", `${u}/admin/status/reset`, (r): Api.AdminStatusReset => {
+      const user = d.adminFor(r);
+      return { since: s().models.resetStats(user.id) };
     }),
     route("GET", `${u}/admin/updates`, (r) => { d.adminFor(r); return updates(d); }),
     route("POST", `${u}/admin/updates`, async (r) => {

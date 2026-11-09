@@ -2480,6 +2480,18 @@ export class Models {
     return this.withUser(ctx.userId, (db) => this.readColumn(db, isRestricted(ctx) ? "private" : "general").preset?.name ?? "Custom");
   }
 
+  /** When the user last reset Status's model-call stats, if ever: Model calls counts only calls from then on. */
+  statsSince(userId: string): string | undefined {
+    return this.setting(userId, "stats_since");
+  }
+
+  /** Resets Status's model-call stats from now. The call records stay: thread usage, speeds and history still read them. */
+  resetStats(userId: string, at = new Date()): string {
+    const since = at.toISOString();
+    this.setSetting(userId, "stats_since", since);
+    return since;
+  }
+
   /** The thinking level threads use unless they choose. Medium by default. */
   defaultThinking(userId: string): ThinkingLevel {
     const v = this.setting(userId, "thinking") as ThinkingLevel | undefined;

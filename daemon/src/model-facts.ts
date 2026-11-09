@@ -52,10 +52,12 @@ function median(xs: number[]): number | undefined {
  * not retries, failed attempts or errors. Rows outside `[now - 24h, now]`, with a
  * timestamp in the future or unreadable, say nothing and are left out. Nothing is
  * capped: nightly pruning keeps the latest 500 rows per user across pools, so this
- * is retained history, not a complete day's activity.
+ * is retained history, not a complete day's activity. After a reset inside the
+ * window (`reset`, the user's last Reset on the card), it starts there instead.
  */
-export function modelFacts(calls: CallInfo[], pools: Pool[], now: number = Date.now()): ModelCallFacts {
-  const since = now - MODEL_FACTS_WINDOW_MS;
+export function modelFacts(calls: CallInfo[], pools: Pool[], now: number = Date.now(), reset?: string): ModelCallFacts {
+  const from = reset === undefined ? NaN : Date.parse(reset);
+  const since = Number.isFinite(from) && from > now - MODEL_FACTS_WINDOW_MS ? Math.min(from, now) : now - MODEL_FACTS_WINDOW_MS;
   const shown = new Set<Pool>(pools);
   type Group = { id: string; at: number; label: string; endpointName: string; kind: Fact["kind"]; calls: number; speeds: number[]; prompts: number[]; samples: Sample[]; output: number; fallbacks: number };
   const groups = new Map<string, Group>();
