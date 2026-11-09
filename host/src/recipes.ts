@@ -324,9 +324,13 @@ export class RecipeBook {
         if (!d || typeof d !== "object") throw invalid("defaults must be an object.");
         for (const [k, v] of Object.entries(d)) {
           if (!DEFAULT_KEYS.includes(k)) throw invalid(`Unknown default: ${k}.`);
-          checkDefault(k, v);
+          if (v !== null) checkDefault(k, v);
         }
-        Object.assign(r.defaults, d);
+        // null takes a default away: the job falls back to the host's own, and a template node kept for it is left out.
+        for (const [k, v] of Object.entries(d)) {
+          if (v === null) delete r.defaults[k];
+          else r.defaults[k] = v as string | number;
+        }
         break;
       }
       case "rename":

@@ -1977,6 +1977,7 @@ dialog .eyebrow { margin: 10px 0 4px; }
 .wf-input input:not([type="checkbox"]), .wf-input select, .wf-input textarea { min-width: 0; width: 100%; }
 .wf-input input[type="checkbox"] { justify-self: start; }
 .wf-input > .wf-set { justify-self: start; }
+.wf-input > input.wf-set { max-width: 120px; }
 .wf-key { overflow-wrap: anywhere; font-size: 13px; }
 .wf-revisions li { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; }
 .wf-revisions li > :last-child { margin-left: auto; }

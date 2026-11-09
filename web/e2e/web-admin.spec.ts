@@ -827,7 +827,10 @@ async function fakeImages(page: Page) {
     const body = route.request().postDataJSON() as { do?: string; name?: string; change?: { op?: string; useFor?: string; defaults?: { steps?: number }; file?: string; strength?: number } };
     asked.push({ path, body });
     if (body.do === "change" && body.change?.op === "useFor") recipes.find((r) => path === `recipes/${r.id}`)!.useFor = body.change.useFor;
-    if (body.do === "change" && body.change?.op === "defaults") Object.assign(recipes.find((r) => path === `recipes/${r.id}`)!.defaults, body.change.defaults);
+    if (body.do === "change" && body.change?.op === "defaults") {
+      const d = recipes.find((r) => path === `recipes/${r.id}`)!.defaults as Record<string, unknown>;
+      for (const [k, v] of Object.entries(body.change.defaults!)) if (v === null) delete d[k]; else d[k] = v;
+    }
     const own = recipes.find((r) => path === `recipes/${r.id}`) as { loras: { file: string; strength: number }[] } | undefined;
     if (own && body.do === "change" && (body.change?.op === "addLora" || body.change?.op === "setLora")) {
       own.loras = [...own.loras.filter((l) => l.file !== body.change!.file), { file: body.change.file!, strength: body.change.strength! }];
@@ -1504,11 +1507,19 @@ test("Custom workflows: Workflow imports an export into a draft, Edit workflow s
   await expect(sampler.getByLabel("How steps of node 3 is set")).toHaveValue("steps");
   await expect(sampler.getByText("from node 6")).toBeVisible();
   await sampler.getByLabel("denoise of node 3", { exact: true }).fill("0.8");
+  // A model setting beside its blank is edited in place: on a draft it goes with the draft when it is saved.
+  await expect(sampler.getByLabel("Steps setting")).toHaveValue("6");
+  await expect(sampler.getByLabel("CFG setting")).toHaveValue("");
+  await expect(sampler.getByLabel("CFG setting")).toHaveAttribute("placeholder", "not set");
+  await sampler.getByLabel("Steps setting").fill("12");
+  await sampler.getByLabel("Steps setting").press("Enter");
+  await sampler.getByLabel("CFG setting").fill("2");
+  await sampler.getByLabel("CFG setting").blur();
   await noHorizontalScroll(page);
   await shot("draft");
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`workflow\\?host=ep-box&recipe=r1$`));
-  expect(sent.find((m) => m.path === "/host/v1/workflows" && m.method === "POST")!.body).toMatchObject({ name: "Z styled", does: "create", arch: "z-image", clipType: "lumina2", workflow: graph(0.8) });
+  expect(sent.find((m) => m.path === "/host/v1/workflows" && m.method === "POST")!.body).toMatchObject({ name: "Z styled", does: "create", arch: "z-image", clipType: "lumina2", workflow: graph(0.8), defaults: { steps: 12, cfg: 2 } });
 
   // Saved: a node ComfyUI lacks has Copy request; a setting made a blank, then JSON.
   await expect(page.locator(".head .cap")).toHaveText("generate · box · revision 1");
@@ -1556,12 +1567,26 @@ test("Custom workflows: Workflow imports an export into a draft, Edit workflow s
   await expect(page.getByRole("region", { name: "Node 3, KSampler" }).getByLabel("How model of node 3 is set")).toHaveAttribute("title", "z_image_turbo_bf16 + LoRA pixel-art (0.6)");
   await expect(page.getByRole("region", { name: "Node 6, CLIPTextEncode" }).getByLabel("How clip of node 6 is set")).toHaveAttribute("title", "qwen_3_4b");
   await expect(page.getByRole("region", { name: "Node 8, VAEDecode" }).getByLabel("How vae of node 8 is set")).toHaveAttribute("title", "ae");
-  // A blank the model's settings fill shows their value beside it; CFG's and Steps' tooltips say where they're set.
+  // A blank the model's settings fill has the setting beside it, edited in place and saved to the model at once: a
+  // number, or a select of the node's options; emptied, the setting goes. Seed has none: a job picks it.
   const ks = page.getByRole("region", { name: "Node 3, KSampler" });
-  // Seed has none: a job picks it.
-  await expect(ks.locator(".wf-set")).toHaveText(["8", "1"]);
-  await expect(ks.getByTitle("The model's CFG, set on its card in Image models.")).toHaveText("1");
-  await expect(ks.getByTitle("The model's steps, set on its card in Image models.")).toHaveText("8");
+  const asked = (path: string) => images.asked.filter((a) => a.path === path).map((a) => a.body);
+  await expect(ks.locator(".wf-set")).toHaveCount(4);
+  await expect(ks.getByLabel("Steps setting")).toHaveValue("8");
+  await expect(ks.getByLabel("CFG setting")).toHaveValue("1");
+  await expect(ks.getByLabel("CFG setting")).toHaveAttribute("title", "The model's CFG, set on its card in Image models too: every job takes it from here.");
+  await expect(ks.getByLabel("Sampler setting")).toHaveValue("");
+  await expect(ks.getByLabel("Sampler setting").getByRole("option")).toHaveText(["not set", "euler", "res_2s"]);
+  await ks.getByLabel("CFG setting").fill("2.5");
+  await ks.getByLabel("CFG setting").press("Enter");
+  await expect.poll(() => asked(`recipes/${images.zi}`).at(-1)).toEqual({ do: "change", change: { op: "defaults", defaults: { cfg: 2.5 } } });
+  await ks.getByLabel("Sampler setting").selectOption("res_2s");
+  await expect.poll(() => asked(`recipes/${images.zi}`).at(-1)).toEqual({ do: "change", change: { op: "defaults", defaults: { sampler: "res_2s" } } });
+  await expect(ks.getByLabel("Sampler setting")).toHaveValue("res_2s");
+  await ks.getByLabel("Steps setting").fill("");
+  await ks.getByLabel("Steps setting").blur();
+  await expect.poll(() => asked(`recipes/${images.zi}`).at(-1)).toEqual({ do: "change", change: { op: "defaults", defaults: { steps: null } } });
+  await expect(ks.getByLabel("Steps setting")).toHaveValue("");
   await noHorizontalScroll(page);
   await page.getByRole("region", { name: "Node 3, KSampler" }).getByLabel("denoise of node 3", { exact: true }).fill("0.7");
   await shot("built-in");
