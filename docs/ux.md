@@ -155,7 +155,7 @@ Rules:
   Git accounts, Add account, Kind, Host, Account, Token, Replace token, Save
   token, Repositories, Add repository, Signed in, Token rejected, Webhook,
   URL, Secret, Copy URL, Copy secret, Push, Send a test, Turn off, Include a link, MCP
-  servers, Add server, Command, Environment, Replace environment, Claude Code, Claude Code and Codex, Save token, Not installed, Codex, Sign in, Sign-in page, Code, Waiting for Codex, Sign out,
+  servers, Add server, Command, Environment, Replace environment, Calls per day, Calls per minute, No limit, calls today, Claude Code, Claude Code and Codex, Save token, Not installed, Codex, Sign in, Sign-in page, Code, Waiting for Codex, Sign out,
   Commands, Add rule, Allow, Ask, Forbid, Always allow,
   Allow in this thread, Online, Unreachable, Limit reached until, Key changed, Off network,
   Updates, Update, Update…, Roll back, Running, Updating, Fetching, Draining, Building, Rolling back, Testing,
