@@ -100,6 +100,15 @@ describe("keeping part of a model in system RAM", () => {
     expect(a!.need[0]!).toBeLessThanOrEqual(23.5 * GIB);
   });
 
+  it("puts a way that fits across all the GPUs before one GPU with the rest in RAM", () => {
+    // 120 GB over two 96 GB GPUs: either GPU alone would spill about 30 GB.
+    const m = textModel("big", 120, { layers: 48, expertLayers: experts(48, 110) });
+    const opts = options(m, { placement: { mode: "auto" }, contextLength: 8192 }, [gpu(0, 96), gpu(1, 96)], all, 64 * GIB);
+    expect(opts[0]).toMatchObject({ gpus: [0, 1] });
+    expect(opts[0]!.ram).toBeUndefined();
+    expect(opts.slice(1).every((o) => o.gpus.length === 1 && o.ram! > 0)).toBe(true);
+  });
+
   it("never spills when the allowance is off or the model says Off", () => {
     const m = textModel("moe", 30, { layers: 48, expertLayers: experts(48, 27) });
     expect(options(m, { placement: { mode: "auto" }, contextLength: 8192 }, [gpu(0, 24)], all, 0)[0]!.ram).toBeUndefined();
@@ -173,6 +182,32 @@ describe("the system RAM allowance", () => {
     scheduler.saveSettings(b, { placement: { mode: "gpus", gpus: [1] }, contextLength: 8192 });
     await scheduler.pin(a, true);
     await expect(scheduler.loadNow(b)).rejects.toThrow(/system RAM; the allowance is 12\.0 GB, of which .* GB is pinned/);
+  });
+
+  it("spreads a model over both GPUs beside a pinned one, rather than spilling it beside an empty GPU", async () => {
+    const { scheduler, llamacpp } = setup([96, 96]);
+    await scheduler.start([]);
+    await scheduler.setRamAllowance(64 * GIB);
+    const small = textModel("small", 8);
+    scheduler.saveSettings(small, { placement: { mode: "gpus", gpus: [0] }, contextLength: 8192 });
+    await scheduler.pin(small, true);
+    const big = textModel("big", 120, { layers: 48, expertLayers: experts(48, 110), contextLength: 8192 });
+    await scheduler.loadNow(big);
+    expect(llamacpp.calls.at(-1)).toBe("load big@0+1");
+    expect(scheduler.ramStatus().used).toBe(0);
+  });
+
+  it("unloads an idle model so a big one fits its GPUs, rather than spilling it", async () => {
+    const { scheduler, llamacpp } = setup([96, 96]);
+    await scheduler.start([]);
+    await scheduler.setRamAllowance(64 * GIB);
+    const idle = textModel("idle", 60);
+    scheduler.saveSettings(idle, { placement: { mode: "gpus", gpus: [0] }, contextLength: 8192 });
+    await scheduler.loadNow(idle);
+    const big = textModel("big", 120, { layers: 48, expertLayers: experts(48, 110), contextLength: 8192 });
+    await scheduler.loadNow(big);
+    expect(llamacpp.calls.slice(-2)).toEqual(["unload idle", "load big@0+1"]);
+    expect(scheduler.ramStatus().used).toBe(0);
   });
 
   it("unloads spilled models when lowered below what they use", async () => {
