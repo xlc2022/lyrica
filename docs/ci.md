@@ -29,11 +29,13 @@ self-hosted runners, which no workflow uses at the moment.
   the lyricad machine (the owner's memory) or the model host (the host-stack job
   installs its own stack).
 - The nix job installs Nix once (pinned installer, kept between runs), then
-  runs `nix flake check` and the sandbox tests with the NixOS sandbox tools
-  and closure (docs/daemon.md "On NixOS") side by side in one step: the
-  check in the background with its log printed when it ends, since the
-  check is CPU-bound and the tests mostly wait. Nix stays installed on the
-  VM. If an install was cancelled partway, the job stops and names the
+  runs `nix flake check` and the two sandbox tests that need the NixOS
+  sandbox tools and closure (docs/daemon.md "On NixOS"): a sandbox sees
+  only the closure in `/nix/store`, and refuses tools from outside it. The
+  other sandbox tests run in the check job with Ubuntu's tools. Both run
+  side by side in one step, the check in the background with its log
+  printed when the step ends, since the check is CPU-bound and the tests
+  mostly wait. Nix stays installed on the VM. If an install was cancelled partway, the job stops and names the
   leftover files; the Nix manual's multi-user uninstall steps clear it.
   Each run ends by keeping its builds as one generation of a profile
   (`~/.local/state/nix/profiles/lyrica-ci`), deleting all but the 3 newest
@@ -74,7 +76,7 @@ self-hosted runners, which no workflow uses at the moment.
     slowest one does.
   - nix: the same, less `evals/` and the tests the flake leaves out of its
     source (`web/e2e/` and each `test/` but `core/test/`, which holds the
-    sandbox tests).
+    sandbox tests it runs).
   - host-stack: `host/` only.
 
   A change under `.github/`, or a diff that can't be read, runs all three.

@@ -37,10 +37,16 @@ GitHub's cache backend; 1:54 is the normal case.
 2. The profile keeps the 3 newest generations of builds instead of 10
    (the operator's choice). On a hosted runner the profile is new every
    run, so this matters on a self-hosted runner, where it bounds the store.
+3. The job runs only the two sandbox tests that need the NixOS tools ("the
+   sandbox with the NixOS tools": only the closure in `/nix/store`, and no
+   tools from outside it), chosen by the operator on 2026-11-09. The other
+   50 run in the check job with Ubuntu's tools; under the Nix tools they
+   took four times as long (each sandbox start mounts the closure's store
+   paths) for the same coverage. What is given up: an end-to-end run of
+   the whole sandbox with the module's toolset before a release; a NixOS
+   host's own `nix/check-host.sh` and the deployment cover that.
 
-Out of scope, offered and left to the operator: running only the two
-NixOS-specific sandbox tests in this job (another 1.5 min, but it drops
-the end-to-end check of the sandbox with the module's toolset).
+Out of scope: shrinking the store cache (legitimate content).
 
 ## Docs
 
@@ -48,6 +54,5 @@ docs/ci.md (the nix job's description and the generation count).
 
 ## Handoff
 
-Done: the overlap, the generation count, the docs. Next: PR review, then
-record the measured time here. Open questions: the sandbox-test scope,
-with the operator.
+Done: the overlap, the generation count, the two-test scope, the docs.
+Next: PR review, then record the measured time here. Open questions: none.
