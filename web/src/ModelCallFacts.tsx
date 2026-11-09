@@ -9,6 +9,8 @@ import { tokenCount } from "./Project.tsx";
 import { clock, ErrorText, timeZone, useAction, useTheme } from "./ui.tsx";
 
 const HOUR = 3_600_000;
+/** Pixels kept between a speed dot's centre and the plot's edges: its radius and its outline. */
+const DOT = 8;
 /** More copies than the categorical order holds: the busiest seven keep their colour, the rest are Other. */
 const MOST = 8;
 const OTHER = "Other";
@@ -124,7 +126,12 @@ function hourlySpec(series: Series[], facts: Facts, panel: string, measure: "cal
   };
 }
 
-function speedSpec(series: Series[], facts: Facts, panel: string) {
+/**
+ * Each call's speed as a dot. The time axis starts at the window's start when that comes before the first whole hour
+ * (the hourly charts fold those calls into it), so no dot lands left of the axis; both scales keep a dot's width
+ * clear of the axes and their labels.
+ */
+export function speedSpec(series: Series[], facts: Facts, panel: string) {
   const { colour, ...b } = base(series, "Speed per call, in output tokens per second");
   const name = new Map(series.map((s) => [s.offeringId, s.name]));
   const h = hours(facts.until);
@@ -133,8 +140,8 @@ function speedSpec(series: Series[], facts: Facts, panel: string) {
     ...b, height: 140, data: { values },
     mark: { type: "point", filled: true, size: 64, opacity: 1, stroke: panel, strokeWidth: 1.5 },
     encoding: {
-      x: { field: "at", type: "temporal", title: null, scale: { type: "utc", domain: span(h) }, axis: { format: "%H:%M", tickCount: 6, grid: false } },
-      y: { field: "speed", type: "quantitative", title: null, axis: { tickCount: 4 } },
+      x: { field: "at", type: "temporal", title: null, scale: { type: "utc", domain: [new Date(Math.min(h[0]!, wall(facts.since))).toISOString(), span(h)[1]], padding: DOT }, axis: { format: "%H:%M", tickCount: 6, grid: false } },
+      y: { field: "speed", type: "quantitative", title: null, scale: { padding: DOT }, axis: { tickCount: 4 } },
       color: colour,
       tooltip: [{ field: "time", title: "Time" }, { field: "model", title: "Model" }, { field: "task", title: "Task" }, { field: "speed", title: "tok/s", format: ",.1f" }],
     },
