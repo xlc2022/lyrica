@@ -1,6 +1,6 @@
 # Brief: Copy an image model to another host
 
-**Status:** In review.
+**Status:** Merged as #861 (16a4770).
 
 **Read first:** host/API.md "Copying a model to another host", "Uploads"
 and "Custom workflows"; docs/ux.md §6 "Image models, recipes and parts".
