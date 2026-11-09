@@ -429,6 +429,43 @@ describe("MCP servers", () => {
     }
   });
 
+  it("holds a server to its calls a day and a minute, counted across threads, and lets an unlimited one be", async () => {
+    const { settings } = await setup();
+    const base = { url: "https://mcp.example.com/mcp", pool: "general" as const, description: null, tools: 1, offNetwork: false };
+    expect(() => settings.addMcpServer({ name: "ebay", ...base, dailyLimit: 0 })).toThrow(/Calls per day is a whole number/);
+    expect(() => settings.addMcpServer({ name: "ebay", ...base, minuteLimit: 2.5 })).toThrow(/Calls per minute is a whole number/);
+    settings.addMcpServer({ name: "ebay", ...base, dailyLimit: 3, minuteLimit: 2 });
+    settings.addMcpServer({ name: "house", ...base, url: "http://127.0.0.1:8123/mcp" });
+    // A day long past, so the wall clock's "today" has none of these.
+    const t0 = new Date("2020-01-05T10:00:00Z");
+    const at = (s: number) => new Date(t0.getTime() + s * 1000);
+    // Two in a minute, then the minute's budget; a minute later the day's budget, which lasts until midnight UTC.
+    expect(settings.mcpCallRefused("ebay", t0)).toBeUndefined();
+    settings.recordMcpCall("ebay", t0);
+    settings.recordMcpCall("ebay", at(1));
+    expect(settings.mcpCallRefused("ebay", at(2))).toMatch(/2 calls a minute/);
+    expect(settings.mcpCallRefused("ebay", at(61))).toBeUndefined();
+    settings.recordMcpCall("ebay", at(61));
+    expect(settings.mcpCallRefused("ebay", at(130))).toMatch(/budget of 3 calls for today.*midnight UTC/);
+    expect(settings.mcpServer("ebay")!.callsToday).toBe(0); // today, by the wall clock
+    expect(settings.mcpCallRefused("ebay", new Date("2020-01-06T00:00:01Z"))).toBeUndefined();
+    // Another server's calls don't count, and one without limits is never refused.
+    for (let i = 0; i < 10; i++) settings.recordMcpCall("house", at(i));
+    expect(settings.mcpCallRefused("house", at(10))).toBeUndefined();
+    // Limits change, follow a rename, and go with the server; the log is pruned to two days.
+    settings.updateMcpServer("ebay", { dailyLimit: null, minuteLimit: 5 });
+    expect(settings.mcpServer("ebay")).toMatchObject({ dailyLimit: null, minuteLimit: 5 });
+    expect(settings.mcpCallRefused("ebay", at(130))).toBeUndefined();
+    settings.updateMcpServer("ebay", { name: "bay" });
+    expect(settings.mcpCallRefused("bay", at(2))).toBeUndefined();
+    settings.updateMcpServer("bay", { minuteLimit: 2 });
+    expect(settings.mcpCallRefused("bay", at(2))).toMatch(/2 calls a minute/);
+    settings.recordMcpCall("bay", new Date("2020-01-08T10:00:00Z"));
+    expect(settings.mcpCallRefused("bay", at(2))).toBeUndefined();
+    settings.removeMcpServer("bay");
+    expect(settings.mcpServer("bay")).toBeUndefined();
+  });
+
   it("keeps a local server as a command with its environment, in either pool, with no host to check", async () => {
     const { ada, settings, workspace } = await setup();
     expect(() => settings.addMcpServer({ name: "ebay", url: "", command: [], pool: "general", description: null, tools: 0, offNetwork: false })).toThrow(/needs a URL or a command/);

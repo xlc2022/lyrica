@@ -146,6 +146,18 @@ export interface McpTransportOptions {
   fetch?: typeof fetch;
   /** How each connection attempt went, for the server's state in Settings. */
   state?: (kind: McpStateKind) => void;
+  /** The server's call budget, when it has one. */
+  budget?: McpBudget;
+}
+
+/**
+ * A server's call budget (docs/briefs/mcp-limits.md): asked before each
+ * `tools/call`. `refused` says why the call may not go now, or nothing;
+ * `record` counts one that went.
+ */
+export interface McpBudget {
+  refused(): string | undefined;
+  record(): void;
 }
 
 /**
@@ -158,7 +170,7 @@ export interface McpTransportOptions {
  * full text to a temporary file.
  */
 export function mcpTransport(o: McpTransportOptions): McpTransport {
-  return kept(new StreamableHttpTransport({ url: o.url, headers: headers(o.token), fetch: noRedirects(o.fetch) }), o.state, mcpFailure);
+  return kept(new StreamableHttpTransport({ url: o.url, headers: headers(o.token), fetch: noRedirects(o.fetch) }), o.state, mcpFailure, o.budget);
 }
 
 /** A local server's process, as `Sandbox.start` hands it back: its three pipes. */
@@ -169,6 +181,8 @@ export interface McpStdioTransportOptions {
   start: () => Promise<McpProcess>;
   /** How each start went, for the server's state in Settings: online once it answers `initialize`, unreachable when it doesn't start. */
   state?: (kind: McpStateKind) => void;
+  /** The server's call budget, when it has one. */
+  budget?: McpBudget;
 }
 
 /**
@@ -178,14 +192,20 @@ export interface McpStdioTransportOptions {
  * of it reaches disk or the model.
  */
 export function mcpStdioTransport(o: McpStdioTransportOptions): McpTransport {
-  return kept(new ProcessTransport(o.start), o.state, () => "unreachable");
+  return kept(new ProcessTransport(o.start), o.state, () => "unreachable", o.budget);
 }
 
-/** The transport's filters: log notifications dropped, resources and prompts not offered, results cut, each failure's state recorded. */
-function kept(inner: McpTransport, state: ((kind: McpStateKind) => void) | undefined, failure: (err: unknown) => Exclude<McpStateKind, "online">): McpTransport {
+/**
+ * The transport's filters: log notifications dropped, resources and prompts
+ * not offered, results cut, each failure's state recorded, and a tool call
+ * past the server's budget answered here, as the tool's own error, without
+ * reaching the server.
+ */
+function kept(inner: McpTransport, state: ((kind: McpStateKind) => void) | undefined, failure: (err: unknown) => Exclude<McpStateKind, "online">, budget?: McpBudget): McpTransport {
   const o = { state };
   const calls = new Set<JsonRpcId>();
   const inits = new Set<JsonRpcId>();
+  const listeners = new Set<(m: JsonRpcMessage) => void>();
   const keep = (m: JsonRpcMessage): JsonRpcMessage | undefined => {
     if (isJsonRpcNotification(m) && m.method === "notifications/message") return undefined;
     if (!isJsonRpcResponse(m) || !("result" in m)) {
@@ -212,7 +232,16 @@ function kept(inner: McpTransport, state: ((kind: McpStateKind) => void) | undef
     },
     async send(m) {
       if (isJsonRpcRequest(m)) {
-        if (m.method === "tools/call") calls.add(m.id);
+        if (m.method === "tools/call") {
+          const why = budget?.refused();
+          if (why) {
+            const answer: JsonRpcMessage = { jsonrpc: "2.0", id: m.id, result: { content: [{ type: "text", text: why }], isError: true } };
+            queueMicrotask(() => { for (const l of listeners) l(answer); });
+            return;
+          }
+          budget?.record();
+          calls.add(m.id);
+        }
         if (m.method === "initialize") inits.add(m.id);
       }
       try {
@@ -223,7 +252,11 @@ function kept(inner: McpTransport, state: ((kind: McpStateKind) => void) | undef
       }
     },
     close: () => inner.close(),
-    onMessage: (listener) => inner.onMessage((m) => { const out = keep(m); if (out) listener(out); }),
+    onMessage: (listener) => {
+      listeners.add(listener);
+      const off = inner.onMessage((m) => { const out = keep(m); if (out) listener(out); });
+      return () => { listeners.delete(listener); off(); };
+    },
     onError: (listener) => inner.onError(listener),
     onClose: (listener) => inner.onClose(listener),
     setProtocolVersion: (v) => inner.setProtocolVersion?.(v),

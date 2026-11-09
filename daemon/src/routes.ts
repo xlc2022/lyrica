@@ -4,7 +4,7 @@ import { imageRetryOptions } from "./image-retry.ts";
 import { randomUUID } from "node:crypto";
 import {
   ANSWER, CLOUD_IMAGE_PROVIDERS, recentWorkAllowed, WELCOME_LIMITS, describe, AuthError, isPlan, type PlanKind, NoRecoveryCopy, WrongPassword, isEmoji, WORKDIR, CAPABILITIES, FilesRefused, checkTask, isRestricted, voiceContext, refId, THINKING_LEVELS, publicKeyOf, authorizedKeysLine, proxmoxAddress, CloudModelForbidden, FROM_PARENT, NoModel, WAKEUP, ROUTINE, WATCHING, PRONOUN_PRESETS, projectSlug,
-  citationsIn, exportMemories, importMemories, exportSkills, importSkills, firstLine, GIT_KINDS, kindOf, mcpCommand, mcpCommandLine, mcpEnv, mcpPlace, sentenceCiting, splitId, HomeFileMissing, MAX_IMAGE_BYTES,
+  citationsIn, exportMemories, importMemories, exportSkills, importSkills, firstLine, GIT_KINDS, kindOf, mcpCommand, mcpCommandLine, mcpEnv, mcpLimit, mcpPlace, sentenceCiting, splitId, HomeFileMissing, MAX_IMAGE_BYTES,
   type Author, type Column, type Endpoint, type ModelRef, type Offering, type Hit, type Item, type GitAccountConfig, type MachineConfig, type McpServerConfig, type OwnerView, type Pool, type PoolStore, type SleepItem, type SleepRunRecord, type Thread, type ThreadPref, type User,
   searxngAddress, searxngStatus, searxngView, setSearxngAddress, kiwixAddress, kiwixArticle, kiwixPicture, kiwixStatus, setKiwixAddress, forgetKiwixBooks, claudeCodeInstalled, modelName,
   codexSignedIn, codexSignIn, codexSignOut, type CodexBox, type CodexSignIn, serverZone, zoneOf,
@@ -895,11 +895,17 @@ export function apiRoutes(d: Lyricad): Route[] {
     }),
     route("PATCH", `${u}/mcp-servers/:name`, async (r) => {
       const user = d.userFor(r);
-      const change = pick(await r.json<Api.McpServerChange>(), ["name", "url", "pool", "offNetworkConfirmed"]);
+      const change = pick(await r.json<Api.McpServerChange>(), ["name", "url", "command", "pool", "dailyLimit", "minuteLimit", "offNetworkConfirmed"]);
       if (change.pool !== undefined) checkPool(change.pool);
-      for (const k of ["name", "url"] as const) if (change[k] !== undefined) change[k] = String(change[k]);
+      for (const k of ["name", "url", "command"] as const) if (change[k] !== undefined) change[k] = String(change[k]);
       if (change.url !== undefined) change.url = unredactUrl(change.url, s().workspace.settings(user.id).mcpServer(r.params.name!)?.url ?? "");
-      const m = await s().workspace.updateMcpServer(user.id, r.params.name!, { ...change, offNetworkConfirmed: change.offNetworkConfirmed === true });
+      const { command, dailyLimit, minuteLimit, ...rest } = change;
+      const m = await s().workspace.updateMcpServer(user.id, r.params.name!, {
+        ...rest, offNetworkConfirmed: change.offNetworkConfirmed === true,
+        ...(command !== undefined ? { command: command.trim() ? mcpCommand(command) : [] } : {}),
+        ...(dailyLimit !== undefined ? { dailyLimit: mcpLimit(dailyLimit, "Calls per day") } : {}),
+        ...(minuteLimit !== undefined ? { minuteLimit: mcpLimit(minuteLimit, "Calls per minute") } : {}),
+      });
       reloadMcp(d, user.id);
       return mcpServerInfo(m);
     }),
@@ -2632,16 +2638,20 @@ function mcpServerInfo(m: McpServerConfig): Api.McpServerInfo {
   return {
     name: m.name, url: m.url ? redactUrl(m.url) : "", command: mcpCommandLine(m.command), host: mcpPlace(m), pool: m.pool,
     hasToken: !!m.token, hasEnv: Object.keys(m.env).length > 0, tools: m.tools, description: m.description, offNetwork: m.offNetwork,
+    dailyLimit: m.dailyLimit, minuteLimit: m.minuteLimit, callsToday: m.callsToday,
     ...(m.state ? { state: m.state } : {}),
   };
 }
 
 /** An MCP server to add or check: a URL with an optional token, or a command with its environment (`KEY=value` lines). */
-function mcpInput(input: Api.McpServerInput): { name: string; url: string; token?: string; command: string[]; env: Record<string, string>; pool: Pool; offNetworkConfirmed: boolean } {
+function mcpInput(input: Api.McpServerInput): { name: string; url: string; token?: string; command: string[]; env: Record<string, string>; pool: Pool; dailyLimit: number | null; minuteLimit: number | null; offNetworkConfirmed: boolean } {
   const command = String(input?.command ?? "").trim() ? mcpCommand(String(input.command)) : [];
   const env = mcpEnv(String(input?.env ?? ""));
   const token = input.token === undefined ? undefined : String(input.token);
-  return { name: String(input.name ?? ""), url: String(input.url ?? ""), ...(token ? { token } : {}), command, env, pool: checkPool(input.pool), offNetworkConfirmed: input.offNetworkConfirmed === true };
+  return {
+    name: String(input.name ?? ""), url: String(input.url ?? ""), ...(token ? { token } : {}), command, env, pool: checkPool(input.pool),
+    dailyLimit: mcpLimit(input.dailyLimit, "Calls per day"), minuteLimit: mcpLimit(input.minuteLimit, "Calls per minute"), offNetworkConfirmed: input.offNetworkConfirmed === true,
+  };
 }
 
 /** A server's address or token changed, or it went: every open session of the user's reopens at its next turn with the servers as they are. */

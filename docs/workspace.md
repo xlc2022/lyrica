@@ -1295,11 +1295,12 @@ The NixOS module can run one for her: mcp-nixos, for Nix and NixOS
 lookups (`services.lyrica.mcpNixos`, docs/guides/nixos-mcp.md).
 
 - **A server** is a row in Settings → **MCP servers**, kept in the user's
-  `user.db` (`mcp_servers`, user steps 3 and 20): a name (letters, digits,
+  `user.db` (`mcp_servers`, user steps 3, 21 and 22): a name (letters, digits,
   `-` and `_`), a URL with an optional token never shown back, or a
   command (one line: the program and its arguments, split like a shell
   does, nothing expanded) with its own environment (`KEY=value` lines,
-  never shown back either), a pool, and the description and tool count
+  never shown back either), a pool, optional **Calls per day** and
+  **Calls per minute** (below), and the description and tool count
   from its last check. Adding one, or replacing its token or environment,
   runs `initialize` and `tools/list` first (`probeMcp` and
   `probeMcpCommand` in `core/src/workspace/mcp.ts`; a local server is
@@ -1346,6 +1347,23 @@ lookups (`services.lyrica.mcpNixos`, docs/guides/nixos-mcp.md).
   server shows Unreachable. Closing the session ends its stdin, then
   SIGTERM, then SIGKILL. A server that stops on its own is reported like
   a failed job, without any output.
+- **A call budget** (DESIGN.md, "MCP servers"; docs/briefs/mcp-limits.md):
+  a server's `dailyLimit` and `minuteLimit`, both null (no limit) unless
+  the user sets them, whole numbers up to 1,000,000 (`mcpLimit`). Each
+  `tools/call` the transport sends is one row in `mcp_calls` (the
+  server's name and the time, nothing else; rows older than two days go
+  as new ones are written), counted across the user's threads.
+  Before each call the transport asks `McpBudget.refused()`
+  (`settings.mcpCallRefused(name)`): the day's budget is the calls since
+  midnight UTC, the minute's the calls in the last 60 seconds. A refused
+  call is never sent: the transport answers it itself, as the tool's
+  result with `isError`, saying which budget is used up and when it
+  resets (midnight UTC, or a minute), and that she shouldn't retry. One
+  that goes is recorded (`recordMcpCall`) as it is sent. The facts line
+  shows today's calls against a daily limit; `McpServerInfo.callsToday`
+  carries them. A limit changes with the server (`updateMcpServer`),
+  follows a rename and goes with the server; a locked database counts
+  nothing and refuses nothing.
 - **Approval:** a tool its server marks read-only (`readOnlyHint`) runs
   freely, and only those (with `tool_search`) are on in Plan mode. Every
   other call asks, whatever the mode, with **Allow in this thread** for

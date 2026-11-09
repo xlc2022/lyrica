@@ -1689,6 +1689,20 @@ Decided 2026-10-12 (docs/briefs/mcp.md).
   shouldn't be added.
 - **Budget.** MCP tools are deferred, loaded by `tool_search` when she
   needs one, and count as one tool together (principle 8).
+- **A call budget, when the service has one** (decided 2026-11-09,
+  docs/briefs/mcp-limits.md). A server may carry **Calls per day** and
+  **Calls per minute**, both empty by default, which means no limit: a
+  server the operator runs for her (mcp-nixos, one over local data) is
+  never counted or held back. Set, they cover every tool call she sends
+  that server across the user's threads: the day's for a service's quota
+  (eBay's 5,000 a day; the day is UTC, as such quotas count it), the
+  minute's so a runaway loop can't get the account banned. A call past
+  either never leaves the machine: her transport answers it as the tool's
+  own error, saying which budget and when it resets, so she tells the
+  user instead of retrying. The count is of calls to the server, which
+  may run ahead of what the service sees (a server's local lookups count
+  too): the safe side. The log behind it is the server's name and a
+  time, in the user's database, pruned after two days.
 
 ## Claude Code
 
