@@ -33,14 +33,22 @@
       "class_type": "SeedVR2LoadDiTModel",
       "inputs": {
         "model": "$upscalerName",
-        "device": "cuda:0"
+        "device": "cuda:0",
+        "offload_device": "cpu"
       }
     },
     "vae": {
       "class_type": "SeedVR2LoadVAEModel",
       "inputs": {
         "model": "$vaeName",
-        "device": "cuda:0"
+        "device": "cuda:0",
+        "encode_tiled": true,
+        "encode_tile_size": 1024,
+        "encode_tile_overlap": 128,
+        "decode_tiled": true,
+        "decode_tile_size": 768,
+        "decode_tile_overlap": 128,
+        "offload_device": "cpu"
       }
     },
     "upscale": {
@@ -63,7 +71,8 @@
         "max_resolution": "$maxSize",
         "batch_size": 1,
         "uniform_batch_size": false,
-        "color_correction": "$colorMatch"
+        "color_correction": "$colorMatch",
+        "offload_device": "cpu"
       }
     },
     "save": {

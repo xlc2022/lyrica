@@ -158,7 +158,13 @@ export class Comfy implements Backend {
             // Only this client's messages arrive here; skip any for another prompt.
             if (promptId && msg.data?.prompt_id && msg.data.prompt_id !== promptId) return;
             // The node and the exception's type name what broke; the exception's message can carry the prompt, so it stays out.
-            if (msg.type === "execution_error") reject(new HostError(503, "model_unavailable", `ComfyUI failed to make the ${what} (${String(msg.data?.node_type ?? "a node")}: ${String(msg.data?.exception_type ?? "error")}).`));
+            // Out of GPU memory mid-job is about this job's size, not the recipe: say what to lower.
+            if (msg.type === "execution_error") {
+              const node = String(msg.data?.node_type ?? "a node"), type = String(msg.data?.exception_type ?? "error");
+              reject(new HostError(503, "model_unavailable", /OutOfMemory/i.test(type)
+                ? `ComfyUI ran out of GPU memory making the ${what} (${node}). A smaller size, scale or maxSize fits.`
+                : `ComfyUI failed to make the ${what} (${node}: ${type}).`));
+            }
             else if (msg.type === "executing" && msg.data?.node === null) resolve();
             else if (msg.type === "executing" && typeof msg.data?.node === "string") {
               progress?.started(msg.data.node);
