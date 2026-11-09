@@ -41,6 +41,21 @@ function hold(s: Scheduler, model: ReturnType<typeof textModel>, priority: Prior
 }
 
 describe("the GPU queue", () => {
+  it("lets an explicit Load wait for the whole load and logs a load that fails", async () => {
+    const logged: { event: string; fields: Record<string, unknown> }[] = [];
+    const { scheduler, llamacpp } = setup([24], { waitLimits: { chat: 20, image: 20, background: 20 }, log: (event, fields = {}) => logged.push({ event, fields }) });
+    // A chat request gives up after its wait; Load (and Pin) wait for the load itself.
+    llamacpp.loadMs = 80;
+    await expect(scheduler.run(textModel("slow", 10), "chat", async () => "x")).rejects.toMatchObject({ code: "busy", message: "The GPU is busy with a chat model." });
+    await scheduler.loadNow(textModel("m", 10));
+    expect(scheduler.placement("m")?.state).toBe("loaded");
+    await expect(scheduler.loadNow(textModel("huge", 100))).rejects.toMatchObject({ code: "too_big" });
+    const failed = logged.find((l) => l.event === "load failed");
+    expect(failed?.fields).toMatchObject({ model: "huge", code: "too_big" });
+    expect(String(failed?.fields.message)).toContain("GB");
+  });
+
+
   it("keeps the serving instance when reload cannot fit", async () => {
     const { scheduler, llamacpp } = setup();
     await scheduler.start([]);

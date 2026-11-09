@@ -291,8 +291,13 @@ seconds of audio.
   also scans at start and after each download.
 - Each of the four calls below answers with the model's entry.
 - `POST /host/v1/models/load` `{ "model": "<id>" }`: loads it where its
-  placement says, and waits until it is loaded. Errors: `too_big`, `busy`,
-  `paused`, `refused` (a vLLM model that would need `trust_remote_code`).
+  placement says, and waits until it is loaded (up to 15 minutes, the time a
+  measurement and a load of a large model can take; a chat request waits 2).
+  Errors: `too_big`, `busy`, `model_unavailable` (the server couldn't load
+  it; the message says why), `paused`, `refused` (a vLLM model that would
+  need `trust_remote_code`). A load that fails is also in host-api's log as
+  `load failed` with its code and message, for when the requester has given
+  up waiting.
 - `POST /host/v1/models/unload` `{ "model": "<id>" }`: unloads it from all
   its GPUs; `in_use` while a request is running on it.
 - `POST /host/v1/models/reload` `{ "model": "<id>" }`: applies its saved

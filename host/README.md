@@ -594,7 +594,10 @@ revoked. A revoked server must pair again.
 - **Queues.** Requests wait in a queue per GPU: chat first, then images,
   then background work. A request that waits too long fails with "The GPU
   is busy with …", except a `/v1` request tagged with `X-Lyrica-Job`,
-  which waits up to 15 minutes (API.md, "Job progress").
+  which waits up to 15 minutes (API.md, "Job progress"), and the dashboard's
+  Load or Pin, which waits for the whole load (also up to 15 minutes) and
+  shows why it failed. A load that fails is logged as `load failed` with
+  its reason, never a prompt.
 - **VRAM** is planned from llama.cpp's own measurement where it has one:
   before a llama.cpp model loads, the router's measure child reads the GGUF
   and the preset and reports, per GPU, the weights, cache and compute
