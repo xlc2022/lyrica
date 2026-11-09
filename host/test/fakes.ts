@@ -328,12 +328,16 @@ export async function fakeComfy(o: { hang?: boolean; hold?: () => Promise<void>;
         head.writeUInt32BE(format, 4);
         ws?.write(frame(2, Buffer.concat([head, data])));
       };
-      // Each sampler reports its first of two steps; `hold` keeps the job there until the test lets it finish.
-      for (const [node, n] of Object.entries(prompt as Record<string, { class_type: string }>)) {
-        if (/Sampler/.test(n.class_type)) ws?.write(frame(1, Buffer.from(JSON.stringify({ type: "progress", data: { node, value: 1, max: 2, prompt_id: id } }))));
+      // Each sampler starts and reports its first of two steps; `hold` keeps the job there until the test lets it finish,
+      // and the last step comes just before the result, so the sampling took measurable time.
+      const samplers = Object.entries(prompt as Record<string, { class_type: string }>).filter(([, n]) => /Sampler/.test(n.class_type)).map(([node]) => node);
+      for (const node of samplers) {
+        ws?.write(frame(1, Buffer.from(JSON.stringify({ type: "executing", data: { node, prompt_id: id } }))));
+        ws?.write(frame(1, Buffer.from(JSON.stringify({ type: "progress", data: { node, value: 1, max: 2, prompt_id: id } }))));
       }
       setTimeout(async () => {
         await o.hold?.();
+        for (const node of samplers) ws?.write(frame(1, Buffer.from(JSON.stringify({ type: "progress", data: { node, value: 2, max: 2, prompt_id: id } }))));
         if (video) {
           send(2, PNG);
           send(16, MP4);

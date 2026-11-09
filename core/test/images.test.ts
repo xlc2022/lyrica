@@ -32,11 +32,16 @@ function codex(s: Awaited<ReturnType<typeof setup>>, answer: (r: ImageRequest) =
 describe("image calls through the router (principles 1 and 2)", () => {
   it("creates, edits and upscales confirmed host recipes, keeping defaults and never naming parts", async () => {
     const s = await setup(), ctx = s.ctx({ pool: "private", localOnly: true });
-    expect((await s.models.image(ctx, { action: "create", prompt: "A garden", tier: "fast" })).images[0]).toMatchObject({ type: "image/png", width: 1, height: 1, seed: 42 });
-    await s.models.image(ctx, { action: "create", prompt: "A garden", tier: "quality", size: { width: 1024, height: 512 }, count: 2 });
+    const first = await s.models.image(ctx, { action: "create", prompt: "A garden", tier: "fast" });
+    expect(first.images[0]).toMatchObject({ type: "image/png", width: 1, height: 1, seed: 42 });
+    // What the host measured of its sampling comes back with the images (host/API.md, "Making images").
+    expect(first.sampling).toEqual({ ms: 6250, steps: 8 });
+    const pair = await s.models.image(ctx, { action: "create", prompt: "A garden", tier: "quality", size: { width: 1024, height: 512 }, count: 2 });
+    expect(pair.sampling).toEqual({ ms: 12_500, steps: 16 });
     await s.models.image(ctx, { action: "edit", prompt: "Add flowers", image: input, mask: input, references: [input] });
     await s.models.image(ctx, { action: "edit", prompt: "A round mirror on a beige wall", image: input, mask: input, replace: true });
-    await s.models.image(ctx, { action: "upscale", image: input });
+    // An upscaler's plain pass has no sampler, so the host says nothing.
+    expect((await s.models.image(ctx, { action: "upscale", image: input })).sampling).toBeUndefined();
     expect(s.workstation.server.images.map(i => i.body)).toEqual([
       { recipe: "art", prompt: "A garden" }, { recipe: "art", prompt: "A garden", width: 1024, height: 512, count: 2 },
       { recipe: "art", prompt: "Add flowers", image: png.toString("base64"), mask: png.toString("base64"), references: [png.toString("base64")] },
@@ -44,6 +49,22 @@ describe("image calls through the router (principles 1 and 2)", () => {
       { recipe: "art", image: png.toString("base64") },
     ]);
     expect(s.heard).toEqual([]);
+  });
+  it("records what the host measured of a call's sampling with its record, and reads it back; never the picture", async () => {
+    const s = await setup(), ctx = s.ctx({ pool: "private", localOnly: true });
+    const out = await s.models.image(ctx, { action: "create", prompt: "A garden", tier: "fast", count: 2 });
+    const first = s.models.recordCall(s.ada.id, { pool: "private", threadId: "web/t1", task: "image.create", resolution: out.resolution });
+    // A second call of the same task from the thread (a subagent's) is recorded before the first's sampling arrives: each keeps its own.
+    const second = s.models.recordCall(s.ada.id, { pool: "private", threadId: "web/t1", task: "image.create", resolution: out.resolution });
+    s.models.recordSampling(s.ada.id, first, { ...out.sampling!, images: out.images.length, pixels: 1024 * 1024 });
+    const [newest, older] = s.models.recentCalls(s.ada.id, { pool: "private", threadId: "web/t1" });
+    expect(older).toMatchObject({ task: "image.create", sampling: { ms: 12_500, steps: 16, images: 2, pixels: 1_048_576 } });
+    expect(older).not.toHaveProperty("pace");
+    expect(newest).not.toHaveProperty("sampling");
+    expect(second).toBeGreaterThan(first);
+    // A call the host didn't measure keeps no sampling.
+    s.models.recordCall(s.ada.id, { pool: "private", threadId: "web/t1", task: "image.upscale", resolution: out.resolution });
+    expect(s.models.recentCalls(s.ada.id, { pool: "private", threadId: "web/t1" })[0]).not.toHaveProperty("sampling");
   });
   it("upscales a clip on the Image upscaling list's first host recipe that upscales clips, never a cloud model", async () => {
     const s = await setup(), ctx = s.ctx({ pool: "private" });
@@ -374,7 +395,7 @@ describe("video calls through the router (principles 1 and 2)", () => {
     const s = await setup(), ctx = s.ctx({ pool: "private", localOnly: true });
     s.models.setColumnTask(s.ada.id, "private", "video", [s.workstation.clip]);
     const out = await s.models.video(ctx, { prompt: "A fox in the snow", duration: 5 });
-    expect(out.video).toMatchObject({ type: "video/mp4", width: 1280, height: 704, frames: 121, fps: 24, duration: 5.04, audio: false, seed: 7, poster: { type: "image/png", width: 1, height: 1 } });
+    expect(out.video).toMatchObject({ type: "video/mp4", width: 1280, height: 704, frames: 121, fps: 24, duration: 5.04, audio: false, seed: 7, poster: { type: "image/png", width: 1, height: 1 }, sampling: { ms: 240_500, steps: 20 } });
     expect(out.resolution.ref).toEqual(s.workstation.clip);
     await s.models.video(ctx, { prompt: "It runs off", image: input, size: { width: 1024, height: 576 } });
     expect(s.workstation.server.videos).toEqual([

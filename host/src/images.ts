@@ -4,7 +4,7 @@ import { createHash, randomInt } from "node:crypto";
 import { createReadStream, mkdirSync, readdirSync, readlinkSync, statSync, symlinkSync, unlinkSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { basename, join } from "node:path";
-import { imageSize, mp4Seconds, mp4Sound, mp4Video, type ComfyGpus } from "./comfy.ts";
+import { imageSize, mp4Seconds, mp4Sound, mp4Video, type ComfyGpus, type Sampling } from "./comfy.ts";
 import type { Downloads } from "./downloads.ts";
 import { HostError, invalid, notFound, onlyFields, readJson, sendJson } from "./http.ts";
 import type { JobProgress } from "./jobs.ts";
@@ -27,6 +27,8 @@ const referenceCount = (wf: Template["workflow"]) =>
 const WORKFLOW_LIMIT = 2 * 1024 * 1024;
 
 const IMAGE_LIMIT = 20 * 1024 * 1024;
+/** The answer's `sampling` (API.md, "Making images"): how long the samplers ran and their steps, when ComfyUI reported them. */
+const samplingField = (s: Sampling | undefined) => (s ? { sampling: { seconds: Math.round(s.ms) / 1000, steps: s.steps } } : {});
 /** The most of a part's file one read gives, when a model is copied to another host. */
 const PIECE = 32 * 1024 * 1024;
 const MAX_SIDE = 8192;
@@ -860,10 +862,10 @@ export class Images {
     const sdcpp = this.sdcpp;
     if (sdcpp && sdArgs) sdcpp.prepare(model.id, sdArgs);
     // stable-diffusion.cpp reports no steps: its job only says it runs.
-    const pngs = await this.on(gpu, () => scheduler.run(model, "image", () => {
+    const { pngs, sampling } = await this.on(gpu, () => scheduler.run(model, "image", () => {
       job.running();
-      return scheduler.measuring(model, () =>
-        sdcpp ? sdcpp.create(model.id, recipe.template, values, abort.signal) : comfy.run(uploads, (names) => {
+      return scheduler.measuring(model, async (): Promise<{ pngs: Buffer[]; sampling?: Sampling }> =>
+        sdcpp ? { pngs: await sdcpp.create(model.id, recipe.template, values, abort.signal) } : comfy.run(uploads, (names) => {
           this.checkBeforeRun(template);
           const parts = recipe.parts.filter((p): p is typeof p & { file: string } => !!p.file);
           return fill(template, parts, loras, { ...values, ...names });
@@ -881,6 +883,7 @@ export class Images {
         return { png: png.toString("base64"), width: size?.width ?? null, height: size?.height ?? null, seed };
       }),
       seconds,
+      ...samplingField(sampling),
     });
   }
 
@@ -1006,12 +1009,13 @@ export class Images {
     const scheduler = this.runtime.scheduler;
     // One hold on the GPU for every clip, and one progress, each clip weighted by its frames.
     const total = clips.reduce((n, c) => n + Number(c.frames), 0);
-    const { video, poster } = await this.on(gpu, () => scheduler.run(model, "image", () => {
+    const { video, poster, sampling } = await this.on(gpu, () => scheduler.run(model, "image", () => {
       job.running();
       return scheduler.measuring(model, async () => {
         let video = previous;
         let poster: Buffer | null = null;
         let done = 0;
+        let sampling: Sampling | undefined;
         for (const [i, clip] of clips.entries()) {
           const first = i === 0 && !extending;
           // An animated still stays every later clip's reference: the clip so far may have lost a face the still shows.
@@ -1023,8 +1027,10 @@ export class Images {
           video = made.video;
           poster = made.poster ?? poster;
           done += Number(clip.frames);
+          // A chain's clips sample one after another: the clip's time is their sum.
+          if (made.sampling) sampling = { ms: (sampling?.ms ?? 0) + made.sampling.ms, steps: (sampling?.steps ?? 0) + made.sampling.steps };
         }
-        return { video: video!, poster };
+        return { video: video!, poster, sampling };
       });
     }, gpu, abort.signal));
     const seconds = (Date.now() - started) / 1000;
@@ -1041,6 +1047,7 @@ export class Images {
         frames, fps, duration: frames / fps, audio: spec.audio, seed: values.seed },
       poster: poster ? poster.toString("base64") : null,
       seconds,
+      ...samplingField(sampling),
     });
   }
 
@@ -1090,7 +1097,7 @@ export class Images {
     });
     const scheduler = this.runtime.scheduler;
     const parts = present(recipe, this.files());
-    const { video, poster } = await this.on(gpu, () => scheduler.run(model, "image", () => {
+    const { video, poster, sampling } = await this.on(gpu, () => scheduler.run(model, "image", () => {
       job.running();
       return scheduler.measuring(model, () => comfy.runVideo({ source: clip }, (names) => fill({ ...template, workflow: template.clipWorkflow! }, parts, [], { ...values, ...names }),
         VIDEO_TIMEOUT_MS, abort.signal, job.progress));
@@ -1106,6 +1113,7 @@ export class Images {
         frames, fps, duration: frames / fps, audio: mp4Sound(video), seed: values.seed },
       poster: poster ? poster.toString("base64") : null,
       seconds,
+      ...samplingField(sampling),
     });
   }
 

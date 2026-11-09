@@ -322,6 +322,11 @@ export const STEPS: Record<DbKind, MigrationStep[]> = {
       addColumns(db, [["mcp_servers", "daily_limit", "INTEGER"], ["mcp_servers", "minute_limit", "INTEGER"]]);
       db.exec(MCP_CALLS_SCHEMA);
     },
+  }, {
+    // Principle 1: an image or video call's sampling time, steps, count and pixels, as its host measured them, so Status
+    // can say how fast an image model is (docs/briefs/image-speed.md). Adds nullable columns only.
+    version: 23,
+    run(db) { addColumns(db, [["model_calls", "sampling_ms", "INTEGER"], ["model_calls", "steps", "INTEGER"], ["model_calls", "images", "INTEGER"], ["model_calls", "pixels", "INTEGER"]]); },
   }],
   pool: [{
     version: 1, contract: true,

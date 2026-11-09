@@ -340,7 +340,9 @@ export async function executeImage(o: ImageTools, id: string, p: ImageArgs, sign
   signal?.throwIfAborted();
   const paths = o.files.save(out.images, portrait);
   const part: ImagePart = { type: "image", paths, model: out.resolution.label, ...(p.action === "create" ? { tier: p.tier ?? "quality" } : {}) };
-  o.models.recordCall(call.userId, { pool: call.pool, threadId: o.threadId, task: `image.${p.action}`, resolution: out.resolution });
+  const recorded = o.models.recordCall(call.userId, { pool: call.pool, threadId: o.threadId, task: `image.${p.action}`, resolution: out.resolution });
+  // What the host measured of the job, for Status's speed: never the prompt or the picture.
+  if (out.sampling) o.models.recordSampling(call.userId, recorded, { ...out.sampling, images: out.images.length, pixels: out.images[0]!.width * out.images[0]!.height });
   // Any fallback is said, so she can tell them the model they got isn't the first choice.
   const passed = out.resolution.passedOver ?? [];
   const fellBack = passed.length ? ` Passed over first: ${passed.map(s => `${s.label} (${s.reason.replace(/^it /, "")})`).join("; ")}.` : "";
@@ -373,7 +375,8 @@ async function executeVideo(o: ImageTools, id: string, p: ImageArgs, signal?: Ab
     const path = o.files.saveVideo(out.video);
     const v = out.video;
     const video: VideoPart = { type: "video", path, model: out.resolution.label, width: v.width, height: v.height, duration: v.duration, audio: v.audio };
-    o.models.recordCall(call.userId, { pool: call.pool, threadId: o.threadId, task: "video", resolution: out.resolution });
+    const recorded = o.models.recordCall(call.userId, { pool: call.pool, threadId: o.threadId, task: "video", resolution: out.resolution });
+    if (v.sampling) o.models.recordSampling(call.userId, recorded, { ...v.sampling, images: 1, pixels: v.width * v.height });
     const passed = out.resolution.passedOver ?? [];
     const fellBack = passed.length ? ` Passed over first: ${passed.map(s => `${s.label} (${s.reason.replace(/^it /, "")})`).join("; ")}.` : "";
     const text = `Made with ${modelName(out.resolution.offering)} on ${out.resolution.endpoint.name}: ${v.duration.toFixed(1)} s at ${v.width}×${v.height}${v.audio ? ", with sound" : ""}.${lorasUsed(request.loras, out.resolution)}${fellBack} Saved ${path}.`;
@@ -415,7 +418,8 @@ async function executeUpscaleVideo(o: ImageTools, id: string, p: ImageArgs, sign
     const path = o.files.saveVideo(out.video);
     const v = out.video;
     const video: VideoPart = { type: "video", path, model: out.resolution.label, width: v.width, height: v.height, duration: v.duration, audio: v.audio };
-    o.models.recordCall(call.userId, { pool: call.pool, threadId: o.threadId, task: "image.upscale", resolution: out.resolution });
+    const recorded = o.models.recordCall(call.userId, { pool: call.pool, threadId: o.threadId, task: "image.upscale", resolution: out.resolution });
+    if (v.sampling) o.models.recordSampling(call.userId, recorded, { ...v.sampling, images: 1, pixels: v.width * v.height });
     const passed = out.resolution.passedOver ?? [];
     const fellBack = passed.length ? ` Passed over first: ${passed.map(s => `${s.label} (${s.reason.replace(/^it /, "")})`).join("; ")}.` : "";
     const text = `Upscaled with ${modelName(out.resolution.offering)} on ${out.resolution.endpoint.name}: ${v.duration.toFixed(1)} s at ${v.width}×${v.height}${v.audio ? ", with sound" : ""}.${fellBack} Saved ${path}.`;

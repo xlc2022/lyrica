@@ -2717,11 +2717,15 @@ test("Status model facts preserve existing facts and render empty, measured and 
     await expect(row("fixture-measured").getByRole("cell")).toHaveText(["fixture-measured · StatusFixture", /3$/, /60$/, /20 tok\/s$/, /3,000 tok\/s$/, /1$/]);
     await expect(row("fixture-without-speed").getByRole("cell").nth(3)).toHaveText(/—$/);
     await expect(row("fixture-without-speed").getByRole("cell").nth(3)).toHaveAttribute("title", /^Not measured/);
+    // An image model's Speed is its seconds per image, measured on its host; it reads no prompt.
+    await expect(row("fixture-image").getByRole("cell")).toHaveText(["fixture-image · StatusFixture", /3$/, /0$/, /17.3 s\/image$/, /—$/, /0$/]);
+    await expect(row("fixture-image").getByRole("cell").nth(3)).toHaveAttribute("title", /^Median sampling time per image on its host.* 8 steps · 1 MP · 0.5 it\/s\. 3 measured\.$/);
+    await expect(row("fixture-image").getByRole("cell").nth(4)).toHaveAttribute("title", "An image model reads no prompt tokens.");
     await expect(facts).toContainText("Retained history · General · pruned to latest 500 records per user");
-    await expect(facts).toContainText("34 calls");
+    await expect(facts).toContainText("37 calls");
     // Each chart draws, from the facts alone, and its marks answer the pointer.
     for (const name of ["Calls per hour", "Output tokens per hour", "Speed per call · tok/s", "Calls by task"]) await expect(facts.getByRole("figure", { name, exact: true }).locator(".chart-box svg")).toBeVisible();
-    await expect(facts.getByRole("list", { name: "Models" }).getByRole("listitem")).toHaveText(["fixture-cloud", "fixture-measured", "fixture-without-speed-with-a-long-model-name-for-phone-wrapping"]);
+    await expect(facts.getByRole("list", { name: "Models" }).getByRole("listitem")).toHaveText(["fixture-cloud", "fixture-image", "fixture-measured", "fixture-without-speed-with-a-long-model-name-for-phone-wrapping"]);
     await expect(page.getByText("Last sleep", { exact: true })).toBeVisible();
     await expect(page.locator("dt").filter({ hasText: /^Memory$/ })).toBeVisible();
     const statusReads = () => page.waitForRequest((r) => r.url().endsWith(`/api/u/${userId}/admin/status`));

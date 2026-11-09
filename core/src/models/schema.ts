@@ -161,7 +161,12 @@ CREATE TABLE IF NOT EXISTS model_calls (
   gen_ms        INTEGER,
   processed     INTEGER,
   -- A speech call's seconds of audio, heard or spoken: never the audio or its text.
-  audio_seconds REAL
+  audio_seconds REAL,
+  -- An image or video call's sampling on its host (ms and steps), what it made and the first one's pixels: never the picture.
+  sampling_ms INTEGER,
+  steps       INTEGER,
+  images      INTEGER,
+  pixels      INTEGER
 );
 `;
 
