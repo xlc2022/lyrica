@@ -48,6 +48,9 @@ interface Loaded {
   loadVram?: Record<number, number>;
 }
 
+/** How long an explicit Load waits: a measurement, then a load of up to 10 minutes, with room for reading a large model from disk. */
+const LOAD_WAIT_MS = 15 * 60_000;
+
 /** Where a queued request is: waiting for work on its GPUs (and what that is), or for its model to load. */
 export type QueuePhase = { state: "waiting"; busyWith: string } | { state: "loading" };
 
@@ -539,6 +542,7 @@ export class Scheduler {
               this.pumpSoon();
               continue;
             }
+            this.o.log("load failed", { model: job.model.id, code: plan.code, message: plan.message });
             this.finish(job, plan);
             continue;
           }
@@ -568,7 +572,10 @@ export class Scheduler {
             }
             await this.load(job.model, option);
           } catch (e) {
-            this.finish(job, e instanceof HostError ? e : new HostError(503, "model_unavailable", "The model server couldn't load this model."));
+            const err = e instanceof HostError ? e : new HostError(503, "model_unavailable", "The model server couldn't load this model.");
+            // The requester may have given up by now: the log keeps the reason (a message about memory or a server, never a prompt).
+            this.o.log("load failed", { model: job.model.id, code: err.code, message: err.message });
+            this.finish(job, err);
           }
           this.again = true; // memory changed: look at the queue again from the top
           break;
@@ -751,9 +758,9 @@ export class Scheduler {
     this.retry.unref?.();
   }
 
-  /** Loads a model now (the load API), queued like a chat request. */
+  /** Loads the model now (Load, Pin), waiting for the whole load rather than a chat request's turn in the queue. */
   async loadNow(model: TextModel): Promise<void> {
-    await this.runRequest(model, "chat", async () => {}, undefined, undefined, false);
+    await this.runRequest(model, "chat", async () => {}, undefined, undefined, false, { waitLimit: LOAD_WAIT_MS });
   }
 
   async unloadNow(id: string): Promise<void> {

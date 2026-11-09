@@ -351,6 +351,22 @@ describe("the vLLM backend", () => {
     }
   });
 
+  it("reads a model larger than system RAM straight from disk instead of mapping it", async () => {
+    const router = await fakeLlamaRouter();
+    const serving = mkdtempSync(join(tmpdir(), "lyrica-serving-"));
+    try {
+      const llama = new LlamaCpp({ url: router.url, serving, models: "/models", device: (i) => `CUDA${i}`, memoryBytes: 96 * 2 ** 30 });
+      const m = (id: string, size: number) => ({ ...(model as object), id, server: "llamacpp", format: "gguf", size }) as never;
+      await llama.load(m("big", 200 * 10 ** 9), at, { placement: { mode: "auto" } });
+      await llama.load(m("small", 30 * 10 ** 9), at, { placement: { mode: "auto" } });
+      const ini = readFileSync(join(serving, "llamacpp.ini"), "utf8");
+      expect(ini).toMatch(/\[big\][^[]*load-mode = dio\n/);
+      expect(ini.match(/load-mode/g)).toHaveLength(1);
+    } finally {
+      router.server.close();
+    }
+  });
+
   it("removes chat templates no model uses any more", async () => {
     const serving = mkdtempSync(join(tmpdir(), "lyrica-serving-"));
     const llama = new LlamaCpp({ url: "http://127.0.0.1:1", serving, models: "/models", device: (i) => `CUDA${i}`, loadTimeoutMs: 50 });

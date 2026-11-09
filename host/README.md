@@ -577,6 +577,12 @@ revoked. A revoked server must pair again.
     from; RAM takes it from the allowance), parallel requests, batch
     size, a chat template, and for vLLM a memory share, so several vLLM
     models can share one GPU (each is its own server).
+  - A llama.cpp model larger than the host's system RAM is read straight
+    from disk (llama.cpp's `load-mode = dio`). Mapped, as smaller
+    models are, the kernel would pull all of it through a page cache that
+    can't hold it before anything reached the GPUs, once for the
+    measurement and again for the load; a 200 GB model on a 96 GB machine
+    sat for ages at 80 GB of RAM with the GPUs empty.
   - A chat model serves 1 request at a time below a 200k context, 2 from
     200k and 4 from 500k, sharing one cache of its context, unless its
     parallel requests (llama.cpp) or max sequences (vLLM) say otherwise.
@@ -594,7 +600,10 @@ revoked. A revoked server must pair again.
 - **Queues.** Requests wait in a queue per GPU: chat first, then images,
   then background work. A request that waits too long fails with "The GPU
   is busy with …", except a `/v1` request tagged with `X-Lyrica-Job`,
-  which waits up to 15 minutes (API.md, "Job progress").
+  which waits up to 15 minutes (API.md, "Job progress"), and the dashboard's
+  Load or Pin, which waits for the whole load (also up to 15 minutes) and
+  shows why it failed. A load that fails is logged as `load failed` with
+  its reason, never a prompt.
 - **VRAM** is planned from llama.cpp's own measurement where it has one:
   before a llama.cpp model loads, the router's measure child reads the GGUF
   and the preset and reports, per GPU, the weights, cache and compute
