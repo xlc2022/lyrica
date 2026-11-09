@@ -48,10 +48,10 @@ interface Loaded {
   loadVram?: Record<number, number>;
 }
 
-/** Where a queued request is: waiting for work on its GPUs (and what that is), or for its model to load. */
 /** How long an explicit Load waits: a measurement, then a load of up to 10 minutes, with room for reading a large model from disk. */
 const LOAD_WAIT_MS = 15 * 60_000;
 
+/** Where a queued request is: waiting for work on its GPUs (and what that is), or for its model to load. */
 export type QueuePhase = { state: "waiting"; busyWith: string } | { state: "loading" };
 
 /** `waitLimit`: the longest wait in the queue, in ms, in place of its priority's. `phase`: told as the request waits. */
@@ -758,7 +758,6 @@ export class Scheduler {
     this.retry.unref?.();
   }
 
-  /** Loads a model now (the load API), queued like a chat request. */
   /** Loads the model now (Load, Pin), waiting for the whole load rather than a chat request's turn in the queue. */
   async loadNow(model: TextModel): Promise<void> {
     await this.runRequest(model, "chat", async () => {}, undefined, undefined, false, { waitLimit: LOAD_WAIT_MS });
