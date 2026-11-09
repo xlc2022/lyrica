@@ -1313,8 +1313,27 @@ test("the Files panel: a tree one folder at a time, a file shown, search, the Im
     await expect(panel.getByRole("button", { name: "made.txt", exact: true })).toBeVisible();
   }
 
+  const pot = (await upload("pot.png", "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQVR4nGP4z8DwHwyBNJjFAAAiOQZ3YJ5p9QAAAABJRU5ErkJggg==")).slice("/workspace/uploads/".length);
   await panel.getByRole("tab", { name: "Images" }).click();
-  await expect(panel.locator(".igrid").getByRole("button", { name: tray, exact: true })).toBeVisible();
+  const grid = panel.locator(".igrid");
+  await expect(grid.getByRole("button", { name: tray, exact: true })).toBeVisible();
+  await expect(grid.getByRole("button", { name: pot, exact: true })).toBeVisible();
+  // Click and drag with the mouse draws a box; the images it touches are the selection, and nothing opens.
+  const g = (await grid.boundingBox())!, a = (await grid.getByRole("button", { name: tray, exact: true }).boundingBox())!, b = (await grid.getByRole("button", { name: pot, exact: true }).boundingBox())!;
+  await page.mouse.move(g.x + 10, g.y + 4);
+  await page.mouse.down();
+  await page.mouse.move(g.x + 40, g.y + 40, { steps: 3 });
+  await expect(grid.locator(".selbox")).toBeVisible();
+  await page.mouse.move(Math.max(a.x + a.width, b.x + b.width) - 4, Math.max(a.y + a.height, b.y + b.height) - 4, { steps: 5 });
+  await page.mouse.up();
+  await expect(grid.locator(".selbox")).toHaveCount(0);
+  const bar = panel.getByRole("toolbar", { name: "Selection" });
+  await expect(bar).toContainText("2 selected");
+  await expect(page.getByRole("dialog", { name: tray })).toHaveCount(0);
+  // Ctrl-click still takes one out.
+  await grid.getByRole("button", { name: pot, exact: true }).click({ modifiers: ["ControlOrMeta"] });
+  await expect(bar).toContainText("1 selected");
+  await bar.getByRole("button", { name: "Clear the selection" }).click();
   await panel.getByRole("group", { name: "Show" }).getByRole("button", { name: "Made by Lyrica" }).click();
   await expect(panel.getByText("No images yet")).toBeVisible();
   // Videos: the thread's clips, an uploaded one with no poster showing its own first frame, opening in the viewer to play.
