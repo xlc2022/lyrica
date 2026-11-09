@@ -64,7 +64,9 @@ refused whatever it says.
   while the allowance is set, a **System RAM** block under the GPUs, built
   as a GPU block: "System RAM", "18.4 / 32 GB" in mono, the bar (the legend
   gains **In system RAM**), and what is spilled ("GLM 5.3 Flash (18 GB)").
-- **Host dashboard**: a System RAM card after the GPUs. **Starters**: a starter too big for the GPUs but within
+- **Host dashboard**: a System RAM card after the GPUs, and a **System
+  RAM** checkbox in a llama.cpp model's Settings (under Memory, beside the
+  GPUs of a custom allocation; unticked is `systemRam: false`). **Starters**: a starter too big for the GPUs but within
   GPUs plus allowance gets **uses system RAM** (amber pill, tooltip "Runs
   slower: part of it stays in system RAM.") and can download; past both it
   stays **too big for these GPUs**.
