@@ -212,7 +212,8 @@ const waits = (p: MessagePart) => isPoll(p) && !(p.type === "tool" && p.name ===
  * The conversation's nodes, in order: stored messages, then the live ones. Her messages that are only markers get no
  * header line; a run of three or more such markers, or any with a sleep or a refused read in it (waits), up to her next
  * text, image or card or the person's next message, folds into one ToolRun marker (docs/ux.md §6, Lyrica's inner workings). Along the way, the images her image parts
- * showed since the person's last message are collected, so her prose doesn't show the same image again.
+ * showed since the person's last message are collected, so her prose doesn't show the same image again. Her messages
+ * around rejected attempts, from the first to the last (rejects.ts, `fold`), fold under the "<n> rejected" marker.
  */
 function conversationNodes(stored: Message[], liveItems: LiveItem[], busy: boolean, env: Env, you: string,
   looks: { told: Map<string, Told[]>; folded: Set<string> }, cards: Map<number, ThreadSummary[]>): ReactNode[] {
@@ -221,12 +222,20 @@ function conversationNodes(stored: Message[], liveItems: LiveItem[], busy: boole
   let shown = new Set<string>();
   // Her tool calls since the person's last message or her last words: the pages among them show under her next words.
   let read: MessagePart[] = [];
+  // The messages folding under a "<n> rejected" marker, while the fold runs: its group, the key it ends at, and its turns so far.
+  let fold: { key: string; ns: number[]; group: RejectedImage[]; until: string; turns: ReactNode[]; streaming: boolean } | undefined;
+  const quietNode = (q: Quiet) => <section key={q.key} className="turn quiet" id={q.n !== undefined ? `m-${q.n}` : undefined}><Parts parts={q.parts} env={env} bare streaming={q.streaming} /></section>;
   const flush = () => {
     if (!quiet.length) return;
     const markers = quiet.reduce((a, q) => a + q.parts.length, 0);
     if (markers >= 3 || quiet.some((q) => q.parts.some(waits))) nodes.push(<ToolRun key={runKey(quiet)} runs={quiet} env={env} />);
-    else for (const q of quiet) nodes.push(<section key={q.key} className="turn quiet" id={q.n !== undefined ? `m-${q.n}` : undefined}><Parts parts={q.parts} env={env} bare streaming={q.streaming} /></section>);
+    else for (const q of quiet) nodes.push(quietNode(q));
     quiet = [];
+  };
+  const endFold = () => {
+    if (!fold) return;
+    nodes.push(<RejectedImages key={`fold:${fold.key}`} parts={fold.group} env={env} ns={fold.ns} turns={fold.turns} streaming={fold.streaming} />);
+    fold = undefined;
   };
   type E = { key: string; stored?: Message; live?: LiveItem; streaming: boolean };
   const all: E[] = [
@@ -243,18 +252,35 @@ function conversationNodes(stored: Message[], liveItems: LiveItem[], busy: boole
   for (const e of entries) {
     const m = e.stored;
     const hers = m ? (m.role === "assistant" && !m.error && !cards.has(m.n) ? m.parts : undefined) : e.live?.role === "assistant" && !e.live.error ? e.live.parts : undefined;
+    let own = images.get(e.key);
+    // A fold holds only her messages: anything else in its way (a notice, an error) ends it early, and the rest stays in the open.
+    if (fold && !hers) endFold();
+    if (hers && own?.fold) {
+      flush();
+      const [group] = own.groups.values();
+      fold = { key: e.key, ns: [], group: group!, until: own.fold, turns: [], streaming: false };
+      // Its thumbnails stand at the top of the fold's box, not as a marker inside it.
+      own = { ...own, groups: new Map() };
+    }
     if (hers) read.push(...hers);
-    if (hers && hers.length && hers.every(isMarker)) { quiet.push({ key: e.key, n: m?.n, parts: hers, streaming: e.streaming }); continue; }
-    flush();
-    const user = m ? m.role === "user" : e.live?.role === "user";
-    if (user) { shown = new Set(); read = []; }
-    let sources: Source[] | undefined;
-    if (hers?.some((p) => p.type === "text" && p.text.trim())) { sources = sourcesOf(read); read = []; }
-    for (const p of hers ?? []) if (p.type === "image") for (const path of p.paths) shown.add(path);
-    const seen = new Set(shown);
-    if (m) nodes.push(<StoredMessage key={m.id} m={m} env={env} you={you} told={looks.told.get(m.id)} folded={looks.folded.has(m.id)} cards={cards.get(m.n)} shown={seen} images={images.get(e.key)} sources={sources} />);
-    else if (e.live) nodes.push(<LiveMessage key={e.key} item={e.live} env={env} you={you} streaming={e.streaming} shown={seen} images={images.get(e.key)} sources={sources} />);
+    const into = fold ? fold.turns : nodes;
+    if (hers && hers.length && hers.every(isMarker)) {
+      const q = { key: e.key, n: m?.n, parts: hers, streaming: e.streaming };
+      if (fold) into.push(quietNode(q)); else quiet.push(q);
+    } else {
+      if (!fold) flush();
+      const user = m ? m.role === "user" : e.live?.role === "user";
+      if (user) { shown = new Set(); read = []; }
+      let sources: Source[] | undefined;
+      if (hers?.some((p) => p.type === "text" && p.text.trim())) { sources = sourcesOf(read); read = []; }
+      for (const p of hers ?? []) if (p.type === "image") for (const path of p.paths) shown.add(path);
+      const seen = new Set(shown);
+      if (m) into.push(<StoredMessage key={m.id} m={m} env={env} you={you} told={looks.told.get(m.id)} folded={looks.folded.has(m.id)} cards={cards.get(m.n)} shown={seen} images={own} sources={sources} />);
+      else if (e.live) into.push(<LiveMessage key={e.key} item={e.live} env={env} you={you} streaming={e.streaming} shown={seen} images={own} sources={sources} />);
+    }
+    if (fold) { fold.streaming = e.streaming; if (m) fold.ns.push(m.n); if (e.key === fold.until) endFold(); }
   }
+  endFold();
   flush();
   return nodes;
 }
@@ -722,26 +748,35 @@ function MessageVideo({ part, env }: { part: VideoPart; env: Env }) {
 
 /**
  * Her rejected attempts in a turn, as one closed marker, "<n> rejected", that opens to their images as small
- * thumbnails, each with its facts and actions. Open state follows the first attempt's name, so the stored copy keeps
- * it. Once she has deleted them at the person's word, the marker reads "<n> rejected · deleted" and doesn't open.
+ * thumbnails, each with its facts and actions, and under them the turns that folded with them (`turns`: her messages
+ * from the first attempt to the last, with their reasoning, words and tool calls). Open state follows the first
+ * attempt's name, so the stored copy keeps it. Once she has deleted them at the person's word, the marker reads
+ * "<n> rejected · deleted", and opens only when turns folded under it. Closed, the marker stands for its folded
+ * messages (`ns`): it takes the first one's id, and names them all in `data-folds`, so a jump to one lands on it.
  */
-function RejectedImages({ parts, env }: { parts: RejectedImage[]; env: Env }) {
+function RejectedImages({ parts, env, ns, turns, streaming }: { parts: RejectedImage[]; env: Env; ns?: number[]; turns?: ReactNode[]; streaming?: boolean }) {
   const key = `rejected:${basename(parts[0]!.paths[0]!)}`;
   const open = env.openTools.has(key);
   const left = parts.filter((p) => !p.deleted);
   const gone = parts.length - left.length;
-  const count = <span><span className="num">{parts.length}</span> rejected{!left.length && <> · deleted</>}</span>;
-  if (!left.length) return <div className="marker tool-run rejected-run" data-type="rejected"><span className="marker-static">{count}</span></div>;
+  const count = <span><span className="num">{parts.length}</span> rejected{!left.length && <> · deleted</>}{streaming && <> <span className="state" data-state="running">running</span></>}</span>;
+  // Open, the messages carry their own ids, so the marker drops its copy.
+  const id = ns?.length && !open ? `m-${ns[0]}` : undefined;
+  const folds = ns?.length ? ns.join(" ") : undefined;
+  if (!left.length && !turns?.length) return <div className="marker tool-run rejected-run" data-type="rejected" id={id} data-folds={folds}><span className="marker-static">{count}</span></div>;
   return (
-    <div className="marker tool-run rejected-run" data-type="rejected">
+    <div className="marker tool-run rejected-run" data-type="rejected" id={id} data-folds={folds}>
       <button type="button" aria-expanded={open} onClick={() => env.toggleTool(key)}>
         {count}
         <Icon name="down" />
       </button>
       {open && (
         <div className="marker-body rejected-body">
-          {left.map((p) => <MessageImages key={p.paths[0]} part={p} env={env} />)}
-          {gone > 0 && <p className="muted"><span className="num">{gone}</span> deleted</p>}
+          {left.length > 0 && <div className="rejected-thumbs">
+            {left.map((p) => <MessageImages key={p.paths[0]} part={p} env={env} />)}
+            {gone > 0 && <p className="muted"><span className="num">{gone}</span> deleted</p>}
+          </div>}
+          {turns && turns.length > 0 && <div className="rejected-turns">{turns}</div>}
         </div>
       )}
     </div>

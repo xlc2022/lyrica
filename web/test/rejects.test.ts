@@ -22,6 +22,19 @@ describe("her rejected image attempts", () => {
     expect(out.get("3")!.parts.get(0)).toBeNull();
     expect(out.get("3")!.groups.size).toBe(0);
     expect(out.get("5")!.parts.get(0)).toEqual(made(C));
+    // The turns from the first attempt through the last rejected one fold under the marker; the kept one stays out.
+    expect(out.get("1")!.fold).toBe("3");
+  });
+
+  it("folds no turn when a kept image shares the first attempt's message, and stops a fold before a kept image", () => {
+    const both = sortImages([user("u"), hers("1", made(A), made(B)), hers("2", tool("r", { action: "reject", images: [A] }))]);
+    expect(both.get("1")!.groups.get(0)).toHaveLength(1);
+    expect(both.get("1")!.fold).toBeUndefined();
+    // A rejected after B was kept: the fold ends at A's message, before B's.
+    const after = sortImages([user("u"), hers("1", made(A)), hers("2", made(B)), hers("3", made(C)), hers("4", tool("r", { action: "reject", images: [A, C] }))]);
+    expect(after.get("1")!.groups.get(0)).toHaveLength(2);
+    expect(after.get("1")!.fold).toBe("1");
+    expect(after.get("2")!.parts.get(0)).toEqual(made(B));
   });
 
   it("shows a picked earlier attempt last, with its first part's facts, and keeps a failed reject's image in place", () => {
@@ -31,6 +44,9 @@ describe("her rejected image attempts", () => {
     expect(out.get("1")!.parts.get(0)).toBeNull();
     expect(out.get("3")!.groups.get(0)).toEqual([{ type: "image", paths: [rejectedPath(B)], model: "Z-Image", tier: "fast" }]);
     expect(out.get("5")!.parts.get(2)).toEqual({ type: "image", paths: [A], model: "Flux", tier: "fast", picked: true });
+    // A is picked back, so the group and its fold are B's message alone; the pick's message stays out.
+    expect(out.get("1")!.fold).toBeUndefined();
+    expect(out.get("3")!.fold).toBe("3");
   });
 
   it("keeps each turn's rejects in that turn, and marks them deleted once she clears them", () => {

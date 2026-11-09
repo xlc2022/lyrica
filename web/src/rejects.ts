@@ -11,6 +11,12 @@ export interface MessageImages {
   parts: Map<number, ImagePart | null>;
   /** The turn's rejected attempts, drawn as one group before the image part at this index. */
   groups: Map<number, RejectedImage[]>;
+  /**
+   * Set on the message that holds the group: the key of the last message that folds under its marker with it. The fold
+   * runs from this message through the last one holding a rejected attempt, and stops before any message holding an
+   * image she kept, so what she kept, and what she said about it, stays in view.
+   */
+  fold?: string;
 }
 
 /** A rejected attempt where it lies now; `deleted` once she cleared the rejected images, at the person's word. */
@@ -36,6 +42,7 @@ function sorting(p: MessagePart): { reject: string[] } | { pick: string } | { cl
  * pick undoes a reject) leaves its part and joins its turn's one group, drawn where the turn's first rejected attempt
  * was. An image shown twice in a turn (a pick of one still in place) shows only the last time. A picked part takes the
  * model and tier of the part that first showed it. Names are the tool's own random ones, so a name stands for its file.
+ * The group's message also says how far the turns around the rejects fold under its marker (`fold`).
  */
 export function sortImages(entries: TurnEntry[]): Map<string, MessageImages> {
   const rejected = new Set<string>();
@@ -49,7 +56,7 @@ export function sortImages(entries: TurnEntry[]): Map<string, MessageImages> {
     if (s && "clear" in s) { for (const n of rejected) deleted.add(n); rejected.clear(); }
   }
   const out = new Map<string, MessageImages>();
-  type Seen = { key: string; i: number; path: string; part: ImagePart };
+  type Seen = { key: string; i: number; path: string; part: ImagePart; at: number };
   const turn = (seen: Seen[]) => {
     const last = new Map<string, Seen>();
     for (const s of seen) last.set(nameOf(s.path), s);
@@ -75,13 +82,21 @@ export function sortImages(entries: TurnEntry[]): Map<string, MessageImages> {
       m.parts.set(s.i, paths ? { ...part, paths, ...f } : null);
       out.set(s.key, m);
     }
-    if (anchor) out.get(anchor.key)!.groups.set(anchor.i, group);
+    if (!anchor) return;
+    const m = out.get(anchor.key)!;
+    m.groups.set(anchor.i, group);
+    // The fold: from the anchor's message through the last rejected attempt before an image she kept. None when a kept image shares the anchor's message.
+    const isRejected = (s: Seen) => rejected.has(nameOf(s.path)) || deleted.has(nameOf(s.path));
+    const firstKept = seen.filter((s) => s.at >= anchor!.at && kept.has(s.part)).reduce<number | undefined>((a, s) => (a === undefined ? s.at : Math.min(a, s.at)), undefined);
+    if (firstKept === anchor.at) return;
+    const lastRejected = seen.filter((s) => s.at >= anchor!.at && isRejected(s) && (firstKept === undefined || s.at < firstKept)).reduce((a, s) => Math.max(a, s.at), anchor.at);
+    m.fold = entries[lastRejected]!.key;
   };
   let seen: Seen[] = [];
-  for (const e of entries) {
-    if (e.user) { turn(seen); seen = []; continue; }
-    (e.parts ?? []).forEach((p, i) => { if (p.type === "image") for (const path of p.paths) seen.push({ key: e.key, i, path, part: p }); });
-  }
+  entries.forEach((e, at) => {
+    if (e.user) { turn(seen); seen = []; return; }
+    (e.parts ?? []).forEach((p, i) => { if (p.type === "image") for (const path of p.paths) seen.push({ key: e.key, i, path, part: p, at }); });
+  });
   turn(seen);
   return out;
 }
