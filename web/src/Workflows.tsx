@@ -31,7 +31,13 @@ export const BLANK_WORD: Record<string, string> = {
   sampler: "Sampler", scheduler: "Scheduler", shift: "Shift", guidance: "Guidance", image: "Image", frames: "Frames", fps: "Frame rate",
   reference1: "Reference 1", reference2: "Reference 2", reference3: "Reference 3", reference4: "Reference 4", model: "Model", clip: "Text encoder", vae: "VAE",
 };
-const TEXT_BLANKS = new Set(["prompt", "negativePrompt", "sampler", "scheduler", "image", ...REFERENCES]);
+const TEXT_BLANKS = new Set(["prompt", "negativePrompt", "sampler", "scheduler", "image", ...REFERENCES, "model", "clip", "vae"]);
+/** The blanks an input can take: a number's are the numeric ones, text's the text ones; a blank Lyrica doesn't name (a template's own) fits either. */
+const fitting = (blanks: string[], v: Value, blank: string | null) => {
+  if (typeof v === "boolean") return [];
+  const text = blank ? TEXT_BLANKS.has(blank) : typeof v === "string";
+  return blanks.filter((b) => !(b in BLANK_WORD) || TEXT_BLANKS.has(b) === text);
+};
 
 export type Value = string | number | boolean | null | unknown[] | { $pick: unknown[] };
 export interface WNode { class_type: string; inputs: Record<string, Value>; _if?: string | string[]; _unless?: string }
@@ -223,11 +229,15 @@ function Num({ label, value, min, max, onChange }: { label: string; value: numbe
   );
 }
 
+/** The binding select's tooltip: what Fixed and the blanks mean. */
+export const BINDING_TITLE = "Where this input's value comes from on each job. Fixed: the workflow's own value, here. A model setting (Steps, CFG, Sampler…): the model's value, shared by every input bound to it. Prompt, Seed, Width, Count and the like: what the request asks for. Only the blanks of this input's kind are listed.";
+
 /** One scalar input: Fixed with its value, or a blank the job fills. */
 export function InputRow({ id, k, v, blanks, options, onChange }: { id: string; k: string; v: Value; blanks: string[]; options?: unknown; onChange: (v: Value) => void }) {
   const blank = blankOf(v);
   const loads = useContext(LoaderWords);
-  const choices = blank && !blanks.includes(blank) ? [blank, ...blanks] : blanks;
+  const fits = fitting(blanks, v, blank);
+  const choices = blank && !fits.includes(blank) ? [blank, ...fits] : fits;
   const name = `${k} of node ${id}`;
   const fixed = () => {
     if (typeof v === "boolean") return <input type="checkbox" aria-label={name} checked={v} onChange={(e) => onChange(e.target.checked)} />;
@@ -245,7 +255,7 @@ export function InputRow({ id, k, v, blanks, options, onChange }: { id: string; 
   return (
     <div className="wf-input">
       <span className="mono wf-key">{k}</span>
-      <select aria-label={`How ${name} is set`} title={blank ? loads[blank] : undefined} value={blank ?? ""} onChange={(e) => {
+      <select aria-label={`How ${name} is set`} title={blank && loads[blank] ? loads[blank] : BINDING_TITLE} value={blank ?? ""} onChange={(e) => {
         const b = e.target.value;
         onChange(b ? `$${b}` : TEXT_BLANKS.has(blank ?? "") ? "" : 0);
       }}>
