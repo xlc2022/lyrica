@@ -366,8 +366,9 @@ Three ways a model gets into the library:
   on. It is checked like a download, but has no checksum to compare with.
   A host from before 2026-11-07 takes uploads only once it is updated
   (**Upgrade** in [Operating a host](#operating-a-host)).
-- **Copy a model to another host**: on Images, open the model and use
-  **Copy to host…** at the foot of its host's block. The dialog shows
+- **Copy a model to another host**: in Models, Image models, use **Copy
+  to host…** at the foot of the model's block for its host (shown when you
+  manage another host). The dialog shows
   where each file would come from: already on the other host, downloaded
   again from its hub, or copied from this host through Lyrica (32 MiB at a
   time, to `lyrica/upload/<name>`, shown in Downloads as "from <host>").

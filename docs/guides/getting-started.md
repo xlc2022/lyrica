@@ -980,7 +980,9 @@ steps:
 3. Threads grant the machine like a folder, and her tools take it as a
    target. A command that could wreck the machine (deleting `/` or a home
    folder, `mkfs`, `dd` onto a device, `shutdown` and the like) always
-   asks with a warning, whatever the mode.
+   asks with a warning, whatever the mode. A recursive delete, a force
+   push and git commands that throw work away (`reset --hard`, `clean`,
+   deleting a branch or stash) ask too, in her own sandbox as well.
 
 The same three steps are in the web UI under Settings, Machines, **Add
 machine** (SSH or Proxmox); nothing is saved there before you confirm the
