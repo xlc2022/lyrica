@@ -1064,7 +1064,7 @@ describe("the image API", () => {
     const me = lyrica();
     const pinned = await pair(h.tls, me, code);
     const api = (path: string, init: { method?: string; body?: unknown; headers?: Record<string, string> } = {}) => call({ port: h.tls, path, identity: me, pinned, ...init });
-    return { ...h, api, lines, comfyFake, comfyFakes, sdFake, book, models, scheduler };
+    return { ...h, api, lines, comfyFake, comfyFakes, sdFake, book, models, scheduler, gpus };
   }
 
   it("makes images with stable-diffusion.cpp in ComfyUI's place", async () => {
@@ -1328,6 +1328,21 @@ describe("the image API", () => {
     const image = await s.api("/host/v1/images/upscale", { body: { recipe: seedvr.id, image: PNG.toString("base64") } });
     expect(image.status).toBe(200);
     expect(s.comfyFake.seen.prompts[1].upscale.inputs.seed).toBeLessThan(2 ** 32);
+  });
+
+  it("plans a SeedVR2 recipe from its file sizes, never from a measurement, since its node frees its models after each job", async () => {
+    // GPU use grows during each job, as a model's working memory does; the reading after a SeedVR2 job would miss its models.
+    let gpus: FakeGpus | undefined;
+    const s = await stack({ files: { "u/seedvr2_ema_3b_fp16.safetensors": safetensors({ x: { dtype: "F16" } }), "u/ema_vae_fp16.safetensors": safetensors({ y: {} }) }, hold: async () => { gpus!.gpus[0]!.used += 0.7 * 1024 ** 3; } });
+    gpus = s.gpus;
+    const seedvr: Recipe = (await s.api("/host/v1/recipes?state=proposed")).body.recipes.find((r: Recipe) => r.arch === "seedvr2");
+    const z = s.book.all().find((r) => r.arch === "z-image")!;
+    await s.api("/host/v1/recipes/confirm", { body: { ids: [seedvr.id, z.id] } });
+    expect((await s.api("/host/v1/images/upscale", { body: { recipe: seedvr.id, image: PNG.toString("base64") } })).status).toBe(200);
+    expect((await s.api("/host/v1/images/create", { body: { recipe: z.id, prompt: "a fox" } })).status).toBe(200);
+    const measured = Object.keys(s.host.state.get().vram);
+    expect(measured.some((k) => k.startsWith(`recipe:${z.id}`))).toBe(true);
+    expect(measured.some((k) => k.startsWith(`recipe:${seedvr.id}`))).toBe(false);
   });
 
   it("makes a long video and extends a clip as chained clips in one GPU hold, and refuses what it can't chain", async () => {

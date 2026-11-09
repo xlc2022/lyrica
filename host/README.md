@@ -647,7 +647,9 @@ revoked. A revoked server must pair again.
   fails (`nvidia-smi` busy or gone) the last one stands and the log says
   so once per outage.
   VRAM use is then measured per GPU at load and after the first attributable
-  request, completed or failed (an image recipe's on its first job). The host keeps the
+  request, completed or failed (an image recipe's on its first job; not a
+  SeedVR2 recipe's, whose node frees its models after each job, so the
+  reading would be the CUDA context alone and its estimate stands). The host keeps the
   larger measurement, including buffers grown on first use, until settings
   change. If another model serves or memory changes during the request, the
   host retries measurement on a later request. A measurement larger than a

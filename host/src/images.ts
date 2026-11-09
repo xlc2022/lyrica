@@ -136,6 +136,7 @@ export class Images {
     this.gpus = this.sdcpp ? this.comfy.gpus.slice(0, 1) : this.comfy.gpus;
     this.log = o.log;
     mkdirSync(this.seedvr2Dir, { recursive: true });
+    this.forgetUnmeasurable();
     // ComfyUI keeps parts in memory after a job; free them once it has been idle a while.
     this.idleTimer = setInterval(() => void this.runtime.scheduler.unloadIdle("image", IDLE_FREE_MS), 60_000);
     this.idleTimer.unref();
@@ -143,6 +144,17 @@ export class Images {
 
   close(): void {
     clearInterval(this.idleTimer);
+  }
+
+  /** Measurements saved for recipes that can't be measured (see `measure`) by a host from before it knew that. */
+  private forgetUnmeasurable(): void {
+    const unmeasurable = new Set(this.book.all().filter((r) => this.book.templates.get(r.template)?.loaders === "template").map((r) => r.id));
+    this.runtime.state.update((s) => {
+      for (const key of Object.keys(s.vram)) {
+        const id = /^recipe:([^@]+)/.exec(key)?.[1];
+        if (id && unmeasurable.has(id)) delete s.vram[key];
+      }
+    });
   }
 
   /** Reads the parts again and proposes recipes for new main parts. */
@@ -864,7 +876,7 @@ export class Images {
     // stable-diffusion.cpp reports no steps: its job only says it runs.
     const { pngs, sampling } = await this.on(gpu, () => scheduler.run(model, "image", () => {
       job.running();
-      return scheduler.measuring(model, async (): Promise<{ pngs: Buffer[]; sampling?: Sampling }> =>
+      return this.measure(template, model, async (): Promise<{ pngs: Buffer[]; sampling?: Sampling }> =>
         sdcpp ? { pngs: await sdcpp.create(model.id, recipe.template, values, abort.signal) } : comfy.run(uploads, (names) => {
           this.checkBeforeRun(template);
           const parts = recipe.parts.filter((p): p is typeof p & { file: string } => !!p.file);
@@ -1012,7 +1024,7 @@ export class Images {
     const total = clips.reduce((n, c) => n + Number(c.frames), 0);
     const { video, poster, sampling } = await this.on(gpu, () => scheduler.run(model, "image", () => {
       job.running();
-      return scheduler.measuring(model, async () => {
+      return this.measure(template, model, async () => {
         let video = previous;
         let poster: Buffer | null = null;
         let done = 0;
@@ -1101,7 +1113,7 @@ export class Images {
     const parts = present(recipe, this.files());
     const { video, poster, sampling } = await this.on(gpu, () => scheduler.run(model, "image", () => {
       job.running();
-      return scheduler.measuring(model, () => comfy.runVideo({ source: clip }, (names) => fill({ ...template, workflow: template.clipWorkflow! }, parts, [], { ...values, ...names }),
+      return this.measure(template, model, () => comfy.runVideo({ source: clip }, (names) => fill({ ...template, workflow: template.clipWorkflow! }, parts, [], { ...values, ...names }),
         VIDEO_TIMEOUT_MS, abort.signal, job.progress));
     }, gpu, abort.signal));
     const seconds = (Date.now() - started) / 1000;
@@ -1152,6 +1164,15 @@ export class Images {
   }
 
   /** A recipe as the scheduler sees it, on one GPU: with several image GPUs, each GPU's copy is its own model. */
+  /**
+   * A job measured for the scheduler, except on a template whose workflow loads its own parts (SeedVR2): its
+   * node frees them after each job, so the reading after would be the CUDA context alone, and the scheduler
+   * would then place the recipe next to anything. Its estimate (recipeSize) stands.
+   */
+  private measure<T>(template: Pick<Template, "loaders">, model: TextModel, fn: () => Promise<T>): Promise<T> {
+    return template.loaders === "template" ? fn() : this.runtime.scheduler.measuring(model, fn);
+  }
+
   private asModel(r: Recipe, gpu: number): TextModel {
     const size = recipeSize(r, this.parts);
     return {
