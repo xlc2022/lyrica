@@ -1,6 +1,6 @@
 # Brief: a shorter nix job
 
-**Status:** Built, in review.
+**Status:** Merged as #867 (f3e0d08c).
 
 **Branch:** `claude/project-thread-5aac8y-nix`. **Asked for:** by the
 operator, 2026-11-09, after [ci-e2e-matrix.md](ci-e2e-matrix.md) left the
@@ -54,5 +54,11 @@ docs/ci.md (the nix job's description and the generation count).
 
 ## Handoff
 
-Done: the overlap, the generation count, the two-test scope, the docs.
-Next: PR review, then record the measured time here. Open questions: none.
+Done: the overlap, the generation count, the two-test scope, the docs;
+merged 2026-11-09. Measured on the PR's last run: nix job 3 min 58 s (was
+6 min 23 s), so the run is now bounded by the check and e2e (chat) jobs,
+about 5.5 minutes each. Open question left by PR review: the two tests
+skip, and the step still passes, if `LYRICA_SANDBOX_TOOLS` is ever
+unset; a `require` guard for it in `core/test/sandbox.test.ts` would make
+that red. Not done, since the step sets it on the same line it builds the
+tools.
