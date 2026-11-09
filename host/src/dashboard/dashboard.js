@@ -277,7 +277,7 @@ function gpus() {
         h("li", {}, h("code", {}, m.id),
           h("span", { class: "muted" }, [m.pinned ? "pinned" : m.state === "loading" ? "loading" : "loaded", m.busy ? "busy" : null, m.gpus.length > 1 ? `split over GPUs ${m.gpus.join(" and ")}` : null].filter(Boolean).join(" · ")),
           h("span", { class: "num muted" }, size(m.vram)),
-          m.pinned ? null : button("Unload", () => post("/host/v1/models/unload", { model: m.id }))))) : null,
+          m.pinned ? null : button(m.state === "loading" ? "Cancel" : "Unload", () => post("/host/v1/models/unload", { model: m.id }))))) : null,
       waiting.length ? h("p", { class: "facts" }, `Waiting: ${waiting.join(", ")}`) : null);
   }), ...cpu(), ...systemRam()];
 }
@@ -344,6 +344,11 @@ function editGpu(g) {
 const KINDS = { chat: "chat", embedding: "embedding", transcribe: "transcription", speak: "voice" };
 const SERVER_NAMES = { ...Object.fromEntries(SERVERS), whispercpp: "whisper.cpp" };
 
+/** Load waits for the whole load; one stopped with Cancel is no error to show. */
+const loadModel = (id) => post("/host/v1/models/load", { model: id }).catch((e) => {
+  if (e.code !== "load_cancelled") throw e;
+});
+
 function textModels() {
   const head = h("div", { class: "section-head" }, h("h2", {}, "Models"), button("Scan the folder", () => post("/host/v1/scan")));
   if (!S.models.length) return [head, h("ul", { class: "list" }, h("li", { class: "empty" }, "No text or voice models in the models folder.")), ...starters()];
@@ -364,8 +369,8 @@ function textModels() {
           m.kvBytes ? h("span", {}, "KV ", num(size(m.kvBytes))) : null)),
       h("div", { class: "actions" },
         state(word, dot, reading), m.pinned ? h("span", { class: "pill" }, "pinned") : null,
-        m.state === "unloaded" ? button("Load", () => post("/host/v1/models/load", { model: m.id }))
-          : h("button", { type: "button", class: "sm", disabled: m.pinned, title: m.pinned ? "Unpin it first." : undefined, onclick: act(() => post("/host/v1/models/unload", { model: m.id })) }, "Unload"),
+        m.state === "unloaded" ? button("Load", () => loadModel(m.id))
+          : h("button", { type: "button", class: "sm", disabled: m.pinned, title: m.pinned ? "Unpin it first." : undefined, onclick: act(() => post("/host/v1/models/unload", { model: m.id })) }, m.state === "loading" ? "Cancel" : "Unload"),
         h("button", { type: "button", class: "sm", onclick: () => editModel(m).catch(failed) }, "Settings"),
         rowMenu(m.id, [
           [m.pinned ? "Unpin" : "Pin", () => post("/host/v1/models/pin", { model: m.id, pinned: !m.pinned })],

@@ -8,7 +8,7 @@
 // with a plain reason instead of running out of memory.
 import { totalmem } from "node:os";
 import { HostError, invalid } from "./http.ts";
-import type { Backend, LoadProgress, Measured } from "./backends.ts";
+import { loadCancelled, type Backend, type LoadProgress, type Measured } from "./backends.ts";
 import { isCmp, type Gpu, type GpuMonitor } from "./gpus.ts";
 import type { TextModel } from "./library.ts";
 import type { Logger } from "./log.ts";
@@ -348,12 +348,13 @@ export class Scheduler {
    * round a short GPU refuses the load with the measured need instead.
    * Without a measurement (none, failed, or late) the estimate stands.
    */
-  private async measured(model: TextModel, o: Option, s = this.served(model), final = false): Promise<Option | null> {
+  private async measured(model: TextModel, o: Option, s = this.served(model), final = false, signal?: AbortSignal): Promise<Option | null> {
     const backend = this.backend(model);
     if (!backend.measure || this.onCpu(model) || !o.gpus.length) return o;
     let m: Record<number, Measured> | null;
     try {
-      m = await backend.measure(model, o, s);
+      m = await backend.measure(model, o, s, signal);
+      if (signal?.aborted) throw loadCancelled();
     } catch (e) {
       backend.forget?.(model);
       throw e;
@@ -560,6 +561,7 @@ export class Scheduler {
             continue;
           }
           this.tell(job, { state: "loading" });
+          const stop = this.starting(job.model.id);
           try {
             for (const e of plan.evict) await this.unload(e);
             if (plan.evict.length) {
@@ -570,19 +572,29 @@ export class Scheduler {
                 break;
               }
             }
-            const option = await this.measured(job.model, plan.option, undefined, (job.rounds ?? 0) >= 2);
+            if (stop.signal.aborted) throw loadCancelled();
+            const option = await this.measured(job.model, plan.option, undefined, (job.rounds ?? 0) >= 2, stop.signal);
+            if (stop.signal.aborted) throw loadCancelled();
             if (!option) {
               // The server found a GPU short: plan again from the top with what it measured.
               job.rounds = (job.rounds ?? 0) + 1;
               this.again = true;
               break;
             }
-            await this.load(job.model, option);
+            await this.load(job.model, option, undefined, undefined, stop.signal);
           } catch (e) {
-            const err = e instanceof HostError ? e : new HostError(503, "model_unavailable", "The model server couldn't load this model.");
-            // The requester may have given up by now: the log keeps the reason (a message about memory or a server, never a prompt).
-            this.o.log("load failed", { model: job.model.id, code: err.code, message: err.message });
-            this.finish(job, err);
+            const err = stop.signal.aborted ? loadCancelled() : e instanceof HostError ? e : new HostError(503, "model_unavailable", "The model server couldn't load this model.");
+            if (stop.signal.aborted) {
+              // Every request waiting for this model ends with it, rather than starting the load again.
+              this.o.log("load cancelled", { model: job.model.id });
+              for (const j of this.queue.filter((x) => x.model.id === job.model.id)) this.finish(j, err);
+            } else {
+              // The requester may have given up by now: the log keeps the reason (a message about memory or a server, never a prompt).
+              this.o.log("load failed", { model: job.model.id, code: err.code, message: err.message });
+              this.finish(job, err);
+            }
+          } finally {
+            stop.done();
           }
           this.again = true; // memory changed: look at the queue again from the top
           break;
@@ -687,7 +699,7 @@ export class Scheduler {
     job.reject(error);
   }
 
-  private async load(model: TextModel, o: Option, settings = this.served(model), auto = this.settings(model).contextLength === undefined): Promise<void> {
+  private async load(model: TextModel, o: Option, settings = this.served(model), auto = this.settings(model).contextLength === undefined, signal?: AbortSignal): Promise<void> {
     const before = Object.fromEntries((await this.readGpus()).map((g) => [g.index, g.used]));
     const key = this.vramKey(model, o, settings);
     const entry: Loaded = { model, option: o, vram: { ...this.needOf(model, o, settings) }, settings, auto, ready: false, active: 0, lastUsed: this.now(), warmed: false };
@@ -699,9 +711,21 @@ export class Scheduler {
     this.memoryEpoch++;
     this.changing++;
     try {
-      await this.backend(model).load(model, o, settings, read0 === null ? undefined : { read: () => Math.max(0, this.readDisk() - read0), of });
+      const backend = this.backend(model);
+      await backend.load(model, o, settings, read0 === null ? undefined : { read: () => Math.max(0, this.readDisk() - read0), of }, signal);
+      // A server that can't stop mid-load (ComfyUI, speech) finishes it first: take it off again.
+      if (signal?.aborted) {
+        await backend.unload(model).catch(() => {});
+        throw loadCancelled();
+      }
     } catch (e) {
       this.loaded.delete(model.id);
+      if (signal?.aborted) {
+        // What the stopped server had taken comes back over the next seconds, as after an unload.
+        const now = Date.now();
+        for (const g of o.gpus) this.releasing.set(g, { until: now + (this.o.settleMs ?? 30_000), low: before[g] ?? 0, fell: now });
+        throw loadCancelled();
+      }
       throw e;
     } finally {
       this.changing--;
@@ -775,11 +799,51 @@ export class Scheduler {
     await this.runRequest(model, "chat", async () => {}, undefined, undefined, false, { waitLimit: LOAD_WAIT_MS });
   }
 
+  /**
+   * Unloads the model now. One still loading (or being measured for its
+   * load) has its load stopped instead: the server is told to unload it, its
+   * GPUs are freed, and the requests waiting for it end with load_cancelled.
+   * Answers once the load has stopped.
+   */
   async unloadNow(id: string): Promise<void> {
+    const loading = this.loads.get(id);
+    if (loading) {
+      loading.abort.abort();
+      for (const j of this.queue.filter((x) => x.model.id === id)) this.finish(j, loadCancelled());
+      await loading.stopped;
+      // Stopped too late to stop the server: it loaded, so unload it.
+      const late = this.loaded.get(id);
+      if (late?.ready && late.active === 0) await this.unload(late);
+      this.kick();
+      return;
+    }
     const l = this.loaded.get(id);
-    if (!l) return;
+    if (!l) {
+      // Between planning rounds of its load, or waiting for room: the requests for it end here.
+      for (const j of this.queue.filter((x) => x.model.id === id)) this.finish(j, loadCancelled());
+      return;
+    }
     if (l.active > 0 || !l.ready) throw new HostError(409, "in_use", "The model is in use.");
     await this.unload(l);
+  }
+
+  /** Loads under way, by model: how to stop each, and when it has. */
+  private readonly loads = new Map<string, { abort: AbortController; stopped: Promise<void> }>();
+
+  /** Marks a model's load as begun, so Unload can stop it; `done` when it has ended, either way. */
+  private starting(id: string): { signal: AbortSignal; done: () => void } {
+    const abort = new AbortController();
+    let done!: () => void;
+    const stopped = new Promise<void>((r) => (done = r));
+    const entry = { abort, stopped };
+    this.loads.set(id, entry);
+    return {
+      signal: abort.signal,
+      done: () => {
+        if (this.loads.get(id) === entry) this.loads.delete(id);
+        done();
+      },
+    };
   }
 
   /** Applies a model's saved settings now: unloads it if idle and loads it again. */
@@ -792,6 +856,7 @@ export class Scheduler {
     if (this.pumping || previous.active > 0 || this.loaded.get(model.id) !== previous) throw new HostError(409, "in_use", "The model host is loading or serving a model.");
     this.pumping = true;
     this.changing++;
+    const stop = this.starting(model.id);
     try {
       // Count the old instance as reclaimable, including when pinned.
       this.loaded.delete(model.id);
@@ -811,9 +876,10 @@ export class Scheduler {
         let next = plan;
         for (let round = 0; ; round++) {
           for (const l of next.evict) await this.unload(l);
-          const option = await this.measured(model, next.option, undefined, round >= 2);
+          if (stop.signal.aborted) throw loadCancelled();
+          const option = await this.measured(model, next.option, undefined, round >= 2, stop.signal);
           if (option) {
-            await this.load(model, option);
+            await this.load(model, option, undefined, undefined, stop.signal);
             break;
           }
           // The server found a GPU short: plan again with what it measured.
@@ -825,6 +891,11 @@ export class Scheduler {
           next = again;
         }
       } catch (e) {
+        // Stopped by Unload: it stays unloaded, with the new settings saved.
+        if (stop.signal.aborted) {
+          this.o.log("load cancelled", { model: model.id });
+          throw loadCancelled();
+        }
         const { contextLength: _, ...rest } = previous.settings;
         this.saveSettings(model, previous.auto ? rest : previous.settings);
         // A failed restoration must not hide the replacement's load error.
@@ -834,6 +905,7 @@ export class Scheduler {
         throw e;
       }
     } finally {
+      stop.done();
       this.changing--;
       this.pumping = false;
       this.kick();
