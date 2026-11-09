@@ -170,10 +170,11 @@ export function useUndo() {
 
 /**
  * Scrolls to a message and marks where it landed, for a moment. `atOnce` in a thread just
- * opened, so its first updates don't find it still on the way and pull it back down.
+ * opened, so its first updates don't find it still on the way and pull it back down. A message
+ * folded under a closed marker (Messages.tsx, `data-folds`) lands on that marker.
  */
 export function jumpTo(n: number, opts: { atOnce?: boolean } = {}) {
-  const el = document.getElementById(`m-${n}`);
+  const el = document.getElementById(`m-${n}`) ?? document.querySelector(`[data-folds~="${n}"]`);
   el?.scrollIntoView({ block: "center", behavior: opts.atOnce ? "instant" : "smooth" });
   el?.classList.remove("flash");
   void el?.offsetWidth;

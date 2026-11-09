@@ -356,6 +356,8 @@ test("her rejected attempts fold into one closed group, and her pick shows last 
   await expect(page.getByRole("img", { name: c.split("/").at(-1)! })).toBeVisible();
   await expect(page.getByRole("button", { name: "Rejecting an image" })).toHaveCount(1);
   await expect(page.getByRole("button", { name: "Making an image" })).toHaveCount(1);
+  // Closed, the marker stands for the folded messages: it has the first one's id and names them all.
+  await expect(page.locator("#m-1.rejected-run")).toHaveAttribute("data-folds", "1 2");
   await noHorizontalScroll(page);
   if (process.env.SCREENSHOTS) await page.screenshot({ fullPage: true, path: `${process.env.SCREENSHOTS}/rejects-closed-${page.viewportSize()!.width}.png` });
   await group.click();
@@ -368,6 +370,8 @@ test("her rejected attempts fold into one closed group, and her pick shows last 
   await expect(page.getByRole("button", { name: "Making an image" })).toHaveCount(3);
   await expect(page.getByRole("button", { name: "Rejecting an image" })).toHaveCount(2);
   await expect(page.locator(".rejected-turns .message-image")).toHaveCount(0);
+  await expect(page.locator("#m-1")).toHaveCount(1);
+  await expect(page.locator(".rejected-turns #m-1")).toHaveCount(1);
   await noHorizontalScroll(page);
   if (process.env.SCREENSHOTS) await page.screenshot({ fullPage: true, path: `${process.env.SCREENSHOTS}/rejects-open-${page.viewportSize()!.width}.png` });
 });

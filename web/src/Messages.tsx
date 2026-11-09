@@ -223,7 +223,7 @@ function conversationNodes(stored: Message[], liveItems: LiveItem[], busy: boole
   // Her tool calls since the person's last message or her last words: the pages among them show under her next words.
   let read: MessagePart[] = [];
   // The messages folding under a "<n> rejected" marker, while the fold runs: its group, the key it ends at, and its turns so far.
-  let fold: { key: string; n?: number; group: RejectedImage[]; until: string; turns: ReactNode[]; streaming: boolean } | undefined;
+  let fold: { key: string; ns: number[]; group: RejectedImage[]; until: string; turns: ReactNode[]; streaming: boolean } | undefined;
   const quietNode = (q: Quiet) => <section key={q.key} className="turn quiet" id={q.n !== undefined ? `m-${q.n}` : undefined}><Parts parts={q.parts} env={env} bare streaming={q.streaming} /></section>;
   const flush = () => {
     if (!quiet.length) return;
@@ -234,7 +234,7 @@ function conversationNodes(stored: Message[], liveItems: LiveItem[], busy: boole
   };
   const endFold = () => {
     if (!fold) return;
-    nodes.push(<RejectedImages key={`fold:${fold.key}`} parts={fold.group} env={env} n={fold.n} turns={fold.turns} streaming={fold.streaming} />);
+    nodes.push(<RejectedImages key={`fold:${fold.key}`} parts={fold.group} env={env} ns={fold.ns} turns={fold.turns} streaming={fold.streaming} />);
     fold = undefined;
   };
   type E = { key: string; stored?: Message; live?: LiveItem; streaming: boolean };
@@ -258,7 +258,7 @@ function conversationNodes(stored: Message[], liveItems: LiveItem[], busy: boole
     if (hers && own?.fold) {
       flush();
       const [group] = own.groups.values();
-      fold = { key: e.key, n: m?.n, group: group!, until: own.fold, turns: [], streaming: false };
+      fold = { key: e.key, ns: [], group: group!, until: own.fold, turns: [], streaming: false };
       // Its thumbnails stand at the top of the fold's box, not as a marker inside it.
       own = { ...own, groups: new Map() };
     }
@@ -278,7 +278,7 @@ function conversationNodes(stored: Message[], liveItems: LiveItem[], busy: boole
       if (m) into.push(<StoredMessage key={m.id} m={m} env={env} you={you} told={looks.told.get(m.id)} folded={looks.folded.has(m.id)} cards={cards.get(m.n)} shown={seen} images={own} sources={sources} />);
       else if (e.live) into.push(<LiveMessage key={e.key} item={e.live} env={env} you={you} streaming={e.streaming} shown={seen} images={own} sources={sources} />);
     }
-    if (fold) { fold.streaming = e.streaming; if (e.key === fold.until) endFold(); }
+    if (fold) { fold.streaming = e.streaming; if (m) fold.ns.push(m.n); if (e.key === fold.until) endFold(); }
   }
   endFold();
   flush();
@@ -751,18 +751,21 @@ function MessageVideo({ part, env }: { part: VideoPart; env: Env }) {
  * thumbnails, each with its facts and actions, and under them the turns that folded with them (`turns`: her messages
  * from the first attempt to the last, with their reasoning, words and tool calls). Open state follows the first
  * attempt's name, so the stored copy keeps it. Once she has deleted them at the person's word, the marker reads
- * "<n> rejected · deleted", and opens only when turns folded under it.
+ * "<n> rejected · deleted", and opens only when turns folded under it. Closed, the marker stands for its folded
+ * messages (`ns`): it takes the first one's id, and names them all in `data-folds`, so a jump to one lands on it.
  */
-function RejectedImages({ parts, env, n, turns, streaming }: { parts: RejectedImage[]; env: Env; n?: number; turns?: ReactNode[]; streaming?: boolean }) {
+function RejectedImages({ parts, env, ns, turns, streaming }: { parts: RejectedImage[]; env: Env; ns?: number[]; turns?: ReactNode[]; streaming?: boolean }) {
   const key = `rejected:${basename(parts[0]!.paths[0]!)}`;
   const open = env.openTools.has(key);
   const left = parts.filter((p) => !p.deleted);
   const gone = parts.length - left.length;
   const count = <span><span className="num">{parts.length}</span> rejected{!left.length && <> · deleted</>}{streaming && <> <span className="state" data-state="running">running</span></>}</span>;
-  const id = n !== undefined ? `m-${n}` : undefined;
-  if (!left.length && !turns?.length) return <div className="marker tool-run rejected-run" data-type="rejected" id={id}><span className="marker-static">{count}</span></div>;
+  // Open, the messages carry their own ids, so the marker drops its copy.
+  const id = ns?.length && !open ? `m-${ns[0]}` : undefined;
+  const folds = ns?.length ? ns.join(" ") : undefined;
+  if (!left.length && !turns?.length) return <div className="marker tool-run rejected-run" data-type="rejected" id={id} data-folds={folds}><span className="marker-static">{count}</span></div>;
   return (
-    <div className="marker tool-run rejected-run" data-type="rejected" id={id}>
+    <div className="marker tool-run rejected-run" data-type="rejected" id={id} data-folds={folds}>
       <button type="button" aria-expanded={open} onClick={() => env.toggleTool(key)}>
         {count}
         <Icon name="down" />
