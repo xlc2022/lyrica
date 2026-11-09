@@ -499,7 +499,9 @@ export function validate(model: TextModel, body: Record<string, unknown>, gpus: 
   if (!opts.length) throw invalid(`No GPU allows ${SERVER_NAMES[server]}.`);
   // Auto needs one way that can work; a chosen placement must work as chosen.
   const reasons = opts.map((o) => neverFits(model, at, o, gpus, settings, allowance));
-  if (reasons.every((r) => r !== null)) throw new HostError(400, "too_big", reasons.at(-1)!);
+  // Why the way with the most GPUs can't: the one with the best chance, so its reason says the most.
+  const widest = opts.reduce((best, o, i) => (o.gpus.length > opts[best]!.gpus.length ? i : best), 0);
+  if (reasons.every((r) => r !== null)) throw new HostError(400, "too_big", reasons[widest]!);
   return s;
 }
 

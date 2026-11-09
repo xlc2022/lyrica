@@ -109,6 +109,15 @@ describe("keeping part of a model in system RAM", () => {
     expect(opts.slice(1).every((o) => o.gpus.length === 1 && o.ram! > 0)).toBe(true);
   });
 
+  it("refuses at save with the reason of the way over every GPU", () => {
+    const m = textModel("huge", 400, { layers: 48, expertLayers: experts(48, 380) });
+    const gpus = [gpu(0, 96), gpu(1, 96)];
+    const s = { placement: { mode: "auto" as const }, contextLength: 8192 };
+    const both = options(m, s, gpus, all, 64 * GIB).find((o) => o.gpus.length === 2)!;
+    const gb = (both.ram! / GIB).toFixed(1);
+    expect(() => validate(m, s, gpus, all, false, 64 * GIB)).toThrow(`needs about ${gb} GB of system RAM`);
+  });
+
   it("never spills when the allowance is off or the model says Off", () => {
     const m = textModel("moe", 30, { layers: 48, expertLayers: experts(48, 27) });
     expect(options(m, { placement: { mode: "auto" }, contextLength: 8192 }, [gpu(0, 24)], all, 0)[0]!.ram).toBeUndefined();
