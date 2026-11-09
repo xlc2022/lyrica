@@ -770,9 +770,14 @@ second pairing. Then:
   report the new commit within 5 minutes; a host paused before stays
   paused. From the first update on, the host runs from that tree, so its
   settings are in `/opt/lyrica-host/<commit>/host/.env`, carried to each
-  new tree. To change a setting, run `git pull && host/install.sh` in your
-  checkout: it installs from the checkout again, and the next Update
-  carries its `.env` along.
+  new tree. Your checkout is no longer what runs, and Updates don't touch
+  it, so it stays on the commit you first installed; the running folder is
+  the one named in `/var/lib/lyrica-host-update/current`. To change a
+  setting, run `sudo ./install.sh` in that folder. Running
+  `install.sh` from the checkout instead installs the checkout's commit and
+  its `.env` again, so `git pull` first and bring over any setting changed
+  since (a models folder moved from Lyrica, say); `git pull` takes it to the
+  newest commit on `main`, which can be ahead of Lyrica's own release.
   Either way the `data` volume keeps the host's key, so pairing survives.
   Each install or Update then removes the Docker images this stack ran
   before and no longer runs: only its own, never a prune, and a rollback
