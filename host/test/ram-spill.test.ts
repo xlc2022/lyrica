@@ -200,6 +200,11 @@ describe("what llama.cpp is told", () => {
       expect(ini).toMatch(/\[moe\.gguf\][^[]*n-gpu-layers = 999\nflash-attn = auto\nn-cpu-moe = 18\n/);
       expect(ini).toMatch(/\[dense\.gguf\][^[]*n-gpu-layers = 41\n/);
       expect(ini.match(/n-cpu-moe/g)).toHaveLength(1);
+      // Experts in RAM cross to the GPU once per prompt step, so the step is the whole batch; layers on the GPUs keep llama.cpp's step.
+      expect(ini).toMatch(/\[moe\.gguf\][^[]*ubatch-size = 2048\n/);
+      expect(ini).not.toMatch(/\[dense\.gguf\][^[]*ubatch-size/);
+      await llama.load(textModel("moe.gguf", 30, { layers: 48 }), { ...at, ram: 10 * GIB, cpuMoe: 18 }, { placement: { mode: "auto" }, batchSize: 4096 });
+      expect(readFileSync(join(serving, "llamacpp.ini"), "utf8")).toMatch(/\[moe\.gguf\][^[]*batch-size = 4096\nubatch-size = 4096\n/);
     } finally {
       router.server.close();
     }
