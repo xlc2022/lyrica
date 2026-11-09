@@ -56,7 +56,8 @@ export function Downloads({ ctx, history = false, route }: { ctx: MCtx; history?
     [lists.data]);
   const { reload } = lists, { reload: reloadModels } = ctx.models, { reload: reloadGroups } = groups, { reload: reloadSuggestions } = suggestions;
   // An upload no tab is sending only waits, so it isn't read again for.
-  const paused = (ep: Endpoint, d: HostDownload) => d.state === "uploading" && !isSending(ep.id, d.id);
+  // One lyricad carries from another host is paused only once it stopped.
+  const paused = (ep: Endpoint, d: HostDownload) => d.state === "uploading" && (d.copyFrom ? !!d.copyStopped : !isSending(ep.id, d.id));
   const moving = active.filter(({ ep, d }) => !paused(ep, d)).length;
   // Every 2 s while anything runs, counted from the last answer so a slow host never stacks requests.
   useEffect(() => {
@@ -149,7 +150,9 @@ export const Size = ({ text }: { text: string }) => { const [n, unit] = text.spl
 const SEP = "\u00a0· ";
 
 /** Why an upload is paused, and how to carry on, for its phase's tooltip. */
-const pausedTip = (ep: Endpoint, d: HostDownload) => [whyStopped(ep.id, d.id), "Choose the same file under Upload to carry on."].filter(Boolean).join(" ");
+const pausedTip = (ep: Endpoint, d: HostDownload) => d.copyFrom
+  ? [d.copyStopped, `Copy the model to ${ep.name} again to carry on.`].filter(Boolean).join(" ")
+  : [whyStopped(ep.id, d.id), "Choose the same file under Upload to carry on."].filter(Boolean).join(" ");
 
 /** One download: its file, where from and to, and its progress and speed with Cancel, or how it ended. */
 function Item({ ep, d, busy, rate, paused, onCancel, children }: { ep: Endpoint; d: HostDownload; busy: boolean; rate?: number; paused?: boolean; onCancel?: () => void; children?: React.ReactNode }) {

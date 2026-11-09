@@ -545,6 +545,10 @@ class Models {                                              // new Models(keyrin
   startUpload(actor, hostId, { name, size }) / uploadPiece(actor, hostId, uploadId, offset, bytes)   // host/API.md "Uploads"
   deleteCopy(actor, offeringId, { confirm? }): Promise<{ usedIn: Use[]; deleted?: string[]; left?: { files; reason } }>
   imageLibrary(userId, hostId): { recipes; parts (by role) } / recipe(actor, hostId, recipeId, action)
+  copyRecipe(actor, fromHostId, recipeId, toHostId, { check? })   // recipe action { do: "copy-to", host, check? }; both hosts manageable;
+                                                            // the source's export to the target's import (host/API.md, "Copying a model to another host"),
+                                                            // then each of its `copies` carried in 32 MiB pieces (parts/content → uploads), never written to disk;
+                                                            // downloads(actor, hostId) marks a carried upload copyFrom (the source's name) and copyStopped (why)
   // Recipes live in the host's recipes.json; optional useFor: "fast" | "quality" | "both", absent reads as both.
   // recipe action { do: "change", change: { op: "useFor", useFor } } forwards to the host's PATCH and refreshes offerings.
   // Discovery caches useFor in offerings' existing found JSON; no database schema change.
@@ -2189,12 +2193,14 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
       `POST …/starters/:starterId/install` (→ `{ recipe, downloads }`);
       `POST …/recipes/:recipeId` (including
       `{ do: "change", change: { op: "useFor", useFor: "fast" | "quality" | "both" } }`,
-      saves on the host and refreshes discovery). Unpair is `DELETE
+      saves on the host and refreshes discovery; `{ do: "copy-to", host,
+      check? }` copies the model to another host, answering the target's
+      `RecipeCopyPlan`). Unpair is `DELETE
       endpoints/:id`. Types: `HostInput`, `HostRepair`, `HostAddresses`,
       `HostStatus` (with `commit` and `update` when the host has an updater),
       `HostUpdate` (`available`, `reason`, `changesFolder`, `commits`, `state`, `tag`,
       `models`, `error`, `last`),
-      `HostManage`, `DownloadInput`, `RecipeAction`.
+      `HostManage`, `DownloadInput`, `RecipeAction`, `RecipeCopyPlan`.
     - **Offerings:** `PATCH`/`DELETE offerings/:id`; `POST …/replace`; `GET
       …/same`; `GET`/`PUT …/settings`; `PUT …/star`; `PUT …/separate`; `POST
       …/delete-copy`; `GET`/`PUT …/serving`; `POST …/reload`; `POST

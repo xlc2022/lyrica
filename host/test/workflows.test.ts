@@ -127,9 +127,9 @@ describe("importing a workflow", () => {
 });
 
 describe("the workflow API", () => {
-  async function stack(o: { extra?: string[]; noNodes?: boolean } = {}) {
+  async function stack(o: { extra?: string[]; noNodes?: boolean; files?: Record<string, Buffer> } = {}) {
     const models = mkdtempSync(join(tmpdir(), "lyrica-wf-models-"));
-    for (const [path, data] of Object.entries({ "shared/flux1-schnell-fp8.safetensors": FLUX_CKPT, "shared/flux-style.safetensors": FLUX_LORA })) {
+    for (const [path, data] of Object.entries(o.files ?? { "shared/flux1-schnell-fp8.safetensors": FLUX_CKPT, "shared/flux-style.safetensors": FLUX_LORA })) {
       mkdirSync(dirname(join(models, path)), { recursive: true });
       writeFileSync(join(models, path), data);
     }
@@ -162,7 +162,7 @@ describe("the workflow API", () => {
     const me = lyrica();
     const pinned = await pair(h.tls, me, code);
     const api = (path: string, init: { method?: string; body?: unknown } = {}) => call({ port: h.tls, path, identity: me, pinned, ...init });
-    return { ...h, api, comfyFake, book, templates };
+    return { ...h, api, comfyFake, book, templates, models };
   }
 
   it("imports, saves, runs, revises and restores a workflow, and deletes it with its recipe", async () => {
@@ -226,6 +226,69 @@ describe("the workflow API", () => {
     const d = (await s.api("/host/v1/workflows/import", { body: { workflow: exported(), name: "Flux styled", does: "create" } })).body.draft;
     return s.api("/host/v1/workflows", { body: { name: d.label, does: d.does, arch: d.arch, workflow: { ...d.workflow, ...extra }, loaders: d.loaders, clipType: d.clipType, video: d.video, parts: d.parts, loras: d.loras, defaults: d.defaults } });
   }
+
+  it("copies a model with its custom workflow and LoRA to another host, placing each file there", async () => {
+    const from = await stack();
+    const { recipe } = (await saveImported(from)).body;
+    // The other host has the checkpoint in a folder of its own, by the same name and size, and not the LoRA.
+    const to = await stack({ files: { "mine/flux1-schnell-fp8.safetensors": FLUX_CKPT } });
+    const bundle = (await from.api(`/host/v1/recipes/${recipe.id}/export`)).body;
+    expect(bundle.recipe).toMatchObject({ id: recipe.id, name: "Flux styled", loras: [{ file: "shared/flux-style.safetensors", strength: 0.7 }] });
+    expect(bundle.workflow).toMatchObject({ label: "Flux styled", from: "import", does: "create", arch: "flux" });
+    expect(bundle.files).toEqual([
+      { file: "shared/flux1-schnell-fp8.safetensors", size: FLUX_CKPT.length, sha256: null, origin: null },
+      { file: "shared/flux-style.safetensors", size: FLUX_LORA.length, sha256: null, origin: null },
+    ]);
+
+    // Planning saves nothing.
+    const plan = (await to.api("/host/v1/recipes/import", { body: { ...bundle, check: true } })).body;
+    expect(plan.placed.map((p: { file: string; how: string; to: string }) => [p.file, p.how, p.to])).toEqual([
+      ["shared/flux1-schnell-fp8.safetensors", "here", "mine/flux1-schnell-fp8.safetensors"],
+      ["shared/flux-style.safetensors", "copy", "lyrica/upload/flux-style.safetensors"],
+    ]);
+    expect(plan.existing).toBeNull();
+    expect((await to.api("/host/v1/recipes")).body.recipes).toEqual([expect.objectContaining({ name: "flux1 schnell fp8", state: "proposed" })]);
+
+    const made = (await to.api("/host/v1/recipes/import", { body: bundle })).body;
+    expect(made.copies).toEqual([{ file: "shared/flux-style.safetensors", name: "flux-style.safetensors", size: FLUX_LORA.length, to: "lyrica/upload/flux-style.safetensors" }]);
+    expect(made.recipe).toMatchObject({
+      name: "Flux styled", state: "confirmed", ready: false, custom: true, copiedFrom: recipe.id,
+      parts: [{ role: "checkpoint", file: "mine/flux1-schnell-fp8.safetensors" }], loras: [{ file: "lyrica/upload/flux-style.safetensors", strength: 0.7 }],
+    });
+    const workflows = (await to.api("/host/v1/workflows")).body.workflows;
+    expect(workflows).toEqual([expect.objectContaining({ label: "Flux styled", from: "import", recipes: [{ id: made.recipe.id, name: "Flux styled" }] })]);
+
+    // lyricad carries the LoRA in pieces read from the first host.
+    const head = await from.api(`/host/v1/parts/content?file=${encodeURIComponent("shared/flux-style.safetensors")}&offset=8&length=16`);
+    expect(head.status).toBe(200);
+    expect(head.headers["content-length"]).toBe("16");
+    expect(head.headers["x-file-size"]).toBe(String(FLUX_LORA.length));
+    expect(head.body).toBe(FLUX_LORA.subarray(8, 24).toString("utf8"));
+    expect((await from.api("/host/v1/parts/content?file=elsewhere.safetensors")).status).toBe(404);
+
+    // Once it has arrived, the copy is ready; copying again gives back the same model and copies nothing.
+    mkdirSync(join(to.models, "lyrica/upload"), { recursive: true });
+    writeFileSync(join(to.models, "lyrica/upload/flux-style.safetensors"), FLUX_LORA);
+    await to.api("/host/v1/scan", { method: "POST" });
+    const again = (await to.api("/host/v1/recipes/import", { body: bundle })).body;
+    expect(again).toMatchObject({ recipe: { id: made.recipe.id, ready: true }, copies: [] });
+    expect((await to.api("/host/v1/workflows")).body.workflows).toHaveLength(1);
+  });
+
+  it("copies a model on a built-in template only to a host that has the template, and refuses a bad path", async () => {
+    const from = await stack();
+    const flux = (await from.api("/host/v1/recipes")).body.recipes.find((r: { name: string }) => r.name === "flux1 schnell fp8");
+    const bundle = (await from.api(`/host/v1/recipes/${flux.id}/export`)).body;
+    expect(bundle.workflow).toBeNull();
+    const to = await stack({ files: {} });
+    const missing = await to.api("/host/v1/recipes/import", { body: { ...bundle, recipe: { ...bundle.recipe, template: "no-such-template" } } });
+    expect(missing.status).toBe(400);
+    expect(missing.body.error.message).toMatch(/no template no-such-template/);
+    const outside = await to.api("/host/v1/recipes/import", { body: { ...bundle, files: [{ file: "../etc/passwd", size: 1, sha256: null, origin: null }] } });
+    expect(outside.status).toBe(400);
+    const made = (await to.api("/host/v1/recipes/import", { body: bundle })).body;
+    expect(made.recipe).toMatchObject({ template: flux.template, state: "confirmed", ready: false, parts: [{ role: "checkpoint", file: "lyrica/upload/flux1-schnell-fp8.safetensors" }] });
+  });
 
   it("refuses to run a workflow saved before ComfyUI reported its nodes when one of them writes files", async () => {
     const s = await stack({ extra: ["PreviewImage"] });

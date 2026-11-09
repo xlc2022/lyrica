@@ -845,6 +845,80 @@ async function fakeImages(page: Page) {
   return { asked, zi, qi, hold, read, recipes, offering: { id: "off-z", modelId: `recipe/${zi}`, label: `box/recipe/${zi}`, manual: false, status: "listed", recipe: "Z-Image Turbo", image: true } };
 }
 
+test("Copy to host… shows where each of a model's files would come from on the other host, copies it, and the copy waits for its files", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  const GB = 2 ** 30;
+  const json = (body: unknown) => ({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
+  const shot = async (name: string, l: Locator | Page = page) => { if (process.env.SCREENSHOTS) await l.screenshot({ path: `${process.env.SCREENSHOTS}/copy-to-host-${name}-${page.viewportSize()!.width}.png` }); };
+  const images = await fakeImages(page);
+  const host = (id: string, name: string, models: unknown[], free: number) => ({ id, name, models, free });
+  const hosts = [host("ep-box", "box", [images.offering], 96 * GB), host("ep-studio", "studio", [], 40 * GB)];
+  await page.route(/\/api\/u\/[^/]+\/models\/page$/, async (route) => {
+    const real = await (await fetchReal(route)).json() as { endpoints: Record<string, unknown>[]; hosts: unknown[] };
+    const local = real.endpoints.find((e) => e.kind === "local")!;
+    for (const h of hosts) {
+      real.endpoints.push({ ...local, id: h.id, name: h.name, api: "host", addresses: [`${h.name}.lan:7236`], fingerprint: "SHA256:aaaa", state: "up", shared: false, models: h.models });
+      real.hosts.push({ endpointId: h.id, status: { name: h.name, version: "0.9.0", fingerprint: "SHA256:aaaa", state: "running", gpus: [], downloads: { active: 0 }, modelsFolder: { path: "/srv/models", free: h.free } } });
+    }
+    await route.fulfill(json(real));
+  });
+  const Z = "lyrica/huggingface/Comfy-Org/z_image_turbo/split_files";
+  const copied: unknown[] = [];
+  let made = false;
+  await page.route(/\/api\/u\/[^/]+\/hosts\/ep-studio\/images$/, (route) => route.fulfill(json(made ? {
+    recipes: [{ id: "00000000-0000-4000-8000-000000000009", name: "Z-Image Turbo", useFor: "both", state: "confirmed", ready: false, arch: "z-image", template: "z-image", does: ["create"], loras: [], base: null, starter: null, copiedFrom: images.zi,
+      parts: [{ role: "diffusion", slot: null, file: `${Z}/diffusion_models/z_image_turbo_bf16.safetensors`, added: false }, { role: "text_encoder", slot: "qwen3", file: "lyrica/upload/qwen_3_4b.safetensors", added: false }, { role: "vae", slot: null, file: "mine/ae.safetensors", added: false }],
+      defaults: { steps: 8, cfg: 1, width: 1024, height: 1024 } }],
+    parts: { vae: [{ file: "mine/ae.safetensors", size: 0.3 * GB, format: "safetensors", role: "vae", slot: null, arch: "z-image", precision: "bf16", downloaded: false, usedBy: [], vram: null }] },
+  } : { recipes: [], parts: {} })));
+  const placed = [
+    { file: `${Z}/diffusion_models/z_image_turbo_bf16.safetensors`, to: `${Z}/diffusion_models/z_image_turbo_bf16.safetensors`, how: "download", size: 12.3 * GB, origin: { source: "huggingface", repo: "Comfy-Org/z_image_turbo", path: "split_files/diffusion_models/z_image_turbo_bf16.safetensors" } },
+    { file: `${Z}/text_encoders/qwen_3_4b.safetensors`, to: "lyrica/upload/qwen_3_4b.safetensors", how: "copy", size: 8 * GB, origin: null },
+    { file: `${Z}/vae/ae.safetensors`, to: "mine/ae.safetensors", how: "here", size: 0.3 * GB, origin: null },
+  ];
+  await page.route(/\/api\/u\/[^/]+\/hosts\/ep-box\/recipes\/[^/]+$/, (route) => {
+    const body = route.request().postDataJSON() as { do?: string; check?: boolean };
+    if (body.do !== "copy-to") return route.fallback();
+    copied.push(body);
+    if (!body.check) made = true;
+    return route.fulfill(json({ placed, missingNodes: null, existing: null, problems: [], copies: [] }));
+  });
+
+  await page.goto(`/#/u/${userId}/models/images`);
+  await page.getByRole("list", { name: "Z-Image models" }).getByRole("button", { name: /^Z-Image Turbo/ }).click();
+  const block = page.getByRole("region", { name: "Z-Image Turbo on box" });
+  const copy = block.getByRole("button", { name: "Copy to host…" });
+  // At the foot with the other actions, on their baseline.
+  const middle = async (l: Locator) => { const b = (await l.boundingBox())!; return b.y + b.height / 2; };
+  expect(Math.abs((await middle(copy)) - (await middle(block.getByRole("button", { name: "Add part" }))))).toBeLessThanOrEqual(2);
+  if (phone(page)) expect((await copy.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  await noHorizontalScroll(page);
+  await shot("foot", block);
+  await copy.click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByRole("heading", { name: "Copy Z-Image Turbo to studio?" })).toBeVisible();
+  await expect(dialog).toContainText("The model, its workflow, LoRAs and settings go to studio. It is ready there once its files arrive.");
+  await expect(dialog).toContainText("On studio already");
+  await expect(dialog).toContainText("Downloads from Hugging Face");
+  await expect(dialog).toContainText("Copies from box");
+  await expect(dialog.getByRole("button", { name: "Copy (20.3 GB)" })).toBeEnabled();
+  expect(copied).toEqual([{ do: "copy-to", host: "ep-studio", check: true }]);
+  await noHorizontalScroll(page);
+  await shot("dialog");
+  await dialog.getByRole("button", { name: "Copy (20.3 GB)" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Copying Z-Image Turbo to studio. Downloads shows how it goes." })).toBeVisible();
+  expect(copied.at(-1)).toEqual({ do: "copy-to", host: "ep-studio" });
+  // The copy is there at once, its files not yet.
+  const there = page.getByRole("region", { name: "Z-Image Turbo on studio" });
+  await expect(there.locator(".partrow").nth(0)).toContainText("Not on this host yet");
+  await expect(there.locator(".partrow").nth(2)).toContainText("shared folder");
+  // Copy to host… lists only the hosts that aren't this one.
+  await expect(there.getByRole("button", { name: "Copy to host…" })).toBeVisible();
+  await noHorizontalScroll(page);
+  await shot("copied", there);
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
 test("a host card has one facts line and Pause, Edit and ⋯; Edit opens a drawer that moves the models folder after asking, and Pair again… is a page", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   const json = (body: unknown) => ({ status: 200, contentType: "application/json", body: JSON.stringify(body) });

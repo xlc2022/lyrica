@@ -48,6 +48,11 @@ export async function fakeHost(opts: { name?: string; models?: HostModel[]; port
   const downloads: { id: string; path: string; state: string }[] = [];
   /** Upload pieces as they arrived: the upload, its offset, the bytes (as text) and their content type. */
   const pieces: { id: string; offset: number; text: string; type?: string }[] = [];
+  /** Copying a model: what the source exports by recipe, what the target was sent and answers, and the parts' bytes as text. */
+  const exports = new Map<string, unknown>();
+  const imports: { body: Record<string, unknown>; token?: string }[] = [];
+  let importAnswer: unknown = { placed: [], copies: [] };
+  const contents = new Map<string, string>();
   /** More files in the download record (a split model's other shards), and files a running request holds. */
   const record: string[] = [];
   const busy = new Set<string>();
@@ -169,6 +174,20 @@ export async function fakeHost(opts: { name?: string; models?: HostModel[]; port
         return json(res, 200, { recipes: recipes.filter((r) => !state || r.state === state) });
       }
       if (req.method === "GET" && url.pathname === "/host/v1/parts") return json(res, 200, { parts: parts.map((p) => ({ ...p, usedBy: recipes.filter((r) => r.parts.some((x) => x.file === p.file)).map((r) => r.id) })) });
+      // Copying a model to another host: the source's export, the target's import, and a part's bytes.
+      const exp = /^\/host\/v1\/recipes\/([^/]+)\/export$/.exec(url.pathname);
+      if (exp && req.method === "GET") return exports.has(exp[1]!) ? json(res, 200, exports.get(exp[1]!)) : json(res, 404, { error: { code: "not_found", message: "No such recipe." } });
+      if (req.method === "POST" && url.pathname === "/host/v1/recipes/import") {
+        imports.push({ body: JSON.parse(raw), token: req.headers["x-hub-token"] as string | undefined });
+        return json(res, 200, importAnswer);
+      }
+      if (req.method === "GET" && url.pathname === "/host/v1/parts/content") {
+        const text = contents.get(url.searchParams.get("file") ?? "");
+        if (text === undefined) return json(res, 404, { error: { code: "not_found", message: "No such part on this host." } });
+        const offset = Number(url.searchParams.get("offset")), length = Number(url.searchParams.get("length"));
+        res.writeHead(200, { "content-type": "application/octet-stream" });
+        return res.end(text.slice(offset, offset + length));
+      }
       const recipe = /^\/host\/v1\/recipes\/([^/]+)(?:\/(confirm|ignore|download-parts))?$/.exec(url.pathname);
       if (recipe) {
         const r = recipes.find((x) => x.id === recipe[1]);
@@ -264,6 +283,10 @@ export async function fakeHost(opts: { name?: string; models?: HostModel[]; port
     lookups,
     downloads,
     pieces,
+    exports,
+    imports,
+    contents,
+    answerImport(a: unknown) { importAnswer = a; },
     record,
     busy,
     /** Shows a new pairing code on the "dashboard", as typed by a person. */

@@ -1004,6 +1004,13 @@ it's off.
     image only through a reviewed pull request that pins it; there is still
     no plugin manager. See
     [docs/briefs/custom-workflows.md](docs/briefs/custom-workflows.md).
+  - **Copying a model to another host** takes the whole model: recipe,
+    custom workflow and files. A file the target has is used where it is,
+    one from a hub downloads there again, and any other is carried by
+    lyricad from the source's models folder into the target's uploads,
+    a piece at a time, so hosts never call each other and fetch stays the
+    only writer of `lyrica/`. See
+    [docs/briefs/copy-recipe.md](docs/briefs/copy-recipe.md).
 - **Image models are recipes.** An image model isn't one file: most need a
   diffusion model, one or two text encoders and a VAE, unless a checkpoint
   holds them all. A recipe names each part by its role (and an encoder by its

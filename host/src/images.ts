@@ -1,7 +1,7 @@
 // The image routes in API.md ("Image models"): parts, recipes, starters, and
 // create, edit and upscale through ComfyUI, and videos from video recipes.
 import { createHash, randomInt } from "node:crypto";
-import { mkdirSync, readdirSync, readlinkSync, statSync, symlinkSync, unlinkSync } from "node:fs";
+import { createReadStream, mkdirSync, readdirSync, readlinkSync, statSync, symlinkSync, unlinkSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { basename, join } from "node:path";
 import { imageSize, mp4Seconds, mp4Sound, mp4Video, type ComfyGpus } from "./comfy.ts";
@@ -17,6 +17,7 @@ import { sdcppArgs, type SdCpp } from "./sdcpp.ts";
 import { fill, LONGEST_SECONDS, longestSeconds, type Action, type Continuation, type Lora, type Template, type Values, type VideoSpec } from "./templates.ts";
 import { checkTemplate, CUSTOM_ACTIONS, customAction, filesIn, importWorkflow, label, parseWorkflow, partSpecs, recipeParts, videoSpec, layoutOf, type NodeList, type Workflows } from "./workflows.ts";
 import { checkDefault, DEFAULT_KEYS } from "./recipes.ts";
+import { copyable, copyPath, exportRecipe, moveFiles, place, readBundle, type Placed } from "./recipe-copy.ts";
 
 /** How many reference images a workflow's blanks take: its highest `$reference<n>`. */
 const referenceCount = (wf: Template["workflow"]) =>
@@ -26,6 +27,8 @@ const referenceCount = (wf: Template["workflow"]) =>
 const WORKFLOW_LIMIT = 2 * 1024 * 1024;
 
 const IMAGE_LIMIT = 20 * 1024 * 1024;
+/** The most of a part's file one read gives, when a model is copied to another host. */
+const PIECE = 32 * 1024 * 1024;
 const MAX_SIDE = 8192;
 const MAX_PIXELS = 36_000_000;
 const MAX_RESOLUTION = 4096;
@@ -303,10 +306,18 @@ export class Images {
       sendJson(res, 200, { recipes: done.map((r) => this.describe(r, files)), failed });
       return true;
     }
-    const one = path.match(/^\/host\/v1\/recipes\/([0-9a-f-]{36})(?:\/(confirm|ignore|copy|download-parts|workflow))?$/);
+    if (path === "/host/v1/recipes/import" && method === "POST") return this.importRecipe(req, res, files);
+    if (path === "/host/v1/parts/content" && method === "GET") return this.partContent(url, res);
+    const one = path.match(/^\/host\/v1\/recipes\/([0-9a-f-]{36})(?:\/(confirm|ignore|copy|download-parts|workflow|export))?$/);
     if (one) {
       const [, id, action] = one;
       if (action === "workflow") return this.recipeWorkflowRoute(req, res, method, id!);
+      if (action === "export" && method === "GET") {
+        const r = this.book.get(id!);
+        const t = this.book.templates.get(r.template);
+        if (!t) throw notFound(`This host has no template ${r.template}.`);
+        return sendJson(res, 200, exportRecipe(r, t, this.parts, record)), true;
+      }
       if (!action && method === "GET") return sendJson(res, 200, this.describe(this.book.get(id!), files)), true;
       if (!action && method === "PATCH") {
         const body = await readJson(req);
@@ -631,6 +642,118 @@ export class Images {
       made.push(...res.downloads);
     }
     return made;
+  }
+
+  /**
+   * A model copied from another host (API.md, "Copying a model to another host"): its recipe, and its custom
+   * workflow if it has one, made here as confirmed, each file placed (here already, downloaded from its hub, or
+   * copied from the other host by lyricad). `check` only plans. Copying the same model again gives back the same
+   * one, fetching only what is still missing.
+   */
+  private async importRecipe(req: IncomingMessage, res: ServerResponse, files: Set<string>): Promise<boolean> {
+    const body = await readJson(req, WORKFLOW_LIMIT);
+    onlyFields(body, ["recipe", "workflow", "files", "check"]);
+    const b = readBundle(body);
+    for (const [k, v] of Object.entries(b.recipe.defaults)) {
+      if (!DEFAULT_KEYS.includes(k)) throw invalid(`Unknown default: ${k}.`);
+      checkDefault(k, v);
+    }
+    const templates = this.book.templates;
+    const w = b.workflow;
+    if (w && (!this.workflows || this.sdcpp)) throw invalid("This host runs no custom ComfyUI workflows, and this model has one.");
+    // The built-in it runs on here: its own, or the one its custom workflow was made from. An import has none.
+    const baseName = w ? (w.from === "copy" ? w.base : null) : b.recipe.template;
+    const base = baseName ? templates.get(baseName) : undefined;
+    if (baseName && (!base || base.custom)) throw invalid(`This host has no template ${baseName}. Update it, then copy again.`);
+    const existing = this.book.all().find((r) => r.copiedFrom === b.recipe.id);
+    const placed = place(b, this.parts, this.runtime.record);
+    const t = w ? this.copiedTemplate(b, placed, base) : base!;
+    const check = w ? checkTemplate(t, this.workflows!.nodes, base) : { problems: [], missingNodes: null };
+    if (body.check === true) {
+      return sendJson(res, 200, { placed, ...check, existing: existing ? this.describe(existing, files) : null }), true;
+    }
+    if (check.problems.length) throw invalid(check.problems.join(" "));
+    // Downloads first: a file its hub won't give (gone, changed or gated) is copied instead.
+    const taken = new Set(this.parts.map((p) => p.file));
+    const known = existing ? new Set([...existing.parts.flatMap((p) => (p.file ? [p.file] : [])), ...existing.loras.map((l) => l.file), ...(templates.get(existing.template)?.files ?? [])]) : null;
+    const switchToCopy = (p: Placed) => {
+      if (!p.size || !copyable(p.file)) Object.assign(p, { how: "unavailable", to: p.file, reason: "Its hub didn't give it, and it can't be copied." });
+      else Object.assign(p, { how: "copy", to: copyPath(p.file, taken) });
+    };
+    // Copying again keeps the places the first copy chose.
+    if (known) for (const p of placed) if (p.how === "download" && !known.has(p.to)) switchToCopy(p);
+    const downloads: unknown[] = [];
+    const groups = new Map<string, Placed[]>();
+    for (const p of placed.filter((x) => x.how === "download" && !this.downloads?.inFlight.has(x.to))) {
+      const key = `${p.origin!.source} ${p.origin!.repo}`;
+      groups.set(key, [...(groups.get(key) ?? []), p]);
+    }
+    for (const group of groups.values()) {
+      try {
+        downloads.push(...(await this.download(group.map((p) => ({ ...p.origin!, sha256: p.sha256 ?? "" })), req)));
+      } catch {
+        for (const p of group) switchToCopy(p);
+      }
+    }
+    let recipe = existing;
+    if (!recipe) {
+      const to = new Map(placed.map((p) => [p.file, p.to]));
+      const made = w ? this.copiedTemplate(b, placed, base) : base!;
+      if (w) templates.set(made.name, this.workflows!.save(made));
+      const parts = b.recipe.parts.map((p) => ({ role: p.role, slot: p.slot, file: p.file ? to.get(p.file) ?? p.file : null, added: p.added, ...(p.file === null && p.missing ? { missing: p.missing } : {}) }));
+      const starter = !w && b.recipe.starter && !this.book.all().some((r) => r.starter === b.recipe.starter) ? b.recipe.starter : null;
+      recipe = this.book.add({
+        name: b.recipe.name, state: "confirmed", arch: made.arch, template: made.name, does: made.does, useFor: b.recipe.useFor, parts,
+        loras: b.recipe.loras.map((l) => ({ file: to.get(l.file) ?? l.file, strength: l.strength })), defaults: b.recipe.defaults, base: null, starter, copiedFrom: b.recipe.id,
+      });
+    }
+    const copies = placed.filter((p) => p.how === "copy" && !files.has(p.to)).map((p) => ({ file: p.file, name: basename(p.to), size: p.size, to: p.to }));
+    this.log("recipe copied here", { files: placed.length, copies: copies.length });
+    return sendJson(res, 200, { recipe: this.describe(recipe, files), placed, downloads, copies, missingNodes: check.missingNodes }), true;
+  }
+
+  /** A copied model's custom workflow as this host will keep it: its files where they are here. Not saved. */
+  private copiedTemplate(b: ReturnType<typeof readBundle>, placed: Placed[], base: Template | undefined): Template {
+    const w = b.workflow!;
+    const workflow = moveFiles(parseWorkflow(w.workflow), new Map(placed.map((p) => [p.file, p.to])));
+    const name = this.workflows!.newName(this.book.templates);
+    const made = new Date().toISOString();
+    const layout = withLayout(layoutOf(w.layout, workflow));
+    if (base) {
+      const video = base.video && w.video ? videoSpec(w.video) : base.video;
+      return { ...structuredClone(base), name, workflow, ...(video ? { video } : {}), files: filesIn(workflow), custom: { name: label(w.label), from: "copy", made, base: base.name, ...layout } };
+    }
+    const does = customAction(w.does);
+    if (!/^[\w.-]{1,40}$/.test(w.arch)) throw invalid("arch must be a short name.");
+    if (w.clipType !== null && !/^[a-z0-9_]{1,32}$/.test(w.clipType)) throw invalid("clipType must be a ComfyUI CLIP type or null.");
+    const own = w.loaders === "template";
+    const parts = b.recipe.parts.map((p) => ({ ...p, file: p.file }));
+    const video = does === "video" || does === "animate" ? videoSpec(w.video) : undefined;
+    return {
+      name, arch: w.arch, does: [does], checkpoint: parts.some((p) => p.role === "checkpoint"), clipType: w.clipType, ...(own ? { loaders: "template" as const } : {}),
+      parts: own ? [] : partSpecs(parts), references: referenceCount(workflow), mask: false, ...(video ? { video } : {}), workflow,
+      custom: { name: label(w.label), from: "import", made, ...layout }, files: filesIn(workflow),
+    };
+  }
+
+  /**
+   * Up to 32 MiB of one part's file from `offset`, as bytes: how lyricad carries a file to another host when a model
+   * is copied there. Only image parts this host found in its models folder.
+   */
+  private partContent(url: URL, res: ServerResponse): boolean {
+    const part = this.parts.find((p) => p.file === url.searchParams.get("file"));
+    if (!part) throw notFound("No such part on this host.");
+    const full = join(this.modelsDir, part.file);
+    const size = statSync(full).size;
+    const offset = Number(url.searchParams.get("offset") ?? 0);
+    const length = Number(url.searchParams.get("length") ?? PIECE);
+    if (!Number.isSafeInteger(offset) || offset < 0 || offset > size) throw invalid("offset must be a byte count within the file.");
+    if (!Number.isSafeInteger(length) || length < 1 || length > PIECE) throw invalid(`length must be from 1 to ${PIECE} bytes.`);
+    const n = Math.min(length, size - offset);
+    res.writeHead(200, { "content-type": "application/octet-stream", "content-length": String(n), "cache-control": "no-store", "x-file-size": String(size) });
+    if (!n) return res.end(), true;
+    createReadStream(full, { start: offset, end: offset + n - 1 }).on("error", () => res.destroy()).pipe(res);
+    return true;
   }
 
   private async remove(id: string) {

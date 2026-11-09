@@ -474,8 +474,22 @@ export interface UploadInput { name: string; size: number }
 /** GET /api/u/:userId/hosts/:endpointId/images → { recipes, parts by role }, as the host reports them. */
 /** POST /api/u/:userId/hosts/:endpointId/recipes/:recipeId → the host's answer. Confirmed recipes become image offerings. */
 export type RecipeUseFor = "fast" | "quality" | "both";
-/** change { op: "useFor", useFor } saves a recipe's create tiers on the host; absent defaults to both. */
-export type RecipeAction = { do: "confirm" | "ignore" | "download-parts" | "delete" } | { do: "change"; change: Record<string, unknown> & { useFor?: RecipeUseFor } } | { do: "copy"; name: string };
+/**
+ * change { op: "useFor", useFor } saves a recipe's create tiers on the host; absent defaults to both. copy-to { host }
+ * copies the model to another host the user manages (host/API.md, "Copying a model to another host") and answers the
+ * target's RecipeCopyPlan with `recipe`; with `check` it only plans.
+ */
+export type RecipeAction = { do: "confirm" | "ignore" | "download-parts" | "delete" } | { do: "change"; change: Record<string, unknown> & { useFor?: RecipeUseFor } } | { do: "copy"; name: string } | { do: "copy-to"; host: string; check?: boolean };
+/** Where each of a model's files comes from on the host it is copied to: there already, its hub, the other host, or neither. */
+export interface RecipeCopyPlan {
+  placed: { file: string; to: string; how: "here" | "download" | "copy" | "unavailable"; size: number | null; origin: { source: Hub; repo: string; path: string } | null; reason?: string }[];
+  /** Why the target won't take its custom workflow; nothing copies while there are any. */
+  problems?: string[];
+  /** Node types its custom workflow needs that the target's ComfyUI lacks, or null before it has run. */
+  missingNodes: string[] | null;
+  /** The model on the target from an earlier copy: copying again fetches only what is still missing. */
+  existing?: unknown;
+}
 /** GET /api/u/:userId/hosts/:endpointId/starters → { starters }: the host's starter recipes (host/API.md), each part `present` when it is on the host. */
 export interface HostStarter {
   id: string; name: string; template: string;
@@ -2447,6 +2461,10 @@ export interface HostDownload {
   verified: boolean | null;
   error: string | null;
   startedAt: string;
+  /** An upload lyricad carries from another host, when a model is copied there (RecipeAction copy-to): that host's name. */
+  copyFrom?: string;
+  /** Why lyricad stopped carrying it; copying the model again carries on. */
+  copyStopped?: string;
 }
 
 

@@ -919,6 +919,8 @@ as `{ "parts": [...] }`, each entry like this:
   Lyrica's router filters create tiers by this tag; the host keeps recipe defaults.
 - `added`: a VAE or text encoder used instead of the checkpoint's own.
 - `base`: the recipe this one was copied from, if any.
+- `copiedFrom`: the recipe on another host this one was copied from
+  ("Copying a model to another host"), if any.
 - `starter`: the starter recipe it came from, if any.
 
 Calls:
@@ -1103,6 +1105,55 @@ body may be up to 2 MB. Not on a host using stable-diffusion.cpp.
   them. A workflow that loads its own files can't have parts changed or
   added (change them in the workflow); deleting its last recipe deletes it
   and its revisions.
+
+### Copying a model to another host
+
+A model is copied whole from one host to another: its recipe (parts, LoRAs
+and strengths, defaults, create tiers), its custom workflow if it has one,
+and its files. Hosts never call each other: lyricad reads the model from one
+and gives it to the other, and carries the files only it can get.
+
+- `GET /host/v1/recipes/<id>/export` → `{ recipe, workflow, files }`:
+  `recipe` its `id`, `name`, `template` (for a custom workflow built on a
+  template, that template), `useFor`, `parts` (with `missing` for a part
+  it lacks), `loras`, `defaults` and `starter`; `workflow` null for a
+  built-in template, else the custom workflow's `label`, `from`, `base`,
+  `does`, `arch`, `loaders`, `clipType`, `video`, `workflow` and `layout`;
+  `files` each file the model uses (parts, LoRAs, and the files its custom
+  workflow's own nodes load) as `{ file, size, sha256, origin }`: `size`
+  null when the host lacks it, `sha256` from the download record (null
+  otherwise), `origin` `{ source, repo, path }` when it was downloaded
+  from Hugging Face, ModelScope or Civitai.
+- `POST /host/v1/recipes/import` with that body (up to 2 MB), and
+  `check: true` to only plan → `{ placed, problems, missingNodes, existing }`;
+  without it, the model is made as `confirmed` and the answer is `{
+  recipe, placed, downloads, copies, missingNodes }`. Each of `placed` is
+  `{ file, to, how, size, origin, sha256, reason? }`, `how` one of:
+  - `here`: this host has it, at the same path (with the same checksum
+    when both recorded it), as a recorded file with its checksum, or as a
+    part with its name and size; `to` is that path.
+  - `download`: from its hub again, to `lyrica/<source>/<repo>/<path>`,
+    with the headers of `POST /host/v1/downloads`; started by the import.
+    A file its hub won't give (gone, changed, gated without a token) is
+    copied instead.
+  - `copy`: a GGUF or safetensors file the source has, to
+    `lyrica/upload/<name>` (prefixed with 8 hex of its path when the name
+    is taken), listed in `copies` as `{ file, name, size, to }` for lyricad
+    to carry ("Uploads").
+  - `unavailable`: neither, with the `reason`; the recipe still names the
+    file, so it is ready once someone puts it there.
+
+  The model's parts, LoRAs and its workflow's own file names follow `to`.
+  It is ready once every file is here. A built-in template the host lacks is
+  `invalid` ("update it first"); a custom workflow is checked as any save
+  (`problems`, which refuse it) and its `missingNodes` listed, and a host
+  using stable-diffusion.cpp takes none. The new recipe has `copiedFrom`, the
+  source's id: importing the same model again answers that recipe and
+  fetches only what is still missing, in the places the first copy chose.
+- `GET /host/v1/parts/content?file=<part>&offset=<bytes>&length=<bytes>`:
+  up to 32 MiB of an image part's file from `offset`, as
+  `application/octet-stream`, with the file's size in `X-File-Size`. Only
+  files the parts scan found (`not_found` otherwise).
 
 ### Making images
 

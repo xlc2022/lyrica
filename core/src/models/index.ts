@@ -355,6 +355,8 @@ export interface Recommended {
 }
 
 /** A host's custom workflow routes, and a recipe's workflow (host/API.md, "Custom workflows"): a change to one changes its recipes, so discovery runs after. */
+/** The most of a file lyricad holds at once while carrying it between hosts: one piece. */
+const CARRY_PIECE = 32 * 1024 * 1024;
 const WORKFLOWS = /^\/host\/v1\/(workflows(\/(import|copy|nodes|custom-[0-9a-f]{8}(\/revisions(\/\d{1,6}(\/restore)?)?)?))?|recipes\/[0-9a-f-]{36}\/workflow)$/;
 const MANAGE = [/^\/host\/v1\/models\/(load|unload|pin|reload)$/, /^\/host\/v1\/gpus\/\d+$/, /^\/host\/v1\/memory$/, /^\/host\/v1\/scan$/, /^\/host\/v1\/usage$/, WORKFLOWS];
 
@@ -1149,7 +1151,12 @@ export class Models {
    */
   async downloads(actor: User, hostId: string): Promise<{ downloads: { id: string; state: string }[] }> {
     const ep = this.manageable(actor, hostId);
-    const downloads = listIn<{ id: string; state: string }>(await this.hostCall(ep, "GET", "/host/v1/downloads"), "downloads") ?? [];
+    const listed = listIn<{ id: string; state: string }>(await this.hostCall(ep, "GET", "/host/v1/downloads"), "downloads") ?? [];
+    // A file lyricad carries from another host says which, and why it stopped if it did.
+    const downloads = listed.map((d) => {
+      const c = this.carrying.get(`${hostId}/${d.id}`);
+      return c ? { ...d, copyFrom: c.from, ...(c.error ? { copyStopped: c.error } : {}) } : d;
+    });
     const fresh = downloads.filter((d) => d.state === "done" && !this.discovered.has(`${hostId}/${d.id}`));
     if (fresh.length) {
       await this.discover(actor, hostId);
@@ -1251,7 +1258,8 @@ export class Models {
    * every part another recipe uses. A shared host needs an administrator.
    * Confirmed recipes become image offerings at once.
    */
-  async recipe(actor: User, hostId: string, recipeId: string, action: { do: "confirm" | "ignore" | "download-parts" | "delete" } | { do: "change"; change: Record<string, unknown> } | { do: "copy"; name: string }): Promise<unknown> {
+  async recipe(actor: User, hostId: string, recipeId: string, action: { do: "confirm" | "ignore" | "download-parts" | "delete" } | { do: "change"; change: Record<string, unknown> } | { do: "copy"; name: string } | { do: "copy-to"; host: string; check?: boolean }): Promise<unknown> {
+    if (action.do === "copy-to") return this.copyRecipe(actor, hostId, recipeId, String(action.host ?? ""), { check: action.check === true });
     const ep = this.manageable(actor, hostId);
     const path = `/host/v1/recipes/${encodeURIComponent(recipeId)}`;
     const result = action.do === "delete" ? await this.hostCall(ep, "DELETE", path)
@@ -1264,6 +1272,78 @@ export class Models {
     if (gone) this.removeOffering(actor, gone.id);
     await this.discover(actor, hostId).catch(() => {});
     return result;
+  }
+
+  /**
+   * Copies an image model to another host (host/API.md, "Copying a model to another host"): the source host
+   * exports it, the target makes it and downloads the files it can from their hubs, and the rest are carried here,
+   * one 32 MiB piece at a time and never written to disk, from the source's models folder into the target's
+   * uploads. `check` only asks the target where each file would come from. Copying again carries on. Both hosts
+   * must be ones the actor manages.
+   */
+  async copyRecipe(actor: User, fromId: string, recipeId: string, toId: string, opts: { check?: boolean } = {}): Promise<unknown> {
+    const from = this.manageable(actor, fromId);
+    const to = this.manageable(actor, toId);
+    if (from.id === to.id) throw new Error("choose another host to copy it to");
+    const bundle = await this.hostCall(from, "GET", `/host/v1/recipes/${encodeURIComponent(recipeId)}/export`).catch((e: HostRefused) => {
+      throw e.code === "not_found" && !/recipe/i.test(e.message) ? new HostRefused("refused", `Update ${from.name} to copy its models.`) : e;
+    }) as { files?: { origin?: { source?: string } | null }[] };
+    const hubs = new Set((bundle.files ?? []).map((f) => f.origin?.source));
+    const result = await this.hostCall(to, "POST", "/host/v1/recipes/import", { ...bundle, ...(opts.check ? { check: true } : {}) }, this.partsTokens(actor.id, hubs), 120_000).catch((e: HostRefused) => {
+      throw e.code === "not_found" ? new HostRefused("refused", `Update ${to.name} to copy models to it.`) : e;
+    }) as { copies?: { file: string; name: string; size: number; to: string }[] };
+    if (opts.check) return result;
+    for (const c of result.copies ?? []) void this.carry(from, to, c);
+    await this.discover(actor, toId).catch(() => {});
+    return result;
+  }
+
+  /** Files lyricad carries, or carried, from one host to another, by the target's upload: the source's name, and why it stopped. */
+  private readonly carrying = new Map<string, { from: string; error?: string }>();
+
+  /**
+   * Carries one file from a host's models folder to another host's uploads: each piece read from the source and
+   * passed on as it came, five tries a piece. Stopped, the upload waits on the target: copying again carries on.
+   */
+  private async carry(from: Endpoint, to: Endpoint, c: { file: string; name: string; size: number }): Promise<void> {
+    let d: { id: string; received: number; state: string };
+    try {
+      d = (await this.hostCall(to, "POST", "/host/v1/uploads", { name: c.name, size: c.size })) as typeof d;
+    } catch {
+      return;
+    }
+    const key = `${to.id}/${d.id}`;
+    if (this.carrying.has(key) && !this.carrying.get(key)!.error && d.state === "uploading") return;
+    this.carrying.set(key, { from: from.name });
+    let tries = 0;
+    while (d.state === "uploading" && d.received < c.size) {
+      try {
+        const q = new URLSearchParams({ file: c.file, offset: String(d.received), length: String(CARRY_PIECE) });
+        const piece = await this.hostBytes(from, `/host/v1/parts/content?${q}`);
+        d = (await this.hostCall(to, "PUT", `/host/v1/uploads/${d.id}?offset=${d.received}`, piece, { "content-type": "application/octet-stream" }, 120_000)) as typeof d;
+        tries = 0;
+      } catch (e) {
+        if (++tries >= 5) {
+          this.carrying.set(key, { from: from.name, error: (e as Error).message });
+          return;
+        }
+        // The target says where it stands, so the next try starts from there.
+        const now = listIn<typeof d>(await this.hostCall(to, "GET", "/host/v1/downloads").catch(() => ({})), "downloads")?.find((x) => x.id === d.id);
+        if (now) d = now;
+      }
+    }
+    this.carrying.set(key, { from: from.name });
+  }
+
+  /** A host's answer as bytes: a piece of a file it reads out. */
+  private async hostBytes(ep: Endpoint, path: string): Promise<Uint8Array> {
+    const res = await this.fetchFor(ep)!(`${hostOrigin(ep.addresses![0]!)}${path}`, { signal: AbortSignal.timeout(120_000) }).catch(() => {
+      throw new HostRefused("unreachable", `${ep.name} can't be reached.`);
+    });
+    const err = await hostError(res);
+    if (err) throw new HostRefused(err.code, err.message);
+    if (!res.ok) throw new HostRefused("error", `${ep.name} answered ${res.status}`);
+    return new Uint8Array(await res.arrayBuffer());
   }
 
   /**
