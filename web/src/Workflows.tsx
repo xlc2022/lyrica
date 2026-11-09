@@ -66,6 +66,21 @@ export const isLink = (v: unknown): v is [string, number] => Array.isArray(v) &&
 export const blankOf = (v: unknown) => (typeof v === "string" && v.startsWith("$") ? v.slice(1) : null);
 /** What the loader blanks (Model, Text encoder, VAE) stand for on this model's jobs (images.ts, `loaderWords`): their tooltips. */
 export const LoaderWords = createContext<Record<string, string>>({});
+/** The model's own settings a bound blank takes on every job (the recipe's defaults): shown beside the select. */
+export const BlankValues = createContext<Record<string, string | number>>({});
+/** The blanks a model's settings fill, and the two its card edits. */
+const SETTING_BLANKS = ["steps", "cfg", "sampler", "scheduler", "shift", "guidance"];
+const ON_CARD = new Set(["steps", "cfg"]);
+const settingWord = (b: string) => { const w = BLANK_WORD[b] ?? b; return w === w.toUpperCase() ? w : w.toLowerCase(); };
+/** The setting values of a recipe's defaults, by blank. */
+export function blankValuesOf(defaults: Record<string, unknown> | undefined): Record<string, string | number> {
+  const out: Record<string, string | number> = {};
+  for (const k of SETTING_BLANKS) {
+    const v = defaults?.[k];
+    if (typeof v === "number" || (typeof v === "string" && v)) out[k] = v;
+  }
+  return out;
+}
 
 /** Where nodes go when the workflow has no layout yet: in columns by how far each is from the graph's start. */
 export function autoLayoutOf(graph: Graph): Layout {
@@ -169,6 +184,8 @@ function Num({ label, value, min, max, onChange }: { label: string; value: numbe
 export function InputRow({ id, k, v, blanks, options, onChange }: { id: string; k: string; v: Value; blanks: string[]; options?: unknown; onChange: (v: Value) => void }) {
   const blank = blankOf(v);
   const loads = useContext(LoaderWords);
+  const values = useContext(BlankValues);
+  const set = blank ? values[blank] : undefined;
   const choices = blank && !blanks.includes(blank) ? [blank, ...blanks] : blanks;
   const name = `${k} of node ${id}`;
   const fixed = () => {
@@ -195,6 +212,9 @@ export function InputRow({ id, k, v, blanks, options, onChange }: { id: string; 
         {choices.map((b) => <option key={b} value={b}>{BLANK_WORD[b] ?? b}</option>)}
       </select>
       {!blank && fixed()}
+      {set !== undefined && (
+        <span className="muted mono wf-set" title={`The model's ${settingWord(blank!)}${ON_CARD.has(blank!) ? ", set on its card in Image models" : ""}.`}>{set}</span>
+      )}
     </div>
   );
 }
@@ -253,6 +273,8 @@ export function EditWorkflow({ ctx, hostId, recipeId }: { ctx: MCtx; hostId?: st
     if (!lib || !from) return {};
     return loaderWords(from.parts as HostRecipe["parts"], from.loras as HostRecipe["loras"], Object.values(lib.parts).flat());
   }, [library.data, draft?.draft, recipeId]);
+  const settings = useMemo(() => blankValuesOf(draft ? draft.draft.defaults : library.data?.recipes.find((r) => r.id === recipeId)?.defaults),
+    [library.data, draft?.draft, recipeId]);
   useEffect(() => {
     const from = draft ? draft.draft : info;
     if (!from) return;
@@ -348,7 +370,7 @@ export function EditWorkflow({ ctx, hostId, recipeId }: { ctx: MCtx; hostId?: st
     <Frame ctx={ctx} tab="images" title={label.trim() || "Edit workflow"} facts={facts}>
       <ErrorText error={saved.error} />
       {(draft || info) && graph && (
-        <LoaderWords.Provider value={loads}>
+        <LoaderWords.Provider value={loads}><BlankValues.Provider value={settings}>
         <div className="card wf-form">
           {problems.map((p) => <p key={p} className="warn-text">{p}</p>)}
           {draft?.draft.unmatched.map((f) => <p key={f} className="warn-text">Not on {host?.name ?? "this host"}: <code className="raw">{f}</code></p>)}
@@ -421,7 +443,7 @@ export function EditWorkflow({ ctx, hostId, recipeId }: { ctx: MCtx; hostId?: st
             </div>
           )}
         </div>
-        </LoaderWords.Provider>
+        </BlankValues.Provider></LoaderWords.Provider>
       )}
       {asNew !== undefined && (
         <Dialog labelledBy="wf-asnew-title" onCancel={() => setAsNew(undefined)} onSubmit={() => { if (asNew.trim()) saveAsNew(asNew.trim()); }}>

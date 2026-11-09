@@ -1249,7 +1249,7 @@ test("Image models: groups by architecture with Role and Where; a recipe opens t
   // Steps is typed, clamped to 1 to 150 when left, and saved to the host's recipe when it changed.
   const steps = block.getByRole("spinbutton", { name: "Steps" });
   await expect(steps).toHaveValue("8");
-  await expect(block.locator(".field.steps")).toContainText("of 150");
+  await expect(block.locator(".field.steps").first()).toContainText("of 150");
   await steps.fill("400");
   await steps.press("Enter");
   await expect(steps).toHaveValue("150");
@@ -1258,16 +1258,28 @@ test("Image models: groups by architecture with Role and Where; a recipe opens t
   await steps.blur();
   await expect.poll(() => post(`recipes/${images.zi}`).at(-1)).toEqual({ do: "change", change: { op: "defaults", defaults: { steps: 20 } } });
   await expect(block.locator(".copyhead")).toContainText("20 steps");
+  // CFG beside it: a number to 30, kept to two decimals, clamped when left and saved likewise.
+  const cfg = block.getByRole("spinbutton", { name: "CFG" });
+  await expect(cfg).toHaveValue("1");
+  await expect(block.locator(".field.steps").nth(1)).toContainText("of 30");
+  await cfg.fill("45");
+  await cfg.press("Enter");
+  await expect(cfg).toHaveValue("30");
+  await expect.poll(() => post(`recipes/${images.zi}`).at(-1)).toEqual({ do: "change", change: { op: "defaults", defaults: { cfg: 30 } } });
+  await cfg.fill("3.5");
+  await cfg.blur();
+  await expect.poll(() => post(`recipes/${images.zi}`).at(-1)).toEqual({ do: "change", change: { op: "defaults", defaults: { cfg: 3.5 } } });
+  await expect(block.locator(".copyhead")).toContainText("CFG 3.5");
   if (process.env.SCREENSHOTS) await block.screenshot({ path: `${process.env.SCREENSHOTS}/image-models-steps-${page.viewportSize()!.width}.png` });
   // The foot's controls share a baseline: each label beside its control, Use for level with Steps and "of 150", and the
   // actions level with each other (on one line with the settings when the block is wide enough, else on the next).
   const middle = async (l: Locator) => { const b = (await l.boundingBox())!; return b.y + b.height / 2; };
   const mid = await middle(steps);
-  for (const l of [block.locator(".field.steps > span").first(), block.locator(".field.steps .muted")]) expect(Math.abs((await middle(l)) - mid)).toBeLessThanOrEqual(2);
+  for (const l of [block.locator(".field.steps > span").first(), block.locator(".field.steps .muted").first(), cfg]) expect(Math.abs((await middle(l)) - mid)).toBeLessThanOrEqual(2);
   expect(Math.abs((await middle(block.locator(".copyfoot-settings .field > span").first())) - (await middle(useFor)))).toBeLessThanOrEqual(2);
   const addPart = await middle(block.getByRole("button", { name: "Add part" }));
   for (const l of [block.getByRole("link", { name: "Edit workflow" }), block.getByRole("button", { name: "Delete model…" })]) expect(Math.abs((await middle(l)) - addPart)).toBeLessThanOrEqual(2);
-  if (!phone(page)) for (const m of [await middle(useFor), addPart]) expect(Math.abs(m - mid)).toBeLessThanOrEqual(2);
+  if (!phone(page)) expect(Math.abs((await middle(useFor)) - mid)).toBeLessThanOrEqual(2);
   if (phone(page)) expect((await steps.boundingBox())!.height).toBeGreaterThanOrEqual(44);
   await noHorizontalScroll(page);
 
@@ -1544,6 +1556,13 @@ test("Custom workflows: Workflow imports an export into a draft, Edit workflow s
   await expect(page.getByRole("region", { name: "Node 3, KSampler" }).getByLabel("How model of node 3 is set")).toHaveAttribute("title", "z_image_turbo_bf16 + LoRA pixel-art (0.6)");
   await expect(page.getByRole("region", { name: "Node 6, CLIPTextEncode" }).getByLabel("How clip of node 6 is set")).toHaveAttribute("title", "qwen_3_4b");
   await expect(page.getByRole("region", { name: "Node 8, VAEDecode" }).getByLabel("How vae of node 8 is set")).toHaveAttribute("title", "ae");
+  // A blank the model's settings fill shows their value beside it; CFG's and Steps' tooltips say where they're set.
+  const ks = page.getByRole("region", { name: "Node 3, KSampler" });
+  // Seed has none: a job picks it.
+  await expect(ks.locator(".wf-set")).toHaveText(["8", "1"]);
+  await expect(ks.getByTitle("The model's CFG, set on its card in Image models.")).toHaveText("1");
+  await expect(ks.getByTitle("The model's steps, set on its card in Image models.")).toHaveText("8");
+  await noHorizontalScroll(page);
   await page.getByRole("region", { name: "Node 3, KSampler" }).getByLabel("denoise of node 3", { exact: true }).fill("0.7");
   await shot("built-in");
   await page.getByRole("button", { name: "Save", exact: true }).click();

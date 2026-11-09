@@ -513,6 +513,9 @@ function CopyBlock({ L, c, details }: { L: Lib; c: RecipeCopy; details?: boolean
   const steps = !details && !proposed && typeof r.defaults.steps === "number" && (
     <NumberField key={r.id} label="Steps" value={r.defaults.steps} min={1} max={150} step={1} disabled={!editable || L.busy} onSave={(n) => change({ op: "defaults", defaults: { steps: n } })} />
   );
+  const cfg = !details && !proposed && typeof r.defaults.cfg === "number" && (
+    <NumberField key={`${r.id}-cfg`} label="CFG" value={r.defaults.cfg} min={0} max={30} step={0.1} disabled={!editable || L.busy} onSave={(n) => change({ op: "defaults", defaults: { cfg: n } })} />
+  );
   const where = mainPart?.downloaded ? `${her()}'s downloads` : "the shared folder";
   return (
     <section className="copyblock" aria-label={`${r.name} on ${c.host}`} data-recipe={r.id}>
@@ -563,7 +566,7 @@ function CopyBlock({ L, c, details }: { L: Lib; c: RecipeCopy; details?: boolean
       </ul>
       {!details && (editable && !proposed || useFor || steps) && (
         <div className="copyfoot">
-          {(useFor || steps) && <div className="copyfoot-settings">{useFor}{steps}</div>}
+          {(useFor || steps || cfg) && <div className="copyfoot-settings">{useFor}{steps}{cfg}</div>}
           {editable && !proposed && (
             <div className="copyfoot-actions">
               <button type="button" className="sm" disabled={L.busy} onClick={() => L.onAddPart?.(c)}>Add part</button>
