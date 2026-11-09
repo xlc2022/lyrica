@@ -414,7 +414,8 @@ describe("the vLLM backend", () => {
       const llama = new LlamaCpp({ url: router.url, serving, models: "/models", device: (i) => `CUDA${i}` });
       // The measure child couldn't build the model at this preset: a load with it would most likely die the same way.
       router.memory.set("m", { status: "failed" });
-      await expect(llama.measure(model, at, { placement: { mode: "auto" }, contextLength: 500000 })).rejects.toMatchObject({ code: "too_big", message: expect.stringContaining("a context of 500000 tokens") });
+      const long = { ...(model as object), contextLength: 1_000_000 } as never;
+      await expect(llama.measure(long, at, { placement: { mode: "auto" }, contextLength: 500000 })).rejects.toMatchObject({ code: "too_big", message: expect.stringContaining("a context of 500000 tokens") });
       // Refused, the placement leaves the preset as a forgotten one does.
       expect(readFileSync(join(serving, "llamacpp.ini"), "utf8")).not.toContain("[m]");
     } finally {
