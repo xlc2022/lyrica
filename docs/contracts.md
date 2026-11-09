@@ -2450,6 +2450,12 @@ sleep.events                       // started, phase, finished: IDs only, never 
   instruction carries and a finished dream clears. A
   `no-key` skip is recorded once the key is back, since the pool can't be
   written without it.
+- `PUT …/sleep/:pool/focus` (`SleepFocusChange { text }`, empty clears)
+  sets the line for tonight and returns the sleep overview, with `focus`.
+  `POST …/sleep/:pool/runs/:runId/undo` undoes the pool's newest undoable
+  run (`PoolStore.undoSleepRun`) and returns its detail; `409` while she
+  sleeps or when `sleepUndoBlock` says why not. A run's detail carries
+  `undo?: { blocked? }` on that run. A person only, never her tools.
 - `POST …/sleep/:pool/items/:itemId/chat` returns the item's existing thread
   on retry. If it has no assistant message with text and is idle, it retries
   her opening, answering an existing last hidden opening user entry without
