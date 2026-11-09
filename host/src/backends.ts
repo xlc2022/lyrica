@@ -157,8 +157,11 @@ export class LlamaCpp implements Backend {
       const parallel = concurrentOf(model, s);
       if (parallel) lines.push(`parallel = ${parallel}`, "kv-unified = true");
       if (s.batchSize) lines.push(`batch-size = ${s.batchSize}`);
+      // Experts kept in system RAM cross to a GPU once per step of a prompt (llama.cpp computes a step of 32 tokens or
+      // more there), so a prompt is read in steps of the whole batch, not llama.cpp's 512: each crossing serves more tokens.
+      if (at.cpuMoe) lines.push(`ubatch-size = ${s.batchSize ?? 2048}`);
       // A CMP reads a prompt about 6% faster in steps of 2048 tokens than in llama.cpp's 512, up to the batch size.
-      if (at.gpus.some(this.o.cmp)) lines.push(`ubatch-size = ${Math.min(s.batchSize ?? 2048, 2048)}`);
+      else if (at.gpus.some(this.o.cmp)) lines.push(`ubatch-size = ${Math.min(s.batchSize ?? 2048, 2048)}`);
       if (s.chatTemplate) lines.push(`chat-template-file = ${this.templates.write(s.chatTemplate)}`);
       if (model.kind === "embedding") lines.push("embeddings = true");
       if (usesVision(model, s)) lines.push(`mmproj = ${this.o.models}/${model.mmproj}`);
