@@ -1,7 +1,9 @@
 // Fake GPUs and model servers, so host-api runs without a GPU.
 import { createHash } from "node:crypto";
 import http from "node:http";
+import { existsSync, readFileSync } from "node:fs";
 import https from "node:https";
+import { join } from "node:path";
 import type { AddressInfo } from "node:net";
 import type { Backend, Measured } from "../src/backends.ts";
 import { HostError } from "../src/http.ts";
@@ -111,8 +113,10 @@ export function textModel(id: string, gb: number, over: Partial<TextModel> = {})
  * A fake llama.cpp router: presets from the shared folder, /models, load and
  * unload, and chat completions that echo the last message.
  */
-export async function fakeLlamaRouter(loadState = "loaded") {
+export async function fakeLlamaRouter(loadState = "loaded", opts: { serving?: string } = {}) {
   const status = new Map<string, string>();
+  // A model's measurement as the router reports it (`memory` on GET /models), where a test sets one.
+  const memory = new Map<string, { status: string; min?: unknown }>();
   const server = http.createServer(async (req, res) => {
     const chunks: Buffer[] = [];
     for await (const c of req) chunks.push(c as Buffer);
@@ -123,7 +127,20 @@ export async function fakeLlamaRouter(loadState = "loaded") {
       res.end(JSON.stringify(b));
     };
     // loadState "crashed": the server exited while loading, as the router reports it.
-    if (url.pathname === "/models") return json(200, { data: [...status].map(([id, value]) => ({ id, status: value === "crashed" ? { value: "unloaded", failed: true, exit_code: 134 } : { value } })) });
+    if (url.pathname === "/models" && url.searchParams.get("reload") && opts.serving) {
+      // As the router does, a reload forgets the measurement of a model whose preset section is gone.
+      const ini = existsSync(join(opts.serving, "llamacpp.ini")) ? readFileSync(join(opts.serving, "llamacpp.ini"), "utf8") : "";
+      for (const id of [...memory.keys()]) if (!ini.includes(`[${id}]`)) memory.delete(id);
+      return json(200, { data: [] });
+    }
+    if (url.pathname === "/models") {
+      // Every model the router knows of: loaded or loading ones, and ones it has only measured (status "unloaded").
+      const ids = new Set([...status.keys(), ...memory.keys()]);
+      return json(200, { data: [...ids].map((id) => {
+        const value = status.get(id) ?? "unloaded";
+        return { id, status: value === "crashed" ? { value: "unloaded", failed: true, exit_code: 134 } : { value }, ...(memory.has(id) ? { memory: memory.get(id) } : {}) };
+      }) });
+    }
     if (url.pathname === "/models/load") {
       status.set(body.model, loadState);
       return json(200, { success: true });
@@ -153,7 +170,7 @@ export async function fakeLlamaRouter(loadState = "loaded") {
     json(404, {});
   });
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
-  return { server, status, url: `http://127.0.0.1:${(server.address() as AddressInfo).port}` };
+  return { server, status, memory, url: `http://127.0.0.1:${(server.address() as AddressInfo).port}` };
 }
 
 export const TOKEN = "hf_marker_token_8812";

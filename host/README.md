@@ -622,9 +622,14 @@ revoked. A revoked server must pair again.
   the planner and the load is planned again from the top, so idle models
   are unloaded or more of the model moves to system RAM, and the new
   placement is measured; after two such rounds a short GPU refuses the
-  load, naming the measured need. Reload takes the same path. Without a
-  measurement (failed, or not done within a minute) the estimate stands
-  and the log says `not measured` with the reason:
+  load, naming the measured need. Reload takes the same path. A measurement
+  that fails (the measure child couldn't build the model at that context
+  and batch) refuses the load, saying so, since the load would most likely
+  die the same way; the host then drops the model's preset and has the
+  router read the file again, so the next try measures afresh rather than
+  reading that failure back. Without a measurement (not done within a minute, or a
+  router without one) the estimate stands and the log says `not measured`
+  with the reason:
   file size times 1.05, the cache for its context, and 0.5 GiB per GPU;
   should the router then unload an idle model of the host's to make its
   own room, the host learns of it at that model's next request, which
