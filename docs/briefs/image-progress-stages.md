@@ -4,7 +4,7 @@
 control, no new route; one field on the job read). Asked for on 2026-11-09:
 the image placeholder often sat at 95% for minutes, most of all on Krea 2.
 
-**Status:** Built, in review.
+**Status:** Merged as #874 (5eefd536), 2026-11-09.
 
 ## Why it sat at 95%
 
