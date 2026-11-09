@@ -3,10 +3,11 @@
 // model's workflow (its own custom one, or the built-in template it runs on, which a save turns into the model's own
 // revision of it) as a form, as a graph (WorkflowGraph.tsx), as JSON, and by its revisions. Every call goes through the
 // host's manage route, which on a shared host is for administrators; the host checks each save.
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
-import { post, u } from "./api.ts";
+import { createContext, lazy, Suspense, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { get, post, u } from "./api.ts";
 import { CopyButton } from "./CopyButton.tsx";
 import { Frame, type MCtx } from "./ModelsFrame.tsx";
+import { loaderWords, type HostPart, type HostRecipe } from "./images.ts";
 import { her } from "./name.ts";
 import { go, href } from "./route.ts";
 import { clock, dateText, dayNumber, Dialog, ErrorText, useAction, useLoad } from "./ui.tsx";
@@ -63,6 +64,8 @@ const manage = <T,>(userId: string, hostId: string, method: "GET" | "POST" | "PU
 
 export const isLink = (v: unknown): v is [string, number] => Array.isArray(v) && v.length === 2 && typeof v[0] === "string" && typeof v[1] === "number";
 export const blankOf = (v: unknown) => (typeof v === "string" && v.startsWith("$") ? v.slice(1) : null);
+/** What the loader blanks (Model, Text encoder, VAE) stand for on this model's jobs (images.ts, `loaderWords`): their tooltips. */
+export const LoaderWords = createContext<Record<string, string>>({});
 
 /** Where nodes go when the workflow has no layout yet: in columns by how far each is from the graph's start. */
 export function autoLayoutOf(graph: Graph): Layout {
@@ -165,6 +168,7 @@ function Num({ label, value, min, max, onChange }: { label: string; value: numbe
 /** One scalar input: Fixed with its value, or a blank the job fills. */
 export function InputRow({ id, k, v, blanks, options, onChange }: { id: string; k: string; v: Value; blanks: string[]; options?: unknown; onChange: (v: Value) => void }) {
   const blank = blankOf(v);
+  const loads = useContext(LoaderWords);
   const choices = blank && !blanks.includes(blank) ? [blank, ...blanks] : blanks;
   const name = `${k} of node ${id}`;
   const fixed = () => {
@@ -183,7 +187,7 @@ export function InputRow({ id, k, v, blanks, options, onChange }: { id: string; 
   return (
     <div className="wf-input">
       <span className="mono wf-key">{k}</span>
-      <select aria-label={`How ${name} is set`} value={blank ?? ""} onChange={(e) => {
+      <select aria-label={`How ${name} is set`} title={blank ? loads[blank] : undefined} value={blank ?? ""} onChange={(e) => {
         const b = e.target.value;
         onChange(b ? `$${b}` : TEXT_BLANKS.has(blank ?? "") ? "" : 0);
       }}>
@@ -241,6 +245,14 @@ export function EditWorkflow({ ctx, hostId, recipeId }: { ctx: MCtx; hostId?: st
   const [jsonProblem, setJsonProblem] = useState("");
   const [restoring, setRestoring] = useState<Revision>();
   const [run, busy, error] = useAction();
+  // The host's image library, for what the loader blanks stand for: a tooltip, so a failed read only leaves it out.
+  const library = useLoad(() => (hostId ? get<{ recipes: HostRecipe[]; parts: Record<string, HostPart[]> }>(u(userId, "hosts", hostId, "images")) : Promise.resolve(undefined)), [userId, hostId]);
+  const loads = useMemo(() => {
+    const lib = library.data;
+    const from = draft ? draft.draft : lib?.recipes.find((r) => r.id === recipeId);
+    if (!lib || !from) return {};
+    return loaderWords(from.parts as HostRecipe["parts"], from.loras as HostRecipe["loras"], Object.values(lib.parts).flat());
+  }, [library.data, draft?.draft, recipeId]);
   useEffect(() => {
     const from = draft ? draft.draft : info;
     if (!from) return;
@@ -328,6 +340,7 @@ export function EditWorkflow({ ctx, hostId, recipeId }: { ctx: MCtx; hostId?: st
     <Frame ctx={ctx} tab="images" title={label.trim() || "Edit workflow"} facts={facts}>
       <ErrorText error={saved.error} />
       {(draft || info) && graph && (
+        <LoaderWords.Provider value={loads}>
         <div className="card wf-form">
           {problems.map((p) => <p key={p} className="warn-text">{p}</p>)}
           {draft?.draft.unmatched.map((f) => <p key={f} className="warn-text">Not on {host?.name ?? "this host"}: <code className="raw">{f}</code></p>)}
@@ -400,6 +413,7 @@ export function EditWorkflow({ ctx, hostId, recipeId }: { ctx: MCtx; hostId?: st
             </div>
           )}
         </div>
+        </LoaderWords.Provider>
       )}
       {asNew !== undefined && (
         <Dialog labelledBy="wf-asnew-title" onCancel={() => setAsNew(undefined)} onSubmit={() => { if (asNew.trim()) saveAsNew(asNew.trim()); }}>

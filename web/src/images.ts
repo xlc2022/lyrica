@@ -135,3 +135,35 @@ export function addableRoles(r: HostRecipe): Role[] {
   if (r.parts.some((p) => p.role === "checkpoint")) for (const role of ["vae", "text_encoder"] as const) if (!r.parts.some((p) => p.role === role)) roles.push(role);
   return roles;
 }
+
+/**
+ * What a workflow's loader blanks stand for when a job runs, as the host fills them (host/src/templates.ts, `loaders`):
+ * `model` is the model file with the LoRAs the host chains onto it in order ("flux1-dev + LoRA flux-style (0.7)"),
+ * `clip` the text encoders, `vae` the VAE; a slot's blank (`model_high`) is that expert's, which takes the LoRAs made
+ * for it (the part's slot on the host) and those made for neither. Edit workflow shows them as the blanks' tooltips.
+ */
+export function loaderWords(
+  parts: Pick<HostRecipe["parts"][number], "role" | "slot" | "file">[], loras: HostRecipe["loras"], hostParts: Pick<HostPart, "file" | "slot">[],
+): Record<string, string> {
+  const short = (f: string) => fileName(f).replace(/\.(safetensors|gguf|ckpt|sft|pt|pth|bin)$/i, "");
+  const key = (base: string, slot: string | null) => (slot ? `${base}_${slot}` : base);
+  const out: Record<string, string> = {};
+  const checkpoint = parts.find((p) => p.role === "checkpoint" && p.file);
+  if (checkpoint) out.model = out.clip = out.vae = short(checkpoint.file!);
+  for (const p of parts) if (p.role === "diffusion" && p.file) out[key("model", p.slot)] = short(p.file);
+  const encoders = parts.filter((p) => p.role === "text_encoder" && p.file).map((p) => short(p.file!));
+  if (encoders.length) out.clip = encoders.join(" + ");
+  for (const p of parts) if (p.role === "vae" && p.file) out[key("vae", p.slot)] = short(p.file);
+  const chain = (target: string, file: string, strength?: number) => {
+    if (out[target]) out[target] += ` + LoRA ${short(file)}${strength === undefined ? "" : ` (${strength})`}`;
+  };
+  // A template's own LoRA part goes onto its slot's expert, or the model.
+  for (const p of parts) if (p.role === "lora" && p.slot && p.file) chain(out[key("model", p.slot)] ? key("model", p.slot) : "model", p.file);
+  const experts = parts.filter((p) => p.role === "diffusion" && p.slot && p.file).map((p) => p.slot!);
+  for (const l of loras) {
+    const slot = hostParts.find((p) => p.file === l.file)?.slot ?? null;
+    const targets = !experts.length ? [null] : slot && experts.includes(slot) ? [slot] : experts;
+    for (const s of targets) chain(key("model", s), l.file, l.strength);
+  }
+  return out;
+}
