@@ -351,10 +351,11 @@ test("her rejected attempts fold into one closed group, and her pick shows last 
   await page.reload();
   const group = page.getByRole("button", { name: "2 rejected" });
   await expect(group).toHaveAttribute("aria-expanded", "false");
-  // Only the last attempt shows full size; the rejects are folded away.
+  // Only the last attempt shows full size; the rejects, and the turns that made and set them aside, are folded away.
   await expect(page.locator(".turn .message-image")).toHaveCount(1);
   await expect(page.getByRole("img", { name: c.split("/").at(-1)! })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Rejecting an image" }).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "Rejecting an image" })).toHaveCount(1);
+  await expect(page.getByRole("button", { name: "Making an image" })).toHaveCount(1);
   await noHorizontalScroll(page);
   if (process.env.SCREENSHOTS) await page.screenshot({ fullPage: true, path: `${process.env.SCREENSHOTS}/rejects-closed-${page.viewportSize()!.width}.png` });
   await group.click();
@@ -362,6 +363,11 @@ test("her rejected attempts fold into one closed group, and her pick shows last 
   const rejected = page.locator(".rejected-body img");
   await expect(rejected).toHaveCount(2);
   await expect(rejected.first()).toHaveAttribute("src", `${base}/file?path=${encodeURIComponent(a.replace("/images/", "/images/rejected/"))}`);
+  // Open, the fold shows the two turns that made the rejects, with their markers, and no third image.
+  await expect(page.locator(".rejected-turns .turn")).toHaveCount(2);
+  await expect(page.getByRole("button", { name: "Making an image" })).toHaveCount(3);
+  await expect(page.getByRole("button", { name: "Rejecting an image" })).toHaveCount(2);
+  await expect(page.locator(".rejected-turns .message-image")).toHaveCount(0);
   await noHorizontalScroll(page);
   if (process.env.SCREENSHOTS) await page.screenshot({ fullPage: true, path: `${process.env.SCREENSHOTS}/rejects-open-${page.viewportSize()!.width}.png` });
 });
