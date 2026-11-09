@@ -1097,12 +1097,15 @@ body may be up to 2 MB. Not on a host using stable-diffusion.cpp.
     null, `recipes` this one, `workflow`, `missingNodes`, `nodes` and
     `problems: []` as for a custom one.
   - `PUT /host/v1/recipes/<id>/workflow` `{ workflow?, video?, name?, by?,
-    layout? }` → the same. On a custom workflow, as `PUT
-    /host/v1/workflows/<name>`. On a built-in template (confirmed; create,
-    edit, video or animate), the recipe gets its own custom workflow first:
-    a copy of the template named after the recipe, `from: "copy"` with the
-    template as `base`, checked and saved as revision 1 with the edits, and
-    the recipe moves onto it (`name` is ignored: it follows the recipe).
+    layout? }` → the same. `name` renames the recipe (as PATCH's `rename`;
+    its ID stays, so its calls, LoRAs and copies on other hosts are
+    untouched) and a custom workflow's label follows it; sent on its own,
+    it changes nothing else: no revision, and a built-in stays a built-in.
+    Otherwise, on a custom workflow, as `PUT /host/v1/workflows/<name>`. On
+    a built-in template (confirmed; create, edit, video or animate), the
+    recipe gets its own custom workflow first: a copy of the template named
+    after the recipe, `from: "copy"` with the template as `base`, checked
+    and saved as revision 1 with the edits, and the recipe moves onto it.
     The built-in stays as shipped, for the other recipes on it and for
     updates.
   - `DELETE /host/v1/recipes/<id>/workflow` → the built-in as GET gives it:
