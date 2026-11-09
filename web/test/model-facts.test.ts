@@ -18,6 +18,21 @@ it("renders a row per model copy with its short name, endpoint, output, speeds a
   expect(html).not.toContain("Not measured");
 });
 
+it("shows an image model's seconds per image in its Speed cell, with steps, size and it/s in the tooltip, and no prompt speed", () => {
+  const html = render(facts([
+    model({ offeringId: "art", label: "Krea 2 Turbo", calls: 8, sampling: { secondsPer: 17.25, steps: 8, stepsPerSec: 0.46, pixels: 1_048_576, samples: 6, unit: "image" } }),
+    model({ offeringId: "clip", label: "Clip", calls: 1, sampling: { secondsPer: 240.4, steps: 20, stepsPerSec: 0.083, samples: 1, unit: "clip" } }),
+  ]));
+  expect(html).toContain('>17.3 <span class="muted">s/image</span>');
+  expect(html).toContain('>240 <span class="muted">s/clip</span>');
+  expect(html).toContain("Median sampling time per image on its host");
+  expect(html).toContain("8 steps · 1 MP · 0.5 it/s. 6 measured.");
+  expect(html).toContain("20 steps · 0.1 it/s. 1 measured.");
+  expect(html).toContain("An image model reads no prompt tokens.");
+  expect(html).not.toContain("Not measured");
+  expect(html).not.toContain("tok/s</span>");
+});
+
 it("says a speed nothing measured is not measured, distinct from a measured zero", () => {
   const html = render(facts([model({ offeringId: "one", label: "Unmeasured" }), model({ offeringId: "two", label: "Measured", medianTokPerSec: 0, speedSamples: 1 })]));
   expect(html.match(/Not measured: no call/g)).toHaveLength(2 + 1); // its speed and prompt, and the other's prompt

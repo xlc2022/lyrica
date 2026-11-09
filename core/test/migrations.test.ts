@@ -139,6 +139,20 @@ describe("user step 21 (local MCP servers)", () => {
   });
 });
 
+describe("user step 22 (an image call's sampling)", () => {
+  it("adds the nullable sampling columns to every released user schema, and the release before still opens it", () => {
+    for (const v of STEPS.user.map((s) => s.version).filter((v) => v < 22)) {
+      const db = scratchDb();
+      migrate(db, "user", {}, STEPS.user.filter((s) => s.version <= v));
+      db.prepare("INSERT INTO model_calls (at, pool, thread, task, offering, label, endpoint, kind) VALUES ('2026-01-01', 'general', 't', 'image.create', 'o', 'Art', 'host', 'local')").run();
+      migrate(db, "user");
+      expect(db.prepare("SELECT sampling_ms, steps, images, pixels FROM model_calls").get()).toEqual({ sampling_ms: null, steps: null, images: null, pixels: null });
+      expect(() => checkReadable(db, "user", STEPS.user.filter((s) => s.version < 22))).not.toThrow();
+      db.close();
+    }
+  });
+});
+
 describe("user step 5 (portrait-photo cloud choice)", () => {
   it("expands every released user schema with Ask once a day and preserves an existing choice", () => {
     for (let v = 1; v < 5; v++) for (const policy of [undefined, "never", "always"]) {

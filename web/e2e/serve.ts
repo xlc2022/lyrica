@@ -94,6 +94,13 @@ function fakeModel() {
         const cloudModel = models.addModel(user, cloud.id, { modelId: "vendor/fixture-cloud", tools: true }).id;
         const HOUR = 3_600_000, tasks = ["chat", "chat", "title", "watching", "chat", "sleep.consolidate"] as const;
         for (let i = 0; i < 30; i++) call(cloudModel, `status-fixture-c-${i}`, tasks[i % tasks.length]!, (2 + ((i * 7) % 22)) * HOUR + (i % 5) * 600_000, 200 + ((i * 97) % 900), 4000 + ((i * 1300) % 9000));
+        // An image model whose host measured its sampling: three images, 17.3 s at the median, 8 steps at 1 MP.
+        const image = models.addModel(user, endpoint.id, { modelId: "fixture-image", tools: false }).id;
+        for (const [n, ms] of [15_000, 17_300, 21_000].entries()) back(n * HOUR, () => {
+          const resolution = models.resolve("chat", { userId, pool: "general", localOnly: false, overrides: { chat: [{ offeringId: image }] } });
+          models.recordCall(userId, { pool: "general", threadId: `status-fixture-i-${n}`, task: "image.create", resolution });
+          models.recordSampling(userId, `status-fixture-i-${n}`, "image.create", "general", { ms, steps: 8, images: 1, pixels: 1024 * 1024 });
+        });
         res.writeHead(204); return res.end();
       }
       // Test-only history fixture, in encrypted stores; never a production route.

@@ -2383,7 +2383,10 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   administrator's own displayed pools, all retained call rows in the inclusive
   last 24 hours, grouped by offering ID with recorded label/endpoint, `kind`,
   `calls`, `outputTokens`, `speedSamples` with optional `medianTokPerSec`,
-  `promptSamples` with optional `medianPromptTokPerSec`, and `fallbacks`; and
+  `promptSamples` with optional `medianPromptTokPerSec`, optional `sampling`
+  for an image or video model (`secondsPer`, `steps`, `stepsPerSec` and
+  `pixels`, medians per image over the rows whose host measured the job's
+  samplers, with `samples` and the `unit`, image or clip), and `fallbacks`; and
   each row as `{ at, offeringId, task, outputTokens?, tokPerSec?, fallback? }`,
   newest first, never its thread, note or text. Medians use existing
   `pace.tokPerSec` and `pace.promptTokPerSec`; no samples means absent, not zero. Fallbacks count nonempty

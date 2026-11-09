@@ -939,7 +939,9 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   line, one legend, four Vega-Lite charts (calls and output tokens per hour,
   speed per call, calls by task; drawn live by `charts.ts`'s `drawChart` with
   a hover tip, hours on the user's own clock) and a row per offering ID with
-  calls, output, median generation and prompt tok/s and recorded fallbacks.
+  calls, output, median generation and prompt tok/s (an image or video
+  model's median seconds per image in the Speed cell instead, with steps,
+  megapixels and it/s in its tooltip) and recorded fallbacks.
   Series take the chart colours by label; past eight copies the least used are
   Other. Changing shown pools drops the old aggregate and loads Status again.
   The scope line names the displayed pools and latest-500-record retention

@@ -17,6 +17,14 @@ const SPEED_WHY = "Median recorded output tokens per second of generation, with 
 const PROMPT_WHY = "Median recorded prompt tokens read per second, before the first token.";
 const FALLBACK_WHY = "Records with a fallback marker: a resolution candidate was skipped. Not errors, retries or failed requests. No marker means no recorded fallback.";
 const UNMEASURED = "Not measured: no call in the window recorded a time long enough to mean anything.";
+const SAMPLING_WHY = "Median sampling time per image on its host, from ComfyUI's sampler steps; waiting, model loading and decoding aren't counted.";
+const NO_PROMPT = "An image model reads no prompt tokens.";
+
+/** An image or video model's speed, for its Speed cell and tooltip: seconds per image with the steps, size and steps per second it ran at. */
+export function samplingWords(s: NonNullable<Facts["models"][number]["sampling"]>): { seconds: string; unit: string; title: string } {
+  const at = [`${num(s.steps, 0)} ${s.steps === 1 ? "step" : "steps"}`, ...(s.pixels ? [`${num(s.pixels / 1_000_000)} MP`] : []), `${num(s.stepsPerSec)} it/s`].join(" · ");
+  return { seconds: s.secondsPer >= 100 ? num(s.secondsPer, 0)! : num(s.secondsPer)!, unit: `s/${s.unit}`, title: `${SAMPLING_WHY} ${at}. ${s.samples} measured.` };
+}
 
 export interface Series { offeringId: string; name: string; title: string; color: string }
 
@@ -184,12 +192,13 @@ export function ModelCallFacts({ facts }: { facts: Facts }) {
         {facts.models.map((m) => {
           const s = series.find((x) => x.offeringId === m.offeringId)!;
           const speed = num(m.medianTokPerSec), prompt = num(m.medianPromptTokPerSec, 0);
+          const sampled = speed === undefined && m.sampling ? samplingWords(m.sampling) : undefined;
           return <div role="row" key={m.offeringId}>
             <span role="cell" className="mt-model" title={`${m.label} · ${m.endpointName}`}><span className="swatch" style={{ background: s.color }} aria-hidden="true" />{shortModel(m.label)} <span className="muted">· {m.endpointName}</span></span>
             <span role="cell" className="num" data-label="Calls">{m.calls}</span>
             <span role="cell" className="num" data-label="Output">{tokenCount(m.outputTokens)}</span>
-            <span role="cell" className="num" data-label="Speed" title={speed === undefined ? UNMEASURED : `${SPEED_WHY} ${m.speedSamples} measured.`}>{speed === undefined ? <span className="muted">—</span> : <>{speed} <span className="muted">tok/s</span></>}</span>
-            <span role="cell" className="num" data-label="Prompt" title={prompt === undefined ? UNMEASURED : `${PROMPT_WHY} ${m.promptSamples} measured.`}>{prompt === undefined ? <span className="muted">—</span> : <>{prompt} <span className="muted">tok/s</span></>}</span>
+            <span role="cell" className="num" data-label="Speed" title={sampled ? sampled.title : speed === undefined ? UNMEASURED : `${SPEED_WHY} ${m.speedSamples} measured.`}>{sampled ? <>{sampled.seconds} <span className="muted">{sampled.unit}</span></> : speed === undefined ? <span className="muted">—</span> : <>{speed} <span className="muted">tok/s</span></>}</span>
+            <span role="cell" className="num" data-label="Prompt" title={prompt === undefined ? (sampled ? NO_PROMPT : UNMEASURED) : `${PROMPT_WHY} ${m.promptSamples} measured.`}>{prompt === undefined ? <span className="muted">—</span> : <>{prompt} <span className="muted">tok/s</span></>}</span>
             <span role="cell" className="num" data-label="Fallbacks">{m.fallbacks}</span>
           </div>;
         })}

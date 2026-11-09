@@ -305,6 +305,11 @@ export const STEPS: Record<DbKind, MigrationStep[]> = {
     // Local (stdio) MCP servers (docs/briefs/mcp-local.md): a server's command and environment beside its URL. Adds only.
     version: 21,
     run(db) { addColumns(db, [["mcp_servers", "command", "TEXT NOT NULL DEFAULT '[]'"], ["mcp_servers", "env", "TEXT NOT NULL DEFAULT '{}'"]]); },
+  }, {
+    // Principle 1: an image or video call's sampling time, steps, count and pixels, as its host measured them, so Status
+    // can say how fast an image model is (docs/briefs/image-speed.md). Adds nullable columns only.
+    version: 22,
+    run(db) { addColumns(db, [["model_calls", "sampling_ms", "INTEGER"], ["model_calls", "steps", "INTEGER"], ["model_calls", "images", "INTEGER"], ["model_calls", "pixels", "INTEGER"]]); },
   }],
   pool: [{
     version: 1, contract: true,
