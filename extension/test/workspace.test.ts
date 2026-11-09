@@ -893,6 +893,33 @@ describe("project command rules in the hook", () => {
   });
 });
 
+describe("suspect commands in the sandbox", () => {
+  const asked: { machine?: string; warning?: string }[] = [];
+  const yes: ThreadTools["approve"] = async (r) => { asked.push({ machine: r.machine, warning: r.warning }); return true; };
+  afterEach(() => { asked.length = 0; });
+
+  it("ask in Auto with the warning, even under an allow rule, until allowed in this thread", async () => {
+    const first = await run("auto", [fauxToolCall("bash", { command: "rm -rf dist" })], { rules: [{ prefix: "rm", decision: "allow" }], approve: yes });
+    expect(asked).toEqual([{ machine: undefined, warning: "This deletes a folder and everything in it." }]);
+    expect(first.commands).toEqual(["rm -rf dist"]);
+    asked.length = 0;
+    const again = await run("auto", [fauxToolCall("bash", { command: "rm -rf dist" })], { approve: yes, allowed: [":sandbox: rm -rf dist"] });
+    expect(asked).toEqual([]);
+    expect(again.commands).toEqual(["rm -rf dist"]);
+    // Only that exact command, and only in the sandbox.
+    await run("auto", [fauxToolCall("bash", { command: "rm -rf build" })], { approve: yes, allowed: [":sandbox: rm -rf dist"] });
+    expect(asked).toHaveLength(1);
+  });
+  it("leave the machine-only rules to machines, and refuse a denied one", async () => {
+    const quiet = await run("auto", [fauxToolCall("bash", { command: "sudo reboot" })], { approve: yes });
+    expect(asked).toEqual([]);
+    expect(quiet.commands).toEqual(["sudo reboot"]);
+    const denied = await run("auto", [fauxToolCall("bash", { command: "git push --force" })], { approve: async () => false });
+    expect(denied.commands).toEqual([]);
+    expect(denied.results[0]).toContain("declined");
+  });
+});
+
 describe("where she builds", () => {
   const prompt = (writable: boolean) => describePrompt({
     settings: () => ({ grants: [{ path: "/srv/game", writable }] }), network: () => ({ internet: false, services: false, hosts: [] }),

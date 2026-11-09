@@ -738,7 +738,12 @@ in `hello`.
 A project's command rules are read for every `bash` call: Forbid refuses
 without a card; Ask prompts in every mode; Allow skips sandbox mode prompts.
 `PATCH …/threads/:pool/:threadId` accepts `commandRules` on a project chat
-only, and its `projectSettings.commandRules` returns the saved list.
+only, and its `projectSettings.commandRules` returns the saved list. A
+project made (`POST …/threads` with `project`, `PATCH` with `project: true`,
+or continue) starts with `DEFAULT_COMMAND_RULES` (docs/workspace.md, "Project
+command rules"). A suspect sandbox command's request carries `suspect` and
+`warning` and no `alwaysAllow`; its `allowInThread` answer stores the exact
+command for the sandbox.
 A plain sandbox command request in a project may carry `alwaysAllow`, the
 prefix lyricad computes. An answer with `alwaysAllow: true` adds that stored
 prefix as an Allow rule to the owning project and approves the call, also

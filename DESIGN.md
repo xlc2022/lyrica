@@ -1589,14 +1589,21 @@ NAS, and Proxmox nodes. Decided 2026-10-11 from
   answer, the call is denied. There is no "allow from now on", with one
   exception below.
 - **Suspect commands always ask**, in every mode: a short fixed list,
-  documented in docs/workspace.md and never grown one scare at a time, of
-  commands almost never right on a machine (deleting `/`, `/*`, a home
-  folder or a top-level system folder; `mkfs` or `dd` onto a device;
-  recursive `chmod` or `chown` on `/`; `userdel`; shutdown and reboot;
-  `qm destroy`). The permission card carries a warning sentence and a third
+  documented in docs/workspace.md and never grown one scare at a time. One
+  part is work she can't undo wherever it runs, in the sandbox too (a
+  recursive `rm`; `git push --force`, `reset --hard`, `clean`, discarding
+  changes, deleting a branch or stash); the other is commands almost never
+  right on a machine (deleting `/`, `/*`, a home folder or a top-level
+  system folder; `mkfs` or `dd` onto a device; recursive `chmod` or `chown`
+  on `/`; `userdel`; shutdown and reboot; `qm destroy`). A `cd` earlier on
+  the line counts, so `cd / && rm -rf *` is read as `rm -rf /*` (decided
+  2026-11-09, with the sandbox part, after comparing other coding agents'
+  guards). The permission card carries a warning sentence and a third
   choice, **Allow in this thread**: that exact command no longer asks in
   that thread, and nowhere else. The list is a warning layer; the boundary
-  is the account's rights and the root-owned keys file.
+  is the sandbox's mounts, or the account's rights and the root-owned keys
+  file. A new project also starts with Forbid rules for `git push --force`
+  and `rm -rf /` (docs/workspace.md, "Project command rules").
 - **The first call on a machine in a turn asks** if anything earlier in the
   turn ran somewhere else (the sandbox or another machine), whatever the
   modes, so output from one place can't quietly steer her onto another.

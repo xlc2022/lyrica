@@ -2,6 +2,13 @@ import { posix } from "node:path";
 import { SHELLS, simpleCommands } from "./machines.ts";
 
 export interface CommandRule { prefix: string; decision: "allow" | "ask" | "forbid" }
+/** What a new project starts with (docs/workspace.md, "Project command rules"): the person removes or changes them in Project settings. */
+export const DEFAULT_COMMAND_RULES: readonly CommandRule[] = [
+  { prefix: "git push --force", decision: "forbid" },
+  { prefix: "git push -f", decision: "forbid" },
+  { prefix: "rm -rf /", decision: "forbid" },
+  { prefix: "rm -fr /", decision: "forbid" },
+];
 const SHELL = { test: (w: string) => SHELLS.has(w) };
 const WRAPPER = /^(?:sudo|doas|env|nohup|exec|command|time|nice|ionice|builtin|timeout|xargs|stdbuf|chroot)$/;
 const assignment = (w: string) => /^[A-Za-z_][A-Za-z0-9_]*=/.test(w);

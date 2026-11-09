@@ -14,17 +14,69 @@ export interface SuspectCommand {
   warning: string;
   /** Matches one simple command's words, its program name first. */
   test(words: string[]): boolean;
+  /** Asks in the sandbox too, not only on a machine: work she can't undo wherever it runs. */
+  everywhere?: true;
 }
+
+/** Where a suspect command is about to run; the sandbox gets only the `everywhere` rules. */
+export type SuspectWhere = "machine" | "sandbox";
+/** What Allow in this thread stores as the machine for a sandbox command (no machine's name has a colon). */
+export const SANDBOX_ALLOW = ":sandbox";
 
 const TOP_FOLDERS = "bin|boot|dev|etc|home|lib|lib32|lib64|opt|proc|root|run|sbin|srv|sys|usr|var";
 /** `/`, `/*`, a home folder or a top-level system folder, with or without a trailing `/` or `/*`. */
 const SWEEPING = new RegExp(`^(?:/|~|\\$HOME|\\$\\{HOME\\}|/home/[^/]+|/(?:${TOP_FOLDERS}))/?\\*?$`);
 const flags = (words: string[]) => words.slice(1).filter((w) => w.startsWith("-"));
 const args = (words: string[]) => words.slice(1).filter((w) => !w.startsWith("-"));
+/** A short flag cluster holding the letter (`-rf`, `-fr`, `-Rf`), never a long `--flag`. */
+const short = (letter: string) => (w: string) => new RegExp(`^-[a-zA-Z]*${letter}`).test(w);
+/** Git's own options that take the next word (`git -C dir push`, `git -c k=v …`). */
+const GIT_VALUE_FLAGS = new Set(["-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path"]);
+/** A git command's subcommand and the words after it, past git's own options; undefined for anything but git. */
+function gitSub(w: string[]): string[] | undefined {
+  if (w[0] !== "git") return undefined;
+  let i = 1;
+  while (i < w.length && w[i]!.startsWith("-")) i += GIT_VALUE_FLAGS.has(w[i]!) ? 2 : 1;
+  return w.slice(i);
+}
 
-/** Commands almost never right on a machine. A short, fixed list: never grown one scare at a time. */
+/**
+ * Commands almost never right on a machine, and (`everywhere`) work that can't
+ * be undone wherever it runs: a recursive delete, and git throwing away
+ * commits or changes. A short, fixed list: never grown one scare at a time.
+ */
 export const SUSPECT_COMMANDS: readonly SuspectCommand[] = [
-  { warning: "This deletes everything, a home folder or a system folder.", test: (w) => w[0] === "rm" && args(w).some((a) => SWEEPING.test(a)) },
+  { everywhere: true, warning: "This deletes everything, a home folder or a system folder.", test: (w) => w[0] === "rm" && args(w).some((a) => SWEEPING.test(a)) },
+  { everywhere: true, warning: "This deletes a folder and everything in it.", test: (w) => w[0] === "rm" && flags(w).some((f) => short("[rR]")(f) || f === "--recursive") },
+  {
+    everywhere: true,
+    warning: "This rewrites the branch on the remote: commits there that aren't here are lost.",
+    test: (w) => { const g = gitSub(w); return g?.[0] === "push" && g.slice(1).some((a) => a.startsWith("--force") || short("f")(a) || a.startsWith("+")); },
+  },
+  {
+    everywhere: true,
+    warning: "This throws away uncommitted changes.",
+    test: (w) => {
+      const g = gitSub(w);
+      if (!g) return false;
+      return (g[0] === "reset" && g.includes("--hard"))
+        || (g[0] === "checkout" && (g.includes("--") || g.slice(1).some((a) => a === "." || a === "*")))
+        || (g[0] === "restore" && g.length > 1 && (!g.includes("--staged") && !g.slice(1).some(short("S")) || g.includes("--worktree") || g.slice(1).some(short("W"))));
+    },
+  },
+  { everywhere: true, warning: "This deletes untracked files for good.", test: (w) => gitSub(w)?.[0] === "clean" },
+  {
+    everywhere: true,
+    warning: "This deletes a branch, or a stash with its changes.",
+    test: (w) => {
+      const g = gitSub(w);
+      if (!g) return false;
+      const rest = g.slice(1);
+      return (g[0] === "branch" && (rest.some(short("D")) || ((rest.includes("--delete") || rest.some(short("d"))) && (rest.includes("--force") || rest.some(short("f"))))))
+        || (g[0] === "push" && (rest.includes("--delete") || rest.some(short("d"))))
+        || (g[0] === "stash" && (g[1] === "drop" || g[1] === "clear"));
+    },
+  },
   { warning: "This formats a disk, erasing what's on it.", test: (w) => /^mkfs(\..+)?$|^mke2fs$/.test(w[0]!) },
   { warning: "This writes straight onto a device, overwriting what's on it.", test: (w) => w[0] === "dd" && w.some((a) => a.startsWith("of=/dev/")) },
   {
@@ -96,21 +148,44 @@ export function simpleCommands(command: string): string[][] {
   return commands;
 }
 
-/** The warning for a suspect command, or undefined. */
-export function suspectCommand(command: string): string | undefined {
+/** A simple command without its wrappers (`sudo -u root`, `env X=1`, `timeout 5`), its program's path dropped. */
+function unwrapped(parsed: string[]): string[] {
+  const words = [...parsed];
+  let wrapper = "";
+  while (words.length) {
+    const w = words[0]!;
+    if (PREFIXES.has(posix.basename(w))) { wrapper = posix.basename(w); words.shift(); continue; }
+    if (w.startsWith("-")) { words.shift(); if (VALUE_FLAGS[wrapper]?.includes(w)) words.shift(); continue; }
+    if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(w) || (wrapper === "timeout" && /^\d/.test(w))) { words.shift(); continue; }
+    break;
+  }
+  if (words.length) words[0] = posix.basename(words[0]!);
+  return words;
+}
+
+/** Where `cd <target>` leaves the shell, when it can be told: an absolute or home path, or one relative to a known folder. */
+function movedTo(cwd: string | undefined, target: string | undefined): string | undefined {
+  if (target === undefined) return "~";
+  if (target.startsWith("/") || /^(?:~|\$HOME|\$\{HOME\})(?:\/|$)/.test(target)) return target;
+  if (target === "-" || target.includes("$") || !cwd) return undefined;
+  return posix.join(cwd, target);
+}
+
+/**
+ * The warning for a suspect command, or undefined. On a machine every rule
+ * applies; in the sandbox only those marked `everywhere`. A `cd` earlier on
+ * the line moves where a later relative `rm` points, so `cd / && rm -rf *`
+ * is read as `rm -rf /*`.
+ */
+export function suspectCommand(command: string, where: SuspectWhere = "machine"): string | undefined {
+  const rules = where === "machine" ? SUSPECT_COMMANDS : SUSPECT_COMMANDS.filter((s) => s.everywhere);
+  let cwd: string | undefined;
   for (const parsed of simpleCommands(command)) {
-    const words = [...parsed];
-    let wrapper = "";
-    while (words.length) {
-      const w = words[0]!;
-      if (PREFIXES.has(posix.basename(w))) { wrapper = posix.basename(w); words.shift(); continue; }
-      if (w.startsWith("-")) { words.shift(); if (VALUE_FLAGS[wrapper]?.includes(w)) words.shift(); continue; }
-      if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(w) || (wrapper === "timeout" && /^\d/.test(w))) { words.shift(); continue; }
-      break;
-    }
+    const words = unwrapped(parsed);
     if (!words.length) continue;
-    words[0] = posix.basename(words[0]!);
-    const hit = SUSPECT_COMMANDS.find((s) => s.test(words));
+    if (words[0] === "cd" || words[0] === "pushd") { cwd = movedTo(cwd, args(words)[0]); continue; }
+    const seen = words[0] === "rm" && cwd ? words.map((w, i) => (i && !w.startsWith("-") && !w.startsWith("/") && !w.startsWith("~") && !w.startsWith("$") ? posix.join(cwd!, w) : w)) : words;
+    const hit = rules.find((s) => s.test(seen));
     if (hit) return hit.warning;
   }
   return undefined;

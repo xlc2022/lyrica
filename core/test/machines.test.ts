@@ -300,11 +300,43 @@ describe("suspect commands", () => {
       "sudo -u root rm -rf /", "nice -n 5 rm -rf /", "timeout 5 rm -rf /", "bash -c 'rm -rf /'", "chmod -R 777 /*", "chown -R ada //"]) {
       expect(suspectCommand(c), c).toBeDefined();
     }
-    for (const c of ["rm -rf ./build", "rm -rf /home/ada/tmp", "rm -rf ~/cache", "dd if=/dev/zero of=file", "chmod -R 755 /srv/www", "ls /", "qm list",
-      "systemctl restart nginx", "echo reboot"]) {
+    for (const c of ["rm build.log", "rm -f build.log", "dd if=/dev/zero of=file", "chmod -R 755 /srv/www", "ls /", "qm list",
+      "systemctl restart nginx", "echo reboot", "git push", "git push -u origin main", "git push --follow-tags", "git reset --soft HEAD~1", "git checkout -b feature",
+      "git restore --staged src/a.ts", "git branch -d old", "git stash", "git stash pop"]) {
       expect(suspectCommand(c), c).toBeUndefined();
     }
     expect(suspectCommand("sudo reboot")).toBe("This shuts the machine down or restarts it.");
+  });
+  it("read a cd earlier on the line, so a relative delete points where it will run", () => {
+    const sweep = "This deletes everything, a home folder or a system folder.";
+    for (const c of ["cd / && rm -rf *", "cd /; rm -rf .", "cd /home/ada && rm -rf *", "cd && rm -rf *", "cd /tmp && cd .. && rm -rf *", "(cd /usr && rm -rf ./*)", "bash -c 'cd / && rm -rf *'"]) {
+      expect(suspectCommand(c), c).toBe(sweep);
+    }
+    // A delete in a folder of its own stays an ordinary recursive delete.
+    expect(suspectCommand("cd /srv/www && rm -rf *")).toBe("This deletes a folder and everything in it.");
+    expect(suspectCommand("cd $DIR && rm -rf *")).toBe("This deletes a folder and everything in it.");
+  });
+  it("ask about work she can't undo in the sandbox too, and only about that there", () => {
+    const folder = "This deletes a folder and everything in it.", changes = "This throws away uncommitted changes.";
+    const cases: [string, string][] = [
+      ["rm -rf ./build", folder], ["rm -r node_modules", folder], ["rm --recursive -f dist", folder], ["sudo rm -fr /var/tmp/x", folder], ["rm -rf /", "This deletes everything, a home folder or a system folder."],
+      ["git push --force", "This rewrites the branch on the remote: commits there that aren't here are lost."], ["git push -f origin main", "This rewrites the branch on the remote: commits there that aren't here are lost."],
+      ["git -C repo push origin +main", "This rewrites the branch on the remote: commits there that aren't here are lost."], ["git push --force-with-lease", "This rewrites the branch on the remote: commits there that aren't here are lost."],
+      ["git reset --hard HEAD~1", changes], ["git checkout -- .", changes], ["git checkout .", changes], ["git restore src/a.ts", changes], ["git restore --staged --worktree .", changes],
+      ["git clean -fdx", "This deletes untracked files for good."],
+      ["git branch -D feature", "This deletes a branch, or a stash with its changes."], ["git branch --delete --force feature", "This deletes a branch, or a stash with its changes."],
+      ["git push origin --delete feature", "This deletes a branch, or a stash with its changes."], ["git stash drop", "This deletes a branch, or a stash with its changes."], ["git stash clear", "This deletes a branch, or a stash with its changes."],
+      ["npm run build && rm -rf dist", folder], ["bash -c 'git reset --hard'", changes],
+    ];
+    for (const [c, warning] of cases) {
+      expect(suspectCommand(c, "sandbox"), c).toBe(warning);
+      expect(suspectCommand(c), c).toBe(warning);
+    }
+    // The machine-only rules don't apply in the sandbox.
+    for (const c of ["sudo reboot", "mkfs.ext4 /dev/sdb1", "dd if=img of=/dev/sda", "chmod -R 777 /", "userdel ada", "qm destroy 101"]) {
+      expect(suspectCommand(c, "sandbox"), c).toBeUndefined();
+      expect(suspectCommand(c), c).toBeDefined();
+    }
   });
 });
 
