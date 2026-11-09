@@ -127,7 +127,7 @@ export function readBundle(body: Record<string, unknown>): Bundle {
   const w = body.workflow as Record<string, unknown> | null | undefined;
   return {
     recipe: {
-      id: r.id, name: text(r.name, "recipe.name", 80).trim(), template: text(r.template, "recipe.template", 64),
+      id: r.id, name: text(typeof r.name === "string" ? r.name.trim() : r.name, "recipe.name", 80), template: text(r.template, "recipe.template", 64),
       useFor: r.useFor === "fast" || r.useFor === "quality" ? r.useFor : "both", parts, loras,
       defaults: r.defaults as Record<string, string | number>, starter: typeof r.starter === "string" && /^[\w.-]{1,64}$/.test(r.starter) ? r.starter : null,
     },
