@@ -700,6 +700,8 @@ export interface CallInfo {
   audioSeconds?: number;
   /** An image or video call's sampling on its host: how long its samplers ran, their steps, what it made and the first one's pixels. */
   sampling?: { ms: number; steps: number; images: number; pixels?: number };
+  /** How many images (or clips) an image or video call made, where it recorded the count. */
+  images?: number;
 }
 /** GET /api/u/:userId/models/calls → CallInfo[], newest first. */
 
@@ -1993,6 +1995,12 @@ export interface ModelCallFacts {
      * nothing was measured.
      */
     sampling?: { secondsPer: number; steps: number; stepsPerSec: number; pixels?: number; samples: number; unit: "image" | "clip" };
+    /**
+     * An image or video model's output: the images (or clips) its calls made, each image or video call counting what
+     * it recorded, or one where it recorded no count (a call is recorded only once it made something). Absent for
+     * a model with no image or video calls.
+     */
+    made?: { count: number; unit: "image" | "clip" };
     /** Recorded output tokens, over the records that have a pace. */
     outputTokens: number;
     /** Records with a nonempty fallback marker (skipped candidates, not errors/retries). */

@@ -38,8 +38,9 @@ until it is updated; Lyrica needs the rebuild for the schema step.
 
 ## Out of scope
 
-The "Speed per call · tok/s" chart stays a text chart. The Output column
-still counts tokens (0 for images). Cloud image providers report no timing.
+The "Speed per call · tok/s" chart stays a text chart. (The Output column
+later showed the images or clips an image model made in place of 0 tokens:
+`made` on `ModelCallFacts`, from each call's recorded `images`.) Cloud image providers report no timing.
 
 ## Status
 

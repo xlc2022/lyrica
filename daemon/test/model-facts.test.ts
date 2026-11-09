@@ -98,6 +98,21 @@ describe("model facts for the last 24 hours", () => {
     expect(r.calls.filter((c) => c.offeringId === "art").every((c) => c.tokPerSec === undefined)).toBe(true);
   });
 
+  it("counts what an image or video model made: recorded counts, else one per call; nothing for a text model", () => {
+    const r = modelFacts([
+      at("art", -1 * MIN, { task: "image.create", images: 4 }),
+      at("art", -2 * MIN, { task: "image.create", sampling: { ms: 10_000, steps: 16, images: 2 } }),
+      at("art", -3 * MIN, { task: "image.edit" }),
+      at("clip", -4 * MIN, { task: "video", images: 1 }),
+      at("clip", -5 * MIN, { task: "video" }),
+      at("chat", -6 * MIN, { pace: pace(12) }),
+    ], ["general"], NOW);
+    const by = Object.fromEntries(r.models.map((m) => [m.offeringId, m.made]));
+    expect(by.art).toEqual({ count: 7, unit: "image" });
+    expect(by.clip).toEqual({ count: 2, unit: "clip" });
+    expect(by.chat).toBeUndefined();
+  });
+
   it("medians recorded speeds, averaging the central pair when there are an even number", () => {
     const odd = modelFacts(["10", "30", "20"].map((s, i) => at("odd", -(i + 1) * MIN, { pace: pace(Number(s)) })), ["general"], NOW);
     expect(odd.models.map((m) => [m.speedSamples, m.medianTokPerSec])).toEqual([[3, 20]]);

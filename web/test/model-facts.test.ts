@@ -33,6 +33,16 @@ it("shows an image model's seconds per image in its Speed cell, with steps, size
   expect(html).not.toContain("tok/s</span>");
 });
 
+it("shows what an image or video model made in its Output cell, in place of zero tokens", () => {
+  const html = render(facts([
+    model({ offeringId: "art", label: "Krea 2 Turbo", calls: 17, made: { count: 17, unit: "image" } }),
+    model({ offeringId: "clip", label: "Clip", calls: 1, made: { count: 1, unit: "clip" } }),
+  ]));
+  expect(html).toContain('>17 <span class="muted">images</span>');
+  expect(html).toContain('>1 <span class="muted">clip</span>');
+  expect(html).toContain("Images (or clips) its calls made");
+});
+
 it("says a speed nothing measured is not measured, distinct from a measured zero", () => {
   const html = render(facts([model({ offeringId: "one", label: "Unmeasured" }), model({ offeringId: "two", label: "Measured", medianTokPerSec: 0, speedSamples: 1 })]));
   expect(html.match(/Not measured: no call/g)).toHaveLength(2 + 1); // its speed and prompt, and the other's prompt

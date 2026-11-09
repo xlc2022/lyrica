@@ -62,9 +62,11 @@ describe("image calls through the router (principles 1 and 2)", () => {
     expect(older).not.toHaveProperty("pace");
     expect(newest).not.toHaveProperty("sampling");
     expect(second).toBeGreaterThan(first);
-    // A call the host didn't measure keeps no sampling.
-    s.models.recordCall(s.ada.id, { pool: "private", threadId: "web/t1", task: "image.upscale", resolution: out.resolution });
-    expect(s.models.recentCalls(s.ada.id, { pool: "private", threadId: "web/t1" })[0]).not.toHaveProperty("sampling");
+    // A call the host didn't measure keeps no sampling, but still what it made.
+    s.models.recordCall(s.ada.id, { pool: "private", threadId: "web/t1", task: "image.upscale", resolution: out.resolution, images: 1 });
+    const unmeasured = s.models.recentCalls(s.ada.id, { pool: "private", threadId: "web/t1" })[0];
+    expect(unmeasured).not.toHaveProperty("sampling");
+    expect(unmeasured).toMatchObject({ task: "image.upscale", images: 1 });
   });
   it("upscales a clip on the Image upscaling list's first host recipe that upscales clips, never a cloud model", async () => {
     const s = await setup(), ctx = s.ctx({ pool: "private" });
