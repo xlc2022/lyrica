@@ -1,6 +1,6 @@
 # Brief: Guard against destructive commands
 
-**Status:** In review. **Thread:** Guard against destructive commands.
+**Status:** Merged as #854 (33d4809). **Thread:** Guard against destructive commands.
 **Branch:** `claude/project-thread-2w0npl`. **Model:** Fable.
 **Read first:** AGENTS.md, PRINCIPLES.md, DESIGN.md "Machines" and "Modes",
 docs/workspace.md "Machines", "Project command rules" and "Approval",
