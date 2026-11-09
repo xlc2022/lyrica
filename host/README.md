@@ -578,7 +578,7 @@ revoked. A revoked server must pair again.
     size, a chat template, and for vLLM a memory share, so several vLLM
     models can share one GPU (each is its own server).
   - A llama.cpp model larger than the host's system RAM is read straight
-    from disk (llama.cpp's `load-mode = direct-io`). Mapped, as smaller
+    from disk (llama.cpp's `load-mode = dio`). Mapped, as smaller
     models are, the kernel would pull all of it through a page cache that
     can't hold it before anything reached the GPUs, once for the
     measurement and again for the load; a 200 GB model on a 96 GB machine

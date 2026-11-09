@@ -360,7 +360,7 @@ describe("the vLLM backend", () => {
       await llama.load(m("big", 200 * 10 ** 9), at, { placement: { mode: "auto" } });
       await llama.load(m("small", 30 * 10 ** 9), at, { placement: { mode: "auto" } });
       const ini = readFileSync(join(serving, "llamacpp.ini"), "utf8");
-      expect(ini).toMatch(/\[big\][^[]*load-mode = direct-io\n/);
+      expect(ini).toMatch(/\[big\][^[]*load-mode = dio\n/);
       expect(ini.match(/load-mode/g)).toHaveLength(1);
     } finally {
       router.server.close();
