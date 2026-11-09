@@ -3497,8 +3497,9 @@ export class Models {
       if (!provider || task === "image.upscale" || (task === "image.create" && !provider.create) || (task === "image.edit" && !provider.edit)) return "this endpoint has no image provider for the task";
       if (task === "image.edit" && need.imageMask && !provider.mask) return "this image provider does not accept masks";
       if (need.imageReferences && !provider.references) return "this image provider does not take reference images";
-      if (need.sampling) return "this image provider does not take steps, CFG, a seed or other sampling settings";
     }
+    // A job's own settings: only a model host takes them, whatever kind its endpoint is.
+    if (task.startsWith("image.") && need.sampling && ep.api !== "host") return "this image provider does not take steps, CFG, a seed or other sampling settings";
     if (task === "image.create" && need.imageTier
       && o.useFor && o.useFor !== "both" && o.useFor !== need.imageTier) return `it is for ${o.useFor} images`;
     if (task === "image.upscale" && !o.upscale) return "it doesn't upscale images";
