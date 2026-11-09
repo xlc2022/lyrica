@@ -1259,6 +1259,9 @@ a.fpath { font-family: var(--mono); font-size: 0.93em; overflow-wrap: anywhere; 
 .image-facts .cap { overflow-wrap: anywhere; min-width: 0; }
 .image-facts .row-menu { margin-left: auto; flex: none; }
 .prose p:has(> .inline-img:only-child) { margin: 8px 0; }
+/* The images a paragraph's or list item's links name (docs/ux.md §6): their thumbnails in a row under it, the links kept. */
+.prose .linked-images { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+.prose li .linked-images { margin-bottom: 4px; }
 .field-fact { padding: 7px 0; }
 
 /* Notifications (docs/ux.md §6): one list over what waits for the user; rows with their actions, filters above. */

@@ -4,7 +4,8 @@ import { createPortal } from "react-dom";
 import Markdown, { type Components, type Options } from "react-markdown";
 import { Icon } from "./icons.tsx";
 import remarkGfm from "remark-gfm";
-import { basename, fileTarget, InlineImage, isRemote, largeUrl, Lightbox, RemotePicture, rehypePaths, type FileLinks } from "./paths.tsx";
+import { basename, fileTarget, InlineImage, isImagePath, isRemote, largeUrl, Lightbox, RemotePicture, rehypePaths, type FileLinks } from "./paths.tsx";
+import type { Element as HastElement, Parents as HastParents } from "hast";
 import remarkMath from "remark-math";
 import { prepareMarkdown } from "./markdown.ts";
 import { RichCode, richPre } from "./RichBlock.tsx";
@@ -273,10 +274,19 @@ export function fullTime(iso: string): string {
  * Links open in a new tab, except Lyrica's own (a mentioned thread, a file she can reach). A link to a file, by its
  * absolute path or relative to the thread's folder, opens it in the Files panel. A remote image is linked by its alt
  * text, never loaded from its host; the offline copy of Wikipedia's shows through lyricad. A file's shows in the
- * message and opens large (docs/ux.md §6).
+ * message and opens large (docs/ux.md §6). A paragraph or list item whose links name images she can reach (a
+ * markdown link, or a bare path as a command's result names one) keeps its links and shows those images under it,
+ * each once, so an image a command made gets its thumbnail like one her image tool made.
  */
 function markdown(files: FileLinks | undefined, large: (path: string) => void, skipped: () => ReadonlySet<string> | undefined = () => undefined): Components {
+  const linked = (node: HastElement | undefined) => {
+    const paths = files ? linkedImages(node, skipped()) : [];
+    return paths.length ? <div className="linked-images">{paths.map((p) => <InlineImage key={p} src={p} alt={basename(p)} files={files!} large={large} />)}</div> : undefined;
+  };
   return {
+    // The thumbnails follow the paragraph (a div can't sit inside a p) and end a list item.
+    p: ({ node, children }) => { const imgs = linked(node); return imgs ? <><p>{children}</p>{imgs}</> : <p>{children}</p>; },
+    li: ({ node, children, ...props }) => <li {...props}>{children}{linked(node)}</li>,
     a: ({ node: _, ...props }) => {
       if (props.href?.startsWith("#/")) return <a {...props} />;
       if (props.href?.startsWith("#")) return <a {...props} onClick={jump} />;
@@ -295,6 +305,27 @@ function markdown(files: FileLinks | undefined, large: (path: string) => void, s
         : <a href={src} target="_blank" rel="noopener noreferrer">{alt || src}</a>;
     },
   };
+}
+/**
+ * The images a paragraph's or list item's links point at, in order and each once: a markdown link to a file (by its
+ * href) or a bare path (`dataPath`, rehypePaths), with an image's extension, not already shown this turn (`skipped`),
+ * and not a link wrapping an image, which shows already. A nested list's items find their own.
+ */
+export function linkedImages(node: HastParents | undefined, skipped?: ReadonlySet<string>): string[] {
+  const out: string[] = [];
+  const visit = (n: HastParents) => {
+    for (const c of n.children) {
+      if (c.type !== "element") continue;
+      if (c.tagName === "a") {
+        if (c.children.some((k) => k.type === "element" && k.tagName === "img")) continue;
+        const { dataPath, href } = c.properties;
+        const path = typeof dataPath === "string" ? dataPath : fileTarget(typeof href === "string" ? href : undefined);
+        if (path && isImagePath(path) && !skipped?.has(path) && !out.includes(path)) out.push(path);
+      } else if (!["img", "pre", "code", "ul", "ol"].includes(c.tagName)) visit(c);
+    }
+  };
+  if (node) visit(node);
+  return out;
 }
 /**
  * An in-page link (a footnote's mark and its ↩) scrolls to its target in the same message: the hash is the app's

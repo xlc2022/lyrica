@@ -1109,7 +1109,13 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   page. An image her image tool already shows in the same turn (an
   image part before her text, up to the next user message) is rendered as
   its path link, not a second thumbnail (`conversationNodes` tracks the
-  paths shown; `Prose skipImages`). In the person's message an image path
+  paths shown; `Prose skipImages`). A paragraph or list item whose links
+  name images she can reach (a markdown link to a file, or a bare path, which
+  `rehypePaths` marks with `data-path`) keeps the links and ends with those
+  images' thumbnails, each once (`linkedImages`, `.linked-images`), so an
+  image a command made and she named by its path shows like one her image
+  tool made; a link already shown this turn, a link wrapping a picture, a
+  code block and a nested list's items are left to themselves. In the person's message an image path
   on its own line, as an upload puts it, shows as the same thumbnail
   (`PathText large`, `paths.tsx`). A fenced code block has a strip along its top edge with the
   fence's language and **Copy**, which writes the block's text to the

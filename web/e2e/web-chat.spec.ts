@@ -568,6 +568,45 @@ test("an image tool result shows inline, opens large, starts an edit with Images
   await noHorizontalScroll(page);
 });
 
+test("an image a command made, named by a link in her words, shows its thumbnail under the paragraph and opens large", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  await newThread(page, "General");
+  await send(page, "Upscale it 8x");
+  await expect(page.getByText("You said: Upscale it 8x")).toBeVisible();
+  const threadId = threadIdOf(page.url());
+  const base = `/api/u/${userId}/threads/general/${encodeURIComponent(threadId)}`;
+  const path = "/workspace/images/ecee7342-8x.png";
+  const png = solidPng(200, 80, 60);
+  await page.route(`**${base}/messages`, (route) => route.fulfill({ json: {
+    messages: [{ id: `e:${threadId}#1`, n: 1, role: "assistant", createdAt: "2026-11-09T01:20:00Z", parts: [
+      { type: "tool", toolCallId: "up", name: "bash", args: { command: "cd /workspace/images && magick 531ac8cd.png -resize 800% ecee7342-8x.png" }, result: "", isError: false },
+      { type: "text", text: `Done — [ecee7342-8x.png](${path}), 7295×9216, 46 MB. The source is /workspace/images/531ac8cd.png.` },
+    ] }], hasMore: false,
+  } }));
+  // The thumbnail is the server's small copy, never the 46 MB file; the lightbox shows the file itself.
+  const asked: string[] = [];
+  await page.route(`**${base}/files/thumb?*`, (route) => { asked.push(new URL(route.request().url()).searchParams.get("path") ?? ""); return route.fulfill({ contentType: "image/png", body: png }); });
+  await page.route(`**${base}/files/content?*`, (route) => route.fulfill({ contentType: "image/png", body: png }));
+  await page.reload();
+  const words = page.locator(".turn .prose p", { hasText: "Done —" });
+  await expect(words).toContainText("Done — ecee7342-8x.png, 7295×9216, 46 MB.");
+  await expect(words.getByRole("link", { name: "ecee7342-8x.png" })).toBeVisible();
+  const thumbs = page.locator(".turn .linked-images .inline-img");
+  await expect(thumbs).toHaveCount(2);
+  const eight = page.getByRole("button", { name: "ecee7342-8x.png, open large" });
+  await expect(eight).toBeVisible();
+  await expect(eight.getByRole("img")).toHaveAttribute("src", `${base}/files/thumb?path=${encodeURIComponent(path)}`);
+  expect(asked).toContain(path);
+  if (process.env.SCREENSHOTS) await page.screenshot({ fullPage: true, path: `${process.env.SCREENSHOTS}/linked-image-${page.viewportSize()!.width}.png` });
+  await eight.click();
+  const lightbox = page.getByRole("dialog", { name: "ecee7342-8x.png" });
+  await expect(lightbox).toBeVisible();
+  await expect(lightbox.getByRole("img")).toHaveAttribute("src", `${base}/files/content?path=${encodeURIComponent(path)}`);
+  await lightbox.getByRole("button", { name: "Close", exact: true }).click();
+  await expect(lightbox).toBeHidden();
+  await noHorizontalScroll(page);
+});
+
 test("a read call's card lays out the file it read: code keeps its indentation, Markdown renders, an image shows small", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   await newThread(page, "General");
