@@ -139,6 +139,23 @@ describe("user step 21 (local MCP servers)", () => {
   });
 });
 
+describe("user step 22 (MCP call budgets)", () => {
+  it("gives every server from each released schema no limit and an empty call log, and the release before still opens it", () => {
+    for (let v = 3; v < 22; v++) {
+      const db = scratchDb();
+      migrate(db, "user", {}, STEPS.user.filter((s) => s.version <= v));
+      db.prepare("INSERT INTO mcp_servers (name, url, token, pool) VALUES ('house', 'http://127.0.0.1:8123/mcp', 't', 'private')").run();
+      migrate(db, "user");
+      expect(db.prepare("SELECT daily_limit, minute_limit FROM mcp_servers WHERE name = 'house'").get()).toEqual({ daily_limit: null, minute_limit: null });
+      const settings = new WorkspaceSettings(db, () => ({ general: [], private: [] }));
+      expect(settings.mcpServer("house")).toMatchObject({ dailyLimit: null, minuteLimit: null, callsToday: 0 });
+      expect(settings.mcpCallRefused("house")).toBeUndefined();
+      expect(() => checkReadable(db, "user", STEPS.user.filter((s) => s.version < 22))).not.toThrow();
+      db.close();
+    }
+  });
+});
+
 describe("user step 5 (portrait-photo cloud choice)", () => {
   it("expands every released user schema with Ask once a day and preserves an existing choice", () => {
     for (let v = 1; v < 5; v++) for (const policy of [undefined, "never", "always"]) {

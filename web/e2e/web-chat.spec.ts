@@ -1891,8 +1891,14 @@ test("MCP servers: one is checked before it's saved, granted in a thread's drawe
   const drawer = page.getByRole("complementary", { name: "house" });
   await expect(drawer.getByLabel("URL")).toHaveValue(url);
   await expect(drawer.getByLabel("Token")).toHaveCount(0);
+  // A call budget: empty is no limit; with one, the row shows today's calls against it.
+  await expect(drawer.getByLabel("Calls per day")).toHaveValue("");
+  await drawer.getByLabel("Calls per day").fill("4000");
+  await drawer.getByLabel("Calls per minute").fill("20");
   await shot("mcp-drawer");
-  await drawer.getByRole("button", { name: "Close" }).click();
+  await drawer.getByRole("button", { name: "Save" }).click();
+  await expect(drawer).toHaveCount(0);
+  await expect(row).toContainText("0 of 4,000 today");
 
   await newThread(page, "General");
   await send(page, "Hello");

@@ -72,6 +72,13 @@ Under Settings → **MCP servers**, **Add server**:
   each search to eBay, a cloud service, so it belongs in the pool of the
   threads that use it, not in Private because it runs on this machine
   (DESIGN.md, "MCP servers", pools).
+- Calls per day: `4000`, headroom under eBay's 5,000; Calls per minute:
+  `20`, so a loop can't hammer eBay and risk your developer account. Once
+  a budget is used up she is told so and stops, instead of retrying; the
+  day's resets at midnight UTC, which is how eBay counts it. Lyrica counts
+  every call to the server, and `query_ebay_api` only reads the API spec
+  locally, so her count runs a little ahead of eBay's: the safe side. The
+  row shows today's count.
 
 Lyrica starts it once to check it and saves it only when it answers.
 Then grant it to the threads or projects that should have it: the MCP
