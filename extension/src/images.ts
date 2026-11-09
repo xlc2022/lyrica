@@ -1,6 +1,6 @@
 // Principles 1, 2 and 8: one image tool, which also makes clips, with portrait consent checked at each resolved provider.
 import type { ExtensionContext, ExtensionFactory } from "@earendil-works/pi-coding-agent";
-import { CloudModelForbidden, HostRefused, isRestricted, NoModel, loraFiles, loraName, MAX_LORAS, modelName, type CallContext, type LoraAsk, type ImageRequest, type JobProgress, type Models, type Resolution,
+import { CloudModelForbidden, HostRefused, isRestricted, NoModel, loraFiles, loraName, MAX_LORAS, modelName, type AppliedLora, type CallContext, type LoraAsk, type ImageRequest, type JobProgress, type Models, type Resolution,
   type ThreadImages, type VideoRequest, type VideoUpscaleRequest, type WorkspaceSettings, LONGEST_VIDEO_SECONDS } from "@lyrica/core";
 import { Type, type Static } from "typebox";
 import { StringEnum } from "@earendil-works/pi-ai";
@@ -249,10 +249,14 @@ function loraModels(o: ImageTools, call: CallContext, action: string, asks: Lora
 }
 
 /** The LoRAs a result was made with, by name and strength, for her to say. */
-function lorasUsed(asks: LoraAsk[] | undefined, r: Resolution): string {
-  if (!asks?.length) return "";
-  const { loras } = loraFiles(asks, r.offering.loras ?? []);
-  return ` With ${loras.map(l => `${loraName(l.file)} at ${l.strength}`).join(", ")}.`;
+/**
+ * The LoRAs a job applied, for its result: those the host's answer names (the recipe's own, then the request's),
+ * or for an older host that names none, the ones asked for. "With LoRAs pixel art v2 (0.7), film grain (1)."
+ */
+function lorasUsed(applied: AppliedLora[] | undefined, asks: LoraAsk[] | undefined, r: Resolution): string {
+  const loras = applied ?? (asks?.length ? loraFiles(asks, r.offering.loras ?? []).loras : []);
+  if (!loras.length) return "";
+  return ` With LoRA${loras.length > 1 ? "s" : ""} ${loras.map(l => `${loraName(l.file)} (${l.strength})`).join(", ")}.`;
 }
 
 /**
@@ -346,7 +350,7 @@ export async function executeImage(o: ImageTools, id: string, p: ImageArgs, sign
   // Any fallback is said, so she can tell them the model they got isn't the first choice.
   const passed = out.resolution.passedOver ?? [];
   const fellBack = passed.length ? ` Passed over first: ${passed.map(s => `${s.label} (${s.reason.replace(/^it /, "")})`).join("; ")}.` : "";
-  return { content: [{ type: "text" as const, text: `Made with ${modelName(out.resolution.offering)} on ${out.resolution.endpoint.name}.${lorasUsed(asks, out.resolution)}${fellBack} Saved ${paths.join(", ")}.` },
+  return { content: [{ type: "text" as const, text: `Made with ${modelName(out.resolution.offering)} on ${out.resolution.endpoint.name}.${lorasUsed(out.loras, asks, out.resolution)}${fellBack} Saved ${paths.join(", ")}.` },
     ...out.images.map(i => ({ type: "image" as const, data: Buffer.from(i.bytes).toString("base64"), mimeType: i.type }))], details: { image: part } };
 }
 
@@ -379,7 +383,7 @@ async function executeVideo(o: ImageTools, id: string, p: ImageArgs, signal?: Ab
     if (v.sampling) o.models.recordSampling(call.userId, recorded, { ...v.sampling, images: 1, pixels: v.width * v.height });
     const passed = out.resolution.passedOver ?? [];
     const fellBack = passed.length ? ` Passed over first: ${passed.map(s => `${s.label} (${s.reason.replace(/^it /, "")})`).join("; ")}.` : "";
-    const text = `Made with ${modelName(out.resolution.offering)} on ${out.resolution.endpoint.name}: ${v.duration.toFixed(1)} s at ${v.width}×${v.height}${v.audio ? ", with sound" : ""}.${lorasUsed(request.loras, out.resolution)}${fellBack} Saved ${path}.`;
+    const text = `Made with ${modelName(out.resolution.offering)} on ${out.resolution.endpoint.name}: ${v.duration.toFixed(1)} s at ${v.width}×${v.height}${v.audio ? ", with sound" : ""}.${lorasUsed(v.loras, request.loras, out.resolution)}${fellBack} Saved ${path}.`;
     return { text, video, poster: v.poster };
   };
   // A clip holds the host's GPU for minutes: in the background her turn ends, and the chat goes on.

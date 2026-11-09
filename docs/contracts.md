@@ -1493,6 +1493,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     of that server-local day; a policy change clears it. No viewer means denial.
     Outputs save in the encrypted thread folder and return Pi image content
     (`{ type: "image", data: base64, mimeType: "image/png" }`) plus path text and “Made with <model> on <host or endpoint name>”,
+    then “With LoRA <name> (<strength>), …” for the LoRAs a host job applied (the recipe's own, then the call's),
     with a note when a named model matched none and `Passed over first: …` when it fell back.
     A content refusal returns `isError: true` with the refusal's message
     (fixed, or Codex's quoted reply) and details

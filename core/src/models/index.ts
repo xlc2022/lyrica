@@ -1,5 +1,5 @@
-import { CLOUD_IMAGE_PROVIDERS, imageAt, PLAN_IMAGE, PLAN_IMAGE_MODEL, validateImageRequest, type ImageRequest, type GeneratedImage, type Sampling } from "./images.ts";
-export { CLOUD_IMAGE_PROVIDERS, PLAN_IMAGE_MODEL, type ImageRequest, type GeneratedImage, type ImageInput, type Sampling } from "./images.ts";
+import { CLOUD_IMAGE_PROVIDERS, imageAt, PLAN_IMAGE, PLAN_IMAGE_MODEL, validateImageRequest, type ImageRequest, type GeneratedImage, type Sampling, type AppliedLora } from "./images.ts";
+export { CLOUD_IMAGE_PROVIDERS, PLAN_IMAGE_MODEL, type ImageRequest, type GeneratedImage, type ImageInput, type Sampling, type AppliedLora } from "./images.ts";
 import { upscaleVideoAt, validateVideoRequest, validateVideoUpscale, videoAt, type GeneratedVideo, type VideoRequest, type VideoUpscaleRequest } from "./videos.ts";
 import { loraFiles, loraName, type LoraAsk } from "./loras.ts";
 export { isMp4, LONGEST_VIDEO_SECONDS, type GeneratedVideo, type VideoRequest, type VideoUpscaleRequest } from "./videos.ts";
@@ -2978,7 +2978,8 @@ export class Models {
   /** Images stay in memory; the caller stores results and records the call. */
   /** `onProgress`: how far a model host's job has got (cloud models report none). */
   /** `first`: models asked for by name (`namedImageModels`), tried before the list. */
-  async image(ctx: CallContext, request: ImageRequest, opts: { signal?: AbortSignal; beforeSend?: (resolution: Resolution) => Promise<void>; onProgress?: (p: JobProgress) => void; first?: string[] } = {}): Promise<{ images: GeneratedImage[]; resolution: Resolution; sampling?: Sampling }> {
+  /** `loras`: those a host job applied, when its answer names them. */
+  async image(ctx: CallContext, request: ImageRequest, opts: { signal?: AbortSignal; beforeSend?: (resolution: Resolution) => Promise<void>; onProgress?: (p: JobProgress) => void; first?: string[] } = {}): Promise<{ images: GeneratedImage[]; resolution: Resolution; sampling?: Sampling; loras?: AppliedLora[] }> {
     validateImageRequest(request);
     await this.planImages(ctx.userId);
     const refs = request.action === "upscale" ? 0 : request.references?.length ?? 0;
@@ -2995,10 +2996,10 @@ export class Models {
       const ep = r.endpoint;
       // ChatGPT Images is made by the user's own Codex, not over the plan's sign-in, which OpenAI refuses for images.
       const codex = ep.api === "chatgpt" && this.codexImages ? this.codexImages.bind(this, ctx.userId) : undefined;
-      const { images, sampling } = await imageAt({ fetch: this.fetchFor(ep) ?? fetch, baseUrl: ep.api === "host" ? hostOrigin(ep.addresses![0]!) : ep.baseUrl,
+      const made = await imageAt({ fetch: this.fetchFor(ep) ?? fetch, baseUrl: ep.api === "host" ? hostOrigin(ep.addresses![0]!) : ep.baseUrl,
         host: ep.api === "host", api: ep.api, modelId: r.offering.modelId, apiKey: ep.api === "chatgpt" ? undefined : ep.apiKey, codex,
         ...(asks.length ? { loras: loraFiles(asks, r.offering.loras ?? []).loras } : {}) }, request, opts.signal, opts.onProgress);
-      return { images, resolution: r, ...(sampling ? { sampling } : {}) };
+      return { ...made, resolution: r };
     });
   }
 

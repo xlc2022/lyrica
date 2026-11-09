@@ -669,7 +669,10 @@ and both files of a Wan high and low noise pair. `need.loras` holds the
 names: a model that lacks one is unfit ("it takes no LoRAs", "it has no
 LoRA called …"), and passed over, so the result says it; a cloud model
 takes none. The call sends the host the matched files, each at its name's
-strength (host/API.md, "LoRAs for one job"). `loraModels(ctx, task, asks)`
+strength (host/API.md, "LoRAs for one job"). The host's answer names the
+LoRAs the job applied, the recipe's own and then the call's, which
+`image()` returns as `loras` and a clip carries as its `loras`; an older
+host's answer names none. `loraModels(ctx, task, asks)`
 gives the local models that take every LoRA asked for, in the task's list
 order and then the rest, as `first` for that call (after any named model),
 so a LoRA in the library finds a model that takes it even when the list's
@@ -760,7 +763,9 @@ The `image` tool reads workspace paths and `/photos-of-me/<file>`, enforces
 the user's portrait policy before each resolved attempt, and stores results in
 the encrypted thread folder. Its text result says “Made with <model> on
 <host or endpoint name>” for every provider, alongside the saved paths, then
-`With <LoRA> at <strength>, …` for the LoRAs it sent,
+`With LoRA <name> (<strength>), …` (`LoRAs` for more than one) for the
+LoRAs the host applied, the recipe's own included (or, from an older host
+that doesn't name them, those it sent),
 and `Passed over first: <label> (<reason>); …` whenever
 `passedOver` isn't empty, so she can say she fell back. A clip's result says
 the same. Its `loras` field (create, edit, video and animate) lists the

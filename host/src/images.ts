@@ -882,6 +882,7 @@ export class Images {
         const seed = sdcpp ? Number(values.seed) + i : values.seed;
         return { png: png.toString("base64"), width: size?.width ?? null, height: size?.height ?? null, seed };
       }),
+      ...appliedLoras(loras),
       seconds,
       ...samplingField(sampling),
     });
@@ -1046,6 +1047,7 @@ export class Images {
       video: { mp4: video.toString("base64"), width: size?.width ?? values.width, height: size?.height ?? values.height,
         frames, fps, duration: frames / fps, audio: spec.audio, seed: values.seed },
       poster: poster ? poster.toString("base64") : null,
+      ...appliedLoras(loras),
       seconds,
       ...samplingField(sampling),
     });
@@ -1159,6 +1161,11 @@ export class Images {
       contextLength: null, kvPerToken: null, mmproj: null, remoteCode: false,
     };
   }
+}
+
+/** A job's answer names the LoRAs it applied (the recipe's own, then the request's), so the chat can say so. */
+function appliedLoras(loras: Lora[]): { loras?: { file: string; strength: number }[] } {
+  return loras.length ? { loras: loras.map(({ file, strength }) => ({ file, strength })) } : {};
 }
 
 /**

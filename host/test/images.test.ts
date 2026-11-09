@@ -1197,16 +1197,21 @@ describe("the image API", () => {
     expect(made.status).toBe(200);
     const sent = s.comfyFake.seen.prompts[0];
     expect(sent.lora_0.inputs).toEqual({ model: ["load_model", 0], lora_name: "shared/style.safetensors", strength_model: 0.6 });
+    // The answer names the LoRAs the job applied, so the chat can say so.
+    expect(made.body.loras).toEqual([{ file: "shared/style.safetensors", strength: 0.6 }]);
     // The recipe itself is unchanged: the next job has no LoRA.
     expect((await s.api(`/host/v1/recipes/${z.id}`)).body.loras).toEqual([]);
-    await s.api("/host/v1/images/create", { body: { recipe: z.id, prompt: "x" } });
+    const plain = await s.api("/host/v1/images/create", { body: { recipe: z.id, prompt: "x" } });
     expect(Object.keys(s.comfyFake.seen.prompts[1])).not.toContain("lora_0");
+    expect(plain.body).not.toHaveProperty("loras");
 
     // A built-in LoRA asked for again takes the request's strength instead of adding a second loader.
     await s.api(`/host/v1/recipes/${z.id}`, { method: "PATCH", body: { op: "addLora", file: "shared/style.safetensors", strength: 1 } });
+    const own = await s.api("/host/v1/images/create", { body: { recipe: z.id, prompt: "x" } });
+    expect(own.body.loras).toEqual([{ file: "shared/style.safetensors", strength: 1 }]);
     await s.api("/host/v1/images/create", { body: { recipe: z.id, prompt: "x", loras: [{ file: "shared/style.safetensors", strength: 0.3 }] } });
-    expect(s.comfyFake.seen.prompts[2].lora_0.inputs.strength_model).toBe(0.3);
-    expect(Object.keys(s.comfyFake.seen.prompts[2])).not.toContain("lora_1");
+    expect(s.comfyFake.seen.prompts[3].lora_0.inputs.strength_model).toBe(0.3);
+    expect(Object.keys(s.comfyFake.seen.prompts[3])).not.toContain("lora_1");
 
     const refused = async (loras: unknown) => (await s.api("/host/v1/images/create", { body: { recipe: z.id, prompt: "x", loras } })).body.error.message;
     expect(await refused([{ file: "shared/krea-style.safetensors", strength: 1 }])).toBe("krea-style.safetensors isn't a LoRA on this host that this recipe takes.");

@@ -19,10 +19,13 @@ export async function fakeImages() {
     const upscaled: Record<string, unknown>[] = [];
     let down: string | false = false;
     let output: Buffer = png;
+    // The recipe's own LoRAs, which a job applies before the request's and its answer names.
+    let own: { file: string; strength: number }[] = [];
+    const applied = (body: { loras?: { file: string; strength: number }[] }) => { const l = [...own, ...body.loras ?? []]; return l.length ? { loras: l } : {}; };
     const ep = models.addEndpoint(ada, { name, kind: "local", baseUrl: `https://${name}.example/v1` }, { shared: true });
     // A paired host's persisted endpoint shape; TLS itself is covered by host tests.
     keyring.self().prepare("UPDATE endpoints SET api = 'host', addresses = ?, pin = ? WHERE id = ?").run(JSON.stringify([`${name}.example`]), "fake-pin", ep.id);
-    const server = { images, videos, upscaled, useFor, imagesOff(code: string | false = "unavailable") { down = code; }, replyImage(bytes: Buffer) { output = bytes; } };
+    const server = { images, videos, upscaled, useFor, imagesOff(code: string | false = "unavailable") { down = code; }, replyImage(bytes: Buffer) { output = bytes; }, recipeLoras(l: typeof own) { own = l; } };
     hostFetches.set(ep.id, (async (url: string, opts: RequestInit = {}) => {
       const path = new URL(url).pathname;
       if (path === "/host/v1/status") return Response.json({ state: "running" });
@@ -42,7 +45,7 @@ export async function fakeImages() {
         if (!["clip", "moves", "long", "restyle"].includes(body.recipe)) return Response.json({ error: { code: "invalid", message: "That recipe doesn't make videos." } }, { status: 400 });
         expect(Object.keys(body).every(k => ["recipe", "prompt", "image", "drive", "extend", "source", "width", "height", "aspectRatio", "duration", "steps", "loras"].includes(k))).toBe(true);
         videos.push(body);
-        return Response.json({ video: { mp4: mp4.toString("base64"), width: 1280, height: 704, frames: 121, fps: 24, duration: 5.04, audio: false, seed: 7 }, poster: png.toString("base64"), seconds: 300, sampling: { seconds: 240.5, steps: 20 } });
+        return Response.json({ video: { mp4: mp4.toString("base64"), width: 1280, height: 704, frames: 121, fps: 24, duration: 5.04, audio: false, seed: 7 }, poster: png.toString("base64"), ...applied(body), seconds: 300, sampling: { seconds: 240.5, steps: 20 } });
       }
       if (path === "/host/v1/videos/upscale") {
         expect(Object.keys(body).every(k => ["recipe", "video", "scale", "maxSize"].includes(k))).toBe(true);
@@ -54,7 +57,7 @@ export async function fakeImages() {
       expect(Object.keys(body).every(k => allowed.includes(k))).toBe(true);
       images.push({ action, body });
       return Response.json({ images: Array.from({ length: body.count ?? 1 }, () => ({ png: output.toString("base64"), width: 1, height: 1, seed: 42 })), seconds: 0.1,
-        ...(action === "upscale" ? {} : { sampling: { seconds: 6.25 * (body.count ?? 1), steps: 8 * (body.count ?? 1) } }) });
+        ...(action === "upscale" ? {} : { ...applied(body), sampling: { seconds: 6.25 * (body.count ?? 1), steps: 8 * (body.count ?? 1) } }) });
     }) as typeof fetch);
     const offerings = await models.discover(ada, ep.id);
     // Art, Clip, Long, Moves and Restyle: a proposal never resolves.
