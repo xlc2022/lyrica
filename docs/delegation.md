@@ -761,6 +761,16 @@ from the parent's workspace, with the settings they have; a kept child is no
 longer a child (`child` is cleared, its `child_threads` row dropped), so it may
 start child threads of its own.
 
+**Detaching** (the thread menu's Detach, `POST …/detach`) does the same for
+one child thread, branch, fork or copy while its parent lives: it becomes a
+top-level thread with its messages as they are; `child` and `parent` are
+cleared and its `child_threads` row dropped, so neither thread can message
+the other; what its settings allow now becomes its own (never wider), and a
+local-only parent leaves it local-only. Its workspace folder and `/shared`
+are its own from then on: files it wrote in its parent's folder stay there.
+A subagent's thread, a project's thread and a thread whose turn is running
+are refused (`409`).
+
 ## Not here
 
 - Child threads of child threads, moving a child to another pool.

@@ -1078,6 +1078,19 @@ export class PoolStore extends PoolReader {
     return ids;
   }
 
+  /**
+   * Cuts a daughter (a child thread, branch, fork or copy) loose from its
+   * parent: it becomes a top-level thread with its entries as they are, and a
+   * child thread is no longer a child. Not a subagent, and not a project's thread.
+   */
+  detachThread(threadId: string): void {
+    const thread = this.mustThread(threadId);
+    if (thread.subagent) throw new Error("a subagent's thread can't be detached");
+    if (!thread.parent) throw new Error("this thread has no parent to detach from");
+    if (thread.child && this.getThread(thread.parent)?.project) throw new Error("a project's thread can't be detached");
+    this.db.prepare("UPDATE threads SET parent = NULL, child = 0 WHERE id = ?").run(threadId);
+  }
+
   /** A project's goal, in the user's words; empty clears it. */
   setGoal(id: string, goal: string): void {
     if (!this.mustThread(id).project) throw new Error("only a project has a goal");

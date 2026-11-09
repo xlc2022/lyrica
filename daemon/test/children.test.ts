@@ -489,6 +489,41 @@ describe("child threads", () => {
     expect((await list()).map((t) => t.id).sort()).toEqual([one, two].sort());
     expect((await ada.get(childPath(three))).status).toBe(404);
   });
+
+  it("detaching a child makes it a thread of its own, keeping its messages, while the parent lives on", async () => {
+    const { ada, parent, child, say, list, path, childPath, thread, messages } = await setup();
+    parent.push(start("Garden", "Plan the beds."), { text: "ok" });
+    child.push({ text: "beds planned" });
+    const id = toolEnd(await say("start one"))!.threads![0]!.id;
+    await until(list, (l) => l.find((t) => t.id === thread.id)!.children.every((c) => c.status === "idle"));
+
+    // A top-level thread has nothing to detach from.
+    expect((await ada.post(`${path}/detach`, {})).status).toBe(409);
+    const r = await ada.post<ThreadSummary>(`${childPath(id)}/detach`, {});
+    expect(r.status).toBe(200);
+    expect(r.body).toMatchObject({ id, child: false });
+    expect(r.body.parent).toBeUndefined();
+    const after = await list();
+    expect(after.find((t) => t.id === thread.id)!.children).toEqual([]);
+    expect(after.map((t) => t.id).sort()).toEqual([thread.id, id].sort());
+    // Its messages stay, the old parent's task shown as another thread's message; the parent keeps its own.
+    const kept = await messages(childPath(id));
+    expect(kept[0]).toMatchObject({ role: "user", from: { kind: "thread", threadId: thread.id }, parts: [{ type: "text", text: "Plan the beds." }] });
+    expect(kept.at(-1)).toMatchObject({ role: "assistant", parts: [expect.objectContaining({ text: "beds planned" })] });
+    expect((await messages(path)).length).toBeGreaterThan(0);
+    expect((await ada.get(`${childPath(id)}/settings`)).status).toBe(200);
+    // Once is enough.
+    expect((await ada.post(`${childPath(id)}/detach`, {})).status).toBe(409);
+
+    // It may start child threads of its own now.
+    child.push(start("Seeds", "Order seeds."), { text: "started one" }, { text: "seeds ordered" });
+    const kstream = ada.events(`${childPath(id)}/events`);
+    await kstream.ready;
+    await ada.post(`${childPath(id)}/messages`, { text: "start one of your own" });
+    await kstream.until((e) => e.type === "tool_end");
+    kstream.close();
+    expect(kstream.events.find((e) => e.event.type === "tool_end")!.event).toMatchObject({ isError: false, result: expect.stringContaining("Started child thread [t:") });
+  });
 });
 
 describe("a child's end, reading and stopping", () => {

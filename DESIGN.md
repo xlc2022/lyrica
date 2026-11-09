@@ -122,8 +122,11 @@ Each user has two pools of memory.
   - **The thread menu** opens by right-clicking a thread (a long press on a
     phone), with a letter shortcut for each item: Pin (P), Mark as unread
     (U), Rename (R), **Share with ›** (S), **Move to group ›** (M), Hide (H)
-    and Delete (D); **Make project** (K) on a top-level thread, and
-    **Resolve** or **Reopen** (E) on a project's thread. Delete confirms,
+    and Delete (D); **Make project** (K) on a top-level thread,
+    **Detach** (T) on a child thread, branch or copy outside a project, and
+    **Resolve** or **Reopen** (E) on a project's thread. Detach confirms,
+    then makes it a thread of its own (see Child threads in
+    docs/delegation.md). Delete confirms,
     says that what Lyrica learned from the thread is forgotten, and offers
     to delete its child threads too.
   - **Share with** sends another user a copy of the thread as it is now.
