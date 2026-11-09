@@ -1199,6 +1199,10 @@ dialog.viewer > .error { position: absolute; bottom: 8px; left: 16px; }
 .vplay svg { width: 12px; height: 12px; fill: currentColor; }
 .igrid .meta { font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; width: 100%; display: block; }
 .igrid .empty { grid-column: 1 / -1; }
+/* Click and drag draws a box over the tree or the grid (docs/ux.md §6); the names don't take a text selection and the images don't drag away. */
+.igrid, .ftree { position: relative; user-select: none; -webkit-user-select: none; }
+.igrid img { -webkit-user-drag: none; }
+.igrid .selbox, .ftree .selbox { position: absolute; z-index: 1; pointer-events: none; border: 1px solid var(--accent); background: color-mix(in srgb, var(--accent) 15%, transparent); border-radius: 2px; }
 .selbar { display: flex; align-items: center; gap: 6px; padding: 6px var(--gutter); border-top: 1px solid var(--line); font-size: 13px; background: var(--panel); }
 .selbar > span { margin-right: auto; }
 /* Centred wherever it is opened from (a message's prose zeroes its children's margins), and never taller than the viewport. */

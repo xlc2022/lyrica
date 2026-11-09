@@ -1196,6 +1196,21 @@ test("the Files panel: a tree one folder at a time, a file shown, search, the Im
   const panel = phone(page) ? page.locator(".files-page") : page.getByRole("complementary");
   await expect(panel.getByRole("tab", { name: "Files" })).toHaveAttribute("aria-selected", "true");
   await panel.getByRole("button", { name: "uploads", exact: true }).click();
+  // Click and drag with the mouse across the tree draws a box; the rows it touches are the selection.
+  {
+    const t = (await panel.getByRole("tree").boundingBox())!;
+    const p = (await panel.getByRole("button", { name: "plan.md", exact: true }).boundingBox())!, i = (await panel.getByRole("button", { name: tray, exact: true }).boundingBox())!;
+    await page.mouse.move(t.x + 12, Math.min(p.y, i.y) + 4);
+    await page.mouse.down();
+    await page.mouse.move(t.x + 60, Math.max(p.y + p.height, i.y + i.height) - 4, { steps: 6 });
+    await expect(panel.getByRole("tree").locator(".selbox")).toBeVisible();
+    await page.mouse.up();
+    const bar = panel.getByRole("toolbar", { name: "Selection" });
+    await expect(bar).toContainText(Math.abs(p.y - i.y) > p.height * 1.5 ? /\d+ selected/ : "2 selected");
+    await expect(panel.getByRole("button", { name: "plan.md", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await expect(panel.getByRole("button", { name: tray, exact: true })).toHaveAttribute("aria-pressed", "true");
+    await bar.getByRole("button", { name: "Clear the selection" }).click();
+  }
   await panel.getByRole("button", { name: "plan.md", exact: true }).click();
   // A file opens in the viewer: Markdown rendered, its Source a segment away, the thread beside it from 1180 px up.
   const viewer = page.getByRole("dialog", { name: "plan.md" });
@@ -1313,8 +1328,27 @@ test("the Files panel: a tree one folder at a time, a file shown, search, the Im
     await expect(panel.getByRole("button", { name: "made.txt", exact: true })).toBeVisible();
   }
 
+  const pot = (await upload("pot.png", "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQVR4nGP4z8DwHwyBNJjFAAAiOQZ3YJ5p9QAAAABJRU5ErkJggg==")).slice("/workspace/uploads/".length);
   await panel.getByRole("tab", { name: "Images" }).click();
-  await expect(panel.locator(".igrid").getByRole("button", { name: tray, exact: true })).toBeVisible();
+  const grid = panel.locator(".igrid");
+  await expect(grid.getByRole("button", { name: tray, exact: true })).toBeVisible();
+  await expect(grid.getByRole("button", { name: pot, exact: true })).toBeVisible();
+  // Click and drag with the mouse draws a box; the images it touches are the selection, and nothing opens.
+  const g = (await grid.boundingBox())!, a = (await grid.getByRole("button", { name: tray, exact: true }).boundingBox())!, b = (await grid.getByRole("button", { name: pot, exact: true }).boundingBox())!;
+  await page.mouse.move(g.x + 10, g.y + 4);
+  await page.mouse.down();
+  await page.mouse.move(g.x + 40, g.y + 40, { steps: 3 });
+  await expect(grid.locator(".selbox")).toBeVisible();
+  await page.mouse.move(Math.max(a.x + a.width, b.x + b.width) - 4, Math.max(a.y + a.height, b.y + b.height) - 4, { steps: 5 });
+  await page.mouse.up();
+  await expect(grid.locator(".selbox")).toHaveCount(0);
+  const bar = panel.getByRole("toolbar", { name: "Selection" });
+  await expect(bar).toContainText("2 selected");
+  await expect(page.getByRole("dialog", { name: tray })).toHaveCount(0);
+  // Ctrl-click still takes one out.
+  await grid.getByRole("button", { name: pot, exact: true }).click({ modifiers: ["ControlOrMeta"] });
+  await expect(bar).toContainText("1 selected");
+  await bar.getByRole("button", { name: "Clear the selection" }).click();
   await panel.getByRole("group", { name: "Show" }).getByRole("button", { name: "Made by Lyrica" }).click();
   await expect(panel.getByText("No images yet")).toBeVisible();
   // Videos: the thread's clips, an uploaded one with no poster showing its own first frame, opening in the viewer to play.
