@@ -119,7 +119,7 @@ function SettingField({ blank, options }: { blank: string; options?: unknown }) 
     if (n !== value) set?.(blank, n);
   };
   return (
-    <input className="mono wf-set" aria-label={label} title={title} type={numeric ? "number" : "text"} step={numeric ? "any" : undefined} placeholder={numeric ? "not set" : undefined}
+    <input className="mono wf-set" aria-label={label} title={title} type={numeric ? "number" : "text"} step={numeric ? "any" : undefined} placeholder="not set"
       value={text} disabled={!set} onChange={(e) => { typing.current = true; setText(e.target.value); }} onBlur={leave}
       onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); leave(); } }} />
   );
