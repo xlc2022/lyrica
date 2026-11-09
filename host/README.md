@@ -625,7 +625,9 @@ revoked. A revoked server must pair again.
   load, naming the measured need. Reload takes the same path. A measurement
   that fails (the measure child couldn't build the model at that context
   and batch) refuses the load, saying so, since the load would most likely
-  die the same way. Without a measurement (not done within a minute, or a
+  die the same way; the host then drops the model's preset and has the
+  router read the file again, so the next try measures afresh rather than
+  reading that failure back. Without a measurement (not done within a minute, or a
   router without one) the estimate stands and the log says `not measured`
   with the reason:
   file size times 1.05, the cache for its context, and 0.5 GiB per GPU;

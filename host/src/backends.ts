@@ -236,7 +236,10 @@ export class LlamaCpp implements Backend {
     // A measurement that failed means the measure child couldn't build the model at this preset (it doesn't say
     // more); the load would most likely die the same way, with the estimate as its only guide, so it is refused.
     if (memory?.status === "failed") {
+      // The router keeps the record until a reload sees the preset change, so the section goes and the router reads
+      // the file again; a later try with the same settings measures afresh instead of reading this failure back.
       this.forget(model);
+      await this.reload();
       throw new HostError(413, "too_big", `llama.cpp couldn't measure this model with a context of ${contextOf(model, settings)} tokens, so its load would most likely fail; lower the context length or the batch size.`);
     }
     // Without one the scheduler plans from its estimate, so the log says why: the measurement wasn't done within

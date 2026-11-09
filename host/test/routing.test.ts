@@ -407,17 +407,20 @@ describe("the vLLM backend", () => {
     }
   });
 
-  it("refuses a load whose measurement failed, naming the context, instead of trying the estimate", async () => {
-    const router = await fakeLlamaRouter();
+  it("refuses a load whose measurement failed, naming the context, and measures afresh next time", async () => {
     const serving = mkdtempSync(join(tmpdir(), "lyrica-serving-"));
+    const router = await fakeLlamaRouter("loaded", { serving });
     try {
-      const llama = new LlamaCpp({ url: router.url, serving, models: "/models", device: (i) => `CUDA${i}` });
+      const llama = new LlamaCpp({ url: router.url, serving, models: "/models", device: (i) => `CUDA${i}`, measureTimeoutMs: 200 });
       // The measure child couldn't build the model at this preset: a load with it would most likely die the same way.
       router.memory.set("m", { status: "failed" });
       const long = { ...(model as object), contextLength: 1_000_000 } as never;
-      await expect(llama.measure(long, at, { placement: { mode: "auto" }, contextLength: 500000 })).rejects.toMatchObject({ code: "too_big", message: expect.stringContaining("a context of 500000 tokens") });
-      // Refused, the placement leaves the preset as a forgotten one does.
+      const settings = { placement: { mode: "auto" as const }, contextLength: 500000 };
+      await expect(llama.measure(long, at, settings)).rejects.toMatchObject({ code: "too_big", message: expect.stringContaining("a context of 500000 tokens") });
+      // Refused, the placement leaves the preset, and the router has re-read it: the failure isn't read back on the next try.
       expect(readFileSync(join(serving, "llamacpp.ini"), "utf8")).not.toContain("[m]");
+      expect(router.memory.has("m")).toBe(false);
+      expect(await llama.measure(long, at, settings)).toBeNull();
     } finally {
       router.server.close();
     }
