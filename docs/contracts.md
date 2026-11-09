@@ -2382,7 +2382,8 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   NixOS does no comparison. GET also supplies `modelFacts: ModelCallFacts`
   (`since`, `until`, `pools`, `models[]`, `calls[]`): this authenticated
   administrator's own displayed pools, all retained call rows in the inclusive
-  last 24 hours, grouped by offering ID with recorded label/endpoint, `kind`,
+  last 24 hours (from the last `POST …/admin/status/reset`, `AdminStatusReset { since }`, when that is later;
+  the reset deletes no records), grouped by offering ID with recorded label/endpoint, `kind`,
   `calls`, `outputTokens`, `speedSamples` with optional `medianTokPerSec`,
   `promptSamples` with optional `medianPromptTokPerSec`, optional `sampling`
   for an image or video model (`secondsPer`, `steps`, `stepsPerSec` and

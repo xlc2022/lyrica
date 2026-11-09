@@ -5,7 +5,7 @@ import { ModelCallFacts } from "./ModelCallFacts.tsx";
 import { useCallback, useEffect, useState } from "react";
 import {
   del, get, HttpError, patch, post, put, saveName, u,
-  type AdminStatus, type AllowedPaths, type Me, type ModeDefault, type NetworkDefaults, type PersonaProposal,
+  type AdminStatus, type AdminStatusReset, type AllowedPaths, type Me, type ModeDefault, type NetworkDefaults, type PersonaProposal,
   type MemoryOverview, type Pool, type Presets, type ProposalDraft, type Pronouns, type SleepOverview, type SleepRunInfo, type SleepTime, type Theme, type UserCard,
   type NameSetting,
 } from "./api.ts";
@@ -381,7 +381,7 @@ function StatusSection({ ctx }: { ctx: ShellContext }) {
         </div>;
       })}
     </section>}
-    {s?.modelFacts && <ModelCallFacts facts={s.modelFacts} />}
+    {s?.modelFacts && <ModelCallFacts facts={s.modelFacts} onReset={async () => { await post<AdminStatusReset>(u(userId, "admin", "status", "reset")); status.reload(); }} />}
   </>;
 }
 
