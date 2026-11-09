@@ -126,7 +126,7 @@ Rules:
   Checks, passed, failed, Evidence, checked, not shown, Add check, Setup, From the lockfile (Setup's placeholder), Skills, Add skill, Export all, Import…, New skill, Steps, Approve, Decline, Background command, Question, Question not asked, Not now, Command, Sudoers,
   Pinned to the top, Unpinned, Draft (a pull request chip's word), Pull request #<n> on <repo> (a chip's tooltip,
   with its checks by name on the lines below), <n> subagents working,
-  Image models, Hosts and endpoints, Downloads, Clean up, Recent calls,
+  Image models, CFG (a model card's setting beside Steps), Hosts and endpoints, Downloads, Clean up, Recent calls,
   Model hosts, Plain endpoints, Add endpoint, ChatGPT plan, Grok plan, OpenRouter, Sign in with ChatGPT, Sign in with Grok, Sign in with OpenRouter, Redirect URL, Code, Finish, Signed out, Sign in again, Add model host, Pairing code,
   Pair, Pair again…, Unpaired, Dashboard, Pause, Resume, update available, Read its models, Add a model
   by hand, Enabled, Disable all models, Enable all models, Reset IDs…, Merge duplicate host… (Merge duplicate… on other endpoints), Replace with, All details, All calls,
