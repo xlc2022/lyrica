@@ -1,6 +1,6 @@
 import type { Worktree } from "./worktree.ts";
 import { randomBytes } from "node:crypto";
-import { commandRules as checkCommandRules, type CommandRule } from "./rules.ts";
+import { commandRules as checkCommandRules, DEFAULT_COMMAND_RULES, type CommandRule } from "./rules.ts";
 import { isAbsolute, posix } from "node:path";
 import type { Db } from "../db.ts";
 import type { Pool } from "../types.ts";
@@ -365,6 +365,11 @@ export class WorkspaceSettings {
     const checked = checkCommandRules(rules);
     this.db.prepare("INSERT INTO project_settings (pool, thread, command_rules) VALUES (?, ?, ?) ON CONFLICT(pool, thread) DO UPDATE SET command_rules = excluded.command_rules").run(pool, project, JSON.stringify(checked));
     return checked;
+  }
+
+  /** A new project's starting rules (`DEFAULT_COMMAND_RULES`), for a project that has none yet; one that has any is left as it is. */
+  seedCommandRules(pool: Pool, project: string): void {
+    if (!this.commandRules(pool, project).length) this.setCommandRules(pool, project, DEFAULT_COMMAND_RULES);
   }
 
   /** The person's commands that run when a code turn in the project ends (docs/workspace.md, "Project checks"). */

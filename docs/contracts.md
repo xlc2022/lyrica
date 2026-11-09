@@ -1738,8 +1738,8 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     `SameFile.messaged`, which settles it).
     `commandRules()` reads the owning project on every bash call. Forbid
     blocks in all modes and targets; Ask always prompts; Allow skips only
-    sandbox mode prompts. Opaque commands ask with any forbid rule.
-    `user_bash` is never checked.
+    sandbox mode prompts, never a suspect command's. Opaque commands ask with any forbid rule.
+    `user_bash` is never checked. A new project starts with `DEFAULT_COMMAND_RULES`.
     `settings()` is the thread's effective settings. `fileNotes()` returns
     `{ added, removed }` paths the Files panel changed since her last turn,
     which the `workspace` prompt section names in one line. `madeFiles`
@@ -1757,10 +1757,10 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     true adds `CLAUDE_CODE_LINE` to that section.
   - `read`, `write`, `edit` and `bash` take an optional `machine`. On a
     machine the call's mode is `stricterMode(settings().mode, limit)`; a
-    suspect `bash` (`suspectCommand`) asks in every mode unless
-    `allowedInThread`; the first call on a machine in a turn asks if
+    suspect `bash` (`suspectCommand(command, "machine" | "sandbox")`) asks in every mode unless
+    `allowedInThread(machine, command)`, where a sandbox command's machine is `SANDBOX_ALLOW`; the first call on a machine in a turn asks if
     anything earlier ran elsewhere. `ApprovalRequest` is `{ toolCallId,
-    tool, input, machine?, cwd?, warning?, server?, serverTool? }`, and the call runs only if its
+    tool, input, machine?, cwd?, warning?, server?, serverTool? }` (`warning` set for a suspect command wherever it runs), and the call runs only if its
     arguments are still exactly what was approved. With `proxmox`, the
     `proxmox` tool is registered, and offered only while `machines()` has a
     Proxmox machine. An `mcp__<server>__<tool>` call whose server isn't in
@@ -2510,10 +2510,11 @@ sandboxedTransport(sandbox: () => HelperSandbox): SshTransport  // the only clie
 // HelperSandbox { exclude, front?, frontHosts?, bwrap?, pasta?, refused? }: refused (the self-test's reason) fails the call
 helperSandbox(address, port, sandbox): Sandbox           // the helper's sandbox: no workspace, that address and port only
 settings(userId).commandRules(pool, project): CommandRule[]
-settings(userId).setCommandRules(pool, project, rules) / addCommandRule(pool, project, rule)
+settings(userId).setCommandRules(pool, project, rules) / addCommandRule(pool, project, rule) / seedCommandRules(pool, project)
 // CommandRule { prefix; decision: "allow" | "ask" | "forbid" }; at most 100; duplicate prefix replaces.
+// seedCommandRules writes DEFAULT_COMMAND_RULES for a project with none yet (the daemon calls it when a project is made).
 // user step 6 adds project_settings.command_rules, JSON default []; Projects.set upserts other columns.
-// rules.ts exports commandRules (validation), decide, alwaysAllowPrefix; machines.ts exports simpleCommands.
+// rules.ts exports commandRules (validation), decide, alwaysAllowPrefix, DEFAULT_COMMAND_RULES; machines.ts exports simpleCommands.
 settings(userId).checks(pool, project): string[] / setChecks(pool, project, checks)
 // checkChecks: at most 8 commands, each one line of at most 300 characters, no control characters; blanks dropped.
 // user step 16 adds project_settings.checks, JSON default [].
@@ -2574,7 +2575,8 @@ settings(userId): WorkspaceSettings       // per-pool defaults, per-thread overr
 //   / setHostKey / setOffNetwork / confirmOffNetwork / machineState(name, kind) / removeMachine / allowInThread(threadId, machine, command) / allowedInThread(threadId)
 // A thread's `machines: string[]` (the sandbox is always there); setThread refuses a machine of the other pool;
 //   inheritSettings takes a subset; effective() keeps only machines every ancestor grants.
-// SUSPECT_COMMANDS, suspectCommand(command), writtenFiles(command) (the targets of its redirections and tee), onFloor(path), cleanOutput(onData), maskKeys(buf) (shares removePrivateKeys from core/src/secrets.ts),
+// SUSPECT_COMMANDS (each with `everywhere?` for the sandbox too), suspectCommand(command, where = "machine"), SANDBOX_ALLOW (the machine key Allow in this thread stores for a sandbox command),
+//   writtenFiles(command) (the targets of its redirections and tee), onFloor(path), cleanOutput(onData), maskKeys(buf) (shares removePrivateKeys from core/src/secrets.ts),
 //   authorizedKeysLine(publicKey), machineSetup(account, keyLine, asUser?): core/src/workspace/machines.ts
 // page.ts: LIBS ("/opt/libs"), LIBRARIES (three, simplex-noise, @tweenjs/tween.js), libraryDirs() (each found in Lyrica's node_modules,
 //   with its version; the sandbox mounts each read-only at LIBS/<name>, and allow() lets reads there), librariesLine(),

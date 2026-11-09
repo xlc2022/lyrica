@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { Workspace, type ExecutionTarget } from "@lyrica/core";
+import { DEFAULT_COMMAND_RULES, Workspace, type ExecutionTarget } from "@lyrica/core";
 import { fakeOpenAI } from "../../core/test/fake-openai.ts";
 import { browser, daemon, enc, localModel, login, runtime } from "./helpers.ts";
 import type { EndpointInfo, MessagePage, PermissionRequest, ThreadSettings, ThreadSummary } from "../src/api.ts";
@@ -52,6 +52,39 @@ describe("project command rules through lyricad", () => {
     expect(s.commands).toEqual([]);
     expect((await s.ada.patch(s.childPath, { commandRules: [] })).status).toBe(400);
   });
+  it("a new project starts with the default rules, which forbid a force push without a card", async () => {
+    const s = await setup();
+    expect((await s.ada.get<ThreadSummary>(s.path)).body.projectSettings!.commandRules).toEqual(DEFAULT_COMMAND_RULES);
+    s.model.respond(c => c.messages.some(m => m.role === "tool") ? { text: "Refused." } : bash("git push --force origin main"));
+    const stream = s.ada.events(`${s.path}/events`);
+    await s.ada.post(`${s.path}/messages`, { text: "Push it" });
+    await stream.until(e => e.type === "turn_end");
+    expect(stream.events.some(e => e.event.type === "permission")).toBe(false);
+    expect(JSON.stringify(s.model.requests.at(-1)!.messages)).toContain("This project's rules forbid `git push --force`");
+    expect(s.commands).toEqual([]);
+    stream.close();
+  });
+  it("a suspect sandbox command asks in Auto with its warning and no Always allow; Allow in this thread stops the asking", async () => {
+    const s = await setup();
+    await s.ada.patch(s.path, { commandRules: [] });
+    s.model.reply(bash("rm -rf dist"), { text: "Gone." });
+    const stream = s.ada.events(`${s.path}/events`);
+    await s.ada.post(`${s.path}/messages`, { text: "Clean up" });
+    await stream.until(e => e.type === "permission");
+    const p = stream.events.find(e => e.event.type === "permission")!.event as PermissionRequest;
+    expect(p).toMatchObject({ tool: "bash", suspect: true, warning: "This deletes a folder and everything in it." });
+    expect(p.machine).toBeUndefined();
+    expect(p.alwaysAllow).toBeUndefined();
+    expect((await s.ada.post(`${s.path}/permissions/${p.requestId}`, { allow: true, allowInThread: true })).status).toBe(200);
+    await stream.until(e => e.type === "turn_end");
+    const from = stream.events.length;
+    s.model.reply(bash("rm -rf dist"), { text: "Gone again." });
+    await s.ada.post(`${s.path}/messages`, { text: "Clean up again" });
+    await stream.until(e => e.type === "turn_end", from);
+    expect(stream.events.slice(from).some(e => e.event.type === "permission")).toBe(false);
+    expect(s.commands).toEqual(["rm -rf dist", "rm -rf dist"]);
+    stream.close();
+  });
   it("Always allow stores the server prefix, then runs the next match in Ask without a card", async () => {
     const s = await setup();
     await s.ada.patch(`${s.path}/settings`, { mode: "ask" });
@@ -63,7 +96,8 @@ describe("project command rules through lyricad", () => {
     expect(p.alwaysAllow).toBe("npm run test");
     expect((await s.ada.post(`${s.path}/permissions/${p.requestId}`, { allow: true, alwaysAllow: true, prefix: "git push" })).status).toBe(200);
     await stream.until(e => e.type === "turn_end");
-    expect((await s.ada.get<ThreadSummary>(s.path)).body.projectSettings!.commandRules).toEqual([{ prefix: "npm run test", decision: "allow" }]);
+    // Beside the rules a new project starts with.
+    expect((await s.ada.get<ThreadSummary>(s.path)).body.projectSettings!.commandRules).toEqual([...DEFAULT_COMMAND_RULES, { prefix: "npm run test", decision: "allow" }]);
     const from = stream.events.length;
     s.model.reply(bash("npm run test -- --watch=false"), { text: "Next done." });
     await s.ada.post(`${s.path}/messages`, { text: "Test again" });

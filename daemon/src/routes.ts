@@ -1050,8 +1050,8 @@ export function apiRoutes(d: Lyricad): Route[] {
           ...(input.project ? { project: true, ...(typeof input.goal === "string" && input.goal.trim() ? { goal: input.goal } : {}) } : {}),
         });
         s().workspace.settings(user.id).setThread(thread.id, pool, newThreadDefaults(d, user));
-        // A new project starts pinned.
-        if (thread.project) s().projects.pin(user.id, pool, thread.id, true);
+        // A new project starts pinned, with the default command rules.
+        if (thread.project) { s().projects.pin(user.id, pool, thread.id, true); s().workspace.settings(user.id).seedCommandRules(pool, thread.id); }
         return summary(d, user, pool, o[pool], thread, []);
       });
     }),
@@ -1093,6 +1093,7 @@ export function apiRoutes(d: Lyricad): Route[] {
         const { parent: _parent, ...settings } = ws.effective(source.id);
         ws.setThread(project.id, pool, settings);
         s().projects.pin(user.id, pool, project.id, true);
+        ws.seedCommandRules(pool, project.id);
         moveWork(d, user, pool, view.own, project.id, source.id, 1, true);
       } finally { view.close(); }
       await s().host.get(user.id, pool, project.id).send(`Continue from [t:${r.params.threadId!}].`, { recentThreadIds: [r.params.threadId!], recentWorkSource: r.params.threadId! });
@@ -1140,6 +1141,7 @@ export function apiRoutes(d: Lyricad): Route[] {
         if (change.project && !thread.project) {
           try { store.setProject(thread.id); } catch (err) { throw new HttpError(409, (err as Error).message); }
           s().projects.pin(user.id, pool, thread.id, true);
+          s().workspace.settings(user.id).seedCommandRules(pool, thread.id);
         }
         const project = !!store.getThread(thread.id)!.project;
         const settings = change.threadsCode !== undefined || change.threadsEvidence !== undefined || change.paused !== undefined || change.threadsModel !== undefined || change.threadsThinking !== undefined || change.threadsFallback !== undefined || change.watchThreads !== undefined || change.checkInOnThreads !== undefined || change.commandRules !== undefined || change.checks !== undefined || change.setup !== undefined;

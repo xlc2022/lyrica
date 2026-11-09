@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { alwaysAllowPrefix, commandRules, decide } from "../src/workspace/rules.ts";
+import { alwaysAllowPrefix, commandRules, decide, DEFAULT_COMMAND_RULES } from "../src/workspace/rules.ts";
 
 const forbid = commandRules([{ prefix: "git push", decision: "forbid" }]);
 describe("project command matching", () => {
@@ -27,6 +27,14 @@ describe("project command matching", () => {
     expect(alwaysAllowPrefix('ls -la')).toBe('ls');
     expect(decide('ls . \"$HOME\" *.txt', [...forbid, { prefix: 'ls', decision: 'allow' }])?.decision).toBe('allow');
     for (const command of ['node task.js', 'python3 task.py', 'sudo git push', 'ls && pwd', "bash -c 'ls'"]) expect(alwaysAllowPrefix(command)).toBeUndefined();
+  });
+  it("starts a project with rules that forbid rewriting the remote and sweeping deletes, and nothing else", () => {
+    expect(commandRules(DEFAULT_COMMAND_RULES)).toEqual(DEFAULT_COMMAND_RULES);
+    for (const command of ["git push --force", "git push origin main --force", "git push -f origin main", "ls && git push --force", "rm -rf /", "sudo rm -rf /", "rm -fr /"]) {
+      expect(decide(command, DEFAULT_COMMAND_RULES)?.decision, command).toBe("forbid");
+    }
+    // Rules match words exactly; `--force-with-lease` is left to the suspect-command card.
+    for (const command of ["git push", "git push -u origin main", "git push --force-with-lease", "rm -rf ./build", "rm -rf /tmp/x", "npm test"]) expect(decide(command, DEFAULT_COMMAND_RULES), command).toBeUndefined();
   });
   it("checks storage budgets and replaces repeated prefixes", () => {
     expect(commandRules([{ prefix: ' npm   test ', decision: 'ask' }, { prefix: 'npm test', decision: 'allow' }])).toEqual([{ prefix: 'npm test', decision: 'allow' }]);

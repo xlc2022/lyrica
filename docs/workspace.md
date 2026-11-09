@@ -132,21 +132,32 @@ existed before became general machines at Ask.
   so she says the request timed out rather than that they declined), and
   not to do it another way or guess why. A request is denied on Stop, on
   timeout, or with nobody to ask, so none outlives its turn.
-- **Suspect commands always ask** on a machine, in every mode, with a warning
-  sentence (`suspectCommand`, `SUSPECT_COMMANDS` in
-  `core/src/workspace/machines.ts`): deleting `/`, `/*`, a home folder or a
-  top-level system folder; `mkfs`; `dd` onto `/dev/…`; recursive `chmod`,
+- **Suspect commands always ask**, in every mode, with a warning sentence
+  (`suspectCommand(command, where)`, `SUSPECT_COMMANDS` in
+  `core/src/workspace/machines.ts`). The list has two parts. **Work she
+  can't undo, wherever it runs** (`everywhere`; the sandbox gets only these):
+  deleting `/`, `/*`, a home folder or a top-level system folder; any
+  recursive `rm`; `git push` with `--force…`, `-f` or a `+refspec`; `git
+  reset --hard`, `git checkout -- …`, `.` or `-f`, `git switch -f` or
+  `--discard-changes`, `git restore` of the working tree; `git clean` (not
+  a `-n` dry run); `git branch -D` (or `--delete --force`), `git push
+  --delete`, `git stash drop|clear`. **Commands almost never right on a
+  machine** (machines only): `mkfs`; `dd` onto `/dev/…`; recursive `chmod`,
   `chown` or `chgrp` on `/`; `userdel` or `deluser`; `shutdown`, `reboot`,
   `poweroff`, `halt`, `systemctl reboot|poweroff|halt|kexec`, `init 0|6`;
   `qm destroy` and `pct destroy`; and on a Proxmox machine the `stop` and
   `reboot` actions (`PROXMOX_SUSPECT`). Wrappers such as `sudo`, `env`, `nice` and
-  `timeout` (with their flag values), a program's path, and `bash -c '…'`
-  are looked through; `cd / && rm -rf *` is not caught. The answer may say **Allow in this
-  thread**: that exact command on that machine no longer asks in that
-  thread, and nowhere else (for Proxmox, that action on that VM:
-  `suspectKey`). The list is short and fixed, a warning layer and
-  not the boundary: the boundary is the account's own rights and the
-  root-owned keys file.
+  `timeout` (with their flag values), a program's path, git's own `-C` and
+  `-c`, and `bash -c '…'` are looked through, and a `cd` earlier on the
+  line moves where a later relative `rm` points, so `cd / && rm -rf *` is
+  read as `rm -rf /*`. The answer may say **Allow in this thread**: that
+  exact command, on that machine or in the sandbox (`SANDBOX_ALLOW`), no
+  longer asks in that thread, and nowhere else (for Proxmox, that action
+  on that VM: `suspectKey`). An Allow command rule doesn't lift it, and a
+  suspect sandbox command's card offers no Always allow. The list is short
+  and fixed, a warning layer and not the boundary: the boundary is the
+  sandbox's mounts, or the account's own rights and the root-owned keys
+  file; neither part sees inside a script she writes and then runs.
 - **A floor no mode lifts:** `write` and `edit` on a machine refuse any path
   in a `.ssh` folder, under `/etc/ssh/`, or `/etc/sudoers*`, before and after
   following symlinks. The path as given is refused before any approval card
@@ -1642,6 +1653,17 @@ user step 6). A prefix has 1 to 8 words, each at most 64 characters, with no
 control characters; saving it again replaces its decision. `Projects.set`
 upserts other settings without replacing rules.
 
+**A new project starts with four Forbid rules** (`DEFAULT_COMMAND_RULES` in
+`rules.ts`, seeded by `seedCommandRules` when a project is made, continued
+from a thread or made from one; a project that already has rules is left
+alone, and existing projects get none): `git push --force`, `git push -f`,
+`rm -rf /` and `rm -fr /`. They show in Project settings → Commands like
+any rule, and the person removes or changes them there. Since rules match
+words exactly, `git push --force-with-lease` and `rm -rf /*` pass the rules
+and reach the suspect-command card instead. Having any Forbid rule means an
+opaque command (`bash script.sh`, `eval`, `$cmd`) asks in every mode, as
+below.
+
 A forbid rule refuses any command she writes that contains a matching command, however
 chained or wrapped; it doesn't see inside scripts or programs she runs.
 
@@ -1657,8 +1679,9 @@ be allowed; with any forbid rule they ask in every mode.
 
 The hook reads rules on every `bash` call through `ThreadTools.commandRules`.
 Forbid blocks without a card, Ask always asks, and Allow skips Ask and Accept
-edits prompts in the sandbox only. Machine limits, suspect commands, moving
-to a machine and irreversible calls still ask. The user's `user_bash` is
+edits prompts in the sandbox only. Machine limits, suspect commands (in the
+sandbox too, [Machines](#machines)), moving to a machine and irreversible
+calls still ask. The user's `user_bash` is
 unaffected. `WorkspaceThread.project` follows delegation at every depth.
 
 Project settings → General has Commands after Workspace, with prefix,
@@ -1685,6 +1708,10 @@ judgment and make review easy. Each thread has a **mode**:
   `propose_plan` are active. A child thread of a Plan-mode thread is in
   Plan mode too.
 - **Auto** (`auto`, the default): works freely inside the grants.
+
+Whatever the mode, a suspect command (a recursive delete, or git throwing
+away commits or changes; [Machines](#machines)) asks with a warning, until
+allowed in the thread.
 
 A new thread starts in the user's default mode (`defaultMode`,
 `startThread`). Stored modes from before Plan mode are renamed in place:

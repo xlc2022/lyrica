@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { SessionManager, type AgentSession, type AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import {
-  ANSWER, answerMark, recentWorkAllowed, WELCOME_LIMITS, alwaysAllowPrefix, CloudModelForbidden, FROM_PARENT, fromParent, HEALTH_MS, isPlan, isPlanLimit, isUnreachable, planLimitReset, NoModel, Offline, PlanWaiting, suspectKey, ROUTINE, WAKEUP, WATCHING, WATCHING_MARK,
+  ANSWER, answerMark, recentWorkAllowed, WELCOME_LIMITS, alwaysAllowPrefix, CloudModelForbidden, FROM_PARENT, fromParent, HEALTH_MS, isPlan, isPlanLimit, isUnreachable, planLimitReset, NoModel, Offline, PlanWaiting, SANDBOX_ALLOW, suspectKey, ROUTINE, WAKEUP, WATCHING, WATCHING_MARK,
   sandboxHas, sandboxTools, type ChildStatus, type JobProgress, type Memory, type Models, type PersonaStore, type Pool, type PoolView, type Skill, type Users, type Workspace,
 } from "@lyrica/core";
 import {
@@ -134,7 +134,7 @@ export class ThreadHost {
    */
   approveSubagent(r: SubagentApproval, signal: AbortSignal): Promise<Approval> {
     const request: PermissionRequest = {
-      requestId: randomBytes(8).toString("hex"), toolCallId: r.toolCallId, tool: r.tool, args: r.input, ...onMachine(r), ...commandApproval(this.opts, r.userId, r.pool, r.threadId, r.tool, r.input),
+      requestId: randomBytes(8).toString("hex"), toolCallId: r.toolCallId, tool: r.tool, args: r.input, ...onMachine(r), ...commandApproval(this.opts, r.userId, r.pool, r.threadId, r),
       expiresAt: new Date(Date.now() + this.opts.permissionMs).toISOString(),
       subagent: { runId: r.runId, threadId: r.threadId, parentThreadId: r.parentThreadId, role: r.role },
     };
@@ -1003,7 +1003,7 @@ export class HostedThread {
 
   /** Asks every open view of the thread. Stop denies; a timeout answers "timeout", so her result says nobody answered. */
   private async approve(r: ApprovalRequest): Promise<Approval> {
-    const { allowed, reason } = await this.ask(r.toolCallId, r.tool, r.input, { ...onMachine(r), ...commandApproval(this.o, this.userId, this.pool, this.threadId, r.tool, r.input) });
+    const { allowed, reason } = await this.ask(r.toolCallId, r.tool, r.input, { ...onMachine(r), ...commandApproval(this.o, this.userId, this.pool, this.threadId, r) });
     return allowed || (reason === "timeout" ? "timeout" : false);
   }
 
@@ -1063,7 +1063,7 @@ export class HostedThread {
       const where = p.request.subagent?.threadId ?? this.threadId;
       if (p.request.server && p.request.serverTool) this.o.workspace.settings(this.userId).allowToolInThread(where, p.request.server, p.request.serverTool);
       else if (!p.request.suspect) throw new Error("only a suspect command or an MCP tool can be allowed in this thread");
-      else this.o.workspace.settings(this.userId).allowInThread(where, p.request.machine!, suspectKey(p.request.tool, p.request.args));
+      else this.o.workspace.settings(this.userId).allowInThread(where, p.request.machine ?? SANDBOX_ALLOW, suspectKey(p.request.tool, p.request.args));
     }
     p.done(allow, "answered", allow ? mode : undefined);
     return true;
@@ -1538,11 +1538,12 @@ function conversationLine(entry: unknown): string {
   return text.trim() && text !== OPENING ? `${m.role}: ${text.trim().slice(0, 500)}` : "";
 }
 
-/** A call on a machine: its name and folder, and for a suspect command the warning. */
+/** A call on a machine: its name and folder; and for a suspect command, wherever it runs, the warning. A portrait question carries its warning only. */
 function onMachine(r: ApprovalRequest): Partial<PermissionRequest> {
   if (r.server) return { server: r.server, ...(r.serverTool ? { serverTool: r.serverTool } : {}) };
-  if (!r.machine) return r.warning ? { warning: r.warning } : {};
-  return { machine: r.machine, ...(r.cwd ? { cwd: r.cwd } : {}), ...(r.warning ? { suspect: true as const, warning: r.warning } : {}) };
+  const suspect = r.warning && r.tool !== "image" ? { suspect: true as const, warning: r.warning } : r.warning ? { warning: r.warning } : {};
+  if (!r.machine) return suspect;
+  return { machine: r.machine, ...(r.cwd ? { cwd: r.cwd } : {}), ...suspect };
 }
 
 /** Project ownership follows subagent parents, at every depth. */
@@ -1555,8 +1556,9 @@ function projectFor(o: HostOptions, userId: string, pool: Pool, threadId: string
   } finally { view.close(); }
 }
 
-function commandApproval(o: HostOptions, userId: string, pool: Pool, threadId: string, tool: string, input: Record<string, unknown>): Partial<PermissionRequest> {
-  if (tool !== "bash" || input.machine || !projectFor(o, userId, pool, threadId)) return {};
+/** Always allow for a plain sandbox command in a project; a suspect command gets no such choice, since the rule couldn't lift its warning anyway. */
+function commandApproval(o: HostOptions, userId: string, pool: Pool, threadId: string, { tool, input, machine, warning }: ApprovalRequest): Partial<PermissionRequest> {
+  if (tool !== "bash" || machine || warning || !projectFor(o, userId, pool, threadId)) return {};
   const prefix = alwaysAllowPrefix(String(input.command));
   return prefix ? { alwaysAllow: prefix } : {};
 }
