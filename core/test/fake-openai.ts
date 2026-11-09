@@ -97,11 +97,12 @@ export async function fakeOpenAI(opts: { models?: Record<string, unknown>[]; lab
   };
 }
 
-/** A base URL nothing listens on. */
+/**
+ * A base URL nothing listens on. A port freed a moment ago can be taken by
+ * another test worker, so the "dead" endpoint would answer. Port 1 is
+ * privileged and unassigned, so no test server can ever bind it and a
+ * connection is refused at once.
+ */
 export async function deadUrl(): Promise<string> {
-  const s = createServer();
-  await new Promise<void>((r) => s.listen(0, "127.0.0.1", r));
-  const { port } = s.address() as AddressInfo;
-  await new Promise((r) => s.close(r));
-  return `http://127.0.0.1:${port}/v1`;
+  return "http://127.0.0.1:1/v1";
 }
