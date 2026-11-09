@@ -22,8 +22,9 @@ describe("her rejected image attempts", () => {
     expect(out.get("3")!.parts.get(0)).toBeNull();
     expect(out.get("3")!.groups.size).toBe(0);
     expect(out.get("5")!.parts.get(0)).toEqual(made(C));
-    // The turns from the first attempt through the last rejected one fold under the marker; the kept one stays out.
-    expect(out.get("1")!.fold).toBe("3");
+    // The turns from the first attempt through the last rejected one fold under the marker; the kept one's message has nothing before its image, so it stays out whole.
+    expect(out.get("1")!.fold).toBe("4");
+    expect(out.get("1")!.foldParts).toBeUndefined();
   });
 
   it("folds no turn when a kept image shares the first attempt's message, and stops a fold before a kept image", () => {
@@ -37,6 +38,18 @@ describe("her rejected image attempts", () => {
     expect(after.get("2")!.parts.get(0)).toEqual(made(B));
   });
 
+  it("folds her words about the rejects up to the call that made the kept image", () => {
+    const text: MessagePart = { type: "text", text: "The shorts came out wrong. Once more." };
+    const create = tool("c", { action: "create", prompt: "A lantern" });
+    const out = sortImages([user("u"), hers("1", made(A)), hers("2", tool("r", { action: "reject", images: [A] }), text), hers("3", text, create, made(B), { type: "text", text: "That's the one." })]);
+    expect(out.get("1")!.fold).toBe("3");
+    expect(out.get("1")!.foldParts).toBe(1);
+    // With nothing of hers before the call, the fold ends at the message before.
+    const bare = sortImages([user("u"), hers("1", made(A)), hers("2", tool("r", { action: "reject", images: [A] }), text), hers("3", create, made(B))]);
+    expect(bare.get("1")!.fold).toBe("2");
+    expect(bare.get("1")!.foldParts).toBeUndefined();
+  });
+
   it("shows a picked earlier attempt last, with its first part's facts, and keeps a failed reject's image in place", () => {
     const out = sortImages([user("u"), hers("1", made(A, "Flux")), hers("2", tool("r", { action: "reject", images: [A] })), hers("3", made(B, "Z-Image")),
       hers("4", tool("x", { action: "reject", images: [B] }, true)),
@@ -44,9 +57,10 @@ describe("her rejected image attempts", () => {
     expect(out.get("1")!.parts.get(0)).toBeNull();
     expect(out.get("3")!.groups.get(0)).toEqual([{ type: "image", paths: [rejectedPath(B)], model: "Z-Image", tier: "fast" }]);
     expect(out.get("5")!.parts.get(2)).toEqual({ type: "image", paths: [A], model: "Flux", tier: "fast", picked: true });
-    // A is picked back, so the group and its fold are B's message alone; the pick's message stays out.
+    // A is picked back, so the group is B's; the fold runs into the pick's message, up to the pick itself.
     expect(out.get("1")!.fold).toBeUndefined();
-    expect(out.get("3")!.fold).toBe("3");
+    expect(out.get("3")!.fold).toBe("5");
+    expect(out.get("3")!.foldParts).toBe(1);
   });
 
   it("keeps each turn's rejects in that turn, and marks them deleted once she clears them", () => {

@@ -354,10 +354,12 @@ test("her rejected attempts fold into one closed group, and her pick shows last 
   // Only the last attempt shows full size; the rejects, and the turns that made and set them aside, are folded away.
   await expect(page.locator(".turn .message-image")).toHaveCount(1);
   await expect(page.getByRole("img", { name: c.split("/").at(-1)! })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Rejecting an image" })).toHaveCount(1);
+  // The last message's reject of the second attempt folds too; its making call, image and words stay.
+  await expect(page.getByRole("button", { name: "Rejecting an image" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Making an image" })).toHaveCount(1);
+  await expect(page.getByText("The third one has the lantern's glow on the water.")).toBeVisible();
   // Closed, the marker stands for the folded messages: it has the first one's id and names them all.
-  await expect(page.locator("#m-1.rejected-run")).toHaveAttribute("data-folds", "1 2");
+  await expect(page.locator("#m-1.rejected-run")).toHaveAttribute("data-folds", "1 2 3");
   await noHorizontalScroll(page);
   if (process.env.SCREENSHOTS) await page.screenshot({ fullPage: true, path: `${process.env.SCREENSHOTS}/rejects-closed-${page.viewportSize()!.width}.png` });
   await group.click();
@@ -365,13 +367,14 @@ test("her rejected attempts fold into one closed group, and her pick shows last 
   const rejected = page.locator(".rejected-body img");
   await expect(rejected).toHaveCount(2);
   await expect(rejected.first()).toHaveAttribute("src", `${base}/file?path=${encodeURIComponent(a.replace("/images/", "/images/rejected/"))}`);
-  // Open, the fold shows the two turns that made the rejects, with their markers, and no third image.
-  await expect(page.locator(".rejected-turns .turn")).toHaveCount(2);
+  // Open, the fold shows the two turns that made the rejects and the last message's reject, with their markers, and no third image.
+  await expect(page.locator(".rejected-turns .turn")).toHaveCount(3);
   await expect(page.getByRole("button", { name: "Making an image" })).toHaveCount(3);
   await expect(page.getByRole("button", { name: "Rejecting an image" })).toHaveCount(2);
   await expect(page.locator(".rejected-turns .message-image")).toHaveCount(0);
   await expect(page.locator("#m-1")).toHaveCount(1);
   await expect(page.locator(".rejected-turns #m-1")).toHaveCount(1);
+  await expect(page.locator("#m-3")).toHaveCount(1);
   await noHorizontalScroll(page);
   if (process.env.SCREENSHOTS) await page.screenshot({ fullPage: true, path: `${process.env.SCREENSHOTS}/rejects-open-${page.viewportSize()!.width}.png` });
 });

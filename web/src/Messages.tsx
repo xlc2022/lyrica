@@ -223,7 +223,7 @@ function conversationNodes(stored: Message[], liveItems: LiveItem[], busy: boole
   // Her tool calls since the person's last message or her last words: the pages among them show under her next words.
   let read: MessagePart[] = [];
   // The messages folding under a "<n> rejected" marker, while the fold runs: its group, the key it ends at, and its turns so far.
-  let fold: { key: string; ns: number[]; group: RejectedImage[]; until: string; turns: ReactNode[]; streaming: boolean } | undefined;
+  let fold: { key: string; ns: number[]; group: RejectedImage[]; until: string; untilParts?: number; turns: ReactNode[]; streaming: boolean } | undefined;
   const quietNode = (q: Quiet) => <section key={q.key} className="turn quiet" id={q.n !== undefined ? `m-${q.n}` : undefined}><Parts parts={q.parts} env={env} bare streaming={q.streaming} /></section>;
   const flush = () => {
     if (!quiet.length) return;
@@ -250,19 +250,37 @@ function conversationNodes(stored: Message[], liveItems: LiveItem[], busy: boole
     ? { key: e.key, user: e.stored.role === "user", parts: e.stored.role === "assistant" ? e.stored.parts : undefined }
     : { key: e.key, user: e.live?.role === "user", parts: e.live?.role === "assistant" ? e.live.parts : undefined }));
   for (const e of entries) {
-    const m = e.stored;
-    const hers = m ? (m.role === "assistant" && !m.error && !cards.has(m.n) ? m.parts : undefined) : e.live?.role === "assistant" && !e.live.error ? e.live.parts : undefined;
+    let m = e.stored;
+    let hers = m ? (m.role === "assistant" && !m.error && !cards.has(m.n) ? m.parts : undefined) : e.live?.role === "assistant" && !e.live.error ? e.live.parts : undefined;
     let own = images.get(e.key);
     // A fold holds only her messages: anything else in its way (a notice, an error) ends it early, and the rest stays in the open.
     if (fold && !hers) endFold();
     if (hers && own?.fold) {
       flush();
       const [group] = own.groups.values();
-      fold = { key: e.key, ns: [], group: group!, until: own.fold, turns: [], streaming: false };
+      fold = { key: e.key, ns: [], group: group!, until: own.fold, ...(own.foldParts === undefined ? {} : { untilParts: own.foldParts }), turns: [], streaming: false };
       // Its thumbnails stand at the top of the fold's box, not as a marker inside it.
       own = { ...own, groups: new Map() };
     }
     if (hers) read.push(...hers);
+    // The fold's last message is split where the kept image's call begins: her words before it fold, the call and the image stay.
+    if (fold && hers && e.key === fold.until && fold.untilParts) {
+      const at = fold.untilParts;
+      const before = hers.slice(0, at);
+      const model = m?.model ?? (e.live?.role === "assistant" ? e.live.model : undefined);
+      const seenBefore = new Set(shown);
+      for (const p of before) if (p.type === "image") for (const path of p.paths) shown.add(path);
+      const imagesOf = (from: number, to: number): SortedImages | undefined => own && {
+        parts: new Map([...own.parts].filter(([i]) => i >= from && i < to).map(([i, v]) => [i - from, v])),
+        groups: new Map([...own.groups].filter(([i]) => i >= from && i < to).map(([i, v]) => [i - from, v])),
+      };
+      fold.turns.push(<Parts key={`${e.key}-folded`} parts={before} env={env} model={model} at={m?.createdAt} shown={seenBefore} images={imagesOf(0, at)} />);
+      if (m) fold.ns.push(m.n);
+      endFold();
+      hers = hers.slice(at);
+      own = imagesOf(at, Infinity);
+      if (m) m = { ...m, parts: hers };
+    }
     const into = fold ? fold.turns : nodes;
     if (hers && hers.length && hers.every(isMarker)) {
       const q = { key: e.key, n: m?.n, parts: hers, streaming: e.streaming };
@@ -276,7 +294,7 @@ function conversationNodes(stored: Message[], liveItems: LiveItem[], busy: boole
       for (const p of hers ?? []) if (p.type === "image") for (const path of p.paths) shown.add(path);
       const seen = new Set(shown);
       if (m) into.push(<StoredMessage key={m.id} m={m} env={env} you={you} told={looks.told.get(m.id)} folded={looks.folded.has(m.id)} cards={cards.get(m.n)} shown={seen} images={own} sources={sources} />);
-      else if (e.live) into.push(<LiveMessage key={e.key} item={e.live} env={env} you={you} streaming={e.streaming} shown={seen} images={own} sources={sources} />);
+      else if (e.live) into.push(<LiveMessage key={e.key} item={e.live.role === "assistant" && hers ? { ...e.live, parts: hers } : e.live} env={env} you={you} streaming={e.streaming} shown={seen} images={own} sources={sources} />);
     }
     if (fold) { fold.streaming = e.streaming; if (m) fold.ns.push(m.n); if (e.key === fold.until) endFold(); }
   }
