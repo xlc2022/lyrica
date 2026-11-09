@@ -206,9 +206,13 @@ git clone https://github.com/xlc2022/lyrica && cd lyrica
 host/install.sh
 ```
 
-On NixOS, add the `model-host` module and `nixos-rebuild switch` first
-([host/README.md](../../host/README.md), "On NixOS"), then clone into its
-`checkout` folder. `/srv` belongs to root, so make the folder yours first:
+On NixOS, add the `model-host` module to your system flake and rebuild it
+first, from your configuration's own folder (`sudo nixos-rebuild switch
+--flake .#<machine>`; [host/README.md](../../host/README.md), "On NixOS"),
+then clone into its `checkout` folder. The clone has a `flake.nix` of its
+own that is not a system configuration: never run `nixos-rebuild` or `nix
+flake update` from it, only `host/install.sh`. `/srv` belongs to root, so
+make the folder yours first:
 
 ```sh
 sudo mkdir -p /srv/lyrica-host && sudo chown "$USER" /srv/lyrica-host
@@ -814,10 +818,12 @@ second pairing. Then:
   installed before the image server got its `/triton` scratch space needs
   this too, or image jobs fail with an `ImportError` (seen on NVIDIA).
 - **On NixOS** the module declares the updater (since 2026-11-08), so
-  **Update…** works as above. A host set up before that needs one
-  `nix flake update <input> && nixos-rebuild switch` (`<input>` is the
-  name your flake gives the Lyrica input), then one `git pull &&
-  host/install.sh` in its `checkout` folder; until then Update… is greyed
+  **Update…** works as above. A host set up before that needs, in your
+  system configuration's folder and never in the Lyrica checkout, `nix
+  flake update <input>` (`<input>` is the name your flake gives the Lyrica
+  input; `nix flake metadata` lists them) and `sudo nixos-rebuild switch
+  --flake .#<machine>`, then one `git pull && host/install.sh` in its
+  `checkout` folder; until then Update… is greyed
   out with "Set services.lyrica-host.updates.enable and rebuild, or update
   with git pull and install.sh in the host's folder." as its tooltip. The
   updater itself comes from the Nix store and changes only with a rebuild,

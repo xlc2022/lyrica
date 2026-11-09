@@ -98,10 +98,13 @@ lyrica.nixosModules.model-host
 }
 ```
 
-Then `nixos-rebuild switch`, clone the repo to `checkout` (never
-`/opt/lyrica`, which is lyricad's), and run `host/install.sh` from it as on
-Debian, giving it the same models folder as `modelsDir` (the module creates
-it and its `lyrica/` subfolder). With `gpu = "nvidia"`, the driver
+Then `sudo nixos-rebuild switch --flake .#<machine>` from your system
+configuration's folder, clone the repo to `checkout` (never `/opt/lyrica`,
+which is lyricad's), and run `host/install.sh` from it as on Debian, giving
+it the same models folder as `modelsDir` (the module creates it and its
+`lyrica/` subfolder). Keep the two folders apart: the Lyrica checkout has a
+`flake.nix` of its own, which is not a system configuration, so never run
+`nixos-rebuild` or `nix flake update` from it. With `gpu = "nvidia"`, the driver
 uses NVIDIA's open kernel modules (Turing or newer; set
 `hardware.nvidia.open = false` for older cards; `cmpUnlock` does) and Docker reaches the GPUs
 through the container toolkit's CDI devices: `install.sh` sees the CDI spec
@@ -114,10 +117,12 @@ host runs from `/opt/lyrica-host/<commit>`, and the egress unit runs that
 tree's `egress.sh` (it reads `/var/lib/lyrica-host-update/current`, and
 falls back to `checkout`). The updater itself changes only with a
 `nixos-rebuild`, never with an update. A host set up before the module
-declared the updater needs one `nix flake update <input> && nixos-rebuild
-switch` (the name your flake gives the Lyrica input; `nix flake metadata`
-lists them), then one `git pull && host/install.sh` in its checkout, before
-**Update** works there; until then it's greyed out and says so.
+declared the updater needs, in your system configuration's folder (not the
+Lyrica checkout), `nix flake update <input>` (the name your flake gives the
+Lyrica input; `nix flake metadata` lists them) and `sudo nixos-rebuild
+switch --flake .#<machine>`, then one `git pull && host/install.sh` in its
+checkout, before **Update** works there; until then it's greyed out and
+says so.
 
 ### gpu-unlock
 
