@@ -1646,6 +1646,8 @@ turns animations off.
   also serves a fake speech endpoint (whisper and kokoro, under `/speech/v1`,
   and `/speech/down` to make it fail). Its nightly sleep time is set half a
   day from its start, so no run reaches it. Chromium runs with a fake microphone.
+  `E2E_PROJECTS=phone-chat,desktop-chat` runs only those projects and starts
+  only their `lyricad`s; CI runs each spec as a job of its own this way.
 - Push e2e checks cover Save, masked saved credentials across reload, Send a
   test, inline receiver failure and recovery, and Turn off at both widths.
   Browser API interception supplies the Push contract and forwards test
