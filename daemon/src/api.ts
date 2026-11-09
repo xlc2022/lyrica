@@ -876,6 +876,11 @@ export interface McpServerInfo {
   description: string | null;
   /** Its host resolved outside the LAN, loopback and tailnet at the last check. */
   offNetwork: boolean;
+  /** Calls per day (UTC) and per minute she may send it, across the user's threads; null for no limit (the default). */
+  dailyLimit: number | null;
+  minuteLimit: number | null;
+  /** Tool calls sent to it since midnight UTC. */
+  callsToday: number;
   /** How the last connection went, and since when: online, rejected (the token), unreachable. Absent before the first. */
   state?: { kind: "online" | "rejected" | "unreachable"; since: string };
 }
@@ -890,10 +895,10 @@ export interface McpServerInfo {
  * MCP servers). A private remote server whose host resolves outside her
  * network needs `offNetworkConfirmed`.
  */
-export interface McpServerInput { name: string; url?: string; token?: string; command?: string; env?: string; pool: Pool; offNetworkConfirmed?: boolean }
+export interface McpServerInput { name: string; url?: string; token?: string; command?: string; env?: string; pool: Pool; dailyLimit?: number | null; minuteLimit?: number | null; offNetworkConfirmed?: boolean }
 export interface McpServerProbe { tools: number; description: string | null }
 /** PATCH /api/u/:userId/mcp-servers/:name → McpServerInfo. A new URL or command is checked first; a new pool takes it from every thread; a new name follows into them. */
-export interface McpServerChange { name?: string; url?: string; command?: string; pool?: Pool; offNetworkConfirmed?: boolean }
+export interface McpServerChange { name?: string; url?: string; command?: string; pool?: Pool; dailyLimit?: number | null; minuteLimit?: number | null; offNetworkConfirmed?: boolean }
 /** POST /api/u/:userId/mcp-servers/:name/token → McpServerInfo. Replace token: the server is checked with it first; empty sends none. */
 export interface McpToken { token: string }
 /** POST /api/u/:userId/mcp-servers/:name/env → McpServerInfo. Replace environment, a local server's `KEY=value` lines: it is started with them first. */

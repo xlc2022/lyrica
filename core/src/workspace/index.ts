@@ -27,7 +27,7 @@ import {
   type ProxmoxAction, type ProxmoxCall, type ProxmoxTransport, type Self,
 } from "./proxmox.ts";
 import { parseHost, reachesHost } from "./net.ts";
-import { mcpHost, mcpUrl, probeMcp, probeMcpCommand, type McpProbe, type McpProcess, type McpStateKind } from "./mcp.ts";
+import { mcpHost, mcpUrl, probeMcp, probeMcpCommand, type McpBudget, type McpProbe, type McpProcess, type McpStateKind } from "./mcp.ts";
 import {
   checkGrant, gitHost, type McpServerConfig, repositoryDir, repositoryName, repositoryUrl, stricterMode, WorkspaceSettings, type GitAccountConfig, type GitAccountState, type GitKind, type Grant,
   type MachineConfig, type MachineKind, type MachineLimit, type Network, type NewMachine, type PermissionMode, type ThreadRepository, type ThreadWorkspace,
@@ -149,7 +149,7 @@ export interface GitRepositoryInfo { name: string; account: string }
 export interface ThreadMcpServer { name: string; url: string; token: string; command?: string[]; description: string | null }
 
 /** What `Workspace.addMcpServer` and `probeMcpServer` take: a URL with an optional token, or a command with its environment. */
-export interface McpServerInput { name: string; url?: string; token?: string; command?: string[]; env?: Record<string, string>; pool: Pool; offNetworkConfirmed?: boolean }
+export interface McpServerInput { name: string; url?: string; token?: string; command?: string[]; env?: Record<string, string>; pool: Pool; dailyLimit?: number | null; minuteLimit?: number | null; offNetworkConfirmed?: boolean }
 
 /** A machine as one thread sees it: granted, of its pool, with its limit. */
 export interface ThreadMachine { name: string; kind: MachineKind; limit: MachineLimit; root: string | null; asUser?: boolean }
@@ -440,6 +440,11 @@ export class Workspace {
       mcpServerState: (name: string, kind: McpStateKind) => { try { this.settings(t.userId).mcpServerState(name, kind); } catch { /* locked: shown only */ } },
       /** Starts one of its local servers in its sandbox, for the session's transport. */
       startMcpServer: (name: string) => this.startMcpServer(t, name),
+      /** The server's call budget: refused says why a call may not go now; record counts one that went. A locked database refuses nothing. */
+      mcpBudget: (name: string): McpBudget => ({
+        refused: () => { try { return this.settings(t.userId).mcpCallRefused(name); } catch { return undefined; } },
+        record: () => { try { this.settings(t.userId).recordMcpCall(name); } catch { /* locked: uncounted */ } },
+      }),
       /** Whether the user allowed this MCP tool on this server in this thread. */
       toolAllowedInThread: (server: string, tool: string) => this.settings(t.userId).toolAllowedInThread(t.threadId, server, tool),
       /** An approved plan switching the thread's mode. */
@@ -1357,29 +1362,31 @@ export class Workspace {
     const token = input.token?.trim() ?? "";
     const command = input.command ?? [];
     const env = input.env ?? {};
+    const limits = { dailyLimit: input.dailyLimit ?? null, minuteLimit: input.minuteLimit ?? null };
     if (command.length) {
       if (String(input.url ?? "").trim()) throw new Error("a server is a URL or a command, not both");
       const probe = await this.probeMcpServer({ command, env });
-      return s.addMcpServer({ name: input.name, url: "", token: "", command, env, pool: input.pool, description: probe.description, tools: probe.tools, offNetwork: false }, "online");
+      return s.addMcpServer({ name: input.name, url: "", token: "", command, env, pool: input.pool, description: probe.description, tools: probe.tools, offNetwork: false, ...limits }, "online");
     }
     const url = mcpUrl(input.url ?? "", input.pool, token);
     const outside = await this.mcpOutside(url, input.pool, input.offNetworkConfirmed);
     const probe = await this.probeMcpServer({ url, token });
-    return s.addMcpServer({ name: input.name, url, token, command: [], env: {}, pool: input.pool, description: probe.description, tools: probe.tools, offNetwork: outside }, "online");
+    return s.addMcpServer({ name: input.name, url, token, command: [], env: {}, pool: input.pool, description: probe.description, tools: probe.tools, offNetwork: outside, ...limits }, "online");
   }
 
   /** Changes a server's name, URL, command or pool. A new URL or command is checked again; a private one moved off her network needs `offNetworkConfirmed`. */
-  async updateMcpServer(userId: string, name: string, change: { name?: string; url?: string; command?: string[]; pool?: Pool; offNetworkConfirmed?: boolean }): Promise<McpServerConfig> {
+  async updateMcpServer(userId: string, name: string, change: { name?: string; url?: string; command?: string[]; pool?: Pool; dailyLimit?: number | null; minuteLimit?: number | null; offNetworkConfirmed?: boolean }): Promise<McpServerConfig> {
     const s = this.settings(userId);
     const before = s.mcpServer(name);
     if (!before) throw new Error(`no MCP server ${name}`);
     const pool = change.pool ?? before.pool;
     const command = change.command ?? before.command;
+    const limits = { ...(change.dailyLimit !== undefined ? { dailyLimit: change.dailyLimit } : {}), ...(change.minuteLimit !== undefined ? { minuteLimit: change.minuteLimit } : {}) };
     if (command.length) {
       if (String(change.url ?? "").trim()) throw new Error("a server is a URL or a command, not both");
       const changed = JSON.stringify(command) !== JSON.stringify(before.command);
       const probe = changed ? await this.probeMcpServer({ command, env: before.env }) : undefined;
-      const m = s.updateMcpServer(name, { ...(change.name !== undefined ? { name: change.name } : {}), url: "", command, pool, ...(probe ? { description: probe.description, tools: probe.tools } : {}) });
+      const m = s.updateMcpServer(name, { ...(change.name !== undefined ? { name: change.name } : {}), url: "", command, pool, ...limits, ...(probe ? { description: probe.description, tools: probe.tools } : {}) });
       if (probe) s.mcpServerState(m.name, "online");
       return s.mcpServer(m.name)!;
     }
@@ -1388,7 +1395,7 @@ export class Workspace {
     let probe: McpProbe | undefined;
     if (url !== before.url || pool !== before.pool) outside = await this.mcpOutside(url, pool, change.offNetworkConfirmed);
     if (url !== before.url) probe = await this.probeMcpServer({ url, token: before.token });
-    const m = s.updateMcpServer(name, { ...(change.name !== undefined ? { name: change.name } : {}), url, command: [], pool, ...(probe ? { description: probe.description, tools: probe.tools } : {}) });
+    const m = s.updateMcpServer(name, { ...(change.name !== undefined ? { name: change.name } : {}), url, command: [], pool, ...limits, ...(probe ? { description: probe.description, tools: probe.tools } : {}) });
     s.setMcpOffNetwork(m.name, outside);
     if (probe) s.mcpServerState(m.name, "online");
     return s.mcpServer(m.name)!;

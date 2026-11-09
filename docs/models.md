@@ -419,7 +419,7 @@ transaction folds counted turns into `call_totals` (pool, thread, label,
 kind, tokens, gpu_ms, calls); forgetting a thread removes its totals too.
 User schema step 10 adds this table and nullable `model_calls.read_tokens`.
 An image or video call made on a model host also keeps what the host measured
-of it (`recordSampling`, after `recordCall`; user step 22 adds the nullable
+of it (`recordSampling`, by the id `recordCall` returns; user step 23 adds the nullable
 columns `sampling_ms`, `steps`, `images`, `pixels`): how long the workflow's
 samplers ran and their steps (host/API.md, `sampling`), how many images the
 call made and the first one's pixels. Read back as `sampling` on the record;

@@ -17,6 +17,11 @@ const POOLS: Record<Pool, string> = { general: "General", private: "Private" };
 const PRIVATE_POOL = "A private server must be on your own network: LAN, this machine or the tailnet.";
 const COMMAND_TIP = "A local server: the program and its arguments, started in the thread's sandbox with the thread's folders and network. Give a URL or a command, not both.";
 const ENV_TIP = "The program's own variables, one KEY=value per line, such as its API keys. Never shown again.";
+const DAY_TIP = "At most this many tool calls a day, across all your threads, for a service with a quota. The day resets at midnight UTC. Empty means no limit.";
+const MINUTE_TIP = "At most this many tool calls in any minute, so a runaway loop can't hammer the service. Empty means no limit.";
+/** A limit as the form holds it: digits, or empty for none. */
+const limitText = (n: number | null | undefined) => (n === null || n === undefined ? "" : String(n));
+const limitValue = (text: string): number | null => (text.trim() ? Number(text) : null);
 
 /** At most one state per row: Online, Token rejected, Unreachable with how long, or Off network for a private one. */
 export function mcpState(m: McpServerInfo, now = Date.now()): { tone: "ok" | "warn" | "bad"; word: string; detail?: string } | undefined {
@@ -35,8 +40,10 @@ function StateWord({ m }: { m: McpServerInfo }) {
   return <span className="state-word"><span className={`dot ${DOT[state.tone]}`} aria-hidden="true" />{state.word}{state.detail && <span className="num mono"> {state.detail}</span>}</span>;
 }
 
-/** The facts line under a server's name: host, pool and tool count. */
-const facts = (m: McpServerInfo) => <>{m.host} · {m.pool} · {m.tools} {m.tools === 1 ? "tool" : "tools"}</>;
+/** The facts line under a server's name: host, pool and tool count, and today's calls against a daily limit. */
+const facts = (m: McpServerInfo) => (
+  <>{m.host} · {m.pool} · {m.tools} {m.tools === 1 ? "tool" : "tools"}{m.dailyLimit !== null && <> · <span className="num">{m.callsToday.toLocaleString("en-US")}</span> of <span className="num">{m.dailyLimit.toLocaleString("en-US")}</span> today</>}</>
+);
 
 const offNetworkSentence = (name: string) => `${name}'s host is outside your network, so a private thread's requests would leave it.`;
 
@@ -87,7 +94,10 @@ function McpDrawer({ userId, server, onSaved, onChanged, onClose }: {
   userId: string; server?: McpServerInfo; onSaved: () => void; onChanged: () => void; onClose: () => void;
 }) {
   const adding = !server;
-  const [form, setForm] = useState({ name: server?.name ?? "", url: server?.url ?? "", command: server?.command ?? "", pool: server?.pool ?? "general" as Pool, token: "", env: "" });
+  const [form, setForm] = useState({
+    name: server?.name ?? "", url: server?.url ?? "", command: server?.command ?? "", pool: server?.pool ?? "general" as Pool, token: "", env: "",
+    dailyLimit: limitText(server?.dailyLimit), minuteLimit: limitText(server?.minuteLimit),
+  });
   const [replacing, setReplacing] = useState(false);
   const local = !!form.command.trim();
   const [removing, setRemoving] = useState(false);
@@ -106,6 +116,8 @@ function McpDrawer({ userId, server, onSaved, onChanged, onClose }: {
     ...(form.url.trim() !== server.url ? { url: form.url.trim() } : {}),
     ...(form.command.trim() !== server.command ? { command: form.command.trim() } : {}),
     ...(form.pool !== server.pool ? { pool: form.pool } : {}),
+    ...(limitValue(form.dailyLimit) !== server.dailyLimit ? { dailyLimit: limitValue(form.dailyLimit) } : {}),
+    ...(limitValue(form.minuteLimit) !== server.minuteLimit ? { minuteLimit: limitValue(form.minuteLimit) } : {}),
   } : {};
   const one = !!form.url.trim() !== local;
   const ready = adding ? !!(form.name.trim() && one) : replacing ? true : Object.keys(change).length > 0 && one;
@@ -113,9 +125,10 @@ function McpDrawer({ userId, server, onSaved, onChanged, onClose }: {
   const save = (offNetworkConfirmed = false) => run(async () => {
     try {
       if (adding) {
+        const limits = { dailyLimit: limitValue(form.dailyLimit), minuteLimit: limitValue(form.minuteLimit) };
         const input: McpServerInput = local
-          ? { name: form.name.trim(), command: form.command.trim(), pool: form.pool, ...(form.env.trim() ? { env: form.env } : {}) }
-          : { name: form.name.trim(), url: form.url.trim(), pool: form.pool, offNetworkConfirmed, ...(form.token.trim() ? { token: form.token.trim() } : {}) };
+          ? { name: form.name.trim(), command: form.command.trim(), pool: form.pool, ...limits, ...(form.env.trim() ? { env: form.env } : {}) }
+          : { name: form.name.trim(), url: form.url.trim(), pool: form.pool, ...limits, offNetworkConfirmed, ...(form.token.trim() ? { token: form.token.trim() } : {}) };
         await post<McpServerInfo>(u(userId, "mcp-servers"), input);
       } else if (replacing && server.command) {
         await post<McpServerInfo>(u(userId, "mcp-servers", server.name, "env"), { env: form.env });
@@ -174,6 +187,17 @@ function McpDrawer({ userId, server, onSaved, onChanged, onClose }: {
             </select>
           </label>
           <p id="mcp-pool-why" className="muted small">{PRIVATE_POOL}</p>
+          {!replacing && (
+            <>
+              <label className="field"><span title={DAY_TIP}>Calls per day</span>
+                <input type="number" min={1} step={1} inputMode="numeric" placeholder="No limit" value={form.dailyLimit} title={DAY_TIP} onChange={(e) => set("dailyLimit", e.target.value)} />
+              </label>
+              <label className="field"><span title={MINUTE_TIP}>Calls per minute</span>
+                <input type="number" min={1} step={1} inputMode="numeric" placeholder="No limit" value={form.minuteLimit} title={MINUTE_TIP} onChange={(e) => set("minuteLimit", e.target.value)} />
+              </label>
+              {server && server.dailyLimit !== null && <p className="muted small"><span className="num">{server.callsToday.toLocaleString("en-US")}</span> calls today.</p>}
+            </>
+          )}
         </fieldset>
         <ErrorText error={error} />
         <div className="row drawer-foot">

@@ -20,9 +20,9 @@ across models.
   `sampling: { seconds, steps }` (host/API.md); a chain sums its clips. Nothing
   for stable-diffusion.cpp or a workflow without a sampler.
 - **Lyrica** (`core/src/models`): `imageAt`/`videoAt` read `sampling`;
-  the image tool calls `recordSampling` after `recordCall`, which writes
+  the image tool calls `recordSampling` with the id `recordCall` returns, which writes
   `sampling_ms`, `steps`, `images`, `pixels` on the call row (user schema
-  step 22, nullable columns, expand only). Never the prompt or the picture,
+  step 23, nullable columns, expand only). Never the prompt or the picture,
   and no `pace`, so it enters no tok/s and no GPU time.
 - **Daemon** (`model-facts.ts`): per offering, medians over the measured rows
   of seconds per image, steps per image, steps per second and pixels, with

@@ -156,6 +156,15 @@ CREATE TABLE IF NOT EXISTS mcp_servers (
 );
 `;
 
+/** Each tool call sent to an MCP server, for its budget (user step 22): rows older than two days go as new ones are written. */
+const MCP_CALLS_SCHEMA = `
+CREATE TABLE IF NOT EXISTS mcp_calls (
+  server TEXT NOT NULL,
+  at     TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS mcp_calls_server_at ON mcp_calls (server, at);
+`;
+
 const hasColumn =(db: Db, table: string, column: string) => !!db.prepare("SELECT 1 FROM pragma_table_info(?) WHERE name = ?").get(table, column);
 
 /** Pre-release columns added after their tables were made: [table, column, definition]. */
@@ -306,9 +315,17 @@ export const STEPS: Record<DbKind, MigrationStep[]> = {
     version: 21,
     run(db) { addColumns(db, [["mcp_servers", "command", "TEXT NOT NULL DEFAULT '[]'"], ["mcp_servers", "env", "TEXT NOT NULL DEFAULT '{}'"]]); },
   }, {
+    // Principle 8 (docs/briefs/mcp-limits.md): a server's call budget, so many calls a day and a minute, and the log it is counted from
+    // (the server's name and a time, nothing else). Adds only.
+    version: 22,
+    run(db) {
+      addColumns(db, [["mcp_servers", "daily_limit", "INTEGER"], ["mcp_servers", "minute_limit", "INTEGER"]]);
+      db.exec(MCP_CALLS_SCHEMA);
+    },
+  }, {
     // Principle 1: an image or video call's sampling time, steps, count and pixels, as its host measured them, so Status
     // can say how fast an image model is (docs/briefs/image-speed.md). Adds nullable columns only.
-    version: 22,
+    version: 23,
     run(db) { addColumns(db, [["model_calls", "sampling_ms", "INTEGER"], ["model_calls", "steps", "INTEGER"], ["model_calls", "images", "INTEGER"], ["model_calls", "pixels", "INTEGER"]]); },
   }],
   pool: [{

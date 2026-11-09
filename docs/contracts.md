@@ -2728,30 +2728,39 @@ selfTest(): Promise<string | undefined>   // lyricad calls this at startup
   Git guide is a prompt section (`extension/src/git.md`) added to every
   turn of a thread with repositories.
 - **MCP servers API:** `lyricad`'s `/api/u/:userId/mcp-servers` (`GET`;
-  `POST …/probe`; `POST`; `PATCH …/:name` for name, url, command, pool and
-  `offNetworkConfirmed`; `POST …/:name/token`; `POST …/:name/env`;
-  `POST …/:name/confirm-off-network`; `DELETE`), each
+  `POST …/probe`; `POST`; `PATCH …/:name` for name, url, command, pool,
+  `dailyLimit`, `minuteLimit` and `offNetworkConfirmed`; `POST …/:name/token`;
+  `POST …/:name/env`; `POST …/:name/confirm-off-network`; `DELETE`), each
   server as `McpServerInfo { name, url, command, host, pool, hasToken,
-  hasEnv, tools, description, offNetwork, state? }`, with any query value
+  hasEnv, tools, description, offNetwork, dailyLimit, minuteLimit,
+  callsToday, state? }`, with any query value
   named like a credential (key, token, secret, sig, auth, pass) shown as
   `•••`, as in `EndpointInfo.baseUrl`; a `PATCH` that sends `•••` back
   keeps the stored value if the origin is unchanged
   (`daemon/src/redact.ts`). `McpServerInput` is a `url` (with `token`) or
   a `command` (one line, with `env` as `KEY=value` lines), never both:
-  `400` otherwise. A local server's `url` is `""`, its `host` "this
+  `400` otherwise; its `dailyLimit` and `minuteLimit` are whole numbers of
+  calls, 1 to 1,000,000, or null for none (the default), `400` otherwise. A local server's `url` is `""`, its `host` "this
   machine". Thread settings carry `mcpServers` (names). User database
   step 3 adds `mcp_servers` and `thread_workspaces.mcp_servers`; step 21
-  adds `mcp_servers.command` (JSON argv) and `.env` (JSON). In core:
+  adds `mcp_servers.command` (JSON argv) and `.env` (JSON); step 22 adds
+  `mcp_servers.daily_limit` and `.minute_limit` (INTEGER, null for none)
+  and the `mcp_calls (server, at)` table, one row per tool call sent,
+  pruned after two days. In core:
   `settings(userId).mcpServers() / addMcpServer / updateMcpServer /
   setMcpToken / setMcpEnv / removeMcpServer / mcpServerState /
-  confirmMcpOffNetwork / allowToolInThread`, `Workspace.probeMcpServer({
+  confirmMcpOffNetwork / allowToolInThread / mcpCallRefused(name, now?) /
+  recordMcpCall(name, now?)`, `mcpLimit(raw, what)`, `Workspace.probeMcpServer({
   url?, token?, command?, env? }) / startMcpServer(t, name)`, and `mcpUrl`,
   `mcpCommand`, `mcpCommandLine`, `mcpEnv`, `mcpPlace`, `probeMcp`,
-  `probeMcpCommand`, `mcpTransport`, `mcpStdioTransport`, `keepResult`
+  `probeMcpCommand`, `mcpTransport`, `mcpStdioTransport` (each taking a
+  `budget?: McpBudget { refused(), record() }`, asked before every
+  `tools/call`; a refused call is answered as the tool's `isError` result
+  and never sent), `keepResult`
   (`core/src/workspace/mcp.ts`), with `Sandbox.start(argv, cwd?, env?)`
   and `Jobs.hold(thread, server, onStop)`. A session gets
   `createMcpServersExtension({ mcpServers(), checkMcpServers?(),
-  mcpServerState?(), startMcpServer?() })` (`extension/src/mcp.ts`), which
+  mcpServerState?(), startMcpServer?(), mcpBudget?(name) })` (`extension/src/mcp.ts`), which
   registers each granted server with Pi's `registerMcpServer` (a command
   one by its command, which Pi never runs), exposure `deferred`, and
   loads Pi's MCP and `tool_search` extensions with no `mcp.json`, no log

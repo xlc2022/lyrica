@@ -53,11 +53,15 @@ describe("image calls through the router (principles 1 and 2)", () => {
   it("records what the host measured of a call's sampling with its record, and reads it back; never the picture", async () => {
     const s = await setup(), ctx = s.ctx({ pool: "private", localOnly: true });
     const out = await s.models.image(ctx, { action: "create", prompt: "A garden", tier: "fast", count: 2 });
-    s.models.recordCall(s.ada.id, { pool: "private", threadId: "web/t1", task: "image.create", resolution: out.resolution });
-    s.models.recordSampling(s.ada.id, "web/t1", "image.create", "private", { ...out.sampling!, images: out.images.length, pixels: 1024 * 1024 });
-    const [record] = s.models.recentCalls(s.ada.id, { pool: "private", threadId: "web/t1" });
-    expect(record).toMatchObject({ task: "image.create", sampling: { ms: 12_500, steps: 16, images: 2, pixels: 1_048_576 } });
-    expect(record).not.toHaveProperty("pace");
+    const first = s.models.recordCall(s.ada.id, { pool: "private", threadId: "web/t1", task: "image.create", resolution: out.resolution });
+    // A second call of the same task from the thread (a subagent's) is recorded before the first's sampling arrives: each keeps its own.
+    const second = s.models.recordCall(s.ada.id, { pool: "private", threadId: "web/t1", task: "image.create", resolution: out.resolution });
+    s.models.recordSampling(s.ada.id, first, { ...out.sampling!, images: out.images.length, pixels: 1024 * 1024 });
+    const [newest, older] = s.models.recentCalls(s.ada.id, { pool: "private", threadId: "web/t1" });
+    expect(older).toMatchObject({ task: "image.create", sampling: { ms: 12_500, steps: 16, images: 2, pixels: 1_048_576 } });
+    expect(older).not.toHaveProperty("pace");
+    expect(newest).not.toHaveProperty("sampling");
+    expect(second).toBeGreaterThan(first);
     // A call the host didn't measure keeps no sampling.
     s.models.recordCall(s.ada.id, { pool: "private", threadId: "web/t1", task: "image.upscale", resolution: out.resolution });
     expect(s.models.recentCalls(s.ada.id, { pool: "private", threadId: "web/t1" })[0]).not.toHaveProperty("sampling");

@@ -62,6 +62,21 @@ describe("a local MCP server's transport", () => {
     expect(child!.exitCode).not.toBeNull();
   });
 
+  it("answers a call past the server's budget itself, as the tool's error, and sends the server nothing", async () => {
+    let left = 1;
+    const sent: string[] = [];
+    const transport = mcpStdioTransport({ start: start(), budget: { refused: () => (left > 0 ? undefined : "The MCP server test has used its budget of 1 calls for today; it resets at midnight UTC."), record: () => { left--; sent.push("call"); } } });
+    const client = new McpClient({ name: "test", version: "1", requestTimeoutMs: 5000 });
+    await client.connect(transport);
+    const first = await client.callTool("whoami", {});
+    expect(first.isError).toBeFalsy();
+    const second = await client.callTool("whoami", {});
+    expect(second.isError).toBe(true);
+    expect((second.content as { type: string; text?: string }[])[0]!.text).toMatch(/budget of 1 calls for today/);
+    expect(sent).toEqual(["call"]);
+    await client.close();
+  });
+
   it("records unreachable when the program can't start", async () => {
     const states: string[] = [];
     const transport = mcpStdioTransport({ start: async () => { throw new Error("no such program"); }, state: (k) => states.push(k) });

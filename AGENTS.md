@@ -171,10 +171,11 @@ npm run evals      # continuity scenarios in evals/; a failure is evidence, not 
 npm run build && npm run e2e -w @lyrica/web   # the web UI's Playwright tests (web/e2e/), never through npm test
 ```
 
-One e2e test: `npm run build`, then `npx playwright test -c web/playwright.config.ts
---project desktop-chat -g "<test title>"`. Each `web-<spec>.spec.ts` runs in the
+One e2e test: `npm run build`, then `E2E_PROJECTS=desktop-chat npx playwright test
+-c web/playwright.config.ts -g "<test title>"`. Each `web-<spec>.spec.ts` runs in the
 projects `phone-<spec>` and `desktop-<spec>` (chat, projects, admin), and
-`setup.spec.ts` in `setup`. `npm test` is vitest: it runs only `*/test/**/*.test.ts`,
+`setup.spec.ts` in `setup`. `E2E_PROJECTS` (comma-separated) starts only the named
+projects' lyricads; `--project` alone starts all seven. `npm test` is vitest: it runs only `*/test/**/*.test.ts`,
 so given a Playwright spec it finds nothing to run.
 
 Run one test suite at a time. One run peaks at about 5.4 GB of memory, but

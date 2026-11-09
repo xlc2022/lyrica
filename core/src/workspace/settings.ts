@@ -176,6 +176,12 @@ export interface McpServerConfig {
   tools: number;
   /** Its host resolved outside the LAN, loopback and tailnet at the last check; for a private server, the user confirmed that. */
   offNetwork: boolean;
+  /** At most this many tool calls a day (UTC), across the user's threads; null for no limit. */
+  dailyLimit: number | null;
+  /** At most this many tool calls in any minute; null for no limit. */
+  minuteLimit: number | null;
+  /** Tool calls sent to it since midnight UTC. */
+  callsToday: number;
   /** How the last connection went, and since when; null before the first, or after its URL changed. */
   state: McpServerState | null;
 }
@@ -183,7 +189,19 @@ export interface McpServerConfig {
 export interface McpServerState { kind: McpStateKind; since: string }
 
 /** A server to save: `token`, `command` and `env` may be left out (a remote one has no command, a local one no token). */
-export type NewMcpServer = Omit<McpServerConfig, "state" | "token" | "command" | "env"> & Partial<Pick<McpServerConfig, "token" | "command" | "env">>;
+export type NewMcpServer = Omit<McpServerConfig, "state" | "token" | "command" | "env" | "dailyLimit" | "minuteLimit" | "callsToday">
+  & Partial<Pick<McpServerConfig, "token" | "command" | "env" | "dailyLimit" | "minuteLimit">>;
+
+/** The most calls a budget can allow: a number past this is a mistake, not a limit. */
+export const MCP_LIMIT_MAX = 1_000_000;
+
+/** A call budget as given: a whole number of calls, or none. */
+export function mcpLimit(raw: unknown, what: string): number | null {
+  if (raw === null || raw === undefined || raw === "") return null;
+  const n = typeof raw === "number" ? raw : Number(String(raw).trim());
+  if (!Number.isInteger(n) || n < 1 || n > MCP_LIMIT_MAX) throw new Error(`${what} is a whole number of calls, 1 to ${MCP_LIMIT_MAX.toLocaleString("en-US")}, or empty for no limit`);
+  return n;
+}
 
 const GIT_ACCOUNT = /^[A-Za-z0-9._-]{1,100}$/;
 const REPO_PART = /^[A-Za-z0-9_.-]+$/;
@@ -1125,12 +1143,38 @@ export class WorkspaceSettings {
   }
 
   mcpServers(): McpServerConfig[] {
-    return (this.db.prepare("SELECT * FROM mcp_servers ORDER BY name").all() as McpServerRow[]).map(toMcpServer);
+    return (this.db.prepare("SELECT * FROM mcp_servers ORDER BY name").all() as McpServerRow[]).map((r) => toMcpServer(r, this.mcpCallsSince(r.name, dayStart())));
   }
 
   mcpServer(name: string): McpServerConfig | undefined {
     const row = this.db.prepare("SELECT * FROM mcp_servers WHERE name = ?").get(name) as McpServerRow | undefined;
-    return row && toMcpServer(row);
+    return row && toMcpServer(row, this.mcpCallsSince(name, dayStart()));
+  }
+
+  private mcpCallsSince(server: string, since: string): number {
+    return (this.db.prepare("SELECT count(*) AS n FROM mcp_calls WHERE server = ? AND at >= ?").get(server, since) as { n: number }).n;
+  }
+
+  /**
+   * Why a tool call to the server may not be sent now: its day's or minute's
+   * budget is used up (docs/briefs/mcp-limits.md). Undefined when it may.
+   * The day is UTC, as eBay's and most quotas count it.
+   */
+  mcpCallRefused(name: string, now = new Date()): string | undefined {
+    const m = this.needMcp(name);
+    if (m.dailyLimit !== null && this.mcpCallsSince(name, dayStart(now)) >= m.dailyLimit) {
+      return `The MCP server ${name} has used its budget of ${m.dailyLimit.toLocaleString("en-US")} calls for today; it resets at midnight UTC. Don't retry; tell the user.`;
+    }
+    if (m.minuteLimit !== null && this.mcpCallsSince(name, new Date(now.getTime() - 60_000).toISOString()) >= m.minuteLimit) {
+      return `The MCP server ${name} has used its budget of ${m.minuteLimit.toLocaleString("en-US")} calls a minute; wait a minute before calling it again.`;
+    }
+    return undefined;
+  }
+
+  /** Counts a tool call sent to the server, and lets go of rows too old to matter to any budget. */
+  recordMcpCall(name: string, now = new Date()): void {
+    this.db.prepare("INSERT INTO mcp_calls (server, at) VALUES (?, ?)").run(name, now.toISOString());
+    this.db.prepare("DELETE FROM mcp_calls WHERE at < ?").run(new Date(now.getTime() - 2 * 86_400_000).toISOString());
   }
 
   private needMcp(name: string): McpServerConfig {
@@ -1150,9 +1194,9 @@ export class WorkspaceSettings {
   addMcpServer(m: NewMcpServer, state: McpStateKind | null = null): McpServerConfig {
     this.checkMcpName(m.name);
     const next = checkMcpServer(m);
-    this.db.prepare(`INSERT INTO mcp_servers (name, url, token, command, env, pool, description, tools, off_network, state, checked_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(next.name, next.url, next.token, JSON.stringify(next.command), JSON.stringify(next.env), next.pool, next.description, next.tools, next.offNetwork ? 1 : 0,
-      state, state && new Date().toISOString());
+    this.db.prepare(`INSERT INTO mcp_servers (name, url, token, command, env, pool, description, tools, off_network, daily_limit, minute_limit, state, checked_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(next.name, next.url, next.token, JSON.stringify(next.command), JSON.stringify(next.env), next.pool, next.description, next.tools, next.offNetwork ? 1 : 0,
+      next.dailyLimit, next.minuteLimit, state, state && new Date().toISOString());
     return this.needMcp(m.name);
   }
 
@@ -1161,13 +1205,14 @@ export class WorkspaceSettings {
    * from every thread, so it is never reached from both pools; a new name
    * follows into the threads that use it.
    */
-  updateMcpServer(name: string, change: Partial<Pick<McpServerConfig, "name" | "url" | "command" | "pool" | "description" | "tools">>): McpServerConfig {
+  updateMcpServer(name: string, change: Partial<Pick<McpServerConfig, "name" | "url" | "command" | "pool" | "description" | "tools" | "dailyLimit" | "minuteLimit">>): McpServerConfig {
     const before = this.needMcp(name);
     const next = checkMcpServer({ ...before, ...change });
     if (next.name !== name) this.checkMcpName(next.name, name);
     const moved = next.url !== before.url || JSON.stringify(next.command) !== JSON.stringify(before.command);
-    this.db.prepare(`UPDATE mcp_servers SET name = ?, url = ?, command = ?, pool = ?, description = ?, tools = ?${moved ? ", state = NULL, checked_at = NULL" : ""} WHERE name = ?`)
-      .run(next.name, next.url, JSON.stringify(next.command), next.pool, next.description, next.tools, name);
+    this.db.prepare(`UPDATE mcp_servers SET name = ?, url = ?, command = ?, pool = ?, description = ?, tools = ?, daily_limit = ?, minute_limit = ?${moved ? ", state = NULL, checked_at = NULL" : ""} WHERE name = ?`)
+      .run(next.name, next.url, JSON.stringify(next.command), next.pool, next.description, next.tools, next.dailyLimit, next.minuteLimit, name);
+    if (next.name !== name) this.db.prepare("UPDATE mcp_calls SET server = ? WHERE server = ?").run(next.name, name);
     if (next.pool !== before.pool) this.dropMcpServer(name);
     else if (next.name !== name) this.renameMcpServer(name, next.name);
     return this.needMcp(next.name);
@@ -1191,6 +1236,7 @@ export class WorkspaceSettings {
   /** Removes the server, every thread's grant of it, and the tools allowed on it in a thread. */
   removeMcpServer(name: string): void {
     if (!this.db.prepare("DELETE FROM mcp_servers WHERE name = ?").run(name).changes) throw new Error(`no MCP server ${name}`);
+    this.db.prepare("DELETE FROM mcp_calls WHERE server = ?").run(name);
     this.dropMcpServer(name);
   }
 
@@ -1295,17 +1341,22 @@ function checkMcpServer(m: NewMcpServer): Omit<McpServerConfig, "state"> {
   if (command.length && token) throw new Error("a local server has an environment, not a token");
   const env = checkMcpEnv(m.env ?? {});
   if (!command.length && Object.keys(env).length) throw new Error("a remote server has a token, not an environment");
-  return { ...m, url: command.length ? "" : mcpUrl(url, m.pool, token), token, command, env, offNetwork: command.length ? false : m.offNetwork };
+  const dailyLimit = mcpLimit(m.dailyLimit, "Calls per day");
+  const minuteLimit = mcpLimit(m.minuteLimit, "Calls per minute");
+  return { ...m, url: command.length ? "" : mcpUrl(url, m.pool, token), token, command, env, offNetwork: command.length ? false : m.offNetwork, dailyLimit, minuteLimit, callsToday: 0 };
 }
+
+/** Midnight UTC of the day `now` is in, as an ISO time: where a day's budget starts. */
+const dayStart = (now = new Date()): string => `${now.toISOString().slice(0, 10)}T00:00:00.000Z`;
 
 
 interface McpServerRow {
   name: string; url: string; token: string; command: string; env: string; pool: Pool; description: string | null; tools: number; off_network: number;
-  state: McpStateKind | null; checked_at: string | null;
+  daily_limit: number | null; minute_limit: number | null; state: McpStateKind | null; checked_at: string | null;
 }
-const toMcpServer = (r: McpServerRow): McpServerConfig => ({
+const toMcpServer = (r: McpServerRow, callsToday: number): McpServerConfig => ({
   name: r.name, url: r.url, token: r.token, command: JSON.parse(r.command || "[]"), env: JSON.parse(r.env || "{}"), pool: r.pool,
-  description: r.description, tools: r.tools, offNetwork: r.off_network === 1,
+  description: r.description, tools: r.tools, offNetwork: r.off_network === 1, dailyLimit: r.daily_limit ?? null, minuteLimit: r.minute_limit ?? null, callsToday,
   state: r.state && r.checked_at ? { kind: r.state, since: r.checked_at } : null,
 });
 

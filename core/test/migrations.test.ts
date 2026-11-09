@@ -139,15 +139,33 @@ describe("user step 21 (local MCP servers)", () => {
   });
 });
 
-describe("user step 22 (an image call's sampling)", () => {
+describe("user step 22 (MCP call budgets)", () => {
+  it("gives every server from each released schema no limit and an empty call log, and the release before still opens it", () => {
+    for (let v = 3; v < 22; v++) {
+      const db = scratchDb();
+      migrate(db, "user", {}, STEPS.user.filter((s) => s.version <= v));
+      db.prepare("INSERT INTO mcp_servers (name, url, token, pool) VALUES ('house', 'http://127.0.0.1:8123/mcp', 't', 'private')").run();
+      migrate(db, "user");
+      expect(db.prepare("SELECT daily_limit, minute_limit FROM mcp_servers WHERE name = 'house'").get()).toEqual({ daily_limit: null, minute_limit: null });
+      const settings = new WorkspaceSettings(db, () => ({ general: [], private: [] }));
+      expect(settings.mcpServer("house")).toMatchObject({ dailyLimit: null, minuteLimit: null, callsToday: 0 });
+      expect(settings.mcpCallRefused("house")).toBeUndefined();
+      expect(() => checkReadable(db, "user", STEPS.user.filter((s) => s.version < 22))).not.toThrow();
+      db.close();
+    }
+  });
+});
+
+
+describe("user step 23 (an image call's sampling)", () => {
   it("adds the nullable sampling columns to every released user schema, and the release before still opens it", () => {
-    for (const v of STEPS.user.map((s) => s.version).filter((v) => v < 22)) {
+    for (const v of STEPS.user.map((s) => s.version).filter((v) => v < 23)) {
       const db = scratchDb();
       migrate(db, "user", {}, STEPS.user.filter((s) => s.version <= v));
       db.prepare("INSERT INTO model_calls (at, pool, thread, task, offering, label, endpoint, kind) VALUES ('2026-01-01', 'general', 't', 'image.create', 'o', 'Art', 'host', 'local')").run();
       migrate(db, "user");
       expect(db.prepare("SELECT sampling_ms, steps, images, pixels FROM model_calls").get()).toEqual({ sampling_ms: null, steps: null, images: null, pixels: null });
-      expect(() => checkReadable(db, "user", STEPS.user.filter((s) => s.version < 22))).not.toThrow();
+      expect(() => checkReadable(db, "user", STEPS.user.filter((s) => s.version < 23))).not.toThrow();
       db.close();
     }
   });

@@ -1,6 +1,6 @@
 import { devNull } from "node:os";
 import { createMcpExtension, createToolSearchExtension, type ExtensionFactory } from "@earendil-works/pi-coding-agent";
-import { mcpStdioTransport, mcpTransport, type McpProcess, type McpStateKind, type ThreadMcpServer } from "@lyrica/core";
+import { mcpStdioTransport, mcpTransport, type McpBudget, type McpProcess, type McpStateKind, type ThreadMcpServer } from "@lyrica/core";
 
 // MCP servers (DESIGN.md, "MCP servers"): Pi's own client and tool_search,
 // with nothing about servers read from or written to disk. Each granted
@@ -17,6 +17,8 @@ export interface McpServersHost {
   mcpServerState?(name: string, kind: McpStateKind): void;
   /** Starts one of the thread's local servers in its sandbox, with its own environment under the sandbox's (Workspace.startMcpServer). */
   startMcpServer?(name: string): Promise<McpProcess>;
+  /** The server's call budget, asked before each tool call: calls a day and a minute, when the user set them. */
+  mcpBudget?(name: string): McpBudget;
 }
 
 /** The section that tells her about a server held back this turn. */
@@ -77,12 +79,13 @@ export function createMcpServersExtension(host: McpServersHost): ExtensionFactor
         const s = tokenOf(entry.name);
         if (!s) throw new Error(`MCP server ${entry.name} isn't one of this thread's`);
         const state = (kind: McpStateKind) => host.mcpServerState?.(entry.name, kind);
+        const budget = host.mcpBudget?.(entry.name);
         if (s.command?.length) {
           if (!host.startMcpServer) throw new Error(`the local MCP server ${entry.name} can't be started here`);
-          return mcpStdioTransport({ start: () => host.startMcpServer!(entry.name), state });
+          return mcpStdioTransport({ start: () => host.startMcpServer!(entry.name), state, budget });
         }
         if (!("url" in entry.config)) throw new Error(`MCP server ${entry.name} isn't one of this thread's`);
-        return mcpTransport({ url: s.url, token: s.token || undefined, state });
+        return mcpTransport({ url: s.url, token: s.token || undefined, state, budget });
       },
       logPath: devNull,
       updateConfig: () => {},

@@ -3206,24 +3206,24 @@ export class Models {
   }
 
   /**
-   * Records which model answered a call. Never any of the conversation's
-   * text. A retry within the turn (`retry`) rewrites that turn's record, so
-   * a turn is one call.
+   * Records which model answered a call, and returns the record's id. Never
+   * any of the conversation's text. A retry within the turn (`retry`)
+   * rewrites that turn's record, so a turn is one call.
    */
-  recordCall(userId: string, call: { pool: Pool; threadId: string; task: Task; resolution: Resolution; note?: string; audioSeconds?: number }, opts: { retry?: boolean } = {}): void {
+  recordCall(userId: string, call: { pool: Pool; threadId: string; task: Task; resolution: Resolution; note?: string; audioSeconds?: number }, opts: { retry?: boolean } = {}): number {
     const r = call.resolution;
     const first = r.skipped[0];
     const fallback = first && `${first.label} was skipped (${first.reason.replace(/^it /, "")}), so ${r.label} answered${r.endpoint.kind === "cloud" && r.profile === "Custom" ? ", a cloud model" : ""}`;
-    this.withUser(userId, (db) => {
+    return this.withUser(userId, (db) => {
       const last = opts.retry ? (db.prepare("SELECT max(id) AS id FROM model_calls WHERE pool = ? AND thread = ? AND task = ?").get(call.pool, call.threadId, call.task) as { id: number | null }).id : null;
       if (last !== null) {
         db.prepare("UPDATE model_calls SET offering = ?, label = ?, endpoint = ?, kind = ?, fallback = ?, note = ? WHERE id = ?")
           .run(r.offering.id, r.label, r.endpoint.name, r.endpoint.kind, fallback ?? null, call.note ?? null, last);
-        return;
+        return last;
       }
       const seconds = call.audioSeconds !== undefined && Number.isFinite(call.audioSeconds) ? Math.max(0, Math.round(call.audioSeconds * 10) / 10) : null;
-      db.prepare("INSERT INTO model_calls (at, pool, thread, task, offering, label, endpoint, kind, fallback, note, audio_seconds) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-        .run(new Date().toISOString(), call.pool, call.threadId, call.task, r.offering.id, r.label, r.endpoint.name, r.endpoint.kind, fallback ?? null, call.note ?? null, seconds);
+      return Number(db.prepare("INSERT INTO model_calls (at, pool, thread, task, offering, label, endpoint, kind, fallback, note, audio_seconds) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+        .run(new Date().toISOString(), call.pool, call.threadId, call.task, r.offering.id, r.label, r.endpoint.name, r.endpoint.kind, fallback ?? null, call.note ?? null, seconds).lastInsertRowid);
     });
   }
 
@@ -3239,14 +3239,13 @@ export class Models {
   }
 
   /**
-   * Adds what the host measured of an image or video call to its record (the thread's latest for the task): sampling
-   * time, steps, how many it made and the first one's pixels. Never the prompt or the picture.
+   * Adds what the host measured of an image or video call to its record (`recordCall`'s id, so two calls from one
+   * thread never swap timings): sampling time, steps, how many it made and the first one's pixels. Never the prompt or the picture.
    */
-  recordSampling(userId: string, threadId: string, task: Task, pool: Pool, s: CallSampling): void {
+  recordSampling(userId: string, callId: number, s: CallSampling): void {
     const n = (v: number) => Math.max(0, Math.round(Number.isFinite(v) ? v : 0));
-    this.withUser(userId, (db) => db.prepare(`UPDATE model_calls SET sampling_ms = ?, steps = ?, images = ?, pixels = ?
-      WHERE id = (SELECT max(id) FROM model_calls WHERE thread = ? AND task = ? AND pool = ?)`)
-      .run(n(s.ms), n(s.steps), Math.max(1, n(s.images)), s.pixels === undefined ? null : n(s.pixels), threadId, task, pool));
+    this.withUser(userId, (db) => db.prepare("UPDATE model_calls SET sampling_ms = ?, steps = ?, images = ?, pixels = ? WHERE id = ?")
+      .run(n(s.ms), n(s.steps), Math.max(1, n(s.images)), s.pixels === undefined ? null : n(s.pixels), callId));
   }
 
   /** The user's recent calls, newest first. With a thread, that thread's only; with `speech: false`, no Dictation or Read aloud. */

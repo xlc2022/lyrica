@@ -870,9 +870,10 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   private account off network asks first. The token is never sent back.
   **MCP servers** (`src/Mcp.tsx`), after Git accounts: a row per server,
   its name, a facts line in mono (host, or "this machine" for a local
-  server; pool; tool count) and one state (Online, Token rejected,
-  Unreachable with how long, Off network). A row opens the drawer (Name,
-  URL or Command, Pool), with Replace token (a URL) or Replace
+  server; pool; tool count; today's calls against a daily limit) and one
+  state (Online, Token rejected, Unreachable with how long, Off network).
+  A row opens the drawer (Name, URL or Command, Pool, Calls per day and
+  Calls per minute, empty for no limit), with Replace token (a URL) or Replace
   environment (a command), Use anyway and Remove behind ⋯; Remove says it
   leaves every project and thread at once (**Keep** / **Remove**). **Add
   server** opens the same drawer with an optional Token field for a URL,
@@ -1648,6 +1649,8 @@ turns animations off.
   also serves a fake speech endpoint (whisper and kokoro, under `/speech/v1`,
   and `/speech/down` to make it fail). Its nightly sleep time is set half a
   day from its start, so no run reaches it. Chromium runs with a fake microphone.
+  `E2E_PROJECTS=phone-chat,desktop-chat` runs only those projects and starts
+  only their `lyricad`s; CI runs each spec as a job of its own this way.
 - Push e2e checks cover Save, masked saved credentials across reload, Send a
   test, inline receiver failure and recovery, and Turn off at both widths.
   Browser API interception supplies the Push contract and forwards test
