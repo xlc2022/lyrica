@@ -403,7 +403,9 @@ embeddings and dictation receive neither parser.
 - `placement`:
   - `{ "mode": "auto" }`, the default: one GPU that has room without
     unloading anything (the largest first), else one where idle models can
-    be unloaded, else split over every GPU that allows its server.
+    be unloaded, else split over every GPU that allows its server. With a
+    system RAM allowance, ways that keep nothing in RAM come first (see
+    "System RAM").
   - `{ "mode": "gpus", "gpus": [...] }`: these GPUs. For llama.cpp, several
     GPUs split by `split` ratios, each 0.01 to 1000 (default: each GPU's
     memory less what it keeps free). For vLLM, `"parallel": "tensor"` (matching GPUs, two, four
@@ -527,7 +529,10 @@ Only the repository's name and revision leave the host.
   as llama.cpp splits them with the output layer last); a split set by
   hand keeps its layers, so N may reach into the last GPU's. Else whole layers with their cache (`n-gpu-layers`
   below its layer count), which llama.cpp takes from every GPU by the
-  split. A model that fits after unloading idle ones never spills.
+  split. A model that fits after unloading idle ones never spills, and a
+  way that keeps less in system RAM comes before one that keeps more: a
+  model that fits across all its GPUs uses them all (unloading idle
+  models if it must) rather than one GPU with the rest in RAM.
 - Models in system RAM share the allowance as models on a GPU share its
   memory: idle ones are unloaded to make room, least recently used first,
   never a pinned one or one in use. Past the allowance even when nothing

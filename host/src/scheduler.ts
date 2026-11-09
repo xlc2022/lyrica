@@ -638,22 +638,28 @@ export class Scheduler {
     const measured = (o: Option) => ({ ...o, need: this.needOf(model, o, s) });
     const possible = opts.filter((o) => !neverFits(model, s, measured(o), empty, (i) => this.gpuSettings(i), this.ramAllowance));
     const usable = possible.filter((o) => !o.gpus.some((g) => held.has(g)));
-    // A way that needs no unloading beats one that does, whatever its order.
-    const roomy = usable.find((o) => !deficitOf(o)(new Set(rivals)));
-    if (roomy) return { option: roomy, evict: rivals };
+    // Ways that keep less in system RAM come first (options() orders them so):
+    // unloading an idle model costs a reload, spilling costs every request.
+    // Within one amount, a way that needs no unloading beats one that does.
+    const tiers = [...new Set(usable.map((o) => o.ram ?? 0))];
     let waitFor: number[] | null = null;
-    for (const o of usable) {
-      const deficit = deficitOf(o);
-      const idle = [...new Set([...o.gpus.flatMap(loadedOn), ...inRam(o)])].filter((l) => l.ready && l.active === 0 && !this.pinned(l.model.id)).sort((a, b) => a.lastUsed - b.lastUsed);
-      const evict = new Set<Loaded>(rivals);
-      for (const l of idle) {
-        if (!deficit(evict)) break;
-        evict.add(l);
+    for (const tier of tiers) {
+      const ways = usable.filter((o) => (o.ram ?? 0) === tier);
+      const roomy = ways.find((o) => !deficitOf(o)(new Set(rivals)));
+      if (roomy) return { option: roomy, evict: rivals };
+      for (const o of ways) {
+        const deficit = deficitOf(o);
+        const idle = [...new Set([...o.gpus.flatMap(loadedOn), ...inRam(o)])].filter((l) => l.ready && l.active === 0 && !this.pinned(l.model.id)).sort((a, b) => a.lastUsed - b.lastUsed);
+        const evict = new Set<Loaded>(rivals);
+        for (const l of idle) {
+          if (!deficit(evict)) break;
+          evict.add(l);
+        }
+        if (!deficit(evict)) return { option: o, evict: [...evict] };
+        // Would it fit once the busy models are done?
+        const all = new Set([...rivals, ...new Set([...o.gpus.flatMap(loadedOn), ...inRam(o)])].filter((l) => rivals.includes(l) || !this.pinned(l.model.id)));
+        if (!deficit(all) && !waitFor) waitFor = o.gpus;
       }
-      if (!deficit(evict)) return { option: o, evict: [...evict] };
-      // Would it fit once the busy models are done?
-      const all = new Set([...rivals, ...new Set([...o.gpus.flatMap(loadedOn), ...inRam(o)])].filter((l) => rivals.includes(l) || !this.pinned(l.model.id)));
-      if (!deficit(all) && !waitFor) waitFor = o.gpus;
     }
     if (waitFor) return { wait: waitFor };
     // Every way is on GPUs held for others: wait for those, so it's counted in their queues.

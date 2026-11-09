@@ -304,13 +304,16 @@ function heldBy(bytes: number[], counts: number[]): number[] {
  * The ways a model may run, in order of preference. A chosen placement has
  * one; Auto tries each GPU that allows its server, largest first, then all
  * of them together. With an allowance, a way that can't fit `gpus` (their
- * `used` being what other programs hold) keeps what doesn't in system RAM.
+ * `used` being what other programs hold) keeps what doesn't in system RAM,
+ * and the ways are then ordered by what they keep there, least first.
  */
 export function options(model: TextModel, s: ModelSettings, gpus: Gpu[], settings: (i: number) => GpuSettings, allowance = 0, overhead?: Overhead): Option[] {
   const found = gpuOptions(model, s, gpus, settings, overhead);
   if (!allowance || !spills(model, s)) return found;
   // Only a way that can't fit even once the host's other models are unloaded keeps part of the model in system RAM.
-  return found.map((o) => (neverFits(model, s, o, gpus, settings) ? spill(model, s, o, gpus, settings, overhead) ?? o : o));
+  const spilled = found.map((o) => (neverFits(model, s, o, gpus, settings) ? spill(model, s, o, gpus, settings, overhead) ?? o : o));
+  // System RAM is far slower than any GPU: a way that keeps less there comes first, so a model that fits across all its GPUs uses them all before it spills.
+  return spilled.map((o, i) => ({ o, i })).sort((a, b) => (a.o.ram ?? 0) - (b.o.ram ?? 0) || a.i - b.i).map((x) => x.o);
 }
 
 function gpuOptions(model: TextModel, s: ModelSettings, gpus: Gpu[], settings: (i: number) => GpuSettings, overhead?: Overhead): Option[] {
@@ -496,7 +499,9 @@ export function validate(model: TextModel, body: Record<string, unknown>, gpus: 
   if (!opts.length) throw invalid(`No GPU allows ${SERVER_NAMES[server]}.`);
   // Auto needs one way that can work; a chosen placement must work as chosen.
   const reasons = opts.map((o) => neverFits(model, at, o, gpus, settings, allowance));
-  if (reasons.every((r) => r !== null)) throw new HostError(400, "too_big", reasons.at(-1)!);
+  // Why the way with the most GPUs can't: the one with the best chance, so its reason says the most.
+  const widest = opts.reduce((best, o, i) => (o.gpus.length > opts[best]!.gpus.length ? i : best), 0);
+  if (reasons.every((r) => r !== null)) throw new HostError(400, "too_big", reasons[widest]!);
   return s;
 }
 

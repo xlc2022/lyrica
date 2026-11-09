@@ -895,7 +895,8 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     - **System RAM**, off until the operator gives the host an allowance,
       lets a llama.cpp model too big for its GPUs keep the part they lack
       in system RAM, slower but working: a mixture of experts' expert
-      weights first, else whole layers. Spilled models share the
+      weights first, else whole layers. A model that fits across all
+      its GPUs uses them before it spills. Spilled models share the
       allowance as models share a GPU; a model can opt out. A model's
       per-layer embedding table, which llama.cpp never puts on the GPUs,
       can be kept in RAM from the same allowance instead of being read
