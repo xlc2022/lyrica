@@ -1062,6 +1062,13 @@ export class ChildThreads implements ThreadsHost {
       .run({ pool, t: JSON.stringify(threads) }));
   }
 
+  /** A child the user cut loose from its parent (POST …/detach): its record goes, so it neither reports to nor is counted under the parent. */
+  detach(userId: string, pool: Pool, thread: string): void {
+    const k = `${userId}/${pool}/${thread}`;
+    this.rounds.delete(k); this.tasked.delete(k); this.noticed.delete(k); this.exhausted.delete(k); this.planWaits.delete(k);
+    this.db(userId, (db) => db.prepare("DELETE FROM child_threads WHERE pool = ? AND thread = ?").run(pool, thread));
+  }
+
   /**
    * At unlock: children a restart left working are idle now, never resumed
    * here, since a turn cut off partway may have done half of something. Each

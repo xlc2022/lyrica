@@ -265,8 +265,9 @@ export function toMessages(threadId: string, pool: Pool, entries: { n: number; d
         out.push({ ...base, role: "user", from: { kind: "user", userId: opts.userId ?? "", name: opts.userName ?? "" }, parts: [{ type: "text", text: textOf(m.content).slice(answer[0].length) }] });
         continue;
       }
-      // Only a child thread has a parent's messages, or in a project a sibling's; lyricad refuses the mark on anything else.
-      const marked = opts.parent ? FROM_PARENT.exec(textOf(m.content)) : null;
+      // A parent's message, or in a project a sibling's; only lyricad writes the mark (a user's message can't start with it).
+      // A thread detached from its parent, or kept when the parent was deleted, shows the old parent's as another thread's.
+      const marked = FROM_PARENT.exec(textOf(m.content));
       if (marked) {
         const from = marked[1] === opts.parent ? { kind: "parent" as const, threadId: marked[1]! } : { kind: "thread" as const, threadId: marked[1]! };
         out.push({ ...base, role: "user", from, parts: [{ type: "text", text: textOf(m.content).slice(marked[0].length) }] });

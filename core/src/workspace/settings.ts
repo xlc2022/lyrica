@@ -758,6 +758,12 @@ export class WorkspaceSettings {
     this.db.prepare("UPDATE thread_workspaces SET parent = NULL WHERE thread_id = ?").run(threadId);
   }
 
+  /** A daughter cut loose from its living parent (POST …/detach): what applies to it now becomes its own, so leaving never widens it. */
+  separate(threadId: string): void {
+    const t = this.effective(threadId);
+    if (t.parent) this.write(threadId, { ...t, parent: null });
+  }
+
   /** Throws if a subagent's thread is now wider than its parent's, say because the parent was narrowed. */
   checkInherited(threadId: string, pool: Pool): void {
     const t = this.thread(threadId);

@@ -3167,3 +3167,38 @@ test("the newest night can be undone after a dialog, and a line for tonight save
   await expect(field).toHaveValue("");
   await expect(tonight.getByRole("button", { name: "Clear" })).toHaveCount(0);
 });
+
+test("Detach makes a branch a thread of its own, after asking", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  const api = async (method: string, path: string, data?: unknown) => page.evaluate(async ({ method, path, data }) => {
+    const r = await fetch(path, { method, headers: { "content-type": "application/json" }, body: data === undefined ? undefined : JSON.stringify(data) });
+    if (!r.ok) throw new Error(`${method} ${path}: ${r.status} ${await r.text()}`);
+    return r.json();
+  }, { method, path, data });
+  const u = `/api/u/${userId}`;
+  const path = (id: string) => `${u}/threads/general/${encodeURIComponent(id)}`;
+  const source = await api("POST", `${u}/threads`, { pool: "general", title: "Bed layout" });
+  await api("POST", `${path(source.id)}/messages`, { text: "Lay out the raised beds." });
+  await expect.poll(async () => (await api("GET", path(source.id))).busy).toBe(false);
+  const branch = await api("POST", `${path(source.id)}/messages/1/branch`, { title: "Bed layout, shady side" });
+  await page.goto(`/#/u/${userId}/t/general/${encodeURIComponent(source.id)}`);
+  // The source has no parent, so no Detach.
+  await page.getByRole("button", { name: "Thread actions", exact: true }).click();
+  await expect(page.getByRole("menuitem", { name: "Rename…" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Detach…" })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await page.goto(`/#/u/${userId}/t/general/${encodeURIComponent(branch.id)}`);
+  await page.getByRole("button", { name: "Thread actions", exact: true }).click();
+  await expect(page.getByRole("menuitem", { name: "Detach…" })).toHaveAttribute("title", "Makes it a thread of its own, apart from the thread it came from.");
+  await page.keyboard.press("t");
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByRole("heading", { name: "Detach Bed layout, shady side?" })).toBeVisible();
+  const width = page.viewportSize()!.width;
+  if (process.env.LYRICA_PROJECT_SHOTS) await page.screenshot({ path: `../shots/detach-dialog-${width}.png` });
+  await dialog.getByRole("button", { name: "Detach", exact: true }).click();
+  await expect(page.getByText("Now a thread of its own")).toBeVisible();
+  expect((await api("GET", path(branch.id))).parent).toBeUndefined();
+  const list: { id: string; children: { id: string }[] }[] = await api("GET", `${u}/threads`);
+  expect(list.find(t => t.id === source.id)!.children).toEqual([]);
+  expect(list.some(t => t.id === branch.id)).toBe(true);
+});

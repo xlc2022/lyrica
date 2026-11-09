@@ -1456,6 +1456,7 @@ export function apiRoutes(d: Lyricad): Route[] {
     }),
     route("PUT", `${t}/pin`, (r) => pinThread(d, d.userFor(r), r, true)),
     route("DELETE", `${t}/pin`, (r) => pinThread(d, d.userFor(r), r, false)),
+    route("POST", `${t}/detach`, (r) => detachThread(d, d.userFor(r), r)),
     route("POST", `${t}/messages/:n/thread`, async (r) => {
       const user = d.userFor(r);
       const pool = poolOf(r);
@@ -2867,6 +2868,34 @@ function pinThread(d: Lyricad, user: User, r: Request, pinned: boolean): Api.Thr
     d.services!.projects.pin(user.id, pool, thread.id, pinned);
     return summary(d, user, pool, o[pool], thread, []);
   });
+}
+
+/**
+ * Makes a daughter (a child thread, branch, fork or copy) a thread of its own,
+ * cut loose from the thread it came from: its messages stay; it and the parent
+ * can no longer message each other; its settings stay as they apply now, and
+ * a local-only parent leaves it local-only. Not a subagent or a project's thread,
+ * and not during a turn, which runs with its parent's tools.
+ */
+function detachThread(d: Lyricad, user: User, r: Request): Api.ThreadSummary {
+  const s = d.services!;
+  const pool = poolOf(r);
+  const { id, parent } = owner(d, user, (o) => {
+    const thread = threadOf(o, r);
+    if (thread.subagent) throw new HttpError(409, "a subagent's thread can't be detached");
+    if (!thread.parent) throw new HttpError(409, "this thread is already a thread of its own");
+    if (thread.child && o[pool].getThread(thread.parent)?.project) throw new HttpError(409, "a project's thread can't be detached");
+    return { id: thread.id, parent: thread.parent };
+  });
+  if (s.host.busy(user.id, pool, id)) throw new HttpError(409, "this thread is working; stop it or wait for its turn to end");
+  if (s.models.callContext(user.id, pool, parent).localOnly) s.models.setLocalOnly(user.id, pool, id, true);
+  s.workspace.settings(user.id).separate(id);
+  owner(d, user, (o) => o[pool].detachThread(id));
+  s.children.detach(user.id, pool, id);
+  // Its next turn opens with the tools of a thread of its own; the parent's open view drops it from its children.
+  s.host.reload(user.id, pool, id);
+  s.host.changed(user.id, pool, parent, id);
+  return owner(d, user, (o) => summary(d, user, pool, o[pool], threadOf(o, r), []));
 }
 
 /** Resolves or reopens a project's thread. */

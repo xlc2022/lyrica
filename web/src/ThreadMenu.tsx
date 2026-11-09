@@ -2,7 +2,8 @@
 // on a phone, with a letter shortcut for each item; the thread header's ⋯ opens
 // the same menu. Open beside for a child row, where the sidebar passes it; Mark
 // as unread, Rename, Share with, Move to group, Hide and Delete; Pin; Make
-// project and Move to project for a top-level thread, Resolve and Reopen for a project's thread.
+// project and Move to project for a top-level thread, Detach for a child row
+// outside a project, Resolve and Reopen for a project's thread.
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { del, get, patch, post, put, threadPath, u, type Person, type ThreadGroup, type ThreadSettings, type ThreadSummary } from "./api.ts";
 import { FoldConfirm, type FoldRow } from "./FoldConfirm.tsx";
@@ -70,7 +71,7 @@ export function ThreadMenu({ at, userId, route, groups, onGroups, onChange, onTo
   const t = at.thread;
   const base = threadPath(userId, t.pool, t.id);
   const ref = useRef<HTMLDivElement>(null);
-  const [sub, setSub] = useState<"" | "group" | "rename" | "newgroup" | "delete" | "project" | "continue" | "share" | "move">("");
+  const [sub, setSub] = useState<"" | "group" | "rename" | "newgroup" | "delete" | "project" | "continue" | "share" | "move" | "detach">("");
   const [draft, setDraft] = useState(t.title ?? "");
   const [error, setError] = useState("");
   const [people, setPeople] = useState<Person[]>();
@@ -127,7 +128,7 @@ export function ThreadMenu({ at, userId, route, groups, onGroups, onChange, onTo
   }, [at, sub, groups.length, projects.length, error]);
   // Escape closes the topmost thing; a click elsewhere closes the menu; letters pick items.
   useEffect(() => {
-    if (sub === "delete" || sub === "project" || sub === "continue" || recipient || moving) return;
+    if (sub === "delete" || sub === "project" || sub === "continue" || sub === "detach" || recipient || moving) return;
     // Closing a flyout from the keyboard puts focus back on its item.
     const back = () => { const open = fly; setSub(""); if (open) requestAnimationFrame(() => ref.current?.querySelector<HTMLElement>(`[data-submenu="${sub}"]`)?.focus()); };
     const key = (e: KeyboardEvent) => {
@@ -183,6 +184,14 @@ export function ThreadMenu({ at, userId, route, groups, onGroups, onChange, onTo
     return (
       <ConfirmDialog title="Make this a project?" confirm="Make project" onCancel={onClose} onConfirm={() => change({ project: true })}
         sentence={`This thread becomes the project chat, and threads ${her()} starts from it become the project's threads. There is no way back.`} />
+    );
+  }
+  if (sub === "detach") {
+    // A refusal (say, the thread is working) shows in the menu.
+    return (
+      <ConfirmDialog title={`Detach ${t.title || "this thread"}?`} confirm="Detach" onCancel={onClose}
+        onConfirm={() => post(`${base}/detach`).then(() => { onChange(); onToast("Now a thread of its own"); onClose(); }, (e: Error) => { setError(e.message); setSub(""); })}
+        sentence="It becomes a thread of its own. Its messages stay, but it and the thread it came from can no longer message each other. There is no way back." />
     );
   }
   if (sub === "continue") {
@@ -251,6 +260,7 @@ export function ThreadMenu({ at, userId, route, groups, onGroups, onChange, onTo
         {!t.child && !t.parent && !t.project && <Item label="Make project…" title="Turns this thread into a project." kbd="K" onClick={() => setSub("project")} />}
         {!t.child && !t.parent && !t.project && !t.subagent && <Item label="Continue as project" kbd="C" title="Starts a new project from this thread; the thread stays." onClick={() => setSub("continue")} />}
         {eligible && projects.length > 0 && <Item label="Move to project" kbd="J" sub submenu="move" expanded={sub === "move"} title="Moves this thread and its child threads into a project." onClick={() => setSub("move")} />}
+        {t.parent && !t.subagent && !inProject && <Item label="Detach…" kbd="T" title="Makes it a thread of its own, apart from the thread it came from." onClick={() => setSub("detach")} />}
         {inProject && <Item label={t.state === "resolved" ? "Reopen" : "Resolve"} kbd="E" onClick={() => act(() => post(`${base}/${t.state === "resolved" ? "reopen" : "resolve"}`))} />}
         <div className="sep" role="separator" />
         <Item label={t.hidden ? "Unhide" : "Hide"} kbd="H" onClick={() => change({ hidden: !t.hidden })} />
