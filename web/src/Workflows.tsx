@@ -3,7 +3,7 @@
 // model's workflow (its own custom one, or the built-in template it runs on, which a save turns into the model's own
 // revision of it) as a form, as a graph (WorkflowGraph.tsx), as JSON, and by its revisions. Every call goes through the
 // host's manage route, which on a shared host is for administrators; the host checks each save.
-import { createContext, lazy, Suspense, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, lazy, Suspense, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { get, post, u } from "./api.ts";
 import { CopyButton } from "./CopyButton.tsx";
 import { Frame, type MCtx } from "./ModelsFrame.tsx";
@@ -66,20 +66,63 @@ export const isLink = (v: unknown): v is [string, number] => Array.isArray(v) &&
 export const blankOf = (v: unknown) => (typeof v === "string" && v.startsWith("$") ? v.slice(1) : null);
 /** What the loader blanks (Model, Text encoder, VAE) stand for on this model's jobs (images.ts, `loaderWords`): their tooltips. */
 export const LoaderWords = createContext<Record<string, string>>({});
-/** The model's own settings a bound blank takes on every job (the recipe's defaults): shown beside the select. */
-export const BlankValues = createContext<Record<string, string | number>>({});
-/** The blanks a model's settings fill, and the two its card edits. */
-const SETTING_BLANKS = ["steps", "cfg", "sampler", "scheduler", "shift", "guidance"];
+/**
+ * The model's own settings (the recipe's defaults), which a bound blank takes on every job: shown and edited beside the
+ * select, in Form and in Graph. `set` saves one (null takes it away); without it the values only show.
+ */
+export const BlankValues = createContext<{ values: Record<string, string | number>; set?: (k: string, v: string | number | null) => void }>({ values: {} });
+/** The blanks a job fills itself: everything else a workflow binds is a setting the model holds. */
+const JOB_BLANKS = new Set(["prompt", "image", "seed", "count", "frames", "fps", ...REFERENCES, "model", "clip", "vae"]);
+export const isSettingBlank = (b: string) => !JOB_BLANKS.has(b);
+/** The two settings the model's card edits too. */
 const ON_CARD = new Set(["steps", "cfg"]);
 const settingWord = (b: string) => { const w = BLANK_WORD[b] ?? b; return w === w.toUpperCase() ? w : w.toLowerCase(); };
 /** The setting values of a recipe's defaults, by blank. */
 export function blankValuesOf(defaults: Record<string, unknown> | undefined): Record<string, string | number> {
   const out: Record<string, string | number> = {};
-  for (const k of SETTING_BLANKS) {
-    const v = defaults?.[k];
-    if (typeof v === "number" || (typeof v === "string" && v)) out[k] = v;
-  }
+  for (const [k, v] of Object.entries(defaults ?? {})) if (typeof v === "number" || (typeof v === "string" && v)) out[k] = v;
   return out;
+}
+
+/**
+ * A model setting a blank takes, edited in place: a select of the node's options, a number, or text. Saved when left
+ * (or on Enter) if it changed; an emptied number takes the setting away, so a template pass kept for it is left out.
+ */
+function SettingField({ blank, options }: { blank: string; options?: unknown }) {
+  const { values, set } = useContext(BlankValues);
+  const value = values[blank];
+  const [text, setText] = useState(value === undefined ? "" : String(value));
+  const typing = useRef(false);
+  useEffect(() => { if (!typing.current) setText(value === undefined ? "" : String(value)); }, [value]);
+  const word = settingWord(blank);
+  const title = `The model's ${word}${ON_CARD.has(blank) ? ", set on its card in Image models too" : ""}: every job takes it from here.`;
+  const label = `${BLANK_WORD[blank] ?? blank} setting`;
+  const list = Array.isArray(options) ? (options as string[]) : null;
+  if (list && list.length) {
+    const all = value !== undefined && !list.includes(String(value)) ? [String(value), ...list] : list;
+    return (
+      <select className="mono wf-set" aria-label={label} title={title} value={value === undefined ? "" : String(value)} disabled={!set} onChange={(e) => set?.(blank, e.target.value)}>
+        {value === undefined && <option value="">not set</option>}
+        {all.map((o) => <option key={o} value={o}>{o}</option>)}
+      </select>
+    );
+  }
+  // Unset, a setting named like a sampler, scheduler or prompt takes text; every other one a number.
+  const numeric = typeof value === "number" || (value === undefined && !/sampler|scheduler|prompt|colorMatch/i.test(blank));
+  const leave = () => {
+    typing.current = false;
+    const t = text.trim();
+    if (!numeric) { if (t !== String(value ?? "")) set?.(blank, t); return; }
+    if (!t) { if (value !== undefined) set?.(blank, null); return; }
+    const n = Number(t);
+    if (!Number.isFinite(n)) { setText(value === undefined ? "" : String(value)); return; }
+    if (n !== value) set?.(blank, n);
+  };
+  return (
+    <input className="mono wf-set" aria-label={label} title={title} type={numeric ? "number" : "text"} step={numeric ? "any" : undefined} placeholder={numeric ? "not set" : undefined}
+      value={text} disabled={!set} onChange={(e) => { typing.current = true; setText(e.target.value); }} onBlur={leave}
+      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); leave(); } }} />
+  );
 }
 
 /** Where nodes go when the workflow has no layout yet: in columns by how far each is from the graph's start. */
@@ -184,8 +227,6 @@ function Num({ label, value, min, max, onChange }: { label: string; value: numbe
 export function InputRow({ id, k, v, blanks, options, onChange }: { id: string; k: string; v: Value; blanks: string[]; options?: unknown; onChange: (v: Value) => void }) {
   const blank = blankOf(v);
   const loads = useContext(LoaderWords);
-  const values = useContext(BlankValues);
-  const set = blank ? values[blank] : undefined;
   const choices = blank && !blanks.includes(blank) ? [blank, ...blanks] : blanks;
   const name = `${k} of node ${id}`;
   const fixed = () => {
@@ -212,9 +253,7 @@ export function InputRow({ id, k, v, blanks, options, onChange }: { id: string; 
         {choices.map((b) => <option key={b} value={b}>{BLANK_WORD[b] ?? b}</option>)}
       </select>
       {!blank && fixed()}
-      {set !== undefined && (
-        <span className="muted mono wf-set" title={`The model's ${settingWord(blank!)}${ON_CARD.has(blank!) ? ", set on its card in Image models" : ""}.`}>{set}</span>
-      )}
+      {blank && isSettingBlank(blank) && <SettingField blank={blank} options={options} />}
     </div>
   );
 }
@@ -273,8 +312,27 @@ export function EditWorkflow({ ctx, hostId, recipeId }: { ctx: MCtx; hostId?: st
     if (!lib || !from) return {};
     return loaderWords(from.parts as HostRecipe["parts"], from.loras as HostRecipe["loras"], Object.values(lib.parts).flat());
   }, [library.data, draft?.draft, recipeId]);
+  const [draftTick, setDraftTick] = useState(0);
   const settings = useMemo(() => blankValuesOf(draft ? draft.draft.defaults : library.data?.recipes.find((r) => r.id === recipeId)?.defaults),
-    [library.data, draft?.draft, recipeId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [library.data, draft?.draft, recipeId, draftTick]);
+  const { reload: reloadLibrary } = library;
+  // A setting edited beside its blank: saved to the recipe at once (as the card saves Steps), or kept on a draft until it is saved.
+  const setSetting = useCallback((k: string, v: string | number | null) => {
+    if (draft) {
+      if (v === null) delete draft.draft.defaults[k];
+      else draft.draft.defaults[k] = v;
+      setDraftTick((t) => t + 1);
+      return;
+    }
+    if (!hostId || !recipeId) return;
+    void run(async () => {
+      await post(u(userId, "hosts", hostId, "recipes", recipeId), { do: "change", change: { op: "defaults", defaults: { [k]: v } } });
+      reloadLibrary();
+      ctx.models.reload();
+    });
+  }, [draft, run, userId, hostId, recipeId, reloadLibrary, ctx.models]);
+  const blankValues = useMemo(() => ({ values: settings, set: setSetting }), [settings, setSetting]);
   useEffect(() => {
     const from = draft ? draft.draft : info;
     if (!from) return;
@@ -370,7 +428,7 @@ export function EditWorkflow({ ctx, hostId, recipeId }: { ctx: MCtx; hostId?: st
     <Frame ctx={ctx} tab="images" title={label.trim() || "Edit workflow"} facts={facts}>
       <ErrorText error={saved.error} />
       {(draft || info) && graph && (
-        <LoaderWords.Provider value={loads}><BlankValues.Provider value={settings}>
+        <LoaderWords.Provider value={loads}><BlankValues.Provider value={blankValues}>
         <div className="card wf-form">
           {problems.map((p) => <p key={p} className="warn-text">{p}</p>)}
           {draft?.draft.unmatched.map((f) => <p key={f} className="warn-text">Not on {host?.name ?? "this host"}: <code className="raw">{f}</code></p>)}

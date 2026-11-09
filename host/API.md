@@ -992,7 +992,9 @@ Calls:
     `{ "op": "removeLora", "file": "<path>" }`: the LoRA's architecture
     must fit (as for `takesLoras`), and its strength is -4 to 4;
   - `{ "op": "defaults", "defaults": { "steps": 30 } }`: merged into the
-    defaults. Each must be one a request could give (the ranges below;
+    defaults; `null` takes one away (the job then takes the host's own
+    value, and a template node kept only for it, such as Krea 2's enhancer
+    or second pass, is left out). Each must be one a request could give (the ranges below;
     `shift` 0 to 20, `guidance` 0 to 30, `duration` 1 to 15, `sampler` and
     `scheduler` ComfyUI names, `negativePrompt` at most 4096 characters).
     Krea 2 recipes also take `enhance` (0 to 2: the Krea2T-Enhancer's

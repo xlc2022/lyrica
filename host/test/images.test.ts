@@ -543,6 +543,10 @@ describe("recipes", () => {
     }
     b.patch(id, { op: "defaults", defaults: { steps: 30, width: 768, sampler: "dpmpp_2m", colorMatch: "wavelet" } }, []);
     expect(b.get(id).defaults).toMatchObject({ steps: 30, width: 768, sampler: "dpmpp_2m" });
+    // null takes a default away (a Krea 2 recipe's `enhance` or `refine`: its pass is left out); an unknown key is still refused.
+    b.patch(id, { op: "defaults", defaults: { width: null } }, []);
+    expect(b.get(id).defaults).not.toHaveProperty("width");
+    expect(() => b.patch(id, { op: "defaults", defaults: { nonsense: null } }, [])).toThrow();
   });
 
   it("turns a recipe a scan made from a starter's files into the starter's, rather than adding a second", () => {
