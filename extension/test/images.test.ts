@@ -189,16 +189,44 @@ describe("image tool results (principles 1 and 4)", () => {
     expect(loras.description).toContain("The LoRAs here: detail high noise, detail low noise, pixel art v2.");
     // The thread's list is a cloud model, which takes none: the model that takes it goes first.
     const made = await s.run({ action: "create", prompt: "A garden", loras: [{ name: "Pixel Art", strength: 0.7 }] });
-    expect((made.content as { type: string; text?: string }[]).find(c => c.type === "text")!.text).toMatch(/^Made with Art on styles\. With LoRA pixel art v2 \(0\.7\)\. Saved /);
+    expect((made.content as { type: string; text?: string }[]).find(c => c.type === "text")!.text).toMatch(/^Made with Art on styles\. Seed 42\. With LoRA pixel art v2 \(0\.7\)\. Saved /);
     expect(styles.server.images.map(i => i.body)).toEqual([{ recipe: "art", prompt: "A garden", loras: [{ file: "l/pixel_art_v2.safetensors", strength: 0.7 }] }]);
     // The recipe's own LoRAs, which the host adds to every job, are named too, before those asked for.
     styles.server.recipeLoras([{ file: "l/film_grain.safetensors", strength: 1 }]);
     const own = await s.run({ action: "create", prompt: "A garden", loras: [{ name: "Pixel Art", strength: 0.7 }] });
-    expect((own.content as { type: string; text?: string }[]).find(c => c.type === "text")!.text).toMatch(/^Made with Art on styles\. With LoRAs film grain \(1\), pixel art v2 \(0\.7\)\. Saved /);
+    expect((own.content as { type: string; text?: string }[]).find(c => c.type === "text")!.text).toMatch(/^Made with Art on styles\. Seed 42\. With LoRAs film grain \(1\), pixel art v2 \(0\.7\)\. Saved /);
     await expect(s.run({ action: "create", prompt: "A garden", loras: [{ name: "ink", strength: 1 }] }))
       .rejects.toThrow('No image model here takes "ink". The LoRAs here: detail high noise, detail low noise, pixel art v2.');
     await expect(s.run({ action: "upscale", image: "/workspace/uploads/landscape.png", loras: [{ name: "pixel art", strength: 1 }] })).rejects.toThrow(/upscale takes no LoRAs/);
     expect(s.heard).toEqual([]);
+  });
+
+  it("sends steps, CFG and a seed asked for to a model host for this job, passing over a cloud model, which can't take them", async () => {
+    const s = await setup(); s.settings.setPhotoCloudPolicy("always");
+    s.models.setColumnTask(s.ada.id, "general", "image.create", [s.ref, s.workstation.ref]);
+    s.models.setColumnTask(s.ada.id, "general", "image.edit", [s.ref, s.workstation.ref]);
+    const made = await s.run({ action: "create", prompt: "A garden", steps: 16, cfg: 1 });
+    expect((made.content as { type: string; text?: string }[]).find(c => c.type === "text")!.text)
+      .toMatch(/^Made with Art on workstation at 16 steps, CFG 1\. Seed 42\. Saved /);
+    await s.run({ action: "edit", instruction: "Add flowers", image: "/workspace/uploads/landscape.png", cfg: 2.5, seed: 42 });
+    expect(s.workstation.server.images.map(i => i.body)).toEqual([
+      { recipe: "art", prompt: "A garden", steps: 16, cfg: 1 },
+      { recipe: "art", prompt: "Add flowers", cfg: 2.5, seed: 42, image: png.toString("base64") },
+    ]);
+    // With only the cloud model listed, nothing can take them, and the error says why.
+    s.models.setColumnTask(s.ada.id, "general", "image.create", [s.ref]);
+    await expect(s.run({ action: "create", prompt: "A garden", cfg: 1 })).rejects.toThrow(/does not take steps, CFG or a seed/);
+    await expect(s.run({ action: "create", prompt: "A garden", seed: 7 })).rejects.toThrow(/does not take steps, CFG or a seed/);
+    s.models.setColumnTask(s.ada.id, "general", "image.create", [s.ref, s.workstation.ref]);
+    // Without them, the cloud model is first again and the recipe's own apply.
+    await s.run({ action: "create", prompt: "A pond" });
+    expect(s.heard).toHaveLength(1);
+    s.models.setColumnTask(s.ada.id, "general", "video", [s.workstation.clip]);
+    const clip = await s.run({ action: "video", prompt: "A fox", cfg: 3, seed: 7 });
+    expect(clip.content).toContainEqual({ type: "text", text: expect.stringContaining("Seed 7.") });
+    expect(s.workstation.server.videos).toEqual([{ recipe: "clip", prompt: "A fox", cfg: 3, seed: 7 }]);
+    await expect(s.run({ action: "create", prompt: "A garden", cfg: 31 })).rejects.toThrow();
+    await expect(s.run({ action: "create", prompt: "A garden", seed: 1.5 })).rejects.toThrow();
   });
 
   it("stores PNGs under the thread's images/ and returns image content and path/model/tier details", async () => {
@@ -331,7 +359,7 @@ describe("image tool results (principles 1 and 4)", () => {
     expect(s.workstation.server.videos).toEqual([]);
     const made = await started[0]!(new AbortController().signal, () => {});
     expect(made.video).toMatchObject({ type: "video", model: "shared.workstation/Clip", width: 1280, height: 704 });
-    expect(made.text).toMatch(/^The clip for "A fox in the snow" is ready\. Made with Clip on workstation: 5\.0 s at 1280×704\. Saved \/workspace\/videos\/.+\.mp4\.$/);
+    expect(made.text).toMatch(/^The clip for "A fox in the snow" is ready\. Made with Clip on workstation: 5\.0 s at 1280×704\. Seed 7\. Saved \/workspace\/videos\/.+\.mp4\.$/);
     expect(readFileSync(join(s.folder, "videos", made.video.path.split("/").at(-1)!))).toEqual(mp4);
     // The call's arguments come back with it, for the clip's marker.
     expect(made.args).toMatchObject({ action: "video", prompt: "A fox in the snow" });

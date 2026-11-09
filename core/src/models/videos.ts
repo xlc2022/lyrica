@@ -1,6 +1,6 @@
 // Principle 2: video calls share the router's cloud boundary, and only model hosts make clips. No disk or logging.
 import { hostError, HostIdentityChanged, HostRefused } from "./host.ts";
-import { appliedLoras, cleanPng, samplingOf, type AppliedLora, type GeneratedImage, type ImageInput, type Sampling } from "./images.ts";
+import { appliedLoras, cleanPng, samplingFields, samplingOf, validateSampling, type AppliedLora, type GeneratedImage, type ImageInput, type Sampling } from "./images.ts";
 import { validateLoras, type LoraAsk } from "./loras.ts";
 import { withProgress, type JobProgress } from "./progress.ts";
 
@@ -8,9 +8,9 @@ import { withProgress, type JobProgress } from "./progress.ts";
  * One clip: from a prompt, from `image` as its first frame, or with `drive` (an MP4) too, `image`'s subject moved as the
  * person in that clip moves. Or `extend` (an MP4) continued for `duration` more seconds, as one clip. Or `source` (an MP4)
  * edited as the prompt says, keeping its shape, motion and sound: all of it up to the model's longest clip, or its first `duration` seconds. `duration` is
- * seconds, past a model's longest clip only on a recipe that chains clips; `aspectRatio` (width:height) keeps the recipe's area; `steps` replaces the recipe's.
+ * seconds, past a model's longest clip only on a recipe that chains clips; `aspectRatio` (width:height) keeps the recipe's area; `steps`, `cfg` and `seed` replace the recipe's.
  */
-export interface VideoRequest { prompt: string; image?: ImageInput; drive?: Uint8Array; extend?: Uint8Array; source?: Uint8Array; size?: { width: number; height: number }; aspectRatio?: string; duration?: number; steps?: number; loras?: LoraAsk[] }
+export interface VideoRequest { prompt: string; image?: ImageInput; drive?: Uint8Array; extend?: Uint8Array; source?: Uint8Array; size?: { width: number; height: number }; aspectRatio?: string; duration?: number; steps?: number; cfg?: number; seed?: number; loras?: LoraAsk[] }
 /** A host makes videos of at most this many seconds, chained clips included (host/API.md, "Making videos"). */
 export const LONGEST_VIDEO_SECONDS = 60;
 /** A driving clip's, a clip to extend's or a clip to edit's largest size (host/API.md, "Making videos"). */
@@ -41,7 +41,8 @@ export function validateVideoRequest(r: VideoRequest): void {
   if (r.extend && (!isMp4(r.extend) || r.extend.length > MAX_DRIVE_BYTES)) throw new HostRefused("invalid", "a clip to extend is an MP4 of at most 64 MB");
   if (r.source && (r.image || r.drive || r.extend || r.size || r.aspectRatio)) throw new HostRefused("invalid", "a clip to edit takes no image, other clip or size: it keeps its own");
   if (r.source && (!isMp4(r.source) || r.source.length > MAX_DRIVE_BYTES)) throw new HostRefused("invalid", "a clip to edit is an MP4 of at most 64 MB");
-  if (r.steps !== undefined && !(Number.isInteger(r.steps) && r.steps >= 1 && r.steps <= 150)) throw new HostRefused("invalid", "a video takes 1 to 150 steps");
+  const sampling = validateSampling(r);
+  if (sampling) throw new HostRefused("invalid", sampling);
   const loras = validateLoras(r.loras);
   if (loras) throw new HostRefused("invalid", loras);
   if (r.drive && !r.image) throw new HostRefused("invalid", "a driving clip needs the image whose subject moves");
@@ -68,7 +69,7 @@ export async function videoAt(t: { fetch: typeof fetch; baseUrl: string; modelId
     ...(r.drive ? { drive: Buffer.from(r.drive).toString("base64") } : {}), ...(r.extend ? { extend: Buffer.from(r.extend).toString("base64") } : {}),
     ...(r.source ? { source: Buffer.from(r.source).toString("base64") } : {}),
     ...(r.size ?? {}), ...(r.aspectRatio ? { aspectRatio: r.aspectRatio } : {}), ...(r.duration === undefined ? {} : { duration: r.duration }),
-    ...(r.steps === undefined ? {} : { steps: r.steps }) });
+    ...samplingFields(r) });
   return postVideo(t, "/host/v1/videos/create", body, videoTimeout(r), signal, onProgress);
 }
 

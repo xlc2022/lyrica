@@ -405,7 +405,7 @@ interface CallContext {
   contextLimit?: number;                    // the most context the thread plans for, below its model's window; inherited by children
 }
 interface Need { tools?; tokens?; imageTier?: "fast" | "quality"; imageMask?; imageReferences?; animate?; motion?; videoEdit?; extend?; seconds?; loras?: string[];
-               first?: string[]; after?: string[] }   // what the call needs from a model; first/after: offering IDs tried before/after the list for one call
+               sampling?: boolean; first?: string[]; after?: string[] }   // what the call needs from a model; sampling: it sets steps, CFG or a seed; first/after: offering IDs tried before/after the list for one call
 interface Resolution { ref: { offeringId }; endpoint; offering; label; profile: string;   // the preset's name, or "Custom"
                        source: "thread" | "preset" | "column"; skipped: { label; reason }[]; remaining: number }
 interface Pace { promptTokens; readTokens?; outputTokens; window; ttftMs; genMs; processed }   // counts and times only
@@ -468,8 +468,10 @@ class Models {                                              // new Models(keyrin
   // Images (memory only; caller stores and records results)
   image(ctx, request: ImageRequest, { signal?, beforeSend?: (resolution) => Promise<void> }?): Promise<{ images: GeneratedImage[]; resolution }>
   // ImageInput { bytes: Uint8Array; type: "image/png" | "image/jpeg" | "image/webp" }
-  // ImageRequest: create { prompt, tier: "fast" | "quality", size?: { width, height }, count?, references?: ImageInput[], loras?: LoraAsk[] }
-  //   | edit { prompt, image: ImageInput, mask?: ImageInput, replace?: boolean, count?, references?: ImageInput[], loras?: LoraAsk[] }
+  // ImageRequest: create { prompt, tier: "fast" | "quality", size?: { width, height }, count?, references?: ImageInput[], loras?: LoraAsk[], steps?, cfg?, seed? }
+  //   | edit { prompt, image: ImageInput, mask?: ImageInput, replace?: boolean, count?, references?: ImageInput[], loras?: LoraAsk[], steps?, cfg?, seed? }
+  //     steps (1-150), cfg (0-30) and seed (0 to MAX_SEED, 2^48) replace the recipe's for this job only (validateSampling, samplingFields); need.sampling skips a cloud model
+  //     ("this image provider does not take steps, CFG or a seed"), so only a model host gets them
   //     LoraAsk { name; strength: -4 to 4 } (at most MAX_LORAS, 4): need.loras skips a model that lacks one ("it takes no LoRAs",
   //     "it has no LoRA called …", and passedOver says so); the host gets the files matchLora finds in the offering's loras (its takesLoras)
   //     replace (with a mask): what's under it becomes something new; host recipes get it, cloud providers ignore it
@@ -489,7 +491,7 @@ class Models {                                              // new Models(keyrin
   // onProgress (image() takes it too): JobProgress { queued; progress?: 0-1; busyWith?; loading? } as a model host's job goes (models/progress.ts withProgress, exported):
   // the call carries X-Lyrica-Job: <random token> and GET /host/v1/jobs/<token> is read every 2 s until it ends; a host that
   // hasn't known the job after 5 reads isn't asked again. Cloud models report none.
-  // VideoRequest { prompt; image?: ImageInput (its first frame, or with drive the subject who moves); drive?: Uint8Array (an MP4 of at most 64 MB, MAX_DRIVE_BYTES); extend?: Uint8Array (a clip to add `duration` seconds to, an MP4 of at most 64 MB, with no image, drive or size); source?: Uint8Array (a clip to edit as the prompt says, an MP4 of at most 64 MB, with no image, drive, extend or size; `duration` takes its first seconds); size?: { width, height } (multiples of 16, 256-2048) or aspectRatio?: "width:height" (the recipe's area in that shape); duration?: seconds, 1 to LONGEST_VIDEO_SECONDS (60); steps?: 1-150, in place of the recipe's; loras?: LoraAsk[], as for images }
+  // VideoRequest { prompt; image?: ImageInput (its first frame, or with drive the subject who moves); drive?: Uint8Array (an MP4 of at most 64 MB, MAX_DRIVE_BYTES); extend?: Uint8Array (a clip to add `duration` seconds to, an MP4 of at most 64 MB, with no image, drive or size); source?: Uint8Array (a clip to edit as the prompt says, an MP4 of at most 64 MB, with no image, drive, extend or size; `duration` takes its first seconds); size?: { width, height } (multiples of 16, 256-2048) or aspectRatio?: "width:height" (the recipe's area in that shape); duration?: seconds, 1 to LONGEST_VIDEO_SECONDS (60); steps?: 1-150, cfg?: 0-30 and seed?: 0-2^48, in place of the recipe's; loras?: LoraAsk[], as for images }
   // GeneratedVideo { bytes (H.264 MP4); type: "video/mp4"; width; height; frames; fps; duration; audio; seed?; poster: GeneratedImage }
   // The `video` task's list; only a model host's recipe that does `video` (or `animate`, with an image; or `motion`, with drive; or `edit_video`, with source; or `extend`,
   // with extend) answers, so no clip or first frame reaches a cloud model. A recipe whose `longestSeconds` is under `duration` is skipped
@@ -1455,7 +1457,13 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     `scale` and `maxSize`, through `Models.upscaleVideo`, in the background as other clips are, recorded as `image.upscale`). Create takes `prompt`, `tier` (`fast` or `quality`), optional
     `size: { width, height }` or `aspectRatio` (`width:height`), `count` and
     `references`; edit takes `image`, `instruction`, optional `mask`, `count`
-    and `references`; upscale takes `image`, optional `scale` and `maxSize`.
+    and `references`. Create, edit and every clip action but upscale_video take optional `steps` (1 to 150)
+    and `cfg` (0 to 30), only when the user asks for a number, and `seed` (0 to
+    `MAX_SEED`), to remake or vary an earlier result: they replace the
+    model's own for that job, only a model host takes them (`need.sampling`
+    passes over a cloud model), and an image's result says `Made with <model> on
+    <host> at <n> steps, CFG <x>`. Every result names the seeds the host answered
+    with (`Seed <n>.` or `Seeds <n>, <m>.`); upscale takes `image`, optional `scale` and `maxSize`.
     Create, edit, upscale and upscale_video take an optional `model`, a name she was asked
     for: `Models.namedImageModels` turns it into offerings tried before the
     list for that call (docs/models.md, "A model asked for by name"). The
@@ -1492,7 +1500,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     Always and local models allow. Ask's approval is per user through the end
     of that server-local day; a policy change clears it. No viewer means denial.
     Outputs save in the encrypted thread folder and return Pi image content
-    (`{ type: "image", data: base64, mimeType: "image/png" }`) plus path text and “Made with <model> on <host or endpoint name>”,
+    (`{ type: "image", data: base64, mimeType: "image/png" }`) plus path text and “Made with <model> on <host or endpoint name>” (with the steps and CFG asked for, and the seeds),
     then “With LoRA <name> (<strength>), …” for the LoRAs a host job applied (the recipe's own, then the call's),
     with a note when a named model matched none and `Passed over first: …` when it fell back.
     A content refusal returns `isError: true` with the refusal's message
@@ -1512,7 +1520,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     messages project it as a tool marker and optional image part, without
     PNG bytes. Saved task lists are unchanged.
     `video` (`prompt`, optional `size` or `aspectRatio`, which goes to the host
-    as it is, `duration`, and `steps`, only when the user asks for a number) and
+    as it is, `duration`, `steps`, `cfg` and `seed`, as for create) and
     `animate` (also `image`, the first frame), `motion` (also `image`, the subject, and
     `video`, a workspace MP4 read with `ThreadImages.readClip`), `edit_video` (`video`, the clip to change, and
     `instruction`, sent as the prompt; no size, ratio or LoRAs) and `extend` (`video`, the clip to

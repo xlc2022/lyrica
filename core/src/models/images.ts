@@ -5,8 +5,11 @@ import { withProgress, type JobProgress } from "./progress.ts";
 
 export interface ImageInput { bytes: Uint8Array; type: "image/png" | "image/jpeg" | "image/webp" }
 const QUALITY = { fast: "low", quality: "high" } as const;
-/** `loras`: LoRAs asked for by name, which only a host recipe that takes each one serves (loras.ts). */
-type Common = { count?: number; references?: ImageInput[]; loras?: LoraAsk[] };
+/**
+ * `loras`: LoRAs asked for by name, which only a host recipe that takes each one serves (loras.ts).
+ * `steps` (1 to 150), `cfg` (0 to 30) and `seed` (0 to 2^48) replace the recipe's for this job only; only a model host takes them.
+ */
+type Common = { count?: number; references?: ImageInput[]; loras?: LoraAsk[]; steps?: number; cfg?: number; seed?: number };
 export type ImageRequest =
   | (Common & { action: "create"; prompt: string; tier: "fast" | "quality"; size?: { width: number; height: number } })
   | (Common & { action: "edit"; prompt: string; image: ImageInput; mask?: ImageInput; replace?: boolean })
@@ -36,6 +39,8 @@ export function validateImageRequest(r: ImageRequest): void {
     if (r.count !== undefined && (!Number.isInteger(r.count) || r.count < 1 || r.count > 4)) throw new HostRefused("invalid", "image count is 1 to 4");
     const loras = validateLoras(r.loras);
     if (loras) throw new HostRefused("invalid", loras);
+    const sampling = validateSampling(r);
+    if (sampling) throw new HostRefused("invalid", sampling);
   }
   if (r.action === "create") {
     if (!["fast", "quality"].includes(r.tier)) throw new HostRefused("invalid", "image tier is fast or quality");
@@ -46,6 +51,20 @@ export function validateImageRequest(r: ImageRequest): void {
     if (r.maxSize !== undefined && (!Number.isInteger(r.maxSize) || r.maxSize < 256 || r.maxSize > 8192)) throw new HostRefused("invalid", "maximum image size is 256 to 8192");
   }
 }
+
+/** A job's largest seed (host/API.md, "Making images"). */
+export const MAX_SEED = 2 ** 48;
+/** Why a job's `steps`, `cfg` or `seed` is out of the host's range (host/API.md, "Making images"), if it is. */
+export function validateSampling(r: { steps?: number; cfg?: number; seed?: number }): string | undefined {
+  if (r.steps !== undefined && !(Number.isInteger(r.steps) && r.steps >= 1 && r.steps <= 150)) return "steps are 1 to 150";
+  if (r.cfg !== undefined && !(Number.isFinite(r.cfg) && r.cfg >= 0 && r.cfg <= 30)) return "CFG is 0 to 30";
+  if (r.seed !== undefined && !(Number.isInteger(r.seed) && r.seed >= 0 && r.seed <= MAX_SEED)) return `a seed is a whole number from 0 to ${MAX_SEED}`;
+  return undefined;
+}
+
+/** A job's `steps`, `cfg` and `seed`, for a host's request body. */
+export const samplingFields = (r: { steps?: number; cfg?: number; seed?: number }) => ({ ...(r.steps === undefined ? {} : { steps: r.steps }),
+  ...(r.cfg === undefined ? {} : { cfg: r.cfg }), ...(r.seed === undefined ? {} : { seed: r.seed }) });
 
 /** Keep only PNG rendering chunks: no text, EXIF, profiles or other metadata. */
 export function cleanPng(bytes: Uint8Array): GeneratedImage {
@@ -172,7 +191,7 @@ export async function imageAt(t: Target, r: ImageRequest, signal?: AbortSignal, 
   // Explicit fields only: recipe defaults apply, and callers cannot name parts. LoRAs are only those the recipe takes.
   const fields = { recipe: t.modelId.slice(7), ...(t.loras?.length ? { loras: t.loras } : {}),
     ...(r.action === "upscale" ? { image: base64(r.image), ...(r.scale === undefined ? {} : { scale: r.scale }), ...(r.maxSize === undefined ? {} : { maxSize: r.maxSize }) } : {
-      prompt: r.prompt, ...(r.count === undefined ? {} : { count: r.count }), ...(r.references ? { references: r.references.map(base64) } : {}),
+      prompt: r.prompt, ...(r.count === undefined ? {} : { count: r.count }), ...samplingFields(r), ...(r.references ? { references: r.references.map(base64) } : {}),
       ...(r.action === "create" ? r.size ?? {} : { image: base64(r.image), ...(r.mask ? { mask: base64(r.mask), ...(r.replace ? { replace: true } : {}) } : {}) }),
     }) };
   const out = await withProgress(t, onProgress, (tag) => answer(t, `/host/v1/images/${r.action}`, JSON.stringify(fields), { "content-type": "application/json", ...tag }, signal));

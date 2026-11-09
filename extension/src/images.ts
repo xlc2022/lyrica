@@ -1,7 +1,7 @@
 // Principles 1, 2 and 8: one image tool, which also makes clips, with portrait consent checked at each resolved provider.
 import type { ExtensionContext, ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import { CloudModelForbidden, HostRefused, isRestricted, NoModel, loraFiles, loraName, MAX_LORAS, modelName, type AppliedLora, type CallContext, type LoraAsk, type ImageRequest, type JobProgress, type Models, type Resolution,
-  type ThreadImages, type VideoRequest, type VideoUpscaleRequest, type WorkspaceSettings, LONGEST_VIDEO_SECONDS } from "@lyrica/core";
+  type ThreadImages, type VideoRequest, type VideoUpscaleRequest, type WorkspaceSettings, LONGEST_VIDEO_SECONDS, MAX_SEED } from "@lyrica/core";
 import { Type, type Static } from "typebox";
 import { StringEnum } from "@earendil-works/pi-ai";
 import type { Approval, ApprovalRequest } from "./workspace.ts";
@@ -53,7 +53,9 @@ export const imageParameters = Type.Object({
   size: Type.Optional(Type.Object({ width: Type.Integer(), height: Type.Integer() }, { description: "For create and video: exact pixels." })),
   aspectRatio: Type.Optional(Type.String({ description: "For create and video: width:height (16:9); omit for recipe defaults." })),
   duration: videoDuration(),
-  steps: Type.Optional(Type.Integer({ minimum: 1, maximum: 150, description: "For video, animate and motion: sampling steps, only when they ask for a number; omit for the model's own." })),
+  steps: Type.Optional(Type.Integer({ minimum: 1, maximum: 150, description: "For create, edit, video, animate and motion: sampling steps, only when they ask for a number; omit for the model's own. Only model hosts take it." })),
+  cfg: Type.Optional(Type.Number({ minimum: 0, maximum: 30, description: "For create, edit, video, animate and motion: CFG (guidance scale), only when they ask for a number; omit for the model's own. Only model hosts take it; a model without CFG ignores it." })),
+  seed: Type.Optional(Type.Integer({ minimum: 0, maximum: MAX_SEED, description: "For create, edit, video, animate and motion: the seed, to remake or vary an earlier result (its seed is in that call's result); omit for a random one. Only model hosts take it." })),
   scale: Type.Optional(Type.Number({ minimum: 1, maximum: 4, description: "For upscale and upscale_video: the factor." })),
   maxSize: Type.Optional(Type.Integer({ minimum: 256, maximum: 8192, description: "For upscale and upscale_video: the longest side's limit." })),
 });
@@ -106,6 +108,21 @@ const NEEDS = { create: ["prompt"], edit: ["image", "instruction"], upscale: ["i
 /** The files each action reads; any other file it is given is refused, not ignored, so a model doesn't take one clip for another. */
 const FILES = { create: ["references"], edit: ["image", "mask", "references"], upscale: ["image"], reject: ["images"], pick: ["image"], clear_rejected: [], video: [], animate: ["image"], motion: ["image", "video"], edit_video: ["video"], extend: ["video"], upscale_video: ["video"] } as const;
 const FILE_USE = { image: "edit, upscale and pick take an image, and animate starts a clip from one", video: "extend makes a clip longer, motion copies a clip's moves, edit_video changes a clip and upscale_video upscales a clip", mask: "edit takes a mask", images: "reject takes images", references: "create and edit take references" } as const;
+
+/** The steps, CFG and seed a call sets, replacing its model's for this job. */
+const sampling = (p: ImageArgs) => ({ ...(p.steps === undefined ? {} : { steps: p.steps }), ...(p.cfg === undefined ? {} : { cfg: p.cfg }), ...(p.seed === undefined ? {} : { seed: p.seed }) });
+
+/** The steps and CFG a call set, said after the model it was made with. */
+const samplingUsed = (p: ImageArgs) => {
+  const set = [...p.steps === undefined ? [] : [`${p.steps} steps`], ...p.cfg === undefined ? [] : [`CFG ${p.cfg}`]];
+  return set.length ? ` at ${set.join(", ")}` : "";
+};
+
+/** The seeds a host answered with, so she can remake or vary a result. */
+const seedsOf = (seeds: (number | undefined)[]) => {
+  const known = [...new Set(seeds.filter((s): s is number => s !== undefined))];
+  return known.length ? ` ${known.length === 1 ? "Seed" : "Seeds"} ${known.join(", ")}.` : "";
+};
 
 /** Whether a field was given: an empty string or list, which smaller models send for fields they don't use, wasn't. */
 const given = (v: unknown) => v !== undefined && v !== "" && !(Array.isArray(v) && !v.length);
@@ -303,7 +320,7 @@ export async function executeImage(o: ImageTools, id: string, p: ImageArgs, sign
     request = { action: p.action, image: await read(p.image!), ...(p.scale === undefined ? {} : { scale: p.scale }), ...(p.maxSize === undefined ? {} : { maxSize: p.maxSize }) };
   } else {
     const refs = p.references ? await Promise.all(p.references.map(read)) : undefined;
-    const common = { ...(p.count === undefined ? {} : { count: p.count }), ...(refs ? { references: refs } : {}) };
+    const common = { ...(p.count === undefined ? {} : { count: p.count }), ...(refs ? { references: refs } : {}), ...sampling(p) };
     if (p.action === "create") {
       if (p.size && p.aspectRatio) throw new Error("Give a size or an aspect ratio, not both.");
       const size = p.size ?? (p.aspectRatio ? ratioSize(p.aspectRatio) : undefined);
@@ -350,7 +367,7 @@ export async function executeImage(o: ImageTools, id: string, p: ImageArgs, sign
   // Any fallback is said, so she can tell them the model they got isn't the first choice.
   const passed = out.resolution.passedOver ?? [];
   const fellBack = passed.length ? ` Passed over first: ${passed.map(s => `${s.label} (${s.reason.replace(/^it /, "")})`).join("; ")}.` : "";
-  return { content: [{ type: "text" as const, text: `Made with ${modelName(out.resolution.offering)} on ${out.resolution.endpoint.name}.${lorasUsed(out.loras, asks, out.resolution)}${fellBack} Saved ${paths.join(", ")}.` },
+  return { content: [{ type: "text" as const, text: `Made with ${modelName(out.resolution.offering)} on ${out.resolution.endpoint.name}${samplingUsed(p)}.${seedsOf(out.images.map(i => i.seed))}${lorasUsed(out.loras, asks, out.resolution)}${fellBack} Saved ${paths.join(", ")}.` },
     ...out.images.map(i => ({ type: "image" as const, data: Buffer.from(i.bytes).toString("base64"), mimeType: i.type }))], details: { image: part } };
 }
 
@@ -367,7 +384,7 @@ async function executeVideo(o: ImageTools, id: string, p: ImageArgs, signal?: Ab
     ...(p.action === "motion" ? { drive: await o.files.readClip(p.video!) } : {}), ...(p.action === "extend" ? { extend: await o.files.readClip(p.video!) } : {}),
     ...(p.action === "edit_video" ? { source: await o.files.readClip(p.video!) } : {}),
     ...(p.size ? { size: p.size } : {}), ...(p.aspectRatio ? { aspectRatio: p.aspectRatio } : {}), ...(p.duration === undefined ? {} : { duration: p.duration }),
-    ...(p.steps === undefined ? {} : { steps: p.steps }), ...(p.loras?.length ? { loras: p.loras } : {}) };
+    ...sampling(p), ...(p.loras?.length ? { loras: p.loras } : {}) };
   const call = o.call();
   const first = loraModels(o, call, p.action, p.loras?.length ? p.loras : undefined);
   const make = async (signal?: AbortSignal, onProgress?: (p: JobProgress) => void) => {
@@ -383,7 +400,7 @@ async function executeVideo(o: ImageTools, id: string, p: ImageArgs, signal?: Ab
     if (v.sampling) o.models.recordSampling(call.userId, recorded, { ...v.sampling, images: 1, pixels: v.width * v.height });
     const passed = out.resolution.passedOver ?? [];
     const fellBack = passed.length ? ` Passed over first: ${passed.map(s => `${s.label} (${s.reason.replace(/^it /, "")})`).join("; ")}.` : "";
-    const text = `Made with ${modelName(out.resolution.offering)} on ${out.resolution.endpoint.name}: ${v.duration.toFixed(1)} s at ${v.width}×${v.height}${v.audio ? ", with sound" : ""}.${lorasUsed(v.loras, request.loras, out.resolution)}${fellBack} Saved ${path}.`;
+    const text = `Made with ${modelName(out.resolution.offering)} on ${out.resolution.endpoint.name}: ${v.duration.toFixed(1)} s at ${v.width}×${v.height}${v.audio ? ", with sound" : ""}.${seedsOf([v.seed])}${lorasUsed(v.loras, request.loras, out.resolution)}${fellBack} Saved ${path}.`;
     return { text, video, poster: v.poster };
   };
   // A clip holds the host's GPU for minutes: in the background her turn ends, and the chat goes on.
