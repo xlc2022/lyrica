@@ -420,7 +420,7 @@ thread picks its own model, so put Whisper in its
 
 ### Placements and settings
 
-Each model has a placement (Auto, or chosen GPUs) and serving settings
+Each model has a placement (Automatic, or a custom allocation of chosen GPUs) and serving settings
 such as its context length, KV-cache type and, for vLLM, its share of the
 GPU's memory. Set them in the model's **Settings** on the dashboard, or
 from Lyrica with `PUT /api/u/<user id>/offerings/<offering id>/serving`.
@@ -433,7 +433,8 @@ quant bigger than its GPUs still runs, slower. It is off until you set
 endpoints, or on its dashboard's GPUs page. A 96 GB machine allows up to
 76 GB, leaving room for llama.cpp's prompt cache and the system. Only a
 model that can't fit its GPUs uses it, and only for what they lack; a
-model's **System RAM** setting, Off, keeps it on the GPUs. A host gets
+model's **System RAM** setting, Off in Lyrica or unticked on the
+dashboard, keeps it on the GPUs. A host gets
 the allowance with its next Update.
 
 Some models, such as Qwen3.8-Flash-Next and Gemma 4, have a per-layer
