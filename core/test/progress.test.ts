@@ -6,7 +6,7 @@ const tick = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 describe("a host job's progress", () => {
   it("tags the job, reports each change while it runs, and stops reading when it ends", async () => {
-    const answers = [json(200, { state: "queued", progress: null }), json(200, { state: "running", progress: 0.2 }), json(200, { state: "running", progress: 0.2 }), json(200, { state: "running", progress: 0.5 })];
+    const answers = [json(200, { state: "queued", progress: null }), json(200, { state: "running", progress: 0.2 }), json(200, { state: "running", progress: 0.2 }), json(200, { state: "running", progress: 0.5 }), json(200, { state: "running", progress: 0.95, stage: "decoding" }), json(200, { state: "running", progress: 0.96, stage: "<b>" })];
     const asked: string[] = [];
     const fetch = (async (url: string) => { asked.push(url); return answers.shift() ?? json(404, { error: { code: "not_found" } }); }) as typeof globalThis.fetch;
     const seen: JobProgress[] = [];
@@ -15,7 +15,7 @@ describe("a host job's progress", () => {
     expect(out).toBe("made");
     expect(tag["x-lyrica-job"]).toMatch(/^[A-Za-z0-9_-]{16,64}$/);
     expect(asked[0]).toBe(`https://h/host/v1/jobs/${tag["x-lyrica-job"]}`);
-    expect(seen).toEqual([{ queued: true }, { queued: false, progress: 0.2 }, { queued: false, progress: 0.5 }]);
+    expect(seen).toEqual([{ queued: true }, { queued: false, progress: 0.2 }, { queued: false, progress: 0.5 }, { queued: false, progress: 0.95, stage: "decoding" }, { queued: false, progress: 0.96 }]);
     const after = asked.length;
     await tick(30);
     expect(asked.length).toBe(after);

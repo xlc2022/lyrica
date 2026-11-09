@@ -21,6 +21,9 @@ export function elapsed(ms: number): string {
   return s >= 3600 ? `${Math.floor(s / 3600)}:${two(Math.floor(s / 60) % 60)}:${two(s % 60)}` : `${Math.floor(s / 60)}:${two(s % 60)}`;
 }
 
+/** The stage word beside the percent once sampling is done (docs/ux.md, "An image the agent made"). */
+const STAGE: Record<NonNullable<Making["stage"]>, string> = { decoding: "Decoding", upscaling: "Upscaling", encoding: "Encoding" };
+
 /** The same time in words, for a screen reader. */
 const spoken = (ms: number) => {
   const s = Math.max(0, Math.floor(ms / 1000));
@@ -30,7 +33,8 @@ const spoken = (ms: number) => {
 /**
  * One card per image asked for, at the result's shape (two or more side by side, smaller): a field of dots in the accent that lights from its top-right
  * corner as the model host reports progress, over the source image blurred when there is one, and a pill on the first with
- * the percent, Waiting while the host's GPU is busy, or the time since it started.
+ * the percent (and what runs past sampling: Decoding, Upscaling, Encoding), Waiting while the host's GPU is busy, or the
+ * time since it started.
  */
 export function MakingCards({ args, making, label, url }: { args: unknown; making: Making; label: string; url: (path: string) => string }) {
   const a = (args ?? {}) as Args;
@@ -48,6 +52,8 @@ export function MakingCards({ args, making, label, url }: { args: unknown; makin
   const count = a.action === "create" || a.action === "edit" ? Math.min(4, Math.max(1, Math.floor(Number(a.count) || 1))) : 1;
   const since = now - Date.parse(making.startedAt);
   const pct = making.progress === undefined ? undefined : Math.round(making.progress * 100);
+  // Past sampling, the host may say what runs instead: the percent barely moves while it does.
+  const stage = making.stage && STAGE[making.stage];
   const pill = pct !== undefined ? `${pct}%` : making.queued ? "Waiting" : elapsed(since);
   return (
     <div className="message-images making-cards">
@@ -55,14 +61,16 @@ export function MakingCards({ args, making, label, url }: { args: unknown; makin
         <div key={i} className="making" data-state={pct !== undefined ? "progress" : making.queued ? "queued" : "running"}
           style={{ width: count > 1 ? `min(calc(50% - 4px), ${Math.round(Math.min(240, 200 * ratio))}px)` : `min(100%, ${Math.round(Math.min(420, 320 * ratio))}px)`, aspectRatio: ratio, "--p": (making.progress ?? 0.3).toString() } as React.CSSProperties}
           {...(i === 0
-            ? { role: "progressbar", "aria-label": label, ...(pct !== undefined ? { "aria-valuenow": pct, "aria-valuemin": 0, "aria-valuemax": 100 } : { "aria-valuetext": making.queued ? "Waiting" : spoken(since) }) }
+            ? { role: "progressbar", "aria-label": label, ...(pct !== undefined ? { "aria-valuenow": pct, "aria-valuemin": 0, "aria-valuemax": 100, ...(stage ? { "aria-valuetext": `${pct}%, ${stage.toLowerCase()}` } : {}) } : { "aria-valuetext": making.queued ? "Waiting" : spoken(since) }) }
             : { "aria-hidden": true })}>
           {source && !sourceGone && (
             <img className="making-source" src={url(source)} alt="" onError={() => setSourceGone(true)}
               onLoad={(e) => { const { naturalWidth: w, naturalHeight: h } = e.currentTarget; if (w && h) setSourceRatio(w / h); }} />
           )}
           <span className="making-dots" />
-          {i === 0 && <span className={`making-pill${pct !== undefined || !making.queued ? " num" : ""}`} title={making.queued ? "Waiting for the model host's GPU" : `Running for ${elapsed(since)}`}>{pill}</span>}
+          {i === 0 && (stage && pct !== undefined
+            ? <span className="making-pill" title={`Running for ${elapsed(since)}`}><span className="num">{pill}</span> · {stage}</span>
+            : <span className={`making-pill${pct !== undefined || !making.queued ? " num" : ""}`} title={making.queued ? "Waiting for the model host's GPU" : `Running for ${elapsed(since)}`}>{pill}</span>)}
         </div>
       ))}
     </div>

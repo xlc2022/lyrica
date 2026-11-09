@@ -30,7 +30,7 @@ export class ClipJobs {
     this.o.making?.(t, job.making);
     const progress = (p: JobProgress) => {
       if (controller.signal.aborted) return;
-      job.making = { toolCallId, startedAt: job.making.startedAt, ...(p.queued ? { queued: true as const } : {}), ...(p.progress === undefined ? {} : { progress: p.progress }) };
+      job.making = { toolCallId, startedAt: job.making.startedAt, ...progressOf(p) };
       this.o.making?.(t, job.making);
     };
     void make(controller.signal, progress).then(
@@ -61,4 +61,9 @@ export class ClipJobs {
       controller.abort(reason);
     }
   }
+}
+
+/** What a job's progress adds to its Making: waiting, its fraction, and its stage past sampling. */
+export function progressOf(p: JobProgress): Pick<Making, "queued" | "progress" | "stage"> {
+  return { ...(p.queued ? { queued: true as const } : {}), ...(p.progress === undefined ? {} : { progress: p.progress }), ...(p.stage ? { stage: p.stage } : {}) };
 }

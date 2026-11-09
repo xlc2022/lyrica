@@ -100,19 +100,19 @@ export class Comfy implements Backend {
    * overwritten with a blank image and the history is cleared; a job that
    * fails, times out or is cancelled is interrupted and taken off the queue.
    */
-  async run(images: Record<string, Buffer>, build: (names: Record<string, string>) => object, signal?: AbortSignal, onProgress?: (fraction: number) => void): Promise<{ pngs: Buffer[]; sampling?: Sampling }> {
+  async run(images: Record<string, Buffer>, build: (names: Record<string, string>) => object, signal?: AbortSignal, onProgress?: (fraction: number, stage?: Stage) => void): Promise<{ pngs: Buffer[]; sampling?: Sampling }> {
     const { pngs, sampling } = await this.job(images, build, "image", this.timeoutMs, signal, onProgress);
     return { pngs, ...(sampling ? { sampling } : {}) };
   }
 
   /** Like `run`, for a video workflow: its MP4 and its poster (the first frame, a PNG). */
-  async runVideo(images: Record<string, Buffer>, build: (names: Record<string, string>) => object, timeoutMs: number, signal?: AbortSignal, onProgress?: (fraction: number) => void): Promise<{ video: Buffer; poster: Buffer | null; sampling?: Sampling }> {
+  async runVideo(images: Record<string, Buffer>, build: (names: Record<string, string>) => object, timeoutMs: number, signal?: AbortSignal, onProgress?: (fraction: number, stage?: Stage) => void): Promise<{ video: Buffer; poster: Buffer | null; sampling?: Sampling }> {
     const { pngs, videos, sampling } = await this.job(images, build, "video", timeoutMs, signal, onProgress);
     if (!videos[0]) throw new HostError(503, "model_unavailable", "ComfyUI returned no video.");
     return { video: videos[0], poster: pngs[0] ?? null, ...(sampling ? { sampling } : {}) };
   }
 
-  private job(images: Record<string, Buffer>, build: (names: Record<string, string>) => object, what: "image" | "video", timeoutMs: number, signal?: AbortSignal, onProgress?: (fraction: number) => void): Promise<{ pngs: Buffer[]; videos: Buffer[]; sampling?: Sampling }> {
+  private job(images: Record<string, Buffer>, build: (names: Record<string, string>) => object, what: "image" | "video", timeoutMs: number, signal?: AbortSignal, onProgress?: (fraction: number, stage?: Stage) => void): Promise<{ pngs: Buffer[]; videos: Buffer[]; sampling?: Sampling }> {
     return this.serial(async () => {
       signal?.throwIfAborted();
       const names: Record<string, string> = {};
@@ -149,7 +149,7 @@ export class Comfy implements Backend {
               if (view.length > 8 && view.readUInt32BE(0) === 1 && view.readUInt32BE(4) === MP4) videos.push(view.subarray(8));
               return;
             }
-            let msg: { type?: string; data?: { prompt_id?: string; node?: unknown; node_type?: unknown; exception_type?: unknown; value?: unknown; max?: unknown } };
+            let msg: { type?: string; data?: { prompt_id?: string; node?: unknown; nodes?: unknown; node_type?: unknown; exception_type?: unknown; value?: unknown; max?: unknown } };
             try {
               msg = JSON.parse(String(e.data));
             } catch {
@@ -160,9 +160,12 @@ export class Comfy implements Backend {
             // The node and the exception's type name what broke; the exception's message can carry the prompt, so it stays out.
             if (msg.type === "execution_error") reject(new HostError(503, "model_unavailable", `ComfyUI failed to make the ${what} (${String(msg.data?.node_type ?? "a node")}: ${String(msg.data?.exception_type ?? "error")}).`));
             else if (msg.type === "executing" && msg.data?.node === null) resolve();
-            else if (msg.type === "executing" && typeof msg.data?.node === "string") timing?.started(msg.data.node);
+            else if (msg.type === "executing" && typeof msg.data?.node === "string") {
+              progress?.started(msg.data.node);
+              timing?.started(msg.data.node);
+            } else if (msg.type === "execution_cached" && Array.isArray(msg.data?.nodes)) progress?.cached(msg.data.nodes.map(String));
             else if (msg.type === "progress" && msg.data) {
-              progress?.(String(msg.data.node), Number(msg.data.value), Number(msg.data.max));
+              progress?.stepped(String(msg.data.node), Number(msg.data.value), Number(msg.data.max));
               timing?.stepped(String(msg.data.node), Number(msg.data.max));
             }
           };
@@ -409,12 +412,23 @@ export function imageSize(b: Buffer): { width: number; height: number; type: "pn
 /** The nodes that sample, whose steps ComfyUI reports as `progress`. */
 const SAMPLER = /^(KSampler|KSamplerAdvanced|SamplerCustom|SamplerCustomAdvanced|LanPaint_SamplerCustomAdvanced|SeedVR2VideoUpscaler)$/;
 
+/**
+ * Whether a node samples: one of ComfyUI's own samplers, or a custom node named a sampler that takes a latent (RES4LYF's
+ * ClownsharKSampler_Beta, say), never a node that only picks a sampler (KSamplerSelect, ClownSampler_Beta).
+ */
+function isSampler(n: { class_type?: string; inputs?: Record<string, unknown> }): boolean {
+  const type = n.class_type ?? "";
+  return SAMPLER.test(type) || (/sampler/i.test(type) && !/select/i.test(type) && !!n.inputs && ("latent_image" in n.inputs || "latent" in n.inputs));
+}
+
 /** How long a job's samplers ran, over every sampler that leads to its output, and how many steps they took in all. */
 export interface Sampling { ms: number; steps: number }
 
-/** The samplers a workflow's outputs need: ComfyUI runs only what an output needs, so the walk starts from the save nodes. */
-function samplersOf(prompt: object): string[] {
-  const nodes = prompt as Record<string, { class_type?: string; inputs?: Record<string, unknown> }>;
+type Nodes = Record<string, { class_type?: string; inputs?: Record<string, unknown> }>;
+
+/** The nodes a workflow's outputs need: ComfyUI runs only what an output needs, so the walk starts from the save nodes. */
+function neededOf(prompt: object): Set<string> {
+  const nodes = prompt as Nodes;
   const needed = new Set<string>();
   const walk = (id: string) => {
     if (needed.has(id) || !nodes[id]) return;
@@ -422,22 +436,85 @@ function samplersOf(prompt: object): string[] {
     for (const v of Object.values(nodes[id]!.inputs ?? {})) if (Array.isArray(v) && typeof v[0] === "string") walk(v[0]);
   };
   for (const [id, n] of Object.entries(nodes)) if (/^(Save|Preview)/.test(n.class_type ?? "")) walk(id);
-  return [...needed].filter((id) => SAMPLER.test(nodes[id]!.class_type ?? ""));
+  return needed;
+}
+
+/** The samplers a workflow's outputs need. */
+function samplersOf(prompt: object): string[] {
+  const nodes = prompt as Nodes;
+  return [...neededOf(prompt)].filter((id) => isSampler(nodes[id]!));
+}
+
+/** What a job does once sampling has begun, when it isn't sampling: shown beside the percent (API.md, "Job progress"). */
+export type Stage = "decoding" | "upscaling" | "encoding";
+
+/** The stage a node's type names, or none for one that doesn't name one (it keeps the stage before it). */
+function stageOf(type: string): Stage | undefined {
+  if (/upscale|seedvr2/i.test(type)) return "upscaling";
+  if (/decode/i.test(type)) return "decoding";
+  if (/video|vhs_|animated|webm/i.test(type)) return "encoding";
+  return undefined;
+}
+
+/** Reads a job's progress from ComfyUI's messages. */
+export interface ProgressReader {
+  /** An `executing` message: the node that runs now. */
+  started(node: string): void;
+  /** An `execution_cached` message: nodes whose cached output stands in, so they won't run. */
+  cached(nodes: string[]): void;
+  /** A `progress` message: a node's steps so far. */
+  stepped(node: string, value: number, max: number): void;
 }
 
 /**
- * Turns ComfyUI's per-node step counts into the job's fraction: each sampler that leads to an output counts
- * equally, and sampling is 95% of the job, since decoding and encoding the result follow it. A workflow with
- * no sampler reports nothing.
+ * Turns ComfyUI's messages into the job's fraction and stage. Each sampler that leads to an output counts by its
+ * steps (one without a `steps` input as the average of those with one), and sampling is 95% of the job; a sampler
+ * whose output was cached counts as done. Once every sampler is done, a later node that reports steps (a tiled
+ * decode, a model upscale) fills the rest up to 99%. While a node that decodes, upscales or encodes runs after
+ * sampling began, the stage says so; a sampler clears it. A workflow with no sampler reports nothing.
  */
-export function samplingProgress(prompt: object, report: (fraction: number) => void): ((node: string, value: number, max: number) => void) | undefined {
+export function samplingProgress(prompt: object, report: (fraction: number, stage?: Stage) => void): ProgressReader | undefined {
+  const nodes = prompt as Nodes;
   const samplers = samplersOf(prompt);
   if (!samplers.length) return undefined;
+  const needed = neededOf(prompt);
+  const given = new Map(samplers.map((id) => [id, Number(nodes[id]!.inputs?.steps)] as const).filter(([, s]) => Number.isFinite(s) && s > 0));
+  const average = given.size ? [...given.values()].reduce((a, b) => a + b, 0) / given.size : 1;
+  const weight = new Map(samplers.map((id) => [id, given.get(id) ?? average]));
+  const total = [...weight.values()].reduce((a, b) => a + b, 0);
   const done = new Map<string, number>();
-  return (node, value, max) => {
-    if (!samplers.includes(node) || !(max > 0) || !Number.isFinite(value)) return;
-    done.set(node, Math.min(1, Math.max(done.get(node) ?? 0, value / max)));
-    report(0.95 * [...done.values()].reduce((a, b) => a + b, 0) / samplers.length);
+  let began = false;
+  let stage: Stage | undefined;
+  let tail = 0;
+  const sampled = () => [...done.entries()].reduce((a, [id, f]) => a + f * weight.get(id)!, 0) / total;
+  const send = () => report(Math.min(0.99, 0.95 * sampled() + (samplers.every((id) => done.get(id) === 1) ? 0.04 * tail : 0)), stage);
+  return {
+    started: (node) => {
+      if (!needed.has(node)) return;
+      if (samplers.includes(node)) {
+        began = true;
+        if (stage) { stage = undefined; send(); }
+        return;
+      }
+      const next = began ? stageOf(nodes[node]!.class_type ?? "") : undefined;
+      if (next && next !== stage) { stage = next; send(); }
+    },
+    cached: (list) => {
+      const hit = list.filter((id) => samplers.includes(id));
+      if (!hit.length) return;
+      for (const id of hit) done.set(id, 1);
+      began = true;
+      send();
+    },
+    stepped: (node, value, max) => {
+      if (!needed.has(node) || !(max > 0) || !Number.isFinite(value)) return;
+      if (samplers.includes(node)) {
+        began = true;
+        done.set(node, Math.min(1, Math.max(done.get(node) ?? 0, value / max)));
+      } else if (samplers.every((id) => done.get(id) === 1)) tail = Math.min(1, Math.max(0, value / max));
+      else return;
+      send();
+    },
   };
 }
 

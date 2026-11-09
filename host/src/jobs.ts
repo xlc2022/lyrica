@@ -3,13 +3,17 @@
 import type { IncomingMessage } from "node:http";
 import { invalid } from "./http.ts";
 
+import type { Stage } from "./comfy.ts";
 import type { QueuePhase } from "./scheduler.ts";
 
-/** While queued, a text job also says what it waits for: other work on its GPUs (`busyWith`), or its model loading. */
-export interface JobState { state: "queued" | "running"; progress: number | null; busyWith?: string; loading?: true }
+/**
+ * While queued, a text job also says what it waits for: other work on its GPUs (`busyWith`), or its model loading.
+ * While running, an image or video job past sampling says what it does instead (`stage`).
+ */
+export interface JobState { state: "queued" | "running"; progress: number | null; busyWith?: string; loading?: true; stage?: Stage }
 
 /** What a running job reports through. */
-export interface JobProgress { running(): void; progress(fraction: number): void; waiting(p: QueuePhase): void }
+export interface JobProgress { running(): void; progress(fraction: number, stage?: Stage): void; waiting(p: QueuePhase): void }
 
 const TOKEN = /^[A-Za-z0-9_-]{16,64}$/;
 
@@ -43,7 +47,11 @@ export class Jobs {
           else job.busyWith = p.busyWith;
         },
         // Never backwards: a sampler that starts over doesn't undo the bar.
-        progress: (f) => { job.progress = Math.max(job.progress ?? 0, Math.min(1, Math.max(0, f))); },
+        progress: (f, stage) => {
+          job.progress = Math.max(job.progress ?? 0, Math.min(1, Math.max(0, f)));
+          if (stage) job.stage = stage;
+          else delete job.stage;
+        },
       });
     } finally {
       if (token) this.jobs.delete(token);

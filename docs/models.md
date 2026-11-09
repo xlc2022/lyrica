@@ -570,7 +570,8 @@ stays in memory; the caller stores results and records the call without prompts.
 a refusal stops the call. The image tool uses it for portrait-photo permission
 against the model that would actually receive the bytes.
 `onProgress` hears how far a model host's job has got (`JobProgress`: queued,
-and a fraction when the host knows it): the call is tagged with
+a fraction when the host knows it, and its `stage` past sampling: decoding,
+upscaling or encoding): the call is tagged with
 `X-Lyrica-Job` and the host's `GET /host/v1/jobs/<token>` read every 2 s
 (host/API.md, "Job progress"); `video` takes it too. Cloud models report none.
 The task `vision` (Look at images) has its own ordered list of models with

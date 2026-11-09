@@ -11,6 +11,7 @@ import {
 } from "@lyrica/extension";
 import type * as Api from "./api.ts";
 import type { PermissionRequest, ThreadEvent } from "./api.ts";
+import { progressOf } from "./clips.ts";
 import type { SameFile } from "./same-file.ts";
 import { delegateThreads, delegationPart, clipCall, imagePart, imageRefusal, rootPart, videoPart, markersFor, plainError, shortResult, toReactions, turnRecall, type Started } from "./messages.ts";
 
@@ -913,7 +914,7 @@ export class HostedThread {
           settings: () => workspace.settings(this.userId), enabled: () => tools.settings().images && tools.settings().mode !== "plan",
           approve: r => this.approve(r),
           // The retry's chosen model only: a model named in the first call doesn't go before it.
-        }, id, { ...args, model: undefined }, controller.signal, undefined, (p) => this.makingNow({ ...making, ...(p.queued ? { queued: true } : {}), ...(p.progress === undefined ? {} : { progress: p.progress }) }));
+        }, id, { ...args, model: undefined }, controller.signal, undefined, (p) => this.makingNow({ ...making, ...progressOf(p) }));
       } catch (err) { result = { content: [{ type: "text" as const, text: plainError((err as Error).message) }], isError: true, details: undefined }; }
       finally { this.making.delete(id); this.emit({ type: "made", toolCallId: id }); }
       const text = shortResult(result.content);
@@ -1327,7 +1328,7 @@ export class HostedThread {
       case "tool_execution_update": {
         const p = (e.partialResult as { details?: { progress?: JobProgress } } | undefined)?.details?.progress;
         const was = this.making.get(e.toolCallId);
-        if (was && p) this.makingNow({ toolCallId: e.toolCallId, startedAt: was.startedAt, ...(p.queued ? { queued: true } : {}), ...(p.progress === undefined ? {} : { progress: p.progress }) });
+        if (was && p) this.makingNow({ toolCallId: e.toolCallId, startedAt: was.startedAt, ...progressOf(p) });
         break;
       }
       case "tool_execution_end": {

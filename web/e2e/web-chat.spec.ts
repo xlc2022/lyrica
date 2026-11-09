@@ -440,7 +440,7 @@ test("an image or clip being made shows a card at its shape with how far it has 
     ] }], hasMore: false,
   } }));
   let making: object[] = [
-    { toolCallId: "garden", startedAt: ago(75), progress: 0.42 },
+    { toolCallId: "garden", startedAt: ago(75), progress: 0.95, stage: "decoding" },
     { toolCallId: "cat", startedAt: ago(200), queued: true },
     { toolCallId: "pond", startedAt: ago(83) },
   ];
@@ -448,8 +448,10 @@ test("an image or clip being made shows a card at its shape with how far it has 
     body: `event: hello\ndata: ${JSON.stringify({ type: "hello", busy: true, queued: [], permissions: [], making })}\n\n` }));
   await page.reload();
   const garden = page.getByRole("progressbar", { name: "Making an image" }).first();
-  await expect(garden).toHaveAttribute("aria-valuenow", "42");
-  await expect(garden).toContainText("42%");
+  // Past sampling, the stage stands beside the percent.
+  await expect(garden).toHaveAttribute("aria-valuenow", "95");
+  await expect(garden).toHaveAttribute("aria-valuetext", "95%, decoding");
+  await expect(garden).toContainText("95% · Decoding");
   // At the shape asked for, at most 420 px wide and 320 px tall.
   const box = (await garden.boundingBox())!;
   expect(Math.abs(box.width / box.height - 16 / 9)).toBeLessThan(0.02);

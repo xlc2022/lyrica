@@ -27,7 +27,9 @@ within principle 8 (no new tool, no new setting; one host route).
   GPU, then `running` with `progress` from 0 to 1, or null when the backend
   reports none. ComfyUI's websocket `progress` messages for the workflow's
   sampler nodes give it: each sampler counts equally, and sampling is 95% of
-  the job (the rest is decoding and saving). stable-diffusion.cpp reports
+  the job (the rest is decoding and saving). Since then samplers count by
+  their steps and the stage past sampling is named
+  ([image-progress-stages.md](image-progress-stages.md)). stable-diffusion.cpp reports
   none. Nothing about the job but its state and fraction is kept, and only
   while it runs.
 - **Core:** `imageAt`/`videoAt` take an `onProgress` callback; for a host
