@@ -1135,7 +1135,8 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   `making` (and `hello`'s) puts its placeholder (Making.tsx) under the
   marker until `made`: a card per image at the asked shape, a dot field in
   the accent lit from the top-right by the host's progress, and a pill with
-  the percent, Waiting, or the time since it started (docs/ux.md).
+  the percent (with Decoding, Upscaling or Encoding beside it once the host
+  says sampling is past), Waiting, or the time since it started (docs/ux.md).
   A clip's markers read Making a clip, Animating an image, Copying a
   clip's moves, Extending a clip and Upscaling a clip; a clip made in the background marks its call **started**, and the clip
   shows as her own message when a `notice` event brings its `video` (or the

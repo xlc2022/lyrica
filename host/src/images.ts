@@ -1024,7 +1024,7 @@ export class Images {
           const t = first ? template : { ...template, workflow: { ...chain!.workflow, ...ref?.workflow } };
           const step = { ...values, ...clip, seed: Number(values.seed) + i, ...(first ? {} : { overlap: chain!.overlap, prompt: `${ref?.promptPrefix ?? ""}${chain!.promptPrefix ?? ""}${values.prompt}` }) };
           const made = await comfy.runVideo(first ? uploads : { previous: video!, ...(ref ? { reference: uploads.image! } : {}) }, (names) => (this.checkBeforeRun(t), fill(t, parts, loras, { ...step, ...names })),
-            VIDEO_TIMEOUT_MS, abort.signal, (f) => job.progress((done + f * Number(clip.frames)) / total));
+            VIDEO_TIMEOUT_MS, abort.signal, (f, stage) => job.progress((done + f * Number(clip.frames)) / total, stage));
           video = made.video;
           poster = made.poster ?? poster;
           done += Number(clip.frames);

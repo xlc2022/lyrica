@@ -1394,11 +1394,22 @@ unused; anything else is `invalid`). While the job runs, `GET
 
 `state` is `queued` while it waits for the GPU and `running` once it has
 it. `progress` (0 to 1, never going back) comes from ComfyUI's step counts
-for the workflow's samplers that lead to its output, each counting equally,
-as 95% of the job (decoding and encoding follow); it is `null` before the
-first step and for stable-diffusion.cpp, which reports none. Once the job
-ends, or for a token never seen, the answer is `not_found`. Only the state
-and fraction are kept, in memory, while the job runs.
+for the workflow's samplers that lead to its output, as 95% of the job
+(decoding and encoding follow). A sampler is one of ComfyUI's own, or a
+custom node named a sampler that takes a latent (RES4LYF's
+`ClownsharKSampler_Beta`); each counts by its `steps` input (one without it
+as the average of those with one), and one ComfyUI had cached counts as
+done. Once every sampler is done, a later node that reports steps (a tiled
+decode, a model upscale) fills the rest up to 99%. `progress` is `null`
+before the first step and for stable-diffusion.cpp, which reports none.
+
+Once sampling has begun, a running image or video job says what runs when it
+isn't a sampler: `"stage": "decoding"` (a node whose type names a decode),
+`"upscaling"` (an upscale or SeedVR2 node) or `"encoding"` (a video node),
+so a client can say why the percent stands still. A sampler that starts
+again takes `stage` away. Once the job ends, or for a token never seen, the
+answer is `not_found`. Only the state, fraction and stage are kept, in
+memory, while the job runs.
 
 A queued `/v1` request also says what it waits for: `"busyWith": "a chat
 model"` (other work on its GPUs, in the words of the `busy` error) or

@@ -877,13 +877,65 @@ describe("job progress", () => {
       save: { class_type: "SaveImageWebsocket", inputs: { images: ["decode", 0] } },
     };
     const progress = samplingProgress(prompt, (f) => seen.push(f))!;
-    progress("high", 2, 2);
-    progress("unused", 1, 1);
-    progress("decode", 1, 1);
-    progress("low", 1, 4);
-    progress("low", 0, 4);
+    progress.stepped("high", 2, 2);
+    progress.stepped("unused", 1, 1);
+    progress.stepped("decode", 1, 1);
+    progress.stepped("low", 1, 4);
+    progress.stepped("low", 0, 4);
     expect(seen).toEqual([0.475, 0.475 + 0.95 / 8, 0.475 + 0.95 / 8]);
     expect(samplingProgress({ save: { class_type: "SaveImageWebsocket", inputs: {} } }, () => {})).toBeUndefined();
+  });
+
+  // Krea 2's refine pass is RES4LYF's ClownsharKSampler_Beta, after an upscale: it used to count for nothing, so
+  // the bar sat at 95% from the end of the first pass through the upscale, the refine and the decode.
+  it("counts a custom sampler by its steps, and names the stages past sampling", () => {
+    const seen: [number, string | undefined][] = [];
+    const prompt = {
+      pick: { class_type: "ClownSampler_Beta", inputs: { eta: 0.5 } },
+      sample: { class_type: "KSampler", inputs: { steps: 8, latent_image: ["latent", 0] } },
+      first: { class_type: "VAEDecode", inputs: { samples: ["sample", 0] } },
+      upscale: { class_type: "ImageUpscaleWithModel", inputs: { image: ["first", 0] } },
+      encode: { class_type: "VAEEncode", inputs: { pixels: ["upscale", 0] } },
+      refine: { class_type: "ClownsharKSampler_Beta", inputs: { steps: 24, latent_image: ["encode", 0] } },
+      decode: { class_type: "VAEDecodeTiled", inputs: { samples: ["refine", 0] } },
+      save: { class_type: "SaveImageWebsocket", inputs: { images: ["decode", 0] } },
+    };
+    const progress = samplingProgress(prompt, (f, stage) => seen.push([f, stage]))!;
+    progress.started("encode");
+    progress.started("sample");
+    progress.stepped("sample", 8, 8);
+    progress.started("first");
+    progress.started("upscale");
+    progress.stepped("upscale", 1, 2);
+    progress.started("encode");
+    progress.started("refine");
+    progress.stepped("refine", 12, 24);
+    progress.stepped("refine", 24, 24);
+    progress.started("decode");
+    progress.stepped("decode", 3, 4);
+    expect(seen).toEqual([
+      [0.95 * 8 / 32, undefined],
+      [0.95 * 8 / 32, "decoding"],
+      [0.95 * 8 / 32, "upscaling"],
+      [0.95 * 8 / 32, undefined],
+      [0.95 * 20 / 32, undefined],
+      [0.95, undefined],
+      [0.95, "decoding"],
+      [0.95 + 0.04 * 0.75, "decoding"],
+    ]);
+  });
+
+  it("counts a sampler whose output ComfyUI had cached as done", () => {
+    const seen: number[] = [];
+    const prompt = {
+      a: { class_type: "KSampler", inputs: { steps: 10 } },
+      b: { class_type: "KSampler", inputs: { steps: 10, latent_image: ["a", 0] } },
+      save: { class_type: "SaveImageWebsocket", inputs: { images: ["b", 0] } },
+    };
+    const progress = samplingProgress(prompt, (f) => seen.push(f))!;
+    progress.cached(["a", "save"]);
+    progress.stepped("b", 5, 10);
+    expect(seen).toEqual([0.475, 0.95 * 0.75]);
   });
 });
 

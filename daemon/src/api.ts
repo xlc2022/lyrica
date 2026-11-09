@@ -1655,9 +1655,9 @@ export interface FilePathsInput { paths: string[] }
 /**
  * An image or clip being made (docs/ux.md, "An image the agent made"): from when her image call starts until it
  * ends, or for a clip made in the background until it arrives. `queued`: waiting for the model host's GPU;
- * `progress`: 0 to 1, when the host reports it.
+ * `progress`: 0 to 1, when the host reports it; `stage`: what it does once past sampling, when the host says.
  */
-export interface Making { toolCallId: string; startedAt: string; queued?: true; progress?: number }
+export interface Making { toolCallId: string; startedAt: string; queued?: true; progress?: number; stage?: "decoding" | "upscaling" | "encoding" }
 
 /** What a reply waiting for a model host's GPU waits for: other work on it (`busyWith`, in plain words, "a chat model"), or its model loading. */
 export interface GpuWait { busyWith?: string; loading?: true }

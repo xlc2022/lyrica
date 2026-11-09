@@ -4,7 +4,7 @@ import { upscaleVideoAt, validateVideoRequest, validateVideoUpscale, videoAt, ty
 import { loraFiles, loraName, type LoraAsk } from "./loras.ts";
 export { isMp4, LONGEST_VIDEO_SECONDS, type GeneratedVideo, type VideoRequest, type VideoUpscaleRequest } from "./videos.ts";
 export { loraFiles, loraName, matchLora, MAX_LORAS, type LoraAsk } from "./loras.ts";
-export { type JobProgress, withProgress } from "./progress.ts";
+export { type JobProgress, type JobStage, withProgress } from "./progress.ts";
 import type { JobProgress } from "./progress.ts";
 export { CODEX_DISABLED, codexImage, codexSignedIn, codexSignIn, codexSignOut, type CodexBox, type CodexSignIn } from "./codex.ts";
 import { randomUUID } from "node:crypto";
