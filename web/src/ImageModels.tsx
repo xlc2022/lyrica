@@ -7,8 +7,8 @@ import { CloudImageControls } from "./CloudImageControls.tsx";
 // …/hosts/:id/images, and every change a RecipeAction (POST …/hosts/:id/recipes/:recipeId), which on a shared host is
 // for administrators. The pure parts are in src/images.ts.
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { get, post, put, u, type DeleteCopy, type GroupInfo, type HostStarter, type HubTokenInfo, type ModelsPage, type ModelUse, type OfferingInfo, type RecipeAction } from "./api.ts";
-import { fileChoices, size } from "./downloads.ts";
+import { get, post, put, u, type DeleteCopy, type GroupInfo, type HostStarter, type HubTokenInfo, type ModelsPage, type ModelUse, type OfferingInfo, type RecipeAction, type RecipeCopyPlan } from "./api.ts";
+import { fileChoices, HUB_WORD, size } from "./downloads.ts";
 import { GatedNote, HostField, LinkFields, linkProblem, managedHosts, RepoField, Size, startDownload, startUploads, tokenFor, UploadFields, uploadProblem, useLookup, wayBack } from "./Downloads.tsx";
 import { Icon } from "./icons.tsx";
 import {
@@ -78,6 +78,9 @@ interface Lib {
   act: (c: RecipeCopy, a: RecipeAction) => void;
   onAddPart?: (c: RecipeCopy) => void;
   onDelete?: (c: RecipeCopy) => void;
+  /** The other hosts this user manages that a model can be copied to, with their free space. */
+  copyTargets?: (c: RecipeCopy) => CopyTarget[];
+  onCopyTo?: (c: RecipeCopy) => void;
 }
 const recipeOf = (L: Lib, hostId: string, id: string) => L.libOf(hostId)?.recipes.find((r) => r.id === id);
 const nameOf = (L: Lib, hostId: string, id: string) => recipeOf(L, hostId, id)?.name;
@@ -115,6 +118,7 @@ export function ImageModels({ ctx }: { ctx: MCtx }) {
   const [scrollTo, setScrollTo] = useState<string>();
   const [adding, setAdding] = useState<RecipeCopy>();
   const [deleting, setDeleting] = useState<{ c: RecipeCopy; usedIn: ModelUse[] }>();
+  const [copying, setCopying] = useState<RecipeCopy>();
   const [toast, setToast] = useState("");
   const [run, busy, error] = useAction();
   const reads = useMemo(() => libs.data ?? [], [libs.data]);
@@ -174,6 +178,9 @@ export function ImageModels({ ctx }: { ctx: MCtx }) {
     libOf: (hostId) => all.find((l) => l.hostId === hostId),
     act: (c, a) => void run(async () => { await post(u(userId, "hosts", c.hostId, "recipes", c.recipe.id), a); refresh(); }),
     onAddPart: setAdding,
+    copyTargets: (c) => reads.filter((r) => r.ep.id !== c.hostId && !r.error && canEdit(ctx, r.ep))
+      .map((r) => ({ id: r.ep.id, name: r.ep.name, free: freeOn(p, r.ep.id) })),
+    onCopyTo: setCopying,
     // The first call only says where the model is used, for the dialog; Delete deletes.
     onDelete: (c) => void run(async () => {
       const o = offeringOf(c);
@@ -189,6 +196,14 @@ export function ImageModels({ ctx }: { ctx: MCtx }) {
       // A file the dialog said would go but the host kept (it changed since it was downloaded).
       const kept = (done?.kept ?? []).filter((k) => plan.goes.some((g) => g.file === k.file));
       if (kept.length) setToast(kept.map((k) => `${fileName(k.file)} was kept. ${k.reason}`).join(" "));
+      refresh();
+    });
+  };
+  const copyTo = (c: RecipeCopy, to: CopyTarget) => {
+    setCopying(undefined);
+    void run(async () => {
+      await post(u(userId, "hosts", c.hostId, "recipes", c.recipe.id), { do: "copy-to", host: to.id });
+      setToast(`Copying ${c.recipe.name} to ${to.name}. Downloads shows how it goes.`);
       refresh();
     });
   };
@@ -291,6 +306,7 @@ export function ImageModels({ ctx }: { ctx: MCtx }) {
         )}
       </>}
       {adding && <AddPart L={L} c={adding} onAdd={(a) => addPart(adding, a)} onCancel={() => setAdding(undefined)} />}
+      {copying && <CopyToHost L={L} c={copying} targets={L.copyTargets!(copying)} onCopy={(to) => copyTo(copying, to)} onCancel={() => setCopying(undefined)} />}
       {deleting && <DeleteRecipe L={L} c={deleting.c} usedIn={deleting.usedIn} onConfirm={remove} onCancel={() => setDeleting(undefined)} />}
       {toast && (
         <div className="toast" role="status">
@@ -469,6 +485,8 @@ function CopyBlock({ L, c, details }: { L: Lib; c: RecipeCopy; details?: boolean
   const change = (op: Record<string, unknown>) => L.act(c, { do: "change", change: op });
   const facts = (file: string, instead?: Role) => {
     const x = partOf(file);
+    // Named by the recipe but not here: downloading, being copied from another host, or to be put there.
+    if (!x) return "Not on this host yet";
     const others = (x?.usedBy ?? []).filter((id) => id !== r.id).map((id) => nameOf(L, c.hostId, id)).filter(Boolean);
     return [
       precisionWord(x?.precision ?? null), x ? (x.downloaded ? `downloaded by ${her()}` : "shared folder") : "",
@@ -552,6 +570,7 @@ function CopyBlock({ L, c, details }: { L: Lib; c: RecipeCopy; details?: boolean
               {(r.custom || r.does.some((d) => d === "create" || d === "edit" || d === "video" || d === "animate")) && (
                 <a className="sm" href={href({ page: "models", userId: L.ctx.user.id, tab: "images", add: "workflow", host: c.hostId, recipe: r.id })}>Edit workflow</a>
               )}
+              {!!L.copyTargets?.(c).length && <button type="button" className="sm" disabled={L.busy} onClick={() => L.onCopyTo?.(c)}>Copy to host…</button>}
               {mainPart?.downloaded && <button type="button" className="sm danger" disabled={L.busy} onClick={() => L.onDelete?.(c)}>Delete model…</button>}
             </div>
           )}
@@ -692,6 +711,71 @@ function DeleteRecipe({ L, c, usedIn, onConfirm, onCancel }: { L: Lib; c: Recipe
       <div className="dlg-actions">
         <button type="button" onClick={onCancel}>Cancel</button>
         <button type="submit" className="danger primary" disabled={L.busy} autoFocus>Delete</button>
+      </div>
+    </Dialog>
+  );
+}
+
+/** A host's free space in its models folder, as the Models page last read its status. */
+const freeOn = (p: ModelsPage | undefined, hostId: string): number | null => {
+  const h = p?.hosts.find((x) => x.endpointId === hostId);
+  return h && "status" in h ? h.status.modelsFolder.free : null;
+};
+
+/** A host a model can be copied to: its endpoint, name and free space when known. */
+interface CopyTarget { id: string; name: string; free: number | null }
+
+/** What fetch keeps free on a host beyond a download (host/API.md, "Downloads"). */
+const MARGIN = 2 ** 30;
+
+/**
+ * Copy to host…: which host (a select when there are several), then where each file would come from there, as the
+ * target plans it: already there, downloaded again from its hub, or copied from this host; files it can't get, and
+ * nodes its ComfyUI lacks, as warnings. Copy fetches them; the model is ready there once they arrive.
+ */
+function CopyToHost({ L, c, targets, onCopy, onCancel }: { L: Lib; c: RecipeCopy; targets: CopyTarget[]; onCopy: (to: CopyTarget) => void; onCancel: () => void }) {
+  const [toId, setToId] = useState(targets[0]!.id);
+  const to = targets.find((t) => t.id === toId) ?? targets[0]!;
+  const plan = useLoad(() => post<RecipeCopyPlan>(u(L.ctx.user.id, "hosts", c.hostId, "recipes", c.recipe.id), { do: "copy-to", host: to.id, check: true }), [c.hostId, c.recipe.id, to.id]);
+  const placed = plan.data?.placed ?? [];
+  const of = (how: RecipeCopyPlan["placed"][number]["how"]) => placed.filter((p) => p.how === how);
+  const fetched = [...of("download"), ...of("copy")];
+  const bytes = fetched.reduce((n, p) => n + (p.size ?? 0), 0);
+  const short = to.free !== null && fetched.length > 0 && bytes + MARGIN > to.free;
+  const problems = plan.data?.problems ?? [];
+  const hubs = [...new Set(of("download").map((p) => p.origin!.source))];
+  const files = (list: typeof placed) => (
+    <ul className="dl-parts">
+      {list.map((p) => <li key={p.file}><code className="raw">{fileName(p.file)}</code>{p.size ? <> <span className="muted"><Size text={size(p.size)} /></span></> : null}{p.reason && <span className="muted"> {p.reason}</span>}</li>)}
+    </ul>
+  );
+  return (
+    <Dialog labelledBy="copy-to-title" onCancel={onCancel} onSubmit={() => onCopy(to)}>
+      <h2 id="copy-to-title">{targets.length > 1 ? `Copy ${c.recipe.name} to another host?` : `Copy ${c.recipe.name} to ${to.name}?`}</h2>
+      {targets.length > 1 && (
+        <label className="field"><span>To</span>
+          <select value={to.id} onChange={(e) => setToId(e.target.value)}>
+            {targets.map((t) => <option key={t.id} value={t.id}>{t.name}{t.free !== null ? ` · ${size(t.free)} free` : ""}</option>)}
+          </select>
+        </label>
+      )}
+      <ErrorText error={plan.error} />
+      {!plan.data && !plan.error && <p className="muted">Asking {to.name}…</p>}
+      {plan.data && <>
+        <p>{plan.data.existing ? `${to.name} has this model from an earlier copy: copying again fetches only what is still missing.` : `The model, its workflow, LoRAs and settings go to ${to.name}. It is ready there once its files arrive.`}</p>
+        {of("here").length > 0 && <><p className="meta">On {to.name} already</p>{files(of("here"))}</>}
+        {of("download").length > 0 && <><p className="meta">Downloads from {hubs.map((h) => HUB_WORD[h]).join(" and ")}</p>{files(of("download"))}</>}
+        {of("copy").length > 0 && <><p className="meta">Copies from {c.host}</p>{files(of("copy"))}</>}
+        {of("unavailable").length > 0 && <><p className="warn-text">Can't be copied</p>{files(of("unavailable"))}</>}
+        {problems.map((x) => <p key={x} className="warn-text">{x}</p>)}
+        {!!plan.data.missingNodes?.length && <p className="warn-text">{to.name}'s ComfyUI doesn't have these nodes: {plan.data.missingNodes.join(", ")}. The model does nothing there until they are added.</p>}
+        {short && <p className="warn-text">Not enough space on {to.name}: <Size text={size(to.free!)} /> free.</p>}
+      </>}
+      <div className="dlg-actions">
+        <button type="button" onClick={onCancel}>Cancel</button>
+        <button type="submit" className="primary" disabled={L.busy || !plan.data || short || problems.length > 0} autoFocus>
+          {bytes > 0 ? <span>Copy (<Size text={size(bytes)} />)</span> : "Copy"}
+        </button>
       </div>
     </Dialog>
   );

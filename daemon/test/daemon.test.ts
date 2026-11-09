@@ -325,6 +325,45 @@ describe("model uploads", () => {
   });
 });
 
+describe("copying an image model to another host", () => {
+  it("has the target plan and make it, then carries the files only it lacks from the source, piece by piece", async () => {
+    const rt = await runtime();
+    const { base, logs } = await daemon(rt);
+    await browser(base).post("/api/unlock", { passphrase: "passphrase" });
+    const ada = await login(base, "ada", "pw");
+    const sam = await login(base, "sam", "pw2");
+    const u = `/api/u/${rt.ada.id}`;
+    const from = await fakeHost({ name: "lyrica-lunasa" });
+    const to = await fakeHost({ name: "lyrica-blackwell" });
+    const a = (await ada.post<EndpointInfo>(`${u}/hosts`, { name: "lunasa", addresses: [from.address], code: from.newCode(), shared: true })).body;
+    const b = (await ada.post<EndpointInfo>(`${u}/hosts`, { name: "blackwell", addresses: [to.address], code: to.newCode(), shared: true })).body;
+    const id = "00000000-0000-4000-8000-000000000001";
+    const bundle = { recipe: { id, name: "Flux styled" }, workflow: null, files: [{ file: "lyrica/huggingface/o/r/vae.safetensors", origin: { source: "huggingface", repo: "o/r", path: "vae.safetensors" } }, { file: "mine/style.safetensors", size: 10, origin: null }] };
+    from.exports.set(id, bundle);
+    from.contents.set("mine/style.safetensors", "0123456789");
+    await ada.put(`${u}/hub-tokens/huggingface`, { token: "hf_secret_token" });
+    // Both hosts are shared: copying needs an administrator.
+    expect((await sam.post(`/api/u/${rt.sam.id}/hosts/${a.id}/recipes/${id}`, { do: "copy-to", host: b.id })).status).toBe(403);
+    expect((await ada.post(`${u}/hosts/${a.id}/recipes/${id}`, { do: "copy-to", host: a.id })).status).toBe(400);
+
+    // Planning only asks the target, which gets the bundle as the source gave it, with the hub token for its downloads.
+    to.answerImport({ placed: [{ file: "mine/style.safetensors", how: "copy" }], copies: [] });
+    await ada.post(`${u}/hosts/${a.id}/recipes/${id}`, { do: "copy-to", host: b.id, check: true });
+    expect(to.imports[0]).toEqual({ body: { ...bundle, check: true }, token: "hf_secret_token" });
+    expect(to.pieces).toEqual([]);
+
+    to.answerImport({ recipe: { id: "copy" }, copies: [{ file: "mine/style.safetensors", name: "style.safetensors", size: 10, to: "lyrica/upload/style.safetensors" }] });
+    expect((await ada.post(`${u}/hosts/${a.id}/recipes/${id}`, { do: "copy-to", host: b.id })).status).toBe(200);
+    expect(to.imports[1]!.body).toEqual(bundle);
+    for (let i = 0; i < 50 && !to.downloads.some((d) => d.state === "done"); i++) await new Promise((r) => setTimeout(r, 20));
+    expect(to.pieces.map((p) => [p.offset, p.text])).toEqual([[0, "0123456789"]]);
+    // Downloads says where it came from.
+    const listed = (await ada.get<{ downloads: HostDownload[] }>(`${u}/hosts/${b.id}/downloads`)).body.downloads;
+    expect(listed).toEqual([expect.objectContaining({ path: "lyrica/upload/style.safetensors", state: "done", copyFrom: "lunasa" })]);
+    expect(logs.join("\n")).not.toContain("0123456789");
+  });
+});
+
 describe("the memory browser", () => {
   it("adds, edits and restores a user's memory, keeping mention tokens", async () => {
     const rt = await runtime();

@@ -59,16 +59,17 @@ export interface Ending { dot: "up" | "away" | "down" | "none"; word: string; no
 /**
  * A download in words: its label (the file's name), "from <source> to <host>", and either its progress ("<phase> ·
  * <GB> of <GB>", the sizes apart so the page sets them in mono, and the percent for the bar) or how it ended. An upload
- * comes "from your computer"; one no tab is sending now (`paused`) is Paused.
+ * comes "from your computer", or from the host a model was copied from (`copyFrom`); one nothing is sending now
+ * (`paused`) is Paused.
  */
 export function downloadWords(d: HostDownload, host: string, paused = false): {
   label: string; from: string; progress?: { phase: string; got: string; of?: string }; percent?: number; ending?: Ending;
 } {
   const label = d.path.split("/").pop() || d.path;
-  const site = d.source === "upload" ? "your computer" : d.source === "url" ? (d.url ? hostname(d.url) : d.path.split("/")[2]) || "a link" : HUB_WORD[d.source];
+  const site = d.copyFrom ? d.copyFrom : d.source === "upload" ? "your computer" : d.source === "url" ? (d.url ? hostname(d.url) : d.path.split("/")[2]) || "a link" : HUB_WORD[d.source];
   const from = `from ${site} to ${host}`;
   if (isRunning(d)) {
-    const phase = d.state === "uploading" && paused ? "Paused" : d.source === "upload" && d.state === "verifying" ? "Checking the file" : PHASE[d.state as keyof typeof PHASE];
+    const phase = d.state === "uploading" && paused ? "Paused" : d.state === "uploading" && d.copyFrom ? "Copying" : d.source === "upload" && d.state === "verifying" ? "Checking the file" : PHASE[d.state as keyof typeof PHASE];
     return {
       label, from,
       progress: { phase, got: size(d.received), ...(d.size ? { of: size(d.size) } : {}) },
@@ -77,7 +78,7 @@ export function downloadWords(d: HostDownload, host: string, paused = false): {
   }
   if (d.state === "cancelled") return { label, from, ending: { dot: "none", word: "Cancelled", note: "Nothing was kept." } };
   if (d.state === "failed") return { label, from, ending: { dot: "down", word: "Failed", ...(d.error ? { note: d.error } : {}) } };
-  if (d.source === "upload") return { label, from, ending: { dot: "up", word: "Uploaded" } };
+  if (d.source === "upload") return { label, from, ending: { dot: "up", word: d.copyFrom ? "Copied" : "Uploaded" } };
   return { label, from, ending: d.verified ? { dot: "up", word: "Verified" } : { dot: "away", word: "Unverified", note: "no checksum given" } };
 }
 

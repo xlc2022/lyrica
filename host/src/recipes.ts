@@ -37,6 +37,8 @@ export interface Recipe {
   defaults: Record<string, string | number>;
   base: string | null;
   starter: string | null;
+  /** The recipe on another host this one was copied from ("Copying a model to another host"). */
+  copiedFrom?: string;
 }
 
 export interface Starter {
@@ -249,6 +251,7 @@ export class RecipeBook {
     const from = this.get(id);
     // A copy is in the same state as its source: a copy of a proposal is a proposal.
     const copy: Recipe = { ...structuredClone(from), id: randomUUID(), name: name.trim(), base: from.id, starter: null };
+    delete copy.copiedFrom;
     this.recipes.push(copy);
     this.save();
     return copy;

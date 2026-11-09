@@ -516,7 +516,7 @@ export function apiRoutes(d: Lyricad): Route[] {
     route("POST", `${u}/hosts/:endpointId/starters/:starterId/install`, async (r) => s().models.installStarter(d.userFor(r), r.params.endpointId!, r.params.starterId!)),
     route("POST", `${u}/hosts/:endpointId/recipes/:recipeId`, async (r) => {
       const a = await r.json<Api.RecipeAction>();
-      if (!["confirm", "ignore", "download-parts", "delete", "change", "copy"].includes(a.do)) throw new HttpError(400, "a recipe can be confirmed, ignored, changed, copied, deleted, or have its parts downloaded");
+      if (!["confirm", "ignore", "download-parts", "delete", "change", "copy", "copy-to"].includes(a.do)) throw new HttpError(400, "a recipe can be confirmed, ignored, changed, copied, copied to another host, deleted, or have its parts downloaded");
       return s().models.recipe(d.userFor(r), r.params.endpointId!, r.params.recipeId!, a as never);
     }),
     route("POST", `${u}/hosts/:endpointId/manage`, async (r) => {
