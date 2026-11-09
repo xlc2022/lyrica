@@ -1,6 +1,6 @@
 // A host's recipes and parts in words (web/src/images.ts), as the Image models tab shows them.
 import { describe, expect, it } from "vitest";
-import { addableRoles, defaultsWords, deletePlan, missingOf, recipeFiles, recipeRows, starredFirst, withLora, type HostPart, type HostRecipe } from "../src/images.ts";
+import { addableRoles, defaultsWords, deletePlan, loaderWords, missingOf, recipeFiles, recipeRows, starredFirst, withLora, type HostPart, type HostRecipe } from "../src/images.ts";
 
 const GB = 2 ** 30;
 const recipe = (r: Partial<HostRecipe>): HostRecipe => ({
@@ -91,5 +91,35 @@ describe("an architecture's group of image models", () => {
       { name: "shared.cloud/gpt-image", starred: false }, { name: "ChatGPT Images", starred: true },
     ];
     expect(starredFirst(shown, (x) => x.starred).map((x) => x.name)).toEqual(["Z-Image Turbo", "ChatGPT Images", "Flux dev", "shared.cloud/gpt-image"]);
+  });
+});
+
+describe("loaderWords", () => {
+  it("names the model with the LoRAs the host chains onto it, the text encoder and the VAE", () => {
+    const parts = [
+      { role: "diffusion" as const, slot: null, file: "shared/flux1-dev.safetensors" },
+      { role: "text_encoder" as const, slot: "t5", file: "shared/t5xxl.safetensors" },
+      { role: "text_encoder" as const, slot: "clip_l", file: "shared/clip_l.safetensors" },
+      { role: "vae" as const, slot: null, file: "shared/ae.safetensors" },
+    ];
+    const loras = [{ file: "shared/flux-style.safetensors", strength: 0.7 }, { file: "shared/pixel.safetensors", strength: -1 }];
+    expect(loaderWords(parts, loras, [])).toEqual({
+      model: "flux1-dev + LoRA flux-style (0.7) + LoRA pixel (-1)", clip: "t5xxl + clip_l", vae: "ae",
+    });
+  });
+
+  it("puts a LoRA made for one expert on that expert, and any other on both", () => {
+    const parts = [
+      { role: "diffusion" as const, slot: "high", file: "wan-high.gguf" },
+      { role: "diffusion" as const, slot: "low", file: "wan-low.gguf" },
+    ];
+    const loras = [{ file: "lightning-high.safetensors", strength: 1 }, { file: "style.safetensors", strength: 0.5 }];
+    const words = loaderWords(parts, loras, [{ file: "lightning-high.safetensors", slot: "high" }]);
+    expect(words.model_high).toBe("wan-high + LoRA lightning-high (1) + LoRA style (0.5)");
+    expect(words.model_low).toBe("wan-low + LoRA style (0.5)");
+  });
+
+  it("gives a checkpoint's own text encoder and VAE unless the recipe adds others", () => {
+    expect(loaderWords([{ role: "checkpoint", slot: null, file: "sdxl.safetensors" }], [], [])).toEqual({ model: "sdxl", clip: "sdxl", vae: "sdxl" });
   });
 });
