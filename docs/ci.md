@@ -63,23 +63,27 @@ self-hosted runners, which no workflow uses at the moment.
   the last commit whose run passed, so merges that gave way are covered)
   and runs only the jobs it touches; the others show as skipped, which
   counts as passed:
-  - check (typecheck and unit tests) and e2e (the Playwright tests), side
-    by side: anything but `docs/` and the top-level Markdown files.
+  - check (typecheck and unit tests) and e2e (the Playwright tests, one
+    job per spec file: `e2e (chat)`, `e2e (projects)`, `e2e (admin)`),
+    side by side: anything but `docs/` and the top-level Markdown files.
     `persona/` is her seed, so it counts. Together on one runner they took
     about 14.5 minutes, 9 of them Playwright; apart, each sets up its own
     runner (apt, Node, `npm ci`, about a minute) and the run ends when the
-    slower one does.
+    slowest one does.
   - nix: the same, less `evals/` and the tests the flake leaves out of its
     source (`web/e2e/` and each `test/` but `core/test/`, which holds the
     sandbox tests).
   - host-stack: `host/` only.
 
   A change under `.github/`, or a diff that can't be read, runs all three.
-  The e2e job runs seven Playwright projects side by side, each against
-  its own lyricad: each `web/e2e/web-*.spec.ts` file (chat, projects,
-  admin) at phone and at desktop size, and the setup page. The slowest
-  project sets the step's time. When an e2e test fails, the run keeps its
-  Playwright trace for 7 days as the artifact `e2e-traces-<attempt>`
+  Each e2e job runs one `web/e2e/web-*.spec.ts` file (chat, projects or
+  admin) at phone and at desktop size, two Playwright projects side by
+  side, each against its own lyricad; the `projects` job runs the setup
+  page too. A spec's tests run one after another, so the longest spec
+  sets the run's time. The job picks its projects with `E2E_PROJECTS`
+  (`web/playwright.config.ts`), which also keeps the other lyricads from
+  starting. When an e2e test fails, the run keeps its
+  Playwright trace for 7 days as the artifact `e2e-traces-<spec>-<attempt>`
   (`npx playwright show-trace trace.zip`), and prints each failed test's
   page snapshot (`error-context.md`) in the log. A weekly cron job clears Docker images and
   build cache unused for a week.

@@ -64,9 +64,9 @@ jobs:
           fi
           printf '%s\n' "$files" | head -50
           printf 'code=%s\nnix=%s\nhost=%s\n' "$code" "$nix" "$host" | tee -a "$GITHUB_OUTPUT"
-  # Unit tests and the e2e tests are two jobs, side by side: together they
-  # took 14.5 minutes on one runner, 9 of them Playwright. Each sets up the
-  # same runner (apt, Node, npm ci), about a minute.
+  # Unit tests and the e2e tests are separate jobs, side by side: together
+  # they took 14.5 minutes on one runner, 9 of them Playwright. Each sets up
+  # the same runner (apt, Node, npm ci), about a minute.
   check:
     needs: changes
     if: needs.changes.outputs.code == 'true'
@@ -99,10 +99,21 @@ jobs:
         env:
           LYRICA_SANDBOX_TESTS: require
   # Playwright drives the web UI against a real lyricad (web/e2e/serve.ts).
+  # One job per spec file, each running its phone and desktop projects: a
+  # spec's tests run one after another against one lyricad, so its own
+  # length is the floor, and seven browsers on one 4-core runner took 8.6
+  # minutes where the longest spec alone takes less. The setup page rides
+  # with the shortest spec.
   e2e:
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        spec: [chat, projects, admin]
+    env:
+      E2E_PROJECTS: phone-${{ matrix.spec }},desktop-${{ matrix.spec }}${{ matrix.spec == 'projects' && ',setup' || '' }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -129,7 +140,7 @@ jobs:
       - if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: e2e-traces-${{ github.run_attempt }}
+          name: e2e-traces-${{ matrix.spec }}-${{ github.run_attempt }}
           path: web/test-results/
           retention-days: 7
           if-no-files-found: ignore

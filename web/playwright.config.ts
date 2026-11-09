@@ -13,11 +13,17 @@ const sizes = [
 // Ports from 17341, each lyricad's fake model server 10 above its own (web/e2e/helpers.ts enter()). Not lyricad's
 // own 7341 and 7342: a sandbox can't reach those ports even on its own loopback, so the tests run inside one too.
 const BASE = 17341;
-const servers = [
+const all = [
   ...SPECS.flatMap((spec, i) => sizes.map((s, j) => ({ name: `${s.size}-${spec}`, port: BASE + i * 2 + j, use: s.use, testMatch: new RegExp(`web-${spec}\\.spec\\.ts`), setup: false }))),
   // A lyricad with no self.db, for the setup page (setup.spec.ts).
   { name: "setup", port: BASE + SPECS.length * 2, use: { viewport: { width: 1280, height: 800 } }, testMatch: /setup\.spec\.ts/, setup: true },
 ];
+// E2E_PROJECTS names the projects to run, comma-separated (E2E_PROJECTS=phone-chat,desktop-chat): only their lyricads
+// start, where --project alone would start all seven. CI runs each spec's two sizes as a job of its own this way.
+const chosen = (process.env.E2E_PROJECTS ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+const unknown = chosen.filter((name) => !all.some((s) => s.name === name));
+if (unknown.length) throw new Error(`E2E_PROJECTS names no project: ${unknown.join(", ")} (have ${all.map((s) => s.name).join(", ")})`);
+const servers = chosen.length ? all.filter((s) => chosen.includes(s.name)) : all;
 
 /**
  * Playwright's own Chromium where it can run; a Lyrica sandbox's (CHROME_PATH) where it can't: none downloaded (the
