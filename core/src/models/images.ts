@@ -5,12 +5,26 @@ import { withProgress, type JobProgress } from "./progress.ts";
 
 export interface ImageInput { bytes: Uint8Array; type: "image/png" | "image/jpeg" | "image/webp" }
 const QUALITY = { fast: "low", quality: "high" } as const;
-/** `loras`: LoRAs asked for by name, which only a host recipe that takes each one serves (loras.ts). */
-type Common = { count?: number; references?: ImageInput[]; loras?: LoraAsk[] };
+/**
+ * `loras`: LoRAs asked for by name, which only a host recipe that takes each one serves (loras.ts).
+ * `JobSettings` replace the recipe's for this job only; only a model host takes them.
+ */
+type Common = { count?: number; references?: ImageInput[]; loras?: LoraAsk[] } & JobSettings;
+/**
+ * A create, edit or clip's own settings in place of its recipe's (host/API.md, "Making images"): `steps` 1 to 150,
+ * `cfg` 0 to 30, `seed` 0 to MAX_SEED, `sampler` and `scheduler` ComfyUI names, `shift` 0 to 20, `guidance` 0 to 30,
+ * and `negativePrompt`, what to keep out.
+ */
+export interface JobSettings { steps?: number; cfg?: number; seed?: number; sampler?: string; scheduler?: string; shift?: number; guidance?: number; negativePrompt?: string }
+export const JOB_SETTINGS = ["steps", "cfg", "seed", "sampler", "scheduler", "shift", "guidance", "negativePrompt"] as const;
+/** ComfyUI's colour matching for an upscale (host/API.md, "Making images"). */
+export const COLOR_MATCH = ["lab", "wavelet", "wavelet_adaptive", "hsv", "adain", "none"] as const;
+/** An upscale's largest seed: SeedVR2's. */
+export const MAX_UPSCALE_SEED = 2 ** 32 - 1;
 export type ImageRequest =
   | (Common & { action: "create"; prompt: string; tier: "fast" | "quality"; size?: { width: number; height: number } })
   | (Common & { action: "edit"; prompt: string; image: ImageInput; mask?: ImageInput; replace?: boolean })
-  | { action: "upscale"; image: ImageInput; scale?: number; maxSize?: number };
+  | { action: "upscale"; image: ImageInput; scale?: number; maxSize?: number; colorMatch?: typeof COLOR_MATCH[number]; seed?: number };
 export interface GeneratedImage { bytes: Uint8Array; type: "image/png"; width: number; height: number; seed?: number }
 /** A LoRA a host job applied, as its answer names it: the recipe's own, then the request's. */
 export interface AppliedLora { file: string; strength: number }
@@ -36,6 +50,8 @@ export function validateImageRequest(r: ImageRequest): void {
     if (r.count !== undefined && (!Number.isInteger(r.count) || r.count < 1 || r.count > 4)) throw new HostRefused("invalid", "image count is 1 to 4");
     const loras = validateLoras(r.loras);
     if (loras) throw new HostRefused("invalid", loras);
+    const sampling = validateSampling(r);
+    if (sampling) throw new HostRefused("invalid", sampling);
   }
   if (r.action === "create") {
     if (!["fast", "quality"].includes(r.tier)) throw new HostRefused("invalid", "image tier is fast or quality");
@@ -44,8 +60,33 @@ export function validateImageRequest(r: ImageRequest): void {
   if (r.action === "upscale") {
     if (r.scale !== undefined && !(r.scale >= 1 && r.scale <= 4)) throw new HostRefused("invalid", "image scale is 1 to 4");
     if (r.maxSize !== undefined && (!Number.isInteger(r.maxSize) || r.maxSize < 256 || r.maxSize > 8192)) throw new HostRefused("invalid", "maximum image size is 256 to 8192");
+    if (r.colorMatch !== undefined && !COLOR_MATCH.includes(r.colorMatch)) throw new HostRefused("invalid", `colour matching is ${COLOR_MATCH.join(", ")}`);
+    if (r.seed !== undefined && !(Number.isInteger(r.seed) && inRange(r.seed, 0, MAX_UPSCALE_SEED))) throw new HostRefused("invalid", `an upscale's seed is a whole number from 0 to ${MAX_UPSCALE_SEED}`);
   }
 }
+
+/** A job's largest seed (host/API.md, "Making images"). */
+export const MAX_SEED = 2 ** 48;
+const inRange = (v: number, min: number, max: number) => Number.isFinite(v) && v >= min && v <= max;
+const comfyName = (v: string) => /^[a-z0-9_]{1,64}$/.test(v);
+/** Why a job's own settings are out of the host's ranges (host/API.md, "Making images"), if they are. */
+export function validateSampling(r: JobSettings): string | undefined {
+  if (r.steps !== undefined && !(Number.isInteger(r.steps) && inRange(r.steps, 1, 150))) return "steps are 1 to 150";
+  if (r.cfg !== undefined && !inRange(r.cfg, 0, 30)) return "CFG is 0 to 30";
+  if (r.seed !== undefined && !(Number.isInteger(r.seed) && inRange(r.seed, 0, MAX_SEED))) return `a seed is a whole number from 0 to ${MAX_SEED}`;
+  if (r.sampler !== undefined && !comfyName(r.sampler)) return "a sampler is a ComfyUI sampler name, such as euler or res_multistep";
+  if (r.scheduler !== undefined && !comfyName(r.scheduler)) return "a scheduler is a ComfyUI scheduler name, such as simple or beta";
+  if (r.shift !== undefined && !inRange(r.shift, 0, 20)) return "shift is 0 to 20";
+  if (r.guidance !== undefined && !inRange(r.guidance, 0, 30)) return "guidance is 0 to 30";
+  if (r.negativePrompt !== undefined && r.negativePrompt.length > 4096) return "a negative prompt is at most 4096 characters";
+  return undefined;
+}
+
+/** Whether a request sets any of its own settings, which only a model host takes. */
+export const setsJob = (r: JobSettings) => JOB_SETTINGS.some((k) => r[k] !== undefined);
+
+/** A job's own settings, for a host's request body. */
+export const samplingFields = (r: JobSettings) => Object.fromEntries(JOB_SETTINGS.filter((k) => r[k] !== undefined).map((k) => [k, r[k]]));
 
 /** Keep only PNG rendering chunks: no text, EXIF, profiles or other metadata. */
 export function cleanPng(bytes: Uint8Array): GeneratedImage {
@@ -171,8 +212,9 @@ export async function imageAt(t: Target, r: ImageRequest, signal?: AbortSignal, 
   if (!t.modelId.startsWith("recipe/")) throw new HostRefused("invalid", "a host image model must be a confirmed recipe");
   // Explicit fields only: recipe defaults apply, and callers cannot name parts. LoRAs are only those the recipe takes.
   const fields = { recipe: t.modelId.slice(7), ...(t.loras?.length ? { loras: t.loras } : {}),
-    ...(r.action === "upscale" ? { image: base64(r.image), ...(r.scale === undefined ? {} : { scale: r.scale }), ...(r.maxSize === undefined ? {} : { maxSize: r.maxSize }) } : {
-      prompt: r.prompt, ...(r.count === undefined ? {} : { count: r.count }), ...(r.references ? { references: r.references.map(base64) } : {}),
+    ...(r.action === "upscale" ? { image: base64(r.image), ...(r.scale === undefined ? {} : { scale: r.scale }), ...(r.maxSize === undefined ? {} : { maxSize: r.maxSize }),
+      ...(r.colorMatch === undefined ? {} : { colorMatch: r.colorMatch }), ...(r.seed === undefined ? {} : { seed: r.seed }) } : {
+      prompt: r.prompt, ...(r.count === undefined ? {} : { count: r.count }), ...samplingFields(r), ...(r.references ? { references: r.references.map(base64) } : {}),
       ...(r.action === "create" ? r.size ?? {} : { image: base64(r.image), ...(r.mask ? { mask: base64(r.mask), ...(r.replace ? { replace: true } : {}) } : {}) }),
     }) };
   const out = await withProgress(t, onProgress, (tag) => answer(t, `/host/v1/images/${r.action}`, JSON.stringify(fields), { "content-type": "application/json", ...tag }, signal));

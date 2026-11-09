@@ -657,8 +657,11 @@ A create request has `prompt`, `tier` (`fast` or `quality`), optional
 optional `scale` and `maxSize`. Inputs are `{ bytes, type }` (PNG, JPEG or WebP).
 
 Hosts are called through their paired fetch at `/host/v1/images/<action>`
-with the confirmed recipe's ID. Size and count are sent only when supplied;
-all other recipe defaults remain the host's, including for both create tiers.
+with the confirmed recipe's ID. Size, count and a job's own settings (`JobSettings`: steps,
+CFG, seed, sampler, scheduler, shift, guidance and negative prompt; for an
+upscale, colour matching and seed) are sent only when supplied; a cloud model,
+which can't take them, is passed over for such a call; all other recipe defaults
+remain the host's, including for both create tiers.
 Calls never name parts or workflows. Discovery includes recipes'
 upscale capability. A recipe that isn't confirmed and ready cannot run.
 

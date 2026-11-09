@@ -1209,6 +1209,7 @@ the action is `invalid`.
   { "recipe": "<id>", "prompt": "...", "negativePrompt": "...",
     "width": 1024, "height": 1024, "count": 1,
     "steps": 8, "cfg": 1.0, "seed": 1234,
+    "sampler": "euler", "scheduler": "simple", "shift": 3, "guidance": 3.5,
     "references": ["<base64>"] }
   ```
 
@@ -1218,6 +1219,11 @@ the action is `invalid`.
   (P-H3-Image's). `width` and `height` are multiples
   of 16 from 256 to 2048. `steps` is 1 to 150, `cfg` 0 to 30, `seed` 0 to
   2^48 (random when left out; every image of one request shares it).
+  `sampler` and `scheduler` are ComfyUI names (lower case, digits and `_`),
+  `shift` 0 to 20 and `guidance` 0 to 30, checked as a recipe's defaults
+  are; each replaces the recipe's for this job only, and a template or
+  workflow without that setting ignores it. A host from before these four
+  refuses them as unknown fields.
   `references` only for a template that takes them (otherwise `invalid`).
 - `POST /host/v1/images/edit`: as create without `width` and `height`, plus
   `"image": "<base64>"` and an optional `"mask": "<base64>"` (its white
@@ -1301,6 +1307,7 @@ newer host made, read after a rollback).
     "image": "<base64>", "drive": "<base64 MP4>", "extend": "<base64 MP4>", "source": "<base64 MP4>", "width": 1280, "height": 704,
     "aspectRatio": "16:9", "duration": 5,
     "steps": 20, "cfg": 5.0, "seed": 1234,
+    "sampler": "uni_pc", "scheduler": "simple", "shift": 8, "guidance": 3.5,
     "loras": [{ "file": "<path>", "strength": 0.7 }] }
   ```
 
@@ -1352,7 +1359,7 @@ newer host made, read after a rollback).
   source holds; a source shorter than one frame step plus the offset
   (0.9 s for H3) is `invalid`. ComfyUI joins the
   clips (our `clip_chain.py`), re-encoding one segment at a time.
-  `steps`, `cfg`, `seed` and `loras` as for images (each clip of a chain takes the same LoRAs); a
+  `steps`, `cfg`, `seed`, `sampler`, `scheduler`, `shift`, `guidance` and `loras` as for images (each clip of a chain takes the same LoRAs); a
   template whose model takes no CFG (MiniMax H3, LTX-2.5 distilled)
   ignores `cfg`. Answers:
 

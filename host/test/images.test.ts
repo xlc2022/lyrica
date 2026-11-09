@@ -1214,8 +1214,8 @@ describe("the image API", () => {
     expect((await s.api("/host/v1/images/create", { body: { recipe: z.id, prompt: "x" } })).body.error.code).toBe("not_found");
     await s.api(`/host/v1/recipes/${z.id}/confirm`, { body: {} });
 
-    // Only the listed fields: no workflow, no node, no part.
-    for (const extra of [{ workflow: {} }, { parts: [] }, { lora: "x" }, { sampler: "euler" }]) {
+    // Only the listed fields: no workflow, no node, no part; a sampler only by a ComfyUI name.
+    for (const extra of [{ workflow: {} }, { parts: [] }, { lora: "x" }, { denoise: 0.5 }, { sampler: "../euler" }, { scheduler: 3 }]) {
       const reply = await s.api("/host/v1/images/create", { body: { recipe: z.id, prompt: "x", ...extra } });
       expect(reply.body.error.code).toBe("invalid");
     }
@@ -1503,6 +1503,14 @@ describe("the image API", () => {
     expect(sent.sample.inputs).toMatchObject({ steps: 20, cfg: 5, sampler_name: "uni_pc" });
     expect(Object.keys(sent)).not.toContain("load");
     expect(s.comfyFake.seen.historyCleared).toBe(1);
+
+    // A job's own sampling settings replace the recipe's for that job only; a bad name is refused before any job.
+    const tuned = await s.api("/host/v1/videos/create", { body: { recipe: wan.id, prompt: "x", steps: 12, cfg: 3, sampler: "euler", scheduler: "beta", shift: 5 } });
+    expect(tuned.status).toBe(200);
+    expect(s.comfyFake.seen.prompts[1].sample.inputs).toMatchObject({ steps: 12, cfg: 3, sampler_name: "euler", scheduler: "beta" });
+    expect((await s.api("/host/v1/videos/create", { body: { recipe: wan.id, prompt: "x", sampler: "Euler A!" } })).body.error.message).toMatch(/sampler must be a ComfyUI sampler name/);
+    expect((await s.api("/host/v1/videos/create", { body: { recipe: wan.id, prompt: "x", shift: 50 } })).body.error.message).toMatch(/shift must be a number from 0 to 20/);
+    s.comfyFake.seen.prompts.splice(1);
 
     // Animating: the first frame is uploaded, and with no size asked the clip takes the image's shape at the recipe's area.
     const animated = await s.api("/host/v1/videos/create", { body: { recipe: wan.id, prompt: "x", image: PNG.toString("base64"), duration: 2 } });
