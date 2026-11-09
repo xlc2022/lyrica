@@ -98,7 +98,7 @@ function fakeModel() {
         const image = models.addModel(user, endpoint.id, { modelId: "fixture-image", tools: false }).id;
         for (const [n, ms] of [15_000, 17_300, 21_000].entries()) back(n * HOUR, () => {
           const resolution = models.resolve("chat", { userId, pool: "general", localOnly: false, overrides: { chat: [{ offeringId: image }] } });
-          const id = models.recordCall(userId, { pool: "general", threadId: `status-fixture-i-${n}`, task: "image.create", resolution });
+          const id = models.recordCall(userId, { pool: "general", threadId: `status-fixture-i-${n}`, task: "image.create", resolution, images: 1 });
           models.recordSampling(userId, id, { ms, steps: 8, images: 1, pixels: 1024 * 1024 });
         });
         res.writeHead(204); return res.end();

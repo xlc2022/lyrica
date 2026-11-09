@@ -2723,7 +2723,10 @@ test("Status model facts preserve existing facts and render empty, measured and 
     await expect(row("fixture-without-speed").getByRole("cell").nth(3)).toHaveText(/—$/);
     await expect(row("fixture-without-speed").getByRole("cell").nth(3)).toHaveAttribute("title", /^Not measured/);
     // An image model's Speed is its seconds per image, measured on its host; it reads no prompt.
-    await expect(row("fixture-image").getByRole("cell")).toHaveText(["fixture-image · StatusFixture", /3$/, /0$/, /17.3 s\/image$/, /—$/, /0$/]);
+    // Its Output is the images it made, in place of zero tokens.
+    await expect(row("fixture-image").getByRole("cell")).toHaveText(["fixture-image · StatusFixture", /3$/, /3 images$/, /17.3 s\/image$/, /—$/, /0$/]);
+    await expect(row("fixture-image").getByRole("cell").nth(2)).toHaveAttribute("title", /^Images \(or clips\) its calls made/);
+    await facts.getByRole("table").screenshot({ path: `shots/model-calls-table-${page.viewportSize()!.width}.png` });
     await expect(row("fixture-image").getByRole("cell").nth(3)).toHaveAttribute("title", /^Median sampling time per image on its host.* 8 steps · 1 MP · 0.5 it\/s\. 3 measured\.$/);
     await expect(row("fixture-image").getByRole("cell").nth(4)).toHaveAttribute("title", "An image model reads no prompt tokens.");
     await expect(facts).toContainText("Retained history · General · pruned to latest 500 records per user");
