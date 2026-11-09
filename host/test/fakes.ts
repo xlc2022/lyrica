@@ -4,6 +4,7 @@ import http from "node:http";
 import https from "node:https";
 import type { AddressInfo } from "node:net";
 import type { Backend, Measured } from "../src/backends.ts";
+import { HostError } from "../src/http.ts";
 import type { Gpu, GpuMonitor } from "../src/gpus.ts";
 import { makeIdentity } from "../src/identity.ts";
 import type { TextModel } from "../src/library.ts";
@@ -55,9 +56,19 @@ export class FakeBackend implements Backend {
     this.forgotten.push(model.id);
   }
 
-  async load(model: TextModel, at: Option) {
+  /** Whether a load stops when its signal aborts, as llama.cpp and vLLM do; ComfyUI's finishes. */
+  stoppable = true;
+
+  async load(model: TextModel, at: Option, _s?: unknown, _p?: unknown, signal?: AbortSignal) {
     this.calls.push(`load ${model.id}@${at.gpus.join("+")}`);
-    await new Promise((r) => setTimeout(r, this.loadMs));
+    await new Promise<void>((ok, fail) => {
+      const t = setTimeout(ok, this.loadMs);
+      if (this.stoppable) signal?.addEventListener("abort", () => {
+        clearTimeout(t);
+        this.calls.push(`stopped ${model.id}`);
+        fail(new HostError(409, "load_cancelled", "The model's load was cancelled."));
+      });
+    });
     this.placements.set(model.id, at);
     this.gpus.loaded.set(model.id, { ...at.need });
   }

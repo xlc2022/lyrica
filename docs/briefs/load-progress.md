@@ -79,3 +79,13 @@ before the Q4 load was confirmed, because that load (200 GB from a SATA SSD
 at 437 MB/s) cannot finish inside the fixed 10 minutes. Next: PR review and
 UI review, merge, a host update on the development deployment, then the Q4
 load with its progress watched.
+
+## Follow-up: stopping a load
+
+A load shown as "Loading 2%" could not be stopped: Unload answered "The
+model is in use." Unload on a loading model now stops the load (scheduler
+`unloadNow`, an abort signal into `Backend.load` and llama.cpp's
+measurement), frees its GPUs and ends the Load and the requests waiting for
+it with `load_cancelled`. The dashboard's button reads **Cancel** while the
+model loads, and a Load stopped this way shows no error banner. Lyrica's
+Models page has no Load or Unload, so it needed nothing. Status: in review.
