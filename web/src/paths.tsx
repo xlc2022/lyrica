@@ -113,7 +113,8 @@ function split(value: string, files: FileLinks): (Element | Text)[] | undefined 
   let last = 0;
   for (const m of value.matchAll(PATH)) {
     if (m.index > last) out.push({ type: "text", value: value.slice(last, m.index) });
-    out.push({ type: "element", tagName: "a", properties: { href: files.href(m[0]), className: ["fpath"] }, children: [{ type: "text", value: m[0] }] });
+    // `dataPath` keeps the path itself, so a paragraph can find the images its links name (ui.tsx, linkedImages).
+    out.push({ type: "element", tagName: "a", properties: { href: files.href(m[0]), className: ["fpath"], dataPath: m[0] }, children: [{ type: "text", value: m[0] }] });
     last = m.index + m[0].length;
   }
   if (!out.length) return undefined;
