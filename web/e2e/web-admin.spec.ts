@@ -1505,6 +1505,12 @@ test("Custom workflows: Workflow imports an export into a draft, Edit workflow s
   await expect(page.getByText("Left out: 11 (PreviewImage)")).toBeVisible();
   const sampler = page.getByRole("region", { name: "Node 3, KSampler" });
   await expect(sampler.getByLabel("How steps of node 3 is set")).toHaveValue("steps");
+  await expect(sampler.getByLabel("How steps of node 3 is set")).toHaveAttribute("title", /Where this input's value comes from on each job/);
+  // The dropdown offers only the blanks of the input's kind: steps (a number) never Prompt or Sampler; sampler_name (text) never CFG.
+  const stepsBlanks = await sampler.getByLabel("How steps of node 3 is set").locator("option").allTextContents();
+  expect(stepsBlanks).toContain("CFG"); expect(stepsBlanks).not.toContain("Prompt"); expect(stepsBlanks).not.toContain("Sampler");
+  const samplerBlanks = await sampler.getByLabel("How sampler_name of node 3 is set").locator("option").allTextContents();
+  expect(samplerBlanks).toContain("Sampler"); expect(samplerBlanks).not.toContain("CFG");
   await expect(sampler.getByText("from node 6")).toBeVisible();
   await sampler.getByLabel("denoise of node 3", { exact: true }).fill("0.8");
   // A model setting beside its blank is edited in place: on a draft it goes with the draft when it is saved.
