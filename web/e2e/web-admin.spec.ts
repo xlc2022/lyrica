@@ -731,6 +731,7 @@ test("Upload sends a model file from this computer in pieces, and Downloads show
   await fakeHost(page, downloads);
   const pieces: { offset: string; bytes: number }[] = [];
   const json = (body: unknown, status = 200) => ({ status, contentType: "application/json", body: JSON.stringify(body) });
+  let listed: Promise<unknown> = Promise.resolve();
   await page.route(/\/api\/u\/[^/]+\/hosts\/ep-box\/uploads(\/[^/?]+)?(\?.*)?$/, async (route) => {
     const req = route.request();
     if (req.method() === "POST") {
@@ -738,8 +739,12 @@ test("Upload sends a model file from this computer in pieces, and Downloads show
       const d = { id: "00000000-0000-4000-8000-0000000000bb", source: "upload", repo: null, url: null, path: `lyrica/upload/${name}`, size, received: 0,
         state: "uploading", verified: null, error: null, startedAt: new Date().toISOString() };
       downloads.unshift(d);
+      listed = page.waitForResponse((r) => /\/hosts\/ep-box\/downloads(\?|$)/.test(r.url()) && r.request().method() === "GET");
       return route.fulfill(json(d, 201));
     }
+    // The piece lands only after Downloads has listed the upload as still uploading: the page must read the
+    // list again when this tab stops sending, not keep that answer and show Paused.
+    await listed;
     const d = downloads[0]!;
     const bytes = req.postDataBuffer()?.length ?? 0;
     pieces.push({ offset: new URL(req.url()).searchParams.get("offset")!, bytes });

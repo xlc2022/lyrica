@@ -30,6 +30,17 @@ describe("model facts for the last 24 hours", () => {
     expect(r.models.map((m) => m.offeringId)).toEqual(["in-now", "in-old"]);
   });
 
+  it("starts at the user's reset inside the window, and ignores one older than 24 hours, in the future or unreadable", () => {
+    const rows = [at("before", -2 * MIN), at("after", -MIN)];
+    const from = (reset: string) => modelFacts(rows, ["general"], NOW, reset);
+    expect(from(iso(-90_000)).models.map((m) => m.offeringId)).toEqual(["after"]);
+    expect(from(iso(-90_000)).since).toBe(iso(-90_000));
+    expect(from(iso(-MODEL_FACTS_WINDOW_MS - MIN)).since).toBe(iso(-MODEL_FACTS_WINDOW_MS));
+    expect(from("not a date").since).toBe(iso(-MODEL_FACTS_WINDOW_MS));
+    // A reset in the future (a clock set back since) counts from now, so nothing yet.
+    expect(from(iso(MIN))).toMatchObject({ since: iso(0), models: [] });
+  });
+
   it("reports the window as its bounds and the pools it was given, with no models from nothing", () => {
     expect(modelFacts([], ["general", "private"], NOW)).toEqual({ since: iso(-MODEL_FACTS_WINDOW_MS), until: iso(0), pools: ["general", "private"], models: [], calls: [] });
   });

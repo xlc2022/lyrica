@@ -44,7 +44,7 @@ export function Downloads({ ctx, history = false, route }: { ctx: MCtx; history?
   const groups = useLoad(() => get<GroupInfo[]>(u(userId, "groups")), [userId]);
   const suggestions = useLoad(() => get<GroupSuggestion[]>(u(userId, "groups", "suggestions")), [userId]);
   const [run, busy, error] = useAction();
-  useSending();
+  const sendingNow = useSending();
   const items = useMemo(() => (lists.data ?? []).flatMap(({ ep, downloads }) => downloads.map((d) => ({ ep, d })))
     .sort((a, b) => b.d.startedAt.localeCompare(a.d.startedAt)), [lists.data]);
   const active = items.filter(({ d }) => isRunning(d));
@@ -59,6 +59,10 @@ export function Downloads({ ctx, history = false, route }: { ctx: MCtx; history?
   // One lyricad carries from another host is paused only once it stopped.
   const paused = (ep: Endpoint, d: HostDownload) => d.state === "uploading" && (d.copyFrom ? !!d.copyStopped : !isSending(ep.id, d.id));
   const moving = active.filter(({ ep, d }) => !paused(ep, d)).length;
+  // When this tab starts or stops sending an upload, read the list again: one that just finished would otherwise
+  // keep its last answer, still uploading, and show Paused with nothing left to read it again for.
+  const firstSending = useRef(sendingNow);
+  useEffect(() => { if (sendingNow !== firstSending.current) reload(); }, [sendingNow, reload]);
   // Every 2 s while anything runs, counted from the last answer so a slow host never stacks requests.
   useEffect(() => {
     if (!moving) return;
