@@ -285,14 +285,15 @@ describe("the live view of a thread's stream", () => {
     expect(run([{ type: "hello", busy: true, queued: [], permissions: [], making: [] }]).reload).toBe(0);
   });
 
-  it("keeps the latest context for the header's meter, and marks it unmeasured when turns are rewound or reset", () => {
+  it("keeps the latest context for the header's meter, marks it unmeasured when turns are rewound, and keeps it through a reset", () => {
     const context = { tokens: 900, window: 1000, percent: 90, reserve: 80, free: 20, parts: [], measuredAt: "2026-10-12T10:00:00Z" };
     const later = { ...context, tokens: 400, percent: 40, free: 520, measuredAt: "2026-10-12T10:05:00Z" };
     const s = run([{ type: "turn_start" }, { type: "turn_end", aborted: false }, { type: "context", context }, { type: "context", context: later }]);
     expect(s.context).toEqual(later);
     expect(run([{ type: "stored" }], s).context).toEqual(later);
     expect(run([{ type: "rewound", from: 3 }], s).context).toBeNull();
-    expect(run([{ type: "reset" }], s).context).toBeNull();
+    // A reset is the stream reconnecting past its replay buffer mid-turn: the reading still holds, so Context stays in the header.
+    expect(run([{ type: "reset" }], s).context).toEqual(later);
     expect(run([{ type: "rewound", from: 3 }, { type: "context", context }], s).context).toEqual(context);
   });
 });

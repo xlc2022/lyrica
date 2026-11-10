@@ -40,8 +40,10 @@ export interface Live {
   /** Her checklist for the thread, as the stream last said; the thread summary's until then. */
   steps?: ThreadStep[];
   /**
-   * The context as the last turn left it, for the header's Context meter. Null once turns are rewound or
-   * reset: nothing has measured what is left until the next turn, and the settings' reading is from before.
+   * The context as the last turn left it, for the header's Context meter. Null once turns are rewound: nothing
+   * has measured what is left until the next turn, and the settings' reading is from before. A reset (the stream
+   * reconnected past its replay buffer, as on a long turn) keeps it: the conversation is the same, and hiding it
+   * left the meter gone until the next request ended.
    */
   context?: ContextInfo | null;
   /** A reply waiting for a model host's GPU: what it waits for, shown in place of "is thinking". */
@@ -111,7 +113,7 @@ export function liveReducer(s: Live, e: LiveAction): Live {
         gpuWait: e.gpuWait, liveCall: e.liveCall && e.busy ? { call: e.liveCall, since: Date.now() - e.liveCall.ms } : undefined, ...(!e.busy && { reload: s.reload + 1, ended: s.items.length }) };
     }
     case "reset":
-      return { ...s, items: [], making: {}, ended: 0, reload: s.reload + 1, context: null };
+      return { ...s, items: [], making: {}, ended: 0, reload: s.reload + 1 };
     case "rewound":
       return { ...s, items: [], ended: 0, errors: [], reload: s.reload + 1, context: null };
     case "sent":
