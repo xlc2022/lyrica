@@ -1947,7 +1947,7 @@ dialog .eyebrow { margin: 10px 0 4px; }
 .chart-box svg { display: block; max-width: 100%; }
 .chart-tip { position: absolute; z-index: 5; pointer-events: none; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; font-size: 12px; width: max-content; max-width: 100%; overflow-wrap: anywhere; box-shadow: 0 2px 8px rgb(0 0 0 / 0.12); }
 .model-table { display: grid; font-size: 13px; }
-.model-table > [role="row"] { display: grid; grid-template-columns: minmax(0, 1fr) 3.5em 7.5em 8.5em 7.5em 5.5em; gap: 8px; padding: 6px 0; align-items: baseline; border-top: 1px solid var(--line); }
+.model-table > [role="row"] { display: grid; grid-template-columns: minmax(0, 1fr) 3.5em 8.5em 8.5em 7.5em 5.5em; gap: 8px; padding: 6px 0; align-items: baseline; border-top: 1px solid var(--line); }
 .model-table > .mt-head { border-top: 0; }
 .model-table > [role="row"] > :not(:first-child) { text-align: right; white-space: nowrap; }
 .mt-model { min-width: 0; overflow-wrap: anywhere; }
