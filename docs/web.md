@@ -947,7 +947,8 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   calls, output, median generation and prompt tok/s (an image or video
   model's median seconds per image in the Speed cell instead, with steps,
   megapixels and it/s in its tooltip, and the images or clips it made in
-  the Output cell in place of zero tokens) and recorded fallbacks.
+  the Output cell in place of zero tokens; a speech model's seconds of audio
+  heard or spoken there instead, as s, min or h) and recorded fallbacks.
   Series take the chart colours by label; past eight copies the least used are
   Other. Changing shown pools drops the old aggregate and loads Status again.
   The scope line names the displayed pools and latest-500-record retention

@@ -2006,6 +2006,11 @@ export interface ModelCallFacts {
      * a model with no image or video calls.
      */
     made?: { count: number; unit: "image" | "clip" };
+    /**
+     * A speech model's output: the seconds of audio its calls heard (Dictation) or spoke (Read aloud), to a tenth,
+     * a call with no recorded seconds counting none. Absent for a model with no speech calls.
+     */
+    audioSeconds?: number;
     /** Recorded output tokens, over the records that have a pace. */
     outputTokens: number;
     /** Records with a nonempty fallback marker (skipped candidates, not errors/retries). */

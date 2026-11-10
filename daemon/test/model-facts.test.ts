@@ -113,6 +113,20 @@ describe("model facts for the last 24 hours", () => {
     expect(by.chat).toBeUndefined();
   });
 
+  it("adds up the seconds of audio a speech model heard or spoke; a speech call with none counts none; nothing for a text model", () => {
+    const r = modelFacts([
+      at("hear", -1 * MIN, { task: "speech.transcribe", audioSeconds: 4.2 }),
+      at("hear", -2 * MIN, { task: "speech.transcribe", audioSeconds: 10.05 }),
+      at("speak", -3 * MIN, { task: "speech.speak", audioSeconds: 61 }),
+      at("speak", -4 * MIN, { task: "speech.speak" }),
+      at("chat", -5 * MIN, { pace: pace(12) }),
+    ], ["general"], NOW);
+    const by = Object.fromEntries(r.models.map((m) => [m.offeringId, m.audioSeconds]));
+    expect(by.hear).toBe(14.3);
+    expect(by.speak).toBe(61);
+    expect(by.chat).toBeUndefined();
+  });
+
   it("medians recorded speeds, averaging the central pair when there are an even number", () => {
     const odd = modelFacts(["10", "30", "20"].map((s, i) => at("odd", -(i + 1) * MIN, { pace: pace(Number(s)) })), ["general"], NOW);
     expect(odd.models.map((m) => [m.speedSamples, m.medianTokPerSec])).toEqual([[3, 20]]);

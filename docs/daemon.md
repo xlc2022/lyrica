@@ -1013,7 +1013,8 @@ inside the 24 hours, the window starts there. It deletes no call records, so
 thread usage, speeds and history are unchanged. All recorded tasks count once per row. Median generation and
 prompt speeds use available `pace.tokPerSec` and `pace.promptTokPerSec` values
 with their sample counts, absent without samples; output tokens add up paced
-rows. Titles and project-chat looks are timed (`timedReply`) like turns. Recorded fallbacks count nonempty fallback markers, not errors or
+rows; a speech model's `audioSeconds` adds up its calls' recorded seconds of
+audio, heard or spoken (never the audio or its text). Titles and project-chat looks are timed (`timedReply`) like turns. Recorded fallbacks count nonempty fallback markers, not errors or
 retries. Hidden pools and other users never enter the aggregate; the Hidden
 thread filter does not filter call metadata, as in Call history. No schema or
 model request is added; the page re-reads Status every minute while in view.
