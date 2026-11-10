@@ -17,7 +17,7 @@ const rate = (n: number) => (n < 10 ? n.toFixed(1) : tokens(n));
 
 /**
  * The newer of two readings: the live one from the stream, and the one the settings were loaded with. None
- * after a rewind or reset (`null`), until a turn measures again.
+ * after a rewind (`null`), until a turn measures again.
  */
 export function newerContext(a?: ContextInfo | null, b?: ContextInfo): ContextInfo | undefined {
   if (a === null) return undefined;
