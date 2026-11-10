@@ -144,6 +144,14 @@ tool each for A and B, prompt lines only where the thread has a machine).
   same gap. The refusal is now each one's state, and Use anyway shows while
   it stands. The Add repository picker and Replace token (Git and MCP) also
   sent a private token without that check; they check first now.
+- Phase 3, on the VM with no GPU (same day): asked to make it a model host,
+  she read the skill, ran its checks as one read-only command, said nothing
+  can run there and stopped, with nothing changed. Told to install anyway,
+  she found the installer's `--no-gpu` in the operator guide and offered it
+  with a question card; it is a test mode that serves no models, so the
+  skill now says so and that it isn't a way round. The skill's "read the
+  guide in the clone" also sent her looking for a clone she didn't have; it
+  now says which clone. The install on a real GPU machine hasn't run yet.
 
 ## C. Model host install from a machine
 
