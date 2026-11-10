@@ -46,6 +46,7 @@ export * from "./home.ts";
 export * from "./jobs.ts";
 export * from "./root.ts";
 export * from "./machines.ts";
+export * from "./shellcheck.ts";
 export * from "./rules.ts";
 export * from "./mcp.ts";
 export * from "./net.ts";

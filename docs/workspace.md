@@ -161,6 +161,28 @@ existed before became general machines at Ask.
   and fixed, a warning layer and not the boundary: the boundary is the
   sandbox's mounts, or the account's own rights and the root-owned keys
   file; neither part sees inside a script she writes and then runs.
+- **ShellCheck reads a command before it runs** (`malformedCommand`,
+  `core/src/workspace/shellcheck.ts`), in the sandbox and on a machine,
+  before the mode or any card. Two kinds of finding refuse the call, with
+  ShellCheck's own line, column, message and code in the refusal so she
+  fixes it and runs it again: any parse error (bash would run the lines
+  before it, then stop), and, in a command that deletes or moves files
+  (`rm`, `rmdir`, `unlink`, `shred`, `mv`, `truncate`, `find -delete`,
+  `rsync --delete…`, `git clean` or `git rm`) or a `cd`/`pushd` before
+  one, an unquoted expansion that splits or globs (SC2086, SC2046,
+  SC2048, SC2068), a path that may expand to `/` (SC2115), a system
+  folder (SC2114), a lowercase variable the line never sets (SC2154; each
+  call is a fresh shell, so it is empty) or a `cd` that may fail with the
+  rest run anyway (SC2164). Everything else ShellCheck says is left out,
+  since on a one-line command it is mostly style, and nothing is shown to
+  her as a mere warning. If the command is right as written, she puts
+  `# shellcheck disable=SC…` on its own line before it, where the card
+  shows it. ShellCheck runs from lyricad's PATH as bash, with `--norc`,
+  the command on its standard input; nothing of it is written or logged.
+  Without ShellCheck, or when it fails or takes over 3 seconds, the check
+  is skipped and the rest of the gate is unchanged. The shell's own
+  keywords (`if`, `then`, `do`, `!`…) are looked through like wrappers,
+  here and for suspect commands.
 - **A floor no mode lifts:** `write` and `edit` on a machine refuse any path
   in a `.ssh` folder, under `/etc/ssh/`, or `/etc/sudoers*`, before and after
   following symlinks. The path as given is refused before any approval card

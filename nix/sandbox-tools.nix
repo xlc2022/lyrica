@@ -14,7 +14,9 @@
 # fits, as Debian's build-essential does there. python3 comes with a baseline
 # for scraping and data work (beautifulsoup4, lxml, requests, html5lib,
 # PyYAML), the same as install.sh's python3-* packages; her prompt names the
-# ones present (sandboxTools in core/src/workspace/sandbox.ts).
+# ones present (sandboxTools in core/src/workspace/sandbox.ts). shellcheck
+# is on lyricad's PATH from here, to check her bash calls before they run
+# (core/src/workspace/shellcheck.ts).
 pkgs:
 let
   # Claude Code is unfree. Only it is allowed, in its own import, so the
@@ -27,7 +29,7 @@ in
 with pkgs; [
   bashInteractive coreutils findutils gnugrep gnused gawk diffutils patch
   gnutar gzip xz bzip2 zstd unzip which file less procps util-linux
-  getent git gh tea nodejs_24 openssh openssl curl cacert jq ripgrep gnumake gcc imagemagick
+  getent git gh tea nodejs_24 openssh openssl curl cacert jq ripgrep gnumake gcc imagemagick shellcheck
   (python3.withPackages (ps: with ps; [ beautifulsoup4 lxml requests html5lib pyyaml ]))
   ffmpeg-headless
   chromium ibm-plex dejavu_fonts

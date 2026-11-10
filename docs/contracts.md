@@ -1774,6 +1774,8 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     true adds `CLAUDE_CODE_LINE` to that section.
   - `read`, `write`, `edit` and `bash` take an optional `machine`. On a
     machine the call's mode is `stricterMode(settings().mode, limit)`; a
+    `bash` that `malformedCommand(command)` refuses (ShellCheck: a parse error, or a listed finding in a delete or move) is
+    blocked with that refusal before any card, in the sandbox and on a machine; a
     suspect `bash` (`suspectCommand(command, "machine" | "sandbox")`) asks in every mode unless
     `allowedInThread(machine, command)`, where a sandbox command's machine is `SANDBOX_ALLOW`; the first call on a machine in a turn asks if
     anything earlier ran elsewhere. `ApprovalRequest` is `{ toolCallId,
@@ -2619,7 +2621,11 @@ settings(userId): WorkspaceSettings       // per-pool defaults, per-thread overr
 //   inheritSettings takes a subset; effective() keeps only machines every ancestor grants.
 // SUSPECT_COMMANDS (each with `everywhere?` for the sandbox too), suspectCommand(command, where = "machine"), SANDBOX_ALLOW (the machine key Allow in this thread stores for a sandbox command),
 //   writtenFiles(command) (the targets of its redirections and tee), onFloor(path), cleanOutput(onData), maskKeys(buf) (shares removePrivateKeys from core/src/secrets.ts),
-//   authorizedKeysLine(publicKey), machineSetup(account, keyLine, asUser?): core/src/workspace/machines.ts
+//   authorizedKeysLine(publicKey), machineSetup(account, keyLine, asUser?), unwrapped(words) (a simple command past its
+//   wrappers and the shell's keywords): core/src/workspace/machines.ts
+// malformedCommand(command, run = runShellcheck) (the refusal, or undefined), runShellcheck(command) (ShellFinding[], or
+//   undefined without ShellCheck, on a failure or past 3 s), blocking(command, findings), BLOCKS_IN_DELETE, segments(command):
+//   core/src/workspace/shellcheck.ts
 // page.ts: LIBS ("/opt/libs"), LIBRARIES (three, simplex-noise, @tweenjs/tween.js), libraryDirs() (each found in Lyrica's node_modules,
 //   with its version; the sandbox mounts each read-only at LIBS/<name>, and allow() lets reads there), librariesLine(),
 //   PREVIEW_SCRIPT (page-preview.cjs: Chromium over the DevTools pipe, SwiftShader WebGL, every non-file request failed; prints
