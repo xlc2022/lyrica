@@ -568,7 +568,9 @@ things are".
   memory tools' calls and results and her thinking stay behind, and
   citations are stripped from her text, so none of the sender's memory or
   its IDs travels. Files don't travel either: a `/workspace` path in the
-  copy names nothing in the recipient's thread folder. A project chat or a
+  copy names nothing in the recipient's thread folder. The copy is what is
+  stored: during a turn, a reply still being written is stored only when its
+  turn ends, so it isn't in a copy sent before then. A project chat or a
   subagent's thread is refused. The share records the pool it came from and
   whether the thread was local-only. The recipient's
   `POST …/shares/:shareId/accept` with a pool creates a thread there with

@@ -1565,6 +1565,8 @@ test("Share with sends a copy; the recipient sees it in Notifications and adds i
   }, [userId] as const);
   await page.goto(`/#/u/${userId}/t/general/${encodeURIComponent(t)}`);
   await expect(page.getByText("You said: beans and squash").last()).toBeVisible({ timeout: 15_000 });
+  // The reply shows while it is written, but is stored only when the turn ends, and a share copies what is stored.
+  await expect.poll(() => page.evaluate(async (path) => ((await (await fetch(path)).json()) as { busy: boolean }).busy, `/api/u/${userId}/threads/general/${encodeURIComponent(t)}`)).toBe(false);
   // On a phone the sidebar is an overlay: open it when its user button isn't showing.
   const openSide = async () => { if (phone(page) && !(await page.getByRole("button", { name: /Switch user/ }).isVisible())) await page.getByRole("button", { name: "Show threads" }).click(); };
   // Share with › Sam, confirm.
