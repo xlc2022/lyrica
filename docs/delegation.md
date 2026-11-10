@@ -566,22 +566,30 @@ the facts line.
 
 **Routines** (`threads routine`, `daemon/src/routines.ts`).
 `threads({ action: "routine", routineAction, ... })` manages only the calling
-thread's routines: `add` takes `schedule`, `note` and optional `newThread`
-(false by default); `list` returns IDs, schedules in words, active next times,
-paused state and whether they open a thread, without notes; `pause`,
+thread's routines: `add` takes `schedule`, `note`, optional `newThread`
+(false by default), `title` (80 characters, one line) and `description`
+(300 characters). The labels explain the task to the user, separately from
+its execution note. `edit` takes `routineId` and either or both labels;
+it preserves omitted fields, note, schedule, destination, pause state and
+firing times. Supplied labels must be nonempty text, validated after
+credential removal. `list` returns IDs, labels, schedules in words, active
+next times, paused state and whether they open a thread, without notes;
+missing labels independently fall back to source thread plus routine ID
+and saved-instructions/destination wording, never parsed notes. `pause`,
 `resume` and `remove` take numeric `routineId`. At most 10 per thread,
 including paused ones. Routines are for what the user asked to happen
 regularly; a one-off later is a wake-up. Schedules are checked by
 `parseSchedule`, with plain-word errors: `{ kind: "daily" | "weekdays",
 time: "HH:MM" }`, `{ kind: "weekly", day: 0..6, time }` (Sunday is 0),
 `{ kind: "yearly", date: "MM-DD", time }`, or `{ kind: "every", hours:
-1..168 }`, counted from when it was added. Calendar times use the daemon's
-local zone; one skipped by a clock change fires at the next valid minute,
+1..168 }`, counted from when it was added. Calendar times use the user's time zone
+(the server's when unset); one skipped by a clock change fires at the next valid minute,
 and one that comes twice fires once; a routine set for 29 February runs on
 the 28th in other years.
 
 Pool step 6's `routines` keeps each schedule and note encrypted with the
-pool. The same 20-second tick as wake-ups starts a due turn marked
+pool; expand-only step 15 adds nullable title and description, with no
+minimum-reader change or execution-state rewrite. The same 20-second tick as wake-ups starts a due turn marked
 `[Routine, <schedule in words>]`, with its note; or, when it opens a new
 thread, starts one in the source's project or thread list, inheriting the
 source's workspace and model privacy and the project's new-thread choices.

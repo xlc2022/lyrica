@@ -263,11 +263,38 @@ describe("pool step 6 (routines)", () => {
       expect(schemaOf(db)).toEqual({ version: SCHEMA.pool, minReader: MIN_READER.pool });
       expect(() => checkReadable(db, "pool", previous)).not.toThrow();
       expect(db.prepare("SELECT title FROM threads WHERE id = 'web/a'").get()).toEqual({ title: "A test thread" });
-      expect((db.prepare("PRAGMA table_info(routines)").all() as { name: string }[]).map(r => r.name)).toEqual(["id", "thread", "schedule", "note", "new_thread", "paused", "next_at", "last_at", "created_at"]);
+      expect((db.prepare("PRAGMA table_info(routines)").all() as { name: string }[]).map(r => r.name)).toEqual(["id", "thread", "schedule", "note", "new_thread", "paused", "next_at", "last_at", "created_at", "title", "description"]);
       db.prepare("INSERT INTO routines (thread, schedule, note, next_at, created_at) VALUES ('web/a', '{}', 'A synthetic note.', '2026-01-02', '2026-01-01')").run();
       expect(db.prepare("SELECT new_thread, paused, last_at FROM routines").get()).toEqual({ new_thread: 0, paused: 0, last_at: null });
       db.prepare("DELETE FROM threads WHERE id = 'web/a'").run();
       expect(db.prepare("SELECT * FROM routines").all()).toEqual([]);
+      db.close();
+    }
+  });
+});
+
+describe("pool step 15 (routine metadata)", () => {
+  it("expands every released pool schema with absent labels, preserving execution state and earlier readers", () => {
+    for (let version = 1; version < 15; version++) {
+      const db = scratchDb();
+      const previous = STEPS.pool.filter((s) => s.version <= version);
+      migrate(db, "pool", {}, previous);
+      SEED.pool(db);
+      const insert = () => db.prepare("INSERT INTO routines (thread, schedule, note, new_thread, paused, next_at, last_at, created_at) VALUES ('web/a', ?, 'Synthetic instructions.', 1, 1, '2026-01-03', '2026-01-02', '2026-01-01')")
+        .run(JSON.stringify({ kind: "daily", time: "08:00" }));
+      if (version >= 6) insert();
+      const before = version >= 6 ? db.prepare("SELECT * FROM routines").get() as Record<string, unknown> : undefined;
+      const minReader = schemaOf(db).minReader;
+      migrate(db, "pool");
+      expect(schemaOf(db), `v${version}`).toEqual({ version: SCHEMA.pool, minReader });
+      expect(() => checkReadable(db, "pool", previous)).not.toThrow();
+      expect(db.prepare("SELECT title FROM threads WHERE id = 'web/a'").get()).toEqual({ title: "A test thread" });
+      const columns = db.prepare("SELECT name, \"notnull\", dflt_value FROM pragma_table_info('routines') WHERE name IN ('title', 'description') ORDER BY cid").all();
+      expect(columns).toEqual([{ name: "title", notnull: 0, dflt_value: null }, { name: "description", notnull: 0, dflt_value: null }]);
+      if (before) expect(db.prepare("SELECT * FROM routines").get()).toEqual({ ...before, title: null, description: null });
+      // A previous writer can still insert routines without knowing the new columns.
+      insert();
+      expect(db.prepare("SELECT title, description FROM routines").all()).toEqual(Array.from({ length: before ? 2 : 1 }, () => ({ title: null, description: null })));
       db.close();
     }
   });

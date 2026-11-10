@@ -4,6 +4,8 @@
 // Usage, after `npm run build`:
 //   npx tsx web/e2e/shot.ts [--out dir] [--phone|--desktop] [--light|--dark] [--full] [--model-facts] [page]...
 // --model-facts seeds synthetic recorded model metadata for populated Status shots.
+// --routines seeds synthetic routine labels; pages routine-popover, routine-purpose,
+// routine-settings and routine-settings-purpose capture both surfaces (and purpose tooltips).
 // A page is ada's route without `#/u/<id>/` (`settings`, `models/hosts`,
 // `memory`; nothing for home), or a whole `#/...` route.
 // Each picture is <out>/<page>-<width>-<theme>.png (out defaults to shots/);
@@ -26,6 +28,7 @@ const out = resolve(value("--out") ?? "shots");
 const only = { phone: flag("--phone"), desktop: flag("--desktop"), light: flag("--light"), dark: flag("--dark") };
 const full = flag("--full");
 const modelFacts = flag("--model-facts");
+const routines = flag("--routines");
 const pages = args.length ? args : [""];
 
 const web = fileURLToPath(new URL("..", import.meta.url));
@@ -56,6 +59,7 @@ try {
   try {
     mkdirSync(out, { recursive: true });
     let seeded = false;
+    let routineThread: string | undefined;
     for (const size of sizes) for (const theme of themes) {
       const context = await browser.newContext({ baseURL: base, viewport: { width: size.width, height: size.height }, isMobile: size.mobile, hasTouch: size.mobile, colorScheme: theme });
       // The page shares the context's cookies, so this signs it in.
@@ -67,12 +71,26 @@ try {
         if (!seed.ok) throw new Error(`model facts fixture: ${seed.status}`);
         seeded = true;
       }
+      if (routines && !routineThread) {
+        const seed = await fetch(`http://127.0.0.1:${modelPort}/routines-fixture`, { method: "POST", body: JSON.stringify({ userId: user.id }) });
+        if (!seed.ok) throw new Error(`routines fixture: ${seed.status}`);
+        routineThread = (await seed.json() as { threadId: string }).threadId;
+      }
       const page = await context.newPage();
       for (const name of pages) {
-        await page.goto(name.startsWith("#") ? `/${name}` : `/#/u/${user.id}/${name}`);
+        const routinePage = routines && name.startsWith("routine-");
+        const route = routinePage ? (name.startsWith("routine-settings") ? "settings/routines" : `t/general/${encodeURIComponent(routineThread!)}`) : name;
+        await page.goto(route.startsWith("#") ? `/${route}` : `/#/u/${user.id}/${route}`);
         // Not networkidle: the shell's user stream stays open for as long as the page does.
         await page.waitForFunction(() => !document.querySelector(".loading"));
         await page.waitForTimeout(500);
+        if (routinePage) {
+          if (!name.startsWith("routine-settings")) {
+            const fact = page.getByRole("button", { name: /^Routine / });
+            if (await fact.getAttribute("aria-expanded") !== "true") await fact.click();
+          }
+          if (name.endsWith("purpose")) await page.locator(".routine-title").nth(1).focus();
+        }
         const file = join(out, `${name.replace(/^#?\/*|\/$/g, "").replace(/[^\w.-]+/g, "-") || "home"}-${size.name}-${theme}.png`);
         await page.screenshot({ path: file, fullPage: full });
         console.log(file);

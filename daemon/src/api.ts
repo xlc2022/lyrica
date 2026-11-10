@@ -2492,7 +2492,7 @@ export interface SkillsImportResult { imported: { pool: Pool; name: string }[]; 
 export interface PhotoCloudSetting { policy: "never" | "ask" | "always" }
 
 /** Routine metadata only; notes stay in the thread. */
-export interface RoutineInfo { id: number; pool: Pool; threadId: string; threadTitle: string; schedule: string; nextAt: string; paused: boolean }
+export interface RoutineInfo { id: number; pool: Pool; threadId: string; threadTitle: string; title?: string; description?: string; newThread: boolean; schedule: string; nextAt: string; paused: boolean }
 
 /** GET history endpoints: newest first, filtered total before limit/offset. */
 export interface HistoryPage<T> { entries: T[]; total: number }

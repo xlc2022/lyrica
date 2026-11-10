@@ -799,10 +799,16 @@ Custom roles override built-ins by name, except `claude`.
 - Subagents aren't listed in the thread list; child threads (forks, copies)
   nest under their parent.
 - **Routine tool** (`threads` in hosted threads): `action: "routine"`
-  with `routineAction: "add" | "list" | "pause" | "resume" | "remove"`.
-  Add takes `schedule`, `note`, optional `newThread` (false by default).
+  with `routineAction: "add" | "edit" | "list" | "pause" | "resume" | "remove"`.
+  Add takes `schedule`, `note`, optional `newThread` (false by default),
+  `title` (80 characters, one line) and `description` (300 characters, purpose
+  tooltip, separate from execution instructions). Edit takes `routineId`
+  and either or both metadata fields, preserving omitted fields and every
+  execution field. Supplied fields must be nonempty text; credentials are
+  removed before length/line validation, and invalid input is rejected.
   `parseSchedule` validates it; `every` gets its `from` at creation.
-  List returns only the calling thread's IDs, schedule descriptions, next
+  List returns only the calling thread's IDs, labels (or honest source-thread/ID
+  and saved-instructions/destination fallbacks), schedule descriptions, next
   times for active routines, paused state and destination choice, without
   notes. Pause, resume and remove take numeric `routineId`; tool mutations always include the
   calling thread ID. Add refuses more than 10 routines including paused
@@ -816,8 +822,12 @@ Custom roles override built-ins by name, except `claude`.
   non-`every` routine's next run when the user changes zone. Expand-only pool step 6 adds `routines`
   (`id`, `thread`, JSON `schedule`, `note`, `new_thread`, `paused`,
   `next_at`, `last_at`, `created_at`), encrypted with the thread's pool;
-  forgetting its thread deletes it. `PoolReader.routines` includes paused
-  routines; `PoolStore.addRoutine`, `pauseRoutine`, `removeRoutine` and
+  forgetting its thread deletes it. Expand-only pool step 15 adds nullable
+  `title` and `description`; the minimum reader stays unchanged. `RoutineMetadata`
+  and `checkRoutineMetadata` validate display labels independently of notes.
+  `addRoutine(…, zone?, metadata?)` accepts labels; `editRoutine(threadId, id,
+  metadata)` updates only supplied metadata, confined to that source thread.
+  `PoolReader.routines` includes paused routines; `PoolStore.addRoutine`, `pauseRoutine`, `removeRoutine` and
   `advanceRoutine` store and advance them. A fire sets `last_at` and adds a
   note-free fired row to `wakeups`, the shared rolling-day ledger:
   `wakeupsFired` counts both kinds against `WAKEUP_LIMITS.perDay`
@@ -844,8 +854,11 @@ Custom roles override built-ins by name, except `claude`.
   `PATCH …/routines/:id` with `{ paused: boolean }` pauses or resumes;
   `DELETE …/routines/:id` removes it. Both mutations return the thread's
   remaining list. `RoutineInfo` carries `id`, `pool`, `threadId`,
-  `threadTitle`, `schedule` (the `describe()` text), `nextAt`, `paused`,
-  never notes. Each route uses session/key checks and only the requested
+  `threadTitle`, optional `title` and `description`, `newThread`, `schedule`
+  (the `describe()` text), `nextAt`, `paused`, never notes. Labels are never
+  inferred from execution instructions; web fallbacks independently use
+  source thread plus routine ID for a missing title, and saved instructions
+  here/in a new thread for a missing description. Each route uses session/key checks and only the requested
   user's own thread view; an absent thread or a routine from another
   thread is 404; non-boolean `paused` is 400. `ThreadSettings.routines`
   carries the same metadata; web mutations publish the existing `settings`

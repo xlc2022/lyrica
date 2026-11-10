@@ -1755,13 +1755,17 @@ ul.choices { list-style: none; margin: 0; padding: 0; }
 
 /* Routines reuse the wake-up popover and row controls (docs/ux.md section 6). */
 .routine-facts { display: grid; gap: 4px; min-width: 0; flex: 1; overflow-wrap: anywhere; font-size: 13px; }
+.routine-title { font-size: 14px; cursor: help; }
+.routine-title .preview { width: min(300px, calc(100vw - 64px)); font-weight: 400; }
+.routine-title[data-dismissed] .preview { display: none; }
 .routine-item { align-items: center; padding: 8px 4px; }
 .routine-pop { width: 320px; max-width: calc(100vw - 32px); }
 @media (max-width: 760px) {
   .routine-pop { width: auto; }
 }
 @media (pointer: coarse) {
-  .routine-item button.sm { min-height: 44px; }
+  .routine-item button.sm, .routine-title { min-height: 44px; }
+  .routine-title { display: flex; align-items: center; flex-wrap: wrap; }
 }
 
 /* Tokens shares the existing header picker; phone rows open in place. */
