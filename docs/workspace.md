@@ -1472,9 +1472,7 @@ her account is general.
      `.github/workflows/ci.yml` green on the head. These are rules every
      builder follows, whatever GitHub enforces: check the runs, not the
      merge button. No approval is required (her reviewers act as her own
-     account, which GitHub won't count on her own pull request);
-     "Do not allow bypassing" off, so the owner's account, which Claude's threads
-     work through, still merges as administrator.
+     account, which GitHub won't count on her own pull request).
   4. No ruleset limits her account: `lyrica/*` branches and `update/*`
      tags are her naming convention.
   5. She pushes to the repository, never a fork, so her pull requests run

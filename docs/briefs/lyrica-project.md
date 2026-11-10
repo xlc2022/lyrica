@@ -220,7 +220,7 @@ characters, the limit on project instructions.
 >
 > **Review.** Send each PR that needs review (AGENTS.md) and its head to
 > Review and, for UI, UI review. Fix findings; get rechecked. Once they
-> verify the exact head and CI is green, record both on the PR and merge
+> verify the head and CI is green, record both on the PR and merge
 > it yourself; a later push needs both again. If the owner asks you to
 > confer with Claude, hand the change to the `claude` role and treat its
 > report as findings. Ask Claude's project for work only with a `claude`
