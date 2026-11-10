@@ -968,7 +968,7 @@ export class WorkspaceSettings {
     if (!MACHINE_LIMITS.includes(limit)) throw new Error(`unknown mode limit: ${limit}`);
     this.db.prepare(`INSERT INTO machines (name, kind, host, port, username, private_key, root, host_key, pool, mode_limit, off_network, as_user)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(m.name, kind, m.host, m.port, m.username, m.privateKey,
-      m.root === null || kind === "proxmox" ? null : cleanPath(m.root), hostKey, m.pool, limit, m.offNetwork ? 1 : 0, m.asUser && kind === "ssh" ? 1 : 0);
+      m.root === null || kind === "proxmox" ? null : cleanPath(m.root), hostKey, m.pool, limit, m.offNetwork ? 1 : 0, m.asUser ? 1 : 0);
     return this.need(m.name);
   }
 

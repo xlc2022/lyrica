@@ -2572,13 +2572,13 @@ targetFor(t, machine?): ExecutionTarget  // the sandbox, or an SSH machine the t
 machinesFor(t): ThreadMachine[]           // { name, kind, limit, root, asUser? }: granted by it and every ancestor, of its pool
 proxmox(t, machine, action, vm?): Promise<string>  // one PROXMOX_ACTIONS call on a thread's Proxmox machine, token sent only to the pinned certificate
 callMode(t, machine?): PermissionMode     // on a machine, stricterMode(effective(t).mode, its limit)
-probeMachine(userId, login, { kind?, name, address, draft?, asUser?, replace? }): Promise<MachineProbe>
+probeMachine(userId, login, { kind?, name, address, draft?, asUser?, user?, replace? }): Promise<MachineProbe>
   // SSH: a key pair kept in memory for an hour (by `draft`), its keyLine and setup steps, the host key seen,
-  // whether the login worked, offNetwork; asUser gives the own-account setup (no root), and a failed login on an account that is already hers there (a saved machine with the same address and account) says why; account root refused. Proxmox: the certificate's fingerprint and the pveum setup, no token sent.
+  // whether the login worked, offNetwork; asUser gives the own-account setup (no root), and a failed login on an account that is already hers there (a saved machine with the same address and account) says why; account root refused. Proxmox: the certificate's fingerprint and the pveum setup, no token sent; asUser with `user` (user@realm) gives the setup for a separated token on the user's own Proxmox user.
   // replace (Replace key): the saved SSH machine `name` tried as saved, its own key, account and address; no pair made, address and draft ignored.
   // Saves nothing.
-addMachine(userId, { kind?, name, address, root, pool, limit?, draft? | token?, hostKey, offNetworkConfirmed?, asUser? }): Promise<MachineConfig>
-  // Proxmox: tries the token against the confirmed certificate and refuses the Proxmox running Lyrica (ownNode)
+addMachine(userId, { kind?, name, address, root, pool, limit?, draft? | token?, hostKey, offNetworkConfirmed?, asUser?, user? }): Promise<MachineConfig>
+  // Proxmox: tries the token against the confirmed certificate and refuses the Proxmox running Lyrica (ownNode); asUser: the token must be on `user` and hold nothing beyond the .Audit privileges and VM.PowerMgmt (GET /access/permissions), or it is refused
 updateMachine(userId, name, { address?, root?, limit?, pool? }): Promise  // a new pool drops the machine from every thread; an address naming another account is refused; Proxmox: own-node address refused
 setHostKey(userId, name, hostKey, token?): Promise / confirmOffNetwork(userId, name) / removeMachine(userId, name)
 grantsFor(t): Grant[]                     // { path, writable }
@@ -2606,7 +2606,7 @@ tmpDir(t): string                         // a project chat's lasting /tmp, tmp/
 //   a write the tools try throws SandboxDenied naming a code thread; its /tmp is SandboxSpec.tmp, which lasts between commands
 settings(userId): WorkspaceSettings       // per-pool defaults, per-thread overrides, machines
 // MachineConfig { name, kind: "ssh" | "proxmox", host, port, username (Proxmox: token id), privateKey (Proxmox: the token),
-//   root (Proxmox: null), asUser (SSH: the user's own account; Proxmox: false), hostKey (Proxmox: certificate fingerprint AB:CD:…), pool,
+//   root (Proxmox: null), asUser (SSH: the user's own account; Proxmox: a token on the user's own Proxmox user), hostKey (Proxmox: certificate fingerprint AB:CD:…), pool,
 //   limit: "ask" | "acceptEdits" | "auto" (new machines "ask"), offNetwork, lastUsed,
 //   state: { kind: "online" | "unreachable" | "keyChanged", since } | null }
 // settings(userId).machines() / machine(name) / addMachine(m, confirmedHostKey) / updateMachine / setMachinePool(name, pool)
@@ -2827,7 +2827,8 @@ selfTest(): Promise<string | undefined>   // lyricad calls this at startup
   …/machines/:name/key` with a confirmed host key, and for a new key pair the
   `draft` of a probe without `replace` that the Test step logged in with; `POST
   …/machines/:name/confirm-off-network`; `DELETE`). The probe and the
-  confirm take `asUser` for the user's own account, and such a machine
+  confirm take `asUser` for the user's own account (for Proxmox with
+  `user`, the user's own Proxmox user the token is on), and such a machine
   carries `asUser: true`. A machine carries
   `state` (`online`, `unreachable` or `keyChanged`, with `since`) once a
   connection has been tried. Thread settings carry

@@ -1630,7 +1630,10 @@ NAS, and Proxmox nodes. Decided 2026-10-11 from
   agent -privsep 1`) with a custom role of `VM.Audit` and `VM.PowerMgmt` on
   the VMs or pool she may touch, plus `PVEAuditor` on `/` for reads; never
   the built-in PVEVMUser, whose console and guest-agent file rights amount
-  to running code in the guest, and never `Sys.PowerMgmt`. One tool,
+  to running code in the guest, and never `Sys.PowerMgmt`. The token may
+  instead be on the user's own Proxmox user when they choose it, after
+  warnings, still privilege-separated with only those roles, which is
+  checked with Proxmox before it is saved. One tool,
   `proxmox`, with named actions: status, list, start, stop, shutdown,
   reboot, snapshots (list only). No destroy. Shutdown follows the machine's
   mode limit like a command; stop and reboot are on the suspect list and ask

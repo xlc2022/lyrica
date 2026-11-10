@@ -458,6 +458,42 @@ openssl x509 -noout -fingerprint -sha256 -in /etc/pve/local/pveproxy-ssl.pem 2>/
 `pveum user token add` prints the token's secret once; the token Lyrica
 takes is `lyrica@pve!agent=<that secret>`.
 
+### Your own Proxmox user
+
+As for SSH, a Proxmox may use the user's own account instead of one made
+for her (**Account: Mine** on the Add machine page, with a **User** field
+for the Proxmox user, `root@pam` say; `asUser` with `user` on the probe
+and the confirm). The setup block then makes no user: a privilege-separated
+token on that user, with the same roles given to the token alone, so it
+has only reading everywhere and power on the listed VMs whatever the user
+itself may do (`proxmoxSetup(user)`):
+
+```sh
+pveum role add LyricaPower --privs "VM.Audit VM.PowerMgmt"
+pveum user token add <user> lyrica --privsep 1
+pveum acl modify / --roles PVEAuditor --tokens '<user>!lyrica'
+pveum acl modify /vms/101 --roles LyricaPower --tokens '<user>!lyrica'
+```
+
+The token Lyrica takes is then `<user>!lyrica=<that secret>`, which the
+Token field's placeholder shows.
+
+The page lists first what it means (`accountWarnings(pool, "proxmox")`): a
+token without separation would have everything the user has on the
+cluster; Proxmox's log shows her actions as that user's token; and the
+cloud line as for SSH. Saving needs the machine's name typed. Confirm
+refuses a token that isn't on the named user (`the token is X's, not
+Y's`), before anything is sent. It then asks Proxmox what the token holds
+(`GET /access/permissions`) and refuses one with anything beyond the
+`.Audit` privileges and `VM.PowerMgmt` (`beyondPower`), naming what it
+found, or one whose answer can't be read: separation is checked, not left
+to the comment in the block. Replace key checks both again. The user id
+is held to `[A-Za-z0-9._-]` and a realm (`proxmoxUser`), since it goes
+into a block run as root. The row carries **Your account**, and the
+`workspace` prompt section says the machine's token is on the person's own
+Proxmox user. Everything else is as for any Proxmox: one tool with its
+fixed actions, the token never shown to her.
+
 ## Grants: what she may touch
 
 - **An administrator decides which host paths each user may grant**, with

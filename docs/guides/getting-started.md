@@ -1048,6 +1048,16 @@ this computer's name or MAC address).
 
    Never give her `PVEVMUser` (its console and guest-agent rights run code
    inside the guests) or `Sys.PowerMgmt`.
+
+   To use your own Proxmox user instead of `lyrica@pve`, choose
+   **Account: Mine** on the page and name the user (`root@pam`, say): the
+   block it prints then makes only a privilege-separated token on that
+   user with the same two roles, so the token has those rights and no more,
+   whatever your user may do. The token she takes is then
+   `root@pam!lyrica=<its secret>`. The page lists what that means before
+   you can confirm. It refuses a token on any other user, and one that
+   can do more than see and power VMs (made without privilege separation,
+   say), naming what it found.
 3. Note the node's certificate fingerprint, to compare in the next step:
 
    ```sh

@@ -792,7 +792,7 @@ export function apiRoutes(d: Lyricad): Route[] {
     route("POST", `${u}/machines/probe`, async (r): Promise<Api.MachineProbe> => {
       const user = d.userFor(r);
       const input = await r.json<Api.MachineProbeInput>();
-      return s().workspace.probeMachine(user.id, user.login, { kind: checkKind(input.kind), name: String(input.name ?? ""), address: String(input.address ?? ""), draft: input.draft, asUser: input.asUser === true, replace: input.replace === true });
+      return s().workspace.probeMachine(user.id, user.login, { kind: checkKind(input.kind), name: String(input.name ?? ""), address: String(input.address ?? ""), draft: input.draft, asUser: input.asUser === true, user: input.user === undefined ? undefined : String(input.user), replace: input.replace === true });
     }),
     route("POST", `${u}/machines`, async (r) => {
       const user = d.userFor(r);
@@ -801,6 +801,7 @@ export function apiRoutes(d: Lyricad): Route[] {
         kind: checkKind(input.kind), name: String(input.name ?? ""), address: String(input.address ?? ""), root: input.root || null, pool: checkPool(input.pool),
         limit: input.limit, draft: String(input.draft ?? ""), token: input.token === undefined ? undefined : String(input.token),
         hostKey: String(input.hostKey ?? ""), offNetworkConfirmed: input.offNetworkConfirmed === true, asUser: input.asUser === true,
+        user: input.user === undefined ? undefined : String(input.user),
       }));
     }),
     route("PATCH", `${u}/machines/:name`, async (r) => {

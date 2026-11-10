@@ -734,7 +734,7 @@ export interface MachineInfo {
   keyLine?: string;
   /** Proxmox: the token's id (user@realm!tokenid). The token itself is never shown. */
   tokenId?: string;
-  /** SSH: true when it logs in as the user's own account, not one made for her. */
+  /** True when it logs in as the user's own account (SSH), or its token is on the user's own Proxmox user, not one made for her. */
   asUser?: boolean;
   /**
    * The host key the user confirmed (SHA256:…), or for Proxmox the certificate's
@@ -768,13 +768,17 @@ export interface MachineInfo {
  * reads only the certificate's fingerprint and gives the pveum setup steps;
  * the token isn't sent until Confirm.
  */
-export interface MachineProbeInput { kind?: "ssh" | "proxmox"; name: string; address: string; draft?: string; asUser?: boolean; replace?: boolean }
+export interface MachineProbeInput {
+  kind?: "ssh" | "proxmox"; name: string; address: string; draft?: string; asUser?: boolean; replace?: boolean;
+  /** Proxmox with `asUser`: the user's own Proxmox user (user@realm) the setup block puts the token on. */
+  user?: string;
+}
 export interface MachineProbe {
   /** SSH only. */
   draft?: string;
   /** SSH only. */
   keyLine?: string;
-  /** The setup steps, to run as root on the machine (for Proxmox, on the node); with `asUser`, as the user's own account. */
+  /** The setup steps, to run as root on the machine (for Proxmox, on the node); with `asUser`, as the user's own account (for Proxmox still as root on the node, for a token on the user's own Proxmox user). */
   setup: string;
   /** The host key, or for Proxmox the certificate's SHA-256 fingerprint. */
   fingerprint?: string;
@@ -798,8 +802,9 @@ export interface MachineInput {
   kind?: "ssh" | "proxmox";
   name: string; address: string; root?: string; pool: Pool; limit?: MachineLimit;
   draft?: string; token?: string; hostKey: string; offNetworkConfirmed?: boolean;
-  /** SSH: `address` is the user's own account (Account: Mine). Set only when adding; the page shows its warnings first. */
+  /** Account: Mine. SSH: `address` is the user's own account. Proxmox: `token` is on the user's own Proxmox user, `user` (user@realm); a token on another user is refused (400). Set only when adding; the page shows its warnings first. */
   asUser?: boolean;
+  user?: string;
 }
 /** PATCH /api/u/:userId/machines/:name → MachineInfo. A new pool takes the machine from every thread that granted it. */
 export interface MachineChange { address?: string; root?: string | null; pool?: Pool; limit?: MachineLimit }
