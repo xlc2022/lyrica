@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  cleanOutput, generateSshKey, maskKeys, migrate, RemoteMissing, suspectCommand, Users, writtenFiles, Workspace, WorkspaceSettings,
+  callArgs, cleanOutput, generateSshKey, maskKeys, migrate, RemoteMissing, suspectCommand, Users, writtenFiles, Workspace, WorkspaceSettings,
   type Db, type NewMachine, type SshSession, type SshTransport,
 } from "../src/index.ts";
 import { freshKeyring, profile } from "./helpers.ts";
@@ -77,6 +77,14 @@ describe("machines", () => {
     expect(() => settings.setThread("p", "private", { machines: ["nas"] })).toThrow(/nas is a general machine; a private thread can't use it/);
     settings.setThread("p", "private", { machines: ["vault"] });
     expect(settings.thread("g").machines).toEqual(["nas"]);
+  });
+
+  it("never take a name that means no machine, which a call's machine argument treats as the sandbox", async () => {
+    const { add } = await setup();
+    for (const name of ["null", "None", "sandbox", "undefined"]) expect(() => add({ name })).toThrow(/means no machine/);
+    expect(callArgs("bash", { command: "ls", machine: "null" })).toEqual({ command: "ls" });
+    expect(callArgs("bash", { command: "ls", machine: "nas" })).toEqual({ command: "ls", machine: "nas" });
+    expect(callArgs("proxmox", { action: "list", machine: "null" })).toEqual({ action: "list", machine: "null" });
   });
 
   it("may log in as the user's own account, set up without root, in either pool", async () => {
