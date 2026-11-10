@@ -545,41 +545,63 @@ function PendingBar({ scroller, deps }: { scroller: React.RefObject<HTMLDivEleme
 }
 
 /**
- * Keeps the conversation scrolled to the bottom while new text arrives, unless she has scrolled up.
- * Whether she was at the bottom is judged against the height before this update, not from the
- * last scroll event, which may not have fired yet when an update lands right after she scrolls.
+ * Opens the conversation at its latest message and keeps it there while anything grows, unless she has scrolled up.
+ * Whether she follows the bottom is decided only by her scrolling (`stuck`), never re-measured when the content or the
+ * box changes size: a header that grows while the messages load, or a picture that loads after them, would otherwise
+ * read as her having scrolled up, and leave a thread opened at its top. A ResizeObserver on the box and on each of its
+ * children brings the bottom back into view whenever either changes size while she follows it.
  * Reports whether new tail content arrived while she was scrolled up, for the jump-to-latest control:
  * only a tail that grew counts, so opening older history above her isn't an arrival.
  */
 function useStickyScroll(messages: Message[], live: Live) {
   const ref = useRef<HTMLDivElement>(null);
-  const height = useRef(0);
+  const stuck = useRef(true);
   const tail = useRef<string>("∅");
   const [atBottom, setAtBottom] = useState(true);
   const [arrivedUp, setArrivedUp] = useState(false);
+  const observer = useRef<ResizeObserver>(undefined);
+  // Where the box was last scrolled to, by this hook or by a scroll event: a scroll up since, whose event hasn't fired
+  // yet when an update lands right after it, still counts as leaving the bottom.
+  const lastTop = useRef(0);
+  const follow = (el: HTMLDivElement) => {
+    if (stuck.current && el.scrollTop < lastTop.current - 1 && el.scrollHeight - el.scrollTop - el.clientHeight >= 80) stuck.current = false;
+    if (stuck.current) el.scrollTop = el.scrollHeight;
+    lastTop.current = el.scrollTop;
+  };
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const wasBottom = height.current - el.scrollTop - el.clientHeight < 80;
     const now = tailKey(messages, live);
     const grew = now !== tail.current;
     tail.current = now;
-    height.current = el.scrollHeight;
-    const nowBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
-    if (wasBottom) el.scrollTop = el.scrollHeight;
-    setAtBottom(nowBottom);
+    follow(el);
     // Content that grew at the tail while the person was scrolled up is one they can't see yet; being at the bottom ends the offer.
-    if (nowBottom) setArrivedUp(false);
-    else if (grew && !wasBottom) setArrivedUp(true);
+    if (stuck.current) setArrivedUp(false);
+    else if (grew) setArrivedUp(true);
+    setAtBottom(stuck.current);
+    // Children come and go with each render: watch the ones there now.
+    const ro = observer.current;
+    if (ro) for (const c of el.children) ro.observe(c, { box: "border-box" });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages, live]);
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const on = () => { const at = el.scrollHeight - el.scrollTop - el.clientHeight < 80; setAtBottom(at); if (at) setArrivedUp(false); };
+    // Only scrolling changes whether she follows the bottom: hers, Jump to latest, a jump to a message, or the browser
+    // clamping it when the content shrinks.
+    const on = () => {
+      const at = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+      stuck.current = at;
+      lastTop.current = el.scrollTop;
+      setAtBottom(at);
+      if (at) setArrivedUp(false);
+    };
+    const ro = new ResizeObserver(() => follow(el));
+    ro.observe(el);
+    for (const c of el.children) ro.observe(c, { box: "border-box" });
+    observer.current = ro;
     el.addEventListener("scroll", on, { passive: true });
-    on();
-    return () => el.removeEventListener("scroll", on);
+    return () => { el.removeEventListener("scroll", on); ro.disconnect(); observer.current = undefined; };
   }, []);
   return { ref, atBottom, arrivedUp };
 }
