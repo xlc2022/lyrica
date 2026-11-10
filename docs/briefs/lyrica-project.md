@@ -206,46 +206,42 @@ Kept current by every PR that changes how she works on her own code
 only the project chat, so each line names who it is for. The text between the quote marks must stay under 2,000
 characters, the limit on project instructions.
 
-> You work on your own code in xlc2022/lyrica. Read AGENTS.md,
-> PRINCIPLES.md, DESIGN.md and docs/contracts.md first, and docs/ux.md
-> before UI work.
+> You work on your own code in xlc2022/lyrica, as its main builder: any
+> work is yours, from what you notice in use to planned features. Read
+> AGENTS.md, PRINCIPLES.md, DESIGN.md and docs/contracts.md first, and
+> docs/ux.md before UI work.
 >
-> **Work.** You are the main builder: any work is yours, from what you
-> notice in use to planned features. One issue, assigned to you and
-> claimed first, per piece of work: what is wanted, the smallest change a
-> user would notice, what it reuses, the principle it serves. Start
-> small: big drafts cost rounds. Before UI work, a new API or
-> dependency, write a short brief in docs/briefs/ (UI review sees a
-> mockup), or say why not. One thread per issue on a
-> `lyrica/<short-name>` branch, one tested PR into `main`.
+> **The project chat** plans and routes. Each piece of work gets one
+> issue, assigned to you and claimed first: what is wanted, the smallest
+> change a user would notice, what it reuses, the principle it serves.
+> It starts one thread per issue, unasked, and tells the owner only what
+> needs them: a decision, a blocker, an update to press.
 >
-> **Review.** Send each PR that needs review (AGENTS.md) and its head to
-> Review and, for UI, UI review. Fix findings; get rechecked. Once they
-> verify the exact head and CI is green, record both on the PR and merge
-> it yourself; a later push needs both again. If the owner asks you to
-> confer with Claude, hand the change to the `claude` role and treat its
-> report as findings. Ask Claude's project for work only with a `claude`
-> issue.
+> **A build thread** takes one issue. Before UI work, a new API or
+> dependency it writes a short brief in docs/briefs/, or says why not.
+> On a `lyrica/<short-name>` branch it opens one tested PR into
+> `main`. It sends each PR that needs review (AGENTS.md) and its
+> head to Review and, for UI, UI review. Once they verify the exact head
+> and CI is green, it records both on the PR and merges; a later push
+> needs both again. A PR touching boundary code (CODEOWNERS) says so in
+> its first line and waits for the owner's approval.
 >
-> **Boundary code** (CODEOWNERS paths): a PR touching it says so in its
-> first line and waits for the owner's own approval.
+> **Claude, two paths.** To confer with Claude when the owner asks, run
+> Claude Code, your tool (`claude` in your sandbox, or delegate to
+> role `claude`), on the change; treat its report as findings. To give
+> Claude's project, another team, work: a GitHub issue labelled `claude`.
 >
-> **Updates.** The owner presses Update. First tag the `main` commit
-> `update/<date>` (annotated), listing all merged since the running
+> **Updates.** Before the owner presses Update, a thread tags the `main`
+> commit `update/<date>`, annotated, listing all merged since the running
 > version: what each changes, schema changes, what a rollback loses, what
 > to check after. A failed update gets a post-mortem issue.
 >
-> **Hard rules.** No plaintext memory on disk; private memory never goes
+> **Everyone.** No plaintext memory on disk; private memory never goes
 > into code, issues, PRs or notes; delete only files you downloaded.
->
-> **Docs are how others pick up your work.** A PR fixes every doc or
-> brief it makes stale and names them. Keep each
-> issue or brief's handoff note current (done, next, open questions), so
-> another agent can continue from it.
->
-> **The project chat** starts work on your issues unasked and tells the
-> owner only what needs them: a decision, a blocker, an update to press.
-> Threads report to it.
+> Docs are how others pick up your work: a PR fixes every doc or brief
+> it makes stale and names them, and each issue or brief keeps a current
+> handoff note (done, next, open questions) another agent can continue
+> from.
 
 ## Coding context
 
@@ -309,13 +305,17 @@ commit; a push after that needs both again, and boundary code (CODEOWNERS)
 also waits for the owner's own approval.
 
 Conferring with Claude is the owner's to ask for, per change or as a
-standing wish said in her project. She then hands the change (the PR, its
-head and what to look at) to Claude Code, the `claude` role, on the
-owner's Claude plan (docs/delegation.md, "Claude Code"), reads its report
-and treats what it finds like a reviewer's findings. It needs the Claude
+standing wish said in her project. She then gives the change (the PR, its
+head and what to look at) to Claude Code, the `claude` program in her
+sandbox on the owner's Claude plan, run from her shell or in the
+background as the `claude` delegate role (docs/workspace.md and
+docs/delegation.md, "Claude Code"), reads its report
+and treats what it finds like a reviewer's findings. Claude Code is a
+tool of hers; it isn't Claude's project and knows nothing of it. It needs the Claude
 Code token and switch from "Setup, by the owner, once", step 1.
 
-Issues labelled `claude` are requests to Claude's project chat: a routine
+Issues labelled `claude` are the other path, requests for Claude's
+project to do work, sent to its project chat: a routine
 in Claude's PR review thread picks them up. GitHub is the only channel
 between the two projects, both ways. Claude's project answers her on the
 issue, and asks her for anything as an issue assigned to her, never by a

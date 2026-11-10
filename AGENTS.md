@@ -87,13 +87,15 @@ PRs. Her reviewers act as her own GitHub account, so she records the
 verified head and the review results on the PR before merging it, with a
 merge commit. A PR of hers touching boundary code (CODEOWNERS) also waits
 for the owner's own approval, and her branches are named `lyrica/*`, as
-Claude's are `claude/*` and `feature/*`. When the owner asks her to confer with
-Claude on a change, she hands it to Claude Code, the `claude` role
-(docs/delegation.md, "Claude Code"), and weighs its report like a
-reviewer's findings. GitHub is the only channel between the two projects,
-both ways: either asks the other for work with an issue (labelled
-`claude`, or assigned to her account), never with a message into its
-threads. After she merges, she reports it in her own project. See
+Claude's are `claude/*` and `feature/*`. Claude reaches her work by two
+separate paths. **Claude Code** is a tool of hers: the `claude` program
+in her sandbox, on the owner's Claude plan, run from her shell or as the
+`claude` delegate role (docs/workspace.md, "Claude Code"). When the owner
+asks her to confer with Claude on a change, she runs it there and weighs
+its report like a reviewer's findings. **Claude's project** is the other
+team: GitHub is the only channel between the two projects, both ways.
+Either asks the other for work with an issue (labelled `claude`, or
+assigned to her account), never with a message into its threads. After she merges, she reports it in her own project. See
 [the project handoff](docs/briefs/lyrica-project.md#claudes-side).
 When she runs on more than one deployment, each has its own GitHub
 account: she works only on issues assigned to her own account, checks a
