@@ -137,6 +137,13 @@ tool each for A and B, prompt lines only where the thread has a machine).
   the way: a subagent that kept its parent's machines was told of Proxmox
   machines with no tool for them, and a custom role listing `proxmox` got
   the tool; subagents now get neither.
+- Found reading that work (same day): a private machine whose address left
+  the user's network was refused with "confirm it in Settings", and Settings
+  had nothing to confirm: the row's **Use anyway** showed only once the
+  machine was already accepted. A private Git account and MCP server had the
+  same gap. The refusal is now each one's state, and Use anyway shows while
+  it stands. The Add repository picker and Replace token (Git and MCP) also
+  sent a private token without that check; they check first now.
 
 ## C. Model host install from a machine
 

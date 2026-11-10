@@ -2611,7 +2611,8 @@ settings(userId): WorkspaceSettings       // per-pool defaults, per-thread overr
 // MachineConfig { name, kind: "ssh" | "proxmox", host, port, username (Proxmox: token id), privateKey (Proxmox: the token),
 //   root (Proxmox: null), asUser (SSH: the user's own account; Proxmox: a token on the user's own Proxmox user), hostKey (Proxmox: certificate fingerprint AB:CD:…), pool,
 //   limit: "ask" | "acceptEdits" | "auto" (new machines "ask"), offNetwork, lastUsed,
-//   state: { kind: "online" | "unreachable" | "keyChanged", since } | null }
+//   state: { kind: "online" | "unreachable" | "keyChanged" | "offNetwork", since } | null }
+//   offNetwork: she was refused because a private machine's address left the user's network; it stands until confirmOffNetwork or a check that passes
 // settings(userId).machines() / machine(name) / addMachine(m, confirmedHostKey) / updateMachine / setMachinePool(name, pool)
 //   / setHostKey / setOffNetwork / confirmOffNetwork / machineState(name, kind) / removeMachine / allowInThread(threadId, machine, command) / allowedInThread(threadId)
 // A thread's `machines: string[]` (the sandbox is always there); setThread refuses a machine of the other pool;
@@ -2710,9 +2711,11 @@ selfTest(): Promise<string | undefined>   // lyricad calls this at startup
   from every thread, removing it does too, and a new name follows into
   them. `GitAccountConfig { name, kind: "github" | "forgejo" | "gitea" |
   "other", host, account, token, pool, offNetwork, state: { kind:
-  "signedIn" | "rejected" | "unreachable", since } | null }`; `kind:
+  "signedIn" | "rejected" | "unreachable" | "offNetwork", since } | null }`; `kind:
   "github"` is general only; a private account's host must resolve on this
-  machine's network, checked when added and on every use. A thread's row
+  machine's network, checked when added and on every use; a use refused
+  for it leaves the state `offNetwork` until `confirmGitOffNetwork` or a
+  check that passes. A thread's row
   carries `repositories: { name, account, readOnly? }[]`; `setThread` refuses a
   repository whose account is missing or of the other pool, and two with
   the same clone folder, and keeps a child's read-only repository
@@ -2729,7 +2732,9 @@ selfTest(): Promise<string | undefined>   // lyricad calls this at startup
   (`GitAccountProblem` with the state when it fails); `addGitAccount(userId,
   { …, offNetworkConfirmed? })`, `updateGitAccount`, `setGitToken`,
   `confirmGitOffNetwork`, `removeGitAccount`; `listRepositories(userId,
-  name, q)` is what the account can see (none for Other).
+  name, q)` is what the account can see (none for Other). It and
+  `setGitToken` check the host against her network first, as `cloneFor`
+  does, and throw the refusal.
   `repositoriesFor(t)`; `cloneFor(t)` makes or fetches each clone in the
   sandbox under the thread's folder in the home workspace (`repos/<name>`,
   a subagent's under its parent's, mounted read-only for one with
@@ -2783,7 +2788,11 @@ selfTest(): Promise<string | undefined>   // lyricad calls this at startup
   `settings(userId).mcpServers() / addMcpServer / updateMcpServer /
   setMcpToken / setMcpEnv / removeMcpServer / mcpServerState /
   confirmMcpOffNetwork / allowToolInThread / mcpCallRefused(name, now?) /
-  recordMcpCall(name, now?)`, `mcpLimit(raw, what)`, `Workspace.probeMcpServer({
+  recordMcpCall(name, now?)` (a server's `state.kind` is `online`,
+  `rejected`, `unreachable`, or `offNetwork` for a private server held
+  back because its host left the user's network, until
+  `confirmMcpOffNetwork` or a check that passes; `Workspace.setMcpToken`
+  checks the host first), `mcpLimit(raw, what)`, `Workspace.probeMcpServer({
   url?, token?, command?, env? }) / startMcpServer(t, name)`, and `mcpUrl`,
   `mcpCommand`, `mcpCommandLine`, `mcpEnv`, `mcpPlace`, `probeMcp`,
   `probeMcpCommand`, `mcpTransport`, `mcpStdioTransport` (each taking a
@@ -2834,8 +2843,11 @@ selfTest(): Promise<string | undefined>   // lyricad calls this at startup
   confirm take `asUser` for the user's own account (for Proxmox with
   `user`, the user's own Proxmox user the token is on), and such a machine
   carries `asUser: true`. A machine carries
-  `state` (`online`, `unreachable` or `keyChanged`, with `since`) once a
-  connection has been tried (for Proxmox, once she has called it). Thread settings carry
+  `state` (`online`, `unreachable`, `keyChanged` or `offNetwork`, with `since`) once a
+  connection has been tried (for Proxmox, once she has called it);
+  `offNetwork` is a private machine she is refused because its address
+  left the user's network, which `confirm-off-network` ends, as it does a
+  Git account's and an MCP server's. Thread settings carry
   `machines`; permission events carry `machine`, `cwd`, and for a suspect
   command `suspect: true` and `warning`; an answer may carry
   `allowInThread: true`. Proxmox: `kind: "proxmox"` on probe and confirm,

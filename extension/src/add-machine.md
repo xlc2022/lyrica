@@ -37,11 +37,11 @@ To use their own Proxmox user (say `root@pam`) instead of `lyrica@pve`: **Accoun
 
 - **Give the thread the machine.** Adding it doesn't put it in any thread. In a thread's settings drawer, under **Machines**, **+** adds it; then your tools take it by name. When a tool says a machine isn't one of this thread's, this is usually the missing step.
 - **Mode limit.** A new machine is limited to Ask: commands and edits there ask first, whatever the thread's mode. The person can raise it in the machine's row.
-- **Its row** shows Online, Unreachable or Key changed. After a reinstall or a renewed certificate every call fails until they open the row's menu, **Replace key**, and confirm the new fingerprint.
+- **Its row** shows one state: Online, Unreachable, Key changed, or Off network when its address is outside their own network. After a reinstall or a renewed certificate every call fails until they open the row's menu, **Replace key**, and confirm the new fingerprint. When a private machine's address leaves their network you are refused ("now resolves outside your network") until they choose **Use anyway** in that menu.
 
 ## When a step fails
 
 - "the server doesn't offer strict key exchange; update its OpenSSH": the machine's OpenSSH is older than 9.6.
 - Test says the login didn't work: the block wasn't run as root on that machine, the account in the address doesn't exist there, or the address is another machine's. The block can be run again safely.
 - "the token didn't work: Proxmox answered 401": the token was pasted without its `user@realm!name=` part, or cut short.
-- A private machine "resolves outside your network": the page asks once more before adding it; say what that means rather than telling them to press on.
+- Confirm opens a dialog, **Outside your network**, with **Add anyway**: the address of a private machine isn't on their own network, so a private thread's commands and files would leave it. Say that plainly rather than telling them to press on.

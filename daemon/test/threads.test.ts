@@ -393,6 +393,15 @@ describe("a Proxmox machine", () => {
       const mine = await ada.post<MachineInfo>(u, { kind: "proxmox", name: "pve-mine", address: pve.address, token: OWN, hostKey: pve.fingerprint, pool: "general", asUser: true, user: "ada@pam" });
       expect(mine.body).toMatchObject({ name: "pve-mine", tokenId: "ada@pam!lyrica", asUser: true });
       expect(mine.body.state).toBeUndefined();
+      // A private machine whose address leaves her network is refused, and the refusal is its row's state until Ada confirms it.
+      await ada.patch(`${u}/pve-mine`, { pool: "private", address: "https://192.0.2.7:8006" });
+      const refused = await ada.post<{ error: string }>(`${u}/pve-mine/key`, { hostKey: pve.fingerprint });
+      expect(refused.status).toBe(400);
+      expect(refused.body.error).toMatch(/192.0.2.7 now resolves outside your network/);
+      expect((await ada.get<MachineInfo[]>(u)).body.find((m) => m.name === "pve-mine")).toMatchObject({ offNetwork: false, state: { kind: "offNetwork" } });
+      const confirmed = (await ada.post<MachineInfo>(`${u}/pve-mine/confirm-off-network`, {})).body;
+      expect(confirmed.offNetwork).toBe(true);
+      expect(confirmed.state).toBeUndefined();
       stream.close();
       again.close();
       elsewhere.close();
