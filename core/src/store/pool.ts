@@ -310,7 +310,7 @@ const GOAL_LIMIT = 2000;
 /** The most a person's line for tonight's dream holds. */
 export const SLEEP_FOCUS_LIMIT = 300;
 /** Well under the project section's budget, so the notes and threads after them always fit. */
-const INSTRUCTIONS_LIMIT = 2000;
+export const INSTRUCTIONS_LIMIT = 4000;
 /** How much more a project's own memories weigh in recall from inside that project. A boost, never a filter. */
 export const PROJECT_BOOST = 1.5;
 /** The most candidates a filtered search scans per query. */

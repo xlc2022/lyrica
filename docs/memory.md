@@ -393,7 +393,7 @@ found by where it came from:
   that came only from it.
 
 Every thread of a project gets a **project section** in its context
-(`projectSection`, about 2,000 tokens): the goal, the user's instructions,
+(`projectSection`, about 2,500 tokens): the goal, the user's instructions,
 the project's notes since the last sleep, in the project chat its threads
 with their state, and last the project page, so a long page is what gets
 cut. A private project's section comes only from the private

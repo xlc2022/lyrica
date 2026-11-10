@@ -400,7 +400,8 @@ describe("projects", () => {
     expect((await ada.patch<ThreadSummary>(path, { instructions: "Ask before buying anything." })).body.instructions).toBe("Ask before buying anything.");
     // The project page, where the instructions are kept, opens by the ID the summary gives.
     expect((await ada.get(`${u}/memory/general/${enc(project.projectSettings!.pageId)}`)).status).toBe(200);
-    expect((await ada.patch(path, { instructions: "x".repeat(2001) })).status).toBe(400);
+    expect((await ada.patch(path, { instructions: "x".repeat(4001) })).status).toBe(400);
+    expect((await ada.patch<ThreadSummary>(path, { instructions: "x".repeat(4000) })).body.instructions).toHaveLength(4000);
   });
 
   it("start new threads with the project's Fallback, which each thread can change", async () => {

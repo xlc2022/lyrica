@@ -352,7 +352,7 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   folders, machines and repositories or fewer. A folder, machine or
   repository taken off here leaves the
   project's running threads at once, and their open views show it gone. **Memory**: the
-  Instructions kept on the project page (2,000 characters, counted under
+  Instructions kept on the project page (4,000 characters, counted under
   the box), and a link to that page in the memory browser. **Files and images**
   (`ProjectFiles.tsx`): the project folder (the project chat's `/workspace`)
   through the Files panel's routes on the project chat, one folder at a time
