@@ -529,6 +529,7 @@ test("Add machine for a Proxmox offers the user's own Proxmox user, with its war
   const token = page.getByRole("region", { name: "Token" });
   await expect(token.getByText("pveum user token add root@pam lyrica --privsep 1")).toBeVisible();
   await expect(token.getByText("pveum user add")).toHaveCount(0);
+  await expect(token.getByLabel("Token")).toHaveAttribute("placeholder", "root@pam!lyrica=…");
   await expect(page.getByRole("button", { name: "Confirm" })).toHaveCount(0);
   await noHorizontalScroll(page);
 });

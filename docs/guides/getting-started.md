@@ -1053,8 +1053,9 @@ this computer's name or MAC address).
    **Account: Mine** on the page and name the user (`root@pam`, say): the
    block it prints then makes only a privilege-separated token on that
    user with the same two roles, so the token has those rights and no more,
-   whatever your user may do. The page lists what that means before you
-   can confirm, and refuses a token on any other user.
+   whatever your user may do. The token she takes is then
+   `root@pam!lyrica=<its secret>`. The page lists what that means before
+   you can confirm, and refuses a token on any other user.
 3. Note the node's certificate fingerprint, to compare in the next step:
 
    ```sh

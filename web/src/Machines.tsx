@@ -380,7 +380,7 @@ export function MachinePage({ ctx, name }: { ctx: ShellContext; name?: string })
             </div>
             {kind === "proxmox" && (
               <label className="field"><span>Token</span>
-                <input className="mono" type="password" value={form.token} placeholder="lyrica@pve!agent=…" autoComplete="off" onChange={(e) => setField("token", e.target.value)} />
+                <input className="mono" type="password" value={form.token} placeholder={pveUser ? `${pveUser}!lyrica=…` : "lyrica@pve!agent=…"} autoComplete="off" onChange={(e) => setField("token", e.target.value)} />
               </label>
             )}
           </section>

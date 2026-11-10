@@ -475,6 +475,9 @@ pveum acl modify / --roles PVEAuditor --tokens '<user>!lyrica'
 pveum acl modify /vms/101 --roles LyricaPower --tokens '<user>!lyrica'
 ```
 
+The token Lyrica takes is then `<user>!lyrica=<that secret>`, which the
+Token field's placeholder shows.
+
 The page lists first what it means (`accountWarnings(pool, "proxmox")`): a
 token without separation has everything the user has on the cluster;
 Proxmox's log shows her actions as that user's token; and the cloud line
