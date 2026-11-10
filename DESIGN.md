@@ -2493,21 +2493,24 @@ from Monika's runbooks.
   of hers merges without both. The owner's own account may bypass the rules as
   administrator, because Claude's threads work through it and could
   never approve their own PRs.
-- **Review is the project's.** Her PRs go through the same PR review (and
-  UI review) as Claude's, so the owner doesn't read every change. Claude's
-  PR review approves her PR naming its head, or requests changes, and she
-  merges it herself once that approval, her own reviewers' verifieds and
-  green CI cover the same head (the owner, 2026-10-24: she merges her own
-  work rather than relying on Claude). **Boundary code needs the owner** (the owner chose a rule over
+- **Review is her own project's.** Her PRs go through her project's Review
+  (and UI review) threads, so the owner doesn't read every change, and she
+  merges each herself once their verifieds and green CI cover the same
+  head. Claude's project doesn't review or approve them (the owner,
+  2026-11-10: she has full control of her work; before that, from
+  2026-10-24, Claude's PR review approved each one). When the owner asks
+  her to confer with Claude on a change, she hands it to Claude Code, the
+  `claude` role, and weighs its report as findings. **Boundary code needs
+  the owner** (the owner chose a rule over
   a gate, 2026-10-11): keys, the privacy boundary, the model router, the
   sandbox, authentication, deployment, the updater and CI. `CODEOWNERS`
   names the owner for those paths, so GitHub asks for the owner's review on any PR
-  that touches them, and PR review asks the owner before approving one of hers.
-  Claude's reviews act through the owner's account, so GitHub can't tell the two
-  approvals apart: this is a rule the reviewers follow, not a gate. She
+  that touches them, and she waits for the owner's approval on one of hers.
+  Claude's threads act through the owner's account, so GitHub can't tell a
+  review of theirs from the owner's: this is a rule she follows, not a gate. She
   may push only `lyrica/*` branches and `update/*` tags.
 - **Working alongside Claude.** One repository, one set of rules
-  (AGENTS.md), one review. Work is claimed as a GitHub issue with one
+  (AGENTS.md), each side's own review. Work is claimed as a GitHub issue with one
   assignee, her account or the owner, so two never build the same thing; she
   takes what she notices in use (the friction log from PRINCIPLES.md's
   Evaluation, small features, her own tooling), Claude's threads take
@@ -2515,8 +2518,8 @@ from Monika's runbooks.
   merges second merges `main` in first. GitHub is the only channel
   between them, both ways: she can't reach Claude's threads, and Claude
   doesn't message hers, even on a deployment where an operator session
-  could. An issue labelled `claude` is how she asks for something and a PR
-  comment how she answers a review; Claude answers on the PR or issue and
+  could. An issue labelled `claude` is how she asks for something; Claude
+  answers on the issue and
   asks her for work as an issue assigned to her. Design changes go through the design
   owner as they do now, and the owner decides. An update note covers everything
   merged since the running version, Claude's PRs included.
@@ -2525,10 +2528,9 @@ from Monika's runbooks.
   Projects, with instructions mirroring this project's (one issue and one
   thread per piece of work, handoffs, review, hard rules) and pinned
   standing threads, Review, UI review and Friction log, that review her
-  work before it reaches Claude's review
+  work before she merges it
   ([briefs/lyrica-project.md](docs/briefs/lyrica-project.md)). A routine
-  in Claude's project picks up her ready (not draft) PRs and `claude`
-  issues from GitHub.
+  in Claude's project picks up `claude` issues from GitHub.
 - **GitHub is replaceable.** She reaches the forge only through git and
   its command-line client in her sandbox (`gh` today), with no tool of
   her own; the updater needs only git and a read-only key; update notes
