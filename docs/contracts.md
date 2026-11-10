@@ -2408,7 +2408,9 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   samplers, with `samples` and the `unit`, image or clip), optional `made`
   for a model with image or video calls (`count`, the images or clips they
   made: each call's recorded `images`, else one, since a call is recorded only
-  once it made something; `unit`, image or clip), and `fallbacks`; and
+  once it made something; `unit`, image or clip), optional `audioSeconds`
+  for a model with speech calls (the seconds of audio they heard or spoke,
+  from each call's recorded `audio_seconds`, to a tenth), and `fallbacks`; and
   each row as `{ at, offeringId, task, outputTokens?, tokPerSec?, fallback? }`,
   newest first, never its thread, note or text. Medians use existing
   `pace.tokPerSec` and `pace.promptTokPerSec`; no samples means absent, not zero. Fallbacks count nonempty

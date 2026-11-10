@@ -1,5 +1,6 @@
 // Principles 1 and 8: Administration → Status draws what her models did from facts already recorded per call (docs/ux.md,
-// Recorded model activity): calls and output per hour, each call's speed, calls by task, and a row per model copy.
+// Recorded model activity): calls and output per hour, each call's speed, calls by task, and a row per model copy
+// (an image model's output in images, a speech model's in seconds of audio).
 import { useEffect, useRef, useState } from "react";
 import type { ModelCallFacts as Facts } from "./api.ts";
 import { drawChart, SERIES, tokens } from "./charts.ts";
@@ -22,6 +23,7 @@ const UNMEASURED = "Not measured: no call in the window recorded a time long eno
 const SAMPLING_WHY = "Median sampling time per image on its host, from ComfyUI's sampler steps; waiting, model loading and decoding aren't counted.";
 const NO_PROMPT = "An image model reads no prompt tokens.";
 const MADE_WHY = "Images (or clips) its calls made, in place of output tokens.";
+const AUDIO_WHY = "Seconds of audio its calls heard (Dictation) or spoke (Read aloud), in place of output tokens.";
 const RESET_WHY = "Count calls from now on. Call records stay: thread usage, speeds and history still use them.";
 
 /** An image or video model's speed, for its Speed cell and tooltip: seconds per image with the steps, size and steps per second it ran at. */
@@ -169,6 +171,11 @@ function taskSpec(series: Series[], facts: Facts, panel: string) {
   };
 }
 
+/** Seconds of audio as its Output cell reads them: "42.5 s", "3.2 min" or "1.4 h", the unit apart to be muted. */
+export function audioWords(seconds: number): { amount: string; unit: string } {
+  return seconds >= 3600 ? { amount: num(seconds / 3600)!, unit: "h audio" } : seconds >= 60 ? { amount: num(seconds / 60)!, unit: "min audio" } : { amount: num(seconds)!, unit: "s audio" };
+}
+
 const num = (n: number | undefined, digits = 1) => n === undefined ? undefined : n.toLocaleString(undefined, { maximumFractionDigits: digits });
 
 /**
@@ -212,11 +219,13 @@ export function ModelCallFacts({ facts, onReset }: { facts: Facts; onReset?: () 
           const s = series.find((x) => x.offeringId === m.offeringId)!;
           const speed = num(m.medianTokPerSec), prompt = num(m.medianPromptTokPerSec, 0);
           const sampled = speed === undefined && m.sampling ? samplingWords(m.sampling) : undefined;
+          const audio = m.audioSeconds !== undefined && !m.outputTokens ? audioWords(m.audioSeconds) : undefined;
           return <div role="row" key={m.offeringId}>
             <span role="cell" className="mt-model" title={`${m.label} · ${m.endpointName}`}><span className="swatch" style={{ background: s.color }} aria-hidden="true" />{shortModel(m.label)} <span className="muted">· {m.endpointName}</span></span>
             <span role="cell" className="num" data-label="Calls">{m.calls}</span>
-            <span role="cell" className="num" data-label="Output" title={m.made && !m.outputTokens ? MADE_WHY : undefined}>{m.made && !m.outputTokens
+            <span role="cell" className="num" data-label="Output" title={m.made && !m.outputTokens ? MADE_WHY : audio ? AUDIO_WHY : undefined}>{m.made && !m.outputTokens
               ? <>{m.made.count.toLocaleString()} <span className="muted">{m.made.count === 1 ? m.made.unit : `${m.made.unit}s`}</span></>
+              : audio ? <>{audio.amount} <span className="muted">{audio.unit}</span></>
               : tokenCount(m.outputTokens)}</span>
             <span role="cell" className="num" data-label="Speed" title={sampled ? sampled.title : speed === undefined ? UNMEASURED : `${SPEED_WHY} ${m.speedSamples} measured.`}>{sampled ? <>{sampled.seconds} <span className="muted">{sampled.unit}</span></> : speed === undefined ? <span className="muted">—</span> : <>{speed} <span className="muted">tok/s</span></>}</span>
             <span role="cell" className="num" data-label="Prompt" title={prompt === undefined ? (sampled ? NO_PROMPT : UNMEASURED) : `${PROMPT_WHY} ${m.promptSamples} measured.`}>{prompt === undefined ? <span className="muted">—</span> : <>{prompt} <span className="muted">tok/s</span></>}</span>

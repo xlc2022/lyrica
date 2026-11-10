@@ -43,6 +43,18 @@ it("shows what an image or video model made in its Output cell, in place of zero
   expect(html).toContain("Images (or clips) its calls made");
 });
 
+it("shows a speech model's seconds of audio in its Output cell, in place of zero tokens", () => {
+  const html = render(facts([
+    model({ offeringId: "hear", label: "Whisper", calls: 3, audioSeconds: 42.5 }),
+    model({ offeringId: "speak", label: "Kokoro", calls: 9, audioSeconds: 192 }),
+    model({ offeringId: "long", label: "Long", calls: 90, audioSeconds: 5040 }),
+  ]));
+  expect(html).toContain('>42.5 <span class="muted">s audio</span>');
+  expect(html).toContain('>3.2 <span class="muted">min audio</span>');
+  expect(html).toContain('>1.4 <span class="muted">h audio</span>');
+  expect(html).toContain("Seconds of audio its calls heard (Dictation) or spoke (Read aloud)");
+});
+
 it("says a speed nothing measured is not measured, distinct from a measured zero", () => {
   const html = render(facts([model({ offeringId: "one", label: "Unmeasured" }), model({ offeringId: "two", label: "Measured", medianTokPerSec: 0, speedSamples: 1 })]));
   expect(html.match(/Not measured: no call/g)).toHaveLength(2 + 1); // its speed and prompt, and the other's prompt

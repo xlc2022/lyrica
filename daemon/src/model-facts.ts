@@ -29,6 +29,10 @@ const sampled = (c: CallInfo): Sample[] => {
 const madeBy = (c: CallInfo): { count: number; clip: boolean } | undefined =>
   c.task === "video" || c.task.startsWith("image.") ? { count: c.images ?? c.sampling?.images ?? 1, clip: c.task === "video" } : undefined;
 
+/** A speech call's recorded seconds of audio, heard (Dictation) or spoken (Read aloud); never the audio or its text. */
+const audioOf = (c: CallInfo): number | undefined =>
+  c.task.startsWith("speech.") ? (typeof c.audioSeconds === "number" && Number.isFinite(c.audioSeconds) && c.audioSeconds >= 0 ? c.audioSeconds : 0) : undefined;
+
 /** A recorded fallback marker: the first model in the list didn't answer. A note is never one. */
 const hasFallback = (c: CallInfo): boolean => typeof c.fallback === "string" && c.fallback.trim() !== "";
 
@@ -51,7 +55,8 @@ function median(xs: number[]): number | undefined {
  * An image or video model's `sampling` comes from rows whose host measured the job:
  * medians of seconds per image, steps and steps per second, in clips when its
  * rows are clips. Its `made` adds up the images (or clips) its image and video
- * calls made, in clips when most of those calls were. `calls` gives each row's time, offering, task, output, speed and fallback mark,
+ * calls made, in clips when most of those calls were. A speech model's `audioSeconds`
+ * adds up the seconds of audio its calls heard or spoke. `calls` gives each row's time, offering, task, output, speed and fallback mark,
  * newest first, for the charts: no thread, note or text. Fallbacks count rows that
  * carry a recorded marker, never what a note says, so they are resolution skips,
  * not retries, failed attempts or errors. Rows outside `[now - 24h, now]`, with a
@@ -64,7 +69,7 @@ export function modelFacts(calls: CallInfo[], pools: Pool[], now: number = Date.
   const from = reset === undefined ? NaN : Date.parse(reset);
   const since = Number.isFinite(from) && from > now - MODEL_FACTS_WINDOW_MS ? Math.min(from, now) : now - MODEL_FACTS_WINDOW_MS;
   const shown = new Set<Pool>(pools);
-  type Group = { id: string; at: number; label: string; endpointName: string; kind: Fact["kind"]; calls: number; speeds: number[]; prompts: number[]; samples: Sample[]; output: number; made: number; madeCalls: number; clips: number; fallbacks: number };
+  type Group = { id: string; at: number; label: string; endpointName: string; kind: Fact["kind"]; calls: number; speeds: number[]; prompts: number[]; samples: Sample[]; output: number; made: number; madeCalls: number; clips: number; audio: number; audioCalls: number; fallbacks: number };
   const groups = new Map<string, Group>();
   const points: Point[] = [];
   for (const c of calls) {
@@ -72,7 +77,7 @@ export function modelFacts(calls: CallInfo[], pools: Pool[], now: number = Date.
     const at = Date.parse(c.at);
     if (!Number.isFinite(at) || at < since || at > now) continue;
     let g = groups.get(c.offeringId);
-    if (!g) groups.set(c.offeringId, g = { id: c.offeringId, at, label: c.label, endpointName: c.endpointName, kind: c.kind, calls: 0, speeds: [], prompts: [], samples: [], output: 0, made: 0, madeCalls: 0, clips: 0, fallbacks: 0 });
+    if (!g) groups.set(c.offeringId, g = { id: c.offeringId, at, label: c.label, endpointName: c.endpointName, kind: c.kind, calls: 0, speeds: [], prompts: [], samples: [], output: 0, made: 0, madeCalls: 0, clips: 0, audio: 0, audioCalls: 0, fallbacks: 0 });
     // The name it goes by now, from the newest row: labels are kept with old rows for history's sake.
     else if (at > g.at) { g.at = at; g.label = c.label; g.endpointName = c.endpointName; g.kind = c.kind; }
     const [speed] = measuredSpeed(c), [output] = outputOf(c), fallback = hasFallback(c);
@@ -83,6 +88,8 @@ export function modelFacts(calls: CallInfo[], pools: Pool[], now: number = Date.
     g.output += output ?? 0;
     const made = madeBy(c);
     if (made) { g.made += made.count; g.madeCalls += 1; if (made.clip) g.clips += 1; }
+    const audio = audioOf(c);
+    if (audio !== undefined) { g.audio += audio; g.audioCalls += 1; }
     if (fallback) g.fallbacks += 1;
     points.push({ at: new Date(at).toISOString(), offeringId: c.offeringId, task: c.task,
       ...(output !== undefined ? { outputTokens: output } : {}), ...(speed !== undefined ? { tokPerSec: speed } : {}), ...(fallback ? { fallback: true as const } : {}) });
@@ -100,6 +107,7 @@ export function modelFacts(calls: CallInfo[], pools: Pool[], now: number = Date.
       ...(prompt !== undefined ? { medianPromptTokPerSec: prompt } : {}), promptSamples: g.prompts.length,
       ...(sampling ? { sampling } : {}),
       ...(g.madeCalls ? { made: { count: g.made, unit: g.clips * 2 > g.madeCalls ? "clip" as const : "image" as const } } : {}),
+      ...(g.audioCalls ? { audioSeconds: Math.round(g.audio * 10) / 10 } : {}),
       outputTokens: g.output, fallbacks: g.fallbacks,
     };
   });
