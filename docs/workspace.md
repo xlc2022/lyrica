@@ -1474,8 +1474,8 @@ her account is general.
      count on her own pull request);
      "Do not allow bypassing" off, so the owner's account, which Claude's threads
      work through, still merges as administrator.
-  4. A ruleset that lets her account create and update only `lyrica/*`
-     branches and `update/*` tags.
+  4. No ruleset limits her account: `lyrica/*` branches and `update/*`
+     tags are her naming convention.
   5. She pushes to the repository, never a fork, so her pull requests run
      CI like Claude's (docs/ci.md), with no fork approval.
 - **`.github/CODEOWNERS`** names the owner for the boundary code: keys and users

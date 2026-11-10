@@ -86,8 +86,8 @@ reviewers.
 PRs. Her reviewers act as her own GitHub account, so she records the
 verified head and the review results on the PR before merging it, with a
 merge commit. A PR of hers touching boundary code (CODEOWNERS) also waits
-for the owner's own approval, and her account pushes only `lyrica/*`
-branches and `update/*` tags. When the owner asks her to confer with
+for the owner's own approval, and her branches are named `lyrica/*`, as
+Claude's are `claude/*` and `feature/*`. When the owner asks her to confer with
 Claude on a change, she hands it to Claude Code, the `claude` role
 (docs/delegation.md, "Claude Code"), and weighs its report like a
 reviewer's findings. GitHub is the only channel between the two projects,

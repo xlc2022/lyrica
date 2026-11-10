@@ -67,9 +67,8 @@ These are by hand; the guides cover each one.
    keep both on the same release, or update the host only from this one.
 3. **A GitHub account for this deployment,** its own, never another
    deployment's token: a Write collaborator on `xlc2022/lyrica` only,
-   added to the ruleset that allows `lyrica/*` branches and `update/*`
-   tags, with a classic `public_repo` token (docs/workspace.md, "Her own
-   code", steps 1, 2 and 4).
+   with a classic `public_repo` token (docs/workspace.md, "Her own
+   code", steps 1 and 2).
 4. **Web search** (a SearXNG, [searxng.md](../guides/searxng.md)) and,
    for Claude Code jobs, a fresh `claude setup-token` token under
    Settings → Claude Code and Codex, so each deployment's can be revoked
@@ -345,30 +344,27 @@ above, then "Setup, by the owner, once" on that deployment.
 account, `lyrica-lilypad`, a Write collaborator on the repository; the
 development deployment's is `lyrica-lunasa`. Nothing in the repository
 lists her accounts: CODEOWNERS names only the owner, and CI runs the same
-for every pusher. The two places that do are GitHub's ruleset for
-`lyrica/*` branches and `update/*` tags, and Claude's PR review handoff
-([pr-review-handoff.md](pr-review-handoff.md)). Each deployment tags its
-own update notes ("Update tags" above). Next, by the owner: add the new
-account to the ruleset, then the rest of "Before her project" and "Setup,
-by the owner, once" on that deployment.
+for every pusher. The one place that does is Claude's PR review handoff
+([pr-review-handoff.md](pr-review-handoff.md)); no ruleset on GitHub
+limits her accounts. Each deployment tags its
+own update notes ("Update tags" above). Next, by the owner: the rest of
+"Before her project" and "Setup, by the owner, once" on that deployment.
 
 2026-11-10, later: the owner gave her full control of her own work.
 Claude's PR review no longer approves her PRs; she merges after her own
 reviewers and green CI, the owner still approves boundary code, and she
 confers with Claude through the `claude` role when the owner asks. Each
 deployment's saved Project instructions need the new text above pasted in
-by the owner (only the owner can change them). Also by the owner, in the
-repository's settings: if the rule on `main` still requires an approval,
-set it to none and keep pull requests only and the CI jobs. Until now
-Claude's approval met it, and she can't approve her own PR, so with it
-left on she can't merge.
+by the owner (only the owner can change them). `main` requires no
+approval on GitHub (the owner confirmed), so nothing in the repository's
+settings changes.
 
 2026-11-10, later still: one set of rules for both projects (AGENTS.md,
 "Workflow"). She is the main builder and takes any work, planned features
 included; docs-only, brief-only and small `web/` PRs skip her Review as
 they skip Claude's; her PRs no longer open as drafts; her Review thread
 keeps the design docs true to what her project settles. What still
-differs comes from her account: boundary code waits for the owner, and
-she pushes only `lyrica/*` branches and `update/*` tags. By the owner:
+differs: boundary code waits for the owner, and her reviewers' verifieds
+are recorded on the PR, since they act as her own account. By the owner:
 paste the new instructions, set the project's Goal as in "Setup, by the
 owner, once", and tell her Review thread its part.

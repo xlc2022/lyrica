@@ -2490,7 +2490,7 @@ from Monika's runbooks.
   requests run the same CI as Claude's (docs/ci.md), with
   no first-time-contributor approval. `main` is protected: pull requests
   only and green CI; nothing of hers merges without both. It requires no
-  approval on GitHub (the owner, 2026-11-10): her reviewers act as her own
+  approval on GitHub: her reviewers act as her own
   account, which GitHub won't count on her own PR, so their verifieds are
   recorded on the PR instead. The owner's own account may bypass the rules as
   administrator, because Claude's threads work through it.
@@ -2508,8 +2508,9 @@ from Monika's runbooks.
   names the owner for those paths, so GitHub asks for the owner's review on any PR
   that touches them, and she waits for the owner's approval on one of hers.
   Claude's threads act through the owner's account, so GitHub can't tell a
-  review of theirs from the owner's: this is a rule she follows, not a gate. She
-  may push only `lyrica/*` branches and `update/*` tags.
+  review of theirs from the owner's: this is a rule she follows, not a gate. Her
+  branches are `lyrica/*` and her tags `update/*` by convention; no ruleset
+  limits her account (the owner, 2026-11-10).
 - **Working alongside Claude.** One repository, one set of rules
   (AGENTS.md), each side's own review. Work is claimed as a GitHub issue with one
   assignee, her account or the owner, so two never build the same thing.
