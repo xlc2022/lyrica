@@ -23,7 +23,8 @@ AGENTS.md, Workflow, is the rule; read it first. In short:
 - The routine "Lyrica GitHub pickup" fires into this thread every 2 h at
   :46. It lists open, non-draft PRs on `lyrica/*` branches or by her
   accounts (one per deployment that runs her project: `lyrica-lunasa` on
-  the development deployment, per [lyrica-project.md](lyrica-project.md),
+  the development deployment and `lyrica-lilypad` on the one the owner
+  uses day to day, per [lyrica-project.md](lyrica-project.md),
   "More than one deployment"), and open issues labelled
   `claude`, skips items with a "Picked up by Claude's project" comment,
   reviews new PRs and approves or requests changes on GitHub, naming the
