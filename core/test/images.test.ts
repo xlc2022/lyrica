@@ -67,6 +67,10 @@ describe("image calls through the router (principles 1 and 2)", () => {
     const unmeasured = s.models.recentCalls(s.ada.id, { pool: "private", threadId: "web/t1" })[0];
     expect(unmeasured).not.toHaveProperty("sampling");
     expect(unmeasured).toMatchObject({ task: "image.upscale", images: 1 });
+    expect(unmeasured).not.toHaveProperty("clip");
+    // An upscale that took a clip says so, so Status counts it in clips.
+    s.models.recordCall(s.ada.id, { pool: "private", threadId: "web/t1", task: "image.upscale", resolution: out.resolution, images: 1, clip: true });
+    expect(s.models.recentCalls(s.ada.id, { pool: "private", threadId: "web/t1" })[0]).toMatchObject({ task: "image.upscale", images: 1, clip: true });
   });
   it("upscales a clip on the Image upscaling list's first host recipe that upscales clips, never a cloud model", async () => {
     const s = await setup(), ctx = s.ctx({ pool: "private" });

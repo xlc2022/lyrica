@@ -22,12 +22,15 @@ type Sample = { seconds: number; steps: number; stepsPerSec: number; pixels?: nu
 const sampled = (c: CallInfo): Sample[] => {
   const s = c.sampling;
   if (!s || !(s.ms >= 50) || !(s.steps > 0) || !(s.images >= 1)) return [];
-  return [{ seconds: s.ms / 1000 / s.images, steps: s.steps / s.images, stepsPerSec: (s.steps * 1000) / s.ms, ...(s.pixels ? { pixels: s.pixels } : {}), clip: c.task === "video" }];
+  return [{ seconds: s.ms / 1000 / s.images, steps: s.steps / s.images, stepsPerSec: (s.steps * 1000) / s.ms, ...(s.pixels ? { pixels: s.pixels } : {}), clip: madeClip(c) }];
 };
+
+/** Whether a call made a clip: a video call, or an image upscale that took one. */
+const madeClip = (c: CallInfo): boolean => c.task === "video" || c.clip === true;
 
 /** What an image or video call made: its recorded count, else one (a call is recorded only once it made something). */
 const madeBy = (c: CallInfo): { count: number; clip: boolean } | undefined =>
-  c.task === "video" || c.task.startsWith("image.") ? { count: c.images ?? c.sampling?.images ?? 1, clip: c.task === "video" } : undefined;
+  c.task === "video" || c.task.startsWith("image.") ? { count: c.images ?? c.sampling?.images ?? 1, clip: madeClip(c) } : undefined;
 
 /** A speech call's recorded seconds of audio, heard (Dictation) or spoken (Read aloud); never the audio or its text. */
 const audioOf = (c: CallInfo): number | undefined =>
@@ -54,7 +57,7 @@ function median(xs: number[]): number | undefined {
  * over `pace.promptTokPerSec`, and output tokens add up what paced rows wrote.
  * An image or video model's `sampling` comes from rows whose host measured the job:
  * medians of seconds per image, steps and steps per second, in clips when its
- * rows are clips. Its `made` adds up the images (or clips) its image and video
+ * rows are clips (a video call, or an upscale of a clip). Its `made` adds up the images (or clips) its image and video
  * calls made, in clips when most of those calls were. A speech model's `audioSeconds`
  * adds up the seconds of audio its calls heard or spoke. `calls` gives each row's time, offering, task, output, speed and fallback mark,
  * newest first, for the charts: no thread, note or text. Fallbacks count rows that

@@ -127,6 +127,16 @@ describe("model facts for the last 24 hours", () => {
     expect(by.chat).toBeUndefined();
   });
 
+  it("counts an upscale that took a clip as a clip, in its count and its speed", () => {
+    const r = modelFacts([
+      at("up", -1 * MIN, { task: "image.upscale", images: 1, clip: true, sampling: { ms: 60_000, steps: 10, images: 1 } }),
+      at("up", -2 * MIN, { task: "image.upscale", images: 1, clip: true, sampling: { ms: 80_000, steps: 10, images: 1 } }),
+      at("up", -3 * MIN, { task: "image.upscale", images: 1 }),
+    ], ["general"], NOW);
+    expect(r.models[0]!.made).toEqual({ count: 3, unit: "clip" });
+    expect(r.models[0]!.sampling).toMatchObject({ secondsPer: 70, unit: "clip" });
+  });
+
   it("medians recorded speeds, averaging the central pair when there are an even number", () => {
     const odd = modelFacts(["10", "30", "20"].map((s, i) => at("odd", -(i + 1) * MIN, { pace: pace(Number(s)) })), ["general"], NOW);
     expect(odd.models.map((m) => [m.speedSamples, m.medianTokPerSec])).toEqual([[3, 20]]);

@@ -428,7 +428,9 @@ samplers ran and their steps (host/API.md, `sampling`), how many images the
 call made and the first one's pixels. Read back as `sampling` on the record;
 Status shows its seconds per image. Every image or video call also records how
 many it made in `images` (`recordCall`'s `images`, read back as `images` on the
-record, measured or not); Status shows the count in its Output cell. Never the prompt or the picture, and no
+record, measured or not); Status shows the count in its Output cell. An image
+upscale that took a clip also sets `clip` (`recordCall`'s `clip`, user step 24,
+read back as `clip: true`), so Status counts it in clips. Never the prompt or the picture, and no
 `pace`: sampling time is not generation time, so it counts in no tok/s and no
 GPU time.
 `endpointUses(userId, pools)` counts each endpoint's calls over these rows in

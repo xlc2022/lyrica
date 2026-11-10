@@ -166,7 +166,9 @@ CREATE TABLE IF NOT EXISTS model_calls (
   sampling_ms INTEGER,
   steps       INTEGER,
   images      INTEGER,
-  pixels      INTEGER
+  pixels      INTEGER,
+  -- 1 when an image upscale took a clip, so it counts as a clip: null otherwise.
+  clip        INTEGER
 );
 `;
 

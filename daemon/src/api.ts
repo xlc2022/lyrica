@@ -702,6 +702,8 @@ export interface CallInfo {
   sampling?: { ms: number; steps: number; images: number; pixels?: number };
   /** How many images (or clips) an image or video call made, where it recorded the count. */
   images?: number;
+  /** An image upscale that took a clip, so it counts in clips. */
+  clip?: true;
 }
 /** GET /api/u/:userId/models/calls → CallInfo[], newest first. */
 
