@@ -5,7 +5,7 @@ import {
 import { readFileSync } from "node:fs";
 import { posix } from "node:path";
 import {
-  decide, type CommandRule, holdsSecret, librariesLine, JOB_LIMITS, jobLine, type JobInfo, malformedCommand, mcpNamespace, onFloor, sandboxTools, PROXMOX_READS, PROXMOX_SUSPECT, SANDBOX_ALLOW, stricterMode, suspectCommand, suspectKey, SHARED, FAMILY_ROOT, WORKDIR, writtenFiles, type ExecutionTarget, type ProxmoxAction, type Network, type NewChange, type PermissionMode, type ThreadGitRepository, type ThreadMachine, type ThreadRepository, type ThreadWorkspace, type ToolOps,
+  decide, type CommandRule, withoutNoMachine, holdsSecret, librariesLine, JOB_LIMITS, jobLine, type JobInfo, malformedCommand, mcpNamespace, onFloor, sandboxTools, PROXMOX_READS, PROXMOX_SUSPECT, SANDBOX_ALLOW, stricterMode, suspectCommand, suspectKey, SHARED, FAMILY_ROOT, WORKDIR, writtenFiles, type ExecutionTarget, type ProxmoxAction, type Network, type NewChange, type PermissionMode, type ThreadGitRepository, type ThreadMachine, type ThreadRepository, type ThreadWorkspace, type ToolOps,
 } from "@lyrica/core";
 import { Type } from "typebox";
 import { setToolsOff } from "./gate.ts";
@@ -269,10 +269,13 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
           ...(name === "bash" ? { timeout: BASH_TIMEOUT, ...(tools.startJob ? { background: BACKGROUND } : {}) } : {}),
           machine: MACHINE,
         }) as typeof template.parameters,
-        ...(name === "edit" || name === "write" ? { prepareArguments: (input: unknown) => {
-          const args = pathArguments(name, template.prepareArguments ? template.prepareArguments(input) : input, last);
+        // A machine sent as null, "null" or "sandbox" is no machine: the call is the sandbox's, in the gate, the run and the approval.
+        prepareArguments: (input: unknown) => {
+          const prepared = withoutNoMachine(template.prepareArguments ? template.prepareArguments(input) : input, (tools.machines?.() ?? []).map((m) => m.name));
+          if (name !== "edit" && name !== "write") return prepared;
+          const args = pathArguments(name, prepared, last);
           return name === "edit" ? editArguments(args) : args;
-        } } : {}),
+        },
         async execute(id, params, signal, onUpdate, ctx) {
           const { machine: named, background, ...rest } = params as Record<string, unknown>;
           if ((name === "read" || name === "edit" || name === "write") && typeof rest.path === "string") last = { verb: name === "read" ? "read" : name === "edit" ? "edited" : "wrote", path: rest.path };
@@ -431,7 +434,7 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
       const named = place && place !== "sandbox" ? tools.machines?.().find((m) => m.name === place) : undefined;
       const machine = named && (named.kind === "proxmox") === pve ? named : undefined;
       // A machine of the other kind is the thread's: the refusal names the tool that reaches it, so she doesn't ask for a machine she has.
-      if (place && place !== "sandbox" && !machine) return { block: true, reason: !named ? `${place} isn't one of this thread's ${pve ? "Proxmox " : ""}machines.`
+      if (place && place !== "sandbox" && !machine) return { block: true, reason: !named ? `${place} isn't one of this thread's ${pve ? "Proxmox " : ""}machines.${pve ? "" : " Leave machine out to run in the sandbox."}`
         : pve ? `${place} is an SSH machine: bash and the file tools reach it, not the proxmox tool.`
         : `${place} is a Proxmox machine, reached only with the proxmox tool: it has no shell and no files.` };
       // On a machine, the stricter of the thread's mode and the machine's limit.

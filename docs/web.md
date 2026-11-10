@@ -179,8 +179,13 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   (`lyrica.changes.view`); below 1180 px it is unified. Nothing of it is
   stored or logged: the texts come to this browser and go nowhere else.
   **Routine** (`src/Routines.tsx`, `ThreadSettings.routines`) opens the
-  same style of popover listing schedules, next times in mono, Pause or
-  Resume and Remove, never notes. Its fact shows the earliest active next
+  same style of popover listing each routine's title with its purpose tooltip,
+  schedule, next time in mono, Pause or Resume and Remove, never execution
+  notes. Title and purpose fall back independently: source thread plus routine
+  ID, and saved instructions here/in a new thread. Neither parses the note.
+  The title reuses `wl`/`preview`: hover, keyboard focus or a touch tap reveals
+  its `aria-describedby` tooltip; Escape dismisses it before the popover.
+  Long titles wrap within the text column, with 44 px touch targets. Its fact shows the earliest active next
   time, or Paused when all are paused, and disappears when none remain.
   Web Pause, Resume and Remove reload settings and publish the existing
   `settings` event to the source thread; finished turns and focus refresh
@@ -899,7 +904,8 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   confirmed in place; Not installed when the server lacks Codex.
   **Routines** (`src/Routines.tsx`), after Claude Code and Codex: every routine of
   the user across both pools (`GET …/routines`), sorted by pool and thread, its
-  thread linked, schedule from `describe()`, next time in mono or Paused,
+  title and purpose tooltip as in the popover, source thread linked,
+  schedule from `describe()`, next time in mono or Paused,
   **Pause** or **Resume** (`PATCH …/threads/:pool/:threadId/routines/:id`
   with `paused`) and the bordered Remove icon (`DELETE` at the same path).
   Listings contain no notes. Empty: "No routines."
@@ -1588,6 +1594,15 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   plan, an approval or a question) has scrolled out of view, a thin accent bar across the
   top of the conversation says "Plan waiting for your answer" (or
   "Approval…") and scrolls to it.
+- **Opening at the latest:** a thread opens at its newest message and follows
+  the bottom while anything grows (new text, a picture or diagram loading, the
+  header filling in and shrinking the conversation's box), until the person
+  scrolls up more than 80 px. Only scrolling changes that (theirs, Jump to latest,
+  a jump to a message), never a change of size (`useStickyScroll` in
+  `src/Thread.tsx`, with a ResizeObserver on the box and its children). For a
+  second after the person presses a control in the conversation (a marker, a
+  run, Show more), that control holds its place instead, so what it opens
+  stays in view, and whether they still follow the bottom is measured afresh.
 - **Jump to latest:** when new messages or streamed text land while the person
   has scrolled up, a small secondary **Jump to latest** button at the foot of the
   conversation offers to take them back down to the latest text
@@ -1694,7 +1709,10 @@ turns animations off.
   `npm run dev -w @lyrica/web` serves the UI with `/api` passed to it.
 - `npx tsx web/e2e/shot.ts [page]...` (after a build) saves screenshots of
   ada's pages from that same throwaway `lyricad`, at both widths, light and
-  dark (docs/workspace.md, "Her own code").
+  dark (docs/workspace.md, "Her own code"). `--routines` seeds synthetic
+  display labels; `routine-popover`, `routine-purpose`, `routine-settings`
+  and `routine-settings-purpose` capture both routine surfaces and their
+  open purpose tooltips, including long, paused and legacy rows.
 
 A project sandbox command card offers secondary **Always allow `<prefix>`**
 between Allow and Deny, only when lyricad supplied `alwaysAllow`. It answers

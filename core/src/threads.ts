@@ -235,7 +235,7 @@ export const WATCH_GUIDELINE = "A pull request you open is watched: when its che
   + "To watch one opened another way or earlier (yours by hand, or after its watch ended), use threads watch with pr (owner/repo#number).";
 
 /** Her guidance on recurring turns requested by the user. */
-export const ROUTINE_GUIDELINE = "Use threads routine for what the user asked to happen regularly; a one-off later is a wake-up.";
+export const ROUTINE_GUIDELINE = "Use threads routine for what the user asked to happen regularly; a one-off later is a wake-up. Give it a short title and a purpose description for the user, separate from its execution note. Edit labels without recreating the routine.";
 
 /** How she mentions a thread, in every thread: by ID, which the person sees as its current title. */
 export const MENTION_GUIDELINE = "Mention a thread as [t:<id>] and a message as [e:<id>#<n>]: the person sees the thread's current title, linked, so don't write the title beside it. A person may name a thread by its title; use its ID when you mention it.";

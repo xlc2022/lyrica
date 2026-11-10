@@ -1,4 +1,4 @@
-import { FROM_PARENT, LYRICA_REACTS, ROOT_TOOL, ROUTINE, WAKEUP, WATCHING, type Reaction as StoredReaction } from "@lyrica/core";
+import { callArgs, FROM_PARENT, LYRICA_REACTS, ROOT_TOOL, ROUTINE, WAKEUP, WATCHING, type Reaction as StoredReaction } from "@lyrica/core";
 import { type ChecksResult, CHECKS_NOTICE, type EvidenceResult, EVIDENCE_NOTICE, DELEGATE_MESSAGE, EMPTY_REPLY_NOTICE, INTERRUPTED_NOTICE, TURN_TOOL_NOTICE, OPENING, PAID_FALLBACK, type PaidFallback, USER_MESSAGE } from "@lyrica/extension";
 import type { Message, MessagePart, Pool, Reaction, RootStep, ThreadRef, Told } from "./api.ts";
 
@@ -302,7 +302,7 @@ export function toMessages(threadId: string, pool: Pool, entries: { n: number; d
         if (p.type === "text" && p.text) msg.parts.push({ type: "text", text: p.text });
         if (p.type === "thinking" && p.thinking) msg.parts.push({ type: "thinking", text: p.thinking });
         if (p.type === "toolCall" && p.id) {
-          const part = { type: "tool" as const, toolCallId: p.id, name: p.name ?? "", args: p.arguments };
+          const part = { type: "tool" as const, toolCallId: p.id, name: p.name ?? "", args: callArgs(p.name ?? "", p.arguments) };
           msg.parts.push(part);
           calls.set(p.id, { part, owner: msg });
         }

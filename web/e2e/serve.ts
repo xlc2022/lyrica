@@ -69,6 +69,23 @@ function fakeModel() {
     let body = "";
     req.on("data", (c) => (body += c));
     req.on("end", async () => {
+      // Synthetic routine labels, in encrypted stores; never a production route or real task text.
+      if (req.method === "POST" && req.url === "/routines-fixture") {
+        const { userId } = JSON.parse(body) as { userId: string };
+        const view = daemon.services!.memory.openThreadView(userId, "general");
+        try {
+          const thread = view.own.createThread({ interface: "web", title: "Garden checks" });
+          const schedule = { kind: "daily" as const, time: "08:00" };
+          const id = view.own.addRoutine(thread.id, schedule, "Execution-only fixture instructions.", false, undefined, undefined,
+            { title: "Watering review", description: "Reviews the watering plan for the garden." });
+          const paused = view.own.addRoutine(thread.id, schedule, "Another execution-only fixture.", true, undefined, undefined,
+            { title: "Greenhouse planting and watering review for the next growing season", description: "Reviews the greenhouse planting plan, checks the watering rota and gathers the questions for the next growing season. Summarises the tasks that need attention without changing the plan or ordering supplies." });
+          view.own.pauseRoutine(thread.id, paused, true);
+          const legacy = view.own.addRoutine(thread.id, schedule, "Legacy execution-only fixture.", true);
+          res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ threadId: thread.id, id, paused, legacy }));
+        } finally { view.close(); }
+        return;
+      }
       // Test-only model metadata, in encrypted stores; never a production route.
       if (req.method === "POST" && req.url === "/model-facts-fixture") {
         const { userId } = JSON.parse(body) as { userId: string };

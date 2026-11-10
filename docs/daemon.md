@@ -455,7 +455,8 @@ Each active thread is one Pi session from `openThreadSession`, with
   schedules survive restart; last-run tracking is cleared on Lock or restart.
   Only the daemon can send the routine mark; a
   user message or edit carrying it is rejected with HTTP 400. The web API
-  lists only the signed-in user's routine metadata across their own pools,
+  lists only the signed-in user's routine metadata across their own pools
+  (optional title/purpose description and new-thread destination included),
   and pauses, resumes or removes a routine in its own thread; routes and
   response fields are in [contracts.md](contracts.md#delegate). Listings
   never carry notes. Stored messages expose the mark as `from.kind: "routine"`

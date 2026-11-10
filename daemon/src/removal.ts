@@ -1,5 +1,5 @@
 import { posix } from "node:path";
-import { sha256, type ExecutionTarget, type FileChange, type FileChanges, type Grant, type Pool, type PoolStore } from "@lyrica/core";
+import { callArgs, sha256, type ExecutionTarget, type FileChange, type FileChanges, type Grant, type Pool, type PoolStore } from "@lyrica/core";
 import type { RemovalPlan } from "./api.ts";
 import { toMessages } from "./messages.ts";
 
@@ -169,7 +169,7 @@ function toolCalls(e: { data: unknown }): ToolCall[] {
   const c = (e.data as { message: { content?: unknown } }).message.content;
   if (!Array.isArray(c)) return [];
   return c.filter((p: { type?: string; id?: unknown }) => p.type === "toolCall" && typeof p.id === "string")
-    .map((p: { id: string; name?: string; arguments?: unknown }) => ({ id: p.id, name: p.name ?? "", args: (p.arguments ?? {}) as Record<string, unknown> }));
+    .map((p: { id: string; name?: string; arguments?: unknown }) => ({ id: p.id, name: p.name ?? "", args: callArgs(p.name ?? "", p.arguments ?? {}) as Record<string, unknown> }));
 }
 
 const quote = (s: string) => `'${s.replaceAll("'", "'\\''")}'`;

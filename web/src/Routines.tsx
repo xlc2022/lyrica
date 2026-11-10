@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { del, get, patch, threadPath, u, type RoutineInfo } from "./api.ts";
 import { Icon } from "./icons.tsx";
 import { href } from "./route.ts";
@@ -14,6 +14,29 @@ export function ScheduleText({ text }: { text: string }) {
   return <>{text.split(/(\d+(?::\d+)?)/).map((part, i) => /^\d/.test(part) ? <span className="num" key={i}>{part}</span> : part)}</>;
 }
 
+/** Explicit purpose, never the execution note; older routines keep an honest destination fallback. */
+function RoutineTitle({ routine: r }: { routine: RoutineInfo }) {
+  const tip = useId();
+  const [dismissed, setDismissed] = useState(false);
+  const preview = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => {
+      // Hover can reveal the tooltip while focus is still on the outer popover's trigger.
+      if (e.key !== "Escape" || !preview.current || getComputedStyle(preview.current).display === "none") return;
+      e.stopPropagation();
+      setDismissed(true);
+    };
+    addEventListener("keydown", key, true);
+    return () => removeEventListener("keydown", key, true);
+  }, []);
+  return <span className="wl routine-title" tabIndex={0} aria-describedby={tip} data-dismissed={dismissed || undefined}
+    onFocus={() => setDismissed(false)} onPointerEnter={() => setDismissed(false)}
+    onClick={e => { e.currentTarget.focus(); setDismissed(false); }}>
+    <span>{r.title ?? <>{r.threadTitle} · Routine <span className="num">{r.id}</span></>}</span>
+    <span className="preview" role="tooltip" id={tip} ref={preview}>{r.description ?? `Runs the saved instructions ${r.newThread ? "in a new thread" : "here"}.`}</span>
+  </span>;
+}
+
 export function RoutineRows({ userId, routines, linked, onChange }: {
   userId: string; routines: RoutineInfo[]; linked?: boolean; onChange: () => void;
 }) {
@@ -23,12 +46,13 @@ export function RoutineRows({ userId, routines, linked, onChange }: {
       const path = threadPath(userId, r.pool, r.threadId, "routines", String(r.id));
       return <div className="wake-item routine-item" key={`${r.pool}/${r.id}`}>
         <div className="routine-facts">
+          <RoutineTitle routine={r} />
           {linked && <a href={href({ page: "thread", userId, pool: r.pool, threadId: r.threadId })}>{r.threadTitle}</a>}
           <span title={`In your time zone, ${timeZone()}`}><ScheduleText text={r.schedule} /></span>
           {r.paused ? <span className="muted">Paused</span> : <time className="num" dateTime={r.nextAt} title={fullTime(r.nextAt)}>{wakeTime(r.nextAt)}</time>}
         </div>
         <button type="button" className="sm" disabled={busy} onClick={() => void run(async () => { await patch(path, { paused: !r.paused }); onChange(); })}>{r.paused ? "Resume" : "Pause"}</button>
-        <button type="button" className="icon sm danger" aria-label={`Remove routine: ${r.schedule}`} title="Remove" disabled={busy}
+        <button type="button" className="icon sm danger" aria-label={`Remove routine: ${r.title ?? `${r.threadTitle} · Routine ${r.id}`}`} title="Remove" disabled={busy}
           onClick={() => void run(async () => { await del(path); onChange(); })}><Icon name="close" /></button>
       </div>;
     })}

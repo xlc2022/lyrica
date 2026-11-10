@@ -418,6 +418,10 @@ export const STEPS: Record<DbKind, MigrationStep[]> = {
         set_at TEXT NOT NULL
       )`);
     },
+  }, {
+    // Principles 1 and 6: explicit routine labels, without exposing or rewriting execution notes. Adds nullable columns only.
+    version: 15,
+    run(db) { addColumns(db, [["routines", "title", "TEXT"], ["routines", "description", "TEXT"]]); },
   }],
 };
 

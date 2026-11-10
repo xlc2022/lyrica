@@ -47,6 +47,62 @@ test("the request's counts take the dots' place while the prompt is read and she
   await noHorizontalScroll(page);
 });
 
+test("routine titles explain their purpose on focus and touch without exposing instructions", async ({ page, baseURL, request }) => {
+  const userId = await enter(page, baseURL!);
+  const seeded = await request.post(`http://127.0.0.1:${Number(new URL(baseURL!).port) + 10}/routines-fixture`, { data: { userId } });
+  expect(seeded.ok()).toBe(true);
+  const { threadId } = await seeded.json() as { threadId: string };
+  await page.goto(`/#/u/${userId}/t/general/${encodeURIComponent(threadId)}`);
+  const fact = page.getByRole("button", { name: /^Routine / });
+  await fact.click();
+  const pop = page.getByRole("dialog", { name: "Routines", exact: true });
+  await expect(pop.locator(".routine-title").first()).toContainText("Watering review");
+  await expect(pop).not.toContainText("Execution-only");
+  const title = pop.locator(".routine-title").first();
+  if (phone(page)) await title.tap();
+  else {
+    await title.hover();
+    await expect(title.getByRole("tooltip")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(title.getByRole("tooltip")).toBeHidden();
+    await expect(pop).toBeVisible();
+    await page.mouse.move(0, 0);
+    await title.focus();
+  }
+  await expect(title.getByRole("tooltip")).toBeVisible();
+  await expect(title.getByRole("tooltip")).toHaveText("Reviews the watering plan for the garden.");
+  await page.keyboard.press("Escape");
+  await expect(title.getByRole("tooltip")).toBeHidden();
+  await expect(pop).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(pop).toBeHidden();
+  await fact.click();
+  const legacy = pop.locator(".routine-title").last();
+  await legacy.click();
+  await expect(legacy).toContainText("Garden checks · Routine");
+  await expect(legacy.getByRole("tooltip")).toHaveText("Runs the saved instructions in a new thread.");
+  await noHorizontalScroll(page);
+  await page.goto(`/#/u/${userId}/settings/routines`);
+  const rows = page.locator(".routine-item");
+  await expect(rows).toHaveCount(3);
+  await expect(rows.first().getByRole("link", { name: "Garden checks" })).toBeVisible();
+  const longTitle = rows.nth(1).locator(".routine-title");
+  await longTitle.click();
+  const tip = longTitle.getByRole("tooltip");
+  await expect(tip).toBeVisible();
+  const bounds = await tip.boundingBox();
+  expect(bounds!.x).toBeGreaterThanOrEqual(0);
+  expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
+  await noHorizontalScroll(page);
+  await page.keyboard.press("Escape");
+  await rows.nth(1).getByRole("button", { name: "Resume", exact: true }).click();
+  await expect(rows.nth(1).getByRole("button", { name: "Pause", exact: true })).toBeVisible();
+  await rows.nth(1).getByRole("button", { name: "Pause", exact: true }).click();
+  await expect(rows.nth(1).getByRole("button", { name: "Resume", exact: true })).toBeVisible();
+  await rows.last().getByRole("button", { name: /^Remove routine:/ }).click();
+  await expect(rows).toHaveCount(2);
+});
+
 test("a reply that lands while scrolled up shows a jump-to-latest control that takes the person down to the bottom", async ({ page, baseURL }) => {
   await enter(page, baseURL!);
   await newThread(page, "General");
@@ -1296,4 +1352,44 @@ test("an uploaded file's path goes into the message", async ({ page, baseURL }) 
   const path = (await box.inputValue()).trim();
   await page.getByRole("button", { name: "Send" }).click();
   await expect(page.locator(".msg.user").getByText(path)).toBeVisible();
+});
+
+test("a thread opens at its latest message, even when the space above the conversation grows while it loads or content grows after", async ({ page, baseURL }) => {
+  await enter(page, baseURL!);
+  await newThread(page, "General");
+  await send(page, `reply: ${Array.from({ length: 30 }, (_, i) => `Line ${i + 1} of the long thread, which keeps going past one line on the way down.`).join("\n\n")}`);
+  await expect(page.getByText(/^Line 30 of the long thread/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Stop" })).toBeHidden();
+  await newThread(page, "General");
+  // The messages come late, and meanwhile the header grows (badges wrapping, the parent's line arriving): the conversation's box shrinks before there is anything to scroll.
+  await page.route(/\/messages$/, async (r) => { await new Promise((d) => setTimeout(d, 800)); await r.continue(); });
+  await page.route(/\/events$/, async (r) => { await new Promise((d) => setTimeout(d, 2000)); await r.continue(); });
+  if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
+  await page.locator(".side").getByRole("link", { name: /Line 1 of the long thread/ }).click();
+  await expect(page.getByRole("heading", { level: 1 })).not.toHaveText("New thread");
+  await expect(page.locator(".scroll .msg")).toHaveCount(0);
+  await page.locator(".thread-head").evaluate((el) => { el.style.paddingBottom = "160px"; });
+  const scroll = page.locator(".scroll").first();
+  const fromBottom = () => scroll.evaluate((el) => el.scrollHeight - el.scrollTop - el.clientHeight);
+  await expect(page.getByText(/^Line 30 of the long thread/)).toBeAttached();
+  await expect.poll(fromBottom).toBeLessThanOrEqual(2);
+  // Content that grows after it opened (a picture loading, a diagram drawn) keeps it at the bottom.
+  await page.locator(".scroll .msg").last().evaluate((el) => { el.style.paddingBottom = "400px"; });
+  await expect.poll(fromBottom).toBeLessThanOrEqual(2);
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+  // Something she opens herself near the foot (a run of tool calls) opens in place: the view doesn't follow it down.
+  await page.locator(".scroll .msg").last().evaluate((el) => { el.style.paddingBottom = ""; });
+  await send(page, "recall: 6");
+  await expect(page.getByText("You said: recall: 6")).toBeVisible();
+  // Her turn has finished laying out (its actions row, the facts line) before the marker is measured.
+  await expect(page.getByRole("button", { name: "Stop" })).toBeHidden();
+  await expect(page.getByRole("group", { name: "Message actions" }).last()).toBeVisible();
+  await expect.poll(fromBottom).toBeLessThanOrEqual(2);
+  const marker = page.locator(".marker.tool-run").last().getByRole("button", { name: /tool calls/ });
+  const before = (await marker.boundingBox())!.y;
+  await marker.click();
+  await expect(page.locator(".marker.tool-run").last().locator(".run-body .marker[data-type='tool']")).toHaveCount(6);
+  await page.waitForTimeout(300);
+  expect(Math.abs((await marker.boundingBox())!.y - before)).toBeLessThanOrEqual(2);
+  await expect(marker).toBeInViewport();
 });

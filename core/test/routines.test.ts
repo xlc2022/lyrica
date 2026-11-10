@@ -1,5 +1,7 @@
 import { afterAll, describe, expect, it } from "vitest";
-import { describe as describeSchedule, nextRun, parseSchedule } from "../src/routines.ts";
+import { checkRoutineMetadata, describe as describeSchedule, nextRun, parseSchedule, type RoutineMetadata } from "../src/routines.ts";
+import { Memory, Users } from "../src/index.ts";
+import { freshKeyring, profile } from "./helpers.ts";
 
 // Set before any Date is built: the maths runs in the process's local zone.
 const originalTZ = process.env.TZ;
@@ -10,6 +12,109 @@ afterAll(() => {
 });
 
 const schedule = parseSchedule;
+
+async function routineStore() {
+  const keyring = await freshKeyring();
+  const users = new Users(keyring);
+  const user = await users.createUser("tester", "pw", profile("Tester"), { admin: true });
+  await users.authenticate("tester", "pw");
+  const memory = new Memory(keyring, users);
+  return { memory, user, view: memory.openThreadView(user.id, "general") };
+}
+
+const daily = { kind: "daily", time: "08:00" } as const;
+const createdAt = "2026-10-12T00:00:00.000Z";
+
+describe("routine metadata", () => {
+  it("round-trips optional labels without deriving them from notes, including after reopening", async () => {
+    const { memory, user, view } = await routineStore();
+    const thread = view.own.createThread({ interface: "web" }).id;
+    const legacy = view.own.addRoutine(thread, daily, "Saved instructions.", false, createdAt, "UTC");
+    const labelled = view.own.addRoutine(thread, daily, "Different saved instructions.", true, createdAt, "UTC", {
+      title: "  Morning review  ", description: "Review the synthetic list.\nReport anything waiting.",
+    });
+    const titleOnly = view.own.addRoutine(thread, daily, "No description.", false, createdAt, "UTC", { title: "Title only" });
+    const descriptionOnly = view.own.addRoutine(thread, daily, "No title.", false, createdAt, "UTC", { description: "Description only." });
+    const before = view.own.routines(thread);
+    expect(before.find((r) => r.id === legacy)).not.toHaveProperty("title");
+    expect(before.find((r) => r.id === legacy)).not.toHaveProperty("description");
+    expect(before.find((r) => r.id === labelled)).toMatchObject({ title: "Morning review", description: "Review the synthetic list.\nReport anything waiting.", newThread: true });
+    expect(before.find((r) => r.id === titleOnly)).not.toHaveProperty("description");
+    expect(before.find((r) => r.id === descriptionOnly)).not.toHaveProperty("title");
+    view.close();
+    const reopened = memory.openThreadView(user.id, "general");
+    expect(reopened.own.routines(thread)).toEqual(before);
+    reopened.close();
+  });
+
+  it("edits labels alone, preserving omitted fields, other routines and thread and pool isolation", async () => {
+    const { memory, user, view } = await routineStore();
+    const thread = view.own.createThread({ interface: "web" }).id;
+    const otherThread = view.own.createThread({ interface: "web" }).id;
+    const id = view.own.addRoutine(thread, daily, "Saved instructions stay unchanged.", true, createdAt, "UTC", { title: "Before", description: "Keep this purpose." });
+    const other = view.own.addRoutine(otherThread, daily, "Other instructions.", false, createdAt, "UTC");
+    view.own.pauseRoutine(thread, id, true);
+    view.own.advanceRoutine(id, "2026-10-14T08:00:00.000Z", "2026-10-13T08:00:00.000Z");
+    const before = view.own.routines(thread)[0]!;
+    const untouched = view.own.routines(otherThread);
+    const ledger = view.own.wakeupsFired(thread, createdAt);
+    expect(view.own.editRoutine(otherThread, id, { title: "Wrong thread" })).toBe(false);
+    expect(view.own.editRoutine(thread, other, { title: "Wrong routine" })).toBe(false);
+    expect(view.own.editRoutine(thread, id + 1000, { title: "Missing" })).toBe(false);
+    expect(view.own.editRoutine(thread, id, { title: "After" })).toBe(true);
+    expect(view.own.routines(thread)).toEqual([{ ...before, title: "After" }]);
+    expect(view.own.editRoutine(thread, id, { description: "A new purpose." })).toBe(true);
+    expect(view.own.routines(thread)).toEqual([{ ...before, title: "After", description: "A new purpose." }]);
+    expect(view.own.routines(otherThread)).toEqual(untouched);
+    expect(view.own.wakeupsFired(thread, createdAt)).toEqual(ledger);
+    const privateView = memory.openThreadView(user.id, "private");
+    expect(privateView.own.editRoutine(thread, id, { title: "Wrong pool" })).toBe(false);
+    expect(privateView.own.routines()).toEqual([]);
+    privateView.close();
+    view.close();
+  });
+
+  it("removes credentials before checking stored lengths and never truncates", async () => {
+    const { view } = await routineStore();
+    const thread = view.own.createThread({ interface: "web" }).id;
+    const token = `ghp_${"a".repeat(400)}`;
+    const key = "-----BEGIN PRIVATE KEY-----\nsynthetic\n-----END PRIVATE KEY-----";
+    const id = view.own.addRoutine(thread, daily, "Instructions.", false, createdAt, "UTC", { title: token, description: token });
+    expect(view.own.routines(thread)[0]).toMatchObject({ title: "[secret removed]", description: "[secret removed]" });
+    expect(view.own.editRoutine(thread, id, { title: key, description: "password=x" })).toBe(true);
+    expect(view.own.routines(thread)[0]).toMatchObject({ title: "[secret removed]", description: "password=[secret removed]" });
+    expect(checkRoutineMetadata({ title: "t".repeat(80), description: "d".repeat(300) })).toEqual({ title: "t".repeat(80), description: "d".repeat(300) });
+    for (const metadata of [{ title: `${"t".repeat(70)} password=x` }, { description: `${"d".repeat(290)} password=x` }]) {
+      expect(() => view.own.addRoutine(thread, daily, "Instructions.", false, createdAt, "UTC", metadata)).toThrow(/characters/);
+      expect(() => view.own.editRoutine(thread, id, metadata)).toThrow(/characters/);
+    }
+    expect(view.own.routines(thread)).toHaveLength(1);
+    view.close();
+  });
+
+  it("rejects malformed and explicitly empty metadata atomically on both add and edit", async () => {
+    const { view } = await routineStore();
+    const thread = view.own.createThread({ interface: "web" }).id;
+    const id = view.own.addRoutine(thread, daily, "Instructions.", false, createdAt, "UTC", { title: "Original", description: "Original purpose." });
+    const before = view.own.routines(thread);
+    const bad: unknown[] = [
+      null, [], "title", 1, {}, { title: undefined }, { description: undefined },
+      { title: null }, { title: 42 }, { description: false }, { description: [] },
+      { title: "" }, { title: " \t " }, { description: "" }, { description: "\n " },
+      { title: "two\nlines" }, { title: "two\rlines" }, { title: "two\u2028lines" },
+      { title: "x".repeat(81) }, { description: "x".repeat(301) },
+      { title: "Do not save this", description: "" },
+    ];
+    for (const input of bad) {
+      const metadata = input as RoutineMetadata;
+      expect(() => checkRoutineMetadata(input)).toThrow(Error);
+      expect(() => view.own.addRoutine(thread, daily, "Instructions.", false, createdAt, "UTC", metadata)).toThrow(Error);
+      expect(() => view.own.editRoutine(thread, id, metadata)).toThrow(Error);
+      expect(view.own.routines(thread)).toEqual(before);
+    }
+    view.close();
+  });
+});
 
 describe("parseSchedule", () => {
   it("takes each kind as it stands", () => {

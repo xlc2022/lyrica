@@ -2,7 +2,7 @@ import { removeSecrets } from "../secrets.ts";
 import { pathRewriter, rewriteStrings, type Respelling } from "../workspace/renames.ts";
 import { SkillLibrary } from "../skills.ts";
 import { randomBytes } from "node:crypto";
-import { nextRun, parseSchedule, type Schedule } from "../routines.ts";
+import { checkRoutineMetadata, nextRun, parseSchedule, type RoutineMetadata, type Schedule } from "../routines.ts";
 import type { ForgeKind, ForgeWatchState } from "../forge/types.ts";
 import type { Db } from "../db.ts";
 import { render, toStored, type UserId } from "../mentions.ts";
@@ -90,7 +90,7 @@ export interface StoredEntry {
 /** `source` "forge": a CI or review wake (forge-watch.ts), outside her own wake-up limits; none for hers and routines'. */
 export interface Wakeup { id: number; thread: string; dueAt: string; note: string; setAt: string; source?: "forge" }
 
-export interface Routine { id: number; thread: string; schedule: Schedule; note: string; newThread: boolean; paused: boolean; nextAt: string; lastAt?: string; createdAt: string }
+export interface Routine extends RoutineMetadata { id: number; thread: string; schedule: Schedule; note: string; newThread: boolean; paused: boolean; nextAt: string; lastAt?: string; createdAt: string }
 
 /** A pull request a thread opened through its relay, polled until CI and reviews land (docs/briefs/ci-wakes.md). */
 export interface Watch {
@@ -528,9 +528,9 @@ export class PoolReader {
   /** Recurring turns belonging to this pool, including paused ones. */
   routines(threadId?: string): Routine[] {
     const rows = this.db.prepare(`SELECT * FROM routines ${threadId ? "WHERE thread = ?" : ""} ORDER BY next_at, id`).all(...(threadId ? [threadId] : [])) as {
-      id: number; thread: string; schedule: string; note: string; new_thread: number; paused: number; next_at: string; last_at: string | null; created_at: string;
+      id: number; thread: string; schedule: string; note: string; new_thread: number; paused: number; next_at: string; last_at: string | null; created_at: string; title: string | null; description: string | null;
     }[];
-    return rows.map(r => ({ id: r.id, thread: r.thread, schedule: parseSchedule(JSON.parse(r.schedule)), note: r.note, newThread: !!r.new_thread, paused: !!r.paused, nextAt: r.next_at, lastAt: r.last_at ?? undefined, createdAt: r.created_at }));
+    return rows.map(r => ({ id: r.id, thread: r.thread, schedule: parseSchedule(JSON.parse(r.schedule)), note: r.note, newThread: !!r.new_thread, paused: !!r.paused, nextAt: r.next_at, lastAt: r.last_at ?? undefined, createdAt: r.created_at, ...(r.title != null ? { title: r.title } : {}), ...(r.description != null ? { description: r.description } : {}) }));
   }
 
   /** When a thread's wake-ups or routines fired since `since`, oldest first. */
@@ -1470,11 +1470,19 @@ export class PoolStore extends PoolReader {
   }
 
   /** A recurring turn in this thread or a fresh thread in the same place. Its times are in `zone`, the user's. */
-  addRoutine(threadId: string, schedule: Schedule, note: string, newThread = false, at = now(), zone?: string): number {
+  addRoutine(threadId: string, schedule: Schedule, note: string, newThread = false, at = now(), zone?: string, metadata?: RoutineMetadata): number {
     this.mustThread(threadId);
     const checked = parseSchedule(schedule);
-    return Number(this.db.prepare("INSERT INTO routines (thread, schedule, note, new_thread, next_at, created_at) VALUES (?, ?, ?, ?, ?, ?)")
-      .run(threadId, JSON.stringify(checked), note, newThread ? 1 : 0, nextRun(checked, new Date(at), zone).toISOString(), at).lastInsertRowid);
+    const labels = metadata === undefined ? {} : checkRoutineMetadata(metadata);
+    return Number(this.db.prepare("INSERT INTO routines (thread, schedule, note, new_thread, next_at, created_at, title, description) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+      .run(threadId, JSON.stringify(checked), note, newThread ? 1 : 0, nextRun(checked, new Date(at), zone).toISOString(), at, labels.title ?? null, labels.description ?? null).lastInsertRowid);
+  }
+
+  /** Change explicit labels only; omitted fields and all execution state stay as they were. */
+  editRoutine(threadId: string, id: number, metadata: RoutineMetadata): boolean {
+    const labels = checkRoutineMetadata(metadata);
+    return this.db.prepare("UPDATE routines SET title = coalesce(?, title), description = coalesce(?, description) WHERE thread = ? AND id = ?")
+      .run(labels.title ?? null, labels.description ?? null, threadId, id).changes > 0;
   }
 
   /** The user's time zone changed: every routine's next run moves to its wall time in `zone`. Every-N-hours ones keep theirs. */

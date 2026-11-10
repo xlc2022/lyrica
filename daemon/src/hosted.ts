@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { SessionManager, type AgentSession, type AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import {
-  ANSWER, answerMark, recentWorkAllowed, WELCOME_LIMITS, alwaysAllowPrefix, CloudModelForbidden, FROM_PARENT, fromParent, HEALTH_MS, isPlan, isPlanLimit, isUnreachable, planLimitReset, NoModel, Offline, PlanWaiting, SANDBOX_ALLOW, suspectKey, ROUTINE, WAKEUP, WATCHING, WATCHING_MARK,
+  ANSWER, answerMark, callArgs, recentWorkAllowed, WELCOME_LIMITS, alwaysAllowPrefix, CloudModelForbidden, FROM_PARENT, fromParent, HEALTH_MS, isPlan, isPlanLimit, isUnreachable, planLimitReset, NoModel, Offline, PlanWaiting, SANDBOX_ALLOW, suspectKey, ROUTINE, WAKEUP, WATCHING, WATCHING_MARK,
   sandboxHas, sandboxTools, type ChildStatus, type JobProgress, type Memory, type Models, type PersonaStore, type Pool, type PoolView, type Skill, type Users, type Workspace,
 } from "@lyrica/core";
 import {
@@ -1339,7 +1339,8 @@ export class HostedThread {
         break;
       }
       case "tool_execution_start":
-        this.emit({ type: "tool_start", toolCallId: e.toolCallId, name: e.toolName, args: e.args });
+        // A machine argument that means none shows as the sandbox, where the call runs (callArgs).
+        this.emit({ type: "tool_start", toolCallId: e.toolCallId, name: e.toolName, args: callArgs(e.toolName, e.args) });
         if (makes(e.toolName, e.args)) this.makingNow({ toolCallId: e.toolCallId, startedAt: new Date().toISOString() });
         break;
       case "tool_execution_update": {

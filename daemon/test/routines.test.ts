@@ -362,7 +362,7 @@ describe("routine HTTP routes", () => {
     } finally { general.close(); }
     const all = (await s.ada.get<RoutineInfo[]>(`${s.u}/routines`)).body;
     expect(all).toHaveLength(2);
-    expect(all.find(r => r.pool === "private")).toEqual({ id, pool: "private", threadId: s.thread.id, threadTitle: "Checks", schedule: "Every hour", nextAt: at(1).toISOString(), paused: false });
+    expect(all.find(r => r.pool === "private")).toEqual({ id, pool: "private", threadId: s.thread.id, threadTitle: "Checks", newThread: false, schedule: "Every hour", nextAt: at(1).toISOString(), paused: false });
     expect(JSON.stringify(all)).not.toMatch(/note|Inspect the build queue|different synthetic/);
     expect((await s.ada.get<ThreadSettings>(`${s.path}/settings`)).body.routines).toEqual([all.find(r => r.pool === "private")]);
     const path = `${s.path}/routines/${id}`;
@@ -376,6 +376,17 @@ describe("routine HTTP routes", () => {
     expect((await s.ada.del<RoutineInfo[]>(path)).body).toEqual([]);
     expect((await s.ada.del(path)).status).toBe(404);
     expect((await s.ada.get<RoutineInfo[]>(`${s.u}/routines`)).body).toHaveLength(1);
+  });
+
+  it("projects explicit display metadata and destination but never the execution note", async () => {
+    const s = await setup();
+    const id = s.own(o => o.addRoutine(s.thread.id, { kind: "daily", time: "08:00" }, "Execution-only instructions.", true, undefined, undefined, { title: "Garden check", description: "Reviews the watering plan." }));
+    const list = (await s.ada.get<RoutineInfo[]>(`${s.path}/routines`)).body;
+    expect(list).toMatchObject([{ id, title: "Garden check", description: "Reviews the watering plan.", newThread: true }]);
+    expect(JSON.stringify(list)).not.toContain("Execution-only");
+    expect(list[0]).not.toHaveProperty("note");
+    s.own(o => o.editRoutine(s.thread.id, id, { title: "Watering review" }));
+    expect((await s.ada.get<ThreadSettings>(`${s.path}/settings`)).body.routines).toMatchObject([{ title: "Watering review", description: "Reviews the watering plan." }]);
   });
 
   it("follows the user's time zone: a daily routine keeps its wall time when the zone changes", async () => {
