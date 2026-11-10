@@ -99,7 +99,7 @@ describe("a Proxmox machine", () => {
     await expect(workspace.proxmox(t, "pve", "stop", "999")).rejects.toThrow(/no VM or container 999/);
     expect(pve.requests.some((r) => r.line.includes("destroy") || r.line.startsWith("DELETE"))).toBe(false);
     // Read, write, edit and bash have nowhere to run on it.
-    expect(() => workspace.targetFor(t, "pve")).toThrow(/is a Proxmox machine: use the proxmox tool/);
+    expect(() => workspace.targetFor(t, "pve")).toThrow(/is a Proxmox machine, reached only with the proxmox tool/);
     expect(workspace.machinesFor(t)).toEqual([{ name: "pve", kind: "proxmox", limit: "ask", root: null }]);
   });
 
@@ -114,6 +114,36 @@ describe("a Proxmox machine", () => {
     // Ada confirms the new one: it works again.
     await workspace.setHostKey(ada.id, "pve", next);
     expect(await workspace.proxmox(t, "pve", "list")).toContain("101 web");
+  });
+
+  it("records how her last call went for its row, as an SSH connection does", async () => {
+    const { ada, workspace, pve, add, t } = await setup();
+    await add();
+    workspace.settings(ada.id).setThread("t1", "general", { machines: ["pve"] });
+    const state = () => workspace.settings(ada.id).machine("pve")!.state?.kind;
+    // Adding it wasn't a call of hers: no state yet.
+    expect(state()).toBeUndefined();
+    await workspace.proxmox(t, "pve", "list");
+    expect(state()).toBe("online");
+    // The node refusing one thing is still the node answering.
+    await expect(workspace.proxmox(t, "pve", "start", "101")).rejects.toThrow(/Proxmox answered 500/);
+    expect(state()).toBe("online");
+    // A token it no longer takes is a login that failed.
+    pve.tokens.length = 0;
+    await expect(workspace.proxmox(t, "pve", "list")).rejects.toThrow(/Proxmox answered 401/);
+    expect(state()).toBe("unreachable");
+    pve.tokens.push(TOKEN);
+    const next = pve.swapCert();
+    await expect(workspace.proxmox(t, "pve", "list")).rejects.toThrow(/certificate isn't the one you confirmed/);
+    expect(state()).toBe("keyChanged");
+    // Confirming the new certificate clears it, and her next call says online again.
+    await workspace.setHostKey(ada.id, "pve", next);
+    expect(state()).toBeUndefined();
+    await workspace.proxmox(t, "pve", "status", "web");
+    expect(state()).toBe("online");
+    await pve.close();
+    await expect(workspace.proxmox(t, "pve", "list")).rejects.toThrow();
+    expect(state()).toBe("unreachable");
   });
 
   it("refuses its own node's address when the address changes later, and on every call", async () => {

@@ -128,6 +128,11 @@ export function proxmoxSetup(user?: string): string {
 
 export interface ProxmoxEndpoint { host: string; port: number; token: string }
 
+/** Proxmox answered, but not with success: the node is there, and `status` says what it refused. */
+export class ProxmoxAnswer extends Error {
+  constructor(readonly status: number, text?: string) { super(`Proxmox answered ${status}${text ? ` ${text}` : ""}`); }
+}
+
 export interface ProxmoxTransport {
   /** The certificate's SHA-256 fingerprint. Nothing is sent. */
   fingerprint(host: string, port: number): Promise<string>;
@@ -174,7 +179,7 @@ export const proxmoxHttps: ProxmoxTransport = {
         res.on("end", () => {
           socket.destroy();
           const status = res.statusCode ?? 0;
-          if (status < 200 || status >= 300) return reject(new Error(`Proxmox answered ${status}${res.statusMessage ? ` ${res.statusMessage}` : ""}`));
+          if (status < 200 || status >= 300) return reject(new ProxmoxAnswer(status, res.statusMessage));
           try { resolve((JSON.parse(Buffer.concat(chunks).toString("utf8")) as { data?: unknown }).data); } catch { reject(new Error("Proxmox's answer wasn't JSON")); }
         });
       });

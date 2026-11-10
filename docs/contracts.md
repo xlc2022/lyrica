@@ -1270,9 +1270,9 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     a library skill's body for `read_memory` `s:<name>`. `propose` registers
     `save_skill({ name, description, body })`, which is turned off with
     `remember` in an unlogged thread. lyricad lists the active skills of the
-    thread view's own pool, then of the pools it reads (a name once), then Lyrica's own `model-host`
-    (`BUILTIN_SKILLS`, extension/src/model-host.md) while the thread has an SSH machine and no library skill
-    takes the name, then `repoSkills(target, checkouts, cache?)`, cached per thread by checkout and HEAD.
+    thread view's own pool, then of the pools it reads (a name once), then Lyrica's own (`BUILTIN_SKILLS`,
+    extension/src/<name>.md) unless a library skill takes the name: `add-machine` in every thread, and
+    `model-host` while the thread has an SSH machine; then `repoSkills(target, checkouts, cache?)`, cached per thread by checkout and HEAD.
     `read(name)` falls back to a built-in skill's body;
   - `name()`: her name for this deployment, read every turn. Automatic
     recall leaves it out of the query (`skip`), asks for two shared
@@ -2570,7 +2570,7 @@ changes(userId): FileChanges              // her write and edit calls' changes, 
 checkouts(t): { name, path, kind }[]     // where its code lives, for the changes view: worktrees, clones, writable grants (docs/daemon.md "Changes")
 targetFor(t, machine?): ExecutionTarget  // the sandbox, or an SSH machine the thread may use now (a Proxmox one is refused)
 machinesFor(t): ThreadMachine[]           // { name, kind, limit, root, asUser? }: granted by it and every ancestor, of its pool
-proxmox(t, machine, action, vm?): Promise<string>  // one PROXMOX_ACTIONS call on a thread's Proxmox machine, token sent only to the pinned certificate
+proxmox(t, machine, action, vm?): Promise<string>  // one PROXMOX_ACTIONS call on a thread's Proxmox machine, token sent only to the pinned certificate; each API call records the machine's state (online on any answer but 401, keyChanged on another certificate, else unreachable)
 callMode(t, machine?): PermissionMode     // on a machine, stricterMode(effective(t).mode, its limit)
 probeMachine(userId, login, { kind?, name, address, draft?, asUser?, user?, replace? }): Promise<MachineProbe>
   // SSH: a key pair kept in memory for an hour (by `draft`), its keyLine and setup steps, the host key seen,
@@ -2627,6 +2627,7 @@ settings(userId): WorkspaceSettings       // per-pool defaults, per-thread overr
 //   suspectKey(tool, input) (what Allow in this thread stores), proxmoxAction(call, action, vm?), ownNode(call, addresses, self), ownAddress(addresses, self),
 //   proxmoxSetup(), parseProxmoxAddress, tokenId, certFingerprint. ProxmoxTransport { fingerprint(host, port), call(endpoint, method,
 //   path, verify(fingerprint)) }; `proxmoxHttps` is Node's TLS; WorkspaceOptions.proxmoxTransport and .self replace them.
+//   A status that isn't success rejects with ProxmoxAnswer (`status`), so the machine's state can tell an answer from no answer.
 settings(userId).defaultMode() / setDefaultMode(mode)  // the mode new threads start in (default auto)
 settings(userId).startThread(threadId, pool)           // fixes the default mode on a new thread
 settings(userId).effective(threadId): ThreadWorkspace  // strictest mode and switches of it and its ancestors; only the folders
@@ -2831,7 +2832,7 @@ selfTest(): Promise<string | undefined>   // lyricad calls this at startup
   `user`, the user's own Proxmox user the token is on), and such a machine
   carries `asUser: true`. A machine carries
   `state` (`online`, `unreachable` or `keyChanged`, with `since`) once a
-  connection has been tried. Thread settings carry
+  connection has been tried (for Proxmox, once she has called it). Thread settings carry
   `machines`; permission events carry `machine`, `cwd`, and for a suspect
   command `suspect: true` and `warning`; an answer may carry
   `allowInThread: true`. Proxmox: `kind: "proxmox"` on probe and confirm,

@@ -127,6 +127,13 @@ tool each for A and B, prompt lines only where the thread has a machine).
   an option, with instructions. Done the same day: Account: Mine for Proxmox,
   a User field, a setup block for a separated token on that user, warnings,
   and the token checked against the user at Confirm.
+- Phase 2's run on a real node (same day) passed but for two bugs, both
+  fixed: `bash` and `read` on a Proxmox machine said it "isn't one of this
+  thread's machines", so she asked the person to add a machine they had (the
+  refusal now names the `proxmox` tool); and a Proxmox machine's row never
+  showed a state or the Your account pill, since her calls recorded none and
+  the API left both out. The owner also asked that she know how to add a
+  machine when asked in chat: the built-in `add-machine` skill.
 
 ## C. Model host install from a machine
 

@@ -2676,6 +2676,7 @@ function machineInfo(m: MachineConfig): Api.MachineInfo {
     return {
       name: m.name, kind: "proxmox", address: proxmoxAddress(m.host, m.port), root: null, pool: m.pool, limit: m.limit,
       tokenId: m.username, hostKey: m.hostKey, offNetwork: m.offNetwork, lastUsed: m.lastUsed,
+      ...(m.asUser ? { asUser: true } : {}), ...(m.state ? { state: m.state } : {}),
     };
   }
   const host = m.host.includes(":") ? `[${m.host}]` : m.host;

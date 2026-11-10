@@ -750,7 +750,8 @@ export interface MachineInfo {
    * unreachable (it couldn't be reached or logged in to), or keyChanged (it
    * showed a host key other than the confirmed one). `since` is when that
    * outcome began. Absent before the first connection, and after the address
-   * or host key changes.
+   * or host key changes. A Proxmox machine's is how her last API call went:
+   * online on any answer but a refused token, keyChanged on another certificate.
    */
   state?: { kind: "online" | "unreachable" | "keyChanged"; since: string };
 }

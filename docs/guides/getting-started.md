@@ -988,7 +988,10 @@ The same three steps are in the web UI under Settings, Machines, **Add
 machine** (SSH or Proxmox); nothing is saved there before you confirm the
 fingerprint either. Each machine's row shows whether she can reach it, and
 its ⋯ menu has Replace key, Use anyway (a private machine outside your
-network) and Remove.
+network) and Remove. You can also ask her in any thread how to add a
+machine: she takes you through that page step by step and says what its
+setup block does. She can't add one herself, and she never asks for the
+key or token in chat; if she does, don't give it.
 
 The machine needs OpenSSH 9.6 or later, or a distribution build with the
 Terrapin fix (strict key exchange); adding an older one fails with "the

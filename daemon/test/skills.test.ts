@@ -92,6 +92,27 @@ describe("skills", () => {
   });
 });
 
+describe("the add-machine skill", () => {
+  it("is listed in a thread with no machine, reads like a library skill, and gives way to a library skill of its name", async () => {
+    const s = await setup();
+    s.model.reply({ tools: [{ name: "read_memory", args: { id: "s:add-machine" } }] }, { text: "Read it." });
+    await s.ada.post(`${s.path}/messages`, { text: "how do I let you manage my Proxmox?" });
+    await s.stream.until((e) => e.type === "turn_end", 0);
+    const turn = JSON.stringify(s.model.requests.map((r) => r.messages));
+    expect(turn).toContain('<skill name=\\"add-machine\\" read=\\"s:add-machine\\">Walk the person through giving you another computer over SSH, or a Proxmox node');
+    // She takes the person through the page, and never takes the key or token herself.
+    expect(turn).toContain("the person adds it in **Settings**, **Machines**, **Add machine**");
+    expect(turn).toContain("you never ask for one, or for a password, in chat");
+
+    await s.ada.post(`${s.u}/skills`, { name: "add-machine", description: "Our own way.", body: "Ask the administrator." });
+    const prompt = await s.prompt();
+    const latest = prompt.slice(prompt.lastIndexOf("<skills>"));
+    expect(latest).toContain('<skill name=\\"add-machine\\" read=\\"s:add-machine\\">Our own way.</skill>');
+    expect(latest).not.toContain('read=\\"s:add-machine\\">Walk');
+    s.stream.close();
+  });
+});
+
 describe("the model-host skill", () => {
   it("is listed only while the thread has an SSH machine, reads like a library skill, and gives way to a library skill of its name", async () => {
     const s = await setup();

@@ -1122,15 +1122,17 @@ export class HostedThread {
             repoRules: () => repoRules(tools.target(), checkoutsOf(tools.settings(), workspace.repositoriesFor({ userId: this.userId, pool: this.pool, threadId: this.threadId }))),
             skills: {
               // The skills in this thread's own pool, then those it reads (a Private thread's General ones), then each
-              // checkout's own (docs/briefs/skills.md). A name in its own pool wins. Lyrica's own model-host
-              // skill is listed while the thread has an SSH machine, unless a library skill takes its name.
+              // checkout's own (docs/briefs/skills.md). A name in its own pool wins. Lyrica's own skills come
+              // after the library's, unless a library skill takes the name: add-machine in every thread, since
+              // the person asks for it where there is no machine yet, and model-host while the thread has an SSH machine.
               index: async () => {
                 const checkouts = checkoutsOf(tools.settings(), workspace.repositoriesFor({ userId: this.userId, pool: this.pool, threadId: this.threadId }));
                 const library = librarySkills(view);
                 const ssh = tools.machines?.().some((m) => m.kind === "ssh");
+                const own = ["add-machine", ...ssh ? ["model-host"] : []].filter((name) => !library.some((s) => s.name === name));
                 return skillsIndex([
                   ...library.map((s) => ({ name: s.name, description: s.description, at: `s:${s.name}` })),
-                  ...ssh && !library.some((s) => s.name === "model-host") ? [BUILTIN_SKILLS["model-host"]!.listed] : [],
+                  ...own.map((name) => BUILTIN_SKILLS[name]!.listed),
                   ...checkouts.length ? await repoSkills(tools.target(), checkouts, repoSkillsSeen) : [],
                 ]);
               },
