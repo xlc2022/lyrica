@@ -336,3 +336,15 @@ she picked after it, and keeps it. The deployment the owner uses day to
 day was behind `main` and had no project yet; it gets one of its own
 beside the development one. Next, by the owner: "Before her project"
 above, then "Setup, by the owner, once" on that deployment.
+
+2026-11-10: the deployment the owner uses day to day has its GitHub
+account, `lyrica-lilypad`, a Write collaborator on the repository; the
+development deployment's is `lyrica-lunasa`. Nothing in the repository
+lists her accounts: CODEOWNERS names only the owner, and CI runs the same
+for every pusher. The two places that do are GitHub's ruleset for
+`lyrica/*` branches and `update/*` tags, and the account list of the
+pickup routine in Claude's PR review thread
+([pr-review-handoff.md](pr-review-handoff.md)). Each deployment tags its
+own update notes ("Update tags" above). Next, by the owner: add the new
+account to the ruleset, then the rest of "Before her project" and "Setup,
+by the owner, once" on that deployment.
