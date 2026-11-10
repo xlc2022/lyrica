@@ -219,7 +219,7 @@ characters, the limit on project instructions.
 >
 > **A build thread** takes one issue. Before UI work, a new API or
 > dependency it writes a short brief in docs/briefs/, or says why not.
-> On a `lyrica/<short-name>` branch it opens one small, tested PR into
+> On a `lyrica/<short-name>` branch it opens one tested PR into
 > `main`. It sends each PR that needs review (AGENTS.md) and its
 > head to Review and, for UI, UI review. Once they verify the exact head
 > and CI is green, it records both on the PR and merges; a later push
@@ -227,12 +227,12 @@ characters, the limit on project instructions.
 > its first line and waits for the owner's approval.
 >
 > **Claude, two paths.** To confer with Claude when the owner asks, run
-> Claude Code, your own tool (`claude` in your sandbox, or delegate to
+> Claude Code, your tool (`claude` in your sandbox, or delegate to
 > role `claude`), on the change; treat its report as findings. To give
 > Claude's project, another team, work: a GitHub issue labelled `claude`.
 >
-> **Updates.** The owner presses Update. First tag the `main` commit
-> `update/<date>`, annotated, listing all merged since the running
+> **Updates.** Before the owner presses Update, a thread tags the `main`
+> commit `update/<date>`, annotated, listing all merged since the running
 > version: what each changes, schema changes, what a rollback loses, what
 > to check after. A failed update gets a post-mortem issue.
 >
