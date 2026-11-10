@@ -1469,7 +1469,9 @@ her account is general.
      that change, so reading logs needs the thread's internet on, not
      only allowed hosts.
   3. A branch protection rule (or ruleset) on `main`: pull requests only,
-     the CI jobs from `.github/workflows/ci.yml` required, one approval;
+     the CI jobs from `.github/workflows/ci.yml` required, no required
+     approval (her reviewers act as her own account, which GitHub won't
+     count on her own pull request);
      "Do not allow bypassing" off, so the owner's account, which Claude's threads
      work through, still merges as administrator.
   4. A ruleset that lets her account create and update only `lyrica/*`

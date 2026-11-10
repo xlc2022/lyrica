@@ -355,4 +355,8 @@ Claude's PR review no longer approves her PRs; she merges after her own
 reviewers and green CI, the owner still approves boundary code, and she
 confers with Claude through the `claude` role when the owner asks. Each
 deployment's saved Project instructions need the new text above pasted in
-by the owner (only the owner can change them).
+by the owner (only the owner can change them). Also by the owner, in the
+repository's settings: if the rule on `main` still requires an approval,
+set it to none and keep pull requests only and the CI jobs. Until now
+Claude's approval met it, and she can't approve her own PR, so with it
+left on she can't merge.

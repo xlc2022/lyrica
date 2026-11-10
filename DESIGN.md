@@ -2489,10 +2489,11 @@ from Monika's runbooks.
   so the account stays a collaborator on this repository only. She pushes branches to the repository itself, never a fork, so her pull
   requests run the same CI as Claude's (docs/ci.md), with
   no first-time-contributor approval. `main` is protected: pull requests
-  only, green CI, one approval from someone other than the author; nothing
-  of hers merges without both. The owner's own account may bypass the rules as
-  administrator, because Claude's threads work through it and could
-  never approve their own PRs.
+  only and green CI; nothing of hers merges without both. It requires no
+  approval on GitHub (the owner, 2026-11-10): her reviewers act as her own
+  account, which GitHub won't count on her own PR, so their verifieds are
+  recorded on the PR instead. The owner's own account may bypass the rules as
+  administrator, because Claude's threads work through it.
 - **Review is her own project's.** Her PRs go through her project's Review
   (and UI review) threads, so the owner doesn't read every change, and she
   merges each herself once their verifieds and green CI cover the same
