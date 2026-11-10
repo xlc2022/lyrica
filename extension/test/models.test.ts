@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { deadUrl, fakeOpenAI } from "../../core/test/fake-openai.ts";
 import { fakeHost } from "../../core/test/fake-host.ts";
 import { withModels } from "../../core/test/helpers.ts";
-import { createLyricaExtension, modelRuntimeFor, openThreadSession, piModelFor, toStoredEntry, type ThreadContext } from "../src/index.ts";
+import { createLyricaExtension, modelRuntimeFor, openThreadSession, piModelFor, toStoredEntry, type LiveCall, type ThreadContext } from "../src/index.ts";
 import { HOST_ANSWER_MS, markUnservable, waitingFetch, type GpuWait } from "../src/models.ts";
 import { keepRecentFor, reserveFor } from "../src/context.ts";
 
@@ -27,11 +27,11 @@ async function setup() {
     if (opts.localOnly) m.models.setLocalOnly(m.ada.id, pool, id, true);
     return { user: m.ada, pool, interface: "cli", threadId: id, view, call: m.models.callContext(m.ada.id, pool, id) };
   };
-  const open = (t: ThreadContext, settings?: object) => {
+  const open = (t: ThreadContext, settings?: object, onLiveCall?: (c: LiveCall | null) => void) => {
     const cwd = mkdtempSync(join(tmpdir(), "lyrica-models-"));
     dirs.push(cwd);
     return openThreadSession({
-      thread: t, models: m.models, cwd, settings,
+      thread: t, models: m.models, cwd, settings, ...(onLiveCall ? { onLiveCall } : {}),
       extensions: [createLyricaExtension(t, { persona: () => persona, profile: () => ({ displayName: "Ada", pronouns: PRONOUN_PRESETS.she, previousNames: [] }) })],
     });
   };
@@ -401,6 +401,36 @@ describe("how a model answers", () => {
     expect(sent).toMatchObject({ temperature: 0.6, repeat_penalty: 1.1, seed: 7, stop: ["END"], max_tokens: 300 });
     expect(sent.top_p).toBeUndefined();
     expect(sent.top_k).toBeUndefined();
+  });
+
+  it("asks a llama-server for its prompt progress in a thread's turns, and tells the thread what it read", async () => {
+    const s = await setup();
+    const facts = { chat_template: "{{ messages }}", default_generation_settings: { n_ctx: 32768 }, total_slots: 1, modalities: { vision: false } };
+    const server = await fakeOpenAI({ models: [{ id: "qwen.gguf", meta: { n_ctx: 32768 } }], props: { "": facts } });
+    const ep = s.models.addEndpoint(s.ada, { name: "direct", kind: "local", baseUrl: server.baseUrl });
+    const [qwen] = await s.models.discover(s.ada, ep.id);
+    s.models.setColumnTask(s.ada.id, "private", "chat", [{ offeringId: qwen!.id }]);
+    const calls: (LiveCall | null)[] = [];
+    const { session, dispose } = await s.open(s.thread("private"), undefined, (c) => calls.push(c));
+    try {
+      await session.prompt("hello");
+    } finally {
+      dispose();
+    }
+    expect(server.requests[0]).toMatchObject({ return_progress: true, timings_per_token: true });
+    const read = calls.find((c) => c?.read !== undefined);
+    expect(read).toMatchObject({ read: expect.any(Number), readRate: expect.any(Number) });
+    expect(read).not.toHaveProperty("cached");
+    expect(read!.prompt).toBe(read!.read);
+    expect(calls.at(-1)).toBeNull();
+    // A plain OpenAI-compatible server is asked for nothing it may not know.
+    const { session: other, dispose: done } = await s.open(s.thread("general"), undefined, () => {});
+    try {
+      await other.prompt("hello");
+    } finally {
+      done();
+    }
+    expect(s.cloud.requests.at(-1)).not.toHaveProperty("return_progress");
   });
 
   it("caps a reply at the smaller of 131,072 tokens and a quarter of the context window, clamping a longer saved maximum", async () => {

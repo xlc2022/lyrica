@@ -22,6 +22,31 @@ test("unlock, log in, start a thread, and see a streamed reply that survives a r
   await noHorizontalScroll(page);
 });
 
+test("the request's counts take the dots' place while the prompt is read and she thinks, and leave with her words", async ({ page, baseURL }) => {
+  await enter(page, baseURL!);
+  await newThread(page, "General");
+  // SHOTS=<dir> keeps a picture of each line, for a pull request.
+  const shot = async (name: string) => { if (process.env.SHOTS) await page.screenshot({ path: `${process.env.SHOTS}/${name}-${phone(page) ? 390 : 1280}.png` }); };
+  const line = page.locator(".call-stats");
+  await send(page, "prefill slowly: hello");
+  await expect(line).toHaveText(/^Reading [\d,]+ of 2,212 new · [\d,.]+ tok\/s$/);
+  await expect(line).toHaveAttribute("title", /48\.2k prompt tokens, 46\.0k from cache/);
+  await shot("call-stats-reading");
+  await expect(line).toHaveText(/^Thinking · \d+ tokens · 38\.4 tok\/s$/);
+  await shot("call-stats-thinking");
+  await expect(page.getByText("You said: prefill slowly")).toBeVisible();
+  await expect(line).toHaveCount(0);
+  // A server that says nothing: the prompt's estimate with a clock, then the output Lyrica counts.
+  await send(page, "wait slowly: hello");
+  await expect(line).toHaveText(/^Prompt [\d,.k]+ · \d+ s$/);
+  await shot("call-stats-prompt");
+  await expect(line).toHaveText(/^Thinking · ≈\d+ tokens$/);
+  await shot("call-stats-counted");
+  await expect(page.getByText("You said: wait slowly")).toBeVisible();
+  await expect(line).toHaveCount(0);
+  await noHorizontalScroll(page);
+});
+
 test("a reply that lands while scrolled up shows a jump-to-latest control that takes the person down to the bottom", async ({ page, baseURL }) => {
   await enter(page, baseURL!);
   await newThread(page, "General");

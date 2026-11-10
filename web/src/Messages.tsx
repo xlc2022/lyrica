@@ -1,7 +1,7 @@
 // The conversation: stored messages, then what's streaming now.
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { get, post, threadPath, u, type GoAhead, type ImagePart, type Making, type VideoPart, type ImageRetryOptions, type MemoryDetail, type Message, type MessagePage, type MessagePart, type PermissionRequest, type Pool, type QuestionState, type Reaction, type SendResponse, type Speech, type ThreadRef, type ThreadSummary } from "./api.ts";
+import { get, post, threadPath, u, type GoAhead, type ImagePart, type LiveCall, type Making, type VideoPart, type ImageRetryOptions, type MemoryDetail, type Message, type MessagePage, type MessagePart, type PermissionRequest, type Pool, type QuestionState, type Reaction, type SendResponse, type Speech, type ThreadRef, type ThreadSummary } from "./api.ts";
 import { SkillCard } from "./Skills.tsx";
 import { isQuestionPart, QuestionCard, ROOT_TOOL } from "./Question.tsx";
 import { repeatedFailures, storedLiveCopies, storedUserItems, type LiveItem } from "./live.ts";
@@ -19,6 +19,7 @@ import { ChecklistButton, StepLine } from "./Checklist.tsx";
 import { findThread } from "./Thread.tsx";
 import { EditBox, MessageActions, MessageMenu, type Rewinder } from "./Rewind.tsx";
 import { shortModel } from "./ModelLabel.tsx";
+import { CallStats, callLine } from "./CallStats.tsx";
 import { ConfirmDialog, ErrorText, fullTime, Prose, useAction, useDismiss, wakeTime } from "./ui.tsx";
 import { OfflinePage } from "./OfflinePage.tsx";
 import { basename, fileTarget, InlineImage, isImagePath, isUnderWorkdir, largeUrl, Lightbox, PathText, SHARED, useFileLinks, type FileLinks } from "./paths.tsx";
@@ -80,6 +81,7 @@ export function Conversation({ ctx, pool, base, threadId, subagent, thread, rewi
     busy: live.busy, settingsVersion: live.settings, lastUser: messages.findLast(m => m.role === "user")?.n, userId: ctx.user.id, you: ctx.user.displayName, pool, base, threadId, subagent, openTools, toggleTool, folding, fold,
     permissions: live.permissions, making: live.making, ticks: live.subagents, show, rewinder, parentTitle, speech, onError: onError ?? (() => {}), project,
     lastHers: messages.findLast((m) => m.role === "assistant")?.n, large: openLarge, threads: ctx.threads,
+    ...(live.liveCall && !live.gpuWait ? { liveCall: live.liveCall } : {}),
   };
   const liveCopies = hideFrom === undefined ? storedLiveCopies(live.items, messages) : new Set<number>();
   const shownMessages = hideFrom === undefined && !liveCopies.size ? messages : messages.filter((m) => (hideFrom === undefined || m.n < hideFrom) && !liveCopies.has(m.n));
@@ -104,7 +106,7 @@ export function Conversation({ ctx, pool, base, threadId, subagent, thread, rewi
       {conversationNodes(shownMessages, hideFrom === undefined ? live.items.filter((_, i) => !storedUsers.has(i)) : [], live.busy, env, ctx.user.displayName, looks, cards)}
       {live.busy && live.gpuWait
         ? <p className="thinking-dots" role="status">{live.gpuWait.loading ? "Loading the model…" : `Waiting for the GPU, busy with ${live.gpuWait.busyWith ?? "other work"}…`}</p>
-        : live.busy && !live.items.some((x) => x.role === "assistant") && <p className="thinking-dots" role="status">{her()} is thinking…</p>}
+        : live.busy && !live.items.some((x) => x.role === "assistant") && <p className="thinking-dots" role="status">{env.liveCall && callLine(env.liveCall.call, 0) ? <><span className="sr-only">{her()} is thinking…</span><CallStats live={env.liveCall} /></> : `${her()} is thinking…`}</p>}
       {live.permissions.filter((p) => !p.subagent || !shown.has(p.subagent.threadId) || p.subagent.threadId === threadId)
         .map((p) => <PermissionPrompt key={p.requestId} base={base} p={p} env={env} />)}
       {live.errors.map((e, i) => <p key={i} className="error turn-error" role="alert">{e}</p>)}
@@ -164,6 +166,8 @@ export interface Env {
   threads: ThreadSummary[];
   /** Opens an image from a message large, over the conversation. */
   large: (path: string, files: FileLinks) => void;
+  /** The model request the turn waits on, unless it waits for the GPU: its counts take the dots' place. */
+  liveCall?: { call: LiveCall; since: number };
 }
 
 /** Her messages that hold only markers, waiting to be drawn together once the run ends. */
@@ -641,10 +645,9 @@ function Parts({ parts, env, model, streaming, n, at, folded, reactions, bare, s
     if (shownPart) out.push(<MessageImages key={i} part={shownPart} env={env} />);
   });
   flush(parts.length);
-  // The one indicator while she writes: three muted dots fading in turn, at the end of the live reply and only when its last part isn't text.
-  if (streaming && parts.at(-1)?.type !== "text") out.push(
-    <span key="dots" className="writing-dots" aria-hidden="true"><i /><i /><i /></span>,
-  );
+  // The one indicator while she writes, at the end of the live reply and only when its last part isn't text: the request's
+  // counts when its server or Lyrica knows them, else three muted dots fading in turn.
+  if (streaming && parts.at(-1)?.type !== "text") out.push(<CallStats key="dots" live={env.liveCall} />);
   // Read aloud only where she wrote words: a turn of cards and markers has nothing to read.
   const worded = parts.some((p) => p.type === "text" && p.text.trim());
   // A turn with nothing to show (a project chat's thread start, whose card stands under the message) takes no room.
