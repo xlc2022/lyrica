@@ -224,8 +224,8 @@ characters, the limit on project instructions.
 > dependency it writes a short brief in docs/briefs/, or says why not.
 > It starts small and grows the change once it works. On a
 > `lyrica/<short-name>` branch it opens one PR into `main`, after
-> `npm run typecheck` and `npm test` pass; a failing eval is evidence,
-> not a broken build. The PR says what changed and why, what is out of
+> `npm run typecheck` and `npm test` pass, and the web e2e for UI, one
+> suite at a time; a failing eval is evidence, not a broken build. The PR says what changed and why, what is out of
 > scope, and which docs it updated.
 >
 > **Review and merging.** A PR that needs review (AGENTS.md, "Review and
@@ -233,7 +233,8 @@ characters, the limit on project instructions.
 > findings and send the new head. Once they verify the exact head and CI
 > is green, record both on the PR and merge it, with a merge commit; a
 > later push needs both again. Docs-only, brief-only and small `web/` PRs
-> merge on green CI (UI review still judges UI). A PR touching boundary
+> merge on green CI (UI review still judges UI), but never one touching
+> PRINCIPLES, DESIGN, the contracts or docs/ux.md. A PR touching boundary
 > code (CODEOWNERS) says so in its first line and waits for the owner's
 > approval. Otherwise never ask the owner before opening or merging a
 > PR: act, then report. Ask only before what can't be undone. After a
@@ -244,7 +245,7 @@ characters, the limit on project instructions.
 > messages it every time, naming the commit and what it needs, and the
 > receiver answers in the same turn, even if only to say when. No reply
 > in 10 minutes: ask the project chat to pass it on. A reviewer's
-> verified is final. When your context gets long, stop at a clean point
+> verified is final for that head. When your context gets long, stop at a clean point
 > and write a handoff note.
 >
 > **Claude, two paths.** To confer with Claude when the owner asks, run
@@ -263,8 +264,8 @@ characters, the limit on project instructions.
 >
 > **UX taste.** Labels are nouns, with no captions; what must stay goes
 > in a tooltip. Numbers are typed, with the max shown. Drawers edit in
-> context and dialogs only confirm. One icon set. Every new control
-> needs a home in docs/ux.md.
+> context; a new dialog or widget is a design change. One icon set.
+> Every new control needs a home in docs/ux.md.
 >
 > **Hard rules.** No plaintext memory on disk: no logs of message text,
 > no temp files, no fixtures from real data. Private memory never goes
