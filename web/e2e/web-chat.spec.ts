@@ -47,6 +47,21 @@ test("the request's counts take the dots' place while the prompt is read and she
   await noHorizontalScroll(page);
 });
 
+test("under a closed run of tool calls, the request's counts show while she reads and thinks", async ({ page, baseURL }) => {
+  await enter(page, baseURL!);
+  await newThread(page, "General");
+  await send(page, "recall: 3 then prefill slowly");
+  const run = page.locator(".marker.tool-run");
+  await expect(run.getByRole("button", { name: /tool calls running/ })).toHaveAttribute("aria-expanded", "false");
+  const line = run.locator(".run-call .call-stats");
+  await expect(line).toHaveText(/^Reading [\d,]+ of 2,212 new · [\d,.]+ tok\/s$/);
+  await expect(line).toHaveText(/^Thinking · \d+ tokens · 38\.4 tok\/s$/);
+  if (process.env.SHOTS) await page.screenshot({ path: `${process.env.SHOTS}/call-stats-run-${phone(page) ? 390 : 1280}.png` });
+  await expect(page.getByText("You said: recall: 3")).toBeVisible();
+  await expect(page.locator(".call-stats")).toHaveCount(0);
+  await noHorizontalScroll(page);
+});
+
 test("routine titles explain their purpose on focus and touch without exposing instructions", async ({ page, baseURL, request }) => {
   const userId = await enter(page, baseURL!);
   const seeded = await request.post(`http://127.0.0.1:${Number(new URL(baseURL!).port) + 10}/routines-fixture`, { data: { userId } });

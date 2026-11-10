@@ -1201,7 +1201,11 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   or any run with a sleep or refused read in it (`waits`), fold into one
   **<n> tool calls** marker (`ToolRun`, "steps" when none is a tool call) that opens to a
   320 px box which scrolls (`.run-body`), each call its own marker inside,
-  following the newest while the turn streams. Its open state is keyed by
+  following the newest while the turn streams, `CallStats` at its end.
+  Closed and streaming, it shows `CallStats` under its button
+  (`.run-call`) only while `callLine` has something to say. A live reply
+  with no parts yet joins a pending run, so its request's counts stay
+  there. Its open state is keyed by
   the first call's ID, so it survives the stored copy replacing the live
   one. A poll (`isPoll`) is a call that only waits: a bash `sleep N`,
   optionally followed by `echo` of plain words, whose output is empty or

@@ -327,9 +327,9 @@ function fakeModel() {
         // one: sleep's long instructions quote the conversations, and a sleep run paced so took ~8 s of a 10 s wait.
         const pace = said.length < 1000 && /slowly/.test(said) ? 300 : 30;
         // "prefill slowly:" plays llama.cpp: the prompt's read in twelve steps (a 46,001-token cache, 2,212 new), then reasoning
-        // with its per-token timings. "wait slowly:" says nothing for three seconds, then reasons with no counts, as a cloud model.
+        // with its per-token timings ("recall: <n> then prefill slowly" does so after its calls). "wait slowly:" says nothing for three seconds, then reasons with no counts, as a cloud model.
         const chunk = (o: object) => res.write(`data: ${JSON.stringify({ ...base, choices: [], ...o })}\n\n`);
-        if (said.startsWith("prefill slowly:")) {
+        if (said.startsWith("prefill slowly:") || /^recall: \d+ then prefill slowly/.test(said)) {
           for (let n = 1; n <= 12; n++) {
             chunk({ prompt_progress: { total: 48_213, cache: 46_001, processed: 46_001 + Math.round((2_212 * n) / 12), time_ms: n * 100 } });
             await new Promise((r) => setTimeout(r, pace));
