@@ -7,7 +7,7 @@ export type Reply = { text: string; slowMs?: number } | { tools: { name: string;
 /** Picks the reply from the request, and may take its time. */
 export type Responder = (chat: ChatRequest) => Reply | Promise<Reply>;
 
-export interface ChatRequest { model: string; messages: { role: string; content?: unknown; tool_calls?: unknown }[]; tools?: { function: { name: string } }[]; stream?: boolean }
+export interface ChatRequest { model: string; messages: { role: string; content?: unknown; tool_calls?: unknown }[]; tools?: { function: { name: string } }[]; stream?: boolean; return_progress?: boolean }
 
 const servers: Server[] = [];
 // A test may leave a request unanswered on purpose; close() would wait for it forever.
@@ -62,6 +62,8 @@ export async function fakeOpenAI(opts: { models?: Record<string, unknown>[]; lab
       const finish = "tools" in reply ? "tool_calls" : "stop";
       res.writeHead(200, { "content-type": "text/event-stream" });
       const send = (o: unknown) => res.write(`data: ${JSON.stringify(o)}\n\n`);
+      // Asked for it, llama-server says how far it has read the prompt before it answers.
+      if (chat.return_progress) send({ ...base, choices: [], prompt_progress: { total: Math.ceil(body.length / 4), cache: 0, processed: Math.ceil(body.length / 4), time_ms: 40 } });
       if ("deltas" in reply) {
         for (const delta of reply.deltas) send({ ...base, choices: [{ index: 0, delta, finish_reason: null }] });
         await reply.hold;

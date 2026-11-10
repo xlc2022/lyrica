@@ -28,6 +28,20 @@ describe("the live view of a thread's stream", () => {
     expect(run([{ type: "turn_end", aborted: false }], s).gpuWait).toBeUndefined();
   });
 
+  it("keeps the request's counts with its start by this clock until it ends or the turn does", () => {
+    const before = Date.now();
+    const s = run([
+      { type: "hello", busy: true, queued: [], permissions: [], making: [], liveCall: { ms: 4_000, prompt: 48_213 } },
+      { type: "live_call", call: { ms: 5_000, prompt: 48_213, cached: 46_001, read: 1_340 } },
+    ]);
+    expect(s.liveCall?.call.read).toBe(1_340);
+    expect(s.liveCall!.since).toBeLessThanOrEqual(before - 5_000 + 50);
+    expect(run([{ type: "live_call", call: null }], s).liveCall).toBeUndefined();
+    expect(run([{ type: "turn_end", aborted: false }], s).liveCall).toBeUndefined();
+    // An idle thread's hello has no request.
+    expect(run([{ type: "hello", busy: false, queued: [], permissions: [], making: [], liveCall: { ms: 1 } }]).liveCall).toBeUndefined();
+  });
+
   it("shows a message she comes back to mid-reasoning from its start, and keeps adding to it", () => {
     // lyricad sends the message so far, joined, before hello; the stream then goes on.
     const s = run([

@@ -244,6 +244,8 @@ export interface Offering extends Capabilities {
   lmStudio?: boolean;
   /** A plain llama-server described it on /props: its one thinking level is the chat template's switch. */
   llamaServer?: boolean;
+  /** The server a model host runs it on, where the host says: llama.cpp or vLLM. */
+  server?: "llama.cpp" | "vllm";
   /** Requests its server runs at once, sharing one context cache (LM Studio's `parallel`), when the server says. */
   parallel?: number;
   /** What it costs, where its server says (OpenRouter). */
@@ -558,7 +560,7 @@ const toEndpoint = (r: EndpointRow, shared: boolean, now = Date.now()): Endpoint
   };
 };
 const toOffering = (r: OfferingRow, now = Date.now()): Offering => {
-  const caps: Capabilities & { digest?: string; identity?: ModelIdentity; downloaded?: boolean; size?: number; recipe?: string; mask?: boolean; references?: number; loras?: string[]; extend?: boolean; upscalesClips?: boolean; longestSeconds?: number; sound?: boolean; useFor?: Offering["useFor"]; separate?: boolean; servedContext?: number; servedParallel?: number; opensThinking?: boolean; alwaysThinks?: boolean; lmStudio?: boolean; llamaServer?: boolean; price?: ModelPrice; retiresAt?: string; maxOutput?: number; disabled?: boolean } = { ...JSON.parse(r.found), ...JSON.parse(r.hand) };
+  const caps: Capabilities & { digest?: string; identity?: ModelIdentity; downloaded?: boolean; size?: number; recipe?: string; mask?: boolean; references?: number; loras?: string[]; extend?: boolean; upscalesClips?: boolean; longestSeconds?: number; sound?: boolean; useFor?: Offering["useFor"]; separate?: boolean; servedContext?: number; servedParallel?: number; opensThinking?: boolean; alwaysThinks?: boolean; lmStudio?: boolean; llamaServer?: boolean; server?: string; price?: ModelPrice; retiresAt?: string; maxOutput?: number; disabled?: boolean } = { ...JSON.parse(r.found), ...JSON.parse(r.hand) };
   // A host's serving settings decide its context window, over one set by hand and one discovered.
   const served = (JSON.parse(r.found) as { servedContext?: number }).servedContext;
   if (served) caps.contextWindow = served;
@@ -586,6 +588,7 @@ const toOffering = (r: OfferingRow, now = Date.now()): Offering => {
     ...(caps.alwaysThinks ? { alwaysThinks: true } : {}),
     ...(caps.lmStudio ? { lmStudio: true } : {}),
     ...(caps.llamaServer ? { llamaServer: true } : {}),
+    ...(caps.server === "llama.cpp" || caps.server === "vllm" ? { server: caps.server } : {}),
     ...(caps.servedParallel ? { parallel: caps.servedParallel } : {}),
     ...(caps.price ? { price: caps.price } : {}),
     ...(caps.retiresAt ? { retiresAt: caps.retiresAt } : {}),
@@ -1902,7 +1905,7 @@ export class Models {
   /** A host's text models, from its library (host/API.md "Models"). */
   private async hostModels(ep: Endpoint): Promise<DiscoveredModel[]> {
     const list = listIn<{
-      id: string; kind?: string; sha256?: string | null; contextLength?: number | null; parallel?: number | null; size?: number; downloaded?: boolean; identity?: ModelIdentity | null; sampling?: Record<string, unknown> | null;
+      id: string; kind?: string; server?: string; sha256?: string | null; contextLength?: number | null; parallel?: number | null; size?: number; downloaded?: boolean; identity?: ModelIdentity | null; sampling?: Record<string, unknown> | null;
       capabilities?: { tools?: boolean; vision?: boolean; embedding?: boolean; reasoning?: string[] | null; opensThinking?: boolean; transcribe?: boolean; speak?: { voices?: unknown } | null };
     }>(await this.hostCall(ep, "GET", "/host/v1/models"), "models");
     if (!list) throw new Error(`${ep.name} didn't return a model list`);
@@ -1924,6 +1927,7 @@ export class Models {
       const reasoning = levels.filter((l): l is "low" | "medium" | "high" => ["low", "medium", "high"].includes(l));
       return {
         modelId: m.id,
+        ...(m.server === "llamacpp" ? { server: "llama.cpp" } : m.server === "vllm" ? { server: "vllm" } : {}),
         ...(m.contextLength ? { servedContext: m.contextLength } : {}),
         ...(m.parallel ? { servedParallel: m.parallel } : {}),
         ...(m.capabilities?.tools !== undefined ? { tools: !!m.capabilities.tools } : {}),

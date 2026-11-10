@@ -133,7 +133,9 @@ describe("a conversation", () => {
     const again = ada.events(`${path}/events`, turnStart.id);
     await again.until(is("hello"));
     const replayed = again.events.map((e) => e.event.type);
-    expect(replayed.slice(0, replayed.indexOf("hello"))).toEqual(first.events.slice(first.events.indexOf(turnStart) + 1).map((e) => e.event.type));
+    // A request's live counts go only to the views open at the time: they are never replayed.
+    expect(replayed.slice(0, replayed.indexOf("hello"))).toEqual(first.events.slice(first.events.indexOf(turnStart) + 1).map((e) => e.event.type).filter((t) => t !== "live_call"));
+    expect(first.events.some((e) => e.event.type === "live_call")).toBe(true);
     again.close();
 
     // An ID from another run of lyricad can't be replayed: the stream says reset.

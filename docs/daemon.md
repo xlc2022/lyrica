@@ -657,6 +657,12 @@ upscale, video, animate, motion, edit_video) starts and each time its model host
 the background keeps it: its clip job sends `making` and `made` until the clip arrives), `hello` carrying the
 `making` of now so a view that opens meanwhile shows the placeholders, and turn end, then the thread's `context` after each request that goes on with tools and after each turn, and a `compacted`
 marker when it compacts.
+`live_call` carries the model request a turn waits on as counts and times
+(the extension's `onLiveCall`, docs/models.md, Live counts), at most every
+500 ms while it changes and null when it ends. It goes to the open views
+only, outside the replay buffer, so its ticks never push real events out;
+a busy thread's `hello` carries the latest as `liveCall`. Nothing of it is
+stored or logged.
 A subagent run's events (started, output, tool calls, questions, notes,
 usage, finished, stopped, interrupted) go out as `delegation` to the parent
 thread's stream and to the subagent's own thread's stream. What a run

@@ -166,9 +166,17 @@ administrator pairs or manages them; a personal host lives in its user's
   the extension's `waitingFetch`, which reads the job every 2 s while it is
   queued; the thread's `gpu_wait` event says what it waits for: other work
   (`busyWith`) or its model loading.
+- **Live counts.** A thread's own turns ask a llama.cpp model (on a host,
+  or a plain llama-server) for its prompt progress and per-token timings
+  (`return_progress`, `timings_per_token`) and a host's vLLM model for usage
+  on every chunk (`continuous_usage_stats`). The extension's
+  `LiveCallMeter` reads those numbers from Pi's `provider_stream_event`, and
+  for any other server the context's estimate of the prompt and the output
+  counted at four characters a token; the thread's `live_call` event carries
+  them, and the chat shows them in place of its dots (docs/ux.md).
 - **Discovery** reads `/host/v1/models`: context length, tools, vision,
-  embeddings, the file's checksum (`digest`, for strong group suggestions)
-  and thinking. A chat template with an `enable_thinking` switch has one level, sent as
+  embeddings, the file's checksum (`digest`, for strong group suggestions),
+  the server it runs on (`server`: llama.cpp or vLLM) and thinking. A chat template with an `enable_thinking` switch has one level, sent as
   `chat_template_kwargs.enable_thinking`; a template that always thinks (it opens
   `<think>` itself, like DeepSeek R1's) gets no switch. A template that writes
   `<think>` itself is reported as `opensThinking`. A host model that reports levels
