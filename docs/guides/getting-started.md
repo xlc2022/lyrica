@@ -1195,8 +1195,10 @@ refused. To replace the destination, enter the full URL and token again;
   22.12 or later, and on an older Node the update's build fails and she
   stays on the running release, so upgrade Node first (NodeSource, as in
   "On Debian or Ubuntu"). shellcheck is another, from 2026-11-10: until
-  it is installed (`apt-get install shellcheck`) her commands aren't
-  checked before they run, and nothing else changes. On Debian and
+  it is installed (`apt-get install shellcheck` on Debian; on NixOS the
+  next flake update and `nixos-rebuild switch`, since the module puts it
+  on lyricad's PATH) her commands aren't checked before they run, and
+  nothing else changes. On Debian and
   Ubuntu, Administration → Status reports any installed units that
   differ from the new release or are missing; run `install.sh` from a
   current checkout to update them. Updates never rewrite units, since
