@@ -23,10 +23,14 @@ const MINUTE_TIP = "At most this many tool calls in any minute, so a runaway loo
 const limitText = (n: number | null | undefined) => (n === null || n === undefined ? "" : String(n));
 const limitValue = (text: string): number | null => (text.trim() ? Number(text) : null);
 
-/** At most one state per row: Online, Token rejected, Unreachable with how long, or Off network for a private one. */
-export function mcpState(m: McpServerInfo, now = Date.now()): { tone: "ok" | "warn" | "bad"; word: string; detail?: string } | undefined {
+/**
+ * At most one state per row: Online, Token rejected, Unreachable with how long, or Off network for a private one.
+ * `refused` is a private server held back because its host left the user's network: its ⋯ has Use anyway while that stands.
+ */
+export function mcpState(m: McpServerInfo, now = Date.now()): { tone: "ok" | "warn" | "bad"; word: string; detail?: string; refused?: true } | undefined {
   if (m.state?.kind === "rejected") return { tone: "bad", word: "Token rejected" };
   if (m.state?.kind === "unreachable") return { tone: "warn", word: "Unreachable", detail: duration(now - Date.parse(m.state.since)) };
+  if (m.state?.kind === "offNetwork" && m.pool === "private") return { tone: "warn", word: "Off network", refused: true };
   if (m.offNetwork && m.pool === "private") return { tone: "warn", word: "Off network" };
   if (m.state?.kind === "online") return { tone: "ok", word: "Online" };
   return undefined;
@@ -150,7 +154,7 @@ function McpDrawer({ userId, server, onSaved, onChanged, onClose }: {
         <h2>{adding ? "Add server" : server.name}</h2>
         {server && <DrawerMenu label={`Actions for ${server.name}`} items={[
           { label: server.command ? "Replace environment" : "Replace token", onPick: () => setReplacing(true) },
-          ...(server.pool === "private" && server.offNetwork && !server.state ? [{ label: "Use anyway", onPick: () => setOffNetwork("use") }] : []),
+          ...(mcpState(server)?.refused ? [{ label: "Use anyway", onPick: () => setOffNetwork("use") }] : []),
           { label: "Remove", danger: true, onPick: () => setRemoving(true) },
         ]} />}
         <button type="button" className="icon sm" aria-label="Close" onClick={onClose}><Icon name="close" /></button>

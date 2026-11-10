@@ -742,18 +742,20 @@ export interface MachineInfo {
    * can't be used until it is.
    */
   hostKey: string | null;
-  /** Its address resolved outside the LAN, loopback and tailnet at the last check. */
+  /** Its address resolved outside the LAN, loopback and tailnet at the last check; on a private machine, the user accepted that. */
   offNetwork: boolean;
   lastUsed: string | null;
   /**
    * How the last connection went, for the row's state: online (she got in),
-   * unreachable (it couldn't be reached or logged in to), or keyChanged (it
-   * showed a host key other than the confirmed one). `since` is when that
+   * unreachable (it couldn't be reached or logged in to), keyChanged (it
+   * showed a host key other than the confirmed one), or offNetwork (she was
+   * refused: a private machine's address has left the user's network, until
+   * `confirm-off-network`). `since` is when that
    * outcome began. Absent before the first connection, and after the address
    * or host key changes. A Proxmox machine's is how her last API call went:
    * online on any answer but a refused token, keyChanged on another certificate.
    */
-  state?: { kind: "online" | "unreachable" | "keyChanged"; since: string };
+  state?: { kind: "online" | "unreachable" | "keyChanged" | "offNetwork"; since: string };
 }
 /** GET /api/u/:userId/machines → MachineInfo[] */
 /**
@@ -818,7 +820,7 @@ export interface MachineChange { address?: string; root?: string | null; pool?: 
  * replaces her key for the machine.
  */
 export interface MachineKey { hostKey: string; token?: string; draft?: string }
-/** POST /api/u/:userId/machines/:name/confirm-off-network → MachineInfo. A private machine gone off network can be used again. */
+/** POST /api/u/:userId/machines/:name/confirm-off-network → MachineInfo. A private machine gone off network can be used again: its offNetwork state ends. */
 /** DELETE /api/u/:userId/machines/:name → Ok. Every thread's grant of it goes too. */
 
 /** What a Git account's host runs: GitHub, Forgejo, Gitea, or Other (plain git over HTTPS). */
@@ -834,10 +836,13 @@ export interface GitAccountInfo {
   account: string;
   /** A GitHub account is always general. */
   pool: Pool;
-  /** Its host resolved outside the LAN, loopback and tailnet at the last check. */
+  /** Its host resolved outside the LAN, loopback and tailnet at the last check; on a private account, the user accepted that. */
   offNetwork: boolean;
-  /** How the last use went, and since when: signedIn (the token worked), rejected (the host refused it), unreachable. Absent before the first. */
-  state?: { kind: "signedIn" | "rejected" | "unreachable"; since: string };
+  /**
+   * How the last use went, and since when: signedIn (the token worked), rejected (the host refused it), unreachable, or offNetwork
+   * (the token was held back: a private account's host has left the user's network, until `confirm-off-network`). Absent before the first.
+   */
+  state?: { kind: "signedIn" | "rejected" | "unreachable" | "offNetwork"; since: string };
   /**
    * A Forgejo/Gitea account whose host resolves into her own network gets the
    * tailnet webhook (docs/briefs/ci-wakes.md step 4): where the forge POSTs,
@@ -856,11 +861,17 @@ export interface GitAccountInfo {
 export interface GitAccountInput { name: string; kind: GitKind; host: string; account: string; token: string; pool: Pool; offNetworkConfirmed?: boolean }
 /** PATCH /api/u/:userId/git-accounts/:name → GitAccountInfo. A new pool takes its repositories from every thread; a new name follows into them. */
 export interface GitAccountChange { name?: string; host?: string; account?: string; pool?: Pool; offNetworkConfirmed?: boolean }
-/** POST /api/u/:userId/git-accounts/:name/token → GitAccountInfo. Replace token: checked against the host before it replaces the old one. */
+/**
+ * POST /api/u/:userId/git-accounts/:name/token → GitAccountInfo. Replace token: checked against the host before it replaces the old
+ * one. A private account whose host has left her network is refused first (400), its state then `offNetwork`.
+ */
 export interface GitToken { token: string }
-/** POST /api/u/:userId/git-accounts/:name/confirm-off-network → GitAccountInfo. A private account gone off network can be used again. */
+/** POST /api/u/:userId/git-accounts/:name/confirm-off-network → GitAccountInfo. A private account gone off network can be used again: its offNetwork state ends. */
 /** DELETE /api/u/:userId/git-accounts/:name → Ok. Every thread's repositories that use it go too. */
-/** GET /api/u/:userId/git-accounts/:name/repositories?q= → GitRepository[]. What the account can see, from its forge; none for Other. */
+/**
+ * GET /api/u/:userId/git-accounts/:name/repositories?q= → GitRepository[]. What the account can see, from its forge; none for Other.
+ * 400 with why when the token is rejected, the host doesn't answer, or a private account's host has left her network (nothing is asked then).
+ */
 /** A repository a thread clones, and the Git account it uses. */
 export interface GitRepository { name: string; account: string }
 
@@ -882,15 +893,18 @@ export interface McpServerInfo {
   tools: number;
   /** The line she sees it listed with: the first line of its instructions, or its title. */
   description: string | null;
-  /** Its host resolved outside the LAN, loopback and tailnet at the last check. */
+  /** Its host resolved outside the LAN, loopback and tailnet at the last check; on a private server, the user accepted that. */
   offNetwork: boolean;
   /** Calls per day (UTC) and per minute she may send it, across the user's threads; null for no limit (the default). */
   dailyLimit: number | null;
   minuteLimit: number | null;
   /** Tool calls sent to it since midnight UTC. */
   callsToday: number;
-  /** How the last connection went, and since when: online, rejected (the token), unreachable. Absent before the first. */
-  state?: { kind: "online" | "rejected" | "unreachable"; since: string };
+  /**
+   * How the last connection went, and since when: online, rejected (the token), unreachable, or offNetwork (it was held
+   * back: a private server's host has left the user's network, until `confirm-off-network`). Absent before the first.
+   */
+  state?: { kind: "online" | "rejected" | "unreachable" | "offNetwork"; since: string };
 }
 /**
  * POST /api/u/:userId/mcp-servers/probe (McpServerInput) → McpServerProbe. An
@@ -907,11 +921,14 @@ export interface McpServerInput { name: string; url?: string; token?: string; co
 export interface McpServerProbe { tools: number; description: string | null }
 /** PATCH /api/u/:userId/mcp-servers/:name → McpServerInfo. A new URL or command is checked first; a new pool takes it from every thread; a new name follows into them. */
 export interface McpServerChange { name?: string; url?: string; command?: string; pool?: Pool; dailyLimit?: number | null; minuteLimit?: number | null; offNetworkConfirmed?: boolean }
-/** POST /api/u/:userId/mcp-servers/:name/token → McpServerInfo. Replace token: the server is checked with it first; empty sends none. */
+/**
+ * POST /api/u/:userId/mcp-servers/:name/token → McpServerInfo. Replace token: the server is checked with it first; empty sends none.
+ * A private server whose host has left her network is refused before that (400), its state then `offNetwork`.
+ */
 export interface McpToken { token: string }
 /** POST /api/u/:userId/mcp-servers/:name/env → McpServerInfo. Replace environment, a local server's `KEY=value` lines: it is started with them first. */
 export interface McpEnv { env: string }
-/** POST /api/u/:userId/mcp-servers/:name/confirm-off-network → McpServerInfo. A private server gone off network can be used again. */
+/** POST /api/u/:userId/mcp-servers/:name/confirm-off-network → McpServerInfo. A private server gone off network can be used again: its offNetwork state ends. */
 /** DELETE /api/u/:userId/mcp-servers/:name → Ok. Every thread's grant of it goes too. */
 
 // --- Threads ---

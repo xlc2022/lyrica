@@ -506,6 +506,30 @@ test("Machines lists none, and Add machine reaches a machine before anything is 
   await expect(page.getByRole("region", { name: "Machines", exact: true })).toContainText("None yet.");
 });
 
+test("A private machine she is refused for going off network is confirmed from its row, and then has nothing left to confirm", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  const vault = { name: "vault", kind: "ssh", address: "lyrica@vault.example", root: null, pool: "private", limit: "ask", keyLine: "", hostKey: `SHA256:${"A".repeat(43)}`, lastUsed: null };
+  let accepted = false;
+  await page.route("**/machines", (r) => r.request().method() === "GET"
+    ? r.fulfill({ json: [accepted ? { ...vault, offNetwork: true } : { ...vault, offNetwork: false, state: { kind: "offNetwork", since: new Date().toISOString() } }] }) : r.fallback());
+  await page.route("**/machines/vault/confirm-off-network", (r) => { accepted = true; return r.fulfill({ json: { ...vault, offNetwork: true } }); });
+  await page.goto(`/#/u/${userId}/settings/machines`);
+  const row = page.getByRole("region", { name: "Machines", exact: true }).locator(".machine-row");
+  await expect(row).toContainText("Off network");
+  await row.getByRole("button", { name: "Actions for vault" }).click();
+  await page.getByRole("menuitem", { name: "Use anyway" }).click();
+  const dialog = page.getByRole("dialog", { name: "Outside your network" });
+  await expect(dialog).toContainText("Use it anyway?");
+  await dialog.getByRole("button", { name: "Use anyway" }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect.poll(() => accepted).toBe(true);
+  // Accepted, it still says Off network, and Use anyway is gone: it would do nothing.
+  await expect(row).toContainText("Off network");
+  await row.getByRole("button", { name: "Actions for vault" }).click();
+  await expect(page.getByRole("menuitem", { name: "Replace key" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Use anyway" })).toHaveCount(0);
+});
+
 test("Add machine for a Proxmox offers the user's own Proxmox user, with its warnings and its own setup", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   await page.goto(`/#/u/${userId}/settings/machines/new`);
@@ -639,10 +663,15 @@ test("Git accounts lists none, and Add account checks the token with the host be
 test("Git accounts show their state, and a thread's Repositories adds from what each account can see", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   const since = new Date(Date.now() - 3 * 3600_000).toISOString();
+  // Away is a private account she is refused because its host left the network, until its Use anyway is confirmed.
+  const away = { name: "Away", kind: "gitea", host: "git.example", account: "lyrica", pool: "private" };
+  let accepted = false;
   await page.route("**/git-accounts", (r) => r.request().method() === "GET" ? r.fulfill({ json: [
     { name: "lyrica-bot", kind: "github", host: "github.com", account: "lyrica-bot", pool: "general", offNetwork: true, state: { kind: "signedIn", since } },
     { name: "Forge", kind: "forgejo", host: "git.lan", account: "lyrica", pool: "private", offNetwork: false, state: { kind: "unreachable", since } },
+    accepted ? { ...away, offNetwork: true } : { ...away, offNetwork: false, state: { kind: "offNetwork", since } },
   ] }) : r.fallback());
+  await page.route("**/git-accounts/Away/confirm-off-network", (r) => { accepted = true; return r.fulfill({ json: { ...away, offNetwork: true } }); });
   await page.route("**/git-accounts/*/repositories*", (r) => r.fulfill({ json: [{ name: "lyrica-bot/scratch", account: "lyrica-bot" }] }));
   await page.goto(`/#/u/${userId}/settings/git`);
   const section = page.getByRole("region", { name: "Git accounts", exact: true });
@@ -657,6 +686,24 @@ test("Git accounts show their state, and a thread's Repositories adds from what 
   await expect(dialog).toContainText("leave every project and thread");
   await dialog.getByRole("button", { name: "Keep" }).click();
   await drawer.getByRole("button", { name: "Close" }).click();
+  // The refused account says Off network, and its ⋯ is where that is confirmed; once accepted the row still says so, with nothing left to confirm.
+  await expect(section.locator(".machine-row").nth(2)).toContainText("Off network");
+  await section.getByRole("button", { name: /^Away/ }).click();
+  const awayDrawer = page.getByRole("complementary", { name: "Away" });
+  await awayDrawer.getByRole("button", { name: "Actions for Away" }).click();
+  await page.getByRole("menuitem", { name: "Use anyway" }).click();
+  const outside = page.getByRole("dialog", { name: "Use a host outside your network?" });
+  await expect(outside).toContainText("Away's host is outside your network, so a private thread's code would leave it.");
+  await outside.getByRole("button", { name: "Use anyway" }).click();
+  await expect(outside).toHaveCount(0);
+  await expect.poll(() => accepted).toBe(true);
+  await expect(section.locator(".machine-row").nth(2)).toContainText("Off network");
+  await awayDrawer.getByRole("button", { name: "Actions for Away" }).click();
+  await expect(page.getByRole("menuitem", { name: "Replace token" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Use anyway" })).toHaveCount(0);
+  // Escape closes the menu and the drawer under it.
+  await page.keyboard.press("Escape");
+  await expect(awayDrawer).toHaveCount(0);
 
   await newThread(page, "General");
   await send(page, "Hello");

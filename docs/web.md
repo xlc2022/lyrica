@@ -847,8 +847,10 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   confirmed shows Key changed). The row opens a drawer: address, folder,
   pool and **Mode limit** as the message box's three-item mode list, with
   one Save. The row's ⋯ has Replace key, **Use anyway** (only on a private
-  machine that is Off network: the same dialog as Add machine's, then
-  `confirm-off-network`) and Remove, Remove in a dialog with its one
+  machine she is refused because it went Off network, its state
+  `offNetwork`: the same dialog as Add machine's, then
+  `confirm-off-network`, after which the row still says Off network and
+  the item is gone) and Remove, Remove in a dialog with its one
   sentence. **Add machine** is a link to its own card in the section
   (`#/u/<user>/settings/machines/new`): a kind segment (SSH | Proxmox), then
   steps as sections with eyebrows. Name and address (name, address, folder
@@ -867,7 +869,8 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   rejected, Unreachable with how long, Off network). A row opens the drawer
   (Name, Kind, Host, Account, Pool; a GitHub account's Pool is the fact
   General, with the reason as its tooltip), with Replace token, Use anyway
-  (a private account Off network) and Remove behind ⋯; Remove names what
+  (a private account whose token is held back because its host went Off
+  network, its state `offNetwork`) and Remove behind ⋯; Remove names what
   leaves in its dialog (**Keep** / **Remove**). **Add account** opens the
   same drawer with a Token field; Add account checks the token against the
   host (`POST …/git-accounts/probe`, then `POST …/git-accounts`), and a
@@ -878,7 +881,7 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   state (Online, Token rejected, Unreachable with how long, Off network).
   A row opens the drawer (Name, URL or Command, Pool, Calls per day and
   Calls per minute, empty for no limit), with Replace token (a URL) or Replace
-  environment (a command), Use anyway and Remove behind ⋯; Remove says it
+  environment (a command), Use anyway (as for a Git account) and Remove behind ⋯; Remove says it
   leaves every project and thread at once (**Keep** / **Remove**). **Add
   server** opens the same drawer with an optional Token field for a URL,
   or an Environment textarea (`KEY=value` lines) once a command is typed,

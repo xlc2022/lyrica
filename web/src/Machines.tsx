@@ -18,10 +18,14 @@ import { ConfirmDialog, ErrorText, useAction, useDismiss, useLoad } from "./ui.t
 const LIMITS: MachineLimit[] = ["ask", "acceptEdits", "auto"];
 const POOLS: Record<Pool, string> = { general: "General", private: "Private" };
 
-/** At most one state per row: a dot's colour and its word, with the duration in mono where there is one. */
-export function machineState(m: MachineInfo, now = Date.now()): { tone: "ok" | "warn" | "bad"; word: string; detail?: string } | undefined {
+/**
+ * At most one state per row: a dot's colour and its word, with the duration in mono where there is one. `refused` is a
+ * private machine she is kept from because its address left the user's network: the row's ⋯ has Use anyway while it stands.
+ */
+export function machineState(m: MachineInfo, now = Date.now()): { tone: "ok" | "warn" | "bad"; word: string; detail?: string; refused?: true } | undefined {
   if (m.state?.kind === "keyChanged" || m.hostKey === null) return { tone: "bad", word: "Key changed" };
   if (m.state?.kind === "unreachable") return { tone: "warn", word: "Unreachable", detail: duration(now - Date.parse(m.state.since)) };
+  if (m.state?.kind === "offNetwork") return { tone: "warn", word: "Off network", ...(m.pool === "private" ? { refused: true } : {}) };
   if (m.offNetwork) return { tone: "warn", word: "Off network" };
   if (m.state?.kind === "online") return { tone: "ok", word: "Online" };
   return undefined;
@@ -58,11 +62,12 @@ function MachinesList({ ctx }: { ctx: ShellContext }) {
   const [run, , error] = useAction();
   const [open, setOpen] = useState<string>();
   const [removing, setRemoving] = useState<MachineInfo>();
-  // An off-network private machine her threads may use again, once its dialog is confirmed.
+  // A private machine she is refused because it went off network: her threads may use it again once its dialog is confirmed.
   const [using, setUsing] = useState<MachineInfo>();
   const list = machines.data ?? [];
   const current = list.find((m) => m.name === open);
-  const replace = (m: MachineInfo) => machines.set(list.map((x) => (x.name === m.name ? { ...x, ...m } : x)));
+  // The answer is the whole row: merged into the old one, a state it no longer has would stay.
+  const replace = (m: MachineInfo) => machines.set(list.map((x) => (x.name === m.name ? m : x)));
   return (
     <section className="card" aria-labelledby="h-machines">
       <div className="section-head">
@@ -88,7 +93,7 @@ function MachinesList({ ctx }: { ctx: ShellContext }) {
                 )}
                 <RowMenu label={`Actions for ${m.name}`} items={[
                   { label: "Replace key", onPick: () => go({ page: "settings", userId, section: `machines/${encodeURIComponent(m.name)}/key` }) },
-                  ...(state?.word === "Off network" && m.pool === "private" ? [{ label: "Use anyway", onPick: () => setUsing(m) }] : []),
+                  ...(state?.refused ? [{ label: "Use anyway", onPick: () => setUsing(m) }] : []),
                   { label: "Remove", danger: true, onPick: () => setRemoving(m) },
                 ]} />
               </li>

@@ -1080,7 +1080,8 @@ export class Workspace {
   /**
    * Checks a Git account's host before it is used. A private account whose
    * host has newly left her network is refused until the user confirms, so a DNS
-   * change can't get past the warning; a general one only records it.
+   * change can't get past the warning; a general one only records it. The
+   * refusal is the account's state, which is where Settings offers Use anyway.
    */
   private async checkGitHost(userId: string, a: GitAccountConfig): Promise<void> {
     const s = this.settings(userId);
@@ -1094,10 +1095,12 @@ export class Workspace {
     }
     if (outside && a.pool === "private" && !a.offNetwork) {
       this.gitRefused.add(key);
+      s.gitAccountState(a.name, "offNetwork");
       throw new Error(`${a.host} now resolves outside your network, so ${a.name}'s token isn't used; confirm it in Settings → Git accounts to use it again.`);
     }
     this.gitRefused.delete(key);
     if (outside !== a.offNetwork) s.setGitOffNetwork(a.name, outside);
+    if (a.state?.kind === "offNetwork") s.gitAccountState(a.name, null);
   }
 
   /** The HTTPS client for Git hosts: `forgeApi` and the CI-watch poller both use it. Tests pass their own. */
@@ -1205,11 +1208,12 @@ export class Workspace {
     return s.gitAccount(a.name)!;
   }
 
-  /** Replace token: the new one is checked against the host before it replaces the old. */
+  /** Replace token: the new one is checked against the host before it replaces the old, and the host against her network before that. */
   async setGitToken(userId: string, name: string, token: string): Promise<GitAccountConfig> {
     const s = this.settings(userId);
     const a = s.gitAccount(name);
     if (!a) throw new Error(`no Git account ${name}`);
+    await this.checkGitHost(userId, a);
     await this.probeGitAccount({ ...a, token });
     return s.setGitToken(name, token, "signedIn");
   }
@@ -1227,14 +1231,15 @@ export class Workspace {
   /**
    * The repositories a Git account can see, matching `q`, for Add
    * repository: from its forge's API. Other has none to list; the person
-   * pastes a URL. Records the account's state.
+   * pastes a URL. Records the account's state. The host is checked first,
+   * as before a clone, since the question carries the account's token.
    */
   async listRepositories(userId: string, name: string, q = ""): Promise<GitRepositoryInfo[]> {
     const s = this.settings(userId);
     const a = s.gitAccount(name);
     if (!a) throw new Error(`no Git account ${name}`);
     if (a.kind === "other") return [];
-    if (this.gitRefused.has(`${userId}/${a.name}`)) return [];
+    await this.checkGitHost(userId, a);
     let names: string[];
     try {
       const path = a.kind === "github" ? "/user/repos?per_page=100&sort=pushed" : `/repos/search?limit=50&q=${encodeURIComponent(q)}`;
@@ -1316,10 +1321,13 @@ export class Workspace {
       return;
     }
     if (outside && m.pool === "private" && !m.offNetwork) {
+      // The server's state, which is where Settings offers Use anyway.
+      s.mcpServerState(m.name, "offNetwork");
       throw new Error(`${mcpHost(m.url)} now resolves outside your network, so the MCP server ${m.name} isn't used; confirm it in Settings → MCP servers to use it again.`);
     }
     this.mcpChecked.add(key);
     if (outside !== m.offNetwork) s.setMcpOffNetwork(m.name, outside);
+    if (m.state?.kind === "offNetwork") s.mcpServerState(m.name, null);
   }
 
   /**
@@ -1401,12 +1409,13 @@ export class Workspace {
     return s.mcpServer(m.name)!;
   }
 
-  /** Replace token: the server is checked with the new one before it replaces the old. An empty token sends none. */
+  /** Replace token: the server is checked with the new one before it replaces the old, and its host against her network before that. An empty token sends none. */
   async setMcpToken(userId: string, name: string, token: string): Promise<McpServerConfig> {
     const s = this.settings(userId);
     const m = s.mcpServer(name);
     if (!m) throw new Error(`no MCP server ${name}`);
     if (m.command.length) throw new Error(`${name} is a local server: replace its environment instead`);
+    await this.checkMcpHost(userId, m);
     const probe = await this.probeMcpServer({ url: m.url, token });
     s.updateMcpServer(name, { description: probe.description, tools: probe.tools });
     return s.setMcpToken(name, token.trim(), "online");
@@ -1460,6 +1469,7 @@ export class Workspace {
    * Checks a machine's address before each connection and returns the one to
    * connect to. A private machine that has newly gone off network is refused
    * until the user confirms again, so a DNS change can't get past the warning.
+   * The refusal is the machine's state, which is where Settings offers Use anyway.
    */
   private async checkAddress(userId: string, name: string): Promise<string> {
     const s = this.settings(userId);
@@ -1475,9 +1485,11 @@ export class Workspace {
     }
     const { addresses, outside } = resolved;
     if (outside && m.pool === "private" && !m.offNetwork) {
+      try { s.machineState(name, "offNetwork"); } catch { /* the refusal stands either way */ }
       throw new Error(`${m.host} now resolves outside your network (${addresses.join(", ")}); confirm it in Settings to use it again`);
     }
     if (outside !== m.offNetwork) s.setOffNetwork(name, outside);
+    if (m.state?.kind === "offNetwork") s.machineState(name, null);
     return addresses[0]!;
   }
 

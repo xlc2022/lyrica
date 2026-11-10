@@ -257,6 +257,24 @@ describe("Git accounts and repositories", () => {
     expect(settings.gitAccount("home")!.state?.kind).toBe("signedIn");
   });
 
+  it("holds back a private account's token once its host has left her network, and leaves that as the state Ada confirms", async () => {
+    const asked: string[] = [];
+    const real = forge({ forge: "forge-token" }, ["ada/notes"]);
+    const { ada, workspace, settings } = await withAccounts(((url: string | URL, init?: RequestInit) => { asked.push(String(url)); return real(url, init); }) as typeof fetch);
+    // The host moves outside, as a DNS change would move it: nothing asked, so nothing was confirmed.
+    settings.updateGitAccount("forge", { host: "192.0.2.7" });
+    // Whatever carries the token checks the host first, with nothing checked yet in this process: the Add repository picker, Replace token, the CI watch.
+    await expect(workspace.listRepositories(ada.id, "forge")).rejects.toThrow(/192.0.2.7 now resolves outside your network/);
+    await expect(workspace.setGitToken(ada.id, "forge", "forge-token")).rejects.toThrow(/outside your network/);
+    expect(await workspace.forgeAccountUsable(ada.id, "forge")).toBe(false);
+    expect(asked).toEqual([]);
+    // The refusal is the account's state, which is what offers Use anyway: without it there is nothing in Settings to confirm.
+    expect(settings.gitAccount("forge")).toMatchObject({ offNetwork: false, state: { kind: "offNetwork" } });
+    expect(workspace.confirmGitOffNetwork(ada.id, "forge")).toMatchObject({ offNetwork: true, state: null });
+    expect(await workspace.forgeAccountUsable(ada.id, "forge")).toBe(true);
+    expect(await workspace.listRepositories(ada.id, "forge")).toEqual([{ name: "ada/notes", account: "forge" }]);
+  });
+
   it("moves a repository its parent moves to another account in the children, rather than taking it away", async () => {
     const { settings } = await withAccounts();
     const lyrica = (account: string) => ({ name: "xlc2022/lyrica", account });
@@ -427,6 +445,22 @@ describe("MCP servers", () => {
     } finally {
       await house.close();
     }
+  });
+
+  it("holds back a private server whose host has left her network, and leaves that as the state the user confirms", async () => {
+    const { ada, workspace, settings } = await setup();
+    // Saved while on her network; 192.0.2.7 is where a DNS change would have taken its name.
+    settings.addMcpServer({ name: "away", url: "http://192.0.2.7/mcp", token: "", pool: "private", description: null, tools: 2, offNetwork: false });
+    settings.setThread("t", "private", { mcpServers: ["away"] });
+    const t = { userId: ada.id, pool: "private" as const, threadId: "t" };
+    expect(await workspace.checkMcpServers(t)).toEqual([expect.stringMatching(/192.0.2.7 now resolves outside your network/)]);
+    expect(workspace.mcpServersFor(t)).toEqual([]);
+    // The refusal is the server's state, which is what offers Use anyway; Replace token would carry a token, so it checks first too.
+    expect(settings.mcpServer("away")).toMatchObject({ offNetwork: false, state: { kind: "offNetwork" } });
+    await expect(workspace.setMcpToken(ada.id, "away", "new-token")).rejects.toThrow(/192.0.2.7 now resolves outside your network/);
+    expect(workspace.confirmMcpOffNetwork(ada.id, "away")).toMatchObject({ offNetwork: true, state: null });
+    expect(await workspace.checkMcpServers(t)).toEqual([]);
+    expect(workspace.mcpServersFor(t).map((m) => m.name)).toEqual(["away"]);
   });
 
   it("holds a server to its calls a day and a minute, counted across threads, and lets an unlimited one be", async () => {

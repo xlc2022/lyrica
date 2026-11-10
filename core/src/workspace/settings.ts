@@ -118,8 +118,11 @@ export interface MachineConfig {
   state: MachineState | null;
 }
 
-/** How the last connection to a machine went: it got in, couldn't reach it, or saw a host key other than the confirmed one. */
-export interface MachineState { kind: "online" | "unreachable" | "keyChanged"; since: string }
+/**
+ * How the last connection to a machine went: it got in, couldn't reach it, saw a host key other than the confirmed one, or
+ * (offNetwork) was refused because a private machine's address had left the user's network, which stands until they confirm it.
+ */
+export interface MachineState { kind: "online" | "unreachable" | "keyChanged" | "offNetwork"; since: string }
 
 /** A repository a thread clones: `owner/name` on its account's host (a path with more parts on some hosts), and the account's name. */
 export interface ThreadRepository {
@@ -153,7 +156,8 @@ export interface GitAccountConfig {
   webhookSecret: string | null;
 }
 
-export interface GitAccountState { kind: "signedIn" | "rejected" | "unreachable"; since: string }
+/** offNetwork: a private account was refused because its host had left the user's network, which stands until they confirm it. */
+export interface GitAccountState { kind: "signedIn" | "rejected" | "unreachable" | "offNetwork"; since: string }
 
 export type NewGitAccount = Omit<GitAccountConfig, "state" | "webhookSecret">;
 
@@ -186,7 +190,8 @@ export interface McpServerConfig {
   state: McpServerState | null;
 }
 
-export interface McpServerState { kind: McpStateKind; since: string }
+/** offNetwork: a private server was held back because its host had left the user's network, which stands until they confirm it. */
+export interface McpServerState { kind: McpStateKind | "offNetwork"; since: string }
 
 /** A server to save: `token`, `command` and `env` may be left out (a remote one has no command, a local one no token). */
 export type NewMcpServer = Omit<McpServerConfig, "state" | "token" | "command" | "env" | "dailyLimit" | "minuteLimit" | "callsToday">
@@ -1029,9 +1034,9 @@ export class WorkspaceSettings {
     this.db.prepare("UPDATE machines SET off_network = ? WHERE name = ?").run(off ? 1 : 0, name);
   }
 
-  /** the user accepted that a private machine is off network: it can be reached again. */
+  /** The user accepted that a private machine is off network: it can be reached again, and the refusal that asked is over. */
   confirmOffNetwork(name: string): MachineConfig {
-    this.need(name);
+    if (this.need(name).state?.kind === "offNetwork") this.machineState(name, null);
     this.setOffNetwork(name, true);
     return this.need(name);
   }
@@ -1127,9 +1132,9 @@ export class WorkspaceSettings {
     this.db.prepare("UPDATE git_accounts SET off_network = ? WHERE name = ?").run(off ? 1 : 0, name);
   }
 
-  /** the user accepted that a private account's host is off network: it can be used again. */
+  /** The user accepted that a private account's host is off network: it can be used again, and the refusal that asked is over. */
   confirmGitOffNetwork(name: string): GitAccountConfig {
-    this.needGit(name);
+    if (this.needGit(name).state?.kind === "offNetwork") this.gitAccountState(name, null);
     this.setGitOffNetwork(name, true);
     return this.needGit(name);
   }
@@ -1247,7 +1252,7 @@ export class WorkspaceSettings {
   }
 
   /** Records how a connection went; `checked_at` moves only when the outcome changes. */
-  mcpServerState(name: string, kind: McpStateKind | null): void {
+  mcpServerState(name: string, kind: McpServerState["kind"] | null): void {
     this.db.prepare("UPDATE mcp_servers SET state = ?, checked_at = ? WHERE name = ? AND state IS NOT ?")
       .run(kind, kind && new Date().toISOString(), name, kind);
   }
@@ -1257,9 +1262,9 @@ export class WorkspaceSettings {
     this.db.prepare("UPDATE mcp_servers SET off_network = ? WHERE name = ?").run(off ? 1 : 0, name);
   }
 
-  /** The user accepted that a private server's host is off network: it can be used again. */
+  /** The user accepted that a private server's host is off network: it can be used again, and the refusal that asked is over. */
   confirmMcpOffNetwork(name: string): McpServerConfig {
-    this.needMcp(name);
+    if (this.needMcp(name).state?.kind === "offNetwork") this.mcpServerState(name, null);
     this.setMcpOffNetwork(name, true);
     return this.needMcp(name);
   }
@@ -1358,7 +1363,7 @@ const dayStart = (now = new Date()): string => `${now.toISOString().slice(0, 10)
 
 interface McpServerRow {
   name: string; url: string; token: string; command: string; env: string; pool: Pool; description: string | null; tools: number; off_network: number;
-  daily_limit: number | null; minute_limit: number | null; state: McpStateKind | null; checked_at: string | null;
+  daily_limit: number | null; minute_limit: number | null; state: McpServerState["kind"] | null; checked_at: string | null;
 }
 const toMcpServer = (r: McpServerRow, callsToday: number): McpServerConfig => ({
   name: r.name, url: r.url, token: r.token, command: JSON.parse(r.command || "[]"), env: JSON.parse(r.env || "{}"), pool: r.pool,

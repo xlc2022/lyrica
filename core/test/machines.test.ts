@@ -212,8 +212,11 @@ describe("machines", () => {
     workspace.updateMachine(thread("p").userId, "vault", { address: "lyrica@192.0.2.7" });
     await expect(run()).rejects.toThrow(/192.0.2.7 now resolves outside your network/);
     expect(fake.connects).toHaveLength(1);
-    workspace.confirmOffNetwork(thread("p").userId, "vault");
+    // The refusal is the row's state, which is what offers Use anyway: without it there is nothing in Settings to confirm.
+    expect(settings.machine("vault")).toMatchObject({ offNetwork: false, state: { kind: "offNetwork" } });
+    expect(workspace.confirmOffNetwork(thread("p").userId, "vault")).toMatchObject({ offNetwork: true, state: null });
     await run();
+    expect(settings.machine("vault")!.state?.kind).toBe("online");
     expect(fake.connects).toEqual(["127.0.0.1", "192.0.2.7"]);
     // Back on network clears it, so leaving again asks again.
     workspace.updateMachine(thread("p").userId, "vault", { address: "lyrica@10.0.0.9" });

@@ -102,8 +102,8 @@ existed before became general machines at Ask.
 - **Kept in `user.db`** (`machines`): name, address, account, the private
   key, an optional root, the host key the user confirmed, the pool, the **mode
   limit**, whether the address is off network, when she last
-  connected, how the last connection went (online, unreachable, or host
-  key changed) and since when, and whether the account is the user's own
+  connected, how the last connection went (online, unreachable, host
+  key changed, or refused as off network) and since when, and whether the account is the user's own
   (`as_user`, user step 18). That state clears when the address or host key
   changes. A Proxmox machine records it from each API call of hers: any
   answer over the confirmed certificate is online, except a refused token
@@ -191,7 +191,11 @@ existed before became general machines at Ask.
   loopback and tailnet (the model endpoints' check), the machine is marked
   off network. A private machine that has newly gone off network is refused
   until the user confirms (`confirmOffNetwork`), so a DNS change can't get past the
-  warning; back on network clears the mark.
+  warning; back on network clears the mark. The refusal is recorded as the
+  machine's state (`offNetwork`): its row says Off network, and its ⋯ has
+  **Use anyway** while that stands, which is the confirmation. An address
+  changed in the drawer to one outside her network is met the same way, at
+  her next connection.
 - **The SSH client** sits behind `SshTransport`
   (`core/src/workspace/transport.ts`): `SshTarget` keeps the root, the
   floor, the output cleaning and the host key check, and the transport only
@@ -1210,7 +1214,10 @@ come from the user's Git accounts (DESIGN.md, "Updates and self-editing").
   the account check and by the credential relay alike, so a machine with no
   Tailscale of its own still reaches a forge there; when it stops doing so the
   account is Off network and no token goes out until the user confirms
-  **Use anyway**. A new pool, or removing the account, takes its
+  **Use anyway**. The host is checked before every use that carries the
+  token (a clone or fetch, the CI watch, the Add repository picker, Replace
+  token), and a refusal is recorded as the account's state (`offNetwork`),
+  which is what its row shows and what offers Use anyway. A new pool, or removing the account, takes its
   repositories from every thread at once.
 - **A thread's repositories** (`owner/name` and the account each uses) are
   granted like folders: the Repositories row in the thread drawer and
@@ -1364,7 +1371,9 @@ lookups (`services.lyrica.mcpNixos`, docs/guides/nixos-mcp.md).
   own last line on stderr) and saves nothing when that fails. A
   general server with a token must use https. A private server's host
   must resolve on her own network, as for a private Git account, with
-  **Off network** and **Use anyway** when it stops doing so. A private
+  **Off network** and **Use anyway** when it stops doing so (the refusal is
+  the server's state, `offNetwork`, and Replace token is checked the same
+  way before the new token is tried). A private
   server is registered, and so connected and sent its token, only once
   its host has passed that check in this `lyricad` process (after a
   restart: at session start, before Pi connects anything). The check

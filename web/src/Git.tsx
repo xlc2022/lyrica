@@ -20,10 +20,14 @@ const POOLS: Record<Pool, string> = { general: "General", private: "Private" };
 const GITHUB_POOL = "A GitHub account is general. Private threads use only self-hosted accounts on your own network.";
 const PRIVATE_POOL = "A private account must be on your own network: LAN, this machine or the tailnet.";
 
-/** At most one state per row: Signed in, Token rejected, Unreachable with how long, or Off network for a private one. */
-export function gitState(a: GitAccountInfo, now = Date.now()): { tone: "ok" | "warn" | "bad"; word: string; detail?: string } | undefined {
+/**
+ * At most one state per row: Signed in, Token rejected, Unreachable with how long, or Off network for a private one.
+ * `refused` is a private account whose token is held back because its host left the user's network: its ⋯ has Use anyway while that stands.
+ */
+export function gitState(a: GitAccountInfo, now = Date.now()): { tone: "ok" | "warn" | "bad"; word: string; detail?: string; refused?: true } | undefined {
   if (a.state?.kind === "rejected") return { tone: "bad", word: "Token rejected" };
   if (a.state?.kind === "unreachable") return { tone: "warn", word: "Unreachable", detail: duration(now - Date.parse(a.state.since)) };
+  if (a.state?.kind === "offNetwork" && a.pool === "private") return { tone: "warn", word: "Off network", refused: true };
   if (a.offNetwork && a.pool === "private") return { tone: "warn", word: "Off network" };
   if (a.state?.kind === "signedIn") return { tone: "ok", word: "Signed in" };
   return undefined;
@@ -150,7 +154,7 @@ function GitDrawer({ userId, account, onSaved, onRemoved, onChanged, onClose }: 
         <h2>{adding ? "Add account" : account.name}</h2>
         {account && <DrawerMenu label={`Actions for ${account.name}`} items={[
           { label: "Replace token", onPick: () => setReplacing(true) },
-          ...(account.pool === "private" && account.offNetwork && !account.state ? [{ label: "Use anyway", onPick: () => setOffNetwork("use") }] : []),
+          ...(gitState(account)?.refused ? [{ label: "Use anyway", onPick: () => setOffNetwork("use") }] : []),
           { label: "Remove", danger: true, onPick: () => setRemoving(true) },
         ]} />}
         <button type="button" className="icon sm" aria-label="Close" onClick={onClose}><Icon name="close" /></button>
