@@ -2502,8 +2502,11 @@ from Monika's runbooks.
   head. Claude's project doesn't review or approve them (the owner,
   2026-11-10: she has full control of her work; before that, from
   2026-10-24, Claude's PR review approved each one). When the owner asks
-  her to confer with Claude on a change, she hands it to Claude Code, the
-  `claude` role, and weighs its report as findings. **Boundary code needs
+  her to confer with Claude on a change, she runs Claude Code on it, the
+  `claude` program in her sandbox (from her shell or as the `claude`
+  delegate role), and weighs its report as findings; that is a tool of
+  hers, separate from asking Claude's project for work with a `claude`
+  issue. **Boundary code needs
   the owner** (the owner chose a rule over
   a gate, 2026-10-11): keys, the privacy boundary, the model router, the
   sandbox, authentication, deployment, the updater and CI. `CODEOWNERS`
