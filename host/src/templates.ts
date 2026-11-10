@@ -100,6 +100,29 @@ export interface Continuation {
 
 export type Values = Record<string, string | number>;
 
+/** The settings a recipe's caption and card show: on a custom workflow one may have no input bound to it. */
+const SETTINGS = ["steps", "cfg", "guidance", "sampler", "scheduler", "shift"];
+
+/**
+ * Those of a recipe's settings that none of the template's workflows use, as a blank (`$cfg`) or to keep a node
+ * (`_if`, `_unless`): a job never takes them, so whoever lists the recipe shouldn't say it runs with them.
+ */
+export function unboundSettings(t: Template, defaults: Record<string, unknown>): string[] {
+  const used = new Set<string>();
+  const add = (v: unknown) => {
+    if (typeof v === "string" && v.startsWith("$")) used.add(v.slice(1));
+    else if (v && typeof v === "object" && "$pick" in v) for (const p of (v as { $pick: unknown[] }).$pick) add(p);
+  };
+  for (const wf of [t.workflow, t.clipWorkflow, t.continuation?.workflow, t.continuation?.reference?.workflow]) {
+    for (const n of Object.values(wf ?? {})) {
+      for (const v of Object.values(n.inputs)) add(v);
+      for (const c of n._if === undefined ? [] : Array.isArray(n._if) ? n._if : [n._if]) used.add(c);
+      if (n._unless) used.add(n._unless);
+    }
+  }
+  return SETTINGS.filter((k) => defaults[k] !== undefined && !used.has(k));
+}
+
 /** A LoRA applied to the model, with its part's slot (`high`, `low`) when it was made for one expert. */
 export interface Lora { file: string; strength: number; slot?: string | null }
 

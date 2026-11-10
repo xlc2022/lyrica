@@ -35,6 +35,8 @@ export interface HostRecipe {
   custom?: boolean;
   /** For a custom workflow made from a built-in template (a model's own edit of it, or a copy): that template. */
   workflowBase?: string | null;
+  /** Its settings no input of its custom workflow takes (the input has a fixed value): no job uses them. */
+  unbound?: string[];
 }
 
 /** One host's image library, as GET …/hosts/:id/images gives it (its parts flattened from by-role). */
@@ -52,8 +54,12 @@ export const archWord = (a: string) => ARCH_WORD[a] ?? a;
 export const precisionWord = (p: string | null) => (p ? p.toUpperCase() : "");
 export const fileName = (path: string) => path.slice(path.lastIndexOf("/") + 1);
 
-/** A recipe's defaults as its copy block's caption says them: "8 steps · CFG 1 · euler · 1024×1024". */
-export function defaultsWords(d: Record<string, unknown>): string {
+/**
+ * A recipe's defaults as its copy block's caption says them: "8 steps · CFG 1 · euler · 1024×1024". A setting no
+ * input of its workflow takes (`unbound`) is left out: the workflow's own fixed value runs, not this one.
+ */
+export function defaultsWords(all: Record<string, unknown>, unbound: string[] = []): string {
+  const d = Object.fromEntries(Object.entries(all).filter(([k]) => !unbound.includes(k)));
   const n = (k: string) => (typeof d[k] === "number" ? d[k] : undefined);
   return [
     n("steps") !== undefined ? `${n("steps")} ${n("steps") === 1 ? "step" : "steps"}` : "",

@@ -5,7 +5,7 @@ import { existsSync, readFileSync, readdirSync, renameSync, writeFileSync } from
 import { basename, join } from "node:path";
 import { HostError, invalid, notFound } from "./http.ts";
 import type { Part, Role } from "./parts.ts";
-import { longestSeconds, type Action, type PartSpec, type Template, type VideoSpec } from "./templates.ts";
+import { longestSeconds, unboundSettings, type Action, type PartSpec, type Template, type VideoSpec } from "./templates.ts";
 
 export interface Missing {
   source: string;
@@ -159,6 +159,8 @@ export class RecipeBook {
     // An upscaler whose template has a clip workflow upscales clips too.
     const clips = t.clipWorkflow && r.does.includes("upscale") ? ["upscale_video" as const] : [];
     return { ...r, does: [...r.does, ...extend, ...clips], useFor: r.useFor ?? "both", ready: this.ready(r, files), mask: t.mask, references: t.references, custom: !!t.custom, workflowBase: t.custom?.base ?? null,
+      // Only a custom workflow can leave a setting with no input: a built-in binds what its recipes set.
+      unbound: t.custom ? unboundSettings(t, r.defaults) : [],
       ...(t.video ? { video: { ...clipSpec(t.video, present(r, files)), longestSeconds: longestSeconds(t) } } : {}) };
   }
 

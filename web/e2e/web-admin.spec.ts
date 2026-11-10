@@ -1443,6 +1443,22 @@ test("Image models: groups by architecture with Role and Where; a recipe opens t
   // Downloads reads the page again as it opens; let that answer go unanswered.
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
+test("Image models: a setting the model's own workflow gives a fixed value is left out of the caption and the foot", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  const images = await fakeImages(page);
+  await fakeHost(page, [], [images.offering]);
+  // The model's workflow was edited so its cfg input is Fixed: the host lists CFG as unbound.
+  Object.assign(images.recipes[0]!, { template: "custom-0e0e0e0e", custom: true, workflowBase: "z-image", unbound: ["cfg"] });
+  await page.goto(`/#/u/${userId}/models/images`);
+  await page.getByRole("list", { name: "Z-Image models" }).getByRole("button", { name: /^Z-Image Turbo/ }).click();
+  const block = page.getByRole("region", { name: "Z-Image Turbo on box" });
+  await expect(block.locator(".copyhead")).toContainText("template z-image · edited · 8 steps · 1024×1024");
+  await expect(block.locator(".copyhead")).not.toContainText("CFG");
+  await expect(block.getByRole("spinbutton", { name: "Steps" })).toHaveValue("8");
+  await expect(block.getByRole("spinbutton", { name: "CFG" })).toHaveCount(0);
+  if (process.env.SCREENSHOTS) await block.screenshot({ path: `${process.env.SCREENSHOTS}/image-models-unbound-${page.viewportSize()!.width}.png` });
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});
 
 test("Custom workflows: Workflow imports an export into a draft, Edit workflow saves it as a form or JSON, keeps revisions and restores one; a built-in's workflow is edited in place, reset to its template or saved as a new workflow", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);

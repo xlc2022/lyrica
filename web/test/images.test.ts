@@ -20,6 +20,8 @@ describe("a recipe in words", () => {
     expect(defaultsWords({ steps: 28, guidance: 2.5, negativePrompt: "blurry" })).toBe("28 steps · guidance 2.5");
     expect(defaultsWords({ scale: 2, maxSize: 4096, colorMatch: "lab" })).toBe("to 2× · up to 4096 px");
     expect(defaultsWords({})).toBe("");
+    // A setting no input of the workflow takes is left out: its fixed value runs instead.
+    expect(defaultsWords({ steps: 12, cfg: 3.5, sampler: "euler", width: 1024, height: 1024 }, ["cfg"])).toBe("12 steps · euler · 1024×1024");
   });
   it("counts what it is missing, and names its files", () => {
     const r = recipe({ state: "proposed", ready: false, parts: [
