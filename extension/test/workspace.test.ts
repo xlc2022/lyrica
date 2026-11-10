@@ -584,6 +584,23 @@ describe("workspace tools on a machine", () => {
     expect(results[0]).toContain("nope isn't one of this thread's machines");
   });
 
+  it("run in the sandbox when the machine argument means none, as some models send it", async () => {
+    const { commands, results } = await run("auto", [
+      fauxToolCall("bash", { command: "uptime", machine: "null" }, { id: "1" }),
+      fauxToolCall("bash", { command: "date", machine: null }, { id: "2" }),
+      fauxToolCall("bash", { command: "id", machine: " Sandbox " }, { id: "3" }),
+    ], { machines: [nas], approve: yes });
+    expect(commands).toEqual(["uptime", "date", "id"]);
+    expect(asked).toEqual([]);
+    expect(results.join("\n")).not.toContain("isn't one of this thread's machines");
+  });
+
+  it("keep a machine whose name means none when the thread has one", async () => {
+    const { commands } = await run("auto", [fauxToolCall("bash", { command: "uptime", machine: "none" }, { id: "1" })],
+      { machines: [{ name: "none", kind: "ssh", limit: "auto", root: null }], approve: yes });
+    expect(commands).toEqual(["none: uptime"]);
+  });
+
   it("ask on a machine at its limit even when the thread is in Auto", async () => {
     const { commands } = await run("auto", [fauxToolCall("bash", { command: "uptime", machine: "nas" }, { id: "1" })], { machines: [nas], approve: yes });
     expect(asked).toEqual([{ tool: "bash", machine: "nas", warning: undefined }]);

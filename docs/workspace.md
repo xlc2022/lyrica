@@ -116,7 +116,10 @@ existed before became general machines at Ask.
   granted it, with any commands allowed there.
 - **Threads grant machines** (`machines` in the thread's settings). `read`,
   `write`, `edit` and `bash` take an optional `machine`; without it they run
-  in the sandbox. A subagent or child thread gets a subset of its parent's
+  in the sandbox. A `machine` that means none (JSON null, `""`, `null`,
+  `none`, `undefined` or `sandbox`, as some models send) is dropped before
+  the gate, so the call runs, asks and shows as the sandbox's (`callArgs`);
+  no new machine may take one of those names. A subagent or child thread gets a subset of its parent's
   machines, and loses one at once when its parent does (`effective`). The
   `workspace` prompt section lists the thread's machines with their limits.
 - **Mode on a machine** is the stricter of the thread's effective mode and

@@ -235,6 +235,24 @@ export const repositoryDir = (name: string): string => name.split("/").at(-1)!;
 export type NewMachine = Omit<MachineConfig, "kind" | "hostKey" | "limit" | "lastUsed" | "state" | "asUser"> & { kind?: MachineKind; limit?: MachineLimit; asUser?: boolean };
 
 const MACHINE_NAME = /^[A-Za-z0-9._-]{1,64}$/;
+/** What models send for "no machine", besides leaving it out: no machine takes one of these names. */
+const NO_MACHINE = new Set(["", "null", "none", "undefined", "sandbox"]);
+/** Whether a call's `machine` means none (JSON null, "", "null", "none", "sandbox"…), so the call is the sandbox's. */
+export const noMachine = (value: unknown): boolean => value === null || (typeof value === "string" && NO_MACHINE.has(value.trim().toLowerCase()));
+/**
+ * A call's arguments without a `machine` that means none, so it runs, asks
+ * and shows as the sandbox's rather than failing as an unknown machine.
+ * `machines`: the thread's, whose names are kept whatever they are (a
+ * machine added before such names were refused). Unchanged otherwise.
+ */
+export function withoutNoMachine<T>(args: T, machines: readonly string[] = []): T {
+  if (!args || typeof args !== "object" || !("machine" in args)) return args;
+  const { machine, ...rest } = args as Record<string, unknown>;
+  return noMachine(machine) && !machines.includes(machine as string) ? rest as T : args;
+}
+const SANDBOX_TOOLS = new Set(["read", "write", "edit", "bash"]);
+/** A stored or live call as it ran: read, write, edit and bash without a `machine` that means none (proxmox and run_as_root need one). */
+export const callArgs = (tool: string, args: unknown): unknown => (SANDBOX_TOOLS.has(tool) ? withoutNoMachine(args) : args);
 const HOST_KEY = /^SHA256:[A-Za-z0-9+/]{43}=?$/;
 /** The confirmed key in the form kept for its kind, or a thrown error. */
 function confirmedKey(kind: MachineKind, key: string): string {
@@ -964,6 +982,7 @@ export class WorkspaceSettings {
   /** Adds a machine with the host key (or Proxmox certificate) the user confirmed. New machines start at Ask. */
   addMachine(m: NewMachine, confirmedHostKey: string): MachineConfig {
     if (!MACHINE_NAME.test(m.name)) throw new Error("machine names use letters, digits, '.', '_' and '-'");
+    if (noMachine(m.name)) throw new Error(`${m.name} means no machine; choose another name`);
     if (this.machine(m.name)) throw new Error(`machine ${m.name} already exists`);
     const kind = m.kind ?? "ssh";
     if (kind !== "ssh" && kind !== "proxmox") throw new Error(`unknown machine kind: ${String(kind)}`);
