@@ -2,7 +2,7 @@
 // Image models (ImageModels.tsx), Hosts and endpoints (with the Add model host page), Downloads (Downloads.tsx), Clean
 // up and Recent calls, with its sections listed at the left (the frame and what the tabs share are in ModelsFrame.tsx).
 // The shell polls GET …/models/cleanup for the sidebar's count; GET …/models/page, which probes every
-// endpoint, is shared by Shell and polled every 30 s; opening Models and Hosts tab changes reload it.
+// endpoint, is shared by Shell and polled every 30 s (10 s while a host updates); opening Models and Hosts tab changes reload it.
 import { ModelLabel, modelName } from "./ModelLabel.tsx";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -99,7 +99,7 @@ export function StateWord({ ep, host }: { ep: Endpoint; host?: Host }) {
 /** A host update's step as its state word (host/update.sh's states); "requested" waits for the updater to pick it up. */
 const UPDATE_STEPS: Partial<Record<string, string>> = { requested: "Updating", fetching: "Fetching", draining: "Draining", building: "Building", "rolling-back": "Rolling back" };
 /** The host's updater is at work: it pauses, restarts and comes back on Lyrica's release. */
-const hostUpdating = (s: HostStatus) => !!s.update && ["requested", "fetching", "draining", "building", "rolling-back"].includes(s.update.state);
+export const hostUpdating = (s: HostStatus) => !!s.update && ["requested", "fetching", "draining", "building", "rolling-back"].includes(s.update.state);
 /** Why a host's update failed, from the updater's step (host/API.md, "POST /host/v1/update"). */
 function updateFailure(step: string | undefined): string {
   if (step === "fetch") return "it couldn't fetch the release; check that its deploy key is added";

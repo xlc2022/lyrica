@@ -497,9 +497,9 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   on a phone): **Overview**, **Tasks**, **Text models**, **Image models**,
   **Hosts and endpoints**, **Downloads**, **Clean up** and **Recent calls**.
   The shell reads `GET …/models/page` app-wide (on load, every
-  30 s and on focus) so the sidebar's status panel shows everywhere; Models
+  30 s, 10 s while a host updates or moves its models folder, and on focus) so the sidebar's status panel shows everywhere; Models
   and Home read it from the shell rather than fetching their own. It probes
-  each endpoint (3 s each, one seen down in the last 30 s not asked again). Overview: a banner for a paused host or a stale
+  each endpoint (3 s each, one seen down in the last 30 s not asked again, unless it is a host that is updating). Overview: a banner for a paused host or a stale
   endpoint; tiles Endpoints (n of m up, then a dot and "All reachable" or
   the first one down, "+N" for more), Backend (the first `chat` model of
   the General and Private columns, following their presets and Same as,

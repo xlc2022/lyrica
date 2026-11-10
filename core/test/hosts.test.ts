@@ -145,6 +145,16 @@ describe("host updates", () => {
     expect(await s.models.pageStatus(s.ada.id, ep.id)).toMatchObject({ state: "down", status: { update: { state: "requested" } } });
   });
 
+  it("asks an updating host on every look, so the page follows it and sees it back", async () => {
+    const s = await setup();
+    const ep = await s.models.pairHost(s.ada, { name: "blackwell", addresses: [s.host.address], code: s.host.newCode() });
+    await s.models.hostUpdate(s.ada, ep.id, { tag: "update/2026-10-18", commit: "c".repeat(40) });
+    expect(await s.models.pageStatus(s.ada.id, ep.id)).toMatchObject({ state: "down", status: { update: { state: "requested" } } });
+    // Within the health cache's 30 s, the updater finishes: the next look sees it running, not the step it last showed.
+    s.host.updates.length = 0;
+    expect(await s.models.pageStatus(s.ada.id, ep.id)).toMatchObject({ state: "up", status: { state: "running", update: { state: "idle" } } });
+  });
+
   it("asks an updater from before commits for the tag alone, and refuses it a latest merge", async () => {
     const s = await setup();
     s.host.oldUpdater();
