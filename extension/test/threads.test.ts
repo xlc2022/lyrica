@@ -54,6 +54,10 @@ describe("threads routine", () => {
     expect(s.view.own.routines(s.context.threadId)[0]).toEqual({ ...before, title: "Daily builds" });
     expect(await s.call({ routineAction: "edit", routineId: before.id, title: "x".repeat(81) })).toMatchObject({ isError: true });
     expect(await s.call({ routineAction: "edit", routineId: before.id, description: 42 })).toMatchObject({ isError: true });
+    expect(await s.call({ routineAction: "edit", routineId: before.id, title: "" })).not.toHaveProperty("isError");
+    const cleared = JSON.stringify((await s.call({ routineAction: "list" })).content);
+    expect(cleared).toContain(`Routine ${before.id}, Daily at 08:00`);
+    expect(cleared).toContain("Summarises the build results.");
   });
 
   it("anchors hourly schedules now and defaults to running here", async () => {
@@ -143,10 +147,10 @@ describe("threads definition", () => {
     expect(defs.projectThread!.fields).toEqual(expect.arrayContaining(["needsYou", "id"]));
     for (const field of ["task", "ids", "goal"]) expect(defs.projectThread!.fields).not.toContain(field);
     // Ceilings a little above today's sizes: growing past one is a choice, made here.
-    expect(defs.plain!.size).toBeLessThan(4000);
-    expect(defs.child!.size).toBeLessThan(2900);
-    expect(defs.projectChat!.size).toBeLessThan(4750);
-    expect(defs.projectThread!.size).toBeLessThan(3600);
+    expect(defs.plain!.size).toBeLessThan(4500);
+    expect(defs.child!.size).toBeLessThan(3200);
+    expect(defs.projectChat!.size).toBeLessThan(5300);
+    expect(defs.projectThread!.size).toBeLessThan(4200);
   });
 });
 

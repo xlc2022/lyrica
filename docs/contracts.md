@@ -805,11 +805,12 @@ Custom roles override built-ins by name, except `claude`.
   `title` (80 characters, one line) and `description` (300 characters, purpose
   tooltip, separate from execution instructions). Edit takes `routineId`
   and either or both metadata fields, preserving omitted fields and every
-  execution field. Supplied fields must be nonempty text; credentials are
-  removed before length/line validation, and invalid input is rejected.
+  execution field; an empty field clears that label. Fields given to add must
+  be nonempty text; credentials are removed before length/line validation,
+  and invalid input is rejected.
   `parseSchedule` validates it; `every` gets its `from` at creation.
-  List returns only the calling thread's IDs, labels (or honest source-thread/ID
-  and saved-instructions/destination fallbacks), schedule descriptions, next
+  List returns only the calling thread's IDs, labels (a row without a title is
+  just its ID; without a description, saved-instructions/destination wording), schedule descriptions, next
   times for active routines, paused state and destination choice, without
   notes. Pause, resume and remove take numeric `routineId`; tool mutations always include the
   calling thread ID. Add refuses more than 10 routines including paused
@@ -827,7 +828,8 @@ Custom roles override built-ins by name, except `claude`.
   `title` and `description`; the minimum reader stays unchanged. `RoutineMetadata`
   and `checkRoutineMetadata` validate display labels independently of notes.
   `addRoutine(…, zone?, metadata?)` accepts labels; `editRoutine(threadId, id,
-  metadata)` updates only supplied metadata, confined to that source thread.
+  metadata)` updates only supplied metadata (null or empty clears a label),
+  confined to that source thread.
   `PoolReader.routines` includes paused routines; `PoolStore.addRoutine`, `pauseRoutine`, `removeRoutine` and
   `advanceRoutine` store and advance them. A fire sets `last_at` and adds a
   note-free fired row to `wakeups`, the shared rolling-day ledger:
@@ -858,7 +860,7 @@ Custom roles override built-ins by name, except `claude`.
   `threadTitle`, optional `title` and `description`, `newThread`, `schedule`
   (the `describe()` text), `nextAt`, `paused`, never notes. Labels are never
   inferred from execution instructions; web fallbacks independently use
-  source thread plus routine ID for a missing title, and saved instructions
+  "Routine" and its ID for a missing title, and saved instructions
   here/in a new thread for a missing description. Each route uses session/key checks and only the requested
   user's own thread view; an absent thread or a routine from another
   thread is 404; non-boolean `paused` is 400. `ThreadSettings.routines`

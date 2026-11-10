@@ -21,8 +21,8 @@ explanation captions or dashboard.
 - Existing owner-authenticated routine listings gain title and description;
   the execution note stays excluded. Listings retain existing pool/thread
   visibility checks. No extracting task text or parsing titles from notes.
-- Legacy fallback: the source thread title plus `Routine <id>` identifies the
-  row; its tooltip honestly says that it runs the saved instructions here
+- Legacy fallback: `Routine <id>` identifies the row (the thread is the
+  popover's own, or its link in Settings, so its title isn't repeated); its tooltip honestly says that it runs the saved instructions here
   (or in a new thread). It does not pretend to know the task's purpose.
   Explicit metadata replaces this fallback when edited. This is deliberately
   less specific than the saved instructions, not an automatic disclosure of
@@ -68,7 +68,8 @@ phone-chat each pass 32 tests and fail the upload/composer expectation test;
 the exact same test fails at both widths on clean base b66648ae after an
 independent install/build. It is an evidenced baseline failure, not skipped
 or loosened here.
-Next: commit/open PR and send its exact head to both reviewers. Full results
-and screenshot evidence belong on the PR. No owner approval or merge yet.
-Open: exact-head verification, green CI and owner boundary approval. A red
-CI run remains blocking even if it repeats the baseline upload failure.
+Merged as #925. Follow-up (owner's request): an `edit` with an empty title or
+description clears it; untitled rows show `Routine <id>` without the thread's
+title, in the web and the tool listing; the threads tool's routine field
+descriptions are written out in full again, with its size ceilings raised to
+fit. Next: nothing. Open: none.

@@ -1496,7 +1496,8 @@ project page and the web part are built. Recent calls can be filtered by project
   facts line, and every routine in **Settings → Routines**, with its title
   and purpose tooltip, **Pause**, **Resume** and **Remove**. Optional display
   labels are separate from execution notes and can be edited without
-  rescheduling; older routines have honest thread/ID and destination fallbacks.
+  rescheduling or cleared; untitled routines show "Routine" and their ID, and
+  an honest destination fallback for their purpose.
   One-shot reminders stay wake-ups; a calendar is Later.
 - **CI wakes** (2026-10-13). A pull request a run opens through its relay
   is watched by `lyricad`, so its thread doesn't schedule its own wake for

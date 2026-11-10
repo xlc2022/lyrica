@@ -571,11 +571,12 @@ thread's routines: `add` takes `schedule`, `note`, optional `newThread`
 (300 characters). The labels explain the task to the user, separately from
 its execution note. `edit` takes `routineId` and either or both labels;
 it preserves omitted fields, note, schedule, destination, pause state and
-firing times. Supplied labels must be nonempty text, validated after
-credential removal. `list` returns IDs, labels, schedules in words, active
-next times, paused state and whether they open a thread, without notes;
-missing labels independently fall back to source thread plus routine ID
-and saved-instructions/destination wording, never parsed notes. `pause`,
+firing times; an empty label clears it. Labels given to `add` must be
+nonempty text; all are validated after credential removal. `list` returns
+IDs, labels, schedules in words, active next times, paused state and whether
+they open a thread, without notes; a row without a title is just its ID, and
+one without a description says it runs the saved instructions here or in a
+new thread, never parsed notes. `pause`,
 `resume` and `remove` take numeric `routineId`. At most 10 per thread,
 including paused ones. Routines are for what the user asked to happen
 regularly; a one-off later is a wake-up. Schedules are checked by

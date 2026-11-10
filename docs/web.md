@@ -182,8 +182,9 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   **Routine** (`src/Routines.tsx`, `ThreadSettings.routines`) opens the
   same style of popover listing each routine's title with its purpose tooltip,
   schedule, next time in mono, Pause or Resume and Remove, never execution
-  notes. Title and purpose fall back independently: source thread plus routine
-  ID, and saved instructions here/in a new thread. Neither parses the note.
+  notes. Title and purpose fall back independently: "Routine" and its ID (the
+  thread is the popover's own, or its link beside it in Settings), and saved
+  instructions here/in a new thread. Neither parses the note.
   The title reuses `wl`/`preview`: hover, keyboard focus or a touch tap reveals
   its `aria-describedby` tooltip; Escape dismisses it before the popover.
   Long titles wrap within the text column, with 44 px touch targets. Its fact shows the earliest active next
