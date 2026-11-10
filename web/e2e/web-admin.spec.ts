@@ -2802,7 +2802,7 @@ test("Status model facts preserve existing facts and render empty, measured and 
     await facts.getByRole("table").screenshot({ path: `shots/model-calls-table-${page.viewportSize()!.width}.png` });
     await expect(row("fixture-image").getByRole("cell").nth(3)).toHaveAttribute("title", /^Median sampling time per image on its host.* 8 steps · 1 MP · 0.5 it\/s\. 3 measured\.$/);
     await expect(row("fixture-image").getByRole("cell").nth(4)).toHaveAttribute("title", "An image model reads no prompt tokens.");
-    await expect(facts).toContainText("Retained history · General · pruned to latest 500 records per user");
+    await expect(facts).toContainText("Retained history · General · kept 31 days");
     await expect(facts).toContainText("37 calls");
     // Each chart draws, from the facts alone, and its marks answer the pointer.
     for (const name of ["Calls per hour", "Output tokens per hour", "Speed per call · tok/s", "Calls by task"]) await expect(facts.getByRole("figure", { name, exact: true }).locator(".chart-box svg")).toBeVisible();
@@ -2817,6 +2817,42 @@ test("Status model facts preserve existing facts and render empty, measured and 
     await expect(page.getByText("Sleep time", { exact: true })).toBeVisible();
     await expect(page.locator("dt").filter({ hasText: "Start unlocked" })).toBeVisible();
     await noHorizontalScroll(page);
+    // A longer window: the charts regroup by 6 hours or by day and the head says so; the calls before today count.
+    const windowRead = page.waitForRequest((r) => r.url().includes(`/api/u/${userId}/admin/status?from=`));
+    await facts.getByRole("button", { name: "Last 7 days" }).click();
+    await windowRead;
+    await expect(facts.getByRole("heading")).toHaveText("Model calls · last 7 days");
+    await expect(facts.getByRole("button", { name: "Last 7 days" })).toHaveAttribute("aria-pressed", "true");
+    await expect(facts.getByRole("figure", { name: "Calls per 6 hours", exact: true }).locator(".chart-box svg")).toBeVisible();
+    await facts.getByRole("button", { name: "Last 30 days" }).click();
+    await expect(facts.getByRole("heading")).toHaveText("Model calls · last 30 days");
+    await expect(facts).toContainText("61 calls");
+    const days = facts.getByRole("figure", { name: "Calls per day", exact: true }).locator(".chart-box");
+    await expect(days.locator("svg")).toBeVisible();
+    await noHorizontalScroll(page);
+    await facts.screenshot({ path: `shots/model-calls-30d-${page.viewportSize()!.width}.png` });
+    // Narrowing: two clicks (taps on a phone) on the per-day chart pick the days between them.
+    const plot = await days.locator("svg").boundingBox();
+    await days.click({ position: { x: plot!.width * 0.55, y: plot!.height * 0.5 } });
+    await expect(days.locator(".chart-pick")).toBeVisible();
+    await days.click({ position: { x: plot!.width * 0.97, y: plot!.height * 0.5 } });
+    await expect(facts.getByRole("heading")).toHaveText(/^Model calls · .+ \d\d:\d\d – .+ \d\d:\d\d$/);
+    await expect(facts.getByRole("button", { name: "Last 30 days" })).toHaveAttribute("aria-pressed", "false");
+    await facts.screenshot({ path: `shots/model-calls-span-${page.viewportSize()!.width}.png` });
+    await facts.getByRole("button", { name: "Clear", exact: true }).click();
+    await expect(facts.getByRole("heading")).toHaveText("Model calls · last 30 days");
+    if (!phone(page)) {
+      // A mouse drag across the bars picks them too.
+      const box = (await days.boundingBox())!;
+      await page.mouse.move(box.x + box.width * 0.6, box.y + box.height * 0.5);
+      await page.mouse.down();
+      await page.mouse.move(box.x + box.width * 0.8, box.y + box.height * 0.5, { steps: 5 });
+      await expect(days.locator(".chart-pick")).toBeVisible();
+      await page.mouse.up();
+      await expect(facts.getByRole("button", { name: "Clear", exact: true })).toBeVisible();
+    }
+    await facts.getByRole("button", { name: "Last 24 hours" }).click();
+    await expect(facts.getByRole("heading")).toHaveText("Model calls · last 24 hours");
     // Changing pool visibility while Status stays open must discard its old aggregate.
     if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
     await page.locator(".showing summary").click();

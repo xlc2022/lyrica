@@ -1,5 +1,5 @@
 import { StaleUnitsLine } from "./StaleUnitsLine.tsx";
-import { ModelCallFacts } from "./ModelCallFacts.tsx";
+import { ModelCallFacts, factsQuery, type FactsWindow } from "./ModelCallFacts.tsx";
 // Settings (the user's own) and Administration (server-wide), each a page with
 // its sections listed at the left. The old control panel's cards moved here.
 import { useCallback, useEffect, useState } from "react";
@@ -326,7 +326,9 @@ const RUN_WORD: Record<SleepRunInfo["status"], string> = { running: "Sleeping", 
 
 function StatusSection({ ctx }: { ctx: ShellContext }) {
   const userId = ctx.user.id;
-  const status = useLoad(() => get<AdminStatus>(u(userId, "admin", "status")), [userId]);
+  // Model calls' window: the last 24 hours, 7 or 30 days, or a span narrowed on its charts. Each read asks for it again.
+  const [callsWindow, setCallsWindow] = useState<FactsWindow>({ days: 1 });
+  const status = useLoad(() => get<AdminStatus>(u(userId, "admin", "status") + factsQuery(callsWindow)), [userId], [callsWindow]);
   const sleep = useLoad(() => get<SleepTime>(u(userId, "admin", "sleep")), [userId]);
   const runs = useLoad(() => get<SleepOverview>(u(userId, "sleep")), [userId]);
   const memory = useLoad(() => get<MemoryOverview>(u(userId, "memory")), [userId]);
@@ -381,7 +383,7 @@ function StatusSection({ ctx }: { ctx: ShellContext }) {
         </div>;
       })}
     </section>}
-    {s?.modelFacts && <ModelCallFacts facts={s.modelFacts} onReset={async () => { await post<AdminStatusReset>(u(userId, "admin", "status", "reset")); status.reload(); }} />}
+    {s?.modelFacts && <ModelCallFacts facts={s.modelFacts} window={callsWindow} onWindow={setCallsWindow} onReset={async () => { await post<AdminStatusReset>(u(userId, "admin", "status", "reset")); status.reload(); }} />}
   </>;
 }
 

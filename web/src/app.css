@@ -1094,7 +1094,7 @@ dialog.viewer[data-split] { grid-template-columns: minmax(0, 1fr) clamp(360px, 3
 .viewer-body > .empty, .viewer-body > .error { padding: 16px; }
 .viewer-note { margin: 0; padding: 6px 16px; font-size: 13px; border-bottom: 1px solid var(--line); }
 .viewer-acts .sm[aria-pressed="true"] { background: var(--tool); font-weight: 600; }
-@media (pointer: coarse) { .viewer-acts .sm, .viewer-acts .seg button { min-height: var(--tap); } }
+@media (pointer: coarse) { .viewer-acts .sm, .viewer-acts .seg button, .calls-window button { min-height: var(--tap); } }
 .viewer-frame { flex: 1; width: 100%; min-height: 0; border: 0; background: #fff; }
 .viewer-media { flex: 1; min-height: 0; display: grid; place-items: center; padding: 16px; overflow: auto; }
 .viewer-media img, .viewer-media video { max-width: 100%; max-height: 100%; border-radius: 8px; }
@@ -1954,6 +1954,10 @@ dialog .eyebrow { margin: 10px 0 4px; }
 .status-chart figcaption { font-size: 13px; font-weight: 600; }
 .chart-box { position: relative; min-width: 0; }
 .chart-box svg { display: block; max-width: 100%; }
+/* A bar chart narrows the window: a drag (or two clicks) tints the bars it picks in the accent. */
+.chart-box.narrows { cursor: crosshair; user-select: none; -webkit-user-select: none; }
+.chart-pick { position: absolute; top: 0; bottom: 0; z-index: 4; pointer-events: none; background: color-mix(in srgb, var(--accent) 16%, transparent); border-inline: 1px solid var(--accent); }
+.model-calls .section-head { align-items: center; }
 .chart-tip { position: absolute; z-index: 5; pointer-events: none; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; font-size: 12px; width: max-content; max-width: 100%; overflow-wrap: anywhere; box-shadow: 0 2px 8px rgb(0 0 0 / 0.12); }
 .model-table { display: grid; font-size: 13px; }
 .model-table > [role="row"] { display: grid; grid-template-columns: minmax(0, 1fr) 3.5em 8.5em 8.5em 7.5em 5.5em; gap: 8px; padding: 6px 0; align-items: baseline; border-top: 1px solid var(--line); }
@@ -1963,6 +1967,9 @@ dialog .eyebrow { margin: 10px 0 4px; }
 .mt-model .swatch { margin-right: 6px; vertical-align: -1px; }
 @media (max-width: 760px) {
   .status-charts { grid-template-columns: minmax(0, 1fr); }
+  /* On a phone the window picker takes its own full-width row under the heading. */
+  .model-calls .calls-window { order: 1; width: 100%; }
+  .model-calls .calls-window button { flex: 1; }
   /* On a phone the model takes its own line and each number carries its label. */
   .model-table > .mt-head { display: none; }
   .model-table > [role="row"] { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 2px; }

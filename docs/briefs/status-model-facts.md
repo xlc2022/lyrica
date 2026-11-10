@@ -9,7 +9,8 @@ Administration → Status adds plain-text per-model call counts, median recorded
 generation speed and recorded fallback counts for the last 24 hours. Existing
 Status facts stay. No charts, dependencies, timers, range picker or new tracking.
 (Later, at the operator's request, docs/briefs/status-charts.md added charts,
-refresh and timed titles; the meaning of each fact below still holds.)
+refresh and timed titles, and [model-calls-window.md](model-calls-window.md) a 24 h, 7 d or 30 d
+window, narrowing on the charts and 31-day retention in place of the latest 500; the meaning of each fact below still holds.)
 
 ## Recorded meaning and coverage
 

@@ -5,8 +5,21 @@
 import type { Pool } from "@lyrica/core";
 import type { CallInfo, ModelCallFacts } from "./api.ts";
 
-/** How far back Status's model facts reach: the last 24 hours, inclusive at both ends. */
+/** How far back Status's model facts reach by default: the last 24 hours, inclusive at both ends. */
 export const MODEL_FACTS_WINDOW_MS = 24 * 60 * 60_000;
+/** The furthest back a window may start: the 31 days nightly cleanup keeps (core's `CALLS_DAYS`). */
+export const MODEL_FACTS_MAX_MS = 31 * MODEL_FACTS_WINDOW_MS;
+
+/**
+ * The window Status was asked for, clamped: `to` (default now) never after now, `from` (default 24 hours before `to`)
+ * never before 31 days ago, and a window that would end before it starts is the hour before `to`.
+ */
+export function factsWindow(now: number, from?: string | null, to?: string | null): { from: number; to: number } {
+  const t = to ? Date.parse(to) : NaN, f = from ? Date.parse(from) : NaN;
+  const until = Number.isFinite(t) ? Math.max(now - MODEL_FACTS_MAX_MS + 3_600_000, Math.min(t, now)) : now;
+  const start = Math.max(now - MODEL_FACTS_MAX_MS, Number.isFinite(f) ? f : until - MODEL_FACTS_WINDOW_MS);
+  return { from: start < until ? start : until - 3_600_000, to: until };
+}
 
 type Fact = ModelCallFacts["models"][number];
 type Point = ModelCallFacts["calls"][number];
@@ -48,7 +61,7 @@ function median(xs: number[]): number | undefined {
 }
 
 /**
- * What her models did in the last 24 hours, from call rows read for these pools.
+ * What her models did in a window (the last 24 hours unless `window` says otherwise, see `factsWindow`), from call rows read for these pools.
  * Every retained row counts once, whatever its task, grouped by the permanent
  * offering ID, so two copies of one model name stay apart; each group shows the
  * label and endpoint of its newest row. Speed is the median of recorded
@@ -62,15 +75,17 @@ function median(xs: number[]): number | undefined {
  * adds up the seconds of audio its calls heard or spoke. `calls` gives each row's time, offering, task, output, speed and fallback mark,
  * newest first, for the charts: no thread, note or text. Fallbacks count rows that
  * carry a recorded marker, never what a note says, so they are resolution skips,
- * not retries, failed attempts or errors. Rows outside `[now - 24h, now]`, with a
+ * not retries, failed attempts or errors. Rows outside `[from, to]`, with a
  * timestamp in the future or unreadable, say nothing and are left out. Nothing is
- * capped: nightly pruning keeps the latest 500 rows per user across pools, so this
- * is retained history, not a complete day's activity. After a reset inside the
- * window (`reset`, the user's last Reset on the card), it starts there instead.
+ * capped: nightly cleanup keeps every row of the last 31 days per user (at least the
+ * latest 500, at most 20,000), so this is retained history. After a reset inside the
+ * window (`reset`, the user's last Reset on the card), it starts there instead; a
+ * window that ends before the reset is empty.
  */
-export function modelFacts(calls: CallInfo[], pools: Pool[], now: number = Date.now(), reset?: string): ModelCallFacts {
-  const from = reset === undefined ? NaN : Date.parse(reset);
-  const since = Number.isFinite(from) && from > now - MODEL_FACTS_WINDOW_MS ? Math.min(from, now) : now - MODEL_FACTS_WINDOW_MS;
+export function modelFacts(calls: CallInfo[], pools: Pool[], now: number = Date.now(), reset?: string, window?: { from: number; to: number }): ModelCallFacts {
+  const { from: start, to: until } = window ?? factsWindow(now);
+  const r = reset === undefined ? NaN : Date.parse(reset);
+  const since = Number.isFinite(r) && r > start ? Math.min(r, until) : start;
   const shown = new Set<Pool>(pools);
   type Group = { id: string; at: number; label: string; endpointName: string; kind: Fact["kind"]; calls: number; speeds: number[]; prompts: number[]; samples: Sample[]; output: number; made: number; madeCalls: number; clips: number; audio: number; audioCalls: number; fallbacks: number };
   const groups = new Map<string, Group>();
@@ -78,7 +93,7 @@ export function modelFacts(calls: CallInfo[], pools: Pool[], now: number = Date.
   for (const c of calls) {
     if (!shown.has(c.pool)) continue;
     const at = Date.parse(c.at);
-    if (!Number.isFinite(at) || at < since || at > now) continue;
+    if (!Number.isFinite(at) || at < since || at > until) continue;
     let g = groups.get(c.offeringId);
     if (!g) groups.set(c.offeringId, g = { id: c.offeringId, at, label: c.label, endpointName: c.endpointName, kind: c.kind, calls: 0, speeds: [], prompts: [], samples: [], output: 0, made: 0, madeCalls: 0, clips: 0, audio: 0, audioCalls: 0, fallbacks: 0 });
     // The name it goes by now, from the newest row: labels are kept with old rows for history's sake.
@@ -116,5 +131,5 @@ export function modelFacts(calls: CallInfo[], pools: Pool[], now: number = Date.
   });
   models.sort((a, b) => a.label.localeCompare(b.label) || a.offeringId.localeCompare(b.offeringId));
   points.sort((a, b) => b.at.localeCompare(a.at));
-  return { since: new Date(since).toISOString(), until: new Date(now).toISOString(), pools: [...pools], models, calls: points };
+  return { from: new Date(start).toISOString(), since: new Date(since).toISOString(), until: new Date(until).toISOString(), pools: [...pools], models, calls: points };
 }

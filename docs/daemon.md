@@ -1011,14 +1011,15 @@ view) move them as Markdown held in memory, never written to disk.
 
 GET `…/admin/status` also returns `modelFacts`, without changing its existing
 facts: all retained `model_calls` in the authenticated administrator's own
-shown pools, filtered to the inclusive last 24 hours and grouped by offering
+shown pools, filtered to the inclusive window asked for (`?from=&to=`, by
+default the last 24 hours, never further back than 31 days: `factsWindow`) and grouped by offering
 ID (`model-facts.ts`), plus `calls`: each record's time, offering ID, task,
 output tokens, speed and fallback mark, newest first, for Status's charts,
-with no thread, note or text. No preview limit is applied. The latest-500-per-user
-retention still limits coverage; folded totals have no timestamps or pace and
+with no thread, note or text. No preview limit is applied. Retention keeps
+the last 31 days (at most 20,000 records per user); folded totals have no timestamps or pace and
 are not used. `POST …/admin/status/reset` (`AdminStatusReset`) stores the
 administrator's reset time in their settings (`stats_since`); while it falls
-inside the 24 hours, the window starts there. It deletes no call records, so
+inside the window, the window starts there. It deletes no call records, so
 thread usage, speeds and history are unchanged. All recorded tasks count once per row. Median generation and
 prompt speeds use available `pace.tokPerSec` and `pace.promptTokPerSec` values
 with their sample counts, absent without samples; output tokens add up paced
