@@ -1296,4 +1296,19 @@ test("a thread opens at its latest message, even when the space above the conver
   await page.locator(".scroll .msg").last().evaluate((el) => { el.style.paddingBottom = "400px"; });
   await expect.poll(fromBottom).toBeLessThanOrEqual(2);
   await page.unrouteAll({ behavior: "ignoreErrors" });
+  // Something she opens herself near the foot (a run of tool calls) opens in place: the view doesn't follow it down.
+  await page.locator(".scroll .msg").last().evaluate((el) => { el.style.paddingBottom = ""; });
+  await send(page, "recall: 6");
+  await expect(page.getByText("You said: recall: 6")).toBeVisible();
+  // Her turn has finished laying out (its actions row, the facts line) before the marker is measured.
+  await expect(page.getByRole("button", { name: "Stop" })).toBeHidden();
+  await expect(page.getByRole("group", { name: "Message actions" }).last()).toBeVisible();
+  await expect.poll(fromBottom).toBeLessThanOrEqual(2);
+  const marker = page.locator(".marker.tool-run").last().getByRole("button", { name: /tool calls/ });
+  const before = (await marker.boundingBox())!.y;
+  await marker.click();
+  await expect(page.locator(".marker.tool-run").last().locator(".run-body .marker[data-type='tool']")).toHaveCount(6);
+  await page.waitForTimeout(300);
+  expect(Math.abs((await marker.boundingBox())!.y - before)).toBeLessThanOrEqual(2);
+  await expect(marker).toBeInViewport();
 });
