@@ -8,7 +8,7 @@ import { drawChart, SERIES, tokens } from "./charts.ts";
 import { shortModel } from "./ModelLabel.tsx";
 import { TASK_WORD } from "./ModelsFrame.tsx";
 import { tokenCount } from "./Project.tsx";
-import { clock, dateText, ErrorText, timeZone, useAction, useTheme, wakeTime } from "./ui.tsx";
+import { clock, ErrorText, timeZone, useAction, useTheme } from "./ui.tsx";
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
@@ -175,8 +175,8 @@ function Chart({ label, spec, bars, onSpan }: { label: string; spec: object; bar
       if (!d) return;
       const at = barAt(e.clientX) ?? d.at;
       if (d.drag) return done(d.at, at);
-      // A click: the first marks a bar, the second picks the span between them.
-      if (picked && picked[0] === picked[1]) return done(picked[0], at);
+      // A click: the first marks a bar, the second picks the span between them; a second click on the marked bar lets go.
+      if (picked && picked[0] === picked[1]) return at === picked[0] ? setPicked(undefined) : done(picked[0], at);
       setPicked([at, at]);
     },
     onPointerCancel: () => { down.current = undefined; },
@@ -188,8 +188,8 @@ function Chart({ label, spec, bars, onSpan }: { label: string; spec: object; bar
     const a = Math.min(...picked!), b = Math.max(...picked!) + bars!.size;
     return { left: left + x(a), width: Math.max(2, x(b) - x(a)) };
   })() : undefined;
-  return <figure className="status-chart" title={pointer.onPointerDown ? NARROW_WHY : undefined}>
-    <figcaption>{label}</figcaption>
+  return <figure className="status-chart">
+    <figcaption title={pointer.onPointerDown ? NARROW_WHY : undefined}>{label}</figcaption>
     <div className={pointer.onPointerDown ? "chart-box narrows" : "chart-box"} {...pointer}>
       <div ref={box} />
       {shade && <div className="chart-pick" aria-hidden="true" style={{ left: shade.left, width: shade.width }} />}
@@ -220,7 +220,8 @@ const day = (w: number, weekday = false) => new Date(w).toLocaleDateString("en-G
 export const barWord = (size: number) => size === HOUR ? "hour" : size === DAY ? "day" : "6 hours";
 
 /** The time axis for bars this wide: hours of the clock, else days. */
-const timeAxis = (size: number) => size === HOUR ? { format: "%H:%M", tickCount: 6, grid: false } : { format: "%-d %b", tickCount: size === DAY ? 6 : 7, grid: false };
+// The speed plot is narrower than the bars' (its dots keep clear of the edges), so it asks for fewer day labels.
+const timeAxis = (size: number, sparse = false) => size === HOUR ? { format: "%H:%M", tickCount: 6, grid: false } : { format: "%-d %b", tickCount: sparse ? 4 : 5, grid: false };
 
 function barSpec(series: Series[], facts: Facts, panel: string, measure: "calls" | "tokens", title: string) {
   const { colour, ...b } = base(series, title);
@@ -259,7 +260,7 @@ export function speedSpec(series: Series[], facts: Facts, panel: string) {
     ...b, height: 140, data: { values },
     mark: { type: "point", filled: true, ...dot, stroke: panel, strokeWidth: size === HOUR ? 1.5 : 1 },
     encoding: {
-      x: { field: "at", type: "temporal", title: null, scale: { type: "utc", domain: [new Date(Math.min(h[0]!, wall(facts.since))).toISOString(), span(h, size)[1]], padding: DOT }, axis: timeAxis(size) },
+      x: { field: "at", type: "temporal", title: null, scale: { type: "utc", domain: [new Date(Math.min(h[0]!, wall(facts.since))).toISOString(), span(h, size)[1]], padding: DOT }, axis: timeAxis(size, true) },
       y: { field: "speed", type: "quantitative", title: null, scale: { padding: DOT }, axis: { tickCount: 4 } },
       color: colour,
       tooltip: [{ field: "time", title: "Time" }, { field: "model", title: "Model" }, { field: "task", title: "Task" }, { field: "speed", title: "tok/s", format: ",.1f" }],
@@ -295,8 +296,15 @@ export function audioWords(seconds: number): { amount: string; unit: string } {
 
 const num = (n: number | undefined, digits = 1) => n === undefined ? undefined : n.toLocaleString(undefined, { maximumFractionDigits: digits });
 
-/** A moment on the user's clock with its day: "3 Nov 14:00". */
-const stamp = (at: string) => `${dateText(at, { day: "numeric", month: "short" })} ${clock(at)}`;
+/**
+ * A moment on the user's clock with its day, day first as the axes and tips read it: "3 Nov 14:00", digits in mono.
+ * With `today`, a moment today is its time alone.
+ */
+function Stamp({ at, today = false }: { at: string; today?: boolean }) {
+  const w = wall(at), [d, month] = day(w).split(" ");
+  if (today && day(w) === day(wall(Date.now()))) return <span className="num">{clock(at)}</span>;
+  return <><span className="num">{d}</span> {month} <span className="num">{clock(at)}</span></>;
+}
 
 /**
  * What her models did in the window (the last 24 hours, 7 or 30 days, or a span narrowed on the charts), or since the
@@ -321,8 +329,8 @@ export function ModelCallFacts({ facts, window = { days: 1 }, onWindow, onReset 
   return <section aria-label="Model calls" className="card model-calls">
     <div className="section-head">
       <h2 title="Your own retained call records in displayed pools, across all recorded tasks. A turn's retries replace its record; tool requests update its pace. Claude Code relay totals are not call records. Deleted and pruned records are excluded.">Model calls · {window.span
-        ? <><span className="num">{stamp(facts.since)}</span> – <span className="num">{stamp(facts.until)}</span></>
-        : reset ? <>since <span className="num">{wakeTime(facts.since)}</span></>
+        ? <><Stamp at={facts.since} /> – <Stamp at={facts.until} /></>
+        : reset ? <>since <Stamp at={facts.since} today /></>
         : <>last <span className="num">{last.n}</span> {last.unit}</>}</h2>
       {onWindow && <div className="seg calls-window" role="group" aria-label="Window">
         {DAYS.map((d) => <button key={d.days} type="button" aria-label={`Last ${d.n} ${d.unit}`} title={`Last ${d.n} ${d.unit}`} aria-pressed={!window.span && window.days === d.days} onClick={() => onWindow({ days: d.days })}>{d.label}</button>)}
@@ -366,6 +374,6 @@ export function ModelCallFacts({ facts, window = { days: 1 }, onWindow, onReset 
           </div>;
         })}
       </div>
-    </> : <p className="muted">{window.span ? <>No calls in this window.</> : reset ? <>No calls since <span className="num">{wakeTime(facts.since)}</span>.</> : <>No retained calls in the last <span className="num">{last.n}</span> {last.unit}.</>}</p>}
+    </> : <p className="muted">{window.span ? <>No calls in this window.</> : reset ? <>No calls since <Stamp at={facts.since} today />.</> : <>No retained calls in the last <span className="num">{last.n}</span> {last.unit}.</>}</p>}
   </section>;
 }

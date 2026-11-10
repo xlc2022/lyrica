@@ -131,8 +131,8 @@ it("draws a week in 28 six-hour bars and a month in 30 days, on the user's clock
 it("heads a narrowed span with its dates and offers the three windows", () => {
   const html = renderToStaticMarkup(createElement(ModelCallFacts, { facts: { ...facts([model({ offeringId: "a" })]), from: "2026-10-20T00:00:00Z", since: "2026-10-20T00:00:00Z", until: "2026-10-22T00:00:00Z" },
     window: { days: 30, span: { from: "2026-10-20T00:00:00Z", to: "2026-10-22T00:00:00Z" } }, onWindow: () => {} }));
-  // The day in the reader's locale ("20 Oct" or "Oct 20"), then the time.
-  expect(html).toMatch(/Model calls · <span class="num">(20 Oct|Oct 20) 00:00<\/span> – <span class="num">(22 Oct|Oct 22) 00:00<\/span>/);
+  // Day first, as the axes and tips read it, with only the digits in mono.
+  expect(html).toContain('Model calls · <span class="num">20</span> Oct <span class="num">00:00</span> – <span class="num">22</span> Oct <span class="num">00:00</span>');
   expect(html).toContain(">Clear</button>");
   for (const name of ["Last 24 hours", "Last 7 days", "Last 30 days"]) expect(html).toContain(`aria-label="${name}"`);
   expect(html).not.toContain('aria-pressed="true"');
