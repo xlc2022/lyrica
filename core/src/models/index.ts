@@ -123,8 +123,10 @@ export const HEALTH_MS = 30_000;
 const CLOUD_PAGE_PROBE_MS = 90_000;
 /** How long the router waits for a probe before trying the next model. */
 const PROBE_MS = 2_000;
-/** Recent calls kept per user. */
+/** Call records kept per user: every one from the last `CALLS_DAYS` days, never fewer than the latest `CALLS_KEPT`, never more than `CALLS_MAX`. */
+export const CALLS_DAYS = 31;
 const CALLS_KEPT = 500;
+const CALLS_MAX = 20_000;
 
 export interface Endpoint {
   /** Permanent. */
@@ -2232,7 +2234,7 @@ export class Models {
    * which needs every user to have been indexed; a user's own gone models go
    * while they are unlocked. A shared model gone for SHARED_GONE_DAYS goes
    * even while lists name it, leaving a tombstone that locked users' lists
-   * catch up with at their next unlock. Old call records are trimmed too.
+   * catch up with at their next unlock. Call records older than 31 days are trimmed too (docs/models.md, Recent calls).
    */
   prune(now = Date.now()): void {
     const self = this.self();
@@ -2256,7 +2258,12 @@ export class Models {
         const used = collectRefs(db);
         for (const r of gone(db)) if (!used.has(r.id)) db.prepare("DELETE FROM offerings WHERE id = ?").run(r.id);
         db.transaction(() => {
-          const cutoff = (db.prepare("SELECT id FROM model_calls ORDER BY id DESC LIMIT 1 OFFSET ?").get(CALLS_KEPT) as { id: number } | undefined)?.id;
+          // Ids grow with time, so the newest id older than the window marks everything before it.
+          const nth = (n: number) => (db.prepare("SELECT id FROM model_calls ORDER BY id DESC LIMIT 1 OFFSET ?").get(n) as { id: number } | undefined)?.id;
+          const old = (db.prepare("SELECT max(id) AS id FROM model_calls WHERE at < ?").get(new Date(now - CALLS_DAYS * DAY).toISOString()) as { id: number | null }).id ?? undefined;
+          const kept = nth(CALLS_KEPT), most = nth(CALLS_MAX);
+          const aged = old === undefined || kept === undefined ? undefined : Math.min(old, kept);
+          const cutoff = aged === undefined ? most : most === undefined ? aged : Math.max(aged, most);
           if (cutoff === undefined) return;
           db.prepare(`INSERT INTO call_totals (pool, thread, label, kind, tokens, input_tokens, output_tokens, gpu_ms, calls)
             SELECT pool, thread, label, kind,

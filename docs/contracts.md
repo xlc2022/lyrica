@@ -2412,10 +2412,12 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   `unitsStale: string[]` from the updater's `state.json`: Debian units that
   were missing or differed at the last update switch, shown in Status with
   the action to run `install.sh`. The updater never rewrites these units;
-  NixOS does no comparison. GET also supplies `modelFacts: ModelCallFacts`
-  (`since`, `until`, `pools`, `models[]`, `calls[]`): this authenticated
+  NixOS does no comparison. GET (with optional `?from=<ISO>&to=<ISO>`) also supplies `modelFacts: ModelCallFacts`
+  (`from`, `since`, `until`, `pools`, `models[]`, `calls[]`): this authenticated
   administrator's own displayed pools, all retained call rows in the inclusive
-  last 24 hours (from the last `POST …/admin/status/reset`, `AdminStatusReset { since }`, when that is later;
+  window `from`–`until` (by default the last 24 hours ending now; `to` is held to now, `from` to no earlier than
+  31 days ago and before `to`, `factsWindow`), from `since`: the last `POST …/admin/status/reset`,
+  `AdminStatusReset { since }`, when that is later (a window ending before it is empty;
   the reset deletes no records), grouped by offering ID with recorded label/endpoint, `kind`,
   `calls`, `outputTokens`, `speedSamples` with optional `medianTokPerSec`,
   `promptSamples` with optional `medianPromptTokPerSec`, optional `sampling`
@@ -2432,8 +2434,8 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   newest first, never its thread, note or text. Medians use existing
   `pace.tokPerSec` and `pace.promptTokPerSec`; no samples means absent, not zero. Fallbacks count nonempty
   recorded markers (skipped candidates, not errors/retries). No preview cap;
-  the store's latest-500-per-user retention still applies, so this is not
-  complete daily activity. No call text, other users, hidden pools or folded
+  the store keeps every record of the last 31 days per user (at least the
+  latest 500, at most 20,000). No call text, other users, hidden pools or folded
   totals enter this aggregate. Passphrase mutation responses do not include it.
 - **Schema versions** (`core/migrations`): each encrypted database records
   its schema version (`PRAGMA user_version`) and the oldest schema that can

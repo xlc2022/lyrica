@@ -1,18 +1,18 @@
 import { expect, it } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { hourly, hours, ModelCallFacts, seriesOf, speedSpec } from "../src/ModelCallFacts.tsx";
+import { bucketed, buckets, bucketSize, factsQuery, ModelCallFacts, seriesOf, speedSpec, unwall, wall } from "../src/ModelCallFacts.tsx";
 import type { ModelCallFacts as Facts } from "../src/api.ts";
 
 // Synthetic facts only: no text of any real conversation.
 type Model = Facts["models"][number];
 const model = (over: Partial<Model> & { offeringId: string }): Model => ({ label: over.offeringId, endpointName: "fixture", kind: "local", calls: 1, speedSamples: 0, promptSamples: 0, outputTokens: 0, fallbacks: 0, ...over });
-const facts = (models: Model[] = [], calls: Facts["calls"] = []): Facts => ({ since: "2026-10-23T12:00:00Z", until: "2026-10-24T12:30:00Z", pools: ["general"], models, calls });
+const facts = (models: Model[] = [], calls: Facts["calls"] = []): Facts => ({ from: "2026-10-23T12:30:00Z", since: "2026-10-23T12:30:00Z", until: "2026-10-24T12:30:00Z", pools: ["general"], models, calls });
 const render = (value: Facts) => renderToStaticMarkup(createElement(ModelCallFacts, { facts: value }));
 
 it("renders a row per model copy with its short name, endpoint, output, speeds and fallbacks, and the scope", () => {
   const html = render(facts([model({ offeringId: "one", label: "Host/models/Fixture-27B-Q4_K_M.gguf", endpointName: "Fixture endpoint", calls: 7, medianTokPerSec: 12.5, speedSamples: 4, medianPromptTokPerSec: 812, promptSamples: 4, outputTokens: 24_000, fallbacks: 2 })]));
-  for (const text of ["Fixture-27B-Q4_K_M", "Fixture endpoint", ">7</span>", ">12.5 <span", ">812 <span", "4 measured.", ">24k</span>", "Retained history", "General", "500", "records per user", "Not errors, retries or failed requests.", "Calls per hour", "Speed per call", "Calls by task"]) expect(html).toContain(text);
+  for (const text of ["Fixture-27B-Q4_K_M", "Fixture endpoint", ">7</span>", ">12.5 <span", ">812 <span", "4 measured.", ">24k</span>", "Retained history", "General", "kept <span class=\"num\">31</span> days", "last <span class=\"num\">24</span> hours", "Not errors, retries or failed requests.", "Calls per hour", "Speed per call", "Calls by task"]) expect(html).toContain(text);
   // The whole label stays in a tooltip.
   expect(html).toContain('title="Host/models/Fixture-27B-Q4_K_M.gguf · Fixture endpoint"');
   expect(html).not.toContain("Not measured");
@@ -90,10 +90,10 @@ it("buckets calls and output into the 24 hours on the user's clock, the oldest p
     { at: "2026-10-24T12:05:00Z", offeringId: "a", task: "title", outputTokens: 5 },
     { at: "2026-10-23T12:45:00Z", offeringId: "a", task: "chat" },
   ]);
-  const h = hours(f.until);
+  const h = buckets(f);
   expect(h).toHaveLength(24);
   expect(new Date(h[23]!).toISOString()).toBe("2026-10-24T12:00:00.000Z");
-  expect(hourly(f, seriesOf(f.models, "light", "#888888"))).toEqual([
+  expect(bucketed(f, seriesOf(f.models, "light", "#888888"))).toEqual([
     { hour: h[23], model: "a", calls: 2, tokens: 35 },
     { hour: h[0], model: "a", calls: 1, tokens: 0 },
   ]);
@@ -102,6 +102,39 @@ it("buckets calls and output into the 24 hours on the user's clock, the oldest p
 it("starts the speed chart's time axis at the window's start, so a call before the first whole hour stays right of the axis", () => {
   const f = facts([model({ offeringId: "a" })], [{ at: "2026-10-23T12:10:00Z", offeringId: "a", task: "chat", tokPerSec: 40 }]);
   const x = (speedSpec(seriesOf(f.models, "light", "#888888"), f, "#ffffff").encoding.x.scale);
-  expect(x.domain).toEqual(["2026-10-23T12:00:00.000Z", "2026-10-24T13:00:00.000Z"]);
+  expect(x.domain).toEqual(["2026-10-23T12:30:00.000Z", "2026-10-24T13:00:00.000Z"]);
   expect(x.padding).toBeGreaterThan(0);
+});
+
+it("draws a week in 28 six-hour bars and a month in 30 days, on the user's clock", () => {
+  const until = "2026-10-24T12:30:00Z";
+  const week = { from: "2026-10-17T12:30:00Z", until }, month = { from: "2026-09-24T12:30:00Z", until };
+  expect(bucketSize(week)).toBe(6 * 3_600_000);
+  expect(buckets(week).map((w) => new Date(w).toISOString()).slice(-2)).toEqual(["2026-10-24T06:00:00.000Z", "2026-10-24T12:00:00.000Z"]);
+  expect(buckets(week)).toHaveLength(28);
+  expect(bucketSize(month)).toBe(86_400_000);
+  expect(buckets(month)).toHaveLength(30);
+  expect(new Date(buckets(month)[29]!).toISOString()).toBe("2026-10-24T00:00:00.000Z");
+  const f = facts([model({ offeringId: "a" })], [
+    { at: "2026-10-24T01:00:00Z", offeringId: "a", task: "chat", outputTokens: 3 },
+    { at: "2026-10-23T23:00:00Z", offeringId: "a", task: "chat", outputTokens: 4 },
+  ]);
+  const days = bucketed({ ...f, ...month }, seriesOf(f.models, "light", "#888888"));
+  expect(days.map((r) => [new Date(r.hour).toISOString().slice(0, 10), r.calls, r.tokens])).toEqual([["2026-10-24", 1, 3], ["2026-10-23", 1, 4]]);
+  // A narrowed span asks for itself; the last 24 hours asks for nothing, lyricad's default.
+  expect(factsQuery({ days: 1 })).toBe("");
+  expect(factsQuery({ days: 7 }, Date.parse(until))).toBe(`?from=${encodeURIComponent("2026-10-17T12:30:00.000Z")}`);
+  expect(factsQuery({ days: 30, span: { from: "2026-10-01T00:00:00.000Z", to: "2026-10-03T00:00:00.000Z" } })).toBe("?from=2026-10-01T00%3A00%3A00.000Z&to=2026-10-03T00%3A00%3A00.000Z");
+  expect(unwall(wall(until))).toBe(Date.parse(until));
+});
+
+it("heads a narrowed span with its dates and offers the three windows", () => {
+  const html = renderToStaticMarkup(createElement(ModelCallFacts, { facts: { ...facts([model({ offeringId: "a" })]), from: "2026-10-20T00:00:00Z", since: "2026-10-20T00:00:00Z", until: "2026-10-22T00:00:00Z" },
+    window: { days: 30, span: { from: "2026-10-20T00:00:00Z", to: "2026-10-22T00:00:00Z" } }, onWindow: () => {} }));
+  // The day in the reader's locale ("20 Oct" or "Oct 20"), then the time.
+  expect(html).toMatch(/Model calls · <span class="num">(20 Oct|Oct 20) 00:00<\/span> – <span class="num">(22 Oct|Oct 22) 00:00<\/span>/);
+  expect(html).toContain(">Clear</button>");
+  for (const name of ["Last 24 hours", "Last 7 days", "Last 30 days"]) expect(html).toContain(`aria-label="${name}"`);
+  expect(html).not.toContain('aria-pressed="true"');
+  expect(html).toContain("Calls per 6 hours");
 });

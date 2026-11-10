@@ -26,7 +26,8 @@ stores it. A turn's **tokens** are `read_tokens + output_tokens`, or
 count) on calls whose `kind` is `local`; cloud calls have none. Shown beside
 tokens, not instead: tokens are what fills her context on either kind.
 
-**B. Keeping the sums.** `model_calls` keeps the latest 500 per user, so a sum
+**B. Keeping the sums.** `model_calls` keeps the latest 500 per user (since
+[model-calls-window.md](model-calls-window.md), the last 31 days), so a sum
 over it would shrink. Before pruning deletes rows, fold their counts into a
 `call_totals` table: pool, thread, label, kind, tokens, gpu_ms, calls, keyed by
 the first four. One user.db step (the next free version) adds `model_calls.read_tokens` and `call_totals`, expand only,
@@ -100,7 +101,8 @@ Done: every request's cached and uncached reads are recorded separately
 from context size; tokens and local GPU time survive pruning in
 `call_totals`; usage includes nested subagents and filters both pool and
 thread. Pace recording and retry records also respect the hosted pool.
-Pruning retains the latest 500 rows even when forgetting leaves gaps.
+Pruning retains the latest 500 rows even when forgetting leaves gaps (and,
+since model-calls-window.md, every row of the last 31 days).
 Thread/project usage routes, matching overview totals, Tokens popovers,
 phone inline rows, By thread and route-retained Recent calls project
 selection are built. The Project select does not depend on the sidebar's

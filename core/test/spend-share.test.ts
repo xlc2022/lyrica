@@ -118,4 +118,28 @@ describe("spend share", () => {
     expect(models.usage(ada.id, "general", ["work"])).toEqual([{ threadId: "work", label: "Claude Code", kind: "cloud", tokens: 2198, input: 2157, output: 41 }]);
     expect(models.usage(ada.id, "private", ["work"])).toEqual([]);
   });
+  it("keeps every call record of the last 31 days, at least the latest 500 and at most 20,000, folding the rest into totals", async () => {
+    const { users, ada, models } = await withUsageModels();
+    const db = users.openUserDb(ada.id);
+    const now = Date.parse("2026-06-01T12:00:00Z"), day = 86_400_000;
+    const insert = db.prepare(`INSERT INTO model_calls (at, pool, thread, task, offering, label, endpoint, kind, output_tokens) VALUES (?, 'general', 'old', 'chat', 'm', 'M', 'test', 'local', 1)`);
+    const add = (at: number, n: number) => db.transaction(() => { for (let i = 0; i < n; i++) insert.run(new Date(at).toISOString()); })();
+    const count = () => (db.prepare("SELECT count(*) AS n FROM model_calls").get() as { n: number }).n;
+    // A quiet user: 40 records, all older than a month, are kept as the latest 500.
+    add(now - 60 * day, 40);
+    models.prune(now);
+    expect(count()).toBe(40);
+    // A busy month: 600 records inside it stay, beyond the latest 500; the 40 old ones go into the totals.
+    add(now - 20 * day, 300);
+    add(now - day, 300);
+    models.prune(now);
+    expect(count()).toBe(600);
+    expect(db.prepare("SELECT sum(calls) AS n FROM call_totals WHERE thread = 'old'").get()).toEqual({ n: 40 });
+    // Past 20,000 the oldest go even inside the month.
+    add(now - day, 19_500);
+    models.prune(now);
+    expect(count()).toBe(20_000);
+    expect(db.prepare("SELECT sum(calls) AS n FROM call_totals WHERE thread = 'old'").get()).toEqual({ n: 140 });
+    db.close();
+  });
 });

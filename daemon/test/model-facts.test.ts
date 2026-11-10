@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CallInfo, PaceInfo } from "../src/api.ts";
-import { MODEL_FACTS_WINDOW_MS, modelFacts } from "../src/model-facts.ts";
+import { factsWindow, MODEL_FACTS_MAX_MS, MODEL_FACTS_WINDOW_MS, modelFacts } from "../src/model-facts.ts";
 
 // Synthetic rows only: no text of any real conversation, and nothing copied from real data.
 const NOW = Date.UTC(2026, 9, 25, 12, 0, 0);
@@ -42,7 +42,26 @@ describe("model facts for the last 24 hours", () => {
   });
 
   it("reports the window as its bounds and the pools it was given, with no models from nothing", () => {
-    expect(modelFacts([], ["general", "private"], NOW)).toEqual({ since: iso(-MODEL_FACTS_WINDOW_MS), until: iso(0), pools: ["general", "private"], models: [], calls: [] });
+    expect(modelFacts([], ["general", "private"], NOW)).toEqual({ from: iso(-MODEL_FACTS_WINDOW_MS), since: iso(-MODEL_FACTS_WINDOW_MS), until: iso(0), pools: ["general", "private"], models: [], calls: [] });
+  });
+
+  it("covers the window asked for, up to 31 days back, ending no later than now", () => {
+    const DAY = MODEL_FACTS_WINDOW_MS;
+    const rows = [at("month", -30 * DAY), at("week", -6 * DAY), at("today", -MIN)];
+    const ids = (w: { from: number; to: number }) => modelFacts(rows, ["general"], NOW, undefined, w).models.map((m) => m.offeringId);
+    expect(ids(factsWindow(NOW, iso(-30 * DAY - MIN)))).toEqual(["month", "today", "week"]);
+    expect(ids(factsWindow(NOW, iso(-7 * DAY)))).toEqual(["today", "week"]);
+    // A span in the past: only what fell inside it, and its end is the end it asked for.
+    const span = factsWindow(NOW, iso(-7 * DAY), iso(-5 * DAY));
+    expect(ids(span)).toEqual(["week"]);
+    expect(modelFacts(rows, ["general"], NOW, undefined, span)).toMatchObject({ from: iso(-7 * DAY), since: iso(-7 * DAY), until: iso(-5 * DAY) });
+    // Clamped: never before 31 days ago, never after now, and an upside-down window is the hour before its end.
+    expect(factsWindow(NOW, iso(-90 * DAY), iso(DAY))).toEqual({ from: NOW - MODEL_FACTS_MAX_MS, to: NOW });
+    expect(factsWindow(NOW, iso(-DAY), iso(-2 * DAY))).toEqual({ from: NOW - 2 * DAY - 60 * MIN, to: NOW - 2 * DAY });
+    expect(factsWindow(NOW, "not a date", null)).toEqual({ from: NOW - DAY, to: NOW });
+    // A reset after the span ends leaves it empty; one inside it starts it there.
+    expect(modelFacts(rows, ["general"], NOW, iso(-2 * DAY), span)).toMatchObject({ since: iso(-5 * DAY), models: [] });
+    expect(modelFacts(rows, ["general"], NOW, iso(-10 * DAY), factsWindow(NOW, iso(-30 * DAY - MIN))).models.map((m) => m.offeringId)).toEqual(["today", "week"]);
   });
 
   it("uses the clock of the request when none is given", () => {

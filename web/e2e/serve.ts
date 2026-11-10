@@ -111,6 +111,8 @@ function fakeModel() {
         const cloudModel = models.addModel(user, cloud.id, { modelId: "vendor/fixture-cloud", tools: true }).id;
         const HOUR = 3_600_000, tasks = ["chat", "chat", "title", "watching", "chat", "sleep.consolidate"] as const;
         for (let i = 0; i < 30; i++) call(cloudModel, `status-fixture-c-${i}`, tasks[i % tasks.length]!, (2 + ((i * 7) % 22)) * HOUR + (i % 5) * 600_000, 200 + ((i * 97) % 900), 4000 + ((i * 1300) % 9000));
+        // And through the weeks before, outside the last 24 hours, for the 7- and 30-day windows.
+        for (let i = 0; i < 24; i++) call(cloudModel, `status-fixture-w-${i}`, tasks[i % tasks.length]!, (26 + ((i * 29) % 670)) * HOUR, 150 + ((i * 131) % 800), 4000 + ((i * 1700) % 9000));
         // An image model whose host measured its sampling: three images, 17.3 s at the median, 8 steps at 1 MP.
         const image = models.addModel(user, endpoint.id, { modelId: "fixture-image", tools: false }).id;
         for (const [n, ms] of [15_000, 17_300, 21_000].entries()) back(n * HOUR, () => {

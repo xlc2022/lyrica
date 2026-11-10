@@ -2004,9 +2004,12 @@ export interface MemoryImportResult {
 
 // --- Administrators: /api/u/:userId/admin/… ---
 
-/** Retained model call records in the authenticated user's displayed pools, in [since, until]: the last 24 hours,
- * or less after the user's Reset. Not a complete day: nightly pruning keeps the latest 500 records per user across pools. */
+/** Retained model call records in the authenticated user's displayed pools, in [since, until]: the window asked for
+ * (`from` and `to`, the last 24 hours by default, at most the last 31 days), starting later after the user's Reset.
+ * Nightly cleanup keeps every record of the last 31 days, at least the latest 500 and at most 20,000 per user. */
 export interface ModelCallFacts {
+  /** The window's start as asked for and clamped; `since` is later only when a Reset falls inside it. */
+  from: string;
   since: string; until: string; pools: Pool[];
   models: {
     offeringId: string; label: string; endpointName: string; kind: "cloud" | "local"; calls: number;
@@ -2043,7 +2046,8 @@ export interface ModelCallFacts {
 /** POST /api/u/:userId/admin/status/reset → AdminStatusReset: Model calls counts only calls from `since` on. Records are kept. */
 export interface AdminStatusReset { since: string }
 
-/** GET /api/u/:userId/admin/status → AdminStatus */
+/** GET /api/u/:userId/admin/status[?from=<ISO>&to=<ISO>] → AdminStatus. `from` and `to` pick Model calls' window: by default
+ * the last 24 hours ending now; `to` is never after now, and `from` never before 31 days ago nor at or after `to`. */
 export interface AdminStatus {
   /** Present on GET only; all retained rows are considered, without a preview limit. */
   modelFacts?: ModelCallFacts;

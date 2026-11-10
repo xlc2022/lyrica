@@ -952,8 +952,12 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   each host's state word and Models' `GpuBlock`s, `CpuBlock` and `RamBlock`; then **Model calls · last 24
   hours**: `ModelCallFacts.tsx` draws from GET Status's `modelFacts` a facts
   line, one legend, four Vega-Lite charts (calls and output tokens per hour,
-  speed per call, calls by task; drawn live by `charts.ts`'s `drawChart` with
-  a hover tip, hours on the user's own clock) and a row per offering ID with
+  6 hours or day by the window's length (`bucketSize`, `buckets`), speed per
+  call, calls by task; drawn live by `charts.ts`'s `drawChart` with
+  a hover tip, times on the user's own clock). Its window is `StatusSection`'s
+  state: **24 h | 7 d | 30 d** asks GET with `factsQuery` (nothing for 24 h),
+  and a drag or two clicks on a bar chart (`Chart`'s pointer handlers, reading
+  the drawn view's x scale) ask for that span until **Clear** and a row per offering ID with
   calls, output, median generation and prompt tok/s (an image or video
   model's median seconds per image in the Speed cell instead, with steps,
   megapixels and it/s in its tooltip, and the images or clips it made in
@@ -961,9 +965,9 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   heard or spoken there instead, as s, min or h) and recorded fallbacks.
   Series take the chart colours by label; past eight copies the least used are
   Other. Changing shown pools drops the old aggregate and loads Status again.
-  The scope line names the displayed pools and latest-500-record retention
-  per user, not a complete day's activity. No measured speed reads — with a
-  "Not measured" tooltip; empty reads No retained calls in the last 24 hours.
+  The scope line names the displayed pools and the 31-day retention. No
+  measured speed reads — with a "Not measured" tooltip; empty reads No
+  retained calls in the last 24 hours (or 7 or 30 days).
   Tooltips explain scope, pace and fallback markers; no errors or retries are
   inferred), **Her name** (Name, 1–40 characters
   on one line, one Save disabled when invalid or unchanged; `PUT …/admin/name`,

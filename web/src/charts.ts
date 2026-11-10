@@ -49,10 +49,11 @@ export async function chartSvg(spec: object, theme: Theme): Promise<string> {
 }
 
 /**
- * A live chart in `el`, with a tooltip of the hovered mark's fields as text in `tip`. Returns its teardown.
+ * A live chart in `el`, with a tooltip of the hovered mark's fields as text in `tip`, handing its view to `ready` once
+ * drawn (Status reads its x scale to narrow the window). Returns its teardown.
  * The data is the page's own: Status's charts are built from the facts lyricad sent.
  */
-export async function drawChart(el: HTMLElement, tip: HTMLElement, spec: object, theme: Theme): Promise<() => void> {
+export async function drawChart(el: HTMLElement, tip: HTMLElement, spec: object, theme: Theme, ready?: (v: Awaited<ReturnType<typeof view>>) => void): Promise<() => void> {
   const v = await view(spec, theme, { container: el, renderer: "svg" });
   v.tooltip((_handler: unknown, event: MouseEvent | undefined, _item: unknown, value: unknown) => {
     if (value === undefined || value === null || value === "" || !event) { tip.hidden = true; return; }
@@ -74,5 +75,6 @@ export async function drawChart(el: HTMLElement, tip: HTMLElement, spec: object,
     tip.style.top = `${Math.max(0, y - tip.offsetHeight - 8)}px`;
   });
   await v.runAsync();
+  ready?.(v);
   return () => v.finalize();
 }

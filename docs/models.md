@@ -417,7 +417,9 @@ Tools are asked of a model only when the thread has tools.
 **Recent calls** (`recentCalls`, `model_calls` in `user.db`) hold the time,
 thread, task, the answering model's ID with its label, endpoint and kind,
 the fallback taken and why, and a note such as a model that couldn't think.
-Never prompt text. The latest 500 per user are kept. Before pruning, a
+Never prompt text. Nightly `prune` keeps every record of the last 31 days
+(`CALLS_DAYS`), never fewer than the latest 500 nor more than 20,000 per user;
+ids grow with time, so it trims by id. Before pruning, a
 transaction folds counted turns into `call_totals` (pool, thread, label,
 kind, tokens, gpu_ms, calls); forgetting a thread removes its totals too.
 User schema step 10 adds this table and nullable `model_calls.read_tokens`.
@@ -480,12 +482,13 @@ one-shot requests outside a session: `timedReply` reads each to its end and
 measures it the same way, so their records get a pace too.
 
 Administration → Status summarizes all retained records in the authenticated
-user's displayed pools in the inclusive last 24 hours, grouped by offering
+user's displayed pools in the inclusive window asked for (the last 24 hours
+by default, at most the last 31 days), grouped by offering
 ID, with call counts, output tokens, median recorded generation and prompt
 tok/s with their sample counts, and recorded fallback counts, and gives each
 record's time, offering, task, output, speed and fallback mark for its charts
 (never its thread, note or text). No last-twenty or preview limit is used here;
-latest-500-per-user retention still means this is not a complete day. Missing
+retention reaches the last 31 days, up to 20,000 records per user. Missing
 speed is not measured. A nonempty `fallback` is a recorded resolution skip
 (including eligibility/health skips), not evidence of failed requests, retries
 or errors; notes never establish fallback. Hosted retries replace the call
