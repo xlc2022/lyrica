@@ -188,7 +188,10 @@ administrator pairs or manages them; a personal host lives in its user's
   the last 30 seconds isn't asked again, and nothing waits more than 3
   seconds, so a host that's off doesn't hold the page — which matters because
   the shell polls `GET …/models/page`, which asks it for every endpoint,
-  app-wide on every open tab: on load, every 30 seconds and on focus. A cloud
+  app-wide on every open tab: on load, every 30 seconds (10 while a host
+  updates or moves its models folder) and on focus. A host that is updating
+  is asked on every look anyway, since each look marks it down and the cache
+  would hold the page on one step of the update. A cloud
   endpoint whose provider would take a real probe request is asked at most
   every 90 seconds — its last answer stands in between; local endpoints stay
   at 30 seconds. A host that last answered paused, pausing or restarting

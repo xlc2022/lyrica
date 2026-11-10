@@ -1755,7 +1755,9 @@ export class Models {
   /**
    * An endpoint's state for the Models page, within a budget: one the router
    * saw down in the last HEALTH_MS isn't asked again, and nothing waits more
-   * than `budgetMs`, so a host that's off doesn't hold the page. A cloud
+   * than `budgetMs`, so a host that's off doesn't hold the page; a host
+   * that is updating is asked anyway: every look marks it down, so the
+   * cache would hold the page on one step of the update. A cloud
    * endpoint whose provider would be probed is asked at most every
    * CLOUD_PAGE_PROBE_MS — its last answer stands in between — so the shell's
    * 30 s poll of this page doesn't spend a real request on it more often;
@@ -1767,9 +1769,10 @@ export class Models {
     if (!ep) throw new Error(`no endpoint ${endpointId}`);
     const unpaired = () => (this.unpaired.has(ep.id) ? { unpaired: true as const } : {});
     const h = this.health.get(ep.id);
-    if (h && !h.up && Date.now() - h.at < HEALTH_MS) {
-      const status = this.awayStatus.get(ep.id);
-      return status ? { state: "down", status } : { state: "down", error: `${ep.name} is down`, ...unpaired() };
+    // A host that is updating or moving its models folder is asked every time, so the page follows its steps and sees it back.
+    const away = this.awayStatus.get(ep.id);
+    if (h && !h.up && Date.now() - h.at < HEALTH_MS && !(away && updating(away))) {
+      return away ? { state: "down", status: away } : { state: "down", error: `${ep.name} is down`, ...unpaired() };
     }
     // A cloud endpoint that would be probed over the network keeps its last answer, up or down, for CLOUD_PAGE_PROBE_MS.
     if (h && ep.kind === "cloud" && !isPlan(ep.api) && Date.now() - h.at < CLOUD_PAGE_PROBE_MS) {

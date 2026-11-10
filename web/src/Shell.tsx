@@ -12,7 +12,7 @@ import { AdminPage, SettingsPage } from "./Panel.tsx";
 import { FilesPage } from "./Files.tsx";
 import { NotificationsCard, NotificationsPage, useWaiting } from "./Notifications.tsx";
 import { SleepCard, SleepHistoryPage, SleepPage, useSleepOverview, type SleepState } from "./Sleep.tsx";
-import { BackendCard, ModelsArea, useCleanupCount, useModelsPage } from "./Models.tsx";
+import { BackendCard, hostUpdating, ModelsArea, useCleanupCount, useModelsPage } from "./Models.tsx";
 import type { ModelsState } from "./ModelsFrame.tsx";
 import { SideStatus } from "./SideStatus.tsx";
 import { ThreadMenu, useThreadMenu } from "./ThreadMenu.tsx";
@@ -113,14 +113,16 @@ export function Shell({ user, users, route, build, onAuthChange, refreshState }:
     open();
     return () => { stopped = true; es?.close(); clearTimeout(retry); };
   }, [user.id, onChanged, me.reload]);
-  // Endpoint status comes from probes, so only Models keeps a timer. Focus still refreshes everything.
+  // Endpoint status comes from probes, so only Models keeps a timer: every 30 s, or 10 s while a host updates or
+  // moves its models folder, so its row follows the steps. Focus still refreshes everything.
+  const hostBusy = !!models.page?.hosts.some((h) => "status" in h && hostUpdating(h.status));
   useEffect(() => {
     const tick = () => { if (document.visibilityState === "visible") models.reload(); };
     const focus = () => { if (document.visibilityState === "visible") { refreshShell(); models.reload(); } };
-    const t = setInterval(tick, 30_000);
+    const t = setInterval(tick, hostBusy ? 10_000 : 30_000);
     addEventListener("focus", focus);
     return () => { clearInterval(t); removeEventListener("focus", focus); };
-  }, [refreshShell, models.reload]);
+  }, [refreshShell, models.reload, hostBusy]);
   useLook(me.data);
   useZone(me.data, me.set);
 
