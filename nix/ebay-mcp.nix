@@ -5,7 +5,7 @@
 # `ebay-mcp-server` in the thread's sandbox (DESIGN.md, "MCP servers"), so
 # it goes in the sandbox's tools (services.lyrica.ebayMcp, nix/module.nix).
 # Built from its own lock file, as nix/package.nix builds Lyrica.
-{ lib, buildNpmPackage, fetchFromGitHub, importNpmLock, nodejs_24 }:
+{ lib, callPackage, buildNpmPackage, fetchFromGitHub, importNpmLock, nodejs_24 }:
 let
   src = fetchFromGitHub {
     owner = "eBay";
@@ -21,6 +21,7 @@ in
   inherit src;
   npmDeps = importNpmLock { npmRoot = src; };
   npmConfigHook = importNpmLock.npmConfigHook;
+  nativeBuildInputs = [ (callPackage ./npm-nodedir.nix { nodejs = nodejs_24; }) ];
   # `npm run build` (tsc) makes dist/, which the package's bin points at.
   meta = {
     description = "eBay's MCP server: read-only access to eBay's public APIs";

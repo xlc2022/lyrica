@@ -1,6 +1,6 @@
 # lyricad, the lyrica CLI and the built web UI, from package-lock.json.
 # See docs/daemon.md, "On NixOS".
-{ lib, buildNpmPackage, importNpmLock, nodejs_24, python3, makeWrapper, src, rev ? "dirty" }:
+{ lib, callPackage, buildNpmPackage, importNpmLock, nodejs_24, python3, makeWrapper, src, rev ? "dirty" }:
 
 buildNpmPackage {
   pname = "lyrica";
@@ -13,12 +13,12 @@ buildNpmPackage {
   npmDeps = importNpmLock { npmRoot = src; };
   npmConfigHook = importNpmLock.npmConfigHook;
 
-  # better-sqlite3-multiple-ciphers builds from source: no prebuilt download in the Nix sandbox.
-  nativeBuildInputs = [ python3 makeWrapper ];
-  env = {
-    npm_config_build_from_source = "true";
-    PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1";
-  };
+  # The SQLite binding loads the linux-x64.node its package ships, so nothing
+  # asks npm to build it from source. python3 is for node-gyp, which builds
+  # ssh2's optional cpu-features; the first entry stops npm's warnings about
+  # nixpkgs' nodedir (nix/npm-nodedir.nix).
+  nativeBuildInputs = [ (callPackage ./npm-nodedir.nix { nodejs = nodejs_24; }) python3 makeWrapper ];
+  env.PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1";
 
   # The web UI; lyricad serves web/dist.
   npmBuildScript = "build";
