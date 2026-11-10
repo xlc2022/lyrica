@@ -1,7 +1,7 @@
 # Working on Lyrica
 
-This guide is for every contributor: people, Claude, ChatGPT, DeepSeek, and
-eventually Lyrica herself.
+This guide is for every contributor: people, Lyrica herself, Claude,
+ChatGPT and DeepSeek.
 
 ## Before you start
 
@@ -54,7 +54,9 @@ Read these, in this order:
 ## Workflow
 
 The project runs as threads, each a session of whatever tool or model suits
-the work, with fixed roles:
+the work, with fixed roles. Two projects build Lyrica by the same rules:
+Lyrica's own, on each deployment that runs it, and Claude's. Each has
+these roles, and neither reviews or directs the other:
 
 - **Coordinator** (the project chat): writes a brief in `docs/briefs/` for
   each piece of work, starts the thread that builds it and routes messages.
@@ -62,34 +64,36 @@ the work, with fixed roles:
 - **Feature thread:** builds one brief on its own `feature/*` branch and
   finishes with one pull request into `main`. Later work in the same area
   goes to the same thread.
-- **PR review:** reviews each pull request that needs it (below) against
-  its brief, this file and the docs, and owns PRINCIPLES, DESIGN, the
-  contracts and docs/ux.md, recording settled decisions in docs PRs. Its
+- **PR review** (Review, in her project): reviews each pull request of its
+  own project that needs it (below) against
+  its brief, this file and the docs, and keeps PRINCIPLES, DESIGN, the
+  contracts and docs/ux.md true to what its project settles, recording
+  settled decisions in docs PRs. Its
   session starts fresh from a handoff note once its context passes about
   100k tokens, since every turn re-reads that context.
 - **UI review:** judges every change a user sees against docs/ux.md and the
   mockups.
-- **Operator docs:** owns the guides in `docs/guides/`.
+- **Operator docs:** owns the guides in `docs/guides/`. In her project the
+  building thread updates the guides its own change makes stale.
 
 Review and merge:
 
-**Lyrica's own PRs are reviewed in her own project.** Every PR she builds,
-including docs-only and small `web/` changes, opens as a **draft** and goes
-to her project's Review thread with the PR and head commit, and to UI
-review too if a user would see the change. She fixes findings and sends the
-new head for recheck. Only after every required reviewer says **verified**
-with the exact head commit and CI is green does she record that head and
-the review results on the PR, mark it **ready for review** and merge it
-herself, with a merge commit; a later push needs both again. Claude's
-project doesn't review or approve her PRs (the owner, 2026-11-10). When
-the owner asks her to confer with Claude on a change, she hands it to
-Claude Code, the `claude` role (docs/delegation.md, "Claude Code"), and
-weighs its report like a reviewer's findings. A PR touching boundary code
-(CODEOWNERS) also waits for the owner's own approval. GitHub is the only
-channel between her and Claude's project, both ways: she asks it for work
-with a `claude` issue, and it answers on the issue and asks her for work
-with an issue assigned to her, never with a message into her threads.
-After she merges, she reports it in her own project. See
+Every builder follows the same four steps below, with its own project's
+reviewers.
+
+**What differs for Lyrica** comes from her account, not her standing
+(the owner, 2026-11-10). Claude's project doesn't review or approve her
+PRs. Her reviewers act as her own GitHub account, so she records the
+verified head and the review results on the PR before merging it, with a
+merge commit. A PR of hers touching boundary code (CODEOWNERS) also waits
+for the owner's own approval, and her branches are named `lyrica/*`, as
+Claude's are `claude/*` and `feature/*`. When the owner asks her to confer with
+Claude on a change, she hands it to Claude Code, the `claude` role
+(docs/delegation.md, "Claude Code"), and weighs its report like a
+reviewer's findings. GitHub is the only channel between the two projects,
+both ways: either asks the other for work with an issue (labelled
+`claude`, or assigned to her account), never with a message into its
+threads. After she merges, she reports it in her own project. See
 [the project handoff](docs/briefs/lyrica-project.md#claudes-side).
 When she runs on more than one deployment, each has its own GitHub
 account: she works only on issues assigned to her own account, checks a
@@ -97,7 +101,7 @@ new `lyrica/*` name isn't on GitHub before pushing it, and never pushes to
 a branch another account created
 ([More than one deployment](docs/briefs/lyrica-project.md#more-than-one-deployment)).
 
-For other contributors, the existing path remains:
+The steps:
 
 1. The building thread sends the pull request and its head commit to PR
    review, and to UI review too if a user would see the change. PR review

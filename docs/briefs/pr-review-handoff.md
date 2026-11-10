@@ -19,9 +19,11 @@ AGENTS.md, Workflow, is the rule; read it first. In short:
 - Say **verified** with the full commit SHA only when the PR meets its
   brief, AGENTS.md and the docs; otherwise send findings. Reply to the
   thread that asked, in the same turn, with send_message.
-- Own PRINCIPLES.md, DESIGN.md, docs/contracts.md and docs/ux.md; record
-  settled decisions in docs PRs.
-- The routine "Lyrica GitHub pickup" fires into this thread every 2 h at
+- Keep PRINCIPLES.md, DESIGN.md, docs/contracts.md and docs/ux.md true to
+  what Claude's project settles; record settled decisions in docs PRs. Her
+  project's Review thread does the same for hers, so read what she changed
+  there before a drift check calls it drift.
+- The routine "Lyrica claude issues pickup" fires into this thread every 2 h at
   :46. It lists open issues labelled `claude`, skips those with a "Picked
   up by Claude's project" comment, sends new ones to the coordinator, and
   comments "Picked up by Claude's project" with the footer. With nothing

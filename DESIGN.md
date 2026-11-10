@@ -2488,9 +2488,11 @@ from Monika's runbooks.
   That token reaches every public repository her account can write to,
   so the account stays a collaborator on this repository only. She pushes branches to the repository itself, never a fork, so her pull
   requests run the same CI as Claude's (docs/ci.md), with
-  no first-time-contributor approval. `main` is protected: pull requests
-  only and green CI; nothing of hers merges without both. It requires no
-  approval on GitHub (the owner, 2026-11-10): her reviewers act as her own
+  no first-time-contributor approval. Work reaches `main` only through pull
+  requests with green CI; nothing of hers merges without both. That is a
+  rule she follows, whatever GitHub enforces: she reads the check runs on
+  the head herself and never takes an enabled merge button as proof. `main` requires no
+  approval on GitHub: her reviewers act as her own
   account, which GitHub won't count on her own PR, so their verifieds are
   recorded on the PR instead. The owner's own account may bypass the rules as
   administrator, because Claude's threads work through it.
@@ -2508,21 +2510,24 @@ from Monika's runbooks.
   names the owner for those paths, so GitHub asks for the owner's review on any PR
   that touches them, and she waits for the owner's approval on one of hers.
   Claude's threads act through the owner's account, so GitHub can't tell a
-  review of theirs from the owner's: this is a rule she follows, not a gate. She
-  may push only `lyrica/*` branches and `update/*` tags.
+  review of theirs from the owner's: this is a rule she follows, not a gate. Her
+  branches are `lyrica/*` and her tags `update/*` by convention; no ruleset
+  limits her account (the owner, 2026-11-10).
 - **Working alongside Claude.** One repository, one set of rules
   (AGENTS.md), each side's own review. Work is claimed as a GitHub issue with one
-  assignee, her account or the owner, so two never build the same thing; she
-  takes what she notices in use (the friction log from PRINCIPLES.md's
-  Evaluation, small features, her own tooling), Claude's threads take
-  briefs. Her branches are `lyrica/*`, Claude's `feature/*` and `claude/*`. Whoever
+  assignee, her account or the owner, so two never build the same thing.
+  She is the main builder (the owner, 2026-11-10): she takes any work,
+  what she notices in use (the friction log from PRINCIPLES.md's
+  Evaluation) and planned features alike, and writes her own briefs;
+  Claude's threads build what the owner gives them. Her branches are `lyrica/*`, Claude's `feature/*` and `claude/*`. Whoever
   merges second merges `main` in first. GitHub is the only channel
   between them, both ways: she can't reach Claude's threads, and Claude
   doesn't message hers, even on a deployment where an operator session
   could. An issue labelled `claude` is how she asks for something; Claude
   answers on the issue and
-  asks her for work as an issue assigned to her. Design changes go through the design
-  owner as they do now, and the owner decides. An update note covers everything
+  asks her for work as an issue assigned to her. Each project's review
+  records the design points its own changes settle in PRINCIPLES, DESIGN,
+  the contracts and docs/ux.md, and the owner decides what is open. An update note covers everything
   merged since the running version, Claude's PRs included.
 - **Her own project.** She starts with no memory of how this project
   runs, so the handoff is written down: a project "Lyrica" in her own
