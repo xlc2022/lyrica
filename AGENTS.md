@@ -73,25 +73,23 @@ the work, with fixed roles:
 
 Review and merge:
 
-**Lyrica's own PRs take the stricter path.** Every PR she builds, including
-docs-only and small `web/` changes, opens as a **draft** and goes to her
-project's Review thread with the PR and head commit, and to UI review too
-if a user would see the change. She fixes findings and sends the new head
-for recheck. Only after every required reviewer says **verified** with the
-exact head commit and CI is green does she record that head and the review
-results on the PR and mark it **ready for review**. Claude's routine skips
-drafts and automatically picks up ready `lyrica/*` PRs; Claude's PR review
-checks them and **approves** on GitHub, naming the head, or requests
-changes; it never merges them. She merges her own PR, with a merge commit,
-once her required reviewers verified the exact head, CI is green and
-Claude's approval names that same head; a later push needs all three again.
-A PR touching boundary code (CODEOWNERS) also waits for the owner's own
-approval. She answers review comments on the PR, not through
-a separate `claude` issue. GitHub is the only channel between her and
-Claude, both ways: she asks Claude with a `claude` issue, and Claude answers
-on the PR or issue and asks her for work with an issue assigned to her,
-never with a message into her threads. After she merges,
-she reports it as in step 4 below. See
+**Lyrica's own PRs are reviewed in her own project.** Every PR she builds,
+including docs-only and small `web/` changes, opens as a **draft** and goes
+to her project's Review thread with the PR and head commit, and to UI
+review too if a user would see the change. She fixes findings and sends the
+new head for recheck. Only after every required reviewer says **verified**
+with the exact head commit and CI is green does she record that head and
+the review results on the PR, mark it **ready for review** and merge it
+herself, with a merge commit; a later push needs both again. Claude's
+project doesn't review or approve her PRs (the owner, 2026-11-10). When
+the owner asks her to confer with Claude on a change, she hands it to
+Claude Code, the `claude` role (docs/delegation.md, "Claude Code"), and
+weighs its report like a reviewer's findings. A PR touching boundary code
+(CODEOWNERS) also waits for the owner's own approval. GitHub is the only
+channel between her and Claude's project, both ways: she asks it for work
+with a `claude` issue, and it answers on the issue and asks her for work
+with an issue assigned to her, never with a message into her threads.
+After she merges, she reports it in her own project. See
 [the project handoff](docs/briefs/lyrica-project.md#claudes-side).
 When she runs on more than one deployment, each has its own GitHub
 account: she works only on issues assigned to her own account, checks a

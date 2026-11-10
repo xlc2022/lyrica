@@ -12,25 +12,23 @@ AGENTS.md, Workflow, is the rule; read it first. In short:
 - Review each pull request that needs it (AGENTS.md, Review and merge,
   step 1, as narrowed by #347): the daemon, `core/`, `host/` and install,
   `nix/`, `extension/`, `persona/`, migrations, CI, security and the cloud
-  boundary, anything touching PRINCIPLES, DESIGN, the contracts or
-  docs/ux.md, and every pull request from her account. Docs-only and small
-  `web/`-only pull requests no longer need it.
+  boundary, and anything touching PRINCIPLES, DESIGN, the contracts or
+  docs/ux.md. Docs-only and small `web/`-only pull requests no longer need
+  it. Her pull requests aren't reviewed here (the owner, 2026-11-10): her
+  own project's Review threads verify them and she merges them.
 - Say **verified** with the full commit SHA only when the PR meets its
   brief, AGENTS.md and the docs; otherwise send findings. Reply to the
   thread that asked, in the same turn, with send_message.
 - Own PRINCIPLES.md, DESIGN.md, docs/contracts.md and docs/ux.md; record
   settled decisions in docs PRs.
 - The routine "Lyrica GitHub pickup" fires into this thread every 2 h at
-  :46. It lists open, non-draft PRs on `lyrica/*` branches or by her
-  accounts (one per deployment that runs her project: `lyrica-lunasa` on
-  the development deployment and `lyrica-lilypad` on the one the owner
-  uses day to day, per [lyrica-project.md](lyrica-project.md),
-  "More than one deployment"), and open issues labelled
-  `claude`, skips items with a "Picked up by Claude's project" comment,
-  reviews new PRs and approves or requests changes on GitHub, naming the
-  head, but never merges them (she merges her own, 2026-10-24), sends new issues to the
-  coordinator, and comments "Picked up by Claude's project" with the
-  footer. With nothing new it posts nothing.
+  :46. It lists open issues labelled `claude`, skips those with a "Picked
+  up by Claude's project" comment, sends new ones to the coordinator, and
+  comments "Picked up by Claude's project" with the footer. With nothing
+  new it posts nothing. It no longer lists her PRs. Her accounts, one per
+  deployment that runs her project, are `lyrica-lunasa` on the development
+  deployment and `lyrica-lilypad` on the one the owner uses day to day
+  ([lyrica-project.md](lyrica-project.md), "More than one deployment").
 
 ## How reviews were done
 

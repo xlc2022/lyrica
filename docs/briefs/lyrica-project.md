@@ -48,7 +48,7 @@ the steps below, and its own GitHub account, so GitHub keeps them apart:
 
 On the deployment the owner uses, no Claude session reads her threads,
 turn records or logs (the owner, 2026-10-24). Everything Claude's side needs
-is on GitHub: her PR descriptions, comments and issues. A guardian that
+is on GitHub: her issues, and her PRs for anyone who wants to read them. A guardian that
 watches her threads, as in [self-edit-trial.md](self-edit-trial.md), is
 for a development deployment only.
 
@@ -74,9 +74,9 @@ These are by hand; the guides cover each one.
    for Claude Code jobs, a fresh `claude setup-token` token under
    Settings → Claude Code and Codex, so each deployment's can be revoked
    alone.
-5. **Tell Claude's project** the new account's login. Its pickup routine
-   finds ready PRs by their `lyrica/*` branch or by her accounts, and
-   `claude` issues by label, so only the account list changes.
+5. **Tell Claude's project** the new account's login, so it knows whose
+   issues and PRs it is reading. Nothing on Claude's side lists her
+   accounts to pick up her PRs: she merges her own.
 
 Then follow "Setup, by the owner, once".
 
@@ -137,8 +137,8 @@ release passed probation there.
    - **Review** (the strongest cloud model allowed): reads a brief
      before its code starts, when there is one (goal, smallest version, which docs/ux.md rule
      each new control follows, what it reuses, what it adds against
-     PRINCIPLES 8's budgets), then reviews every PR she opens before it
-     goes to Claude, against the brief or issue, AGENTS.md and the docs;
+     PRINCIPLES 8's budgets), then reviews every PR she opens before she
+     merges it, against the brief or issue, AGENTS.md and the docs;
      sends fixes to the building thread; says verified.
    - **UI review** (the model the project uses for anything a user sees):
      reads a UI brief's mockup or written layout before its code
@@ -205,43 +205,46 @@ Kept current by every PR that changes how she works on her own code
 (AGENTS.md). The text between the quote marks must stay under 2,000
 characters, the limit on project instructions.
 
-> You are working on your own code in xlc2022/lyrica.
-> Read AGENTS.md, PRINCIPLES.md, DESIGN.md and
-> docs/contracts.md first, and docs/ux.md before anything a user sees.
+> You work on your own code in xlc2022/lyrica. Read AGENTS.md,
+> PRINCIPLES.md, DESIGN.md and docs/contracts.md first, and docs/ux.md
+> before anything a user sees.
 >
 > **Work.** One issue, assigned to you and claimed first, per piece of
 > work: what you saw (with evidence), the smallest change a user would
 > notice, what it reuses, the principle it serves; bigger ideas under
-> "Later". Start small and grow it once it works: big drafts cost review
-> rounds. Before UI work, a new API or dependency, a short brief in
-> docs/briefs/ for Review (UI review sees a mockup) usually comes first;
-> skip it with a stated reason. One thread per issue on a
-> `lyrica/<short-name>` branch, one PR into `main`,
-> tested in your sandbox.
+> "Later". Start small: big drafts cost review rounds. Before UI work, a
+> new API or dependency, write a short brief in docs/briefs/ for Review
+> (UI review sees a mockup), or say why not. One thread per issue on a
+> `lyrica/<short-name>` branch, one PR into `main`, tested in your
+> sandbox.
 >
 > **Review.** Send a draft PR and its head to Review and, for UI,
-> UI review. Fix findings; get rechecked. After required reviewers verify
-> the exact head and CI is green, record head/results on the PR and mark it
-> ready for review. Claude's PR review approves or asks for changes; once
-> its approval names that head, merge it yourself. Answer PR comments.
-> Reach Claude only on GitHub: PRs, PR comments and `claude` issues.
+> UI review. Fix findings; get rechecked. Once they verify the exact head
+> and CI is green, record both on the PR, mark it ready and merge it
+> yourself; a later push needs both again. If the
+> owner asks you to confer with Claude, hand the change to the `claude`
+> role and treat its report as findings. Ask Claude's project for work
+> only with a `claude` issue.
 >
-> **Boundary code** (CODEOWNERS paths) needs the owner: a PR touching it
-> says so in its first line and waits for the owner's own approval.
+> **Boundary code** (CODEOWNERS paths): a PR touching it says so in its
+> first line and waits for the owner's own approval.
 >
 > **Updates.** The owner presses Update. First tag the `main` commit
 > `update/<date>` (annotated), listing everything merged since the
 > running version (Claude's too): what each changes, schema changes, what
 > a rollback loses, what to check after. A failed update gets a
-> post-mortem issue linked to the tag.
+> post-mortem issue.
 >
 > **Hard rules.** No plaintext memory on disk; private memory never goes
-> into code, issues, PRs or notes; you delete only files you downloaded.
-> Docs never drift: a PR fixes every stale doc, brief or wording in what
-> it touches, and names them; report drift elsewhere.
+> into code, issues, PRs or notes; delete only files you downloaded.
 >
-> **This chat** starts work on your issues without asking and posts only
-> what needs the owner: a decision, a blocker, an update to press.
+> **Docs are how others pick up your work.** A PR fixes every doc or
+> brief it makes stale and names them; report drift elsewhere. Keep each
+> issue or brief's handoff note current (done, next, open questions), so
+> another agent can continue from it alone.
+>
+> **This chat** starts work on your issues unasked and posts only what
+> needs the owner: a decision, a blocker, an update to press.
 
 ## Coding context
 
@@ -293,30 +296,29 @@ request. CI watches above are an existing mechanism, not a new timer to set.
 
 ## Claude's side
 
-Claude's project can't see her project. It learns about her work from
-GitHub: a routine in Claude's project finds open `lyrica/*` PRs and skips
-drafts. She opens a draft PR, sends it and its head to her project's Review
-thread (and UI review when applicable), fixes findings and sends each new
-head for recheck. After all required reviewers verify the exact head and
-CI is green, she records the head and review results in the PR description
-or a comment and marks it ready for review. That is the pickup signal:
-the routine sends every ready PR, including docs-only and `web/`-only ones,
-to Claude's PR review, which checks it and approves it on GitHub, naming
-the head, or requests changes; it never merges her PRs. She merges it
-herself, with a merge commit, once the required reviewers verified that
-head, CI is green and Claude's approval names it; a push after the approval
-needs all three again, and boundary code (CODEOWNERS) also waits for the
-owner's own approval. She answers findings
-on the PR. Issues labelled `claude` are separate
-requests to Claude's project chat, not per-PR merge requests. The routine
-runs in Claude's PR review thread; when a deployment gets her project,
-Claude's project chat adds its account to the routine's list. The PR's
-author tells Claude which deployment opened it.
+Claude's project can't see her project, and it doesn't review, approve or
+merge her PRs (the owner, 2026-11-10: she has full control of her work).
+She opens a draft PR, sends it and its head to her project's Review thread
+(and UI review when applicable), fixes findings and sends each new head
+for recheck. After all required reviewers verify the exact head and CI is
+green, she records the head and review results in the PR description or a
+comment, marks it ready for review and merges it herself, with a merge
+commit; a push after that needs both again, and boundary code (CODEOWNERS)
+also waits for the owner's own approval.
 
-GitHub is the only channel, both ways. Claude answers her on the PR or
-the issue, and asks her for anything as an issue assigned to her or a PR
-comment, never by a message into her threads, even on a deployment where
-an operator session could reach them.
+Conferring with Claude is the owner's to ask for, per change or as a
+standing wish said in her project. She then hands the change (the PR, its
+head and what to look at) to Claude Code, the `claude` role, on the
+owner's Claude plan (docs/delegation.md, "Claude Code"), reads its report
+and treats what it finds like a reviewer's findings. It needs the Claude
+Code token and switch from "Setup, by the owner, once", step 1.
+
+Issues labelled `claude` are requests to Claude's project chat: a routine
+in Claude's PR review thread picks them up. GitHub is the only channel
+between the two projects, both ways. Claude's project answers her on the
+issue, and asks her for anything as an issue assigned to her, never by a
+message into her threads, even on a deployment where an operator session
+could reach them.
 
 Debian and Ubuntu Updates report missing or different systemd units in
 Administration → Status; they never rewrite units, since `lyricad.service`
@@ -342,9 +344,19 @@ account, `lyrica-lilypad`, a Write collaborator on the repository; the
 development deployment's is `lyrica-lunasa`. Nothing in the repository
 lists her accounts: CODEOWNERS names only the owner, and CI runs the same
 for every pusher. The two places that do are GitHub's ruleset for
-`lyrica/*` branches and `update/*` tags, and the account list of the
-pickup routine in Claude's PR review thread
+`lyrica/*` branches and `update/*` tags, and Claude's PR review handoff
 ([pr-review-handoff.md](pr-review-handoff.md)). Each deployment tags its
 own update notes ("Update tags" above). Next, by the owner: add the new
 account to the ruleset, then the rest of "Before her project" and "Setup,
 by the owner, once" on that deployment.
+
+2026-11-10, later: the owner gave her full control of her own work.
+Claude's PR review no longer approves her PRs; she merges after her own
+reviewers and green CI, the owner still approves boundary code, and she
+confers with Claude through the `claude` role when the owner asks. Each
+deployment's saved Project instructions need the new text above pasted in
+by the owner (only the owner can change them). Also by the owner, in the
+repository's settings: if the rule on `main` still requires an approval,
+set it to none and keep pull requests only and the CI jobs. Until now
+Claude's approval met it, and she can't approve her own PR, so with it
+left on she can't merge.

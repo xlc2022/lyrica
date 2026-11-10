@@ -1444,7 +1444,7 @@ it adds no tool.
 She changes her own code the way Claude's feature threads do: the
 `xlc2022/lyrica` repository in her "Lyrica" project, from her own GitHub
 account (docs/briefs/lyrica-project.md), on `lyrica/*` branches, through
-pull requests that the project's review approves and merges. Nothing she
+pull requests that her project's Review threads verify and she merges. Nothing she
 does reaches `main` or the server without that review and an
 administrator's Update. A private thread can't have the repository, since
 her account is general.
@@ -1469,7 +1469,9 @@ her account is general.
      that change, so reading logs needs the thread's internet on, not
      only allowed hosts.
   3. A branch protection rule (or ruleset) on `main`: pull requests only,
-     the CI jobs from `.github/workflows/ci.yml` required, one approval;
+     the CI jobs from `.github/workflows/ci.yml` required, no required
+     approval (her reviewers act as her own account, which GitHub won't
+     count on her own pull request);
      "Do not allow bypassing" off, so the owner's account, which Claude's threads
      work through, still merges as administrator.
   4. A ruleset that lets her account create and update only `lyrica/*`
@@ -1481,9 +1483,9 @@ her account is general.
   router, the workspace (sandbox and grants), `openThreadView`,
   authentication, web access, the pool's storage, the model host,
   deployment, the updater and CI. GitHub then asks for
-  the owner's review on a pull request that touches them; it isn't required for
-  merging, since Claude's approvals come from the same account. PR review
-  asks the owner before approving such a pull request of hers.
+  the owner's review on a pull request that touches them; GitHub doesn't
+  require it for merging, since Claude's threads act through the same
+  account. She waits for the owner's approval on such a pull request of hers.
 - **Update notes.** Before the owner presses Update she writes one: an annotated
   tag `update/<date>` on the `main` commit to install, its message listing
   the pull requests merged since the running version (Claude's too), what
