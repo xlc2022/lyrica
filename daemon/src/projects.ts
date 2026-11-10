@@ -1,4 +1,4 @@
-import { EVIDENCE_SETTINGS, type EvidenceSetting, type ModelRef, type Pool, type ThinkingLevel, type Users } from "@lyrica/core";
+import { EVIDENCE_SETTINGS, INSTRUCTIONS_LIMIT, type EvidenceSetting, type ModelRef, type Pool, type ThinkingLevel, type Users } from "@lyrica/core";
 
 // What a user sets about threads and projects that isn't conversation: thread
 // pins, and each project's settings (paused, the model, thinking and Fallback its new
@@ -64,7 +64,7 @@ export class Projects {
   /** Changes some of a project's settings; `null` clears the model, thinking, Fallback or evidence judge. */
   set(userId: string, pool: Pool, project: string, change: { code?: boolean; evidence?: EvidenceSetting | null; checkIn?: boolean; paused?: boolean; model?: ModelRef | ModelRef[] | null; thinking?: ThinkingLevel | null; fallback?: boolean | null; watch?: boolean; draftGoal?: string | null; draftInstructions?: string | null }): ProjectSettings {
     if (change.fallback !== undefined && change.fallback !== null && typeof change.fallback !== "boolean") throw new Error("fallback is true, false or null");
-    for (const value of [change.draftGoal, change.draftInstructions]) if (value !== undefined && value !== null && (typeof value !== "string" || value.length > 2000)) throw new Error("project drafts have at most 2000 characters");
+    for (const [value, limit] of [[change.draftGoal, 2000], [change.draftInstructions, INSTRUCTIONS_LIMIT]] as const) if (value !== undefined && value !== null && (typeof value !== "string" || value.length > limit)) throw new Error(`a project draft has at most ${limit} characters`);
     if (change.code !== undefined) {
       if (typeof change.code !== "boolean") throw new Error("code is true or false");
       this.db(userId, db => db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(`project.code.${pool}/${project}`, String(change.code)));

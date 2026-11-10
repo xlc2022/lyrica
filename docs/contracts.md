@@ -318,7 +318,7 @@ gives the project chat for the chat or any of its threads, and
 `projectThreads(id)` the chat and its threads.
 - `projectSlug(projectId)` names the project's page, `p:project-<id>`;
   `pageForProject(threadId)` returns it once it exists. A page's
-  `instructions` (at most 2,000 characters) are kept apart from its text:
+  `instructions` (at most 4,000 characters) are kept apart from its text:
   only the user changes them (`setProjectInstructions(id, text, author)`
   makes the page if needed), and
   an edit by `lyrica` or `sleep` that changes them is refused. The user-text
@@ -1830,8 +1830,8 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   because the model must think ("Reasoning is mandatory") is sent again at
   `mandatoryThinking`, and `mustThink` is called (`thinkWhenRequired`).
 - **Projects:** a `project` section in `assemble` (`projectSection`), with
-  its own `DEFAULT_BUDGETS.project` (8,000 characters, about 2,000 tokens):
-  the goal, the user's instructions (at most 2,000 characters), project
+  its own `DEFAULT_BUDGETS.project` (10,000 characters, about 2,500 tokens):
+  the goal, the user's instructions (at most 4,000 characters), project
   notes since the last sleep, (in the project chat only) its threads with
   their state from `LyricaOptions.projectThreads`, and last the project
   page, so a long page is what the budget cuts. Filled for a project chat
@@ -2100,8 +2100,8 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     including local-only, moves children, leaves the source conversation,
     and sends a first linked message asking for drafts with a selected
     read of the source. That turn asks for drafts without fold-suggesting directions: the source stays in place. An unlogged source is refused.
-    `threads draft { goal?, instructions? }` keeps unsaved text (each at
-    most 2,000 characters) in `project_settings.draft_goal` and
+    `threads draft { goal?, instructions? }` keeps unsaved text (a goal at
+    most 2,000 characters, instructions 4,000) in `project_settings.draft_goal` and
     `draft_instructions`, nullable columns added by expand-only user step 9.
     `ThreadSummary.projectSettings.draftGoal` / `draftInstructions` expose
     them; other settings changes preserve them. A user `PATCH` saving

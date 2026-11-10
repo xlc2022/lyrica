@@ -532,8 +532,8 @@ function MemorySection({ base, summary, pool, userId, onSummary }: { base: strin
       <h2 id="h-memory">Memory</h2>
       <label className="field">
         <span>Instructions</span>
-        <textarea rows={6} maxLength={2000} value={instructions} onChange={(e) => setInstructions(e.target.value)} placeholder={`How ${her()} should work in this project. Every thread of it reads this.`} />
-        <small className="muted num">{instructions.length} / 2000</small>
+        <textarea rows={6} maxLength={4000} value={instructions} onChange={(e) => setInstructions(e.target.value)} placeholder={`How ${her()} should work in this project. Every thread of it reads this.`} />
+        <small className="muted num">{instructions.length} / 4000</small>
       </label>
       <p className="small"><a href={href({ page: "memory", userId, pool, id: summary.projectSettings!.pageId })}>Project page</a> <span className="muted">· what {her()} knows about the project, rewritten while she sleeps</span></p>
       <div className="row">

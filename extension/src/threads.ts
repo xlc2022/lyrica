@@ -109,7 +109,7 @@ const Params = Type.Object({
   model: Type.Optional(Type.String({ description: MODEL_PARAM })),
   done: Type.Optional(Type.String({ maxLength: 1200 })),
   goal: Type.Optional(Type.String({ maxLength: 2000 })),
-  instructions: Type.Optional(Type.String({ maxLength: 2000 })),
+  instructions: Type.Optional(Type.String({ maxLength: 4000 })),
   ids: Type.Optional(Type.Array(Type.String(), { maxItems: 10, description: "For fold: existing thread IDs to suggest bringing into this project. The person applies the card." })),
   title: Type.Optional(Type.String({ description: "For start: the child thread's title." })),
   task: Type.Optional(Type.String({ description: "For start: what to work on, with everything it needs. It starts with your persona and memory, but none of this conversation." })),

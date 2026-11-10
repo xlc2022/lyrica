@@ -28,8 +28,9 @@ export const DEFAULT_BUDGETS: Budgets = {
   about: 1500,
   pages: 3000,
   folders: 4000,
-  // About 2,000 tokens each.
-  project: 8000,
+  // About 2,500 tokens: instructions may take 4,000 characters of it.
+  project: 10000,
+  // About 2,000 tokens.
   pinned: 8000,
   user: 600,
   recall: 4000,
