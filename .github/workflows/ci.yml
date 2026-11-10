@@ -326,3 +326,19 @@ jobs:
           sudo ./egress.sh remove || true
           sudo rm -f /etc/docker/daemon.json
           sudo systemctl restart docker
+  # One last job that always runs and passes when no job above failed or
+  # was cancelled, skipped ones included. A docs-only diff skips every job
+  # but changes, and a run of skips alone never reads as "all green" to
+  # whatever waits on the PR, so the thread that owns it was never told to
+  # merge (#892 sat a day). This gives every run a real passing result.
+  done:
+    needs: [changes, check, e2e, nix, host-stack]
+    if: always()
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "results: $RESULTS"
+          case " $RESULTS " in *" failure "*|*" cancelled "*) exit 1 ;; esac

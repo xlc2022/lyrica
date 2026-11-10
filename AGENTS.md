@@ -122,7 +122,11 @@ The steps:
    green, the building thread merges it, with no further approval. If
    merging `main` in later conflicts in files the review touched, it sends
    the merge commit back to the reviewer first. Stacked pull requests merge
-   with merge commits, each retargeted to `main` first.
+   with merge commits, each retargeted to `main` first. Green CI means
+   CI's last job, `done`, passed; on a docs-only pull request every job
+   but `changes` and `done` is skipped and the run takes about a minute,
+   so the building thread checks the run itself once it opens such a pull
+   request, and merges then, rather than waiting to be told.
 4. After merging, the building thread says so in its own thread and tells
    the coordinator the number, title and merge commit, what landed and what
    it may affect; the coordinator tells the affected threads. If it changes
