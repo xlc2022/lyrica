@@ -23,14 +23,14 @@ import { SETUP_SCRIPT, SetupFailures, setupOutcome } from "./setup.ts";
 import type { CodexBox } from "../models/codex.ts";
 import { authorizedKeysLine, machineSetup } from "./machines.ts";
 import {
-  beyondPower, certFingerprint, ownAddress, ownNode, parseProxmoxAddress, proxmoxAction, proxmoxHttps, proxmoxSetup, proxmoxUser, thisComputer, tokenId,
+  beyondPower, certFingerprint, ownAddress, ownNode, parseProxmoxAddress, ProxmoxAnswer, proxmoxAction, proxmoxHttps, proxmoxSetup, proxmoxUser, thisComputer, tokenId,
   type ProxmoxAction, type ProxmoxCall, type ProxmoxTransport, type Self,
 } from "./proxmox.ts";
 import { parseHost, reachesHost } from "./net.ts";
 import { mcpHost, mcpUrl, probeMcp, probeMcpCommand, type McpBudget, type McpProbe, type McpProcess, type McpStateKind } from "./mcp.ts";
 import {
   checkGrant, gitHost, type McpServerConfig, repositoryDir, repositoryName, repositoryUrl, stricterMode, WorkspaceSettings, type GitAccountConfig, type GitAccountState, type GitKind, type Grant,
-  type MachineConfig, type MachineKind, type MachineLimit, type Network, type NewMachine, type PermissionMode, type ThreadRepository, type ThreadWorkspace,
+  type MachineConfig, type MachineKind, type MachineLimit, type MachineState, type Network, type NewMachine, type PermissionMode, type ThreadRepository, type ThreadWorkspace,
 } from "./settings.ts";
 import { AllowedPaths } from "./paths.ts";
 import type { Respelling } from "./renames.ts";
@@ -895,7 +895,7 @@ export class Workspace {
     if (machine) {
       const m = this.machinesFor(t).find((x) => x.name === machine);
       if (!m) throw new Error(`${machine} isn't one of this thread's machines`);
-      if (m.kind === "proxmox") throw new Error(`${machine} is a Proxmox machine: use the proxmox tool`);
+      if (m.kind === "proxmox") throw new Error(`${machine} is a Proxmox machine, reached only with the proxmox tool`);
       return this.ssh(t.userId, machine);
     }
     const credentials = this.credentialsFor(t);
@@ -1561,10 +1561,26 @@ export class Workspace {
 
   private proxmoxTransport(): ProxmoxTransport { return this.opts.proxmoxTransport ?? proxmoxHttps; }
 
-  /** Calls to a Proxmox at `address` with `token`, sent only to the certificate `pinned`. */
-  private proxmoxApi(address: string, port: number, token: string, pinned: string): ProxmoxCall {
+  /**
+   * Calls to a Proxmox at `address` with `token`, sent only to the certificate `pinned`.
+   * `went` hears how each call went, for a saved machine's state as an SSH connection gives it.
+   */
+  private proxmoxApi(address: string, port: number, token: string, pinned: string, went?: (kind: MachineState["kind"]) => void): ProxmoxCall {
     const transport = this.proxmoxTransport();
-    return (method, path) => transport.call({ host: address, port, token }, method, path, (fp) => !!fp && fp.toUpperCase() === pinned);
+    const note = (kind: MachineState["kind"]) => { try { went?.(kind); } catch { /* shown only */ } };
+    return async (method, path) => {
+      // Unset until the certificate was seen: no answer at all is unreachable.
+      let confirmed: boolean | undefined;
+      try {
+        const data = await transport.call({ host: address, port, token }, method, path, (fp) => (confirmed = !!fp && fp.toUpperCase() === pinned));
+        note("online");
+        return data;
+      } catch (err) {
+        // An answer over the confirmed certificate is online whatever it refused, except the token itself (401), as a refused SSH login is unreachable.
+        note(confirmed === false ? "keyChanged" : confirmed && err instanceof ProxmoxAnswer && err.status !== 401 ? "online" : "unreachable");
+        throw err;
+      }
+    };
   }
 
   /**
@@ -1629,7 +1645,7 @@ export class Workspace {
     const address = await this.checkAddress(t.userId, machine);
     // A changed address or name can point at her own node later: checked on every call.
     this.refuseOwn(ownAddress([address], this.self()));
-    const result = await proxmoxAction(this.proxmoxApi(address, cfg.port, cfg.privateKey, cfg.hostKey), action, vm);
+    const result = await proxmoxAction(this.proxmoxApi(address, cfg.port, cfg.privateKey, cfg.hostKey, (kind) => s.machineState(machine, kind)), action, vm);
     s.usedMachine(machine);
     return result;
   }

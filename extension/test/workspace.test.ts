@@ -684,8 +684,10 @@ describe("the proxmox tool", () => {
       fauxToolCall("bash", { command: "uptime", machine: "pve" }, { id: "3" }),
     ], { machines: [pve, nas], approve: yes });
     expect(commands).toEqual([]);
-    expect(results.join("\n")).toContain("nas isn't one of this thread's Proxmox machines");
-    expect(results.join("\n")).toContain("pve isn't one of this thread's machines");
+    // Both are the thread's machines, so each refusal names the tool that reaches it instead of calling the machine missing.
+    expect(results.join("\n")).toContain("nas is an SSH machine: bash and the file tools reach it, not the proxmox tool.");
+    expect(results.join("\n")).toContain("pve is a Proxmox machine, reached only with the proxmox tool: it has no shell and no files.");
+    expect(results.join("\n")).not.toContain("isn't one of this thread's");
   });
 
   it("asks before reboot and stop in Auto until allowed in this thread, and only for that VM", async () => {

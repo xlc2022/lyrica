@@ -385,6 +385,14 @@ describe("a Proxmox machine", () => {
       ]);
       expect(shown).toContain("Asked pve1 to reboot 101 web");
       expect(shown).not.toContain(secret);
+
+      // Its row says how her last call went, and a token on Ada's own Proxmox user is marked as her account.
+      expect((await ada.get<MachineInfo[]>(u)).body).toEqual([expect.objectContaining({ name: "pve", state: { kind: "online", since: expect.any(String) } })]);
+      const OWN = "ada@pam!lyrica=7c1d2e3f-4a5b-4c6d-8e9f-0a1b2c3d4e5f";
+      pve.tokens.push(OWN);
+      const mine = await ada.post<MachineInfo>(u, { kind: "proxmox", name: "pve-mine", address: pve.address, token: OWN, hostKey: pve.fingerprint, pool: "general", asUser: true, user: "ada@pam" });
+      expect(mine.body).toMatchObject({ name: "pve-mine", tokenId: "ada@pam!lyrica", asUser: true });
+      expect(mine.body.state).toBeUndefined();
       stream.close();
       again.close();
       elsewhere.close();

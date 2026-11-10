@@ -75,6 +75,8 @@ export async function fakeProxmox(): Promise<FakeProxmox> {
     if (req.method === "GET" && rest === "config") return send(200, g.config);
     const action = /^status\/(start|stop|shutdown|reboot)$/.exec(rest)?.[1];
     if (req.method === "POST" && action) {
+      // As a node does: starting what already runs is an error it answers with.
+      if (action === "start" && g.status === "running") return send(500);
       g.status = action === "stop" || action === "shutdown" ? "stopped" : "running";
       return send(200, `UPID:${g.node}:0001:${action}:${g.vmid}:lyrica@pve!agent:`);
     }

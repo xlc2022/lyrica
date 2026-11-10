@@ -428,8 +428,12 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
           if (held) return { block: true, reason: held };
         }
       }
-      const machine = place && place !== "sandbox" ? tools.machines?.().find((m) => m.name === place && (m.kind === "proxmox") === pve) : undefined;
-      if (place && place !== "sandbox" && !machine) return { block: true, reason: `${place} isn't one of this thread's ${pve ? "Proxmox " : ""}machines.` };
+      const named = place && place !== "sandbox" ? tools.machines?.().find((m) => m.name === place) : undefined;
+      const machine = named && (named.kind === "proxmox") === pve ? named : undefined;
+      // A machine of the other kind is the thread's: the refusal names the tool that reaches it, so she doesn't ask for a machine she has.
+      if (place && place !== "sandbox" && !machine) return { block: true, reason: !named ? `${place} isn't one of this thread's ${pve ? "Proxmox " : ""}machines.`
+        : pve ? `${place} is an SSH machine: bash and the file tools reach it, not the proxmox tool.`
+        : `${place} is a Proxmox machine, reached only with the proxmox tool: it has no shell and no files.` };
       // On a machine, the stricter of the thread's mode and the machine's limit.
       const mode = machine ? stricterMode(tools.settings().mode, machine.limit) : tools.settings().mode;
       // A Proxmox action that reads asks like read, and one that powers like bash; Plan mode only reads.
@@ -551,7 +555,8 @@ export function describe(tools: ThreadTools): string {
     network(tools.network()),
     ...[toolsLine(), librariesLine()].filter(Boolean),
     ...(machines.length ? [`Machines you can work on over SSH, with the machine argument: ${machines.join(", ")}. The sandbox's network settings don't apply there.`] : []),
-    ...(pves.length ? [`Proxmox machines you can manage with the proxmox tool: ${pves.join(", ")}.`] : []),
+    // Named only where the proxmox tool is: a subagent keeps its parent's machines but has no such tool.
+    ...(pves.length && tools.proxmox ? [`Proxmox machines you can manage with the proxmox tool: ${pves.join(", ")}.`] : []),
     ...(tools.claudeCode?.() ? [CLAUDE_CODE_LINE] : []),
     ...fileNotes(tools.fileNotes?.()),
   ].join("\n");

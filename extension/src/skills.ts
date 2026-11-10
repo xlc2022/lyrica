@@ -15,7 +15,7 @@ export interface ListedSkill { name: string; description: string; /** Where to r
 
 /** Skills that ship with Lyrica, read like library skills (s:<name>); a library skill of the same name wins. */
 export const BUILTIN_SKILLS: Record<string, { body: string; listed: ListedSkill }> = Object.fromEntries(
-  ["model-host"].map((file) => {
+  ["add-machine", "model-host"].map((file) => {
     const body = readFileSync(new URL(`./${file}.md`, import.meta.url), "utf8").trim();
     const { name, description } = skillFrontmatter(body, file)!;
     return [name, { body, listed: { name, description, at: `s:${name}` } }];

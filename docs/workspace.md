@@ -105,7 +105,10 @@ existed before became general machines at Ask.
   connected, how the last connection went (online, unreachable, or host
   key changed) and since when, and whether the account is the user's own
   (`as_user`, user step 18). That state clears when the address or host key
-  changes. The key is generated in memory, stored only there, and handed to
+  changes. A Proxmox machine records it from each API call of hers: any
+  answer over the confirmed certificate is online, except a refused token
+  (401), which is unreachable as a refused SSH login is; another
+  certificate is key changed. The key is generated in memory, stored only there, and handed to
   the SSH client in memory; she never sees it.
 - **One pool each.** A general thread grants general machines and a private
   thread private ones (`setThread` refuses the other pool, and every call
@@ -375,6 +378,19 @@ the card is for machines without it. The lines she may *offer* on a card
 - Not in an ordinary child thread (it asks its parent), a subagent, or
   Plan mode.
 
+### Adding a machine, asked in chat
+
+She can't add a machine: no tool of hers does, and its key or token never
+passes through a conversation. Every thread's skills list Lyrica's own
+`add-machine` skill (`extension/src/add-machine.md`, DESIGN.md "Skills"),
+read with `read_memory` `s:add-machine`, so that asked how, she takes the
+person through the Add machine page: which kind fits (SSH to work on a
+computer, Proxmox to see and power its VMs), each step and what its setup
+block does on the machine, the fingerprint to compare, giving a thread the
+machine afterwards, and what the common failures mean. It tells her to
+point at the page's own block rather than write one, and never to ask for
+a key, token or password.
+
 ### Installing a model host
 
 While a thread has an SSH machine, its skills list Lyrica's own
@@ -414,13 +430,16 @@ with a token, never a shell on the hypervisor
   and `reboot`. Each action is one API call after looking the VM up in
   `/cluster/resources`. Nothing else: no destroy, create, console,
   guest-agent, snapshot creation or rollback. The tool is offered only while
-  the thread has a Proxmox machine. Subagents don't get it.
+  the thread has a Proxmox machine. Subagents don't get it, whatever their
+  role's tool list says, and their prompt names no Proxmox machine.
 - **Modes.** `list`, `status` and `snapshots` ask like `read` (never, by
   themselves) and work in Plan mode. `start` and `shutdown` ask like `bash`
   under the stricter of the thread's mode and the machine's limit. `stop`
   and `reboot` are suspect: they ask with a warning in every mode until
   allowed in the thread. Plan mode refuses everything but reading. `read`,
-  `write`, `edit` and `bash` refuse a Proxmox machine.
+  `write`, `edit` and `bash` refuse a Proxmox machine, and `proxmox`
+  refuses an SSH one. Each refusal names the tool that does reach the
+  machine, so she doesn't take it for one the thread lacks.
 
 **Adding a Proxmox** (`probeMachine` with `kind: "proxmox"`, then
 `addMachine`, or `lyrica admin proxmox add`): the test reads only the
