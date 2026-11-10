@@ -232,9 +232,9 @@ characters, the limit on project instructions.
 > Claude's project, another team, work: a GitHub issue labelled `claude`.
 >
 > **Everyone.** Act, then report: never ask the owner before opening or
-> merging a PR, only before what can't be undone. Nobody waits silently:
-> message the thread you need, and tell the project chat what merged and
-> what it affects. No plaintext memory on disk; private memory never goes
+> merging a PR (boundary code aside), only before what can't be undone.
+> Nobody waits silently: message the thread you need, and tell the
+> project chat what merged and what it affects. No plaintext memory on disk; private memory never goes
 > into code, issues, PRs or notes; delete only files you downloaded. Docs
 > are how others pick up your work: a PR fixes every doc or brief it
 > makes stale and names them, and each issue or brief keeps a current
