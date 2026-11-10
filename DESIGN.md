@@ -1616,6 +1616,13 @@ NAS, and Proxmox nodes. Decided 2026-10-11 from
   is the sandbox's mounts, or the account's rights and the root-owned keys
   file. A new project also starts with Forbid rules for `git push --force`
   and `rm -rf /` (docs/workspace.md, "Project command rules").
+- **ShellCheck reads every command first**, in the sandbox and on a
+  machine. A parse error, or a delete or move written wrong (an unquoted
+  or unset variable in its path, a path that may expand to `/`, a `cd`
+  that may fail before it), is refused with ShellCheck's words, so she
+  fixes it before anything is gone; the rest of what ShellCheck says is
+  left out. Without ShellCheck the check is skipped (decided 2026-11-10;
+  docs/workspace.md, "Machines").
 - **The first call on a machine in a turn asks** if anything earlier in the
   turn ran somewhere else (the sandbox or another machine), whatever the
   modes, so output from one place can't quietly steer her onto another.

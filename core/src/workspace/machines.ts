@@ -98,8 +98,8 @@ export const SUSPECT_COMMANDS: readonly SuspectCommand[] = [
   { warning: "This destroys a virtual machine or container and its disks.", test: (w) => (w[0] === "qm" || w[0] === "pct") && w[1] === "destroy" },
 ];
 
-/** Words that only run what follows them. */
-const PREFIXES = new Set(["sudo", "doas", "env", "nohup", "exec", "command", "time", "nice", "ionice", "builtin", "timeout", "xargs", "stdbuf", "chroot"]);
+/** Words that only run what follows them, the shell's own keywords among them (`then rm -rf x`). */
+const PREFIXES = new Set(["if", "then", "else", "elif", "while", "until", "do", "!", "sudo", "doas", "env", "nohup", "exec", "command", "time", "nice", "ionice", "builtin", "timeout", "xargs", "stdbuf", "chroot"]);
 /** Their flags that take the next word as a value (`sudo -u root`, `nice -n 5`, `timeout -s KILL`). */
 const VALUE_FLAGS: Record<string, string[]> = {
   sudo: ["-u", "-g", "-h", "-p", "-C", "-U"], doas: ["-u", "-C"], nice: ["-n"], ionice: ["-c", "-n", "-p"], timeout: ["-s", "-k"],
@@ -154,7 +154,7 @@ export function simpleCommands(command: string): string[][] {
 }
 
 /** A simple command without its wrappers (`sudo -u root`, `env X=1`, `timeout 5`), its program's path dropped. */
-function unwrapped(parsed: string[]): string[] {
+export function unwrapped(parsed: string[]): string[] {
   const words = [...parsed];
   let wrapper = "";
   while (words.length) {

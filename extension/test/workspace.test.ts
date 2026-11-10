@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -16,6 +17,7 @@ import { Users, Workspace } from "@lyrica/core";
 // with a target that records what it is asked to do.
 
 const dirs: string[] = [];
+const shellcheckInstalled = (() => { try { execFileSync("shellcheck", ["--version"], { stdio: "ignore" }); return true; } catch { return false; } })();
 afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
 
 /** Each command's time limit, as the bash tool passed it. */
@@ -921,6 +923,17 @@ describe("suspect commands in the sandbox", () => {
     const denied = await run("auto", [fauxToolCall("bash", { command: "git push --force" })], { approve: async () => false });
     expect(denied.commands).toEqual([]);
     expect(denied.results[0]).toContain("declined");
+  });
+});
+
+describe.skipIf(!shellcheckInstalled)("ShellCheck on her bash calls", () => {
+  it("hands a malformed delete back to her before anyone is asked, and lets a sound one through", async () => {
+    let asked = 0;
+    const r = await run("auto", [fauxToolCall("bash", { command: 'rm -rf "$DIR/"' }, { id: "1" }), fauxToolCall("bash", { command: 'rm -rf "${DIR:?}/"' }, { id: "2" })], { approve: async () => { asked++; return true; } });
+    expect(r.commands).toEqual(['rm -rf "${DIR:?}/"']);
+    expect(r.results[0]).toContain("Not run: ShellCheck found a problem in a command that deletes or moves files.");
+    expect(r.results[0]).toContain("SC2115");
+    expect(asked).toBe(1);
   });
 });
 

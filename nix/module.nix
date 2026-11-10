@@ -444,8 +444,9 @@ in {
         LYRICA_CLIENT_SOCKET = "/run/lyrica-clients/lyricad.sock";
         LYRICA_SANDBOX_TOOLS = "${sandboxTools}";
         LYRICA_SANDBOX_CLOSURE = "${sandboxClosure}/store-paths";
-        # The setuid wrappers first: fusermount3 must be the setuid one.
-        PATH = lib.mkForce "/run/wrappers/bin:${lib.makeBinPath ([ pkgs.gocryptfs pkgs.openssl pkgs.systemd pkgs.coreutils pkgs.bash sandboxTools ] ++ lib.optional cfg.tailscale cfg.tailscalePackage)}";
+        # The setuid wrappers first: fusermount3 must be the setuid one. shellcheck checks her
+        # bash calls before they run, even when sandboxTools is set without it.
+        PATH = lib.mkForce "/run/wrappers/bin:${lib.makeBinPath ([ pkgs.gocryptfs pkgs.openssl pkgs.systemd pkgs.coreutils pkgs.bash pkgs.shellcheck sandboxTools ] ++ lib.optional cfg.tailscale cfg.tailscalePackage)}";
       };
       serviceConfig = {
         Type = "simple";

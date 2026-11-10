@@ -347,7 +347,8 @@ answers ahead; without a terminal the answer is no), then:
    the sandbox), ffmpeg (with ffprobe, so she can check and cut her
    clips), openssl, curl, unzip and rsync for itself, and
    build-essential, python3, git, openssh-client and jq for building
-   releases and fetching updates, python3-venv for her clones' Python
+   releases and fetching updates, shellcheck to check her commands before
+   they run, python3-venv for her clones' Python
    dependencies, python3-bs4, python3-lxml, python3-requests,
    python3-html5lib and python3-yaml as her sandbox's Python baseline for
    scraping and data work (her prompt names the ones present), and `gh`
@@ -1193,7 +1194,9 @@ refused. To replace the destination, enter the full URL and token again;
   `install.sh` from a checkout. Node is one: releases since 2026-10-29 need
   22.12 or later, and on an older Node the update's build fails and she
   stays on the running release, so upgrade Node first (NodeSource, as in
-  "On Debian or Ubuntu"). On Debian and Ubuntu, Administration → Status
+  "On Debian or Ubuntu"). shellcheck is another, from 2026-11-10: until
+  it is installed (`apt-get install shellcheck`) her commands aren't
+  checked before they run, and nothing else changes. On Debian and Ubuntu, Administration → Status
   reports any installed units that differ from the new release or are missing;
   run `install.sh` from a current checkout to update them. Updates never
   rewrite units, since `lyricad.service` defines her confinement. NixOS units
