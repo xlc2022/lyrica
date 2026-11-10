@@ -1880,6 +1880,7 @@ ul.choices { list-style: none; margin: 0; padding: 0; }
 .marker.tool-run > button[aria-expanded="true"] .ic { transform: rotate(180deg); }
 .marker.tool-run .run-body { max-height: 320px; overflow-y: auto; gap: 6px; }
 .marker.tool-run .run-body .marker > button { background: var(--panel); }
+.marker.tool-run .run-call { margin-top: 4px; padding-left: 2px; }
 /* Her rejected attempts in a turn (docs/ux.md §6, "An image the agent made"): the run's marker, opening to small thumbnails. */
 .marker.rejected-run .rejected-body { gap: 12px; }
 .marker.rejected-run .rejected-thumbs { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start; }

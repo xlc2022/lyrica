@@ -286,7 +286,9 @@ function conversationNodes(stored: Message[], liveItems: LiveItem[], busy: boole
       if (m) m = { ...m, parts: hers };
     }
     const into = fold ? fold.turns : nodes;
-    if (hers && hers.length && hers.every(isMarker)) {
+    // A live reply with nothing in it yet (her next request, its prompt still being read) joins the run of calls before it,
+    // so the run keeps the reply's counts under it rather than a name line standing alone until her first marker arrives.
+    if (hers && (hers.length ? hers.every(isMarker) : !!e.live && !fold && quiet.length > 0)) {
       const q = { key: e.key, n: m?.n, parts: hers, streaming: e.streaming };
       if (fold) into.push(quietNode(q)); else quiet.push(q);
     } else {
@@ -352,12 +354,14 @@ function ToolRun({ runs, env }: { runs: Quiet[]; env: Env }) {
         <span><span className="num">{n}</span> {word}{running ? <> <span className="state" data-state="running">running</span></> : failed ? <> · <span className="state" data-state="failed"><span className="num">{failed}</span> failed</span></> : null}</span>
         <Icon name="down" />
       </button>
-      {open && (
+      {/* Open, the reply's one indicator ends the box, after the newest call. Closed, its counts stand under the marker
+          while a model request has them; between requests, while her tools run, the marker's "running" says it all. */}
+      {open ? (
         <div ref={body} className="marker-body run-body" onScroll={(e) => { height.current = e.currentTarget.scrollHeight; }}>
           {runs.map((r) => r.parts.map((p, i) => (p.type === "text" || p.type === "image" || p.type === "video" ? null : <Marker key={`${r.key}-${i}`} part={p} env={env} />)))}
-          {streaming && <span className="writing-dots" aria-hidden="true"><i /><i /><i /></span>}
+          {streaming && <CallStats live={env.liveCall} />}
         </div>
-      )}
+      ) : streaming && env.liveCall && callLine(env.liveCall.call, 0) && <div className="run-call"><CallStats live={env.liveCall} /></div>}
     </div>
   );
 }
