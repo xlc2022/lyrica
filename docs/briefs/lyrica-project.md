@@ -216,7 +216,7 @@ characters, the limit on project instructions.
 > small: big drafts cost review rounds. Before UI work, a new API or
 > dependency, write a short brief in docs/briefs/ (UI review sees a
 > mockup), or say why not. One thread per issue on a
-> `lyrica/<short-name>` branch, one PR into `main`.
+> `lyrica/<short-name>` branch, one tested PR into `main`.
 >
 > **Review.** Send each PR that needs review (AGENTS.md) and its head to
 > Review and, for UI, UI review. Fix findings; get rechecked. Once they
@@ -243,7 +243,7 @@ characters, the limit on project instructions.
 > issue or brief's handoff note current (done, next, open questions), so
 > another agent can continue from it.
 >
-> **This chat** starts work on your issues unasked and posts only what
+> **This chat** starts work on issues unasked and posts only what
 > needs the owner: a decision, a blocker, an update to press.
 
 ## Coding context

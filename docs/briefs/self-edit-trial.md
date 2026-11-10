@@ -69,7 +69,7 @@ As lyrica-project.md says: she claims the issue, works on a
 sends it with its head commit to her Review thread (and UI review, for UI).
 She fixes findings and sends each new head for recheck. Once the required
 reviewers verify the exact head and CI is green, she records that head and
-the review results on the PR, marks it ready for review and merges it
+the review results on the PR and merges it
 herself (lyrica-project.md, "Claude's side"). Since 2026-11-10 Claude's PR
 review no longer approves her PRs; during the trial it did. The
 guardian is not a reviewer and gives no merge go-ahead.

@@ -1468,10 +1468,11 @@ her account is general.
      repository and GitHub's API. GitHub serves a job's log from storage hosts
      that change, so reading logs needs the thread's internet on, not
      only allowed hosts.
-  3. A branch protection rule (or ruleset) on `main`: pull requests only,
-     the CI jobs from `.github/workflows/ci.yml` required, no required
-     approval (her reviewers act as her own account, which GitHub won't
-     count on her own pull request);
+  3. `main` takes pull requests only, with the CI jobs from
+     `.github/workflows/ci.yml` green on the head. These are rules every
+     builder follows, whatever GitHub enforces: check the runs, not the
+     merge button. No approval is required (her reviewers act as her own
+     account, which GitHub won't count on her own pull request);
      "Do not allow bypassing" off, so the owner's account, which Claude's threads
      work through, still merges as administrator.
   4. No ruleset limits her account: `lyrica/*` branches and `update/*`

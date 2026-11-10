@@ -2488,8 +2488,10 @@ from Monika's runbooks.
   That token reaches every public repository her account can write to,
   so the account stays a collaborator on this repository only. She pushes branches to the repository itself, never a fork, so her pull
   requests run the same CI as Claude's (docs/ci.md), with
-  no first-time-contributor approval. `main` is protected: pull requests
-  only and green CI; nothing of hers merges without both. It requires no
+  no first-time-contributor approval. Work reaches `main` only through pull
+  requests with green CI; nothing of hers merges without both. That is a
+  rule she follows, whatever GitHub enforces: she reads the check runs on
+  the head herself and never takes an enabled merge button as proof. `main` requires no
   approval on GitHub: her reviewers act as her own
   account, which GitHub won't count on her own PR, so their verifieds are
   recorded on the PR instead. The owner's own account may bypass the rules as
