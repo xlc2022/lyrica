@@ -23,7 +23,7 @@ import { SETUP_SCRIPT, SetupFailures, setupOutcome } from "./setup.ts";
 import type { CodexBox } from "../models/codex.ts";
 import { authorizedKeysLine, machineSetup } from "./machines.ts";
 import {
-  certFingerprint, ownAddress, ownNode, parseProxmoxAddress, proxmoxAction, proxmoxHttps, proxmoxSetup, proxmoxUser, thisComputer, tokenId,
+  beyondPower, certFingerprint, ownAddress, ownNode, parseProxmoxAddress, proxmoxAction, proxmoxHttps, proxmoxSetup, proxmoxUser, thisComputer, tokenId,
   type ProxmoxAction, type ProxmoxCall, type ProxmoxTransport, type Self,
 } from "./proxmox.ts";
 import { parseHost, reachesHost } from "./net.ts";
@@ -1571,14 +1571,34 @@ export class Workspace {
    * Tries a Proxmox token against the confirmed certificate, and refuses the
    * Proxmox that runs Lyrica's own VM where it can tell.
    */
-  private async checkProxmox(addresses: string[], port: number, token: string, pinned: string): Promise<void> {
+  private async checkProxmox(addresses: string[], port: number, token: string, pinned: string, asUser = false): Promise<void> {
     const api = this.proxmoxApi(addresses[0]!, port, token, pinned);
     try {
       await api("GET", "/version");
     } catch (err) {
       throw new Error(`the token didn't work: ${(err as Error).message}`);
     }
+    if (asUser) await this.refuseWide(api);
     this.refuseOwn(await ownNode(api, addresses, this.self()));
+  }
+
+  /**
+   * A token on the user's own Proxmox user must be separated down to reading
+   * and power: Proxmox says what it holds, and anything more is refused. An
+   * answer that can't be read is refused too.
+   */
+  private async refuseWide(api: ProxmoxCall): Promise<void> {
+    let held: unknown;
+    try {
+      held = await api("GET", "/access/permissions");
+    } catch (err) {
+      throw new Error(`couldn't read what the token may do: ${(err as Error).message}`);
+    }
+    if (!held || typeof held !== "object" || Array.isArray(held)) throw new Error("couldn't read what the token may do");
+    const extra = beyondPower(held as Record<string, unknown>);
+    if (!extra.length) return;
+    const some = `${extra.slice(0, 4).join(", ")}${extra.length > 4 ? ` and ${extra.length - 4} more` : ""}`;
+    throw new Error(`the token can do more than see and power VMs (${some}): make it again with privilege separation and only the roles in the setup`);
   }
 
   private self(): Self { return (this.opts.self ?? thisComputer)(); }
@@ -1637,7 +1657,7 @@ export class Workspace {
       const { addresses, outside } = await resolveHost(host);
       if (outside && input.pool === "private" && !input.offNetworkConfirmed) throw new Error(`${host} resolves outside your network; confirm adding it anyway`);
       if (this.settings(userId).machine(input.name)) throw new Error(`machine ${input.name} already exists`);
-      await this.checkProxmox(addresses, port, token, pinned);
+      await this.checkProxmox(addresses, port, token, pinned, input.asUser === true);
       return this.settings(userId).addMachine({
         kind: "proxmox", name: input.name, host, port, username: id, privateKey: token, root: null, asUser: input.asUser === true, pool: input.pool, limit: input.limit, offNetwork: outside,
       }, pinned);
@@ -1699,7 +1719,7 @@ export class Workspace {
       // A token on the user's own Proxmox user stays on that user, as an SSH account is fixed once added.
       const owner = m.username.split("!")[0]!;
       if (m.asUser && !id.startsWith(`${owner}!`)) throw new Error(`the token is ${id.split("!")[0]}'s, not ${owner}'s`);
-      await this.checkProxmox([await this.checkAddress(userId, name)], m.port, next, pinned);
+      await this.checkProxmox([await this.checkAddress(userId, name)], m.port, next, pinned, m.asUser);
       if (token !== undefined) s.setToken(name, next, id);
     }
     if (pair && draft !== undefined) {

@@ -2578,7 +2578,7 @@ probeMachine(userId, login, { kind?, name, address, draft?, asUser?, user?, repl
   // replace (Replace key): the saved SSH machine `name` tried as saved, its own key, account and address; no pair made, address and draft ignored.
   // Saves nothing.
 addMachine(userId, { kind?, name, address, root, pool, limit?, draft? | token?, hostKey, offNetworkConfirmed?, asUser?, user? }): Promise<MachineConfig>
-  // Proxmox: tries the token against the confirmed certificate and refuses the Proxmox running Lyrica (ownNode); asUser: the token must be on `user`
+  // Proxmox: tries the token against the confirmed certificate and refuses the Proxmox running Lyrica (ownNode); asUser: the token must be on `user` and hold nothing beyond the .Audit privileges and VM.PowerMgmt (GET /access/permissions), or it is refused
 updateMachine(userId, name, { address?, root?, limit?, pool? }): Promise  // a new pool drops the machine from every thread; an address naming another account is refused; Proxmox: own-node address refused
 setHostKey(userId, name, hostKey, token?): Promise / confirmOffNetwork(userId, name) / removeMachine(userId, name)
 grantsFor(t): Grant[]                     // { path, writable }

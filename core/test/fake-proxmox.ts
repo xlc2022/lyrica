@@ -32,6 +32,8 @@ export interface FakeProxmox {
   guests: Guest[];
   /** The tokens it accepts; `TOKEN` to start with. */
   tokens: string[];
+  /** What a token holds, by token, as GET /access/permissions answers (path → privilege → propagate); a separated token's reads and power unless set. */
+  permissions: Record<string, unknown>;
   /** Every request that reached the API: "METHOD path", and the Authorization header it carried. */
   requests: { line: string; auth?: string }[];
   /** Serves a different certificate from now on, and returns its fingerprint. */
@@ -48,6 +50,8 @@ export async function fakeProxmox(): Promise<FakeProxmox> {
   ];
   const requests: FakeProxmox["requests"] = [];
   const tokens = [TOKEN];
+  const permissions: FakeProxmox["permissions"] = {};
+  const SEPARATED = { "/": { "Sys.Audit": 1, "VM.Audit": 1, "Datastore.Audit": 1 }, "/vms/101": { "VM.Audit": 1, "VM.PowerMgmt": 1 } };
   const server: Server = createServer({ key: first.key, cert: first.cert }, (req, res) => {
     requests.push({ line: `${req.method} ${req.url}`, auth: req.headers.authorization });
     const send = (status: number, data?: unknown) => { res.writeHead(status, { "content-type": "application/json" }); res.end(JSON.stringify({ data: data ?? null })); };
@@ -55,6 +59,10 @@ export async function fakeProxmox(): Promise<FakeProxmox> {
     const url = new URL(req.url!, "https://pve1");
     const path = url.pathname.replace(/^\/api2\/json/, "");
     if (req.method === "GET" && path === "/version") return send(200, { version: "9.0.3" });
+    if (req.method === "GET" && path === "/access/permissions") {
+      const token = req.headers.authorization!.replace("PVEAPIToken=", "");
+      return send(200, token in permissions ? permissions[token] : SEPARATED);
+    }
     if (req.method === "GET" && path === "/cluster/resources") {
       return send(200, guests.map((g) => ({ id: `${g.type}/${g.vmid}`, vmid: g.vmid, name: g.name, node: g.node, type: g.type, status: g.status })));
     }
@@ -75,7 +83,7 @@ export async function fakeProxmox(): Promise<FakeProxmox> {
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const port = (server.address() as { port: number }).port;
   return {
-    address: `https://127.0.0.1:${port}`, port, fingerprint: first.fingerprint, guests, tokens, requests,
+    address: `https://127.0.0.1:${port}`, port, fingerprint: first.fingerprint, guests, tokens, permissions, requests,
     swapCert() {
       const next = selfSigned();
       server.setSecureContext({ key: next.key, cert: next.cert });

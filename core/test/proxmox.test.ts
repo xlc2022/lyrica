@@ -55,16 +55,31 @@ describe("a Proxmox machine", () => {
     expect(probe.setup).not.toContain("pveum user add");
     expect(probe.setup).toContain("Never --privsep 0");
     await expect(workspace.probeMachine(ada.id, "ada", { kind: "proxmox", name: "pve", address: pve.address, asUser: true })).rejects.toThrow(/a Proxmox user looks like root@pam/);
+    // The user goes into a block run as root: nothing a shell reads gets in.
+    for (const user of ["a';id;'@pam", "ada@pam;id", "$(id)@pam", "-x@pam", "ada@pam`id`", "ada @pam"]) {
+      await expect(workspace.probeMachine(ada.id, "ada", { kind: "proxmox", name: "pve", address: pve.address, asUser: true, user })).rejects.toThrow(/a Proxmox user looks like root@pam/);
+    }
     expect(pve.requests).toEqual([]);
 
     const mine = (token: string) => workspace.addMachine(ada.id, { kind: "proxmox", name: "pve", address: pve.address, token, hostKey: pve.fingerprint, pool: "general", root: null, asUser: true, user: "ada@pam" });
     // A token on another user is refused before anything is sent.
     await expect(mine(TOKEN)).rejects.toThrow("the token is lyrica@pve's, not ada@pam's");
     expect(pve.requests).toEqual([]);
+    // A token made without privilege separation has all her user has: Proxmox says so, and nothing is saved.
+    const WIDE = "ada@pam!all=2d3e4f5a-6b7c-4d8e-9f0a-1b2c3d4e5f6a";
+    const everything = { "/": { "Sys.Audit": 1, "VM.Audit": 1, "VM.PowerMgmt": 1, "VM.Allocate": 1, "VM.Console": 1, "Sys.PowerMgmt": 1, "Permissions.Modify": 1, "User.Modify": 1 } };
+    pve.tokens.push(WIDE);
+    pve.permissions[WIDE] = everything;
+    await expect(mine(WIDE)).rejects.toThrow("the token can do more than see and power VMs (Permissions.Modify, Sys.PowerMgmt, User.Modify, VM.Allocate and 1 more): make it again with privilege separation and only the roles in the setup");
+    pve.permissions[OWN] = null;
+    await expect(mine(OWN)).rejects.toThrow("couldn't read what the token may do");
+    expect(workspace.settings(ada.id).machines()).toEqual([]);
+    delete pve.permissions[OWN];
     expect(await mine(OWN)).toMatchObject({ kind: "proxmox", username: "ada@pam!lyrica", asUser: true });
     expect(workspace.machinesFor({ userId: ada.id, pool: "general", threadId: "t0" })).toEqual([]);
     // Replacing the token keeps it on her user, as an SSH account is fixed once added.
     await expect(workspace.setHostKey(ada.id, "pve", pve.fingerprint, TOKEN)).rejects.toThrow("the token is lyrica@pve's, not ada@pam's");
+    await expect(workspace.setHostKey(ada.id, "pve", pve.fingerprint, WIDE)).rejects.toThrow(/can do more than see and power VMs/);
     expect(workspace.settings(ada.id).machine("pve")).toMatchObject({ username: "ada@pam!lyrica", asUser: true });
     // One made for her says nothing of the kind.
     expect(await add({ name: "pve2" })).toMatchObject({ username: "lyrica@pve!agent", asUser: false });

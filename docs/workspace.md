@@ -479,11 +479,17 @@ The token Lyrica takes is then `<user>!lyrica=<that secret>`, which the
 Token field's placeholder shows.
 
 The page lists first what it means (`accountWarnings(pool, "proxmox")`): a
-token without separation has everything the user has on the cluster;
-Proxmox's log shows her actions as that user's token; and the cloud line
-as for SSH. Saving needs the machine's name typed, and Confirm refuses a
-token that isn't on the named user (`the token is X's, not Y's`), as does
-Replace key for a new token. The row carries **Your account**, and the
+token without separation would have everything the user has on the
+cluster; Proxmox's log shows her actions as that user's token; and the
+cloud line as for SSH. Saving needs the machine's name typed. Confirm
+refuses a token that isn't on the named user (`the token is X's, not
+Y's`), before anything is sent. It then asks Proxmox what the token holds
+(`GET /access/permissions`) and refuses one with anything beyond the
+`.Audit` privileges and `VM.PowerMgmt` (`beyondPower`), naming what it
+found, or one whose answer can't be read: separation is checked, not left
+to the comment in the block. Replace key checks both again. The user id
+is held to `[A-Za-z0-9._-]` and a realm (`proxmoxUser`), since it goes
+into a block run as root. The row carries **Your account**, and the
 `workspace` prompt section says the machine's token is on the person's own
 Proxmox user. Everything else is as for any Proxmox: one tool with its
 fixed actions, the token never shown to her.

@@ -1055,7 +1055,9 @@ this computer's name or MAC address).
    user with the same two roles, so the token has those rights and no more,
    whatever your user may do. The token she takes is then
    `root@pam!lyrica=<its secret>`. The page lists what that means before
-   you can confirm, and refuses a token on any other user.
+   you can confirm. It refuses a token on any other user, and one that
+   can do more than see and power VMs (made without privilege separation,
+   say), naming what it found.
 3. Note the node's certificate fingerprint, to compare in the next step:
 
    ```sh

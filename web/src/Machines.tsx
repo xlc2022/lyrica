@@ -213,7 +213,7 @@ type Account = "hers" | "mine";
 export function accountWarnings(pool: Pool, kind: Kind = "ssh"): string[] {
   if (kind === "proxmox") {
     return [
-      "A separated token (--privsep 1) has only the roles the setup gives it: reading everywhere and power on the VMs you list. Without separation it has everything your user has on the cluster.",
+      "A separated token (--privsep 1) has only the roles the setup gives it: reading everywhere and power on the VMs you list. Without separation it would have everything your user has, so Confirm refuses a token that can do more.",
       `Proxmox's log shows what ${her()} does as your user's token.`,
       pool === "general"
         ? "In a general thread on a cloud model, what she reads there (VM names and states) can reach the cloud provider."
