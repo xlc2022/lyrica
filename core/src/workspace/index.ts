@@ -23,7 +23,7 @@ import { SETUP_SCRIPT, SetupFailures, setupOutcome } from "./setup.ts";
 import type { CodexBox } from "../models/codex.ts";
 import { authorizedKeysLine, machineSetup } from "./machines.ts";
 import {
-  certFingerprint, ownAddress, ownNode, parseProxmoxAddress, proxmoxAction, proxmoxHttps, proxmoxSetup, thisComputer, tokenId,
+  certFingerprint, ownAddress, ownNode, parseProxmoxAddress, proxmoxAction, proxmoxHttps, proxmoxSetup, proxmoxUser, thisComputer, tokenId,
   type ProxmoxAction, type ProxmoxCall, type ProxmoxTransport, type Self,
 } from "./proxmox.ts";
 import { parseHost, reachesHost } from "./net.ts";
@@ -1486,8 +1486,8 @@ export class Workspace {
    * (or the one from an earlier probe), its setup steps, and a test that
    * reads the host key and tries the key. Nothing is saved.
    */
-  async probeMachine(userId: string, login: string, input: { kind?: MachineKind; name: string; address: string; draft?: string; asUser?: boolean; replace?: boolean }): Promise<MachineProbe> {
-    if (input.kind === "proxmox") return this.probeProxmox(input.address);
+  async probeMachine(userId: string, login: string, input: { kind?: MachineKind; name: string; address: string; draft?: string; asUser?: boolean; user?: string; replace?: boolean }): Promise<MachineProbe> {
+    if (input.kind === "proxmox") return this.probeProxmox(input.address, input.asUser ? proxmoxUser(input.user ?? "") : undefined);
     if (input.replace) return this.probeSaved(userId, input.name);
     const now = Date.now();
     for (const [id, d] of this.drafts) if (d.expires < now) this.drafts.delete(id);
@@ -1542,9 +1542,10 @@ export class Workspace {
   }
 
   /** Proxmox's Test step: its certificate's fingerprint and the setup steps. The token isn't sent before the user confirms the certificate. */
-  private async probeProxmox(address: string): Promise<MachineProbe> {
+  /** `user` (Account: Mine): the setup puts the token on the user's own Proxmox user instead of one made for her. */
+  private async probeProxmox(address: string, user?: string): Promise<MachineProbe> {
     const { host, port } = parseProxmoxAddress(address);
-    const base = { setup: proxmoxSetup(), login: false };
+    const base = { setup: proxmoxSetup(user), login: false };
     let resolved: { addresses: string[]; outside: boolean };
     try {
       resolved = await resolveHost(host);
@@ -1621,19 +1622,24 @@ export class Workspace {
    * that runs Lyrica is refused.
    */
   async addMachine(userId: string, input: Omit<NewMachine, "privateKey" | "offNetwork" | "host" | "port" | "username"> & {
-    address: string; draft?: string; token?: string; hostKey: string; offNetworkConfirmed?: boolean;
+    address: string; draft?: string; token?: string; hostKey: string; offNetworkConfirmed?: boolean; user?: string;
   }): Promise<MachineConfig> {
     if (input.kind === "proxmox") {
       const { host, port } = parseProxmoxAddress(input.address);
       const token = String(input.token ?? "").trim();
       const id = tokenId(token);
+      // Account: Mine takes a token on the user's own Proxmox user, the one the setup named; any other token is someone else's.
+      if (input.asUser) {
+        const user = proxmoxUser(input.user ?? "");
+        if (!id.startsWith(`${user}!`)) throw new Error(`the token is ${id.split("!")[0]}'s, not ${user}'s`);
+      }
       const pinned = certFingerprint(input.hostKey);
       const { addresses, outside } = await resolveHost(host);
       if (outside && input.pool === "private" && !input.offNetworkConfirmed) throw new Error(`${host} resolves outside your network; confirm adding it anyway`);
       if (this.settings(userId).machine(input.name)) throw new Error(`machine ${input.name} already exists`);
       await this.checkProxmox(addresses, port, token, pinned);
       return this.settings(userId).addMachine({
-        kind: "proxmox", name: input.name, host, port, username: id, privateKey: token, root: null, pool: input.pool, limit: input.limit, offNetwork: outside,
+        kind: "proxmox", name: input.name, host, port, username: id, privateKey: token, root: null, asUser: input.asUser === true, pool: input.pool, limit: input.limit, offNetwork: outside,
       }, pinned);
     }
     if (!input.draft) throw new Error("test the machine first");
@@ -1690,6 +1696,9 @@ export class Workspace {
       const pinned = certFingerprint(confirmedHostKey);
       const next = token?.trim() || m.privateKey;
       const id = tokenId(next);
+      // A token on the user's own Proxmox user stays on that user, as an SSH account is fixed once added.
+      const owner = m.username.split("!")[0]!;
+      if (m.asUser && !id.startsWith(`${owner}!`)) throw new Error(`the token is ${id.split("!")[0]}'s, not ${owner}'s`);
       await this.checkProxmox([await this.checkAddress(userId, name)], m.port, next, pinned);
       if (token !== undefined) s.setToken(name, next, id);
     }

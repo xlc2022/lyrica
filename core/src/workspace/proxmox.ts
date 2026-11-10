@@ -54,19 +54,52 @@ export function parseProxmoxAddress(address: string): { host: string; port: numb
 /** The address as shown: https://host:port. */
 export const proxmoxAddress = (host: string, port: number): string => `https://${host.includes(":") ? `[${host}]` : host}:${port}`;
 
-/** What the operator runs as root on the Proxmox node, for a token that can see everything and power only the chosen VMs. */
-export function proxmoxSetup(): string {
+/** A Proxmox user id as pveum names it: `user@realm`. */
+const PVE_USER = /^[^\s@!=]+@[^\s@!=]+$/;
+
+/** The user id checked, for the setup block and the token check of a token on the user's own Proxmox user. */
+export function proxmoxUser(user: string): string {
+  const id = user.trim();
+  if (!PVE_USER.test(id)) throw new Error("a Proxmox user looks like root@pam");
+  return id;
+}
+
+/**
+ * What the operator runs as root on the Proxmox node, for a token that can
+ * see everything and power only the chosen VMs. With `user`, the token goes
+ * on the user's own Proxmox user (Account: Mine) instead of one made for her;
+ * privilege separation keeps it to the roles given here.
+ */
+export function proxmoxSetup(user?: string): string {
+  const who = user ?? "lyrica@pve";
+  const token = user ? `${user}!lyrica` : "lyrica@pve!agent";
   return [
-    "# 1. A user and a role that can see VMs and power them, nothing more",
-    "pveum user add lyrica@pve --comment Lyrica",
-    'pveum role add LyricaPower --privs "VM.Audit VM.PowerMgmt"',
-    "pveum user token add lyrica@pve agent --privsep 1",
-    "",
-    "# 2. Reads everywhere; power only on the VMs she may manage (repeat per VM, or use /pool/<name>).",
-    "#    A separated token has only what both it and its user have, so both get each role.",
-    "pveum acl modify / --roles PVEAuditor --users lyrica@pve --tokens 'lyrica@pve!agent'",
-    "pveum acl modify /vms/101 --roles LyricaPower --users lyrica@pve --tokens 'lyrica@pve!agent'",
-    "",
+    ...(user
+      ? [
+        "# 1. A role that can see VMs and power them, nothing more, and a separated token on your own user:",
+        "#    with --privsep 1 the token has only the roles given to it below, never all your user has.",
+        'pveum role add LyricaPower --privs "VM.Audit VM.PowerMgmt"',
+        `pveum user token add ${user} lyrica --privsep 1`,
+        "",
+        "# 2. Reads everywhere; power only on the VMs she may manage (repeat per VM, or use /pool/<name>).",
+        "#    A separated token has only what both it and your user have.",
+        `pveum acl modify / --roles PVEAuditor --tokens '${token}'`,
+        `pveum acl modify /vms/101 --roles LyricaPower --tokens '${token}'`,
+        "",
+        "# Never --privsep 0: the token would have everything your user has.",
+      ]
+      : [
+        "# 1. A user and a role that can see VMs and power them, nothing more",
+        `pveum user add ${who} --comment Lyrica`,
+        'pveum role add LyricaPower --privs "VM.Audit VM.PowerMgmt"',
+        `pveum user token add ${who} agent --privsep 1`,
+        "",
+        "# 2. Reads everywhere; power only on the VMs she may manage (repeat per VM, or use /pool/<name>).",
+        "#    A separated token has only what both it and its user have, so both get each role.",
+        `pveum acl modify / --roles PVEAuditor --users ${who} --tokens '${token}'`,
+        `pveum acl modify /vms/101 --roles LyricaPower --users ${who} --tokens '${token}'`,
+        "",
+      ]),
     "# Never PVEVMUser: its console and guest-agent rights run code in the guest. Never Sys.PowerMgmt.",
     "",
     "# The certificate's fingerprint, to compare with the one Lyrica shows",

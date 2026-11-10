@@ -123,6 +123,10 @@ tool each for A and B, prompt lines only where the thread has a machine).
   lunasa-slave lost its key). It now adds the line beside any there and
   writes `lyrica-<account>.conf`; Replace key shows the block again when her
   login fails.
+- Phase 2 (2026-11-10): the owner asked for the user's own Proxmox account as
+  an option, with instructions. Done the same day: Account: Mine for Proxmox,
+  a User field, a setup block for a separated token on that user, warnings,
+  and the token checked against the user at Confirm.
 
 ## C. Model host install from a machine
 

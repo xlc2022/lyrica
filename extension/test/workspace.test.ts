@@ -672,6 +672,8 @@ describe("the proxmox tool", () => {
     expect(system).toContain("Proxmox machines you can manage with the proxmox tool: pve (works freely).");
     expect(commands).toEqual(["pve: proxmox start 101"]);
     expect(asked).toEqual([]);
+    const own = await run("auto", [], { machines: [{ ...pve, asUser: true }], approve: yes });
+    expect(own.system).toContain("pve (works freely, with a token on the person's own Proxmox user).");
   });
 
   it("has no destroy, and isn't a way to run commands on an SSH machine or the other way round", async () => {

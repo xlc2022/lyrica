@@ -88,3 +88,6 @@ Replace key shows her key's setup block again, with Test, when the login
 fails (2026-11-05: a machine whose keys file was written over, or reinstalled),
 and has **New key pair**, since the name promised one: a fresh pair, the Key
 and Test steps as when adding, Confirm saving it (`…/key` takes `draft`).
+Proxmox gained **Account: Mine** too (2026-11-10, the owner's ask during the
+remote control tests): a **User** field, the setup for a separated token on
+that user, its own three warnings, and Confirm refusing a token on another user.

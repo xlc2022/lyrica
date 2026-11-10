@@ -506,6 +506,33 @@ test("Machines lists none, and Add machine reaches a machine before anything is 
   await expect(page.getByRole("region", { name: "Machines", exact: true })).toContainText("None yet.");
 });
 
+test("Add machine for a Proxmox offers the user's own Proxmox user, with its warnings and its own setup", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  await page.goto(`/#/u/${userId}/settings/machines/new`);
+  await page.getByRole("button", { name: "Proxmox" }).click();
+  // Her own account is the default: no User field, no warnings.
+  await expect(page.getByLabel("Account")).toHaveValue("hers");
+  await expect(page.getByRole("textbox", { name: "User" })).toHaveCount(0);
+  await page.getByRole("textbox", { name: "Name" }).fill("pve");
+  await page.getByRole("textbox", { name: "Address" }).fill("https://127.0.0.1:1");
+  await page.getByLabel("Account").selectOption("mine");
+  // Mine: what a token on the user's own Proxmox user means, and Next waits for the user it is on.
+  const warnings = page.getByRole("list", { name: "A token on your own user" });
+  await expect(warnings.getByRole("listitem")).toHaveCount(3);
+  await expect(warnings).toContainText("--privsep 1");
+  await expect(page.getByRole("button", { name: "Next" })).toBeDisabled();
+  await page.getByRole("textbox", { name: "User" }).fill("root@pam");
+  const probed = page.waitForRequest((r) => r.method() === "POST" && r.url().endsWith("/machines/probe"));
+  await page.getByRole("button", { name: "Next" }).click();
+  expect((await probed).postDataJSON()).toEqual({ kind: "proxmox", name: "pve", address: "https://127.0.0.1:1", asUser: true, user: "root@pam" });
+  // The setup makes no user: a separated token on theirs.
+  const token = page.getByRole("region", { name: "Token" });
+  await expect(token.getByText("pveum user token add root@pam lyrica --privsep 1")).toBeVisible();
+  await expect(token.getByText("pveum user add")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Confirm" })).toHaveCount(0);
+  await noHorizontalScroll(page);
+});
+
 test("Replace key tries the machine as saved and shows what it answered", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   // A machine nothing listens for: port 1 refuses, and that answer is what the page must show.
