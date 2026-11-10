@@ -1129,7 +1129,10 @@ body may be up to 2 MB. Not on a host using stable-diffusion.cpp.
   `{ by? }` → as PUT, that revision (and its layout) saved as a new one.
 - A recipe on a custom workflow lists `custom: true` and `workflowBase`
   (the built-in template it was made from, or null for an import; null on
-  a built-in's own recipe); one whose workflow needs node types ComfyUI
+  a built-in's own recipe) and `unbound`: those of its defaults `steps`,
+  `cfg`, `guidance`, `sampler`, `scheduler` and `shift` that no input of
+  its workflow takes (the input was set to a fixed value), so no job uses
+  them; empty on a built-in's recipe; one whose workflow needs node types ComfyUI
   lacks does nothing, its `unsupported` naming
   them. A workflow that loads its own files can't have parts changed or
   added (change them in the workflow); deleting its last recipe deletes it

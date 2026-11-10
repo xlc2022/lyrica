@@ -381,14 +381,19 @@ describe("the workflow API", () => {
     // The model still fills and runs; a second save is revision 2 of the same workflow.
     expect((await s.api("/host/v1/images/create", { body: { recipe: flux.id, prompt: "x" } })).status).toBe(200);
     sampler[1].inputs.denoise = 0.8;
+    // Steps set to a fixed value in the workflow: the model's own steps has no input left, and its listing says so.
+    expect(recipe.unbound).toEqual([]);
+    expect(sampler[1].inputs.steps).toBe("$steps");
+    sampler[1].inputs.steps = 9;
     const again = await s.api(`/host/v1/recipes/${flux.id}/workflow`, { method: "PUT", body: { workflow } });
     expect(again.body).toMatchObject({ name: edited.body.name, revision: 2, label: "Flux, my way" });
+    expect((await s.api(`/host/v1/recipes/${flux.id}`, { method: "GET" })).body.unbound).toEqual(["steps"]);
     expect(readdirSync(join(s.dataDir, "workflows")).sort()).toEqual([`${edited.body.name}.json`, `${edited.body.name}.revisions.json`]);
     // Reset: back on the built-in, the model's own workflow and revisions gone.
     const reset = await s.api(`/host/v1/recipes/${flux.id}/workflow`, { method: "DELETE" });
     expect(reset.status).toBe(200);
     expect(reset.body).toMatchObject({ builtIn: true, name: "flux" });
-    expect((await s.api(`/host/v1/recipes/${flux.id}`, { method: "GET" })).body).toMatchObject({ template: "flux", custom: false, workflowBase: null });
+    expect((await s.api(`/host/v1/recipes/${flux.id}`, { method: "GET" })).body).toMatchObject({ template: "flux", custom: false, workflowBase: null, unbound: [] });
     expect(s.templates.has(edited.body.name)).toBe(false);
     expect(readdirSync(join(s.dataDir, "workflows"))).toEqual([]);
     // An imported workflow has no template to go back to.

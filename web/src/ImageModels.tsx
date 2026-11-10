@@ -510,10 +510,10 @@ function CopyBlock({ L, c, details }: { L: Lib; c: RecipeCopy; details?: boolean
       </div>
     </div>
   );
-  const steps = !details && !proposed && typeof r.defaults.steps === "number" && (
+  const steps = !details && !proposed && typeof r.defaults.steps === "number" && !r.unbound?.includes("steps") && (
     <NumberField key={r.id} label="Steps" value={r.defaults.steps} min={1} max={150} step={1} disabled={!editable || L.busy} onSave={(n) => change({ op: "defaults", defaults: { steps: n } })} />
   );
-  const cfg = !details && !proposed && typeof r.defaults.cfg === "number" && (
+  const cfg = !details && !proposed && typeof r.defaults.cfg === "number" && !r.unbound?.includes("cfg") && (
     <NumberField key={`${r.id}-cfg`} label="CFG" value={r.defaults.cfg} min={0} max={30} step={0.1} disabled={!editable || L.busy} onSave={(n) => change({ op: "defaults", defaults: { cfg: n } })} />
   );
   const where = mainPart?.downloaded ? `${her()}'s downloads` : "the shared folder";
@@ -521,7 +521,7 @@ function CopyBlock({ L, c, details }: { L: Lib; c: RecipeCopy; details?: boolean
     <section className="copyblock" aria-label={`${r.name} on ${c.host}`} data-recipe={r.id}>
       <div className="copyhead">
         <b>{c.host}</b>
-        <span className="cap">{[r.custom ? (r.workflowBase ? `template ${r.workflowBase} · edited` : "custom workflow") : `template ${r.template}`, defaultsWords(r.defaults)].filter(Boolean).join(" · ")}</span>
+        <span className="cap">{[r.custom ? (r.workflowBase ? `template ${r.workflowBase} · edited` : "custom workflow") : `template ${r.template}`, defaultsWords(r.defaults, r.unbound)].filter(Boolean).join(" · ")}</span>
         {actions && <div className="actions">{actions}</div>}
       </div>
       {proposed && !details && (
