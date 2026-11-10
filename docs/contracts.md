@@ -1010,7 +1010,7 @@ Custom roles override built-ins by name, except `claude`.
   offered in every hosted thread except an ordinary child, which asks its
   parent with `message({ question: true })`. Subagents have no `threads` tool.
   `ASK_LIMITS` and pure `cleanAsk` (`core/src/threads.ts`) enforce a question
-  of 1–300 characters, optional context up to 1200, 2–4 options with labels
+  of 1–800 characters, optional context up to 1200, 2–4 options with labels
   of 1–40 and consequences of 1–200 characters, case-insensitively unique
   labels, and an integer recommended index in range. Strings are trimmed.
   `normalizeThreadArguments` (core) runs in the tool's `prepareArguments`,
