@@ -68,6 +68,14 @@ docs/delegation.md (a Routines section after Wake-ups), docs/contracts.md,
 docs/web.md, and the status table in docs/briefs/design.md (since removed). Every doc the
 change makes stale is updated and listed in the PR description.
 
+## Routine labels (#924)
+
+[Routine titles](routine-titles.md) adds optional explicit title/purpose
+metadata in expand-only pool step 15, a metadata-only `edit` tool action,
+and titles with purpose tooltips in both existing web surfaces. Execution
+notes remain excluded from listings; legacy fallbacks never parse them.
+Scheduling and firing are unchanged.
+
 ## Out of scope
 
 A calendar or event import; reminders (wake-ups); push notifications;

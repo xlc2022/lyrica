@@ -3364,7 +3364,7 @@ function routineList(d: Lyricad, user: User, pool: Pool, threadId?: string): Api
     if (threadId && !view.own.getThread(threadId)) throw new HttpError(404, "no such thread");
     return view.own.routines(threadId).flatMap(r => {
       const thread = view.own.getThread(r.thread);
-      return thread ? [{ id: r.id, pool, threadId: thread.id, threadTitle: thread.title ?? "Untitled", schedule: describe(r.schedule), nextAt: r.nextAt, paused: r.paused }] : [];
+      return thread ? [{ id: r.id, pool, threadId: thread.id, threadTitle: thread.title ?? "Untitled", title: r.title, description: r.description, newThread: r.newThread, schedule: describe(r.schedule), nextAt: r.nextAt, paused: r.paused }] : [];
     });
   } finally { view.close(); }
 }

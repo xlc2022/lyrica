@@ -22,6 +22,62 @@ test("unlock, log in, start a thread, and see a streamed reply that survives a r
   await noHorizontalScroll(page);
 });
 
+test("routine titles explain their purpose on focus and touch without exposing instructions", async ({ page, baseURL, request }) => {
+  const userId = await enter(page, baseURL!);
+  const seeded = await request.post(`http://127.0.0.1:${Number(new URL(baseURL!).port) + 10}/routines-fixture`, { data: { userId } });
+  expect(seeded.ok()).toBe(true);
+  const { threadId } = await seeded.json() as { threadId: string };
+  await page.goto(`/#/u/${userId}/t/general/${encodeURIComponent(threadId)}`);
+  const fact = page.getByRole("button", { name: /^Routine / });
+  await fact.click();
+  const pop = page.getByRole("dialog", { name: "Routines", exact: true });
+  await expect(pop.locator(".routine-title").first()).toContainText("Watering review");
+  await expect(pop).not.toContainText("Execution-only");
+  const title = pop.locator(".routine-title").first();
+  if (phone(page)) await title.tap();
+  else {
+    await title.hover();
+    await expect(title.getByRole("tooltip")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(title.getByRole("tooltip")).toBeHidden();
+    await expect(pop).toBeVisible();
+    await page.mouse.move(0, 0);
+    await title.focus();
+  }
+  await expect(title.getByRole("tooltip")).toBeVisible();
+  await expect(title.getByRole("tooltip")).toHaveText("Reviews the watering plan for the garden.");
+  await page.keyboard.press("Escape");
+  await expect(title.getByRole("tooltip")).toBeHidden();
+  await expect(pop).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(pop).toBeHidden();
+  await fact.click();
+  const legacy = pop.locator(".routine-title").last();
+  await legacy.click();
+  await expect(legacy).toContainText("Garden checks · Routine");
+  await expect(legacy.getByRole("tooltip")).toHaveText("Runs the saved instructions in a new thread.");
+  await noHorizontalScroll(page);
+  await page.goto(`/#/u/${userId}/settings/routines`);
+  const rows = page.locator(".routine-item");
+  await expect(rows).toHaveCount(3);
+  await expect(rows.first().getByRole("link", { name: "Garden checks" })).toBeVisible();
+  const longTitle = rows.nth(1).locator(".routine-title");
+  await longTitle.click();
+  const tip = longTitle.getByRole("tooltip");
+  await expect(tip).toBeVisible();
+  const bounds = await tip.boundingBox();
+  expect(bounds!.x).toBeGreaterThanOrEqual(0);
+  expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
+  await noHorizontalScroll(page);
+  await page.keyboard.press("Escape");
+  await rows.nth(1).getByRole("button", { name: "Resume", exact: true }).click();
+  await expect(rows.nth(1).getByRole("button", { name: "Pause", exact: true })).toBeVisible();
+  await rows.nth(1).getByRole("button", { name: "Pause", exact: true }).click();
+  await expect(rows.nth(1).getByRole("button", { name: "Resume", exact: true })).toBeVisible();
+  await rows.last().getByRole("button", { name: /^Remove routine:/ }).click();
+  await expect(rows).toHaveCount(2);
+});
+
 test("a reply that lands while scrolled up shows a jump-to-latest control that takes the person down to the bottom", async ({ page, baseURL }) => {
   await enter(page, baseURL!);
   await newThread(page, "General");

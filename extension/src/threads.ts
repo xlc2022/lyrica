@@ -111,7 +111,8 @@ const Params = Type.Object({
   goal: Type.Optional(Type.String({ maxLength: 2000 })),
   instructions: Type.Optional(Type.String({ maxLength: 4000 })),
   ids: Type.Optional(Type.Array(Type.String(), { maxItems: 10, description: "For fold: existing thread IDs to suggest bringing into this project. The person applies the card." })),
-  title: Type.Optional(Type.String({ description: "For start: the child thread's title." })),
+  title: Type.Optional(Type.String({ description: "Child title; routine title (80 chars, one line)." })),
+  description: Type.Optional(Type.String({ description: "Routine purpose (300 chars), not execution notes." })),
   task: Type.Optional(Type.String({ description: "For start: what to work on, with everything it needs. It starts with your persona and memory, but none of this conversation." })),
   base: Type.Optional(Type.Boolean()),
   folders: Type.Optional(Type.Array(Type.String(), { description: "For start: only these of this thread's folders." })),
@@ -120,17 +121,17 @@ const Params = Type.Object({
   code: Type.Optional(Type.Boolean({ description: "For start: true starts it in code mode." })),
   id: Type.Optional(Type.String({ description: "For message, read, stop, resolve and reopen: the thread's ID ([t:…]) or current title." })),
   minutes: Type.Optional(Type.Number({ description: `For later: how many minutes from now to wake this thread, 1 to ${WAKEUP_LIMITS.maxMinutes}.` })),
-  note: Type.Optional(Type.String({ description: "For later or routine add: the note to yourself the wake-up starts with: what to check and what to do then." })),
-  routineAction: Type.Optional(StringEnum(["add", "list", "pause", "resume", "remove"] as const, { description: "For routine: what to do with this thread's routines." })),
-  routineId: Type.Optional(Type.Integer({ minimum: 1, description: "For routine pause, resume or remove: the routine's numeric ID from routine list." })),
+  note: Type.Optional(Type.String({ description: "Later/routine add: the wake-up's execution instructions." })),
+  routineAction: Type.Optional(StringEnum(["add", "edit", "list", "pause", "resume", "remove"] as const, { description: "Routines." })),
+  routineId: Type.Optional(Type.Integer({ minimum: 1, description: "Routine ID." })),
   schedule: Type.Optional(Type.Object({
     kind: Type.String({ description: "daily, weekdays, weekly, yearly or every." }),
     time: Type.Optional(Type.String({ description: "HH:MM in the person's time zone." })),
     day: Type.Optional(Type.Number({ description: "For weekly: 0 (Sunday) to 6 (Saturday)." })),
     date: Type.Optional(Type.String({ description: "For yearly: MM-DD." })),
     hours: Type.Optional(Type.Number({ description: "For every: a whole number from 1 to 168, counted from now." })),
-  }, { description: "For routine add: the recurring schedule." })),
-  newThread: Type.Optional(Type.Boolean({ description: "For routine add: open a fresh thread each time; false (default) runs here." })),
+  }, { description: "Routine schedule." })),
+  newThread: Type.Optional(Type.Boolean({ description: "Routine: new thread; default false." })),
   cancel: Type.Optional(Type.Literal(true, { description: "For later: drop this thread's pending wake-ups instead." })),
   pr: Type.Optional(Type.String({ description: "For watch: the pull request, as owner/repo#number or its URL, on one of this thread's repositories." })),
   steps: Type.Optional(Type.Array(Type.Object({ text: Type.String(), state: StringEnum(["todo", "doing", "done"] as const) }),
@@ -154,7 +155,7 @@ type Field = keyof typeof Params.properties;
 const FIELD_ACTIONS: Record<Exclude<Field, "action">, string[]> = {
   on: ["code"], done: ["code"], model: ["model"],
   goal: ["draft"], instructions: ["draft"], ids: ["fold"], threads: ["suggest"],
-  title: ["start"], task: ["start", "code"], folders: ["start"], readOnly: ["start"], internet: ["start"], code: ["start"], base: ["start"],
+  title: ["start", "routine"], description: ["routine"], task: ["start", "code"], folders: ["start"], readOnly: ["start"], internet: ["start"], code: ["start"], base: ["start"],
   id: ["message", "read", "stop", "resolve", "reopen"], text: ["message"], to: ["message"], question: ["message", "ask"], options: ["ask"], recommended: ["ask"], context: ["ask"], needsYou: ["message"], last: ["read"],
   minutes: ["later"], cancel: ["later"], note: ["later", "routine"], pr: ["watch"],
   routineAction: ["routine"], routineId: ["routine"], schedule: ["routine"], newThread: ["routine"],
@@ -330,25 +331,28 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
         }
         if (p.action === "routine") {
           try {
+            const metadata = { ...(p.title !== undefined ? { title: p.title } : {}), ...(p.description !== undefined ? { description: p.description } : {}) };
             if (p.routineAction === "list") {
               const rows = store.routines(thread.threadId);
-              return text(rows.length ? rows.map((r) => `Routine ${r.id}: ${describe(r.schedule)}, ${r.paused ? "paused" : `next ${r.nextAt}`}, ${r.newThread ? "opens a new thread" : "runs here"}.`).join("\n") : "This thread has no routines.");
+              return text(rows.length ? rows.map((r) => `Routine ${r.id}: ${r.title ?? store.getThread(thread.threadId)?.title ?? "Untitled"}, ${describe(r.schedule)}, ${r.paused ? "paused" : `next ${r.nextAt}`}, ${r.newThread ? "opens a new thread" : "runs here"}. ${r.description ?? `Runs the saved instructions ${r.newThread ? "in a new thread" : "here"}.`}`).join("\n") : "This thread has no routines.");
             }
             if (p.routineAction === "add") {
               if (!p.note?.trim()) throw new Error("routine add needs a note to yourself");
               const at = new Date().toISOString();
               const schedule = parseSchedule(p.schedule?.kind === "every" ? { ...p.schedule, from: at } : p.schedule);
               if (store.routines(thread.threadId).length >= 10) throw new Error("this thread has at most 10 routines, including paused ones; remove one first");
-              const id = store.addRoutine(thread.threadId, schedule, p.note.trim(), !!p.newThread, at, host.zone?.(thread));
+              const id = store.addRoutine(thread.threadId, schedule, p.note.trim(), !!p.newThread, at, host.zone?.(thread), Object.keys(metadata).length ? metadata : undefined);
               return text(`Added routine ${id}: ${describe(schedule)}, ${p.newThread ? "opens a new thread" : "runs here"}.`);
             }
-            if (!["pause", "resume", "remove"].includes(p.routineAction ?? "")) throw new Error("routine needs add, list, pause, resume or remove");
+            if (!["edit", "pause", "resume", "remove"].includes(p.routineAction ?? "")) throw new Error("routine needs add, edit, list, pause, resume or remove");
             if (!Number.isSafeInteger(p.routineId) || p.routineId! < 1) throw new Error("routine needs its numeric ID from routine list");
-            const changed = p.routineAction === "remove"
-              ? store.removeRoutine(thread.threadId, p.routineId!)
-              : store.pauseRoutine(thread.threadId, p.routineId!, p.routineAction === "pause", undefined, host.zone?.(thread));
+            const changed = p.routineAction === "edit"
+              ? store.editRoutine(thread.threadId, p.routineId!, metadata)
+              : p.routineAction === "remove"
+                ? store.removeRoutine(thread.threadId, p.routineId!)
+                : store.pauseRoutine(thread.threadId, p.routineId!, p.routineAction === "pause", undefined, host.zone?.(thread));
             if (!changed) throw new Error("this thread has no routine with that ID");
-            return text(`${p.routineAction === "remove" ? "Removed" : p.routineAction === "pause" ? "Paused" : "Resumed"} routine ${p.routineId}.`);
+            return text(`${p.routineAction === "edit" ? "Updated" : p.routineAction === "remove" ? "Removed" : p.routineAction === "pause" ? "Paused" : "Resumed"} routine ${p.routineId}.`);
           } catch (err) {
             return { ...text(err instanceof Error ? err.message : "The routine could not be changed."), isError: true };
           }

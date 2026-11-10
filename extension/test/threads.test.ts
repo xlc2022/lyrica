@@ -41,6 +41,21 @@ describe("threads routine", () => {
     expect((await s.call({ routineAction: "list" })).content).toEqual([{ type: "text", text: "This thread has no routines." }]);
   });
 
+  it("labels a routine without exposing execution instructions or changing its schedule", async () => {
+    const s = await setup();
+    await s.call({ routineAction: "add", schedule: { kind: "daily", time: "08:00" }, note: "Execution-only instructions.", title: "Build digest", description: "Summarises the build results." });
+    const before = s.view.own.routines(s.context.threadId)[0]!;
+    expect(before).toMatchObject({ title: "Build digest", description: "Summarises the build results." });
+    const listed = JSON.stringify((await s.call({ routineAction: "list" })).content);
+    expect(listed).toContain(`Routine ${before.id}: Build digest`);
+    expect(listed).toContain("Summarises the build results.");
+    expect(listed).not.toContain(before.note);
+    expect(await s.call({ routineAction: "edit", routineId: before.id, title: "Daily builds" })).not.toHaveProperty("isError");
+    expect(s.view.own.routines(s.context.threadId)[0]).toEqual({ ...before, title: "Daily builds" });
+    expect(await s.call({ routineAction: "edit", routineId: before.id, title: "x".repeat(81) })).toMatchObject({ isError: true });
+    expect(await s.call({ routineAction: "edit", routineId: before.id, description: 42 })).toMatchObject({ isError: true });
+  });
+
   it("anchors hourly schedules now and defaults to running here", async () => {
     const s = await setup();
     const before = Date.now();
@@ -82,8 +97,8 @@ describe("threads routine", () => {
     const other = s.thread();
     const id = other.view.own.addRoutine(other.threadId, { kind: "daily", time: "08:00" }, "Other thread's note.");
     expect(JSON.stringify((await s.call({ routineAction: "list" })).content)).not.toContain("Other thread");
-    for (const routineAction of ["pause", "resume", "remove"]) {
-      expect(await s.call({ routineAction, routineId: id })).toMatchObject({ isError: true, content: [{ type: "text", text: "this thread has no routine with that ID" }] });
+    for (const routineAction of ["edit", "pause", "resume", "remove"]) {
+      expect(await s.call({ routineAction, routineId: id, title: "Another title" })).toMatchObject({ isError: true, content: [{ type: "text", text: "this thread has no routine with that ID" }] });
       expect(other.view.own.routines(other.threadId)).toMatchObject([{ id, paused: false }]);
     }
     await s.call({ routineAction: "add", schedule: { kind: "daily", time: "09:00" }, note: "Own note.", id: other.threadId });

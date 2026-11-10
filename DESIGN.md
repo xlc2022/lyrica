@@ -1493,8 +1493,10 @@ project page and the web part are built. Recent calls can be filtered by project
   day skips the run and advances the next time. Missed runs otherwise fire
   once after unlock, saying how many were due. Stored in the thread's pool,
   so privacy follows the pool. The user sees **Routine** and the next time in the thread's
-  facts line, and every routine in **Settings → Routines**, with **Pause**,
-  **Resume** and **Remove**.
+  facts line, and every routine in **Settings → Routines**, with its title
+  and purpose tooltip, **Pause**, **Resume** and **Remove**. Optional display
+  labels are separate from execution notes and can be edited without
+  rescheduling; older routines have honest thread/ID and destination fallbacks.
   One-shot reminders stay wake-ups; a calendar is Later.
 - **CI wakes** (2026-10-13). A pull request a run opens through its relay
   is watched by `lyricad`, so its thread doesn't schedule its own wake for

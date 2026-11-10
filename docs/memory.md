@@ -87,8 +87,14 @@ table `wakeups`; step 5 `thread_steps` for checklists; step 6 `routines`
 for recurring turns; step 13 `renames`, files renamed in the Files panel until
 sleep respells the memories citing their threads; step 14 `sleep_runs.superseded`,
 the notes a run marked replaced and what replaced them before, so the night can
-be undone, and `sleep_focus`, the person's line for tonight's dream), never DDL
-in the memory module.
+be undone, and `sleep_focus`, the person's line for tonight's dream; step 15
+adds nullable `routines.title` and `routines.description`), never DDL in the
+memory module. Routine labels stay encrypted in their own pool: an optional
+one-line title (80 characters) and description (300 characters), checked after
+credential removal. Metadata edits preserve omitted fields and never change
+execution notes, schedules, destinations, paused state or firing times. Existing
+routines keep absent labels; labels are never extracted from their notes. Step 15
+only expands the schema, leaving the minimum reader unchanged.
 `citations` and `search` are derived from the text. Deleting runs with
 `secure_delete` on and merges the index, so removed text doesn't linger in
 free pages.

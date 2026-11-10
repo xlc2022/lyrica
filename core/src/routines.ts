@@ -1,8 +1,30 @@
-// Routines' schedule maths (docs/briefs/routines.md part A): when a routine runs
-// next, in its user's time zone (core/src/zone.ts). Pure; firing and storage live
-// in the daemon. A wall time skipped by a spring-forward fires at the next valid
+// Routines' metadata and schedule maths: when a routine runs next, in its user's
+// time zone (core/src/zone.ts). Storage lives in store/pool.ts, firing in the
+// daemon. A wall time skipped by a spring-forward fires at the next valid
 // minute; one that comes twice in a fall-back fires once, at its first occurrence.
+import { removeSecrets } from "./secrets.ts";
 import { serverZone, wall, zonedTime } from "./zone.ts";
+
+export interface RoutineMetadata { title?: string; description?: string }
+export const ROUTINE_METADATA_LIMITS = { title: 80, description: 300 } as const;
+
+/** Explicit labels, with credentials removed before checking their stored length. Omitted fields stay omitted. */
+export function checkRoutineMetadata(input: unknown): RoutineMetadata {
+  if (typeof input !== "object" || input === null || Array.isArray(input)) throw new Error("routine metadata is an object");
+  const o = input as Record<string, unknown>;
+  const metadata: RoutineMetadata = {};
+  for (const key of ["title", "description"] as const) {
+    if (!Object.hasOwn(o, key)) continue;
+    if (typeof o[key] !== "string") throw new Error(`a routine's ${key} is text`);
+    const value = removeSecrets(o[key]).trim();
+    if (!value) throw new Error(`a routine's ${key} is not empty`);
+    if (value.length > ROUTINE_METADATA_LIMITS[key]) throw new Error(`a routine's ${key} is at most ${ROUTINE_METADATA_LIMITS[key]} characters`);
+    if (key === "title" && /[\p{Cc}\p{Zl}\p{Zp}]/u.test(value)) throw new Error("a routine's title is one line of text");
+    metadata[key] = value;
+  }
+  if (!Object.keys(metadata).length) throw new Error("routine metadata needs a title or description");
+  return metadata;
+}
 
 export type Schedule =
   | { kind: "daily"; time: string }
