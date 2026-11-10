@@ -10,7 +10,7 @@ export const FROM_PARENT = /^\[From t:([^\]\s]+)\]\n\n/;
 export const ANSWER = /^\[Answer to q:/;
 export const answerMark = (n: number) => `[Answer to q:${n}]\n\n`;
 export interface Ask { question: string; options: { label: string; consequence: string }[]; recommended: number; context?: string }
-export const ASK_LIMITS = { question: 300, context: 1200, minOptions: 2, maxOptions: 4, label: 40, consequence: 200 };
+export const ASK_LIMITS = { question: 800, context: 1200, minOptions: 2, maxOptions: 4, label: 40, consequence: 200 };
 /** Only unambiguous repairs, shared by Pi preparation and encrypted-log readers. */
 export function normalizeThreadArguments(input: unknown): any {
   if (!input || typeof input !== "object" || Array.isArray(input)) return input;
@@ -76,7 +76,7 @@ export function rootAsk(args: unknown): Ask | undefined {
   const a = args as { machine?: unknown; why?: unknown } | null;
   if (typeof a?.machine !== "string" || !a.machine || typeof a.why !== "string") return undefined;
   return {
-    question: `Run as root on ${a.machine}?`.slice(0, 300),
+    question: `Run as root on ${a.machine}?`.slice(0, ASK_LIMITS.question),
     context: a.why.trim().slice(0, 1200),
     options: [
       { label: "Done", consequence: "You ran it. She checks the result and carries on." },

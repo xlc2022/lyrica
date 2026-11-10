@@ -26,7 +26,7 @@ later and will fire on these.
 ask({ question, options: { label, consequence }[], recommended, context? })
 ```
 
-- `question` is 1 to 300 characters. `context` is optional, up to 1200.
+- `question` is 1 to 800 characters. `context` is optional, up to 1200.
 - `options` holds 2 to 4 entries. Each `label` is 1 to 40 characters and
   each `consequence` 1 to 200. Labels are unique, compared ignoring case.
 - `recommended` is the index of one option.
