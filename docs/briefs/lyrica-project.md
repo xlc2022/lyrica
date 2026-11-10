@@ -231,11 +231,6 @@ characters, the limit on project instructions.
 > role `claude`), on the change; treat its report as findings. To give
 > Claude's project, another team, work: a GitHub issue labelled `claude`.
 >
-> **Updates.** Before the owner presses Update, a thread tags the `main`
-> commit `update/<date>`, annotated, listing all merged since the running
-> version: what each changes, schema changes, what a rollback loses, what
-> to check after. A failed update gets a post-mortem issue.
->
 > **Everyone.** No plaintext memory on disk; private memory never goes
 > into code, issues, PRs or notes; delete only files you downloaded.
 > Docs are how others pick up your work: a PR fixes every doc or brief
@@ -369,3 +364,7 @@ differs: boundary code waits for the owner, and her reviewers' verifieds
 are recorded on the PR, since they act as her own account. By the owner:
 paste the new instructions, set the project's Goal as in "Setup, by the
 owner, once", and tell her Review thread its part.
+
+2026-11-10, last: the instructions no longer carry an Updates paragraph
+(the owner). How she writes an update note when asked for one stays in
+docs/workspace.md, "Her own code", and "Update tags" above.
