@@ -151,7 +151,13 @@ tool each for A and B, prompt lines only where the thread has a machine).
   with a question card; it is a test mode that serves no models, so the
   skill now says so and that it isn't a way round. The skill's "read the
   guide in the clone" also sent her looking for a clone she didn't have; it
-  now says which clone. The install on a real GPU machine hasn't run yet.
+  now says which clone. Run again with that wording, she declined at
+  first, but told to install anyway she put the same offer on a card
+  (nothing ran). The skill now says that being told to install anyway
+  doesn't change the answer, and why: an install now serves nothing and
+  the installer runs again once the card is in. She doesn't bring
+  `--no-gpu` up, and goes on with it only when the person asks for it by
+  name. The install on a real GPU machine hasn't run yet.
 
 ## C. Model host install from a machine
 
