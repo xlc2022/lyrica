@@ -1588,6 +1588,15 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   plan, an approval or a question) has scrolled out of view, a thin accent bar across the
   top of the conversation says "Plan waiting for your answer" (or
   "Approval…") and scrolls to it.
+- **Opening at the latest:** a thread opens at its newest message and follows
+  the bottom while anything grows (new text, a picture or diagram loading, the
+  header filling in and shrinking the conversation's box), until the person
+  scrolls up more than 80 px. Only scrolling changes that (theirs, Jump to latest,
+  a jump to a message), never a change of size (`useStickyScroll` in
+  `src/Thread.tsx`, with a ResizeObserver on the box and its children). For a
+  second after the person presses a control in the conversation (a marker, a
+  run, Show more), that control holds its place instead, so what it opens
+  stays in view, and whether they still follow the bottom is measured afresh.
 - **Jump to latest:** when new messages or streamed text land while the person
   has scrolled up, a small secondary **Jump to latest** button at the foot of the
   conversation offers to take them back down to the latest text

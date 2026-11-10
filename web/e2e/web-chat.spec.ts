@@ -1328,3 +1328,43 @@ test("an uploaded file's path goes into the message", async ({ page, baseURL }) 
   await page.getByRole("button", { name: "Send" }).click();
   await expect(page.locator(".msg.user").getByText(path)).toBeVisible();
 });
+
+test("a thread opens at its latest message, even when the space above the conversation grows while it loads or content grows after", async ({ page, baseURL }) => {
+  await enter(page, baseURL!);
+  await newThread(page, "General");
+  await send(page, `reply: ${Array.from({ length: 30 }, (_, i) => `Line ${i + 1} of the long thread, which keeps going past one line on the way down.`).join("\n\n")}`);
+  await expect(page.getByText(/^Line 30 of the long thread/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Stop" })).toBeHidden();
+  await newThread(page, "General");
+  // The messages come late, and meanwhile the header grows (badges wrapping, the parent's line arriving): the conversation's box shrinks before there is anything to scroll.
+  await page.route(/\/messages$/, async (r) => { await new Promise((d) => setTimeout(d, 800)); await r.continue(); });
+  await page.route(/\/events$/, async (r) => { await new Promise((d) => setTimeout(d, 2000)); await r.continue(); });
+  if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
+  await page.locator(".side").getByRole("link", { name: /Line 1 of the long thread/ }).click();
+  await expect(page.getByRole("heading", { level: 1 })).not.toHaveText("New thread");
+  await expect(page.locator(".scroll .msg")).toHaveCount(0);
+  await page.locator(".thread-head").evaluate((el) => { el.style.paddingBottom = "160px"; });
+  const scroll = page.locator(".scroll").first();
+  const fromBottom = () => scroll.evaluate((el) => el.scrollHeight - el.scrollTop - el.clientHeight);
+  await expect(page.getByText(/^Line 30 of the long thread/)).toBeAttached();
+  await expect.poll(fromBottom).toBeLessThanOrEqual(2);
+  // Content that grows after it opened (a picture loading, a diagram drawn) keeps it at the bottom.
+  await page.locator(".scroll .msg").last().evaluate((el) => { el.style.paddingBottom = "400px"; });
+  await expect.poll(fromBottom).toBeLessThanOrEqual(2);
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+  // Something she opens herself near the foot (a run of tool calls) opens in place: the view doesn't follow it down.
+  await page.locator(".scroll .msg").last().evaluate((el) => { el.style.paddingBottom = ""; });
+  await send(page, "recall: 6");
+  await expect(page.getByText("You said: recall: 6")).toBeVisible();
+  // Her turn has finished laying out (its actions row, the facts line) before the marker is measured.
+  await expect(page.getByRole("button", { name: "Stop" })).toBeHidden();
+  await expect(page.getByRole("group", { name: "Message actions" }).last()).toBeVisible();
+  await expect.poll(fromBottom).toBeLessThanOrEqual(2);
+  const marker = page.locator(".marker.tool-run").last().getByRole("button", { name: /tool calls/ });
+  const before = (await marker.boundingBox())!.y;
+  await marker.click();
+  await expect(page.locator(".marker.tool-run").last().locator(".run-body .marker[data-type='tool']")).toHaveCount(6);
+  await page.waitForTimeout(300);
+  expect(Math.abs((await marker.boundingBox())!.y - before)).toBeLessThanOrEqual(2);
+  await expect(marker).toBeInViewport();
+});
