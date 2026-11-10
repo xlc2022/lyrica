@@ -89,6 +89,10 @@ self-hosted runners, which no workflow uses at the moment.
   - host-stack: `host/` only.
 
   A change under `.github/`, or a diff that can't be read, runs all three.
+  A last job, `done`, always runs and passes when none of the others
+  failed or was cancelled, so every run ends with a real passing result:
+  a run of skips alone never woke the thread waiting on its pull request,
+  and a docs-only one sat open a day.
   Each e2e job runs one `web/e2e/web-*.spec.ts` file (chat, workspace,
   projects or admin) at phone and at desktop size, two Playwright
   projects side by side, each against its own lyricad; the `projects` job
