@@ -1196,11 +1196,12 @@ refused. To replace the destination, enter the full URL and token again;
   stays on the running release, so upgrade Node first (NodeSource, as in
   "On Debian or Ubuntu"). shellcheck is another, from 2026-11-10: until
   it is installed (`apt-get install shellcheck`) her commands aren't
-  checked before they run, and nothing else changes. On Debian and Ubuntu, Administration → Status
-  reports any installed units that differ from the new release or are missing;
-  run `install.sh` from a current checkout to update them. Updates never
-  rewrite units, since `lyricad.service` defines her confinement. NixOS units
-  are managed by its module instead. If Check or Update fails with "The
+  checked before they run, and nothing else changes. On Debian and
+  Ubuntu, Administration → Status reports any installed units that
+  differ from the new release or are missing; run `install.sh` from a
+  current checkout to update them. Updates never rewrite units, since
+  `lyricad.service` defines her confinement. NixOS units are managed by
+  its module instead. If Check or Update fails with "The
   updater hasn't started", `systemctl status lyrica-update.path` and
   `journalctl -u lyrica-update` say why; a fetch that hangs gives up after
   10 minutes. The updater itself changes only when `install.sh` runs again
@@ -1257,6 +1258,8 @@ refused. To replace the destination, enter the full URL and token again;
     fetch that hangs is never stopped), and a built-in Caddy unit that
     turns Multipath TCP off (`GODEBUG=multipathtcp=0`); restart
     `lyrica-caddy` after the run.
+  - **Before 2026-11-10:** shellcheck, which checks her bash commands
+    before they run; until then they run unchecked.
   - **Any install missing them:** headless Chromium and IBM Plex for her
     screenshots, Claude Code and Codex, ffmpeg and ffprobe (until then
     she can't check a clip's length or streams), and the Python baseline
