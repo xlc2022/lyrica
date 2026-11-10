@@ -5,13 +5,13 @@ description: Install a Lyrica model host on one of this thread's SSH machines wi
 
 # Installing a model host on a machine
 
-A model host serves local models to Lyrica from a GPU machine. Lyrica's code is in its repository on the forge; the installer is `host/install.sh`, and the operator's guide is `docs/guides/model-hosts.md` there. Read that guide's "The machine" and "Install" sections in the clone before you start, since they may be newer than these steps. Never change anything under `host/` to make an install work: report what failed.
+A model host serves local models to Lyrica from a GPU machine. Lyrica's code is in its repository on the forge; the installer is `host/install.sh`, and the operator's guide is `docs/guides/model-hosts.md` there. Its "The machine" and "Install" sections may be newer than these steps: read them in this thread's clone if the repository is one of the thread's, and otherwise in the clone you make in step 5, before you run the installer. Don't clone anything before step 1's checks. Never change anything under `host/` to make an install work: report what failed.
 
 Work on the machine with the machine argument. Your account there has no password for sudo, so every step that needs root goes to the person with `run_as_root`. You never type a sudo password and never ask for one.
 
-1. **Check the machine.** Run each of these and keep what they print:
+1. **Check the machine.** Run these and keep what they print. One command for all of them is one card for the person, and a program that isn't there is an answer, not a failure:
    - `uname -a`, `cat /etc/os-release`: Debian or Ubuntu (NixOS needs the operator's own module first: stop and say so).
-   - `nvidia-smi` (or `ls /dev/kfd /dev/dri` for AMD): the GPUs, their memory, and the driver version. No driver: stop, since installing one is the person's job.
+   - `nvidia-smi` (or `ls /dev/kfd /dev/dri` for AMD): the GPUs, their memory, and the driver version. No GPU or no driver: stop, since adding a card or installing its driver is the person's job. `/dev/dri` alone isn't a GPU: a virtual display has one. The installer's `--no-gpu` is a test mode with no model servers, so a host installed with it serves nothing: don't offer it as a way round, and if the person asks for it by name, say that before anything else.
    - `docker version`, `docker compose version`, `docker info --format '{{.FirewallBackend.Driver}}'`: Docker with the compose plugin and the iptables backend. Podman or the nftables backend won't do.
    - `df -h` on the disk for the models folder (`/srv/models` by default): the images take about 40 GB, and models need their own room.
    - `id`, `command -v git jq iptables curl`.
