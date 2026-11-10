@@ -327,6 +327,10 @@ export const STEPS: Record<DbKind, MigrationStep[]> = {
     // can say how fast an image model is (docs/briefs/image-speed.md). Adds nullable columns only.
     version: 23,
     run(db) { addColumns(db, [["model_calls", "sampling_ms", "INTEGER"], ["model_calls", "steps", "INTEGER"], ["model_calls", "images", "INTEGER"], ["model_calls", "pixels", "INTEGER"]]); },
+  }, {
+    // Principle 1: an image upscale that took a clip, so Status counts it in clips, not images. Adds a nullable column only.
+    version: 24,
+    run(db) { addColumns(db, [["model_calls", "clip", "INTEGER"]]); },
   }],
   pool: [{
     version: 1, contract: true,

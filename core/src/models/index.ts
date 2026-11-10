@@ -430,6 +430,8 @@ export interface CallRecord {
   sampling?: CallSampling;
   /** How many images (or clips) an image or video call made, where it recorded the count. */
   images?: number;
+  /** An image upscale that took a clip, so it counts in clips. */
+  clip?: true;
 }
 
 /**
@@ -3231,7 +3233,7 @@ export class Models {
    * any of the conversation's text. A retry within the turn (`retry`)
    * rewrites that turn's record, so a turn is one call.
    */
-  recordCall(userId: string, call: { pool: Pool; threadId: string; task: Task; resolution: Resolution; note?: string; audioSeconds?: number; images?: number }, opts: { retry?: boolean } = {}): number {
+  recordCall(userId: string, call: { pool: Pool; threadId: string; task: Task; resolution: Resolution; note?: string; audioSeconds?: number; images?: number; clip?: boolean }, opts: { retry?: boolean } = {}): number {
     const r = call.resolution;
     const first = r.skipped[0];
     const fallback = first && `${first.label} was skipped (${first.reason.replace(/^it /, "")}), so ${r.label} answered${r.endpoint.kind === "cloud" && r.profile === "Custom" ? ", a cloud model" : ""}`;
@@ -3244,8 +3246,8 @@ export class Models {
       }
       const seconds = call.audioSeconds !== undefined && Number.isFinite(call.audioSeconds) ? Math.max(0, Math.round(call.audioSeconds * 10) / 10) : null;
       const images = call.images !== undefined && Number.isFinite(call.images) ? Math.max(1, Math.round(call.images)) : null;
-      return Number(db.prepare("INSERT INTO model_calls (at, pool, thread, task, offering, label, endpoint, kind, fallback, note, audio_seconds, images) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-        .run(new Date().toISOString(), call.pool, call.threadId, call.task, r.offering.id, r.label, r.endpoint.name, r.endpoint.kind, fallback ?? null, call.note ?? null, seconds, images).lastInsertRowid);
+      return Number(db.prepare("INSERT INTO model_calls (at, pool, thread, task, offering, label, endpoint, kind, fallback, note, audio_seconds, images, clip) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+        .run(new Date().toISOString(), call.pool, call.threadId, call.task, r.offering.id, r.label, r.endpoint.name, r.endpoint.kind, fallback ?? null, call.note ?? null, seconds, images, call.clip ? 1 : null).lastInsertRowid);
     });
   }
 
@@ -3926,7 +3928,7 @@ type CallRow = {
   at: string; pool: Pool; thread: string; task: Task; offering: string; label: string; endpoint: string; kind: "cloud" | "local"; fallback: string | null; note: string | null;
   read_tokens: number | null; prompt_tokens: number | null; output_tokens: number | null; window: number | null; ttft_ms: number | null; gen_ms: number | null; processed: number | null;
   audio_seconds?: number | null;
-  sampling_ms?: number | null; steps?: number | null; images?: number | null; pixels?: number | null;
+  sampling_ms?: number | null; steps?: number | null; images?: number | null; pixels?: number | null; clip?: number | null;
 };
 
 const toCall = (r: CallRow): CallRecord => ({
@@ -3934,6 +3936,7 @@ const toCall = (r: CallRow): CallRecord => ({
   ...(r.fallback ? { fallback: r.fallback } : {}), ...(r.note ? { note: r.note } : {}),
   ...(typeof r.audio_seconds === "number" ? { audioSeconds: r.audio_seconds } : {}),
   ...(typeof r.images === "number" ? { images: r.images } : {}),
+  ...(r.clip ? { clip: true as const } : {}),
   ...(typeof r.sampling_ms === "number" && typeof r.steps === "number" ? { sampling: { ms: r.sampling_ms, steps: r.steps, images: r.images ?? 1, ...(typeof r.pixels === "number" ? { pixels: r.pixels } : {}) } } : {}),
   ...(r.gen_ms !== null ? { pace: speeds({ ...(r.read_tokens != null ? { readTokens: r.read_tokens } : {}), promptTokens: r.prompt_tokens ?? 0, outputTokens: r.output_tokens ?? 0, window: r.window ?? 0, ttftMs: r.ttft_ms ?? 0, genMs: r.gen_ms, processed: r.processed ?? 0 }) } : {}),
 });

@@ -453,7 +453,7 @@ async function executeUpscaleVideo(o: ImageTools, id: string, p: ImageArgs, sign
     const path = o.files.saveVideo(out.video);
     const v = out.video;
     const video: VideoPart = { type: "video", path, model: out.resolution.label, width: v.width, height: v.height, duration: v.duration, audio: v.audio };
-    const recorded = o.models.recordCall(call.userId, { pool: call.pool, threadId: o.threadId, task: "image.upscale", resolution: out.resolution, images: 1 });
+    const recorded = o.models.recordCall(call.userId, { pool: call.pool, threadId: o.threadId, task: "image.upscale", resolution: out.resolution, images: 1, clip: true });
     if (v.sampling) o.models.recordSampling(call.userId, recorded, { ...v.sampling, images: 1, pixels: v.width * v.height });
     const passed = out.resolution.passedOver ?? [];
     const fellBack = passed.length ? ` Passed over first: ${passed.map(s => `${s.label} (${s.reason.replace(/^it /, "")})`).join("; ")}.` : "";

@@ -2411,7 +2411,8 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   samplers, with `samples` and the `unit`, image or clip), optional `made`
   for a model with image or video calls (`count`, the images or clips they
   made: each call's recorded `images`, else one, since a call is recorded only
-  once it made something; `unit`, image or clip), optional `audioSeconds`
+  once it made something; `unit`, image or clip, where a clip is a video call
+  or an upscale whose record carries `clip`), optional `audioSeconds`
   for a model with speech calls (the seconds of audio they heard or spoke,
   from each call's recorded `audio_seconds`, to a tenth), and `fallbacks`; and
   each row as `{ at, offeringId, task, outputTokens?, tokPerSec?, fallback? }`,
