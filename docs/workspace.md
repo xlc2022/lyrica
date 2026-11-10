@@ -430,7 +430,8 @@ with a token, never a shell on the hypervisor
   and `reboot`. Each action is one API call after looking the VM up in
   `/cluster/resources`. Nothing else: no destroy, create, console,
   guest-agent, snapshot creation or rollback. The tool is offered only while
-  the thread has a Proxmox machine. Subagents don't get it.
+  the thread has a Proxmox machine. Subagents don't get it, whatever their
+  role's tool list says, and their prompt names no Proxmox machine.
 - **Modes.** `list`, `status` and `snapshots` ask like `read` (never, by
   themselves) and work in Plan mode. `start` and `shutdown` ask like `bash`
   under the stricter of the thread's mode and the machine's limit. `stop`

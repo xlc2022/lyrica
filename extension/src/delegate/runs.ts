@@ -1155,7 +1155,8 @@ export class Delegation {
         // It works in its parent's clones, which the parent fetched at its turn's start; read-only when it gets
         // no repositories, so a narrowed or read-only subagent, or a writer in a worktree, can't change them.
         // A project chat's subagent is read-only as the chat is, so delegating can't make what the chat may not.
-        const { setMode: _own, cloneRepositories: _fetched, addRepository: _asks, startJob: _bg, jobs: _jobs, jobOutput: _out, stopJob: _stop, ...tools } = workspace.forThread({ ...p, threadId: child.id, reposOf: parent.threadId, reposReadOnly: noMachines || coordinates, ...(coordinates ? { coordinates } : {}) });
+        // No proxmox either: a hypervisor's power is the thread's own to use, whatever a role's tool list says.
+        const { setMode: _own, cloneRepositories: _fetched, addRepository: _asks, startJob: _bg, jobs: _jobs, jobOutput: _out, stopJob: _stop, proxmox: _pve, ...tools } = workspace.forThread({ ...p, threadId: child.id, reposOf: parent.threadId, reposReadOnly: noMachines || coordinates, ...(coordinates ? { coordinates } : {}) });
         if (claude) {
           // Claude Code in its sandbox, in place of a Pi session: no extensions of ours.
           if (!tools.claudeCode() || !workspace.claudeDir) throw new Error(CLAUDE_OFF);

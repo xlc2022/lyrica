@@ -555,7 +555,8 @@ export function describe(tools: ThreadTools): string {
     network(tools.network()),
     ...[toolsLine(), librariesLine()].filter(Boolean),
     ...(machines.length ? [`Machines you can work on over SSH, with the machine argument: ${machines.join(", ")}. The sandbox's network settings don't apply there.`] : []),
-    ...(pves.length ? [`Proxmox machines you can manage with the proxmox tool: ${pves.join(", ")}.`] : []),
+    // Named only where the proxmox tool is: a subagent keeps its parent's machines but has no such tool.
+    ...(pves.length && tools.proxmox ? [`Proxmox machines you can manage with the proxmox tool: ${pves.join(", ")}.`] : []),
     ...(tools.claudeCode?.() ? [CLAUDE_CODE_LINE] : []),
     ...fileNotes(tools.fileNotes?.()),
   ].join("\n");

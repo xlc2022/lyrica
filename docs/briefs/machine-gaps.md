@@ -133,7 +133,10 @@ tool each for A and B, prompt lines only where the thread has a machine).
   refusal now names the `proxmox` tool); and a Proxmox machine's row never
   showed a state or the Your account pill, since her calls recorded none and
   the API left both out. The owner also asked that she know how to add a
-  machine when asked in chat: the built-in `add-machine` skill.
+  machine when asked in chat: the built-in `add-machine` skill. Noticed on
+  the way: a subagent that kept its parent's machines was told of Proxmox
+  machines with no tool for them, and a custom role listing `proxmox` got
+  the tool; subagents now get neither.
 
 ## C. Model host install from a machine
 

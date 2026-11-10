@@ -1780,7 +1780,8 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     tool, input, machine?, cwd?, warning?, server?, serverTool? }` (`warning` set for a suspect command wherever it runs), and the call runs only if its
     arguments are still exactly what was approved. With `proxmox`, the
     `proxmox` tool is registered, and offered only while `machines()` has a
-    Proxmox machine. An `mcp__<server>__<tool>` call whose server isn't in
+    Proxmox machine; the prompt names Proxmox machines only then. A
+    subagent's tools come without `proxmox`. An `mcp__<server>__<tool>` call whose server isn't in
     `mcpServers()` is refused; one its server marks `readOnlyHint` runs,
     as does one `toolAllowedInThread`; any other asks with `server` and
     `serverTool`, in every mode. Read-only MCP tools stay on in Plan mode.

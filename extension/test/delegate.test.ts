@@ -129,6 +129,25 @@ describe("delegate", () => {
     expect(parent.view.own.listThreads({ parent: parent.threadId }).map((t) => t.title)).toContain("scout: Shed inventory");
   });
 
+  it("gives a subagent no proxmox tool, whatever its role lists, and doesn't name Proxmox machines in its prompt", async () => {
+    let ws!: Workspace;
+    const s = await setup({ workspace: (m) => (ws = new Workspace(m.keyring, m.users, { excludePorts: [] })) });
+    const parent = s.thread();
+    const settings = ws.settings(s.ada.id);
+    settings.addMachine({ name: "nas", host: "127.0.0.1", port: 22, username: "lyrica", privateKey: generateSshKey("test").privateKey, root: null, pool: "general", offNetwork: false }, `SHA256:${"A".repeat(43)}`);
+    settings.addMachine({ kind: "proxmox", name: "pve", host: "127.0.0.1", port: 8006, username: "lyrica@pve!agent", privateKey: "lyrica@pve!agent=fake", root: null, pool: "general", offNetwork: false }, Array(32).fill("AB").join(":"));
+    settings.setThread(parent.threadId, "general", { mode: "auto", machines: ["nas", "pve"] });
+    s.delegation.store.setRole(s.ada.id, { name: "operator", description: "Runs machines.", prompt: "You run machines.", tier: "cheap", tools: ["bash", "proxmox"], readOnly: false, thinking: "low" });
+    await s.run(parent, { task: "restart the web VM", role: "operator" });
+    const sent = s.cloud.requests.at(-1)!;
+    const prompt = JSON.stringify(sent.messages);
+    // It keeps its parent's machines, and hears of the SSH one only.
+    expect(prompt).toContain("Machines you can work on over SSH, with the machine argument: nas");
+    expect(prompt).not.toContain("Proxmox machines");
+    expect(sent.tools!.map((t) => t.function.name)).toEqual(expect.arrayContaining(["bash"]));
+    expect(sent.tools!.map((t) => t.function.name)).not.toContain("proxmox");
+  });
+
   it("never widens the parent's folders, switches or hosts", async () => {
     const host = tempDir();
     for (const d of ["a", "b"]) mkdirSync(join(host, d));
