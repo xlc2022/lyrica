@@ -142,7 +142,8 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   open a popover of the parts, the reserve and what's free, when measured,
   and the last turn's speed. It reads `ThreadSettings.context` and then each
   `context` stream event, so it follows every turn without a reload. After
-  a rewind or a reset it is hidden until the next turn measures again.
+  a rewind it is hidden until the next turn measures again; a `reset` (the
+  stream reconnecting past its replay buffer, as on a long turn) keeps it.
   Then, while the thread has a checklist (her `threads steps`),
   **Checklist** and "2 of 5", its numbers in mono (`src/Checklist.tsx`),
   open a popover (full width under the header on a phone) listing the steps
