@@ -46,7 +46,7 @@ export function CallStats({ live }: { live?: { call: LiveCall; since: number } }
   }, [ticking]);
   const line = live && callLine(live.call, Math.max(0, Math.floor((Math.max(now, live.since) - live.since) / 1000)));
   if (!line) return <span className="writing-dots" aria-hidden="true"><i /><i /><i /></span>;
-  // Numbers in mono; the words around them in the muted body font.
+  // Numbers in mono; their units and the words around them in the muted body font, as Status sets them.
   // Hidden from screen readers, as the dots are: it changes twice a second, and the status line says she is working.
-  return <span className="call-stats" title={line.tip} aria-hidden="true">{line.text.split(/([≈\d][\d,.]*k?(?: tok\/s| s)?)/).map((s, i) => (i % 2 ? <span key={i} className="num">{s}</span> : s))}</span>;
+  return <span className="call-stats" title={line.tip} aria-hidden="true">{line.text.split(/(≈?\d[\d,.]*k?)/).map((s, i) => (i % 2 ? <span key={i} className="num">{s}</span> : s))}</span>;
 }

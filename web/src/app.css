@@ -423,7 +423,9 @@ button.jump-latest { font-size: 13px; min-height: var(--tap); }
 .writing-dots i:nth-child(2) { animation-delay: 0.15s; }
 .writing-dots i:nth-child(3) { animation-delay: 0.3s; }
 @keyframes dot-fade { 0%, 60%, 100% { opacity: 0.25; } 30% { opacity: 1; } }
-.thinking-dots { color: var(--muted); margin: 0; font-size: 13px; }
+/* The line keeps the body's size, so its 80ch column is the messages' own and it starts where her reply does; its words are 13 px. */
+.thinking-dots { color: var(--muted); margin: 0; }
+.thinking-dots > span:not(.call-stats) { font-size: 13px; }
 /* The request's counts in place of the dots: muted, numbers in mono, one line that never wraps its numbers apart. */
 .call-stats { color: var(--muted); font-size: 12px; line-height: 20px; }
 .call-stats .num { font-size: 12px; white-space: nowrap; }
