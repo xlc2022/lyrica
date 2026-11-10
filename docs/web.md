@@ -182,8 +182,9 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   **Routine** (`src/Routines.tsx`, `ThreadSettings.routines`) opens the
   same style of popover listing each routine's title with its purpose tooltip,
   schedule, next time in mono, Pause or Resume and Remove, never execution
-  notes. Title and purpose fall back independently: source thread plus routine
-  ID, and saved instructions here/in a new thread. Neither parses the note.
+  notes. Title and purpose fall back independently: "Routine" and its ID (the
+  thread is the popover's own, or its link beside it in Settings), and saved
+  instructions here/in a new thread. Neither parses the note.
   The title reuses `wl`/`preview`: hover, keyboard focus or a touch tap reveals
   its `aria-describedby` tooltip; Escape dismisses it before the popover.
   Long titles wrap within the text column, with 44 px touch targets. Its fact shows the earliest active next
@@ -1328,6 +1329,12 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   Coming back to a thread mid-message, the stream first sends the message
   so far (docs/daemon.md, The event stream), so the reply and its reasoning
   show from their start.
+  A `live_call` event (and `hello`'s `liveCall`) keeps the model request
+  the turn waits on, with when it went out by the browser's clock
+  (`Live.liveCall`); `src/CallStats.tsx` shows it in place of the writing
+  dots and the "is thinking…" line (`callLine` words it), ticking its
+  seconds while the server says nothing, and falls back to the dots while
+  nothing is known or the reply waits for the GPU.
   An `error` marked `reply` is the error of the reply that just ended, and
   shows under that reply as its stored copy does, so a retry Pi makes goes
   on below it; the turn's other errors show after the live turn until the

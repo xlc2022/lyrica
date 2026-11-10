@@ -7,6 +7,7 @@ import { streamWithInlineThinking } from "./inline-thinking.ts";
 import { capToolCalls, objectTools } from "./tool-stream.ts";
 import { markOverflow, sharedStream, shareModel } from "./model-share.ts";
 import { reserveFor } from "./context.ts";
+import { liveFields } from "./live-call.ts";
 
 const FREE = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
 
@@ -96,7 +97,7 @@ export function waitingFetch(f: typeof fetch, origin: string, onWait: (w: GpuWai
   }) as typeof fetch;
 }
 
-export async function modelRuntimeFor(models: Models, ctx: CallContext, opts: { onGpuWait?: (w: GpuWait | null) => void } = {}): Promise<ModelRuntime> {
+export async function modelRuntimeFor(models: Models, ctx: CallContext, opts: { onGpuWait?: (w: GpuWait | null) => void; live?: boolean } = {}): Promise<ModelRuntime> {
   const allowed = models.allowed(ctx);
   // A plan's sign-in lives in the user's user.db, where Pi's refresh writes it back.
   const plans = new Set(allowed.filter(({ endpoint }) => isPlan(endpoint.api)).map(({ endpoint }) => endpoint.id));
@@ -131,12 +132,14 @@ export async function modelRuntimeFor(models: Models, ctx: CallContext, opts: { 
     if (now) follow(model, found.endpoint, now, ctx.contextLimit);
     if (found) {
       const values = models.offeringSettings(ctx.userId, found.offering.id).values;
-      if (Object.keys(values).length) {
+      // A thread's own turns ask a server that can say more while it streams to say it (live-call.ts).
+      const live = opts.live ? now ?? found.offering : undefined;
+      if (Object.keys(values).length || live) {
         const before = prepared.options.onPayload;
         const repetition = found.endpoint.kind === "local" && found.endpoint.api !== "host" ? "repeat_penalty" : "repetition_penalty";
         prepared.options.onPayload = async (payload, m) => {
           const params = ((await before?.(payload, m)) ?? payload) as Record<string, unknown>;
-          return { ...params, ...payloadFields(values, repetition, params, acceptedSettings(found.endpoint)) };
+          return { ...params, ...payloadFields(values, repetition, params, acceptedSettings(found.endpoint)), ...(live ? liveFields(live, params) : {}) };
         };
       }
     }

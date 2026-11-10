@@ -282,6 +282,8 @@ export class HostedThread {
   toolLimited = false;
   /** The chat request waiting for a model host's GPU now, if one is. */
   private gpuWait: Api.GpuWait | null = null;
+  /** The model request a turn waits on now, if one is. */
+  private liveCall: { call: Api.LiveCall; at: number } | null = null;
 
   constructor(private readonly o: HostOptions, readonly userId: string, readonly pool: Pool, readonly threadId: string,
     private readonly release: () => void) {
@@ -311,7 +313,7 @@ export class HostedThread {
   /** Subscribes a stream. Replays what came after `lastEventId`, or starts with `reset` if that's gone. */
   subscribe(client: Client, lastEventId?: string): () => void {
     const hello: ThreadEvent = { type: "hello", busy: this.busy, queued: [...this.queued], permissions: [...this.pending.values()].map((p) => p.request),
-      making: [...this.making.values(), ...this.o.clipsMaking?.(this.userId, this.pool, this.threadId) ?? []], ...(this.gpuWait ? { gpuWait: this.gpuWait } : {}) };
+      making: [...this.making.values(), ...this.o.clipsMaking?.(this.userId, this.pool, this.threadId) ?? []], ...(this.gpuWait ? { gpuWait: this.gpuWait } : {}), ...(this.liveCall ? { liveCall: { ...this.liveCall.call, ms: this.liveCall.call.ms + Date.now() - this.liveCall.at } } : {}) };
     let replayed = false;
     if (lastEventId) {
       const [epoch, num] = lastEventId.split("-");
@@ -338,12 +340,23 @@ export class HostedThread {
     // A turn that ended without ending a call (stopped mid-call, say) leaves no placeholder behind.
     if (event.type === "turn_end") for (const id of [...this.making.keys()]) { this.making.delete(id); this.emit({ type: "made", toolCallId: id }); }
     if (event.type === "turn_end" && this.gpuWait) { this.gpuWait = null; this.emit({ type: "gpu_wait", wait: null }); }
+    if (event.type === "turn_end" && this.liveCall) this.liveCallChanged(null);
     this.track(event);
     this.o.onEvent?.(this.userId, this.pool, this.threadId, event);
     const n = ++this.n;
     this.buffer.push({ n, event });
     if (this.buffer.length > BUFFER) this.buffer.shift();
     for (const c of this.clients) c(this.id(n), event);
+  }
+
+  /**
+   * The request's counts and times change several times a second: sent to the open views as they are, never
+   * buffered, so they don't push real events out of the replay. A view that opens later gets the latest in `hello`.
+   */
+  private liveCallChanged(call: Api.LiveCall | null): void {
+    this.liveCall = call && { call, at: Date.now() };
+    const event: ThreadEvent = { type: "live_call", call };
+    for (const c of this.clients) c(this.id(this.n), event);
   }
 
   // --- Her message as it is written, for Read aloud ---
@@ -1110,6 +1123,8 @@ export class HostedThread {
         thread: ctx, models, cwd: this.o.cwd, task: () => tools.settings().code ? "code" : "chat",
         // A reply waiting for a host's GPU (up to 15 minutes, then the next model) has the views say what it waits for.
         onGpuWait: (wait) => { this.gpuWait = wait; this.emit({ type: "gpu_wait", wait }); },
+        // The request it waits on, as counts and times, in place of the dots until her words start.
+        onLiveCall: (call) => this.liveCallChanged(call),
         extensions: [
           createLyricaExtension(ctx, {
             code: () => tools.settings().code,

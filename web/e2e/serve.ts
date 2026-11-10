@@ -26,6 +26,7 @@
 // "compact: <summary>" compacts the thread with that summary (then says "Compacting.").
 // "fetch: <url>, <url>" reads each with web_fetch in turn (then says "Read them."); /page/<slug> is an article.
 // "think slowly: <text>" streams twelve sentences of reasoning, slowly, before the echo.
+// "prefill slowly: <text>" first reads its prompt in steps and reasons with llama.cpp's counts; "wait slowly: <text>" waits, then reasons with none.
 import { copyFileSync, mkdtempSync, rmSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
@@ -325,6 +326,26 @@ function fakeModel() {
         // A message that says "slowly" streams slowly enough to be read aloud while it is written. Only a short
         // one: sleep's long instructions quote the conversations, and a sleep run paced so took ~8 s of a 10 s wait.
         const pace = said.length < 1000 && /slowly/.test(said) ? 300 : 30;
+        // "prefill slowly:" plays llama.cpp: the prompt's read in twelve steps (a 46,001-token cache, 2,212 new), then reasoning
+        // with its per-token timings. "wait slowly:" says nothing for three seconds, then reasons with no counts, as a cloud model.
+        const chunk = (o: object) => res.write(`data: ${JSON.stringify({ ...base, choices: [], ...o })}\n\n`);
+        if (said.startsWith("prefill slowly:")) {
+          for (let n = 1; n <= 12; n++) {
+            chunk({ prompt_progress: { total: 48_213, cache: 46_001, processed: 46_001 + Math.round((2_212 * n) / 12), time_ms: n * 100 } });
+            await new Promise((r) => setTimeout(r, pace));
+          }
+          for (let n = 1; n <= 12; n++) {
+            res.write(`data: ${JSON.stringify({ ...base, choices: [{ index: 0, delta: { role: "assistant", reasoning_content: `Step ${n} of my reasoning. ` }, finish_reason: null }], timings: { prompt_n: 2_212, cache_n: 46_001, prompt_per_second: 1_840.2, predicted_n: n * 34, predicted_per_second: 38.4 } })}\n\n`);
+            await new Promise((r) => setTimeout(r, pace));
+          }
+        }
+        if (said.startsWith("wait slowly:")) {
+          await new Promise((r) => setTimeout(r, 10 * pace));
+          for (const n of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]) {
+            send({ role: "assistant", reasoning_content: `Step ${n} of my reasoning. ` });
+            await new Promise((r) => setTimeout(r, pace));
+          }
+        }
         // "think slowly:" reasons first, a sentence at a time, so a test can leave the thread and come back mid-reasoning.
         if (said.startsWith("think slowly:")) {
           for (const n of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]) {

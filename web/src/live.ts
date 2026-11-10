@@ -1,6 +1,6 @@
 // What a thread's event stream says is happening now, before it is stored.
 // Pure, so it can be tested without a browser.
-import type { ContextInfo, GpuWait, Making, Message, MessagePart, PermissionRequest, ThreadEvent, ThreadRef, ThreadStep, Told, WakeupInfo } from "./api.ts";
+import type { ContextInfo, GpuWait, LiveCall, Making, Message, MessagePart, PermissionRequest, ThreadEvent, ThreadRef, ThreadStep, Told, WakeupInfo } from "./api.ts";
 
 export type LiveItem =
   | { role: "user"; text: string; afterN?: number }
@@ -48,6 +48,8 @@ export interface Live {
   context?: ContextInfo | null;
   /** A reply waiting for a model host's GPU: what it waits for, shown in place of "is thinking". */
   gpuWait?: GpuWait;
+  /** The model request the turn waits on, with when it went out by this browser's clock: shown in place of the dots. */
+  liveCall?: { call: LiveCall; since: number };
 }
 
 export const initialLive: Live = { busy: false, queued: [], permissions: [], making: {}, items: [], errors: [], reload: 0, tools: 0, ended: 0, subagents: {}, settings: 0, children: 0 };
@@ -108,7 +110,7 @@ export function liveReducer(s: Live, e: LiveAction): Live {
       // away, is stored now, but the messages may have been fetched before it
       // ended. Reload to pick it up.
       return { ...s, busy: e.busy, queued: e.queued, permissions: e.permissions, making: Object.fromEntries((e.making ?? []).map((m) => [m.toolCallId, m])),
-        gpuWait: e.gpuWait, ...(!e.busy && { reload: s.reload + 1, ended: s.items.length }) };
+        gpuWait: e.gpuWait, liveCall: e.liveCall && e.busy ? { call: e.liveCall, since: Date.now() - e.liveCall.ms } : undefined, ...(!e.busy && { reload: s.reload + 1, ended: s.items.length }) };
     }
     case "reset":
       return { ...s, items: [], making: {}, ended: 0, reload: s.reload + 1 };
@@ -188,7 +190,7 @@ export function liveReducer(s: Live, e: LiveAction): Live {
       return { ...s, steps: e.steps };
     case "turn_end":
       // A subagent's request outlives the parent's turn: it ends with its own permission_end.
-      return { ...s, busy: false, gpuWait: undefined, permissions: s.permissions.filter((p) => p.subagent), reload: s.reload + 1, ended: s.items.length };
+      return { ...s, busy: false, gpuWait: undefined, liveCall: undefined, permissions: s.permissions.filter((p) => p.subagent), reload: s.reload + 1, ended: s.items.length };
     case "stored":
       return { ...s, items: s.items.slice(s.ended), ended: 0 };
     case "stopping":
@@ -214,6 +216,9 @@ export function liveReducer(s: Live, e: LiveAction): Live {
       return { ...s, context: e.context };
     case "gpu_wait":
       return { ...s, gpuWait: e.wait ?? undefined };
+    // Its clock runs from when the request went out, by this browser's clock.
+    case "live_call":
+      return { ...s, liveCall: e.call ? { call: e.call, since: Date.now() - e.call.ms } : undefined };
     // The compaction marker appears when the messages reload.
     case "usage":
     case "compacted":

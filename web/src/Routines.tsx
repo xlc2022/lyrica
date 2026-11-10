@@ -14,7 +14,7 @@ export function ScheduleText({ text }: { text: string }) {
   return <>{text.split(/(\d+(?::\d+)?)/).map((part, i) => /^\d/.test(part) ? <span className="num" key={i}>{part}</span> : part)}</>;
 }
 
-/** Explicit purpose, never the execution note; older routines keep an honest destination fallback. */
+/** Explicit purpose, never the execution note; older routines keep an honest destination fallback. An untitled one is "Routine <id>": the thread is already the popover's, or its own link in Settings. */
 function RoutineTitle({ routine: r }: { routine: RoutineInfo }) {
   const tip = useId();
   const [dismissed, setDismissed] = useState(false);
@@ -32,7 +32,7 @@ function RoutineTitle({ routine: r }: { routine: RoutineInfo }) {
   return <span className="wl routine-title" tabIndex={0} aria-describedby={tip} data-dismissed={dismissed || undefined}
     onFocus={() => setDismissed(false)} onPointerEnter={() => setDismissed(false)}
     onClick={e => { e.currentTarget.focus(); setDismissed(false); }}>
-    <span>{r.title ?? <>{r.threadTitle} · Routine <span className="num">{r.id}</span></>}</span>
+    <span>{r.title ?? <>Routine <span className="num">{r.id}</span></>}</span>
     <span className="preview" role="tooltip" id={tip} ref={preview}>{r.description ?? `Runs the saved instructions ${r.newThread ? "in a new thread" : "here"}.`}</span>
   </span>;
 }
@@ -52,7 +52,7 @@ export function RoutineRows({ userId, routines, linked, onChange }: {
           {r.paused ? <span className="muted">Paused</span> : <time className="num" dateTime={r.nextAt} title={fullTime(r.nextAt)}>{wakeTime(r.nextAt)}</time>}
         </div>
         <button type="button" className="sm" disabled={busy} onClick={() => void run(async () => { await patch(path, { paused: !r.paused }); onChange(); })}>{r.paused ? "Resume" : "Pause"}</button>
-        <button type="button" className="icon sm danger" aria-label={`Remove routine: ${r.title ?? `${r.threadTitle} · Routine ${r.id}`}`} title="Remove" disabled={busy}
+        <button type="button" className="icon sm danger" aria-label={r.title ? `Remove routine: ${r.title}` : `Remove routine ${r.id}`} title="Remove" disabled={busy}
           onClick={() => void run(async () => { await del(path); onChange(); })}><Icon name="close" /></button>
       </div>;
     })}

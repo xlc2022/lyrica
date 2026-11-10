@@ -385,6 +385,7 @@ interface Offering extends Capabilities {   // one model on one endpoint, with a
   maxOutput?;                                                // OpenRouter's top_provider.max_completion_tokens
   lmStudio?;                                                 // LM Studio listed it on its own API at the last discovery
   llamaServer?;                                              // a plain llama-server described it on /props at the last discovery: its one level is the template's switch
+  server?: "llama.cpp" | "vllm";                             // the server a model host runs it on (its /host/v1/models `server`)
 }
 type ModelRef = { offeringId: string } | { groupId: string };
 interface Group { id; name; shared; members: string[] }      // offering IDs, in order, one per endpoint
@@ -804,11 +805,12 @@ Custom roles override built-ins by name, except `claude`.
   `title` (80 characters, one line) and `description` (300 characters, purpose
   tooltip, separate from execution instructions). Edit takes `routineId`
   and either or both metadata fields, preserving omitted fields and every
-  execution field. Supplied fields must be nonempty text; credentials are
-  removed before length/line validation, and invalid input is rejected.
+  execution field; an empty field clears that label. Fields given to add must
+  be nonempty text; credentials are removed before length/line validation,
+  and invalid input is rejected.
   `parseSchedule` validates it; `every` gets its `from` at creation.
-  List returns only the calling thread's IDs, labels (or honest source-thread/ID
-  and saved-instructions/destination fallbacks), schedule descriptions, next
+  List returns only the calling thread's IDs, labels (a row without a title is
+  just its ID; without a description, saved-instructions/destination wording), schedule descriptions, next
   times for active routines, paused state and destination choice, without
   notes. Pause, resume and remove take numeric `routineId`; tool mutations always include the
   calling thread ID. Add refuses more than 10 routines including paused
@@ -826,7 +828,8 @@ Custom roles override built-ins by name, except `claude`.
   `title` and `description`; the minimum reader stays unchanged. `RoutineMetadata`
   and `checkRoutineMetadata` validate display labels independently of notes.
   `addRoutine(…, zone?, metadata?)` accepts labels; `editRoutine(threadId, id,
-  metadata)` updates only supplied metadata, confined to that source thread.
+  metadata)` updates only supplied metadata (null or empty clears a label),
+  confined to that source thread.
   `PoolReader.routines` includes paused routines; `PoolStore.addRoutine`, `pauseRoutine`, `removeRoutine` and
   `advanceRoutine` store and advance them. A fire sets `last_at` and adds a
   note-free fired row to `wakeups`, the shared rolling-day ledger:
@@ -857,7 +860,7 @@ Custom roles override built-ins by name, except `claude`.
   `threadTitle`, optional `title` and `description`, `newThread`, `schedule`
   (the `describe()` text), `nextAt`, `paused`, never notes. Labels are never
   inferred from execution instructions; web fallbacks independently use
-  source thread plus routine ID for a missing title, and saved instructions
+  "Routine" and its ID for a missing title, and saved instructions
   here/in a new thread for a missing description. Each route uses session/key checks and only the requested
   user's own thread view; an absent thread or a routine from another
   thread is 404; non-boolean `paused` is 400. `ThreadSettings.routines`
@@ -1250,13 +1253,18 @@ The extension is created with a `ThreadContext`:
 
 ```ts
 // extension/, because core has no Pi dependency:
-modelRuntimeFor(models, ctx, { onGpuWait? }?): Promise<ModelRuntime>   // Pi runtime holding only models.allowed(ctx), sealed
+modelRuntimeFor(models, ctx, { onGpuWait?, live? }?): Promise<ModelRuntime>   // Pi runtime holding only models.allowed(ctx), sealed
+// live (a thread's own turns): requests to a llama.cpp model (a host's, or a plain llama-server) add return_progress and timings_per_token,
+// and to a host's vLLM model stream_options.continuous_usage_stats (liveFields); no other server is sent either.
 // onGpuWait(GpuWait { busyWith?; loading? } | null), passed for a thread's own turns (HostedThread; not sleep, subagents or watching): a host's chat requests go through waitingFetch(fetch, origin, onWait), tagged with
 // X-Lyrica-Job, and their job is read every 2 s while queued; onWait hears the latest one waiting and null once none does.
 // Every /v1 request to a host (sleep, subagents and watching too) waits for the GPU up to 15 minutes: hostFetch tags it.
 piModelFor(runtime, models, task, ctx, resolution?): { ref; model; resolution }
 prepareTurn({ session, runtime, models, call, pool, threadId, task?, thinking?, retry? }): Promise<Resolution>
-openThreadSession({ thread, models, cwd, extensions, settings?, task?: () => Task, onGpuWait? }): Promise<ThreadSession>
+openThreadSession({ thread, models, cwd, extensions, settings?, task?: () => Task, onGpuWait?, onLiveCall? }): Promise<ThreadSession>
+// onLiveCall(LiveCall | null): the request a turn waits on (LiveCallMeter, live-call.ts), from Pi's before_provider_request, provider_stream_event,
+// deltas and message_end: numbers only, a delta's text measured by its length; sent when what it shows changes and at most every 500 ms
+// otherwise, null when the request ends. Also turns on modelRuntimeFor's `live`.
 interface ThreadSession { session; runtime; chat: { offeringId }; prepare(opts?: { thinking?; retry? }): Promise<Resolution>; dispose() }
 interface ContextMeter { report(): ContextInfo | undefined; contextLines(): string; pending?: { summary }; onProgress?(): void }   // LyricaOptions.meter; onProgress runs after each request that goes on with tools
 ```
@@ -2040,6 +2048,13 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     words, "a chat model") or `loading`; null once it no longer waits, and
     cleared at `turn_end`. A reply's stored `error` that is a server's JSON
     error ("503: {…}") keeps only its message (`plainError`);
+  - a `live_call` thread event (`call: LiveCall | null`, and `liveCall` on
+    a busy thread's `hello`, its `ms` brought up to date) while a turn waits
+    on a model request: `ms` since it went out, `prompt`, `cached`, `read`,
+    `readRate`, `output`, `outputRate`, `counted` and `writing` (api.ts
+    `LiveCall`). Counts and times only, never text, held in memory and
+    never stored or logged; sent to open views only, outside the replay
+    buffer; null when the request ends, and cleared at `turn_end`;
   - offline: an `offline` thread event (`task`, `tried`) when no model for a
     turn can be reached; a turn that hadn't started keeps its message in
     `queue` and sends it when a model answers. Any call that throws `Offline`

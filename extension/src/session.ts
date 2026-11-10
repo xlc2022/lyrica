@@ -7,6 +7,7 @@ import { keepRecentFor, reserveFor } from "./context.ts";
 import type { ThreadContext } from "./index.ts";
 import { modelRuntimeFor, piModelFor, prepareTurn, type GpuWait } from "./models.ts";
 import { createRepairExtension } from "./repair.ts";
+import { createLiveCallExtension, LiveCallMeter, type LiveCall } from "./live-call.ts";
 import { createTurnToolsExtension } from "./turn-tools.ts";
 import { recordEntries } from "./record.ts";
 
@@ -23,6 +24,8 @@ export interface ThreadSessionOptions {
   task?: () => Task;
   /** A chat request waiting for a model host's GPU (up to 15 minutes), and null once none waits. */
   onGpuWait?: (w: GpuWait | null) => void;
+  /** The model request a turn waits on, as counts and times, and null once it ends (live-call.ts). */
+  onLiveCall?: (c: LiveCall | null) => void;
 }
 
 /**
@@ -43,7 +46,7 @@ export interface ThreadSession {
 
 export async function openThreadSession(o: ThreadSessionOptions): Promise<ThreadSession> {
   const { thread } = o;
-  const runtime = await modelRuntimeFor(o.models, thread.call, o.onGpuWait ? { onGpuWait: o.onGpuWait } : {});
+  const runtime = await modelRuntimeFor(o.models, thread.call, { ...(o.onGpuWait ? { onGpuWait: o.onGpuWait } : {}), ...(o.onLiveCall ? { live: true } : {}) });
   // Any model will do to open with, even one whose machine is down: each turn picks again (prepare).
   const task = o.task?.() ?? "chat";
   const { ref: chat, model } = piModelFor(runtime, o.models, task, thread.call, o.models.resolve(task, thread.call, {}, { evenIfDown: true }));
@@ -62,7 +65,7 @@ export async function openThreadSession(o: ThreadSessionOptions): Promise<Thread
   const loader = new DefaultResourceLoader({
     cwd: o.cwd, agentDir: o.cwd, settingsManager,
     noContextFiles: true, noSkills: true, noExtensions: true, noPromptTemplates: true, noThemes: true,
-    extensionFactories: [createTurnToolsExtension(), createRepairExtension(), ...o.extensions],
+    extensionFactories: [createTurnToolsExtension(), createRepairExtension(), ...o.extensions, ...(o.onLiveCall ? [createLiveCallExtension(new LiveCallMeter(o.onLiveCall))] : [])],
   });
   await loader.reload();
   const { session } = await createAgentSession({

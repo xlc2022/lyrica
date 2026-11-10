@@ -1689,9 +1689,17 @@ export interface Making { toolCallId: string; startedAt: string; queued?: true; 
 /** What a reply waiting for a model host's GPU waits for: other work on it (`busyWith`, in plain words, "a chat model"), or its model loading. */
 export interface GpuWait { busyWith?: string; loading?: true }
 
+/**
+ * The model request a turn waits on, as counts and times only, never text (extension `LiveCall`): `ms` since it went out
+ * when sent; `prompt` its tokens (the server's count once it says, else the context's estimate), `cached` those from the
+ * server's cache, `read` the new ones read so far and `readRate` per second (llama.cpp); `output` tokens written and
+ * `outputRate` per second, `counted` when Lyrica counted them from the characters; `writing` thinking or a tool call.
+ */
+export interface LiveCall { ms: number; prompt?: number; cached?: number; read?: number; readRate?: number; output?: number; outputRate?: number; counted?: true; writing?: "thinking" | "tool" }
+
 export type ThreadEvent =
   /** On every connection, after any replay or message so far: the thread's state now, with what is being made. */
-  | { type: "hello"; busy: boolean; queued: string[]; permissions: PermissionRequest[]; making: Making[]; gpuWait?: GpuWait }
+  | { type: "hello"; busy: boolean; queued: string[]; permissions: PermissionRequest[]; making: Making[]; gpuWait?: GpuWait; liveCall?: LiveCall }
   /** Missed events can't be replayed: reload messages. */
   | { type: "reset" }
   /** A file was renamed and stored messages that named it changed: reload every message shown. */
@@ -1755,6 +1763,8 @@ export type ThreadEvent =
   | { type: "context"; context: ContextInfo }
   /** A reply waiting for a model host's GPU: what holds it, or its model loading; null once it no longer waits (and at `turn_end`). */
   | { type: "gpu_wait"; wait: GpuWait | null }
+  /** The model request a turn waits on, at most every 500 ms while it changes; null once it ends (and at `turn_end`). Not replayed. */
+  | { type: "live_call"; call: LiveCall | null }
   /** The thread was compacted, by her or by Pi at the window's edge (also stored, as a `notice` message). */
   | { type: "compacted"; before: number; after?: number; summary: string }
   /**

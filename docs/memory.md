@@ -91,7 +91,8 @@ be undone, and `sleep_focus`, the person's line for tonight's dream; step 15
 adds nullable `routines.title` and `routines.description`), never DDL in the
 memory module. Routine labels stay encrypted in their own pool: an optional
 one-line title (80 characters) and description (300 characters), checked after
-credential removal. Metadata edits preserve omitted fields and never change
+credential removal. Metadata edits preserve omitted fields, clear a label
+given as empty, and never change
 execution notes, schedules, destinations, paused state or firing times. Existing
 routines keep absent labels; labels are never extracted from their notes. Step 15
 only expands the schema, leaving the minimum reader unchanged.

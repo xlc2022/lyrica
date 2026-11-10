@@ -38,6 +38,8 @@ export interface DiscoveredModel {
   routerState?: string;
   /** A plain llama-server described it on /props: its thinking switch goes through the chat template, as on a model host. */
   llamaServer?: boolean;
+  /** The server a model host runs it on (host/API.md "Models"): llama.cpp or vLLM. */
+  server?: "llama.cpp" | "vllm";
   /** Its server says the model can't turn thinking off (LM Studio, OpenRouter's `reasoning.mandatory`). */
   alwaysThinks?: boolean;
   /** The file's SHA-256, where a host reports it: the same file on two hosts is the same model. */
