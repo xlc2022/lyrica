@@ -50,7 +50,9 @@ describe("routine facts", () => {
       expect(html).toContain("Runs the saved instructions in a new thread.");
       expect(html).toContain("An explicit purpose without a title.");
       expect(html).toContain("Runs the saved instructions here.");
-      expect(html).toContain("Checks · Routine");
+      expect(html).toContain('Routine <span class="num">4</span>');
+      expect(html).not.toContain("Checks · Routine");
+      expect(html).toContain('aria-label="Remove routine 4"');
       expect(html.includes("href=")).toBe(linked);
     }
   });

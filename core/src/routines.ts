@@ -6,17 +6,24 @@ import { removeSecrets } from "./secrets.ts";
 import { serverZone, wall, zonedTime } from "./zone.ts";
 
 export interface RoutineMetadata { title?: string; description?: string }
+/** An edit's labels: null clears one. */
+export interface RoutineMetadataEdit { title?: string | null; description?: string | null }
 export const ROUTINE_METADATA_LIMITS = { title: 80, description: 300 } as const;
 
 /** Explicit labels, with credentials removed before checking their stored length. Omitted fields stay omitted. */
-export function checkRoutineMetadata(input: unknown): RoutineMetadata {
+export function checkRoutineMetadata(input: unknown): RoutineMetadata;
+/** With `clear`, an empty label is null: the edit clears it. */
+export function checkRoutineMetadata(input: unknown, opts: { clear: true }): RoutineMetadataEdit;
+export function checkRoutineMetadata(input: unknown, opts?: { clear: true }): RoutineMetadataEdit {
   if (typeof input !== "object" || input === null || Array.isArray(input)) throw new Error("routine metadata is an object");
   const o = input as Record<string, unknown>;
-  const metadata: RoutineMetadata = {};
+  const metadata: RoutineMetadataEdit = {};
   for (const key of ["title", "description"] as const) {
     if (!Object.hasOwn(o, key)) continue;
+    if (opts?.clear && o[key] === null) { metadata[key] = null; continue; }
     if (typeof o[key] !== "string") throw new Error(`a routine's ${key} is text`);
     const value = removeSecrets(o[key]).trim();
+    if (!value && opts?.clear) { metadata[key] = null; continue; }
     if (!value) throw new Error(`a routine's ${key} is not empty`);
     if (value.length > ROUTINE_METADATA_LIMITS[key]) throw new Error(`a routine's ${key} is at most ${ROUTINE_METADATA_LIMITS[key]} characters`);
     if (key === "title" && /[\p{Cc}\p{Zl}\p{Zp}]/u.test(value)) throw new Error("a routine's title is one line of text");

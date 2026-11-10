@@ -99,19 +99,39 @@ describe("routine metadata", () => {
     const before = view.own.routines(thread);
     const bad: unknown[] = [
       null, [], "title", 1, {}, { title: undefined }, { description: undefined },
-      { title: null }, { title: 42 }, { description: false }, { description: [] },
-      { title: "" }, { title: " \t " }, { description: "" }, { description: "\n " },
+      { title: 42 }, { description: false }, { description: [] },
       { title: "two\nlines" }, { title: "two\rlines" }, { title: "two\u2028lines" },
       { title: "x".repeat(81) }, { description: "x".repeat(301) },
+      { title: "", description: "x".repeat(301) },
+    ];
+    // Empty labels are refused when adding; in an edit they clear (below).
+    const emptyOnAdd: unknown[] = [
+      { title: null }, { title: "" }, { title: " \t " }, { description: "" }, { description: "\n " },
       { title: "Do not save this", description: "" },
     ];
-    for (const input of bad) {
+    for (const input of [...bad, ...emptyOnAdd]) {
       const metadata = input as RoutineMetadata;
       expect(() => checkRoutineMetadata(input)).toThrow(Error);
       expect(() => view.own.addRoutine(thread, daily, "Instructions.", false, createdAt, "UTC", metadata)).toThrow(Error);
-      expect(() => view.own.editRoutine(thread, id, metadata)).toThrow(Error);
+      if (bad.includes(input)) expect(() => view.own.editRoutine(thread, id, metadata)).toThrow(Error);
       expect(view.own.routines(thread)).toEqual(before);
     }
+    view.close();
+  });
+
+  it("clears a label in an edit given an empty one, leaving the other and every execution field", async () => {
+    const { view } = await routineStore();
+    const thread = view.own.createThread({ interface: "web" }).id;
+    const id = view.own.addRoutine(thread, daily, "Instructions.", true, createdAt, "UTC", { title: "Original", description: "Original purpose." });
+    const [before] = view.own.routines(thread);
+    const { title: _title, description: _description, ...execution } = before!;
+    expect(view.own.editRoutine(thread, id, { title: " " })).toBe(true);
+    expect(view.own.routines(thread)).toEqual([{ ...execution, description: "Original purpose." }]);
+    expect(view.own.editRoutine(thread, id, { title: "Back", description: "" })).toBe(true);
+    expect(view.own.routines(thread)).toEqual([{ ...execution, title: "Back" }]);
+    expect(view.own.editRoutine(thread, id, { title: null })).toBe(true);
+    expect(view.own.routines(thread)).toEqual([execution]);
+    expect(checkRoutineMetadata({ title: "", description: "Kept." }, { clear: true })).toEqual({ title: null, description: "Kept." });
     view.close();
   });
 });

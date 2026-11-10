@@ -54,7 +54,8 @@ test("routine titles explain their purpose on focus and touch without exposing i
   await fact.click();
   const legacy = pop.locator(".routine-title").last();
   await legacy.click();
-  await expect(legacy).toContainText("Garden checks · Routine");
+  await expect(legacy).toContainText(/^Routine \d+/);
+  await expect(legacy).not.toContainText("Garden checks");
   await expect(legacy.getByRole("tooltip")).toHaveText("Runs the saved instructions in a new thread.");
   await noHorizontalScroll(page);
   await page.goto(`/#/u/${userId}/settings/routines`);
@@ -74,7 +75,7 @@ test("routine titles explain their purpose on focus and touch without exposing i
   await expect(rows.nth(1).getByRole("button", { name: "Pause", exact: true })).toBeVisible();
   await rows.nth(1).getByRole("button", { name: "Pause", exact: true }).click();
   await expect(rows.nth(1).getByRole("button", { name: "Resume", exact: true })).toBeVisible();
-  await rows.last().getByRole("button", { name: /^Remove routine:/ }).click();
+  await rows.last().getByRole("button", { name: /^Remove routine \d+$/ }).click();
   await expect(rows).toHaveCount(2);
 });
 

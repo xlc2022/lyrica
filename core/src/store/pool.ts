@@ -2,7 +2,7 @@ import { removeSecrets } from "../secrets.ts";
 import { pathRewriter, rewriteStrings, type Respelling } from "../workspace/renames.ts";
 import { SkillLibrary } from "../skills.ts";
 import { randomBytes } from "node:crypto";
-import { checkRoutineMetadata, nextRun, parseSchedule, type RoutineMetadata, type Schedule } from "../routines.ts";
+import { checkRoutineMetadata, nextRun, parseSchedule, type RoutineMetadata, type RoutineMetadataEdit, type Schedule } from "../routines.ts";
 import type { ForgeKind, ForgeWatchState } from "../forge/types.ts";
 import type { Db } from "../db.ts";
 import { render, toStored, type UserId } from "../mentions.ts";
@@ -1478,11 +1478,12 @@ export class PoolStore extends PoolReader {
       .run(threadId, JSON.stringify(checked), note, newThread ? 1 : 0, nextRun(checked, new Date(at), zone).toISOString(), at, labels.title ?? null, labels.description ?? null).lastInsertRowid);
   }
 
-  /** Change explicit labels only; omitted fields and all execution state stay as they were. */
-  editRoutine(threadId: string, id: number, metadata: RoutineMetadata): boolean {
-    const labels = checkRoutineMetadata(metadata);
-    return this.db.prepare("UPDATE routines SET title = coalesce(?, title), description = coalesce(?, description) WHERE thread = ? AND id = ?")
-      .run(labels.title ?? null, labels.description ?? null, threadId, id).changes > 0;
+  /** Change explicit labels only: an empty one clears it, omitted ones and all execution state stay as they were. */
+  editRoutine(threadId: string, id: number, metadata: RoutineMetadataEdit): boolean {
+    const labels = checkRoutineMetadata(metadata, { clear: true });
+    const keep = (key: keyof RoutineMetadataEdit) => Object.hasOwn(labels, key) ? 0 : 1;
+    return this.db.prepare("UPDATE routines SET title = CASE WHEN ? THEN title ELSE ? END, description = CASE WHEN ? THEN description ELSE ? END WHERE thread = ? AND id = ?")
+      .run(keep("title"), labels.title ?? null, keep("description"), labels.description ?? null, threadId, id).changes > 0;
   }
 
   /** The user's time zone changed: every routine's next run moves to its wall time in `zone`. Every-N-hours ones keep theirs. */

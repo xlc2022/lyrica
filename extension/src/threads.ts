@@ -111,8 +111,8 @@ const Params = Type.Object({
   goal: Type.Optional(Type.String({ maxLength: 2000 })),
   instructions: Type.Optional(Type.String({ maxLength: 4000 })),
   ids: Type.Optional(Type.Array(Type.String(), { maxItems: 10, description: "For fold: existing thread IDs to suggest bringing into this project. The person applies the card." })),
-  title: Type.Optional(Type.String({ description: "Child title; routine title (80 chars, one line)." })),
-  description: Type.Optional(Type.String({ description: "Routine purpose (300 chars), not execution notes." })),
+  title: Type.Optional(Type.String({ description: "For start: the child thread's title. For routine add or edit: the routine's short title for the person, one line, at most 80 characters; in edit, an empty string clears it." })),
+  description: Type.Optional(Type.String({ description: "For routine add or edit: what the routine is for, in words for the person, at most 300 characters; never its execution note. In edit, an empty string clears it." })),
   task: Type.Optional(Type.String({ description: "For start: what to work on, with everything it needs. It starts with your persona and memory, but none of this conversation." })),
   base: Type.Optional(Type.Boolean()),
   folders: Type.Optional(Type.Array(Type.String(), { description: "For start: only these of this thread's folders." })),
@@ -121,17 +121,17 @@ const Params = Type.Object({
   code: Type.Optional(Type.Boolean({ description: "For start: true starts it in code mode." })),
   id: Type.Optional(Type.String({ description: "For message, read, stop, resolve and reopen: the thread's ID ([t:…]) or current title." })),
   minutes: Type.Optional(Type.Number({ description: `For later: how many minutes from now to wake this thread, 1 to ${WAKEUP_LIMITS.maxMinutes}.` })),
-  note: Type.Optional(Type.String({ description: "Later/routine add: the wake-up's execution instructions." })),
-  routineAction: Type.Optional(StringEnum(["add", "edit", "list", "pause", "resume", "remove"] as const, { description: "Routines." })),
-  routineId: Type.Optional(Type.Integer({ minimum: 1, description: "Routine ID." })),
+  note: Type.Optional(Type.String({ description: "For later or routine add: the note to yourself the wake-up starts with: what to check and what to do then." })),
+  routineAction: Type.Optional(StringEnum(["add", "edit", "list", "pause", "resume", "remove"] as const, { description: "For routine: what to do with this thread's routines. Edit changes only the title and description." })),
+  routineId: Type.Optional(Type.Integer({ minimum: 1, description: "For routine edit, pause, resume or remove: the routine's numeric ID from routine list." })),
   schedule: Type.Optional(Type.Object({
     kind: Type.String({ description: "daily, weekdays, weekly, yearly or every." }),
     time: Type.Optional(Type.String({ description: "HH:MM in the person's time zone." })),
     day: Type.Optional(Type.Number({ description: "For weekly: 0 (Sunday) to 6 (Saturday)." })),
     date: Type.Optional(Type.String({ description: "For yearly: MM-DD." })),
     hours: Type.Optional(Type.Number({ description: "For every: a whole number from 1 to 168, counted from now." })),
-  }, { description: "Routine schedule." })),
-  newThread: Type.Optional(Type.Boolean({ description: "Routine: new thread; default false." })),
+  }, { description: "For routine add: the recurring schedule." })),
+  newThread: Type.Optional(Type.Boolean({ description: "For routine add: open a fresh thread each time; false (default) runs here." })),
   cancel: Type.Optional(Type.Literal(true, { description: "For later: drop this thread's pending wake-ups instead." })),
   pr: Type.Optional(Type.String({ description: "For watch: the pull request, as owner/repo#number or its URL, on one of this thread's repositories." })),
   steps: Type.Optional(Type.Array(Type.Object({ text: Type.String(), state: StringEnum(["todo", "doing", "done"] as const) }),
@@ -334,7 +334,7 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
             const metadata = { ...(p.title !== undefined ? { title: p.title } : {}), ...(p.description !== undefined ? { description: p.description } : {}) };
             if (p.routineAction === "list") {
               const rows = store.routines(thread.threadId);
-              return text(rows.length ? rows.map((r) => `Routine ${r.id}: ${r.title ?? store.getThread(thread.threadId)?.title ?? "Untitled"}, ${describe(r.schedule)}, ${r.paused ? "paused" : `next ${r.nextAt}`}, ${r.newThread ? "opens a new thread" : "runs here"}. ${r.description ?? `Runs the saved instructions ${r.newThread ? "in a new thread" : "here"}.`}`).join("\n") : "This thread has no routines.");
+              return text(rows.length ? rows.map((r) => `Routine ${r.id}${r.title ? `: ${r.title}` : ""}, ${describe(r.schedule)}, ${r.paused ? "paused" : `next ${r.nextAt}`}, ${r.newThread ? "opens a new thread" : "runs here"}. ${r.description ?? `Runs the saved instructions ${r.newThread ? "in a new thread" : "here"}.`}`).join("\n") : "This thread has no routines.");
             }
             if (p.routineAction === "add") {
               if (!p.note?.trim()) throw new Error("routine add needs a note to yourself");
