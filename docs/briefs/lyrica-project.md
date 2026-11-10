@@ -91,8 +91,7 @@ release passed probation there.
 1. **New project** from the thread list's own menu (right-click or long
    press its empty space), in the general pool, and name it "Lyrica"
    (**Rename…** in its menu). In **Project settings** (the **Project** link in the project chat's header):
-   General → Goal: "Improve Lyrica's own code from what we notice in use,
-   through review."; under This chat, **Repositories** → **+** →
+   General → Goal: "Build and improve Lyrica's own code, through review."; under This chat, **Repositories** → **+** →
    `xlc2022/lyrica` from her GitHub account, then **Thread settings**: turn
    the internet on, which reading CI logs needs (allowing only
    `github.com`, `api.github.com` and `registry.npmjs.org` works for
@@ -137,8 +136,10 @@ release passed probation there.
    - **Review** (the strongest cloud model allowed): reads a brief
      before its code starts, when there is one (goal, smallest version, which docs/ux.md rule
      each new control follows, what it reuses, what it adds against
-     PRINCIPLES 8's budgets), then reviews every PR she opens before she
-     merges it, against the brief or issue, AGENTS.md and the docs;
+     PRINCIPLES 8's budgets), then reviews each PR of hers that needs
+     review (AGENTS.md, "Review and merge", step 1) before she merges it,
+     and keeps PRINCIPLES, DESIGN, the contracts and docs/ux.md true to
+     what her project settles, against the brief or issue, AGENTS.md and the docs;
      sends fixes to the building thread; says verified.
    - **UI review** (the model the project uses for anything a user sees):
      reads a UI brief's mockup or written layout before its code
@@ -209,29 +210,29 @@ characters, the limit on project instructions.
 > PRINCIPLES.md, DESIGN.md and docs/contracts.md first, and docs/ux.md
 > before anything a user sees.
 >
-> **Work.** One issue, assigned to you and claimed first, per piece of
-> work: what you saw (with evidence), the smallest change a user would
-> notice, what it reuses, the principle it serves; bigger ideas under
-> "Later". Start small: big drafts cost review rounds. Before UI work, a
-> new API or dependency, write a short brief in docs/briefs/ for Review
-> (UI review sees a mockup), or say why not. One thread per issue on a
-> `lyrica/<short-name>` branch, one PR into `main`, tested in your
-> sandbox.
+> **Work.** You are the main builder: any work is yours, from what you
+> notice in use to planned features. One issue, assigned to you and
+> claimed first, per piece of work: what is wanted, the smallest change a
+> user would notice, what it reuses, the principle it serves. Start
+> small: big drafts cost review rounds. Before UI work, a new API or
+> dependency, write a short brief in docs/briefs/ (UI review sees a
+> mockup), or say why not. One thread per issue on a
+> `lyrica/<short-name>` branch, one PR into `main`.
 >
-> **Review.** Send a draft PR and its head to Review and, for UI,
-> UI review. Fix findings; get rechecked. Once they verify the exact head
-> and CI is green, record both on the PR, mark it ready and merge it
-> yourself; a later push needs both again. If the
-> owner asks you to confer with Claude, hand the change to the `claude`
-> role and treat its report as findings. Ask Claude's project for work
-> only with a `claude` issue.
+> **Review.** Send each PR that needs review (AGENTS.md) and its head to
+> Review and, for UI, UI review. Fix findings; get rechecked. Once they
+> verify the exact head and CI is green, record both on the PR and merge
+> it yourself; a later push needs both again. If the owner asks you to
+> confer with Claude, hand the change to the `claude` role and treat its
+> report as findings. Ask Claude's project for work only with a `claude`
+> issue.
 >
 > **Boundary code** (CODEOWNERS paths): a PR touching it says so in its
 > first line and waits for the owner's own approval.
 >
 > **Updates.** The owner presses Update. First tag the `main` commit
-> `update/<date>` (annotated), listing everything merged since the
-> running version (Claude's too): what each changes, schema changes, what
+> `update/<date>` (annotated), listing all merged since the running
+> version: what each changes, schema changes, what
 > a rollback loses, what to check after. A failed update gets a
 > post-mortem issue.
 >
@@ -241,7 +242,7 @@ characters, the limit on project instructions.
 > **Docs are how others pick up your work.** A PR fixes every doc or
 > brief it makes stale and names them; report drift elsewhere. Keep each
 > issue or brief's handoff note current (done, next, open questions), so
-> another agent can continue from it alone.
+> another agent can continue from it.
 >
 > **This chat** starts work on your issues unasked and posts only what
 > needs the owner: a decision, a blocker, an update to press.
@@ -298,11 +299,12 @@ request. CI watches above are an existing mechanism, not a new timer to set.
 
 Claude's project can't see her project, and it doesn't review, approve or
 merge her PRs (the owner, 2026-11-10: she has full control of her work).
-She opens a draft PR, sends it and its head to her project's Review thread
-(and UI review when applicable), fixes findings and sends each new head
-for recheck. After all required reviewers verify the exact head and CI is
-green, she records the head and review results in the PR description or a
-comment, marks it ready for review and merges it herself, with a merge
+She follows AGENTS.md's four steps like any builder: a PR that needs
+review goes with its head to her project's Review thread (and UI review
+when applicable), she fixes findings and sends each new head for recheck.
+After all required reviewers verify the exact head and CI is green, she
+records the head and review results in the PR description or a comment
+and merges it herself, with a merge
 commit; a push after that needs both again, and boundary code (CODEOWNERS)
 also waits for the owner's own approval.
 
@@ -360,3 +362,13 @@ repository's settings: if the rule on `main` still requires an approval,
 set it to none and keep pull requests only and the CI jobs. Until now
 Claude's approval met it, and she can't approve her own PR, so with it
 left on she can't merge.
+
+2026-11-10, later still: one set of rules for both projects (AGENTS.md,
+"Workflow"). She is the main builder and takes any work, planned features
+included; docs-only, brief-only and small `web/` PRs skip her Review as
+they skip Claude's; her PRs no longer open as drafts; her Review thread
+keeps the design docs true to what her project settles. What still
+differs comes from her account: boundary code waits for the owner, and
+she pushes only `lyrica/*` branches and `update/*` tags. By the owner:
+paste the new instructions, set the project's Goal as in "Setup, by the
+owner, once", and tell her Review thread its part.
