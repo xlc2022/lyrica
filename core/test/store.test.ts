@@ -278,11 +278,16 @@ describe("notes", () => {
     const { memory, ada } = await setup();
     const { own } = memory.openThreadView(ada.id, "general");
     const s = said(own, "moving");
-    const [old] = own.addNotes([{ text: "{user} lives in Vienna", source: s.entry }], { author: "lyrica", thread: s.thread });
-    const [fresh] = own.addNotes([{ text: "{user} lives in Graz now", supersedes: [old!], source: s.entry }], { author: "lyrica", thread: s.thread });
+    const [old] = own.addNotes([{ text: "{user} lives in Vienna", about: ["home"], source: s.entry }], { author: "lyrica", thread: s.thread });
+    const [fresh] = own.addNotes([{ text: "{user} lives in Graz now", about: ["home"], supersedes: [old!], source: s.entry }], { author: "lyrica", thread: s.thread });
     expect(own.get(old!)!.supersededBy).toBe(fresh);
     expect(own.search("lives", { current: true }).map((h) => h.id)).toEqual([fresh]);
     expect(own.search("lives").map((h) => h.id).sort()).toEqual([fresh, old].sort());
+    // The memory browser's Hide superseded: the Notes layer and its tag counts leave the old note out.
+    expect(own.listMemories("note", { limit: 10, current: true }).map((i) => i.id)).toEqual([fresh]);
+    expect(own.listMemories("note", { limit: 10 }).map((i) => i.id).sort()).toEqual([fresh, old].sort());
+    expect(own.aboutWords({ current: true })).toEqual([{ about: "home", count: 1 }]);
+    expect(own.aboutWords()).toEqual([{ about: "home", count: 2 }]);
   });
 
   it("removes superseded notes nothing cites once their replacement is old enough, with no tombstone, keeping cited and user notes", async () => {

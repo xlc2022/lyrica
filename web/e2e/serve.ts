@@ -142,6 +142,16 @@ function fakeModel() {
         } finally { view.close(); }
         res.writeHead(204); return res.end();
       }
+      // Test-only superseded note, in encrypted stores, for the Memory page's Hide superseded; never a production route.
+      if (req.method === "POST" && req.url === "/superseded-fixture") {
+        const { userId } = JSON.parse(body) as { userId: string };
+        const view = daemon.services!.memory.openThreadView(userId, "general");
+        try {
+          const [old] = view.own.addNotes([{ text: "Fixture flat is in Vienna", about: ["fixture-flat"] }], { author: "sleep" });
+          view.own.addNotes([{ text: "Fixture flat is in Graz now", about: ["fixture-flat"], supersedes: [old!] }], { author: "sleep" });
+        } finally { view.close(); }
+        res.writeHead(204); return res.end();
+      }
       // Test-only sleep items, so a Notifications row can be shown cut and open; never a production route.
       // The run is one that was skipped, so the Sleep page's history reads as it did before.
       if (req.method === "POST" && req.url === "/sleep-item-fixture") {

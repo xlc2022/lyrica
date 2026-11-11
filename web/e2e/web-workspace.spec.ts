@@ -393,6 +393,28 @@ test("Search closes on a second page of one area, where the route's kind does no
   await noHorizontalScroll(page);
 });
 
+test("the Notes layer hides superseded notes until asked", async ({ page, baseURL, request }) => {
+  const userId = await enter(page, baseURL!);
+  const fixture = await request.post(`http://127.0.0.1:${Number(new URL(baseURL!).port) + 10}/superseded-fixture`, { data: { userId } });
+  expect(fixture.ok()).toBe(true);
+  await page.goto(`/#/u/${userId}/memory`);
+  const filter = page.getByRole("checkbox", { name: "Hide superseded" });
+  // Only where notes are listed.
+  await expect(filter).toHaveCount(0);
+  await page.getByRole("group", { name: "Layer" }).getByRole("button", { name: "Notes" }).click();
+  await expect(filter).toBeChecked();
+  const list = page.getByRole("region", { name: "Browse memory" }).locator(".mem-list");
+  await expect(list.getByText("Fixture flat is in Graz now")).toBeVisible();
+  await expect(list.getByText("Fixture flat is in Vienna")).toHaveCount(0);
+  const tag = page.getByRole("group", { name: "Tags" }).getByRole("button", { name: /^fixture-flat/ });
+  await expect(tag).toHaveText("fixture-flat 1");
+  await filter.uncheck();
+  await expect(list.getByText("Fixture flat is in Vienna")).toBeVisible();
+  await expect(list.locator("a", { hasText: "Fixture flat is in Vienna" })).toContainText("superseded");
+  await expect(tag).toHaveText("fixture-flat 2");
+  await noHorizontalScroll(page);
+});
+
 test("a memory can be added, edited and restored", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   // A thread mention in a memory shows as a link to that thread.

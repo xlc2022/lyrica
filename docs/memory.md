@@ -534,7 +534,9 @@ like a notebook: a browse pane and the memory being read, laid out like the
 Files panel.
 
 - **Browsing.** A search box, a segmented control of the layers (Pages,
-  Notes, WAKE, Journal, Recent), a pool select and **User introduced**. Without a
+  Notes, WAKE, Journal, Recent), a pool select, **User introduced** and, on
+  Notes or a search, **Hide superseded** (on by default: notes a later note
+  replaced stay out of the list and the tag counts). Without a
   search the list is one layer, newest first, paged with More; a search
   replaces the list with hits across layers. **Recent** is short-term
   memory: the logged messages (a person's and hers, never a tool's result,

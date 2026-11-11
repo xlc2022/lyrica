@@ -433,7 +433,7 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
 - **Memory** (`src/Memory.tsx`, `src/memory.ts`; [memory.md](memory.md), The
   memory browser): a notebook. The browse pane lists one layer (Pages, Notes,
   WAKE, Journal) newest first (Journal previews one entry with Show all
-  beside its History eyebrow), filtered by pool and User introduced, with
+  beside its History eyebrow), filtered by pool, User introduced and Hide superseded (on by default), with
   tags for notes; a search replaces the list. A memory without a title is
   named by its first words (`firstWords`), with citations and Markdown's
   marks taken off. The memory at the right shows
