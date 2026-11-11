@@ -956,7 +956,10 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   and 2; controls reuse §3's secondary button and menu, §4's short labels
   and tooltips, and §6's confirmation dialog. No drawer or extra captions.
 - **Administration**, for administrators: Status (`StatusSection` in
-  `Panel.tsx`, four cards: Status, Model hosts, Model calls, Memory use; "Updated" time
+  `Panel.tsx`, four cards: Status, Model hosts, Model calls, Memory use, in two
+  `.status-col` columns inside `.status-grid` (side by side once each can be 560 px,
+  else stacked; each card is a `status-card` size container, so its charts and table
+  take the phone layout by the card's own width); "Updated" time
   and a refresh icon button in the Status card's head, and the page re-reads
   Status, the sleep runs, memory counts, Memory use and the Models page every minute
   while visible and on focus; stale Debian systemd units with the

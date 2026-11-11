@@ -2801,6 +2801,20 @@ test("Status shows each model host's state and its GPUs, and refreshes itself wh
   await expect(box).toContainText("Waiting: 1 chat");
   await noHorizontalScroll(page);
   await page.screenshot({ path: `shots/status-hosts-${page.viewportSize()!.width}.png` });
+  // On a wide screen the cards take two columns: Status with Model hosts under it, Model calls beside them.
+  const statusCard = page.getByRole("region", { name: "Status", exact: true });
+  const calls = page.locator(".model-calls:not(.memory-use)");
+  const beside = async () => { const [a, b] = [await statusCard.boundingBox(), await calls.boundingBox()]; return b!.x > a!.x + a!.width && Math.abs(b!.y - a!.y) < 1; };
+  expect(await beside()).toBe(false);
+  if (page.viewportSize()!.width >= 1280) {
+    await page.setViewportSize({ width: 1920, height: 1000 });
+    await expect.poll(beside).toBe(true);
+    const [a, h] = [await statusCard.boundingBox(), await hosts.boundingBox()];
+    expect(h!.x).toBe(a!.x);
+    expect(h!.y).toBeGreaterThan(a!.y + a!.height);
+    await noHorizontalScroll(page);
+    await page.screenshot({ path: "shots/status-two-up-1920.png" });
+  }
   const read = page.waitForRequest((r) => r.url().endsWith(`/api/u/${userId}/admin/status`));
   await page.evaluate(() => dispatchEvent(new Event("focus")));
   await read;
