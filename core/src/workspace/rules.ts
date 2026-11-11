@@ -10,12 +10,25 @@ export const DEFAULT_COMMAND_RULES: readonly CommandRule[] = [
   { prefix: "rm -fr /", decision: "forbid" },
 ];
 const SHELL = { test: (w: string) => SHELLS.has(w) };
-const WRAPPERS = /^(?:sudo|doas|env|nohup|exec|command|time|nice|ionice|builtin|timeout|xargs|stdbuf|chroot)$/;
+const WRAPPER_NAMES = ["sudo", "doas", "env", "nohup", "exec", "command", "time", "nice", "ionice", "builtin", "timeout", "xargs", "stdbuf", "chroot"];
+const WRAPPERS = new RegExp(`^(?:${WRAPPER_NAMES.join("|")})$`);
 const WRAPPER = { test: (w: string) => WRAPPERS.test(w) || LOADER.test(w) };
 const assignment = (w: string) => /^[A-Za-z_][A-Za-z0-9_]*=/.test(w);
 const plain = (w: string | undefined) => !!w && /^[a-z][a-z0-9:_-]*$/.test(w);
 const programs = (words: string[]) => words.filter(w => !assignment(w));
-const opaque = (words: string[]) => {
+// What a glob in the program's name must not be able to name: a shell, wrapper or eval hides what runs.
+const HIDING = [...SHELLS, ...WRAPPER_NAMES, "eval", "source", "."];
+/** Whether a program glob (`/…/bin/*-gcc`) can only name programs no rule or check cares about: every word it
+ * expands to fits the pattern, so if none of `named` fits, nor a loader, it hides nothing. Only `*` and `?` in the
+ * name are read; a `[` set, or a name that could end like a loader (`.so`, `.so.2`), stays opaque. */
+const harmlessGlob = (word: string, named: readonly string[]) => {
+  const name = posix.basename(word);
+  if (/[[\]]/.test(name) || !/[^*?\do]$/.test(name)) return false;
+  const pattern = new RegExp(`^${name.replace(/[.+^${}()|\\]/g, "\\$&").replaceAll("*", ".*").replaceAll("?", ".")}$`);
+  return ![...HIDING, ...named].some(n => pattern.test(n));
+};
+/** `names`, the first words of the project's Ask and Forbid rules, lets a harmless program glob through (`harmlessGlob`). */
+const opaque = (words: string[], names?: readonly string[]) => {
   // `command -v` and `-V` only look a name up; they run nothing.
   if (words[0] === "command" && /^-[vV]+$/.test(words[1] ?? "")) return false;
   const wrapped = WRAPPER.test(words[0] ?? "");
@@ -28,7 +41,7 @@ const opaque = (words: string[]) => {
   while (wrapped && flag(words[at - 1]) && at + 1 < words.length) { at++; while (flag(words[at]) && at + 1 < words.length) at++; }
   const named = words.slice(0, at + 1);
   // `[` globs only with a `]` after it: a lone `[` is the test command (`[ "$n" = 1 ]`).
-  return named.some(w => /[*?]|\[.*\]/.test(w)) || candidates.some(w => /[$`]/.test(w) || /^(?:eval|source|\.)$/.test(w) || (SHELL.test(posix.basename(w)) && !words.includes("-c")));
+  return named.some((w, i) => /[*?]|\[.*\]/.test(w) && !(names && i === at && harmlessGlob(w, names))) || candidates.some(w => /[$`]/.test(w) || /^(?:eval|source|\.)$/.test(w) || (SHELL.test(posix.basename(w)) && !words.includes("-c")));
 };
 
 /** Validate and normalize saved prefixes; saving a prefix again replaces it. */
@@ -117,7 +130,7 @@ export function decide(command: string, rules: readonly CommandRule[], sourced?:
     }).sort((a, b) => b.prefix.split(" ").length - a.prefix.split(" ").length || rank[b.decision] - rank[a.decision]);
     const hit = matches[0];
     if (hit?.decision === "forbid") return hit;
-    if (at !== seen && opaque(words) && rules.some(r => r.decision === "forbid")) return { prefix: "", decision: "ask" } as CommandRule;
+    if (at !== seen && opaque(words, rules.filter(r => r.decision !== "allow").map(r => r.prefix.split(" ")[0]!)) && rules.some(r => r.decision === "forbid")) return { prefix: "", decision: "ask" } as CommandRule;
     return hit;
   });
   return results.find(r => r?.decision === "forbid") ?? results.find(r => r?.decision === "ask")

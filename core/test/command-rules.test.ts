@@ -39,6 +39,16 @@ describe("project command matching", () => {
       expect(decide(run, DEFAULT_COMMAND_RULES)?.decision, run).toBe("forbid");
     }
   });
+  it("lets a program glob through when it can't name a ruled, shell, wrapper or loader program", () => {
+    for (const command of ['/opt/tc/bin/*-gcc --version | head -1', '/opt/*/bin/arm-?-gcc -v', 'timeout 5 /opt/tc/bin/*-objdump -h x.o']) expect(decide(command, DEFAULT_COMMAND_RULES), command).toBeUndefined();
+    for (const command of ['/usr/bin/g?t push --force', '/bin/r* -rf /', '/bin/*sh task.sh', '/usr/bin/su*o g* push', '/lib/ld-*', '/lib/ld-*.so.2 /bin/rm -rf /', '/bin/[a-z]*-gcc -v', '/x/*', '/x/ev*l x', 'g* push']) {
+      expect(decide(command, DEFAULT_COMMAND_RULES)?.decision, command).not.toBeUndefined();
+    }
+    // Any rule's program counts, and an Allow rule never matches a glob.
+    expect(decide('/opt/*-gcc -v', [...DEFAULT_COMMAND_RULES, { prefix: 'arm-gcc', decision: 'ask' }])?.decision).toBe('ask');
+    expect(decide('/opt/tc/bin/*-gcc -v', [...DEFAULT_COMMAND_RULES, { prefix: '/opt/tc/bin/*-gcc', decision: 'allow' }])).toBeUndefined();
+    expect(alwaysAllowPrefix('/opt/tc/bin/*-gcc -v')).toBeUndefined();
+  });
   it("looks inside a sourced script that only sets things up", () => {
     const command = 'cd /workspace/c5400/src/linux && source /workspace/c5400/build/env.sh && make ARCH=arm dtbs -j12 > /workspace/c5400/build/dtbs.log 2>&1; echo "rc=$?"';
     expect(sourcedFile(command)).toEqual({ cds: ['/workspace/c5400/src/linux'], path: '/workspace/c5400/build/env.sh' });

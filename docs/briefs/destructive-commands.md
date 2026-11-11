@@ -48,7 +48,9 @@ owner chose three changes (01:14Z).
    don't ask in Auto mode. A script the line sources first
    (`cd … && source /…/env.sh && make`) is read where it runs: a forbidden
    command in it is refused, and one that only sets variables isn't opaque
-   (`sourcedFile`, `setupOnly`).
+   (`sourcedFile`, `setupOnly`). A program glob that can't name a shell,
+   wrapper, loader or ruled program (`/…/bin/*-gcc --version`) isn't opaque
+   either (`harmlessGlob`).
 3. **`cd` on the same line.** `suspectCommand` follows `cd`/`pushd` through
    the chain (absolute, home or relative to a known folder) and resolves a
    later relative `rm` target against it, so `cd / && rm -rf *` is read as

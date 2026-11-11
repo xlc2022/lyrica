@@ -1899,8 +1899,13 @@ wrapper's own words and its program (past any word that may be a flag's
 value), not in the program's arguments, so
 `timeout 60 curl "…?h=x"` isn't opaque; `command -v` and `-V` only look a
 name up, so they are never opaque; a lone `[`, the test command, is not a
-glob, only `[` with a `]` after it) cannot be allowed; with any forbid
-rule they ask in every mode.
+glob, only `[` with a `]` after it) cannot be allowed; with any forbid rule
+they ask in every mode. A glob in the program's own name, such as
+`/…/bin/*-gcc --version`, isn't opaque when the name can't match a shell, a
+wrapper, `eval`, `source`, `.` or the first word of an Ask or Forbid rule,
+since every word it expands to fits the pattern (`harmlessGlob`). It stays
+opaque when the name holds a `[` set or ends in `*`, `?`, a digit or `o`,
+which a loader's name (`ld-….so.2`) could.
 
 A sourced script can be read instead (`sourcedFile`, `setupOnly`). When the
 line's first part, after only `cd DIR`s, is `source FILE` or `. FILE` with a
