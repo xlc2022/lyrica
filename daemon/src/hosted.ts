@@ -1179,9 +1179,9 @@ export class HostedThread {
             ...(this.o.clips ? { background: (make: (signal: AbortSignal, onProgress: (p: JobProgress) => void) => Promise<ClipMade>, toolCallId: string) => this.o.clips!(this.userId, this.pool, this.threadId, make, toolCallId) } : {}),
           }),
           // web_search and web_fetch, behind the Web search switch; a fetch runs in the thread's sandbox.
-          // browse too: the thread's own browser, in a sandbox with its network and nothing else of the thread's. A project chat, which only reads and routes, has none.
+          // browse too: the thread's own browser, in a sandbox with its network and nothing else of the thread's. A project chat has it too (the owner, 2026-11-11); a subagent's is its own (delegate/runs.ts).
           createWebExtension({ searxng: () => this.o.searxng?.(), kiwix: () => this.o.kiwix?.(), target: () => tools.target(), canRender: () => !!sandboxTools().browser && sandboxHas("node"),
-            ...(!thread.project && !thread.subagent && sandboxTools().browser && sandboxHas("node") ? { browser: () => tools.browser() } : {}) }),
+            ...(!thread.subagent && sandboxTools().browser && sandboxHas("node") ? { browser: () => tools.browser() } : {}) }),
           // A file she wrote that doesn't parse is said in the write's own result.
           createSyntaxExtension({ target: (m) => tools.target(m) }),
           // The project's checks, run when a code turn that changed something ends; then the evidence judge, on the

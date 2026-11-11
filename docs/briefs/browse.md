@@ -16,8 +16,14 @@ prompt).
 ## What is built
 
 1. **One tool, `browse`**, behind the Web search switch with
-   `web_search` and `web_fetch`, in the main conversation only: subagents
-   and project chats don't get it. She had exactly 30 tools (23 in a
+   `web_search` and `web_fetch`, in a conversation, in a project chat,
+   and in a subagent whose role lists it (the researcher, beside
+   `web_fetch`; a role of the user's own can list it). Project chats and
+   subagents were left out at first; the owner asked why on 2026-11-11
+   and there was no good reason, since both have `web_fetch`. A
+   subagent's browser and profile are its own: it has none of its
+   parent's logins, a form it would send asks in both threads as its
+   other approvals do, and its browser closes when it ends. She had exactly 30 tools (23 in a
    conversation, 6 only in sleep, `ask_parent` only in a subagent), so
    this is the 31st. The owner raised principle 8's budget to 50
    (2026-11-10).
@@ -91,7 +97,6 @@ prompt).
 - Whether clicks and typing on a site where she is logged in should ask
   once per site and thread, on top of (7). Built without it: Auto mode
   works freely, as her commands do.
-- Subagents (the researcher) getting `browse`.
 
 ## Out of scope
 
@@ -114,4 +119,4 @@ login wasn't reproduced outside that deployment, so it wants a retest
 there. A search form that posts (DuckDuckGo's plain page) asked; the
 owner chose that a posted form of one plain text box goes without
 asking (7). Open
-questions: the two under "Open for the owner".
+question: the one under "Open for the owner".

@@ -1230,7 +1230,9 @@ The **Web search** switch gives her two tools (`extension/src/web.ts`,
   then on. A plain click can still make a page's script send something,
   as a command in the sandbox can. Downloads are refused, frames aren't
   read, and a link that opens a new tab opens in the one tab. The main
-  conversation has it; subagents and project chats don't.
+  conversation and a project chat have it, and a subagent whose role
+  lists it (the researcher): its browser and profile are its own, with
+  none of its parent's logins, and close when it ends.
 - `web_fetch` otherwise runs `curl` in the thread's sandbox, the URL one argument,
   so the internet switch and allowed hosts above decide what it can reach:
   a private thread with internet off reads only its allowed hosts. It

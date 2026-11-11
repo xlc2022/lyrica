@@ -2227,7 +2227,9 @@ Details in [docs/sleep.md](docs/sleep.md).
     removes (the owner, 2026-11-11). A plain click can
     still make a page's own script send something, as a command in the
     sandbox can. Downloads are refused, and frames aren't read. The main
-    conversation has it; subagents and project chats don't.
+    conversation and a project chat have it, and a subagent whose role
+    lists it (the researcher): its browser and profile are its own, with
+    none of its parent's logins, and close when it ends.
 
   A switch that's off removes the tools from the session, so she
   can't use them; a subagent or child thread can't turn back on what its
