@@ -778,7 +778,9 @@ A subagent's request (`ThreadHost.approveSubagent`, given to `Delegation` as
 `subagent` naming the run, thread and role. Either thread's views may answer;
 the first answer wins, and both get `permission_end` (a later answer is
 `404`). A timeout, Stop in either thread, or the subagent being stopped
-denies it.
+denies it. Notifications (and so push) list it once, as
+`permission:<requestId>`, opening the parent thread when it is shown, else
+the subagent's.
 
 ## Uploads
 
