@@ -119,10 +119,16 @@ export interface LlamaCppOptions {
 const CACHE_RAM_DEFAULT = 8192;
 const CACHE_RAM_MOST = 65536;
 
+/** A model's placement and serving settings, as one key. */
+const placementOf = (model: TextModel, at: Option, settings: ModelSettings) => JSON.stringify([model.id, at, settings]);
+
 export class LlamaCpp implements Backend {
   private readonly o: Required<LlamaCppOptions>;
   private readonly placed = new Map<string, { model: TextModel; at: Option; settings: ModelSettings }>();
   private readonly templates: Templates;
+  /** Placements whose measurement failed, so their load runs on the estimate; and those of them whose load then died too. */
+  private readonly unmeasured = new Set<string>();
+  private readonly diedUnmeasured = new Set<string>();
 
   constructor(o: LlamaCppOptions) {
     this.o = { loadTimeoutMs: 10 * 60_000, measureTimeoutMs: 60_000, memoryBytes: totalmem(), cmp: () => false, log: () => {}, ...o };
@@ -233,21 +239,27 @@ export class LlamaCpp implements Backend {
       if (!memory || memory.status === "measured" || memory.status === "failed" || Date.now() > end) break;
       await new Promise((r) => setTimeout(r, 500));
     }
-    // A measurement that failed means the measure child couldn't build the model at this preset (it doesn't say
-    // more); the load would most likely die the same way, with the estimate as its only guide, so it is refused.
+    // Without one the scheduler plans from its estimate, so the log says why: the measurement failed, wasn't done
+    // within the wait, the router has none for this model, or it gave no figure for a GPU.
+    const missing = (reason: string) => {
+      this.o.log("not measured", { model: model.id, reason });
+      return null;
+    };
+    // A measurement that failed says only that the measure child couldn't build the model at this preset. That can be
+    // the context or batch, or something about the machine that the load itself doesn't share (one host's every
+    // measurement fails while its loads work), so the load is tried on the estimate. Only once a load at this same
+    // placement has died after such a failure is it refused, so a waiting chat doesn't start it again and again.
     if (memory?.status === "failed") {
       // The router keeps the record until a reload sees the preset change, so the section goes and the router reads
       // the file again; a later try with the same settings measures afresh instead of reading this failure back.
       this.forget(model);
       await this.reload();
-      throw new HostError(413, "too_big", `llama.cpp couldn't measure this model with a context of ${contextOf(model, settings)} tokens, so its load would most likely fail; lower the context length or the batch size.`);
+      const key = placementOf(model, at, settings);
+      if (this.diedUnmeasured.has(key))
+        throw new HostError(413, "too_big", `llama.cpp couldn't measure this model with a context of ${contextOf(model, settings)} tokens, and its last load with these settings failed; lower the context length or the batch size.`);
+      this.unmeasured.add(key);
+      return missing("failed");
     }
-    // Without one the scheduler plans from its estimate, so the log says why: the measurement wasn't done within
-    // the wait, the router has none for this model, or it gave no figure for a GPU.
-    const missing = (reason: string) => {
-      this.o.log("not measured", { model: model.id, reason });
-      return null;
-    };
     if (memory?.status !== "measured" || !memory.min) return missing(memory ? `still ${memory.status} after ${Math.round(this.o.measureTimeoutMs / 1000)} s` : "no measurement");
     const measured: Record<number, Measured> = {};
     for (const g of at.gpus) {
@@ -313,7 +325,11 @@ export class LlamaCpp implements Backend {
         const { exit_code } = failed as { exit_code?: number };
         throw new HostError(503, "model_unavailable", exit_code ? `llama.cpp's server for this model exited with code ${exit_code} while loading.` : "llama.cpp couldn't load this model.");
       }
+      this.unmeasured.delete(placementOf(model, at, settings));
+      this.diedUnmeasured.delete(placementOf(model, at, settings));
     } catch (e) {
+      const key = placementOf(model, at, settings);
+      if (!signal?.aborted && this.unmeasured.delete(key)) this.diedUnmeasured.add(key);
       // Leave nothing half-loaded behind: the router stops a server still loading, and a cancelled load waits until it has gone.
       await this.post("/models/unload", { model: model.id }).catch(() => {});
       if (signal?.aborted) await poll(async () => ((await this.status(model.id))?.value ?? "unloaded") === "unloaded", 60_000, "llama.cpp").catch(() => {});

@@ -386,10 +386,11 @@ embeddings and dictation receive neither parser.
   length." A load that llama.cpp's own measurement finds too big is
   refused the same way, naming it: "This model needs about 99.7 GB on GPU
   1 by llama.cpp's measurement, of it 9.2 GB for its cache and buffers;
-  the GPU has 95.1 GB free." So is one whose measurement failed:
+  the GPU has 95.1 GB free." So is one whose measurement failed
+  after a load at the same placement and settings died:
   "llama.cpp couldn't measure this model with a context of 500000 tokens,
-  so its load would most likely fail; lower the context length or the
-  batch size."
+  and its last load with these settings failed; lower the context length
+  or the batch size." A failed measurement alone loads on the estimate.
 
 `settings`:
 
