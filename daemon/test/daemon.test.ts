@@ -171,6 +171,20 @@ describe("logging in", () => {
 });
 
 describe("settings", () => {
+  it("leaves a model switched off in its endpoint's list out of the pickers' list", async () => {
+    const rt = await runtime();
+    const { base } = await daemon(rt);
+    await browser(base).post("/api/unlock", { passphrase: "passphrase" });
+    const ada = await login(base, "ada", "pw");
+    const cloud = await fakeOpenAI({ models: [{ id: "gpt-a" }, { id: "gpt-b" }] });
+    const ep = (await ada.post<EndpointInfo>(`/api/u/${rt.ada.id}/endpoints`, { name: "cloudy", kind: "cloud", baseUrl: cloud.baseUrl })).body;
+    const off = ep.models.find((m) => m.modelId === "gpt-b")!;
+    expect((await ada.patch(`/api/u/${rt.ada.id}/endpoints/${ep.id}/models`, { disabled: true, offeringIds: [off.id] })).status).toBe(200);
+    const t = (await ada.post<ThreadSummary>(`/api/u/${rt.ada.id}/threads`, { pool: "general", title: "g" })).body;
+    const s = (await ada.get<ThreadSettings>(`/api/u/${rt.ada.id}/threads/general/${enc(t.id)}/settings`)).body;
+    expect(s.allowed.find((e) => e.id === ep.id)!.models.map((m) => m.modelId)).toEqual(["gpt-a"]);
+  });
+
   it("refuses a cloud model for a private thread when it is saved, with the reason", async () => {
     const rt = await runtime();
     const { base } = await daemon(rt);
