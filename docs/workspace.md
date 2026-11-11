@@ -2074,6 +2074,15 @@ script, PNG decoder or bundler:
 
 `preview` and `check` only read; none of the three run in Plan mode.
 
+`buildReactPage(source, { loader, title })` compiles a default-exported JSX or
+TSX component into one HTML page with React and the Tailwind browser runtime
+inline. Its build plugin permits imports of react and react-dom (including
+subpaths), lucide-react, recharts, three.js (including addons), simplex-noise
+and tween.js; other packages and local files are refused. It returns the
+page and the source's imported package names; `reactLibraries()` lists the
+allowed packages with their installed versions. The source is compiled,
+never executed in lyricad.
+
 **Offline libraries.** three.js (with its addons), simplex-noise and
 tween.js come with Lyrica (core's dependencies) and are mounted read-only
 at `/opt/libs/<package>` in every sandbox, so a page can use them with
