@@ -45,12 +45,18 @@ describe.skipIf(!chromium)("the browse tool's browser", () => {
     });
     await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
     site = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-  });
+    // A machine's first start of Chromium reads all of it from disk: 10 to 30 seconds on a busy CI runner, against
+    // about one second afterwards. It is paid here, once, so each test's limit measures the test.
+    const first = browser("warm");
+    await first.act("0", { action: "open", url: site });
+    await first.close();
+    browsers.length = 0;
+  }, 120_000);
   afterEach(async () => { await Promise.all(browsers.splice(0).map((b) => b.close())); posts.length = 0; });
   afterAll(() => { server.close(); rmSync(dir, { recursive: true, force: true }); });
 
   const browser = (profile: string) => {
-    const b = new Browser(async () => spawn(process.execPath, ["-e", BROWSE_SCRIPT, join(dir, profile), "test"], { stdio: ["pipe", "pipe", "inherit"], env: { ...process.env, CHROME_PATH: chromium, BROWSE_TRACE: "1" } }) as BrowserProcess);
+    const b = new Browser(async () => spawn(process.execPath, ["-e", BROWSE_SCRIPT, join(dir, profile), "test"], { stdio: ["pipe", "pipe", "ignore"], env: { ...process.env, CHROME_PATH: chromium } }) as BrowserProcess);
     browsers.push(b);
     return b;
   };

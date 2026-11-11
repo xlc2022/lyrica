@@ -11,7 +11,11 @@ import { BROWSER_PROFILE } from "./workspace/sandbox.ts";
 export const BROWSE_SCRIPT = readFileSync(new URL("./browse.cjs", import.meta.url), "utf8");
 /** A browser nobody used for this long is closed; its profile stays. */
 export const BROWSE_IDLE_MS = 10 * 60_000;
-/** How long one action may take before the browser is taken as stuck and closed. */
+/**
+ * How long one action, or the browser's start, may take before it is taken as stuck and closed. A first start
+ * reads all of Chromium from disk, which took 10 to 30 seconds on a busy machine (CI's runners), so a start
+ * gets as long as an action does.
+ */
 export const BROWSE_MS = 90_000;
 
 /** The command that starts the driver. */
@@ -98,7 +102,8 @@ export class Browser {
     if (this.child) return this.child;
     this.starting ??= (async () => {
       const child = await this.start();
-      const ready = new Promise<void>((resolve, reject) => { this.waiting.set(0, { resolve: () => resolve(), reject }); });
+      let late = false;
+      const ready = new Promise<void>((resolve, reject) => { this.waiting.set(0, { resolve: () => resolve(), reject: (e) => reject(late ? new Error(`the browser didn't start in ${this.limitMs / 1000} seconds`) : e) }); });
       child.stdin.on("error", () => {});
       child.stdout.on("data", (d: Buffer) => this.read(d));
       child.on("close", () => {
@@ -108,7 +113,7 @@ export class Browser {
         for (const w of this.waiting.values()) w.reject(new Error("the browser closed"));
         this.waiting.clear();
       });
-      const timer = setTimeout(() => child.kill("SIGKILL"), 30_000);
+      const timer = setTimeout(() => { late = true; child.kill("SIGKILL"); }, this.limitMs);
       try { await ready; } finally { clearTimeout(timer); }
       this.child = child;
       return child;

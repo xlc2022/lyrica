@@ -22,12 +22,10 @@ const chrome = spawn(process.env.CHROME_PATH, [
   "--disable-background-networking", "--disable-sync", "--disable-component-update", "--no-first-run", "--disable-extensions",
   "--mute-audio", "--password-store=basic", "--window-size=1280,800", "--disk-cache-size=52428800", `--user-agent=${agent}`, "about:blank",
 ], {
-  stdio: ["ignore", "ignore", process.env.BROWSE_TRACE ? "inherit" : "ignore", "pipe", "pipe"],
+  stdio: ["ignore", "ignore", "ignore", "pipe", "pipe"],
   // Everything else Chromium writes goes under /tmp, the sandbox's own.
   env: { ...process.env, HOME: "/tmp/chromium", XDG_CONFIG_HOME: "/tmp/chromium/.config", XDG_CACHE_HOME: "/tmp/chromium/.cache" },
 });
-const T0 = Date.now(); const trace = (w) => { if (process.env.BROWSE_TRACE) process.stderr.write(`TRACE ${Date.now() - T0}ms ${w}\n`); };
-trace("spawned " + process.env.CHROME_PATH);
 const toChrome = chrome.stdio[3], fromChrome = chrome.stdio[4];
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -389,15 +387,15 @@ async function acting(ref, how, approved, run) {
 }
 
 (async () => {
-  const { targetInfos } = await send("Target.getTargets"); trace("getTargets " + targetInfos.length);
+  const { targetInfos } = await send("Target.getTargets");
   target = targetInfos.find((t) => t.type === "page")?.targetId ?? (await send("Target.createTarget", { url: "about:blank" })).targetId;
-  trace("target"); const attached = await send("Target.attachToTarget", { targetId: target, flatten: true }); trace("attached");
+  const attached = await send("Target.attachToTarget", { targetId: target, flatten: true });
   await send("Target.setDiscoverTargets", { discover: true });
   await quiet(send("Browser.setDownloadBehavior", { behavior: "deny" }));
   session = attached.sessionId;
-  trace("downloads"); await send("Page.enable"); trace("page.enable");
+  await send("Page.enable");
   frame = (await send("Page.getFrameTree")).frameTree.frame.id;
-  trace("frameTree"); await send("Fetch.enable", { patterns: [{ urlPattern: "*", resourceType: "Document" }] }); trace("fetch.enable");
+  await send("Fetch.enable", { patterns: [{ urlPattern: "*", resourceType: "Document" }] });
 
   try {
     const kept = JSON.parse(readFileSync(COOKIES, "utf8"));
@@ -418,12 +416,12 @@ async function acting(ref, how, approved, run) {
     let m;
     try { m = JSON.parse(text); } catch { return; }
     if (m.op === "close") return shut();
-    let r; trace("op " + m.op);
+    let r;
     try { r = ops[m.op] ? await ops[m.op](m) : { fail: `unknown op ${m.op}` }; }
     catch (err) { r = { fail: String(err.message ?? err) }; }
     // Kept before the answer, so a browser killed right after an action has them.
     if (m.op !== "sends") await quiet(keepCookies());
-    trace("done " + m.op); answer({ id: m.id, ...r });
+    answer({ id: m.id, ...r });
   };
   process.stdin.on("data", (d) => {
     line += d.toString();
@@ -431,5 +429,5 @@ async function acting(ref, how, approved, run) {
     while ((i = line.indexOf("\n")) >= 0) { const text = line.slice(0, i); line = line.slice(i + 1); queue = queue.then(() => handle(text)); }
   });
   process.stdin.on("end", () => { queue = queue.then(shut); });
-  trace("ready"); answer({ ready: true });
+  answer({ ready: true });
 })().catch((e) => { process.stdout.write(JSON.stringify({ fail: String(e.message ?? e) }) + "\n"); quit(); });

@@ -1218,7 +1218,7 @@ The **Web search** switch gives her two tools (`extension/src/web.ts`,
   The sweep removes it with the thread. The
   browser holds one of the thread's four background slots (`jobs` lists
   it as the browse tool's browser, and `jobs stop` ends it), closes after
-  10 minutes unused, and is killed if one action takes over 90 seconds.
+  10 minutes unused, and is killed if its start or one action takes over 90 seconds.
   Every action answers with the page as text, each link, button and
   field under a number she acts on. **Sending a form asks first, in every
   mode**: the driver reads from the page whether a click or Enter would
