@@ -6,9 +6,13 @@
 // What is structural here (docs/briefs/browse.md): an action that would send a form is done only when the request
 // says `approved`, and a page load that posts without it is failed in the browser, so nothing is sent.
 const { spawn } = require("node:child_process");
-const { rmSync, mkdirSync } = require("node:fs");
+const { rmSync, mkdirSync, readFileSync, renameSync, writeFileSync } = require("node:fs");
 const [profile, agent] = process.argv.slice(1);
 const LOAD_MS = 20_000, SETTLE_MS = 600;
+// Chromium can drop a cookie with no end date when it closes, and writes none for a while after it is set, so a
+// browser that is killed loses a fresh login. The cookies are kept here too, in the profile, after each action,
+// and given back at the next start.
+const COOKIES = `${profile}/lyrica-cookies.json`;
 
 mkdirSync(profile, { recursive: true });
 // One browser per thread, so a lock left by a browser that was killed is never another's.
@@ -232,13 +236,18 @@ const PAGE = `((start) => {
     const search = form.getAttribute("role") === "search" || !!form.closest("[role=search]") || all.some((e) => e.type === "search");
     // A form that only looks something up: sent in the address, to a stated place or as a search.
     if (method === "get" && !heavy && !S.held.has(el) && (form.hasAttribute("action") || search)) return null;
+    // A posted form that is one plain text box and nothing else to fill in (the owner, 2026-11-11): many searches
+    // are one. It goes without asking, and its post is let through.
+    const filled = all.filter((e) => { const k = kind(e, getComputedStyle(e)); return k && k !== "button"; });
+    const box = filled.length === 1 && tag(filled[0]) === "INPUT" && ["", "text", "search"].includes((filled[0].getAttribute("type") || "").toLowerCase());
+    if (method === "post" && box && !S.held.has(el)) return { free: true };
     const fields = [];
     for (const e of all) {
       const k = kind(e, getComputedStyle(e));
       if (!k || k === "button" || e.disabled) continue;
       if ((k === "checkbox" || k === "radio") && !e.checked) continue;
       const v = k === "checkbox" || k === "radio" ? "yes" : k === "file field" ? "" : value(e);
-      if (v || k === "password field") fields.push({ name: name(e, k) || k, value: v });
+      if (v || k === "password field") fields.push({ name: name(e, k).replace(/\\s*[:：]$/, "") || k, value: v });
     }
     let to = location.host;
     try { to = new URL(by?.getAttribute("formaction") || form.getAttribute("action") || location.href, location.href).host; } catch {}
@@ -289,7 +298,9 @@ const GONE = "That number isn't on the page any more. Here is the page as it is 
 const ops = {
   async open({ url }) {
     loading = true;
-    const r = await send("Page.navigate", { url });
+    let r = await send("Page.navigate", { url });
+    // The sandbox's network can still be coming up at a browser's first page: once more.
+    if (r.errorText === "net::ERR_NETWORK_CHANGED") { await sleep(1000); loading = true; r = await send("Page.navigate", { url }); }
     // A download or a page that fails to load never fires a load event.
     if (r.errorText) { loading = false; return { fail: r.errorText === "net::ERR_ABORTED" ? "that address is a download, which the browser refuses, or the page stopped loading" : r.errorText }; }
     if (loading) await Promise.race([new Promise((res) => stopped.push(res)), sleep(LOAD_MS)]);
@@ -299,7 +310,8 @@ const ops = {
   read: () => snapshot(),
   async sends({ action, ref, submit }) {
     const how = action === "click" ? "click" : action === "type" && submit ? "enter" : undefined;
-    return { sends: how ? await page(`__ly.sends(${Number(ref)}, ${JSON.stringify(how)})`) : null, ...(await page(`__ly.what(${Number(ref)})`)) };
+    const form = how ? await page(`__ly.sends(${Number(ref)}, ${JSON.stringify(how)})`) : null;
+    return { sends: form?.free ? null : form, ...(await page(`__ly.what(${Number(ref)})`)) };
   },
   async click({ ref, approved }) {
     return acting(ref, "click", approved, async () => {
@@ -351,11 +363,9 @@ const ops = {
 
 /** One action on a numbered thing: refused without a go-ahead when it would send a form, and a post it sets off without one is stopped. */
 async function acting(ref, how, approved, run) {
-  if (how) {
-    const form = await page(`__ly.sends(${Number(ref)}, ${JSON.stringify(how)})`);
-    if (form && !approved) return { unapproved: form };
-  }
-  mayPost = !!approved;
+  const form = how ? await page(`__ly.sends(${Number(ref)}, ${JSON.stringify(how)})`) : null;
+  if (form && !form.free && !approved) return { unapproved: form };
+  mayPost = !!approved || !!form?.free;
   heldPost = undefined;
   try {
     const r = await run();
@@ -381,6 +391,16 @@ async function acting(ref, how, approved, run) {
   frame = (await send("Page.getFrameTree")).frameTree.frame.id;
   await send("Fetch.enable", { patterns: [{ urlPattern: "*", resourceType: "Document" }] });
 
+  try {
+    const kept = JSON.parse(readFileSync(COOKIES, "utf8"));
+    await Promise.all(kept.map((c) => quiet(send("Storage.setCookies", { cookies: [c] }, true))));
+  } catch {}
+  const keepCookies = async () => {
+    const { cookies } = await send("Storage.getCookies", {}, true);
+    // Written whole or not at all: a kill in the middle leaves the file before.
+    writeFileSync(`${COOKIES}.new`, JSON.stringify(cookies.map(({ expires, size, session, ...c }) => (session ? c : { ...c, expires }))), { mode: 0o600 });
+    renameSync(`${COOKIES}.new`, COOKIES);
+  };
   // Chromium is asked to close and left to exit by itself, so its cookies are written; killed only if it doesn't.
   const shut = async () => { quiet(send("Browser.close", {}, true)); await sleep(5000); quit(); };
   // Requests are answered one at a time, in order.
@@ -390,8 +410,12 @@ async function acting(ref, how, approved, run) {
     let m;
     try { m = JSON.parse(text); } catch { return; }
     if (m.op === "close") return shut();
-    try { answer({ id: m.id, ...(ops[m.op] ? await ops[m.op](m) : { fail: `unknown op ${m.op}` }) }); }
-    catch (err) { answer({ id: m.id, fail: String(err.message ?? err) }); }
+    let r;
+    try { r = ops[m.op] ? await ops[m.op](m) : { fail: `unknown op ${m.op}` }; }
+    catch (err) { r = { fail: String(err.message ?? err) }; }
+    // Kept before the answer, so a browser killed right after an action has them.
+    if (m.op !== "sends") await quiet(keepCookies());
+    answer({ id: m.id, ...r });
   };
   process.stdin.on("data", (d) => {
     line += d.toString();
