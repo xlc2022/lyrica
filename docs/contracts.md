@@ -2664,7 +2664,7 @@ fileKey(t, path)  // one file under the same key for every thread that can write
 respellings(t, from, to, c): Respelling[]  // how thread c writes the file t renamed from `from` to `to`: { from, to, link? } per spelling; none when c can't reach it
 // renames.ts: pathRewriter(respellings) → (text) => text, needles(respellings), rewriteStrings(value, rewrite) (skips image and thinking parts)
 files(t): ThreadFiles                     // the Files panel, every call a fresh no-network sandbox over the thread's grants and familyFolders(t), read-only:
-  // roots(), list(dir), search(root, q), images(), read(path, range?) → { stream, size, type } (only the range's bytes; RangeError past the end), upload(dir, name, bytes) → path,
+  // roots() (in a project chat also a read-only `member` root with its threadId per family folder), list(dir), search(root, q), images(), read(path, range?) → { stream, size, type } (only the range's bytes; RangeError past the end), upload(dir, name, bytes) → path,
   // mkdir(path), rename(from, to) → { from, to } as she sees them, remove(paths), zip(paths) → Readable. FilesRefused: outside the grants, a root, .lyrica, read-only.
 changes(userId): FileChanges              // her write and edit calls' changes, for removing turns
 checkouts(t): { name, path, kind }[]     // where its code lives, for the changes view: worktrees, clones, writable grants (docs/daemon.md "Changes")

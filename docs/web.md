@@ -264,7 +264,14 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   that isn't there, as a relative link resolves, is looked for at the same place under `/shared`, then
   under each grant, first. Files lists one folder at a time from
   `GET …/files?dir=` (docs/daemon.md "Files"), the thread folder open at the
-  start, then `/shared` for a thread with a folder of its own, such as a code thread (shown as Shared folder), then each grant; a search runs under every root; a file,
+  start, then `/shared` for a thread with a folder of its own, such as a code thread (shown as Shared folder), then each grant. In a
+  project chat the thread folder is shown as **Project folder**, a folder of
+  `shared/` named by a thread's id shows that thread's title (the id in its
+  tooltip), and after the grants **Threads** (open at the start, folded by
+  its own row, never listed itself) holds each `member` root, the folder of
+  one of its threads at `/thread-workspaces/<id>`, by that thread's title in
+  the thread list's order, read-only; a path in one is named by the title
+  (`Alpha/report.md`) and its file opens with that thread beside it. A search runs under every root; a file,
   an image from Images (`…/files/images`, filtered by source), or a clip from
   Videos (`…/files/videos`, the same filter, each tile its poster thumbnail or,
   for a clip without one, its own first frame), opens in

@@ -8,7 +8,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { createPortal } from "react-dom";
 import { get, post, threadPath, upload, type FileEntry, type FileListing, type FileRoot, type FileSearch, type ImageEntry, type Pool, type ThreadSummary } from "./api.ts";
 import { ask, ATTACH_EVENT, ATTACH_KEY, keep, SHOW_EVENT, SHOW_KEY, type AttachRequest, type ShowRequest } from "./links.ts";
-import { isUnderWorkdir, SHARED, shown, Thumb, useFileLinks, VideoThumb, WORKDIR, type FileLinks } from "./paths.tsx";
+import { FAMILY_ROOT, isUnderWorkdir, SHARED, shown, Thumb, useFileLinks, VideoThumb, WORKDIR, type FileLinks } from "./paths.tsx";
 import { Viewer } from "./Viewer.tsx";
 import { Icon } from "./icons.tsx";
 import { her } from "./name.ts";
@@ -34,6 +34,7 @@ interface MenuAt { x: number; y: number; target: Target; sub?: "delete" }
 
 const parent = (p: string) => p.slice(0, p.lastIndexOf("/")) || "/";
 const basename = (p: string) => p.slice(p.lastIndexOf("/") + 1);
+const safeDecode = (s: string) => { try { return decodeURIComponent(s); } catch { return s; } };
 const under = (p: string, dir: string) => p === dir || p.startsWith(`${dir}/`);
 export const kb = (n: number) => (n < 1024 ? `${n} B` : n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 1024))} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`);
 /** A path as the panel names it: inside the thread's folder without the prefix, elsewhere as it is. */
@@ -45,11 +46,14 @@ export function FilesPage({ ctx, pool, threadId, threads, path }: { ctx: ShellCo
   const base = `${thread}/files`;
   const links = useFileLinks(userId, pool, threadId);
   const title = threads.find((t) => t.pool === pool && t.id === threadId)?.title || "New thread";
+  // Every thread listed, children under their parents, for a project chat's thread folders: their titles and order.
+  const everyThread = useMemo(() => { const flat = (t: ThreadSummary): ThreadSummary[] => [t, ...t.children.flatMap(flat)]; return threads.filter((t) => t.pool === pool).flatMap(flat); }, [threads, pool]);
+  const project = !!everyThread.find((t) => t.id === threadId)?.project;
   const [tab, setTab] = useState<Tab>("files");
   const [error, setError] = useState("");
   const [roots, setRoots] = useState<FileRoot[]>([]);
   const [listings, setListings] = useState<Record<string, FileListing>>({});
-  const [open, setOpen] = useState<Set<string>>(() => new Set([WORKDIR]));
+  const [open, setOpen] = useState<Set<string>>(() => new Set([WORKDIR, FAMILY_ROOT]));
   const [current, setCurrent] = useState<FileEntry>();
   /** The files the open one was opened among (its folder, the search hits or the Images or Videos grid), for the viewer's steps. */
   const [among, setAmong] = useState<FileEntry[]>();
@@ -70,6 +74,18 @@ export function FilesPage({ ctx, pool, threadId, threads, path }: { ctx: ShellCo
   const picker = useRef<HTMLInputElement>(null);
   const uploadTo = useRef(WORKDIR);
   const writable = useCallback((p: string) => roots.some((r) => under(p, r.path) && r.writable), [roots]);
+  // A project chat's thread folders, in the thread list's order, each named by its thread's title (docs/ux.md §6).
+  const members = useMemo(() => {
+    const at = new Map(everyThread.map((t, i) => [t.id, i]));
+    return roots.filter((r) => r.kind === "member").sort((a, b) => (at.get(a.threadId!) ?? Infinity) - (at.get(b.threadId!) ?? Infinity));
+  }, [roots, everyThread]);
+  const threadTitle = useCallback((id: string) => everyThread.find((t) => t.id === id)?.title || "New thread", [everyThread]);
+  /** A path as the panel names it: in a project chat its folder is the Project folder, and a thread's folder goes by its title. */
+  const named = useCallback((p: string) => {
+    if (project && p === WORKDIR) return "Project folder";
+    const m = members.find((r) => under(p, r.path));
+    return m ? `${threadTitle(m.threadId!)}${p.slice(m.path.length)}` : shown(p);
+  }, [project, members, threadTitle]);
 
   const fail = (e: unknown) => setError((e as Error).message);
   const load = useCallback(async (dir: string) => {
@@ -108,7 +124,7 @@ export function FilesPage({ ctx, pool, threadId, threads, path }: { ctx: ShellCo
       let found: Awaited<ReturnType<typeof look>>;
       for (const q of tries) if ((found = await look(q))?.entry) break;
       if (!live) return;
-      if (!found?.entry) { setError(`${shown(own(path))} wasn't found.`); return; }
+      if (!found?.entry) { setError(`${named(own(path))} wasn't found.`); return; }
       const { q: p, l, entry } = found;
       roots = l.roots;
       const root = roots.find((r) => under(p, r.path))?.path ?? WORKDIR;
@@ -231,7 +247,7 @@ export function FilesPage({ ctx, pool, threadId, threads, path }: { ctx: ShellCo
   const send = (dir: string, files: Iterable<File>) => {
     const list = [...files];
     if (!list.length) return;
-    if (!writable(dir)) { setError(`${shown(dir)} is read-only.`); return; }
+    if (!writable(dir)) { setError(`${named(dir)} is read-only.`); return; }
     setError("");
     (async () => {
       for (const f of list) await upload(`${base}/upload?dir=${encodeURIComponent(dir)}&name=${encodeURIComponent(f.name)}`, f, () => {});
@@ -247,7 +263,9 @@ export function FilesPage({ ctx, pool, threadId, threads, path }: { ctx: ShellCo
     const isDir = e.kind === "folder";
     const selected = sel.has(e.path);
     const target: Target = isDir ? { kind: "folder", path: e.path, root: false } : { kind: "file", entry: e };
-    const name = hits ? shown(e.path) : e.name;
+    // In a project chat each thread's own part of shared/ (named by its id) goes by the thread's title too.
+    const ownShared = project && !hits && parent(e.path) === `${WORKDIR}/shared` && isDir ? everyThread.find((t) => t.id === safeDecode(e.name)) : undefined;
+    const name = hits ? named(e.path) : ownShared ? ownShared.title || "New thread" : e.name;
     if (renaming === e.path) {
       return (
         <div key={e.path} className="frow" style={{ paddingLeft: 6 + depth * 14 }}>
@@ -257,7 +275,7 @@ export function FilesPage({ ctx, pool, threadId, threads, path }: { ctx: ShellCo
     }
     return (
       <div key={e.path} className="frow">
-        <button type="button" className={selected ? "sel" : undefined} data-path={e.path} style={{ paddingLeft: 6 + depth * 14 }}
+        <button type="button" className={selected ? "sel" : undefined} data-path={e.path} title={ownShared ? e.path : undefined} style={{ paddingLeft: 6 + depth * 14 }}
           aria-current={!isDir && current?.path === e.path ? "true" : undefined} aria-expanded={isDir ? open.has(e.path) : undefined} aria-pressed={selected || undefined}
           onClick={(ev) => { if (pick(ev, e)) return; if (isDir) toggle(e.path); else view(e); }}
           {...press(target)}>
@@ -292,23 +310,43 @@ export function FilesPage({ ctx, pool, threadId, threads, path }: { ctx: ShellCo
   };
   const tree = hits ? (
     hits.entries.length ? <>{hits.entries.map((e) => row(e, 0))}{hits.more && <p className="empty">Only the first 200 are shown.</p>}</> : <p className="empty">No files match.</p>
-  ) : roots.length ? roots.map((r) => (
-    <div key={r.path} className="fentry">
-      <button type="button" className="root" aria-expanded={open.has(r.path)} title={r.kind === "shared" ? r.path : undefined} onClick={() => toggle(r.path)} {...press({ kind: "folder", path: r.path, root: true })}>
-        <Icon name={open.has(r.path) ? "down" : "right"} /><span className="fname">{shown(r.path)}</span>
-        {r.kind === "grant" && <span className="rw num">{r.writable ? "rw" : "ro"}</span>}
-      </button>
-      {open.has(r.path) && folder(r.path, 1)}
-    </div>
-  )) : <p className="empty">{error ? "" : "Loading…"}</p>;
+  ) : roots.length ? <>
+    {roots.filter((r) => r.kind !== "member").map((r) => (
+      <div key={r.path} className="fentry">
+        <button type="button" className="root" aria-expanded={open.has(r.path)} title={r.kind === "shared" ? r.path : undefined} onClick={() => toggle(r.path)} {...press({ kind: "folder", path: r.path, root: true })}>
+          <Icon name={open.has(r.path) ? "down" : "right"} /><span className="fname">{named(r.path)}</span>
+          {r.kind === "grant" && <span className="rw num">{r.writable ? "rw" : "ro"}</span>}
+        </button>
+        {open.has(r.path) && folder(r.path, 1)}
+      </div>
+    ))}
+    {members.length > 0 && (
+      // A project chat's threads, each one's folder read-only under its title (docs/ux.md §6).
+      <div className="fentry">
+        <button type="button" className="root" aria-expanded={open.has(FAMILY_ROOT)} onClick={() => setOpen((s) => { const n = new Set(s); if (n.has(FAMILY_ROOT)) n.delete(FAMILY_ROOT); else n.add(FAMILY_ROOT); return n; })}>
+          <Icon name={open.has(FAMILY_ROOT) ? "down" : "right"} /><span className="fname">Threads</span>
+        </button>
+        {open.has(FAMILY_ROOT) && members.map((r) => (
+          <div key={r.path} className="fentry">
+            <button type="button" style={{ paddingLeft: 20 }} aria-expanded={open.has(r.path)} title={r.path} onClick={() => toggle(r.path)} {...press({ kind: "folder", path: r.path, root: true })}>
+              <Icon name={open.has(r.path) ? "down" : "right"} /><Icon name="folder" className="dim" /><span className="fname">{threadTitle(r.threadId!)}</span>
+            </button>
+            {open.has(r.path) && folder(r.path, 2)}
+          </div>
+        ))}
+      </div>
+    )}
+  </> : <p className="empty">{error ? "" : "Loading…"}</p>;
 
   const act = (fn: () => Promise<unknown>) => fn().then(() => setMenu(undefined), (e: Error) => { setError(e.message); setMenu(undefined); });
   const dropDir = current ? parent(current.path) : cwd;
   const panelTitle = TAB_LABEL[tab];
   const closeViewer = useCallback(() => setCurrent(undefined), []);
+  /** The thread whose folder holds a path, in a project chat's Threads. */
+  const memberOf = (p: string) => members.find((r) => under(p, r.path))?.threadId;
   // Inside the viewer while it shows, since the page under a modal dialog can't be reached.
   const fileMenu = menu && (
-    <FileMenu at={menu} writable={writable} onClose={() => setMenu(undefined)} shownName={shown}
+    <FileMenu at={menu} writable={writable} onClose={() => setMenu(undefined)} shownName={named}
       onAttach={(ps) => { setMenu(undefined); setCurrent(undefined); attach(ps); }} onDownload={(ps) => { setMenu(undefined); download(ps); }} onCopy={(ps) => { setMenu(undefined); void copy(ps); }}
       onSelect={(p) => { setMenu(undefined); setSel((s) => new Set([...s, p])); }} onShow={(p) => { setMenu(undefined); setCurrent(undefined); showInThread(p); }}
       onUpload={(dir) => { setMenu(undefined); askUpload(dir); }} onMkdir={(dir, name) => act(() => mkdir(dir, name))} onRename={(p, name) => act(() => rename(p, name))}
@@ -368,7 +406,7 @@ export function FilesPage({ ctx, pool, threadId, threads, path }: { ctx: ShellCo
       <input ref={picker} type="file" multiple hidden onChange={(e) => { send(uploadTo.current, e.target.files ?? []); e.target.value = ""; }} />
       {current && (
         // The file large, with this thread beside it when the file is in its own folder (a grant's has no thread of its own).
-        <Viewer ctx={ctx} threads={threads} file={current} base={base} shownPath={shown(current.path)} thread={isUnderWorkdir(current.path) ? { pool, threadId } : undefined}
+        <Viewer ctx={ctx} threads={threads} file={current} base={base} shownPath={named(current.path)} thread={isUnderWorkdir(current.path) ? { pool, threadId } : memberOf(current.path) ? { pool, threadId: memberOf(current.path)! } : undefined}
           list={among} onStep={(f) => view(f as FileEntry, among)}
           onMenu={(e) => openMenu(e, { kind: "file", entry: current })} onClose={closeViewer}>
           {menu && fileMenu}

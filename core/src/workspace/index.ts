@@ -650,7 +650,9 @@ export class Workspace {
    * thread and those working in its folder, which still reach it at /shared,
    * as her tools do) and grants, every operation in
    * a fresh sandbox with no network. Grants are checked against the allowed
-   * paths as they are now, as for her tools.
+   * paths as they are now, as for her tools. In a project chat each of its
+   * threads' folders she may read (familyFolders) is a read-only root too,
+   * so the person finds every thread's files from the chat.
    */
   files(t: WorkspaceThread): ThreadFiles {
     const s = this.settings(t.userId);
@@ -658,9 +660,10 @@ export class Workspace {
     const tw = s.effective(t.threadId);
     const shared = this.sharedDir(t);
     const own = shared === join(this.threadDir(t), "shared");
+    const family = this.familyFolders(t);
     const box = new Sandbox({
       // Its family's folders too, read-only, so a link to another thread's file (/thread-workspaces/<id>/…) opens.
-      workdir: this.threadDir(t), workdirAlias: this.workdirAlias(t), shared, family: this.familyFolders(t), grants: tw.grants, network: { internet: false, services: false, hosts: [] },
+      workdir: this.threadDir(t), workdirAlias: this.workdirAlias(t), shared, family, grants: tw.grants, network: { internet: false, services: false, hosts: [] },
       check: (g) => checkGrant(s.allowed(), t.pool, g), bwrap: this.opts.bwrap,
     });
     // What the panel uploads is the panel's thread's; what it renames or deletes takes its record along.
@@ -672,7 +675,7 @@ export class Workspace {
         else if (f) s.dropOrigins(f.folder, [f.path]);
       },
       removed: (paths) => { for (const p of paths) { const key = this.originKey(t, p); if (key) s.dropOrigins(key.folder, [key.path]); } },
-    }, !!shared && !own);
+    }, !!shared && !own, (t.coordinates ? family : []).map((f) => ({ threadId: decodeURIComponent(f.dest.slice(FAMILY_ROOT.length + 1)), dest: f.dest })));
   }
 
   /** What the thread's tools may reach: its settings, or nothing while the self-test has refused network. */

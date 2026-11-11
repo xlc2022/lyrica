@@ -700,8 +700,11 @@ fixed actions, the token never shown to her.
   either path opens) and
   its grants, every operation a fresh no-network sandbox over the
   thread's grants and its family's folders, read-only at
-  `/thread-workspaces/<id>` as in her sandbox (no root of the panel, but a
-  link to another thread's file opens there; docs/web.md, Chat), with
+  `/thread-workspaces/<id>` as in her sandbox (a link to another thread's
+  file opens there; docs/web.md, Chat; in a project chat, whose panel is
+  asked for with `coordinates`, each of those folders is also a root,
+  kind `member`, read-only, with its thread's id, so the person finds
+  every thread's files from the chat; elsewhere they are no root), with
   `find`, `cat`, `stat`, `mkdir`, `mv` and `rm`, so the panel can reach exactly what she can and nothing else: a path outside, a symlink
   out, a root, the panel's own `.lyrica` folder, and any change in a
   read-only grant are refused (`FilesRefused`). Uploads land under a free name,
