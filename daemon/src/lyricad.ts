@@ -651,6 +651,20 @@ export class Lyricad implements Drainable {
       held: (u, p, t) => sameFile.held(u, p, t),
       messaged: (u, p, from, to) => sameFile.messaged(u, p, from, to),
       draft: (u, p, project, change) => { projects.set(u, p, project, { draftGoal: change.goal, draftInstructions: change.instructions }); },
+      instructions: (u, p, project, change) => {
+        // Ask first only turns on here: the user alone turns it off, in Project settings.
+        if (change.askFirst) projects.set(u, p, project, { askFirst: true });
+        const askFirst = projects.settings(u, p, project).askFirst;
+        if (change.text === undefined) return { askFirst };
+        if (askFirst) {
+          projects.set(u, p, project, { draftInstructions: change.text });
+          return { askFirst, drafted: true };
+        }
+        const view = memory.openThreadView(u, p);
+        try { view.own.setProjectInstructions(project, change.text, "lyrica"); } finally { view.close(); }
+        projects.set(u, p, project, { draftInstructions: null });
+        return { askFirst, saved: true };
+      },
       updated: (u, p, project, thread) => watcher.updated(u, p, project, thread),
       wakeups: (): Wakeups => wakeups,
       watch: (u, p, t, repo, n) => forge.watch(u, p, t, repo, n),

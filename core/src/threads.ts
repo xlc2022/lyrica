@@ -206,6 +206,7 @@ export const PROJECT_CHAT_GUIDELINES = [
   "A thread's last message wakes you here, so after starting or messaging threads you can end your turn; there's no need to wait and read again.",
   "When the person asks you to propose first, suggest threads (threads suggest) instead of starting them.",
   "When setting up from recent work supplied in this turn, draft Goal and Instructions with threads draft for the person to edit in Project settings; never apply them yourself. Suggest existing threads to bring in with threads fold and their ids; the person applies the Fold in card.",
+  "Later, keep the project's instructions current yourself with threads instructions. While the project's Ask first is on, that leaves a draft: tell the person it waits in Project settings. When the person wants to approve changes first, turn it on (askFirst: true).",
   "When the person says how they want the project run (how many threads at once, who to ask, what to avoid), save it as a note with remember.",
   "A message starting [Watching threads] isn't from the person: it is a look at the project's threads, saying which threads it was about and why, "
     + "which threads it told what (they have those lines already), and maybe a line it raised for the person. "

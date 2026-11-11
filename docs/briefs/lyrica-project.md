@@ -21,7 +21,8 @@ written here.
 The back end supports `threads fold { ids }` to suggest bringing existing
 work into the project, with moves applied by the user. `threads draft`
 proposes Goal and Instructions for editing; it never changes the saved
-project instructions. Continue as project leaves the source conversation
+project instructions. `threads instructions` saves them, or leaves a draft
+while the project's **Ask first** is on. Continue as project leaves the source conversation
 and carries its children into a new project. The interface is built under
 [project-welcome.md](project-welcome.md).
 
@@ -127,8 +128,9 @@ release passed probation there.
    saves for recurring jobs (a CI fix, a release) wait for approval in
    Settings → Skills unless auto-approve is on (DESIGN.md, "Skills").
 2. Paste the **Project instructions** below into Project settings →
-   Memory → Instructions (the count shows it is under 4,000; only the owner can
-   change them).
+   Memory → Instructions (the count shows it is under 4,000), and turn on
+   **Ask first** there, so her changes to them wait as drafts for the
+   owner to save (only the owner turns it off).
 3. Start three standing threads in the project chat (**Start a thread**
    on a message; they sit under the project row) and pick each one's
    model:
@@ -255,7 +257,9 @@ characters, the limit on project instructions.
 >
 > **Docs never drift.** Other agents learn this repository only from its
 > docs. A PR updates every doc, brief or guide it makes stale, in the
-> same PR. Drift you notice elsewhere gets a small docs PR. Each issue or
+> same PR. After a merge that changes the instructions block in
+> docs/briefs/lyrica-project.md, the project chat sends the new block
+> with `threads instructions`; Ask first makes it a draft for the owner. Drift you notice elsewhere gets a small docs PR. Each issue or
 > brief keeps a current handoff note (done, next, open questions)
 > another agent can continue from.
 >
@@ -411,3 +415,12 @@ filled out to match the instructions Claude's project works under:
 handoffs, merge reports, act then report, skills, UX taste and the name
 rule. A deployment needs this release before the longer text can be
 pasted; until then it refuses anything over 2,000.
+
+2026-11-11, instructions: she can keep a project's instructions current
+herself (`threads instructions`). Each project has an **Ask first**
+switch under Instructions; while it is on, her change waits as a draft
+for the owner to save. In this project it stays on (the owner), and the
+block above tells the project chat to send the new block after a merge
+that changes it. By the owner, once per deployment, after rebuilding to
+this release: turn on Ask first in her project, and paste the block
+above one last time.
