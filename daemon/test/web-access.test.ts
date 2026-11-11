@@ -238,6 +238,15 @@ describe("web access, built-in Caddy", () => {
     expect((await ada.get<WebAccessStatus>(`${url}/status`)).body.dns).toEqual({ error: "this machine can't resolve lyrica.example.net" });
   });
 
+  it("says when the resolver doesn't answer, which is this machine's problem, not the name's", async () => {
+    const { tls, ada, url } = await setup(undefined, undefined, {}, () => Promise.reject(
+      Object.assign(new Error("queryA EAI_AGAIN lyrica.example.net"), { code: "EAI_AGAIN" }),
+    ));
+    tls.add("lyrica.example.net");
+    expect((await ada.put(url, builtin())).status).toBe(200);
+    expect((await ada.get<WebAccessStatus>(`${url}/status`)).body.dns).toEqual({ error: "this machine's resolver didn't answer about lyrica.example.net" });
+  });
+
   it("says when Caddy runs with no site", async () => {
     const { tls, caddy, ada, url } = await setup();
     tls.add("lyrica.example.net");

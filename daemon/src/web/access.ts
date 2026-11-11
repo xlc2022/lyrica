@@ -562,15 +562,18 @@ export class WebAccess {
    * nothing about where the name a browser types lands.
    */
   private async dnsRecord(s: Stored): Promise<NonNullable<Api.WebAccessStatus["dns"]>> {
-    const nowhere = `this machine can't resolve ${s.name}`;
     let list: string[];
     try {
       list = await (this.o.resolve ?? lookup)(s.name);
     } catch (err) {
+      // Nothing answers at all (no record) is worth saying; a resolver that
+      // didn't reply is this machine's, not her name's, problem.
       const code = (err as { code?: string }).code;
-      return { error: code === "ENOTFOUND" || code === "EAI_AGAIN" ? nowhere : (err as Error).message };
+      if (code === "EAI_AGAIN") return { error: `this machine's resolver didn't answer about ${s.name}` };
+      if (code === "ENOTFOUND") return { error: `this machine can't resolve ${s.name}` };
+      return { error: (err as Error).message };
     }
-    if (!list.length) return { error: nowhere };
+    if (!list.length) return { error: `this machine can't resolve ${s.name}` };
     const served = new Set(s.builtin!.addresses);
     return { addresses: list, served: list.some((a) => served.has(a)) };
   }
