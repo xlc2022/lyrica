@@ -191,3 +191,8 @@ works, so her threads update them there?
   by `publish` and import until the builder lands. Next: part 2 (web),
   starting with the mockup for UI review; then wire `buildReactPage` in
   from the test machine's branch.
+- 2026-11-11: part 2 built (the card, the viewer's version select and ⋯
+  menu, the Artifacts page, Import). Not built, and not planned unless
+  asked: pasted source (Import takes files), the Files panel's Artifacts
+  segment, a grid of cards (the page is a list). The app mockup has not
+  been updated. Next: React, once the builder's branch arrives.

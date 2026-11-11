@@ -10,7 +10,7 @@ render mention tokens.
 ## Pages
 
 Routes are in the URL hash (`#/u/<user>/t/<pool>/<thread>`, `…/p/<pool>/<project>/<section>`
-for a project's settings, `…/memory`, `…/notifications`, `…/settings/<section>`, `…/admin/<section>`,
+for a project's settings, `…/memory`, `…/artifacts`, `…/notifications`, `…/settings/<section>`, `…/admin/<section>`,
 `#/login`), so `lyricad` serves a single file. The old `…/panel` opens Settings.
 A thread's address may carry what the panel beside it shows:
 `…/t/<pool>/<thread>/panel/t/<pool>/<other>`, `…/panel/p/<pool>/<project>/<section>`
@@ -344,6 +344,21 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   beside. It stops at the ends, where that button is disabled, and the
   facts read "Image 2 of 4". Escape closes
   a menu inside first, then the viewer, and so does any navigation.
+- **Artifacts** (`Artifacts.tsx`, docs/ux.md §6, docs/briefs/artifacts.md):
+  an `artifact` part of her message draws as `ArtifactCard`; the live
+  stream's `tool_end.artifact` adds the same part. `openArtifact({ pool, id,
+  version? })` dispatches a window event that `ArtifactHost`, mounted once
+  in the shell, answers with `ArtifactViewer`: the file viewer given a
+  `from` (`ViewerSource`: the artifact's `…/content` and `…/view` addresses
+  for the picked version, its thread's settings address for the internet
+  line, and its own heading, Version select and ⋯ menu), so the sandboxed
+  frame, console, Preview | Source and the thread beside are the viewer's
+  own. A React artifact shows as HTML. The **Artifacts** page
+  (`…/artifacts`, `ArtifactsPage`) lists `GET …/artifacts`, filters it in
+  the browser, and imports files by posting each one's bytes; a change made
+  in the viewer reloads it through a second window event.
+  `…/artifacts/<pool>/<id>` is the page with that artifact open, which is
+  what Copy link copies.
 - **The changes view** (`Changes.tsx`): the same kind of dialog for a
   thread's branch, described under Chat ("Changes").
 - **Project settings page** (`…/p/<pool>/<project>/general`, `/memory` or `/files`),

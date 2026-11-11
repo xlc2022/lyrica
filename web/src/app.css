@@ -2090,3 +2090,16 @@ dialog .eyebrow { margin: 10px 0 4px; }
 .sleep-focus .field input { width: 100%; }
 .sleep-undo { display: grid; gap: 6px; justify-items: start; padding-top: 4px; border-top: 1px solid var(--line); }
 @media (pointer: coarse) { .sleep-undo button.sm { min-height: var(--tap); } }
+
+/* Artifacts (docs/ux.md §6): the card in her reply, the Artifacts page's rows, and the viewer's title and version. */
+.artifact-card { display: flex; align-items: center; gap: 10px; width: fit-content; max-width: min(100%, 420px); min-height: var(--tap); padding: 8px 10px 8px 12px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); }
+.artifact-name { display: grid; min-width: 0; margin-right: 6px; }
+.artifact-title { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.artifacts { display: grid; gap: 12px; max-width: 900px; padding: 16px var(--gutter) 24px; align-content: start; }
+.artifact-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.artifact-row { display: grid; justify-items: start; gap: 2px; width: 100%; min-height: var(--tap); padding: 10px 12px; text-align: left; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); }
+.artifact-row .cap { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.viewer-head .artifact-heading { font-size: 14px; font-weight: 500; }
+.viewer-head .artifact-rename { flex: 0 1 24ch; }
+.artifact-version { font-size: 13px; max-width: 100%; }
+.viewer-error { position: absolute; left: 16px; bottom: 16px; padding: 8px 12px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); }

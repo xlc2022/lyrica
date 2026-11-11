@@ -19,6 +19,8 @@ export type Route =
   | { page: "threads"; userId: string; pool: Pool; threadId: string }
   | { page: "memory"; userId: string; pool?: Pool; id?: string }
   | { page: "sleep"; userId: string }
+  /** The Artifacts page; with `pool` and `id`, that artifact open over it (`…/artifacts/<pool>/<id>`, what Copy link copies). */
+  | { page: "artifacts"; userId: string; pool?: Pool; id?: string }
   /** A history page. `q` and `at` (the page number) ride in the address as `?q=&page=` so Back returns to the same search and page. */
   | { page: "history"; userId: string; kind: "sleep" | "memory" | "journal"; pool?: Pool; id?: string; q?: string; at?: number }
   | { page: "notifications"; userId: string }
@@ -96,6 +98,7 @@ export function parse(hash: string): Route {
   if (section === "history" && a === "memory" && (b === "general" || b === "private") && c) return { page: "history", userId, kind: "memory", pool: b, id: c, ...(q ? { q } : {}), ...(pageNum ? { at: pageNum } : {}) };
   if (section === "memory") return { page: "memory", userId, pool, id: pool ? b : undefined };
   if (section === "sleep") return { page: "sleep", userId };
+  if (section === "artifacts") return { page: "artifacts", userId, ...(pool && b ? { pool, id: b } : {}) };
   if (section === "notifications") return { page: "notifications", userId };
   if (section === "models") {
     const tab = MODELS_TABS.find((t) => t === a);
@@ -138,6 +141,7 @@ export function href(r: Route): string {
     case "memory": return `#/u/${e(r.userId)}/memory` + (r.pool && r.id ? `/${r.pool}/${e(r.id)}` : "");
     case "history": return `#/u/${e(r.userId)}/history/${r.kind}` + (r.kind === "memory" && r.pool && r.id ? `/${r.pool}/${e(r.id)}` : r.kind === "journal" && r.pool ? `/${r.pool}` : "") + pageQuery(r);
     case "sleep": return `#/u/${e(r.userId)}/sleep`;
+    case "artifacts": return `#/u/${e(r.userId)}/artifacts` + (r.pool && r.id ? `/${r.pool}/${e(r.id)}` : "");
     case "notifications": return `#/u/${e(r.userId)}/notifications`;
     case "models": {
       const under = UNDER.find((x) => x.tab === r.tab && x.add === r.add);

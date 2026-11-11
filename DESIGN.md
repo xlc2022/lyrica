@@ -220,6 +220,12 @@ Each user has two pools of memory.
     are no public links. She can't delete one; the user can. Deleting a
     thread deletes its artifacts, unless its memories are kept, which
     leaves them with no thread.
+    A publish shows as a card in her reply, which opens that version in the
+    file viewer with its thread beside it; there the user picks any
+    version, restores one as a new version, adds a version from a file,
+    renames, downloads or deletes. The **Artifacts** page in the sidebar
+    lists them all and imports `.html`, `.svg` and `.md` files, each as a
+    new artifact at version 1.
   - **Changes** (decided 2026-10-22, as in Claude's own app): a thread with a
     checkout shows its branch, its open pull request and "+n −m" as a badge
     in its header, which opens the changes view: the files and commits at
