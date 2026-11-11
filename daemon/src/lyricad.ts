@@ -43,7 +43,7 @@ import {
 } from "./http.ts";
 import { TailnetControl } from "./tailnet.ts";
 import { listenUpdateSocket, type Drainable, type UpdatePaths } from "./updates.ts";
-import { DIRECT_PORT, directFor, ExternalListener, FRONT_FILE, FRONT_NAMES_FILE, hostAddresses, readFront, readFrontNames, WebAccess, writeFront, type Bind, type Front } from "./web/access.ts";
+import { DIRECT_PORT, directFor, ExternalListener, FRONT_FILE, FRONT_NAMES_FILE, fronts, hostAddresses, readFront, readFrontNames, WebAccess, writeFront, type Bind, type Front } from "./web/access.ts";
 import { apiRoutes } from "./routes.ts";
 import { sweepUser, wipeHome } from "./sweep.ts";
 
@@ -1244,10 +1244,10 @@ export class Lyricad implements Drainable {
    * before that file believes loopback as it did, until its first unlock.
    */
   private behind(proxy: "builtin" | "tailnet"): TrustForwarded {
-    return (remote) => fromLoopback(remote) && (this.services?.web.front() ?? this.frontSaved ?? proxy) === proxy;
+    return (remote) => fromLoopback(remote) && fronts(this.services?.web.front() ?? this.frontSaved ?? proxy, proxy);
   }
 
-  /** The Tailnet mode's DNS name and address, which a page served through `tailscale serve` may name as its origin. */
+  /** Her tailnet DNS name and address while `tailscale serve` is on, which a page it serves may name as its origin. */
   private tailnetNames(): string[] {
     const t = this.services?.web.tailnetHosts();
     return t ? [t.dnsName, ...(t.address ? [t.address] : [])] : [];

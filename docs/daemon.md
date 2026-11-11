@@ -91,17 +91,20 @@ localhost or 127.x) came through something that forwards to loopback, where
 the Secure login cookie can never be set: it is a wrong door, and so is a
 request with no Host header. The exception is the proxy in front of that
 listener saying `X-Forwarded-Proto: https`: the built-in Caddy on the main
-port in Built-in mode, `tailscale serve` on the serve port in Tailnet mode.
+port in Built-in mode, `tailscale serve` on the serve port in Tailnet mode,
+and each of them on its own port when Tailnet is on beside Built-in.
 Each plain listener believes loopback's forwarded headers (`X-Forwarded-For`,
 `X-Forwarded-Host`, `X-Forwarded-Proto`) only while that mode is on, since
 her userspace tailscaled hands every tailnet peer to loopback too (The
 tailnet, below). The mode is read from `self.db` once unlocked, and before
-that from `<runtime>/web-front` (`builtin`, `tailnet` or `none`, mode
-`0600`), which `lyricad` writes at setup, at each unlock and at each change
-of mode; an install from before that file believes loopback as it did,
-until its first unlock writes it. Behind its proxy, the Host header must
-still be loopback's or one of the front's own names (Built-in's name, or
-the Tailnet mode's MagicDNS name and address), and `X-Forwarded-Host` one
+that from `<runtime>/web-front` (`builtin`, `tailnet`, `both` or `none`,
+mode `0600`), which `lyricad` writes at setup, at each unlock and at each
+change of mode; an install from before that file, or a release from before
+`both` reading it, believes loopback as it did, until its first unlock
+writes it. Behind its proxy, the Host header must
+still be loopback's or one of the front's own names (Built-in's name, her
+MagicDNS name and address while Tailnet is on, or all three with both on),
+and `X-Forwarded-Host` one
 of those names, or the request is a wrong door: a web page that rebinds its
 own name to 127.0.0.1 (DNS rebinding) can set the forwarded headers from
 script, but not the Host its browser sends. The names are kept beside the
@@ -1270,7 +1273,8 @@ so is a tailnet destination when nothing listens on the port.
   a tailnet: `409` unless `leave`, which logs out first.
 - `POST …/tailnet/disconnect` (`down`), `POST …/tailnet/connect` (`up`),
   `DELETE …/tailnet` (`logout`, after turning the Tailnet web mode off: to
-  Direct if its listener is still open, else off).
+  Direct if its listener is still open, else off; beside Built-in, only
+  Tailnet goes off).
 - Disconnect, leave and a join that leaves are `409` when they come through
   her tailnet address (the serve port), since they would cut that request
   off; over the LAN or on the machine they work.
@@ -1341,8 +1345,8 @@ Plain-HTTP listeners stay HTTP/1.1.
   it, so nobody is locked out; turning Tailnet on again once it answers closes
   Direct. The status fetches the name again, and once it answers records
   `certificates` as issued, so the panel stops saying the certificate isn't
-  there yet. Off, or any other mode, runs
-  `serve reset`. tailscaled keeps the serve configuration, so the unlock page
+  there yet. Off, or any other mode but Built-in with Tailnet beside it,
+  runs `serve reset`, once the new mode is up. tailscaled keeps the serve configuration, so the unlock page
   is there after a restart. The origin check on the serve port accepts the
   browser's host from `X-Forwarded-Host` and the mode's own name and address,
   so a `tailscale serve` that rewrites `Host` to the loopback target still
@@ -1356,6 +1360,15 @@ Plain-HTTP listeners stay HTTP/1.1.
   `127.0.0.1:<port>`. Caddy saves it (`--resume`), so it keeps serving while
   `lyricad` is locked; after unlock, `lyricad` loads it again only if Caddy's
   differs.
+- **Tailnet beside Built-in.** With **Tailnet name** on (`tailnet: true` in
+  the change; on by default when switching from Tailnet, and left out it
+  stays as it was), `tailscale serve` keeps serving her ts.net name while
+  Caddy serves the custom name, so both work. The same checks as the
+  Tailnet mode apply. Switching from Tailnet leaves `tailscale serve`
+  running; turning it on from Built-in starts it before Caddy's change and
+  resets it if Caddy's certificate doesn't come. Caddy's name is checked as
+  usual; the ts.net name isn't waited for, and the status says once it
+  answers. Leaving the tailnet turns it off and leaves Caddy's site alone.
   Caddy's units run it with `GODEBUG=multipathtcp=0`: it listens with plain
   TCP, not Multipath TCP, which Go turns on by default and which the Linux
   kernel bug CVE-2026-98432 was shown to reach for remote root. A patched
@@ -1397,8 +1410,8 @@ Plain-HTTP listeners stay HTTP/1.1.
   and the old one gives its open requests five seconds to finish, so the
   request that asked for the change gets its answer; if the new one can't
   open, the old one stays.
-- Which plain listener has its proxy in front (`builtin`, `tailnet` or
-  `none`) is kept in `<runtime>/web-front`, and that proxy's names in
+- Which plain listeners have their proxy in front (`builtin`, `tailnet`,
+  `both` or `none`) is kept in `<runtime>/web-front`, and that proxy's names in
   `<runtime>/web-front-names`, both mode `0600`, for the listeners before
   unlock (Starting and unlocking).
 - **Sandboxes never reach the front door.** `Workspace` reads it at every
@@ -1406,7 +1419,8 @@ Plain-HTTP listeners stay HTTP/1.1.
   own port) and Direct's port on this machine's addresses, on every address
   the name has resolved to (in Tailnet, her Tailscale address as her
   tailscaled gave it at the switch, standing for her MagicDNS name, which this
-  machine's resolver needn't know), and on the external proxy's addresses; and the external proxy
+  machine's resolver needn't know; with Tailnet beside Built-in, both 443 on
+  that address and Caddy's port on its name), and on the external proxy's addresses; and the external proxy
   listener's port on every address. If the name has never resolved, the
   sandbox gets no network for that run
   ([workspace.md](workspace.md#network-access-from-tools)).

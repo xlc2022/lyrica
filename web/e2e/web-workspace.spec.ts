@@ -825,6 +825,8 @@ test("an administrator sees how Lyrica is reached", async ({ page, baseURL }) =>
   await expect(section.getByRole("region", { name: "Web access status" })).toContainText("Only on this machine");
   await section.getByLabel("Built-in Caddy").check();
   await expect(section.getByLabel("DNS provider")).toBeVisible();
+  // Off while Tailnet is off: her ts.net name beside the hostname is a choice.
+  await expect(section.getByLabel("Tailnet name", { exact: true })).not.toBeChecked();
   await section.getByLabel("A proxy elsewhere").check();
   await expect(section.getByLabel("Proxy addresses")).toBeVisible();
   await noHorizontalScroll(page);

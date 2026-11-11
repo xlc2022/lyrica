@@ -26,8 +26,12 @@ interface Stored {
   mode: Api.WebMode;
   name: string;
   builtin?: Builtin;
-  /** Tailnet: her DNS name and address when it was turned on, and whether its certificate answered. */
-  tailnet?: { dnsName: string; address?: string; certificates: boolean };
+  /**
+   * Tailnet: her DNS name and address when it was turned on, and whether its
+   * certificate answered. `beside`: in Built-in mode, Tailnet stays on beside
+   * Caddy, so her ts.net name and the custom name both work.
+   */
+  tailnet?: { dnsName: string; address?: string; certificates: boolean; beside?: boolean };
   /** When the setup last changed (ms). Caddy's TLS errors from before don't count. */
   appliedAt?: number;
 }
@@ -67,29 +71,34 @@ const OFF: Stored = { mode: "off", name: "" };
 const KEY = "web.access";
 
 /**
- * Which plain loopback listener has a proxy in front of it: the built-in
- * Caddy on lyricad's main port, `tailscale serve` on its serve port, or
- * neither. Only that listener believes loopback's forwarded headers, since
- * her userspace tailscaled hands every tailnet peer to loopback too. The
- * mode is in self.db, so this is also kept in a plain file in lyricad's
- * state directory, for the listeners before unlock.
+ * Which plain loopback listeners have a proxy in front of them: the built-in
+ * Caddy on lyricad's main port, `tailscale serve` on its serve port, both
+ * (Built-in with Tailnet beside it), or neither. Only those listeners believe
+ * loopback's forwarded headers, since her userspace tailscaled hands every
+ * tailnet peer to loopback too. The mode is in self.db, so this is also kept
+ * in a plain file in lyricad's state directory, for the listeners before
+ * unlock. A release from before `both` reads it as no file at all, and
+ * believes loopback on both listeners until its first unlock writes it again.
  */
-export type Front = "builtin" | "tailnet" | "none";
+export type Front = "builtin" | "tailnet" | "both" | "none";
+
+/** Whether this proxy is in front of its listener. */
+export const fronts = (f: Front, proxy: "builtin" | "tailnet"): boolean => f === proxy || f === "both";
 export const FRONT_FILE = "web-front";
 
 /** The front as last saved, or undefined when the file isn't there (an install from before it, until its first unlock). */
 export function readFront(path: string): Front | undefined {
   try {
     const v = readFileSync(path, "utf8").trim();
-    return v === "builtin" || v === "tailnet" || v === "none" ? v : undefined;
+    return v === "builtin" || v === "tailnet" || v === "both" || v === "none" ? v : undefined;
   } catch {
     return undefined;
   }
 }
 
 /**
- * The names the front's proxy is reached by (the built-in Caddy's name, or
- * the Tailnet mode's name and address), kept beside the front's own file so
+ * The names the front's proxies are reached by (the built-in Caddy's name,
+ * the Tailnet mode's name and address, or both), kept beside the front's own file so
  * the listeners know them before unlock too. Behind its proxy, a plain
  * listener accepts only these names (and loopback's) in Host and
  * X-Forwarded-Host: a page that rebinds its own name to 127.0.0.1 can forge
@@ -118,7 +127,9 @@ export function writeFront(path: string, front: Front, names: string[] = []): vo
   put(path, `${front}\n`);
 }
 
-const frontOf = (mode: Api.WebMode): Front => (mode === "builtin" || mode === "tailnet" ? mode : "none");
+/** Whether `tailscale serve` is on: the Tailnet mode, or Built-in with Tailnet beside it. */
+const tailnetOn = (s: Stored): boolean => !!s.tailnet && (s.mode === "tailnet" || (s.mode === "builtin" && !!s.tailnet.beside));
+const frontOf = (s: Stored): Front => (s.mode === "builtin" ? (tailnetOn(s) ? "both" : "builtin") : s.mode === "tailnet" ? "tailnet" : "none");
 /** How long a new name may take to get its certificate before the change is undone. */
 export const CERT_WAIT_MS = 90_000;
 
@@ -349,7 +360,7 @@ export class WebAccess {
         ...(e.tls ? { fingerprint: new X509Certificate(e.tls.cert).fingerprint256, pem: e.tls.cert } : {}),
       } : null,
       direct: dir ? { addresses: dir.addresses, port: dir.port, ...certOf(dir.tls.cert) } : null,
-      tailnet: s.mode === "tailnet" && s.tailnet ? { dnsName: s.tailnet.dnsName, certificates: s.tailnet.certificates } : null,
+      tailnet: tailnetOn(s) ? { dnsName: s.tailnet!.dnsName, certificates: s.tailnet!.certificates } : null,
       addresses: this.addresses(),
       providers: PROVIDERS.map(({ module: _m, ...p }) => p),
     };
@@ -377,7 +388,7 @@ export class WebAccess {
 
   /** Which plain listener has its proxy in front now. Asked on every request, so it is read once per change. */
   private cachedFront: Front | undefined;
-  front(): Front { return this.cachedFront ??= frontOf(this.load().mode); }
+  front(): Front { return this.cachedFront ??= frontOf(this.load()); }
 
   /** Writes the front to its file, so the listeners know it before the next unlock. */
   rememberFront(): Front {
@@ -386,11 +397,17 @@ export class WebAccess {
     return f;
   }
 
-  /** The names the front's proxy is reached by: what a plain listener behind it accepts in Host and X-Forwarded-Host. */
+  /**
+   * The names the front's proxies are reached by: what a plain listener
+   * behind one accepts in Host and X-Forwarded-Host. With both on, both
+   * listeners accept both lists: each name is this machine's own, and the
+   * check is there to refuse a name that isn't (DNS rebinding).
+   */
   frontNames(): string[] {
-    return this.cachedNames ??= ((s) => s.mode === "builtin" ? [s.name.toLowerCase()]
-      : s.mode === "tailnet" && s.tailnet ? [s.tailnet.dnsName.toLowerCase(), ...(s.tailnet.address ? [s.tailnet.address] : [])]
-      : [])(this.load());
+    return this.cachedNames ??= ((s) => [
+      ...(s.mode === "builtin" ? [s.name.toLowerCase()] : []),
+      ...(tailnetOn(s) ? [s.tailnet!.dnsName.toLowerCase(), ...(s.tailnet!.address ? [s.tailnet!.address] : [])] : []),
+    ])(this.load());
   }
   private cachedNames: string[] | undefined;
 
@@ -402,13 +419,7 @@ export class WebAccess {
       if (!addresses.length) throw new Error("this machine has no LAN or Tailscale address to listen on");
       return { next: { ...prev, mode: "direct" }, external: await directFor(addresses, this.o.directPort ?? DIRECT_PORT, this.o.external.direct()) };
     }
-    if (c.mode === "tailnet") {
-      if (!this.o.tailnet || this.o.servePort === undefined) throw new Error("the tailnet isn't available here");
-      const t = await this.o.tailnet.serveName();
-      if (!t.magicDns) throw new Error("MagicDNS is off in her tailnet; turn it on in the tailnet's DNS settings");
-      if (!t.certificates) throw new Error("HTTPS certificates are off in her tailnet; turn them on in the tailnet's DNS settings");
-      return { next: { ...prev, mode: "tailnet", tailnet: { dnsName: t.dnsName, ...(t.address ? { address: t.address } : {}), certificates: false } } };
-    }
+    if (c.mode === "tailnet") return { next: { ...prev, mode: "tailnet", tailnet: await this.tailnetFor(prev) } };
     const name = String(c.name ?? prev.name).trim().toLowerCase();
     if (!NAME.test(name)) throw new Error("the hostname is a domain name, like lyrica.example.net");
     const mine = this.addresses();
@@ -430,7 +441,9 @@ export class WebAccess {
       }
       const email = b.email?.trim();
       if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new Error("that ACME email doesn't look like an email address");
-      return { next: { ...prev, mode: "builtin", name, builtin: { addresses, provider: p.id, credentials, staging: !!b.staging, ...(email ? { email } : {}) } } };
+      // Tailnet beside Caddy: her ts.net name keeps working too, with no change while it was already on.
+      const tailnet = (c.tailnet ?? tailnetOn(prev)) ? { ...(tailnetOn(prev) ? prev.tailnet! : await this.tailnetFor(prev)), beside: true } : prev.tailnet && { ...prev.tailnet, beside: false };
+      return { next: { ...prev, mode: "builtin", name, builtin: { addresses, provider: p.id, credentials, staging: !!b.staging, ...(email ? { email } : {}) }, ...(tailnet ? { tailnet } : {}) } };
     }
     const e = c.external;
     if (!e) throw new Error("external mode needs its settings");
@@ -453,9 +466,24 @@ export class WebAccess {
     return { next: { ...prev, mode: "external", name }, external: { address, port, proxies, proxyPort, ...(tls ? { tls } : {}) } };
   }
 
+  /** Her tailnet name and address for `tailscale serve`, once MagicDNS and HTTPS certificates are on. */
+  private async tailnetFor(prev: Stored): Promise<NonNullable<Stored["tailnet"]>> {
+    if (!this.o.tailnet || this.o.servePort === undefined) throw new Error("the tailnet isn't available here");
+    const t = await this.o.tailnet.serveName();
+    if (!t.magicDns) throw new Error("MagicDNS is off in her tailnet; turn it on in the tailnet's DNS settings");
+    if (!t.certificates) throw new Error("HTTPS certificates are off in her tailnet; turn them on in the tailnet's DNS settings");
+    // The same name keeps what its certificate check found.
+    const certificates = tailnetOn(prev) && prev.tailnet!.dnsName === t.dnsName && prev.tailnet!.certificates;
+    return { dnsName: t.dnsName, ...(t.address ? { address: t.address } : {}), certificates };
+  }
+
   /** Makes the change live. The new way in is up and checked before the old one goes. */
   private async apply(next: Stored, prev: Stored, external?: External | Direct): Promise<void> {
-    if (prev.mode === "tailnet" && next.mode !== "tailnet") await this.o.tailnet?.serveReset().catch((err: Error) => this.o.log(`tailscale serve didn't reset: ${err.message}`));
+    await this.applyMode(next, prev, external);
+    if (tailnetOn(prev) && !tailnetOn(next)) await this.o.tailnet?.serveReset().catch((err: Error) => this.o.log(`tailscale serve didn't reset: ${err.message}`));
+  }
+
+  private async applyMode(next: Stored, prev: Stored, external?: External | Direct): Promise<void> {
     if (next.mode === "direct") {
       await this.o.external.set(external);
       if (prev.mode === "builtin") await this.caddy.load(adminOnly(this.o.caddy)).catch((err: Error) => this.o.log(`Caddy kept its old site: ${err.name}`));
@@ -485,18 +513,28 @@ export class WebAccess {
     if (next.mode === "builtin") {
       const before = await this.caddy.config();
       if (before === undefined) throw new Error(`Caddy doesn't answer on ${this.o.caddy.socket}; is lyrica-caddy running?`);
+      // Tailnet beside it, newly on: served first, and taken down again if Caddy's side fails.
+      const serve = tailnetOn(next) && !tailnetOn(prev);
+      if (serve) await this.o.tailnet!.serve(this.o.servePort!);
       // The old name keeps its route until the new one has a certificate that verifies.
       const keep = prev.mode === "builtin" && prev.name !== next.name ? [this.site(prev)] : [];
       const since = Date.now();
-      await this.caddy.load(caddyConfig(this.site(next), this.o.caddy, keep));
-      const why = await this.certificate(next);
-      if (why) {
-        await this.caddy.load(before).catch(() => {});
-        const tls = lastError(this.o.caddy.tlsLog, since);
-        throw new Error(`no certificate for ${next.name} came within ${Math.round((this.o.certWaitMs ?? CERT_WAIT_MS) / 1000)} s (${why}${tls ? `; Caddy: ${tls.message}` : ""}), so the previous setup stays`);
+      try {
+        await this.caddy.load(caddyConfig(this.site(next), this.o.caddy, keep));
+        const why = await this.certificate(next);
+        if (why) {
+          await this.caddy.load(before).catch(() => {});
+          const tls = lastError(this.o.caddy.tlsLog, since);
+          throw new Error(`no certificate for ${next.name} came within ${Math.round((this.o.certWaitMs ?? CERT_WAIT_MS) / 1000)} s (${why}${tls ? `; Caddy: ${tls.message}` : ""}), so the previous setup stays`);
+        }
+      } catch (err) {
+        if (serve) await this.o.tailnet!.serveReset().catch(() => {});
+        throw err;
       }
       if (keep.length) await this.caddy.load(caddyConfig(this.site(next), this.o.caddy));
       await this.o.external.set(undefined);
+      // Caddy's name already answers, so nobody is locked out; the status says once the ts.net certificate comes.
+      if (serve) next.tailnet!.certificates = !(await answers(next.tailnet!.dnsName, 5000));
       return;
     }
     // Off: only lyricad's local listeners stay.
@@ -562,7 +600,7 @@ export class WebAccess {
     if (s.mode === "external" && e) out.external = { listening: this.o.external.listening, address: e.address, port: e.port };
     const dir = this.o.external.direct();
     if (dir) out.direct = { listening: this.o.external.listeningOn(), port: dir.port, fingerprint: certOf(dir.tls.cert).fingerprint };
-    if (s.mode === "tailnet" && s.tailnet) {
+    if (tailnetOn(s) && s.tailnet) {
       const why = await answers(s.tailnet.dnsName, 5000);
       out.tailnet = { dnsName: s.tailnet.dnsName, answers: !why, ...(why ? { error: why } : {}) };
       // The certificate often issues after the switch (the first one takes a while): once the name answers, the panel says so.
@@ -584,17 +622,39 @@ export class WebAccess {
     return `${s.name} {\n${tls}${upstream}\n}\n`;
   }
 
-  /** The Tailnet mode's DNS name and address while it is on: where a plain request at her tailnet address is sent. */
+  /** Her tailnet DNS name and address while `tailscale serve` is on: where a plain request at her tailnet address is sent. */
   tailnetHosts(): { dnsName: string; address?: string } | undefined {
     const s = this.load();
-    return s.mode === "tailnet" && s.tailnet ? { dnsName: s.tailnet.dnsName, ...(s.tailnet.address ? { address: s.tailnet.address } : {}) } : undefined;
+    return tailnetOn(s) && s.tailnet ? { dnsName: s.tailnet.dnsName, ...(s.tailnet.address ? { address: s.tailnet.address } : {}) } : undefined;
+  }
+
+  /**
+   * Leaving the tailnet: Tailnet beside Built-in goes off, and Caddy's site is
+   * left as it is. True if it was on. The Tailnet mode itself is switched by
+   * the caller, to Direct or off.
+   */
+  dropTailnet(): Promise<boolean> {
+    const run = this.queue.then(async () => {
+      const s = this.load();
+      if (s.mode !== "builtin" || !tailnetOn(s)) return false;
+      await this.o.tailnet?.serveReset().catch((err: Error) => this.o.log(`tailscale serve didn't reset: ${err.message}`));
+      this.save({ ...s, tailnet: { ...s.tailnet!, beside: false } });
+      this.rememberFront();
+      return true;
+    });
+    this.queue = run.catch(() => {});
+    return run;
   }
 
   /** Where sandboxes must never reach: the front door's ports and hosts, and the extra listener's port everywhere. */
   frontDoor(): FrontDoor {
     const s = this.load();
     const e = this.o.external.config();
-    if (s.mode === "builtin") return { ports: [this.o.httpsPort], hosts: [s.name], exclude: [] };
+    if (s.mode === "builtin") {
+      // With Tailnet beside it, her Tailscale address too, standing for her MagicDNS name (below).
+      const t = tailnetOn(s) ? s.tailnet! : undefined;
+      return { ports: [...new Set([this.o.httpsPort, ...(t ? [443] : [])])], hosts: [s.name, ...(t ? [t.address ?? t.dnsName] : [])], exclude: [] };
+    }
     if (s.mode === "external" && e) return { ports: [e.proxyPort], hosts: [s.name, ...e.proxies], exclude: [e.port] };
     // Direct, also while it stays on beside Tailnet: its port on this machine's addresses.
     const dir = this.o.external.direct();

@@ -2211,7 +2211,7 @@ export interface WebAccess {
   } | null;
   /** Direct: lyricad's own HTTPS on these addresses and port, with a certificate naming them. */
   direct: { addresses: string[]; port: number; fingerprint: string; pem: string } | null;
-  /** Tailnet: her name on the tailnet, and whether its HTTPS certificate came. */
+  /** Tailnet, or Tailnet beside Built-in: her name on the tailnet, and whether its HTTPS certificate came. */
   tailnet: { dnsName: string; certificates: boolean } | null;
   /** This machine's Tailscale and LAN addresses. */
   addresses: HostAddress[];
@@ -2229,6 +2229,11 @@ export interface WebAccessChange {
   name?: string;
   builtin?: { addresses: string[]; provider: string; credentials?: Record<string, string>; email?: string; staging?: boolean };
   external?: { address: string; port: number; proxies: string[]; proxyPort?: number };
+  /**
+   * Built-in: Tailnet stays on beside Caddy, so her ts.net name works as well
+   * as the hostname. Left out, it stays as it was (on when switching from Tailnet).
+   */
+  tailnet?: boolean;
 }
 
 /** GET /api/u/:userId/admin/web-access/status → WebAccessStatus */
@@ -2248,7 +2253,7 @@ export interface WebAccessStatus {
   external?: { listening: boolean; address: string; port: number };
   /** Direct: the addresses it listens on now. */
   direct?: { listening: string[]; port: number; fingerprint: string };
-  /** Tailnet: her name, and whether it answers over HTTPS now (checked from this machine), else why not. */
+  /** Tailnet, or Tailnet beside Built-in: her name, and whether it answers over HTTPS now (checked from this machine), else why not. */
   tailnet?: { dnsName: string; answers: boolean; error?: string };
 }
 

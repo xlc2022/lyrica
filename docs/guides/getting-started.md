@@ -640,7 +640,8 @@ Caddy:
    token, and apply. The certificate comes by DNS-01 challenge, so the
    machine needn't be reachable from the internet. A new name can take
    about 90 seconds; the page shows the certificate's state and Caddy's
-   last error.
+   last error. To keep her ts.net name working too, leave **Tailnet name**
+   on: it is on when you switch from Tailnet, and then both names reach her.
 
 A change never locks you out: the old setup keeps serving until the new one
 has a working certificate. The other mode, **A proxy elsewhere**, is for a

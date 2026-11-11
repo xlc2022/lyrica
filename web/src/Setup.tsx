@@ -205,7 +205,7 @@ function DoneStep({ userId, login, unlocked, onDone }: { userId: string; login: 
     get<Tailnet>(u(userId, "admin", "tailnet")).then(setTn, () => {});
   }, [userId]);
   const addresses = [
-    ...(access?.mode === "tailnet" && access.tailnet ? [`https://${access.tailnet.dnsName}`] : []),
+    ...(access?.tailnet ? [`https://${access.tailnet.dnsName}`] : []),
     ...(access?.direct ? access.direct.addresses.map((a) => `https://${a.includes(":") ? `[${a}]` : a}:${access.direct!.port}`) : []),
   ];
   return (

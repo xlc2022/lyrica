@@ -43,6 +43,8 @@ function WebAccessForm({ path, access, onSaved }: { path: string; access: WebAcc
     Object.fromEntries(Object.entries(b?.credentials ?? {}).flatMap(([k, v]) => (v.value !== undefined ? [[k, v.value]] : []))));
   const [email, setEmail] = useState(b?.email ?? "");
   const [staging, setStaging] = useState(b?.staging ?? false);
+  // On while Tailnet is: switching from Tailnet to Built-in keeps her ts.net name unless it's turned off.
+  const [tailnet, setTailnet] = useState(access.tailnet !== null);
   const e = access.external;
   const [extAddress, setExtAddress] = useState(e?.address ?? access.addresses[0]?.address ?? "");
   const [port, setPort] = useState(String(e?.port ?? 8443));
@@ -59,6 +61,7 @@ function WebAccessForm({ path, access, onSaved }: { path: string; access: WebAcc
       // Secret fields left empty keep their saved values.
       const creds = Object.fromEntries(Object.entries(credentials).filter(([, v]) => v !== ""));
       change.builtin = { addresses, provider, credentials: creds, ...(email && { email }), staging };
+      change.tailnet = tailnet;
     }
     if (mode === "external") {
       change.external = {
@@ -115,6 +118,9 @@ function WebAccessForm({ path, access, onSaved }: { path: string; access: WebAcc
             ))}
             {!access.addresses.length && <span className="muted small">This machine has no Tailscale or LAN address.</span>}
           </div>
+          <Switch label="Tailnet name"
+            hint={`Keeps ${access.tailnet ? `https://${access.tailnet.dnsName}` : `${her()}'s tailnet name`} working through Tailscale beside this hostname. Needs her to be on a tailnet with MagicDNS and HTTPS certificates.`}
+            checked={tailnet} onChange={setTailnet} />
           <label className="field"><span>DNS provider</span>
             <select value={provider} onChange={(ev) => { setProvider(ev.target.value); setCredentials({}); }}>
               {access.providers.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
