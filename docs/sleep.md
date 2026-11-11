@@ -109,7 +109,7 @@ suggestion from the dream. She writes an item to the person ("you"), and
 so one subject is one item. In Notifications a persona item doesn't show:
 its suggestion or approval does.
 
-**Tonight.** A person can leave one line per pool for her to think about in
+**Focus.** A person can leave one line per pool for her to think about in
 tonight's dream (`sleep_focus`, pool step 14, at most 300 characters; set on the
 Sleep page). It stays in that pool's own database, so a private line never
 reaches a general context or a cloud model. The dream's instruction carries it
@@ -244,8 +244,8 @@ shows:
 - on the newest night of a pool, **Undo this night…** (see "Undo"). An undone
   run reads "Undone".
 
-Between her items and History, a **Tonight** line per shown pool takes the
-person's line for tonight's dream (see "Tonight").
+Between her items and History, a **Focus** line per shown pool takes the
+person's line for tonight's dream (see "Focus").
 
 Above the runs are her **items**, with a badge on the section while any are
 new. Each item has **Start a chat**, which opens a new thread in that pool

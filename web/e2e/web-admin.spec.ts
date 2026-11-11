@@ -3256,7 +3256,7 @@ test("Text models: a group's copies reorder by dragging a row, as with Move up a
   await expect(trs.nth(0).locator("td").first()).toHaveText("1");
 });
 
-// Undo this night and Tonight (docs/briefs/sleep-undo-focus.md). Last in the file, so its fixture night is not on the
+// Undo this night and Focus (docs/briefs/sleep-undo-focus.md). Last in the file, so its fixture night is not on the
 // Sleep page for the tests above.
 test("the newest night can be undone after a dialog, and a line for tonight saves and clears", async ({ page, baseURL, request }) => {
   const userId = await enter(page, baseURL!);
@@ -3264,16 +3264,16 @@ test("the newest night can be undone after a dialog, and a line for tonight save
   await page.goto(`/#/u/${userId}/sleep`);
   const w = page.viewportSize()!.width;
 
-  // Tonight: Save waits for a change; a saved line offers Clear.
-  const tonight = page.getByRole("region", { name: "Tonight" });
-  const field = tonight.getByRole("textbox").first();
-  await expect(tonight.getByRole("button", { name: "Save" }).first()).toBeDisabled();
+  // Focus: Save waits for a change; a saved line offers Clear.
+  const focus = page.getByRole("region", { name: "Focus" });
+  const field = focus.getByRole("textbox").first();
+  await expect(focus.getByRole("button", { name: "Save" }).first()).toBeDisabled();
   await field.fill("the trip to Lisbon");
-  await tonight.getByRole("button", { name: "Save" }).first().click();
-  await expect(tonight.getByRole("button", { name: "Clear" }).first()).toBeVisible();
+  await focus.getByRole("button", { name: "Save" }).first().click();
+  await expect(focus.getByRole("button", { name: "Clear" }).first()).toBeVisible();
   expect(await page.evaluate(async (path) => (await (await fetch(path)).json()).focus, `/api/u/${userId}/sleep`)).toEqual({ general: "the trip to Lisbon" });
   await noHorizontalScroll(page);
-  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/sleep-tonight-${w}.png` });
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/sleep-focus-${w}.png` });
 
   // The newest night opens to its Undo, confirmed in a dialog; afterwards it reads Undone and its page is gone.
   const row = page.locator("details.sleep-run").first();
@@ -3292,9 +3292,9 @@ test("the newest night can be undone after a dialog, and a line for tonight save
   await expect(row.getByRole("button", { name: "Undo this night…" })).toHaveCount(0);
   if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/sleep-undone-${w}.png` });
 
-  await tonight.getByRole("button", { name: "Clear" }).first().click();
+  await focus.getByRole("button", { name: "Clear" }).first().click();
   await expect(field).toHaveValue("");
-  await expect(tonight.getByRole("button", { name: "Clear" })).toHaveCount(0);
+  await expect(focus.getByRole("button", { name: "Clear" })).toHaveCount(0);
 });
 
 test("Detach makes a branch a thread of its own, after asking", async ({ page, baseURL }) => {

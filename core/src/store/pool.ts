@@ -1892,7 +1892,7 @@ export class PoolStore extends PoolReader {
     if (!this.db.prepare("UPDATE sleep_items SET dismissed = 1 WHERE id = ?").run(id).changes) throw new Error(`no item ${id}`);
   }
 
-  // A line for tonight's dream (docs/sleep.md, "Tonight")
+  // A line for tonight's dream (docs/sleep.md, "Focus")
 
   /** The person's line for tonight's dream in this pool, if they left one. */
   sleepFocus(): { text: string; setAt: string } | undefined {

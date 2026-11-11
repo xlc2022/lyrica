@@ -18,7 +18,7 @@ coding-style preferences"). The user asked for both on 2026-11-08.
    covers that time again. Principle 6 (trust her judgment; make review
    easy): she keeps writing without asking, and a bad night costs one click
    rather than a page-by-page restore. No model call.
-2. **Tonight.** A person can leave one line per pool for her to think about
+2. **Focus** (first called Tonight). A person can leave one line per pool for her to think about
    in tonight's dream. It steers, it doesn't dictate: the dream stays hers.
    Principle 9 (she grows through her dreams) and principle 6.
 
@@ -50,7 +50,7 @@ coding-style preferences"). The user asked for both on 2026-11-08.
 - A restored page that cites a deleted or replaced note is flagged, so the
   next sleep rewrites it.
 
-## Tonight
+## Focus
 
 - One line per pool (`sleep_focus`, pool step 14), at most 300 characters,
   set or cleared by the person. It lives in that pool's own database, so a
@@ -63,7 +63,7 @@ coding-style preferences"). The user asked for both on 2026-11-08.
 
 ## Interface
 
-On the Sleep page, between the items and History: a **Tonight** row per shown
+On the Sleep page, between the items and History: a **Focus** row per shown
 pool (the pool word, a text field, **Save**; a set line shows with **Clear**).
 In an open run's detail, the newest run of its pool ends with **Undo this
 night…**, a small secondary button; disabled with the reason as its tooltip
@@ -80,7 +80,7 @@ setting the line herself from a conversation (that would need a tool).
 Done: store (`undoSleepRun`, `sleepUndoBlock`, `undoableRun`, `sleepFocus`,
 `setSleepFocus`, `clearSleepFocus`), pool step 14, sleep's tools record what
 they supersede, the dream's instruction carries the line, lyricad's two routes,
-the Sleep page's Tonight forms and Undo this night…, docs, unit tests
+the Sleep page's Focus forms and Undo this night…, docs, unit tests
 (extension and daemon sleep tests) and an e2e test with screenshots in the
 project files under `sleep-undo-focus/`.
 

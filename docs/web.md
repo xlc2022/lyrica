@@ -482,7 +482,7 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   detail has `undo`: greyed (`aria-disabled`) with `blocked` as its tooltip,
   otherwise a dialog ("Undo this night?") whose **Undo** posts
   `…/runs/<id>/undo`; the row then reads "Undone" from the detail it returns.
-  Between the items and History, **Tonight** has a form per shown pool (the
+  Between the items and History, **Focus** has a form per shown pool (the
   pool word after it when both show): a text field of at most 300 characters,
   **Save** (`PUT …/sleep/<pool>/focus`) and, while a line is set, **Clear**.
   **Sleep now** ▾ picks the
