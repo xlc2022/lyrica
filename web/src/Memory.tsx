@@ -8,7 +8,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import type { Components } from "react-markdown";
 import {
   del, get, patch, post, u,
-  type Display, type MemoryDetail, type MemoryExport, type MemoryImportResult, type MemoryHistory, type MemoryHit, type MemoryKind, type MemoryLink, type MemoryOverview, type MemoryRevision, type MemoryTag, type MemoryUse, type Pool, type UserMap,
+  type Display, type MemoryDetail, type MemoryExport, type MemoryImportResult, type MemoryHistory, type MemoryHit, type MemoryKind, type MemoryLink, type MemoryOverview, type MemoryRevision, type MemoryTag, type MemoryUse, type Pool, type ThreadSummary, type UserMap,
 } from "./api.ts";
 import { HistoryHead, HistoryList } from "./History.tsx";
 import { Icon } from "./icons.tsx";
@@ -17,7 +17,7 @@ import { CITATION_GROUP, dateWord, firstWords, KIND_WORD, linkCitations, longDat
 import { fromEditable, readable, readableLinks, toEditable } from "./mentions.ts";
 import { go, href, idHref, parse, type Route } from "./route.ts";
 import { Main, PageHead, usePanel, type ShellContext } from "./Shell.tsx";
-import { ConfirmDialog, dateText, ErrorText, hidden, Prose, shortTime, useAction, useDismiss, useLoad } from "./ui.tsx";
+import { clock, ConfirmDialog, dateText, ErrorText, hidden, Prose, shortTime, useAction, useDismiss, useLoad } from "./ui.tsx";
 
 type Layer = "page" | "note" | "wake" | "journal" | "entry";
 /** The layers; Recent is what sleep hasn't consolidated yet, the messages recall finds before they become notes and pages. */
@@ -40,7 +40,38 @@ function nameOf(kind: MemoryKind, title: string | undefined, text: string, at: s
   return firstWords(text) || "an empty memory";
 }
 
-const originWord = (origin?: string) => (origin === "user" ? "yours" : origin === "sleep" ? "sleep" : her());
+const cap = (w: string) => w[0]!.toUpperCase() + w.slice(1);
+/** "Wed 11 Nov 06:44": the day and the time, the way the rest of the interface says them. */
+const fullTime = (iso: string) => `${dateText(iso, { weekday: "short", day: "numeric", month: "short" }).replace(",", "")} ${clock(iso)}`;
+const POOL_TIP: Record<Pool, string> = {
+  general: "General memory: written from general threads, and read in every thread.",
+  private: "Private memory: written and read only in private threads, never by a cloud model.",
+};
+const KIND_TIP: Partial<Record<MemoryKind, string>> = {
+  page: "A page gathers what she knows about one subject. Sleep rewrites it as she learns.",
+  note: "A note is one thing she learned, with where it came from.",
+  wake: "WAKE is what she reads first in every conversation.",
+  journal: "A journal entry is what she wrote about one day.",
+  entry: "A message she hasn't slept on yet. Sleep turns it into notes and pages.",
+};
+const INSTRUCTIONS_TIP = "Yours: every thread of the project reads them. Sleep never changes them.";
+
+/** Who wrote a version: you, another user by name, sleep, or her. */
+function authorWord(author: string, userId: string, users: UserMap): string {
+  const who = /^user:(.+)$/.exec(author)?.[1];
+  if (who) return who === userId ? "you" : users[who]?.displayName ?? "another user";
+  return author === "sleep" ? "sleep" : author === "lyrica" ? her() : author;
+}
+
+/** The project whose page `id` is (`p:project-<id>`, as the store names it), from the thread list. */
+function findProject(threads: ThreadSummary[], pool: Pool, id: string): ThreadSummary | undefined {
+  for (const t of threads) {
+    if (t.project && t.pool === pool && id === `p:project-${t.id.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`) return t;
+    const c = findProject(t.children, pool, id);
+    if (c) return c;
+  }
+  return undefined;
+}
 
 /** What the browse pane shows: the layer, and a tag that narrows the Notes layer. */
 interface Browsing { layer: Layer; tag?: string }
@@ -180,8 +211,8 @@ function Browse({ ctx, current, imports, browsing, onBrowse, onPick }: { ctx: Sh
 
   const line = (h: MemoryHit): ReactNode => {
     const kind = query ? `${KIND_WORD[h.kind]} · ` : "";
-    if (h.kind === "note") return <>{kind}{(h.about ?? []).join(", ")}{h.about?.length && h.origin === "user" ? " · " : ""}{h.origin === "user" && "yours"}{h.supersededBy && " · superseded"}</>;
-    if (h.kind === "page") return <>{kind}{h.origin === "user" && "yours · "}{h.snippet}</>;
+    if (h.kind === "note") return <>{kind}{(h.about ?? []).join(", ")}{h.about?.length && h.origin === "user" ? " · " : ""}{h.origin === "user" && "added by you"}{h.supersededBy && " · superseded"}</>;
+    if (h.kind === "page") return <>{kind}{[h.origin === "user" && "added by you", h.snippet].filter(Boolean).join(" · ")}</>;
     return <>{kind}{h.title ? h.snippet : firstWords(h.snippet, 90)}</>;
   };
   return (
@@ -256,16 +287,23 @@ function Detail({ ctx, pool, id, onTitle, onTag }: { ctx: ShellContext; pool: Po
   // A message is read here as short-term memory; it is changed in its thread (Came from), never here.
   const canEdit = item.kind !== "entry";
   const cameFrom: MemoryUse[] = d.data.cameFrom.map((ref) => ({ id: ref, sentence: sentenceCiting(item.text, ref) }));
+  // A project's page holds the project's instructions apart from what sleep writes; it says so, and links to where they change.
+  const project = item.kind === "page" ? findProject(ctx.threads, item.pool, item.id) : undefined;
+  const projectPage = item.kind === "page" && (!!project || item.instructions !== undefined || item.id.startsWith("p:project-"));
+  const addedBy = item.origin === "user" ? "Added by you" : item.origin === "sleep" ? "Written by sleep" : item.origin === "lyrica" ? `Written by ${her()}` : undefined;
+  const changedBy = d.data.revisions[0] && authorWord(d.data.revisions[0].author, userId, users);
 
   return (
     <article className="mem-item" aria-labelledby="mem-title">
       <h2 id="mem-title">{name}</h2>
       <div className="tfacts">
-        <span className={`kind ${item.pool}`}>{item.pool}</span>
-        <span>{KIND_WORD[item.kind]}</span>
-        <span>{originWord(item.origin)}</span>
-        {item.archived && <span>archived</span>}
-        <span>updated <span className="num">{shortTime(item.updatedAt)}</span></span>
+        <span className={`kind ${item.pool}`} title={POOL_TIP[item.pool]}>{poolWord(item.pool)}</span>
+        {projectPage
+          ? <span title={`A project's page: your instructions for it, and what ${her()} knows about it.`}>Project page{project && <> for <a href={href({ page: "thread", userId, pool: project.pool, threadId: project.id })}>{project.title || "New project"}</a></>}</span>
+          : <span title={KIND_TIP[item.kind]}>{cap(KIND_WORD[item.kind])}</span>}
+        {addedBy && <span>{addedBy}</span>}
+        <span>Changed <span className="num">{fullTime(item.updatedAt)}</span>{changedBy && <> by {changedBy}</>}</span>
+        {item.archived && <span title="She no longer uses it. Unarchive it from the ⋯ menu.">Archived</span>}
         {item.folders && item.folders.length > 0 && <span className="folder" title={item.folders.join(", ")}><Icon name="folder" />{item.folders.join(", ")}</span>}
       </div>
       {item.about && item.about.length > 0 && (
@@ -279,9 +317,29 @@ function Detail({ ctx, pool, id, onTitle, onTag }: { ctx: ShellContext; pool: Po
             onSave={(edit) => act(() => patch<MemoryDetail>(path, edit)).then((ok) => ok && setEditing(false))} />
         : (
           <>
-            <div className="prose"><MemoryProse text={item.text} pool={item.pool} userId={userId} links={links} users={users} display={display} /></div>
+            {projectPage && (
+              <section className="instructions" aria-labelledby="mem-instructions">
+                <div className="section-head">
+                  <h3 id="mem-instructions" className="eyebrow" title={INSTRUCTIONS_TIP}>Instructions</h3>
+                  {project && <a href={href({ page: "project", userId, pool: project.pool, threadId: project.id, section: "memory" })}>Change</a>}
+                </div>
+                {item.instructions?.trim()
+                  ? <div className="prose"><Prose text={readable(item.instructions, users)} /></div>
+                  : <p className="muted">None yet.</p>}
+              </section>
+            )}
+            {projectPage
+              ? <section className="learned" aria-labelledby="mem-learned">
+                  <h3 id="mem-learned" className="eyebrow" title={`Sleep writes this from the project's threads. You can edit it too.`}>What {her()} knows</h3>
+                  {item.text.trim()
+                    ? <div className="prose"><MemoryProse text={item.text} pool={item.pool} userId={userId} links={links} users={users} display={display} /></div>
+                    : <p className="muted">Nothing yet. Sleep writes here what {her()} learns from the project's threads.</p>}
+                </section>
+              : item.text.trim()
+                ? <div className="prose"><MemoryProse text={item.text} pool={item.pool} userId={userId} links={links} users={users} display={display} /></div>
+                : <p className="muted">No text.</p>}
             {canEdit && <div className="row">
-              <button type="button" className="sm" onClick={() => setEditing(true)}>Edit</button>
+              <button type="button" className="sm" title={projectPage ? `Edit the title, summary and what ${her()} knows. Instructions change in Project settings.` : undefined} onClick={() => setEditing(true)}>Edit</button>
               <MoreMenu>
                 <button type="button" role="menuitem" disabled={busy} onClick={() => act(() => post<MemoryDetail>(`${path}/archive`, { archived: !item.archived }))}>{item.archived ? "Unarchive" : "Archive"}</button>
                 {canDelete && <button type="button" role="menuitem" title={EXPORT_TIP} disabled={busy} onClick={() => run(() => download(userId, [{ pool: item.pool, id: item.id }]))}>Export</button>}
@@ -433,7 +491,15 @@ export function MemoryHistoryPage({ ctx, pool, id, route }: { ctx: ShellContext;
   </main>;
 }
 
-/** The newest earlier version in the preview (the current text is already shown above); paged versions keep their differences and Restore. */
+/** The fields a version can differ in, in the order they read; `instructions` only on a project's page. */
+const VERSION_FIELDS = [["title", "Title"], ["summary", "Summary"], ["instructions", "Instructions"], ["text", "Text"], ["about", "Tags"], ["folders", "Folders"]] as const;
+type VersionBody = MemoryRevision["body"];
+const fieldText = (body: VersionBody, f: (typeof VERSION_FIELDS)[number][0]) => { const v = body[f]; return Array.isArray(v) ? v.join(", ") : v ?? ""; };
+
+/**
+ * The newest earlier version in the preview (the current one is the memory above); paged versions keep their differences and Restore.
+ * Each version says when it was saved and by whom, then each field it differs in from the current memory, word by word.
+ */
 function History({ detail, entries, offset = 1, total, userId, display, busy, onRestore }: { detail: MemoryDetail; entries?: MemoryRevision[]; offset?: number; total?: number; userId: string; display: Display; busy: boolean; onRestore: (revision: number) => void }) {
   const { item, revisions, users } = detail;
   const links = readableLinks(detail.links, users);
@@ -441,24 +507,37 @@ function History({ detail, entries, offset = 1, total, userId, display, busy, on
   const shown = entries ?? revisions.slice(1, 2);
   if (!shown.length) return null;
   const plain = (text: string) => plainWords(readable(text, users), item.pool, links, display, userId);
-  const current = plain(item.text);
-  const by = (r: MemoryRevision) => {
-    const who = /^user:(.+)$/.exec(r.author)?.[1];
-    return who ? (who === userId ? "yours" : users[who]?.displayName ?? "a user") : r.author;
-  };
+  const current: VersionBody = item;
   return (
     <section className="history">
       {!entries && <HistoryHead to={{ page: "history", userId, kind: "memory", pool: item.pool, id: item.id }} />}
       <div className="hist">
         {shown.map((r, i) => {
           const isCurrent = r.id === revisions[0]?.id;
-          const diff = isCurrent ? undefined : wordDiff(current, plain(r.body.text));
+          const changed = isCurrent ? [] : VERSION_FIELDS.filter(([f]) => fieldText(r.body, f) !== fieldText(current, f));
+          const restores = changed.map(([, label]) => label.toLowerCase());
           return (
             <details key={r.id} open={i === 0}>
-              <summary><span className="when num">{shortTime(r.createdAt)}</span><span className="by">{by(r)}</span><span className="n">{isCurrent ? "current" : entries ? <><span className="num">{(total ?? 0) - (offset + i)}</span> of <span className="num">{total}</span></> : "earlier"}</span></summary>
-              {diff ? <div className="wdiff">{diff.map((op, k) => (op.kind === "same" ? <span key={k}>{op.text}</span> : op.kind === "del" ? <del key={k}>{op.text}</del> : <ins key={k}>{op.text}</ins>))}</div>
-                : <div className="wdiff">{current}</div>}
-              {!isCurrent && <div className="row actions"><button type="button" className="sm" disabled={busy} onClick={() => onRestore(r.id)}>Restore</button></div>}
+              <summary>
+                <span className="when num">{fullTime(r.createdAt)}</span>
+                <span className="by">by {authorWord(r.author, userId, users)}</span>
+                <span className="n">{isCurrent ? "current" : entries ? <><span className="num">{(total ?? 0) - (offset + i)}</span> of <span className="num">{total}</span></> : "earlier version"}</span>
+              </summary>
+              {isCurrent ? <div className="wdiff">{plain(item.text)}</div>
+                : !changed.length ? <p className="wdiff muted">The same as now.</p>
+                : changed.map(([f, label]) => {
+                  const diff = wordDiff(plain(fieldText(current, f)), plain(fieldText(r.body, f)));
+                  return (
+                    <div key={f} className="wdiff">
+                      {changed.length > 1 || f !== "text" ? <span className="eyebrow">{label}</span> : null}
+                      {diff.map((op, k) => (op.kind === "same" ? <span key={k}>{op.text}</span> : op.kind === "del" ? <del key={k}>{op.text}</del> : <ins key={k}>{op.text}</ins>))}
+                    </div>
+                  );
+                })}
+              {!isCurrent && changed.length > 0 && <div className="row actions">
+                <button type="button" className="sm" disabled={busy} title={`Puts back the ${listWords(restores)} as they were in this version. Struck-through words go; highlighted words come back. The current version stays in History.`}
+                  onClick={() => onRestore(r.id)}>Restore this version</button>
+              </div>}
             </details>
           );
         })}
@@ -466,6 +545,9 @@ function History({ detail, entries, offset = 1, total, userId, display, busy, on
     </section>
   );
 }
+
+/** "a", "a and b", "a, b and c". */
+const listWords = (w: string[]) => (w.length < 2 ? w.join("") : `${w.slice(0, -1).join(", ")} and ${w.at(-1)}`);
 
 interface Pick { kind: "page" | "person"; label: string; meta?: string; insert: string; ref?: string; link?: MemoryLink; key: string }
 

@@ -302,7 +302,10 @@ function openInPanel(e: React.MouseEvent, route: Route & { page: "thread" }, tra
   // A breadcrumb goes back to that page; a link in the panel goes one deeper.
   const crumb = (a as HTMLElement).dataset.crumb;
   if (crumb !== undefined || a.closest(".panel")) {
-    trail.set(crumb !== undefined ? trail.crumbs.slice(0, Number(crumb) + 1) : [...trail.crumbs, panel]);
+    // Another section of the same page (Project settings → Memory) replaces its crumb rather than repeating it.
+    const last = trail.crumbs.at(-1);
+    trail.set(crumb !== undefined ? trail.crumbs.slice(0, Number(crumb) + 1)
+      : last && pageKey(last) === pageKey(panel) ? [...trail.crumbs.slice(0, -1), panel] : [...trail.crumbs, panel]);
     go({ ...route, drawer: undefined, panel });
   } else showInPanel(route, trail, panel); // one in the conversation starts afresh.
 }

@@ -2420,6 +2420,9 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     sentence (a private citer is listed by id with no sentence), whatever
     the display. A thread forgotten with `keepMemories` still resolves: its link has `deleted: true`, no title, an empty snippet and `updatedAt` its deletion time. `GET …/threads/:pool/:threadId/tombstone` → `ThreadTombstone` (`{ id: "t:<thread>", deletedAt, memories: MemoryUse[], links, users }`, the notes and pages citing the thread, with their links) is `404` when the thread has no tombstone.
     `MemoryDetail.revisions` contains the current and newest earlier revision.
+    A project's page carries its `instructions` on `item` and on each
+    revision's `body` (PATCH never changes them; restoring a revision puts
+    them back with the rest).
     `GET …/memory/:pool/:id/history` → `MemoryHistory { entries, total,
     detail }` returns versions newest first by revision ID and the current
     memory with display-safe links, including citations in the returned
