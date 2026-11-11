@@ -3,6 +3,7 @@
 // tick a simple bot-check box.
 import { useState } from "react";
 import { get, put, u, type WebSearch } from "./api.ts";
+import { her } from "./name.ts";
 import type { ShellContext } from "./Shell.tsx";
 import { ErrorText, Switch, useAction, useLoad } from "./ui.tsx";
 
@@ -43,7 +44,7 @@ export function WebSearchSection({ ctx }: { ctx: ShellContext }) {
         {s && s.kiwixState !== "unset" && state("kiwix", s.kiwixState === "reachable", s.kiwixState === "reachable" ? books : s.kiwixReason)}
         <div className="inline"><button className="primary" disabled={busy || !changed}>Save</button></div>
       </form>
-      {s && <Switch label="Tick bot checks" hint="Off, Lyrica gets no word about them. On, when a page she browses shows a simple “I'm not a robot” check box, she may tick it."
+      {s && <Switch label="Tick bot checks" hint={`Off, ${her()} gets no word about them. On, when a page she browses shows a simple “I'm not a robot” check box, she may tick it.`}
         checked={s.botChecks} disabled={busy} onChange={(on) => run(async () => search.set(await put<WebSearch>(path, { botChecks: on })))} />}
     </section>
   );
