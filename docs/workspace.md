@@ -1873,7 +1873,10 @@ chained or wrapped; it doesn't see inside scripts or programs she runs.
 `rules.ts` uses `simpleCommands` from `machines.ts`: chains, pipes,
 substitutions, subshells, shell `-c` arguments and find's `-exec`, `-execdir`
 and `-ok` commands are checked; quotes and backslashes inside words are
-removed. A here-document's body is checked as commands, unless its
+removed. Unquoted brace expansion inside a word is read as the words bash
+makes (`r{m,} -rf /` is `rm r -rf /`, `rm -r{f,} /` is `rm -rf -r /`); `{`
+and `}` group commands only as words of their own, and a word that would
+expand to more than 256 words adds an opaque part. A here-document's body is checked as commands, unless its
 reader is plainly not a shell (`python…`, `node`, `perl`, `ruby`, `jq`,
 `cat`, `tee`, `READS_INPUT`, past any wrapper) and no pipe or process
 substitution follows it on the line. Then the body is that program's input:

@@ -17,7 +17,8 @@ const assignment = (w: string) => /^[A-Za-z_][A-Za-z0-9_]*=/.test(w);
 const plain = (w: string | undefined) => !!w && /^[a-z][a-z0-9:_-]*$/.test(w);
 const programs = (words: string[]) => words.filter(w => !assignment(w));
 // What a glob in the program's name must not be able to name: a shell, wrapper or eval hides what runs.
-const HIDING = [...SHELLS, ...WRAPPER_NAMES, "eval", "source", "."];
+// Built on use: machines.ts imports this module back, so SHELLS isn't defined yet while this one loads.
+const hiding = () => [...SHELLS, ...WRAPPER_NAMES, "eval", "source", "."];
 /** Whether a program glob (`/…/bin/*-gcc`) can only name programs no rule or check cares about: every word it
  * expands to fits the pattern, so if none of `named` fits, nor a loader, it hides nothing. Only `*` and `?` in the
  * name are read; a `[` set, or a name that could end like a loader (`.so`, `.so.2`), stays opaque. */
@@ -25,7 +26,7 @@ const harmlessGlob = (word: string, named: readonly string[]) => {
   const name = posix.basename(word);
   if (/[[\]]/.test(name) || !/[^*?\do]$/.test(name)) return false;
   const pattern = new RegExp(`^${name.replace(/[.+^${}()|\\]/g, "\\$&").replaceAll("*", ".*").replaceAll("?", ".")}$`);
-  return ![...HIDING, ...named].some(n => pattern.test(n));
+  return ![...hiding(), ...named].some(n => pattern.test(n));
 };
 /** `names`, the first words of the project's Ask and Forbid rules, lets a harmless program glob through (`harmlessGlob`). */
 const opaque = (words: string[], names?: readonly string[]) => {

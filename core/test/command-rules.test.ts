@@ -39,6 +39,12 @@ describe("project command matching", () => {
       expect(decide(run, DEFAULT_COMMAND_RULES)?.decision, run).toBe("forbid");
     }
   });
+  it("reads brace expansion as the words bash makes", () => {
+    for (const command of ['r{m,} -rf /', '{rm,ls} -rf /', '/bin/{rm,ls} -rf /', 'rm -r{f,} /', 'rm -{r,f}{r,f} /', 'git push -{f,x}', '{ git push -f; }']) expect(decide(command, DEFAULT_COMMAND_RULES)?.decision, command).toBe('forbid');
+    // Quoted braces, `${…}`, `{}` and awk's braces are not expansion; too many words is opaque.
+    for (const command of ["echo '{rm,x} -rf /'", 'echo "${x:-a,b}"', 'find . -name x -exec ls {} \\;', "awk '{print $1}' f", 'echo y{01..3}']) expect(decide(command, DEFAULT_COMMAND_RULES), command).toBeUndefined();
+    expect(decide('echo x{1..100000}', DEFAULT_COMMAND_RULES)?.decision).toBe('ask');
+  });
   it("lets a program glob through when it can't name a ruled, shell, wrapper or loader program", () => {
     for (const command of ['/opt/tc/bin/*-gcc --version | head -1', '/opt/*/bin/arm-?-gcc -v', 'timeout 5 /opt/tc/bin/*-objdump -h x.o']) expect(decide(command, DEFAULT_COMMAND_RULES), command).toBeUndefined();
     for (const command of ['/usr/bin/g?t push --force', '/bin/r* -rf /', '/bin/*sh task.sh', '/usr/bin/su*o g* push', '/lib/ld-*', '/lib/ld-*.so.2 /bin/rm -rf /', '/bin/[a-z]*-gcc -v', '/x/*', '/x/ev*l x', 'g* push']) {
