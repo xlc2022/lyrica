@@ -144,6 +144,30 @@ function fakeModel() {
       }
       // Test-only sleep items, so a Notifications row can be shown cut and open; never a production route.
       // The run is one that was skipped, so the Sleep page's history reads as it did before.
+      // Test-only: synthetic notes and a page in General, reached through the last weeks, for Status's Memory use card.
+      if (req.method === "POST" && req.url === "/memory-use-fixture") {
+        const { userId } = JSON.parse(body) as { userId: string };
+        const view = daemon.services!.memory.openThreadView(userId, "general");
+        try {
+          const thread = view.own.createThread({ interface: "web", title: "Memory use fixture" });
+          const texts = ["Fixture note: Ada feeds the rye starter at eight and eight", "Fixture note: Sam prefers the window seat on long trains",
+            "Fixture note: the north beds get afternoon sun from June", "Fixture note: Ada's bike needs a new chain before the autumn ride",
+            "Fixture note: tea, not coffee, after four in the afternoon, because it keeps Ada awake"];
+          const notes = view.own.addNotes(texts.map((text) => ({ text })), { author: "lyrica", thread: thread.id });
+          view.own.putPage({ slug: "baking-fixture", title: "Fixture baking", summary: "baking", text: `Rye on Sundays [${notes[0]}]; the starter [${notes[0]}].` }, "lyrica");
+          view.own.putPage({ slug: "garden-use-fixture", title: "Fixture garden plan", summary: "garden", text: `Beds [${notes[2]}], tea in the shed [${notes[4]}], rye [${notes[0]}].` }, "lyrica");
+          const ids = [...notes, "p:baking-fixture"];
+          const DAY = 86_400_000, now = Date.now();
+          for (let d = 0; d < 28; d++) {
+            for (const [i, id] of ids.entries()) {
+              const times = (d * 3 + i * 5) % (7 - i);
+              const at = new Date(now - d * DAY - (i + 1) * 3_600_000).toISOString();
+              for (let k = 0; k < times; k++) view.own.countRecalls([id!], k % 4 === 3 ? "opened" : k % 3 === 2 ? "searched" : "recalled", at);
+            }
+          }
+        } finally { view.close(); }
+        res.writeHead(204); return res.end();
+      }
       if (req.method === "POST" && req.url === "/sleep-item-fixture") {
         const { userId } = JSON.parse(body) as { userId: string };
         const view = daemon.services!.memory.openThreadView(userId, "general");

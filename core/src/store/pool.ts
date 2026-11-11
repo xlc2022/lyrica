@@ -166,6 +166,13 @@ export interface Item extends Body {
 /** Who wrote an entry: the user or her. Tool results have no speaker. */
 const ENTRY_ORIGIN: Record<string, Origin | undefined> = { user: "user", assistant: "lyrica" };
 
+/** How she reached a memory: automatic recall brought it into a turn, a `recall` search found it, or `read_memory` opened it. */
+export type RecallHow = "recalled" | "searched" | "opened";
+/** One memory's recall counts for one hour (`2026-11-11T06`, UTC). */
+export interface RecallCount { id: string; hour: string; recalled: number; searched: number; opened: number }
+/** Days of recall counts a pool keeps. */
+export const RECALL_DAYS = 31;
+
 export interface Hit {
   id: string;
   kind: Kind;
@@ -1004,6 +1011,20 @@ export class PoolReader {
   /** What cites the item. From a private store, pass `general/…` to find private memory citing general. */
   usedIn(id: string): string[] {
     return (this.db.prepare("SELECT src FROM citations WHERE dst = ? ORDER BY src").all(id) as { src: string }[]).map((r) => r.src);
+  }
+
+  /**
+   * How often she reached each note and page per hour from `since` (an ISO time) on, oldest first (docs/memory.md,
+   * "Recall counts"). Another pool's memory keeps its prefix (`general/n:…`). Numbers and IDs only.
+   */
+  recallCounts(since: string): RecallCount[] {
+    return this.db.prepare("SELECT id, hour, recalled, searched, opened FROM recalls WHERE hour >= ? ORDER BY hour, id").all(since.slice(0, 13)) as RecallCount[];
+  }
+
+  /** How many notes, pages and journal entries cite each note or page (`general/…` from a private store), most first. */
+  citationCounts(): { id: string; n: number }[] {
+    return this.db.prepare(`SELECT dst AS id, count(*) AS n FROM citations
+      WHERE dst GLOB 'n:*' OR dst GLOB 'p:*' OR dst GLOB '*/n:*' OR dst GLOB '*/p:*' GROUP BY dst ORDER BY n DESC, dst`).all() as { id: string; n: number }[];
   }
 
   revisions(id: string): MemoryRevision[] {
@@ -2144,6 +2165,7 @@ export class PoolStore extends PoolReader {
     this.db.prepare("DELETE FROM citations WHERE src = ?").run(id);
     this.db.prepare("DELETE FROM search WHERE id = ?").run(id);
     this.db.prepare("DELETE FROM vectors WHERE id = ?").run(id);
+    this.db.prepare("DELETE FROM recalls WHERE id = ?").run(id);
   }
 
   /** An undone night: the memory holds `body` again, as of `at`, with no new revision. */
@@ -2175,6 +2197,7 @@ export class PoolStore extends PoolReader {
     this.db.prepare("DELETE FROM citations WHERE src = ?").run(id);
     this.db.prepare("DELETE FROM search WHERE id = ?").run(id);
     this.db.prepare("DELETE FROM vectors WHERE id = ?").run(id);
+    this.db.prepare("DELETE FROM recalls WHERE id = ?").run(id);
   }
 
   /** Records a new version: a revision, its citations and its search row. */
@@ -2199,6 +2222,23 @@ export class PoolStore extends PoolReader {
   private index(id: string, kind: Kind, text: string): void {
     this.db.prepare("INSERT INTO search (id, kind, text) VALUES (?, ?, ?)").run(id, kind, indexText(text));
     this.db.prepare("DELETE FROM vectors WHERE id = ?").run(id);
+  }
+
+  // Recall counts (docs/memory.md, "Recall counts")
+
+  /**
+   * Counts each note or page in `ids` once more for this hour, by how she reached it; other kinds are left out, and
+   * rows older than 31 days go. IDs and numbers only: never a query or a memory's text.
+   */
+  countRecalls(ids: readonly string[], how: RecallHow, at = now()): void {
+    const keep = [...new Set(ids)].filter((id) => { const k = kindOf(id.replace(/^(general|private)\//, "")); return k === "note" || k === "page"; });
+    if (!keep.length) return;
+    const hour = at.slice(0, 13);
+    const add = this.db.prepare(`INSERT INTO recalls (id, hour, ${how}) VALUES (?, ?, 1) ON CONFLICT (id, hour) DO UPDATE SET ${how} = ${how} + 1`);
+    this.db.transaction(() => {
+      for (const id of keep) add.run(id, hour);
+      this.db.prepare("DELETE FROM recalls WHERE hour < ?").run(new Date(Date.parse(at) - RECALL_DAYS * 86_400_000).toISOString().slice(0, 13));
+    })();
   }
 
   // Vectors (docs/briefs/recall-meaning.md)

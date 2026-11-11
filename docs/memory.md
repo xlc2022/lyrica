@@ -312,6 +312,20 @@ the latest task (300 characters) and progress (1,200 characters), with its
 time. These words stay in encrypted pool.db's `code_tasks`, never user.db,
 and disappear when their thread is forgotten.
 
+**Recall counts** (Status's Memory use card). Each pool keeps how often she
+reached each note and page, per hour, in `recalls`: `recalled` when automatic
+recall brought it into a turn, `searched` when a `recall` search found it,
+`opened` when `read_memory` opened it whole. IDs and numbers only, never the
+message, the query or the memory's text. A private thread's count of a
+general memory stays in the private pool, as `general/n:…`, so the general
+pool learns nothing of private threads. Messages, journal entries and WAKE
+aren't counted, nor sleep's threads, nor a thread that isn't remembered;
+deleting a memory deletes its counts, and rows older than 31 days go on the
+next write. Nothing reads the counts back into recall or sleep: they are
+telemetry for the person, not a ranking signal. Its sibling, **Cited by**, is
+the citations table counted: the notes, pages and journal entries citing a
+memory now.
+
 ## Writing
 
 Before storing notes, pages, WAKE, journal entries, sleep items or memory edits,
@@ -662,7 +676,8 @@ into their own memory or another user's (`core/src/store/transfer.ts`).
   and `read_memory` with `memoryTools: "read"`, and minus whatever `hide`
   hides); `memory.ts`
   builds the prompt sections (an unlogged notice, WAKE, the about-user page,
-  page index, pages for `folders()`) and the recall hits; `record.ts` copies Pi entries into the
+  page index, pages for `folders()`) and the recall hits, and `countRecalls` counts the notes and pages
+  recall, `recall` and `read_memory` reached (off for sleep, `countRecalls` in the context); `record.ts` copies Pi entries into the
   thread at each turn end (`recordEntries`). Pi entry IDs make copying
   idempotent.
 

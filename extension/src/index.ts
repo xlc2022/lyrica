@@ -98,7 +98,8 @@ export function createLyricaExtension(thread: ThreadContext, opts: LyricaOptions
   if (!isThreadView(thread.view) || thread.view.pool !== thread.pool) throw new Error("the extension needs this thread's own view from openThreadView");
   const { view } = thread;
   let turnCode = opts.code?.() ?? false;
-  const who = () => ({ threadId: thread.threadId, user: { id: thread.user.id, profile: opts.profile() }, hide: opts.hide, code: turnCode, embed: opts.embed });
+  // Sleep's own reading isn't her reaching for a memory: Memory use counts only conversation threads.
+  const who = () => ({ threadId: thread.threadId, user: { id: thread.user.id, profile: opts.profile() }, hide: opts.hide, code: turnCode, embed: opts.embed, countRecalls: thread.interface !== "sleep" });
   return (pi) => {
     const router = new TopicRouter();
     registerMemoryTools(pi, view, who, { readOnly: opts.memoryTools === "read", skill: opts.skills?.read });

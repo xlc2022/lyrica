@@ -4,7 +4,7 @@ import { DELEGATION_SCHEMA } from "./delegation.ts";
 import { IDENTITY_SCHEMA } from "./models/host.ts";
 import { addNotice, ENDPOINT_SCHEMA, MIXED_PRESET, migrate as moveModels, MODEL_CHOICE_SCHEMA, PRESET_SCHEMA, REDIRECT_SCHEMA, upgradeCalls, upgradeEndpoints } from "./models/schema.ts";
 import { PREFS_SCHEMA } from "./prefs.ts";
-import { POOL_SCHEMA, POOL_UPGRADES, RENAMES_SCHEMA, ROUTINES_SCHEMA, VECTORS_SCHEMA, WAKEUPS_SCHEMA, WATCHES_SCHEMA } from "./store/schema.ts";
+import { POOL_SCHEMA, POOL_UPGRADES, RECALLS_SCHEMA, RENAMES_SCHEMA, ROUTINES_SCHEMA, VECTORS_SCHEMA, WAKEUPS_SCHEMA, WATCHES_SCHEMA } from "./store/schema.ts";
 import { CHANGES_SCHEMA } from "./workspace/changes.ts";
 import { SKILLS_SCHEMA } from "./skills.ts";
 import { MACHINES_SCHEMA, ORIGINS_SCHEMA, upgradeWorkspace, WORKSPACE_SCHEMA } from "./workspace/settings.ts";
@@ -422,6 +422,11 @@ export const STEPS: Record<DbKind, MigrationStep[]> = {
     // Principles 1 and 6: explicit routine labels, without exposing or rewriting execution notes. Adds nullable columns only.
     version: 15,
     run(db) { addColumns(db, [["routines", "title", "TEXT"], ["routines", "description", "TEXT"]]); },
+  }, {
+    // Principles 5 and 6: how often she reached each note and page, as numbers per hour, so Status shows which memories
+    // recall leans on (docs/memory.md, "Recall counts"). Adds a table only.
+    version: 16,
+    run(db) { db.exec(RECALLS_SCHEMA); },
   }],
 };
 

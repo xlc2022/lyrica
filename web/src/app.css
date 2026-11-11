@@ -1966,6 +1966,9 @@ dialog .eyebrow { margin: 10px 0 4px; }
 .model-table > [role="row"] > :not(:first-child) { text-align: right; white-space: nowrap; }
 .mt-model { min-width: 0; overflow-wrap: anywhere; }
 .mt-model .swatch { margin-right: 6px; vertical-align: -1px; }
+/* Memory use: a memory and four counts; the list picker sits under the charts. */
+.memory-use-table > [role="row"] { grid-template-columns: minmax(0, 1fr) 5.5em 5.5em 5em 5em; }
+.memory-use-list { justify-self: start; }
 @media (max-width: 760px) {
   .status-charts { grid-template-columns: minmax(0, 1fr); }
   /* On a phone the window picker takes its own full-width row under the heading. */

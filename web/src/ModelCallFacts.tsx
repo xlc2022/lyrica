@@ -120,7 +120,7 @@ type ChartView = { scale: (name: string) => unknown; origin: () => [number, numb
  * A chart. With `bars`, a bar chart that narrows the window: a mouse drag across it picks the bars it covers, and a
  * click (a tap on a phone, where a drag scrolls the page) marks one bar, the next click the other end; Escape lets go.
  */
-function Chart({ label, spec, bars, onSpan }: { label: string; spec: object; bars?: Bars; onSpan?: (from: number, to: number) => void }) {
+export function Chart({ label, spec, bars, onSpan }: { label: string; spec: object; bars?: Bars; onSpan?: (from: number, to: number) => void }) {
   const theme = useTheme();
   const box = useRef<HTMLDivElement>(null), tip = useRef<HTMLDivElement>(null), view = useRef<ChartView>(undefined);
   const [failed, setFailed] = useState("");

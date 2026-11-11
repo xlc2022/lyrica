@@ -1,11 +1,12 @@
 import { StaleUnitsLine } from "./StaleUnitsLine.tsx";
 import { ModelCallFacts, factsQuery, type FactsWindow } from "./ModelCallFacts.tsx";
+import { MemoryUse } from "./MemoryUse.tsx";
 // Settings (the user's own) and Administration (server-wide), each a page with
 // its sections listed at the left. The old control panel's cards moved here.
 import { useCallback, useEffect, useState } from "react";
 import {
   del, get, HttpError, patch, post, put, saveName, u,
-  type AdminStatus, type AdminStatusReset, type AllowedPaths, type Me, type ModeDefault, type NetworkDefaults, type PersonaProposal,
+  type AdminMemoryUse, type AdminStatus, type AdminStatusReset, type AllowedPaths, type Me, type ModeDefault, type NetworkDefaults, type PersonaProposal,
   type MemoryOverview, type Pool, type Presets, type ProposalDraft, type Pronouns, type SleepOverview, type SleepRunInfo, type SleepTime, type Theme, type UserCard,
   type NameSetting,
 } from "./api.ts";
@@ -332,11 +333,14 @@ function StatusSection({ ctx }: { ctx: ShellContext }) {
   const sleep = useLoad(() => get<SleepTime>(u(userId, "admin", "sleep")), [userId]);
   const runs = useLoad(() => get<SleepOverview>(u(userId, "sleep")), [userId]);
   const memory = useLoad(() => get<MemoryOverview>(u(userId, "memory")), [userId]);
+  // Memory use's window: the last 30 days, or 7.
+  const [useDays, setUseDays] = useState<7 | 30>(30);
+  const use = useLoad(() => get<AdminMemoryUse>(u(userId, "admin", "memory-use") + `?days=${useDays}`), [userId], [useDays]);
   const [read, setRead] = useState(() => new Date());
   const { reload: reloadModels } = ctx.models;
   const refresh = useCallback(() => {
-    status.reload(); runs.reload(); memory.reload(); reloadModels(); setRead(new Date());
-  }, [status.reload, runs.reload, memory.reload, reloadModels]);
+    status.reload(); runs.reload(); memory.reload(); use.reload(); reloadModels(); setRead(new Date());
+  }, [status.reload, runs.reload, memory.reload, use.reload, reloadModels]);
   useEffect(() => {
     const tick = () => { if (document.visibilityState === "visible") refresh(); };
     const t = setInterval(tick, STATUS_EVERY_MS);
@@ -384,6 +388,7 @@ function StatusSection({ ctx }: { ctx: ShellContext }) {
       })}
     </section>}
     {s?.modelFacts && <ModelCallFacts facts={s.modelFacts} window={callsWindow} onWindow={setCallsWindow} onReset={async () => { await post<AdminStatusReset>(u(userId, "admin", "status", "reset")); status.reload(); }} />}
+    {use.data && <MemoryUse use={use.data} userId={userId} onDays={setUseDays} />}
   </>;
 }
 
