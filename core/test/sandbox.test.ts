@@ -666,7 +666,8 @@ describe.skipIf(!runnable || !chromium || !existsSync(chromium))("a browser in t
     }
     // The profile is the mounted folder's, so a login outlasts the run.
     expect(readdirSync(p("browser-run")).length).toBeGreaterThan(0);
-  });
+    // A machine's first start of Chromium can take 10 to 30 seconds on a busy runner (browse.test.ts).
+  }, 120_000);
 
   it("renders a page to PNG with internet off", async () => {
     writeFileSync(p("work", "page.html"), "<p style='font: 32px sans-serif'>Hello</p>");
