@@ -3,14 +3,19 @@ import { alwaysAllowPrefix, commandRules, decide, DEFAULT_COMMAND_RULES } from "
 
 const forbid = commandRules([{ prefix: "git push", decision: "forbid" }]);
 describe("project command matching", () => {
-  it.each(['ls && git push', 'echo $(git push)', "bash -c 'git push'", "fish -c 'git push'", 'sudo git push', 'timeout 5 git push', 'FOO=1 git push', 'git -C . push', 'g"i"t push', 'g\\it push', 'ls | git push', '`git push`', '(git push)', 'find . -exec git push \\;', 'find . -execdir git -C . push {} +', 'find . -ok git push \\;'])("refuses %s", command => {
+  it.each(['ls && git push', 'echo $(git push)', "bash -c 'git push'", "fish -c 'git push'", 'sudo git push', 'timeout 5 git push', 'FOO=1 git push', 'git -C . push', 'g"i"t push', 'g\\it push', 'ls | git push', '`git push`', '(git push)', 'find . -exec git push \\;', 'find . -execdir git -C . push {} +', 'find . -ok git push \\;', 'x=git; $x push', 'x=/usr/bin/git; "${x}" push', 'L=/lib/ld-linux-x86-64.so.2; $L /usr/bin/git push'])("refuses %s", command => {
     expect(decide(command, forbid)).toEqual(forbid[0]);
   });
   it("asks about opaque programs and never allows them", () => {
-    for (const command of ['x=git; $x push', 'eval "$cmd"', 'source task.sh', '. task.sh', 'bash task.sh', 'g* push']) {
+    for (const command of ['$x push', 'x=git && $x push', 'x=git; x=ls; $x push', "x='git'; $x push", 'x=git y; $x push', 'echo # x=git\n$x push', 'L=/lib/ld.so; $L bash task.sh', 'eval "$cmd"', 'source task.sh', '. task.sh', 'bash task.sh', 'g* push']) {
       expect(decide(command, [...forbid, { prefix: 'bash', decision: 'allow' }])?.decision).toBe('ask');
       expect(alwaysAllowPrefix(command)).toBeUndefined();
     }
+  });
+  it("reads a program the line names in a variable, so a read-only call doesn't ask", () => {
+    const command = 'L=/deps/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2; P=/deps/usr/lib:/deps/lib; "$L" --library-path "$P" /deps/usr/bin/cmake --version; "$L" --library-path "$P" /deps/usr/lib/qt6/libexec/moc -v; ls /deps/usr/lib/cmake/Qt6; ls /deps/usr/lib/libQt6Widgets*';
+    expect(decide(command, DEFAULT_COMMAND_RULES)).toBeUndefined();
+    expect(decide('L=/lib/ld.so; "$L" /bin/rm -rf /', DEFAULT_COMMAND_RULES)?.decision).toBe('forbid');
   });
   it("uses word count, then forbid, ask, allow; combines every part", () => {
     const rules = commandRules([{ prefix: 'git', decision: 'forbid' }, { prefix: 'git status', decision: 'allow' }, { prefix: 'npm test', decision: 'allow' }]);

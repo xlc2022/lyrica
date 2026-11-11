@@ -152,11 +152,13 @@ existed before became general machines at Ask.
   `chown` or `chgrp` on `/`; `userdel` or `deluser`; `shutdown`, `reboot`,
   `poweroff`, `halt`, `systemctl reboot|poweroff|halt|kexec`, `init 0|6`;
   `qm destroy` and `pct destroy`; and on a Proxmox machine the `stop` and
-  `reboot` actions (`PROXMOX_SUSPECT`). Wrappers such as `sudo`, `env`, `nice` and
-  `timeout` (with their flag values), a program's path, git's own `-C` and
-  `-c`, and `bash -c '…'` are looked through, and a `cd` earlier on the
-  line moves where a later relative `rm` points, so `cd / && rm -rf *` is
-  read as `rm -rf /*`. The answer may say **Allow in this thread**: that
+  `reboot` actions (`PROXMOX_SUSPECT`). Wrappers such as `sudo`, `env`, `nice`,
+  `timeout` and the dynamic loader run by hand (`ld-linux-x86-64.so.2
+  --library-path …`, `LOADER`) (with their flag values), a program's path,
+  git's own `-C` and `-c`, and `bash -c '…'` are looked through, a variable
+  the line plainly sets is read as its value (below, Project command
+  rules), and a `cd` earlier on the line moves where a later relative `rm`
+  points, so `cd / && rm -rf *` is read as `rm -rf /*`. The answer may say **Allow in this thread**: that
   exact command, on that machine or in the sandbox (`SANDBOX_ALLOW`), no
   longer asks in that thread, and nowhere else (for Proxmox, that action
   on that VM: `suspectKey`). An Allow command rule doesn't lift it, and a
@@ -1815,12 +1817,23 @@ chained or wrapped; it doesn't see inside scripts or programs she runs.
 `rules.ts` uses `simpleCommands` from `machines.ts`: chains, pipes,
 substitutions, subshells, shell `-c` arguments and find's `-exec`, `-execdir`
 and `-ok` commands are checked; quotes and backslashes inside words are
-removed. Allow matches leading words after assignments. Ask and Forbid match
+removed. A `$NAME` or `${NAME}` is read as its value when the line sets it
+first, on its own and unquoted, to a plain value (letters, digits and
+`_ . / : @ % + , -`), and nothing else on the line could change it
+(`knownValues`): no pipe, `&&`, `||`, background, subshell, group,
+substitution, here document, comment, single quote, backslash, shell
+keyword, nested shell or `-exec`, no other mention of the name, and not one
+of bash's own names (`PATH`, `IFS`, `BASH…`…). So `L=/…/ld-linux-x86-64.so.2;
+"$L" --library-path "$P" cmake --version` is read as the loader running
+cmake, not as an opaque `$L`, and `x=git; $x push --force` meets the rules
+as `git push --force`; any other `$NAME` stays opaque. Allow matches
+leading words after assignments. Ask and Forbid match
 the program anywhere, then the other prefix words in order with intervening
 words allowed. The longest prefix wins; ties prefer Forbid, then Ask, then
 Allow. Across parts Forbid wins, then Ask, and Allow needs every part allowed.
-Opaque programs (expansions, eval, source, dot, or a shell without `-c`) cannot
-be allowed; with any forbid rule they ask in every mode.
+Opaque programs (expansions not read as above, eval, source, dot, or a shell
+without `-c`; for a wrapper, any of its words) cannot be allowed; with any
+forbid rule they ask in every mode.
 
 The hook reads rules on every `bash` call through `ThreadTools.commandRules`.
 Forbid blocks without a card, Ask always asks, and Allow skips Ask and Accept

@@ -941,7 +941,7 @@ describe("project command rules in the hook", () => {
     expect(result.results.join()).toContain("This project's rules forbid `git push`");
   });
   it("ask and opaque commands ask in Auto; sandbox allow skips Ask", async () => {
-    for (const command of ["git push", "x=git; $x push"]) {
+    for (const command of ["git push", "x=git && $x push"]) {
       let asked = 0;
       await run("auto", [fauxToolCall("bash", { command })], { rules: [{ prefix: "git push", decision: command === "git push" ? "ask" : "forbid" }], approve: async () => { asked++; return false; } });
       expect(asked).toBe(1);

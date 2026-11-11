@@ -99,17 +99,75 @@ export const SUSPECT_COMMANDS: readonly SuspectCommand[] = [
 ];
 
 /** Words that only run what follows them, the shell's own keywords among them (`then rm -rf x`). */
-const PREFIXES = new Set(["if", "then", "else", "elif", "while", "until", "do", "!", "sudo", "doas", "env", "nohup", "exec", "command", "time", "nice", "ionice", "builtin", "timeout", "xargs", "stdbuf", "chroot"]);
+const PREFIXES = new Set(["if", "then", "else", "elif", "while", "until", "do", "!", "sudo", "doas", "env", "nohup", "exec", "command", "time", "nice", "ionice", "builtin", "timeout", "xargs", "stdbuf", "chroot", "ld.so"]);
+/** The dynamic loader run by hand (`ld-linux-x86-64.so.2 --library-path … prog`): a wrapper that runs the program after its options. */
+export const LOADER = /^ld(?:64|-[\w.-]+)?\.so(?:\.\d+)*$/;
 /** Their flags that take the next word as a value (`sudo -u root`, `nice -n 5`, `timeout -s KILL`). */
 const VALUE_FLAGS: Record<string, string[]> = {
   sudo: ["-u", "-g", "-h", "-p", "-C", "-U"], doas: ["-u", "-C"], nice: ["-n"], ionice: ["-c", "-n", "-p"], timeout: ["-s", "-k"],
   xargs: ["-I", "-P", "-L", "-d", "-n", "-s", "-a"], env: ["-u", "-C", "-S"],
+  "ld.so": ["--library-path", "--preload", "--audit", "--argv0", "--inhibit-rpath", "--glibc-hwcaps-prepend", "--glibc-hwcaps-mask"],
 };
 /** Shells whose `-c` argument is a command line; rules.ts shares this list. */
 export const SHELLS = new Set(["sh", "bash", "dash", "zsh", "ksh", "fish"]);
 
-/** A command line's simple commands, each as words with quotes removed and the program's path dropped. */
+const assigns = (w: string) => /^[A-Za-z_][A-Za-z0-9_]*=/.test(w);
+/** Words that make a line more than straight-through commands. */
+const KEYWORDS = new Set(["if", "then", "else", "elif", "fi", "while", "until", "do", "done", "case", "esac", "for", "select", "function", "coproc", "!", "[[", "]]"]);
+/** Names bash sets or reads itself, so a value given on the line isn't what a later `$NAME` gives (or changes how words split and programs are found). */
+const SPECIAL = /^(?:BASH\w*|UID|EUID|PPID|SHELLOPTS|RANDOM|SRANDOM|SECONDS|LINENO|EPOCH\w*|HISTCMD|FUNCNAME|GROUPS|DIRSTACK|PIPESTATUS|OPT\w*|IFS|PATH|CDPATH|ENV|HOME)$/;
+
+/**
+ * A command line's simple commands, each as words with quotes removed and the
+ * program's path dropped (after any leading assignments). A `$NAME` or
+ * `${NAME}` is replaced with its value when the line plainly sets it first
+ * (`L=/path; "$L" --version`), as in {@link knownValues}.
+ */
 export function simpleCommands(command: string): string[][] {
+  const values = knownValues(command);
+  const known = new Map<string, string>();
+  return parse(command).map((parsed) => {
+    let words = parsed;
+    if (values.size) {
+      words = parsed.map((w) => w.replace(/\$(?:\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_][A-Za-z0-9_]*))/g, (ref, a, b) => known.get(a ?? b) ?? ref));
+      // An assignment on its own sets the name for what comes after it on the line.
+      if (words.every(assigns)) for (const w of words) { const name = w.slice(0, w.indexOf("=")); if (values.has(name)) known.set(name, values.get(name)!); }
+    }
+    const at = words.findIndex((w) => !assigns(w));
+    return at < 0 ? words : words.map((w, i) => (i === at ? posix.basename(w) : w));
+  });
+}
+
+/**
+ * The names a command line sets once to a plain value, each with its value.
+ * Only a line read straight through, in one shell, is trusted: one with no
+ * pipe, background, `&&` or `||`, subshell, group, substitution, here
+ * document, comment, single quote, backslash, shell keyword, nested shell or
+ * find `-exec`. The assignment stands unquoted on its own; its value is
+ * letters, digits and `_ . / : @ % + , -` only, so it can't split or glob;
+ * and the name appears nowhere else on the line but as `$NAME` or
+ * `${NAME}`, so nothing else (`read`, `unset`, `for`, a second assignment)
+ * can change it. Anything else leaves `$NAME` as it is.
+ */
+export function knownValues(command: string): Map<string, string> {
+  const values = new Map<string, string>();
+  const rest = command.replace(/\$\{[A-Za-z_][A-Za-z0-9_]*\}/g, "").replace(/\d*>&\d+|&>>?/g, "");
+  if (/[|&(){}`'\\#]|<</.test(rest)) return values;
+  const parsed = parse(command);
+  if (parsed.some((words) => words.some((w) => KEYWORDS.has(w) || SHELLS.has(posix.basename(w)) || ["-exec", "-execdir", "-ok"].includes(w)))) return values;
+  for (const words of parsed) {
+    if (!words.every(assigns)) continue;
+    for (const w of words) {
+      const name = w.slice(0, w.indexOf("=")), value = w.slice(w.indexOf("=") + 1);
+      if (SPECIAL.test(name) || !/^[\w./:@%+,-]+$/.test(value)) continue;
+      const uses = [...command.matchAll(new RegExp(`(?<![A-Za-z0-9_$]|\\$\\{)${name}(?![A-Za-z0-9_])`, "g"))];
+      if (uses.length === 1 && /^\s*$|[\s;]$/.test(command.slice(0, uses[0]!.index)) && command[uses[0]!.index! + name.length] === "=") values.set(name, value);
+    }
+  }
+  return values;
+}
+
+function parse(command: string): string[][] {
   const commands: string[][] = [];
   let words: string[] = [], word = "", quote = "";
   const flushWord = () => { if (word) { words.push(word.replace(/["']/g, "")); word = ""; } };
@@ -117,11 +175,10 @@ export function simpleCommands(command: string): string[][] {
     flushWord();
     if (!words.length) return;
     const current = words; words = [];
-    current[0] = posix.basename(current[0]!);
     commands.push(current);
     const shell = current.findIndex(w => SHELLS.has(posix.basename(w)));
     const c = current.indexOf("-c", shell + 1);
-    if (shell >= 0 && c > shell && current[c + 1]) commands.push(...simpleCommands(current[c + 1]!));
+    if (shell >= 0 && c > shell && current[c + 1]) commands.push(...parse(current[c + 1]!));
     for (let i = 0; i < current.length; i++) if (["-exec", "-execdir", "-ok"].includes(current[i]!)) {
       const nested = current.slice(i + 1);
       if (nested.length) commands.push(nested);
@@ -142,9 +199,12 @@ export function simpleCommands(command: string): string[][] {
         if (ch === "`" && command[end] === "`") break;
         if (ch !== "`") { if (command[end] === "(") depth++; if (command[end] === ")" && --depth === 0) break; }
       }
-      commands.push(...simpleCommands(command.slice(start, end)));
+      commands.push(...parse(command.slice(start, end)));
       word += "$substitution"; i = end; continue;
     }
+    // `${NAME}` is one word, not a group; any other `${…}` splits as before.
+    const braced = ch === "$" && quote !== "'" ? /^\$\{[A-Za-z_][A-Za-z0-9_]*\}/.exec(command.slice(i)) : null;
+    if (braced) { word += braced[0]; i += braced[0].length - 1; continue; }
     if (!quote && /[;&|\n(){}]/.test(ch)) { flush(); continue; }
     if (!quote && /\s/.test(ch)) { flushWord(); continue; }
     word += ch;
@@ -159,7 +219,8 @@ export function unwrapped(parsed: string[]): string[] {
   let wrapper = "";
   while (words.length) {
     const w = words[0]!;
-    if (PREFIXES.has(posix.basename(w))) { wrapper = posix.basename(w); words.shift(); continue; }
+    const name = LOADER.test(posix.basename(w)) ? "ld.so" : posix.basename(w);
+    if (PREFIXES.has(name)) { wrapper = name; words.shift(); continue; }
     if (w.startsWith("-")) { words.shift(); if (VALUE_FLAGS[wrapper]?.includes(w)) words.shift(); continue; }
     if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(w) || (wrapper === "timeout" && /^\d/.test(w))) { words.shift(); continue; }
     break;
