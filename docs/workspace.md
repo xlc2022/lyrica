@@ -805,8 +805,9 @@ their subagents, at any depth (`familyRoot`, `WorkspaceSettings.family`).
   thread that may call the cloud gets no `/shared`, since what it put there
   would reach that model (`sharesFamilyFolder`).
 - The prompt's workspace section says so in one line (`familyLine`), with
-  the path its family reads its folder at and its own part of `/shared`
-  (`ThreadTools.family`).
+  the path its family reads its folder at and its own part of `/shared`,
+  saying the rest of `/shared` is read-only to it, or that it has no
+  `/shared` at all (`ThreadTools.family`).
 - Another line (`LINK_LINE`), in every thread and the project chat, tells
   her a `/workspace` or `/shared` path is a link the person can open, and to
   link a file by its absolute path, never a relative one (docs/web.md, Chat).
