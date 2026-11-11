@@ -1,0 +1,183 @@
+# Brief: Artifacts
+
+**Status:** Proposed (2026-11-11). Nothing is built. The open questions at
+the end wait on the owner.
+
+**Thread:** Add artifacts to Lyrica. **Branch:** `claude/project-thread-sso301`.
+**Model:** Opus.
+
+**Read first:** AGENTS.md, DESIGN.md "Files and images", docs/ux.md §6 (the
+Files panel row, "A file opened from a library"), docs/web.md ("The file
+viewer"), docs/workspace.md (the `page` tool, "Offline libraries"),
+`daemon/src/file-view.ts`, `core/src/workspace/page.ts`,
+`extension/src/page.ts`, `web/src/Viewer.tsx`.
+
+## Goal
+
+The user asked (2026-11-11) that Lyrica make artifacts as Claude does, and
+that the mockups made as Claude artifacts can be imported (principle 1: the
+user asked; principle 6: review made easy).
+
+An **artifact** is one self-contained page (HTML, SVG or Markdown; a React
+component in part 3) with a title, kept with every version it has had,
+shown as a card in the conversation, opened large in a sandbox, and listed
+in one place.
+
+## What exists already
+
+- She writes HTML in her thread's folder; `page preview`, `page bundle` and
+  `page check` look at it, make it one file and say what it would still
+  load (docs/workspace.md).
+- The file viewer runs an HTML file in a sandbox with an opaque origin
+  (`GET …/files/view`), with its console, and shows SVG and Markdown
+  rendered. With the thread's internet off the page runs no scripts.
+- Thread folders are in the user's encrypted home.
+
+So a page she writes can already be opened. What an artifact adds is a
+name, versions, a card, a list, and a way in for pages made elsewhere.
+
+## Design
+
+### Storage
+
+Two tables in each pool's database (expand-only, one pool step, with its
+migration test):
+
+- `artifacts`: id, title, kind (`html`, `svg`, `markdown`; later `react`),
+  the thread it belongs to or none, the path it was published from or
+  none, created, updated.
+- `artifact_versions`: artifact, number, the page's bytes, who made it
+  (`lyrica`, `user` for an import or restore), when.
+
+Why the database and not files: a version must not change when she edits
+or deletes the file it came from, an imported artifact has no thread
+folder, and the list is one query (principle 4). The bytes are encrypted
+like the rest of the pool, so nothing is plaintext on disk. A private
+pool's artifacts are in the private database and are never listed or served
+outside it.
+
+One sentence of guarantee (principle 7): a version is at most 16 MiB (the
+viewer's limit), every version is kept until the user deletes it or the
+artifact, and forgetting a thread deletes its artifacts unless the user
+keeps them, which leaves them with no thread.
+
+### How she makes and updates one
+
+No new tool (principle 8): `page` gains two actions.
+
+- `page publish` takes a path in the thread's folders and an optional
+  title. The first publish of a path makes an artifact; a later publish of
+  the same path adds a version. It runs `check` first and refuses a page
+  that needs local sibling files, telling her to `bundle` it. It returns
+  the artifact's id, version and what `check` found.
+- `page artifacts` lists the thread's artifacts (and a project's, in its
+  threads): id, title, kind, version, path.
+
+`publish` writes to the database only, so it asks nowhere and is allowed
+in every mode but Plan. She can't delete an artifact or a version; only
+the user can. Her prompt gets one line: publish a page the person should
+keep or look at again, not every scratch file.
+
+### How it is served
+
+`GET …/artifacts/<id>/view?v=<n>` answers with the same headers as
+`files/view` (`viewHeaders`): HTML under the CSP `sandbox allow-scripts
+allow-popups`, never `allow-same-origin`, so the page has an opaque origin
+and can't reach Lyrica's cookies, storage or API; SVG with nothing run.
+The internet rule is the thread's, as for a file: with the thread's
+internet off, no scripts and nothing loaded from outside. An artifact with
+no thread follows the user's default for new threads. Nothing about the
+boundary is new; the route reads a different store.
+
+The address works on its own in a tab for the signed-in user. There are no
+public links.
+
+### Import
+
+**Import** takes one or more files (`.html`, `.htm`, `.svg`, `.md`; `.jsx`
+and `.tsx` with part 3) or pasted source with a title, and makes each an
+artifact at version 1, authored `user`, in the pool chosen, belonging to
+the thread or project it was imported from, or to none from the list page.
+The same 16 MiB limit applies; an import is never run or read by a model
+at import time. Importing a file onto an existing artifact (**Add
+version…**) adds a version.
+
+Claude's artifacts can't be fetched by Lyrica, so the user downloads each
+one from Claude (or a Claude thread saves their sources as files) and
+imports the files. Their version history on Claude doesn't come along.
+
+She can also publish a file the user uploaded into a thread, which is an
+import by asking.
+
+### Interface
+
+Each control needs its row in docs/ux.md §6; UI review judges the
+mockup before the web part is built.
+
+- **In the conversation:** a `page publish` call shows as an **artifact
+  card** in her reply: title, kind and "Version n" in the facts line, and
+  **Open**. A later version in the same thread updates nothing above it;
+  each publish has its own card.
+- **Opened:** the file viewer, as for a file: the page at the left, its
+  thread at the right. Its header gains a **Version** picker (newest
+  first, with the time), and its ⋯ menu Open in new tab, Download, Copy
+  link, Add version…, Restore this version (makes a new version from an
+  old one), Rename… and Delete….
+- **The list:** an **Artifacts** page from the sidebar, beside Memory and
+  History: a grid of cards (title, kind, version count, thread, updated),
+  search, the pool filter the thread list uses, and **Import**. A thread's
+  Files panel gains an **Artifacts** segment after Videos for its own.
+
+## Parts
+
+1. **Core and daemon:** the tables and migration, `page publish` and
+   `page artifacts`, the view, list, import, rename, restore and delete
+   routes, thread forget. PR review (migration, agent loop, the sandbox
+   route).
+2. **Web:** the card, the viewer's version picker and menu, the Artifacts
+   page, Import, the Files panel segment, the mockup. UI review and PR
+   review (docs/ux.md).
+3. **React components:** `kind: react` for `.jsx` and `.tsx`: published
+   or imported source is kept as written and built by esbuild (already a
+   dependency of core) into one HTML page at publish time, with React,
+   and the libraries Claude's own React artifacts lean on, added to the
+   offline libraries so it works with internet off. Which libraries is an
+   open question; each is a dependency PR review must see.
+4. **Sharing with another user on the server,** as Share with does for a
+   thread: a copy, never a live link. Only if the owner wants it.
+
+Parts 1 and 2 are the feature. Part 3 is needed only for importing
+Claude's React artifacts; the existing mockups are plain HTML.
+
+## Out of scope
+
+- Public or unauthenticated links.
+- Artifacts of several files; `page bundle` makes one file.
+- Storage, a database or model calls for a running artifact (Claude's
+  runtime capabilities).
+- Fetching from claude.ai.
+- Comments on an artifact.
+
+## Tests
+
+The pool migration from every released schema; a publish, update, restore
+and delete round trip; a private pool's artifact never listed or served
+from General; the view route's headers with internet on and off; one e2e
+for publish → card → open → pick a version, and one for Import.
+
+## Docs to update when built
+
+DESIGN.md (Files and images; Storage), docs/contracts.md (the store, the
+`page` actions, the routes), docs/workspace.md (`page`), docs/daemon.md,
+docs/web.md, docs/ux.md §6, the user guide, the app mockup.
+
+## Open questions for the owner
+
+1. React components (part 3): now, later, or never?
+2. Is sharing (part 4) wanted?
+3. Should the two project mockups move to Lyrica as artifacts once import
+   works, so her threads update them there?
+
+## Handoff notes
+
+- 2026-11-11: brief written from the code at 8d6c19b. Nothing built.
