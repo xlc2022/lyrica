@@ -829,7 +829,43 @@ test("an administrator sees how Lyrica is reached", async ({ page, baseURL }) =>
   await expect(section.getByLabel("Tailnet name", { exact: true })).not.toBeChecked();
   await section.getByLabel("A proxy elsewhere").check();
   await expect(section.getByLabel("Proxy addresses")).toBeVisible();
+  // Each named mode says where its DNS record goes.
+  await expect(section.getByText("Its DNS record should point at the proxy.")).toBeVisible();
+  await section.getByLabel("Built-in Caddy").check();
+  await expect(section.getByText("Its DNS record should point at one of the addresses under Serve on")).toBeVisible();
   await noHorizontalScroll(page);
+
+  const status = section.getByRole("region", { name: "Web access status" });
+  const shot = async (name: string) => {
+    if (!process.env.SCREENSHOTS) return;
+    // The card is what changed, and the page scrolls inside its own column.
+    await status.evaluate((el) => el.scrollIntoView({ block: "start" }));
+    for (const colorScheme of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme });
+      await page.screenshot({ path: `${process.env.SCREENSHOTS}/${name}-${page.viewportSize()!.width}-${colorScheme}.png` });
+    }
+    await page.emulateMedia({ colorScheme: null });
+  };
+  // A healthy certificate read at the address she serves on while the name points at another
+  // device: both facts are on the card, so a good certificate can't hide a wrong address.
+  const answer = (dns: unknown) => page.route("**/admin/web-access/status", (r) => r.fulfill({ json: {
+    mode: "builtin", name: "lyrica.example.net",
+    caddy: { answers: true, configured: true, applied: true },
+    certificate: { address: "192.168.1.5", issuer: "Let's Encrypt, YE2", subject: "lyrica.example.net", notAfter: "2027-02-09T10:11:12.000Z" },
+    dns,
+  } }));
+  await answer({ addresses: ["100.91.57.112"], served: false });
+  await section.getByRole("button", { name: "Check again" }).click();
+  await expect(status).toContainText("(read at 192.168.1.5)");
+  await expect(status).toContainText("100.91.57.112");
+  await expect(status).toContainText("isn't one of the addresses under Serve on");
+  await noHorizontalScroll(page);
+  await shot("web-access-points-elsewhere");
+  await page.unroute("**/admin/web-access/status");
+  await answer({ addresses: ["192.168.1.5"], served: true });
+  await section.getByRole("button", { name: "Check again" }).click();
+  await expect(status).not.toContainText("isn't one of the addresses");
+  await shot("web-access-served");
 });
 
 test("linked users share a browser; logging in as anyone else signs this browser out first", async ({ page, baseURL }) => {

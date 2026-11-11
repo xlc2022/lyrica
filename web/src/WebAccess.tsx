@@ -101,7 +101,9 @@ function WebAccessForm({ path, access, onSaved }: { path: string; access: WebAcc
       {NAMED.includes(mode) && (
         <label className="field"><span>Hostname</span>
           <input value={name} placeholder="lyrica.example.net" autoCapitalize="none" disabled={busy} onChange={(ev) => setName(ev.target.value)} />
-          <small className="muted">The address you'll open in the browser, for example lyrica.example.net. Its DNS record should point at this machine's Tailscale address.</small>
+          <small className="muted">The address you'll open in the browser, for example lyrica.example.net. {mode === "external"
+            ? "Its DNS record should point at the proxy."
+            : "Its DNS record should point at one of the addresses under Serve on, not at her tailnet name."}</small>
         </label>
       )}
 
@@ -209,7 +211,14 @@ function Status({ status, error, onRefresh, staging }: { status?: WebAccessStatu
             <>
               <dt>Certificate</dt>
               <dd>{"error" in status.certificate ? <span className="error">{status.certificate.error}</span>
-                : `${status.certificate.subject}, from ${status.certificate.issuer}, until ${status.certificate.notAfter.slice(0, 10)}`}</dd>
+                : `${status.certificate.subject}, from ${status.certificate.issuer}, until ${status.certificate.notAfter.slice(0, 10)}`} <span className="muted">(read at {status.certificate.address})</span></dd>
+            </>
+          )}
+          {status.dns && (
+            <>
+              <dt>DNS record</dt>
+              <dd>{"error" in status.dns ? <span className="error">{status.dns.error}</span>
+                : <><span className="mono">{status.dns.addresses.join(", ")}</span>{status.dns.served ? "" : <span className="warn-text"> · isn't one of the addresses under Serve on</span>}</>}</dd>
             </>
           )}
           {status.lastAcmeError && (
