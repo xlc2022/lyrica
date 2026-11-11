@@ -125,7 +125,7 @@ Rules:
   Not "Everything is fine", not "Loading your models…".
 - **Names in use** (don't invent synonyms): General and Private (pools),
   Hidden, Notifications, Backend, Models, Tasks, Text models, Thread actions, Tool limit,
-  Checks, passed, failed, Evidence, checked, not shown, Add check, Setup, From the lockfile (Setup's placeholder), Skills, Add skill, Export all, Import…, New skill, Steps, Approve, Decline, Background command, Question, Question not asked, Not now, Command, Sudoers,
+  Checks, passed, failed, Evidence, checked, not shown, Add check, Setup, From the lockfile (Setup's placeholder), Skills, Add skill, Export all, Import…, Artifacts (the Files panel's tab), Version, Add version…, Rename…, Open in new tab, No artifacts yet., New skill, Steps, Approve, Decline, Background command, Question, Question not asked, Not now, Command, Sudoers,
   Pinned to the top, Unpinned, Draft (a pull request chip's word), Pull request #<n> on <repo> (a chip's tooltip,
   with its checks by name on the lines below), <n> subagents working,
   Image models, CFG (a model card's setting beside Steps), not set (a model setting with no value in Edit workflow: the select's option and the field's placeholder), Hosts and endpoints, Downloads, Clean up, Recent calls,
