@@ -2030,6 +2030,11 @@ off, because each run's `/nix` was gone when it ended.
 - **Space.** The store only grows until she runs `nix-collect-garbage`,
   which her prompt mentions. It counts against the home workspace like
   her other files. Deleting the user deletes it with the home.
+- **Forgetting and wiping.** A forgotten thread's flake sources can stay in
+  its pool's store until `nix-collect-garbage`. Wipe memory empties every
+  pool's store (`emptyHome` in `daemon/src/sweep.ts`, which gives Nix's
+  read-only folders write permission back first), since it holds copies of
+  thread files; it is a cache she rebuilds.
 
 ## Host requirements
 

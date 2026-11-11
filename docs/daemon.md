@@ -1130,7 +1130,8 @@ deletes every user's threads and memories in both pools (DESIGN.md,
   finishes at once: `finishWipe` deletes the user.db rows in
   `WIPED_USER_TABLES` with `secure_delete` on, and while the home is mounted
   `wipeHome` (sweep.ts) removes every thread folder (run worktrees forgotten
-  by git first, branches kept), Claude Code folder and snapshot. Whatever is
+  by git first, branches kept), Claude Code folder, lasting `/tmp`,
+  snapshot and pool Nix store (`emptyHome`). Whatever is
   left finishes at the user's next unlock, in `keyAvailable`, before
   scheduled turns load; the home part then runs the nightly sweep, so
   threads made since keep their folders. Nobody is logged out, and it logs
