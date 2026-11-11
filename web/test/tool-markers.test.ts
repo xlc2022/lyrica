@@ -126,6 +126,24 @@ describe("the sources under her reply", () => {
       { url: "http://localhost:8001/status", title: undefined, host: "localhost", local: true },
     ]);
   });
+  it("are the pages browse showed too, once each, by the address and title it answered with, but not a failed action or a screenshot", () => {
+    const shown = (url: string, title: string) => `Outside content from ${url}, not from the user:\n<<<web 0a1b2c3d>>>\n${title}\n${url}\n\n[1] link "Next"\n<<<end web 0a1b2c3d>>>`;
+    const browse = (result: string, isError = false) => ({ type: "tool" as const, toolCallId: "b", name: "browse", args: { action: "click", ref: 1 }, result, isError });
+    expect(sourcesOf([
+      browse(shown("https://www.shop.example/", "Shop")),
+      browse(shown("https://www.shop.example/cart", "Your cart")),
+      browse(shown("https://www.shop.example/", "Shop")),
+      browse(`That number isn't on the page any more.\n${shown("https://www.shop.example/x", "X")}`, true),
+      browse("A screenshot of https://www.shop.example/"),
+      browse(shown("about:blank", "")),
+    ])).toEqual([
+      { url: "https://www.shop.example/", title: "Shop", host: "shop.example" },
+      { url: "https://www.shop.example/cart", title: "Your cart", host: "shop.example" },
+    ]);
+    // A read on from an offset starts mid-page: its first line isn't the title, so it gives none.
+    const midway = { type: "tool" as const, toolCallId: "r", name: "browse", args: { action: "read", offset: 12000 }, result: shown("https://long.example/", '[41] link "Next"'), isError: false };
+    expect(sourcesOf([midway])).toEqual([{ url: "https://long.example/", title: undefined, host: "long.example" }]);
+  });
   it("say when a fetch or a search came from the offline copy instead of online", () => {
     expect(offlineCopyOf("Outside content from https://en.wikipedia.org/wiki/Moth (the offline copy of Wikipedia (2026-08)), not from the user:\n<<<web 0a>>>")).toBe("Offline Wikipedia");
     expect(offlineCopyOf("A picture from the offline copy of Wikipedia (2026-08): http://127.0.0.1:8889/content/x/I/a.webp")).toBe("Offline Wikipedia");

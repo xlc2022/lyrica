@@ -1,11 +1,11 @@
 import { spawn } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import { Browser, BROWSE_SCRIPT, BROWSE_UNAPPROVED, browseFormText, browseFormWarning, sandboxTools, type BrowserProcess } from "../src/index.ts";
+import { Browser, BROWSE_SCRIPT, BROWSE_UNAPPROVED, BROWSE_UNAPPROVED_FILE, browseFormText, browseFormWarning, sandboxTools, type BrowserProcess } from "../src/index.ts";
 
 // The browse tool's driver against a real Chromium and a site on loopback (docs/briefs/browse.md). The driver runs
 // here as it does in the sandbox, without the sandbox: what is checked is what the user would notice, a form
@@ -41,6 +41,14 @@ describe.skipIf(!chromium)("the browse tool's browser", () => {
         if (url.pathname === "/find") return res.end(`<title>Results</title><p>Results for ${url.searchParams.get("q")}</p>`);
         // Anubis's check: a moment of work in the page, then the real page.
         if (url.pathname === "/checked") return res.end(`<title>Making sure</title><p>Checking your browser</p><script id="anubis_challenge" type="application/json">{}</script><script>setTimeout(() => { location.href = "/two"; }, 1500);</script>`);
+        // A page with a frame from its own site and one from another (localhost), each with things to use.
+        if (url.pathname === "/framed") return res.end(`<title>Framed</title><p>Outside words</p><iframe title="Same" src="/inner?n=same" width="500" height="300"></iframe><p>Between</p><iframe title="Other" src="${site.replace("127.0.0.1", "localhost")}/inner?n=other" width="500" height="300"></iframe><iframe src="/inner?n=tiny" width="1" height="1"></iframe>`);
+        if (url.pathname === "/inner") return res.end(`<title>Inner</title><p>Inside ${url.searchParams.get("n")}</p><label><input type="checkbox" name="h"> I am human</label>
+<form method="post" action="/ask"><input name="a" placeholder="First"><input name="b" placeholder="Second"><button>Send it</button></form>
+<div id="p" style="cursor:pointer">Poster</div><script>document.getElementById("p").addEventListener("click", () => { const f = document.createElement("form"); f.method = "post"; f.action = "/ask"; document.body.append(f); f.submit(); });</script>`);
+        if (url.pathname === "/report") { res.setHeader("content-type", "application/pdf"); res.setHeader("content-disposition", 'attachment; filename="report.pdf"'); return res.end("%PDF-1.4 a report"); }
+        if (url.pathname === "/files") return res.end(`<title>Files</title><p><a href="/report">The report</a></p>`);
+        if (url.pathname === "/upload") return res.end(`<title>Upload</title><form method="post" action="/ask" enctype="multipart/form-data"><label>Your file <input type="file" name="doc"></label><button>Upload it</button></form>`);
         if (url.pathname === "/two") return res.end(`<title>Two</title><p>Cookie: ${req.headers.cookie ?? "none"}</p>`);
         res.end(SHOP);
       });
@@ -85,6 +93,68 @@ describe.skipIf(!chromium)("the browse tool's browser", () => {
     const page = await browser("anubis").act("1", { action: "open", url: `${site}/checked` });
     expect(page.url).toBe(`${site}/two`);
     expect(page.text).not.toContain("Checking your browser");
+  }, 60_000);
+
+  it("reads the frames a page shows, from its own site or another, and uses what is in them under the same rules", async () => {
+    const b = browser("frames");
+    let page = await b.act("1", { action: "open", url: `${site}/framed` });
+    const other = new URL(site.replace("127.0.0.1", "localhost")).host;
+    // Each frame where it stands, from its site, with numbers like the page's own; one too small to see is left out.
+    expect(page.text).toMatch(new RegExp(`Outside words\\n\\[frame from ${new URL(site).host.replace(/\./g, "\\.")}\\]\\nInside same\\n[\\s\\S]*\\[end of frame\\]\\nBetween\\n\\[frame from ${other}\\]\\nInside other\\n`));
+    expect(page.text).not.toContain("Inside tiny");
+    const boxes = [...page.text!.matchAll(/\[(\d+)\] checkbox "I am human"/g)].map((m) => Number(m[1]));
+    expect(boxes.length).toBe(2);
+    expect(new Set(boxes).size).toBe(2);
+
+    // A click and typing reach a frame from another site.
+    page = await b.act("2", { action: "click", ref: boxes[1] });
+    expect(page.text).toMatch(new RegExp(`\\[${boxes[1]}\\] checkbox "I am human" \\(checked\\)`));
+    const fields = [...page.text!.matchAll(/\[(\d+)\] field "First"/g)].map((m) => Number(m[1]));
+    page = await b.act("3", { action: "type", ref: fields[1], text: "Ada" });
+    expect(page.text).toContain('field "First" = "Ada"');
+
+    // A form in a frame asks first, naming the frame's site; a post its script sets off is stopped there too.
+    const sendIt = [...page.text!.matchAll(/\[(\d+)\] button "Send it"/g)].map((m) => Number(m[1]));
+    const seen = await b.look({ action: "click", ref: sendIt[1] });
+    expect(seen.form?.site).toBe(other);
+    expect((await b.act("4", { action: "click", ref: sendIt[1] })).fail).toBe(BROWSE_UNAPPROVED);
+    const posters = [...page.text!.matchAll(/\[(\d+)\] button "Poster"/g)].map((m) => Number(m[1]));
+    for (const [i, poster] of posters.entries()) expect((await b.act(`5${i}`, { action: "click", ref: poster })).notes?.join(" ")).toContain("nothing was sent");
+    expect(posts).toEqual([]);
+    b.approve("6");
+    await b.act("6", { action: "click", ref: sendIt[1] });
+    expect(posts).toEqual(["a=Ada&b="]);
+  }, 90_000);
+
+  it("saves a file a page offers, from a link or its address, and hands it on", async () => {
+    const saved: [string, string][] = [];
+    const b = new Browser(async () => spawn(process.execPath, ["-e", BROWSE_SCRIPT, join(dir, "dl"), "test"], { stdio: ["pipe", "pipe", "ignore"], env: { ...process.env, CHROME_PATH: chromium } }) as BrowserProcess,
+      undefined, undefined, async (file, name) => { saved.push([readFileSync(join(dir, "dl", "downloads", file), "utf8"), name]); return `/workspace/downloads/${name}`; });
+    browsers.push(b);
+    const page = await b.act("1", { action: "open", url: `${site}/files` });
+    const got = await b.act("2", { action: "click", ref: ref(page.text, "The report") });
+    expect(got.title).toBe("Files");
+    expect(got.downloads).toEqual([{ name: "report.pdf", bytes: 17, path: "/workspace/downloads/report.pdf" }]);
+    expect((await b.act("3", { action: "open", url: `${site}/report` })).downloads).toEqual([{ name: "report.pdf", bytes: 17, path: "/workspace/downloads/report.pdf" }]);
+    expect(saved).toEqual([["%PDF-1.4 a report", "report.pdf"], ["%PDF-1.4 a report", "report.pdf"]]);
+  }, 60_000);
+
+  it("attaches a file of hers to a file field only with the user's yes, and shows it on the form's card", async () => {
+    const b = new Browser(async () => spawn(process.execPath, ["-e", BROWSE_SCRIPT, join(dir, "up"), "test"], { stdio: ["pipe", "pipe", "ignore"], env: { ...process.env, CHROME_PATH: chromium } }) as BrowserProcess,
+      undefined, undefined, undefined, async (path) => { const file = join(dir, "staged-notes.txt"); writeFileSync(file, `the notes from ${path}`); return file; });
+    browsers.push(b);
+    let page = await b.act("1", { action: "open", url: `${site}/upload` });
+    const field = ref(page.text, "Your file");
+    expect((await b.look({ action: "attach", ref: field, path: "notes.txt" })).words).toBe(`attach notes.txt to file field "Your file" on ${new URL(site).host}`);
+    expect((await b.act("2", { action: "attach", ref: field, path: "notes.txt" })).fail).toBe(BROWSE_UNAPPROVED_FILE);
+    b.approve("3");
+    page = await b.act("3", { action: "attach", ref: field, path: "notes.txt" });
+    expect(page.text).toContain('file field "Your file" = "staged-notes.txt"');
+    const seen = await b.look({ action: "click", ref: ref(page.text, "Upload it") });
+    expect(browseFormText(seen.form!)).toContain("Your file: staged-notes.txt");
+    b.approve("4");
+    await b.act("4", { action: "click", ref: ref(page.text, "Upload it") });
+    expect(posts.join("")).toContain("the notes from notes.txt");
   }, 60_000);
 
   it("searches without asking, and never sends a form without the user's yes for that call", async () => {

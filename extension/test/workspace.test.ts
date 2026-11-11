@@ -159,7 +159,7 @@ async function run(mode: ThreadWorkspace["mode"], calls: ReturnType<typeof fauxT
 describe("workspace tools in a Pi session", () => {
   // browse (docs/briefs/browse.md): what would send a form asks in every mode, with what would be sent, and only a yes reaches the browser.
   const browse: ExtensionFactory = (pi) => {
-    pi.registerTool({ name: "browse", label: "Browse", description: "browse", annotations: { openWorldHint: true }, parameters: Type.Object({ action: Type.String(), ref: Type.Optional(Type.Integer()), url: Type.Optional(Type.String()) }),
+    pi.registerTool({ name: "browse", label: "Browse", description: "browse", annotations: { openWorldHint: true }, parameters: Type.Object({ action: Type.String(), ref: Type.Optional(Type.Integer()), url: Type.Optional(Type.String()), path: Type.Optional(Type.String()) }),
       execute: async (_id, p) => ({ content: [{ type: "text", text: `did ${p.action}` }], details: undefined }) });
   };
   const form = { site: "shop.example", to: "pay.example", method: "POST", button: "Buy", fields: [{ name: "Card", value: "4111" }] };
@@ -178,6 +178,15 @@ describe("workspace tools in a Pi session", () => {
     expect(asked).toEqual([{ toolCallId: "3", tool: "browse", input: { browse: "POST to pay.example (Buy)\nCard: 4111" }, warning: "This sends a form from shop.example to pay.example." }]);
     expect(yes).toEqual(["3"]);
     expect(results.filter((r) => r.includes("did"))).toHaveLength(3);
+  });
+
+  it("asks before browse attaches a file, in Auto mode too, naming the file and the site", async () => {
+    const asked: ApprovalRequest[] = [], yes: string[] = [];
+    const browser = () => ({ ...fakeBrowser(yes), look: async (c: { action: string; path?: string }) => ({ words: `attach ${c.path} to file field "CV" on jobs.example`, gives: "jobs.example" }) });
+    await run("auto", [fauxToolCall("browse", { action: "attach", ref: 4, path: "cv.pdf" }, { id: "1" })],
+      { extensions: [browse], browser, approve: async (r) => { asked.push(r); return true; } });
+    expect(asked).toEqual([{ toolCallId: "1", tool: "browse", input: { browse: 'attach cv.pdf to file field "CV" on jobs.example' }, warning: "This gives a file to jobs.example." }]);
+    expect(yes).toEqual(["1"]);
   });
 
   it("sends no form on a no, asks before any browse click in Ask mode, and leaves Plan mode only looking", async () => {

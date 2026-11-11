@@ -1249,12 +1249,29 @@ The **Web search** switch gives her two tools (`extension/src/web.ts`,
   page load that posts without a yes is answered "no content" inside the
   browser, so nothing reaches the site, and the same click asks from
   then on. A plain click can still make a page's script send something,
-  as a command in the sandbox can. Downloads are refused, frames aren't
-  read, and a link that opens a new tab opens in the one tab. A check
-  box in the page that names a robot, human or bot gets a line after the
-  page saying she may tick it, only while an administrator has turned on
-  **Tick bot checks** (Administration → Web search, off by default);
-  off, she is told nothing about it. One inside a frame isn't seen. The main
+  as a command in the sandbox can. A file a page offers (a link, a
+  button or its address) is saved in the thread's `downloads/` (a project
+  chat's `shared/downloads/`) under the site's name, cleaned as an
+  upload's is and never overwriting, and the result says where. One over
+  2 GB, one that would leave the disk less than a tenth of its size free
+  (at least 2 GB), or one that gets no data for 2 minutes is cancelled.
+  An action waits up to 45 seconds for a download it started; one still
+  going is answered with its size so far, goes on, and is answered again
+  after a later action. The browser saves it in its profile and `lyricad`
+  moves it (renamed, never copied, so a large file never takes its room
+  twice), so the browser still reaches nothing else of the thread's. `attach` puts a file of hers (a path in her folder, read as
+  `read` reads it, at most 100 MB) into a file field: it asks first in
+  every mode, naming the file and the site, and `lyricad` copies the file
+  into the profile, where it stays until the browser starts again; the
+  form's card names the files a file field holds. A link that opens a new tab opens in the one tab. A frame the page
+  shows is read where it stands, from its own site or another, between
+  "[frame from <site>]" and "[end of frame]", up to 3 deep and 20 in a
+  page (one too small to see is left out); what is in it gets numbers like
+  the page's own, and a form in it asks the same way, naming its site. A
+  check box in the page or a frame that names a robot, human or bot gets
+  a line after the page saying she may tick it, only while an
+  administrator has turned on **Tick bot checks** (Administration → Web
+  search, off by default); off, she is told nothing about it. The main
   conversation and a project chat have it, and a subagent whose role
   lists it (the researcher): its browser and profile are its own, with
   none of its parent's logins, and close when it ends.
