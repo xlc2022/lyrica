@@ -1927,6 +1927,8 @@ export interface MemoryItem {
   text: string;
   title?: string;
   summary?: string;
+  /** A project page's instructions, in the user's words, kept apart from its text (Project settings → Memory changes them). */
+  instructions?: string;
   folders?: string[];
   about?: string[];
   origin?: Origin;
@@ -1938,7 +1940,7 @@ export interface MemoryItem {
   updatedAt: string;
 }
 
-export interface MemoryRevision { id: number; body: Pick<MemoryItem, "text" | "title" | "summary" | "folders" | "about">; author: string; createdAt: string }
+export interface MemoryRevision { id: number; body: Pick<MemoryItem, "text" | "title" | "summary" | "instructions" | "folders" | "about">; author: string; createdAt: string }
 
 /**
  * What a memory's text or lineage points at, so the browser can show a title
