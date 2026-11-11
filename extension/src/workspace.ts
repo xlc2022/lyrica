@@ -590,7 +590,7 @@ export function describe(tools: ThreadTools): string {
 }
 
 /** A project chat builds nothing itself: a model building alone in its own folder, three runs running, is why. */
-export const READ_ONLY_CHAT = `Every folder here is read-only to you, ${WORKDIR} and ${SHARED} included, but /tmp is yours and lasts between commands (for drafts such as an issue body): a code thread makes or changes every file, and you read its work in its folder. Uploads here land in ${WORKDIR}/shared/uploads and images you make in ${WORKDIR}/shared/images, which your threads see as ${SHARED}/uploads and ${SHARED}/images.`;
+export const READ_ONLY_CHAT = `Every folder here is read-only to you, ${WORKDIR} and ${SHARED} included, but /tmp is yours and lasts between commands (for drafts such as an issue body): a thread you start makes or changes every file, a report or document included, and you read its work in its folder. Uploads here land in ${WORKDIR}/shared/uploads and images you make in ${WORKDIR}/shared/images, which your threads see as ${SHARED}/uploads and ${SHARED}/images.`;
 
 /** What her messages render, so she uses it: GitHub's Markdown, and these fences and marks (docs/ux.md §6). */
 export const FORMATS_LINE = "Your messages render GitHub Markdown (each table row on its own line), a ```mermaid block as a diagram, a ```vega-lite block (JSON, its data inline as values, never a url) as a chart, and math between $$ marks or in \\( \\) and \\[ \\]. A single $ is a dollar sign, not math.";

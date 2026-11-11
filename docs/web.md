@@ -1103,8 +1103,8 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   `mathMarks` turns `\( \)` and `\[ \]` into `$$`; KaTeX). Each library is its
   own chunk, loaded only when a message holds such a block, and the SVG is
   sanitized with DOMPurify before it is shown. The page's theme (`useTheme` in
-  `ui.tsx`) colours them, redrawn when it changes. A path under `/workspace` or
-  `/shared`, in her prose or the person's message, is a link to `…/files/<encoded path>`,
+  `ui.tsx`) colours them, redrawn when it changes. A path under `/workspace`,
+  `/shared` or another thread's folder in the family (`/thread-workspaces/<id>`), in her prose or the person's message, is a link to `…/files/<encoded path>`,
   which opens the Files panel with the file in the viewer (`paths.tsx`; a code block is left
   as written). So is a markdown link whose target is a file, not a URL or an
   anchor: an absolute path or `file://` URL as written, a relative one against

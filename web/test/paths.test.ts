@@ -11,12 +11,14 @@ describe("paths named in a message", () => {
     expect(paths("the folder /workspace itself and /workspace/uploads/a b.png")).toEqual(["/workspace", "/workspace/uploads/a"]);
     expect(paths("![tray](/workspace/uploads/tray-a.png)")).toEqual(["/workspace/uploads/tray-a.png"]);
     expect(paths("notes in /shared/sf2-d/build-notes.md.")).toEqual(["/shared/sf2-d/build-notes.md"]);
+    expect(paths("the report is /thread-workspaces/web%2Fa1b2/report.md.")).toEqual(["/thread-workspaces/web%2Fa1b2/report.md"]);
   });
   it("leaves another folder's workspace and a URL alone", () => {
     expect(paths("my code is in /home/ada/workspace/app")).toEqual([]);
     expect(paths("~/workspace/notes.md and https://git.example/org/workspace/readme")).toEqual([]);
     expect(paths("/workspaces/app and /workspace-old/x")).toEqual([]);
     expect(paths("/home/ada/shared/x and /shared-old/y")).toEqual([]);
+    expect(paths("/thread-workspaces alone and /home/ada/thread-workspaces/x")).toEqual([]);
   });
 });
 

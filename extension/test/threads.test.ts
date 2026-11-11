@@ -199,6 +199,12 @@ describe("handing files over", () => {
     await expect(call({ action: "message", to: "parent", text: "word ".repeat(MESSAGE_MAX / 4) })).rejects.toThrow(/10,000 characters, over 8,000.*your own folder/);
     await call({ action: "message", to: "parent", text: "The page is at /shared/pagoda.html." });
     expect(sent).toEqual(["The page is at /shared/pagoda.html."]);
+    // The project chat writes no files, so its notice sends the text to a thread that saves it (a chat once looped on "your own folder").
+    let chatTool!: typeof tool;
+    createThreadsExtension({ ...t.context, threadId: project.id }, host)({ on: () => {}, registerTool: (v: typeof tool) => { chatTool = v; } } as unknown as ExtensionAPI);
+    const report = chatTool.execute("call", { action: "message", id: dns.id, text: "word ".repeat(MESSAGE_MAX / 4) }, undefined, undefined, {} as never);
+    await expect(report).rejects.toThrow(/over 8,000\. Files don't travel by message: you can't write files in a project chat, so start a thread to save it: put the whole text.*in its task/);
+    await expect(report).rejects.not.toThrow(/your own folder/);
     // Its own project chat can't be read from a project thread, and the error names what works.
     await expect(call({ action: "read", id: project.id })).rejects.toThrow(`[t:${project.id}] is your project chat: it can't be read from here, but you can message it with to: "parent"`);
     // Her own subagent's thread reads; another thread's subagent points to delegate wait.

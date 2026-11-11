@@ -641,7 +641,13 @@ fixed actions, the token never shown to her.
 - **Every folder in a project chat's sandbox is read-only to it:** its
   grants, its clones, its own folder and `/shared`. It can read them and
   run checks, and the threads it starts get the grants as given, so every
-  file is made or changed by a thread, whose folder the chat reads. Its
+  file is made or changed by a thread, whose folder the chat reads. A
+  report or document the person keeps is one too: her guidance has a
+  thread write it in its part of `/shared`, with everything she already
+  found or drafted in its task, since a thread can't read the chat's
+  messages, and she links the `/shared` path it reports
+  (`PROJECT_CHAT_GUIDELINES`, the operator's choice 2026-11-11 over a
+  writable folder for the chat). Its
   `/tmp` is writable and lasts between commands: `tmp/<id>` in the home
   workspace (`Workspace.tmpDir`, `SandboxSpec.tmp`), outside the thread
   folder, gone with the thread (docs/daemon.md, the sweep). A write
@@ -693,8 +699,10 @@ fixed actions, the token never shown to her.
   `shared/`, and still reaches it at `/shared`, so a link she writes to
   either path opens) and
   its grants, every operation a fresh no-network sandbox over the
-  thread's grants (`find`, `cat`, `stat`, `mkdir`, `mv`, `rm`), so the panel
-  can reach exactly what she can and nothing else: a path outside, a symlink
+  thread's grants and its family's folders, read-only at
+  `/thread-workspaces/<id>` as in her sandbox (no root of the panel, but a
+  link to another thread's file opens there; docs/web.md, Chat), with
+  `find`, `cat`, `stat`, `mkdir`, `mv` and `rm`, so the panel can reach exactly what she can and nothing else: a path outside, a symlink
   out, a root, the panel's own `.lyrica` folder, and any change in a
   read-only grant are refused (`FilesRefused`). Uploads land under a free name,
   as in the message box. Adds, removes and renames are noted (`panel_files` in
@@ -817,7 +825,11 @@ their subagents, at any depth (`familyRoot`, `WorkspaceSettings.family`).
   math (docs/ux.md §6).
 - The `threads` tool refuses a message over 8,000 characters, and any
   message or task holding a long base64 run, pointing at her own folder
-  instead (`checkWords`).
+  instead (`checkWords`). In a project chat, which writes no files, it
+  points at starting a thread with the whole text in its task (a task has
+  no length limit) to save it in its part of `/shared`, and at sending
+  more findings as several messages; a chat once looped on "your own
+  folder" (2026-11-11).
 
 ## Images and portrait photos
 

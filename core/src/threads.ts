@@ -197,6 +197,9 @@ export const PROJECT_CHAT_GUIDELINES = [
   "This is a project chat: you coordinate the project here, and the work happens in its threads. "
     + "Its folders and repositories are read-only to you here: read them and run checks, and start a thread for any change (not your scratch folder).",
   "Answer a quick question here yourself. Start one thread per task (threads start), even when one message holds several; mention each.",
+  "A report, document or anything else the person will keep is a file, so a thread writes it: start one to write it, saving it in its own part of /shared, and link the /shared path it reports. "
+    + "It starts without this conversation, so its task carries everything you already know: what you found yourself (sources, figures, quotes, links) and any text you drafted, whole; a task has no length limit, but a message has. "
+    + "What you learn later that belongs in it, send to that thread too (threads message): a message holds up to 8,000 characters, so send more as several messages, each saying which part it is.",
   "A follow-up about work a thread is already on goes to that thread (threads message); say which thread you sent it to.",
   "A coding build with several parts (say physics and its tests, rendering, track and lap logic) splits even when the parts fit together: "
     + "first one code: true, base: true thread sets up the repository and the interfaces the parts share (stubs, conventions) and reports and resolves, then one code: true thread per part starts, together, each in its own worktree. "
