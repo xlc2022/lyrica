@@ -105,7 +105,8 @@ export const MESSAGE_MAX = 8_000;
 const ENCODED = /[A-Za-z0-9+/=_-]{400,}/;
 
 /**
- * Refuses a message that carries a file, naming the route that works. A project chat writes no files
+ * Refuses a message that carries a file or runs over `max`, naming the route that works: a long message goes in parts
+ * (a long message isn't necessarily a file), a file by path. A project chat writes no files
  * (docs/workspace.md, "Folders"), so it is told to send a long message in parts, and a report to a thread that saves
  * it: a chat once looped on "write it in your own folder".
  */
@@ -119,7 +120,9 @@ export function checkWords(text: string, max = Infinity, projectChat = false): v
         ? "That looks like an encoded file. Files don't travel by message, and a project chat writes none: start a thread to make the file, and it reports its path."
         : `${size}. Send it as several messages, each under the limit and saying which part it is. If it is a report for the person, start a thread with the whole text and what you found for it in its task (a task has no length limit) to save it as a file in its part of /shared, then link the path it reports.`);
     }
-    throw new Error(`${file ? "That looks like an encoded file" : size}. Files don't travel by message: write it in your own folder, which your parent, child and project threads can read, and say its path.`);
+    throw new Error(file
+      ? "That looks like an encoded file. Files don't travel by message: write it in your own folder, which your parent, child and project threads can read, and say its path."
+      : `${size}. Send it as several messages, each under the limit and saying which part it is. If it is a file or a report to keep, write it in your own folder, which your parent, child and project threads can read, and say its path.`);
   }
 }
 

@@ -823,11 +823,11 @@ their subagents, at any depth (`familyRoot`, `WorkspaceSettings.family`).
   Markdown with each table row on its own line, ```` ```mermaid ```` diagrams,
   ```` ```vega-lite ```` charts with inline data, and `$$`, `\( \)` or `\[ \]`
   math (docs/ux.md §6).
-- The `threads` tool refuses a message over 8,000 characters, and any
-  message or task holding a long base64 run, pointing at her own folder
-  instead (`checkWords`). In a project chat, which writes no files, it
-  says to send a long message as several parts, and a report for the
-  person to a thread, with the whole text in its task (a task has no
+- The `threads` tool refuses a message over 8,000 characters, saying to
+  send it as several parts, or a file or report in her own folder by path,
+  and any message or task holding a long base64 run, pointing at her own
+  folder instead (`checkWords`). In a project chat, which writes no files,
+  a report for the person goes instead to a thread, with the whole text in its task (a task has no
   length limit), that saves it in its part of `/shared`; a chat once
   looped on "your own folder" (2026-11-11).
 

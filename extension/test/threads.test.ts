@@ -196,7 +196,7 @@ describe("handing files over", () => {
     const call = (args: object) => tool.execute("call", args, undefined, undefined, {} as never);
     const page = Buffer.from("<html>".repeat(200)).toString("base64").replace(/.{76}/g, "$&\n");
     await expect(call({ action: "message", to: "parent", text: `Part 1 of 3:\n${page}` })).rejects.toThrow(/encoded file.*your own folder/);
-    await expect(call({ action: "message", to: "parent", text: "word ".repeat(MESSAGE_MAX / 4) })).rejects.toThrow(/10,000 characters, over 8,000.*your own folder/);
+    await expect(call({ action: "message", to: "parent", text: "word ".repeat(MESSAGE_MAX / 4) })).rejects.toThrow(/10,000 characters, over 8,000\. Send it as several messages.*If it is a file or a report to keep, write it in your own folder/);
     await call({ action: "message", to: "parent", text: "The page is at /shared/pagoda.html." });
     expect(sent).toEqual(["The page is at /shared/pagoda.html."]);
     // The project chat writes no files, so a long message goes in parts and a report to a thread that saves it (a chat once looped on "your own folder").
