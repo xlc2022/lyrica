@@ -353,7 +353,10 @@ answers ahead; without a terminal the answer is no), then:
    they run, python3-venv for her clones' Python
    dependencies, python3-bs4, python3-lxml, python3-requests,
    python3-html5lib and python3-yaml as her sandbox's Python baseline for
-   scraping and data work (her prompt names the ones present), and `gh`
+   scraping and data work (her prompt names the ones present), ripgrep,
+   file, bc, xxd, bsdextrautils (hexdump), zip, tree, fd-find, sqlite3,
+   yq, poppler-utils (pdftotext), wget, lsof, strace and pandoc for her
+   everyday commands, and `gh`
    and `tea` for threads with repositories (`tea` only where it is
    packaged; without it, Gitea and Forgejo accounts work through git
    alone). It makes her tool prefix, `/opt/lyrica/tools`: root-owned,
@@ -1279,7 +1282,10 @@ refused. To replace the destination, enter the full URL and token again;
     screenshots, Claude Code and Codex, ffmpeg and ffprobe (until then
     she can't check a clip's length or streams), and the Python baseline
     (python3-bs4, python3-lxml, python3-requests, python3-html5lib,
-    python3-yaml; until then `import bs4` fails in her sandbox).
+    python3-yaml; until then `import bs4` fails in her sandbox), and
+    the everyday tools (ripgrep, file, bc, xxd, hexdump, zip, tree, fd,
+    sqlite3, yq, pdftotext, wget, lsof, strace, pandoc; until then a command using one
+    fails with "command not found").
 
   On NixOS the next `nixos-rebuild switch` brings all of these, applies
   the SearXNG settings, and starts SearXNG for her web search unless

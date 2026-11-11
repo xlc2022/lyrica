@@ -18,7 +18,10 @@
 # is on lyricad's PATH from here, to check her bash calls before they run
 # (core/src/workspace/shellcheck.ts). nix is for flakes and `nix develop`
 # in her pool's own Nix store at /nix (docs/workspace.md, "Nix"); without it
-# the sandbox has no /nix.
+# the sandbox has no /nix. xxd (tinyxxd), bc, zip, tree, fd, sqlite, yq (the
+# jq wrapper, with xq and tomlq), poppler-utils (pdftotext), rsync, wget, lsof,
+# strace and pandoc match install.sh's everyday tools; util-linux brings
+# hexdump and column.
 pkgs:
 let
   # Claude Code is unfree. Only it is allowed, in its own import, so the
@@ -30,7 +33,8 @@ let
 in
 with pkgs; [
   bashInteractive coreutils findutils gnugrep gnused gawk diffutils patch
-  gnutar gzip xz bzip2 zstd unzip which file less procps util-linux
+  gnutar gzip xz bzip2 zstd unzip which file less procps util-linux xxd bc
+  zip tree fd sqlite yq poppler-utils rsync wget lsof strace pandoc
   getent git gh tea nodejs_24 openssh openssl curl cacert jq ripgrep gnumake gcc imagemagick shellcheck
   (python3.withPackages (ps: with ps; [ beautifulsoup4 lxml requests html5lib pyyaml ]))
   ffmpeg-headless
