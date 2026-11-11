@@ -35,7 +35,11 @@ prompt).
    when reading isn't enough (a click, a field, a login, several steps,
    or a page that comes back empty because a script draws it). The
    sandbox's tools line no longer names Playwright for "clicks, several
-   pages", which sent her to a script of her own instead (2026-11-11).
+   pages", which sent her to a script of her own instead (2026-11-11). She
+   still never reached for it when a site refused `web_fetch` (a 403 from a
+   review site), so both descriptions name a refused fetch (401, 403, 429)
+   as browse's, and that failure itself says to open the address with
+   `browse` (2026-11-11, later).
 3. **A page as text with numbers.** Every action answers with the page as
    it is now: its text in reading order, each thing she can act on (link,
    button, field, checkbox, select) on a line of its own with a number,

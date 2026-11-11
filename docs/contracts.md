@@ -1688,7 +1688,9 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     (`pdfText`: unpdf in a child process, `web-pdf.mjs`, with no environment,
     killed after 30 s or once its resident memory passes 768 MB, since
     pdf.js decodes streams outside the JS heap); text
-    and JSON pass through; other types are refused. HTML that is nearly
+    and JSON pass through; other types are refused. A 401, 403 or 429 is
+    `refused`; with `browser`, `web_fetch`'s failure then adds that the
+    site may answer a browser and to open the same address with `browse`. HTML that is nearly
     empty and has scripts (`thin`) is rendered once more when `canRender()`
     (the sandbox has Chromium and node): `renderArgv` runs
     `web-render.cjs` with the sandbox's node, which drives its Chromium
