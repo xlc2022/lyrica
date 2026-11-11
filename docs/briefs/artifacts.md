@@ -1,7 +1,7 @@
 # Brief: Artifacts
 
-**Status:** Proposed (2026-11-11). Nothing is built. The open questions at
-the end wait on the owner.
+**Status:** Agreed (2026-11-11): the owner chose to build it with React
+components. Building; nothing has merged.
 
 **Thread:** Add artifacts to Lyrica. **Branch:** `claude/project-thread-sso301`.
 **Model:** Opus.
@@ -18,8 +18,8 @@ The user asked (2026-11-11) that Lyrica make artifacts as Claude does, and
 that the mockups made as Claude artifacts can be imported (principle 1: the
 user asked; principle 6: review made easy).
 
-An **artifact** is one self-contained page (HTML, SVG or Markdown; a React
-component in part 3) with a title, kept with every version it has had,
+An **artifact** is one self-contained page (HTML, SVG, Markdown or a React
+component) with a title, kept with every version it has had,
 shown as a card in the conversation, opened large in a sandbox, and listed
 in one place.
 
@@ -43,7 +43,7 @@ name, versions, a card, a list, and a way in for pages made elsewhere.
 Two tables in each pool's database (expand-only, one pool step, with its
 migration test):
 
-- `artifacts`: id, title, kind (`html`, `svg`, `markdown`; later `react`),
+- `artifacts`: id, title, kind (`html`, `svg`, `markdown`, `react`),
   the thread it belongs to or none, the path it was published from or
   none, created, updated.
 - `artifact_versions`: artifact, number, the page's bytes, who made it
@@ -94,8 +94,8 @@ public links.
 
 ### Import
 
-**Import** takes one or more files (`.html`, `.htm`, `.svg`, `.md`; `.jsx`
-and `.tsx` with part 3) or pasted source with a title, and makes each an
+**Import** takes one or more files (`.html`, `.htm`, `.svg`, `.md`, `.jsx`,
+`.tsx`) or pasted source with a title, and makes each an
 artifact at version 1, authored `user`, in the pool chosen, belonging to
 the thread or project it was imported from, or to none from the list page.
 The same 16 MiB limit applies; an import is never run or read by a model
@@ -137,17 +137,18 @@ mockup before the web part is built.
 2. **Web:** the card, the viewer's version picker and menu, the Artifacts
    page, Import, the Files panel segment, the mockup. UI review and PR
    review (docs/ux.md).
-3. **React components:** `kind: react` for `.jsx` and `.tsx`: published
-   or imported source is kept as written and built by esbuild (already a
-   dependency of core) into one HTML page at publish time, with React,
-   and the libraries Claude's own React artifacts lean on, added to the
-   offline libraries so it works with internet off. Which libraries is an
-   open question; each is a dependency PR review must see.
+3. **React components:** `kind: react` for `.jsx` and `.tsx`. The source
+   is kept as written; `buildReactPage` (`core/src/workspace/react-page.ts`)
+   has esbuild make it one HTML page with React, lucide-react, recharts
+   and Tailwind's browser build inside, so it works with internet off. It
+   is built when a version is made and the built page is kept beside the
+   source. The source may import only that closed list, enforced by the
+   build, and is never run in `lyricad`. The builder is being written by
+   Codex on the test machine from
+   `/mnt/project-files/handoffs/artifacts-react-builder.md` (the owner
+   asked, 2026-11-11); this thread wires it in.
 4. **Sharing with another user on the server,** as Share with does for a
-   thread: a copy, never a live link. Only if the owner wants it.
-
-Parts 1 and 2 are the feature. Part 3 is needed only for importing
-Claude's React artifacts; the existing mockups are plain HTML.
+   thread: a copy, never a live link. Not asked for; not planned.
 
 ## Out of scope
 
@@ -171,13 +172,13 @@ DESIGN.md (Files and images; Storage), docs/contracts.md (the store, the
 `page` actions, the routes), docs/workspace.md (`page`), docs/daemon.md,
 docs/web.md, docs/ux.md §6, the user guide, the app mockup.
 
-## Open questions for the owner
+## Open question for the owner
 
-1. React components (part 3): now, later, or never?
-2. Is sharing (part 4) wanted?
-3. Should the two project mockups move to Lyrica as artifacts once import
-   works, so her threads update them there?
+Should the two project mockups move to Lyrica as artifacts once import
+works, so her threads update them there?
 
 ## Handoff notes
 
-- 2026-11-11: brief written from the code at 8d6c19b. Nothing built.
+- 2026-11-11: brief written from the code at 8d6c19b. The owner chose React
+  now. Next: part 1 on this branch, restarted from main once this brief
+  merges; the React builder comes from the test machine on its own branch.
