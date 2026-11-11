@@ -9,6 +9,8 @@ const { spawn } = require("node:child_process");
 const { rmSync, mkdirSync, readFileSync, renameSync, writeFileSync } = require("node:fs");
 const [profile, agent] = process.argv.slice(1);
 const LOAD_MS = 20_000, SETTLE_MS = 600;
+// Anubis works out a proof of work in the page, a few seconds, and then loads the real page by itself.
+const CHECK_MS = 30_000;
 // Chromium can drop a cookie with no end date when it closes, and writes none for a while after it is set, so a
 // browser that is killed loses a fresh login. The cookies are kept here too, in the profile, after each action,
 // and given back at the next start.
@@ -290,6 +292,16 @@ async function settle() {
   await sleep(400);
   if (loading) await Promise.race([new Promise((r) => stopped.push(r)), sleep(LOAD_MS)]);
   await sleep(SETTLE_MS);
+  await passCheck();
+}
+
+/** An Anubis check page goes on to the real page by itself: wait for that, so she reads the page and not the check. */
+async function passCheck() {
+  for (const end = Date.now() + CHECK_MS; Date.now() < end; await sleep(500)) {
+    if (loading) { await Promise.race([new Promise((r) => stopped.push(r)), sleep(end - Date.now())]); await sleep(SETTLE_MS); continue; }
+    const checking = await page(`!!document.getElementById("anubis_challenge")`).catch(() => true);
+    if (!checking) return;
+  }
 }
 
 async function snapshot() {
@@ -311,6 +323,7 @@ const ops = {
     if (r.errorText) { loading = false; return { fail: r.errorText === "net::ERR_ABORTED" ? "that address is a download, which the browser refuses, or the page stopped loading" : r.errorText }; }
     if (loading) await Promise.race([new Promise((res) => stopped.push(res)), sleep(LOAD_MS)]);
     await sleep(SETTLE_MS);
+    await passCheck();
     return snapshot();
   },
   read: () => snapshot(),

@@ -395,8 +395,8 @@ const CURL: Record<number, string> = {
   1: "only http and https can be fetched", 35: "the TLS handshake failed", 60: "its certificate isn't trusted",
 };
 
-/** A fetched page as text, whole. `thin`: HTML with scripts and almost no text, which rendering may fill. */
-export interface FetchedPage { text: string; isError?: boolean; thin?: boolean }
+/** A fetched page as text, whole. `thin`: HTML with scripts and almost no text, which rendering may fill. `refused`: the site turned the fetch away (401, 403 or 429, or Anubis's check), which a browser may not be. */
+export interface FetchedPage { text: string; isError?: boolean; thin?: boolean; refused?: boolean }
 
 /** The page from curl's output: Markdown for HTML, text for a PDF, text and JSON as they are, or an error saying what failed. */
 export async function fetchedPage(url: string, r: { code: number | null; stdout: Buffer; stderr: Buffer }, signal?: AbortSignal): Promise<FetchedPage> {
@@ -407,7 +407,7 @@ export async function fetchedPage(url: string, r: { code: number | null; stdout:
     return { text: `Couldn't fetch ${url}: ${CURL[r.code ?? -1] ?? said ?? `curl exited with ${r.code}`}.`, isError: true };
   }
   const status = Number(meta?.[1] ?? 0);
-  if (status >= 400) return { text: `${url} answered ${status}.`, isError: true };
+  if (status >= 400) return { text: `${url} answered ${status}.`, isError: true, ...(status === 401 || status === 403 || status === 429 ? { refused: true } : {}) };
   const contentType = meta?.[2] ?? "";
   const type = contentType.split(";")[0]!.trim().toLowerCase();
   const body = r.stdout;
@@ -436,8 +436,12 @@ function decode(body: Buffer, contentType: string): string {
 /** Fewer characters than this, with scripts on the page, and rendering it is worth a try. */
 const THIN = 200;
 
-/** An HTML page as Markdown (htmlMarkdown); `thin` when it is nearly empty and has scripts. */
+/** Anubis's check page: a proof of work a browser works out by itself, then the real page. */
+const ANUBIS = /id=["']?anubis_challenge\b|\/\.within\.website\/x\/cmd\/anubis\//i;
+
+/** An HTML page as Markdown (htmlMarkdown); `thin` when it is nearly empty and has scripts; an Anubis check is `refused`. */
 export function htmlPage(url: string, html: string): FetchedPage {
+  if (ANUBIS.test(html)) return { text: `${url} answered with Anubis's check, which a browser passes by itself in a few seconds.`, isError: true, refused: true };
   const page = htmlMarkdown(html, url);
   return { text: page.text, thin: page.body.replace(/\s+/g, " ").length < THIN && /<script\b/i.test(html) };
 }

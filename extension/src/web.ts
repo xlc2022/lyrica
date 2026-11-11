@@ -26,6 +26,9 @@ export interface WebTools {
 /** How much of a page one browse action answers with; `read` with an offset goes on. */
 const BROWSE_CHARS = 12_000;
 
+/** What a refused fetch adds when the thread has browse. */
+const FETCH_REFUSED = "The site refused a plain fetch and may answer a browser: open the same address with browse.";
+
 /** How many offline hits join a search at most. */
 const OFFLINE_HITS = 5;
 
@@ -84,7 +87,7 @@ export function createWebExtension(web: WebTools): ExtensionFactory {
     pi.registerTool({
       name: "web_fetch",
       label: "Web fetch",
-      description: `Read a web page or PDF as text: a page's main text as Markdown. A wikipedia.org page comes from the server's offline copy when it has one (unless online), and a picture it lists comes back as an image; anything else is fetched from this conversation's sandbox, so its internet switch and allowed hosts apply.${web.browser ? " A page that needs a click, a field filled in or a login, or that comes back empty because a script draws it, is browse's." : ""}`,
+      description: `Read a web page or PDF as text: a page's main text as Markdown. A wikipedia.org page comes from the server's offline copy when it has one (unless online), and a picture it lists comes back as an image; anything else is fetched from this conversation's sandbox, so its internet switch and allowed hosts apply.${web.browser ? " A page that needs a click, a field filled in or a login, that comes back empty because a script draws it, or whose site refuses the fetch (answers 401, 403 or 429, or with Anubis's check), is browse's." : ""}`,
       promptSnippet: "read a web page or PDF as text",
       promptGuidelines: ["A cut page names the offset to read on from.", OUTSIDE_GUIDELINE],
       annotations: { openWorldHint: true, readOnlyHint: true },
@@ -136,7 +139,8 @@ export function createWebExtension(web: WebTools): ExtensionFactory {
             const rendered = r && renderedPage(url.href, r);
             if (rendered && rendered.text.length > page.text.length) page = rendered;
           }
-          if (page.isError) return text(page.text, true);
+          // A site that turns curl away often answers a browser: say so in the failure itself, where she reads it.
+          if (page.isError) return text(page.refused && web.browser ? `${page.text} ${FETCH_REFUSED}` : page.text, true);
           // Again on the text, which a charset, Markdown or a PDF's streams may have spelled differently from the bytes.
           if (secrets.length) page = { text: maskSecrets(Buffer.from(page.text), secrets).toString("utf8") };
           const part = cutPage(page.text, clamp(p.maxChars, 20_000, 50_000), p.offset ?? 0);
@@ -152,8 +156,8 @@ export function createWebExtension(web: WebTools): ExtensionFactory {
     if (web.browser) pi.registerTool({
       name: "browse",
       label: "Browse",
-      description: "Use a web page in this conversation's own browser, when reading it isn't enough: it needs a click, a field filled in, a login, or several steps to reach something. Every action answers with the page as it is now, as text, with each link, button and field on a line of its own under a number; act on one by its number. The browser stays open between calls and keeps its logins. It runs in this conversation's sandbox, so its internet switch and allowed hosts apply. To read a page whose address you have, use web_fetch.",
-      promptSnippet: "use a web page: click, fill in fields, log in",
+      description: "Use a web page in this conversation's own browser, when web_fetch isn't enough: the page needs a click, a field filled in, a login, or several steps to reach something, or web_fetch was refused (401, 403, 429, Anubis) or came back empty. browse waits out Anubis's check by itself. Every action answers with the page as it is now, as text, with each link, button and field on a line of its own under a number; act on one by its number. The browser stays open between calls and keeps its logins. It runs in this conversation's sandbox, so its internet switch and allowed hosts apply. To read a page whose address you have, try web_fetch first.",
+      promptSnippet: "use a web page: click, fill in fields, log in; open a page web_fetch was refused",
       promptGuidelines: [OUTSIDE_GUIDELINE],
       annotations: { openWorldHint: true },
       parameters: Type.Object({

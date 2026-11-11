@@ -39,6 +39,8 @@ describe.skipIf(!chromium)("the browse tool's browser", () => {
         if (req.method === "POST" && url.pathname === "/ask") { posts.push(body); return res.end("<title>Asked</title><p>Asked</p>"); }
         if (req.method === "POST") { posts.push(body); res.setHeader("set-cookie", ["sid=abc; Max-Age=9999", "visit=now"]); return res.end("<title>In</title><p>Signed in</p>"); }
         if (url.pathname === "/find") return res.end(`<title>Results</title><p>Results for ${url.searchParams.get("q")}</p>`);
+        // Anubis's check: a moment of work in the page, then the real page.
+        if (url.pathname === "/checked") return res.end(`<title>Making sure</title><p>Checking your browser</p><script id="anubis_challenge" type="application/json">{}</script><script>setTimeout(() => { location.href = "/two"; }, 1500);</script>`);
         if (url.pathname === "/two") return res.end(`<title>Two</title><p>Cookie: ${req.headers.cookie ?? "none"}</p>`);
         res.end(SHOP);
       });
@@ -77,6 +79,12 @@ describe.skipIf(!chromium)("the browse tool's browser", () => {
     // A number from the page before is gone, and never means something on this one.
     expect((await b.act("3", { action: "click", ref: ref(page.text, "Go") })).fail).toContain("isn't on the page any more");
     expect((await b.act("4", { action: "screenshot" })).image).toBeTruthy();
+  }, 60_000);
+
+  it("waits out an Anubis check and reads the page it leads to", async () => {
+    const page = await browser("anubis").act("1", { action: "open", url: `${site}/checked` });
+    expect(page.url).toBe(`${site}/two`);
+    expect(page.text).not.toContain("Checking your browser");
   }, 60_000);
 
   it("searches without asking, and never sends a form without the user's yes for that call", async () => {
