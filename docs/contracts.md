@@ -1819,10 +1819,14 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     `type` and `select` with the action in words; Plan mode leaves
     `BROWSE_READS`. A download is saved by Chromium in the profile's
     `downloads/` under its id (`Browser.setDownloadBehavior`
-    allowAndName; cancelled past 100 MB or 60 s); the driver answers
-    `downloads: BrowseDownload[]` after the action, and `Browser`'s
-    `save(file, name)` (`Workspace.saveDownload`) moves each into the
-    thread's `downloads/` and gives the path she sees, which the tool
+    allowAndName; cancelled past 2 GB, when the disk would keep less
+    than a tenth of its size free (at least 2 GB, `statfs`), or after 2
+    minutes without data); after an action the driver waits up to 45 s
+    for the downloads it started and answers `downloads` (a `going` one
+    with its size so far, answered again later), and `Browser`'s
+    `save(file, name)` (`Workspace.saveDownload`: renamed into the
+    thread's folder, then hard-linked to a free name in a sandbox) moves
+    each saved one into the thread's `downloads/` and gives the path she sees, which the tool
     says after the markers. `attach` (`ref`, `path`): `Browser.look`
     answers `gives` (the field's site) and the gate asks in every mode
     ("This gives a file to <site>."); without that yes `Browser.act`

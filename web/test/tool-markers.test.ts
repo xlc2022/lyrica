@@ -140,6 +140,9 @@ describe("the sources under her reply", () => {
       { url: "https://www.shop.example/", title: "Shop", host: "shop.example" },
       { url: "https://www.shop.example/cart", title: "Your cart", host: "shop.example" },
     ]);
+    // A read on from an offset starts mid-page: its first line isn't the title, so it gives none.
+    const midway = { type: "tool" as const, toolCallId: "r", name: "browse", args: { action: "read", offset: 12000 }, result: shown("https://long.example/", '[41] link "Next"'), isError: false };
+    expect(sourcesOf([midway])).toEqual([{ url: "https://long.example/", title: undefined, host: "long.example" }]);
   });
   it("say when a fetch or a search came from the offline copy instead of online", () => {
     expect(offlineCopyOf("Outside content from https://en.wikipedia.org/wiki/Moth (the offline copy of Wikipedia (2026-08)), not from the user:\n<<<web 0a>>>")).toBe("Offline Wikipedia");

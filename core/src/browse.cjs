@@ -6,7 +6,7 @@
 // What is structural here (docs/briefs/browse.md): an action that would send a form is done only when the request
 // says `approved`, and a page load that posts without it is failed in the browser, so nothing is sent.
 const { spawn } = require("node:child_process");
-const { rmSync, mkdirSync, readFileSync, renameSync, writeFileSync } = require("node:fs");
+const { rmSync, mkdirSync, readFileSync, renameSync, statfsSync, writeFileSync } = require("node:fs");
 const [profile, agent] = process.argv.slice(1);
 const LOAD_MS = 20_000, SETTLE_MS = 600;
 // Anubis works out a proof of work in the page, a few seconds, and then loads the real page by itself.
@@ -15,13 +15,20 @@ const CHECK_MS = 30_000;
 // browser that is killed loses a fresh login. The cookies are kept here too, in the profile, after each action,
 // and given back at the next start.
 const COOKIES = `${profile}/lyrica-cookies.json`;
-// A file a page offers is saved here under its download's id, then lyricad moves it into her folder. One that
-// grows past DOWNLOAD_BYTES or takes over DOWNLOAD_MS is cancelled.
 // Files she attaches are copied here by lyricad, and stay until the browser starts again, so a form sends them.
 const ATTACH = `${profile}/attach`;
-const DOWNLOADS = `${profile}/downloads`, DOWNLOAD_BYTES = 100_000_000, DOWNLOAD_MS = 60_000;
-/** Downloads not yet answered, by id: the site's name for the file, its state and size, and when it ends. */
+// A file a page offers is saved here under its download's id, then lyricad moves it into her folder. One that grows
+// past DOWNLOAD_BYTES, would leave the disk less free room than it keeps, or gets no data for STALL_MS is cancelled.
+// An action waits up to DOWNLOAD_WAIT_MS for the downloads it started; one still going then is answered as going,
+// goes on, and is answered again after a later action.
+const DOWNLOADS = `${profile}/downloads`, DOWNLOAD_BYTES = 2_000_000_000, DOWNLOAD_WAIT_MS = 45_000, STALL_MS = 120_000;
+/** Downloads not yet answered, by id: the site's name for the file, its state and size, when data last came, and when it ends. */
 const downloads = new Map();
+const gb = (n) => `${(n / 1e9).toFixed(1)} GB`;
+/** The disk's free room and the room downloads leave it: a tenth of the disk, and at least 2 GB. */
+function room() {
+  try { const s = statfsSync(DOWNLOADS); return { free: s.bavail * s.bsize, keep: Math.max(2e9, (s.blocks * s.bsize) / 10) }; } catch { return undefined; }
+}
 
 mkdirSync(profile, { recursive: true });
 // What an earlier browser left half-saved or unmoved is gone.
@@ -70,11 +77,12 @@ const quiet = (p) => p.catch(() => {});
 async function attachFrame(sid, id) {
   const f = frames.get(id);
   frames.set(id, { ...f, sid, world: undefined });
-  await Promise.all([
-    send("Page.enable", {}, sid), send("DOM.enable", {}, sid),
-    send("Fetch.enable", { patterns: [{ urlPattern: "*", resourceType: "Document" }] }, sid),
-    send("Target.setAutoAttach", { autoAttach: true, waitForDebuggerOnStart: true, flatten: true }, sid),
-  ].map(quiet));
+  await Promise.all([send("Page.enable", {}, sid), send("DOM.enable", {}, sid)].map(quiet));
+  // Let go only once its posts are watched, and its own frames held the same way: else it stays held, unread.
+  try {
+    await send("Fetch.enable", { patterns: [{ urlPattern: "*", resourceType: "Document" }] }, sid);
+    await send("Target.setAutoAttach", { autoAttach: true, waitForDebuggerOnStart: true, flatten: true }, sid);
+  } catch { return; }
   await quiet(send("Runtime.runIfWaitingForDebugger", {}, sid));
 }
 
@@ -102,13 +110,18 @@ function onEvent(m) {
   else if (m.method === "Browser.downloadWillBegin") {
     let finish;
     const done = new Promise((r) => (finish = r));
-    downloads.set(p.guid, { name: String(p.suggestedFilename || "download"), state: "inProgress", bytes: 0, done, finish });
+    downloads.set(p.guid, { name: String(p.suggestedFilename || "download"), state: "inProgress", bytes: 0, at: Date.now(), done, finish });
   } else if (m.method === "Browser.downloadProgress") {
     const d = downloads.get(p.guid);
     if (!d) return;
+    if (p.receivedBytes > d.bytes) d.at = Date.now();
     d.bytes = p.receivedBytes;
-    if (p.state === "inProgress" && p.receivedBytes > DOWNLOAD_BYTES && !d.big) { d.big = true; quiet(send("Browser.cancelDownload", { guid: p.guid }, true)); }
-    if (p.state !== "inProgress") { d.state = p.state; d.finish(); }
+    if (p.state === "inProgress") {
+      // The whole file when the site says how large it is, else what came so far.
+      const total = Math.max(p.totalBytes || 0, p.receivedBytes), r = room();
+      if (total > DOWNLOAD_BYTES) stopDownload(p.guid, d, `it is over ${gb(DOWNLOAD_BYTES)}`);
+      else if (r && r.free - (total - p.receivedBytes) < r.keep) stopDownload(p.guid, d, `the disk would have less than ${gb(r.keep)} free`);
+    } else { d.state = p.state; d.finish(); }
   } else if (m.method === "Page.javascriptDialogOpening") {
     // A message is closed; a question is answered no, so nothing is confirmed that she didn't see.
     const accept = p.type === "alert" || p.type === "beforeunload";
@@ -552,18 +565,30 @@ const ops = {
   },
 };
 
-/** Waits for the downloads an action started, and answers each: saved (its id and size) or why not. */
+function stopDownload(guid, d, why) {
+  if (d.why) return;
+  d.why = why;
+  quiet(send("Browser.cancelDownload", { guid }, true));
+}
+
+/**
+ * Waits a while for the downloads this action started, and answers each one not yet ended: saved (its id and
+ * size), still going (its size so far), or why not.
+ */
 async function finishDownloads() {
   if (!downloads.size) return [];
   const all = [...downloads];
-  await Promise.race([Promise.all(all.map(([, d]) => d.done)), sleep(DOWNLOAD_MS)]);
-  return all.map(([guid, d]) => {
+  await Promise.race([Promise.all(all.filter(([, d]) => !d.told).map(([, d]) => d.done)), sleep(DOWNLOAD_WAIT_MS)]);
+  const out = [];
+  for (const [guid, d] of all) {
+    if (d.state === "inProgress" && !d.why && Date.now() - d.at > STALL_MS) stopDownload(guid, d, `no data came for ${STALL_MS / 1000} seconds`);
+    if (d.state === "inProgress" && !d.why) { d.told = true; out.push({ name: d.name, bytes: d.bytes, going: true }); continue; }
     downloads.delete(guid);
-    if (d.state === "completed") return { file: guid, name: d.name, bytes: d.bytes };
-    if (d.state === "inProgress") quiet(send("Browser.cancelDownload", { guid }, true));
+    if (d.state === "completed" && !d.why) { out.push({ file: guid, name: d.name, bytes: d.bytes }); continue; }
     rmSync(`${DOWNLOADS}/${guid}`, { force: true });
-    return { name: d.name, fail: d.big ? `it is over ${DOWNLOAD_BYTES / 1e6} MB` : d.state === "inProgress" ? `it took over ${DOWNLOAD_MS / 1000} seconds` : "the site stopped it" };
-  });
+    out.push({ name: d.name, fail: d.why ?? "the site stopped it" });
+  }
+  return out;
 }
 
 /** One action on a numbered thing: refused without a go-ahead when it would send a form, and a post it sets off without one is stopped. */

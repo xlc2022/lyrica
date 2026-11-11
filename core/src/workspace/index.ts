@@ -3,7 +3,7 @@ import { ensurePhotosDir, PortraitPhotos, ThreadImages } from "./images.ts";
 export * from "./images.ts";
 import { randomBytes } from "node:crypto";
 import { lookup } from "node:dns/promises";
-import { lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { lstatSync, mkdirSync, mkdtempSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { isIP } from "node:net";
 import { tmpdir } from "node:os";
 import { join, posix } from "node:path";
@@ -1860,12 +1860,13 @@ export class Workspace {
   /**
    * Moves a file the thread's browser downloaded (its id in the profile's downloads/) into the thread's
    * downloads/ folder, under the site's name cleaned as an upload's is, never overwriting. Returns the path she sees.
+   * Moved, never copied, so a large file never takes its room twice.
    */
   async saveDownload(t: WorkspaceThread, file: string, name: string): Promise<string> {
     if (!/^[\w-]+$/.test(file)) throw new Error("the download's id is malformed");
     const src = join(this.browserDir(t), "downloads", file);
     try {
-      return await this.saveFile(t, "downloads", name, readFileSync(src), false);
+      return await this.saveFile(t, "downloads", name, { move: src }, false);
     } finally {
       rmSync(src, { force: true });
     }
@@ -1884,19 +1885,35 @@ export class Workspace {
     return `${BROWSER_PROFILE}/attach/${dir}/${name}`;
   }
 
-  /** Saves bytes into one of the thread's folders (a project chat's shared/ one), under a free name; `randomImages` names an image at random. */
-  private async saveFile(t: WorkspaceThread, folder: "uploads" | "downloads", name: string, bytes: Buffer, randomImages: boolean): Promise<string> {
+  /**
+   * Saves bytes, or moves a file on the host, into one of the thread's folders (a project chat's shared/ one), under
+   * a free name; `randomImages` names an image at random.
+   */
+  private async saveFile(t: WorkspaceThread, folder: "uploads" | "downloads", name: string, from: Buffer | { move: string }, randomImages: boolean): Promise<string> {
     const clean = cleanUploadName(name);
     const dot = clean.lastIndexOf(".");
     const [given, ext] = dot > 0 ? [clean.slice(0, dot), clean.slice(dot)] : [clean, ""];
     const stem = randomImages && UPLOAD_IMAGE.test(ext) ? randomBytes(6).toString("hex") : given;
-    // noclobber makes taking the name atomic: a file that appears meanwhile is never overwritten.
-    const script = 'mkdir -p "$3" && n="$1$2" && i=2 && until (set -C; cat > "$3/$n") 2>/dev/null; do ' +
-      '[ "$i" -gt 999 ] && exit 1; n="$1-$i$2"; i=$((i+1)); done && printf %s "$n"';
     // A project chat's go in its shared/ (its threads' /shared), so the threads that build from them can read them.
     const shared = this.sharesOwnFolder(t);
-    const box = new Sandbox({ workdir: shared ? join(this.threadDir(t), "shared") : this.threadDir(t), grants: [], network: { internet: false, services: false, hosts: [] }, bwrap: this.opts.bwrap });
-    const r = await box.run(["sh", "-c", script, "sh", stem, ext, folder], { input: bytes });
+    const base = shared ? join(this.threadDir(t), "shared") : this.threadDir(t);
+    mkdirSync(base, { recursive: true, mode: 0o700 });
+    if (lstatSync(base).isSymbolicLink()) throw new Error(`could not save ${clean}: the folder is a link`);
+    // A file on the host is renamed into the folder's top under a fresh name (the same encrypted home, so nothing is
+    // copied), then linked to a free name in the sandbox, so a link she made there is never followed outside it.
+    // noclobber, or a hard link, makes taking the name atomic: a file that appears meanwhile is never overwritten.
+    const incoming = Buffer.isBuffer(from) ? undefined : `.lyrica-incoming-${randomBytes(6).toString("hex")}`;
+    if (incoming) renameSync((from as { move: string }).move, join(base, incoming));
+    const take = incoming ? 'ln -- "$4" "$3/$n"' : '(set -C; cat > "$3/$n")';
+    const script = `mkdir -p "$3" && n="$1$2" && i=2 && until ${take} 2>/dev/null; do ` +
+      '[ "$i" -gt 999 ] && exit 1; n="$1-$i$2"; i=$((i+1)); done && printf %s "$n"' + (incoming ? ' && rm -f -- "$4"' : "");
+    const box = new Sandbox({ workdir: base, grants: [], network: { internet: false, services: false, hosts: [] }, bwrap: this.opts.bwrap });
+    let r;
+    try {
+      r = await box.run(["sh", "-c", script, "sh", stem, ext, folder, ...(incoming ? [incoming] : [])], Buffer.isBuffer(from) ? { input: from } : {});
+    } finally {
+      if (incoming) rmSync(join(base, incoming), { force: true });
+    }
     if (r.code !== 0) throw new Error(`could not save ${clean}: ${r.stderr.toString().trim()}`);
     const path = `${WORKDIR}/${shared ? "shared/" : ""}${folder}/${r.stdout.toString()}`;
     this.madeFiles(t, [path]);

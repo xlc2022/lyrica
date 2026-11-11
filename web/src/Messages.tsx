@@ -577,7 +577,9 @@ export function sourcesOf(parts: MessagePart[]): Source[] {
       try { url = new URL(m?.[1] ?? ""); } catch { continue; }
       if ((url.protocol !== "http:" && url.protocol !== "https:") || seen.has(url.href)) continue;
       const local = isLoopback(url.hostname);
-      seen.set(url.href, { url: url.href, title: m![2]!.trim() || undefined, host: url.hostname.replace(/^www\./, ""), ...(local ? { local } : {}) });
+      // A read on from an offset starts mid-page, where the first line isn't the title.
+      const midway = Number((p.args as { offset?: unknown } | null)?.offset ?? 0) > 0;
+      seen.set(url.href, { url: url.href, title: midway ? undefined : m![2]!.trim() || undefined, host: url.hostname.replace(/^www\./, ""), ...(local ? { local } : {}) });
       continue;
     }
     if (p.name !== "web_fetch") continue;

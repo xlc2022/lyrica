@@ -32,9 +32,9 @@ export interface BrowseForm { site: string; to: string; method: string; button: 
 export interface BrowseReply { url?: string; title?: string; text?: string; notes?: string[]; fail?: string; image?: string; sends?: BrowseForm | null; unapproved?: BrowseForm; site?: string; what?: string; downloads?: BrowseDownload[] }
 /**
  * A file the action downloaded: the site's name for it, and where it was saved in her folder (`path`, with its
- * size), or why not. `file` is the driver's id for it in the profile, until lyricad moves it.
+ * size), or that it is still `going` (its size so far; a later action answers it again), or why not. `file` is the driver's id for it in the profile, until lyricad moves it.
  */
-export interface BrowseDownload { name: string; file?: string; bytes?: number; path?: string; fail?: string }
+export interface BrowseDownload { name: string; file?: string; bytes?: number; path?: string; fail?: string; going?: boolean }
 export interface BrowseCall { action: BrowseAction; url?: string; ref?: number; text?: string; submit?: boolean; direction?: "up" | "down"; path?: string }
 
 export type BrowserProcess = { stdin: Writable; stdout: Readable; kill(signal?: NodeJS.Signals): boolean; on(event: "close", listener: () => void): unknown };

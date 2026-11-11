@@ -204,6 +204,7 @@ export function createWebExtension(web: WebTools): ExtensionFactory {
           // What was downloaded is ours to say, after the markers; the site's name for a file is cut short.
           const saved = (r.downloads ?? []).map((d) => {
             const name = JSON.stringify(d.name.slice(0, 80));
+            if (d.going) return `Still downloading ${name} (${size(d.bytes ?? 0)} so far); a later browse action, read included, says when it is saved.`;
             return d.path ? `Downloaded ${name} to ${d.path}${d.bytes !== undefined ? ` (${size(d.bytes)})` : ""}.` : `Couldn't download ${name}: ${d.fail ?? "it failed"}.`;
           });
           return text(`${r.fail ? `${r.fail}\n` : ""}${outside(r.url ?? "the browser", withSections(part))}${part.note ? `\n${part.note}` : ""}${saved.length ? `\n${saved.join("\n")}` : ""}${allowed}`, !!r.fail);
