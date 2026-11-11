@@ -535,15 +535,16 @@ function MemorySection({ base, summary, pool, userId, onSummary }: { base: strin
         <textarea rows={6} maxLength={4000} value={instructions} onChange={(e) => setInstructions(e.target.value)} placeholder={`How ${her()} should work in this project. Every thread of it reads this.`} />
         <small className="muted num">{instructions.length} / 4000</small>
       </label>
-      <Switch label="Ask first" hint={`${her()} can change these instructions herself. On, her changes wait here as a draft for you to save.`}
-        checked={summary.projectSettings?.askFirstInstructions === true} disabled={busy}
-        onChange={(on) => run(async () => { onSummary(await patch<ThreadSummary>(base, { askFirstInstructions: on })); })} />
       <p className="small"><a href={href({ page: "memory", userId, pool, id: summary.projectSettings!.pageId })}>Project page</a> <span className="muted">· what {her()} knows about the project, rewritten while she sleeps</span></p>
       <div className="row">
         <button type="submit" className="primary" disabled={busy}>Save</button>
         {summary.projectSettings?.draftInstructions !== undefined && <button type="button" disabled={busy} onClick={() => run(async () => { const updated = await patch<ThreadSummary>(base, { discardDraft: true }); onSummary(updated); setInstructions(updated.instructions ?? ""); })}>Discard draft</button>}
         {saved && <span className="muted" role="status">Saved.</span>}
       </div>
+      {/* Below Save: it saves when toggled, apart from the field. */}
+      <Switch label="Ask first" hint={`${her()} can change these instructions herself. On, her changes wait here as a draft for you to save.`}
+        checked={summary.projectSettings?.askFirstInstructions === true} disabled={busy}
+        onChange={(on) => run(async () => { onSummary(await patch<ThreadSummary>(base, { askFirstInstructions: on })); })} />
       <ErrorText error={error} />
     </form>
   );

@@ -360,9 +360,9 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   repository taken off here leaves the
   project's running threads at once, and their open views show it gone. **Memory**: the
   Instructions kept on the project page (4,000 characters, counted under
-  the box), the **Ask first** switch (`askFirstInstructions`, saved when
-  toggled: her `threads instructions` then fills the box as a draft), and a
-  link to that page in the memory browser. **Files and images**
+  the box), a link to that page in the memory browser, and below Save the
+  **Ask first** switch (`askFirstInstructions`, saved when toggled: her
+  `threads instructions` then fills the box as a draft). **Files and images**
   (`ProjectFiles.tsx`): the project folder (the project chat's `/workspace`)
   through the Files panel's routes on the project chat, one folder at a time
   with crumbs, Files | Images | Videos, Upload… (to the folder shown, or by dropping
