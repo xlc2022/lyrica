@@ -1,7 +1,7 @@
 // Sleep (docs/sleep.md "Sleep in the UI"): her items from the night at the top, each with Start a chat
 // and Dismiss; then the newest run, with Show all beside History, opening to its notes, pages with their word
 // differences, questions, dream and WAKE, each linking into the memory browser, the newest with Undo this night…;
-// Tonight's line for her dream per pool above History; Sleep now at the foot.
+// Focus: her line for the next dream per pool above History; Sleep now at the foot.
 // Also the per-user mode (Settings → Sleep) and the administrator's sleep time.
 import { Fragment, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -197,7 +197,7 @@ export function SleepPage({ ctx }: { ctx: ShellContext }) {
               <p key={p} className="muted small">{poolWord(p)} is hidden. Turn on {poolWord(p)} in the Sort menu to see it.</p>
             ))}
           </section>
-          {o && <Tonight ctx={ctx} />}
+          {o && <Focus ctx={ctx} />}
           <section aria-label="History" className="sleep-block">
             <HistoryHead to={{ page: "history", userId, kind: "sleep" }} count={runTotal.data?.total} />
             <div className="list sleep-runs">{last.map(row)}</div>
@@ -333,8 +333,8 @@ function UndoNight({ d, userId, undone }: { d: SleepRunDetail; userId: string; u
   );
 }
 
-/** Tonight: one line per shown pool for her next dream, saved with its own Save; Clear takes it back. */
-function Tonight({ ctx }: { ctx: ShellContext }) {
+/** Focus: one line per shown pool for her next dream, saved with its own Save; Clear takes it back. */
+function Focus({ ctx }: { ctx: ShellContext }) {
   const userId = ctx.user.id;
   const o = ctx.sleep.overview!;
   const pools = (["general", "private"] as const).filter((p) => !hidden(ctx.me.display, p));
@@ -346,7 +346,7 @@ function Tonight({ ctx }: { ctx: ShellContext }) {
   });
   if (!pools.length) return null;
   return (
-    <section aria-label="Tonight" className="sleep-block sleep-tonight">
+    <section aria-label="Focus" className="sleep-block sleep-focus">
       <ErrorText error={error} />
       {pools.map((pool) => {
         const set = o.focus[pool] ?? "";
@@ -354,8 +354,8 @@ function Tonight({ ctx }: { ctx: ShellContext }) {
         return (
           <form key={pool} className="inline" data-pool={pool} onSubmit={(e) => { e.preventDefault(); void save(pool, value); }}>
             <label className="field">
-              <span title="A line for her to think about in tonight's dream. It clears once she has dreamed.">Tonight{pools.length > 1 && <> · <PoolName pool={pool} /></>}</span>
-              <input type="text" name={`tonight-${pool}`} maxLength={SLEEP_FOCUS_MAX} value={value} onChange={(e) => setDraft((m) => ({ ...m, [pool]: e.target.value }))} />
+              <span title="A line for her to think about in tonight's dream. It clears once she has dreamed.">Focus{pools.length > 1 && <> · <PoolName pool={pool} /></>}</span>
+              <input type="text" name={`focus-${pool}`} maxLength={SLEEP_FOCUS_MAX} value={value} onChange={(e) => setDraft((m) => ({ ...m, [pool]: e.target.value }))} />
             </label>
             <button disabled={busy || value.trim() === set}>Save</button>
             {set && <button type="button" disabled={busy} onClick={() => void save(pool, "")}>Clear</button>}
