@@ -50,7 +50,7 @@ describe.skipIf(!chromium)("the browse tool's browser", () => {
   afterAll(() => { server.close(); rmSync(dir, { recursive: true, force: true }); });
 
   const browser = (profile: string) => {
-    const b = new Browser(async () => spawn(process.execPath, ["-e", BROWSE_SCRIPT, join(dir, profile), "test"], { stdio: ["pipe", "pipe", "ignore"], env: { ...process.env, CHROME_PATH: chromium } }) as BrowserProcess);
+    const b = new Browser(async () => spawn(process.execPath, ["-e", BROWSE_SCRIPT, join(dir, profile), "test"], { stdio: ["pipe", "pipe", "inherit"], env: { ...process.env, CHROME_PATH: chromium, BROWSE_TRACE: "1" } }) as BrowserProcess);
     browsers.push(b);
     return b;
   };
