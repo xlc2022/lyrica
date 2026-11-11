@@ -111,3 +111,8 @@ useradd -m lyricatest
 rsync -a --exclude .git ./ /home/lyricatest/lyrica/ && chown -R lyricatest: /home/lyricatest/lyrica
 su lyricatest -c 'cd ~/lyrica && LYRICA_SANDBOX_TESTS=require npx vitest --run'
 ```
+- **`shims/node-domexception/`** stands in for the deprecated
+  `node-domexception` package through the root `package.json`'s
+  `overrides`, so installs stop warning about it. `fetch-blob` (under
+  `@google/genai`, through `gaxios` and `node-fetch`) still imports it;
+  the shim hands back Node's built-in `DOMException`, as the package did.

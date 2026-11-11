@@ -1,0 +1,8 @@
+{
+  "name": "node-domexception",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Stands in for the deprecated node-domexception: Node has DOMException built in",
+  "license": "MIT",
+  "main": "index.js"
+}
