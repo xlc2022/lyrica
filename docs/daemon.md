@@ -421,8 +421,10 @@ Each active thread is one Pi session from `openThreadSession`, with
   `deleted: true`.
   Its files go at once while the home is mounted (`forgetThreadFiles`,
   daemon/src/sweep.ts): the change records of what its calls did and their
-  snapshots, its folder under `threads/`, its lasting `/tmp`, its own `/shared/<id>/` and its Claude Code folder. The
-  nightly sweep takes any folder left behind.
+  snapshots, its folder under `threads/`, its lasting `/tmp`, its own `/shared/<id>/` and its Claude Code folder,
+  removed without holding up `lyricad`. The nightly sweep, or Sweep orphan data in Settings → Reset, takes any folder
+  left behind. While the delete runs, `GET …/deleting` says which step it is on (stopping its work, its messages
+  and memories, its files) for the delete dialog, and a second delete of it is refused.
 - **Child threads** (`ChildThreads`, [delegation.md](delegation.md#child-threads)):
   every hosted thread gets the `threads` tool. A child is hosted like any
   thread; `ThreadHost.status` says working, waiting or idle, and

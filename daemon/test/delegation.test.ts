@@ -119,6 +119,9 @@ describe("delegation in lyricad", () => {
     expect((await ada.get(`/api/u/${rt.ada.id}/threads/general/${enc(child)}`)).status).toBe(404);
     const all = (await ada.get<ThreadSummary[]>(`/api/u/${rt.ada.id}/threads?all=1`)).body;
     expect(all).toEqual([]);
+    // Done: no delete runs for the dialog to show, and deleting it again finds nothing.
+    expect((await ada.get(`${path}/deleting`)).status).toBe(404);
+    expect((await ada.del(path)).status).toBe(404);
   });
 
   it("keeps roles and saved workflows per user", async () => {

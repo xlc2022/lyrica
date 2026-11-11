@@ -383,16 +383,26 @@ export function Prose({ text, files, onLarge, a, copyCode, skipImages }: { text:
  * A dialog confirms an action with a consequence: the sentence and two buttons (docs/ux.md §6).
  * `options` add checkboxes, each with its own default, in order; `sentence` may follow their state; `onConfirm` gets their states.
  */
-export function ConfirmDialog({ title, commit, sentence, confirm, cancel, danger, options, onConfirm, onCancel }: {
+export function ConfirmDialog({ title, commit, sentence, confirm, cancel, danger, options, working, error, onConfirm, onCancel }: {
   title: string; /** A commit in mono after the title (Roll back). */ commit?: string; sentence: string | ((ticked: boolean[]) => string); confirm: string; /** The cancel button's word; default Cancel. */ cancel?: string;
-  danger?: boolean; options?: ConfirmOption[]; onConfirm: (ticked: boolean[]) => void; onCancel: () => void;
+  danger?: boolean; options?: ConfirmOption[];
+  /** Once confirmed, while the action runs: the dialog shows this title and body in place of its question, with no buttons, and can't be closed. */
+  working?: { title: string; body: ReactNode };
+  error?: string; onConfirm: (ticked: boolean[]) => void; onCancel: () => void;
 }) {
   const [ticks, set] = useTicks(options);
+  if (working) return (
+    <Dialog labelledBy="confirm-title" onCancel={() => {}} onSubmit={() => {}}>
+      <h2 id="confirm-title">{working.title}</h2>
+      {working.body}
+    </Dialog>
+  );
   return (
     <Dialog labelledBy="confirm-title" onCancel={onCancel} onSubmit={() => onConfirm(ticks)}>
       <h2 id="confirm-title">{title}{commit && <> <span className="mono dlg-commit">{commit}</span></>}</h2>
       <p>{typeof sentence === "function" ? sentence(ticks) : sentence}</p>
       <Options options={options} ticks={ticks} set={set} />
+      <ErrorText error={error} />
       <div className="dlg-actions">
         <button type="button" onClick={onCancel}>{cancel ?? "Cancel"}</button>
         <button type="submit" className={danger ? "danger primary" : "primary"} autoFocus>{confirm}</button>

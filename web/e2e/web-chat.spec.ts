@@ -1140,6 +1140,32 @@ test("a child thread nests under its parent, opens from its card, and goes with 
   await noHorizontalScroll(page);
 });
 
+test("deleting a thread shows its steps while it runs, and can't be closed until it ends", async ({ page, baseURL }) => {
+  await enter(page, baseURL!);
+  await newThread(page, "General");
+  await send(page, "Something to delete");
+  await expect(page.getByText("You said: Something to delete")).toBeVisible();
+  // The delete is held until the test lets it go, and the server says it is on its second step, taking three threads.
+  let release = () => {};
+  const held = new Promise<void>((go) => { release = go; });
+  await page.route(/\/threads\/general\/[^/]+$/, async (r) => { if (r.request().method() === "DELETE") await held; await r.continue(); });
+  await page.route(/\/deleting$/, (r) => r.fulfill({ json: { step: "messages", threads: 3 } }));
+  const dialog = await deleteThread(page);
+  await dialog.getByRole("button", { name: "Delete", exact: true }).click();
+  const working = page.getByRole("dialog", { name: /^Deleting / });
+  await expect(working.locator("li[aria-current=step]")).toHaveText("Deleting messages and memories");
+  await expect(working.locator("li.done")).toHaveText("Stopping its work");
+  await expect(working.getByText("3 threads")).toBeVisible();
+  await expect(working.getByRole("button")).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(working).toBeVisible();
+  await noHorizontalScroll(page);
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/delete-progress-${page.viewportSize()!.width}.png` });
+  release();
+  await expect(working).toHaveCount(0);
+  await expect(page.getByText("You said: Something to delete")).toHaveCount(0);
+});
+
 test("a message to a child thread, and a read of it, are headed by its title, cut to one line, and by \"a forgotten thread\" once it is gone", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   await newThread(page, "General");

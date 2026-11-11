@@ -438,6 +438,23 @@ describe("deletion", () => {
     expect(own.isTombstoned(a.entry)).toBe(true);
   });
 
+  it("forgets several threads at once, their subagents' search rows and vectors too, and leaves other threads' alone", async () => {
+    const { memory, ada } = await setup();
+    const { own } = memory.openThreadView(ada.id, "general");
+    const a = said(own, "the lighthouse keeper");
+    const sub = own.createThread({ interface: "cli", parent: a.thread, subagent: true });
+    const subEntry = own.appendEntry(sub.id, { piId: "s1", role: "assistant", data: { type: "message" }, text: "the lighthouse lamp" });
+    const b = said(own, "the lighthouse cat");
+    const other = said(own, "a lighthouse further north");
+    const v = (id: string) => ({ id, kind: "entry" as const, vec: new Float32Array([1, 0]) });
+    own.putVectors("m", [v(a.entry), v(subEntry), v(b.entry), v(other.entry)]);
+    own.forgetThreads([sub.id, a.thread, b.thread, "cli/gone"], "lyrica");
+    expect(own.vectorCount("m")).toEqual({ done: 1, left: 0 });
+    expect([a.thread, sub.id, b.thread].map((id) => own.getThread(id))).toEqual([undefined, undefined, undefined]);
+    expect(own.search("lighthouse").map((h) => h.id)).toEqual([other.entry]);
+    expect(own.search("lamp")).toEqual([]);
+  });
+
   it("keeps the notes of a thread forgotten with keepMemories, and leaves a text-free thread tombstone", async () => {
     const { memory, ada } = await setup();
     const { own } = memory.openThreadView(ada.id, "general");

@@ -5,12 +5,13 @@
 // project and Move to project for a top-level thread, Detach for a child row
 // outside a project, Resolve and Reopen for a project's thread.
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { del, get, patch, post, put, threadPath, u, type Person, type ThreadGroup, type ThreadSettings, type ThreadSummary } from "./api.ts";
+import { del, get, patch, post, put, threadPath, u, type Person, type ThreadDeleting, type ThreadGroup, type ThreadSettings, type ThreadSummary } from "./api.ts";
 import { FoldConfirm, type FoldRow } from "./FoldConfirm.tsx";
 import { go, type Route } from "./route.ts";
 import { her } from "./name.ts";
 import { Flyout, useCanHover, useFlyout } from "./flyout.tsx";
 import { ConfirmDialog, ErrorText, menuArrows } from "./ui.tsx";
+import { Icon } from "./icons.tsx";
 
 /** Where the menu opens: at a pointer, or under a button with `end` set, `x` being the edge its right side keeps to. */
 export interface MenuAt { x: number; y: number; thread: ThreadSummary; end?: boolean }
@@ -74,6 +75,7 @@ export function ThreadMenu({ at, userId, route, groups, onGroups, onChange, onTo
   const [sub, setSub] = useState<"" | "group" | "rename" | "newgroup" | "delete" | "project" | "continue" | "share" | "move" | "detach">("");
   const [draft, setDraft] = useState(t.title ?? "");
   const [error, setError] = useState("");
+  const [deleting, setDeleting] = useState<ThreadDeleting>();
   const [people, setPeople] = useState<Person[]>();
   const [recipient, setRecipient] = useState<Person>();
   const [projects, setProjects] = useState<ThreadSummary[]>([]);
@@ -158,12 +160,22 @@ export function ThreadMenu({ at, userId, route, groups, onGroups, onChange, onTo
   const act = (fn: () => Promise<unknown>, said?: string) => fn().then(() => { onChange(); if (said) onToast(said); onClose(); }, (e: Error) => setError(e.message));
   const change = (c: { title?: string; hidden?: boolean; group?: string | null; unread?: boolean; project?: true }) => act(() => patch(base, c));
   const inProject = t.state !== undefined;
-  const forget = (withChildren: boolean, keepMemories: boolean) => act(async () => {
-    await del(base, { children: withChildren, keepMemories });
-    // The open thread is gone: leave it.
-    if (onGone) onGone();
-    else if (route?.page === "thread" && route.threadId === t.id) go({ page: "home", userId });
-  });
+  const forget = (withChildren: boolean, keepMemories: boolean) => {
+    setDeleting({ step: "stopping", threads: 0 });
+    setError("");
+    return act(async () => {
+      await del(base, { children: withChildren, keepMemories });
+      // The open thread is gone: leave it.
+      if (onGone) onGone();
+      else if (route?.page === "thread" && route.threadId === t.id) go({ page: "home", userId });
+    }).finally(() => setDeleting(undefined));
+  };
+  // While the delete runs, how far it has got (docs/ux.md, "Deleting a thread").
+  useEffect(() => {
+    if (!deleting) return;
+    const timer = setInterval(() => { void get<ThreadDeleting>(`${base}/deleting`).then(setDeleting, () => {}); }, DELETE_POLL_MS);
+    return () => clearInterval(timer);
+  }, [base, !!deleting]);
 
   if (moving) {
     const projectBase = threadPath(userId, t.pool, moving.project.id);
@@ -203,7 +215,8 @@ export function ThreadMenu({ at, userId, route, groups, onGroups, onChange, onTo
   }
   if (sub === "delete") {
     return (
-      <ConfirmDialog title="Delete this thread?" danger confirm="Delete" onCancel={onClose} onConfirm={([keep, kids]) => forget(!!kids, !!keep)}
+      <ConfirmDialog title="Delete this thread?" danger confirm="Delete" onCancel={onClose} onConfirm={([keep, kids]) => void forget(!!kids, !!keep)}
+        error={error} working={deleting && { title: `Deleting ${t.title || "this thread"}`, body: <DeleteProgress now={deleting} /> }}
         sentence={([keep]) => keep
           ? `Its messages are deleted. What ${her()} learned from it stays in memory. This can't be undone.`
           : `Its messages are deleted, and so is what ${her()} learned only from it. This can't be undone.`}
@@ -274,5 +287,28 @@ export function ThreadMenu({ at, userId, route, groups, onGroups, onChange, onTo
       <ErrorText error={error} />
       {fly && <Flyout parentRef={ref} anchor={fly}>{sub === "share" ? shareItems : sub === "move" ? projectItems : groupItems}</Flyout>}
     </div>
+  );
+}
+
+/** How often the delete dialog asks how far a delete has got. */
+const DELETE_POLL_MS = 700;
+
+const DELETE_STEPS: [ThreadDeleting["step"], string][] = [["stopping", "Stopping its work"], ["messages", "Deleting messages and memories"], ["files", "Removing files"]];
+
+/** A thread's delete as it runs: its three steps, the current one with the spinner, and how many threads it takes. */
+function DeleteProgress({ now }: { now: ThreadDeleting }) {
+  const at = DELETE_STEPS.findIndex(([s]) => s === now.step);
+  return (
+    <>
+      <ol className="delete-steps" aria-live="polite">
+        {DELETE_STEPS.map(([s, words], i) => (
+          <li key={s} className={i < at ? "done" : i === at ? "now" : "next"} aria-current={i === at ? "step" : undefined}>
+            {i === at ? <span className="spinner" role="status" aria-label="Working" /> : <span className="step-mark" aria-hidden="true">{i < at && <Icon name="check" />}</span>}
+            {words}
+          </li>
+        ))}
+      </ol>
+      {now.threads > 1 && <p className="delete-count"><span className="num">{now.threads}</span> threads</p>}
+    </>
   );
 }
