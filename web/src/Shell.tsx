@@ -20,7 +20,7 @@ import { Flyout, useCanHover, useFlyout } from "./flyout.tsx";
 import { heldTitle, ProjectPage, ThreadsPage, stateWord } from "./Project.tsx";
 import { SearchGroups, searchable, useMessageSearch } from "./Search.tsx";
 import { ask, JUMP_EVENT, JUMP_KEY, keep, type JumpRequest } from "./links.ts";
-import { browserZone, clock, dateText, dayNumber, ErrorText, hidden, hourOf, setTimeZone, InlineRename, menuArrows, shortTime, Toast, useAction, useDismiss, useLoad, useNow } from "./ui.tsx";
+import { browserZone, clock, dateText, dayNumber, ErrorText, hidden, sendsOnEnter, hourOf, setTimeZone, InlineRename, menuArrows, shortTime, Toast, useAction, useDismiss, useLoad, useNow } from "./ui.tsx";
 
 export interface ShellContext {
   user: UserCard;
@@ -1129,7 +1129,6 @@ function HomeBox({ ctx }: { ctx: ShellContext }) {
     ctx.refreshThreads();
     go({ page: "thread", userId, pool, threadId: t.id });
   });
-  const touch = matchMedia("(pointer: coarse)").matches;
   return (
     <form className="home-box" data-has-text={!!draft.trim()} onSubmit={(e) => { e.preventDefault(); void start(); }}>
       <div className="composer-box">
@@ -1137,7 +1136,7 @@ function HomeBox({ ctx }: { ctx: ShellContext }) {
           onKeyDown={(e) => {
             if (mic.state === "recording" && e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void mic.stop(); return; }
             if (mic.state !== "idle" && e.key === "Escape") { e.preventDefault(); mic.discard(); return; }
-            if (e.key === "Enter" && !e.shiftKey && !touch && !e.nativeEvent.isComposing) { e.preventDefault(); void start(); }
+            if (sendsOnEnter(e)) { e.preventDefault(); void start(); }
           }} />
         <button type="submit" className="icon send" aria-label="Send" title="Send" disabled={busy || mic.state !== "idle" || !draft.trim()}><Icon name="up" /></button>
       </div>

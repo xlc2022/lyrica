@@ -20,7 +20,7 @@ import { findThread } from "./Thread.tsx";
 import { EditBox, MessageActions, MessageMenu, type Rewinder } from "./Rewind.tsx";
 import { shortModel } from "./ModelLabel.tsx";
 import { CallStats, callLine } from "./CallStats.tsx";
-import { ConfirmDialog, ErrorText, fullTime, Prose, useAction, useDismiss, wakeTime } from "./ui.tsx";
+import { ConfirmDialog, ErrorText, fullTime, Prose, sendsOnEnter, useAction, useDismiss, wakeTime } from "./ui.tsx";
 import { OfflinePage } from "./OfflinePage.tsx";
 import { basename, fileTarget, InlineImage, isImagePath, isUnderWorkdir, largeUrl, Lightbox, PathText, SHARED, useFileLinks, type FileLinks } from "./paths.tsx";
 import { CopyButton } from "./CopyButton.tsx";
@@ -1325,7 +1325,8 @@ export function MessageBox({ thread, env, onSent }: { thread: ThreadRef; env: Pi
   return (
     <form className="sub-message" onSubmit={(e) => { e.preventDefault(); if (text.trim()) send(); }}>
       <textarea rows={2} aria-label="Message to the subagent" placeholder={`Message the subagent (${her()} is told)`} value={text}
-        onChange={(e) => { setText(e.target.value); setSent(false); }} />
+        onChange={(e) => { setText(e.target.value); setSent(false); }}
+        onKeyDown={(e) => { if (sendsOnEnter(e)) { e.preventDefault(); if (text.trim() && !busy) send(); } }} />
       <div className="row">
         <button type="submit" className="primary" disabled={busy || !text.trim()}>Send</button>
         {sent && <span className="muted" role="status">Sent.</span>}

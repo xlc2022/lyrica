@@ -12,6 +12,7 @@ import { ATTACH_EVENT, ATTACH_KEY, EDIT_IMAGE_EVENT, EDIT_MESSAGE_EVENT, type Ed
 import { basename, findPaths, isImagePath, Thumb, type FileLinks } from "./paths.tsx";
 import { ModePicker, nextMode, ToolsMenu, type GrantedMachine } from "./Modes.tsx";
 import { MicButton, stopReading, useDictation } from "./Voice.tsx";
+import { sendsOnEnter } from "./ui.tsx";
 
 interface Upload { id: number; name: string; progress: number; error?: string }
 
@@ -269,8 +270,7 @@ export function Composer({ base, busy, restored, onSend, onStop, settings, machi
               // While listening: Enter stops and transcribes, Escape throws the clip away.
               if (mic.state === "recording" && e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void mic.stop(); return; }
               if (mic.state !== "idle" && e.key === "Escape") { e.preventDefault(); mic.discard(); return; }
-              const touch = matchMedia("(pointer: coarse)").matches;
-              if (e.key === "Enter" && !e.shiftKey && !touch && !e.nativeEvent.isComposing) { e.preventDefault(); void submit(); }
+              if (sendsOnEnter(e)) { e.preventDefault(); void submit(); }
             }}
           />
           {busy && !draft.trim()
