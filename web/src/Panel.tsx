@@ -351,7 +351,9 @@ function StatusSection({ ctx }: { ctx: ShellContext }) {
   const page = ctx.models.page;
   const hosts = page?.endpoints.filter((ep) => ep.api === "host") ?? [];
   const latest = runs.data?.runs.filter((r) => !hidden(ctx.me.display, r.pool)) ?? [];
-  return <>
+  // Two columns when the page is wide enough, the server now (Status, Model hosts) beside what it has recorded
+  // (Model calls, Memory use); one above the other when it isn't (app.css .status-grid).
+  return <div className="status-grid"><div className="status-col">
     <section className="card" aria-labelledby="h-status">
       <div className="section-head">
         <h2 id="h-status">Status</h2>
@@ -389,9 +391,10 @@ function StatusSection({ ctx }: { ctx: ShellContext }) {
         </div>;
       })}
     </section>}
+    </div><div className="status-col">
     {s?.modelFacts && <ModelCallFacts facts={s.modelFacts} window={callsWindow} onWindow={setCallsWindow} onReset={async () => { await post<AdminStatusReset>(u(userId, "admin", "status", "reset")); status.reload(); }} />}
     {use.data && <MemoryUse use={use.data} userId={userId} onDays={setUseDays} />}
-  </>;
+  </div></div>;
 }
 
 /** A model's file name without its extension, as the Model calls legend names it. */

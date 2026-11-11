@@ -1948,6 +1948,14 @@ dialog .eyebrow { margin: 10px 0 4px; }
 
 /* Administration → Status (docs/ux.md, Recorded model activity and Status): its hosts, one legend above four charts in
    two columns (one on a phone), each with a hover tip, then a row per model copy. */
+/* Two columns once each can be 560 px wide, the server now (Status, Model hosts) beside what it has recorded (Model
+   calls, Memory use), and one above the other below that; the page widens for them. Each card answers to its own
+   width, so a narrow card lays out as on a phone. */
+.content:has(> .status-grid) { max-width: 1880px; }
+.status-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, max(560px, (100% - 16px) / 2)), 1fr)); gap: 16px; align-items: start; }
+.status-col { display: grid; gap: 16px; min-width: 0; }
+.status-col:empty { display: none; }
+.status-col > .card { container: status-card / inline-size; }
 .status-hosts, .model-calls { gap: 10px; }
 .status-host { display: grid; gap: 6px; }
 .status-host + .status-host { border-top: 1px solid var(--line); padding-top: 10px; }
@@ -1985,12 +1993,15 @@ dialog .eyebrow { margin: 10px 0 4px; }
 /* Memory use: a memory and four counts; the list picker sits under the charts. */
 .memory-use-table > [role="row"] { grid-template-columns: minmax(0, 1fr) 5.5em 5.5em 5em 5em; }
 .memory-use-list { justify-self: start; }
-@media (max-width: 760px) {
+@container status-card (max-width: 520px) {
   .status-charts { grid-template-columns: minmax(0, 1fr); }
   /* On a phone the window picker takes its own full-width row under the heading. */
   .model-calls .calls-window { order: 1; width: 100%; }
   .model-calls .calls-window button { flex: 1; }
-  /* On a phone the model takes its own line and each number carries its label. */
+}
+/* In a card too narrow for its six columns (a phone, or a narrow half-width card) the model takes its own line and
+   each number carries its label. */
+@container status-card (max-width: 600px) {
   .model-table > .mt-head { display: none; }
   .model-table > [role="row"] { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 2px; }
   .model-table > [role="row"] > .mt-model { grid-column: 1 / -1; }
