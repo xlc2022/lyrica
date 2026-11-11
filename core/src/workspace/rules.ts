@@ -16,6 +16,8 @@ const assignment = (w: string) => /^[A-Za-z_][A-Za-z0-9_]*=/.test(w);
 const plain = (w: string | undefined) => !!w && /^[a-z][a-z0-9:_-]*$/.test(w);
 const programs = (words: string[]) => words.filter(w => !assignment(w));
 const opaque = (words: string[]) => {
+  // `command -v` and `-V` only look a name up; they run nothing.
+  if (words[0] === "command" && /^-[vV]+$/.test(words[1] ?? "")) return false;
   const wrapped = WRAPPER.test(words[0] ?? "");
   const candidates = wrapped ? words : words.slice(0, 1);
   // A glob only hides the program where the program is: the wrapper's own words and the program after them, not
