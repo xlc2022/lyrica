@@ -130,6 +130,7 @@ describe.skipIf(!chromium)("the browse tool's browser", () => {
     const page = await b.act("1", { action: "open", url: site });
     b.approve("2");
     await b.act("2", { action: "click", ref: ref(page.text, "Sign in") });
+    // Killed at once, before Chromium has written its own cookie store.
     child!.kill("SIGKILL");
     await new Promise((r) => setTimeout(r, 1000));
     expect((await b.act("3", { action: "open", url: `${site}/two` })).text).toMatch(/Cookie: (?=.*sid=abc)(?=.*visit=now)/);

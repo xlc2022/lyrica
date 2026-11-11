@@ -6,7 +6,7 @@
 // What is structural here (docs/briefs/browse.md): an action that would send a form is done only when the request
 // says `approved`, and a page load that posts without it is failed in the browser, so nothing is sent.
 const { spawn } = require("node:child_process");
-const { rmSync, mkdirSync, readFileSync, writeFileSync } = require("node:fs");
+const { rmSync, mkdirSync, readFileSync, renameSync, writeFileSync } = require("node:fs");
 const [profile, agent] = process.argv.slice(1);
 const LOAD_MS = 20_000, SETTLE_MS = 600;
 // Chromium can drop a cookie with no end date when it closes, and writes none for a while after it is set, so a
@@ -393,7 +393,9 @@ async function acting(ref, how, approved, run) {
   } catch {}
   const keepCookies = async () => {
     const { cookies } = await send("Storage.getCookies", {}, true);
-    writeFileSync(COOKIES, JSON.stringify(cookies.map(({ expires, size, session, ...c }) => (session ? c : { ...c, expires }))), { mode: 0o600 });
+    // Written whole or not at all: a kill in the middle leaves the file before.
+    writeFileSync(`${COOKIES}.new`, JSON.stringify(cookies.map(({ expires, size, session, ...c }) => (session ? c : { ...c, expires }))), { mode: 0o600 });
+    renameSync(`${COOKIES}.new`, COOKIES);
   };
   // Chromium is asked to close and left to exit by itself, so its cookies are written; killed only if it doesn't.
   const shut = async () => { quiet(send("Browser.close", {}, true)); await sleep(5000); quit(); };
@@ -404,9 +406,12 @@ async function acting(ref, how, approved, run) {
     let m;
     try { m = JSON.parse(text); } catch { return; }
     if (m.op === "close") return shut();
-    try { answer({ id: m.id, ...(ops[m.op] ? await ops[m.op](m) : { fail: `unknown op ${m.op}` }) }); }
-    catch (err) { answer({ id: m.id, fail: String(err.message ?? err) }); }
+    let r;
+    try { r = ops[m.op] ? await ops[m.op](m) : { fail: `unknown op ${m.op}` }; }
+    catch (err) { r = { fail: String(err.message ?? err) }; }
+    // Kept before the answer, so a browser killed right after an action has them.
     if (m.op !== "sends") await quiet(keepCookies());
+    answer({ id: m.id, ...r });
   };
   process.stdin.on("data", (d) => {
     line += d.toString();
