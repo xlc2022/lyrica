@@ -2069,7 +2069,22 @@ script, PNG decoder or bundler:
   `fetch` and `WebSocket`; and local files one file can't carry. `bundle`
   ends with the same check.
 
-`preview` and `check` only read; none of the three run in Plan mode.
+- `publish` keeps a self-contained `.html`, `.svg` or `.md` file as an
+  **artifact** (docs/briefs/artifacts.md): the file's bytes become version 1
+  of a new artifact in the thread's pool, or the next version of the
+  artifact the thread published from that path, or of the one she names by
+  `artifact` (one of the thread's or its project's). An unchanged file adds
+  no version. An HTML page that refers to local files is refused, with a
+  line telling her to `bundle` first; what it would load from the network
+  is said in the result. `title` names it, the file's name otherwise. It
+  reads the file and writes only the pool database, so it asks where `read`
+  asks. Its result's details carry the artifact's id, title, kind and
+  version, which the conversation shows as a card.
+- `artifacts` lists the thread's artifacts and its project's: id, title,
+  kind, version and path.
+
+`preview`, `check` and `artifacts` only read; none of the five run in Plan
+mode. A subagent has no `publish` or `artifacts`.
 
 **Offline libraries.** three.js (with its addons), simplex-noise and
 tween.js come with Lyrica (core's dependencies) and are mounted read-only

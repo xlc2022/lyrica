@@ -1366,8 +1366,49 @@ export interface ImagePart { type: "image"; paths: string[]; model: string; tier
 /** A clip she made, played from `path`; its poster is its thumbnail (`…/files/thumb`). `duration` is seconds. */
 export interface VideoPart { type: "video"; path: string; model: string; width: number; height: number; duration: number; audio: boolean }
 
+export type ArtifactKind = "html" | "svg" | "markdown" | "react";
+
+/**
+ * Artifacts (docs/briefs/artifacts.md): pages she published with `page publish` or the user imported, each kept with
+ * every version. Only the pools the display shows are listed or reached (404 otherwise).
+ *
+ * GET /api/u/:userId/artifacts[?pool=<pool>][&thread=<id>] → ArtifactInfo[], newest change first.
+ * POST /api/u/:userId/artifacts/:pool?name=<file name>[&title=<title>][&thread=<id>], the file's bytes as the body →
+ *   ArtifactInfo: an import, version 1, by the user. The kind is the name's (.html, .htm, .svg, .md); at most 16 MiB
+ *   (413), text only (415). Nothing is run or read by a model.
+ * GET …/artifacts/:pool/:id → ArtifactDetail.
+ * GET …/artifacts/:pool/:id/view[?v=<n>] → the version (the newest without `v`) as a page, with the headers
+ *   …/files/view gives a file: HTML with a console bridge and the CSP `sandbox allow-scripts allow-popups`, or under
+ *   `sandbox` alone with its thread's internet off (its pool's default when it has no thread); SVG with nothing run.
+ *   415 for Markdown, which the web renders from `content`.
+ * GET …/artifacts/:pool/:id/content[?v=<n>][&download=1] → the version's source as plain text, never run.
+ * POST …/artifacts/:pool/:id/versions?name=<file name>, bytes as the body → ArtifactDetail: the next version, by the
+ *   user; the same kind as the artifact (400 otherwise).
+ * POST …/artifacts/:pool/:id/restore, ArtifactRestore → ArtifactDetail: that version again as a new version.
+ * PATCH …/artifacts/:pool/:id, ArtifactRename → ArtifactInfo.
+ * DELETE …/artifacts/:pool/:id → Ok: the artifact and every version.
+ */
+export interface ArtifactInfo {
+  id: string; pool: Pool; title: string; kind: ArtifactKind;
+  /** The thread it belongs to, and that thread's title; none for one imported on its own or kept after its thread was deleted. */
+  thread?: string; threadTitle?: string;
+  /** The file it was last published from, as its thread names it. */
+  path?: string;
+  /** Its newest version's number and size in bytes. */
+  version: number; size: number;
+  createdAt: string; updatedAt: string;
+}
+export interface ArtifactVersionInfo { n: number; author: "lyrica" | "user"; size: number; createdAt: string }
+export interface ArtifactDetail { artifact: ArtifactInfo; versions: ArtifactVersionInfo[] }
+export interface ArtifactRestore { version: number }
+export interface ArtifactRename { title: string }
+
+/** An artifact she published in this reply (docs/briefs/artifacts.md): its card names the version this call made. */
+export interface ArtifactPart { type: "artifact"; id: string; title: string; kind: ArtifactKind; version: number }
+
 export type MessagePart =
   | ImagePart
+  | ArtifactPart
   | VideoPart
   | { type: "text"; text: string }
   | { type: "thinking"; text: string }
@@ -1727,7 +1768,7 @@ export type ThreadEvent =
   /** It was made, failed or stopped: its placeholder goes. */
   | { type: "made"; toolCallId: string }
   /** `result` is short: the first lines of the tool's output. */
-  | { type: "tool_end"; toolCallId: string; name: string; result: string; isError: boolean; threads?: ThreadRef[]; image?: ImagePart; video?: VideoPart; imageRefusal?: ImageRefusal; root?: RootStep }
+  | { type: "tool_end"; toolCallId: string; name: string; result: string; isError: boolean; threads?: ThreadRef[]; image?: ImagePart; video?: VideoPart; artifact?: ArtifactPart; imageRefusal?: ImageRefusal; root?: RootStep }
   /** Memories recalled for this turn, automatically or with recall/read_memory. */
   | { type: "recall"; ids: string[] }
   /** Notes she saved. */

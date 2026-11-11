@@ -76,6 +76,8 @@ interface Run {
   jobs?: string[];
   /** More files in the sandbox, by path. */
   files?: Record<string, string>;
+  /** The thread's artifacts; with it, page publish and page artifacts work. */
+  artifacts?: ThreadTools["artifacts"];
 }
 
 /** Tools any thread has besides the workspace's: memory, and the switched ones, which do nothing here. */
@@ -119,6 +121,7 @@ async function run(mode: ThreadWorkspace["mode"], calls: ReturnType<typeof fauxT
     approve: o.approve, ...(o.browser ? { browser: o.browser } : {}), proposePlan: o.proposePlan, setMode: (m) => { settings.mode = m; },
     claudeCode: () => !!o.claudeCode,
     ...(o.sameFile ? { sameFile: o.sameFile } : {}),
+    ...(o.artifacts ? { artifacts: o.artifacts } : {}),
     ...(o.jobs ? {
       startJob: async (command: string, machine?: string) => {
         o.jobs!.push(`${machine ?? "sandbox"}: ${command}`);
@@ -1063,6 +1066,37 @@ describe("the page tool", () => {
     expect(bundled).toContain("<script>fetch('/api');</script>");
     expect(results[0]).toBe("page: /workspace/site/index.html: Loads from the network: https://cdn.example/logo.png.\nRefers to local files one file can't carry: style.css, app.js.");
     expect(results[1]).toMatch(/^page: Bundled \/workspace\/site\/index.html into \/workspace\/site\/index.single.html \(1 KB\), inlining style.css, app.js.\nLoads from the network: https:\/\/cdn.example\/logo.png.\nNetwork calls in its code: fetch/);
+  });
+
+  it("publishes a self-contained page as an artifact without asking, refuses one that needs files beside it, and lists the thread's", async () => {
+    const asked: ApprovalRequest[] = [];
+    const published: { path: string; kind: string; title?: string; text: string }[] = [];
+    const artifacts: NonNullable<ThreadTools["artifacts"]> = {
+      publish: (p) => { published.push({ path: p.path, kind: p.kind, ...(p.title ? { title: p.title } : {}), text: p.bytes.toString() }); return { artifact: { id: "a1", title: p.title ?? "one", kind: p.kind, version: published.length, path: p.path }, created: published.length === 1 }; },
+      list: () => [{ id: "a1", title: "The site", kind: "html", version: 2, path: "/workspace/site/one.html" }],
+    };
+    const { results } = await run("auto", [
+      fauxToolCall("page", { action: "publish", path: "site/index.html" }, { id: "1" }),
+      fauxToolCall("page", { action: "publish", path: "site/one.html", title: "The site" }, { id: "2" }),
+      fauxToolCall("page", { action: "publish", path: "site/one.html" }, { id: "3" }),
+      fauxToolCall("page", { action: "publish", path: "notes.txt" }, { id: "4" }),
+      fauxToolCall("page", { action: "artifacts" }, { id: "5" }),
+    ], { files: { ...site, "/workspace/site/one.html": "<!doctype html><p>hi</p>" }, approve: async (r) => { asked.push(r); return true; }, artifacts });
+    expect(asked).toEqual([]);
+    // The calls run side by side, so the results come in no fixed order.
+    const one = (re: RegExp) => results.filter((r) => re.test(r));
+    expect(one(/refers to local files an artifact can't carry: style.css, app.js. Run page bundle and publish the bundle\./)).toHaveLength(1);
+    expect(published.map((p) => [p.path, p.kind, p.text])).toEqual(Array(2).fill(["/workspace/site/one.html", "html", "<!doctype html><p>hi</p>"]));
+    expect(published.filter((p) => p.title === "The site")).toHaveLength(1);
+    expect(one(/^page: Published a1 ".*" \(html, version 1, from \/workspace\/site\/one.html\)\. The person sees a card for it in this reply\.$/)).toHaveLength(1);
+    expect(one(/^page: Published version 2 of a1 /)).toHaveLength(1);
+    expect(one(/An artifact is an .html, .svg or .md file/)).toHaveLength(1);
+    expect(results).toContain('page: a1 "The site" (html, version 2, from /workspace/site/one.html)');
+  });
+
+  it("has no artifacts where the thread gives none, such as a subagent", async () => {
+    const { results } = await run("auto", [fauxToolCall("page", { action: "publish", path: "notes.txt" }, { id: "1" })]);
+    expect(results[0]).toMatch(/Artifacts aren't available here/);
   });
 
   it("holds a bundle another thread is changing, and refuses to write over the page", async () => {

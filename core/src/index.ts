@@ -12,6 +12,7 @@ export * from "./shares.ts";
 export * from "./mentions.ts";
 export * from "./threads.ts";
 export * from "./store/pool.ts";
+export * from "./store/artifacts.ts";
 export * from "./store/memory.ts";
 export * from "./store/transfer.ts";
 export * from "./store/sleep-prompt.ts";

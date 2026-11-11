@@ -208,6 +208,18 @@ Each user has two pools of memory.
       in a grant says it deletes on the server.
     - A panel upload belongs to the thread, not to a message, so removing
       turns never deletes it.
+  - **Artifacts** (decided 2026-11-11, as in Claude's own app): a page,
+    drawing or document she publishes with `page publish`, or one the user
+    imports, kept with a title and every version it has had. Versions live
+    in the pool's own encrypted database, not in the thread's folder, so a
+    version never changes when the file it came from does, and a Private
+    artifact is never listed or served under General. A version is at most
+    16 MiB and is one self-contained file. An artifact opens as a file
+    does, in the same sandbox under its thread's internet rule (its pool's
+    default when it has no thread), and only for the signed-in user: there
+    are no public links. She can't delete one; the user can. Deleting a
+    thread deletes its artifacts, unless its memories are kept, which
+    leaves them with no thread.
   - **Changes** (decided 2026-10-22, as in Claude's own app): a thread with a
     checkout shows its branch, its open pull request and "+n −m" as a badge
     in its header, which opens the changes view: the files and commits at

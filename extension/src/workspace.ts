@@ -13,6 +13,9 @@ import { proxmoxTool } from "./proxmox.ts";
 import { bundleOut, pageTool } from "./page.ts";
 
 /** What the workspace tools need for one thread. `Workspace` from core provides it. */
+/** An artifact as her page tool says it (docs/briefs/artifacts.md). */
+export interface ThreadArtifact { id: string; title: string; kind: string; version: number; path?: string }
+
 export interface ThreadTools {
   prepareWorktrees?(): Promise<void>;
   /** The owning project's rules, read fresh on every command. Without it, none. */
@@ -68,6 +71,14 @@ export interface ThreadTools {
   sameFile?(path: string, inserts?: boolean): string | undefined;
   /** Where page preview runs a page: the thread's folders read-only, no network, no credentials. Without it, there is no preview. */
   previewTarget?(): ExecutionTarget;
+  /**
+   * The thread's artifacts, for page publish and page artifacts: `publish` keeps a file's bytes as a new artifact or
+   * the next version of one, `list` names the thread's and its project's. Without it (a subagent), there are none.
+   */
+  artifacts?: {
+    publish(p: { path: string; kind: "html" | "svg" | "markdown" | "react"; bytes: Buffer; built?: Buffer; title?: string; artifact?: string }): { artifact: ThreadArtifact; created: boolean };
+    list(): ThreadArtifact[];
+  };
   /** Records that this thread wrote these files in the sandbox (paths as she sees them), for the file viewer's thread beside a file. */
   madeFiles?(paths: string[]): void;
   /** The same for a command: the files in her folder and /shared newer than `since`, its start, found in the background. */

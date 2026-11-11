@@ -180,5 +180,14 @@ works, so her threads update them there?
 ## Handoff notes
 
 - 2026-11-11: brief written from the code at 8d6c19b. The owner chose React
-  now. Next: part 1 on this branch, restarted from main once this brief
-  merges; the React builder comes from the test machine on its own branch.
+  now.
+- 2026-11-11: part 1 built on this branch (PR #983): pool step 17,
+  `ArtifactLibrary`, `page publish` and `page artifacts`, the routes, the
+  `artifact` message part. Differences from the plan above: there is no
+  delete of a single version; a thread's artifacts are kept with no thread
+  when it is deleted with Keep memories, and deleted otherwise; an artifact
+  with no thread follows its pool's default network; `publish` also takes
+  an `artifact` id, since a renamed file has a new path. React is refused
+  by `publish` and import until the builder lands. Next: part 2 (web),
+  starting with the mockup for UI review; then wire `buildReactPage` in
+  from the test machine's branch.
