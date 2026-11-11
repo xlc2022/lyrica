@@ -221,7 +221,6 @@ export async function bundlePage(entry: string, read: ReadFile): Promise<Bundled
     });
     return r.outputFiles[0]!.text.trim();
   };
-  const script = (code: string) => code.replace(/<\/(script)/gi, "<\\/$1");
   const style = (code: string) => code.replace(/<\/(style)/gi, "<\\/$1");
   const attr = (tag: string, name: string) => new RegExp(`\\s${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, "i").exec(tag)?.slice(1).find((v) => v !== undefined);
   /** Replaces each match, awaited; with `outside`, never one inside a script, whose strings may hold tags. */
@@ -279,3 +278,6 @@ async function dataUrl(file: string, read: ReadFile, inlined: Set<string>): Prom
   inlined.add(file);
   return `data:${MIME[ext(file)]};base64,${bytes.toString("base64")}`;
 }
+
+/** Keep inline JavaScript from closing its HTML script element. */
+export const script = (code: string): string => code.replace(/<\/(script)/gi, "<\\/$1");
