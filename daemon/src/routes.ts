@@ -11,7 +11,7 @@ import {
   ChangesUnavailable, type ByteRange, commitFiles, fileSides, repositoryChanges, type ExecutionTarget,
 } from "@lyrica/core";
 import type * as Api from "./api.ts";
-import { THREAD_TASKS } from "./api.ts";
+import { MODELS_PAGE_CALLS, THREAD_TASKS } from "./api.ts";
 import { Sessions } from "./auth.ts";
 import { HttpError, route, type Request, type Route } from "./http.ts";
 import { fallBack, threadPlanWait, type ThreadPlanWait } from "./plan-waits.ts";
@@ -557,7 +557,7 @@ export function apiRoutes(d: Lyricad): Route[] {
       const hosts = looks.filter(({ e }) => e.api === "host").map(({ e, look }) => look.status
         ? { endpointId: e.id, status: look.status as Api.HostStatus }
         : { endpointId: e.id, error: look.error ?? `${e.name} is down`, ...(look.unpaired ? { unpaired: true as const } : {}) });
-      return { endpoints: live, hosts, presets: presets(d, user.id), calls: m.callHistory(user.id, { limit: 1, offset: 0, q: "", pools }).entries, endpointUses: m.endpointUses(user.id, pools), notice: m.notice(user.id), cleanup: m.cleanup(user.id).length, ...(release ? { release } : {}) };
+      return { endpoints: live, hosts, presets: presets(d, user.id), calls: m.callHistory(user.id, { limit: MODELS_PAGE_CALLS, offset: 0, q: "", pools }).entries, endpointUses: m.endpointUses(user.id, pools), notice: m.notice(user.id), cleanup: m.cleanup(user.id).length, ...(release ? { release } : {}) };
     }),
     route("POST", `${u}/hosts/:endpointId/update`, async (r) => {
       const release = runningRelease(d);

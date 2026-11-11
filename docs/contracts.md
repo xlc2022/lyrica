@@ -2371,7 +2371,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
       `PresetsChange`.
     - **Models page, library, tokens:** `GET models/page` (→ `ModelsPage`:
       endpoints with `pageStatus` and each starred offering marked `starred`, hosts' status or error (`unpaired` when the
-      host revoked this server), the presets and columns, the newest visible call,
+      host revoked this server), the presets and columns, the ten newest visible calls (`MODELS_PAGE_CALLS`),
       per-endpoint call counts over the shown pools (`endpointUses`, what ranks
       the sidebar's status panel, with `tokPerSec`, `promptTokPerSec` and
       `speedCalls` over its last 10 measured turns of the past day),

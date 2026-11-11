@@ -3,7 +3,7 @@
 // up and Recent calls, with its sections listed at the left (the frame and what the tabs share are in ModelsFrame.tsx).
 // The shell polls GET …/models/cleanup for the sidebar's count; GET …/models/page, which probes every
 // endpoint, is shared by Shell and polled every 30 s (10 s while a host updates); opening Models and Hosts tab changes reload it.
-import { ModelLabel, modelName } from "./ModelLabel.tsx";
+import { ModelLabel, modelName, shortModel } from "./ModelLabel.tsx";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import {
   del, get, patch, post, put, u,
@@ -50,10 +50,10 @@ const gbTotal = (bytes: number) => String(Math.round(bytes / GB));
 /** A host model's file name, without its folders and extension. */
 const shortId = (id: string) => (id.split("/").pop() ?? id).replace(/\.(gguf|safetensors)$/i, "");
 /** A label (`[shared.]<endpoint>/<model>`) as "<model> · <endpoint>". */
-function modelAndEndpoint(label: string, endpointName?: string): string {
+function modelAndEndpoint(label: string, endpointName?: string, short = false): string {
   const m = /^(?:shared\.)?([^/]+)\/(.+)$/s.exec(label);
-  if (!m) return endpointName ? `${label} · ${endpointName}` : label;
-  return `${m[2]} · ${endpointName ?? m[1]}`;
+  if (!m) return endpointName ? `${short ? shortModel(label) : label} · ${endpointName}` : short ? shortModel(label) : label;
+  return `${short ? shortModel(m[2]!) : m[2]} · ${endpointName ?? m[1]}`;
 }
 
 /** A text model: not one that draws, films, embeds, hears or speaks, and not gone. */
@@ -201,7 +201,7 @@ function Overview({ ctx }: { ctx: MCtx }) {
         </section>
         <section className="section" aria-labelledby="h-models-calls">
           <div className="section-head"><h2 id="h-models-calls" className="eyebrow">History</h2><a href={href({ page: "models", userId, tab: "calls" })}>Show all</a></div>
-          <CallsTable ctx={ctx} calls={p.calls} limit={1} />
+          <CallsTable ctx={ctx} calls={p.calls} />
         </section>
       </>}
     </Frame>
@@ -1747,7 +1747,7 @@ function CallsTable({ ctx, calls, limit }: { ctx: MCtx; calls: CallInfo[]; limit
                   {t ? <a href={href({ page: "thread", userId: ctx.user.id, pool: c.pool, threadId: c.threadId })}>{t.title || "New thread"}</a> : "a forgotten thread"}
                 </td>
                 <td data-h="Task">{TASK_WORD[c.task] ?? c.task}</td>
-                <td data-h="Answered by">{modelAndEndpoint(c.label, c.endpointName)}</td>
+                <td data-h="Answered by" title={modelAndEndpoint(c.label, c.endpointName)}>{modelAndEndpoint(c.label, c.endpointName, true)}</td>
                 <td data-h="Note" className="warn-text">{c.fallback ?? c.note}</td>
               </tr>
             );
