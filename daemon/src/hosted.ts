@@ -865,7 +865,7 @@ export class HostedThread {
    * Stop: aborts the running turn, denies waiting permission requests and
    * drops the person's queued messages (the views give them back). Marked
    * messages no turn took are kept in the stored thread. Only the person's
-   * Stop and a parent's `threads stop` withdraw an open question; lock and
+   * Stop withdraws an open question; a parent's `threads stop`, lock and
    * pause keep it for the person to answer.
    */
   async stop(withdrawQuestion = false): Promise<void> {

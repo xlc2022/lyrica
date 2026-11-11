@@ -27,14 +27,18 @@ async function setup(wakeMs = 0) {
   const joined: boolean[] = [];
   const replies: string[] = [];
   const sends: string[] = [];
+  const waiting = new Set<string>();
+  const stops: boolean[] = [];
   let childWakeTurn = false;
   const host = {
     busy: (_u: string, _p: Pool, t: string) => busy.has(t),
+    status: (_u: string, _p: Pool, t: string) => waiting.has(t) ? "waiting" : busy.has(t) ? "working" : "idle",
     changed: () => {}, delivered: () => {}, peek: () => undefined,
     get: (_u: string, _p: Pool, t: string) => ({
       get childWakeTurn() { return childWakeTurn; },
       appendParent: (text: string) => { replies.push(text); },
       send: async (text: string) => { busy.add(t); sends.push(text); return { queued: false }; },
+      stop: async (withdraw = false) => { busy.delete(t); stops.push(withdraw); },
       wakeChild: async (note?: string) => { childWakeTurn = !note; busy.add(t); wakes.push(t); },
     }),
   } as unknown as ThreadHost;
@@ -47,7 +51,7 @@ async function setup(wakeMs = 0) {
   const flush = async () => { await new Promise<void>(r => setImmediate(r)); };
   const end = () => { busy.delete(parent.id); children.turn(user.id, "general", parent.id, false); children.ended(user.id, "general", parent.id, "done"); };
   const parentFrom = { ...from, threadId: parent.id } as ThreadContext;
-  return { children, parentFrom, users, user, parent, child, from, busy, wakes, notices, joined, replies, sends, host, flush, end, pause: (p: boolean) => { paused = p; } };
+  return { children, parentFrom, users, user, parent, child, from, busy, waiting, stops, wakes, notices, joined, replies, sends, host, flush, end, pause: (p: boolean) => { paused = p; } };
 }
 
 describe("child wake guards", () => {
@@ -69,6 +73,37 @@ describe("child wake guards", () => {
     expect(store.questions(s.child.id)[0]).toMatchObject({ n, answer: "withdrawn" });
     expect(db.prepare("SELECT needs_you FROM child_threads WHERE thread = ?").get(s.child.id)).toEqual({ needs_you: 0 });
     db.close();
+  });
+
+  it("only the person clears what a thread waits on them for: another thread's message is held, and the parent can't stop or resolve it away", async () => {
+    const s = await setup();
+    const store = s.from.view.own;
+    const args = { action: "ask", question: "Download the image?", options: [{ label: "Yes", consequence: "It downloads." }, { label: "No", consequence: "It waits." }], recommended: 0 };
+    const n = store.nextEntryN(s.child.id);
+    store.appendEntry(s.child.id, { piId: "question", role: "assistant", text: "", data: { type: "message", message: { content: [{ type: "toolCall", id: "q", name: "threads", arguments: args }] } } });
+    store.askQuestion(s.child.id, n);
+    await s.children.asked(s.from);
+    expect(await s.children.message(s.parentFrom, s.child.id, "You have a yes for the whole job.")).toBe("held");
+    expect(s.replies).toEqual(["You have a yes for the whole job."]);
+    expect(s.sends).toEqual([]);
+    expect(store.openQuestion(s.child.id)?.n).toBe(n);
+    const db = s.users.openUserDb(s.user.id);
+    expect(db.prepare("SELECT needs_you FROM child_threads WHERE thread = ?").get(s.child.id)).toEqual({ needs_you: 1 });
+    await expect(s.children.resolve(s.parentFrom, s.child.id, true)).rejects.toThrow(/only the person can answer it/);
+    s.busy.add(s.child.id);
+    expect(await s.children.stop(s.parentFrom, s.child.id)).toBe(true);
+    expect(s.stops).toEqual([false]);
+    expect(store.openQuestion(s.child.id)?.n).toBe(n);
+    // The person answers: messages go through again.
+    s.children.userWrote(s.user.id, "general", s.child.id);
+    expect(db.prepare("SELECT needs_you FROM child_threads WHERE thread = ?").get(s.child.id)).toEqual({ needs_you: 0 });
+    db.close();
+    expect(await s.children.message(s.parentFrom, s.child.id, "Thanks.")).toBe("started");
+    // A permission card waiting holds it the same way.
+    s.busy.delete(s.child.id);
+    s.waiting.add(s.child.id);
+    expect(await s.children.message(s.parentFrom, s.child.id, "Carry on without stopping for cards.")).toBe("held");
+    expect(s.sends).toEqual(["Thanks."]);
   });
 
   it("a paused project's chat takes no wake-up, plan-limit resume or job wake until it resumes", async () => {

@@ -336,6 +336,11 @@ export class ChildThreads implements ThreadsHost {
     this.o.messaged?.(userId, from.pool, from.threadId, to);
     const host = this.o.host();
     const key = `${userId}/${from.pool}/${to}`;
+    // Only the person answers what a thread waits on them for: another thread's message is kept for later and starts nothing, so its yes can't stand in for theirs.
+    if (this.waitsOnPerson(userId, from, target)) {
+      host.get(userId, from.pool, to).appendParent(text, from.threadId);
+      return "held";
+    }
     // A parent woken by this child answers it with a turn, for a few rounds; past that it's saved, so two threads can't keep each other going.
     const wake = this.parentWakes.get(`${userId}/${from.pool}/${from.threadId}`);
     if (wake?.running && wake.children.has(to) && host.get(userId, from.pool, from.threadId).childWakeTurn) {
@@ -347,11 +352,6 @@ export class ChildThreads implements ThreadsHost {
       this.rounds.set(key, n);
     }
     if (target.resolved_at) this.setResolved(userId, from.pool, to, false);
-    // The parent answered: a child that said it waits on the person no longer does, unless its question card is still open.
-    if (!sibling && target.needs_you && !from.view.own.openQuestion(to)) {
-      this.db(userId, (db) => db.prepare("UPDATE child_threads SET needs_you = 0 WHERE pool = ? AND thread = ?").run(from.pool, to));
-      host.changed(userId, from.pool, target.parent, to);
-    }
     if (task && !sibling) this.task(userId, from.pool, to);
     // An idle thread starts a turn, so the limit holds here too: past it, the message is saved and the thread wakes when a slot frees.
     const busy = host.busy(userId, from.pool, to);
@@ -363,6 +363,15 @@ export class ChildThreads implements ThreadsHost {
     }
     await host.get(userId, from.pool, to).send(text, sibling ? { fromThread: from.threadId } : { fromParent: from.threadId });
     return busy ? "running" : "started";
+  }
+
+  /**
+   * The thread waits on the person: a question card or root step is open,
+   * it said so with `needsYou`, or a permission card waits. Only the
+   * person's answer, words or Stop ends that; no other thread can.
+   */
+  private waitsOnPerson(userId: string, from: ThreadContext, target: Row): boolean {
+    return !!target.needs_you || !!from.view.own.openQuestion(target.thread) || this.o.host().status(userId, from.pool, target.thread) === "waiting";
   }
 
   /** The thread works on a task from its parent, and owes it a report. */
@@ -573,7 +582,8 @@ export class ChildThreads implements ThreadsHost {
     this.tasked.delete(`${userId}/${from.pool}/${id}`);
     const host = this.o.host();
     if (!host.busy(userId, from.pool, id)) return false;
-    await host.get(userId, from.pool, id).stop(true);
+    // Its question stays open: only the person withdraws or answers it.
+    await host.get(userId, from.pool, id).stop();
     this.turn(userId, from.pool, id, false);
     return true;
   }
@@ -808,6 +818,9 @@ export class ChildThreads implements ThreadsHost {
     const row = this.row(userId, from.pool, target);
     if (!row || !from.view.own.getThread(row.parent)?.project) throw new Error(`[t:${target}] isn't a thread of a project`);
     if (id !== undefined && row.parent !== from.threadId) throw new Error(`[t:${target}] isn't a thread of this project`);
+    if (resolved && target !== from.threadId && !row.resolved_at && this.waitsOnPerson(userId, from, row)) {
+      throw new Error(`[t:${target}] waits on the person's answer, and only the person can answer it or set it aside. Tell them what it needs.`);
+    }
     if (resolved && !force && !row.resolved_at) {
       const unsaved = await this.o.workspace.unsavedWork({ userId, pool: from.pool, threadId: target });
       if (unsaved.length) {

@@ -207,6 +207,7 @@ export const PROJECT_CHAT_GUIDELINES = [
     + "When the parts report their branches, start one code: true, base: true merge thread. It merges each branch in turn, runs tests after each merge, and messages the owning thread about conflicts or red tests rather than fixing that thread's files. It deletes each branch after merging it. A small job that works in the original checkout uses base: true too. When a thread's report names the check that tests the ask and what it showed, a light look is enough; check fully yourself only when that evidence is missing or doesn't match the ask.",
   "You're told when a thread stops with an error; when it ends without a report, you get its last message as its report. Read a thread's latest messages with threads read; stop one that went wrong with threads stop.",
   "A thread's last message wakes you here, so after starting or messaging threads you can end your turn; there's no need to wait and read again.",
+  "A thread waiting on the person (an approval, a question card, or needsYou) waits for their own answer, never yours: tell the person what it needs. Your messages wait in it until they answer.",
   "When the person asks you to propose first, suggest threads (threads suggest) instead of starting them.",
   "When setting up from recent work supplied in this turn, draft Goal and Instructions with threads draft for the person to edit in Project settings; never apply them yourself. Suggest existing threads to bring in with threads fold and their ids; the person applies the Fold in card.",
   "Later, keep the project's instructions current yourself with threads instructions. While the project's Ask first is on, that leaves a draft: tell the person it waits in Project settings. When the person wants to approve changes first, turn it on (askFirst: true).",
@@ -223,7 +224,7 @@ export const CHILD_WAKES = "When it ends, its report (or its last message) reach
 export const PROJECT_THREAD_GUIDELINES = [
   "Post an update to the project chat (threads message to: \"parent\") at milestones, not after every step. Always end with a message to the parent: the result, or what blocked you; after code work, name your branch and what isn't committed or pushed yet.",
   "Use question: true in a message to the parent when you need an answer; plain progress updates do not wake it.",
-  "Ask the project chat (threads message, question: true) what it can decide, such as how work is split or merged; use threads ask only when the person must decide.",
+  "Ask the project chat (threads message, question: true) what it can decide, such as how work is split or merged; use threads ask only when the person must decide. A yes from the project chat or another thread never stands in for the person's.",
   "Save lasting decisions about the project with remember.",
   "When the work is delivered, resolve this thread (threads resolve).",
   "You may message another thread of this project (threads message with its id) when its work affects yours, and read its latest messages (threads read).",

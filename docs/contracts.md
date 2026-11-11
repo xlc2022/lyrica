@@ -1007,6 +1007,9 @@ Custom roles override built-ins by name, except `claude`.
   `message` returns a `Delivery`: `started`, `running`, `queued` (an idle
   thread past the at-once limit: saved, woken when a slot frees), `saved`
   (a child-woken parent past `MAX_WAKE_ROUNDS` replies to its source child),
+  `held` (the thread waits on the person: an open question, `needs_you` or
+  a permission card; the message is saved through `appendParent` and starts
+  nothing, so no thread's yes stands in for the person's),
   or, to a parent, `wakes` or `update`. `HostedThread.childWakeTurn` marks
   the child-started turn whose replies count as rounds.
   Pending child wakes also wait while `ThreadHost.draining` is true.
@@ -1051,12 +1054,13 @@ Custom roles override built-ins by name, except `claude`.
   connection: its pointer and `child_threads.needs_you` change in the same
   transaction. A project's ask sends its existing waiting notice and wakes
   the project chat; answering or withdrawal updates the parent's card at
-  once. Resolve, the person's Stop and a parent's `threads stop` withdraw a
-  question (`HostedThread.stop(true)`); lock, project pause, disposing an
-  idle session and restarting the daemon preserve it. `needs_you` moves
-  only when a question opens or closes, or when the parent messages the
-  thread while no question is open (`ChildThreads.message`), so a status
-  message's `needsYou` survives an edit or rewind. Removing its tool call removes the
+  once. Resolve and the person's Stop withdraw a
+  question (`HostedThread.stop(true)`); a parent's `threads stop`, lock,
+  project pause, disposing an idle session and restarting the daemon
+  preserve it. Another thread can't resolve a thread that waits on the
+  person. `needs_you` moves only when a question opens or closes, so a
+  status message's `needsYou` survives an edit or rewind; only the person
+  writing, answering or resolving clears it. Removing its tool call removes the
   pointer with the turn.
   `ThreadSummary.question?: { n: number; asked: string }` carries only the
   open pointer. `MessagePage.questions?: QuestionState[]` carries the saved
