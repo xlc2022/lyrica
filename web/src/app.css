@@ -581,6 +581,14 @@ dialog::backdrop { background: rgb(0 0 0 / 0.35); }
 .spinner { flex: none; width: 14px; height: 14px; margin-top: 3px; border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.9s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .wipe-busy { font-size: 13px; }
+/* A thread's delete as it runs (docs/ux.md §6 "Deleting a thread"): its three steps, done ones with a check, the current one with the spinner. */
+.delete-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.delete-steps li { display: flex; gap: 10px; align-items: flex-start; color: var(--muted); }
+.delete-steps li.done { color: var(--fg); }
+.delete-steps li.now { color: var(--fg); font-weight: 600; }
+.delete-steps .step-mark { flex: none; width: 14px; height: 14px; margin-top: 3px; display: inline-grid; place-items: center; color: var(--accent); }
+.delete-steps .step-mark svg { width: 14px; height: 14px; }
+.delete-count { margin: 0; font-size: 13px; color: var(--muted); }
 .wipe-busy summary { list-style: none; cursor: pointer; color: var(--accent); display: inline-flex; align-items: center; gap: 4px; }
 @media (pointer: coarse) { .wipe-busy summary { min-height: var(--tap); } }
 /* Administration → Users: Change password… and Delete user… are full taps on a phone. */

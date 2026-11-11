@@ -1,9 +1,9 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, mkdirSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { fakeOpenAI } from "../../core/test/fake-openai.ts";
-import type { EndpointInfo, MessagePage, Pins, RemovalPlan, RewindResponse, ThreadEvent, ThreadSettings, ThreadSummary } from "../src/api.ts";
+import type { CleanUpResult, EndpointInfo, MessagePage, Pins, RemovalPlan, RewindResponse, ThreadEvent, ThreadSettings, ThreadSummary } from "../src/api.ts";
 import { browser, daemon, enc, localModel, login, runtime } from "./helpers.ts";
 
 const has = (cmd: string) => { try { execFileSync("which", [cmd], { stdio: "ignore" }); return true; } catch { return false; } };
@@ -235,10 +235,20 @@ describe.skipIf(!homeRunnable)("removing turns that changed files", () => {
     expect(readFileSync(join(dir, "other.txt"), "utf8")).toBe("someone else's");
 
     // base.txt's first write is still undoable; a month on, the sweep clears it, and logs counts only.
-    d.sweep(new Date(Date.now() + 31 * 864e5));
+    await d.sweep(new Date(Date.now() + 31 * 864e5));
     expect(logs.find((l) => l.startsWith("sweep:"))).toMatch(/^sweep: \d+ snapshots, 1 change records, \d+ thread folders, \d+ worktrees removed$/);
     // "v1" as a word: the log names the temp folder, whose random suffix can hold "v1" (lyricad-dpv1Tl).
     expect(logs.join("\n")).not.toMatch(/base\.txt|\bv1\b|fresh/);
+
+    // Clean up now does the same at once: a folder no thread has, older than a minute, goes, and only counts come back.
+    const left = join(dirname(dir), enc("web/gone"));
+    mkdirSync(left);
+    const old = new Date(Date.now() - 120_000);
+    utimesSync(left, old, old);
+    const cleaned = await ada.post<CleanUpResult>(`/api/u/${rt.ada.id}/clean-up`);
+    expect(cleaned.body).toMatchObject({ folders: 1 });
+    expect(existsSync(left)).toBe(false);
+    expect(existsSync(dir)).toBe(true);
   });
 });
 

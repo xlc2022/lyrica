@@ -45,7 +45,7 @@ import { TailnetControl } from "./tailnet.ts";
 import { listenUpdateSocket, type Drainable, type UpdatePaths } from "./updates.ts";
 import { DIRECT_PORT, directFor, ExternalListener, FRONT_FILE, FRONT_NAMES_FILE, fronts, hostAddresses, readFront, readFrontNames, WebAccess, writeFront, type Bind, type Front } from "./web/access.ts";
 import { apiRoutes } from "./routes.ts";
-import { sweepUser, wipeHome } from "./sweep.ts";
+import { sweepUser, wipeHome, type SweepCounts } from "./sweep.ts";
 
 export interface LyricadOptions {
   /** LYRICA_HOME: self.db, users/, and the Unix socket. */
@@ -936,9 +936,13 @@ export class Lyricad implements Drainable {
       try { finishWipe(self, userId, db); } finally { db.close(); }
     }
     if (!homeWipePending(self, userId) || !isMounted(s.workspace.homeDir(userId))) return;
-    if (now) wipeHome(s, userId);
-    else sweepUser(s, userId);
-    homeWiped(self, userId);
+    if (now) {
+      wipeHome(s, userId);
+      homeWiped(self, userId);
+    } else {
+      // As the nightly sweep, without holding up the unlock; a failure leaves the wipe pending for the next one.
+      void this.sweepUser(userId).then(() => homeWiped(self, userId), (err: Error) => this.log(`finishing a wipe's folders failed: ${err.name}`));
+    }
   }
 
   /** The nightly sleep time, `HH:MM` (self.db `settings`): each user sleeps at it in their own time zone, the night's chores at it in the server's. */
@@ -992,21 +996,33 @@ export class Lyricad implements Drainable {
   private night(now: Date): void {
     if (!this.services) return;
     try { this.services.models.prune(); } catch (err) { this.log(`model cleanup failed: ${(err as Error).name}`); }
-    this.sweep(now);
+    void this.sweep(now);
     for (const u of this.services.users.all()) {
       if (!this.keyring.hasUserKey(u.id)) continue;
       try { this.services.children.autoResolve(u.id, now); } catch (err) { this.log(`resolving idle project threads failed: ${(err as Error).name}`); }
     }
   }
 
+  private readonly sweeping = new Map<string, Promise<SweepCounts>>();
+
+  /** One user's sweep (sweepUser): the night's, a wipe's or Sweep orphan data's. One asked for while another runs gets that one's counts. */
+  sweepUser(userId: string, now = new Date()): Promise<SweepCounts> {
+    let running = this.sweeping.get(userId);
+    if (!running) {
+      running = sweepUser(this.services!, userId, now).finally(() => this.sweeping.delete(userId));
+      this.sweeping.set(userId, running);
+    }
+    return running;
+  }
+
   /** Clears what removed turns and forgotten threads left in each mounted home workspace. Logs counts only. */
-  sweep(now = new Date()): void {
+  async sweep(now = new Date()): Promise<void> {
     const s = this.services;
     if (!s) return;
     const total = { snapshots: 0, records: 0, folders: 0, worktrees: 0 };
-    for (const id of this.mounted) {
+    for (const id of [...this.mounted]) {
       try {
-        const c = sweepUser(s, id, now);
+        const c = await this.sweepUser(id, now);
         for (const k of Object.keys(total) as (keyof typeof total)[]) total[k] += c[k];
       } catch (err) {
         this.log(`sweep failed: ${(err as Error).name}`);
