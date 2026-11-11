@@ -74,8 +74,8 @@ export interface ThreadTools {
   madeSince?(since: Date): void;
   /** What the person's Files panel added or removed since her last turn, names only; taking them clears them. */
   fileNotes?(): { added: string[]; removed: string[]; renamed?: { from: string; to: string }[] };
-  /** Where its parent, children and (in a project) siblings read its folder, and its own part of /shared. Without it, neither is said. */
-  family?(): { folder: string; handover?: string };
+  /** Where its parent, children and (in a project) siblings read its folder, whether it has /shared, and its own part of it. Without it, none is said. */
+  family?(): { folder: string; shared: boolean; handover?: string };
   /** Starts an approved command in the background (docs/workspace.md, "Background commands"). Without it, bash has no background and there is no jobs tool. */
   startJob?(command: string, machine?: string, timeoutS?: number): Promise<JobInfo>;
   jobs?(): JobInfo[];
@@ -602,7 +602,7 @@ export const LINK_LINE = `A ${WORKDIR} or ${SHARED} path you write is a link the
  * Threads hand files over by path: a model once planned to send a whole page as base64 chunks in messages,
  * and a project chat started duplicate threads because it couldn't see what its threads had on disk.
  */
-export const familyLine = (f: { folder: string; handover?: string }) => `Your parent, child and (in a project) sibling threads' folders are readable to you at ${FAMILY_ROOT}/<thread id>, worktrees and git state included, and yours to them at ${f.folder}: hand work over by path; messages carry words, not files. ${SHARED} is shared with them too${f.handover ? `; there you write only in ${f.handover}` : ""}.`;
+export const familyLine = (f: { folder: string; shared: boolean; handover?: string }) => `Your parent, child and (in a project) sibling threads' folders are readable to you at ${FAMILY_ROOT}/<thread id>, worktrees and git state included, and yours to them at ${f.folder}: hand work over by path; messages carry words, not files. ${!f.shared ? `There is no ${SHARED} in this conversation, since it is local-only and its top thread may call cloud models.` : f.handover ? `${SHARED} is shared with them too, read-only to you except ${f.handover}, the one place there you write.` : `${SHARED} is shared with them too.`}`;
 
 /** Each command is its own sandbox, network too: a model once started a server in one call and curled it from the next. */
 const SERVER_LINE = "Each command, and each background job, runs in its own sandbox with its own network, so a server you start answers only inside that command or job: start it and whatever talks to it (curl, tests) in the same one.";

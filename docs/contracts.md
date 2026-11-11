@@ -2689,7 +2689,7 @@ familyFolders(t): { path, dest }[]        // SandboxSpec.family: every other fam
   // when settings.narrowed(t.threadId): it or a thread above it was started by inheritSettings with fewer folders or repositories.
   // settings.family(root): root and every thread below it in thread_workspaces. Worked out at every sandbox start.
 tmpDir(t): string                         // a project chat's lasting /tmp, tmp/<id> in the home (SandboxSpec.tmp); the sweep and forgetting remove it
-// forThread(t).family() → { folder, handover? }: where its family reads its folder, and its own /shared/<id> (ThreadTools.family, familyLine)
+// forThread(t).family() → { folder, shared, handover? }: where its family reads its folder, whether it has /shared, and its own /shared/<id> (ThreadTools.family, familyLine)
 // SandboxSpec.readOnly (t.coordinates, a project chat and its subagents): /workspace, its alias and /shared mount read-only and
 //   a write the tools try throws SandboxDenied naming a code thread; its /tmp is SandboxSpec.tmp, which lasts between commands
 settings(userId): WorkspaceSettings       // per-pool defaults, per-thread overrides, machines

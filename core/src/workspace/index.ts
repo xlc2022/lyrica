@@ -416,11 +416,15 @@ export class Workspace {
       /** The project's checks, read when a code turn ends; none outside a project or in its read-only chat. */
       checks: () => t.project && !t.coordinates ? this.settings(t.userId).checks(t.pool, t.project) : [],
       target: (machine?: string) => this.targetFor(t, machine),
-      /** Where its family reads its folder, and the one part of /shared it writes (none in a project chat, or without /shared). */
-      family: () => ({
-        folder: `${FAMILY_ROOT}/${encodeURIComponent(this.settings(t.userId).folderThread(t.threadId))}`,
-        ...!t.coordinates && this.sharesFamilyFolder(t) ? { handover: `${SHARED}/${encodeURIComponent(t.threadId)}` } : {},
-      }),
+      /** Where its family reads its folder, whether it has /shared, and the one part of /shared it writes (none in a project chat, or without /shared). */
+      family: () => {
+        const shared = this.sharesFamilyFolder(t);
+        return {
+          folder: `${FAMILY_ROOT}/${encodeURIComponent(this.settings(t.userId).folderThread(t.threadId))}`,
+          shared,
+          ...!t.coordinates && shared ? { handover: `${SHARED}/${encodeURIComponent(t.threadId)}` } : {},
+        };
+      },
       settings: () => { const s = this.settings(t.userId).effective(t.threadId); return { ...s, grants: ownGrants(t, s.grants), ...(t.coordinates ? { coordinates: true } : {}) }; },
       machines: () => this.machinesFor(t),
       /** The thread's repositories, where each is cloned and whether its token reaches the sandbox now. */
