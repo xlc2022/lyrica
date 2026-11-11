@@ -60,7 +60,11 @@ test("Models: the user menu's Models opens Overview, Hosts and endpoints lists t
   const summary = page.getByRole("region", { name: "Hosts and endpoints" });
   for (const name of ["gpu", "router", "speech", "openai"]) await expect(summary.locator("li.hostrow").filter({ hasText: new RegExp(`^${name}`) })).toBeVisible();
   const recent = page.getByRole("region", { name: "History", exact: true });
-  await expect(recent.locator("tbody tr")).toHaveCount(1);
+  // History lists the page's newest calls, up to ten, not just the newest one.
+  const pageCalls = (await page.evaluate(async (path) => (await fetch(path)).json(), `/api/u/${userId}/models/page`) as { calls: unknown[] }).calls;
+  expect(pageCalls.length).toBeGreaterThan(0);
+  expect(pageCalls.length).toBeLessThanOrEqual(10);
+  await expect(recent.locator("tbody tr")).toHaveCount(pageCalls.length);
   await noHorizontalScroll(page);
   await shot("overview");
 
