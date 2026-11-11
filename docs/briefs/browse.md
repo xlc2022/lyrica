@@ -90,7 +90,9 @@ prompt).
    page's own script send something, as a command she runs in the
    sandbox can.
 10. Downloads are refused, files can't be attached to a form, and what
-    is inside a frame isn't read (a line says a frame is there).
+    is inside a frame is read where it stands, and used under the same
+    rules (the owner, 2026-11-11: "this would break a lot of website
+    contents"; first built without).
 
 ## Not built, on the owner's word
 
@@ -112,7 +114,7 @@ prompt).
 ## Out of scope
 
 Pages she browsed in the Sources row, a screenshot shown in the tool
-marker, stored website passwords, attaching files, downloads, frames, several
+marker, stored website passwords, attaching files, downloads, several
 tabs (a link that opens a new tab opens in the same one), a visible
 browser the user can watch or take over.
 
