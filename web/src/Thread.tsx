@@ -365,7 +365,7 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
         <p className="subnote">{s?.subagent ? "Subagent of" : s?.child ? "Child thread of" : "Branched from"} <a href={`#/u/${encodeURIComponent(userId)}/t/${pool}/${encodeURIComponent(parent.id)}`}>{parent.title || "the parent thread"}</a></p>
       )}
       <div className="scroll" ref={scroller}>
-        <PendingBar scroller={scroller} deps={[t.messages, t.questions, t.live.permissions, overview.data]} />
+        <PendingBar scroller={scroller} />
         <ErrorText error={summary.error || t.loadError} />
         {settings.error && <ErrorText error={`This thread's settings didn't load: ${settings.error}`} />}
         <ErrorText error={overview.error} />
@@ -529,17 +529,30 @@ export function findThread(list: ThreadSummary[], pool: Pool, id: string): Threa
  * scrolled out of view, a thin bar across the top of the conversation names
  * it and jumps to it.
  */
-function PendingBar({ scroller, deps }: { scroller: React.RefObject<HTMLDivElement | null>; deps: unknown[] }) {
+function PendingBar({ scroller }: { scroller: React.RefObject<HTMLDivElement | null> }) {
   const [kind, setKind] = useState("");
   const latest = () => [...scroller.current?.querySelectorAll<HTMLElement>("[data-pending]") ?? []].at(-1);
+  // Follows the cards themselves, so a card that goes away (answered, folded, Cancel) takes the bar with it.
   useEffect(() => {
-    const card = latest();
-    if (!card) { setKind(""); return; }
-    const seen = new IntersectionObserver(([e]) => setKind(e!.isIntersecting ? "" : card.dataset.pending ?? ""), { root: scroller.current });
-    seen.observe(card);
-    return () => seen.disconnect();
+    const root = scroller.current;
+    if (!root) return;
+    let card: HTMLElement | undefined, seen: IntersectionObserver | undefined;
+    const watch = () => {
+      const next = latest();
+      if (next === card) return;
+      seen?.disconnect();
+      card = next;
+      if (!card) { seen = undefined; setKind(""); return; }
+      const watched = card;
+      seen = new IntersectionObserver(([e]) => setKind(e!.isIntersecting ? "" : watched.dataset.pending ?? ""), { root });
+      seen.observe(watched);
+    };
+    watch();
+    const changes = new MutationObserver(watch);
+    changes.observe(root, { subtree: true, childList: true, attributes: true, attributeFilter: ["data-pending"] });
+    return () => { changes.disconnect(); seen?.disconnect(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, deps);
+  }, []);
   if (!kind) return null;
   return (
     <button type="button" className="pending-bar" onClick={() => latest()?.scrollIntoView({ block: "center", behavior: "smooth" })}>

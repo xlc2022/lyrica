@@ -585,6 +585,12 @@ export function ProjectWelcome({ userId, pool, project, settings, onChange }: { 
   </div>;
 }
 
+const FOLD_DISMISSED = "lyrica.fold.dismissed";
+/** The Fold in cards Cancel has dismissed in this browser, by call ID, newest last. */
+function foldDismissed(): string[] {
+  try { const v = JSON.parse(localStorage.getItem(FOLD_DISMISSED) ?? "[]") as unknown; return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []; } catch { return []; }
+}
+
 /**
  * Existing-work suggestions share the Suggested threads card's rows and actions. Nothing is folded until the dialog
  * confirms it. Which rows the dialog asks about is held by the conversation (`asked`, `setAsked`): her reply ending
@@ -600,11 +606,13 @@ export function FoldCard({ part, userId, pool, projectId, env, asked, setAsked }
   const tree = useLoad(() => get<ThreadSummary[]>(`${u(userId, "threads")}?all=1`).catch(() => [] as ThreadSummary[]), [base, part.toolCallId]);
   const summary = useLoad(() => get<ThreadSummary>(base), [base]);
   const project = useLoad(() => get<ThreadSettings>(`${base}/settings`), [base]);
-  // Kept in this browser only: no server action stores a dismissal.
-  const [dismissed, setDismissed] = useState(false);
+  // Kept in this browser only: no server action stores a dismissal. It outlasts the card mounting again when her reply ends.
+  const [dismissed, setDismissed] = useState(() => foldDismissed().includes(part.toolCallId));
+  const dismiss = () => { setDismissed(true); try { localStorage.setItem(FOLD_DISMISSED, JSON.stringify([...foldDismissed().filter(id => id !== part.toolCallId), part.toolCallId].slice(-100))); } catch { /* kept for this visit only */ } };
   const started = env?.overview.started ?? {};
-  const left = ids.filter((_, i) => !started[`${part.toolCallId}#${i}`]).length;
   const pending = (rows.data ?? []).filter(r => !started[`${part.toolCallId}#${r.index}`]);
+  // Until the rows load, every unfolded ID counts; after, only rows that loaded, so the count matches what the card can fold.
+  const left = rows.data ? pending.length : ids.filter((_, i) => !started[`${part.toolCallId}#${i}`]).length;
   const apply = (index: number) => post(`${base}/folds/${encodeURIComponent(part.toolCallId)}/apply`, { index });
   const projectName = summary.data?.title || "the project";
   if (!left || dismissed) return null;
@@ -617,7 +625,7 @@ export function FoldCard({ part, userId, pool, projectId, env, asked, setAsked }
       const lost = project.data ? foldLosses(settings, project.data) : [];
       return <li key={thread.id}><div className="suggestion-text"><b className="as-is">{thread.title || "New thread"}</b>{!!lost.length && <div className="muted small fold-loss" title={lost.join(", ")}>Loses {foldLossNames(lost)}</div>}</div><button type="button" className="sm" disabled={!env || !project.data} onClick={() => setAsked([i])}>Fold in</button></li>;
     })}</ol>
-    <div className="row"><button type="button" className="primary" disabled={!env || !rows.data || !project.data || !pending.length} onClick={() => setAsked(pending.map(r => r.index))}>Fold in all <span className="num">{pending.length}</span></button><button type="button" onClick={() => setDismissed(true)}>Cancel</button></div>
+    <div className="row"><button type="button" className="primary" disabled={!env || !rows.data || !project.data || !pending.length} onClick={() => setAsked(pending.map(r => r.index))}>Fold in all <span className="num">{pending.length}</span></button><button type="button" onClick={dismiss}>Cancel</button></div>
     <ErrorText error={rows.error || project.error} />
     {asked && project.data && chosen.length > 0 && <FoldConfirm chosen={chosen} tree={tree.data ?? []} settings={project.data} base={base} projectName={projectName}
       onFold={r => apply(r.index)} onCancel={close} onDone={() => { close(); project.reload(); env?.onChange(); }} />}

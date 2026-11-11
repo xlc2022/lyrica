@@ -2175,6 +2175,26 @@ test("project welcome and fold in", async ({ page, baseURL }) => {
   await expect(card).toHaveCount(0);
   expect(await overview()).toHaveLength(2);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
+  // A suggested thread deleted since: the count is the rows the card can fold, and Cancel stays after a reload.
+  const c = await api("POST", `${u}/threads`, { pool: "general", title: "Compost log" });
+  const gone = await api("POST", `${u}/threads`, { pool: "general", title: "Old beds" });
+  await api("POST", `${u}/threads/general/${encodeURIComponent(p.id)}/messages`, { text: `fold: ${c.id}, ${gone.id}` });
+  await expect(card.getByText("Old beds", { exact: true })).toBeVisible();
+  await api("DELETE", `${u}/threads/general/${encodeURIComponent(gone.id)}`);
+  await page.reload();
+  const left = card.filter({ hasText: "Compost log" });
+  await expect(left.locator(".plan-head .num")).toHaveText("1");
+  await expect(left.getByRole("button", { name: /^Fold in all/ })).toHaveText("Fold in all 1");
+  // Cancel takes the bar with the card, and the card stays gone after a reload.
+  await page.locator(".scroll").evaluate(e => e.scrollTo(0, 0));
+  await expect(page.locator(".pending-bar")).toHaveText("Suggestions waiting for your answer");
+  // Clicked where it is, out of view, as the bar stays only while the card is off screen.
+  await left.getByRole("button", { name: "Cancel", exact: true }).evaluate((b: HTMLElement) => b.click());
+  await expect(card).toHaveCount(0);
+  await expect(page.locator(".pending-bar")).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByText("Suggested.", { exact: true }).last()).toBeVisible();
+  await expect(card).toHaveCount(0);
   await api("POST", `${u}/threads/general/${encodeURIComponent(p.id)}/messages`, { text: "draft: Grow seedlings | Keep a planting journal" });
   // The draft card's own link (the header has none since the overview took it).
   await expect(page.getByRole("link", { name: "Project settings", exact: true }).last()).toBeVisible();

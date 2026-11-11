@@ -1639,7 +1639,9 @@ local/cloud chip and preset, then each model host's state as a dot and word.
 - **Waiting for an answer:** when the latest card waiting for her answer (a
   plan, an approval or a question) has scrolled out of view, a thin accent bar across the
   top of the conversation says "Plan waiting for your answer" (or
-  "Approval…") and scrolls to it.
+  "Approval…") and scrolls to it. It follows the cards themselves (a
+  MutationObserver on `data-pending`), so a card that goes away, answered or
+  dismissed, takes the bar with it.
 - **Opening at the latest:** a thread opens at its newest message and follows
   the bottom while anything grows (new text, a picture or diagram loading, the
   header filling in and shrinking the conversation's box), until the person
@@ -1770,9 +1772,9 @@ Empty project chats show the welcome card (principle 1): Set up from recent
 work, Add repository using the existing popover, and Make a plan (`POST …/plan`, one call) opening a
 Plan thread, under a plain "Let's get to work!" line. Recent work uses the existing dialog, full screen on a phone,
 with ten eligible same-pool threads ticked initially. Only the selection is
-sent with the short setup message; lyricad adds the directions to that turn's context. Closing the dialog refocuses its button, and with no recent work it offers only Close. Fold in calls render suggestion rows, each loaded on its own (an unreadable thread drops its row); applied
+sent with the short setup message; lyricad adds the directions to that turn's context. Closing the dialog refocuses its button, and with no recent work it offers only Close. Fold in calls render suggestion rows, each loaded on its own (an unreadable thread drops its row, and once the rows load the heading and Fold in all count only the rows left, with no card when none are); applied
 rows disappear, and access losses appear under their titles. Fold in and Fold in all open a
-confirm dialog (threads and their child threads, the losses with a "Give <project> access to these" checkbox that widens the project through its settings route before folding), which stays open when her reply ends and the stored copy replaces the card (the conversation holds which rows it asks about, by call ID); the card's Cancel dismisses it in the browser.
+confirm dialog (threads and their child threads, the losses with a "Give <project> access to these" checkbox that widens the project through its settings route before folding), which stays open when her reply ends and the stored copy replaces the card (the conversation holds which rows it asks about, by call ID); the card's Cancel dismisses it in this browser, kept in local storage by call ID (the newest 100), so it stays gone after a reload.
 Continue as project (C), beside Make project… with their distinct tooltips,
 asks in a dialog, then opens the new project's settings. Draft Goal and Instructions populate their
 fields without applying them; Save applies edits and Discard draft clears

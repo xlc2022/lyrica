@@ -489,6 +489,9 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
         if (p.action === "fold") {
           if (!inProjectChat()) throw new Error("fold is for a project chat");
           if (!p.ids?.length) throw new Error("fold needs thread ids");
+          // The card reads these ids as given, so one that names no foldable thread would leave a row nobody can fold.
+          const wrong = p.ids.filter(id => { const t = store.getThread(id); return !t || t.id === thread.threadId || t.project || t.child || t.subagent; });
+          if (wrong.length) throw new Error(`not threads that can be folded in: ${wrong.map(id => JSON.stringify(id)).join(", ")}. Use the exact IDs of top-level threads outside any project, from list`);
           return text(`Suggested folding in ${p.ids.length} threads; the person applies the card.`, { threads: p.ids });
         }
         if (p.action === "draft") {

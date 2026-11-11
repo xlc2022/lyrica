@@ -1163,7 +1163,8 @@ Custom roles override built-ins by name, except `claude`.
   with `to: "parent"`); `list` in a project's thread lists the project's other
   threads with `ChildInfo.state` (`ThreadState`) and `needsYou`; new actions
   `suggest({ threads: { title, task }[] })` (a card, no thread made),
-  `fold({ ids: string[] })` (up to ten existing threads; a card, no move),
+  `fold({ ids: string[] })` (up to ten existing threads, each the exact ID of
+  a top-level thread outside any project, or the call is refused; a card, no move),
   `draft({ goal?, instructions? })` (`ThreadsHost.draft`, unsaved project settings),
   `instructions({ instructions?, askFirst?: true })` (`ThreadsHost.instructions`
   → `InstructionsResult { askFirst, saved?, drafted? }`: saves the project's

@@ -183,6 +183,22 @@ describe("threads watch", () => {
 
 describe("handing files over", () => {
   // A model once planned to send a whole page to another thread as base64 chunks in messages.
+  it("suggests folding in only top-level threads that exist, so the card never shows a row nobody can fold", async () => {
+    const s = await withMemory();
+    const t = s.thread();
+    const own = t.view.own;
+    const project = own.createThread({ interface: "web", project: true, title: "Homelab" });
+    const dns = own.createThread({ interface: "web", parent: project.id, child: true, title: "DNS" });
+    const host: ThreadsHost = { limits: DEFAULT_THREADS_LIMITS, start: async () => { throw new Error("unused"); }, message: async () => "started" as const, list: () => [] };
+    let tool!: Parameters<ExtensionAPI["registerTool"]>[0];
+    createThreadsExtension({ ...t.context, threadId: project.id }, host)({ on: () => {}, registerTool: (v: typeof tool) => { tool = v; } } as unknown as ExtensionAPI);
+    const call = (args: object) => tool.execute("call", args, undefined, undefined, {} as never);
+    for (const id of ["no-such-thread", "Garden", dns.id, project.id]) {
+      await expect(call({ action: "fold", ids: [t.threadId, id] })).rejects.toThrow(`not threads that can be folded in: ${JSON.stringify(id)}`);
+    }
+    expect((await call({ action: "fold", ids: [t.threadId] })).content).toEqual([{ type: "text", text: "Suggested folding in 1 threads; the person applies the card." }]);
+  });
+
   it("refuses a file or an over-long text in a message, pointing at her own folder", async () => {
     const s = await withMemory();
     const t = s.thread();
