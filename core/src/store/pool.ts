@@ -2072,7 +2072,8 @@ export class PoolStore extends PoolReader {
   restore(id: string, revisionId: number, author: Author): void {
     const rev = this.revisions(id).find((r) => r.id === revisionId);
     if (!rev) throw new Error(`no revision ${revisionId} of ${id}`);
-    this.edit(id, rev.body, author);
+    // A page's version from before it had instructions has none: restoring it clears them, as the History showed.
+    this.edit(id, kindOf(id) === "page" ? { ...rev.body, instructions: rev.body.instructions ?? "" } : rev.body, author);
   }
 
   /** She stops using it; it is kept, and can be brought back. */

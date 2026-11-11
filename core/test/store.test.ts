@@ -713,6 +713,14 @@ describe("threads", () => {
     // Text the user wrote on the page is still kept word for word.
     owner.general.edit(page, { text: "DNS is done; rack next. Al: the rails are on order." }, me);
     expect(() => own.edit(page, { text: "Rack next." }, "sleep")).toThrow(/text a user wrote/);
+
+    // Restoring a version puts its instructions back with the rest, and a version from before them clears them.
+    const revisions = owner.general.revisions(page);
+    const fifty = revisions.find((r) => r.body.instructions === "Ask before buying anything over $50.")!;
+    owner.general.restore(page, fifty.id, me);
+    expect(own.get(page)).toMatchObject({ instructions: "Ask before buying anything over $50." });
+    owner.general.restore(page, revisions[0]!.id, me);
+    expect(own.get(page)?.instructions ?? "").toBe("");
     owner.close();
   });
 

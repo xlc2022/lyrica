@@ -546,6 +546,28 @@ test("a project: New project, suggested threads start into cards, the Threads po
   await expect(page.getByText("Saved.")).toBeVisible();
   await page.reload();
   await expect(page.getByLabel("Instructions")).toHaveValue("Keep answers short.");
+  // The project's page shows the instructions apart from what sleep writes, and its History says who changed
+  // which part, and what Restore puts back.
+  await page.getByLabel("Instructions").fill("Keep answers short and kind.");
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByText("Saved.")).toBeVisible();
+  await page.getByRole("link", { name: "Project page" }).click();
+  const projectPage = page.locator("article.mem-item");
+  const instructions = projectPage.getByRole("region", { name: "Instructions" });
+  await expect(instructions).toContainText("Keep answers short and kind.");
+  await expect(projectPage.getByRole("region", { name: /knows$/ })).toContainText("Nothing yet.");
+  await expect(projectPage.locator(".tfacts")).toContainText("Project page");
+  await expect(projectPage.locator(".tfacts")).toContainText("by you");
+  const earlier = projectPage.locator(".hist details").first();
+  await expect(earlier.locator("summary")).toContainText("by you");
+  await expect(earlier.locator(".wdiff .eyebrow")).toHaveText(["Instructions"]);
+  await expect(earlier.locator(".wdiff del", { hasText: "kind" })).not.toHaveCount(0);
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/project-page-${page.viewportSize()!.width}.png`, fullPage: true });
+  await earlier.getByRole("button", { name: "Restore this version" }).click();
+  await expect(instructions).not.toContainText("kind");
+  await expect(instructions).toContainText("Keep answers short.");
+  await noHorizontalScroll(page);
+  await page.goBack();
   await sections.getByRole("link", { name: "General" }).click();
   await expect(page.getByLabel("Goal")).toHaveValue("Ship the garden plan.");
   await expect(page.getByRole("checkbox", { name: "Paused" })).toBeChecked();
