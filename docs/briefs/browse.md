@@ -26,7 +26,10 @@ prompt).
    `screenshot`, `close`.
 2. **How she picks it.** The two descriptions say so and nothing else
    does: `web_fetch` reads a page whose address she has; `browse` is for
-   when reading isn't enough (a click, a field, a login, several steps).
+   when reading isn't enough (a click, a field, a login, several steps,
+   or a page that comes back empty because a script draws it). The
+   sandbox's tools line no longer names Playwright for "clicks, several
+   pages", which sent her to a script of her own instead (2026-11-11).
 3. **A page as text with numbers.** Every action answers with the page as
    it is now: its text in reading order, each thing she can act on (link,
    button, field, checkbox, select) on a line of its own with a number,
