@@ -1821,7 +1821,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     `downloads/` under its id (`Browser.setDownloadBehavior`
     allowAndName; cancelled past 2 GB, when the disk would keep less
     than a tenth of its size free (at least 2 GB, `statfs`), or after 2
-    minutes without data); after an action the driver waits up to 45 s
+    minutes without data, or beyond 5 at once); after an action the driver waits up to 45 s
     for the downloads it started and answers `downloads` (a `going` one
     with its size so far, answered again later), and `Browser`'s
     `save(file, name)` (`Workspace.saveDownload`: renamed into the
@@ -1840,7 +1840,8 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     until its own `Fetch` watches posts, then let go), keeps every frame's
     session and parent, makes a world of its own in each, and reads each
     shown frame into the page text where it stands (`DOM.getFrameOwner`
-    finds which), up to 3 deep and 20 in a page. A number is the
+    finds which), up to 3 deep and 20 in a page; a frame whose `Fetch`
+    or auto-attach fails to start stays held, never read. A number is the
     driver's, mapped to a frame world and that world's own number, so it
     never comes to mean something else; a click is sent to the page at
     the point inside the frame plus where each frame around it starts.

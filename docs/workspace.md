@@ -1254,7 +1254,8 @@ The **Web search** switch gives her two tools (`extension/src/web.ts`,
   chat's `shared/downloads/`) under the site's name, cleaned as an
   upload's is and never overwriting, and the result says where. One over
   2 GB, one that would leave the disk less than a tenth of its size free
-  (at least 2 GB), or one that gets no data for 2 minutes is cancelled.
+  (at least 2 GB), one that gets no data for 2 minutes, or one beyond 5
+  at once is cancelled.
   An action waits up to 45 seconds for a download it started; one still
   going is answered with its size so far, goes on, and is answered again
   after a later action. The browser saves it in its profile and `lyricad`
