@@ -308,7 +308,7 @@ describe("suspect commands", () => {
     for (const c of ["rm -rf /", "sudo rm -rf --no-preserve-root /", "rm -rf /*", "rm -rf ~", "rm -rf ~/", "rm -fr $HOME", "rm -r /home/ada", "rm -rf /etc/",
       "cd /tmp && rm -rf /usr", "sudo mkfs.ext4 /dev/sdb1", "dd if=img of=/dev/sda bs=4M", "chmod -R 777 /", "sudo chown -R ada /", "userdel ada",
       "sudo shutdown -h now", "/sbin/reboot", "sudo systemctl reboot", "poweroff", "qm destroy 101", "echo hi; sudo -n reboot",
-      "sudo -u root rm -rf /", "nice -n 5 rm -rf /", "timeout 5 rm -rf /", "bash -c 'rm -rf /'", "chmod -R 777 /*", "chown -R ada //"]) {
+      "sudo -u root rm -rf /", "nice -n 5 rm -rf /", "timeout 5 rm -rf /", "bash -c 'rm -rf /'", "chmod -R 777 /*", "chown -R ada //", "r{m,} -rf /", "/bin/{rm,ls} -rf /", "rm -r{f,} /"]) {
       expect(suspectCommand(c), c).toBeDefined();
     }
     for (const c of ["rm build.log", "rm -f build.log", "dd if=/dev/zero of=file", "chmod -R 755 /srv/www", "ls /", "qm list",

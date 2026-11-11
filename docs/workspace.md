@@ -1873,7 +1873,10 @@ chained or wrapped; it doesn't see inside scripts or programs she runs.
 `rules.ts` uses `simpleCommands` from `machines.ts`: chains, pipes,
 substitutions, subshells, shell `-c` arguments and find's `-exec`, `-execdir`
 and `-ok` commands are checked; quotes and backslashes inside words are
-removed. A here-document's body is checked as commands, unless its
+removed. Unquoted brace expansion inside a word is read as the words bash
+makes (`r{m,} -rf /` is `rm r -rf /`, `rm -r{f,} /` is `rm -rf -r /`); `{`
+and `}` group commands only as words of their own, and a word that would
+expand to more than 256 words adds an opaque part. A here-document's body is checked as commands, unless its
 reader is plainly not a shell (`python…`, `node`, `perl`, `ruby`, `jq`,
 `cat`, `tee`, `READS_INPUT`, past any wrapper) and no pipe or process
 substitution follows it on the line. Then the body is that program's input:
@@ -1899,8 +1902,13 @@ wrapper's own words and its program (past any word that may be a flag's
 value), not in the program's arguments, so
 `timeout 60 curl "…?h=x"` isn't opaque; `command -v` and `-V` only look a
 name up, so they are never opaque; a lone `[`, the test command, is not a
-glob, only `[` with a `]` after it) cannot be allowed; with any forbid
-rule they ask in every mode.
+glob, only `[` with a `]` after it) cannot be allowed; with any forbid rule
+they ask in every mode. A glob in the program's own name, such as
+`/…/bin/*-gcc --version`, isn't opaque when the name can't match a shell, a
+wrapper, `eval`, `source`, `.` or the first word of an Ask or Forbid rule,
+since every word it expands to fits the pattern (`harmlessGlob`). It stays
+opaque when the name holds a `[` set or ends in `*`, `?`, a digit or `o`,
+which a loader's name (`ld-….so.2`) could.
 
 A sourced script can be read instead (`sourcedFile`, `setupOnly`). When the
 line's first part, after only `cd DIR`s, is `source FILE` or `. FILE` with a

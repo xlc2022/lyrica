@@ -170,11 +170,63 @@ export function knownValues(command: string): Map<string, string> {
 /** Programs whose input is plainly not shell: a here-document only they read is data or their own code, not commands. */
 const READS_INPUT = /^(?:python[\d.]*|node|perl|ruby|jq|cat|tee)$/;
 
+// An unquoted `{` or `}` inside a word, marked so brace expansion can tell it from a quoted one.
+const OPEN = "\u0001", CLOSE = "\u0002";
+/** How many words one word's brace expansion may make before the line counts as opaque. */
+const BRACE_LIMIT = 256;
+
+/** A `{a..e}` or `{1..9..2}` sequence's words, `undefined` if it isn't one, or `null` if it makes too many. */
+function sequence(inner: string): string[] | null | undefined {
+  const m = /^(?:(-?\d+)\.\.(-?\d+)|([A-Za-z])\.\.([A-Za-z]))(?:\.\.(-?\d+))?$/.exec(inner);
+  if (!m) return undefined;
+  const letters = !!m[3];
+  const from = letters ? m[3]!.charCodeAt(0) : Number(m[1]), to = letters ? m[4]!.charCodeAt(0) : Number(m[2]);
+  const step = Math.abs(Number(m[5] ?? 1)) || 1;
+  if (Math.abs(to - from) / step + 1 > BRACE_LIMIT) return null;
+  // `{01..10}` pads every number to the wider end, as bash does.
+  const width = !letters && [m[1]!, m[2]!].some((e) => /^-?0\d/.test(e)) ? Math.max(m[1]!.length, m[2]!.length) : 0;
+  const out: string[] = [];
+  for (let n = from; from <= to ? n <= to : n >= to; n += from <= to ? step : -step) {
+    out.push(letters ? String.fromCharCode(n) : (n < 0 ? "-" : "") + String(Math.abs(n)).padStart(width - (n < 0 ? 1 : 0), "0"));
+  }
+  return out;
+}
+
+/** Bash's brace expansion of a word with marked braces (`r{m,}` is `rm r`), into `out`; false if it makes too many words. */
+function expand(word: string, out: string[]): boolean {
+  for (let open = word.indexOf(OPEN); open >= 0; open = word.indexOf(OPEN, open + 1)) {
+    let depth = 0, close = -1;
+    const commas: number[] = [];
+    for (let i = open; i < word.length; i++) {
+      if (word[i] === OPEN) depth++;
+      else if (word[i] === CLOSE && --depth === 0) { close = i; break; }
+      else if (word[i] === "," && depth === 1) commas.push(i);
+    }
+    if (close < 0) break;
+    const parts = commas.length ? [...commas, close].map((c, k) => word.slice(k ? commas[k - 1]! + 1 : open + 1, c)) : sequence(word.slice(open + 1, close));
+    if (parts === null) return false;
+    // Not an expansion (`{}`, `{x}`): this brace is just a character.
+    if (!parts) continue;
+    const head = word.slice(0, open), tail = word.slice(close + 1);
+    return parts.every((part) => expand(head + part + tail, out));
+  }
+  if (out.length >= BRACE_LIMIT) return false;
+  out.push(word);
+  return true;
+}
+
 function parse(command: string): string[][] {
   const commands: string[][] = [];
   let words: string[] = [], word = "", quote = "";
   const heredocs: { word: string; tabs: boolean; quoted: boolean; reader: string[]; piped?: boolean }[] = [];
-  const flushWord = () => { if (word) { words.push(word.replace(/["']/g, "")); word = ""; } };
+  const flushWord = () => {
+    if (!word) return;
+    const out: string[] = [];
+    // Too many words to read is an opaque part, which asks while any Forbid rule exists.
+    if (!expand(word, out)) { commands.push(["$braces"]); out.splice(0, out.length, word); }
+    for (const w of out) { const plain = w.replace(/["']/g, "").replaceAll(OPEN, "{").replaceAll(CLOSE, "}"); if (plain) words.push(plain); }
+    word = "";
+  };
   const flush = () => {
     flushWord();
     if (!words.length) return;
@@ -244,7 +296,11 @@ function parse(command: string): string[][] {
     }
     // A pipe or process substitution after a here-document could hand its body to a shell.
     if (!quote && (ch === "|" || (ch === "(" && /[<>]$/.test(word)))) for (const h of heredocs) h.piped = true;
-    if (!quote && /[;&|\n(){}]/.test(ch)) { flush(); continue; }
+    // `{` and `}` group commands only as words of their own; inside a word they are brace expansion, as in `r{m,}`
+    // (but `${` starts a parameter, not an expansion).
+    if (!quote && ch === "{") { if (!word && (i + 1 >= command.length || /\s/.test(command[i + 1]!))) flush(); else word += word.endsWith("$") ? ch : OPEN; continue; }
+    if (!quote && ch === "}") { if (!word) flush(); else word += CLOSE; continue; }
+    if (!quote && /[;&|\n()]/.test(ch)) { flush(); continue; }
     if (!quote && /\s/.test(ch)) { flushWord(); continue; }
     word += ch;
   }
