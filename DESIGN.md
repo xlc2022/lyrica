@@ -2218,7 +2218,8 @@ Details in [docs/sleep.md](docs/sleep.md).
     from the page what sends a form and acts only with the gate's yes for
     that call, and a page load that posts without one is stopped in the
     browser. A form that only searches doesn't ask, nor does a posted
-    form that is one plain text box (the owner, 2026-11-11). A plain click can
+    form that is one plain text box, unless it says it deletes or
+    removes (the owner, 2026-11-11). A plain click can
     still make a page's own script send something, as a command in the
     sandbox can. Downloads are refused, and frames aren't read. The main
     conversation has it; subagents and project chats don't.

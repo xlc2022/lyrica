@@ -57,7 +57,11 @@ prompt).
    as a search, with no password, file or long text field) doesn't ask.
    Nor does a posted form whose only thing to fill in is one plain text
    box (the owner, 2026-11-11, after DuckDuckGo's plain page asked for
-   each search): a one-line comment or chat box goes the same way.
+   each search): a one-line comment or chat box goes the same way. One
+   that says it deletes or removes still asks (the owner, 2026-11-11: a
+   "type DELETE to confirm" box is one text box too). It is read from
+   the form's buttons, the box's name, where it goes and a hidden
+   `_method`, in English only.
    The driver decides this from the page, the hook asks, and the driver
    acts only with the hook's go-ahead for that call. Behind it, a page
    load that posts without a go-ahead is stopped in the browser and

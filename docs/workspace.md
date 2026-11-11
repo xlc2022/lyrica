@@ -1220,7 +1220,9 @@ The **Web search** switch gives her two tools (`extension/src/web.ts`,
   a search, with no password, file or long text field) doesn't ask, and
   neither does a posted form whose only thing to fill in is one plain
   text box (hidden values aside), which is what many searches are; a
-  one-line comment or chat box is sent the same way. Any other
+  one-line comment or chat box is sent the same way. Such a form still
+  asks when it says it deletes or removes: in a button's name, the box's
+  name, the address it goes to or a hidden `_method`, in English. Any other
   page load that posts without a yes is answered "no content" inside the
   browser, so nothing reaches the site, and the same click asks from
   then on. A plain click can still make a page's script send something,
