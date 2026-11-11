@@ -1217,7 +1217,10 @@ The **Web search** switch gives her two tools (`extension/src/web.ts`,
   send one, the `tool_call` gate asks with the site and the fields (a
   password as dots), and the driver sends only with that yes for that
   call. A form that only searches (GET, to a stated address or marked as
-  a search, with no password, file or long text field) doesn't ask. A
+  a search, with no password, file or long text field) doesn't ask, and
+  neither does a posted form whose only thing to fill in is one plain
+  text box (hidden values aside), which is what many searches are; a
+  one-line comment or chat box is sent the same way. Any other
   page load that posts without a yes is answered "no content" inside the
   browser, so nothing reaches the site, and the same click asks from
   then on. A plain click can still make a page's script send something,

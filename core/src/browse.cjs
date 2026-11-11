@@ -236,6 +236,11 @@ const PAGE = `((start) => {
     const search = form.getAttribute("role") === "search" || !!form.closest("[role=search]") || all.some((e) => e.type === "search");
     // A form that only looks something up: sent in the address, to a stated place or as a search.
     if (method === "get" && !heavy && !S.held.has(el) && (form.hasAttribute("action") || search)) return null;
+    // A posted form that is one plain text box and nothing else to fill in (the owner, 2026-11-11): many searches
+    // are one. It goes without asking, and its post is let through.
+    const filled = all.filter((e) => { const k = kind(e, getComputedStyle(e)); return k && k !== "button"; });
+    const box = filled.length === 1 && tag(filled[0]) === "INPUT" && ["", "text", "search"].includes((filled[0].getAttribute("type") || "").toLowerCase());
+    if (method === "post" && box && !S.held.has(el)) return { free: true };
     const fields = [];
     for (const e of all) {
       const k = kind(e, getComputedStyle(e));
@@ -305,7 +310,8 @@ const ops = {
   read: () => snapshot(),
   async sends({ action, ref, submit }) {
     const how = action === "click" ? "click" : action === "type" && submit ? "enter" : undefined;
-    return { sends: how ? await page(`__ly.sends(${Number(ref)}, ${JSON.stringify(how)})`) : null, ...(await page(`__ly.what(${Number(ref)})`)) };
+    const form = how ? await page(`__ly.sends(${Number(ref)}, ${JSON.stringify(how)})`) : null;
+    return { sends: form?.free ? null : form, ...(await page(`__ly.what(${Number(ref)})`)) };
   },
   async click({ ref, approved }) {
     return acting(ref, "click", approved, async () => {
@@ -357,11 +363,9 @@ const ops = {
 
 /** One action on a numbered thing: refused without a go-ahead when it would send a form, and a post it sets off without one is stopped. */
 async function acting(ref, how, approved, run) {
-  if (how) {
-    const form = await page(`__ly.sends(${Number(ref)}, ${JSON.stringify(how)})`);
-    if (form && !approved) return { unapproved: form };
-  }
-  mayPost = !!approved;
+  const form = how ? await page(`__ly.sends(${Number(ref)}, ${JSON.stringify(how)})`) : null;
+  if (form && !form.free && !approved) return { unapproved: form };
+  mayPost = !!approved || !!form?.free;
   heldPost = undefined;
   try {
     const r = await run();

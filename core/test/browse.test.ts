@@ -16,6 +16,8 @@ const SHOP = `<title>Shop</title><h1>Shop</h1><p>Welcome to the <a href="/two">s
 <form action="/find"><input type="search" name="q" placeholder="Search"><button>Go</button></form>
 <form method="post" action="/login"><label>Email: <input name="email"></label><label for="pw">Password</label><input id="pw" type="password" name="pw">
 <select name="c" aria-label="Country"><option>Austria</option><option>Brazil</option></select><button type="submit">Sign in</button></form>
+<form method="post" action="/ask"><input type="hidden" name="t" value="1"><input name="q" placeholder="Ask"><button>Send</button></form>
+<form method="post" action="/ask"><input name="q" placeholder="Note"><input type="checkbox" name="keep" aria-label="Keep"><button>Save</button></form>
 <div id="js" style="cursor:pointer">Poster</div><div style="display:none">hidden words</div>
 <script>document.getElementById("js").addEventListener("click", () => { const f = document.createElement("form"); f.method = "post"; f.action = "/login"; document.body.append(f); f.submit(); });</script>`;
 
@@ -31,6 +33,7 @@ describe.skipIf(!chromium)("the browse tool's browser", () => {
       req.on("end", () => {
         const url = new URL(req.url ?? "/", "http://x");
         res.setHeader("content-type", "text/html");
+        if (req.method === "POST" && url.pathname === "/ask") { posts.push(body); return res.end("<title>Asked</title><p>Asked</p>"); }
         if (req.method === "POST") { posts.push(body); res.setHeader("set-cookie", ["sid=abc; Max-Age=9999", "visit=now"]); return res.end("<title>In</title><p>Signed in</p>"); }
         if (url.pathname === "/find") return res.end(`<title>Results</title><p>Results for ${url.searchParams.get("q")}</p>`);
         if (url.pathname === "/two") return res.end(`<title>Two</title><p>Cookie: ${req.headers.cookie ?? "none"}</p>`);
@@ -97,6 +100,20 @@ describe.skipIf(!chromium)("the browse tool's browser", () => {
     expect((await b.act("10", { action: "click", ref: signIn })).text).toContain("Signed in");
     expect(posts).toEqual(["email=ada%40example.com&pw=hunter2&c=Brazil"]);
   }, 90_000);
+
+  it("sends a posted form that is one text box without asking, and asks for one with anything else to fill in", async () => {
+    const b = browser("f");
+    let page = await b.act("1", { action: "open", url: site });
+    const ask = ref(page.text, "Ask");
+    expect((await b.look({ action: "type", ref: ask, submit: true })).form).toBeUndefined();
+    expect((await b.act("2", { action: "type", ref: ask, text: "tea", submit: true })).text).toContain("Asked");
+    expect(posts).toEqual(["t=1&q=tea"]);
+    page = await b.act("3", { action: "back" });
+    expect((await b.look({ action: "click", ref: ref(page.text, "Send") })).form).toBeUndefined();
+    expect((await b.look({ action: "click", ref: ref(page.text, "Save") })).form).toBeTruthy();
+    expect((await b.act("4", { action: "click", ref: ref(page.text, "Save") })).fail).toBe(BROWSE_UNAPPROVED);
+    expect(posts.length).toBe(1);
+  }, 60_000);
 
   it("stops a post a page's script sets off, keeps the page, and asks for the same click from then on", async () => {
     const b = browser("c");

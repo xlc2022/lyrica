@@ -1779,7 +1779,10 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     `click`, or a `type` with `submit`, would do: `form` (a `BrowseForm`:
     site, where it goes, method, button, fields) when it would send one,
     and the action in words. A form sent by GET to a stated `action` or
-    marked as a search, with no password, file or textarea, isn't one.
+    marked as a search, with no password, file or textarea, isn't one;
+    nor is a form sent by POST whose only control besides buttons and
+    hidden inputs is one `input` of type text or search, and the driver
+    lets that post through.
     The `tool_call` gate asks with `{ browse: browseFormText(form) }` and
     `warning: browseFormWarning(form)` in every mode and, on a yes, calls
     `Browser.approve(toolCallId)`; `Browser.act(toolCallId, call)` passes

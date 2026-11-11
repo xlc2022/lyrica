@@ -55,6 +55,9 @@ prompt).
    card names the site and shows what would be sent, passwords as dots.
    A form that only searches (sent by GET to a stated address, or marked
    as a search, with no password, file or long text field) doesn't ask.
+   Nor does a posted form whose only thing to fill in is one plain text
+   box (the owner, 2026-11-11, after DuckDuckGo's plain page asked for
+   each search): a one-line comment or chat box goes the same way.
    The driver decides this from the page, the hook asks, and the driver
    acts only with the hook's go-ahead for that call. Behind it, a page
    load that posts without a go-ahead is stopped in the browser and
@@ -63,7 +66,8 @@ prompt).
    `screenshot`. Ask and Accept edits ask before `click`, `type` and
    `select`, as before a command. Auto doesn't, apart from (7).
 9. **The guarantee, in one sentence** (principle 7): sending a form and
-   any page load that posts always ask; a plain click can still make a
+   any page load that posts always ask, except a search and a form that
+   is one plain text box; a plain click can still make a
    page's own script send something, as a command she runs in the
    sandbox can.
 10. Downloads are refused, files can't be attached to a form, and what
@@ -100,6 +104,7 @@ found three things, fixed after it: a login lost after `close`, a doubled
 colon on the card when a field's label ends in one, and a first `open`
 failing once with a network-changed error (now tried once more). The lost
 login wasn't reproduced outside that deployment, so it wants a retest
-there. A search form that posts (DuckDuckGo's plain page) asks, by (7);
-whether it should is the owner's call. Open
+there. A search form that posts (DuckDuckGo's plain page) asked; the
+owner chose that a posted form of one plain text box goes without
+asking (7). Open
 questions: the two under "Open for the owner".
