@@ -1246,8 +1246,11 @@ A reply with no tool call whose text holds calls in `<tool_call>` blocks
 (`textToolCalls`: Qwen's XML, closing `</parameter>` and `</function>`
 optional, or Hermes' JSON; outside code) has them turned into real calls
 (stop reason `toolUse`), the words around them kept, when every block reads
-and names a tool she has on now; otherwise the reply is left for the turn
-tool limits' text-call retry.
+and names a tool she has on now and none repeats a block from what she was
+given (any non-assistant message in the request's context, from the
+`context` event, compared with whitespace collapsed), so injected text she
+only echoes never runs; otherwise the reply is left for the turn tool
+limits' text-call retry.
 Code turns use SOUL only, no topic routing, WAKE, about-user, page index or
 sleep opening; project, folders and pins remain. `setToolsOff` with reason
 `code` removes `models`, `download_model`, `model_files`, `image`, `react`.

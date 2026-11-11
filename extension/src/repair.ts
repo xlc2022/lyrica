@@ -18,19 +18,34 @@ const TEXT_CALL_BLOCK = /<tool_call>([\s\S]*?)(?:<\/tool_call>|$)/g;
  * The calls written as text in `text`, outside code, with the text left around them; undefined when
  * there is none, or when one can't be read (the turn tool limits then ask her to make it as a call).
  */
-export function textToolCalls(text: string): { calls: { name: string; arguments: Record<string, unknown> }[]; rest: string } | undefined {
+export function textToolCalls(text: string, given = ""): { calls: { name: string; arguments: Record<string, unknown> }[]; rest: string } | undefined {
   // A call she quotes in a fenced block or an inline span is meant as text.
   const code: string[] = [];
   const hidden = text.replace(/```[\s\S]*?(?:```|$)|`[^`\n]*`/g, (m) => `\u0000${code.push(m) - 1}\u0000`);
   const calls: { name: string; arguments: Record<string, unknown> }[] = [];
   let unread = false;
   const rest = hidden.replace(TEXT_CALL_BLOCK, (_m, body: string) => {
-    const call = readCall(body);
+    // A block she was given (a page, a file, a report, a pasted log) and only repeats is not her call.
+    const call = given.includes(squeezed(body)) ? undefined : readCall(body);
     if (call) calls.push(call); else unread = true;
     return "";
   });
   if (!calls.length || unread) return undefined;
   return { calls, rest: rest.replace(/\u0000(\d+)\u0000/g, (_m, i: string) => code[Number(i)]!).trim() };
+}
+
+/** Whitespace collapsed, so an echo matches however it was wrapped. */
+const squeezed = (text: string) => text.replace(/\s+/g, " ").trim();
+
+/** The text of everything she was given in her context: every message but her own replies, squeezed. */
+function givenText(messages: readonly unknown[]): string {
+  const out: string[] = [];
+  for (const m of messages as { role?: string; content?: unknown }[]) {
+    if (m.role === "assistant" || m.role === "system") continue;
+    if (typeof m.content === "string") out.push(m.content);
+    else if (Array.isArray(m.content)) for (const c of m.content as { type?: string; text?: unknown }[]) if (typeof c.text === "string") out.push(c.text);
+  }
+  return squeezed(out.join("\n"));
 }
 
 function readCall(body: string): { name: string; arguments: Record<string, unknown> } | undefined {
@@ -91,7 +106,10 @@ export function createRepairExtension(): ExtensionFactory {
   return (pi) => {
     /** Calls renamed this run, by ID: the name she used and the tool it ran as. */
     const renamed = new Map<string, { from: string; to: string }>();
+    /** What she was given in the request her reply answers: an echoed block there never runs. */
+    let given = "";
     pi.on("agent_start", () => renamed.clear());
+    pi.on("context", (e) => { given = givenText(e.messages); });
     pi.on("message_end", (e) => {
       const m = e.message;
       // Pi answers a call to a tool nothing registered before any hook runs: the answer is reworded as it is recorded.
@@ -110,7 +128,7 @@ export function createRepairExtension(): ExtensionFactory {
       // Calls a small model wrote as text (its server didn't parse them) run, when every one names a tool she has on now;
       // stored as calls, her history holds no text call for her to copy.
       if (!m.content.some((c) => c.type === "toolCall")) {
-        const found = m.content.map((c) => (c.type === "text" ? textToolCalls(c.text) : undefined));
+        const found = m.content.map((c) => (c.type === "text" ? textToolCalls(c.text, given) : undefined));
         const named = found.flatMap((f) => f?.calls ?? []);
         if (!named.length || !named.every((c) => active.has(c.name) || (TOOL_ALIASES[c.name] !== undefined && !tools.has(c.name) && active.has(TOOL_ALIASES[c.name]!)))) return;
         let n = 0;

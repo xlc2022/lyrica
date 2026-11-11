@@ -1801,7 +1801,8 @@ tool, so this ran as Y. Call Y next time." added to its result; the call
 still goes through every approval and mode rule. A name nothing matches
 answers with her active tools listed. Calls a model server left as text in
 `<tool_call>` blocks (Qwen's XML, even without its closing tags, or Hermes'
-JSON), outside code, run as real calls when each names a tool she has on,
+JSON), outside code, run as real calls when each names a tool she has on
+and none repeats a block from a page, file, report or message she was given,
 with the words around them kept as her text; stored as calls, her history
 holds no text call for her to copy.
 
