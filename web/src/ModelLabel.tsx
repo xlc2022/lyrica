@@ -1,7 +1,8 @@
 import type { OfferingInfo } from "./api.ts";
 
-/** A model that answers in text: never an image recipe or model, a speech model or an embedding (as lyricad picks chat models, core/src/models). */
-export const isChatModel = (m: Pick<OfferingInfo, "recipe" | "image" | "embedding" | "transcribe" | "speak">) => !m.recipe && !m.image && !m.embedding && !m.transcribe && !m.speak;
+/** A model that answers in text: never an image or video recipe or model, an upscaler, a speech model or an embedding (as lyricad picks chat models, core/src/models). */
+export const isChatModel = (m: Pick<OfferingInfo, "recipe" | "image" | "edit" | "upscale" | "video" | "animate" | "motion" | "videoEdit" | "embedding" | "transcribe" | "speak">) =>
+  !m.recipe && !m.image && !m.edit && !m.upscale && !m.video && !m.animate && !m.motion && !m.videoEdit && !m.embedding && !m.transcribe && !m.speak;
 
 // Principle 1: copies with the same model ID still name the endpoint the user picks.
 /** What to call a model: an image model (a host recipe, or a plan's image tool) by its name, anything else by its model ID. */

@@ -258,8 +258,9 @@ characters, the limit on project instructions.
 > **Docs never drift.** Other agents learn this repository only from its
 > docs. A PR updates every doc, brief or guide it makes stale, in the
 > same PR. After a merge that changes the instructions block in
-> docs/briefs/lyrica-project.md, the project chat sends the new block
-> with `threads instructions`; Ask first makes it a draft for the owner. Drift you notice elsewhere gets a small docs PR. Each issue or
+> docs/briefs/lyrica-project.md, the project chat turns on Ask first
+> (`askFirst: true`) if it is off, then sends the new block with
+> `threads instructions`, which leaves it as a draft for the owner. Drift you notice elsewhere gets a small docs PR. Each issue or
 > brief keeps a current handoff note (done, next, open questions)
 > another agent can continue from.
 >
@@ -420,7 +421,7 @@ pasted; until then it refuses anything over 2,000.
 herself (`threads instructions`). Each project has an **Ask first**
 switch under Instructions; while it is on, her change waits as a draft
 for the owner to save. In this project it stays on (the owner), and the
-block above tells the project chat to send the new block after a merge
-that changes it. By the owner, once per deployment, after rebuilding to
+block above tells the project chat to turn it on if it is off, then send
+the new block after a merge that changes it. By the owner, once per deployment, after rebuilding to
 this release: turn on Ask first in her project, and paste the block
 above one last time.
