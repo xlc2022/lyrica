@@ -1032,6 +1032,13 @@ retries. Hidden pools and other users never enter the aggregate; the Hidden
 thread filter does not filter call metadata, as in Call history. No schema or
 model request is added; the page re-reads Status every minute while in view.
 
+GET `…/admin/memory-use` (`memory-use.ts`, `?days=7|30`) sums the recall
+counts the administrator's own shown pools keep (docs/memory.md, "Recall
+counts") per hour and per note or page, and counts citations, for Status's
+Memory use card. It opens the owner view and gives a page's title or a note's
+first line for each of the top ten; no other user's memory, and no hidden
+pool, enters it.
+
 **Persona proposals** come from one user's conversation or dream, so they
 may carry that user's details. They start as drafts in that user's `user.db`
 (`PersonaProposals.propose`, which takes the thread's own view, so whose a

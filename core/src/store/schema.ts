@@ -154,6 +154,22 @@ CREATE TABLE IF NOT EXISTS vectors (
 `;
 
 /**
+ * How often she reached each note and page, per hour (docs/memory.md, "Recall counts"): automatic recall, a `recall`
+ * tool hit or `read_memory`. IDs and numbers only, kept 31 days, for Status's Memory use card. A row for another pool's
+ * memory carries its prefix (`general/n:…`), counted where the thread ran.
+ */
+export const RECALLS_SCHEMA = `
+CREATE TABLE IF NOT EXISTS recalls (
+  id       TEXT NOT NULL,
+  hour     TEXT NOT NULL,
+  recalled INTEGER NOT NULL DEFAULT 0,
+  searched INTEGER NOT NULL DEFAULT 0,
+  opened   INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (id, hour)
+);
+`;
+
+/**
  * Files renamed in the Files panel, until sleep respells the memories that cite the thread (docs/sleep.md, "Renamed
  * files"): `swaps` is JSON of the old and new paths as that thread writes them; no thread for a grant's file, whose
  * path is the same everywhere. Paths only, never memory text.

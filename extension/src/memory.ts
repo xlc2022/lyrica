@@ -1,5 +1,5 @@
 import type { PinnedText } from "./assemble.ts";
-import { lookPointer, projectSection, readView, resolve, searchView, type Hit, type SearchOptions, type PoolView, type Profile, type StoredEntry, type Item } from "@lyrica/core";
+import { lookPointer, projectSection, readView, resolve, searchView, type Hit, type RecallHow, type SearchOptions, type PoolView, type Profile, type StoredEntry, type Item } from "@lyrica/core";
 
 /** What memory contributes to the prompt. Every field is optional. */
 export interface MemorySections {
@@ -35,6 +35,23 @@ export interface MemoryContext {
   name?: string;
   /** The user's message or a recall query as a vector, for hits by meaning; undefined (or a throw) means keywords alone. */
   embed?: (text: string) => Promise<{ model: string; values: Float32Array } | undefined>;
+  /** Count the notes and pages she reaches, for Status's Memory use card. Off for sleep's threads. */
+  countRecalls?: boolean;
+}
+
+/**
+ * Counts the notes and pages she reached (docs/memory.md, "Recall counts"): IDs and numbers only, never in an unlogged
+ * thread, and a failed count never holds up a turn.
+ */
+export function countRecalls(view: PoolView, ids: readonly string[], how: RecallHow, ctx: Pick<MemoryContext, "threadId" | "countRecalls">): void {
+  if (!ctx.countRecalls || !ids.length) return;
+  try {
+    if (view.own.getThread(ctx.threadId)?.unlogged) return;
+    // Her own pool's memories are counted by their bare ID.
+    view.own.countRecalls(ids.map((id) => { const t = id.trim(); return t.startsWith(`${view.pool}/`) ? t.slice(view.pool.length + 1) : t; }), how);
+  } catch {
+    // A count is telemetry: the turn goes on without it.
+  }
 }
 
 /** The query's vector, or nothing: an embedding model that is away or slow never holds up a turn. */
@@ -83,6 +100,7 @@ export async function memorySections(view: PoolView, prompt: string, ctx: Memory
   const folderPages = stores.flatMap(({ prefix, store }) => store.forFolders(ctx.folders).map((p) => ({ ...p, id: prefix + p.id })));
   const vector = await queryVector(ctx, prompt);
   const hits = prompt.trim() ? search(view, prompt, { current: true, said: true, limit: RECALL_HITS, minWords: RECALL_WORDS, skip: ctx.name ? [ctx.name] : undefined, excludeThread: ctx.threadId, fromThread: ctx.code ? codeMemoryThread(view, ctx.threadId) : ctx.threadId, ...(ctx.code ? { only: { project: true, about: "working" } } : {}), ...(vector ? { vector } : {}) }, ctx.hide) : [];
+  countRecalls(view, hits.map((h) => h.id), "recalled", ctx);
   const item = own.itemForThread(ctx.threadId);
   return {
     notice: own.getThread(ctx.threadId)?.unlogged ? UNLOGGED_NOTICE : undefined,

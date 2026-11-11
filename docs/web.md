@@ -952,9 +952,9 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   and 2; controls reuse §3's secondary button and menu, §4's short labels
   and tooltips, and §6's confirmation dialog. No drawer or extra captions.
 - **Administration**, for administrators: Status (`StatusSection` in
-  `Panel.tsx`, three cards: Status, Model hosts, Model calls; "Updated" time
+  `Panel.tsx`, four cards: Status, Model hosts, Model calls, Memory use; "Updated" time
   and a refresh icon button in the Status card's head, and the page re-reads
-  Status, the sleep runs, memory counts and the Models page every minute
+  Status, the sleep runs, memory counts, Memory use and the Models page every minute
   while visible and on focus; stale Debian systemd units with the
   action to run `install.sh`, the server's network self-test, sleep time,
   last sleep per shown pool from `GET …/sleep`, memory pages and notes from
@@ -977,7 +977,13 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   Other. Changing shown pools drops the old aggregate and loads Status again.
   The scope line names the displayed pools and the 31-day retention. No
   measured speed reads — with a "Not measured" tooltip; empty reads No
-  retained calls in the last 24 hours (or 7 or 30 days).
+  retained calls in the last 24 hours (or 7 or 30 days). Last, **Memory use**
+  (`MemoryUse.tsx`, from `GET …/admin/memory-use`, its own **7 d | 30 d**
+  window, 30 by default): a facts line, a legend of Recalled, Searched and
+  Opened, two charts with `ModelCallFacts.tsx`'s `Chart` (uses per day on the
+  user's clock, `perDaySpec`; the ten most used, `topSpec`), then **Most
+  used | Most cited** rows, each memory a link into the memory browser
+  (`recalledHref`).
   Tooltips explain scope, pace and fallback markers; no errors or retries are
   inferred), **Her name** (Name, 1–40 characters
   on one line, one Save disabled when invalid or unchanged; `PUT …/admin/name`,

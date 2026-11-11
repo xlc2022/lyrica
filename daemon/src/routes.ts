@@ -28,6 +28,7 @@ import { forgetThreadFiles } from "./sweep.ts";
 import { applyRemoval, entriesFrom, removalPlan, uploadsIn, type RemovalContext } from "./removal.ts";
 import { historyQuery } from "./history.ts";
 import { factsWindow, modelFacts } from "./model-facts.ts";
+import { memoryUse } from "./memory-use.ts";
 import { redactUrl, unredactUrl } from "./redact.ts";
 import { isPdf, VIEW_LIMIT, viewHeaders, viewKind, withConsole } from "./file-view.ts";
 import { relinkFiles, type Relinked } from "./relink.ts";
@@ -2133,6 +2134,10 @@ export function apiRoutes(d: Lyricad): Route[] {
       const calls = s().models.callHistory(user.id, { limit: -1, offset: 0, q: "", pools }).entries;
       const now = Date.now();
       return { ...adminStatus(d), modelFacts: modelFacts(calls, pools, now, s().models.statsSince(user.id), factsWindow(now, r.query.get("from"), r.query.get("to"))) };
+    }),
+    route("GET", `${u}/admin/memory-use`, (r): Api.AdminMemoryUse => {
+      const user = d.adminFor(r), days = r.query.get("days") === "7" ? 7 : 30;
+      return owner(d, user, (o) => memoryUse(o, shownPools(display(d, user.id)), days));
     }),
     route("POST", `${u}/admin/status/reset`, (r): Api.AdminStatusReset => {
       const user = d.adminFor(r);
