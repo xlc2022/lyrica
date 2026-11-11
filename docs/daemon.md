@@ -828,11 +828,12 @@ documented in `daemon/src/api.ts`, "The Files panel".
   `GET …/files/videos` lists every clip (`.mp4`, `.webm`) the same way.
 - `GET …/files/content?path=<path>[&download=1]` streams the file with its
   type: images by their bytes, text by extension, and HTML, SVG and scripts
-  as `text/plain`. Every answer carries `Content-Security-Policy: default-src
-  'none'; sandbox` and `nosniff`, so a served file never runs as a page.
-  `download` makes it an attachment. It answers one byte range as `…/file`
-  does (206 with `Content-Range`, 416 past the end), so a clip opened from
-  Files seeks too.
+  as `text/plain`; a name it doesn't know (a C++ header, a Makefile) is
+  `text/plain` too when its first 512 bytes are UTF-8 with no NUL. Every
+  answer carries `Content-Security-Policy: default-src 'none'; sandbox` and
+  `nosniff`, so a served file never runs as a page. `download` makes it an
+  attachment. It answers one byte range as `…/file` does (206 with
+  `Content-Range`, 416 past the end), so a clip opened from Files seeks too.
 - `GET …/files/view?path=<path>` serves an HTML, SVG or PDF file as a page
   for the web's file viewer (`file-view.ts`), at most 16 MB (413 beyond;
   415 for any other kind, or a `.pdf` whose bytes aren't a PDF's). HTML is

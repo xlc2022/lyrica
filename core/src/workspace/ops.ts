@@ -100,6 +100,13 @@ export function sniffImage(head: Buffer): string | null {
   return null;
 }
 
+/** Text by its first bytes, whatever its name: no NUL and valid UTF-8, with a character cut off at the end allowed. */
+export function looksLikeText(head: Buffer): boolean {
+  if (head.includes(0)) return false;
+  // Streaming, the decoder holds back a character the sample cuts off at its end instead of failing on it.
+  try { new TextDecoder("utf-8", { fatal: true }).decode(head, { stream: true }); return true; } catch { return false; }
+}
+
 const HEAD = 20 * 1024;
 const TAIL = 20 * 1024;
 const LINES = 800;

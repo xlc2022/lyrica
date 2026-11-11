@@ -1647,7 +1647,8 @@ export interface FileSearch { entries: FileEntry[]; more: boolean }
 export interface ImageEntry extends FileEntry { source: "uploaded" | "made" }
 /**
  * GET …/files/content?path=<path>[&download=1] → the file's bytes, with its type
- * (images by their bytes; HTML, SVG and scripts as plain text, never run) and
+ * (images by their bytes; HTML, SVG and scripts as plain text, never run; an unknown name as plain text when its first
+ * bytes are UTF-8 text) and
  * `Content-Disposition` inline, or attachment with `download`.
  * GET …/files/view?path=<path> → an HTML, SVG or PDF file as a page for the web's viewer (daemon/src/file-view.ts), at
  * most 16 MB (413 beyond, 415 for another kind or a .pdf that isn't one). HTML gets a console bridge script first and
