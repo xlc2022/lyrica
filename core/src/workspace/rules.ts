@@ -20,7 +20,11 @@ const opaque = (words: string[]) => {
   const candidates = wrapped ? words : words.slice(0, 1);
   // A glob only hides the program where the program is: the wrapper's own words and the program after them, not
   // its arguments (a quoted URL's `?`, a grep pattern's `*`).
-  const named = wrapped ? words.slice(0, words.length - unwrapped(words).length + 1) : words.slice(0, 1);
+  // A word after a flag may be that flag's value rather than the program, so the next word counts too, and so on.
+  let at = wrapped ? words.length - unwrapped(words).length : 0;
+  const flag = (w: string | undefined) => !!w && w.startsWith("-") && !w.includes("=");
+  while (wrapped && flag(words[at - 1]) && at + 1 < words.length) { at++; while (flag(words[at]) && at + 1 < words.length) at++; }
+  const named = words.slice(0, at + 1);
   return named.some(w => /[*?[]/.test(w)) || candidates.some(w => /[$`]/.test(w) || /^(?:eval|source|\.)$/.test(w) || (SHELL.test(posix.basename(w)) && !words.includes("-c")));
 };
 

@@ -1848,7 +1848,8 @@ words allowed. The longest prefix wins; ties prefer Forbid, then Ask, then
 Allow. Across parts Forbid wins, then Ask, and Allow needs every part allowed.
 Opaque programs (expansions not read as above, eval, source, dot, or a shell
 without `-c`; for a wrapper, any of its words, but a glob only in the
-wrapper's own words and its program, not in the program's arguments, so
+wrapper's own words and its program (past any word that may be a flag's
+value), not in the program's arguments, so
 `timeout 60 curl "…?h=x"` isn't opaque) cannot be allowed; with any forbid
 rule they ask in every mode.
 

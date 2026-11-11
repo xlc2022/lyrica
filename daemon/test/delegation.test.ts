@@ -227,9 +227,9 @@ describe("talking with subagents in lyricad", () => {
       const child = ada.events(`${childPath}/events`);
       await child.until(is("hello"));
       expect((child.events[0]!.event as { permissions: PermissionRequest[] }).permissions.map((p) => p.requestId)).toEqual([a.requestId]);
-    // One notification for it, opening the parent.
-    const asks = (await ada.get<NotificationPage>(`/api/u/${rt.ada.id}/notifications?type=permission`)).body.items;
-    expect(asks.map((n) => [n.id, n.thread?.id])).toEqual([[`permission:${a.requestId}`, a.subagent!.parentThreadId]]);
+      // One notification for it, opening the parent.
+      const asks = (await ada.get<NotificationPage>(`/api/u/${rt.ada.id}/notifications?type=permission`)).body.items;
+      expect(asks.map((n) => [n.id, n.thread?.id])).toEqual([[`permission:${a.requestId}`, a.subagent!.parentThreadId]]);
       // Allowed in this thread: the second call runs without asking, and the parent's thread didn't gain it.
       expect((await ada.post(`${path}/permissions/${a.requestId}`, { allow: true, allowInThread: true })).status).toBe(200);
       await stream.until((e) => e.type === "notice" && e.status === "finished");
