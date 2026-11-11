@@ -371,7 +371,9 @@ function StatusSection({ ctx }: { ctx: ShellContext }) {
         <dt>Sleep time</dt><dd className="num">{sleep.data?.time ?? "…"}</dd>
         <dt>Last sleep</dt><dd>{!runs.data ? "…" : latest.length ? latest.map((r) => <div key={r.pool} className="sleep-run"><PoolWord pool={r.pool} /> · <span className="num">{shortTime(r.startedAt)}</span>
           {r.finishedAt && <> · <span className="num">{duration(Date.parse(r.finishedAt) - Date.parse(r.startedAt))}</span></>} · {r.status === "skipped" && r.skipReason ? SKIPPED[r.skipReason] : RUN_WORD[r.status]}</div>) : "Not yet"}</dd>
-        <dt>Memory</dt><dd>{memory.data ? <><span className="num">{memory.data.pages.toLocaleString()}</span> {memory.data.pages === 1 ? "page" : "pages"} · <span className="num">{memory.data.notes.toLocaleString()}</span> {memory.data.notes === 1 ? "note" : "notes"}</> : "…"}</dd>
+        <dt>Memory</dt><dd>{memory.data ? <><span className="num">{memory.data.pages.toLocaleString()}</span> {memory.data.pages === 1 ? "page" : "pages"} · <span className="num">{memory.data.notes.toLocaleString()}</span> {memory.data.notes === 1 ? "note" : "notes"}
+          {(memory.data.embedded ?? []).map((e) => <div key={e.pool} className="sleep-run" title={e.model ? `Recall finds memories by meaning as well as by words. ${e.model} has embedded ${e.done.toLocaleString()} of ${e.total.toLocaleString()} memories and messages; the rest turn up by words alone until it catches up.` : "No Embeddings model this pool can use is set in Models → Tasks (Private needs a local one), so recall finds memories by words alone."}>
+            <PoolWord pool={e.pool} /> · {e.model ? <><span className="num">{e.done.toLocaleString()}</span> of <span className="num">{e.total.toLocaleString()}</span> embedded · {shortModel(e.model)}</> : "Keywords only"}</div>)}</> : "…"}</dd>
         <dt>Start unlocked</dt><dd>{s ? (s.savedPassphrase ? "Passphrase saved" : "Passphrase not saved") : "…"}</dd>
       </dl>
     </section>
@@ -392,6 +394,8 @@ function StatusSection({ ctx }: { ctx: ShellContext }) {
   </>;
 }
 
+/** A model's file name without its extension, as the Model calls legend names it. */
+const shortModel = (id: string) => id.replace(/\.gguf$/i, "");
 const PoolWord = ({ pool }: { pool: Pool }) => <>{pool === "general" ? "General" : "Private"}</>;
 
 function UnlockedSection({ ctx }: { ctx: ShellContext }) {

@@ -1965,13 +1965,18 @@ export function apiRoutes(d: Lyricad): Route[] {
       const show = display(d, user.id);
       return owner(d, user, (o): Api.MemoryOverview => {
         let pages = 0, notes = 0, slept: string | undefined;
+        const embedded: Api.MemoryOverview["embedded"] = [];
         for (const pool of shownPools(show)) {
           const c = o[pool].counts();
           pages += c.pages; notes += c.notes;
           const last = o[pool].listSleepRuns(10).find((run) => run.finishedAt && run.status !== "skipped")?.finishedAt;
           if (last && (!slept || last > slept)) slept = last;
+          // Counts only, never text; the model as the embedder resolves it (Private: a local one).
+          const model = d.services!.models.embeddingModel({ userId: user.id, pool, localOnly: pool === "private" })?.model;
+          const v = o[pool].vectorCount(model ?? "");
+          embedded.push({ pool, ...(model ? { model } : {}), done: model ? v.done : 0, total: v.done + v.left });
         }
-        return { pages, notes, ...(slept ? { slept } : {}) };
+        return { pages, notes, ...(slept ? { slept } : {}), embedded };
       });
     }),
     route("GET", `${u}/memory/about`, (r) => {
