@@ -11,6 +11,8 @@ import { CopyIconButton } from "./CopyButton.tsx";
 
 export const WORKDIR = "/workspace";
 export const SHARED = "/shared";
+/** Where each of a family's thread folders is mounted for the others: `${FAMILY_ROOT}/<id>`. */
+export const FAMILY_ROOT = "/thread-workspaces";
 /** A path as the panel shows it: the thread folder by name, its files without the prefix, a grant's as they are. */
 export const shown = (p: string) => (p === WORKDIR ? "Thread folder" : p === SHARED ? "Shared folder" : p.startsWith(`${WORKDIR}/`) ? p.slice(WORKDIR.length + 1) : p);
 

@@ -843,6 +843,51 @@ test("Project settings → Files and images: the project folder one folder at a 
   await noHorizontalScroll(page);
 });
 
+test("a project chat's Files panel names its folder the Project folder and lists each thread's folder under Threads, read-only, by title", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
+  const side = page.locator(".side");
+  await side.getByRole("button", { name: "New project" }).click();
+  await side.getByRole("group", { name: "New project in" }).getByRole("button", { name: "General" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "New project" })).toBeVisible();
+  const chatId = decodeURIComponent(location_of(page).split("/t/general/")[1]!.split("/")[0]!);
+  await send(page, "suggest: Alpha");
+  await page.getByRole("group", { name: "Suggested threads" }).getByRole("button", { name: "Start", exact: true }).click();
+  const link = page.locator(".tcard").getByRole("link", { name: "Alpha", exact: true });
+  await expect(link).toBeVisible();
+  const alpha = threadIdOf((await link.getAttribute("href"))!);
+  // A thread with a folder of its own is a code thread, which this lyricad doesn't make: its folder comes from a stand-in listing.
+  const member = `/thread-workspaces/${encodeURIComponent(alpha)}`;
+  const entry = (name: string, kind: "file" | "folder") => ({ name, path: `${member}/${name}`, kind, size: 12, modified: "2026-11-11T05:00:00.000Z" });
+  // The listings are stand-ins throughout, so the test doesn't need a sandbox for the chat's own folder either.
+  const roots = [{ path: "/workspace", writable: true, kind: "thread" }, { path: member, writable: false, kind: "member", threadId: alpha }];
+  await page.route(`**/api/u/*/threads/general/${encodeURIComponent(chatId)}/files?*`, (route) => {
+    const dir = new URL(route.request().url()).searchParams.get("dir") ?? "/workspace";
+    const entries = dir === member ? [entry("report.md", "file")] : dir === "/workspace" ? [{ name: "shared", path: "/workspace/shared", kind: "folder", size: 0, modified: "2026-11-11T05:00:00.000Z" }] : [];
+    return route.fulfill({ json: { roots, dir, entries, more: false } });
+  });
+  await page.route(`**/api/u/*/threads/general/${encodeURIComponent(chatId)}/files/content?*`, (route) => route.fulfill({ body: "# Findings\n", contentType: "text/markdown; charset=utf-8" }));
+  if (phone(page)) await page.goto(`/#/u/${encodeURIComponent(userId)}/t/general/${encodeURIComponent(chatId)}/files`);
+  else await page.getByRole("link", { name: "Files and images" }).click();
+  const panel = phone(page) ? page.locator(".files-page") : page.getByRole("complementary");
+  await expect(panel.getByRole("button", { name: "Project folder", exact: true })).toBeVisible();
+  const threads = panel.getByRole("button", { name: "Threads", exact: true });
+  await expect(threads).toHaveAttribute("aria-expanded", "true");
+  const folder = panel.getByRole("button", { name: "Alpha", exact: true });
+  await folder.click();
+  await expect(panel.getByRole("button", { name: "report.md", exact: true })).toBeVisible();
+  // Read-only: no Rename or Delete on its rows.
+  await expect(panel.getByRole("button", { name: "Rename report.md" })).toHaveCount(0);
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/project-chat-files-${page.viewportSize()!.width}.png` });
+  await panel.getByRole("button", { name: "report.md", exact: true }).click();
+  const viewer = page.getByRole("dialog", { name: "report.md" });
+  await expect(viewer.locator(".viewer-head .fname")).toHaveText("Alpha/report.md");
+  await viewer.getByRole("button", { name: "Close", exact: true }).click();
+  // Folding Threads hides the thread folders.
+  await threads.click();
+  await expect(folder).toHaveCount(0);
+});
+
 test("the split view: a thread from its card opens in the panel, links inside it grow the breadcrumb, Open as a page, Open in panel and Close panel; Open beside, View thread and the Threads list open beside at 1180 px up, and below it they navigate", async ({ page, baseURL }) => {
   test.skip(phone(page), "the panel starts at 1180 px");
   // While window.holdHash is set, the next address change reaches the app that many ms late, so the race below can be forced.

@@ -774,6 +774,29 @@ describe.skipIf(!homeRunnable)("a project chat's uploads", () => {
     }
   });
 
+  it("and its Files panel has each of its threads' folders as a read-only root, the thread's own panel none", async () => {
+    const keyring = await freshKeyring();
+    const users = new Users(keyring);
+    const ada = await users.createUser("ada", "pw", profile("Ada"), { admin: true });
+    await users.authenticate("ada", "pw");
+    const workspace = new Workspace(keyring, users, { excludePorts: [], onlyIn: () => () => true });
+    const chat = { userId: ada.id, pool: "general" as const, threadId: "p1", coordinates: true };
+    try {
+      await workspace.mountHome(ada.id);
+      const settings = workspace.settings(ada.id);
+      for (const id of ["c1", "c2"]) { settings.inheritSettings("p1", id, "general"); settings.setThreadWork(id, { worktrees: [] }); }
+      await workspace.targetFor({ userId: ada.id, pool: "general", threadId: "c1" }).ops().write.writeFile("/workspace/notes.md", Buffer.from("# Notes"));
+      workspace.targetFor({ userId: ada.id, pool: "general", threadId: "c2" });
+      const roots = workspace.files(chat).roots().map((r) => `${r.path} ${r.kind} ${r.writable ? "rw" : "ro"} ${r.threadId ?? ""}`.trim());
+      expect(roots.sort()).toEqual(["/thread-workspaces/c1 member ro c1", "/thread-workspaces/c2 member ro c2", "/workspace thread rw"]);
+      expect((await workspace.files(chat).search("/thread-workspaces/c1", "notes")).entries.map((e) => e.path)).toEqual(["/thread-workspaces/c1/notes.md"]);
+      // A thread's own panel keeps its folder and /shared: the others' folders are reached by a link, not listed.
+      expect(workspace.files({ userId: ada.id, pool: "general", threadId: "c1" }).roots().map((r) => r.kind)).toEqual(["thread", "shared"]);
+    } finally {
+      await workspace.unmountHome(ada.id);
+    }
+  });
+
   it("and its generated images too, which still show in the chat", async () => {
     const keyring = await freshKeyring();
     const users = new Users(keyring);

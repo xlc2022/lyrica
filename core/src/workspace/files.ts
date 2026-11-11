@@ -21,8 +21,11 @@ export interface FileEntry {
   modified: string;
 }
 
-/** A top of the panel's tree: the thread's folder, then each granted folder. */
-export interface FileRoot { path: string; writable: boolean; kind: "thread" | "shared" | "grant" }
+/**
+ * A top of the panel's tree: the thread's folder, the family's /shared, each granted folder, and in a project chat
+ * each of its threads' folders (`member`, read-only, at /thread-workspaces/<id>, with that thread's id).
+ */
+export interface FileRoot { path: string; writable: boolean; kind: "thread" | "shared" | "grant" | "member"; threadId?: string }
 
 export interface FileListing { entries: FileEntry[]; /** The listing stopped at the cap. */ more: boolean }
 
@@ -55,13 +58,17 @@ export class ThreadFiles {
   /**
    * `note` records what the panel added or removed, for her next turn; `origins` hears of each upload, rename and
    * delete, so the record of which thread wrote a file follows it. `workdir` is the thread's folder (a test's
-   * stand-in may put it elsewhere). `shared`: the box mounts the family's /shared, a root of its own.
+   * stand-in may put it elsewhere). `shared`: the box mounts the family's /shared, a root of its own. `members`: the
+   * family members' folders shown as roots of their own (a project chat's threads), each where the box mounts it.
    */
   constructor(private readonly box: Sandbox, private readonly grants: Grant[], private readonly note: (kind: "added" | "removed" | "renamed", names: string[]) => void = () => {},
-    private readonly workdir = WORKDIR, private readonly origins: OriginEvents = {}, private readonly shared = false) {}
+    private readonly workdir = WORKDIR, private readonly origins: OriginEvents = {}, private readonly shared = false,
+    private readonly members: { threadId: string; dest: string }[] = []) {}
 
   roots(): FileRoot[] {
-    return [{ path: WORKDIR, writable: true, kind: "thread" }, ...this.shared ? [{ path: SHARED, writable: true, kind: "shared" as const }] : [], ...this.grants.map((g) => ({ path: g.path, writable: g.writable, kind: "grant" as const }))];
+    return [{ path: WORKDIR, writable: true, kind: "thread" }, ...this.shared ? [{ path: SHARED, writable: true, kind: "shared" as const }] : [],
+      ...this.grants.map((g) => ({ path: g.path, writable: g.writable, kind: "grant" as const })),
+      ...this.members.map((m) => ({ path: m.dest, writable: false, kind: "member" as const, threadId: m.threadId }))];
   }
 
   private allow(path: string, write: boolean): string {

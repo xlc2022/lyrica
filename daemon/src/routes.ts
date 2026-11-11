@@ -49,7 +49,8 @@ export function apiRoutes(d: Lyricad): Route[] {
   const files = (r: Request) => {
     const user = d.userFor(r);
     const thread = owner(d, user, (o) => threadOf(o, r));
-    return s().workspace.files({ userId: user.id, pool: poolOf(r), threadId: thread.id });
+    // A project chat's panel also has a read-only root for each of its threads' folders.
+    return s().workspace.files({ userId: user.id, pool: poolOf(r), threadId: thread.id, ...(thread.project ? { coordinates: true } : {}) });
   };
   /**
    * Each entry with the thread that last wrote it (`madeBy`), a subagent's work shown as its parent's; a whole
