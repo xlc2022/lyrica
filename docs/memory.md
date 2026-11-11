@@ -350,7 +350,7 @@ secrets, and does not rewrite memory already stored. A secret-named label follow
   in `revisions`, with an author of `lyrica`, `sleep` or `user:<id>`.
 
 Model-facing memory tools: `remember`, `recall`, `read_memory`. That's three of the
-30-tool budget. `read_memory` also opens a skill by `s:<name>` (DESIGN.md,
+50-tool budget. `read_memory` also opens a skill by `s:<name>` (DESIGN.md,
 "Skills"), and `save_skill` saves one; skills live in their pool's database, like
 notes.
 

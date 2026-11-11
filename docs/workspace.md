@@ -1080,7 +1080,7 @@ values are always visible next to the model badge:
 | **Repositories** | The repositories the thread clones, each with the Git account it uses (Git accounts and repositories). |
 | **Code mode** | Focuses the persona, memory and tools on coding and selects the Coding task; editable under Behaviour, and for new project threads under General → New threads. |
 | **Mode** | Ask, Accept edits, Plan or Auto (see Approval). |
-| **Web search, Images** | Switches for `web_search` and `web_fetch`, and for `image`. On unless turned off. |
+| **Web search, Images** | Switches for `web_search`, `web_fetch` and `browse`, and for `image`. On unless turned off. |
 | **Claude Code** | Whether her sandbox runs can use Claude Code on the user's Claude plan (Claude Code). Off unless turned on; shown only in a general thread that isn't local-only, once a token is saved and the program is installed. |
 | **Do not log thread in memory** | See [memory.md](memory.md#threads-that-arent-logged). |
 
@@ -1196,6 +1196,31 @@ The **Web search** switch gives her two tools (`extension/src/web.ts`,
   internet off and in a local-only thread; a copy on another machine is
   reached by lyricad like SearXNG, outside the thread's switches, and sees
   the query and the article's title.
+- `browse` uses a page instead of only reading it: a click, a field, a
+  login, several steps. It drives one Chromium per thread
+  (`core/src/browse.cjs` on the sandbox's node, over the DevTools pipe),
+  started at the first call in a sandbox of its own: the thread's
+  internet switch, local services switch and allowed hosts, the
+  browser's profile at `/run/lyrica/browser`, and nothing else, so a page
+  has no folder, file or credential of the thread's to reach. The profile
+  is `browser/<thread>` in the user's encrypted home, which is how a
+  login outlasts the browser; the sweep removes it with the thread. The
+  browser holds one of the thread's four background slots (`jobs` lists
+  it as the browse tool's browser, and `jobs stop` ends it), closes after
+  10 minutes unused, and is killed if one action takes over 90 seconds.
+  Every action answers with the page as text, each link, button and
+  field under a number she acts on. **Sending a form asks first, in every
+  mode**: the driver reads from the page whether a click or Enter would
+  send one, the `tool_call` gate asks with the site and the fields (a
+  password as dots), and the driver sends only with that yes for that
+  call. A form that only searches (GET, to a stated address or marked as
+  a search, with no password, file or long text field) doesn't ask. A
+  page load that posts without a yes is answered "no content" inside the
+  browser, so nothing reaches the site, and the same click asks from
+  then on. A plain click can still make a page's script send something,
+  as a command in the sandbox can. Downloads are refused, frames aren't
+  read, and a link that opens a new tab opens in the one tab. The main
+  conversation has it; subagents and project chats don't.
 - `web_fetch` otherwise runs `curl` in the thread's sandbox, the URL one argument,
   so the internet switch and allowed hosts above decide what it can reach:
   a private thread with internet off reads only its allowed hosts. It
@@ -1347,7 +1372,7 @@ come from the user's Git accounts (DESIGN.md, "Updates and self-editing").
   What she sees has them hidden too: `bash` output, `read` and `web_fetch`
   pages show "[credential hidden]" for a run's tokens and placeholders
   (`Sandbox.secrets`, `secretMasker`; `edit` reads the file as it is), and
-  a `web_search`, `web_fetch` or MCP call whose input holds one is
+  a `web_search`, `web_fetch`, `browse` or MCP call whose input holds one is
   refused.
 - **Commits** carry the first repository's account as author and
   committer (`GIT_AUTHOR_*` and `GIT_COMMITTER_*` in the run's
@@ -1812,9 +1837,10 @@ freely by default, following the principle that the harness should trust her
 judgment and make review easy. Each thread has a **mode**:
 - **Ask** (`ask`): asks before `bash`, `write` and `edit`, since a command
   can change files too.
-- **Accept edits** (`acceptEdits`): asks before `bash`.
+- **Accept edits** (`acceptEdits`): asks before `bash`. Both also ask
+  before `browse` clicks, types or selects.
 - **Plan** (`plan`): only `read`, `recall`, `read_memory`, `web_search`, read-only MCP tools and `tool_search`,
-  `web_fetch`, `proxmox` for reading, `delegate` with read-only roles, a subagent's `ask_parent`,
+  `web_fetch`, `proxmox` and `browse` for reading (`browse` opens, reads, scrolls, goes back and takes screenshots), `delegate` with read-only roles, a subagent's `ask_parent`,
   `threads` (child threads and project actions, wake-ups, routines,
   checklists, and compacting her context), `react` and
   `propose_plan` are active. A child thread of a Plan-mode thread is in

@@ -5,7 +5,7 @@ import {
 import { readFileSync } from "node:fs";
 import { posix } from "node:path";
 import {
-  decide, type CommandRule, withoutNoMachine, holdsSecret, librariesLine, JOB_LIMITS, jobLine, type JobInfo, malformedCommand, mcpNamespace, onFloor, sandboxTools, PROXMOX_READS, PROXMOX_SUSPECT, SANDBOX_ALLOW, stricterMode, suspectCommand, suspectKey, SHARED, FAMILY_ROOT, WORKDIR, writtenFiles, type ExecutionTarget, type ProxmoxAction, type Network, type NewChange, type PermissionMode, type ThreadGitRepository, type ThreadMachine, type ThreadRepository, type ThreadWorkspace, type ToolOps,
+  BROWSE_READS, browseFormText, browseFormWarning, type Browser, type BrowseCall, decide, type CommandRule, withoutNoMachine, holdsSecret, librariesLine, JOB_LIMITS, jobLine, type JobInfo, malformedCommand, mcpNamespace, onFloor, sandboxTools, PROXMOX_READS, PROXMOX_SUSPECT, SANDBOX_ALLOW, stricterMode, suspectCommand, suspectKey, SHARED, FAMILY_ROOT, WORKDIR, writtenFiles, type ExecutionTarget, type ProxmoxAction, type Network, type NewChange, type PermissionMode, type ThreadGitRepository, type ThreadMachine, type ThreadRepository, type ThreadWorkspace, type ToolOps,
 } from "@lyrica/core";
 import { Type } from "typebox";
 import { setToolsOff } from "./gate.ts";
@@ -48,6 +48,8 @@ export interface ThreadTools {
    */
   /** true runs it; false is the person's no; "timeout" is nobody answering in time, which her result says. */
   approve?(request: ApprovalRequest): Promise<Approval>;
+  /** The thread's browser, for the gate on `browse`: what a call would send, and the user's yes to it. */
+  browser?(): Pick<Browser, "look" | "approve">;
   /** Switches the thread's mode when a plan is approved. Without it (a subagent), there is no propose_plan. */
   setMode?(mode: PermissionMode): void;
   /**
@@ -154,16 +156,16 @@ const ASKS: Record<PermissionMode, string[]> = {
  * delegation, her child threads (where compacting her own context is too),
  * propose_plan, and tool_search; of MCP tools, those their server marks read-only.
  */
-export const PLAN_TOOLS: ReadonlySet<string> = new Set(["read", "recall", "read_memory", "web_search", "web_fetch", "delegate", "ask_parent", "threads", "react", "propose_plan", "proxmox", "tool_search"]);
+export const PLAN_TOOLS: ReadonlySet<string> = new Set(["read", "recall", "read_memory", "web_search", "web_fetch", "browse", "delegate", "ask_parent", "threads", "react", "propose_plan", "proxmox", "tool_search"]);
 
 /** Tools whose input leaves Lyrica for someone else: SearXNG's engines, a web page's server. */
-const LEAVES: ReadonlySet<string> = new Set(["web_search", "web_fetch", "image"]);
+const LEAVES: ReadonlySet<string> = new Set(["web_search", "web_fetch", "browse", "image"]);
 
 /** Tools that change things outside but ask on their own card, with the change in words, so the generic approval doesn't ask too. */
-const OWN_CARD: ReadonlySet<string> = new Set(["models"]);
+const OWN_CARD: ReadonlySet<string> = new Set(["models", "browse"]);
 
 /** The tools each switch turns off. */
-export const SWITCHED_TOOLS = { webSearch: ["web_search", "web_fetch"], images: ["image"] } as const;
+export const SWITCHED_TOOLS = { webSearch: ["web_search", "web_fetch", "browse"], images: ["image"] } as const;
 
 /** The tools the thread's mode and switches have off, of those registered. */
 export function toolsOff(s: Pick<ThreadWorkspace, "mode" | "webSearch" | "images">, registered: string[]): string[] {
@@ -415,6 +417,25 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
         const answer = tools.approve ? await tools.approve(request) : await approve(ctx, request);
         return answer === true ? undefined : refusal(answer);
       }
+      if (event.toolName === "browse") {
+        const call = input as unknown as BrowseCall;
+        const mode = tools.settings().mode;
+        const acts = !BROWSE_READS.has(call.action);
+        if (mode === "plan" && acts) return { block: true, reason: "Plan mode only reads: browse open, read, scroll, back and screenshot." };
+        if (!acts) return undefined;
+        // Sending a form can't be undone from here: it asks in every mode, with what would be sent, and the browser
+        // sends none without this yes for this call. A look that fails asks nothing: the action fails the same way.
+        const browser = tools.browser?.();
+        const seen = await browser?.look(call).catch(() => undefined);
+        if (!seen?.form && !ASKS[mode].includes("bash")) return undefined;
+        const request: ApprovalRequest = seen?.form
+          ? { toolCallId: event.toolCallId, tool: "browse", input: { browse: browseFormText(seen.form) }, warning: browseFormWarning(seen.form) }
+          : { toolCallId: event.toolCallId, tool: "browse", input: { browse: seen?.words ?? call.action } };
+        const answer = tools.approve ? await tools.approve(request) : await approve(ctx, request);
+        if (answer !== true) return refusal(answer);
+        if (seen?.form) browser!.approve(event.toolCallId);
+        return undefined;
+      }
       const pve = event.toolName === "proxmox";
       const page = event.toolName === "page";
       const place = event.toolName in TOOLS ? (input.machine as string | undefined) || "sandbox" : pve ? String(input.machine) : page ? "sandbox" : undefined;
@@ -523,7 +544,7 @@ async function exists(target: ExecutionTarget, path: string): Promise<boolean> {
 async function approve(ctx: ExtensionContext, r: ApprovalRequest): Promise<boolean> {
   if (!ctx.hasUI) return false;
   if (r.server) return ctx.ui.confirm(`Allow ${r.server}'s ${r.serverTool}?`, JSON.stringify(r.input, null, 2));
-  const what = r.tool === "bash" ? String(r.input.command) : r.tool === "proxmox" ? `proxmox ${suspectKey(r.tool, r.input)}` : `${r.tool} ${String(r.input.path)}`;
+  const what = r.tool === "browse" ? String(r.input.browse) : r.tool === "bash" ? String(r.input.command) : r.tool === "proxmox" ? `proxmox ${suspectKey(r.tool, r.input)}` : `${r.tool} ${String(r.input.path)}`;
   return ctx.ui.confirm(r.machine ? `Allow this on ${r.machine}?` : "Allow this?", [r.warning, what].filter(Boolean).join("\n"));
 }
 

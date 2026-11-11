@@ -2184,7 +2184,7 @@ Details in [docs/sleep.md](docs/sleep.md).
     `tool_call` hook and by which tools are active, never by instructions.
 - **Switches in the message box,** as in Open WebUI: a "+" beside the
   message box turns tools on or off for this thread, without opening its
-  settings: **Web search** (`web_search` and `web_fetch`), **Internet for
+  settings: **Web search** (`web_search`, `web_fetch` and `browse`), **Internet for
   commands** (the sandbox's internet switch) and **Images** (the `image`
   tool). Search goes to one SearXNG an administrator sets for the server
   (Administration → Web search; the NixOS module runs one on 127.0.0.1 by
@@ -2204,7 +2204,25 @@ Details in [docs/sleep.md](docs/sleep.md).
   local-only thread, and when every search engine is resting; a copy on
   another machine is reached by lyricad like SearXNG, outside the thread's
   switches, and sees the query and the article's title (decided 2026-10-31). Both tools take `online` to skip the copy when the user asks
-  for the live site (2026-11-01). A switch that's off removes the tools from the session, so she
+  for the live site (2026-11-01).
+  - **She can use a page, not only read it** (2026-11-10,
+    [briefs/browse.md](docs/briefs/browse.md)): `browse` drives a
+    Chromium of the thread's own, in a sandbox with the thread's network
+    switches and allowed hosts and nothing else of the thread's (no
+    folders, no credentials). Each action answers with the page as text,
+    every link, button and field under a number she acts on, so a model
+    without vision can use it; a screenshot is an image like any other.
+    Its profile is a folder in the user's encrypted home, so a login
+    lasts. Sending a form asks first in every mode, with the site and
+    what would be sent (a password as dots): the browser's driver decides
+    from the page what sends a form and acts only with the gate's yes for
+    that call, and a page load that posts without one is stopped in the
+    browser. A form that only searches doesn't ask. A plain click can
+    still make a page's own script send something, as a command in the
+    sandbox can. Downloads are refused, and frames aren't read. The main
+    conversation has it; subagents and project chats don't.
+
+  A switch that's off removes the tools from the session, so she
   can't use them; a subagent or child thread can't turn back on what its
   parent turned off, even later. Local-only and the pool are not switches here: they
   stay in the thread's settings, where changing them is deliberate.
@@ -2661,7 +2679,8 @@ new evidence.
 - **Tool budget raised from 6 to 8, then to 30 (2026-10-09).** First to make
   room for web research, then because Lyrica works like a coding agent (files,
   commands, SSH). The budget still exists so that every tool has to justify
-  itself.
+  itself. To 50 (the owner, 2026-11-10), when `browse` became the 31st
+  counting the tools only sleep has.
 - **Remote machines: "much later" → now (2026-10-11).** Working on the owner's
   other computers was deferred until she had proven reliable. It comes
   forward as an extension of the SSH targets that already exist, with each

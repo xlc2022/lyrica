@@ -32,8 +32,8 @@ export function sweepUser(s: Services, userId: string, now = new Date()): SweepC
   const allowed = allowedOf(s, userId);
   const forgetRun = (runDir: string) => forgetRunWorktrees(runDir, allowed);
   const live = new Set((["general", "private"] as const).flatMap((pool) => s.delegation.store.liveRuns(userId, pool)));
-  // Claude Code's folders (Workspace.claudeDir) and a project chat's lasting /tmp (Workspace.tmpDir) go with their thread too.
-  for (const kept of ["claude", "tmp"]) {
+  // Claude Code's folders (Workspace.claudeDir), a project chat's lasting /tmp (Workspace.tmpDir) and a browser's profile (Workspace.browserDir) go with their thread too.
+  for (const kept of ["claude", "tmp", "browser"]) {
     const keptDir = join(home, kept);
     for (const name of existsSync(keptDir) ? readdirSync(keptDir) : []) {
       let id: string;

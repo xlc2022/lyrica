@@ -7,7 +7,7 @@ import { networkInterfaces, tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { McpClient } from "@earendil-works/pi-mcp";
-import { makeWorktrees, worktreeGrants, removeWorktrees, FilesRefused, mcpStdioTransport, pythonLibraries, Sandbox, SandboxDenied, ThreadFiles, Users, Workspace, type Worktree, type Grant, type Network } from "../src/index.ts";
+import { Browser, browseArgv, makeWorktrees, worktreeGrants, removeWorktrees, FilesRefused, mcpStdioTransport, pythonLibraries, Sandbox, SandboxDenied, ThreadFiles, Users, Workspace, type Worktree, type Grant, type Network } from "../src/index.ts";
 import { freshKeyring, profile } from "./helpers.ts";
 import { png } from "./fake-images.ts";
 
@@ -175,6 +175,15 @@ describe.skipIf(!runnable)("the sandbox", () => {
     expect((await sh("echo kept > /run/lyrica/claude/notes && ls -A /workspace | grep -c claude || true", own)).out).toBe("0\n");
     expect(readFileSync(p("claude-own", "notes"), "utf8")).toBe("kept\n");
     expect((await sh("ls /run/lyrica/claude 2>&1 || true")).out).toContain("No such file");
+  });
+
+  it("mounts a browser's profile only into the browser's own run, which has none of the thread's folders", async () => {
+    mkdirSync(p("browser-own"), { recursive: true });
+    const own = new Sandbox({ grants: [], network: OFF, self: [], browserDir: p("browser-own") });
+    const r = await own.run(["sh", "-c", "echo kept > /run/lyrica/browser/cookies && ls /workspace 2>&1 || true"]);
+    expect(r.stdout.toString()).toContain("No such file");
+    expect(readFileSync(p("browser-own", "cookies"), "utf8")).toBe("kept\n");
+    expect((await sh("ls /run/lyrica/browser 2>&1 || true")).out).toContain("No such file");
   });
 
   it("mounts a project chat's own folder and /shared read-only, leaving /tmp for a command's scratch", async () => {
@@ -570,6 +579,21 @@ describe.skipIf(!runnable || !nixTools)("the sandbox with the NixOS tools", () =
 // neither is installed.
 const chromium = nixTools ? `${nixTools}/bin/chromium` : ["/usr/local/bin/chromium-headless-shell", "/usr/bin/chromium"].find((f) => existsSync(f));
 describe.skipIf(!runnable || !chromium || !existsSync(chromium))("a browser in the sandbox", () => {
+  it("runs the browse tool's driver, which reads a page and clicks on it with internet off", async () => {
+    mkdirSync(p("browser-run"), { recursive: true });
+    const box = new Sandbox({ grants: [], network: OFF, self: [], browserDir: p("browser-run") });
+    const browser = new Browser(() => box.start(browseArgv(), "/"));
+    try {
+      const page = await browser.act("1", { action: "open", url: "data:text/html,<title>T</title><button onclick=\"this.textContent='Done'\">Go</button>" });
+      expect(page.text).toMatch(/\[1\] button "Go"/);
+      expect((await browser.act("2", { action: "click", ref: 1 })).text).toMatch(/\[1\] button "Done"/);
+    } finally {
+      await browser.close();
+    }
+    // The profile is the mounted folder's, so a login outlasts the run.
+    expect(readdirSync(p("browser-run")).length).toBeGreaterThan(0);
+  });
+
   it("renders a page to PNG with internet off", async () => {
     writeFileSync(p("work", "page.html"), "<p style='font: 32px sans-serif'>Hello</p>");
     const bin = nixTools ? "/usr/bin/chromium" : chromium;

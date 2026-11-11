@@ -117,7 +117,7 @@ brake.
 
 | Thing | Budget |
 |---|---|
-| Model-facing tools | 30 or fewer |
+| Model-facing tools | 50 or fewer |
 | Slash commands | 6 or fewer |
 | Long-running processes | 1 daemon, plus Pi's TUI when in use |
 | Core extension | about 8,000 lines |

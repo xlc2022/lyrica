@@ -1586,7 +1586,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     their role and may not be read-only. It adds one tool within the budget;
   - `web_search({ query, count?, time?, category?, page?, online? })` and
     `web_fetch({ url, maxChars?, offset?, online? })`
-    (`createWebExtension({ searxng(), kiwix?(), target(), canRender?() })`,
+    (`createWebExtension({ searxng(), kiwix?(), target(), canRender?(), browser?() })`,
     `core/src/web.ts`, `core/src/kiwix.ts`), in
     every hosted thread and in a subagent whose role lists them (the
     researcher's), behind the Web search switch. `web_search` asks the
@@ -1752,16 +1752,56 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     timeoutS?)` returns a `JobInfo` (with the job's `cwd`) at once
     (docs/workspace.md, Background commands). Jobs that end within
     `jobWakeMs` (5 s) of each other wake the thread once.
+  - `browse({ action, url?, ref?, text?, submit?, direction?, offset? })`
+    (the same extension, registered only with `browser()`: a hosted main
+    conversation whose sandbox has Chromium and node; never a subagent or
+    a project chat), behind the Web search switch. Actions
+    (`BROWSE_ACTIONS`): `open`, `read`, `click`, `type`, `select`,
+    `scroll`, `back`, `screenshot`, `close`. `browser()` is the thread's
+    `Browser` (`core/src/browse.ts`, `Workspace.browser(t)`): at the first
+    call it starts `browseArgv()` (`browse.cjs` on the sandbox's node,
+    driving its Chromium over the DevTools pipe) in a `Sandbox` with the
+    thread's `network` and `browserDir` (the profile,
+    `<home>/browser/<thread>`, mounted at `BROWSER_PROFILE`) and no
+    workdir, grants or credentials, holding a job slot of kind `browser`
+    (`Jobs.hold`), so Lock, forgetting the thread and `jobs stop` end it;
+    it closes itself after `BROWSE_IDLE_MS` (10 minutes) unused, and a
+    call that takes over `BROWSE_MS` kills it. The driver takes one JSON
+    line per request on stdin and answers one per line: `{ url, title,
+    text, notes }`, `{ image }` for a screenshot (JPEG, base64), or
+    `{ fail }`. `text` is the page in reading order, each thing to act on
+    on its own line as `[n] kind "name"` (a field's value after `=`, a
+    password's as dots); numbers are kept per element in a world of the
+    driver's own in the page and never reused in a browser's life. The
+    tool answers with title, URL, notes and text inside `outside`'s
+    markers, cut by `cutPage` to 12,000 characters (`read` takes
+    `offset`). **Forms:** `Browser.look(call)` asks the driver what a
+    `click`, or a `type` with `submit`, would do: `form` (a `BrowseForm`:
+    site, where it goes, method, button, fields) when it would send one,
+    and the action in words. A form sent by GET to a stated `action` or
+    marked as a search, with no password, file or textarea, isn't one.
+    The `tool_call` gate asks with `{ browse: browseFormText(form) }` and
+    `warning: browseFormWarning(form)` in every mode and, on a yes, calls
+    `Browser.approve(toolCallId)`; `Browser.act(toolCallId, call)` passes
+    `approved` to the driver only for that id, once. Without it the driver
+    answers `unapproved` (she is told `BROWSE_UNAPPROVED`) and answers any
+    document request that isn't GET or HEAD with 204, so nothing is sent
+    and the page stays; the element that set it off counts as sending a
+    form from then on. Ask and Accept edits also ask before `click`,
+    `type` and `select` with the action in words; Plan mode leaves
+    `BROWSE_READS`. Downloads are denied, a new tab's address opens in
+    the one tab, a message box is closed and a question box answered no
+    (both noted in the result), and frames aren't read.
   - `ExecutionTarget.run?(argv, { signal?, timeoutMs?, cwd? })` runs argv with no
     shell under the target's own rules; the sandbox has it.
   - `ExecutionTarget.secrets?()` is the sandbox's tokens and placeholders
     (core/src/workspace/ops.ts): `bash` output (`secretMasker`), `read` and
     `web_fetch` pages (`maskSecrets`) show `SECRET_HIDDEN` for each, and the
-    `tool_call` gate refuses a `web_search`, `web_fetch`, `image` or MCP call whose
+    `tool_call` gate refuses a `web_search`, `web_fetch`, `browse`, `image` or MCP call whose
     input holds one (`holdsSecret`).
   - `ThreadTools` is `{ commandRules?(), target(machine?), settings(), network(),
     claudeCode?(), machines?(), allowedInThread?(machine, command), proxmox?(machine, action, vm?),
-    mcpServers?(), toolAllowedInThread?(server, tool), approve?, setMode?,
+    mcpServers?(), toolAllowedInThread?(server, tool), approve?, browser?(), setMode?,
     proposePlan?(PlanRequest), recordChange?(NewChange), sameFile?(path, inserts?), madeFiles?(paths), madeSince?(since), fileNotes?(),
     startJob?(command, machine?, timeoutS?), jobs?(), jobOutput?(id), stopJob?(id) }`.
     `sameFile(path, inserts)` runs in `tool_call` for a sandbox `write` or `edit`
@@ -1810,10 +1850,10 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     `serverTool`, in every mode. Read-only MCP tools stay on in Plan mode.
   - `toolsOff(settings, registered)`: Plan mode leaves only `PLAN_TOOLS`
     (`read`, `recall`, `read_memory`, `web_search`, `web_fetch`,
-    `delegate`, `ask_parent`, `threads`, `propose_plan`, `tool_search`, `proxmox`, whose
-    `tool_call` refuses all but its reading actions); outside Plan
+    `delegate`, `ask_parent`, `threads`, `propose_plan`, `tool_search`, and `proxmox` and `browse`, whose
+    `tool_call` refuses all but their reading actions); outside Plan
     mode `propose_plan` is off. `SWITCHED_TOOLS`: `webSearch` turns off
-    `web_search` and `web_fetch`, `images` turns off `image`. The gate runs
+    `web_search`, `web_fetch` and `browse`, `images` turns off `image`. The gate runs
     on `session_start`, `before_agent_start` and right after a plan is
     approved, and `tool_call` refuses a tool that's off.
   - `propose_plan` asks `proposePlan`, which answers a `GoAhead` (one of

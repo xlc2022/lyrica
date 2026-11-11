@@ -133,6 +133,9 @@ describe("her context", () => {
     await fitAfterFirst(TIGHT);
     await turn(long("SECOND-MARK"));
     await turn(long("THIRD-MARK"));
+    // Pi keeps a quarter of the window, which grows with her prompt: where the sandbox has a browser, browse's text makes
+    // that just more than two long turns, so there is something to compact only once a fourth is in.
+    await turn(long("FOURTH-MARK"));
     expect(stream.events.some((e) => e.event.type === "compacted")).toBe(true);
     const page = (await ada.get<MessagePage>(`${path}/messages`)).body;
     expect(page.messages.flatMap((m) => m.parts).some((p) => p.type === "compacted")).toBe(true);

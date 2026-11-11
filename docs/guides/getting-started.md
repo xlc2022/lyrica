@@ -796,7 +796,11 @@ one and give its address there. It says **Reachable** once a test search
 works: [searxng.md](searxng.md). Every thread with the Web search switch
 on can then search, private ones included (the engines see the query,
 never who asked). `web_fetch` reads a page with `curl` inside the thread's
-sandbox, so its network switches decide what it reaches.
+sandbox, so its network switches decide what it reaches. `browse`, behind
+the same switch, lets her click through a page, fill in fields and log
+in, in a browser of the thread's own under the same network switches;
+it needs Chromium and node in the sandbox, which the install provides.
+She asks you before she sends a form.
 
 An offline copy of Wikipedia makes both work without the internet:
 download a ZIM file into a folder, point `services.lyrica.zimDir` or

@@ -66,6 +66,8 @@ export interface SandboxSpec {
   credentials?: Credentials;
   /** Host path of the thread's own Claude Code folder (Workspace.claudeDir), mounted read-write at /run/lyrica/claude. */
   claudeDir?: string;
+  /** Host path of the thread's browser profile (Workspace.browserDir), mounted read-write at BROWSER_PROFILE: only its browser's run has it. */
+  browserDir?: string;
   /** The relay's pull-request-create record, passed straight through (relay.ts). */
   onPullCreate?: (pr: { repo: string; number: number }) => void;
   /** Claude Code's token counts per message request, passed straight through (relay.ts). */
@@ -170,6 +172,8 @@ const FORGE = readFileSync(new URL("./forge.sh", import.meta.url), "utf8");
 const CERTS = "/run/lyrica/certs";
 // Where a run with Claude Code keeps its settings and transcripts (claude.sh).
 const CLAUDE_DIR = "/run/lyrica/claude";
+/** Where the thread's browser profile is mounted in its browser's run, and in no other (Workspace.browserDir). */
+export const BROWSER_PROFILE = "/run/lyrica/browser";
 // The claude wrapper for a run with Claude Code (claude.sh), in the same folder.
 const CLAUDE = readFileSync(new URL("./claude.sh", import.meta.url), "utf8");
 
@@ -598,6 +602,7 @@ export class Sandbox implements ExecutionTarget {
     if (this.spec.workdir && this.spec.repos) mount(cleanPath(this.spec.repos), !this.spec.reposReadOnly, `${WORKDIR}/repos`);
     for (const dest of this.sharedInWorkdir()) mount(cleanPath(this.spec.shared!), false, dest);
     if (this.spec.claudeDir) mount(cleanPath(this.spec.claudeDir), true, CLAUDE_DIR);
+    if (this.spec.browserDir) mount(cleanPath(this.spec.browserDir), true, BROWSER_PROFILE);
     if (this.spec.shared) mount(cleanPath(this.spec.shared), !this.spec.readOnly && !this.spec.sharedOwn, SHARED);
     if (this.spec.shared && this.spec.sharedOwn) mount(cleanPath(join(this.spec.shared, this.spec.sharedOwn)), !this.spec.readOnly, `${SHARED}/${this.spec.sharedOwn}`);
     for (const f of this.spec.family ?? []) mount(cleanPath(f.path), false, f.dest);

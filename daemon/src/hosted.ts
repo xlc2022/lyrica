@@ -1179,7 +1179,9 @@ export class HostedThread {
             ...(this.o.clips ? { background: (make: (signal: AbortSignal, onProgress: (p: JobProgress) => void) => Promise<ClipMade>, toolCallId: string) => this.o.clips!(this.userId, this.pool, this.threadId, make, toolCallId) } : {}),
           }),
           // web_search and web_fetch, behind the Web search switch; a fetch runs in the thread's sandbox.
-          createWebExtension({ searxng: () => this.o.searxng?.(), kiwix: () => this.o.kiwix?.(), target: () => tools.target(), canRender: () => !!sandboxTools().browser && sandboxHas("node") }),
+          // browse too: the thread's own browser, in a sandbox with its network and nothing else of the thread's. A project chat, which only reads and routes, has none.
+          createWebExtension({ searxng: () => this.o.searxng?.(), kiwix: () => this.o.kiwix?.(), target: () => tools.target(), canRender: () => !!sandboxTools().browser && sandboxHas("node"),
+            ...(!thread.project && !thread.subagent && sandboxTools().browser && sandboxHas("node") ? { browser: () => tools.browser() } : {}) }),
           // A file she wrote that doesn't parse is said in the write's own result.
           createSyntaxExtension({ target: (m) => tools.target(m) }),
           // The project's checks, run when a code turn that changed something ends; then the evidence judge, on the
@@ -1560,7 +1562,7 @@ function conversationLine(entry: unknown): string {
 /** A call on a machine: its name and folder; and for a suspect command, wherever it runs, the warning. A portrait question carries its warning only. */
 function onMachine(r: ApprovalRequest): Partial<PermissionRequest> {
   if (r.server) return { server: r.server, ...(r.serverTool ? { serverTool: r.serverTool } : {}) };
-  const suspect = r.warning && r.tool !== "image" ? { suspect: true as const, warning: r.warning } : r.warning ? { warning: r.warning } : {};
+  const suspect = r.warning && r.tool !== "image" && r.tool !== "browse" ? { suspect: true as const, warning: r.warning } : r.warning ? { warning: r.warning } : {};
   if (!r.machine) return suspect;
   return { machine: r.machine, ...(r.cwd ? { cwd: r.cwd } : {}), ...suspect };
 }
