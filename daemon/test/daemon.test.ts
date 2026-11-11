@@ -453,7 +453,10 @@ describe("the memory browser", () => {
     expect((await ada.get<MemoryHit[]>(`${m}/search?kinds=note&about=food`)).body.map((h) => h.id)).toEqual([note.id]);
     expect((await ada.get<MemoryHit[]>(`${m}/search?kinds=page`)).body.map((h) => [h.id, h.title])).toEqual([["p:garden", "The garden"]]);
     expect((await ada.get<MemoryTag[]>(`${m}/about`)).body).toEqual([{ about: "garden", count: 2 }, { about: "food", count: 1 }]);
-    expect((await ada.get<MemoryOverview>(m)).body).toEqual({ pages: 1, notes: 3 });
+    // No Embeddings model: each shown pool says so, with what an embedder would have to do.
+    expect((await ada.get<MemoryOverview>(m)).body).toEqual({ pages: 1, notes: 3, embedded: [
+      { pool: "general", done: 0, total: 3 }, { pool: "private", done: 0, total: 1 },
+    ] });
   });
 });
 

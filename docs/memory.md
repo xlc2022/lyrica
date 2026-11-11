@@ -276,7 +276,10 @@ start, keyword recall working meanwhile. `unembedded(model, limit, excludeThread
 what has no vector yet (a message by its spoken words, at most 1,500
 characters of any item; never sleep's entries, nor those of the threads
 named, which the embedder uses to keep a local-only thread's words from a
-cloud model), and `vectorCount(model)` how far along it is.
+cloud model), and `vectorCount(model)` how far along it is, which
+Administration → Status shows per pool on its Memory line. Embedding calls
+aren't recorded in Model calls: each turn makes one for its query and the
+embedder one a batch, bookkeeping rather than calls she chose.
 Automatic recall and the `recall` tool embed their text through the
 thread's `embed` (lyricad: `models.embed(call, [text], { query: true })`,
 eight seconds at most); an embedding model that is away, slow or unset

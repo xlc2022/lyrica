@@ -2233,10 +2233,14 @@ export class PoolStore extends PoolReader {
     })();
   }
 
-  /** How many indexed items have a vector from `model`, and how many are left. */
+  /**
+   * How many indexed items `model` has been through (a vector, or marked skipped), and how many are left, over what
+   * the embedder embeds: sleep's threads, which recall never shows, don't count. A local-only thread waiting for a
+   * local model counts as left.
+   */
   vectorCount(model: string): { done: number; left: number } {
-    const done = (this.db.prepare("SELECT count(*) AS n FROM vectors WHERE model = ?").get(model) as { n: number }).n;
-    const total = (this.db.prepare("SELECT count(*) AS n FROM search").get() as { n: number }).n;
+    const done = (this.db.prepare("SELECT count(*) AS n FROM vectors WHERE model = ? AND id NOT LIKE 'e:sleep/%'").get(model) as { n: number }).n;
+    const total = (this.db.prepare("SELECT count(*) AS n FROM search WHERE id NOT LIKE 'e:sleep/%'").get() as { n: number }).n;
     return { done, left: Math.max(0, total - done) };
   }
 

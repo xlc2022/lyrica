@@ -1917,6 +1917,12 @@ export interface MemoryOverview {
   notes: number;
   /** When she last finished sleeping, if ever. */
   slept?: string;
+  /**
+   * Recall by meaning, per shown pool: the model its Embeddings list resolves to now and how many of its
+   * indexed items that model has been through (`done` of `total`). No `model`: no usable Embeddings model, so
+   * recall there is by keywords alone.
+   */
+  embedded: { pool: Pool; model?: string; done: number; total: number }[];
 }
 
 export interface MemoryItem {
