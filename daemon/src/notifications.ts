@@ -67,9 +67,14 @@ function collect(d: Lyricad, user: User, show: Api.Display): Api.Notification[] 
         ],
       });
     }
-    // A thread waiting for an approval.
-    for (const { pool, threadId, request } of s.host.pending(user.id)) {
-      if (!shownThread(pool, threadId)) continue;
+    // A thread waiting for an approval. A subagent's request shows in its thread and its parent's: it is one
+    // notification, opening the parent where it shows, else the subagent's thread.
+    const asks = s.host.pending(user.id).filter(({ pool, threadId }) => shownThread(pool, threadId));
+    const parentFirst = (a: (typeof asks)[number]) => (a.request.subagent && a.threadId !== a.request.subagent.parentThreadId ? 1 : 0);
+    const seen = new Set<string>();
+    for (const { pool, threadId, request } of asks.sort((a, b) => parentFirst(a) - parentFirst(b))) {
+      if (seen.has(request.requestId)) continue;
+      seen.add(request.requestId);
       const title = titleOf(o[pool], threadId);
       const path = `${t(pool, threadId)}/permissions/${encodeURIComponent(request.requestId)}`;
       out.push({

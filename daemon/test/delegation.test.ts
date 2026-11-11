@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { fakeOpenAI } from "../../core/test/fake-openai.ts";
 import { testMcpServer } from "../../core/test/mcp-server.ts";
-import type { DelegationEvent, EndpointInfo, McpServerInfo, MessagePage, PermissionRequest, Subagents, ThreadEvent, ThreadSummary } from "../src/api.ts";
+import type { DelegationEvent, EndpointInfo, McpServerInfo, MessagePage, NotificationPage, PermissionRequest, Subagents, ThreadEvent, ThreadSummary } from "../src/api.ts";
 import { browser, daemon, enc, localModel, login, runtime } from "./helpers.ts";
 
 /**
@@ -179,6 +179,9 @@ describe("talking with subagents in lyricad", () => {
     const child = ada.events(`${childPath}/events`);
     await child.until(is("hello"));
     expect((child.events[0]!.event as { permissions: PermissionRequest[] }).permissions.map((p) => p.requestId)).toEqual([a.requestId]);
+    // One notification for it, opening the parent.
+    const asks = (await ada.get<NotificationPage>(`/api/u/${rt.ada.id}/notifications?type=permission`)).body.items;
+    expect(asks.map((n) => [n.id, n.thread?.id])).toEqual([[`permission:${a.requestId}`, a.subagent!.parentThreadId]]);
     expect((await ada.post(`${childPath}/permissions/${a.requestId}`, { allow: true })).status).toBe(200);
     expect((await ada.post(`${path}/permissions/${a.requestId}`, { allow: false })).status).toBe(404);
     await stream.until((e) => e.type === "permission_end" && e.requestId === a.requestId);
@@ -224,6 +227,9 @@ describe("talking with subagents in lyricad", () => {
       const child = ada.events(`${childPath}/events`);
       await child.until(is("hello"));
       expect((child.events[0]!.event as { permissions: PermissionRequest[] }).permissions.map((p) => p.requestId)).toEqual([a.requestId]);
+      // One notification for it, opening the parent.
+      const asks = (await ada.get<NotificationPage>(`/api/u/${rt.ada.id}/notifications?type=permission`)).body.items;
+      expect(asks.map((n) => [n.id, n.thread?.id])).toEqual([[`permission:${a.requestId}`, a.subagent!.parentThreadId]]);
       // Allowed in this thread: the second call runs without asking, and the parent's thread didn't gain it.
       expect((await ada.post(`${path}/permissions/${a.requestId}`, { allow: true, allowInThread: true })).status).toBe(200);
       await stream.until((e) => e.type === "notice" && e.status === "finished");
