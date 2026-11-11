@@ -1,5 +1,6 @@
 // Files named in a conversation (DESIGN, "Files and images"; docs/ux.md §6):
-// a path under the thread's folder or /shared, and a markdown link to a file,
+// a path under the thread's folder, /shared or another thread's folder in its family
+// (/thread-workspaces/<id>), and a markdown link to a file,
 // opens the file in the Files panel, and an image she writes shows in the message.
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Icon } from "./icons.tsx";
@@ -14,10 +15,10 @@ export const SHARED = "/shared";
 export const shown = (p: string) => (p === WORKDIR ? "Thread folder" : p === SHARED ? "Shared folder" : p.startsWith(`${WORKDIR}/`) ? p.slice(WORKDIR.length + 1) : p);
 
 /**
- * A path under the thread's folder or /shared, as written in prose: it starts the word (not inside `/home/ada/workspace`,
+ * A path under the thread's folder, /shared or a family thread's folder (/thread-workspaces/<id>/…), as written in prose: it starts the word (not inside `/home/ada/workspace`,
  * `~/workspace` or a URL) and ends before a space, a quote, a bracket or trailing punctuation.
  */
-export const PATH = /(?<![\w.~/:-])\/(?:workspace|shared)(?:\/[^\s"'`<>()[\]{}|,;]*[^\s"'`<>()[\]{}|,;:.!?])?(?![\w-])/g;
+export const PATH = /(?<![\w.~/:-])\/(?:workspace|shared|thread-workspaces\/[\w%.~-]*[\w%~])(?:\/[^\s"'`<>()[\]{}|,;]*[^\s"'`<>()[\]{}|,;:.!?])?(?![\w-])/g;
 /** Each path in a text, with where it starts. */
 export const findPaths = (text: string): { path: string; at: number }[] => [...text.matchAll(PATH)].map((m) => ({ path: m[0], at: m.index }));
 export const isUnderWorkdir = (p: string) => p === WORKDIR || p.startsWith(`${WORKDIR}/`);

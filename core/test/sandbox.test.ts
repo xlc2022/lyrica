@@ -75,7 +75,7 @@ describe("a project chat's sandbox", () => {
   // Three runs had a project chat build the whole thing in its own folder instead of starting a thread.
   it("refuses writes to its folder and /shared, and still reads them", () => {
     const chat = new Sandbox({ workdir: "/tmp/never-mounted", shared: "/tmp/never-mounted-shared", grants: [], network: OFF, self: [], readOnly: true });
-    expect(() => chat.allow("/workspace/page.html", true)).toThrow(/read-only in a project chat: start a code thread/);
+    expect(() => chat.allow("/workspace/page.html", true)).toThrow(/read-only in a project chat: start a thread to make or change files/);
     expect(() => chat.allow("/shared/page.html", true)).toThrow(/read-only in a project chat/);
     expect(chat.allow("/shared/page.html", false)).toBe("/shared/page.html");
     expect(chat.allow("/workspace/notes.md", false)).toBe("/workspace/notes.md");
@@ -744,6 +744,31 @@ describe.skipIf(!homeRunnable)("a project chat's uploads", () => {
       expect(workspace.files({ userId: ada.id, pool: "general", threadId: "c1" }).roots().map((r) => r.path)).toEqual(["/workspace"]);
       // A link to a /shared file in the chat's reply still opens: its panel reaches /shared as her tools do.
       expect((await workspace.files(chat).list("/shared/uploads")).entries.map((e) => e.path)).toEqual(["/shared/uploads/mockup.txt"]);
+    } finally {
+      await workspace.unmountHome(ada.id);
+    }
+  });
+
+  it("and a report a thread writes opens from a link in the chat, in /shared or in that thread's folder", async () => {
+    const keyring = await freshKeyring();
+    const users = new Users(keyring);
+    const ada = await users.createUser("ada", "pw", profile("Ada"), { admin: true });
+    await users.authenticate("ada", "pw");
+    const workspace = new Workspace(keyring, users, { excludePorts: [], onlyIn: () => () => true });
+    const chat = { userId: ada.id, pool: "general" as const, threadId: "p1", coordinates: true };
+    try {
+      await workspace.mountHome(ada.id);
+      // A code thread has a folder of its own, which the chat reads at /thread-workspaces/c2.
+      workspace.settings(ada.id).inheritSettings("p1", "c2", "general");
+      workspace.settings(ada.id).setThreadWork("c2", { worktrees: [] });
+      const writer = workspace.targetFor({ userId: ada.id, pool: "general", threadId: "c2" }).ops();
+      await writer.write.writeFile("/shared/c2/report.md", Buffer.from("# Findings"));
+      await writer.write.writeFile("/workspace/report.md", Buffer.from("# Draft"));
+      const files = workspace.files(chat);
+      expect((await files.list("/shared/c2")).entries.map((e) => e.path)).toEqual(["/shared/c2/report.md"]);
+      expect((await files.list("/thread-workspaces/c2")).entries.map((e) => e.path)).toContain("/thread-workspaces/c2/report.md");
+      // The panel reads it there and changes nothing: the folder is the thread's.
+      await expect(files.mkdir("/thread-workspaces/c2/notes")).rejects.toThrow(/another thread's folder/);
     } finally {
       await workspace.unmountHome(ada.id);
     }

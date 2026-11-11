@@ -1301,6 +1301,10 @@ project page and the web part are built. Recent calls can be filtered by project
   built a whole game in the project chat despite her guidance; her own
   folder 2026-10-20, after three runs built in it instead). Her `/tmp`
   lasts between commands, for drafts such as an issue body (2026-10-25).
+  A report the user asks her for is a file too, so a thread writes it,
+  given everything she already found or drafted in its task, and she links
+  it (2026-11-11, chosen over a writable folder for the chat after one
+  looped with nowhere to put a report).
 - **Code builds run scaffold, parts, merge** (principles 1, 6 and 8).
   A `code: true, base: true` thread scaffolds the original checkout and
   resolves; parallel `code: true` parts each get worktrees of their writable

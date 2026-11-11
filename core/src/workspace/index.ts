@@ -659,7 +659,8 @@ export class Workspace {
     const shared = this.sharedDir(t);
     const own = shared === join(this.threadDir(t), "shared");
     const box = new Sandbox({
-      workdir: this.threadDir(t), workdirAlias: this.workdirAlias(t), shared, grants: tw.grants, network: { internet: false, services: false, hosts: [] },
+      // Its family's folders too, read-only, so a link to another thread's file (/thread-workspaces/<id>/…) opens.
+      workdir: this.threadDir(t), workdirAlias: this.workdirAlias(t), shared, family: this.familyFolders(t), grants: tw.grants, network: { internet: false, services: false, hosts: [] },
       check: (g) => checkGrant(s.allowed(), t.pool, g), bwrap: this.opts.bwrap,
     });
     // What the panel uploads is the panel's thread's; what it renames or deletes takes its record along.

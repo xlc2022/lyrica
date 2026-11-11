@@ -390,7 +390,7 @@ export class Sandbox implements ExecutionTarget {
       throw new SandboxDenied(`${p} is the family's shared folder, read-only here: you write only in your own ${SHARED}/${this.spec.sharedOwn}`);
     }
     if (within(p, WORKDIR) || (this.spec.workdirAlias && within(p, this.spec.workdirAlias)) || (this.spec.shared && within(p, SHARED))) {
-      if (write && this.spec.readOnly) throw new SandboxDenied(`${p} is read-only in a project chat: start a code thread to make or change files, and it hands them back in its folder or /shared`);
+      if (write && this.spec.readOnly) throw new SandboxDenied(`${p} is read-only in a project chat: start a thread to make or change files (a code thread for code; for a report, put its text in the task), and it hands them back in its folder or /shared`);
       if (write && this.spec.sharedOwn && within(p, SHARED) && !within(p, `${SHARED}/${this.spec.sharedOwn}`)) {
         throw new SandboxDenied(`${p} is read-only: in ${SHARED} you write only in your own ${SHARED}/${this.spec.sharedOwn}`);
       }

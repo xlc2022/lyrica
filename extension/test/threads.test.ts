@@ -196,9 +196,15 @@ describe("handing files over", () => {
     const call = (args: object) => tool.execute("call", args, undefined, undefined, {} as never);
     const page = Buffer.from("<html>".repeat(200)).toString("base64").replace(/.{76}/g, "$&\n");
     await expect(call({ action: "message", to: "parent", text: `Part 1 of 3:\n${page}` })).rejects.toThrow(/encoded file.*your own folder/);
-    await expect(call({ action: "message", to: "parent", text: "word ".repeat(MESSAGE_MAX / 4) })).rejects.toThrow(/10,000 characters, over 8,000.*your own folder/);
+    await expect(call({ action: "message", to: "parent", text: "word ".repeat(MESSAGE_MAX / 4) })).rejects.toThrow(/10,000 characters, over 8,000\. Send it as several messages.*If it is a file or a report to keep, write it in your own folder/);
     await call({ action: "message", to: "parent", text: "The page is at /shared/pagoda.html." });
     expect(sent).toEqual(["The page is at /shared/pagoda.html."]);
+    // The project chat writes no files, so a long message goes in parts and a report to a thread that saves it (a chat once looped on "your own folder").
+    let chatTool!: typeof tool;
+    createThreadsExtension({ ...t.context, threadId: project.id }, host)({ on: () => {}, registerTool: (v: typeof tool) => { chatTool = v; } } as unknown as ExtensionAPI);
+    const report = chatTool.execute("call", { action: "message", id: dns.id, text: "word ".repeat(MESSAGE_MAX / 4) }, undefined, undefined, {} as never);
+    await expect(report).rejects.toThrow(/over 8,000\. Send it as several messages, each under the limit.*If it is a report for the person, start a thread with the whole text.*in its task/);
+    await expect(report).rejects.not.toThrow(/your own folder/);
     // Its own project chat can't be read from a project thread, and the error names what works.
     await expect(call({ action: "read", id: project.id })).rejects.toThrow(`[t:${project.id}] is your project chat: it can't be read from here, but you can message it with to: "parent"`);
     // Her own subagent's thread reads; another thread's subagent points to delegate wait.

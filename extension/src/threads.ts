@@ -104,11 +104,25 @@ export const MESSAGE_MAX = 8_000;
 // A run this long of base64 (or base64url) characters, line breaks aside, is a file, not words.
 const ENCODED = /[A-Za-z0-9+/=_-]{400,}/;
 
-/** Refuses a message that carries a file, naming the route that works. */
-export function checkWords(text: string, max = Infinity): void {
+/**
+ * Refuses a message that carries a file or runs over `max`, naming the route that works: a long message goes in parts
+ * (a long message isn't necessarily a file), a file by path. A project chat writes no files
+ * (docs/workspace.md, "Folders"), so it is told to send a long message in parts, and a report to a thread that saves
+ * it: a chat once looped on "write it in your own folder".
+ */
+export function checkWords(text: string, max = Infinity, projectChat = false): void {
   const file = ENCODED.test(text.replace(/[\r\n]/g, ""));
   if (file || text.length > max) {
-    throw new Error(`${file ? "That looks like an encoded file" : `That message is ${text.length.toLocaleString("en-US")} characters, over ${max.toLocaleString("en-US")}`}. Files don't travel by message: write it in your own folder, which your parent, child and project threads can read, and say its path.`);
+    const size = `That message is ${text.length.toLocaleString("en-US")} characters, over ${max.toLocaleString("en-US")}`;
+    // A project chat writes no files: a long message goes in parts, and only a report for the person goes to a thread to save.
+    if (projectChat) {
+      throw new Error(file
+        ? "That looks like an encoded file. Files don't travel by message, and a project chat writes none: start a thread to make the file, and it reports its path."
+        : `${size}. Send it as several messages, each under the limit and saying which part it is. If it is a report for the person, start a thread with the whole text and what you found for it in its task (a task has no length limit) to save it as a file in its part of /shared, then link the path it reports.`);
+    }
+    throw new Error(file
+      ? "That looks like an encoded file. Files don't travel by message: write it in your own folder, which your parent, child and project threads can read, and say its path."
+      : `${size}. Send it as several messages, each under the limit and saying which part it is. If it is a file or a report to keep, write it in your own folder, which your parent, child and project threads can read, and say its path.`);
   }
 }
 
@@ -400,7 +414,7 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
           if (typeof p.question === "string") { p.text = [p.text?.trim(), p.question.trim()].filter(Boolean).join("\n\n"); p.question = !!p.question.trim(); }
           if (p.question !== undefined && typeof p.question !== "boolean") throw new Error("message question must be true or false");
           if (!p.text?.trim()) throw new Error("message needs text");
-          checkWords(p.text, MESSAGE_MAX);
+          checkWords(p.text, MESSAGE_MAX, inProjectChat());
           // A child's message with no recipient, or naming its parent, goes to the parent.
           if (child && p.to === undefined && (!p.id || (self.parent && pickParent(p.id)))) p.to = "parent";
           if (child && p.to === "parent") {
