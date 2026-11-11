@@ -3018,7 +3018,8 @@ function threadSettings(d: Lyricad, user: User, pool: Pool, threadId: string): A
     claudeCodeOffered: pool === "general" && !ctx.localOnly && !!workspace.settings(user.id).claudeCodeToken() && claudeCodeInstalled(),
     speech: speechState(models, ctx),
     fallback: models.threadFallback(user.id, threadId), fallbackOn: ctx.fallback !== false,
-    allowed: models.allowed(ctx).map(({ endpoint }) => endpointInfo(d, user.id, endpoint.id)),
+    // Every model picker reads this list, so a model switched off in its endpoint's list is left out.
+    allowed: models.allowed(ctx).map(({ endpoint }) => { const ep = endpointInfo(d, user.id, endpoint.id); return { ...ep, models: ep.models.filter((m) => !m.disabled) }; }),
     wakeups: d.services!.wakeups.list(user.id, pool, threadId),
     ...(threadId && d.services!.wakeups.list(user.id, pool, threadId).some((w) => w.planLimit) ? planWaitOf(threadPlanWait(d, user.id, pool, threadId)) : {}),
     routines: routineList(d, user, pool, threadId),

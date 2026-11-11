@@ -2255,7 +2255,8 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
       `addresses`, `fingerprint`, `hasApiKey`, `keyLast4?`, `planAccount?`,
       `cloudCapabilities?`, `unencrypted`, `stale`,
       `downSince`, `signedOut`, `models: OfferingInfo[]`), `OfferingInfo` (with `label`
-      and `disabled?`, switched off in its endpoint's list),
+      and `disabled?`, switched off in its endpoint's list; `ThreadSettings.allowed`,
+      which every model picker reads, leaves those out),
       `EndpointInput`, `EndpointChange`, `ModelInput`, `Probe`, `MergeInput`.
     - **Plans:** `POST plans/sign-in` (`PlanSignInStart`: `plan` and `name`,
       or `endpointId` to sign in again → `PlanSignInStarted` `{ id, url,
