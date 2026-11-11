@@ -2261,8 +2261,16 @@ export interface WebAccessStatus {
    * the config lyricad gave it.
    */
   caddy?: { answers: boolean; configured: boolean; applied: boolean };
-  /** Built-in mode: the certificate served for the name, read by connecting to it on this machine's address. */
-  certificate?: { issuer: string; subject: string; notAfter: string } | { error: string };
+  /** Built-in mode: the certificate served for the name, read by connecting to the name at one of the addresses it serves on (`address`). */
+  certificate?: { address: string; issuer: string; subject: string; notAfter: string } | { address: string; error: string };
+  /**
+   * Built-in mode: where the hostname's DNS record points, as this machine's
+   * resolver answers (not always what a browser sees: split DNS and a CDN in
+   * front both differ), and whether Caddy listens on any of those addresses
+   * (`served`). False is a fact, not a failure: a proxy in front of this
+   * machine reaches the name another way.
+   */
+  dns?: { addresses: string[]; served: boolean } | { error: string };
   /** Caddy's newest TLS error since the last change, credentials hidden. */
   lastAcmeError?: { at: string; message: string };
   external?: { listening: boolean; address: string; port: number };

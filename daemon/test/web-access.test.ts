@@ -79,14 +79,16 @@ const freePort = async () => {
   return port;
 };
 
-async function setup(addresses: HostAddress[] = [{ address: "127.0.0.1", kind: "lan", interface: "lo" }], rtIn?: Awaited<ReturnType<typeof runtime>>, more: Partial<LyricadOptions> = {}) {
+async function setup(addresses: HostAddress[] = [{ address: "127.0.0.1", kind: "lan", interface: "lo" }], rtIn?: Awaited<ReturnType<typeof runtime>>, more: Partial<LyricadOptions> = {},
+  /** Where the name points: the machine's own address, as a setup that works has it, unless a test says otherwise. */
+  resolve: (name: string) => Promise<string[]> = async () => ["127.0.0.1"]) {
   const rt = rtIn ?? await runtime();
   const caddy = await fakeCaddy(rt.home);
   const ca = testCa();
   const tls = await caddyServing(ca);
   const httpsPort = tls.port;
   const dm = await daemon(rt, {
-    web: { caddySocket: caddy.socket, tlsLog: join(rt.home, "tls.log"), httpsPort, addresses: () => addresses, certWaitMs: 1500, trustCa: ca.ca },
+    web: { caddySocket: caddy.socket, tlsLog: join(rt.home, "tls.log"), httpsPort, addresses: () => addresses, resolve, certWaitMs: 1500, trustCa: ca.ca },
     rateLimit: { free: 1, baseMs: 60_000, maxMs: 600_000 }, ...more,
   });
   await browser(dm.base).post("/api/unlock", { passphrase: "passphrase" });
@@ -167,7 +169,11 @@ describe("web access, built-in Caddy", () => {
     expect(JSON.stringify(caddy.state.config)).toContain(TOKEN);
 
     const status = (await ada.get<WebAccessStatus>(`${url}/status`)).body;
-    expect(status).toMatchObject({ mode: "builtin", caddy: { answers: true, configured: true, applied: true }, certificate: { subject: "lyrica.example.net" } });
+    expect(status).toMatchObject({
+      mode: "builtin", caddy: { answers: true, configured: true, applied: true },
+      // The certificate says where it was read, and the name says where it points.
+      certificate: { address: "127.0.0.1", subject: "lyrica.example.net" }, dns: { addresses: ["127.0.0.1"], served: true },
+    });
     expect(JSON.stringify(status)).not.toContain(TOKEN);
 
     // Encrypted at rest with the rest of self.db, and never logged.
@@ -211,6 +217,25 @@ describe("web access, built-in Caddy", () => {
     expect(refused.body.error).not.toContain(TOKEN);
     expect((await ada.get<WebAccess>(url)).body.mode).toBe("off");
     expect(logs.join("\n")).not.toContain(TOKEN);
+  });
+
+  it("says when the name points at an address Caddy doesn't serve on", async () => {
+    // As when the DNS record was set to her own tailnet address: the certificate is fine, the name lands elsewhere.
+    const { tls, ada, url } = await setup(undefined, undefined, {}, async () => ["100.91.57.112"]);
+    tls.add("lyrica.example.net");
+    expect((await ada.put(url, builtin())).status).toBe(200);
+    const status = (await ada.get<WebAccessStatus>(`${url}/status`)).body;
+    expect(status.certificate).toMatchObject({ address: "127.0.0.1", subject: "lyrica.example.net" });
+    expect(status.dns).toEqual({ addresses: ["100.91.57.112"], served: false });
+  });
+
+  it("says when this machine can't resolve the name", async () => {
+    const { tls, ada, url } = await setup(undefined, undefined, {}, () => Promise.reject(
+      Object.assign(new Error("queryA ENOTFOUND lyrica.example.net"), { code: "ENOTFOUND" }),
+    ));
+    tls.add("lyrica.example.net");
+    expect((await ada.put(url, builtin())).status).toBe(200);
+    expect((await ada.get<WebAccessStatus>(`${url}/status`)).body.dns).toEqual({ error: "this machine can't resolve lyrica.example.net" });
   });
 
   it("says when Caddy runs with no site", async () => {

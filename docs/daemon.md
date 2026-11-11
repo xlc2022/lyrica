@@ -1389,7 +1389,13 @@ Plain-HTTP listeners stay HTTP/1.1.
   with credentials hidden; whether Caddy answers, has a site at all (it has
   none if its saved config had to be set aside at start), and runs the
   expected config; and the certificate's issuer and expiry, read by
-  connecting to the name on the first address.
+  connecting to the name on the first address it serves on, which it names
+  with it; and where the name's DNS record points, as this machine's resolver
+  answers, with whether that is one of those addresses. A name pointing at
+  another device is why a healthy certificate line and a browser's TLS alert
+  are both true; since this machine's resolver needn't answer as a browser's
+  does (split DNS, a proxy in front), the record is shown as a fact, not a
+  verdict.
 - **Providers** are one table, `daemon/src/web/providers.ts`: Cloudflare,
   Porkbun, Namecheap, Route 53, DigitalOcean, Hetzner, deSEC and Duck DNS,
   each with its pinned plugin, credential fields and how to make a token
