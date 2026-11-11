@@ -167,9 +167,13 @@ export function knownValues(command: string): Map<string, string> {
   return values;
 }
 
+/** Programs that run what they read on their input as commands (as a shell does), so a here-document they read is commands. */
+const RUNS_INPUT = new Set(["ssh", "su", "docker", "podman", "kubectl", "lxc", "pct", "nsenter", "at", "batch", "xargs", "script", "expect", "eval", "source", "."]);
+
 function parse(command: string): string[][] {
   const commands: string[][] = [];
   let words: string[] = [], word = "", quote = "";
+  const heredocs: { word: string; tabs: boolean; quoted: boolean; reader: string[] }[] = [];
   const flushWord = () => { if (word) { words.push(word.replace(/["']/g, "")); word = ""; } };
   const flush = () => {
     flushWord();
@@ -205,6 +209,39 @@ function parse(command: string): string[][] {
     // `${NAME}` is one word, not a group; any other `${…}` splits as before.
     const braced = ch === "$" && quote !== "'" ? /^\$\{[A-Za-z_][A-Za-z0-9_]*\}/.exec(command.slice(i)) : null;
     if (braced) { word += braced[0]; i += braced[0].length - 1; continue; }
+    // A here-document is the program's input, not commands: its body is skipped, but for the
+    // substitutions an unquoted delimiter lets run (as shellcheck.ts's segments reads it).
+    if (!quote && ch === "<" && command[i + 1] === "<" && command[i + 2] !== "<") {
+      const m = /^<<(-?)\s*(['"]?)([A-Za-z0-9_.-]+)\2/.exec(command.slice(i));
+      if (m) { flushWord(); heredocs.push({ word: m[3]!, tabs: m[1] === "-", quoted: !!m[2], reader: words }); i += m[0].length - 1; continue; }
+    }
+    if (!quote && ch === "\n" && heredocs.length) {
+      flush();
+      let at = i + 1;
+      for (const h of heredocs.splice(0)) {
+        const body = at;
+        let end = command.length;
+        while (at < command.length) {
+          const nl = command.indexOf("\n", at);
+          const line = command.slice(at, nl < 0 ? command.length : nl);
+          if ((h.tabs ? line.replace(/^\t+/, "") : line) === h.word) { end = at; at = nl < 0 ? command.length : nl + 1; break; }
+          at = nl < 0 ? command.length : nl + 1;
+          end = at;
+        }
+        // Fed to a shell or something that runs it as commands, the body is commands.
+        if (h.reader.some((w) => SHELLS.has(posix.basename(w)) || RUNS_INPUT.has(posix.basename(w)))) commands.push(...parse(command.slice(body, end)));
+        else if (!h.quoted) for (const m of command.slice(body, end).matchAll(/\$\(|`/g)) {
+          const text = command.slice(body + m.index!);
+          let close = m[0].length, depth = 1;
+          for (; close < text.length; close++) {
+            if (m[0] === "`" && text[close] === "`") break;
+            if (m[0] !== "`") { if (text[close] === "(") depth++; if (text[close] === ")" && --depth === 0) break; }
+          }
+          commands.push(...parse(text.slice(m[0].length, close)));
+        }
+      }
+      i = at - 1; continue;
+    }
     if (!quote && /[;&|\n(){}]/.test(ch)) { flush(); continue; }
     if (!quote && /\s/.test(ch)) { flushWord(); continue; }
     word += ch;

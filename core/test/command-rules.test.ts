@@ -17,6 +17,14 @@ describe("project command matching", () => {
     expect(decide(command, DEFAULT_COMMAND_RULES)).toBeUndefined();
     expect(decide('L=/lib/ld.so; "$L" /bin/rm -rf /', DEFAULT_COMMAND_RULES)?.decision).toBe('forbid');
   });
+  it("reads a here-document as the program's input, not as commands, unless a shell runs it", () => {
+    const command = "cd /tmp && curl -s -o p.json https://example.org/p.json && python3 - <<'EOF'\nimport json\nd=json.load(open('/tmp/p.json'))\nfor k,v in sorted(d['profiles'].items()):\n    print(f\"{k:26s} {','.join(v) if v else '-'}\")\nEOF";
+    expect(decide(command, DEFAULT_COMMAND_RULES)).toBeUndefined();
+    expect(decide("cat <<'EOF' > notes.txt\ngit push --force\nEOF\nls", DEFAULT_COMMAND_RULES)).toBeUndefined();
+    for (const run of ["bash <<'EOF'\ngit push --force\nEOF", "ssh host <<EOF\ngit push -f\nEOF", "cat <<EOF\n$(git push --force)\nEOF", "sudo bash <<-EOF\n\tgit push --force\n\tEOF"]) {
+      expect(decide(run, DEFAULT_COMMAND_RULES)?.decision, run).toBe("forbid");
+    }
+  });
   it("uses word count, then forbid, ask, allow; combines every part", () => {
     const rules = commandRules([{ prefix: 'git', decision: 'forbid' }, { prefix: 'git status', decision: 'allow' }, { prefix: 'npm test', decision: 'allow' }]);
     expect(decide('git status && npm test', rules)?.decision).toBe('allow');
