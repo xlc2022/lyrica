@@ -69,6 +69,8 @@ export function setupOnly(script: string): boolean {
     if (words[0]?.startsWith("#")) return true;
     const run = programs(words);
     if (run.length && !SETUP.has(run[0]!)) return false;
+    // A nameref (`declare -n r=BASH_ENV`) would set one of bash's own variables under another name.
+    if (/^(?:declare|typeset|local)$/.test(run[0] ?? "") && run.some(w => /^-\w*n/.test(w))) return false;
     return words.every(w => !assignment(w) || !SHELL_READS.test(w.slice(0, w.indexOf("="))));
   });
 }
@@ -79,7 +81,8 @@ export function setupOnly(script: string): boolean {
 function sourcing(parts: string[][]): { at: number; cds: string[]; path: string } | undefined {
   const cds: string[] = [];
   for (const [at, words] of parts.entries()) {
-    if (words[0] === "cd" && words.length === 2 && LITERAL.test(words[1]!)) { cds.push(words[1]!); continue; }
+    // `cd -` goes back to the last folder, and `-P`/`-L` are flags: none is a folder to resolve against.
+    if (words[0] === "cd" && words.length === 2 && LITERAL.test(words[1]!) && !words[1]!.startsWith("-")) { cds.push(words[1]!); continue; }
     // Without a slash, bash looks the name up on PATH first, so which file it is isn't known.
     return SOURCES.test(words[0] ?? "") && words[1] && LITERAL.test(words[1]) && words[1].includes("/") ? { at, cds, path: words[1] } : undefined;
   }

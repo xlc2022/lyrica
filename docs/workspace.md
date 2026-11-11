@@ -1919,7 +1919,11 @@ allowed, since it does no more than running a program by its path, which
 isn't opaque either. A file that couldn't be read, a path without a slash
 (bash looks it up on `PATH` first) and anything else on the line before it
 keep `source` opaque, so the line can't rewrite the file between the read
-and the run. Only that one `source` is read.
+and the run. A background job or a parallel call could still change it in
+that moment; the gate accepts that, as it never looks inside `./x.sh` either.
+A `cd` starting with `-` (`cd -`, `cd -P`) and a nameref (`declare`,
+`typeset` or `local` with `-n`) also keep it opaque. Only that one `source`
+is read.
 
 The hook reads rules on every `bash` call through `ThreadTools.commandRules`.
 Forbid blocks without a card, Ask always asks, and Allow skips Ask and Accept

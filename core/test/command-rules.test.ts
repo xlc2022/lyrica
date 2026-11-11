@@ -47,7 +47,7 @@ describe("project command matching", () => {
     expect(decide(command, DEFAULT_COMMAND_RULES, env)).toBeUndefined();
     // Unread, or not only setup, it stays opaque; a rule the script breaks is broken by the line.
     expect(decide(command, DEFAULT_COMMAND_RULES)?.decision).toBe('ask');
-    for (const script of ['git push -f', 'make() { ls; }', "alias make='ls'", 'export BASH_ENV=/tmp/x', "PS4='$(id)'", 'export N=$(git push -f)', 'source ./more.sh', 'for f in a; do export F=$f; done', 'printf -v PS4 x', 'x'.repeat(70000)]) {
+    for (const script of ['git push -f', 'make() { ls; }', "alias make='ls'", 'export BASH_ENV=/tmp/x', "PS4='$(id)'", 'export N=$(git push -f)', 'source ./more.sh', 'for f in a; do export F=$f; done', 'printf -v PS4 x', 'declare -n r=BASH_ENV\nr=/tmp/e.sh', 'typeset -xn r=IFS', 'local -n r=CDPATH', 'x'.repeat(70000)]) {
       expect(setupOnly(script), script).toBe(false);
       expect(decide(command, DEFAULT_COMMAND_RULES, script)?.decision, script).not.toBeUndefined();
     }
@@ -56,7 +56,7 @@ describe("project command matching", () => {
     expect(decide('. ./env.sh && git status', [{ prefix: 'export', decision: 'forbid' }], 'export A=1')?.prefix).toBe('export');
     expect(decide('. ./env.sh && git status', [...DEFAULT_COMMAND_RULES, { prefix: 'export', decision: 'ask' }], 'export A=1')?.decision).toBe('ask');
     // Only a literal path with a slash, with nothing but cds before it, so the line can't change or swap the file first.
-    for (const line of ['source env.sh', 'source $E', 'source ~/env.sh', 'echo x > ./env.sh && source ./env.sh', 'cd $D && source ./env.sh', 'cd >./env.sh a && source ./env.sh', 'git pull; . ./env.sh']) {
+    for (const line of ['source env.sh', 'source $E', 'source ~/env.sh', 'echo x > ./env.sh && source ./env.sh', 'cd $D && source ./env.sh', 'cd >./env.sh a && source ./env.sh', 'git pull; . ./env.sh', 'cd /a && cd /b && cd - && source ./env.sh', 'cd -P /a && source ./env.sh']) {
       expect(sourcedFile(line), line).toBeUndefined();
       expect(decide(line, DEFAULT_COMMAND_RULES, 'export A=1')?.decision, line).toBe('ask');
     }
