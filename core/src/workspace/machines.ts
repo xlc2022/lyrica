@@ -106,7 +106,7 @@ export const LOADER = /^ld(?:64|-[\w.-]+)?\.so(?:\.\d+)*$/;
 const VALUE_FLAGS: Record<string, string[]> = {
   sudo: ["-u", "-g", "-h", "-p", "-C", "-U"], doas: ["-u", "-C"], nice: ["-n"], ionice: ["-c", "-n", "-p"], timeout: ["-s", "-k"],
   xargs: ["-I", "-P", "-L", "-d", "-n", "-s", "-a"], env: ["-u", "-C", "-S"],
-  "ld.so": ["--library-path", "--preload", "--audit", "--argv0", "--glibc-hwcaps-prepend", "--glibc-hwcaps-mask"],
+  "ld.so": ["--library-path", "--preload", "--audit", "--argv0", "--inhibit-rpath", "--glibc-hwcaps-prepend", "--glibc-hwcaps-mask"],
 };
 /** Shells whose `-c` argument is a command line; rules.ts shares this list. */
 export const SHELLS = new Set(["sh", "bash", "dash", "zsh", "ksh", "fish"]);
@@ -202,6 +202,9 @@ function parse(command: string): string[][] {
       commands.push(...parse(command.slice(start, end)));
       word += "$substitution"; i = end; continue;
     }
+    // `${NAME}` is one word, not a group; any other `${…}` splits as before.
+    const braced = ch === "$" && quote !== "'" ? /^\$\{[A-Za-z_][A-Za-z0-9_]*\}/.exec(command.slice(i)) : null;
+    if (braced) { word += braced[0]; i += braced[0].length - 1; continue; }
     if (!quote && /[;&|\n(){}]/.test(ch)) { flush(); continue; }
     if (!quote && /\s/.test(ch)) { flushWord(); continue; }
     word += ch;

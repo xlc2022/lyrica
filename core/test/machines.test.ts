@@ -340,6 +340,7 @@ describe("suspect commands", () => {
       ["git push origin --delete feature", "This deletes a branch, or a stash with its changes."], ["git stash drop", "This deletes a branch, or a stash with its changes."], ["git stash clear", "This deletes a branch, or a stash with its changes."],
       ["npm run build && rm -rf dist", folder], ["bash -c 'git reset --hard'", changes],
       ["L=/lib/ld-linux-x86-64.so.2; \"$L\" --library-path /deps /bin/rm -rf build", folder], ["D=/; rm -rf $D", "This deletes everything, a home folder or a system folder."],
+      ["D=/; rm -rf ${D}", "This deletes everything, a home folder or a system folder."], ["/lib64/ld-linux-x86-64.so.2 --inhibit-rpath x rm -rf ~/work", folder],
     ];
     for (const [c, warning] of cases) {
       expect(suspectCommand(c, "sandbox"), c).toBe(warning);
