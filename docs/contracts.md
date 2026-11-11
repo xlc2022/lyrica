@@ -1007,9 +1007,11 @@ Custom roles override built-ins by name, except `claude`.
   `message` returns a `Delivery`: `started`, `running`, `queued` (an idle
   thread past the at-once limit: saved, woken when a slot frees), `saved`
   (a child-woken parent past `MAX_WAKE_ROUNDS` replies to its source child),
-  `held` (the thread waits on the person: an open question, `needs_you` or
-  a permission card; the message is saved through `appendParent` and starts
-  nothing, so no thread's yes stands in for the person's),
+  `held` (a card waits on the person there: an open question or a
+  permission card; the message is saved through `appendParent` and starts
+  nothing, so no thread's yes stands in for the person's. A bare
+  `needs_you` is not a card, so the message goes through, and the project
+  chat's reply clears it),
   or, to a parent, `wakes` or `update`. `HostedThread.childWakeTurn` marks
   the child-started turn whose replies count as rounds.
   Pending child wakes also wait while `ThreadHost.draining` is true.
@@ -1057,10 +1059,14 @@ Custom roles override built-ins by name, except `claude`.
   once. Resolve and the person's Stop withdraw a
   question (`HostedThread.stop(true)`); a parent's `threads stop`, lock,
   project pause, disposing an idle session and restarting the daemon
-  preserve it. Another thread can't resolve a thread that waits on the
-  person. `needs_you` moves only when a question opens or closes, so a
-  status message's `needsYou` survives an edit or rewind; only the person
-  writing, answering or resolving clears it. Removing its tool call removes the
+  preserve it. While a card is open another thread can't resolve the
+  thread away. `needs_you` is a stored flag, never read back out of
+  message text, so a status message's `needsYou` survives an edit or
+  rewind. It moves when a question opens or closes, when the person
+  writes, answers or resolves, and when the project chat answers a thread
+  whose only wait is the `needsYou` status it posted
+  (`ChildThreads.message`); a sibling's reply settles nothing, and an open
+  card holds until the person answers it. Removing its tool call removes the
   pointer with the turn.
   `ThreadSummary.question?: { n: number; asked: string }` carries only the
   open pointer. `MessagePage.questions?: QuestionState[]` carries the saved

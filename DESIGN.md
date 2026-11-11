@@ -1354,10 +1354,12 @@ project page and the web part are built. Recent calls can be filtered by project
   ordinary user message with lyricad's answer mark; typing closes the card
   as answered in words. Replacement, the user's Stop and Resolve withdraw
   it. Each thread has one open question; closing it clears Waiting on you
-  at once. Only the user ends a wait on them (a question, `needsYou` or a
-  permission card): another thread's message is held until they answer,
-  and no thread can resolve the wait away, so no thread's yes stands
-  in for theirs.
+  at once. Only the user ends a wait on a card (their question, or an
+  approval): another thread's message is held until they answer, and no
+  thread can resolve the wait away, so no thread's yes stands in for
+  theirs. Saying `needsYou` in a message to the project chat is status, not
+  a card: the chat's reply reaches that thread and settles it, so a builder
+  can ask who should put a decision on a card.
   Only pointers and closing state live in pool.db's `questions`; all words
   stay in the encrypted thread log. She asks once, recommends first, keeps
   working on reversible steps and stops before an irreversible one.

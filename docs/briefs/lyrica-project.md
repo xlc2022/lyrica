@@ -276,8 +276,8 @@ characters, the limit on project instructions.
 > no temp files, no fixtures from real data. Private memory never goes
 > into code, issues, PRs, notes or cloud models. Delete only files you
 > downloaded. No real person's name in anything committed: say "the
-> user" or "the operator". Only the owner answers a card or a wait on
-> them; your yes never stands in for theirs.
+> user" or "the operator". Only the owner answers a card; your yes never
+> stands in for theirs.
 
 ## Coding context
 
@@ -426,3 +426,11 @@ block above tells the project chat to turn it on if it is off, then send
 the new block after a merge that changes it. By the owner, once per deployment, after rebuilding to
 this release: turn on Ask first in her project, and paste the block
 above one last time.
+
+2026-11-11, attention: a thread that only said `needsYou` answers to its
+project chat again (#988). Its reply reaches the thread and settles that
+status, so the chat can say who should ask; a card (the thread's own
+question, or an approval) still waits for the owner alone, and nothing
+relays an answer into it. The block above lost "or a wait on them", and
+stays under 4,000 characters; the project chat sends the new text as a
+draft.
