@@ -20,7 +20,9 @@
 // or answer again. An MCP server ("house", get_status and turn_on) listens on
 // the model port + 20, and "mcp: <tool>" searches for that tool and calls it.
 // "ask: <question>" asks on a card; "ask twice:" replaces it in one turn.
-// "start ask: <title>" starts a project thread whose task asks on a card.
+// "need: <text>" says the thread waits on the person (a bare `needsYou` status, no card).
+// "start ask: <title>" starts a project thread whose task asks on a card;
+// "start need: <title>" one whose task posts that status.
 // "tell <title>: <text>" messages that child thread (then says "Sent it.").
 // "read <title>" reads that child thread (then says "Read it.").
 // "compact: <summary>" compacts the thread with that summary (then says "Compacting.").
@@ -310,11 +312,13 @@ function fakeModel() {
         return res.end("data: [DONE]\n\n");
       }
       const ask = /(?:^|\n\n)ask(?: twice)?: (.+)/.exec(said)?.[1];
+      // "need: <text>": a project thread tells its chat it waits on the person, with no card behind it.
+      const need = /(?:^|\n\n)need: (.+)/.exec(said)?.[1];
       const plan = /plan: (.+)/.exec(said)?.[1];
       const skill = /^skill: (.+?)\|(.+?)\|([\s\S]+)/.exec(said);
-      const child = /^start(?: long| ask)?: (.+)/.exec(said)?.[1];
+      const child = /^start(?: long| ask| need)?: (.+)/.exec(said)?.[1];
       // "start long: <title>" gives the child a task of many lines, for the collapsed message's Show more.
-      const task = said.startsWith("start ask:") ? `ask: Which scope for ${child}?` : said.startsWith("start long:") ? Array.from({ length: 30 }, (_, i) => `Step ${i + 1} of the plan for ${child}.`).join("\n\n") : `Work on ${child}.`;
+      const task = said.startsWith("start ask:") ? `ask: Which scope for ${child}?` : said.startsWith("start need:") ? `need: Blocked on the router choice for ${child}.` : said.startsWith("start long:") ? Array.from({ length: 30 }, (_, i) => `Step ${i + 1} of the plan for ${child}.`).join("\n\n") : `Work on ${child}.`;
       const draft = /^draft: (.+)\|(.+)/.exec(said);
       const fold = /^fold: (.+)/.exec(said)?.[1];
       const suggest = /^suggest: (.+)/.exec(said)?.[1];
@@ -342,15 +346,15 @@ function fakeModel() {
         const other = [...said.matchAll(/^- \[t:([^\]\s]+)\]/gm)].map((m) => m[1]).find((id) => !about.has(id));
         send({ role: "assistant", content: JSON.stringify({ tell: other ? [{ thread: other, text: "Heads up: the plan changed." }] : [] }) });
         send({}, "stop");
-      } else if ((ask || child || suggest || steps || fold || draft || tell || read || compact) && (last?.role !== "tool" || (said.startsWith("ask twice:") && chat.messages.slice(-sinceUser).filter(m => m.role === "tool").length < 2))) {
-        const args = compact ? { action: "compact", summary: compact } : ask ? { action: "ask", question: ask, context: "Choose the scope for the garden.", options: [{ label: "Small", consequence: "Plant a small bed first." }, { label: "Large", consequence: "Plant the whole garden." }], recommended: 0 } : draft ? { action: "draft", goal: draft[1]!.trim(), instructions: draft[2]!.trim() } : fold ? { action: "fold", ids: fold.split(",").map(t => t.trim()) } : child ? { action: "start", title: child, task } : tell ? { action: "message", id: tell[1], text: tell[2] } : read ? { action: "read", id: read } : steps ? { action: "steps", steps }
+      } else if ((ask || need || child || suggest || steps || fold || draft || tell || read || compact) && (last?.role !== "tool" || (said.startsWith("ask twice:") && chat.messages.slice(-sinceUser).filter(m => m.role === "tool").length < 2))) {
+        const args = compact ? { action: "compact", summary: compact } : ask ? { action: "ask", question: ask, context: "Choose the scope for the garden.", options: [{ label: "Small", consequence: "Plant a small bed first." }, { label: "Large", consequence: "Plant the whole garden." }], recommended: 0 } : need ? { action: "message", to: "parent", text: need, needsYou: true } : draft ? { action: "draft", goal: draft[1]!.trim(), instructions: draft[2]!.trim() } : fold ? { action: "fold", ids: fold.split(",").map(t => t.trim()) } : child ? { action: "start", title: child, task } : tell ? { action: "message", id: tell[1], text: tell[2] } : read ? { action: "read", id: read } : steps ? { action: "steps", steps }
           : { action: "suggest", threads: suggest!.split(",").map((t) => t.trim()).map((title) => ({ title, task: `Work on ${title}.` })) };
         send({ role: "assistant", tool_calls: [{ index: 0, id: `call_${Date.now()}`, type: "function", function: { name: "threads", arguments: JSON.stringify(args) } }] });
         send({}, "tool_calls");
-      } else if (ask || child || suggest || steps || fold || draft || tell || read || compact) {
+      } else if (ask || need || child || suggest || steps || fold || draft || tell || read || compact) {
         // Her words after a Fold in card come two seconds late, so the card's dialog is open when her reply ends.
         if (fold) await new Promise((r) => setTimeout(r, 2000));
-        send({ role: "assistant", content: child ? "Started it." : tell ? "Sent it." : read ? "Read it." : compact ? "Compacting." : steps ? "Checklist set." : "Suggested." });
+        send({ role: "assistant", content: child ? "Started it." : tell ? "Sent it." : read ? "Read it." : compact ? "Compacting." : steps ? "Checklist set." : need ? "I'll wait for her." : "Suggested." });
         send({}, "stop");
       } else if ((command || plan || skill) && last?.role !== "tool") {
         const call = command ? { name: "bash", arguments: JSON.stringify({ command }) } : skill ? { name: "save_skill", arguments: JSON.stringify({ name: skill[1]!.trim(), description: skill[2]!.trim(), body: skill[3]!.trim() }) } : { name: "propose_plan", arguments: JSON.stringify({ plan }) };

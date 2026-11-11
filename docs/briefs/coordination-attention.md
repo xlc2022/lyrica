@@ -50,8 +50,9 @@ growing a new one; the clear is the shape that lived in `message` before
 ## Out of scope
 
 Cross-thread answer transfers, a second question per thread, relaying an
-approval into a card, push notifications, anything in `web/` (the states
-and cards are unchanged), and #986's chat scroll.
+approval into a card, push notifications, and #986's chat scroll. No `web/`
+code changes: the states and cards a person sees are already documented in
+docs/ux.md. What was added in `web/` is coverage (below), not a control.
 
 ## Checks and docs
 
@@ -62,10 +63,13 @@ child; a pending permission still holds; a parent can resolve a
 bare-attention thread and can't resolve one with a card open. Homes:
 `daemon/test/child-wakes.test.ts` (units) and the project integration test
 in `daemon/test/projects.test.ts`. `npm run typecheck`, `npm test` one
-suite at a time. Docs this makes stale: `core/src/threads.ts` and
-`extension/src/threads.ts` guidance and held text, DESIGN.md,
-docs/contracts.md, docs/daemon.md, docs/delegation.md,
-docs/briefs/lyrica-project.md, and this brief's handoff note.
+suite at a time, then the focused browser check at both widths
+(`E2E_PROJECTS=phone-admin,desktop-admin npx playwright test
+-c web/playwright.config.ts -g 'bare waiting status'`). Docs this makes
+stale: `core/src/threads.ts` and `extension/src/threads.ts` guidance and held
+text, DESIGN.md, docs/contracts.md, docs/daemon.md, docs/delegation.md,
+docs/briefs/question-card.md, docs/briefs/lyrica-project.md, and this brief's
+handoff note.
 
 ## Handoff
 
@@ -88,5 +92,17 @@ holds; the person's answer through `POST …/questions/:n/answer` releases the
 child (`daemon/test/child-wakes.test.ts`, the project integration test in
 `daemon/test/projects.test.ts`).
 
-Next: review of this head, then the PR. Open: none; the scope is the owner's,
+Browser: `web/e2e/web-admin.spec.ts`, "a project thread's bare waiting status
+answers to its chat, while its card waits for the person", at 1280 and 390 px
+against a real lyricad. It watches one project thread card live, no reload:
+the bare status shows Waiting on you with its line, the project chat's reply
+reaches the thread and settles it; then the thread's own card shows in the
+project chat, the chat's prose is kept without a turn and the one card stays
+pending, and a tap on it answers. It needs two fake-model directives in
+`web/e2e/serve.ts`: `need: <text>` posts the bare status, and
+`start need: <title>` starts a thread whose task does. Screenshots of the
+waiting, settled, card-open and card-answered states at both widths were
+read; overflow checks pass.
+
+Next: exact-head review, then merge. Open: none; the scope is the owner's,
 settled 2026-11-11 in #988.

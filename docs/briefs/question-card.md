@@ -49,7 +49,10 @@ ask({ question, options: { label, consequence }[], recommended, context? })
 - In a project's thread this is today's `needsYou`, so the state, the parent
   card, the pending bar and the parent wake all work as they already do.
   `ask` replaces `message({ to: "parent", needsYou: true })` as the way to
-  ask the user. `needsYou` stays as it is.
+  ask the user. `needsYou` on its own is status, not a lock: the project
+  chat's reply reaches that thread and settles the flag, so its card stops
+  saying Waiting on you (2026-11-11, #988). What waits for the person is a
+  card — the thread's own question, a root step, or an approval.
 - In any other thread, `ThreadSummary.question` is set, and the sidebar
   shows Waiting on you.
 - A thread has at most one open question. A new `ask` withdraws the open
@@ -190,6 +193,13 @@ Local execution uses UNTRACKED `web/playwright.local.config.ts`, ports
 `SCREENSHOTS=../shots flock /tmp/lyrica-tests.lock npx playwright test -c playwright.local.config.ts -g 'question cards|private question Notifications' --project=phone --project=desktop`.
 
 Merged as #322 after review fixes: only Stop and Resolve withdraw a
-question, and `needs_you` moves only when a question opens or closes.
-Push notifications, card free-text inputs, multiple open questions and
+question, and `needs_you` moves when a question opens or closes. Push
+notifications, card free-text inputs, multiple open questions and
 subagent questions remain out of scope. No open design questions.
+
+2026-11-11, #988: `needs_you` alone no longer holds another thread's message
+out. A bare waiting status answers to the project chat, whose reply reaches
+the thread and clears it; an open card (question, root step) or a pending
+approval still holds a message and can't be resolved away by a thread, and
+only the person's answer closes it. Both halves are checked in the browser
+in `web-admin.spec.ts` (`-g 'bare waiting status'`), at 1280 and 390 px.

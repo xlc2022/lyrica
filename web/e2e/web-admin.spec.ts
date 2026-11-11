@@ -2495,6 +2495,80 @@ test("project question cards answer in place and withdraw on Resolve", async ({ 
 });
 
 
+// #988: the two waits a project card shows look the same and are not. A bare `needsYou` status answers to the
+// project chat; a card waits for the person alone. Both are watched live, with no reload, on one thread card.
+test("a project thread's bare waiting status answers to its chat, while its card waits for the person", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  const project = await page.evaluate(async (userId) => {
+    const r = await fetch(`/api/u/${userId}/threads`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ pool: "general", project: true, title: "Coordination garden" }) });
+    if (!r.ok) throw new Error(`Create project: ${r.status}`);
+    return r.json();
+  }, userId);
+  // A look's line is sent as the project chat's message, so it would settle the status too: off, so only the
+  // chat's own reply is under test here.
+  await page.evaluate(async (path) => {
+    const r = await fetch(path, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ watchThreads: false }) });
+    if (!r.ok) throw new Error(`${path}: ${r.status} ${await r.text()}`);
+  }, `/api/u/${userId}/threads/general/${encodeURIComponent(project.id)}`);
+  const base = `/api/u/${userId}/threads/general/${encodeURIComponent(project.id)}`;
+  const busy = (path: string) => page.evaluate(async (p) => (await (await fetch(p)).json()).busy, path);
+  const turns = (path: string) => page.evaluate(async (p) => ((await (await fetch(`${p}/messages`)).json()).messages as { role: string }[]).filter((m) => m.role === "assistant").length, path);
+  await page.goto(`/#/u/${userId}/t/general/${encodeURIComponent(project.id)}`);
+
+  // Status: the thread says it waits on the person, and the project chat's reply reaches it and settles that, so
+  // the card stops saying Waiting on you without the person visiting.
+  await send(page, "start need: Router choice");
+  await expect(page.getByText("Started it.")).toBeVisible();
+  const card = page.locator(".tcard").filter({ has: page.locator(".tcard-title", { hasText: "Router choice" }) });
+  await expect(card).toHaveAttribute("data-pending", "Thread");
+  await expect(card.locator(".tstate")).toHaveText("Waiting on you");
+  await expect(card.getByText(/^Waits on you: Blocked on the router choice/)).toBeVisible();
+  const width = page.viewportSize()!.width;
+  // The card is the surface under test: put it in view, so a capture shows its state word and line.
+  await card.scrollIntoViewIfNeeded();
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/attention-waiting-${width}.png` });
+  const childId = threadIdOf((await card.locator(".tcard-title").getAttribute("href"))!);
+  const childBase = `/api/u/${userId}/threads/general/${encodeURIComponent(childId)}`;
+  await expect.poll(() => busy(base)).toBe(false);
+  const statusTurns = await turns(childBase);
+  await send(page, `tell ${childId}: Ask her which router, then.`);
+  await expect(page.getByText("Sent it.")).toBeVisible();
+  await expect(card.locator(".tstate")).not.toHaveText("Waiting on you");
+  await expect(card).not.toHaveAttribute("data-pending", "Thread");
+  await expect.poll(() => turns(childBase), { timeout: 20_000 }).toBeGreaterThan(statusTurns);
+  await card.scrollIntoViewIfNeeded();
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/attention-settled-${width}.png` });
+
+  // A card: the one question stays pending through the chat's prose, which is kept in the thread instead of
+  // starting a turn, and only the person's answer on the card releases it.
+  await expect.poll(() => busy(childBase)).toBe(false);
+  await sendTo(page, userId, childId, "ask: Which router?");
+  const question = card.locator(".question-card").filter({ hasText: "Which router?" });
+  await expect(question.getByRole("button", { name: /^Small/ })).toBeEnabled();
+  await expect(card.locator(".tstate")).toHaveText("Waiting on you");
+  await card.scrollIntoViewIfNeeded();
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/card-open-${width}.png` });
+  // Both turns are done before the count: a message that reaches a running turn is steered into it, not held.
+  await expect.poll(() => busy(base)).toBe(false);
+  await expect.poll(() => busy(childBase)).toBe(false);
+  const before = await turns(childBase);
+  await send(page, `tell ${childId}: Edge, that's a yes from me.`);
+  await expect(page.getByText("Sent it.")).toBeVisible();
+  await expect(card.locator(".question-card")).toHaveCount(1);
+  await expect(question.getByRole("button", { name: /^Small/ })).toBeEnabled();
+  await expect(card.locator(".tstate")).toHaveText("Waiting on you");
+  await expect.poll(() => busy(childBase)).toBe(false);
+  expect(await turns(childBase)).toBe(before);
+  // The person answers on the card, here in the project chat: the thread wakes and reads what waited in it.
+  await question.getByRole("button", { name: /^Small/ }).click();
+  await expect(card.locator(".question-card")).toHaveCount(0);
+  await expect(card.locator(".tstate")).not.toHaveText("Waiting on you");
+  await expect.poll(() => turns(childBase), { timeout: 20_000 }).toBeGreaterThan(before);
+  await card.scrollIntoViewIfNeeded();
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/card-answered-${width}.png` });
+  await noHorizontalScroll(page);
+});
+
 test("private question Notifications keep their pool and answer the card", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   await newThread(page, "Private");
