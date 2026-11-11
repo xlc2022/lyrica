@@ -1352,8 +1352,12 @@ project page and the web part are built. Recent calls can be filtered by project
   `ask_parent`. A card can be answered in the conversation, on its project
   thread card or in Notifications. A tap sends the chosen label as an
   ordinary user message with lyricad's answer mark; typing closes the card
-  as answered in words. Replacement, Stop and Resolve withdraw it. Each
-  thread has one open question; closing it clears Waiting on you at once.
+  as answered in words. Replacement, the user's Stop and Resolve withdraw
+  it. Each thread has one open question; closing it clears Waiting on you
+  at once. Only the user ends a wait on them (a question, `needsYou` or a
+  permission card): another thread's message is held until they answer,
+  and no thread can resolve the wait away, so no thread's yes stands
+  in for theirs.
   Only pointers and closing state live in pool.db's `questions`; all words
   stay in the encrypted thread log. She asks once, recommends first, keeps
   working on reversible steps and stops before an irreversible one.

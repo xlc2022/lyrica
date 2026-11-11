@@ -511,8 +511,8 @@ checks it reaches her, and with a real model which she picks. Code:
   changes the goal, a visible output or an irreversible step; ask once on
   the card, recommend the first option, keep working where reversible and
   stop where not. The answer arrives as an ordinary user message in a later
-  turn. Replacing an open question, Stop (the person's or a parent's) or
-  Resolve withdraws it; lock and project pause keep it.
+  turn. Replacing an open question, the person's Stop or Resolve
+  withdraws it; a parent's Stop, lock and project pause keep it.
 - `compact({ summary })`: compacts the thread she's in with her summary
   (daemon.md, "Compacting herself"). Child threads have it too.
 
@@ -718,8 +718,12 @@ A project chat's child threads are the project's threads
   project chat once. It replaces `message({ to: "parent", needsYou: true })`
   for asking the user; that older flag still works. A tap or typed answer
   clears `needs_you` immediately, rather than waiting for her next update.
-  So does the project chat's message to the thread when no question card
-  is open: it decided, so the thread no longer waits on the user.
+  Only the user clears it: while a thread waits on the user (a question,
+  `needsYou` or a permission card), a message from the project chat or
+  another thread is saved in it without starting or steering a turn
+  (`held`), and it reads it once the user answers; the project chat can't
+  resolve it, and its `stop` leaves the question open. A yes from another
+  thread never stands in for the user's.
 - **States:** working, waiting (an approval, or `needsYou`), queued, idle,
   resolved. `resolve` (her tool; a thread resolves only itself, the project
   chat any of its threads; it stops at work no remote has, files not

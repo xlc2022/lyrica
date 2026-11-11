@@ -276,7 +276,8 @@ characters, the limit on project instructions.
 > no temp files, no fixtures from real data. Private memory never goes
 > into code, issues, PRs, notes or cloud models. Delete only files you
 > downloaded. No real person's name in anything committed: say "the
-> user" or "the operator".
+> user" or "the operator". Only the owner answers a card or a wait on
+> them; your yes never stands in for theirs.
 
 ## Coding context
 

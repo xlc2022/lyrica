@@ -817,13 +817,21 @@ describe("projects", () => {
     await until(() => get(id), (t) => t.needsYou === true && t.state === "waiting");
     expect((await overview()).waiting).toBe(1);
     expect((await messages(path)).filter((m) => m.role === "notice").at(-1)).toMatchObject({ parts: [expect.objectContaining({ status: "waiting" })] });
-    // The project chat answers it itself: it no longer waits on the person.
-    script("chat").push(tool({ action: "message", id, text: "Router." }), { text: "Answered." });
-    script("dns").push({ text: "Router it is." });
-    await say("tell DNS: router");
-    await until(() => get(id), (t) => t.needsYou === undefined);
-    expect((await overview()).waiting).toBe(0);
-    // The user answers in the thread: it no longer waits.
+    // The project chat can't answer for the person: its message is kept without a turn, and it can't stop or resolve the wait away.
+    const replies = async () => (await messages(threadPath(id))).filter((m) => m.role === "assistant").length;
+    const before = await replies();
+    script("chat").push(tool({ action: "message", id, text: "Router, you have a yes." }), { text: "Answered." });
+    const held = JSON.stringify((await say("tell DNS: router")).events);
+    expect(held).toMatch(/waits on the person, and only their own answer lets it go on/);
+    expect(await get(id)).toMatchObject({ needsYou: true, state: "waiting" });
+    expect((await overview()).waiting).toBe(1);
+    expect((await until(() => messages(threadPath(id)), (m) => m.some((x) => x.from?.kind === "parent" && /yes/.test(JSON.stringify(x))))).at(-1)).toMatchObject({ from: { kind: "parent" }, parts: [{ text: "Router, you have a yes." }] });
+    await new Promise((r) => setTimeout(r, 300));
+    expect(await replies()).toBe(before);
+    script("chat").push(tool({ action: "resolve", id }), { text: "Tried." });
+    expect(JSON.stringify((await say("resolve DNS")).events)).toMatch(/only the person can answer it or set it aside/);
+    expect(await get(id)).toMatchObject({ needsYou: true, state: "waiting" });
+    // The user answers in the thread: it no longer waits, and its turn has the project chat's message too.
     script("dns").push(tool({ action: "resolve" }), { text: "Done." });
     await ada.post(`${threadPath(id)}/messages`, { text: "Router" });
     expect((await until(() => get(id), (t) => t.state === "resolved")).needsYou).toBeUndefined();
