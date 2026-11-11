@@ -5,7 +5,7 @@ import { CHILD_WAKES } from "@lyrica/core";
 import { setToolsOff } from "./gate.ts";
 
 // Principles 1 and 2: stop real tool loops in the runtime, independently of the prompt.
-export const MAX_TURN_TOOL_CALLS = 100;
+export const MAX_TURN_TOOL_CALLS = 250;
 export const MAX_IDENTICAL_TOOL_CALLS = 3;
 export const TURN_TOOL_NOTICE = "lyrica-tool-limit";
 /** Told to her, unseen, once the limit stops her tools: the person gets a reply, never only the notice. */

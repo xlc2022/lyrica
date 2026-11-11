@@ -60,7 +60,7 @@ async function scenario(calls: { name: string; args: JsonObject }[], prompts = 1
 }
 
 it("ends a looping model at the per-turn cap, shows the notice, and lets her say where things stand", async () => {
-  const r = await scenario(Array.from({ length: 110 }, (_, i) => ({ name: i % 2 ? "search" : "other", args: { query: String(i) } })));
+  const r = await scenario(Array.from({ length: 260 }, (_, i) => ({ name: i % 2 ? "search" : "other", args: { query: String(i) } })));
   expect(r.executed).toBe(MAX_TURN_TOOL_CALLS);
   // One more request, with no tools, for her reply.
   expect(r.requested).toBe(MAX_TURN_TOOL_CALLS + 1);
@@ -68,7 +68,7 @@ it("ends a looping model at the per-turn cap, shows the notice, and lets her say
   expect(r.asked[0]).toContain(WRAP_UP);
   expect(r.notices).toHaveLength(1);
   const shown = JSON.stringify(r.shown);
-  expect(shown).toContain("Turn stopped after `100` tool calls.");
+  expect(shown).toContain("Turn stopped after `250` tool calls.");
   expect(shown).toContain("Stopped at the limit: half done.");
   expect(shown).not.toContain(WRAP_UP);
 });
@@ -158,19 +158,19 @@ it("validates missing required fields before executing", async () => {
 
 
 it("blocks calls past the cap within a single batch", async () => {
-  const r = await scenario(Array.from({ length: 110 }, (_, i) => ({ name: i % 2 ? "search" : "other", args: { query: String(i) } })), 1, true);
-  expect(r.executed).toBe(100);
+  const r = await scenario(Array.from({ length: 260 }, (_, i) => ({ name: i % 2 ? "search" : "other", args: { query: String(i) } })), 1, true);
+  expect(r.executed).toBe(MAX_TURN_TOOL_CALLS);
   expect(r.requested).toBe(2);
   expect(r.asked).toHaveLength(1);
   expect(r.notices).toHaveLength(1);
 });
 
 it("resets the budget on the next prompt", async () => {
-  // The 101st response is her wrap-up; the 102nd call runs on the next prompt.
-  const r = await scenario(Array.from({ length: 102 }, (_, i) => ({ name: "search", args: { query: String(i) } })), 2);
-  expect(r.executed).toBe(101);
+  // The response after the cap is her wrap-up; the call after that runs on the next prompt.
+  const r = await scenario(Array.from({ length: MAX_TURN_TOOL_CALLS + 2 }, (_, i) => ({ name: "search", args: { query: String(i) } })), 2);
+  expect(r.executed).toBe(MAX_TURN_TOOL_CALLS + 1);
   expect(r.notices).toHaveLength(1);
-  expect(r.requested).toBe(103);
+  expect(r.requested).toBe(MAX_TURN_TOOL_CALLS + 3);
 });
 
 /** Her replies, in order, to one prompt: what each request asked and what the thread shows. */
