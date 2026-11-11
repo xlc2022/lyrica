@@ -624,6 +624,8 @@ dialog::backdrop { background: rgb(0 0 0 / 0.35); }
 .mem-item .prose { font-size: 15px; line-height: 1.65; }
 .mem-item h3 { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
 .mem-item section { display: grid; gap: 8px; }
+/* Its ⋯ sits at the start of the Edit row, so the menu opens rightwards, inside the reading pane that would clip it. */
+.mem-item .row-menu .menu { left: 0; right: auto; }
 .mem-back { display: none; }
 /* A page or thread citation reads as its title; a note's as a dated source mark. Both preview on hover or focus. */
 .wl { color: var(--accent); position: relative; }

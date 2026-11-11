@@ -431,6 +431,11 @@ test("memories export as Markdown and import back, skipping what is already ther
 
   // The memory's ⋯ downloads it as a Markdown file.
   await article.getByRole("button", { name: "More actions" }).click();
+  // The menu opens inside the reading pane rather than under the list beside it.
+  const menu = await article.getByRole("menu").boundingBox();
+  const pane = await page.locator(".mem-read").boundingBox();
+  expect(menu!.x).toBeGreaterThanOrEqual(pane!.x);
+  expect(menu!.x + menu!.width).toBeLessThanOrEqual(pane!.x + pane!.width);
   const saving = page.waitForEvent("download");
   await article.getByRole("menuitem", { name: "Export" }).click();
   const file = await saving;
