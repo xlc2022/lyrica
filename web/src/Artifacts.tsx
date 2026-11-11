@@ -14,7 +14,7 @@ import { Viewer, type ViewKind } from "./Viewer.tsx";
 /** The word for a kind, as the viewer's facts line has it for a file. */
 export const ARTIFACT_KIND: Record<ArtifactKind, string> = { html: "HTML", svg: "SVG", markdown: "Markdown", react: "React" };
 /** The files Import and Add version take. */
-const ACCEPT = ".html,.htm,.svg,.md,.markdown";
+const ACCEPT = ".html,.htm,.svg,.md,.markdown,.jsx,.tsx";
 const EXT: Record<ArtifactKind, string> = { html: "html", svg: "svg", markdown: "md", react: "tsx" };
 
 const OPEN = "lyrica:artifact";

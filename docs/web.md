@@ -353,7 +353,7 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   for the picked version, its thread's settings address for the internet
   line, and its own heading, Version select and ⋯ menu), so the sandboxed
   frame, console, Preview | Source and the thread beside are the viewer's
-  own. A React artifact shows as HTML. The **Artifacts** page
+  own. A React artifact shows its built page as HTML and its component as Source. The **Artifacts** page
   (`…/artifacts`, `ArtifactsPage`) lists `GET …/artifacts`, filters it in
   the browser, and imports files by posting each one's bytes; a change made
   in the viewer reloads it through a second window event.

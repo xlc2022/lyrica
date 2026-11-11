@@ -850,9 +850,13 @@ documented in `daemon/src/api.ts`, "The Files panel".
   first, each with its thread's title;
   `POST …/artifacts/:pool?name=<file name>[&title=][&thread=]` imports the
   body's bytes as version 1 by the user (the kind by the name: `.html`,
-  `.htm`, `.svg`, `.md`; 415 for another kind or bytes with a NUL, 413 past
-  16 MiB, 404 for a thread that isn't there); nothing is run or sent to a
-  model;
+  `.htm`, `.svg`, `.md`, or `.jsx` and `.tsx` for a React component; 415
+  for another kind or bytes with a NUL, 413 past 16 MiB, 404 for a thread
+  that isn't there); nothing is run or sent to a model. A component is
+  built into one page by core's `buildReactPage` (esbuild compiles it; it
+  may import only the listed packages) and the page is kept beside the
+  source, which is what `view` serves; one that doesn't build answers 400
+  with esbuild's first line;
   `GET …/artifacts/:pool/:id` answers the artifact and its versions;
   `GET …/:id/view[?v=<n>]` serves a version as `…/files/view` serves a file,
   with the same headers (`viewHeaders`): HTML with the console bridge under

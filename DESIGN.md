@@ -225,7 +225,12 @@ Each user has two pools of memory.
     version, restores one as a new version, adds a version from a file,
     renames, downloads or deletes. The **Artifacts** page in the sidebar
     lists them all and imports `.html`, `.svg` and `.md` files, each as a
-    new artifact at version 1.
+    new artifact at version 1. A React component (`.jsx` or `.tsx`, as
+    Claude's React artifacts are) is an artifact too: its source is kept as
+    written and built, when the version is made, into one page with React,
+    lucide-react, recharts and Tailwind inside, so it runs with the
+    internet off. It may import only those packages, which the build
+    enforces, and it is never run in `lyricad`.
   - **Changes** (decided 2026-10-22, as in Claude's own app): a thread with a
     checkout shows its branch, its open pull request and "+n −m" as a badge
     in its header, which opens the changes view: the files and commits at

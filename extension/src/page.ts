@@ -1,14 +1,14 @@
 // Principles 1 and 8: one tool for what every page-building thread made for itself (docs/briefs/page-tools.md).
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { StringEnum } from "@earendil-works/pi-ai";
-import { ARTIFACT_LIMIT, artifactKind, bundlePage, checkPage, decodePng, describeCheck, maskSecrets, pixelStats, PREVIEW_SCRIPT, sandboxHas, sandboxTools, type PreviewOutput } from "@lyrica/core";
+import { ARTIFACT_LIMIT, artifactKind, buildReactPage, reactLibraries, bundlePage, checkPage, decodePng, describeCheck, maskSecrets, pixelStats, PREVIEW_SCRIPT, sandboxHas, sandboxTools, type PreviewOutput } from "@lyrica/core";
 import { posix } from "node:path";
 import { Type, type Static } from "typebox";
 import { recording, type ThreadArtifact, type ThreadTools } from "./workspace.ts";
 
 export const pageParameters = Type.Object({
   action: StringEnum(["preview", "bundle", "check", "publish", "artifacts"] as const),
-  path: Type.Optional(Type.String({ description: "The page's HTML file. For publish: an .html, .svg or .md file. Not needed for artifacts." })),
+  path: Type.Optional(Type.String({ description: "The page's HTML file. For publish: an .html, .svg, .md, .jsx or .tsx file. Not needed for artifacts." })),
   title: Type.Optional(Type.String({ description: "For publish: the artifact's title; the file's name if left out on its first publish." })),
   artifact: Type.Optional(Type.String({ description: "For publish: the id of the artifact to add a version to, when the file isn't the one it was published from." })),
   out: Type.Optional(Type.String({ description: "For bundle: the file to write; <name>.single.html beside the page if left out." })),
@@ -46,7 +46,8 @@ export function pageTool(tools: ThreadTools, check: (id: string, input: Record<s
     description: "Work on an HTML page in your sandbox. preview: open it in headless Chromium, offline with WebGL, and get a screenshot, "
       + "console messages, errors, blocked requests, its canvases and pixel stats. bundle: make one self-contained HTML file of it and its local scripts "
       + "(with their imports and the offline libraries), stylesheets and images, then check that. check: list what it would still load from the network or other files. "
-      + "publish: keep a self-contained .html, .svg or .md file as an artifact the person opens from a card in your reply; publishing the same file again adds a version, and every version is kept. "
+      + "publish: keep a self-contained .html, .svg or .md file, or a React component (.jsx or .tsx with a default export), as an artifact the person opens from a card in your reply; publishing the same file again adds a version, and every version is kept. "
+      + `A React component may import only ${reactLibraries().map((l) => l.name).join(", ")}, and may use Tailwind classes. `
       + "artifacts: list this thread's artifacts (and its project's).",
     promptSnippet: "preview an HTML page (screenshot, errors, pixel stats), bundle it into one file, check it loads nothing from elsewhere, or publish it as an artifact",
     promptGuidelines: ["Check a page with page preview, not a screenshot script of your own; read its errors before its pixels.",
@@ -68,14 +69,15 @@ export function pageTool(tools: ThreadTools, check: (id: string, input: Record<s
       if (p.action === "publish") {
         if (!tools.artifacts) throw new Error("Artifacts aren't available here: publish from the thread itself.");
         const kind = artifactKind(file);
-        if (!kind) throw new Error("An artifact is an .html, .svg or .md file.");
-        if (kind === "react") throw new Error("React components can't be published yet: page bundle it into one .html file and publish that.");
+        if (!kind) throw new Error("An artifact is an .html, .svg, .md, .jsx or .tsx file.");
         const bytes = await target.ops().read.readFile(file);
         if (bytes.length > ARTIFACT_LIMIT) throw new Error("An artifact is at most 16 MiB.");
+        // A React component is built into one page here, by esbuild alone: its source is compiled, never run, and may import only the listed packages.
+        const built = kind === "react" ? Buffer.from((await buildReactPage(bytes.toString("utf8"), { loader: /\.tsx$/i.test(file) ? "tsx" : "jsx", ...(p.title ? { title: p.title } : {}) })).html) : undefined;
         // One file is all an artifact carries: a page that needs files beside it is bundled first.
         const found = kind === "html" ? checkPage(bytes.toString("utf8")) : undefined;
         if (found?.local.length) throw new Error(`${file} refers to local files an artifact can't carry: ${found.local.join(", ")}. Run page bundle and publish the bundle.`);
-        const { artifact, created } = tools.artifacts.publish({ path: file, kind, bytes, ...(p.title ? { title: p.title } : {}), ...(p.artifact ? { artifact: p.artifact } : {}) });
+        const { artifact, created } = tools.artifacts.publish({ path: file, kind, bytes, ...(built ? { built } : {}), ...(p.title ? { title: p.title } : {}), ...(p.artifact ? { artifact: p.artifact } : {}) });
         const lines = [`${created ? "Published" : artifact.version === 1 ? "Already published, unchanged:" : `Published version ${artifact.version} of`} ${artifactLine(artifact)}. The person sees a card for it in this reply.`];
         if (found && (found.loads.length || found.calls.length)) lines.push(describeCheck(found), "With the thread's internet off the page runs no scripts and loads nothing from the network.");
         return { content: [text(lines.join("\n"))], details: { artifact: { id: artifact.id, title: artifact.title, kind: artifact.kind, version: artifact.version } } };

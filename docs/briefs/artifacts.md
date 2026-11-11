@@ -196,3 +196,9 @@ works, so her threads update them there?
   asked: pasted source (Import takes files), the Files panel's Artifacts
   segment, a grid of cards (the page is a list). The app mockup has not
   been updated. Next: React, once the builder's branch arrives.
+- 2026-11-11: part 3 wired in. The builder came from the test machine's
+  branch `codex/artifacts-react-page` (e3b75bb), merged here; `page
+  publish` and import build `.jsx` and `.tsx` with it and keep the page
+  beside the source. `bundlePage` does not resolve React (the handoff's
+  step 3 was skipped), so a page she bundles herself can't import it.
+

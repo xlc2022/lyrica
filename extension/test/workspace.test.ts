@@ -1090,7 +1090,7 @@ describe("the page tool", () => {
     expect(published.filter((p) => p.title === "The site")).toHaveLength(1);
     expect(one(/^page: Published a1 ".*" \(html, version 1, from \/workspace\/site\/one.html\)\. The person sees a card for it in this reply\.$/)).toHaveLength(1);
     expect(one(/^page: Published version 2 of a1 /)).toHaveLength(1);
-    expect(one(/An artifact is an .html, .svg or .md file/)).toHaveLength(1);
+    expect(one(/An artifact is an .html, .svg, .md, .jsx or .tsx file/)).toHaveLength(1);
     expect(results).toContain('page: a1 "The site" (html, version 2, from /workspace/site/one.html)');
   });
 

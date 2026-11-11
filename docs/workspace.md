@@ -2072,7 +2072,9 @@ script, PNG decoder or bundler:
   `fetch` and `WebSocket`; and local files one file can't carry. `bundle`
   ends with the same check.
 
-- `publish` keeps a self-contained `.html`, `.svg` or `.md` file as an
+- `publish` keeps a self-contained `.html`, `.svg` or `.md` file, or a
+  React component (`.jsx` or `.tsx` with a default export, built into one
+  page by `buildReactPage` below and kept beside its source), as an
   **artifact** (docs/briefs/artifacts.md): the file's bytes become version 1
   of a new artifact in the thread's pool, or the next version of the
   artifact the thread published from that path, or of the one she names by

@@ -70,6 +70,30 @@ describe("artifacts", () => {
     vi.restoreAllMocks();
   });
 
+  it("build an imported React component into one page that loads nothing, keep its source, and refuse one that imports anything else", async () => {
+    const s = await setup();
+    const source = 'import { useState } from "react";\nexport default function Counter() { const [n, setN] = useState(0); return <button className="p-2" onClick={() => setN(n + 1)}>Count {n}</button>; }';
+    const made = await s.ada.post<ArtifactInfo>(`${s.u}/artifacts/general?name=counter.jsx`, Buffer.from(source));
+    expect(made.body).toMatchObject({ kind: "react", title: "counter", version: 1 });
+    const at = `${s.u}/artifacts/general/${made.body.id}`;
+    const view = await s.raw(`${at}/view`);
+    expect(view.headers.get("content-security-policy")).toMatch(/^sandbox allow-scripts allow-popups;/);
+    const page = await view.text();
+    expect(page).toContain('<div id="root"></div>');
+    expect(page).toContain("<title>counter</title>");
+    expect(page).not.toMatch(/<script[^>]+src=/);
+    expect(await (await s.raw(`${at}/content`)).text()).toBe(source);
+    const download = await s.raw(`${at}/content?download=1`);
+    expect(download.headers.get("content-disposition")).toContain("counter.tsx");
+
+    const bad = await s.ada.post<{ error: string }>(`${s.u}/artifacts/general?name=bad.jsx`, Buffer.from('import fs from "node:fs";\nexport default () => <p>{String(fs)}</p>;'));
+    expect(bad.status).toBe(400);
+    expect(bad.body.error).toMatch(/doesn't build/);
+    expect((await s.ada.post(`${at}/versions?name=next.tsx`, Buffer.from("export default function A(): JSX.Element { return <p>two</p>; }"))).status).toBe(200);
+    expect((await s.ada.post<ArtifactDetail>(`${at}/restore`, { version: 1 })).body.artifact.version).toBe(3);
+    expect(await (await s.raw(`${at}/view`)).text()).toBe(page);
+  });
+
   it("refuse what isn't an artifact: another kind of file, bytes that aren't text, an empty page, a thread that doesn't exist", async () => {
     const s = await setup();
     expect((await s.ada.post(`${s.u}/artifacts/general?name=photo.png`, Buffer.from("x"))).status).toBe(415);

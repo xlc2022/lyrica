@@ -1,4 +1,4 @@
-import { ARTIFACT_LIMIT, ArtifactError, artifactExtension, artifactKind, EVIDENCE_SETTINGS, DEFAULT_THINKING, PushStore, titleFromName, type Artifact, type ArtifactKind, type PushSettings, type SkillLibrary } from "@lyrica/core";
+import { ARTIFACT_LIMIT, ArtifactError, artifactExtension, artifactKind, buildReactPage, EVIDENCE_SETTINGS, DEFAULT_THINKING, PushStore, titleFromName, type Artifact, type ArtifactKind, type PushSettings, type SkillLibrary } from "@lyrica/core";
 import { pushTarget } from "./push.ts";
 import { imageRetryOptions } from "./image-retry.ts";
 import { randomUUID } from "node:crypto";
@@ -3536,15 +3536,21 @@ function artifactRoutes(d: Lyricad, u: string): Route[] {
     if (!/^[1-9]\d{0,8}$/.test(v)) throw new HttpError(400, "v is a version number");
     return Number(v);
   };
-  /** What an imported file becomes: its kind by its name, React components refused until they can be built. */
-  const incoming = async (r: Request): Promise<{ kind: ArtifactKind; bytes: Buffer; name: string }> => {
+  /**
+   * What an imported file becomes: its kind by its name. A React component (.jsx, .tsx) is built into one page by
+   * esbuild (`buildReactPage`): compiled, never run here, and refused when it imports anything but the listed packages.
+   */
+  const incoming = async (r: Request, title?: string): Promise<{ kind: ArtifactKind; bytes: Buffer; built?: Buffer; name: string }> => {
     const name = r.query.get("name") ?? "";
     const kind = artifactKind(name);
-    if (!kind) throw new HttpError(415, "an artifact is an .html, .svg or .md file");
-    if (kind === "react") throw new HttpError(415, "React components can't be imported yet");
+    if (!kind) throw new HttpError(415, "an artifact is an .html, .svg, .md, .jsx or .tsx file");
     const bytes = await r.bytes(ARTIFACT_LIMIT);
     if (bytes.includes(0)) throw new HttpError(415, "an artifact is text");
-    return { kind, bytes, name };
+    if (kind !== "react") return { kind, bytes, name };
+    try {
+      const { html } = await buildReactPage(bytes.toString("utf8"), { loader: /\.tsx$/i.test(name) ? "tsx" : "jsx", title: title || titleFromName(name) });
+      return { kind, bytes, built: Buffer.from(html), name };
+    } catch (err) { throw new HttpError(400, `this component doesn't build: ${(err as Error).message.split("\n")[0]}`); }
   };
   return [
     route("GET", `${u}/artifacts`, (r): Api.ArtifactInfo[] => {
@@ -3557,11 +3563,11 @@ function artifactRoutes(d: Lyricad, u: string): Route[] {
     route("POST", `${u}/artifacts/:pool`, async (r): Promise<Api.ArtifactInfo> => {
       const user = d.userFor(r);
       const p = pool(r, user.id);
-      const { kind, bytes, name } = await incoming(r);
+      const { kind, bytes, built, name } = await incoming(r, r.query.get("title") ?? undefined);
       const thread = r.query.get("thread") || undefined;
       return refused(() => inPool(user.id, p, (own) => {
         if (thread && !own.getThread(thread)) throw new HttpError(404, "no such thread");
-        return info(own, own.artifacts.create({ title: r.query.get("title") || titleFromName(name), kind, ...(thread ? { thread } : {}), bytes, author: "user" }));
+        return info(own, own.artifacts.create({ title: r.query.get("title") || titleFromName(name), kind, ...(thread ? { thread } : {}), bytes, ...(built ? { built } : {}), author: "user" }));
       }));
     }),
     route("GET", `${u}/artifacts/:pool/:id`, (r): Api.ArtifactDetail => {
@@ -3599,11 +3605,12 @@ function artifactRoutes(d: Lyricad, u: string): Route[] {
     route("POST", `${u}/artifacts/:pool/:id/versions`, async (r): Promise<Api.ArtifactDetail> => {
       const user = d.userFor(r);
       const p = pool(r, user.id);
-      const { kind, bytes } = await incoming(r);
+      const title = inPool(user.id, p, (own) => must(own, r).title);
+      const { kind, bytes, built } = await incoming(r, title);
       return refused(() => inPool(user.id, p, (own) => {
         const a = must(own, r);
         if (a.kind !== kind) throw new HttpError(400, `this artifact is ${a.kind}; a new version is the same kind`);
-        const next = own.artifacts.addVersion(a.id, { bytes, author: "user" });
+        const next = own.artifacts.addVersion(a.id, { bytes, ...(built ? { built } : {}), author: "user" });
         return { artifact: info(own, next), versions: own.artifacts.versions(a.id) };
       }));
     }),
