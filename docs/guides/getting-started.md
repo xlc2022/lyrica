@@ -366,10 +366,11 @@ answers ahead; without a terminal the answer is no), then:
    `npm install -g --prefix /opt/lyrica/tools`, and OpenAI's Codex
    (`@openai/codex`, also pinned) for ChatGPT Images, and the official
    Nix binary tarball (pinned, in `/opt/lyrica/tools/lib/nix`) for Nix
-   in her sandbox; if any of them fails it only prints a warning. IBM Plex, the web UI's and her screenshots'
-   font, comes from apt (`fonts-ibm-plex`). An install from before
-   2026-11-01 had those three programs in `/usr/local`; this run moves
-   them and removes the old copies. When
+   in her sandbox; if any of them fails it only prints a warning. IBM
+   Plex, the web UI's and her screenshots' font, comes from apt
+   (`fonts-ibm-plex`). An install from before 2026-11-01 had Chromium,
+   Claude Code and Codex in `/usr/local`; this run moves them and removes
+   the old copies. When
    Tailscale's binaries are missing it adds Tailscale's apt repository
    and installs `tailscale`; the package turns on the host's own
    `tailscaled`,
@@ -580,15 +581,15 @@ once first.
 To start her memory over, use **Wipe memory…** under Administration,
 Reset: tick the box and give your password. It deletes every user's
 threads, projects and memories in General and Private, with their thread
-files; users, passwords, endpoints, models, settings and her persona stay.
-Skills stay too while **Keep everyone's skills** is ticked; untick it to
-delete them as well. If anything is running it sends each a stop first
-and lists what it is waiting on, then lets the wipe go ahead. With
-lyricad stopped, `sudo lyrica admin wipe` does the same at prompts (the
-passphrase, an administrator's login and password, then typing `wipe`),
-always deleting skills, and refuses while lyricad runs; each user's
-thread files go at their next unlock.
-Backups and update snapshots aren't wiped.
+files and Nix stores; users, passwords, endpoints, models, settings and
+her persona stay. Skills stay too while **Keep everyone's skills** is
+ticked; untick it to delete them as well. If anything is running it sends
+each a stop first and lists what it is waiting on, then lets the wipe go
+ahead. With lyricad stopped, `sudo lyrica admin wipe` does the same at
+prompts (the passphrase, an administrator's login and password, then
+typing `wipe`), always deleting skills, and refuses while lyricad runs;
+each user's thread files go at their next unlock. Backups and update
+snapshots aren't wiped.
 
 To remove someone from the server, use **Delete user…** on their row under
 Administration, Users: tick the box and give your own password. Their
@@ -1269,6 +1270,9 @@ refused. To replace the destination, enter the full URL and token again;
     `lyrica-caddy` after the run.
   - **Before 2026-11-10:** shellcheck, which checks her bash commands
     before they run; until then they run unchecked.
+  - **Before 2026-11-11:** Nix for her sandbox (`nix build`, `nix
+    develop`), from a pinned tarball in `/opt/lyrica/tools/lib/nix`; until
+    then her sandbox has no `nix`.
   - **Any install missing them:** headless Chromium and IBM Plex for her
     screenshots, Claude Code and Codex, ffmpeg and ffprobe (until then
     she can't check a clip's length or streams), and the Python baseline
