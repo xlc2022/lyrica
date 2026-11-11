@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { RoutineInfo } from "../src/api.ts";
 import { ScheduledMarker } from "../src/Messages.tsx";
-import { nextRoutine, RoutineRows, RoutinesFact } from "../src/Routines.tsx";
+import { nextRoutine, projectRoutines, RoutineRows, RoutinesFact } from "../src/Routines.tsx";
 
 const routine = (id: number, nextAt: string, paused = false): RoutineInfo => ({ id, nextAt, paused, pool: "general", threadId: "checks", threadTitle: "Checks", newThread: false, schedule: "Daily at 08:00" });
 describe("routine facts", () => {
@@ -21,7 +21,7 @@ describe("routine facts", () => {
     const rows = [routine(1, "2026-01-01T08:00:00Z", true), routine(2, "2026-01-03T08:00:00Z"), routine(3, "2026-01-02T08:00:00Z")];
     expect(nextRoutine(rows)?.id).toBe(3);
     expect(rows.map(r => r.id)).toEqual([1, 2, 3]);
-    const html = renderToStaticMarkup(createElement(RoutinesFact, { userId: "user", routines: rows, onChange: () => {} }));
+    const html = renderToStaticMarkup(createElement(RoutinesFact, { userId: "user", threadId: "checks", routines: rows, onChange: () => {} }));
     expect(html).toContain('class="num"');
     expect(html).toContain('aria-expanded="false"');
     expect(html).not.toContain("Paused");
@@ -29,7 +29,7 @@ describe("routine facts", () => {
   it("keeps the popover control when every routine is paused", () => {
     const rows = [routine(1, "2026-01-01T08:00:00Z", true)];
     expect(nextRoutine(rows)).toBeUndefined();
-    const html = renderToStaticMarkup(createElement(RoutinesFact, { userId: "user", routines: rows, onChange: () => {} }));
+    const html = renderToStaticMarkup(createElement(RoutinesFact, { userId: "user", threadId: "checks", routines: rows, onChange: () => {} }));
     expect(html).toContain('class="muted">Paused');
     expect(html).not.toContain('class="num"');
   });
@@ -60,5 +60,17 @@ describe("routine facts", () => {
     const html = renderToStaticMarkup(createElement(RoutineRows, { userId: "user", routines: [routine(1, "2026-01-01T08:00:00Z", true), routine(2, "2026-01-02T08:00:00Z")], onChange: () => {} }));
     expect(html.match(/class="muted">Paused/g)).toHaveLength(1);
     expect(html.match(/class="num"/g)).toBeTruthy();
+  });
+  it("gives a project chat its threads' routines after its own, each linked to its thread", () => {
+    const own = { ...routine(1, "2026-01-02T08:00:00Z"), threadId: "chat", threadTitle: "Garden" };
+    const child = { ...routine(2, "2026-01-01T08:00:00Z"), threadId: "beds", threadTitle: "Beds" };
+    const all = [own, child, { ...routine(3, "2026-01-01T07:00:00Z"), threadId: "elsewhere" }, { ...child, id: 4, pool: "private" as const }];
+    const rows = projectRoutines([own], all, [{ id: "beds" }], "general", "chat");
+    expect(rows.map(r => r.id)).toEqual([1, 2]);
+    expect(nextRoutine(rows)?.id).toBe(2);
+    expect(projectRoutines([own], undefined, [{ id: "beds" }], "general", "chat")).toEqual([own]);
+    const html = renderToStaticMarkup(createElement(RoutineRows, { userId: "user", routines: rows, here: "chat", onChange: () => {} }));
+    expect(html).toContain(">Beds</a>");
+    expect(html).not.toContain(">Garden</a>");
   });
 });

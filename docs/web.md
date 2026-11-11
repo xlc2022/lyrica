@@ -189,6 +189,10 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   its `aria-describedby` tooltip; Escape dismisses it before the popover.
   Long titles wrap within the text column, with 44 px touch targets. Its fact shows the earliest active next
   time, or Paused when all are paused, and disappears when none remain.
+  In a project chat it also holds the project's threads' routines
+  (`projectRoutines`: the user's `GET …/routines`, kept to the threads of the
+  project's overview in its pool, sorted by thread after the chat's own), each
+  with its thread's link; it reloads with the overview and the chat's settings.
   Web Pause, Resume and Remove reload settings and publish the existing
   `settings` event to the source thread; finished turns and focus refresh
   routines too.
