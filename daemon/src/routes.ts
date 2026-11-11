@@ -45,6 +45,8 @@ const DRAFT_LIMIT = 64 * 1024;
 
 /** Every API route. Locked, only /api/state, /api/unlock and /api/setup answer; setting up, only state and setup (lyricad.ts enforces it). */
 export function apiRoutes(d: Lyricad): Route[] {
+  // Threads being deleted, by user and pool, and how far each delete has got.
+  const deleting = new Map<string, Map<string, Api.ThreadDeleting>>();
   const s = (): Services => d.services!;
   /** The Files panel's operations for the request's thread, each inside the thread's sandbox. */
   const files = (r: Request) => {
@@ -1229,24 +1231,50 @@ export function apiRoutes(d: Lyricad): Route[] {
         walk(threadId);
         return out;
       });
-      // A project's page and the notes that came only from it go before its threads do, while they still say where the notes came from.
-      if (all && !keep) owner(d, user, (o) => { if (o[pool].getThread(threadId)?.project) o[pool].forgetProjectMemory(threadId, author(user)); });
-      // The live sessions stop side by side, then the store drops every thread in one owner view and merges its search index once at the end:
-      // a project with many threads used to take seconds, stopping each in turn and merging the whole index after each one.
-      await Promise.all(doomed.map(async (id) => { await s().delegation.forget(user.id, pool, id); await s().host.forget(user.id, pool, id); }));
-      for (const id of doomed) await s().children.cleanupWorktrees(user.id, pool, id, true);
-      owner(d, user, (o) => {
-        doomed.forEach((id, i) => { if (o[pool].getThread(id)) o[pool].forgetThread(id, author(user), { children: all, keepMemories: keep, optimize: i === doomed.length - 1 }); });
-      });
-      for (const id of doomed) s().models.forgetThread(user.id, pool, id);
-      forgetThreadFiles(s(), user.id, pool, doomed);
-      s().children.forget(user.id, pool, doomed);
-      s().wakeups.forget(user.id, pool, doomed);
-      s().prefs.forget(user.id, pool, doomed);
-      s().projects.forget(user.id, pool, doomed);
-      // A kept child is a thread of its own now: its next turn opens with its own tools and workspace.
-      for (const id of kept) { s().workspace.settings(user.id).detach(id); s().host.reload(user.id, pool, id); }
+      // What the delete dialog shows while it runs (GET …/deleting): a second delete of a thread on its way out is refused.
+      const progress = `${user.id}/${pool}`;
+      const busy = deleting.get(progress) ?? new Map<string, Api.ThreadDeleting>();
+      if (doomed.some((id) => busy.has(id))) throw new HttpError(409, "this thread is already being deleted");
+      deleting.set(progress, busy);
+      const step = (s: Api.ThreadDeleting["step"]) => { for (const id of doomed) busy.set(id, { step: s, threads: doomed.length }); };
+      try {
+        step("stopping");
+        // A project's page and the notes that came only from it go before its threads do, while they still say where the notes came from.
+        if (all && !keep) owner(d, user, (o) => { if (o[pool].getThread(threadId)?.project) o[pool].forgetProjectMemory(threadId, author(user)); });
+        // The live sessions stop side by side, then the store drops every thread in one owner view and one transaction.
+        await Promise.all(doomed.map(async (id) => { await s().delegation.forget(user.id, pool, id); await s().host.forget(user.id, pool, id); }));
+        for (const id of doomed) await s().children.cleanupWorktrees(user.id, pool, id, true);
+        step("messages");
+        // Yields first, so the dialog's next look sees this step before the store holds lyricad for it.
+        await new Promise((go) => setImmediate(go));
+        owner(d, user, (o) => o[pool].forgetThreads(doomed, author(user), { children: all, keepMemories: keep }));
+        for (const id of doomed) s().models.forgetThread(user.id, pool, id);
+        s().children.forget(user.id, pool, doomed);
+        s().wakeups.forget(user.id, pool, doomed);
+        s().prefs.forget(user.id, pool, doomed);
+        s().projects.forget(user.id, pool, doomed);
+        // A kept child is a thread of its own now: its next turn opens with its own tools and workspace.
+        for (const id of kept) { s().workspace.settings(user.id).detach(id); s().host.reload(user.id, pool, id); }
+        step("files");
+        // The thread is gone by now: a folder that can't go yet (the home locked meanwhile) is the nightly sweep's.
+        try { await forgetThreadFiles(s(), user.id, pool, doomed); } catch (err) { d.log(`a forgotten thread's files are left to the sweep: ${(err as Error).name}`); }
+      } finally {
+        for (const id of doomed) busy.delete(id);
+        if (!busy.size) deleting.delete(progress);
+      }
       return { ok: true };
+    }),
+    route("POST", `${u}/clean-up`, async (r): Promise<Api.CleanUpResult> => {
+      const user = d.userFor(r);
+      const c = await d.sweepUser(user.id);
+      d.log(`clean up: ${c.snapshots} snapshots, ${c.records} change records, ${c.folders} thread folders, ${c.worktrees} worktrees removed`);
+      return { folders: c.folders, worktrees: c.worktrees, snapshots: c.snapshots, records: c.records };
+    }),
+    route("GET", `${t}/deleting`, (r): Api.ThreadDeleting => {
+      const user = d.userFor(r);
+      const now = deleting.get(`${user.id}/${poolOf(r)}`)?.get(r.params.threadId!);
+      if (!now) throw new HttpError(404, "this thread isn't being deleted");
+      return now;
     }),
     route("GET", `${t}/tombstone`, (r): Api.ThreadTombstone => {
       const user = d.userFor(r);

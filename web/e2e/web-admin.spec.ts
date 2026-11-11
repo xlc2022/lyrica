@@ -2747,6 +2747,18 @@ test("Users: Delete user… asks for the box and the password, waits for their w
   await shot("done");
 });
 
+test("Settings → Reset: Clean up now runs the sweep at once and says what it removed", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  await page.goto(`/#/u/${userId}/settings/reset`);
+  const button = page.getByRole("button", { name: "Clean up now" });
+  await expect(button).toHaveAttribute("title", /every night/);
+  await button.click();
+  await expect(page.getByRole("status").filter({ hasText: /^(Removed .+\.|Nothing to clean up\.)$/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Clean up now" })).toBeEnabled();
+  await noHorizontalScroll(page);
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/clean-up-${page.viewportSize()!.width}.png` });
+});
+
 test("Settings → Reset: Wipe my memory asks for the box and the password, then wipes only the user's own", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   const shot = async (name: string) => { if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/wipe-mine-${name}-${page.viewportSize()!.width}.png` }); };

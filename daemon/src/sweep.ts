@@ -1,4 +1,5 @@
 import { chmodSync, existsSync, lstatSync, readdirSync, readFileSync, realpathSync, rmSync, statSync } from "node:fs";
+import { rm } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { isMounted, type FileChanges, type Pool } from "@lyrica/core";
 import type { Services } from "./lyricad.ts";
@@ -15,7 +16,7 @@ export interface SweepCounts { snapshots: number; records: number; folders: numb
  * older than 30 days; the folders of threads that no longer exist; and
  * worktrees of subagent runs that aren't live and haven't changed in 30 days.
  */
-export function sweepUser(s: Services, userId: string, now = new Date()): SweepCounts {
+export async function sweepUser(s: Services, userId: string, now = new Date()): Promise<SweepCounts> {
   const counts: SweepCounts = { snapshots: 0, records: 0, folders: 0, worktrees: 0 };
   const home = s.workspace.homeDir(userId);
   if (!isMounted(home)) return counts;
@@ -39,7 +40,7 @@ export function sweepUser(s: Services, userId: string, now = new Date()): SweepC
       let id: string;
       try { id = decodeURIComponent(name); } catch { continue; }
       if (exists(id) || statSync(join(keptDir, name)).mtimeMs >= now.getTime() - 60_000) continue;
-      rmSync(join(keptDir, name), { recursive: true, force: true });
+      await rm(join(keptDir, name), { recursive: true, force: true });
       counts.folders++;
     }
   }
@@ -49,7 +50,9 @@ export function sweepUser(s: Services, userId: string, now = new Date()): SweepC
     try { id = decodeURIComponent(name); } catch { continue; }
     // A thread made since the list was read may have a new folder already.
     if (!exists(id) && statSync(dir).mtimeMs < now.getTime() - 60_000) {
-      if (removeThreadFolder(dir, allowed)) counts.folders++;
+      forgetFolderWorktrees(dir, allowed);
+      await rm(dir, { recursive: true, force: true });
+      counts.folders++;
       continue;
     }
     const worktrees = join(dir, "worktrees");
@@ -59,7 +62,7 @@ export function sweepUser(s: Services, userId: string, now = new Date()): SweepC
       if (existsSync(join(worktrees, w, ".git")) || !run || live.has(run)) continue;
       if (statSync(join(worktrees, w)).mtime > old) continue;
       forgetRun(join(worktrees, w));
-      rmSync(join(worktrees, w), { recursive: true, force: true });
+      await rm(join(worktrees, w), { recursive: true, force: true });
       counts.worktrees++;
     }
   }
@@ -71,9 +74,10 @@ export function sweepUser(s: Services, userId: string, now = new Date()): SweepC
  * sweep: the records of which thread wrote each file, the records of what her calls changed and their snapshots, each
  * thread's folder under `threads/` (its run worktrees forgotten by git first)
  * and its Claude Code folder. Their background commands and clips stop. Only while the home is mounted; otherwise the
- * sweep takes the folders later. Returns how many folders went.
+ * sweep takes the folders later. The folders are removed without holding up lyricad, since a thread's packages can
+ * be hundreds of thousands of files. Returns how many folders went.
  */
-export function forgetThreadFiles(s: Services, userId: string, pool: Pool, threads: string[]): number {
+export async function forgetThreadFiles(s: Services, userId: string, pool: Pool, threads: string[]): Promise<number> {
   const home = s.workspace.homeDir(userId);
   if (!threads.length) return 0;
   s.workspace.jobs.stopUser(userId, "the thread was forgotten", { pool, ids: threads });
@@ -102,7 +106,7 @@ function threadExists(s: Services, userId: string): (id: string) => boolean {
  * forgetThreadFiles in a mounted home. A folder whose id a thread in the
  * other pool still has is kept, as the sweep keeps it.
  */
-export function forgetFiles(home: string, changes: FileChanges, pool: Pool, threads: string[], allowed: string[], exists: (id: string) => boolean): number {
+export async function forgetFiles(home: string, changes: FileChanges, pool: Pool, threads: string[], allowed: string[], exists: (id: string) => boolean): Promise<number> {
   changes.forget(changes.forThreads(pool, threads).map((c) => c.id));
   let n = 0;
   for (const id of threads) {
@@ -110,10 +114,14 @@ export function forgetFiles(home: string, changes: FileChanges, pool: Pool, thre
     const name = encodeURIComponent(id);
     if (!name || name === "." || name === "..") continue;
     const dir = join(home, "threads", name);
-    if (existsSync(dir) && removeThreadFolder(dir, allowed)) n++;
+    if (existsSync(dir)) {
+      forgetFolderWorktrees(dir, allowed);
+      await rm(dir, { recursive: true, force: true });
+      n++;
+    }
     for (const kept of ["claude", "tmp"]) {
       const d = join(home, kept, name);
-      if (existsSync(d)) { rmSync(d, { recursive: true, force: true }); n++; }
+      if (existsSync(d)) { await rm(d, { recursive: true, force: true }); n++; }
     }
     // Its own part of its family's /shared (Workspace.sharedOwn), under whichever top thread's folder holds it. A thread
     // can make `shared` a link, so it must be a real folder that resolves where it is, and so must the part.
@@ -124,7 +132,7 @@ export function forgetFiles(home: string, changes: FileChanges, pool: Pool, thre
         if (!lstatSync(shared).isDirectory() || realpathSync(shared) !== join(realpathSync(join(home, "threads", top)), "shared")) continue;
         if (!lstatSync(d).isDirectory()) continue;
       } catch { continue; }
-      rmSync(d, { recursive: true, force: true });
+      await rm(d, { recursive: true, force: true });
       n++;
     }
   }
@@ -180,14 +188,19 @@ function forgetRunWorktrees(runDir: string, allowed: string[]): void {
 }
 
 function removeThreadFolder(dir: string, allowed: string[]): boolean {
+  forgetFolderWorktrees(dir, allowed);
+  rmSync(dir, { recursive: true, force: true });
+  return true;
+}
+
+/** Git's records of the worktrees in a thread's folder, forgotten before the folder goes. */
+function forgetFolderWorktrees(dir: string, allowed: string[]): void {
   const runs = join(dir, "worktrees");
   // A run's folder holds one worktree per repository; a code thread's own worktrees sit there directly. Either way the branches keep the commits.
   if (existsSync(runs)) for (const w of readdirSync(runs)) {
     if (existsSync(join(runs, w, ".git"))) forgetWorktree(join(runs, w), allowed);
     else forgetRunWorktrees(join(runs, w), allowed);
   }
-  rmSync(dir, { recursive: true, force: true });
-  return true;
 }
 
 /**

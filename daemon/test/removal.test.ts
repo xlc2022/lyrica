@@ -192,7 +192,7 @@ describe("the sweep of change records", () => {
     expect(readdirSync(join(home, "snapshots"))).toHaveLength(1);
 
     // Its folder, its Claude Code folder, its lasting /tmp and its own part of its family's /shared.
-    expect(forgetFiles(home, changes, "general", ["web/t"], [], () => false)).toBe(4);
+    expect(await forgetFiles(home, changes, "general", ["web/t"], [], () => false)).toBe(4);
     expect(readdirSync(join(home, "threads/web%2Fu/shared"))).toEqual(["notes"]);
     expect(readdirSync(join(home, "tmp"))).toEqual([]);
     // A `shared` a thread made a link is never followed.
@@ -200,7 +200,7 @@ describe("the sweep of change records", () => {
     mkdirSync(join(outside, "web%2Fv"));
     mkdirSync(join(home, "threads/web%2Fw"));
     symlinkSync(outside, join(home, "threads/web%2Fw/shared"));
-    forgetFiles(home, changes, "general", ["web/v"], [], () => false);
+    await forgetFiles(home, changes, "general", ["web/v"], [], () => false);
     expect(existsSync(join(outside, "web%2Fv"))).toBe(true);
     rmSync(outside, { recursive: true, force: true });
     expect(changes.forThreads("general", ["web/t"])).toEqual([]);
@@ -233,7 +233,7 @@ describe("the sweep of change records", () => {
     const tree = join(home, "threads", "web%2Ft", "worktrees", "repo");
     git("worktree", "add", "-q", "-b", "lyrica/example/part", tree);
     writeFileSync(join(tree, "unfinished.ts"), "export const unfinished = true;\n");
-    expect(forgetFiles(home, changes, "general", ["web/t"], [repo], () => false)).toBe(1);
+    expect(await forgetFiles(home, changes, "general", ["web/t"], [repo], () => false)).toBe(1);
     expect(existsSync(join(home, "threads", "web%2Ft"))).toBe(false);
     expect(git("worktree", "list")).not.toContain(tree);
     expect(git("branch", "--list", "lyrica/example/part")).toContain("lyrica/example/part");
@@ -242,7 +242,7 @@ describe("the sweep of change records", () => {
   it("keeps a forgotten thread's folder while a thread in the other pool has the same id", async () => {
     const { home, changes } = await setup();
     mkdirSync(join(home, "threads/web%2Ft"), { recursive: true });
-    expect(forgetFiles(home, changes, "general", ["web/t"], [], (id) => id === "web/t")).toBe(0);
+    expect(await forgetFiles(home, changes, "general", ["web/t"], [], (id) => id === "web/t")).toBe(0);
     expect(readdirSync(join(home, "threads"))).toEqual(["web%2Ft"]);
   });
 

@@ -1112,6 +1112,21 @@ export interface NewThreadGroup { name: string }
  * and are otherwise kept as threads of their own.
  */
 export interface ForgetThread { children?: boolean; keepMemories?: boolean }
+/**
+ * GET /api/u/:userId/threads/:pool/:threadId/deleting → ThreadDeleting, while a delete of it runs; 404 otherwise.
+ * The delete dialog polls it. A second DELETE of a thread on its way out is refused (409).
+ */
+/**
+ * POST /api/u/:userId/clean-up → CleanUpResult. Clean up now in Settings → Reset: the nightly sweep for this user, at
+ * once (docs/workspace.md, "The nightly sweep"). Counts only, never a path or a name. All zero while the home is locked.
+ */
+export interface CleanUpResult { folders: number; worktrees: number; snapshots: number; records: number }
+export interface ThreadDeleting {
+  /** Stopping its running work, deleting its messages and memories, then removing its files. */
+  step: "stopping" | "messages" | "files";
+  /** How many threads the delete takes: the thread, its subagents' threads and, with `children`, its child threads. */
+  threads: number;
+}
 
 /**
  * GET /api/u/:userId/threads/:pool/:threadId/tombstone → ThreadTombstone. What a thread

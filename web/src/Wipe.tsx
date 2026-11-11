@@ -1,13 +1,13 @@
-// Administration → Reset and Settings → Reset (docs/ux.md §6 "Wiping memory"):
+// Administration → Reset and Settings → Reset (docs/ux.md §6 "Wiping memory", and Settings' Clean up now):
 // Wipe memory… (everyone's) or Wipe my memory… (the user's own) opens a dialog
 // with its sentence, Keep skills (ticked), an unticked box and the person's own password.
 // While anything runs, the server sends it a stop and the dialog waits, showing
 // what it is stopping, until the wipe can go ahead.
 import { useEffect, useState } from "react";
-import { get, HttpError, post, u, type WipeBusy, type WipeResult } from "./api.ts";
+import { get, HttpError, post, u, type CleanUpResult, type WipeBusy, type WipeResult } from "./api.ts";
 import { Section, retryMinutes } from "./Panel.tsx";
 import type { ShellContext } from "./Shell.tsx";
-import { Dialog, ErrorText } from "./ui.tsx";
+import { Dialog, ErrorText, useAction } from "./ui.tsx";
 
 export const KIND: Record<WipeBusy["kind"], string> = { turn: "Reply", subagent: "Subagent", sleep: "Sleep" };
 export const POOL = { general: "General", private: "Private" } as const;
@@ -19,6 +19,7 @@ export function WipeSection({ ctx, mine }: { ctx: ShellContext; mine?: boolean }
   const [wiped, setWiped] = useState(false);
   return (
     <Section title="Reset">
+      {mine && <CleanUp userId={ctx.user.id} />}
       <div className="row">
         <button type="button" className="danger" onClick={() => { setWiped(false); setOpen(true); }}>{mine ? "Wipe my memory…" : "Wipe memory…"}</button>
       </div>
@@ -26,6 +27,32 @@ export function WipeSection({ ctx, mine }: { ctx: ShellContext; mine?: boolean }
       {open && <WipeDialog userId={ctx.user.id} mine={!!mine} onCancel={() => setOpen(false)} onWiped={() => { setOpen(false); setWiped(true); }} />}
     </Section>
   );
+}
+
+/** Clean up now (docs/ux.md §6 "Cleaning up files"): the nightly sweep of the user's own files, at once, then what it removed. */
+function CleanUp({ userId }: { userId: string }) {
+  const [run, busy, error] = useAction();
+  const [done, setDone] = useState<CleanUpResult>();
+  return (
+    <>
+      <div className="row">
+        <button type="button" disabled={busy} onClick={() => { setDone(undefined); void run(async () => setDone(await post<CleanUpResult>(u(userId, "clean-up")))); }}
+          title="Removes what deleted threads left behind, change snapshots older than 30 days and old subagent worktrees. It also runs every night.">
+          {busy ? "Cleaning up…" : "Clean up now"}
+        </button>
+      </div>
+      {done && <p className="meta" role="status">{cleanedUp(done)}</p>}
+      <ErrorText error={error} />
+    </>
+  );
+}
+
+/** "Removed 3 folders and 12 snapshots.", naming only what there was, or "Nothing to clean up." */
+export function cleanedUp(c: CleanUpResult): string {
+  const n = (k: number, one: string, many: string) => (k ? `${k} ${k === 1 ? one : many}` : "");
+  const parts = [n(c.folders, "folder", "folders"), n(c.worktrees, "worktree", "worktrees"), n(c.snapshots, "snapshot", "snapshots"), n(c.records, "change record", "change records")].filter(Boolean);
+  if (!parts.length) return "Nothing to clean up.";
+  return `Removed ${parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}`}.`;
 }
 
 function WipeDialog({ userId, mine, onCancel, onWiped }: { userId: string; mine: boolean; onCancel: () => void; onWiped: () => void }) {
