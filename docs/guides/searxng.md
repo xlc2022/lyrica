@@ -49,7 +49,11 @@ clear the address in Administration.
 With `services.lyrica.enable`, `services.lyrica.searxng` is on unless you
 set it to `false`. It turns on NixOS's own `services.searx` (no Docker),
 in uWSGI with request logging off, since its built-in server logs every
-query. It listens on `127.0.0.1:8888` with the same settings as
+query. It runs the same SearXNG version as install.sh, built from source
+(`nix/searxng.nix`), rather than the one in your NixOS release: a
+release's SearXNG is frozen when the release branches off, and search
+engines keep changing how they spot bots, so they refuse an old one
+(below). Set `services.searx.package` to use another. It listens on `127.0.0.1:8888` with the same settings as
 install.sh's: JSON on, limiter off, five general engines, short rests.
 `lyrica-searxng-secret.service` makes its `secret_key` once, in
 `/var/lib/lyrica-searxng/env`. The address goes to
@@ -209,6 +213,14 @@ Watch for refusals with `journalctl -u uwsgi` on NixOS (`-u
 lyrica-searxng` on Debian): an engine that still refuses at this rate
 has your address on a list, and only another engine, or another
 address, helps.
+
+An old SearXNG also gets refused: DuckDuckGo, Brave, Qwant and Yahoo
+change how they spot bots, and SearXNG answers with new releases (since
+September it sends requests the way a browser does). See its version
+with `curl -s http://127.0.0.1:8888/config | jq -r .version`. Lyrica
+pins one, the same on Debian (`SEARXNG_IMAGE` in install.sh) and NixOS
+(`nix/searxng.nix`), and moves both together; updating Lyrica moves
+yours. A SearXNG you host yourself, keep current.
 
 ### The limiter
 

@@ -66,6 +66,23 @@ a day, while she retried every empty search at once.
 3. Out of scope: a keyed or paid engine (Brave's API and the like need a
    sign-up), a proxy or Tor for SearXNG's outgoing requests.
 
+## Part D: an old SearXNG (2026-11-11)
+
+Production on NixOS answered a search with every engine refusing
+(Brave "too many requests", DuckDuckGo a CAPTCHA, Qwant "access denied",
+Yahoo an HTTP error). The module ran nixos-26.05's SearXNG, from
+2026-05-16, while install.sh's image is from 2026-10-28; in between
+SearXNG fixed Qwant's CAPTCHA and "access denied", DuckDuckGo's bot
+detection, Brave, Yahoo's cookie and Bing's one-word results, and moved
+its requests to curl_cffi, which looks like a browser.
+
+1. `nix/searxng.nix` builds the commit `SEARXNG_IMAGE` is built from,
+   against the system's Python, and the module makes it
+   `services.searx.package`'s default. The two pins move together.
+2. Not done: more pacing on her side. If refusals go on with a current
+   SearXNG, the next steps are an engine list change or, with the
+   owner's yes, a keyed engine.
+
 ## Out of scope
 
 Paid search APIs, a search cache, new tools, and changing what a private
@@ -77,3 +94,5 @@ Part A: merged in #628 (fda62c5). Part B: merged in #635 (5a868a9).
 Part C: merged in #717 (77dce200), with tests in core/test/web.test.ts.
 Next: the dev deployment rebuilds so the module's new SearXNG settings
 apply (an older install copies them by hand, docs/guides/getting-started.md).
+Part D: `nix/searxng.nix`, in the PR that adds it; next, production's
+SearXNG version after its rebuild, and whether engines still refuse.

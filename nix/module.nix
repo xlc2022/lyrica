@@ -227,6 +227,8 @@ in {
     # As daemon/deploy/searxng-settings.yml and lyrica-searxng.service on Debian.
     services.searx = lib.mkIf cfg.searxng {
       enable = true;
+      # The version install.sh runs on Debian: a NixOS release's own is months older, and engines refuse an old one.
+      package = lib.mkDefault (pkgs.callPackage ./searxng.nix { });
       environmentFile = "/var/lib/lyrica-searxng/env";
       configureUwsgi = true;
       uwsgiConfig = { http = "127.0.0.1:${toString searxngPort}"; disable-logging = true; };

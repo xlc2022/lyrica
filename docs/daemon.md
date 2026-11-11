@@ -1683,7 +1683,10 @@ system with the module on. Only x86_64-linux.
   from `tailscalePackage` (`pkgs.tailscale`). lyricad starts without
   `self.db`, setting up. With `searxng` on (the default) it declares
   NixOS's `services.searx` in uWSGI with request logging off, on
-  `127.0.0.1:8888` with install.sh's settings, a
+  `127.0.0.1:8888` with install.sh's settings and its SearXNG version
+  (`nix/searxng.nix` builds the commit `SEARXNG_IMAGE` is built from,
+  as the package's default, since a NixOS release's own is frozen months
+  back and search engines refuse an old one), a
   `lyrica-searxng-secret` oneshot that makes its secret once, and
   `searxng-address` in her state folder (a tmpfiles rule, removed when off; an address lyricad already stored
   stays until an administrator clears it). With `zimDir` set it declares
