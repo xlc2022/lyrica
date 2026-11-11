@@ -31,6 +31,11 @@
   color-scheme: dark;
 }
 @media (pointer: coarse) { :root { --tap: 44px; } }
+/* iOS Safari zooms the page into a focused field whose text is under 16 px and leaves it zoomed, so on touch
+   every field's text is 16 px; !important because many fields set their own smaller size (docs/ux.md, Type). */
+@media (pointer: coarse) {
+  input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"]), select, textarea { font-size: 16px !important; }
+}
 
 /* Controls (buttons, fields, the message box) take --edge, a 3:1 boundary (WCAG 1.4.11); --line is for separators and cards. */
 /* ---- Type: 22 (page title), 15 (chat), 14 (body, rows), 13 (meta, tables, small buttons), 12 (captions), 11 (eyebrows). Nothing smaller. ---- */

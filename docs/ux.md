@@ -37,6 +37,8 @@ Work through these in order. Most additions end at step 1 or 2.
 - **Sizes, and no others:** 22 (page title), 15 (chat body), 14 (admin
   body, row titles), 13 (meta, tables, small buttons), 12 (captions), 11
   (uppercase section eyebrows, 0.06 em tracking). Nothing smaller than 11.
+  On touch, text in a field (a text box, the message box, a select) is
+  16, so iOS Safari doesn't zoom the page in when it takes focus.
 - **Headings:** one `h1` per page, never repeated as a card heading below
   it. Section heads are 15/600. A page header states facts (counts, status),
   not what the page is for.
