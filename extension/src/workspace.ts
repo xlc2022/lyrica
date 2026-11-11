@@ -5,7 +5,7 @@ import {
 import { readFileSync } from "node:fs";
 import { posix } from "node:path";
 import {
-  BROWSE_READS, browseFormText, browseFormWarning, type Browser, type BrowseCall, decide, type CommandRule, withoutNoMachine, holdsSecret, librariesLine, JOB_LIMITS, jobLine, type JobInfo, malformedCommand, mcpNamespace, onFloor, sandboxNix, sandboxTools, PROXMOX_READS, PROXMOX_SUSPECT, SANDBOX_ALLOW, stricterMode, suspectCommand, suspectKey, SHARED, FAMILY_ROOT, WORKDIR, writtenFiles, type ExecutionTarget, type ProxmoxAction, type Network, type NewChange, type PermissionMode, type ThreadGitRepository, type ThreadMachine, type ThreadRepository, type ThreadWorkspace, type ToolOps,
+  BROWSE_READS, browseFormText, browseFormWarning, type Browser, type BrowseCall, decide, sourcedFile, SCRIPT_LIMIT, type CommandRule, withoutNoMachine, holdsSecret, librariesLine, JOB_LIMITS, jobLine, type JobInfo, malformedCommand, mcpNamespace, onFloor, sandboxNix, sandboxTools, PROXMOX_READS, PROXMOX_SUSPECT, SANDBOX_ALLOW, stricterMode, suspectCommand, suspectKey, SHARED, FAMILY_ROOT, WORKDIR, writtenFiles, type ExecutionTarget, type ProxmoxAction, type Network, type NewChange, type PermissionMode, type ThreadGitRepository, type ThreadMachine, type ThreadRepository, type ThreadWorkspace, type ToolOps,
 } from "@lyrica/core";
 import { Type } from "typebox";
 import { setToolsOff } from "./gate.ts";
@@ -395,6 +395,17 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
 
     pi.on("session_start", (_event, ctx) => gate(ctx));
 
+    // The file a command sources, read where it will run so `decide` can look inside it; unread, it stays opaque.
+    const sourcedText = async (command: string, machine: string | undefined): Promise<string | undefined> => {
+      const found = sourcedFile(command);
+      if (!found) return undefined;
+      if (machine && !tools.machines?.().some((m) => m.name === machine && m.kind !== "proxmox")) return undefined;
+      try {
+        const target = tools.target(machine || undefined);
+        const bytes = await target.ops().read.readFile(posix.resolve(await target.cwd(), ...found.cds, found.path));
+        return bytes.length > SCRIPT_LIMIT ? undefined : bytes.toString("utf8");
+      } catch { return undefined; }
+    };
     const sandboxSecrets = (): string[] => { try { return tools.target().secrets?.() ?? []; } catch { return []; } };
     pi.on("tool_call", async (event, ctx) => {
       // What the mode or a switch has off is never run, even if it was offered before a change.
@@ -402,7 +413,8 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
         return { block: true, reason: `${event.toolName} is off in this thread${tools.settings().mode === "plan" ? " (Plan mode)" : ""}.` };
       }
       const input = event.input as Record<string, unknown>;
-      const rule = event.toolName === "bash" ? decide(String(input.command), tools.commandRules?.() ?? []) : undefined;
+      const rules = tools.commandRules?.() ?? [];
+      const rule = event.toolName === "bash" ? decide(String(input.command), rules, rules.length ? await sourcedText(String(input.command), input.machine as string | undefined) : undefined) : undefined;
       if (rule?.decision === "forbid") return { block: true, reason: `This project's rules forbid \`${rule.prefix}\`. Ask the user to run it, or do it another way.` };
       const mcp = mcpCall(event.toolName);
       // A call that reaches someone else (a search, a page, an MCP server) never carries one of the sandbox's credentials.

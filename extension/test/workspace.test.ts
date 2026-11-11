@@ -11,7 +11,7 @@ import { BASH_TIMEOUT_S, createDownloadsExtension, pageTool, createMcpServersExt
 import { BUILD_THERE, checkUnder, editArguments, FORMATS_LINE, pathArguments, insertsOnly, LINK_LINE, READ_ONLY_CHAT, describe as describePrompt } from "../src/workspace.ts";
 import { testMcpServer } from "../../core/test/mcp-server.ts";
 import { freshKeyring, profile } from "../../core/test/helpers.ts";
-import { Users, Workspace } from "@lyrica/core";
+import { DEFAULT_COMMAND_RULES, Users, Workspace } from "@lyrica/core";
 
 // Runs the workspace tools in a real Pi session against pi-ai's fake model,
 // with a target that records what it is asked to do.
@@ -957,6 +957,19 @@ describe("project command rules in the hook", () => {
     }
     const result = await run("ask", [fauxToolCall("bash", { command: "npm run test" })], { rules: [{ prefix: "npm run test", decision: "allow" }], approve: async () => { throw new Error("unexpected prompt"); } });
     expect(result.commands).toEqual(["npm run test"]);
+  });
+  it("reads a sourced script in the sandbox, so a setup-only one doesn't ask in Auto", async () => {
+    const command = "cd /workspace/src && source /workspace/build/env.sh && make -j4";
+    for (const [env, asks] of [["export ARCH=arm\nexport PATH=/opt/tc/bin:$PATH\n", 0], ["export ARCH=arm\ngit push -f\n", 1]] as const) {
+      let asked = 0;
+      const result = await run("auto", [fauxToolCall("bash", { command })], { rules: [...DEFAULT_COMMAND_RULES], files: { "/workspace/build/env.sh": env }, approve: async () => { asked++; return false; } });
+      expect(asked).toBe(0);
+      if (asks) expect(result.results.join()).toContain("This project's rules forbid `git push -f`");
+      else expect(result.commands).toEqual([command]);
+    }
+    let asked = 0;
+    await run("auto", [fauxToolCall("bash", { command })], { rules: [...DEFAULT_COMMAND_RULES], approve: async () => { asked++; return false; } });
+    expect(asked).toBe(1);
   });
   it("allow keeps the machine's prompts", async () => {
     let asked = 0;
