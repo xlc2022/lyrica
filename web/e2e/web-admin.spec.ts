@@ -2606,6 +2606,14 @@ test("Code mode: thread switch, Coding model and project defaults", async ({ pag
   // the page opens on its own, with no chat in view. The chat's own Model and Mode live in its header, drawer and composer.
   for (const field of ["Model", "Evidence judge", "Thinking", "Fallback"])
     await expect(page.getByRole("combobox", { name: field, exact: true }).locator("option").first()).toHaveText("Same as coordinator");
+  // Model lists only models that answer in text: an embedding model on the same endpoint isn't offered.
+  const routerId = endpoints.find((ep: { name: string }) => ep.name === "router").id;
+  const embed = await api("POST", `/endpoints/${routerId}/models`, { modelId: "embed-only", embedding: true });
+  await page.reload();
+  const newModel = page.getByRole("combobox", { name: "Model", exact: true });
+  await expect(newModel.locator("option", { hasText: "cloud-model" })).toHaveCount(1);
+  await expect(newModel.locator("option", { hasText: "embed-only" })).toHaveCount(0);
+  await api("PATCH", `/endpoints/${routerId}/models`, { offeringIds: [embed.id], disabled: true });
   await page.getByRole("combobox", { name: "Evidence judge", exact: true }).selectOption("on");
   await expect(page.getByRole("heading", { name: "Workspace", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "This chat", exact: true })).toHaveCount(0);
