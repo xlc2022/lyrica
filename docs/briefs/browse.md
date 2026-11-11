@@ -1,6 +1,6 @@
 # Clicking through web pages
 
-**Status:** building, on `claude/project-thread-qtrj8p`.
+**Status:** Merged as #934 (9905e0c).
 
 The owner's decision (2026-11-10): she should be able to click through
 web pages. Today `web_fetch` reads one address and nothing else, so a page
@@ -89,4 +89,10 @@ browser the user can watch or take over.
 
 ## Handoff
 
-Done: nothing merged yet. Next: see the PR. Open questions: above.
+Done: everything under "What is built", merged as #934. PR review left one
+optional note, not built: the user's yes is for the tool call, not for the
+exact form the card showed, so a page's script could change the form
+between the card and the click; binding the yes to a digest of the form
+would close that. Next: the owner asked for a test on the dev deployment
+across a variety of sites; its plan is with the coordinator. Open
+questions: the two under "Open for the owner".
