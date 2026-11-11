@@ -2230,7 +2230,7 @@ Details in [docs/sleep.md](docs/sleep.md).
     form that is one plain text box, unless it says it deletes or
     removes (the owner, 2026-11-11). A plain click can
     still make a page's own script send something, as a command in the
-    sandbox can. Downloads are refused; a frame is read where it stands
+    sandbox can. A file a page offers is saved in her `downloads/`; a frame is read where it stands
     and used under the same rules, a form in it asking the same way. The main
     conversation and a project chat have it, and a subagent whose role
     lists it (the researcher): its browser and profile are its own, with

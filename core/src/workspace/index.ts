@@ -3,7 +3,7 @@ import { ensurePhotosDir, PortraitPhotos, ThreadImages } from "./images.ts";
 export * from "./images.ts";
 import { randomBytes } from "node:crypto";
 import { lookup } from "node:dns/promises";
-import { lstatSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { isIP } from "node:net";
 import { tmpdir } from "node:os";
 import { join, posix } from "node:path";
@@ -849,7 +849,7 @@ export class Workspace {
   browser(t: WorkspaceThread): Browser {
     const k = `${t.userId}/${t.pool}/${t.threadId}`;
     let b = this.browsers.get(k);
-    if (!b) this.browsers.set(k, b = new Browser(() => this.startBrowser(t)));
+    if (!b) this.browsers.set(k, b = new Browser(() => this.startBrowser(t), undefined, undefined, (file, name) => this.saveDownload(t, file, name)));
     return b;
   }
 
@@ -1854,19 +1854,38 @@ export class Workspace {
    * (docs/briefs/chat-view.md). Returns the path she sees.
    */
   async saveUpload(t: WorkspaceThread, name: string, bytes: Buffer): Promise<string> {
+    return this.saveFile(t, "uploads", name, bytes, true);
+  }
+
+  /**
+   * Moves a file the thread's browser downloaded (its id in the profile's downloads/) into the thread's
+   * downloads/ folder, under the site's name cleaned as an upload's is, never overwriting. Returns the path she sees.
+   */
+  async saveDownload(t: WorkspaceThread, file: string, name: string): Promise<string> {
+    if (!/^[\w-]+$/.test(file)) throw new Error("the download's id is malformed");
+    const src = join(this.browserDir(t), "downloads", file);
+    try {
+      return await this.saveFile(t, "downloads", name, readFileSync(src), false);
+    } finally {
+      rmSync(src, { force: true });
+    }
+  }
+
+  /** Saves bytes into one of the thread's folders (a project chat's shared/ one), under a free name; `randomImages` names an image at random. */
+  private async saveFile(t: WorkspaceThread, folder: "uploads" | "downloads", name: string, bytes: Buffer, randomImages: boolean): Promise<string> {
     const clean = cleanUploadName(name);
     const dot = clean.lastIndexOf(".");
     const [given, ext] = dot > 0 ? [clean.slice(0, dot), clean.slice(dot)] : [clean, ""];
-    const stem = UPLOAD_IMAGE.test(ext) ? randomBytes(6).toString("hex") : given;
+    const stem = randomImages && UPLOAD_IMAGE.test(ext) ? randomBytes(6).toString("hex") : given;
     // noclobber makes taking the name atomic: a file that appears meanwhile is never overwritten.
-    const script = 'mkdir -p uploads && n="$1$2" && i=2 && until (set -C; cat > "uploads/$n") 2>/dev/null; do ' +
+    const script = 'mkdir -p "$3" && n="$1$2" && i=2 && until (set -C; cat > "$3/$n") 2>/dev/null; do ' +
       '[ "$i" -gt 999 ] && exit 1; n="$1-$i$2"; i=$((i+1)); done && printf %s "$n"';
     // A project chat's go in its shared/ (its threads' /shared), so the threads that build from them can read them.
     const shared = this.sharesOwnFolder(t);
     const box = new Sandbox({ workdir: shared ? join(this.threadDir(t), "shared") : this.threadDir(t), grants: [], network: { internet: false, services: false, hosts: [] }, bwrap: this.opts.bwrap });
-    const r = await box.run(["sh", "-c", script, "sh", stem, ext], { input: bytes });
+    const r = await box.run(["sh", "-c", script, "sh", stem, ext, folder], { input: bytes });
     if (r.code !== 0) throw new Error(`could not save ${clean}: ${r.stderr.toString().trim()}`);
-    const path = `${WORKDIR}/${shared ? "shared/" : ""}uploads/${r.stdout.toString()}`;
+    const path = `${WORKDIR}/${shared ? "shared/" : ""}${folder}/${r.stdout.toString()}`;
     this.madeFiles(t, [path]);
     return path;
   }

@@ -1816,7 +1816,13 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     and the page stays; the element that set it off counts as sending a
     form from then on. Ask and Accept edits also ask before `click`,
     `type` and `select` with the action in words; Plan mode leaves
-    `BROWSE_READS`. Downloads are denied, a new tab's address opens in
+    `BROWSE_READS`. A download is saved by Chromium in the profile's
+    `downloads/` under its id (`Browser.setDownloadBehavior`
+    allowAndName; cancelled past 100 MB or 60 s); the driver answers
+    `downloads: BrowseDownload[]` after the action, and `Browser`'s
+    `save(file, name)` (`Workspace.saveDownload`) moves each into the
+    thread's `downloads/` and gives the path she sees, which the tool
+    says after the markers. A new tab's address opens in
     the one tab, a message box is closed and a question box answered no
     (both noted in the result). Frames: the driver auto-attaches to a
     frame from another site (`Target.setAutoAttach`, held at its start

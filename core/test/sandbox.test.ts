@@ -693,6 +693,14 @@ describe.skipIf(!homeRunnable)("the home workspace", () => {
       expect(await workspace.saveUpload(thread, "image.png", Buffer.from("not really a png"))).toMatch(/^\/workspace\/uploads\/[0-9a-f]{12}\.png$/);
       const ops = workspace.targetFor(thread).ops();
       expect((await ops.read.readFile("/workspace/uploads/letter.txt")).toString()).toBe("Dear Ada, a secret plan");
+      // A download the browser saved in its profile moves into downloads/, under the site's name, never overwriting.
+      mkdirSync(join(workspace.browserDir(thread), "downloads"));
+      for (const id of ["d1", "d2"]) writeFileSync(join(workspace.browserDir(thread), "downloads", id), `secret report ${id}`);
+      expect(await workspace.saveDownload(thread, "d1", "report.pdf")).toBe("/workspace/downloads/report.pdf");
+      expect(await workspace.saveDownload(thread, "d2", "report.pdf")).toBe("/workspace/downloads/report-2.pdf");
+      expect((await ops.read.readFile("/workspace/downloads/report-2.pdf")).toString()).toBe("secret report d2");
+      expect(readdirSync(join(workspace.browserDir(thread), "downloads"))).toEqual([]);
+      await expect(workspace.saveDownload(thread, "../x", "x")).rejects.toThrow("malformed");
 
       const cipher = join(users.userDir(ada.id), "home.crypt");
       const all = execFileSync("sh", ["-c", `find ${cipher} -type f -exec cat {} +; find ${cipher}`]).toString("latin1");

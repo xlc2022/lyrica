@@ -15,8 +15,16 @@ const CHECK_MS = 30_000;
 // browser that is killed loses a fresh login. The cookies are kept here too, in the profile, after each action,
 // and given back at the next start.
 const COOKIES = `${profile}/lyrica-cookies.json`;
+// A file a page offers is saved here under its download's id, then lyricad moves it into her folder. One that
+// grows past DOWNLOAD_BYTES or takes over DOWNLOAD_MS is cancelled.
+const DOWNLOADS = `${profile}/downloads`, DOWNLOAD_BYTES = 100_000_000, DOWNLOAD_MS = 60_000;
+/** Downloads not yet answered, by id: the site's name for the file, its state and size, and when it ends. */
+const downloads = new Map();
 
 mkdirSync(profile, { recursive: true });
+// What an earlier browser left half-saved or unmoved is gone.
+rmSync(DOWNLOADS, { recursive: true, force: true });
+mkdirSync(DOWNLOADS, { recursive: true });
 // One browser per thread, so a lock left by a browser that was killed is never another's.
 for (const f of ["SingletonLock", "SingletonCookie", "SingletonSocket"]) rmSync(`${profile}/${f}`, { force: true });
 const chrome = spawn(process.env.CHROME_PATH, [
@@ -88,7 +96,17 @@ function onEvent(m) {
     if (p.targetInfo.type === "iframe") void attachFrame(p.sessionId, p.targetInfo.targetId);
     else quiet(send("Runtime.runIfWaitingForDebugger", {}, p.sessionId));
   } else if (m.method === "Target.detachedFromTarget") { for (const [id, f] of frames) if (f.sid === p.sessionId && id !== frame) frames.delete(id); }
-  else if (m.method === "Page.javascriptDialogOpening") {
+  else if (m.method === "Browser.downloadWillBegin") {
+    let finish;
+    const done = new Promise((r) => (finish = r));
+    downloads.set(p.guid, { name: String(p.suggestedFilename || "download"), state: "inProgress", bytes: 0, done, finish });
+  } else if (m.method === "Browser.downloadProgress") {
+    const d = downloads.get(p.guid);
+    if (!d) return;
+    d.bytes = p.receivedBytes;
+    if (p.state === "inProgress" && p.receivedBytes > DOWNLOAD_BYTES && !d.big) { d.big = true; quiet(send("Browser.cancelDownload", { guid: p.guid }, true)); }
+    if (p.state !== "inProgress") { d.state = p.state; d.finish(); }
+  } else if (m.method === "Page.javascriptDialogOpening") {
     // A message is closed; a question is answered no, so nothing is confirmed that she didn't see.
     const accept = p.type === "alert" || p.type === "beforeunload";
     if (p.type !== "beforeunload") notes.push(`The page showed a ${p.type === "alert" ? "message" : "question"} box, ${accept ? "closed" : "answered no"}: ${JSON.stringify(String(p.message).slice(0, 300))}`);
@@ -443,8 +461,10 @@ const ops = {
     let r = await send("Page.navigate", { url });
     // The sandbox's network can still be coming up at a browser's first page: once more.
     if (r.errorText === "net::ERR_NETWORK_CHANGED") { await sleep(1000); loading = true; r = await send("Page.navigate", { url }); }
-    // A download or a page that fails to load never fires a load event.
-    if (r.errorText) { loading = false; return { fail: r.errorText === "net::ERR_ABORTED" ? "that address is a download, which the browser refuses, or the page stopped loading" : r.errorText }; }
+    // A download or a page that fails to load never fires a load event. A download is answered with the page still
+    // shown, and the file.
+    if (r.errorText === "net::ERR_ABORTED") { await sleep(500); if (downloads.size) { loading = false; return snapshot(); } }
+    if (r.errorText) { loading = false; return { fail: r.errorText === "net::ERR_ABORTED" ? "the page stopped loading" : r.errorText }; }
     if (loading) await Promise.race([new Promise((res) => stopped.push(res)), sleep(LOAD_MS)]);
     await sleep(SETTLE_MS);
     await passCheck();
@@ -513,6 +533,20 @@ const ops = {
   },
 };
 
+/** Waits for the downloads an action started, and answers each: saved (its id and size) or why not. */
+async function finishDownloads() {
+  if (!downloads.size) return [];
+  const all = [...downloads];
+  await Promise.race([Promise.all(all.map(([, d]) => d.done)), sleep(DOWNLOAD_MS)]);
+  return all.map(([guid, d]) => {
+    downloads.delete(guid);
+    if (d.state === "completed") return { file: guid, name: d.name, bytes: d.bytes };
+    if (d.state === "inProgress") quiet(send("Browser.cancelDownload", { guid }, true));
+    rmSync(`${DOWNLOADS}/${guid}`, { force: true });
+    return { name: d.name, fail: d.big ? `it is over ${DOWNLOAD_BYTES / 1e6} MB` : d.state === "inProgress" ? `it took over ${DOWNLOAD_MS / 1000} seconds` : "the site stopped it" };
+  });
+}
+
 /** One action on a numbered thing: refused without a go-ahead when it would send a form, and a post it sets off without one is stopped. */
 async function acting(ref, how, approved, run) {
   const form = how ? (await onElement(ref, (n) => `__ly.sends(${n}, ${JSON.stringify(how)})`)) ?? null : null;
@@ -537,7 +571,7 @@ async function acting(ref, how, approved, run) {
   target = targetInfos.find((t) => t.type === "page")?.targetId ?? (await send("Target.createTarget", { url: "about:blank" })).targetId;
   const attached = await send("Target.attachToTarget", { targetId: target, flatten: true });
   await send("Target.setDiscoverTargets", { discover: true });
-  await quiet(send("Browser.setDownloadBehavior", { behavior: "deny" }));
+  await quiet(send("Browser.setDownloadBehavior", { behavior: "allowAndName", downloadPath: DOWNLOADS, eventsEnabled: true }, true));
   session = attached.sessionId;
   await send("Page.enable");
   await send("DOM.enable");
@@ -569,6 +603,7 @@ async function acting(ref, how, approved, run) {
     let r;
     try { r = ops[m.op] ? await ops[m.op](m) : { fail: `unknown op ${m.op}` }; }
     catch (err) { r = { fail: String(err.message ?? err) }; }
+    if (m.op !== "sends") { const got = await finishDownloads(); if (got.length) r = { ...r, downloads: got }; }
     // Kept before the answer, so a browser killed right after an action has them.
     if (m.op !== "sends") await quiet(keepCookies());
     answer({ id: m.id, ...r });

@@ -1249,8 +1249,13 @@ The **Web search** switch gives her two tools (`extension/src/web.ts`,
   page load that posts without a yes is answered "no content" inside the
   browser, so nothing reaches the site, and the same click asks from
   then on. A plain click can still make a page's script send something,
-  as a command in the sandbox can. Downloads are refused,
-  and a link that opens a new tab opens in the one tab. A frame the page
+  as a command in the sandbox can. A file a page offers (a link, a
+  button or its address) is saved in the thread's `downloads/` (a project
+  chat's `shared/downloads/`) under the site's name, cleaned as an
+  upload's is and never overwriting, and the result says where; one over
+  100 MB or 60 seconds is cancelled. The browser saves it in its profile
+  and `lyricad` moves it, so the browser still reaches nothing else of
+  the thread's. A link that opens a new tab opens in the one tab. A frame the page
   shows is read where it stands, from its own site or another, between
   "[frame from <site>]" and "[end of frame]", up to 3 deep and 20 in a
   page (one too small to see is left out); what is in it gets numbers like

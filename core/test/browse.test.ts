@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -46,6 +46,8 @@ describe.skipIf(!chromium)("the browse tool's browser", () => {
         if (url.pathname === "/inner") return res.end(`<title>Inner</title><p>Inside ${url.searchParams.get("n")}</p><label><input type="checkbox" name="h"> I am human</label>
 <form method="post" action="/ask"><input name="a" placeholder="First"><input name="b" placeholder="Second"><button>Send it</button></form>
 <div id="p" style="cursor:pointer">Poster</div><script>document.getElementById("p").addEventListener("click", () => { const f = document.createElement("form"); f.method = "post"; f.action = "/ask"; document.body.append(f); f.submit(); });</script>`);
+        if (url.pathname === "/report") { res.setHeader("content-type", "application/pdf"); res.setHeader("content-disposition", 'attachment; filename="report.pdf"'); return res.end("%PDF-1.4 a report"); }
+        if (url.pathname === "/files") return res.end(`<title>Files</title><p><a href="/report">The report</a></p>`);
         if (url.pathname === "/two") return res.end(`<title>Two</title><p>Cookie: ${req.headers.cookie ?? "none"}</p>`);
         res.end(SHOP);
       });
@@ -122,6 +124,19 @@ describe.skipIf(!chromium)("the browse tool's browser", () => {
     await b.act("6", { action: "click", ref: sendIt[1] });
     expect(posts).toEqual(["a=Ada&b="]);
   }, 90_000);
+
+  it("saves a file a page offers, from a link or its address, and hands it on", async () => {
+    const saved: [string, string][] = [];
+    const b = new Browser(async () => spawn(process.execPath, ["-e", BROWSE_SCRIPT, join(dir, "dl"), "test"], { stdio: ["pipe", "pipe", "ignore"], env: { ...process.env, CHROME_PATH: chromium } }) as BrowserProcess,
+      undefined, undefined, async (file, name) => { saved.push([readFileSync(join(dir, "dl", "downloads", file), "utf8"), name]); return `/workspace/downloads/${name}`; });
+    browsers.push(b);
+    const page = await b.act("1", { action: "open", url: `${site}/files` });
+    const got = await b.act("2", { action: "click", ref: ref(page.text, "The report") });
+    expect(got.title).toBe("Files");
+    expect(got.downloads).toEqual([{ name: "report.pdf", bytes: 17, path: "/workspace/downloads/report.pdf" }]);
+    expect((await b.act("3", { action: "open", url: `${site}/report` })).downloads).toEqual([{ name: "report.pdf", bytes: 17, path: "/workspace/downloads/report.pdf" }]);
+    expect(saved).toEqual([["%PDF-1.4 a report", "report.pdf"], ["%PDF-1.4 a report", "report.pdf"]]);
+  }, 60_000);
 
   it("searches without asking, and never sends a form without the user's yes for that call", async () => {
     const b = browser("b");

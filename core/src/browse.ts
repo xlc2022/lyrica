@@ -29,7 +29,12 @@ export const BROWSE_READS: ReadonlySet<string> = new Set(["open", "read", "scrol
 /** A form an action would send: where, and what is in it (a password as dots). */
 export interface BrowseForm { site: string; to: string; method: string; button: string; fields: { name: string; value: string }[] }
 /** The driver's answer: the page as it is now, or a screenshot. */
-export interface BrowseReply { url?: string; title?: string; text?: string; notes?: string[]; fail?: string; image?: string; sends?: BrowseForm | null; unapproved?: BrowseForm; site?: string; what?: string }
+export interface BrowseReply { url?: string; title?: string; text?: string; notes?: string[]; fail?: string; image?: string; sends?: BrowseForm | null; unapproved?: BrowseForm; site?: string; what?: string; downloads?: BrowseDownload[] }
+/**
+ * A file the action downloaded: the site's name for it, and where it was saved in her folder (`path`, with its
+ * size), or why not. `file` is the driver's id for it in the profile, until lyricad moves it.
+ */
+export interface BrowseDownload { name: string; file?: string; bytes?: number; path?: string; fail?: string }
 export interface BrowseCall { action: BrowseAction; url?: string; ref?: number; text?: string; submit?: boolean; direction?: "up" | "down" }
 
 export type BrowserProcess = { stdin: Writable; stdout: Readable; kill(signal?: NodeJS.Signals): boolean; on(event: "close", listener: () => void): unknown };
@@ -55,7 +60,9 @@ export class Browser {
   private readonly approved = new Set<string>();
   private idle: NodeJS.Timeout | undefined;
 
-  constructor(private readonly start: () => Promise<BrowserProcess>, private readonly idleMs = BROWSE_IDLE_MS, private readonly limitMs = BROWSE_MS) {}
+  /** `save` moves a download (its id in the profile, the site's name) into her folder and answers the path she sees. */
+  constructor(private readonly start: () => Promise<BrowserProcess>, private readonly idleMs = BROWSE_IDLE_MS, private readonly limitMs = BROWSE_MS,
+    private readonly save?: (file: string, name: string) => Promise<string>) {}
 
   get running(): boolean { return !!this.child; }
 
@@ -83,7 +90,14 @@ export class Browser {
     if (call.action === "close") { await this.close(); return {}; }
     const { action, ...rest } = call;
     const r = await this.ask({ op: action, ...rest, ...(approved ? { approved: true } : {}) }, signal);
-    return r.unapproved ? { fail: BROWSE_UNAPPROVED } : r;
+    if (r.unapproved) return { fail: BROWSE_UNAPPROVED };
+    for (const d of r.downloads ?? []) {
+      if (!d.file) continue;
+      try { d.path = this.save ? await this.save(d.file, d.name) : undefined; } catch (err) { d.fail = (err as Error).message; }
+      if (!d.path) d.fail ??= "there is nowhere to save it";
+      delete d.file;
+    }
+    return r;
   }
 
   /** Closes the browser, letting it write its cookies first. */

@@ -163,7 +163,7 @@ export function createWebExtension(web: WebTools): ExtensionFactory {
     if (web.browser) pi.registerTool({
       name: "browse",
       label: "Browse",
-      description: "Use a web page in this conversation's own browser, when web_fetch isn't enough: the page needs a click, a field filled in, a login, or several steps to reach something, or web_fetch was refused (401, 403, 429, Anubis) or came back empty. browse waits out Anubis's check by itself. Every action answers with the page as it is now, as text, with each link, button and field on a line of its own under a number; act on one by its number. The browser stays open between calls and keeps its logins. It runs in this conversation's sandbox, so its internet switch and allowed hosts apply. To read a page whose address you have, try web_fetch first.",
+      description: "Use a web page in this conversation's own browser, when web_fetch isn't enough: the page needs a click, a field filled in, a login, or several steps to reach something, or web_fetch was refused (401, 403, 429, Anubis) or came back empty. browse waits out Anubis's check by itself. Every action answers with the page as it is now, as text, with each link, button and field on a line of its own under a number; act on one by its number. The browser stays open between calls and keeps its logins. A file a page offers is saved in downloads/ of this conversation's folder. It runs in this conversation's sandbox, so its internet switch and allowed hosts apply. To read a page whose address you have, try web_fetch first.",
       promptSnippet: "use a web page: click, fill in fields, log in; open a page web_fetch was refused",
       promptGuidelines: [OUTSIDE_GUIDELINE],
       annotations: { openWorldHint: true },
@@ -199,7 +199,12 @@ export function createWebExtension(web: WebTools): ExtensionFactory {
           if (part.isError) return text(part.text, true);
           // Off, nothing is said about such a box (the owner's rule); on, the note is ours, so a page can't fake it.
           const allowed = web.botChecks?.() && BOT_BOX.test(r.text) ? `\n${BOT_ALLOWED}` : "";
-          return text(`${r.fail ? `${r.fail}\n` : ""}${outside(r.url ?? "the browser", withSections(part))}${part.note ? `\n${part.note}` : ""}${allowed}`, !!r.fail);
+          // What was downloaded is ours to say, after the markers; the site's name for a file is cut short.
+          const saved = (r.downloads ?? []).map((d) => {
+            const name = JSON.stringify(d.name.slice(0, 80));
+            return d.path ? `Downloaded ${name} to ${d.path}${d.bytes !== undefined ? ` (${size(d.bytes)})` : ""}.` : `Couldn't download ${name}: ${d.fail ?? "it failed"}.`;
+          });
+          return text(`${r.fail ? `${r.fail}\n` : ""}${outside(r.url ?? "the browser", withSections(part))}${part.note ? `\n${part.note}` : ""}${saved.length ? `\n${saved.join("\n")}` : ""}${allowed}`, !!r.fail);
         } catch (err) {
           return text(`Couldn't ${p.action}: ${(err as Error).message}.`, true);
         }
@@ -210,6 +215,9 @@ export function createWebExtension(web: WebTools): ExtensionFactory {
     pi.on("before_agent_start", (_event, ctx) => { gate(ctx); });
   };
 }
+
+/** A size in bytes, in kB or MB. */
+const size = (n: number) => (n < 1_000_000 ? `${Math.max(1, Math.round(n / 1000))} kB` : `${(n / 1_000_000).toFixed(1)} MB`);
 
 /** A cut page's text with the headings past its window after it, both the page's own words. */
 function withSections(part: { text: string; sections?: string }): string {
