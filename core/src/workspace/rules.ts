@@ -46,10 +46,63 @@ export function commandRules(value: unknown): CommandRule[] {
   return [...unique.values()];
 }
 
-export function decide(command: string, rules: readonly CommandRule[]): CommandRule | undefined {
+// A sourced script runs in her shell, so it can change what the rest of the line means. It is seen through only
+// when every command in it is one of these, which set things up and run nothing else, and it sets none of the
+// variables bash itself acts on (PATH is allowed: a changed PATH is no more than running a program by its path).
+const SETUP = new Set(["export", "readonly", "declare", "typeset", "local", "unset", "set", "cd", "pushd", "popd", "echo", "true", "false", ":", "test", "[", "umask", "return",
+  "pwd", "nproc", "dirname", "basename", "realpath", "readlink", "uname", "getconf"]);
+const CONDITION = new Set(["if", "then", "else", "elif", "fi", "!"]);
+const SHELL_READS = /^(?:BASH\w*|ENV|IFS|PS\d|PROMPT_COMMAND|SHELLOPTS|CDPATH|GLOBIGNORE)$/;
+const LITERAL = /^[\w./@%+,:-]+$/;
+const SOURCES = /^(?:source|\.)$/;
+export const SCRIPT_LIMIT = 64 * 1024;
+
+// A `#!` line is a comment to the shell that sources the file.
+const withoutShebang = (script: string) => script.replace(/^#!.*/, "");
+
+/** Whether a sourced script only sets things up (docs/workspace.md, "Project command rules"). */
+export function setupOnly(script: string): boolean {
+  if (script.length > SCRIPT_LIMIT) return false;
+  return simpleCommands(withoutShebang(script)).every(part => {
+    let words = part;
+    while (words.length && CONDITION.has(words[0]!)) words = words.slice(1);
+    if (words[0]?.startsWith("#")) return true;
+    const run = programs(words);
+    if (run.length && !SETUP.has(run[0]!)) return false;
+    return words.every(w => !assignment(w) || !SHELL_READS.test(w.slice(0, w.indexOf("="))));
+  });
+}
+
+/** The one part of a parsed line `decide` may look through: `source FILE` or `. FILE` with a literal path, with
+ * nothing before it but `cd DIR`s, so nothing on the line can change the file between the gate reading it and bash
+ * sourcing it. */
+function sourcing(parts: string[][]): { at: number; cds: string[]; path: string } | undefined {
+  const cds: string[] = [];
+  for (const [at, words] of parts.entries()) {
+    if (words[0] === "cd" && words.length === 2 && LITERAL.test(words[1]!)) { cds.push(words[1]!); continue; }
+    // Without a slash, bash looks the name up on PATH first, so which file it is isn't known.
+    return SOURCES.test(words[0] ?? "") && words[1] && LITERAL.test(words[1]) && words[1].includes("/") ? { at, cds, path: words[1] } : undefined;
+  }
+  return undefined;
+}
+
+/** The file a command sources that the gate should read and pass to `decide`, with the `cd`s before it to resolve it from. */
+export function sourcedFile(command: string): { cds: string[]; path: string } | undefined {
+  const found = sourcing(simpleCommands(command).map(programs));
+  return found && { cds: found.cds, path: found.path };
+}
+
+/** `sourced` is the text of the file `sourcedFile` names, when the gate could read it. */
+export function decide(command: string, rules: readonly CommandRule[], sourced?: string): CommandRule | undefined {
   const parts = simpleCommands(command).map(programs);
   const rank = { allow: 0, ask: 1, forbid: 2 };
-  const results = parts.map(words => {
+  const read = sourced === undefined ? undefined : sourcing(parts)?.at;
+  const inside = read === undefined ? undefined : decide(withoutShebang(sourced!), rules);
+  // A forbidden command in the script is refused whatever else it does; one that only sets things up is seen through.
+  const seen = inside?.decision === "forbid" || (read !== undefined && setupOnly(sourced!)) ? read : undefined;
+  const results = parts.map((words, at) => {
+    // A script seen through counts as its own commands: a rule it breaks is broken here, and otherwise it hides nothing.
+    if (at === seen && inside && inside.decision !== "allow") return inside;
     const matches = rules.filter(rule => {
       const prefix = rule.prefix.split(" ");
       if (rule.decision === "allow") return !opaque(words) && prefix.every((w, i) => w === words[i]);
@@ -61,7 +114,7 @@ export function decide(command: string, rules: readonly CommandRule[]): CommandR
     }).sort((a, b) => b.prefix.split(" ").length - a.prefix.split(" ").length || rank[b.decision] - rank[a.decision]);
     const hit = matches[0];
     if (hit?.decision === "forbid") return hit;
-    if (opaque(words) && rules.some(r => r.decision === "forbid")) return { prefix: "", decision: "ask" } as CommandRule;
+    if (at !== seen && opaque(words) && rules.some(r => r.decision === "forbid")) return { prefix: "", decision: "ask" } as CommandRule;
     return hit;
   });
   return results.find(r => r?.decision === "forbid") ?? results.find(r => r?.decision === "ask")

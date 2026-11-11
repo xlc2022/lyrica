@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { alwaysAllowPrefix, commandRules, decide, DEFAULT_COMMAND_RULES } from "../src/workspace/rules.ts";
+import { alwaysAllowPrefix, commandRules, decide, DEFAULT_COMMAND_RULES, setupOnly, sourcedFile } from "../src/workspace/rules.ts";
 
 const forbid = commandRules([{ prefix: "git push", decision: "forbid" }]);
 describe("project command matching", () => {
@@ -38,6 +38,30 @@ describe("project command matching", () => {
       "sudo -s <<'EOF'\ngit push --force\nEOF", "runuser -u ada <<'EOF'\ngit push --force\nEOF", "cat <<EOF\n$(git push --force)\nEOF", "sudo bash <<-EOF\n\tgit push --force\n\tEOF"]) {
       expect(decide(run, DEFAULT_COMMAND_RULES)?.decision, run).toBe("forbid");
     }
+  });
+  it("looks inside a sourced script that only sets things up", () => {
+    const command = 'cd /workspace/c5400/src/linux && source /workspace/c5400/build/env.sh && make ARCH=arm dtbs -j12 > /workspace/c5400/build/dtbs.log 2>&1; echo "rc=$?"';
+    expect(sourcedFile(command)).toEqual({ cds: ['/workspace/c5400/src/linux'], path: '/workspace/c5400/build/env.sh' });
+    const env = '#!/bin/sh\n# cross tools\nexport ARCH=arm\nexport CROSS_COMPILE=arm-linux-gnueabi-\nexport PATH="$TC/bin:$PATH"\nif [ -d "$HOME/x" ]; then export X=1; fi\nexport JOBS=$(nproc) # all of them\nTOP=$(realpath "$(dirname "$0")")\n';
+    expect(setupOnly(env)).toBe(true);
+    expect(decide(command, DEFAULT_COMMAND_RULES, env)).toBeUndefined();
+    // Unread, or not only setup, it stays opaque; a rule the script breaks is broken by the line.
+    expect(decide(command, DEFAULT_COMMAND_RULES)?.decision).toBe('ask');
+    for (const script of ['git push -f', 'make() { ls; }', "alias make='ls'", 'export BASH_ENV=/tmp/x', "PS4='$(id)'", 'export N=$(git push -f)', 'source ./more.sh', 'for f in a; do export F=$f; done', 'printf -v PS4 x', 'x'.repeat(70000)]) {
+      expect(setupOnly(script), script).toBe(false);
+      expect(decide(command, DEFAULT_COMMAND_RULES, script)?.decision, script).not.toBeUndefined();
+    }
+    expect(decide(command, DEFAULT_COMMAND_RULES, 'make() { ls; }\ngit push -f')?.decision).toBe('forbid');
+    expect(decide(command, DEFAULT_COMMAND_RULES, 'make() { ls; }')?.decision).toBe('ask');
+    expect(decide('. ./env.sh && git status', [{ prefix: 'export', decision: 'forbid' }], 'export A=1')?.prefix).toBe('export');
+    expect(decide('. ./env.sh && git status', [...DEFAULT_COMMAND_RULES, { prefix: 'export', decision: 'ask' }], 'export A=1')?.decision).toBe('ask');
+    // Only a literal path with a slash, with nothing but cds before it, so the line can't change or swap the file first.
+    for (const line of ['source env.sh', 'source $E', 'source ~/env.sh', 'echo x > ./env.sh && source ./env.sh', 'cd $D && source ./env.sh', 'cd >./env.sh a && source ./env.sh', 'git pull; . ./env.sh']) {
+      expect(sourcedFile(line), line).toBeUndefined();
+      expect(decide(line, DEFAULT_COMMAND_RULES, 'export A=1')?.decision, line).toBe('ask');
+    }
+    // A second source after the one seen through is still opaque.
+    expect(decide('. ./env.sh && . ./more.sh', DEFAULT_COMMAND_RULES, 'export A=1')?.decision).toBe('ask');
   });
   it("uses word count, then forbid, ask, allow; combines every part", () => {
     const rules = commandRules([{ prefix: 'git', decision: 'forbid' }, { prefix: 'git status', decision: 'allow' }, { prefix: 'npm test', decision: 'allow' }]);

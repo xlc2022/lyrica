@@ -45,7 +45,10 @@ owner chose three changes (01:14Z).
    (`L=/…/ld-linux-x86-64.so.2; "$L" …`) is read as its value, not as
    opaque, and the dynamic loader is a wrapper (`knownValues`, `LOADER`;
    docs/workspace.md, Project command rules), so such read-only calls
-   don't ask in Auto mode.
+   don't ask in Auto mode. A script the line sources first
+   (`cd … && source /…/env.sh && make`) is read where it runs: a forbidden
+   command in it is refused, and one that only sets variables isn't opaque
+   (`sourcedFile`, `setupOnly`).
 3. **`cd` on the same line.** `suspectCommand` follows `cd`/`pushd` through
    the chain (absolute, home or relative to a known folder) and resolves a
    later relative `rm` target against it, so `cd / && rm -rf *` is read as
