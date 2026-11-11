@@ -2613,7 +2613,14 @@ test("Code mode: thread switch, Coding model and project defaults", async ({ pag
   const newModel = page.getByRole("combobox", { name: "Model", exact: true });
   await expect(newModel.locator("option", { hasText: "cloud-model" })).toHaveCount(1);
   await expect(newModel.locator("option", { hasText: "embed-only" })).toHaveCount(0);
+  // One saved before the list was narrowed shows as itself, not as Same as coordinator, until a text model is picked.
+  await api("PATCH", path, { threadsModel: { offeringId: embed.id } });
+  await page.reload();
+  await expect(newModel).toHaveValue(embed.id);
+  await expect(newModel.locator("option:checked")).toHaveText(`${embed.id} (not available)`);
+  await api("PATCH", path, { threadsModel: null });
   await api("PATCH", `/endpoints/${routerId}/models`, { offeringIds: [embed.id], disabled: true });
+  await page.reload();
   await page.getByRole("combobox", { name: "Evidence judge", exact: true }).selectOption("on");
   await expect(page.getByRole("heading", { name: "Workspace", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "This chat", exact: true })).toHaveCount(0);

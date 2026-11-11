@@ -422,7 +422,7 @@ export function GeneralSection({ ctx, base, summary, settings, onSummary, onSett
                 {ep.models.filter(isChatModel).map((m) => <option key={m.id} value={m.id}>{ep.kind} · {modelName(m)} · {ep.name}</option>)}
               </optgroup>
             ))}
-            {model && !settings.allowed.some((ep) => ep.models.some((m) => m.id === model)) && <option value={model}>{model} (not available)</option>}
+            {model && !settings.allowed.some((ep) => ep.models.some((m) => m.id === model && isChatModel(m))) && <option value={model}>{model} (not available)</option>}
           </select>
         </label>
         <Switch label="Code mode" hint={CODE_MODE_HINT} checked={code} onChange={setCode} />
