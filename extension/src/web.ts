@@ -163,18 +163,19 @@ export function createWebExtension(web: WebTools): ExtensionFactory {
     if (web.browser) pi.registerTool({
       name: "browse",
       label: "Browse",
-      description: "Use a web page in this conversation's own browser, when web_fetch isn't enough: the page needs a click, a field filled in, a login, or several steps to reach something, or web_fetch was refused (401, 403, 429, Anubis) or came back empty. browse waits out Anubis's check by itself. Every action answers with the page as it is now, as text, with each link, button and field on a line of its own under a number; act on one by its number. The browser stays open between calls and keeps its logins. It runs in this conversation's sandbox, so its internet switch and allowed hosts apply. To read a page whose address you have, try web_fetch first.",
+      description: "Use a web page in this conversation's own browser, when web_fetch isn't enough: the page needs a click, a field filled in, a login, or several steps to reach something, or web_fetch was refused (401, 403, 429, Anubis) or came back empty. browse waits out Anubis's check by itself. Every action answers with the page as it is now, as text, with each link, button and field on a line of its own under a number; act on one by its number. The browser stays open between calls and keeps its logins. A file a page offers is saved in downloads/ of this conversation's folder. It runs in this conversation's sandbox, so its internet switch and allowed hosts apply. To read a page whose address you have, try web_fetch first.",
       promptSnippet: "use a web page: click, fill in fields, log in; open a page web_fetch was refused",
       promptGuidelines: [OUTSIDE_GUIDELINE],
       annotations: { openWorldHint: true },
       parameters: Type.Object({
-        action: StringEnum(BROWSE_ACTIONS, { description: "open: go to url. read: the page again, from offset. click: the numbered thing. type: text into the numbered field, replacing what it holds. select: the option named by text in the numbered select. scroll: a screen down or up, for a page that loads more as it scrolls. back: the page before. screenshot: the visible part as an image. close: close the browser, keeping its logins." }),
+        action: StringEnum(BROWSE_ACTIONS, { description: "open: go to url. read: the page again, from offset. click: the numbered thing. type: text into the numbered field, replacing what it holds. select: the option named by text in the numbered select. attach: a file of this conversation's (path) into the numbered file field, which asks the user first. scroll: a screen down or up, for a page that loads more as it scrolls. back: the page before. screenshot: the visible part as an image. close: close the browser, keeping its logins." }),
         url: Type.Optional(Type.String({ description: "open: an http or https URL." })),
         ref: Type.Optional(Type.Integer({ description: "click, type, select: the number in brackets before the thing, from the latest page text." })),
         text: Type.Optional(Type.String({ description: "type: the text. select: the option's name." })),
         submit: Type.Optional(Type.Boolean({ description: "type: true presses Enter after the text." })),
         direction: Type.Optional(StringEnum(["down", "up"] as const, { description: "scroll: down if left out." })),
         offset: Type.Optional(Type.Integer({ description: "read: where to start, in characters, as a cut page names. 0 if left out." })),
+        path: Type.Optional(Type.String({ description: "attach: the file, as a path in this conversation's folder." })),
       }),
       async execute(id, p, signal) {
         let url: URL | undefined;
@@ -182,13 +183,14 @@ export function createWebExtension(web: WebTools): ExtensionFactory {
           try { url = new URL((p.url ?? "").trim()); } catch { return text(`${p.url ?? "Nothing"} isn't a URL.`, true); }
           if (url.protocol !== "http:" && url.protocol !== "https:") return text("browse opens only http and https URLs.", true);
         }
-        const numbered = p.action === "click" || p.action === "type" || p.action === "select";
+        const numbered = p.action === "click" || p.action === "type" || p.action === "select" || p.action === "attach";
+        if (p.action === "attach" && !p.path) return text("attach needs path: the file to attach.", true);
         if (numbered && p.ref === undefined) return text(`${p.action} needs ref: the number of the thing on the page.`, true);
         if ((p.action === "type" || p.action === "select") && p.text === undefined) return text(`${p.action} needs text.`, true);
         try {
           const r = await web.browser!().act(id, {
             action: p.action, ...(url ? { url: url.href } : {}), ...(numbered ? { ref: p.ref } : {}),
-            ...(p.text !== undefined ? { text: p.text } : {}), ...(p.submit ? { submit: true } : {}), ...(p.direction ? { direction: p.direction } : {}),
+            ...(p.text !== undefined ? { text: p.text } : {}), ...(p.action === "attach" ? { path: p.path } : {}), ...(p.submit ? { submit: true } : {}), ...(p.direction ? { direction: p.direction } : {}),
           }, signal);
           if (p.action === "close") return text("The browser is closed. Its logins are kept.");
           if (r.image) return { content: [{ type: "text" as const, text: `A screenshot of ${r.url}` }, { type: "image" as const, data: r.image, mimeType: "image/jpeg" }], details: undefined };
@@ -199,7 +201,13 @@ export function createWebExtension(web: WebTools): ExtensionFactory {
           if (part.isError) return text(part.text, true);
           // Off, nothing is said about such a box (the owner's rule); on, the note is ours, so a page can't fake it.
           const allowed = web.botChecks?.() && BOT_BOX.test(r.text) ? `\n${BOT_ALLOWED}` : "";
-          return text(`${r.fail ? `${r.fail}\n` : ""}${outside(r.url ?? "the browser", withSections(part))}${part.note ? `\n${part.note}` : ""}${allowed}`, !!r.fail);
+          // What was downloaded is ours to say, after the markers; the site's name for a file is cut short.
+          const saved = (r.downloads ?? []).map((d) => {
+            const name = JSON.stringify(d.name.slice(0, 80));
+            if (d.going) return `Still downloading ${name} (${size(d.bytes ?? 0)} so far); a later browse action, read included, says when it is saved.`;
+            return d.path ? `Downloaded ${name} to ${d.path}${d.bytes !== undefined ? ` (${size(d.bytes)})` : ""}.` : `Couldn't download ${name}: ${d.fail ?? "it failed"}.`;
+          });
+          return text(`${r.fail ? `${r.fail}\n` : ""}${outside(r.url ?? "the browser", withSections(part))}${part.note ? `\n${part.note}` : ""}${saved.length ? `\n${saved.join("\n")}` : ""}${allowed}`, !!r.fail);
         } catch (err) {
           return text(`Couldn't ${p.action}: ${(err as Error).message}.`, true);
         }
@@ -210,6 +218,9 @@ export function createWebExtension(web: WebTools): ExtensionFactory {
     pi.on("before_agent_start", (_event, ctx) => { gate(ctx); });
   };
 }
+
+/** A size in bytes, in kB or MB. */
+const size = (n: number) => (n < 1_000_000 ? `${Math.max(1, Math.round(n / 1000))} kB` : `${(n / 1_000_000).toFixed(1)} MB`);
 
 /** A cut page's text with the headings past its window after it, both the page's own words. */
 function withSections(part: { text: string; sections?: string }): string {

@@ -3,7 +3,7 @@ import { ensurePhotosDir, PortraitPhotos, ThreadImages } from "./images.ts";
 export * from "./images.ts";
 import { randomBytes } from "node:crypto";
 import { lookup } from "node:dns/promises";
-import { lstatSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { lstatSync, mkdirSync, mkdtempSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { isIP } from "node:net";
 import { tmpdir } from "node:os";
 import { join, posix } from "node:path";
@@ -17,7 +17,7 @@ import { cleanUploadName, PANEL_DIR, ThreadFiles, type FileEntry } from "./files
 import { isMounted, mountGocryptfs, unmountGocryptfs } from "./home.ts";
 import { maskSecrets, type ExecutionTarget } from "./ops.ts";
 import { Browser, browseArgv, type BrowserProcess } from "../browse.ts";
-import { FAMILY_ROOT, Sandbox, sandboxHas, sandboxNix, sandboxTools, SHARED, WORKDIR, type Credentials, type SandboxSpec } from "./sandbox.ts";
+import { BROWSER_PROFILE, FAMILY_ROOT, Sandbox, sandboxHas, sandboxNix, sandboxTools, SHARED, WORKDIR, type Credentials, type SandboxSpec } from "./sandbox.ts";
 export { FAMILY_ROOT } from "./sandbox.ts";
 import type { ClaudeCodeUsage } from "./relay.ts";
 import { SETUP_SCRIPT, SetupFailures, setupOutcome } from "./setup.ts";
@@ -849,7 +849,7 @@ export class Workspace {
   browser(t: WorkspaceThread): Browser {
     const k = `${t.userId}/${t.pool}/${t.threadId}`;
     let b = this.browsers.get(k);
-    if (!b) this.browsers.set(k, b = new Browser(() => this.startBrowser(t)));
+    if (!b) this.browsers.set(k, b = new Browser(() => this.startBrowser(t), undefined, undefined, (file, name) => this.saveDownload(t, file, name), (path) => this.stageAttachment(t, path)));
     return b;
   }
 
@@ -1854,23 +1854,75 @@ export class Workspace {
    * (docs/briefs/chat-view.md). Returns the path she sees.
    */
   async saveUpload(t: WorkspaceThread, name: string, bytes: Buffer): Promise<string> {
+    return this.saveFile(t, "uploads", name, bytes, true);
+  }
+
+  /**
+   * Moves a file the thread's browser downloaded (its id in the profile's downloads/) into the thread's
+   * downloads/ folder, under the site's name cleaned as an upload's is, never overwriting. Returns the path she sees.
+   * Moved, never copied, so a large file never takes its room twice.
+   */
+  async saveDownload(t: WorkspaceThread, file: string, name: string): Promise<string> {
+    if (!/^[\w-]+$/.test(file)) throw new Error("the download's id is malformed");
+    const src = join(this.browserDir(t), "downloads", file);
+    try {
+      return await this.saveFile(t, "downloads", name, { move: src }, false);
+    } finally {
+      rmSync(src, { force: true });
+    }
+  }
+
+  /**
+   * Copies a file of the thread's (a path she sees, read as her `read` tool reads it) into its browser's profile,
+   * for a file field, and answers its path in the browser's run. It stays there until the browser starts again.
+   */
+  async stageAttachment(t: WorkspaceThread, path: string): Promise<string> {
+    const bytes = await this.targetFor(t).ops().read.readFile(path.startsWith("/") ? path : posix.join(WORKDIR, path));
+    if (bytes.length > ATTACH_BYTES) throw new Error(`it is over ${ATTACH_BYTES / 1e6} MB`);
+    const name = cleanUploadName(posix.basename(path)), dir = randomBytes(6).toString("hex");
+    mkdirSync(join(this.browserDir(t), "attach", dir), { recursive: true, mode: 0o700 });
+    writeFileSync(join(this.browserDir(t), "attach", dir, name), bytes, { mode: 0o600 });
+    return `${BROWSER_PROFILE}/attach/${dir}/${name}`;
+  }
+
+  /**
+   * Saves bytes, or moves a file on the host, into one of the thread's folders (a project chat's shared/ one), under
+   * a free name; `randomImages` names an image at random.
+   */
+  private async saveFile(t: WorkspaceThread, folder: "uploads" | "downloads", name: string, from: Buffer | { move: string }, randomImages: boolean): Promise<string> {
     const clean = cleanUploadName(name);
     const dot = clean.lastIndexOf(".");
     const [given, ext] = dot > 0 ? [clean.slice(0, dot), clean.slice(dot)] : [clean, ""];
-    const stem = UPLOAD_IMAGE.test(ext) ? randomBytes(6).toString("hex") : given;
-    // noclobber makes taking the name atomic: a file that appears meanwhile is never overwritten.
-    const script = 'mkdir -p uploads && n="$1$2" && i=2 && until (set -C; cat > "uploads/$n") 2>/dev/null; do ' +
-      '[ "$i" -gt 999 ] && exit 1; n="$1-$i$2"; i=$((i+1)); done && printf %s "$n"';
+    const stem = randomImages && UPLOAD_IMAGE.test(ext) ? randomBytes(6).toString("hex") : given;
     // A project chat's go in its shared/ (its threads' /shared), so the threads that build from them can read them.
     const shared = this.sharesOwnFolder(t);
-    const box = new Sandbox({ workdir: shared ? join(this.threadDir(t), "shared") : this.threadDir(t), grants: [], network: { internet: false, services: false, hosts: [] }, bwrap: this.opts.bwrap });
-    const r = await box.run(["sh", "-c", script, "sh", stem, ext], { input: bytes });
+    const base = shared ? join(this.threadDir(t), "shared") : this.threadDir(t);
+    mkdirSync(base, { recursive: true, mode: 0o700 });
+    if (lstatSync(base).isSymbolicLink()) throw new Error(`could not save ${clean}: the folder is a link`);
+    // A file on the host is renamed into the folder's top under a fresh name (the same encrypted home, so nothing is
+    // copied), then linked to a free name in the sandbox, so a link she made there is never followed outside it.
+    // noclobber, or a hard link, makes taking the name atomic: a file that appears meanwhile is never overwritten.
+    const incoming = Buffer.isBuffer(from) ? undefined : `.lyrica-incoming-${randomBytes(6).toString("hex")}`;
+    if (incoming) renameSync((from as { move: string }).move, join(base, incoming));
+    const take = incoming ? 'ln -- "$4" "$3/$n"' : '(set -C; cat > "$3/$n")';
+    const script = `mkdir -p "$3" && n="$1$2" && i=2 && until ${take} 2>/dev/null; do ` +
+      '[ "$i" -gt 999 ] && exit 1; n="$1-$i$2"; i=$((i+1)); done && printf %s "$n"' + (incoming ? ' && rm -f -- "$4"' : "");
+    const box = new Sandbox({ workdir: base, grants: [], network: { internet: false, services: false, hosts: [] }, bwrap: this.opts.bwrap });
+    let r;
+    try {
+      r = await box.run(["sh", "-c", script, "sh", stem, ext, folder, ...(incoming ? [incoming] : [])], Buffer.isBuffer(from) ? { input: from } : {});
+    } finally {
+      if (incoming) rmSync(join(base, incoming), { force: true });
+    }
     if (r.code !== 0) throw new Error(`could not save ${clean}: ${r.stderr.toString().trim()}`);
-    const path = `${WORKDIR}/${shared ? "shared/" : ""}uploads/${r.stdout.toString()}`;
+    const path = `${WORKDIR}/${shared ? "shared/" : ""}${folder}/${r.stdout.toString()}`;
     this.madeFiles(t, [path]);
     return path;
   }
 }
+
+/** The largest file she can attach to a page's form. */
+const ATTACH_BYTES = 100_000_000;
 
 /** At most this many files are recorded from one command. */
 const NEW_FILES_LIMIT = 2000;

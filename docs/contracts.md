@@ -1771,12 +1771,13 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     timeoutS?)` returns a `JobInfo` (with the job's `cwd`) at once
     (docs/workspace.md, Background commands). Jobs that end within
     `jobWakeMs` (5 s) of each other wake the thread once.
-  - `browse({ action, url?, ref?, text?, submit?, direction?, offset? })`
-    (the same extension, registered only with `browser()`: a hosted main
-    conversation whose sandbox has Chromium and node; never a subagent or
-    a project chat), behind the Web search switch. Actions
+  - `browse({ action, url?, ref?, text?, submit?, direction?, offset?, path? })`
+    (the same extension, registered only with `browser()`: a hosted
+    thread, a project chat included, whose sandbox has Chromium and node,
+    and a subagent whose role lists it, with its own browser), behind the
+    Web search switch. Actions
     (`BROWSE_ACTIONS`): `open`, `read`, `click`, `type`, `select`,
-    `scroll`, `back`, `screenshot`, `close`. `browser()` is the thread's
+    `attach`, `scroll`, `back`, `screenshot`, `close`. `browser()` is the thread's
     `Browser` (`core/src/browse.ts`, `Workspace.browser(t)`): at the first
     call it starts `browseArgv()` (`browse.cjs` on the sandbox's node,
     driving its Chromium over the DevTools pipe) in a `Sandbox` with the
@@ -1816,9 +1817,33 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     and the page stays; the element that set it off counts as sending a
     form from then on. Ask and Accept edits also ask before `click`,
     `type` and `select` with the action in words; Plan mode leaves
-    `BROWSE_READS`. Downloads are denied, a new tab's address opens in
+    `BROWSE_READS`. A download is saved by Chromium in the profile's
+    `downloads/` under its id (`Browser.setDownloadBehavior`
+    allowAndName; cancelled past 2 GB, when the disk would keep less
+    than a tenth of its size free (at least 2 GB, `statfs`), or after 2
+    minutes without data); after an action the driver waits up to 45 s
+    for the downloads it started and answers `downloads` (a `going` one
+    with its size so far, answered again later), and `Browser`'s
+    `save(file, name)` (`Workspace.saveDownload`: renamed into the
+    thread's folder, then hard-linked to a free name in a sandbox) moves
+    each saved one into the thread's `downloads/` and gives the path she sees, which the tool
+    says after the markers. `attach` (`ref`, `path`): `Browser.look`
+    answers `gives` (the field's site) and the gate asks in every mode
+    ("This gives a file to <site>."); without that yes `Browser.act`
+    answers `BROWSE_UNAPPROVED_FILE`. With it, `stage(path)`
+    (`Workspace.stageAttachment`: read through the thread's `read` ops,
+    100 MB at most) copies the file into the profile's `attach/` and the
+    driver sets it with `DOM.setFileInputFiles`. A new tab's address opens in
     the one tab, a message box is closed and a question box answered no
-    (both noted in the result), and frames aren't read.
+    (both noted in the result). Frames: the driver auto-attaches to a
+    frame from another site (`Target.setAutoAttach`, held at its start
+    until its own `Fetch` watches posts, then let go), keeps every frame's
+    session and parent, makes a world of its own in each, and reads each
+    shown frame into the page text where it stands (`DOM.getFrameOwner`
+    finds which), up to 3 deep and 20 in a page. A number is the
+    driver's, mapped to a frame world and that world's own number, so it
+    never comes to mean something else; a click is sent to the page at
+    the point inside the frame plus where each frame around it starts.
   - `ExecutionTarget.run?(argv, { signal?, timeoutMs?, cwd? })` runs argv with no
     shell under the target's own rules; the sandbox has it.
   - `ExecutionTarget.secrets?()` is the sandbox's tokens and placeholders

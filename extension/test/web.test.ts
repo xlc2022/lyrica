@@ -300,6 +300,13 @@ describe("searxngSearch", () => {
     expect(results[0]).toMatch(/\[Characters 100 to 200 of \d+\. Read on with offset 200\.\]$/);
   });
 
+  it("says where browse saved a download, or why it didn't, after the page's own words", async () => {
+    const browser = () => ({ act: async () => ({ url: "https://files.example/", title: "Files", text: '[1] link "Report"', downloads: [{ name: "report.pdf", path: "/workspace/downloads/report.pdf", bytes: 2_400_000 }, { name: "huge.iso", fail: "it is over 2.0 GB" }, { name: "film.mkv", bytes: 640_000_000, going: true }] }) });
+    const { s, results } = await session({ searxng: () => null, target: () => sandbox([]), browser }, [[fauxToolCall("browse", { action: "click", ref: 1 })]]);
+    try { await s.prompt("get it"); } finally { s.dispose(); }
+    expect(results[0]).toMatch(/<<<end web \S+>>>\nDownloaded "report\.pdf" to \/workspace\/downloads\/report\.pdf \(2\.4 MB\)\.\nCouldn't download "huge\.iso": it is over 2\.0 GB\.\nStill downloading "film\.mkv" \(640\.0 MB so far\); a later browse action, read included, says when it is saved\.$/);
+  });
+
   it("a refused fetch points her at browse, only when she has it", async () => {
     const refused: ExecutionTarget = { ...sandbox([]), run: async () => ({ code: 0, stdout: Buffer.from("Forbidden"), stderr: Buffer.from("\nLYRICA-FETCH 403 text/html\n") }) };
     const gone: ExecutionTarget = { ...sandbox([]), run: async () => ({ code: 0, stdout: Buffer.from("Not here"), stderr: Buffer.from("\nLYRICA-FETCH 404 text/html\n") }) };

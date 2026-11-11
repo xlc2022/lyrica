@@ -427,13 +427,16 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
         // sends none without this yes for this call. A look that fails asks nothing: the action fails the same way.
         const browser = tools.browser?.();
         const seen = await browser?.look(call).catch(() => undefined);
-        if (!seen?.form && !ASKS[mode].includes("bash")) return undefined;
+        // Attaching a file gives it to the site: it asks in every mode too, naming the file.
+        const gives = call.action === "attach";
+        if (!seen?.form && !gives && !ASKS[mode].includes("bash")) return undefined;
         const request: ApprovalRequest = seen?.form
           ? { toolCallId: event.toolCallId, tool: "browse", input: { browse: browseFormText(seen.form) }, warning: browseFormWarning(seen.form) }
+          : gives ? { toolCallId: event.toolCallId, tool: "browse", input: { browse: seen?.words ?? `attach ${call.path ?? ""}` }, warning: `This gives a file to ${seen?.gives ?? "the site"}.` }
           : { toolCallId: event.toolCallId, tool: "browse", input: { browse: seen?.words ?? call.action } };
         const answer = tools.approve ? await tools.approve(request) : await approve(ctx, request);
         if (answer !== true) return refusal(answer);
-        if (seen?.form) browser!.approve(event.toolCallId);
+        if (seen?.form || gives) browser!.approve(event.toolCallId);
         return undefined;
       }
       const pve = event.toolName === "proxmox";
