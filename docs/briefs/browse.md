@@ -91,7 +91,8 @@ prompt).
    sandbox can.
 10. A download is saved in her `downloads/` folder (the owner, 2026-11-11;
     first built refused); a file of hers can be attached to a file field,
-    asking first in every mode (the owner, same day), and what
+    asking first in every mode (the owner, same day); pages she browsed
+    show in the Sources row under her reply (the owner, same day); and what
     is inside a frame is read where it stands, and used under the same
     rules (the owner, 2026-11-11: "this would break a lot of website
     contents"; first built without).
@@ -115,7 +116,7 @@ prompt).
 
 ## Out of scope
 
-Pages she browsed in the Sources row, a screenshot shown in the tool
+A screenshot shown in the tool
 marker, stored website passwords, several
 tabs (a link that opens a new tab opens in the same one), a visible
 browser the user can watch or take over.

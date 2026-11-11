@@ -554,11 +554,14 @@ function pictureName(url: URL): string {
   return name.replace(/(\.(webp|png|jpe?g|gif|svg))+$/i, "").replace(/_/g, " ").trim();
 }
 
+/** A browse result's page: the address it names, then its title on the first line inside the markers (extension/src/web.ts). */
+const BROWSED = /^Outside content from (\S+), not from the user:\n<<<web [0-9a-f]+>>>\n(.*)\n/;
+
 /** The server's own loopback: 127.0.0.0/8, localhost or ::1. */
 const isLoopback = (host: string) => /^(127\.\d+\.\d+\.\d+|localhost|\[::1\])$/i.test(host);
 
 /**
- * The pages her web_fetch calls read (since the person's last message or her last words, conversationNodes), once each in the order she read them: the URL she asked for (http or
+ * The pages her web_fetch and browse calls read (since the person's last message or her last words, conversationNodes), once each in the order she read them: the URL she asked for (http or
  * https only), and the "# " title line that follows the outside-content marker in the result (core/src/web.ts). A read from
  * the offline copy (core/src/kiwix.ts) names the copy ("Offline Wikipedia") in place of the host, and a picture
  * from it takes the picture's name as its title.
@@ -566,7 +569,18 @@ const isLoopback = (host: string) => /^(127\.\d+\.\d+\.\d+|localhost|\[::1\])$/i
 export function sourcesOf(parts: MessagePart[]): Source[] {
   const seen = new Map<string, Source>();
   for (const p of parts) {
-    if (p.type !== "tool" || p.name !== "web_fetch" || p.isError || p.result === undefined) continue;
+    if (p.type !== "tool" || p.isError || p.result === undefined) continue;
+    // A page browse showed: the address and title it answered with, its first two lines inside the markers.
+    if (p.name === "browse") {
+      const m = BROWSED.exec(p.result);
+      let url: URL;
+      try { url = new URL(m?.[1] ?? ""); } catch { continue; }
+      if ((url.protocol !== "http:" && url.protocol !== "https:") || seen.has(url.href)) continue;
+      const local = isLoopback(url.hostname);
+      seen.set(url.href, { url: url.href, title: m![2]!.trim() || undefined, host: url.hostname.replace(/^www\./, ""), ...(local ? { local } : {}) });
+      continue;
+    }
+    if (p.name !== "web_fetch") continue;
     let url: URL;
     try { url = new URL(String((p.args as { url?: unknown } | null)?.url ?? "").trim()); } catch { continue; }
     if ((url.protocol !== "http:" && url.protocol !== "https:") || seen.has(url.href)) continue;

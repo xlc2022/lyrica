@@ -1357,7 +1357,9 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   collects her parts since the person's last message or her last words, and
   the next message of hers with words shows the pages its `web_fetch` calls
   read (`sourcesOf`: successful calls, http and https only, once each, with
-  the `# ` title line that follows the outside-content marker) as links
+  the `# ` title line that follows the outside-content marker), and the
+  pages its `browse` calls showed (by the address and title each answered
+  with; a failed action or a screenshot adds none) as links
   under its text, before the reaction chips. A read from the offline copy
   (`core/src/kiwix.ts`), a wikipedia.org page included, shows
   "Offline <copy>" in place of the host and a picture from it its file name as the title.
