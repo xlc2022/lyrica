@@ -17,6 +17,14 @@ describe("project command matching", () => {
     expect(decide(command, DEFAULT_COMMAND_RULES)).toBeUndefined();
     expect(decide('L=/lib/ld.so; "$L" /bin/rm -rf /', DEFAULT_COMMAND_RULES)?.decision).toBe('forbid');
   });
+  it("looks for a glob only where a wrapper's program is, not in its arguments", () => {
+    const command = 'cd /workspace && timeout 60 curl -sI https://example.org/a.dts | head -5; echo "---"; timeout 60 curl -s "https://example.org/plain/a.dts?h=linux-6.18.y" | head -20';
+    expect(decide(command, DEFAULT_COMMAND_RULES)).toBeUndefined();
+    expect(decide("sudo grep -r 'a.*b' /etc", DEFAULT_COMMAND_RULES)).toBeUndefined();
+    for (const c of ["timeout 5 /usr/bin/gi? push", "sudo -u root g* push", "timeout --signal KILL 5 /bin/gi[t] push", "timeout 5 $x push", "sudo eval x", "nice bash task.sh"]) {
+      expect(decide(c, DEFAULT_COMMAND_RULES)?.decision, c).toBe("ask");
+    }
+  });
   it("reads a here-document as the program's input, not as commands, unless a shell runs it", () => {
     const command = "cd /tmp && curl -s -o p.json https://example.org/p.json && python3 - <<'EOF'\nimport json\nd=json.load(open('/tmp/p.json'))\nfor k,v in sorted(d['profiles'].items()):\n    print(f\"{k:26s} {','.join(v) if v else '-'}\")\nEOF";
     expect(decide(command, DEFAULT_COMMAND_RULES)).toBeUndefined();

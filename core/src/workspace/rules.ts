@@ -1,5 +1,5 @@
 import { posix } from "node:path";
-import { LOADER, SHELLS, simpleCommands } from "./machines.ts";
+import { LOADER, SHELLS, simpleCommands, unwrapped } from "./machines.ts";
 
 export interface CommandRule { prefix: string; decision: "allow" | "ask" | "forbid" }
 /** What a new project starts with (docs/workspace.md, "Project command rules"): the person removes or changes them in Project settings. */
@@ -16,8 +16,12 @@ const assignment = (w: string) => /^[A-Za-z_][A-Za-z0-9_]*=/.test(w);
 const plain = (w: string | undefined) => !!w && /^[a-z][a-z0-9:_-]*$/.test(w);
 const programs = (words: string[]) => words.filter(w => !assignment(w));
 const opaque = (words: string[]) => {
-  const candidates = WRAPPER.test(words[0] ?? "") ? words : words.slice(0, 1);
-  return candidates.some(w => /[$`*?\[]/.test(w) || /^(?:eval|source|\.)$/.test(w) || (SHELL.test(posix.basename(w)) && !words.includes("-c")));
+  const wrapped = WRAPPER.test(words[0] ?? "");
+  const candidates = wrapped ? words : words.slice(0, 1);
+  // A glob only hides the program where the program is: the wrapper's own words and the program after them, not
+  // its arguments (a quoted URL's `?`, a grep pattern's `*`).
+  const named = wrapped ? words.slice(0, words.length - unwrapped(words).length + 1) : words.slice(0, 1);
+  return named.some(w => /[*?[]/.test(w)) || candidates.some(w => /[$`]/.test(w) || /^(?:eval|source|\.)$/.test(w) || (SHELL.test(posix.basename(w)) && !words.includes("-c")));
 };
 
 /** Validate and normalize saved prefixes; saving a prefix again replaces it. */

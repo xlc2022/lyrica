@@ -104,7 +104,7 @@ const PREFIXES = new Set(["if", "then", "else", "elif", "while", "until", "do", 
 export const LOADER = /^ld(?:64|-[\w.-]+)?\.so(?:\.\d+)*$/;
 /** Their flags that take the next word as a value (`sudo -u root`, `nice -n 5`, `timeout -s KILL`). */
 const VALUE_FLAGS: Record<string, string[]> = {
-  sudo: ["-u", "-g", "-h", "-p", "-C", "-U"], doas: ["-u", "-C"], nice: ["-n"], ionice: ["-c", "-n", "-p"], timeout: ["-s", "-k"],
+  sudo: ["-u", "-g", "-h", "-p", "-C", "-U"], doas: ["-u", "-C"], nice: ["-n"], ionice: ["-c", "-n", "-p"], timeout: ["-s", "-k", "--signal", "--kill-after"],
   xargs: ["-I", "-P", "-L", "-d", "-n", "-s", "-a"], env: ["-u", "-C", "-S"],
   "ld.so": ["--library-path", "--preload", "--audit", "--argv0", "--inhibit-rpath", "--glibc-hwcaps-prepend", "--glibc-hwcaps-mask"],
 };
