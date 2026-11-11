@@ -1,5 +1,5 @@
 // Small pieces shared by every page.
-import { type MouseEvent, type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { type KeyboardEvent as ReactKeyboardEvent, type MouseEvent, type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Markdown, { type Components, type Options } from "react-markdown";
 import { Icon } from "./icons.tsx";
@@ -14,6 +14,14 @@ import { answers } from "./answers.ts";
 
 /** Whether the display filters hide a pool. Hiding only changes what's shown. */
 export const hidden = (d: Display, pool: Pool) => (pool === "private" ? !d.showPrivate : !d.showGeneral);
+
+/**
+ * Whether a key press in a message box sends it: Enter does, Shift+Enter makes a new line, and so does Enter on a
+ * touch keyboard (where Send is the button) or while an input method is still composing a word.
+ */
+export function sendsOnEnter(e: ReactKeyboardEvent<HTMLTextAreaElement>): boolean {
+  return e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing && !matchMedia("(pointer: coarse)").matches;
+}
 
 /** Runs a request, tracking whether it's in flight and its error in plain words. */
 export function useAction(): [(fn: () => Promise<unknown>) => Promise<boolean>, boolean, string] {
