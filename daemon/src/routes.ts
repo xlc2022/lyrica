@@ -11,7 +11,7 @@ import {
   ChangesUnavailable, type ByteRange, commitFiles, fileSides, repositoryChanges, type ExecutionTarget,
 } from "@lyrica/core";
 import type * as Api from "./api.ts";
-import { THREAD_TASKS } from "./api.ts";
+import { MODELS_PAGE_CALLS, THREAD_TASKS } from "./api.ts";
 import { Sessions } from "./auth.ts";
 import { HttpError, route, type Request, type Route } from "./http.ts";
 import { fallBack, threadPlanWait, type ThreadPlanWait } from "./plan-waits.ts";
@@ -557,7 +557,7 @@ export function apiRoutes(d: Lyricad): Route[] {
       const hosts = looks.filter(({ e }) => e.api === "host").map(({ e, look }) => look.status
         ? { endpointId: e.id, status: look.status as Api.HostStatus }
         : { endpointId: e.id, error: look.error ?? `${e.name} is down`, ...(look.unpaired ? { unpaired: true as const } : {}) });
-      return { endpoints: live, hosts, presets: presets(d, user.id), calls: m.callHistory(user.id, { limit: 1, offset: 0, q: "", pools }).entries, endpointUses: m.endpointUses(user.id, pools), notice: m.notice(user.id), cleanup: m.cleanup(user.id).length, ...(release ? { release } : {}) };
+      return { endpoints: live, hosts, presets: presets(d, user.id), calls: m.callHistory(user.id, { limit: MODELS_PAGE_CALLS, offset: 0, q: "", pools }).entries, endpointUses: m.endpointUses(user.id, pools), notice: m.notice(user.id), cleanup: m.cleanup(user.id).length, ...(release ? { release } : {}) };
     }),
     route("POST", `${u}/hosts/:endpointId/update`, async (r) => {
       const release = runningRelease(d);
@@ -1965,13 +1965,18 @@ export function apiRoutes(d: Lyricad): Route[] {
       const show = display(d, user.id);
       return owner(d, user, (o): Api.MemoryOverview => {
         let pages = 0, notes = 0, slept: string | undefined;
+        const embedded: Api.MemoryOverview["embedded"] = [];
         for (const pool of shownPools(show)) {
           const c = o[pool].counts();
           pages += c.pages; notes += c.notes;
           const last = o[pool].listSleepRuns(10).find((run) => run.finishedAt && run.status !== "skipped")?.finishedAt;
           if (last && (!slept || last > slept)) slept = last;
+          // Counts only, never text; the model as the embedder resolves it (Private: a local one).
+          const model = d.services!.models.embeddingModel({ userId: user.id, pool, localOnly: pool === "private" })?.model;
+          const v = o[pool].vectorCount(model ?? "");
+          embedded.push({ pool, ...(model ? { model } : {}), done: model ? v.done : 0, total: v.done + v.left });
         }
-        return { pages, notes, ...(slept ? { slept } : {}) };
+        return { pages, notes, ...(slept ? { slept } : {}), embedded };
       });
     }),
     route("GET", `${u}/memory/about`, (r) => {
