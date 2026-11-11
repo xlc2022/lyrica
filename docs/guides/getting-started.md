@@ -804,7 +804,9 @@ sandbox, so its network switches decide what it reaches. `browse`, behind
 the same switch, lets her click through a page, fill in fields and log
 in, in a browser of the thread's own under the same network switches;
 it needs Chromium and node in the sandbox, which the install provides.
-She asks you before she sends a form.
+She asks you before she sends a form. **Tick bot checks**, in the same
+section and off by default, lets her tick a simple "I'm not a robot"
+check box on a page she browses; off, she is told nothing about them.
 
 An offline copy of Wikipedia makes both work without the internet:
 download a ZIM file into a folder, point `services.lyrica.zimDir` or
