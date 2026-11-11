@@ -17,6 +17,8 @@ const CHECK_MS = 30_000;
 const COOKIES = `${profile}/lyrica-cookies.json`;
 // A file a page offers is saved here under its download's id, then lyricad moves it into her folder. One that
 // grows past DOWNLOAD_BYTES or takes over DOWNLOAD_MS is cancelled.
+// Files she attaches are copied here by lyricad, and stay until the browser starts again, so a form sends them.
+const ATTACH = `${profile}/attach`;
 const DOWNLOADS = `${profile}/downloads`, DOWNLOAD_BYTES = 100_000_000, DOWNLOAD_MS = 60_000;
 /** Downloads not yet answered, by id: the site's name for the file, its state and size, and when it ends. */
 const downloads = new Map();
@@ -24,6 +26,7 @@ const downloads = new Map();
 mkdirSync(profile, { recursive: true });
 // What an earlier browser left half-saved or unmoved is gone.
 rmSync(DOWNLOADS, { recursive: true, force: true });
+rmSync(ATTACH, { recursive: true, force: true });
 mkdirSync(DOWNLOADS, { recursive: true });
 // One browser per thread, so a lock left by a browser that was killed is never another's.
 for (const f of ["SingletonLock", "SingletonCookie", "SingletonSocket"]) rmSync(`${profile}/${f}`, { force: true });
@@ -195,6 +198,7 @@ const PAGE = `((start) => {
     if (k === "checkbox" || k === "radio") { if (el.checked || el.getAttribute("aria-checked") === "true") s += " (checked)"; }
     else if (k === "select") s += " = " + JSON.stringify(value(el)) + " (options: " + [...el.options].slice(0, 15).map((o) => clean(o.label, 40)).join(" | ") + (el.options.length > 15 ? " | …" : "") + ")";
     else if (k === "field" || k === "password field") s += " = " + JSON.stringify(value(el));
+    else if (k === "file field") s += " = " + JSON.stringify([...el.files].map((f) => f.name).join(", "));
     if (el.disabled || el.getAttribute("aria-disabled") === "true") s += " (disabled)";
     return s;
   }
@@ -316,7 +320,8 @@ const PAGE = `((start) => {
       const k = kind(e, getComputedStyle(e));
       if (!k || k === "button" || e.disabled) continue;
       if ((k === "checkbox" || k === "radio") && !e.checked) continue;
-      const v = k === "checkbox" || k === "radio" ? "yes" : k === "file field" ? "" : value(e);
+      // A file field shows the names of the files it holds.
+      const v = k === "checkbox" || k === "radio" ? "yes" : k === "file field" ? [...e.files].map((f) => f.name).join(", ") : value(e);
       if (v || k === "password field") fields.push({ name: name(e, k).replace(/\\s*[:：]$/, "") || k, value: v });
     }
     let to = location.host;
@@ -325,12 +330,14 @@ const PAGE = `((start) => {
   }
   const hold = (n) => { const el = find(n); if (el) S.held.add(el); };
   /** A numbered thing in words, for a card that asks about an action on it. */
+  /** A file field by number, for the driver to set its files, or why not. */
+  const fileField = (n) => { const el = find(n); if (!el) return "gone"; return tag(el) === "INPUT" && el.type === "file" ? (el.disabled ? "disabled" : el) : "not a file field"; };
   const what = (n) => { const el = find(n); const k = el && kind(el, getComputedStyle(el)); return { site: location.host, what: k ? k + " " + JSON.stringify(name(el, k)) : "" }; };
   /** Which marked frame an element is, -1 if none. */
   const frameIndex = (el) => S.frames.indexOf(el);
   /** Where a frame's page starts on screen, inside its border and padding. */
   const box = (el) => { const r = el.getBoundingClientRect(), st = getComputedStyle(el); return { x: r.left + el.clientLeft + parseFloat(st.paddingLeft), y: r.top + el.clientTop + parseFloat(st.paddingTop) }; };
-  globalThis.__ly = { snap, point, focus, pick, sends, hold, what, frameIndex, box };
+  globalThis.__ly = { snap, point, focus, pick, sends, hold, what, frameIndex, box, fileField };
 })`;
 
 /** Runs an expression in a frame's world of ours (the page's own by default), making the world again after a page change. */
@@ -509,6 +516,18 @@ const ops = {
   },
   async select({ ref, text }) {
     return acting(ref, undefined, false, async () => (await onElement(ref, (n) => `__ly.pick(${n}, ${JSON.stringify(String(text ?? ""))})`)) ?? { gone: true });
+  },
+  async attach({ ref, file }) {
+    return acting(ref, undefined, false, async () => {
+      const e = element(ref);
+      if (!e) return { gone: true };
+      const f = frames.get(e.id);
+      await inFrame(e.id, "0");
+      const r = await send("Runtime.evaluate", { expression: `__ly.fileField(${e.local})`, contextId: f.world }, f.sid);
+      if (r.result.type === "string") return r.result.value === "gone" ? { gone: true } : { fail: `it is ${r.result.value}` };
+      await send("DOM.setFileInputFiles", { files: [String(file)], objectId: r.result.objectId }, f.sid);
+      return {};
+    });
   },
   async scroll({ direction }) {
     await page(`window.scrollBy(0, ${direction === "up" ? -1 : 1} * innerHeight * 0.85)`);

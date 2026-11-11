@@ -701,6 +701,10 @@ describe.skipIf(!homeRunnable)("the home workspace", () => {
       expect((await ops.read.readFile("/workspace/downloads/report-2.pdf")).toString()).toBe("secret report d2");
       expect(readdirSync(join(workspace.browserDir(thread), "downloads"))).toEqual([]);
       await expect(workspace.saveDownload(thread, "../x", "x")).rejects.toThrow("malformed");
+      // A file of hers for a page's file field is copied into the browser's profile, at a path its run sees.
+      const staged = await workspace.stageAttachment(thread, "uploads/letter.txt");
+      expect(staged).toMatch(/^\/run\/lyrica\/browser\/attach\/[0-9a-f]{12}\/letter\.txt$/);
+      expect(readFileSync(join(workspace.browserDir(thread), staged.slice("/run/lyrica/browser/".length)), "utf8")).toBe("Dear Ada, a secret plan");
 
       const cipher = join(users.userDir(ada.id), "home.crypt");
       const all = execFileSync("sh", ["-c", `find ${cipher} -type f -exec cat {} +; find ${cipher}`]).toString("latin1");

@@ -1255,7 +1255,11 @@ The **Web search** switch gives her two tools (`extension/src/web.ts`,
   upload's is and never overwriting, and the result says where; one over
   100 MB or 60 seconds is cancelled. The browser saves it in its profile
   and `lyricad` moves it, so the browser still reaches nothing else of
-  the thread's. A link that opens a new tab opens in the one tab. A frame the page
+  the thread's. `attach` puts a file of hers (a path in her folder, read as
+  `read` reads it, at most 100 MB) into a file field: it asks first in
+  every mode, naming the file and the site, and `lyricad` copies the file
+  into the profile, where it stays until the browser starts again; the
+  form's card names the files a file field holds. A link that opens a new tab opens in the one tab. A frame the page
   shows is read where it stands, from its own site or another, between
   "[frame from <site>]" and "[end of frame]", up to 3 deep and 20 in a
   page (one too small to see is left out); what is in it gets numbers like

@@ -1,11 +1,11 @@
 import { spawn } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import { Browser, BROWSE_SCRIPT, BROWSE_UNAPPROVED, browseFormText, browseFormWarning, sandboxTools, type BrowserProcess } from "../src/index.ts";
+import { Browser, BROWSE_SCRIPT, BROWSE_UNAPPROVED, BROWSE_UNAPPROVED_FILE, browseFormText, browseFormWarning, sandboxTools, type BrowserProcess } from "../src/index.ts";
 
 // The browse tool's driver against a real Chromium and a site on loopback (docs/briefs/browse.md). The driver runs
 // here as it does in the sandbox, without the sandbox: what is checked is what the user would notice, a form
@@ -48,6 +48,7 @@ describe.skipIf(!chromium)("the browse tool's browser", () => {
 <div id="p" style="cursor:pointer">Poster</div><script>document.getElementById("p").addEventListener("click", () => { const f = document.createElement("form"); f.method = "post"; f.action = "/ask"; document.body.append(f); f.submit(); });</script>`);
         if (url.pathname === "/report") { res.setHeader("content-type", "application/pdf"); res.setHeader("content-disposition", 'attachment; filename="report.pdf"'); return res.end("%PDF-1.4 a report"); }
         if (url.pathname === "/files") return res.end(`<title>Files</title><p><a href="/report">The report</a></p>`);
+        if (url.pathname === "/upload") return res.end(`<title>Upload</title><form method="post" action="/ask" enctype="multipart/form-data"><label>Your file <input type="file" name="doc"></label><button>Upload it</button></form>`);
         if (url.pathname === "/two") return res.end(`<title>Two</title><p>Cookie: ${req.headers.cookie ?? "none"}</p>`);
         res.end(SHOP);
       });
@@ -136,6 +137,24 @@ describe.skipIf(!chromium)("the browse tool's browser", () => {
     expect(got.downloads).toEqual([{ name: "report.pdf", bytes: 17, path: "/workspace/downloads/report.pdf" }]);
     expect((await b.act("3", { action: "open", url: `${site}/report` })).downloads).toEqual([{ name: "report.pdf", bytes: 17, path: "/workspace/downloads/report.pdf" }]);
     expect(saved).toEqual([["%PDF-1.4 a report", "report.pdf"], ["%PDF-1.4 a report", "report.pdf"]]);
+  }, 60_000);
+
+  it("attaches a file of hers to a file field only with the user's yes, and shows it on the form's card", async () => {
+    const b = new Browser(async () => spawn(process.execPath, ["-e", BROWSE_SCRIPT, join(dir, "up"), "test"], { stdio: ["pipe", "pipe", "ignore"], env: { ...process.env, CHROME_PATH: chromium } }) as BrowserProcess,
+      undefined, undefined, undefined, async (path) => { const file = join(dir, "staged-notes.txt"); writeFileSync(file, `the notes from ${path}`); return file; });
+    browsers.push(b);
+    let page = await b.act("1", { action: "open", url: `${site}/upload` });
+    const field = ref(page.text, "Your file");
+    expect((await b.look({ action: "attach", ref: field, path: "notes.txt" })).words).toBe(`attach notes.txt to file field "Your file" on ${new URL(site).host}`);
+    expect((await b.act("2", { action: "attach", ref: field, path: "notes.txt" })).fail).toBe(BROWSE_UNAPPROVED_FILE);
+    b.approve("3");
+    page = await b.act("3", { action: "attach", ref: field, path: "notes.txt" });
+    expect(page.text).toContain('file field "Your file" = "staged-notes.txt"');
+    const seen = await b.look({ action: "click", ref: ref(page.text, "Upload it") });
+    expect(browseFormText(seen.form!)).toContain("Your file: staged-notes.txt");
+    b.approve("4");
+    await b.act("4", { action: "click", ref: ref(page.text, "Upload it") });
+    expect(posts.join("")).toContain("the notes from notes.txt");
   }, 60_000);
 
   it("searches without asking, and never sends a form without the user's yes for that call", async () => {

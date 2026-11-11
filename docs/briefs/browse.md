@@ -27,9 +27,9 @@ prompt).
    conversation, 6 only in sleep, `ask_parent` only in a subagent), so
    this is the 31st. The owner raised principle 8's budget to 50
    (2026-11-10).
-   `browse({ action, url?, ref?, text?, submit?, direction?, offset? })`,
-   actions `open`, `read`, `click`, `type`, `select`, `scroll`, `back`,
-   `screenshot`, `close`.
+   `browse({ action, url?, ref?, text?, submit?, direction?, offset?, path? })`,
+   actions `open`, `read`, `click`, `type`, `select`, `attach`, `scroll`,
+   `back`, `screenshot`, `close`.
 2. **How she picks it.** The two descriptions say so and nothing else
    does: `web_fetch` reads a page whose address she has; `browse` is for
    when reading isn't enough (a click, a field, a login, several steps,
@@ -90,7 +90,8 @@ prompt).
    page's own script send something, as a command she runs in the
    sandbox can.
 10. A download is saved in her `downloads/` folder (the owner, 2026-11-11;
-    first built refused), files can't be attached to a form, and what
+    first built refused); a file of hers can be attached to a file field,
+    asking first in every mode (the owner, same day), and what
     is inside a frame is read where it stands, and used under the same
     rules (the owner, 2026-11-11: "this would break a lot of website
     contents"; first built without).
@@ -115,7 +116,7 @@ prompt).
 ## Out of scope
 
 Pages she browsed in the Sources row, a screenshot shown in the tool
-marker, stored website passwords, attaching files, several
+marker, stored website passwords, several
 tabs (a link that opens a new tab opens in the same one), a visible
 browser the user can watch or take over.
 

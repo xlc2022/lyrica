@@ -168,13 +168,14 @@ export function createWebExtension(web: WebTools): ExtensionFactory {
       promptGuidelines: [OUTSIDE_GUIDELINE],
       annotations: { openWorldHint: true },
       parameters: Type.Object({
-        action: StringEnum(BROWSE_ACTIONS, { description: "open: go to url. read: the page again, from offset. click: the numbered thing. type: text into the numbered field, replacing what it holds. select: the option named by text in the numbered select. scroll: a screen down or up, for a page that loads more as it scrolls. back: the page before. screenshot: the visible part as an image. close: close the browser, keeping its logins." }),
+        action: StringEnum(BROWSE_ACTIONS, { description: "open: go to url. read: the page again, from offset. click: the numbered thing. type: text into the numbered field, replacing what it holds. select: the option named by text in the numbered select. attach: a file of this conversation's (path) into the numbered file field, which asks the user first. scroll: a screen down or up, for a page that loads more as it scrolls. back: the page before. screenshot: the visible part as an image. close: close the browser, keeping its logins." }),
         url: Type.Optional(Type.String({ description: "open: an http or https URL." })),
         ref: Type.Optional(Type.Integer({ description: "click, type, select: the number in brackets before the thing, from the latest page text." })),
         text: Type.Optional(Type.String({ description: "type: the text. select: the option's name." })),
         submit: Type.Optional(Type.Boolean({ description: "type: true presses Enter after the text." })),
         direction: Type.Optional(StringEnum(["down", "up"] as const, { description: "scroll: down if left out." })),
         offset: Type.Optional(Type.Integer({ description: "read: where to start, in characters, as a cut page names. 0 if left out." })),
+        path: Type.Optional(Type.String({ description: "attach: the file, as a path in this conversation's folder." })),
       }),
       async execute(id, p, signal) {
         let url: URL | undefined;
@@ -182,13 +183,14 @@ export function createWebExtension(web: WebTools): ExtensionFactory {
           try { url = new URL((p.url ?? "").trim()); } catch { return text(`${p.url ?? "Nothing"} isn't a URL.`, true); }
           if (url.protocol !== "http:" && url.protocol !== "https:") return text("browse opens only http and https URLs.", true);
         }
-        const numbered = p.action === "click" || p.action === "type" || p.action === "select";
+        const numbered = p.action === "click" || p.action === "type" || p.action === "select" || p.action === "attach";
+        if (p.action === "attach" && !p.path) return text("attach needs path: the file to attach.", true);
         if (numbered && p.ref === undefined) return text(`${p.action} needs ref: the number of the thing on the page.`, true);
         if ((p.action === "type" || p.action === "select") && p.text === undefined) return text(`${p.action} needs text.`, true);
         try {
           const r = await web.browser!().act(id, {
             action: p.action, ...(url ? { url: url.href } : {}), ...(numbered ? { ref: p.ref } : {}),
-            ...(p.text !== undefined ? { text: p.text } : {}), ...(p.submit ? { submit: true } : {}), ...(p.direction ? { direction: p.direction } : {}),
+            ...(p.text !== undefined ? { text: p.text } : {}), ...(p.action === "attach" ? { path: p.path } : {}), ...(p.submit ? { submit: true } : {}), ...(p.direction ? { direction: p.direction } : {}),
           }, signal);
           if (p.action === "close") return text("The browser is closed. Its logins are kept.");
           if (r.image) return { content: [{ type: "text" as const, text: `A screenshot of ${r.url}` }, { type: "image" as const, data: r.image, mimeType: "image/jpeg" }], details: undefined };

@@ -21,7 +21,7 @@ export const BROWSE_MS = 90_000;
 /** The command that starts the driver. */
 export const browseArgv = (): string[] => ["node", "-e", BROWSE_SCRIPT, BROWSER_PROFILE, FETCH_UA];
 
-export const BROWSE_ACTIONS = ["open", "read", "click", "type", "select", "scroll", "back", "screenshot", "close"] as const;
+export const BROWSE_ACTIONS = ["open", "read", "click", "type", "select", "attach", "scroll", "back", "screenshot", "close"] as const;
 export type BrowseAction = typeof BROWSE_ACTIONS[number];
 /** The actions that only look: Plan mode's. */
 export const BROWSE_READS: ReadonlySet<string> = new Set(["open", "read", "scroll", "back", "screenshot", "close"]);
@@ -35,7 +35,7 @@ export interface BrowseReply { url?: string; title?: string; text?: string; note
  * size), or why not. `file` is the driver's id for it in the profile, until lyricad moves it.
  */
 export interface BrowseDownload { name: string; file?: string; bytes?: number; path?: string; fail?: string }
-export interface BrowseCall { action: BrowseAction; url?: string; ref?: number; text?: string; submit?: boolean; direction?: "up" | "down" }
+export interface BrowseCall { action: BrowseAction; url?: string; ref?: number; text?: string; submit?: boolean; direction?: "up" | "down"; path?: string }
 
 export type BrowserProcess = { stdin: Writable; stdout: Readable; kill(signal?: NodeJS.Signals): boolean; on(event: "close", listener: () => void): unknown };
 
@@ -49,6 +49,8 @@ export const browseFormWarning = (f: BrowseForm): string => `This sends a form${
 
 /** The reason she gets when a form is sent without the hook's go-ahead for that call: it never is. */
 export const BROWSE_UNAPPROVED = "That would send a form, which needs the user's go-ahead. Nothing was sent.";
+/** The same for attaching a file, which gives it to the site: it always asks. */
+export const BROWSE_UNAPPROVED_FILE = "Attaching a file gives it to the site, which needs the user's go-ahead. Nothing was attached.";
 
 export class Browser {
   private child: BrowserProcess | undefined;
@@ -62,7 +64,9 @@ export class Browser {
 
   /** `save` moves a download (its id in the profile, the site's name) into her folder and answers the path she sees. */
   constructor(private readonly start: () => Promise<BrowserProcess>, private readonly idleMs = BROWSE_IDLE_MS, private readonly limitMs = BROWSE_MS,
-    private readonly save?: (file: string, name: string) => Promise<string>) {}
+    private readonly save?: (file: string, name: string) => Promise<string>,
+    /** Copies a file of hers (a path in her folder) into the profile, for a file field; answers its path in the browser's run. */
+    private readonly stage?: (path: string) => Promise<string>) {}
 
   get running(): boolean { return !!this.child; }
 
@@ -72,8 +76,13 @@ export class Browser {
    * "Add to cart" on shop.example`). Nothing while the browser is closed:
    * there is no page to act on.
    */
-  async look(call: Pick<BrowseCall, "action" | "ref" | "submit" | "text">, signal?: AbortSignal): Promise<{ form?: BrowseForm; words: string }> {
+  async look(call: Pick<BrowseCall, "action" | "ref" | "submit" | "text" | "path">, signal?: AbortSignal): Promise<{ form?: BrowseForm; words: string; gives?: string }> {
     if (!this.child || call.ref === undefined) return { words: call.action };
+    // Attaching gives a file to the site: it always asks, naming the file and the site.
+    if (call.action === "attach") {
+      const r = await this.ask({ op: "sends", action: "attach", ref: call.ref }, signal);
+      return { words: `attach ${call.path ?? ""} to ${r.what || `number ${call.ref}`}${r.site ? ` on ${r.site}` : ""}`, gives: r.site || "the site" };
+    }
     const r = await this.ask({ op: "sends", action: call.action, ref: call.ref, submit: !!call.submit }, signal);
     const on = `${r.what || `number ${call.ref}`}${r.site ? ` on ${r.site}` : ""}`;
     const words = call.action === "type" ? `type ${JSON.stringify(call.text ?? "")} into ${on}${call.submit ? ", then Enter" : ""}`
@@ -89,6 +98,13 @@ export class Browser {
     const approved = this.approved.delete(toolCallId);
     if (call.action === "close") { await this.close(); return {}; }
     const { action, ...rest } = call;
+    if (action === "attach") {
+      if (!approved) return { fail: BROWSE_UNAPPROVED_FILE };
+      if (!this.stage || !call.path) return { fail: "there is no file to attach" };
+      const file = await this.stage(call.path).catch((err: Error) => err);
+      if (file instanceof Error) return { fail: `couldn't read ${call.path}: ${file.message}` };
+      return this.ask({ op: "attach", ref: call.ref, file }, signal);
+    }
     const r = await this.ask({ op: action, ...rest, ...(approved ? { approved: true } : {}) }, signal);
     if (r.unapproved) return { fail: BROWSE_UNAPPROVED };
     for (const d of r.downloads ?? []) {

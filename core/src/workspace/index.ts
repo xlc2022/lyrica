@@ -3,7 +3,7 @@ import { ensurePhotosDir, PortraitPhotos, ThreadImages } from "./images.ts";
 export * from "./images.ts";
 import { randomBytes } from "node:crypto";
 import { lookup } from "node:dns/promises";
-import { lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { isIP } from "node:net";
 import { tmpdir } from "node:os";
 import { join, posix } from "node:path";
@@ -17,7 +17,7 @@ import { cleanUploadName, PANEL_DIR, ThreadFiles, type FileEntry } from "./files
 import { isMounted, mountGocryptfs, unmountGocryptfs } from "./home.ts";
 import { maskSecrets, type ExecutionTarget } from "./ops.ts";
 import { Browser, browseArgv, type BrowserProcess } from "../browse.ts";
-import { FAMILY_ROOT, Sandbox, sandboxHas, sandboxNix, sandboxTools, SHARED, WORKDIR, type Credentials, type SandboxSpec } from "./sandbox.ts";
+import { BROWSER_PROFILE, FAMILY_ROOT, Sandbox, sandboxHas, sandboxNix, sandboxTools, SHARED, WORKDIR, type Credentials, type SandboxSpec } from "./sandbox.ts";
 export { FAMILY_ROOT } from "./sandbox.ts";
 import type { ClaudeCodeUsage } from "./relay.ts";
 import { SETUP_SCRIPT, SetupFailures, setupOutcome } from "./setup.ts";
@@ -849,7 +849,7 @@ export class Workspace {
   browser(t: WorkspaceThread): Browser {
     const k = `${t.userId}/${t.pool}/${t.threadId}`;
     let b = this.browsers.get(k);
-    if (!b) this.browsers.set(k, b = new Browser(() => this.startBrowser(t), undefined, undefined, (file, name) => this.saveDownload(t, file, name)));
+    if (!b) this.browsers.set(k, b = new Browser(() => this.startBrowser(t), undefined, undefined, (file, name) => this.saveDownload(t, file, name), (path) => this.stageAttachment(t, path)));
     return b;
   }
 
@@ -1871,6 +1871,19 @@ export class Workspace {
     }
   }
 
+  /**
+   * Copies a file of the thread's (a path she sees, read as her `read` tool reads it) into its browser's profile,
+   * for a file field, and answers its path in the browser's run. It stays there until the browser starts again.
+   */
+  async stageAttachment(t: WorkspaceThread, path: string): Promise<string> {
+    const bytes = await this.targetFor(t).ops().read.readFile(path.startsWith("/") ? path : posix.join(WORKDIR, path));
+    if (bytes.length > ATTACH_BYTES) throw new Error(`it is over ${ATTACH_BYTES / 1e6} MB`);
+    const name = cleanUploadName(posix.basename(path)), dir = randomBytes(6).toString("hex");
+    mkdirSync(join(this.browserDir(t), "attach", dir), { recursive: true, mode: 0o700 });
+    writeFileSync(join(this.browserDir(t), "attach", dir, name), bytes, { mode: 0o600 });
+    return `${BROWSER_PROFILE}/attach/${dir}/${name}`;
+  }
+
   /** Saves bytes into one of the thread's folders (a project chat's shared/ one), under a free name; `randomImages` names an image at random. */
   private async saveFile(t: WorkspaceThread, folder: "uploads" | "downloads", name: string, bytes: Buffer, randomImages: boolean): Promise<string> {
     const clean = cleanUploadName(name);
@@ -1890,6 +1903,9 @@ export class Workspace {
     return path;
   }
 }
+
+/** The largest file she can attach to a page's form. */
+const ATTACH_BYTES = 100_000_000;
 
 /** At most this many files are recorded from one command. */
 const NEW_FILES_LIMIT = 2000;
