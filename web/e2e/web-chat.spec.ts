@@ -781,9 +781,7 @@ test("a message's menu regenerates, edits, deletes with Undo, and branches", asy
   // Edit the question (a button in its row): it is sent again, as edited.
   await page.getByRole("button", { name: "Edit", exact: true }).first().click();
   await page.getByLabel("Edit your message").fill("an edited question");
-  // Enter sends it, as in the composer; a touch keyboard keeps Enter for a new line, so Save there.
-  if (phone(page)) await page.getByRole("button", { name: "Save", exact: true }).click();
-  else await page.getByLabel("Edit your message").press("Enter");
+  await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.getByText("You said: an edited question")).toBeVisible();
   await expect(page.locator(".msg.user")).toHaveCount(1);
 

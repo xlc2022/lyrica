@@ -1366,8 +1366,8 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   actions): quiet icon buttons, Copy (the message's text; Copied or Copy
   failed for two seconds), on her replies Regenerate (`rewind` with
   `action: "regenerate"`), on the user's Edit, which turns the message into
-  a box (Save, Cancel; Enter saves as in the composer) whose text is sent
-  in its place, then Branch, Read
+  a box (Save, Cancel; Enter makes a new line) whose text is sent in its
+  place, then Branch, Read
   aloud (hers), React and the ⋯ (More actions, `MessageMenu`): Pin or
   Unpin; Remember this (a labelled field under the message, prefilled with
   its first line, whose Remember button writes a user-introduced note in the
@@ -1521,8 +1521,8 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   machine's limit reads "Asks on <machine>" in its line). Enter in the box sends, and
   Shift+Enter makes a new line; on a touch keyboard, or while an input
   method is composing, Enter makes a new line and Send is the button. Every
-  box that sends a message (the home box, a subagent's message box, editing
-  a sent message) shares this rule through `sendsOnEnter` in `src/ui.tsx`.
+  box that sends a message (the home box, a subagent's message box) shares
+  this rule through `sendsOnEnter` in `src/ui.tsx`.
   Shift+Tab in the box cycles
   Ask, Accept edits, Plan, Auto, shown at once. Changes are saved one at a
   time in the order pressed, and a message sent meanwhile waits for them; a

@@ -7,7 +7,7 @@ import { Icon } from "./icons.tsx";
 import { her } from "./name.ts";
 import { isChatModel, matchesModel } from "./ModelLabel.tsx";
 import { useMentionText } from "./mentions.ts";
-import { sendsOnEnter, useDismiss, useInView } from "./ui.tsx";
+import { useDismiss, useInView } from "./ui.tsx";
 import { modelName } from "./ModelLabel.tsx";
 
 /** What a thread lets its messages do. Absent in a subagent's thread. */
@@ -128,8 +128,7 @@ export function EditBox({ text, onSend, onCancel }: { text: string; onSend: (tex
   const [value, setValue] = useState(text);
   return (
     <form className="edit-box" onSubmit={(e) => { e.preventDefault(); if (value.trim()) onSend(value); }}>
-      <textarea rows={3} aria-label="Edit your message" value={value} autoFocus onChange={(e) => setValue(e.target.value)}
-        onKeyDown={(e) => { if (sendsOnEnter(e)) { e.preventDefault(); if (value.trim()) onSend(value); } }} />
+      <textarea rows={3} aria-label="Edit your message" value={value} autoFocus onChange={(e) => setValue(e.target.value)} />
       <div className="row">
         <button type="submit" disabled={!value.trim()}>Save</button>
         <button type="button" onClick={onCancel}>Cancel</button>
