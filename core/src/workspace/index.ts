@@ -17,7 +17,7 @@ import { cleanUploadName, PANEL_DIR, ThreadFiles, type FileEntry } from "./files
 import { isMounted, mountGocryptfs, unmountGocryptfs } from "./home.ts";
 import { maskSecrets, type ExecutionTarget } from "./ops.ts";
 import { Browser, browseArgv, type BrowserProcess } from "../browse.ts";
-import { FAMILY_ROOT, Sandbox, sandboxHas, sandboxTools, SHARED, WORKDIR, type Credentials, type SandboxSpec } from "./sandbox.ts";
+import { FAMILY_ROOT, Sandbox, sandboxHas, sandboxNix, sandboxTools, SHARED, WORKDIR, type Credentials, type SandboxSpec } from "./sandbox.ts";
 export { FAMILY_ROOT } from "./sandbox.ts";
 import type { ClaudeCodeUsage } from "./relay.ts";
 import { SETUP_SCRIPT, SetupFailures, setupOutcome } from "./setup.ts";
@@ -823,6 +823,20 @@ export class Workspace {
     return dir;
   }
 
+  /**
+   * The pool's Nix store on the host (docs/workspace.md, "Nix"): in the home
+   * workspace, under nix/<pool>, mounted at /nix in every run of the pool's
+   * threads, so a build lasts between commands and threads. Each pool has its
+   * own, since a flake's build copies its source into the store.
+   */
+  nixDir(userId: string, pool: Pool): string {
+    const home = this.homeDir(userId);
+    if (!isMounted(home)) throw new Locked("the home workspace is not mounted");
+    const dir = join(home, "nix", pool);
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+    return dir;
+  }
+
   /** The thread's browser for the `browse` tool, started in its sandbox at the first call that needs it (docs/briefs/browse.md). */
   browser(t: WorkspaceThread): Browser {
     const k = `${t.userId}/${t.pool}/${t.threadId}`;
@@ -952,6 +966,8 @@ export class Workspace {
     }
     const credentials = this.credentialsFor(t);
     const shared = this.sharedDir(t);
+    // A project chat's runs change nothing, so they have no store to write.
+    const nix = t.coordinates ? undefined : sandboxNix();
     return new Sandbox({
       workdir: this.threadDir(t),
       workdirAlias: this.workdirAlias(t),
@@ -966,6 +982,7 @@ export class Workspace {
       readOnly: t.coordinates,
       credentials,
       ...credentials.anthropic ? { claudeDir: this.claudeDir(t) } : {},
+      ...nix ? { nix: { dir: this.nixDir(t.userId, t.pool), tools: nix } } : {},
       onPullCreate: this.opts.onPullCreate && ((pr) => this.opts.onPullCreate!(t, pr)),
       onUsage: this.opts.onClaudeCodeUsage && ((u) => this.opts.onClaudeCodeUsage!(t, u)),
       onLimit: this.opts.onClaudeCodeLimit && ((until) => this.opts.onClaudeCodeLimit!(t, until)),

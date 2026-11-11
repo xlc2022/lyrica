@@ -1131,7 +1131,8 @@ deletes every user's threads and memories in both pools (DESIGN.md,
   finishes at once: `finishWipe` deletes the user.db rows in
   `WIPED_USER_TABLES` with `secure_delete` on, and while the home is mounted
   `wipeHome` (sweep.ts) removes every thread folder (run worktrees forgotten
-  by git first, branches kept), Claude Code folder and snapshot. Whatever is
+  by git first, branches kept), Claude Code folder, lasting `/tmp`,
+  snapshot and pool Nix store (`emptyHome`). Whatever is
   left finishes at the user's next unlock, in `keyAvailable`, before
   scheduled turns load; the home part then runs the nightly sweep, so
   threads made since keep their folders. Nobody is logged out, and it logs
@@ -1462,7 +1463,9 @@ home, the flake's module does the same ("On NixOS" below).
   `/opt/lyrica/tools/bin/chromium-headless-shell`, so her sandboxes can take
   screenshots; reinstalled only when that version changes), Claude Code
   and Codex there with `npm install -g --prefix` (removing the copies an
-  install from before 2026-11-01 left in `/usr/local`), and creates
+  install from before 2026-11-01 left in `/usr/local`) and the official
+  Nix binary tarball in `/opt/lyrica/tools/lib/nix` (pinned with its
+  sha256; docs/workspace.md, "Nix"), and creates
   three system users:
   `lyrica` runs `lyricad`, `lyrica-caddy` runs Caddy, `lyrica-build` builds
   releases and runs their smoke tests with no access to her data. The `lyrica-caddy`

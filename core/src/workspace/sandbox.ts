@@ -9,6 +9,7 @@ import { openRelay, type ClaudeCodeUsage, type Relay } from "./relay.ts";
 import { hostAddresses, nftRules, pastaArgs, reachesHost, resolveAddresses, resolveHosts, SANDBOX_GATEWAY } from "./net.ts";
 import { cleanPath, repositoryUrl, within, type GitAccountConfig, type Grant, type Network } from "./settings.ts";
 import { libraryDirs, LIBS } from "./page.ts";
+import { NIX_CONFIG, nixTools, registration, REGISTERED, SEED, type NixTools } from "./nix.ts";
 
 /** The thread's folder in the home workspace, as she sees it. */
 export const WORKDIR = "/workspace";
@@ -74,6 +75,12 @@ export interface SandboxSpec {
   onUsage?: (usage: ClaudeCodeUsage) => void;
   /** Claude Code's plan reached its usage limit, passed straight through (relay.ts). */
   onLimit?: (until?: number) => void;
+  /**
+   * The user's pool's Nix store (Workspace.nixDir), mounted read-write at
+   * /nix, and the Nix the tools give it (sandboxNix). Its first run after
+   * the tools change registers them in it (nix.ts, SEED).
+   */
+  nix?: { dir: string; tools: NixTools; seeding?: true };
   bwrap?: string;
   pasta?: string;
 }
@@ -198,6 +205,15 @@ function nixSystem(dir: string): string[] {
   if (!closure.paths.includes(dir)) throw new SandboxDenied(`${file} doesn't contain ${dir}`);
   return closure.paths;
 }
+/** The Nix this host's sandboxes have (nix.ts), or undefined: none in the tools, or the tools are misconfigured. */
+export function sandboxNix(): NixTools | undefined {
+  const dir = tools();
+  try {
+    return nixTools({ tools: dir, closure: process.env.LYRICA_SANDBOX_CLOSURE, paths: dir ? nixSystem(dir) : undefined, prefix: TOOLS_PREFIX });
+  } catch { return undefined; }
+}
+const seeding = new Map<string, Promise<void>>();
+
 // Loads the firewall into the new namespaces (fails closed), says so on
 // fd $2, waits on fd $3 until pasta is attached, then starts bwrap.
 // --norc: its stdin is a socket, so bash would source the host's bashrc,
@@ -440,6 +456,7 @@ export class Sandbox implements ExecutionTarget {
    * launcher on the host.
    */
   async start(argv: string[], cwd?: string, extra: Record<string, string> = {}): Promise<Sandboxed> {
+    if (this.spec.nix && !this.spec.nix.seeding) await this.seedNix(this.spec.nix);
     let forward = this.spec.forward ?? [];
     const c = this.spec.credentials;
     const relay = c && (c.forge.length || c.anthropic) ? await openRelay({
@@ -458,6 +475,31 @@ export class Sandbox implements ExecutionTarget {
       relay?.close();
       throw err;
     }
+  }
+
+  /**
+   * Registers the tools' Nix in the store before its first run with them
+   * (nix.ts, SEED), in a sandbox of its own with no network. Two runs
+   * starting at once share one. A failure is said and the run goes on: a
+   * command that doesn't use Nix shouldn't fail for it, and the next run
+   * tries again.
+   */
+  private async seedNix(nix: NonNullable<SandboxSpec["nix"]>): Promise<void> {
+    let reg: { id: string; text: string };
+    try { reg = registration(nix.tools.registration); } catch (err) { return void this.spec.warn?.(`Nix's registration can't be read: ${(err as Error).message}`); }
+    let done = "";
+    try { done = readFileSync(join(nix.dir, REGISTERED), "utf8").trim(); } catch { /* a new store */ }
+    if (done === reg.id) return;
+    const key = `${nix.dir}\0${reg.id}`;
+    let p = seeding.get(key);
+    if (!p) {
+      const box = new Sandbox({ grants: [], network: { internet: false, services: false, hosts: [] }, nix: { ...nix, seeding: true }, bwrap: this.spec.bwrap });
+      p = box.run(["sh", "-c", SEED, "sh", reg.id, ...nix.tools.roots], { input: reg.text }).then((r) => {
+        if (r.code !== 0) throw new Error(r.stderr.toString().trim().slice(-500) || `exit ${r.code}`);
+      }).finally(() => seeding.delete(key));
+      seeding.set(key, p);
+    }
+    try { await p; } catch (err) { this.spec.warn?.(`Nix's store in ${nix.dir} couldn't be set up: ${(err as Error).message}`); }
   }
 
   private async launch(argv: string[], cwd: string | undefined, forward: number[], relay: Relay | undefined, extra: Record<string, string>): Promise<Sandboxed> {
@@ -510,7 +552,10 @@ export class Sandbox implements ExecutionTarget {
     // bwrap, unshare or bash, which run on the host (a server's `LD_PRELOAD`
     // or `BASH_ENV` would run code as lyricad's user there), and never on a
     // host command line. The sandbox's own variables win over it.
-    const own = { ...runEnv, ...env(), LYRICA_SANDBOX: "1", ...forge || claude ? { PATH: `${FORGE_BIN}:${env().PATH}` } : {} };
+    const nix = this.spec.nix;
+    const path = `${forge || claude ? `${FORGE_BIN}:` : ""}${env().PATH}${nix?.tools.bin ? `:${nix.tools.bin}` : ""}`;
+    const ca = caBundle();
+    const own = { ...runEnv, ...env(), LYRICA_SANDBOX: "1", PATH: path, ...nix ? { NIX_CONFIG, ...ca ? { NIX_SSL_CERT_FILE: ca } : {} } : {} };
     const setenv = Object.entries(extra).filter(([k]) => !(k in own)).map(([k, v]) => `--setenv\0${k}\0${v}\0`).join("");
     const envFd = setenv ? 3 + fds.length + data.length : undefined;
     if (envFd !== undefined) args.push("--args", String(envFd));
@@ -570,6 +615,22 @@ export class Sandbox implements ExecutionTarget {
     // scripts chown what they unpack) see an ordinary user.
     if (networked) args.push("--share-net", "--unshare-user", "--uid", String(process.getuid?.() ?? 1000), "--gid", String(process.getgid?.() ?? 1000));
 
+    // Folders are opened here and mounted by fd. The path the fd really
+    // points to is checked, so a symlink swapped in by a running command
+    // can't redirect a mount.
+    const mount = (path: string, writable: boolean, dest: string, check?: () => void) => {
+      const fd = openSync(path, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
+      fds.push(fd);
+      const real = readlinkSync(`/proc/self/fd/${fd}`);
+      if (real !== path) throw new SandboxDenied(`${path} now resolves to ${real}; refusing to mount it`);
+      check?.();
+      args.push(writable ? "--bind-fd" : "--ro-bind-fd", String(fds.length + 2), dest);
+    };
+    // Her pool's Nix store first, so the tools' own store paths are mounted over it, read-only.
+    if (this.spec.nix) {
+      mount(cleanPath(this.spec.nix.dir), true, "/nix");
+      for (const [host, dest] of this.spec.nix.tools.binds) args.push("--ro-bind", host, dest);
+    }
     const nix = tools();
     if (nix) {
       for (const p of nixSystem(nix)) args.push("--ro-bind", p, p);
@@ -586,17 +647,6 @@ export class Sandbox implements ExecutionTarget {
     for (const f of ETC) args.push("--ro-bind-try", f, f);
     args.push("--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp");
 
-    // Folders are opened here and mounted by fd. The path the fd really
-    // points to is checked, so a symlink swapped in by a running command
-    // can't redirect a mount.
-    const mount = (path: string, writable: boolean, dest: string, check?: () => void) => {
-      const fd = openSync(path, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
-      fds.push(fd);
-      const real = readlinkSync(`/proc/self/fd/${fd}`);
-      if (real !== path) throw new SandboxDenied(`${path} now resolves to ${real}; refusing to mount it`);
-      check?.();
-      args.push(writable ? "--bind-fd" : "--ro-bind-fd", String(fds.length + 2), dest);
-    };
     if (this.spec.workdir) mount(cleanPath(this.spec.workdir), !this.spec.readOnly, WORKDIR);
     if (this.spec.workdir && this.spec.workdirAlias) mount(cleanPath(this.spec.workdir), !this.spec.readOnly, this.spec.workdirAlias);
     if (this.spec.workdir && this.spec.repos) mount(cleanPath(this.spec.repos), !this.spec.reposReadOnly, `${WORKDIR}/repos`);

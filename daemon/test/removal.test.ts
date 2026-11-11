@@ -1,5 +1,5 @@
 import { execFileSync, spawn } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -8,7 +8,7 @@ import { FileChanges, Users, type ExecutionTarget, type ToolOps } from "@lyrica/
 import { recording } from "@lyrica/extension";
 import { freshKeyring, profile } from "../../core/test/helpers.ts";
 import { applyRemoval, removalPlan, type Entry, type RemovalContext } from "../src/removal.ts";
-import { forgetFiles, forgetWorktree } from "../src/sweep.ts";
+import { emptyHome, forgetFiles, forgetWorktree } from "../src/sweep.ts";
 
 /** Stands in for the sandbox: the same operations, on the host, in a temp folder. Paths are host paths. */
 function localTarget(cwd: string): ExecutionTarget {
@@ -207,6 +207,21 @@ describe("the sweep of change records", () => {
     expect(readdirSync(join(home, "snapshots"))).toEqual([]);
     expect(readdirSync(join(home, "threads"))).toEqual(["web%2Fu", "web%2Fw"]);
     expect(readdirSync(join(home, "claude"))).toEqual([]);
+  });
+
+  it("empties a wiped home's folders and its pools' Nix stores, read-only store paths included", () => {
+    const home = realpathSync(mkdtempSync(join(tmpdir(), "lyrica-wipe-home-")));
+    try {
+      const path = join(home, "nix", "general", "store", "00000000000000000000000000000000-source");
+      mkdirSync(join(path, "src"), { recursive: true });
+      writeFileSync(join(path, "src", "notes.md"), "a thread's file, copied in by a flake build");
+      mkdirSync(join(home, "nix", "private", "var", "nix"), { recursive: true });
+      for (const dir of [join(path, "src"), path, join(home, "nix", "general", "store")]) chmodSync(dir, 0o555);
+      mkdirSync(join(home, "threads", "web%2Ft"), { recursive: true });
+      mkdirSync(join(home, "claude", "web%2Ft"), { recursive: true });
+      emptyHome(home, []);
+      for (const dir of ["threads", "claude", "nix"]) expect(readdirSync(join(home, dir))).toEqual([]);
+    } finally { rmSync(home, { recursive: true, force: true }); }
   });
 
   it("removes a forgotten thread's own worktree, and git's record of it, keeping the branch", async () => {

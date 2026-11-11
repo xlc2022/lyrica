@@ -1,4 +1,4 @@
-import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, rmSync, statSync } from "node:fs";
+import { chmodSync, existsSync, lstatSync, readdirSync, readFileSync, realpathSync, rmSync, statSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { isMounted, type FileChanges, type Pool } from "@lyrica/core";
 import type { Services } from "./lyricad.ts";
@@ -140,14 +140,33 @@ export function forgetFiles(home: string, changes: FileChanges, pool: Pool, thre
 export function wipeHome(s: Services, userId: string): boolean {
   const home = s.workspace.homeDir(userId);
   if (!isMounted(home)) return false;
-  const allowed = allowedOf(s, userId);
+  emptyHome(home, allowedOf(s, userId));
+  return true;
+}
+
+/**
+ * Empties a home workspace's thread folders, Claude Code folders, lasting
+ * /tmp folders, snapshots and pools' Nix stores (docs/workspace.md, "Nix"):
+ * a flake's build copies its source into the store, so the store goes too.
+ */
+export function emptyHome(home: string, allowed: string[]): void {
   const threads = join(home, "threads");
   if (existsSync(threads)) for (const name of readdirSync(threads)) removeThreadFolder(join(threads, name), allowed);
-  for (const dir of ["claude", "tmp", "snapshots"]) {
+  for (const dir of ["claude", "tmp", "snapshots", "nix"]) {
     const d = join(home, dir);
-    if (existsSync(d)) for (const name of readdirSync(d)) rmSync(join(d, name), { recursive: true, force: true });
+    if (!existsSync(d)) continue;
+    // Nix makes its store paths read-only; their folders need write permission back before they can be emptied.
+    if (dir === "nix") writable(d);
+    for (const name of readdirSync(d)) rmSync(join(d, name), { recursive: true, force: true });
   }
-  return true;
+}
+
+/** Gives every folder under `dir` its owner's write permission back, never following a symlink. */
+function writable(dir: string): void {
+  const st = lstatSync(dir);
+  if (!st.isDirectory()) return;
+  if (!(st.mode & 0o200)) chmodSync(dir, st.mode | 0o700);
+  for (const name of readdirSync(dir)) writable(join(dir, name));
 }
 
 function allowedOf(s: Services, userId: string): string[] {

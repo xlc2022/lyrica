@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { McpClient } from "@earendil-works/pi-mcp";
 import { Browser, browseArgv, makeWorktrees, worktreeGrants, removeWorktrees, FilesRefused, mcpStdioTransport, pythonLibraries, Sandbox, SandboxDenied, ThreadFiles, Users, Workspace, type Worktree, type Grant, type Network } from "../src/index.ts";
+import { nixTools as findNix, REGISTERED, type NixTools } from "../src/workspace/nix.ts";
 import { freshKeyring, profile } from "./helpers.ts";
 import { png } from "./fake-images.ts";
 
@@ -101,6 +102,56 @@ describe("the sandbox's Python libraries", () => {
   });
 });
 
+/**
+ * A stand-in for the official Nix tarball as install.sh unpacks it: an
+ * `install` script naming the Nix, its `.reginfo` and its store, whose Nix is
+ * a script that records what it was asked, so the sandbox's plumbing is
+ * tested without downloading Nix.
+ */
+function fakeNixTarball(prefix: string): string {
+  const dir = join(prefix, "lib", "nix");
+  const nix = "/nix/store/00000000000000000000000000000000-nix-9.9";
+  mkdirSync(join(dir, "store", nix.slice(11), "bin"), { recursive: true });
+  mkdirSync(join(dir, "store", "11111111111111111111111111111111-busybox"));
+  writeFileSync(join(dir, "install"), `#!/bin/sh\ndest="/nix"\nnix="${nix}"\n`);
+  writeFileSync(join(dir, ".reginfo"), `${nix}\nsha256:x\n1\n\n0\n`);
+  writeFileSync(join(dir, "store", nix.slice(11), "bin", "nix-store"),
+    '#!/bin/sh\nmkdir -p /nix/var/nix\ncase "$1" in --load-db) cat > /nix/var/nix/loaded ;; --verify) echo verified >> /nix/var/nix/verified ;; esac\n');
+  chmodSync(join(dir, "store", nix.slice(11), "bin", "nix-store"), 0o755);
+  return dir;
+}
+
+describe("the sandbox's Nix", () => {
+  it("is the tarball in the tool prefix on Debian, and nothing when it's missing or incomplete", () => {
+    const prefix = mkdtempSync(join(tmpdir(), "nix-tools-"));
+    try {
+      expect(findNix({ prefix })).toBeUndefined();
+      const dir = fakeNixTarball(prefix);
+      const tools = findNix({ prefix })!;
+      expect(tools.bin).toBe("/nix/store/00000000000000000000000000000000-nix-9.9/bin");
+      expect(tools.registration).toBe(join(dir, ".reginfo"));
+      expect(tools.roots.sort()).toEqual(["/nix/store/00000000000000000000000000000000-nix-9.9", "/nix/store/11111111111111111111111111111111-busybox"]);
+      expect(tools.binds).toContainEqual([join(dir, "store", "11111111111111111111111111111111-busybox"), "/nix/store/11111111111111111111111111111111-busybox"]);
+      rmSync(join(dir, "store", "00000000000000000000000000000000-nix-9.9"), { recursive: true });
+      expect(findNix({ prefix })).toBeUndefined();
+    } finally { rmSync(prefix, { recursive: true, force: true }); }
+  });
+
+  it("is the sandbox tools' own on NixOS, only when they have nix and the closure's registration is beside its store paths", () => {
+    const dir = mkdtempSync(join(tmpdir(), "nix-tools-"));
+    try {
+      mkdirSync(join(dir, "tools", "bin"), { recursive: true });
+      mkdirSync(join(dir, "closure"));
+      const env = { tools: join(dir, "tools"), closure: join(dir, "closure", "store-paths"), paths: ["/nix/store/a"], prefix: join(dir, "prefix") };
+      expect(findNix(env)).toBeUndefined();
+      writeFileSync(join(dir, "tools", "bin", "nix"), "");
+      expect(findNix(env)).toBeUndefined();
+      writeFileSync(join(dir, "closure", "registration"), "");
+      expect(findNix(env)).toEqual({ binds: [], roots: ["/nix/store/a"], registration: join(dir, "closure", "registration") });
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+});
+
 describe.skipIf(!runnable)("the sandbox", () => {
   it("starts a local MCP server in her folder with the server's own environment inside only, under the sandbox's, and nothing of lyricad's", async () => {
     writeFileSync(p("work", "mcp.cjs"), readFileSync(new URL("./mcp-stdio.cjs", import.meta.url)));
@@ -175,6 +226,29 @@ describe.skipIf(!runnable)("the sandbox", () => {
     expect((await sh("echo kept > /run/lyrica/claude/notes && ls -A /workspace | grep -c claude || true", own)).out).toBe("0\n");
     expect(readFileSync(p("claude-own", "notes"), "utf8")).toBe("kept\n");
     expect((await sh("ls /run/lyrica/claude 2>&1 || true")).out).toContain("No such file");
+  });
+
+  it("keeps the pool's Nix store between runs, with the tools' Nix registered once and mounted read-only over it", async () => {
+    const prefix = p("nix-prefix");
+    fakeNixTarball(prefix);
+    const tools: NixTools = findNix({ prefix })!;
+    mkdirSync(p("nix-store"));
+    const nix = new Sandbox({ workdir: p("work"), grants: grants(), network: OFF, self: [], nix: { dir: p("nix-store"), tools } });
+    const first = await sh("mkdir -p /nix/store/22222222222222222222222222222222-built && echo out > /nix/store/22222222222222222222222222222222-built/x"
+      + " && command -v nix-store && printf '%s\\n' \"$NIX_CONFIG\" | head -1", nix);
+    expect(first.out).toBe("/nix/store/00000000000000000000000000000000-nix-9.9/bin/nix-store\nexperimental-features = nix-command flakes\n");
+    // Registered once, and its paths rooted, so garbage collection keeps them.
+    expect(readFileSync(p("nix-store", "var", "nix", "loaded"), "utf8")).toBe(readFileSync(tools.registration, "utf8"));
+    expect(readdirSync(p("nix-store", "var", "nix", "gcroots", "lyrica")).sort()).toEqual(tools.roots.map((r) => r.slice(11)).sort());
+    const second = await sh("cat /nix/store/22222222222222222222222222222222-built/x; touch /nix/store/00000000000000000000000000000000-nix-9.9/x 2>&1 || true", nix);
+    expect(second.out).toMatch(/^out\n.*Read-only file system/);
+    expect(readFileSync(p("nix-store", "var", "nix", "verified"), "utf8")).toBe("verified\n");
+    // A new registration (an update) is loaded again; a run without the store has no /nix.
+    writeFileSync(tools.registration, "changed\n");
+    await sh("true", nix);
+    expect(readFileSync(p("nix-store", "var", "nix", "loaded"), "utf8")).toBe("changed\n");
+    expect(readFileSync(p("nix-store", REGISTERED), "utf8")).toMatch(/^[0-9a-f]{64}\n$/);
+    expect((await sh("ls /nix 2>&1 || true")).out).toContain("No such file");
   });
 
   it("mounts a browser's profile only into the browser's own run, which has none of the thread's folders", async () => {

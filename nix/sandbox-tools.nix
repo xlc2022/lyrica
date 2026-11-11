@@ -16,7 +16,9 @@
 # PyYAML), the same as install.sh's python3-* packages; her prompt names the
 # ones present (sandboxTools in core/src/workspace/sandbox.ts). shellcheck
 # is on lyricad's PATH from here, to check her bash calls before they run
-# (core/src/workspace/shellcheck.ts).
+# (core/src/workspace/shellcheck.ts). nix is for flakes and `nix develop`
+# in her pool's own Nix store at /nix (docs/workspace.md, "Nix"); without it
+# the sandbox has no /nix.
 pkgs:
 let
   # Claude Code is unfree. Only it is allowed, in its own import, so the
@@ -33,6 +35,6 @@ with pkgs; [
   (python3.withPackages (ps: with ps; [ beautifulsoup4 lxml requests html5lib pyyaml ]))
   ffmpeg-headless
   chromium ibm-plex dejavu_fonts
-  bubblewrap passt nftables
+  bubblewrap passt nftables nix
   unfree.claude-code codex
 ]
