@@ -12,7 +12,7 @@ import { AdminPage, SettingsPage } from "./Panel.tsx";
 import { FilesPage } from "./Files.tsx";
 import { NotificationsCard, NotificationsPage, useWaiting } from "./Notifications.tsx";
 import { SleepCard, SleepHistoryPage, SleepPage, useSleepOverview, type SleepState } from "./Sleep.tsx";
-import { ArtifactHost, ArtifactsPage } from "./Artifacts.tsx";
+import { ArtifactHost } from "./Artifacts.tsx";
 import { BackendCard, hostUpdating, ModelsArea, useCleanupCount, useModelsPage } from "./Models.tsx";
 import type { ModelsState } from "./ModelsFrame.tsx";
 import { SideStatus } from "./SideStatus.tsx";
@@ -162,8 +162,6 @@ export function Shell({ user, users, route, build, onAuthChange, refreshState }:
       <MemoryHistoryPage key={`${r.pool}/${r.id}`} ctx={ctx} pool={r.pool} id={r.id} route={r} />
     ) : r.page === "sleep" ? (
       <SleepPage ctx={ctx} />
-    ) : r.page === "artifacts" ? (
-      <ArtifactsPage ctx={ctx} pool={r.pool} id={r.id} />
     ) : r.page === "models" ? (
       <ModelsArea ctx={ctx} tab={r.tab} add={r.add} project={r.project} pool={r.pool} route={r} />
     ) : r.page === "notifications" ? (
@@ -667,7 +665,6 @@ function Sidebar({ ctx, users, route, trail, threads, error, checkedAt, onAuthCh
           <Icon name="bell" />Notifications{ctx.waiting > 0 && <span className="count" aria-label={`${ctx.waiting} waiting`}>{ctx.waiting}</span>}
         </a>
         <a href={href({ page: "memory", userId: user.id })} aria-current={route.page === "memory" ? "page" : undefined}><Icon name="memory" />Memory</a>
-        <a href={href({ page: "artifacts", userId: user.id })} aria-current={route.page === "artifacts" ? "page" : undefined} data-nav="artifacts"><Icon name="file" />Artifacts</a>
         <a href={href({ page: "sleep", userId: user.id })} aria-current={route.page === "sleep" ? "page" : undefined} data-nav="sleep">
           <Icon name="moon" />Sleep{ctx.sleep.fresh > 0 ? <span className="count" aria-label={`${ctx.sleep.fresh} new`}>{ctx.sleep.fresh}</span>
             : ctx.sleep.running && <span className="busy" title="Sleeping"><span className="sr-only">Sleeping</span></span>}

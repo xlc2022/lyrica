@@ -215,17 +215,18 @@ Each user has two pools of memory.
     version never changes when the file it came from does, and a Private
     artifact is never listed or served under General. A version is at most
     16 MiB and is one self-contained file. An artifact opens as a file
-    does, in the same sandbox under its thread's internet rule (its pool's
-    default when it has no thread), and only for the signed-in user: there
-    are no public links. She can't delete one; the user can. Deleting a
-    thread deletes its artifacts, unless its memories are kept, which
-    leaves them with no thread.
+    does, in the same sandbox under its thread's internet rule, and only for the signed-in user: there
+    are no public links. She can't delete one; the user can. Every
+    artifact belongs to a thread, and deleting the thread deletes its
+    artifacts, as its files.
     A publish shows as a card in her reply, which opens that version in the
     file viewer with its thread beside it; there the user picks any
     version, restores one as a new version, adds a version from a file,
-    renames, downloads or deletes. The **Artifacts** page in the sidebar
-    lists them all and imports `.html`, `.svg` and `.md` files, each as a
-    new artifact at version 1. A React component (`.jsx` or `.tsx`, as
+    renames, downloads or deletes. The Files panel's **Artifacts** tab lists
+    the thread's (a project chat's lists its threads' too) and imports
+    `.html`, `.svg` and `.md` files into it, each as a new artifact at
+    version 1; there is no page of every artifact (the owner, 2026-11-11:
+    they sit with the thread's other files). A React component (`.jsx` or `.tsx`, as
     Claude's React artifacts are) is an artifact too: its source is kept as
     written and built, when the version is made, into one page with React,
     lucide-react, recharts and Tailwind inside, so it runs with the

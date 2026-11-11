@@ -215,9 +215,8 @@ export class ArtifactLibrary {
     })();
   }
 
-  /** A deleted thread's artifacts go with it; with `keep` they stay, belonging to no thread. */
-  forgetThread(thread: string, keep = false): void {
-    if (keep) { this.db.prepare("UPDATE artifacts SET thread = NULL, path = NULL WHERE thread = ?").run(thread); return; }
+  /** A deleted thread's artifacts go with it, as its files do. */
+  forgetThread(thread: string): void {
     this.db.transaction(() => {
       this.db.prepare("DELETE FROM artifact_versions WHERE artifact IN (SELECT id FROM artifacts WHERE thread = ?)").run(thread);
       this.db.prepare("DELETE FROM artifacts WHERE thread = ?").run(thread);

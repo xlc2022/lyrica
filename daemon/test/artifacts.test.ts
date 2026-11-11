@@ -11,16 +11,21 @@ async function setup() {
   const u = `/api/u/${rt.ada.id}`;
   const page = (text: string) => Buffer.from(`<!DOCTYPE html><html><body><script>console.log("${text}")</script></body></html>`);
   const raw = (path: string) => fetch(`${dm.base}${path}`, { headers: { cookie: ada.cookie! } });
-  return { ...dm, rt, ada, u, page, raw };
+  /** A thread to hold artifacts, and where it imports and lists them. */
+  const thread = async (pool: "general" | "private" = "general") => {
+    const id = (await ada.post<ThreadSummary>(`${u}/threads`, { pool, title: "Mockups" })).body.id;
+    return { id, list: `${u}/artifacts/${pool}?thread=${enc(id)}`, into: (name: string, more = "") => `${u}/artifacts/${pool}?name=${enc(name)}&thread=${enc(id)}${more}` };
+  };
+  return { ...dm, rt, ada, u, page, raw, thread };
 }
 
 describe("artifacts", () => {
   it("import a page, keep each version, restore one, rename and delete", async () => {
     const s = await setup();
-    const made = await s.ada.post<ArtifactInfo>(`${s.u}/artifacts/general?name=${enc("status-picker.html")}`, s.page("one"));
+    const t = await s.thread();
+    const made = await s.ada.post<ArtifactInfo>(t.into("status-picker.html"), s.page("one"));
     expect(made.status).toBe(200);
-    expect(made.body).toMatchObject({ pool: "general", title: "status picker", kind: "html", version: 1 });
-    expect(made.body.thread).toBeUndefined();
+    expect(made.body).toMatchObject({ pool: "general", title: "status picker", kind: "html", version: 1, thread: t.id });
     const at = `${s.u}/artifacts/general/${made.body.id}`;
 
     const two = await s.ada.post<ArtifactDetail>(`${at}/versions?name=x.html`, s.page("two"));
@@ -36,16 +41,17 @@ describe("artifacts", () => {
     const download = await s.raw(`${at}/content?download=1`);
     expect(download.headers.get("content-type")).toBe("text/plain; charset=utf-8");
     expect(download.headers.get("content-disposition")).toBe("attachment; filename*=UTF-8''Status%20model%20picker.html");
-    expect((await s.ada.get<ArtifactInfo[]>(`${s.u}/artifacts`)).body.map((a) => a.title)).toEqual(["Status model picker"]);
+    expect((await s.ada.get<ArtifactInfo[]>(t.list)).body.map((a) => a.title)).toEqual(["Status model picker"]);
 
     expect((await s.ada.del(at)).status).toBe(200);
-    expect((await s.ada.get<ArtifactInfo[]>(`${s.u}/artifacts`)).body).toEqual([]);
+    expect((await s.ada.get<ArtifactInfo[]>(t.list)).body).toEqual([]);
     expect((await s.raw(`${at}/view`)).status).toBe(404);
   });
 
   it("serve a page in the file viewer's sandbox: an opaque origin, nothing run with the internet off, an SVG with nothing run, Markdown only as text", async () => {
     const s = await setup();
-    const html = (await s.ada.post<ArtifactInfo>(`${s.u}/artifacts/general?name=a.html`, s.page("hi"))).body;
+    const t = await s.thread();
+    const html = (await s.ada.post<ArtifactInfo>(t.into("a.html"), s.page("hi"))).body;
     const view = await s.raw(`${s.u}/artifacts/general/${html.id}/view`);
     const csp = view.headers.get("content-security-policy")!;
     expect(csp).toMatch(/^sandbox allow-scripts allow-popups;/);
@@ -54,12 +60,12 @@ describe("artifacts", () => {
     expect(view.headers.get("cross-origin-resource-policy")).toBe("same-origin");
     expect((await view.text()).startsWith("<!DOCTYPE html><script>")).toBe(true);
 
-    const svg = (await s.ada.post<ArtifactInfo>(`${s.u}/artifacts/general?name=logo.svg`, Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>'))).body;
+    const svg = (await s.ada.post<ArtifactInfo>(t.into("logo.svg"), Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>'))).body;
     const drawn = await s.raw(`${s.u}/artifacts/general/${svg.id}/view`);
     expect(drawn.headers.get("content-type")).toBe("image/svg+xml");
     expect(drawn.headers.get("content-security-policy")).toContain("default-src 'none'");
 
-    const md = (await s.ada.post<ArtifactInfo>(`${s.u}/artifacts/general?name=notes.md&title=Notes`, Buffer.from("# Notes"))).body;
+    const md = (await s.ada.post<ArtifactInfo>(t.into("notes.md", "&title=Notes"), Buffer.from("# Notes"))).body;
     expect(md).toMatchObject({ kind: "markdown", title: "Notes" });
     expect((await s.raw(`${s.u}/artifacts/general/${md.id}/view`)).status).toBe(415);
 
@@ -73,7 +79,8 @@ describe("artifacts", () => {
   it("build an imported React component into one page that loads nothing, keep its source, and refuse one that imports anything else", async () => {
     const s = await setup();
     const source = 'import { useState } from "react";\nexport default function Counter() { const [n, setN] = useState(0); return <button className="p-2" onClick={() => setN(n + 1)}>Count {n}</button>; }';
-    const made = await s.ada.post<ArtifactInfo>(`${s.u}/artifacts/general?name=counter.jsx`, Buffer.from(source));
+    const t = await s.thread();
+    const made = await s.ada.post<ArtifactInfo>(t.into("counter.jsx"), Buffer.from(source));
     expect(made.body).toMatchObject({ kind: "react", title: "counter", version: 1 });
     const at = `${s.u}/artifacts/general/${made.body.id}`;
     const view = await s.raw(`${at}/view`);
@@ -86,7 +93,7 @@ describe("artifacts", () => {
     const download = await s.raw(`${at}/content?download=1`);
     expect(download.headers.get("content-disposition")).toContain("counter.tsx");
 
-    const bad = await s.ada.post<{ error: string }>(`${s.u}/artifacts/general?name=bad.jsx`, Buffer.from('import fs from "node:fs";\nexport default () => <p>{String(fs)}</p>;'));
+    const bad = await s.ada.post<{ error: string }>(t.into("bad.jsx"), Buffer.from('import fs from "node:fs";\nexport default () => <p>{String(fs)}</p>;'));
     expect(bad.status).toBe(400);
     expect(bad.body.error).toMatch(/doesn't build/);
     expect((await s.ada.post(`${at}/versions?name=next.tsx`, Buffer.from("export default function A(): JSX.Element { return <p>two</p>; }"))).status).toBe(200);
@@ -94,39 +101,42 @@ describe("artifacts", () => {
     expect(await (await s.raw(`${at}/view`)).text()).toBe(page);
   });
 
-  it("refuse what isn't an artifact: another kind of file, bytes that aren't text, an empty page, a thread that doesn't exist", async () => {
+  it("refuse what isn't an artifact: another kind of file, bytes that aren't text, an empty page, no thread or one that doesn't exist", async () => {
     const s = await setup();
-    expect((await s.ada.post(`${s.u}/artifacts/general?name=photo.png`, Buffer.from("x"))).status).toBe(415);
-    expect((await s.ada.post(`${s.u}/artifacts/general?name=a.html`, Buffer.from([60, 0, 62]))).status).toBe(415);
-    expect((await s.ada.post(`${s.u}/artifacts/general?name=a.html`, Buffer.alloc(0))).status).toBe(400);
+    const t = await s.thread();
+    expect((await s.ada.post(t.into("photo.png"), Buffer.from("x"))).status).toBe(415);
+    expect((await s.ada.post(t.into("a.html"), Buffer.from([60, 0, 62]))).status).toBe(415);
+    expect((await s.ada.post(t.into("a.html"), Buffer.alloc(0))).status).toBe(400);
+    expect((await s.ada.post(`${s.u}/artifacts/general?name=a.html`, s.page("x"))).status).toBe(400);
     expect((await s.ada.post(`${s.u}/artifacts/general?name=a.html&thread=web%2Fnone`, s.page("x"))).status).toBe(404);
-    expect((await s.ada.post(`${s.u}/artifacts/shared?name=a.html`, s.page("x"))).status).toBe(404);
+    expect((await s.ada.post(`${s.u}/artifacts/shared?name=a.html&thread=${enc(t.id)}`, s.page("x"))).status).toBe(404);
   });
 
   it("keep a Private artifact in Private: never listed under General, and gone from every route while the display hides Private", async () => {
     const s = await setup();
-    const secret = (await s.ada.post<ArtifactInfo>(`${s.u}/artifacts/private?name=diary.html`, s.page("secret"))).body;
+    const t = await s.thread("private");
+    const secret = (await s.ada.post<ArtifactInfo>(t.into("diary.html"), s.page("secret"))).body;
     expect(secret.pool).toBe("private");
-    expect((await s.ada.get<ArtifactInfo[]>(`${s.u}/artifacts?pool=general`)).body).toEqual([]);
+    expect((await s.ada.get(`${s.u}/artifacts/general?thread=${enc(t.id)}`)).status).toBe(404);
     expect((await s.raw(`${s.u}/artifacts/general/${secret.id}/view`)).status).toBe(404);
     expect((await s.raw(`${s.u}/artifacts/private/${secret.id}/content`)).status).toBe(200);
 
     await s.ada.patch(`${s.u}/me/display`, { showPrivate: false });
-    expect((await s.ada.get<ArtifactInfo[]>(`${s.u}/artifacts`)).body).toEqual([]);
+    expect((await s.ada.get(t.list)).status).toBe(404);
     expect((await s.raw(`${s.u}/artifacts/private/${secret.id}/view`)).status).toBe(404);
     expect((await s.raw(`${s.u}/artifacts/private/${secret.id}/content`)).status).toBe(404);
     expect((await s.ada.del(`${s.u}/artifacts/private/${secret.id}`)).status).toBe(404);
   });
 
-  it("belong to a thread when imported into one, and go when the thread is deleted", async () => {
+  it("belong to the thread they were imported into, listed only there, and go when the thread is deleted, its memories kept or not", async () => {
     const s = await setup();
-    const thread = (await s.ada.post<ThreadSummary>(`${s.u}/threads`, { pool: "general", title: "Mockups" })).body;
-    const made = (await s.ada.post<ArtifactInfo>(`${s.u}/artifacts/general?name=a.html&thread=${enc(thread.id)}`, s.page("x"))).body;
+    const thread = await s.thread(), other = await s.thread();
+    const made = (await s.ada.post<ArtifactInfo>(thread.into("a.html"), s.page("x"))).body;
     expect(made.thread).toBe(thread.id);
-    expect((await s.ada.get<ArtifactInfo[]>(`${s.u}/artifacts?thread=${enc(thread.id)}`)).body).toHaveLength(1);
-    expect((await s.ada.get<ArtifactInfo[]>(`${s.u}/artifacts?thread=web%2Fother`)).body).toEqual([]);
-    expect((await s.ada.del(`${s.u}/threads/general/${enc(thread.id)}`)).status).toBe(200);
-    expect((await s.ada.get<ArtifactInfo[]>(`${s.u}/artifacts`)).body).toEqual([]);
+    expect((await s.ada.get<ArtifactInfo[]>(thread.list)).body).toHaveLength(1);
+    expect((await s.ada.get<ArtifactInfo[]>(other.list)).body).toEqual([]);
+    expect((await s.ada.del(`${s.u}/threads/general/${enc(thread.id)}`, { keepMemories: true })).status).toBe(200);
+    expect((await s.ada.get(`${s.u}/artifacts/general/${made.id}`)).status).toBe(404);
   });
 
   it("go with every thread a delete covers: a child thread's artifact goes when its parent is deleted with its children", async () => {
@@ -140,6 +150,6 @@ describe("artifacts", () => {
     const made = (await s.ada.post<ArtifactInfo>(`${s.u}/artifacts/general?name=a.html&thread=${enc(child)}`, s.page("x"))).body;
     expect(made.thread).toBe(child);
     expect((await s.ada.del(`${s.u}/threads/general/${enc(parent)}`, { children: true })).status).toBe(200);
-    expect((await s.ada.get<ArtifactInfo[]>(`${s.u}/artifacts`)).body).toEqual([]);
+    expect((await s.ada.get(`${s.u}/artifacts/general/${made.id}`)).status).toBe(404);
   });
 });

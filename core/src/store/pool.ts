@@ -1668,8 +1668,8 @@ export class PoolStore extends PoolReader {
     this.db.prepare("DELETE FROM vectors WHERE id >= ? AND id < ?").run(`e:${threadId}#`, `e:${threadId}$`);
     this.db.prepare("DELETE FROM entries WHERE thread = ?").run(threadId);
     this.db.prepare("DELETE FROM wakeups WHERE thread = ?").run(threadId);
-    // Its artifacts go with it; kept with its memories, they belong to no thread.
-    this.artifacts.forgetThread(threadId, keep);
+    // Its artifacts go with it, as its files do.
+    this.artifacts.forgetThread(threadId);
     this.db.prepare("DELETE FROM threads WHERE id = ?").run(threadId);
     gone.push(threadId);
   }

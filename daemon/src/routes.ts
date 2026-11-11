@@ -3505,7 +3505,7 @@ function skillRoutes(d: Lyricad, u: string): Route[] {
  * The user's artifacts: list, open, import, add a version, restore, rename and delete. Each pool's artifacts live in
  * that pool's database and are reached through its view; only the pools the display shows are listed or reached, so a
  * hidden Private pool's artifacts answer 404. A page is served as the file viewer serves a file (file-view.ts): HTML
- * in a sandbox with an opaque origin, under its thread's internet rule, or its pool's default when it has no thread.
+ * in a sandbox with an opaque origin, under its thread's internet rule. Every artifact belongs to a thread.
  */
 function artifactRoutes(d: Lyricad, u: string): Route[] {
   const s = () => d.services!;
@@ -3553,21 +3553,26 @@ function artifactRoutes(d: Lyricad, u: string): Route[] {
     } catch (err) { throw new HttpError(400, `this component doesn't build: ${(err as Error).message.split("\n")[0]}`); }
   };
   return [
-    route("GET", `${u}/artifacts`, (r): Api.ArtifactInfo[] => {
+    route("GET", `${u}/artifacts/:pool`, (r): Api.ArtifactInfo[] => {
       const user = d.userFor(r);
       const thread = r.query.get("thread");
-      const pools = shownPools(display(d, user.id)).filter((p) => !r.query.get("pool") || p === r.query.get("pool"));
-      const all = pools.flatMap((p) => inPool(user.id, p, (own) => own.artifacts.list(thread ? { threads: [thread] } : {}).map((a) => info(own, a))));
-      return all.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+      if (!thread) throw new HttpError(400, "thread is the thread whose artifacts to list");
+      // A project chat lists its threads' artifacts too, as its Files panel shows their folders.
+      return inPool(user.id, pool(r, user.id), (own) => {
+        if (!own.getThread(thread)) throw new HttpError(404, "no such thread");
+        const project = own.projectThreads(thread);
+        return own.artifacts.list({ threads: project[0] === thread ? project : [thread] }).map((a) => info(own, a));
+      });
     }),
     route("POST", `${u}/artifacts/:pool`, async (r): Promise<Api.ArtifactInfo> => {
       const user = d.userFor(r);
       const p = pool(r, user.id);
       const { kind, bytes, built, name } = await incoming(r, r.query.get("title") ?? undefined);
-      const thread = r.query.get("thread") || undefined;
+      const thread = r.query.get("thread");
+      if (!thread) throw new HttpError(400, "thread is the thread the artifact belongs to");
       return refused(() => inPool(user.id, p, (own) => {
-        if (thread && !own.getThread(thread)) throw new HttpError(404, "no such thread");
-        return info(own, own.artifacts.create({ title: r.query.get("title") || titleFromName(name), kind, ...(thread ? { thread } : {}), bytes, ...(built ? { built } : {}), author: "user" }));
+        if (!own.getThread(thread)) throw new HttpError(404, "no such thread");
+        return info(own, own.artifacts.create({ title: r.query.get("title") || titleFromName(name), kind, thread, bytes, ...(built ? { built } : {}), author: "user" }));
       }));
     }),
     route("GET", `${u}/artifacts/:pool/:id`, (r): Api.ArtifactDetail => {
@@ -3582,7 +3587,7 @@ function artifactRoutes(d: Lyricad, u: string): Route[] {
       const page = a.kind === "react" ? content.built : a.kind === "markdown" ? undefined : content.bytes;
       if (!page) throw new HttpError(415, "this artifact doesn't open as a page");
       const kind = a.kind === "svg" ? "svg" : "html";
-      // With its thread's internet off an HTML page runs nothing, so it gets no console bridge either. No thread: the pool's default.
+      // With its thread's internet off an HTML page runs nothing, so it gets no console bridge either.
       const internet = kind !== "html" || s().workspace.network({ userId: user.id, pool: p, threadId: a.thread ?? "" }).internet;
       const bytes = kind === "html" && internet ? withConsole(page) : page;
       r.res.writeHead(200, viewHeaders(kind, bytes.length, internet));

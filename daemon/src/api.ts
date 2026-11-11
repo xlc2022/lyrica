@@ -1387,8 +1387,9 @@ export type ArtifactKind = "html" | "svg" | "markdown" | "react";
  * Artifacts (docs/briefs/artifacts.md): pages she published with `page publish` or the user imported, each kept with
  * every version. Only the pools the display shows are listed or reached (404 otherwise).
  *
- * GET /api/u/:userId/artifacts[?pool=<pool>][&thread=<id>] → ArtifactInfo[], newest change first.
- * POST /api/u/:userId/artifacts/:pool?name=<file name>[&title=<title>][&thread=<id>], the file's bytes as the body →
+ * GET /api/u/:userId/artifacts/:pool?thread=<id> → ArtifactInfo[]: that thread's, newest change first; a project
+ *   chat's with its threads' too.
+ * POST /api/u/:userId/artifacts/:pool?name=<file name>&thread=<id>[&title=<title>], the file's bytes as the body →
  *   ArtifactInfo: an import, version 1, by the user. The kind is the name's (.html, .htm, .svg, .md); at most 16 MiB
  *   (413), text only (415). Nothing is run or read by a model.
  * GET …/artifacts/:pool/:id → ArtifactDetail.

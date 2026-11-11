@@ -201,4 +201,11 @@ works, so her threads update them there?
   publish` and import build `.jsx` and `.tsx` with it and keep the page
   beside the source. `bundlePage` does not resolve React (the handoff's
   step 3 was skipped), so a page she bundles herself can't import it.
-
+- 2026-11-11: the owner asked why artifacts had a sidebar page and chose
+  **Files panel only**. The Artifacts page, its sidebar row, its address and
+  Copy link are gone; the Files panel has an **Artifacts** tab after Videos
+  with **Import…**, and a project chat's tab lists its threads' artifacts.
+  Every artifact now belongs to a thread: import needs one, the list route
+  is per thread, and deleting a thread deletes its artifacts whether its
+  memories are kept or not. This replaces "The list" under Interface, the
+  thread-less import under Import and the Keep memories note above.

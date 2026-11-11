@@ -1263,13 +1263,18 @@ test("a picture of the offline copy of Wikipedia shows in her reply through lyri
   }
 });
 
-test("artifacts: import a page, open it in the viewer, add and restore versions, and open one from her reply's card", async ({ page, baseURL }) => {
+test("artifacts: import a page on the Files panel's Artifacts tab, open it in the viewer, add and restore versions, and open one from her reply's card", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
-  const small = phone(page);
   const html = (word: string) => Buffer.from(`<!doctype html><title>Picker</title><body><h1>${word}</h1><script>console.log("ran ${word}")</script></body>`);
-  if (small) await page.getByRole("button", { name: "Show threads" }).click();
-  await page.locator('[data-nav="artifacts"]').click();
-  await expect(page.getByRole("heading", { name: "Artifacts", level: 1 })).toBeVisible();
+  // The thread's Files panel has an Artifacts tab, empty at first.
+  await newThread(page, "General");
+  await send(page, "Make the picker");
+  await expect(page.getByText("You said: Make the picker")).toBeVisible();
+  const threadId = threadIdOf(page.url());
+  const chat = page.url();
+  await page.goto(`${chat}/files`);
+  await page.getByRole("tab", { name: "Artifacts" }).click();
+  await expect(page.getByText("No artifacts yet.")).toBeVisible();
 
   // Import makes version 1 and opens it: the page runs in the sandboxed frame, with its console under it.
   await page.getByLabel("Import files").setInputFiles({ name: "status-picker.html", mimeType: "text/html", buffer: html("One") });
@@ -1308,10 +1313,6 @@ test("artifacts: import a page, open it in the viewer, add and restore versions,
   const id = (await row.getAttribute("data-artifact"))!;
 
   // Her reply's card names the version her call made and opens that one.
-  await newThread(page, "General");
-  await send(page, "Make the picker");
-  await expect(page.getByText("You said: Make the picker")).toBeVisible();
-  const threadId = threadIdOf(page.url());
   await page.route(`**/api/u/${userId}/threads/general/${encodeURIComponent(threadId)}/messages`, (route) => route.fulfill({ json: {
     messages: [{ id: `e:${threadId}#1`, n: 1, role: "assistant", createdAt: "2026-11-11T12:00:00Z", parts: [
       { type: "tool", toolCallId: "p1", name: "page", args: { action: "publish", path: "picker.html" }, result: "Published.", isError: false },
@@ -1319,8 +1320,8 @@ test("artifacts: import a page, open it in the viewer, add and restore versions,
       { type: "text", text: "Here is the picker." },
     ] }], hasMore: false,
   } }));
-  await page.reload();
-  const card = page.locator(".artifact-card");
+  await page.goto(chat);
+  const card = page.locator(".artifact-card").last();
   await expect(card).toContainText("Status model picker");
   await expect(card).toContainText("HTML · Version 2");
   await card.getByRole("button", { name: "Open Status model picker" }).click();
@@ -1333,5 +1334,5 @@ test("artifacts: import a page, open it in the viewer, add and restore versions,
   await expect(page.getByRole("heading", { name: "Delete Status model picker?" })).toBeVisible();
   await page.getByRole("button", { name: "Delete", exact: true }).click();
   await expect(viewer).toHaveCount(0);
-  expect(await page.evaluate(async (u) => (await (await fetch(`/api/u/${u}/artifacts`)).json() as unknown[]).length, userId)).toBe(0);
+  expect(await page.evaluate(async ([u, t]) => (await (await fetch(`/api/u/${u}/artifacts/general?thread=${encodeURIComponent(t!)}`)).json() as unknown[]).length, [userId, threadId])).toBe(0);
 });

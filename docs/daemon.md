@@ -846,13 +846,14 @@ documented in `daemon/src/api.ts`, "The Files panel".
 - **Artifacts** (`artifactRoutes`, docs/briefs/artifacts.md), each pool's
   through its own thread view, and only for the pools the user's display
   shows (404 otherwise):
-  `GET /api/u/:userId/artifacts[?pool=][&thread=]` lists them, newest change
-  first, each with its thread's title;
-  `POST …/artifacts/:pool?name=<file name>[&title=][&thread=]` imports the
+  `GET /api/u/:userId/artifacts/:pool?thread=` lists a thread's, newest
+  change first, each with its thread's title (a project chat's with its
+  threads' too; 400 with no thread, 404 for one that isn't there);
+  `POST …/artifacts/:pool?name=<file name>&thread=[&title=]` imports the
   body's bytes as version 1 by the user (the kind by the name: `.html`,
   `.htm`, `.svg`, `.md`, or `.jsx` and `.tsx` for a React component; 415
-  for another kind or bytes with a NUL, 413 past 16 MiB, 404 for a thread
-  that isn't there); nothing is run or sent to a model. A component is
+  for another kind or bytes with a NUL, 413 past 16 MiB, 400 with no thread, 404 for
+  one that isn't there); nothing is run or sent to a model. A component is
   built into one page by core's `buildReactPage` (esbuild compiles it; it
   may import only the listed packages) and the page is kept beside the
   source, which is what `view` serves; one that doesn't build answers 400
@@ -861,8 +862,7 @@ documented in `daemon/src/api.ts`, "The Files panel".
   `GET …/:id/view[?v=<n>]` serves a version as `…/files/view` serves a file,
   with the same headers (`viewHeaders`): HTML with the console bridge under
   `sandbox allow-scripts allow-popups`, or with nothing run when its
-  thread's internet is off; an artifact with no thread follows its pool's
-  default network. SVG runs nothing; Markdown answers 415, since the web
+  thread's internet is off. SVG runs nothing; Markdown answers 415, since the web
   renders it from `…/:id/content[?v=][&download=1]`, the version's source
   as `text/plain` under `default-src 'none'; sandbox`;
   `POST …/:id/versions?name=` adds the body as the next version (the same

@@ -61,17 +61,14 @@ describe("artifacts", () => {
     expect(() => a.create({ title: "Big", kind: "html", bytes: Buffer.alloc(ARTIFACT_LIMIT + 1), author: "user" })).toThrow(/16 MiB/);
   });
 
-  it("go with a deleted thread, or stay with no thread when kept; delete takes every version", () => {
+  it("go with a deleted thread; delete takes every version", () => {
     const a = library();
     const one = a.publish({ thread: "web/t1", path: "/thread/a.html", kind: "html", bytes: page("one"), author: "lyrica" }).artifact;
     const two = a.publish({ thread: "web/t2", path: "/thread/a.html", kind: "html", bytes: page("two"), author: "lyrica" }).artifact;
-    const own = a.create({ title: "Imported", kind: "markdown", bytes: Buffer.from("# Hi"), author: "user" });
+    const own = a.create({ title: "Imported", kind: "markdown", thread: "web/t2", bytes: Buffer.from("# Hi"), author: "user" });
     a.forgetThread("web/t1");
-    a.forgetThread("web/t2", true);
     expect(a.get(one.id)).toBeUndefined();
     expect(a.read(one.id)).toBeUndefined();
-    expect(a.get(two.id)).toMatchObject({ version: 1 });
-    expect(a.get(two.id)?.thread).toBeUndefined();
     a.delete(own.id);
     expect(a.list().map((x) => x.id)).toEqual([two.id]);
   });

@@ -10,7 +10,7 @@ render mention tokens.
 ## Pages
 
 Routes are in the URL hash (`#/u/<user>/t/<pool>/<thread>`, `…/p/<pool>/<project>/<section>`
-for a project's settings, `…/memory`, `…/artifacts`, `…/notifications`, `…/settings/<section>`, `…/admin/<section>`,
+for a project's settings, `…/memory`, `…/notifications`, `…/settings/<section>`, `…/admin/<section>`,
 `#/login`), so `lyricad` serves a single file. The old `…/panel` opens Settings.
 A thread's address may carry what the panel beside it shows:
 `…/t/<pool>/<thread>/panel/t/<pool>/<other>`, `…/panel/p/<pool>/<project>/<section>`
@@ -353,12 +353,12 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   for the picked version, its thread's settings address for the internet
   line, and its own heading, Version select and ⋯ menu), so the sandboxed
   frame, console, Preview | Source and the thread beside are the viewer's
-  own. A React artifact shows its built page as HTML and its component as Source. The **Artifacts** page
-  (`…/artifacts`, `ArtifactsPage`) lists `GET …/artifacts`, filters it in
-  the browser, and imports files by posting each one's bytes; a change made
-  in the viewer reloads it through a second window event.
-  `…/artifacts/<pool>/<id>` is the page with that artifact open, which is
-  what Copy link copies.
+  own. A React artifact shows its built page as HTML and its component as Source. The Files panel's
+  **Artifacts** tab (`ArtifactsTab`, in `Files.tsx`'s tabs) lists
+  `GET …/artifacts/<pool>?thread=` and imports files into the thread by
+  posting each one's bytes (`importArtifacts`, which a drop on the panel
+  calls too); it reloads when the thread finishes a tool call and, through
+  a second window event, on a change made in the viewer.
 - **The changes view** (`Changes.tsx`): the same kind of dialog for a
   thread's branch, described under Chat ("Changes").
 - **Project settings page** (`…/p/<pool>/<project>/general`, `/memory` or `/files`),

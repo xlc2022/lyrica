@@ -1,14 +1,13 @@
 // Artifacts (DESIGN "Files and images", docs/ux.md §6, docs/briefs/artifacts.md): a page she published or the user
-// imported, kept with every version. A card in her reply and a row on the Artifacts page open one in the file viewer,
+// imported, kept with every version. A card in her reply and a row on the Files panel's Artifacts tab open one in the file viewer,
 // where its versions, and what can be done with it, are.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { del, errorFrom, get, patch, post, u, type ArtifactDetail, type ArtifactInfo, type ArtifactKind, type ArtifactPart, type Pool } from "./api.ts";
 import { Icon } from "./icons.tsx";
 import { RowMenu } from "./Machines.tsx";
-import { href } from "./route.ts";
-import { PageHead, type ShellContext } from "./Shell.tsx";
+import type { ShellContext } from "./Shell.tsx";
 import { her } from "./name.ts";
-import { ConfirmDialog, ErrorText, fullTime, hidden, InlineRename, shortTime, useAction, useDismiss, useLoad } from "./ui.tsx";
+import { ConfirmDialog, ErrorText, fullTime, InlineRename, shortTime, useAction, useLoad } from "./ui.tsx";
 import { Viewer, type ViewKind } from "./Viewer.tsx";
 
 /** The word for a kind, as the viewer's facts line has it for a file. */
@@ -80,7 +79,6 @@ function ArtifactViewer({ ctx, opened, onClose }: { ctx: ShellContext; opened: O
   const q = `?v=${version.n}`;
   const took = (next: ArtifactDetail) => { detail.set(next); setPicked(next.artifact.version); changed(); };
   const kind: ViewKind = a.kind === "react" ? "html" : a.kind;
-  const link = `${location.origin}${location.pathname}${href({ page: "artifacts", userId, pool: a.pool, id: a.id })}`;
   return (
     <Viewer ctx={ctx} threads={ctx.threads} onClose={onClose} base="" shownPath={a.title}
       file={{ path: a.id, name: `${a.title}.${EXT[a.kind]}`, size: version.size, modified: version.createdAt }}
@@ -100,7 +98,6 @@ function ArtifactViewer({ ctx, opened, onClose }: { ctx: ShellContext; opened: O
         actions: <>
           <RowMenu label="Artifact actions" items={[
             { label: "Open in new tab", onPick: () => { window.open(`${at}/view${q}`, "_blank", "noopener"); }, ...(a.kind === "markdown" ? { disabled: true, title: "Markdown opens only here." } : {}) },
-            { label: "Copy link", onPick: () => { void run(() => navigator.clipboard.writeText(link)); } },
             { label: "Add version…", onPick: () => picker.current?.click() },
             { label: "Restore this version", onPick: () => { void run(async () => took(await post<ArtifactDetail>(`${at}/restore`, { version: version.n }))); }, ...(newest ? { disabled: true, title: "This is the newest version." } : {}) },
             { label: "Rename…", onPick: () => setRenaming(true) },
@@ -120,74 +117,50 @@ function ArtifactViewer({ ctx, opened, onClose }: { ctx: ShellContext; opened: O
   );
 }
 
-/** The Artifacts page: every artifact in the pools shown, newest change first, and Import. `id` opens one (a copied link). */
-export function ArtifactsPage({ ctx, pool, id }: { ctx: ShellContext; pool?: Pool; id?: string }) {
+/** Imports files as artifacts of a thread, each at version 1, and opens the one when there is only one. */
+export async function importArtifacts(userId: string, pool: Pool, threadId: string, files: File[]): Promise<void> {
+  let last: ArtifactInfo | undefined;
+  try { for (const f of files) last = await send<ArtifactInfo>(`${base(userId, pool)}?thread=${encodeURIComponent(threadId)}`, f); } finally { changed(); }
+  if (last && files.length === 1) openArtifact({ pool: last.pool, id: last.id });
+}
+
+/**
+ * The Files panel's Artifacts tab: the thread's artifacts, newest change first, and Import. A project chat's lists
+ * its threads' too, each with its thread's title. `activity` counts the thread's finished tool calls, so one she
+ * publishes shows without reopening the panel.
+ */
+export function ArtifactsTab({ ctx, pool, threadId, activity, onError }: { ctx: ShellContext; pool: Pool; threadId: string; activity: number; onError: (message: string) => void }) {
   const userId = ctx.user.id;
-  const display = ctx.me.display;
-  const list = useLoad(() => get<ArtifactInfo[]>(u(userId, "artifacts")), [userId, display.showGeneral, display.showPrivate]);
-  const [query, setQuery] = useState("");
-  const pools = (["general", "private"] as const).filter((p) => !hidden(display, p));
-  // Where the picked files go: the one pool shown, or the one chosen from Import's menu.
-  const into = useRef<Pool>("general");
-  const [choosing, setChoosing] = useState(false);
-  const menu = useRef<HTMLSpanElement>(null);
-  useDismiss(menu, choosing, () => setChoosing(false));
-  const pick = (p: Pool) => { into.current = p; setChoosing(false); picker.current?.click(); };
-  const [run, busy, error] = useAction();
+  const list = useLoad(() => get<ArtifactInfo[]>(`${base(userId, pool)}?thread=${encodeURIComponent(threadId)}`), [userId, pool, threadId], [activity]);
+  const [busy, setBusy] = useState(false);
   const picker = useRef<HTMLInputElement>(null);
   const { reload } = list;
   useEffect(() => { addEventListener(CHANGED, reload); return () => removeEventListener(CHANGED, reload); }, [reload]);
-  // A copied link: the page with that artifact open over it.
-  useEffect(() => { if (pool && id) openArtifact({ pool, id }); }, [pool, id]);
-  const add = (files: File[]) => run(async () => {
-    let last: ArtifactInfo | undefined;
-    try { for (const f of files) last = await send<ArtifactInfo>(base(userId, into.current), f); } finally { reload(); }
-    if (last && files.length === 1) openArtifact({ pool: last.pool, id: last.id });
-  });
-  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
-  const shown = (list.data ?? []).filter((a) => words.every((w) => `${a.title} ${a.threadTitle ?? ""} ${ARTIFACT_KIND[a.kind]}`.toLowerCase().includes(w)));
+  const add = (files: File[]) => { setBusy(true); onError(""); importArtifacts(userId, pool, threadId, files).catch((e: Error) => onError(e.message)).finally(() => setBusy(false)); };
   return (
-    <main className="main" onDragOver={(e) => { if (e.dataTransfer.types.includes("Files")) e.preventDefault(); }}
-      onDrop={(e) => { if (e.dataTransfer.files.length) { e.preventDefault(); into.current = pools[0] ?? "general"; void add([...e.dataTransfer.files]); } }}>
-      <PageHead ctx={ctx} title="Artifacts" facts={list.data && list.data.length > 0 ? <span className="num">{list.data.length}</span> : undefined}>
-        <span className="row-menu" ref={menu}>
-          <button type="button" className="primary" disabled={busy || !pools.length} aria-haspopup={pools.length > 1 ? "menu" : undefined} aria-expanded={pools.length > 1 ? choosing : undefined}
-            onClick={() => (pools.length > 1 ? setChoosing((c) => !c) : pick(pools[0]!))}>Import</button>
-          {choosing && (
-            <div className="menu" role="menu" aria-label="Import">
-              {pools.map((p) => <button key={p} type="button" role="menuitem" onClick={() => pick(p)}>{p === "general" ? "Into General" : "Into Private"}</button>)}
-            </div>
-          )}
-        </span>
+    <div className="artifacts">
+      <div className="artifacts-bar">
+        <button type="button" className="sm" disabled={busy} onClick={() => picker.current?.click()}>Import…</button>
         <input ref={picker} type="file" hidden multiple accept={ACCEPT} aria-label="Import files"
-          onChange={(e) => { const files = [...(e.target.files ?? [])]; e.target.value = ""; if (files.length) void add(files); }} />
-      </PageHead>
-      <div className="scroll">
-        <div className="artifacts">
-          <ErrorText error={list.error || error} />
-          {(list.data?.length ?? 0) > 0 && (
-            <input type="search" aria-label="Search artifacts" placeholder="Search artifacts" value={query} onChange={(e) => setQuery(e.target.value)} />
-          )}
-          {list.data && !list.data.length && <p className="empty">No artifacts yet.</p>}
-          {list.data && list.data.length > 0 && !shown.length && <p className="empty">No artifacts match.</p>}
-          {shown.length > 0 && (
-            <ul className="artifact-list" aria-label="Artifacts">
-              {shown.map((a) => (
-                <li key={`${a.pool}/${a.id}`}>
-                  <button type="button" className="artifact-row" data-artifact={a.id} onClick={() => openArtifact({ pool: a.pool, id: a.id })}>
-                    <span className="artifact-title">{a.title}</span>
-                    <span className="cap">
-                      {ARTIFACT_KIND[a.kind]} · Version <span className="num">{a.version}</span>
-                      {pools.length > 1 && <> · {a.pool === "general" ? "General" : "Private"}</>}
-                      {a.threadTitle && <> · {a.threadTitle}</>} · <span className="num" title={fullTime(a.updatedAt)}>{shortTime(a.updatedAt)}</span>
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+          onChange={(e) => { const files = [...(e.target.files ?? [])]; e.target.value = ""; if (files.length) add(files); }} />
       </div>
-    </main>
+      <ErrorText error={list.error} />
+      {list.data && !list.data.length && <p className="empty">No artifacts yet.</p>}
+      {list.data && list.data.length > 0 && (
+        <ul className="artifact-list" aria-label="Artifacts">
+          {list.data.map((a) => (
+            <li key={a.id}>
+              <button type="button" className="artifact-row" data-artifact={a.id} onClick={() => openArtifact({ pool: a.pool, id: a.id })}>
+                <span className="artifact-title">{a.title}</span>
+                <span className="cap">
+                  {ARTIFACT_KIND[a.kind]} · Version <span className="num">{a.version}</span>
+                  {a.thread !== threadId && a.threadTitle && <> · {a.threadTitle}</>} · <span className="num" title={fullTime(a.updatedAt)}>{shortTime(a.updatedAt)}</span>
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
