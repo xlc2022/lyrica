@@ -5,7 +5,7 @@ import { posix } from "node:path";
 import type { Readable } from "node:stream";
 import { cleanPng, type GeneratedImage, type ImageInput } from "../models/images.ts";
 import { isMp4, MAX_DRIVE_BYTES, type GeneratedVideo } from "../models/videos.ts";
-import { sniffImage } from "./ops.ts";
+import { looksLikeText, sniffImage } from "./ops.ts";
 import { FAMILY_ROOT, SHARED, WORKDIR } from "./sandbox.ts";
 import type { WorkspaceSettings } from "./settings.ts";
 
@@ -74,7 +74,7 @@ function readHomeFile(home: string, parts: string[], range?: ByteRange): HomeFil
       if (!stat.isFile()) throw new HomeFileMissing("file not found");
       const head = Buffer.alloc(Math.min(512, stat.size)); readSync(fd, head, 0, head.length, 0);
       const type = sniffImage(head) ?? (isMp4(head) ? "video/mp4" : head.subarray(0, 5).toString() === "%PDF-" ? "application/pdf" :
-        !head.includes(0) && !head.toString("utf8").includes("\uFFFD") ? "text/plain; charset=utf-8" : "application/octet-stream");
+        looksLikeText(head) ? "text/plain; charset=utf-8" : "application/octet-stream");
       if (range && (range.start >= stat.size || (range.end !== undefined && range.end < range.start))) throw new RangeError("the range is outside the file");
       const end = range ? { start: range.start, end: Math.min(range.end ?? stat.size - 1, stat.size - 1) } : { start: 0 };
       return { stream: createReadStream("", { fd, autoClose: true, ...end }), size: stat.size, type };

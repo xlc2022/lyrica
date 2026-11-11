@@ -7,7 +7,7 @@ import { posix } from "node:path";
 import { Readable } from "node:stream";
 import { crc32 } from "node:zlib";
 import type { ByteRange } from "./images.ts";
-import { sniffImage } from "./ops.ts";
+import { looksLikeText, sniffImage } from "./ops.ts";
 import { SHARED, Sandbox, SandboxDenied, WORKDIR } from "./sandbox.ts";
 import type { Grant } from "./settings.ts";
 
@@ -119,10 +119,10 @@ export class ThreadFiles {
    */
   async read(path: string, range?: ByteRange): Promise<{ stream: Readable; size: number; type: string }> {
     const p = this.allow(path, false);
-    const head = await this.file(["sh", "-c", 'test -f "$1" || { echo "$1 is not a file" >&2; exit 1; }; stat -c %s -- "$1"; head -c 16 -- "$1"', "sh", p]);
+    const head = await this.file(["sh", "-c", 'test -f "$1" || { echo "$1 is not a file" >&2; exit 1; }; stat -c %s -- "$1"; head -c 512 -- "$1"', "sh", p]);
     const nl = head.indexOf(10);
     const size = Number(head.subarray(0, nl).toString());
-    const type = sniffImage(head.subarray(nl + 1)) ?? typeByName(p);
+    const type = sniffImage(head.subarray(nl + 1)) ?? typeByName(p, head.subarray(nl + 1));
     if (range && (range.start >= size || (range.end !== undefined && range.end < range.start))) throw new RangeError("the range is outside the file");
     const length = range ? Math.min(range.end ?? size - 1, size - 1) - range.start + 1 : 0;
     const child = await this.box.start(range
@@ -365,14 +365,19 @@ export function cleanUploadName(name: string): string {
   return clean || "upload";
 }
 
-/** A served file's type by its extension; anything a browser could run (HTML, SVG, scripts) is sent as plain text. */
-export function typeByName(path: string): string {
+/**
+ * A served file's type by its extension, or, for a name it doesn't know, by its first bytes (`head`): text of any
+ * kind (a C++ header, a Makefile, a .env) is plain text. Anything a browser could run (HTML, SVG, scripts) is sent as
+ * plain text too.
+ */
+export function typeByName(path: string, head?: Buffer): string {
   const ext = posix.extname(path).slice(1).toLowerCase();
   const types: Record<string, string> = {
     txt: "text/plain", md: "text/plain", json: "application/json", csv: "text/csv", pdf: "application/pdf",
     mp3: "audio/mpeg", wav: "audio/wav", ogg: "audio/ogg", m4a: "audio/mp4", mp4: "video/mp4", webm: "video/webm",
   };
-  return `${types[ext] ?? (TEXTY.has(ext) ? "text/plain" : "application/octet-stream")}${(types[ext] ?? "").startsWith("text/") || TEXTY.has(ext) ? "; charset=utf-8" : ""}`;
+  const type = types[ext] ?? (TEXTY.has(ext) || (head && looksLikeText(head)) ? "text/plain" : "application/octet-stream");
+  return type.startsWith("text/") ? `${type}; charset=utf-8` : type;
 }
 const TEXTY = new Set(["html", "htm", "svg", "xml", "js", "mjs", "ts", "tsx", "jsx", "css", "py", "sh", "yaml", "yml", "toml", "ini", "log", "rs", "go", "java", "c", "h", "cpp"]);
 
