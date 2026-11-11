@@ -2908,6 +2908,32 @@ test("Status model facts preserve existing facts and render empty, measured and 
   } finally { await show(original); }
 });
 
+// Memory use: synthetic notes reached through the last weeks. Near the end of the file, since its fixture adds memories.
+test("Status's Memory use card shows the most used and most cited memories, each a link into the memory browser", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  expect((await page.request.post(`http://127.0.0.1:${Number(new URL(baseURL!).port) + 10}/memory-use-fixture`, { data: { userId } })).ok()).toBe(true);
+  await page.goto(`/#/u/${userId}/admin/status`);
+  const card = page.getByRole("region", { name: "Memory use", exact: true });
+  await expect(card.getByRole("heading")).toHaveText("Memory use · last 30 days");
+  await expect(card).toContainText(/\d+ uses · 6 memories/);
+  for (const name of ["Uses per day", "Most used"]) await expect(card.getByRole("figure", { name, exact: true }).locator(".chart-box svg")).toBeVisible();
+  await expect(card.getByRole("list", { name: "How" }).getByRole("listitem")).toHaveText(["Recalled", "Searched", "Opened"]);
+  // Five notes and a page; a phone hides the header row.
+  await expect(card.getByRole("table", { name: "Most used memories" }).getByRole("row").filter({ has: page.getByRole("cell") })).toHaveCount(6);
+  await noHorizontalScroll(page);
+  const width = page.viewportSize()!.width;
+  await card.screenshot({ path: `shots/memory-use-${width}.png` });
+  await card.getByRole("button", { name: "Most cited" }).click();
+  const cited = card.getByRole("table", { name: "Most cited memories" }).getByRole("row").filter({ hasText: "rye starter" });
+  await expect(cited.getByRole("cell").last()).toHaveText(/2$/);
+  await card.getByRole("table").screenshot({ path: `shots/memory-use-cited-${width}.png` });
+  await card.getByRole("button", { name: "Last 7 days" }).click();
+  await expect(card.getByRole("heading")).toHaveText("Memory use · last 7 days");
+  await card.getByRole("button", { name: "Most used" }).click();
+  await card.getByRole("link", { name: /rye starter/ }).first().click();
+  await expect(page).toHaveURL(/\/memory\//);
+});
+
 // #591: a From sleep row whose text is long reads itself where it waits. Last in the file, so its
 // fixture items are not on screen for the tests above.
 test("a long From sleep row opens its own text in place and starts no chat", async ({ page, baseURL, request }) => {

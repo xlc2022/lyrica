@@ -2086,6 +2086,41 @@ export interface AdminStatus {
   credentials: { available: boolean; reason?: string };
 }
 
+/**
+ * GET /api/u/:userId/admin/memory-use[?days=7|30] → AdminMemoryUse (docs/memory.md, "Recall counts"): how often she
+ * reached the administrator's own notes and pages in the pools their display shows, over the last 7 or 30 days
+ * (default 30). Never another user's memory.
+ */
+export interface AdminMemoryUse {
+  /** The window: its first hour (ISO) and the shown pools it counted. */
+  since: string;
+  days: 7 | 30;
+  pools: Pool[];
+  /** Counts per hour across every memory, oldest first, for the per-day chart. `hour` is ISO (`2026-11-11T06:00:00.000Z`). */
+  hours: { hour: string; recalled: number; searched: number; opened: number }[];
+  /** How many memories she reached at least once in the window. */
+  memories: number;
+  /** The ten she reached most in the window, most first. */
+  top: MemoryUseRow[];
+  /** The ten most cited now (not windowed), most first. */
+  cited: MemoryUseRow[];
+}
+
+/** A note or page on the Memory use card: its own user's memory, so its title or first line is shown. */
+export interface MemoryUseRow {
+  pool: Pool;
+  /** The bare ID in its pool (`n:…`, `p:slug`). */
+  id: string;
+  kind: "note" | "page";
+  /** A page's title, or a note's first line, at most 120 characters. */
+  label: string;
+  recalled: number;
+  searched: number;
+  opened: number;
+  /** Notes, pages and journal entries that cite it now, across the shown pools. */
+  citedBy: number;
+}
+
 /** PUT /api/u/:userId/admin/passphrase → AdminStatus. Saves (with the passphrase) or forgets the self.db passphrase. A wrong passphrase is 401 and counts on the per-address limiter, as a change's does. */
 export interface PassphraseChange { save: boolean; passphrase?: string }
 

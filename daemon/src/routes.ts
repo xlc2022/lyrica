@@ -28,6 +28,7 @@ import { forgetThreadFiles } from "./sweep.ts";
 import { applyRemoval, entriesFrom, removalPlan, uploadsIn, type RemovalContext } from "./removal.ts";
 import { historyQuery } from "./history.ts";
 import { factsWindow, modelFacts } from "./model-facts.ts";
+import { memoryUse } from "./memory-use.ts";
 import { redactUrl, unredactUrl } from "./redact.ts";
 import { isPdf, VIEW_LIMIT, viewHeaders, viewKind, withConsole } from "./file-view.ts";
 import { relinkFiles, type Relinked } from "./relink.ts";
@@ -1981,9 +1982,10 @@ export function apiRoutes(d: Lyricad): Route[] {
     route("GET", `${u}/memory/about`, (r) => {
       const user = d.userFor(r);
       const pools = (r.query.get("pool") ? [checkPool(r.query.get("pool"))] : shownPools(display(d, user.id)));
+      const current = r.query.get("current") === "1";
       return owner(d, user, (o): Api.MemoryTag[] => {
         const counts = new Map<string, number>();
-        for (const pool of pools) for (const t of o[pool].aboutWords()) counts.set(t.about, (counts.get(t.about) ?? 0) + t.count);
+        for (const pool of pools) for (const t of o[pool].aboutWords({ current })) counts.set(t.about, (counts.get(t.about) ?? 0) + t.count);
         return [...counts].map(([about, count]) => ({ about, count })).sort((a, b) => b.count - a.count || a.about.localeCompare(b.about));
       });
     }),
@@ -1996,6 +1998,8 @@ export function apiRoutes(d: Lyricad): Route[] {
       const kinds = r.query.get("kinds")?.split(",").filter(Boolean) as Hit["kind"][] | undefined;
       const origin = (r.query.get("origin") ?? undefined) as Api.Origin | undefined;
       const about = r.query.get("about")?.trim() || undefined;
+      // current=1 leaves out notes a later note superseded.
+      const current = r.query.get("current") === "1";
       const before = r.query.get("before") || undefined;
       const limit = Math.min(100, Number(r.query.get("limit") ?? 30) || 30);
       const layer = !q && kinds?.length === 1 && ["note", "page", "wake", "journal", "entry"].includes(kinds[0]!) ? kinds[0] as "note" | "page" | "wake" | "journal" | "entry" : undefined;
@@ -2010,9 +2014,9 @@ export function apiRoutes(d: Lyricad): Route[] {
           const store = o[pool];
           // The Recent layer: logged messages sleep hasn't consolidated yet, the browser's short-term memory.
           if (layer === "entry") return store.recentEntries({ limit, before }).map((i) => listed(pool, i));
-          if (layer) return store.listMemories(layer, { limit, before, about, origin }).map((i) => listed(pool, i));
-          if (!q) return store.userIntroduced().map((id) => store.get(id)).filter((x): x is Item => !!x).filter((i) => !about || i.about?.includes(about)).map((i) => listed(pool, i));
-          return store.search(q, { kinds, limit: limit * 2, includeArchived: true })
+          if (layer) return store.listMemories(layer, { limit, before, about, origin, current }).map((i) => listed(pool, i));
+          if (!q) return store.userIntroduced().map((id) => store.get(id)).filter((x): x is Item => !!x).filter((i) => (!about || i.about?.includes(about)) && !(current && i.supersededBy)).map((i) => listed(pool, i));
+          return store.search(q, { kinds, limit: limit * 2, includeArchived: true, current })
             .filter((h) => !origin || h.origin === origin)
             .map((h) => { const item = h.kind === "entry" || h.kind === "thread" ? undefined : store.get(h.id); return about && !item?.about?.includes(about) ? undefined : toHit(pool, h, item); })
             .filter((h): h is Api.MemoryHit => !!h);
@@ -2135,6 +2139,10 @@ export function apiRoutes(d: Lyricad): Route[] {
       const calls = s().models.callHistory(user.id, { limit: -1, offset: 0, q: "", pools }).entries;
       const now = Date.now();
       return { ...adminStatus(d), modelFacts: modelFacts(calls, pools, now, s().models.statsSince(user.id), factsWindow(now, r.query.get("from"), r.query.get("to"))) };
+    }),
+    route("GET", `${u}/admin/memory-use`, (r): Api.AdminMemoryUse => {
+      const user = d.adminFor(r), days = r.query.get("days") === "7" ? 7 : 30;
+      return owner(d, user, (o) => memoryUse(o, shownPools(display(d, user.id)), days));
     }),
     route("POST", `${u}/admin/status/reset`, (r): Api.AdminStatusReset => {
       const user = d.adminFor(r);

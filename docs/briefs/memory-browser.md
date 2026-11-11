@@ -32,7 +32,8 @@ edits; "Remember this" on a message.
 
 1. **The browse pane** (`web/src/Memory.tsx`, the Files panel's layout):
    a search box above a segmented control **Pages | Notes | WAKE |
-   Journal**, one filters row (pool select; **User introduced**), and the
+   Journal**, one filters row (pool select; **User introduced**; **Hide superseded**,
+   on by default, on Notes or a search), and the
    layer's list newest first, paged. Search replaces the list with hits
    across layers while a query is typed. On a phone the pane and the memory
    alternate, with a **Memory** back button. The page header states facts

@@ -2,7 +2,7 @@ import { StringEnum } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { PoolView } from "@lyrica/core";
 import { Type } from "typebox";
-import { codeMemoryThread, formatHit, formatRead, keptFrom, nearCopy, sameText, search, type MemoryContext, queryVector } from "./memory.ts";
+import { codeMemoryThread, countRecalls, formatHit, formatRead, keptFrom, nearCopy, sameText, search, type MemoryContext, queryVector } from "./memory.ts";
 import { syncEntries } from "./record.ts";
 
 // The Memory component's model-facing tools: remember, recall, read_memory.
@@ -89,6 +89,7 @@ export function registerMemoryTools(pi: ExtensionAPI, view: PoolView, ctx: () =>
       const keepBefore = toolCtx?.sessionManager ? keptFrom(view, toolCtx.sessionManager.getBranch(), c.threadId) : undefined;
       const vector = await queryVector(c, params.query);
       const hits = search(view, params.query, { limit: params.limit ?? 8, excludeThread: c.threadId, keepBefore, fromThread: c.code ? codeMemoryThread(view, c.threadId) : c.threadId, ...(c.code && !params.everywhere ? { only: { project: true, about: "working" } } : {}), ...(vector ? { vector } : {}) }, c.hide);
+      countRecalls(view, hits.map((h) => h.id), "searched", c);
       return text(hits.length ? hits.map((h) => formatHit(h, c.user)).join("\n") : "Nothing found.");
     },
   });
@@ -105,7 +106,9 @@ export function registerMemoryTools(pi: ExtensionAPI, view: PoolView, ctx: () =>
     }),
     async execute(_id, params) {
       if (opts.skill && params.id.startsWith("s:")) return text(opts.skill(params.id.slice(2)) ?? `No skill ${params.id.slice(2)}.`);
-      return text(formatRead(view, params.id, ctx(), params.page));
+      const c = ctx(), read = formatRead(view, params.id, c, params.page);
+      if (!params.page && !read.startsWith("Nothing found")) countRecalls(view, [params.id], "opened", c);
+      return text(read);
     },
   });
 }

@@ -2,8 +2,9 @@
 // a throwaway lyricad from serve.ts with ada signed in, then each page at the
 // phone (390×844) and desktop (1280×800) widths, light and dark.
 // Usage, after `npm run build`:
-//   npx tsx web/e2e/shot.ts [--out dir] [--phone|--desktop] [--light|--dark] [--full] [--model-facts] [page]...
-// --model-facts seeds synthetic recorded model metadata for populated Status shots.
+//   npx tsx web/e2e/shot.ts [--out dir] [--phone|--desktop] [--light|--dark] [--full] [--model-facts] [--memory-use] [page]...
+// --model-facts seeds synthetic recorded model metadata for populated Status shots; --memory-use seeds synthetic
+// notes and recall counts for Status's Memory use card.
 // --routines seeds synthetic routine labels; pages routine-popover, routine-purpose,
 // routine-settings and routine-settings-purpose capture both surfaces (and purpose tooltips).
 // A page is ada's route without `#/u/<id>/` (`settings`, `models/hosts`,
@@ -28,6 +29,7 @@ const out = resolve(value("--out") ?? "shots");
 const only = { phone: flag("--phone"), desktop: flag("--desktop"), light: flag("--light"), dark: flag("--dark") };
 const full = flag("--full");
 const modelFacts = flag("--model-facts");
+const memoryUse = flag("--memory-use");
 const routines = flag("--routines");
 const pages = args.length ? args : [""];
 
@@ -58,7 +60,7 @@ try {
   const browser = await chromium.launch({ executablePath, args: ["--no-sandbox"] });
   try {
     mkdirSync(out, { recursive: true });
-    let seeded = false;
+    let seeded = false, seededUse = false;
     let routineThread: string | undefined;
     for (const size of sizes) for (const theme of themes) {
       const context = await browser.newContext({ baseURL: base, viewport: { width: size.width, height: size.height }, isMobile: size.mobile, hasTouch: size.mobile, colorScheme: theme });
@@ -70,6 +72,11 @@ try {
         const seed = await fetch(`http://127.0.0.1:${modelPort}/model-facts-fixture`, { method: "POST", body: JSON.stringify({ userId: user.id }) });
         if (!seed.ok) throw new Error(`model facts fixture: ${seed.status}`);
         seeded = true;
+      }
+      if (memoryUse && !seededUse) {
+        const seed = await fetch(`http://127.0.0.1:${modelPort}/memory-use-fixture`, { method: "POST", body: JSON.stringify({ userId: user.id }) });
+        if (!seed.ok) throw new Error(`memory use fixture: ${seed.status}`);
+        seededUse = true;
       }
       if (routines && !routineThread) {
         const seed = await fetch(`http://127.0.0.1:${modelPort}/routines-fixture`, { method: "POST", body: JSON.stringify({ userId: user.id }) });

@@ -149,6 +149,8 @@ function Browse({ ctx, current, imports, browsing, onBrowse, onPick }: { ctx: Sh
   const [query, setQuery] = useState("");
   const [pool, setPool] = useState<"" | Pool>("");
   const [userOnly, setUserOnly] = useState(false);
+  /** Superseded notes are left out unless asked for: the list reads as what she believes now. */
+  const [hideSuperseded, setHideSuperseded] = useState(true);
   const [more, setMore] = useState<MemoryHit[]>([]);
   const [noMore, setNoMore] = useState(false);
   const [sel, setSel] = useState<string[]>([]);
@@ -166,13 +168,15 @@ function Browse({ ctx, current, imports, browsing, onBrowse, onPick }: { ctx: Sh
   params.set("kinds", query ? "note,page,wake,journal" : layer);
   if (pool) params.set("pool", pool);
   if (userOnly) params.set("origin", "user");
+  const notesShown = !!query || layer === "note";
+  if (hideSuperseded && notesShown) params.set("current", "1");
   if (!query && layer === "note" && tag) params.set("about", tag);
   const journalPreview = !query && layer === "journal";
   // The preview shows one entry; it asks for two so a second proves there is more to open.
   params.set("limit", String(journalPreview ? 2 : PAGE_SIZE));
   const search = params.toString();
   const hits = useLoad(() => get<MemoryHit[]>(`${u(userId, "memory", "search")}?${search}`), [userId, search, display.showGeneral, display.showPrivate, imports]);
-  const tags = useLoad(() => (layer === "note" && !query ? get<MemoryTag[]>(`${u(userId, "memory", "about")}${pool ? `?pool=${pool}` : ""}`) : Promise.resolve([] as MemoryTag[])), [userId, layer, query, pool, display.showGeneral, display.showPrivate]);
+  const tags = useLoad(() => (layer === "note" && !query ? get<MemoryTag[]>(`${u(userId, "memory", "about")}?${new URLSearchParams({ ...(pool ? { pool } : {}), ...(hideSuperseded ? { current: "1" } : {}) })}`) : Promise.resolve([] as MemoryTag[])), [userId, layer, query, pool, hideSuperseded, display.showGeneral, display.showPrivate]);
   useEffect(() => { setMore([]); setNoMore(false); setSel([]); setLeft(0); }, [search]);
 
   const rows = [...(hits.data ?? []), ...more];
@@ -228,6 +232,7 @@ function Browse({ ctx, current, imports, browsing, onBrowse, onPick }: { ctx: Sh
           <option value="private">Private</option>
         </select>
         <label className="check"><input type="checkbox" checked={userOnly} onChange={(e) => setUserOnly(e.target.checked)} /> User introduced</label>
+        {notesShown && <label className="check" title="Leaves out notes a later note has replaced."><input type="checkbox" checked={hideSuperseded} onChange={(e) => setHideSuperseded(e.target.checked)} /> Hide superseded</label>}
       </div>
       {tags.data && tags.data.length > 0 && (
         <div className="tags" role="group" aria-label="Tags">
