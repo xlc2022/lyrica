@@ -219,8 +219,8 @@ export function createWebExtension(web: WebTools): ExtensionFactory {
   };
 }
 
-/** A size in bytes, in kB or MB. */
-const size = (n: number) => (n < 1_000_000 ? `${Math.max(1, Math.round(n / 1000))} kB` : `${(n / 1_000_000).toFixed(1)} MB`);
+/** A size in bytes, kB, MB or GB. */
+const size = (n: number) => (n < 1000 ? `${n} bytes` : n < 1_000_000 ? `${Math.round(n / 1000)} kB` : n < 1e9 ? `${(n / 1e6).toFixed(1)} MB` : `${(n / 1e9).toFixed(2)} GB`);
 
 /** A cut page's text with the headings past its window after it, both the page's own words. */
 function withSections(part: { text: string; sections?: string }): string {

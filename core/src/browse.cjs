@@ -21,6 +21,7 @@ const ATTACH = `${profile}/attach`;
 // past DOWNLOAD_BYTES, would leave the disk less free room than it keeps, or gets no data for STALL_MS is cancelled.
 // An action waits up to DOWNLOAD_WAIT_MS for the downloads it started; one still going then is answered as going,
 // goes on, and is answered again after a later action.
+const DOWNLOADS_AT_ONCE = 5;
 const DOWNLOADS = `${profile}/downloads`, DOWNLOAD_BYTES = 2_000_000_000, DOWNLOAD_WAIT_MS = 45_000, STALL_MS = 120_000;
 /** Downloads not yet answered, by id: the site's name for the file, its state and size, when data last came, and when it ends. */
 const downloads = new Map();
@@ -82,7 +83,11 @@ async function attachFrame(sid, id) {
   try {
     await send("Fetch.enable", { patterns: [{ urlPattern: "*", resourceType: "Document" }] }, sid);
     await send("Target.setAutoAttach", { autoAttach: true, waitForDebuggerOnStart: true, flatten: true }, sid);
-  } catch { return; }
+  } catch {
+    const held = frames.get(id); // gone if the frame left meanwhile
+    if (held) held.stuck = true;
+    return;
+  }
   await quiet(send("Runtime.runIfWaitingForDebugger", {}, sid));
 }
 
@@ -110,7 +115,10 @@ function onEvent(m) {
   else if (m.method === "Browser.downloadWillBegin") {
     let finish;
     const done = new Promise((r) => (finish = r));
-    downloads.set(p.guid, { name: String(p.suggestedFilename || "download"), state: "inProgress", bytes: 0, at: Date.now(), done, finish });
+    const d = { name: String(p.suggestedFilename || "download"), state: "inProgress", bytes: 0, at: Date.now(), done, finish };
+    downloads.set(p.guid, d);
+    // A page can't fill the disk by starting many at once.
+    if ([...downloads.values()].filter((x) => x.state === "inProgress" && !x.why).length > DOWNLOADS_AT_ONCE) stopDownload(p.guid, d, `more than ${DOWNLOADS_AT_ONCE} were downloading at once`);
   } else if (m.method === "Browser.downloadProgress") {
     const d = downloads.get(p.guid);
     if (!d) return;
@@ -358,6 +366,8 @@ async function inFrame(id, expression) {
   for (let again = 0; ; again++) {
     const f = frames.get(id);
     if (!f) throw new Error("the frame is gone");
+    // A frame whose posts couldn't be watched is never let go, and never read.
+    if (f.stuck) throw new Error("the frame is held");
     try {
       if (f.world === undefined) {
         const made = await send("Page.createIsolatedWorld", { frameId: id, worldName: "lyrica" }, f.sid);
