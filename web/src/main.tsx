@@ -10,11 +10,13 @@ import "@fontsource/ibm-plex-mono/latin-500.css";
 import "./app.css";
 
 // iOS Safari ignores `interactive-widget`: size the app to the visual viewport,
-// so the composer stays above the on-screen keyboard.
+// so the composer stays above the on-screen keyboard. The height is taken at
+// zoom 1 (height × scale): zoomed in, the visual viewport shows less of the
+// page, and sizing the app to that would leave blank page under it.
 const vv = window.visualViewport;
 if (vv) {
   const fit = () => {
-    document.documentElement.style.setProperty("--vvh", `${vv.height}px`);
+    document.documentElement.style.setProperty("--vvh", `${vv.height * vv.scale}px`);
     if (vv.offsetTop) scrollTo(0, 0);
   };
   vv.addEventListener("resize", fit);
