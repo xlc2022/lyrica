@@ -1461,7 +1461,9 @@ home, the flake's module does the same ("On NixOS" below).
   `/opt/lyrica/tools/bin/chromium-headless-shell`, so her sandboxes can take
   screenshots; reinstalled only when that version changes), Claude Code
   and Codex there with `npm install -g --prefix` (removing the copies an
-  install from before 2026-11-01 left in `/usr/local`), and creates
+  install from before 2026-11-01 left in `/usr/local`) and the official
+  Nix binary tarball in `/opt/lyrica/tools/lib/nix` (pinned with its
+  sha256; docs/workspace.md, "Nix"), and creates
   three system users:
   `lyrica` runs `lyricad`, `lyrica-caddy` runs Caddy, `lyrica-build` builds
   releases and runs their smoke tests with no access to her data. The `lyrica-caddy`

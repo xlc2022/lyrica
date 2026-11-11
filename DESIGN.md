@@ -2247,7 +2247,9 @@ Details in [docs/sleep.md](docs/sleep.md).
   the repository's flake gives a package and a module, `services.lyrica`,
   that declares the same users, units and hardening as the install script,
   and runs the same second tailscaled from `pkgs.tailscale`. Her sandboxes there mount the module's tools as `/usr` and only their
-  closure from `/nix/store`, never the whole store. Updates on NixOS use the
+  closure from `/nix/store`, never the whole store. Each user's pool has its own Nix store in the
+  encrypted home, mounted at `/nix`, so her Nix builds last between
+  commands (docs/workspace.md, "Nix"). Updates on NixOS use the
   same Update button, through a Lyrica-only Nix profile (Updates and
   self-editing). A rebuild never moves her to an older release; going
   back is Roll back. Details in [docs/daemon.md](docs/daemon.md), "On NixOS".

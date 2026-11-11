@@ -76,7 +76,7 @@ say "Installing packages..."
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
 apt-get install -y -qq --no-install-recommends \
-  bubblewrap gocryptfs fuse3 passt nftables openssl ca-certificates curl unzip rsync imagemagick ffmpeg \
+  bubblewrap gocryptfs fuse3 passt nftables openssl ca-certificates curl unzip xz-utils rsync imagemagick ffmpeg \
   build-essential python3 python3-venv git gh openssh-client jq shellcheck \
   python3-bs4 python3-lxml python3-requests python3-html5lib python3-yaml >/dev/null
 # shellcheck checks her bash calls before they run (core/src/workspace/shellcheck.ts).
@@ -150,6 +150,33 @@ if [ "$("$TOOLS/bin/codex" --version 2>/dev/null | awk '{print $NF}')" != "$CODE
 fi
 if [ -x "$TOOLS/bin/codex" ] && [ -d /usr/local/lib/node_modules/@openai/codex ]; then
   npm uninstall -g --prefix /usr/local --loglevel=error @openai/codex >/dev/null 2>&1 || true
+fi
+
+# --- Nix ---
+# The official Nix binary tarball, unpacked into her tool prefix, for flakes
+# and `nix develop` in her sandbox (docs/workspace.md, "Nix"): each run mounts
+# its store paths read-only into the pool's own Nix store at /nix. Nothing
+# goes into the host's /nix. NixOS gets Nix from nix/sandbox-tools.nix instead.
+NIX_VERSION=2.34.6
+NIX_SHA256_amd64=311b9f406f0239ef640a1e3fbea1df1bac9d3a7c316c4def30df3206dd964960
+NIX_SHA256_arm64=09edae3ed146b1a47de84eda6135ef12ee74783d409e7a207c912cb94e14aa35
+if [ "$(cat "$TOOLS/lib/nix/version" 2>/dev/null)" != "$NIX_VERSION" ]; then
+  say "Installing Nix for her sandbox..."
+  case "$ARCH" in amd64) NIX_ARCH=x86_64; NIX_SHA256=$NIX_SHA256_amd64 ;; arm64) NIX_ARCH=aarch64; NIX_SHA256=$NIX_SHA256_arm64 ;; esac
+  NIX_TMP=$(mktemp -d)
+  if curl -fsSL "https://releases.nixos.org/nix/nix-$NIX_VERSION/nix-$NIX_VERSION-$NIX_ARCH-linux.tar.xz" -o "$NIX_TMP/nix.tar.xz" \
+    && printf '%s  %s\n' "$NIX_SHA256" "$NIX_TMP/nix.tar.xz" | sha256sum -c --quiet - \
+    && tar -xJf "$NIX_TMP/nix.tar.xz" -C "$NIX_TMP" --no-same-owner; then
+    chmod -R a+rX "$NIX_TMP/nix-$NIX_VERSION-$NIX_ARCH-linux"
+    printf '%s\n' "$NIX_VERSION" >"$NIX_TMP/nix-$NIX_VERSION-$NIX_ARCH-linux/version"
+    rm -rf "$TOOLS/lib/nix.old"
+    [ ! -d "$TOOLS/lib/nix" ] || mv "$TOOLS/lib/nix" "$TOOLS/lib/nix.old"
+    mv "$NIX_TMP/nix-$NIX_VERSION-$NIX_ARCH-linux" "$TOOLS/lib/nix"
+    rm -rf "$TOOLS/lib/nix.old"
+  else
+    say "installing Nix failed: her sandbox has no Nix until it's installed."
+  fi
+  rm -rf "$NIX_TMP"
 fi
 
 # --- Tailscale ---

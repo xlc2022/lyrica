@@ -5,7 +5,7 @@ import {
 import { readFileSync } from "node:fs";
 import { posix } from "node:path";
 import {
-  BROWSE_READS, browseFormText, browseFormWarning, type Browser, type BrowseCall, decide, type CommandRule, withoutNoMachine, holdsSecret, librariesLine, JOB_LIMITS, jobLine, type JobInfo, malformedCommand, mcpNamespace, onFloor, sandboxTools, PROXMOX_READS, PROXMOX_SUSPECT, SANDBOX_ALLOW, stricterMode, suspectCommand, suspectKey, SHARED, FAMILY_ROOT, WORKDIR, writtenFiles, type ExecutionTarget, type ProxmoxAction, type Network, type NewChange, type PermissionMode, type ThreadGitRepository, type ThreadMachine, type ThreadRepository, type ThreadWorkspace, type ToolOps,
+  BROWSE_READS, browseFormText, browseFormWarning, type Browser, type BrowseCall, decide, type CommandRule, withoutNoMachine, holdsSecret, librariesLine, JOB_LIMITS, jobLine, type JobInfo, malformedCommand, mcpNamespace, onFloor, sandboxNix, sandboxTools, PROXMOX_READS, PROXMOX_SUSPECT, SANDBOX_ALLOW, stricterMode, suspectCommand, suspectKey, SHARED, FAMILY_ROOT, WORKDIR, writtenFiles, type ExecutionTarget, type ProxmoxAction, type Network, type NewChange, type PermissionMode, type ThreadGitRepository, type ThreadMachine, type ThreadRepository, type ThreadWorkspace, type ToolOps,
 } from "@lyrica/core";
 import { Type } from "typebox";
 import { setToolsOff } from "./gate.ts";
@@ -580,6 +580,7 @@ export function describe(tools: ThreadTools): string {
     ] : []),
     network(tools.network()),
     ...[toolsLine(), librariesLine()].filter(Boolean),
+    ...(!s.coordinates && sandboxNix() ? [NIX_LINE] : []),
     ...(machines.length ? [`Machines you can work on over SSH, with the machine argument: ${machines.join(", ")}. The sandbox's network settings don't apply there.`] : []),
     // Named only where the proxmox tool is: a subagent keeps its parent's machines but has no such tool.
     ...(pves.length && tools.proxmox ? [`Proxmox machines you can manage with the proxmox tool: ${pves.join(", ")}.`] : []),
@@ -619,6 +620,9 @@ export function toolsLine(t: { programs: string[]; python?: string[]; browser?: 
   if (t.browser) parts.push("To check a page, use page preview. To script a browser (clicks, several pages), Playwright and Puppeteer use the same Chromium, never their own download: `executablePath: process.env.CHROME_PATH` and `args: [\"--no-sandbox\"]`. A static page is checked once it parses and one preview looks right.");
   return parts.join(" ");
 }
+
+/** Nix in her sandbox (docs/workspace.md, "Nix"): she once unpacked Nix into every command and turned its build sandbox off, because /nix didn't last. */
+export const NIX_LINE = "Nix is installed, with flakes on: nix develop, nix build and nix flake check work in any command, with Nix's own build sandbox, and what they build or download stays in /nix between commands and conversations. Don't install Nix yourself or copy anything into /nix/store. When /nix grows large, nix-collect-garbage removes what nothing uses.";
 
 /** With internet off, what can't be fetched stays unchecked rather than worked around. */
 export const OFFLINE_LINE = "Public CDNs and package registries are out of reach, so don't mirror or proxy them: say what you couldn't check, or ask the person to turn Internet on or allow the host.";

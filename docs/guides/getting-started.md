@@ -78,7 +78,9 @@ These are estimates. None was measured on a real host.
   NixOS the Nix store holds the system, the package and the sandbox tools
   (inferred: 15 to 20 GB with a few generations). Headless Chromium and
   its fonts, for her screenshots, add about 1 GB on either system. Her
-  databases, snapshots and users' files grow on top of that.
+  databases, snapshots and users' files grow on top of that, and so does
+  each pool's Nix store in a user's home (inferred: a few GB once she
+  builds with Nix, until she collects garbage).
 - **One machine for both.** From the model host's sizing: the minimum
   runs Qwen3.8-27B (Q4_K_M) at 128k context with a q8_0 KV cache, not 1M.
   The suggested card memory runs 1M at a q4_0 KV cache with speech
@@ -362,8 +364,9 @@ answers ahead; without a terminal the answer is no), then:
    sandboxes can take screenshots, Anthropic's Claude Code
    (`@anthropic-ai/claude-code`, at the version the script pins) with
    `npm install -g --prefix /opt/lyrica/tools`, and OpenAI's Codex
-   (`@openai/codex`, also pinned) for ChatGPT Images; if either fails it
-   only prints a warning. IBM Plex, the web UI's and her screenshots'
+   (`@openai/codex`, also pinned) for ChatGPT Images, and the official
+   Nix binary tarball (pinned, in `/opt/lyrica/tools/lib/nix`) for Nix
+   in her sandbox; if any of them fails it only prints a warning. IBM Plex, the web UI's and her screenshots'
    font, comes from apt (`fonts-ibm-plex`). An install from before
    2026-11-01 had those three programs in `/usr/local`; this run moves
    them and removes the old copies. When

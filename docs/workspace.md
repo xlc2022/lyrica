@@ -51,14 +51,17 @@ database files. A command that could see either one could read everything.
   her tool prefix `/opt/lyrica/tools` when the host has one, read-only,
   its `bin` first on the PATH (`TOOLS_PREFIX`: where install.sh puts
   Claude Code, Codex and headless Chromium, and an operator a local MCP
-  server, so nothing of hers goes into the host's own `/usr`). Its
+  server, so nothing of hers goes into the host's own `/usr`), and where
+  the host's sandboxes have Nix, her pool's Nix store at `/nix`,
+  read-write ([Nix](#nix)). Its
   environment is a fixed minimal set; nothing of `lyricad`'s is passed in.
 - On NixOS (`LYRICA_SANDBOX_TOOLS` set, docs/daemon.md "On NixOS") the
   system is the module's sandbox tools instead: they are `/usr`, with `/bin`
   and `/sbin` linking to `usr/bin`, and only the store paths listed in
   `LYRICA_SANDBOX_CLOSURE` (the tools' closure, Node's and the CA bundle's)
   are in `/nix/store`, never the whole store, which holds the system's
-  generated configs. Lyrica's own package isn't among them; only the
+  generated configs (mounted over her pool's own Nix store, read-only,
+  where she has one). Lyrica's own package isn't among them; only the
   offline libraries' folders in its `node_modules` are mounted, at
   `/opt/libs`. Both must be
   store paths and the list must contain the tools, or the sandbox refuses
@@ -661,6 +664,8 @@ fixed actions, the token never shown to her.
   subagent works in its parent's folder; ordinary child threads share their
   parent's too, while code children have their own. The gocryptfs password is the hex
   `home` subkey, passed on stdin.
+- `nix/<pool>` there is the pool's Nix store, mounted at `/nix` in her
+  runs ([Nix](#nix)).
 - `codex/` there is Codex's home for ChatGPT Images (`Workspace.codexDir`,
   docs/models.md, "Image canvases"): its sign-in and anything it writes,
   encrypted like the rest. It is the only folder in Codex's own sandbox
@@ -1629,7 +1634,9 @@ her account is general.
   a native module with no prebuilt binary, as Debian's build-essential does): the SQLite binding loads its prebuilt `prebuilds/linux-x64.node`. The tests that need FUSE or a tun device
   (encrypted homes, rewind, uploads, network switches, the SSH helper)
   skip there, since her sandbox has neither; CI runs them with
-  `LYRICA_SANDBOX_TESTS=require`, so they can't skip. The e2e tests use
+  `LYRICA_SANDBOX_TESTS=require`, so they can't skip. `nix flake check`
+  and `nix build` run there too, in her pool's Nix store ([Nix](#nix)), so
+  a change to the flake or `nix/` is checked before CI's nix job. The e2e tests use
   Playwright's own Chromium where it is downloaded and can run, and the
   sandbox's (`CHROME_PATH`) where it isn't or can't: on NixOS, which has
   no `/lib64/ld-linux-x86-64.so.2`, the download can't start.
@@ -1919,7 +1926,10 @@ sandbox that is new for each command, and, only when it
 finds Chromium, points her to `page preview` for checking a page, says how
 Playwright or Puppeteer use that browser, and that a static page is checked
 once it parses and one preview looks right. It then names the offline
-libraries with their versions (`librariesLine`). Subagents and child threads
+libraries with their versions (`librariesLine`), and, where her runs have
+a Nix store, says Nix is there with flakes on, that what it builds lasts in
+`/nix`, not to install Nix herself or copy into `/nix/store`, and that
+`nix-collect-garbage` frees space (`NIX_LINE`). Subagents and child threads
 get the same section. Every run's environment has `SSL_CERT_FILE`, `NODE_EXTRA_CA_CERTS`
 and `REQUESTS_CA_BUNDLE` set to the real path of the host's
 `/etc/ssl/certs/ca-certificates.crt` (on NixOS its store path, which the
@@ -1975,6 +1985,51 @@ tween.js come with Lyrica (core's dependencies) and are mounted read-only
 at `/opt/libs/<package>` in every sandbox, so a page can use them with
 internet off. Her prompt names them with their versions and tells her to
 use one rather than write an engine.
+
+## Nix
+
+Her sandbox has Nix, with flakes, wherever the host's sandbox tools give
+it (`core/src/workspace/nix.ts`): `nix develop`, `nix build` and `nix
+flake check` work in any command, and what they build or download lasts
+between commands and threads. Before this she unpacked Nix into every
+command, kept a whole build in one job and turned Nix's build sandbox
+off, because each run's `/nix` was gone when it ended.
+
+- **One store per user and pool**, in the encrypted home workspace at
+  `nix/<pool>` (`Workspace.nixDir`), mounted read-write at `/nix` in every
+  run of that pool's threads (`SandboxSpec.nix`). Pools don't share one,
+  since building a flake copies its source into the store. A project
+  chat's runs have none, since they change nothing. Nix runs single-user,
+  as `lyricad`'s user, with no daemon or build users.
+- **Where Nix comes from.** On NixOS, `nix` among the sandbox tools
+  (`nix/sandbox-tools.nix`): its closure is already mounted read-only at
+  its `/nix/store` paths, now over her store. On Debian and Ubuntu,
+  install.sh unpacks the official Nix binary tarball (pinned version and
+  sha256) into her tool prefix at `/opt/lyrica/tools/lib/nix`; each run
+  mounts its store paths read-only at their `/nix/store` paths and puts
+  its `bin` at the end of the PATH. Nothing goes into the host's own
+  `/nix`. Without either, runs have no `/nix`.
+- **Registered once.** The first run after the tools change registers
+  their store paths in the store's database (`nix-store --load-db`, from
+  the closure's `registration` beside `LYRICA_SANDBOX_CLOSURE`, or the
+  tarball's `.reginfo`) and roots each one under
+  `/nix/var/nix/gcroots/lyrica`, so Nix treats them as its own and garbage
+  collection never touches them. It runs `nix-store --verify` first,
+  which drops paths an update took away. `var/lyrica/registered` in the
+  store holds the registration's sha256; a lock keeps two first runs from
+  doing it together. It runs in a sandbox of its own with no network. If
+  it fails, `lyricad` logs why and the run goes on.
+- **Settings** (`NIX_CONFIG` in every run with a store): `nix-command` and
+  `flakes` on, an empty `build-users-group`, and `sandbox = true` with
+  `sandbox-fallback`, so builds get Nix's own sandbox nested inside hers
+  where the kernel allows a further user namespace, and run without it
+  where it doesn't. `NIX_SSL_CERT_FILE` is the CA bundle. Her own
+  `nix.conf` under `~/.config/nix` adds to them. Fetching needs the
+  thread's internet on, or `cache.nixos.org` and the flake inputs' hosts
+  allowed.
+- **Space.** The store only grows until she runs `nix-collect-garbage`,
+  which her prompt mentions. It counts against the home workspace like
+  her other files. Deleting the user deletes it with the home.
 
 ## Host requirements
 
