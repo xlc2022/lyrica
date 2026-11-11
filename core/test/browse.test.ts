@@ -14,7 +14,7 @@ const chromium = [process.env.CHROME_PATH, sandboxTools().browser, "/usr/bin/goo
 
 const SHOP = `<title>Shop</title><h1>Shop</h1><p>Welcome to the <a href="/two">second page</a>.</p>
 <form action="/find"><input type="search" name="q" placeholder="Search"><button>Go</button></form>
-<form method="post" action="/login"><label>Email <input name="email"></label><label for="pw">Password</label><input id="pw" type="password" name="pw">
+<form method="post" action="/login"><label>Email: <input name="email"></label><label for="pw">Password</label><input id="pw" type="password" name="pw">
 <select name="c" aria-label="Country"><option>Austria</option><option>Brazil</option></select><button type="submit">Sign in</button></form>
 <div id="js" style="cursor:pointer">Poster</div><div style="display:none">hidden words</div>
 <script>document.getElementById("js").addEventListener("click", () => { const f = document.createElement("form"); f.method = "post"; f.action = "/login"; document.body.append(f); f.submit(); });</script>`;
@@ -31,7 +31,7 @@ describe.skipIf(!chromium)("the browse tool's browser", () => {
       req.on("end", () => {
         const url = new URL(req.url ?? "/", "http://x");
         res.setHeader("content-type", "text/html");
-        if (req.method === "POST") { posts.push(body); res.setHeader("set-cookie", "sid=abc; Max-Age=9999"); return res.end("<title>In</title><p>Signed in</p>"); }
+        if (req.method === "POST") { posts.push(body); res.setHeader("set-cookie", ["sid=abc; Max-Age=9999", "visit=now"]); return res.end("<title>In</title><p>Signed in</p>"); }
         if (url.pathname === "/find") return res.end(`<title>Results</title><p>Results for ${url.searchParams.get("q")}</p>`);
         if (url.pathname === "/two") return res.end(`<title>Two</title><p>Cookie: ${req.headers.cookie ?? "none"}</p>`);
         res.end(SHOP);
@@ -113,6 +113,7 @@ describe.skipIf(!chromium)("the browse tool's browser", () => {
     expect(posts.length).toBe(1);
   }, 60_000);
 
+  // A cookie with no end date too: many sites' logins are one.
   it("keeps a login when the browser closes and opens again", async () => {
     const b = browser("d");
     const page = await b.act("1", { action: "open", url: site });
@@ -120,6 +121,17 @@ describe.skipIf(!chromium)("the browse tool's browser", () => {
     await b.act("2", { action: "click", ref: ref(page.text, "Sign in") });
     await b.act("3", { action: "close" });
     expect(b.running).toBe(false);
-    expect((await b.act("4", { action: "open", url: `${site}/two` })).text).toContain("Cookie: sid=abc");
+    expect((await b.act("4", { action: "open", url: `${site}/two` })).text).toMatch(/Cookie: (?=.*sid=abc)(?=.*visit=now)/);
+  }, 60_000);
+  it("keeps a fresh login when the browser is killed", async () => {
+    let child: ReturnType<typeof spawn> | undefined;
+    const b = new Browser(async () => (child = spawn(process.execPath, ["-e", BROWSE_SCRIPT, join(dir, "e"), "test"], { stdio: ["pipe", "pipe", "ignore"], env: { ...process.env, CHROME_PATH: chromium } })) as BrowserProcess);
+    browsers.push(b);
+    const page = await b.act("1", { action: "open", url: site });
+    b.approve("2");
+    await b.act("2", { action: "click", ref: ref(page.text, "Sign in") });
+    child!.kill("SIGKILL");
+    await new Promise((r) => setTimeout(r, 1000));
+    expect((await b.act("3", { action: "open", url: `${site}/two` })).text).toMatch(/Cookie: (?=.*sid=abc)(?=.*visit=now)/);
   }, 60_000);
 });

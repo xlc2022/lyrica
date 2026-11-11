@@ -47,7 +47,9 @@ prompt).
 6. **A profile that lasts.** Chromium's profile is the thread's own
    folder in the user's encrypted home (`browser/<thread>`), mounted only
    into that thread's browser run, so a login outlasts the browser's
-   idle close and a restart. The sweep removes it with the thread.
+   idle close and a restart. The driver keeps the cookies in a file there
+   after each action and gives them back at the next start. The sweep
+   removes it with the thread.
 7. **What asks first, in every mode.** Sending a form: a click on a
    form's submit control, or `type` with `submit` in a form's field. The
    card names the site and shows what would be sent, passwords as dots.
@@ -93,6 +95,11 @@ Done: everything under "What is built", merged as #934. PR review left one
 optional note, not built: the user's yes is for the tool call, not for the
 exact form the card showed, so a page's script could change the form
 between the card and the click; binding the yes to a digest of the form
-would close that. Next: the owner asked for a test on the dev deployment
-across a variety of sites; its plan is with the coordinator. Open
+would close that. The dev deployment's test (2026-11-11, 16 steps on a variety of sites)
+found three things, fixed after it: a login lost after `close`, a doubled
+colon on the card when a field's label ends in one, and a first `open`
+failing once with a network-changed error (now tried once more). The lost
+login wasn't reproduced outside that deployment, so it wants a retest
+there. A search form that posts (DuckDuckGo's plain page) asks, by (7);
+whether it should is the owner's call. Open
 questions: the two under "Open for the owner".

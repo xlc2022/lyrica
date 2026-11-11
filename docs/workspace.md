@@ -1204,7 +1204,10 @@ The **Web search** switch gives her two tools (`extension/src/web.ts`,
   browser's profile at `/run/lyrica/browser`, and nothing else, so a page
   has no folder, file or credential of the thread's to reach. The profile
   is `browser/<thread>` in the user's encrypted home, which is how a
-  login outlasts the browser; the sweep removes it with the thread. The
+  login outlasts the browser; the driver also keeps the cookies in a file
+  there after each action and gives them back at the next start, so a
+  login with no end date, or a browser that was killed, keeps them too.
+  The sweep removes it with the thread. The
   browser holds one of the thread's four background slots (`jobs` lists
   it as the browse tool's browser, and `jobs stop` ends it), closes after
   10 minutes unused, and is killed if one action takes over 90 seconds.
