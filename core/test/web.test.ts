@@ -89,6 +89,10 @@ describe("web_fetch's reading", () => {
 
   it("refuses other types and says what curl's failures mean", async () => {
     expect((await fetchedPage("https://i.example/a.png", curl("x", "image/png"))).text).toContain("reads only HTML, text and PDF");
+    // Anubis answers 200 with its check page, which a browser passes and curl never does.
+    const anubis = await fetchedPage("https://r.example/a", curl(`<html><head><title>Making sure you're not a bot!</title></head><body><script id="anubis_challenge" type="application/json">{"rules":{}}</script><script src="/.within.website/x/cmd/anubis/static/js/main.mjs"></script></body></html>`, "text/html"));
+    expect(anubis).toMatchObject({ isError: true, refused: true });
+    expect(anubis.text).toBe("https://r.example/a answered with Anubis's check, which a browser passes by itself in a few seconds.");
     expect((await fetchedPage("https://big.example", { code: 63, stdout: Buffer.alloc(0), stderr: Buffer.alloc(0) })).text).toContain("larger than 10 MB");
   });
 

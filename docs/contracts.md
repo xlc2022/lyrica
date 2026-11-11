@@ -1689,7 +1689,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     killed after 30 s or once its resident memory passes 768 MB, since
     pdf.js decodes streams outside the JS heap); text
     and JSON pass through; other types are refused. A 401, 403 or 429 is
-    `refused`; with `browser`, `web_fetch`'s failure then adds that the
+    `refused`, and so is Anubis's check page (`htmlPage`); with `browser`, `web_fetch`'s failure then adds that the
     site may answer a browser and to open the same address with `browse`. HTML that is nearly
     empty and has scripts (`thin`) is rendered once more when `canRender()`
     (the sandbox has Chromium and node): `renderArgv` runs
@@ -1788,7 +1788,9 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     call that takes over `BROWSE_MS` kills it. The driver takes one JSON
     line per request on stdin and answers one per line: `{ url, title,
     text, notes }`, `{ image }` for a screenshot (JPEG, base64), or
-    `{ fail }`. `text` is the page in reading order, each thing to act on
+    `{ fail }`. After a page loads, while it is an Anubis check page
+    (`#anubis_challenge`) the driver waits up to 30 s for the page it
+    leads to. `text` is the page in reading order, each thing to act on
     on its own line as `[n] kind "name"` (a field's value after `=`, a
     password's as dots); numbers are kept per element in a world of the
     driver's own in the page and never reused in a browser's life. The

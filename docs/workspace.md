@@ -1272,8 +1272,10 @@ The **Web search** switch gives her two tools (`extension/src/web.ts`,
   (when it has Chromium and node), under the same network switches,
   without images or media, and the fuller text is kept. The result is cut
   to `maxChars`, and the note says which `offset` reads on. When the site
-  refuses the fetch (401, 403 or 429) and the thread has `browse`, the
-  failure says to open the same address with `browse`. Nothing is
+  refuses the fetch (401, 403 or 429, or Anubis's proof-of-work check
+  page) and the thread has `browse`, the failure says to open the same
+  address with `browse`, which waits up to 30 seconds for an Anubis check
+  to pass and reads the page it leads to. Nothing is
   written to disk: Chromium writes only to the sandbox's `/tmp`, which is
   in memory and gone when the run ends.
 - Both tools put what they return between two markers holding a code
