@@ -6,7 +6,7 @@ import {
   ANSWER, CLOUD_IMAGE_PROVIDERS, recentWorkAllowed, WELCOME_LIMITS, describe, AuthError, isPlan, type PlanKind, NoRecoveryCopy, WrongPassword, isEmoji, WORKDIR, CAPABILITIES, FilesRefused, checkTask, isRestricted, voiceContext, refId, THINKING_LEVELS, publicKeyOf, authorizedKeysLine, proxmoxAddress, CloudModelForbidden, FROM_PARENT, NoModel, WAKEUP, ROUTINE, WATCHING, PRONOUN_PRESETS, projectSlug,
   citationsIn, exportMemories, importMemories, exportSkills, importSkills, firstLine, GIT_KINDS, kindOf, mcpCommand, mcpCommandLine, mcpEnv, mcpLimit, mcpPlace, sentenceCiting, splitId, HomeFileMissing, MAX_IMAGE_BYTES,
   type Author, type Column, type Endpoint, type ModelRef, type Offering, type Hit, type Item, type GitAccountConfig, type MachineConfig, type McpServerConfig, type OwnerView, type Pool, type PoolStore, type SleepItem, type SleepRunRecord, type Thread, type ThreadPref, type User,
-  searxngAddress, searxngStatus, searxngView, setSearxngAddress, kiwixAddress, kiwixArticle, kiwixPicture, kiwixStatus, setKiwixAddress, forgetKiwixBooks, claudeCodeInstalled, modelName,
+  botChecks, setBotChecks, searxngAddress, searxngStatus, searxngView, setSearxngAddress, kiwixAddress, kiwixArticle, kiwixPicture, kiwixStatus, setKiwixAddress, forgetKiwixBooks, claudeCodeInstalled, modelName,
   codexSignedIn, codexSignIn, codexSignOut, type CodexBox, type CodexSignIn, serverZone, zoneOf,
   ChangesUnavailable, type ByteRange, commitFiles, fileSides, repositoryChanges, type ExecutionTarget,
 } from "@lyrica/core";
@@ -2308,7 +2308,8 @@ export function apiRoutes(d: Lyricad): Route[] {
     }),
     route("PUT", `${u}/admin/web-search`, async (r): Promise<Api.WebSearch> => {
       d.adminFor(r);
-      const { searxng, kiwix } = await r.json<Partial<Pick<Api.WebSearch, "searxng" | "kiwix">>>();
+      const { searxng, kiwix, botChecks } = await r.json<Partial<Pick<Api.WebSearch, "searxng" | "kiwix" | "botChecks">>>();
+      if (botChecks !== undefined) setBotChecks(d.keyring.self(), botChecks === true);
       if (searxng !== undefined) setSearxngAddress(d.keyring.self(), typeof searxng === "string" ? searxng : null);
       if (kiwix !== undefined) { setKiwixAddress(d.keyring.self(), typeof kiwix === "string" ? kiwix : null); forgetKiwixBooks(); }
       return webSearchView(d);
@@ -2334,7 +2335,7 @@ async function webSearchView(d: Lyricad): Promise<Api.WebSearch> {
   const searxng = searxngAddress(d.keyring.self());
   const kiwix = kiwixAddress(d.keyring.self());
   const [s, k] = await Promise.all([searxngStatus(searxng), kiwixStatus(kiwix)]);
-  return { ...searxngView(searxng), ...s, kiwix, ...k };
+  return { ...searxngView(searxng), ...s, kiwix, ...k, botChecks: botChecks(d.keyring.self()) };
 }
 
 /** What a wipe waits for, as an administrator may see it: the user's display name, never a thread's title. */

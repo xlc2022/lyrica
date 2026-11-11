@@ -1250,7 +1250,11 @@ The **Web search** switch gives her two tools (`extension/src/web.ts`,
   browser, so nothing reaches the site, and the same click asks from
   then on. A plain click can still make a page's script send something,
   as a command in the sandbox can. Downloads are refused, frames aren't
-  read, and a link that opens a new tab opens in the one tab. The main
+  read, and a link that opens a new tab opens in the one tab. A check
+  box in the page that names a robot, human or bot gets a line after the
+  page saying she may tick it, only while an administrator has turned on
+  **Tick bot checks** (Administration → Web search, off by default);
+  off, she is told nothing about it. One inside a frame isn't seen. The main
   conversation and a project chat have it, and a subagent whose role
   lists it (the researcher): its browser and profile are its own, with
   none of its parent's logins, and close when it ends.

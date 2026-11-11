@@ -8,7 +8,7 @@ import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  adoptLocalKiwix, adoptLocalSearxng, bootstrap, kiwixAddress, isMounted, codexImage, DEFAULT_NAME, HostRefused, isRestricted, Keyring, Memory, Models, Offline, PersonaProposals, PersonaStore, PRONOUN_PRESETS, searxngAddress, selfName, setSelfName,
+  adoptLocalKiwix, adoptLocalSearxng, bootstrap, botChecks, kiwixAddress, isMounted, codexImage, DEFAULT_NAME, HostRefused, isRestricted, Keyring, Memory, Models, Offline, PersonaProposals, PersonaStore, PRONOUN_PRESETS, searxngAddress, selfName, setSelfName,
   SystemdCredentials, ThreadPrefs, ThreadShares, Users, WrongPassword, Workspace, finishWipe, jobNotice, STOPPED_BY_HER, homeWiped, homeWipePending, useTailnetProxy, wipePending, wipePools,
   localDate, localTime, serverZone, zoneOf,
   type Argon2Params, type CredentialStore, type Pool, type ThreadsLimits, type User,
@@ -604,7 +604,7 @@ export class Lyricad implements Drainable {
     // A subagent's approvals are asked in its thread and its parent's, through the host built next.
     let host!: ThreadHost;
     let forge!: ForgeWatcher;
-    const delegation = new Delegation({ users, memory, models, workspace, cwd, limits: this.opts.delegation, approve: (r, signal) => host.approveSubagent(r, signal), name: () => selfName(keyring.self()), searxng: () => searxngAddress(keyring.self()), kiwix: () => kiwixAddress(keyring.self()),
+    const delegation = new Delegation({ users, memory, models, workspace, cwd, limits: this.opts.delegation, approve: (r, signal) => host.approveSubagent(r, signal), name: () => selfName(keyring.self()), searxng: () => searxngAddress(keyring.self()), kiwix: () => kiwixAddress(keyring.self()), botChecks: () => botChecks(keyring.self()),
       // The Claude plan's usage limit stopped a claude run: its parent carries on a minute after the reset, as a cut-off turn does for its plan.
       onClaudeLimit: (parent, until) => {
         const id = claudePlanId(parent.user.id);
@@ -685,7 +685,7 @@ export class Lyricad implements Drainable {
       },
     });
     host = new ThreadHost({
-      users, memory, models, workspace, persona, delegation, cwd, log: this.log, sameFile, searxng: () => searxngAddress(keyring.self()), kiwix: () => kiwixAddress(keyring.self()), name: () => selfName(keyring.self()),
+      users, memory, models, workspace, persona, delegation, cwd, log: this.log, sameFile, searxng: () => searxngAddress(keyring.self()), kiwix: () => kiwixAddress(keyring.self()), botChecks: () => botChecks(keyring.self()), name: () => selfName(keyring.self()),
       idleMs: this.opts.idleMs ?? 15 * 60_000, permissionMs: this.opts.permissionMs ?? 5 * 60_000, offlineRetryMs: this.opts.offlineRetryMs,
       codePulls: (u, p, t) => forge.codePulls(u, p, t),
       // The thread list hears when a clip starts and ends, so its row pulses meanwhile (docs/ux.md §6).

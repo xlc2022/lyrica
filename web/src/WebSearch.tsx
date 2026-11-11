@@ -1,9 +1,11 @@
 // Administration → Web search (docs/ux.md §6 "A web search provider"): the
-// server's one SearXNG address, and the kiwix-serve with its offline copy of Wikipedia.
+// server's one SearXNG address, the kiwix-serve with its offline copy of Wikipedia, and whether browse may
+// tick a simple bot-check box.
 import { useState } from "react";
 import { get, put, u, type WebSearch } from "./api.ts";
+import { her } from "./name.ts";
 import type { ShellContext } from "./Shell.tsx";
-import { ErrorText, useAction, useLoad } from "./ui.tsx";
+import { ErrorText, Switch, useAction, useLoad } from "./ui.tsx";
 
 export function WebSearchSection({ ctx }: { ctx: ShellContext }) {
   const path = u(ctx.user.id, "admin", "web-search");
@@ -42,6 +44,8 @@ export function WebSearchSection({ ctx }: { ctx: ShellContext }) {
         {s && s.kiwixState !== "unset" && state("kiwix", s.kiwixState === "reachable", s.kiwixState === "reachable" ? books : s.kiwixReason)}
         <div className="inline"><button className="primary" disabled={busy || !changed}>Save</button></div>
       </form>
+      {s && <Switch label="Tick bot checks" hint={`Off, ${her()} gets no word about them. On, when a page she browses shows a simple “I'm not a robot” check box, she may tick it.`}
+        checked={s.botChecks} disabled={busy} onChange={(on) => run(async () => search.set(await put<WebSearch>(path, { botChecks: on })))} />}
     </section>
   );
 }

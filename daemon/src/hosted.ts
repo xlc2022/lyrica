@@ -35,6 +35,8 @@ export interface HostOptions {
   searxng?: () => string | null;
   /** The server's kiwix-serve address: the offline copy of Wikipedia, in web_search and web_fetch. */
   kiwix?: () => string | null;
+  /** Whether browse may tick a simple bot-check box (Administration → Web search). */
+  botChecks?: () => boolean;
   /** Child threads: every hosted thread gets the `threads` tool. */
   threads?: ThreadsHost;
   codePulls?: (userId: string, pool: Pool, threadId: string) => string[];
@@ -1180,7 +1182,7 @@ export class HostedThread {
           }),
           // web_search and web_fetch, behind the Web search switch; a fetch runs in the thread's sandbox.
           // browse too: the thread's own browser, in a sandbox with its network and nothing else of the thread's. A project chat has it too (the owner, 2026-11-11); a subagent's is its own (delegate/runs.ts).
-          createWebExtension({ searxng: () => this.o.searxng?.(), kiwix: () => this.o.kiwix?.(), target: () => tools.target(), canRender: () => !!sandboxTools().browser && sandboxHas("node"),
+          createWebExtension({ searxng: () => this.o.searxng?.(), kiwix: () => this.o.kiwix?.(), botChecks: () => !!this.o.botChecks?.(), target: () => tools.target(), canRender: () => !!sandboxTools().browser && sandboxHas("node"),
             ...(!thread.subagent && sandboxTools().browser && sandboxHas("node") ? { browser: () => tools.browser() } : {}) }),
           // A file she wrote that doesn't parse is said in the write's own result.
           createSyntaxExtension({ target: (m) => tools.target(m) }),

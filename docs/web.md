@@ -999,7 +999,8 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   dot and a word, what failed as its tooltip; then **Kiwix address** in mono
   (the offline copy of Wikipedia) and its own state word, whose
   Reachable tooltip lists the books kiwix-serve has; one Save for both,
-  enabled once either changed; `GET`/`PUT …/admin/web-search`),
+  enabled once either changed; then the **Tick bot checks** switch, saved
+  when toggled; `GET`/`PUT …/admin/web-search`),
   **Persona**: the persona changes that users sent on, the
   file now and the proposed text side by side, rendered as Markdown
   (who sent them, whether they edited them, and a confirmation when the file
