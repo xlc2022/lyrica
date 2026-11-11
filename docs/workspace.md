@@ -1817,11 +1817,13 @@ chained or wrapped; it doesn't see inside scripts or programs she runs.
 `rules.ts` uses `simpleCommands` from `machines.ts`: chains, pipes,
 substitutions, subshells, shell `-c` arguments and find's `-exec`, `-execdir`
 and `-ok` commands are checked; quotes and backslashes inside words are
-removed. A here-document's body is the program's input, not commands, so
-`python3 - <<'EOF' … EOF` is read as `python3 -`; only the substitutions an
-unquoted delimiter lets run are checked. A body fed to a shell or to a
-program that runs its input (`ssh`, `su`, `docker`, `xargs`, … `RUNS_INPUT`)
-is checked as commands. A `$NAME` or `${NAME}` is read as its value when the line sets it
+removed. A here-document's body is checked as commands, unless its
+reader is plainly not a shell (`python…`, `node`, `perl`, `ruby`, `jq`,
+`cat`, `tee`, `READS_INPUT`, past any wrapper) and no pipe or process
+substitution follows it on the line. Then the body is that program's input:
+`python3 - <<'EOF' … EOF` is read as `python3 -`, with only the
+substitutions an unquoted delimiter lets run checked. `cat <<'EOF' | bash`,
+`sudo -s <<'EOF'` or any other reader keeps the body as commands. A `$NAME` or `${NAME}` is read as its value when the line sets it
 first, on its own and unquoted, to a plain value (letters, digits and
 `_ . / : @ % + , -`), and nothing else on the line could change it
 (`knownValues`): no pipe, `&&`, `||`, background, subshell, group,

@@ -167,13 +167,13 @@ export function knownValues(command: string): Map<string, string> {
   return values;
 }
 
-/** Programs that run what they read on their input as commands (as a shell does), so a here-document they read is commands. */
-const RUNS_INPUT = new Set(["ssh", "su", "docker", "podman", "kubectl", "lxc", "pct", "nsenter", "at", "batch", "xargs", "script", "expect", "eval", "source", "."]);
+/** Programs whose input is plainly not shell: a here-document only they read is data or their own code, not commands. */
+const READS_INPUT = /^(?:python[\d.]*|node|perl|ruby|jq|cat|tee)$/;
 
 function parse(command: string): string[][] {
   const commands: string[][] = [];
   let words: string[] = [], word = "", quote = "";
-  const heredocs: { word: string; tabs: boolean; quoted: boolean; reader: string[] }[] = [];
+  const heredocs: { word: string; tabs: boolean; quoted: boolean; reader: string[]; piped?: boolean }[] = [];
   const flushWord = () => { if (word) { words.push(word.replace(/["']/g, "")); word = ""; } };
   const flush = () => {
     flushWord();
@@ -228,8 +228,8 @@ function parse(command: string): string[][] {
           at = nl < 0 ? command.length : nl + 1;
           end = at;
         }
-        // Fed to a shell or something that runs it as commands, the body is commands.
-        if (h.reader.some((w) => SHELLS.has(posix.basename(w)) || RUNS_INPUT.has(posix.basename(w)))) commands.push(...parse(command.slice(body, end)));
+        // The body is commands unless its reader is plainly not a shell and nothing later in a pipeline could run it.
+        if (h.piped || !READS_INPUT.test(unwrapped(h.reader)[0] ?? "")) commands.push(...parse(command.slice(body, end)));
         else if (!h.quoted) for (const m of command.slice(body, end).matchAll(/\$\(|`/g)) {
           const text = command.slice(body + m.index!);
           let close = m[0].length, depth = 1;
@@ -242,6 +242,8 @@ function parse(command: string): string[][] {
       }
       i = at - 1; continue;
     }
+    // A pipe or process substitution after a here-document could hand its body to a shell.
+    if (!quote && (ch === "|" || (ch === "(" && /[<>]$/.test(word)))) for (const h of heredocs) h.piped = true;
     if (!quote && /[;&|\n(){}]/.test(ch)) { flush(); continue; }
     if (!quote && /\s/.test(ch)) { flushWord(); continue; }
     word += ch;

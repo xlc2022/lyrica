@@ -21,7 +21,8 @@ describe("project command matching", () => {
     const command = "cd /tmp && curl -s -o p.json https://example.org/p.json && python3 - <<'EOF'\nimport json\nd=json.load(open('/tmp/p.json'))\nfor k,v in sorted(d['profiles'].items()):\n    print(f\"{k:26s} {','.join(v) if v else '-'}\")\nEOF";
     expect(decide(command, DEFAULT_COMMAND_RULES)).toBeUndefined();
     expect(decide("cat <<'EOF' > notes.txt\ngit push --force\nEOF\nls", DEFAULT_COMMAND_RULES)).toBeUndefined();
-    for (const run of ["bash <<'EOF'\ngit push --force\nEOF", "ssh host <<EOF\ngit push -f\nEOF", "cat <<EOF\n$(git push --force)\nEOF", "sudo bash <<-EOF\n\tgit push --force\n\tEOF"]) {
+    for (const run of ["bash <<'EOF'\ngit push --force\nEOF", "ssh host <<EOF\ngit push -f\nEOF", "cat <<'EOF' | bash\ngit push --force\nEOF", "cat <<'EOF' > >(bash)\ngit push --force\nEOF",
+      "sudo -s <<'EOF'\ngit push --force\nEOF", "runuser -u ada <<'EOF'\ngit push --force\nEOF", "cat <<EOF\n$(git push --force)\nEOF", "sudo bash <<-EOF\n\tgit push --force\n\tEOF"]) {
       expect(decide(run, DEFAULT_COMMAND_RULES)?.decision, run).toBe("forbid");
     }
   });
