@@ -10,6 +10,14 @@ export function nextRoutine(routines: RoutineInfo[]): RoutineInfo | undefined {
   return routines.filter(r => !r.paused).sort((a, b) => a.nextAt.localeCompare(b.nextAt))[0];
 }
 
+/** A project chat's routines: its own, then its threads' (from the user's whole list, kept to the project's threads in its pool), by thread. */
+export function projectRoutines(own: RoutineInfo[], all: RoutineInfo[] | undefined, threads: { id: string }[] | undefined, pool: string, here: string): RoutineInfo[] {
+  if (!all || !threads) return own;
+  const ids = new Set(threads.map(t => t.id));
+  const theirs = all.filter(r => r.pool === pool && r.threadId !== here && ids.has(r.threadId));
+  return [...own, ...theirs.sort((a, b) => a.threadTitle.localeCompare(b.threadTitle) || a.threadId.localeCompare(b.threadId) || a.nextAt.localeCompare(b.nextAt))];
+}
+
 export function ScheduleText({ text }: { text: string }) {
   return <>{text.split(/(\d+(?::\d+)?)/).map((part, i) => /^\d/.test(part) ? <span className="num" key={i}>{part}</span> : part)}</>;
 }
@@ -37,8 +45,9 @@ function RoutineTitle({ routine: r }: { routine: RoutineInfo }) {
   </span>;
 }
 
-export function RoutineRows({ userId, routines, linked, onChange }: {
-  userId: string; routines: RoutineInfo[]; linked?: boolean; onChange: () => void;
+/** `linked` gives every row its thread's link (Settings); `here` only the rows of another thread (a project chat's own popover holding its threads'). */
+export function RoutineRows({ userId, routines, linked, here, onChange }: {
+  userId: string; routines: RoutineInfo[]; linked?: boolean; here?: string; onChange: () => void;
 }) {
   const [run, busy, error] = useAction();
   return <>
@@ -47,7 +56,7 @@ export function RoutineRows({ userId, routines, linked, onChange }: {
       return <div className="wake-item routine-item" key={`${r.pool}/${r.id}`}>
         <div className="routine-facts">
           <RoutineTitle routine={r} />
-          {linked && <a href={href({ page: "thread", userId, pool: r.pool, threadId: r.threadId })}>{r.threadTitle}</a>}
+          {(linked || (here !== undefined && r.threadId !== here)) && <a href={href({ page: "thread", userId, pool: r.pool, threadId: r.threadId })}>{r.threadTitle}</a>}
           <span title={`In your time zone, ${timeZone()}`}><ScheduleText text={r.schedule} /></span>
           {r.paused ? <span className="muted">Paused</span> : <time className="num" dateTime={r.nextAt} title={fullTime(r.nextAt)}>{wakeTime(r.nextAt)}</time>}
         </div>
@@ -60,7 +69,7 @@ export function RoutineRows({ userId, routines, linked, onChange }: {
   </>;
 }
 
-export function RoutinesFact({ userId, routines, onChange }: { userId: string; routines: RoutineInfo[]; onChange: () => void }) {
+export function RoutinesFact({ userId, threadId, routines, onChange }: { userId: string; threadId: string; routines: RoutineInfo[]; onChange: () => void }) {
   const [open, setOpen] = useState(false);
   const anchor = useRef<HTMLSpanElement>(null);
   const close = useCallback(() => setOpen(false), []);
@@ -72,7 +81,7 @@ export function RoutinesFact({ userId, routines, onChange }: { userId: string; r
       Routine {next ? <span className="num">{wakeTime(next.nextAt)}</span> : <span className="muted">Paused</span>} <span className="caret" aria-hidden="true">▾</span>
     </button>
     {open && <div className="picker wake-pop routine-pop" role="dialog" aria-label="Routines">
-      <RoutineRows userId={userId} routines={routines} onChange={onChange} />
+      <RoutineRows userId={userId} routines={routines} here={threadId} onChange={onChange} />
     </div>}
   </span>;
 }

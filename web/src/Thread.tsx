@@ -1,6 +1,6 @@
 // One thread: header with its badges, the conversation, and the composer.
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { del, get, patch, post, put, threadPath, u, HttpError, type MachineInfo, type Message, type Pins, type Pool, type RemovalPlan, type RewindRequest, type SendResponse, type Subagents, type ThreadSettings, type ThreadSettingsChange, type ThreadSummary, type ThreadTombstone, type ThreadUsage, type WakeupInfo } from "./api.ts";
+import { del, get, patch, post, put, threadPath, u, HttpError, type MachineInfo, type Message, type Pins, type Pool, type RemovalPlan, type RoutineInfo, type RewindRequest, type SendResponse, type Subagents, type ThreadSettings, type ThreadSettingsChange, type ThreadSummary, type ThreadTombstone, type ThreadUsage, type WakeupInfo } from "./api.ts";
 import { Icon } from "./icons.tsx";
 import { hasConsequences, jumpTo, PinnedBadge, RemovalConfirm, useUndo, type Rewinder } from "./Rewind.tsx";
 import { JUMP_EVENT, JUMP_KEY, SHOW_EVENT, SHOW_KEY, take, type JumpRequest, type ShowRequest } from "./links.ts";
@@ -13,7 +13,7 @@ import { SubagentsDrawer } from "./Subagents.tsx";
 import { Composer } from "./Composer.tsx";
 import { ContextFact, newerContext } from "./ContextMeter.tsx";
 import { TokensFact } from "./Usage.tsx";
-import { RoutinesFact } from "./Routines.tsx";
+import { projectRoutines, RoutinesFact } from "./Routines.tsx";
 import { ChecklistButton } from "./Checklist.tsx";
 import { ChangesFact } from "./Changes.tsx";
 import { ModelBadge, SettingsDrawer } from "./Settings.tsx";
@@ -63,6 +63,10 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
     ...t.messages.flatMap((m) => m.role === "assistant" ? m.parts : []),
     ...t.live.items.flatMap((i) => i.role === "assistant" ? i.parts : []),
   ]), [t.messages, t.live.items]);
+  // A project chat's Routine fact also holds its threads' routines (docs/ux.md §6): the user's list, kept to the project's threads in this pool, after its own.
+  const userRoutines = useLoad(() => (isProject ? get<RoutineInfo[]>(u(userId, "routines")) : Promise.resolve(undefined)), [userId, isProject], [overview.data, settings.data]);
+  const routines = useMemo(() => projectRoutines(settings.data?.routines ?? [], isProject ? userRoutines.data : undefined, overview.data?.threads, pool, threadId),
+    [settings.data, isProject, overview.data, userRoutines.data, pool, threadId]);
   const usageProps = usage.data ? { usage: usage.data, userId, pool, threadId, threads: overview.data?.threads ?? threads } : undefined;
   useEffect(() => { if (t.live.children) refreshThreads(); }, [t.live.children, refreshThreads]);
   // Each thread's last update to the project chat, for its card.
@@ -311,7 +315,7 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
             {!!steps?.length && <ChecklistButton steps={steps} />}
             {!phone && usageProps && <TokensFact {...usageProps} />}
             {s?.project && overview.data && <ThreadsFact userId={userId} pool={pool} threadId={threadId} overview={overview.data} footer={phone && usageProps ? <TokensFact {...usageProps} inline /> : undefined} />}
-            {!!settings.data?.routines?.length && <RoutinesFact userId={userId} routines={settings.data.routines} onChange={refreshSettings} />}
+            {!!routines.length && <RoutinesFact userId={userId} threadId={threadId} routines={routines} onChange={refreshSettings} />}
             {!!settings.data?.wakeups?.length && <WakeupsFact base={base} wakeups={settings.data.wakeups} onChange={setWakeups} />}
             {settings.data?.localOnly && pool === "general" && <span className="badge"><span className="k local">local-only</span></span>}
             {settings.data?.grants.map((g) => (

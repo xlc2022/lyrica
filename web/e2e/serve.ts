@@ -71,10 +71,12 @@ function fakeModel() {
     req.on("end", async () => {
       // Synthetic routine labels, in encrypted stores; never a production route or real task text.
       if (req.method === "POST" && req.url === "/routines-fixture") {
-        const { userId } = JSON.parse(body) as { userId: string };
+        // `project`: the thread is one of a project chat's threads, whose header then holds its routines too.
+        const { userId, project } = JSON.parse(body) as { userId: string; project?: boolean };
         const view = daemon.services!.memory.openThreadView(userId, "general");
         try {
-          const thread = view.own.createThread({ interface: "web", title: "Garden checks" });
+          const chat = project ? view.own.createThread({ interface: "web", title: "Garden", project: true }) : undefined;
+          const thread = view.own.createThread({ interface: "web", title: "Garden checks", ...(chat ? { parent: chat.id, child: true } : {}) });
           const schedule = { kind: "daily" as const, time: "08:00" };
           const id = view.own.addRoutine(thread.id, schedule, "Execution-only fixture instructions.", false, undefined, undefined,
             { title: "Watering review", description: "Reviews the watering plan for the garden." });
@@ -82,7 +84,7 @@ function fakeModel() {
             { title: "Greenhouse planting and watering review for the next growing season", description: "Reviews the greenhouse planting plan, checks the watering rota and gathers the questions for the next growing season. Summarises the tasks that need attention without changing the plan or ordering supplies." });
           view.own.pauseRoutine(thread.id, paused, true);
           const legacy = view.own.addRoutine(thread.id, schedule, "Legacy execution-only fixture.", true);
-          res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ threadId: thread.id, id, paused, legacy }));
+          res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ threadId: thread.id, projectId: chat?.id, id, paused, legacy }));
         } finally { view.close(); }
         return;
       }

@@ -62,6 +62,27 @@ test("under a closed run of tool calls, the request's counts show while she read
   await noHorizontalScroll(page);
 });
 
+test("a project chat's Routine fact holds its threads' routines, each linked to its thread", async ({ page, baseURL, request }) => {
+  const userId = await enter(page, baseURL!);
+  const seeded = await request.post(`http://127.0.0.1:${Number(new URL(baseURL!).port) + 10}/routines-fixture`, { data: { userId, project: true } });
+  expect(seeded.ok()).toBe(true);
+  const { threadId, projectId } = await seeded.json() as { threadId: string; projectId: string };
+  await page.goto(`/#/u/${userId}/t/general/${encodeURIComponent(projectId)}`);
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Garden");
+  await page.getByRole("button", { name: /^Routine / }).click();
+  const pop = page.getByRole("dialog", { name: "Routines", exact: true });
+  await expect(pop.locator(".routine-item")).toHaveCount(3);
+  await expect(pop.getByRole("link", { name: "Garden checks" }).first()).toHaveAttribute("href", new RegExp(encodeURIComponent(threadId)));
+  await expect(pop).not.toContainText("Execution-only");
+  await noHorizontalScroll(page);
+  // Remove reaches the thread's own routine from here; the fact goes with the last (and the next test starts with none).
+  for (let n = 3; n > 0; n--) {
+    await pop.locator(".routine-item").first().getByRole("button", { name: /^Remove routine/ }).click();
+    if (n > 1) await expect(pop.locator(".routine-item")).toHaveCount(n - 1);
+  }
+  await expect(page.getByRole("button", { name: /^Routine / })).toHaveCount(0);
+});
+
 test("routine titles explain their purpose on focus and touch without exposing instructions", async ({ page, baseURL, request }) => {
   const userId = await enter(page, baseURL!);
   const seeded = await request.post(`http://127.0.0.1:${Number(new URL(baseURL!).port) + 10}/routines-fixture`, { data: { userId } });
