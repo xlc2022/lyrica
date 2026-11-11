@@ -2105,7 +2105,7 @@ dialog .eyebrow { margin: 10px 0 4px; }
 .artifact-title { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .artifacts { display: grid; gap: 12px; max-width: 900px; padding: 16px var(--gutter) 24px; align-content: start; }
 .artifact-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
-.artifact-row { display: grid; justify-items: start; gap: 2px; width: 100%; min-height: var(--tap); padding: 10px 12px; text-align: left; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); }
+.artifact-list .artifact-row { display: grid; justify-items: start; justify-content: stretch; align-items: start; text-align: left; gap: 2px; width: 100%; min-height: var(--tap); padding: 10px 12px; text-align: left; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); }
 .artifact-row .cap { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .viewer-head .artifact-heading { font-size: 14px; font-weight: 500; }
 .viewer-head .artifact-rename { flex: 0 1 24ch; }
