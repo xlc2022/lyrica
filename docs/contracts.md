@@ -1242,6 +1242,12 @@ session `openThreadSession` opens, rewrites a reply's tool calls on
 JSON strings where the schema wants an object or array, and `TOOL_ALIASES`
 maps other harnesses' names to hers when no tool has the name and hers is
 active, noting it in the result; "Tool X not found" is reworded with her active tools.
+A reply with no tool call whose text holds calls in `<tool_call>` blocks
+(`textToolCalls`: Qwen's XML, closing `</parameter>` and `</function>`
+optional, or Hermes' JSON; outside code) has them turned into real calls
+(stop reason `toolUse`), the words around them kept, when every block reads
+and names a tool she has on now; otherwise the reply is left for the turn
+tool limits' text-call retry.
 Code turns use SOUL only, no topic routing, WAKE, about-user, page index or
 sleep opening; project, folders and pins remain. `setToolsOff` with reason
 `code` removes `models`, `download_model`, `model_files`, `image`, `react`.
@@ -1419,7 +1425,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   `<arg_key>…</arg_key><arg_value>…` pairs wrapped or not, or a call cut
   off unclosed (`<tool_call>` then `{` or `<function=`, or
   `<function=…>` then `<parameter=`). The run would end on it as her
-  reply.
+  reply. Calls the repair extension can read and run never get here.
   The first in a run, with no real tool call beside it, gets one hidden
   follow-up (`lyrica-text-tool-call-retry`, `CALL_THE_TOOL`, dropped at
   the next turn like the others) asking her to make the call. A second
