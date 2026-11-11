@@ -83,7 +83,11 @@ async function attachFrame(sid, id) {
   try {
     await send("Fetch.enable", { patterns: [{ urlPattern: "*", resourceType: "Document" }] }, sid);
     await send("Target.setAutoAttach", { autoAttach: true, waitForDebuggerOnStart: true, flatten: true }, sid);
-  } catch { frames.get(id).stuck = true; return; }
+  } catch {
+    const held = frames.get(id); // gone if the frame left meanwhile
+    if (held) held.stuck = true;
+    return;
+  }
   await quiet(send("Runtime.runIfWaitingForDebugger", {}, sid));
 }
 
