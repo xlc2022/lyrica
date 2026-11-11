@@ -642,7 +642,7 @@ fixed actions, the token never shown to her.
   grants, its clones, its own folder and `/shared`. It can read them and
   run checks, and the threads it starts get the grants as given, so every
   file is made or changed by a thread, whose folder the chat reads. A
-  report or document the person keeps is one too: her guidance has a
+  report the person asks for is one too: her guidance has a
   thread write it in its part of `/shared`, with everything she already
   found or drafted in its task, since a thread can't read the chat's
   messages, and she links the `/shared` path it reports
@@ -826,10 +826,10 @@ their subagents, at any depth (`familyRoot`, `WorkspaceSettings.family`).
 - The `threads` tool refuses a message over 8,000 characters, and any
   message or task holding a long base64 run, pointing at her own folder
   instead (`checkWords`). In a project chat, which writes no files, it
-  points at starting a thread with the whole text in its task (a task has
-  no length limit) to save it in its part of `/shared`, and at sending
-  more findings as several messages; a chat once looped on "your own
-  folder" (2026-11-11).
+  says to send a long message as several parts, and a report for the
+  person to a thread, with the whole text in its task (a task has no
+  length limit), that saves it in its part of `/shared`; a chat once
+  looped on "your own folder" (2026-11-11).
 
 ## Images and portrait photos
 
