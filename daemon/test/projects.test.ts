@@ -810,31 +810,50 @@ describe("projects", () => {
   });
 
   it("wait on the user, resolve and reopen, and refuse messages while paused", async () => {
-    const { d, ada, rt, script, say, get, messages, threadPath, path, overview } = await setup();
+    const { d, ada, rt, script, say, get, messages, threadPath, path, overview, project } = await setup();
+    // What a child does wakes its project chat at once here (childWakeMs 0): let that turn finish before scripting the next one.
+    const settle = async () => {
+      await new Promise((r) => setTimeout(r, 300));
+      await until(() => Promise.resolve(d.services!.host.busy(rt.ada.id, "general", project.id)), (b) => !b);
+    };
     script("chat").push(start(["DNS", "dns: move DNS"]), { text: "Started." });
     script("dns").push(tool({ action: "message", to: "parent", text: "Router or NAS?", needsYou: true }), { text: "Asked." });
     const id = ends((await say("move DNS")).events)[0]!.threads![0]!.id;
     await until(() => get(id), (t) => t.needsYou === true && t.state === "waiting");
     expect((await overview()).waiting).toBe(1);
     expect((await messages(path)).filter((m) => m.role === "notice").at(-1)).toMatchObject({ parts: [expect.objectContaining({ status: "waiting" })] });
-    // The project chat can't answer for the person: its message is kept without a turn, and it can't stop or resolve the wait away.
+    // Saying it waits on the person is attention, not a lock: the project chat answers who asks, its reply starts the
+    // thread, and the waiting clears. (Nothing authorises a decision: the card below still holds.)
     const replies = async () => (await messages(threadPath(id))).filter((m) => m.role === "assistant").length;
+    await settle();
     const before = await replies();
-    script("chat").push(tool({ action: "message", id, text: "Router, you have a yes." }), { text: "Answered." });
-    const held = JSON.stringify((await say("tell DNS: router")).events);
-    expect(held).toMatch(/waits on the person, and only their own answer lets it go on/);
-    expect(await get(id)).toMatchObject({ needsYou: true, state: "waiting" });
+    script("dns").push({ text: "I'll ask her which one." });
+    script("chat").push(tool({ action: "message", id, text: "Router, ask her which one." }), { text: "Told DNS." });
+    expect(JSON.stringify((await say("tell DNS: router")).events)).toMatch(/it starts a turn/);
+    expect((await until(() => get(id), (t) => !t.needsYou && t.state !== "waiting")).needsYou).toBeUndefined();
+    expect((await overview()).waiting).toBe(0);
+    await until(replies, (n) => n > before);
+    // A card is the lock: while it's open, the project chat can't answer for the person. Its message is kept without a
+    // turn, it can't resolve the wait away, and only the person's answer on the card releases the thread.
+    script("dns").push(tool({ action: "ask", question: "Which router?", options: [{ label: "Edge", consequence: "VLANs run here." }, { label: "NAS", consequence: "Fewer ports." }], recommended: 0 }), { text: "It's on a card." });
+    await ada.post(`${threadPath(id)}/messages`, { text: "Ask about the router." });
+    const card = (await until(() => get(id), (t) => !!t.question)).question!;
     expect((await overview()).waiting).toBe(1);
-    expect((await until(() => messages(threadPath(id)), (m) => m.some((x) => x.from?.kind === "parent" && /yes/.test(JSON.stringify(x))))).at(-1)).toMatchObject({ from: { kind: "parent" }, parts: [{ text: "Router, you have a yes." }] });
-    await new Promise((r) => setTimeout(r, 300));
-    expect(await replies()).toBe(before);
+    await settle();
+    const heldTurns = await replies();
+    script("chat").push(tool({ action: "message", id, text: "Edge, that's a yes from me." }), { text: "Waiting on her." });
+    expect(JSON.stringify((await say("tell DNS: edge")).events)).toMatch(/waits on the person's own answer to a card/);
+    await until(() => messages(threadPath(id)), (m) => m.some((x) => x.from?.kind === "parent" && /yes from me/.test(JSON.stringify(x))));
+    expect(await replies()).toBe(heldTurns);
     script("chat").push(tool({ action: "resolve", id }), { text: "Tried." });
     expect(JSON.stringify((await say("resolve DNS")).events)).toMatch(/only the person can answer it or set it aside/);
-    expect(await get(id)).toMatchObject({ needsYou: true, state: "waiting" });
-    // The user answers in the thread: it no longer waits, and its turn has the project chat's message too.
-    script("dns").push(tool({ action: "resolve" }), { text: "Done." });
-    await ada.post(`${threadPath(id)}/messages`, { text: "Router" });
-    expect((await until(() => get(id), (t) => t.state === "resolved")).needsYou).toBeUndefined();
+    expect((await get(id)).question).toMatchObject({ n: card.n });
+    // The person answers on the card, from the project chat's card route: the thread wakes, reads what waited in it,
+    // and no longer waits.
+    script("dns").push(tool({ action: "resolve" }), { text: "Edge it is." });
+    expect((await ada.post(`${threadPath(id)}/questions/${card.n}/answer`, { option: 0 })).status).toBe(204);
+    expect((await until(() => get(id), (t) => !t.question && t.state === "resolved")).needsYou).toBeUndefined();
+    expect((await overview()).waiting).toBe(0);
     // Reopen from the API; a message in a resolved thread reopens it too.
     expect((await ada.post<ThreadSummary>(`${threadPath(id)}/reopen`, {})).body.state).not.toBe("resolved");
     await ada.post(`${threadPath(id)}/resolve`, {});

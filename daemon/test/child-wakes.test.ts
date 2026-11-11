@@ -75,7 +75,7 @@ describe("child wake guards", () => {
     db.close();
   });
 
-  it("only the person clears what a thread waits on them for: another thread's message is held, and the parent can't stop or resolve it away", async () => {
+  it("only the person clears an open card: another thread's message is held, and the parent can't stop or resolve it away", async () => {
     const s = await setup();
     const store = s.from.view.own;
     const args = { action: "ask", question: "Download the image?", options: [{ label: "Yes", consequence: "It downloads." }, { label: "No", consequence: "It waits." }], recommended: 0 };
@@ -104,6 +104,43 @@ describe("child wake guards", () => {
     s.waiting.add(s.child.id);
     expect(await s.children.message(s.parentFrom, s.child.id, "Carry on without stopping for cards.")).toBe("held");
     expect(s.sends).toEqual(["Thanks."]);
+  });
+
+  it("a bare needsYou is attention: the project chat's reply reaches the thread, settles it, and it may then resolve it", async () => {
+    const s = await setup();
+    await s.children.message(s.from, "parent", "Which router? The person must say.", { needsYou: true });
+    const db = s.users.openUserDb(s.user.id);
+    const waiting = () => (db.prepare("SELECT needs_you FROM child_threads WHERE thread = ?").get(s.child.id) as { needs_you: number }).needs_you;
+    expect(waiting()).toBe(1);
+    // Another thread of the project reaches it too, and isn't the project chat settling its own request.
+    const other = s.parentFrom.view.own.createThread({ interface: "web", parent: s.parent.id, child: true });
+    s.children.adopt(s.user.id, "general", other.id, s.parent.id, undefined);
+    const otherFrom = { ...s.from, threadId: other.id } as ThreadContext;
+    expect(await s.children.message(otherFrom, s.child.id, "DNS moves tonight.")).toBe("started");
+    expect(waiting()).toBe(1);
+    // No card is open, so the project chat's answer starts a turn and the waiting clears.
+    s.busy.delete(s.child.id);
+    expect(await s.children.message(s.parentFrom, s.child.id, "Ask her which router.")).toBe("started");
+    expect(s.sends).toEqual(["DNS moves tonight.", "Ask her which router."]);
+    expect(waiting()).toBe(0);
+    s.busy.delete(s.child.id);
+    await expect(s.children.resolve(s.parentFrom, s.child.id, true)).resolves.toBeUndefined();
+    db.close();
+  });
+
+  it("a root step's card holds a thread until the person answers it", async () => {
+    const s = await setup();
+    const store = s.from.view.own;
+    const n = store.nextEntryN(s.child.id);
+    store.appendEntry(s.child.id, { piId: "root", role: "assistant", text: "", data: { type: "message", message: { content: [{ type: "toolCall", id: "r", name: "run_as_root", arguments: { machine: "nas", why: "Install the service unit." } }] } } });
+    store.askQuestion(s.child.id, n);
+    expect(await s.children.message(s.parentFrom, s.child.id, "Yes, run it.")).toBe("held");
+    expect(s.replies).toEqual(["Yes, run it."]);
+    expect(s.sends).toEqual([]);
+    // The person answers: the same reply goes through now.
+    s.children.userWrote(s.user.id, "general", s.child.id);
+    expect(await s.children.message(s.parentFrom, s.child.id, "Go on then.")).toBe("started");
+    expect(s.sends).toEqual(["Go on then."]);
   });
 
   it("a paused project's chat takes no wake-up, plan-limit resume or job wake until it resumes", async () => {

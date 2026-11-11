@@ -17,8 +17,9 @@ import { formatEntry } from "./memory.ts";
 
 /**
  * What became of a message: it started the thread's turn, joined its running
- * turn, waits for a free slot, or was only saved (a woken parent past its
- * rounds); to a parent, it wakes the parent or is an update it reads later.
+ * turn, waits for a free slot, was only saved (a woken parent past its
+ * rounds), or is held (its question card or an approval waits on the person);
+ * to a parent, it wakes the parent or is an update it reads later.
  */
 export type Delivery = "started" | "running" | "queued" | "saved" | "held" | "wakes" | "update";
 
@@ -199,7 +200,7 @@ const text = (t: string, details?: unknown) => ({ content: [{ type: "text" as co
 function sentTo(id: string, d: Delivery): string {
   if (d === "running") return `Sent to [t:${id}]; it takes it into the turn it is running.`;
   if (d === "queued") return `Saved in [t:${id}]; as many threads as the limit allows are working, so it starts when one finishes.`;
-  if (d === "held") return `Saved in [t:${id}] without starting it: it waits on the person, and only their own answer lets it go on, so a yes from you can't. It reads your message when they answer. Tell the person what it needs.`;
+  if (d === "held") return `Saved in [t:${id}] without starting it: it waits on the person's own answer to a card, so a yes from you can't. It reads your message when they answer. Tell the person what the card asks.`;
   if (d === "saved") return `Saved in [t:${id}] without starting it: you've answered it several times since the person last wrote. It sees this when the person writes in it, or you message it from a turn of your own.`;
   return `Sent to [t:${id}]; it starts a turn.`;
 }

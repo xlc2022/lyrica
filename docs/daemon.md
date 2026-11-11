@@ -554,10 +554,14 @@ starting with `[Answer to q:`. A typed message closes the question as
 `words`, keeping the text unchanged. Replacement, the person's Stop and
 Resolve close it as `withdrawn`; a parent's `threads stop`, lock and
 project pause keep it. Closing and clearing a project's `needs_you` happen
-in one transaction, and only a question opening or closing, or the person
-writing, moves it. While a thread waits on the person (that, or a
-permission card), another thread's message to it is held without a turn
-(`Delivery` `held`), and another thread can't resolve it; settings events refresh cards, the sidebar and Notifications.
+in one transaction, and a question opening or closing, or the person
+writing, answering or resolving, moves it. While a card is open (a question,
+or a permission), another thread's message to it is held without a turn
+(`Delivery` `held`), and another thread can't resolve it; settings events
+refresh cards, the sidebar and Notifications. A thread that only said
+`needsYou` in a message posts status, not a card: the project chat's reply
+reaches it as a turn and clears the flag, so the chat can say who should
+put the decision to the person.
 An ask in a project thread wakes its project chat through the existing
 coalesced parent wake, and the parent card can answer without navigation.
 

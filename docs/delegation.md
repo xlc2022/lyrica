@@ -718,12 +718,14 @@ A project chat's child threads are the project's threads
   project chat once. It replaces `message({ to: "parent", needsYou: true })`
   for asking the user; that older flag still works. A tap or typed answer
   clears `needs_you` immediately, rather than waiting for her next update.
-  Only the user clears it: while a thread waits on the user (a question,
-  `needsYou` or a permission card), a message from the project chat or
-  another thread is saved in it without starting or steering a turn
-  (`held`), and it reads it once the user answers; the project chat can't
-  resolve it, and its `stop` leaves the question open. A yes from another
-  thread never stands in for the user's.
+  Only the user clears a card: while one is open (their question, or a
+  permission), a message from the project chat or another thread is saved
+  in the thread without starting or steering a turn (`held`), and it reads
+  it once the user answers; the project chat can't resolve it, and its
+  `stop` leaves the question open. A yes from another thread never stands
+  in for the user's. The `needsYou` flag on its own is status, not a card:
+  the project chat's message reaches that thread and settles it, so a
+  builder can ask who should put the decision on a card.
 - **States:** working, waiting (an approval, or `needsYou`), queued, idle,
   resolved. `resolve` (her tool; a thread resolves only itself, the project
   chat any of its threads; it stops at work no remote has, files not

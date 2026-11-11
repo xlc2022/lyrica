@@ -336,7 +336,7 @@ export class ChildThreads implements ThreadsHost {
     this.o.messaged?.(userId, from.pool, from.threadId, to);
     const host = this.o.host();
     const key = `${userId}/${from.pool}/${to}`;
-    // Only the person answers what a thread waits on them for: another thread's message is kept for later and starts nothing, so its yes can't stand in for theirs.
+    // Only the person answers what a thread waits on a card for: another thread's message is kept for later and starts nothing, so its yes can't stand in for theirs.
     if (this.waitsOnPerson(userId, from, target)) {
       host.get(userId, from.pool, to).appendParent(text, from.threadId);
       return "held";
@@ -352,6 +352,11 @@ export class ChildThreads implements ThreadsHost {
       this.rounds.set(key, n);
     }
     if (target.resolved_at) this.setResolved(userId, from.pool, to, false);
+    // Saying `needsYou` is attention, not a lock: the project chat's reply gets through, and settles it, so the card stops saying Waiting on you. A thread's own card held the message above; a sibling's answer doesn't settle it.
+    if (!sibling && target.needs_you) {
+      this.db(userId, (db) => db.prepare("UPDATE child_threads SET needs_you = 0 WHERE pool = ? AND thread = ?").run(from.pool, to));
+      host.changed(userId, from.pool, target.parent, to);
+    }
     if (task && !sibling) this.task(userId, from.pool, to);
     // An idle thread starts a turn, so the limit holds here too: past it, the message is saved and the thread wakes when a slot frees.
     const busy = host.busy(userId, from.pool, to);
@@ -366,12 +371,14 @@ export class ChildThreads implements ThreadsHost {
   }
 
   /**
-   * The thread waits on the person: a question card or root step is open,
-   * it said so with `needsYou`, or a permission card waits. Only the
-   * person's answer, words or Stop ends that; no other thread can.
+   * The thread waits on something only the person can settle: a question
+   * card is open (its own `ask`, or a root step), or a permission card
+   * waits. Only the person's answer, words or Stop ends that; no other
+   * thread can. A bare `needsYou` is the thread's own status line, not a
+   * card, so its coordinator can still reach it (`message`).
    */
   private waitsOnPerson(userId: string, from: ThreadContext, target: Row): boolean {
-    return !!target.needs_you || !!from.view.own.openQuestion(target.thread) || this.o.host().status(userId, from.pool, target.thread) === "waiting";
+    return !!from.view.own.openQuestion(target.thread) || this.o.host().status(userId, from.pool, target.thread) === "waiting";
   }
 
   /** The thread works on a task from its parent, and owes it a report. */
