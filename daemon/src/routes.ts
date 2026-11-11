@@ -2303,8 +2303,9 @@ export function apiRoutes(d: Lyricad): Route[] {
     route("DELETE", `${u}/admin/tailnet`, async (r) => {
       d.adminFor(r);
       notOverTailnet(r, "Leaving the tailnet");
-      // Its web mode goes first, to Direct if that's still listening, else off.
+      // Its web mode goes first, to Direct if that's still listening, else off; beside Built-in, Tailnet alone goes off.
       if (s().web.view().mode === "tailnet") await s().web.set({ mode: d.external.direct() ? "direct" : "off" });
+      else await s().web.dropTailnet();
       return s().tailnet.leave();
     }),
     route("GET", `${u}/admin/sleep`, (r) => { d.adminFor(r); return { time: d.sleepTime() }; }),

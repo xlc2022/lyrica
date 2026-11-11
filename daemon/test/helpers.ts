@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -161,3 +161,49 @@ export async function localModel(b: Browser, userId: string, baseUrl: string, mo
 }
 
 export const enc = encodeURIComponent;
+
+/**
+ * A fake `tailscale` that records its arguments in `calls` (one JSON array a
+ * line) and keeps her device's state in `status.json`, in `dir`. Login
+ * with `key` joins her to example.ts.net. `fail-login` makes
+ * login fail quoting the key, as a CLI error might.
+ */
+export function fakeTailscale(key: string, dir: string) {
+  const bin = join(dir, "tailscale");
+  writeFileSync(bin, `#!/usr/bin/env node
+const fs = require("node:fs"), path = require("node:path");
+const dir = path.dirname(fs.realpathSync(process.argv[1]));
+const args = process.argv.slice(2);
+const st = () => JSON.parse(fs.readFileSync(path.join(dir, "status.json"), "utf8"));
+const save = (s) => fs.writeFileSync(path.join(dir, "status.json"), JSON.stringify(s));
+const rec = { args };
+const cmd = args[2];
+if (cmd === "login") {
+  const file = args.find((a) => a.startsWith("--auth-key=file:")).slice("--auth-key=file:".length);
+  rec.keyFileMode = (fs.statSync(file).mode & 0o777).toString(8);
+  rec.keyFileHoldsKey = fs.readFileSync(file, "utf8") === ${JSON.stringify(key)};
+}
+fs.appendFileSync(path.join(dir, "calls"), JSON.stringify(rec) + "\\n");
+const s = st();
+switch (cmd) {
+  case "status": process.stdout.write(JSON.stringify(s)); break;
+  case "login":
+    if (fs.existsSync(path.join(dir, "fail-login"))) { process.stderr.write("backend error: invalid key: " + ${JSON.stringify(key)} + "\\n"); process.exit(1); }
+    save({ ...s, BackendState: "Running", Self: { ...s.Self, DNSName: "lyrica.example.ts.net.", TailscaleIPs: ["100.101.102.103", "fd7a::1"] },
+      CurrentTailnet: { Name: "example.ts.net", MagicDNSSuffix: "example.ts.net", MagicDNSEnabled: true }, CertDomains: ["lyrica.example.ts.net"] });
+    break;
+  case "set": save({ ...s, Self: { ...s.Self, HostName: args[3].split("=")[1] } }); break;
+  case "up": save({ ...s, BackendState: "Running" }); break;
+  case "down": save({ ...s, BackendState: "Stopped" }); break;
+  case "logout": save({ Version: s.Version, BackendState: "NeedsLogin", Self: { HostName: s.Self.HostName } }); break;
+}
+`);
+  chmodSync(bin, 0o755);
+  writeFileSync(join(dir, "status.json"), JSON.stringify({ Version: "1.90.1-t123", BackendState: "NeedsLogin", Self: { HostName: "lyrica-host" } }));
+  return {
+    bin,
+    calls: (): { args: string[]; keyFileMode?: string; keyFileHoldsKey?: boolean }[] =>
+      existsSync(join(dir, "calls")) ? readFileSync(join(dir, "calls"), "utf8").trim().split("\n").filter(Boolean).map((l) => JSON.parse(l)) : [],
+    failLogin: (on: boolean) => (on ? writeFileSync(join(dir, "fail-login"), "") : rmSync(join(dir, "fail-login"), { force: true })),
+  };
+}

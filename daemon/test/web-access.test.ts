@@ -10,7 +10,8 @@ import { join } from "node:path";
 import { checkServerIdentity, createSecureContext, createServer as createTlsServer, type PeerCertificate, type SecureContext } from "node:tls";
 import { afterEach, describe, expect, it } from "vitest";
 import type { HostAddress, WebAccess, WebAccessStatus } from "../src/api.ts";
-import { browser, daemon, login, runtime } from "./helpers.ts";
+import { browser, daemon, fakeTailscale, login, runtime } from "./helpers.ts";
+import type { LyricadOptions } from "../src/lyricad.ts";
 
 const TOKEN = "cf-token-7d1e5b0a9c2f4e6b8a1d3c5e7f9b0a2c";
 
@@ -78,7 +79,7 @@ const freePort = async () => {
   return port;
 };
 
-async function setup(addresses: HostAddress[] = [{ address: "127.0.0.1", kind: "lan", interface: "lo" }], rtIn?: Awaited<ReturnType<typeof runtime>>) {
+async function setup(addresses: HostAddress[] = [{ address: "127.0.0.1", kind: "lan", interface: "lo" }], rtIn?: Awaited<ReturnType<typeof runtime>>, more: Partial<LyricadOptions> = {}) {
   const rt = rtIn ?? await runtime();
   const caddy = await fakeCaddy(rt.home);
   const ca = testCa();
@@ -86,7 +87,7 @@ async function setup(addresses: HostAddress[] = [{ address: "127.0.0.1", kind: "
   const httpsPort = tls.port;
   const dm = await daemon(rt, {
     web: { caddySocket: caddy.socket, tlsLog: join(rt.home, "tls.log"), httpsPort, addresses: () => addresses, certWaitMs: 1500, trustCa: ca.ca },
-    rateLimit: { free: 1, baseMs: 60_000, maxMs: 600_000 },
+    rateLimit: { free: 1, baseMs: 60_000, maxMs: 600_000 }, ...more,
   });
   await browser(dm.base).post("/api/unlock", { passphrase: "passphrase" });
   const ada = await login(dm.base, "ada", "pw");
@@ -353,5 +354,83 @@ describe.skipIf(!lan)("web access, external proxy", () => {
     const ext = put.body.external!;
     expect((await ada.put(url, external(taken, [lan!]))).status).toBe(400);
     expect(await call({ https: true, port, path: "/api/state", ca: ext.pem })).toBe(200);
+  });
+});
+
+/** A plain request to a loopback port with its own headers (fetch won't send a Host of our choosing). */
+function raw(port: number, method: string, path: string, headers: Record<string, string>, body?: string) {
+  return new Promise<number>((resolve, reject) => {
+    const req = httpRequest({ host: "127.0.0.1", port, method, path, headers: { ...(body ? { "content-type": "application/json" } : {}), ...headers } }, (res) => {
+      res.resume();
+      res.on("end", () => resolve(res.statusCode ?? 0));
+    });
+    req.on("error", reject);
+    req.end(body);
+  });
+}
+
+describe("web access, Tailnet beside built-in Caddy", () => {
+  const KEY = "tskey-auth-kQ4yS9cNTRL-0a2c4e6b8d1f3a5c7e9b0d2f4a6c8e1b";
+
+  async function both() {
+    const rt = await runtime();
+    const dir = mkdtempSync(join(tmpdir(), "lyrica-ts-"));
+    cleanup.push(() => rmSync(dir, { recursive: true, force: true }));
+    const ts = fakeTailscale(KEY, dir);
+    const s = await setup(undefined, rt, { tailnet: { binary: ts.bin, socket: join(rt.home, "tailscaled.sock") } });
+    await s.ada.put(`/api/u/${rt.ada.id}/admin/tailnet`, { authKey: KEY });
+    s.tls.add("lyrica.example.net");
+    return { ...s, ts, serves: () => ts.calls().map((c) => c.args.slice(2).join(" ")).filter((c) => c.startsWith("serve")) };
+  }
+
+  it("serves her ts.net name and the hostname together, and only the hostname once Tailnet is off", async () => {
+    const { d, ada, url, rt, serves, httpsPort } = await both();
+    expect((await ada.put(url, { mode: "tailnet" })).status).toBe(200);
+    // From Tailnet to Built-in: tailscale serve keeps running, with no reset.
+    const on = await ada.put<WebAccess>(url, { ...builtin(), tailnet: true });
+    expect(on.status).toBe(200);
+    expect(on.body).toMatchObject({ mode: "builtin", name: "lyrica.example.net", tailnet: { dnsName: "lyrica.example.ts.net" } });
+    expect(serves()).toEqual([`serve --bg --https=443 http://127.0.0.1:${d.servePort}`]);
+    expect(readFileSync(join(rt.home, "web-front"), "utf8").trim()).toBe("both");
+    expect(readFileSync(join(rt.home, "web-front-names"), "utf8").split("\n").filter(Boolean)).toEqual(["lyrica.example.net", "lyrica.example.ts.net", "100.101.102.103"]);
+
+    // Caddy on the main port, tailscale serve on the serve port: both log in.
+    const login = JSON.stringify({ login: "ada", password: "pw" });
+    expect(await raw(d.port, "POST", "/api/login", { host: "lyrica.example.net", "x-forwarded-proto": "https", "x-forwarded-host": "lyrica.example.net", origin: "https://lyrica.example.net" }, login)).toBe(200);
+    expect(await raw(d.servePort, "POST", "/api/login", { host: "lyrica.example.ts.net", "x-forwarded-proto": "https", "x-forwarded-host": "lyrica.example.ts.net", origin: "https://lyrica.example.ts.net" }, login)).toBe(200);
+    // A name that is neither is still a wrong door on either port (DNS rebinding).
+    expect(await raw(d.port, "GET", "/api/state", { host: "evil.example", "x-forwarded-proto": "https" })).toBe(403);
+    expect(await raw(d.servePort, "GET", "/api/state", { host: "evil.example", "x-forwarded-proto": "https" })).toBe(403);
+    // Sandboxes never reach either front door.
+    expect(d.services!.web.frontDoor()).toEqual({ ports: [httpsPort, 443], hosts: ["lyrica.example.net", "100.101.102.103"], exclude: [] });
+    expect((await ada.get<WebAccessStatus>(`${url}/status`)).body.tailnet).toMatchObject({ dnsName: "lyrica.example.ts.net" });
+
+    // Left out, it stays on; turned off, tailscale serve resets and only Caddy is in front.
+    expect((await ada.put<WebAccess>(url, builtin())).body.tailnet).not.toBeNull();
+    const off = await ada.put<WebAccess>(url, { ...builtin(), tailnet: false });
+    expect(off.body.tailnet).toBeNull();
+    expect(serves()).toEqual([`serve --bg --https=443 http://127.0.0.1:${d.servePort}`, "serve reset"]);
+    expect(readFileSync(join(rt.home, "web-front"), "utf8").trim()).toBe("builtin");
+    expect(await raw(d.servePort, "GET", "/api/state", { host: "lyrica.example.ts.net", "x-forwarded-proto": "https" })).toBe(403);
+  });
+
+  it("turns tailscale serve on beside Caddy, takes it down if Caddy's certificate never comes, and leaving the tailnet keeps Caddy", async () => {
+    const { d, ada, url, rt, caddy, serves } = await both();
+    expect((await ada.put(url, builtin())).status).toBe(200);
+    expect(serves()).toEqual([]);
+    // No certificate for a new name: Caddy goes back, and the tailscale serve started for it is reset.
+    const failed = await ada.put<{ error: string }>(url, { ...builtin("new.example.net"), tailnet: true });
+    expect(failed.status).toBe(400);
+    expect(serves()).toEqual([`serve --bg --https=443 http://127.0.0.1:${d.servePort}`, "serve reset"]);
+    expect((await ada.get<WebAccess>(url)).body).toMatchObject({ name: "lyrica.example.net", tailnet: null });
+
+    expect((await ada.put(url, { ...builtin(), tailnet: true })).status).toBe(200);
+    const loads = caddy.state.loads.length;
+    expect((await ada.del(`/api/u/${rt.ada.id}/admin/tailnet`)).status).toBe(200);
+    const after = (await ada.get<WebAccess>(url)).body;
+    expect(after).toMatchObject({ mode: "builtin", name: "lyrica.example.net", tailnet: null });
+    expect(caddy.state.loads.length).toBe(loads);
+    expect(serves().at(-1)).toBe("serve reset");
+    expect(readFileSync(join(rt.home, "web-front"), "utf8").trim()).toBe("builtin");
   });
 });

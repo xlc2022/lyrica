@@ -2036,9 +2036,10 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   its admin socket `/run/lyrica-caddy/admin.sock`, or an external proxy, with
   an extra listener whose settings and TLS key are in
   `<runtime>/web-external.json` (0600) and which opens before unlock, and
-  `<runtime>/web-front` (0600) naming the plain listener with a proxy in
-  front, and `<runtime>/web-front-names` (0600, one per line) naming the
-  names that proxy is reached by, for the time before unlock. Behind its
+  `<runtime>/web-front` (0600) naming the plain listeners with a proxy in
+  front (`builtin`, `tailnet`, `both` or `none`), and
+  `<runtime>/web-front-names` (0600, one per line) naming the names those
+  proxies are reached by, for the time before unlock. Behind its
   proxy a plain listener accepts only loopback's or those names in Host,
   and only those names in `X-Forwarded-Host`. Settings
   and DNS credentials live in `self.db`. See [daemon.md](daemon.md).
@@ -2067,7 +2068,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     dnsName?, hostname?, controlServer?, version?, reason? }`; `PUT` with
     `TailnetJoin { authKey, hostname?, controlServer?, leave? }` (409 when
     joined without `leave`); `POST …/disconnect`, `POST …/connect`, `DELETE`
-    (leave; turns the Tailnet web mode off). The auth key is written to a 0600
+    (leave; turns the Tailnet web mode off, or Tailnet beside Built-in). The auth key is written to a 0600
     file for `--auth-key=file:` and deleted at once, never stored or logged.
   - **Web modes.** `Request.via: "tailnet"` marks a request on the serve port
     (`LyricadOptions.web.servePort`, 7342); disconnect, leave and a join that
@@ -2077,8 +2078,10 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     `WebAccess.direct: { addresses, port, fingerprint, pem }`,
     `WebAccessStatus.direct`) and `"tailnet"` (`tailscale serve` to the serve
     port; `WebAccess.tailnet: { dnsName, certificates }`,
-    `WebAccessStatus.tailnet`), and `frontDoor` includes the Direct port on
-    this machine's addresses and, in Tailnet, 443 on her Tailscale address
+    `WebAccessStatus.tailnet`; also set while `WebAccessChange.tailnet`
+    keeps Tailnet on beside Built-in, left out keeping it as it was), and
+    `frontDoor` includes the Direct port on
+    this machine's addresses and, with Tailnet on, 443 on her Tailscale address
     (which stands for her MagicDNS name: this machine's resolver needn't know
     it, since her tailscaled is userspace). All additive.
   - **Wrong door.** On the two plain loopback listeners (`port` and the serve
