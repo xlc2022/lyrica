@@ -3,7 +3,7 @@
 import { useState } from "react";
 import type { AdminMemoryUse, MemoryUseRow } from "./api.ts";
 import { SERIES, tokens } from "./charts.ts";
-import { Chart, wall } from "./ModelCallFacts.tsx";
+import { Chart, Legend, useHidden, wall } from "./ModelCallFacts.tsx";
 import { recalledHref } from "./route.ts";
 import { useTheme } from "./ui.tsx";
 
@@ -17,6 +17,8 @@ const HOW = [
 const CITED_WHY = "Notes, pages and journal entries that cite it now: how much else she has built on it.";
 const HEAD_WHY = "How often she reached your own notes and pages in the pools you show: brought up by automatic recall, found by her recall tool, or opened. Sleep and threads that aren't remembered don't count.";
 const KEPT_WHY = "Each pool keeps these counts per hour for 31 days: numbers and memory IDs only, never what was asked.";
+/** Where this browser keeps the kinds of use taken off Memory use's charts. */
+const HIDDEN_KEY = "lyrica.status.hiddenUses";
 /** A bar's name in the Most used chart, at most this many characters (the whole line is in its tip). */
 const SHORT = 36;
 
@@ -29,7 +31,7 @@ function colour(theme: "dark" | "light") {
 }
 
 /** Uses per day on the user's clock, stacked by how she reached them, a bar for every day of the window. */
-export function perDaySpec(use: AdminMemoryUse, theme: "dark" | "light", panel: string, now = Date.now()) {
+export function perDaySpec(use: AdminMemoryUse, theme: "dark" | "light", panel: string, now = Date.now(), off: ReadonlySet<string> = new Set()) {
   const first = wall(use.since) - (wall(use.since) % DAY), last = wall(now) - (wall(now) % DAY);
   const days = new Map<number, Record<string, number>>();
   for (const h of use.hours) {
@@ -37,7 +39,7 @@ export function perDaySpec(use: AdminMemoryUse, theme: "dark" | "light", panel: 
     for (const how of HOW) row[how.word] = (row[how.word] ?? 0) + h[how.key];
     days.set(d, row);
   }
-  const values = [...days].flatMap(([d, row]) => HOW.filter((h) => row[h.word]).map((h) => ({ day: d, when: dayWord(d), how: h.word, uses: row[h.word] })));
+  const values = [...days].flatMap(([d, row]) => HOW.filter((h) => row[h.word] && !off.has(h.word)).map((h) => ({ day: d, when: dayWord(d), how: h.word, uses: row[h.word] })));
   return {
     $schema: "https://vega.github.io/schema/vega-lite/v5.json", description: "Uses per day", width: "container", autosize: { type: "fit-x", contains: "padding" },
     height: 140, data: { values },
@@ -52,7 +54,7 @@ export function perDaySpec(use: AdminMemoryUse, theme: "dark" | "light", panel: 
 }
 
 /** The most used memories as horizontal bars, stacked by how, most first. */
-export function topSpec(rows: MemoryUseRow[], theme: "dark" | "light", panel: string) {
+export function topSpec(rows: MemoryUseRow[], theme: "dark" | "light", panel: string, off: ReadonlySet<string> = new Set()) {
   // Two memories can share a first line: each bar keeps its own name.
   const names = new Map<string, string>();
   for (const r of rows) {
@@ -60,7 +62,7 @@ export function topSpec(rows: MemoryUseRow[], theme: "dark" | "light", panel: st
     while ([...names.values()].includes(name)) name += " ";
     names.set(`${r.pool}/${r.id}`, name);
   }
-  const values = rows.flatMap((r) => HOW.filter((h) => r[h.key]).map((h) => ({ memory: names.get(`${r.pool}/${r.id}`), whole: r.label, how: h.word, uses: r[h.key] })));
+  const values = rows.flatMap((r) => HOW.filter((h) => r[h.key] && !off.has(h.word)).map((h) => ({ memory: names.get(`${r.pool}/${r.id}`), whole: r.label, how: h.word, uses: r[h.key] })));
   return {
     $schema: "https://vega.github.io/schema/vega-lite/v5.json", description: "Most used memories", width: "container", autosize: { type: "fit-x", contains: "padding" },
     height: { step: 22 }, data: { values },
@@ -81,6 +83,8 @@ export function MemoryUse({ use, userId, onDays }: { use: AdminMemoryUse; userId
   // No page (a test rendering to a string): the light tokens.
   const panel = typeof document === "undefined" ? "#ffffff" : tokens().panel;
   const uses = use.hours.reduce((n, h) => n + total(h), 0);
+  const { off, toggle, showAll } = useHidden(HIDDEN_KEY, HOW.map((h) => h.word));
+  const shownUses = use.hours.reduce((n, h) => n + HOW.reduce((m, w) => m + (off.has(w.word) ? 0 : h[w.key]), 0), 0);
   const rows = list === "top" ? use.top : use.cited;
   const both = use.pools.length > 1;
   return <section aria-label="Memory use" className="card model-calls memory-use">
@@ -92,13 +96,11 @@ export function MemoryUse({ use, userId, onDays }: { use: AdminMemoryUse; userId
     </div>
     <p className="muted" title={KEPT_WHY}>{use.pools.map((p) => p === "general" ? "General" : "Private").join(" and ") || "No pools shown"} · kept <span className="num">31</span> days</p>
     {uses ? <>
-      <p><span className="num">{uses.toLocaleString()}</span> {uses === 1 ? "use" : "uses"} · <span className="num">{use.memories.toLocaleString()}</span> {use.memories === 1 ? "memory" : "memories"}</p>
-      <ul className="chart-legend" aria-label="How">
-        {HOW.map((h, i) => <li key={h.key} title={h.why}><span className="swatch" style={{ background: SERIES[theme][i] }} aria-hidden="true" />{h.word}</li>)}
-      </ul>
+      <p>{off.size ? <><span className="num">{shownUses.toLocaleString()}</span> of <span className="num">{uses.toLocaleString()}</span> uses</> : <><span className="num">{uses.toLocaleString()}</span> {uses === 1 ? "use" : "uses"}</>} · <span className="num">{use.memories.toLocaleString()}</span> {use.memories === 1 ? "memory" : "memories"}</p>
+      <Legend label="Uses on the charts" items={HOW.map((h, i) => ({ name: h.word, title: h.why, color: SERIES[theme][i]! }))} off={off} toggle={toggle} showAll={showAll} noun="kind of use" />
       <div className="status-charts">
-        <Chart label="Uses per day" spec={perDaySpec(use, theme, panel)} />
-        <Chart label="Most used" spec={topSpec(use.top, theme, panel)} />
+        <Chart label="Uses per day" spec={perDaySpec(use, theme, panel, undefined, off)} />
+        <Chart label="Most used" spec={topSpec(use.top, theme, panel, off)} />
       </div>
     </> : <p className="muted">Nothing used in the last <span className="num">{use.days}</span> days.</p>}
     {(use.top.length > 0 || use.cited.length > 0) && <>

@@ -974,13 +974,18 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   the Output cell in place of zero tokens; a speech model's seconds of audio
   heard or spoken there instead, as s, min or h) and recorded fallbacks.
   Series take the chart colours by label; past eight copies the least used are
-  Other. Changing shown pools drops the old aggregate and loads Status again.
+  Other. The legend is `Legend`: each name a toggle, and `useHidden` keeps the
+  names taken off in `localStorage` (`lyrica.status.hiddenModels`); their calls
+  leave all four charts, the facts line counts the rest "of" the whole, and
+  their table rows stay, muted. Colours come from every series, so they don't
+  move. Changing shown pools drops the old aggregate and loads Status again.
   The scope line names the displayed pools and the 31-day retention. No
   measured speed reads — with a "Not measured" tooltip; empty reads No
   retained calls in the last 24 hours (or 7 or 30 days). Last, **Memory use**
   (`MemoryUse.tsx`, from `GET …/admin/memory-use`, its own **7 d | 30 d**
   window, 30 by default): a facts line, a legend of Recalled, Searched and
-  Opened, two charts with `ModelCallFacts.tsx`'s `Chart` (uses per day on the
+  Opened (the same `Legend` toggles, kept as `lyrica.status.hiddenUses`; the
+  specs drop what's off), two charts with `ModelCallFacts.tsx`'s `Chart` (uses per day on the
   user's clock, `perDaySpec`; the ten most used, `topSpec`), then **Most
   used | Most cited** rows, each memory a link into the memory browser
   (`recalledHref`).

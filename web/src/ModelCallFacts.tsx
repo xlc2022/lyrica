@@ -1,8 +1,8 @@
 // Principles 1 and 8: Administration → Status draws what her models did from facts already recorded per call (docs/ux.md,
 // Recorded model activity): calls and output per hour, 6 hours or day, each call's speed, calls by task, and a row per
 // model copy (an image model's output in images, a speech model's in seconds of audio), over the last 24 hours, 7 or 30
-// days, or a span narrowed on the charts.
-import { useEffect, useRef, useState } from "react";
+// days, or a span narrowed on the charts. Its legend's names are toggles that take a model off the charts.
+import { type CSSProperties, useEffect, useRef, useState } from "react";
 import type { ModelCallFacts as Facts } from "./api.ts";
 import { drawChart, SERIES, tokens } from "./charts.ts";
 import { shortModel } from "./ModelLabel.tsx";
@@ -28,6 +28,8 @@ const MADE_WHY = "Images (or clips) its calls made, in place of output tokens.";
 const AUDIO_WHY = "Seconds of audio its calls heard (Dictation) or spoke (Read aloud), in place of output tokens.";
 const RESET_WHY = "Count calls from now on. Call records stay: thread usage, speeds and history still use them.";
 const KEPT_WHY = "Nightly cleanup keeps every call record from the last 31 days, at least the latest 500 and at most 20,000 per user, across both pools.";
+/** Where this browser keeps the models taken off Model calls' charts. */
+const HIDDEN_KEY = "lyrica.status.hiddenModels";
 const NARROW_WHY = "Drag across the chart, or click two bars, to narrow the window.";
 
 /** The window Model calls shows: the last 24 hours, 7 or 30 days, or a span narrowed on its charts (`span`, ISO). */
@@ -199,6 +201,48 @@ export function Chart({ label, spec, bars, onSpan }: { label: string; spec: obje
   </figure>;
 }
 
+/**
+ * The names a Status legend has turned off, kept in this browser under `key` so they stay off the next time Status
+ * opens, and in another window where they show up again. Names not in `names` stay stored but don't count; if every
+ * name here is off (another window's choice), none is, so a chart never comes up empty by choice.
+ */
+export function useHidden(key: string, names: string[]) {
+  const [stored, setStored] = useState<Set<string>>(() => {
+    try { const v = JSON.parse(localStorage.getItem(key) ?? "[]") as unknown; return new Set(Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []); } catch { return new Set(); }
+  });
+  const here = names.filter((n) => stored.has(n));
+  const off: ReadonlySet<string> = new Set(here.length >= names.length ? [] : here);
+  const save = (next: Set<string>) => { setStored(next); try { localStorage.setItem(key, JSON.stringify([...next])); } catch { /* kept for this visit only */ } };
+  return {
+    off,
+    toggle: (n: string) => {
+      const next = new Set(stored);
+      if (off.has(n)) next.delete(n);
+      else if (names.length - off.size > 1) next.add(n);
+      else return;
+      save(next);
+    },
+    showAll: () => save(new Set([...stored].filter((n) => !names.includes(n)))),
+  };
+}
+
+/**
+ * A legend whose names are toggles: a pressed name is on the charts, a released one is off them (its swatch hollow,
+ * its name muted, its colour kept). The last name on can't be released; **Show all** follows once any is off.
+ */
+export function Legend({ label, items, off, toggle, showAll, noun }: { label: string; items: { name: string; title: string; color: string }[]; off: ReadonlySet<string>; toggle: (name: string) => void; showAll: () => void; noun: string }) {
+  const on = items.length - off.size;
+  return <ul className="chart-legend" aria-label={label}>
+    {items.map((s) => {
+      const shown = !off.has(s.name), lone = shown && on === 1;
+      return <li key={s.name}><button type="button" aria-pressed={shown} aria-disabled={lone || undefined}
+        title={`${s.title}\n${lone ? `At least one ${noun} stays on the charts.` : shown ? "Click to take it off the charts." : "Click to put it back on the charts."}`}
+        onClick={() => toggle(s.name)}><span className="swatch" style={{ "--sw": s.color } as CSSProperties} aria-hidden="true" /><span>{s.name}</span></button></li>;
+    })}
+    {off.size > 0 && <li><button type="button" className="link" title={`Put every ${noun} back on the charts.`} onClick={showAll}>Show all</button></li>}
+  </ul>;
+}
+
 /** What every chart shares: the container's width, the series' colours, no legend (one stands above them all). */
 function base(series: Series[], description: string) {
   const names = [...new Set(series.map((s) => s.name))];
@@ -320,7 +364,13 @@ export function ModelCallFacts({ facts, window = { days: 1 }, onWindow, onReset 
   const t = typeof document === "undefined" ? { edge: "#889494", panel: "#ffffff" } : tokens();
   const series = seriesOf(facts.models, theme, t.edge);
   const legend = [...new Map(series.map((s) => [s.name, s])).values()];
-  const total = { calls: facts.models.reduce((n, m) => n + m.calls, 0), tokens: facts.models.reduce((n, m) => n + m.outputTokens, 0), fallbacks: facts.models.reduce((n, m) => n + m.fallbacks, 0) };
+  const { off, toggle, showAll } = useHidden(HIDDEN_KEY, legend.length > 1 ? legend.map((s) => s.name) : []);
+  // The models taken off the charts: their calls leave all four, and the facts line counts the rest out of the whole.
+  const nameOf = new Map(series.map((s) => [s.offeringId, s.name]));
+  const isOn = (offeringId: string) => !off.has(nameOf.get(offeringId) ?? OTHER);
+  const shown = off.size ? { ...facts, calls: facts.calls.filter((c) => isOn(c.offeringId)) } : facts;
+  const sumOf = (ms: Facts["models"]) => ({ calls: ms.reduce((n, m) => n + m.calls, 0), tokens: ms.reduce((n, m) => n + m.outputTokens, 0), fallbacks: ms.reduce((n, m) => n + m.fallbacks, 0) });
+  const total = sumOf(facts.models), part = sumOf(facts.models.filter((m) => isOn(m.offeringId)));
   const size = bucketSize(facts), h = buckets(facts, size);
   const bars = { first: h[0]!, size, count: h.length };
   const narrow = onWindow ? (a: number, b: number) => onWindow({ days: window.days, span: { from: new Date(unwall(a)).toISOString(), to: new Date(unwall(b)).toISOString() } }) : undefined;
@@ -341,15 +391,15 @@ export function ModelCallFacts({ facts, window = { days: 1 }, onWindow, onReset 
     {error && <ErrorText error={error} />}
     <p className="muted" title={KEPT_WHY}>Retained history · {facts.pools.map((p) => p === "general" ? "General" : "Private").join(" and ") || "No pools shown"} · kept <span className="num">31</span> days</p>
     {facts.models.length ? <>
-      <p><span className="num">{total.calls.toLocaleString()}</span> {total.calls === 1 ? "call" : "calls"} · <span className="num">{tokenCount(total.tokens)}</span> output tokens · <span title={FALLBACK_WHY}>Recorded fallbacks</span> <span className="num">{total.fallbacks}</span></p>
-      {legend.length > 1 && <ul className="chart-legend" aria-label="Models">
-        {legend.map((s) => <li key={s.name} title={s.title}><span className="swatch" style={{ background: s.color }} aria-hidden="true" />{s.name}</li>)}
-      </ul>}
+      {off.size
+        ? <p><span className="num">{part.calls.toLocaleString()}</span> of <span className="num">{total.calls.toLocaleString()}</span> calls · <span className="num">{tokenCount(part.tokens)}</span> of <span className="num">{tokenCount(total.tokens)}</span> output tokens · <span title={FALLBACK_WHY}>Recorded fallbacks</span> <span className="num">{part.fallbacks}</span></p>
+        : <p><span className="num">{total.calls.toLocaleString()}</span> {total.calls === 1 ? "call" : "calls"} · <span className="num">{tokenCount(total.tokens)}</span> output tokens · <span title={FALLBACK_WHY}>Recorded fallbacks</span> <span className="num">{total.fallbacks}</span></p>}
+      {legend.length > 1 && <Legend label="Models on the charts" items={legend} off={off} toggle={toggle} showAll={showAll} noun="model" />}
       <div className="status-charts">
-        <Chart label={`Calls per ${per}`} spec={barSpec(series, facts, t.panel, "calls", `Calls per ${per}`)} bars={bars} onSpan={narrow} />
-        <Chart label={`Output tokens per ${per}`} spec={barSpec(series, facts, t.panel, "tokens", `Output tokens per ${per}`)} bars={bars} onSpan={narrow} />
-        <Chart label="Speed per call · tok/s" spec={speedSpec(series, facts, t.panel)} />
-        <Chart label="Calls by task" spec={taskSpec(series, facts, t.panel)} />
+        <Chart label={`Calls per ${per}`} spec={barSpec(series, shown, t.panel, "calls", `Calls per ${per}`)} bars={bars} onSpan={narrow} />
+        <Chart label={`Output tokens per ${per}`} spec={barSpec(series, shown, t.panel, "tokens", `Output tokens per ${per}`)} bars={bars} onSpan={narrow} />
+        <Chart label="Speed per call · tok/s" spec={speedSpec(series, shown, t.panel)} />
+        <Chart label="Calls by task" spec={taskSpec(series, shown, t.panel)} />
       </div>
       <div className="model-table" role="table" aria-label="Model calls by model">
         <div role="row" className="mt-head muted">
@@ -361,8 +411,8 @@ export function ModelCallFacts({ facts, window = { days: 1 }, onWindow, onReset 
           const speed = num(m.medianTokPerSec), prompt = num(m.medianPromptTokPerSec, 0);
           const sampled = speed === undefined && m.sampling ? samplingWords(m.sampling) : undefined;
           const audio = m.audioSeconds !== undefined && !m.outputTokens ? audioWords(m.audioSeconds) : undefined;
-          return <div role="row" key={m.offeringId}>
-            <span role="cell" className="mt-model" title={`${m.label} · ${m.endpointName}`}><span className="swatch" style={{ background: s.color }} aria-hidden="true" />{shortModel(m.label)} <span className="muted">· {m.endpointName}</span></span>
+          return <div role="row" key={m.offeringId} className={off.has(s.name) ? "off" : undefined}>
+            <span role="cell" className="mt-model" title={`${m.label} · ${m.endpointName}${off.has(s.name) ? "\nOff the charts." : ""}`}><span className="swatch" style={{ "--sw": s.color } as CSSProperties} aria-hidden="true" />{shortModel(m.label)} <span className="muted">· {m.endpointName}</span></span>
             <span role="cell" className="num" data-label="Calls">{m.calls}</span>
             <span role="cell" className="num" data-label="Output" title={m.made && !m.outputTokens ? MADE_WHY : audio ? AUDIO_WHY : undefined}>{m.made && !m.outputTokens
               ? <>{m.made.count.toLocaleString()} <span className="muted">{m.made.count === 1 ? m.made.unit : `${m.made.unit}s`}</span></>
