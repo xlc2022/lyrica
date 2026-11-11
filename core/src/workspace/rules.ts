@@ -1,5 +1,5 @@
 import { posix } from "node:path";
-import { SHELLS, simpleCommands } from "./machines.ts";
+import { LOADER, SHELLS, simpleCommands } from "./machines.ts";
 
 export interface CommandRule { prefix: string; decision: "allow" | "ask" | "forbid" }
 /** What a new project starts with (docs/workspace.md, "Project command rules"): the person removes or changes them in Project settings. */
@@ -10,7 +10,8 @@ export const DEFAULT_COMMAND_RULES: readonly CommandRule[] = [
   { prefix: "rm -fr /", decision: "forbid" },
 ];
 const SHELL = { test: (w: string) => SHELLS.has(w) };
-const WRAPPER = /^(?:sudo|doas|env|nohup|exec|command|time|nice|ionice|builtin|timeout|xargs|stdbuf|chroot)$/;
+const WRAPPERS = /^(?:sudo|doas|env|nohup|exec|command|time|nice|ionice|builtin|timeout|xargs|stdbuf|chroot)$/;
+const WRAPPER = { test: (w: string) => WRAPPERS.test(w) || LOADER.test(w) };
 const assignment = (w: string) => /^[A-Za-z_][A-Za-z0-9_]*=/.test(w);
 const plain = (w: string | undefined) => !!w && /^[a-z][a-z0-9:_-]*$/.test(w);
 const programs = (words: string[]) => words.filter(w => !assignment(w));

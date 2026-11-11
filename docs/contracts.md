@@ -1820,7 +1820,8 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     `SameFile.messaged`, which settles it).
     `commandRules()` reads the owning project on every bash call. Forbid
     blocks in all modes and targets; Ask always prompts; Allow skips only
-    sandbox mode prompts, never a suspect command's. Opaque commands ask with any forbid rule.
+    sandbox mode prompts, never a suspect command's. Opaque commands ask with any forbid rule;
+    a variable the line plainly sets first is read as its value, not as opaque (`knownValues`).
     `user_bash` is never checked. A new project starts with `DEFAULT_COMMAND_RULES`.
     `settings()` is the thread's effective settings. `fileNotes()` returns
     `{ added, removed }` paths the Files panel changed since her last turn,

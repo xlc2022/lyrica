@@ -40,7 +40,12 @@ owner chose three changes (01:14Z).
    project, only when it has no rules. Existing projects are untouched.
    Because any Forbid rule makes opaque commands ask, a new project's
    `bash script.sh` or `eval` asks in every mode; the person removes the
-   rules in Project settings → Commands if that is wrong for them.
+   rules in Project settings → Commands if that is wrong for them. A
+   program named by a variable the same line plainly sets
+   (`L=/…/ld-linux-x86-64.so.2; "$L" …`) is read as its value, not as
+   opaque, and the dynamic loader is a wrapper (`knownValues`, `LOADER`;
+   docs/workspace.md, Project command rules), so such read-only calls
+   don't ask in Auto mode.
 3. **`cd` on the same line.** `suspectCommand` follows `cd`/`pushd` through
    the chain (absolute, home or relative to a known folder) and resolves a
    later relative `rm` target against it, so `cd / && rm -rf *` is read as
