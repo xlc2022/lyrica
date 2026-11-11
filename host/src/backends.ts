@@ -119,8 +119,12 @@ export interface LlamaCppOptions {
 const CACHE_RAM_DEFAULT = 8192;
 const CACHE_RAM_MOST = 65536;
 
-/** A model's placement and serving settings, as one key. */
-const placementOf = (model: TextModel, at: Option, settings: ModelSettings) => JSON.stringify([model.id, at, settings]);
+/**
+ * A model's placement and serving settings, as one key: what decides whether the load can be built, leaving out the
+ * split and need, which follow each GPU's free room and so shift from one try to the next.
+ */
+const placementOf = (model: TextModel, at: Option, settings: ModelSettings) =>
+  JSON.stringify([model.id, at.gpus, at.ram ?? 0, at.cpuMoe ?? 0, at.gpuLayers ?? null, settings]);
 
 export class LlamaCpp implements Backend {
   private readonly o: Required<LlamaCppOptions>;

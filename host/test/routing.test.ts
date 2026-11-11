@@ -425,6 +425,9 @@ describe("the vLLM backend", () => {
       await expect(llama.load(long, at, settings)).rejects.toMatchObject({ code: "model_unavailable" });
       router.memory.set("m", { status: "failed" });
       await expect(llama.measure(long, at, settings)).rejects.toMatchObject({ code: "too_big", message: expect.stringContaining("a context of 500000 tokens") });
+      // So does a try whose split and need moved with the GPUs' free room.
+      router.memory.set("m", { status: "failed" });
+      await expect(llama.measure(long, { ...at, split: [0.6, 0.4], need: { 0: 2 } }, settings)).rejects.toMatchObject({ code: "too_big" });
       expect(readFileSync(join(serving, "llamacpp.ini"), "utf8")).not.toContain("[m]");
       // Other settings are tried afresh.
       router.memory.set("m", { status: "failed" });
