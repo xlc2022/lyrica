@@ -205,10 +205,16 @@ export class SshTarget implements ExecutionTarget {
           const dir = within(posix.normalize(cwd), base) ? posix.normalize(cwd) : base;
           const out = capOutput(onData);
           const clean = cleanOutput((d) => out.push(d));
+          const session = await this.session();
+          const group = groupRun(command);
           try {
             // As `ssh host cmd` runs it, in the account's own environment; Debian's sshd leaves /usr/sbin and /sbin off a plain user's PATH, so they go on its end.
-            const code = await (await this.session()).exec(`export PATH="$PATH:/usr/sbin:/sbin" && cd ${quote(dir)} && ${command}`, { onData: (d) => clean.push(d), signal, timeout });
+            const code = await session.exec(`export PATH="$PATH:/usr/sbin:/sbin" && cd ${quote(dir)} && ${group.run}`, { onData: (d) => clean.push(d), signal, timeout });
             return { exitCode: code };
+          } catch (err) {
+            // Stopped, timed out or cut off: SSH's KILL reaches only the shell, so what the command started goes by its process group.
+            await session.exec(group.kill, { onData: () => {}, timeout: 10 }).catch(() => {});
+            throw err;
           } finally {
             clean.end();
             out.end();
@@ -217,4 +223,21 @@ export class SshTarget implements ExecutionTarget {
       },
     };
   }
+}
+
+/**
+ * A command run in its own session, so stopping it ends everything it
+ * started (docs/workspace.md, "Background commands"): `run` starts it with
+ * setsid in the account's shell, keeps its process group's id in a file
+ * named for this run while it runs and passes its exit code on; `kill` ends
+ * that group and removes the file. A machine with no setsid runs the
+ * command as before, and `kill` finds no file.
+ */
+export function groupRun(command: string): { run: string; kill: string } {
+  const file = `"\${TMPDIR:-/tmp}/lyrica-run-${randomBytes(8).toString("hex")}"`;
+  return {
+    run: `if command -v setsid >/dev/null 2>&1; then setsid "\${SHELL:-/bin/sh}" -c ${quote(command)} <&0 & p=$!; echo "$p" > ${file}; wait "$p"; r=$?; rm -f ${file}; exit "$r"; else ${command}
+fi`,
+    kill: `f=${file}; if [ -f "$f" ]; then kill -KILL -- "-$(cat "$f")" 2>/dev/null; rm -f "$f"; fi`,
+  };
 }
