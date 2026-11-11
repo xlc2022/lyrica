@@ -2399,10 +2399,12 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   - memory browser ([briefs/memory-browser.md](briefs/memory-browser.md)):
     `GET …/memory` → `MemoryOverview` (pages and notes counted over the
     pools the display shows, and when she last slept); `GET …/memory/about`
-    → `MemoryTag[]`, the pool's distinct `about` words with counts;
+    → `MemoryTag[]`, the pool's distinct `about` words with counts
+    (`current=1` counts only notes not superseded);
     `GET …/memory/search` without `q` lists one layer when `kinds` names
     exactly one (newest first, `limit` and `before` paging by `updatedAt`),
-    takes `about=` to filter notes by a tag, and its hits carry `title`,
+    takes `about=` to filter notes by a tag and `current=1` (with or
+    without `q`) to leave out superseded notes, and its hits carry `title`,
     `about` and `updatedAt`; `kinds=entry` is the Recent layer
     ([briefs/side-panels.md](briefs/side-panels.md)), the logged
     messages written since sleep's watermark (`PoolStore.recentEntries`),
