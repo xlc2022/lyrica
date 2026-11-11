@@ -58,6 +58,8 @@ export interface LyricadOptions {
     tlsLog?: string;
     httpsPort?: number;
     addresses?: () => import("./api.ts").HostAddress[];
+    /** Where a name points, as this machine's resolver answers it (for tests). */
+    resolve?: (name: string) => Promise<string[]>;
     /** How long a new name may take to get its certificate (default 90 s). */
     certWaitMs?: number;
     /** An extra CA trusted when checking that certificate (tests). */
@@ -510,7 +512,7 @@ export class Lyricad implements Drainable {
     const web: WebAccess = new WebAccess({
       self: () => keyring.self(), tailnet: this.tailnet, servePort: this.servePort, directPort: w.directPort,
       caddy: { socket: w.caddySocket ?? "/run/lyrica-caddy/admin.sock", tlsLog: w.tlsLog ?? "/run/lyrica-caddy/tls.log" },
-      httpsPort: w.httpsPort ?? 443, upstream: this.port, reserved: [this.port, this.servePort], addresses: w.addresses,
+      httpsPort: w.httpsPort ?? 443, upstream: this.port, reserved: [this.port, this.servePort], addresses: w.addresses, resolve: w.resolve,
       external: this.external, frontFile: this.frontFile, certWaitMs: w.certWaitMs, trustCa: w.trustCa, log: this.log,
     });
     this.frontSaved = web.rememberFront();

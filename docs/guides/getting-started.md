@@ -626,11 +626,11 @@ For a name of your own with a certificate browsers trust, use the built-in
 Caddy:
 
 1. Pick a name under a domain you control, such as `lyrica.example.net`, and
-   point its DNS record at the machine's Tailscale address. On the LAN,
-   split DNS can give the same name the LAN address. Not her own tailnet
-   address: that one serves only her ts.net name, with its certificate,
-   and refuses any other name. A machine that isn't on a tailnet itself
-   can serve the name on its LAN address only.
+   point its DNS record at one of the addresses the page lists under
+   **Serve on**: the machine's Tailscale address, or with split DNS its LAN
+   address. Not her own tailnet address: that one serves only her ts.net
+   name, with its certificate, and refuses any other name. A machine that
+   isn't on a tailnet itself can serve the name on its LAN address only.
 2. Make an API token at your DNS provider, limited to that one zone. The
    page lists the providers Caddy was built with (Cloudflare, Porkbun,
    Namecheap, Route 53, DigitalOcean, Hetzner, deSEC, Duck DNS) and how to
@@ -639,8 +639,9 @@ Caddy:
    Tailscale and LAN addresses to serve on, pick the provider and paste the
    token, and apply. The certificate comes by DNS-01 challenge, so the
    machine needn't be reachable from the internet. A new name can take
-   about 90 seconds; the page shows the certificate's state and Caddy's
-   last error. To keep her ts.net name working too, leave **Tailnet name**
+   about 90 seconds; the page shows the certificate's state with the address
+   it was read at, where the name's DNS record points as this machine resolves
+   it, and Caddy's last error. To keep her ts.net name working too, leave **Tailnet name**
    on: it is on when you switch from Tailnet, and then both names reach her.
 
 A change never locks you out: the old setup keeps serving until the new one

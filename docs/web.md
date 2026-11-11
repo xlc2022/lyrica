@@ -1075,16 +1075,19 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
     with its fingerprint shown), **Tailnet** (HTTPS at her tailnet name
     through `tailscale serve`; needs a joined tailnet), the built-in Caddy,
     or a proxy elsewhere;
-  - the hostname (Caddy and proxy modes), with a hint that its DNS record points at the Tailscale address;
+  - the hostname (Caddy and proxy modes), with a hint saying where its DNS
+    record goes: one of the addresses under Serve on, not her tailnet name
+    (Caddy), or the proxy (proxy mode);
   - for the built-in Caddy: the Tailscale and LAN addresses to serve on, the
     DNS provider with its credential fields and its token-scoping hint, an
     email for certificate warnings, and, under Advanced, testing with
     untrusted certificates (the status warns while it is on);
   - for a proxy: the address and ports to listen on, the proxy addresses,
     the certificate to pin, and a Caddyfile snippet;
-  - the status of Caddy, the certificate, and the last certificate error;
-    for Direct the addresses listening and the fingerprint, for Tailnet the
-    name and whether it answers.
+  - the status of Caddy, the certificate with the address it was read at, the
+    DNS record the hostname points at and whether that is one of the addresses
+    served, and the last certificate error; for Direct the addresses listening
+    and the fingerprint, for Tailnet the name and whether it answers.
 
   Applying waits as long as `lyricad` needs (a new hostname can take about 90 s)
   and shows the time so far.

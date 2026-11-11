@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { generateKeyPairSync, X509Certificate } from "node:crypto";
+import { promises as dns } from "node:dns";
 import { chmodSync, closeSync, existsSync, openSync, readFileSync, readSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { isIP } from "node:net";
@@ -274,6 +275,8 @@ export interface WebAccessOptions {
   reserved: number[];
   /** This machine's Tailscale and LAN addresses. Read from its interfaces unless a test gives them. */
   addresses?: () => Api.HostAddress[];
+  /** Where a name points, as this machine's resolver answers. Its own unless a test gives one. */
+  resolve?: (name: string) => Promise<string[]>;
   external: ExternalListener;
   /** Where the proxied listener (Front) is kept for the listeners before unlock. */
   frontFile?: string;
@@ -283,6 +286,9 @@ export interface WebAccessOptions {
   trustCa?: string;
   log: (line: string) => void;
 }
+
+/** Where a name points, as this machine's resolver answers it. */
+const lookup = async (name: string): Promise<string[]> => (await dns.lookup(name, { all: true, verbatim: true })).map((r) => r.address);
 
 /** 100.64.0.0/10, shared by Tailscale, other overlays and carrier-grade NAT. */
 export function inTailnetRange(ip: string): boolean {
@@ -551,6 +557,28 @@ export class WebAccess {
   }
 
   /**
+   * Where the name points, and whether Caddy listens on any of those
+   * addresses. The status says both: a certificate read at one address says
+   * nothing about where the name a browser types lands.
+   */
+  private async dnsRecord(s: Stored): Promise<NonNullable<Api.WebAccessStatus["dns"]>> {
+    let list: string[];
+    try {
+      list = await (this.o.resolve ?? lookup)(s.name);
+    } catch (err) {
+      // Nothing answers at all (no record) is worth saying; a resolver that
+      // didn't reply is this machine's, not her name's, problem.
+      const code = (err as { code?: string }).code;
+      if (code === "EAI_AGAIN") return { error: `this machine's resolver didn't answer about ${s.name}` };
+      if (code === "ENOTFOUND") return { error: `this machine can't resolve ${s.name}` };
+      return { error: (err as Error).message };
+    }
+    if (!list.length) return { error: `this machine can't resolve ${s.name}` };
+    const served = new Set(s.builtin!.addresses);
+    return { addresses: list, served: list.some((a) => served.has(a)) };
+  }
+
+  /**
    * Waits until Caddy serves a certificate for the name that verifies (any
    * matching one, with staging), on its first address. The reason if none came.
    */
@@ -591,8 +619,10 @@ export class WebAccess {
         configured: !!have?.apps?.http,
         applied: have !== undefined && canonical(have) === canonical(caddyConfig(this.site(s), this.o.caddy)),
       };
-      const c = await peer(s.builtin!.addresses[0]!, this.o.httpsPort, s.name);
-      out.certificate = c.cert ? { issuer: c.cert.issuer, subject: c.cert.subject, notAfter: c.cert.notAfter } : { error: c.error };
+      const readAt = s.builtin!.addresses[0]!;
+      const c = await peer(readAt, this.o.httpsPort, s.name);
+      out.certificate = c.cert ? { address: readAt, issuer: c.cert.issuer, subject: c.cert.subject, notAfter: c.cert.notAfter } : { address: readAt, error: c.error };
+      out.dns = await this.dnsRecord(s);
       const last = lastError(this.o.caddy.tlsLog, s.appliedAt ?? 0);
       if (last) out.lastAcmeError = { ...last, message: this.redact(last.message, s) };
     }

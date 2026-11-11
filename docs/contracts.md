@@ -2094,7 +2094,13 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     `frontDoor` includes the Direct port on
     this machine's addresses and, with Tailnet on, 443 on her Tailscale address
     (which stands for her MagicDNS name: this machine's resolver needn't know
-    it, since her tailscaled is userspace). All additive.
+    it, since her tailscaled is userspace). Built-in's status names where each
+    fact was measured: `WebAccessStatus.certificate.address` is the served
+    address the certificate was read at, and `WebAccessStatus.dns` (`{
+    addresses, served }`, or `{ error }` when this machine's lookup of the
+    name fails, whether because nothing answers at it or because its resolver
+    didn't reply) is where the hostname points, and whether Caddy serves on
+    any of those addresses. All additive.
   - **Wrong door.** On the two plain loopback listeners (`port` and the serve
     port), a request whose `Host` isn't this machine's loopback name and that
     no trusted proxy marked `X-Forwarded-Proto: https` is answered without
