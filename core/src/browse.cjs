@@ -240,7 +240,13 @@ const PAGE = `((start) => {
     // are one. It goes without asking, and its post is let through.
     const filled = all.filter((e) => { const k = kind(e, getComputedStyle(e)); return k && k !== "button"; });
     const box = filled.length === 1 && tag(filled[0]) === "INPUT" && ["", "text", "search"].includes((filled[0].getAttribute("type") || "").toLowerCase());
-    if (method === "post" && box && !S.held.has(el)) return { free: true };
+    // Not one that says it deletes or removes, in its buttons, its box's name, where it goes or a hidden
+    // _method (the owner, 2026-11-11): a "type DELETE to confirm" box is one text box too.
+    const says = () => [by?.getAttribute("formaction"), form.getAttribute("action"), name(filled[0], "field"), ...all.map((e) => {
+      const k = kind(e, getComputedStyle(e));
+      return k === "button" ? name(e, k) : e.type === "hidden" && e.name === "_method" ? e.value : "";
+    })].join(" ");
+    if (method === "post" && box && !S.held.has(el) && !/delet|remov/i.test(says())) return { free: true };
     const fields = [];
     for (const e of all) {
       const k = kind(e, getComputedStyle(e));

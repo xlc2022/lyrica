@@ -18,6 +18,9 @@ const SHOP = `<title>Shop</title><h1>Shop</h1><p>Welcome to the <a href="/two">s
 <select name="c" aria-label="Country"><option>Austria</option><option>Brazil</option></select><button type="submit">Sign in</button></form>
 <form method="post" action="/ask"><input type="hidden" name="t" value="1"><input name="q" placeholder="Ask"><button>Send</button></form>
 <form method="post" action="/ask"><input name="q" placeholder="Note"><input type="checkbox" name="keep" aria-label="Keep"><button>Save</button></form>
+<form method="post" action="/ask"><input name="c" placeholder="Type the name to confirm"><button>Delete account</button></form>
+<form method="post" action="/items/remove"><input name="c" placeholder="Which"><button>Confirm</button></form>
+<form method="post" action="/ask"><input type="hidden" name="_method" value="delete"><input name="c" placeholder="Why"><button>Yes</button></form>
 <div id="js" style="cursor:pointer">Poster</div><div style="display:none">hidden words</div>
 <script>document.getElementById("js").addEventListener("click", () => { const f = document.createElement("form"); f.method = "post"; f.action = "/login"; document.body.append(f); f.submit(); });</script>`;
 
@@ -101,7 +104,7 @@ describe.skipIf(!chromium)("the browse tool's browser", () => {
     expect(posts).toEqual(["email=ada%40example.com&pw=hunter2&c=Brazil"]);
   }, 90_000);
 
-  it("sends a posted form that is one text box without asking, and asks for one with anything else to fill in", async () => {
+  it("sends a posted form that is one text box without asking, and asks for one with anything else to fill in or that deletes", async () => {
     const b = browser("f");
     let page = await b.act("1", { action: "open", url: site });
     const ask = ref(page.text, "Ask");
@@ -112,6 +115,10 @@ describe.skipIf(!chromium)("the browse tool's browser", () => {
     expect((await b.look({ action: "click", ref: ref(page.text, "Send") })).form).toBeUndefined();
     expect((await b.look({ action: "click", ref: ref(page.text, "Save") })).form).toBeTruthy();
     expect((await b.act("4", { action: "click", ref: ref(page.text, "Save") })).fail).toBe(BROWSE_UNAPPROVED);
+    // One box, but it says it deletes or removes: in its button, where it goes, or a hidden _method.
+    for (const button of ["Delete account", "Confirm", "Yes"]) expect((await b.look({ action: "click", ref: ref(page.text, button) })).form).toBeTruthy();
+    expect((await b.look({ action: "type", ref: ref(page.text, "Type the name to confirm"), submit: true })).form).toBeTruthy();
+    expect((await b.act("5", { action: "click", ref: ref(page.text, "Delete account") })).fail).toBe(BROWSE_UNAPPROVED);
     expect(posts.length).toBe(1);
   }, 60_000);
 
