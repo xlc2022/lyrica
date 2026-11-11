@@ -627,7 +627,10 @@ Caddy:
 
 1. Pick a name under a domain you control, such as `lyrica.example.net`, and
    point its DNS record at the machine's Tailscale address. On the LAN,
-   split DNS can give the same name the LAN address.
+   split DNS can give the same name the LAN address. Not her own tailnet
+   address: that one serves only her ts.net name, with its certificate,
+   and refuses any other name. A machine that isn't on a tailnet itself
+   can serve the name on its LAN address only.
 2. Make an API token at your DNS provider, limited to that one zone. The
    page lists the providers Caddy was built with (Cloudflare, Porkbun,
    Namecheap, Route 53, DigitalOcean, Hetzner, deSEC, Duck DNS) and how to
