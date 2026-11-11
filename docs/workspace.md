@@ -1062,9 +1062,14 @@ background, so it doesn't hold her turn (`core/src/workspace/jobs.ts`).
   loses them unreported: a sandbox runs with
   `--die-with-parent`, and an SSH job's helper exits with `lyricad`. An
   update's drain doesn't wait for jobs, so an update stops a running one.
-  On a machine, stopping sends SSH's KILL signal and closes the channel; a
-  server that ignores the signal may leave a program that ignores the
-  hangup running there.
+  On a machine a command runs in its own session (`groupRun` in
+  `core/src/workspace/ssh.ts`: `setsid` in the account's shell, its process
+  group's id kept in a file under `$TMPDIR` or `/tmp` while it runs), so
+  stopping one, or its time limit, sends SSH's KILL signal, closes the
+  channel and then kills that whole process group: what it started goes
+  too, unless it started a session of its own. A machine with no `setsid`
+  runs the command as before, where a server that ignores the signal may
+  leave a program that ignores the hangup running there.
 - An `edit` or `write` inside the folder of a running job that checks the
   code (tests, a type check, a lint, a build), or a `bash` `git commit`
   there, gets a line added to its result (`checkUnder`): the job's id and

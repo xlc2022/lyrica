@@ -73,7 +73,7 @@ export async function sweepUser(s: Services, userId: string, now = new Date()): 
  * Removes the files of threads just forgotten, at once rather than at the next
  * sweep: the records of which thread wrote each file, the records of what her calls changed and their snapshots, each
  * thread's folder under `threads/` (its run worktrees forgotten by git first)
- * and its Claude Code folder. Their background commands and clips stop. Only while the home is mounted; otherwise the
+ * its Claude Code folder and its browser profile. Their background commands, browsers and clips stop. Only while the home is mounted; otherwise the
  * sweep takes the folders later. The folders are removed without holding up lyricad, since a thread's packages can
  * be hundreds of thousands of files. Returns how many folders went.
  */
@@ -119,7 +119,8 @@ export async function forgetFiles(home: string, changes: FileChanges, pool: Pool
       await rm(dir, { recursive: true, force: true });
       n++;
     }
-    for (const kept of ["claude", "tmp"]) {
+    // Its Claude Code folder, lasting /tmp and browser profile (cookies, logins, downloads not yet saved).
+    for (const kept of ["claude", "tmp", "browser"]) {
       const d = join(home, kept, name);
       if (existsSync(d)) { await rm(d, { recursive: true, force: true }); n++; }
     }

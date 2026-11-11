@@ -2036,7 +2036,8 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   `forgetThreadFiles(services, userId, pool, threads)` does the same for
   threads just forgotten, at once and with no age limit, and drops their
   change records and snapshots too, keeping a folder whose id a thread in
-  either pool still has, and removes its `tmp/<id>` and each
+  either pool still has, and removes its `tmp/<id>`, its browser profile
+  `browser/<id>` and each
   `threads/*/shared/<id>` directory (not following a link there);
   `DELETE …/threads/:pool/:threadId` calls it. `POST /api/u/:userId/clean-up`
   (`CleanUpResult`: folders, worktrees, snapshots, change records) runs the

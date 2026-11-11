@@ -820,8 +820,8 @@ export class Workspace {
   /**
    * Where the thread's browser keeps its profile on the host (cookies, so a
    * login lasts): in the home workspace, under browser/ and never in a
-   * thread's folder, mounted only into the browser's own run. The sweep
-   * removes it with the thread.
+   * thread's folder, mounted only into the browser's own run. Forgetting the
+   * thread removes it (`forgetFiles`), and the sweep takes one left behind.
    */
   browserDir(t: WorkspaceThread): string {
     const home = this.homeDir(t.userId);

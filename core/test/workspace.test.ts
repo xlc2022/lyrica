@@ -1,5 +1,5 @@
 import { execFileSync, spawn } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { connect, createServer, type Server } from "node:net";
 import { networkInterfaces, tmpdir, userInfo } from "node:os";
 import { join } from "node:path";
@@ -739,6 +739,21 @@ describe.skipIf(!helperRunnable)("an ssh target", () => {
       const { exitCode } = await ops.bash.exec("pwd && cat todo.txt", "/elsewhere", { onData: (d) => { out += d.toString(); } });
       expect(exitCode).toBe(0);
       expect(out).toBe(`${join(dir, "root")}\nbuy milk\n`);
+      // A stopped command takes what it started with it, even a child that outlives its shell.
+      const pidFile = join(dir, "root", "child.pid");
+      const stop = new AbortController();
+      const running = ops.bash.exec(`sleep 300 & echo $! > ${pidFile}; wait`, dir, { onData: () => {}, signal: stop.signal });
+      running.catch(() => {});
+      for (let i = 0; i < 100 && !existsSync(pidFile); i++) await new Promise((r) => setTimeout(r, 50));
+      const child = Number(readFileSync(pidFile, "utf8"));
+      expect(child).toBeGreaterThan(1);
+      stop.abort();
+      await expect(running).rejects.toThrow(/aborted/);
+      // A zombie waiting to be reaped counts as gone: it runs nothing.
+      const alive = () => { try { return !/^\d+ \(.*\) Z/.test(readFileSync(`/proc/${child}/stat`, "utf8")); } catch { return false; } };
+      for (let i = 0; i < 100 && alive(); i++) await new Promise((r) => setTimeout(r, 50));
+      expect(alive()).toBe(false);
+      rmSync(pidFile);
       symlinkSync("/etc", join(dir, "root", "etc"));
       await expect(ops.read.readFile(join(dir, "root", "etc", "hostname"))).rejects.toThrow(/leads outside/);
       await expect(ops.write.writeFile(join(dir, "root", ".ssh", "authorized_keys"), "x")).rejects.toThrow(/SSH's or sudo's/);

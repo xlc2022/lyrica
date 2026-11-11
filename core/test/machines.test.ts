@@ -243,7 +243,9 @@ describe("machines", () => {
     workspace.setHostKey(thread("g").userId, "nas", OTHER);
     expect(settings.machine("nas")!.state).toBeNull();
     await workspace.targetFor(thread("g"), "nas").ops().bash.exec("uptime", "/", { onData: () => {} });
-    expect(fake.commands).toEqual([`export PATH="$PATH:/usr/sbin:/sbin" && cd '/home/lyrica' && uptime`]);
+    // In its own session (groupRun), so a stop takes what it started; a machine with no setsid runs it as written.
+    expect(fake.commands).toHaveLength(1);
+    expect(fake.commands[0]).toMatch(/^export PATH="\$PATH:\/usr\/sbin:\/sbin" && cd '\/home\/lyrica' && if command -v setsid .* setsid "\$\{SHELL:-\/bin\/sh\}" -c 'uptime' <&0 & .* else uptime\nfi$/s);
     expect(settings.machine("nas")!.state?.kind).toBe("online");
   });
 
