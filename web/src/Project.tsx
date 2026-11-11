@@ -19,7 +19,7 @@ import { FilesSection } from "./ProjectFiles.tsx";
 import { CODE_MODE_HINT, EVIDENCE_CHOICES, EVIDENCE_HINT, Folders, Machines } from "./Settings.tsx";
 import { Main, PageHead, useWide, type ShellContext } from "./Shell.tsx";
 import { ConfirmDialog, Dialog, ErrorText, Prose, shortTime, Switch, useAction, useDismiss, useInView, useLoad, wakeTime } from "./ui.tsx";
-import { modelName } from "./ModelLabel.tsx";
+import { isChatModel, modelName } from "./ModelLabel.tsx";
 
 /**
  * A project thread's chips (docs/ux.md §6, "A thread of a project at a glance"): its checklist's count, its open pull
@@ -417,12 +417,12 @@ export function GeneralSection({ ctx, base, summary, settings, onSummary, onSett
           <span>Model</span>
           <select value={model} onChange={(e) => setModel(e.target.value)}>
             <option value="">Same as coordinator</option>
-            {settings.allowed.map((ep) => (
+            {settings.allowed.filter((ep) => ep.models.some(isChatModel)).map((ep) => (
               <optgroup key={ep.id} label={`${ep.name} (${ep.kind})`}>
-                {ep.models.map((m) => <option key={m.id} value={m.id}>{ep.kind} · {modelName(m)} · {ep.name}</option>)}
+                {ep.models.filter(isChatModel).map((m) => <option key={m.id} value={m.id}>{ep.kind} · {modelName(m)} · {ep.name}</option>)}
               </optgroup>
             ))}
-            {model && !settings.allowed.some((ep) => ep.models.some((m) => m.id === model)) && <option value={model}>{model} (not available)</option>}
+            {model && !settings.allowed.some((ep) => ep.models.some((m) => m.id === model && isChatModel(m))) && <option value={model}>{model} (not available)</option>}
           </select>
         </label>
         <Switch label="Code mode" hint={CODE_MODE_HINT} checked={code} onChange={setCode} />
