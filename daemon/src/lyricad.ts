@@ -1005,7 +1005,7 @@ export class Lyricad implements Drainable {
 
   private readonly sweeping = new Map<string, Promise<SweepCounts>>();
 
-  /** One user's sweep (sweepUser): the night's, a wipe's or Clean up now's. One asked for while another runs gets that one's counts. */
+  /** One user's sweep (sweepUser): the night's, a wipe's or Sweep orphan data's. One asked for while another runs gets that one's counts. */
   sweepUser(userId: string, now = new Date()): Promise<SweepCounts> {
     let running = this.sweeping.get(userId);
     if (!running) {

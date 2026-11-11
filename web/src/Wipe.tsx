@@ -1,4 +1,4 @@
-// Administration → Reset and Settings → Reset (docs/ux.md §6 "Wiping memory", and Settings' Clean up now):
+// Administration → Reset and Settings → Reset (docs/ux.md §6 "Wiping memory", and Settings' Sweep orphan data):
 // Wipe memory… (everyone's) or Wipe my memory… (the user's own) opens a dialog
 // with its sentence, Keep skills (ticked), an unticked box and the person's own password.
 // While anything runs, the server sends it a stop and the dialog waits, showing
@@ -29,7 +29,7 @@ export function WipeSection({ ctx, mine }: { ctx: ShellContext; mine?: boolean }
   );
 }
 
-/** Clean up now (docs/ux.md §6 "Cleaning up files"): the nightly sweep of the user's own files, at once, then what it removed. */
+/** Sweep orphan data (docs/ux.md §6 "Sweeping orphan data"): the nightly sweep of the user's own files, at once, then what it removed. */
 function CleanUp({ userId }: { userId: string }) {
   const [run, busy, error] = useAction();
   const [done, setDone] = useState<CleanUpResult>();
@@ -38,7 +38,7 @@ function CleanUp({ userId }: { userId: string }) {
       <div className="row">
         <button type="button" disabled={busy} onClick={() => { setDone(undefined); void run(async () => setDone(await post<CleanUpResult>(u(userId, "clean-up")))); }}
           title="Removes what deleted threads left behind, change snapshots older than 30 days and old subagent worktrees. It also runs every night.">
-          {busy ? "Cleaning up…" : "Clean up now"}
+          {busy ? "Sweeping…" : "Sweep orphan data"}
         </button>
       </div>
       {done && <p className="meta" role="status">{cleanedUp(done)}</p>}
@@ -47,11 +47,11 @@ function CleanUp({ userId }: { userId: string }) {
   );
 }
 
-/** "Removed 3 folders and 12 snapshots.", naming only what there was, or "Nothing to clean up." */
+/** "Removed 3 folders and 12 snapshots.", naming only what there was, or "No orphan data found." */
 export function cleanedUp(c: CleanUpResult): string {
   const n = (k: number, one: string, many: string) => (k ? `${k} ${k === 1 ? one : many}` : "");
   const parts = [n(c.folders, "folder", "folders"), n(c.worktrees, "worktree", "worktrees"), n(c.snapshots, "snapshot", "snapshots"), n(c.records, "change record", "change records")].filter(Boolean);
-  if (!parts.length) return "Nothing to clean up.";
+  if (!parts.length) return "No orphan data found.";
   return `Removed ${parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}`}.`;
 }
 

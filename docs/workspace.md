@@ -771,7 +771,7 @@ fixed actions, the token never shown to her.
   worktree back. (`git worktree prune` can't do it: the records name the
   sandbox's paths.) A live code thread's own worktrees are left alone; a
   forgotten thread's go with its folder. It logs counts only. Folders are
-  removed without holding up `lyricad`. **Clean up now** in Settings →
+  removed without holding up `lyricad`. **Sweep orphan data** in Settings →
   Reset runs the same for the user at once (`POST …/clean-up`) and shows
   what it removed.
 - **Granted host paths outside the home workspace are ordinary files.** Their

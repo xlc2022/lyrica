@@ -2040,7 +2040,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   `threads/*/shared/<id>` directory (not following a link there);
   `DELETE …/threads/:pool/:threadId` calls it. `POST /api/u/:userId/clean-up`
   (`CleanUpResult`: folders, worktrees, snapshots, change records) runs the
-  user's sweep at once for Settings → Reset's Clean up now, and logs counts
+  user's sweep at once for Settings → Reset's Sweep orphan data, and logs counts
   only.
 - **Web access** (`LyricadOptions.web`): built-in Caddy, configured through
   its admin socket `/run/lyrica-caddy/admin.sock`, or an external proxy, with
