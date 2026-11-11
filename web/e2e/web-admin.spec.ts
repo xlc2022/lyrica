@@ -1839,6 +1839,22 @@ test("the sidebar brand links home and closes the phone drawer", async ({ page, 
   await noHorizontalScroll(page);
 });
 
+test("the phone sidebar scrolls as a whole, links to user row", async ({ page, baseURL }) => {
+  test.skip(!phone(page), "phone layout only");
+  const userId = await enter(page, baseURL!);
+  await page.setViewportSize({ width: 390, height: 480 });
+  await page.goto(`/#/u/${userId}/admin/status`);
+  await page.getByRole("button", { name: "Show threads" }).click();
+  const side = page.locator("aside.side");
+  const sizes = await side.evaluate((el) => ({ side: el.scrollHeight - el.clientHeight, threads: (() => { const t = el.querySelector(".threads")!; return t.scrollHeight - t.clientHeight; })() }));
+  expect(sizes.side).toBeGreaterThan(0);
+  expect(sizes.threads).toBe(0);
+  await side.evaluate((el) => { el.scrollTop = el.scrollHeight; });
+  await expect(page.locator(".side-foot")).toBeInViewport();
+  await expect(page.locator(".side-top")).not.toBeInViewport();
+  await noHorizontalScroll(page);
+});
+
 test("Administration has Her name after Status and saves the name throughout the app", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   await page.goto(`/#/u/${userId}/admin/name`);
