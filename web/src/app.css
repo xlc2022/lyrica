@@ -1952,9 +1952,20 @@ dialog .eyebrow { margin: 10px 0 4px; }
 .status-host { display: grid; gap: 6px; }
 .status-host + .status-host { border-top: 1px solid var(--line); padding-top: 10px; }
 .status-host .name { font-weight: 600; }
-.chart-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0; padding: 0; list-style: none; font-size: 13px; }
-.chart-legend li { display: inline-flex; align-items: center; gap: 6px; min-width: 0; overflow-wrap: anywhere; }
-.swatch { flex: none; width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+.chart-legend { display: flex; flex-wrap: wrap; gap: 2px 4px; align-items: center; margin: 0; padding: 0; list-style: none; font-size: 13px; }
+.chart-legend li { display: inline-flex; align-items: center; min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
+/* Each name is a toggle: pressed is on the charts; released is off them, its swatch hollow and its name muted. */
+.chart-legend button:not(.link) { display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 0 8px; border: 1px solid transparent; border-radius: 999px; background: none; font-size: 13px; text-align: left; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+.chart-legend button > span:last-child { min-width: 0; }
+@media (hover: hover) { .chart-legend button:not(.link):hover { border-color: var(--line); background: var(--tool); } }
+.chart-legend button[aria-pressed="false"] { color: var(--muted); }
+.chart-legend button[aria-disabled="true"] { cursor: default; }
+.chart-legend button[aria-disabled="true"]:hover { border-color: transparent; background: none; }
+.chart-legend .link { font-size: 13px; }
+.swatch { flex: none; width: 10px; height: 10px; border-radius: 3px; display: inline-block; background: var(--sw); }
+.chart-legend button[aria-pressed="false"] .swatch, .model-table > .off .swatch { background: transparent; box-shadow: inset 0 0 0 1.5px var(--sw); }
+.model-table > .off { color: var(--muted); }
+@media (pointer: coarse) { .chart-legend button { min-height: 44px; } }
 .status-charts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 20px; }
 .status-chart { margin: 0; display: grid; gap: 6px; min-width: 0; }
 .status-chart figcaption { font-size: 13px; font-weight: 600; }

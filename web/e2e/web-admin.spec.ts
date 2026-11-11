@@ -2838,7 +2838,23 @@ test("Status model facts preserve existing facts and render empty, measured and 
     await expect(facts).toContainText("37 calls");
     // Each chart draws, from the facts alone, and its marks answer the pointer.
     for (const name of ["Calls per hour", "Output tokens per hour", "Speed per call · tok/s", "Calls by task"]) await expect(facts.getByRole("figure", { name, exact: true }).locator(".chart-box svg")).toBeVisible();
-    await expect(facts.getByRole("list", { name: "Models" }).getByRole("listitem")).toHaveText(["fixture-cloud", "fixture-image", "fixture-measured", "fixture-without-speed-with-a-long-model-name-for-phone-wrapping"]);
+    const legend = facts.getByRole("list", { name: "Models on the charts" });
+    await expect(legend.getByRole("listitem")).toHaveText(["fixture-cloud", "fixture-image", "fixture-measured", "fixture-without-speed-with-a-long-model-name-for-phone-wrapping"]);
+    // Each legend name is a toggle: a model taken off leaves the charts, the facts line counts the rest, its row stays.
+    const cloud = legend.getByRole("button", { name: "fixture-cloud", exact: true });
+    await cloud.click();
+    await expect(cloud).toHaveAttribute("aria-pressed", "false");
+    await expect(facts).toContainText(/\d+ of 37 calls/);
+    await expect(row("fixture-cloud")).toHaveClass(/\boff\b/);
+    await noHorizontalScroll(page);
+    await facts.screenshot({ path: `shots/model-calls-hidden-${page.viewportSize()!.width}.png` });
+    // It stays off the next time Status opens in this browser, until Show all.
+    await page.reload();
+    await expect(cloud).toHaveAttribute("aria-pressed", "false");
+    await legend.getByRole("button", { name: "Show all", exact: true }).click();
+    await expect(cloud).toHaveAttribute("aria-pressed", "true");
+    await expect(facts).not.toContainText(" of 37 calls");
+    await expect(legend.getByRole("button", { name: "Show all", exact: true })).toHaveCount(0);
     await expect(page.getByText("Last sleep", { exact: true })).toBeVisible();
     await expect(page.locator("dt").filter({ hasText: /^Memory$/ })).toBeVisible();
     const statusReads = () => page.waitForRequest((r) => r.url().endsWith(`/api/u/${userId}/admin/status`));
@@ -2917,7 +2933,18 @@ test("Status's Memory use card shows the most used and most cited memories, each
   await expect(card.getByRole("heading")).toHaveText("Memory use · last 30 days");
   await expect(card).toContainText(/\d+ uses · 6 memories/);
   for (const name of ["Uses per day", "Most used"]) await expect(card.getByRole("figure", { name, exact: true }).locator(".chart-box svg")).toBeVisible();
-  await expect(card.getByRole("list", { name: "How" }).getByRole("listitem")).toHaveText(["Recalled", "Searched", "Opened"]);
+  const how = card.getByRole("list", { name: "Uses on the charts" });
+  await expect(how.getByRole("listitem")).toHaveText(["Recalled", "Searched", "Opened"]);
+  // The same toggles: Recalled off, the facts line counts the rest; the last one on can't go.
+  await how.getByRole("button", { name: "Recalled", exact: true }).click();
+  await expect(card).toContainText(/\d+ of \d+ uses · 6 memories/);
+  await how.getByRole("button", { name: "Searched", exact: true }).click();
+  const opened = how.getByRole("button", { name: "Opened", exact: true });
+  await expect(opened).toHaveAttribute("aria-disabled", "true");
+  await opened.click({ force: true });
+  await expect(opened).toHaveAttribute("aria-pressed", "true");
+  await how.getByRole("button", { name: "Show all", exact: true }).click();
+  await expect(card).not.toContainText(/ of \d+ uses/);
   // Five notes and a page; a phone hides the header row.
   await expect(card.getByRole("table", { name: "Most used memories" }).getByRole("row").filter({ has: page.getByRole("cell") })).toHaveCount(6);
   await noHorizontalScroll(page);
