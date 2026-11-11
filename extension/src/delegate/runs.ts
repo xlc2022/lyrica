@@ -1133,6 +1133,8 @@ export class Delegation {
       const extensions: ExtensionFactory[] = [];
       let mcp = false;
       let rules: (() => Promise<string | undefined>) | undefined;
+      // Its browser, if its role browses, closes when it ends; its profile stays for a later message to it.
+      let closeBrowser = () => {};
       if (workspace) {
         let owner = parent.threadId;
         while (view.own.getThread(owner)?.subagent && view.own.getThread(owner)?.parent) owner = view.own.getThread(owner)!.parent!;
@@ -1182,8 +1184,12 @@ export class Delegation {
           enabled: () => !role.readOnly && !narrowing.readOnly && tools.settings().images && tools.settings().mode !== "plan",
           approve: r => this.approve(sub!, r),
         }));
-        // Its role says whether it searches; its Web search switch is its parent's or off.
-        extensions.push(createWebExtension({ searxng: () => this.o.searxng?.(), kiwix: () => this.o.kiwix?.(), target: () => tools.target(), canRender: () => !!sandboxTools().browser && sandboxHas("node") }));
+        // Its role says whether it searches and browses; its Web search switch is its parent's or off. Its browser is
+        // its own, under its own network, with a profile of its own: it has none of its parent's logins.
+        const browses = role.tools.includes("browse") && !!tools.browser && !!sandboxTools().browser && sandboxHas("node");
+        if (browses) closeBrowser = () => { void tools.browser!().close().catch(() => {}); };
+        extensions.push(createWebExtension({ searxng: () => this.o.searxng?.(), kiwix: () => this.o.kiwix?.(), target: () => tools.target(), canRender: () => !!sandboxTools().browser && sandboxHas("node"),
+          ...(browses ? { browser: () => tools.browser!() } : {}) }));
         // Its parent's MCP servers, read live, so one taken from the parent goes from it too; its calls ask in both threads.
         if (tools.settings().mcpServers.length) {
           extensions.push(createMcpServersExtension(tools));
@@ -1217,7 +1223,7 @@ export class Delegation {
       opened.session.setThinkingLevel(role.thinking);
       // Passes over a model whose machine is away, and records the call. The role keeps its own thinking level.
       const chat = await opened.prepare({ thinking: false }).catch((err) => { opened.dispose(); throw err; });
-      sub = new Subagent(this, run, ctx, role, chat.label, chat.endpoint.kind !== "local", (me) => piBody(this, me, opened.session, opened.dispose), release, usedBefore(earlier));
+      sub = new Subagent(this, run, ctx, role, chat.label, chat.endpoint.kind !== "local", (me) => piBody(this, me, opened.session, opened.dispose), () => { release(); closeBrowser(); }, usedBefore(earlier));
       return this.begin(run, sub, child, pick, narrowing, earlier, chat.ref.offeringId);
     } catch (err) {
       release();

@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createLocalBashOperations } from "@earendil-works/pi-coding-agent";
-import { generateSshKey, Memory, PRONOUN_PRESETS, Workspace, type ExecutionTarget, type Persona, type Pool, type ToolOps, type WorkspaceThread } from "@lyrica/core";
+import { generateSshKey, Memory, PRONOUN_PRESETS, sandboxHas, sandboxTools, Workspace, type ExecutionTarget, type Persona, type Pool, type ToolOps, type WorkspaceThread } from "@lyrica/core";
 import { afterEach, describe, expect, it } from "vitest";
 import { fakeOpenAI, type ChatRequest } from "../../core/test/fake-openai.ts";
 import { withModels } from "../../core/test/helpers.ts";
@@ -237,7 +237,7 @@ describe("delegate", () => {
     expect(ws.credentialsFor({ userId: s.ada.id, pool: "general", threadId: child.thread }).forge.map((f) => f.readOnly)).toEqual([true]);
   });
 
-  it("gives an offline researcher neither web_search nor web_fetch", async () => {
+  it("gives an offline researcher neither web_search nor web_fetch, nor browse", async () => {
     let ws!: Workspace;
     const s = await setup({ searxng: () => "http://127.0.0.1:9", workspace: (m) => (ws = new Workspace(m.keyring, m.users, { excludePorts: [] })) });
     s.cloud.respond(() => ({ text: "Nothing found." }));
@@ -246,7 +246,9 @@ describe("delegate", () => {
     await s.run(parent, { task: "look it up offline", role: "researcher", internet: false });
     const [online, offline] = s.cloud.requests.filter(isSub).map((r) => (r.tools ?? []).map((t) => t.function.name));
     expect(online).toEqual(expect.arrayContaining(["web_search", "web_fetch"]));
-    expect(offline!.filter((t) => t.startsWith("web_"))).toEqual([]);
+    // And browse beside them, where the sandbox has a browser to drive.
+    expect(online!.includes("browse")).toBe(!!sandboxTools().browser && sandboxHas("node"));
+    expect(offline!.filter((t) => t.startsWith("web_") || t === "browse")).toEqual([]);
     const [last] = s.delegation.status(parent);
     expect(ws.settings(s.ada.id).thread(last!.thread).webSearch).toBe(false);
   });

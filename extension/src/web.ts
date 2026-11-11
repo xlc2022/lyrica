@@ -84,7 +84,7 @@ export function createWebExtension(web: WebTools): ExtensionFactory {
     pi.registerTool({
       name: "web_fetch",
       label: "Web fetch",
-      description: `Read a web page or PDF as text: a page's main text as Markdown. A wikipedia.org page comes from the server's offline copy when it has one (unless online), and a picture it lists comes back as an image; anything else is fetched from this conversation's sandbox, so its internet switch and allowed hosts apply.${web.browser ? " A page that needs a click, a field filled in or a login is browse's." : ""}`,
+      description: `Read a web page or PDF as text: a page's main text as Markdown. A wikipedia.org page comes from the server's offline copy when it has one (unless online), and a picture it lists comes back as an image; anything else is fetched from this conversation's sandbox, so its internet switch and allowed hosts apply.${web.browser ? " A page that needs a click, a field filled in or a login, or that comes back empty because a script draws it, is browse's." : ""}`,
       promptSnippet: "read a web page or PDF as text",
       promptGuidelines: ["A cut page names the offset to read on from.", OUTSIDE_GUIDELINE],
       annotations: { openWorldHint: true, readOnlyHint: true },

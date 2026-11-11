@@ -617,7 +617,7 @@ export function toolsLine(t: { programs: string[]; python?: string[]; browser?: 
   const programs = t.programs.map((p) => (p === "Python 3" && t.python?.length ? `Python 3 (with ${t.python.join(", ")})` : p));
   const parts = programs.length ? [`The sandbox has bash, ${programs.join(", ")}${t.browser ? " and headless Chromium" : ""}.`] : [];
   if (t.python?.length) parts.push("Those are the Python libraries there are, besides the standard library: don't pip install into the sandbox (each command is a fresh one); a clone's own dependencies go in its .venv.");
-  if (t.browser) parts.push("To check a page, use page preview. To script a browser (clicks, several pages), Playwright and Puppeteer use the same Chromium, never their own download: `executablePath: process.env.CHROME_PATH` and `args: [\"--no-sandbox\"]`. A static page is checked once it parses and one preview looks right.");
+  if (t.browser) parts.push("To check a page, use page preview. In a script of your own that needs a browser, Playwright and Puppeteer use the same Chromium, never their own download: `executablePath: process.env.CHROME_PATH` and `args: [\"--no-sandbox\"]`. A static page is checked once it parses and one preview looks right.");
   return parts.join(" ");
 }
 
