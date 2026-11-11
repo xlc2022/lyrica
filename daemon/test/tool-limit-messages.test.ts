@@ -4,7 +4,7 @@ import { HostedThread } from "../src/hosted.ts";
 import { toMessages } from "../src/messages.ts";
 import type { ThreadEvent } from "../src/api.ts";
 
-const text = "Turn stopped after `500` tool calls.";
+const text = "Turn stopped after `2500` tool calls.";
 
 it("a stored tool-limit entry comes back as a notice of kind limit, by its kind, not its words", () => {
   const messages = toMessages("web/a", "general", [

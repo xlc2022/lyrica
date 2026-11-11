@@ -422,8 +422,8 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
   - It keeps going in the background and stays until it is forgotten.
     Forgetting a parent asks whether to forget its child threads too, ticked
     by default.
-- **A turn stops after 500 attempted tool calls:** two budgets of 250, and
-  at the first's end she is told, unseen, that she has one more. The third identical call to a tool is refused with an error
+- **A turn stops after 2,500 attempted tool calls,** enough for long coding
+  work while a runaway loop still ends. The third identical call to a tool is refused with an error
   asking her to answer or try something different, unless a plain sleep
   came between, as when she polls. Identical calls in one batch count as
   one result, except `bash` calls starting a background command, each its

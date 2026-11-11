@@ -5,15 +5,13 @@ import { CHILD_WAKES } from "@lyrica/core";
 import { setToolsOff } from "./gate.ts";
 
 // Principles 1 and 2: stop real tool loops in the runtime, independently of the prompt.
-/** One budget of tool calls. A run gets a second budget once, after a quiet note at the first one's end, then stops. */
-export const MAX_TURN_TOOL_CALLS = 250;
-/** Told to her, unseen, when the first budget runs out: she carries on with one more. */
-export const TURN_TOOL_CARRY_ON = "lyrica-tool-limit-carry-on";
-export const CARRY_ON_BUDGET = `You have made ${MAX_TURN_TOOL_CALLS} tool calls this turn. Carry on: you have ${MAX_TURN_TOOL_CALLS} more, then your tools turn off for the rest of this turn. If the work won't fit, reach a clean point and leave the rest for later.`;
+export const MAX_TURN_TOOL_CALLS = 2500;
 export const MAX_IDENTICAL_TOOL_CALLS = 3;
 export const TURN_TOOL_NOTICE = "lyrica-tool-limit";
 /** Told to her, unseen, once the limit stops her tools: the person gets a reply, never only the notice. */
 export const TURN_TOOL_WRAP_UP = "lyrica-tool-limit-wrap-up";
+/** Told to her, unseen, when her wrap-up came back as a tool call written as text: her tools are off, so it said nothing. */
+export const PLAIN_WRAP_UP = "Your tools are off for the rest of this turn, so the tool call you wrote as text didn't run and the person can't read it. Reply in plain words: what you did, where things stand, and what's left.";
 export const WRAP_UP = "You reached this turn's tool limit, so your tools are off for the rest of this turn. Reply now in a few lines: what you did, where things stand, and what's left.";
 /** Shown when two replies in a row were cut off at the reply limit with a tool call in them: re-issued, it would only be cut again. */
 export const CUT_OFF = "Turn stopped: two replies in a row were cut off at the reply limit, so their tool calls didn't run.";
@@ -74,13 +72,11 @@ export function createWaitForReportsExtension(off: () => boolean): ExtensionFact
 }
 
 /** One budget per prompt/agent run, including every model continuation and nested tool call. */
-export function createTurnToolsExtension(): ExtensionFactory {
+export function createTurnToolsExtension(max = MAX_TURN_TOOL_CALLS): ExtensionFactory {
   return pi => {
     let calls = 0, stopped = false, notified = false, why = "";
     let wrapped = false;
-    /** The first budget ran out: she carries on with a second, and is told so once. */
-    let carried = false, tell = false;
-    let empty = 0, asText = 0, cut = 0;
+    let empty = 0, asText = 0, cut = 0, plain = 0;
     /** The thinking level to go back to after a retry without thinking. */
     let thinking: ThinkingLevel | null = null;
     /** By tool and arguments, a digest of each result those calls returned this run. */
@@ -95,7 +91,7 @@ export function createTurnToolsExtension(): ExtensionFactory {
       thinking = null;
     });
     pi.on("agent_start", () => {
-      calls = empty = asText = cut = 0; why = ""; stopped = notified = wrapped = carried = tell = false;
+      calls = empty = asText = cut = plain = 0; why = ""; stopped = notified = wrapped = false;
       repeats.clear(); running.clear(); refused.clear();
     });
     // This event precedes schema validation, so malformed and unknown calls count too.
@@ -117,8 +113,7 @@ export function createTurnToolsExtension(): ExtensionFactory {
         ? `You already read this thread twice with these arguments. If it is still working: ${CHILD_WAKES}`
         : "You already have this result: this tool was called with identical arguments twice and returned the same both times. Answer or try something different.");
       else running.set(e.toolCallId, key);
-      if (calls === MAX_TURN_TOOL_CALLS && !carried) { carried = tell = true; }
-      else if (calls >= 2 * MAX_TURN_TOOL_CALLS) { stopped = true; why = `Turn stopped after \`${calls}\` tool calls.`; }
+      if (calls >= max) { stopped = true; why = `Turn stopped after \`${calls}\` tool calls.`; }
     });
     pi.on("tool_call", e => {
       const reason = refused.get(e.toolCallId);
@@ -160,14 +155,16 @@ export function createTurnToolsExtension(): ExtensionFactory {
       // A tool call cut off at the reply limit doesn't run, and Pi tells her to re-issue it: once is a retry; twice, the turn stops.
       if (m.role === "assistant") cut = m.stopReason === "length" && m.content.some((c) => c.type === "toolCall") ? cut + 1 : 0;
       if (cut >= 2 && !stopped) { stopped = true; why = CUT_OFF; }
-      if (!stopped) {
-        // After the batch that used up the first budget: one quiet note, and she carries on.
-        if (tell && m.role === "assistant") { tell = false; return { entries: [{ type: "custom_message", customType: TURN_TOOL_CARRY_ON, content: CARRY_ON_BUDGET, display: false }] }; }
-        return;
-      }
+      if (!stopped) return;
       // Her wrap-up came back with tool calls anyway: end there.
       if (notified) {
         if (!wrapped && e.message.role === "assistant" && e.message.content.some((c) => c.type === "toolCall")) { wrapped = true; ctx.abort(); }
+        // Her wrap-up came back as a call written as text, which tells the person nothing: once, she says it in plain words.
+        else if (m.role === "assistant" && m.stopReason !== "error" && m.stopReason !== "aborted"
+          && m.content.some((c) => c.type === "text" && TEXT_CALL.test(outsideCode(c.text)))) {
+          if (++plain === 1) pi.sendMessage({ customType: TURN_TOOL_WRAP_UP, content: PLAIN_WRAP_UP, display: false }, { deliverAs: "followUp", triggerTurn: true });
+          else if (plain === 2) return { entries: [{ type: "custom_message", customType: EMPTY_REPLY_NOTICE, content: TEXT_TOOL_CALL, display: true }] };
+        }
         return;
       }
       notified = true;
