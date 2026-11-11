@@ -1898,7 +1898,8 @@ without `-c`; for a wrapper, any of its words, but a glob only in the
 wrapper's own words and its program (past any word that may be a flag's
 value), not in the program's arguments, so
 `timeout 60 curl "…?h=x"` isn't opaque; `command -v` and `-V` only look a
-name up, so they are never opaque) cannot be allowed; with any forbid
+name up, so they are never opaque; a lone `[`, the test command, is not a
+glob, only `[` with a `]` after it) cannot be allowed; with any forbid
 rule they ask in every mode.
 
 The hook reads rules on every `bash` call through `ThreadTools.commandRules`.

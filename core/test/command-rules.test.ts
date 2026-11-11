@@ -23,6 +23,8 @@ describe("project command matching", () => {
     expect(decide("sudo grep -r 'a.*b' /etc", DEFAULT_COMMAND_RULES)).toBeUndefined();
     expect(decide(`cd /workspace && for t in pdftoppm gs qpdf; do printf '%-12s ' $t; command -v $t || echo "-"; done`, DEFAULT_COMMAND_RULES)).toBeUndefined();
     expect(decide("command $t push", DEFAULT_COMMAND_RULES)?.decision).toBe("ask");
+    expect(decide(`for p in '**Device:**' '| Part |'; do\n  n=$(grep -c -F -e "$p" STATUS.md); [ "$n" = 1 ] || printf 'MISS %s\\n' "$p"\ndone`, DEFAULT_COMMAND_RULES)).toBeUndefined();
+    for (const c of ["gi[t] push", "/usr/bin/[g]it push", "[[ -f x ]] && g* push"]) expect(decide(c, DEFAULT_COMMAND_RULES)?.decision, c).toBe("ask");
     for (const c of ["timeout 5 /usr/bin/gi? push", "sudo -u root g* push", "timeout --signal KILL 5 /bin/gi[t] push", "timeout 5 $x push", "sudo eval x", "nice bash task.sh",
       "sudo --user root g* push --force", "sudo -D /tmp g* push --force", "env --chdir /tmp g* push --force", "nice --adjustment 5 g* push --force", "sudo --user root --group adm g* push"]) {
       expect(decide(c, DEFAULT_COMMAND_RULES)?.decision, c).toBe("ask");
