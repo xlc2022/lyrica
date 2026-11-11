@@ -48,6 +48,7 @@ interface Run {
   steps?: ReturnType<typeof fauxToolCall>[][];
   extensions?: ExtensionFactory[];
   approve?: ThreadTools["approve"];
+  browser?: ThreadTools["browser"];
   proposePlan?: ThreadTools["proposePlan"];
   /** Another turn after the first. */
   again?: boolean;
@@ -115,7 +116,7 @@ async function run(mode: ThreadWorkspace["mode"], calls: ReturnType<typeof fauxT
     machines: () => o.machines ?? [],
     proxmox: async (machine, action, vm) => { commands.push(`${machine}: proxmox ${action}${vm ? ` ${vm}` : ""}`); return `${action} done`; },
     allowedInThread: (machine, command) => (o.allowed ?? []).includes(`${machine}: ${command}`), network: () => ({ internet: false, services: false, hosts: ["nas.lan:8080"] }),
-    approve: o.approve, proposePlan: o.proposePlan, setMode: (m) => { settings.mode = m; },
+    approve: o.approve, ...(o.browser ? { browser: o.browser } : {}), proposePlan: o.proposePlan, setMode: (m) => { settings.mode = m; },
     claudeCode: () => !!o.claudeCode,
     ...(o.sameFile ? { sameFile: o.sameFile } : {}),
     ...(o.jobs ? {
@@ -156,6 +157,45 @@ async function run(mode: ThreadWorkspace["mode"], calls: ReturnType<typeof fauxT
 }
 
 describe("workspace tools in a Pi session", () => {
+  // browse (docs/briefs/browse.md): what would send a form asks in every mode, with what would be sent, and only a yes reaches the browser.
+  const browse: ExtensionFactory = (pi) => {
+    pi.registerTool({ name: "browse", label: "Browse", description: "browse", annotations: { openWorldHint: true }, parameters: Type.Object({ action: Type.String(), ref: Type.Optional(Type.Integer()), url: Type.Optional(Type.String()) }),
+      execute: async (_id, p) => ({ content: [{ type: "text", text: `did ${p.action}` }], details: undefined }) });
+  };
+  const form = { site: "shop.example", to: "pay.example", method: "POST", button: "Buy", fields: [{ name: "Card", value: "4111" }] };
+  const fakeBrowser = (yes: string[]) => ({
+    look: async (c: { action: string; ref?: number }) => (c.ref === 7 ? { form, words: "click" } : { words: `${c.action} button "Next" on shop.example` }),
+    approve: (id: string) => { yes.push(id); },
+  });
+
+  it("asks before browse sends a form in Auto mode, and lets a plain click go", async () => {
+    const asked: ApprovalRequest[] = [], yes: string[] = [];
+    const { results } = await run("auto", [
+      fauxToolCall("browse", { action: "open", url: "https://shop.example" }, { id: "1" }),
+      fauxToolCall("browse", { action: "click", ref: 3 }, { id: "2" }),
+      fauxToolCall("browse", { action: "click", ref: 7 }, { id: "3" }),
+    ], { extensions: [browse], browser: () => fakeBrowser(yes), approve: async (r) => { asked.push(r); return true; } });
+    expect(asked).toEqual([{ toolCallId: "3", tool: "browse", input: { browse: "POST to pay.example (Buy)\nCard: 4111" }, warning: "This sends a form from shop.example to pay.example." }]);
+    expect(yes).toEqual(["3"]);
+    expect(results.filter((r) => r.includes("did"))).toHaveLength(3);
+  });
+
+  it("sends no form on a no, asks before any browse click in Ask mode, and leaves Plan mode only looking", async () => {
+    const yes: string[] = [];
+    const denied = await run("auto", [fauxToolCall("browse", { action: "click", ref: 7 }, { id: "1" })], { extensions: [browse], browser: () => fakeBrowser(yes), approve: async () => false });
+    expect(yes).toEqual([]);
+    expect(denied.results.join("\n")).not.toContain("did click");
+    const asked: ApprovalRequest[] = [];
+    await run("ask", [fauxToolCall("browse", { action: "read" }, { id: "1" }), fauxToolCall("browse", { action: "click", ref: 3 }, { id: "2" })],
+      { extensions: [browse], browser: () => fakeBrowser(yes), approve: async (r) => { asked.push(r); return true; } });
+    expect(asked).toEqual([{ toolCallId: "2", tool: "browse", input: { browse: 'click button "Next" on shop.example' } }]);
+    expect(yes).toEqual([]);
+    const plan = await run("plan", [fauxToolCall("browse", { action: "open", url: "https://shop.example" }, { id: "1" }), fauxToolCall("browse", { action: "click", ref: 3 }, { id: "2" })],
+      { extensions: [browse], browser: () => fakeBrowser(yes) });
+    expect(plan.results.join("\n")).toContain("did open");
+    expect(plan.results.join("\n")).toContain("Plan mode only reads: browse");
+  });
+
   it("send read, write, edit and bash to the thread's target", async () => {
     const { files, commands, system } = await run("auto", [
       fauxToolCall("read", { path: "notes.txt" }, { id: "1" }),

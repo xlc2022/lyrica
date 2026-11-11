@@ -1,6 +1,6 @@
 import type { ExtensionAPI, ExtensionContext, ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import { StringEnum } from "@earendil-works/pi-ai";
-import { clamp, copyName, cutPage, outside, OUTSIDE_GUIDELINE, FETCH_BYTES, FETCH_TOO_LARGE, fetchArgv, fetchedPage, kiwixLines, kiwixPage, kiwixSearch, maskSecrets, offlineQuery, OUTPUT_OVER, RENDER_MS, renderArgv, renderedPage, SEARCH_CATEGORIES, SEARCH_TIMES, searxngSearch, type ExecutionTarget, type FetchedPage } from "@lyrica/core";
+import { BROWSE_ACTIONS, type Browser, clamp, copyName, cutPage, outside, OUTSIDE_GUIDELINE, FETCH_BYTES, FETCH_TOO_LARGE, fetchArgv, fetchedPage, kiwixLines, kiwixPage, kiwixSearch, maskSecrets, offlineQuery, OUTPUT_OVER, RENDER_MS, renderArgv, renderedPage, SEARCH_CATEGORIES, SEARCH_TIMES, searxngSearch, type ExecutionTarget, type FetchedPage } from "@lyrica/core";
 import { Type } from "typebox";
 import { setToolsOff } from "./gate.ts";
 
@@ -19,7 +19,12 @@ export interface WebTools {
   target(): ExecutionTarget;
   /** Whether the sandbox has Chromium and node, to render a page built by JavaScript. */
   canRender?(): boolean;
+  /** The thread's browser, in its sandbox. Without it (a subagent), there is no browse. */
+  browser?(): Pick<Browser, "act">;
 }
+
+/** How much of a page one browse action answers with; `read` with an offset goes on. */
+const BROWSE_CHARS = 12_000;
 
 /** How many offline hits join a search at most. */
 const OFFLINE_HITS = 5;
@@ -79,7 +84,7 @@ export function createWebExtension(web: WebTools): ExtensionFactory {
     pi.registerTool({
       name: "web_fetch",
       label: "Web fetch",
-      description: "Read a web page or PDF as text: a page's main text as Markdown. A wikipedia.org page comes from the server's offline copy when it has one (unless online), and a picture it lists comes back as an image; anything else is fetched from this conversation's sandbox, so its internet switch and allowed hosts apply.",
+      description: `Read a web page or PDF as text: a page's main text as Markdown. A wikipedia.org page comes from the server's offline copy when it has one (unless online), and a picture it lists comes back as an image; anything else is fetched from this conversation's sandbox, so its internet switch and allowed hosts apply.${web.browser ? " A page that needs a click, a field filled in or a login is browse's." : ""}`,
       promptSnippet: "read a web page or PDF as text",
       promptGuidelines: ["A cut page names the offset to read on from.", OUTSIDE_GUIDELINE],
       annotations: { openWorldHint: true, readOnlyHint: true },
@@ -140,6 +145,50 @@ export function createWebExtension(web: WebTools): ExtensionFactory {
           return text(`${outside(url.href, withSections(part))}${part.note ? `\n${part.note}` : ""}`);
         } catch (err) {
           return text(`Couldn't fetch ${url.href}: ${(err as Error).message}.`, true);
+        }
+      },
+    });
+
+    if (web.browser) pi.registerTool({
+      name: "browse",
+      label: "Browse",
+      description: "Use a web page in this conversation's own browser, when reading it isn't enough: it needs a click, a field filled in, a login, or several steps to reach something. Every action answers with the page as it is now, as text, with each link, button and field on a line of its own under a number; act on one by its number. The browser stays open between calls and keeps its logins. It runs in this conversation's sandbox, so its internet switch and allowed hosts apply. To read a page whose address you have, use web_fetch.",
+      promptSnippet: "use a web page: click, fill in fields, log in",
+      promptGuidelines: [OUTSIDE_GUIDELINE],
+      annotations: { openWorldHint: true },
+      parameters: Type.Object({
+        action: StringEnum(BROWSE_ACTIONS, { description: "open: go to url. read: the page again, from offset. click: the numbered thing. type: text into the numbered field, replacing what it holds. select: the option named by text in the numbered select. scroll: a screen down or up, for a page that loads more as it scrolls. back: the page before. screenshot: the visible part as an image. close: close the browser, keeping its logins." }),
+        url: Type.Optional(Type.String({ description: "open: an http or https URL." })),
+        ref: Type.Optional(Type.Integer({ description: "click, type, select: the number in brackets before the thing, from the latest page text." })),
+        text: Type.Optional(Type.String({ description: "type: the text. select: the option's name." })),
+        submit: Type.Optional(Type.Boolean({ description: "type: true presses Enter after the text." })),
+        direction: Type.Optional(StringEnum(["down", "up"] as const, { description: "scroll: down if left out." })),
+        offset: Type.Optional(Type.Integer({ description: "read: where to start, in characters, as a cut page names. 0 if left out." })),
+      }),
+      async execute(id, p, signal) {
+        let url: URL | undefined;
+        if (p.action === "open") {
+          try { url = new URL((p.url ?? "").trim()); } catch { return text(`${p.url ?? "Nothing"} isn't a URL.`, true); }
+          if (url.protocol !== "http:" && url.protocol !== "https:") return text("browse opens only http and https URLs.", true);
+        }
+        const numbered = p.action === "click" || p.action === "type" || p.action === "select";
+        if (numbered && p.ref === undefined) return text(`${p.action} needs ref: the number of the thing on the page.`, true);
+        if ((p.action === "type" || p.action === "select") && p.text === undefined) return text(`${p.action} needs text.`, true);
+        try {
+          const r = await web.browser!().act(id, {
+            action: p.action, ...(url ? { url: url.href } : {}), ...(numbered ? { ref: p.ref } : {}),
+            ...(p.text !== undefined ? { text: p.text } : {}), ...(p.submit ? { submit: true } : {}), ...(p.direction ? { direction: p.direction } : {}),
+          }, signal);
+          if (p.action === "close") return text("The browser is closed. Its logins are kept.");
+          if (r.image) return { content: [{ type: "text" as const, text: `A screenshot of ${r.url}` }, { type: "image" as const, data: r.image, mimeType: "image/jpeg" }], details: undefined };
+          if (r.text === undefined) return text(`Couldn't ${p.action}: ${r.fail ?? "the browser gave no page"}.`, true);
+          // The page's own words, a message box's included, go between the markers; what is ours stays outside them.
+          const whole = [`${r.title}\n${r.url}`, ...(r.notes?.length ? [r.notes.join("\n")] : []), r.text || "The page shows no text."].join("\n\n");
+          const part = cutPage(whole, BROWSE_CHARS, p.action === "read" ? p.offset ?? 0 : 0);
+          if (part.isError) return text(part.text, true);
+          return text(`${r.fail ? `${r.fail}\n` : ""}${outside(r.url ?? "the browser", withSections(part))}${part.note ? `\n${part.note}` : ""}`, !!r.fail);
+        } catch (err) {
+          return text(`Couldn't ${p.action}: ${(err as Error).message}.`, true);
         }
       },
     });

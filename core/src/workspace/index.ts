@@ -16,7 +16,8 @@ import { FileChanges, type NewChange } from "./changes.ts";
 import { cleanUploadName, PANEL_DIR, ThreadFiles, type FileEntry } from "./files.ts";
 import { isMounted, mountGocryptfs, unmountGocryptfs } from "./home.ts";
 import { maskSecrets, type ExecutionTarget } from "./ops.ts";
-import { FAMILY_ROOT, Sandbox, sandboxHas, SHARED, WORKDIR, type Credentials, type SandboxSpec } from "./sandbox.ts";
+import { Browser, browseArgv, type BrowserProcess } from "../browse.ts";
+import { FAMILY_ROOT, Sandbox, sandboxHas, sandboxTools, SHARED, WORKDIR, type Credentials, type SandboxSpec } from "./sandbox.ts";
 export { FAMILY_ROOT } from "./sandbox.ts";
 import type { ClaudeCodeUsage } from "./relay.ts";
 import { SETUP_SCRIPT, SetupFailures, setupOutcome } from "./setup.ts";
@@ -226,6 +227,8 @@ export class Workspace {
    * token before its host has been checked again.
    */
   private readonly mcpChecked = new Set<string>();
+  /** Each thread's browser, by `user/pool/thread`; the process behind one comes and goes. */
+  private readonly browsers = new Map<string, Browser>();
   /** Key pairs for machines being added, by draft id, never saved before the machine is. */
   private readonly drafts = new Map<string, { userId: string; privateKey: string; publicKey: string; expires: number }>();
   /**
@@ -439,6 +442,8 @@ export class Workspace {
       checkMcpServers: () => this.checkMcpServers(t),
       /** How a connection to one of its servers went, for Settings. */
       mcpServerState: (name: string, kind: McpStateKind) => { try { this.settings(t.userId).mcpServerState(name, kind); } catch { /* locked: shown only */ } },
+      /** Its browser, for the `browse` tool and the gate that asks before it sends a form. */
+      browser: () => this.browser(t),
       /** Starts one of its local servers in its sandbox, for the session's transport. */
       startMcpServer: (name: string) => this.startMcpServer(t, name),
       /** The server's call budget: refused says why a call may not go now; record counts one that went. A locked database refuses nothing. */
@@ -802,6 +807,52 @@ export class Workspace {
     const dir = join(home, "claude", encodeURIComponent(t.reposOf ?? t.threadId));
     mkdirSync(dir, { recursive: true, mode: 0o700 });
     return dir;
+  }
+
+  /**
+   * Where the thread's browser keeps its profile on the host (cookies, so a
+   * login lasts): in the home workspace, under browser/ and never in a
+   * thread's folder, mounted only into the browser's own run. The sweep
+   * removes it with the thread.
+   */
+  browserDir(t: WorkspaceThread): string {
+    const home = this.homeDir(t.userId);
+    if (!isMounted(home)) throw new Locked("the home workspace is not mounted");
+    const dir = join(home, "browser", encodeURIComponent(t.threadId));
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+    return dir;
+  }
+
+  /** The thread's browser for the `browse` tool, started in its sandbox at the first call that needs it (docs/briefs/browse.md). */
+  browser(t: WorkspaceThread): Browser {
+    const k = `${t.userId}/${t.pool}/${t.threadId}`;
+    let b = this.browsers.get(k);
+    if (!b) this.browsers.set(k, b = new Browser(() => this.startBrowser(t)));
+    return b;
+  }
+
+  /**
+   * Starts the thread's browser driver in a sandbox with the thread's
+   * network (its switches and allowed hosts, as her bash has them) and
+   * the profile, and nothing else of the thread's: no folders, grants or
+   * credentials, so a page has no file or token to reach. It holds one of
+   * the thread's background-command slots while it runs, so Lock, a
+   * forgotten thread and `jobs stop` end it.
+   */
+  private async startBrowser(t: WorkspaceThread): Promise<BrowserProcess> {
+    if (!sandboxTools().browser || !sandboxHas("node")) throw new Error("this server's sandbox has no Chromium and node to browse with");
+    this.settings(t.userId).checkInherited(t.threadId, t.pool);
+    const box = new Sandbox({ grants: [], network: this.network(t), browserDir: this.browserDir(t), ...this.door(), bwrap: this.opts.bwrap, pasta: this.opts.pasta });
+    let child: BrowserProcess | undefined;
+    const slot = this.jobs.hold(t, "browser", () => child?.kill("SIGKILL"), "browser");
+    try {
+      child = await box.start(browseArgv(), "/");
+    } catch (err) {
+      slot.release();
+      throw err;
+    }
+    child.on("close", () => slot.release());
+    return child;
   }
 
   /** The thread's repositories now: granted by it and every ancestor, of an account of its pool. */

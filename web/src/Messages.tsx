@@ -1337,7 +1337,7 @@ export function summarizeArgs(args: unknown): string {
   const { machine: _, ...a } = args as Record<string, unknown>;
   // A call she is still writing has no arguments yet: its marker is the tool's name alone.
   if (!Object.keys(a).length) return "";
-  if (typeof a.action === "string") return [a.action, a.vm].filter((x) => typeof x === "string" && x).join(" ");
+  if (typeof a.action === "string") return [a.action, a.vm, a.url].filter((x) => typeof x === "string" && x).join(" ");
   const main = a.command ?? a.path ?? a.query ?? a.url ?? Object.values(a)[0];
   return typeof main === "string" ? main.split("\n")[0]! : JSON.stringify(main ?? "");
 }
@@ -1359,6 +1359,7 @@ function permissionText(args: unknown): string {
   if (!args || typeof args !== "object") return JSON.stringify(args);
   const { machine: _, ...a } = args as Record<string, unknown>;
   if (typeof a.command === "string") return a.command;
+  if (typeof a.browse === "string") return a.browse;
   if (typeof a.repository === "string") return `${a.repository} · ${String(a.account ?? "")}`;
   if (typeof a.action === "string") return [a.action, a.vm].filter((x) => typeof x === "string" && x).join(" ");
   if (typeof a.path === "string" && Object.keys(a).length === 1) return a.path;
