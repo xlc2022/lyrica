@@ -407,20 +407,31 @@ describe("the vLLM backend", () => {
     }
   });
 
-  it("refuses a load whose measurement failed, naming the context, and measures afresh next time", async () => {
+  it("loads on the estimate when a measurement fails, and refuses only once a load after one has died", async () => {
     const serving = mkdtempSync(join(tmpdir(), "lyrica-serving-"));
-    const router = await fakeLlamaRouter("loaded", { serving });
+    const router = await fakeLlamaRouter("crashed", { serving });
+    const logged: string[] = [];
     try {
-      const llama = new LlamaCpp({ url: router.url, serving, models: "/models", device: (i) => `CUDA${i}`, measureTimeoutMs: 200 });
-      // The measure child couldn't build the model at this preset: a load with it would most likely die the same way.
-      router.memory.set("m", { status: "failed" });
+      const llama = new LlamaCpp({ url: router.url, serving, models: "/models", device: (i) => `CUDA${i}`, measureTimeoutMs: 200, log: (event, f) => logged.push(`${event} ${f?.reason}`) });
       const long = { ...(model as object), contextLength: 1_000_000 } as never;
       const settings = { placement: { mode: "auto" as const }, contextLength: 500000 };
-      await expect(llama.measure(long, at, settings)).rejects.toMatchObject({ code: "too_big", message: expect.stringContaining("a context of 500000 tokens") });
-      // Refused, the placement leaves the preset, and the router has re-read it: the failure isn't read back on the next try.
-      expect(readFileSync(join(serving, "llamacpp.ini"), "utf8")).not.toContain("[m]");
-      expect(router.memory.has("m")).toBe(false);
+      // The measure child couldn't build the model, which on some hosts every measurement does while loads work: the estimate stands.
+      router.memory.set("m", { status: "failed" });
       expect(await llama.measure(long, at, settings)).toBeNull();
+      expect(logged).toContain("not measured failed");
+      // The router has re-read the preset without the section, so the failure isn't read back on the next try.
+      expect(router.memory.has("m")).toBe(false);
+      // The load dies too, so the next failed measurement at the same settings refuses instead of starting it again.
+      await expect(llama.load(long, at, settings)).rejects.toMatchObject({ code: "model_unavailable" });
+      router.memory.set("m", { status: "failed" });
+      await expect(llama.measure(long, at, settings)).rejects.toMatchObject({ code: "too_big", message: expect.stringContaining("a context of 500000 tokens") });
+      // So does a try whose split and need moved with the GPUs' free room.
+      router.memory.set("m", { status: "failed" });
+      await expect(llama.measure(long, { ...at, split: [0.6, 0.4], need: { 0: 2 } }, settings)).rejects.toMatchObject({ code: "too_big" });
+      expect(readFileSync(join(serving, "llamacpp.ini"), "utf8")).not.toContain("[m]");
+      // Other settings are tried afresh.
+      router.memory.set("m", { status: "failed" });
+      expect(await llama.measure(long, at, { ...settings, contextLength: 32768 })).toBeNull();
     } finally {
       router.server.close();
     }
