@@ -696,6 +696,11 @@ dialog::backdrop { background: rgb(0 0 0 / 0.35); }
   .menu-btn { display: inline-flex; }
   .side-close { display: inline-flex; }
   .side .divider { display: none; }
+  /* The whole sidebar scrolls as one, links to user row, rather than the threads alone. */
+  .side { overflow-y: auto; overscroll-behavior: contain; }
+  .side > * { flex-shrink: 0; }
+  .threads { flex: none; overflow: visible; }
+  .side-foot { margin-top: auto; }
   .head { --head-gap: 8px; }
   /* The thread header wraps: title between the two buttons, then the facts row across the full width. */
   .thread-head { flex-wrap: wrap; align-items: center; }

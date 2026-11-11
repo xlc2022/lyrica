@@ -397,8 +397,9 @@ spot.
 
 ## 8. On a phone
 
-- Everything works at 390 px: the sidebar slides in, drawers and the Files
-  panel go full screen, tables stack into rows, header actions become icon
+- Everything works at 390 px: the sidebar slides in and scrolls as one
+  column (links, threads, status panel and user row together, never the
+  threads alone), drawers and the Files panel go full screen, tables stack into rows, header actions become icon
   buttons with labels for screen readers. There is no panel: what would open
   in it is the page, at the same address.
 - No horizontal scrolling, anywhere, ever.
