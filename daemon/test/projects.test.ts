@@ -321,6 +321,30 @@ describe("projects", () => {
     expect((await get()).projectSettings?.commandRules).toEqual(commandRules);
   });
 
+  it("saves her instructions, leaves a draft while Ask first is on, and only the user turns Ask first off", async () => {
+    const { ada, script, say, path } = await setup();
+    const get = async () => (await ada.get<ThreadSummary>(path)).body;
+    script("chat").push(tool({ action: "instructions", instructions: "Water at dawn" }), { text: "Saved." });
+    await say("Keep your instructions current");
+    expect((await get()).instructions).toBe("Water at dawn");
+    expect((await get()).projectSettings).toMatchObject({ askFirstInstructions: false });
+    expect((await get()).projectSettings?.draftInstructions).toBeUndefined();
+
+    await ada.patch(path, { askFirstInstructions: true });
+    script("chat").push(tool({ action: "instructions", instructions: "Water at dusk" }), { text: "Drafted." });
+    await say("Change them");
+    expect(await get()).toMatchObject({ instructions: "Water at dawn", projectSettings: { askFirstInstructions: true, draftInstructions: "Water at dusk" } });
+    await ada.patch(path, { instructions: "Water at dusk" });
+    expect(await get()).toMatchObject({ instructions: "Water at dusk", projectSettings: { askFirstInstructions: true } });
+
+    // She can turn Ask first on, never off: the action has no way to.
+    await ada.patch(path, { askFirstInstructions: false });
+    script("chat").push(tool({ action: "instructions", askFirst: true }), { text: "Asking first now." });
+    await say("Check with me before changing them");
+    expect((await get()).projectSettings?.askFirstInstructions).toBe(true);
+    expect((await get()).instructions).toBe("Water at dusk");
+  });
+
   it("applies fold suggestions once, by row or all", async () => {
     const { ada, u, path, script, say, overview } = await setup();
     const ids = [];

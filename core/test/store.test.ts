@@ -688,7 +688,7 @@ describe("threads", () => {
     const project = own.createThread({ interface: "web", project: true, title: "Homelab" });
     const owner = memory.openOwnerView(ada.id);
     const me = `user:${ada.id}` as const;
-    expect(() => own.setProjectInstructions(project.id, "x", "sleep")).toThrow(/only be changed by the user/);
+    expect(() => own.setProjectInstructions(project.id, "x", "sleep")).toThrow(/can't be changed by sleep/);
     owner.general.setProjectInstructions(project.id, "Ask before buying anything.", me);
     const page = `p:${projectSlug(project.id)}`;
     expect(own.get(page)).toMatchObject({ instructions: "Ask before buying anything.", text: "" });
@@ -699,6 +699,11 @@ describe("threads", () => {
     own.putPage({ slug: projectSlug(project.id), title: "Homelab", summary: "the move", text: "DNS is done; rack next." }, "sleep");
     expect(own.pageForProject(project.id)).toMatchObject({ instructions: "Ask before buying anything over $50.", text: "DNS is done; rack next." });
     expect(() => own.edit(page, { instructions: "Buy anything." }, "sleep")).toThrow(/only be changed by the user/);
+    // Lyrica changes them only through setProjectInstructions (her `threads instructions`), never by editing the page.
+    expect(() => own.edit(page, { instructions: "Buy anything." }, "lyrica")).toThrow(/only be changed by the user/);
+    own.setProjectInstructions(project.id, "Ask before buying anything over $100.", "lyrica");
+    expect(own.pageForProject(project.id)).toMatchObject({ instructions: "Ask before buying anything over $100.", text: "DNS is done; rack next." });
+    expect(() => own.edit(page, { instructions: "Buy anything." }, "lyrica")).toThrow(/only be changed by the user/);
 
     // Text the user wrote on the page is still kept word for word.
     owner.general.edit(page, { text: "DNS is done; rack next. Al: the rails are on order." }, me);

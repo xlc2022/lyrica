@@ -319,9 +319,10 @@ gives the project chat for the chat or any of its threads, and
 - `projectSlug(projectId)` names the project's page, `p:project-<id>`;
   `pageForProject(threadId)` returns it once it exists. A page's
   `instructions` (at most 4,000 characters) are kept apart from its text:
-  only the user changes them (`setProjectInstructions(id, text, author)`
-  makes the page if needed), and
-  an edit by `lyrica` or `sleep` that changes them is refused. The user-text
+  they change only through `setProjectInstructions(id, text, author)`
+  (makes the page if needed), by the user or `lyrica` (her `threads
+  instructions`; refused for `sleep`), and any other edit by `lyrica` or
+  `sleep` that changes them is refused. The user-text
   rule counts only user revisions that changed the text.
 - `projectNotes(threadId, since?)`: current notes that cite the project chat
   or one of its threads, oldest first. Found by citation, never stored apart.
@@ -1163,6 +1164,10 @@ Custom roles override built-ins by name, except `claude`.
   `suggest({ threads: { title, task }[] })` (a card, no thread made),
   `fold({ ids: string[] })` (up to ten existing threads; a card, no move),
   `draft({ goal?, instructions? })` (`ThreadsHost.draft`, unsaved project settings),
+  `instructions({ instructions?, askFirst?: true })` (`ThreadsHost.instructions`
+  → `InstructionsResult { askFirst, saved?, drafted? }`: saves the project's
+  instructions, or stores them as `draftInstructions` while the project's Ask
+  first is on; `askFirst` turns it on and nothing in the tool turns it off),
   `resolve({ id? })` and `reopen({ id })` (`ThreadsHost.resolve`; a
   project's thread resolves only itself). Guidance:
   `PROJECT_CHAT_GUIDELINES` and `PROJECT_THREAD_GUIDELINES`. `user.db`
@@ -1899,7 +1904,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   `mandatoryThinking`, and `mustThink` is called (`thinkWhenRequired`).
 - **Projects:** a `project` section in `assemble` (`projectSection`), with
   its own `DEFAULT_BUDGETS.project` (10,000 characters, about 2,500 tokens):
-  the goal, the user's instructions (at most 4,000 characters), project
+  the goal, the project's instructions (at most 4,000 characters), project
   notes since the last sleep, (in the project chat only) its threads with
   their state from `LyricaOptions.projectThreads`, and last the project
   page, so a long page is what the budget cuts. Filled for a project chat
@@ -2124,8 +2129,9 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     Web UI 2's thread menu uses them. `POST threads` with `project` (and
     `PATCH` making one) also pins the thread; `Display.projects: "all" |
     "only" | "none"` filters the list; `PATCH threads/:id` with `project`,
-    `goal`, `paused`, `threadsModel`, `threadsThinking`, `threadsFallback`, `watchThreads` and `checkInOnThreads`
-    (`user.db` `project_settings`, settings and unsaved drafts), and
+    `goal`, `paused`, `threadsModel`, `threadsThinking`, `threadsFallback`, `watchThreads`, `checkInOnThreads` and `askFirstInstructions`
+    (`user.db` `project_settings`, settings and unsaved drafts; Ask first is
+    the `settings` key `project.askFirst.<pool>/<thread>`, off when absent), and
     `projectSettings.pageId` names the project page's memory ID; a project chat's
     look at its threads is marked `[Watching threads]` (`WATCHING_MARK`,
     core/src/threads.ts), which only `daemon/src/watch.ts` writes: a

@@ -22,6 +22,9 @@ import { formatEntry } from "./memory.ts";
  */
 export type Delivery = "started" | "running" | "queued" | "saved" | "wakes" | "update";
 
+/** What `threads instructions` did: saved them, left a draft (Ask first is on), or only reported or turned on Ask first. */
+export interface InstructionsResult { askFirst: boolean; saved?: true; drafted?: true }
+
 export interface ThreadsHost {
   readonly limits: ThreadsLimits;
   /** Child threads one message from this thread may start: more when its model runs in the cloud. */
@@ -52,6 +55,12 @@ export interface ThreadsHost {
   /** The thread waits for a plan's usage limit (`plan`, by name) to reset at `until`: a child's parent is told once, without a wake. */
   planWaiting?(userId: string, pool: ThreadContext["pool"], thread: string, plan: string, until: number): void;
   draft?(from: ThreadContext, change: { goal?: string; instructions?: string }): void;
+  /**
+   * Her `threads instructions` in a project chat: saves the project's instructions,
+   * or leaves them as a draft for the person while the project's Ask first is on.
+   * `askFirst` turns Ask first on; only the person turns it off.
+   */
+  instructions?(from: ThreadContext, change: { text?: string; askFirst?: true }): InstructionsResult;
   /**
    * Creates a child of `parent`, with its settings or narrower ones, and
    * starts it on the task in the background. In a project, past the at-once
@@ -104,12 +113,13 @@ export function checkWords(text: string, max = Infinity): void {
 }
 
 const Params = Type.Object({
-  action: StringEnum(["code", "model", "ask", "start", "message", "list", "read", "stop", "later", "watch", "routine", "steps", "suggest", "fold", "draft", "resolve", "reopen", "compact"] as const),
+  action: StringEnum(["code", "model", "ask", "start", "message", "list", "read", "stop", "later", "watch", "routine", "steps", "suggest", "fold", "draft", "instructions", "resolve", "reopen", "compact"] as const),
   on: Type.Optional(Type.Boolean()),
   model: Type.Optional(Type.String({ description: MODEL_PARAM })),
   done: Type.Optional(Type.String({ maxLength: 1200 })),
   goal: Type.Optional(Type.String({ maxLength: 2000 })),
   instructions: Type.Optional(Type.String({ maxLength: 4000 })),
+  askFirst: Type.Optional(Type.Literal(true, { description: "For instructions: turns on Ask first, so your saves become drafts the person saves. Only the person turns it off." })),
   ids: Type.Optional(Type.Array(Type.String(), { maxItems: 10, description: "For fold: existing thread IDs to suggest bringing into this project. The person applies the card." })),
   title: Type.Optional(Type.String({ description: "For start: the child thread's title. For routine add or edit: the routine's short title for the person, one line, at most 80 characters; in edit, an empty string clears it." })),
   description: Type.Optional(Type.String({ description: "For routine add or edit: what the routine is for, in words for the person, at most 300 characters; never its execution note. In edit, an empty string clears it." })),
@@ -154,7 +164,7 @@ type Field = keyof typeof Params.properties;
 /** The actions each field serves: a thread is sent only the fields of the actions it has. */
 const FIELD_ACTIONS: Record<Exclude<Field, "action">, string[]> = {
   on: ["code"], done: ["code"], model: ["model"],
-  goal: ["draft"], instructions: ["draft"], ids: ["fold"], threads: ["suggest"],
+  goal: ["draft"], instructions: ["draft", "instructions"], askFirst: ["instructions"], ids: ["fold"], threads: ["suggest"],
   title: ["start", "routine"], description: ["routine"], task: ["start", "code"], folders: ["start"], readOnly: ["start"], internet: ["start"], code: ["start"], base: ["start"],
   id: ["message", "read", "stop", "resolve", "reopen"], text: ["message"], to: ["message"], question: ["message", "ask"], options: ["ask"], recommended: ["ask"], context: ["ask"], needsYou: ["message"], last: ["read"],
   minutes: ["later"], cancel: ["later"], note: ["later", "routine"], pr: ["watch"],
@@ -254,7 +264,7 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
         : child
           ? "Send your parent thread a short update (message to: \"parent\")."
           : "Child threads: start one on a stream of work of its own, which works in the background and which the person can open and steer; message, list, read or stop one."
-            + (inProjectChat() ? " In this project chat, also suggest threads (a card the person starts them from), fold in existing threads, draft Goal and Instructions for Project settings, and resolve or reopen one." : ""),
+            + (inProjectChat() ? " In this project chat, also suggest threads (a card the person starts them from), fold in existing threads, draft Goal and Instructions for Project settings, save the project's instructions (instructions: a draft instead while Ask first is on), and resolve or reopen one." : ""),
       host?.model ? MODEL_ACTION : "",
       host && (!child || projectThread()) ? "ask: one question on a card for the person." : "",
       host?.later ? "later: a wake-up that starts a turn here with your note." : "",
@@ -269,7 +279,7 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
       ...(!host ? [] : projectThread() ? ["message", "list", "read", ...(host.resolve ? ["resolve"] : [])]
         : child ? ["message"]
         : ["start", "message", "list", "read", ...(host.stop ? ["stop"] : []),
-          ...(inProjectChat() ? ["suggest", "fold", ...(host.draft ? ["draft"] : []), ...(host.resolve ? ["resolve", "reopen"] : [])] : [])]),
+          ...(inProjectChat() ? ["suggest", "fold", ...(host.draft ? ["draft"] : []), ...(host.instructions ? ["instructions"] : []), ...(host.resolve ? ["resolve", "reopen"] : [])] : [])]),
       ...(host && (!child || projectThread()) ? ["ask"] : []),
       ...(host?.later ? ["later"] : []), ...(watching ? ["watch"] : []), ...(host ? ["routine"] : []), ...(steps ? ["steps"] : []), ...(meter ? ["compact"] : []),
     ];
@@ -472,6 +482,14 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
           if (p.goal === undefined && p.instructions === undefined) throw new Error("draft needs Goal or Instructions");
           host.draft(thread, { goal: p.goal, instructions: p.instructions });
           return text("Draft saved for editing in Project settings; nothing applied.");
+        }
+        if (p.action === "instructions") {
+          if (!inProjectChat() || !host.instructions) throw new Error("instructions is for a project chat");
+          if (p.instructions === undefined && p.askFirst === undefined) throw new Error("instructions needs instructions or askFirst");
+          const r = host.instructions(thread, { ...(p.instructions !== undefined ? { text: p.instructions } : {}), ...(p.askFirst ? { askFirst: true as const } : {}) });
+          return text(r.saved ? "Saved as the project's instructions."
+            : r.drafted ? "Ask first is on, so this is a draft: the person saves it in Project settings. Tell them it is waiting."
+            : `Ask first is ${r.askFirst ? "on" : "off"}.`);
         }
         if (p.action === "suggest") {
           if (!inProjectChat()) throw new Error("suggest is for a project chat");

@@ -541,6 +541,10 @@ function MemorySection({ base, summary, pool, userId, onSummary }: { base: strin
         {summary.projectSettings?.draftInstructions !== undefined && <button type="button" disabled={busy} onClick={() => run(async () => { const updated = await patch<ThreadSummary>(base, { discardDraft: true }); onSummary(updated); setInstructions(updated.instructions ?? ""); })}>Discard draft</button>}
         {saved && <span className="muted" role="status">Saved.</span>}
       </div>
+      {/* Below Save: it saves when toggled, apart from the field. */}
+      <Switch label="Ask first" hint={`${her()} can change these instructions herself. On, her changes wait here as a draft for you to save.`}
+        checked={summary.projectSettings?.askFirstInstructions === true} disabled={busy}
+        onChange={(on) => run(async () => { onSummary(await patch<ThreadSummary>(base, { askFirstInstructions: on })); })} />
       <ErrorText error={error} />
     </form>
   );

@@ -147,7 +147,7 @@ export interface Body {
   summary?: string;
   folders?: string[];
   about?: string[];
-  /** A page's instructions, kept apart from its text. Only the user changes them. */
+  /** A page's instructions, kept apart from its text. Only the user changes them, and Lyrica through setProjectInstructions. */
   instructions?: string;
 }
 
@@ -1099,19 +1099,25 @@ export class PoolStore extends PoolReader {
 
   /**
    * A project's instructions, kept on its page apart from what sleep writes.
-   * Only the user sets them; the page is made, empty, if it isn't there yet.
+   * The user sets them, and so may Lyrica (her `threads instructions`, which the
+   * daemon turns into a draft while the project's Ask first is on); never sleep.
+   * The page is made, empty, if it isn't there yet.
    */
   setProjectInstructions(id: string, instructions: string, author: Author): void {
     const thread = this.mustThread(id);
     if (!thread.project) throw new Error("only a project has instructions");
-    if (!author.startsWith("user:")) throw new Error("a project's instructions can only be changed by the user");
+    if (author === "sleep") throw new Error("a project's instructions can't be changed by sleep");
     if (instructions.length > INSTRUCTIONS_LIMIT) throw new Error(`instructions have at most ${INSTRUCTIONS_LIMIT} characters`);
     const page = `p:${projectSlug(id)}`;
     this.tx(() => {
       if (!this.load(page)) this.putPage({ slug: projectSlug(id), title: thread.title ?? "Project", summary: "", text: "" }, author);
-      this.edit(page, { instructions }, author);
+      this.instructionsBy = author;
+      try { this.edit(page, { instructions }, author); } finally { this.instructionsBy = undefined; }
     });
   }
+
+  /** Set only inside setProjectInstructions: the one path on which Lyrica may change a page's instructions. */
+  private instructionsBy: Author | undefined;
 
   setTitle(id: string, title: string): void {
     this.mustThread(id);
@@ -2031,7 +2037,7 @@ export class PoolStore extends PoolReader {
       const expected = this.stored({ ...old, text: respell(old.text), ...(old.summary !== undefined ? { summary: respell(old.summary) } : {}), ...(old.instructions !== undefined ? { instructions: respell(old.instructions) } : {}) });
       if (author !== "sleep" || JSON.stringify(body) !== JSON.stringify(expected)) throw new Error(`a renamed-files edit of ${id} may only respell its paths`);
     }
-    if (item.kind === "page" && !author.startsWith("user:") && !renamed && (body.instructions ?? "") !== (item.instructions ?? "")) {
+    if (item.kind === "page" && !author.startsWith("user:") && !renamed && this.instructionsBy !== author && (body.instructions ?? "") !== (item.instructions ?? "")) {
       throw new Error("a page's instructions can only be changed by the user");
     }
     // A page a user wrote or edited keeps their words: sleep may only add around them.

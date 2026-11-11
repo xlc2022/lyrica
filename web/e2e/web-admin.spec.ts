@@ -2174,6 +2174,11 @@ test("project welcome and fold in", async ({ page, baseURL }) => {
   await expect(page.getByRole("textbox", { name: /^Instructions/ })).toHaveValue("Keep a planting journal");
   await page.getByRole("button", { name: "Discard draft" }).click();
   await expect(page.getByRole("textbox", { name: /^Instructions/ })).toHaveValue("");
+  const askFirst = page.getByRole("checkbox", { name: "Ask first", exact: true });
+  await expect(askFirst).not.toBeChecked();
+  await askFirst.click();
+  await expect(askFirst).toBeChecked();
+  expect((await api("GET", `${u}/threads/general/${encodeURIComponent(p.id)}`)).projectSettings.askFirstInstructions).toBe(true);
   const empty = await api("POST", `${u}/threads`, { pool: "general", project: true, title: "Plan garden" });
   await page.goto(`/#/u/${user.id}/t/general/${encodeURIComponent(empty.id)}`);
   await page.getByRole("button", { name: "Make a plan", exact: true }).click();

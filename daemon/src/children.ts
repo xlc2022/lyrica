@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import {
   makeWorktrees, zoneOf, worktreeGrants, removeWorktrees, DEFAULT_THREADS_LIMITS, matchModel, unmatched, type ChildInfo, type Memory, type Models, type Pool, type StartRequest, type ThreadsLimits, type ThreadState, type ThreadStep, type Users, type Workspace,
 } from "@lyrica/core";
-import { appendNotice, CHECK_ROUNDS, INTERRUPTED, INTERRUPTED_NOTICE, type Delegation, type Delivery, type ThreadContext, type ThreadsHost } from "@lyrica/extension";
+import { appendNotice, CHECK_ROUNDS, INTERRUPTED, INTERRUPTED_NOTICE, type Delegation, type Delivery, type InstructionsResult, type ThreadContext, type ThreadsHost } from "@lyrica/extension";
 import type { ThreadHost } from "./hosted.ts";
 import type { ProjectSettings } from "./projects.ts";
 import type { Wakeups } from "./wakeups.ts";
@@ -40,6 +40,8 @@ export interface ChildOptions {
   paused?: (userId: string, pool: Pool, project: string) => boolean;
   /** The model and thinking a project's new threads start with, if the user chose them. */
   draft?: (userId: string, pool: Pool, project: string, change: { goal?: string; instructions?: string }) => void;
+  /** Her `threads instructions`: saves the project's instructions, or a draft while Ask first is on; `askFirst` turns it on. */
+  instructions?: (userId: string, pool: Pool, project: string, change: { text?: string; askFirst?: true }) => InstructionsResult;
   project?: (userId: string, pool: Pool, project: string) => ProjectSettings;
   /** A project's thread posted to the project chat. */
   updated?: (userId: string, pool: Pool, project: string, thread: string) => void;
@@ -849,6 +851,13 @@ export class ChildThreads implements ThreadsHost {
     if (!from.view.own.getThread(from.threadId)?.project || !this.o.draft) throw new Error("draft is for a project chat");
     this.o.draft(from.user.id, from.pool, from.threadId, change);
     this.o.host().peek(from.user.id, from.pool, from.threadId)?.publish({ type: "settings" });
+  }
+
+  instructions(from: ThreadContext, change: { text?: string; askFirst?: true }): InstructionsResult {
+    if (!from.view.own.getThread(from.threadId)?.project || !this.o.instructions) throw new Error("instructions is for a project chat");
+    const result = this.o.instructions(from.user.id, from.pool, from.threadId, change);
+    this.o.host().peek(from.user.id, from.pool, from.threadId)?.publish({ type: "settings" });
+    return result;
   }
 
   /** A branch made in a project: a thread of the project, hanging at `anchor`. */

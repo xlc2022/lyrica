@@ -1023,6 +1023,8 @@ export interface ProjectSettingsInfo {
   watchThreads: boolean;
   /** The project chat may wait within a turn for its working threads; off, it ends its turn and their reports wake it. */
   checkInOnThreads: boolean;
+  /** Ask first: her `threads instructions` leaves a draft for the user to save instead of saving. She may turn it on, never off. */
+  askFirstInstructions: boolean;
 }
 
 /**
@@ -1053,6 +1055,7 @@ export interface ThreadChange {
   /** null follows the project chat. */
   threadsEvidence?: EvidenceSetting | null;
   paused?: boolean; threadsModel?: ModelRef | ModelRef[] | null; threadsThinking?: ThinkingLevel | null; threadsFallback?: boolean | null; watchThreads?: boolean; checkInOnThreads?: boolean;
+  askFirstInstructions?: boolean;
 }
 /** PUT and DELETE /api/u/:userId/threads/:pool/:threadId/pin → ThreadSummary. The user's own pin, in user.db. */
 /**

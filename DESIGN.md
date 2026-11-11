@@ -1387,8 +1387,12 @@ project page and the web part are built. Recent calls can be filtered by project
 - **Context set once.** Every thread of a project starts with the same
   project context, assembled each turn in its own budget:
   - **Goal**: one line the user writes.
-  - **Instructions**: The user's text on the project's page in memory, User
-    introduced, so authoritative and never rewritten by sleep.
+  - **Instructions**: Text on the project's page in memory, User
+    introduced, so authoritative and never rewritten by sleep. The user
+    writes them, and the project chat may save them too (`threads
+    instructions`); while the project's **Ask first** is on, her change
+    waits as a draft the user saves or discards. She may turn Ask first
+    on when the user asks her to check first; only the user turns it off.
   - **What she knows**: the rest of the project page, kept by sleep from the
     project's notes and threads, citing them.
   - **Project notes**: notes she wrote in any of the project's threads since
@@ -1451,8 +1455,9 @@ project page and the web part are built. Recent calls can be filtered by project
     **Folders**, **Machines**, **Repositories** and **MCP servers** every
     thread of the project inherits, narrower or the same, then a
     **Thread settings** link to the coordinator's own models, network and
-    local-only in its drawer; Commands; Checks), Memory (Instructions, and
-    a link to the project page in the memory browser), and **Files and
+    local-only in its drawer; Commands; Checks), Memory (Instructions, the
+    **Ask first** switch, and a link to the project page in the memory
+    browser), and **Files and
     images** (Files | Images | Videos), where the project folder is managed. Files
     in the chat's header stays the quick view.
   - **Paused** stops the project's working threads and starts nothing new.
