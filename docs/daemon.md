@@ -1459,8 +1459,10 @@ home, the flake's module does the same ("On NixOS" below).
   openssh-client and jq, python3-venv for clones' Python dependencies, and
   the sandbox's Python baseline for scraping and data work: python3-bs4,
   python3-lxml, python3-requests, python3-html5lib and python3-yaml, and
-  everyday tools her sandbox would otherwise lack: ripgrep, file, bc, xxd and
-  bsdextrautils for hexdump), and the `tailscale` package from Tailscale's apt
+  everyday tools her sandbox would otherwise lack: ripgrep, file, bc, xxd,
+  bsdextrautils for hexdump, zip, tree, fd-find (linked as `fd` in her tool
+  prefix), sqlite3, yq, poppler-utils for pdftotext, wget, lsof, strace and
+  pandoc), and the `tailscale` package from Tailscale's apt
   repository when its binaries are missing (then disabling the host's own
   `tailscaled.service` the package enables, unless it was enabled before, so
   a host keeps its own as it was), checks for Node.js 22.12 or later (the web UI
@@ -1758,7 +1760,8 @@ system with the module on. Only x86_64-linux.
 - **Sandboxes.** NixOS has no `/usr` to share. The module sets
   `LYRICA_SANDBOX_TOOLS` to one directory of `sandboxPackages`
   (`nix/sandbox-tools.nix`: a shell, the usual command-line tools, git,
-  OpenSSH, OpenSSL, curl, jq, ripgrep, file, bc, xxd, Python with beautifulsoup4, lxml,
+  OpenSSH, OpenSSL, curl, jq, ripgrep, file, bc, xxd, zip, tree, fd, sqlite3, yq,
+  pdftotext, rsync, wget, lsof, strace, pandoc, Python with beautifulsoup4, lxml,
   requests, html5lib and PyYAML, make and gcc (for native npm
   modules), ImageMagick, ffmpeg (headless, with ffprobe), Chromium with IBM Plex
   and DejaVu fonts for her screenshots, bubblewrap, passt, nftables) and

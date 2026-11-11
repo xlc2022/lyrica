@@ -79,11 +79,14 @@ apt-get update -qq
 apt-get install -y -qq --no-install-recommends \
   bubblewrap gocryptfs fuse3 passt nftables openssl ca-certificates curl unzip xz-utils rsync imagemagick ffmpeg \
   build-essential python3 python3-venv git gh openssh-client jq shellcheck \
-  ripgrep file bc xxd bsdextrautils \
+  ripgrep file bc xxd bsdextrautils zip tree fd-find sqlite3 yq poppler-utils \
+  wget lsof strace pandoc \
   python3-bs4 python3-lxml python3-requests python3-html5lib python3-yaml >/dev/null
 # shellcheck checks her bash calls before they run (core/src/workspace/shellcheck.ts).
-# ripgrep, file, bc, xxd and bsdextrautils (hexdump, column) are everyday tools
-# her sandbox would otherwise lack on a minimal install.
+# ripgrep, file, bc, xxd, bsdextrautils (hexdump, column), zip, tree, fd,
+# sqlite3, yq, poppler-utils (pdftotext), wget, lsof, strace and pandoc are
+# everyday tools her sandbox would otherwise lack on a minimal install
+# (nix/sandbox-tools.nix gives NixOS the same).
 # The python3-* line is the sandbox's Python baseline for scraping and data work
 # (beautifulsoup4, lxml, requests, html5lib, PyYAML); her prompt names the ones
 # present (sandboxTools in core/src/workspace/sandbox.ts). nix/sandbox-tools.nix
@@ -105,6 +108,8 @@ node -e 'const [a, b] = process.versions.node.split(".").map(Number); process.ex
 # removed once the prefix has them. uninstall.sh removes the prefix whole.
 TOOLS=$PREFIX/tools
 install -d -m 0755 "$TOOLS" "$TOOLS/bin" "$TOOLS/lib"
+# Debian names fd's program fdfind; she calls it fd, as on NixOS.
+ln -sfn /usr/bin/fdfind "$TOOLS/bin/fd"
 
 # --- A browser for her screenshots ---
 # Principle 1: render HTML/SVG diagrams offline in the thread sandbox.
