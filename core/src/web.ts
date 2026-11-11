@@ -14,6 +14,17 @@ import type { Db } from "./db.ts";
 // text for a PDF, read in a child process).
 
 const KEY = "web.searxng";
+const BOT_CHECKS = "web.botChecks";
+
+/** Whether browse may tick a simple bot-check box (self.db `settings`; Administration → Web search). Off unless set. */
+export function botChecks(self: Db): boolean {
+  return (self.prepare("SELECT value FROM settings WHERE key = ?").get(BOT_CHECKS) as { value: string } | undefined)?.value === "1";
+}
+
+export function setBotChecks(self: Db, on: boolean): void {
+  if (on) self.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(BOT_CHECKS, "1");
+  else self.prepare("DELETE FROM settings WHERE key = ?").run(BOT_CHECKS);
+}
 
 /** The server's SearXNG address (self.db `settings`), or null. */
 export function searxngAddress(self: Db): string | null {

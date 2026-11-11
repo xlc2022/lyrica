@@ -1792,6 +1792,18 @@ test("Web search: the administrator sets the SearXNG and Kiwix addresses and see
   await save.click();
   await expect(kiwixState).toHaveCount(0);
 
+  // Tick bot checks: off by default, saved when toggled, and kept on a reload.
+  const checks = section.getByLabel("Tick bot checks");
+  await expect(checks).not.toBeChecked();
+  // It saves on the click and shows the saved state, so the box changes once the server has it.
+  await checks.click();
+  await expect(checks).toBeChecked();
+  await shot("web-search-bot-checks");
+  await page.reload();
+  await expect(section.getByLabel("Tick bot checks")).toBeChecked();
+  await section.getByLabel("Tick bot checks").click();
+  await expect(section.getByLabel("Tick bot checks")).not.toBeChecked();
+
   await newThread(page, "General");
   await send(page, "hello there");
   await page.getByRole("button", { name: "Attach or switch tools" }).click();

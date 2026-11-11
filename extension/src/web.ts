@@ -21,10 +21,17 @@ export interface WebTools {
   canRender?(): boolean;
   /** The thread's browser, in its sandbox. Without it (a subagent), there is no browse. */
   browser?(): Pick<Browser, "act">;
+  /** Whether browse may tick a simple bot-check box: an administrator's switch, read on every call. */
+  botChecks?(): boolean;
 }
 
 /** How much of a page one browse action answers with; `read` with an offset goes on. */
 const BROWSE_CHARS = 12_000;
+
+/** A check box on a page that asks whether she is a person, as browse's page text shows it. */
+const BOT_BOX = /\[\d+\] checkbox "[^"\n]*\b(robot|human|bot)\b/i;
+/** What browse adds, outside the markers, when the administrator allows it and the page shows such a box. */
+const BOT_ALLOWED = "The administrator lets you tick a simple check box that asks whether you are a robot: click it, then read the page again.";
 
 /** What a refused fetch adds when the thread has browse. */
 const FETCH_REFUSED = "The site refused a plain fetch and may answer a browser: open the same address with browse.";
@@ -190,7 +197,9 @@ export function createWebExtension(web: WebTools): ExtensionFactory {
           const whole = [`${r.title}\n${r.url}`, ...(r.notes?.length ? [r.notes.join("\n")] : []), r.text || "The page shows no text."].join("\n\n");
           const part = cutPage(whole, BROWSE_CHARS, p.action === "read" ? p.offset ?? 0 : 0);
           if (part.isError) return text(part.text, true);
-          return text(`${r.fail ? `${r.fail}\n` : ""}${outside(r.url ?? "the browser", withSections(part))}${part.note ? `\n${part.note}` : ""}`, !!r.fail);
+          // Off, nothing is said about such a box (the owner's rule); on, the note is ours, so a page can't fake it.
+          const allowed = web.botChecks?.() && BOT_BOX.test(r.text) ? `\n${BOT_ALLOWED}` : "";
+          return text(`${r.fail ? `${r.fail}\n` : ""}${outside(r.url ?? "the browser", withSections(part))}${part.note ? `\n${part.note}` : ""}${allowed}`, !!r.fail);
         } catch (err) {
           return text(`Couldn't ${p.action}: ${(err as Error).message}.`, true);
         }

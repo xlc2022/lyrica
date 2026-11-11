@@ -2255,8 +2255,8 @@ export interface SleepTime { time: string }
 export interface OfflinePage { copy: string; text: string }
 
 /**
- * GET /api/u/:userId/admin/web-search → WebSearch; PUT `{ searxng?, kiwix? }` → WebSearch (null or "" clears
- * one, a field left out keeps it).
+ * GET /api/u/:userId/admin/web-search → WebSearch; PUT `{ searxng?, kiwix?, botChecks? }` → WebSearch (null or "" clears
+ * an address, a field left out keeps it).
  * The server's SearXNG, for every thread's web_search; the state is a test search made on each call.
  * `reason` says why it is unreachable. A password in the address (basic auth) is never sent back:
  * `searxng` comes without it and `auth` says one is stored; a PUT with the same user@host and no
@@ -2272,6 +2272,8 @@ export interface WebSearch {
   kiwixState: "reachable" | "unreachable" | "unset";
   kiwixReason?: string;
   books: { name: string; title: string; language: string; date: string }[];
+  /** Whether browse may tick a simple "I'm not a robot" check box it meets; off unless an administrator turns it on. */
+  botChecks: boolean;
 }
 
 export interface PersonaProposal {

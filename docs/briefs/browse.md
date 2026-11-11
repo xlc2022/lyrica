@@ -95,8 +95,13 @@ prompt).
 ## Not built, on the owner's word
 
 - **CAPTCHAs** (the owner, 2026-11-10): she is given no guidance about
-  them at all, in the tool, its results or her prompt, including none to
-  hand one to the user. Nothing detects or solves one.
+  them, in the tool, its results or her prompt, including none to hand
+  one to the user. Nothing solves one. Two exceptions, both the owner's
+  (2026-11-11): Anubis's proof of work, which browse waits out and
+  web_fetch calls refused; and, only while an administrator turns on
+  **Tick bot checks** (off by default; the owner means it for sites of
+  their own), a line after a browse page that shows a check box naming a
+  robot, human or bot says she may tick it.
 
 ## Open for the owner
 

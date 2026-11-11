@@ -71,6 +71,8 @@ export interface DelegationOptions {
   searxng?: () => string | null;
   /** The server's kiwix-serve address, the offline copy of Wikipedia, for a subagent's web tools. */
   kiwix?: () => string | null;
+  /** Whether a subagent's browse may tick a simple bot-check box (Administration → Web search). */
+  botChecks?: () => boolean;
   /** The Claude plan's usage limit stopped a claude run, with when it resets if Claude Code said: lyricad wakes its parent then. */
   onClaudeLimit?: (parent: Parent, until?: number) => void;
   /** Why the claude role is refused for now, if it is: the user fell back from the Claude plan until it resets. */
@@ -1188,7 +1190,7 @@ export class Delegation {
         // its own, under its own network, with a profile of its own: it has none of its parent's logins.
         const browses = role.tools.includes("browse") && !!tools.browser && !!sandboxTools().browser && sandboxHas("node");
         if (browses) closeBrowser = () => { void tools.browser!().close().catch(() => {}); };
-        extensions.push(createWebExtension({ searxng: () => this.o.searxng?.(), kiwix: () => this.o.kiwix?.(), target: () => tools.target(), canRender: () => !!sandboxTools().browser && sandboxHas("node"),
+        extensions.push(createWebExtension({ searxng: () => this.o.searxng?.(), kiwix: () => this.o.kiwix?.(), botChecks: () => !!this.o.botChecks?.(), target: () => tools.target(), canRender: () => !!sandboxTools().browser && sandboxHas("node"),
           ...(browses ? { browser: () => tools.browser!() } : {}) }));
         // Its parent's MCP servers, read live, so one taken from the parent goes from it too; its calls ask in both threads.
         if (tools.settings().mcpServers.length) {

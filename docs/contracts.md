@@ -1796,7 +1796,9 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     driver's own in the page and never reused in a browser's life. The
     tool answers with title, URL, notes and text inside `outside`'s
     markers, cut by `cutPage` to 12,000 characters (`read` takes
-    `offset`). **Forms:** `Browser.look(call)` asks the driver what a
+    `offset`). With `botChecks()` on and a `checkbox` line naming a
+    robot, human or bot, a line after the markers says the administrator
+    lets her tick it; off, nothing is said. **Forms:** `Browser.look(call)` asks the driver what a
     `click`, or a `type` with `submit`, would do: `form` (a `BrowseForm`:
     site, where it goes, method, button, fields) when it would send one,
     and the action in words. A form sent by GET to a stated `action` or
@@ -2068,10 +2070,13 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   `GET`/`PUT /api/u/:userId/admin/web-search` →
   `WebSearch { searxng: string | null, auth, state: "reachable" |
   "unreachable" | "unset", reason?, kiwix: string | null, kiwixState:
-  the same three, kiwixReason?, books: { name, title, language, date }[] }`,
+  the same three, kiwixReason?, books: { name, title, language, date }[],
+  botChecks: boolean }`,
   administrators only, `state` from a test search and `kiwixState` and
-  `books` from the catalog on each call; `PUT { searxng?, kiwix? }`: a
-  field with null or "" clears that address, one left out keeps it.
+  `books` from the catalog on each call; `PUT { searxng?, kiwix?, botChecks? }`: a
+  field with null or "" clears that address, one left out keeps it;
+  `botChecks` is `web.botChecks` (`botChecks`, `setBotChecks`), off
+  unless set.
   A password in the SearXNG address (basic auth) is never sent back: `searxng`
   comes without it and `auth` says one is stored; a `PUT` with the same
   user@host and no password keeps it, one with a password replaces it.

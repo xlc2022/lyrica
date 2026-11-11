@@ -8,7 +8,7 @@ import { browser, daemon, enc, login, runtime } from "./helpers.ts";
 
 // Administration → Web search: the server's SearXNG address, and the kiwix-serve with its offline copy of Wikipedia.
 
-const NO_KIWIX = { kiwix: null, kiwixState: "unset", books: [] };
+const NO_KIWIX = { kiwix: null, kiwixState: "unset", books: [], botChecks: false };
 
 /** A kiwix-serve whose catalog has one book. */
 async function kiwix() {
@@ -64,6 +64,12 @@ describe("web search", () => {
     const samUrl = url.replace(rt.ada.id, rt.sam.id);
     expect((await sam.get(samUrl)).status).toBe(403);
     expect((await sam.put(samUrl, { searxng: good })).status).toBe(403);
+    expect((await sam.put(samUrl, { botChecks: true })).status).toBe(403);
+
+    // Tick bot checks: off unless an administrator turns it on, and saved on its own.
+    expect((await ada.put<WebSearch>(url, { botChecks: true })).body).toMatchObject({ botChecks: true, state: "unreachable" });
+    expect((await ada.get<WebSearch>(url)).body.botChecks).toBe(true);
+    expect((await ada.put<WebSearch>(url, { botChecks: false })).body.botChecks).toBe(false);
     expect((await sam.get(url)).status).toBe(401);
 
     // A thread's settings say whether search has a provider, for the switch's tooltip.
@@ -76,7 +82,7 @@ describe("web search", () => {
     // The Kiwix address, saved on its own, names the books; it counts as a provider too.
     const k = await kiwix();
     const withKiwix = (await ada.put<WebSearch>(url, { kiwix: `${k}/` })).body;
-    expect(withKiwix).toEqual({ searxng: null, auth: false, state: "unset", kiwix: k, kiwixState: "reachable", books: [{ name: "wikipedia_en_all_nopic", title: "Wikipedia", language: "eng", date: "2026-06-01" }] });
+    expect(withKiwix).toEqual({ searxng: null, auth: false, state: "unset", kiwix: k, kiwixState: "reachable", books: [{ name: "wikipedia_en_all_nopic", title: "Wikipedia", language: "eng", date: "2026-06-01" }], botChecks: false });
     expect((await ada.get<ThreadSettings>(settings)).body.searchProvider).toBe(true);
     expect((await ada.put<WebSearch>(url, { searxng: good })).body).toMatchObject({ searxng: good, kiwix: k });
     expect((await ada.put<WebSearch>(url, { kiwix: `http://${await searxng()}` })).body).toMatchObject({ kiwixState: "unreachable", kiwixReason: expect.stringContaining("catalog") });
