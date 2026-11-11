@@ -1620,40 +1620,58 @@ export class PoolStore extends PoolReader {
    * otherwise they are kept as threads of their own, with the settings they
    * have (a kept child thread is no longer a child). A project forgotten with
    * `children` also takes its page and the notes that came only from it.
-   * The search index is merged once at the end (`optimize`); a caller
-   * forgetting several threads passes `optimize: false` for all but the last,
-   * since each merge reads the whole index.
+   * The search index is merged once at the end (`optimize`). A caller
+   * forgetting several threads uses forgetThreads, since each merge and each
+   * pass over the search rows reads the whole index.
    */
   forgetThread(threadId: string, author: Author, opts: { children?: boolean; keepMemories?: boolean; optimize?: boolean } = {}): void {
+    this.forgetThreads([threadId], author, opts);
+  }
+
+  /**
+   * forgetThread for several threads, deepest first, in one transaction. Their
+   * search rows go in one pass at the end: the index can't look rows up by
+   * ID, so each pass reads all of it, and forgetting a thread with many
+   * subagents one pass each took seconds. A thread already gone is skipped.
+   */
+  forgetThreads(threadIds: string[], author: Author, opts: { children?: boolean; keepMemories?: boolean; optimize?: boolean } = {}): void {
     this.checkAuthor(author);
+    this.tx(() => {
+      const gone: string[] = [];
+      for (const id of threadIds) if (this.getThread(id)) this.forgetOne(id, author, opts, gone);
+      if (gone.length) this.db.prepare("DELETE FROM search WHERE kind = 'entry' AND substr(id, 3, instr(id, '#') - 3) IN (SELECT value FROM json_each(?))").run(JSON.stringify(gone));
+      if (opts.optimize !== false) this.optimize();
+    });
+  }
+
+  /** One thread of forgetThreads; its search rows are left to the caller, which `gone` names it to. */
+  private forgetOne(threadId: string, author: Author, opts: { children?: boolean; keepMemories?: boolean }, gone: string[]): void {
     const thread = this.mustThread(threadId);
     const keep = !!opts.keepMemories;
     if (thread.project && opts.children && !keep) this.forgetProjectMemory(threadId, author);
-    for (const sub of this.listThreads({ includeHidden: true, parent: threadId })) this.forgetThread(sub.id, author, { keepMemories: keep, optimize: false });
-    if (opts.children) for (const child of this.listThreads({ includeHidden: true, parent: threadId, children: true })) this.forgetThread(child.id, author, { ...opts, optimize: false });
-    this.tx(() => {
-      // A kept daughter is a thread of its own: a kept child thread is no longer a child, so it may start its own.
-      this.db.prepare("UPDATE threads SET parent = NULL, child = 0 WHERE parent = ? AND subagent = 0").run(threadId);
-      const inThread = (dst: string) => dst === `t:${threadId}` || dst.startsWith(`e:${threadId}#`);
-      const candidates = this.db.prepare("SELECT DISTINCT src FROM citations WHERE src LIKE 'n:%' AND (dst = ? OR dst LIKE ?)")
-        .all(`t:${threadId}`, `e:${threadId}#%`) as { src: string }[];
-      if (!keep) for (const { src } of candidates) {
-        if (this.cameFrom(src).every(inThread)) this.remove(src, author, true);
-      }
-      // A thread deleted with its memories kept leaves a text-free tombstone: its ID and deletion time, so a citation of it still leads somewhere.
-      if (keep) {
-        this.db.prepare("INSERT OR REPLACE INTO tombstones (id, kind, sources, deleted_by, deleted_at) VALUES (?, 'thread', '[]', ?, ?)")
-          .run(`t:${threadId}`, author, now());
-      }
-      this.db.prepare("DELETE FROM search WHERE kind = 'entry' AND id LIKE ?").run(`e:${threadId}#%`);
-      this.db.prepare("DELETE FROM vectors WHERE id LIKE ?").run(`e:${threadId}#%`);
-      this.db.prepare("DELETE FROM entries WHERE thread = ?").run(threadId);
-      this.db.prepare("DELETE FROM wakeups WHERE thread = ?").run(threadId);
-      // Its artifacts go with it; kept with its memories, they belong to no thread.
-      this.artifacts.forgetThread(threadId, keep);
-      this.db.prepare("DELETE FROM threads WHERE id = ?").run(threadId);
-      if (opts.optimize !== false) this.optimize();
-    });
+    for (const sub of this.listThreads({ includeHidden: true, parent: threadId })) this.forgetOne(sub.id, author, { keepMemories: keep }, gone);
+    if (opts.children) for (const child of this.listThreads({ includeHidden: true, parent: threadId, children: true })) this.forgetOne(child.id, author, opts, gone);
+    // A kept daughter is a thread of its own: a kept child thread is no longer a child, so it may start its own.
+    this.db.prepare("UPDATE threads SET parent = NULL, child = 0 WHERE parent = ? AND subagent = 0").run(threadId);
+    const inThread = (dst: string) => dst === `t:${threadId}` || dst.startsWith(`e:${threadId}#`);
+    const candidates = this.db.prepare("SELECT DISTINCT src FROM citations WHERE src LIKE 'n:%' AND (dst = ? OR dst LIKE ?)")
+      .all(`t:${threadId}`, `e:${threadId}#%`) as { src: string }[];
+    if (!keep) for (const { src } of candidates) {
+      if (this.cameFrom(src).every(inThread)) this.remove(src, author, true);
+    }
+    // A thread deleted with its memories kept leaves a text-free tombstone: its ID and deletion time, so a citation of it still leads somewhere.
+    if (keep) {
+      this.db.prepare("INSERT OR REPLACE INTO tombstones (id, kind, sources, deleted_by, deleted_at) VALUES (?, 'thread', '[]', ?, ?)")
+        .run(`t:${threadId}`, author, now());
+    }
+    // Entry IDs are `e:<thread>#<n>`, and '$' sorts right after '#': a range the primary key finds, where LIKE reads every row.
+    this.db.prepare("DELETE FROM vectors WHERE id >= ? AND id < ?").run(`e:${threadId}#`, `e:${threadId}$`);
+    this.db.prepare("DELETE FROM entries WHERE thread = ?").run(threadId);
+    this.db.prepare("DELETE FROM wakeups WHERE thread = ?").run(threadId);
+    // Its artifacts go with it; kept with its memories, they belong to no thread.
+    this.artifacts.forgetThread(threadId, keep);
+    this.db.prepare("DELETE FROM threads WHERE id = ?").run(threadId);
+    gone.push(threadId);
   }
 
   /** What a thread deleted with its memories kept leaves behind: when it went. No text. */

@@ -158,7 +158,7 @@ export class Sleep {
         const view = this.o.memory.openThreadView(u.id, pool);
         try {
           const old = view.own.listThreads({ includeHidden: true }).filter((t) => t.interface === "sleep" && t.createdAt < before);
-          old.forEach((t, i) => view.own.forgetThread(t.id, "sleep", { keepMemories: true, optimize: i === old.length - 1 }));
+          view.own.forgetThreads(old.map((t) => t.id), "sleep", { keepMemories: true });
           n += old.length;
         } finally {
           view.close();

@@ -104,4 +104,18 @@ describe("artifacts", () => {
     expect((await s.ada.del(`${s.u}/threads/general/${enc(thread.id)}`)).status).toBe(200);
     expect((await s.ada.get<ArtifactInfo[]>(`${s.u}/artifacts`)).body).toEqual([]);
   });
+
+  it("go with every thread a delete covers: a child thread's artifact goes when its parent is deleted with its children", async () => {
+    const s = await setup();
+    const view = s.d.services!.memory.openThreadView(s.rt.ada.id, "general");
+    let parent: string, child: string;
+    try {
+      parent = view.own.createThread({ interface: "web", title: "Parent" }).id;
+      child = view.own.createThread({ interface: "web", parent, child: true, title: "Child" }).id;
+    } finally { view.close(); }
+    const made = (await s.ada.post<ArtifactInfo>(`${s.u}/artifacts/general?name=a.html&thread=${enc(child)}`, s.page("x"))).body;
+    expect(made.thread).toBe(child);
+    expect((await s.ada.del(`${s.u}/threads/general/${enc(parent)}`, { children: true })).status).toBe(200);
+    expect((await s.ada.get<ArtifactInfo[]>(`${s.u}/artifacts`)).body).toEqual([]);
+  });
 });
