@@ -1371,7 +1371,10 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   `cwd`) follow its options as before.
 - **Turn tool limits** (`extension/src/turn-tools.ts`, installed first by
   `openThreadSession`): one prompt/agent run, including model continuations
-  and nested tool calls, permits at most 250 attempted tool calls. Invalid
+  and nested tool calls, permits two budgets of `MAX_TURN_TOOL_CALLS` (250)
+  attempted tool calls, 500 in all. After the batch that ends the first, a
+  hidden `lyrica-tool-limit-carry-on` message (`CARRY_ON_BUDGET`) tells her
+  she has one more and to reach a clean point if the work won't fit. Invalid
   calls count too. Subagent sessions have independent budgets. A call to
   the same tool with identical JSON arguments (object keys sorted
   recursively; array order preserved) whose last two such calls returned
@@ -1393,7 +1396,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   stand and what's left, so the person never gets only the notice; if that
   reply calls tools anyway the turn aborts. Her tools come back when the run
   ends. A stored
-  `lyrica-tool-limit` message shows “Turn stopped after 250 tool calls.”
+  `lyrica-tool-limit` message shows “Turn stopped after 500 tool calls.”
   (the count in mono, under the heading Tool limit) in the thread, live and after reload. Counters reset on the next agent run.
   Pi validates tool schemas before execution and returns validation errors
   naming missing fields. These limits serve principles 1 and 2: real

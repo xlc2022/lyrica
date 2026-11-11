@@ -5,7 +5,7 @@ import { fauxAssistantMessage, fauxProvider, fauxThinking, fauxToolCall, type Js
 import { createAgentSession, DefaultResourceLoader, SessionManager, type ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { expect, it } from "vitest";
-import { CALL_THE_TOOL, CARRY_ON, createTurnToolsExtension, createWaitForReportsExtension, CUT_OFF, CUT_WRAP_UP, WAIT_FOR_REPORTS, EMPTY_REPLY, TEXT_TOOL_CALL, MAX_TURN_TOOL_CALLS, TURN_TOOL_NOTICE, WRAP_UP } from "../src/turn-tools.ts";
+import { CALL_THE_TOOL, CARRY_ON, createTurnToolsExtension, createWaitForReportsExtension, CUT_OFF, CUT_WRAP_UP, WAIT_FOR_REPORTS, EMPTY_REPLY, TEXT_TOOL_CALL, MAX_TURN_TOOL_CALLS, TURN_TOOL_NOTICE, WRAP_UP, CARRY_ON_BUDGET, TURN_TOOL_CARRY_ON } from "../src/turn-tools.ts";
 import { createImageExtension, type ImageTools } from "../src/images.ts";
 import { toMessages } from "../../daemon/src/messages.ts";
 
@@ -54,21 +54,24 @@ async function scenario(calls: { name: string; args: JsonObject }[], prompts = 1
       const entries = session.sessionManager.getEntries();
       const notices = entries.filter(e => e.type === "custom_message" && e.customType === TURN_TOOL_NOTICE);
       const shown = toMessages("test", "general", entries.map((data, n) => ({ data, n, createdAt: "2026-10-12" })));
-      return { executed, requested, results, notices, shown, asked };
+      const carried = entries.filter(e => e.type === "custom_message" && e.customType === TURN_TOOL_CARRY_ON);
+      return { executed, requested, results, notices, shown, asked, carried };
     } finally { session.dispose(); }
   } finally { rmSync(dir, { recursive: true, force: true }); }
 }
 
-it("ends a looping model at the per-turn cap, shows the notice, and lets her say where things stand", async () => {
-  const r = await scenario(Array.from({ length: 260 }, (_, i) => ({ name: i % 2 ? "search" : "other", args: { query: String(i) } })));
-  expect(r.executed).toBe(MAX_TURN_TOOL_CALLS);
+it("carries on once past the first budget, ends a looping model at the second, shows the notice, and lets her say where things stand", async () => {
+  const r = await scenario(Array.from({ length: 2 * MAX_TURN_TOOL_CALLS + 10 }, (_, i) => ({ name: i % 2 ? "search" : "other", args: { query: String(i) } })));
+  expect(r.executed).toBe(2 * MAX_TURN_TOOL_CALLS);
   // One more request, with no tools, for her reply.
-  expect(r.requested).toBe(MAX_TURN_TOOL_CALLS + 1);
+  expect(r.requested).toBe(2 * MAX_TURN_TOOL_CALLS + 1);
+  expect(r.carried).toHaveLength(1);
   expect(r.asked).toHaveLength(1);
   expect(r.asked[0]).toContain(WRAP_UP);
   expect(r.notices).toHaveLength(1);
   const shown = JSON.stringify(r.shown);
-  expect(shown).toContain("Turn stopped after `250` tool calls.");
+  expect(shown).toContain("Turn stopped after `500` tool calls.");
+  expect(shown).not.toContain(CARRY_ON_BUDGET);
   expect(shown).toContain("Stopped at the limit: half done.");
   expect(shown).not.toContain(WRAP_UP);
 });
@@ -158,8 +161,8 @@ it("validates missing required fields before executing", async () => {
 
 
 it("blocks calls past the cap within a single batch", async () => {
-  const r = await scenario(Array.from({ length: 260 }, (_, i) => ({ name: i % 2 ? "search" : "other", args: { query: String(i) } })), 1, true);
-  expect(r.executed).toBe(MAX_TURN_TOOL_CALLS);
+  const r = await scenario(Array.from({ length: 2 * MAX_TURN_TOOL_CALLS + 10 }, (_, i) => ({ name: i % 2 ? "search" : "other", args: { query: String(i) } })), 1, true);
+  expect(r.executed).toBe(2 * MAX_TURN_TOOL_CALLS);
   expect(r.requested).toBe(2);
   expect(r.asked).toHaveLength(1);
   expect(r.notices).toHaveLength(1);
@@ -167,10 +170,10 @@ it("blocks calls past the cap within a single batch", async () => {
 
 it("resets the budget on the next prompt", async () => {
   // The response after the cap is her wrap-up; the call after that runs on the next prompt.
-  const r = await scenario(Array.from({ length: MAX_TURN_TOOL_CALLS + 2 }, (_, i) => ({ name: "search", args: { query: String(i) } })), 2);
-  expect(r.executed).toBe(MAX_TURN_TOOL_CALLS + 1);
+  const r = await scenario(Array.from({ length: 2 * MAX_TURN_TOOL_CALLS + 2 }, (_, i) => ({ name: "search", args: { query: String(i) } })), 2);
+  expect(r.executed).toBe(2 * MAX_TURN_TOOL_CALLS + 1);
   expect(r.notices).toHaveLength(1);
-  expect(r.requested).toBe(MAX_TURN_TOOL_CALLS + 3);
+  expect(r.requested).toBe(2 * MAX_TURN_TOOL_CALLS + 3);
 });
 
 /** Her replies, in order, to one prompt: what each request asked and what the thread shows. */
