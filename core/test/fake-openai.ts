@@ -3,7 +3,7 @@ import type { AddressInfo } from "node:net";
 import { afterEach } from "vitest";
 
 /** What the fake answers to one chat request: text, streamed deltas, a tool call, or an HTTP error. */
-export type Reply = { text: string; slowMs?: number } | { tools: { name: string; args: unknown; id?: string }[] } | { status: number; message?: string } | { deltas: { content?: string; reasoning_content?: string }[]; /** Holds the reply open after the deltas until this settles. */ hold?: Promise<unknown> };
+export type Reply = { text: string; slowMs?: number } | { tools: { name: string; args: unknown; id?: string }[]; /** "length": the reply was cut off at the reply limit. */ finish?: "length" } | { status: number; message?: string } | { deltas: { content?: string; reasoning_content?: string }[]; /** Holds the reply open after the deltas until this settles. */ hold?: Promise<unknown> };
 /** Picks the reply from the request, and may take its time. */
 export type Responder = (chat: ChatRequest) => Reply | Promise<Reply>;
 
@@ -59,7 +59,7 @@ export async function fakeOpenAI(opts: { models?: Record<string, unknown>[]; lab
       const delta = "text" in reply
         ? { role: "assistant", content: reply.text }
         : "deltas" in reply ? {} : { role: "assistant", tool_calls: reply.tools.map((t, index) => ({ index, id: t.id ?? `call_${index + 1}`, type: "function", function: { name: t.name, arguments: JSON.stringify(t.args) } })) };
-      const finish = "tools" in reply ? "tool_calls" : "stop";
+      const finish = "tools" in reply ? reply.finish ?? "tool_calls" : "stop";
       res.writeHead(200, { "content-type": "text/event-stream" });
       const send = (o: unknown) => res.write(`data: ${JSON.stringify(o)}\n\n`);
       // Asked for it, llama-server says how far it has read the prompt before it answers.

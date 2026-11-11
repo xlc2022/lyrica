@@ -1242,6 +1242,15 @@ session `openThreadSession` opens, rewrites a reply's tool calls on
 JSON strings where the schema wants an object or array, and `TOOL_ALIASES`
 maps other harnesses' names to hers when no tool has the name and hers is
 active, noting it in the result; "Tool X not found" is reworded with her active tools.
+A reply with no tool call whose text holds calls in `<tool_call>` blocks
+(`textToolCalls`: Qwen's XML, closing `</parameter>` and `</function>`
+optional, or Hermes' JSON; outside code) has them turned into real calls
+(stop reason `toolUse`), the words around them kept, when every block reads
+and names a tool she has on now and none repeats a block from what she was
+given (any non-assistant message in the request's context, from the
+`context` event, compared with whitespace collapsed), so injected text she
+only echoes never runs; otherwise the reply is left for the turn tool
+limits' text-call retry.
 Code turns use SOUL only, no topic routing, WAKE, about-user, page index or
 sleep opening; project, folders and pins remain. `setToolsOff` with reason
 `code` removes `models`, `download_model`, `model_files`, `image`, `react`.
@@ -1371,7 +1380,8 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   `cwd`) follow its options as before.
 - **Turn tool limits** (`extension/src/turn-tools.ts`, installed first by
   `openThreadSession`): one prompt/agent run, including model continuations
-  and nested tool calls, permits at most 100 attempted tool calls. Invalid
+  and nested tool calls, permits at most 2,500 attempted tool calls
+  (`MAX_TURN_TOOL_CALLS`). Invalid
   calls count too. Subagent sessions have independent budgets. A call to
   the same tool with identical JSON arguments (object keys sorted
   recursively; array order preserved) whose last two such calls returned
@@ -1391,9 +1401,11 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   batch's results her tools turn off and a hidden `lyrica-tool-limit-wrap-up`
   message (`WRAP_UP`) asks for one reply on what she did, where things
   stand and what's left, so the person never gets only the notice; if that
-  reply calls tools anyway the turn aborts. Her tools come back when the run
+  reply calls tools anyway the turn aborts, and if it writes a tool call as
+  text (`TEXT_CALL`) a hidden `PLAIN_WRAP_UP` asks once for it in plain
+  words; a second one ends with the `TEXT_TOOL_CALL` notice. Her tools come back when the run
   ends. A stored
-  `lyrica-tool-limit` message shows “Turn stopped after 100 tool calls.”
+  `lyrica-tool-limit` message shows “Turn stopped after 2500 tool calls.”
   (the count in mono, under the heading Tool limit) in the thread, live and after reload. Counters reset on the next agent run.
   Pi validates tool schemas before execution and returns validation errors
   naming missing fields. These limits serve principles 1 and 2: real
@@ -1416,7 +1428,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   `<arg_key>…</arg_key><arg_value>…` pairs wrapped or not, or a call cut
   off unclosed (`<tool_call>` then `{` or `<function=`, or
   `<function=…>` then `<parameter=`). The run would end on it as her
-  reply.
+  reply. Calls the repair extension can read and run never get here.
   The first in a run, with no real tool call beside it, gets one hidden
   follow-up (`lyrica-text-tool-call-retry`, `CALL_THE_TOOL`, dropped at
   the next turn like the others) asking her to make the call. A second

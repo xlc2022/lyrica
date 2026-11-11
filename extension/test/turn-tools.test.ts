@@ -5,11 +5,14 @@ import { fauxAssistantMessage, fauxProvider, fauxThinking, fauxToolCall, type Js
 import { createAgentSession, DefaultResourceLoader, SessionManager, type ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { expect, it } from "vitest";
-import { CALL_THE_TOOL, CARRY_ON, createTurnToolsExtension, createWaitForReportsExtension, CUT_OFF, CUT_WRAP_UP, WAIT_FOR_REPORTS, EMPTY_REPLY, TEXT_TOOL_CALL, MAX_TURN_TOOL_CALLS, TURN_TOOL_NOTICE, WRAP_UP } from "../src/turn-tools.ts";
+import { CALL_THE_TOOL, CARRY_ON, createTurnToolsExtension, createWaitForReportsExtension, CUT_OFF, CUT_WRAP_UP, WAIT_FOR_REPORTS, EMPTY_REPLY, TEXT_TOOL_CALL, TURN_TOOL_NOTICE, WRAP_UP, PLAIN_WRAP_UP } from "../src/turn-tools.ts";
 import { createImageExtension, type ImageTools } from "../src/images.ts";
 import { toMessages } from "../../daemon/src/messages.ts";
 
-async function scenario(calls: { name: string; args: JsonObject }[], prompts = 1, batch = false, stopReason: "toolUse" | "length" = "toolUse", extra: ExtensionFactory[] = []) {
+/** A small cap, so a test reaches it in a few requests; lyricad uses `MAX_TURN_TOOL_CALLS`. */
+const CAP = 20;
+
+async function scenario(calls: { name: string; args: JsonObject }[], prompts = 1, batch = false, stopReason: "toolUse" | "length" = "toolUse", extra: ExtensionFactory[] = [], wrapUps = ["Stopped at the limit: half done."]) {
   const dir = mkdtempSync(join(tmpdir(), "lyrica-tool-limit-"));
   const faux = fauxProvider({ provider: "faux", models: [{ id: "loop" }] });
   let executed = 0, requested = 0;
@@ -26,11 +29,11 @@ async function scenario(calls: { name: string; args: JsonObject }[], prompts = 1
     return on.size;
   };
   /** Past the cap her tools are off, and she writes where things stand. */
-  const wrapUp = (ctx: { messages: unknown[] }) => (offered(ctx) ? undefined : (asked.push(JSON.stringify(ctx.messages.slice(-3))), fauxAssistantMessage("Stopped at the limit: half done.")));
+  const wrapUp = (ctx: { messages: unknown[] }) => (offered(ctx) ? undefined : (asked.push(JSON.stringify(ctx.messages.slice(-3))), fauxAssistantMessage(wrapUps.length > 1 ? wrapUps.shift()! : wrapUps[0]!)));
   const responses = calls.map(c => (ctx: { messages: unknown[] }) => { requested++; return wrapUp(ctx) ?? fauxAssistantMessage(fauxToolCall(c.name, c.args), { stopReason }); }).concat([() => { requested++; return fauxAssistantMessage("Done"); }]);
   faux.setResponses(batch ? [() => { requested++; return fauxAssistantMessage(calls.map(c => fauxToolCall(c.name, c.args)), { stopReason: "toolUse" }); }, (ctx: { messages: unknown[] }) => { requested++; return wrapUp(ctx) ?? fauxAssistantMessage("tools still on"); }] : responses);
   const loader = new DefaultResourceLoader({ cwd: dir, agentDir: dir, noContextFiles: true, noSkills: true, noExtensions: true, noPromptTemplates: true,
-    extensionFactories: [createTurnToolsExtension(), ...extra, pi => {
+    extensionFactories: [createTurnToolsExtension(CAP), ...extra, pi => {
       pi.registerProvider(faux.provider);
       // `log` is a running job's output: each call returns more of it.
       for (const name of ["search", "other", "threads", "bash", "log"]) pi.registerTool({ name, label: name, description: name,
@@ -60,15 +63,15 @@ async function scenario(calls: { name: string; args: JsonObject }[], prompts = 1
 }
 
 it("ends a looping model at the per-turn cap, shows the notice, and lets her say where things stand", async () => {
-  const r = await scenario(Array.from({ length: 110 }, (_, i) => ({ name: i % 2 ? "search" : "other", args: { query: String(i) } })));
-  expect(r.executed).toBe(MAX_TURN_TOOL_CALLS);
+  const r = await scenario(Array.from({ length: CAP + 10 }, (_, i) => ({ name: i % 2 ? "search" : "other", args: { query: String(i) } })));
+  expect(r.executed).toBe(CAP);
   // One more request, with no tools, for her reply.
-  expect(r.requested).toBe(MAX_TURN_TOOL_CALLS + 1);
+  expect(r.requested).toBe(CAP + 1);
   expect(r.asked).toHaveLength(1);
   expect(r.asked[0]).toContain(WRAP_UP);
   expect(r.notices).toHaveLength(1);
   const shown = JSON.stringify(r.shown);
-  expect(shown).toContain("Turn stopped after `100` tool calls.");
+  expect(shown).toContain("Turn stopped after `20` tool calls.");
   expect(shown).toContain("Stopped at the limit: half done.");
   expect(shown).not.toContain(WRAP_UP);
 });
@@ -144,8 +147,8 @@ it("lets a call be made again while its result keeps changing, as a running job'
 });
 
 it("lets one tool run with changing arguments up to the turn's cap", async () => {
-  const r = await scenario(Array.from({ length: 30 }, (_, i) => ({ name: "bash", args: { command: `echo ${i}` } })));
-  expect(r.executed).toBe(30);
+  const r = await scenario(Array.from({ length: CAP - 1 }, (_, i) => ({ name: "bash", args: { command: `echo ${i}` } })));
+  expect(r.executed).toBe(CAP - 1);
   expect(JSON.stringify(r.shown)).not.toContain("Turn stopped");
 });
 
@@ -158,19 +161,37 @@ it("validates missing required fields before executing", async () => {
 
 
 it("blocks calls past the cap within a single batch", async () => {
-  const r = await scenario(Array.from({ length: 110 }, (_, i) => ({ name: i % 2 ? "search" : "other", args: { query: String(i) } })), 1, true);
-  expect(r.executed).toBe(100);
+  const r = await scenario(Array.from({ length: CAP + 10 }, (_, i) => ({ name: i % 2 ? "search" : "other", args: { query: String(i) } })), 1, true);
+  expect(r.executed).toBe(CAP);
   expect(r.requested).toBe(2);
   expect(r.asked).toHaveLength(1);
   expect(r.notices).toHaveLength(1);
 });
 
 it("resets the budget on the next prompt", async () => {
-  // The 101st response is her wrap-up; the 102nd call runs on the next prompt.
-  const r = await scenario(Array.from({ length: 102 }, (_, i) => ({ name: "search", args: { query: String(i) } })), 2);
-  expect(r.executed).toBe(101);
+  // The response after the cap is her wrap-up; the call after that runs on the next prompt.
+  const r = await scenario(Array.from({ length: CAP + 2 }, (_, i) => ({ name: "search", args: { query: String(i) } })), 2);
+  expect(r.executed).toBe(CAP + 1);
   expect(r.notices).toHaveLength(1);
-  expect(r.requested).toBe(103);
+  expect(r.requested).toBe(CAP + 3);
+});
+
+it("a wrap-up written as a tool call is asked for again in plain words", async () => {
+  const leaked = '<tool_call> <function=threads> <parameter=action> steps </tool_call>';
+  const r = await scenario(Array.from({ length: CAP + 10 }, (_, i) => ({ name: "search", args: { query: String(i) } })), 1, false, "toolUse", [], [leaked, "Stopped at the limit: half done."]);
+  expect(r.asked).toHaveLength(2);
+  expect(r.asked[1]).toContain(PLAIN_WRAP_UP);
+  const shown = JSON.stringify(r.shown);
+  expect(shown).toContain("Stopped at the limit: half done.");
+  expect(shown).not.toContain(PLAIN_WRAP_UP);
+  expect(shown).not.toContain(TEXT_TOOL_CALL);
+});
+
+it("a wrap-up written as a tool call twice ends with a notice", async () => {
+  const leaked = '<tool_call> <function=threads> <parameter=action> steps </tool_call>';
+  const r = await scenario(Array.from({ length: CAP + 10 }, (_, i) => ({ name: "search", args: { query: String(i) } })), 1, false, "toolUse", [], [leaked]);
+  expect(r.asked).toHaveLength(2);
+  expect(JSON.stringify(r.shown)).toContain(TEXT_TOOL_CALL);
 });
 
 /** Her replies, in order, to one prompt: what each request asked and what the thread shows. */

@@ -5,7 +5,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync,
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { INTERRUPTED, MAX_TURN_TOOL_CALLS } from "@lyrica/extension";
+import { INTERRUPTED } from "@lyrica/extension";
 import { fakeOpenAI, type ChatRequest, type Reply } from "../../core/test/fake-openai.ts";
 import type { EndpointInfo, MachineProbe, MessagePage, ThreadEvent, ThreadSettings, ThreadSummary, ThreadUsage } from "../src/api.ts";
 import { browser, daemon, enc, localModel, login, runtime } from "./helpers.ts";
@@ -561,8 +561,10 @@ describe("a child's end, reading and stopping", () => {
   it("the parent is woken at once, with its last message, when a child's turn stops at the tool limit, even after it reported", async () => {
     const { parent, child, say, path, messages } = await setup();
     parent.push(start("Status", "Record the call facts."), { text: "Started." });
-    // It reports early (one call), then runs into the turn's limit of tool calls, and writes where things stand.
-    child.push(toParent("Started on the facts."), ...Array.from({ length: MAX_TURN_TOOL_CALLS - 1 }, (_, i) => ({ tools: [{ name: "recall", args: { query: `fact ${i}` } }] })), { text: "Halfway: the tests still need fixing." });
+    // It reports early (one call), then the turn tool limits stop it (two replies in a row cut off with a call in them,
+    // which wakes the parent as the count of calls does, without hundreds of requests), and it writes where things stand.
+    const cut = (i: number) => ({ tools: [{ name: "recall", args: { query: `fact ${i}` } }], finish: "length" as const });
+    child.push(toParent("Started on the facts."), cut(1), cut(2), { text: "Halfway: the tests still need fixing." });
     const id = toolEnd(await say("record the call facts in their own thread"))!.threads![0]!.id;
     const got = await until(() => notices(() => messages(path)), (n) => n.some((t) => t.includes("tool limit")));
     const text = got.find((t) => t.includes("tool limit"))!;
