@@ -32,3 +32,4 @@ export * from "./zone.ts";
 export * from "./skills.ts";
 export * from "./push.ts";
 export * from "./wipe.ts";
+export { buildReactPage, reactLibraries } from "./workspace/react-page.ts";
