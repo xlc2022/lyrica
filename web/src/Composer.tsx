@@ -301,7 +301,7 @@ function fitHeight(el: HTMLTextAreaElement): number {
   }
   if (!measurer.isConnected) document.body.append(measurer);
   const cs = getComputedStyle(el);
-  for (const k of ["font", "letterSpacing", "wordSpacing", "lineHeight", "tabSize", "textIndent", "textTransform", "whiteSpace", "overflowWrap", "wordBreak",
+  for (const k of ["fontFamily", "fontSize", "fontWeight", "fontStyle", "fontStretch", "fontVariant", "fontFeatureSettings", "letterSpacing", "wordSpacing", "lineHeight", "tabSize", "textIndent", "textTransform", "whiteSpace", "overflowWrap", "wordBreak",
     "boxSizing", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderStyle", "minHeight"] as const) {
     measurer.style[k] = cs[k];
   }
