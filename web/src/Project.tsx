@@ -578,7 +578,7 @@ export function CodeSection({ base, summary, onSummary }: SectionProps) {
       </Row>
       <Row label="Checks" hint={`Run in each repository when a code thread ends a turn that changed something; if one fails, ${her()} fixes it before finishing.`}>
         {!checks.length && <p className="muted">No checks: {her()} runs what the repository asks.</p>}
-        {checks.map((check, i) => <div className="command-rule" key={i}>
+        {checks.map((check, i) => <div className="command-rule check-row" key={i}>
           <input className="mono" aria-label="Check command" placeholder="npm test" autoFocus={!check} value={check} onChange={e => setChecks(checks.map((c, n) => n === i ? e.target.value : c))} />
           <button type="button" className="icon sm" aria-label={`Remove ${check || "check"}`} onClick={() => setChecks(checks.filter((_, n) => n !== i))}><Icon name="close" /></button>
         </div>)}

@@ -196,6 +196,10 @@ switch (cmd) {
   case "up": save({ ...s, BackendState: "Running" }); break;
   case "down": save({ ...s, BackendState: "Stopped" }); break;
   case "logout": save({ Version: s.Version, BackendState: "NeedsLogin", Self: { HostName: s.Self.HostName } }); break;
+  case "cert":
+    if (!(s.CertDomains || []).includes(args[5])) { process.stderr.write("invalid domain " + args[5] + "\\n"); process.exit(1); }
+    process.stdout.write("-----BEGIN CERTIFICATE-----\\n" + (fs.existsSync(path.join(dir, "renewed")) ? "TEST-RENEWED-" : "TEST-LEAF-") + args[5] + "\\n-----END CERTIFICATE-----\\n-----BEGIN CERTIFICATE-----\\nTEST-CA\\n-----END CERTIFICATE-----\\n-----BEGIN EC PRIVATE KEY-----\\nTEST-KEY\\n-----END EC PRIVATE KEY-----\\n");
+    break;
 }
 `);
   chmodSync(bin, 0o755);
@@ -204,6 +208,8 @@ switch (cmd) {
     bin,
     calls: (): { args: string[]; keyFileMode?: string; keyFileHoldsKey?: boolean }[] =>
       existsSync(join(dir, "calls")) ? readFileSync(join(dir, "calls"), "utf8").trim().split("\n").filter(Boolean).map((l) => JSON.parse(l)) : [],
+    /** tailscaled renewed her certificate: the next `cert` gives a new one. */
+    renew: () => writeFileSync(join(dir, "renewed"), ""),
     failLogin: (on: boolean) => (on ? writeFileSync(join(dir, "fail-login"), "") : rmSync(join(dir, "fail-login"), { force: true })),
   };
 }

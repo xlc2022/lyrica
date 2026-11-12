@@ -558,12 +558,26 @@ export class WorkspaceSettings {
     return this.setting("workspace.bypass") === "1";
   }
 
-  /** Turning it off moves every thread in Bypass permissions, and the default, back to Auto. */
+  /** Turning it off moves every thread in Bypass permissions, and the default, back to Auto, and turns Allow MCP bypass off. */
   setBypassAllowed(on: boolean): void {
     this.db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('workspace.bypass', ?)").run(on ? "1" : "0");
     if (on) return;
+    this.db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('workspace.bypass.mcp', '0')").run();
     this.db.prepare("UPDATE thread_workspaces SET mode = 'auto' WHERE mode = 'bypass'").run();
     if (this.setting("workspace.mode") === "bypass") this.db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('workspace.mode', 'auto')").run();
+  }
+
+  /**
+   * Allow MCP bypass: whether a thread in Bypass permissions also runs MCP tools that change things without asking.
+   * Off by default, and only while Allow bypass is on.
+   */
+  mcpBypassAllowed(): boolean {
+    return this.bypassAllowed() && this.setting("workspace.bypass.mcp") === "1";
+  }
+
+  setMcpBypassAllowed(on: boolean): void {
+    if (on && !this.bypassAllowed()) throw new Error("Allow MCP bypass needs Allow bypass on in Settings");
+    this.db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('workspace.bypass.mcp', ?)").run(on ? "1" : "0");
   }
 
   /** A new thread's settings: the default mode, everything else as the user's defaults say. */
