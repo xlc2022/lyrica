@@ -1478,3 +1478,69 @@ test("a thread opens at its latest message, even when the space above the conver
   expect(Math.abs((await marker.boundingBox())!.y - before)).toBeLessThanOrEqual(2);
   await expect(marker).toBeInViewport();
 });
+
+test("opening a run of calls whose header sits part way above the view leaves the conversation where it was", async ({ page, baseURL }) => {
+  await enter(page, baseURL!);
+  await newThread(page, "General");
+  await send(page, "recall: 8");
+  await expect(page.getByRole("button", { name: "Stop" })).toBeHidden();
+  await send(page, `reply: ${Array.from({ length: 24 }, (_, i) => `Line ${i + 1} of the long thread, which keeps going past one line on the way down.`).join("\n\n")}`);
+  await expect(page.getByRole("button", { name: "Stop" })).toBeHidden();
+  const run = page.locator(".marker.tool-run").getByRole("button", { name: /tool calls/ });
+  for (const open of ["true", "false"]) {
+    // Its top 10 px out of view: the browser's own scroll anchoring would hold a line below it in place and carry the
+    // view down past it (#986).
+    await run.evaluate((b) => { const s = b.closest(".scroll")!; s.scrollTop += b.getBoundingClientRect().top - s.getBoundingClientRect().top + 10; });
+    await page.waitForTimeout(200);
+    // Where the header was when she pressed it: Playwright's click scrolls it into view first, as her own scroll might.
+    await run.evaluate((b) => { b.addEventListener("pointerdown", () => { (window as unknown as { at: number }).at = b.getBoundingClientRect().top; }, { once: true }); });
+    await run.click();
+    await expect(run).toHaveAttribute("aria-expanded", open);
+    await page.waitForTimeout(400);
+    const at = await page.evaluate(() => (window as unknown as { at: number }).at);
+    expect(Math.abs((await run.evaluate((b) => b.getBoundingClientRect().top)) - at)).toBeLessThanOrEqual(2);
+  }
+});
+
+test("typing while her reply streams leaves the conversation where it is, and opening a run of calls keeps its header where it was pressed", async ({ page, baseURL }) => {
+  await enter(page, baseURL!);
+  await newThread(page, "General");
+  await send(page, `reply: ${Array.from({ length: 24 }, (_, i) => `Line ${i + 1} of the long thread, which keeps going past one line on the way down.`).join("\n\n")}`);
+  await expect(page.getByRole("button", { name: "Stop" })).toBeHidden();
+  const scroll = page.locator(".scroll").first();
+  const fromBottom = () => scroll.evaluate((el) => el.scrollHeight - el.scrollTop - el.clientHeight);
+  // Every move of the conversation up and away from the bottom while she types, by whatever cause (#986). The tail
+  // shrinking a little moves it up too, but leaves it at the bottom.
+  await scroll.evaluate((el) => {
+    const w = window as unknown as { off: number[]; last: number };
+    w.off = []; w.last = el.scrollTop;
+    el.addEventListener("scroll", () => {
+      const d = el.scrollHeight - el.scrollTop - el.clientHeight;
+      if (el.scrollTop < w.last - 1 && d > 2) w.off.push(Math.round(d));
+      w.last = el.scrollTop;
+    });
+  });
+  await send(page, "recall: 24 slowly");
+  await expect(page.locator(".marker.tool-run").getByRole("button", { name: /tool calls running/ })).toBeVisible();
+  await expect.poll(fromBottom).toBeLessThanOrEqual(2);
+  const box = page.getByLabel("Message", { exact: true });
+  await box.click();
+  for (let i = 0; i < 3; i++) {
+    await page.keyboard.type("a few words typed while she works ", { delay: 15 });
+    await page.keyboard.press("Shift+Enter");
+  }
+  expect(await page.evaluate(() => (window as unknown as { off: number[] }).off)).toEqual([]);
+  await expect(page.getByRole("button", { name: "Jump to latest" })).toHaveCount(0);
+  await expect.poll(fromBottom).toBeLessThanOrEqual(2);
+  // Opening the run at the tail while it streams: its header stays where she pressed it.
+  const marker = page.locator(".marker.tool-run").getByRole("button", { name: /tool calls running/ });
+  const before = (await marker.boundingBox())!.y;
+  await marker.click();
+  await expect(page.locator(".marker.tool-run .run-body")).toBeVisible();
+  for (let i = 0; i < 4; i++) {
+    await page.waitForTimeout(150);
+    expect(Math.abs((await marker.boundingBox())!.y - before)).toBeLessThanOrEqual(2);
+  }
+  await expect(marker).toBeInViewport();
+  await expect(page.getByRole("button", { name: "Stop" })).toBeHidden({ timeout: 20_000 });
+});
