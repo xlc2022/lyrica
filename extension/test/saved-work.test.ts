@@ -79,5 +79,8 @@ describe("saved before discarding", () => {
     dirs.push(parent);
     git(parent, "clone", "-q", origin, "work");
     expect(await saveBeforeRemove(localTarget(parent), ["work", "missing"], join(parent, "saved"))).toEqual([]);
+    // Deleting the folder the bundles would go to saves nothing, rather than a bundle that goes with it.
+    writeFileSync(join(parent, "work", "a.txt"), "changed\n");
+    expect(await saveBeforeRemove(localTarget(parent), ["."], join(parent, "saved"))).toEqual([]);
   });
 });

@@ -646,13 +646,17 @@ export async function saveBeforeDiscard(target: ExecutionTarget, dirs: string[])
  * itself, or up to two levels down) with uncommitted work, or commits on no
  * remote, goes into a bundle in `SAVED_BUNDLES`, outside it. The bundle
  * holds the saved work and the local branches, less what a remote has, so a
- * fresh clone can fetch it back. A save that fails never stops the command.
+ * fresh clone can fetch it back. A folder that holds `SAVED_BUNDLES` is
+ * skipped, since the command would delete its bundle too. A save that
+ * fails never stops the command.
  */
 export async function saveBeforeRemove(target: ExecutionTarget, dirs: string[], bundles = SAVED_BUNDLES): Promise<SavedWork[]> {
   const cwd = await target.cwd();
   const saves: SavedWork[] = [];
   for (const d of dirs) {
     const dir = posix.resolve(cwd, d);
+    // A bundle the same command deletes would be a save in name only.
+    if (bundles === dir || bundles.startsWith(`${dir}/`)) continue;
     const one = [
       'w="$(dirname "$g")"',
       '( cd "$w" || exit 0; snap; [ -n "$r" ] || [ -n "$(git rev-list -n1 --branches --not --remotes 2>/dev/null)" ] || exit 0',

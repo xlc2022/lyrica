@@ -1508,8 +1508,10 @@ come from the user's Git accounts (DESIGN.md, "Updates and self-editing").
   with uncommitted work or commits on no remote goes to a bundle in
   `/workspace/.lyrica-saved/<name>-<time>.bundle`, outside it: the saved
   work and the local branches, less what a remote has (`saveBeforeRemove`).
-  The command's result ends with a note naming each ref or bundle and how
-  to bring it back. A folder with nothing to save is left alone, and a
+  Deleting the folder that holds `.lyrica-saved` itself (`rm -r
+  /workspace`) saves nothing, since the bundles would go too. The
+  command's result ends with a note naming each ref or bundle and how to
+  bring it back. A folder with nothing to save is left alone, and a
   failed save never stops the command. A push never sends these refs.
 
 ## MCP servers
