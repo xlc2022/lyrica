@@ -23,14 +23,14 @@ import { checkName, her, setHer } from "./name.ts";
 import { SKIPPED, SleepModeField, SleepTimeSection } from "./Sleep.tsx";
 import { TailnetSection } from "./Tailnet.tsx";
 import { UpdatesSection } from "./Updates.tsx";
-import { BYPASS_HINT, modeOrder, MODES } from "./Modes.tsx";
+import { BYPASS_HINT, MCP_BYPASS_HINT, mcpBypassWarning, modeOrder, MODES } from "./Modes.tsx";
 import { href } from "./route.ts";
 import { PageHead, type ShellContext } from "./Shell.tsx";
 import { WebAccessSection } from "./WebAccess.tsx";
 import { WebSearchSection } from "./WebSearch.tsx";
 import { WipeSection } from "./Wipe.tsx";
 import { DeleteUserButton } from "./DeleteUser.tsx";
-import { browserZone, clock, Confirm, ErrorText, hidden, Prose, shortTime, Switch, useAction, useLoad } from "./ui.tsx";
+import { browserZone, clock, Confirm, ConfirmDialog, ErrorText, hidden, Prose, shortTime, Switch, useAction, useLoad } from "./ui.tsx";
 import { Icon } from "./icons.tsx";
 import { duration } from "./Machines.tsx";
 import { CpuBlock, GpuBlock, RamBlock, StateWord } from "./Models.tsx";
@@ -278,6 +278,8 @@ function NetworkSection({ ctx }: { ctx: ShellContext }) {
   const presets = useLoad(() => get<Presets>(u(userId, "presets")), [userId]);
   const [run, , error] = useAction();
   const [host, setHost] = useState<Record<Pool, string>>({ general: "", private: "" });
+  const [confirmMcp, setConfirmMcp] = useState(false);
+  const putMode = (c: Partial<ModeDefault>) => run(async () => mode.set(await put<ModeDefault>(u(userId, "mode"), c)));
   if (!net.data) return <Section title="Network"><ErrorText error={net.error} /></Section>;
   const change = (pool: Pool, c: Partial<NetworkDefaults[Pool]>) => run(async () => net.set(await patch<NetworkDefaults>(u(userId, "network", pool), c)));
   return (
@@ -293,8 +295,15 @@ function NetworkSection({ ctx }: { ctx: ShellContext }) {
           </label>
         )}
         {mode.data && (
-          <Switch label="Allow bypass" hint={BYPASS_HINT}
-            checked={mode.data.bypass} onChange={(bypass) => run(async () => mode.set(await put<ModeDefault>(u(userId, "mode"), { bypass })))} />
+          <Switch label="Allow bypass" hint={BYPASS_HINT} checked={mode.data.bypass} onChange={(bypass) => putMode({ bypass })} />
+        )}
+        {mode.data?.bypass && (
+          <Switch label="Allow MCP bypass" hint={MCP_BYPASS_HINT} checked={mode.data.mcp}
+            onChange={(mcp) => (mcp ? setConfirmMcp(true) : putMode({ mcp }))} />
+        )}
+        {confirmMcp && (
+          <ConfirmDialog title="Allow MCP bypass?" sentence={mcpBypassWarning(her())} confirm="Allow" danger
+            onConfirm={() => { setConfirmMcp(false); void putMode({ mcp: true }); }} onCancel={() => setConfirmMcp(false)} />
         )}
         {presets.data && (
           <Switch label="Fallback" hint="When off, only the first model in each list answers; if it can't, the message waits for it."

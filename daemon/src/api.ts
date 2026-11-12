@@ -721,10 +721,12 @@ export type NetworkDefaults = Record<Pool, Network>;
 export type NetworkChange = Partial<Network>;
 
 /**
- * GET /api/u/:userId/mode → ModeDefault; PUT with either field → ModeDefault. The mode new threads start in, and
- * Allow bypass: whether "bypass" may be chosen. Turning it off moves every thread in "bypass" to "auto".
+ * GET /api/u/:userId/mode → ModeDefault; PUT with any field → ModeDefault. The mode new threads start in;
+ * Allow bypass: whether "bypass" may be chosen (turning it off moves every thread in "bypass" to "auto" and turns
+ * `mcp` off); and Allow MCP bypass: whether "bypass" also runs MCP tools that change things without asking
+ * (refused while `bypass` is off).
  */
-export interface ModeDefault { mode: PermissionMode; bypass: boolean }
+export interface ModeDefault { mode: PermissionMode; bypass: boolean; mcp: boolean }
 
 /** GET /api/u/:userId/paths → AllowedPaths: the folders this user may grant, set by an administrator. */
 export type AllowedPaths = Record<Pool, string[]>;

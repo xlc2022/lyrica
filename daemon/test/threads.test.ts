@@ -456,13 +456,15 @@ describe("modes and switches", () => {
 
   it("starts new threads in the user's default mode, and keeps the switches in the thread's settings", async () => {
     const { rt, ada, path } = await setup();
-    expect((await ada.get(`/api/u/${rt.ada.id}/mode`)).body).toEqual({ mode: "auto", bypass: false });
-    expect((await ada.put(`/api/u/${rt.ada.id}/mode`, { mode: "ask" })).body).toEqual({ mode: "ask", bypass: false });
+    expect((await ada.get(`/api/u/${rt.ada.id}/mode`)).body).toEqual({ mode: "auto", bypass: false, mcp: false });
+    expect((await ada.put(`/api/u/${rt.ada.id}/mode`, { mode: "ask" })).body).toEqual({ mode: "ask", bypass: false, mcp: false });
     expect((await ada.put(`/api/u/${rt.ada.id}/mode`, { mode: "ask-changes" })).status).toBe(400);
     // Bypass permissions only with Allow bypass on.
     expect((await ada.put(`/api/u/${rt.ada.id}/mode`, { mode: "bypass" })).status).toBe(400);
-    expect((await ada.put(`/api/u/${rt.ada.id}/mode`, { bypass: true })).body).toEqual({ mode: "ask", bypass: true });
-    expect((await ada.put(`/api/u/${rt.ada.id}/mode`, { bypass: false })).body).toEqual({ mode: "ask", bypass: false });
+    expect((await ada.put(`/api/u/${rt.ada.id}/mode`, { mcp: true })).status).toBe(400);
+    expect((await ada.put(`/api/u/${rt.ada.id}/mode`, { bypass: true })).body).toEqual({ mode: "ask", bypass: true, mcp: false });
+    expect((await ada.put(`/api/u/${rt.ada.id}/mode`, { mcp: true })).body).toEqual({ mode: "ask", bypass: true, mcp: true });
+    expect((await ada.put(`/api/u/${rt.ada.id}/mode`, { bypass: false })).body).toEqual({ mode: "ask", bypass: false, mcp: false });
     const fresh = (await ada.post<ThreadSummary>(`/api/u/${rt.ada.id}/threads`, { pool: "general" })).body;
     expect((await ada.get<ThreadSettings>(`/api/u/${rt.ada.id}/threads/general/${enc(fresh.id)}/settings`)).body.mode).toBe("ask");
     // A thread made before keeps its mode.
