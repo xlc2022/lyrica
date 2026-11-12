@@ -921,7 +921,7 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   network, its state `offNetwork`) and Remove behind ⋯; Remove names what
   leaves in its dialog (**Keep** / **Remove**). **Add account** opens the
   same drawer with a Token field; Add account checks the token against the
-  host (`POST …/git-accounts/probe`, then `POST …/git-accounts`), and a
+  host as it saves (`POST …/git-accounts`), and a
   private account off network asks first. The token is never sent back.
   **MCP servers** (`src/Mcp.tsx`), after Git accounts: a row per server,
   its name, a facts line in mono (host, or "this machine" for a local

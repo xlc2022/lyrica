@@ -877,12 +877,6 @@ export function apiRoutes(d: Lyricad): Route[] {
 
     // --- Git accounts (docs/workspace.md, "Git accounts and repositories") ---
     route("GET", `${u}/git-accounts`, async (r) => Promise.all(s().workspace.settings(d.userFor(r).id).gitAccounts().map((a) => gitAccountInfo(d, a)))),
-    route("POST", `${u}/git-accounts/probe`, async (r): Promise<Api.Ok> => {
-      d.userFor(r);
-      const input = await r.json<Api.GitAccountInput>();
-      await s().workspace.probeGitAccount({ kind: checkGitKind(input.kind), host: String(input.host ?? ""), account: String(input.account ?? ""), token: String(input.token ?? "") });
-      return { ok: true };
-    }),
     route("POST", `${u}/git-accounts`, async (r) => {
       const userId = d.userFor(r).id;
       const input = await r.json<Api.GitAccountInput>();
@@ -909,11 +903,6 @@ export function apiRoutes(d: Lyricad): Route[] {
 
     // --- MCP servers (docs/workspace.md, "MCP servers") ---
     route("GET", `${u}/mcp-servers`, (r) => s().workspace.settings(d.userFor(r).id).mcpServers().map(mcpServerInfo)),
-    route("POST", `${u}/mcp-servers/probe`, async (r): Promise<Api.McpServerProbe> => {
-      d.userFor(r);
-      const input = mcpInput(await r.json<Api.McpServerInput>());
-      return s().workspace.probeMcpServer(input);
-    }),
     route("POST", `${u}/mcp-servers`, async (r) => {
       const userId = d.userFor(r).id;
       return mcpServerInfo(await s().workspace.addMcpServer(userId, mcpInput(await r.json<Api.McpServerInput>())));
