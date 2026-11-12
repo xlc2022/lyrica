@@ -380,6 +380,33 @@ export function discardingGit(command: string): string[] {
 }
 
 /**
+ * The folders a command deletes with `rm -r` (or `-R`, `--recursive`), as
+ * written, against where it has `cd`ed or `pushd`ed to (starting at "."), so
+ * a git checkout inside one can be saved first. A name made from a variable
+ * or a substitution isn't known, so it isn't listed.
+ */
+export function removedFolders(command: string): string[] {
+  const out = new Set<string>();
+  let cwd = ".";
+  const at = (from: string, to: string) => (to.startsWith("/") ? to : posix.join(from, to));
+  for (const parsed of simpleCommands(command)) {
+    const words = unwrapped(parsed);
+    if (words[0] === "cd" || words[0] === "pushd") { const to = args(words)[0]; if (to && to !== "-" && !to.includes("$")) cwd = at(cwd, to); continue; }
+    if (words[0] !== "rm") continue;
+    let opts = true;
+    const targets: string[] = [];
+    let recursive = false;
+    for (const w of words.slice(1)) {
+      if (opts && w === "--") { opts = false; continue; }
+      if (opts && w.startsWith("-") && w !== "-") { if (w === "--recursive" || (!w.startsWith("--") && /[rR]/.test(w))) recursive = true; continue; }
+      targets.push(w);
+    }
+    if (recursive) for (const t of targets) if (!t.includes("$")) out.add(at(cwd, t));
+  }
+  return [...out];
+}
+
+/**
  * The files a command plainly writes before it runs: the targets of its `>`
  * and `>>` redirections and of `tee`. A name made from a variable or a
  * substitution, or under /dev, isn't known, so it isn't listed; nor is a

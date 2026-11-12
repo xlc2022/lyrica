@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fauxAssistantMessage, fauxProvider, fauxToolCall } from "@earendil-works/pi-ai";
@@ -10,6 +10,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { BASH_TIMEOUT_S, createDownloadsExtension, pageTool, createMcpServersExtension, createModelsExtension, filesFor, type DownloadsHost, createWorkspaceExtension, setToolsOff, toolsLine, type ApprovalRequest, type ModelsHost, type ServingProposal, type ThreadTools } from "../src/index.ts";
 import { BUILD_THERE, checkUnder, editArguments, FORMATS_LINE, pathArguments, insertsOnly, LINK_LINE, READ_ONLY_CHAT, describe as describePrompt } from "../src/workspace.ts";
 import { testMcpServer } from "../../core/test/mcp-server.ts";
+import { cleanRepos, git, localTarget, repo, saved } from "./git-repo.ts";
 import { freshKeyring, profile } from "../../core/test/helpers.ts";
 import { DEFAULT_COMMAND_RULES, Users, Workspace } from "@lyrica/core";
 
@@ -18,12 +19,16 @@ import { DEFAULT_COMMAND_RULES, Users, Workspace } from "@lyrica/core";
 
 const dirs: string[] = [];
 const shellcheckInstalled = (() => { try { execFileSync("shellcheck", ["--version"], { stdio: "ignore" }); return true; } catch { return false; } })();
+afterEach(cleanRepos);
 afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
 
 /** Each command's time limit, as the bash tool passed it. */
 const timeouts: (number | undefined)[] = [];
 
 /** A sandbox, or with `machine` a machine whose commands are recorded as "<machine>: <command>". */
+/** The saves run before commands that throw work away, in order. */
+const saveRuns: string[] = [];
+
 function fakeTarget(files: Map<string, string>, commands: string[], machine?: string, secrets: string[] = []): ExecutionTarget {
   const read = async (p: string) => {
     const text = files.get(p);
@@ -35,7 +40,11 @@ function fakeTarget(files: Map<string, string>, commands: string[], machine?: st
     read: { readFile: read, access: async (p) => { await read(p); }, detectImageMimeType: async () => null },
     write: { writeFile: write, mkdir: async () => {} },
     edit: { readFile: read, writeFile: write, access: async (p) => { await read(p); } },
-    bash: { exec: async (command, _cwd, { onData, timeout }) => { timeouts.push(timeout); commands.push(machine ? `${machine}: ${command}` : command); onData(Buffer.from("ran\n")); return { exitCode: 0 }; } },
+    bash: { exec: async (command, _cwd, { onData, timeout }) => {
+      // A save before git throws work away is kept apart from her commands, and answers as a save that happened.
+      if (command.includes("refs/lyrica/saved")) { saveRuns.push(command); onData(Buffer.from("SAVED:refs/lyrica/saved/20261112T000000Z-abc1234\n")); return { exitCode: 0 }; }
+      timeouts.push(timeout); commands.push(machine ? `${machine}: ${command}` : command); onData(Buffer.from("ran\n")); return { exitCode: 0 };
+    } },
   };
   return { name: machine ? `ssh:${machine}` : "sandbox", cwd: async () => "/workspace", ops: () => ops, folders: () => [], secrets: () => secrets };
 }
@@ -78,6 +87,8 @@ interface Run {
   files?: Record<string, string>;
   /** The thread's artifacts; with it, page publish and page artifacts work. */
   artifacts?: ThreadTools["artifacts"];
+  /** The sandbox, instead of the fake one: a real folder for git. */
+  sandbox?: ExecutionTarget;
 }
 
 /** Tools any thread has besides the workspace's: memory, and the switched ones, which do nothing here. */
@@ -117,7 +128,7 @@ async function run(mode: ThreadWorkspace["mode"], calls: ReturnType<typeof fauxT
   };
   const workspace = createWorkspaceExtension({
     commandRules: () => o.rules ?? [],
-    target: (machine) => fakeTarget(files, commands, machine, o.secrets), settings: () => settings,
+    target: (machine) => (!machine && o.sandbox) || fakeTarget(files, commands, machine, o.secrets), settings: () => settings,
     machines: () => o.machines ?? [],
     proxmox: async (machine, action, vm) => { commands.push(`${machine}: proxmox ${action}${vm ? ` ${vm}` : ""}`); return `${action} done`; },
     allowedInThread: (machine, command) => (o.allowed ?? []).includes(`${machine}: ${command}`), network: () => ({ internet: false, services: false, hosts: ["nas.lan:8080"] }),
@@ -872,6 +883,9 @@ describe("MCP servers in a thread", () => {
       await run("auto", [], { steps: [[search], [turnOn]], mcp: { servers, allowed: ["house/turn_on"] }, approve: async (r) => { asked.push(r); return false; } });
       expect(asked).toEqual([]);
       expect(house.calls.map((c) => c.tool)).toEqual(["get_status", "turn_on"]);
+      // Bypass permissions keeps this card: it asks in every mode.
+      await run("bypass", [], { steps: [[search], [turnOn]], mcp: { servers }, approve: async (r) => { asked.push(r); return false; } });
+      expect(asked.map((r) => r.serverTool)).toEqual(["turn_on"]);
     } finally {
       await house.close();
     }
@@ -992,6 +1006,21 @@ describe("project command rules in the hook", () => {
     await run2("auto", written, { "/workspace/s.sh": "ls\n" }, approve);
     expect(asked).toBe(2);
   });
+  it("Bypass permissions asks nothing in the sandbox, but Forbid and the user's own Ask rules hold, and a machine keeps its limit", async () => {
+    let asked = 0;
+    const approve: ThreadTools["approve"] = async () => { asked++; return true; };
+    const rules = [...DEFAULT_COMMAND_RULES, { prefix: "npm publish", decision: "ask" as const }];
+    const calls = ["rm -rf dist", "bash /workspace/run.sh", "git push --force", "bash -c \"$(printf 'rm -rf /workspace/x')\""].map((command) => fauxToolCall("bash", { command }));
+    const result = await run("bypass", calls, { rules, files: { "/workspace/run.sh": "git checkout main -- web/src\n" }, approve });
+    expect(asked).toBe(0);
+    // Forbid refuses, and a command Forbid rules can't see into is refused rather than asked about.
+    expect(result.commands).toEqual(["rm -rf dist", "bash /workspace/run.sh"]);
+    expect(result.results.some((t) => t.includes("can't see inside this command"))).toBe(true);
+    await run("bypass", [fauxToolCall("bash", { command: "npm publish" })], { rules, approve });
+    expect(asked).toBe(1);
+    await run("bypass", [fauxToolCall("bash", { command: "ls", machine: "nas" })], { machines: [{ name: "nas", kind: "ssh", limit: "ask", root: null }], approve });
+    expect(asked).toBe(2);
+  });
   it("allow keeps the machine's prompts", async () => {
     let asked = 0;
     await run("ask", [fauxToolCall("bash", { command: "ls", machine: "nas" })], { rules: [{ prefix: "ls", decision: "allow" }], machines: [{ name: "nas", kind: "ssh", limit: "ask", root: null }], approve: async () => { asked++; return false; } });
@@ -1017,14 +1046,37 @@ describe("suspect commands in the sandbox", () => {
     expect(asked).toHaveLength(1);
   });
   it("save the work git is about to throw away before it runs, and nothing when it's declined", async () => {
+    saveRuns.length = 0;
     const ran = await run("auto", [fauxToolCall("bash", { command: "cd repo && git reset --hard" })], { approve: yes });
-    expect(ran.commands).toHaveLength(2);
-    expect(ran.commands[0]).toMatch(/^cd '\/workspace\/repo' .*refs\/lyrica\/saved\//);
-    expect(ran.commands[1]).toBe("cd repo && git reset --hard");
+    expect(saveRuns).toHaveLength(1);
+    expect(saveRuns[0]).toContain("cd '/workspace/repo'");
+    expect(ran.commands).toEqual(["cd repo && git reset --hard"]);
+    // Her result says what was saved and how to get it back.
+    expect(ran.results[0]).toContain("saved as refs/lyrica/saved/20261112T000000Z-abc1234. To get it back");
+    saveRuns.length = 0;
     const declined = await run("auto", [fauxToolCall("bash", { command: "git clean -fd" })], { approve: async () => false });
     expect(declined.commands).toEqual([]);
+    expect(saveRuns).toEqual([]);
+    const removed = await run("auto", [fauxToolCall("bash", { command: "rm -rf repo" })], { approve: yes });
+    expect(saveRuns[0]).toMatch(/find '\/workspace\/repo' -maxdepth 3 -name \.git/);
+    expect(removed.commands).toEqual(["rm -rf repo"]);
+    saveRuns.length = 0;
     const plain = await run("auto", [fauxToolCall("bash", { command: "git status" })], { approve: yes });
     expect(plain.commands).toEqual(["git status"]);
+    expect(saveRuns).toEqual([]);
+  });
+  it("save the work in Bypass too, where a hard reset asks no one", async () => {
+    const d = repo();
+    writeFileSync(join(d, "a.txt"), "changed\n");
+    writeFileSync(join(d, "new.txt"), "new\n");
+    let asked = 0;
+    const ran = await run("bypass", [fauxToolCall("bash", { command: "git reset --hard && git clean -fd" })], { sandbox: localTarget(d), approve: async () => { asked++; return true; } });
+    expect(asked).toBe(0);
+    expect(readFileSync(join(d, "a.txt"), "utf8")).toBe("one\n");
+    const [ref] = saved(d);
+    expect(git(d, "show", `${ref}:a.txt`)).toBe("changed");
+    expect(git(d, "show", `${ref}:new.txt`)).toBe("new");
+    expect(ran.results[0]).toContain(`saved as ${ref}`);
   });
   it("leave the machine-only rules to machines, and refuse a denied one", async () => {
     const quiet = await run("auto", [fauxToolCall("bash", { command: "sudo reboot" })], { approve: yes });

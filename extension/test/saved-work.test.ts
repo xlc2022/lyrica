@@ -1,41 +1,14 @@
-import { execFileSync, spawn } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import type { ExecutionTarget, ToolOps } from "@lyrica/core";
-import { SAVED_REF, saveBeforeDiscard } from "../src/workspace.ts";
+import { saveBeforeDiscard, saveBeforeRemove, savedNote } from "../src/workspace.ts";
+import { cleanRepos, dirs, git, localTarget, repo, saved } from "./git-repo.ts";
 
 // Work git is about to throw away is saved first, against a real repository.
 
-const dirs: string[] = [];
-afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
+afterEach(cleanRepos);
 
-/** A target whose bash runs here, in `cwd`. */
-function localTarget(cwd: string): ExecutionTarget {
-  const exec: ToolOps["bash"]["exec"] = (command, dir, { onData }) => new Promise((resolve) => {
-    const p = spawn("bash", ["-c", command], { cwd: dir });
-    p.stdout.on("data", onData);
-    p.stderr.on("data", onData);
-    p.on("close", (code) => resolve({ exitCode: code }));
-  });
-  return { name: "sandbox", cwd: async () => cwd, ops: () => ({ bash: { exec } }) as unknown as ToolOps, folders: () => [] };
-}
-
-const git = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8", env: { ...process.env, GIT_AUTHOR_NAME: "Ada", GIT_AUTHOR_EMAIL: "ada@example.com", GIT_COMMITTER_NAME: "Ada", GIT_COMMITTER_EMAIL: "ada@example.com" } }).trim();
-
-function repo(): string {
-  const d = mkdtempSync(join(tmpdir(), "saved-"));
-  dirs.push(d);
-  git(d, "init", "-q", "-b", "main");
-  writeFileSync(join(d, ".gitignore"), "ignored.txt\n");
-  writeFileSync(join(d, "a.txt"), "one\n");
-  git(d, "add", ".");
-  git(d, "commit", "-q", "-m", "first");
-  return d;
-}
-
-const saved = (d: string) => git(d, "for-each-ref", "--format=%(refname)", SAVED_REF).split("\n").filter(Boolean);
 
 describe("saved before discarding", () => {
   it("keeps changed, staged and untracked files, and leaves the tree and index as they were", async () => {
@@ -46,10 +19,13 @@ describe("saved before discarding", () => {
     writeFileSync(join(d, "new.txt"), "new\n");
     writeFileSync(join(d, "ignored.txt"), "ignored\n");
     const status = git(d, "status", "--porcelain");
-    await saveBeforeDiscard(localTarget(d), ["."]);
+    const saves = await saveBeforeDiscard(localTarget(d), ["."]);
     expect(git(d, "status", "--porcelain")).toBe(status);
     const [ref] = saved(d);
     expect(ref).toMatch(/^refs\/lyrica\/saved\/\d{8}T\d{6}Z-[0-9a-f]{7}$/);
+    // What she is told: the ref, and how to bring the work back.
+    expect(saves).toEqual([{ dir: d, ref }]);
+    expect(savedNote(saves)).toContain(`git checkout ${ref} -- .`);
     expect(git(d, "show", `${ref}:a.txt`)).toBe("two");
     expect(git(d, "show", `${ref}:staged.txt`)).toBe("staged");
     expect(git(d, "show", `${ref}:new.txt`)).toBe("new");
@@ -63,10 +39,45 @@ describe("saved before discarding", () => {
 
   it("saves nothing in a clean repository or a folder that isn't one", async () => {
     const d = repo();
-    await saveBeforeDiscard(localTarget(d), ["."]);
+    expect(await saveBeforeDiscard(localTarget(d), ["."])).toEqual([]);
     expect(saved(d)).toEqual([]);
     const plain = mkdtempSync(join(tmpdir(), "plain-"));
     dirs.push(plain);
-    await expect(saveBeforeDiscard(localTarget(plain), [".", "missing"])).resolves.toBeUndefined();
+    await expect(saveBeforeDiscard(localTarget(plain), [".", "missing"])).resolves.toEqual([]);
+  });
+
+  it("keep a deleted checkout's unsaved work and unpushed commits in a bundle outside it, which a fresh clone fetches back", async () => {
+    const origin = repo();
+    const parent = mkdtempSync(join(tmpdir(), "parent-"));
+    dirs.push(parent);
+    git(parent, "clone", "-q", origin, "work");
+    const work = join(parent, "work");
+    writeFileSync(join(work, "b.txt"), "committed here only\n");
+    git(work, "add", "b.txt");
+    git(work, "commit", "-q", "-m", "unpushed");
+    writeFileSync(join(work, "a.txt"), "changed\n");
+    const bundles = join(parent, "saved");
+    const saves = await saveBeforeRemove(localTarget(parent), ["work"], bundles);
+    expect(saves).toHaveLength(1);
+    expect(saves[0]!.dir).toBe(work);
+    expect(saves[0]!.bundle).toMatch(new RegExp(`^${bundles}/work-\\d{8}T\\d{6}Z\\.bundle$`));
+    rmSync(work, { recursive: true, force: true });
+    // Starting over: a fresh clone, then what the note says.
+    git(parent, "clone", "-q", origin, "again");
+    const again = join(parent, "again");
+    git(again, "fetch", "-q", saves[0]!.bundle!, "+refs/heads/*:refs/lyrica/restored/*", "+refs/lyrica/saved/*:refs/lyrica/saved/*");
+    expect(git(again, "show", "refs/lyrica/restored/main:b.txt")).toBe("committed here only");
+    const [ref] = saved(again);
+    git(again, "checkout", ref!, "--", ".");
+    expect(readFileSync(join(again, "a.txt"), "utf8")).toBe("changed\n");
+    expect(savedNote(saves)).toContain(saves[0]!.bundle!);
+  });
+
+  it("bundle nothing for a clean, pushed checkout or a folder with none", async () => {
+    const origin = repo();
+    const parent = mkdtempSync(join(tmpdir(), "parent-"));
+    dirs.push(parent);
+    git(parent, "clone", "-q", origin, "work");
+    expect(await saveBeforeRemove(localTarget(parent), ["work", "missing"], join(parent, "saved"))).toEqual([]);
   });
 });

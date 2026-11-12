@@ -1503,8 +1503,14 @@ come from the user's Git accounts (DESIGN.md, "Updates and self-editing").
   included and ignored ones not, as a commit under
   `refs/lyrica/saved/<time>-<sha>`, using a copy of the index so neither
   the working tree nor the index changes (`discardingGit`,
-  `saveBeforeDiscard`). A folder with nothing to save is left alone, and a
-  failed save never stops the command.
+  `saveBeforeDiscard`). Before an `rm -r` (`removedFolders`, after any
+  `cd`), each git checkout in a deleted folder, or up to two levels down,
+  with uncommitted work or commits on no remote goes to a bundle in
+  `/workspace/.lyrica-saved/<name>-<time>.bundle`, outside it: the saved
+  work and the local branches, less what a remote has (`saveBeforeRemove`).
+  The command's result ends with a note naming each ref or bundle and how
+  to bring it back. A folder with nothing to save is left alone, and a
+  failed save never stops the command. A push never sends these refs.
 
 ## MCP servers
 
@@ -1665,9 +1671,9 @@ it adds no tool.
 She changes her own code the way Claude's feature threads do: the
 `xlc2022/lyrica` repository in her "Lyrica" project, from her own GitHub
 account (docs/briefs/lyrica-project.md), on `lyrica/*` branches, through
-pull requests that her project's Review threads verify and she merges. Nothing she
-does reaches `main` or the server without that review and an
-administrator's Update. A private thread can't have the repository, since
+pull requests she merges on green CI, after her Review thread's verified
+when one touches boundary code or the design docs (docs/workflow.md). Nothing
+she does reaches the server without an administrator's Update. A private thread can't have the repository, since
 her account is general.
 
 - **The repository's settings**, the owner's to set, once:
@@ -2031,8 +2037,21 @@ judgment and make review easy. Each thread has a **mode**:
   `propose_plan` are active. A child thread of a Plan-mode thread is in
   Plan mode too.
 - **Auto** (`auto`, the default): works freely inside the grants.
+- **Bypass permissions** (`bypass`): offered only while the user has turned
+  on **Allow bypass** (`bypassAllowed`, `setBypassAllowed`;
+  Settings → Network → New threads). In the sandbox no mode prompt
+  and no suspect-command warning asks. The cards that ask in every mode
+  still do: an MCP tool that isn't read-only, an open-world tool, and a
+  `browse` form or attachment. Forbid rules still refuse, and so does a command they
+  can't see into (the card it would get elsewhere), so wrapping a command
+  in `eval` or `bash -c "$(…)"` doesn't get round them. The user's own Ask
+  rules still ask, and on a machine the stricter of Auto and its limit
+  applies as before, with its suspect and
+  moved-machine cards. Turning the switch off moves every thread in Bypass
+  permissions, and the default, to Auto; `effective` reads `bypass` as
+  `auto` while it is off. A plan can't go ahead in it.
 
-Whatever the mode, a suspect command (a recursive delete, or git throwing
+Outside Bypass permissions, whatever the mode, a suspect command (a recursive delete, or git throwing
 away commits or changes; [Machines](#machines)) asks with a warning, until
 allowed in the thread.
 

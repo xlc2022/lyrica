@@ -10,9 +10,9 @@ each other) and Self-editing merged.
 
 ## Goal
 
-When she starts editing her own code she works the way Claude's project
-does today, with the same roles, handoffs and review, instead of
-rediscovering them (principle 6: trust her judgment, make review easy).
+When she edits her own code she works from AGENTS.md like any builder,
+with the lighter review her project uses (docs/workflow.md), instead of
+rediscovering how (principle 6: trust her judgment, make review easy).
 She starts with no memory of this project, so everything she needs is
 written here.
 
@@ -40,7 +40,7 @@ the steps below, and its own GitHub account, so GitHub keeps them apart:
   a second.
 - **Branches.** Both push `lyrica/*` branches. Before pushing a new one she
   checks the name isn't on GitHub yet, and she never pushes to a branch
-  another account created (AGENTS.md, "Review and merge").
+  another account created (docs/workflow.md).
 - **Update tags.** Each deployment's update note lists what was merged
   since its own running version. When the `update/<date>` name is taken,
   the second note adds a suffix, such as `update/<date>-2`.
@@ -62,7 +62,7 @@ These are by hand; the guides cover each one.
    ("Upgrading from a checkout" there). Run the checklist at the end of
    that guide, and add the updater's deploy key if install.sh printed one
    ("Updates from GitHub").
-2. **Models** for her project chat, Review and UI review, from the model
+2. **Models** for her project chat, build threads and Review, from the model
    hosts it pairs with ([model-hosts.md](../guides/model-hosts.md)). A host
    paired with two deployments moves to whichever asks for **Update**, so
    keep both on the same release, or update the host only from this one.
@@ -91,7 +91,7 @@ release passed probation there.
 1. **New project** from the thread list's own menu (right-click or long
    press its empty space), in the general pool, and name it "Lyrica"
    (**Rename…** in its menu). In **Project settings** (the **Project** link in the project chat's header):
-   General → Goal: "Build and improve Lyrica's own code, through review."; under This chat, **Repositories** → **+** →
+   General → Goal: "Build and improve Lyrica's own code."; under This chat, **Repositories** → **+** →
    `xlc2022/lyrica` from her GitHub account, then **Thread settings**: turn
    the internet on, which reading CI logs needs (allowing only
    `github.com`, `api.github.com` and `registry.npmjs.org` works for
@@ -121,7 +121,8 @@ release passed probation there.
    Forbid. These apply to the project chat, its threads and subagents;
    Always allow on a sandbox command card saves its prefix for this project.
    Project settings → General → **Checks** lists the commands that run
-   when one of her code turns ends (`npm run typecheck`, `npm test`);
+   when one of her code turns ends: `npm run typecheck` only, since every
+   code turn re-runs them and CI runs the full suite on each pull request;
    **Setup** stays empty, since each clone already gets `npm ci
    --ignore-scripts` from its lockfile (docs/workspace.md, "Dependencies").
    Her code threads read the repository's AGENTS.md on their own. Skills she
@@ -131,30 +132,25 @@ release passed probation there.
    Memory → Instructions (the count shows it is under 4,000), and turn on
    **Ask first** there, so her changes to them wait as drafts for the
    owner to save (only the owner turns it off).
-3. Start three standing threads in the project chat (**Start a thread**
+3. Start two standing threads in the project chat (**Start a thread**
    on a message; they sit under the project row) and pick each one's
    model:
-   - **Review** (the strongest cloud model allowed): reads a brief
-     before its code starts, when there is one (goal, smallest version, which docs/ux.md rule
-     each new control follows, what it reuses, what it adds against
-     PRINCIPLES 8's budgets), then reviews each PR of hers that needs
-     review (AGENTS.md, "Review and merge", step 1) before she merges it,
-     and keeps PRINCIPLES, DESIGN, the contracts and docs/ux.md true to
-     what her project settles, against the brief or issue, AGENTS.md and the docs;
-     sends fixes to the building thread; says verified.
-   - **UI review** (the model the project uses for anything a user sees):
-     reads a UI brief's mockup or written layout before its code
-     starts, when there is one, then judges every change a user sees against docs/ux.md, from
-     the screenshots `web/e2e/shot.ts` takes (docs/workspace.md, "Her own
-     code"); a PR with UI goes out only after it says verified.
+   - **Review** (the strongest cloud model allowed): checks each PR of
+     hers that touches boundary code (CODEOWNERS) or changes PRINCIPLES,
+     DESIGN, the contracts or docs/ux.md (docs/workflow.md, "Lyrica's
+     project") against its issue, AGENTS.md and the docs, sends fixes to
+     the building thread, says verified, and keeps those four docs true to
+     what her project settles. Other PRs merge on green CI without it.
    - **Friction log**: keeps the list of what went wrong in use, one line
      each, and turns the top items into GitHub issues assigned to her. It
      never builds them: it tells the project chat, which starts the work.
 
-   Standing threads never resolve themselves: one that hits a blocker
-   reports it to the project chat and stays open.
+   There is no UI review thread: a UI change carries two screenshots,
+   phone and desktop, and follows docs/ux.md. Standing threads never
+   resolve themselves: one that hits a blocker reports it to the project
+   chat and stays open.
 
-   Then tell the project chat these three exist, naming each, so it routes
+   Then tell the project chat these two exist, naming each, so it routes
    work to them instead of starting its own: a project chat told only the
    roles starts a second Review or Friction log.
 
@@ -214,62 +210,53 @@ characters, the limit on project instructions.
 
 > You work on your own code in xlc2022/lyrica, as its main builder: any
 > work is yours, from what you notice in use to planned features. Read
-> AGENTS.md first, then PRINCIPLES.md, DESIGN.md, docs/contracts.md, your
-> issue or brief, and docs/ux.md before UI work. Follow AGENTS.md's rules.
-> If a doc and the code disagree, the PR isn't done.
+> AGENTS.md and follow it: it is short, and it says how to work here.
+> Read PRINCIPLES.md, DESIGN.md, docs/contracts.md and docs/ux.md only in
+> the sections your task touches. docs/workflow.md says how your project
+> reviews and merges.
 >
-> **The project chat** plans and routes; threads build. Each piece of
-> work gets one issue, assigned to you and claimed first: what is wanted,
-> the smallest change a user would notice, what it reuses, the principle
-> it serves. It starts one thread per issue, unasked, sends later work in
-> the same area to the same thread, and tells threads what a merge
-> affects. It tells the owner only what needs them: a decision, a
-> blocker, an update to press.
+> **The project chat** routes; threads build. For each piece of work it
+> files or finds one issue, assigned to you: the problem in the owner's own
+> words, what done looks like, what is out of bounds. It doesn't diagnose
+> or investigate: the thread does that, once. It answers quick questions
+> itself and sends any reading or analysis beyond a couple of tool calls to
+> a thread. It writes no files of its own, /tmp included. It starts one
+> thread per issue, sends later work in the same area to the same thread,
+> and tells threads what a merge affects. It tells the owner only what
+> needs them: a decision or a blocker.
 >
-> **A build thread** takes one issue. Before UI work, a new API or
-> dependency it writes a short brief in docs/briefs/, or says why not.
-> It starts small and grows the change once it works. On a
-> `lyrica/<short-name>` branch it opens one PR into `main`, after
-> `npm run typecheck` and `npm test` pass, and the web e2e for UI, one
-> suite at a time; a failing eval is evidence, not a broken build. The PR says what changed and why, what is out of
-> scope, and which docs it updated.
+> **A build thread** takes one issue and proposes a reasonable scope: the
+> whole problem the owner named, plus bugs it finds on the way that are
+> directly related. It never ships the easy part and calls the hard part
+> out of scope; if it can't fix what was asked, it says so before
+> building. It reproduces the problem, names the cause with proof, and
+> only then edits. While working it runs only the tests for its change;
+> CI runs the rest. Two misses in a row means back to finding the cause.
+> It never throws away unsaved work: it commits and pushes to its
+> `lyrica/<short-name>` branch before starting over. It reports to the
+> project chat once, when done or truly blocked.
 >
-> **Review and merging.** A PR that needs review (AGENTS.md, "Review and
-> merge") goes with its head to Review and, for UI, UI review. Fix
-> findings and send the new head. Once they verify the exact head and CI
-> is green, record both on the PR and merge it, with a merge commit; a
-> later push needs both again. Docs-only, brief-only and small `web/` PRs
-> merge on green CI (UI review still judges UI), but never one touching
-> PRINCIPLES, DESIGN, the contracts or docs/ux.md. A PR touching boundary
-> code (CODEOWNERS) says so in its first line and waits for the owner's
-> approval. Otherwise never ask the owner before opening or merging a
-> PR: act, then report. Ask only before what can't be undone. After a
-> merge, tell the project chat the PR, its merge commit, what landed and
-> what it may affect.
+> **Review and merging.** A PR merges on green CI with a merge commit. A
+> PR touching boundary code (CODEOWNERS) or PRINCIPLES, DESIGN, the
+> contracts or docs/ux.md goes with its head to your Review thread first;
+> boundary code also waits for the owner's approval and says so in its
+> first line. A PR has one description (what and why, out of scope, docs
+> updated, tokens it took) and one merge comment. No status comments. A UI
+> change carries two screenshots, phone and desktop. Never ask the owner
+> before opening or merging a PR: act, then report. Ask only before what
+> can't be undone, and only for a real decision, as a card.
 >
-> **Handoffs.** Nobody waits silently. A thread that needs another
-> messages it every time, naming the commit and what it needs, and the
-> receiver answers in the same turn, even if only to say when. No reply
-> in 10 minutes: ask the project chat to pass it on. A reviewer's
-> verified is final for that head. When your context gets long, stop at a clean point
-> and write a handoff note.
+> **Claude.** To confer with Claude when the owner asks, run Claude Code,
+> your tool (`claude` in your sandbox, or delegate to role `claude`), on
+> the change; treat its report as findings. To give Claude's project work:
+> a GitHub issue labelled `claude`.
 >
-> **Claude, two paths.** To confer with Claude when the owner asks, run
-> Claude Code, your tool (`claude` in your sandbox, or delegate to role
-> `claude`), on the change; treat its report as findings. To give
-> Claude's project, another team, work: a GitHub issue labelled `claude`.
->
-> **Docs never drift.** Other agents learn this repository only from its
-> docs. A PR updates every doc, brief or guide it makes stale, in the
-> same PR. After a merge that changes the instructions block in
+> **Docs never drift.** A PR updates every doc it makes stale. After a
+> merge that changes the instructions block in
 > docs/briefs/lyrica-project.md, the project chat turns on Ask first
 > (`askFirst: true`) if it is off, then sends the new block with
-> `threads instructions`, which leaves it as a draft for the owner. Drift you notice elsewhere gets a small docs PR. Each issue or
-> brief keeps a current handoff note (done, next, open questions)
-> another agent can continue from.
->
-> **Skills.** Before recurring work, check your saved skills and use the
-> ones that fit.
+> `threads instructions`, which leaves it as a draft for the owner. Never
+> change these instructions on your own initiative.
 >
 > **UX taste.** Labels are nouns, with no captions; what must stay goes
 > in a tooltip. Numbers are typed, with the max shown. Drawers edit in
@@ -335,14 +322,12 @@ request. CI watches above are an existing mechanism, not a new timer to set.
 
 Claude's project can't see her project, and it doesn't review, approve or
 merge her PRs (the owner, 2026-11-10: she has full control of her work).
-She follows AGENTS.md's four steps like any builder: a PR that needs
-review goes with its head to her project's Review thread (and UI review
-when applicable), she fixes findings and sends each new head for recheck.
-After all required reviewers verify the exact head and CI is green, she
-records the head and review results in the PR description or a comment
-and merges it herself, with a merge
-commit; a push after that needs both again, and boundary code (CODEOWNERS)
-also waits for the owner's own approval.
+She works from AGENTS.md and merges her own PRs on green CI, with a
+merge commit (docs/workflow.md, "Lyrica's project"). A PR touching
+boundary code (CODEOWNERS) or PRINCIPLES, DESIGN, the contracts or
+docs/ux.md goes first to her project's Review thread; she records its
+verified head in her merge comment, and boundary code also waits for the
+owner's own approval.
 
 Conferring with Claude is the owner's to ask for, per change or as a
 standing wish said in her project. She then gives the change (the PR, its
@@ -438,3 +423,15 @@ question, or an approval) still waits for the owner alone, and nothing
 relays an answer into it. The block above lost "or a wait on them", and
 stays under 4,000 characters; the project chat sends the new text as a
 draft.
+
+2026-11-12, lighter process (the owner): a review of her production work
+found four merged PRs for about 327M tokens, almost all of it re-reading
+her own conversation step after step: guess-and-check edits, full test
+runs after each, work wiped and restarted, status comments, and a project
+chat that investigated before writing long briefs. AGENTS.md is now a
+short working guide (scope, cause before edit, focused tests, never wipe
+unsaved work, write little); review and merge moved to docs/workflow.md.
+Her project drops UI review, sends only boundary and design-doc PRs to
+Review, runs only `npm run typecheck` as a code-turn check, and her
+threads report once. The block above was rewritten to match. The owner
+plans to start her production project again from scratch with this text.

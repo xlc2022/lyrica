@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  callArgs, cleanOutput, discardingGit, generateSshKey, maskKeys, migrate, RemoteMissing, suspectCommand, Users, writtenFiles, Workspace, WorkspaceSettings,
+  callArgs, cleanOutput, discardingGit, removedFolders, generateSshKey, maskKeys, migrate, RemoteMissing, suspectCommand, Users, writtenFiles, Workspace, WorkspaceSettings,
   type Db, type NewMachine, type SshSession, type SshTransport,
 } from "../src/index.ts";
 import { freshKeyring, profile } from "./helpers.ts";
@@ -315,6 +315,12 @@ describe("suspect commands", () => {
     for (const c of ["git status", "git checkout -b feature", "git stash", "rm -rf build", "git push --force", "git branch -D old", "git clean -n"]) {
       expect(discardingGit(c), c).toEqual([]);
     }
+  });
+  it("name the folders rm -r deletes, so a checkout in one can be saved first", () => {
+    expect(removedFolders("rm -rf lyrica && git clone https://example.com/lyrica.git")).toEqual(["lyrica"]);
+    expect(removedFolders("cd repos; rm -r -f -- lyrica /work/old")).toEqual(["repos/lyrica", "/work/old"]);
+    expect(removedFolders("rm --recursive --force build")).toEqual(["build"]);
+    for (const c of ["rm notes.txt", "rm -f a b", "rm -rf $DIR", "git rm -r src"]) expect(removedFolders(c), c).toEqual([]);
   });
   it("catch the commands on the list however they're written", () => {
     for (const c of ["rm -rf /", "sudo rm -rf --no-preserve-root /", "rm -rf /*", "rm -rf ~", "rm -rf ~/", "rm -fr $HOME", "rm -r /home/ada", "rm -rf /etc/",
