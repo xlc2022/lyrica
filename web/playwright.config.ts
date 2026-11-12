@@ -6,21 +6,23 @@ import { chromium, defineConfig, devices } from "@playwright/test";
 // file per project, since two files of a project would share its lyricad; a new web-*.spec.ts file goes in SPECS
 // and in the e2e job's matrix (.github/workflows/ci.yml).
 // Build the UI first: npm run build && npm run e2e -w @lyrica/web
-const SPECS = ["chat", "workspace", "projects", "admin"];
+const SPECS = ["chat", "messages", "workspace", "projects", "admin"];
 const sizes = [
   { size: "phone", use: { ...devices["iPhone 13"], viewport: { width: 390, height: 844 }, defaultBrowserType: "chromium" as const } },
   { size: "desktop", use: { viewport: { width: 1280, height: 800 } } },
 ];
-// Ports from 17341, each lyricad's fake model server 10 above its own (web/e2e/helpers.ts enter()). Not lyricad's
-// own 7341 and 7342: a sandbox can't reach those ports even on its own loopback, so the tests run inside one too.
+// Ports from 17341, each lyricad's fake model server 10 above its own (web/e2e/helpers.ts enter()) and its MCP server
+// 30 above (e2e/serve.ts), so the spec lyricads fit in 17341-17350 (five specs at most) and the setup page's sits at
+// 17391, clear of them all. Not lyricad's own 7341 and 7342: a sandbox can't reach those ports even on its own
+// loopback, so the tests run inside one too.
 const BASE = 17341;
 const all = [
   ...SPECS.flatMap((spec, i) => sizes.map((s, j) => ({ name: `${s.size}-${spec}`, port: BASE + i * 2 + j, use: s.use, testMatch: new RegExp(`web-${spec}\\.spec\\.ts`), setup: false }))),
   // A lyricad with no self.db, for the setup page (setup.spec.ts).
-  { name: "setup", port: BASE + SPECS.length * 2, use: { viewport: { width: 1280, height: 800 } }, testMatch: /setup\.spec\.ts/, setup: true },
+  { name: "setup", port: BASE + 50, use: { viewport: { width: 1280, height: 800 } }, testMatch: /setup\.spec\.ts/, setup: true },
 ];
 // E2E_PROJECTS names the projects to run, comma-separated (E2E_PROJECTS=phone-chat,desktop-chat): only their lyricads
-// start, where --project alone would start all nine. CI runs each spec's two sizes as a job of its own this way.
+// start, where --project alone would start all eleven. CI runs each spec's two sizes as a job of its own this way.
 const chosen = (process.env.E2E_PROJECTS ?? "").split(",").map((s) => s.trim()).filter(Boolean);
 const unknown = chosen.filter((name) => !all.some((s) => s.name === name));
 if (unknown.length) throw new Error(`E2E_PROJECTS names no project: ${unknown.join(", ")} (have ${all.map((s) => s.name).join(", ")})`);

@@ -93,13 +93,15 @@ self-hosted runners, which no workflow uses at the moment.
   failed or was cancelled, so every run ends with a real passing result:
   a run of skips alone never woke the thread waiting on its pull request,
   and a docs-only one sat open a day.
-  Each e2e job runs one `web/e2e/web-*.spec.ts` file (chat, workspace,
-  projects or admin) at phone and at desktop size, two Playwright
+  Each e2e job runs one `web/e2e/web-*.spec.ts` file (chat, messages,
+  workspace, projects or admin) at phone and at desktop size, two Playwright
   projects side by side, each against its own lyricad; the `projects` job
   runs the setup page too. A spec's tests run one after another, so the
   longest spec sets the run's time: the chat tests were the longest and
-  are two files of about equal length, `web-chat.spec.ts` (a thread's
-  messages, cards, tools and modes) and `web-workspace.spec.ts` (the
+  are three files, `web-chat.spec.ts` (a thread's replies, routines,
+  skills, portraits, images and clips), `web-messages.spec.ts` (a
+  message's menu and actions, tool-call runs, child threads, models and
+  modes) and `web-workspace.spec.ts` (the
   composer and header, search, memory, settings, accounts, project
   threads, sources). The job picks its projects with `E2E_PROJECTS`
   (`web/playwright.config.ts`), which also keeps the other lyricads from
