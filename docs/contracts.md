@@ -2294,9 +2294,10 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     `POST …/messages/:n/rewind` with `RewindRequest` `delete`, `regenerate`
     with an optional `model`, or `edit` with `text`, `409` while a turn runs;
     `preview: true` answers a `RemovalPlan` (`messages`, `pins`,
-    `subagents`, `files: PlanFile[]`, `branches: PlanBranch[]`, `commands`)
+    `subagents`, `files: PlanFile[]`, `branches: PlanBranch[]`, `commands`,
+    `threads: PlanThread[]`, each child thread to delete or rewind)
     and changes nothing; `skip` lists the plan items left as they are;
-    `RewindResponse` gains `files` and `branches`, the counts undone
+    `RewindResponse` gains `files`, `branches` and `threads`, the counts undone
     (`removalPlan` and `applyRemoval` in `daemon/src/removal.ts`; uploads
     found with `PoolStore.entriesMentioning`); the `rewound` event carries
     `from` and `resend`, never text);

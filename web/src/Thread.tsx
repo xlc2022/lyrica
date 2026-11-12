@@ -1,6 +1,6 @@
 // One thread: header with its badges, the conversation, and the composer.
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { del, get, patch, post, put, threadPath, u, HttpError, type MachineInfo, type Message, type Pins, type Pool, type RemovalPlan, type RoutineInfo, type RewindRequest, type SendResponse, type Subagents, type ThreadSettings, type ThreadSettingsChange, type ThreadSummary, type ThreadTombstone, type ThreadUsage, type WakeupInfo } from "./api.ts";
+import { del, get, patch, post, put, threadPath, u, HttpError, type MachineInfo, type Message, type Pins, type Pool, type RemovalPlan, type RoutineInfo, type RewindRequest, type RewindResponse, type SendResponse, type Subagents, type ThreadSettings, type ThreadSettingsChange, type ThreadSummary, type ThreadTombstone, type ThreadUsage, type WakeupInfo } from "./api.ts";
 import { Icon } from "./icons.tsx";
 import { hasConsequences, jumpTo, PinnedBadge, RemovalConfirm, useUndo, type Rewinder } from "./Rewind.tsx";
 import { JUMP_EVENT, JUMP_KEY, SHOW_EVENT, SHOW_KEY, take, type JumpRequest, type ShowRequest } from "./links.ts";
@@ -225,7 +225,9 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
   // Branch, regenerate, edit and delete, from each message's menu. Deleting waits for Undo.
   const { pending, later, undo } = useUndo();
   const [removal, setRemoval] = useState<{ plan: RemovalPlan; go: (skip: string[]) => void }>();
-  const rewind = (n: number, req: RewindRequest) => post(`${base}/messages/${n}/rewind`, req).catch((e: Error) => setSendError(e.message));
+  // Child threads it deleted leave the sidebar, and a project's Threads.
+  const rewind = (n: number, req: RewindRequest) => post<RewindResponse>(`${base}/messages/${n}/rewind`, req)
+    .then((r) => { if (r.threads) { refreshThreads(); if (s?.project) overview.reload(); } }, (e: Error) => setSendError(e.message));
   const rewinder: Rewinder | undefined = s && !s.subagent ? {
     settings: settings.data,
     // A turn that ended but isn't stored yet counts too: its messages aren't in t.messages, so the last turn and the

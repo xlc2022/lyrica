@@ -749,8 +749,16 @@ A project chat's child threads are the project's threads
   take no wake-up, routine, background command's wake or plan-limit resume
   (`ChildThreads.mayWake`); those wait, and their notices stay stored, until
   it resumes. The person's own message to the project chat still runs.
-- A rewind of the project chat that removes a thread's anchor leaves the
-  thread, unanchored.
+- A rewind of the project chat (or of any thread with child threads)
+  undoes what the removed turns told its threads, so it can't come back in
+  a report: a thread they started (a `threads start` there, or anchored at
+  or after the first removed entry) is deleted; one they only messaged is
+  stopped and loses, from the first `[From t:…]` message the parent sent it
+  at or after the removed turns began, everything after (its files stay).
+  Each is a `PlanThread` in the removal plan, ticked; one the user unticks
+  stays, and a kept thread whose anchor went is left unanchored. Marked
+  messages from them waiting in the parent, and a parent wake waiting only
+  on them, are dropped (`undoThreads` in `daemon/src/routes.ts`).
 - **Watching threads** (`daemon/src/watch.ts`; the project setting
   `watchThreads`, on by default). A **look** follows 30 s after any of
   these in a logged thread of the project, batched across threads: a turn

@@ -217,20 +217,23 @@ function PinPreview({ text, userId, pool }: { text: string; userId: string; pool
 }
 
 export function hasConsequences(p: RemovalPlan): boolean {
-  return p.files.length + p.branches.length + p.commands.length + p.pins + p.subagents > 0;
+  return p.files.length + p.branches.length + p.commands.length + p.threads.length + p.pins + p.subagents > 0;
 }
 
 /**
  * Before turns that did things are removed: what goes with them, each undo
  * ticked by default and untickable. Files changed since, and branches with
- * commits of their own, are listed but kept unless ticked.
+ * commits of their own, are listed but kept unless ticked. Child threads the
+ * turns started are deleted, and those they messaged lose those messages, so
+ * what they were told doesn't come back to her.
  */
 export function RemovalConfirm({ plan, onConfirm, onCancel }: { plan: RemovalPlan; onConfirm: (skip: string[]) => void; onCancel: () => void }) {
-  const [ticked, setTicked] = useState(() => new Set([...plan.files, ...plan.branches].filter((x) => x.ticked).map((x) => x.id)));
+  const items = [...plan.files, ...plan.branches, ...plan.threads];
+  const [ticked, setTicked] = useState(() => new Set(items.filter((x) => x.ticked).map((x) => x.id)));
   const toggle = (id: string, on: boolean) => setTicked((t) => { const n = new Set(t); if (on) n.add(id); else n.delete(id); return n; });
   const ref = useRef<HTMLDivElement>(null);
   useDismiss(ref, true, onCancel);
-  const undoable = [...plan.files.filter((f) => f.action !== "keep"), ...plan.branches];
+  const undoable = [...plan.files.filter((f) => f.action !== "keep"), ...plan.branches, ...plan.threads];
   const kept = plan.files.filter((f) => f.action === "keep");
   const num = (n: number) => <span className="num">{n}</span>;
   return (
@@ -256,6 +259,14 @@ export function RemovalConfirm({ plan, onConfirm, onCancel }: { plan: RemovalPla
               <span>Delete branch <code>{b.branch}</code> in <code>{b.repo}</code>{b.commits && <span className="badge" title="It has commits no other branch has">has commits</span>}</span>
             </label>
           ))}
+          {plan.threads.map((t) => (
+            <label key={t.id} className="check">
+              <input type="checkbox" checked={ticked.has(t.id)} onChange={(e) => toggle(t.id, e.target.checked)} />
+              {t.action === "delete"
+                ? <span title="Started in these messages">Delete thread <strong>{t.title || "New thread"}</strong></span>
+                : <span title="It stops, and loses what these messages sent it and everything after. Its files stay.">Take back what {her()} told <strong>{t.title || "New thread"}</strong></span>}
+            </label>
+          ))}
         </div>
       )}
       {kept.length > 0 && (
@@ -279,7 +290,7 @@ export function RemovalConfirm({ plan, onConfirm, onCancel }: { plan: RemovalPla
         </div>
       )}
       <div className="row">
-        <button type="button" className="danger solid" onClick={() => onConfirm([...plan.files, ...plan.branches].filter((x) => !ticked.has(x.id)).map((x) => x.id))}>Remove</button>
+        <button type="button" className="danger solid" onClick={() => onConfirm(items.filter((x) => !ticked.has(x.id)).map((x) => x.id))}>Remove</button>
         <button type="button" onClick={onCancel}>Cancel</button>
       </div>
     </div>

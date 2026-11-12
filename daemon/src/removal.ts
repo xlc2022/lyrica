@@ -26,6 +26,8 @@ export interface RemovalContext {
   /** A file change's target by name ("sandbox" or "ssh:<machine>"), or undefined when the thread can't reach it now. */
   targetOf(name: string): ExecutionTarget | undefined;
   grants: Grant[];
+  /** Child threads the removed turns started or messaged (`threadsReached`), with their titles. */
+  threads: { thread: string; title: string; action: "delete" | "rewind" }[];
 }
 
 export interface Entry { n: number; data: unknown; createdAt?: string }
@@ -50,6 +52,7 @@ export async function removalPlan(c: RemovalContext): Promise<RemovalPlan & { ch
     pins: c.pins,
     subagents: c.subagents.length,
     files: [], branches: [], commands: [],
+    threads: c.threads.map((t) => ({ id: `thread:${t.thread}`, threadId: t.thread, title: t.title, action: t.action, ticked: true })),
   };
   const bash = calls.filter((x) => x.name === "bash" && typeof x.args.command === "string");
   const commands = bash.map((x) => (x.args.machine ? `${String(x.args.machine)}: ${String(x.args.command)}` : String(x.args.command)));
@@ -138,6 +141,27 @@ export async function applyRemoval(plan: RemovalPlan & { changes: FileChange[] }
   // The turns are gone, so their records are settled.
   changes.forget(plan.changes.map((ch) => ch.id));
   return { files, branches };
+}
+
+/**
+ * The threads the removed entries' `threads` calls reached, by the IDs their results name: those a `start` made,
+ * and those a `message` went to. What she told them would come back to her in their reports.
+ */
+export function threadsReached(removed: Entry[]): { started: Set<string>; messaged: Set<string> } {
+  // In order, so a result pairs with the latest call of its ID (models reuse IDs across replies).
+  const actions = new Map<string, string>();
+  const started = new Set<string>();
+  const messaged = new Set<string>();
+  for (const e of removed) {
+    for (const x of toolCalls(e)) actions.set(x.id, x.name === "threads" ? String(x.args.action ?? "") : "");
+    const m = (e.data as { type?: string; message?: { role?: string; toolCallId?: string; isError?: boolean; details?: { threads?: unknown } } }).message;
+    if ((e.data as { type?: string }).type !== "message" || m?.role !== "toolResult" || m.isError || !m.toolCallId) continue;
+    const action = actions.get(m.toolCallId);
+    const ids = Array.isArray(m.details?.threads) ? m.details.threads.filter((id): id is string => typeof id === "string") : [];
+    if (action === "start") for (const id of ids) started.add(id);
+    else if (action === "message") for (const id of ids) messaged.add(id);
+  }
+  return { started, messaged };
 }
 
 const fileId = (target: string, path: string) => `file:${target}:${path}`;

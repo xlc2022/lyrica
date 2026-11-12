@@ -1100,6 +1100,28 @@ test("removing turns that did things asks first, with what goes", async ({ page,
   await expect(page.getByRole("button", { name: /pinned/ })).toHaveCount(0, { timeout: 15_000 });
 });
 
+test("deleting the turn that started a child thread lists the thread, ticked, and deletes it with the turn", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  await newThread(page, "General");
+  await send(page, "start: Shed list");
+  await expect(page.getByText("Started it.")).toBeVisible();
+  await expect(page.locator(".threads-card")).toContainText("Child thread: Shed list");
+  const menus = page.getByRole("button", { name: "More actions" });
+  await menus.last().click();
+  await page.getByRole("menuitem", { name: "Delete", exact: true }).click();
+  const confirm = page.getByRole("group", { name: "Remove messages" });
+  const item = confirm.getByRole("checkbox", { name: "Delete thread Shed list" });
+  await expect(item).toBeChecked();
+  await noHorizontalScroll(page);
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/removal-threads-${page.viewportSize()!.width}.png` });
+  await confirm.getByRole("button", { name: "Remove" }).click();
+  await expect(page.getByText("start: Shed list", { exact: true })).toHaveCount(0);
+  const listed = async () => ((await page.evaluate(async (path) => (await fetch(path)).json(), `/api/u/${userId}/threads`)) as { title?: string }[]).filter((t) => t.title === "Shed list");
+  await expect.poll(listed).toEqual([]);
+  if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
+  await expect(page.locator(".side").getByText("Shed list", { exact: true })).toHaveCount(0, { timeout: 15_000 });
+});
+
 test("a child thread nests under its parent, opens from its card, and goes with its parent when asked", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   await newThread(page, "General");

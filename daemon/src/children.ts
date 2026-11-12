@@ -1178,6 +1178,17 @@ export class ChildThreads implements ThreadsHost {
     } catch { /* locked */ }
   }
 
+  /** A rewind of `parent` undid what it told `children`: a wake waiting for their notices, which went with it, is dropped. */
+  dropWakes(userId: string, pool: Pool, parent: string, children: Iterable<string>): void {
+    const key = `${userId}/${pool}/${parent}`;
+    const wake = this.parentWakes.get(key);
+    if (!wake || wake.running) return;
+    for (const c of children) wake.children.delete(c);
+    if (wake.children.size) return;
+    if (wake.timer) clearTimeout(wake.timer);
+    this.parentWakes.delete(key);
+  }
+
   private queueParentWake(userId: string, pool: Pool, parent: string, child: string, wake: "now" | "batch"): void {
     const key = `${userId}/${pool}/${parent}`;
     const existing = this.parentWakes.get(key);

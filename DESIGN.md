@@ -450,8 +450,11 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
 - **What a removed turn takes with it.** Its entries are deleted like
   forgotten ones: notes written in those turns go too, sleep and search never
   see them, and pages that already rest on them are flagged for rewriting.
-  Subagents started in them are stopped and forgotten. A short Undo follows,
-  then it is final.
+  Subagents started in them are stopped and forgotten. Child threads they
+  started are deleted, and child threads they only messaged stop and lose
+  those messages and what followed, so what they were told never comes
+  back to her in a report; each is listed, ticked, and can be kept. A short
+  Undo follows, then it is final.
 - **Pinned messages.** Any message, the user's or Lyrica's, can be pinned.
   - A pinned message is easy to find again: each thread's header lists its
     pins, and the sidebar's search has a Pinned view across threads.

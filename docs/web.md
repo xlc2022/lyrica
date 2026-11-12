@@ -1419,10 +1419,12 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   (leaving the thread sends it at once): Delete, and Regenerate or Edit
   before the last turn. On the last turn, Regenerate and Edit go at once.
   Turns that did things are confirmed first: the rewind is previewed, and if
-  it would undo files or branches, list commands, or take pins or subagent
-  threads, a confirmation box (fixed above the composer) asks "Remove 2
-  messages? 1 is pinned." and lists, under Undone, Kept and Not undone, the
-  undos with a checkbox each, kept files with a badge saying why, and the
+  it would undo files or branches, list commands, reach child threads, or
+  take pins or subagent threads, a confirmation box (fixed above the
+  composer) asks "Remove 2 messages? 1 is pinned." and lists, under Undone,
+  Kept and Not undone, the undos with a checkbox each (child threads as
+  "Delete thread <title>" or "Take back what she told <title>"; a rewind
+  that changed any reloads the thread list and a project's Threads), kept files with a badge saying why, and the
   commands behind "N commands ▾"; Remove goes on with what's ticked, Cancel
   leaves everything. A `rewound`
   event drops the removed messages from every open view; when it carries
