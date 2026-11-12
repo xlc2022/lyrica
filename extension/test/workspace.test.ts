@@ -872,6 +872,9 @@ describe("MCP servers in a thread", () => {
       await run("auto", [], { steps: [[search], [turnOn]], mcp: { servers, allowed: ["house/turn_on"] }, approve: async (r) => { asked.push(r); return false; } });
       expect(asked).toEqual([]);
       expect(house.calls.map((c) => c.tool)).toEqual(["get_status", "turn_on"]);
+      // Bypass permissions keeps this card: it asks in every mode.
+      await run("bypass", [], { steps: [[search], [turnOn]], mcp: { servers }, approve: async (r) => { asked.push(r); return false; } });
+      expect(asked.map((r) => r.serverTool)).toEqual(["turn_on"]);
     } finally {
       await house.close();
     }

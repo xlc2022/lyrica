@@ -2013,10 +2013,10 @@ judgment and make review easy. Each thread has a **mode**:
 - **Auto** (`auto`, the default): works freely inside the grants.
 - **Bypass permissions** (`bypass`): offered only while the user has turned
   on **Allow bypass** (`bypassAllowed`, `setBypassAllowed`;
-  Settings → Network → New threads). Nothing asks in the sandbox: no mode
-  prompt, no suspect-command warning, no card for an MCP tool, an
-  open-world tool, or a `browse` form or attachment (the browser is told
-  yes for the call). Forbid rules still refuse, and so does a command they
+  Settings → Network → New threads). In the sandbox no mode prompt
+  and no suspect-command warning asks. The cards that ask in every mode
+  still do: an MCP tool that isn't read-only, an open-world tool, and a
+  `browse` form or attachment. Forbid rules still refuse, and so does a command they
   can't see into (the card it would get elsewhere), so wrapping a command
   in `eval` or `bash -c "$(…)"` doesn't get round them. The user's own Ask
   rules still ask, and on a machine the stricter of Auto and its limit

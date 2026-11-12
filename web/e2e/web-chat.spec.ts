@@ -1329,7 +1329,7 @@ test("Allow bypass adds Bypass permissions, where nothing asks, and taking it of
   await page.locator(".mode-picker").getByRole("button").click();
   const items = page.getByRole("menu", { name: "Mode" }).getByRole("menuitemradio");
   await expect(items).toHaveCount(5);
-  await expect(items.last()).toContainText("Nothing asks in the sandbox.");
+  await expect(items.last()).toContainText("Commands and file changes never ask.");
   await page.keyboard.press("5");
   await expect(page.locator(".mode-picker")).toContainText("Bypass permissions");
   await noHorizontalScroll(page);

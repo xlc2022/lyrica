@@ -14,10 +14,10 @@ export const MODES: Record<PermissionMode, { label: string; description: string 
   acceptEdits: { label: "Accept edits", description: "File changes go through; commands ask." },
   plan: { label: "Plan", description: "Only reads, then asks to go ahead with a plan." },
   auto: { label: "Auto", description: "Works freely inside the thread's folders." },
-  bypass: { label: "Bypass permissions", description: "Nothing asks in the sandbox. Forbid rules still refuse." },
+  bypass: { label: "Bypass permissions", description: "Commands and file changes never ask. Forbid rules still refuse." },
 };
 /** Allow bypass, under Settings → Network → New threads. */
-export const BYPASS_HINT = "Adds Bypass permissions to the mode menu, where nothing asks in the sandbox. Forbid rules still refuse. Off moves those threads to Auto.";
+export const BYPASS_HINT = "Adds Bypass permissions to the mode menu, where commands and file changes in the sandbox never ask. Forbid rules still refuse. Off moves those threads to Auto.";
 /** The modes a plan can go ahead in. */
 export const GO_AHEAD: GoAhead[] = ["ask", "acceptEdits", "auto"];
 
