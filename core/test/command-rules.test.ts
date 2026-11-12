@@ -43,7 +43,7 @@ describe("project command matching", () => {
     const run = 'timeout 3600 bash -eu /w/run.sh';
     expect(sourcedFile(run)).toEqual({ cds: [], path: '/w/run.sh' });
     const script = 'cd /w/repo\nL=/w/run.log; : > $L\nfor t in a b; do\n  npx playwright test -g "$t" > "/w/x-$t.log" 2>&1\n  echo "$t $?" >> $L\ndone\n';
-    for (const line of [run, 'bash /w/run.sh', 'cd /w && sh ./run.sh x y', 'nohup dash -o pipefail /w/run.sh', 'zsh -x /w/run.sh']) expect(decide(line, DEFAULT_COMMAND_RULES, script), line).toBeUndefined();
+    for (const line of [run, 'bash /w/run.sh', 'cd /w && sh ./run.sh x y', 'nohup dash -o pipefail /w/run.sh', 'bash -x /w/run.sh']) expect(decide(line, DEFAULT_COMMAND_RULES, script), line).toBeUndefined();
     // The script's own commands count: a forbidden one is refused, an opaque one asks.
     expect(decide(run, DEFAULT_COMMAND_RULES, 'ls\ngit push -f')?.decision).toBe('forbid');
     expect(decide(run, DEFAULT_COMMAND_RULES, '"$@"')?.decision).toBe('ask');
@@ -51,6 +51,15 @@ describe("project command matching", () => {
     for (const line of ['bash /w/run.sh', 'sudo -D /w bash run.sh', 'chroot /r bash /w/run.sh', 'bash -s /w/run.sh', 'bash -i /w/run.sh', 'bash --rcfile /x /w/run.sh', 'fish /w/run.fish', 'bash run.sh']) {
       expect(decide(line, DEFAULT_COMMAND_RULES, line === 'bash /w/run.sh' ? undefined : 'ls'), line).toEqual({ prefix: '', decision: 'ask' });
     }
+    // A variable set for the shell runs code the script doesn't show; zsh, ksh and mksh have syntax that runs code
+    // `parse` can't see; an alias the script defines may be expanded. Each stays opaque.
+    const plain = 'ls -la\n';
+    for (const line of ['BASH_ENV=/w/evil.sh bash /w/run.sh', 'env BASH_ENV=/w/evil.sh bash /w/run.sh', "PS4='$(rm -rf /tmp/a)' bash -x /w/run.sh", 'zsh /w/run.sh', 'ksh /w/run.sh', 'mksh /w/run.sh']) {
+      expect(sourcedFile(line), line).toBeUndefined();
+      expect(decide(line, DEFAULT_COMMAND_RULES, plain), line).toEqual({ prefix: '', decision: 'ask' });
+    }
+    expect(decide('sh /w/run.sh', DEFAULT_COMMAND_RULES, 'alias r=rm\nr -rf /\n')).toEqual({ prefix: '', decision: 'ask' });
+    expect(decide('bash /w/run.sh', DEFAULT_COMMAND_RULES, 'shopt -s expand_aliases\nalias r=rm\nr -rf /\n')).toEqual({ prefix: '', decision: 'ask' });
     // Written on the same line with a quoted here-document, then run: the body is the script.
     const written = (body: string, then = 'bash /w/s/abcs.sh') => `cd /w/repo && cat > /w/s/abcs.sh <<'EOF'\n${body}EOF\n${then}`;
     expect(sourcedFile(written(script))).toEqual({ cds: [], path: '/w/s/abcs.sh', text: script });
@@ -58,8 +67,8 @@ describe("project command matching", () => {
     expect(decide(written(script).replace("cat > /w/s/abcs.sh <<'EOF'", "cat <<'EOF' > /w/s/abcs.sh"), DEFAULT_COMMAND_RULES)).toBeUndefined();
     expect(decide(written('ls\ngit push --force\n'), DEFAULT_COMMAND_RULES)?.decision).toBe('forbid');
     expect(decide(written(script, 'bash /w/s/abcs.sh && git push -f'), DEFAULT_COMMAND_RULES)?.decision).toBe('forbid');
-    // Another file, an unquoted delimiter (the body expands) or a relative path: the run stays opaque.
-    for (const line of [written(script, 'bash /w/s/other.sh'), written(script).replace("<<'EOF'", '<<EOF'), written(script).replaceAll('/w/s/abcs.sh', 's/abcs.sh')]) {
+    // Another file, an unquoted delimiter (the body expands), a relative path, or a variable set for the shell: the run stays opaque.
+    for (const line of [written(script, 'BASH_ENV=/w/e bash /w/s/abcs.sh'), written(script, 'env PS4=x bash -x /w/s/abcs.sh'), written(script, 'bash /w/s/other.sh'), written(script).replace("<<'EOF'", '<<EOF'), written(script).replaceAll('/w/s/abcs.sh', 's/abcs.sh')]) {
       expect(sourcedFile(line), line).toBeUndefined();
       expect(decide(line, DEFAULT_COMMAND_RULES)?.decision, line).toBe('ask');
     }

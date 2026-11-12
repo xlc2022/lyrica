@@ -1921,7 +1921,7 @@ which a loader's name (`ld-….so.2`) could.
 
 A script a shell runs or sources can be read instead (`sourcedFile`,
 `setupOnly`). The line's first part, after only `cd DIR`s, is `source FILE`,
-`. FILE`, or `sh`, `bash`, `dash`, `zsh`, `ksh` or `mksh` running `FILE`
+`. FILE`, or `sh`, `bash` or `dash` running `FILE`
 (with options that only change how it runs, such as `-e`, `-u`, `-x`,
 `-o pipefail`, and behind a wrapper such as `timeout` or `nohup` only with an
 absolute path, never `chroot`). FILE is a literal path that holds a `/`.
@@ -1935,7 +1935,9 @@ would on the line.
 
 A rule the script's own commands meet counts for the line, so a forbidden
 command inside it is refused and an opaque one asks. A script a shell runs
-can't change the rest of the line, so otherwise its run isn't opaque. A
+can't change the rest of the line, so otherwise its run isn't opaque,
+unless it defines an alias (dash expands aliases in scripts, bash after
+`shopt -s expand_aliases`), which keeps it opaque. A
 sourced one can, so it is seen through only when it just sets things up:
 every command in it is one of `export`, `readonly`, `declare`, `typeset`,
 `local`, `unset`, `set`, `cd`, `pushd`, `popd`, `echo`, `true`, `false`, `:`,
@@ -1946,8 +1948,10 @@ sets none of `BASH…`, `ENV`, `IFS`, `PS1`–`PS4`, `PROMPT_COMMAND`,
 alias, a loop or any other program keeps it opaque. Setting `PATH` is
 allowed, since it does no more than running a program by its path, which
 isn't opaque either. A file that couldn't be read, a path without a slash
-(bash looks it up on `PATH` first), `-c`, `-s`, `-i` or `--rcfile`, `fish`,
-and anything else on the line before it keep the run opaque, so the line
+(bash looks it up on `PATH` first), `-c`, `-s`, `-i` or `--rcfile`, any
+other shell (zsh, ksh, mksh, fish and the like have syntax that runs code
+`parse` can't see), a variable set for the shell on its part
+(`BASH_ENV=… bash`, `env PS4=… bash -x`), and anything else on the line before it keep the run opaque, so the line
 can't rewrite the file between the read and the run. A background job or a
 parallel call could still change it in that moment; the gate accepts that,
 as it never looks inside `./x.sh` either. A `cd` starting with `-` (`cd -`,

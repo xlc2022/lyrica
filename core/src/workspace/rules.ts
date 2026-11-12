@@ -89,16 +89,21 @@ export function setupOnly(script: string): boolean {
   });
 }
 
-// Shells whose scripts `parse` reads (fish's syntax is its own), and the options that only change how one runs.
-const SCRIPT_SHELLS = /^(?:sh|bash|dash|zsh|ksh|mksh)$/;
+// Shells whose scripts `parse` reads, and the options that only change how one runs. zsh, ksh and mksh (and fish)
+// have syntax of their own that runs code (a zsh glob qualifier, ksh's `${ cmd; }`), so their scripts stay opaque.
+const SCRIPT_SHELLS = /^(?:sh|bash|dash)$/;
 const SHELL_OPTION = /^(?:[-+][euxvfnpCB]+|--(?:norc|noprofile|posix))$/;
 
 /** The one part of a parsed line `decide` may look through: `source FILE`, `. FILE`, or a shell running a script
  * (`bash FILE …`, `bash -eu FILE`, `timeout 60 sh /abs/FILE`), with a literal path, with nothing before it but
- * `cd DIR`s, so nothing on the line can change the file between the gate reading it and the shell running it. */
+ * `cd DIR`s, so nothing on the line can change the file between the gate reading it and the shell running it.
+ * `parts` are the line's words as parsed, assignments kept: a variable set for the shell (`BASH_ENV=… bash`,
+ * `env PS4=… bash -x`) runs code the script doesn't show, so a part with one isn't looked through. */
 function sourcing(parts: string[][]): { at: number; cds: string[]; path: string; shell: boolean } | undefined {
   const cds: string[] = [];
-  for (const [at, words] of parts.entries()) {
+  for (const [at, raw] of parts.entries()) {
+    const words = programs(raw);
+    if (words.length !== raw.length) return undefined;
     // `cd -` goes back to the last folder, and `-P`/`-L` are flags: none is a folder to resolve against.
     if (words[0] === "cd" && words.length === 2 && LITERAL.test(words[1]!) && !words[1]!.startsWith("-")) { cds.push(words[1]!); continue; }
     const wrapped = WRAPPER.test(words[0] ?? "");
@@ -139,10 +144,12 @@ function writtenScript(command: string): { path: string; text: string; head: str
  * just before; otherwise the file to read, with the `cd`s before it to resolve it from. */
 export function sourcedFile(command: string): { cds: string[]; path: string; text?: string } | undefined {
   const written = writtenScript(command);
-  const found = sourcing(simpleCommands(written?.rest ?? command).map(programs));
+  const found = sourcing(simpleCommands(written?.rest ?? command));
   if (written) return found && found.path === written.path && written.text.length <= SCRIPT_LIMIT ? { cds: [], path: found.path, text: written.text } : undefined;
   return found && { cds: found.cds, path: found.path };
 }
+
+const definesAlias = (script: string) => simpleCommands(withoutShebang(script)).some(part => programs(part).includes("alias"));
 
 const worst = (results: (CommandRule | undefined)[]) => results.find(r => r?.decision === "forbid") ?? results.find(r => r?.decision === "ask")
   ?? (results.length && results.every(r => r?.decision === "allow") ? results[0] : undefined);
@@ -153,14 +160,17 @@ export function decide(command: string, rules: readonly CommandRule[], sourced?:
   const written = writtenScript(command);
   const known = written && sourcedFile(command)?.text;
   if (written && known !== undefined) return worst([decide(written.head, rules), decide(written.rest, rules, known)]);
-  const parts = simpleCommands(command).map(programs);
+  const raw = simpleCommands(command);
+  const parts = raw.map(programs);
   const rank = { allow: 0, ask: 1, forbid: 2 };
-  const run = sourced === undefined ? undefined : sourcing(parts);
+  const run = sourced === undefined ? undefined : sourcing(raw);
   const read = run?.at;
   const inside = read === undefined ? undefined : decide(withoutShebang(sourced!), rules);
   // A forbidden command in the script is refused whatever else it does. A script a shell runs can't change the rest
   // of the line, so its own commands are the whole of it; one sourced is seen through only if it just sets things up.
-  const seen = inside?.decision === "forbid" || (run && (run.shell || setupOnly(sourced!))) ? read : undefined;
+  // An alias the script defines may be expanded (dash does by default, bash after `shopt -s expand_aliases`), so
+  // its commands aren't what `parse` reads: a script with one stays opaque.
+  const seen = inside?.decision === "forbid" || (run && (run.shell ? !definesAlias(sourced!) : setupOnly(sourced!))) ? read : undefined;
   const results = parts.map((words, at) => {
     // A script seen through counts as its own commands: a rule it breaks is broken here, and otherwise it hides nothing.
     if (at === seen && inside && inside.decision !== "allow") return inside;

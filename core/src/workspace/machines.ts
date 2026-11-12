@@ -109,7 +109,7 @@ const VALUE_FLAGS: Record<string, string[]> = {
   "ld.so": ["--library-path", "--preload", "--audit", "--argv0", "--inhibit-rpath", "--glibc-hwcaps-prepend", "--glibc-hwcaps-mask"],
 };
 /** Shells whose `-c` argument is a command line; rules.ts shares this list. */
-export const SHELLS = new Set(["sh", "bash", "dash", "zsh", "ksh", "fish"]);
+export const SHELLS = new Set(["sh", "bash", "rbash", "dash", "ash", "zsh", "ksh", "mksh", "oksh", "pdksh", "yash", "posh", "csh", "tcsh", "fish"]);
 
 const assigns = (w: string) => /^[A-Za-z_][A-Za-z0-9_]*=/.test(w);
 /** Words that make a line more than straight-through commands. */
