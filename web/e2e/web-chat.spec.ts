@@ -1474,9 +1474,11 @@ test("a thread opens at its latest message, even when the space above the conver
   await marker.click();
   await expect(page.locator(".marker.tool-run").last().locator(".run-body .marker[data-type='tool']")).toHaveCount(6);
   await page.waitForTimeout(300);
-  await expect.poll(fromBottom).toBeLessThanOrEqual(2);
+  // Down to the bottom, or, where the run and what follows it are taller than the view (a short phone), as far as
+  // keeps its header at the top.
+  await expect.poll(async () => (await fromBottom()) <= 2
+    || Math.abs((await marker.evaluate((b) => b.getBoundingClientRect().top - b.closest(".scroll")!.getBoundingClientRect().top))) <= 2).toBe(true);
   await expect(marker).toBeInViewport();
-  await expect(page.getByRole("button", { name: "Jump to latest" })).toHaveCount(0);
 });
 
 test("opening a run of calls whose header sits part way above the view leaves the conversation where it was", async ({ page, baseURL }) => {
