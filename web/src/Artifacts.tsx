@@ -85,7 +85,7 @@ function ArtifactViewer({ ctx, opened, onClose }: { ctx: ShellContext; opened: O
       thread={a.thread ? { pool: a.pool, threadId: a.thread } : undefined}
       from={{
         kind, content: (download) => `${at}/content${q}${download ? "&download=1" : ""}`, view: `${at}/view${q}`,
-        ...(a.thread ? { settings: u(userId, "threads", a.pool, a.thread, "settings") } : {}),
+        ...(a.thread ? { settings: u(userId, "threads", a.pool, a.thread, "settings") } : {}), sealed: a.kind === "react",
         heading: renaming
           ? <InlineRename value={a.title} label="Title" className="artifact-rename" onDone={() => setRenaming(false)}
             onSave={(title) => run(async () => { const next = await patch<ArtifactInfo>(at, { title }); detail.set({ ...d, artifact: next }); changed(); })} />

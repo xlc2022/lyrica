@@ -353,7 +353,10 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   for the picked version, its thread's settings address for the internet
   line, and its own heading, Version select and ⋯ menu), so the sandboxed
   frame, console, Preview | Source and the thread beside are the viewer's
-  own. A React artifact shows its built page as HTML and its component as Source. The Files panel's
+  own. A React artifact shows its built page as HTML and its component as Source;
+  its source is `sealed`, so with the thread's internet off the page still
+  runs and the muted line reads "It can't load or send anything: this
+  thread's internet is off." The Files panel's
   **Artifacts** tab (`ArtifactsTab`, in `Files.tsx`'s tabs) lists
   `GET …/artifacts/<pool>?thread=` and imports files into the thread by
   posting each one's bytes (`importArtifacts`, which a drop on the panel

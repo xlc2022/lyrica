@@ -230,8 +230,20 @@ Each user has two pools of memory.
     Claude's React artifacts are) is an artifact too: its source is kept as
     written and built, when the version is made, into one page with React,
     lucide-react, recharts and Tailwind inside, so it loads nothing from
-    outside. Like any page it runs only with its thread's internet on;
-    with it off no scripts run, so it shows nothing. It may import only
+    outside. Unlike a hand-written page it runs with its thread's
+    internet off too (the owner, 2026-11-12), **sealed**: in the viewer's
+    frame its scripts run, but it can load and connect to nothing, open no
+    window and send no form, and the frame can't navigate away, not even
+    to another of Lyrica's pages (a page is served only to Lyrica's own
+    interface or the user, never to a request another page started);
+    opened on its own in a tab, where nothing would stop it leaving, it
+    runs nothing. One gap is accepted: a browser lets a page open WebRTC
+    whatever its rules say. WebRTC is removed from a sealed page's window,
+    which stops a library but not a page written on purpose to send out
+    what it holds, in a Private thread too. A smaller one may exist: a
+    browser may look up a host named in a `dns-prefetch` or `preconnect`
+    link, which could carry a few bytes; it is switched off by header, and
+    the test browser looked none up, so it is unproven either way. It may import only
     those packages by `import` statements (no `import()` or `require()`),
     which the build enforces, and it is never run in `lyricad`.
   - **Changes** (decided 2026-10-22, as in Claude's own app): a thread with a
