@@ -233,7 +233,7 @@ export const PROJECT_THREAD_GUIDELINES = [
 ];
 
 /** Her guidance on wake-ups, in every thread with the threads tool. */
-export const WAKEUP_GUIDELINE = "To come back to something later without waiting in this turn (CI to finish, a review to land), set a wake-up: threads later with minutes and a note to yourself. "
+export const WAKEUP_GUIDELINE = "To come back at a set time without waiting in this turn, set a wake-up: threads later with minutes and a note to yourself. For something that ends on its own (a command, CI, a review), wait on it instead: a background command or threads watch tells you the moment it's done. "
   + "At that time the note starts a turn here, marked [Wake-up, set …]. One wakes only this thread; at most 3 wait at once and wake-ups and routines together fire at most 24 times a day.";
 
 /** Her guidance on CI wakes, where she can watch a pull request. */

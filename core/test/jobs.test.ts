@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { JOB_LIMITS, jobNotice, Jobs, type ExecutionTarget, type JobInfo } from "../src/index.ts";
+import { JOB_LIMITS, jobNotice, Jobs, sleepWait, type ExecutionTarget, type JobInfo } from "../src/index.ts";
 
 const thread = { userId: "u1", pool: "general", threadId: "t1" };
 
@@ -78,5 +78,32 @@ describe("Jobs", () => {
     await new Promise((r) => setTimeout(r, 40));
     expect(ended[0]).toMatchObject({ state: "timed out" });
     expect(ended[0]!.exitCode).toBeUndefined();
+  });
+});
+
+describe("sleepWait", () => {
+  it("refuses a fixed sleep of a minute or more in her turn, and names the ways to wait", () => {
+    const why = sleepWait('sleep 200; cat /workspace/scratch/ab4.log 2>/dev/null; echo "---"', false);
+    expect(why).toMatch(/^Not run: this sleeps 3 min/);
+    expect(why).toContain("background: true");
+    expect(why).toContain("threads watch");
+    expect(sleepWait("sleep 30 && sleep 30; gh run list", false)).toMatch(/sleeps 60 s/);
+    expect(sleepWait("sleep 2m", false)).toBeDefined();
+  });
+  it("refuses a polling loop in her turn, but not in the background", () => {
+    const loop = "until gh run view 12 --json status | grep -q completed; do sleep 30; done";
+    expect(sleepWait(loop, false)).toMatch(/polls in a loop that sleeps 30 s/);
+    expect(sleepWait(loop, true)).toBeUndefined();
+    expect(sleepWait(`timeout 900 bash -c '${loop}'`, false)).toMatch(/polls in a loop/);
+  });
+  it("refuses a background command that is only a timer", () => {
+    expect(sleepWait("sleep 300; cat run.log", true)).toMatch(/^Not run: this background command is a timer: it sleeps 5 min/);
+  });
+  it("lets short waits and unknown lengths run", () => {
+    expect(sleepWait("sleep 5; curl -s localhost:8080", false)).toBeUndefined();
+    expect(sleepWait("for i in $(seq 30); do curl -sf localhost:8080 && break; sleep 1; done", false)).toBeUndefined();
+    expect(sleepWait("sleep $DELAY", false)).toBeUndefined();
+    expect(sleepWait("npm test", false)).toBeUndefined();
+    expect(sleepWait("echo 'sleep 300'", false)).toBeUndefined();
   });
 });
