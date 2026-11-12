@@ -2237,6 +2237,9 @@ test("project welcome and fold in", async ({ page, baseURL }) => {
   const gone = await api("POST", `${u}/threads`, { pool: "general", title: "Old beds" });
   await api("POST", `${u}/threads/general/${encodeURIComponent(p.id)}/messages`, { text: `fold: ${c.id}, ${gone.id}` });
   await expect(card.getByText("Old beds", { exact: true })).toBeVisible();
+  // Her reply ends two seconds after the card: wait for it, as the stored copy then replaces the card's buttons, and a
+  // Cancel clicked on the old one does nothing.
+  await expect.poll(async () => (await api("GET", `${u}/threads/general/${encodeURIComponent(p.id)}`)).busy).toBe(false);
   await api("DELETE", `${u}/threads/general/${encodeURIComponent(gone.id)}`);
   await page.reload();
   const left = card.filter({ hasText: "Compost log" });
