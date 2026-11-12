@@ -2559,19 +2559,22 @@ test("a project thread's bare waiting status answers to its chat, while its card
   await expect(card.locator(".tstate")).toHaveText("Waiting on you");
   await expect(card.getByText(/^Waits on you: Blocked on the router choice/)).toBeVisible();
   const width = page.viewportSize()!.width;
-  // The card is the surface under test: put it in view, so a capture shows its state word and line.
-  await card.scrollIntoViewIfNeeded();
+  // The card is the surface under test: put it in view, so a capture shows its state word and line. The card list
+  // redraws as a turn ends, which can detach the card mid-scroll (CI run 43145585320): the scroll is tried again on
+  // the card as it is then.
+  const inView = () => expect(async () => { await card.scrollIntoViewIfNeeded({ timeout: 2000 }); }).toPass();
+  await expect.poll(() => busy(base)).toBe(false);
+  await inView();
   if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/attention-waiting-${width}.png` });
   const childId = threadIdOf((await card.locator(".tcard-title").getAttribute("href"))!);
   const childBase = `/api/u/${userId}/threads/general/${encodeURIComponent(childId)}`;
-  await expect.poll(() => busy(base)).toBe(false);
   const statusTurns = await turns(childBase);
   await send(page, `tell ${childId}: Ask her which router, then.`);
   await expect(page.getByText("Sent it.")).toBeVisible();
   await expect(card.locator(".tstate")).not.toHaveText("Waiting on you");
   await expect(card).not.toHaveAttribute("data-pending", "Thread");
   await expect.poll(() => turns(childBase), { timeout: 20_000 }).toBeGreaterThan(statusTurns);
-  await card.scrollIntoViewIfNeeded();
+  await inView();
   if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/attention-settled-${width}.png` });
 
   // A card: the one question stays pending through the chat's prose, which is kept in the thread instead of
@@ -2581,7 +2584,7 @@ test("a project thread's bare waiting status answers to its chat, while its card
   const question = card.locator(".question-card").filter({ hasText: "Which router?" });
   await expect(question.getByRole("button", { name: /^Small/ })).toBeEnabled();
   await expect(card.locator(".tstate")).toHaveText("Waiting on you");
-  await card.scrollIntoViewIfNeeded();
+  await inView();
   if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/card-open-${width}.png` });
   // Both turns are done before the count: a message that reaches a running turn is steered into it, not held.
   await expect.poll(() => busy(base)).toBe(false);
@@ -2599,7 +2602,7 @@ test("a project thread's bare waiting status answers to its chat, while its card
   await expect(card.locator(".question-card")).toHaveCount(0);
   await expect(card.locator(".tstate")).not.toHaveText("Waiting on you");
   await expect.poll(() => turns(childBase), { timeout: 20_000 }).toBeGreaterThan(before);
-  await card.scrollIntoViewIfNeeded();
+  await inView();
   if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/card-answered-${width}.png` });
   await noHorizontalScroll(page);
 });
