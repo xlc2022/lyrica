@@ -6,7 +6,7 @@ import type { GoAhead, MachineLimit, PermissionMode, ThreadSettings, ThreadSetti
 import { Icon } from "./icons.tsx";
 import { Switch, useDismiss } from "./ui.tsx";
 
-/** In the order the menu lists them and Shift+Tab cycles; Bypass permissions only with Allow dangerous permissions on. */
+/** In the order the menu lists them and Shift+Tab cycles; Bypass permissions only with Allow bypass on. */
 export const MODE_ORDER: PermissionMode[] = ["ask", "acceptEdits", "plan", "auto"];
 export const modeOrder = (bypass: boolean): PermissionMode[] => (bypass ? [...MODE_ORDER, "bypass"] : MODE_ORDER);
 export const MODES: Record<PermissionMode, { label: string; description: string }> = {
@@ -16,8 +16,8 @@ export const MODES: Record<PermissionMode, { label: string; description: string 
   auto: { label: "Auto", description: "Works freely inside the thread's folders." },
   bypass: { label: "Bypass permissions", description: "Nothing asks in the sandbox. Forbid rules still refuse." },
 };
-/** Allow dangerous permissions, under Settings → Network → New threads. */
-export const BYPASS_HINT = "Adds Bypass permissions to the mode menu: nothing asks in the sandbox, not even deletes, force pushes, MCP tools or web forms. Forbid rules and your own Ask rules still hold, and SSH machines keep their limit. Turning it off moves those threads to Auto.";
+/** Allow bypass, under Settings → Network → New threads. */
+export const BYPASS_HINT = "Adds Bypass permissions to the mode menu, where nothing asks in the sandbox. Forbid rules still refuse. Off moves those threads to Auto.";
 /** The modes a plan can go ahead in. */
 export const GO_AHEAD: GoAhead[] = ["ask", "acceptEdits", "auto"];
 

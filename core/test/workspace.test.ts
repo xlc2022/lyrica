@@ -599,12 +599,12 @@ describe("modes and switches", () => {
     expect(settings.thread("old").mode).toBe("auto");
   });
 
-  it("offers Bypass permissions only while Allow dangerous permissions is on, and moves threads back to Auto when it goes off", async () => {
+  it("offers Bypass permissions only while Allow bypass is on, and moves threads back to Auto when it goes off", async () => {
     const { settings } = await setup();
     settings.startThread("t1", "general");
     expect(settings.bypassAllowed()).toBe(false);
-    expect(() => settings.setDefaultMode("bypass")).toThrow(/Allow dangerous permissions/);
-    expect(() => settings.setThread("t1", "general", { mode: "bypass" })).toThrow(/Allow dangerous permissions/);
+    expect(() => settings.setDefaultMode("bypass")).toThrow(/Allow bypass/);
+    expect(() => settings.setThread("t1", "general", { mode: "bypass" })).toThrow(/Allow bypass/);
     settings.setBypassAllowed(true);
     settings.setDefaultMode("bypass");
     settings.setThread("t1", "general", { mode: "bypass" });

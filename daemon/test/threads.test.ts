@@ -459,7 +459,7 @@ describe("modes and switches", () => {
     expect((await ada.get(`/api/u/${rt.ada.id}/mode`)).body).toEqual({ mode: "auto", bypass: false });
     expect((await ada.put(`/api/u/${rt.ada.id}/mode`, { mode: "ask" })).body).toEqual({ mode: "ask", bypass: false });
     expect((await ada.put(`/api/u/${rt.ada.id}/mode`, { mode: "ask-changes" })).status).toBe(400);
-    // Bypass permissions only with Allow dangerous permissions on.
+    // Bypass permissions only with Allow bypass on.
     expect((await ada.put(`/api/u/${rt.ada.id}/mode`, { mode: "bypass" })).status).toBe(400);
     expect((await ada.put(`/api/u/${rt.ada.id}/mode`, { bypass: true })).body).toEqual({ mode: "ask", bypass: true });
     expect((await ada.put(`/api/u/${rt.ada.id}/mode`, { bypass: false })).body).toEqual({ mode: "ask", bypass: false });

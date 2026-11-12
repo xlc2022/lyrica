@@ -2012,7 +2012,7 @@ judgment and make review easy. Each thread has a **mode**:
   Plan mode too.
 - **Auto** (`auto`, the default): works freely inside the grants.
 - **Bypass permissions** (`bypass`): offered only while the user has turned
-  on **Allow dangerous permissions** (`bypassAllowed`, `setBypassAllowed`;
+  on **Allow bypass** (`bypassAllowed`, `setBypassAllowed`;
   Settings → Network → New threads). Nothing asks in the sandbox: no mode
   prompt, no suspect-command warning, no card for a script Forbid rules
   can't see into, an MCP tool, an open-world tool, or a `browse` form or

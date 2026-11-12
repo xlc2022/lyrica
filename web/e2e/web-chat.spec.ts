@@ -1316,10 +1316,10 @@ test("a thread making a clip after its turn pulses its sidebar row until the cli
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
 
-test("Allow dangerous permissions adds Bypass permissions, where nothing asks, and taking it off moves the thread to Auto", async ({ page, baseURL }) => {
+test("Allow bypass adds Bypass permissions, where nothing asks, and taking it off moves the thread to Auto", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   await page.goto(`/#/u/${userId}/settings/network`);
-  const allow = page.getByLabel("Allow dangerous permissions");
+  const allow = page.getByLabel("Allow bypass");
   await expect(allow).not.toBeChecked();
   await expect(page.getByRole("combobox", { name: "Mode", exact: true }).getByRole("option")).toHaveCount(4);
   await allow.click();
@@ -1338,7 +1338,7 @@ test("Allow dangerous permissions adds Bypass permissions, where nothing asks, a
   await expect(page.getByRole("group", { name: "Allow bash?" })).toHaveCount(0);
   const thread = page.url();
   await page.goto(`/#/u/${userId}/settings/network`);
-  await page.getByLabel("Allow dangerous permissions").click();
+  await page.getByLabel("Allow bypass").click();
   await expect(page.getByRole("combobox", { name: "Mode", exact: true }).getByRole("option")).toHaveCount(4);
   await page.goto(thread);
   await expect(page.locator(".mode-picker")).toContainText("Auto");

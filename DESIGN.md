@@ -2203,8 +2203,8 @@ Details in [docs/sleep.md](docs/sleep.md).
   - **Ask:** asks before commands and file changes.
   - **Accept edits:** file changes go through; commands ask.
   - **Auto** (the default): works freely inside the thread's grants.
-  - **Bypass permissions:** only after the user turns on **Allow dangerous
-    permissions** in Settings. Nothing asks in the sandbox; Forbid rules,
+  - **Bypass permissions:** only after the user turns on **Allow bypass** in
+    Settings. Nothing asks in the sandbox; Forbid rules,
     the user's own Ask rules and machine limits still hold.
   - **Plan:** she can only read, recall and use read-only subagents. She
     writes a plan and asks to go ahead; approving it switches the thread to

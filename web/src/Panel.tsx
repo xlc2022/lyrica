@@ -293,7 +293,7 @@ function NetworkSection({ ctx }: { ctx: ShellContext }) {
           </label>
         )}
         {mode.data && (
-          <Switch label="Allow dangerous permissions" hint={BYPASS_HINT}
+          <Switch label="Allow bypass" hint={BYPASS_HINT}
             checked={mode.data.bypass} onChange={(bypass) => run(async () => mode.set(await put<ModeDefault>(u(userId, "mode"), { bypass })))} />
         )}
         {presets.data && (

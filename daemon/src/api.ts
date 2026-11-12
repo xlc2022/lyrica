@@ -40,7 +40,7 @@ export type Entry = ModelRef[] | { same: Task };
 export interface Pronouns { subj: string; obj: string; poss: string; possPro: string; refl: string }
 export type Theme = "device" | "light" | "dark";
 /**
- * "bypass" asks nothing in the sandbox (only with Allow dangerous permissions on); "auto" works freely inside the grants;
+ * "bypass" asks nothing in the sandbox (only with Allow bypass on); "auto" works freely inside the grants;
  * "acceptEdits" asks before bash; "ask" before bash, write and edit; "plan" only reads.
  */
 export type PermissionMode = "bypass" | "auto" | "acceptEdits" | "ask" | "plan";
@@ -722,7 +722,7 @@ export type NetworkChange = Partial<Network>;
 
 /**
  * GET /api/u/:userId/mode → ModeDefault; PUT with either field → ModeDefault. The mode new threads start in, and
- * Allow dangerous permissions: whether "bypass" may be chosen. Turning it off moves every thread in "bypass" to "auto".
+ * Allow bypass: whether "bypass" may be chosen. Turning it off moves every thread in "bypass" to "auto".
  */
 export interface ModeDefault { mode: PermissionMode; bypass: boolean }
 
@@ -1273,7 +1273,7 @@ export interface ThreadSettings {
   /** The MCP servers it may use, by name: its own, less any an ancestor has since taken off (`effective`). */
   mcpServers: string[];
   mode: PermissionMode;
-  /** Whether the user turned on Allow dangerous permissions, so "bypass" is offered. */
+  /** Whether the user turned on Allow bypass, so "bypass" is offered. */
   bypassAllowed: boolean;
   /** Switches: web_search and web_fetch, and the image tool. Off removes them from the session. */
   webSearch: boolean;

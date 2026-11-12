@@ -431,7 +431,7 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
       const script = event.toolName === "bash" ? await sourcedText(String(input.command), input.machine as string | undefined) : undefined;
       const rule = event.toolName === "bash" ? decide(String(input.command), rules, script) : undefined;
       if (rule?.decision === "forbid") return { block: true, reason: `This project's rules forbid \`${rule.prefix}\`. Ask the user to run it, or do it another way.` };
-      // Bypass permissions (only when the user turned on Allow dangerous permissions): no card in the sandbox, for
+      // Bypass permissions (only when the user turned on Allow bypass): no card in the sandbox, for
       // anything. Forbid rules above and the user's own Ask rules still hold, and SSH machines keep their own limit.
       const bypass = tools.settings().mode === "bypass";
       const mcp = mcpCall(event.toolName);
