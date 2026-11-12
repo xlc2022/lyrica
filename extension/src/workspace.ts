@@ -116,7 +116,7 @@ export interface PlanRequest {
 /** The modes an approved plan can go ahead in. */
 export const GO_AHEAD = ["ask", "acceptEdits", "auto"] as const satisfies readonly PermissionMode[];
 export type GoAhead = (typeof GO_AHEAD)[number];
-const LABELS: Record<PermissionMode, string> = { ask: "Ask", acceptEdits: "Accept edits", auto: "Auto", plan: "Plan" };
+const LABELS: Record<PermissionMode, string> = { bypass: "Bypass permissions", ask: "Ask", acceptEdits: "Accept edits", auto: "Auto", plan: "Plan" };
 
 type Create = (cwd: string, options: { operations: never }) => ToolDefinition;
 
@@ -156,6 +156,7 @@ const TOOLS: Record<keyof ToolOps, Create> = {
 
 /** Which tools each permission mode asks about. Plan mode has none of them. */
 const ASKS: Record<PermissionMode, string[]> = {
+  bypass: [],
   auto: [],
   acceptEdits: ["bash"],
   ask: ["bash", "write", "edit"],
@@ -430,6 +431,9 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
       const script = event.toolName === "bash" ? await sourcedText(String(input.command), input.machine as string | undefined) : undefined;
       const rule = event.toolName === "bash" ? decide(String(input.command), rules, script) : undefined;
       if (rule?.decision === "forbid") return { block: true, reason: `This project's rules forbid \`${rule.prefix}\`. Ask the user to run it, or do it another way.` };
+      // Bypass permissions (only when the user turned on Allow dangerous permissions): no card in the sandbox, for
+      // anything. Forbid rules above and the user's own Ask rules still hold, and SSH machines keep their own limit.
+      const bypass = tools.settings().mode === "bypass";
       const mcp = mcpCall(event.toolName);
       // A call that reaches someone else (a search, a page, an MCP server) never carries one of the sandbox's credentials.
       if ((mcp || LEAVES.has(event.toolName)) && holdsSecret(JSON.stringify(input), sandboxSecrets())) {
@@ -438,7 +442,7 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
       // An MCP tool: one its server marks read-only runs; any other leaves the server, so it always asks, in every mode.
       if (mcp) {
         if (!mcp.server) return { block: true, reason: `${event.toolName} isn't a tool of this thread's MCP servers.` };
-        if (mcp.readOnly || tools.toolAllowedInThread?.(mcp.server, mcp.tool)) return undefined;
+        if (mcp.readOnly || bypass || tools.toolAllowedInThread?.(mcp.server, mcp.tool)) return undefined;
         const request: ApprovalRequest = { toolCallId: event.toolCallId, tool: event.toolName, input, server: mcp.server, serverTool: mcp.tool };
         const answer = tools.approve ? await tools.approve(request) : await approve(ctx, request);
         return answer === true ? undefined : refusal(answer);
@@ -456,6 +460,7 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
         // Attaching a file gives it to the site: it asks in every mode too, naming the file.
         const gives = call.action === "attach";
         if (!seen?.form && !gives && !ASKS[mode].includes("bash")) return undefined;
+        if (bypass) { browser?.approve(event.toolCallId); return undefined; }
         const request: ApprovalRequest = seen?.form
           ? { toolCallId: event.toolCallId, tool: "browse", input: { browse: browseFormText(seen.form) }, warning: browseFormWarning(seen.form) }
           : gives ? { toolCallId: event.toolCallId, tool: "browse", input: { browse: seen?.words ?? `attach ${call.path ?? ""}` }, warning: `This gives a file to ${seen?.gives ?? "the site"}.` }
@@ -509,7 +514,9 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
       const suspect = !!warning && !tools.allowedInThread?.(machine?.name ?? SANDBOX_ALLOW, suspectKey(event.toolName, input));
       // The first call on a machine in a turn asks if anything earlier ran somewhere else, so output from one place can't steer her onto another.
       const moved = !!machine && !places.has(machine.name) && places.size > 0;
-      if (!irreversible && !suspect && !moved && rule?.decision !== "ask" && ((rule?.decision === "allow" && !machine) || !ASKS[mode].includes(as))) {
+      // An opaque command (rule prefix "") asks only because Forbid rules can't see inside it; Bypass lets it run.
+      const skip = bypass && !machine && !(rule?.decision === "ask" && rule.prefix !== "");
+      if (skip || (!irreversible && !suspect && !moved && rule?.decision !== "ask" && ((rule?.decision === "allow" && !machine) || !ASKS[mode].includes(as)))) {
         if (place) places.add(place);
         return undefined;
       }

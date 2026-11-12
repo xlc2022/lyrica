@@ -22,12 +22,14 @@ export interface Grant {
 /** What the Files panel did since her last turn: paths as she sees them. */
 export interface FileNotes { added: string[]; removed: string[]; renamed: { from: string; to: string }[] }
 
-export type PermissionMode = "auto" | "acceptEdits" | "ask" | "plan";
+/** `bypass` (Bypass permissions) asks nothing; only a user who turned on Allow dangerous permissions can choose it. */
+export type PermissionMode = "bypass" | "auto" | "acceptEdits" | "ask" | "plan";
 /** From the least strict to the most. */
-export const PERMISSION_MODES: readonly PermissionMode[] = ["auto", "acceptEdits", "ask", "plan"];
+export const PERMISSION_MODES: readonly PermissionMode[] = ["bypass", "auto", "acceptEdits", "ask", "plan"];
 const MODE_RANK = Object.fromEntries(PERMISSION_MODES.map((m, i) => [m, i])) as Record<PermissionMode, number>;
 /** The stricter of the two. */
 export const stricterMode = (a: PermissionMode, b: PermissionMode): PermissionMode => (MODE_RANK[a] >= MODE_RANK[b] ? a : b);
+const BYPASS_OFF = "Bypass permissions needs Allow dangerous permissions on in Settings";
 /** The names modes had before Plan mode, and what they became. */
 const OLD_MODES: Record<string, PermissionMode> = { "ask-changes": "ask", "ask-commands": "acceptEdits" };
 
@@ -81,7 +83,7 @@ export type EvidenceSetting = "auto" | "on" | "off";
 export const EVIDENCE_SETTINGS: readonly EvidenceSetting[] = ["auto", "on", "off"];
 
 /** The loosest mode she may use on a machine. */
-export type MachineLimit = Exclude<PermissionMode, "plan">;
+export type MachineLimit = Exclude<PermissionMode, "plan" | "bypass">;
 export const MACHINE_LIMITS: readonly MachineLimit[] = ["auto", "acceptEdits", "ask"];
 
 /** How a machine is reached: SSH with a key, or Proxmox's API with a token. */
@@ -542,12 +544,26 @@ export class WorkspaceSettings {
   /** The mode new threads start in. */
   defaultMode(): PermissionMode {
     const stored = this.setting("workspace.mode") as PermissionMode | undefined;
-    return stored && PERMISSION_MODES.includes(stored) ? stored : "auto";
+    return stored && PERMISSION_MODES.includes(stored) && (stored !== "bypass" || this.bypassAllowed()) ? stored : "auto";
   }
 
   setDefaultMode(mode: PermissionMode): void {
     if (!PERMISSION_MODES.includes(mode)) throw new Error(`unknown permission mode: ${mode}`);
+    if (mode === "bypass" && !this.bypassAllowed()) throw new Error(BYPASS_OFF);
     this.db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('workspace.mode', ?)").run(mode);
+  }
+
+  /** Allow dangerous permissions: whether Bypass permissions is a mode the user can choose. Off by default. */
+  bypassAllowed(): boolean {
+    return this.setting("workspace.bypass") === "1";
+  }
+
+  /** Turning it off moves every thread in Bypass permissions, and the default, back to Auto. */
+  setBypassAllowed(on: boolean): void {
+    this.db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('workspace.bypass', ?)").run(on ? "1" : "0");
+    if (on) return;
+    this.db.prepare("UPDATE thread_workspaces SET mode = 'auto' WHERE mode = 'bypass'").run();
+    if (this.setting("workspace.mode") === "bypass") this.db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('workspace.mode', 'auto')").run();
   }
 
   /** A new thread's settings: the default mode, everything else as the user's defaults say. */
@@ -578,6 +594,8 @@ export class WorkspaceSettings {
    */
   effective(threadId: string): ThreadWorkspace {
     const t = this.thread(threadId);
+    // Only while Allow dangerous permissions is on; setBypassAllowed moves threads back too.
+    if (t.mode === "bypass" && !this.bypassAllowed()) t.mode = "auto";
     for (let id = t.parent, i = 0; id && i < 100; i++) {
       const up = this.thread(id);
       t.mode = stricterMode(t.mode, up.mode);
@@ -620,6 +638,7 @@ export class WorkspaceSettings {
       if (outer && !(g.path === `${outer.path}/.git` && !outer.writable)) throw new Error(`${g.path} is inside ${outer.path}; grant one or the other`);
     }
     if (!PERMISSION_MODES.includes(next.mode)) throw new Error(`unknown permission mode: ${next.mode}`);
+    if (next.mode === "bypass" && !this.bypassAllowed()) throw new Error(BYPASS_OFF);
     if (next.claudeCode && pool !== "general") throw new Error("a private thread can't use Claude Code: it sends what it reads to Anthropic");
     next.machines = [...new Set(next.machines)];
     for (const name of next.machines) {

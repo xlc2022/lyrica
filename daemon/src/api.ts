@@ -39,8 +39,11 @@ export type { EvidenceSetting } from "@lyrica/core";
 export type Entry = ModelRef[] | { same: Task };
 export interface Pronouns { subj: string; obj: string; poss: string; possPro: string; refl: string }
 export type Theme = "device" | "light" | "dark";
-/** "auto" works freely inside the grants; "acceptEdits" asks before bash; "ask" before bash, write and edit; "plan" only reads. */
-export type PermissionMode = "auto" | "acceptEdits" | "ask" | "plan";
+/**
+ * "bypass" asks nothing in the sandbox (only with Allow dangerous permissions on); "auto" works freely inside the grants;
+ * "acceptEdits" asks before bash; "ask" before bash, write and edit; "plan" only reads.
+ */
+export type PermissionMode = "bypass" | "auto" | "acceptEdits" | "ask" | "plan";
 /** The modes an approved plan can go ahead in. */
 export type GoAhead = "ask" | "acceptEdits" | "auto";
 export interface Network { internet: boolean; services: boolean; hosts: string[] }
@@ -717,8 +720,11 @@ export type NetworkDefaults = Record<Pool, Network>;
 /** PATCH /api/u/:userId/network/:pool → NetworkDefaults */
 export type NetworkChange = Partial<Network>;
 
-/** GET /api/u/:userId/mode → ModeDefault; PUT with a ModeDefault → ModeDefault. The mode new threads start in. */
-export interface ModeDefault { mode: PermissionMode }
+/**
+ * GET /api/u/:userId/mode → ModeDefault; PUT with either field → ModeDefault. The mode new threads start in, and
+ * Allow dangerous permissions: whether "bypass" may be chosen. Turning it off moves every thread in "bypass" to "auto".
+ */
+export interface ModeDefault { mode: PermissionMode; bypass: boolean }
 
 /** GET /api/u/:userId/paths → AllowedPaths: the folders this user may grant, set by an administrator. */
 export type AllowedPaths = Record<Pool, string[]>;
@@ -1267,6 +1273,8 @@ export interface ThreadSettings {
   /** The MCP servers it may use, by name: its own, less any an ancestor has since taken off (`effective`). */
   mcpServers: string[];
   mode: PermissionMode;
+  /** Whether the user turned on Allow dangerous permissions, so "bypass" is offered. */
+  bypassAllowed: boolean;
   /** Switches: web_search and web_fetch, and the image tool. Off removes them from the session. */
   webSearch: boolean;
   /** Whether the server has a SearXNG or kiwix-serve address: without one, the switch gives web_fetch alone. */

@@ -266,7 +266,7 @@ export function Composer({ base, busy, restored, onSend, onStop, settings, machi
             onBlur={() => flush()}
             onPaste={(e) => { if (e.clipboardData.files.length) { e.preventDefault(); attach(e.clipboardData.files); } }}
             onKeyDown={(e) => {
-              if (e.key === "Tab" && e.shiftKey && settings) { e.preventDefault(); onSettings({ mode: nextMode(settings.mode) }); return; }
+              if (e.key === "Tab" && e.shiftKey && settings) { e.preventDefault(); onSettings({ mode: nextMode(settings.mode, settings.bypassAllowed) }); return; }
               // While listening: Enter stops and transcribes, Escape throws the clip away.
               if (mic.state === "recording" && e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void mic.stop(); return; }
               if (mic.state !== "idle" && e.key === "Escape") { e.preventDefault(); mic.discard(); return; }
@@ -279,7 +279,7 @@ export function Composer({ base, busy, restored, onSend, onStop, settings, machi
         </div>
         <ComposerRow settings={settings} onSettings={onSettings} onAttach={attach}
           mic={{ state: mic.state, seconds: mic.seconds, speech: settings?.speech, onStart: () => void mic.start(), onStop: () => void mic.stop() }}>
-          {settings && <ModePicker mode={settings.mode} machines={machines} onChange={(mode) => onSettings({ mode })} />}
+          {settings && <ModePicker mode={settings.mode} machines={machines} bypass={settings.bypassAllowed} onChange={(mode) => onSettings({ mode })} />}
         </ComposerRow>
       </div>
     </form>

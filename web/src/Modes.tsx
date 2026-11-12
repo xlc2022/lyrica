@@ -6,18 +6,25 @@ import type { GoAhead, MachineLimit, PermissionMode, ThreadSettings, ThreadSetti
 import { Icon } from "./icons.tsx";
 import { Switch, useDismiss } from "./ui.tsx";
 
-/** In the order the menu lists them and Shift+Tab cycles. */
+/** In the order the menu lists them and Shift+Tab cycles; Bypass permissions only with Allow dangerous permissions on. */
 export const MODE_ORDER: PermissionMode[] = ["ask", "acceptEdits", "plan", "auto"];
+export const modeOrder = (bypass: boolean): PermissionMode[] => (bypass ? [...MODE_ORDER, "bypass"] : MODE_ORDER);
 export const MODES: Record<PermissionMode, { label: string; description: string }> = {
   ask: { label: "Ask", description: "Asks before commands and file changes." },
   acceptEdits: { label: "Accept edits", description: "File changes go through; commands ask." },
   plan: { label: "Plan", description: "Only reads, then asks to go ahead with a plan." },
   auto: { label: "Auto", description: "Works freely inside the thread's folders." },
+  bypass: { label: "Bypass permissions", description: "Nothing asks in the sandbox. Forbid rules still refuse." },
 };
+/** Allow dangerous permissions, under Settings → Network → New threads. */
+export const BYPASS_HINT = "Adds Bypass permissions to the mode menu: nothing asks in the sandbox, not even deletes, force pushes, MCP tools or web forms. Forbid rules and your own Ask rules still hold, and SSH machines keep their limit. Turning it off moves those threads to Auto.";
 /** The modes a plan can go ahead in. */
 export const GO_AHEAD: GoAhead[] = ["ask", "acceptEdits", "auto"];
 
-export const nextMode = (m: PermissionMode) => MODE_ORDER[(MODE_ORDER.indexOf(m) + 1) % MODE_ORDER.length]!;
+export const nextMode = (m: PermissionMode, bypass = false) => {
+  const order = modeOrder(bypass);
+  return order[(order.indexOf(m) + 1) % order.length]!;
+};
 
 
 /** A menu that opens above its button and closes on a pick, Escape or a click outside. */
@@ -30,7 +37,7 @@ function useMenu() {
 }
 
 /** Strictest first: a mode above a machine's limit asks there. */
-const RANK: Record<PermissionMode, number> = { plan: 0, ask: 1, acceptEdits: 2, auto: 3 };
+const RANK: Record<PermissionMode, number> = { plan: 0, ask: 1, acceptEdits: 2, auto: 3, bypass: 4 };
 /** A thread's granted machine, for the mode menu's "Asks on" line. */
 export interface GrantedMachine { name: string; limit: MachineLimit }
 /** The machines whose limit is below `mode`, where that mode asks instead. */
@@ -54,14 +61,15 @@ export function ModeItem({ mode, checked, n, role, machines = [], onClick }: {
   );
 }
 
-export function ModePicker({ mode, machines, onChange }: { mode: PermissionMode; machines?: GrantedMachine[]; onChange: (m: PermissionMode) => void }) {
+export function ModePicker({ mode, machines, bypass = false, onChange }: { mode: PermissionMode; machines?: GrantedMachine[]; bypass?: boolean; onChange: (m: PermissionMode) => void }) {
   const { open, setOpen, anchor } = useMenu();
+  const order = modeOrder(bypass);
   const pick = (m: PermissionMode) => { setOpen(false); if (m !== mode) onChange(m); };
   // While the menu is open, its number keys pick a mode.
   useEffect(() => {
     if (!open) return;
     const key = (e: KeyboardEvent) => {
-      const m = MODE_ORDER[Number(e.key) - 1];
+      const m = order[Number(e.key) - 1];
       if (m) { e.preventDefault(); pick(m); }
     };
     addEventListener("keydown", key);
@@ -75,7 +83,7 @@ export function ModePicker({ mode, machines, onChange }: { mode: PermissionMode;
       </button>
       {open && (
         <div className="menu up end" role="menu" aria-label="Mode">
-          {MODE_ORDER.map((m, i) => <ModeItem key={m} mode={m} checked={m === mode} n={i + 1} machines={machines} onClick={() => pick(m)} />)}
+          {order.map((m, i) => <ModeItem key={m} mode={m} checked={m === mode} n={i + 1} machines={machines} onClick={() => pick(m)} />)}
         </div>
       )}
     </div>

@@ -10,7 +10,7 @@ import { Repositories } from "./Git.tsx";
 import { McpServers } from "./Mcp.tsx";
 import { Icon } from "./icons.tsx";
 import { her } from "./name.ts";
-import { MODE_ORDER, MODES } from "./Modes.tsx";
+import { modeOrder, MODES } from "./Modes.tsx";
 import { VoiceDrawer } from "./ModelsFrame.tsx";
 import type { ShellContext } from "./Shell.tsx";
 import { ConfirmDialog, ErrorText, Switch, useAction, useDismiss, useInView, useLoad } from "./ui.tsx";
@@ -263,7 +263,7 @@ export function SettingsDrawer({ ctx, base, summary, settings, machines, onSetti
           <legend>Behaviour</legend>
           <label className="field"><span>Mode</span>
             <select value={settings.mode} onChange={(e) => change({ mode: e.target.value as PermissionMode })}>
-              {MODE_ORDER.map((m) => <option key={m} value={m} title={MODES[m].description}>{MODES[m].label}</option>)}
+              {modeOrder(settings.bypassAllowed).map((m) => <option key={m} value={m} title={MODES[m].description}>{MODES[m].label}</option>)}
             </select>
           </label>
           <Switch label="Code mode" hint={CODE_MODE_HINT} checked={settings.code} onChange={(v) => change({ code: v })} />

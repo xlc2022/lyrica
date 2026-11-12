@@ -2011,8 +2011,19 @@ judgment and make review easy. Each thread has a **mode**:
   `propose_plan` are active. A child thread of a Plan-mode thread is in
   Plan mode too.
 - **Auto** (`auto`, the default): works freely inside the grants.
+- **Bypass permissions** (`bypass`): offered only while the user has turned
+  on **Allow dangerous permissions** (`bypassAllowed`, `setBypassAllowed`;
+  Settings → Network → New threads). Nothing asks in the sandbox: no mode
+  prompt, no suspect-command warning, no card for a script Forbid rules
+  can't see into, an MCP tool, an open-world tool, or a `browse` form or
+  attachment (the browser is told yes for the call). Forbid rules still
+  refuse, the user's own Ask rules still ask, and on a machine the stricter
+  of Auto and its limit applies as before, with its suspect and
+  moved-machine cards. Turning the switch off moves every thread in Bypass
+  permissions, and the default, to Auto; `effective` reads `bypass` as
+  `auto` while it is off. A plan can't go ahead in it.
 
-Whatever the mode, a suspect command (a recursive delete, or git throwing
+Outside Bypass permissions, whatever the mode, a suspect command (a recursive delete, or git throwing
 away commits or changes; [Machines](#machines)) asks with a warning, until
 allowed in the thread.
 

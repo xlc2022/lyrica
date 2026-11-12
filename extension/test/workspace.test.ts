@@ -992,6 +992,19 @@ describe("project command rules in the hook", () => {
     await run2("auto", written, { "/workspace/s.sh": "ls\n" }, approve);
     expect(asked).toBe(2);
   });
+  it("Bypass permissions asks nothing in the sandbox, but Forbid and the user's own Ask rules hold, and a machine keeps its limit", async () => {
+    let asked = 0;
+    const approve: ThreadTools["approve"] = async () => { asked++; return true; };
+    const rules = [...DEFAULT_COMMAND_RULES, { prefix: "npm publish", decision: "ask" as const }];
+    const calls = ["rm -rf dist", "bash /workspace/run.sh", "git push --force"].map((command) => fauxToolCall("bash", { command }));
+    const result = await run("bypass", calls, { rules, files: { "/workspace/run.sh": "git checkout main -- web/src\n" }, approve });
+    expect(asked).toBe(0);
+    expect(result.commands).toEqual(["rm -rf dist", "bash /workspace/run.sh"]);
+    await run("bypass", [fauxToolCall("bash", { command: "npm publish" })], { rules, approve });
+    expect(asked).toBe(1);
+    await run("bypass", [fauxToolCall("bash", { command: "ls", machine: "nas" })], { machines: [{ name: "nas", kind: "ssh", limit: "ask", root: null }], approve });
+    expect(asked).toBe(2);
+  });
   it("allow keeps the machine's prompts", async () => {
     let asked = 0;
     await run("ask", [fauxToolCall("bash", { command: "ls", machine: "nas" })], { rules: [{ prefix: "ls", decision: "allow" }], machines: [{ name: "nas", kind: "ssh", limit: "ask", root: null }], approve: async () => { asked++; return false; } });

@@ -599,6 +599,23 @@ describe("modes and switches", () => {
     expect(settings.thread("old").mode).toBe("auto");
   });
 
+  it("offers Bypass permissions only while Allow dangerous permissions is on, and moves threads back to Auto when it goes off", async () => {
+    const { settings } = await setup();
+    settings.startThread("t1", "general");
+    expect(settings.bypassAllowed()).toBe(false);
+    expect(() => settings.setDefaultMode("bypass")).toThrow(/Allow dangerous permissions/);
+    expect(() => settings.setThread("t1", "general", { mode: "bypass" })).toThrow(/Allow dangerous permissions/);
+    settings.setBypassAllowed(true);
+    settings.setDefaultMode("bypass");
+    settings.setThread("t1", "general", { mode: "bypass" });
+    expect(settings.effective("t1").mode).toBe("bypass");
+    expect(settings.startThread("t2", "general").mode).toBe("bypass");
+    settings.setBypassAllowed(false);
+    expect(settings.defaultMode()).toBe("auto");
+    expect(settings.thread("t1").mode).toBe("auto");
+    expect(settings.thread("t2").mode).toBe("auto");
+  });
+
   it("give a subagent or child thread its parent's mode and switches or stricter ones, also when the parent changes later", async () => {
     const { settings } = await setup();
     settings.setThread("parent", "general", { mode: "ask", images: false });
