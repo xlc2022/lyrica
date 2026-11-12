@@ -1005,7 +1005,10 @@ steps:
    folder, `mkfs`, `dd` onto a device, `shutdown` and the like) always
    asks with a warning, whatever the mode. A recursive delete, a force
    push and git commands that throw work away (`reset --hard`, `clean`,
-   deleting a branch or stash) ask too, in her own sandbox as well.
+   deleting a branch or stash) ask too, and in her own sandbox as well,
+   unless a user has turned on **Allow bypass** (Settings, Network, New
+   threads) and put the thread in **Bypass permissions**. On a machine
+   they always ask.
 
 The same three steps are in the web UI under Settings, Machines, **Add
 machine** (SSH or Proxmox); nothing is saved there before you confirm the
