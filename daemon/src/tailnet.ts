@@ -21,6 +21,8 @@ const COMMANDS = {
   hostname: (hostname: string) => ["set", `--hostname=${hostname}`],
   serve: (port: number) => ["serve", "--bg", "--https=443", `http://127.0.0.1:${port}`],
   serveReset: () => ["serve", "reset"],
+  // Her ts.net certificate and key, both to stdout, for Caddy to serve beside the custom name.
+  cert: (domain: string) => ["cert", "--cert-file=-", "--key-file=-", domain],
 } satisfies Record<string, (...a: never[]) => string[]>;
 
 type Name = keyof typeof COMMANDS;
@@ -150,6 +152,22 @@ export class TailnetControl {
   /** `tailscale serve` on 443 to lyricad's serve port. */
   serve(port: number): Promise<void> { return this.serial(async () => { await this.run("serve", port); }); }
   serveReset(): Promise<void> { return this.serial(async () => { await this.run("serveReset"); }); }
+
+  /**
+   * Her tailnet certificate for `domain` (her ts.net name), as PEM: the chain
+   * and its key. tailscaled renews it itself; asking again gives the current one.
+   * The key goes only to Caddy, never to a log or a file of lyricad's.
+   */
+  cert(domain: string): Promise<{ cert: string; key: string }> {
+    return this.serial(async () => {
+      const out = await this.run("cert", domain);
+      const blocks = out.match(/-----BEGIN ([A-Z ]+)-----[\s\S]+?-----END \1-----/g) ?? [];
+      const cert = blocks.filter((b) => b.startsWith("-----BEGIN CERTIFICATE-----")).join("\n");
+      const key = blocks.find((b) => /^-----BEGIN [A-Z ]*PRIVATE KEY-----/.test(b));
+      if (!cert || !key) throw new Error(`tailscale cert: no certificate for ${domain} came back`);
+      return { cert: `${cert}\n`, key: `${key}\n` };
+    });
+  }
 }
 
 function view(s: Status): Api.Tailnet {

@@ -610,6 +610,15 @@ describe("modes and switches", () => {
     settings.setThread("t1", "general", { mode: "bypass" });
     expect(settings.effective("t1").mode).toBe("bypass");
     expect(settings.startThread("t2", "general").mode).toBe("bypass");
+    // Allow MCP bypass: off by default, only with Allow bypass on, and off again with it.
+    expect(settings.mcpBypassAllowed()).toBe(false);
+    settings.setMcpBypassAllowed(true);
+    expect(settings.mcpBypassAllowed()).toBe(true);
+    settings.setBypassAllowed(false);
+    expect(settings.mcpBypassAllowed()).toBe(false);
+    expect(() => settings.setMcpBypassAllowed(true)).toThrow(/Allow bypass/);
+    settings.setBypassAllowed(true);
+    expect(settings.mcpBypassAllowed()).toBe(false);
     settings.setBypassAllowed(false);
     expect(settings.defaultMode()).toBe("auto");
     expect(settings.thread("t1").mode).toBe("auto");

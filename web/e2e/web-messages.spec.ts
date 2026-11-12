@@ -578,9 +578,22 @@ test("Allow bypass adds Bypass permissions, where nothing asks, and taking it of
   const allow = page.getByLabel("Allow bypass");
   await expect(allow).not.toBeChecked();
   await expect(page.getByRole("combobox", { name: "Mode", exact: true }).getByRole("option")).toHaveCount(4);
+  await expect(page.getByLabel("Allow MCP bypass")).toHaveCount(0);
   await allow.click();
   await expect(allow).toBeChecked();
   await expect(page.getByRole("combobox", { name: "Mode", exact: true }).getByRole("option")).toHaveCount(5);
+  // Allow MCP bypass shows only beside Allow bypass, starts off, and turning it on asks first with the risk.
+  const mcp = page.getByLabel("Allow MCP bypass");
+  await expect(mcp).not.toBeChecked();
+  await mcp.click();
+  const warn = page.getByRole("dialog", { name: "Allow MCP bypass?" });
+  await expect(warn).toContainText("run unattended");
+  await warn.getByRole("button", { name: "Cancel" }).click();
+  await expect(mcp).not.toBeChecked();
+  await mcp.click();
+  await page.getByRole("dialog", { name: "Allow MCP bypass?" }).getByRole("button", { name: "Allow" }).click();
+  await expect(mcp).toBeChecked();
+  await noHorizontalScroll(page);
   await newThread(page, "General");
   await page.locator(".mode-picker").getByRole("button").click();
   const items = page.getByRole("menu", { name: "Mode" }).getByRole("menuitemradio");
@@ -596,6 +609,11 @@ test("Allow bypass adds Bypass permissions, where nothing asks, and taking it of
   await page.goto(`/#/u/${userId}/settings/network`);
   await page.getByLabel("Allow bypass").click();
   await expect(page.getByRole("combobox", { name: "Mode", exact: true }).getByRole("option")).toHaveCount(4);
+  await expect(page.getByLabel("Allow MCP bypass")).toHaveCount(0);
+  // Turning Allow bypass back on doesn't bring Allow MCP bypass back.
+  await page.getByLabel("Allow bypass").click();
+  await expect(page.getByLabel("Allow MCP bypass")).not.toBeChecked();
+  await page.getByLabel("Allow bypass").click();
   await page.goto(thread);
   await expect(page.locator(".mode-picker")).toContainText("Auto");
 });

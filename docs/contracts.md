@@ -1875,7 +1875,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     input holds one (`holdsSecret`).
   - `ThreadTools` is `{ commandRules?(), target(machine?), settings(), network(),
     claudeCode?(), machines?(), allowedInThread?(machine, command), proxmox?(machine, action, vm?),
-    mcpServers?(), toolAllowedInThread?(server, tool), approve?, browser?(), setMode?,
+    mcpServers?(), toolAllowedInThread?(server, tool), mcpBypass?(), approve?, browser?(), setMode?,
     proposePlan?(PlanRequest), recordChange?(NewChange), sameFile?(path, inserts?), madeFiles?(paths), madeSince?(since), fileNotes?(),
     startJob?(command, machine?, timeoutS?), jobs?(), jobOutput?(id), stopJob?(id) }`.
     `sameFile(path, inserts)` runs in `tool_call` for a sandbox `write` or `edit`
@@ -1924,8 +1924,9 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     Proxmox machine; the prompt names Proxmox machines only then. A
     subagent's tools come without `proxmox`. An `mcp__<server>__<tool>` call whose server isn't in
     `mcpServers()` is refused; one its server marks `readOnlyHint` runs,
-    as does one `toolAllowedInThread`; any other asks with `server` and
-    `serverTool`, in every mode. Read-only MCP tools stay on in Plan mode.
+    as does one `toolAllowedInThread`, and any one in `bypass` while
+    `mcpBypass()` (Allow MCP bypass) is true; any other asks with `server`
+    and `serverTool`, in every mode. Read-only MCP tools stay on in Plan mode.
   - `toolsOff(settings, registered)`: Plan mode leaves only `PLAN_TOOLS`
     (`read`, `recall`, `read_memory`, `web_search`, `web_fetch`,
     `delegate`, `ask_parent`, `threads`, `propose_plan`, `tool_search`, and `proxmox` and `browse`, whose
@@ -2104,7 +2105,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     lyricad's own certificate, no proxy list; the mode she starts in;
     `WebAccess.direct: { addresses, port, fingerprint, pem }`,
     `WebAccessStatus.direct`) and `"tailnet"` (`tailscale serve` to the serve
-    port; `WebAccess.tailnet: { dnsName, certificates }`,
+    port in the Tailnet mode, Caddy beside Built-in; `WebAccess.tailnet: { dnsName, certificates }`,
     `WebAccessStatus.tailnet`; also set while `WebAccessChange.tailnet`
     keeps Tailnet on beside Built-in, left out keeping it as it was), and
     `frontDoor` includes the Direct port on
@@ -2118,9 +2119,11 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     didn't reply) is where the hostname points, and whether Caddy serves on
     any of those addresses. `tailnet` is set when the name points at her own
     tailnet address: `"forwarded"` (her tailscaled hands 443 there to Caddy's
-    `127.0.0.1:443`, so `served` is true) or `"taken"` (Tailnet beside
-    Built-in holds 443 there for her ts.net name, so `served` is false). All
-    additive.
+    `127.0.0.1:443`, so `served` is true). With Tailnet beside Built-in,
+    Caddy serves her ts.net name too, to the serve port, with the
+    certificate `TailnetControl.cert(dnsName)` reads from her tailscaled
+    (`tailscale cert --cert-file=- --key-file=-`), and `tailscale serve` is
+    reset. All additive.
   - **Wrong door.** On the two plain loopback listeners (`port` and the serve
     port), a request whose `Host` isn't this machine's loopback name and that
     no trusted proxy marked `X-Forwarded-Proto: https` is answered without
@@ -3067,7 +3070,10 @@ selfTest(): Promise<string | undefined>   // lyricad calls this at startup
   strictest first plan, ask, acceptEdits, auto, bypass. `bypass` is set only
   while `bypassAllowed()` (the `workspace.bypass` setting); otherwise
   `setDefaultMode` and `setThread` refuse it, and `setBypassAllowed(false)`
-  moves every thread and the default in it to `auto`. Stored `ask-changes` and
+  moves every thread and the default in it to `auto` and turns
+  `mcpBypassAllowed()` (the `workspace.bypass.mcp` setting, off by default)
+  off. `setMcpBypassAllowed(true)` is refused while `bypassAllowed()` is
+  off. Stored `ask-changes` and
   `ask-commands` migrate in place to `ask` and `acceptEdits`. A thread with
   no row is `auto`. A thread's ancestors changed later still narrow it, at
   any depth, because `effective` is read at each call.

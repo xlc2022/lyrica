@@ -103,7 +103,7 @@ function WebAccessForm({ path, access, onSaved }: { path: string; access: WebAcc
           <input value={name} placeholder="lyrica.example.net" autoCapitalize="none" disabled={busy} onChange={(ev) => setName(ev.target.value)} />
           <small className="muted">The address you'll open in the browser, for example lyrica.example.net. {mode === "external"
             ? "Its DNS record should point at the proxy."
-            : "Its DNS record should point at one of the addresses under Serve on, or at her tailnet address while Tailnet name is off."}</small>
+            : "Its DNS record should point at one of the addresses under Serve on, or at her tailnet address."}</small>
         </label>
       )}
 
@@ -219,7 +219,6 @@ function Status({ status, error, onRefresh, staging }: { status?: WebAccessStatu
               <dt>DNS record</dt>
               <dd>{"error" in status.dns ? <span className="error">{status.dns.error}</span>
                 : <><span className="mono">{status.dns.addresses.join(", ")}</span>{status.dns.tailnet === "forwarded" ? <span className="muted"> · {her()}'s tailnet address</span>
-                  : status.dns.tailnet === "taken" ? <span className="warn-text"> · {her()}'s tailnet address, which answers only for her ts.net name while Tailnet name is on</span>
                   : status.dns.served ? "" : <span className="warn-text"> · isn't one of the addresses under Serve on</span>}</>}</dd>
             </>
           )}
