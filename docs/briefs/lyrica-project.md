@@ -90,9 +90,9 @@ release passed probation there.
 
 1. **New project** from the thread list's own menu (right-click or long
    press its empty space), in the general pool, and name it "Lyrica"
-   (**Rename…** in its menu). In **Project settings** (the **Project** link in the project chat's header):
-   General → Goal: "Build and improve Lyrica's own code, through review."; under This chat, **Repositories** → **+** →
-   `xlc2022/lyrica` from her GitHub account, then **Thread settings**: turn
+   (**Rename…** in its menu). In **Project settings** (**Settings** in the project chat's header):
+   Project → Goal: "Build and improve Lyrica's own code, through review."; under Access, **Repositories** → **+** →
+   `xlc2022/lyrica` from her GitHub account, then **Chat settings**: turn
    the internet on, which reading CI logs needs (allowing only
    `github.com`, `api.github.com` and `registry.npmjs.org` works for
    everything else). Her account goes in **Settings → Git accounts**
@@ -116,19 +116,19 @@ release passed probation there.
    those jobs to the `claude` role, in the background, and gets its report
    back; any job the person asks Claude for by name runs there too, in its
    role (docs/delegation.md, "Claude Code").
-   Project settings → General → **Commands** can save trusted checks as
+   Project settings → Code → **Command rules** can save trusted checks as
    Allow rules, pushes as Ask, and commands she must leave to the user as
    Forbid. These apply to the project chat, its threads and subagents;
    Always allow on a sandbox command card saves its prefix for this project.
-   Project settings → General → **Checks** lists the commands that run
+   Project settings → Code → **Checks** lists the commands that run
    when one of her code turns ends (`npm run typecheck`, `npm test`);
-   **Setup** stays empty, since each clone already gets `npm ci
+   **Install** stays empty, since each clone already gets `npm ci
    --ignore-scripts` from its lockfile (docs/workspace.md, "Dependencies").
    Her code threads read the repository's AGENTS.md on their own. Skills she
    saves for recurring jobs (a CI fix, a release) wait for approval in
    Settings → Skills unless auto-approve is on (DESIGN.md, "Skills").
 2. Paste the **Project instructions** below into Project settings →
-   Memory → Instructions (the count shows it is under 4,000), and turn on
+   Project → Instructions (the count shows it is under 4,000), and turn on
    **Ask first** there, so her changes to them wait as drafts for the
    owner to save (only the owner turns it off).
 3. Start three standing threads in the project chat (**Start a thread**
@@ -314,7 +314,7 @@ says what is left uncommitted. Coder is
 the default for a write step in a repository thread. Both use the `code`
 model task and project memory plus notes tagged `working`. Thread settings →
 Behaviour → **Code mode** turns it on in a conversation; Project settings →
-General → New threads sets it for new work, with Save. Choose **Coding**
+Threads sets it for new work, with Save. Choose **Coding**
 in Models → Tasks to change its preset or column default; permissions,
 review requirements and the private/cloud boundary stay in force.
 

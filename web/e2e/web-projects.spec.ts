@@ -531,16 +531,19 @@ test("a project: New project, suggested threads start into cards, the Threads po
   await expect(alphaView.getByLabel("Message", { exact: true })).toBeVisible();
   await expect(resolveBtn).toHaveAttribute("aria-pressed", "false");
 
-  // The project settings page: Goal and Paused save together; Memory keeps the instructions.
+  // The project settings page: Project holds the goal and the instructions under one Save; Pause, in the header, applies at once.
   if (phone(page)) await page.getByText("Child thread of").getByRole("link").click();
   await openProjectSettings(page);
   await page.getByLabel("Goal").fill("Ship the garden plan.");
-  await page.getByRole("checkbox", { name: "Paused" }).check();
   await page.getByRole("button", { name: "Save" }).click();
   await expect(page.getByText("Saved.")).toBeVisible();
+  await page.getByRole("button", { name: "Pause", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Resume", exact: true })).toBeVisible();
+  await expect(page.locator(".head .status-word")).toHaveText("Paused");
   if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/project-settings-${page.viewportSize()!.width}.png` });
   const sections = page.getByRole("navigation", { name: "Project settings sections" });
-  await sections.getByRole("link", { name: "Memory" }).click();
+  // The old sections' addresses still open the page.
+  await expect(sections.getByRole("link")).toHaveText(["Project", "Threads", "Access", "Code", "Files", "Chat settings"]);
   await page.getByLabel("Instructions").fill("Keep answers short.");
   await page.getByRole("button", { name: "Save" }).click();
   await expect(page.getByText("Saved.")).toBeVisible();
@@ -568,10 +571,10 @@ test("a project: New project, suggested threads start into cards, the Threads po
   await expect(instructions).toContainText("Keep answers short.");
   await noHorizontalScroll(page);
   await page.goBack();
-  await sections.getByRole("link", { name: "General" }).click();
   await expect(page.getByLabel("Goal")).toHaveValue("Ship the garden plan.");
-  await expect(page.getByRole("checkbox", { name: "Paused" })).toBeChecked();
-  // Folders and Machines are the drawer's own two controls, under Workspace.
+  await expect(page.getByRole("button", { name: "Resume", exact: true })).toBeVisible();
+  // Folders and Machines are the drawer's own two controls, under Access.
+  await sections.getByRole("link", { name: "Access", exact: true }).click();
   await expect(page.getByRole("group", { name: "Folders" })).toContainText("An administrator hasn't allowed any folders for this pool.");
   const machinesRow = page.getByRole("group", { name: "Machines" });
   await expect(machinesRow).toContainText("sandbox");
@@ -595,11 +598,10 @@ test("a project: New project, suggested threads start into cards, the Threads po
   await expect(machinesRow.getByRole("button", { name: "Add machine" })).toBeVisible();
   await page.getByRole("button", { name: "Save" }).click();
   await expect(page.getByText("Saved.")).toBeVisible();
-  // Both tooltips name the coordinator outright: this page opens on its own, with no chat in view.
-  await expect(page.getByRole("heading", { name: "Workspace", exact: true })).toHaveAttribute("title", "The coordinator's. Every thread it starts gets these or fewer.");
-  await expect(page.getByRole("link", { name: "Thread settings" })).toHaveAttribute("title", "The coordinator's models, network and local-only, in its drawer.");
+  await expect(page.getByRole("group", { name: "Folders" }).getByText("Folders", { exact: true })).toHaveAttribute("title", "This chat's. Every thread it starts gets these or fewer.");
+  await expect(page.getByRole("link", { name: "Chat settings" })).toHaveAttribute("title", "This chat's own models, network and local-only.");
   // The chat keeps its own drawer for network and local-only: the page links to it open.
-  await page.getByRole("link", { name: "Thread settings" }).click();
+  await page.getByRole("link", { name: "Chat settings" }).click();
   const chatDrawer = page.getByRole("complementary", { name: "Thread settings" });
   await expect(chatDrawer).toBeVisible();
   await chatDrawer.evaluate((el) => Promise.all(el.getAnimations().map((a) => a.finished)));
@@ -771,7 +773,7 @@ test("New project in the sidebar creates a pinned project and opens it", async (
   await expect(side.locator(".eyebrow").first()).toContainText("Pinned");
 });
 
-test("Project settings → Files and images: the project folder one folder at a time, with Upload, New folder, Open, Rename, Move to, Delete and the Images and Videos tabs", async ({ page, baseURL }) => {
+test("Project settings → Files: the project folder one folder at a time, with Upload, New folder, Open, Rename, Move to, Delete and the Images and Videos tabs", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
   const side = page.locator(".side");
@@ -788,7 +790,7 @@ test("Project settings → Files and images: the project folder one folder at a 
   await upload("tray.png", "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQVR4nGP4z8DwHwyBNJjFAAAiOQZ3YJ5p9QAAAABJRU5ErkJggg==");
 
   await page.goto(`/#/u/${encodeURIComponent(userId)}/p/general/${encodeURIComponent(threadId)}/files`);
-  const section = page.getByRole("region", { name: "Files and images" });
+  const section = page.getByRole("region", { name: "Files", exact: true });
   await expect(section.getByRole("button", { name: "Files", exact: true })).toHaveAttribute("aria-pressed", "true");
   const rows = section.locator(".pfile-row");
   const row = (name: string) => rows.filter({ has: page.getByText(name, { exact: true }) });
@@ -970,7 +972,14 @@ test("the split view: a thread from its card opens in the panel, links inside it
   await expect(beta.getByRole("navigation", { name: "Opened from" })).toContainText("Alpha");
   await beta.getByRole("navigation", { name: "Opened from" }).getByRole("link", { name: "Alpha" }).click();
   await expect(page.getByRole("complementary", { name: "Alpha" })).toBeVisible();
-  // From the chat's header, Project opens the project's overview beside the chat, pressed while it shows; Project settings inside it opens one crumb deeper; Open as a page is the page on its own.
+  // From the chat's header, Settings opens Project settings beside the chat and closes it again.
+  const settingsLink = page.locator(".head-actions").getByRole("link", { name: "Project settings" });
+  await settingsLink.click();
+  await expect(page.getByRole("complementary", { name: /Project settings$/ }).getByLabel("Goal")).toBeVisible();
+  await expect(settingsLink).toHaveAttribute("aria-current", "true");
+  await settingsLink.click();
+  await expect(page.getByRole("complementary", { name: /Project settings$/ })).toHaveCount(0);
+  // Project opens the project's overview beside the chat, pressed while it shows; Project settings inside it opens one crumb deeper; Open as a page is the page on its own.
   const projectButton = page.locator(".head-actions").getByRole("button", { name: "Project", exact: true });
   await expect(projectButton).toHaveAttribute("aria-pressed", "false");
   await projectButton.click();
@@ -1248,7 +1257,7 @@ test("watching threads: writing in a project's thread leads to a look, shown as 
   await expect(page.locator("main .threads-card")).toHaveCount(0);
   await expect(page.locator("main .msg.user").filter({ hasText: "[Watching threads]" })).toHaveCount(0);
   // The one switch, on by default, saves off: both the looks and waiting in a turn.
-  await openProjectSettings(page);
+  await openProjectSettings(page, "Threads");
   await expect(page.getByRole("checkbox", { name: "Watching threads" })).toHaveCount(0);
   const check = page.getByRole("checkbox", { name: "Check on threads" });
   await expect(check).toBeChecked();

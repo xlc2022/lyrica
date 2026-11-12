@@ -1,7 +1,7 @@
 // Projects (DESIGN.md "Projects", docs/ux.md §6): the project chat's Threads fact and
 // tokens, the card each of its threads gets under the message that started it, the
 // Suggested threads card, and the Project settings page.
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import {
   del, get, patch, post, put, threadPath, u,
   type CommandRule, type AllowedPaths, type EvidenceSetting, type GitRepository, type Grant, type MachineInfo, type MessagePart, type ModelRef, type Pool, type ProjectOverview, type ThinkingLevel, type ThreadChange, type ThreadSettings, type ThreadSummary,
@@ -289,60 +289,149 @@ export function SuggestedCard({ part, userId, pool, projectId, env }: { part: Ex
 
 // ---- The Project settings page ----
 
-const SECTIONS = [{ key: "general", label: "General" }, { key: "memory", label: "Memory" }, { key: "files", label: "Files and images" }];
+const SECTIONS = [{ key: "project", label: "Project" }, { key: "threads", label: "Threads" }, { key: "access", label: "Access" }, { key: "code", label: "Code" }, { key: "files", label: "Files" }];
+/** Addresses from before the sections were regrouped. */
+const OLD_SECTIONS: Record<string, string> = { general: "project", memory: "project" };
 const THINKING: ThinkingLevel[] = ["off", "low", "medium", "high"];
+const levelName = (l: ThinkingLevel) => l[0]!.toUpperCase() + l.slice(1);
 const refOf = (m?: ModelRef | ModelRef[]) => { const one = Array.isArray(m) ? m[0] : m; return one && "offeringId" in one ? one.offeringId : ""; };
 
 /**
- * The **Project settings** page, reached by the one link in the project's
- * overview (from the chat's **Project** button): its own page, sections at
- * the left (docs/ux.md §6). The chat keeps its own **Settings (this thread)**
- * drawer for its models, network and local-only.
+ * The **Project settings** page, opened by **Settings** in the project chat's
+ * header: sections at the left (docs/ux.md §6), each a form with its own Save,
+ * and **Pause** in the header. The chat's own drawer (its models, network and
+ * local-only) is the **Chat settings** link under the sections.
  */
 export function ProjectPage({ ctx, pool, threadId, section }: { ctx: ShellContext; pool: Pool; threadId: string; section?: string }) {
   const userId = ctx.user.id;
   const base = threadPath(userId, pool, threadId);
   const summary = useLoad(() => get<ThreadSummary>(base), [base]);
   const settings = useLoad(() => get<ThreadSettings>(`${base}/settings`), [base]);
-  const cur = SECTIONS.find((s) => s.key === section) ?? SECTIONS[0]!;
+  const key = OLD_SECTIONS[section ?? ""] ?? section;
+  const cur = SECTIONS.find((s) => s.key === key) ?? SECTIONS[0]!;
   const s = summary.data;
   const title = s?.title || "New project";
+  const [run, busy, error] = useAction();
   useEffect(() => {
     if (!s?.busy) return;
     const timer = setInterval(summary.reload, 1000);
     return () => clearInterval(timer);
   }, [s?.busy, summary.reload]);
+  const onSummary = (x: ThreadSummary) => { summary.set(x); ctx.refreshThreads(); };
+  const paused = !!s?.projectSettings?.paused;
+  const props = s?.project && settings.data ? { ctx, base, summary: s, settings: settings.data, onSummary, onSettings: settings.set } : undefined;
   return (
     <Main className="main">
-      <PageHead ctx={ctx} title="Project settings" facts={s && <a href={href({ page: "thread", userId, pool, threadId })}>{title}</a>} />
+      <PageHead ctx={ctx} title="Project settings" facts={s && <><a href={href({ page: "thread", userId, pool, threadId })}>{title}</a>{paused && <span className="status-word"><span className="status" data-state="held" aria-hidden="true" />Paused</span>}</>}>
+        {s?.project && (
+          <div className="head-actions">
+            {/* An action, so it applies at once (docs/ux.md §3); the facts line says Paused while it holds. */}
+            <button type="button" className="sm" disabled={busy} title={paused ? undefined : "Running threads stop and queued ones wait."}
+              onClick={() => run(async () => { onSummary(await patch<ThreadSummary>(base, { paused: !paused })); })}>{paused ? "Resume" : "Pause"}</button>
+          </div>
+        )}
+      </PageHead>
       <div className="page-body">
         <nav className="subnav" aria-label="Project settings sections">
           {SECTIONS.map((x) => <a key={x.key} href={href({ page: "project", userId, pool, threadId, section: x.key })} aria-current={x.key === cur.key ? "page" : undefined}>{x.label}</a>)}
+          {/* The project chat's own models, mode, network and local-only stay in its drawer. */}
+          <a className="subnav-link" href={href({ page: "thread", userId, pool, threadId, drawer: true })} title="This chat's own models, network and local-only.">Chat settings</a>
         </nav>
         <div className="content">
-          <ErrorText error={summary.error || settings.error} />
+          <ErrorText error={summary.error || settings.error || error} />
           {s && !s.project && <p>This thread isn't a project. Make it one from its menu in the sidebar.</p>}
           {s?.project && cur.key === "files" && <FilesSection ctx={ctx} pool={pool} threadId={threadId} />}
-          {s?.project && settings.data && cur.key !== "files" && (cur.key === "memory"
-            ? <MemorySection base={base} summary={s} pool={pool} userId={userId} onSummary={(x) => { summary.set(x); ctx.refreshThreads(); }} />
-            : <GeneralSection ctx={ctx} base={base} summary={s} settings={settings.data} onSummary={(x) => { summary.set(x); ctx.refreshThreads(); }} onSettings={settings.set} />)}
+          {props && cur.key === "project" && <ProjectSection {...props} />}
+          {props && cur.key === "threads" && <ThreadsSection {...props} />}
+          {props && cur.key === "access" && <AccessSection {...props} />}
+          {props && cur.key === "code" && <CodeSection {...props} />}
         </div>
       </div>
     </Main>
   );
 }
 
-/** Goal; Paused and Check on threads; New threads (Model, Code mode, Evidence judge, Thinking, Fallback); Workspace (Group, Folders, Machines, Repositories, MCP servers) and the Thread settings link; Commands; Setup; Checks; one Save. */
-export function GeneralSection({ ctx, base, summary, settings, onSummary, onSettings }: {
-  ctx: ShellContext; base: string; summary: ThreadSummary; settings: ThreadSettings; onSummary: (s: ThreadSummary) => void; onSettings: (s: ThreadSettings) => void;
-}) {
+interface SectionProps { ctx: ShellContext; base: string; summary: ThreadSummary; settings: ThreadSettings; onSummary: (s: ThreadSummary) => void; onSettings: (s: ThreadSettings) => void }
+
+/** A section's one Save, at the card's foot and in view while the card is taller than the screen (docs/ux.md §7). */
+function SaveBar({ busy, saved, disabled, children }: { busy: boolean; saved: boolean; disabled?: boolean; children?: React.ReactNode }) {
+  return (
+    <div className="savebar">
+      <button type="submit" className="primary" disabled={busy || disabled}>Save</button>
+      {children}
+      {saved && <span className="muted" role="status">Saved.</span>}
+    </div>
+  );
+}
+
+/** A label at the left and its control at the right; stacked when the card is narrow. */
+function Row({ label, hint, htmlFor, children }: { label: string; hint?: string; htmlFor?: string; children: React.ReactNode }) {
+  const id = useId();
+  return (
+    <div className="prow" role={htmlFor ? undefined : "group"} aria-labelledby={htmlFor ? undefined : id}>
+      {htmlFor ? <label htmlFor={htmlFor} title={hint}>{label}</label> : <span id={id} title={hint}>{label}</span>}
+      <div className="pctl">{children}</div>
+    </div>
+  );
+}
+
+/** Goal; Instructions with their count, the link to the project page and Ask first; Group; one Save. */
+export function ProjectSection({ ctx, base, summary, onSummary }: SectionProps) {
   const ps = summary.projectSettings;
-  const [rules, setRules] = useState<CommandRule[]>(ps?.commandRules ?? []);
-  const [checks, setChecks] = useState<string[]>(ps?.checks ?? []);
-  const [setup, setSetup] = useState(ps?.setup ?? "");
   const [goal, setGoal] = useState(ps?.draftGoal ?? summary.goal ?? "");
   useEffect(() => { if (ps?.draftGoal !== undefined) setGoal(ps.draftGoal); }, [ps?.draftGoal]);
-  const [paused, setPaused] = useState(!!ps?.paused);
+  const [instructions, setInstructions] = useState(ps?.draftInstructions ?? summary.instructions ?? "");
+  useEffect(() => setInstructions(ps?.draftInstructions ?? summary.instructions ?? ""), [summary.instructions, ps?.draftInstructions]);
+  const askNow = ps?.askFirstInstructions === true;
+  const [ask, setAsk] = useState(askNow);
+  // She may turn it on herself while the page is open.
+  useEffect(() => setAsk(askNow), [askNow]);
+  const [group, setGroup] = useState(summary.group ?? "");
+  const [run, busy, error] = useAction();
+  const [saved, setSaved] = useState(false);
+  const draft = ps?.draftGoal !== undefined || ps?.draftInstructions !== undefined;
+  const save = () => run(async () => {
+    setSaved(false);
+    // Only what changed, so an untouched field writes no new version of the project page; a draft's field is applied as edited.
+    const change: ThreadChange = {
+      ...(goal !== (summary.goal ?? "") || ps?.draftGoal !== undefined ? { goal } : {}),
+      ...(instructions !== (summary.instructions ?? "") || ps?.draftInstructions !== undefined ? { instructions } : {}),
+      ...(ask !== askNow ? { askFirstInstructions: ask } : {}),
+      ...(group !== (summary.group ?? "") ? { group: group || null } : {}),
+    };
+    if (Object.keys(change).length) onSummary(await patch<ThreadSummary>(base, change));
+    setSaved(true);
+  });
+  return (
+    <form className="card project-form" aria-label="Project" onSubmit={(e) => { e.preventDefault(); void save(); }}>
+      <Row label="Goal" htmlFor="p-goal">
+        <textarea id="p-goal" rows={2} value={goal} onChange={(e) => setGoal(e.target.value)} placeholder="What the project is for, in your words." />
+      </Row>
+      <Row label="Instructions" htmlFor="p-instructions">
+        <textarea id="p-instructions" rows={6} maxLength={4000} value={instructions} onChange={(e) => setInstructions(e.target.value)} placeholder={`How ${her()} should work in this project. Every thread of it reads this.`} />
+        <div className="with-count">
+          <small className="muted num">{instructions.length} / 4000</small>
+          <a className="small" href={href({ page: "memory", userId: ctx.user.id, pool: summary.pool, id: ps!.pageId })} title={`What ${her()} knows about the project, rewritten while she sleeps.`}>Project page</a>
+        </div>
+        <Switch label="Ask first" hint={`${her()} can change these instructions herself. On, her changes wait here as a draft for you to save.`} checked={ask} onChange={setAsk} />
+      </Row>
+      <Row label="Group" htmlFor="p-group">
+        <select id="p-group" value={group} onChange={(e) => setGroup(e.target.value)}>
+          <option value="">Not in a group</option>
+          {ctx.groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+        </select>
+      </Row>
+      <ErrorText error={error} />
+      <SaveBar busy={busy} saved={saved}>
+        {draft && <button type="button" disabled={busy} onClick={() => run(async () => { const updated = await patch<ThreadSummary>(base, { discardDraft: true }); onSummary(updated); setGoal(updated.goal ?? ""); setInstructions(updated.instructions ?? ""); })}>Discard draft</button>}
+      </SaveBar>
+    </form>
+  );
+}
+
+/** Check on threads; New threads (Model, Thinking, Fallback, Code mode, and Evidence judge while Code mode is on); one Save. */
+export function ThreadsSection({ base, summary, settings, onSummary }: SectionProps) {
+  const ps = summary.projectSettings;
   // One switch for both: looks at the threads (watchThreads) and waiting on them in a turn (checkInOnThreads).
   const checkingNow = ps?.watchThreads !== false && ps?.checkInOnThreads !== false;
   const [checkIn, setCheckIn] = useState(checkingNow);
@@ -351,8 +440,78 @@ export function GeneralSection({ ctx, base, summary, settings, onSummary, onSett
   const [evidence, setEvidence] = useState<EvidenceSetting | "">(ps?.threadsEvidence ?? "");
   const [thinking, setThinking] = useState<ThinkingLevel | "">(ps?.threadsThinking ?? "");
   const [fallback, setFallback] = useState<"" | "on" | "off">(ps?.threadsFallback === undefined ? "" : ps.threadsFallback ? "on" : "off");
-  const [group, setGroup] = useState(summary.group ?? "");
-  // The chat's workspace, which every thread of the project inherits; undefined until changed here.
+  const [run, busy, error] = useAction();
+  const [saved, setSaved] = useState(false);
+  const save = () => run(async () => {
+    setSaved(false);
+    onSummary(await patch<ThreadSummary>(base, {
+      ...(checkIn !== checkingNow ? { watchThreads: checkIn, checkInOnThreads: checkIn } : {}),
+      threadsModel: model ? { offeringId: model } : null,
+      ...(code !== (ps?.threadsCode ?? settings.code) ? { threadsCode: code } : {}),
+      threadsEvidence: evidence || null,
+      threadsThinking: thinking || null,
+      threadsFallback: fallback ? fallback === "on" : null,
+    }));
+    setSaved(true);
+  });
+  // Each select's empty choice is the project chat's own value, named so the default isn't a riddle.
+  const chatModel = settings.models?.[code ? "code" : "chat"];
+  const chatModelName = chatModel?.name ?? chatModel?.modelId;
+  const withDefault = (value?: string) => value ? `Default (${value})` : "Default";
+  const newThreadsHint = `Threads ${her()} starts in this project. Each one can be changed after it starts. Default follows this chat's own settings.`;
+  return (
+    <form className="card project-form" aria-label="Threads" onSubmit={(e) => { e.preventDefault(); void save(); }}>
+      <Row label="Watching">
+        <Switch label="Check on threads" hint={`While its threads work, ${her()} looks in on them and tells the others what affects them. Off, the chat only hears their reports, which takes far fewer tokens.`} checked={checkIn} onChange={setCheckIn} />
+      </Row>
+      <h2 className="eyebrow" title={newThreadsHint}>New threads</h2>
+      <Row label="Model" htmlFor="p-model" hint="The model a new thread talks on: Coding in Code mode, Main conversation otherwise.">
+        <select id="p-model" value={model} onChange={(e) => setModel(e.target.value)}>
+          <option value="">{withDefault(chatModelName)}</option>
+          {settings.allowed.filter((ep) => ep.models.some(isChatModel)).map((ep) => (
+            <optgroup key={ep.id} label={`${ep.name} (${ep.kind})`}>
+              {ep.models.filter(isChatModel).map((m) => <option key={m.id} value={m.id}>{ep.kind} · {modelName(m)} · {ep.name}</option>)}
+            </optgroup>
+          ))}
+          {model && !settings.allowed.some((ep) => ep.models.some((m) => m.id === model && isChatModel(m))) && <option value={model}>{model} (not available)</option>}
+        </select>
+      </Row>
+      <Row label="Thinking" htmlFor="p-thinking">
+        <select id="p-thinking" value={thinking} onChange={(e) => setThinking(e.target.value as ThinkingLevel | "")}>
+          <option value="">{withDefault(settings.thinking && levelName(settings.thinking))}</option>
+          {THINKING.map((l) => <option key={l} value={l}>{levelName(l)}</option>)}
+        </select>
+      </Row>
+      <Row label="Fallback" htmlFor="p-fallback" hint="When off, only the first model in each list answers; if it can't, the message waits for it.">
+        <select id="p-fallback" value={fallback} onChange={(e) => setFallback(e.target.value as "" | "on" | "off")}>
+          <option value="">{withDefault(settings.fallbackOn === undefined ? undefined : settings.fallbackOn ? "On" : "Off")}</option>
+          <option value="on">On</option>
+          <option value="off">Off</option>
+        </select>
+      </Row>
+      <Row label="Code">
+        <Switch label="Code mode" hint={CODE_MODE_HINT} checked={code} onChange={setCode} />
+        {/* The judge only runs on code turns, so it shows only with Code mode on; its saved choice is kept either way. */}
+        {code && (
+          <label className="field" title={EVIDENCE_HINT}>
+            <span>Evidence judge</span>
+            <select value={evidence} onChange={(e) => setEvidence(e.target.value as EvidenceSetting | "")}>
+              <option value="">{withDefault(EVIDENCE_CHOICES.find(([v]) => v === settings.evidence)?.[1].replace(/ \(.*/, ""))}</option>
+              {EVIDENCE_CHOICES.map(([v, name]) => <option key={v} value={v}>{name}</option>)}
+            </select>
+          </label>
+        )}
+      </Row>
+      <ErrorText error={error} />
+      <SaveBar busy={busy} saved={saved} />
+    </form>
+  );
+}
+
+const ACCESS_HINT = "This chat's. Every thread it starts gets these or fewer.";
+/** What the project's threads may reach: Folders, Machines, Repositories and MCP servers, the thread drawer's own controls; one Save. */
+export function AccessSection({ ctx, base, summary, settings, onSettings }: SectionProps) {
+  // The chat's own, which every thread of the project inherits; undefined until changed here.
   const [grants, setGrants] = useState<Grant[]>();
   const [granted, setGranted] = useState<string[]>();
   const [repositories, setRepositories] = useState<GitRepository[]>();
@@ -363,27 +522,41 @@ export function GeneralSection({ ctx, base, summary, settings, onSummary, onSett
   const [saved, setSaved] = useState(false);
   const save = () => run(async () => {
     setSaved(false);
-    const change: ThreadChange = {
-      goal, paused, commandRules: rules.filter(r => r.prefix.trim()), checks: checks.map(c => c.trim()).filter(Boolean), setup: setup.trim() || null,
-      ...(checkIn !== checkingNow ? { watchThreads: checkIn, checkInOnThreads: checkIn } : {}),
-      threadsModel: model ? { offeringId: model } : null,
-      ...(code !== (ps?.threadsCode ?? settings.code) ? { threadsCode: code } : {}),
-      threadsEvidence: evidence || null,
-      threadsThinking: thinking || null,
-      threadsFallback: fallback ? fallback === "on" : null,
-      ...(group !== (summary.group ?? "") ? { group: group || null } : {}),
-    };
-    const updated = await patch<ThreadSummary>(base, change);
-    setRules(updated.projectSettings?.commandRules ?? rules);
-    setChecks(updated.projectSettings?.checks ?? checks);
-    setSetup(updated.projectSettings?.setup ?? "");
-    onSummary(updated);
     if (grants || granted || repositories || mcpServers) {
       onSettings(await patch<ThreadSettings>(`${base}/settings`, {
         ...(grants ? { grants } : {}), ...(granted ? { machines: granted } : {}), ...(repositories ? { repositories } : {}), ...(mcpServers ? { mcpServers } : {}),
       }));
       setGrants(undefined); setGranted(undefined); setRepositories(undefined); setMcpServers(undefined);
     }
+    setSaved(true);
+  });
+  return (
+    <form className="card project-form" aria-label="Access" onSubmit={(e) => { e.preventDefault(); void save(); }}>
+      <Row label="Folders" hint={ACCESS_HINT}><Folders grants={grants ?? settings.grants} allowed={paths.data?.[summary.pool] ?? []} onChange={setGrants} /></Row>
+      <Row label="Machines" hint={ACCESS_HINT}><Machines granted={granted ?? settings.machines} machines={(machines.data ?? []).filter((m) => m.pool === summary.pool)} onChange={setGranted} /></Row>
+      <Row label="Repositories" hint={ACCESS_HINT}><Repositories userId={ctx.user.id} pool={summary.pool} granted={repositories ?? settings.repositories} onChange={setRepositories} /></Row>
+      <Row label="MCP servers" hint={ACCESS_HINT}><McpServers userId={ctx.user.id} pool={summary.pool} granted={mcpServers ?? settings.mcpServers} onChange={setMcpServers} /></Row>
+      <ErrorText error={paths.error || machines.error || error} />
+      <SaveBar busy={busy} saved={saved} />
+    </form>
+  );
+}
+
+/** Install (each clone's dependencies), Checks (run after a code turn that changed something) and Command rules; one Save. */
+export function CodeSection({ base, summary, onSummary }: SectionProps) {
+  const ps = summary.projectSettings;
+  const [rules, setRules] = useState<CommandRule[]>(ps?.commandRules ?? []);
+  const [checks, setChecks] = useState<string[]>(ps?.checks ?? []);
+  const [setup, setSetup] = useState(ps?.setup ?? "");
+  const [run, busy, error] = useAction();
+  const [saved, setSaved] = useState(false);
+  const save = () => run(async () => {
+    setSaved(false);
+    const updated = await patch<ThreadSummary>(base, { commandRules: rules.filter(r => r.prefix.trim()), checks: checks.map(c => c.trim()).filter(Boolean), setup: setup.trim() || null });
+    setRules(updated.projectSettings?.commandRules ?? rules);
+    setChecks(updated.projectSettings?.checks ?? checks);
+    setSetup(updated.projectSettings?.setup ?? "");
+    onSummary(updated);
     setSaved(true);
   });
   const filled = rules.filter(r => r.prefix.trim());
@@ -394,157 +567,36 @@ export function GeneralSection({ ctx, base, summary, settings, onSummary, onSett
   const checkError = checks.some(c => c.trim().length > 300 || /[\x00-\x1f\x7f-\x9f]/.test(c))
     ? "A check is one line of at most 300 characters, with no control characters." : "";
   const setupError = setup.trim().length > 300 || /[\x00-\x1f\x7f-\x9f]/.test(setup)
-    ? "Setup is one line of at most 300 characters, with no control characters." : "";
-  // A project's threads follow the coordinating chat, not whichever thread is on screen: this page opens as a page of its own.
-  const newThreadsHint = `Threads ${her()} starts from the coordinator. Each one can be changed after it starts.`;
-  const sameHint = `${newThreadsHint} Other models come from the coordinator's settings.`;
+    ? "Install is one line of at most 300 characters, with no control characters." : "";
   return (
-    <form className="card project-form" aria-labelledby="h-general" onSubmit={(e) => { e.preventDefault(); void save(); }}>
-      <h2 id="h-general">General</h2>
-      <label className="field">
-        <span>Goal</span>
-        <textarea rows={3} value={goal} onChange={(e) => setGoal(e.target.value)} placeholder="What the project is for, in your words." />
-      </label>
-      <div className="row switches">
-        <Switch label="Paused" hint="Running threads stop and queued ones wait." checked={paused} onChange={setPaused} />
-        <Switch label="Check on threads" hint={`While its threads work, ${her()} looks in on them and tells the others what affects them. Off, the chat only hears their reports, which takes far fewer tokens.`} checked={checkIn} onChange={setCheckIn} />
-      </div>
-
-      <h3 title={sameHint}>New threads</h3>
-      <div className="row top defaults">
-        <label className="field" title={`The model a new thread talks on: Coding in Code mode, Main conversation otherwise. ${newThreadsHint}`}>
-          <span>Model</span>
-          <select value={model} onChange={(e) => setModel(e.target.value)}>
-            <option value="">Same as coordinator</option>
-            {settings.allowed.filter((ep) => ep.models.some(isChatModel)).map((ep) => (
-              <optgroup key={ep.id} label={`${ep.name} (${ep.kind})`}>
-                {ep.models.filter(isChatModel).map((m) => <option key={m.id} value={m.id}>{ep.kind} · {modelName(m)} · {ep.name}</option>)}
-              </optgroup>
-            ))}
-            {model && !settings.allowed.some((ep) => ep.models.some((m) => m.id === model && isChatModel(m))) && <option value={model}>{model} (not available)</option>}
-          </select>
-        </label>
-        <Switch label="Code mode" hint={CODE_MODE_HINT} checked={code} onChange={setCode} />
-        <label className="field" title={`${EVIDENCE_HINT} ${newThreadsHint}`}>
-          <span>Evidence judge</span>
-          <select value={evidence} onChange={(e) => setEvidence(e.target.value as EvidenceSetting | "")}>
-            <option value="">Same as coordinator</option>
-            {EVIDENCE_CHOICES.map(([v, name]) => <option key={v} value={v}>{name}</option>)}
-          </select>
-        </label>
-        <label className="field" title={newThreadsHint}>
-          <span>Thinking</span>
-          <select value={thinking} onChange={(e) => setThinking(e.target.value as ThinkingLevel | "")}>
-            <option value="">Same as coordinator</option>
-            {THINKING.map((l) => <option key={l} value={l}>{l === "off" ? "Off" : l[0]!.toUpperCase() + l.slice(1)}</option>)}
-          </select>
-        </label>
-        <label className="field" title={newThreadsHint}>
-          <span>Fallback</span>
-          <select value={fallback} onChange={(e) => setFallback(e.target.value as "" | "on" | "off")}>
-            <option value="">Same as coordinator</option>
-            <option value="on">On</option>
-            <option value="off">Off</option>
-          </select>
-        </label>
-      </div>
-
-      <h3 title="The coordinator's. Every thread it starts gets these or fewer.">Workspace</h3>
-      <div className="row top defaults">
-        <label className="field">
-          <span>Group</span>
-          <select value={group} onChange={(e) => setGroup(e.target.value)}>
-            <option value="">Not in a group</option>
-            {ctx.groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
-          </select>
-        </label>
-      </div>
-
-      {/* The drawer's own three controls: every thread the project starts gets these folders, machines, repositories and MCP servers or fewer. */}
-      <div className="workspace">
-        <div className="field" role="group" aria-labelledby="h-folders">
-          <span id="h-folders">Folders</span>
-          <Folders grants={grants ?? settings.grants} allowed={paths.data?.[summary.pool] ?? []} onChange={setGrants} />
-        </div>
-        <div className="field" role="group" aria-labelledby="h-machines">
-          <span id="h-machines">Machines</span>
-          <Machines granted={granted ?? settings.machines} machines={(machines.data ?? []).filter((m) => m.pool === summary.pool)} onChange={setGranted} />
-        </div>
-        <div className="field" role="group" aria-labelledby="h-repositories">
-          <span id="h-repositories">Repositories</span>
-          <Repositories userId={ctx.user.id} pool={summary.pool} granted={repositories ?? settings.repositories} onChange={setRepositories} />
-        </div>
-        <div className="field" role="group" aria-labelledby="h-mcp-servers">
-          <span id="h-mcp-servers">MCP servers</span>
-          <McpServers userId={ctx.user.id} pool={summary.pool} granted={mcpServers ?? settings.mcpServers} onChange={setMcpServers} />
-        </div>
-        <ErrorText error={paths.error || machines.error} />
-      </div>
-
-      {/* The coordinator's own models, mode, network and local-only stay in its drawer, the header badge and the composer. */}
-      <p className="small"><a href={href({ page: "thread", userId: ctx.user.id, pool: summary.pool, threadId: summary.id, drawer: true })} title="The coordinator's models, network and local-only, in its drawer.">Thread settings</a></p>
-
-      <h3>Commands</h3>
-      {!rules.length && <p className="muted">No rules: commands ask as the mode says.</p>}
-      {rules.map((rule, i) => <div className="command-rule" key={i}>
-        <input className="mono" aria-label="Command prefix" placeholder="npm test" autoFocus={!rule.prefix} value={rule.prefix} onChange={e => setRules(rules.map((r, n) => n === i ? { ...r, prefix: e.target.value } : r))} />
-        <div className="seg" role="group" aria-label={`Decision for ${rule.prefix || "new rule"}`}>
-          {(["allow", "ask", "forbid"] as const).map(decision => <button type="button" key={decision} aria-pressed={rule.decision === decision} onClick={() => setRules(rules.map((r, n) => n === i ? { ...r, decision } : r))}>{decision[0]!.toUpperCase() + decision.slice(1)}</button>)}
-        </div>
-        <button type="button" className="icon sm" aria-label={`Remove ${rule.prefix || "rule"}`} onClick={() => setRules(rules.filter((_, n) => n !== i))}><Icon name="close" /></button>
-      </div>)}
-      <ErrorText error={ruleError} />
-      <button type="button" disabled={rules.length >= 100} onClick={() => setRules([...rules, { prefix: "", decision: "ask" }])}>Add rule</button>
-
-      <h3 title="Installs each clone's dependencies when it is cloned and whenever a lockfile changes. Empty, the lockfile picks the install: npm, pnpm, yarn, uv or pip.">Setup</h3>
-      <div className="command-rule"><input className="mono" aria-label="Setup command" placeholder="From the lockfile" value={setup} onChange={e => setSetup(e.target.value)} /></div>
-      <ErrorText error={setupError} />
-
-      <h3 title={`Run in each repository when a code thread ends a turn that changed something; if one fails, ${her()} fixes it before finishing.`}>Checks</h3>
-      {!checks.length && <p className="muted">No checks: {her()} runs what the repository asks.</p>}
-      {checks.map((check, i) => <div className="command-rule" key={i}>
-        <input className="mono" aria-label="Check command" placeholder="npm test" autoFocus={!check} value={check} onChange={e => setChecks(checks.map((c, n) => n === i ? e.target.value : c))} />
-        <button type="button" className="icon sm" aria-label={`Remove ${check || "check"}`} onClick={() => setChecks(checks.filter((_, n) => n !== i))}><Icon name="close" /></button>
-      </div>)}
-      <ErrorText error={checkError} />
-      <button type="button" disabled={checks.length >= 8} onClick={() => setChecks([...checks, ""])}>Add check</button>
-
-      <div className="row">
-        <button type="submit" className="primary" disabled={busy || !!ruleError || !!checkError || !!setupError}>Save</button>
-        {ps?.draftGoal !== undefined && <button type="button" disabled={busy} onClick={() => run(async () => { const updated = await patch<ThreadSummary>(base, { discardDraft: true }); onSummary(updated); setGoal(updated.goal ?? ""); })}>Discard draft</button>}
-        {saved && <span className="muted" role="status">Saved.</span>}
-      </div>
+    <form className="card project-form" aria-label="Code" onSubmit={(e) => { e.preventDefault(); void save(); }}>
+      <Row label="Install" htmlFor="p-install" hint="Installs each clone's dependencies when it is cloned and whenever a lockfile changes. Empty, the lockfile picks the install: npm, pnpm, yarn, uv or pip.">
+        <input id="p-install" className="mono" placeholder="From the lockfile" value={setup} onChange={e => setSetup(e.target.value)} />
+        <ErrorText error={setupError} />
+      </Row>
+      <Row label="Checks" hint={`Run in each repository when a code thread ends a turn that changed something; if one fails, ${her()} fixes it before finishing.`}>
+        {!checks.length && <p className="muted">No checks: {her()} runs what the repository asks.</p>}
+        {checks.map((check, i) => <div className="command-rule" key={i}>
+          <input className="mono" aria-label="Check command" placeholder="npm test" autoFocus={!check} value={check} onChange={e => setChecks(checks.map((c, n) => n === i ? e.target.value : c))} />
+          <button type="button" className="icon sm" aria-label={`Remove ${check || "check"}`} onClick={() => setChecks(checks.filter((_, n) => n !== i))}><Icon name="close" /></button>
+        </div>)}
+        <ErrorText error={checkError} />
+        <button type="button" className="sm" disabled={checks.length >= 8} onClick={() => setChecks([...checks, ""])}>Add check</button>
+      </Row>
+      <Row label="Command rules">
+        {!rules.length && <p className="muted">No rules: commands ask as the mode says.</p>}
+        {rules.map((rule, i) => <div className="command-rule" key={i}>
+          <input className="mono" aria-label="Command prefix" placeholder="npm test" autoFocus={!rule.prefix} value={rule.prefix} onChange={e => setRules(rules.map((r, n) => n === i ? { ...r, prefix: e.target.value } : r))} />
+          <div className="seg" role="group" aria-label={`Decision for ${rule.prefix || "new rule"}`}>
+            {(["allow", "ask", "forbid"] as const).map(decision => <button type="button" key={decision} aria-pressed={rule.decision === decision} onClick={() => setRules(rules.map((r, n) => n === i ? { ...r, decision } : r))}>{decision[0]!.toUpperCase() + decision.slice(1)}</button>)}
+          </div>
+          <button type="button" className="icon sm" aria-label={`Remove ${rule.prefix || "rule"}`} onClick={() => setRules(rules.filter((_, n) => n !== i))}><Icon name="close" /></button>
+        </div>)}
+        <ErrorText error={ruleError} />
+        <button type="button" className="sm" disabled={rules.length >= 100} onClick={() => setRules([...rules, { prefix: "", decision: "ask" }])}>Add rule</button>
+      </Row>
       <ErrorText error={error} />
-    </form>
-  );
-}
-
-/** Instructions, kept on the project page apart from what sleep writes; and the page itself in the memory browser. */
-function MemorySection({ base, summary, pool, userId, onSummary }: { base: string; summary: ThreadSummary; pool: Pool; userId: string; onSummary: (s: ThreadSummary) => void }) {
-  const [instructions, setInstructions] = useState(summary.projectSettings?.draftInstructions ?? summary.instructions ?? "");
-  const [run, busy, error] = useAction();
-  const [saved, setSaved] = useState(false);
-  useEffect(() => setInstructions(summary.projectSettings?.draftInstructions ?? summary.instructions ?? ""), [summary.instructions, summary.projectSettings?.draftInstructions]);
-  const save = () => run(async () => { setSaved(false); onSummary(await patch<ThreadSummary>(base, { instructions })); setSaved(true); });
-  return (
-    <form className="card project-form" aria-labelledby="h-memory" onSubmit={(e) => { e.preventDefault(); void save(); }}>
-      <h2 id="h-memory">Memory</h2>
-      <label className="field">
-        <span>Instructions</span>
-        <textarea rows={6} maxLength={4000} value={instructions} onChange={(e) => setInstructions(e.target.value)} placeholder={`How ${her()} should work in this project. Every thread of it reads this.`} />
-        <small className="muted num">{instructions.length} / 4000</small>
-      </label>
-      <p className="small"><a href={href({ page: "memory", userId, pool, id: summary.projectSettings!.pageId })}>Project page</a> <span className="muted">· what {her()} knows about the project, rewritten while she sleeps</span></p>
-      <div className="row">
-        <button type="submit" className="primary" disabled={busy}>Save</button>
-        {summary.projectSettings?.draftInstructions !== undefined && <button type="button" disabled={busy} onClick={() => run(async () => { const updated = await patch<ThreadSummary>(base, { discardDraft: true }); onSummary(updated); setInstructions(updated.instructions ?? ""); })}>Discard draft</button>}
-        {saved && <span className="muted" role="status">Saved.</span>}
-      </div>
-      {/* Below Save: it saves when toggled, apart from the field. */}
-      <Switch label="Ask first" hint={`${her()} can change these instructions herself. On, her changes wait here as a draft for you to save.`}
-        checked={summary.projectSettings?.askFirstInstructions === true} disabled={busy}
-        onChange={(on) => run(async () => { onSummary(await patch<ThreadSummary>(base, { askFirstInstructions: on })); })} />
-      <ErrorText error={error} />
+      <SaveBar busy={busy} saved={saved} disabled={!!ruleError || !!checkError || !!setupError} />
     </form>
   );
 }

@@ -1,4 +1,4 @@
-// Project settings → Files and images (DESIGN "Projects", docs/ux.md §6): the project folder, which is the
+// Project settings → Files (DESIGN "Projects", docs/ux.md §6): the project folder, which is the
 // project chat's own folder and a root in every thread of the project, managed one folder at a time through
 // the Files panel's routes on the project chat. Files in the chat's header stays the quick view.
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
@@ -117,11 +117,10 @@ export function FilesSection({ ctx, pool, threadId }: { ctx: ShellContext; pool:
   const shownMedia = entries?.filter((i) => filter === "all" || i.source === filter);
 
   return (
-    <section className={`card project-form pfiles${dropping ? " drop" : ""}`} aria-labelledby="h-files"
+    <section className={`card pfiles${dropping ? " drop" : ""}`} aria-label="Files"
       onDragOver={(e) => { if (tab === "files" && e.dataTransfer.types.includes("Files")) { e.preventDefault(); setDropping(true); } }}
       onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDropping(false); }}
       onDrop={(e) => { if (tab !== "files") return; e.preventDefault(); setDropping(false); send(e.dataTransfer.files); }}>
-      <h2 id="h-files">Files and images</h2>
       <div className="row pfiles-bar">
         <div className="seg" role="group" aria-label="Kind">
           {(["files", "images", "videos"] as const).map((k) => <button key={k} type="button" aria-pressed={tab === k} onClick={() => setTab(k)}>{TAB_LABEL[k]}</button>)}
