@@ -1888,8 +1888,9 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     blocks in all modes and targets; Ask always prompts; Allow skips only
     sandbox mode prompts, never a suspect command's. Opaque commands ask with any forbid rule;
     a variable the line plainly sets first is read as its value, not as opaque (`knownValues`),
-    and a script the line sources first by a literal path is read where it runs and meets the rules
-    by its own commands; one that only sets things up isn't opaque (`sourcedFile`, `setupOnly`).
+    and a script the line sources or runs with a shell first by a literal path (or writes just before
+    with a quoted here-document) is read where it runs and meets the rules and the suspect checks by its
+    own commands; a run one isn't opaque, a sourced one only if it just sets things up (`sourcedFile`, `setupOnly`).
     `user_bash` is never checked. A new project starts with `DEFAULT_COMMAND_RULES`.
     `settings()` is the thread's effective settings. `fileNotes()` returns
     `{ added, removed }` paths the Files panel changed since her last turn,
@@ -2739,7 +2740,7 @@ settings(userId).setCommandRules(pool, project, rules) / addCommandRule(pool, pr
 // CommandRule { prefix; decision: "allow" | "ask" | "forbid" }; at most 100; duplicate prefix replaces.
 // seedCommandRules writes DEFAULT_COMMAND_RULES for a project with none yet (the daemon calls it when a project is made).
 // user step 6 adds project_settings.command_rules, JSON default []; Projects.set upserts other columns.
-// rules.ts exports commandRules (validation), decide(command, rules, sourced?), sourcedFile, setupOnly, SCRIPT_LIMIT, alwaysAllowPrefix, DEFAULT_COMMAND_RULES; machines.ts exports simpleCommands.
+// rules.ts exports commandRules (validation), decide(command, rules, sourced?), sourcedFile (→ { cds, path, text? }), setupOnly, SCRIPT_LIMIT, alwaysAllowPrefix, DEFAULT_COMMAND_RULES; machines.ts exports simpleCommands.
 settings(userId).checks(pool, project): string[] / setChecks(pool, project, checks)
 // checkChecks: at most 8 commands, each one line of at most 300 characters, no control characters; blanks dropped.
 // user step 16 adds project_settings.checks, JSON default [].

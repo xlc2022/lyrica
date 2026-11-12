@@ -1896,7 +1896,8 @@ opaque command (`bash script.sh`, `eval`, `$cmd`) asks in every mode, as
 below.
 
 A forbid rule refuses any command she writes that contains a matching command, however
-chained or wrapped; it doesn't see inside scripts or programs she runs.
+chained or wrapped, and inside a shell script she runs or sources first on the line
+(below); it doesn't see inside other programs she runs.
 
 `rules.ts` uses `simpleCommands` from `machines.ts`: chains, pipes,
 substitutions, subshells, shell `-c` arguments and find's `-exec`, `-execdir`
@@ -1938,28 +1939,45 @@ since every word it expands to fits the pattern (`harmlessGlob`). It stays
 opaque when the name holds a `[` set or ends in `*`, `?`, a digit or `o`,
 which a loader's name (`ld-….so.2`) could.
 
-A sourced script can be read instead (`sourcedFile`, `setupOnly`). When the
-line's first part, after only `cd DIR`s, is `source FILE` or `. FILE` with a
-literal path that holds a `/`, the hook reads that file where the command will
-run (the sandbox or the SSH machine, at most 64 KiB) and passes it to
-`decide`. A rule the script's own commands meet counts for the line, so a
-forbidden command inside it is refused. A script that only sets things up is
-then not opaque: every command in it is one of `export`, `readonly`,
-`declare`, `typeset`, `local`, `unset`, `set`, `cd`, `pushd`, `popd`, `echo`,
-`true`, `false`, `:`, `test`, `[`, `umask`, `return`, `pwd`, `nproc`,
-`dirname`, `basename`, `realpath`, `readlink`, `uname` or `getconf`, inside
-`if` at most, and it sets none of `BASH…`, `ENV`, `IFS`, `PS1`–`PS4`,
-`PROMPT_COMMAND`, `SHELLOPTS`, `CDPATH` or `GLOBIGNORE`. So a function, an
+A script a shell runs or sources can be read instead (`sourcedFile`,
+`setupOnly`). The line's first part, after only `cd DIR`s, is `source FILE`,
+`. FILE`, or `sh`, `bash` or `dash` running `FILE`
+(with options that only change how it runs, such as `-e`, `-u`, `-x`,
+`-o pipefail`, and behind a wrapper such as `timeout` or `nohup` only with an
+absolute path, never `chroot`). FILE is a literal path that holds a `/`.
+The hook then reads that file where the command will run (the sandbox or the
+SSH machine, at most 64 KiB). When the line writes the file first, after only
+`cd`s, with `cat > /abs/path <<'EOF'` (or `cat <<'EOF' > /abs/path`), quoted
+so the body is taken as it stands, and then runs that same path, the body is
+the script and nothing is read. The text goes to `decide`, and to
+`suspectCommand`, so a destructive command inside the script warns as it
+would on the line.
+
+A rule the script's own commands meet counts for the line, so a forbidden
+command inside it is refused and an opaque one asks. A script a shell runs
+can't change the rest of the line, so otherwise its run isn't opaque,
+unless it defines an alias (dash expands aliases in scripts, bash after
+`shopt -s expand_aliases`), which keeps it opaque. A
+sourced one can, so it is seen through only when it just sets things up:
+every command in it is one of `export`, `readonly`, `declare`, `typeset`,
+`local`, `unset`, `set`, `cd`, `pushd`, `popd`, `echo`, `true`, `false`, `:`,
+`test`, `[`, `umask`, `return`, `pwd`, `nproc`, `dirname`, `basename`,
+`realpath`, `readlink`, `uname` or `getconf`, inside `if` at most, and it
+sets none of `BASH…`, `ENV`, `IFS`, `PS1`–`PS4`, `PROMPT_COMMAND`,
+`SHELLOPTS`, `CDPATH` or `GLOBIGNORE`. So in a sourced script a function, an
 alias, a loop or any other program keeps it opaque. Setting `PATH` is
 allowed, since it does no more than running a program by its path, which
 isn't opaque either. A file that couldn't be read, a path without a slash
-(bash looks it up on `PATH` first) and anything else on the line before it
-keep `source` opaque, so the line can't rewrite the file between the read
-and the run. A background job or a parallel call could still change it in
-that moment; the gate accepts that, as it never looks inside `./x.sh` either.
-A `cd` starting with `-` (`cd -`, `cd -P`) and a nameref (`declare`,
-`typeset` or `local` with `-n`) also keep it opaque. Only that one `source`
-is read.
+(bash looks it up on `PATH` first), `-c`, `-s`, `-i` or `--rcfile`, any
+other shell (zsh, ksh, mksh, fish and the like have syntax that runs code
+`parse` can't see), a variable set for the shell on its part
+(`BASH_ENV=… bash`, `env PS4=… bash -x`), and anything else on the line before it keep the run opaque, so the line
+can't rewrite the file between the read and the run. A background job or a
+parallel call could still change it in that moment; the gate accepts that,
+as it never looks inside `./x.sh` either. A `cd` starting with `-` (`cd -`,
+`cd -P`) and a nameref (`declare`, `typeset` or `local` with `-n`) also keep
+it opaque. Only that one script is read. Other languages (`python3 x.py`,
+`node x.js`) were never opaque: their program is the interpreter.
 
 The hook reads rules on every `bash` call through `ThreadTools.commandRules`.
 Forbid blocks without a card, Ask always asks, and Allow skips Ask and Accept
