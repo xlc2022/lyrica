@@ -2105,7 +2105,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     lyricad's own certificate, no proxy list; the mode she starts in;
     `WebAccess.direct: { addresses, port, fingerprint, pem }`,
     `WebAccessStatus.direct`) and `"tailnet"` (`tailscale serve` to the serve
-    port; `WebAccess.tailnet: { dnsName, certificates }`,
+    port in the Tailnet mode, Caddy beside Built-in; `WebAccess.tailnet: { dnsName, certificates }`,
     `WebAccessStatus.tailnet`; also set while `WebAccessChange.tailnet`
     keeps Tailnet on beside Built-in, left out keeping it as it was), and
     `frontDoor` includes the Direct port on
@@ -2119,9 +2119,11 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     didn't reply) is where the hostname points, and whether Caddy serves on
     any of those addresses. `tailnet` is set when the name points at her own
     tailnet address: `"forwarded"` (her tailscaled hands 443 there to Caddy's
-    `127.0.0.1:443`, so `served` is true) or `"taken"` (Tailnet beside
-    Built-in holds 443 there for her ts.net name, so `served` is false). All
-    additive.
+    `127.0.0.1:443`, so `served` is true). With Tailnet beside Built-in,
+    Caddy serves her ts.net name too, to the serve port, with the
+    certificate `TailnetControl.cert(dnsName)` reads from her tailscaled
+    (`tailscale cert --cert-file=- --key-file=-`), and `tailscale serve` is
+    reset. All additive.
   - **Wrong door.** On the two plain loopback listeners (`port` and the serve
     port), a request whose `Host` isn't this machine's loopback name and that
     no trusted proxy marked `X-Forwarded-Proto: https` is answered without

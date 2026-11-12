@@ -628,11 +628,10 @@ Caddy:
 1. Pick a name under a domain you control, such as `lyrica.example.net`, and
    point its DNS record at one of the addresses the page lists under
    **Serve on**: the machine's Tailscale address, or with split DNS its LAN
-   address. Her own tailnet address works too, with **Tailnet name** off:
-   her tailscaled hands port 443 there to Caddy on this machine's loopback.
-   With **Tailnet name** on, that port serves only her ts.net name and
-   refuses any other. A machine that isn't on a tailnet itself can serve
-   the name on its LAN address only.
+   address. Her own tailnet address works too: her tailscaled hands port
+   443 there to Caddy on this machine's loopback, with **Tailnet name** on
+   or off. A machine that isn't on a tailnet itself can serve the name on
+   its LAN address only.
 2. Make an API token at your DNS provider, limited to that one zone. The
    page lists the providers Caddy was built with (Cloudflare, Porkbun,
    Namecheap, Route 53, DigitalOcean, Hetzner, deSEC, Duck DNS) and how to
@@ -658,8 +657,8 @@ the unlock page is reachable.
 Her own `tailscaled` runs from the install on, but on no tailnet until the
 setup page or Administration, **Tailnet** joins one with an auth key. Then
 the **Tailnet** mode in Web access serves her at her own ts.net name
-through `tailscale serve`, on its own or, with **Tailnet name** on,
-beside Built-in Caddy's name. Leaving the tailnet turns off only the ts.net
+through `tailscale serve` on its own, or, with **Tailnet name** on,
+through Built-in Caddy beside its name. Leaving the tailnet turns off only the ts.net
 name; Caddy's name keeps working. Every other port on her tailnet address is
 forwarded to this machine's loopback, so a service you add there is
 reachable from her tailnet too; a Tailscale ACL that allows only port 443

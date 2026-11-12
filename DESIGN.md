@@ -2395,7 +2395,8 @@ Details in [docs/sleep.md](docs/sleep.md).
       provider and its credentials, and shows the certificate's state. Caddy
       also listens on `127.0.0.1:443`, where her userspace tailscaled hands
       443 on her own tailnet address, so the name's DNS record may point
-      there too, unless her ts.net name holds that port.
+      there too. With her ts.net name kept beside it, Caddy serves that
+      name as well, with her tailnet's certificate, so both share the port.
     - **External proxy**: a Caddy, or another proxy, elsewhere on the owner's
       network. `lyricad` also listens on one Tailscale or LAN address and
       accepts connections only from the proxy addresses listed in the panel.

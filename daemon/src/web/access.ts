@@ -9,7 +9,7 @@ import { checkServerIdentity, connect as connectTls, type PeerCertificate } from
 import type { Db, FrontDoor } from "@lyrica/core";
 import type * as Api from "../api.ts";
 import type { Listener } from "../http.ts";
-import { adminOnly, CaddyAdmin, caddyConfig, type CaddyPaths, type CaddySite } from "./caddy.ts";
+import { adminOnly, CaddyAdmin, caddyConfig, type CaddyPaths, type CaddySite, type CaddyTailnet } from "./caddy.ts";
 import { provider, PROVIDERS } from "./providers.ts";
 import type { TailnetControl } from "../tailnet.ts";
 
@@ -240,6 +240,9 @@ export class ExternalListener {
   }
 }
 
+/** How often Tailnet beside Built-in asks her tailscaled for her certificate again (it renews it itself). */
+const RENEW_MS = 12 * 60 * 60 * 1000;
+
 /** How long a replaced listener's open requests may take to finish. */
 const GRACE_MS = 5000;
 
@@ -282,6 +285,8 @@ export interface WebAccessOptions {
   frontFile?: string;
   /** How long to wait for a new name's certificate. */
   certWaitMs?: number;
+  /** How often Tailnet beside Built-in asks her tailscaled for her certificate again (12 hours outside tests). */
+  renewMs?: number;
   /** Extra CA to trust when checking the certificate (tests). */
   trustCa?: string;
   log: (line: string) => void;
@@ -519,40 +524,66 @@ export class WebAccess {
     if (next.mode === "builtin") {
       const before = await this.caddy.config();
       if (before === undefined) throw new Error(`Caddy doesn't answer on ${this.o.caddy.socket}; is lyrica-caddy running?`);
-      // Tailnet beside it, newly on: served first, and taken down again if Caddy's side fails.
-      const serve = tailnetOn(next) && !tailnetOn(prev);
-      if (serve) await this.o.tailnet!.serve(this.o.servePort!);
+      // Tailnet beside it: Caddy serves her ts.net name too, with her tailnet certificate, so both
+      // names share 443 on her tailnet address. No certificate, no change: the previous setup stays.
+      const ts = await this.tailnetSite(next);
       // The old name keeps its route until the new one has a certificate that verifies.
       const keep = prev.mode === "builtin" && prev.name !== next.name ? [this.site(prev)] : [];
       const since = Date.now();
-      try {
-        await this.caddy.load(caddyConfig(this.site(next), this.o.caddy, keep)).catch((err: Error) => {
-          // Another service on this machine holds loopback's port: say whose door it is.
-          if (/127\.0\.0\.1:\d+.*address already in use/.test(err.message)) {
-            throw new Error(`something else on this machine listens on 127.0.0.1:${this.o.httpsPort}, where her tailnet address reaches Caddy; stop it or move it, then try again`);
-          }
-          throw err;
-        });
-        const why = await this.certificate(next);
-        if (why) {
-          await this.caddy.load(before).catch(() => {});
-          const tls = lastError(this.o.caddy.tlsLog, since);
-          throw new Error(`no certificate for ${next.name} came within ${Math.round((this.o.certWaitMs ?? CERT_WAIT_MS) / 1000)} s (${why}${tls ? `; Caddy: ${tls.message}` : ""}), so the previous setup stays`);
+      await this.caddy.load(caddyConfig(this.site(next), this.o.caddy, keep, ts)).catch((err: Error) => {
+        // Another service on this machine holds loopback's port: say whose door it is.
+        if (/127\.0\.0\.1:\d+.*address already in use/.test(err.message)) {
+          throw new Error(`something else on this machine listens on 127.0.0.1:${this.o.httpsPort}, where her tailnet address reaches Caddy; stop it or move it, then try again`);
         }
-      } catch (err) {
-        if (serve) await this.o.tailnet!.serveReset().catch(() => {});
         throw err;
+      });
+      const why = await this.certificate(next);
+      if (why) {
+        await this.caddy.load(before).catch(() => {});
+        const tls = lastError(this.o.caddy.tlsLog, since);
+        throw new Error(`no certificate for ${next.name} came within ${Math.round((this.o.certWaitMs ?? CERT_WAIT_MS) / 1000)} s (${why}${tls ? `; Caddy: ${tls.message}` : ""}), so the previous setup stays`);
       }
-      if (keep.length) await this.caddy.load(caddyConfig(this.site(next), this.o.caddy));
+      if (keep.length) await this.caddy.load(caddyConfig(this.site(next), this.o.caddy, [], ts));
       await this.o.external.set(undefined);
-      // Caddy's name already answers, so nobody is locked out; the status says once the ts.net certificate comes.
-      if (serve) next.tailnet!.certificates = !(await answers(next.tailnet!.dnsName, 5000));
+      if (ts) {
+        // `tailscale serve` (the Tailnet mode, or Tailnet beside from a release before this) held 443 on her
+        // address; with it reset, her tailscaled hands 443 to Caddy on 127.0.0.1, which now has both names.
+        await this.o.tailnet!.serveReset().catch((err: Error) => this.o.log(`tailscale serve didn't reset: ${err.message}`));
+        next.tailnet!.certificates = !(await answers(next.tailnet!.dnsName, 5000));
+      }
       return;
     }
     // Off: only lyricad's local listeners stay.
     await this.o.external.set(undefined);
     if (prev.mode === "builtin") await this.caddy.load(adminOnly(this.o.caddy)).catch(() => {});
   }
+
+  /** Her ts.net name for Caddy while Tailnet is on beside it, with her tailnet certificate as her tailscaled has it now. */
+  private async tailnetSite(s: Stored): Promise<CaddyTailnet | undefined> {
+    if (!tailnetOn(s)) return undefined;
+    const name = s.tailnet!.dnsName;
+    const pair = await this.o.tailnet!.cert(name);
+    this.tailnetPair = { name, ...pair };
+    // Whether it came from a change or from unlock, the certificate is asked for again on a timer.
+    this.renewal ??= setInterval(() => { this.queue = this.queue.then(() => this.resume()).catch(() => {}); }, this.o.renewMs ?? RENEW_MS).unref();
+    return { name, upstream: this.o.servePort!, ...pair };
+  }
+
+  /** Stops asking her tailscaled for the certificate (lyricad stopping or locking). */
+  close(): void {
+    clearInterval(this.renewal);
+    this.renewal = undefined;
+  }
+
+  /** The tailnet certificate last given to Caddy, for comparing its config without asking tailscaled again. */
+  private tailnetPair: { name: string; cert: string; key: string } | undefined;
+  private lastTailnetSite(s: Stored): CaddyTailnet | undefined {
+    const p = this.tailnetPair;
+    return tailnetOn(s) && p?.name === s.tailnet!.dnsName ? { ...p, upstream: this.o.servePort! } : undefined;
+  }
+
+  /** Tailscale renews her certificate well before it expires; this picks the new one up. */
+  private renewal: NodeJS.Timeout | undefined;
 
   private site(s: Stored): CaddySite {
     const b = s.builtin!;
@@ -582,10 +613,9 @@ export class WebAccess {
     if (!list.length) return { error: `this machine can't resolve ${s.name}` };
     const served = new Set(s.builtin!.addresses);
     if (list.some((a) => served.has(a))) return { addresses: list, served: true };
-    // Her own tailnet address: her tailscaled hands 443 there to Caddy on 127.0.0.1,
-    // unless `tailscale serve` holds 443 for her ts.net name (Tailnet beside Caddy).
+    // Her own tailnet address: her tailscaled hands 443 there to Caddy on 127.0.0.1.
     const hers = await this.tailnetAddress(s);
-    if (hers && list.includes(hers)) return tailnetOn(s) ? { addresses: list, served: false, tailnet: "taken" } : { addresses: list, served: true, tailnet: "forwarded" };
+    if (hers && list.includes(hers)) return { addresses: list, served: true, tailnet: "forwarded" };
     return { addresses: list, served: false };
   }
 
@@ -616,10 +646,17 @@ export class WebAccess {
     const s = this.load();
     if (s.mode !== "builtin") return;
     try {
-      const want = caddyConfig(this.site(s), this.o.caddy);
+      let ts: CaddyTailnet | undefined;
+      if (tailnetOn(s)) {
+        ts = await this.tailnetSite(s).catch((err: Error) => { this.o.log(`her tailnet certificate didn't come (${err.message}); Caddy keeps what it has`); return undefined; });
+        if (!ts) return;
+      }
+      const want = caddyConfig(this.site(s), this.o.caddy, [], ts);
       const have = await this.caddy.config();
       if (have === undefined) this.o.log("Caddy doesn't answer; web access waits for it");
       else if (canonical(have) !== canonical(want)) await this.caddy.load(want);
+      // Tailnet beside from a release before this one ran `tailscale serve` on 443; Caddy has her name now.
+      if (ts && have !== undefined) await this.o.tailnet!.serveReset().catch((err: Error) => this.o.log(`tailscale serve didn't reset: ${err.message}`));
     } catch (err) {
       this.o.log(`web access didn't come back: ${this.redact((err as Error).message, s).split("\n")[0]}`);
     }
@@ -634,7 +671,7 @@ export class WebAccess {
         answers: have !== undefined,
         // Running with no site: its saved config couldn't load at start and was moved aside.
         configured: !!have?.apps?.http,
-        applied: have !== undefined && canonical(have) === canonical(caddyConfig(this.site(s), this.o.caddy)),
+        applied: have !== undefined && canonical(have) === canonical(caddyConfig(this.site(s), this.o.caddy, [], this.lastTailnetSite(s))),
       };
       const readAt = s.builtin!.addresses[0]!;
       const c = await peer(readAt, this.o.httpsPort, s.name);
@@ -676,15 +713,15 @@ export class WebAccess {
   }
 
   /**
-   * Leaving the tailnet: Tailnet beside Built-in goes off, and Caddy's site is
-   * left as it is. True if it was on. The Tailnet mode itself is switched by
-   * the caller, to Direct or off.
+   * Leaving the tailnet: Tailnet beside Built-in goes off, and Caddy keeps
+   * only the custom name. True if it was on. The Tailnet mode itself is
+   * switched by the caller, to Direct or off.
    */
   dropTailnet(): Promise<boolean> {
     const run = this.queue.then(async () => {
       const s = this.load();
       if (s.mode !== "builtin" || !tailnetOn(s)) return false;
-      await this.o.tailnet?.serveReset().catch((err: Error) => this.o.log(`tailscale serve didn't reset: ${err.message}`));
+      await this.caddy.load(caddyConfig(this.site(s), this.o.caddy)).catch((err: Error) => this.o.log(`Caddy kept her ts.net name: ${this.redact(err.message, s).split("\n")[0]}`));
       this.save({ ...s, tailnet: { ...s.tailnet!, beside: false } });
       this.rememberFront();
       return true;
