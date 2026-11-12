@@ -459,6 +459,8 @@ export class Workspace {
       }),
       /** Whether the user allowed this MCP tool on this server in this thread. */
       toolAllowedInThread: (server: string, tool: string) => this.settings(t.userId).toolAllowedInThread(t.threadId, server, tool),
+      /** Allow MCP bypass, read at every call. */
+      mcpBypass: () => this.settings(t.userId).mcpBypassAllowed(),
       /** An approved plan switching the thread's mode. */
       setMode: (mode: PermissionMode) => { this.settings(t.userId).setThread(t.threadId, t.pool, { mode }); },
       network: (): Network => this.network(t),

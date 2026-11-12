@@ -1578,7 +1578,7 @@ lookups (`services.lyrica.mcpNixos`, docs/guides/nixos-mcp.md).
 - **Approval:** a tool its server marks read-only (`readOnlyHint`) runs
   freely, and only those (with `tool_search`) are on in Plan mode. Every
   other call asks, whatever the mode, with **Allow in this thread** for
-  that tool. A read-only or narrowed subagent gets no MCP servers; an
+  that tool, except in Bypass permissions with **Allow MCP bypass** on. A read-only or narrowed subagent gets no MCP servers; an
   unnarrowed writer gets its parent's, and its calls ask in both threads.
 
 ## Claude Code
@@ -2022,7 +2022,12 @@ judgment and make review easy. Each thread has a **mode**:
   Settings → Network → New threads). In the sandbox no mode prompt
   and no suspect-command warning asks. The cards that ask in every mode
   still do: an MCP tool that isn't read-only, an open-world tool, and a
-  `browse` form or attachment. Forbid rules still refuse, and so does a command they
+  `browse` form or attachment. The MCP card alone goes too while the user
+  has also turned on **Allow MCP bypass** (`mcpBypassAllowed`,
+  `setMcpBypassAllowed`; beside Allow bypass, off by default, asked with a
+  warning, and off again whenever Allow bypass goes off), for one machine
+  the user lets her run unattended; the credential check on what a call
+  sends still holds. Forbid rules still refuse, and so does a command they
   can't see into (the card it would get elsewhere), so wrapping a command
   in `eval` or `bash -c "$(…)"` doesn't get round them. The user's own Ask
   rules still ask, and on a machine the stricter of Auto and its limit

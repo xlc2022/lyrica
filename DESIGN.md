@@ -2229,7 +2229,10 @@ Details in [docs/sleep.md](docs/sleep.md).
     Settings. Commands and file changes in the sandbox don't ask, not even
     deletes or force pushes; Forbid rules (which also refuse a command they
     can't see into), the user's own Ask rules, the cards that ask in every
-    mode and machine limits still hold.
+    mode and machine limits still hold. A second switch, **Allow MCP
+    bypass** (off by default, turned on only through a warning), drops the
+    MCP server card too, for one machine she runs unattended; forms,
+    attachments and open-world tools still ask.
   - **Plan:** she can only read, recall and use read-only subagents. She
     writes a plan and asks to go ahead; approving it switches the thread to
     the mode the user picks, and she carries on.
@@ -2399,7 +2402,8 @@ Details in [docs/sleep.md](docs/sleep.md).
       provider and its credentials, and shows the certificate's state. Caddy
       also listens on `127.0.0.1:443`, where her userspace tailscaled hands
       443 on her own tailnet address, so the name's DNS record may point
-      there too, unless her ts.net name holds that port.
+      there too. With her ts.net name kept beside it, Caddy serves that
+      name as well, with her tailnet's certificate, so both share the port.
     - **External proxy**: a Caddy, or another proxy, elsewhere on the owner's
       network. `lyricad` also listens on one Tailscale or LAN address and
       accepts connections only from the proxy addresses listed in the panel.

@@ -62,6 +62,8 @@ export interface LyricadOptions {
     resolve?: (name: string) => Promise<string[]>;
     /** How long a new name may take to get its certificate (default 90 s). */
     certWaitMs?: number;
+    /** How often her tailnet certificate is read again for Caddy (tests). */
+    renewMs?: number;
     /** An extra CA trusted when checking that certificate (tests). */
     trustCa?: string;
     /** Direct's port on this machine's addresses (default 7340, lyricad's own). */
@@ -513,7 +515,7 @@ export class Lyricad implements Drainable {
       self: () => keyring.self(), tailnet: this.tailnet, servePort: this.servePort, directPort: w.directPort,
       caddy: { socket: w.caddySocket ?? "/run/lyrica-caddy/admin.sock", tlsLog: w.tlsLog ?? "/run/lyrica-caddy/tls.log" },
       httpsPort: w.httpsPort ?? 443, upstream: this.port, reserved: [this.port, this.servePort], addresses: w.addresses, resolve: w.resolve,
-      external: this.external, frontFile: this.frontFile, certWaitMs: w.certWaitMs, trustCa: w.trustCa, log: this.log,
+      external: this.external, frontFile: this.frontFile, certWaitMs: w.certWaitMs, renewMs: w.renewMs, trustCa: w.trustCa, log: this.log,
     });
     this.frontSaved = web.rememberFront();
     this.frontNamesSaved = web.frontNames();
@@ -1175,6 +1177,7 @@ export class Lyricad implements Drainable {
       await s.host.close();
       for (const id of this.mounted) await s.workspace.unmountHome(id).catch(() => {});
       for (const u of s.users.all()) this.keyring.lockUser(u.id);
+      s.web.close();
       this.frontSaved = s.web.front();
       this.frontNamesSaved = s.web.frontNames();
     }

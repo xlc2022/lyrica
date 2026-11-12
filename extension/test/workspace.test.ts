@@ -65,7 +65,7 @@ interface Run {
   /** Repositories add_repository added. */
   added?: ThreadRepository[];
   /** The thread's MCP servers, read on every call (a test may empty it mid-turn), and the tools allowed in the thread as "<server>/<tool>". */
-  mcp?: { servers: ThreadMcpServer[]; allowed?: string[] };
+  mcp?: { servers: ThreadMcpServer[]; allowed?: string[]; bypass?: boolean };
   /** The credentials in the sandbox's runs. */
   secrets?: string[];
   /** Whether the thread's runs have Claude Code. */
@@ -140,7 +140,7 @@ async function run(mode: ThreadWorkspace["mode"], calls: ReturnType<typeof fauxT
     repositories: () => o.repositories ?? [], cloneRepositories: async () => o.cloneProblems ?? [],
     gitAccounts: () => (o.gitAccounts ?? []).map((name) => ({ name, kind: "github", host: "github.com" })),
     addRepository: (r) => { o.added?.push(r); return [...(o.repositories ?? []), ...(o.added ?? [])]; },
-    ...(o.mcp ? { mcpServers: () => o.mcp!.servers, toolAllowedInThread: (s: string, t: string) => (o.mcp!.allowed ?? []).includes(`${s}/${t}`) } : {}),
+    ...(o.mcp ? { mcpServers: () => o.mcp!.servers, toolAllowedInThread: (s: string, t: string) => (o.mcp!.allowed ?? []).includes(`${s}/${t}`), mcpBypass: () => o.mcp!.bypass === true } : {}),
   });
   const mcp = o.mcp ? [createMcpServersExtension({ mcpServers: () => o.mcp!.servers })] : [];
   const loader = new DefaultResourceLoader({
@@ -897,6 +897,14 @@ describe("MCP servers in a thread", () => {
       // Bypass permissions keeps this card: it asks in every mode.
       await run("bypass", [], { steps: [[search], [turnOn]], mcp: { servers }, approve: async (r) => { asked.push(r); return false; } });
       expect(asked.map((r) => r.serverTool)).toEqual(["turn_on"]);
+      // Allow MCP bypass drops it, but only in Bypass permissions.
+      asked.length = 0;
+      await run("auto", [], { steps: [[search], [turnOn]], mcp: { servers, bypass: true }, approve: async (r) => { asked.push(r); return false; } });
+      expect(asked.map((r) => r.serverTool)).toEqual(["turn_on"]);
+      asked.length = 0;
+      await run("bypass", [], { steps: [[search], [turnOn]], mcp: { servers, bypass: true }, approve: async (r) => { asked.push(r); return false; } });
+      expect(asked).toEqual([]);
+      expect(house.calls.map((c) => c.tool)).toEqual(["get_status", "turn_on", "turn_on"]);
     } finally {
       await house.close();
     }

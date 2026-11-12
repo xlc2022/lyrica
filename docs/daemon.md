@@ -332,8 +332,9 @@ Each active thread is one Pi session from `openThreadSession`, with
   and its open views get `settings`. Workspace settings (mode and switches
   included) are read on every tool call, so they apply at once.
 - A new thread starts in the user's default mode (`GET`/`PUT
-  /api/u/:userId/mode`, `{ mode, bypass }`; `bypass` is the Allow bypass
-  switch, which a thread's settings carry as `bypassAllowed`).
+  /api/u/:userId/mode`, `{ mode, bypass, mcp }`; `bypass` is the Allow bypass
+  switch, which a thread's settings carry as `bypassAllowed`, and `mcp` is
+  Allow MCP bypass, refused while `bypass` is off).
 - After the first exchange, an untitled thread gets a title from the `title`
   task model, through the thread's own model runtime.
 - Settings are checked when saved, and refused whole with the reason: a cloud
@@ -1440,25 +1441,37 @@ Plain-HTTP listeners stay HTTP/1.1.
   port 80), a DNS-01 certificate through the provider, and `reverse_proxy` to
   `127.0.0.1:<port>`. Caddy also listens on `127.0.0.1:443` (never a
   wildcard): her userspace tailscaled hands 443 on her tailnet address to
-  that port while `tailscale serve` doesn't hold it, so a name whose DNS
-  record points at her tailnet address reaches Caddy. Those requests reach
+  that port, since `tailscale serve` doesn't hold it in this mode, so a name
+  whose DNS record points at her tailnet address reaches Caddy. Those requests reach
   `lyricad` with `127.0.0.1` as the client address, so every tailnet peer
   coming that way shares one per-address rate limit (the per-login one is
   unchanged). If something else holds `127.0.0.1:443`, the change is
   refused and says so. The status's DNS record says `tailnet: "forwarded"`
-  for her tailnet address, or `"taken"` while Tailnet beside Built-in holds
-  443 there for her ts.net name. Caddy saves it (`--resume`), so it keeps serving while
+  for her tailnet address. Caddy saves it (`--resume`), so it keeps serving while
   `lyricad` is locked; after unlock, `lyricad` loads it again only if Caddy's
   differs.
 - **Tailnet beside Built-in.** With **Tailnet name** on (`tailnet: true` in
   the change; on by default when switching from Tailnet, and left out it
-  stays as it was), `tailscale serve` keeps serving her ts.net name while
-  Caddy serves the custom name, so both work. The same checks as the
-  Tailnet mode apply. Switching from Tailnet leaves `tailscale serve`
-  running; turning it on from Built-in starts it before Caddy's change and
-  resets it if Caddy's certificate doesn't come. Caddy's name is checked as
-  usual; the ts.net name isn't waited for, and the status says once it
-  answers. Leaving the tailnet turns it off and leaves Caddy's site alone.
+  stays as it was), Caddy serves her ts.net name too, on the same
+  listeners, so both names share 443 on her tailnet address. Its route goes
+  to the serve port, as `tailscale serve`'s does in the Tailnet mode, and
+  its certificate is her tailnet's, read from her tailscaled with `tailscale
+  cert --cert-file=- --key-file=-` and loaded into Caddy's config
+  (`load_pem`, with the name under `skip_certificates` so Caddy never asks
+  ACME for it). The key goes only to Caddy, whose saved config holds it as
+  it holds the DNS token. The same checks as the Tailnet mode apply; no
+  certificate from her tailscaled refuses the change. Once Caddy has both
+  names, `serve reset` frees 443 on her address for it (also after unlock,
+  for a setup from a release that ran `tailscale serve` beside Caddy).
+  After unlock and every 12 hours `lyricad` asks her tailscaled for the
+  certificate again, which renews it itself, and reloads Caddy if it
+  changed; if none comes, Caddy keeps what it has. Rolled back to a
+  release from before this, `lyricad` reloads Caddy without the ts.net
+  name, and with `tailscale serve` already reset that name stops answering
+  until **Tailnet name** is turned off and on again. Caddy's name is checked
+  as usual; the ts.net name isn't waited for, and the status says once it
+  answers. Leaving the tailnet turns it off and reloads Caddy with only its
+  own name.
   Caddy's units run it with `GODEBUG=multipathtcp=0`: it listens with plain
   TCP, not Multipath TCP, which Go turns on by default and which the Linux
   kernel bug CVE-2026-98432 was shown to reach for remote root. A patched

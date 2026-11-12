@@ -1097,7 +1097,7 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
     or a proxy elsewhere;
   - the hostname (Caddy and proxy modes), with a hint saying where its DNS
     record goes: one of the addresses under Serve on, or her tailnet address
-    while Tailnet name is off (Caddy), or the proxy (proxy mode);
+    (Caddy), or the proxy (proxy mode);
   - for the built-in Caddy: the Tailscale and LAN addresses to serve on, the
     DNS provider with its credential fields and its token-scoping hint, an
     email for certificate warnings, and, under Advanced, testing with
@@ -1106,8 +1106,7 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
     the certificate to pin, and a Caddyfile snippet;
   - the status of Caddy, the certificate with the address it was read at, the
     DNS record the hostname points at and whether that is one of the addresses
-    served, or her tailnet address (reached through loopback, or held by
-    `tailscale serve` while Tailnet name is on), and the last certificate error; for Direct the addresses listening
+    served, or her tailnet address (reached through loopback), and the last certificate error; for Direct the addresses listening
     and the fingerprint, for Tailnet the name and whether it answers.
 
   Applying waits as long as `lyricad` needs (a new hostname can take about 90 s)

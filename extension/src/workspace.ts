@@ -45,6 +45,8 @@ export interface ThreadTools {
   mcpServers?(): { name: string }[];
   /** Whether the user allowed this MCP tool on this server in this thread. */
   toolAllowedInThread?(server: string, tool: string): boolean;
+  /** Allow MCP bypass: in Bypass permissions, MCP tools that change things run without asking. Without it, they ask. */
+  mcpBypass?(): boolean;
   /** One action on one of the thread's Proxmox machines. Without it, there is no proxmox tool. */
   proxmox?(machine: string, action: ProxmoxAction, vm?: string): Promise<string>;
   /**
@@ -459,18 +461,19 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
       const rule = event.toolName === "bash" ? decide(String(input.command), rules, script) : undefined;
       if (rule?.decision === "forbid") return { block: true, reason: `This project's rules forbid \`${rule.prefix}\`. Ask the user to run it, or do it another way.` };
       // Bypass permissions (only when the user turned on Allow bypass): no mode or suspect card in the sandbox.
-      // Forbid rules above, the user's own Ask rules, the cards that ask in every mode (MCP tools, browse forms and
-      // attachments, open-world tools) and SSH machines' limits still hold.
+      // Forbid rules above, the user's own Ask rules, the cards that ask in every mode (MCP tools unless the user also
+      // turned on Allow MCP bypass, browse forms and attachments, open-world tools) and SSH machines' limits still hold.
       const bypass = tools.settings().mode === "bypass";
       const mcp = mcpCall(event.toolName);
       // A call that reaches someone else (a search, a page, an MCP server) never carries one of the sandbox's credentials.
       if ((mcp || LEAVES.has(event.toolName)) && holdsSecret(JSON.stringify(input), sandboxSecrets())) {
         return { block: true, reason: "That would send one of this thread's credentials out of Lyrica. Leave it out." };
       }
-      // An MCP tool: one its server marks read-only runs; any other leaves the server, so it always asks, in every mode.
+      // An MCP tool: one its server marks read-only runs; any other leaves the server, so it asks in every mode, except
+      // in Bypass permissions with Allow MCP bypass on. The credential check above holds either way.
       if (mcp) {
         if (!mcp.server) return { block: true, reason: `${event.toolName} isn't a tool of this thread's MCP servers.` };
-        if (mcp.readOnly || tools.toolAllowedInThread?.(mcp.server, mcp.tool) || tools.takeGrant?.(grantKey(event.toolName, input))) return undefined;
+        if (mcp.readOnly || (bypass && tools.mcpBypass?.() === true) || tools.toolAllowedInThread?.(mcp.server, mcp.tool) || tools.takeGrant?.(grantKey(event.toolName, input))) return undefined;
         const request: ApprovalRequest = { toolCallId: event.toolCallId, tool: event.toolName, input, server: mcp.server, serverTool: mcp.tool };
         const answer = tools.approve ? await tools.approve(request) : await approve(ctx, request);
         return answer === true ? undefined : refusal(answer);
