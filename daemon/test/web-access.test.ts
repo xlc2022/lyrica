@@ -87,9 +87,10 @@ async function setup(addresses: HostAddress[] = [{ address: "127.0.0.1", kind: "
   const ca = testCa();
   const tls = await caddyServing(ca);
   const httpsPort = tls.port;
+  const { web: moreWeb, ...rest } = more;
   const dm = await daemon(rt, {
-    web: { caddySocket: caddy.socket, tlsLog: join(rt.home, "tls.log"), httpsPort, addresses: () => addresses, resolve, certWaitMs: 1500, trustCa: ca.ca },
-    rateLimit: { free: 1, baseMs: 60_000, maxMs: 600_000 }, ...more,
+    web: { caddySocket: caddy.socket, tlsLog: join(rt.home, "tls.log"), httpsPort, addresses: () => addresses, resolve, certWaitMs: 1500, trustCa: ca.ca, ...moreWeb },
+    rateLimit: { free: 1, baseMs: 60_000, maxMs: 600_000 }, ...rest,
   });
   await browser(dm.base).post("/api/unlock", { passphrase: "passphrase" });
   const ada = await login(dm.base, "ada", "pw");
@@ -502,6 +503,24 @@ describe("web access, Tailnet beside built-in Caddy", () => {
     const loads = caddy.state.loads.length;
     await d.services!.web.resume();
     expect(caddy.state.loads.length).toBe(loads);
+  });
+
+  it("reads her certificate again on a timer once a change turns Tailnet name on, and reloads Caddy when it renewed", async () => {
+    const rt = await runtime();
+    const dir = mkdtempSync(join(tmpdir(), "lyrica-ts-"));
+    cleanup.push(() => rmSync(dir, { recursive: true, force: true }));
+    const ts = fakeTailscale(KEY, dir);
+    const s = await setup(undefined, rt, { tailnet: { binary: ts.bin, socket: join(rt.home, "tailscaled.sock") }, web: { renewMs: 200 } });
+    await s.ada.put(`/api/u/${rt.ada.id}/admin/tailnet`, { authKey: KEY });
+    s.tls.add("lyrica.example.net");
+    const certs = () => ts.calls().filter((c) => c.args[2] === "cert").length;
+    expect((await s.ada.put(s.url, { ...builtin(), tailnet: true })).status).toBe(200);
+    const after = certs();
+    // tailscaled renewed it: the next read gives a new certificate, and Caddy gets it.
+    ts.renew();
+    await expect.poll(certs, { timeout: 3000 }).toBeGreaterThan(after);
+    await expect.poll(() => JSON.stringify((s.caddy.state.config as any).apps.tls.certificates), { timeout: 3000 }).toContain("TEST-RENEWED");
+    s.d.services!.web.close();
   });
 
   it("keeps tailscale serve alone if Caddy's certificate never comes, and leaving the tailnet keeps Caddy's own name", async () => {

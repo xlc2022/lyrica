@@ -285,6 +285,8 @@ export interface WebAccessOptions {
   frontFile?: string;
   /** How long to wait for a new name's certificate. */
   certWaitMs?: number;
+  /** How often Tailnet beside Built-in asks her tailscaled for her certificate again (12 hours outside tests). */
+  renewMs?: number;
   /** Extra CA to trust when checking the certificate (tests). */
   trustCa?: string;
   log: (line: string) => void;
@@ -562,7 +564,15 @@ export class WebAccess {
     const name = s.tailnet!.dnsName;
     const pair = await this.o.tailnet!.cert(name);
     this.tailnetPair = { name, ...pair };
+    // Whether it came from a change or from unlock, the certificate is asked for again on a timer.
+    this.renewal ??= setInterval(() => { this.queue = this.queue.then(() => this.resume()).catch(() => {}); }, this.o.renewMs ?? RENEW_MS).unref();
     return { name, upstream: this.o.servePort!, ...pair };
+  }
+
+  /** Stops asking her tailscaled for the certificate (lyricad stopping or locking). */
+  close(): void {
+    clearInterval(this.renewal);
+    this.renewal = undefined;
   }
 
   /** The tailnet certificate last given to Caddy, for comparing its config without asking tailscaled again. */
@@ -638,7 +648,6 @@ export class WebAccess {
     try {
       let ts: CaddyTailnet | undefined;
       if (tailnetOn(s)) {
-        this.renewal ??= setInterval(() => { this.queue = this.queue.then(() => this.resume()).catch(() => {}); }, RENEW_MS).unref();
         ts = await this.tailnetSite(s).catch((err: Error) => { this.o.log(`her tailnet certificate didn't come (${err.message}); Caddy keeps what it has`); return undefined; });
         if (!ts) return;
       }

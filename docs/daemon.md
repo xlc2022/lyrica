@@ -1441,7 +1441,10 @@ Plain-HTTP listeners stay HTTP/1.1.
   for a setup from a release that ran `tailscale serve` beside Caddy).
   After unlock and every 12 hours `lyricad` asks her tailscaled for the
   certificate again, which renews it itself, and reloads Caddy if it
-  changed; if none comes, Caddy keeps what it has. Caddy's name is checked
+  changed; if none comes, Caddy keeps what it has. Rolled back to a
+  release from before this, `lyricad` reloads Caddy without the ts.net
+  name, and with `tailscale serve` already reset that name stops answering
+  until **Tailnet name** is turned off and on again. Caddy's name is checked
   as usual; the ts.net name isn't waited for, and the status says once it
   answers. Leaving the tailnet turns it off and reloads Caddy with only its
   own name.
