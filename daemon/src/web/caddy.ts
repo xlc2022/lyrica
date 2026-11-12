@@ -48,8 +48,8 @@ function issuer(site: CaddySite): Record<string, unknown> {
 }
 
 /**
- * Caddy's whole config for Lyrica's site: HTTPS on the chosen addresses,
- * DNS-01, and a reverse proxy to lyricad. While the name changes, the old
+ * Caddy's whole config for Lyrica's site: HTTPS on the chosen addresses and
+ * on 127.0.0.1, DNS-01, and a reverse proxy to lyricad. While the name changes, the old
  * site comes along (`also`), so the old name keeps working until the new one
  * has its certificate.
  */
@@ -74,7 +74,10 @@ export function caddyConfig(site: CaddySite, paths: CaddyPaths, also: CaddySite[
       http: {
         servers: {
           lyrica: {
-            listen: [...new Set(sites.flatMap((s) => s.addresses.map((a) => `${a}:${s.port}`)))],
+            // 127.0.0.1 too: her userspace tailscaled hands a connection to her own tailnet address,
+            // on a port it doesn't serve itself, to the same port here, so a name whose DNS record
+            // points at her tailnet address reaches Caddy. Never a wildcard: that would be every interface.
+            listen: [...new Set(sites.flatMap((s) => [...s.addresses, "127.0.0.1"].map((a) => `${a}:${s.port}`)))],
             routes: sites.map((s) => ({
               match: [{ host: [s.name] }],
               handle: [{ handler: "reverse_proxy", upstreams: [{ dial: `127.0.0.1:${s.upstream}` }], flush_interval: -1 }],

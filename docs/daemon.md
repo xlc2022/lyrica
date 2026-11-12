@@ -1414,7 +1414,16 @@ Plain-HTTP listeners stay HTTP/1.1.
   staging for testing. `lyricad` writes Caddy's whole JSON config through its
   admin socket (`POST /load`): HTTPS for the name on those addresses (no
   port 80), a DNS-01 certificate through the provider, and `reverse_proxy` to
-  `127.0.0.1:<port>`. Caddy saves it (`--resume`), so it keeps serving while
+  `127.0.0.1:<port>`. Caddy also listens on `127.0.0.1:443` (never a
+  wildcard): her userspace tailscaled hands 443 on her tailnet address to
+  that port while `tailscale serve` doesn't hold it, so a name whose DNS
+  record points at her tailnet address reaches Caddy. Those requests reach
+  `lyricad` with `127.0.0.1` as the client address, so every tailnet peer
+  coming that way shares one per-address rate limit (the per-login one is
+  unchanged). If something else holds `127.0.0.1:443`, the change is
+  refused and says so. The status's DNS record says `tailnet: "forwarded"`
+  for her tailnet address, or `"taken"` while Tailnet beside Built-in holds
+  443 there for her ts.net name. Caddy saves it (`--resume`), so it keeps serving while
   `lyricad` is locked; after unlock, `lyricad` loads it again only if Caddy's
   differs.
 - **Tailnet beside Built-in.** With **Tailnet name** on (`tailnet: true` in

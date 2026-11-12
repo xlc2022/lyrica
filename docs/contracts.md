@@ -2113,10 +2113,14 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     it, since her tailscaled is userspace). Built-in's status names where each
     fact was measured: `WebAccessStatus.certificate.address` is the served
     address the certificate was read at, and `WebAccessStatus.dns` (`{
-    addresses, served }`, or `{ error }` when this machine's lookup of the
+    addresses, served, tailnet? }`, or `{ error }` when this machine's lookup of the
     name fails, whether because nothing answers at it or because its resolver
     didn't reply) is where the hostname points, and whether Caddy serves on
-    any of those addresses. All additive.
+    any of those addresses. `tailnet` is set when the name points at her own
+    tailnet address: `"forwarded"` (her tailscaled hands 443 there to Caddy's
+    `127.0.0.1:443`, so `served` is true) or `"taken"` (Tailnet beside
+    Built-in holds 443 there for her ts.net name, so `served` is false). All
+    additive.
   - **Wrong door.** On the two plain loopback listeners (`port` and the serve
     port), a request whose `Host` isn't this machine's loopback name and that
     no trusted proxy marked `X-Forwarded-Proto: https` is answered without

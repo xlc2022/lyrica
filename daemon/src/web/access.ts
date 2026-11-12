@@ -526,7 +526,13 @@ export class WebAccess {
       const keep = prev.mode === "builtin" && prev.name !== next.name ? [this.site(prev)] : [];
       const since = Date.now();
       try {
-        await this.caddy.load(caddyConfig(this.site(next), this.o.caddy, keep));
+        await this.caddy.load(caddyConfig(this.site(next), this.o.caddy, keep)).catch((err: Error) => {
+          // Another service on this machine holds loopback's port: say whose door it is.
+          if (/127\.0\.0\.1:\d+.*address already in use/.test(err.message)) {
+            throw new Error(`something else on this machine listens on 127.0.0.1:${this.o.httpsPort}, where her tailnet address reaches Caddy; stop it or move it, then try again`);
+          }
+          throw err;
+        });
         const why = await this.certificate(next);
         if (why) {
           await this.caddy.load(before).catch(() => {});
@@ -575,7 +581,18 @@ export class WebAccess {
     }
     if (!list.length) return { error: `this machine can't resolve ${s.name}` };
     const served = new Set(s.builtin!.addresses);
-    return { addresses: list, served: list.some((a) => served.has(a)) };
+    if (list.some((a) => served.has(a))) return { addresses: list, served: true };
+    // Her own tailnet address: her tailscaled hands 443 there to Caddy on 127.0.0.1,
+    // unless `tailscale serve` holds 443 for her ts.net name (Tailnet beside Caddy).
+    const hers = await this.tailnetAddress(s);
+    if (hers && list.includes(hers)) return tailnetOn(s) ? { addresses: list, served: false, tailnet: "taken" } : { addresses: list, served: true, tailnet: "forwarded" };
+    return { addresses: list, served: false };
+  }
+
+  /** Her own tailnet address, if she is on a tailnet. */
+  private async tailnetAddress(s: Stored): Promise<string | undefined> {
+    if (tailnetOn(s) && s.tailnet!.address) return s.tailnet!.address;
+    return (await this.o.tailnet?.serveName().catch(() => undefined))?.address;
   }
 
   /**
