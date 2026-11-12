@@ -137,10 +137,15 @@ existed before became general machines at Ask.
   the machine, the command or path, and the folder a command runs in. The
   call runs only if its arguments are still exactly those; anything else is
   refused. A refused call's result tells her which it was, the person
-  declining it (`NOT_APPROVED`) or nobody answering in time (`NO_ANSWER`,
-  so she says the request timed out rather than that they declined), and
-  not to do it another way or guess why. A request is denied on Stop, on
-  timeout, or with nobody to ask, so none outlives its turn.
+  declining it (`NOT_APPROVED`), the request held on the person's card
+  (`HELD`: end the turn and wait), or, for a request that can't wait,
+  nobody answering in time (`NO_ANSWER`), and not to do it another way or
+  guess why. A request is denied on Stop or with nobody to ask. One nobody
+  answers during the turn is held (DESIGN.md, Machines; docs/daemon.md,
+  "Held requests"): the person's later yes leaves a grant for that call as
+  shown (`grantKey`: the machine, command or path and folder, or an MCP
+  tool's whole arguments), which the gate uses once (`takeGrant`) when she
+  makes the call again.
 - **Suspect commands always ask**, in every mode, with a warning sentence
   (`suspectCommand(command, where)`, `SUSPECT_COMMANDS` in
   `core/src/workspace/machines.ts`). The list has two parts. **Work she

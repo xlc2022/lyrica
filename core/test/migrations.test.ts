@@ -185,6 +185,20 @@ describe("user step 24 (an upscale that took a clip)", () => {
   });
 });
 
+describe("user step 25 (held approvals)", () => {
+  it("adds the nullable held column to every released user schema, keeping each thread's allowed commands, and the release before still opens it", () => {
+    for (const v of STEPS.user.map((s) => s.version).filter((v) => v < 25)) {
+      const db = scratchDb();
+      migrate(db, "user", {}, STEPS.user.filter((s) => s.version <= v));
+      db.prepare("INSERT INTO thread_workspaces (thread_id, grants, mode, allowed) VALUES ('t', '[]', 'ask', '[{\"machine\":\"sandbox\",\"command\":\"rm -r x\"}]')").run();
+      migrate(db, "user");
+      expect(db.prepare("SELECT held, allowed FROM thread_workspaces").get()).toEqual({ held: null, allowed: '[{"machine":"sandbox","command":"rm -r x"}]' });
+      expect(() => checkReadable(db, "user", STEPS.user.filter((s) => s.version < 25))).not.toThrow();
+      db.close();
+    }
+  });
+});
+
 describe("user step 5 (portrait-photo cloud choice)", () => {
   it("expands every released user schema with Ask once a day and preserves an existing choice", () => {
     for (let v = 1; v < 5; v++) for (const policy of [undefined, "never", "always"]) {

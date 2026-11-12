@@ -7,7 +7,7 @@ import {
 } from "@lyrica/core";
 import {
   BUILTIN_SKILLS, checkoutsOf, codeRepositories, repoSkills, skillsIndex, type ListedSkill, createChecksExtension, createSyntaxExtension, codeTaskText, formatEntry, repoRules, appendUserMessage, executeImage, ContextMeter, createDelegateExtension, createDownloadsExtension, createImageExtension, createLyricaExtension, createMcpServersExtension, createModelsExtension, createReactExtension, createThreadsExtension, createTopExtension, createWebExtension, createWorkspaceExtension, createWaitForReportsExtension, DELEGATE_MESSAGE, EMPTY_REPLY_NOTICE, TURN_TOOL_NOTICE, OPENING, openThreadSession, type ClipMade, piModelFor, syncEntries, timedReply,
-  GO_AHEAD, type Approval, type ApprovalRequest, type ThreadsHost, type Delegation, type DelegationEvent, type GoAhead, type DownloadsHost, type HubListing, type ModelsHost, type PlanRequest, type SubagentApproval, type ThreadContext, type UserReaction,
+  GO_AHEAD, grantKey, MODE_LABELS, type Approval, type ApprovalRequest, type ThreadsHost, type Delegation, type DelegationEvent, type GoAhead, type DownloadsHost, type HubListing, type ModelsHost, type PlanRequest, type SubagentApproval, type ThreadContext, type UserReaction,
 } from "@lyrica/extension";
 import type * as Api from "./api.ts";
 import type { PermissionRequest, ThreadEvent } from "./api.ts";
@@ -78,8 +78,32 @@ const EPOCH = randomBytes(4).toString("hex");
 const WRITING = new Set<ThreadEvent["type"]>(["tool_call", "tool_start", "tool_end", "recall", "remember"]);
 
 type Client = (id: string, event: ThreadEvent) => void;
-type Outcome = "answered" | "timeout" | "stopped";
-type Done = (allowed: boolean, reason: Outcome, mode?: GoAhead) => void;
+/** How a request ended: "held" kept it on the card past the turn, and "withdrawn" is a later held request replacing it. */
+type Outcome = "answered" | "timeout" | "stopped" | "held" | "withdrawn";
+/** How a request on a card ended. */
+type Ended = Exclude<Outcome, "held">;
+type Done = (allowed: boolean, reason: Ended, mode?: GoAhead) => void;
+
+/** Requests that time out rather than wait: a form or a file for a page, and the day's portrait consent, are for the moment they were asked in. */
+const NOT_HELD = new Set(["browse", "image"]);
+
+/** The threads a request shows in: the one its call runs in, and a subagent's parent. */
+const shownIn = (where: string, r: PermissionRequest): string[] =>
+  r.subagent && r.subagent.parentThreadId !== where ? [where, r.subagent.parentThreadId] : [where];
+
+/** What she is told when the person answers a held request: a subagent's goes to its parent, which continues it. */
+function heldNote(r: PermissionRequest, allowed: boolean): string {
+  const args = (r.args ?? {}) as Record<string, unknown>;
+  const what = `${r.tool}${r.machine ? ` on ${r.machine}` : ""}${typeof args.command === "string" ? `: ${args.command}` : typeof args.path === "string" ? ` ${args.path}` : ""}`;
+  if (r.subagent) {
+    return allowed
+      ? `The person allowed the call your ${r.subagent.role} subagent (t:${r.subagent.threadId}) was waiting on (${what}). Continue it with delegate's message: that same call runs there once without asking.`
+      : `The person declined the call your ${r.subagent.role} subagent (t:${r.subagent.threadId}) was waiting on (${what}). Tell it so with delegate's message if it should carry on without it; don't do it another way.`;
+  }
+  return allowed
+    ? `The person allowed the call that was waiting for them (${what}). Make that same call again now: it runs once without asking.`
+    : `The person declined the call that was waiting for them (${what}). Don't do it another way or guess why; carry on without it, or ask what to do instead.`;
+}
 
 /**
  * A marked message (from another thread, or a look) for the running or next
@@ -104,11 +128,87 @@ export class ThreadHost {
     });
   }
 
-  /** The permission requests waiting in any of the user's threads. */
+  /** The permission requests waiting in any of the user's threads, held ones included wherever their threads are. */
   pending(userId: string): { pool: Pool; threadId: string; request: PermissionRequest }[] {
     const out: { pool: Pool; threadId: string; request: PermissionRequest }[] = [];
     for (const t of this.threads.values()) if (t.userId === userId) for (const request of t.permissions) out.push({ pool: t.pool, threadId: t.threadId, request });
+    const seen = new Set(out.map((p) => `${p.pool}/${p.threadId}/${p.request.requestId}`));
+    for (const h of this.stored(userId)) for (const threadId of shownIn(h.threadId, h.request)) {
+      if (!seen.has(`${h.pool}/${threadId}/${h.request.requestId}`)) out.push({ pool: h.pool, threadId, request: h.request });
+    }
     return out;
+  }
+
+  /** The held approvals stored for the user's threads; none while the user is locked. */
+  stored(userId: string): { pool: Pool; threadId: string; request: PermissionRequest }[] {
+    try {
+      return this.opts.workspace.settings(userId).heldApprovals().map((h) => ({ pool: h.pool as Pool, threadId: h.threadId, request: h.request as unknown as PermissionRequest }));
+    } catch { return []; }
+  }
+
+  /**
+   * Nobody answered during the turn: the request stays on its card, kept in
+   * the thread the call runs in, until the person answers it, or a later
+   * held request there, Stop or Resolve replaces it (DESIGN.md, Machines).
+   * False when it can't be kept (a locked user), so it times out as before.
+   */
+  hold(userId: string, pool: Pool, where: string, request: PermissionRequest): boolean {
+    const held: PermissionRequest = { ...request, held: true };
+    let old: PermissionRequest | undefined;
+    try {
+      const settings = this.opts.workspace.settings(userId);
+      const before = settings.held(where);
+      if (before && "request" in before) old = before.request as unknown as PermissionRequest;
+      settings.holdApproval(where, pool, held as unknown as Record<string, unknown> & { requestId: string });
+    } catch { return false; }
+    if (old) for (const id of shownIn(where, old)) this.threads.get(`${userId}/${pool}/${id}`)?.endPermission(old.requestId, false, "withdrawn");
+    for (const id of shownIn(where, held)) this.threads.get(`${userId}/${pool}/${id}`)?.markHeld(held, this.heldDone(userId, pool, where, held));
+    return true;
+  }
+
+  /** What settles a held request, from whichever of its threads answers it. */
+  heldDone(userId: string, pool: Pool, where: string, request: PermissionRequest): Done {
+    return (allowed, reason, mode) => this.settleHeld(userId, pool, where, request, allowed, reason, mode);
+  }
+
+  /**
+   * A held request ended. The person's yes leaves a grant for that one call
+   * as shown (a plan's switches the mode), and either answer wakes the thread
+   * that waits on it: hers, or a subagent's parent, which continues the
+   * subagent. Stop and Resolve only take the card away.
+   */
+  private settleHeld(userId: string, pool: Pool, where: string, request: PermissionRequest, allowed: boolean, reason: Ended, mode?: GoAhead): void {
+    let settings: ReturnType<Workspace["settings"]>;
+    try { settings = this.opts.workspace.settings(userId); } catch { return; }
+    if (!settings.clearHeld(where, request.requestId) && reason === "answered") {
+      // Answered twice at once, or already replaced: the first settling counts.
+      for (const id of shownIn(where, request)) this.threads.get(`${userId}/${pool}/${id}`)?.endPermission(request.requestId, false, "withdrawn");
+      return;
+    }
+    for (const id of shownIn(where, request)) this.threads.get(`${userId}/${pool}/${id}`)?.endPermission(request.requestId, allowed, reason);
+    if (reason !== "answered") return;
+    let note: string;
+    if (request.tool === "propose_plan") {
+      note = "The person chose to keep planning. Ask what to change, or improve the plan.";
+      if (allowed && mode) {
+        try {
+          settings.setThread(where, pool, { mode });
+          note = `The person approved your plan: this thread is in ${MODE_LABELS[mode]} mode now. Go ahead with the plan.`;
+        } catch (err) { note = `The person approved your plan, but this thread can't leave Plan mode: ${(err as Error).message}.`; }
+      }
+    } else {
+      if (allowed) settings.grantHeld(where, grantKey(request.tool, (request.args ?? {}) as Record<string, unknown>, request.machine, request.cwd));
+      note = heldNote(request, allowed);
+    }
+    const target = request.subagent?.parentThreadId ?? where;
+    this.get(userId, pool, target).resume(note).catch(() => { /* locked or closed: the grant stays for her next try */ });
+  }
+
+  /** The person's Stop or Resolve takes the thread's held request away, wherever it shows. */
+  withdrawHeld(userId: string, pool: Pool, threadId: string): void {
+    for (const h of this.stored(userId)) {
+      if (h.pool === pool && (h.threadId === threadId || h.request.subagent?.parentThreadId === threadId)) this.settleHeld(userId, pool, h.threadId, h.request, false, "stopped");
+    }
   }
 
   /** The thread's record if it has one now; unlike `get`, never makes one. */
@@ -123,7 +223,11 @@ export class ThreadHost {
       // An idle record with no streams is dropped; a stream that comes back later gets `reset`.
       const created: HostedThread = new HostedThread(this.opts, userId, pool, threadId, () => {
         if (this.threads.get(key) === created) this.threads.delete(key);
-      });
+      }, this);
+      // Held requests it shows come back with it, after a restart or once its record was dropped.
+      for (const h of this.stored(userId)) {
+        if (h.pool === pool && shownIn(h.threadId, h.request).includes(threadId)) created.markHeld(h.request, this.heldDone(userId, pool, h.threadId, h.request));
+      }
       t = created;
       this.threads.set(key, t);
     }
@@ -136,15 +240,16 @@ export class ThreadHost {
    * timeout, Stop in either thread, or the subagent being stopped refuses it.
    */
   approveSubagent(r: SubagentApproval, signal: AbortSignal): Promise<Approval> {
+    const holdable = !NOT_HELD.has(r.tool);
     const request: PermissionRequest = {
       requestId: randomBytes(8).toString("hex"), toolCallId: r.toolCallId, tool: r.tool, args: r.input, ...onMachine(r), ...commandApproval(this.opts, r.userId, r.pool, r.threadId, r),
-      expiresAt: new Date(Date.now() + this.opts.permissionMs).toISOString(),
+      askedAt: new Date().toISOString(), ...(holdable ? {} : { expiresAt: new Date(Date.now() + this.opts.permissionMs).toISOString() }),
       subagent: { runId: r.runId, threadId: r.threadId, parentThreadId: r.parentThreadId, role: r.role },
     };
     const threads = [r.parentThreadId, r.threadId].map((id) => this.get(r.userId, r.pool, id));
     return new Promise((resolve) => {
       let settled = false;
-      const done = (allowed: boolean, reason: Outcome) => {
+      const done = (allowed: boolean, reason: Ended) => {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
@@ -152,7 +257,15 @@ export class ThreadHost {
         for (const t of threads) t.endPermission(request.requestId, allowed, reason);
         resolve(allowed || (reason === "timeout" ? "timeout" : false));
       };
-      const timer = setTimeout(() => done(false, "timeout"), this.opts.permissionMs);
+      // Past the wait, a holdable request stays on its card and the subagent's turn ends (`hold`); the parent hears the answer.
+      const hold = () => {
+        if (settled) return;
+        if (!this.hold(r.userId, r.pool, r.threadId, request)) return done(false, "timeout");
+        settled = true;
+        signal.removeEventListener("abort", stopped);
+        resolve("held");
+      };
+      const timer = setTimeout(() => (holdable ? hold() : done(false, "timeout")), this.opts.permissionMs);
       const stopped = () => done(false, "stopped");
       signal.addEventListener("abort", stopped, { once: true });
       for (const t of threads) t.addPermission(request, done);
@@ -182,10 +295,15 @@ export class ThreadHost {
     this.threads.get(`${userId}/${pool}/${parent}`)?.publish({ type: "child", threadId });
   }
 
-  /** Working (a turn runs), waiting (for an approval) or idle, without creating a record. */
+  /** Working (a turn runs), waiting (for an approval, a held one too) or idle, without creating a record. */
   status(userId: string, pool: Pool, threadId: string): ChildStatus {
     const t = this.threads.get(`${userId}/${pool}/${threadId}`);
-    return t?.waiting ? "waiting" : t?.busy ? "working" : "idle";
+    return t?.waiting || this.holds(userId, threadId) ? "waiting" : t?.busy ? "working" : "idle";
+  }
+
+  /** Whether a held request waits in the thread, kept while its record isn't there. */
+  private holds(userId: string, threadId: string): boolean {
+    try { const h = this.opts.workspace.settings(userId).held(threadId); return !!h && "request" in h; } catch { return false; }
   }
 
   /** Something was delivered into the thread: its open views see it, once, however it got there. */
@@ -227,6 +345,7 @@ export class ThreadHost {
     const key = `${userId}/${pool}/${threadId}`;
     await this.threads.get(key)?.close();
     this.threads.delete(key);
+    this.withdrawHeld(userId, pool, threadId);
   }
 }
 
@@ -252,7 +371,8 @@ export class HostedThread {
   private readonly buffer: { n: number; event: ThreadEvent }[] = [];
   private n = 0;
   private readonly clients = new Set<Client>();
-  private readonly pending = new Map<string, { request: PermissionRequest; done: Done }>();
+  /** Requests on this thread's cards: `held` ones outlived their turn and wait for the person (`ThreadHost.hold`). */
+  private readonly pending = new Map<string, { request: PermissionRequest; done: Done; held?: true }>();
   /** The person's follow-ups (and a message held for a model): shown as waiting, and Stop gives them back. */
   private queued: string[] = [];
   /** Marked messages no turn has taken yet. Never dropped: what no turn takes is kept in the stored thread. */
@@ -288,7 +408,7 @@ export class HostedThread {
   private liveCall: { call: Api.LiveCall; at: number } | null = null;
 
   constructor(private readonly o: HostOptions, readonly userId: string, readonly pool: Pool, readonly threadId: string,
-    private readonly release: () => void) {
+    private readonly release: () => void, private readonly host: ThreadHost) {
     this.startIdle();
   }
 
@@ -600,8 +720,31 @@ export class HostedThread {
   /** Resolves when the running turn, and the messages queued behind it, are done. */
   settled(): Promise<void> { return this.imageRetryDone ?? this.running; }
 
-  /** Waiting for an answer to a permission request. */
+  /** Waiting for an answer to a permission request, a held one included. */
   get waiting(): boolean { return this.pending.size > 0; }
+
+  /** A request waits inside a turn: the record and its session stay. A held one keeps neither. */
+  private get asking(): boolean { return [...this.pending.values()].some((p) => !p.held); }
+
+  /** Whether the request is held past its turn. */
+  isHeld(requestId: string): boolean { return !!this.pending.get(requestId)?.held; }
+
+  /** Shows a held request here (`ThreadHost.hold`), or takes over one already shown, with what settles it now. */
+  markHeld(request: PermissionRequest, done: Done): void {
+    this.pending.set(request.requestId, { request, done, held: true });
+    // Open views replace their card with this one, so it stays when the turn ends.
+    this.emit({ type: "permission", ...request });
+  }
+
+  /**
+   * The person answered a held request: she hears it as a wake, now, or
+   * after the turn running (a turn she stops drops it; the grant stays).
+   */
+  async resume(note: string): Promise<void> {
+    if (this.closed) return;
+    if (this.busy) { this.goOn = this.goOn ? `${this.goOn}\n\n${note}` : note; return; }
+    await this.wakeChild(note);
+  }
   get permissions(): PermissionRequest[] { return [...this.pending.values()].map((p) => p.request); }
 
   /** A turn runs, or a message waits for a model to answer. */
@@ -890,7 +1033,8 @@ export class HostedThread {
     this.unhold();
     this.heldWake = undefined;
     this.imageRetryAbort?.abort();
-    for (const p of [...this.pending.values()]) p.done(false, "stopped");
+    // A held request stays for the person, unless it is the person's own Stop.
+    for (const p of [...this.pending.values()]) if (!p.held || withdrawQuestion) p.done(false, "stopped");
     if (this.queued.length) {
       this.queued = [];
       this.emit({ type: "queue", queued: [] });
@@ -1032,21 +1176,31 @@ export class HostedThread {
 
   /** Asks every open view of the thread. Stop denies; a timeout answers "timeout", so her result says nobody answered. */
   private async approve(r: ApprovalRequest): Promise<Approval> {
-    const { allowed, reason } = await this.ask(r.toolCallId, r.tool, r.input, { ...onMachine(r), ...commandApproval(this.o, this.userId, this.pool, this.threadId, r) });
-    return allowed || (reason === "timeout" ? "timeout" : false);
+    const { allowed, reason } = await this.ask(r.toolCallId, r.tool, r.input, { ...onMachine(r), ...commandApproval(this.o, this.userId, this.pool, this.threadId, r) }, !NOT_HELD.has(r.tool));
+    return allowed || (reason === "timeout" || reason === "held" ? reason : false);
   }
 
   /** A plan, the same way: approving it says which mode to go ahead in; anything else keeps planning. */
-  private async proposePlan(r: PlanRequest): Promise<GoAhead | undefined> {
-    const { allowed, mode } = await this.ask(r.toolCallId, "propose_plan", { plan: r.plan });
-    return allowed ? mode : undefined;
+  private async proposePlan(r: PlanRequest): Promise<GoAhead | undefined | "held"> {
+    const { allowed, mode, reason } = await this.ask(r.toolCallId, "propose_plan", { plan: r.plan }, {}, true);
+    return reason === "held" ? "held" : allowed ? mode : undefined;
   }
 
-  private ask(toolCallId: string, tool: string, args: unknown, where: Partial<PermissionRequest> = {}): Promise<{ allowed: boolean; reason: Outcome; mode?: GoAhead }> {
+  /**
+   * Asks every open view. Nobody answering within `permissionMs` denies it,
+   * or, if `holdable`, holds it: the card stays and her turn goes on to end
+   * (`ThreadHost.hold`). A holdable request has no `expiresAt`.
+   */
+  private ask(toolCallId: string, tool: string, args: unknown, where: Partial<PermissionRequest> = {}, holdable = false): Promise<{ allowed: boolean; reason: Outcome; mode?: GoAhead }> {
     const requestId = randomBytes(8).toString("hex");
-    const request: PermissionRequest = { requestId, toolCallId, tool, args, ...where, expiresAt: new Date(Date.now() + this.o.permissionMs).toISOString() };
+    const request: PermissionRequest = { requestId, toolCallId, tool, args, ...where, askedAt: new Date().toISOString(), ...(holdable ? {} : { expiresAt: new Date(Date.now() + this.o.permissionMs).toISOString() }) };
     return new Promise((resolve) => {
-      const timer = setTimeout(() => done(false, "timeout"), this.o.permissionMs);
+      const hold = () => {
+        if (!this.pending.has(requestId)) return;
+        if (!this.host.hold(this.userId, this.pool, this.threadId, request)) return done(false, "timeout");
+        resolve({ allowed: false, reason: "held" });
+      };
+      const timer = setTimeout(() => (holdable ? hold() : done(false, "timeout")), this.o.permissionMs);
       const done: Done = (allowed, reason, mode) => {
         if (!this.pending.has(requestId)) return;
         clearTimeout(timer);
@@ -1064,10 +1218,10 @@ export class HostedThread {
   }
 
   /** The request was settled: its prompt goes from this thread's views. */
-  endPermission(requestId: string, allowed: boolean, reason: Outcome): void {
+  endPermission(requestId: string, allowed: boolean, reason: Ended): void {
     if (!this.pending.delete(requestId)) return;
     this.emit({ type: "permission_end", requestId, allowed, reason });
-    if (!this.busy && !this.pending.size && !this.clients.size) this.startIdle();
+    if (!this.busy && !this.asking && !this.clients.size) this.startIdle();
   }
 
   /**
@@ -1523,7 +1677,7 @@ export class HostedThread {
     this.stopIdle();
     this.idle = setTimeout(() => {
       if (this.held) return this.startIdle();
-      if (this.busy || this.pending.size || this.opening) return;
+      if (this.busy || this.asking || this.opening) return;
       this.dispose();
       if (!this.clients.size) this.release();
     }, this.o.idleMs);

@@ -249,15 +249,23 @@ describe("the live view of a thread's stream", () => {
   });
 
   it("tracks permission prompts until they are answered", () => {
-    const req = { requestId: "r1", toolCallId: "c1", tool: "bash", args: {}, expiresAt: "2026-10-09T00:00:00Z" };
+    const req = { requestId: "r1", toolCallId: "c1", tool: "bash", args: {}, askedAt: "2026-01-01T00:00:00.000Z", expiresAt: "2026-10-09T00:00:00Z" };
     const asked = run([{ type: "permission", ...req }]);
     expect(asked.permissions).toEqual([req]);
     expect(run([{ type: "permission_end", requestId: "r1", allowed: true, reason: "answered" }], asked).permissions).toEqual([]);
   });
 
+  it("keeps a held prompt past its turn, as the daemon sent it again, until it ends", () => {
+    const own = { requestId: "r1", toolCallId: "c1", tool: "bash", args: { command: "make deploy" }, askedAt: "2026-01-01T00:00:00.000Z" };
+    const held = { ...own, held: true as const };
+    const s = run([{ type: "turn_start" }, { type: "permission", ...own }, { type: "permission", ...held }, { type: "turn_end", aborted: false }]);
+    expect(s.permissions).toEqual([held]);
+    expect(run([{ type: "permission_end", requestId: "r1", allowed: true, reason: "answered" }], s).permissions).toEqual([]);
+  });
+
   it("keeps a subagent's prompt past the parent's turn, and reloads when a subagent's thread changes", () => {
-    const sub = { requestId: "r2", toolCallId: "c2", tool: "bash", args: {}, expiresAt: "2026-10-09T00:00:00Z", subagent: { runId: "d-1", threadId: "t2", parentThreadId: "t1", role: "worker" } };
-    const own = { requestId: "r1", toolCallId: "c1", tool: "bash", args: {}, expiresAt: "2026-10-09T00:00:00Z" };
+    const sub = { requestId: "r2", toolCallId: "c2", tool: "bash", args: {}, askedAt: "2026-01-01T00:00:00.000Z", expiresAt: "2026-10-09T00:00:00Z", subagent: { runId: "d-1", threadId: "t2", parentThreadId: "t1", role: "worker" } };
+    const own = { requestId: "r1", toolCallId: "c1", tool: "bash", args: {}, askedAt: "2026-01-01T00:00:00.000Z", expiresAt: "2026-10-09T00:00:00Z" };
     const s = run([{ type: "turn_start" }, { type: "permission", ...own }, { type: "permission", ...sub }, { type: "turn_end", aborted: false }]);
     expect(s.permissions).toEqual([sub]);
     const refreshed = run([{ type: "refresh" }], s);

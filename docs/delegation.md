@@ -166,10 +166,10 @@ once, and the reply is delivered.
 
 **Questions.** A subagent calls `ask_parent({ question })` and stops. Its run
 waits for a message, which becomes the subagent's next one; time spent
-waiting doesn't count against the timeout or hold a concurrency slot. A
-question unanswered after `answerMs` (default 60 minutes) ends the
-subagent as stopped, freeing its session and folders; a message later
-continues it in its thread. An update's drain doesn't wait for a run whose
+waiting doesn't count against the timeout or hold a concurrency slot. It
+waits with no clock: only an answer, Stop or a restart ends the wait (a
+restart ends the subagent, and a message later continues it in its
+thread). An update's drain doesn't wait for a run whose
 subagents only wait for answers.
 
 **Notes.** `ask_parent({ question, wait: false })` sends a note and the
@@ -193,9 +193,13 @@ with the subagent's run, thread, role and the exact call; lyricad shows it in
 the subagent's thread and the parent's. In a thread in Plan mode only
 read-only roles start (a writer fails before any thread is made), and the
 subagent itself is in Plan mode: its `bash` and anything else Plan mode turns
-off isn't offered. The parent's switches apply to it the same way. A deny, no answer in time, Stop, or
+off isn't offered. The parent's switches apply to it the same way. A deny, Stop, or
 the subagent being stopped refuses that one call, and the subagent is told
-"Not approved", as the parent would be. With no `approve` (no lyricad), every
+"Not approved", as the parent would be. A call nobody answers during the
+subagent's turn is held, in the subagent's thread (docs/daemon.md, "Held
+requests"): the subagent is told to end its turn and wait, and the person's
+answer wakes the parent, which continues the subagent with `message`; after
+a yes, that same call runs there once without asking. With no `approve` (no lyricad), every
 such call is refused. So writers run in threads that ask first, and parallel
 writers each ask for their own calls.
 
@@ -355,9 +359,7 @@ the thread's scratch folder (`/workspace`).
   past either is stopped, with the reason in its result;
 - `notes`: notes per stretch of work, default 3;
 - `foregroundMs`: how long a foreground run holds its parent's turn,
-  default 5 minutes;
-- `answerMs`: how long a subagent waits for an answer to its question,
-  default 60 minutes.
+  default 5 minutes.
 
 The journal gets one line when a subagent starts (run, thread, role and
 model), finishes or is stopped (with the reason), never its text.

@@ -1511,9 +1511,11 @@ function ServingPrompt({ p, answer, busy, left, error }: { p: PermissionRequest;
   );
 }
 
-function useCountdown(iso: string) {
+/** A request that times out says when; one that waits for the person (no `expiresAt`) shows nothing. */
+function useCountdown(iso: string | undefined) {
   const [now, setNow] = useState(Date.now());
-  useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, []);
+  useEffect(() => { if (!iso) return; const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, [iso]);
+  if (!iso) return "";
   const s = Math.max(0, Math.round((Date.parse(iso) - now) / 1000));
   return s > 0 ? `Denied in ${s >= 60 ? `${Math.floor(s / 60)} min ` : ""}${s % 60} s if nobody answers` : "Denying…";
 }

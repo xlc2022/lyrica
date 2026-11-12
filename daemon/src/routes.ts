@@ -13,7 +13,7 @@ import {
 import type * as Api from "./api.ts";
 import { MODELS_PAGE_CALLS, THREAD_TASKS } from "./api.ts";
 import { Sessions } from "./auth.ts";
-import { HttpError, route, type Request, type Route } from "./http.ts";
+import { HttpError, route, Updating, type Request, type Route } from "./http.ts";
 import { clearLimit, fallBack, threadPlanWait, type ThreadPlanWait } from "./plan-waits.ts";
 import { DEFAULT_BUDGETS, OPENING, OPENROUTER_URL, pinnedBlock, pinnedOf, reserveFor, startOpenRouterSignIn, startPlanSignIn, type OpenRouterSignIn, type PlanSignIn } from "@lyrica/extension";
 import type { ProjectThreadInfo } from "./children.ts";
@@ -1615,7 +1615,10 @@ export function apiRoutes(d: Lyricad): Route[] {
       const user = d.userFor(r);
       const { allow, mode, allowInThread, alwaysAllow } = await r.json<Api.PermissionAnswer>();
       const thread = owner(d, user, (o) => threadOf(o, r));
-      if (!s().host.get(user.id, poolOf(r), thread.id).answer(r.params.requestId!, allow === true, mode, allowInThread === true, alwaysAllow === true)) throw new HttpError(404, "that request is no longer waiting");
+      const hosted = s().host.get(user.id, poolOf(r), thread.id);
+      // A held request's answer starts a turn, which waits until the update is done.
+      if (s().host.draining && hosted.isHeld(r.params.requestId!)) throw new Updating();
+      if (!hosted.answer(r.params.requestId!, allow === true, mode, allowInThread === true, alwaysAllow === true)) throw new HttpError(404, "that request is no longer waiting");
       return { ok: true };
     }),
     route("POST", `${t}/uploads`, async (r): Promise<Api.UploadResponse> => {

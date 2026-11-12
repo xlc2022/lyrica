@@ -1798,7 +1798,7 @@ export type ThreadEvent =
   /** Notes she saved. */
   | { type: "remember"; ids: string[] }
   | ({ type: "permission" } & PermissionRequest)
-  | { type: "permission_end"; requestId: string; allowed: boolean; reason: "answered" | "timeout" | "stopped" }
+  | { type: "permission_end"; requestId: string; allowed: boolean; reason: "answered" | "timeout" | "stopped" | "withdrawn" }
   | { type: "usage"; input: number; output: number; cacheRead: number; cacheWrite: number; total: number }
   /** Messages waiting as follow-ups. */
   | { type: "queue"; queued: string[]; /** One left to join the running turn: it shows when Pi takes it (`received`). */ steered?: true }
@@ -1874,8 +1874,15 @@ export interface PermissionRequest {
   /** "propose_plan" is a plan to approve, with `args` `{ plan }`: the plan card. "image" asks for daily portrait consent; its args carry { question, provider, model } with the resolved model label. */
   tool: string;
   args: unknown;
-  /** When it is denied if nobody answers (ISO time). */
-  expiresAt: string;
+  /** When it was asked (ISO time). */
+  askedAt: string;
+  /**
+   * When it is denied if nobody answers (ISO time). Absent on a request that
+   * waits for the person instead: past the turn's wait it is `held`.
+   */
+  expiresAt?: string;
+  /** Nobody answered during the turn: the card stays until the person answers it, Stop or Resolve, or a later held request in its thread replaces it. */
+  held?: true;
   /** Set for a call on a machine, with the folder a command runs in there. The answer covers exactly what is shown. */
   machine?: string;
   cwd?: string;

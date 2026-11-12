@@ -41,11 +41,9 @@ export interface Limits {
   notes: number;
   /** Longest a foreground run holds its parent's turn, in milliseconds; after that it carries on in the background. */
   foregroundMs: number;
-  /** Longest a subagent waits for an answer to its question, in milliseconds; then it ends, and a message continues it. */
-  answerMs: number;
 }
 // A local model working through a large task can take an hour; one that has stopped answering shows within minutes.
-export const DEFAULT_LIMITS: Limits = { depth: 1, concurrency: 2, runsPerRequest: 8, timeoutMs: 90 * 60_000, idleMs: 5 * 60_000, notes: 3, foregroundMs: 5 * 60_000, answerMs: 60 * 60_000 };
+export const DEFAULT_LIMITS: Limits = { depth: 1, concurrency: 2, runsPerRequest: 8, timeoutMs: 90 * 60_000, idleMs: 5 * 60_000, notes: 3, foregroundMs: 5 * 60_000 };
 
 export type DelegateWorkspace = Pick<Workspace, "inheritSettings" | "forThread" | "settings"> & Partial<Pick<Workspace, "imageFiles" | "claudeDir">>;
 
@@ -417,19 +415,14 @@ export class Run {
   }
 
   /**
-   * Waits for an answer to a subagent's question, for up to `ms`. Unanswered,
-   * the subagent ends, so it doesn't hold its session, its folders or an
-   * update's drain; a message later continues it in its thread.
+   * Waits for an answer to a subagent's question, with no clock: only an
+   * answer, Stop or a restart ends the wait (a restart ends the subagent,
+   * and a message later continues it in its thread). Waiting holds no slot
+   * and doesn't hold an update's drain.
    */
-  waitForAnswer(sub: Subagent, ms: number): Promise<Said> {
+  waitForAnswer(sub: Subagent): Promise<Said> {
     return new Promise((answer, fail) => {
-      const timer = setTimeout(() => {
-        const why = `no answer to its question after ${Math.round(ms / 60_000)} min`;
-        sub.stop("timeout", why);
-        this.cancel(sub, why);
-      }, ms);
-      timer.unref?.();
-      this.asking.push({ sub, answer: (said) => { clearTimeout(timer); answer(said); }, fail: (err) => { clearTimeout(timer); fail(err); } });
+      this.asking.push({ sub, answer, fail });
       this.set("question");
     });
   }
@@ -878,7 +871,7 @@ export class Delegation {
           this.deliver(sub.run.parent, `${asks(sub, reply)}\n\n${answerWith(sub)}`, { runId: sub.run.id, status: "question", threads: [sub.ctx.threadId] });
         } catch { /* locked */ }
       }
-      const answer = await sub.run.waitForAnswer(sub, this.limits.answerMs);
+      const answer = await sub.run.waitForAnswer(sub);
       reply = await sub.turn(answer);
     }
     return reply;

@@ -758,9 +758,27 @@ held in memory only, and dropped when the turn ends.
 Where the thread's mode asks (and for irreversible tools in any mode), the
 workspace tools' `tool_call` hook (`extension/src/workspace.ts`) calls the
 thread's `approve`. `lyricad` sends a `permission` event to every open view
-and waits for `POST …/permissions/:requestId` with `allow`. Nobody answering
-in 5 minutes, or Stop, denies. A view that opens later sees waiting requests
-in `hello`.
+and waits for `POST …/permissions/:requestId` with `allow`. Stop denies.
+A view that opens later sees waiting requests in `hello`.
+
+**Held requests.** Nobody answering within `permissionMs` (5 minutes) holds
+the request (`ThreadHost.hold`): it is stored, with its thread's pool, in
+`user.db` `thread_workspaces.held` (user step 25, expand only) for the thread the call runs in, sent
+again with `held: true`, and her call is refused with `HELD`, so her turn
+ends while the card stays, through turn ends, restarts and dropped records.
+It carries `askedAt` and no `expiresAt`. A later held request in the thread
+replaces it (`permission_end` with `withdrawn`); the person's Stop, Resolve
+or forgetting the thread ends it (`stopped`); a parent's `threads stop`,
+Lock and shutdown keep it. Answering it during an update's drain is `409`
+with `{ updating: true }`. A yes stores a grant for exactly that call
+(`grantKey`), which her workspace gate uses once (`takeGrant`); a plan's yes
+switches the mode instead. Either answer wakes her with a note
+(`HostedThread.resume`), after the running turn if one runs; a subagent's
+wakes its parent, which continues the subagent. A held request keeps its
+thread `waiting` (so wakes wait too) but holds no session and no update's
+drain. Requests that can't wait (`browse` and portrait consent, and the
+`models` and `download_model` cards) carry `expiresAt` and are denied when
+it passes, as `timeout`.
 
 A project's command rules are read for every `bash` call: Forbid refuses
 without a card; Ask prompts in every mode; Allow skips sandbox mode prompts.
@@ -780,7 +798,8 @@ without the stored prefix refuse this answer.
 A plan from Plan mode is a request with `tool: "propose_plan"` and `args: {
 plan }`. Approving it takes `mode` too (`ask`, `acceptEdits` or `auto`;
 without it the answer is refused); `lyricad` switches the thread to it and
-sends `settings`. Denying it, a timeout or Stop keeps planning.
+sends `settings`. Denying it or Stop keeps planning; a held plan's answer
+does the same, and wakes her with it.
 
 A call on a machine adds `machine` and `cwd` (a `proxmox` call has no
 `cwd`); the answer covers exactly that command, path or Proxmox action
@@ -793,8 +812,9 @@ A subagent's request (`ThreadHost.approveSubagent`, given to `Delegation` as
 `approve`) is one request shown in its own thread and its parent's, with
 `subagent` naming the run, thread and role. Either thread's views may answer;
 the first answer wins, and both get `permission_end` (a later answer is
-`404`). A timeout, Stop in either thread, or the subagent being stopped
-denies it. Notifications (and so push) list it once, as
+`404`). Stop in either thread, or the subagent being stopped, denies it
+while its turn waits; past `permissionMs` it is held like any other, in the
+subagent's thread, and shown in both. Notifications (and so push) list it once, as
 `permission:<requestId>`, opening the parent thread when it is shown, else
 the subagent's.
 

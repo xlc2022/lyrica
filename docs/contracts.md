@@ -2016,9 +2016,14 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   are told and woken.
 - **Permission prompts:** the workspace extension's `tool_call` hook calls
   `ThreadTools.approve?(request)`, answered `true`, `false` (the person's no,
-  or Stop) or `"timeout"` (`Approval`); `lyricad` supplies it and waits for an
-  answer from any open view, so her result says whether the person declined
-  or nobody answered in time. `proposePlan`
+  or Stop), `"held"` (still on the person's card past the turn's wait) or
+  `"timeout"` (a request that can't wait) (`Approval`); `lyricad` supplies it
+  and waits for an answer from any open view, so her result says which.
+  `ThreadTools.takeGrant?(grantKey(...))` uses the person's later yes to a
+  held request once. `PermissionRequest` carries `askedAt`, `expiresAt` only
+  on a request that times out, and `held: true` once held; `permission_end`'s
+  `reason` is `answered`, `timeout`, `stopped` or `withdrawn`.
+  `proposePlan` (answered a mode, undefined or `"held"`)
   takes the same path: `PermissionAnswer { allow, mode?: GoAhead,
   allowInThread?, alwaysAllow?: true }`, and approving a plan without `mode` is `400`. A
   request on a machine carries `machine` and `cwd`, a suspect one `suspect:

@@ -271,16 +271,27 @@ describe("talking with subagents in lyricad", () => {
     }
   });
 
-  it("refuses a subagent's call nobody answers in time", async () => {
-    const { ada, parent, sub, path } = await setup({ permissionMs: 300 });
+  it("holds a subagent's call nobody answers during its turn, and the person's yes tells the parent and leaves the subagent a grant", async () => {
+    const { rt, d, ada, parent, sub, path } = await setup({ permissionMs: 300 });
     await ada.patch(`${path}/settings`, { mode: "ask" });
-    parent.reply({ tools: [{ name: "delegate", args: { task: "write it", role: "worker" } }] }, { text: "Done." });
-    sub.reply({ tools: [{ name: "write", args: { path: "/workspace/a.txt", content: "x" } }] }, { text: "Couldn't write it." });
+    parent.reply({ tools: [{ name: "delegate", args: { task: "say hi", role: "worker" } }] }, { text: "It waits on you." });
+    sub.reply({ tools: [{ name: "bash", args: { command: "echo hi" } }] }, { text: "Waiting on the person." });
     const stream = ada.events(`${path}/events`);
-    await ada.post(`${path}/messages`, { text: "write a file" });
+    await ada.post(`${path}/messages`, { text: "say hi" });
     await stream.until(is("turn_end"));
-    expect(stream.events.find((e) => e.event.type === "permission_end")!.event).toMatchObject({ allowed: false, reason: "timeout" });
-    expect(JSON.stringify(sub.requests[1]!.messages)).toContain("Not approved");
+    const held = stream.events.map((e) => e.event).filter((e): e is ThreadEvent & PermissionRequest => e.type === "permission").at(-1)!;
+    expect(held).toMatchObject({ tool: "bash", held: true, subagent: { role: "worker" } });
+    expect(stream.events.some((e) => e.event.type === "permission_end")).toBe(false);
+    expect(JSON.stringify(sub.requests[1]!.messages)).toContain("stays on the person's card");
+
+    parent.reply({ text: "I'll carry it on." });
+    const from = stream.events.length;
+    expect((await ada.post(`${path}/permissions/${held.requestId}`, { allow: true })).status).toBe(200);
+    await stream.until(is("turn_end"), from);
+    expect(JSON.stringify(parent.requests.at(-1)!.messages)).toContain("The person allowed the call your worker subagent");
+    // The yes is for that call, in the subagent's own thread.
+    expect(d.services!.workspace.settings(rt.ada.id).held(held.subagent!.threadId)).toEqual({ grant: expect.stringContaining("echo hi") });
+    expect(d.services!.workspace.settings(rt.ada.id).held(held.subagent!.parentThreadId)).toBeUndefined();
     stream.close();
   });
 
