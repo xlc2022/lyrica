@@ -248,18 +248,86 @@ describe("permission prompts", () => {
     stream.close();
   });
 
-  it("denies when nobody answers in time", async () => {
-    const { ada, model, path } = await setup({ permissionMs: 300 });
+  it("holds a request nobody answers during the turn, and the person's later yes runs that same call once, without asking", async () => {
+    const { rt, ada, model, path } = await setup({ permissionMs: 300 });
     await ada.patch(`${path}/settings`, { mode: "ask" });
     // bash, not write: write checks the encrypted home is mounted before it asks, and a sandbox without FUSE has none.
-    model.reply({ tools: [{ name: "bash", args: { command: "echo hi" } }] }, { text: "ok" });
+    model.reply({ tools: [{ name: "bash", args: { command: "echo hi" } }] }, { text: "Waiting for you." });
     const stream = ada.events(`${path}/events`);
     await ada.post(`${path}/messages`, { text: "say hi" });
     await stream.until(is("turn_end"));
-    expect(stream.events.find((e) => e.event.type === "permission_end")!.event).toMatchObject({ allowed: false, reason: "timeout" });
-    // Her result says nobody answered, not that the person declined.
-    expect(JSON.stringify(model.requests[1]!.messages)).toContain("nobody answered in time");
+    // No clock on the card: it stays, marked held, and nothing ended it.
+    const asked = stream.events.filter((e) => e.event.type === "permission").map((e) => e.event as PermissionRequest);
+    expect(asked[0]!.expiresAt).toBeUndefined();
+    expect(asked.at(-1)).toMatchObject({ tool: "bash", args: { command: "echo hi" }, held: true });
+    expect(stream.events.some((e) => e.event.type === "permission_end")).toBe(false);
+    // Her result says it waits on the person, and to end her turn.
+    expect(JSON.stringify(model.requests[1]!.messages)).toContain("stays on the person's card");
+    // A view that opens now, and Notifications, still show it.
+    const late = ada.events(`${path}/events`);
+    await late.until(is("hello"));
+    expect((late.events.at(-1)!.event as { permissions: PermissionRequest[] }).permissions).toMatchObject([{ requestId: asked[0]!.requestId, held: true }]);
+    late.close();
+    const listed = (await ada.get<{ items: { id: string }[] }>(`/api/u/${rt.ada.id}/notifications`)).body.items;
+    expect(listed.map((n) => n.id)).toContain(`permission:${asked[0]!.requestId}`);
+
+    // The yes wakes her; she makes the same call again, and it runs with no new card.
+    model.reply({ tools: [{ name: "bash", args: { command: "echo hi" } }] }, { text: "Done." });
+    const from = stream.events.length;
+    expect((await ada.post(`${path}/permissions/${asked[0]!.requestId}`, { allow: true })).status).toBe(200);
+    await stream.until(is("turn_end"), from);
+    expect(stream.events.slice(from).find((e) => e.event.type === "permission_end")!.event).toMatchObject({ allowed: true, reason: "answered" });
+    expect(stream.events.slice(from).some((e) => e.event.type === "permission")).toBe(false);
+    expect(JSON.stringify(model.requests[2]!.messages)).toContain("The person allowed the call that was waiting for them");
+    expect(stream.events.slice(from).some((e) => e.event.type === "tool_end")).toBe(true);
     stream.close();
+  });
+
+  it("ends a yes she doesn't use with the turn that told her, and the person's Stop takes an unused one", async () => {
+    const { ada, model, path, thread, d, rt } = await setup({ permissionMs: 300 });
+    const settings = () => d.services!.workspace.settings(rt.ada.id);
+    await ada.patch(`${path}/settings`, { mode: "ask" });
+    model.reply({ tools: [{ name: "bash", args: { command: "echo hi" } }] }, { text: "Waiting for you." });
+    const stream = ada.events(`${path}/events`);
+    await ada.post(`${path}/messages`, { text: "say hi" });
+    await stream.until(is("turn_end"));
+    const request = stream.events.find((e) => e.event.type === "permission")!.event as PermissionRequest;
+    // Woken by the yes, she doesn't make the call: the grant ends with that turn.
+    model.reply({ text: "Never mind." });
+    const from = stream.events.length;
+    await ada.post(`${path}/permissions/${request.requestId}`, { allow: true });
+    await stream.until(is("turn_end"), from);
+    expect(settings().held(thread.id)).toBeUndefined();
+    // A grant left in the thread goes with the person's Stop.
+    settings().grantHeld(thread.id, "key");
+    await ada.post(`${path}/stop`);
+    expect(settings().held(thread.id)).toBeUndefined();
+    stream.close();
+  });
+
+  it("keeps a held request across a restart, and Stop takes it away", async () => {
+    const { rt, ada, model, path, stop } = await setup({ permissionMs: 300 });
+    await ada.patch(`${path}/settings`, { mode: "ask" });
+    model.reply({ tools: [{ name: "bash", args: { command: "echo hi" } }] }, { text: "Waiting for you." });
+    const stream = ada.events(`${path}/events`);
+    await ada.post(`${path}/messages`, { text: "say hi" });
+    await stream.until(is("turn_end"));
+    const request = stream.events.find((e) => e.event.type === "permission")!.event as PermissionRequest;
+    stream.close();
+
+    await stop();
+    const again = await daemon(rt, { permissionMs: 300 });
+    await browser(again.base).post("/api/unlock", { passphrase: "passphrase" });
+    const ada2 = await login(again.base, "ada", "pw");
+    const view = ada2.events(`${path}/events`);
+    await view.until(is("hello"));
+    expect((view.events.at(-1)!.event as { permissions: PermissionRequest[] }).permissions).toMatchObject([{ requestId: request.requestId, held: true }]);
+    await ada2.post(`${path}/stop`);
+    await view.until(is("permission_end"));
+    expect(view.events.find((e) => e.event.type === "permission_end")!.event).toMatchObject({ allowed: false, reason: "stopped" });
+    expect((await ada2.post(`${path}/permissions/${request.requestId}`, { allow: true })).status).toBe(404);
+    view.close();
+    await again.stop();
   });
 
   it("a command that waits with a long sleep goes back to her before anyone is asked", async () => {
@@ -456,13 +524,15 @@ describe("modes and switches", () => {
 
   it("starts new threads in the user's default mode, and keeps the switches in the thread's settings", async () => {
     const { rt, ada, path } = await setup();
-    expect((await ada.get(`/api/u/${rt.ada.id}/mode`)).body).toEqual({ mode: "auto", bypass: false });
-    expect((await ada.put(`/api/u/${rt.ada.id}/mode`, { mode: "ask" })).body).toEqual({ mode: "ask", bypass: false });
+    expect((await ada.get(`/api/u/${rt.ada.id}/mode`)).body).toEqual({ mode: "auto", bypass: false, mcp: false });
+    expect((await ada.put(`/api/u/${rt.ada.id}/mode`, { mode: "ask" })).body).toEqual({ mode: "ask", bypass: false, mcp: false });
     expect((await ada.put(`/api/u/${rt.ada.id}/mode`, { mode: "ask-changes" })).status).toBe(400);
     // Bypass permissions only with Allow bypass on.
     expect((await ada.put(`/api/u/${rt.ada.id}/mode`, { mode: "bypass" })).status).toBe(400);
-    expect((await ada.put(`/api/u/${rt.ada.id}/mode`, { bypass: true })).body).toEqual({ mode: "ask", bypass: true });
-    expect((await ada.put(`/api/u/${rt.ada.id}/mode`, { bypass: false })).body).toEqual({ mode: "ask", bypass: false });
+    expect((await ada.put(`/api/u/${rt.ada.id}/mode`, { mcp: true })).status).toBe(400);
+    expect((await ada.put(`/api/u/${rt.ada.id}/mode`, { bypass: true })).body).toEqual({ mode: "ask", bypass: true, mcp: false });
+    expect((await ada.put(`/api/u/${rt.ada.id}/mode`, { mcp: true })).body).toEqual({ mode: "ask", bypass: true, mcp: true });
+    expect((await ada.put(`/api/u/${rt.ada.id}/mode`, { bypass: false })).body).toEqual({ mode: "ask", bypass: false, mcp: false });
     const fresh = (await ada.post<ThreadSummary>(`/api/u/${rt.ada.id}/threads`, { pool: "general" })).body;
     expect((await ada.get<ThreadSettings>(`/api/u/${rt.ada.id}/threads/general/${enc(fresh.id)}/settings`)).body.mode).toBe("ask");
     // A thread made before keeps its mode.

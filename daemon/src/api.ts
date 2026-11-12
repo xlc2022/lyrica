@@ -721,10 +721,12 @@ export type NetworkDefaults = Record<Pool, Network>;
 export type NetworkChange = Partial<Network>;
 
 /**
- * GET /api/u/:userId/mode → ModeDefault; PUT with either field → ModeDefault. The mode new threads start in, and
- * Allow bypass: whether "bypass" may be chosen. Turning it off moves every thread in "bypass" to "auto".
+ * GET /api/u/:userId/mode → ModeDefault; PUT with any field → ModeDefault. The mode new threads start in;
+ * Allow bypass: whether "bypass" may be chosen (turning it off moves every thread in "bypass" to "auto" and turns
+ * `mcp` off); and Allow MCP bypass: whether "bypass" also runs MCP tools that change things without asking
+ * (refused while `bypass` is off).
  */
-export interface ModeDefault { mode: PermissionMode; bypass: boolean }
+export interface ModeDefault { mode: PermissionMode; bypass: boolean; mcp: boolean }
 
 /** GET /api/u/:userId/paths → AllowedPaths: the folders this user may grant, set by an administrator. */
 export type AllowedPaths = Record<Pool, string[]>;
@@ -1806,7 +1808,7 @@ export type ThreadEvent =
   /** Notes she saved. */
   | { type: "remember"; ids: string[] }
   | ({ type: "permission" } & PermissionRequest)
-  | { type: "permission_end"; requestId: string; allowed: boolean; reason: "answered" | "timeout" | "stopped" }
+  | { type: "permission_end"; requestId: string; allowed: boolean; reason: "answered" | "timeout" | "stopped" | "withdrawn" }
   | { type: "usage"; input: number; output: number; cacheRead: number; cacheWrite: number; total: number }
   /** Messages waiting as follow-ups. */
   | { type: "queue"; queued: string[]; /** One left to join the running turn: it shows when Pi takes it (`received`). */ steered?: true }
@@ -1882,8 +1884,15 @@ export interface PermissionRequest {
   /** "propose_plan" is a plan to approve, with `args` `{ plan }`: the plan card. "image" asks for daily portrait consent; its args carry { question, provider, model } with the resolved model label. */
   tool: string;
   args: unknown;
-  /** When it is denied if nobody answers (ISO time). */
-  expiresAt: string;
+  /** When it was asked (ISO time). */
+  askedAt: string;
+  /**
+   * When it is denied if nobody answers (ISO time). Absent on a request that
+   * waits for the person instead: past the turn's wait it is `held`.
+   */
+  expiresAt?: string;
+  /** Nobody answered during the turn: the card stays until the person answers it, Stop or Resolve, or a later held request in its thread replaces it. */
+  held?: true;
   /** Set for a call on a machine, with the folder a command runs in there. The answer covers exactly what is shown. */
   machine?: string;
   cwd?: string;
@@ -2327,11 +2336,9 @@ export interface WebAccessStatus {
    * front both differ), and whether Caddy listens on any of those addresses
    * (`served`). False is a fact, not a failure: a proxy in front of this
    * machine reaches the name another way. `tailnet`: the name points at her
-   * own tailnet address, which her tailscaled hands to Caddy on 127.0.0.1
-   * ("forwarded"), or which `tailscale serve` holds for her ts.net name while
-   * Tailnet is on beside Caddy ("taken").
+   * own tailnet address, which her tailscaled hands to Caddy on 127.0.0.1.
    */
-  dns?: { addresses: string[]; served: boolean; tailnet?: "forwarded" | "taken" } | { error: string };
+  dns?: { addresses: string[]; served: boolean; tailnet?: "forwarded" } | { error: string };
   /** Caddy's newest TLS error since the last change, credentials hidden. */
   lastAcmeError?: { at: string; message: string };
   external?: { listening: boolean; address: string; port: number };

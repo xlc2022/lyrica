@@ -1097,7 +1097,7 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
     or a proxy elsewhere;
   - the hostname (Caddy and proxy modes), with a hint saying where its DNS
     record goes: one of the addresses under Serve on, or her tailnet address
-    while Tailnet name is off (Caddy), or the proxy (proxy mode);
+    (Caddy), or the proxy (proxy mode);
   - for the built-in Caddy: the Tailscale and LAN addresses to serve on, the
     DNS provider with its credential fields and its token-scoping hint, an
     email for certificate warnings, and, under Advanced, testing with
@@ -1106,8 +1106,7 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
     the certificate to pin, and a Caddyfile snippet;
   - the status of Caddy, the certificate with the address it was read at, the
     DNS record the hostname points at and whether that is one of the addresses
-    served, or her tailnet address (reached through loopback, or held by
-    `tailscale serve` while Tailnet name is on), and the last certificate error; for Direct the addresses listening
+    served, or her tailnet address (reached through loopback), and the last certificate error; for Direct the addresses listening
     and the fingerprint, for Tailnet the name and whether it answers.
 
   Applying waits as long as `lyricad` needs (a new hostname can take about 90 s)
@@ -1750,14 +1749,17 @@ turns animations off.
   lines (`library.test.ts`), and flyout placement and hover intent (`flyout.test.ts`).
 - `npm run e2e -w @lyrica/web` runs Playwright (after a build). The upload
   test needs `gocryptfs`, as `lyricad` does. The specs are
-  `web/e2e/web-chat.spec.ts` (a thread's messages, cards, tools and modes),
+  `web/e2e/web-chat.spec.ts` (a thread's replies and their counts,
+  routines, the sidebar, skills, portraits, images and clips),
+  `web-messages.spec.ts` (a message's menu, pins and reactions, runs of
+  tool calls, removing turns, child threads, models and modes, scrolling),
   `web-workspace.spec.ts` (the composer and header, search, memory,
   settings, accounts, machines and users, project threads, sources),
   `web-projects.spec.ts` and `web-admin.spec.ts`, sharing
   `web/e2e/helpers.ts`, plus `setup.spec.ts`. Each runs its tests in
   order. Each project in `playwright.config.ts` (every `web-*` spec at phone
   390×844 with touch and at desktop 1280×800, and a desktop one for
-  first-run setup, on ports 17341 to 17349, clear of `lyricad`'s own
+  first-run setup, on ports 17341 to 17350 and 17391, clear of `lyricad`'s own
   ports, which a sandbox can't reach even on its loopback) gets its own real `lyricad` from
   `web/e2e/serve.ts`, on a temporary runtime with a fake model server, which
   also serves a fake speech endpoint (whisper and kokoro, under `/speech/v1`,

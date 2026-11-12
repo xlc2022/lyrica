@@ -111,7 +111,7 @@ jobs:
   # spec's tests run one after another against one lyricad, so its own
   # length is the floor, and seven browsers on one 4-core runner took 8.6
   # minutes where the longest spec alone takes less. The chat tests are
-  # two files of about equal length for the same reason. The setup page
+  # three files (chat, messages, workspace) for the same reason. The setup page
   # rides with the shortest spec.
   e2e:
     needs: changes
@@ -120,7 +120,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        spec: [chat, workspace, projects, admin]
+        spec: [chat, messages, workspace, projects, admin]
     env:
       E2E_PROJECTS: phone-${{ matrix.spec }},desktop-${{ matrix.spec }}${{ matrix.spec == 'projects' && ',setup' || '' }}
       # The tests that need a thread's real sandbox skip where it can't run (inside Lyrica's own); never here.

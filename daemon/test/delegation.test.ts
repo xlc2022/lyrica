@@ -271,16 +271,32 @@ describe("talking with subagents in lyricad", () => {
     }
   });
 
-  it("refuses a subagent's call nobody answers in time", async () => {
-    const { ada, parent, sub, path } = await setup({ permissionMs: 300 });
+  it("holds a subagent's call nobody answers during its turn, and the person's yes tells the parent, which continues it and the call runs once", async () => {
+    const { rt, d, ada, parent, sub, path } = await setup({ permissionMs: 300 });
     await ada.patch(`${path}/settings`, { mode: "ask" });
-    parent.reply({ tools: [{ name: "delegate", args: { task: "write it", role: "worker" } }] }, { text: "Done." });
-    sub.reply({ tools: [{ name: "write", args: { path: "/workspace/a.txt", content: "x" } }] }, { text: "Couldn't write it." });
+    parent.reply({ tools: [{ name: "delegate", args: { task: "say hi", role: "worker" } }] }, { text: "It waits on you." });
+    sub.reply({ tools: [{ name: "bash", args: { command: "echo hi" } }] }, { text: "Waiting on the person." });
     const stream = ada.events(`${path}/events`);
-    await ada.post(`${path}/messages`, { text: "write a file" });
+    await ada.post(`${path}/messages`, { text: "say hi" });
     await stream.until(is("turn_end"));
-    expect(stream.events.find((e) => e.event.type === "permission_end")!.event).toMatchObject({ allowed: false, reason: "timeout" });
-    expect(JSON.stringify(sub.requests[1]!.messages)).toContain("Not approved");
+    const held = stream.events.map((e) => e.event).filter((e): e is ThreadEvent & PermissionRequest => e.type === "permission").at(-1)!;
+    expect(held).toMatchObject({ tool: "bash", held: true, subagent: { role: "worker" } });
+    expect(stream.events.some((e) => e.event.type === "permission_end")).toBe(false);
+    expect(JSON.stringify(sub.requests[1]!.messages)).toContain("stays on the person's card");
+
+    // Woken by the yes, the parent continues the subagent, whose same call runs with no new card.
+    parent.reply({ tools: [{ name: "delegate", args: { action: "message", id: held.subagent!.runId, message: "Go ahead." } }] }, { text: "Done." });
+    sub.reply({ tools: [{ name: "bash", args: { command: "echo hi" } }] }, { text: "Said hi." });
+    const from = stream.events.length;
+    expect((await ada.post(`${path}/permissions/${held.requestId}`, { allow: true })).status).toBe(200);
+    await stream.until(is("turn_end"), from);
+    expect(JSON.stringify(parent.requests[2]!.messages)).toContain("The person allowed the call your worker subagent");
+    expect(stream.events.slice(from).some((e) => e.event.type === "permission")).toBe(false);
+    const results = (sub.requests.at(-1)!.messages as { role: string; content: unknown }[]).filter((m) => m.role === "tool");
+    expect(JSON.stringify(results.at(-1)!.content)).not.toContain("stays on the person's card");
+    // The yes was used, and none is left in either thread.
+    expect(d.services!.workspace.settings(rt.ada.id).held(held.subagent!.threadId)).toBeUndefined();
+    expect(d.services!.workspace.settings(rt.ada.id).held(held.subagent!.parentThreadId)).toBeUndefined();
     stream.close();
   });
 

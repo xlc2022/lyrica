@@ -842,7 +842,11 @@ export class ChildThreads implements ThreadsHost {
   setResolved(userId: string, pool: Pool, thread: string, resolved: boolean): Promise<void> {
     const row = this.row(userId, pool, thread);
     if (!row) throw new Error(`[t:${thread}] isn't a thread of a project`);
-    if (resolved) this.questionClosed(userId, pool, thread, "withdrawn");
+    if (resolved) {
+      this.questionClosed(userId, pool, thread, "withdrawn");
+      // A held approval goes with it: Resolve ends what waits on the person (DESIGN.md, Machines).
+      this.o.host().withdrawHeld(userId, pool, thread);
+    }
     this.db(userId, (db) => db.prepare(`UPDATE child_threads SET resolved_at = ?${resolved ? ", needs_you = 0" : ""} WHERE pool = ? AND thread = ?`)
       .run(resolved ? new Date().toISOString() : null, pool, thread));
     this.o.host().changed(userId, pool, row.parent, thread);

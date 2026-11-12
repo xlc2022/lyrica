@@ -1,4 +1,4 @@
-// Shared by the e2e specs (web-chat, web-workspace, web-projects, web-admin). Each spec runs in order on its own
+// Shared by the e2e specs (web-chat, web-messages, web-workspace, web-projects, web-admin). Each spec runs in order on its own
 // lyricad per screen size (playwright.config.ts), so each starts from a fresh one and enter() sets it up.
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";

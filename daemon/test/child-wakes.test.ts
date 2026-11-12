@@ -33,7 +33,7 @@ async function setup(wakeMs = 0) {
   const host = {
     busy: (_u: string, _p: Pool, t: string) => busy.has(t),
     status: (_u: string, _p: Pool, t: string) => waiting.has(t) ? "waiting" : busy.has(t) ? "working" : "idle",
-    changed: () => {}, delivered: () => {}, peek: () => undefined,
+    changed: () => {}, delivered: () => {}, peek: () => undefined, withdrawHeld: () => {},
     get: (_u: string, _p: Pool, t: string) => ({
       get childWakeTurn() { return childWakeTurn; },
       appendParent: (text: string) => { replies.push(text); },

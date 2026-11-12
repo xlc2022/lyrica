@@ -558,12 +558,26 @@ export class WorkspaceSettings {
     return this.setting("workspace.bypass") === "1";
   }
 
-  /** Turning it off moves every thread in Bypass permissions, and the default, back to Auto. */
+  /** Turning it off moves every thread in Bypass permissions, and the default, back to Auto, and turns Allow MCP bypass off. */
   setBypassAllowed(on: boolean): void {
     this.db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('workspace.bypass', ?)").run(on ? "1" : "0");
     if (on) return;
+    this.db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('workspace.bypass.mcp', '0')").run();
     this.db.prepare("UPDATE thread_workspaces SET mode = 'auto' WHERE mode = 'bypass'").run();
     if (this.setting("workspace.mode") === "bypass") this.db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('workspace.mode', 'auto')").run();
+  }
+
+  /**
+   * Allow MCP bypass: whether a thread in Bypass permissions also runs MCP tools that change things without asking.
+   * Off by default, and only while Allow bypass is on.
+   */
+  mcpBypassAllowed(): boolean {
+    return this.bypassAllowed() && this.setting("workspace.bypass.mcp") === "1";
+  }
+
+  setMcpBypassAllowed(on: boolean): void {
+    if (on && !this.bypassAllowed()) throw new Error("Allow MCP bypass needs Allow bypass on in Settings");
+    this.db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('workspace.bypass.mcp', ?)").run(on ? "1" : "0");
   }
 
   /** A new thread's settings: the default mode, everything else as the user's defaults say. */
@@ -1351,7 +1365,69 @@ export class WorkspaceSettings {
     const row = this.db.prepare("SELECT allowed FROM thread_workspaces WHERE thread_id = ?").get(threadId) as { allowed: string } | undefined;
     return row ? JSON.parse(row.allowed) : [];
   }
+
+  /**
+   * An approval nobody answered during the turn, kept until the person
+   * answers it, or a later one, Stop or Resolve replaces it: one per thread,
+   * in the thread the call runs in (DESIGN.md, Machines).
+   */
+  holdApproval(threadId: string, pool: string, request: Record<string, unknown> & { requestId: string }): void {
+    this.setHeld(threadId, { pool, request });
+  }
+
+  /**
+   * The person allowed a held call: that one call, as shown, runs once
+   * without asking when she makes it again (`takeGrant`).
+   */
+  grantHeld(threadId: string, key: string): void {
+    this.setHeld(threadId, { grant: key });
+  }
+
+  /** The thread's held approval or unused grant, if any. */
+  held(threadId: string): Held | undefined {
+    const row = this.db.prepare("SELECT held FROM thread_workspaces WHERE thread_id = ?").get(threadId) as { held: string | null } | undefined;
+    return row?.held ? JSON.parse(row.held) as Held : undefined;
+  }
+
+  /** Every thread's held approval, for Notifications and the cards of threads not open now. */
+  heldApprovals(): { threadId: string; pool: string; request: Record<string, unknown> }[] {
+    return (this.db.prepare("SELECT thread_id, held FROM thread_workspaces WHERE held IS NOT NULL").all() as { thread_id: string; held: string }[])
+      .map((r) => ({ threadId: r.thread_id, held: JSON.parse(r.held) as Held }))
+      .flatMap((r) => ("request" in r.held ? [{ threadId: r.threadId, pool: r.held.pool, request: r.held.request }] : []));
+  }
+
+  /** Clears the thread's held approval (only `requestId`, if given) or grant. True if anything was cleared. */
+  clearHeld(threadId: string, requestId?: string): boolean {
+    const held = this.held(threadId);
+    if (!held || (requestId !== undefined && !("request" in held && held.request.requestId === requestId))) return false;
+    this.db.prepare("UPDATE thread_workspaces SET held = NULL WHERE thread_id = ?").run(threadId);
+    return true;
+  }
+
+  /** Clears the thread's unused grant, leaving a held approval as it is. True if there was one. */
+  clearGrant(threadId: string): boolean {
+    const held = this.held(threadId);
+    if (!held || !("grant" in held)) return false;
+    this.db.prepare("UPDATE thread_workspaces SET held = NULL WHERE thread_id = ?").run(threadId);
+    return true;
+  }
+
+  /** Uses the thread's grant if it is for exactly this call: true once, then it is gone. */
+  takeGrant(threadId: string, key: string): boolean {
+    const held = this.held(threadId);
+    if (!held || !("grant" in held) || held.grant !== key) return false;
+    this.db.prepare("UPDATE thread_workspaces SET held = NULL WHERE thread_id = ?").run(threadId);
+    return true;
+  }
+
+  private setHeld(threadId: string, held: Held): void {
+    if (!this.db.prepare("SELECT 1 FROM thread_workspaces WHERE thread_id = ?").get(threadId)) this.write(threadId, this.thread(threadId));
+    this.db.prepare("UPDATE thread_workspaces SET held = ? WHERE thread_id = ?").run(JSON.stringify(held), threadId);
+  }
 }
+
+/** A held approval (the request as its card shows it, and the pool of its thread), or the grant its yes left. */
+export type Held = { pool: string; request: Record<string, unknown> & { requestId: string } } | { grant: string };
 
 /** A suspect command allowed on a machine; for an MCP tool, `machine` is `mcp:<server>` (no machine's name has a colon) and `command` the tool. */
 export interface AllowedCommand { machine: string; command: string }

@@ -440,6 +440,8 @@ export class Workspace {
       /** Whether the user allowed this exact suspect command on this machine in this thread. */
       allowedInThread: (machine: string, command: string) =>
         this.settings(t.userId).allowedInThread(t.threadId).some((a) => a.machine === machine && a.command === command),
+      /** Uses the person's yes to a held approval, once, if it is for exactly this call; a locked database has none. */
+      takeGrant: (key: string) => { try { return this.settings(t.userId).takeGrant(t.threadId, key); } catch { return false; } },
       /** The MCP servers the thread may use now, read at every call. */
       mcpServers: () => this.mcpServersFor(t),
       /** Checks each private server's host at the start of a turn: one that left her network is held back until the user confirms. */
@@ -457,6 +459,8 @@ export class Workspace {
       }),
       /** Whether the user allowed this MCP tool on this server in this thread. */
       toolAllowedInThread: (server: string, tool: string) => this.settings(t.userId).toolAllowedInThread(t.threadId, server, tool),
+      /** Allow MCP bypass, read at every call. */
+      mcpBypass: () => this.settings(t.userId).mcpBypassAllowed(),
       /** An approved plan switching the thread's mode. */
       setMode: (mode: PermissionMode) => { this.settings(t.userId).setThread(t.threadId, t.pool, { mode }); },
       network: (): Network => this.network(t),

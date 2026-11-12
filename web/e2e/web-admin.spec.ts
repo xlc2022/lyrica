@@ -2896,7 +2896,12 @@ test("Settings → Reset: Wipe my memory asks for the box and the password, then
   await noHorizontalScroll(page);
   await shot("confirm");
   await wipe.click();
-  await expect(page.getByText("Memory wiped.")).toBeVisible();
+  // Other work of hers can still run on this file's lyricad (a project thread's turn, a subagent, sleep), which the
+  // poll above doesn't see: the wipe then stops it and asks again, as it would for her.
+  const wiped = page.getByText("Memory wiped."), stopped = page.getByRole("dialog", { name: "Everything has stopped" });
+  await expect(wiped.or(stopped)).toBeVisible();
+  if (await stopped.isVisible()) await stopped.getByRole("button", { name: "Wipe memory" }).click();
+  await expect(wiped).toBeVisible();
   const threads = await page.evaluate(async (path) => (await fetch(path)).json(), `/api/u/${userId}/threads`) as unknown[];
   expect(threads).toEqual([]);
 });

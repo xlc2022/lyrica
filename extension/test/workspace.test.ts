@@ -8,7 +8,7 @@ import type { ExecutionTarget, ThreadGitRepository, ThreadMachine, ThreadMcpServ
 import { Type } from "typebox";
 import { afterEach, describe, expect, it } from "vitest";
 import { BASH_TIMEOUT_S, createDownloadsExtension, pageTool, createMcpServersExtension, createModelsExtension, filesFor, type DownloadsHost, createWorkspaceExtension, setToolsOff, toolsLine, type ApprovalRequest, type ModelsHost, type ServingProposal, type ThreadTools } from "../src/index.ts";
-import { BUILD_THERE, checkUnder, editArguments, FORMATS_LINE, pathArguments, insertsOnly, LINK_LINE, READ_ONLY_CHAT, describe as describePrompt } from "../src/workspace.ts";
+import { BUILD_THERE, checkUnder, editArguments, FORMATS_LINE, grantKey, pathArguments, insertsOnly, LINK_LINE, READ_ONLY_CHAT, describe as describePrompt } from "../src/workspace.ts";
 import { testMcpServer } from "../../core/test/mcp-server.ts";
 import { cleanRepos, git, localTarget, repo, saved } from "./git-repo.ts";
 import { freshKeyring, profile } from "../../core/test/helpers.ts";
@@ -74,7 +74,7 @@ interface Run {
   /** Repositories add_repository added. */
   added?: ThreadRepository[];
   /** The thread's MCP servers, read on every call (a test may empty it mid-turn), and the tools allowed in the thread as "<server>/<tool>". */
-  mcp?: { servers: ThreadMcpServer[]; allowed?: string[] };
+  mcp?: { servers: ThreadMcpServer[]; allowed?: string[]; bypass?: boolean };
   /** The credentials in the sandbox's runs. */
   secrets?: string[];
   /** Whether the thread's runs have Claude Code. */
@@ -89,6 +89,8 @@ interface Run {
   artifacts?: ThreadTools["artifacts"];
   /** The sandbox, instead of the fake one: a real folder for git. */
   sandbox?: ExecutionTarget;
+  /** The person's yes to a held approval, used once. */
+  takeGrant?: ThreadTools["takeGrant"];
 }
 
 /** Tools any thread has besides the workspace's: memory, and the switched ones, which do nothing here. */
@@ -136,6 +138,7 @@ async function run(mode: ThreadWorkspace["mode"], calls: ReturnType<typeof fauxT
     claudeCode: () => !!o.claudeCode,
     ...(o.sameFile ? { sameFile: o.sameFile } : {}),
     ...(o.artifacts ? { artifacts: o.artifacts } : {}),
+    ...(o.takeGrant ? { takeGrant: o.takeGrant } : {}),
     ...(o.jobs ? {
       startJob: async (command: string, machine?: string) => {
         o.jobs!.push(`${machine ?? "sandbox"}: ${command}`);
@@ -148,7 +151,7 @@ async function run(mode: ThreadWorkspace["mode"], calls: ReturnType<typeof fauxT
     repositories: () => o.repositories ?? [], cloneRepositories: async () => o.cloneProblems ?? [],
     gitAccounts: () => (o.gitAccounts ?? []).map((name) => ({ name, kind: "github", host: "github.com" })),
     addRepository: (r) => { o.added?.push(r); return [...(o.repositories ?? []), ...(o.added ?? [])]; },
-    ...(o.mcp ? { mcpServers: () => o.mcp!.servers, toolAllowedInThread: (s: string, t: string) => (o.mcp!.allowed ?? []).includes(`${s}/${t}`) } : {}),
+    ...(o.mcp ? { mcpServers: () => o.mcp!.servers, toolAllowedInThread: (s: string, t: string) => (o.mcp!.allowed ?? []).includes(`${s}/${t}`), mcpBypass: () => o.mcp!.bypass === true } : {}),
   });
   const mcp = o.mcp ? [createMcpServersExtension({ mcpServers: () => o.mcp!.servers })] : [];
   const loader = new DefaultResourceLoader({
@@ -402,6 +405,25 @@ describe("workspace tools in a Pi session", () => {
     expect(results[0]).toContain("keep planning");
     expect(settings.mode).toBe("plan");
     expect(offered[1]).not.toContain("write");
+  });
+
+  it("runs a call the person allowed after its turn once, without asking, and only that exact call; a held answer tells her to wait", async () => {
+    const grants = new Set([grantKey("bash", { command: "ls" })]);
+    const asked: string[] = [];
+    const calls = [fauxToolCall("bash", { command: "ls" }, { id: "1" }), fauxToolCall("bash", { command: "ls" }, { id: "2" }), fauxToolCall("bash", { command: "ls -a" }, { id: "3" })];
+    const { commands, results } = await run("ask", calls, { takeGrant: (k) => grants.delete(k), approve: async (r) => { asked.push(String(r.input.command)); return "held"; } });
+    expect(commands.filter((c) => c.endsWith("ls"))).toHaveLength(1);
+    expect(asked).toEqual(["ls", "ls -a"]);
+    expect(results.filter((r) => r.includes("stays on the person's card"))).toHaveLength(2);
+  });
+
+  it("binds a held yes to a write's content, not only its path", async () => {
+    const grants = new Set([grantKey("write", { path: "/workspace/notes.md", content: "A" })]);
+    const asked: string[] = [];
+    const calls = [fauxToolCall("write", { path: "/workspace/notes.md", content: "B" }, { id: "1" })];
+    await run("ask", calls, { takeGrant: (k) => grants.delete(k), approve: async (r) => { asked.push(String(r.input.content)); return false; } });
+    expect(asked).toEqual(["B"]);
+    expect(grants.size).toBe(1);
   });
 
   it("asks before an irreversible action even in Auto", async () => {
@@ -886,6 +908,14 @@ describe("MCP servers in a thread", () => {
       // Bypass permissions keeps this card: it asks in every mode.
       await run("bypass", [], { steps: [[search], [turnOn]], mcp: { servers }, approve: async (r) => { asked.push(r); return false; } });
       expect(asked.map((r) => r.serverTool)).toEqual(["turn_on"]);
+      // Allow MCP bypass drops it, but only in Bypass permissions.
+      asked.length = 0;
+      await run("auto", [], { steps: [[search], [turnOn]], mcp: { servers, bypass: true }, approve: async (r) => { asked.push(r); return false; } });
+      expect(asked.map((r) => r.serverTool)).toEqual(["turn_on"]);
+      asked.length = 0;
+      await run("bypass", [], { steps: [[search], [turnOn]], mcp: { servers, bypass: true }, approve: async (r) => { asked.push(r); return false; } });
+      expect(asked).toEqual([]);
+      expect(house.calls.map((c) => c.tool)).toEqual(["get_status", "turn_on", "turn_on"]);
     } finally {
       await house.close();
     }

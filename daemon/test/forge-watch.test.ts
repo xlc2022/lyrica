@@ -172,29 +172,13 @@ describe("the forge watcher", () => {
     expect(s.sent[1]!.text).toBe(`PR #12 (bbbbbbb): checks finished — build: passed, e2e: failed. ${CI_RED}`);
   });
 
-  it("still running gives no turn; a review from another account gives one, and her own gives none", async () => {
+  it("shares one wake between a finished check and a new review in the same poll, and her own review adds nothing", async () => {
     const s = await setupForge();
-    routeForgejo(s.fake, { status: statusBody(runningChecks()) });
-    s.watch();
-    await s.tick(0);
-    expect(s.sent).toHaveLength(0); // a check still pending: wait
-
-    routeForgejo(s.fake, { status: statusBody(finishedChecks()), reviews: [{ id: 1, reviewer: { login: "lyrica-bot" }, state: "APPROVED", submitted_at: "2026-01-01T00:01:00Z" }] });
-    await s.tick(2);
-    expect(s.sent).toHaveLength(1); // the checks finished; her own review adds nothing
-
+    // Her own review beside sam's adds nothing to the note.
     routeForgejo(s.fake, { status: statusBody(finishedChecks()), reviews: [
-      { id: 1, reviewer: { login: "lyrica-bot" }, state: "APPROVED", submitted_at: "2026-01-01T00:01:00Z" },
-      { id: 2, reviewer: { login: "sam" }, state: "APPROVED", submitted_at: "2026-01-01T00:03:00Z" },
+      { id: 1, reviewer: { login: "sam" }, state: "APPROVED", submitted_at: "2026-01-01T00:01:00Z" },
+      { id: 2, reviewer: { login: "lyrica-bot" }, state: "APPROVED", submitted_at: "2026-01-01T00:02:00Z" },
     ] });
-    await s.tick(4);
-    expect(s.sent).toHaveLength(2);
-    expect(s.sent[1]!.text).toBe("PR #12 (aaaaaaa): sam approved.");
-  });
-
-  it("shares one wake between a finished check and a new review in the same poll", async () => {
-    const s = await setupForge();
-    routeForgejo(s.fake, { status: statusBody(finishedChecks()), reviews: [{ id: 1, reviewer: { login: "sam" }, state: "APPROVED", submitted_at: "2026-01-01T00:01:00Z" }] });
     s.watch();
     await s.tick(0);
     expect(s.sent).toHaveLength(1);

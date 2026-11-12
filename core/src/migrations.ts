@@ -332,6 +332,11 @@ export const STEPS: Record<DbKind, MigrationStep[]> = {
     // Principle 1: an image upscale that took a clip, so Status counts it in clips, not images. Adds a nullable column only.
     version: 24,
     run(db) { addColumns(db, [["model_calls", "clip", "INTEGER"]]); },
+  }, {
+    // Principle 6: an approval nobody answered during the turn waits for the person, as a question card does
+    // (DESIGN.md, Machines). Adds a nullable column only.
+    version: 25,
+    run(db) { addColumns(db, [["thread_workspaces", "held", "TEXT"]]); },
   }],
   pool: [{
     version: 1, contract: true,

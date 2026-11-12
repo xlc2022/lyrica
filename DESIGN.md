@@ -1661,9 +1661,16 @@ NAS, and Proxmox nodes. Decided 2026-10-11 from
   use, not every user's.
 - **Approvals are bound to what was shown**: the machine, the exact command
   or path and the working folder on the card. Anything different is denied;
-  an approval still pending when the turn ends is void; with nobody to
-  answer, the call is denied. There is no "allow from now on", with one
-  exception below.
+  with nobody to ask, the call is denied. **An approval waits for the
+  person, not a clock** (decided 2026-11-11): one nobody answers during the
+  turn stays on its card, held, and her turn ends there; only the person's
+  answer, Stop, Resolve or a later held approval in that thread ends it.
+  A yes wakes her and lets that one call, exactly as shown (a write's
+  content too), run once without asking in the turn that tells her; unused,
+  it ends with that turn or the person's Stop or Resolve. A no wakes her
+  too. A browse form or file and the day's portrait
+  consent are for the moment they were asked in, so they still time out.
+  There is no "allow from now on", with one exception below.
 - **Suspect commands always ask**, in every mode: a short fixed list,
   documented in docs/workspace.md and never grown one scare at a time. One
   part is work she can't undo wherever it runs, in the sandbox too (a
@@ -2225,7 +2232,10 @@ Details in [docs/sleep.md](docs/sleep.md).
     Settings. Commands and file changes in the sandbox don't ask, not even
     deletes or force pushes; Forbid rules (which also refuse a command they
     can't see into), the user's own Ask rules, the cards that ask in every
-    mode and machine limits still hold.
+    mode and machine limits still hold. A second switch, **Allow MCP
+    bypass** (off by default, turned on only through a warning), drops the
+    MCP server card too, for one machine she runs unattended; forms,
+    attachments and open-world tools still ask.
   - **Plan:** she can only read, recall and use read-only subagents. She
     writes a plan and asks to go ahead; approving it switches the thread to
     the mode the user picks, and she carries on.
@@ -2395,7 +2405,8 @@ Details in [docs/sleep.md](docs/sleep.md).
       provider and its credentials, and shows the certificate's state. Caddy
       also listens on `127.0.0.1:443`, where her userspace tailscaled hands
       443 on her own tailnet address, so the name's DNS record may point
-      there too, unless her ts.net name holds that port.
+      there too. With her ts.net name kept beside it, Caddy serves that
+      name as well, with her tailnet's certificate, so both share the port.
     - **External proxy**: a Caddy, or another proxy, elsewhere on the owner's
       network. `lyricad` also listens on one Tailscale or LAN address and
       accepts connections only from the proxy addresses listed in the panel.
