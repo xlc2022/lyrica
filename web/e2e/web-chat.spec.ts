@@ -1462,7 +1462,7 @@ test("a thread opens at its latest message, even when the space above the conver
   await page.locator(".scroll .msg").last().evaluate((el) => { el.style.paddingBottom = "400px"; });
   await expect.poll(fromBottom).toBeLessThanOrEqual(2);
   await page.unrouteAll({ behavior: "ignoreErrors" });
-  // Something she opens herself near the foot (a run of tool calls) opens in place: the view doesn't follow it down.
+  // Something she opens herself at the foot (a run of tool calls) is followed down, its header still in view.
   await page.locator(".scroll .msg").last().evaluate((el) => { el.style.paddingBottom = ""; });
   await send(page, "recall: 6");
   await expect(page.getByText("You said: recall: 6")).toBeVisible();
@@ -1471,12 +1471,12 @@ test("a thread opens at its latest message, even when the space above the conver
   await expect(page.getByRole("group", { name: "Message actions" }).last()).toBeVisible();
   await expect.poll(fromBottom).toBeLessThanOrEqual(2);
   const marker = page.locator(".marker.tool-run").last().getByRole("button", { name: /tool calls/ });
-  const before = (await marker.boundingBox())!.y;
   await marker.click();
   await expect(page.locator(".marker.tool-run").last().locator(".run-body .marker[data-type='tool']")).toHaveCount(6);
   await page.waitForTimeout(300);
-  expect(Math.abs((await marker.boundingBox())!.y - before)).toBeLessThanOrEqual(2);
+  await expect.poll(fromBottom).toBeLessThanOrEqual(2);
   await expect(marker).toBeInViewport();
+  await expect(page.getByRole("button", { name: "Jump to latest" })).toHaveCount(0);
 });
 
 test("opening a run of calls whose header sits part way above the view leaves the conversation where it was", async ({ page, baseURL }) => {
@@ -1502,7 +1502,7 @@ test("opening a run of calls whose header sits part way above the view leaves th
   }
 });
 
-test("typing while her reply streams leaves the conversation where it is, and opening a run of calls keeps its header where it was pressed", async ({ page, baseURL }) => {
+test("typing while her reply streams leaves the conversation where it is, and opening a run of calls at the bottom follows it down", async ({ page, baseURL }) => {
   await enter(page, baseURL!);
   await newThread(page, "General");
   await send(page, `reply: ${Array.from({ length: 24 }, (_, i) => `Line ${i + 1} of the long thread, which keeps going past one line on the way down.`).join("\n\n")}`);
@@ -1532,15 +1532,15 @@ test("typing while her reply streams leaves the conversation where it is, and op
   expect(await page.evaluate(() => (window as unknown as { off: number[] }).off)).toEqual([]);
   await expect(page.getByRole("button", { name: "Jump to latest" })).toHaveCount(0);
   await expect.poll(fromBottom).toBeLessThanOrEqual(2);
-  // Opening the run at the tail while it streams: its header stays where she pressed it.
+  // Opening the run at the tail while it streams: the view follows it down, its header still in view (#986).
   const marker = page.locator(".marker.tool-run").getByRole("button", { name: /tool calls running/ });
-  const before = (await marker.boundingBox())!.y;
   await marker.click();
   await expect(page.locator(".marker.tool-run .run-body")).toBeVisible();
   for (let i = 0; i < 4; i++) {
     await page.waitForTimeout(150);
-    expect(Math.abs((await marker.boundingBox())!.y - before)).toBeLessThanOrEqual(2);
+    await expect(marker).toBeInViewport();
   }
-  await expect(marker).toBeInViewport();
+  await expect.poll(fromBottom).toBeLessThanOrEqual(2);
+  await expect(page.getByRole("button", { name: "Jump to latest" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Stop" })).toBeHidden({ timeout: 20_000 });
 });
