@@ -732,7 +732,8 @@ dialog::backdrop { background: rgb(0 0 0 / 0.35); }
   .subnav { position: static; display: flex; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--line); padding: 8px var(--gutter); gap: 2px; scrollbar-width: none; mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent); }
   .subnav a:last-child { margin-right: 24px; }
   .subnav a { white-space: nowrap; }
-  .subnav a.subnav-link { margin: 0 24px 0 0; border-top: 0; padding-top: 7px; align-self: center; white-space: nowrap; }
+  .subnav:has(.subnav-link) { flex-wrap: wrap; overflow-x: visible; mask-image: none; }
+  .subnav a.subnav-link { flex-basis: 100%; margin: 0; border-top: 0; padding-top: 7px; }
   .mem { grid-template-columns: minmax(0, 1fr); }
   .mem[data-reading="true"] .mem-pane, .mem[data-reading="false"] .mem-read { display: none; }
   .mem-pane { border-right: 0; }
@@ -1088,7 +1089,8 @@ form.drawer-body { flex: 1; }
   .drawer { width: 100%; }
   .page-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: max-content 1fr; }
   .subnav { position: static; display: flex; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--line); padding: 8px var(--gutter); gap: 2px; scrollbar-width: none; mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent); }
-  .subnav a.subnav-link { margin: 0 24px 0 0; border-top: 0; padding-top: 7px; align-self: center; white-space: nowrap; }
+  .subnav:has(.subnav-link) { flex-wrap: wrap; overflow-x: visible; mask-image: none; }
+  .subnav a.subnav-link { flex-basis: 100%; margin: 0; border-top: 0; padding-top: 7px; }
 }
 /* Beside a wide panel the conversation's header wraps as on a phone too. */
 .app[data-panel="true"] > .main { container: conversation / inline-size; }

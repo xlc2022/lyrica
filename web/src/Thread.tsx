@@ -582,7 +582,8 @@ function PendingBar({ scroller }: { scroller: React.RefObject<HTMLDivElement | n
  * box changes size: a header that grows while the messages load, or a picture that loads after them, would otherwise
  * read as her having scrolled up, and leave a thread opened at its top. A ResizeObserver on the box and on each of its
  * children brings the bottom back into view whenever either changes size while she follows it, except right after she
- * presses a control in the conversation: what she opened stays where she opened it.
+ * presses a control in the conversation: scrolled up, what she opened stays where she opened it; at the bottom, the view
+ * follows what it opened down, but never so far that the control leaves the top.
  * Reports whether new tail content arrived while she was scrolled up, for the jump-to-latest control:
  * only a tail that grew counts, so opening older history above her isn't an arrival.
  */
@@ -601,9 +602,10 @@ function useStickyScroll(messages: Message[], live: Live) {
   // yet when an update lands right after it, still counts as leaving the bottom.
   const lastTop = useRef(0);
   // A control she just pressed inside the conversation (a marker, a run, Show more): what it opens grows under it, and
-  // following the bottom would pull it up out of view. For a moment after the press, sizes change around it instead,
-  // and whether she still follows the bottom is measured afresh.
-  const pressed = useRef<{ el: Element; top: number; at: number }>(undefined);
+  // following the bottom without limit could pull it up out of view. For a moment after the press, sizes change around
+  // it instead (or, pressed at the bottom, the view follows only as far as keeps it in view), and whether she still
+  // follows the bottom is measured afresh.
+  const pressed = useRef<{ el: Element; top: number; at: number; bottom: boolean }>(undefined);
   // The hold is this hook's alone: the browser's own scroll anchoring would move the view first, and its scroll event
   // would end the hold and read her as scrolled up (#986). Anchoring stays on otherwise, for growth above her.
   const release = (el: HTMLDivElement) => { pressed.current = undefined; el.style.overflowAnchor = ""; };
@@ -612,7 +614,13 @@ function useStickyScroll(messages: Message[], live: Live) {
     if (p && p.el.isConnected && performance.now() - p.at < PRESS_HOLD_MS) {
       // Only a real move: setting scrollTop at all would stop a smooth scroll on its way.
       const moved = p.el.getBoundingClientRect().top - p.top;
-      if (Math.abs(moved) >= 1) el.scrollTop += moved;
+      if (p.bottom) {
+        // Pressed while following the bottom: what it opened is followed down too, as far as keeps the control itself
+        // in view at the top (#986).
+        const room = p.el.getBoundingClientRect().top - el.getBoundingClientRect().top;
+        const to = Math.min(el.scrollHeight - el.clientHeight, el.scrollTop + Math.max(0, room));
+        if (Math.abs(to - el.scrollTop) >= 1) el.scrollTop = to;
+      } else if (Math.abs(moved) >= 1) el.scrollTop += moved;
       stuck.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
     } else {
       if (p) release(el);
@@ -655,7 +663,7 @@ function useStickyScroll(messages: Message[], live: Live) {
     const press = (e: MouseEvent) => {
       const c = (e.target as Element | null)?.closest("button, a, summary, [role='button']");
       if (!c || !el.contains(c) || c.matches(".jump-latest, .older, .pending-bar")) return;
-      pressed.current = { el: c, top: c.getBoundingClientRect().top, at: performance.now() };
+      pressed.current = { el: c, top: c.getBoundingClientRect().top, at: performance.now(), bottom: stuck.current };
       // Where she had scrolled to before pressing, whose event may land after the press, isn't a scroll that ends the hold.
       lastTop.current = el.scrollTop;
       el.style.overflowAnchor = "none";

@@ -54,18 +54,20 @@ desktop and at 390 px (principle 1). Every control has its row in ux.md §6.
    your answer"), no Dismiss.
 5. **Start a thread** in a message's menu, in a project chat only. A
    resolved thread's message box is replaced by one **Reopen** link.
-6. **Project settings page** (the **Project settings** link in the project's
-   overview), its own address, sections on the left: **General** (Goal; the
-   Paused, Watching threads and Check in on threads switches; an h3 **New
-   threads** with Model, Code mode, Thinking and Fallback, each select empty
-   as **Same as coordinator**; an h3 **Workspace** with Group, then Folders,
-   Machines, Repositories and MCP servers, then a **Thread settings** link to
-   the project chat's own drawer; Commands; Checks; one Save at the foot),
-   **Memory** (Instructions; a link to the project page in the memory
-   browser), and **Files and images**, one section with the Files | Images
+6. **Project settings page** (**Settings** in the project chat's header, or
+   the **Project settings** link in the project's overview), its own
+   address, **Pause** in its header and sections on the left, each with its
+   own Save: **Project** (Goal; Instructions with Ask first and a link to
+   the project page in the memory browser; Group), **Threads** (Check on
+   threads; an eyebrow **New threads** with Model, Thinking, Fallback, Code
+   mode and Evidence judge, each select empty as **Default**), **Access**
+   (Folders, Machines, Repositories and MCP servers), **Code** (Install,
+   Checks, Command rules) and **Files**, with the Files | Images | Videos
    segmented control (the project folder: upload, new folder, rename, move,
-   delete, download, through the Files panel's API). The chat's own model and
-   Mode are not on this page; they stay in its header, drawer and composer.
+   delete, download, through the Files panel's API). A **Chat settings**
+   link under the sections opens the project chat's own drawer. The chat's
+   own model and Mode are not on this page; they stay in its header, drawer
+   and composer.
    docs/web.md ("Project settings page") and docs/ux.md §6 describe what
    exists now.
 7. **Notifications:** the **Waiting on you** type, with Open.

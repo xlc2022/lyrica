@@ -1338,6 +1338,34 @@ test("a thread making a clip after its turn pulses its sidebar row until the cli
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
 
+test("Allow bypass adds Bypass permissions, where nothing asks, and taking it off moves the thread to Auto", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  await page.goto(`/#/u/${userId}/settings/network`);
+  const allow = page.getByLabel("Allow bypass");
+  await expect(allow).not.toBeChecked();
+  await expect(page.getByRole("combobox", { name: "Mode", exact: true }).getByRole("option")).toHaveCount(4);
+  await allow.click();
+  await expect(allow).toBeChecked();
+  await expect(page.getByRole("combobox", { name: "Mode", exact: true }).getByRole("option")).toHaveCount(5);
+  await newThread(page, "General");
+  await page.locator(".mode-picker").getByRole("button").click();
+  const items = page.getByRole("menu", { name: "Mode" }).getByRole("menuitemradio");
+  await expect(items).toHaveCount(5);
+  await expect(items.last()).toContainText("Commands and file changes never ask.");
+  await page.keyboard.press("5");
+  await expect(page.locator(".mode-picker")).toContainText("Bypass permissions");
+  await noHorizontalScroll(page);
+  await send(page, "run: echo bypassed");
+  await expect(page.getByText("The command finished.")).toBeVisible();
+  await expect(page.getByRole("group", { name: "Allow bash?" })).toHaveCount(0);
+  const thread = page.url();
+  await page.goto(`/#/u/${userId}/settings/network`);
+  await page.getByLabel("Allow bypass").click();
+  await expect(page.getByRole("combobox", { name: "Mode", exact: true }).getByRole("option")).toHaveCount(4);
+  await page.goto(thread);
+  await expect(page.locator(".mode-picker")).toContainText("Auto");
+});
+
 test("in an ask mode, a command can be allowed, and denying it stops the tool", async ({ page, baseURL }) => {
   await enter(page, baseURL!);
   await newThread(page, "General");
@@ -1462,7 +1490,7 @@ test("a thread opens at its latest message, even when the space above the conver
   await page.locator(".scroll .msg").last().evaluate((el) => { el.style.paddingBottom = "400px"; });
   await expect.poll(fromBottom).toBeLessThanOrEqual(2);
   await page.unrouteAll({ behavior: "ignoreErrors" });
-  // Something she opens herself near the foot (a run of tool calls) opens in place: the view doesn't follow it down.
+  // Something she opens herself at the foot (a run of tool calls) is followed down, its header still in view.
   await page.locator(".scroll .msg").last().evaluate((el) => { el.style.paddingBottom = ""; });
   await send(page, "recall: 6");
   await expect(page.getByText("You said: recall: 6")).toBeVisible();
@@ -1471,11 +1499,13 @@ test("a thread opens at its latest message, even when the space above the conver
   await expect(page.getByRole("group", { name: "Message actions" }).last()).toBeVisible();
   await expect.poll(fromBottom).toBeLessThanOrEqual(2);
   const marker = page.locator(".marker.tool-run").last().getByRole("button", { name: /tool calls/ });
-  const before = (await marker.boundingBox())!.y;
   await marker.click();
   await expect(page.locator(".marker.tool-run").last().locator(".run-body .marker[data-type='tool']")).toHaveCount(6);
   await page.waitForTimeout(300);
-  expect(Math.abs((await marker.boundingBox())!.y - before)).toBeLessThanOrEqual(2);
+  // Down to the bottom, or, where the run and what follows it are taller than the view (a short phone), as far as
+  // keeps its header at the top.
+  await expect.poll(async () => (await fromBottom()) <= 2
+    || Math.abs((await marker.evaluate((b) => b.getBoundingClientRect().top - b.closest(".scroll")!.getBoundingClientRect().top))) <= 2).toBe(true);
   await expect(marker).toBeInViewport();
 });
 
@@ -1502,7 +1532,7 @@ test("opening a run of calls whose header sits part way above the view leaves th
   }
 });
 
-test("typing while her reply streams leaves the conversation where it is, and opening a run of calls keeps its header where it was pressed", async ({ page, baseURL }) => {
+test("typing while her reply streams leaves the conversation where it is, and opening a run of calls at the bottom follows it down", async ({ page, baseURL }) => {
   await enter(page, baseURL!);
   await newThread(page, "General");
   await send(page, `reply: ${Array.from({ length: 24 }, (_, i) => `Line ${i + 1} of the long thread, which keeps going past one line on the way down.`).join("\n\n")}`);
@@ -1532,15 +1562,15 @@ test("typing while her reply streams leaves the conversation where it is, and op
   expect(await page.evaluate(() => (window as unknown as { off: number[] }).off)).toEqual([]);
   await expect(page.getByRole("button", { name: "Jump to latest" })).toHaveCount(0);
   await expect.poll(fromBottom).toBeLessThanOrEqual(2);
-  // Opening the run at the tail while it streams: its header stays where she pressed it.
+  // Opening the run at the tail while it streams: the view follows it down, its header still in view (#986).
   const marker = page.locator(".marker.tool-run").getByRole("button", { name: /tool calls running/ });
-  const before = (await marker.boundingBox())!.y;
   await marker.click();
   await expect(page.locator(".marker.tool-run .run-body")).toBeVisible();
   for (let i = 0; i < 4; i++) {
     await page.waitForTimeout(150);
-    expect(Math.abs((await marker.boundingBox())!.y - before)).toBeLessThanOrEqual(2);
+    await expect(marker).toBeInViewport();
   }
-  await expect(marker).toBeInViewport();
+  await expect.poll(fromBottom).toBeLessThanOrEqual(2);
+  await expect(page.getByRole("button", { name: "Jump to latest" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Stop" })).toBeHidden({ timeout: 20_000 });
 });

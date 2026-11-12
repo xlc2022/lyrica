@@ -1129,7 +1129,7 @@ values are always visible next to the model badge:
 | **Folders** | The thread's grants, each read-only or read-write. |
 | **Machines** | The SSH accounts and Proxmox nodes the thread may use (Machines). |
 | **Repositories** | The repositories the thread clones, each with the Git account it uses (Git accounts and repositories). |
-| **Code mode** | Focuses the persona, memory and tools on coding and selects the Coding task; editable under Behaviour, and for new project threads under General → New threads. |
+| **Code mode** | Focuses the persona, memory and tools on coding and selects the Coding task; editable under Behaviour, and for new project threads in Project settings → Threads. |
 | **Mode** | Ask, Accept edits, Plan or Auto (see Approval). |
 | **Web search, Images** | Switches for `web_search`, `web_fetch` and `browse`, and for `image`. On unless turned off. |
 | **Claude Code** | Whether her sandbox runs can use Claude Code on the user's Claude plan (Claude Code). Off unless turned on; shown only in a general thread that isn't local-only, once a token is saved and the program is installed. |
@@ -2011,8 +2011,21 @@ judgment and make review easy. Each thread has a **mode**:
   `propose_plan` are active. A child thread of a Plan-mode thread is in
   Plan mode too.
 - **Auto** (`auto`, the default): works freely inside the grants.
+- **Bypass permissions** (`bypass`): offered only while the user has turned
+  on **Allow bypass** (`bypassAllowed`, `setBypassAllowed`;
+  Settings → Network → New threads). In the sandbox no mode prompt
+  and no suspect-command warning asks. The cards that ask in every mode
+  still do: an MCP tool that isn't read-only, an open-world tool, and a
+  `browse` form or attachment. Forbid rules still refuse, and so does a command they
+  can't see into (the card it would get elsewhere), so wrapping a command
+  in `eval` or `bash -c "$(…)"` doesn't get round them. The user's own Ask
+  rules still ask, and on a machine the stricter of Auto and its limit
+  applies as before, with its suspect and
+  moved-machine cards. Turning the switch off moves every thread in Bypass
+  permissions, and the default, to Auto; `effective` reads `bypass` as
+  `auto` while it is off. A plan can't go ahead in it.
 
-Whatever the mode, a suspect command (a recursive delete, or git throwing
+Outside Bypass permissions, whatever the mode, a suspect command (a recursive delete, or git throwing
 away commits or changes; [Machines](#machines)) asks with a warning, until
 allowed in the thread.
 
