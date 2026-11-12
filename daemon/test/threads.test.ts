@@ -262,10 +262,23 @@ describe("permission prompts", () => {
     stream.close();
   });
 
+  it("a command that waits with a long sleep goes back to her before anyone is asked", async () => {
+    const { ada, model, path } = await setup();
+    await ada.patch(`${path}/settings`, { mode: "acceptEdits" });
+    model.reply({ tools: [{ name: "bash", args: { command: "sleep 200; cat /workspace/scratch/run.log" } }] });
+    model.reply({ text: "ok" });
+    const stream = ada.events(`${path}/events`);
+    await ada.post(`${path}/messages`, { text: "go" });
+    await stream.until(is("turn_end"));
+    expect(stream.events.some((e) => e.event.type === "permission")).toBe(false);
+    expect(JSON.stringify(model.requests[1]!.messages)).toContain("Not run: this sleeps 3 min");
+    stream.close();
+  });
+
   it("Stop aborts the turn and denies a waiting request", async () => {
     const { ada, model, path } = await setup();
     await ada.patch(`${path}/settings`, { mode: "acceptEdits" });
-    model.reply({ tools: [{ name: "bash", args: { command: "sleep 100" } }] });
+    model.reply({ tools: [{ name: "bash", args: { command: "sleep 30" } }] });
     const stream = ada.events(`${path}/events`);
     await ada.post(`${path}/messages`, { text: "go" });
     await stream.until(is("permission"));

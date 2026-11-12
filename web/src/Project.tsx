@@ -332,7 +332,7 @@ export function ProjectPage({ ctx, pool, threadId, section }: { ctx: ShellContex
   );
 }
 
-/** Goal; Paused, Watching threads and Check in on threads; New threads (Model, Code mode, Evidence judge, Thinking, Fallback); Workspace (Group, Folders, Machines, Repositories, MCP servers) and the Thread settings link; Commands; Setup; Checks; one Save. */
+/** Goal; Paused and Check on threads; New threads (Model, Code mode, Evidence judge, Thinking, Fallback); Workspace (Group, Folders, Machines, Repositories, MCP servers) and the Thread settings link; Commands; Setup; Checks; one Save. */
 export function GeneralSection({ ctx, base, summary, settings, onSummary, onSettings }: {
   ctx: ShellContext; base: string; summary: ThreadSummary; settings: ThreadSettings; onSummary: (s: ThreadSummary) => void; onSettings: (s: ThreadSettings) => void;
 }) {
@@ -343,8 +343,9 @@ export function GeneralSection({ ctx, base, summary, settings, onSummary, onSett
   const [goal, setGoal] = useState(ps?.draftGoal ?? summary.goal ?? "");
   useEffect(() => { if (ps?.draftGoal !== undefined) setGoal(ps.draftGoal); }, [ps?.draftGoal]);
   const [paused, setPaused] = useState(!!ps?.paused);
-  const [watch, setWatch] = useState(ps?.watchThreads !== false);
-  const [checkIn, setCheckIn] = useState(ps?.checkInOnThreads !== false);
+  // One switch for both: looks at the threads (watchThreads) and waiting on them in a turn (checkInOnThreads).
+  const checkingNow = ps?.watchThreads !== false && ps?.checkInOnThreads !== false;
+  const [checkIn, setCheckIn] = useState(checkingNow);
   const [model, setModel] = useState(refOf(ps?.threadsModel));
   const [code, setCode] = useState(ps?.threadsCode ?? settings.code);
   const [evidence, setEvidence] = useState<EvidenceSetting | "">(ps?.threadsEvidence ?? "");
@@ -364,8 +365,7 @@ export function GeneralSection({ ctx, base, summary, settings, onSummary, onSett
     setSaved(false);
     const change: ThreadChange = {
       goal, paused, commandRules: rules.filter(r => r.prefix.trim()), checks: checks.map(c => c.trim()).filter(Boolean), setup: setup.trim() || null,
-      ...(watch !== (ps?.watchThreads !== false) ? { watchThreads: watch } : {}),
-      ...(checkIn !== (ps?.checkInOnThreads !== false) ? { checkInOnThreads: checkIn } : {}),
+      ...(checkIn !== checkingNow ? { watchThreads: checkIn, checkInOnThreads: checkIn } : {}),
       threadsModel: model ? { offeringId: model } : null,
       ...(code !== (ps?.threadsCode ?? settings.code) ? { threadsCode: code } : {}),
       threadsEvidence: evidence || null,
@@ -407,8 +407,7 @@ export function GeneralSection({ ctx, base, summary, settings, onSummary, onSett
       </label>
       <div className="row switches">
         <Switch label="Paused" hint="Running threads stop and queued ones wait." checked={paused} onChange={setPaused} />
-        <Switch label="Watching threads" hint={`After you write in a thread or one posts an update, ${her()} checks whether the other threads are affected and tells them.`} checked={watch} onChange={setWatch} />
-        <Switch label="Check in on threads" hint={`While its threads work, ${her()} can wait in this chat and look in on them. Off, the chat ends its turn and their reports wake it, which takes far fewer tokens on a long chat.`} checked={checkIn} onChange={setCheckIn} />
+        <Switch label="Check on threads" hint={`While its threads work, ${her()} looks in on them and tells the others what affects them. Off, the chat only hears their reports, which takes far fewer tokens.`} checked={checkIn} onChange={setCheckIn} />
       </div>
 
       <h3 title={sameHint}>New threads</h3>

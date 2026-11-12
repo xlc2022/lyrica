@@ -5,6 +5,7 @@
 // anywhere. A restart loses them.
 
 import type { ExecutionTarget } from "./ops.ts";
+import { SHELLS, simpleCommands, unwrapped } from "./machines.ts";
 
 /** A thread's jobs: running at once, kept after ending, the default and longest time limit (seconds), and output kept (bytes). */
 export const JOB_LIMITS = { running: 4, kept: 10, timeoutS: 4 * 3600, maxTimeoutS: 24 * 3600, outputBytes: 64 * 1024 };
@@ -215,3 +216,63 @@ const info = (j: Job): JobInfo => ({
 });
 
 const text = (j: Job): string => `${j.dropped ? `[… ${j.dropped} bytes left out …]\n` : ""}${Buffer.concat(j.output).toString("utf8")}`;
+
+/** Waiting with `sleep`: a fixed wait this long or longer, or a loop that sleeps this long or longer between checks in her turn, is refused (`sleepWait`). */
+export const SLEEP_LIMITS = { fixedS: 60, loopS: 10 };
+
+/** One `sleep` argument in seconds (`90`, `2.5`, `5m`, `1h`, `infinity`), or undefined when it can't be told (`$N`). */
+function sleepSeconds(arg: string): number | undefined {
+  if (arg === "infinity") return Infinity;
+  const m = /^(\d+(?:\.\d*)?|\.\d+)([smhd]?)$/.exec(arg);
+  return m ? Number(m[1]) * { "": 1, s: 1, m: 60, h: 3600, d: 86400 }[m[2] as "" | "s" | "m" | "h" | "d"] : undefined;
+}
+
+/** A command line's sleeps in seconds, nested `bash -c` lines included, and whether it loops (`while`, `until`, `for`, `select`). */
+function sleeps(command: string, depth = 0): { seconds: number[]; loop: boolean } {
+  const seconds: number[] = [];
+  let loop = false;
+  for (const parsed of simpleCommands(command)) {
+    if (["while", "until", "for", "select"].includes(parsed[0] ?? "")) loop = true;
+    const words = unwrapped(parsed);
+    if (words[0] === "sleep") {
+      const each = words.slice(1).filter((w) => !w.startsWith("-")).map(sleepSeconds);
+      if (each.length && each.every((s) => s !== undefined)) seconds.push(each.reduce((a, b) => a! + b!, 0)!);
+    } else if (SHELLS.has(words[0] ?? "") && depth < 3) {
+      const c = words.indexOf("-c");
+      if (c > 0 && words[c + 1]) { const inner = sleeps(words[c + 1]!, depth + 1); seconds.push(...inner.seconds); loop ||= inner.loop; }
+    }
+  }
+  return { seconds, loop };
+}
+
+const inWords = (s: number) => (s === Infinity ? "forever" : s < 120 ? `${Math.round(s)} s` : `${Math.round(s / 60)} min`);
+
+/** How to wait instead: on the thing itself, so she hears the moment it's done and her turn isn't held. */
+export const WAIT_WAYS = [
+  "Wait on the thing itself, and end your turn:",
+  "- A long command: run it with bash background: true. You're told the moment it ends.",
+  "- A file or log reaching some state: run the check as a loop with background: true, such as until grep -q 'finished' /workspace/scratch/run.log; do sleep 15; done. It ends, and you're told, once the state is reached.",
+  "- CI on a pull request: threads watch wakes this thread when its checks finish. For a run with no pull request, gh run watch <run id> --exit-status with background: true.",
+  "- A set time with nothing to wait on: threads later.",
+].join("\n");
+
+/**
+ * Why a `bash` command that waits by sleeping isn't run, or undefined. In her
+ * turn, a fixed sleep of `SLEEP_LIMITS.fixedS` or more (all its sleeps
+ * together) or a loop that sleeps `SLEEP_LIMITS.loopS` or more between
+ * checks holds the thread on a guess at how long something takes. In the
+ * background, a loop is the right way to wait for a state, but a fixed sleep
+ * that long is only a timer on a guess.
+ */
+export function sleepWait(command: string, background: boolean): string | undefined {
+  const { seconds, loop } = sleeps(command);
+  if (!seconds.length) return undefined;
+  const total = seconds.reduce((a, b) => a + b, 0);
+  if (loop && !background && Math.max(...seconds) >= SLEEP_LIMITS.loopS) {
+    return `Not run: this polls in a loop that sleeps ${inWords(Math.max(...seconds))} between checks, holding your turn while it guesses.\n${WAIT_WAYS}`;
+  }
+  if (!loop && total >= SLEEP_LIMITS.fixedS) {
+    return `Not run: this ${background ? "background command is a timer: it " : ""}sleeps ${inWords(total)} on a guess at how long something takes${background ? "" : ", holding your turn"}.\n${WAIT_WAYS}`;
+  }
+  return undefined;
+}

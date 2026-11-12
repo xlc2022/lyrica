@@ -76,6 +76,8 @@ interface Run {
   jobs?: string[];
   /** More files in the sandbox, by path. */
   files?: Record<string, string>;
+  /** The thread's artifacts; with it, page publish and page artifacts work. */
+  artifacts?: ThreadTools["artifacts"];
 }
 
 /** Tools any thread has besides the workspace's: memory, and the switched ones, which do nothing here. */
@@ -84,6 +86,9 @@ const others: ExtensionFactory = (pi) => {
     pi.registerTool({ name, label: name, description: name, parameters: Type.Object({}), execute: async () => ({ content: [{ type: "text", text: "ok" }], details: undefined }) });
   }
 };
+
+const run2 = (mode: ThreadWorkspace["mode"], command: string, files: Record<string, string>, approve: ThreadTools["approve"]) =>
+  run(mode, [fauxToolCall("bash", { command })], { rules: [...DEFAULT_COMMAND_RULES], files, approve });
 
 async function run(mode: ThreadWorkspace["mode"], calls: ReturnType<typeof fauxToolCall>[], o: Run = {}) {
   const dir = mkdtempSync(join(tmpdir(), "lyrica-ws-"));
@@ -119,6 +124,7 @@ async function run(mode: ThreadWorkspace["mode"], calls: ReturnType<typeof fauxT
     approve: o.approve, ...(o.browser ? { browser: o.browser } : {}), proposePlan: o.proposePlan, setMode: (m) => { settings.mode = m; },
     claudeCode: () => !!o.claudeCode,
     ...(o.sameFile ? { sameFile: o.sameFile } : {}),
+    ...(o.artifacts ? { artifacts: o.artifacts } : {}),
     ...(o.jobs ? {
       startJob: async (command: string, machine?: string) => {
         o.jobs!.push(`${machine ?? "sandbox"}: ${command}`);
@@ -971,6 +977,21 @@ describe("project command rules in the hook", () => {
     await run("auto", [fauxToolCall("bash", { command })], { rules: [...DEFAULT_COMMAND_RULES], approve: async () => { asked++; return false; } });
     expect(asked).toBe(1);
   });
+  it("reads a script a shell runs, so a plain one doesn't ask and a destructive one warns", async () => {
+    const run = "timeout 600 bash -e /workspace/run.sh";
+    let asked = 0, warning: string | undefined;
+    const approve: ThreadTools["approve"] = async (r) => { asked++; warning = r.warning; return false; };
+    let result = await run2("auto", run, { "/workspace/run.sh": "cd /workspace\nnpm run build > b.log 2>&1\n" }, approve);
+    expect(asked).toBe(0);
+    expect(result.commands).toEqual([run]);
+    result = await run2("auto", run, { "/workspace/run.sh": "git checkout main -- web/src\n" }, approve);
+    expect(asked).toBe(1);
+    expect(warning).toContain("uncommitted");
+    // Written on the same line: the body is the script, whatever the file held before.
+    const written = "cat > /workspace/s.sh <<'EOF'\nrm -rf ~\nEOF\nbash /workspace/s.sh";
+    await run2("auto", written, { "/workspace/s.sh": "ls\n" }, approve);
+    expect(asked).toBe(2);
+  });
   it("allow keeps the machine's prompts", async () => {
     let asked = 0;
     await run("ask", [fauxToolCall("bash", { command: "ls", machine: "nas" })], { rules: [{ prefix: "ls", decision: "allow" }], machines: [{ name: "nas", kind: "ssh", limit: "ask", root: null }], approve: async () => { asked++; return false; } });
@@ -1063,6 +1084,37 @@ describe("the page tool", () => {
     expect(bundled).toContain("<script>fetch('/api');</script>");
     expect(results[0]).toBe("page: /workspace/site/index.html: Loads from the network: https://cdn.example/logo.png.\nRefers to local files one file can't carry: style.css, app.js.");
     expect(results[1]).toMatch(/^page: Bundled \/workspace\/site\/index.html into \/workspace\/site\/index.single.html \(1 KB\), inlining style.css, app.js.\nLoads from the network: https:\/\/cdn.example\/logo.png.\nNetwork calls in its code: fetch/);
+  });
+
+  it("publishes a self-contained page as an artifact without asking, refuses one that needs files beside it, and lists the thread's", async () => {
+    const asked: ApprovalRequest[] = [];
+    const published: { path: string; kind: string; title?: string; text: string }[] = [];
+    const artifacts: NonNullable<ThreadTools["artifacts"]> = {
+      publish: (p) => { published.push({ path: p.path, kind: p.kind, ...(p.title ? { title: p.title } : {}), text: p.bytes.toString() }); return { artifact: { id: "a1", title: p.title ?? "one", kind: p.kind, version: published.length, path: p.path }, created: published.length === 1 }; },
+      list: () => [{ id: "a1", title: "The site", kind: "html", version: 2, path: "/workspace/site/one.html" }],
+    };
+    const { results } = await run("auto", [
+      fauxToolCall("page", { action: "publish", path: "site/index.html" }, { id: "1" }),
+      fauxToolCall("page", { action: "publish", path: "site/one.html", title: "The site" }, { id: "2" }),
+      fauxToolCall("page", { action: "publish", path: "site/one.html" }, { id: "3" }),
+      fauxToolCall("page", { action: "publish", path: "notes.txt" }, { id: "4" }),
+      fauxToolCall("page", { action: "artifacts" }, { id: "5" }),
+    ], { files: { ...site, "/workspace/site/one.html": "<!doctype html><p>hi</p>" }, approve: async (r) => { asked.push(r); return true; }, artifacts });
+    expect(asked).toEqual([]);
+    // The calls run side by side, so the results come in no fixed order.
+    const one = (re: RegExp) => results.filter((r) => re.test(r));
+    expect(one(/refers to local files an artifact can't carry: style.css, app.js. Run page bundle and publish the bundle\./)).toHaveLength(1);
+    expect(published.map((p) => [p.path, p.kind, p.text])).toEqual(Array(2).fill(["/workspace/site/one.html", "html", "<!doctype html><p>hi</p>"]));
+    expect(published.filter((p) => p.title === "The site")).toHaveLength(1);
+    expect(one(/^page: Published a1 ".*" \(html, version 1, from \/workspace\/site\/one.html\)\. The person sees a card for it in this reply\.$/)).toHaveLength(1);
+    expect(one(/^page: Published version 2 of a1 /)).toHaveLength(1);
+    expect(one(/An artifact is an .html, .svg, .md, .jsx or .tsx file/)).toHaveLength(1);
+    expect(results).toContain('page: a1 "The site" (html, version 2, from /workspace/site/one.html)');
+  });
+
+  it("has no artifacts where the thread gives none, such as a subagent", async () => {
+    const { results } = await run("auto", [fauxToolCall("page", { action: "publish", path: "notes.txt" }, { id: "1" })]);
+    expect(results[0]).toMatch(/Artifacts aren't available here/);
   });
 
   it("holds a bundle another thread is changing, and refuses to write over the page", async () => {

@@ -476,7 +476,8 @@ Each active thread is one Pi session from `openThreadSession`, with
   own settings are, so a private project can't name a cloud model; each
   null follows the project chat; the model is a new thread's `code` model when it starts in
   code mode, its `chat` model otherwise), `watchThreads` and `checkInOnThreads` (each on unless
-  turned off; see [delegation.md](delegation.md#child-threads)). A **look** at the threads
+  turned off; looks go only while both are on, and the web UI sets them
+  together as **Check on threads**; see [delegation.md](delegation.md#child-threads)). A **look** at the threads
   (`watch.ts`) is one call to the `watching` task, through
   `callWithFallback` and `completeSimple` in a model runtime built from the
   project chat's `CallContext` (so local models only for a private or
@@ -847,6 +848,35 @@ documented in `daemon/src/api.ts`, "The Files panel".
   `nosniff`, so a served file never runs as a page. `download` makes it an
   attachment. It answers one byte range as `…/file` does (206 with
   `Content-Range`, 416 past the end), so a clip opened from Files seeks too.
+- **Artifacts** (`artifactRoutes`, docs/briefs/artifacts.md), each pool's
+  through its own thread view, and only for the pools the user's display
+  shows (404 otherwise):
+  `GET /api/u/:userId/artifacts/:pool?thread=` lists a thread's, newest
+  change first, each with its thread's title (a project chat's with its
+  threads' too; 400 with no thread, 404 for one that isn't there);
+  `POST …/artifacts/:pool?name=<file name>&thread=[&title=]` imports the
+  body's bytes as version 1 by the user (the kind by the name: `.html`,
+  `.htm`, `.svg`, `.md`, or `.jsx` and `.tsx` for a React component; 415
+  for another kind or bytes with a NUL, 413 past 16 MiB, 400 with no thread, 404 for
+  one that isn't there); nothing is run or sent to a model. A component is
+  built into one page by core's `buildReactPage` (esbuild compiles it; it
+  may import only the listed packages) and the page is kept beside the
+  source, which is what `view` serves; one that doesn't build answers 400
+  with esbuild's first line;
+  `GET …/artifacts/:pool/:id` answers the artifact and its versions;
+  `GET …/:id/view[?v=<n>]` serves a version as `…/files/view` serves a file,
+  with the same headers (`viewHeaders`): HTML with the console bridge under
+  `sandbox allow-scripts allow-popups`, or with nothing run when its
+  thread's internet is off. SVG runs nothing; Markdown answers 415, since the web
+  renders it from `…/:id/content[?v=][&download=1]`, the version's source
+  as `text/plain` under `default-src 'none'; sandbox`;
+  `POST …/:id/versions?name=` adds the body as the next version (the same
+  kind, 400 otherwise); `POST …/:id/restore` with `{ version }` makes that
+  version the newest again as a new one; `PATCH …/:id` with `{ title }`
+  renames; `DELETE …/:id` deletes it with every version.
+  Her `page publish` reaches the same store through the thread's own view
+  (`hosted.ts`), as author `lyrica`; its result becomes an `artifact` part
+  of her message (`artifactPart`) and rides `tool_end` on the stream.
 - `GET …/files/view?path=<path>` serves an HTML, SVG or PDF file as a page
   for the web's file viewer (`file-view.ts`), at most 16 MB (413 beyond;
   415 for any other kind, or a `.pdf` whose bytes aren't a PDF's). HTML is

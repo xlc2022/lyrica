@@ -1092,9 +1092,11 @@ function ModelList({ ctx, ep, onVoice }: { ctx: MCtx; ep: EndpointInfo; onVoice:
 const SEARCHABLE_MODELS = 12;
 
 /** The ⋯ menu's actions on any endpoint, and the fields and dialogs they open. */
-const PLAN_NAMES = { chatgpt: "ChatGPT", grok: "Grok" } as const;
+const PLAN_NAMES = { chatgpt: "ChatGPT", codex: "Codex", grok: "Grok" } as const;
 type PlanKind = keyof typeof PLAN_NAMES;
-const planOf = (api: string): PlanKind | undefined => api === "chatgpt" || api === "grok" ? api : undefined;
+const planOf = (api: string): PlanKind | undefined => api in PLAN_NAMES ? api as PlanKind : undefined;
+/** Where OpenAI sends the browser after approving, which the person pastes back. */
+const REDIRECTS: Partial<Record<PlanKind, string>> = { chatgpt: "http://127.0.0.1:1455/auth/callback", codex: "http://localhost:1455/auth/callback" };
 
 function useEndpointActions(ctx: MCtx, ep: Endpoint, others: Endpoint[], onSignIn?: () => void) {
   const userId = ctx.user.id;
@@ -1150,7 +1152,7 @@ function useEndpointActions(ctx: MCtx, ep: Endpoint, others: Endpoint[], onSignI
     {asking === "remove" && (
       <ConfirmDialog title={`Remove ${ep.name}?`} sentence={ep.api === "host"
         ? "Its models leave every list that names them. The host keeps listing this server until you revoke it there."
-        : planOf(ep.api) ? `Its models leave every list that names them. Lyrica stays connected in your ${PLAN_NAMES[planOf(ep.api)!]} account until you disconnect it there.`
+        : planOf(ep.api) ? `Its models leave every list that names them. Lyrica stays connected in your ${planOf(ep.api) === "codex" ? "ChatGPT" : PLAN_NAMES[planOf(ep.api)!]} account until you disconnect it there.`
         : "Its models leave every list that names them, so threads that used them fall back to the next model."}
         confirm="Remove" danger onCancel={() => setAsking(undefined)}
         onConfirm={() => { setAsking(undefined); void run(async () => { await del(path); done(); }); }} />
@@ -1469,8 +1471,8 @@ function EndpointDrawer({ ctx, ep, signIn, onClose }: { ctx: MCtx; ep?: Endpoint
           <label className="field"><span>Name</span><input value={name} onChange={(e) => setName(e.target.value)} /></label>
           {!ep && (
             <label className="field"><span>Kind</span>
-              <select value={kind} onChange={(e) => { setKind(e.target.value as "custom" | "openrouter" | PlanKind); suggestName(e.target.value === "chatgpt" ? "ChatGPT" : ""); }}>
-                <option value="custom">Custom</option><option value="chatgpt">ChatGPT plan</option><option value="grok">Grok plan</option><option value="openrouter">OpenRouter</option>
+              <select value={kind} onChange={(e) => { setKind(e.target.value as "custom" | "openrouter" | PlanKind); suggestName(e.target.value === "chatgpt" ? "ChatGPT" : e.target.value === "codex" ? "Codex" : ""); }}>
+                <option value="custom">Custom</option><option value="chatgpt">ChatGPT plan</option><option value="codex" title="Your ChatGPT plan, through the Codex CLI's own sign-in">Codex plan</option><option value="grok">Grok plan</option><option value="openrouter">OpenRouter</option>
               </select>
             </label>
           )}
@@ -1499,7 +1501,7 @@ function EndpointDrawer({ ctx, ep, signIn, onClose }: { ctx: MCtx; ep?: Endpoint
 
 /**
  * A plan's sign-in, for a new plan (`name`) or one signed out (`ep`), opening the provider's page in a
- * new tab. ChatGPT: after approving, the browser lands on an address on this server's loopback it
+ * new tab. ChatGPT and Codex: after approving, the browser lands on an address on this server's loopback it
  * can't open, which the person pastes back as Redirect URL. Grok: the page asks for the Code shown
  * here. Finish saves the plan once the provider confirms. Leaving cancels the sign-in.
  */
@@ -1522,7 +1524,7 @@ function PlanSignIn({ ctx, plan, name, ep, onDone }: { ctx: MCtx; plan: PlanKind
     const id = started!.id;
     live.current = undefined;
     try {
-      await post(u(userId, "plans", "sign-in", id), plan === "chatgpt" ? { redirectUrl: redirect.trim() } : {});
+      await post(u(userId, "plans", "sign-in", id), REDIRECTS[plan] ? { redirectUrl: redirect.trim() } : {});
     } catch (e) {
       setStarted(undefined);
       setRedirect("");
@@ -1535,9 +1537,9 @@ function PlanSignIn({ ctx, plan, name, ep, onDone }: { ctx: MCtx; plan: PlanKind
     <button type="button" className={started ? undefined : "primary"} disabled={busy || (!ep && !name)} onClick={() => void start()}>Sign in with {PLAN_NAMES[plan]}</button>
     {started?.code && <p className="field"><span>Code</span><code className="mono">{started.code}</code></p>}
     {started && plan === "grok" && <div className="row drawer-foot"><button type="button" className="primary" disabled={busy} onClick={() => void finish()}>Finish</button></div>}
-    {started && plan === "chatgpt" && <>
+    {started && REDIRECTS[plan] && <>
       <label className="field"><span>Redirect URL</span>
-        <input className="mono" inputMode="url" autoCapitalize="none" autoComplete="off" title="The address your browser was sent to after you approved, starting http://127.0.0.1:1455/auth/callback" placeholder="http://127.0.0.1:1455/auth/callback?…" value={redirect} onChange={(e) => setRedirect(e.target.value)} />
+        <input className="mono" inputMode="url" autoCapitalize="none" autoComplete="off" title={`The address your browser was sent to after you approved, starting ${REDIRECTS[plan]}`} placeholder={`${REDIRECTS[plan]}?…`} value={redirect} onChange={(e) => setRedirect(e.target.value)} />
       </label>
       <div className="row drawer-foot"><button type="button" className="primary" disabled={busy || !redirect.trim()} onClick={() => void finish()}>Finish</button></div>
     </>}

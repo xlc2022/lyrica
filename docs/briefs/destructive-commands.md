@@ -46,9 +46,12 @@ owner chose three changes (01:14Z).
    opaque, and the dynamic loader is a wrapper (`knownValues`, `LOADER`;
    docs/workspace.md, Project command rules), so such read-only calls
    don't ask in Auto mode. A script the line sources first
-   (`cd … && source /…/env.sh && make`) is read where it runs: a forbidden
-   command in it is refused, and one that only sets variables isn't opaque
-   (`sourcedFile`, `setupOnly`). A program glob that can't name a shell,
+   (`cd … && source /…/env.sh && make`), or runs with a shell
+   (`timeout 600 bash -e /…/run.sh`, also one written just before with
+   `cat > /…/run.sh <<'EOF'`), is read where it runs: a forbidden command in
+   it is refused, a destructive one warns, and otherwise a run script, or a
+   sourced one that only sets variables, isn't opaque (`sourcedFile`,
+   `setupOnly`). A program glob that can't name a shell,
    wrapper, loader or ruled program (`/…/bin/*-gcc --version`) isn't opaque
    either (`harmlessGlob`).
 3. **`cd` on the same line.** `suspectCommand` follows `cd`/`pushd` through

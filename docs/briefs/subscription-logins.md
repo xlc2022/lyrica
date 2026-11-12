@@ -37,9 +37,12 @@ and the provider, so this is wiring, not a client of our own (principle 3).
   read from the cloud session, and its help page speaks of "participating"
   apps, so the first real sign-in is the test that a self-hosted install
   is accepted.
-- **Codex CLI login: not used.** Pi's older `openai-codex` provider
-  borrows the Codex CLI's own client and calls
-  `chatgpt.com/backend-api/codex`. The official sign-in above replaces it.
+- **Codex CLI login: offered as the Codex plan (2026-11-12).** Pi's older
+  `openai-codex` provider ("OpenAI Codex (legacy)") borrows the Codex CLI's
+  own client and calls `chatgpt.com/backend-api/codex`. #169 left it out in
+  favour of the official sign-in above; the owner asked for it as an
+  endpoint on 2026-11-12 ("support codex legacy login"), so it's a third
+  plan kind beside ChatGPT, with the same paste of the redirect address.
   (ChatGPT Images instead runs the unmodified `codex` program with the
   user's own Codex sign-in: codex-images.md.)
 - **Claude plan: forbidden.** Anthropic's Claude Code legal page
@@ -97,6 +100,10 @@ extension, daemon and web.
 
 ## Open
 
+- The Codex plan's first real sign-in: whether OpenAI takes the Codex
+  CLI's client with `originator=Lyrica` (Pi sends its agent name there),
+  and its device code login, which Lyrica doesn't offer yet.
+
 - The first real sign-ins, after deploy: whether OpenAI accepts a
   self-hosted install's Sign in with ChatGPT (its help page speaks of
   "participating" apps), and xAI's wording for its usage-limit error,
@@ -109,6 +116,5 @@ extension, daemon and web.
 
 ## Out of scope
 
-Claude and Gemini plan sign-in (forbidden, above); the Codex CLI login;
-the `claude` program as a tool (its own design); shared plans; a display
+Claude and Gemini plan sign-in (forbidden, above); the `claude` program as a tool (its own design); shared plans; a display
 of the remaining limit.

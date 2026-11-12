@@ -208,6 +208,32 @@ Each user has two pools of memory.
       in a grant says it deletes on the server.
     - A panel upload belongs to the thread, not to a message, so removing
       turns never deletes it.
+  - **Artifacts** (decided 2026-11-11, as in Claude's own app): a page,
+    drawing or document she publishes with `page publish`, or one the user
+    imports, kept with a title and every version it has had. Versions live
+    in the pool's own encrypted database, not in the thread's folder, so a
+    version never changes when the file it came from does, and a Private
+    artifact is never listed or served under General. A version is at most
+    16 MiB and is one self-contained file. An artifact opens as a file
+    does, in the same sandbox under its thread's internet rule, and only for the signed-in user: there
+    are no public links. She can't delete one; the user can. Every
+    artifact belongs to a thread, and deleting the thread deletes its
+    artifacts, as its files.
+    A publish shows as a card in her reply, which opens that version in the
+    file viewer with its thread beside it; there the user picks any
+    version, restores one as a new version, adds a version from a file,
+    renames, downloads or deletes. The Files panel's **Artifacts** tab lists
+    the thread's (a project chat's lists its threads' too) and imports
+    `.html`, `.svg` and `.md` files into it, each as a new artifact at
+    version 1; there is no page of every artifact (the owner, 2026-11-11:
+    they sit with the thread's other files). A React component (`.jsx` or `.tsx`, as
+    Claude's React artifacts are) is an artifact too: its source is kept as
+    written and built, when the version is made, into one page with React,
+    lucide-react, recharts and Tailwind inside, so it loads nothing from
+    outside. Like any page it runs only with its thread's internet on;
+    with it off no scripts run, so it shows nothing. It may import only
+    those packages by `import` statements (no `import()` or `require()`),
+    which the build enforces, and it is never run in `lyricad`.
   - **Changes** (decided 2026-10-22, as in Claude's own app): a thread with a
     checkout shows its branch, its open pull request and "+n −m" as a badge
     in its header, which opens the changes view: the files and commits at
@@ -320,7 +346,8 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     breaks. The same mechanism **merges** two endpoints that turned out to be
     the same server.
 - **Subscription plans** (docs/models.md, "Subscription plans").
-  A user can add a **ChatGPT plan** or a **Grok plan** by signing in with
+  A user can add a **ChatGPT plan**, a **Codex plan** (the same ChatGPT
+  plan through the Codex CLI's own login) or a **Grok plan** by signing in with
   the provider instead of giving an API key, so general threads answer
   from that plan. It is always cloud and always their own, never shared.
   Its sign-in is kept in their `user.db` and refreshed by Pi; when the
@@ -1369,8 +1396,9 @@ project page and the web part are built. Recent calls can be filtered by project
   **Resolved**. A thread is resolved by the user, by Lyrica when its work is
   delivered and nothing is owed, or after 7 days with no activity; a message
   in it reopens it.
-- **She watches her threads** (2026-10-11; a project setting, **Watching
-  threads**, on by default). When the user writes in one of the project's threads,
+- **She watches her threads** (2026-10-11; a project setting, on by
+  default; since 2026-11-12 one switch, **Check on threads**, with waiting
+  on threads in a turn, after the user turned off the waiting and still saw looks). When the user writes in one of the project's threads,
   a thread posts an update, a thread's turn ends with an error, or a thread
   starts waiting for an approval, a **look** follows a little later,
   batched across threads (2026-10-12: a look costs one small call, not
@@ -1393,7 +1421,7 @@ project page and the web part are built. Recent calls can be filtered by project
   writes in the project again, and a failure or an approval still brings
   one, which tells no thread but may raise, so threads can't keep each
   other going. Each failure or approval counts once a turn. With the
-  setting off, nothing is looked at.
+  switch off, nothing is looked at.
 - **Context set once.** Every thread of a project starts with the same
   project context, assembled each turn in its own budget:
   - **Goal**: one line the user writes.
@@ -1459,7 +1487,7 @@ project page and the web part are built. Recent calls can be filtered by project
     card, with **Start** per thread and **Start all**.
   - **Project settings** is the page the overview's one
     **Project settings** link opens, with sections: General (Goal;
-    Paused; **Watching threads** and **Check in on threads**; an h3
+    Paused; **Check on threads**; an h3
     **New threads** with the model, Code mode, thinking and fallback new
     threads start with; an h3 **Workspace** holding Group and the
     **Folders**, **Machines**, **Repositories** and **MCP servers** every

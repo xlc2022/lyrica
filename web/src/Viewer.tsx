@@ -39,6 +39,13 @@ const KIND_WORD: Record<ViewKind, string> = { html: "HTML", svg: "SVG", markdown
 /** Kinds with a Preview and a Source. */
 const HAS_SOURCE = new Set<ViewKind>(["html", "svg", "markdown"]);
 
+/**
+ * What the viewer shows when it isn't a library's file: `content` is its source as text and `view` its page (as
+ * `…/files/content` and `…/files/view` are for a file), `settings` the thread settings that say whether its internet
+ * is off. `heading` takes the path's place in the header, `facts` follow the kind, and `actions` come before Thread.
+ */
+export interface ViewerSource { /** What it shows as, whatever its name. */ kind: ViewKind; content: (download?: boolean) => string; view: string; settings?: string; heading: ReactNode; facts?: ReactNode; actions?: ReactNode }
+
 /** `madeBy`: the thread recorded as having written it, shown beside it in place of the library's own thread. */
 export interface ViewerFile { path: string; name: string; size: number; modified: string; madeBy?: string }
 
@@ -63,10 +70,12 @@ const size = (n: number) => (n < 1024 ? `${n} B` : n < 1024 * 1024 ? `${Math.max
  * `list`: the files it was opened among, in their order; a picture steps to the previous or next picture of them
  * with the buttons on its sides or Left and Right, through `onStep`, stopping at the ends.
  */
-export function Viewer({ ctx, threads, file, base, shownPath, thread, list, onStep, onMenu, onClose, children }: {
+export function Viewer({ ctx, threads, file, base, shownPath, thread, list, onStep, onMenu, onClose, children, from }: {
   ctx: ShellContext; threads: ThreadSummary[]; file: ViewerFile; base: string; shownPath: string;
   thread?: { pool: Pool; threadId: string }; list?: ViewerFile[]; onStep?: (f: ViewerFile) => void;
   onMenu?: (e: React.MouseEvent) => void; onClose: () => void; children?: ReactNode;
+  /** Something that isn't a file in a library (an artifact's version): where it is read from, and its own header. */
+  from?: ViewerSource;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const wide = useWide();
@@ -75,8 +84,9 @@ export function Viewer({ ctx, threads, file, base, shownPath, thread, list, onSt
   useEffect(() => { const el = ref.current; if (el && !el.open) el.showModal(); return () => el?.close(); }, []);
   // Going anywhere else (a link in the thread, Open as a page) closes the viewer.
   useEffect(() => { addEventListener("hashchange", onClose); return () => removeEventListener("hashchange", onClose); }, [onClose]);
-  const contentUrl = (download = false) => `${base}/content?path=${encodeURIComponent(file.path)}${download ? "&download=1" : ""}`;
-  const viewUrl = `${base}/view?path=${encodeURIComponent(file.path)}`;
+  const contentUrl = from ? from.content : (download = false) => `${base}/content?path=${encodeURIComponent(file.path)}${download ? "&download=1" : ""}`;
+  const viewUrl = from ? from.view : `${base}/view?path=${encodeURIComponent(file.path)}`;
+  const settingsUrl = from ? from.settings : `${base.replace(/\/files$/, "")}/settings`;
   const download = () => { const a = document.createElement("a"); a.href = contentUrl(true); a.download = file.name; a.click(); };
   const pictures = STEPS.has(viewKindOf(file.name)) && onStep ? (list ?? []).filter((f) => STEPS.has(viewKindOf(f.name))) : [];
   const at = pictures.findIndex((f) => f.path === file.path);
@@ -102,10 +112,10 @@ export function Viewer({ ctx, threads, file, base, shownPath, thread, list, onSt
       // Escape closes the topmost thing: a menu or drawer open inside first, then the viewer.
       onCancel={(e) => { e.preventDefault(); if (!document.activeElement?.closest("[role='menu'], .ctx-menu, .drawer")) onClose(); }} onKeyDown={onKeyDown}>
       {showFile && (
-        <FilePane file={file} shownPath={shownPath} contentUrl={contentUrl()} viewUrl={viewUrl} steps={steps}
+        <FilePane file={file} shownPath={shownPath} contentUrl={contentUrl()} viewUrl={viewUrl} settingsUrl={settingsUrl} steps={steps} heading={from?.heading} facts={from?.facts} kind={from?.kind}
           actions={<>
             <button type="button" className="icon sm" aria-label="Download" title="Download" onClick={download}><Icon name="download" /></button>
-            <CopyIconButton text={file.path} label="Copy path" className="icon sm" />
+            {from ? from.actions : <CopyIconButton text={file.path} label="Copy path" className="icon sm" />}
             {onMenu && <button type="button" className="icon sm" aria-label="File actions" aria-haspopup="menu" title="File actions" onClick={onMenu}><Icon name="more" /></button>}
             {known && <button type="button" className="sm" title={`Thread: ${known.title || "New thread"}`} aria-pressed={showThread} onClick={toggleThread}>Thread</button>}
           </>}
@@ -131,11 +141,11 @@ type Steps = { at: number; count: number; go: (by: -1 | 1) => void };
 type Loaded = { kind: "loading" } | { kind: ViewKind; text?: string } | { kind: "error"; message: string };
 
 /** The file itself: its header line, then what it shows as. */
-function FilePane({ file, shownPath, contentUrl, viewUrl, steps, actions, close, onDownload }: {
-  file: ViewerFile; shownPath: string; contentUrl: string; viewUrl: string; steps?: Steps; actions: ReactNode;
+function FilePane({ file, shownPath, contentUrl, viewUrl, settingsUrl, steps, heading, facts, kind: given, actions, close, onDownload }: {
+  kind?: ViewKind; file: ViewerFile; shownPath: string; contentUrl: string; viewUrl: string; settingsUrl?: string; steps?: Steps; heading?: ReactNode; facts?: ReactNode; actions: ReactNode;
   /** Close, after the actions; on a phone it stays on the path's line and the actions take the line below. */ close: ReactNode; onDownload: () => void;
 }) {
-  const byName = viewKindOf(file.name);
+  const byName = given ?? viewKindOf(file.name);
   const [state, setState] = useState<Loaded>({ kind: "loading" });
   const [source, setSource] = useState(false);
   useEffect(() => {
@@ -164,8 +174,8 @@ function FilePane({ file, shownPath, contentUrl, viewUrl, steps, actions, close,
   return (
     <section className="viewer-file" aria-label={shownPath}>
       <div className="viewer-head">
-        <span className="fname mono" title={shownPath}>{shownPath}</span>
-        <span className="viewer-facts muted">{kind ? KIND_WORD[kind] : "File"}{steps && <> <span className="num">{steps.at + 1}</span> of <span className="num">{steps.count}</span></>} · <span className="num">{size(file.size)}</span> · <span className="num" title={fullTime(file.modified)}>{shortTime(file.modified)}</span></span>
+        {heading ?? <span className="fname mono" title={shownPath}>{shownPath}</span>}
+        <span className="viewer-facts muted">{kind ? KIND_WORD[kind] : "File"}{facts && <> · {facts}</>}{steps && <> <span className="num">{steps.at + 1}</span> of <span className="num">{steps.count}</span></>} · <span className="num">{size(file.size)}</span> · <span className="num" title={fullTime(file.modified)}>{shortTime(file.modified)}</span></span>
         <span className="viewer-acts">
           {sourceable && (
             <div className="seg" role="group" aria-label="Show">
@@ -181,7 +191,7 @@ function FilePane({ file, shownPath, contentUrl, viewUrl, steps, actions, close,
         {state.kind === "loading" && <p className="empty">Loading…</p>}
         {state.kind === "error" && <ErrorText error={state.message} />}
         {state.kind !== "loading" && state.kind !== "error" && (raw ? <pre className="viewer-text">{text}</pre> : (
-          <Shown kind={state.kind} file={file} text={text} contentUrl={contentUrl} viewUrl={viewUrl} onDownload={onDownload} />
+          <Shown kind={state.kind} file={file} text={text} contentUrl={contentUrl} viewUrl={viewUrl} settingsUrl={settingsUrl} onDownload={onDownload} />
         ))}
         {/* aria-disabled, not disabled, at an end: a disabled button would drop the focus, and the keys with it. */}
         {steps && !raw && (
@@ -195,9 +205,9 @@ function FilePane({ file, shownPath, contentUrl, viewUrl, steps, actions, close,
   );
 }
 
-function Shown({ kind, file, text, contentUrl, viewUrl, onDownload }: { kind: ViewKind; file: ViewerFile; text?: string; contentUrl: string; viewUrl: string; onDownload: () => void }) {
+function Shown({ kind, file, text, contentUrl, viewUrl, settingsUrl, onDownload }: { kind: ViewKind; file: ViewerFile; text?: string; contentUrl: string; viewUrl: string; settingsUrl?: string; onDownload: () => void }) {
   switch (kind) {
-    case "html": return <HtmlPage url={viewUrl} settingsUrl={contentUrl.replace(/\/files\/content\?.*$/, "/settings")} name={file.name} />;
+    case "html": return <HtmlPage url={viewUrl} settingsUrl={settingsUrl} name={file.name} />;
     case "svg": return <div className="viewer-media"><img src={viewUrl} alt={file.name} /></div>;
     case "image": return <div className="viewer-media"><img src={contentUrl} alt={file.name} /></div>;
     // The browser's own PDF viewer; it won't show in a sandboxed frame, and the page route checks the bytes are a PDF's.
@@ -214,9 +224,9 @@ function Shown({ kind, file, text, contentUrl, viewUrl, onDownload }: { kind: Vi
  * The page in a sandboxed frame (scripts and popups only: no same origin, no top navigation, no forms), and its
  * console. With the thread's internet off the route serves it with nothing run, and a muted line says so.
  */
-function HtmlPage({ url, settingsUrl, name }: { url: string; settingsUrl: string; name: string }) {
+function HtmlPage({ url, settingsUrl, name }: { url: string; settingsUrl?: string; name: string }) {
   const frame = useRef<HTMLIFrameElement>(null);
-  const settings = useLoad(() => get<ThreadSettings>(settingsUrl), [settingsUrl]);
+  const settings = useLoad(() => (settingsUrl ? get<ThreadSettings>(settingsUrl) : Promise.resolve(undefined)), [settingsUrl]);
   const offline = settings.data?.network.internet === false;
   const [lines, setLines] = useState<ConsoleLine[]>([]);
   const [open, setOpen] = useState(true);

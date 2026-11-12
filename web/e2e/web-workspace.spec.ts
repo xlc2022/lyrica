@@ -1298,3 +1298,77 @@ test("a picture of the offline copy of Wikipedia shows in her reply through lyri
     await kiwix("");
   }
 });
+
+test("artifacts: import a page on the Files panel's Artifacts tab, open it in the viewer, add and restore versions, and open one from her reply's card", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  const html = (word: string) => Buffer.from(`<!doctype html><title>Picker</title><body><h1>${word}</h1><script>console.log("ran ${word}")</script></body>`);
+  // The thread's Files panel has an Artifacts tab, empty at first.
+  await newThread(page, "General");
+  await send(page, "Make the picker");
+  await expect(page.getByText("You said: Make the picker")).toBeVisible();
+  const threadId = threadIdOf(page.url());
+  const chat = page.url();
+  await page.goto(`${chat}/files`);
+  await page.getByRole("tab", { name: "Artifacts" }).click();
+  await expect(page.getByText("No artifacts yet.")).toBeVisible();
+
+  // Import makes version 1 and opens it: the page runs in the sandboxed frame, with its console under it.
+  await page.getByLabel("Import files").setInputFiles({ name: "status-picker.html", mimeType: "text/html", buffer: html("One") });
+  const viewer = page.locator("dialog.viewer");
+  await expect(viewer.locator(".artifact-heading")).toHaveText("status picker");
+  await expect(viewer.locator(".viewer-facts")).toContainText("HTML · Version 1");
+  const frame = viewer.locator("iframe.viewer-frame");
+  await expect(frame).toHaveAttribute("sandbox", "allow-scripts allow-popups");
+  await expect(viewer.frameLocator("iframe.viewer-frame").getByRole("heading", { name: "One" })).toBeVisible();
+  await expect(viewer.locator(".viewer-console-lines")).toContainText("ran One");
+
+  // A second version, then the first again as a third; the picker shows any of them.
+  await viewer.getByLabel("Add version").setInputFiles({ name: "picker-2.html", mimeType: "text/html", buffer: html("Two") });
+  const version = viewer.getByLabel("Version", { exact: true });
+  await expect(version).toHaveValue("2");
+  await expect(viewer.frameLocator("iframe.viewer-frame").getByRole("heading", { name: "Two" })).toBeVisible();
+  await version.selectOption("1");
+  await expect(viewer.frameLocator("iframe.viewer-frame").getByRole("heading", { name: "One" })).toBeVisible();
+  await viewer.getByRole("button", { name: "Artifact actions" }).click();
+  await viewer.getByRole("menuitem", { name: "Restore this version" }).click();
+  await expect(version).toHaveValue("3");
+  await expect(version.locator("option")).toHaveCount(3);
+
+  // Rename where the title is, and find it in the list.
+  await viewer.getByRole("button", { name: "Artifact actions" }).click();
+  await viewer.getByRole("menuitem", { name: "Rename…" }).click();
+  await viewer.getByLabel("Title").fill("Status model picker");
+  await viewer.getByLabel("Title").press("Enter");
+  await expect(viewer.locator(".artifact-heading")).toHaveText("Status model picker");
+  await viewer.getByRole("button", { name: "Close" }).click();
+  const row = page.locator(".artifact-row");
+  await expect(row).toHaveCount(1);
+  await expect(row).toContainText("Status model picker");
+  await expect(row).toContainText("HTML · Version 3");
+  await noHorizontalScroll(page);
+  const id = (await row.getAttribute("data-artifact"))!;
+
+  // Her reply's card names the version her call made and opens that one.
+  await page.route(`**/api/u/${userId}/threads/general/${encodeURIComponent(threadId)}/messages`, (route) => route.fulfill({ json: {
+    messages: [{ id: `e:${threadId}#1`, n: 1, role: "assistant", createdAt: "2026-11-11T12:00:00Z", parts: [
+      { type: "tool", toolCallId: "p1", name: "page", args: { action: "publish", path: "picker.html" }, result: "Published.", isError: false },
+      { type: "artifact", id, title: "Status model picker", kind: "html", version: 2 },
+      { type: "text", text: "Here is the picker." },
+    ] }], hasMore: false,
+  } }));
+  await page.goto(chat);
+  const card = page.locator(".artifact-card").last();
+  await expect(card).toContainText("Status model picker");
+  await expect(card).toContainText("HTML · Version 2");
+  await card.getByRole("button", { name: "Open Status model picker" }).click();
+  await expect(viewer.getByLabel("Version", { exact: true })).toHaveValue("2");
+  await expect(viewer.frameLocator("iframe.viewer-frame").getByRole("heading", { name: "Two" })).toBeVisible();
+
+  // Delete takes every version, after a confirmation.
+  await viewer.getByRole("button", { name: "Artifact actions" }).click();
+  await viewer.getByRole("menuitem", { name: "Delete…" }).click();
+  await expect(page.getByRole("heading", { name: "Delete Status model picker?" })).toBeVisible();
+  await page.getByRole("button", { name: "Delete", exact: true }).click();
+  await expect(viewer).toHaveCount(0);
+  expect(await page.evaluate(async ([u, t]) => (await (await fetch(`/api/u/${u}/artifacts/general?thread=${encodeURIComponent(t!)}`)).json() as unknown[]).length, [userId, threadId])).toBe(0);
+});

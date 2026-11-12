@@ -146,7 +146,7 @@ export interface Endpoint {
   /** A label that can change. */
   name: string;
   kind: "cloud" | "local";
-  /** A plain OpenAI-compatible server, a paired model host, or a subscription plan (ChatGPT or Grok) signed in with its provider. */
+  /** A plain OpenAI-compatible server, a paired model host, or a subscription plan (ChatGPT, Codex or Grok) signed in with its provider. */
   api: "openai-compatible" | "host" | PlanKind;
   /** For a host, its first address's `/v1`. */
   baseUrl: string;
@@ -168,15 +168,16 @@ export interface Endpoint {
   pausedAt?: string;
 }
 
-/** The subscription plans a user can sign in with (docs/models.md, "Subscription plans"). */
-export const PLAN_KINDS = ["chatgpt", "grok"] as const;
+/** The subscription plans a user can sign in with (docs/models.md, "Subscription plans"): ChatGPT through Sign in with ChatGPT or the Codex CLI's own login, and Grok. */
+export const PLAN_KINDS = ["chatgpt", "codex", "grok"] as const;
 export type PlanKind = (typeof PLAN_KINDS)[number];
 export const isPlan = (api: string | undefined): api is PlanKind => (PLAN_KINDS as readonly string[]).includes(api ?? "");
 /** Where each plan's calls go: its provider's Responses API, with the plan's own token. */
-export const PLAN_URLS: Record<PlanKind, string> = { chatgpt: "https://api.openai.com/v1", grok: "https://api.x.ai/v1" };
-const PLAN_NAMES: Record<PlanKind, string> = { chatgpt: "ChatGPT", grok: "Grok" };
+export const PLAN_URLS: Record<PlanKind, string> = { chatgpt: "https://api.openai.com/v1", codex: "https://chatgpt.com/backend-api", grok: "https://api.x.ai/v1" };
+const PLAN_NAMES: Record<PlanKind, string> = { chatgpt: "ChatGPT", codex: "Codex", grok: "Grok" };
+const PLAN_APIS = PLAN_KINDS.map((k) => `'${k}'`).join(", ");
 
-/** A plan's sign-in, as Pi's sign-in returns it (access, refresh, expires, and for ChatGPT clientId and scopes). */
+/** A plan's sign-in, as Pi's sign-in returns it (access, refresh, expires; for ChatGPT clientId and scopes, for Codex accountId). */
 export type PlanCredential = { access: string; refresh: string; expires: number } & Record<string, unknown>;
 
 /** What a model can do. Discovered where the endpoint says, else set by hand. */
@@ -723,13 +724,13 @@ export class Models {
   checkEndpointName(name: string): void { checkName(name); }
 
   /**
-   * Adds a ChatGPT or Grok plan from a finished sign-in: always cloud,
+   * Adds a ChatGPT, Codex or Grok plan from a finished sign-in: always cloud,
    * always the user's own (a plan belongs to one person), calling its
    * PLAN_URLS entry. Its sign-in is kept in the user's user.db, in the api_key column.
    */
   addPlan(actor: User, input: { name: string; plan: PlanKind; credential: PlanCredential }): Endpoint {
     checkName(input.name);
-    if (!isPlan(input.plan)) throw new Error("a plan is ChatGPT or Grok");
+    if (!isPlan(input.plan)) throw new Error("a plan is ChatGPT, Codex or Grok");
     const id = randomUUID();
     this.place(actor, false, (db) => {
       if (db.prepare("SELECT 1 FROM endpoints WHERE name = ?").get(input.name)) throw new Error(`endpoint ${input.name} already exists`);
@@ -742,7 +743,7 @@ export class Models {
   /** A plan's sign-in, or undefined when it is signed out. Only its owner's user.db has it. */
   planCredential(userId: string, endpointId: string): PlanCredential | undefined {
     return this.withUser(userId, (db) => {
-      const r = db.prepare("SELECT api_key FROM endpoints WHERE id = ? AND api IN ('chatgpt', 'grok')").get(endpointId) as { api_key: string | null } | undefined;
+      const r = db.prepare(`SELECT api_key FROM endpoints WHERE id = ? AND api IN (${PLAN_APIS})`).get(endpointId) as { api_key: string | null } | undefined;
       return r?.api_key ? JSON.parse(r.api_key) as PlanCredential : undefined;
     });
   }
@@ -760,7 +761,7 @@ export class Models {
    */
   setPlanCredential(userId: string, endpointId: string, credential: PlanCredential | null): void {
     this.withUser(userId, (db) => {
-      const r = db.prepare("UPDATE endpoints SET api_key = ? WHERE id = ? AND api IN ('chatgpt', 'grok')").run(credential ? JSON.stringify(checkCredential(credential)) : null, endpointId);
+      const r = db.prepare(`UPDATE endpoints SET api_key = ? WHERE id = ? AND api IN (${PLAN_APIS})`).run(credential ? JSON.stringify(checkCredential(credential)) : null, endpointId);
       if (!r.changes) throw new Error(`no plan ${endpointId}`);
     });
     if (credential) this.health.delete(endpointId);

@@ -1247,15 +1247,16 @@ test("watching threads: writing in a project's thread leads to a look, shown as 
   await expect(look.getByRole("link", { name: "Beta" })).toHaveCount(1);
   await expect(page.locator("main .threads-card")).toHaveCount(0);
   await expect(page.locator("main .msg.user").filter({ hasText: "[Watching threads]" })).toHaveCount(0);
-  // The switch, on by default, saves off.
+  // The one switch, on by default, saves off: both the looks and waiting in a turn.
   await openProjectSettings(page);
-  const watch = page.getByRole("checkbox", { name: "Watching threads" });
-  await expect(watch).toBeChecked();
-  await watch.uncheck();
+  await expect(page.getByRole("checkbox", { name: "Watching threads" })).toHaveCount(0);
+  const check = page.getByRole("checkbox", { name: "Check on threads" });
+  await expect(check).toBeChecked();
+  await check.uncheck();
   await page.getByRole("button", { name: "Save" }).click();
   await expect(page.getByText("Saved.")).toBeVisible();
   await page.reload();
-  await expect(page.getByRole("checkbox", { name: "Watching threads" })).not.toBeChecked();
+  await expect(page.getByRole("checkbox", { name: "Check on threads" })).not.toBeChecked();
   await noHorizontalScroll(page);
 });
 

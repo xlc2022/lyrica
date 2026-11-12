@@ -176,6 +176,42 @@ describe("a local model with fewer slots than busy threads", () => {
     }
   });
 
+  it("gives each thread its own slot back, a new one an unused or the oldest free slot, never one kept for another", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    try {
+      const key = "llama\u0000slots";
+      const [ada, sam, cy] = [{}, {}, {}];
+      const ask = (holder: object) => shareModel(scope, key, 10_000, 524_288, undefined, 2, holder);
+      const first = await ask(ada);
+      expect(first.slot).toBe(0);
+      first();
+      // Ada's slot is kept for her: Sam gets the other.
+      const samFirst = await ask(sam);
+      expect(samFirst.slot).toBe(1);
+      samFirst();
+      vi.advanceTimersByTime(KEEP_WARM_MS);
+      // Past the keep, each still finds its own slot free, whoever asks first.
+      const samAgain = await ask(sam);
+      const adaAgain = await ask(ada);
+      expect([samAgain.slot, adaAgain.slot]).toEqual([1, 0]);
+      samAgain();
+      vi.advanceTimersByTime(1000);
+      adaAgain();
+      vi.advanceTimersByTime(KEEP_WARM_MS);
+      // A third thread takes the slot used longest ago: Sam's, not Ada's.
+      const cyFirst = await ask(cy);
+      expect(cyFirst.slot).toBe(1);
+      cyFirst();
+      vi.advanceTimersByTime(KEEP_WARM_MS);
+      expect(modelShare(scope, key)).toEqual({ running: 0, waiting: 0, used: 0, kept: 0 });
+      // One slot, or none said: no slot is named.
+      expect((await shareModel(scope, "llama\u0000one", 10_000, 131_072, undefined, 1, ada)).slot).toBeUndefined();
+      expect((await shareModel(scope, "llama\u0000none", 10_000, 131_072, undefined, undefined, ada)).slot).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("keeps no slot for an aborted call, or where the server reports no slots", async () => {
     const key = "studio\u0000nokeep";
     const ada = {};
