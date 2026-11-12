@@ -89,34 +89,78 @@ export function setupOnly(script: string): boolean {
   });
 }
 
-/** The one part of a parsed line `decide` may look through: `source FILE` or `. FILE` with a literal path, with
- * nothing before it but `cd DIR`s, so nothing on the line can change the file between the gate reading it and bash
- * sourcing it. */
-function sourcing(parts: string[][]): { at: number; cds: string[]; path: string } | undefined {
+// Shells whose scripts `parse` reads (fish's syntax is its own), and the options that only change how one runs.
+const SCRIPT_SHELLS = /^(?:sh|bash|dash|zsh|ksh|mksh)$/;
+const SHELL_OPTION = /^(?:[-+][euxvfnpCB]+|--(?:norc|noprofile|posix))$/;
+
+/** The one part of a parsed line `decide` may look through: `source FILE`, `. FILE`, or a shell running a script
+ * (`bash FILE …`, `bash -eu FILE`, `timeout 60 sh /abs/FILE`), with a literal path, with nothing before it but
+ * `cd DIR`s, so nothing on the line can change the file between the gate reading it and the shell running it. */
+function sourcing(parts: string[][]): { at: number; cds: string[]; path: string; shell: boolean } | undefined {
   const cds: string[] = [];
   for (const [at, words] of parts.entries()) {
     // `cd -` goes back to the last folder, and `-P`/`-L` are flags: none is a folder to resolve against.
     if (words[0] === "cd" && words.length === 2 && LITERAL.test(words[1]!) && !words[1]!.startsWith("-")) { cds.push(words[1]!); continue; }
-    // Without a slash, bash looks the name up on PATH first, so which file it is isn't known.
-    return SOURCES.test(words[0] ?? "") && words[1] && LITERAL.test(words[1]) && words[1].includes("/") ? { at, cds, path: words[1] } : undefined;
+    const wrapped = WRAPPER.test(words[0] ?? "");
+    // chroot reads the path inside another root.
+    if (wrapped && words.some(w => posix.basename(w) === "chroot")) return undefined;
+    const run = wrapped ? unwrapped(words) : words;
+    const source = !wrapped && SOURCES.test(run[0] ?? "");
+    const shell = SCRIPT_SHELLS.test(run[0] ?? "");
+    let i = 1;
+    while (shell) {
+      if (SHELL_OPTION.test(run[i] ?? "")) i++;
+      else if (/^[-+]o$/.test(run[i] ?? "") && /^\w+$/.test(run[i + 1] ?? "")) i += 2;
+      else break;
+    }
+    const path = run[i];
+    // Without a slash, bash looks the name up on PATH first, so which file it is isn't known; behind a wrapper
+    // (`env -C`, `sudo -D`) the folder may change, so the path must be absolute.
+    return (source || shell) && path && LITERAL.test(path) && path.includes("/") && !path.startsWith("-") && (!wrapped || path.startsWith("/"))
+      ? { at, cds, path, shell } : undefined;
   }
   return undefined;
 }
 
-/** The file a command sources that the gate should read and pass to `decide`, with the `cd`s before it to resolve it from. */
-export function sourcedFile(command: string): { cds: string[]; path: string } | undefined {
-  const found = sourcing(simpleCommands(command).map(programs));
+/** A script the line writes first (after only `cd DIR`s) with `cat > /path <<'EOF'` (or `cat <<'EOF' > /path`), quoted so the body is taken
+ * as it stands: the body, and the line before and after it. */
+function writtenScript(command: string): { path: string; text: string; head: string; rest: string } | undefined {
+  const m = /^(?:\s*cd\s+(?!-)[\w./@%+,:-]+\s*&&)*\s*cat\s*(?:>\s*(\/[\w./@%+,:-]+)\s*<<\s*(['"])([A-Za-z0-9_]+)\2|<<\s*(['"])([A-Za-z0-9_]+)\4\s*>\s*(\/[\w./@%+,:-]+))[ \t]*\n/.exec(command);
+  if (!m) return undefined;
+  const delimiter = (m[3] ?? m[5])!, body = m[0].length;
+  // The body ends at the first line that is the delimiter alone.
+  const close = new RegExp(`(?:^|\\n)${delimiter}(?:\\n|$)`).exec(command.slice(body));
+  if (!close) return undefined;
+  const end = body + close.index + close[0].length;
+  return { path: (m[1] ?? m[6])!, text: command.slice(body, body + close.index + (close[0].startsWith("\n") ? 1 : 0)), head: command.slice(0, end), rest: command.slice(end) };
+}
+
+/** The script a command runs or sources that the gate should know before `decide`: its text, when the line wrote it
+ * just before; otherwise the file to read, with the `cd`s before it to resolve it from. */
+export function sourcedFile(command: string): { cds: string[]; path: string; text?: string } | undefined {
+  const written = writtenScript(command);
+  const found = sourcing(simpleCommands(written?.rest ?? command).map(programs));
+  if (written) return found && found.path === written.path && written.text.length <= SCRIPT_LIMIT ? { cds: [], path: found.path, text: written.text } : undefined;
   return found && { cds: found.cds, path: found.path };
 }
 
-/** `sourced` is the text of the file `sourcedFile` names, when the gate could read it. */
+const worst = (results: (CommandRule | undefined)[]) => results.find(r => r?.decision === "forbid") ?? results.find(r => r?.decision === "ask")
+  ?? (results.length && results.every(r => r?.decision === "allow") ? results[0] : undefined);
+
+/** `sourced` is the text of the script `sourcedFile` names, when the gate has it. */
 export function decide(command: string, rules: readonly CommandRule[], sourced?: string): CommandRule | undefined {
+  // A script written on the line and then run: the writing is checked as it is, the run with the script's own text.
+  const written = writtenScript(command);
+  const known = written && sourcedFile(command)?.text;
+  if (written && known !== undefined) return worst([decide(written.head, rules), decide(written.rest, rules, known)]);
   const parts = simpleCommands(command).map(programs);
   const rank = { allow: 0, ask: 1, forbid: 2 };
-  const read = sourced === undefined ? undefined : sourcing(parts)?.at;
+  const run = sourced === undefined ? undefined : sourcing(parts);
+  const read = run?.at;
   const inside = read === undefined ? undefined : decide(withoutShebang(sourced!), rules);
-  // A forbidden command in the script is refused whatever else it does; one that only sets things up is seen through.
-  const seen = inside?.decision === "forbid" || (read !== undefined && setupOnly(sourced!)) ? read : undefined;
+  // A forbidden command in the script is refused whatever else it does. A script a shell runs can't change the rest
+  // of the line, so its own commands are the whole of it; one sourced is seen through only if it just sets things up.
+  const seen = inside?.decision === "forbid" || (run && (run.shell || setupOnly(sourced!))) ? read : undefined;
   const results = parts.map((words, at) => {
     // A script seen through counts as its own commands: a rule it breaks is broken here, and otherwise it hides nothing.
     if (at === seen && inside && inside.decision !== "allow") return inside;
@@ -134,8 +178,7 @@ export function decide(command: string, rules: readonly CommandRule[], sourced?:
     if (at !== seen && opaque(words, rules.filter(r => r.decision !== "allow").map(r => r.prefix.split(" ")[0]!)) && rules.some(r => r.decision === "forbid")) return { prefix: "", decision: "ask" } as CommandRule;
     return hit;
   });
-  return results.find(r => r?.decision === "forbid") ?? results.find(r => r?.decision === "ask")
-    ?? (results.length && results.every(r => r?.decision === "allow") ? results[0] : undefined);
+  return worst(results);
 }
 
 export function alwaysAllowPrefix(command: string): string | undefined {

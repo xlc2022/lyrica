@@ -85,6 +85,9 @@ const others: ExtensionFactory = (pi) => {
   }
 };
 
+const run2 = (mode: ThreadWorkspace["mode"], command: string, files: Record<string, string>, approve: ThreadTools["approve"]) =>
+  run(mode, [fauxToolCall("bash", { command })], { rules: [...DEFAULT_COMMAND_RULES], files, approve });
+
 async function run(mode: ThreadWorkspace["mode"], calls: ReturnType<typeof fauxToolCall>[], o: Run = {}) {
   const dir = mkdtempSync(join(tmpdir(), "lyrica-ws-"));
   dirs.push(dir);
@@ -970,6 +973,21 @@ describe("project command rules in the hook", () => {
     let asked = 0;
     await run("auto", [fauxToolCall("bash", { command })], { rules: [...DEFAULT_COMMAND_RULES], approve: async () => { asked++; return false; } });
     expect(asked).toBe(1);
+  });
+  it("reads a script a shell runs, so a plain one doesn't ask and a destructive one warns", async () => {
+    const run = "timeout 600 bash -e /workspace/run.sh";
+    let asked = 0, warning: string | undefined;
+    const approve: ThreadTools["approve"] = async (r) => { asked++; warning = r.warning; return false; };
+    let result = await run2("auto", run, { "/workspace/run.sh": "cd /workspace\nnpm run build > b.log 2>&1\n" }, approve);
+    expect(asked).toBe(0);
+    expect(result.commands).toEqual([run]);
+    result = await run2("auto", run, { "/workspace/run.sh": "git checkout main -- web/src\n" }, approve);
+    expect(asked).toBe(1);
+    expect(warning).toContain("uncommitted");
+    // Written on the same line: the body is the script, whatever the file held before.
+    const written = "cat > /workspace/s.sh <<'EOF'\nrm -rf ~\nEOF\nbash /workspace/s.sh";
+    await run2("auto", written, { "/workspace/s.sh": "ls\n" }, approve);
+    expect(asked).toBe(2);
   });
   it("allow keeps the machine's prompts", async () => {
     let asked = 0;

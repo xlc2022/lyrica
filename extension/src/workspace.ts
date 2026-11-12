@@ -399,6 +399,7 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
     const sourcedText = async (command: string, machine: string | undefined): Promise<string | undefined> => {
       const found = sourcedFile(command);
       if (!found) return undefined;
+      if (found.text !== undefined) return found.text;
       if (machine && !tools.machines?.().some((m) => m.name === machine && m.kind !== "proxmox")) return undefined;
       try {
         const target = tools.target(machine || undefined);
@@ -414,7 +415,9 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
       }
       const input = event.input as Record<string, unknown>;
       const rules = tools.commandRules?.() ?? [];
-      const rule = event.toolName === "bash" ? decide(String(input.command), rules, rules.length ? await sourcedText(String(input.command), input.machine as string | undefined) : undefined) : undefined;
+      // The script a command runs or sources, so the rules and the suspect checks see its own commands.
+      const script = event.toolName === "bash" ? await sourcedText(String(input.command), input.machine as string | undefined) : undefined;
+      const rule = event.toolName === "bash" ? decide(String(input.command), rules, script) : undefined;
       if (rule?.decision === "forbid") return { block: true, reason: `This project's rules forbid \`${rule.prefix}\`. Ask the user to run it, or do it another way.` };
       const mcp = mcpCall(event.toolName);
       // A call that reaches someone else (a search, a page, an MCP server) never carries one of the sandbox's credentials.
@@ -489,7 +492,7 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
       const a = pi.getAllTools().find((t) => t.name === event.toolName)?.annotations;
       const irreversible = !!a?.openWorldHint && !a.readOnlyHint && !OWN_CARD.has(event.toolName);
       // A suspect command asks in every mode, in the sandbox too (only the rules for work she can't undo there), until allowed in the thread.
-      const warning = pve ? PROXMOX_SUSPECT[input.action as ProxmoxAction] : event.toolName === "bash" ? suspectCommand(String(input.command), machine ? "machine" : "sandbox") : undefined;
+      const warning = pve ? PROXMOX_SUSPECT[input.action as ProxmoxAction] : event.toolName === "bash" ? suspectCommand(String(input.command), machine ? "machine" : "sandbox") ?? (script === undefined ? undefined : suspectCommand(script, machine ? "machine" : "sandbox")) : undefined;
       const suspect = !!warning && !tools.allowedInThread?.(machine?.name ?? SANDBOX_ALLOW, suspectKey(event.toolName, input));
       // The first call on a machine in a turn asks if anything earlier ran somewhere else, so output from one place can't steer her onto another.
       const moved = !!machine && !places.has(machine.name) && places.size > 0;
