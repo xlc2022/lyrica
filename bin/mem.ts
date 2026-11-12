@@ -3,7 +3,7 @@
 // the terminal only: editing is a line editor here, never $EDITOR and a temp
 // file, and export prints to standard output (docs/briefs/terminal-clients.md).
 import type { MemoryDetail, MemoryExport, MemoryHistory, MemoryHit, Pool, UserMap } from "@lyrica/daemon/api";
-import { type Client, Interrupted, type Io, printable, signIn, socketPath, terminalIo } from "./client.ts";
+import { type Client, Interrupted, type Io, printable, signIn, socketPath, take, terminalIo, value } from "./client.ts";
 
 export const MEM_USAGE = `  lyrica mem search <words> | show <id> | history <id> | edit <id> | restore <id> <revision>
   lyrica mem archive <id> | unarchive <id> | delete <id> | note [<text>] | forget <words> | export <id>…
@@ -102,22 +102,6 @@ const COMMANDS: Record<string, (c: Ctx) => Promise<void>> = {
     if (out.skipped) io.err(`${out.skipped} skipped: only notes and pages export.`);
   },
 };
-
-function take(args: string[], flag: string): boolean {
-  const i = args.indexOf(flag);
-  if (i < 0) return false;
-  args.splice(i, 1);
-  return true;
-}
-
-function value(args: string[], flag: string): string | undefined {
-  const i = args.indexOf(flag);
-  if (i < 0) return undefined;
-  const v = args[i + 1];
-  if (!v || v.startsWith("--")) throw new Error(`${flag} needs a value`);
-  args.splice(i, 2);
-  return v;
-}
 
 function words(rest: string[]): string {
   const q = rest.join(" ").trim();

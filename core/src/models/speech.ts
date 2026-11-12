@@ -2,7 +2,7 @@
 // OpenAI's shapes (`/v1/audio/transcriptions` and `/v1/audio/speech`). Audio
 // stays in memory: nothing here writes a file or logs audio or text.
 
-import { hostError, HostRefused } from "./host.ts";
+import { answerError, bearer } from "./host.ts";
 
 /** The audio Read aloud streams: raw PCM, signed 16-bit little-endian, mono, at 24 kHz. */
 export const SPEECH_FORMAT = { encoding: "s16le", sampleRate: 24_000, channels: 1 } as const;
@@ -12,26 +12,6 @@ export const MAX_CLIP_SECONDS = 600;
 export const MAX_CLIP_BYTES = MAX_CLIP_SECONDS * 16_000 * 2 + 1024;
 /** The longest text one speech request takes (OpenAI's limit). */
 export const MAX_SPEAK_CHARS = 4096;
-
-const auth = (apiKey?: string): Record<string, string> => (apiKey ? { authorization: `Bearer ${apiKey}` } : {});
-
-/**
- * A failed answer as an error: a host's own (its away codes fall back, see
- * `isUnreachable`), 5xx and 429 from any other endpoint as away too, and
- * anything else as the reason, plainly.
- */
-async function failure(res: Response, what: string): Promise<Error> {
-  const host = await hostError(res);
-  if (host) return new HostRefused(host.code, host.message);
-  if (res.status >= 500 || res.status === 429) return new HostRefused("unavailable", `${what} answered ${res.status}`);
-  let message = "";
-  try {
-    const body = (await res.json()) as { error?: { message?: unknown } | string };
-    message = typeof body.error === "string" ? body.error : String(body.error?.message ?? "");
-  } catch { /* no JSON */ }
-  return new Error(`${what} refused the request (${res.status}${message ? `: ${message.slice(0, 200)}` : ""})`);
-}
-
 
 /** A multipart/form-data body, built in memory so it can be sent again at a host's next address. */
 function multipart(fields: Record<string, string>, file: { name: string; type: string; data: Uint8Array }): { body: Uint8Array<ArrayBuffer>; type: string } {
@@ -61,10 +41,10 @@ export interface SpeechTarget {
 export async function transcribeAt(t: SpeechTarget, wav: Uint8Array, opts: { language?: string; signal?: AbortSignal } = {}): Promise<string> {
   const form = multipart({ model: t.modelId, response_format: "json", ...(opts.language ? { language: opts.language } : {}) }, { name: "clip.wav", type: "audio/wav", data: wav });
   const res = await t.fetch(`${t.baseUrl}/audio/transcriptions`, {
-    method: "POST", headers: { ...auth(t.apiKey), "content-type": form.type }, body: form.body,
+    method: "POST", headers: { ...bearer(t.apiKey), "content-type": form.type }, body: form.body,
     signal: opts.signal ? AbortSignal.any([opts.signal, AbortSignal.timeout(120_000)]) : AbortSignal.timeout(120_000),
   });
-  if (!res.ok) throw await failure(res, t.name);
+  if (!res.ok) throw await answerError(res, t.name);
   const body = (await res.json().catch(() => undefined)) as { text?: unknown } | undefined;
   if (typeof body?.text !== "string") throw new Error(`${t.name} didn't send a transcription back`);
   return body.text.trim();
@@ -83,7 +63,7 @@ export async function speakAt(t: SpeechTarget, text: string, opts: { voice?: str
   let res: Response;
   try {
     res = await t.fetch(`${t.baseUrl}/audio/speech`, {
-      method: "POST", headers: { ...auth(t.apiKey), "content-type": "application/json" }, signal,
+      method: "POST", headers: { ...bearer(t.apiKey), "content-type": "application/json" }, signal,
       body: JSON.stringify({ model: t.modelId, input: text, ...(opts.voice ? { voice: opts.voice } : {}), ...(opts.speed !== undefined ? { speed: opts.speed } : {}), response_format: "pcm" }),
     });
   } catch (e) {
@@ -92,7 +72,7 @@ export async function speakAt(t: SpeechTarget, text: string, opts: { voice?: str
   } finally {
     clearTimeout(first);
   }
-  if (!res.ok || !res.body) throw await failure(res, t.name);
+  if (!res.ok || !res.body) throw await answerError(res, t.name);
   const reader = res.body.getReader();
   return new ReadableStream<Uint8Array>({
     async pull(c) {

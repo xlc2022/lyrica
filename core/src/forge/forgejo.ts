@@ -6,6 +6,7 @@
 // 7). Pure: the poller has already fetched every page; nothing here does I/O.
 
 import type { CheckResult, ForgeCheck, ForgeKind, ForgePullRequest, ForgeReview } from "./types.ts";
+import { asList, asObj, mergedByOf, numOf, type Obj, strOf, timeOf } from "./parse.ts";
 
 /** The parsed bodies of the four calls (brief step 3), lists already joined across pages. */
 export interface ForgejoAnswers {
@@ -17,40 +18,6 @@ export interface ForgejoAnswers {
   reviews: unknown;
   /** GET /api/v1/repos/{owner}/{repo}/issues/{number}/comments — plain and review comments alike */
   comments: unknown;
-}
-
-type Obj = Record<string, unknown>;
-
-function asObj(v: unknown, what: string): Obj {
-  if (typeof v !== "object" || v === null || Array.isArray(v)) throw new Error(`${what} is not an object`);
-  return v as Obj;
-}
-
-function asList(v: unknown, what: string): unknown[] {
-  if (!Array.isArray(v)) throw new Error(`${what} is not a list`);
-  return v;
-}
-
-function strOf(o: Obj, key: string, what: string): string {
-  const s = o[key];
-  if (typeof s !== "string" || s === "") throw new Error(`${what}.${key} is missing`);
-  return s;
-}
-
-function numOf(o: Obj, key: string, what: string): number {
-  const n = o[key];
-  if (typeof n !== "number" || !Number.isInteger(n)) throw new Error(`${what}.${key} is not a whole number`);
-  return n;
-}
-
-/** The first of `keys` holding a usable timestamp. Gitea leaves submitted_at at
- * the zero time until a review is submitted; pending reviews are skipped anyway. */
-function timeOf(o: Obj, keys: string[], what: string): string {
-  for (const key of keys) {
-    const s = o[key];
-    if (typeof s === "string" && s !== "" && !s.startsWith("0001-")) return s;
-  }
-  throw new Error(`${what} has no ${keys.join(" or ")}`);
 }
 
 function loginOf(user: unknown, what: string): string {
@@ -134,10 +101,4 @@ export function forgejoPullRequest(kind: Extract<ForgeKind, "forgejo" | "gitea">
     checks: [...checks.values()],
     reviews,
   };
-}
-
-/** Who merged the pull, when the forge says; anything else reads as unknown. */
-function mergedByOf(user: unknown): { mergedBy?: string } {
-  const login = user && typeof user === "object" ? (user as { login?: unknown }).login : undefined;
-  return typeof login === "string" && login ? { mergedBy: login } : {};
 }

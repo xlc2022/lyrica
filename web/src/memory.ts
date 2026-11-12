@@ -156,4 +156,3 @@ export function wordDiff(from: string, to: string): DiffOp[] {
 }
 
 /** Where a memory opens in a thread: beside it in the panel from the split width, the Memory page below it. */
-export const memoryHref = (userId: string, pool: Pool, id: string) => href({ page: "memory", userId, pool, id });
