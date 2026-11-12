@@ -14,7 +14,7 @@ import type * as Api from "./api.ts";
 import { MODELS_PAGE_CALLS, THREAD_TASKS } from "./api.ts";
 import { Sessions } from "./auth.ts";
 import { HttpError, route, type Request, type Route } from "./http.ts";
-import { fallBack, threadPlanWait, type ThreadPlanWait } from "./plan-waits.ts";
+import { clearLimit, fallBack, threadPlanWait, type ThreadPlanWait } from "./plan-waits.ts";
 import { DEFAULT_BUDGETS, OPENING, OPENROUTER_URL, pinnedBlock, pinnedOf, reserveFor, startOpenRouterSignIn, startPlanSignIn, type OpenRouterSignIn, type PlanSignIn } from "@lyrica/extension";
 import type { ProjectThreadInfo } from "./children.ts";
 import { Busy } from "./hosted.ts";
@@ -421,6 +421,11 @@ export function apiRoutes(d: Lyricad): Route[] {
     route("POST", `${u}/endpoints/:endpointId/fall-back`, (r) => {
       fallBack(d, d.userFor(r).id, r.params.endpointId!);
       return { ok: true };
+    }),
+    route("POST", `${u}/endpoints/:endpointId/clear-limit`, (r) => {
+      const user = d.userFor(r);
+      clearLimit(d, user, r.params.endpointId!);
+      return endpointInfo(d, user.id, r.params.endpointId!);
     }),
     route("POST", `${u}/endpoints/:endpointId/reset-ids`, (r) => {
       const user = d.userFor(r);

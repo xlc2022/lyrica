@@ -2,7 +2,7 @@
 // of Settings with a row per machine and its drawer, and under it the Add
 // machine page (settings/machines/new), which Replace key
 // (settings/machines/<name>/key) opens at its Fingerprint step.
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   del, get, patch, post, u,
   type MachineChange, type MachineInfo, type MachineInput, type MachineLimit, type MachineProbe, type Pool,
@@ -138,13 +138,17 @@ export function RowMenu({ label, items, open: shown, onOpen }: {
   const ref = useRef<HTMLSpanElement>(null);
   const close = useCallback(() => setOpen(false), [setOpen]);
   useDismiss(ref, open, close);
+  // It opens leftward from the ⋯; a ⋯ that wrapped to a row's start on a phone opens rightward instead, so the menu stays on screen.
+  const menu = useRef<HTMLDivElement>(null);
+  const [start, setStart] = useState(false);
+  useLayoutEffect(() => { if (!open) setStart(false); else if (!start && (menu.current?.getBoundingClientRect().left ?? 0) < 0) setStart(true); }, [open, start]);
   return (
     <span className="row-menu" ref={ref}>
       <button type="button" className="icon sm" aria-label={label} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}>
         <Icon name="more" />
       </button>
       {open && (
-        <div className="menu" role="menu">
+        <div className={start ? "menu start" : "menu"} role="menu" ref={menu}>
           {items.map((it) => it.disabled
             // aria-disabled, not disabled: it stays focusable and its tooltip shows in every browser.
             ? <button key={it.label} type="button" role="menuitem" aria-disabled="true" title={it.title} onClick={(e) => e.preventDefault()}>{it.label}</button>
