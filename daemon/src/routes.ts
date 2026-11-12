@@ -30,7 +30,7 @@ import { historyQuery } from "./history.ts";
 import { factsWindow, modelFacts } from "./model-facts.ts";
 import { memoryUse } from "./memory-use.ts";
 import { redactUrl, unredactUrl } from "./redact.ts";
-import { isPdf, VIEW_LIMIT, viewHeaders, viewKind, withConsole } from "./file-view.ts";
+import { isPdf, SEAL_PRELUDE, VIEW_LIMIT, viewHeaders, viewKind, withConsole } from "./file-view.ts";
 import { relinkFiles, type Relinked } from "./relink.ts";
 
 /** The most one upload piece may carry, as the host allows (host/API.md, "Uploads"). */
@@ -3589,8 +3589,11 @@ function artifactRoutes(d: Lyricad, u: string): Route[] {
       const kind = a.kind === "svg" ? "svg" : "html";
       // With its thread's internet off an HTML page runs nothing, so it gets no console bridge either.
       const internet = kind !== "html" || s().workspace.network({ userId: user.id, pool: p, threadId: a.thread ?? "" }).internet;
-      const bytes = kind === "html" && internet ? withConsole(page) : page;
-      r.res.writeHead(200, viewHeaders(kind, bytes.length, internet));
+      // A built React page runs with the internet off too, sealed from the network (viewHeaders), but only in a frame:
+      // opened on its own, nothing would stop it navigating away with what it holds, so there it runs nothing.
+      const sealed = a.kind === "react" && !internet && r.req.headers["sec-fetch-dest"] === "iframe";
+      const bytes = kind !== "html" ? page : internet ? withConsole(page) : sealed ? withConsole(page, SEAL_PRELUDE) : page;
+      r.res.writeHead(200, { ...viewHeaders(kind, bytes.length, internet, sealed), vary: "Sec-Fetch-Dest" });
       r.res.end(bytes);
       return undefined;
     }),

@@ -866,7 +866,17 @@ documented in `daemon/src/api.ts`, "The Files panel".
   `GET …/:id/view[?v=<n>]` serves a version as `…/files/view` serves a file,
   with the same headers (`viewHeaders`): HTML with the console bridge under
   `sandbox allow-scripts allow-popups`, or with nothing run when its
-  thread's internet is off. SVG runs nothing; Markdown answers 415, since the web
+  thread's internet is off. A React artifact with its thread's internet
+  off is served **sealed** when the request is the viewer's frame
+  (`Sec-Fetch-Dest: iframe`): `SEAL_PRELUDE` (WebRTC removed from the
+  window) and the console bridge first, under `sandbox allow-scripts;
+  default-src 'none'; script-src 'unsafe-inline'; style-src
+  'unsafe-inline'; img-src data: blob:; font-src data:; media-src data:
+  blob:; form-action 'none'; frame-ancestors 'self'`, so it runs and
+  reaches nothing; the app's own `default-src 'self'` keeps the frame
+  from navigating away. Any other request for it (a tab) gets the page
+  with nothing run. WebRTC is the one way out a header doesn't close
+  (DESIGN, Artifacts). SVG runs nothing; Markdown answers 415, since the web
   renders it from `…/:id/content[?v=][&download=1]`, the version's source
   as `text/plain` under `default-src 'none'; sandbox`;
   `POST …/:id/versions?name=` adds the body as the next version (the same

@@ -44,7 +44,7 @@ const HAS_SOURCE = new Set<ViewKind>(["html", "svg", "markdown"]);
  * `…/files/content` and `…/files/view` are for a file), `settings` the thread settings that say whether its internet
  * is off. `heading` takes the path's place in the header, `facts` follow the kind, and `actions` come before Thread.
  */
-export interface ViewerSource { /** What it shows as, whatever its name. */ kind: ViewKind; content: (download?: boolean) => string; view: string; settings?: string; heading: ReactNode; facts?: ReactNode; actions?: ReactNode }
+export interface ViewerSource { /** What it shows as, whatever its name. */ kind: ViewKind; content: (download?: boolean) => string; view: string; settings?: string; /** A built React page: with the thread's internet off it still runs, sealed from the network. */ sealed?: boolean; heading: ReactNode; facts?: ReactNode; actions?: ReactNode }
 
 /** `madeBy`: the thread recorded as having written it, shown beside it in place of the library's own thread. */
 export interface ViewerFile { path: string; name: string; size: number; modified: string; madeBy?: string }
@@ -112,7 +112,7 @@ export function Viewer({ ctx, threads, file, base, shownPath, thread, list, onSt
       // Escape closes the topmost thing: a menu or drawer open inside first, then the viewer.
       onCancel={(e) => { e.preventDefault(); if (!document.activeElement?.closest("[role='menu'], .ctx-menu, .drawer")) onClose(); }} onKeyDown={onKeyDown}>
       {showFile && (
-        <FilePane file={file} shownPath={shownPath} contentUrl={contentUrl()} viewUrl={viewUrl} settingsUrl={settingsUrl} steps={steps} heading={from?.heading} facts={from?.facts} kind={from?.kind}
+        <FilePane file={file} shownPath={shownPath} contentUrl={contentUrl()} viewUrl={viewUrl} settingsUrl={settingsUrl} steps={steps} heading={from?.heading} facts={from?.facts} kind={from?.kind} sealed={from?.sealed}
           actions={<>
             <button type="button" className="icon sm" aria-label="Download" title="Download" onClick={download}><Icon name="download" /></button>
             {from ? from.actions : <CopyIconButton text={file.path} label="Copy path" className="icon sm" />}
@@ -141,8 +141,8 @@ type Steps = { at: number; count: number; go: (by: -1 | 1) => void };
 type Loaded = { kind: "loading" } | { kind: ViewKind; text?: string } | { kind: "error"; message: string };
 
 /** The file itself: its header line, then what it shows as. */
-function FilePane({ file, shownPath, contentUrl, viewUrl, settingsUrl, steps, heading, facts, kind: given, actions, close, onDownload }: {
-  kind?: ViewKind; file: ViewerFile; shownPath: string; contentUrl: string; viewUrl: string; settingsUrl?: string; steps?: Steps; heading?: ReactNode; facts?: ReactNode; actions: ReactNode;
+function FilePane({ file, shownPath, contentUrl, viewUrl, settingsUrl, steps, heading, facts, kind: given, sealed, actions, close, onDownload }: {
+  kind?: ViewKind; sealed?: boolean; file: ViewerFile; shownPath: string; contentUrl: string; viewUrl: string; settingsUrl?: string; steps?: Steps; heading?: ReactNode; facts?: ReactNode; actions: ReactNode;
   /** Close, after the actions; on a phone it stays on the path's line and the actions take the line below. */ close: ReactNode; onDownload: () => void;
 }) {
   const byName = given ?? viewKindOf(file.name);
@@ -191,7 +191,7 @@ function FilePane({ file, shownPath, contentUrl, viewUrl, settingsUrl, steps, he
         {state.kind === "loading" && <p className="empty">Loading…</p>}
         {state.kind === "error" && <ErrorText error={state.message} />}
         {state.kind !== "loading" && state.kind !== "error" && (raw ? <pre className="viewer-text">{text}</pre> : (
-          <Shown kind={state.kind} file={file} text={text} contentUrl={contentUrl} viewUrl={viewUrl} settingsUrl={settingsUrl} onDownload={onDownload} />
+          <Shown kind={state.kind} file={file} text={text} contentUrl={contentUrl} viewUrl={viewUrl} settingsUrl={settingsUrl} sealed={sealed} onDownload={onDownload} />
         ))}
         {/* aria-disabled, not disabled, at an end: a disabled button would drop the focus, and the keys with it. */}
         {steps && !raw && (
@@ -205,9 +205,9 @@ function FilePane({ file, shownPath, contentUrl, viewUrl, settingsUrl, steps, he
   );
 }
 
-function Shown({ kind, file, text, contentUrl, viewUrl, settingsUrl, onDownload }: { kind: ViewKind; file: ViewerFile; text?: string; contentUrl: string; viewUrl: string; settingsUrl?: string; onDownload: () => void }) {
+function Shown({ kind, file, text, contentUrl, viewUrl, settingsUrl, sealed, onDownload }: { kind: ViewKind; file: ViewerFile; text?: string; contentUrl: string; viewUrl: string; settingsUrl?: string; sealed?: boolean; onDownload: () => void }) {
   switch (kind) {
-    case "html": return <HtmlPage url={viewUrl} settingsUrl={settingsUrl} name={file.name} />;
+    case "html": return <HtmlPage url={viewUrl} settingsUrl={settingsUrl} name={file.name} sealed={sealed} />;
     case "svg": return <div className="viewer-media"><img src={viewUrl} alt={file.name} /></div>;
     case "image": return <div className="viewer-media"><img src={contentUrl} alt={file.name} /></div>;
     // The browser's own PDF viewer; it won't show in a sandboxed frame, and the page route checks the bytes are a PDF's.
@@ -222,9 +222,10 @@ function Shown({ kind, file, text, contentUrl, viewUrl, settingsUrl, onDownload 
 
 /**
  * The page in a sandboxed frame (scripts and popups only: no same origin, no top navigation, no forms), and its
- * console. With the thread's internet off the route serves it with nothing run, and a muted line says so.
+ * console. With the thread's internet off the route serves it with nothing run, and a muted line says so; a `sealed`
+ * page (a built React artifact) still runs then, loading nothing from outside, and the line says that.
  */
-function HtmlPage({ url, settingsUrl, name }: { url: string; settingsUrl?: string; name: string }) {
+function HtmlPage({ url, settingsUrl, name, sealed }: { url: string; settingsUrl?: string; name: string; sealed?: boolean }) {
   const frame = useRef<HTMLIFrameElement>(null);
   const settings = useLoad(() => (settingsUrl ? get<ThreadSettings>(settingsUrl) : Promise.resolve(undefined)), [settingsUrl]);
   const offline = settings.data?.network.internet === false;
@@ -242,7 +243,7 @@ function HtmlPage({ url, settingsUrl, name }: { url: string; settingsUrl?: strin
   }, [url]);
   return (
     <>
-      {offline && <p className="viewer-note muted">Scripts don't run here: this thread's internet is off.</p>}
+      {offline && <p className="viewer-note muted">{sealed ? "It can't load or send anything: this thread's internet is off." : "Scripts don't run here: this thread's internet is off."}</p>}
       <iframe ref={frame} className="viewer-frame" src={url} title={name} sandbox="allow-scripts allow-popups" referrerPolicy="no-referrer" />
       {lines.length > 0 && (
         <section className="viewer-console" aria-label="Console">

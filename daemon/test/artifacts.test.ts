@@ -101,6 +101,29 @@ describe("artifacts", () => {
     expect(await (await s.raw(`${at}/view`)).text()).toBe(page);
   });
 
+  it("run a React artifact with the thread's internet off only in Lyrica's frame, sealed from the network; on its own it runs nothing", async () => {
+    const s = await setup();
+    const t = await s.thread();
+    const made = (await s.ada.post<ArtifactInfo>(t.into("counter.jsx"), Buffer.from("export default () => <p>hi</p>;"))).body;
+    const html = (await s.ada.post<ArtifactInfo>(t.into("a.html"), s.page("hi"))).body;
+    const at = (id: string) => `${s.u}/artifacts/general/${id}/view`;
+    const framed = (path: string) => fetch(`${s.base}${path}`, { headers: { cookie: s.ada.cookie!, "sec-fetch-dest": "iframe" } });
+    vi.spyOn(Workspace.prototype, "network").mockReturnValue({ internet: false, services: false, hosts: [] });
+    try {
+      const sealed = await framed(at(made.id));
+      const csp = sealed.headers.get("content-security-policy")!;
+      expect(csp).toMatch(/^sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline';/);
+      expect(csp).not.toMatch(/allow-popups|allow-same-origin|https:|connect-src/);
+      expect(csp).toContain("form-action 'none'");
+      const page = await sealed.text();
+      expect(page.indexOf("RTCPeerConnection")).toBeGreaterThan(0);
+      expect(page.indexOf("RTCPeerConnection")).toBeLessThan(page.indexOf('<div id="root">'));
+      // Opened on its own (a tab, a download manager), or a hand-written page in the frame: nothing runs.
+      expect((await s.raw(at(made.id))).headers.get("content-security-policy")).toMatch(/^sandbox; /);
+      expect((await framed(at(html.id))).headers.get("content-security-policy")).toMatch(/^sandbox; /);
+    } finally { vi.restoreAllMocks(); }
+  });
+
   it("refuse what isn't an artifact: another kind of file, bytes that aren't text, an empty page, no thread or one that doesn't exist", async () => {
     const s = await setup();
     const t = await s.thread();

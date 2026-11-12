@@ -20,15 +20,22 @@ export function viewKind(path: string): ViewKind | undefined {
  * with its requests and Lyrica's responses (CORP same-origin, no CORS) can't be read. It may load https resources, as
  * a file opened in the browser could, unless the thread's internet is off (`internet` false): then nothing runs and
  * it loads only what it carries inline, so it can't send anything out by itself; a link the user clicks still goes.
+ * `sealed` (a built React artifact in Lyrica's own frame, internet off; the owner, 2026-11-12): its scripts run, but
+ * it may load and connect to nothing, open no window and send no form, and the app's own `default-src 'self'` stops
+ * the frame navigating away. One way out is left that no header closes: WebRTC, which Chromium lets a page open
+ * whatever its CSP says. `SEAL_PRELUDE` removes it from the page's window, which stops a library reaching for it but
+ * not a page written to get it back; the owner accepted that for these pages.
  * SVG: nothing runs. PDF: no sandbox and no source list, since browsers refuse to show a PDF in a sandbox and some
  * versions of Chrome's viewer under `default-src 'none'`; its bytes are checked to be a PDF's first, and nosniff keeps
  * it a PDF. Each may be framed only by Lyrica's own pages.
  */
-export function viewHeaders(kind: ViewKind, size: number, internet = true): Record<string, string> {
+export function viewHeaders(kind: ViewKind, size: number, internet = true, sealed = false): Record<string, string> {
   const csp = kind === "html"
     ? internet
       ? "sandbox allow-scripts allow-popups; default-src https: data: blob: 'unsafe-inline' 'unsafe-eval'; form-action 'none'; frame-ancestors 'self'"
-      : "sandbox; default-src data: blob: 'unsafe-inline'; form-action 'none'; frame-ancestors 'self'"
+      : sealed
+        ? "sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; media-src data: blob:; form-action 'none'; frame-ancestors 'self'"
+        : "sandbox; default-src data: blob: 'unsafe-inline'; form-action 'none'; frame-ancestors 'self'"
     : kind === "svg" ? "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox; frame-ancestors 'self'"
     : "frame-ancestors 'self'";
   return {
@@ -44,12 +51,15 @@ export function viewHeaders(kind: ViewKind, size: number, internet = true): Reco
  */
 export const CONSOLE_BRIDGE = `<script>(()=>{const send=(level,args)=>{try{parent.postMessage({lyricaConsole:1,level,text:args.map(a=>{try{return typeof a==="string"?a:a instanceof Error?(a.stack||String(a)):JSON.stringify(a)}catch{return String(a)}}).join(" ").slice(0,4000)},"*")}catch{}};for(const level of["log","info","warn","error","debug"]){const own=console[level];console[level]=(...a)=>{send(level,a);return own.apply(console,a)}}addEventListener("error",e=>send("error",[e.message+(e.filename?" ("+e.filename+":"+e.lineno+")":"")]));addEventListener("unhandledrejection",e=>send("error",["Uncaught (in promise) "+((e.reason&&e.reason.stack)||e.reason)]))})()</script>`;
 
-/** The page with the console bridge first: after a doctype, so the page keeps its standards mode, else at the start. */
-export function withConsole(html: Buffer): Buffer {
+/** Runs before anything else in a sealed page: WebRTC is gone from its window (see `viewHeaders`; not a boundary). */
+export const SEAL_PRELUDE = `<script>for(const k of["RTCPeerConnection","webkitRTCPeerConnection","RTCDataChannel","RTCSessionDescription","RTCIceCandidate","RTCRtpSender","RTCRtpReceiver"])try{Object.defineProperty(window,k,{value:undefined,writable:false,configurable:false})}catch{}</script>`;
+
+/** The page with the console bridge first: after a doctype, so the page keeps its standards mode, else at the start. `first` goes before the bridge. */
+export function withConsole(html: Buffer, first = ""): Buffer {
   const text = html.toString("utf8");
   const doctype = /^﻿?\s*<!doctype[^>]*>/i.exec(text);
   const at = doctype ? doctype[0].length : 0;
-  return Buffer.from(text.slice(0, at) + CONSOLE_BRIDGE + text.slice(at), "utf8");
+  return Buffer.from(text.slice(0, at) + first + CONSOLE_BRIDGE + text.slice(at), "utf8");
 }
 
 /** A PDF starts with its signature; anything else named .pdf isn't shown as one. */
