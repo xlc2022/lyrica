@@ -90,3 +90,74 @@ describe("a stopped background command", () => {
     expect(jobs.list(t)).toEqual([]);
   });
 });
+
+describe("a background command that ends late", () => {
+  /** A project's thread, with a job running, and the first model call held until `release`. */
+  async function setup(first: Reply) {
+    const rt = await runtime();
+    const dm = await daemon(rt, { jobWakeMs: 200 });
+    await browser(dm.base).post("/api/unlock", { passphrase: "passphrase" });
+    const ada = await login(dm.base, "ada", "pw");
+    const model = await fakeOpenAI({ label: "local", models: [{ id: "qwen3.8-27b" }] });
+    await localModel(ada, rt.ada.id, model.baseUrl);
+    let release!: () => void;
+    const held = new Promise<void>((r) => { release = r; });
+    const replies: (Reply | (() => Promise<Reply>))[] = [async () => { await held; return first; }];
+    model.respond(async () => { const next = replies.shift(); return typeof next === "function" ? next() : next ?? { text: "Done." }; });
+    const thread = (await ada.post<ThreadSummary>(`/api/u/${rt.ada.id}/threads`, { pool: "general", title: "Tests" })).body;
+    const view = dm.d.services!.memory.openThreadView(rt.ada.id, "general");
+    const project = view.own.createThread({ interface: "web", project: true, title: "Garden" });
+    view.close();
+    const children = dm.d.services!.children;
+    children.adopt(rt.ada.id, "general", thread.id, project.id, undefined);
+    const path = `/api/u/${rt.ada.id}/threads/general/${enc(thread.id)}`;
+    const t = { userId: rt.ada.id, pool: "general" as const, threadId: thread.id };
+    const job = slowTarget();
+    dm.d.services!.workspace.jobs.start(t, "sandbox", job.target, "npm test", "/workspace");
+    const notices = async () => (await ada.get<MessagePage>(`${path}/messages`)).body.messages.filter((m) => m.role === "notice");
+    const settle = () => new Promise((r) => setTimeout(r, 800));
+    return { ada, model, path, children, t, finish: job.finish, release, notices, settle };
+  }
+
+  it("leaves its notice in a resolved thread without reopening or waking it", async () => {
+    const s = await setup({ text: "Merged." });
+    s.release();
+    await s.ada.post(`${s.path}/messages`, { text: "merge it" });
+    await s.settle();
+    await s.children.setResolved(s.t.userId, s.t.pool, s.t.threadId, true);
+    s.finish("Tests 1200 passed\n");
+    await s.settle();
+    expect(s.model.requests).toHaveLength(1);
+    expect((await s.notices())[0]!.parts[0]).toMatchObject({ status: "job", text: expect.stringContaining("npm test") });
+    expect(s.children.resolved(s.t.userId, s.t.pool, s.t.threadId)).toBe(true);
+  });
+
+  it("that ends mid-turn starts no further turn once she resolved the thread, and wakes an open one after the turn", async () => {
+    for (const resolve of [true, false]) {
+      const s = await setup({ text: "Merged and resolved." });
+      await s.ada.post(`${s.path}/messages`, { text: "merge it" });
+      await new Promise((r) => setTimeout(r, 200));
+      s.finish("Tests 1200 passed\n");
+      if (resolve) await s.children.setResolved(s.t.userId, s.t.pool, s.t.threadId, true);
+      await new Promise((r) => setTimeout(r, 400));
+      s.release();
+      await s.settle();
+      expect(s.model.requests).toHaveLength(resolve ? 1 : 2);
+      expect(await s.notices()).toHaveLength(1);
+      if (!resolve) expect(JSON.stringify(s.model.requests[1]!.messages)).toContain("Tests 1200 passed");
+    }
+  });
+
+  it("read in the turn it ended in wakes nobody afterwards", async () => {
+    const s = await setup({ tools: [{ name: "no_such_tool", args: {} }] });
+    await s.ada.post(`${s.path}/messages`, { text: "run the tests" });
+    await new Promise((r) => setTimeout(r, 200));
+    s.finish("Tests 1200 passed\n");
+    await new Promise((r) => setTimeout(r, 400));
+    s.release();
+    await s.settle();
+    // The step after the tool call read the notice; the turn ended there.
+    expect(s.model.requests).toHaveLength(2);
+    expect(JSON.stringify(s.model.requests[1]!.messages)).toContain("Tests 1200 passed");
+  });
+});

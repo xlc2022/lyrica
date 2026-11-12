@@ -519,20 +519,35 @@ export class Lyricad implements Drainable {
     this.frontNamesSaved = web.frontNames();
     // A pending wake for background jobs that ended, by `user/pool/thread`: those ending close together wake it once.
     const jobWakes = new Map<string, NodeJS.Timeout>();
-    /** Wakes an idle thread once, a few seconds after the first of the endings `kind` names, with all their notices. */
+    /**
+     * Wakes the thread once, a few seconds after the first of the endings `kind` names, with all their notices.
+     * A turn running then is waited out, and the thread wakes after it only if it is still open and her last
+     * reply came before a notice: one that landed mid-turn was read there. A resolved thread keeps its notices
+     * as cards and is neither reopened nor woken (late test results after a merge would only cost a turn).
+     */
     const wakeSoon = (t: { userId: string; pool: Pool; threadId: string }, kind: string, text: string) => {
       const k = `${t.userId}/${t.pool}/${t.threadId}/${kind}`;
       if (jobWakes.has(k)) return;
-      jobWakes.set(k, setTimeout(() => {
+      const ms = this.opts.jobWakeMs ?? JOB_WAKE_MS;
+      const check = () => {
         jobWakes.delete(k);
-        if (host.draining || host.busy(t.userId, t.pool, t.threadId) || !children.mayWake(t.userId, t.pool, t.threadId)) return;
-        children.woke(t.userId, t.pool, t.threadId);
+        try {
+          if (host.draining || children.resolved(t.userId, t.pool, t.threadId)) return;
+          if (host.busy(t.userId, t.pool, t.threadId)) { jobWakes.set(k, setTimeout(check, ms).unref()); return; }
+          if (!unread(t) || !children.mayWake(t.userId, t.pool, t.threadId)) return;
+        } catch { return; /* locked */ }
         void host.get(t.userId, t.pool, t.threadId).wakeChild(text).catch(() => {});
-      }, this.opts.jobWakeMs ?? JOB_WAKE_MS).unref());
+      };
+      jobWakes.set(k, setTimeout(check, ms).unref());
     };
-    /** A delivered notice: into the stored thread, and to its open streams. */
+    /** Whether a notice came after her last reply in the thread. */
+    const unread = (t: { userId: string; pool: Pool; threadId: string }): boolean => {
+      const view = memory.openThreadView(t.userId, t.pool);
+      try { return view.own.lastEntry(t.threadId, ["assistant", "custom_message"])?.role === "custom_message"; } finally { view.close(); }
+    };
+    /** A delivered notice: into the stored thread, and to its open streams. `quiet`: never a turn of its own; wakeSoon decides. */
     const notify = (t: { userId: string; pool: Pool; threadId: string }, content: string, details: Record<string, unknown>) => {
-      const withId = { ...details, id: randomBytes(8).toString("hex") };
+      const withId = { ...details, quiet: true, id: randomBytes(8).toString("hex") };
       delegation.deliver({ user: { id: t.userId }, pool: t.pool, threadId: t.threadId } as Parameters<Delegation["deliver"]>[0], content, withId);
       host.delivered(t.userId, t.pool, t.threadId, content, withId);
     };
@@ -579,7 +594,7 @@ export class Lyricad implements Drainable {
         // A job she stopped herself: her jobs stop already told her, and a notice would only cost her a turn each.
         if (job.state === "stopped" && job.reason === STOPPED_BY_HER) return;
         const content = jobNotice(job, output);
-        const details = { status: "job", id: randomBytes(8).toString("hex") };
+        const details = { status: "job", quiet: true, id: randomBytes(8).toString("hex") };
         try {
           delegation.deliver({ user: { id: t.userId }, pool: t.pool, threadId: t.threadId } as Parameters<Delegation["deliver"]>[0], content, details);
           host.delivered(t.userId, t.pool, t.threadId, content, details);
