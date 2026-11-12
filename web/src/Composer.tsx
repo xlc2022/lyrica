@@ -4,7 +4,7 @@
 // quiet row with "+", the mic (dictation goes in at the caret) and the
 // thread's mode (Shift+Tab cycles). The unsent text is kept on lyricad, one
 // draft per thread, never in the browser.
-import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from "react";
 import { draft as loadDraft, saveDraft, upload, type ThreadSettings, type ThreadSettingsChange } from "./api.ts";
 import { Icon } from "./icons.tsx";
 import { her } from "./name.ts";
@@ -174,12 +174,14 @@ export function Composer({ base, busy, restored, onSend, onStop, settings, machi
   }, [draft.length]);
   const mic = useDictation({ base, onText: insert, onError });
 
-  // Grow with the text, up to the CSS max-height.
-  useEffect(() => {
+  // Grow with the text, up to the CSS max-height. The text is measured in a hidden copy of the box: collapsing the box
+  // itself to measure it would, for that layout, hand its height to the conversation above, and a conversation
+  // following its streaming tail would bounce on every keystroke (#986).
+  // Before paint, so the conversation above makes room for a new line in the same frame as the line itself.
+  useLayoutEffect(() => {
     const el = area.current;
     if (!el) return;
-    el.style.height = "auto";
-    el.style.height = `${el.scrollHeight + 2}px`;
+    el.style.height = `${fitHeight(el) + 2}px`;
   }, [draft]);
 
   // Images named in the draft (an upload puts its path on a line of its own) show as thumbnails above the box, each
@@ -284,4 +286,26 @@ export function Composer({ base, busy, restored, onSend, onStop, settings, machi
       </div>
     </form>
   );
+}
+
+/** The hidden box `fitHeight` measures text in, made once. */
+let measurer: HTMLTextAreaElement | undefined;
+
+/** The height a textarea's text needs, measured in a hidden copy so the textarea's own layout never changes. */
+function fitHeight(el: HTMLTextAreaElement): number {
+  if (!measurer) {
+    measurer = document.createElement("textarea");
+    measurer.setAttribute("aria-hidden", "true");
+    measurer.tabIndex = -1;
+    Object.assign(measurer.style, { position: "fixed", top: "0", left: "-10000px", visibility: "hidden", overflow: "hidden", height: "0", pointerEvents: "none" });
+  }
+  if (!measurer.isConnected) document.body.append(measurer);
+  const cs = getComputedStyle(el);
+  for (const k of ["font", "letterSpacing", "wordSpacing", "lineHeight", "tabSize", "textIndent", "textTransform", "whiteSpace", "overflowWrap", "wordBreak",
+    "boxSizing", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderStyle", "minHeight"] as const) {
+    measurer.style[k] = cs[k];
+  }
+  measurer.style.width = `${el.getBoundingClientRect().width}px`;
+  measurer.value = el.value;
+  return measurer.scrollHeight;
 }

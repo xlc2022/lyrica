@@ -581,6 +581,7 @@ function useStickyScroll(messages: Message[], live: Live) {
   const [atBottom, setAtBottom] = useState(true);
   const [arrivedUp, setArrivedUp] = useState(false);
   const observer = useRef<ResizeObserver>(undefined);
+  const unhold = useRef<number>(undefined);
   // Where the box was last scrolled to, by this hook or by a scroll event: a scroll up since, whose event hasn't fired
   // yet when an update lands right after it, still counts as leaving the bottom.
   const lastTop = useRef(0);
@@ -588,6 +589,9 @@ function useStickyScroll(messages: Message[], live: Live) {
   // following the bottom would pull it up out of view. For a moment after the press, sizes change around it instead,
   // and whether she still follows the bottom is measured afresh.
   const pressed = useRef<{ el: Element; top: number; at: number }>(undefined);
+  // The hold is this hook's alone: the browser's own scroll anchoring would move the view first, and its scroll event
+  // would end the hold and read her as scrolled up (#986). Anchoring stays on otherwise, for growth above her.
+  const release = (el: HTMLDivElement) => { pressed.current = undefined; el.style.overflowAnchor = ""; };
   const follow = (el: HTMLDivElement) => {
     const p = pressed.current;
     if (p && p.el.isConnected && performance.now() - p.at < PRESS_HOLD_MS) {
@@ -596,7 +600,7 @@ function useStickyScroll(messages: Message[], live: Live) {
       if (Math.abs(moved) >= 1) el.scrollTop += moved;
       stuck.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
     } else {
-      pressed.current = undefined;
+      if (p) release(el);
       if (stuck.current && el.scrollTop < lastTop.current - 1 && el.scrollHeight - el.scrollTop - el.clientHeight >= 80) stuck.current = false;
       if (stuck.current && el.scrollHeight - el.scrollTop - el.clientHeight >= 1) el.scrollTop = el.scrollHeight;
     }
@@ -625,7 +629,7 @@ function useStickyScroll(messages: Message[], live: Live) {
     // clamping it when the content shrinks.
     const on = () => {
       // Her own scrolling ends the hold on a control she pressed.
-      if (Math.abs(el.scrollTop - lastTop.current) > 1) pressed.current = undefined;
+      if (pressed.current && Math.abs(el.scrollTop - lastTop.current) > 1) release(el);
       const at = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
       stuck.current = at;
       lastTop.current = el.scrollTop;
@@ -635,7 +639,14 @@ function useStickyScroll(messages: Message[], live: Live) {
     // Jump to latest, Show earlier messages and the waiting card's bar move the view themselves. A click covers a key press on a button too; it is caught on the way down, before the control's own handler opens anything.
     const press = (e: MouseEvent) => {
       const c = (e.target as Element | null)?.closest("button, a, summary, [role='button']");
-      if (c && el.contains(c) && !c.matches(".jump-latest, .older, .pending-bar")) pressed.current = { el: c, top: c.getBoundingClientRect().top, at: performance.now() };
+      if (!c || !el.contains(c) || c.matches(".jump-latest, .older, .pending-bar")) return;
+      pressed.current = { el: c, top: c.getBoundingClientRect().top, at: performance.now() };
+      // Where she had scrolled to before pressing, whose event may land after the press, isn't a scroll that ends the hold.
+      lastTop.current = el.scrollTop;
+      el.style.overflowAnchor = "none";
+      // Nothing may resize after the press to end the hold: let anchoring back once it is over.
+      window.clearTimeout(unhold.current);
+      unhold.current = window.setTimeout(() => { if (pressed.current && performance.now() - pressed.current.at >= PRESS_HOLD_MS) release(el); }, PRESS_HOLD_MS + 50);
     };
     const ro = new ResizeObserver(() => { follow(el); setAtBottom(stuck.current); });
     ro.observe(el);
@@ -643,7 +654,7 @@ function useStickyScroll(messages: Message[], live: Live) {
     observer.current = ro;
     el.addEventListener("scroll", on, { passive: true });
     el.addEventListener("click", press, true);
-    return () => { el.removeEventListener("scroll", on); el.removeEventListener("click", press, true); ro.disconnect(); observer.current = undefined; };
+    return () => { el.removeEventListener("scroll", on); el.removeEventListener("click", press, true); ro.disconnect(); observer.current = undefined; window.clearTimeout(unhold.current); };
   }, []);
   return { ref, atBottom, arrivedUp };
 }
