@@ -38,9 +38,8 @@ desktop and at 390 px (principle 1). Every control has its row in ux.md §6.
 2. **Project chat.** The facts line gains **Threads** with its count (mono,
    caret), opening a popover grouped Waiting on you, Working, Queued, Idle,
    Resolved (full width on a phone), and the project's total tokens. The
-   actions gain **Project** before Files and **Settings (this thread)**: it
-   shows the project's overview, whose header holds the **Project settings**
-   link.
+   actions gain **Project** before Files, which shows the project's
+   overview, and **Settings** opens Project settings.
 3. **Thread cards**, one per thread under the message that started it,
    updated in place from the `child` event: title as written, dot and word
    (Working blue; Waiting on you and Waiting for approval amber; Resolved

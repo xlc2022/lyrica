@@ -66,8 +66,8 @@ lyricad computed for a sandbox `bash` request in a project thread.
 stored prefix, never one the browser sends, as an allow rule to the thread's
 project (a subagent's: the same project) and allow the call.
 
-**E. Web**, per docs/ux.md. Project settings → General, an h3 **Commands**
-after This chat: a row per rule (prefix in mono, a segmented Allow | Ask |
+**E. Web**, per docs/ux.md. Project settings → Code, a **Command rules**
+row after Checks: a row per rule (prefix in mono, a segmented Allow | Ask |
 Forbid, an ✕), **Add rule**, the page's one Save; empty "No rules: commands
 ask as the mode says." The command card adds a secondary **Always allow
 `<prefix>`** between Allow and Deny.

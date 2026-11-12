@@ -1649,9 +1649,9 @@ it adds no tool.
 She changes her own code the way Claude's feature threads do: the
 `xlc2022/lyrica` repository in her "Lyrica" project, from her own GitHub
 account (docs/briefs/lyrica-project.md), on `lyrica/*` branches, through
-pull requests that her project's Review threads verify and she merges. Nothing she
-does reaches `main` or the server without that review and an
-administrator's Update. A private thread can't have the repository, since
+pull requests she merges on green CI, after her Review thread's verified
+when one touches boundary code or the design docs (docs/workflow.md). Nothing
+she does reaches the server without an administrator's Update. A private thread can't have the repository, since
 her account is general.
 
 - **The repository's settings**, the owner's to set, once:
