@@ -62,7 +62,7 @@ function normalized(value: unknown): string {
 export const WAIT_FOR_REPORTS = "This project waits for its threads' reports instead of checking in on them: end your turn now. A thread's report, question or error wakes you.";
 
 /**
- * In a project chat whose Check in on threads is off (`off`), a bare sleep is refused: each one would
+ * In a project chat whose Check on threads is off (`off`), a bare sleep is refused: each one would
  * be followed by another request rereading her whole context, while a thread's report wakes her anyway.
  */
 export function createWaitForReportsExtension(off: () => boolean): ExtensionFactory {

@@ -48,7 +48,7 @@ export interface HostOptions {
   sameFile?: SameFile;
   /** A project chat's threads, one line each, for her project section. */
   projectThreads?: (userId: string, pool: Pool, project: string) => string | undefined;
-  /** Whether a project chat waits for its threads' reports rather than checking in within a turn (its Check in on threads off). */
+  /** Whether a project chat waits for its threads' reports rather than checking in within a turn (its Check on threads off). */
   waitsForReports?: (userId: string, pool: Pool, project: string) => boolean;
   /** A turn started or ended in a thread; at the end, whether the person's own text was part of it (a child's wake isn't). */
   onTurn?: (userId: string, pool: Pool, threadId: string, working: boolean, byPerson?: boolean) => void;
@@ -1232,7 +1232,7 @@ export class HostedThread {
           ...(!thread.subagent && (models.hostCopies(user, call).length || models.localCopies(user, call).length || models.workflowHosts(user, call).length) ? [createModelsExtension(this.modelsHost())] : []),
           // Downloading models when asked: general threads only, for a user who can manage a host. Never a subagent's.
           ...(!thread.subagent && models.downloadHosts(user, call).length ? [createDownloadsExtension(this.downloadsHost())] : []),
-          // A project chat with Check in on threads off doesn't wait in its turn: its threads' reports wake it.
+          // A project chat with Check on threads off doesn't wait in its turn: its threads' reports wake it.
           ...(thread.project ? [createWaitForReportsExtension(() => !!this.o.waitsForReports?.(this.userId, this.pool, this.threadId))] : []),
           // Last, after every extension that sets sections: the top stays as the model has it until a compaction, so its cache holds.
           createTopExtension(),

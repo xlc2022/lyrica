@@ -17,9 +17,9 @@ export interface ProjectSettings {
   thinking?: ThinkingLevel;
   /** Fallback for its new threads; none: the project chat's. */
   fallback?: boolean;
-  /** The project chat looks at what the person and its threads said (watch.ts). On unless turned off. */
+  /** The project chat looks at what the person and its threads said (watch.ts), while `checkIn` is on too. On unless turned off. */
   watch: boolean;
-  /** The project chat may wait in a turn for its working threads (a bare sleep). On unless turned off; off, it waits for their wakes. */
+  /** Check on threads: the project chat may wait in a turn for its working threads (a bare sleep), and looks go only while it is on. On unless turned off; off, it waits for their wakes. */
   checkIn: boolean;
   /** Her `threads instructions` stores a draft for the user to save instead of saving. Off unless turned on; only the user turns it off. */
   askFirst: boolean;
