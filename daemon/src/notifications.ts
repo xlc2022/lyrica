@@ -81,7 +81,7 @@ function collect(d: Lyricad, user: User, show: Api.Display): Api.Notification[] 
         id: `permission:${request.requestId}`, type: "permission",
         title: request.tool === "propose_plan" ? `${title} has a plan to approve` : `${title} wants to run ${request.tool}${request.machine ? ` on ${request.machine}` : ""}`,
         ...(detailOf(request.args) ? { detail: detailOf(request.args) } : {}),
-        scope: pool, decision: true, thread: { pool, id: threadId }, at: new Date(new Date(request.expiresAt).getTime() - s.host.opts.permissionMs).toISOString(),
+        scope: pool, decision: true, thread: { pool, id: threadId }, at: request.askedAt,
         actions: [{ label: "Allow", method: "POST", path, body: { allow: true } }, { label: "Deny", method: "POST", path, body: { allow: false }, danger: true }],
       });
     }

@@ -13,7 +13,7 @@ const general = (rules: CommandRule[], checks: string[] = [], setup?: string) =>
   onSummary: () => {}, onSettings: () => {},
 }));
 const permission = (alwaysAllow?: string) => renderToStaticMarkup(createElement(PermissionPrompt, {
-  base: "/project", p: { requestId: "call", toolCallId: "bash", tool: "bash", args: { command: "npm run test" }, expiresAt: "2026-10-14T00:00:00Z", alwaysAllow } satisfies PermissionRequest,
+  base: "/project", p: { requestId: "call", toolCallId: "bash", tool: "bash", args: { command: "npm run test" }, askedAt: "2026-01-01T00:00:00.000Z", expiresAt: "2026-10-14T00:00:00Z", alwaysAllow } satisfies PermissionRequest,
   env: { userId: "ada", pool: "general", threadId: "project" } as Parameters<typeof PermissionPrompt>[0]["env"],
 }));
 

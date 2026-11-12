@@ -190,8 +190,8 @@ export function liveReducer(s: Live, e: LiveAction): Live {
     case "steps":
       return { ...s, steps: e.steps };
     case "turn_end":
-      // A subagent's request outlives the parent's turn: it ends with its own permission_end.
-      return { ...s, busy: false, gpuWait: undefined, liveCall: undefined, permissions: s.permissions.filter((p) => p.subagent), reload: s.reload + 1, ended: s.items.length };
+      // A subagent's request outlives the parent's turn, and a held one outlives its own: each ends with its own permission_end.
+      return { ...s, busy: false, gpuWait: undefined, liveCall: undefined, permissions: s.permissions.filter((p) => p.subagent || p.held), reload: s.reload + 1, ended: s.items.length };
     case "stored":
       return { ...s, items: s.items.slice(s.ended), ended: 0 };
     case "stopping":

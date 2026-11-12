@@ -31,6 +31,8 @@ export interface ThreadTools {
   machines?(): ThreadMachine[];
   /** Whether the user allowed this exact suspect command on this machine in this thread. */
   allowedInThread?(machine: string, command: string): boolean;
+  /** Uses the person's later yes to a held approval (`grantKey`), once: true runs this call without asking again. */
+  takeGrant?(key: string): boolean;
   /** The thread's repositories, where each is cloned, and whether its token reaches the sandbox now. Without it, none. */
   repositories?(): ThreadGitRepository[];
   /** Clones or fetches them at the start of a turn, saying what failed. A subagent works in its parent's, so it has none. */
@@ -51,7 +53,11 @@ export interface ThreadTools {
    * Asks whoever is watching the thread whether a tool call may run. lyricad
    * supplies it; without it, Pi's own UI asks, and with no UI the call is blocked.
    */
-  /** true runs it; false is the person's no; "timeout" is nobody answering in time, which her result says. */
+  /**
+   * true runs it; false is the person's no; "timeout" is nobody answering in
+   * time; "held" is a request still on the person's card after her turn's
+   * wait, which her result says.
+   */
   approve?(request: ApprovalRequest): Promise<Approval>;
   /** The thread's browser, for the gate on `browse`: what a call would send, and the user's yes to it. */
   browser?(): Pick<Browser, "look" | "approve">;
@@ -62,7 +68,7 @@ export interface ThreadTools {
    * planning. lyricad supplies it, through the same path as approve; without
    * it, Pi's own UI asks, and with no UI she keeps planning.
    */
-  proposePlan?(request: PlanRequest): Promise<GoAhead | undefined>;
+  proposePlan?(request: PlanRequest): Promise<GoAhead | undefined | "held">;
   /** Records what a write or edit call did to a file, so removing its turn can undo it. */
   recordChange?(change: NewChange): void;
   /**
@@ -118,7 +124,7 @@ export interface PlanRequest {
 /** The modes an approved plan can go ahead in. */
 export const GO_AHEAD = ["ask", "acceptEdits", "auto"] as const satisfies readonly PermissionMode[];
 export type GoAhead = (typeof GO_AHEAD)[number];
-const LABELS: Record<PermissionMode, string> = { bypass: "Bypass permissions", ask: "Ask", acceptEdits: "Accept edits", auto: "Auto", plan: "Plan" };
+export const MODE_LABELS: Record<PermissionMode, string> = { bypass: "Bypass permissions", ask: "Ask", acceptEdits: "Accept edits", auto: "Auto", plan: "Plan" };
 
 type Create = (cwd: string, options: { operations: never }) => ToolDefinition;
 
@@ -202,6 +208,24 @@ const shown = (tool: string, input: Record<string, unknown>, machine: string | u
   JSON.stringify([tool, machine ?? null, cwd ?? null, tool === "bash" || tool === "proxmox" ? suspectKey(tool, input) : tool === "page" ? [input.action, input.path, input.out] : input.path]);
 
 /**
+ * The tools whose whole call is its command, action or path (`shown`). A
+ * write, edit or page call carries more (the content, the edits), so a yes
+ * covers its whole arguments, as any other tool's does.
+ */
+const SHOWN_BY_KEY = new Set(["bash", "proxmox", "read"]);
+
+/**
+ * What a yes to a held approval covers: the call as its card showed it (the
+ * machine and folder, and the exact command, the path read, or every other
+ * tool's whole arguments, so a write's content too). lyricad stores it from
+ * the request, and the gate checks it against the call she makes again.
+ */
+export function grantKey(tool: string, input: Record<string, unknown>, machine?: string, cwd?: string): string {
+  const { machine: _, ...rest } = input;
+  return SHOWN_BY_KEY.has(tool) ? shown(tool, rest, machine, cwd) : JSON.stringify([tool, machine ?? null, cwd ?? null, rest]);
+}
+
+/**
  * `edit`'s arguments, before validation: Pi takes `edits` sent as one JSON
  * string; some models send each edit as a JSON string too, which is parsed
  * here. An edit that is still not an object fails with what came and the
@@ -236,12 +260,14 @@ export function pathArguments(tool: string, input: unknown, last?: LastFile): un
   throw new Error(`${tool} needs \`path\`, the file to ${tool === "edit" ? "change" : "write"}; ${last ? `you last ${last.verb} ${last.path} this turn: add \`path\`` : "add `path`"}`);
 }
 
-/** An approval's answer: yes, the person's no, or nobody answering in time. */
-export type Approval = boolean | "timeout";
+/** An approval's answer: yes, the person's no, nobody answering in time, or held on the person's card past the turn. */
+export type Approval = boolean | "timeout" | "held";
 /** What a call she isn't allowed is told: the person said no, or nobody answered, and neither is a reason to do it another way. */
 export const NOT_APPROVED = "Not approved: the person declined it. Don't do it another way or guess why; say they declined, and ask what to do instead.";
 export const NO_ANSWER = "Not approved: nobody answered in time. Don't do it another way or guess why; say the request timed out, and ask again when they're back.";
-const refusal = (answer: Approval) => ({ block: true, reason: answer === "timeout" ? NO_ANSWER : NOT_APPROVED });
+export const PLAN_HELD = "Not approved yet: the plan stays on the person's card, and this thread waits for their answer. Don't propose it again: end your turn now, saying the plan waits for them. When they answer, you'll be told which mode to go ahead in, or to keep planning.";
+export const HELD = "Not run yet: the request stays on the person's card, and this thread waits for their answer. Don't do it another way or ask again: end your turn now, saying what you're waiting for. When they answer, you'll be told; if they allow it, make this same call again and it runs without asking.";
+const refusal = (answer: Approval) => ({ block: true, reason: answer === "held" ? HELD : answer === "timeout" ? NO_ANSWER : NOT_APPROVED });
 
 /**
  * Lyrica's read, write, edit and bash: Pi's own tools, with every operation
@@ -390,6 +416,7 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
         parameters: Type.Object({ plan: Type.String({ description: "The plan, in Markdown: what you'll change and how, step by step." }) }),
         async execute(id, p, _signal, _update, ctx) {
           const mode = tools.proposePlan ? await tools.proposePlan({ toolCallId: id, plan: p.plan }) : await choose(ctx, p.plan);
+          if (mode === "held") return text(PLAN_HELD);
           if (!mode) return text("Not approved yet: keep planning. Ask what to change, or improve the plan.");
           try {
             setMode(mode);
@@ -401,8 +428,8 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
           gate(ctx);
           // A machine's limit still applies, so she doesn't promise to run unattended where calls ask.
           const held = (tools.machines?.() ?? []).filter((m) => stricterMode(mode, m.limit) !== mode)
-            .map((m) => ` Calls on ${m.name} still run in ${LABELS[m.limit]} mode, its limit.`).join("");
-          return text(`Approved. The thread is in ${LABELS[mode]} mode now: go ahead with the plan.${held}`);
+            .map((m) => ` Calls on ${m.name} still run in ${MODE_LABELS[m.limit]} mode, its limit.`).join("");
+          return text(`Approved. The thread is in ${MODE_LABELS[mode]} mode now: go ahead with the plan.${held}`);
         },
       });
     }
@@ -446,7 +473,7 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
       // in Bypass permissions with Allow MCP bypass on. The credential check above holds either way.
       if (mcp) {
         if (!mcp.server) return { block: true, reason: `${event.toolName} isn't a tool of this thread's MCP servers.` };
-        if (mcp.readOnly || (bypass && tools.mcpBypass?.() === true) || tools.toolAllowedInThread?.(mcp.server, mcp.tool)) return undefined;
+        if (mcp.readOnly || (bypass && tools.mcpBypass?.() === true) || tools.toolAllowedInThread?.(mcp.server, mcp.tool) || tools.takeGrant?.(grantKey(event.toolName, input))) return undefined;
         const request: ApprovalRequest = { toolCallId: event.toolCallId, tool: event.toolName, input, server: mcp.server, serverTool: mcp.tool };
         const answer = tools.approve ? await tools.approve(request) : await approve(ctx, request);
         return answer === true ? undefined : refusal(answer);
@@ -527,7 +554,9 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
       const request: ApprovalRequest = { toolCallId: event.toolCallId, tool: event.toolName, input };
       if (machine) Object.assign(request, { machine: machine.name }, pve ? {} : { cwd: await tools.target(machine.name).cwd() });
       if (suspect) request.warning = warning;
-      const answer = tools.approve ? await tools.approve(request) : await approve(ctx, request);
+      // The person's later yes to this same call, held past an earlier turn, answers it once.
+      const granted = !!tools.takeGrant?.(grantKey(event.toolName, input, request.machine, request.cwd));
+      const answer = granted || (tools.approve ? await tools.approve(request) : await approve(ctx, request));
       if (answer !== true) return refusal(answer);
       if (place) {
         places.add(place);
@@ -594,8 +623,8 @@ async function approve(ctx: ExtensionContext, r: ApprovalRequest): Promise<boole
 async function choose(ctx: ExtensionContext, plan: string): Promise<GoAhead | undefined> {
   if (!ctx.hasUI) return undefined;
   const keep = "Keep planning";
-  const picked = await ctx.ui.select(`Go ahead with this plan?\n\n${plan}`, [...GO_AHEAD.map((m) => `Go ahead in ${LABELS[m]}`), keep]);
-  return GO_AHEAD.find((m) => picked === `Go ahead in ${LABELS[m]}`);
+  const picked = await ctx.ui.select(`Go ahead with this plan?\n\n${plan}`, [...GO_AHEAD.map((m) => `Go ahead in ${MODE_LABELS[m]}`), keep]);
+  return GO_AHEAD.find((m) => picked === `Go ahead in ${MODE_LABELS[m]}`);
 }
 
 /** A short, stable description of where she works, so the prompt stays cacheable. */
@@ -603,7 +632,7 @@ export function describe(tools: ThreadTools): string {
   const s = tools.settings();
   const grants = s.grants.map((g) => `${g.path} (${g.writable ? "read-write" : "read-only"})`);
   const all = tools.machines?.() ?? [];
-  const limit = (m: ThreadMachine) => (m.limit === "auto" ? "works freely" : `asks like ${LABELS[m.limit]} at most`);
+  const limit = (m: ThreadMachine) => (m.limit === "auto" ? "works freely" : `asks like ${MODE_LABELS[m.limit]} at most`);
   const machines = all.filter((m) => m.kind !== "proxmox").map((m) => `${m.name} (${limit(m)}${m.root ? `, in ${m.root}` : ""}${m.asUser ? ", logged in as the person's own account" : ""})`);
   const pves = all.filter((m) => m.kind === "proxmox").map((m) => `${m.name} (${limit(m)}${m.asUser ? ", with a token on the person's own Proxmox user" : ""})`);
   return [

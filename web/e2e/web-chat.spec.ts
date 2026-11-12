@@ -377,7 +377,7 @@ test("the portrait permission card names the resolved model and offers only dail
   await page.route(`**${base}/events`, (route) => route.fulfill({ contentType: "text/event-stream", body: `event: hello\ndata: ${JSON.stringify({
     type: "hello", busy: false, queued: [], permissions: pending ? [{ requestId: "portrait-ask", toolCallId: "image-call", tool: "image",
       args: { question: "Send photos of you to cloud-images?", provider: "cloud-images", model: "cloud-images/gpt-image-1" },
-      expiresAt: new Date(Date.now() + 60_000).toISOString() }] : [],
+      askedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 60_000).toISOString() }] : [],
   })}\n\n` }));
   await page.route(`**${base}/permissions/portrait-ask`, (route) => {
     answers.push(route.request().postDataJSON()); pending = false;
