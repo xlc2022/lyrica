@@ -72,6 +72,8 @@ export class ContextMeter {
   running?: { summary?: string; notes?: string };
   /** Called after each request that leaves the turn going on (it asked for tools), so a long turn reports as it runs. */
   onProgress?: () => void;
+  /** Every token this thread has used so far, as its Tokens popover counts them; her status line shows it. */
+  spent?: () => number;
 
   /** The prompt sections assemble made for this turn, and the tool definitions with their guidance. */
   setPrompt(report: Section[], toolChars: number): void {
@@ -132,15 +134,19 @@ export class ContextMeter {
 const k = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(n >= 10_000 ? 0 : 1).replace(/\.0$/, "")}k` : String(Math.round(n)));
 
 /** Her status line: numbers only. */
-export function statusLine(r: ContextReport): string {
+export function statusLine(r: ContextReport, spent?: number): string {
   const pace = r.pace;
   return [
     // A window of 32,768 is "32k", as models are described.
     `Context ${r.percent}% of ${r.window % 1024 === 0 ? `${r.window / 1024}k` : k(r.window)}`, `${k(r.free)} free`,
     ...(pace?.tokPerSec !== undefined ? [`${k(pace.tokPerSec)} tok/s`] : []),
     ...(pace?.promptTokPerSec !== undefined ? [`${k(pace.promptTokPerSec)} tok/s prompt`] : []),
+    ...(spent ? [`${tokens(spent)} tokens used in this thread`] : []),
   ].join(" · ");
 }
+
+/** A token count as people read it: 950, 12k, 3.4M. */
+const tokens = (n: number) => (n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")}M` : k(n));
 
 /**
  * Where her two lines start, as percentages of the window. They follow Pi's
@@ -168,7 +174,7 @@ export function prepareLine(r: ContextReport): string | undefined {
 export function contextLines(meter: ContextMeter): string {
   const r = meter.report();
   if (!r) return "";
-  return [statusLine(r), prepareLine(r)].filter(Boolean).join("\n");
+  return [statusLine(r, meter.spent?.()), prepareLine(r)].filter(Boolean).join("\n");
 }
 
 

@@ -1125,6 +1125,8 @@ export class HostedThread {
       // delegate is offered where the depth limit allows; it attaches itself, so background results reach this session.
       const canDelegate = delegation.depth(ctx) < delegation.limits.depth;
       const meter = new ContextMeter();
+      // What this thread has used so far, so she can say what a change cost.
+      meter.spent = () => models.usage(this.userId, this.pool, [this.threadId]).reduce((n, r) => n + r.tokens, 0);
       // Mid-turn, each request's counts go on the turn's call record and the stream gets the context, as after a turn.
       meter.onProgress = () => {
         const pace = meter.takePace();

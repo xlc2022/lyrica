@@ -1297,7 +1297,7 @@ openThreadSession({ thread, models, cwd, extensions, settings?, task?: () => Tas
 // deltas and message_end: numbers only, a delta's text measured by its length; sent when what it shows changes and at most every 500 ms
 // otherwise, null when the request ends. Also turns on modelRuntimeFor's `live`.
 interface ThreadSession { session; runtime; chat: { offeringId }; prepare(opts?: { thinking?; retry? }): Promise<Resolution>; dispose() }
-interface ContextMeter { report(): ContextInfo | undefined; contextLines(): string; pending?: { summary }; onProgress?(): void }   // LyricaOptions.meter; onProgress runs after each request that goes on with tools
+interface ContextMeter { report(): ContextInfo | undefined; contextLines(): string; pending?: { summary }; onProgress?(): void; spent?(): number }   // LyricaOptions.meter; onProgress runs after each request that goes on with tools; spent is the thread's tokens so far (Models.usage), shown on her status line
 ```
 
 - The factory is `createLyricaExtension(thread: ThreadContext, opts:
