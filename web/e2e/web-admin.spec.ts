@@ -2051,6 +2051,7 @@ test("image providers run 3: endpoint facts, five pills and default names", asyn
     const response = await fetchReal(route);
     const data = await response.json();
     data.endpoints.push({ id: "fake-plan", name: "ChatGPT", kind: "cloud", api: "chatgpt", baseUrl: "https://api.openai.com/v1", hasApiKey: false, shared: false, unencrypted: false, stale: false, state: "up", planAccount: "ada@example.test", cloudCapabilities: ["Text", "Vision", "Image"], models: [] });
+    data.endpoints.push({ id: "fake-codex", name: "Codex", kind: "cloud", api: "codex", baseUrl: "https://chatgpt.com/backend-api", hasApiKey: false, shared: false, unencrypted: false, stale: false, state: "up", cloudCapabilities: ["Text", "Vision"], models: [] });
     data.endpoints.push({ id: "fake-grok", name: "Grok", kind: "cloud", api: "grok", baseUrl: "https://api.x.ai/v1", hasApiKey: false, shared: false, unencrypted: false, stale: false, state: "up", cloudCapabilities: ["Text"], models: [] });
     await route.fulfill({ json: data });
   });
@@ -2064,12 +2065,17 @@ test("image providers run 3: endpoint facts, five pills and default names", asyn
   await expect(plan).not.toContainText("https://");
   await expect(plan).not.toContainText("API key");
   await expect(page.locator('[data-endpoint="fake-grok"] .pill').filter({ hasText: /^Image$/ })).toHaveCount(0);
+  await expect(page.locator('[data-endpoint="fake-codex"]')).toContainText("Codex plan · only you");
+  await expect(page.locator('[data-endpoint="fake-codex"]')).not.toContainText("https://");
   await noHorizontalScroll(page);
   if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/image-endpoints-${page.viewportSize()!.width}.png`, fullPage: true });
   await page.getByRole("button", { name: "Add endpoint", exact: true }).click();
   const drawer = page.getByRole("complementary", { name: "Add endpoint" });
   await drawer.getByRole("combobox", { name: "Kind", exact: true }).selectOption("chatgpt");
   await expect(drawer.getByLabel("Name", { exact: true })).toHaveValue("ChatGPT");
+  await drawer.getByRole("combobox", { name: "Kind", exact: true }).selectOption("codex");
+  await expect(drawer.getByLabel("Name", { exact: true })).toHaveValue("Codex");
+  await expect(drawer.getByRole("button", { name: "Sign in with Codex", exact: true })).toBeVisible();
   await drawer.getByRole("combobox", { name: "Kind", exact: true }).selectOption("custom");
   await drawer.getByLabel("Base URL", { exact: true }).fill("https://api.openai.com/v1");
   await expect(drawer.getByLabel("Name", { exact: true })).toHaveValue("OpenAI");

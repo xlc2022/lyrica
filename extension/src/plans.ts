@@ -1,12 +1,14 @@
 import { createAssistantMessageEventStream, InMemoryCredentialStore, type Api, type AssistantMessageEventStream, type ProviderAuthInteraction, type AuthOperationOptions, type Credential, type CredentialInfo, type CredentialStore, type Model, type Provider } from "@earendil-works/pi-ai";
 import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
+import { openaiCodexProvider } from "@earendil-works/pi-ai/providers/openai-codex";
 import { xaiProvider } from "@earendil-works/pi-ai/providers/xai";
 import { HostRefused, isPlanLimit } from "@lyrica/core";
 import type { DiscoveredModel, Endpoint, Models, PlanCredential, PlanKind } from "@lyrica/core";
 
 // Subscription plans (docs/models.md, "Subscription plans"): Pi's sign-in and
-// provider for ChatGPT (Sign in with ChatGPT) and Grok (xAI's device code),
-// with the sign-in kept in the user's user.db.
+// provider for ChatGPT (Sign in with ChatGPT), Codex (the Codex CLI's own
+// ChatGPT login, which Pi calls legacy) and Grok (xAI's device code), with
+// the sign-in kept in the user's user.db.
 
 /**
  * What a ChatGPT sign-in refuses, as Pi's own check for one omits it: the
@@ -17,7 +19,8 @@ import type { DiscoveredModel, Endpoint, Models, PlanCredential, PlanKind } from
 const CHATGPT_SIGN_IN = { supportsMidConvoEffort: false, supportsMaxOutputTokens: false, supportsLongCacheRetention: false, supportsExplicitPromptCacheMode: false } as const;
 
 /** Pi's provider for each plan. */
-const PROVIDERS: Record<PlanKind, () => Provider> = { chatgpt: openaiProvider, grok: xaiProvider };
+const PROVIDERS: Record<PlanKind, () => Provider> = { chatgpt: openaiProvider, codex: openaiCodexProvider, grok: xaiProvider };
+const PLAN_NAMES: Record<PlanKind, string> = { chatgpt: "ChatGPT", codex: "Codex", grok: "Grok" };
 
 /** The models a plan offers, as Pi's catalogue lists them, for discovery. */
 export function planCatalog(kind: PlanKind): DiscoveredModel[] {
@@ -82,7 +85,7 @@ function limits(source: AssistantMessageEventStream, onLimit: (message: string) 
 }
 
 /** OpenAI or xAI refused the refresh token: the sign-in is over, not just unreachable. */
-const refused = (e: unknown) => /token request failed \((400|401)\)|token refresh failed \(HTTP (400|401)\)/.test(e instanceof Error ? e.message : String(e));
+const refused = (e: unknown) => /token (request|refresh) failed \((HTTP )?(400|401)\)/.test(e instanceof Error ? e.message : String(e));
 
 /**
  * A provider's error as she and the interface see it: an HTTP refusal is one
@@ -92,7 +95,7 @@ const refused = (e: unknown) => /token request failed \((400|401)\)|token refres
 export function planError(e: unknown, kind: PlanKind | undefined, what: string): Error {
   const m = e instanceof Error ? e.message : String(e);
   const status = /\((\d{3})\)|HTTP (\d{3})/.exec(m);
-  const who = kind === "grok" ? "Grok" : kind === "chatgpt" ? "ChatGPT" : "The provider";
+  const who = kind ? PLAN_NAMES[kind] : "The provider";
   return new Error(status ? `${who} refused the ${what} (HTTP ${status[1] ?? status[2]}).` : m.split("\n")[0]!.slice(0, 200));
 }
 
@@ -157,7 +160,7 @@ export class PlanCredentials implements CredentialStore {
 
 
 /**
- * A sign-in under way. ChatGPT: open `url`, approve, and hand `finish` the
+ * A sign-in under way. ChatGPT and Codex: open `url`, approve, and hand `finish` the
  * address the browser was sent to. Grok: open `url`, enter `code` if asked,
  * approve, and call `finish`, which waits for xAI to confirm.
  */
@@ -169,11 +172,13 @@ export interface PlanSignIn {
 }
 
 /**
- * Starts a plan's sign-in for a headless server. ChatGPT: Pi listens on
- * 127.0.0.1:1455 for OpenAI's redirect, which only a browser on this machine
- * reaches; from any other device the person copies the address the browser
- * couldn't open, and `finish` hands it to Pi, which checks it and exchanges
- * the code. Grok: xAI's device code, which Pi polls for until it's approved
+ * Starts a plan's sign-in for a headless server. ChatGPT and Codex: Pi listens
+ * on 127.0.0.1:1455 for OpenAI's redirect, which only a browser on this
+ * machine reaches; from any other device the person copies the address the
+ * browser couldn't open, and `finish` hands it to Pi, which checks it and
+ * exchanges the code. Codex is asked for its browser login, the Codex CLI's
+ * default, since its device code works only once the user has turned it on
+ * in ChatGPT's settings. Grok: xAI's device code, which Pi polls for until it's approved
  * or expires. Nothing here is logged.
  */
 export async function startPlanSignIn(kind: PlanKind, installationId: string): Promise<PlanSignIn> {
@@ -189,6 +194,8 @@ export async function startPlanSignIn(kind: PlanKind, installationId: string): P
       if (e.type === "device_code") shown({ url: e.verificationUri, code: e.userCode });
     },
     prompt: async (p) => {
+      // Codex asks which of its logins: the browser one, like ChatGPT's.
+      if (p.type === "select" && kind === "codex" && p.options.some((o) => o.id === "browser")) return "browser";
       if (p.type !== "manual_code") throw new Error("the sign-in asked for something Lyrica doesn't answer");
       // Pi waits on this prompt and the callback server; an abort has to settle it, or the listener on 1455 is never closed.
       return Promise.race([paste, new Promise<never>((_, reject) => { abort.signal.addEventListener("abort", () => reject(new Error("sign-in cancelled")), { once: true }); })]);
@@ -205,7 +212,7 @@ export async function startPlanSignIn(kind: PlanKind, installationId: string): P
   return {
     ...first,
     async finish(redirectUrl) {
-      if (kind === "chatgpt") pasted((redirectUrl ?? "").trim());
+      if (kind !== "grok") pasted((redirectUrl ?? "").trim());
       const { type: _t, ...credential } = await login as Credential & PlanCredential;
       return credential as PlanCredential;
     },

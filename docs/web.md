@@ -546,7 +546,8 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   URL, API key, Shared for administrators; a plain-HTTP warning for a local URL off
   loopback and the tailnet. Kind also offers ChatGPT plan, with **Sign in with
   ChatGPT**, which opens OpenAI's page in a new tab, then **Redirect URL**
-  and **Finish** in place of the URL and key; and Grok plan, with **Sign in with Grok**, which opens
+  and **Finish** in place of the URL and key; Codex plan, the same with **Sign
+  in with Codex** (its Redirect URL starts `http://localhost:1455`); and Grok plan, with **Sign in with Grok**, which opens
   xAI's page, then its **Code** and **Finish**; closing the drawer cancels
   the sign-in) and **Add model host** (the one primary; a page
   at `…/models/hosts/add-host`: Name, Addresses, Pairing code, Shared,
@@ -583,7 +584,7 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   in-system-RAM segments, each spilled model with its GB, and a foot
   "llama.cpp · Edit" (the legend gains In system
   RAM). A plain endpoint row: name, kind,
-  ChatGPT plan or Grok plan versus API key, and cloud Text, Vision and Image
+  ChatGPT plan, Codex plan or Grok plan versus API key, and cloud Text, Vision and Image
   pills (only when a marked image model has a callable provider and the
   required key). Capability pills wrap under the name on a phone. Facts:
   a plan's kind, only you and explicit account label in mono if supplied,

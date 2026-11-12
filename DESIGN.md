@@ -346,7 +346,8 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     breaks. The same mechanism **merges** two endpoints that turned out to be
     the same server.
 - **Subscription plans** (docs/models.md, "Subscription plans").
-  A user can add a **ChatGPT plan** or a **Grok plan** by signing in with
+  A user can add a **ChatGPT plan**, a **Codex plan** (the same ChatGPT
+  plan through the Codex CLI's own login) or a **Grok plan** by signing in with
   the provider instead of giving an API key, so general threads answer
   from that plan. It is always cloud and always their own, never shared.
   Its sign-in is kept in their `user.db` and refreshed by Pi; when the
