@@ -862,17 +862,13 @@ test("an administrator sees how Lyrica is reached", async ({ page, baseURL }) =>
   await noHorizontalScroll(page);
   await shot("web-access-points-elsewhere");
   await page.unroute("**/admin/web-access/status");
-  // Her own tailnet address: forwarded to Caddy on loopback, or held by tailscale serve while Tailnet name is on.
+  // Her own tailnet address: forwarded to Caddy on loopback, beside her ts.net name or not.
   await answer({ addresses: ["100.101.102.103"], served: true, tailnet: "forwarded" });
   await section.getByRole("button", { name: "Check again" }).click();
   await expect(status).toContainText("tailnet address");
   await expect(status).not.toContainText("isn't one of the addresses under Serve on");
-  await page.unroute("**/admin/web-access/status");
-  await answer({ addresses: ["100.101.102.103"], served: false, tailnet: "taken" });
-  await section.getByRole("button", { name: "Check again" }).click();
-  await expect(status).toContainText("which answers only for her ts.net name while Tailnet name is on");
   await noHorizontalScroll(page);
-  await shot("web-access-tailnet-taken");
+  await shot("web-access-tailnet-address");
   await page.unroute("**/admin/web-access/status");
   await answer({ addresses: ["192.168.1.5"], served: true });
   await section.getByRole("button", { name: "Check again" }).click();

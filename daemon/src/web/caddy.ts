@@ -22,6 +22,20 @@ export interface CaddySite {
   upstream: number;
 }
 
+/**
+ * Her ts.net name beside the custom name (Tailnet name on): Caddy serves it
+ * on the same listeners with her tailnet certificate, to lyricad's serve port,
+ * as `tailscale serve` does in the Tailnet mode. Both names then share 443 on
+ * her tailnet address, which her tailscaled hands to Caddy on 127.0.0.1.
+ */
+export interface CaddyTailnet {
+  name: string;
+  /** lyricad's serve port on 127.0.0.1. */
+  upstream: number;
+  cert: string;
+  key: string;
+}
+
 export interface CaddyPaths {
   /** The admin socket, e.g. /run/lyrica-caddy/admin.sock. Caddy keeps it group-only (0660). */
   socket: string;
@@ -53,8 +67,13 @@ function issuer(site: CaddySite): Record<string, unknown> {
  * site comes along (`also`), so the old name keeps working until the new one
  * has its certificate.
  */
-export function caddyConfig(site: CaddySite, paths: CaddyPaths, also: CaddySite[] = []): Record<string, unknown> {
+export function caddyConfig(site: CaddySite, paths: CaddyPaths, also: CaddySite[] = [], tailnet?: CaddyTailnet): Record<string, unknown> {
   const sites = [site, ...also];
+  const proxy = (name: string, upstream: number) => ({
+    match: [{ host: [name] }],
+    handle: [{ handler: "reverse_proxy", upstreams: [{ dial: `127.0.0.1:${upstream}` }], flush_interval: -1 }],
+    terminal: true,
+  });
   return {
     ...adminOnly(paths),
     logging: {
@@ -78,17 +97,16 @@ export function caddyConfig(site: CaddySite, paths: CaddyPaths, also: CaddySite[
             // on a port it doesn't serve itself, to the same port here, so a name whose DNS record
             // points at her tailnet address reaches Caddy. Never a wildcard: that would be every interface.
             listen: [...new Set(sites.flatMap((s) => [...s.addresses, "127.0.0.1"].map((a) => `${a}:${s.port}`)))],
-            routes: sites.map((s) => ({
-              match: [{ host: [s.name] }],
-              handle: [{ handler: "reverse_proxy", upstreams: [{ dial: `127.0.0.1:${s.upstream}` }], flush_interval: -1 }],
-              terminal: true,
-            })),
-            // HTTPS only: no listener on port 80 for redirects.
-            automatic_https: { disable_redirects: true },
+            routes: [...sites.map((s) => proxy(s.name, s.upstream)), ...(tailnet ? [proxy(tailnet.name, tailnet.upstream)] : [])],
+            // HTTPS only: no listener on port 80 for redirects. Her ts.net name's certificate comes from her tailscaled, never ACME.
+            automatic_https: { disable_redirects: true, ...(tailnet ? { skip_certificates: [tailnet.name] } : {}) },
           },
         },
       },
-      tls: { automation: { policies: sites.map((s) => ({ subjects: [s.name], issuers: [issuer(s)] })) } },
+      tls: {
+        automation: { policies: sites.map((s) => ({ subjects: [s.name], issuers: [issuer(s)] })) },
+        ...(tailnet ? { certificates: { load_pem: [{ certificate: tailnet.cert, key: tailnet.key, tags: ["tailnet"] }] } } : {}),
+      },
     },
   };
 }

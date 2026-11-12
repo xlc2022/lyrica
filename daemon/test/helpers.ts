@@ -196,6 +196,10 @@ switch (cmd) {
   case "up": save({ ...s, BackendState: "Running" }); break;
   case "down": save({ ...s, BackendState: "Stopped" }); break;
   case "logout": save({ Version: s.Version, BackendState: "NeedsLogin", Self: { HostName: s.Self.HostName } }); break;
+  case "cert":
+    if (!(s.CertDomains || []).includes(args[5])) { process.stderr.write("invalid domain " + args[5] + "\\n"); process.exit(1); }
+    process.stdout.write("-----BEGIN CERTIFICATE-----\\nTEST-LEAF-" + args[5] + "\\n-----END CERTIFICATE-----\\n-----BEGIN CERTIFICATE-----\\nTEST-CA\\n-----END CERTIFICATE-----\\n-----BEGIN EC PRIVATE KEY-----\\nTEST-KEY\\n-----END EC PRIVATE KEY-----\\n");
+    break;
 }
 `);
   chmodSync(bin, 0o755);
