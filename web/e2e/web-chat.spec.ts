@@ -1338,6 +1338,34 @@ test("a thread making a clip after its turn pulses its sidebar row until the cli
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
 
+test("Allow bypass adds Bypass permissions, where nothing asks, and taking it off moves the thread to Auto", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  await page.goto(`/#/u/${userId}/settings/network`);
+  const allow = page.getByLabel("Allow bypass");
+  await expect(allow).not.toBeChecked();
+  await expect(page.getByRole("combobox", { name: "Mode", exact: true }).getByRole("option")).toHaveCount(4);
+  await allow.click();
+  await expect(allow).toBeChecked();
+  await expect(page.getByRole("combobox", { name: "Mode", exact: true }).getByRole("option")).toHaveCount(5);
+  await newThread(page, "General");
+  await page.locator(".mode-picker").getByRole("button").click();
+  const items = page.getByRole("menu", { name: "Mode" }).getByRole("menuitemradio");
+  await expect(items).toHaveCount(5);
+  await expect(items.last()).toContainText("Commands and file changes never ask.");
+  await page.keyboard.press("5");
+  await expect(page.locator(".mode-picker")).toContainText("Bypass permissions");
+  await noHorizontalScroll(page);
+  await send(page, "run: echo bypassed");
+  await expect(page.getByText("The command finished.")).toBeVisible();
+  await expect(page.getByRole("group", { name: "Allow bash?" })).toHaveCount(0);
+  const thread = page.url();
+  await page.goto(`/#/u/${userId}/settings/network`);
+  await page.getByLabel("Allow bypass").click();
+  await expect(page.getByRole("combobox", { name: "Mode", exact: true }).getByRole("option")).toHaveCount(4);
+  await page.goto(thread);
+  await expect(page.locator(".mode-picker")).toContainText("Auto");
+});
+
 test("in an ask mode, a command can be allowed, and denying it stops the tool", async ({ page, baseURL }) => {
   await enter(page, baseURL!);
   await newThread(page, "General");

@@ -3063,8 +3063,11 @@ selfTest(): Promise<string | undefined>   // lyricad calls this at startup
   port through the existing nftables rules; it speaks length-prefixed frames
   (`ssh-frames.ts`). The host key decision stays in `lyricad`; strict key
   exchange is required. There is no in-process client.
-- **Modes:** `PermissionMode` is `"auto" | "acceptEdits" | "ask" | "plan"`,
-  strictest first plan, ask, acceptEdits, auto. Stored `ask-changes` and
+- **Modes:** `PermissionMode` is `"bypass" | "auto" | "acceptEdits" | "ask" | "plan"`,
+  strictest first plan, ask, acceptEdits, auto, bypass. `bypass` is set only
+  while `bypassAllowed()` (the `workspace.bypass` setting); otherwise
+  `setDefaultMode` and `setThread` refuse it, and `setBypassAllowed(false)`
+  moves every thread and the default in it to `auto`. Stored `ask-changes` and
   `ask-commands` migrate in place to `ask` and `acceptEdits`. A thread with
   no row is `auto`. A thread's ancestors changed later still narrow it, at
   any depth, because `effective` is read at each call.
