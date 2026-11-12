@@ -2972,14 +2972,14 @@ selfTest(): Promise<string | undefined>   // lyricad calls this at startup
   elsewhere. Never argv; never a file, except the `tea` config the wrapper
   writes on the run's tmpfs, with the placeholder. The thread row's `repositories` column and the
   `git_accounts` table are user step 2 in `core/src/migrations.ts`. API:
-  `/api/u/:userId/git-accounts` (`GET`; `POST …/probe`; `POST`; `PATCH
+  `/api/u/:userId/git-accounts` (`GET`; `POST`; `PATCH
   …/:name`; `POST …/:name/token`; `POST …/:name/confirm-off-network`;
   `DELETE`); `GET …/git-accounts/:name/repositories?q=`; thread settings
   carry `repositories`. A sandbox's tools have `git`, `gh` and `tea`. The
   Git guide is a prompt section (`extension/src/git.md`) added to every
   turn of a thread with repositories.
 - **MCP servers API:** `lyricad`'s `/api/u/:userId/mcp-servers` (`GET`;
-  `POST …/probe`; `POST`; `PATCH …/:name` for name, url, command, pool,
+  `POST`; `PATCH …/:name` for name, url, command, pool,
   `dailyLimit`, `minuteLimit` and `offNetworkConfirmed`; `POST …/:name/token`;
   `POST …/:name/env`; `POST …/:name/confirm-off-network`; `DELETE`), each
   server as `McpServerInfo { name, url, command, host, pool, hasToken,

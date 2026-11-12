@@ -2812,6 +2812,11 @@ new evidence.
   sleep, MCP, web search and the models tool) against a budget of about
   2,500. The owner raised the budget to about 8,000 lines rather than move
   working code out to fit.
+- **Core extension budget: about 8,000 → about 10,000 lines (2026-11-12).**
+  A code audit found `extension/src` at 9,316 lines (6,919 without blank
+  lines and comments), with almost no duplicated or dead code to trim. The
+  owner raised the budget again and fixed the count as every line in
+  `extension/src`.
 - **Calendar and sorting: first duties → later (2026-10-12).** The owner's
   direction is running work and coding now, a companion later, so the
   calendar and sorting integrations, which had no code, left the contracts
