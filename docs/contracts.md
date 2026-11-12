@@ -1457,6 +1457,12 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   "(rg: no matches, not a failure)" or gh pr checks' 8 for pending.
   The codes that aren't failures (rg or grep 1, diff 1, test 1, gh pr
   checks 8) clear the result's error.
+- **Test output** (`extension/src/test-output.ts`, threads and subagents):
+  a bash result whose command runs a test suite (vitest, jest, mocha,
+  pytest, `playwright test`, `npm test` or `npm run e2e`, `cargo test`,
+  `go test`) and is longer than `TRIM_FROM` (120) lines keeps only its
+  failure lines, each with the 8 lines after it, and its last 40 lines,
+  under one line saying how many were left out (`trimTestOutput`).
 - **Paid fallback** (`extension/src/models.ts`): when `Resolution.paidAfter`
   is set, `prepareTurn` appends a `lyrica-paid-fallback` custom entry
   (`PaidFallback`: `model`, `from`, `reason`), outside her context, and a

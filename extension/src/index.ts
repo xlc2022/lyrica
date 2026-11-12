@@ -14,6 +14,7 @@ import { reactionLines, type UserReaction } from "./react.ts";
 import { registerMemoryTools } from "./tools.ts";
 export { RECALL_GUIDELINES } from "./tools.ts";
 import { registerExitCodes } from "./exit-codes.ts";
+import { registerTestOutput } from "./test-output.ts";
 import { registerVisionGuard } from "./vision.ts";
 
 export * from "./assemble.ts";
@@ -40,6 +41,7 @@ export * from "./sleep.ts";
 export * from "./threads.ts";
 export * from "./vision.ts";
 export * from "./exit-codes.ts";
+export * from "./test-output.ts";
 export * from "./web.ts";
 export * from "./workspace.ts";
 
@@ -107,6 +109,7 @@ export function createLyricaExtension(thread: ThreadContext, opts: LyricaOptions
     if (saving) registerSkillTool(pi, { propose: opts.skills!.propose! });
     registerVisionGuard(pi);
     registerExitCodes(pi);
+    registerTestOutput(pi);
     if (opts.meter) registerContext(pi, opts.meter);
     if (opts.sleep) pi.registerCommand("sleep", { description: "Sleep now: consolidate, dream and wake, for this pool", handler: (_args, ctx) => opts.sleep!(ctx) });
     pi.on("context_with_system", event => {
