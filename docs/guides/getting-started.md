@@ -642,8 +642,9 @@ Caddy:
    machine needn't be reachable from the internet. A new name can take
    about 90 seconds; the page shows the certificate's state with the address
    it was read at, where the name's DNS record points as this machine resolves
-   it, and Caddy's last error. To keep her ts.net name working too, leave **Tailnet name**
-   on: it is on when you switch from Tailnet, and then both names reach her.
+   it, and Caddy's last error. To keep her ts.net name working too, leave
+   **Tailnet name** on: it is on when you switch from Tailnet, and then
+   both names reach her.
 
 A change never locks you out: the old setup keeps serving until the new one
 has a working certificate. The other mode, **A proxy elsewhere**, is for a
@@ -658,11 +659,11 @@ Her own `tailscaled` runs from the install on, but on no tailnet until the
 setup page or Administration, **Tailnet** joins one with an auth key. Then
 the **Tailnet** mode in Web access serves her at her own ts.net name
 through `tailscale serve` on its own, or, with **Tailnet name** on,
-through Built-in Caddy beside its name. Leaving the tailnet turns off only the ts.net
-name; Caddy's name keeps working. Every other port on her tailnet address is
-forwarded to this machine's loopback, so a service you add there is
-reachable from her tailnet too; a Tailscale ACL that allows only port 443
-to her closes that path. Details are in
+through Built-in Caddy beside its name. Leaving the tailnet turns off only
+the ts.net name; Caddy's name keeps working. Every other port on her
+tailnet address is forwarded to this machine's loopback, so a service you
+add there is reachable from her tailnet too; a Tailscale ACL that allows
+only port 443 to her closes that path. Details are in
 [docs/daemon.md](../daemon.md#the-tailnet).
 
 ## Give her models
@@ -1007,7 +1008,11 @@ steps:
    deleting a branch or stash) ask too, and in her own sandbox as well,
    unless a user has turned on **Allow bypass** (Settings, Network, New
    threads) and put the thread in **Bypass permissions**. On a machine
-   they always ask.
+   they always ask. **Allow MCP bypass**, shown beside it only while
+   Allow bypass is on, off by default and asking first, lets those
+   threads also use MCP tools that change things without asking; forms,
+   attachments and open-world tools still ask, and turning Allow bypass
+   off turns it off too.
 
 The same three steps are in the web UI under Settings, Machines, **Add
 machine** (SSH or Proxmox); nothing is saved there before you confirm the
@@ -1238,7 +1243,10 @@ refused. To replace the destination, enter the full URL and token again;
   newer. When that
   release can't read her databases, it restores the newest snapshot it can
   read, asking first (`--yes` skips the question), or refuses and names the
-  oldest release it could go back to.
+  oldest release it could go back to. Going back to a release from before
+  2026-11-12 with Built-in Caddy and **Tailnet name** both on leaves her
+  ts.net name dead until you turn **Tailnet name** off and on again in Web
+  access; Caddy's own name keeps working.
 - **Upgrading from a checkout** (Debian or Ubuntu; on NixOS it is the
   flake update in "On NixOS"): this is the way to bring an older install
   up to date by hand, and the only way to get new packages and units,
