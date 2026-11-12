@@ -1478,7 +1478,11 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   session's model runtime), a released slot stays kept for that holder for
   `KEEP_WARM_MS` (15 s), with its room in the window, and the holder's next
   request takes it ahead of the queue; no slot is kept after an abort, or
-  while the head of the queue has waited `MAX_PASSED_MS` (2 min); `scope` is the daemon's `Models`, so a
+  while the head of the queue has waited `MAX_PASSED_MS` (2 min). With two
+  `slots` or more the release names a slot (`release.slot`): the holder's
+  own last one if free, else one never used, else the free one used longest
+  ago, never one busy or kept for another holder; a llama.cpp offering
+  (`server: "llama.cpp"` or `llamaServer`) sends it as `id_slot`. `scope` is the daemon's `Models`, so a
   daemon started again in the same process holds nothing; `markOverflow` adds a known
   overflow text to LM Studio's "Context size has been exceeded" so Pi
   compacts and retries (docs/models.md, Local servers).
