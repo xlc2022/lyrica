@@ -25,7 +25,7 @@ import { messageText, readAloud, readClip, speechState, storedSource, transcribe
 import { notifications } from "./notifications.ts";
 import { SEARCH_PAGE, searchMessages } from "./search.ts";
 import { forgetThreadFiles } from "./sweep.ts";
-import { applyRemoval, entriesFrom, removalPlan, uploadsIn, type RemovalContext } from "./removal.ts";
+import { applyRemoval, entriesFrom, removalPlan, threadsReached, uploadsIn, type RemovalContext } from "./removal.ts";
 import { historyQuery } from "./history.ts";
 import { factsWindow, modelFacts } from "./model-facts.ts";
 import { memoryUse } from "./memory-use.ts";
@@ -43,10 +43,17 @@ const MESSAGE_PAGE = 50;
 /** The composer's unsent text, in bytes. */
 const DRAFT_LIMIT = 64 * 1024;
 
+/** Threads being deleted, per lyricad, by user and pool, and how far each delete has got. */
+const deletes = new WeakMap<Lyricad, Map<string, Map<string, Api.ThreadDeleting>>>();
+function deletingOf(d: Lyricad): Map<string, Map<string, Api.ThreadDeleting>> {
+  let m = deletes.get(d);
+  if (!m) deletes.set(d, (m = new Map()));
+  return m;
+}
+
 /** Every API route. Locked, only /api/state, /api/unlock and /api/setup answer; setting up, only state and setup (lyricad.ts enforces it). */
 export function apiRoutes(d: Lyricad): Route[] {
-  // Threads being deleted, by user and pool, and how far each delete has got.
-  const deleting = new Map<string, Map<string, Api.ThreadDeleting>>();
+  const deleting = deletingOf(d);
   const s = (): Services => d.services!;
   /** The Files panel's operations for the request's thread, each inside the thread's sandbox. */
   const files = (r: Request) => {
@@ -1220,50 +1227,7 @@ export function apiRoutes(d: Lyricad): Route[] {
       const pool = poolOf(r);
       const threadId = owner(d, user, (o) => threadOf(o, r).id);
       const { children, keepMemories } = await r.json<Api.ForgetThread>();
-      const keep = keepMemories === true;
-      const all = children === true || r.query.get("children") === "1";
-      // Its subagents' threads go with it, deepest first, and with `children` its child threads; each one's runs are stopped and their records dropped first.
-      const { doomed, kept } = owner(d, user, (o) => {
-        const out = { doomed: [] as string[], kept: [] as string[] };
-        const walk = (id: string) => {
-          for (const c of o[pool].listThreads({ includeHidden: true, parent: id })) walk(c.id);
-          for (const c of o[pool].listThreads({ includeHidden: true, parent: id, children: true })) if (all) walk(c.id); else out.kept.push(c.id);
-          out.doomed.push(id);
-        };
-        walk(threadId);
-        return out;
-      });
-      // What the delete dialog shows while it runs (GET …/deleting): a second delete of a thread on its way out is refused.
-      const progress = `${user.id}/${pool}`;
-      const busy = deleting.get(progress) ?? new Map<string, Api.ThreadDeleting>();
-      if (doomed.some((id) => busy.has(id))) throw new HttpError(409, "this thread is already being deleted");
-      deleting.set(progress, busy);
-      const step = (s: Api.ThreadDeleting["step"]) => { for (const id of doomed) busy.set(id, { step: s, threads: doomed.length }); };
-      try {
-        step("stopping");
-        // A project's page and the notes that came only from it go before its threads do, while they still say where the notes came from.
-        if (all && !keep) owner(d, user, (o) => { if (o[pool].getThread(threadId)?.project) o[pool].forgetProjectMemory(threadId, author(user)); });
-        // The live sessions stop side by side, then the store drops every thread in one owner view and one transaction.
-        await Promise.all(doomed.map(async (id) => { await s().delegation.forget(user.id, pool, id); await s().host.forget(user.id, pool, id); }));
-        for (const id of doomed) await s().children.cleanupWorktrees(user.id, pool, id, true);
-        step("messages");
-        // Yields first, so the dialog's next look sees this step before the store holds lyricad for it.
-        await new Promise((go) => setImmediate(go));
-        owner(d, user, (o) => o[pool].forgetThreads(doomed, author(user), { children: all, keepMemories: keep }));
-        for (const id of doomed) s().models.forgetThread(user.id, pool, id);
-        s().children.forget(user.id, pool, doomed);
-        s().wakeups.forget(user.id, pool, doomed);
-        s().prefs.forget(user.id, pool, doomed);
-        s().projects.forget(user.id, pool, doomed);
-        // A kept child is a thread of its own now: its next turn opens with its own tools and workspace.
-        for (const id of kept) { s().workspace.settings(user.id).detach(id); s().host.reload(user.id, pool, id); }
-        step("files");
-        // The thread is gone by now: a folder that can't go yet (the home locked meanwhile) is the nightly sweep's.
-        try { await forgetThreadFiles(s(), user.id, pool, doomed); } catch (err) { d.log(`a forgotten thread's files are left to the sweep: ${(err as Error).name}`); }
-      } finally {
-        for (const id of doomed) busy.delete(id);
-        if (!busy.size) deleting.delete(progress);
-      }
+      await deleteThread(d, user, pool, threadId, { children: children === true || r.query.get("children") === "1", keepMemories: keepMemories === true });
       return { ok: true };
     }),
     route("POST", `${u}/clean-up`, async (r): Promise<Api.CleanUpResult> => {
@@ -3283,9 +3247,10 @@ async function rewind(d: Lyricad, user: User, r: Request, req: Api.RewindRequest
   if (req.preview) return removal(d, user, pool, thread.id, from).then(({ changes: _, ...plan }) => plan);
   if (then !== undefined) d.refuseWhileDraining();
   const skip = new Set(Array.isArray(req.skip) ? req.skip.map(String) : []);
-  let result: Api.RewindResponse = { removed: 0, subagents: 0, pins: 0, files: 0, branches: 0 };
+  let result: Api.RewindResponse = { removed: 0, subagents: 0, pins: 0, files: 0, branches: 0, threads: 0 };
+  const hosted = host.get(user.id, pool, thread.id);
   try {
-    await host.get(user.id, pool, thread.id).rewind(async () => {
+    await hosted.rewind(async () => {
       // Read before the subagents go; undo files after they've stopped writing.
       const gathered = gather(d, user, pool, thread.id, from);
       const subagents = gathered.subagents.map((s) => s.thread);
@@ -3293,10 +3258,17 @@ async function rewind(d: Lyricad, user: User, r: Request, req: Api.RewindRequest
       for (const id of subagents) await host.forget(user.id, pool, id);
       const plan = await removalPlan(gathered);
       const undone = await applyRemoval(plan, gathered, gathered.changes, skip);
+      // Child threads the removed turns started go, and those they only messaged lose those messages, before the
+      // entries do: anything they report meanwhile lands in the removed range, and nothing they knew comes back.
+      const reached = plan.threads.filter((t) => t.ticked && !skip.has(t.id));
+      const threads = await undoThreads(d, user, pool, thread.id, reached, gathered.removed[0]?.createdAt);
+      const ids = new Set(reached.map((t) => t.threadId));
+      hosted.dropMarked(ids);
+      d.services!.children.dropWakes(user.id, pool, thread.id, ids);
       const done = owner(d, user, (o) => o[pool].truncateThread(thread.id, from, author(user)));
-      // A project's threads hanging off removed messages stay, unanchored.
+      // A project's threads hanging off removed messages that were kept (unticked) stay, unanchored.
       if (thread.project) d.services!.children.unanchor(user.id, pool, thread.id, from);
-      result = { removed: done.removed, subagents: done.subagents.length, pins: done.pins, ...undone };
+      result = { removed: done.removed, subagents: done.subagents.length, pins: done.pins, ...undone, threads };
       return from;
     }, then);
   } catch (err) {
@@ -3304,6 +3276,91 @@ async function rewind(d: Lyricad, user: User, r: Request, req: Api.RewindRequest
     throw err;
   }
   return result;
+}
+
+/**
+ * Deletes a thread with its subagents' threads, and with `children` its child threads (kept as threads of their own
+ * otherwise): stops their work, drops their messages and memories (all but the notes with `keepMemories`) and their files.
+ * GET …/deleting says which step it is on, and a second delete of a thread on its way out is refused.
+ */
+async function deleteThread(d: Lyricad, user: User, pool: Pool, threadId: string, opts: { children: boolean; keepMemories: boolean }): Promise<void> {
+  const s = () => d.services!;
+  const deleting = deletingOf(d);
+  const keep = opts.keepMemories;
+  const all = opts.children;
+  // Its subagents' threads go with it, deepest first, and with `children` its child threads; each one's runs are stopped and their records dropped first.
+  const { doomed, kept } = owner(d, user, (o) => {
+    const out = { doomed: [] as string[], kept: [] as string[] };
+    const walk = (id: string) => {
+      for (const c of o[pool].listThreads({ includeHidden: true, parent: id })) walk(c.id);
+      for (const c of o[pool].listThreads({ includeHidden: true, parent: id, children: true })) if (all) walk(c.id); else out.kept.push(c.id);
+      out.doomed.push(id);
+    };
+    walk(threadId);
+    return out;
+  });
+  // What the delete dialog shows while it runs (GET …/deleting): a second delete of a thread on its way out is refused.
+  const progress = `${user.id}/${pool}`;
+  const busy = deleting.get(progress) ?? new Map<string, Api.ThreadDeleting>();
+  if (doomed.some((id) => busy.has(id))) throw new HttpError(409, "this thread is already being deleted");
+  deleting.set(progress, busy);
+  const step = (s: Api.ThreadDeleting["step"]) => { for (const id of doomed) busy.set(id, { step: s, threads: doomed.length }); };
+  try {
+    step("stopping");
+    // A project's page and the notes that came only from it go before its threads do, while they still say where the notes came from.
+    if (all && !keep) owner(d, user, (o) => { if (o[pool].getThread(threadId)?.project) o[pool].forgetProjectMemory(threadId, author(user)); });
+    // The live sessions stop side by side, then the store drops every thread in one owner view and one transaction.
+    await Promise.all(doomed.map(async (id) => { await s().delegation.forget(user.id, pool, id); await s().host.forget(user.id, pool, id); }));
+    for (const id of doomed) await s().children.cleanupWorktrees(user.id, pool, id, true);
+    step("messages");
+    // Yields first, so the dialog's next look sees this step before the store holds lyricad for it.
+    await new Promise((go) => setImmediate(go));
+    owner(d, user, (o) => o[pool].forgetThreads(doomed, author(user), { children: all, keepMemories: keep }));
+    for (const id of doomed) s().models.forgetThread(user.id, pool, id);
+    s().children.forget(user.id, pool, doomed);
+    s().wakeups.forget(user.id, pool, doomed);
+    s().prefs.forget(user.id, pool, doomed);
+    s().projects.forget(user.id, pool, doomed);
+    // A kept child is a thread of its own now: its next turn opens with its own tools and workspace.
+    for (const id of kept) { s().workspace.settings(user.id).detach(id); s().host.reload(user.id, pool, id); }
+    step("files");
+    // The thread is gone by now: a folder that can't go yet (the home locked meanwhile) is the nightly sweep's.
+    try { await forgetThreadFiles(s(), user.id, pool, doomed); } catch (err) { d.log(`a forgotten thread's files are left to the sweep: ${(err as Error).name}`); }
+  } finally {
+    for (const id of doomed) busy.delete(id);
+    if (!busy.size) deleting.delete(progress);
+  }
+}
+
+/**
+ * Undoes what removed turns did to child threads: deletes the ones marked "delete", and stops each one marked
+ * "rewind" and removes, from the first message the parent sent it at or after `since`, everything after. Returns how
+ * many it changed; one that can't be (a turn started again meanwhile) is logged by name only and left.
+ */
+async function undoThreads(d: Lyricad, user: User, pool: Pool, parent: string, threads: Api.PlanThread[], since: string | undefined): Promise<number> {
+  let n = 0;
+  for (const t of threads.filter((x) => x.action === "delete")) {
+    try { await deleteThread(d, user, pool, t.threadId, { children: false, keepMemories: false }); n++; }
+    catch (err) { d.log(`a thread started in removed turns was left: ${(err as Error).name}`); }
+  }
+  if (since === undefined) return n;
+  const { host } = d.services!;
+  for (const t of threads.filter((x) => x.action === "rewind")) {
+    const child = host.get(user.id, pool, t.threadId);
+    try {
+      // Stopping keeps a message it hadn't taken yet in its stored thread, where it is found and removed with the rest.
+      await child.stop();
+      await child.settled();
+      const from = owner(d, user, (o) => entriesFrom(o[pool], t.threadId, 1)
+        .find((e) => (e.createdAt ?? "") >= since && FROM_PARENT.exec(userText(e.data) ?? "")?.[1] === parent)?.n);
+      if (from === undefined) continue;
+      await child.rewind(async () => { owner(d, user, (o) => o[pool].truncateThread(t.threadId, from, author(user))); return from; });
+      n++;
+    } catch (err) {
+      d.log(`a thread messaged in removed turns was left: ${(err as Error).name}`);
+    }
+  }
+  return n;
 }
 
 /** What removing from entry `from` would undo. Reads only. */
@@ -3334,8 +3391,16 @@ function gather(d: Lyricad, user: User, pool: Pool, thread: string, from: number
     const removed = entriesFrom(store, thread, from);
     const at = new Set(removed.map((e) => e.n));
     const uploadsKept = new Set([...uploadsIn(removed, WORKDIR)].filter((path) => store.entriesMentioning(path).some((m) => m.thread !== thread || !at.has(m.n))));
+    // Its child threads the removed turns started (or that hang at or after `from`) are deleted; those only messaged are rewound.
+    const reached = threadsReached(removed);
+    const threads: RemovalContext["threads"] = [];
+    for (const c of store.listThreads({ includeHidden: true, parent: thread, children: true })) {
+      const anchor = d.services!.children.anchorOf(user.id, pool, c.id);
+      const action = reached.started.has(c.id) || (anchor !== undefined && anchor >= from) ? "delete" : reached.messaged.has(c.id) ? "rewind" : undefined;
+      if (action) threads.push({ thread: c.id, title: c.title ?? "", action });
+    }
     return {
-      pool, thread, removed, subagents, uploadsKept, target, targetOf,
+      pool, thread, removed, subagents, uploadsKept, target, targetOf, threads,
       pins: store.pins(thread).filter((p) => p.n >= from).length,
       changes: workspace.changes(user.id),
       grants: target ? workspace.grantsFor(t) : [],

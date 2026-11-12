@@ -1612,6 +1612,8 @@ export interface RemovalPlan {
   branches: PlanBranch[];
   /** The removed turns' commands, the first 20, each cut to 200 characters. */
   commands: string[];
+  /** Child threads the removed turns started or messaged, so what they were told doesn't come back to her. */
+  threads: PlanThread[];
 }
 export interface PlanFile {
   id: string;
@@ -1622,8 +1624,14 @@ export interface PlanFile {
   ticked: boolean;
 }
 export interface PlanBranch { id: string; repo: string; branch: string; commits: boolean; ticked: boolean }
-/** `pins`: how many of the removed messages were pinned; `files` and `branches`: how many were undone. */
-export interface RewindResponse { removed: number; subagents: number; pins: number; files: number; branches: number }
+/**
+ * A child thread the removed turns reached. "delete": started in them (or anchored at or after the first removed
+ * message), so it is deleted. "rewind": only messaged in them, so it stops and loses the first message they sent it
+ * and everything after; its files stay.
+ */
+export interface PlanThread { id: string; threadId: string; title: string; action: "delete" | "rewind"; ticked: boolean }
+/** `pins`: how many of the removed messages were pinned; `files`, `branches` and `threads`: how many were undone. */
+export interface RewindResponse { removed: number; subagents: number; pins: number; files: number; branches: number; threads: number }
 
 // --- Changes: a thread's branch against its base ---
 

@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { HostedThread } from "../src/hosted.ts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fakeOpenAI, type ChatRequest, type Reply } from "../../core/test/fake-openai.ts";
-import type { CallInfo, EndpointInfo, MessagePage, Presets, ProjectOverview, ThreadEvent, ThreadSettings, ThreadSummary } from "../src/api.ts";
+import type { CallInfo, EndpointInfo, MessagePage, Presets, ProjectOverview, RemovalPlan, RewindResponse, ThreadEvent, ThreadSettings, ThreadSummary } from "../src/api.ts";
 import { browser, daemon, enc, localModel, login, runtime } from "./helpers.ts";
 
 const welcomeFolders: string[] = [];
@@ -988,10 +988,52 @@ describe("projects", () => {
     const branch = (await ada.post<ThreadSummary>(`${threadPath(id)}/messages/1/branch`, {})).body;
     expect(branch).toMatchObject({ child: true, anchor });
     expect((await overview()).threads.map((t) => t.id)).toEqual(expect.arrayContaining([id, started.id, branch.id]));
-    // Rewinding the turn that started DNS leaves DNS, unanchored; the thread from message 1 keeps its anchor.
-    expect((await ada.post(`${path}/messages/${asked.n}/rewind`, { action: "delete" })).status).toBe(200);
+    // Rewinding the turn that started DNS, with DNS unticked, leaves it, unanchored; the thread from message 1 keeps its anchor.
+    expect((await ada.post(`${path}/messages/${asked.n}/rewind`, { action: "delete", skip: [`thread:${id}`] })).status).toBe(200);
     expect((await get(id)).anchor).toBeUndefined();
     expect((await get(started.id)).anchor).toBe(first);
+  });
+
+  it("delete what removed turns told their threads, so it can't come back to her", async () => {
+    const { ada, script, say, path, threadPath, messages, requests, stream, overview } = await setup();
+    script("chat").push(start(["DNS", "dns: move DNS"]), { text: "Started." });
+    const dns = ends((await say("move DNS")).events)[0]!.threads![0]!.id;
+    await until(() => messages(threadPath(dns)), (m) => m.some((x) => x.role === "assistant"));
+    // In the turn that goes, she tells DNS a secret and starts a second thread; DNS reports it back only after the delete.
+    let report!: () => void;
+    const reported = new Promise<void>((r) => (report = r));
+    script("dns").push(async () => { await reported; return tool({ action: "message", to: "parent", text: "dns heard SECRET-B" }); }, { text: "dns done" });
+    script("chat").push({ tools: [{ name: "threads", args: { action: "message", id: dns, text: "SECRET-A for dns" } }] }, start(["Vault", "vault: SECRET-A vault"]), { text: "Told dns." });
+    await say("SECRET-A please tell dns");
+    await until(() => messages(path), (m) => JSON.stringify(m).includes("Told dns."));
+    const vault = (await overview()).threads.find((t) => t.title === "Vault")!.id;
+    await until(() => messages(threadPath(dns)), (m) => JSON.stringify(m).includes("SECRET-A for dns"));
+    const asked = (await messages(path)).find((m) => m.role === "user" && JSON.stringify(m).includes("SECRET-A please"))!;
+
+    const plan = (await ada.post<RemovalPlan>(`${path}/messages/${asked.n}/rewind`, { action: "delete", preview: true })).body;
+    expect(plan.threads).toEqual(expect.arrayContaining([
+      { id: `thread:${dns}`, threadId: dns, title: "DNS", action: "rewind", ticked: true },
+      { id: `thread:${vault}`, threadId: vault, title: "Vault", action: "delete", ticked: true },
+    ]));
+    expect(plan.threads).toHaveLength(2);
+    const r = await ada.post<RewindResponse>(`${path}/messages/${asked.n}/rewind`, { action: "delete" });
+    expect(r.body).toMatchObject({ threads: 2 });
+    report();
+    // DNS keeps its own start and loses the message; Vault is gone.
+    const left = JSON.stringify(await messages(threadPath(dns)));
+    expect(left).not.toContain("SECRET");
+    expect(left).toContain("move DNS");
+    expect((await ada.get(threadPath(vault))).status).toBe(404);
+    expect((await overview()).threads.map((t) => t.id)).toEqual([dns]);
+    // Nothing wakes her with it, and her next turn doesn't see it.
+    const k = requests.length;
+    await new Promise((go) => setTimeout(go, 500));
+    script("chat").push({ text: "ok" });
+    const from = stream.events.length;
+    await say("status?");
+    expect(stream.events.slice(from).filter((e) => e.event.type === "turn_start")).toHaveLength(1);
+    expect(requests.slice(k).filter((c) => who(c) === "chat").map(said).join("")).not.toContain("SECRET");
+    expect(JSON.stringify(await messages(path))).not.toContain("SECRET");
   });
 
   it("carry a note from one thread into the next thread's project section, and forget it all with the project", async () => {

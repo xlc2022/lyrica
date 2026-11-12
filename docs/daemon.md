@@ -401,10 +401,14 @@ Each active thread is one Pi session from `openThreadSession`, with
   because something changed them since or the thread works elsewhere now);
   uploads only the removed messages mention (sandbox only); git branches
   made by their commands or their subagents' worktrees, ticked unless they
-  hold commits no other branch has; and their first 20 commands, listed, not
-  tracked. The rewind itself undoes every ticked item not in `skip`, in its
-  held turn before the entries go, and drops the change records.
-  `RewindResponse` counts the pins, files and branches. Branches are found
+  hold commits no other branch has; their first 20 commands, listed, not
+  tracked; and the child threads they started (deleted) or only messaged
+  (stopped, and rewound to before the first message they sent it), found
+  from the `threads` calls' results and the project anchors
+  (docs/delegation.md, Projects). The rewind itself undoes every ticked
+  item not in `skip`, in its held turn before the entries go, and drops the
+  change records. `RewindResponse` counts the pins, files, branches and
+  threads. Branches are found
   by a pattern on her commands (`git checkout -b`, `switch -c`, `branch`),
   best effort. A missing message is `404`; a subagent's thread
   can't be branched (`409`).
