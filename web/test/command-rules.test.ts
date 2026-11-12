@@ -1,12 +1,12 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { GeneralSection } from "../src/Project.tsx";
+import { CodeSection } from "../src/Project.tsx";
 import { PermissionPrompt } from "../src/Messages.tsx";
 import type { CommandRule, PermissionRequest, ThreadSettings, ThreadSummary } from "../src/api.ts";
 import type { ShellContext } from "../src/Shell.tsx";
 
-const general = (rules: CommandRule[], checks: string[] = [], setup?: string) => renderToStaticMarkup(createElement(GeneralSection, {
+const general = (rules: CommandRule[], checks: string[] = [], setup?: string) => renderToStaticMarkup(createElement(CodeSection, {
   ctx: { user: { id: "ada" }, groups: [] } as unknown as ShellContext, base: "/project",
   summary: { id: "project", pool: "general", projectSettings: { commandRules: rules, checks, setup } } as unknown as ThreadSummary,
   settings: { mode: "ask", models: { chat: { source: "column" } }, allowed: [], grants: [], machines: [], repositories: [], mcpServers: [] } as unknown as ThreadSettings,
@@ -18,9 +18,9 @@ const permission = (alwaysAllow?: string) => renderToStaticMarkup(createElement(
 }));
 
 describe("command rules in the web UI", () => {
-  it("puts Commands after This chat, with the page's single Save and the empty state", () => {
+  it("shows Command rules in the Code section, with its single Save and the empty state", () => {
     const html = general([]);
-    expect(html.indexOf("This chat</h3>")).toBeLessThan(html.indexOf("Commands</h3>"));
+    expect(html).toContain(">Command rules</span>");
     expect(html).toContain("No rules: commands ask as the mode says.");
     expect(html.match(/>Save<\/button>/g)).toHaveLength(1);
     expect(html).toContain("Add rule</button>");
@@ -42,9 +42,10 @@ describe("command rules in the web UI", () => {
     expect(duplicate).toContain("Each prefix can have one rule.");
     expect(duplicate).toContain('disabled="">Save</button>');
   });
-  it("puts Checks after Commands, one mono command per row, and refuses a multi-line one before Save", () => {
+  it("puts Checks before Command rules, one mono command per row, and refuses a multi-line one before Save", () => {
     const html = general([]);
-    expect(html.indexOf("Commands</h3>")).toBeLessThan(html.indexOf("Checks</h3>"));
+    expect(html.indexOf(">Checks</span>")).toBeGreaterThan(-1);
+    expect(html.indexOf(">Checks</span>")).toBeLessThan(html.indexOf(">Command rules</span>"));
     expect(html).toMatch(/No checks: .+ runs what the repository asks\./);
     expect(html).toContain("Add check</button>");
     const set = general([], ["npm run typecheck"]);
@@ -55,14 +56,14 @@ describe("command rules in the web UI", () => {
     expect(invalid).toContain('disabled="">Save</button>');
     expect(general([], Array.from({ length: 8 }, (_, i) => `check ${i}`))).toContain('disabled="">Add check</button>');
   });
-  it("puts Setup between Commands and Checks, one mono command, empty meaning the lockfile's, and refuses a multi-line one before Save", () => {
+  it("puts Install first, one mono command, empty meaning the lockfile's, and refuses a multi-line one before Save", () => {
     const html = general([]);
-    expect(html.indexOf("Commands</h3>")).toBeLessThan(html.indexOf(">Setup</h3>"));
-    expect(html.indexOf(">Setup</h3>")).toBeLessThan(html.indexOf("Checks</h3>"));
-    expect(html).toContain('class="mono" aria-label="Setup command" placeholder="From the lockfile" value=""');
-    expect(general([], [], "make deps")).toContain('aria-label="Setup command" placeholder="From the lockfile" value="make deps"');
+    expect(html.indexOf(">Install</label>")).toBeGreaterThan(-1);
+    expect(html.indexOf(">Install</label>")).toBeLessThan(html.indexOf(">Checks</span>"));
+    expect(html).toContain('id="p-install" class="mono" placeholder="From the lockfile" value=""');
+    expect(general([], [], "make deps")).toContain('id="p-install" class="mono" placeholder="From the lockfile" value="make deps"');
     const invalid = general([], [], "make\ndeps");
-    expect(invalid).toContain("Setup is one line of at most 300 characters");
+    expect(invalid).toContain("Install is one line of at most 300 characters");
     expect(invalid).toContain('disabled="">Save</button>');
   });
   it("offers Always allow between Allow and Deny only with a daemon prefix", () => {

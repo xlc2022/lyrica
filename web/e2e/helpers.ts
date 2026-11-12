@@ -73,7 +73,12 @@ export async function send(page: Page, text: string) {
 }
 
 export async function openSettings(page: Page) {
-  await page.getByRole("button", { name: "Thread settings" }).click();
+  // A project chat's Settings is its Project settings page; its own drawer is that page's Chat settings link.
+  const gear = page.locator(".head-actions").locator('button[aria-label="Thread settings"], a[aria-label="Project settings"]').first();
+  await gear.waitFor();
+  const project = await gear.evaluate((el) => el.tagName === "A");
+  await gear.click();
+  if (project) await page.getByRole("link", { name: "Chat settings" }).click();
   const drawer = page.getByRole("complementary", { name: "Thread settings" });
   // A re-render can cancel the slide-in, whose finished then rejects: that still means it is done.
   await drawer.evaluate((el) => Promise.all(el.getAnimations().map((a) => a.finished.catch(() => undefined))));
@@ -89,15 +94,11 @@ export async function deleteThread(page: Page) {
 
 /** From a project chat, opens its settings page: Project in the header shows the overview (the Threads page on a phone,
  *  the panel from 1180 px) with the Project settings link inside; from the panel, Open as a page (docs/ux.md §6). */
-export async function openProjectSettings(page: Page) {
-  await page.locator(".head-actions").getByRole("button", { name: "Project", exact: true }).click();
-  if (phone(page)) {
-    await page.getByRole("link", { name: "Project settings" }).click();
-  } else {
-    await page.getByRole("complementary", { name: "Threads" }).getByRole("link", { name: "Project settings" }).click();
-    await page.getByRole("complementary", { name: /Project settings$/ }).getByRole("link", { name: "Open as a page" }).click();
-  }
+export async function openProjectSettings(page: Page, section?: "Threads" | "Access" | "Code" | "Files") {
+  await page.locator(".head-actions").getByRole("link", { name: "Project settings" }).click();
+  if (!phone(page)) await page.getByRole("complementary", { name: /Project settings$/ }).getByRole("link", { name: "Open as a page" }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Project settings" })).toBeVisible();
+  if (section) await page.getByRole("navigation", { name: "Project settings sections" }).getByRole("link", { name: section, exact: true }).click();
 }
 
 /** Flips the Private checkbox in the sidebar's Sort menu (the sidebar is open already on a phone). */

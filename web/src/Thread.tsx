@@ -44,7 +44,13 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
   // Two Thread trees can share a page (the panel), so the drawer's id is this one's.
   const drawerId = useId();
   const dropped = useRef(false);
-  useEffect(() => { if (drawerAtStart && !drawer && !dropped.current) { dropped.current = true; dropDrawer?.(); } }, [drawer, drawerAtStart, dropDrawer]);
+  // The address can gain …/settings while the thread is already showing (Project settings' Chat settings link): the drawer opens then too.
+  const opened = useRef(!!drawerAtStart);
+  useEffect(() => { if (drawerAtStart && opened.current && !drawer && !dropped.current) { dropped.current = true; dropDrawer?.(); } }, [drawer, drawerAtStart, dropDrawer]);
+  useEffect(() => {
+    if (drawerAtStart && !opened.current) { opened.current = true; dropped.current = false; setDrawer(true); }
+    if (!drawerAtStart) opened.current = false;
+  }, [drawerAtStart]);
   // The subagents drawer (docs/ux.md §6): one drawer at a time, so opening it closes Settings and back.
   const [agentsOpen, setAgentsOpen] = useState(false);
   const agentsId = useId();
@@ -100,6 +106,7 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
   const wide = useWide();
   const here = parse(location.hash);
   const onOverview = wide && here.page === "thread" && here.panel?.page === "threads" && here.panel.pool === pool && here.panel.threadId === threadId;
+  const onSettings = wide && here.page === "thread" && here.panel?.page === "project" && here.panel.pool === pool && here.panel.threadId === threadId;
   const openOverview = () => go(!wide ? { page: "threads", userId, pool, threadId } : onOverview ? { page: "thread", userId, pool, threadId } : { page: "thread", userId, pool, threadId, panel: { page: "threads", pool, threadId } });
   // A child thread's update changes its badge in the sidebar.
   const updates = t.live.items.filter((x) => x.role === "notice").length;
@@ -332,7 +339,7 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
         </div>
         {!s?.subagent && (
           <div className="head-actions">
-            {/* Project opens the overview (the threads list, with Project settings inside it) beside the chat; the chat keeps its drawer for folders, network, local-only and the other task models. */}
+            {/* Project opens the overview (the project's threads list) beside the chat. */}
             {s?.project && <button type="button" className="sm" aria-label="Project" aria-pressed={wide ? onOverview : undefined} onClick={openOverview}><Icon name="project" /><span className="long">Project</span></button>}
             {/* The Files panel (docs/ux.md §6): beside the conversation from the split width, the page on its own below it. */}
             <a className="sm" href={href({ page: "files", userId, pool, threadId })} aria-label="Files and images"><Icon name="panel" /><span className="long">Files</span></a>
@@ -342,9 +349,15 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
                 <Icon name="agents" /><span className="long">Subagents</span> <span className="num">{agents.data.runs.length}</span>
               </button>
             )}
-            <button type="button" className="sm" aria-label="Thread settings" aria-expanded={drawer} aria-controls={drawerId} onClick={() => { setDrawer(!drawer); setAgentsOpen(false); }}>
-              <Icon name="gear" /><span className="long">{s?.project ? "Settings (this thread)" : "Settings"}</span>
-            </button>
+            {/* A project chat's Settings is the project's page (beside the chat from the split width); its own drawer is that page's Chat settings link. */}
+            {/* Not before the summary loads, so a project chat never shows the drawer's button first. */}
+            {!s ? null : s.project ? (
+              <a className="sm" href={href({ page: "project", userId, pool, threadId })} aria-label="Project settings" aria-current={onSettings ? "true" : undefined}><Icon name="gear" /><span className="long">Settings</span></a>
+            ) : (
+              <button type="button" className="sm" aria-label="Thread settings" aria-expanded={drawer} aria-controls={drawerId} onClick={() => { setDrawer(!drawer); setAgentsOpen(false); }}>
+                <Icon name="gear" /><span className="long">Settings</span>
+              </button>
+            )}
             {/* A project's thread resolves in one press (docs/ux.md §6); the button stays, filled while resolved, and a second press reopens it. */}
             {s?.state !== undefined && (
               <button type="button" className="sm resolve-btn" aria-label="Resolve" aria-pressed={resolved} title={resolved ? "Reopen" : "Resolve"} onClick={() => void (resolved ? reopen() : resolve())}>

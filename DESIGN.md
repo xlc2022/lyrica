@@ -1492,27 +1492,24 @@ project page and the web part are built. Recent calls can be filtered by project
     first, then threads by tokens), and a project-filtered **Recent calls**
     link. On a phone Tokens is at the foot of the Threads popover.
     Its actions are **Project**, **Files** and
-    **Settings** (the last reads **Settings (this thread)** here): the
-    project's settings open from the **Project settings** link in the
-    overview's header.
+    **Settings**, which here opens the project's settings.
   - **Thread cards:** one per thread, under the message that started it,
     updated in place: title, state, what it waits on, the first line of its
     last update, and the files it made. A card waiting on the user is covered by
     the chat's pending bar. **Suggested threads** is a card like the plan
     card, with **Start** per thread and **Start all**.
-  - **Project settings** is the page the overview's one
-    **Project settings** link opens, with sections: General (Goal;
-    Paused; **Check on threads**; an h3
-    **New threads** with the model, Code mode, thinking and fallback new
-    threads start with; an h3 **Workspace** holding Group and the
-    **Folders**, **Machines**, **Repositories** and **MCP servers** every
-    thread of the project inherits, narrower or the same, then a
-    **Thread settings** link to the coordinator's own models, network and
-    local-only in its drawer; Commands; Checks), Memory (Instructions, the
-    **Ask first** switch, and a link to the project page in the memory
-    browser), and **Files and
-    images** (Files | Images | Videos), where the project folder is managed. Files
-    in the chat's header stays the quick view.
+  - **Project settings** is the page the chat's **Settings** opens,
+    with **Pause** in its header and five sections, each with its own
+    Save: Project (Goal; Instructions with the **Ask first** switch and a
+    link to the project page in the memory browser; Group), Threads
+    (**Check on threads**; the model, thinking, fallback and Code mode new
+    threads start with), Access (the **Folders**, **Machines**,
+    **Repositories** and **MCP servers** every thread of the project
+    inherits, narrower or the same), Code (Install, Checks, Command
+    rules) and Files (Files | Images | Videos), where the project folder
+    is managed. A **Chat settings** link under the sections opens the
+    project chat's own models, network and local-only in its drawer.
+    Files in the chat's header stays the quick view.
   - **Paused** stops the project's working threads and starts nothing new.
     **Hide** stops it too. **Delete** forgets the project chat, its threads,
     its page, the notes that came only from it, and its folder.
@@ -1764,7 +1761,7 @@ Decided 2026-10-12 (docs/briefs/mcp.md).
 - **Added like Git accounts, granted like repositories.** Settings → MCP
   servers holds each user's servers, each in one pool, checked before it
   is saved. A thread gets a server only when granted: an MCP servers row
-  in the thread drawer and under **Workspace** on Project settings, so
+  in the thread drawer and in Project settings → Access, so
   a project's threads inherit it, narrower or the same. Removing one
   from a project takes it from running threads at once.
 - **Pools.** Private and local-only threads use only servers marked
@@ -2237,17 +2234,17 @@ Details in [docs/sleep.md](docs/sleep.md).
     writes a plan and asks to go ahead; approving it switches the thread to
     the mode the user picks, and she carries on.
   - **Project command rules:** Allow, Ask or Forbid prefixes, edited under
-    Commands in Project settings → General, apply to the project chat, its
+    Command rules in Project settings → Code, apply to the project chat, its
     threads and their subagents. Forbid refuses `bash` in every mode and
     place; Ask always asks. Allow skips mode prompts only in the sandbox,
     never machine limits or irreversible-action prompts. A sandbox command
     card can save its computed prefix with **Always allow**. Opaque commands
     ask when the project has a forbid rule.
   - **Project checks:** up to 8 commands, edited under Checks in Project
-    settings → General, run without a card when a code turn in the
+    settings → Code, run without a card when a code turn in the
     project's threads ends after a change, since the person wrote them.
-  - **Project setup:** one command, edited under Setup in Project settings
-    → General, run without a card in each new clone and when a lockfile
+  - **Project setup:** one command, edited under Install in Project settings
+    → Code, run without a card in each new clone and when a lockfile
     changes, since the person wrote it; without one, the lockfile's own
     install runs (install scripts skipped).
   - Irreversible actions that leave the server always ask, whatever the
@@ -2558,7 +2555,7 @@ from Monika's runbooks.
   machines' check, with **Off network** and its dialog when that stops
   holding), never GitHub. A **repository** (`owner/name` and the account
   it uses) is granted to a thread like a folder: a Repositories row in the
-  thread drawer and under **Workspace** on Project settings, so every
+  thread drawer and in Project settings → Access, so every
   thread of the project gets them, narrower or the same; she may add one
   to a thread from an account of its pool, with the user's approval,
   like any change that reaches beyond the thread.

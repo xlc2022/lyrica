@@ -892,14 +892,14 @@ add that URL and secret as a webhook on the repository:
 
 GitHub stays on polling, and its account drawer has no Webhook section.
 
-A project's **Repositories** row (Project settings, under Workspace) and
+A project's **Repositories** row (Project settings → Access) and
 the thread drawer list which repositories a thread has. Each thread clones
 its own copy into `/workspace/repos`, and `gh` and `tea` there use the
 right account by themselves. Details are in
 [docs/workspace.md](../workspace.md#git-accounts-and-repositories).
 
 Each clone gets its dependencies installed in the sandbox: the project's
-**Setup** command (Project settings → General) when one is set,
+**Install** command (Project settings → Code) when one is set,
 otherwise the lockfile picks npm, pnpm, yarn, uv or a Python `.venv`
 ([docs/workspace.md](../workspace.md#dependencies)). npm and Python's
 venv are already there (`install.sh` installs `python3-venv`; an older
@@ -915,7 +915,7 @@ missing.
 
 In code mode she reads each checkout's `AGENTS.md` (or `CLAUDE.md`) and
 follows its rules. To make a project's code threads prove their work, list
-its commands under **Checks** in Project settings → General, for example
+its commands under **Checks** in Project settings → Code, for example
 `npm run typecheck` and `npm test` (at most 8). When a code thread ends a
 turn that changed files, each check runs in her sandbox in each checkout,
 with 10 minutes each, and the thread shows **Checks** passed or failed. A
@@ -927,7 +927,7 @@ After the checks, her code model can also judge her reply against what
 the turn's tools showed, and send her back once or twice when "done"
 isn't shown; the thread then shows an **Evidence** notice, **checked** or
 **not shown**, beside Checks. **Evidence judge**, beside Code mode in the
-thread drawer and under Project settings → New threads, picks when:
+thread drawer and in Project settings → Threads, picks when:
 **Automatic (local models only)**, the default, judges only when the code
 model is local; **On** judges on a cloud model too, which spends its
 tokens; **Off** never ([docs/workspace.md](../workspace.md#the-evidence-judge)).

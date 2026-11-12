@@ -2265,15 +2265,25 @@ test("project welcome and fold in", async ({ page, baseURL }) => {
   await goal.fill("Grow herbs");
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.getByRole("status").filter({ hasText: "Saved." })).toBeVisible();
+  // One Save applies both drafted fields as edited, and the draft is gone.
   expect((await api("GET", `${u}/threads/general/${encodeURIComponent(p.id)}`)).goal).toBe("Grow herbs");
-  await page.getByRole("link", { name: "Memory", exact: true }).last().click();
-  await expect(page.getByRole("textbox", { name: /^Instructions/ })).toHaveValue("Keep a planting journal");
+  expect((await api("GET", `${u}/threads/general/${encodeURIComponent(p.id)}`)).instructions).toBe("Keep a planting journal");
+  await expect(page.getByRole("button", { name: "Discard draft" })).toHaveCount(0);
+  // Discard draft puts both fields back to what is saved. The next draft comes once her reply has ended and the page is idle.
+  await expect.poll(async () => (await api("GET", `${u}/threads/general/${encodeURIComponent(p.id)}`)).busy).toBe(false);
+  await page.waitForTimeout(1500);
+  await api("POST", `${u}/threads/general/${encodeURIComponent(p.id)}/messages`, { text: "draft: Grow trees | Keep a pruning journal" });
+  await expect(page.getByRole("textbox", { name: /^Instructions/ })).toHaveValue("Keep a pruning journal");
   await page.getByRole("button", { name: "Discard draft" }).click();
-  await expect(page.getByRole("textbox", { name: /^Instructions/ })).toHaveValue("");
+  await expect(page.getByRole("textbox", { name: /^Instructions/ })).toHaveValue("Keep a planting journal");
+  await expect(goal).toHaveValue("Grow herbs");
   const askFirst = page.getByRole("checkbox", { name: "Ask first", exact: true });
   await expect(askFirst).not.toBeChecked();
+  // Ask first saves with the section's Save, as the fields beside it do.
   await askFirst.click();
   await expect(askFirst).toBeChecked();
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Saved." })).toBeVisible();
   expect((await api("GET", `${u}/threads/general/${encodeURIComponent(p.id)}`)).projectSettings.askFirstInstructions).toBe(true);
   const empty = await api("POST", `${u}/threads`, { pool: "general", project: true, title: "Plan garden" });
   await page.goto(`/#/u/${user.id}/t/general/${encodeURIComponent(empty.id)}`);
@@ -2777,19 +2787,20 @@ test("Code mode: thread switch, Coding model and project defaults", async ({ pag
   await drawer.getByRole("button", { name: "Close", exact: true }).click();
   await expect(page.getByRole("button", { name: /^Model:/ })).toContainText("cloud-model");
 
-  await openProjectSettings(page);
-  // New threads say what new threads get, and name the coordinator they follow rather than "this chat":
-  // the page opens on its own, with no chat in view. The chat's own Model and Mode live in its header, drawer and composer.
-  for (const field of ["Model", "Evidence judge", "Thinking", "Fallback"])
-    await expect(page.getByRole("combobox", { name: field, exact: true }).locator("option").first()).toHaveText("Same as coordinator");
+  await openProjectSettings(page, "Threads");
+  // New threads say what new threads get; each select's empty choice is Default, naming the chat's own value it follows.
+  // Evidence judge shows only with Code mode on. The chat's own Model and Mode live in its header, drawer and composer.
+  for (const field of ["Model", "Thinking", "Fallback"])
+    await expect(page.getByRole("combobox", { name: field, exact: true }).locator("option").first()).toHaveText(/^Default( \(.+\))?$/);
+  await expect(page.getByRole("combobox", { name: "Evidence judge", exact: true })).toHaveCount(0);
   // Model lists only models that answer in text: an embedding model on the same endpoint isn't offered.
   const routerId = endpoints.find((ep: { name: string }) => ep.name === "router").id;
   const embed = await api("POST", `/endpoints/${routerId}/models`, { modelId: "embed-only", embedding: true });
   await page.reload();
   const newModel = page.getByRole("combobox", { name: "Model", exact: true });
-  await expect(newModel.locator("option", { hasText: "cloud-model" })).toHaveCount(1);
+  await expect(newModel.locator("optgroup option", { hasText: "cloud-model" })).toHaveCount(1);
   await expect(newModel.locator("option", { hasText: "embed-only" })).toHaveCount(0);
-  // One saved before the list was narrowed shows as itself, not as Same as coordinator, until a text model is picked.
+  // One saved before the list was narrowed shows as itself, not as Default, until a text model is picked.
   await api("PATCH", path, { threadsModel: { offeringId: embed.id } });
   await page.reload();
   await expect(newModel).toHaveValue(embed.id);
@@ -2797,11 +2808,10 @@ test("Code mode: thread switch, Coding model and project defaults", async ({ pag
   await api("PATCH", path, { threadsModel: null });
   await api("PATCH", `/endpoints/${routerId}/models`, { offeringIds: [embed.id], disabled: true });
   await page.reload();
-  await page.getByRole("combobox", { name: "Evidence judge", exact: true }).selectOption("on");
-  await expect(page.getByRole("heading", { name: "Workspace", exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "This chat", exact: true })).toHaveCount(0);
   await expect(page.getByRole("combobox", { name: "Mode", exact: true })).toHaveCount(0);
   await page.getByRole("checkbox", { name: "Code mode", exact: true }).click();
+  await expect(page.getByRole("combobox", { name: "Evidence judge", exact: true }).locator("option").first()).toHaveText("Default (Off)"); // the chat's own, set in its drawer above
+  await page.getByRole("combobox", { name: "Evidence judge", exact: true }).selectOption("on");
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect.poll(async () => (await api("GET", path)).projectSettings.threadsCode).toBe(true);
   expect((await api("GET", path)).projectSettings.threadsEvidence).toBe("on");

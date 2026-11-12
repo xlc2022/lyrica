@@ -215,8 +215,9 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   This chat first, then thread links by descending tokens, and **Recent
   calls** linking to the project's filter. On a phone Tokens opens in place
   at the foot of the Threads popover. The header has a **Project**
-  button before Files and the Settings button (which opens the thread's
-  drawer as in any thread): from 1180 px up it toggles the project's
+  button before Files and the Settings link (a project chat's opens
+  Project settings, beside the chat from 1180 px up and closed by a second
+  press; the chat's own drawer is that page's **Chat settings** link): from 1180 px up it toggles the project's
   overview beside the chat, the same `ThreadsPage` the Threads fact shows,
   pressed while it shows (`aria-pressed`); below 1180 px it opens that
   page. The overview's header holds one link, **Project settings**, to the
@@ -316,8 +317,7 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   back to the file). That thread is
   the one that wrote the file (the entry's `madeBy`) when it is recorded and
   still in the list; otherwise the Files panel's own thread for a file in its
-  thread folder, and the project chat for a file in Project settings → Files
-  and images. A file in a grant has none and shows on its own. Below
+  thread folder, and the project chat for a file in Project settings → Files. A file in a grant has none and shows on its own. Below
   1180 px the **Thread** toggle (a labelled button, pressed while the thread
   shows) switches between the two; from 1180 px up it shows or hides the
   thread. The header names the file (mono), its facts
@@ -364,35 +364,43 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   a second window event, on a change made in the viewer.
 - **The changes view** (`Changes.tsx`): the same kind of dialog for a
   thread's branch, described under Chat ("Changes").
-- **Project settings page** (`…/p/<pool>/<project>/general`, `/memory` or `/files`),
-  sections at the left. **General**: Goal, the Paused and **Check on
-  threads** switches (one switch for `watchThreads` and `checkInOnThreads`: on
-  only when both are, and a change sets both; the tooltip says what a look does), **New
-  threads** (Model, Code mode, Thinking and Fallback the project's threads start with;
-  "Same as coordinator" is the project's coordinating chat, which this page can be
-  opened away from; Model becomes a new thread's
-  Coding in Code mode and its Main conversation otherwise), **Workspace**
-  (Group, then **Folders**, **Machines**, **Repositories** and **MCP
-  servers**, the drawer's own controls,
-  then a **Thread settings** link that opens the project chat with its
-  drawer showing, `…/t/<pool>/<thread>/settings`, for its own models, network
-  and local-only; the chat's model and Mode are not on this page), then **Commands**: a mono prefix field per
-  rule, an Allow | Ask | Forbid segment, Remove, and **Add rule**. Empty
-  reads "No rules: commands ask as the mode says." Empty rows are ignored and dropped on Save, and duplicate prefixes (spaces collapsed) fail validation.
-  Then **Checks**: a mono command field per check, Remove, and **Add check**
-  (at most 8). Empty reads "No checks: <name> runs what the repository asks.";
-  a multi-line or over-long check fails validation. The page has one Save, which patches the thread
-  (`goal`, `paused`, `commandRules`, `checks`, `watchThreads` and `checkInOnThreads` when the switch changed, `threadsModel`,
-  `threadsThinking`, `threadsFallback`, `group`) and, when they changed, its
-  settings (`grants`, `machines`, `repositories`, `mcpServers`); `lyricad`'s
-  reason shows when it refuses. Every thread the project starts gets these
-  folders, machines and repositories or fewer. A folder, machine or
-  repository taken off here leaves the
-  project's running threads at once, and their open views show it gone. **Memory**: the
-  Instructions kept on the project page (4,000 characters, counted under
-  the box), a link to that page in the memory browser, and below Save the
-  **Ask first** switch (`askFirstInstructions`, saved when toggled: her
-  `threads instructions` then fills the box as a draft). **Files and images**
+- **Project settings page** (`…/p/<pool>/<project>/project`, `/threads`,
+  `/access`, `/code` or `/files`; the old `/general` and `/memory` open
+  Project), sections at the left, each a form of rows (a label at the left,
+  its control at the right, stacked when the card is narrow) with its own
+  Save, which stays in view at the card's foot. The header holds **Pause**
+  (**Resume** while paused, with a Paused word in the facts line), which
+  patches `paused` at once. Under the sections a **Chat settings** link
+  opens the project chat with its drawer showing
+  (`…/t/<pool>/<thread>/settings`), for its own models, network and
+  local-only; the chat's model and Mode are not on this page.
+  **Project**: Goal; Instructions kept on the project page (4,000
+  characters, counted under the box) with a link to that page in the memory
+  browser and the **Ask first** switch (`askFirstInstructions`: her
+  `threads instructions` then fills the box as a draft); Group. Save sends
+  only the fields that changed, and a drafted field as edited. **Threads**:
+  **Check on threads** (one switch for `watchThreads` and
+  `checkInOnThreads`: on only when both are, and a change sets both), then
+  **New threads**: Model, Thinking, Fallback and Code mode the project's
+  threads start with, and Evidence judge while Code mode is on. Each
+  select's empty choice is **Default**, with the project chat's own value
+  in brackets; Model becomes a new thread's Coding in Code mode and its
+  Main conversation otherwise. Save patches `threadsModel`,
+  `threadsThinking`, `threadsFallback`, `threadsCode`, `threadsEvidence`
+  and the two watching fields. **Access**: **Folders**, **Machines**,
+  **Repositories** and **MCP servers**, the drawer's own controls; Save
+  patches the chat's settings (`grants`, `machines`, `repositories`,
+  `mcpServers`) and `lyricad`'s reason shows when it refuses. Every thread
+  the project starts gets these or fewer, and one taken off here leaves
+  the project's running threads at once. **Code**: **Install** (`setup`,
+  one mono command, empty meaning the lockfile's), **Checks** (a mono
+  command field per check, Remove, and **Add check**, at most 8; empty
+  reads "No checks: <name> runs what the repository asks.") and **Command
+  rules** (a mono prefix field per rule, an Allow | Ask | Forbid segment,
+  Remove, and **Add rule**; empty reads "No rules: commands ask as the
+  mode says."). Empty rows are dropped on Save; a multi-line or over-long
+  command and duplicate prefixes (spaces collapsed) fail validation and
+  disable Save. **Files**
   (`ProjectFiles.tsx`): the project folder (the project chat's `/workspace`)
   through the Files panel's routes on the project chat, one folder at a time
   with crumbs, Files | Images | Videos, Upload… (to the folder shown, or by dropping
@@ -435,7 +443,7 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   header and its picker; turning it off restores Chat. Its tooltip says
   "Focus on the code: a coding model, a short persona, and only this
   project's memory and your working preferences." Project settings →
-  General → New threads has the same switch, applied with Save. Models →
+  Threads has the same switch, applied with Save. Models →
   Tasks has a Coding row under Conversation, initially Same as Strong
   subagents, editable in presets and columns like the other tasks.
 - **Subagents live inline**, not in the sidebar: see the `delegate` card

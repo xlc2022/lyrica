@@ -2018,7 +2018,7 @@ export interface MemoryItem {
   text: string;
   title?: string;
   summary?: string;
-  /** A project page's instructions, in the user's words, kept apart from its text (Project settings → Memory changes them). */
+  /** A project page's instructions, in the user's words, kept apart from its text (Project settings → Project changes them). */
   instructions?: string;
   folders?: string[];
   about?: string[];

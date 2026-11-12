@@ -1135,7 +1135,7 @@ values are always visible next to the model badge:
 | **Folders** | The thread's grants, each read-only or read-write. |
 | **Machines** | The SSH accounts and Proxmox nodes the thread may use (Machines). |
 | **Repositories** | The repositories the thread clones, each with the Git account it uses (Git accounts and repositories). |
-| **Code mode** | Focuses the persona, memory and tools on coding and selects the Coding task; editable under Behaviour, and for new project threads under General → New threads. |
+| **Code mode** | Focuses the persona, memory and tools on coding and selects the Coding task; editable under Behaviour, and for new project threads in Project settings → Threads. |
 | **Mode** | Ask, Accept edits, Plan or Auto (see Approval). |
 | **Web search, Images** | Switches for `web_search`, `web_fetch` and `browse`, and for `image`. On unless turned off. |
 | **Claude Code** | Whether her sandbox runs can use Claude Code on the user's Claude plan (Claude Code). Off unless turned on; shown only in a general thread that isn't local-only, once a token is saved and the program is installed. |
@@ -1368,7 +1368,7 @@ come from the user's Git accounts (DESIGN.md, "Updates and self-editing").
   repositories from every thread at once.
 - **A thread's repositories** (`owner/name` and the account each uses) are
   granted like folders: the Repositories row in the thread drawer and
-  under Workspace on Project settings, so a project's threads get the
+  in Project settings → Access, so a project's threads get the
   project chat's list or fewer. A child or subagent gets a subset, never
   more (a read-only or narrowed one gets them read-only, below), and a
   parent's change narrows its running children at once. A
@@ -1394,8 +1394,8 @@ come from the user's Git accounts (DESIGN.md, "Updates and self-editing").
 - <a id="dependencies"></a>**Dependencies.** After a clone or fetch
   succeeds, `cloneFor` installs the clone's dependencies in the same
   sandbox and network as the clone (`core/src/workspace/setup.ts`), so her
-  checks find them: the project's **Setup** command when the person set one
-  (Project settings → General; `project_settings.setup`, expand-only user
+  checks find them: the project's **Install** command when the person set one
+  (Project settings → Code; `project_settings.setup`, expand-only user
   step 19, one line of at most 300 characters), otherwise the first
   lockfile found picks it: `package-lock.json` or `npm-shrinkwrap.json`
   `npm ci --ignore-scripts`, `pnpm-lock.yaml` `pnpm install
@@ -1529,7 +1529,7 @@ lookups (`services.lyrica.mcpNixos`, docs/guides/nixos-mcp.md).
   its facts line says "this machine", and either pool takes it. Each use
   records Online, Token rejected (401 or 403) or Unreachable.
 - **A thread's servers** are granted like repositories: the MCP servers
-  row in the thread drawer and under Workspace on Project settings, so a
+  row in the thread drawer and in Project settings → Access, so a
   project's threads get the project chat's servers or fewer. A private or
   local-only thread takes only private servers, a general thread only
   general ones. A new pool, removing a server, or taking it off a project
@@ -1795,7 +1795,7 @@ writers get their own git worktrees (see [delegation.md](delegation.md)).
 Principles 2 and 6: a project keeps at most 8 check commands (`npm test`) in
 encrypted `user.db` (`project_settings.checks`, expand-only user step 16),
 each one line of at most 300 characters. Only the person sets them, under
-Checks in Project settings → General; nothing from a repository or from her
+Checks in Project settings → Code; nothing from a repository or from her
 adds one, so they run without an approval card.
 
 When a code-mode thread of the project (never its read-only chat) ends a run
@@ -1847,7 +1847,7 @@ The **Evidence judge** setting (principle 8) says when it runs: **Automatic
 (local models only)**, the default, judges only when the code model that
 answers is local, so a cloud model's tokens are spent only where someone
 chose it; **On** judges on any model; **Off** never. It sits beside Code
-mode in the thread drawer and under Project settings → New threads, where
+mode in the thread drawer and in Project settings → Threads, where
 a project sets what its new threads start with; each thread keeps its own
 copy and changes it on its own, and a skipped judgment shows no notice.
 
@@ -1894,7 +1894,7 @@ upserts other settings without replacing rules.
 `rules.ts`, seeded by `seedCommandRules` when a project is made, continued
 from a thread or made from one; a project that already has rules is left
 alone, and existing projects get none): `git push --force`, `git push -f`,
-`rm -rf /` and `rm -fr /`. They show in Project settings → Commands like
+`rm -rf /` and `rm -fr /`. They show in Project settings → Code like
 any rule, and the person removes or changes them there. Since rules match
 words exactly, `git push --force-with-lease` and `rm -rf /*` pass the rules
 and reach the suspect-command card instead. Having any Forbid rule means an
@@ -1992,8 +1992,8 @@ sandbox too, [Machines](#machines)), moving to a machine and irreversible
 calls still ask. The user's `user_bash` is
 unaffected. `WorkspaceThread.project` follows delegation at every depth.
 
-Project settings → General has Commands after Workspace, with prefix,
-Allow | Ask | Forbid, Remove and Add rule, applied by the page's one Save.
+Project settings → Code has Command rules after Checks, with prefix,
+Allow | Ask | Forbid, Remove and Add rule, applied by the section's Save.
 For a single plain sandbox command in a project, the card offers Always allow
 with lyricad's computed prefix. Shells, interpreters and wrappers get no such
 choice. The prefix is the program and its plain subcommand, plus the next

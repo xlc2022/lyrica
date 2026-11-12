@@ -301,10 +301,12 @@ function openInPanel(e: React.MouseEvent, route: Route & { page: "thread" }, tra
     : { page: "project", pool: to.pool, threadId: to.threadId, ...(to.section ? { section: to.section } : {}) };
   // The Files button toggles its panel; a file's link shows that file in it.
   if (panel.page === "files" && !panel.path && route.panel?.page === "files" && route.panel.threadId === panel.threadId) { go({ ...route, drawer: undefined, panel: undefined }); return; }
+  // So does a project chat's Settings, from the chat's own header.
+  if (panel.page === "project" && !panel.section && !a.closest(".panel") && a.closest(".head-actions") && route.panel?.page === "project" && route.panel.threadId === panel.threadId) { go({ ...route, drawer: undefined, panel: undefined }); return; }
   // A breadcrumb goes back to that page; a link in the panel goes one deeper.
   const crumb = (a as HTMLElement).dataset.crumb;
   if (crumb !== undefined || a.closest(".panel")) {
-    // Another section of the same page (Project settings → Memory) replaces its crumb rather than repeating it.
+    // Another section of the same page (Project settings → Threads) replaces its crumb rather than repeating it.
     const last = trail.crumbs.at(-1);
     trail.set(crumb !== undefined ? trail.crumbs.slice(0, Number(crumb) + 1)
       : last && pageKey(last) === pageKey(panel) ? [...trail.crumbs.slice(0, -1), panel] : [...trail.crumbs, panel]);

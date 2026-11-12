@@ -45,8 +45,8 @@ structurally (AGENTS.md: never rely on telling the model).
 
 ## B. Project checks that always run
 
-- **Setting:** Project settings → General, an h3 **Checks** after
-  Commands.
+- **Setting:** Project settings → Code, a **Checks** row after
+  Install.
   - One row per command in mono with an ✕, **Add check**, and the page's one
     Save.
   - Empty: "No checks: <name> runs what the repository asks."

@@ -326,7 +326,7 @@ function Detail({ ctx, pool, id, onTitle, onTag }: { ctx: ShellContext; pool: Po
               <section className="instructions" aria-labelledby="mem-instructions">
                 <div className="section-head">
                   <h3 id="mem-instructions" className="eyebrow" title={INSTRUCTIONS_TIP}>Instructions</h3>
-                  {project && <a href={href({ page: "project", userId, pool: project.pool, threadId: project.id, section: "memory" })}>Change</a>}
+                  {project && <a href={href({ page: "project", userId, pool: project.pool, threadId: project.id, section: "project" })}>Change</a>}
                 </div>
                 {item.instructions?.trim()
                   ? <div className="prose"><Prose text={readable(item.instructions, users)} /></div>

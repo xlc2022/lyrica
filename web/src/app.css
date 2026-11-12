@@ -732,6 +732,8 @@ dialog::backdrop { background: rgb(0 0 0 / 0.35); }
   .subnav { position: static; display: flex; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--line); padding: 8px var(--gutter); gap: 2px; scrollbar-width: none; mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent); }
   .subnav a:last-child { margin-right: 24px; }
   .subnav a { white-space: nowrap; }
+  .subnav:has(.subnav-link) { flex-wrap: wrap; overflow-x: visible; mask-image: none; }
+  .subnav a.subnav-link { flex-basis: 100%; margin: 0; border-top: 0; padding-top: 7px; }
   .mem { grid-template-columns: minmax(0, 1fr); }
   .mem[data-reading="true"] .mem-pane, .mem[data-reading="false"] .mem-read { display: none; }
   .mem-pane { border-right: 0; }
@@ -974,9 +976,29 @@ form.drawer-body { flex: 1; }
 .suggestion-text .prose.small { font-size: 14px; line-height: 1.5; }
 .resolved-box { padding-block: 12px; }
 .resolved-box p { display: flex; gap: 6px; align-items: center; }
-.project-form h3 { font-size: 15px; margin: 8px 0 0; }
-.project-form .switches { gap: 8px 20px; }
-.project-form .workspace { display: grid; gap: 14px; max-width: 520px; }
+/* Project settings (docs/ux.md §6): a section is rows, a label at the left and its control at the right, stacked when
+   the card is narrow (a phone, the panel); its one Save stays in view at the card's foot. */
+.project-form { container: pform / inline-size; gap: 0; padding: 4px 16px 0; max-width: 760px; }
+.project-form .prow { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 6px 16px; padding: 12px 0; align-items: start; }
+.project-form .prow + .prow, .project-form h2 + .prow { border-top: 1px solid var(--line); }
+.project-form .prow > label, .project-form .prow > span:first-child { color: var(--muted); padding-top: 7px; }
+.project-form .pctl { display: grid; gap: 8px; min-width: 0; justify-items: start; }
+.project-form .pctl > textarea, .project-form .pctl > input, .project-form .pctl > .command-rule, .project-form .pctl > .with-count, .project-form .pctl > .field { width: 100%; }
+.project-form .pctl > select, .project-form .pctl > .field select { width: 100%; max-width: 340px; }
+.project-form .pctl > .with-count { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+.project-form .pctl .command-rule { margin-bottom: 0; }
+.project-form h2.eyebrow { padding: 14px 0 6px; border-top: 1px solid var(--line); }
+.project-form > .error { padding: 0 0 10px; }
+.project-form .savebar { position: sticky; bottom: 0; z-index: 1; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin: 0 -16px; padding: 10px 16px; background: var(--panel); border-top: 1px solid var(--line); border-radius: 0 0 var(--radius) var(--radius); }
+@container pform (max-width: 520px) {
+  .project-form .prow { grid-template-columns: minmax(0, 1fr); }
+  .project-form .prow > label, .project-form .prow > span:first-child { padding-top: 0; font-size: 13px; }
+  .project-form .pctl > select, .project-form .pctl > .field select { max-width: none; }
+}
+/* The project chat's own drawer, under the page's sections: a link, set apart from them. */
+.subnav a.subnav-link { color: var(--accent); font-size: 13px; margin-top: 8px; border-top: 1px solid var(--line); border-radius: 0; padding-top: 12px; }
+.subnav a.subnav-link:hover { background: none; text-decoration: underline; }
+.head .cap .status-word { margin-left: 10px; font-size: 12px; color: var(--warn); }
 /* A look at the project's threads: a marker like a tool call's, with a dot in the info colour. */
 .marker[data-type="watching"] > button::before { content: ""; flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--info); }
 .marker[data-type="watching"] .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
@@ -1001,7 +1023,7 @@ form.drawer-body { flex: 1; }
 .from-thread .body[data-clamped]:has(+ .show-more) { mask-image: linear-gradient(#000 80%, transparent); }
 .from-thread .show-more { justify-self: start; font-size: 13px; }
 .project-form textarea { width: 100%; resize: vertical; }
-/* Project settings → Files and images (docs/ux.md §6): the project folder's rows, its crumbs and the image grid. */
+/* Project settings → Files (docs/ux.md §6): the project folder's rows, its crumbs and the image grid. */
 .pfiles > .seg { justify-self: start; }
 .pfiles.drop { outline: 2px dashed var(--accent); outline-offset: -4px; }
 .pfiles-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
@@ -1067,6 +1089,8 @@ form.drawer-body { flex: 1; }
   .drawer { width: 100%; }
   .page-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: max-content 1fr; }
   .subnav { position: static; display: flex; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--line); padding: 8px var(--gutter); gap: 2px; scrollbar-width: none; mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent); }
+  .subnav:has(.subnav-link) { flex-wrap: wrap; overflow-x: visible; mask-image: none; }
+  .subnav a.subnav-link { flex-basis: 100%; margin: 0; border-top: 0; padding-top: 7px; }
 }
 /* Beside a wide panel the conversation's header wraps as on a phone too. */
 .app[data-panel="true"] > .main { container: conversation / inline-size; }
@@ -1821,6 +1845,9 @@ ul.choices { list-style: none; margin: 0; padding: 0; }
 /* Project commands use the existing fixed-choice buttons; rows wrap at phone width. */
 .command-rule { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
 .command-rule input { flex: 1 1 160px; min-width: 0; }
+/* Remove is the height of the Allow | Ask | Forbid segment beside it; on touch its tap area still reaches 44 px. */
+.command-rule:not(.check-row) button.icon.sm { position: relative; width: 34px; height: 34px; min-height: 34px; }
+@media (pointer: coarse) { .command-rule:not(.check-row) button.icon.sm::after { content: ""; position: absolute; inset: -5px; } }
 .permission .always-allow { max-width: 100%; white-space: normal; overflow-wrap: normal; }
 .permission .always-allow .mono { min-width: 0; overflow-wrap: anywhere; }
 
@@ -1872,7 +1899,7 @@ ul.choices { list-style: none; margin: 0; padding: 0; }
 @media (hover: none) { .frow-acts { visibility: visible; } .ftree .frow-acts button { width: 36px; min-height: 36px; } }
 .frow > .rename { margin: 2px 6px 2px 0; }
 /* Project in a project chat's header: pressed while the overview shows beside the chat. */
-.head-actions .sm[aria-pressed="true"] { background: var(--tool); }
+.head-actions .sm[aria-pressed="true"], .head-actions a.sm[aria-current="true"] { background: var(--tool); }
 /* Resolve is a toggle: filled in the ok color while the thread is resolved, a second press reopens it (docs/ux.md §6). */
 .head-actions .resolve-btn[aria-pressed="true"] { background: var(--ok); border-color: var(--ok); color: var(--bg); font-weight: 600; }
 .head-actions .resolve-btn[aria-pressed="true"]:hover:not(:disabled) { border-color: var(--ok); filter: brightness(1.05); }
