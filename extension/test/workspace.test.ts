@@ -1016,6 +1016,16 @@ describe("suspect commands in the sandbox", () => {
     await run("auto", [fauxToolCall("bash", { command: "rm -rf build" })], { approve: yes, allowed: [":sandbox: rm -rf dist"] });
     expect(asked).toHaveLength(1);
   });
+  it("save the work git is about to throw away before it runs, and nothing when it's declined", async () => {
+    const ran = await run("auto", [fauxToolCall("bash", { command: "cd repo && git reset --hard" })], { approve: yes });
+    expect(ran.commands).toHaveLength(2);
+    expect(ran.commands[0]).toMatch(/^cd '\/workspace\/repo' .*refs\/lyrica\/saved\//);
+    expect(ran.commands[1]).toBe("cd repo && git reset --hard");
+    const declined = await run("auto", [fauxToolCall("bash", { command: "git clean -fd" })], { approve: async () => false });
+    expect(declined.commands).toEqual([]);
+    const plain = await run("auto", [fauxToolCall("bash", { command: "git status" })], { approve: yes });
+    expect(plain.commands).toEqual(["git status"]);
+  });
   it("leave the machine-only rules to machines, and refuse a denied one", async () => {
     const quiet = await run("auto", [fauxToolCall("bash", { command: "sudo reboot" })], { approve: yes });
     expect(asked).toEqual([]);

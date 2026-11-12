@@ -442,7 +442,8 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     its settings allow. It inherits the parent's pool, "Do not log",
     local-only, permission mode and workspace settings, or narrower ones.
   - It and its parent message each other: it posts short updates at
-    milestones (a badge on it in the sidebar, a card in the parent), and the
+    milestones, or in a project only once when done or blocked (a badge on
+    it in the sidebar, a card in the parent), and the
     parent or the user can message it at any time. Its approvals appear in
     the child thread, and in Notifications. The parent is told when it
     stops with an error or finishes a task without an update, and can read

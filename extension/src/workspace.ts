@@ -5,7 +5,7 @@ import {
 import { readFileSync } from "node:fs";
 import { posix } from "node:path";
 import {
-  BROWSE_READS, browseFormText, browseFormWarning, type Browser, type BrowseCall, decide, sourcedFile, SCRIPT_LIMIT, type CommandRule, withoutNoMachine, holdsSecret, librariesLine, JOB_LIMITS, jobLine, sleepWait, type JobInfo, malformedCommand, mcpNamespace, onFloor, sandboxNix, sandboxTools, PROXMOX_READS, PROXMOX_SUSPECT, SANDBOX_ALLOW, stricterMode, suspectCommand, suspectKey, SHARED, FAMILY_ROOT, WORKDIR, writtenFiles, type ExecutionTarget, type ProxmoxAction, type Network, type NewChange, type PermissionMode, type ThreadGitRepository, type ThreadMachine, type ThreadRepository, type ThreadWorkspace, type ToolOps,
+  BROWSE_READS, browseFormText, browseFormWarning, type Browser, type BrowseCall, decide, sourcedFile, SCRIPT_LIMIT, type CommandRule, withoutNoMachine, holdsSecret, librariesLine, JOB_LIMITS, jobLine, sleepWait, type JobInfo, malformedCommand, mcpNamespace, onFloor, sandboxNix, sandboxTools, PROXMOX_READS, PROXMOX_SUSPECT, SANDBOX_ALLOW, stricterMode, suspectCommand, suspectKey, discardingGit, SHARED, FAMILY_ROOT, WORKDIR, writtenFiles, type ExecutionTarget, type ProxmoxAction, type Network, type NewChange, type PermissionMode, type ThreadGitRepository, type ThreadMachine, type ThreadRepository, type ThreadWorkspace, type ToolOps,
 } from "@lyrica/core";
 import { Type } from "typebox";
 import { setToolsOff } from "./gate.ts";
@@ -509,8 +509,11 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
       const suspect = !!warning && !tools.allowedInThread?.(machine?.name ?? SANDBOX_ALLOW, suspectKey(event.toolName, input));
       // The first call on a machine in a turn asks if anything earlier ran somewhere else, so output from one place can't steer her onto another.
       const moved = !!machine && !places.has(machine.name) && places.size > 0;
+      // Git about to throw away work in the sandbox saves it first, whoever allowed it, so starting over can always be undone.
+      const discards = place === "sandbox" && event.toolName === "bash" ? discardingGit(String(input.command)) : [];
       if (!irreversible && !suspect && !moved && rule?.decision !== "ask" && ((rule?.decision === "allow" && !machine) || !ASKS[mode].includes(as))) {
         if (place) places.add(place);
+        if (discards.length) await saveBeforeDiscard(tools.target(), discards);
         return undefined;
       }
       const request: ApprovalRequest = { toolCallId: event.toolCallId, tool: event.toolName, input };
@@ -523,6 +526,7 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
         const { machine: _, ...rest } = input;
         approved.set(event.toolCallId, shown(event.toolName, rest, request.machine, request.cwd));
       }
+      if (discards.length) await saveBeforeDiscard(tools.target(), discards);
       return undefined;
     });
 
@@ -566,6 +570,36 @@ export function recording<T extends ToolOps["write"] | ToolOps["edit"]>(target: 
 }
 
 const quote = (s: string) => `'${s.replaceAll("'", "'\\''")}'`;
+
+/** Where work saved before git threw it away is kept: one ref per save, named by its time. */
+export const SAVED_REF = "refs/lyrica/saved";
+
+/**
+ * Saves each repository's uncommitted and untracked work (what .gitignore
+ * keeps out stays out) as a commit under `SAVED_REF`, without touching the
+ * working tree or the index, before a command that throws it away runs. A
+ * folder that isn't a repository, or has nothing to save, is left alone;
+ * a save that fails never stops the command.
+ */
+export async function saveBeforeDiscard(target: ExecutionTarget, dirs: string[]): Promise<void> {
+  const cwd = await target.cwd();
+  for (const d of dirs) {
+    const dir = posix.resolve(cwd, d);
+    const script = [
+      "git rev-parse --is-inside-work-tree >/dev/null 2>&1 || exit 0",
+      '[ -n "$(git status --porcelain)" ] || exit 0',
+      'i="$(git rev-parse --git-path index)"; t="$i.lyrica-save"',
+      'trap \'rm -f "$t"\' EXIT',
+      'if [ -f "$i" ]; then cp "$i" "$t"; fi',
+      'GIT_INDEX_FILE="$t" git add -A',
+      'tree="$(GIT_INDEX_FILE="$t" git write-tree)"',
+      'head="$(git rev-parse -q --verify HEAD || true)"',
+      'c="$(GIT_AUTHOR_NAME=lyricad GIT_AUTHOR_EMAIL=lyricad@localhost GIT_COMMITTER_NAME=lyricad GIT_COMMITTER_EMAIL=lyricad@localhost git commit-tree "$tree" ${head:+-p "$head"} -m "Saved before a command that throws work away")"',
+      `git update-ref "${SAVED_REF}/$(date -u +%Y%m%dT%H%M%SZ)-$(echo "$c" | cut -c1-7)" "$c"`,
+    ].join(" && ");
+    await target.ops().bash.exec(`cd ${quote(dir)} 2>/dev/null || exit 0; ${script}`, cwd, { onData: () => {} }).catch(() => {});
+  }
+}
 
 async function exists(target: ExecutionTarget, path: string): Promise<boolean> {
   const { exitCode } = await target.ops().bash.exec(`test -e ${quote(path)} || test -L ${quote(path)}`, await target.cwd(), { onData: () => {} }).catch(() => ({ exitCode: 0 }));

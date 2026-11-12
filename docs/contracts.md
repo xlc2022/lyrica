@@ -1916,7 +1916,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     `bash` that `malformedCommand(command)` refuses (ShellCheck: a parse error, or a listed finding in a delete or move) is
     blocked with that refusal before any card, in the sandbox and on a machine; a
     suspect `bash` (`suspectCommand(command, "machine" | "sandbox")`) asks in every mode unless
-    `allowedInThread(machine, command)`, where a sandbox command's machine is `SANDBOX_ALLOW`; the first call on a machine in a turn asks if
+    `allowedInThread(machine, command)`, where a sandbox command's machine is `SANDBOX_ALLOW`; a sandbox `bash` that will run git throwing work away (`discardingGit(command)`, the rules marked `discards`) first runs `saveBeforeDiscard(target, dirs)`, which commits each folder's changes under `refs/lyrica/saved/<time>-<sha>` without touching its tree or index; the first call on a machine in a turn asks if
     anything earlier ran elsewhere. `ApprovalRequest` is `{ toolCallId,
     tool, input, machine?, cwd?, warning?, server?, serverTool? }` (`warning` set for a suspect command wherever it runs), and the call runs only if its
     arguments are still exactly what was approved. With `proxmox`, the
@@ -2812,7 +2812,7 @@ settings(userId): WorkspaceSettings       // per-pool defaults, per-thread overr
 //   / setHostKey / setOffNetwork / confirmOffNetwork / machineState(name, kind) / removeMachine / allowInThread(threadId, machine, command) / allowedInThread(threadId)
 // A thread's `machines: string[]` (the sandbox is always there); setThread refuses a machine of the other pool;
 //   inheritSettings takes a subset; effective() keeps only machines every ancestor grants.
-// SUSPECT_COMMANDS (each with `everywhere?` for the sandbox too), suspectCommand(command, where = "machine"), SANDBOX_ALLOW (the machine key Allow in this thread stores for a sandbox command),
+// SUSPECT_COMMANDS (each with `everywhere?` for the sandbox too and `discards?` for git throwing work away), suspectCommand(command, where = "machine"), discardingGit(command) (the folders where such git runs), SANDBOX_ALLOW (the machine key Allow in this thread stores for a sandbox command),
 //   writtenFiles(command) (the targets of its redirections and tee), onFloor(path), cleanOutput(onData), maskKeys(buf) (shares removePrivateKeys from core/src/secrets.ts),
 //   authorizedKeysLine(publicKey), machineSetup(account, keyLine, asUser?), unwrapped(words) (a simple command past its
 //   wrappers and the shell's keywords): core/src/workspace/machines.ts

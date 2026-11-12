@@ -639,9 +639,11 @@ fixed actions, the token never shown to her.
 - **Repositories** are granted to threads like folders, each from a Git
   account in Settings (Git accounts and repositories, below).
 - **Every folder in a project chat's sandbox is read-only to it:** its
-  grants, its clones, its own folder and `/shared`. It can read them and
-  run checks, and the threads it starts get the grants as given, so every
-  file is made or changed by a thread, whose folder the chat reads. A
+  grants, its clones, its own folder and `/shared`. Her guidance has it
+  read them only to answer a quick question and leave any investigation
+  or analysis to a thread, with no scratch files of its own; the threads
+  it starts get the grants as given, so every file is made or changed by
+  a thread, whose folder the chat reads. A
   report the person asks for is one too: her guidance has a
   thread write it in its part of `/shared`, with everything she already
   found or drafted in its task, since a thread can't read the chat's
@@ -1488,7 +1490,21 @@ come from the user's Git accounts (DESIGN.md, "Updates and self-editing").
   `lyricad` wakes the thread when its checks finish or someone reviews
   it), read a failing check's log and never merge on red, the merge
   queue where there is one, delete merged branches, and never discard or
-  overwrite files or changes she didn't make unless asked. The project's instructions win where they differ.
+  overwrite files or changes she didn't make unless asked. It also says to
+  propose a reasonable scope (the whole asked problem plus directly related
+  bugs, never just its easy part), to find the cause before editing, to run
+  only the tests for her change while working, and to commit and push
+  before starting over. The project's instructions win where they differ.
+- **Saved before discarding.** When a sandbox `bash` call is about to run
+  git that throws away uncommitted or untracked work (the suspect rules
+  for `reset --hard`, `checkout -- .`, `restore`, `switch -f` and `clean`,
+  after any `cd` or `-C` on the line), and it is allowed or approved,
+  `lyricad` first saves each such repository's changes, untracked files
+  included and ignored ones not, as a commit under
+  `refs/lyrica/saved/<time>-<sha>`, using a copy of the index so neither
+  the working tree nor the index changes (`discardingGit`,
+  `saveBeforeDiscard`). A folder with nothing to save is left alone, and a
+  failed save never stops the command.
 
 ## MCP servers
 
@@ -1722,8 +1738,8 @@ her account is general.
   failure as hers unless she shows otherwise: flaky only once a re-run of
   just the failed jobs passes, not hers only once a base-branch run's log
   shows the same test failing; otherwise she pushes at least one fix before
-  calling it blocked (`CI_RED`; `git.md`, which also says to keep work she
-  starts herself small, says the same, with the exact `gh`
+  calling it blocked (`CI_RED`; `git.md`, which also says to propose a
+  reasonable scope for work she starts herself, says the same, with the exact `gh`
   commands, to end the turn rather than watch a run, to force-push only
   after a rebase, and never to loosen, pad or skip a test). GitHub is polled; a Forgejo or
   Gitea account whose host resolves into her own network also gets a
