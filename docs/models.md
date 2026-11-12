@@ -1290,7 +1290,15 @@ call a thread's slot stays kept for it for 15 s: its next call (once its
 tools have run) finds its prompt still cached instead of reading its whole
 context again at prefill speed. The keep ends early when that call comes,
 and no slot is kept while a waiting request has already waited 2 minutes,
-so threads switch per burst of calls and nobody waits for ever. A wait the turn aborts
+so threads switch per burst of calls and nobody waits for ever. A llama.cpp
+server is also told which slot each request uses (`id_slot`): the thread's
+own when it is free, else one no thread has used, else the free one used
+longest ago, never one kept for another thread. Left to choose, llama.cpp
+gives an idle slot to any prompt that starts the same as a tenth of it, and
+every thread's prompt starts with the same persona, so a thread with a short
+prompt took the slot of a project chat with a long one, which then read its
+whole context again. Another daemon sharing the same host isn't seen, so its
+requests may wait for a slot one of this daemon's took. A wait the turn aborts
 ends as an aborted reply. LM Studio's "Context size has been exceeded" is
 marked as an overflow, so Pi compacts and retries instead of failing. Image
 jobs on a host take turns with its chat models in the host's own queue for

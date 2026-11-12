@@ -160,10 +160,11 @@ export async function modelRuntimeFor(models: Models, ctx: CallContext, opts: { 
         const stop = new AbortController();
         const signal = options?.signal ? AbortSignal.any([options.signal, stop.signal]) : stop.signal;
         const offering = list.find((m) => m.modelId === model.id);
-        const request = (reasoning = options?.reasoning) => markUnservable(model.id, markOverflow(capToolCalls(streamWithInlineThinking(model as Model<"openai-completions">, objectTools(context), { ...options, reasoning, signal }, startsMidThought(offering, reasoning)), () => stop.abort())));
+        const request = (reasoning = options?.reasoning, slot?: number) => markUnservable(model.id, markOverflow(capToolCalls(streamWithInlineThinking(model as Model<"openai-completions">, objectTools(context),
+          { ...options, reasoning, signal, ...(slot !== undefined ? { onPayload: inSlot(options?.onPayload, slot) } : {}) }, startsMidThought(offering, reasoning)), () => stop.abort())));
         // Asked not to think, a model whose provider requires it is asked again at medium, or the nearest level it has.
         const must = offering && !options?.reasoning ? models.mandatoryThinking(offering) : undefined;
-        const send = () => must ? thinkWhenRequired(request(), () => request(must), () => models.mustThink(offering!.id)) : request();
+        const send = (slot?: number) => must ? thinkWhenRequired(request(undefined, slot), () => request(must, slot), () => models.mustThink(offering!.id)) : request(undefined, slot);
         if (endpoint.kind !== "local") return send();
         // A local server's cache is shared by everything it serves at once: wait for room (model-share.ts).
         const need = Math.min(model.contextWindow, requestTokens(context) + Math.min(model.maxTokens, SHARE_REPLY));
@@ -171,9 +172,11 @@ export async function modelRuntimeFor(models: Models, ctx: CallContext, opts: { 
           role: "assistant" as const, content: [], api: model.api, provider: model.provider, model: model.id,
           usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
           stopReason: reason, errorMessage: message, timestamp: Date.now() } });
-        const slots = models.offering(ctx.userId, offerings.get(`${endpoint.id}\u0000${model.id}`)?.offering.id ?? "")?.offering.parallel;
+        const now = models.offering(ctx.userId, offerings.get(`${endpoint.id}\u0000${model.id}`)?.offering.id ?? "")?.offering;
+        // A llama.cpp server is told which slot to use, so another thread's prompt doesn't land on this one's cache.
+        const pins = !!now && (now.server === "llama.cpp" || !!now.llamaServer);
         // This session's runtime marks its calls, so its slot can stay warm between them.
-        return sharedStream(shareModel(models, `${endpoint.baseUrl}\u0000${model.id}`, need, model.contextWindow, options?.signal, slots, runtime), send, failed);
+        return sharedStream(shareModel(models, `${endpoint.baseUrl}\u0000${model.id}`, need, model.contextWindow, options?.signal, now?.parallel, runtime), (slot) => send(pins ? slot : undefined), failed);
       },
     });
     // A runtime key is used literally; a key in the provider config would be read as `$ENV` or `!command`.
@@ -188,6 +191,11 @@ export async function modelRuntimeFor(models: Models, ctx: CallContext, opts: { 
   const sealed = () => { throw new Error("Lyrica's model runtime takes no other providers"); };
   Object.assign(runtime, { registerProvider: sealed, registerNativeProvider: sealed, registerVirtualModel: sealed, login: sealed });
   return runtime;
+}
+
+/** A request's payload with llama.cpp's `id_slot`, after any other change made to it. */
+export function inSlot(before: ((payload: unknown, model: Model<Api>) => unknown) | undefined, slot: number) {
+  return async (payload: unknown, model: Model<Api>) => ({ ...((await before?.(payload, model)) ?? payload) as Record<string, unknown>, id_slot: slot });
 }
 
 // OpenRouter's words when a model's provider won't run it without thinking.
