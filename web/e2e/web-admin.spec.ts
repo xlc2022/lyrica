@@ -2089,7 +2089,7 @@ test("a plan's limit is cleared from its ⋯", async ({ page, baseURL }) => {
   await page.route(`**${base}/models/page`, async route => {
     const response = await fetchReal(route);
     const data = await response.json();
-    data.endpoints.push({ id: "fake-plan", name: "LiGPT", kind: "cloud", api: "chatgpt", baseUrl: "https://api.openai.com/v1", hasApiKey: false, shared: false, unencrypted: false, stale: false, state: "up", cloudCapabilities: ["Text", "Vision", "Image"], models: [], ...(limitedUntil ? { limitedUntil } : {}) });
+    data.endpoints.push({ id: "fake-plan", name: "AdaGPT", kind: "cloud", api: "chatgpt", baseUrl: "https://api.openai.com/v1", hasApiKey: false, shared: false, unencrypted: false, stale: false, state: "up", cloudCapabilities: ["Text", "Vision", "Image"], models: [], ...(limitedUntil ? { limitedUntil } : {}) });
     await route.fulfill({ json: data });
   });
   let cleared = 0;
@@ -2097,7 +2097,7 @@ test("a plan's limit is cleared from its ⋯", async ({ page, baseURL }) => {
   await page.goto(`/#/u/${userId}/models/hosts`);
   const plan = page.locator('[data-endpoint="fake-plan"]');
   await expect(plan).toContainText("Limit reached until");
-  await plan.getByRole("button", { name: "Actions for LiGPT" }).click();
+  await plan.getByRole("button", { name: "Actions for AdaGPT" }).click();
   const items = page.getByRole("menuitem");
   await expect(items.first()).toHaveText("Clear limit");
   // A ⋯ that wrapped to the row's start on a phone opens rightward: the menu stays on screen.
@@ -2109,7 +2109,7 @@ test("a plan's limit is cleared from its ⋯", async ({ page, baseURL }) => {
   await page.getByRole("menuitem", { name: "Clear limit" }).click();
   await expect(plan).not.toContainText("Limit reached");
   expect(cleared).toBe(1);
-  await plan.getByRole("button", { name: "Actions for LiGPT" }).click();
+  await plan.getByRole("button", { name: "Actions for AdaGPT" }).click();
   await expect(page.getByRole("menuitem", { name: "Clear limit" })).toHaveCount(0);
   await page.keyboard.press("Escape");
   if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/clear-limit-done-${page.viewportSize()!.width}.png` });
