@@ -628,9 +628,11 @@ Caddy:
 1. Pick a name under a domain you control, such as `lyrica.example.net`, and
    point its DNS record at one of the addresses the page lists under
    **Serve on**: the machine's Tailscale address, or with split DNS its LAN
-   address. Not her own tailnet address: that one serves only her ts.net
-   name, with its certificate, and refuses any other name. A machine that
-   isn't on a tailnet itself can serve the name on its LAN address only.
+   address. Her own tailnet address works too, with **Tailnet name** off:
+   her tailscaled hands port 443 there to Caddy on this machine's loopback.
+   With **Tailnet name** on, that port serves only her ts.net name and
+   refuses any other. A machine that isn't on a tailnet itself can serve
+   the name on its LAN address only.
 2. Make an API token at your DNS provider, limited to that one zone. The
    page lists the providers Caddy was built with (Cloudflare, Porkbun,
    Namecheap, Route 53, DigitalOcean, Hetzner, deSEC, Duck DNS) and how to

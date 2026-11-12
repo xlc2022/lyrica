@@ -2384,7 +2384,10 @@ Details in [docs/sleep.md](docs/sleep.md).
       as its own service. `lyricad` writes Caddy's whole configuration through
       Caddy's admin API, on a Unix socket only `lyricad` can use. The panel
       sets the name, which addresses to serve on (Tailscale, LAN), the DNS
-      provider and its credentials, and shows the certificate's state.
+      provider and its credentials, and shows the certificate's state. Caddy
+      also listens on `127.0.0.1:443`, where her userspace tailscaled hands
+      443 on her own tailnet address, so the name's DNS record may point
+      there too, unless her ts.net name holds that port.
     - **External proxy**: a Caddy, or another proxy, elsewhere on the owner's
       network. `lyricad` also listens on one Tailscale or LAN address and
       accepts connections only from the proxy addresses listed in the panel.

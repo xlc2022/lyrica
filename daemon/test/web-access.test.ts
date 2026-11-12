@@ -22,14 +22,14 @@ const track = (s: Server | ReturnType<typeof createTcp>) => cleanup.push(() => n
 /** A fake Caddy admin API on a Unix socket: GET /config/ and POST /load, which can be told to refuse. */
 async function fakeCaddy(dir: string) {
   const socket = join(dir, "caddy-admin.sock");
-  const state = { config: { admin: { listen: `unix/${socket}|0660` } } as unknown, loads: [] as any[], refuse: false };
+  const state = { config: { admin: { listen: `unix/${socket}|0660` } } as unknown, loads: [] as any[], refuse: false as boolean | string };
   const srv = createServer((req, res) => {
     let body = "";
     req.on("data", (c) => (body += c));
     req.on("end", () => {
       if (req.method === "GET" && req.url === "/config/") { res.writeHead(200); return res.end(JSON.stringify(state.config)); }
       if (req.method === "POST" && req.url === "/load") {
-        if (state.refuse) { res.writeHead(400); return res.end(JSON.stringify({ error: `loading config: API token '${TOKEN}' appears invalid` })); }
+        if (state.refuse) { res.writeHead(400); return res.end(JSON.stringify({ error: typeof state.refuse === "string" ? state.refuse : `loading config: API token '${TOKEN}' appears invalid` })); }
         state.config = JSON.parse(body);
         state.loads.push(state.config);
         res.writeHead(200);
@@ -217,6 +217,9 @@ describe("web access, built-in Caddy", () => {
     expect(refused.body.error).not.toContain(TOKEN);
     expect((await ada.get<WebAccess>(url)).body.mode).toBe("off");
     expect(logs.join("\n")).not.toContain(TOKEN);
+    // Something else holds loopback's port, where her tailnet address reaches Caddy: the refusal names it.
+    caddy.state.refuse = "loading new config: http app module: start: listening on 127.0.0.1:443: listen tcp 127.0.0.1:443: bind: address already in use";
+    expect((await ada.put<{ error: string }>(url, builtin())).body.error).toMatch(/^something else on this machine listens on 127\.0\.0\.1:\d+/);
   });
 
   it("says when the name points at an address Caddy doesn't serve on", async () => {
@@ -446,6 +449,23 @@ describe("web access, Tailnet beside built-in Caddy", () => {
     expect(serves()).toEqual([`serve --bg --https=443 http://127.0.0.1:${d.servePort}`, "serve reset"]);
     expect(readFileSync(join(rt.home, "web-front"), "utf8").trim()).toBe("builtin");
     expect(await raw(d.servePort, "GET", "/api/state", { host: "lyrica.example.ts.net", "x-forwarded-proto": "https" })).toBe(403);
+  });
+
+  it("serves a name that points at her own tailnet address through loopback, unless tailscale serve holds 443 there", async () => {
+    // Her userspace tailscaled hands 443 on her address to 127.0.0.1:443, so Caddy listens there too, never on a wildcard.
+    const dir = mkdtempSync(join(tmpdir(), "lyrica-ts-"));
+    cleanup.push(() => rmSync(dir, { recursive: true, force: true }));
+    const ts = fakeTailscale(KEY, dir);
+    const { ada, url, caddy, tls, httpsPort } = await setup([{ address: "10.0.0.5", kind: "lan", interface: "eth0" }, { address: "127.0.0.1", kind: "lan", interface: "lo" }],
+      undefined, { tailnet: { binary: ts.bin, socket: join(dir, "tailscaled.sock") } }, async () => ["100.101.102.103"]);
+    await ada.put(url.replace(/web-access$/, "tailnet"), { authKey: KEY });
+    tls.add("lyrica.example.net");
+    expect((await ada.put(url, { ...builtin(), builtin: { ...builtin().builtin, addresses: ["127.0.0.1", "10.0.0.5"] } })).status).toBe(200);
+    expect((caddy.state.config as any).apps.http.servers.lyrica.listen).toEqual([`127.0.0.1:${httpsPort}`, `10.0.0.5:${httpsPort}`]);
+    expect((await ada.get<WebAccessStatus>(`${url}/status`)).body.dns).toEqual({ addresses: ["100.101.102.103"], served: true, tailnet: "forwarded" });
+    // Tailnet beside Caddy: tailscale serve answers on 443 there, for her ts.net name only.
+    expect((await ada.put(url, { ...builtin(), builtin: { ...builtin().builtin, addresses: ["127.0.0.1", "10.0.0.5"] }, tailnet: true })).status).toBe(200);
+    expect((await ada.get<WebAccessStatus>(`${url}/status`)).body.dns).toEqual({ addresses: ["100.101.102.103"], served: false, tailnet: "taken" });
   });
 
   it("turns tailscale serve on beside Caddy, takes it down if Caddy's certificate never comes, and leaving the tailnet keeps Caddy", async () => {
