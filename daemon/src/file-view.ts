@@ -22,9 +22,13 @@ export function viewKind(path: string): ViewKind | undefined {
  * it loads only what it carries inline, so it can't send anything out by itself; a link the user clicks still goes.
  * `sealed` (a built React artifact in Lyrica's own frame, internet off; the owner, 2026-11-12): its scripts run, but
  * it may load and connect to nothing, open no window and send no form, and the app's own `default-src 'self'` stops
- * the frame navigating away. One way out is left that no header closes: WebRTC, which Chromium lets a page open
- * whatever its CSP says. `SEAL_PRELUDE` removes it from the page's window, which stops a library reaching for it but
- * not a page written to get it back; the owner accepted that for these pages.
+ * the frame navigating away, and `fromLyrica` stops it navigating to another of Lyrica's own pages that has the
+ * internet. One way out is left that no header closes: WebRTC, which Chromium lets a page open whatever its CSP
+ * says. `SEAL_PRELUDE` removes it from the page's window, which stops a library reaching for it but not a page
+ * written to get it back; the owner accepted that for these pages. A second may exist: a browser may look up a
+ * host named in a `dns-prefetch` or `preconnect` link whatever the CSP says, which could carry a few bytes in the
+ * names. The headless Chromium tested here looked none up, with or without a CSP, so that is unproven either way;
+ * `X-DNS-Prefetch-Control: off` is sent on a sealed page, and a page with no scripts could always carry such a link.
  * SVG: nothing runs. PDF: no sandbox and no source list, since browsers refuse to show a PDF in a sandbox and some
  * versions of Chrome's viewer under `default-src 'none'`; its bytes are checked to be a PDF's first, and nosniff keeps
  * it a PDF. Each may be framed only by Lyrica's own pages.
@@ -42,8 +46,17 @@ export function viewHeaders(kind: ViewKind, size: number, internet = true, seale
     "content-type": kind === "html" ? "text/html; charset=utf-8" : kind === "svg" ? "image/svg+xml" : "application/pdf",
     "content-length": String(size), "cache-control": "no-store", "content-security-policy": csp,
     "x-content-type-options": "nosniff", "referrer-policy": "no-referrer", "cross-origin-resource-policy": "same-origin",
+    ...(sealed ? { "x-dns-prefetch-control": "off" } : {}),
   };
 }
+
+/**
+ * Whether a request for a page came from Lyrica's own interface or the user (the address bar, a bookmark), by the
+ * browser's `Sec-Fetch-Site`; a client that sends no fetch metadata is let through. A page in the viewer has an
+ * opaque origin, so a navigation it starts is `cross-site` and is refused: otherwise a page with the internet off
+ * could send its frame to a page of a thread with it on, carrying what it holds in the address.
+ */
+export const fromLyrica = (site: string | string[] | undefined): boolean => site === undefined || site === "same-origin" || site === "none";
 
 /**
  * Runs first in an HTML page: its console messages and uncaught errors go to the viewer as text, so the viewer can

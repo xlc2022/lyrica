@@ -225,4 +225,12 @@ works, so her threads update them there?
   only in the viewer's frame, WebRTC removed from the window as a
   mitigation, nothing run when opened alone. Hand-written HTML is
   unchanged: no scripts with internet off.
+- 2026-11-12: PR review found a second way out of a sealed page: it could
+  navigate its frame to another of Lyrica's pages whose thread has the
+  internet, with data in the address. Both page routes now refuse a
+  request another page started (`Sec-Fetch-Site` other than `same-origin`
+  or `none`). DNS hints (`dns-prefetch`, `preconnect`) could not be shown
+  to leak or not in headless Chromium, which looked none up even with no
+  CSP; `X-DNS-Prefetch-Control: off` is sent and the doubt is written
+  down beside WebRTC.
 
