@@ -2524,8 +2524,9 @@ test("a project thread's bare waiting status answers to its chat, while its card
   await expect(card.locator(".tstate")).toHaveText("Waiting on you");
   await expect(card.getByText(/^Waits on you: Blocked on the router choice/)).toBeVisible();
   const width = page.viewportSize()!.width;
-  // The card is the surface under test: put it in view, so a capture shows its state word and line.
-  await card.scrollIntoViewIfNeeded();
+  // The card is the surface under test: put it in view, so a capture shows its state word and line. The chat's wake
+  // turn may still be drawing it again, which detaches the element mid-scroll: scroll again until it holds.
+  await expect(async () => { await card.scrollIntoViewIfNeeded({ timeout: 1000 }); }).toPass();
   if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/attention-waiting-${width}.png` });
   const childId = threadIdOf((await card.locator(".tcard-title").getAttribute("href"))!);
   const childBase = `/api/u/${userId}/threads/general/${encodeURIComponent(childId)}`;
