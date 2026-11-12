@@ -347,8 +347,9 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
 - **The changes view** (`Changes.tsx`): the same kind of dialog for a
   thread's branch, described under Chat ("Changes").
 - **Project settings page** (`…/p/<pool>/<project>/general`, `/memory` or `/files`),
-  sections at the left. **General**: Goal, the Paused and **Watching
-  threads** switches (`watchThreads`; the tooltip says what a look does), **New
+  sections at the left. **General**: Goal, the Paused and **Check on
+  threads** switches (one switch for `watchThreads` and `checkInOnThreads`: on
+  only when both are, and a change sets both; the tooltip says what a look does), **New
   threads** (Model, Code mode, Thinking and Fallback the project's threads start with;
   "Same as coordinator" is the project's coordinating chat, which this page can be
   opened away from; Model becomes a new thread's
@@ -363,7 +364,7 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   Then **Checks**: a mono command field per check, Remove, and **Add check**
   (at most 8). Empty reads "No checks: <name> runs what the repository asks.";
   a multi-line or over-long check fails validation. The page has one Save, which patches the thread
-  (`goal`, `paused`, `commandRules`, `checks`, `watchThreads` when it changed, `threadsModel`,
+  (`goal`, `paused`, `commandRules`, `checks`, `watchThreads` and `checkInOnThreads` when the switch changed, `threadsModel`,
   `threadsThinking`, `threadsFallback`, `group`) and, when they changed, its
   settings (`grants`, `machines`, `repositories`, `mcpServers`); `lyricad`'s
   reason shows when it refuses. Every thread the project starts gets these

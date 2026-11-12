@@ -645,8 +645,9 @@ its turn's tool limit, so its work may not be finished, and is idle",
 with its last message (its wrap-up), so the parent looks and messages it
 to go on rather than waiting on an idle thread.
 
-**Check in on threads** (the project setting `checkInOnThreads`, on by
-default; a settings row `project.checkIn.<pool>/<project>`). Off, the
+**Check on threads** (the project setting `checkInOnThreads`, on by
+default; a settings row `project.checkIn.<pool>/<project>`; the web UI's
+one switch sets it and `watchThreads` together). Off, no look goes (below), and the
 project chat can't wait within a turn: a bare `sleep` there is refused
 with `WAIT_FOR_REPORTS` (`createWaitForReportsExtension`), which tells it
 to end its turn, since each sleep is followed by another request that
@@ -752,7 +753,8 @@ A project chat's child threads are the project's threads
 - A rewind of the project chat that removes a thread's anchor leaves the
   thread, unanchored.
 - **Watching threads** (`daemon/src/watch.ts`; the project setting
-  `watchThreads`, on by default). A **look** follows 30 s after any of
+  `watchThreads`, on by default, and looks go only while
+  `checkInOnThreads` is on too). A **look** follows 30 s after any of
   these in a logged thread of the project, batched across threads: a turn
   the user started there ends, the thread posts to the project chat, its
   turn ends with an error, or it starts waiting for a permission answer
@@ -760,7 +762,7 @@ A project chat's child threads are the project's threads
   docs/daemon.md). A local-only thread is left out unless the project chat
   is local-only (or private) too, since the call quotes the user. A look
   waits for a running turn in the chat to end. Nothing is sent while the
-  project is paused, hidden, locked or the setting is off. After 3 looks
+  project is paused, hidden, locked or either setting is off. After 3 looks
   of any kind with no message from the user anywhere in the project, the
   user's messages and updates wait for one, so threads can't keep each
   other going; a failure or a wait still brings a look, which tells no

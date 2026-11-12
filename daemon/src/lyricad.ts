@@ -630,7 +630,7 @@ export class Lyricad implements Drainable {
     // A hidden project stops as a paused one does.
     const stopped = (u: string, p: Pool, project: string) => projects.paused(u, p, project) || hiddenThread(memory, u, p, project);
     const watcher = new Watcher({ memory, models, host: () => host, delayMs: this.opts.watchMs, log: this.log, name: () => selfName(keyring.self()),
-      wanted: (u, p, project) => projects.settings(u, p, project).watch && !stopped(u, p, project),
+      wanted: (u, p, project) => { const s = projects.settings(u, p, project); return s.watch && s.checkIn && !stopped(u, p, project); },
       restricted: (u, p, thread) => isRestricted(models.callContext(u, p, thread)),
       threads: (u, p, project) => ({
         open: children.projectThreads(u, p, project).filter((t) => t.state !== "resolved").map((t) => t.id), lines: children.projectLines(u, p, project),

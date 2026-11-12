@@ -1369,8 +1369,9 @@ project page and the web part are built. Recent calls can be filtered by project
   **Resolved**. A thread is resolved by the user, by Lyrica when its work is
   delivered and nothing is owed, or after 7 days with no activity; a message
   in it reopens it.
-- **She watches her threads** (2026-10-11; a project setting, **Watching
-  threads**, on by default). When the user writes in one of the project's threads,
+- **She watches her threads** (2026-10-11; a project setting, on by
+  default; since 2026-11-12 one switch, **Check on threads**, with waiting
+  on threads in a turn, after the user turned off the waiting and still saw looks). When the user writes in one of the project's threads,
   a thread posts an update, a thread's turn ends with an error, or a thread
   starts waiting for an approval, a **look** follows a little later,
   batched across threads (2026-10-12: a look costs one small call, not
@@ -1393,7 +1394,7 @@ project page and the web part are built. Recent calls can be filtered by project
   writes in the project again, and a failure or an approval still brings
   one, which tells no thread but may raise, so threads can't keep each
   other going. Each failure or approval counts once a turn. With the
-  setting off, nothing is looked at.
+  switch off, nothing is looked at.
 - **Context set once.** Every thread of a project starts with the same
   project context, assembled each turn in its own budget:
   - **Goal**: one line the user writes.
@@ -1459,7 +1460,7 @@ project page and the web part are built. Recent calls can be filtered by project
     card, with **Start** per thread and **Start all**.
   - **Project settings** is the page the overview's one
     **Project settings** link opens, with sections: General (Goal;
-    Paused; **Watching threads** and **Check in on threads**; an h3
+    Paused; **Check on threads**; an h3
     **New threads** with the model, Code mode, thinking and fallback new
     threads start with; an h3 **Workspace** holding Group and the
     **Folders**, **Machines**, **Repositories** and **MCP servers** every
