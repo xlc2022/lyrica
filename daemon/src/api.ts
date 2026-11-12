@@ -1620,6 +1620,8 @@ export interface RemovalPlan {
   branches: PlanBranch[];
   /** The removed turns' commands, the first 20, each cut to 200 characters. */
   commands: string[];
+  /** Child threads the removed turns started or messaged, so what they were told doesn't come back to her. */
+  threads: PlanThread[];
 }
 export interface PlanFile {
   id: string;
@@ -1630,8 +1632,14 @@ export interface PlanFile {
   ticked: boolean;
 }
 export interface PlanBranch { id: string; repo: string; branch: string; commits: boolean; ticked: boolean }
-/** `pins`: how many of the removed messages were pinned; `files` and `branches`: how many were undone. */
-export interface RewindResponse { removed: number; subagents: number; pins: number; files: number; branches: number }
+/**
+ * A child thread the removed turns reached. "delete": started in them (or anchored at or after the first removed
+ * message), so it is deleted. "rewind": only messaged in them, so it stops and loses the first message they sent it
+ * and everything after; its files stay.
+ */
+export interface PlanThread { id: string; threadId: string; title: string; action: "delete" | "rewind"; ticked: boolean }
+/** `pins`: how many of the removed messages were pinned; `files`, `branches` and `threads`: how many were undone. */
+export interface RewindResponse { removed: number; subagents: number; pins: number; files: number; branches: number; threads: number }
 
 // --- Changes: a thread's branch against its base ---
 
@@ -2318,9 +2326,12 @@ export interface WebAccessStatus {
    * resolver answers (not always what a browser sees: split DNS and a CDN in
    * front both differ), and whether Caddy listens on any of those addresses
    * (`served`). False is a fact, not a failure: a proxy in front of this
-   * machine reaches the name another way.
+   * machine reaches the name another way. `tailnet`: the name points at her
+   * own tailnet address, which her tailscaled hands to Caddy on 127.0.0.1
+   * ("forwarded"), or which `tailscale serve` holds for her ts.net name while
+   * Tailnet is on beside Caddy ("taken").
    */
-  dns?: { addresses: string[]; served: boolean } | { error: string };
+  dns?: { addresses: string[]; served: boolean; tailnet?: "forwarded" | "taken" } | { error: string };
   /** Caddy's newest TLS error since the last change, credentials hidden. */
   lastAcmeError?: { at: string; message: string };
   external?: { listening: boolean; address: string; port: number };

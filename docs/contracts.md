@@ -1097,7 +1097,11 @@ Custom roles override built-ins by name, except `claude`.
   `{ ok }` (404 for no such plan, 409 when it isn't limited), which makes
   the router skip the plan until it resets (`Models.fallBackFromLimit`,
   `planFallingBack`) and carries the waiting turns (`Wakeups.resumeNow`)
-  and sleep (`Sleep.resumeWaiting`) on at once. `WakeupInfo.planLimit` marks
+  and sleep (`Sleep.resumeWaiting`) on at once. `POST …/endpoints/:id/clear-limit`
+  → `EndpointInfo` (404 for no such plan, 409 when it isn't limited, 403
+  for a shared plan unless an administrator) forgets the limit, as the user
+  says it was false (`Models.clearPlanLimit`), and carries the waiting
+  turns and sleep on at once, on the plan. `WakeupInfo.planLimit` marks
   a turn waiting for its plan; `ThreadSettings.planWait { endpointId,
   name, until, next?, claudeCode? }` names the plan and the model the thread would use.
   The user's Claude plan, which only Claude Code uses, has no endpoint: its
@@ -2109,10 +2113,14 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     it, since her tailscaled is userspace). Built-in's status names where each
     fact was measured: `WebAccessStatus.certificate.address` is the served
     address the certificate was read at, and `WebAccessStatus.dns` (`{
-    addresses, served }`, or `{ error }` when this machine's lookup of the
+    addresses, served, tailnet? }`, or `{ error }` when this machine's lookup of the
     name fails, whether because nothing answers at it or because its resolver
     didn't reply) is where the hostname points, and whether Caddy serves on
-    any of those addresses. All additive.
+    any of those addresses. `tailnet` is set when the name points at her own
+    tailnet address: `"forwarded"` (her tailscaled hands 443 there to Caddy's
+    `127.0.0.1:443`, so `served` is true) or `"taken"` (Tailnet beside
+    Built-in holds 443 there for her ts.net name, so `served` is false). All
+    additive.
   - **Wrong door.** On the two plain loopback listeners (`port` and the serve
     port), a request whose `Host` isn't this machine's loopback name and that
     no trusted proxy marked `X-Forwarded-Proto: https` is answered without
@@ -2300,9 +2308,10 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     `POST …/messages/:n/rewind` with `RewindRequest` `delete`, `regenerate`
     with an optional `model`, or `edit` with `text`, `409` while a turn runs;
     `preview: true` answers a `RemovalPlan` (`messages`, `pins`,
-    `subagents`, `files: PlanFile[]`, `branches: PlanBranch[]`, `commands`)
+    `subagents`, `files: PlanFile[]`, `branches: PlanBranch[]`, `commands`,
+    `threads: PlanThread[]`, each child thread to delete or rewind)
     and changes nothing; `skip` lists the plan items left as they are;
-    `RewindResponse` gains `files` and `branches`, the counts undone
+    `RewindResponse` gains `files`, `branches` and `threads`, the counts undone
     (`removalPlan` and `applyRemoval` in `daemon/src/removal.ts`; uploads
     found with `PoolStore.entriesMentioning`); the `rewound` event carries
     `from` and `resend`, never text);

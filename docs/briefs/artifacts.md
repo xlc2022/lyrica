@@ -141,7 +141,8 @@ mockup before the web part is built.
    is kept as written; `buildReactPage` (`core/src/workspace/react-page.ts`)
    has esbuild make it one HTML page with React, lucide-react, recharts
    and Tailwind's browser build inside, so it loads nothing from outside
-   (it runs only with the thread's internet on, as any page's scripts). It
+   (with the thread's internet off it runs sealed; see the last handoff
+   note). It
    is built when a version is made and the built page is kept beside the
    source. The source may import only that closed list, enforced by the
    build, and is never run in `lyricad`. The builder is being written by
@@ -216,3 +217,20 @@ works, so her threads update them there?
   resolves from an empty folder, and the page is refused if any file in it
   is not a library's. Whether a built page may run scripts with the
   thread's internet off is a boundary change for the owner, not decided.
+- 2026-11-12: the owner chose **Run everywhere** for React artifacts with
+  the thread's internet off, knowing WebRTC can't be closed by a header
+  (tested in Chromium: fetch, images, styles, WebSockets, forms, popups
+  and frame navigation are blocked; a STUN request is not, and CSP's
+  `webrtc 'block'` is not enforced). Built as the sealed view: scripts
+  only in the viewer's frame, WebRTC removed from the window as a
+  mitigation, nothing run when opened alone. Hand-written HTML is
+  unchanged: no scripts with internet off.
+- 2026-11-12: PR review found a second way out of a sealed page: it could
+  navigate its frame to another of Lyrica's pages whose thread has the
+  internet, with data in the address. Both page routes now refuse a
+  request another page started (`Sec-Fetch-Site` other than `same-origin`
+  or `none`). DNS hints (`dns-prefetch`, `preconnect`) could not be shown
+  to leak or not in headless Chromium, which looked none up even with no
+  CSP; `X-DNS-Prefetch-Control: off` is sent and the doubt is written
+  down beside WebRTC.
+

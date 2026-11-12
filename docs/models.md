@@ -1221,7 +1221,11 @@ Code: `extension/src/plans.ts`, and `addPlan` and its neighbours in
   higher rate).
 - A plan is up while signed in; nothing is probed. When any reply on it
   (a thread's, a subagent's, a job's) ends on its usage limit
-  (`isPlanLimit`, heard in `planProvider`), Lyrica notes when it resets
+  (`isPlanLimit`, heard in `planProvider`: only OpenAI's codes
+  `usage_limit_reached` and `subscription_sharing_…usage_limit_exceeded`, or
+  a usage-limit line of the provider's own on a 429 or a stream's error,
+  never a refusal with another status that mentions one, since its body can
+  echo what it was sent), Lyrica notes when it resets
   (`reportPlanLimit`, with `planLimitReset` reading OpenAI's `resets_at`,
   from the refusal or, for Codex's stream events, the raw event; else a
   guess: an hour, doubled each time the plan is still limited when the
@@ -1238,7 +1242,11 @@ Code: `extension/src/plans.ts`, and `addPlan` and its neighbours in
   and the job runs again when it next would; sleep waits and runs again
   at the reset. The user can fall back instead, until the reset, from the
   thread's card or the notification (`POST …/endpoints/:id/fall-back`,
-  docs/contracts.md). Pi doesn't retry the reply, the person gets one
+  docs/contracts.md), or clear a limit that isn't true with **Clear limit**
+  in the plan's ⋯ on the Models page (`POST …/endpoints/:id/clear-limit`):
+  the waiting turns and sleep carry on at once on the plan, and a later
+  refusal is heard afresh. A limit is kept in memory only, so restarting
+  lyricad clears it too. Pi doesn't retry the reply, the person gets one
   notice a turn saying when it resets, and the turn carries on by itself
   a minute after the reset (`PLAN_LIMIT_RESUME`, a wake-up outside her own
   limits, one per thread: a later cut-off moves it). Only that timer

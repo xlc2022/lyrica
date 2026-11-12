@@ -867,6 +867,14 @@ export class HostedThread {
   }
 
   /**
+   * Within `rewind`'s change: marked messages from `threads` (child threads whose part in the removed turns is being
+   * undone) that came while the thread was held are dropped, so no turn starts on them afterwards.
+   */
+  dropMarked(threads: ReadonlySet<string>): void {
+    this.steering = this.steering.filter((s) => { const m = FROM_PARENT.exec(s.text); return !m || !threads.has(m[1]!); });
+  }
+
+  /**
    * Stop: aborts the running turn, denies waiting permission requests and
    * drops the person's queued messages (the views give them back). Marked
    * messages no turn took are kept in the stored thread. Only the person's

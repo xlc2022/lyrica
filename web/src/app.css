@@ -809,6 +809,7 @@ dialog::backdrop { background: rgb(0 0 0 / 0.35); }
 .state-word { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; white-space: nowrap; }
 .row-menu { position: relative; display: inline-flex; }
 .row-menu .menu { left: auto; right: 0; width: max-content; min-width: 160px; }
+.row-menu .menu.start { left: 0; right: auto; }
 /* Git accounts (docs/ux.md section 6): rows like a machine's, with no ⋯ (the drawer has it); Add repository's groups by account. */
 .list > li.machine-row.git-row { grid-template-columns: minmax(0, 1fr) auto; }
 .drawer-head .row-menu { margin-left: auto; }

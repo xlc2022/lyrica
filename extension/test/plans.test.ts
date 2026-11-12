@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { PLAN_URLS, planLimitReset } from "@lyrica/core";
+import { PLAN_URLS, isPlanLimit, planLimitReset } from "@lyrica/core";
 import { profile, withModels } from "../../core/test/helpers.ts";
 import { modelRuntimeFor, planCatalog, planError, startPlanSignIn } from "../src/index.ts";
 
@@ -131,6 +131,21 @@ describe("a ChatGPT plan", () => {
     expect(planLimitReset("You have hit your ChatGPT usage limit (plus plan). Try again in ~95 min.", 0)).toBe(95 * 60_000);
     expect(planLimitReset('{"code":"usage_limit_reached","resets_in_seconds":120}', 0)).toBe(120_000);
     expect(planLimitReset("The usage limit has been reached")).toBeUndefined();
+  });
+
+  it("counts only the provider's own limit, not a refusal that mentions one", () => {
+    for (const real of [
+      'OpenAI API error (429): {"error":{"code":"subscription_sharing_usage_limit_exceeded","message":"You reached your usage limit."}}',
+      "Error Code usage_limit_reached: The usage limit has been reached resets_at=1900000000",
+      "You have hit your ChatGPT usage limit (plus plan). Try again in ~95 min.",
+      "The usage limit has been reached",
+    ]) expect(isPlanLimit(real), real).toBe(true);
+    for (const other of [
+      // A refusal whose body echoes what it was sent, and a short rate limit: neither is the plan's limit.
+      'OpenAI API error (400): {"error":{"message":"Invalid input: \'why does it say usage limit reached?\'"}}',
+      "OpenAI API error (429): Rate limit reached for gpt-5 on tokens per min. Please try again in 2s.",
+      "Request was aborted",
+    ]) expect(isPlanLimit(other), other).toBe(false);
   });
 
   it("reads the reset from a refusal that comes as a stream event", async () => {

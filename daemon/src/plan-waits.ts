@@ -5,7 +5,7 @@
 // Claude Code's plan (the user's Claude plan, used only by Claude Code in her
 // sandbox) has no endpoint: its limit is kept under `claudePlanId`, and a
 // thread waits for it when the plan stopped one of its claude delegate runs.
-import { isPlan, type Pool } from "@lyrica/core";
+import { isPlan, type Pool, type User } from "@lyrica/core";
 import { HttpError } from "./http.ts";
 import type { Lyricad } from "./lyricad.ts";
 
@@ -85,5 +85,16 @@ export function fallBack(d: Lyricad, userId: string, endpointId: string): void {
   const waiting = planWaits(d, userId).find((w) => w.endpointId === endpointId);
   if (!models.fallBackFromLimit(endpointId)) throw new HttpError(409, "this plan hasn't reached its usage limit");
   if (waiting) wakeups.resumeNow(userId, waiting.threads, claude);
+  sleep.resumeWaiting();
+}
+
+/** The user clears a plan's limit by hand, as it wasn't true: its waiting threads and sleep carry on now, on the plan. */
+export function clearLimit(d: Lyricad, user: User, endpointId: string): void {
+  const { models, wakeups, sleep } = d.services!;
+  if (!isPlan(models.endpoint(user.id, endpointId)?.api)) throw new HttpError(404, "no such plan");
+  // Who waits is read while the limit still holds: a thread's wait is found from it.
+  const waiting = planWaits(d, user.id).find((w) => w.endpointId === endpointId);
+  if (!models.clearPlanLimit(user, endpointId)) throw new HttpError(409, "this plan hasn't reached its usage limit");
+  if (waiting) wakeups.resumeNow(user.id, waiting.threads);
   sleep.resumeWaiting();
 }

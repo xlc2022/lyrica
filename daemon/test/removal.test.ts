@@ -44,7 +44,7 @@ async function setup() {
   const write = (call: string, path: string, text: string) =>
     recording(target, target.ops().write, call, (c) => changes.record("general", "web/t", c)).writeFile(path, text);
   const ctx = (removed: Entry[], extra: Partial<RemovalContext> = {}): RemovalContext => ({
-    pool: "general", thread: "web/t", removed, subagents: [], pins: 0, uploadsKept: new Set(), changes, target,
+    pool: "general", thread: "web/t", removed, subagents: [], threads: [], pins: 0, uploadsKept: new Set(), changes, target,
     targetOf: (name) => (name === "sandbox" ? target : undefined), grants: [{ path: ws, writable: true }], ...extra,
   });
   return { home, ws, changes, target, write, ctx };

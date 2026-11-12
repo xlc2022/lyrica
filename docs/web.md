@@ -353,7 +353,10 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   for the picked version, its thread's settings address for the internet
   line, and its own heading, Version select and ⋯ menu), so the sandboxed
   frame, console, Preview | Source and the thread beside are the viewer's
-  own. A React artifact shows its built page as HTML and its component as Source. The Files panel's
+  own. A React artifact shows its built page as HTML and its component as Source;
+  its source is `sealed`, so with the thread's internet off the page still
+  runs and the muted line reads "It can't load or send anything: this
+  thread's internet is off." The Files panel's
   **Artifacts** tab (`ArtifactsTab`, in `Files.tsx`'s tabs) lists
   `GET …/artifacts/<pool>?thread=` and imports files into the thread by
   posting each one's bytes (`importArtifacts`, which a drop on the panel
@@ -1093,8 +1096,8 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
     through `tailscale serve`; needs a joined tailnet), the built-in Caddy,
     or a proxy elsewhere;
   - the hostname (Caddy and proxy modes), with a hint saying where its DNS
-    record goes: one of the addresses under Serve on, not her tailnet name
-    (Caddy), or the proxy (proxy mode);
+    record goes: one of the addresses under Serve on, or her tailnet address
+    while Tailnet name is off (Caddy), or the proxy (proxy mode);
   - for the built-in Caddy: the Tailscale and LAN addresses to serve on, the
     DNS provider with its credential fields and its token-scoping hint, an
     email for certificate warnings, and, under Advanced, testing with
@@ -1103,7 +1106,8 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
     the certificate to pin, and a Caddyfile snippet;
   - the status of Caddy, the certificate with the address it was read at, the
     DNS record the hostname points at and whether that is one of the addresses
-    served, and the last certificate error; for Direct the addresses listening
+    served, or her tailnet address (reached through loopback, or held by
+    `tailscale serve` while Tailnet name is on), and the last certificate error; for Direct the addresses listening
     and the fingerprint, for Tailnet the name and whether it answers.
 
   Applying waits as long as `lyricad` needs (a new hostname can take about 90 s)
@@ -1436,10 +1440,12 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   (leaving the thread sends it at once): Delete, and Regenerate or Edit
   before the last turn. On the last turn, Regenerate and Edit go at once.
   Turns that did things are confirmed first: the rewind is previewed, and if
-  it would undo files or branches, list commands, or take pins or subagent
-  threads, a confirmation box (fixed above the composer) asks "Remove 2
-  messages? 1 is pinned." and lists, under Undone, Kept and Not undone, the
-  undos with a checkbox each, kept files with a badge saying why, and the
+  it would undo files or branches, list commands, reach child threads, or
+  take pins or subagent threads, a confirmation box (fixed above the
+  composer) asks "Remove 2 messages? 1 is pinned." and lists, under Undone,
+  Kept and Not undone, the undos with a checkbox each (child threads as
+  "Delete thread <title>" or "Take back what she told <title>"; a rewind
+  that changed any reloads the thread list and a project's Threads), kept files with a badge saying why, and the
   commands behind "N commands ▾"; Remove goes on with what's ticked, Cancel
   leaves everything. A `rewound`
   event drops the removed messages from every open view; when it carries

@@ -230,8 +230,20 @@ Each user has two pools of memory.
     Claude's React artifacts are) is an artifact too: its source is kept as
     written and built, when the version is made, into one page with React,
     lucide-react, recharts and Tailwind inside, so it loads nothing from
-    outside. Like any page it runs only with its thread's internet on;
-    with it off no scripts run, so it shows nothing. It may import only
+    outside. Unlike a hand-written page it runs with its thread's
+    internet off too (the owner, 2026-11-12), **sealed**: in the viewer's
+    frame its scripts run, but it can load and connect to nothing, open no
+    window and send no form, and the frame can't navigate away, not even
+    to another of Lyrica's pages (a page is served only to Lyrica's own
+    interface or the user, never to a request another page started);
+    opened on its own in a tab, where nothing would stop it leaving, it
+    runs nothing. One gap is accepted: a browser lets a page open WebRTC
+    whatever its rules say. WebRTC is removed from a sealed page's window,
+    which stops a library but not a page written on purpose to send out
+    what it holds, in a Private thread too. A smaller one may exist: a
+    browser may look up a host named in a `dns-prefetch` or `preconnect`
+    link, which could carry a few bytes; it is switched off by header, and
+    the test browser looked none up, so it is unproven either way. It may import only
     those packages by `import` statements (no `import()` or `require()`),
     which the build enforces, and it is never run in `lyricad`.
   - **Changes** (decided 2026-10-22, as in Claude's own app): a thread with a
@@ -477,8 +489,11 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
 - **What a removed turn takes with it.** Its entries are deleted like
   forgotten ones: notes written in those turns go too, sleep and search never
   see them, and pages that already rest on them are flagged for rewriting.
-  Subagents started in them are stopped and forgotten. A short Undo follows,
-  then it is final.
+  Subagents started in them are stopped and forgotten. Child threads they
+  started are deleted, and child threads they only messaged stop and lose
+  those messages and what followed, so what they were told never comes
+  back to her in a report; each is listed, ticked, and can be kept. A short
+  Undo follows, then it is final.
 - **Pinned messages.** Any message, the user's or Lyrica's, can be pinned.
   - A pinned message is easy to find again: each thread's header lists its
     pins, and the sidebar's search has a Pinned view across threads.
@@ -2374,7 +2389,10 @@ Details in [docs/sleep.md](docs/sleep.md).
       as its own service. `lyricad` writes Caddy's whole configuration through
       Caddy's admin API, on a Unix socket only `lyricad` can use. The panel
       sets the name, which addresses to serve on (Tailscale, LAN), the DNS
-      provider and its credentials, and shows the certificate's state.
+      provider and its credentials, and shows the certificate's state. Caddy
+      also listens on `127.0.0.1:443`, where her userspace tailscaled hands
+      443 on her own tailnet address, so the name's DNS record may point
+      there too, unless her ts.net name holds that port.
     - **External proxy**: a Caddy, or another proxy, elsewhere on the owner's
       network. `lyricad` also listens on one Tailscale or LAN address and
       accepts connections only from the proxy addresses listed in the panel.

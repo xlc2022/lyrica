@@ -402,10 +402,14 @@ Each active thread is one Pi session from `openThreadSession`, with
   because something changed them since or the thread works elsewhere now);
   uploads only the removed messages mention (sandbox only); git branches
   made by their commands or their subagents' worktrees, ticked unless they
-  hold commits no other branch has; and their first 20 commands, listed, not
-  tracked. The rewind itself undoes every ticked item not in `skip`, in its
-  held turn before the entries go, and drops the change records.
-  `RewindResponse` counts the pins, files and branches. Branches are found
+  hold commits no other branch has; their first 20 commands, listed, not
+  tracked; and the child threads they started (deleted) or only messaged
+  (stopped, and rewound to before the first message they sent it), found
+  from the `threads` calls' results and the project anchors
+  (docs/delegation.md, Projects). The rewind itself undoes every ticked
+  item not in `skip`, in its held turn before the entries go, and drops the
+  change records. `RewindResponse` counts the pins, files, branches and
+  threads. Branches are found
   by a pattern on her commands (`git checkout -b`, `switch -c`, `branch`),
   best effort. A missing message is `404`; a subagent's thread
   can't be branched (`409`).
@@ -868,7 +872,22 @@ documented in `daemon/src/api.ts`, "The Files panel".
   `GET …/:id/view[?v=<n>]` serves a version as `…/files/view` serves a file,
   with the same headers (`viewHeaders`): HTML with the console bridge under
   `sandbox allow-scripts allow-popups`, or with nothing run when its
-  thread's internet is off. SVG runs nothing; Markdown answers 415, since the web
+  thread's internet is off. A React artifact with its thread's internet
+  off is served **sealed** when the request is the viewer's frame
+  (`Sec-Fetch-Dest: iframe`): `SEAL_PRELUDE` (WebRTC removed from the
+  window) and the console bridge first, under `sandbox allow-scripts;
+  default-src 'none'; script-src 'unsafe-inline'; style-src
+  'unsafe-inline'; img-src data: blob:; font-src data:; media-src data:
+  blob:; form-action 'none'; frame-ancestors 'self'`, so it runs and
+  reaches nothing; the app's own `default-src 'self'` keeps the frame
+  from navigating away, and `X-DNS-Prefetch-Control: off` goes with it.
+  Any other request for it (a tab) gets the page with nothing run. WebRTC
+  is the one way out a header doesn't close (DESIGN, Artifacts). Both
+  page routes, this one and `…/files/view`, answer 403 unless the
+  request's `Sec-Fetch-Site` is `same-origin`, `none` or absent
+  (`fromLyrica`): a page in the viewer has an opaque origin, so a
+  navigation it starts is `cross-site`, and it can't send its frame to
+  another thread's page with what it holds in the address. SVG runs nothing; Markdown answers 415, since the web
   renders it from `…/:id/content[?v=][&download=1]`, the version's source
   as `text/plain` under `default-src 'none'; sandbox`;
   `POST …/:id/versions?name=` adds the body as the next version (the same
@@ -1396,7 +1415,16 @@ Plain-HTTP listeners stay HTTP/1.1.
   staging for testing. `lyricad` writes Caddy's whole JSON config through its
   admin socket (`POST /load`): HTTPS for the name on those addresses (no
   port 80), a DNS-01 certificate through the provider, and `reverse_proxy` to
-  `127.0.0.1:<port>`. Caddy saves it (`--resume`), so it keeps serving while
+  `127.0.0.1:<port>`. Caddy also listens on `127.0.0.1:443` (never a
+  wildcard): her userspace tailscaled hands 443 on her tailnet address to
+  that port while `tailscale serve` doesn't hold it, so a name whose DNS
+  record points at her tailnet address reaches Caddy. Those requests reach
+  `lyricad` with `127.0.0.1` as the client address, so every tailnet peer
+  coming that way shares one per-address rate limit (the per-login one is
+  unchanged). If something else holds `127.0.0.1:443`, the change is
+  refused and says so. The status's DNS record says `tailnet: "forwarded"`
+  for her tailnet address, or `"taken"` while Tailnet beside Built-in holds
+  443 there for her ts.net name. Caddy saves it (`--resume`), so it keeps serving while
   `lyricad` is locked; after unlock, `lyricad` loads it again only if Caddy's
   differs.
 - **Tailnet beside Built-in.** With **Tailnet name** on (`tailnet: true` in
