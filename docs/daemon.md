@@ -775,7 +775,10 @@ with `{ updating: true }`. A yes stores a grant for exactly that call
 (`grantKey`), which her workspace gate uses once (`takeGrant`); a plan's yes
 switches the mode instead. Either answer wakes her with a note
 (`HostedThread.resume`), after the running turn if one runs; a subagent's
-wakes its parent, which continues the subagent. A held request keeps its
+wakes its parent, which continues the subagent. A grant lasts only for the
+turn that tells her (the parent's, for a subagent's): it is cleared when
+that turn ends, used or not, and by the person's Stop, Resolve, forgetting
+the thread, or a wake that can't start. A held request keeps its
 thread `waiting` (so wakes wait too) but holds no session and no update's
 drain. Requests that can't wait (`browse` and portrait consent, and the
 `models` and `download_model` cards) carry `expiresAt` and are denied when

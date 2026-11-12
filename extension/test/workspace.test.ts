@@ -406,6 +406,15 @@ describe("workspace tools in a Pi session", () => {
     expect(results.filter((r) => r.includes("stays on the person's card"))).toHaveLength(2);
   });
 
+  it("binds a held yes to a write's content, not only its path", async () => {
+    const grants = new Set([grantKey("write", { path: "/workspace/notes.md", content: "A" })]);
+    const asked: string[] = [];
+    const calls = [fauxToolCall("write", { path: "/workspace/notes.md", content: "B" }, { id: "1" })];
+    await run("ask", calls, { takeGrant: (k) => grants.delete(k), approve: async (r) => { asked.push(String(r.input.content)); return false; } });
+    expect(asked).toEqual(["B"]);
+    expect(grants.size).toBe(1);
+  });
+
   it("asks before an irreversible action even in Auto", async () => {
     const sent: string[] = [];
     const asked: string[] = [];

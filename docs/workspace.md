@@ -143,9 +143,10 @@ existed before became general machines at Ask.
   guess why. A request is denied on Stop or with nobody to ask. One nobody
   answers during the turn is held (DESIGN.md, Machines; docs/daemon.md,
   "Held requests"): the person's later yes leaves a grant for that call as
-  shown (`grantKey`: the machine, command or path and folder, or an MCP
-  tool's whole arguments), which the gate uses once (`takeGrant`) when she
-  makes the call again.
+  shown (`grantKey`: the machine and folder, and the exact command, the
+  path read, or any other tool's whole arguments, so a write's content
+  too), which the gate uses once (`takeGrant`) when she makes the call
+  again in the turn that tells her.
 - **Suspect commands always ask**, in every mode, with a warning sentence
   (`suspectCommand(command, where)`, `SUSPECT_COMMANDS` in
   `core/src/workspace/machines.ts`). The list has two parts. **Work she

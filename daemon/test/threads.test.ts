@@ -283,6 +283,28 @@ describe("permission prompts", () => {
     stream.close();
   });
 
+  it("ends a yes she doesn't use with the turn that told her, and the person's Stop takes an unused one", async () => {
+    const { ada, model, path, thread, d, rt } = await setup({ permissionMs: 300 });
+    const settings = () => d.services!.workspace.settings(rt.ada.id);
+    await ada.patch(`${path}/settings`, { mode: "ask" });
+    model.reply({ tools: [{ name: "bash", args: { command: "echo hi" } }] }, { text: "Waiting for you." });
+    const stream = ada.events(`${path}/events`);
+    await ada.post(`${path}/messages`, { text: "say hi" });
+    await stream.until(is("turn_end"));
+    const request = stream.events.find((e) => e.event.type === "permission")!.event as PermissionRequest;
+    // Woken by the yes, she doesn't make the call: the grant ends with that turn.
+    model.reply({ text: "Never mind." });
+    const from = stream.events.length;
+    await ada.post(`${path}/permissions/${request.requestId}`, { allow: true });
+    await stream.until(is("turn_end"), from);
+    expect(settings().held(thread.id)).toBeUndefined();
+    // A grant left in the thread goes with the person's Stop.
+    settings().grantHeld(thread.id, "key");
+    await ada.post(`${path}/stop`);
+    expect(settings().held(thread.id)).toBeUndefined();
+    stream.close();
+  });
+
   it("keeps a held request across a restart, and Stop takes it away", async () => {
     const { rt, ada, model, path, stop } = await setup({ permissionMs: 300 });
     await ada.patch(`${path}/settings`, { mode: "ask" });

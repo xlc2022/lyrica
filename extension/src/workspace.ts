@@ -205,14 +205,18 @@ const MACHINE = Type.Optional(Type.String({ description: "One of your machines, 
 const shown = (tool: string, input: Record<string, unknown>, machine: string | undefined, cwd: string | undefined) =>
   JSON.stringify([tool, machine ?? null, cwd ?? null, tool === "bash" || tool === "proxmox" ? suspectKey(tool, input) : tool === "page" ? [input.action, input.path, input.out] : input.path]);
 
-/** The tools whose card shows a command, an action or a path, and so are bound by it (`shown`); any other's covers its whole arguments. */
-const SHOWN_BY_KEY = new Set(["bash", "proxmox", "page", "read", "write", "edit"]);
+/**
+ * The tools whose whole call is its command, action or path (`shown`). A
+ * write, edit or page call carries more (the content, the edits), so a yes
+ * covers its whole arguments, as any other tool's does.
+ */
+const SHOWN_BY_KEY = new Set(["bash", "proxmox", "read"]);
 
 /**
  * What a yes to a held approval covers: the call as its card showed it (the
- * machine, the exact command or path and the folder; an MCP tool's whole
- * arguments). lyricad stores it from the request, and the gate checks it
- * against the call she makes again.
+ * machine and folder, and the exact command, the path read, or every other
+ * tool's whole arguments, so a write's content too). lyricad stores it from
+ * the request, and the gate checks it against the call she makes again.
  */
 export function grantKey(tool: string, input: Record<string, unknown>, machine?: string, cwd?: string): string {
   const { machine: _, ...rest } = input;

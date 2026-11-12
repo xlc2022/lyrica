@@ -1390,6 +1390,14 @@ export class WorkspaceSettings {
     return true;
   }
 
+  /** Clears the thread's unused grant, leaving a held approval as it is. True if there was one. */
+  clearGrant(threadId: string): boolean {
+    const held = this.held(threadId);
+    if (!held || !("grant" in held)) return false;
+    this.db.prepare("UPDATE thread_workspaces SET held = NULL WHERE thread_id = ?").run(threadId);
+    return true;
+  }
+
   /** Uses the thread's grant if it is for exactly this call: true once, then it is gone. */
   takeGrant(threadId: string, key: string): boolean {
     const held = this.held(threadId);

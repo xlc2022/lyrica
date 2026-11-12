@@ -271,7 +271,7 @@ describe("talking with subagents in lyricad", () => {
     }
   });
 
-  it("holds a subagent's call nobody answers during its turn, and the person's yes tells the parent and leaves the subagent a grant", async () => {
+  it("holds a subagent's call nobody answers during its turn, and the person's yes tells the parent, which continues it and the call runs once", async () => {
     const { rt, d, ada, parent, sub, path } = await setup({ permissionMs: 300 });
     await ada.patch(`${path}/settings`, { mode: "ask" });
     parent.reply({ tools: [{ name: "delegate", args: { task: "say hi", role: "worker" } }] }, { text: "It waits on you." });
@@ -284,13 +284,18 @@ describe("talking with subagents in lyricad", () => {
     expect(stream.events.some((e) => e.event.type === "permission_end")).toBe(false);
     expect(JSON.stringify(sub.requests[1]!.messages)).toContain("stays on the person's card");
 
-    parent.reply({ text: "I'll carry it on." });
+    // Woken by the yes, the parent continues the subagent, whose same call runs with no new card.
+    parent.reply({ tools: [{ name: "delegate", args: { action: "message", id: held.subagent!.runId, message: "Go ahead." } }] }, { text: "Done." });
+    sub.reply({ tools: [{ name: "bash", args: { command: "echo hi" } }] }, { text: "Said hi." });
     const from = stream.events.length;
     expect((await ada.post(`${path}/permissions/${held.requestId}`, { allow: true })).status).toBe(200);
     await stream.until(is("turn_end"), from);
-    expect(JSON.stringify(parent.requests.at(-1)!.messages)).toContain("The person allowed the call your worker subagent");
-    // The yes is for that call, in the subagent's own thread.
-    expect(d.services!.workspace.settings(rt.ada.id).held(held.subagent!.threadId)).toEqual({ grant: expect.stringContaining("echo hi") });
+    expect(JSON.stringify(parent.requests[2]!.messages)).toContain("The person allowed the call your worker subagent");
+    expect(stream.events.slice(from).some((e) => e.event.type === "permission")).toBe(false);
+    const results = (sub.requests.at(-1)!.messages as { role: string; content: unknown }[]).filter((m) => m.role === "tool");
+    expect(JSON.stringify(results.at(-1)!.content)).not.toContain("stays on the person's card");
+    // The yes was used, and none is left in either thread.
+    expect(d.services!.workspace.settings(rt.ada.id).held(held.subagent!.threadId)).toBeUndefined();
     expect(d.services!.workspace.settings(rt.ada.id).held(held.subagent!.parentThreadId)).toBeUndefined();
     stream.close();
   });

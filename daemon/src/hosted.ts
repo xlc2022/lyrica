@@ -201,14 +201,19 @@ export class ThreadHost {
       note = heldNote(request, allowed);
     }
     const target = request.subagent?.parentThreadId ?? where;
-    this.get(userId, pool, target).resume(note).catch(() => { /* locked or closed: the grant stays for her next try */ });
+    const grant = allowed && request.tool !== "propose_plan" ? where : undefined;
+    this.get(userId, pool, target).resume(note, grant).catch(() => {
+      // She can't be told now (locked, or the session can't open): the yes goes with it.
+      if (grant) try { settings.clearGrant(grant); } catch { /* locked */ }
+    });
   }
 
-  /** The person's Stop or Resolve takes the thread's held request away, wherever it shows. */
+  /** Resolve or forgetting takes the thread's held request away, wherever it shows, and any yes not yet used there. */
   withdrawHeld(userId: string, pool: Pool, threadId: string): void {
     for (const h of this.stored(userId)) {
       if (h.pool === pool && (h.threadId === threadId || h.request.subagent?.parentThreadId === threadId)) this.settleHeld(userId, pool, h.threadId, h.request, false, "stopped");
     }
+    try { this.opts.workspace.settings(userId).clearGrant(threadId); } catch { /* locked */ }
   }
 
   /** The thread's record if it has one now; unlike `get`, never makes one. */
@@ -736,14 +741,39 @@ export class HostedThread {
     this.emit({ type: "permission", ...request });
   }
 
+  /** Answers to held requests she hasn't been told yet, each with the thread whose grant its yes left. */
+  private answers: { note: string; grant?: string }[] = [];
+  /** The grants of the answers the running turn was told: they end with it. */
+  private answering: string[] = [];
+
   /**
    * The person answered a held request: she hears it as a wake, now, or
-   * after the turn running (a turn she stops drops it; the grant stays).
+   * after the turn running. A yes's grant (`grant`, the thread it is for)
+   * lasts only for the turn that tells her: used or not, it ends with it, and
+   * Stop or an answer she is never told takes it too.
    */
-  async resume(note: string): Promise<void> {
-    if (this.closed) return;
-    if (this.busy) { this.goOn = this.goOn ? `${this.goOn}\n\n${note}` : note; return; }
-    await this.wakeChild(note);
+  async resume(note: string, grant?: string): Promise<void> {
+    if (this.closed) { if (grant) this.clearGrant(grant); return; }
+    this.answers.push({ note, ...(grant ? { grant } : {}) });
+    await this.tellAnswers();
+  }
+
+  private async tellAnswers(): Promise<void> {
+    if (this.busy || this.closed || !this.answers.length) return;
+    const told = this.answers.splice(0);
+    this.answering.push(...told.flatMap((a) => (a.grant ? [a.grant] : [])));
+    try { await this.wakeChild(told.map((a) => a.note).join("\n\n")); }
+    catch (err) { this.endGrants(); throw err; }
+  }
+
+  /** The grants the running turn was told of end. */
+  private endGrants(): void { for (const t of this.answering.splice(0)) this.clearGrant(t); }
+
+  /** Answers she won't be told, and their grants, go. */
+  private dropAnswers(): void { for (const a of this.answers.splice(0)) if (a.grant) this.clearGrant(a.grant); }
+
+  private clearGrant(thread: string): void {
+    try { this.o.workspace.settings(this.userId).clearGrant(thread); } catch { /* locked: nothing to use it either */ }
   }
   get permissions(): PermissionRequest[] { return [...this.pending.values()].map((p) => p.request); }
 
@@ -833,6 +863,8 @@ export class HostedThread {
           try { await opened.session.prompt(next); } finally { this.recentWorkIds = undefined; this.recentWorkSource = undefined; }
         }
         aborted = this.aborted;
+        // A yes she was told in this turn lasts only for it.
+        this.endGrants();
         await this.afterTurn(opened, aborted);
         // What the turn didn't take goes next, or, if it was stopped or failed, is kept in the stored thread.
         this.untake(opened);
@@ -850,6 +882,14 @@ export class HostedThread {
         this.goingOn = next === undefined && !!this.goOn && !aborted && !this.failed;
         if (this.goingOn) { wake = this.goOn; next = CHILD_WAKE; }
         this.goOn = undefined;
+        // Answers to held requests that came during the turn go next, unless the person stopped it.
+        if (aborted) this.dropAnswers();
+        else if (next === undefined && this.answers.length && !this.closed) {
+          const told = this.answers.splice(0);
+          this.answering.push(...told.flatMap((a) => (a.grant ? [a.grant] : [])));
+          wake = told.map((a) => a.note).join("\n\n");
+          next = CHILD_WAKE;
+        }
       }
     } catch (err) {
       this.emit({ type: "error", message: plainError(refusal(err)) });
@@ -867,6 +907,10 @@ export class HostedThread {
       // Shutdown, Lock or forgetting closes it: a child keeps its record of working, so a restart tells its parent.
       if (!this.closing) this.o.onTurn?.(this.userId, this.pool, this.threadId, false, theirs);
       this.startIdle();
+      // A turn that failed or couldn't start takes the grants it was told of; answers that came as it ended go now.
+      this.endGrants();
+      if (this.closed) this.dropAnswers();
+      else if (this.answers.length) queueMicrotask(() => { this.tellAnswers().catch(() => this.endGrants()); });
     }
   }
 
@@ -1033,8 +1077,9 @@ export class HostedThread {
     this.unhold();
     this.heldWake = undefined;
     this.imageRetryAbort?.abort();
-    // A held request stays for the person, unless it is the person's own Stop.
+    // A held request stays for the person, unless it is the person's own Stop, which also takes any unused yes.
     for (const p of [...this.pending.values()]) if (!p.held || withdrawQuestion) p.done(false, "stopped");
+    if (withdrawQuestion) { this.dropAnswers(); this.clearGrant(this.threadId); }
     if (this.queued.length) {
       this.queued = [];
       this.emit({ type: "queue", queued: [] });

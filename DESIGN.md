@@ -1662,8 +1662,10 @@ NAS, and Proxmox nodes. Decided 2026-10-11 from
   person, not a clock** (decided 2026-11-11): one nobody answers during the
   turn stays on its card, held, and her turn ends there; only the person's
   answer, Stop, Resolve or a later held approval in that thread ends it.
-  A yes wakes her and lets that one call, as shown, run once without
-  asking; a no wakes her too. A browse form or file and the day's portrait
+  A yes wakes her and lets that one call, exactly as shown (a write's
+  content too), run once without asking in the turn that tells her; unused,
+  it ends with that turn or the person's Stop or Resolve. A no wakes her
+  too. A browse form or file and the day's portrait
   consent are for the moment they were asked in, so they still time out.
   There is no "allow from now on", with one exception below.
 - **Suspect commands always ask**, in every mode: a short fixed list,
