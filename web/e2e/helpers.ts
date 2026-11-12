@@ -1,7 +1,27 @@
 // Shared by the e2e specs (web-chat, web-workspace, web-projects, web-admin). Each spec runs in order on its own
 // lyricad per screen size (playwright.config.ts), so each starts from a fresh one and enter() sets it up.
-import { expect, type Locator, type Page, type Route } from "@playwright/test";
+import { execFileSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import { expect, test, type Locator, type Page, type Route } from "@playwright/test";
 export const PASSPHRASE = "correct horse";
+
+const has = (cmd: string) => { try { execFileSync("sh", ["-c", `command -v ${cmd}`], { stdio: "ignore" }); return true; } catch { return false; } };
+
+/**
+ * For a test that needs a thread's real sandbox: its encrypted home (gocryptfs on FUSE) for an upload, and pasta's
+ * network (a tun device) for a fetch. Inside a Lyrica sandbox there is neither (docs/workspace.md, "Her checks"), and
+ * pasta won't run as root, so there the test is skipped with the reason; CI sets LYRICA_SANDBOX_TESTS=require, so it
+ * can never be skipped there, as with the unit tests' sandbox tests.
+ */
+export function needsSandbox(network = false): void {
+  const missing = process.env.LYRICA_SANDBOX === "1" ? "running inside a Lyrica sandbox, which has no FUSE or tun device"
+    : !has("bwrap") || !has("gocryptfs") || !has("fusermount3") || !existsSync("/dev/fuse") ? "bwrap, gocryptfs, fusermount3 or /dev/fuse is missing"
+    : network && process.getuid?.() === 0 ? "running as root, where pasta won't start"
+    : network && (!has("pasta") || !existsSync("/dev/net/tun")) ? "pasta or /dev/net/tun is missing"
+    : undefined;
+  if (missing && process.env.LYRICA_SANDBOX_TESTS === "require") throw new Error(`this test needs a thread's sandbox, which can't run here: ${missing}`);
+  test.skip(!!missing, `needs a thread's sandbox: ${missing}; CI runs it`);
+}
 
 export const phone = (page: Page) => (page.viewportSize()?.width ?? 1000) < 760;
 

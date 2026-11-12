@@ -2,7 +2,7 @@
 // Speech, the home page, the sidebar, projects, the split view, files, sharing and sleep.
 // Tests run in order on this file's own lyricad per size.
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { phone, enter, newThread, send, openSettings, openProjectSettings, togglePrivate, location_of, threadIdOf, sendTo, hitHeight, noHorizontalScroll } from "./helpers.ts";
+import { phone, enter, newThread, send, openSettings, openProjectSettings, togglePrivate, location_of, threadIdOf, sendTo, hitHeight, noHorizontalScroll, needsSandbox } from "./helpers.ts";
 
 test.describe.configure({ mode: "serial" });
 
@@ -276,6 +276,7 @@ test("opening and closing home tools creates no thread", async ({ page, baseURL 
 });
 
 test("home attachments and tool switches stay local until send and follow the selected pool", async ({ page, baseURL }) => {
+  needsSandbox();
   const userId = await enter(page, baseURL!);
   await page.goto(`/#/u/${userId}`);
   const threads = () => apiGet<{ id: string; pool: string }[]>(page, `/api/u/${userId}/threads`);

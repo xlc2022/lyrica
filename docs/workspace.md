@@ -1722,7 +1722,11 @@ her account is general.
   a native module with no prebuilt binary, as Debian's build-essential does): the SQLite binding loads its prebuilt `prebuilds/linux-x64.node`. The tests that need FUSE or a tun device
   (encrypted homes, rewind, uploads, network switches, the SSH helper)
   skip there, since her sandbox has neither; CI runs them with
-  `LYRICA_SANDBOX_TESTS=require`, so they can't skip. `nix flake check`
+  `LYRICA_SANDBOX_TESTS=require`, so they can't skip. The three e2e
+  tests that need a thread's real sandbox (an upload in the composer and
+  on the home page, and the Sources a fetch leaves) skip the same way,
+  through `needsSandbox` in `web/e2e/helpers.ts`; CI's e2e job requires
+  them too. `nix flake check`
   and `nix build` run there too, in her pool's Nix store ([Nix](#nix)), so
   a change to the flake or `nix/` is checked before CI's nix job. The e2e tests use
   Playwright's own Chromium where it is downloaded and can run, and the
