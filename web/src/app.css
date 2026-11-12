@@ -278,6 +278,9 @@ button.badge:hover:not(:disabled) { border-color: var(--accent); }
 
 /* ---- Pages with sections (Settings, Administration): the section list at the left, the content at the right. ---- */
 .page-body { display: grid; grid-template-columns: 196px minmax(0, 1fr); flex: 1; min-height: 0; overflow-y: auto; }
+/* A page with no section list (a project's Threads page) has nothing to sit beside: its content is the whole width,
+   not the 196 px nav track. The narrow-screen rules below say the same thing for every page. */
+.page-body:not(:has(.subnav)) { grid-template-columns: minmax(0, 1fr); }
 .subnav { border-right: 1px solid var(--line); padding: 14px 8px; display: grid; gap: 1px; align-content: start; position: sticky; top: 0; align-self: start; }
 .subnav a { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 10px; border-radius: 8px; color: var(--fg); min-height: var(--tap); }
 .subnav a:hover { background: var(--panel); text-decoration: none; }
