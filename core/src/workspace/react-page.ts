@@ -32,7 +32,7 @@ export async function buildReactPage(source: string, opts: { loader: "jsx" | "ts
   if (!Object.values(parsed.metafile!.outputs).some((o) => o.exports.includes("default"))) {
     throw new Error("The React component must have a default export.");
   }
-  // Only installed library folders and their declared dependencies may be read by esbuild.
+  // What the component imports must resolve inside an installed library folder or one of its declared dependencies.
   const roots = new Set<string>();
   const add = (dir: string) => {
     if (roots.has(dir)) return;
@@ -50,21 +50,19 @@ export async function buildReactPage(source: string, opts: { loader: "jsx" | "ts
   const explicitImports = new Set(Object.values(parsed.metafile!.outputs).flatMap((o) => o.imports.map((i) => i.path)));
   const imports = new Set<string>();
   const plugin: Plugin = { name: "react-page-libraries", setup(b) {
-    b.onResolve({ filter: /.*/ }, async (args) => {
+    b.onResolve({ filter: /^entry$/ }, (args) => (args.kind === "entry-point" ? { path: "entry", namespace: "react-page" } : undefined));
+    // Only what the entry and the component import comes through here: the closed list is checked, and the package
+    // must be one of the installed libraries. What a library imports inside itself esbuild resolves on its own; a
+    // callback for each of a chart library's thousands of modules made one build take most of a minute.
+    b.onResolve({ filter: /.*/, namespace: "react-page" }, async (args) => {
       if (args.pluginData === "resolving") return;
-      if (args.kind === "entry-point") return { path: "entry", namespace: "react-page" };
-      if (args.namespace === "react-page" && args.path === "component" && args.importer === "entry") {
-        return { path: "component", namespace: "react-page" };
+      if (args.path === "component" && args.importer === "entry") return { path: "component", namespace: "react-page" };
+      const name = names.find((n) => args.path === n || ((n === "react" || n === "react-dom" || n === "three") && args.path.startsWith(`${n}/`)));
+      if (!name || args.path.split("/").some((p) => p === "." || p === "..") || args.path.includes("\\")) {
+        throw new Error(`Import "${args.path}" is not allowed. Allowed packages: ${names.join(", ")}.`);
       }
-      if (args.namespace === "react-page") {
-        const name = names.find((n) => args.path === n || ((n === "react" || n === "react-dom" || n === "three") && args.path.startsWith(`${n}/`)));
-        if (!name || args.path.split("/").some((p) => p === "." || p === "..") || args.path.includes("\\")) {
-          throw new Error(`Import "${args.path}" is not allowed. Allowed packages: ${names.join(", ")}.`);
-        }
-        if (args.importer === "component" && explicitImports.has(args.path)) imports.add(name);
-      }
-      const resolved = await b.resolve(args.path, { resolveDir: args.namespace === "react-page" ? base : args.resolveDir,
-        kind: args.kind, pluginData: "resolving" });
+      if (args.importer === "component" && explicitImports.has(args.path)) imports.add(name);
+      const resolved = await b.resolve(args.path, { resolveDir: base, kind: args.kind, pluginData: "resolving" });
       if (resolved.errors.length) return { errors: resolved.errors };
       const path = realpathSync(resolved.path);
       if (![...roots].some((dir) => path.startsWith(dir + sep))) throw new Error(`Import "${args.path}" resolves outside the React page libraries.`);
