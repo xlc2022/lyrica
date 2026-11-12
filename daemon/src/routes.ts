@@ -1,4 +1,4 @@
-import { EVIDENCE_SETTINGS, DEFAULT_THINKING, PushStore, type PushSettings, type SkillLibrary } from "@lyrica/core";
+import { ARTIFACT_LIMIT, ArtifactError, artifactExtension, artifactKind, buildReactPage, EVIDENCE_SETTINGS, DEFAULT_THINKING, PushStore, titleFromName, type Artifact, type ArtifactKind, type PushSettings, type SkillLibrary } from "@lyrica/core";
 import { pushTarget } from "./push.ts";
 import { imageRetryOptions } from "./image-retry.ts";
 import { randomUUID } from "node:crypto";
@@ -167,6 +167,8 @@ export function apiRoutes(d: Lyricad): Route[] {
     }),
     // --- Skills (docs/briefs/skills.md) ---
     ...skillRoutes(d, u),
+    // --- Artifacts (docs/briefs/artifacts.md) ---
+    ...artifactRoutes(d, u),
     // --- State, unlock, login ---
     route("GET", "/api/state", (r) => d.state(r.cookie)),
     route("POST", "/api/unlock", async (r) => {
@@ -3495,6 +3497,150 @@ function skillRoutes(d: Lyricad, u: string): Route[] {
       const user = d.userFor(r);
       inPool(user.id, pool(r, user.id), (k) => k.remove(r.params.name!));
       return page(user.id);
+    }),
+  ];
+}
+
+/**
+ * The user's artifacts: list, open, import, add a version, restore, rename and delete. Each pool's artifacts live in
+ * that pool's database and are reached through its view; only the pools the display shows are listed or reached, so a
+ * hidden Private pool's artifacts answer 404. A page is served as the file viewer serves a file (file-view.ts): HTML
+ * in a sandbox with an opaque origin, under its thread's internet rule. Every artifact belongs to a thread.
+ */
+function artifactRoutes(d: Lyricad, u: string): Route[] {
+  const s = () => d.services!;
+  const inPool = <T>(userId: string, pool: Pool, fn: (own: PoolStore) => T): T => {
+    const view = s().memory.openThreadView(userId, pool);
+    try { return fn(view.own); } finally { view.close(); }
+  };
+  const pool = (r: Request, userId: string): Pool => {
+    const p = r.params.pool;
+    if ((p !== "general" && p !== "private") || !shownPools(display(d, userId)).includes(p)) throw new HttpError(404, "not found");
+    return p;
+  };
+  const refused = <T>(fn: () => T): T => {
+    try { return fn(); } catch (err) { throw err instanceof HttpError ? err : new HttpError(err instanceof ArtifactError ? 400 : 500, (err as Error).message); }
+  };
+  const info = (own: PoolStore, a: Artifact): Api.ArtifactInfo => {
+    const title = a.thread ? own.getThread(a.thread)?.title : undefined;
+    return { ...a, ...(title ? { threadTitle: title } : {}) };
+  };
+  const must = (own: PoolStore, r: Request): Artifact => {
+    const a = own.artifacts.get(r.params.id!);
+    if (!a) throw new HttpError(404, "no such artifact");
+    return a;
+  };
+  const versionOf = (r: Request): number | undefined => {
+    const v = r.query.get("v");
+    if (v === null) return undefined;
+    if (!/^[1-9]\d{0,8}$/.test(v)) throw new HttpError(400, "v is a version number");
+    return Number(v);
+  };
+  /**
+   * What an imported file becomes: its kind by its name. A React component (.jsx, .tsx) is built into one page by
+   * esbuild (`buildReactPage`): compiled, never run here, and refused when it imports anything but the listed packages.
+   */
+  const incoming = async (r: Request, title?: string): Promise<{ kind: ArtifactKind; bytes: Buffer; built?: Buffer; name: string }> => {
+    const name = r.query.get("name") ?? "";
+    const kind = artifactKind(name);
+    if (!kind) throw new HttpError(415, "an artifact is an .html, .svg, .md, .jsx or .tsx file");
+    const bytes = await r.bytes(ARTIFACT_LIMIT);
+    if (bytes.includes(0)) throw new HttpError(415, "an artifact is text");
+    if (kind !== "react") return { kind, bytes, name };
+    try {
+      const { html } = await buildReactPage(bytes.toString("utf8"), { loader: /\.tsx$/i.test(name) ? "tsx" : "jsx", title: title || titleFromName(name) });
+      return { kind, bytes, built: Buffer.from(html), name };
+    } catch (err) { throw new HttpError(400, `this component doesn't build: ${(err as Error).message.split("\n")[0]}`); }
+  };
+  return [
+    route("GET", `${u}/artifacts/:pool`, (r): Api.ArtifactInfo[] => {
+      const user = d.userFor(r);
+      const thread = r.query.get("thread");
+      if (!thread) throw new HttpError(400, "thread is the thread whose artifacts to list");
+      // A project chat lists its threads' artifacts too, as its Files panel shows their folders.
+      return inPool(user.id, pool(r, user.id), (own) => {
+        if (!own.getThread(thread)) throw new HttpError(404, "no such thread");
+        const project = own.projectThreads(thread);
+        return own.artifacts.list({ threads: project[0] === thread ? project : [thread] }).map((a) => info(own, a));
+      });
+    }),
+    route("POST", `${u}/artifacts/:pool`, async (r): Promise<Api.ArtifactInfo> => {
+      const user = d.userFor(r);
+      const p = pool(r, user.id);
+      const { kind, bytes, built, name } = await incoming(r, r.query.get("title") ?? undefined);
+      const thread = r.query.get("thread");
+      if (!thread) throw new HttpError(400, "thread is the thread the artifact belongs to");
+      return refused(() => inPool(user.id, p, (own) => {
+        if (!own.getThread(thread)) throw new HttpError(404, "no such thread");
+        return info(own, own.artifacts.create({ title: r.query.get("title") || titleFromName(name), kind, thread, bytes, ...(built ? { built } : {}), author: "user" }));
+      }));
+    }),
+    route("GET", `${u}/artifacts/:pool/:id`, (r): Api.ArtifactDetail => {
+      const user = d.userFor(r);
+      return inPool(user.id, pool(r, user.id), (own) => { const a = must(own, r); return { artifact: info(own, a), versions: own.artifacts.versions(a.id) }; });
+    }),
+    route("GET", `${u}/artifacts/:pool/:id/view`, (r) => {
+      const user = d.userFor(r);
+      const p = pool(r, user.id);
+      const { a, content } = inPool(user.id, p, (own) => { const a = must(own, r); return { a, content: own.artifacts.read(a.id, versionOf(r)) }; });
+      if (!content) throw new HttpError(404, "no such version");
+      const page = a.kind === "react" ? content.built : a.kind === "markdown" ? undefined : content.bytes;
+      if (!page) throw new HttpError(415, "this artifact doesn't open as a page");
+      const kind = a.kind === "svg" ? "svg" : "html";
+      // With its thread's internet off an HTML page runs nothing, so it gets no console bridge either.
+      const internet = kind !== "html" || s().workspace.network({ userId: user.id, pool: p, threadId: a.thread ?? "" }).internet;
+      const bytes = kind === "html" && internet ? withConsole(page) : page;
+      r.res.writeHead(200, viewHeaders(kind, bytes.length, internet));
+      r.res.end(bytes);
+      return undefined;
+    }),
+    route("GET", `${u}/artifacts/:pool/:id/content`, (r) => {
+      const user = d.userFor(r);
+      const { a, content } = inPool(user.id, pool(r, user.id), (own) => { const a = must(own, r); return { a, content: own.artifacts.read(a.id, versionOf(r)) }; });
+      if (!content) throw new HttpError(404, "no such version");
+      const name = `${a.title.replace(/[\\/:*?"<>|\u0000-\u001f]+/g, " ").trim() || "artifact"}.${artifactExtension(a.kind)}`;
+      r.res.writeHead(200, {
+        "content-type": "text/plain; charset=utf-8", "content-length": String(content.bytes.length), "cache-control": "no-store",
+        "content-disposition": `${r.query.get("download") ? "attachment" : "inline"}; filename*=UTF-8''${encodeURIComponent(name)}`,
+        "content-security-policy": "default-src 'none'; sandbox", "x-content-type-options": "nosniff",
+      });
+      r.res.end(content.bytes);
+      return undefined;
+    }),
+    route("POST", `${u}/artifacts/:pool/:id/versions`, async (r): Promise<Api.ArtifactDetail> => {
+      const user = d.userFor(r);
+      const p = pool(r, user.id);
+      const title = inPool(user.id, p, (own) => must(own, r).title);
+      const { kind, bytes, built } = await incoming(r, title);
+      return refused(() => inPool(user.id, p, (own) => {
+        const a = must(own, r);
+        if (a.kind !== kind) throw new HttpError(400, `this artifact is ${a.kind}; a new version is the same kind`);
+        const next = own.artifacts.addVersion(a.id, { bytes, ...(built ? { built } : {}), author: "user" });
+        return { artifact: info(own, next), versions: own.artifacts.versions(a.id) };
+      }));
+    }),
+    route("POST", `${u}/artifacts/:pool/:id/restore`, async (r): Promise<Api.ArtifactDetail> => {
+      const user = d.userFor(r);
+      const p = pool(r, user.id);
+      const { version } = await r.json<Api.ArtifactRestore>();
+      if (!Number.isInteger(version) || version < 1) throw new HttpError(400, "version is a version number");
+      return refused(() => inPool(user.id, p, (own) => {
+        const a = must(own, r);
+        const next = own.artifacts.restore(a.id, version, "user");
+        return { artifact: info(own, next), versions: own.artifacts.versions(a.id) };
+      }));
+    }),
+    route("PATCH", `${u}/artifacts/:pool/:id`, async (r): Promise<Api.ArtifactInfo> => {
+      const user = d.userFor(r);
+      const p = pool(r, user.id);
+      const { title } = await r.json<Api.ArtifactRename>();
+      if (typeof title !== "string") throw new HttpError(400, "title is the artifact's new title");
+      return refused(() => inPool(user.id, p, (own) => info(own, own.artifacts.rename(must(own, r).id, title))));
+    }),
+    route("DELETE", `${u}/artifacts/:pool/:id`, (r): Api.Ok => {
+      const user = d.userFor(r);
+      inPool(user.id, pool(r, user.id), (own) => own.artifacts.delete(must(own, r).id));
+      return { ok: true };
     }),
   ];
 }

@@ -208,6 +208,32 @@ Each user has two pools of memory.
       in a grant says it deletes on the server.
     - A panel upload belongs to the thread, not to a message, so removing
       turns never deletes it.
+  - **Artifacts** (decided 2026-11-11, as in Claude's own app): a page,
+    drawing or document she publishes with `page publish`, or one the user
+    imports, kept with a title and every version it has had. Versions live
+    in the pool's own encrypted database, not in the thread's folder, so a
+    version never changes when the file it came from does, and a Private
+    artifact is never listed or served under General. A version is at most
+    16 MiB and is one self-contained file. An artifact opens as a file
+    does, in the same sandbox under its thread's internet rule, and only for the signed-in user: there
+    are no public links. She can't delete one; the user can. Every
+    artifact belongs to a thread, and deleting the thread deletes its
+    artifacts, as its files.
+    A publish shows as a card in her reply, which opens that version in the
+    file viewer with its thread beside it; there the user picks any
+    version, restores one as a new version, adds a version from a file,
+    renames, downloads or deletes. The Files panel's **Artifacts** tab lists
+    the thread's (a project chat's lists its threads' too) and imports
+    `.html`, `.svg` and `.md` files into it, each as a new artifact at
+    version 1; there is no page of every artifact (the owner, 2026-11-11:
+    they sit with the thread's other files). A React component (`.jsx` or `.tsx`, as
+    Claude's React artifacts are) is an artifact too: its source is kept as
+    written and built, when the version is made, into one page with React,
+    lucide-react, recharts and Tailwind inside, so it loads nothing from
+    outside. Like any page it runs only with its thread's internet on;
+    with it off no scripts run, so it shows nothing. It may import only
+    those packages by `import` statements (no `import()` or `require()`),
+    which the build enforces, and it is never run in `lyricad`.
   - **Changes** (decided 2026-10-22, as in Claude's own app): a thread with a
     checkout shows its branch, its open pull request and "+n −m" as a badge
     in its header, which opens the changes view: the files and commits at

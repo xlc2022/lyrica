@@ -344,6 +344,21 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   beside. It stops at the ends, where that button is disabled, and the
   facts read "Image 2 of 4". Escape closes
   a menu inside first, then the viewer, and so does any navigation.
+- **Artifacts** (`Artifacts.tsx`, docs/ux.md §6, docs/briefs/artifacts.md):
+  an `artifact` part of her message draws as `ArtifactCard`; the live
+  stream's `tool_end.artifact` adds the same part. `openArtifact({ pool, id,
+  version? })` dispatches a window event that `ArtifactHost`, mounted once
+  in the shell, answers with `ArtifactViewer`: the file viewer given a
+  `from` (`ViewerSource`: the artifact's `…/content` and `…/view` addresses
+  for the picked version, its thread's settings address for the internet
+  line, and its own heading, Version select and ⋯ menu), so the sandboxed
+  frame, console, Preview | Source and the thread beside are the viewer's
+  own. A React artifact shows its built page as HTML and its component as Source. The Files panel's
+  **Artifacts** tab (`ArtifactsTab`, in `Files.tsx`'s tabs) lists
+  `GET …/artifacts/<pool>?thread=` and imports files into the thread by
+  posting each one's bytes (`importArtifacts`, which a drop on the panel
+  calls too); it reloads when the thread finishes a tool call and, through
+  a second window event, on a change made in the viewer.
 - **The changes view** (`Changes.tsx`): the same kind of dialog for a
   thread's branch, described under Chat ("Changes").
 - **Project settings page** (`…/p/<pool>/<project>/general`, `/memory` or `/files`),

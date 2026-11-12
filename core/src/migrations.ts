@@ -4,6 +4,7 @@ import { DELEGATION_SCHEMA } from "./delegation.ts";
 import { IDENTITY_SCHEMA } from "./models/host.ts";
 import { addNotice, ENDPOINT_SCHEMA, MIXED_PRESET, migrate as moveModels, MODEL_CHOICE_SCHEMA, PRESET_SCHEMA, REDIRECT_SCHEMA, upgradeCalls, upgradeEndpoints } from "./models/schema.ts";
 import { PREFS_SCHEMA } from "./prefs.ts";
+import { ARTIFACTS_SCHEMA } from "./store/artifacts.ts";
 import { POOL_SCHEMA, POOL_UPGRADES, RECALLS_SCHEMA, RENAMES_SCHEMA, ROUTINES_SCHEMA, VECTORS_SCHEMA, WAKEUPS_SCHEMA, WATCHES_SCHEMA } from "./store/schema.ts";
 import { CHANGES_SCHEMA } from "./workspace/changes.ts";
 import { SKILLS_SCHEMA } from "./skills.ts";
@@ -427,6 +428,11 @@ export const STEPS: Record<DbKind, MigrationStep[]> = {
     // recall leans on (docs/memory.md, "Recall counts"). Adds a table only.
     version: 16,
     run(db) { db.exec(RECALLS_SCHEMA); },
+  }, {
+    // Principle 1: artifacts, the pages she publishes or the person imports, each kept with its versions
+    // (docs/briefs/artifacts.md). Adds two tables only.
+    version: 17,
+    run(db) { db.exec(ARTIFACTS_SCHEMA); },
   }],
 };
 

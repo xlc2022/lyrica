@@ -12,6 +12,7 @@ import { AdminPage, SettingsPage } from "./Panel.tsx";
 import { FilesPage } from "./Files.tsx";
 import { NotificationsCard, NotificationsPage, useWaiting } from "./Notifications.tsx";
 import { SleepCard, SleepHistoryPage, SleepPage, useSleepOverview, type SleepState } from "./Sleep.tsx";
+import { ArtifactHost } from "./Artifacts.tsx";
 import { BackendCard, hostUpdating, ModelsArea, useCleanupCount, useModelsPage } from "./Models.tsx";
 import type { ModelsState } from "./ModelsFrame.tsx";
 import { SideStatus } from "./SideStatus.tsx";
@@ -178,6 +179,7 @@ export function Shell({ user, users, route, build, onAuthChange, refreshState }:
       <Sidebar ctx={ctx} users={users} route={shown} trail={trail} threads={threads.data ?? []} error={threads.error} checkedAt={checkedAt} onAuthChange={onAuthChange} onClose={() => setSideOpen(false)} />
       <div className="scrim" aria-hidden="true" onClick={() => setSideOpen(false)} />
       {page(shown, () => dropDrawer(shown === route ? "page" : "panel"))}
+      <ArtifactHost ctx={ctx} />
       {panel && route.page === "thread" && (
         <PanelColumn route={route} panel={panel} trail={trail} threads={threads.data ?? []}>
           {page(panelRoute(route.userId, panel), () => dropDrawer("panel"))}

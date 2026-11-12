@@ -13,7 +13,7 @@ import type * as Api from "./api.ts";
 import type { PermissionRequest, ThreadEvent } from "./api.ts";
 import { progressOf } from "./clips.ts";
 import type { SameFile } from "./same-file.ts";
-import { delegateThreads, delegationPart, clipCall, imagePart, imageRefusal, rootPart, videoPart, markersFor, plainError, shortResult, toReactions, turnRecall, type Started } from "./messages.ts";
+import { artifactPart, delegateThreads, delegationPart, clipCall, imagePart, imageRefusal, rootPart, videoPart, markersFor, plainError, shortResult, toReactions, turnRecall, type Started } from "./messages.ts";
 
 export interface HostOptions {
   users: Users;
@@ -410,6 +410,11 @@ export class HostedThread {
   /** Selection is held only in memory, and never enters stored messages. */
   private recentWorkSource: string | undefined;
   private recentWorkIds: string[] | undefined;
+
+  /** The threads whose artifacts this one may list and add versions to: itself, and its project's chat and threads. */
+  private artifactThreads(view: PoolView): string[] {
+    return [...new Set([this.threadId, ...view.own.projectThreads(this.threadId)])];
+  }
 
   private recentWork(view: PoolView): string | undefined {
     if (!this.recentWorkIds) return undefined;
@@ -1169,6 +1174,11 @@ export class HostedThread {
             madeSince: (since) => tools.madeSince(since, (paths) => {
               this.o.sameFile?.changed(this.userId, this.pool, this.threadId, paths.map((p) => ({ key: tools.fileKey(p), path: p })), since.getTime());
             }),
+            // Her page publish: into this thread's own pool, in her name; an artifact she names must be this thread's or its project's.
+            ...(!thread.subagent ? { artifacts: {
+              publish: (p) => view.own.artifacts.publish({ ...p, thread: this.threadId, threads: this.artifactThreads(view), author: "lyrica" }),
+              list: () => view.own.artifacts.list({ threads: this.artifactThreads(view) }),
+            } } : {}),
             approve: (r) => this.approve(r),
             proposePlan: (r) => this.proposePlan(r),
             setMode: (mode) => { tools.setMode(mode); this.emit({ type: "settings" }); },
@@ -1363,7 +1373,8 @@ export class HostedThread {
         const video = !e.isError ? videoPart(e.toolName, (e.result as { details?: unknown } | undefined)?.details) : undefined;
         const refusedImage = imageRefusal(e.toolName, (e.result as { details?: unknown } | undefined)?.details);
         const root = !e.isError ? rootPart(e.toolName, (e.result as { details?: unknown } | undefined)?.details) : undefined;
-        this.emit({ type: "tool_end", ...(refusedImage ? { imageRefusal: refusedImage } : {}), toolCallId: e.toolCallId, name: e.toolName, result, isError: e.isError, ...(threads ? { threads } : {}), ...(image ? { image } : {}), ...(video ? { video } : {}), ...(root ? { root } : {}) });
+        const artifact = !e.isError ? artifactPart(e.toolName, (e.result as { details?: unknown } | undefined)?.details) : undefined;
+        this.emit({ type: "tool_end", ...(artifact ? { artifact } : {}), ...(refusedImage ? { imageRefusal: refusedImage } : {}), toolCallId: e.toolCallId, name: e.toolName, result, isError: e.isError, ...(threads ? { threads } : {}), ...(image ? { image } : {}), ...(video ? { video } : {}), ...(root ? { root } : {}) });
         const full = Array.isArray(content) ? content.map((p: { text?: string }) => p.text ?? "").join("\n") : String(content ?? "");
         for (const m of markersFor(e.toolName, (e as { args?: unknown }).args, full)) this.emit(m);
         break;
