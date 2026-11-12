@@ -801,14 +801,15 @@ export function apiRoutes(d: Lyricad): Route[] {
     }),
     route("GET", `${u}/mode`, (r): Api.ModeDefault => {
       const ws = s().workspace.settings(d.userFor(r).id);
-      return { mode: ws.defaultMode(), bypass: ws.bypassAllowed() };
+      return { mode: ws.defaultMode(), bypass: ws.bypassAllowed(), mcp: ws.mcpBypassAllowed() };
     }),
     route("PUT", `${u}/mode`, async (r): Promise<Api.ModeDefault> => {
       const ws = s().workspace.settings(d.userFor(r).id);
       const change = await r.json<Partial<Api.ModeDefault>>();
       if (change?.bypass !== undefined) ws.setBypassAllowed(change.bypass === true);
+      if (change?.mcp !== undefined) ws.setMcpBypassAllowed(change.mcp === true);
       if (change?.mode !== undefined) ws.setDefaultMode(change.mode);
-      return { mode: ws.defaultMode(), bypass: ws.bypassAllowed() };
+      return { mode: ws.defaultMode(), bypass: ws.bypassAllowed(), mcp: ws.mcpBypassAllowed() };
     }),
     route("GET", `${u}/paths`, (r) => s().workspace.allowedPaths.list(d.userFor(r).id)),
     route("GET", `${u}/machines`, (r) => s().workspace.settings(d.userFor(r).id).machines().map(machineInfo)),
