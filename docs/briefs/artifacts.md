@@ -140,7 +140,8 @@ mockup before the web part is built.
 3. **React components:** `kind: react` for `.jsx` and `.tsx`. The source
    is kept as written; `buildReactPage` (`core/src/workspace/react-page.ts`)
    has esbuild make it one HTML page with React, lucide-react, recharts
-   and Tailwind's browser build inside, so it works with internet off. It
+   and Tailwind's browser build inside, so it loads nothing from outside
+   (it runs only with the thread's internet on, as any page's scripts). It
    is built when a version is made and the built page is kept beside the
    source. The source may import only that closed list, enforced by the
    build, and is never run in `lyricad`. The builder is being written by
@@ -209,3 +210,9 @@ works, so her threads update them there?
   is per thread, and deleting a thread deletes its artifacts whether its
   memories are kept or not. This replaces "The list" under Interface, the
   thread-less import under Import and the Keep memories note above.
+- 2026-11-12: PR review found that esbuild expands a computed `require()`
+  or `import()` into a glob over the daemon's disk, past the import list.
+  A component now may have neither (both are refused before bundling), it
+  resolves from an empty folder, and the page is refused if any file in it
+  is not a library's. Whether a built page may run scripts with the
+  thread's internet off is a boundary change for the owner, not decided.

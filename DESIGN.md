@@ -229,9 +229,11 @@ Each user has two pools of memory.
     they sit with the thread's other files). A React component (`.jsx` or `.tsx`, as
     Claude's React artifacts are) is an artifact too: its source is kept as
     written and built, when the version is made, into one page with React,
-    lucide-react, recharts and Tailwind inside, so it runs with the
-    internet off. It may import only those packages, which the build
-    enforces, and it is never run in `lyricad`.
+    lucide-react, recharts and Tailwind inside, so it loads nothing from
+    outside. Like any page it runs only with its thread's internet on;
+    with it off no scripts run, so it shows nothing. It may import only
+    those packages by `import` statements (no `import()` or `require()`),
+    which the build enforces, and it is never run in `lyricad`.
   - **Changes** (decided 2026-10-22, as in Claude's own app): a thread with a
     checkout shows its branch, its open pull request and "+n −m" as a badge
     in its header, which opens the changes view: the files and commits at

@@ -2095,7 +2095,11 @@ mode. A subagent has no `publish` or `artifacts`.
 TSX component into one HTML page with React and the Tailwind browser runtime
 inline. Its build plugin permits imports of react and react-dom (including
 subpaths), lucide-react, recharts, three.js (including addons), simplex-noise
-and tween.js; other packages and local files are refused. It returns the
+and tween.js; other packages and local files are refused. A component
+imports with `import` statements only: `import()` and `require()` are
+refused, since esbuild would expand a computed one into a glob over the
+daemon's own disk; the component resolves from an empty folder, and a
+page holding any file that isn't a library's is refused. It returns the
 page and the source's imported package names; `reactLibraries()` lists the
 allowed packages with their installed versions. The source is compiled,
 never executed in lyricad.

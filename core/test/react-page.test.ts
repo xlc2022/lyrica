@@ -36,6 +36,16 @@ describe("React artifact pages (principles 1 and 2)", () => {
       .rejects.toThrow(`Import "${name}" is not allowed. Allowed packages:`);
   });
 
+  // esbuild would expand these into a glob over the daemon's own disk, past the import list.
+  it.each([
+    'export default function A({ x }) { require("./probe/" + x); return null; }',
+    "export default function A({ x }) { import(`./probe/${x}`); return null; }",
+    'export default function A({ x }) { void import("../../" + x); return null; }',
+    'const load = require; export default function A({ x }) { load("./probe/" + x); return null; }',
+  ])("refuses a computed require or import(): %s", async (code) => {
+    await expect(buildReactPage(code, { loader: "jsx" })).rejects.toThrow("import() and require() are not allowed in a React component.");
+  });
+
   it.each(["export const Component = () => <div />;", "const Component = () => <div />;"])("requires a default export", async (code) => {
     await expect(buildReactPage(code, { loader: "jsx" })).rejects.toThrow("The React component must have a default export.");
   });
