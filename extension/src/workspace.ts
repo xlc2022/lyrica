@@ -514,8 +514,9 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
       const suspect = !!warning && !tools.allowedInThread?.(machine?.name ?? SANDBOX_ALLOW, suspectKey(event.toolName, input));
       // The first call on a machine in a turn asks if anything earlier ran somewhere else, so output from one place can't steer her onto another.
       const moved = !!machine && !places.has(machine.name) && places.size > 0;
-      // An opaque command (rule prefix "") asks only because Forbid rules can't see inside it; Bypass lets it run.
-      const skip = bypass && !machine && !(rule?.decision === "ask" && rule.prefix !== "");
+      // An opaque command (rule prefix "") asks because Forbid rules can't see inside it; with no card in Bypass, it's refused.
+      if (bypass && !machine && rule?.decision === "ask" && rule.prefix === "") return { block: true, reason: "This project's Forbid rules can't see inside this command; run it as plain commands." };
+      const skip = bypass && !machine && rule?.decision !== "ask";
       if (skip || (!irreversible && !suspect && !moved && rule?.decision !== "ask" && ((rule?.decision === "allow" && !machine) || !ASKS[mode].includes(as)))) {
         if (place) places.add(place);
         return undefined;

@@ -2014,11 +2014,13 @@ judgment and make review easy. Each thread has a **mode**:
 - **Bypass permissions** (`bypass`): offered only while the user has turned
   on **Allow bypass** (`bypassAllowed`, `setBypassAllowed`;
   Settings → Network → New threads). Nothing asks in the sandbox: no mode
-  prompt, no suspect-command warning, no card for a script Forbid rules
-  can't see into, an MCP tool, an open-world tool, or a `browse` form or
-  attachment (the browser is told yes for the call). Forbid rules still
-  refuse, the user's own Ask rules still ask, and on a machine the stricter
-  of Auto and its limit applies as before, with its suspect and
+  prompt, no suspect-command warning, no card for an MCP tool, an
+  open-world tool, or a `browse` form or attachment (the browser is told
+  yes for the call). Forbid rules still refuse, and so does a command they
+  can't see into (the card it would get elsewhere), so wrapping a command
+  in `eval` or `bash -c "$(…)"` doesn't get round them. The user's own Ask
+  rules still ask, and on a machine the stricter of Auto and its limit
+  applies as before, with its suspect and
   moved-machine cards. Turning the switch off moves every thread in Bypass
   permissions, and the default, to Auto; `effective` reads `bypass` as
   `auto` while it is off. A plan can't go ahead in it.

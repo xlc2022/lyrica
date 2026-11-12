@@ -996,10 +996,12 @@ describe("project command rules in the hook", () => {
     let asked = 0;
     const approve: ThreadTools["approve"] = async () => { asked++; return true; };
     const rules = [...DEFAULT_COMMAND_RULES, { prefix: "npm publish", decision: "ask" as const }];
-    const calls = ["rm -rf dist", "bash /workspace/run.sh", "git push --force"].map((command) => fauxToolCall("bash", { command }));
+    const calls = ["rm -rf dist", "bash /workspace/run.sh", "git push --force", "bash -c \"$(printf 'rm -rf /workspace/x')\""].map((command) => fauxToolCall("bash", { command }));
     const result = await run("bypass", calls, { rules, files: { "/workspace/run.sh": "git checkout main -- web/src\n" }, approve });
     expect(asked).toBe(0);
+    // Forbid refuses, and a command Forbid rules can't see into is refused rather than asked about.
     expect(result.commands).toEqual(["rm -rf dist", "bash /workspace/run.sh"]);
+    expect(result.results.some((t) => t.includes("can't see inside this command"))).toBe(true);
     await run("bypass", [fauxToolCall("bash", { command: "npm publish" })], { rules, approve });
     expect(asked).toBe(1);
     await run("bypass", [fauxToolCall("bash", { command: "ls", machine: "nas" })], { machines: [{ name: "nas", kind: "ssh", limit: "ask", root: null }], approve });
