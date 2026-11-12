@@ -318,3 +318,23 @@ export async function pair(id: Identity, addresses: string[], typedCode: string,
   }
   throw new HostRefused("unreachable", `Couldn't reach the host at ${addresses.join(" or ")}${unreachable instanceof Error && unreachable.message ? ` (${unreachable.message})` : ""}.`);
 }
+
+/** The authorization header for an endpoint's key, or none. */
+export const bearer = (apiKey?: string): Record<string, string> => (apiKey ? { authorization: `Bearer ${apiKey}` } : {});
+
+/**
+ * A failed answer as an error: a host's own (its away codes fall back, see
+ * `isUnreachable`), 5xx and 429 from any other endpoint as away too, and
+ * anything else as the reason, plainly.
+ */
+export async function answerError(res: Response, what: string): Promise<Error> {
+  const host = await hostError(res);
+  if (host) return new HostRefused(host.code, host.message);
+  if (res.status >= 500 || res.status === 429) return new HostRefused("unavailable", `${what} answered ${res.status}`);
+  let message = "";
+  try {
+    const body = (await res.json()) as { error?: { message?: unknown } | string };
+    message = typeof body.error === "string" ? body.error : String(body.error?.message ?? "");
+  } catch { /* no JSON */ }
+  return new Error(`${what} refused the request (${res.status}${message ? `: ${message.slice(0, 200)}` : ""})`);
+}

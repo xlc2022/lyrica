@@ -4,6 +4,7 @@
 
 import { lookup } from "node:dns/promises";
 import { BlockList, isIP } from "node:net";
+import { bearer } from "./host.ts";
 import { viaTailnet } from "./tailnet.ts";
 
 // the operator's own network: loopback, private ranges, and the Tailscale tailnet.
@@ -135,10 +136,8 @@ export interface ModelIdentity {
   card?: { baseModel?: string[]; baseModelRelation?: string | null } | null;
 }
 
-const headers = (apiKey?: string): Record<string, string> => (apiKey ? { authorization: `Bearer ${apiKey}` } : {});
-
 async function getModels(baseUrl: string, apiKey: string | undefined, timeoutMs: number, fetchImpl: typeof fetch = fetch): Promise<unknown> {
-  const res = await fetchImpl(`${baseUrl}/models`, { headers: headers(apiKey), signal: AbortSignal.timeout(timeoutMs) });
+  const res = await fetchImpl(`${baseUrl}/models`, { headers: bearer(apiKey), signal: AbortSignal.timeout(timeoutMs) });
   if (!res.ok) throw new Error(`${baseUrl}/models answered ${res.status}`);
   return res.json();
 }
@@ -227,7 +226,7 @@ function lmStudioReasoning(r: unknown): LmStudioReasoning | undefined {
 export async function lmStudioModels(baseUrl: string, apiKey: string | undefined, timeoutMs = 5000, fetchImpl: typeof fetch = fetch): Promise<LmStudioModel[] | null> {
   let body: { models?: unknown };
   try {
-    const res = await fetchImpl(`${lmStudioRoot(baseUrl)}/api/v1/models`, { headers: headers(apiKey), signal: AbortSignal.timeout(timeoutMs) });
+    const res = await fetchImpl(`${lmStudioRoot(baseUrl)}/api/v1/models`, { headers: bearer(apiKey), signal: AbortSignal.timeout(timeoutMs) });
     if (!res.ok) return null;
     body = (await res.json()) as { models?: unknown };
   } catch {
@@ -261,7 +260,7 @@ export interface LlamaServerModel { reasoning?: ["medium"]; opensThinking?: bool
 export async function llamaServerModel(baseUrl: string, apiKey: string | undefined, modelId?: string, timeoutMs = 5000, fetchImpl: typeof fetch = fetch): Promise<LlamaServerModel | null> {
   let body: Record<string, any>;
   try {
-    const res = await fetchImpl(`${lmStudioRoot(baseUrl)}/props${modelId ? `?model=${encodeURIComponent(modelId)}` : ""}`, { headers: headers(apiKey), signal: AbortSignal.timeout(timeoutMs) });
+    const res = await fetchImpl(`${lmStudioRoot(baseUrl)}/props${modelId ? `?model=${encodeURIComponent(modelId)}` : ""}`, { headers: bearer(apiKey), signal: AbortSignal.timeout(timeoutMs) });
     if (!res.ok) return null;
     body = (await res.json()) as Record<string, any>;
   } catch {
@@ -290,7 +289,7 @@ export const lmStudioModel = (models: LmStudioModel[], modelId: string) => model
 export async function lmStudioLoad(baseUrl: string, apiKey: string | undefined, model: LmStudioModel, contextLength: number, fetchImpl: typeof fetch = fetch): Promise<void> {
   const post = async (path: string, body: unknown) => {
     const res = await fetchImpl(`${lmStudioRoot(baseUrl)}${path}`, {
-      method: "POST", headers: { ...headers(apiKey), "content-type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(300_000),
+      method: "POST", headers: { ...bearer(apiKey), "content-type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(300_000),
     });
     if (res.ok) return;
     const e = (await res.json().catch(() => null)) as { error?: string | { message?: string } } | null;

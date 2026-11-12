@@ -2,7 +2,7 @@
 // each reads (a title, a dated source mark, "Private is hidden"), and word
 // differences between two versions. Nothing here keeps text anywhere.
 import type { Display, MemoryKind, MemoryLink, Pool } from "./api.ts";
-import { href, idHref } from "./route.ts";
+import { idHref } from "./route.ts";
 import { dateText, hidden } from "./ui.tsx";
 
 /** A citation group as stored: `[n:…]`, `[general/p:slug, t:web/x]`. Doubled brackets are mention tokens, not citations. */
@@ -154,6 +154,3 @@ export function wordDiff(from: string, to: string): DiffOp[] {
   push("same", b.slice(b.length - tail).join(""));
   return out;
 }
-
-/** Where a memory opens in a thread: beside it in the panel from the split width, the Memory page below it. */
-export const memoryHref = (userId: string, pool: Pool, id: string) => href({ page: "memory", userId, pool, id });

@@ -865,10 +865,8 @@ export interface GitAccountInfo {
   webhook?: { url: string; secret: string };
 }
 /**
- * POST /api/u/:userId/git-accounts/probe (GitAccountInput) → Ok. Checks the
- * token against the host, saving nothing: 400 with why when it doesn't work.
  * POST /api/u/:userId/git-accounts (GitAccountInput) → GitAccountInfo. Checks
- * it again and saves it. A private account whose host resolves outside her
+ * the token against the host (400 with why when it doesn't work), then saves it. A private account whose host resolves outside her
  * network needs `offNetworkConfirmed`; a GitHub account can't be private.
  */
 export interface GitAccountInput { name: string; kind: GitKind; host: string; account: string; token: string; pool: Pool; offNetworkConfirmed?: boolean }
@@ -920,10 +918,9 @@ export interface McpServerInfo {
   state?: { kind: "online" | "rejected" | "unreachable" | "offNetwork"; since: string };
 }
 /**
- * POST /api/u/:userId/mcp-servers/probe (McpServerInput) → McpServerProbe. An
- * MCP `initialize` and `tools/list`, saving nothing: 400 with why when the
- * server doesn't answer as one. POST /api/u/:userId/mcp-servers
- * (McpServerInput) → McpServerInfo. Checks it again and saves it. A server
+ * POST /api/u/:userId/mcp-servers (McpServerInput) → McpServerInfo. An MCP
+ * `initialize` and `tools/list` first (400 with why when the server doesn't
+ * answer as one), then saves it. A server
  * is a `url` (streamable HTTP, with an optional `token`) or a `command` (a
  * local server, one line: the program and its arguments, started in the
  * thread's sandbox with `env`, `KEY=value` lines), never both (DESIGN.md,
@@ -931,7 +928,6 @@ export interface McpServerInfo {
  * network needs `offNetworkConfirmed`.
  */
 export interface McpServerInput { name: string; url?: string; token?: string; command?: string; env?: string; pool: Pool; dailyLimit?: number | null; minuteLimit?: number | null; offNetworkConfirmed?: boolean }
-export interface McpServerProbe { tools: number; description: string | null }
 /** PATCH /api/u/:userId/mcp-servers/:name → McpServerInfo. A new URL or command is checked first; a new pool takes it from every thread; a new name follows into them. */
 export interface McpServerChange { name?: string; url?: string; command?: string; pool?: Pool; dailyLimit?: number | null; minuteLimit?: number | null; offNetworkConfirmed?: boolean }
 /**

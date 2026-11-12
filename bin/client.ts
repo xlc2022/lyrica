@@ -226,3 +226,21 @@ export function terminalIo(): Io {
     },
   };
 }
+
+/** Removes a bare flag from the arguments; true when it was there. */
+export function take(args: string[], flag: string): boolean {
+  const i = args.indexOf(flag);
+  if (i < 0) return false;
+  args.splice(i, 1);
+  return true;
+}
+
+/** Removes a flag and its value from the arguments; throws when the value is missing. */
+export function value(args: string[], flag: string): string | undefined {
+  const i = args.indexOf(flag);
+  if (i < 0) return undefined;
+  const v = args[i + 1];
+  if (!v || v.startsWith("--")) throw new Error(`${flag} needs a value`);
+  args.splice(i, 2);
+  return v;
+}

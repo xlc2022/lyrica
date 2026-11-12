@@ -1,7 +1,7 @@
 // `lyrica chat`: her threads in the terminal, the `cli` interface. A client
 // of lyricad over its socket; it keeps nothing (docs/briefs/terminal-clients.md).
 import type { MessagePage, PermissionRequest, Pool, ThreadEvent, ThreadSummary } from "@lyrica/daemon/api";
-import { type Client, Interrupted, type Io, printable, signIn, socketPath, terminalIo } from "./client.ts";
+import { type Client, Interrupted, type Io, printable, signIn, socketPath, take, terminalIo, value } from "./client.ts";
 
 export const CHAT_USAGE = `  lyrica chat [--private] [--login <login>] [<thread id>]   (talk with her in a terminal thread)`;
 
@@ -19,22 +19,6 @@ export async function chat(args: string[], opts: { socket?: string; runtime?: st
   } finally {
     await client.logout();
   }
-}
-
-function take(args: string[], flag: string): boolean {
-  const i = args.indexOf(flag);
-  if (i < 0) return false;
-  args.splice(i, 1);
-  return true;
-}
-
-function value(args: string[], flag: string): string | undefined {
-  const i = args.indexOf(flag);
-  if (i < 0) return undefined;
-  const v = args[i + 1];
-  if (!v || v.startsWith("--")) throw new Error(`${flag} needs a value`);
-  args.splice(i, 2);
-  return v;
 }
 
 /** The thread to talk in: the one named, or one picked from her recent terminal threads, or a new one. */
