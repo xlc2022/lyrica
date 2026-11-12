@@ -2269,7 +2269,9 @@ test("project welcome and fold in", async ({ page, baseURL }) => {
   expect((await api("GET", `${u}/threads/general/${encodeURIComponent(p.id)}`)).goal).toBe("Grow herbs");
   expect((await api("GET", `${u}/threads/general/${encodeURIComponent(p.id)}`)).instructions).toBe("Keep a planting journal");
   await expect(page.getByRole("button", { name: "Discard draft" })).toHaveCount(0);
-  // Discard draft puts both fields back to what is saved.
+  // Discard draft puts both fields back to what is saved. The next draft comes once her reply has ended and the page is idle.
+  await expect.poll(async () => (await api("GET", `${u}/threads/general/${encodeURIComponent(p.id)}`)).busy).toBe(false);
+  await page.waitForTimeout(1500);
   await api("POST", `${u}/threads/general/${encodeURIComponent(p.id)}/messages`, { text: "draft: Grow trees | Keep a pruning journal" });
   await expect(page.getByRole("textbox", { name: /^Instructions/ })).toHaveValue("Keep a pruning journal");
   await page.getByRole("button", { name: "Discard draft" }).click();

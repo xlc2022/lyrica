@@ -1845,6 +1845,9 @@ ul.choices { list-style: none; margin: 0; padding: 0; }
 /* Project commands use the existing fixed-choice buttons; rows wrap at phone width. */
 .command-rule { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
 .command-rule input { flex: 1 1 160px; min-width: 0; }
+/* Remove is the height of the Allow | Ask | Forbid segment beside it; on touch its tap area still reaches 44 px. */
+.command-rule button.icon.sm { position: relative; width: 34px; height: 34px; min-height: 34px; }
+@media (pointer: coarse) { .command-rule button.icon.sm::after { content: ""; position: absolute; inset: -5px; } }
 .permission .always-allow { max-width: 100%; white-space: normal; overflow-wrap: normal; }
 .permission .always-allow .mono { min-width: 0; overflow-wrap: anywhere; }
 

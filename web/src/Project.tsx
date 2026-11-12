@@ -317,6 +317,8 @@ export function ProjectPage({ ctx, pool, threadId, section }: { ctx: ShellContex
     const timer = setInterval(summary.reload, 1000);
     return () => clearInterval(timer);
   }, [s?.busy, summary.reload]);
+  // The shell reloads its list when anything of the user's changes (a draft she wrote while the page sat idle): follow it.
+  useEffect(() => summary.reload(), [ctx.threads, summary.reload]);
   const onSummary = (x: ThreadSummary) => { summary.set(x); ctx.refreshThreads(); };
   const paused = !!s?.projectSettings?.paused;
   const props = s?.project && settings.data ? { ctx, base, summary: s, settings: settings.data, onSummary, onSettings: settings.set } : undefined;
