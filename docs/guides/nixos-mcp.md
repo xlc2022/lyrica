@@ -58,8 +58,8 @@ Settings → **MCP servers** → **Add server**: a name (`nixos`), the URL
 (`http://127.0.0.1:8001/mcp`, or the other machine's address and port),
 Pool **General**, no token. Lyrica checks the server before saving; the
 row then shows its host, General and 2 tools (`nix` and `nix_versions`).
-Grant it in a thread's drawer under MCP servers, or under **Workspace** on
-Project settings so every thread of the project has it.
+Grant it in a thread's drawer under MCP servers, or in Project settings
+→ Access so every thread of the project has it.
 
 The pool is the pool of the threads that may use it, not where it runs: a
 general thread takes only General servers, a private or local-only thread

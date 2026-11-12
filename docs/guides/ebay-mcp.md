@@ -82,8 +82,9 @@ Under Settings → **MCP servers**, **Add server**:
 
 Lyrica starts it once to check it and saves it only when it answers.
 Then grant it to the threads or projects that should have it: the MCP
-servers row in the thread drawer, or in Project settings → Access. Its searches go out through the thread's own network, so the
-thread needs **Internet** on.
+servers row in the thread drawer, or in Project settings → Access. Its
+searches go out through the thread's own network, so the thread needs
+**Internet** on.
 
 The environment is never shown again; **Replace environment** behind ⋯
 sets a new keyset. The variables eBay's README lists work the same way:
