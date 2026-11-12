@@ -260,8 +260,8 @@ export interface EndpointInfo {
   /** A label that can change. */
   name: string;
   kind: "cloud" | "local";
-  /** A plain OpenAI-compatible server, a paired model host (always local), or a ChatGPT or Grok plan (always cloud, never shared). */
-  api: "openai-compatible" | "host" | "chatgpt" | "grok";
+  /** A plain OpenAI-compatible server, a paired model host (always local), or a ChatGPT, Codex or Grok plan (always cloud, never shared). */
+  api: "openai-compatible" | "host" | "chatgpt" | "codex" | "grok";
   /** Query values named like a credential show as •••; sent back unchanged in a PATCH, they keep the stored value. */
   baseUrl: string;
   /** A host's addresses, tried in order. */
@@ -307,12 +307,12 @@ export interface ModelInput extends Capabilities { modelId: string }
  * (`plan` and `name`) or one that is signed out (`endpointId`). One at a time per user, for 10 minutes.
  * `url` is the provider's page to open; Grok's `code` is the code that page asks for.
  */
-export interface PlanSignInStart { plan?: "chatgpt" | "grok"; name?: string; endpointId?: string }
+export interface PlanSignInStart { plan?: "chatgpt" | "codex" | "grok"; name?: string; endpointId?: string }
 export interface PlanSignInStarted { id: string; url: string; code?: string }
 /**
- * POST /api/u/:userId/plans/sign-in/:signInId → EndpointInfo, once the provider confirms. ChatGPT's
- * `redirectUrl` is the address the browser was sent to after approving
- * (http://127.0.0.1:1455/auth/callback?…); Grok needs none. DELETE cancels it → Ok.
+ * POST /api/u/:userId/plans/sign-in/:signInId → EndpointInfo, once the provider confirms. ChatGPT's and
+ * Codex's `redirectUrl` is the address the browser was sent to after approving
+ * (http://127.0.0.1:1455/auth/callback?… or http://localhost:1455/auth/callback?…); Grok needs none. DELETE cancels it → Ok.
  */
 export interface PlanSignInFinish { redirectUrl?: string }
 /**

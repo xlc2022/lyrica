@@ -312,14 +312,14 @@ export function apiRoutes(d: Lyricad): Route[] {
       await s().models.discover(user, ep.id).catch(() => {}); // a server that's down now can be discovered later
       return endpointInfo(d, user.id, ep.id);
     }),
-    // --- Plans: ChatGPT (sign in, then the address the browser was sent to) and Grok (a device code) ---
+    // --- Plans: ChatGPT and Codex (sign in, then the address the browser was sent to) and Grok (a device code) ---
     route("POST", `${u}/plans/sign-in`, async (r) => {
       const user = d.userFor(r);
       const input = await r.json<Api.PlanSignInStart>();
       const endpointId = input.endpointId === undefined ? undefined : String(input.endpointId);
       const name = input.name === undefined ? undefined : String(input.name).trim();
       const plan = endpointId ? s().models.endpoint(user.id, endpointId)?.api : input.plan;
-      if (!isPlan(plan)) throw new HttpError(endpointId ? 404 : 400, endpointId ? "no such plan" : "a plan is ChatGPT or Grok");
+      if (!isPlan(plan)) throw new HttpError(endpointId ? 404 : 400, endpointId ? "no such plan" : "a plan is ChatGPT, Codex or Grok");
       if (!endpointId) {
         if (!name) throw new HttpError(400, "a plan needs a name");
         s().models.checkEndpointName(name);

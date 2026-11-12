@@ -3,12 +3,15 @@ import { PLAN_URLS, planLimitReset } from "@lyrica/core";
 import { profile, withModels } from "../../core/test/helpers.ts";
 import { modelRuntimeFor, planCatalog, planError, startPlanSignIn } from "../src/index.ts";
 
-const TOKEN_URLS = { chatgpt: "https://auth.openai.com/api/accounts/oauth/token", grok: "https://auth.x.ai/oauth2/token" };
+const TOKEN_URLS = { chatgpt: "https://auth.openai.com/api/accounts/oauth/token", codex: "https://auth.openai.com/oauth/token", grok: "https://auth.x.ai/oauth2/token" };
+type Kind = keyof typeof TOKEN_URLS;
+/** A made-up access token shaped like OpenAI's, carrying the ChatGPT account ID the Codex login reads from it. */
+const fakeJwt = (n: number) => ["{}", JSON.stringify({ "https://api.openai.com/auth": { chatgpt_account_id: "acct-ada" }, n })].map((p) => Buffer.from(p).toString("base64url")).join(".") + ".sig";
 const realFetch = globalThis.fetch;
 afterEach(() => { globalThis.fetch = realFetch; vi.restoreAllMocks(); });
 
 /** The user with a ChatGPT plan whose sign-in has `expires`, and its first model in their general column. */
-async function setup(expires = Date.now() + 3_600_000, kind: "chatgpt" | "grok" = "chatgpt") {
+async function setup(expires = Date.now() + 3_600_000, kind: Kind = "chatgpt") {
   const m = await withModels();
   m.models.setPlanCatalog(planCatalog);
   const plan = m.models.addPlan(m.ada, { name: kind, plan: kind, credential: { access: "at-1", refresh: "rt-1", expires, clientId: "client-1", scopes: [] } });
@@ -18,7 +21,7 @@ async function setup(expires = Date.now() + 3_600_000, kind: "chatgpt" | "grok" 
 }
 
 /** OpenAI's token endpoint, answering each refresh with `status` (and a fresh token when it is 200). */
-function tokenEndpoint(status = 200, kind: "chatgpt" | "grok" = "chatgpt") {
+function tokenEndpoint(status = 200, kind: Kind = "chatgpt") {
   const calls: string[] = [];
   globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
     const url = String(input instanceof Request ? input.url : input);
@@ -26,7 +29,7 @@ function tokenEndpoint(status = 200, kind: "chatgpt" | "grok" = "chatgpt") {
     calls.push(String(init?.body));
     await new Promise((r) => setTimeout(r, 20));
     if (status !== 200) return new Response('{"error":"invalid_grant"}', { status });
-    return Response.json({ access_token: `at-${calls.length + 1}`, refresh_token: `rt-${calls.length + 1}`, scope: "openid chatgpt.tokens.use.direct", expires_in: 3600 });
+    return Response.json({ access_token: kind === "codex" ? fakeJwt(calls.length + 1) : `at-${calls.length + 1}`, refresh_token: `rt-${calls.length + 1}`, scope: "openid chatgpt.tokens.use.direct", expires_in: 3600 });
   }) as typeof fetch;
   return calls;
 }
@@ -201,6 +204,46 @@ describe("a ChatGPT plan", () => {
     tokenEndpoint(400, "grok");
     await expect(runtime.getAuth(s.plan.id)).rejects.toThrow();
     expect(s.models.endpoint(s.ada.id, s.plan.id)?.signedOut).toBe(true);
+  });
+});
+
+describe("a Codex plan", () => {
+  it("is ChatGPT through the Codex CLI's login: cloud, the user's own, on Pi's Codex provider", async () => {
+    const s = await setup(Date.now() + 3_600_000, "codex");
+    expect(s.plan).toMatchObject({ api: "codex", kind: "cloud", shared: false, baseUrl: PLAN_URLS.codex });
+    expect(s.plan.apiKey).toBeUndefined();
+    expect(s.offerings.length).toBeGreaterThan(0);
+    expect(s.offerings.every((o) => o.modelId.startsWith("gpt-"))).toBe(true);
+    expect(s.offerings.some((o) => o.modelId === "chatgpt-images")).toBe(false);
+    const runtime = await modelRuntimeFor(s.models, s.ctx({ pool: "private" }));
+    expect(runtime.getProvider(s.plan.id)).toBeUndefined();
+    const general = await modelRuntimeFor(s.models, s.ctx());
+    expect(general.getModels(s.plan.id).every((m) => m.api === "openai-codex-responses")).toBe(true);
+  });
+
+  it("refreshes with the Codex client and keeps the account ID, and is signed out when OpenAI refuses", async () => {
+    const s = await setup(Date.now() - 1000, "codex");
+    const calls = tokenEndpoint(200, "codex");
+    const runtime = await modelRuntimeFor(s.models, s.ctx());
+    await runtime.getAuth(s.plan.id);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toContain("client_id=app_");
+    expect(s.models.planCredential(s.ada.id, s.plan.id)).toMatchObject({ access: fakeJwt(2), refresh: "rt-2", accountId: "acct-ada" });
+
+    s.models.setPlanCredential(s.ada.id, s.plan.id, { access: "at-1", refresh: "rt-1", expires: Date.now() - 1000 });
+    tokenEndpoint(401, "codex");
+    await expect((await modelRuntimeFor(s.models, s.ctx())).getAuth(s.plan.id)).rejects.toThrow(/Codex refused the sign-in refresh \(HTTP 401\)/);
+    expect(s.models.endpoint(s.ada.id, s.plan.id)?.signedOut).toBe(true);
+  });
+
+  it("signs in with the Codex CLI's browser login, refusing an address from another sign-in", async () => {
+    const first = await startPlanSignIn("codex", "00000000-0000-4000-8000-000000000001");
+    const url = new URL(first.url);
+    expect(url.origin + url.pathname).toBe("https://auth.openai.com/oauth/authorize");
+    expect(url.searchParams.get("redirect_uri")).toBe("http://localhost:1455/auth/callback");
+    expect(first.code).toBeUndefined();
+    await expect(first.finish("http://localhost:1455/auth/callback?code=c&state=not-this-one")).rejects.toThrow(/State mismatch/);
+    first.cancel();
   });
 });
 

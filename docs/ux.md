@@ -129,7 +129,7 @@ Rules:
   Pinned to the top, Unpinned, Draft (a pull request chip's word), Pull request #<n> on <repo> (a chip's tooltip,
   with its checks by name on the lines below), <n> subagents working,
   Image models, CFG (a model card's setting beside Steps), not set (a model setting with no value in Edit workflow: the select's option and the field's placeholder), Hosts and endpoints, Downloads, Clean up, Recent calls,
-  Model hosts, Plain endpoints, Add endpoint, ChatGPT plan, Grok plan, OpenRouter, Sign in with ChatGPT, Sign in with Grok, Sign in with OpenRouter, Redirect URL, Code, Finish, Signed out, Sign in again, Add model host, Pairing code,
+  Model hosts, Plain endpoints, Add endpoint, ChatGPT plan, Codex plan, Grok plan, OpenRouter, Sign in with ChatGPT, Sign in with Codex, Sign in with Grok, Sign in with OpenRouter, Redirect URL, Code, Finish, Signed out, Sign in again, Add model host, Pairing code,
   Pair, Pair again…, Unpaired, Dashboard, Pause, Resume, update available, Read its models, Add a model
   by hand, Enabled, Disable all models, Enable all models, Reset IDs…, Merge duplicate host… (Merge duplicate… on other endpoints), Replace with, All details, All calls,
   Answered by, Sidebar width, Panel width, Time zone,
@@ -204,7 +204,7 @@ failed marker. Omit Edit message once its source is no longer the last user
 message, and Try when no eligible model on another endpoint follows it.
 
 Cloud endpoint rows are an agreed exception to the badge rule below: their
-kind, API key or ChatGPT plan / Grok plan, and Text, Vision and Image pills
+kind, API key or ChatGPT plan / Codex plan / Grok plan, and Text, Vision and Image pills
 may exceed two. Image appears only with a marked image model and a callable
 adapter (with a key when required). At 390 px the capability pills wrap onto
 their own line under the name; row actions keep their place. Local endpoints

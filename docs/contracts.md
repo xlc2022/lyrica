@@ -362,7 +362,7 @@ interface Endpoint {
   id: string;                               // permanent (UUID); the name is a label
   name: string;
   kind: "cloud" | "local";                  // declared by whoever adds it, never inferred
-  api: "openai-compatible" | "host" | "chatgpt" | "grok";  // a paired model host: always local; a plan: always cloud, never shared
+  api: "openai-compatible" | "host" | "chatgpt" | "codex" | "grok";  // a paired model host: always local; a plan: always cloud, never shared
   baseUrl: string; apiKey?: string;         // a host: its first address's /v1, and no key; a plan: PLAN_URLS[api], and no key
   signedOut?: boolean;                      // a plan whose refresh its provider (OpenAI or xAI) refused; the router skips it
   shared: boolean;
@@ -616,7 +616,7 @@ class Models {                                              // new Models(keyrin
   declared, `pairHost` makes a host local, `editEndpoint` can't change it,
   and `replace` and `merge` refuse to cross kinds. `probe` only warns when a
   local endpoint resolves outside loopback, private or tailnet ranges.
-- **Subscription plans** (ChatGPT, Grok). `addPlan(actor, { name, plan, credential })` (personal only),
+- **Subscription plans** (ChatGPT, Codex, Grok). `addPlan(actor, { name, plan, credential })` (personal only),
   `planCredential(userId, id)`, `planAccount(userId, id)` (explicit email or
   account ID only; never tokens), `setPlanCredential(userId, id, credential |
   null)` (null signs it out), `setPlanCatalog(list)` (discovery, from Pi's
@@ -2347,7 +2347,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     - **Plans:** `POST plans/sign-in` (`PlanSignInStart`: `plan` and `name`,
       or `endpointId` to sign in again → `PlanSignInStarted` `{ id, url,
       code? }`); `POST plans/sign-in/:id` (`PlanSignInFinish` `{ redirectUrl? }`:
-      ChatGPT's sends the address it was sent back to, Grok's no body →
+      ChatGPT's and Codex's send the address it was sent back to, Grok's no body →
       `EndpointInfo`); `DELETE plans/sign-in/:id`.
     - **OpenRouter:** `POST openrouter/sign-in` (`OpenRouterSignInStart`:
       `name`, `shared?` → `PlanSignInStarted` `{ id, url }`); `POST
