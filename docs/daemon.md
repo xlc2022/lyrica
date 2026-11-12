@@ -332,7 +332,8 @@ Each active thread is one Pi session from `openThreadSession`, with
   and its open views get `settings`. Workspace settings (mode and switches
   included) are read on every tool call, so they apply at once.
 - A new thread starts in the user's default mode (`GET`/`PUT
-  /api/u/:userId/mode`).
+  /api/u/:userId/mode`, `{ mode, bypass }`; `bypass` is the Allow bypass
+  switch, which a thread's settings carry as `bypassAllowed`).
 - After the first exchange, an untitled thread gets a title from the `title`
   task model, through the thread's own model runtime.
 - Settings are checked when saved, and refused whole with the reason: a cloud

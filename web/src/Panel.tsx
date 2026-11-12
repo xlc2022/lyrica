@@ -23,7 +23,7 @@ import { checkName, her, setHer } from "./name.ts";
 import { SKIPPED, SleepModeField, SleepTimeSection } from "./Sleep.tsx";
 import { TailnetSection } from "./Tailnet.tsx";
 import { UpdatesSection } from "./Updates.tsx";
-import { MODE_ORDER, MODES } from "./Modes.tsx";
+import { BYPASS_HINT, modeOrder, MODES } from "./Modes.tsx";
 import { href } from "./route.ts";
 import { PageHead, type ShellContext } from "./Shell.tsx";
 import { WebAccessSection } from "./WebAccess.tsx";
@@ -288,9 +288,13 @@ function NetworkSection({ ctx }: { ctx: ShellContext }) {
         {mode.data && (
           <label className="field"><span>Mode</span>
             <select value={mode.data.mode} onChange={(e) => run(async () => mode.set(await put<ModeDefault>(u(userId, "mode"), { mode: e.target.value })))}>
-              {MODE_ORDER.map((m) => <option key={m} value={m} title={MODES[m].description}>{MODES[m].label}</option>)}
+              {modeOrder(mode.data.bypass).map((m) => <option key={m} value={m} title={MODES[m].description}>{MODES[m].label}</option>)}
             </select>
           </label>
+        )}
+        {mode.data && (
+          <Switch label="Allow bypass" hint={BYPASS_HINT}
+            checked={mode.data.bypass} onChange={(bypass) => run(async () => mode.set(await put<ModeDefault>(u(userId, "mode"), { bypass })))} />
         )}
         {presets.data && (
           <Switch label="Fallback" hint="When off, only the first model in each list answers; if it can't, the message waits for it."

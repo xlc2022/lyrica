@@ -885,6 +885,9 @@ describe("MCP servers in a thread", () => {
       await run("auto", [], { steps: [[search], [turnOn]], mcp: { servers, allowed: ["house/turn_on"] }, approve: async (r) => { asked.push(r); return false; } });
       expect(asked).toEqual([]);
       expect(house.calls.map((c) => c.tool)).toEqual(["get_status", "turn_on"]);
+      // Bypass permissions keeps this card: it asks in every mode.
+      await run("bypass", [], { steps: [[search], [turnOn]], mcp: { servers }, approve: async (r) => { asked.push(r); return false; } });
+      expect(asked.map((r) => r.serverTool)).toEqual(["turn_on"]);
     } finally {
       await house.close();
     }
@@ -1003,6 +1006,21 @@ describe("project command rules in the hook", () => {
     // Written on the same line: the body is the script, whatever the file held before.
     const written = "cat > /workspace/s.sh <<'EOF'\nrm -rf ~\nEOF\nbash /workspace/s.sh";
     await run2("auto", written, { "/workspace/s.sh": "ls\n" }, approve);
+    expect(asked).toBe(2);
+  });
+  it("Bypass permissions asks nothing in the sandbox, but Forbid and the user's own Ask rules hold, and a machine keeps its limit", async () => {
+    let asked = 0;
+    const approve: ThreadTools["approve"] = async () => { asked++; return true; };
+    const rules = [...DEFAULT_COMMAND_RULES, { prefix: "npm publish", decision: "ask" as const }];
+    const calls = ["rm -rf dist", "bash /workspace/run.sh", "git push --force", "bash -c \"$(printf 'rm -rf /workspace/x')\""].map((command) => fauxToolCall("bash", { command }));
+    const result = await run("bypass", calls, { rules, files: { "/workspace/run.sh": "git checkout main -- web/src\n" }, approve });
+    expect(asked).toBe(0);
+    // Forbid refuses, and a command Forbid rules can't see into is refused rather than asked about.
+    expect(result.commands).toEqual(["rm -rf dist", "bash /workspace/run.sh"]);
+    expect(result.results.some((t) => t.includes("can't see inside this command"))).toBe(true);
+    await run("bypass", [fauxToolCall("bash", { command: "npm publish" })], { rules, approve });
+    expect(asked).toBe(1);
+    await run("bypass", [fauxToolCall("bash", { command: "ls", machine: "nas" })], { machines: [{ name: "nas", kind: "ssh", limit: "ask", root: null }], approve });
     expect(asked).toBe(2);
   });
   it("allow keeps the machine's prompts", async () => {

@@ -799,11 +799,16 @@ export function apiRoutes(d: Lyricad): Route[] {
       s().workspace.settings(user.id).setDefaultNetwork(poolOf(r), change);
       return networkDefaults(d, user.id);
     }),
-    route("GET", `${u}/mode`, (r): Api.ModeDefault => ({ mode: s().workspace.settings(d.userFor(r).id).defaultMode() })),
+    route("GET", `${u}/mode`, (r): Api.ModeDefault => {
+      const ws = s().workspace.settings(d.userFor(r).id);
+      return { mode: ws.defaultMode(), bypass: ws.bypassAllowed() };
+    }),
     route("PUT", `${u}/mode`, async (r): Promise<Api.ModeDefault> => {
       const ws = s().workspace.settings(d.userFor(r).id);
-      ws.setDefaultMode((await r.json<Api.ModeDefault>())?.mode);
-      return { mode: ws.defaultMode() };
+      const change = await r.json<Partial<Api.ModeDefault>>();
+      if (change?.bypass !== undefined) ws.setBypassAllowed(change.bypass === true);
+      if (change?.mode !== undefined) ws.setDefaultMode(change.mode);
+      return { mode: ws.defaultMode(), bypass: ws.bypassAllowed() };
     }),
     route("GET", `${u}/paths`, (r) => s().workspace.allowedPaths.list(d.userFor(r).id)),
     route("GET", `${u}/machines`, (r) => s().workspace.settings(d.userFor(r).id).machines().map(machineInfo)),
@@ -3032,7 +3037,7 @@ function threadSettings(d: Lyricad, user: User, pool: Pool, threadId: string): A
     code: applies.code, localOnly: ctx.localOnly,
     internet: tw.internet, services: tw.services, hosts: tw.hosts,
     network: workspace.network({ userId: user.id, pool, threadId }),
-    grants: applies.grants, machines: applies.machines, repositories: applies.repositories, mcpServers: applies.mcpServers, mode: applies.mode, webSearch: applies.webSearch,
+    grants: applies.grants, machines: applies.machines, repositories: applies.repositories, mcpServers: applies.mcpServers, mode: applies.mode, bypassAllowed: workspace.settings(user.id).bypassAllowed(), webSearch: applies.webSearch,
     searchProvider: !!(searxngAddress(d.keyring.self()) || kiwixAddress(d.keyring.self())), images: applies.images, unlogged: isUnlogged, parent: tw.parent,
     claudeCode: applies.claudeCode, evidence: tw.evidence,
     claudeCodeOffered: pool === "general" && !ctx.localOnly && !!workspace.settings(user.id).claudeCodeToken() && claudeCodeInstalled(),

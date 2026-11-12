@@ -122,7 +122,7 @@ export interface PlanRequest {
 /** The modes an approved plan can go ahead in. */
 export const GO_AHEAD = ["ask", "acceptEdits", "auto"] as const satisfies readonly PermissionMode[];
 export type GoAhead = (typeof GO_AHEAD)[number];
-export const MODE_LABELS: Record<PermissionMode, string> = { ask: "Ask", acceptEdits: "Accept edits", auto: "Auto", plan: "Plan" };
+export const MODE_LABELS: Record<PermissionMode, string> = { bypass: "Bypass permissions", ask: "Ask", acceptEdits: "Accept edits", auto: "Auto", plan: "Plan" };
 
 type Create = (cwd: string, options: { operations: never }) => ToolDefinition;
 
@@ -162,6 +162,7 @@ const TOOLS: Record<keyof ToolOps, Create> = {
 
 /** Which tools each permission mode asks about. Plan mode has none of them. */
 const ASKS: Record<PermissionMode, string[]> = {
+  bypass: [],
   auto: [],
   acceptEdits: ["bash"],
   ask: ["bash", "write", "edit"],
@@ -453,6 +454,10 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
       const script = event.toolName === "bash" ? await sourcedText(String(input.command), input.machine as string | undefined) : undefined;
       const rule = event.toolName === "bash" ? decide(String(input.command), rules, script) : undefined;
       if (rule?.decision === "forbid") return { block: true, reason: `This project's rules forbid \`${rule.prefix}\`. Ask the user to run it, or do it another way.` };
+      // Bypass permissions (only when the user turned on Allow bypass): no mode or suspect card in the sandbox.
+      // Forbid rules above, the user's own Ask rules, the cards that ask in every mode (MCP tools, browse forms and
+      // attachments, open-world tools) and SSH machines' limits still hold.
+      const bypass = tools.settings().mode === "bypass";
       const mcp = mcpCall(event.toolName);
       // A call that reaches someone else (a search, a page, an MCP server) never carries one of the sandbox's credentials.
       if ((mcp || LEAVES.has(event.toolName)) && holdsSecret(JSON.stringify(input), sandboxSecrets())) {
@@ -532,7 +537,10 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
       const suspect = !!warning && !tools.allowedInThread?.(machine?.name ?? SANDBOX_ALLOW, suspectKey(event.toolName, input));
       // The first call on a machine in a turn asks if anything earlier ran somewhere else, so output from one place can't steer her onto another.
       const moved = !!machine && !places.has(machine.name) && places.size > 0;
-      if (!irreversible && !suspect && !moved && rule?.decision !== "ask" && ((rule?.decision === "allow" && !machine) || !ASKS[mode].includes(as))) {
+      // An opaque command (rule prefix "") asks because Forbid rules can't see inside it; with no card in Bypass, it's refused.
+      if (bypass && !machine && rule?.decision === "ask" && rule.prefix === "") return { block: true, reason: "This project's Forbid rules can't see inside this command; run it as plain commands." };
+      const skip = bypass && !machine && !irreversible && rule?.decision !== "ask";
+      if (skip || (!irreversible && !suspect && !moved && rule?.decision !== "ask" && ((rule?.decision === "allow" && !machine) || !ASKS[mode].includes(as)))) {
         if (place) places.add(place);
         return undefined;
       }
