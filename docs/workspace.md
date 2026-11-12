@@ -1076,6 +1076,19 @@ background, so it doesn't hold her turn (`core/src/workspace/jobs.ts`).
   command, and that the edit isn't in what it tests, or that the commit may
   not be the tree it tests. A job's folder is its cwd, or where a leading
   `cd <dir> &&` goes. It warns and never blocks.
+- She waits on the thing itself, never with `sleep` (`sleepWait` in
+  `jobs.ts`; a model once checked a job with `sleep 200; cat job.log`,
+  holding its turn on a guess). Where she has background commands, the
+  gate refuses a `bash` call, before anyone is asked, when its sleeps add up
+  to `SLEEP_LIMITS.fixedS` (60 s) or more, or, in her turn, when it loops
+  (`while`, `until`, `for`) with a sleep of `SLEEP_LIMITS.loopS` (10 s) or
+  more between checks; a `bash -c` line inside counts too, and a sleep whose
+  length can't be read (`sleep $N`) doesn't. A loop in the background is the
+  right way to wait for a state, so it runs. The refusal (`WAIT_WAYS`) names
+  the ways to wait: the command itself with `background: true`, a checking
+  loop in the background, `threads watch` for a pull request's CI (or
+  `gh run watch <id> --exit-status` in the background), and `threads later`
+  for a set time. Her prompt says the same (`WAIT_LINE`).
 - Subagents and Plan mode have neither `background` nor `jobs`.
 
 ## Thread settings

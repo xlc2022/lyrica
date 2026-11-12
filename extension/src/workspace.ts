@@ -5,7 +5,7 @@ import {
 import { readFileSync } from "node:fs";
 import { posix } from "node:path";
 import {
-  BROWSE_READS, browseFormText, browseFormWarning, type Browser, type BrowseCall, decide, sourcedFile, SCRIPT_LIMIT, type CommandRule, withoutNoMachine, holdsSecret, librariesLine, JOB_LIMITS, jobLine, type JobInfo, malformedCommand, mcpNamespace, onFloor, sandboxNix, sandboxTools, PROXMOX_READS, PROXMOX_SUSPECT, SANDBOX_ALLOW, stricterMode, suspectCommand, suspectKey, SHARED, FAMILY_ROOT, WORKDIR, writtenFiles, type ExecutionTarget, type ProxmoxAction, type Network, type NewChange, type PermissionMode, type ThreadGitRepository, type ThreadMachine, type ThreadRepository, type ThreadWorkspace, type ToolOps,
+  BROWSE_READS, browseFormText, browseFormWarning, type Browser, type BrowseCall, decide, sourcedFile, SCRIPT_LIMIT, type CommandRule, withoutNoMachine, holdsSecret, librariesLine, JOB_LIMITS, jobLine, sleepWait, type JobInfo, malformedCommand, mcpNamespace, onFloor, sandboxNix, sandboxTools, PROXMOX_READS, PROXMOX_SUSPECT, SANDBOX_ALLOW, stricterMode, suspectCommand, suspectKey, SHARED, FAMILY_ROOT, WORKDIR, writtenFiles, type ExecutionTarget, type ProxmoxAction, type Network, type NewChange, type PermissionMode, type ThreadGitRepository, type ThreadMachine, type ThreadRepository, type ThreadWorkspace, type ToolOps,
 } from "@lyrica/core";
 import { Type } from "typebox";
 import { setToolsOff } from "./gate.ts";
@@ -135,7 +135,7 @@ export function checkUnder(jobs: JobInfo[], place: string, path: string, what: "
     : `${job.id} is still running checks here (${job.command}); this commit may not be the tree it tests. Commit after checks pass on the exact tree.`;
 }
 const BASH_TIMEOUT = Type.Optional(Type.Number({ description: `Timeout in seconds, ${BASH_TIMEOUT_S} if left out (${JOB_LIMITS.timeoutS} in the background). Give a longer one for a long build or test run.` }));
-const BACKGROUND = Type.Optional(Type.Boolean({ description: "Run it in the background: you get a job id at once, and are told when it ends. For a download, build or install that takes minutes or more." }));
+const BACKGROUND = Type.Optional(Type.Boolean({ description: "Run it in the background: you get a job id at once, and are told when it ends. For a download, build, install, test run or wait that takes minutes or more. Then end your turn or do other work; never sleep to wait for it." }));
 const TOOLS: Record<keyof ToolOps, Create> = {
   read: createReadToolDefinition as unknown as Create,
   write: createWriteToolDefinition as unknown as Create,
@@ -485,6 +485,8 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
       }
       // A delete or move ShellCheck finds malformed goes back to her to fix, before anyone is asked.
       if (event.toolName === "bash") { const malformed = await malformedCommand(String(input.command)); if (malformed) return { block: true, reason: malformed }; }
+      // Waiting with a long sleep holds her turn on a guess: it goes back to her, naming the ways that wait on the thing itself.
+      if (event.toolName === "bash" && tools.startJob) { const wait = sleepWait(String(input.command), input.background === true); if (wait) return { block: true, reason: wait }; }
       // Anything that reaches outside and changes things there can't be undone from here: it always asks.
       const a = pi.getAllTools().find((t) => t.name === event.toolName)?.annotations;
       const irreversible = !!a?.openWorldHint && !a.readOnlyHint && !OWN_CARD.has(event.toolName);
@@ -582,6 +584,7 @@ export function describe(tools: ThreadTools): string {
   return [
     `Your file and command tools run in a sandbox. ${WORKDIR} is this conversation's folder; uploads arrive in ${WORKDIR}/uploads.`,
     SERVER_LINE,
+    ...(tools.startJob ? [WAIT_LINE] : []),
     ...(s.coordinates ? [READ_ONLY_CHAT] : []),
     LINK_LINE,
     FORMATS_LINE,
@@ -621,6 +624,8 @@ export const familyLine = (f: { folder: string; shared: boolean; handover?: stri
 
 /** Each command is its own sandbox, network too: a model once started a server in one call and curled it from the next. */
 const SERVER_LINE = "Each command, and each background job, runs in its own sandbox with its own network, so a server you start answers only inside that command or job: start it and whatever talks to it (curl, tests) in the same one.";
+/** How she waits: a model once checked a job with `sleep 200; cat job.log`, holding its turn on a guess (sleepWait refuses that). */
+export const WAIT_LINE = "Never wait with sleep. To wait for something, wait on it: run the long command, or a loop that checks for the state you want, with background: true and you're told the moment it ends; where you have threads watch, a pull request's CI and reviews wake you through it. Then end your turn.";
 /** With a read-write folder given, work for it goes there: a model once built a whole project in the sandbox's own folder instead. */
 export const BUILD_THERE = `Build, edit and save the work in a read-write folder you were given (or a repository in ${WORKDIR}/repos), never as loose files in ${WORKDIR}, which is for scratch and things to show the person.`;
 
