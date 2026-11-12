@@ -2619,8 +2619,8 @@ from Monika's runbooks.
   review of theirs from the owner's: this is a rule she follows, not a gate. Her
   branches are `lyrica/*` and her tags `update/*` by convention; no ruleset
   limits her account (the owner, 2026-11-10).
-- **Working alongside Claude.** One repository, one set of rules
-  (AGENTS.md), each side's own review. Work is claimed as a GitHub issue with one
+- **Working alongside Claude.** One repository; AGENTS.md says how
+  everyone codes, and docs/workflow.md each side's own review. Work is claimed as a GitHub issue with one
   assignee, her account or the owner, so two never build the same thing.
   She is the main builder (the owner, 2026-11-10): she takes any work,
   what she notices in use (the friction log from PRINCIPLES.md's
@@ -2637,10 +2637,10 @@ from Monika's runbooks.
   merged since the running version, Claude's PRs included.
 - **Her own project.** She starts with no memory of how this project
   runs, so the handoff is written down: a project "Lyrica" in her own
-  Projects, with instructions mirroring this project's (one issue and one
-  thread per piece of work, handoffs, review, hard rules) and pinned
-  standing threads, Review, UI review and Friction log, that review her
-  work before she merges it
+  Projects, with instructions of its own (one issue and one thread per
+  piece of work, threads that report once, hard rules) and two pinned
+  standing threads: Review, for boundary code and the design docs, and
+  Friction log. Other PRs of hers merge on green CI
   ([briefs/lyrica-project.md](docs/briefs/lyrica-project.md)). A routine
   in Claude's project picks up `claude` issues from GitHub.
 - **GitHub is replaceable.** She reaches the forge only through git and
@@ -2663,7 +2663,7 @@ from Monika's runbooks.
   only once she is usable again.
 - **The PR review thread** owns PRINCIPLES, this document, the contracts and
   docs/ux.md, and keeps coding to a minimum. Roles, review and merging are in
-  [AGENTS.md](AGENTS.md), "Workflow".
+  [docs/workflow.md](docs/workflow.md).
 - **Feature threads** are separate sessions, one per area:
   Core, Memory, Workspace, Models, Delegation, Daemon, Web UI, Sleep,
   Model host, Models 2, Images, Delegation 2, Child

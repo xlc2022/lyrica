@@ -7,9 +7,9 @@ not here.
 
 ## The role
 
-AGENTS.md, Workflow, is the rule; read it first. In short:
+docs/workflow.md is the rule; read it first. In short:
 
-- Review each pull request that needs it (AGENTS.md, Review and merge,
+- Review each pull request that needs it (docs/workflow.md, "Claude's project",
   step 1, as narrowed by #347): the daemon, `core/`, `host/` and install,
   `nix/`, `extension/`, `persona/`, migrations, CI, security and the cloud
   boundary, and anything touching PRINCIPLES, DESIGN, the contracts or

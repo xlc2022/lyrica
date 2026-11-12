@@ -1,22 +1,62 @@
 # Working on Lyrica
 
-This guide is for every contributor: people, Lyrica herself, Claude,
-ChatGPT and DeepSeek.
+Lyrica is a personal AI companion: a daemon (`lyricad`) that runs on one
+server, a web interface, and model hosts on GPU machines. This guide is for
+every agent and person who changes the code. It covers how to work here;
+how the projects that build Lyrica review and merge is in
+[docs/workflow.md](docs/workflow.md).
 
-## Before you start
+## Where things are
 
-Read these, in this order:
+| Folder | What it holds | Its doc |
+| --- | --- | --- |
+| `core/` | Keys, users, encrypted stores, migrations, the sandbox | `core/README.md`, [docs/memory.md](docs/memory.md), [docs/workspace.md](docs/workspace.md) |
+| `extension/` | Her Pi extension: context, tools, threads, delegation | `extension/README.md`, [docs/delegation.md](docs/delegation.md) |
+| `daemon/` | `lyricad`: the HTTP API, routes, web access, install scripts | [docs/daemon.md](docs/daemon.md) |
+| `web/` | The web interface and its Playwright tests (`web/e2e/`) | [docs/web.md](docs/web.md), [docs/ux.md](docs/ux.md) |
+| `host/` | The model host stack | `host/README.md`, [docs/models.md](docs/models.md) |
+| `nix/` | The NixOS module | the guides in `docs/guides/` |
+| `persona/` | Her persona files | [docs/sleep.md](docs/sleep.md) for what sleep writes |
+| `evals/` | Continuity scenarios | |
+| `docs/briefs/` | One brief per piece of planned work | |
 
-1. [PRINCIPLES.md](PRINCIPLES.md): the thesis and the ten principles. When two
-   conflict, the earlier one wins.
-2. [DESIGN.md](DESIGN.md): the current agreed design. Don't reopen a settled
-   point without new evidence.
-3. [docs/contracts.md](docs/contracts.md): the interfaces between components.
-4. Your brief in `docs/briefs/`, if you have one, and the doc for the component
-   you are changing.
-5. [docs/ux.md](docs/ux.md) before changing anything a user sees. Every new
-   control needs a home from its table; a PR that touches the interface
-   says which rule each new control follows.
+Reference, read only the sections your task touches:
+[PRINCIPLES.md](PRINCIPLES.md) (the ten principles; when two conflict, the
+earlier wins), [DESIGN.md](DESIGN.md) (the agreed design),
+[docs/contracts.md](docs/contracts.md) (interfaces between components) and
+[docs/ux.md](docs/ux.md) (every control's home; read before changing
+anything a user sees). Search them for the feature's name rather than
+reading them whole.
+
+## How to work
+
+1. **Fix the problem that was asked.** Propose a reasonable scope: the
+   whole problem the person named, plus bugs you find on the way that are
+   directly related to it (the same screen, the same code path, the same
+   cause). Don't shrink the ask to what is easy, and don't mark the hard
+   part "out of scope" and ship the rest. If you can't fix what was asked,
+   say so before building, and say why. Leave unrelated work out, and file
+   it as an issue instead.
+2. **Understand before you edit.** Reproduce the bug with one focused test
+   or measurement. Write the cause in one sentence, pointing at the line or
+   the number that proves it. Only then change code.
+3. **Run only what tests your change** while you work: one test file, or one
+   test by name (Checks, below). Run the touched area's tests once before
+   you push. CI runs the full suite on every pull request; don't repeat it
+   locally.
+4. **Two misses means stop guessing.** If two changes in a row don't fix
+   it, go back to step 2 rather than trying a third tweak.
+5. **Never throw away unsaved work.** Before starting over, commit what you
+   have to your branch and push it, with a line on what didn't work.
+   Starting over is a new commit on the same branch, never a fresh copy of
+   `main`.
+6. **Write little.** An issue says the problem, what done looks like and
+   what is out of bounds; it doesn't diagnose. A pull request has one
+   description and, at merge, one comment. No status comments, no working
+   history, no brief for a small change. For a UI change, two screenshots:
+   phone and desktop.
+7. **Say what it cost.** The pull request description ends with the tokens
+   the change took, from the thread's Tokens popover.
 
 ## Rules
 
@@ -27,168 +67,47 @@ Read these, in this order:
 - **Keep the boundaries structural.** Private memory is reached only through
   `openThreadView`. Model calls go only through `core/models`. Never rely on
   telling the model not to do something.
-- **No plaintext memory.** Memory and thread text never reach disk unencrypted:
-  no logs of message text, no temp files, no fixtures copied from real data.
-- **Docs never drift.** Every person, agent and model on this project starts
-  from the docs, so they are the source of truth. A change updates every doc
-  it makes stale (its component doc, the contracts, DESIGN, docs/ux.md, the
-  guides, a brief that describes it) in the same PR. Docs describe what
-  exists: write plainly, keep them short, and put plans in briefs, never in
-  component docs. If a doc and the code disagree, the PR isn't done, and a
-  missing doc update blocks review. Whoever notices drift anywhere fixes it
-  in a small docs PR or tells the thread that owns the doc.
-- **Tests protect what the user would notice:** context assembly, memory round trips,
-  the privacy and cloud boundaries, and sleep output. Don't add a test for
-  every hypothetical.
+- **No plaintext memory.** Memory and thread text never reach disk
+  unencrypted: no logs of message text, no temp files, no fixtures copied
+  from real data.
+- **Docs never drift.** Agents learn this repo from its docs. A change
+  updates every doc it makes stale (its component doc, the contracts,
+  DESIGN, docs/ux.md, the guides, a brief that describes it) in the same
+  PR. Docs describe what exists, plainly and briefly; plans go in briefs.
+  If a doc and the code disagree, the PR isn't done.
+- **Tests protect what the user would notice:** context assembly, memory
+  round trips, the privacy and cloud boundaries, and sleep output. Don't add
+  a test for every hypothetical.
 - **Migrations expand, then contract.** A schema change that removes or
   renames something waits one release, so the previous release can still
-  open the database and a rollback keeps its data; the contract raises the
-  database's oldest-reader version. Each database migrates
-  in one transaction, and a migration comes with a test from every
-  released schema (DESIGN.md, Updates and self-editing).
+  open the database; the contract raises the database's oldest-reader
+  version. Each database migrates in one transaction, with a test from
+  every released schema (DESIGN.md, Updates and self-editing).
 - **No personal names.** Docs, comments, prompts and test fixtures never
   name the owner or another real person: say "the user" or "the operator",
   and use a made-up name (Ada, Sam) in examples.
 - **Deleting code is progress.**
-
-## Workflow
-
-The project runs as threads, each a session of whatever tool or model suits
-the work, with fixed roles. Two projects build Lyrica by the same rules:
-Lyrica's own, on each deployment that runs it, and Claude's. Each has
-these roles, and neither reviews or directs the other:
-
-- **Coordinator** (the project chat): writes a brief in `docs/briefs/` for
-  each piece of work, starts the thread that builds it and routes messages.
-  It brings the owner only what needs the owner.
-- **Feature thread:** builds one brief on its own `feature/*` branch and
-  finishes with one pull request into `main`. Later work in the same area
-  goes to the same thread.
-- **PR review** (Review, in her project): reviews each pull request of its
-  own project that needs it (below) against
-  its brief, this file and the docs, and keeps PRINCIPLES, DESIGN, the
-  contracts and docs/ux.md true to what its project settles, recording
-  settled decisions in docs PRs. Its
-  session starts fresh from a handoff note once its context passes about
-  100k tokens, since every turn re-reads that context.
-- **UI review:** judges every change a user sees against docs/ux.md and the
-  mockups.
-- **Operator docs:** owns the guides in `docs/guides/`. In her project the
-  building thread updates the guides its own change makes stale.
-
-Review and merge:
-
-Every builder follows the same four steps below, with its own project's
-reviewers.
-
-**What differs for Lyrica** comes from her account, not her standing
-(the owner, 2026-11-10). Claude's project doesn't review or approve her
-PRs. Her reviewers act as her own GitHub account, so she records the
-verified head and the review results on the PR before merging it, with a
-merge commit. A PR of hers touching boundary code (CODEOWNERS) also waits
-for the owner's own approval, and her branches are named `lyrica/*`, as
-Claude's are `claude/*` and `feature/*`. Claude reaches her work by two
-separate paths. **Claude Code** is a tool of hers: the `claude` program
-in her sandbox, on the owner's Claude plan, run from her shell or as the
-`claude` delegate role (docs/workspace.md, "Claude Code"). When the owner
-asks her to confer with Claude on a change, she runs it there and weighs
-its report like a reviewer's findings. **Claude's project** is the other
-team: GitHub is the only channel between the two projects, both ways.
-Either asks the other for work with an issue (labelled `claude`, or
-assigned to her account), never with a message into its threads. After she merges, she reports it in her own project. See
-[the project handoff](docs/briefs/lyrica-project.md#claudes-side).
-When she runs on more than one deployment, each has its own GitHub
-account: she works only on issues assigned to her own account, checks a
-new `lyrica/*` name isn't on GitHub before pushing it, and never pushes to
-a branch another account created
-([More than one deployment](docs/briefs/lyrica-project.md#more-than-one-deployment)).
-
-The steps:
-
-1. The building thread sends the pull request and its head commit to PR
-   review, and to UI review too if a user would see the change. PR review
-   isn't needed when the pull request changes only docs and briefs (but not
-   PRINCIPLES.md, DESIGN.md, docs/contracts.md or docs/ux.md), or makes a
-   small change only in `web/` (UI review still judges it). When unsure,
-   it goes to PR review. Otherwise the building thread checks its
-   own docs against this file's "Docs never drift" rule and merges on green
-   CI and UI review's verified, if it needs one. Everything else goes to PR
-   review, including the daemon, `core/`, `host/`, `nix/`, `extension/`,
-   `persona/`, migrations and CI.
-2. A reviewer sends findings back; the building thread fixes them and sends
-   the new commit; the reviewer checks it. A reviewer says **verified**,
-   naming the commit, only when the PR meets its brief and the docs.
-3. Once every reviewer it needs has verified the head commit and CI is
-   green, the building thread merges it, with no further approval. If
-   merging `main` in later conflicts in files the review touched, it sends
-   the merge commit back to the reviewer first. Stacked pull requests merge
-   with merge commits, each retargeted to `main` first. Green CI means
-   CI's last job, `done`, passed; on a docs-only pull request every job
-   but `changes` and `done` is skipped and the run takes about a minute,
-   so the building thread checks the run itself once it opens such a pull
-   request, and merges then, rather than waiting to be told.
-4. After merging, the building thread says so in its own thread and tells
-   the coordinator the number, title and merge commit, what landed and what
-   it may affect; the coordinator tells the affected threads. If it changes
-   anything an operator does by hand (installing, running or configuring
-   the daemon, a model host, CI runners, a setting an operator sets), it
-   also tells Operator docs what changed and where.
-
-Handoffs: nobody waits silently. A thread that needs another thread messages
-it every time, naming the commit and what it needs, and the receiver
-answers in the same turn, even if only to say when. A message sent isn't a
-message read, so check for replies after each long step. No reply in 10
-minutes: ask the coordinator to pass it on. Waiting more than 15 minutes:
-say so in your own thread.
-
-A second review from another model family (such as Codex, run on the test
-machine) happens only when the owner or PR review asks for one.
-
-**Claude Code threads only: the local model.** This paragraph is specific to
-Claude Code sessions in the owner's Claude project. Other harnesses and models
-(Codex, DeepSeek, Lyrica) ignore it. A local model runs in LM Studio on the
-operator's main machine. On the test machine, Claude Code reaches it through
-the `houtini-lm` MCP server (Claude stays in charge and gets text back) or the
-`claude-local` command (a whole Claude Code session on the local model, run
-with `-p` from the thread's own worktree, its diff reviewed before commit).
-Before giving it any work, the thread that wants the work done asks the owner
-in its own thread. If the owner doesn't answer within 5 minutes, or the model
-isn't reachable, the work goes to Codex, then to Claude. A `codex exec` run
-in the background waits forever for input unless its input is closed: start
-it with `</dev/null`, and a minute later check that it is writing its session
-log under `~/.codex/sessions`.
-
-- A pull request description says what changed and why, what is out of scope,
-  any contract change it needs, and which docs it updated (or why none needed
-  it).
-- When a change alters how Lyrica works on her own code (roles, review,
-  boundaries, updates, the tools she uses for it), update the handoff in
-  [docs/briefs/lyrica-project.md](docs/briefs/lyrica-project.md) in the same
-  PR.
-- If your context is getting long, stop at a clean point. Write a handoff note
-  at the end of your brief (done, next, open questions), push, and let a fresh
-  session continue from it.
 
 ## Checks
 
 ```sh
 npm install
 npm run typecheck
-npm test
-npm run evals      # continuity scenarios in evals/; a failure is evidence, not a broken build
-npm run build && npm run e2e -w @lyrica/web   # the web UI's Playwright tests (web/e2e/), never through npm test
+npx vitest run <file>        # one unit test file; add -t "<name>" for one test
+npm test                      # the whole unit suite; CI runs it too
+npm run evals                 # continuity scenarios; a failure is evidence, not a broken build
+npm run build && npm run e2e -w @lyrica/web   # the web UI's Playwright tests
 ```
 
-One e2e test: `npm run build`, then `E2E_PROJECTS=desktop-chat npx playwright test
--c web/playwright.config.ts -g "<test title>"`. Each `web-<spec>.spec.ts` runs in the
-projects `phone-<spec>` and `desktop-<spec>` (chat, workspace, projects, admin),
-and `setup.spec.ts` in `setup`. `E2E_PROJECTS` (comma-separated) starts only the
-named projects' lyricads; `--project` alone starts all nine. `npm test` is vitest: it runs only `*/test/**/*.test.ts`,
-so given a Playwright spec it finds nothing to run.
+One e2e test: `npm run build`, then `E2E_PROJECTS=desktop-chat npx playwright
+test -c web/playwright.config.ts -g "<test title>"`. Each
+`web-<spec>.spec.ts` runs in the projects `phone-<spec>` and
+`desktop-<spec>` (chat, workspace, projects, admin), and `setup.spec.ts` in
+`setup`. `E2E_PROJECTS` (comma-separated) starts only the named projects'
+lyricads; `--project` alone starts all nine. `npm test` is vitest: it runs
+only `*/test/**/*.test.ts`, so given a Playwright spec it finds nothing.
 
-Run one test suite at a time. One run peaks at about 5.4 GB of memory, but
-two side by side took about 12 GB each and froze a 30 GB machine.
-
-A test host needs `openssl` and `bash` on its PATH; tests run in UTC
-whatever the host's zone. CI runs on GitHub's hosted runners ([docs/ci.md](docs/ci.md)); the owner's own
-runners are idle for now.
+Run one test suite at a time. One run peaks at about 5.4 GB of memory; two
+side by side froze a 30 GB machine. A test host needs `openssl` and `bash`
+on its PATH; tests run in UTC whatever the host's zone. CI runs on GitHub's
+hosted runners ([docs/ci.md](docs/ci.md)).
