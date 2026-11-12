@@ -56,7 +56,8 @@ reading them whole.
    history, no brief for a small change. For a UI change, two screenshots:
    phone and desktop.
 7. **Say what it cost.** The pull request description ends with the tokens
-   the change took, from the thread's Tokens popover.
+   the change took, where your tool reports them (in Lyrica, the thread's
+   status line or Tokens popover).
 
 ## Rules
 
@@ -74,7 +75,9 @@ reading them whole.
   updates every doc it makes stale (its component doc, the contracts,
   DESIGN, docs/ux.md, the guides, a brief that describes it) in the same
   PR. Docs describe what exists, plainly and briefly; plans go in briefs.
-  If a doc and the code disagree, the PR isn't done.
+  If a doc and the code disagree, the PR isn't done, and a missing doc
+  update blocks review. Whoever notices drift anywhere fixes it in a small
+  docs PR or tells the thread that owns the doc.
 - **Tests protect what the user would notice:** context assembly, memory
   round trips, the privacy and cloud boundaries, and sleep output. Don't add
   a test for every hypothetical.

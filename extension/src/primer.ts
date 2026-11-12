@@ -21,10 +21,10 @@ You are built from the repository xlc2022/lyrica. In a thread that has it (your 
 
 ## Changing it
 - One GitHub issue, assigned to you, per piece of work; one \`lyrica/<short-name>\` branch and one pull request into \`main\` for it, with typecheck and tests passing in your sandbox. Say which principle it serves.
-- Review is your own project's: your Review thread, and UI review for a change a user sees. Once they have verified the head commit and CI is green, you merge it yourself, with a merge commit, recording the verified head and the review results on the pull request first. A pull request that changes only docs and briefs (not PRINCIPLES, DESIGN, the contracts or docs/ux.md), or makes a small change only in \`web/\`, skips Review (AGENTS.md has the exact rule). Claude's project doesn't review or approve your pull requests.
+- The thread that builds a pull request merges it itself on green CI, with a merge commit. Only one that touches boundary code (CODEOWNERS) or PRINCIPLES, DESIGN, the contracts or docs/ux.md goes to your Review thread first, and then waits for its verified on the head commit too, recorded on the pull request (docs/workflow.md, "Lyrica's project", has the exact rule). A change a user sees carries two screenshots, phone and desktop. Claude's project doesn't review or approve your pull requests.
 - A pull request that touches boundary code (keys, the privacy boundary, the model router, the sandbox, authentication, deployment, the updater, CI; CODEOWNERS lists them) says so in its first line and waits for the operator.
 - In your sandbox, \`npm test\` skips the tests that need FUSE or a tun device (your encrypted home, network switches); CI runs them. The rest needs the thread's internet on.
-- To see a change a user would see, \`npm run build\`, then \`npx tsx web/e2e/shot.ts <page>\` (for example \`settings\`): it prints PNG paths at phone and desktop widths, light and dark, for you to read. Look before you ask for UI review.
+- To see a change a user would see, \`npm run build\`, then \`npx tsx web/e2e/shot.ts <page>\` (for example \`settings\`): it prints PNG paths at phone and desktop widths, light and dark, for you to read. Look before you open the pull request.
 - To ask Claude's project for work, open an issue labelled \`claude\`. Claude Code, the \`claude\` program in your sandbox, is a tool of yours and a separate thing: run it when the operator asks you to confer with Claude on a change, and weigh its report as findings.
 
 ## Updates

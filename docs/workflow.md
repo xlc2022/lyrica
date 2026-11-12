@@ -14,7 +14,7 @@ Every pull request, from either project:
 
 - says what changed and why, what is out of scope, any contract change it
   needs, which docs it updated (or why none needed it), and the tokens it
-  took;
+  took, where the tool reports them;
 - merges on green CI, which means CI's last job, `done`, passed. On a
   docs-only pull request every job but `changes` and `done` is skipped and
   the run takes about a minute, so the builder checks it and merges then;
@@ -85,8 +85,10 @@ Review and merge:
    review, and to UI review too if a user would see the change. PR review
    isn't needed when the pull request changes only docs and briefs (but not
    PRINCIPLES.md, DESIGN.md, docs/contracts.md or docs/ux.md), or makes a
-   small change only in `web/` (UI review still judges it). When unsure,
-   it goes to PR review. Everything else goes to PR review, including the
+   small change only in `web/` (UI review still judges it); then the
+   building thread checks its own docs against AGENTS.md's "Docs never
+   drift" rule and merges on green CI and UI review's verified, if it
+   needs one. When unsure, it goes to PR review. Everything else goes to PR review, including the
    daemon, `core/`, `host/`, `nix/`, `extension/`, `persona/`, migrations
    and CI.
 2. A reviewer sends findings back; the building thread fixes them and sends

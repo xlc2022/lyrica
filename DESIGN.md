@@ -2599,10 +2599,11 @@ from Monika's runbooks.
   account, which GitHub won't count on her own PR, so their verifieds are
   recorded on the PR instead. The owner's own account may bypass the rules as
   administrator, because Claude's threads work through it.
-- **Review is her own project's.** Her PRs go through her project's Review
-  (and UI review) threads, so the owner doesn't read every change, and she
-  merges each herself once their verifieds and green CI cover the same
-  head. Claude's project doesn't review or approve them (the owner,
+- **Review is her own project's.** The thread that builds a PR merges it
+  on green CI; one touching boundary code or the four design docs first
+  goes to her project's Review thread, and merges once its verified and
+  green CI cover the same head (docs/workflow.md, "Lyrica's project"). The
+  owner doesn't read every change. Claude's project doesn't review or approve them (the owner,
   2026-11-10: she has full control of her work; before that, from
   2026-10-24, Claude's PR review approved each one). When the owner asks
   her to confer with Claude on a change, she runs Claude Code on it, the
