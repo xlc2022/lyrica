@@ -442,7 +442,8 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     its settings allow. It inherits the parent's pool, "Do not log",
     local-only, permission mode and workspace settings, or narrower ones.
   - It and its parent message each other: it posts short updates at
-    milestones (a badge on it in the sidebar, a card in the parent), and the
+    milestones, or in a project only once when done or blocked (a badge on
+    it in the sidebar, a card in the parent), and the
     parent or the user can message it at any time. Its approvals appear in
     the child thread, and in Notifications. The parent is told when it
     stops with an error or finishes a task without an update, and can read
@@ -642,7 +643,9 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     The thread's facts line shows **Context 21%**, opening a popover with
     one bar, the parts, used of window, and the last turn's speed.
   - Her turn context carries one line of numbers: context used and free,
-    tokens per second, prompt tokens per second. Two points before Pi's
+    tokens per second, prompt tokens per second, and the tokens the thread
+    has used so far, as its Tokens popover counts them, so she can say what a
+    change cost. Two points before Pi's
     own edge, and never later than 90%, lyricad adds a line telling her to
     compact now; fifteen points before that, and never later than 75%, to
     finish the step, save what matters to memory and compact with a

@@ -16,6 +16,8 @@ export interface SuspectCommand {
   test(words: string[]): boolean;
   /** Asks in the sandbox too, not only on a machine: work she can't undo wherever it runs. */
   everywhere?: true;
+  /** Git throwing away uncommitted or untracked work, which is saved first (`discardingGit`). */
+  discards?: true;
 }
 
 /** Where a suspect command is about to run; the sandbox gets only the `everywhere` rules. */
@@ -55,6 +57,7 @@ export const SUSPECT_COMMANDS: readonly SuspectCommand[] = [
   },
   {
     everywhere: true,
+    discards: true,
     warning: "This throws away uncommitted changes.",
     test: (w) => {
       const g = gitSub(w);
@@ -67,6 +70,7 @@ export const SUSPECT_COMMANDS: readonly SuspectCommand[] = [
   },
   {
     everywhere: true,
+    discards: true,
     warning: "This deletes untracked files for good.",
     test: (w) => { const g = gitSub(w); return g?.[0] === "clean" && !g.includes("--dry-run") && !g.slice(1).some(short("n")); },
   },
@@ -350,6 +354,56 @@ export function suspectCommand(command: string, where: SuspectWhere = "machine")
     if (hit) return hit.warning;
   }
   return undefined;
+}
+
+/**
+ * The folders, relative to where the command starts unless absolute, in
+ * which a git command on the line throws away uncommitted or untracked work
+ * (`reset --hard`, `checkout -- .`, `clean`, …), so that work can be saved
+ * first. A `cd` or `pushd` earlier on the line, and git's own `-C`, move it.
+ */
+export function discardingGit(command: string): string[] {
+  const rules = SUSPECT_COMMANDS.filter((s) => s.discards);
+  const dirs = new Set<string>();
+  let cwd = ".";
+  const move = (from: string, to: string | undefined) => (!to || to === "-" || to.includes("$") ? from : to.startsWith("/") ? to : posix.join(from, to));
+  for (const parsed of simpleCommands(command)) {
+    const words = unwrapped(parsed);
+    if (!words.length) continue;
+    if (words[0] === "cd" || words[0] === "pushd") { cwd = move(cwd, args(words)[0]); continue; }
+    if (!rules.some((s) => s.test(words))) continue;
+    let dir = cwd;
+    for (let i = 1; i < words.length && words[i]!.startsWith("-"); i += GIT_VALUE_FLAGS.has(words[i]!) ? 2 : 1) if (words[i] === "-C") dir = move(dir, words[i + 1]);
+    dirs.add(dir);
+  }
+  return [...dirs];
+}
+
+/**
+ * The folders a command deletes with `rm -r` (or `-R`, `--recursive`), as
+ * written, against where it has `cd`ed or `pushd`ed to (starting at "."), so
+ * a git checkout inside one can be saved first. A name made from a variable
+ * or a substitution isn't known, so it isn't listed.
+ */
+export function removedFolders(command: string): string[] {
+  const out = new Set<string>();
+  let cwd = ".";
+  const at = (from: string, to: string) => (to.startsWith("/") ? to : posix.join(from, to));
+  for (const parsed of simpleCommands(command)) {
+    const words = unwrapped(parsed);
+    if (words[0] === "cd" || words[0] === "pushd") { const to = args(words)[0]; if (to && to !== "-" && !to.includes("$")) cwd = at(cwd, to); continue; }
+    if (words[0] !== "rm") continue;
+    let opts = true;
+    const targets: string[] = [];
+    let recursive = false;
+    for (const w of words.slice(1)) {
+      if (opts && w === "--") { opts = false; continue; }
+      if (opts && w.startsWith("-") && w !== "-") { if (w === "--recursive" || (!w.startsWith("--") && /[rR]/.test(w))) recursive = true; continue; }
+      targets.push(w);
+    }
+    if (recursive) for (const t of targets) if (!t.includes("$")) out.add(at(cwd, t));
+  }
+  return [...out];
 }
 
 /**

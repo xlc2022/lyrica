@@ -544,8 +544,9 @@ parent, set wake-ups, manage routines, keep a checklist and compact itself;
 her prompt says it
 is a child thread and to post updates at milestones, not after every step,
 and always end with a message to the parent: the result, or what blocked it
-(a project's thread, after code work, also names its branch and what isn't
-committed or pushed yet).
+(a project's thread posts no progress updates: it messages the project
+chat once, when done or truly blocked, and after code work names its
+branch and what isn't committed or pushed yet).
 **Depth 1:** the store refuses a child of a child; a child can
 delegate. The user talks in a child like any thread, and the parent isn't
 told. Its approvals work as in any thread.

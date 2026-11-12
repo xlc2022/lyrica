@@ -3,7 +3,7 @@
 // project threads and subagents, and the sources and pictures a reply links to. Split from web-chat.spec.ts so
 // that the two run side by side in CI (docs/ci.md). Tests run in order on this file's own lyricad per size.
 import { expect, test } from "@playwright/test";
-import { phone, enter, newThread, send, openSettings, togglePrivate, threadIdOf, sendTo, hitHeight, noHorizontalScroll } from "./helpers.ts";
+import { phone, enter, newThread, send, openSettings, togglePrivate, threadIdOf, sendTo, hitHeight, noHorizontalScroll, needsSandbox } from "./helpers.ts";
 
 test.describe.configure({ mode: "serial" });
 
@@ -1146,6 +1146,7 @@ test("a thread's subagents open in a drawer from the header: working ones first,
 });
 
 test("the pages she read show under her reply as Sources, each opening in a new tab", async ({ page, baseURL }) => {
+  needsSandbox(true);
   const userId = await enter(page, baseURL!);
   await newThread(page, "General");
   await send(page, "Hello there");

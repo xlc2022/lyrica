@@ -3,7 +3,7 @@
 // threads, the model badge, ask and plan modes, uploads and scrolling. Split from web-chat.spec.ts so that the
 // two run side by side in CI (docs/ci.md). Tests run in order on this file's own lyricad per size.
 import { expect, test } from "@playwright/test";
-import { phone, enter, newThread, send, openSettings, deleteThread, threadIdOf, noHorizontalScroll } from "./helpers.ts";
+import { phone, enter, newThread, send, openSettings, deleteThread, threadIdOf, noHorizontalScroll, needsSandbox } from "./helpers.ts";
 
 test.describe.configure({ mode: "serial" });
 
@@ -709,6 +709,7 @@ test("Plan mode: Shift+Tab gets there, the plan shows as a card, and going ahead
 });
 
 test("an uploaded file's path goes into the message", async ({ page, baseURL }) => {
+  needsSandbox();
   await enter(page, baseURL!);
   await newThread(page, "General");
   await page.locator('input[type="file"]').setInputFiles({ name: "notes.txt", mimeType: "text/plain", buffer: Buffer.from("hello file") });

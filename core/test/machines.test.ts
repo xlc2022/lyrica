@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  callArgs, cleanOutput, generateSshKey, maskKeys, migrate, RemoteMissing, suspectCommand, Users, writtenFiles, Workspace, WorkspaceSettings,
+  callArgs, cleanOutput, discardingGit, removedFolders, generateSshKey, maskKeys, migrate, RemoteMissing, suspectCommand, Users, writtenFiles, Workspace, WorkspaceSettings,
   type Db, type NewMachine, type SshSession, type SshTransport,
 } from "../src/index.ts";
 import { freshKeyring, profile } from "./helpers.ts";
@@ -306,6 +306,22 @@ describe("machines", () => {
 });
 
 describe("suspect commands", () => {
+  it("name the folders where git is about to throw work away", () => {
+    expect(discardingGit("git reset --hard origin/main")).toEqual(["."]);
+    expect(discardingGit("git fetch && git checkout -- . && git clean -fd")).toEqual(["."]);
+    expect(discardingGit("cd repo && git reset --hard")).toEqual(["repo"]);
+    expect(discardingGit("git -C /work/a restore src/x.ts; cd b; git switch -f main")).toEqual(["/work/a", "b"]);
+    // Only git that discards: a delete, a force push or a branch delete is another rule's.
+    for (const c of ["git status", "git checkout -b feature", "git stash", "rm -rf build", "git push --force", "git branch -D old", "git clean -n"]) {
+      expect(discardingGit(c), c).toEqual([]);
+    }
+  });
+  it("name the folders rm -r deletes, so a checkout in one can be saved first", () => {
+    expect(removedFolders("rm -rf lyrica && git clone https://example.com/lyrica.git")).toEqual(["lyrica"]);
+    expect(removedFolders("cd repos; rm -r -f -- lyrica /work/old")).toEqual(["repos/lyrica", "/work/old"]);
+    expect(removedFolders("rm --recursive --force build")).toEqual(["build"]);
+    for (const c of ["rm notes.txt", "rm -f a b", "rm -rf $DIR", "git rm -r src"]) expect(removedFolders(c), c).toEqual([]);
+  });
   it("catch the commands on the list however they're written", () => {
     for (const c of ["rm -rf /", "sudo rm -rf --no-preserve-root /", "rm -rf /*", "rm -rf ~", "rm -rf ~/", "rm -fr $HOME", "rm -r /home/ada", "rm -rf /etc/",
       "cd /tmp && rm -rf /usr", "sudo mkfs.ext4 /dev/sdb1", "dd if=img of=/dev/sda bs=4M", "chmod -R 777 /", "sudo chown -R ada /", "userdel ada",

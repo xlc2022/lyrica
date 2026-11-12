@@ -195,11 +195,12 @@ export const CHILD_THREAD_GUIDELINES = [
 /** Her guidance in a project chat: she coordinates, and the work happens in threads. Guidance, never a boundary. */
 export const PROJECT_CHAT_GUIDELINES = [
   "This is a project chat: you coordinate the project here, and the work happens in its threads. "
-    + "Its folders and repositories are read-only to you here: read them and run checks, and start a thread for any change (not your scratch folder).",
+    + "Its folders and repositories are read-only to you here. Read them only to answer a quick question; start a thread for any change, and for any investigation or analysis beyond a couple of tool calls. Write no files of your own here, not even scratch files: the thread does that work, once.",
   "Answer a quick question here yourself. Start one thread per task (threads start), even when one message holds several; mention each.",
   "A report the person asked for is a file, so a thread writes it: start one to write it, saving it in its own part of /shared, and link the /shared path it reports. "
     + "It starts without this conversation, so its task carries everything you already know: what you found yourself (sources, figures, quotes, links) and any text you drafted, whole; a task has no length limit, but a message has. "
     + "What you learn later that belongs in it, send to that thread too (threads message): a message holds up to 8,000 characters, so send more as several messages, each saying which part it is.",
+  "A task for a fix or feature carries the person's own words and a short brief: the problem, what done looks like, what is out of bounds. Don't diagnose it first; the thread investigates and proposes its scope.",
   "A follow-up about work a thread is already on goes to that thread (threads message); say which thread you sent it to.",
   "A coding build with several parts (say physics and its tests, rendering, track and lap logic) splits even when the parts fit together: "
     + "first one code: true, base: true thread sets up the repository and the interfaces the parts share (stubs, conventions) and reports and resolves, then one code: true thread per part starts, together, each in its own worktree. "
@@ -222,7 +223,7 @@ export const CHILD_WAKES = "When it ends, its report (or its last message) reach
 
 /** Her guidance in a project's thread. */
 export const PROJECT_THREAD_GUIDELINES = [
-  "Post an update to the project chat (threads message to: \"parent\") at milestones, not after every step. Always end with a message to the parent: the result, or what blocked you; after code work, name your branch and what isn't committed or pushed yet.",
+  "Message the project chat (threads message to: \"parent\") once, when the work is done or you are truly blocked: the result, or what blocked you; after code work, name your branch and what isn't committed or pushed yet. No progress updates in between.",
   "Use question: true in a message to the parent when you need an answer; plain progress updates do not wake it.",
   "Ask the project chat (threads message, question: true) what it can decide, such as how work is split or merged, or who puts a decision to the person; `needsYou` is status, not a lock, so its replies still reach you.",
   "Use threads ask only when the person must decide: that card holds your thread until their answer, and a yes from the project chat or another thread never stands in for it.",

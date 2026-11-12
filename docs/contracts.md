@@ -1297,7 +1297,7 @@ openThreadSession({ thread, models, cwd, extensions, settings?, task?: () => Tas
 // deltas and message_end: numbers only, a delta's text measured by its length; sent when what it shows changes and at most every 500 ms
 // otherwise, null when the request ends. Also turns on modelRuntimeFor's `live`.
 interface ThreadSession { session; runtime; chat: { offeringId }; prepare(opts?: { thinking?; retry? }): Promise<Resolution>; dispose() }
-interface ContextMeter { report(): ContextInfo | undefined; contextLines(): string; pending?: { summary }; onProgress?(): void }   // LyricaOptions.meter; onProgress runs after each request that goes on with tools
+interface ContextMeter { report(): ContextInfo | undefined; contextLines(): string; pending?: { summary }; onProgress?(): void; spent?(): number }   // LyricaOptions.meter; onProgress runs after each request that goes on with tools; spent is the thread's tokens so far (Models.usage), shown on her status line
 ```
 
 - The factory is `createLyricaExtension(thread: ThreadContext, opts:
@@ -1457,6 +1457,12 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   "(rg: no matches, not a failure)" or gh pr checks' 8 for pending.
   The codes that aren't failures (rg or grep 1, diff 1, test 1, gh pr
   checks 8) clear the result's error.
+- **Test output** (`extension/src/test-output.ts`, threads and subagents):
+  a bash result whose command runs a test suite (vitest, jest, mocha,
+  pytest, `playwright test`, `npm test` or `npm run e2e`, `cargo test`,
+  `go test`) and is longer than `TRIM_FROM` (120) lines keeps only its
+  failure lines, each with the 8 lines after it, and its last 40 lines,
+  under one line saying how many were left out (`trimTestOutput`).
 - **Paid fallback** (`extension/src/models.ts`): when `Resolution.paidAfter`
   is set, `prepareTurn` appends a `lyrica-paid-fallback` custom entry
   (`PaidFallback`: `model`, `from`, `reason`), outside her context, and a
@@ -1916,7 +1922,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     `bash` that `malformedCommand(command)` refuses (ShellCheck: a parse error, or a listed finding in a delete or move) is
     blocked with that refusal before any card, in the sandbox and on a machine; a
     suspect `bash` (`suspectCommand(command, "machine" | "sandbox")`) asks in every mode unless
-    `allowedInThread(machine, command)`, where a sandbox command's machine is `SANDBOX_ALLOW`; the first call on a machine in a turn asks if
+    `allowedInThread(machine, command)`, where a sandbox command's machine is `SANDBOX_ALLOW`; a sandbox `bash` that will run git throwing work away (`discardingGit(command)`, the rules marked `discards`) first runs `saveBeforeDiscard(target, dirs)`, which commits each folder's changes under `refs/lyrica/saved/<time>-<sha>` without touching its tree or index, and one running `rm -r` (`removedFolders(command)`) first runs `saveBeforeRemove(target, dirs)`, which bundles each checkout in them with unsaved work or unpushed commits into `SAVED_BUNDLES`; each returns `SavedWork[]`, and the call's result ends with `savedNote(saves)`; the first call on a machine in a turn asks if
     anything earlier ran elsewhere. `ApprovalRequest` is `{ toolCallId,
     tool, input, machine?, cwd?, warning?, server?, serverTool? }` (`warning` set for a suspect command wherever it runs), and the call runs only if its
     arguments are still exactly what was approved. With `proxmox`, the
@@ -2820,7 +2826,7 @@ settings(userId): WorkspaceSettings       // per-pool defaults, per-thread overr
 //   / setHostKey / setOffNetwork / confirmOffNetwork / machineState(name, kind) / removeMachine / allowInThread(threadId, machine, command) / allowedInThread(threadId)
 // A thread's `machines: string[]` (the sandbox is always there); setThread refuses a machine of the other pool;
 //   inheritSettings takes a subset; effective() keeps only machines every ancestor grants.
-// SUSPECT_COMMANDS (each with `everywhere?` for the sandbox too), suspectCommand(command, where = "machine"), SANDBOX_ALLOW (the machine key Allow in this thread stores for a sandbox command),
+// SUSPECT_COMMANDS (each with `everywhere?` for the sandbox too and `discards?` for git throwing work away), suspectCommand(command, where = "machine"), discardingGit(command) (the folders where such git runs), removedFolders(command) (the folders `rm -r` deletes), SANDBOX_ALLOW (the machine key Allow in this thread stores for a sandbox command),
 //   writtenFiles(command) (the targets of its redirections and tee), onFloor(path), cleanOutput(onData), maskKeys(buf) (shares removePrivateKeys from core/src/secrets.ts),
 //   authorizedKeysLine(publicKey), machineSetup(account, keyLine, asUser?), unwrapped(words) (a simple command past its
 //   wrappers and the shell's keywords): core/src/workspace/machines.ts

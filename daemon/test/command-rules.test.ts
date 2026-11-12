@@ -11,7 +11,8 @@ async function setup() {
   vi.spyOn(Workspace.prototype, "targetFor").mockImplementation(() => ({
     name: "sandbox", cwd: async () => "/workspace", folders: () => [],
     run: async (argv: string[]) => { runs.push(argv); return { code: 0, stdout: Buffer.from("ok"), stderr: Buffer.alloc(0) }; },
-    ops: () => ({ bash: { exec: async (command: string, _cwd: string, opts: { onData: (b: Buffer) => void }) => { commands.push(command); opts.onData(Buffer.from("ran")); return { exitCode: 0 }; } } }),
+    ops: () => ({ bash: { exec: async (command: string, _cwd: string, opts: { onData: (b: Buffer) => void }) => { // A save before a command that throws work away (extension/src/workspace.ts) isn't one of hers.
+      if (!command.includes("refs/lyrica/saved")) commands.push(command); opts.onData(Buffer.from("ran")); return { exitCode: 0 }; } } }),
   } as unknown as ExecutionTarget));
   const rt = await runtime();
   const dm = await daemon(rt, { delegation: { depth: 3 } });

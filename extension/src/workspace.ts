@@ -5,7 +5,7 @@ import {
 import { readFileSync } from "node:fs";
 import { posix } from "node:path";
 import {
-  BROWSE_READS, browseFormText, browseFormWarning, type Browser, type BrowseCall, decide, sourcedFile, SCRIPT_LIMIT, type CommandRule, withoutNoMachine, holdsSecret, librariesLine, JOB_LIMITS, jobLine, sleepWait, type JobInfo, malformedCommand, mcpNamespace, onFloor, sandboxNix, sandboxTools, PROXMOX_READS, PROXMOX_SUSPECT, SANDBOX_ALLOW, stricterMode, suspectCommand, suspectKey, SHARED, FAMILY_ROOT, WORKDIR, writtenFiles, type ExecutionTarget, type ProxmoxAction, type Network, type NewChange, type PermissionMode, type ThreadGitRepository, type ThreadMachine, type ThreadRepository, type ThreadWorkspace, type ToolOps,
+  BROWSE_READS, browseFormText, browseFormWarning, type Browser, type BrowseCall, decide, sourcedFile, SCRIPT_LIMIT, type CommandRule, withoutNoMachine, holdsSecret, librariesLine, JOB_LIMITS, jobLine, sleepWait, type JobInfo, malformedCommand, mcpNamespace, onFloor, sandboxNix, sandboxTools, PROXMOX_READS, PROXMOX_SUSPECT, SANDBOX_ALLOW, stricterMode, suspectCommand, suspectKey, discardingGit, removedFolders, SHARED, FAMILY_ROOT, WORKDIR, writtenFiles, type ExecutionTarget, type ProxmoxAction, type Network, type NewChange, type PermissionMode, type ThreadGitRepository, type ThreadMachine, type ThreadRepository, type ThreadWorkspace, type ToolOps,
 } from "@lyrica/core";
 import { Type } from "typebox";
 import { setToolsOff } from "./gate.ts";
@@ -298,6 +298,8 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
       approved.delete(id);
       if (asked !== undefined && asked !== shown(tool, input, machine, cwd)) throw new Error("This isn't what was approved, so it didn't run.");
     };
+    /** What was saved before each call that throws git work away, by tool call, for its result to say. */
+    const saved = new Map<string, SavedWork[]>();
     /** Where her tools ran this turn: "sandbox" or a machine. */
     let places = new Set<string>();
     let last: LastFile | undefined;
@@ -544,11 +546,19 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
       const suspect = !!warning && !tools.allowedInThread?.(machine?.name ?? SANDBOX_ALLOW, suspectKey(event.toolName, input));
       // The first call on a machine in a turn asks if anything earlier ran somewhere else, so output from one place can't steer her onto another.
       const moved = !!machine && !places.has(machine.name) && places.size > 0;
+      // Git about to throw away work in the sandbox saves it first, whoever allowed it (Bypass too), so starting over can always be undone.
+      const discards = place === "sandbox" && event.toolName === "bash" ? discardingGit(String(input.command)) : [];
+      const removes = place === "sandbox" && event.toolName === "bash" ? removedFolders(String(input.command)) : [];
+      const save = async () => {
+        const saves = [...(discards.length ? await saveBeforeDiscard(tools.target(), discards) : []), ...(removes.length ? await saveBeforeRemove(tools.target(), removes) : [])];
+        if (saves.length) saved.set(event.toolCallId, saves);
+      };
       // An opaque command (rule prefix "") asks because Forbid rules can't see inside it; with no card in Bypass, it's refused.
       if (bypass && !machine && rule?.decision === "ask" && rule.prefix === "") return { block: true, reason: "This project's Forbid rules can't see inside this command; run it as plain commands." };
       const skip = bypass && !machine && !irreversible && rule?.decision !== "ask";
       if (skip || (!irreversible && !suspect && !moved && rule?.decision !== "ask" && ((rule?.decision === "allow" && !machine) || !ASKS[mode].includes(as)))) {
         if (place) places.add(place);
+        await save();
         return undefined;
       }
       const request: ApprovalRequest = { toolCallId: event.toolCallId, tool: event.toolName, input };
@@ -563,7 +573,16 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
         const { machine: _, ...rest } = input;
         approved.set(event.toolCallId, shown(event.toolName, rest, request.machine, request.cwd));
       }
+      await save();
       return undefined;
+    });
+
+    // The command's result says what was saved before it ran, so she knows she can get it back.
+    pi.on("tool_result", (event) => {
+      const saves = saved.get(event.toolCallId);
+      saved.delete(event.toolCallId);
+      if (!saves?.length) return;
+      return { content: [...event.content, { type: "text" as const, text: savedNote(saves) }] };
     });
 
     // Commands typed with "!" in the terminal run where her tools do.
@@ -606,6 +625,89 @@ export function recording<T extends ToolOps["write"] | ToolOps["edit"]>(target: 
 }
 
 const quote = (s: string) => `'${s.replaceAll("'", "'\\''")}'`;
+
+/** Where work saved before git threw it away is kept: one ref per save, named by its time. */
+export const SAVED_REF = "refs/lyrica/saved";
+/** Where a checkout's work is kept when the checkout itself is deleted: a git bundle per save, outside it. */
+export const SAVED_BUNDLES = `${WORKDIR}/.lyrica-saved`;
+
+/** One save: the repository, and the ref it was saved as, or the bundle file it went to when the checkout was deleted. */
+export interface SavedWork { dir: string; ref?: string; bundle?: string }
+
+// In a repository's folder: saves its uncommitted and untracked work as a commit under SAVED_REF, sets $r to the ref, and says so.
+const SNAPSHOT = [
+  'r=""',
+  '[ -n "$(git status --porcelain 2>/dev/null)" ] || return 0',
+  'i="$(git rev-parse --git-path index)"; t="$i.lyrica-save"',
+  'if [ -f "$i" ]; then cp "$i" "$t"; fi',
+  'GIT_INDEX_FILE="$t" git add -A',
+  'tree="$(GIT_INDEX_FILE="$t" git write-tree)"; rm -f "$t"',
+  'head="$(git rev-parse -q --verify HEAD || true)"',
+  'c="$(GIT_AUTHOR_NAME=lyricad GIT_AUTHOR_EMAIL=lyricad@localhost GIT_COMMITTER_NAME=lyricad GIT_COMMITTER_EMAIL=lyricad@localhost git commit-tree "$tree" ${head:+-p "$head"} -m "Saved before a command that throws work away")"',
+  `r="${SAVED_REF}/$(date -u +%Y%m%dT%H%M%SZ)-$(echo "$c" | cut -c1-7)"`,
+  'git update-ref "$r" "$c"',
+].join(" && ");
+
+async function runSave(target: ExecutionTarget, script: string): Promise<string> {
+  let out = "";
+  await target.ops().bash.exec(script, await target.cwd(), { onData: (b: Buffer) => { out += b.toString("utf8"); } }).catch(() => {});
+  return out;
+}
+
+/**
+ * Saves each repository's uncommitted and untracked work (what .gitignore
+ * keeps out stays out) as a commit under `SAVED_REF`, without touching the
+ * working tree or the index, before a command that throws it away runs. A
+ * folder that isn't a repository, or has nothing to save, is left alone;
+ * a save that fails never stops the command.
+ */
+export async function saveBeforeDiscard(target: ExecutionTarget, dirs: string[]): Promise<SavedWork[]> {
+  const cwd = await target.cwd();
+  const saves: SavedWork[] = [];
+  for (const d of dirs) {
+    const dir = posix.resolve(cwd, d);
+    const out = await runSave(target, `snap() { ${SNAPSHOT}; }; cd ${quote(dir)} 2>/dev/null || exit 0; git rev-parse --is-inside-work-tree >/dev/null 2>&1 || exit 0; snap; [ -z "$r" ] || echo "SAVED:$r"`);
+    const ref = /^SAVED:(\S+)$/m.exec(out)?.[1];
+    if (ref) saves.push({ dir, ref });
+  }
+  return saves;
+}
+
+/**
+ * Before `rm -r` deletes folders: each git checkout in one (the folder
+ * itself, or up to two levels down) with uncommitted work, or commits on no
+ * remote, goes into a bundle in `SAVED_BUNDLES`, outside it. The bundle
+ * holds the saved work and the local branches, less what a remote has, so a
+ * fresh clone can fetch it back. A folder that holds `SAVED_BUNDLES` is
+ * skipped, since the command would delete its bundle too. A save that
+ * fails never stops the command.
+ */
+export async function saveBeforeRemove(target: ExecutionTarget, dirs: string[], bundles = SAVED_BUNDLES): Promise<SavedWork[]> {
+  const cwd = await target.cwd();
+  const saves: SavedWork[] = [];
+  for (const d of dirs) {
+    const dir = posix.resolve(cwd, d);
+    // A bundle the same command deletes would be a save in name only.
+    if (bundles === dir || bundles.startsWith(`${dir}/`)) continue;
+    const one = [
+      'w="$(dirname "$g")"',
+      '( cd "$w" || exit 0; snap; [ -n "$r" ] || [ -n "$(git rev-list -n1 --branches --not --remotes 2>/dev/null)" ] || exit 0',
+      `mkdir -p ${quote(bundles)}`,
+      `f=${quote(bundles)}"/$(basename "$w")-$(date -u +%Y%m%dT%H%M%SZ).bundle"`,
+      'git bundle create -q "$f" ${r:+"$r"} --branches --not --remotes >/dev/null 2>&1 && echo "BUNDLE:$w:$f" )',
+    ].join("; ");
+    const out = await runSave(target, `snap() { ${SNAPSHOT}; }; [ -d ${quote(dir)} ] || exit 0; find ${quote(dir)} -maxdepth 3 -name .git -prune 2>/dev/null | while IFS= read -r g; do ${one}; done`);
+    for (const m of out.matchAll(/^BUNDLE:(.*):(\/.*\.bundle)$/gm)) saves.push({ dir: m[1]!, bundle: m[2]! });
+  }
+  return saves;
+}
+
+/** The note a command's result carries when work was saved first: where, and how to bring it back. */
+export function savedNote(saves: SavedWork[]): string {
+  return saves.map((s) => s.ref
+    ? `[Before this ran, the uncommitted work in ${s.dir} was saved as ${s.ref}. To get it back: cd there and run \`git checkout ${s.ref} -- .\`; \`git for-each-ref ${SAVED_REF}\` lists every save.]`
+    : `[Before this deleted ${s.dir}, its unsaved work and unpushed commits were saved to ${s.bundle}. To get them back: in a fresh clone, \`git fetch ${s.bundle} '+refs/heads/*:refs/lyrica/restored/*' '+${SAVED_REF}/*:${SAVED_REF}/*'\`, then \`git checkout <saved ref> -- .\` for the uncommitted work.]`).join("\n");
+}
 
 async function exists(target: ExecutionTarget, path: string): Promise<boolean> {
   const { exitCode } = await target.ops().bash.exec(`test -e ${quote(path)} || test -L ${quote(path)}`, await target.cwd(), { onData: () => {} }).catch(() => ({ exitCode: 0 }));

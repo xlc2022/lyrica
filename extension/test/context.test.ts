@@ -48,6 +48,9 @@ describe("the context breakdown", () => {
 describe("her context lines", () => {
   it("are numbers only, and the 75% and 90% lines appear at those points and not before", () => {
     expect(statusLine(measured(21_000).report()!)).toBe("Context 64% of 32k · 6.6k free · 38 tok/s · 2.1k tok/s prompt");
+    // What the thread has used so far, so she can say what a change cost.
+    expect(statusLine(measured(21_000).report()!, 3_420_000)).toMatch(/ · 3\.4M tokens used in this thread$/);
+    expect(statusLine(measured(21_000).report()!, 950)).toMatch(/ · 950 tokens used in this thread$/);
     const line = (pct: number) => prepareLine(measured(Math.round((pct / 100) * 131_072), 131_072).report()!);
     expect(line(74)).toBeUndefined();
     expect(line(75)).toMatch(/^Your context is filling up\. Finish the current step, save what matters with remember, then call threads with action "compact" and a summary/);
