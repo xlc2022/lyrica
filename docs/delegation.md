@@ -131,7 +131,9 @@ A **foreground** run returns its result, or its first question, as the tool
 result. **Background** runs return an ID at once. When one asks a question or
 ends, a message is delivered into the parent thread:
 - into the live parent session: appended at once if she is idle, so she sees
-  it on her next turn; as a Pi follow-up if she is busy;
+  it on her next turn; as a Pi follow-up if she is busy, except a `quiet`
+  notice (a background command's or clip's, docs/workspace.md) or a child
+  thread's, which lands after her current step and starts no turn;
 - with no live session, straight into the stored thread, after its last
   entry, so her next session on it loads it with the rest.
 

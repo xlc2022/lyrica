@@ -904,8 +904,9 @@ runs on the Image upscaling list, where only a model host's recipe that upscales
 and her guidelines say to use it only when asked, on a finished clip. A clip is made in the background (lyricad's
 clip jobs): the call reads the first frame and returns, she says it's on its
 way and ends her reply, and when it is made the thread gets it as her
-message and an idle thread wakes to say it's ready; a failure comes as a
-notice and wakes it too. Lock, a shutdown and deleting the thread stop it
+message and the thread wakes to say it's ready; a failure comes as a
+notice and wakes it too, as a background command's end does (never a
+resolved project thread). Lock, a shutdown and deleting the thread stop it
 before it is saved, and wake nothing. A clip comes only
 from the Videos task's list, and only a model host makes one, so a first
 frame, a subject or a driving clip never reaches a cloud model and a
@@ -1048,12 +1049,18 @@ background, so it doesn't hold her turn (`core/src/workspace/jobs.ts`).
   `onJobEnd` delivers a notice into the thread (`jobNotice`: the job, the
   exit code, how long it ran and the last 40 lines of its output), on the
   path a background subagent's result takes (`Delegation.deliver`, status
-  `job`). A busy thread gets it as a follow-up; an idle one is woken once to
-  carry on (`HostedThread.wakeChild`), 5 s after the first job ends
-  (`JOB_WAKE_MS`), so jobs that end close together wake it once with all
-  their notices, unless its project is paused or it
-  waits for a child slot, when the notice waits in the thread for its next
-  turn. A job she stopped herself (`jobs stop`, reason `STOPPED_BY_HER`)
+  `job`, `quiet`). The notice never starts a turn by itself: a busy thread
+  gets it after the step it is on, so she reads it if the turn goes on. 5 s
+  after the first job ends (`JOB_WAKE_MS`) `lyricad` wakes the thread once
+  to carry on (`HostedThread.wakeChild`), so jobs that end close together
+  wake it once with all their notices; a turn running then is waited out
+  first. It wakes only if her last reply came before a notice (one read
+  mid-turn wakes nothing), and never a resolved project thread: there the
+  notice stays as a card and the thread stays resolved, so a test run that
+  ends after she merged and resolved costs no turn. Nor does it wake while
+  the thread's project is paused or it waits for a child slot, when the
+  notice waits in the thread for its next turn. A clip made in the
+  background (`ClipJobs`) wakes its thread the same way. A job she stopped herself (`jobs stop`, reason `STOPPED_BY_HER`)
   leaves no notice at all: its result told her, and a notice would cost her
   a turn for each. One `lyricad` stopped leaves its notice and never wakes
   it.

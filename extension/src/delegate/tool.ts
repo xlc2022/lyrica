@@ -87,14 +87,16 @@ function formatStatus(rows: SubagentRecord[], live: (id: string) => Run | undefi
   }).join("\n");
 }
 
-/** Delivers into a live parent: appended now if she's idle, as a follow-up if she's busy. False once the session has gone. */
+/** Delivers into a live parent: appended now if she's idle, as a follow-up if she's busy (a quiet or child delivery waits for the step instead). False once the session has gone. */
 function deliverVia(pi: ExtensionAPI, ctx: ExtensionContext, thread: ThreadContext): Deliver {
   return ({ content, details }) => {
     try {
       const message = { customType: DELEGATE_MESSAGE, content, display: true, details };
       if (!ctx.isIdle() && (details as { joinRunning?: boolean } | undefined)?.joinRunning) {
         pi.sendMessage(message, { deliverAs: "steer", triggerTurn: true });
-      } else if (ctx.isIdle() || (details as { childDelivery?: boolean } | undefined)?.childDelivery) {
+      } else if (ctx.isIdle() || (details as { childDelivery?: boolean } | undefined)?.childDelivery || (details as { quiet?: boolean } | undefined)?.quiet) {
+        // A child's delivery, or a quiet one (a background command's or clip's notice), never starts a turn: mid-turn it lands
+        // after the current step, and whoever delivered it wakes the thread afterwards if it still needs to.
         pi.sendMessage(message, { triggerTurn: false });
         syncEntries(ctx.sessionManager, thread.view.own, thread.threadId);
       } else {
