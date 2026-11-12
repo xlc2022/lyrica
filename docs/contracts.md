@@ -1097,7 +1097,11 @@ Custom roles override built-ins by name, except `claude`.
   `{ ok }` (404 for no such plan, 409 when it isn't limited), which makes
   the router skip the plan until it resets (`Models.fallBackFromLimit`,
   `planFallingBack`) and carries the waiting turns (`Wakeups.resumeNow`)
-  and sleep (`Sleep.resumeWaiting`) on at once. `WakeupInfo.planLimit` marks
+  and sleep (`Sleep.resumeWaiting`) on at once. `POST …/endpoints/:id/clear-limit`
+  → `EndpointInfo` (404 for no such plan, 409 when it isn't limited, 403
+  for a shared plan unless an administrator) forgets the limit, as the user
+  says it was false (`Models.clearPlanLimit`), and carries the waiting
+  turns and sleep on at once, on the plan. `WakeupInfo.planLimit` marks
   a turn waiting for its plan; `ThreadSettings.planWait { endpointId,
   name, until, next?, claudeCode? }` names the plan and the model the thread would use.
   The user's Claude plan, which only Claude Code uses, has no endpoint: its

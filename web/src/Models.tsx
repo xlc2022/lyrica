@@ -82,10 +82,13 @@ export function stateOf(ep: Endpoint, host?: Host): { dot: string; word: string;
   if (ep.pausedAt) return { dot: "away", word: "Paused" };
   if (unpaired(host)) return { dot: "down", word: "Unpaired" };
   if (ep.signedOut) return { dot: "down", word: "Signed out" };
-  if (ep.limitedUntil && Date.parse(ep.limitedUntil) > Date.now()) return { dot: "away", word: "Limit reached until", since: clock(ep.limitedUntil) };
+  if (limited(ep)) return { dot: "away", word: "Limit reached until", since: clock(ep.limitedUntil!) };
   if (ep.state === "up") return { dot: "up", word: ep.api === "host" ? "Online" : "Up" };
   return { dot: "down", word: "Unreachable", since };
 }
+
+/** A plan whose usage limit holds now. */
+const limited = (ep: Endpoint) => !!ep.limitedUntil && Date.parse(ep.limitedUntil) > Date.now();
 
 export function StateWord({ ep, host }: { ep: Endpoint; host?: Host }) {
   const s = stateOf(ep, host);
@@ -1106,6 +1109,8 @@ function useEndpointActions(ctx: MCtx, ep: Endpoint, others: Endpoint[], onSignI
   // Merging folds an endpoint into another of the same kind and place.
   const targets = others.filter((o) => o.id !== ep.id && o.kind === ep.kind && o.shared === ep.shared && o.api === ep.api);
   const items = [
+    // A limit the plan didn't really reach holds every thread on it until the reset: clearing it lets them carry on now.
+    ...(planOf(ep.api) && limited(ep) ? [{ label: "Clear limit", onPick: () => void run(async () => { await post(`${path}/clear-limit`); done(); }) }] : []),
     ...(planOf(ep.api) && onSignIn ? [{ label: "Sign in again", onPick: onSignIn }] : []),
     { label: "Read its models", onPick: () => void run(async () => { await post(`${path}/discover`); done(); }) },
     { label: "Add a model by hand", onPick: () => setModel("") },

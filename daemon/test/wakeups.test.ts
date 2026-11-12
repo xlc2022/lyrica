@@ -221,6 +221,26 @@ describe("a plan's usage limit", () => {
     }
   });
 
+  it("clears a limit the user says is false: the waiting thread carries on on the plan at once", async () => {
+    const s = await planFirst({ code: "usage_limit_reached", resets_at: Math.floor(Date.now() / 1000) + 40 * 60 });
+    try {
+      await s.say("build it");
+      const before = s.sent.plan, asked = s.asked.length;
+      const from = s.stream.events.length;
+      const cleared = await s.ada.post<{ limitedUntil?: string }>(`/api/u/${s.rt.ada.id}/endpoints/${s.plan.id}/clear-limit`, {});
+      expect(cleared.status).toBe(200);
+      expect(cleared.body.limitedUntil).toBeUndefined();
+      // The thread's resume fires now, on the plan rather than the next model (this fake plan refuses again, so it waits once more).
+      await s.stream.until((e) => e.type === "turn_end", from);
+      expect(s.sent.plan).toBeGreaterThan(before);
+      expect(s.asked.length).toBe(asked);
+      s.models.clearPlanLimit(s.d.services!.users.get(s.rt.ada.id)!, s.plan.id);
+      expect((await s.ada.post(`/api/u/${s.rt.ada.id}/endpoints/${s.plan.id}/clear-limit`, {})).status).toBe(409);
+    } finally {
+      s.restore();
+    }
+  });
+
   it("carries the turn on by itself once the plan resets, and not before", async () => {
     const s = await planFirst({ code: "usage_limit_reached", resets_at: Math.floor(Date.now() / 1000) + 40 * 60 });
     try {

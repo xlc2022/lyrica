@@ -93,8 +93,20 @@ export function isUnreachable(err: unknown): boolean {
   return e.cause !== undefined && e.cause !== err && isUnreachable(e.cause);
 }
 
-/** A plan's usage limit, as OpenAI reports it: it resets after hours, not seconds. */
-export const isPlanLimit = (message: string | undefined): boolean => /subscription_sharing_usage_limit_exceeded|usage.?limit/i.test(message ?? "");
+/**
+ * A plan's usage limit, as the provider reports it: it resets after hours,
+ * not seconds. Only the provider's own codes count, or its own line for one
+ * on a 429 or a stream's error, never any text that mentions a usage limit:
+ * a refusal's body can echo what it was sent, and a false limit holds every
+ * thread on the plan until its reset.
+ */
+export function isPlanLimit(message: string | undefined): boolean {
+  const text = message ?? "";
+  if (/subscription_sharing_\w*usage_limit_exceeded|\busage_limit_reached\b/i.test(text)) return true;
+  const status = /\berror \((\d{3})\)|^(\d{3})\b/i.exec(text);
+  if (status && (status[1] ?? status[2]) !== "429") return false;
+  return /\bhit your (\w+ )?usage limit|^(error code \w+: )?(the )?usage limit (has been |was )?(reached|exceeded)/i.test(text);
+}
 /** How long a plan that reached its limit is skipped when it doesn't say when it resets: an hour, doubled each time it's still limited at the guess, up to six. */
 const PLAN_LIMIT_MS = 60 * 60_000;
 const PLAN_LIMIT_MAX_MS = 6 * PLAN_LIMIT_MS;
@@ -1984,6 +1996,22 @@ export class Models {
     if (this.planLimitedUntil(endpointId) === undefined) return false;
     this.fallingBack.add(endpointId);
     return true;
+  }
+
+  /**
+   * The user cleared a plan's limit by hand, since it wasn't true: the router
+   * uses it again at once, and a later refusal starts from an hour again.
+   * False when it isn't a plan the actor can see, or isn't limited now.
+   */
+  clearPlanLimit(actor: User, endpointId: string): boolean {
+    const ep = this.endpoint(actor.id, endpointId);
+    if (!ep || !isPlan(ep.api)) return false;
+    if (ep.shared && !this.users.get(actor.id)?.admin) throw new Forbidden("only an administrator can clear a shared plan's limit");
+    const limited = this.planLimitedUntil(endpointId) !== undefined;
+    this.limited.delete(endpointId);
+    this.guessed.delete(endpointId);
+    this.fallingBack.delete(endpointId);
+    return limited;
   }
 
   /** Whether the router skips a limited plan for the user's choice, until it resets. */

@@ -107,7 +107,8 @@ extension, daemon and web.
 - The first real sign-ins, after deploy: whether OpenAI accepts a
   self-hosted install's Sign in with ChatGPT (its help page speaks of
   "participating" apps), and xAI's wording for its usage-limit error,
-  which `isPlanLimit` guesses.
+  which `isPlanLimit` guesses ("usage limit reached" or "exceeded" at the
+  start of a stream's error, or anywhere in a 429).
 - Every model in Pi's catalogue for the provider is listed, including ones
   a plan may not cover; a call to one fails like any refused call. Since
   #742 the user can switch such a model off in the plan's model list

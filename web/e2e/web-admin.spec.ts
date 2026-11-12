@@ -2087,6 +2087,41 @@ test("image providers run 3: endpoint facts, five pills and default names", asyn
   await page.evaluate(async path => { await fetch(path, { method: "DELETE" }); }, `${base}/endpoints/${ep.id}`);
 });
 
+test("a plan's limit is cleared from its ⋯", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  const base = `/api/u/${userId}`;
+  // Only a page fixture for the plan: no sign-in or plan call. Clearing answers as the server would, and the next page read has no limit.
+  let limitedUntil: string | undefined = new Date(Date.now() + 45 * 60_000).toISOString();
+  await page.route(`**${base}/models/page`, async route => {
+    const response = await fetchReal(route);
+    const data = await response.json();
+    data.endpoints.push({ id: "fake-plan", name: "AdaGPT", kind: "cloud", api: "chatgpt", baseUrl: "https://api.openai.com/v1", hasApiKey: false, shared: false, unencrypted: false, stale: false, state: "up", cloudCapabilities: ["Text", "Vision", "Image"], models: [], ...(limitedUntil ? { limitedUntil } : {}) });
+    await route.fulfill({ json: data });
+  });
+  let cleared = 0;
+  await page.route(`**${base}/endpoints/fake-plan/clear-limit`, async route => { cleared++; limitedUntil = undefined; await route.fulfill({ json: {} }); });
+  await page.goto(`/#/u/${userId}/models/hosts`);
+  const plan = page.locator('[data-endpoint="fake-plan"]');
+  await expect(plan).toContainText("Limit reached until");
+  await plan.getByRole("button", { name: "Actions for AdaGPT" }).click();
+  const items = page.getByRole("menuitem");
+  await expect(items.first()).toHaveText("Clear limit");
+  // A ⋯ that wrapped to the row's start on a phone opens rightward: the menu stays on screen.
+  await items.last().scrollIntoViewIfNeeded();
+  const box = (await page.getByRole("menu").boundingBox())!;
+  expect(box.x).toBeGreaterThanOrEqual(0);
+  expect(box.x + box.width).toBeLessThanOrEqual(page.viewportSize()!.width);
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/clear-limit-menu-${page.viewportSize()!.width}.png` });
+  await page.getByRole("menuitem", { name: "Clear limit" }).click();
+  await expect(plan).not.toContainText("Limit reached");
+  expect(cleared).toBe(1);
+  await plan.getByRole("button", { name: "Actions for AdaGPT" }).click();
+  await expect(page.getByRole("menuitem", { name: "Clear limit" })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/clear-limit-done-${page.viewportSize()!.width}.png` });
+  await page.unroute(`**${base}/models/page`);
+});
+
 test("spend share popovers and Call history project filter", async ({ page, baseURL }, testInfo) => {
   const userId = await enter(page, baseURL!);
   const project = await page.evaluate(async userId => {
