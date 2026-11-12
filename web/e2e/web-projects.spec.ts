@@ -1117,6 +1117,96 @@ test("the split view: a thread from its card opens in the panel, links inside it
   await noHorizontalScroll(page);
 });
 
+test("a project's Threads list takes the width it is shown in: its rows use the whole panel or page, and its chips wrap only when the list is genuinely narrow", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  const shot = async (name: string) => {
+    if (!process.env.SCREENSHOTS) return;
+    for (const colorScheme of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme });
+      await page.screenshot({ path: `${process.env.SCREENSHOTS}/${name}-${page.viewportSize()!.width}-${colorScheme}.png` });
+    }
+    await page.emulateMedia({ colorScheme: null });
+  };
+  // A project, and one thread whose title is long enough that a row held to a settings column cuts it to a letter.
+  const project = await page.evaluate(async (uid) => {
+    const r = await fetch(`/api/u/${uid}/threads`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ pool: "general", project: true, title: "The kitchen garden" }) });
+    if (!r.ok) throw new Error(`project: ${r.status}`);
+    return await r.json() as { id: string };
+  }, userId);
+  const path = `t/general/${encodeURIComponent(project.id)}`;
+  await page.goto(`/#/u/${userId}/${path}`);
+  await send(page, "start: Water the north beds twice a week");
+  await expect(page.getByText("Started it.")).toBeVisible();
+  // Her checklist, as the daemon sends it once she has written one: the chips are what move to a line of their own.
+  const steps = [{ text: "Carry the water", state: "done" }, { text: "Soak the soil", state: "doing" }, { text: "Sweep the path", state: "todo" }];
+  await page.route("**/overview", async (route) => {
+    try {
+      const json = await (await route.fetch()).json() as { threads: object[] };
+      await route.fulfill({ json: { ...json, threads: json.threads.map((t) => ({ ...t, steps })) } });
+    } catch { await route.continue().catch(() => {}); }
+  });
+  // The list: in the panel from the split width, opened by the Threads fact, and that page on its own below it (docs/ux.md §6).
+  const split = page.viewportSize()!.width >= 1180;
+  if (split) {
+    await page.locator(".tfacts").getByRole("button", { name: /^Threads/ }).click();
+    await expect(page.getByRole("complementary", { name: "Threads" }).getByRole("heading", { level: 1, name: "Threads" })).toBeFocused();
+  } else await page.goto(`/#/u/${userId}/${path}/threads`);
+  const row = page.locator(".threads-list .thread-item").filter({ hasText: "Water the north beds" });
+  await expect(row).toBeVisible();
+  // Measured in one go on an attached row: the thread moving between the state groups as its turn ends remounts it.
+  const measure = () => row.evaluate((el) => {
+    const title = el.querySelector<HTMLElement>(".title")!, chips = el.querySelector<HTMLElement>(".tchips")!;
+    const box = title.getBoundingClientRect();
+    return {
+      list: el.closest<HTMLElement>(".threads-list")!.getBoundingClientRect().width,
+      // The panel it sits in, or the page's own column below the split width.
+      column: (el.closest("aside.panel") ?? document.querySelector("main")!).getBoundingClientRect().width,
+      cut: title.scrollWidth > title.clientWidth + 1,
+      under: chips.getBoundingClientRect().top > box.bottom - 1,
+    };
+  });
+  type Row = { list: number; column: number; cut: boolean; under: boolean };
+  const measured = async () => { let m: Row | undefined; await expect(async () => { m = await measure(); }).toPass(); return m!; };
+  // As the panel opens it (420 px) and as a phone shows it (390 px): the list is the column's whole width, well past
+  // the 196 px track, and this is narrow enough that the chips still take a line below the title.
+  const first = await measured();
+  expect(first.list, JSON.stringify(first)).toBeGreaterThanOrEqual(first.column - 1);
+  expect(first.list, JSON.stringify(first)).toBeGreaterThan(330);
+  expect(first.under, JSON.stringify(first)).toBe(true);
+  await noHorizontalScroll(page);
+  await shot("threads-list");
+  if (split) {
+    // Widened past 600 px, where a settings page would put its content in the 196 px section column: the rows keep
+    // the whole width, the title is not cut, and the chips stay on its line (#992).
+    const divider = page.getByRole("separator", { name: "Panel width" });
+    await divider.focus();
+    await page.keyboard.press("Home");
+    await expect(divider).toHaveAttribute("aria-valuenow", "1000");
+    const wide = await measured();
+    expect(wide.column, JSON.stringify(wide)).toBeGreaterThan(600);
+    expect(wide.list, JSON.stringify(wide)).toBeGreaterThanOrEqual(wide.column - 1);
+    expect(wide.cut, JSON.stringify(wide)).toBe(false);
+    expect(wide.under, JSON.stringify(wide)).toBe(false);
+    await shot("threads-list-wide");
+    // A page that does have a section list keeps it: Project settings, one crumb deeper in the same panel, still puts
+    // its content beside the 196 px track rather than across the whole width.
+    await page.getByRole("complementary", { name: "Threads" }).getByRole("link", { name: "Project settings" }).click();
+    const settings = page.getByRole("complementary", { name: /Project settings$/ });
+    await expect(settings.getByRole("heading", { level: 1, name: "Project settings" })).toBeVisible();
+    await expect(settings.getByLabel("Goal")).toBeVisible();
+    const columns = await settings.locator(".page-body").evaluate((el) => ({
+      body: el.getBoundingClientRect().width,
+      nav: el.querySelector<HTMLElement>(".subnav")!.getBoundingClientRect().width,
+      content: el.querySelector<HTMLElement>(".content")!.getBoundingClientRect().width,
+    }));
+    expect(Math.round(columns.nav), JSON.stringify(columns)).toBe(196);
+    expect(columns.content, JSON.stringify(columns)).toBeLessThanOrEqual(columns.body - columns.nav);
+    expect(columns.content, JSON.stringify(columns)).toBeGreaterThan(columns.body - columns.nav - 20); // up to a scrollbar
+    await shot("settings-columns-wide");
+  }
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
 test("watching threads: writing in a project's thread leads to a look, shown as a marker that names the other thread she told; the switch turns it off", async ({ page, baseURL }) => {
   await enter(page, baseURL!);
   if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
