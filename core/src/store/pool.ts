@@ -1,6 +1,7 @@
 import { removeSecrets } from "../secrets.ts";
 import { pathRewriter, rewriteStrings, type Respelling } from "../workspace/renames.ts";
 import { SkillLibrary } from "../skills.ts";
+import { ArtifactLibrary } from "./artifacts.ts";
 import { randomBytes } from "node:crypto";
 import { checkRoutineMetadata, nextRun, parseSchedule, type RoutineMetadata, type RoutineMetadataEdit, type Schedule } from "../routines.ts";
 import type { ForgeKind, ForgeWatchState } from "../forge/types.ts";
@@ -349,6 +350,8 @@ export class PoolReader {
   close(): void { this.db.close(); }
   /** This pool's skills (docs/briefs/skills.md). A reader's connection is read-only, so only its reads work. */
   get skills(): SkillLibrary { return new SkillLibrary(this.db, this.pool); }
+  /** This pool's artifacts (docs/briefs/artifacts.md). A reader's connection is read-only, so only its reads work. */
+  get artifacts(): ArtifactLibrary { return new ArtifactLibrary(this.db, this.pool); }
 
   protected render(text: string): string {
     const profiles = this.c.profiles();
@@ -1665,6 +1668,8 @@ export class PoolStore extends PoolReader {
     this.db.prepare("DELETE FROM vectors WHERE id >= ? AND id < ?").run(`e:${threadId}#`, `e:${threadId}$`);
     this.db.prepare("DELETE FROM entries WHERE thread = ?").run(threadId);
     this.db.prepare("DELETE FROM wakeups WHERE thread = ?").run(threadId);
+    // Its artifacts go with it, as its files do.
+    this.artifacts.forgetThread(threadId);
     this.db.prepare("DELETE FROM threads WHERE id = ?").run(threadId);
     gone.push(threadId);
   }

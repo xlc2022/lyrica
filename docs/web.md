@@ -344,11 +344,27 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   beside. It stops at the ends, where that button is disabled, and the
   facts read "Image 2 of 4". Escape closes
   a menu inside first, then the viewer, and so does any navigation.
+- **Artifacts** (`Artifacts.tsx`, docs/ux.md §6, docs/briefs/artifacts.md):
+  an `artifact` part of her message draws as `ArtifactCard`; the live
+  stream's `tool_end.artifact` adds the same part. `openArtifact({ pool, id,
+  version? })` dispatches a window event that `ArtifactHost`, mounted once
+  in the shell, answers with `ArtifactViewer`: the file viewer given a
+  `from` (`ViewerSource`: the artifact's `…/content` and `…/view` addresses
+  for the picked version, its thread's settings address for the internet
+  line, and its own heading, Version select and ⋯ menu), so the sandboxed
+  frame, console, Preview | Source and the thread beside are the viewer's
+  own. A React artifact shows its built page as HTML and its component as Source. The Files panel's
+  **Artifacts** tab (`ArtifactsTab`, in `Files.tsx`'s tabs) lists
+  `GET …/artifacts/<pool>?thread=` and imports files into the thread by
+  posting each one's bytes (`importArtifacts`, which a drop on the panel
+  calls too); it reloads when the thread finishes a tool call and, through
+  a second window event, on a change made in the viewer.
 - **The changes view** (`Changes.tsx`): the same kind of dialog for a
   thread's branch, described under Chat ("Changes").
 - **Project settings page** (`…/p/<pool>/<project>/general`, `/memory` or `/files`),
-  sections at the left. **General**: Goal, the Paused and **Watching
-  threads** switches (`watchThreads`; the tooltip says what a look does), **New
+  sections at the left. **General**: Goal, the Paused and **Check on
+  threads** switches (one switch for `watchThreads` and `checkInOnThreads`: on
+  only when both are, and a change sets both; the tooltip says what a look does), **New
   threads** (Model, Code mode, Thinking and Fallback the project's threads start with;
   "Same as coordinator" is the project's coordinating chat, which this page can be
   opened away from; Model becomes a new thread's
@@ -363,7 +379,7 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   Then **Checks**: a mono command field per check, Remove, and **Add check**
   (at most 8). Empty reads "No checks: <name> runs what the repository asks.";
   a multi-line or over-long check fails validation. The page has one Save, which patches the thread
-  (`goal`, `paused`, `commandRules`, `checks`, `watchThreads` when it changed, `threadsModel`,
+  (`goal`, `paused`, `commandRules`, `checks`, `watchThreads` and `checkInOnThreads` when the switch changed, `threadsModel`,
   `threadsThinking`, `threadsFallback`, `group`) and, when they changed, its
   settings (`grants`, `machines`, `repositories`, `mcpServers`); `lyricad`'s
   reason shows when it refuses. Every thread the project starts gets these
@@ -531,7 +547,8 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   URL, API key, Shared for administrators; a plain-HTTP warning for a local URL off
   loopback and the tailnet. Kind also offers ChatGPT plan, with **Sign in with
   ChatGPT**, which opens OpenAI's page in a new tab, then **Redirect URL**
-  and **Finish** in place of the URL and key; and Grok plan, with **Sign in with Grok**, which opens
+  and **Finish** in place of the URL and key; Codex plan, the same with **Sign
+  in with Codex** (its Redirect URL starts `http://localhost:1455`); and Grok plan, with **Sign in with Grok**, which opens
   xAI's page, then its **Code** and **Finish**; closing the drawer cancels
   the sign-in) and **Add model host** (the one primary; a page
   at `…/models/hosts/add-host`: Name, Addresses, Pairing code, Shared,
@@ -568,7 +585,7 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   in-system-RAM segments, each spilled model with its GB, and a foot
   "llama.cpp · Edit" (the legend gains In system
   RAM). A plain endpoint row: name, kind,
-  ChatGPT plan or Grok plan versus API key, and cloud Text, Vision and Image
+  ChatGPT plan, Codex plan or Grok plan versus API key, and cloud Text, Vision and Image
   pills (only when a marked image model has a callable provider and the
   required key). Capability pills wrap under the name on a phone. Facts:
   a plan's kind, only you and explicit account label in mono if supplied,

@@ -225,6 +225,7 @@ nothing else. No code path gives a general view a private handle.
 | Pins | `pinEntry(threadId, n, pinned)`, `pins(threadId?)` → `PinnedEntry[]` (one thread's, or the pool's), oldest first |
 | Reactions | `react(threadId, n, emoji, by, on)` → `Reaction[]` (`{ emoji, by: string[] }`, `by` user IDs or `LYRICA_REACTS`); `entryPage` entries carry `reactions`. Pool schema step 2 (`entries.reactions`, JSON) |
 | Skills | `skills` → `SkillLibrary` for this pool (core/src/skills.ts): `all()`, `active()`, `read(name)`, `byCall(call)`; a store's also `put(input)` (the person's, active at once), `propose(input, thread, call, autoApprove)` (hers: active with auto-approve, else waiting beside the active one), `approve(name)`, `decline(name)`, `remove(name)`, `importSkill(draft)` (theirs and active; `{ name, duplicate }`, renaming to `name-2` rather than replacing anything). `exportSkills(skills)`, `parseSkills(text)` and `importSkills({ general, private }, texts, pool?)` move them as Markdown (docs/briefs/skills.md, "Export and import"); lyricad's `GET …/skills` → `Skills`, `POST …/skills` (`SkillChange`) → `SkillInfo`, `PUT …/skills/auto-approve` (`SkillsAutoApprove`), `POST …/skills/:pool/:name/approve|decline` and `DELETE …/skills/:pool/:name` (each → `Skills`) reach a shown pool's store through its thread view (docs/daemon.md, "Memory browser and settings"); `POST …/skills/export` → `SkillsExport` and `POST …/skills/import` (`SkillsImport`) → `SkillsImportResult` use them through the owner view. `checkSkill` and `SKILL_LIMITS` (name 64, description 200, body 8000, 100 per pool). Pool step 10 adds `skills` |
+| Artifacts | `artifacts` → `ArtifactLibrary` for this pool (core/src/store/artifacts.ts; pool step 17's `artifacts` and `artifact_versions`): `list({ threads? })` → `Artifact[]` (`id`, `pool`, `title`, `kind`: `html`, `svg`, `markdown` or `react`, `thread?`, `path?`, `version`, `size`, `createdAt`, `updatedAt`), newest change first; `get(id)`; `byPath(thread, path)`; `versions(id)` → `{ n, author, size, createdAt }[]`, newest first; `read(id, n?)` → `{ kind, n, bytes, built? }`; a store's also `create({ title, kind, thread?, path?, bytes, built?, author })`, `addVersion(id, { bytes, built?, author, path?, title? })`, `publish({ thread, threads?, path, kind, title?, artifact?, bytes, built?, author })` → `{ artifact, created }` (a version of `artifact` when it belongs to `thread` or one of `threads`, else of the artifact `thread` published from `path`, else a new one; the same bytes add no version; another kind is refused), `restore(id, n, author)` (that version again as a new one), `rename(id, title)`, `delete(id)`, `forgetThread(thread)`. `author` is `lyrica` or `user`. A version is at most `ARTIFACT_LIMIT` (16 MiB), a title at most 120 characters, and a version never changes once written. `forgetThread` deletes a thread's artifacts with it, its memories kept or not. `artifactKind(name)`, `artifactExtension(kind)` and `titleFromName(name)` map file names; `ArtifactError` is a problem with what was given. |
 | Code tasks | `codeTask(threadId)` → `{ task, done, at }` or undefined; `setCodeTask(threadId, task, done = "")` replaces it (300 / 1,200 characters), with credential removal. Pool step 9 adds `code_tasks`, deleted with the thread; no task text enters user.db |
 | Drafts | `draft(threadId)` → `{ text, updatedAt }` or undefined, `setDraft(threadId, text)` (empty deletes it); one per thread, gone with the thread. Pool schema step 3 (`drafts`) |
 | Projects | `pageForProject(threadId)`, `projectNotes(threadId, since?)` |
@@ -362,7 +363,7 @@ interface Endpoint {
   id: string;                               // permanent (UUID); the name is a label
   name: string;
   kind: "cloud" | "local";                  // declared by whoever adds it, never inferred
-  api: "openai-compatible" | "host" | "chatgpt" | "grok";  // a paired model host: always local; a plan: always cloud, never shared
+  api: "openai-compatible" | "host" | "chatgpt" | "codex" | "grok";  // a paired model host: always local; a plan: always cloud, never shared
   baseUrl: string; apiKey?: string;         // a host: its first address's /v1, and no key; a plan: PLAN_URLS[api], and no key
   signedOut?: boolean;                      // a plan whose refresh its provider (OpenAI or xAI) refused; the router skips it
   shared: boolean;
@@ -616,7 +617,7 @@ class Models {                                              // new Models(keyrin
   declared, `pairHost` makes a host local, `editEndpoint` can't change it,
   and `replace` and `merge` refuse to cross kinds. `probe` only warns when a
   local endpoint resolves outside loopback, private or tailnet ranges.
-- **Subscription plans** (ChatGPT, Grok). `addPlan(actor, { name, plan, credential })` (personal only),
+- **Subscription plans** (ChatGPT, Codex, Grok). `addPlan(actor, { name, plan, credential })` (personal only),
   `planCredential(userId, id)`, `planAccount(userId, id)` (explicit email or
   account ID only; never tokens), `setPlanCredential(userId, id, credential |
   null)` (null signs it out), `setPlanCatalog(list)` (discovery, from Pi's
@@ -1478,7 +1479,11 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   session's model runtime), a released slot stays kept for that holder for
   `KEEP_WARM_MS` (15 s), with its room in the window, and the holder's next
   request takes it ahead of the queue; no slot is kept after an abort, or
-  while the head of the queue has waited `MAX_PASSED_MS` (2 min); `scope` is the daemon's `Models`, so a
+  while the head of the queue has waited `MAX_PASSED_MS` (2 min). With two
+  `slots` or more the release names a slot (`release.slot`): the holder's
+  own last one if free, else one never used, else the free one used longest
+  ago, never one busy or kept for another holder; a llama.cpp offering
+  (`server: "llama.cpp"` or `llamaServer`) sends it as `id_slot`. `scope` is the daemon's `Models`, so a
   daemon started again in the same process holds nothing; `markOverflow` adds a known
   overflow text to LM Studio's "Context size has been exceeded" so Pi
   compacts and retries (docs/models.md, Local servers).
@@ -1883,8 +1888,9 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     blocks in all modes and targets; Ask always prompts; Allow skips only
     sandbox mode prompts, never a suspect command's. Opaque commands ask with any forbid rule;
     a variable the line plainly sets first is read as its value, not as opaque (`knownValues`),
-    and a script the line sources first by a literal path is read where it runs and meets the rules
-    by its own commands; one that only sets things up isn't opaque (`sourcedFile`, `setupOnly`).
+    and a script the line sources or runs with a shell first by a literal path (or writes just before
+    with a quoted here-document) is read where it runs and meets the rules and the suspect checks by its
+    own commands; a run one isn't opaque, a sourced one only if it just sets things up (`sourcedFile`, `setupOnly`).
     `user_bash` is never checked. A new project starts with `DEFAULT_COMMAND_RULES`.
     `settings()` is the thread's effective settings. `fileNotes()` returns
     `{ added, removed }` paths the Files panel changed since her last turn,
@@ -2348,7 +2354,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     - **Plans:** `POST plans/sign-in` (`PlanSignInStart`: `plan` and `name`,
       or `endpointId` to sign in again → `PlanSignInStarted` `{ id, url,
       code? }`); `POST plans/sign-in/:id` (`PlanSignInFinish` `{ redirectUrl? }`:
-      ChatGPT's sends the address it was sent back to, Grok's no body →
+      ChatGPT's and Codex's send the address it was sent back to, Grok's no body →
       `EndpointInfo`); `DELETE plans/sign-in/:id`.
     - **OpenRouter:** `POST openrouter/sign-in` (`OpenRouterSignInStart`:
       `name`, `shared?` → `PlanSignInStarted` `{ id, url }`); `POST
@@ -2735,7 +2741,7 @@ settings(userId).setCommandRules(pool, project, rules) / addCommandRule(pool, pr
 // CommandRule { prefix; decision: "allow" | "ask" | "forbid" }; at most 100; duplicate prefix replaces.
 // seedCommandRules writes DEFAULT_COMMAND_RULES for a project with none yet (the daemon calls it when a project is made).
 // user step 6 adds project_settings.command_rules, JSON default []; Projects.set upserts other columns.
-// rules.ts exports commandRules (validation), decide(command, rules, sourced?), sourcedFile, setupOnly, SCRIPT_LIMIT, alwaysAllowPrefix, DEFAULT_COMMAND_RULES; machines.ts exports simpleCommands.
+// rules.ts exports commandRules (validation), decide(command, rules, sourced?), sourcedFile (→ { cds, path, text? }), setupOnly, SCRIPT_LIMIT, alwaysAllowPrefix, DEFAULT_COMMAND_RULES; machines.ts exports simpleCommands.
 settings(userId).checks(pool, project): string[] / setChecks(pool, project, checks)
 // checkChecks: at most 8 commands, each one line of at most 300 characters, no control characters; blanks dropped.
 // user step 16 adds project_settings.checks, JSON default [].

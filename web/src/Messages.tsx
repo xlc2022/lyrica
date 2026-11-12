@@ -31,6 +31,7 @@ import { her } from "./name.ts";
 import { ReactButton, ReactionChips } from "./Reactions.tsx";
 import { ReadAloudButton } from "./Voice.tsx";
 import { MakingCards } from "./Making.tsx";
+import { ArtifactCard } from "./Artifacts.tsx";
 
 interface Props {
   ctx: ShellContext;
@@ -358,7 +359,7 @@ function ToolRun({ runs, env }: { runs: Quiet[]; env: Env }) {
           while a model request has them; between requests, while her tools run, the marker's "running" says it all. */}
       {open ? (
         <div ref={body} className="marker-body run-body" onScroll={(e) => { height.current = e.currentTarget.scrollHeight; }}>
-          {runs.map((r) => r.parts.map((p, i) => (p.type === "text" || p.type === "image" || p.type === "video" ? null : <Marker key={`${r.key}-${i}`} part={p} env={env} />)))}
+          {runs.map((r) => r.parts.map((p, i) => (p.type === "text" || p.type === "image" || p.type === "video" || p.type === "artifact" ? null : <Marker key={`${r.key}-${i}`} part={p} env={env} />)))}
           {streaming && <CallStats live={env.liveCall} />}
         </div>
       ) : streaming && env.liveCall && callLine(env.liveCall.call, 0) && <div className="run-call"><CallStats live={env.liveCall} /></div>}
@@ -652,6 +653,7 @@ function Parts({ parts, env, model, streaming, n, at, folded, reactions, bare, s
     if (folded && p.type === "tool" && p.name === "threads" && !p.isError && (p.args as { action?: string } | null)?.action === "message") return;
     flush(i);
     if (p.type === "video") { out.push(<MessageVideo key={i} part={p} env={env} />); return; }
+    if (p.type === "artifact") { out.push(<ArtifactCard key={i} part={p} pool={env.pool} />); return; }
     if (p.type !== "image") {
       out.push(<Marker key={i} part={p} env={env} />);
       // Where the image or clip will be: its placeholder, until it arrives.
@@ -824,7 +826,7 @@ function RejectedImages({ parts, env, ns, turns, streaming }: { parts: RejectedI
   );
 }
 
-function Marker({ part, env }: { part: Exclude<MessagePart, { type: "text" | "image" | "video" }>; env: Env }) {
+function Marker({ part, env }: { part: Exclude<MessagePart, { type: "text" | "image" | "video" | "artifact" }>; env: Env }) {
   const [localOpen, setLocalOpen] = useState(false);
   const open = part.type === "tool" ? env.openTools.has(part.toolCallId) : localOpen;
   const toggle = () => (part.type === "tool" ? env.toggleTool(part.toolCallId) : setLocalOpen(!localOpen));

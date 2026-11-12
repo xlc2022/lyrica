@@ -260,8 +260,8 @@ export interface EndpointInfo {
   /** A label that can change. */
   name: string;
   kind: "cloud" | "local";
-  /** A plain OpenAI-compatible server, a paired model host (always local), or a ChatGPT or Grok plan (always cloud, never shared). */
-  api: "openai-compatible" | "host" | "chatgpt" | "grok";
+  /** A plain OpenAI-compatible server, a paired model host (always local), or a ChatGPT, Codex or Grok plan (always cloud, never shared). */
+  api: "openai-compatible" | "host" | "chatgpt" | "codex" | "grok";
   /** Query values named like a credential show as •••; sent back unchanged in a PATCH, they keep the stored value. */
   baseUrl: string;
   /** A host's addresses, tried in order. */
@@ -307,12 +307,12 @@ export interface ModelInput extends Capabilities { modelId: string }
  * (`plan` and `name`) or one that is signed out (`endpointId`). One at a time per user, for 10 minutes.
  * `url` is the provider's page to open; Grok's `code` is the code that page asks for.
  */
-export interface PlanSignInStart { plan?: "chatgpt" | "grok"; name?: string; endpointId?: string }
+export interface PlanSignInStart { plan?: "chatgpt" | "codex" | "grok"; name?: string; endpointId?: string }
 export interface PlanSignInStarted { id: string; url: string; code?: string }
 /**
- * POST /api/u/:userId/plans/sign-in/:signInId → EndpointInfo, once the provider confirms. ChatGPT's
- * `redirectUrl` is the address the browser was sent to after approving
- * (http://127.0.0.1:1455/auth/callback?…); Grok needs none. DELETE cancels it → Ok.
+ * POST /api/u/:userId/plans/sign-in/:signInId → EndpointInfo, once the provider confirms. ChatGPT's and
+ * Codex's `redirectUrl` is the address the browser was sent to after approving
+ * (http://127.0.0.1:1455/auth/callback?… or http://localhost:1455/auth/callback?…); Grok needs none. DELETE cancels it → Ok.
  */
 export interface PlanSignInFinish { redirectUrl?: string }
 /**
@@ -1381,8 +1381,50 @@ export interface ImagePart { type: "image"; paths: string[]; model: string; tier
 /** A clip she made, played from `path`; its poster is its thumbnail (`…/files/thumb`). `duration` is seconds. */
 export interface VideoPart { type: "video"; path: string; model: string; width: number; height: number; duration: number; audio: boolean }
 
+export type ArtifactKind = "html" | "svg" | "markdown" | "react";
+
+/**
+ * Artifacts (docs/briefs/artifacts.md): pages she published with `page publish` or the user imported, each kept with
+ * every version. Only the pools the display shows are listed or reached (404 otherwise).
+ *
+ * GET /api/u/:userId/artifacts/:pool?thread=<id> → ArtifactInfo[]: that thread's, newest change first; a project
+ *   chat's with its threads' too.
+ * POST /api/u/:userId/artifacts/:pool?name=<file name>&thread=<id>[&title=<title>], the file's bytes as the body →
+ *   ArtifactInfo: an import, version 1, by the user. The kind is the name's (.html, .htm, .svg, .md); at most 16 MiB
+ *   (413), text only (415). Nothing is run or read by a model.
+ * GET …/artifacts/:pool/:id → ArtifactDetail.
+ * GET …/artifacts/:pool/:id/view[?v=<n>] → the version (the newest without `v`) as a page, with the headers
+ *   …/files/view gives a file: HTML with a console bridge and the CSP `sandbox allow-scripts allow-popups`, or under
+ *   `sandbox` alone with its thread's internet off (its pool's default when it has no thread); SVG with nothing run.
+ *   415 for Markdown, which the web renders from `content`.
+ * GET …/artifacts/:pool/:id/content[?v=<n>][&download=1] → the version's source as plain text, never run.
+ * POST …/artifacts/:pool/:id/versions?name=<file name>, bytes as the body → ArtifactDetail: the next version, by the
+ *   user; the same kind as the artifact (400 otherwise).
+ * POST …/artifacts/:pool/:id/restore, ArtifactRestore → ArtifactDetail: that version again as a new version.
+ * PATCH …/artifacts/:pool/:id, ArtifactRename → ArtifactInfo.
+ * DELETE …/artifacts/:pool/:id → Ok: the artifact and every version.
+ */
+export interface ArtifactInfo {
+  id: string; pool: Pool; title: string; kind: ArtifactKind;
+  /** The thread it belongs to, and that thread's title; none for one imported on its own or kept after its thread was deleted. */
+  thread?: string; threadTitle?: string;
+  /** The file it was last published from, as its thread names it. */
+  path?: string;
+  /** Its newest version's number and size in bytes. */
+  version: number; size: number;
+  createdAt: string; updatedAt: string;
+}
+export interface ArtifactVersionInfo { n: number; author: "lyrica" | "user"; size: number; createdAt: string }
+export interface ArtifactDetail { artifact: ArtifactInfo; versions: ArtifactVersionInfo[] }
+export interface ArtifactRestore { version: number }
+export interface ArtifactRename { title: string }
+
+/** An artifact she published in this reply (docs/briefs/artifacts.md): its card names the version this call made. */
+export interface ArtifactPart { type: "artifact"; id: string; title: string; kind: ArtifactKind; version: number }
+
 export type MessagePart =
   | ImagePart
+  | ArtifactPart
   | VideoPart
   | { type: "text"; text: string }
   | { type: "thinking"; text: string }
@@ -1750,7 +1792,7 @@ export type ThreadEvent =
   /** It was made, failed or stopped: its placeholder goes. */
   | { type: "made"; toolCallId: string }
   /** `result` is short: the first lines of the tool's output. */
-  | { type: "tool_end"; toolCallId: string; name: string; result: string; isError: boolean; threads?: ThreadRef[]; image?: ImagePart; video?: VideoPart; imageRefusal?: ImageRefusal; root?: RootStep }
+  | { type: "tool_end"; toolCallId: string; name: string; result: string; isError: boolean; threads?: ThreadRef[]; image?: ImagePart; video?: VideoPart; artifact?: ArtifactPart; imageRefusal?: ImageRefusal; root?: RootStep }
   /** Memories recalled for this turn, automatically or with recall/read_memory. */
   | { type: "recall"; ids: string[] }
   /** Notes she saved. */

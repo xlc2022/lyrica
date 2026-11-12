@@ -88,7 +88,9 @@ for recurring turns; step 13 `renames`, files renamed in the Files panel until
 sleep respells the memories citing their threads; step 14 `sleep_runs.superseded`,
 the notes a run marked replaced and what replaced them before, so the night can
 be undone, and `sleep_focus`, the person's line for tonight's dream; step 15
-adds nullable `routines.title` and `routines.description`), never DDL in the
+adds nullable `routines.title` and `routines.description`; step 17 adds
+`artifacts`, a published or imported page's title, kind, thread and path, and
+`artifact_versions`, each version's bytes and who made it), never DDL in the
 memory module. Routine labels stay encrypted in their own pool: an optional
 one-line title (80 characters) and description (300 characters), checked after
 credential removal. Metadata edits preserve omitted fields, clear a label

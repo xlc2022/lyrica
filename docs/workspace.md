@@ -904,8 +904,9 @@ runs on the Image upscaling list, where only a model host's recipe that upscales
 and her guidelines say to use it only when asked, on a finished clip. A clip is made in the background (lyricad's
 clip jobs): the call reads the first frame and returns, she says it's on its
 way and ends her reply, and when it is made the thread gets it as her
-message and an idle thread wakes to say it's ready; a failure comes as a
-notice and wakes it too. Lock, a shutdown and deleting the thread stop it
+message and the thread wakes to say it's ready; a failure comes as a
+notice and wakes it too, as a background command's end does (never a
+resolved project thread). Lock, a shutdown and deleting the thread stop it
 before it is saved, and wake nothing. A clip comes only
 from the Videos task's list, and only a model host makes one, so a first
 frame, a subject or a driving clip never reaches a cloud model and a
@@ -1048,12 +1049,18 @@ background, so it doesn't hold her turn (`core/src/workspace/jobs.ts`).
   `onJobEnd` delivers a notice into the thread (`jobNotice`: the job, the
   exit code, how long it ran and the last 40 lines of its output), on the
   path a background subagent's result takes (`Delegation.deliver`, status
-  `job`). A busy thread gets it as a follow-up; an idle one is woken once to
-  carry on (`HostedThread.wakeChild`), 5 s after the first job ends
-  (`JOB_WAKE_MS`), so jobs that end close together wake it once with all
-  their notices, unless its project is paused or it
-  waits for a child slot, when the notice waits in the thread for its next
-  turn. A job she stopped herself (`jobs stop`, reason `STOPPED_BY_HER`)
+  `job`, `quiet`). The notice never starts a turn by itself: a busy thread
+  gets it after the step it is on, so she reads it if the turn goes on. 5 s
+  after the first job ends (`JOB_WAKE_MS`) `lyricad` wakes the thread once
+  to carry on (`HostedThread.wakeChild`), so jobs that end close together
+  wake it once with all their notices; a turn running then is waited out
+  first. It wakes only if her last reply came before a notice (one read
+  mid-turn wakes nothing), and never a resolved project thread: there the
+  notice stays as a card and the thread stays resolved, so a test run that
+  ends after she merged and resolved costs no turn. Nor does it wake while
+  the thread's project is paused or it waits for a child slot, when the
+  notice waits in the thread for its next turn. A clip made in the
+  background (`ClipJobs`) wakes its thread the same way. A job she stopped herself (`jobs stop`, reason `STOPPED_BY_HER`)
   leaves no notice at all: its result told her, and a notice would cost her
   a turn for each. One `lyricad` stopped leaves its notice and never wakes
   it.
@@ -1076,6 +1083,19 @@ background, so it doesn't hold her turn (`core/src/workspace/jobs.ts`).
   command, and that the edit isn't in what it tests, or that the commit may
   not be the tree it tests. A job's folder is its cwd, or where a leading
   `cd <dir> &&` goes. It warns and never blocks.
+- She waits on the thing itself, never with `sleep` (`sleepWait` in
+  `jobs.ts`; a model once checked a job with `sleep 200; cat job.log`,
+  holding its turn on a guess). Where she has background commands, the
+  gate refuses a `bash` call, before anyone is asked, when its sleeps add up
+  to `SLEEP_LIMITS.fixedS` (60 s) or more, or, in her turn, when it loops
+  (`while`, `until`, `for`) with a sleep of `SLEEP_LIMITS.loopS` (10 s) or
+  more between checks; a `bash -c` line inside counts too, and a sleep whose
+  length can't be read (`sleep $N`) doesn't. A loop in the background is the
+  right way to wait for a state, so it runs. The refusal (`WAIT_WAYS`) names
+  the ways to wait: the command itself with `background: true`, a checking
+  loop in the background, `threads watch` for a pull request's CI (or
+  `gh run watch <id> --exit-status` in the background), and `threads later`
+  for a set time. Her prompt says the same (`WAIT_LINE`).
 - Subagents and Plan mode have neither `background` nor `jobs`.
 
 ## Thread settings
@@ -1876,7 +1896,8 @@ opaque command (`bash script.sh`, `eval`, `$cmd`) asks in every mode, as
 below.
 
 A forbid rule refuses any command she writes that contains a matching command, however
-chained or wrapped; it doesn't see inside scripts or programs she runs.
+chained or wrapped, and inside a shell script she runs or sources first on the line
+(below); it doesn't see inside other programs she runs.
 
 `rules.ts` uses `simpleCommands` from `machines.ts`: chains, pipes,
 substitutions, subshells, shell `-c` arguments and find's `-exec`, `-execdir`
@@ -1918,28 +1939,45 @@ since every word it expands to fits the pattern (`harmlessGlob`). It stays
 opaque when the name holds a `[` set or ends in `*`, `?`, a digit or `o`,
 which a loader's name (`ld-….so.2`) could.
 
-A sourced script can be read instead (`sourcedFile`, `setupOnly`). When the
-line's first part, after only `cd DIR`s, is `source FILE` or `. FILE` with a
-literal path that holds a `/`, the hook reads that file where the command will
-run (the sandbox or the SSH machine, at most 64 KiB) and passes it to
-`decide`. A rule the script's own commands meet counts for the line, so a
-forbidden command inside it is refused. A script that only sets things up is
-then not opaque: every command in it is one of `export`, `readonly`,
-`declare`, `typeset`, `local`, `unset`, `set`, `cd`, `pushd`, `popd`, `echo`,
-`true`, `false`, `:`, `test`, `[`, `umask`, `return`, `pwd`, `nproc`,
-`dirname`, `basename`, `realpath`, `readlink`, `uname` or `getconf`, inside
-`if` at most, and it sets none of `BASH…`, `ENV`, `IFS`, `PS1`–`PS4`,
-`PROMPT_COMMAND`, `SHELLOPTS`, `CDPATH` or `GLOBIGNORE`. So a function, an
+A script a shell runs or sources can be read instead (`sourcedFile`,
+`setupOnly`). The line's first part, after only `cd DIR`s, is `source FILE`,
+`. FILE`, or `sh`, `bash` or `dash` running `FILE`
+(with options that only change how it runs, such as `-e`, `-u`, `-x`,
+`-o pipefail`, and behind a wrapper such as `timeout` or `nohup` only with an
+absolute path, never `chroot`). FILE is a literal path that holds a `/`.
+The hook then reads that file where the command will run (the sandbox or the
+SSH machine, at most 64 KiB). When the line writes the file first, after only
+`cd`s, with `cat > /abs/path <<'EOF'` (or `cat <<'EOF' > /abs/path`), quoted
+so the body is taken as it stands, and then runs that same path, the body is
+the script and nothing is read. The text goes to `decide`, and to
+`suspectCommand`, so a destructive command inside the script warns as it
+would on the line.
+
+A rule the script's own commands meet counts for the line, so a forbidden
+command inside it is refused and an opaque one asks. A script a shell runs
+can't change the rest of the line, so otherwise its run isn't opaque,
+unless it defines an alias (dash expands aliases in scripts, bash after
+`shopt -s expand_aliases`), which keeps it opaque. A
+sourced one can, so it is seen through only when it just sets things up:
+every command in it is one of `export`, `readonly`, `declare`, `typeset`,
+`local`, `unset`, `set`, `cd`, `pushd`, `popd`, `echo`, `true`, `false`, `:`,
+`test`, `[`, `umask`, `return`, `pwd`, `nproc`, `dirname`, `basename`,
+`realpath`, `readlink`, `uname` or `getconf`, inside `if` at most, and it
+sets none of `BASH…`, `ENV`, `IFS`, `PS1`–`PS4`, `PROMPT_COMMAND`,
+`SHELLOPTS`, `CDPATH` or `GLOBIGNORE`. So in a sourced script a function, an
 alias, a loop or any other program keeps it opaque. Setting `PATH` is
 allowed, since it does no more than running a program by its path, which
 isn't opaque either. A file that couldn't be read, a path without a slash
-(bash looks it up on `PATH` first) and anything else on the line before it
-keep `source` opaque, so the line can't rewrite the file between the read
-and the run. A background job or a parallel call could still change it in
-that moment; the gate accepts that, as it never looks inside `./x.sh` either.
-A `cd` starting with `-` (`cd -`, `cd -P`) and a nameref (`declare`,
-`typeset` or `local` with `-n`) also keep it opaque. Only that one `source`
-is read.
+(bash looks it up on `PATH` first), `-c`, `-s`, `-i` or `--rcfile`, any
+other shell (zsh, ksh, mksh, fish and the like have syntax that runs code
+`parse` can't see), a variable set for the shell on its part
+(`BASH_ENV=… bash`, `env PS4=… bash -x`), and anything else on the line before it keep the run opaque, so the line
+can't rewrite the file between the read and the run. A background job or a
+parallel call could still change it in that moment; the gate accepts that,
+as it never looks inside `./x.sh` either. A `cd` starting with `-` (`cd -`,
+`cd -P`) and a nameref (`declare`, `typeset` or `local` with `-n`) also keep
+it opaque. Only that one script is read. Other languages (`python3 x.py`,
+`node x.js`) were never opaque: their program is the interpreter.
 
 The hook reads rules on every `bash` call through `ThreadTools.commandRules`.
 Forbid blocks without a card, Ask always asks, and Allow skips Ask and Accept
@@ -2077,7 +2115,37 @@ script, PNG decoder or bundler:
   `fetch` and `WebSocket`; and local files one file can't carry. `bundle`
   ends with the same check.
 
-`preview` and `check` only read; none of the three run in Plan mode.
+- `publish` keeps a self-contained `.html`, `.svg` or `.md` file, or a
+  React component (`.jsx` or `.tsx` with a default export, built into one
+  page by `buildReactPage` below and kept beside its source), as an
+  **artifact** (docs/briefs/artifacts.md): the file's bytes become version 1
+  of a new artifact in the thread's pool, or the next version of the
+  artifact the thread published from that path, or of the one she names by
+  `artifact` (one of the thread's or its project's). An unchanged file adds
+  no version. An HTML page that refers to local files is refused, with a
+  line telling her to `bundle` first; what it would load from the network
+  is said in the result. `title` names it, the file's name otherwise. It
+  reads the file and writes only the pool database, so it asks where `read`
+  asks. Its result's details carry the artifact's id, title, kind and
+  version, which the conversation shows as a card.
+- `artifacts` lists the thread's artifacts and its project's: id, title,
+  kind, version and path.
+
+`preview`, `check` and `artifacts` only read; none of the five run in Plan
+mode. A subagent has no `publish` or `artifacts`.
+
+`buildReactPage(source, { loader, title })` compiles a default-exported JSX or
+TSX component into one HTML page with React and the Tailwind browser runtime
+inline. Its build plugin permits imports of react and react-dom (including
+subpaths), lucide-react, recharts, three.js (including addons), simplex-noise
+and tween.js; other packages and local files are refused. A component
+imports with `import` statements only: `import()` and `require()` are
+refused, since esbuild would expand a computed one into a glob over the
+daemon's own disk; the component resolves from an empty folder, and a
+page holding any file that isn't a library's is refused. It returns the
+page and the source's imported package names; `reactLibraries()` lists the
+allowed packages with their installed versions. The source is compiled,
+never executed in lyricad.
 
 **Offline libraries.** three.js (with its addons), simplex-noise and
 tween.js come with Lyrica (core's dependencies) and are mounted read-only

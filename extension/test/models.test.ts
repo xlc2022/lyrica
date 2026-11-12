@@ -433,6 +433,27 @@ describe("how a model answers", () => {
     expect(s.cloud.requests.at(-1)).not.toHaveProperty("return_progress");
   });
 
+  it("tells a llama-server with several slots which one each thread uses, and keeps the thread on it", async () => {
+    const s = await setup();
+    const facts = { chat_template: "{{ messages }}", default_generation_settings: { n_ctx: 32768 }, total_slots: 2, modalities: { vision: false } };
+    const server = await fakeOpenAI({ models: [{ id: "qwen.gguf", meta: { n_ctx: 32768 } }], props: { "": facts } });
+    const ep = s.models.addEndpoint(s.ada, { name: "direct", kind: "local", baseUrl: server.baseUrl });
+    const [qwen] = await s.models.discover(s.ada, ep.id);
+    s.models.setColumnTask(s.ada.id, "private", "chat", [{ offeringId: qwen!.id }]);
+    s.models.setOfferingSettings(s.ada, qwen!.id, { temperature: 0.6 });
+    const a = s.thread("private"), b = s.thread("private");
+    const turn = async (thread: typeof a) => {
+      const { session, dispose } = await s.open(thread);
+      try { await session.prompt("hello"); } finally { dispose(); }
+    };
+    await turn(a);
+    await turn(b);
+    const slots = (server.requests as unknown as Record<string, unknown>[]).map((r) => r.id_slot);
+    // The other thread gets the slot nobody has used, not the one holding the first thread's prompt; saved values still go.
+    expect(slots).toEqual([0, 1]);
+    expect(server.requests[1]).toMatchObject({ temperature: 0.6 });
+  });
+
   it("caps a reply at the smaller of 131,072 tokens and a quarter of the context window, clamping a longer saved maximum", async () => {
     const s = await setup();
     const id = s.localRef.offeringId;

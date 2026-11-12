@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
-  checkReadable, Keyring, Memory, migrate, MigrationFailed, MIN_READER, openEncrypted, SCHEMA, schemaOf, SchemaTooNew, SkillLibrary, STEPS, Users, WorkspaceSettings,
+  ArtifactLibrary, checkReadable, Keyring, Memory, migrate, MigrationFailed, MIN_READER, openEncrypted, SCHEMA, schemaOf, SchemaTooNew, SkillLibrary, STEPS, Users, WorkspaceSettings,
   type Db, type DbKind, type MigrationStep,
 } from "../src/index.ts";
 import { ARGON2, freshKeyring, KDF_ITER, profile } from "./helpers.ts";
@@ -758,6 +758,25 @@ describe("pool step 13 (renames)", () => {
       db.prepare("INSERT INTO renames (thread, swaps, at) VALUES ('web/a', '[]', '2026-01-01'), (NULL, '[]', '2026-01-01')").run();
       db.prepare("DELETE FROM threads WHERE id = 'web/a'").run();
       expect(db.prepare("SELECT thread FROM renames").all()).toEqual([{ thread: null }]);
+      db.close();
+    }
+  });
+});
+
+describe("pool step 17 (artifacts)", () => {
+  it("adds the artifact tables to every released pool schema, keeping earlier readers and thread data", () => {
+    for (let version = 1; version < 17; version++) {
+      const db = scratchDb();
+      const previous = STEPS.pool.filter((s) => s.version <= version);
+      migrate(db, "pool", {}, previous);
+      SEED.pool(db);
+      migrate(db, "pool");
+      const artifacts = new ArtifactLibrary(db, "general");
+      artifacts.create({ title: "A page", kind: "html", thread: "web/a", bytes: Buffer.from("<p>hi</p>"), author: "lyrica" });
+      expect(artifacts.list().map((a) => [a.title, a.version]), `v${version}`).toEqual([["A page", 1]]);
+      expect(db.prepare("SELECT title FROM threads WHERE id = 'web/a'").get()).toEqual({ title: "A test thread" });
+      expect(schemaOf(db)).toEqual({ version: SCHEMA.pool, minReader: MIN_READER.pool });
+      expect(() => checkReadable(db, "pool", previous)).not.toThrow();
       db.close();
     }
   });

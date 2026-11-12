@@ -20,7 +20,7 @@ and one without a path gets `/v1`, so `10.0.0.5:1234` saves as
 `http://10.0.0.5:1234/v1`; a given path is kept.
 
 The Hosts and endpoints page distinguishes a plan from a keyed service:
-ChatGPT plan or Grok plan versus API key pills. A cloud row also shows Text,
+ChatGPT plan, Codex plan or Grok plan versus API key pills. A cloud row also shows Text,
 Vision and Image when offered; Image requires an adapter that can call a
 marked image model and a key where required. A plan shows its kind and "only
 you", plus an explicit account label from sign-in if supplied, instead of
@@ -1152,7 +1152,8 @@ xAI provider instead (below).
 
 ## Subscription plans
 
-A user can add a **ChatGPT plan** or a **Grok plan** (SuperGrok or X
+A user can add a **ChatGPT plan**, a **Codex plan** (the same ChatGPT plan,
+signed in the way the Codex CLI signs in) or a **Grok plan** (SuperGrok or X
 Premium) instead of an API key, so general threads answer from their plan's
 included usage. Both providers permit it. Claude and Gemini plans aren't
 offered: Anthropic and Google don't permit other apps to use their
@@ -1160,16 +1161,18 @@ sign-in, so those stay on API keys (docs/briefs/subscription-logins.md).
 Code: `extension/src/plans.ts`, and `addPlan` and its neighbours in
 `core/src/models/`.
 
-- **An endpoint of `api: "chatgpt"` or `"grok"`** (`isPlan`): always cloud,
+- **An endpoint of `api: "chatgpt"`, `"codex"` or `"grok"`** (`isPlan`): always cloud,
   always the user's own (no shared plans), base URL from `PLAN_URLS`
-  (`https://api.openai.com/v1`, `https://api.x.ai/v1`). Its sign-in (Pi's
-  credential: `access`, `refresh`, `expires`, and for ChatGPT `clientId`
-  and `scopes`) is kept as JSON in the endpoint's `api_key` column in their
+  (`https://api.openai.com/v1`, `https://chatgpt.com/backend-api`,
+  `https://api.x.ai/v1`). Its sign-in (Pi's
+  credential: `access`, `refresh`, `expires`, for ChatGPT `clientId`
+  and `scopes`, for Codex `accountId`) is kept as JSON in the endpoint's `api_key` column in their
   `user.db`, read through `planCredential` for calls and `planAccount` for
   an explicit account label; `Endpoint.apiKey` is never set for a plan, and it has no URL or key to edit. It merges only with a
   plan of the same kind. No schema change: after a rollback, an older release
   sends the stored JSON (refresh token included) as its bearer key to the
-  provider that issued it, whose refusal marks the endpoint down.
+  provider that issued it, whose refusal marks the endpoint down (a Codex
+  plan reads there as a plain cloud endpoint at `chatgpt.com`, also OpenAI's).
 - **Signing in** (`startPlanSignIn`, `POST …/plans/sign-in`), with Pi's own
   flows and the agent name "Lyrica":
   - **ChatGPT:** Sign in with ChatGPT, with this installation's ID
@@ -1177,6 +1180,12 @@ Code: `extension/src/plans.ts`, and `addPlan` and its neighbours in
     OpenAI's redirect, which only a browser on the server reaches, so the
     person pastes the address their browser was sent to; Pi checks its
     state and exchanges the code.
+  - **Codex:** the Codex CLI's own login (Pi's `openai-codex` provider,
+    which Pi labels legacy): the same paste, with OpenAI's redirect to
+    `http://localhost:1455/auth/callback` and the Codex CLI's client ID.
+    Lyrica picks its browser login, the Codex CLI's default; its device
+    code works only once the user turns it on in ChatGPT's settings. It
+    serves an account or install that Sign in with ChatGPT doesn't accept.
   - **Grok:** xAI's device code: the person opens xAI's page, enters the
     code shown if asked, and approves; Finish waits for xAI to confirm.
   A new plan's name is checked (letters, digits and `-`) before the
@@ -1188,8 +1197,9 @@ Code: `extension/src/plans.ts`, and `addPlan` and its neighbours in
   any token is logged. A provider's HTTP refusal reaches the interface as
   one fixed line naming the provider and its status (`planError`), never
   the provider's own text, which may echo what it was sent.
-- **Calls.** In the runtime a plan is Pi's `openai` or `xai` provider
-  (Responses API) under the endpoint's ID, offering only its listed models
+- **Calls.** In the runtime a plan is Pi's `openai`, `openai-codex` or `xai` provider
+  (Responses API; Codex's at `chatgpt.com/backend-api/codex`, with the
+  account ID from its token) under the endpoint's ID, offering only its listed models
   and signing in only with the plan. Under that ID Pi no longer sees a
   Sign in with ChatGPT token, so a ChatGPT plan's models carry compat that
   keeps out what the sign-in refuses (OpenAI's
@@ -1204,7 +1214,8 @@ Code: `extension/src/plans.ts`, and `addPlan` and its neighbours in
   reaches the thread as `planError`'s fixed line.
 - **Models** come from Pi's catalogue for that provider (`planCatalog`,
   given to core with `setPlanCatalog`), not `/v1/models`, with their
-  context windows, vision and thinking; a ChatGPT plan adds ChatGPT Images.
+  context windows, vision and thinking; a ChatGPT plan adds ChatGPT Images
+  (a Codex plan doesn't: ChatGPT Images needs a ChatGPT plan).
   A context window set by hand on a plan model replaces the catalogue's
   from its next request (some plans allow more than they list, at a
   higher rate).
@@ -1290,7 +1301,15 @@ call a thread's slot stays kept for it for 15 s: its next call (once its
 tools have run) finds its prompt still cached instead of reading its whole
 context again at prefill speed. The keep ends early when that call comes,
 and no slot is kept while a waiting request has already waited 2 minutes,
-so threads switch per burst of calls and nobody waits for ever. A wait the turn aborts
+so threads switch per burst of calls and nobody waits for ever. A llama.cpp
+server is also told which slot each request uses (`id_slot`): the thread's
+own when it is free, else one no thread has used, else the free one used
+longest ago, never one kept for another thread. Left to choose, llama.cpp
+gives an idle slot to any prompt that starts the same as a tenth of it, and
+every thread's prompt starts with the same persona, so a thread with a short
+prompt took the slot of a project chat with a long one, which then read its
+whole context again. Another daemon sharing the same host isn't seen, so its
+requests may wait for a slot one of this daemon's took. A wait the turn aborts
 ends as an aborted reply. LM Studio's "Context size has been exceeded" is
 marked as an overflow, so Pi compacts and retries instead of failing. Image
 jobs on a host take turns with its chat models in the host's own queue for

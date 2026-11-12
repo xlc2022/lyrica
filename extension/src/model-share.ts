@@ -12,6 +12,14 @@ import { createAssistantMessageEventStream, type AssistantMessageEventStream } f
 // prompt and reads its whole context again at prefill speed. So a thread's
 // slot is kept for it a short while after each call, though never against a
 // request that has already waited too long.
+//
+// Which slot a request lands on is the server's choice unless it is told.
+// llama.cpp gives an idle slot to any prompt whose start matches a tenth of
+// its own, and every thread's prompt starts with the same persona: a thread
+// with a short prompt takes the slot of a project chat with a long one, which
+// then reads its whole context again. So each request is given a slot
+// (llama.cpp's `id_slot`): its thread's own when free, else an unused one,
+// else the one used longest ago, never one kept for another thread.
 
 /** How long a slot stays kept for the thread that just used it, so its next call finds its prompt cached. */
 export const KEEP_WARM_MS = 15_000;
@@ -19,7 +27,7 @@ export const KEEP_WARM_MS = 15_000;
 export const MAX_PASSED_MS = 120_000;
 
 interface Entry { need: number; window: number; slots?: number; since: number; go: () => void }
-interface Kept { need: number; timer: NodeJS.Timeout }
+interface Kept { need: number; timer: NodeJS.Timeout; slot?: number }
 interface Share {
   used: number;
   running: number;
@@ -29,6 +37,43 @@ interface Share {
 }
 /** Each daemon's shares, by its Models: a daemon started again in the same process starts with none. */
 const scopes = new WeakMap<object, Map<string, Share>>();
+
+/** A model's slots, outliving its share: who used each last, when, and which are busy. */
+interface Slots { holder: (WeakRef<object> | undefined)[]; at: number[]; busy: Set<number> }
+const slotScopes = new WeakMap<object, Map<string, Slots>>();
+
+/** A release that may name the slot its request was given. */
+export type Release = (() => void) & { slot?: number };
+
+/**
+ * The slot for `holder`'s request: its own last one if free, else one never
+ * used, else the free one used longest ago; never a busy one or one kept for
+ * another thread. None for a server with fewer than two slots.
+ */
+function pickSlot(scope: object, key: string, s: Share, count: number | undefined, holder: object | undefined): number | undefined {
+  if (!count || count < 2) return undefined;
+  let byKey = slotScopes.get(scope);
+  if (!byKey) slotScopes.set(scope, byKey = new Map());
+  let t = byKey.get(key);
+  // A server reloaded with another number of slots starts over.
+  if (!t || t.at.length !== count) byKey.set(key, t = { holder: Array.from({ length: count }, () => undefined), at: Array(count).fill(0), busy: new Set() });
+  const keptFor = new Map([...s.kept].filter(([h, k]) => h !== holder && k.slot !== undefined).map(([h, k]) => [k.slot!, h]));
+  const free = t.at.map((_, i) => i).filter((i) => !t.busy.has(i) && !keptFor.has(i));
+  const own = holder && free.find((i) => t.holder[i]?.deref() === holder);
+  const slot = own ?? free.find((i) => !t.holder[i]) ?? free.sort((a, b) => t.at[a]! - t.at[b]!)[0];
+  if (slot === undefined) return undefined;
+  t.busy.add(slot);
+  t.holder[slot] = holder && new WeakRef(holder);
+  t.at[slot] = Date.now();
+  return slot;
+}
+
+function freeSlot(scope: object, key: string, slot: number | undefined): void {
+  const t = slot === undefined ? undefined : slotScopes.get(scope)?.get(key);
+  if (!t) return;
+  t.busy.delete(slot!);
+  t.at[slot!] = Date.now();
+}
 
 function fits(s: Share, need: number, window: number, slots?: number): boolean {
   // At most the slots the server says it serves at once, kept ones counted; none said, no limit but the cache.
@@ -56,9 +101,10 @@ function unkeep(s: Share, holder: object): void {
  * that much until the returned release is called. One request alone always
  * runs. A request whose signal aborts while it waits leaves the queue.
  * `holder` (the thread's model runtime) keeps its slot warm between its calls
- * when the server reports `slots`.
+ * when the server reports `slots`. With two slots or more, the release names
+ * the slot the request was given.
  */
-export function shareModel(scope: object, key: string, need: number, window: number, signal?: AbortSignal, slots?: number, holder?: object): Promise<() => void> {
+export function shareModel(scope: object, key: string, need: number, window: number, signal?: AbortSignal, slots?: number, holder?: object): Promise<Release> {
   let shares = scopes.get(scope);
   if (!shares) scopes.set(scope, shares = new Map());
   const s: Share = shares.get(key) ?? { used: 0, running: 0, queue: [], kept: new Map() };
@@ -66,24 +112,26 @@ export function shareModel(scope: object, key: string, need: number, window: num
   return new Promise((resolve, reject) => {
     const take = () => {
       s.used += need; s.running++;
+      const slot = pickSlot(scope, key, s, slots, holder);
       let done = false;
       const release = (keep: boolean) => {
         if (done) return; done = true;
         signal?.removeEventListener("abort", onAbort);
         s.running--;
+        freeSlot(scope, key, slot);
         // Its slot stays its own a while, unless someone has waited too long already.
         const head = s.queue[0];
         if (keep && holder && slots && !(head && Date.now() - head.since >= MAX_PASSED_MS)) {
           const timer = setTimeout(() => { unkeep(s, holder); next(shares, key, s); }, KEEP_WARM_MS);
           timer.unref?.();
-          s.kept.set(holder, { need, timer });
+          s.kept.set(holder, { need, timer, ...(slot !== undefined ? { slot } : {}) });
         } else s.used -= need;
         next(shares, key, s);
       };
       // An aborted request gives its share back at once, even if its stream never ends, and keeps no slot.
       const onAbort = () => release(false);
       signal?.addEventListener("abort", onAbort, { once: true });
-      resolve(() => release(true));
+      resolve(Object.assign(() => release(true), slot !== undefined ? { slot } : {}));
     };
     // Its own kept slot is free for it whoever waits.
     if (holder && s.kept.has(holder)) {
@@ -114,10 +162,10 @@ type Event = Parameters<AssistantMessageEventStream["push"]>[0];
  * ends as an aborted reply; a request that throws, or ends with no reply,
  * ends as an error reply.
  */
-export function sharedStream(wait: Promise<() => void>, start: () => AssistantMessageEventStream, failed: (reason: "aborted" | "error", message: string) => Event): AssistantMessageEventStream {
+export function sharedStream(wait: Promise<Release>, start: (slot?: number) => AssistantMessageEventStream, failed: (reason: "aborted" | "error", message: string) => Event): AssistantMessageEventStream {
   const out = createAssistantMessageEventStream();
   void (async () => {
-    let release: (() => void) | undefined;
+    let release: Release | undefined;
     try {
       release = await wait;
     } catch {
@@ -127,7 +175,7 @@ export function sharedStream(wait: Promise<() => void>, start: () => AssistantMe
     }
     let ended = false;
     try {
-      for await (const event of start()) {
+      for await (const event of start(release.slot)) {
         out.push(event);
         if (event.type === "done" || event.type === "error") ended = true;
       }

@@ -583,7 +583,14 @@ describe("projects", () => {
     await new Promise((r) => setTimeout(r, 600));
     expect(asked()).toHaveLength(3);
     expect((await ada.patch(`${threadPath(dns!)}/settings`, { localOnly: false })).status).toBe(200);
+    // Check on threads off: no look, though watchThreads is still on.
+    expect((await ada.patch(path, { checkInOnThreads: false })).body).toMatchObject({ projectSettings: { watchThreads: true, checkInOnThreads: false } });
+    script("dns").push({ text: "Noted." });
+    await ada.post(`${threadPath(dns!)}/messages`, { text: "ok" });
+    await new Promise((r) => setTimeout(r, 600));
+    expect(asked()).toHaveLength(3);
     // Switched off: no look.
+    await ada.patch(path, { checkInOnThreads: true });
     expect((await ada.patch(path, { watchThreads: false })).body).toMatchObject({ projectSettings: { watchThreads: false } });
     script("dns").push({ text: "Done." });
     await ada.post(`${threadPath(dns!)}/messages`, { text: "thanks" });

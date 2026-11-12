@@ -158,7 +158,8 @@ release passed probation there.
    work to them instead of starting its own: a project chat told only the
    roles starts a second Review or Friction log.
 
-4. Leave the project's `watchThreads` setting on (the default): the
+4. Leave the project's **Check on threads** switch on (the default;
+   `watchThreads` and `checkInOnThreads`): the
    project chat then takes a batched look at its threads 30 s after one
    ends a turn the owner started or posts an update, marked `[Watching threads]`,
    tells the threads a change affects and speaks only when the owner must know
@@ -192,7 +193,10 @@ release passed probation there.
    three rounds, `lyricad` tells the project chat at once, which runs the
    failing command on the base branch to tell real failures from her
    sandbox's (docs/workspace.md, "Project checks").
-   `threads later` stays for anything else.
+   `threads later` stays for anything else. She never waits with `sleep`:
+   a long sleep in her turn, or a background command that only sleeps, goes
+   back to her naming these ways to wait (docs/workspace.md, "Background
+   commands").
 
 ## Reading a checkout with a scout
 

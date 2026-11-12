@@ -25,6 +25,14 @@ export function imagePart(tool: string, details: unknown): Extract<MessagePart, 
   return { type: "image", paths: i.paths, model: i.model, ...(i.tier ? { tier: i.tier } : {}), ...(i.picked === true ? { picked: true as const } : {}) };
 }
 
+/** The artifact a `page publish` call made or added a version to: its id, title, kind and that version. No content. */
+export function artifactPart(tool: string, details: unknown): Extract<MessagePart, { type: "artifact" }> | undefined {
+  const a = tool === "page" ? (details as { artifact?: Record<string, unknown> } | undefined)?.artifact : undefined;
+  if (!a || typeof a.id !== "string" || typeof a.title !== "string" || typeof a.version !== "number") return undefined;
+  if (a.kind !== "html" && a.kind !== "svg" && a.kind !== "markdown" && a.kind !== "react") return undefined;
+  return { type: "artifact", id: a.id, title: a.title, kind: a.kind, version: a.version };
+}
+
 /** A clip's metadata only: its bytes stay in the encrypted home, and its poster is its thumbnail. */
 export function videoPart(tool: string, details: unknown): Extract<MessagePart, { type: "video" }> | undefined {
   const v = tool === "image" ? (details as { video?: Record<string, unknown> } | undefined)?.video : undefined;
@@ -329,6 +337,8 @@ export function toMessages(threadId: string, pool: Pool, entries: { n: number; d
       if (image) call.owner.parts.push(image);
       const video = !m.isError ? videoPart(call.part.name, m.details) : undefined;
       if (video) call.owner.parts.push(video);
+      const artifact = !m.isError ? artifactPart(call.part.name, m.details) : undefined;
+      if (artifact) call.owner.parts.push(artifact);
       call.owner.parts.push(...markersFor(call.part.name, call.part.args, textOf(m.content)));
     }
   }
