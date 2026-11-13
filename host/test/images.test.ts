@@ -1116,9 +1116,16 @@ describe("the image API", () => {
       prompt: MARKER, width: 1024, height: 1024, seed: 11, batch_count: 2, output_format: "png",
       sample_params: { sample_steps: 8, sample_method: "res_multistep", scheduler: "simple", flow_shift: 3, guidance: { txt_cfg: 1 } },
     });
-    // A second job for the same recipe doesn't start it again.
-    await s.api("/host/v1/images/create", { body: { recipe: z.id, prompt: "again" } });
+    // A second job for the same recipe doesn't start it again. An aspect ratio keeps the recipe's area (1024×1024) in that shape.
+    await s.api("/host/v1/images/create", { body: { recipe: z.id, prompt: "again", aspectRatio: "16:9" } });
     expect(s.sdFake!.seen.started).toHaveLength(1);
+    expect(s.sdFake!.seen.jobs[1]).toMatchObject({ width: 1360, height: 768 });
+    expect((await s.api("/host/v1/images/create", { body: { recipe: z.id, prompt: "x", aspectRatio: "16:9", width: 1024 } })).status).toBe(400);
+    // Up to 8:1 as the image tool asks; past a side's limit both sides shrink by one factor, so the shape holds.
+    await s.api("/host/v1/images/create", { body: { recipe: z.id, prompt: "wide", aspectRatio: "21:9" } });
+    expect(s.sdFake!.seen.jobs[2]).toMatchObject({ width: 1568, height: 672 });
+    await s.api("/host/v1/images/create", { body: { recipe: z.id, prompt: "wider", aspectRatio: "8:1" } });
+    expect(s.sdFake!.seen.jobs[3]).toMatchObject({ width: 2048, height: 256 });
     expect(s.comfyFake.seen.prompts).toHaveLength(0);
     // Once the card's tensor cores run at full rate, the next job starts it again with flash attention,
     // and with F16, as these parts fit in its memory.

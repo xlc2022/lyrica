@@ -472,7 +472,7 @@ class Models {                                              // new Models(keyrin
   // Images (memory only; caller stores and records results)
   image(ctx, request: ImageRequest, { signal?, beforeSend?: (resolution) => Promise<void> }?): Promise<{ images: GeneratedImage[]; resolution }>
   // ImageInput { bytes: Uint8Array; type: "image/png" | "image/jpeg" | "image/webp" }
-  // ImageRequest: create { prompt, tier: "fast" | "quality", size?: { width, height }, count?, references?: ImageInput[], loras?: LoraAsk[], ...JobSettings }
+  // ImageRequest: create { prompt, tier: "fast" | "quality", size?: { width, height } | aspectRatio?: "w:h" (a host keeps its recipe's area in that shape; a cloud model gets about 1 MP), count?, references?: ImageInput[], loras?: LoraAsk[], ...JobSettings }
   //   | edit { prompt, image: ImageInput, mask?: ImageInput, replace?: boolean, count?, references?: ImageInput[], loras?: LoraAsk[], ...JobSettings }
   //     JobSettings { steps?: 1-150; cfg?: 0-30; seed?: 0 to MAX_SEED (2^48); sampler?, scheduler?: ComfyUI names; shift?: 0-20; guidance?: 0-30;
   //     negativePrompt?: at most 4096 characters } (JOB_SETTINGS) replace the recipe's for this job only (validateSampling, samplingFields); need.sampling skips a cloud model

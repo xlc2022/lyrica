@@ -1,5 +1,5 @@
 import { CLOUD_IMAGE_PROVIDERS, imageAt, PLAN_IMAGE, PLAN_IMAGE_MODEL, setsJob, validateImageRequest, type ImageRequest, type GeneratedImage, type Sampling, type AppliedLora } from "./images.ts";
-export { CLOUD_IMAGE_PROVIDERS, COLOR_MATCH, JOB_SETTINGS, MAX_SEED, MAX_UPSCALE_SEED, PLAN_IMAGE_MODEL, type JobSettings, type ImageRequest, type GeneratedImage, type ImageInput, type Sampling, type AppliedLora } from "./images.ts";
+export { CLOUD_IMAGE_PROVIDERS, COLOR_MATCH, JOB_SETTINGS, MAX_SEED, MAX_UPSCALE_SEED, PLAN_IMAGE_MODEL, ratioSize, type JobSettings, type ImageRequest, type GeneratedImage, type ImageInput, type Sampling, type AppliedLora } from "./images.ts";
 import { upscaleVideoAt, validateVideoRequest, validateVideoUpscale, videoAt, type GeneratedVideo, type VideoRequest, type VideoUpscaleRequest } from "./videos.ts";
 import { loraFiles, loraName, type LoraAsk } from "./loras.ts";
 export { isMp4, LONGEST_VIDEO_SECONDS, type GeneratedVideo, type VideoRequest, type VideoUpscaleRequest } from "./videos.ts";
