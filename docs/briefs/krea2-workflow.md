@@ -62,3 +62,12 @@ enhancer and the second pass. If the second pass looks wrong, tune `refine`,
 
 Open: #799 adds Upload as a sixth Source option on Download image model; UI
 review asked for a 390-wide screenshot of the six once both are in.
+
+Shift: until this fix the template had no model-sampling node, so a recipe's
+or a job's `shift` did nothing (images at every shift were identical). It now
+patches the model with `ModelSamplingFlux` (Flux's shift, `max_shift` and
+`base_shift` both the value, so it doesn't vary with size), after the enhancer
+and before every sampler, and sd.cpp gets it as its flow shift. The template's
+own default is 1.15, the model's, so a recipe that sets none makes the same
+images as before. Other templates that take no shift (SDXL, FLUX, LTX-2.5,
+MiniMax H3, Qwen-Image 2.1, P-H3-Image) name it in the job's `unused` instead.

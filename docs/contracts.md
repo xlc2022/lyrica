@@ -1534,7 +1534,9 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     model's own for that job, only a model host takes them (`need.sampling`
     passes over a cloud model), and an image's result says `Made with <model> on
     <host> at <n> steps, CFG <x>, <sampler>/<scheduler>, shift <x>, guidance <x>, a negative prompt`
-    for those set (never the negative prompt's words). Upscale and upscale_video take optional
+    for those set (never the negative prompt's words), leaving out those the host's answer names in `unused`
+    (its workflow takes no input for them), which it names instead: `This model takes no <setting>, so it was left out.`
+    A clip's result says the same of its `unused`. Upscale and upscale_video take optional
     `colorMatch` and `seed` (at most `MAX_UPSCALE_SEED`). Every result names the seeds the host answered
     with (`Seed <n>.` or `Seeds <n>, <m>.`); upscale takes `image`, optional `scale` and `maxSize`.
     Create, edit, upscale and upscale_video take an optional `model`, a name she was asked

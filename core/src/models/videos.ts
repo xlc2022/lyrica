@@ -1,6 +1,6 @@
 // Principle 2: video calls share the router's cloud boundary, and only model hosts make clips. No disk or logging.
 import { hostError, HostIdentityChanged, HostRefused } from "./host.ts";
-import { appliedLoras, cleanPng, COLOR_MATCH, MAX_UPSCALE_SEED, samplingFields, samplingOf, validateSampling, type AppliedLora, type GeneratedImage, type JobSettings, type ImageInput, type Sampling } from "./images.ts";
+import { appliedLoras, cleanPng, COLOR_MATCH, MAX_UPSCALE_SEED, samplingFields, samplingOf, unusedSettings, validateSampling, type AppliedLora, type GeneratedImage, type JobSettings, type ImageInput, type Sampling } from "./images.ts";
 import { validateLoras, type LoraAsk } from "./loras.ts";
 import { withProgress, type JobProgress } from "./progress.ts";
 
@@ -19,6 +19,8 @@ export interface GeneratedVideo {
   bytes: Uint8Array; type: "video/mp4"; width: number; height: number; frames: number; fps: number; duration: number; audio: boolean; seed?: number;
   /** The LoRAs the host job applied, when its answer names them. */
   loras?: AppliedLora[];
+  /** The job's settings its workflow takes no input for, when the host names any (`unusedSettings`). */
+  unused?: string[];
   /** Its first frame, the clip's thumbnail. */
   poster: GeneratedImage;
   /** How long the host's samplers ran for it, when the host said. */
@@ -105,7 +107,7 @@ async function postVideo(t: { fetch: typeof fetch; baseUrl: string }, path: stri
   const bytes = typeof v?.mp4 === "string" ? Buffer.from(v.mp4, "base64") : undefined;
   if (!bytes || !isMp4(bytes) || typeof out.poster !== "string") throw new HostRefused("invalid", "video host returned no MP4");
   const num = (n: unknown) => typeof n === "number" && Number.isFinite(n) && n > 0 ? n : 0;
-  const sampling = samplingOf(out), loras = appliedLoras(out.loras);
+  const sampling = samplingOf(out), loras = appliedLoras(out.loras), unused = unusedSettings(out.unused);
   return { bytes, type: "video/mp4", width: num(v.width), height: num(v.height), frames: num(v.frames), fps: num(v.fps), duration: num(v.duration), audio: v.audio === true,
-    ...(typeof v.seed === "number" ? { seed: v.seed } : {}), poster: cleanPng(Buffer.from(out.poster, "base64")), ...(sampling ? { sampling } : {}), ...(loras ? { loras } : {}) };
+    ...(typeof v.seed === "number" ? { seed: v.seed } : {}), poster: cleanPng(Buffer.from(out.poster, "base64")), ...(sampling ? { sampling } : {}), ...(loras ? { loras } : {}), ...(unused ? { unused } : {}) };
 }

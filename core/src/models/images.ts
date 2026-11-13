@@ -198,7 +198,7 @@ export const CLOUD_IMAGE_PROVIDERS: Readonly<Record<string, CloudImageProvider>>
 };
 
 /** `loras`: those a host job applied, when its answer names them (an older host's doesn't). */
-export async function imageAt(t: Target, r: ImageRequest, signal?: AbortSignal, onProgress?: (p: JobProgress) => void): Promise<{ images: GeneratedImage[]; sampling?: Sampling; loras?: AppliedLora[] }> {
+export async function imageAt(t: Target, r: ImageRequest, signal?: AbortSignal, onProgress?: (p: JobProgress) => void): Promise<{ images: GeneratedImage[]; sampling?: Sampling; loras?: AppliedLora[]; unused?: string[] }> {
   if (!t.host) {
     const provider = CLOUD_IMAGE_PROVIDERS[t.api ?? "openai-compatible"];
     if (!provider) throw new HostRefused("unsupported", "This endpoint has no image provider.");
@@ -220,8 +220,18 @@ export async function imageAt(t: Target, r: ImageRequest, signal?: AbortSignal, 
   const out = await withProgress(t, onProgress, (tag) => answer(t, `/host/v1/images/${r.action}`, JSON.stringify(fields), { "content-type": "application/json", ...tag }, signal));
   if (!Array.isArray(out.images) || !out.images.length) throw new HostRefused("invalid", "image host returned no images");
   const images = out.images.map((i: { png: string; seed?: number }) => ({ ...cleanPng(Buffer.from(i.png, "base64")), ...(i.seed === undefined ? {} : { seed: i.seed }) }));
-  const sampling = samplingOf(out), loras = appliedLoras(out.loras);
-  return { images, ...(sampling ? { sampling } : {}), ...(loras ? { loras } : {}) };
+  const sampling = samplingOf(out), loras = appliedLoras(out.loras), unused = unusedSettings(out.unused);
+  return { images, ...(sampling ? { sampling } : {}), ...(loras ? { loras } : {}), ...(unused ? { unused } : {}) };
+}
+
+/**
+ * The host answer's `unused`: those of the job's settings its workflow takes no input for (a shift on SDXL), so the
+ * result doesn't say the job ran with them. Only names of `JobSettings`; undefined when there are none.
+ */
+export function unusedSettings(v: unknown): string[] | undefined {
+  if (!Array.isArray(v)) return undefined;
+  const out = v.filter((k): k is string => typeof k === "string" && (JOB_SETTINGS as readonly string[]).includes(k));
+  return out.length ? out : undefined;
 }
 
 /** The `loras` a host job's answer names, or undefined when it names none or isn't a list of them. */

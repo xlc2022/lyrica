@@ -675,7 +675,9 @@ optional `scale` and `maxSize`. Inputs are `{ bytes, type }` (PNG, JPEG or WebP)
 Hosts are called through their paired fetch at `/host/v1/images/<action>`
 with the confirmed recipe's ID. Size, count and a job's own settings (`JobSettings`: steps,
 CFG, seed, sampler, scheduler, shift, guidance and negative prompt; for an
-upscale, colour matching and seed) are sent only when supplied; a cloud model,
+upscale, colour matching and seed) are sent only when supplied, and a host
+names in `unused` those its workflow takes no input for (a shift on SDXL), which
+the image tool's result then doesn't claim; a cloud model,
 which can't take them, is passed over for such a call; all other recipe defaults
 remain the host's, including for both create tiers.
 Calls never name parts or workflows. Discovery includes recipes'

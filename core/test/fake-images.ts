@@ -57,7 +57,9 @@ export async function fakeImages() {
       expect(Object.keys(body).every(k => allowed.includes(k))).toBe(true);
       images.push({ action, body });
       return Response.json({ images: Array.from({ length: body.count ?? 1 }, () => ({ png: output.toString("base64"), width: 1, height: 1, seed: 42 })), seconds: 0.1,
-        ...(action === "upscale" ? {} : { ...applied(body), sampling: { seconds: 6.25 * (body.count ?? 1), steps: 8 * (body.count ?? 1) } }) });
+        ...(action === "upscale" ? {} : { ...applied(body), sampling: { seconds: 6.25 * (body.count ?? 1), steps: 8 * (body.count ?? 1) } }),
+        // Art's workflow takes no guidance, so a job that sets it hears so.
+        ...(body.guidance === undefined ? {} : { unused: ["guidance"] }) });
     }) as typeof fetch);
     const offerings = await models.discover(ada, ep.id);
     // Art, Clip, Long, Moves and Restyle: a proposal never resolves.

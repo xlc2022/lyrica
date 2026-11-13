@@ -3039,7 +3039,7 @@ export class Models {
   /** `onProgress`: how far a model host's job has got (cloud models report none). */
   /** `first`: models asked for by name (`namedImageModels`), tried before the list. */
   /** `loras`: those a host job applied, when its answer names them. */
-  async image(ctx: CallContext, request: ImageRequest, opts: { signal?: AbortSignal; beforeSend?: (resolution: Resolution) => Promise<void>; onProgress?: (p: JobProgress) => void; first?: string[] } = {}): Promise<{ images: GeneratedImage[]; resolution: Resolution; sampling?: Sampling; loras?: AppliedLora[] }> {
+  async image(ctx: CallContext, request: ImageRequest, opts: { signal?: AbortSignal; beforeSend?: (resolution: Resolution) => Promise<void>; onProgress?: (p: JobProgress) => void; first?: string[] } = {}): Promise<{ images: GeneratedImage[]; resolution: Resolution; sampling?: Sampling; loras?: AppliedLora[]; unused?: string[] }> {
     validateImageRequest(request);
     await this.planImages(ctx.userId);
     const refs = request.action === "upscale" ? 0 : request.references?.length ?? 0;
