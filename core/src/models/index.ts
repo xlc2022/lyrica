@@ -3515,8 +3515,9 @@ export class Models {
         const listed = live(isList(e) ? e : undefined);
         return listed?.length ? { list: listed, source: honored ? "preset" : "column", profile } : undefined;
       };
-      // Fast images with no list of its own goes down Quality images' list, where a quality-only model is passed by (unfit).
-      return of(task) ?? (task === "image.fast" ? of("image.create") : OWN_LIST_ONLY.includes(task) ? undefined : of("chat", task !== "code"));
+      // Fast images with no list of its own goes down the column's Quality images list, where a quality-only model is passed by (unfit);
+      // not a thread's own Quality images pick, which replaces the whole list and may hold quality models only.
+      return of(task) ?? (task === "image.fast" ? of("image.create", false) : OWN_LIST_ONLY.includes(task) ? undefined : of("chat", task !== "code"));
     });
   }
 

@@ -215,6 +215,18 @@ describe("image calls through the router (principles 1 and 2)", () => {
     expect((await s.models.image(ctx, fast)).resolution.ref).toEqual(fastOnly.ref);
     expect((await s.models.image(ctx, { ...fast, tier: "quality" })).resolution.ref).toEqual(s.workstation.ref);
   });
+  it("a thread's own Quality images pick doesn't stand in for Fast images", async () => {
+    const s = await setup();
+    s.workstation.server.useFor = "quality";
+    await s.models.discover(s.ada, s.workstation.ep.id);
+    const fastOnly = await s.host("fast-only", "fast");
+    s.models.setColumnTask(s.ada.id, "private", "image.create", [fastOnly.ref, s.spare.ref, s.workstation.ref]);
+    s.models.setColumnTask(s.ada.id, "private", "image.fast", undefined);
+    // A thread that picked a quality-only model for Images before Fast images existed.
+    const ctx = { ...s.ctx({ localOnly: true }), overrides: { "image.create": [s.workstation.ref] } };
+    expect((await s.models.image(ctx, { action: "create", prompt: "A garden", tier: "fast" })).resolution.ref).toEqual(fastOnly.ref);
+    expect((await s.models.image(ctx, { action: "create", prompt: "A garden", tier: "quality" })).resolution.ref).toEqual(s.workstation.ref);
+  });
   it("uses a non-GPT keyed offering and persists cloud tiers in hand JSON", async () => {
     const s = await setup();
     const ep = s.models.endpoint(s.ada.id, s.models.offering(s.ada.id, s.ref.offeringId)!.endpoint.id)!;
@@ -244,7 +256,7 @@ describe("image calls through the router (principles 1 and 2)", () => {
     await s.models.image(s.ctx(), { action: "edit", prompt: "Add flowers", image: input });
     expect(asked.map((a) => [a.userId, a.request.action])).toEqual([[s.ada.id, "create"], [s.ada.id, "edit"]]);
     for (const ctx of [s.ctx({ pool: "private" }), s.ctx({ localOnly: true })]) {
-      await expect(s.models.image({ ...ctx, overrides: { "image.create": [ref] } }, { action: "create", prompt: "A garden", tier: "fast" })).rejects.toThrow(CloudModelForbidden);
+      await expect(s.models.image({ ...ctx, overrides: { "image.create": [ref] } }, { action: "create", prompt: "A garden", tier: "quality" })).rejects.toThrow(CloudModelForbidden);
     }
     expect(asked).toHaveLength(2);
     // Masked edits fall down the list without reaching Codex.

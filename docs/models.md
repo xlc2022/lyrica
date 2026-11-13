@@ -639,7 +639,9 @@ The tasks `image.fast` (Fast images), `image.create` (Quality images),
 `image` (both create lists), `edit` and `upscale` capabilities respectively.
 A create goes down Fast images unless it asks for quality, which goes down
 Quality images (`createTask`, `imageTask`); Fast images with no list of its
-own goes down Quality images' list. Neither create list follows another
+own goes down the column's Quality images list (never a thread's own Quality
+images pick), and the first write to Quality images gives it a copy of that
+list as it was. Neither create list follows another
 (Same as is refused).
 Local endpoints resolve by these capabilities; the cloud provider table does
 not restrict them.
