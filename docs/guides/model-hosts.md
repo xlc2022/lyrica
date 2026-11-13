@@ -79,6 +79,20 @@ answer to start, so a long prompt on a slow model can still be read.
   It can be one another program already uses, such as LM Studio's; the
   stack mounts it read-only and writes only into `lyrica/`. To move to
   another folder later, see [Operating a host](#operating-a-host).
+
+  On a disk of its own, Docker must start after that disk is mounted: a
+  container started first sees an empty folder until it restarts, and
+  every ComfyUI recipe fails with `prompt_outputs_failed_validation`. Add
+  `RequiresMountsFor=/mnt/models` (your mount point) to `docker.service`
+  with `sudo systemctl edit docker`, or on NixOS:
+
+  ```nix
+  systemd.services.docker.unitConfig.RequiresMountsFor = [ "/mnt/models" ];
+  ```
+
+  If it has already happened, restart the stack's containers:
+  `docker restart $(docker ps -q --filter
+  label=com.docker.compose.project=lyrica-host)`.
 - A **private LAN address** (10/8, 172.16/12, 192.168/16, or a tailnet
   address). Docker's published ports bypass the machine's firewall, so the
   script never publishes on every interface, and a detected address that
