@@ -309,7 +309,8 @@ describe("child threads", () => {
     const { parent, say } = await setup({ threads: { concurrency: 10, perRequest: 3 } });
     parent.push({ tools: [1, 2, 3, 4].map((i) => ({ name: "threads", args: { action: "start", title: `U${i}`, task: `job ${i}` }, id: `d${i}` })) }, { text: "More." });
     const results = (await say("start four")).filter((e): e is Extract<ThreadEvent, { type: "tool_end" }> => e.type === "tool_end");
-    expect(results.filter((r) => r.isError).map((r) => r.result)).toEqual([expect.stringMatching(/at most 3/)]);
+    expect(results.filter((r) => r.isError).map((r) => r.result)).toEqual([expect.stringMatching(/^This request has started 3 child threads/)]);
+    expect(results.filter((r) => !r.isError).map((r) => r.result)).toContainEqual(expect.stringContaining("0 more may start in this request."));
   });
 
   it("hold the limits: more per message on a cloud model, which uses no local GPU", async () => {
@@ -325,7 +326,7 @@ describe("child threads", () => {
     parent.push({ tools: [1, 2, 3, 4, 5, 6, 7].map((i) => ({ name: "threads", args: { action: "start", title: `C${i}`, task: `job ${i}` }, id: `e${i}` })) }, { text: "Many." });
     child.push(slow, slow, slow, slow, slow, slow);
     const results = (await say("start seven")).filter((e): e is Extract<ThreadEvent, { type: "tool_end" }> => e.type === "tool_end");
-    expect(results.filter((r) => r.isError).map((r) => r.result)).toEqual([expect.stringMatching(/at most 6/)]);
+    expect(results.filter((r) => r.isError).map((r) => r.result)).toEqual([expect.stringMatching(/^This request has started 6 child threads/)]);
     release();
   });
 
