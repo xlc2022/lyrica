@@ -829,7 +829,8 @@ as `{ "parts": [...] }`, each entry like this:
   `qwen3vl_32b` (MiniMax H3's), `gemma4_12b` (LTX-2.5's), `ph3`
   (P-H3-Image's Qwen3-VL 4B, told by its text connector), …. For Wan 2.2
   14B's two experts and their LoRAs, `high` or `low` (read from the file
-  name, as their tensors are alike); a speed LoRA otherwise, `speed`;
+  name, as their tensors are alike); a speed LoRA otherwise (turbo, lightning, lightx2v, FastWan or a step
+  count in its name), `speed`;
   SCAIL-2's DPO LoRA (by name), `dpo`; MiniMax H3's VFX Edit LoRA (by
   name), `edit`; an audio VAE, `audio`. Otherwise
   `null`.
@@ -910,8 +911,9 @@ as `{ "parts": [...] }`, each entry like this:
 - `state`: `proposed` (found by a scan or made from a starter; does
   nothing yet), `confirmed`, or `ignored` (a proposal set aside; a scan
   won't propose it again).
-- `ready`: every part is present (an optional one may be missing). Only a
-  confirmed, ready recipe runs.
+- `ready`: every part is present (an optional one may be missing, but not
+  an optional LoRA the recipe names: its steps and CFG were set for it).
+  Only a confirmed, ready recipe runs.
 - `does`: what it can be used for: `create`, `edit`, `upscale`, or for a
   video recipe `video` (from a prompt), `animate` (from a first frame) and
   `motion` (an image's subject moved as a driving clip's person moves) and
@@ -931,7 +933,10 @@ as `{ "parts": [...] }`, each entry like this:
   a recipe is ready without one, or while it downloads, and once its file
   is here each gap between two frames gains a frame, so its `fps` here is
   doubled. Installing a starter again
-  adds a part it gained since, such as the 14B starters' RIFE.
+  adds a part it gained since, such as the 14B starters' RIFE, but not a
+  speed LoRA. Wan 2.2 5B's template takes an optional speed LoRA
+  (FastWan, which its starter runs at 6 steps and CFG 1); a scan proposes
+  a 5B model with it, missing until it is here.
 - `takesLoras`: the LoRA files on this host a request may add for one job
   ("LoRAs for one job"): those whose architecture fits the recipe's, other
   than the ones its template loads itself. Empty on a stable-diffusion.cpp

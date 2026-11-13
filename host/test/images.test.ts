@@ -47,6 +47,8 @@ const T5 = safetensors({ "encoder.block.0.layer.0.SelfAttention.q.weight": { dty
 // Video parts, by the keys ComfyUI's own detection reads.
 const wan = (channels: number, dim: number) => safetensors({ "head.modulation": { shape: [1, 6, dim] }, "patch_embedding.weight": { shape: [dim, channels, 1, 2, 2] }, "blocks.0.ffn.0.weight": {} });
 const WAN_5B = wan(48, 3072);
+// Wan 2.2 5B's FastWan LoRA, which its starter runs with: 3072 wide.
+const FASTWAN = safetensors({ "diffusion_model.blocks.0.self_attn.q.lora_down.weight": { shape: [16, 3072] }, "diffusion_model.blocks.0.self_attn.q.lora_up.weight": { shape: [3072, 16] } });
 const WAN_T2V = wan(16, 5120);
 const WAN_I2V = wan(36, 5120);
 // Wan GGUF experts. QuantStack's carry three keys of metadata and the 5-D patch embedding as it is;
@@ -526,6 +528,41 @@ describe("recipes", () => {
     expect(Object.keys(job)).not.toContain("interpolate");
     // Once it's here, 32 fps.
     expect(b.describe(b.get(recipe.id), new Set([...here, rife]))).toMatchObject({ ready: true, video: { fps: 32 } });
+  });
+
+  it("runs Wan 2.2 5B with its FastWan LoRA, and a recipe made without it stays as it was", () => {
+    const b = new RecipeBook(mkdtempSync(join(tmpdir(), "lyrica-book-")), TEMPLATES, STARTERS);
+    const starter = STARTERS.find((s) => s.id === "wan2.2-ti2v-5b")!;
+    const fresh = b.fromStarter(starter, () => null);
+    expect(fresh.recipe.parts).toContainEqual(expect.objectContaining({ role: "lora", slot: "speed", file: expect.stringMatching(/FastWan/) }));
+    expect(fresh.recipe.defaults).toMatchObject({ steps: 6, cfg: 1 });
+    // Its steps and CFG need the LoRA: without it the recipe isn't ready.
+    const files = (r: Recipe) => new Set(r.parts.map((p) => p.file!));
+    expect(b.ready(fresh.recipe, files(fresh.recipe))).toBe(true);
+    expect(b.ready(fresh.recipe, new Set([...files(fresh.recipe)].filter((f) => !/FastWan/.test(f))))).toBe(false);
+
+    // One installed before keeps its 20 steps at CFG 5, and installing again doesn't add the LoRA.
+    const old = new RecipeBook(mkdtempSync(join(tmpdir(), "lyrica-book-")), TEMPLATES, STARTERS);
+    const before = { ...starter, parts: starter.parts.filter((p) => p.role !== "lora"), defaults: { ...starter.defaults, steps: 20, cfg: 5 } };
+    const { recipe } = old.fromStarter(before, () => null);
+    const again = old.fromStarter(starter, () => null);
+    expect(again.recipe.id).toBe(recipe.id);
+    expect(again.recipe.parts.some((p) => p.role === "lora")).toBe(false);
+    expect(again.toDownload.some((p) => p.role === "lora")).toBe(false);
+    expect(old.ready(again.recipe, files(again.recipe))).toBe(true);
+    expect(again.recipe.defaults).toMatchObject({ steps: 20, cfg: 5 });
+  });
+
+  it("proposes a scanned Wan 2.2 5B with its FastWan LoRA, missing until it's here", () => {
+    const W = "lyrica/huggingface/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/split_files";
+    const dir = folder({ [`${W}/diffusion_models/wan2.2_ti2v_5B_fp16.safetensors`]: WAN_5B, [`${W}/vae/wan2.2_vae.safetensors`]: WAN22_VAE, "other/umt5.safetensors": UMT5 });
+    const b = new RecipeBook(mkdtempSync(join(tmpdir(), "lyrica-book-")), TEMPLATES, STARTERS);
+    const parts = scanParts(dir);
+    b.propose(parts);
+    const r = b.all().find((x) => x.arch === "wan2.2-5b")!;
+    const lora = r.parts.find((p) => p.role === "lora")!;
+    expect(lora).toMatchObject({ slot: "speed", file: null, missing: { repo: "Kijai/WanVideo_comfy" } });
+    expect(b.ready(r, new Set(parts.map((p) => p.file)))).toBe(false);
   });
 
   it("installs a starter once, and checks defaults against the request ranges", () => {
@@ -1390,6 +1427,7 @@ describe("the image API", () => {
       "v/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors": QWEN3VL_32B, "v/minimax_h3_video_vae_int8_convrot.safetensors": H3_VAE,
       "v/minimax_h3_audio_vae_fp32.safetensors": H3_AUDIO_VAE,
       "w/wan2.2_ti2v_5B_fp16.safetensors": WAN_5B, "w/wan2.2_vae.safetensors": WAN22_VAE, "w/umt5.safetensors": UMT5,
+      "w/Wan2_2_5B_FastWanFullAttn_lora_rank_128_bf16.safetensors": FASTWAN,
     } });
     const { body } = await s.api("/host/v1/recipes?state=proposed");
     const h3r: Recipe = body.recipes.find((r: Recipe) => r.arch === "minimax-h3");
@@ -1520,6 +1558,7 @@ describe("the image API", () => {
     const W = "lyrica/huggingface/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/split_files";
     const s = await stack({ files: {
       [`${W}/diffusion_models/wan2.2_ti2v_5B_fp16.safetensors`]: WAN_5B, [`${W}/vae/wan2.2_vae.safetensors`]: WAN22_VAE, "other/umt5.safetensors": UMT5,
+      "other/Wan2_2_5B_FastWanFullAttn_lora_rank_128_bf16.safetensors": FASTWAN,
     } });
     const { body } = await s.api("/host/v1/recipes?state=proposed");
     const wan: Recipe & { video: { fps: number; audio: boolean } } = body.recipes.find((r: Recipe) => r.arch === "wan2.2-5b");
@@ -1535,7 +1574,10 @@ describe("the image API", () => {
     expect(made.body.video).toMatchObject({ frames: 121, fps: 24, duration: 121 / 24, audio: false, seed: 5, width: 1, height: 1 });
     const sent = s.comfyFake.seen.prompts[0];
     expect(sent.latent.inputs).toEqual({ vae: ["load_vae", 0], width: 1280, height: 704, length: 121, batch_size: 1 });
-    expect(sent.sample.inputs).toMatchObject({ steps: 20, cfg: 5, sampler_name: "uni_pc" });
+    // The starter's steps and CFG, with FastWan on the model before the shift.
+    expect(sent.sample.inputs).toMatchObject({ steps: 6, cfg: 1, sampler_name: "uni_pc" });
+    expect(sent.lora_speed.inputs).toMatchObject({ lora_name: "other/Wan2_2_5B_FastWanFullAttn_lora_rank_128_bf16.safetensors", strength_model: 1 });
+    expect(sent.shift.inputs.model).toEqual(["lora_speed", 0]);
     expect(Object.keys(sent)).not.toContain("load");
     expect(s.comfyFake.seen.historyCleared).toBe(1);
 

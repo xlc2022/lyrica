@@ -140,7 +140,8 @@ export class RecipeBook {
   /** Every part present (an optional one may be missing), and the template's needs covered. */
   ready(r: Recipe, files: Set<string>): boolean {
     const t = this.template(r);
-    const optional = (p: RecipePart) => t.parts.some((s) => s.optional && s.role === p.role && (s.slot ?? null) === p.slot);
+    // An optional LoRA the recipe names must be here: its steps and CFG were set for it (Wan 2.2 5B's FastWan).
+    const optional = (p: RecipePart) => p.role !== "lora" && t.parts.some((s) => s.optional && s.role === p.role && (s.slot ?? null) === p.slot);
     if (r.parts.some((p) => (!p.file || !files.has(p.file)) && !optional(p)) || r.loras.some((l) => !files.has(l.file))) return false;
     // A custom workflow's own loaders need their files too.
     if ((t.files ?? []).some((f) => !files.has(f))) return false;
@@ -200,7 +201,7 @@ export class RecipeBook {
             ?? candidates.find((p) => home(p.file) === home(main.file)) ?? candidates[0];
           if (pick && spec.role === "diffusion") used.add(pick.file);
           if (pick) recipeParts.push({ role: spec.role, slot: spec.slot ?? null, file: pick.file, added: false });
-          else if (!spec.optional) {
+          else if (!spec.optional || (spec.role === "lora" && starter?.parts.some((p) => p.role === "lora" && p.slot === spec.slot))) {
             const known = starter?.parts.find((p) => p.role === spec.role && (spec.slot === undefined || p.slot === spec.slot));
             recipeParts.push({
               role: spec.role, slot: spec.slot ?? null, file: null, added: false,
@@ -377,8 +378,9 @@ export class RecipeBook {
   ): { recipe: Recipe; toDownload: Starter["parts"] } {
     const installed = this.recipes.find((r) => r.starter === starter.id);
     if (installed) {
-      // A part the starter gained since (an optional interpolator) joins the recipe.
-      const gained = starter.parts.filter((p) => !installed.parts.some((q) => q.role === p.role && q.slot === (p.slot ?? null)));
+      // A part the starter gained since (an optional interpolator) joins the recipe; a speed LoRA doesn't, since the
+      // recipe's steps and CFG were set without it.
+      const gained = starter.parts.filter((p) => p.role !== "lora" && !installed.parts.some((q) => q.role === p.role && q.slot === (p.slot ?? null)));
       installed.parts.push(...gained.map((p) => ({ role: p.role, slot: p.slot ?? null, file: have(p) ?? starterPath(p), added: false })));
       if (gained.length) this.save();
       const files = new Set(installed.parts.map((p) => p.file));

@@ -88,7 +88,7 @@ export function classify(names: string[], shapes: Record<string, number[]>, file
   const expert = /high[_-]?noise/.test(name) ? "high" : /low[_-]?noise/.test(name) ? "low" : null;
 
   if (has(/lora_(up|down|A|B)\b|\.lora_(up|down|A|B)\.|^lora_(unet|te)/)) {
-    const slot = expert ?? (/turbo|lightning|lightx2v|\d+[_-]?steps?/.test(name) ? "speed" : /(^|[^a-z])dpo([^a-z]|$)/.test(name) ? "dpo" : /vfx[_-]?edit/.test(name) ? "edit" : null);
+    const slot = expert ?? (/turbo|lightning|lightx2v|fastwan|\d+[_-]?steps?/.test(name) ? "speed" : /(^|[^a-z])dpo([^a-z]|$)/.test(name) ? "dpo" : /vfx[_-]?edit/.test(name) ? "edit" : null);
     // Wan 2.2 5B's blocks are 3072 wide, the 14B's (and Wan 2.1's) 5120: a LoRA's down matrix is its rank by that width.
     const wanDown = Object.entries(shapes).find(([n]) => /blocks[._]\d+[._]self[._]attn[._]q[._.]lora_(down|A)\b/.test(n))?.[1];
     // Qwen-Image 2.1's LoRAs have Qwen-Image's tensor names; the trainer's metadata, or the file name, says which.

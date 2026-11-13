@@ -17,7 +17,7 @@ server. Built in two pull requests: the host first, then Lyrica's side.
 
 | Starter | Parts | Fits | Licence |
 |---|---|---|---|
-| Wan 2.2 TI2V 5B | fp16 5B, UMT5 fp8, Wan 2.2 VAE (Comfy-Org repackaged) | the 3090: 1280×704, 24 fps, about 5 s | Apache 2.0 |
+| Wan 2.2 TI2V 5B | fp16 5B, UMT5 fp8, Wan 2.2 VAE (Comfy-Org repackaged), FastVideo's FastWan speed LoRA (Kijai's ComfyUI conversion, Apache 2.0) at 6 steps, CFG 1 | the 3090: 1280×704, 24 fps, about 5 s | Apache 2.0 |
 | Wan 2.2 T2V 14B and I2V 14B | two fp8 experts (high and low noise), their lightx2v 4-step LoRAs, UMT5 fp8, Wan 2.1 VAE | the 3090 at 480 to 720p, both on the workstation; 16 fps, about 5 s | Apache 2.0 |
 | Wan 2.2 T2V 14B Q5 and I2V 14B Q5 | the same, with QuantStack's Q5_K_M GGUF experts (10.8 GB each) | a 24 GB card with less system memory; 16 fps, about 5 s | Apache 2.0 |
 | LTX-2.5 distilled | int8 22B, Gemma 4 12B int8, video and audio VAEs, the 2× latent upscaler (Lightricks/LTX-2.5, gated) | the workstation; video **with audio**, 24 fps, up to about 10 s | LTX-2.x Community License: free under $10M yearly revenue |
