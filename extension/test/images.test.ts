@@ -176,7 +176,7 @@ describe("image tool results (principles 1 and 4)", () => {
   });
   it("points a create with references that no model takes to edit", async () => {
     const s = await setup(), plain = await s.host("plain", undefined, undefined, 0);
-    s.models.setColumnTask(s.ada.id, "private", "image.create", [plain.ref]);
+    s.models.setColumnTask(s.ada.id, "private", "image.fast", [plain.ref]);
     s.context({ pool: "private", localOnly: true });
     await expect(s.run({ action: "create", prompt: "A garden", references: ["/workspace/uploads/landscape.png"] })).rejects.toThrow(/To change an image, use edit with it as image\./);
   });
@@ -203,7 +203,7 @@ describe("image tool results (principles 1 and 4)", () => {
 
   it("sends steps, CFG, a seed and other settings asked for to a model host for this job, passing over a cloud model, which can't take them", async () => {
     const s = await setup(); s.settings.setPhotoCloudPolicy("always");
-    s.models.setColumnTask(s.ada.id, "general", "image.create", [s.ref, s.workstation.ref]);
+    s.models.setColumnTask(s.ada.id, "general", "image.fast", [s.ref, s.workstation.ref]);
     s.models.setColumnTask(s.ada.id, "general", "image.edit", [s.ref, s.workstation.ref]);
     const made = await s.run({ action: "create", prompt: "A garden", steps: 16, cfg: 1 });
     expect((made.content as { type: string; text?: string }[]).find(c => c.type === "text")!.text)
@@ -214,10 +214,10 @@ describe("image tool results (principles 1 and 4)", () => {
       { recipe: "art", prompt: "Add flowers", cfg: 2.5, seed: 42, image: png.toString("base64") },
     ]);
     // With only the cloud model listed, nothing can take them, and the error says why.
-    s.models.setColumnTask(s.ada.id, "general", "image.create", [s.ref]);
+    s.models.setColumnTask(s.ada.id, "general", "image.fast", [s.ref]);
     await expect(s.run({ action: "create", prompt: "A garden", cfg: 1 })).rejects.toThrow(/does not take steps, CFG, a seed or other sampling settings/);
     await expect(s.run({ action: "create", prompt: "A garden", seed: 7 })).rejects.toThrow(/does not take steps, CFG, a seed or other sampling settings/);
-    s.models.setColumnTask(s.ada.id, "general", "image.create", [s.ref, s.workstation.ref]);
+    s.models.setColumnTask(s.ada.id, "general", "image.fast", [s.ref, s.workstation.ref]);
     // Without them, the cloud model is first again and the recipe's own apply.
     await s.run({ action: "create", prompt: "A pond" });
     expect(s.heard).toHaveLength(1);
