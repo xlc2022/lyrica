@@ -24,19 +24,19 @@
       "role": "lora",
       "slot": "high",
       "source": "huggingface",
-      "repo": "Comfy-Org/Wan_2.2_ComfyUI_Repackaged",
-      "path": "split_files/loras/wan2.2_t2v_lightx2v_4steps_lora_v1.1_high_noise.safetensors",
-      "sha256": "698321cb86bd30c4af06c9b84e656a1048c8cb54e06d50694536fb5de37fde41",
-      "size": 1226977424
+      "repo": "lightx2v/Wan2.2-Distill-Loras",
+      "path": "wan2.2_t2v_A14b_high_noise_lora_rank64_lightx2v_4step_1217.safetensors",
+      "sha256": "89003385f8a9d53ba58fd6ede647fdc90292e8568a54683fcfe6db5556a31769",
+      "size": 613518320
     },
     {
       "role": "lora",
       "slot": "low",
       "source": "huggingface",
-      "repo": "Comfy-Org/Wan_2.2_ComfyUI_Repackaged",
-      "path": "split_files/loras/wan2.2_t2v_lightx2v_4steps_lora_v1.1_low_noise.safetensors",
-      "sha256": "ec95216e614b3c132c11bfb387b11feedf62163150ccc9068bca8a189771e75a",
-      "size": 1226977424
+      "repo": "lightx2v/Wan2.2-Distill-Loras",
+      "path": "wan2.2_t2v_A14b_low_noise_lora_rank64_lightx2v_4step_1217.safetensors",
+      "sha256": "4df7c206f3189472da2f92c0a42dcf308f04433d9c14302d08d56e99a3f51322",
+      "size": 613518320
     },
     {
       "role": "text_encoder",
