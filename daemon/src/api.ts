@@ -1997,14 +1997,18 @@ export interface MemoryHit {
   about?: string[];
   /** The last change (a memory) or the message's time (an entry); the browse pane pages by it. */
   updatedAt?: string;
+  /** When it was written, in a layer's list; the row's date when the list is ordered by it. */
+  createdAt?: string;
 }
 
 /**
- * GET /api/u/:userId/memory/search?q=&pool=&kinds=note,page&origin=user&about=&limit=&before= → MemoryHit[]
+ * GET /api/u/:userId/memory/search?q=&pool=&kinds=note,page&origin=user&about=&limit=&before=&sort=&offset= → MemoryHit[]
  * Honours the display filters (Show general, Show private); `?all=1` ignores them.
- * Without `q`: one layer, newest first, when `kinds` names exactly one of note, page, wake or journal
- * (`limit` and `before`, an `updatedAt`, page it; `about` keeps notes with that tag); with `origin=user` and
- * no single layer, what users introduced.
+ * Without `q`: one layer when `kinds` names exactly one of note, page, wake, journal or entry, newest change
+ * first (`limit` and `before`, an `updatedAt`, page it; `about` keeps notes with that tag). `sort` orders it
+ * otherwise: `added` (newest first), `oldest`, `used` (most reached in the last 31 days, Recall counts) or
+ * `title` (pages; elsewhere it reads as `changed`), paged by `offset`. Recent (`entry`) takes `sort=oldest`
+ * with `after`, a `createdAt`, to page. With `origin=user` and no single layer, what users introduced.
  */
 
 /** GET /api/u/:userId/memory/about?pool= → MemoryTag[]: the shown pools' tags (notes' `about` words) with counts, most used first. */

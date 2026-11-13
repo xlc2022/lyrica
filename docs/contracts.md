@@ -2490,13 +2490,17 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     → `MemoryTag[]`, the pool's distinct `about` words with counts
     (`current=1` counts only notes not superseded);
     `GET …/memory/search` without `q` lists one layer when `kinds` names
-    exactly one (newest first, `limit` and `before` paging by `updatedAt`),
-    takes `about=` to filter notes by a tag and `current=1` (with or
+    exactly one (last changed first, `limit` and `before` paging by
+    `updatedAt`; `sort=added|oldest|used|title` orders it otherwise, paged
+    by `offset`: `used` by the last 31 days of recall counts
+    (`useCounts` in daemon/src/memory-use.ts), `title` for pages only;
+    anything else is a 400), takes `about=` to filter notes by a tag and `current=1` (with or
     without `q`) to leave out superseded notes, and its hits carry `title`,
-    `about` and `updatedAt`; `kinds=entry` is the Recent layer
+    `about`, `updatedAt` and, listing a layer, `createdAt`; `kinds=entry` is the Recent layer
     ([briefs/side-panels.md](briefs/side-panels.md)), the logged
     messages written since sleep's watermark (`PoolStore.recentEntries`),
-    a person's and hers only. `GET …/memory/:pool/e:<thread>#<n>` reads one
+    a person's and hers only, newest first or with `sort=oldest` oldest
+    first, paged forwards by `after`. `GET …/memory/:pool/e:<thread>#<n>` reads one
     such message as a `MemoryDetail` of kind `entry` (origin `user` or
     `lyrica`, `cameFrom` its thread, no revisions); PATCH, archive, restore
     and DELETE answer 405 for it, since a message changes only in its

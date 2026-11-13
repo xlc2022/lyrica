@@ -458,6 +458,42 @@ describe("the memory browser", () => {
       { pool: "general", done: 0, total: 3 }, { pool: "private", done: 0, total: 1 },
     ] });
   });
+  it("orders a layer by when it was added, how much she used it or title, across both pools, paged by offset", async () => {
+    const rt = await runtime();
+    const { base, d } = await daemon(rt);
+    await browser(base).post("/api/unlock", { passphrase: "passphrase" });
+    const ada = await login(base, "ada", "pw");
+    const m = `/api/u/${rt.ada.id}/memory`;
+    const add = async (pool: string, text: string) => (await ada.post<MemoryDetail>(`${m}/${pool}/notes`, { text })).body.item.id;
+    const first = await add("general", "The kettle is blue.");
+    const second = await add("private", "The kettle whistles.");
+    const third = await add("general", "The kettle is new.");
+    // Changing the first note makes it the last changed, not the newest.
+    await ada.patch(`${m}/general/${enc(first)}`, { text: "The kettle is green." });
+    const ids = async (query: string) => (await ada.get<MemoryHit[]>(`${m}/search?kinds=note&${query}`)).body.map((h) => h.id);
+    expect(await ids("")).toEqual([first, third, second]);
+    expect(await ids("sort=added")).toEqual([third, second, first]);
+    expect(await ids("sort=oldest")).toEqual([first, second, third]);
+    expect(await ids("sort=oldest&limit=1&offset=1")).toEqual([second]);
+    expect((await ada.get<MemoryHit[]>(`${m}/search?kinds=note&sort=oldest&limit=1`)).body[0]!.createdAt).toMatch(/^\d{4}-/);
+    // Most used: a private thread's count of a general note adds to it while both pools are shown.
+    const o = d.services!.memory.openOwnerView(rt.ada.id);
+    o.private.countRecalls([`general/${third}`, second], "recalled");
+    o.private.countRecalls([`general/${third}`], "searched");
+    o.general.countRecalls([first], "opened");
+    o.close();
+    // Third twice; first and second once each, the last changed first.
+    expect(await ids("sort=used")).toEqual([third, first, second]);
+    await ada.patch(`/api/u/${rt.ada.id}/me/display`, { showPrivate: false });
+    expect(await ids("sort=used")).toEqual([first, third]);
+    await ada.patch(`/api/u/${rt.ada.id}/me/display`, { showPrivate: true });
+    // Title orders pages; on notes it reads as last changed. Anything else is refused.
+    await ada.post(`${m}/general/pages`, { slug: "zinc", title: "Zinc roof", summary: "", text: "" });
+    await ada.post(`${m}/private/pages`, { slug: "attic", title: "attic", summary: "", text: "" });
+    expect((await ada.get<MemoryHit[]>(`${m}/search?kinds=page&sort=title`)).body.map((h) => h.title)).toEqual(["attic", "Zinc roof"]);
+    expect(await ids("sort=title")).toEqual([first, third, second]);
+    expect((await ada.get(`${m}/search?kinds=note&sort=size`)).status).toBe(400);
+  });
 });
 
 describe("the user's own view of their threads", () => {

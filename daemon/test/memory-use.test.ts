@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { countRecalls, memorySections } from "@lyrica/extension";
 import { withMemory } from "../../extension/test/helpers.ts";
-import { memoryUse } from "../src/memory-use.ts";
+import { memoryUse, useCounts } from "../src/memory-use.ts";
 
 /** A logged user message, for a note to cite as its source. */
 const say = (own: Parameters<typeof memorySections>[0]["own"], thread: string, text: string) =>
@@ -29,6 +29,10 @@ describe("Memory use", () => {
     const row = both.top.find((r) => r.id === sourdough && r.pool === "general")!;
     expect(row).toMatchObject({ kind: "note", recalled: 1, searched: 1, opened: 1, citedBy: 1, label: "Ada keeps a rye sourdough starter fed twice a day" });
     expect(both.top.some((r) => r.id === diagnosis && r.pool === "private")).toBe(true);
+    // The Memory page's Most used reads the same counts, a private thread's count of a general note only with both shown.
+    expect(useCounts(o, ["general", "private"]).general[sourdough!]).toBe(3);
+    expect(useCounts(o, ["general"]).general[sourdough!]).toBe(2);
+    expect(useCounts(o, ["general"]).private).toEqual({});
     // Only notes and pages are counted: a message hit isn't.
     expect(both.top.every((r) => r.kind === "note" || r.kind === "page")).toBe(true);
 

@@ -607,8 +607,9 @@ dialog::backdrop { background: rgb(0 0 0 / 0.35); }
 .mem-pane .seg { justify-self: start; min-height: 34px; flex-wrap: wrap; max-width: 100%; }
 .mem-pane .seg button { padding: 0 10px; }
 .mem-filters { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; font-size: 13px; }
-/* The pool select takes the row, so the check boxes sit together on the next one rather than wrapping one by one. */
-.mem-filters select { min-height: 30px; font-size: 13px; padding: 2px 8px; flex: 1 1 100%; }
+/* The pool and sort selects share the row (the pool alone takes it), so the check boxes sit together on the next one rather than wrapping one by one. */
+.mem-selects { display: flex; gap: 6px; flex: 1 1 100%; min-width: 0; }
+.mem-filters select { min-height: 30px; font-size: 13px; padding: 2px 8px; flex: 1 1 0; min-width: 0; }
 .mem-filters .check { min-height: 30px; }
 .mem-list { display: grid; gap: 1px; margin: 0 -6px; }
 .mem-list a { display: grid; gap: 2px; padding: 7px 8px; border-radius: 8px; color: var(--fg); min-height: var(--tap); align-content: center; }

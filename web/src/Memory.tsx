@@ -26,6 +26,19 @@ const LAYERS: { layer: Layer; label: string; tip?: string }[] = [
   { layer: "entry", label: "Recent", tip: "Messages she hasn't slept on yet. Sleep turns them into notes and pages." },
 ];
 const PAGE_SIZE = 40;
+type Sort = "changed" | "added" | "oldest" | "used" | "title";
+/** Each layer's orders, the first its default; WAKE is one memory and the Journal a one-entry preview, so neither sorts. */
+const SORTS: Partial<Record<Layer, { sort: Sort; label: string }[]>> = {
+  page: [{ sort: "changed", label: "Last changed" }, { sort: "added", label: "Newest" }, { sort: "oldest", label: "Oldest" }, { sort: "used", label: "Most used" }, { sort: "title", label: "Title" }],
+  note: [{ sort: "changed", label: "Last changed" }, { sort: "added", label: "Newest" }, { sort: "oldest", label: "Oldest" }, { sort: "used", label: "Most used" }],
+  entry: [{ sort: "changed", label: "Newest" }, { sort: "oldest", label: "Oldest" }],
+};
+const SORT_TIP = "Most used counts how often she reached it in the last 31 days.";
+/** The order picked for each layer, kept in this browser: a word per layer, nothing of memory. */
+const SORT_KEY = "lyrica.memory.sort";
+function storedSorts(): Partial<Record<Layer, Sort>> {
+  try { const v = JSON.parse(localStorage.getItem(SORT_KEY) ?? "{}") as unknown; return v && typeof v === "object" ? v as Partial<Record<Layer, Sort>> : {}; } catch { return {}; }
+}
 const LINEAGE_PREVIEW = 4;
 
 /** Titles of memories read in this visit, for the panel's breadcrumb; nothing of a memory's text. */
@@ -152,6 +165,7 @@ function Browse({ ctx, current, edits, browsing, onBrowse, onPick, onEdited }: {
   const [userOnly, setUserOnly] = useState(false);
   /** Superseded notes are left out unless asked for: the list reads as what she believes now. */
   const [hideSuperseded, setHideSuperseded] = useState(true);
+  const [sorts, setSorts] = useState(storedSorts);
   /** How many pages More has opened, for this search. */
   const [paged, setPaged] = useState({ search: "", pages: 1 });
   const [sel, setSel] = useState<string[]>([]);
@@ -172,19 +186,29 @@ function Browse({ ctx, current, edits, browsing, onBrowse, onPick, onEdited }: {
   const notesShown = !!query || layer === "note";
   if (hideSuperseded && notesShown) params.set("current", "1");
   if (!query && layer === "note" && tag) params.set("about", tag);
+  const sorting = query ? undefined : SORTS[layer];
+  const sort: Sort = sorting?.find((o) => o.sort === sorts[layer])?.sort ?? "changed";
+  if (sort !== "changed") params.set("sort", sort);
+  const pickSort = (next: Sort) => {
+    const all = { ...sorts, [layer]: next };
+    setSorts(all);
+    try { localStorage.setItem(SORT_KEY, JSON.stringify(all)); } catch { /* kept for this visit only */ }
+  };
   const journalPreview = !query && layer === "journal";
   // The preview shows one entry; it asks for two so a second proves there is more to open.
   params.set("limit", String(journalPreview ? 2 : PAGE_SIZE));
   const search = params.toString();
   const pages = paged.search === search ? paged.pages : 1;
   // Every page opened so far is read again when anything changes (here, in another tab, or by her), so a deleted
-  // memory leaves the list at once wherever it was. `more` says whether a further page may exist.
+  // memory leaves the list at once wherever it was. `more` says whether a further page may exist. Last changed and
+  // Recent page on from the last row's time (Recent's Oldest forwards from it), the other orders by count.
   const hits = useLoad(async () => {
     const all: MemoryHit[] = [];
     for (let n = 0; n < pages; n++) {
       const last = all.at(-1)?.updatedAt;
       if (n && !last) break;
-      const next = await get<MemoryHit[]>(`${u(userId, "memory", "search")}?${search}${n ? `&before=${encodeURIComponent(last!)}` : ""}`);
+      const from = !n ? "" : sort === "changed" ? `&before=${encodeURIComponent(last!)}` : layer === "entry" ? `&after=${encodeURIComponent(last!)}` : `&offset=${all.length}`;
+      const next = await get<MemoryHit[]>(`${u(userId, "memory", "search")}?${search}${from}`);
       all.push(...next);
       if (next.length < PAGE_SIZE) return { rows: all, more: false };
     }
@@ -227,6 +251,8 @@ function Browse({ ctx, current, edits, browsing, onBrowse, onPick, onEdited }: {
     setLeft(out.skipped);
   });
 
+  /** The row's date: when it was written while the list is ordered by that, else its last change. */
+  const when = (h: MemoryHit) => (sort === "added" || sort === "oldest") && layer !== "entry" ? h.createdAt ?? h.updatedAt : h.updatedAt;
   const line = (h: MemoryHit): ReactNode => {
     const kind = query ? `${KIND_WORD[h.kind]} · ` : "";
     if (h.kind === "note") return <>{kind}{(h.about ?? []).join(", ")}{h.about?.length && h.origin === "user" ? " · " : ""}{h.origin === "user" && "added by you"}{h.supersededBy && " · superseded"}</>;
@@ -240,11 +266,18 @@ function Browse({ ctx, current, edits, browsing, onBrowse, onPick, onEdited }: {
         {LAYERS.map((l) => <button key={l.layer} type="button" aria-pressed={!query && layer === l.layer} title={l.tip} onClick={() => { setQ(""); onBrowse({ layer: l.layer }); }}>{l.label}</button>)}
       </div>
       <div className="mem-filters">
-        <select aria-label="Pool" value={pool} onChange={(e) => setPool(e.target.value as "" | Pool)}>
-          <option value="">Both pools</option>
-          <option value="general">General</option>
-          <option value="private">Private</option>
-        </select>
+        <div className="mem-selects">
+          <select aria-label="Pool" value={pool} onChange={(e) => setPool(e.target.value as "" | Pool)}>
+            <option value="">Both pools</option>
+            <option value="general">General</option>
+            <option value="private">Private</option>
+          </select>
+          {sorting && (
+            <select aria-label="Sort" title={SORT_TIP} value={sort} onChange={(e) => pickSort(e.target.value as Sort)}>
+              {sorting.map((o) => <option key={o.sort} value={o.sort}>{o.label}</option>)}
+            </select>
+          )}
+        </div>
         <label className="check"><input type="checkbox" checked={userOnly} onChange={(e) => setUserOnly(e.target.checked)} /> User introduced</label>
         {notesShown && <label className="check" title="Leaves out notes a later note has replaced."><input type="checkbox" checked={hideSuperseded} onChange={(e) => setHideSuperseded(e.target.checked)} /> Hide superseded</label>}
       </div>
@@ -259,7 +292,7 @@ function Browse({ ctx, current, edits, browsing, onBrowse, onPick, onEdited }: {
         {shownRows.map((h) => (
           <a key={key(h)} href={href({ page: "memory", userId, pool: h.pool, id: h.id })} aria-current={current === h.id ? "true" : undefined} className={sel.includes(key(h)) ? "sel" : undefined}
             onClick={(e) => { if (e.ctrlKey || e.metaKey || e.shiftKey) { e.preventDefault(); e.stopPropagation(); select(e, h); } }}>
-            <span className="t"><span>{nameOf(h.kind, h.title, h.snippet, h.updatedAt ?? "")}</span>{h.updatedAt && <span className="when num">{shortTime(h.updatedAt)}</span>}</span>
+            <span className="t"><span>{nameOf(h.kind, h.title, h.snippet, h.updatedAt ?? "")}</span>{when(h) && <span className="when num">{shortTime(when(h)!)}</span>}</span>
             <span className="s"><span className={`kind ${h.pool}`}>{h.pool}</span>{line(h)}</span>
           </a>
         ))}
