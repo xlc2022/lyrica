@@ -694,9 +694,9 @@ from 2026-11-08 on (**Upgrade** in [Operating a host](#operating-a-host)).
 ### Video recipes
 
 ComfyUI hosts list seven video starters: Wan 2.2 TI2V 5B (about 18 GB of
-files, fits a 24 GB card), Wan 2.2 T2V 14B and I2V 14B (about 38 GB each),
+files, fits a 24 GB card), Wan 2.2 T2V 14B and I2V 14B (about 37 GB each),
 the same two as Q5 GGUF quants, **Wan 2.2 T2V 14B Q5** and **I2V 14B Q5**
-(about 31 GB each, for a 24 GB card and less system memory; all four 14B
+(about 30 GB each, for a 24 GB card and less system memory; all four 14B
 starters also fetch a small RIFE model that turns their 16 fps into 32
 fps, and installing one again adds it to a recipe made before it), LTX-2.5
 Distilled (about 40 GB) and MiniMax H3 Turbo (about 42 GB); H3 and LTX-2.5
@@ -726,6 +726,15 @@ a number of steps and she passes it on for that clip; a recipe's own steps
 are **Steps** in its block under Models, Image models. A host from before
 that refuses such a clip as invalid, so update the host whenever you
 update `lyricad`.
+
+The 14B starters take lightx2v's 4-step LoRAs from its Wan2.2-Distill-Loras
+repository (T2V 1217, I2V 1022), which move and follow camera directions
+far better than the first ones (a recipe installed before keeps its
+first LoRAs; the host's `swap` change moves it over). On a 3090 a
+5-second 1280×720 clip takes about 4½ minutes; more steps or another
+shift change little. With 32 GB of system memory, a 14B Q5 clip was
+sometimes stopped for lack of memory (about one in six), so give the
+machine more if you can.
 
 Wan 2.2 is Apache 2.0. LTX-2.5's repository is gated: installing it
 needs a Hugging Face token whose account accepted the LTX-2.x Community
