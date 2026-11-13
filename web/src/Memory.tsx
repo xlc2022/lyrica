@@ -81,19 +81,20 @@ export function Memory({ ctx, pool, id }: { ctx: ShellContext; pool?: Pool; id?:
   const display = ctx.me.display;
   const inPanel = !!usePanel();
   const [adding, setAdding] = useState(false);
-  /** Bumped after an import, so the lists and counts read again. */
-  const [imports, setImports] = useState(0);
+  /** Bumped after this page adds, imports, changes or deletes a memory, so the lists and counts read again at once. */
+  const [edits, setEdits] = useState(0);
+  const edited = useCallback(() => setEdits((n) => n + 1), []);
   const [browsing, setBrowsing] = useState<Browsing>({ layer: "page" });
   const [title, setTitle] = useState<string>();
   /** The memories read in turn by following links inside one, for the page's own breadcrumb. */
   const [trail, setTrail] = useState<{ pool: Pool; id: string; title: string }[]>([]);
-  const overview = useLoad(() => get<MemoryOverview>(u(userId, "memory")), [userId, display.showGeneral, display.showPrivate, imports]);
+  const overview = useLoad(() => get<MemoryOverview>(u(userId, "memory")), [userId, display.showGeneral, display.showPrivate, edits], [ctx.changed]);
   useEffect(() => { if (!id) setTitle(undefined); }, [id]);
 
   const reading = !!(id && pool) || adding;
-  const detail = adding ? <AddMemory userId={userId} onImported={() => setImports((n) => n + 1)} onDone={(d) => { setAdding(false); if (d) go({ page: "memory", userId, pool: d.item.pool, id: d.item.id }); }} />
+  const detail = adding ? <AddMemory userId={userId} onImported={edited} onDone={(d) => { setAdding(false); if (d) edited(); if (d) go({ page: "memory", userId, pool: d.item.pool, id: d.item.id }); }} />
     : id && pool && hidden(display, pool) ? <p className="muted empty">{poolWord(pool)} is hidden. Turn on {poolWord(pool)} in the Sort menu to see it.</p>
-    : id && pool ? <Detail key={`${pool}/${id}`} ctx={ctx} pool={pool} id={id} onTitle={setTitle} onTag={(tag) => { setBrowsing({ layer: "note", tag }); go({ page: "memory", userId }); }} />
+    : id && pool ? <Detail key={`${pool}/${id}`} ctx={ctx} pool={pool} id={id} onTitle={setTitle} onEdited={edited} onTag={(tag) => { setBrowsing({ layer: "note", tag }); go({ page: "memory", userId }); }} />
     : <p className="muted empty">Pick a memory to read it, or search.</p>;
 
   if (inPanel) {
@@ -126,7 +127,7 @@ export function Memory({ ctx, pool, id }: { ctx: ShellContext; pool?: Pool; id?:
         <button type="button" className="sm" onClick={() => { setAdding(true); go({ page: "memory", userId }); }}><Icon name="plus" /><span className="long">Add a memory</span></button>
       </PageHead>
       <div className="mem" data-reading={reading}>
-        <Browse ctx={ctx} current={id} imports={imports} browsing={browsing} onBrowse={setBrowsing} onPick={() => { setTrail([]); setAdding(false); }} />
+        <Browse ctx={ctx} current={id} edits={edits} onEdited={edited} browsing={browsing} onBrowse={setBrowsing} onPick={() => { setTrail([]); setAdding(false); }} />
         <div className="mem-read" onClick={follow}>
           {reading && <a className="sm mem-back" href={href({ page: "memory", userId })}><Icon name="back" />Memory</a>}
           {trail.length > 0 && id && (
@@ -142,7 +143,7 @@ export function Memory({ ctx, pool, id }: { ctx: ShellContext; pool?: Pool; id?:
 }
 
 /** The browse pane: search, the layer segment, the filters row, the Notes layer's tags, and the list, newest first and paged. */
-function Browse({ ctx, current, imports, browsing, onBrowse, onPick }: { ctx: ShellContext; current?: string; imports: number; browsing: Browsing; onBrowse: (b: Browsing) => void; onPick: () => void }) {
+function Browse({ ctx, current, edits, browsing, onBrowse, onPick, onEdited }: { ctx: ShellContext; current?: string; edits: number; onEdited: () => void; browsing: Browsing; onBrowse: (b: Browsing) => void; onPick: () => void }) {
   const userId = ctx.user.id;
   const { display } = ctx.me;
   const [q, setQ] = useState("");
@@ -151,8 +152,8 @@ function Browse({ ctx, current, imports, browsing, onBrowse, onPick }: { ctx: Sh
   const [userOnly, setUserOnly] = useState(false);
   /** Superseded notes are left out unless asked for: the list reads as what she believes now. */
   const [hideSuperseded, setHideSuperseded] = useState(true);
-  const [more, setMore] = useState<MemoryHit[]>([]);
-  const [noMore, setNoMore] = useState(false);
+  /** How many pages More has opened, for this search. */
+  const [paged, setPaged] = useState({ search: "", pages: 1 });
   const [sel, setSel] = useState<string[]>([]);
   const [forgetting, setForgetting] = useState(false);
   const [left, setLeft] = useState(0);
@@ -175,20 +176,33 @@ function Browse({ ctx, current, imports, browsing, onBrowse, onPick }: { ctx: Sh
   // The preview shows one entry; it asks for two so a second proves there is more to open.
   params.set("limit", String(journalPreview ? 2 : PAGE_SIZE));
   const search = params.toString();
-  const hits = useLoad(() => get<MemoryHit[]>(`${u(userId, "memory", "search")}?${search}`), [userId, search, display.showGeneral, display.showPrivate, imports]);
-  const tags = useLoad(() => (layer === "note" && !query ? get<MemoryTag[]>(`${u(userId, "memory", "about")}?${new URLSearchParams({ ...(pool ? { pool } : {}), ...(hideSuperseded ? { current: "1" } : {}) })}`) : Promise.resolve([] as MemoryTag[])), [userId, layer, query, pool, hideSuperseded, display.showGeneral, display.showPrivate]);
-  useEffect(() => { setMore([]); setNoMore(false); setSel([]); setLeft(0); }, [search]);
+  const pages = paged.search === search ? paged.pages : 1;
+  // Every page opened so far is read again when anything changes (here, in another tab, or by her), so a deleted
+  // memory leaves the list at once wherever it was. `more` says whether a further page may exist.
+  const hits = useLoad(async () => {
+    const all: MemoryHit[] = [];
+    for (let n = 0; n < pages; n++) {
+      const last = all.at(-1)?.updatedAt;
+      if (n && !last) break;
+      const next = await get<MemoryHit[]>(`${u(userId, "memory", "search")}?${search}${n ? `&before=${encodeURIComponent(last!)}` : ""}`);
+      all.push(...next);
+      if (next.length < PAGE_SIZE) return { rows: all, more: false };
+    }
+    return { rows: all, more: true };
+  }, [userId, search, pages, display.showGeneral, display.showPrivate, edits], [ctx.changed]);
+  const tags = useLoad(() => (layer === "note" && !query ? get<MemoryTag[]>(`${u(userId, "memory", "about")}?${new URLSearchParams({ ...(pool ? { pool } : {}), ...(hideSuperseded ? { current: "1" } : {}) })}`) : Promise.resolve([] as MemoryTag[])), [userId, layer, query, pool, hideSuperseded, display.showGeneral, display.showPrivate, edits], [ctx.changed]);
+  useEffect(() => { setSel([]); setLeft(0); }, [search]);
+  // A memory deleted elsewhere drops out of the selection too.
+  useEffect(() => {
+    if (!hits.data) return;
+    const shown = new Set(hits.data.rows.map((h) => `${h.pool}/${h.id}`));
+    setSel((s) => (s.every((k) => shown.has(k)) ? s : s.filter((k) => shown.has(k))));
+  }, [hits.data]);
 
-  const rows = [...(hits.data ?? []), ...more];
+  const rows = hits.data?.rows ?? [];
   const shownRows = journalPreview ? rows.slice(0, 1) : rows;
-  const canPage = !query && !journalPreview && hits.data && hits.data.length >= PAGE_SIZE && !noMore;
-  const page = () => run(async () => {
-    const last = rows.at(-1)?.updatedAt;
-    if (!last) return;
-    const next = await get<MemoryHit[]>(`${u(userId, "memory", "search")}?${search}&before=${encodeURIComponent(last)}`);
-    setMore((m) => [...m, ...next]);
-    if (next.length < PAGE_SIZE) setNoMore(true);
-  });
+  const canPage = !query && !journalPreview && hits.data?.more;
+  const page = () => setPaged({ search, pages: pages + 1 });
   const key = (h: MemoryHit) => `${h.pool}/${h.id}`;
   // Ctrl- or Cmd-click adds to the selection, Shift-click takes everything between (as in the Files panel).
   const select = (e: React.MouseEvent, h: MemoryHit) => {
@@ -204,7 +218,7 @@ function Browse({ ctx, current, imports, browsing, onBrowse, onPick }: { ctx: Sh
     for (const k of sel) { const [p, ...rest] = k.split("/"); byPool.set(p as Pool, [...(byPool.get(p as Pool) ?? []), rest.join("/")]); }
     for (const [p, ids] of byPool) await post(u(userId, "memory", p, "forget"), { ids });
     setSel([]); setForgetting(false);
-    hits.reload();
+    onEdited();
     if (sel.some((k) => k.endsWith(`/${current}`))) go({ page: "memory", userId });
   });
 
@@ -240,7 +254,7 @@ function Browse({ ctx, current, imports, browsing, onBrowse, onPick }: { ctx: Sh
         </div>
       )}
       <ErrorText error={hits.error || tags.error || error} />
-      {journalPreview && <HistoryHead to={{ page: "history", userId, kind: "journal", ...(pool ? { pool } : {}) }} count={hits.data?.length} />}
+      {journalPreview && <HistoryHead to={{ page: "history", userId, kind: "journal", ...(pool ? { pool } : {}) }} count={hits.data?.rows.length} />}
       <div className="mem-list" aria-label={query ? "Search results" : LAYERS.find((l) => l.layer === layer)!.label} data-selecting={sel.length > 0 || undefined}>
         {shownRows.map((h) => (
           <a key={key(h)} href={href({ page: "memory", userId, pool: h.pool, id: h.id })} aria-current={current === h.id ? "true" : undefined} className={sel.includes(key(h)) ? "sel" : undefined}
@@ -270,10 +284,10 @@ function Browse({ ctx, current, imports, browsing, onBrowse, onPick }: { ctx: Sh
 }
 
 /** One memory: its facts, tags, text with titled citations, actions, Came from, Used in and History. */
-function Detail({ ctx, pool, id, onTitle, onTag }: { ctx: ShellContext; pool: Pool; id: string; onTitle: (t: string) => void; onTag: (tag: string) => void }) {
+function Detail({ ctx, pool, id, onTitle, onEdited, onTag }: { ctx: ShellContext; pool: Pool; id: string; onTitle: (t: string) => void; onEdited: () => void; onTag: (tag: string) => void }) {
   const userId = ctx.user.id;
   const { display } = ctx.me;
-  const d = useLoad(() => get<MemoryDetail>(u(userId, "memory", pool, id)), [userId, pool, id, display.showGeneral, display.showPrivate]);
+  const d = useLoad(() => get<MemoryDetail>(u(userId, "memory", pool, id)), [userId, pool, id, display.showGeneral, display.showPrivate], [ctx.changed]);
   const [editing, setEditing] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [expanded, setExpanded] = useState<"Came from" | "Used in" | null>(null);
@@ -281,13 +295,15 @@ function Detail({ ctx, pool, id, onTitle, onTag }: { ctx: ShellContext; pool: Po
   const item = d.data?.item;
   const name = item && nameOf(item.kind, item.title && readable(item.title, d.data!.users), readable(item.text, d.data!.users), item.updatedAt);
   useEffect(() => { if (name) { TITLES.set(`${pool}/${id}`, name); onTitle(name); } }, [name, pool, id, onTitle]);
+  // Deleted while open, here or in another tab or by her: the reading pane says so rather than keeping the old text.
+  if (/^no such memory/i.test(d.error)) return <p className="muted empty">This memory is gone.</p>;
   if (!d.data || !item) return <ErrorText error={d.error} />;
   const { users } = d.data;
   // The memory being read is its own citer's target: the lineage names it rather than calling it gone.
   const self: MemoryLink = { kind: item.kind, pool: item.pool, ...(item.title ? { title: item.title } : {}), snippet: firstWords(plainCitations(item.text)), updatedAt: item.updatedAt, ...(item.origin ? { origin: item.origin } : {}) };
   const links = readableLinks({ ...d.data.links, [item.id]: self, [`${item.pool}/${item.id}`]: self }, users);
   const path = u(userId, "memory", item.pool, item.id);
-  const act = (fn: () => Promise<MemoryDetail>) => run(async () => d.set(await fn()));
+  const act = (fn: () => Promise<MemoryDetail>) => run(async () => { d.set(await fn()); onEdited(); });
   const canDelete = item.kind === "note" || item.kind === "page";
   // A message is read here as short-term memory; it is changed in its thread (Came from), never here.
   const canEdit = item.kind !== "entry";
@@ -359,7 +375,7 @@ function Detail({ ctx, pool, id, onTitle, onTag }: { ctx: ShellContext; pool: Po
       {deleting && (
         <ConfirmDialog title={`Delete “${name}”?`} confirm="Delete" danger onCancel={() => setDeleting(false)}
           sentence={`Its text and its history are gone for good; a marker with only its ID stays, so she doesn't learn it again.${d.data.usedIn.length ? ` ${d.data.usedIn.length === 1 ? "One memory cites it and is" : `${d.data.usedIn.length} memories cite it and are`} rewritten at the next sleep.` : ""}`}
-          onConfirm={() => run(async () => { await del(path); go({ page: "memory", userId }); })} />
+          onConfirm={() => run(async () => { await del(path); onEdited(); go({ page: "memory", userId }); })} />
       )}
     </article>
   );
