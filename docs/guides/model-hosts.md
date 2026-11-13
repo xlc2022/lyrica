@@ -693,8 +693,10 @@ from 2026-11-08 on (**Upgrade** in [Operating a host](#operating-a-host)).
 
 ### Video recipes
 
-ComfyUI hosts list seven video starters: Wan 2.2 TI2V 5B (about 18 GB of
-files, fits a 24 GB card), Wan 2.2 T2V 14B and I2V 14B (about 37 GB each),
+ComfyUI hosts list seven video starters: Wan 2.2 TI2V 5B (about 19 GB of
+files with its FastWan speed LoRA, fits a 24 GB card; on a 3090 a 5-second
+clip takes about a minute at its 6 steps, where 20 steps without the LoRA
+took four), Wan 2.2 T2V 14B and I2V 14B (about 37 GB each),
 the same two as Q5 GGUF quants, **Wan 2.2 T2V 14B Q5** and **I2V 14B Q5**
 (about 30 GB each, for a 24 GB card and less system memory; all four 14B
 starters also fetch a small RIFE model that turns their 16 fps into 32

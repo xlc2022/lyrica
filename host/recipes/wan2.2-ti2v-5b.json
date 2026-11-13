@@ -11,6 +11,15 @@
       "size": 9999658848
     },
     {
+      "role": "lora",
+      "slot": "speed",
+      "source": "huggingface",
+      "repo": "Kijai/WanVideo_comfy",
+      "path": "FastWan/Wan2_2_5B_FastWanFullAttn_lora_rank_128_bf16.safetensors",
+      "sha256": "79290493711b022e1c6e655d803715cd8a91a75cdb139856cad46f354e2f681c",
+      "size": 660874456
+    },
+    {
       "role": "text_encoder",
       "slot": "umt5",
       "source": "huggingface",
@@ -30,8 +39,8 @@
   ],
   "loras": [],
   "defaults": {
-    "steps": 20,
-    "cfg": 5,
+    "steps": 6,
+    "cfg": 1,
     "sampler": "uni_pc",
     "scheduler": "simple",
     "shift": 8,
