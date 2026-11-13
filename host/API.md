@@ -1231,7 +1231,9 @@ the action is `invalid`.
   recipe's defaults. `count` is 1 to 4, or only 1 for a template or
   custom workflow without `$count`, which makes one image at a time
   (P-H3-Image's). `width` and `height` are multiples
-  of 16 from 256 to 2048. `steps` is 1 to 150, `cfg` 0 to 30, `seed` 0 to
+  of 16 from 256 to 2048, or to the template's `maxSide` (P-H3-Image's is
+  4096, for its native 8 megapixels); a recipe's `width` and `height`
+  defaults take the same limit. `steps` is 1 to 150, `cfg` 0 to 30, `seed` 0 to
   2^48 (random when left out; every image of one request shares it).
   `sampler` and `scheduler` are ComfyUI names (lower case, digits and `_`),
   `shift` 0 to 20 and `guidance` 0 to 30, checked as a recipe's defaults

@@ -371,7 +371,9 @@ per host, and Lyrica's router filters create tiers by it.
   experimental research release made on H3, under H3's licence). It
   fits a 96 GB card.
   P-H3-Image (ComfyUI hosts only) is PrunaAI's fine-tune of H3 for still
-  pictures: it creates (2048×2048 by default) and edits, with up to 3
+  pictures: it creates at its native 8 megapixels (2912×2912 by default;
+  its template allows sides up to 4096, where others stop at 2048, since
+  below 8 MP its pictures look oversharpened) and edits, with up to 3
   references, in 8 fixed steps without CFG, one image per request. Two
   starters: int8 (about 29.5 GB, about 31 GB of VRAM at its peak) and
   w4a8 (about 20 GB, about 21 GB). Its weights are under the MiniMax H3

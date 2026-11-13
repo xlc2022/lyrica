@@ -871,8 +871,8 @@ export class Images {
       values.cfg = num(body, "cfg", 0, 30) ?? values.cfg!;
     jobSampling(body, values);
       if (action === "create") {
-        values.width = int(body, "width", 256, 2048, 16) ?? values.width!;
-        values.height = int(body, "height", 256, 2048, 16) ?? values.height!;
+        values.width = int(body, "width", 256, template.maxSide ?? 2048, 16) ?? values.width!;
+        values.height = int(body, "height", 256, template.maxSide ?? 2048, 16) ?? values.height!;
       }
       const refs = body.references;
       if (refs !== undefined) {

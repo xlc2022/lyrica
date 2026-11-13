@@ -69,8 +69,8 @@ export const loraFits = (recipeArch: string, loraArch: string | null) => !!loraA
 
 export const COLOR_MATCH = ["lab", "wavelet", "wavelet_adaptive", "hsv", "adain", "none"];
 
-export function checkDefault(k: string, v: unknown): void {
-  const range = DEFAULT_RANGES[k];
+export function checkDefault(k: string, v: unknown, maxSide = 2048): void {
+  const range = (k === "width" || k === "height") && DEFAULT_RANGES[k] ? [DEFAULT_RANGES[k]![0], maxSide, DEFAULT_RANGES[k]![2]] as const : DEFAULT_RANGES[k];
   if (range) {
     const [min, max, step] = range;
     if (typeof v !== "number" || !Number.isFinite(v) || v < min || v > max || (step && (!Number.isInteger(v) || v % step !== 0))) {
@@ -328,7 +328,7 @@ export class RecipeBook {
         if (!d || typeof d !== "object") throw invalid("defaults must be an object.");
         for (const [k, v] of Object.entries(d)) {
           if (!DEFAULT_KEYS.includes(k)) throw invalid(`Unknown default: ${k}.`);
-          if (v !== null) checkDefault(k, v);
+          if (v !== null) checkDefault(k, v, this.templates.get(r.template)?.maxSide);
         }
         // null takes a default away: the job falls back to the host's own, and a template node kept for it is left out.
         for (const [k, v] of Object.entries(d)) {
