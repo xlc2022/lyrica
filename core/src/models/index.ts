@@ -2452,6 +2452,10 @@ export class Models {
         const current: Profiles = Object.keys(c.entries).length ? c.entries : { ...NEW_PRESET };
         const stored = this.entryFor(userId, current, task, value, kind);
         const next: Profiles = { ...current };
+        // Fast images with no list of its own runs down Quality images'; the first edit to that list gives Fast images
+        // a copy of it as it was, so the fast models it held keep making fast images (unfit passes the quality-only ones by).
+        const quality = current["image.create"];
+        if (task === "image.create" && !current["image.fast"] && quality && isList(quality) && quality.length) next["image.fast"] = quality;
         if (!stored) delete next[task]; else next[task] = stored;
         db.prepare("UPDATE model_columns SET preset = NULL, from_preset = ?, entries = ? WHERE column = ?")
           .run((c.preset ?? c.fromPreset)?.id ?? null, JSON.stringify(next), column);

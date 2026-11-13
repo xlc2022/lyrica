@@ -482,6 +482,8 @@ test("Tasks: Fast images and Quality images each list only their tier's models; 
   });
   await page.route(/\/columns\/general\/image\.(fast|create)$/, async (route) => {
     const task = route.request().url().split("/").at(-1)!;
+    // As lyricad does: the first edit to Quality images gives a Fast images without a list a copy of it as it was.
+    if (task === "image.create" && !lists["image.fast"]) last!.presets.columns.general.entries["image.fast"] = lists["image.fast"] = lists["image.create"]!;
     lists[task] = (route.request().postDataJSON() as { models: { offeringId: string }[] }).models;
     saved.push({ task, ids: lists[task]!.map((e) => e.offeringId) });
     last!.presets.columns.general.entries[task] = lists[task];
@@ -516,16 +518,18 @@ test("Tasks: Fast images and Quality images each list only their tier's models; 
   await expect(drawer.getByRole("region", { name: "Add to Quality images" }).locator(".pick-row").filter({ hasText: "art-fast" })).toHaveCount(0);
   await drawer.getByRole("button", { name: "Close" }).click();
 
-  // Fast images had no list: it showed Quality images' fast models, and its first edit saves its own; its picker offers fast models only.
+  // Fast images kept the fast models Quality images had (art-fast stays first); its picker offers fast models only.
+  await expect(fcell.locator(".m")).toContainText("art-fast");
   await fcell.click();
   const fdrawer = page.getByRole("complementary", { name: "Edit Fast images" });
-  await expect(fdrawer.locator("li.oentry")).toHaveCount(1);
-  await expect(fdrawer.locator("li.oentry")).toContainText("art-both");
+  await expect(fdrawer.locator("li.oentry")).toHaveCount(2);
+  await expect(fdrawer.locator("li.oentry").nth(0)).toContainText("art-fast");
+  await expect(fdrawer.locator("li.oentry").nth(1)).toContainText("art-both");
   await fdrawer.getByRole("button", { name: "Add…" }).click();
   const picker = fdrawer.getByRole("region", { name: "Add to Fast images" });
   await expect(picker.locator(".pick-row").filter({ hasText: "art-quality" })).toHaveCount(0);
   await picker.locator(".pick-row").filter({ hasText: "art-fast-2" }).getByRole("button", { name: "Add" }).click();
-  await expect.poll(() => saved.at(-1)).toEqual({ task: "image.fast", ids: ["art-both", "art-fast-2"] });
+  await expect.poll(() => saved.at(-1)).toEqual({ task: "image.fast", ids: ["art-fast", "art-both", "art-fast-2"] });
   await shot("images-tiers-drawer");
 });
 
