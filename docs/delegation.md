@@ -741,7 +741,9 @@ A project chat's child threads are the project's threads
   message reopen it. `child_threads` keeps `anchor`, `resolved_at`,
   `needs_you` and `queued` (no text).
 - `suggest({ threads })` proposes threads on a card and makes none; the
-  user starts them from the card, each once.
+  user starts them from the card, each once. A project's thread (the Plan
+  thread) suggests too: the card is in that thread, and its threads start in
+  the project.
 - `fold({ ids })` proposes bringing existing same-pool work into the
   project; the user applies one or all from the call, once each. Local-only
   work needs a local-only project chat. Existing child threads become

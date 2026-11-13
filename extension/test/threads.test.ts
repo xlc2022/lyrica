@@ -138,7 +138,7 @@ describe("threads definition", () => {
     expect(defs.plain!.actions).toEqual(["start", "message", "list", "read", "stop", "ask", ...always]);
     expect(defs.child!.actions).toEqual(["message", ...always]);
     expect(defs.projectChat!.actions).toEqual(["start", "message", "list", "read", "stop", "suggest", "fold", "draft", "resolve", "reopen", "ask", ...always]);
-    expect(defs.projectThread!.actions).toEqual(["message", "list", "read", "resolve", "ask", ...always]);
+    expect(defs.projectThread!.actions).toEqual(["message", "list", "read", "suggest", "resolve", "ask", ...always]);
     expect(defs.plain!.fields).not.toContain("to");
     expect(defs.plain!.fields).not.toContain("base");
     expect(defs.projectChat!.fields).toContain("base");
@@ -150,7 +150,7 @@ describe("threads definition", () => {
     expect(defs.plain!.size).toBeLessThan(4500);
     expect(defs.child!.size).toBeLessThan(3200);
     expect(defs.projectChat!.size).toBeLessThan(5300);
-    expect(defs.projectThread!.size).toBeLessThan(4200);
+    expect(defs.projectThread!.size).toBeLessThan(4500);
   });
 });
 

@@ -1324,7 +1324,8 @@ project page and the web part are built. Recent calls can be filtered by project
   operations are in `daemon/src/routes.ts`. Empty project chats show three
   secondary starters: Set up from recent work (the existing dialog with
   recent threads checked initially), Add repository (the existing popover),
-  and Make a plan (a separate Plan thread). Move to project in a top-level
+  and Make a plan (a separate Plan thread in Plan mode, which proposes
+  the plan and then suggests the project's threads on its own card). Move to project in a top-level
   thread menu lists pinned and recent projects of its own pool, keeping
   local-only work in local-only projects. It shares the Fold in card confirmation,
   listing children and losses before anything moves. The unticked access

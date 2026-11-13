@@ -161,7 +161,8 @@ const stepsNote = (steps: ThreadStep[]) => {
   return `${done} of ${steps.length} steps done${now ? `, ${now.state === "doing" ? "now" : "next"}: ${JSON.stringify(now.text)}` : ""}`;
 };
 
-export interface StartRequest { title: string; task: string; folders?: string[]; readOnly?: boolean; internet?: false; code?: boolean; base?: boolean }
+/** `plan`: the thread starts in Plan mode (Make a plan); only the daemon asks for it. */
+export interface StartRequest { title: string; task: string; folders?: string[]; readOnly?: boolean; internet?: false; code?: boolean; base?: boolean; plan?: true }
 
 export interface Suggestion { title: string; task: string }
 

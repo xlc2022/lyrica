@@ -950,9 +950,9 @@ describe("projects", () => {
     expect((await ada.post<ThreadSummary[]>(`${path}/suggestions/${end.toolCallId}/start`, {})).body).toEqual([]);
   });
 
-  it("makes a plan in one call: a Plan thread with a card, and nothing while paused", async () => {
-    const { ada, path, script, get, overview, messages, threadPath } = await setup();
-    script("make").push({ text: "Planning." });
+  it("makes a plan in one call: a Plan thread in Plan mode with the goal, which suggests the threads, and nothing while paused", async () => {
+    const { ada, path, script, get, overview, messages, threadPath, requests } = await setup();
+    script("Make").push(tool({ action: "suggest", threads: [{ title: "Rack", task: "rack: mount the rack" }] }), { text: "Planning." });
     expect((await ada.patch(path, { paused: true })).status).toBe(200);
     expect((await ada.post(`${path}/plan`, {})).status).toBe(409);
     expect((await overview()).threads).toEqual([]);
@@ -964,7 +964,17 @@ describe("projects", () => {
     expect(rows.map(t => t.title)).toEqual(["Plan"]);
     expect(rows[0]!.anchor).toBeUndefined();
     expect((await get(plan.body.id)).title).toBe("Plan");
-    await until(() => messages(threadPath(plan.body.id)), m => JSON.stringify(m).includes("Move the homelab to the new rack"));
+    await until(() => messages(threadPath(plan.body.id)), m => JSON.stringify(m).includes("Planning."));
+    // It plans in Plan mode, where propose_plan is, and is given the goal it can't read from the project chat.
+    expect((await ada.get<{ mode: string }>(`${threadPath(plan.body.id)}/settings`)).body.mode).toBe("plan");
+    const asked = requests.find((c) => who(c) === "Make" && !!c.tools?.length)!;
+    expect(said(asked)).toContain("Make a plan for this project's goal: Move the homelab to the new rack");
+    expect(asked.tools!.map((t) => t.function.name)).toEqual(expect.arrayContaining(["propose_plan", "threads"]));
+    // Its Suggested threads card starts them in the project.
+    const call = (await messages(threadPath(plan.body.id))).flatMap((m) => m.parts).find((p) => p.type === "tool" && p.name === "threads")!;
+    const made = (await ada.post<ThreadSummary[]>(`${threadPath(plan.body.id)}/suggestions/${(call as { toolCallId: string }).toolCallId}/start`, {})).body;
+    expect(made.map((t) => [t.title, t.parent])).toEqual([["Rack", plan.body.parent]]);
+    expect((await overview()).threads.map((t) => t.title).sort()).toEqual(["Plan", "Rack"]);
   });
 
   it("keep anchors through a rewind of later turns, and branches inside the project", async () => {

@@ -80,11 +80,13 @@ ever reads its text.
      the project chat at once, so every thread of the project inherits it.
      No new picker; Lyrica is told and clones nothing herself.
    - **Make a plan** is one server call (`POST …/threads/:pool/:projectId/plan`)
-     that starts a project thread titled **Plan**, separate from
-     the project chat, with a server-written first message asking for a plan for the
-     project's goal; it gets its card in the project chat (no message from the user) and opens. The
+     that starts a project thread titled **Plan** in Plan mode, separate from
+     the project chat, with a server-written first message carrying the project's goal (or asking
+     the user for it when none is set, since a project thread can't read its project chat); it gets
+     its card in the project chat (no message from the user) and opens. The
      plan comes back as the existing plan card in that thread, and its
-     suggested threads in the project chat's Suggested threads card.
+     suggested threads as a Suggested threads card in that same thread, whose Start makes them in
+     the project.
 2. **Continue as project** in a top-level thread's right-click menu, next
    to Make project…, asks first in a dialog, "Start a project from
    <thread>? Its child threads move into the new project and can't be

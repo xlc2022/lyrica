@@ -1072,14 +1072,18 @@ export interface ThreadChange {
 export interface StartThread { title?: string }
 /**
  * POST …/threads/:pool/:projectId/plan (no body) → ThreadSummary. Starts the project's thread titled
- * "Plan", with a task the server writes: a plan for the project's goal. It has no anchor, so its card
- * sits under the chat's last message. A paused or hidden project is refused (409), creating nothing.
+ * "Plan", in Plan mode, with a task the server writes: a plan for the project's goal (or, with none set,
+ * a question asking for it), proposed with propose_plan, then the threads it needs suggested. It has no
+ * anchor, so its card sits under the chat's last message. A paused or hidden project is refused (409),
+ * creating nothing.
  */
 export type StartPlanResult = ThreadSummary;
 /** POST …/threads/:pool/:threadId/resolve and …/reopen → ThreadSummary. A project's thread only. */
 /**
- * POST …/threads/:pool/:projectId/suggestions/:callId/start → ThreadSummary[]: starts one of a
- * Suggested threads card's threads (`index`), or all of them not yet started.
+ * POST …/threads/:pool/:threadId/suggestions/:callId/start → ThreadSummary[]: starts one of a
+ * Suggested threads card's threads (`index`), or all of them not yet started. `threadId` is the project
+ * chat or the project's thread whose card it is; either way they start in the project, those from a
+ * project thread with no anchor.
  */
 export interface StartSuggestion { index?: number }
 /** POST …/threads/:pool/:projectId/fold → ThreadSummary. Same-pool top-level work only. */

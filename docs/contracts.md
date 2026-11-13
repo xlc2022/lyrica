@@ -958,8 +958,8 @@ Custom roles override built-ins by name, except `claude`.
   (`Display.checklists`, default on; changing it reloads the user's
   sessions). Each thread is sent only the actions it can use and their
   fields (`paramsFor`): `start` and `stop` where it can start children,
-  `suggest`, `fold`, `draft` and `reopen` only in a project chat, `list` and
-  `read` everywhere but an ordinary child, `resolve` in a project chat and a
+  `suggest` in a project chat and a project's thread, `fold`, `draft` and
+  `reopen` only in a project chat, `list` and `read` everywhere but an ordinary child, `resolve` in a project chat and a
   project's thread, and only `message` (with `to` and `question`) in an
   ordinary child; `needsYou` only in a project's thread.
   Any other action fails Pi's validation. Its results
@@ -1177,7 +1177,8 @@ Custom roles override built-ins by name, except `claude`.
   thread's own project chat is refused with the route that works (`message`
   with `to: "parent"`); `list` in a project's thread lists the project's other
   threads with `ChildInfo.state` (`ThreadState`) and `needsYou`; new actions
-  `suggest({ threads: { title, task }[] })` (a card, no thread made),
+  `suggest({ threads: { title, task }[] })` (a card, no thread made; in a project's
+  thread the card is in that thread and its threads start in the project),
   `fold({ ids: string[] })` (up to ten existing threads, each the exact ID of
   a top-level thread outside any project, or the call is refused; a card, no move),
   `draft({ goal?, instructions? })` (`ThreadsHost.draft`, unsaved project settings),
@@ -2248,10 +2249,10 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     `text`; absent on looks from before looks were one call), and its live
     `notice` event has `status: "watching"` and `told`; `POST …/messages/:n/thread` (Start a
     thread) → `ThreadSummary`; `POST …/threads/:pool/:projectId/plan` (Make a plan: no body, a
-    thread titled Plan with a server-written task, no anchor; 409 while paused or hidden, creating
-    nothing) → `ThreadSummary`; `POST threads/:id/resolve` and `…/reopen`;
-    `POST …/suggestions/:callId/start` (`index`, or all with none; `user.db`
-    `started_suggestions`); `GET threads/:id/overview` (`ProjectOverview`:
+    thread titled Plan in Plan mode with a server-written task carrying the goal, or asking for one
+    when none is set, no anchor; 409 while paused or hidden, creating nothing) → `ThreadSummary`; `POST threads/:id/resolve` and `…/reopen`;
+    `POST …/suggestions/:callId/start` (on the project chat or the project's thread whose card it
+    is; `index`, or all with none; `user.db` `started_suggestions`, under the project); `GET threads/:id/overview` (`ProjectOverview`:
     its threads, the waiting count, total tokens, started suggestions);
     `models/calls?project=&pool=`. `ThreadSummary` gains `project`, `goal`,
     `projectSettings`, `anchor`, `state` and `needsYou`; a `child` event in
