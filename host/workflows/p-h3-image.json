@@ -26,6 +26,7 @@
   ],
   "references": 3,
   "mask": false,
+  "maxSide": 4096,
   "workflow": {
     "load": {
       "class_type": "LoadImage",

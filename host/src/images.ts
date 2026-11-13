@@ -712,10 +712,6 @@ export class Images {
     const body = await readJson(req, WORKFLOW_LIMIT);
     onlyFields(body, ["recipe", "workflow", "files", "check"]);
     const b = readBundle(body);
-    for (const [k, v] of Object.entries(b.recipe.defaults)) {
-      if (!DEFAULT_KEYS.includes(k)) throw invalid(`Unknown default: ${k}.`);
-      checkDefault(k, v);
-    }
     const templates = this.book.templates;
     const w = b.workflow;
     if (w && (!this.workflows || this.sdcpp)) throw invalid("This host runs no custom ComfyUI workflows, and this model has one.");
@@ -723,6 +719,14 @@ export class Images {
     const baseName = w ? (w.from === "copy" ? w.base : null) : b.recipe.template;
     const base = baseName ? templates.get(baseName) : undefined;
     if (baseName && (!base || base.custom)) throw invalid(`This host has no template ${baseName}. Update it, then copy again.`);
+    // Its defaults within the limits of the template it runs on here (a copy of a template keeps its maxSide). A starter
+    // may also fill a blank of its template no request sets (P-H3-Image's sigmas and editMegapixels): a copy keeps those.
+    const blanks = base ? JSON.stringify(base.workflow) : "";
+    for (const [k, v] of Object.entries(b.recipe.defaults)) {
+      if (DEFAULT_KEYS.includes(k)) checkDefault(k, v, base?.maxSide);
+      else if (!blanks.includes(`"$${k}"`)) throw invalid(`Unknown default: ${k}.`);
+      else if (!(typeof v === "number" && Number.isFinite(v)) && !(typeof v === "string" && v.length <= 4096)) throw invalid(`${k} must be a number or text.`);
+    }
     const existing = this.book.all().find((r) => r.copiedFrom === b.recipe.id);
     const placed = place(b, this.parts, this.runtime.record);
     const t = w ? this.copiedTemplate(b, placed, base) : base!;
@@ -871,8 +875,8 @@ export class Images {
       values.cfg = num(body, "cfg", 0, 30) ?? values.cfg!;
     jobSampling(body, values);
       if (action === "create") {
-        values.width = int(body, "width", 256, 2048, 16) ?? values.width!;
-        values.height = int(body, "height", 256, 2048, 16) ?? values.height!;
+        values.width = int(body, "width", 256, template.maxSide ?? 2048, 16) ?? values.width!;
+        values.height = int(body, "height", 256, template.maxSide ?? 2048, 16) ?? values.height!;
       }
       const refs = body.references;
       if (refs !== undefined) {

@@ -538,9 +538,13 @@ describe("recipes", () => {
     expect(again.toDownload.map((p) => p.role)).toEqual(["diffusion"]);
     expect(b.all()).toHaveLength(1);
     const id = first.recipe.id;
-    for (const bad of [{ steps: 0 }, { steps: 2.5 }, { width: 1000 }, { cfg: 99 }, { colorMatch: "x" }, { sampler: "a b" }, { negativePrompt: 3 }]) {
+    for (const bad of [{ steps: 0 }, { steps: 2.5 }, { width: 1000 }, { width: 2912 }, { cfg: 99 }, { colorMatch: "x" }, { sampler: "a b" }, { negativePrompt: 3 }]) {
       expect(() => b.patch(id, { op: "defaults", defaults: bad }, [])).toThrow();
     }
+    // P-H3-Image's template takes sides up to 4096, for its native 8 megapixels.
+    const ph3 = b.fromStarter(STARTERS.find((s) => s.id === "p-h3-image-w4a8")!, () => null).recipe;
+    expect(() => b.patch(ph3.id, { op: "defaults", defaults: { width: 4096, height: 2048 } }, [])).not.toThrow();
+    expect(() => b.patch(ph3.id, { op: "defaults", defaults: { width: 4112 } }, [])).toThrow();
     b.patch(id, { op: "defaults", defaults: { steps: 30, width: 768, sampler: "dpmpp_2m", colorMatch: "wavelet" } }, []);
     expect(b.get(id).defaults).toMatchObject({ steps: 30, width: 768, sampler: "dpmpp_2m" });
     // null takes a default away (a Krea 2 recipe's `enhance` or `refine`: its pass is left out); an unknown key is still refused.
@@ -663,7 +667,8 @@ describe("recipes", () => {
     expect(qi21Replace.encode!.inputs).not.toHaveProperty("images.image_1");
     expect(qi21Replace.masked!.inputs.image).toEqual(["fit", 0]);
 
-    // P-H3-Image: an edit at the image's own shape, scaled to 4 MP, with references after it; a create on the recipe's canvas.
+    // P-H3-Image: an edit at the image's own shape, scaled to 4 MP, with references after it; a create on the recipe's canvas
+    // at its native 8 MP, past the 2048 other templates stop at.
     const ph3Starter = STARTERS.find((s) => s.id === "p-h3-image")!;
     const ph3Parts = [
       { role: "diffusion" as const, slot: null, file: "p.safetensors", added: false },
@@ -683,7 +688,7 @@ describe("recipes", () => {
     expect(ph3Edit.sigmas!.inputs.sigmas).toMatch(/^1\.0, .*0\.528718, 0\.0$/);
     expect(JSON.stringify(ph3Edit)).not.toContain("$");
     const ph3New = fill(TEMPLATES.get("p-h3-image")!, ph3Parts, [], { negativePrompt: "", ...ph3Starter.defaults, prompt: "x", count: 1, seed: 1 });
-    expect(ph3New.create!.inputs).toMatchObject({ width: 2048, height: 2048 });
+    expect(ph3New.create!.inputs).toMatchObject({ width: 2912, height: 2912 });
     expect(ph3New.create!.inputs).not.toHaveProperty("images.image_1");
     expect(ph3New.sample!.inputs.latent_image).toEqual(["create", 1]);
     expect(Object.keys(ph3New)).not.toContain("load");

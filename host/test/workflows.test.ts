@@ -290,6 +290,20 @@ describe("the workflow API", () => {
     expect(made.recipe).toMatchObject({ template: flux.template, state: "confirmed", ready: false, parts: [{ role: "checkpoint", file: "lyrica/upload/flux1-schnell-fp8.safetensors" }] });
   });
 
+  it("copies a P-H3-Image recipe with its 8-megapixel defaults, which other templates refuse", async () => {
+    const from = await stack();
+    const installed = from.book.fromStarter(STARTERS.find((st) => st.id === "p-h3-image-w4a8")!, () => null).recipe;
+    const bundle = (await from.api(`/host/v1/recipes/${installed.id}/export`)).body;
+    expect(bundle.recipe.defaults).toMatchObject({ width: 2912, height: 2912 });
+    const to = await stack({ files: {} });
+    const made = await to.api("/host/v1/recipes/import", { body: { ...bundle, check: true } });
+    expect(made.body.error?.message).toBeUndefined();
+    expect(made.status).toBe(200);
+    const flux = await to.api("/host/v1/recipes/import", { body: { ...bundle, check: true, recipe: { ...bundle.recipe, template: "flux" } } });
+    expect(flux.status).toBe(400);
+    expect(flux.body.error.message).toMatch(/width must be a number from 256 to 2048/);
+  });
+
   it("refuses to run a workflow saved before ComfyUI reported its nodes when one of them writes files", async () => {
     const s = await stack({ extra: ["PreviewImage"] });
     // ComfyUI hasn't run yet, so only the name test applies and PreviewImage passes it.

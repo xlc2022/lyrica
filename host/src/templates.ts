@@ -60,6 +60,8 @@ export interface Template {
    * native shift, where the host's is 3).
    */
   defaults?: Values;
+  /** The longest side a create may ask for, and a recipe's default may set: 2048 when left out (P-H3-Image's is 4096, for its native 8 megapixels). */
+  maxSide?: number;
   /** Video templates only. */
   video?: VideoSpec;
   /**

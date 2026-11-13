@@ -1164,7 +1164,11 @@ and gives it to the other, and carries the files only it can get.
   otherwise), `origin` `{ source, repo, path }` when it was downloaded
   from Hugging Face, ModelScope or Civitai.
 - `POST /host/v1/recipes/import` with that body (up to 2 MB), and
-  `check: true` to only plan → `{ placed, problems, missingNodes, existing }`;
+  `check: true` to only plan → `{ placed, problems, missingNodes, existing }`.
+  Its defaults are checked against the template it runs on here (its
+  `maxSide` included); a default a starter gave for a blank of that
+  template no request sets, such as P-H3-Image's `sigmas` and
+  `editMegapixels`, is kept;
   without it, the model is made as `confirmed` and the answer is `{
   recipe, placed, downloads, copies, missingNodes }`. Each of `placed` is
   `{ file, to, how, size, origin, sha256, reason? }`, `how` one of:
@@ -1231,7 +1235,9 @@ the action is `invalid`.
   recipe's defaults. `count` is 1 to 4, or only 1 for a template or
   custom workflow without `$count`, which makes one image at a time
   (P-H3-Image's). `width` and `height` are multiples
-  of 16 from 256 to 2048. `steps` is 1 to 150, `cfg` 0 to 30, `seed` 0 to
+  of 16 from 256 to 2048, or to the template's `maxSide` (P-H3-Image's is
+  4096, for its native 8 megapixels); a recipe's `width` and `height`
+  defaults take the same limit. `steps` is 1 to 150, `cfg` 0 to 30, `seed` 0 to
   2^48 (random when left out; every image of one request shares it).
   `sampler` and `scheduler` are ComfyUI names (lower case, digits and `_`),
   `shift` 0 to 20 and `guidance` 0 to 30, checked as a recipe's defaults

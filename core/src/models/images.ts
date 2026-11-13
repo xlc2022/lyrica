@@ -55,7 +55,7 @@ export function validateImageRequest(r: ImageRequest): void {
   }
   if (r.action === "create") {
     if (!["fast", "quality"].includes(r.tier)) throw new HostRefused("invalid", "image tier is fast or quality");
-    if (r.size && ![r.size.width, r.size.height].every(n => Number.isInteger(n) && n >= 256 && n <= 2048 && n % 16 === 0)) throw new HostRefused("invalid", "image size is multiples of 16 from 256 to 2048");
+    if (r.size && ![r.size.width, r.size.height].every(n => Number.isInteger(n) && n >= 256 && n <= 4096 && n % 16 === 0)) throw new HostRefused("invalid", "image size is multiples of 16 from 256 to 4096 (most models stop at 2048; the host says)");
   }
   if (r.action === "upscale") {
     if (r.scale !== undefined && !(r.scale >= 1 && r.scale <= 4)) throw new HostRefused("invalid", "image scale is 1 to 4");
