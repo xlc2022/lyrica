@@ -18,6 +18,8 @@ export async function fakeImages() {
     const videos: Record<string, unknown>[] = [];
     const upscaled: Record<string, unknown>[] = [];
     let down: string | false = false;
+    // A host from before aspect ratios on images refuses the field, as onlyFields does.
+    let old = false;
     let output: Buffer = png;
     // The recipe's own LoRAs, which a job applies before the request's and its answer names.
     let own: { file: string; strength: number }[] = [];
@@ -25,7 +27,7 @@ export async function fakeImages() {
     const ep = models.addEndpoint(ada, { name, kind: "local", baseUrl: `https://${name}.example/v1` }, { shared: true });
     // A paired host's persisted endpoint shape; TLS itself is covered by host tests.
     keyring.self().prepare("UPDATE endpoints SET api = 'host', addresses = ?, pin = ? WHERE id = ?").run(JSON.stringify([`${name}.example`]), "fake-pin", ep.id);
-    const server = { images, videos, upscaled, useFor, imagesOff(code: string | false = "unavailable") { down = code; }, replyImage(bytes: Buffer) { output = bytes; }, recipeLoras(l: typeof own) { own = l; } };
+    const server = { images, videos, upscaled, useFor, imagesOff(code: string | false = "unavailable") { down = code; }, olderHost() { old = true; }, replyImage(bytes: Buffer) { output = bytes; }, recipeLoras(l: typeof own) { own = l; } };
     hostFetches.set(ep.id, (async (url: string, opts: RequestInit = {}) => {
       const path = new URL(url).pathname;
       if (path === "/host/v1/status") return Response.json({ state: "running" });
@@ -53,6 +55,7 @@ export async function fakeImages() {
         return Response.json({ video: { mp4: mp4.toString("base64"), width: 2560, height: 1408, frames: 121, fps: 24, duration: 5.04, audio: true, seed: 7 }, poster: png.toString("base64"), seconds: 600 });
       }
       if (body.recipe !== "art") return Response.json({ error: { code: "not_found" } }, { status: 404 });
+      if (old && "aspectRatio" in body) return Response.json({ error: { code: "invalid", message: "Unknown field: aspectRatio." } }, { status: 400 });
       const allowed = ["recipe", "prompt", "count", "references", "loras", "steps", "cfg", "seed", "sampler", "scheduler", "shift", "guidance", "negativePrompt", ...(action === "create" ? ["width", "height", "aspectRatio"] : action === "edit" ? ["image", "mask", "replace"] : ["image", "scale", "maxSize", "colorMatch"])];
       expect(Object.keys(body).every(k => allowed.includes(k))).toBe(true);
       images.push({ action, body });

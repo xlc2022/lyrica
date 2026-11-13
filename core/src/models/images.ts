@@ -232,7 +232,15 @@ export async function imageAt(t: Target, r: ImageRequest, signal?: AbortSignal, 
       prompt: r.prompt, ...(r.count === undefined ? {} : { count: r.count }), ...samplingFields(r), ...(r.references ? { references: r.references.map(base64) } : {}),
       ...(r.action === "create" ? { ...r.size, ...(r.aspectRatio === undefined ? {} : { aspectRatio: r.aspectRatio }) } : { image: base64(r.image), ...(r.mask ? { mask: base64(r.mask), ...(r.replace ? { replace: true } : {}) } : {}) }),
     }) };
-  const out = await withProgress(t, onProgress, (tag) => answer(t, `/host/v1/images/${r.action}`, JSON.stringify(fields), { "content-type": "application/json", ...tag }, signal));
+  const send = (body: object) => withProgress(t, onProgress, (tag) => answer(t, `/host/v1/images/${r.action}`, JSON.stringify(body), { "content-type": "application/json", ...tag }, signal));
+  let out;
+  try { out = await send(fields); }
+  catch (e) {
+    // A host from before aspect ratios on images (2026-11) refuses the field: ask again with about one megapixel in that shape.
+    if (!(r.action === "create" && r.aspectRatio !== undefined && e instanceof HostRefused && /Unknown field: aspectRatio/.test(e.message))) throw e;
+    const { aspectRatio: _ratio, ...rest } = fields as Record<string, unknown>;
+    out = await send({ ...rest, ...ratioSize(r.aspectRatio) });
+  }
   if (!Array.isArray(out.images) || !out.images.length) throw new HostRefused("invalid", "image host returned no images");
   const images = out.images.map((i: { png: string; seed?: number }) => ({ ...cleanPng(Buffer.from(i.png, "base64")), ...(i.seed === undefined ? {} : { seed: i.seed }) }));
   const sampling = samplingOf(out), loras = appliedLoras(out.loras), unused = unusedSettings(out.unused);

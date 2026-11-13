@@ -93,12 +93,12 @@ function int(body: Record<string, unknown>, key: string, min: number, max: numbe
   return v;
 }
 
-/** `width:height`, from 1:4 to 4:1. */
-function aspectRatio(v: unknown): number | undefined {
+/** `width:height`, from 1:4 to 4:1 for a clip, 1:8 to 8:1 for an image (as Lyrica's image tool takes). */
+function aspectRatio(v: unknown, widest = 4): number | undefined {
   if (v === undefined) return undefined;
   const m = typeof v === "string" ? /^(\d+(?:\.\d+)?):(\d+(?:\.\d+)?)$/.exec(v) : null;
   const r = m ? Number(m[1]) / Number(m[2]) : NaN;
-  if (!Number.isFinite(r) || r < 1 / 4 || r > 4) throw invalid("aspectRatio must be width:height, from 1:4 to 4:1.");
+  if (!Number.isFinite(r) || r < 1 / widest || r > widest) throw invalid(`aspectRatio must be width:height, from 1:${widest} to ${widest}:1.`);
   return r;
 }
 
@@ -876,14 +876,20 @@ export class Images {
     jobSampling(body, values);
       if (action === "create") {
         const max = template.maxSide ?? 2048;
-        const ratio = aspectRatio(body.aspectRatio);
+        const ratio = aspectRatio(body.aspectRatio, 8);
         if (ratio !== undefined && (body.width !== undefined || body.height !== undefined)) throw invalid("Give a size or an aspect ratio, not both.");
         if (ratio !== undefined) {
-          // The recipe's area in that shape, on a 16-pixel grid within the template's limit.
+          // The recipe's area in that shape: both sides scaled by one factor to fit the template's limit (or
+          // reach 256), so the shape holds, then put on a 16-pixel grid.
           const area = Number(values.width) * Number(values.height);
+          let w = Math.sqrt(area * ratio), h = Math.sqrt(area / ratio);
+          const fit = Math.min(1, max / Math.max(w, h));
+          w *= fit; h *= fit;
+          const grow = Math.max(1, 256 / Math.min(w, h));
+          w *= grow; h *= grow;
           const snap = (n: number) => Math.min(max, Math.max(256, Math.round(n / 16) * 16));
-          values.width = snap(Math.sqrt(area * ratio));
-          values.height = snap(Math.sqrt(area / ratio));
+          values.width = snap(w);
+          values.height = snap(h);
         }
         values.width = int(body, "width", 256, max, 16) ?? values.width!;
         values.height = int(body, "height", 256, max, 16) ?? values.height!;
