@@ -155,6 +155,10 @@ The owner chose, in order:
 - 2026-10-30, first real run of the H3 Turbo starter, on the Blackwell
   workstation (RTX PRO 6000, 102 GB): a default clip (1344×768, 5 s,
   8 steps) in about 2 minutes. Quality not yet judged.
+- 2026-11-13, H3 Turbo tuned on the same workstation: 6 to 12 steps,
+  euler/beta and the beta scheduler beat neither the starter's 8 steps nor
+  res_multistep; 1920×1088 is coherent and sharper than 1344×768 (about 2
+  minutes against 1 to 1½), so the starter now makes 1080p.
 - 2026-10-30, steps: **Steps** in a recipe's block under Image models
   sets its default, and she passes a step count the user names for one
   clip (`steps` on video, animate and motion).
