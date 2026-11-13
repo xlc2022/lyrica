@@ -194,7 +194,7 @@ export class ChildThreads implements ThreadsHost {
       // Its repositories stay, read-only at the relay, so it can still clone, fetch and read the forge but never push.
       const noMachines = !!req.readOnly || !!req.folders || req.internet === false;
       const readRepos = () => ws.effective(parent.threadId).repositories.map((r) => ({ ...r, readOnly: true }));
-      ws.inheritSettings(parent.threadId, child.id, parent.pool, { grants, ...(req.internet === false ? { internet: false } : {}), ...(noMachines ? { machines: [], repositories: readRepos(), mcpServers: [], claudeCode: false } : {}) });
+      ws.inheritSettings(parent.threadId, child.id, parent.pool, { grants, ...(req.plan ? { mode: "plan" as const } : {}), ...(req.internet === false ? { internet: false } : {}), ...(noMachines ? { machines: [], repositories: readRepos(), mcpServers: [], claudeCode: false } : {}) });
       if (req.code || (project && this.o.project?.(userId, parent.pool, parent.threadId)?.code)) {
         ws.setThreadWork(child.id, { ...(req.base ? { base: true } : {}), worktrees: [] });
         if (!req.base) {
@@ -275,7 +275,7 @@ export class ChildThreads implements ThreadsHost {
    * anchor, hanging under the chat's last message. Queued past the limit, like
    * a start of hers.
    */
-  async startFrom(userId: string, pool: Pool, project: string, anchor: number | undefined, req: { title: string; task: string }): Promise<string> {
+  async startFrom(userId: string, pool: Pool, project: string, anchor: number | undefined, req: { title: string; task: string; plan?: true }): Promise<string> {
     return this.asProjectChat(userId, pool, project, async (ctx) => {
       const made = await this.start(ctx, req);
       this.db(userId, (db) => db.prepare("UPDATE child_threads SET anchor = ? WHERE pool = ? AND thread = ?").run(anchor ?? null, pool, made.id));

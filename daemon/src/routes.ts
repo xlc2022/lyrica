@@ -1486,9 +1486,11 @@ export function apiRoutes(d: Lyricad): Route[] {
       });
       if (s().children.stopped(user.id, pool, project)) throw new HttpError(409, "this project is paused or hidden; resume it to start threads");
       d.refuseWhileDraining();
-      const task = `Make a plan for ${goal || "this project's goal"}. Propose it with propose_plan, and suggest the threads it needs for the project chat's Suggested threads card.`;
+      // It starts in Plan mode, where propose_plan is; a project thread can't read its project chat, so the goal comes with the task.
+      const task = (goal ? `Make a plan for this project's goal: ${/[.!?]$/.test(goal) ? goal : `${goal}.`}` : "This project has no goal yet. Ask the person what it is for, then make a plan for it.")
+        + " Propose the plan with propose_plan. Once the person approves it, suggest the threads it needs with threads suggest; they start them from that card.";
       let id: string;
-      try { id = await s().children.startFrom(user.id, pool, project, undefined, { title: "Plan", task }); } catch (err) { throw new HttpError(409, (err as Error).message); }
+      try { id = await s().children.startFrom(user.id, pool, project, undefined, { title: "Plan", task, plan: true }); } catch (err) { throw new HttpError(409, (err as Error).message); }
       return owner(d, user, (o) => summary(d, user, pool, o[pool], o[pool].getThread(id)!, []));
     }),
     route("POST", `${t}/resolve`, (r) => resolveThread(d, d.userFor(r), r, true)),
@@ -1498,16 +1500,23 @@ export function apiRoutes(d: Lyricad): Route[] {
       const pool = poolOf(r);
       const { index } = await r.json<Api.StartSuggestion>();
       const callId = r.params.callId!;
-      const project = owner(d, user, (o) => threadOf(o, r));
-      if (!project.project) throw new HttpError(400, "suggestions are a project chat's");
+      // Suggested in the project chat, or in one of its threads (the Plan thread): either way they start in the project.
+      const { project, from } = owner(d, user, (o) => {
+        const thread = threadOf(o, r);
+        const parent = thread.child && thread.parent ? o[pool].getThread(thread.parent) : undefined;
+        const project = thread.project ? thread : parent?.project ? parent : undefined;
+        if (!project) throw new HttpError(400, "suggestions are a project's");
+        return { project, from: thread };
+      });
       d.refuseWhileDraining();
-      const entries = owner(d, user, (o) => o[pool].entryPage(project.id, { limit: 100_000 }).entries);
+      const entries = owner(d, user, (o) => o[pool].entryPage(from.id, { limit: 100_000 }).entries);
       const list = suggestionsIn(entries.map((e) => e.data), callId);
       if (!list) throw new HttpError(404, "no such suggestion");
       const started = s().projects.started(user.id, pool, project.id);
       const wanted = index === undefined ? list.map((_, i) => i) : [Number(index)];
       if (wanted.some((i) => !list[i])) throw new HttpError(404, "no such suggested thread");
-      const anchor = anchorOfCall(entries, callId) ?? owner(d, user, (o) => o[pool].nextEntryN(project.id));
+      // From a project thread, they hang under the chat's last message, as Make a plan's own thread does.
+      const anchor = from.id !== project.id ? undefined : anchorOfCall(entries, callId) ?? owner(d, user, (o) => o[pool].nextEntryN(project.id));
       const made: string[] = [];
       for (const i of wanted) {
         // Claimed before the await, so a second click can't start the same thread.

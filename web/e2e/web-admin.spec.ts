@@ -2285,12 +2285,23 @@ test("project welcome and fold in", async ({ page, baseURL }) => {
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.getByRole("status").filter({ hasText: "Saved." })).toBeVisible();
   expect((await api("GET", `${u}/threads/general/${encodeURIComponent(p.id)}`)).projectSettings.askFirstInstructions).toBe(true);
-  const empty = await api("POST", `${u}/threads`, { pool: "general", project: true, title: "Plan garden" });
+  // Untitled, as a new project is: the Plan thread names it as the project chat, not "an untitled thread".
+  const empty = await api("POST", `${u}/threads`, { pool: "general", project: true });
   await page.goto(`/#/u/${user.id}/t/general/${encodeURIComponent(empty.id)}`);
   await page.getByRole("button", { name: "Make a plan", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Plan", exact: true })).toBeVisible();
+  await expect(page.getByText("Child thread of the project chat")).toBeVisible();
+  await expect(page.getByText("Message received from the project chat")).toBeVisible();
   const planned = await api("GET", `${u}/threads/general/${encodeURIComponent(empty.id)}/overview`);
   expect(planned.threads.map((t: { title: string }) => t.title)).toEqual(["Plan"]);
+  // The Plan thread suggests the threads its plan needs on a card of its own; Start makes them in the project.
+  await send(page, "suggest: Seed trays");
+  const suggested = page.getByRole("group", { name: "Suggested threads" });
+  await expect(suggested.getByRole("listitem")).toHaveCount(1);
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/plan-suggested-${page.viewportSize()!.width}.png` });
+  await suggested.getByRole("button", { name: "Start", exact: true }).click();
+  await expect(suggested.getByRole("link", { name: "Open" })).toBeVisible();
+  expect((await api("GET", `${u}/threads/general/${encodeURIComponent(empty.id)}/overview`)).threads.map((t: { title: string }) => t.title).sort()).toEqual(["Plan", "Seed trays"]);
   await page.goto(`/#/u/${user.id}/t/general/${encodeURIComponent(empty.id)}`);
   await expect(page.locator(".tcard").getByRole("link", { name: "Plan", exact: true })).toBeVisible();
   const source = await api("POST", `${u}/threads`, { pool: "general", title: "Recent planting" });

@@ -53,9 +53,11 @@ interface Props {
   onError?: (message: string) => void;
   /** A project chat: its threads' cards go under the messages that started them, and its updates stay off the chat. */
   project?: ProjectEnv;
+  /** A project's thread: its project, for the Suggested threads card it may show. */
+  parentProject?: ProjectEnv;
 }
 
-export function Conversation({ ctx, pool, base, threadId, subagent, thread, rewinder, hideFrom, parentTitle, speech, onError, project }: Props) {
+export function Conversation({ ctx, pool, base, threadId, subagent, thread, rewinder, hideFrom, parentTitle, speech, onError, project, parentProject }: Props) {
   const { messages, live, hasMore, loadOlder, loaded } = thread;
   const [run, loading, error] = useAction();
   // Expanded tool markers, by call ID, so they stay open when the stored copy replaces the live one.
@@ -80,7 +82,7 @@ export function Conversation({ ctx, pool, base, threadId, subagent, thread, rewi
   const env: Env = {
     questions, questionChanged: () => { thread.dispatch({ type: "refresh" }); ctx.refreshThreads(); ctx.refreshNotifications(); },
     busy: live.busy, settingsVersion: live.settings, lastUser: messages.findLast(m => m.role === "user")?.n, userId: ctx.user.id, you: ctx.user.displayName, pool, base, threadId, subagent, openTools, toggleTool, folding, fold,
-    permissions: live.permissions, making: live.making, ticks: live.subagents, show, rewinder, parentTitle, speech, onError: onError ?? (() => {}), project,
+    permissions: live.permissions, making: live.making, ticks: live.subagents, show, rewinder, parentTitle, speech, onError: onError ?? (() => {}), project, parentProject,
     lastHers: messages.findLast((m) => m.role === "assistant")?.n, large: openLarge, threads: ctx.threads,
     ...(live.liveCall && !live.gpuWait ? { liveCall: live.liveCall } : {}),
   };
@@ -163,6 +165,7 @@ export interface Env {
   speech?: Speech;
   onError: (message: string) => void;
   project?: ProjectEnv;
+  parentProject?: ProjectEnv;
   /** The thread list, where a child's card finds its checklist. */
   threads: ThreadSummary[];
   /** Opens an image from a message large, over the conversation. */
@@ -842,7 +845,7 @@ function Marker({ part, env }: { part: Exclude<MessagePart, { type: "text" | "im
     if (action === "ask" && !part.isError) return <QuestionCard args={part.args} state={env.questions.get(part.toolCallId)} base={env.base} onChange={env.questionChanged} />;
     if (action === "fold") return <FoldCard part={part} userId={env.userId} pool={env.pool} projectId={env.threadId} env={env.project} asked={env.folding.get(part.toolCallId)} setAsked={(rows) => env.fold(part.toolCallId, rows)} />;
     if (action === "draft") return <a href={href({ page: "project", userId: env.userId, pool: env.pool, threadId: env.threadId })}>Project settings</a>;
-    if (action === "suggest") return <SuggestedCard part={part} userId={env.userId} pool={env.pool} projectId={env.threadId} env={env.project} />;
+    if (action === "suggest") return <SuggestedCard part={part} userId={env.userId} pool={env.pool} projectId={env.threadId} env={env.project ?? env.parentProject} />;
     // Her checklist shows in the header's facts line; its call is a marker like any tool's.
     if (action !== "steps") return <ThreadsCard part={part} env={env} />;
   }

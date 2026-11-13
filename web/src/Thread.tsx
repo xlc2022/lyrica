@@ -61,6 +61,9 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
   // Reloaded with each context reading too, which a long turn sends after every request.
   const usage = useLoad(() => get<ThreadUsage>(`${base}/usage`), [base, t.live.children, t.live.reload, t.live.context?.measuredAt]);
   const overview = useOverview(userId, pool, threadId, isProject, t.live.children + t.live.reload);
+  // A project's thread (the Plan thread) suggests threads too: its card reads what the project has started from it.
+  const inProject = summary.data?.child && summary.data.parent ? findThread(threads, pool, summary.data.parent) : undefined;
+  const parentOverview = useOverview(userId, pool, inProject?.id ?? threadId, !!inProject?.project, t.live.reload);
   // Its subagent runs, reloaded as a run starts, works or ends; a subagent's own thread has none.
   const ticks = Object.values(t.live.subagents).reduce((a, b) => a + b, 0);
   const isSubagent = summary.data?.subagent;
@@ -86,6 +89,7 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
     return out;
   }, [t.messages, t.live.items]);
   const projectEnv: ProjectEnv | undefined = isProject && overview.data ? { overview: overview.data, lastUpdates, onChange: () => { overview.reload(); refreshThreads(); ctx.refreshNotifications(); }, toast: ctx.toast } : undefined;
+  const suggestEnv: ProjectEnv | undefined = parentOverview.data ? { overview: parentOverview.data, lastUpdates, onChange: () => { parentOverview.reload(); refreshThreads(); }, toast: ctx.toast } : undefined;
 
   // A new title, or a finished turn, may change the sidebar.
   useEffect(() => { if (t.live.title) { summary.reload(); refreshThreads(); } }, [t.live.title, summary.reload, refreshThreads]);
@@ -377,7 +381,7 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
         <PanelButtons />
       </header>
       {parent && (
-        <p className="subnote">{s?.subagent ? "Subagent of" : s?.child ? "Child thread of" : "Branched from"} <a href={`#/u/${encodeURIComponent(userId)}/t/${pool}/${encodeURIComponent(parent.id)}`}>{parent.title || "the parent thread"}</a></p>
+        <p className="subnote">{s?.subagent ? "Subagent of" : s?.child ? "Child thread of" : "Branched from"} <a href={`#/u/${encodeURIComponent(userId)}/t/${pool}/${encodeURIComponent(parent.id)}`}>{parent.title || (parent.project ? "the project chat" : "the parent thread")}</a></p>
       )}
       <div className="scroll" ref={scroller}>
         <PendingBar scroller={scroller} />
@@ -385,8 +389,8 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
         {settings.error && <ErrorText error={`This thread's settings didn't load: ${settings.error}`} />}
         <ErrorText error={overview.error} />
         {s?.project && settings.data && t.loaded && !t.messages.length && !t.live.items.length && <ProjectWelcome userId={userId} pool={pool} project={s} settings={settings.data} onChange={() => { summary.reload(); settings.reload(); overview.reload(); refreshThreads(); }} />}
-        <Conversation ctx={ctx} pool={pool} base={base} threadId={threadId} subagent={!!s?.subagent} thread={t} rewinder={rewinder} hideFrom={pending?.hide} parentTitle={s?.child ? parent?.title : undefined}
-          speech={settings.data?.speech} onError={setSendError} project={projectEnv} />
+        <Conversation ctx={ctx} pool={pool} base={base} threadId={threadId} subagent={!!s?.subagent} thread={t} rewinder={rewinder} hideFrom={pending?.hide} parentTitle={s?.child ? parent?.title || (parent?.project ? "the project chat" : undefined) : undefined}
+          speech={settings.data?.speech} onError={setSendError} project={projectEnv} parentProject={suggestEnv} />
         {settings.data?.planWait && settings.data.wakeups.some((w) => w.planLimit) && <PlanWaitCard wait={settings.data.planWait} userId={userId} onDone={refreshSettings} />}
         <ErrorText error={sendError} />
         {/* A reply that arrived while the person was scrolled up (docs/ux.md §6): the small button that takes them back down. */}

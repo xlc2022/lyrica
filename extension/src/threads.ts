@@ -276,7 +276,7 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
     // The schema says how to call each action; the description says what each is for, once.
     const description = () => [
       !host ? "" : projectThread()
-        ? "Post an update to the project chat (message to: \"parent\"), message another thread of the project, list them, read one's latest messages, or resolve this thread when its work is delivered."
+        ? "Post an update to the project chat (message to: \"parent\"), message another thread of the project, list them, read one's latest messages, suggest threads for the project (a card here), or resolve this thread when its work is delivered."
         : child
           ? "Send your parent thread a short update (message to: \"parent\")."
           : "Child threads: start one on a stream of work of its own, which works in the background and which the person can open and steer; message, list, read or stop one."
@@ -292,7 +292,7 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
 
     const actions = [
       ...(host?.code ? ["code"] : []), ...(host?.model ? ["model"] : []),
-      ...(!host ? [] : projectThread() ? ["message", "list", "read", ...(host.resolve ? ["resolve"] : [])]
+      ...(!host ? [] : projectThread() ? ["message", "list", "read", "suggest", ...(host.resolve ? ["resolve"] : [])]
         : child ? ["message"]
         : ["start", "message", "list", "read", ...(host.stop ? ["stop"] : []),
           ...(inProjectChat() ? ["suggest", "fold", ...(host.draft ? ["draft"] : []), ...(host.instructions ? ["instructions"] : []), ...(host.resolve ? ["resolve", "reopen"] : [])] : [])]),
@@ -511,7 +511,7 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
             : `Ask first is ${r.askFirst ? "on" : "off"}.`);
         }
         if (p.action === "suggest") {
-          if (!inProjectChat()) throw new Error("suggest is for a project chat");
+          if (!inProjectChat() && !projectThread()) throw new Error("suggest is for a project");
           const list = (p.threads ?? []).map((t) => ({ title: t.title.trim(), task: t.task.trim() })).filter((t) => t.title && t.task);
           if (!list.length) throw new Error("suggest needs threads, each with a title and a task");
           return text(`Suggested ${list.length === 1 ? "a thread" : `${list.length} threads`}; the person starts them from the card.`, { suggested: list.length });
