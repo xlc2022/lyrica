@@ -381,7 +381,7 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
         <PanelButtons />
       </header>
       {parent && (
-        <p className="subnote">{s?.subagent ? "Subagent of" : s?.child ? "Child thread of" : "Branched from"} <a href={`#/u/${encodeURIComponent(userId)}/t/${pool}/${encodeURIComponent(parent.id)}`}>{parent.title || "the parent thread"}</a></p>
+        <p className="subnote">{s?.subagent ? "Subagent of" : s?.child ? "Child thread of" : "Branched from"} <a href={`#/u/${encodeURIComponent(userId)}/t/${pool}/${encodeURIComponent(parent.id)}`}>{parent.title || (parent.project ? "the project chat" : "the parent thread")}</a></p>
       )}
       <div className="scroll" ref={scroller}>
         <PendingBar scroller={scroller} />
@@ -389,7 +389,7 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
         {settings.error && <ErrorText error={`This thread's settings didn't load: ${settings.error}`} />}
         <ErrorText error={overview.error} />
         {s?.project && settings.data && t.loaded && !t.messages.length && !t.live.items.length && <ProjectWelcome userId={userId} pool={pool} project={s} settings={settings.data} onChange={() => { summary.reload(); settings.reload(); overview.reload(); refreshThreads(); }} />}
-        <Conversation ctx={ctx} pool={pool} base={base} threadId={threadId} subagent={!!s?.subagent} thread={t} rewinder={rewinder} hideFrom={pending?.hide} parentTitle={s?.child ? parent?.title : undefined}
+        <Conversation ctx={ctx} pool={pool} base={base} threadId={threadId} subagent={!!s?.subagent} thread={t} rewinder={rewinder} hideFrom={pending?.hide} parentTitle={s?.child ? parent?.title || (parent?.project ? "the project chat" : undefined) : undefined}
           speech={settings.data?.speech} onError={setSendError} project={projectEnv} parentProject={suggestEnv} />
         {settings.data?.planWait && settings.data.wakeups.some((w) => w.planLimit) && <PlanWaitCard wait={settings.data.planWait} userId={userId} onDone={refreshSettings} />}
         <ErrorText error={sendError} />
