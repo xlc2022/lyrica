@@ -511,9 +511,13 @@ community fine-tune of Krea 2 from Civitai, sharing one 14.1 GB model file
 with Turbo Uncensored's encoder and Krea 2's VAE: the quality one takes
 about 100 seconds for a 1152×1536 image on a 3090, the fast one about 15.
 Install both: Lyrica's image tool takes the quality one by default and
-the fast one when she asks for a fast image. The Qwen-Image 2.1 Turbo starter, which edits and
-creates (bf16 diffusion model, int8 Qwen3-VL 8B encoder, about 24.3 GB
-of files), is 14.9 GB at its largest stage and takes turns the same way.
+the fast one when she asks for a fast image. The quality one runs on
+ComfyUI only; the fast one is listed for stable-diffusion.cpp hosts too,
+untried there. If Civitai refuses the download, add a Civitai token under
+Downloads → Accounts and try again. The Qwen-Image 2.1 Turbo starter,
+which edits and creates (bf16 diffusion model, int8 Qwen3-VL 8B encoder,
+about 24.3 GB of files), is 14.9 GB at its largest stage and takes turns
+the same way.
 It replaces Qwen-Image-Edit 2509 for edits: once installed, put it first
 in a column's Image edits list, and in its Images list too if you like
 its images. A masked edit on it runs through LanPaint (a pinned ComfyUI
