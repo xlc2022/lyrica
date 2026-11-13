@@ -2071,7 +2071,9 @@ test("image providers run 2: cloud switches and refusal links", async ({ page, b
   await send(page, "A quiet pond");
   await expect(page.getByText("You said: A quiet pond")).toBeVisible();
   const settings = await openSettings(page);
-  const imagesSelect = settings.getByRole("combobox", { name: /^Images( |$)/ });
+  // Tagged Quality above: Quality images lists it, Fast images doesn't.
+  await expect(settings.getByRole("combobox", { name: /^Fast images/ }).locator("option", { hasText: "art-model" })).toHaveCount(0);
+  const imagesSelect = settings.getByRole("combobox", { name: /^Quality images/ });
   await expect(imagesSelect.locator("option", { hasText: "cloud · art-model · image-switches" })).toHaveCount(1);
   await expect(settings.getByRole("combobox", { name: /^Image upscaling/ }).locator("option", { hasText: "art-model" })).toHaveCount(0);
   // Videos sits beside them, listing only host recipes that make clips: a cloud image model isn't one.
