@@ -715,17 +715,22 @@ the Private column too, unless a thread picks its own model, so its
 
 Her `image` tool creates and edits pictures through a ChatGPT plan, an
 OpenAI API key or confirmed recipes on a paired model host, and upscales
-through host recipes only. It uses the `image.create`, `image.edit` and
-`image.upscale` task lists; private and local-only threads always use the
-Private column's. Each list is an ordered fallback: create takes the first
-entry that fits and falls back down the list. Results are saved in the
+through host recipes only. It uses the `image.fast` (Fast images),
+`image.create` (Quality images), `image.edit` and `image.upscale` task
+lists; private and local-only threads always use the Private column's.
+Each list is an ordered fallback: create takes the first entry that fits
+and falls back down the list. A create goes down Fast images unless she
+asks for quality, and Fast images reads Quality images' list until it has
+its own. Results are saved in the
 encrypted thread folder, with no prompt metadata.
 
 **Use for** sets each image model to **Fast**, **Quality** or **Both** (the
-default), and a request skips models set only for the other one. It is
-saved at once. Hosts keep their recipe defaults for both; OpenAI uses low
-or high quality. Set it in **Models → Image models**, in the model's opened
-row: a host recipe, ChatGPT Images, or a key's model once Generate is on.
+default), and a request skips models set only for the other one; the
+Fast images and Quality images lists show only models for their tier or
+Both. It is saved at once. Hosts keep their recipe defaults for both;
+OpenAI uses low or high quality. Set it in **Models → Image models**, in
+the model's opened row: a host recipe, ChatGPT Images, or a key's model
+once Generate is on.
 
 To make images in the cloud, add an endpoint under Models, Hosts and
 endpoints:
@@ -758,6 +763,7 @@ meaning as well as by words ("Recall by meaning" in
 [model-hosts.md](model-hosts.md#recall-by-meaning)):
 
 ```sh
+lyrica admin models preset set general image.fast openai-images/gpt-image-1 --user ada
 lyrica admin models preset set general image.create openai-images/gpt-image-1 --user ada
 lyrica admin models preset set general image.edit openai-images/gpt-image-1 --user ada
 lyrica admin models preset set private image.upscale '<host>/<recipe>' --user ada

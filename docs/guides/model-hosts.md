@@ -510,8 +510,9 @@ load the RES4LYF node. The two Realism by Stable Yogi v3 starters are a
 community fine-tune of Krea 2 from Civitai, sharing one 14.1 GB model file
 with Turbo Uncensored's encoder and Krea 2's VAE: the quality one takes
 about 100 seconds for a 1152×1536 image on a 3090, the fast one about 15.
-Install both: Lyrica's image tool takes the quality one by default and
-the fast one when she asks for a fast image. The quality one runs on
+Install both, and put the fast one in the **Fast images** task list and
+the quality one in **Quality images**: she makes fast images unless she
+asks for quality. The quality one runs on
 ComfyUI only; the fast one is listed for stable-diffusion.cpp hosts too,
 untried there. If Civitai refuses the download, add a Civitai token under
 Downloads → Accounts and try again. The Qwen-Image 2.1 Turbo starter,
@@ -519,12 +520,13 @@ which edits and creates (bf16 diffusion model, int8 Qwen3-VL 8B encoder,
 about 24.3 GB of files), is 14.9 GB at its largest stage and takes turns
 the same way.
 It replaces Qwen-Image-Edit 2509 for edits: once installed, put it first
-in a column's Image edits list, and in its Images list too if you like
-its images. A masked edit on it runs through LanPaint (a pinned ComfyUI
-node, GPL-3.0), which takes about two and a half times as long as a
-plain edit. The P-H3-Image starters (ComfyUI hosts) create and edit
-pictures with PrunaAI's fine-tune of MiniMax H3: the int8 one is about
-29.5 GB of files and peaks near 31 GB of VRAM, so it wants a 32 GB or
+in a column's Image edits list, and in its Fast images or Quality images
+list too if you like its images. A masked edit on it runs through
+LanPaint (a pinned ComfyUI node, GPL-3.0), which takes about two and a
+half times as long as a plain edit. The P-H3-Image starters (ComfyUI
+hosts) create and edit pictures with PrunaAI's fine-tune of MiniMax H3:
+the int8 one is about 29.5 GB of files and peaks near 31 GB of VRAM, so
+it wants a 32 GB or
 larger card; the w4a8 one is about 20 GB and peaks near 21 GB, so it fits
 24 GB when nothing else is loaded. It makes one image per request. Both
 need ComfyUI 0.44 or later, so update the host before adding them (an
@@ -604,11 +606,14 @@ leaves local-only threads' words out ([docs/memory.md](../memory.md),
 
 ## Images
 
-Confirmed, ready recipes can go in the `image.create`, `image.edit` and
-`image.upscale` lists, like any other model (see "Use it from Lyrica").
-Set each host recipe's **Use for** in **Models → Image models** to **Fast**,
-**Quality** or **Both** (default). Create skips recipes tagged only for the
-other tier, including on fallback; edits and upscaling use their lists as
+Confirmed, ready recipes can go in the `image.fast` (Fast images),
+`image.create` (Quality images), `image.edit` and `image.upscale` lists,
+like any other model (see "Use it from Lyrica"). Set each host recipe's
+**Use for** in **Models → Image models** to **Fast**, **Quality** or
+**Both** (default). A create goes down Fast images unless she asks for
+quality; each of the two lists shows and uses only recipes tagged for its
+tier or Both, including on fallback, and Fast images reads Quality images'
+list until you give it its own. Edits and upscaling use their lists as
 before. Her `image` tool keeps a recipe's defaults unless she gives a size
 or count, and never picks parts or LoRAs itself. Each list is an ordered
 fallback, and private threads only use local models. SeedVR2 recipes
