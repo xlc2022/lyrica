@@ -460,42 +460,72 @@ test("New preset summary: +N fallbacks and a red gone model", async ({ page, bas
   await expect(summary.locator(".pill.bad").first()).toHaveText("gone");
 });
 
-test("Tasks: the Images row names where each create tier starts, and its drawer tags one-tier models", async ({ page, baseURL }) => {
+test("Tasks: Fast images and Quality images each list only their tier's models; Fast images without a list starts from Quality images'", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   const shot = async (name: string) => { if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/tasks-${name}-${page.viewportSize()!.width}.png`, scale: "device" }); };
-  // General Images lists a fast-only model, a quality-only one and one for both: a quality create skips the first.
+  // General Quality images holds a fast-only model, a quality-only one and one for both; Fast images has no list yet.
+  type M = { id: string; modelId: string; label: string; image?: boolean; useFor?: string };
+  type Page = { endpoints: { kind: string; models: M[] }[]; presets: { columns: { general: { preset: unknown; entries: Record<string, unknown> } } } };
+  const lists: Record<string, { offeringId: string }[]> = { "image.create": ["art-fast", "art-quality", "art-both"].map((offeringId) => ({ offeringId })) };
+  const saved: { task: string; ids: string[] }[] = [];
+  let last: Page | undefined;
   await page.route(/\/api\/u\/[^/]+\/models\/page$/, async (route) => {
-    type M = { id: string; modelId: string; label: string; image?: boolean; useFor?: string };
-    const real = await (await fetchReal(route)).json() as {
-      endpoints: { kind: string; models: M[] }[];
-      presets: { columns: { general: { preset: unknown; entries: Record<string, unknown> } } };
-    };
+    const real = await (await fetchReal(route)).json() as Page;
     const cloud = real.endpoints.find((e) => e.kind === "cloud" && e.models.some((m) => m.modelId === "cloud-model"))!;
     const live = cloud.models.find((m) => m.modelId === "cloud-model")!;
-    for (const [id, useFor] of [["art-fast", "fast"], ["art-quality", "quality"], ["art-both", "both"]] as const)
+    for (const [id, useFor] of [["art-fast", "fast"], ["art-quality", "quality"], ["art-both", "both"], ["art-fast-2", "fast"]] as const)
       cloud.models.push({ ...live, id, modelId: id, label: id, image: true, useFor });
     real.presets.columns.general.preset = null;
-    real.presets.columns.general.entries["image.create"] = ["art-fast", "art-quality", "art-both"].map((offeringId) => ({ offeringId }));
-    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(real) });
+    Object.assign(real.presets.columns.general.entries, lists);
+    last = real;
+    await route.fulfill({ json: real });
+  });
+  await page.route(/\/columns\/general\/image\.(fast|create)$/, async (route) => {
+    const task = route.request().url().split("/").at(-1)!;
+    lists[task] = (route.request().postDataJSON() as { models: { offeringId: string }[] }).models;
+    saved.push({ task, ids: lists[task]!.map((e) => e.offeringId) });
+    last!.presets.columns.general.entries[task] = lists[task];
+    await route.fulfill({ json: last!.presets });
   });
   await page.reload();
   await page.goto(`/#/u/${userId}/models/tasks`);
-  const cell = page.locator('tr[data-task="image.create"] [data-col="General threads"]');
-  const lines = cell.locator(".m");
-  await expect(lines).toHaveCount(2);
-  await expect(lines.nth(0)).toContainText("Quality");
-  await expect(lines.nth(0)).toContainText("art-quality");
-  await expect(lines.nth(1)).toContainText("Fast");
-  await expect(lines.nth(1)).toContainText("art-fast");
-  await expect(cell.locator(".sub")).toHaveText("+1 fallback");
+  await expect(page.locator('tr[data-task="vision"] + tr[data-task="image.fast"] + tr[data-task="image.create"] + tr[data-task="image.edit"]')).toHaveCount(1);
+  const fast = page.locator('tr[data-task="image.fast"]'), quality = page.locator('tr[data-task="image.create"]');
+  await expect(fast.locator("td.task")).toHaveText("Fast images");
+  await expect(quality.locator("td.task")).toHaveText("Quality images");
+  const fcell = fast.locator('[data-col="General threads"]'), qcell = quality.locator('[data-col="General threads"]');
+  await expect(fcell.locator(".m")).toContainText("art-fast");
+  await expect(fcell.locator(".sub")).toHaveText("+1 fallback");
+  await expect(qcell.locator(".m")).toContainText("art-quality");
+  await expect(qcell.locator(".sub")).toHaveText("+1 fallback");
   await noHorizontalScroll(page);
-  await cell.scrollIntoViewIfNeeded();
+  await fcell.scrollIntoViewIfNeeded();
   await shot("images-tiers");
-  await cell.click();
-  const entries = page.getByRole("complementary", { name: "Edit Images" }).locator("li.oentry");
-  await expect(entries.nth(0).locator(".tier")).toHaveText("Fast");
-  await expect(entries.nth(1).locator(".tier")).toHaveText("Quality");
-  await expect(entries.nth(2).locator(".tier")).toHaveCount(0);
+
+  // Quality images: art-quality and art-both, no Same as; moving saves only what it shows, so the fast-only model leaves its list.
+  await qcell.click();
+  const drawer = page.getByRole("complementary", { name: "Edit Quality images" });
+  await expect(drawer.getByRole("radiogroup")).toHaveCount(0);
+  const rows = drawer.locator("li.oentry");
+  await expect(rows).toHaveCount(2);
+  await expect(rows.nth(0)).toContainText("art-quality");
+  await expect(rows.nth(1)).toContainText("art-both");
+  await rows.nth(1).getByRole("button", { name: "Move up" }).click();
+  await expect.poll(() => saved.at(-1)).toEqual({ task: "image.create", ids: ["art-both", "art-quality"] });
+  await drawer.getByRole("button", { name: "Add…" }).click();
+  await expect(drawer.getByRole("region", { name: "Add to Quality images" }).locator(".pick-row").filter({ hasText: "art-fast" })).toHaveCount(0);
+  await drawer.getByRole("button", { name: "Close" }).click();
+
+  // Fast images had no list: it showed Quality images' fast models, and its first edit saves its own; its picker offers fast models only.
+  await fcell.click();
+  const fdrawer = page.getByRole("complementary", { name: "Edit Fast images" });
+  await expect(fdrawer.locator("li.oentry")).toHaveCount(1);
+  await expect(fdrawer.locator("li.oentry")).toContainText("art-both");
+  await fdrawer.getByRole("button", { name: "Add…" }).click();
+  const picker = fdrawer.getByRole("region", { name: "Add to Fast images" });
+  await expect(picker.locator(".pick-row").filter({ hasText: "art-quality" })).toHaveCount(0);
+  await picker.locator(".pick-row").filter({ hasText: "art-fast-2" }).getByRole("button", { name: "Add" }).click();
+  await expect.poll(() => saved.at(-1)).toEqual({ task: "image.fast", ids: ["art-both", "art-fast-2"] });
   await shot("images-tiers-drawer");
 });
 

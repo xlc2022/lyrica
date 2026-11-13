@@ -257,10 +257,10 @@ describe("image tool results (principles 1 and 4)", () => {
     const image = await s.files.read(part.paths[0]!);
     expect(image.portrait).toBe(false); expect(image.input.bytes).toEqual(png);
     await s.run({ action: "edit", instruction: "Add flowers", image: part.paths[0] });
-    // A create without a tier is a quality one, rather than an error the model has to fix.
+    // A create without a tier is a fast one, rather than an error: it goes down Fast images, here Quality images' list.
     const plain = await s.run({ action: "create", prompt: "A pond" });
-    expect((plain.details as { image: { tier: string } }).image.tier).toBe("quality");
-    expect(s.heard.at(-1)?.body).toMatchObject({ quality: "high" });
+    expect((plain.details as { image: { tier: string } }).image.tier).toBe("fast");
+    expect(s.heard.at(-1)?.body).toMatchObject({ quality: "low" });
     expect(s.models.recentCalls(s.ada.id)).toHaveLength(3);
     expect(JSON.stringify(s.models.recentCalls(s.ada.id))).not.toMatch(/garden|flowers/);
   });

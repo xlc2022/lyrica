@@ -508,10 +508,16 @@ export function checkTask(task: string): Task {
 }
 
 /** What a task needs: text models, embeddings, images or speech. `same` stays within one. */
-const capability = (t: Task) => (t === "embedding" ? "embedding" : t === "vision" ? "vision" : t === "image.create" ? "image" : t === "image.edit" ? "edit" : t === "image.upscale" ? "upscale"
+const capability = (t: Task) => (t === "embedding" ? "embedding" : t === "vision" ? "vision" : t === "image.create" || t === "image.fast" ? "image" : t === "image.edit" ? "edit" : t === "image.upscale" ? "upscale"
   : t === "video" ? "video" : t === "speech.transcribe" ? "transcribe" : t === "speech.speak" ? "speak" : "text");
+/** The list a create of a tier goes down: Fast images, or Quality images when quality is asked for. */
+export const createTask = (tier: "fast" | "quality" | undefined): Task => (tier === "quality" ? "image.create" : "image.fast");
+/** An image call's list: a create's tier picks Fast or Quality images; edit and upscale have one each. */
+export const imageTask = (action: "create" | "edit" | "upscale", tier?: "fast" | "quality"): Task => (action === "create" ? createTask(tier) : `image.${action}`);
+/** Whether a task makes new images: either create list. */
+const creates = (t: Task) => t === "image.create" || t === "image.fast";
 /** Tasks with no list of their own follow chat, except these. */
-const OWN_LIST_ONLY: readonly Task[] = ["embedding", "vision", "image.create", "image.edit", "image.upscale", "video", "speech.transcribe", "speech.speak"];
+const OWN_LIST_ONLY: readonly Task[] = ["embedding", "vision", "image.fast", "image.create", "image.edit", "image.upscale", "video", "speech.transcribe", "speech.speak"];
 /** A new preset starts with these following other tasks. */
 const NEW_PRESET: Partial<Record<Task, { same: Task }>> = {
   code: { same: "subagent.strong" },
@@ -1031,7 +1037,7 @@ export class Models {
           table["image.edit"] = [{ offeringId: to }];
           changed = true;
         }
-        for (const task of ["image.create", "image.edit"] as const) {
+        for (const task of ["image.fast", "image.create", "image.edit"] as const) {
           const e = table[task];
           if (!isList(e) || !e.some((r) => "offeringId" in r && before.has(r.offeringId))) continue;
           const seen = new Set<string>();
@@ -2480,6 +2486,7 @@ export class Models {
     if (entry && !isList(entry)) {
       const target = checkTask(entry.same);
       if (target === task) throw new Error(`${task} can't follow itself`);
+      if (creates(task)) throw new Error(`${task} keeps a list of its own`);
       if (capability(target) !== capability(task)) throw new Error(`${task} can only follow a task that uses the same kind of model`);
       const t = current[target];
       if (t && !isList(t)) throw new Error(`${target} already follows ${t.same}, and Same as goes one level deep`);
@@ -2923,7 +2930,7 @@ export class Models {
 
   /** The next eligible image model on a different endpoint, without probing or sending. */
   nextImageModel(ctx: CallContext, action: "create" | "edit" | "upscale", need: Need, afterEndpoint: string, noCloud = false): Resolution | undefined {
-    const task = `image.${action}` as Task;
+    const task = imageTask(action, need.imageTier);
     const catalog = this.catalog(ctx.userId), listed = this.listFor(task, ctx, catalog);
     if (!listed && !need.first?.length && !need.after?.length) return undefined;
     const found = { source: "column" as const, profile: "Custom", ...listed, list: [...(need.first ?? []).map((offeringId) => ({ offeringId })), ...listed?.list ?? [], ...(need.after ?? []).map((offeringId) => ({ offeringId }))] };
@@ -2986,8 +2993,7 @@ export class Models {
    */
   imageModels(ctx: CallContext): { name: string; actions: ("create" | "edit" | "upscale")[]; references?: number }[] {
     const c = this.catalog(ctx.userId), out = new Map<string, { name: string; actions: ("create" | "edit" | "upscale")[]; references?: number }>();
-    for (const action of ["create", "edit", "upscale"] as const) {
-      const task = `image.${action}` as Task;
+    for (const [action, task] of [["create", "image.fast"], ["create", "image.create"], ["edit", "image.edit"], ["upscale", "image.upscale"]] as const) {
       for (const ref of this.listFor(task, ctx, c)?.list ?? []) {
         for (const raw of "offeringId" in ref ? [ref.offeringId] : c.groups.get(ref.groupId)?.members ?? []) {
           const id = this.follow(raw), o = id ? c.offerings.get(id) : undefined, ep = o && c.endpoints.get(o.endpointId);
@@ -3010,11 +3016,11 @@ export class Models {
    * and take that many references, to try after the Create list's models, which may take none. A cloud
    * model there isn't added: one off the Create list answers a create only when asked for by name.
    */
-  private referenceModels(ctx: CallContext, refs: number): string[] {
+  private referenceModels(ctx: CallContext, refs: number, task: Task): string[] {
     const c = this.catalog(ctx.userId);
     return (this.listFor("image.edit", ctx, c)?.list ?? []).flatMap((r) => "offeringId" in r ? [r.offeringId] : c.groups.get(r.groupId)?.members ?? []).filter((raw) => {
       const id = this.follow(raw), o = id ? c.offerings.get(id) : undefined, ep = o && c.endpoints.get(o.endpointId);
-      return !!o && ep?.kind === "local" && (o.references ?? 0) >= refs && !this.unfit("image.create", o, ep, {});
+      return !!o && ep?.kind === "local" && (o.references ?? 0) >= refs && !this.unfit(task, o, ep, {});
     });
   }
 
@@ -3024,7 +3030,7 @@ export class Models {
    * that takes it even when the list's first doesn't. `names`: every LoRA a model there takes, for the error
    * she reads when one isn't found, and for the tool's description.
    */
-  loraModels(ctx: CallContext, task: "image.create" | "image.edit" | "video", asks: readonly LoraAsk[]): { ids: string[]; names: string[] } {
+  loraModels(ctx: CallContext, task: "image.fast" | "image.create" | "image.edit" | "video", asks: readonly LoraAsk[]): { ids: string[]; names: string[] } {
     const c = this.catalog(ctx.userId);
     const order = (this.listFor(task, ctx, c)?.list ?? []).flatMap((r) => "offeringId" in r ? [r.offeringId] : c.groups.get(r.groupId)?.members ?? []);
     const able = [...c.offerings.values()].filter((o) => {
@@ -3050,8 +3056,9 @@ export class Models {
     if (request.action !== "upscale" && setsJob(request)) need.sampling = true;
     if (opts.first?.length) need.first = opts.first;
     // A create with references may find no Create model that takes them; an Edit model that also creates can.
-    if (request.action === "create" && refs) { const after = this.referenceModels(ctx, refs); if (after.length) need.after = after; }
-    return this.callWithFallback(`image.${request.action}`, ctx, need, async (r) => {
+    const task: Task = request.action === "create" ? createTask(request.tier) : `image.${request.action}`;
+    if (request.action === "create" && refs) { const after = this.referenceModels(ctx, refs, task); if (after.length) need.after = after; }
+    return this.callWithFallback(task, ctx, need, async (r) => {
       opts.signal?.throwIfAborted();
       await opts.beforeSend?.(r);
       opts.signal?.throwIfAborted();
@@ -3504,7 +3511,8 @@ export class Models {
         const listed = live(isList(e) ? e : undefined);
         return listed?.length ? { list: listed, source: honored ? "preset" : "column", profile } : undefined;
       };
-      return of(task) ?? (OWN_LIST_ONLY.includes(task) ? undefined : of("chat", task !== "code"));
+      // Fast images with no list of its own goes down Quality images' list, where a quality-only model is passed by (unfit).
+      return of(task) ?? (task === "image.fast" ? of("image.create") : OWN_LIST_ONLY.includes(task) ? undefined : of("chat", task !== "code"));
     });
   }
 
@@ -3525,7 +3533,7 @@ export class Models {
   /** Why a model can't take this call now, if it can't. */
   private unfit(task: Task, o: Offering, ep: Endpoint, need: Need): string | undefined {
     if (o.status === "gone") return `it has been missing from ${ep.name} for ${GONE_DAYS} days`;
-    if (task === "image.create" && !o.image) return "it doesn't make images";
+    if (creates(task) && !o.image) return "it doesn't make images";
     // Only a model host makes clips, and only one whose recipe does what the call needs.
     if (task === "video" && ep.api !== "host") return "only a model host makes videos";
     if (task === "video" && !o.video && !o.animate && !o.motion && !o.videoEdit) return "it doesn't make videos";
@@ -3539,13 +3547,13 @@ export class Models {
     // Cloud adapters constrain their tasks; local endpoints keep capability-based routing.
     if (task.startsWith("image.") && ep.kind === "cloud") {
       const provider = CLOUD_IMAGE_PROVIDERS[ep.api];
-      if (!provider || task === "image.upscale" || (task === "image.create" && !provider.create) || (task === "image.edit" && !provider.edit)) return "this endpoint has no image provider for the task";
+      if (!provider || task === "image.upscale" || (creates(task) && !provider.create) || (task === "image.edit" && !provider.edit)) return "this endpoint has no image provider for the task";
       if (task === "image.edit" && need.imageMask && !provider.mask) return "this image provider does not accept masks";
       if (need.imageReferences && !provider.references) return "this image provider does not take reference images";
     }
     // A job's own settings: only a model host takes them, whatever kind its endpoint is.
     if (task.startsWith("image.") && need.sampling && ep.api !== "host") return "this image provider does not take steps, CFG, a seed or other sampling settings";
-    if (task === "image.create" && need.imageTier
+    if (creates(task) && need.imageTier
       && o.useFor && o.useFor !== "both" && o.useFor !== need.imageTier) return `it is for ${o.useFor} images`;
     if (task === "image.upscale" && !o.upscale) return "it doesn't upscale images";
     if (task === "image.upscale" && need.clip && !o.upscalesClips) return "it doesn't upscale clips";
@@ -3580,7 +3588,7 @@ export class Models {
   private checkList(userId: string, list: ModelRef[], opts: { kind?: "local"; task: Task }): ModelRef[] {
     const c = this.catalog(userId);
     const out: ModelRef[] = [];
-    const fits = (o: Offering) => (opts.task === "vision" ? !!o.vision : opts.task === "image.create" ? !!o.image : opts.task === "image.edit" ? !!o.edit : opts.task === "image.upscale" ? !!o.upscale
+    const fits = (o: Offering) => (opts.task === "vision" ? !!o.vision : creates(opts.task) ? !!o.image : opts.task === "image.edit" ? !!o.edit : opts.task === "image.upscale" ? !!o.upscale
       : opts.task === "video" ? !!(o.video || o.animate || o.motion || o.videoEdit) : opts.task === "speech.transcribe" ? !!o.transcribe : opts.task === "speech.speak" ? !!o.speak?.voices.length : true);
     for (const ref of list) {
       const id = ref && typeof ref === "object" ? refId(ref) : undefined;
@@ -3861,7 +3869,7 @@ function checkCredential(c: PlanCredential): PlanCredential {
 
 /** Tasks a hand-set switch can take away from a model, and the capability each needs. */
 const DROPPABLE: [Task, (o: Offering) => boolean][] = [
-  ["image.create", (o) => !!o.image], ["image.edit", (o) => !!o.edit], ["image.upscale", (o) => !!o.upscale], ["speech.transcribe", (o) => !!o.transcribe],
+  ["image.fast", (o) => !!o.image], ["image.create", (o) => !!o.image], ["image.edit", (o) => !!o.edit], ["image.upscale", (o) => !!o.upscale], ["speech.transcribe", (o) => !!o.transcribe],
 ];
 /** What to call a model: an image model (a host recipe, or a plan's image tool) by its name, anything else by its model ID. */
 export const modelName = (o: { modelId: string; recipe?: string }) => o.recipe ?? o.modelId;

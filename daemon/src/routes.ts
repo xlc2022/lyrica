@@ -7,7 +7,7 @@ import {
   citationsIn, exportMemories, importMemories, exportSkills, importSkills, firstLine, GIT_KINDS, kindOf, mcpCommand, mcpCommandLine, mcpEnv, mcpLimit, mcpPlace, sentenceCiting, splitId, HomeFileMissing, MAX_IMAGE_BYTES,
   type Author, type Column, type Endpoint, type ModelRef, type Offering, type Hit, type Item, type GitAccountConfig, type MachineConfig, type McpServerConfig, type OwnerView, type Pool, type PoolStore, type SleepItem, type SleepRunRecord, type Thread, type ThreadPref, type User,
   botChecks, setBotChecks, searxngAddress, searxngStatus, searxngView, setSearxngAddress, kiwixAddress, kiwixArticle, kiwixPicture, kiwixStatus, setKiwixAddress, forgetKiwixBooks, claudeCodeInstalled, modelName,
-  codexSignedIn, codexSignIn, codexSignOut, type CodexBox, type CodexSignIn, serverZone, zoneOf,
+  codexSignedIn, codexSignIn, codexSignOut, type CodexBox, type CodexSignIn, serverZone, zoneOf, imageTask,
   ChangesUnavailable, type ByteRange, commitFiles, fileSides, repositoryChanges, type ExecutionTarget,
 } from "@lyrica/core";
 import type * as Api from "./api.ts";
@@ -1342,8 +1342,9 @@ export function apiRoutes(d: Lyricad): Route[] {
       const offeringId = body.next ? retry.options.next?.offeringId : retry.refusal.offeringId;
       if (!offeringId) throw new HttpError(409, "no next image model is available");
       // Check the selected model against today's privacy, capability and tier rules before starting.
-      const selected = s().models.resolve(`image.${retry.args.action}`, { ...retry.routing, fallback: false,
-        overrides: { ...retry.routing.overrides, [`image.${retry.args.action}`]: [{ offeringId }] } }, { ...retry.need, first: undefined });
+      const task = imageTask(retry.args.action, retry.need.imageTier);
+      const selected = s().models.resolve(task, { ...retry.routing, fallback: false,
+        overrides: { ...retry.routing.overrides, [task]: [{ offeringId }] } }, { ...retry.need, first: undefined });
       if (retry.noCloud && selected.endpoint.kind === "cloud") throw new HttpError(400, "Photos of you aren't allowed to go to cloud models.");
       await s().host.get(user.id, pool, thread.id).retryImage(retry.args, offeringId, retry.options.userMessage?.n);
       return { ok: true };
@@ -3024,8 +3025,8 @@ function threadSettings(d: Lyricad, user: User, pool: Pool, threadId: string): A
     const list = override?.length ? { list: override } : {};
     try {
       // evenIfDown: the drawer names what is set here; whether its machine answers now is speechState's and the status panel's to say.
-      // Images names what a create makes unless she asks for fast: quality, which skips models tagged fast only.
-      const r = models.resolve(task, task === "speech.transcribe" ? voiceContext(ctx) : ctx, task === "image.create" ? { imageTier: "quality" } : {}, { evenIfDown: true });
+      // Each create list names the model its tier takes, past one tagged for the other tier only.
+      const r = models.resolve(task, task === "speech.transcribe" ? voiceContext(ctx) : ctx, task === "image.create" ? { imageTier: "quality" } : task === "image.fast" ? { imageTier: "fast" } : {}, { evenIfDown: true });
       if (task === (applies.code ? "code" : "chat")) thinkingLevels = ["off", ...(r.offering.reasoning ?? [])];
       return {
         model: r.ref, ...list, kind: r.endpoint.kind, endpointName: r.endpoint.name, label: r.label, modelId: r.offering.modelId, name: modelName(r.offering),

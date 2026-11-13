@@ -1,7 +1,7 @@
 // Principles 1, 2 and 8: one image tool, which also makes clips, with portrait consent checked at each resolved provider.
 import type { ExtensionContext, ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import { CloudModelForbidden, HostRefused, isRestricted, NoModel, loraFiles, loraName, MAX_LORAS, modelName, type AppliedLora, type CallContext, type LoraAsk, type ImageRequest, type JobProgress, type Models, type Resolution,
-  type ThreadImages, type VideoRequest, type VideoUpscaleRequest, type WorkspaceSettings, LONGEST_VIDEO_SECONDS, MAX_SEED, MAX_UPSCALE_SEED, COLOR_MATCH, JOB_SETTINGS, type JobSettings } from "@lyrica/core";
+  type ThreadImages, type VideoRequest, type VideoUpscaleRequest, type WorkspaceSettings, LONGEST_VIDEO_SECONDS, MAX_SEED, MAX_UPSCALE_SEED, COLOR_MATCH, JOB_SETTINGS, type JobSettings, imageTask } from "@lyrica/core";
 import { Type, type Static } from "typebox";
 import { StringEnum } from "@earendil-works/pi-ai";
 import type { Approval, ApprovalRequest } from "./workspace.ts";
@@ -41,7 +41,7 @@ const path = (description: string) => Type.Optional(Type.String({ description })
 export const imageParameters = Type.Object({
   action: StringEnum(["create", "edit", "upscale", "reject", "pick", "clear_rejected", "video", "animate", "motion", "edit_video", "extend", "upscale_video"] as const),
   prompt: videoPrompt(),
-  tier: Type.Optional(StringEnum(["fast", "quality"] as const, { description: "For create: quality (the default), or fast for drafts, quick tries and many variations." })),
+  tier: Type.Optional(StringEnum(["fast", "quality"] as const, { description: "For create: fast (the default), or quality when the image matters: a finished picture, a portrait, something to keep." })),
   model: modelParameter(),
   loras: loraParameter(),
   image: path("For edit, upscale, pick, animate and motion: the image's path (animate's first frame; motion's subject, who moves)."),
@@ -270,7 +270,7 @@ function videoModelParameters(o: ImageTools) {
   try {
     const call = o.call();
     model = o.models.firstVideoModel(call);
-    names = [...new Set((["image.create", "image.edit", "video"] as const).flatMap(t => o.models.loraModels(call, t, []).names))].sort();
+    names = [...new Set((["image.fast", "image.create", "image.edit", "video"] as const).flatMap(t => o.models.loraModels(call, t, []).names))].sort();
     images = o.models.imageModels(call);
   } catch { return imageParameters; }
   return model || names.length || images.length ? Type.Object({ ...imageParameters.properties, ...(model ? { prompt: videoPrompt(model), duration: videoDuration(model) } : {}),
@@ -281,10 +281,10 @@ function videoModelParameters(o: ImageTools) {
  * The models that take every LoRA a call names, tried first; an error she reads, with the LoRAs there are,
  * when none does. Nothing when the call names none.
  */
-function loraModels(o: ImageTools, call: CallContext, action: string, asks: LoraAsk[] | undefined): string[] {
+function loraModels(o: ImageTools, call: CallContext, action: string, asks: LoraAsk[] | undefined, tier?: "fast" | "quality"): string[] {
   if (!asks?.length) return [];
   if (action === "upscale" || action === "motion" || action === "edit_video" || action === "extend" || action === "upscale_video") throw new Error(`${action} takes no LoRAs: create, edit, video and animate do.`);
-  const task = action === "create" || action === "edit" ? `image.${action}` as const : "video" as const;
+  const task = action === "create" ? tier === "quality" ? "image.create" as const : "image.fast" as const : action === "edit" ? "image.edit" as const : "video" as const;
   const found = o.models.loraModels(call, task, asks);
   if (found.ids.length) return found.ids;
   const known = found.names.length ? `The LoRAs here: ${found.names.join(", ")}.` : "No model here takes LoRAs.";
@@ -350,12 +350,12 @@ export async function executeImage(o: ImageTools, id: string, p: ImageArgs, sign
     if (p.action === "create") {
       if (p.size && p.aspectRatio) throw new Error("Give a size or an aspect ratio, not both.");
       const size = p.size ?? (p.aspectRatio ? ratioSize(p.aspectRatio) : undefined);
-      request = { action: p.action, prompt: p.prompt!, tier: p.tier ?? "quality", ...(size ? { size } : {}), ...common };
+      request = { action: p.action, prompt: p.prompt!, tier: p.tier ?? "fast", ...(size ? { size } : {}), ...common };
     } else request = { action: p.action, prompt: p.instruction!, image: await read(p.image!), ...(p.mask ? { mask: await read(p.mask), ...(p.replace ? { replace: true } : {}) } : {}), ...common };
   }
   const call = o.call();
   const asks = p.loras?.length ? p.loras : undefined;
-  const lora = loraModels(o, call, p.action, asks);
+  const lora = loraModels(o, call, p.action, asks, p.tier);
   if (asks && request.action !== "upscale") request = { ...request, loras: asks };
   // A model they named goes first for this call only; the usual list still follows it. Then the ones that take the LoRAs they named.
   const named = p.model?.trim() ? o.models.namedImageModels(call, p.action, p.model) : undefined;
@@ -386,8 +386,8 @@ export async function executeImage(o: ImageTools, id: string, p: ImageArgs, sign
   }
   signal?.throwIfAborted();
   const paths = o.files.save(out.images, portrait);
-  const part: ImagePart = { type: "image", paths, model: out.resolution.label, ...(p.action === "create" ? { tier: p.tier ?? "quality" } : {}) };
-  const recorded = o.models.recordCall(call.userId, { pool: call.pool, threadId: o.threadId, task: `image.${p.action}`, resolution: out.resolution, images: out.images.length });
+  const part: ImagePart = { type: "image", paths, model: out.resolution.label, ...(p.action === "create" ? { tier: p.tier ?? "fast" } : {}) };
+  const recorded = o.models.recordCall(call.userId, { pool: call.pool, threadId: o.threadId, task: imageTask(p.action, p.tier), resolution: out.resolution, images: out.images.length });
   // What the host measured of the job, for Status's speed: never the prompt or the picture.
   if (out.sampling) o.models.recordSampling(call.userId, recorded, { ...out.sampling, images: out.images.length, pixels: out.images[0]!.width * out.images[0]!.height });
   // Any fallback is said, so she can tell them the model they got isn't the first choice.

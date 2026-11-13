@@ -856,7 +856,7 @@ Reject, pick and clear_rejected sort her attempts (below, "Rejected attempts").
 Create, edit, upscale and upscale_video take an optional `model` when the user names one: it is tried first, then the
 usual list. A name that matches nothing stops the call before anything runs, listing the models that can,
 and her result says when a model was passed over, which her guidelines tell her to pass on.
-Create takes a prompt, fast or quality (quality when left out), optional size or `width:height` aspect
+Create takes a prompt, fast or quality (fast when left out; each goes down its own list, Fast images or Quality images), optional size or `width:height` aspect
 ratio, count and references; her guidelines say to write the prompt as one
 detailed paragraph (subject and action, then setting, light, framing and
 medium), to keep to what was asked and to ask for text in the image only

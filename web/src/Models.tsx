@@ -438,6 +438,11 @@ function HostRow({ ctx, ep, host }: { ctx: MCtx; ep: Endpoint; host?: Host }) {
 type Table = Partial<Record<Task, Entry>>;
 
 /** The table's rows, under their eyebrows, each with a hint that is its name's tooltip (docs/ux.md §4). */
+/** Fast images and Quality images list only the models tagged for their tier or Both; a model tagged for the other is passed by (core/models unfit). */
+type Tier = "fast" | "quality";
+const tierOf = (t: Task): Tier | undefined => (t === "image.fast" ? "fast" : t === "image.create" ? "quality" : undefined);
+/** Whether a model makes images of a tier: untagged and Both make either. */
+const forTier = (m: { useFor?: "fast" | "quality" | "both" }, tier: Tier) => (m.useFor ?? "both") !== (tier === "fast" ? "quality" : "fast");
 const TASK_ROWS: { group: string; tasks: { task: Task; hint: string }[] }[] = [
   { group: "Conversation", tasks: [
     { task: "chat", hint: "The main conversation" },
@@ -454,13 +459,13 @@ const TASK_ROWS: { group: string; tasks: { task: Task; hint: string }[] }[] = [
     { task: "sleep.dream", hint: "Her own time" },
     { task: "sleep.wake", hint: "Writing WAKE" },
   ] },
-  { group: "Images", tasks: [{ task: "vision", hint: "Seeing an image her model can't" }, { task: "image.create", hint: "New images" }, { task: "image.edit", hint: "Changing an image" }, { task: "image.upscale", hint: "Sharper, larger images" }, { task: "video", hint: "Short clips, on a model host" }] },
+  { group: "Images", tasks: [{ task: "vision", hint: "Seeing an image her model can't" }, { task: "image.fast", hint: "New images, unless she asks for quality" }, { task: "image.create", hint: "New images she asks quality for" }, { task: "image.edit", hint: "Changing an image" }, { task: "image.upscale", hint: "Sharper, larger images" }, { task: "video", hint: "Short clips, on a model host" }] },
   { group: "Speech", tasks: [{ task: "speech.transcribe", hint: "Speech to text" }, { task: "speech.speak", hint: "Text to speech" }] },
 ];
 const TASK_ORDER = TASK_ROWS.flatMap((g) => g.tasks.map((t) => t.task));
 
 /** What a task needs (core/models): Same as stays within one, and pickers offer only models that have it. */
-const capability = (t: Task) => (t === "embedding" ? "embedding" : t === "vision" ? "vision" : t === "image.create" ? "image" : t === "image.edit" ? "edit" : t === "image.upscale" ? "upscale"
+const capability = (t: Task) => (t === "embedding" ? "embedding" : t === "vision" ? "vision" : t === "image.create" || t === "image.fast" ? "image" : t === "image.edit" ? "edit" : t === "image.upscale" ? "upscale"
   : t === "video" ? "video" : t === "speech.transcribe" ? "transcribe" : t === "speech.speak" ? "speak" : "text");
 const suits = (task: Task, m: OfferingInfo) => {
   if (m.status === "gone") return false;
@@ -504,14 +509,15 @@ function membersOf(ref: ModelRef, all: Map<string, Copy>, groups: GroupInfo[]): 
   return ids.flatMap((id) => { const c = all.get(id); return c ? [c] : []; });
 }
 const refUp = (p: ModelsPage, ms: Copy[]) => ms.some((c) => answers(p, c));
-type Tier = "fast" | "quality";
 /** Whether a list entry makes images of a tier: a model tagged for the other tier only is skipped (core/models unfit). */
-const takesTier = (ms: Copy[], tier: Tier) => ms.some((c) => (c.m.useFor ?? "both") !== (tier === "fast" ? "quality" : "fast"));
-/** Where each create tier starts in an Images list, quality (the default) first; undefined when every entry takes both, so one lead serves. */
-function tierLeads(list: ModelRef[], all: Map<string, Copy>, groups: GroupInfo[]): { tier: Tier; at: number }[] | undefined {
-  const members = list.map((r) => membersOf(r, all, groups));
-  if (members.every((ms) => takesTier(ms, "fast") && takesTier(ms, "quality"))) return undefined;
-  return (["quality", "fast"] as const).map((tier) => ({ tier, at: members.findIndex((ms) => takesTier(ms, tier)) }));
+const takesTier = (ms: Copy[], tier: Tier) => ms.some((c) => forTier(c.m, tier));
+/** A task's list as it runs: a create list without the other tier's models, and Fast images with none of its own going down Quality images' (core/models listFor). */
+function tierList(table: ReturnType<typeof columnEntries>, task: Task, all: Map<string, Copy>, groups: GroupInfo[]): ModelRef[] {
+  const tier = tierOf(task);
+  if (!tier) return listOf(table, task);
+  const own = entryOf(table, task);
+  const list = own ? listOf(table, task) : task === "image.fast" ? listOf(table, "image.create") : [];
+  return list.filter((r) => takesTier(membersOf(r, all, groups), tier));
 }
 const refKind = (ms: Copy[]) => ms[0]?.ep.kind;
 const refKey = (r: ModelRef) => ("offeringId" in r ? r.offeringId : `g:${r.groupId}`);
@@ -546,35 +552,22 @@ function Tasks({ ctx }: { ctx: MCtx }) {
     const table = columnEntries(col);
     const mixed = columnScope(col) === "general";
     const entry = entryOf(table, task);
-    const list = listOf(table, task);
+    const list = tierList(table, task, all, gs);
     const first = list[0];
+    const rest = list.length - 1;
     const ups = list.map((r) => refUp(p!, membersOf(r, all, gs)));
     const dot = !first ? "down" : ups[0] ? "up" : ups.some(Boolean) ? "away" : "down";
     const kind = first && mixed ? refKind(membersOf(first, all, gs)) : undefined;
     const on = editing?.column === column && editing.task === task;
-    // Images: each create tier skips models tagged for the other, so the row names where each starts.
-    const leads = task === "image.create" && list.length ? tierLeads(list, all, gs) : undefined;
-    const shown = leads ? new Set(leads.filter((l) => l.at >= 0).map((l) => l.at)).size : 1;
-    const rest = list.length - shown;
-    const lead = (at: number, tier?: Tier) => {
-      const r = list[at];
-      const ms = r ? membersOf(r, all, gs) : [];
-      const d = !r ? "down" : refUp(p!, ms) ? "up" : list.slice(at).some((x) => { const xs = membersOf(x, all, gs); return (!tier || takesTier(xs, tier)) && refUp(p!, xs); }) ? "away" : "down";
-      const k = r && mixed ? refKind(ms) : undefined;
-      return (
-        <span className="m" key={tier}>{tier && <span className="tier">{tier === "fast" ? "Fast" : "Quality"}</span>}<span className={`dot ${d}`} aria-hidden="true" /><span>{r ? <RefLabel refx={r} all={all} groups={gs} /> : "No model"}</span>{k && <Kind kind={k} />}</span>
-      );
-    };
     return (
       <td>
         <button type="button" className="cell" data-col={column === "private" ? "Private threads" : "General threads"} aria-pressed={on}
           onClick={() => setEditing(on ? undefined : { column, task })}>
-          {leads ? leads.map((l) => lead(l.at, l.tier))
-            : <span className="m"><span className={`dot ${dot}`} aria-hidden="true" /><span>{first ? <RefLabel refx={first} all={all} groups={gs} /> : "No model"}</span>{kind && <Kind kind={kind} />}</span>}
+          <span className="m"><span className={`dot ${dot}`} aria-hidden="true" /><span>{first ? <RefLabel refx={first} all={all} groups={gs} /> : "No model"}</span>{kind && <Kind kind={kind} />}</span>
           <span className="sub">
             {entry && !Array.isArray(entry) ? `= ${TASK_WORD[entry.same]}`
               : rest > 0 ? <>+<span className="num">{rest}</span> {rest > 1 ? "fallbacks" : "fallback"}</>
-              : list.length === 1 || leads ? <span className="warn-text">no fallback</span> : null}
+              : list.length === 1 ? <span className="warn-text">no fallback</span> : null}
           </span>
         </button>
       </td>
@@ -783,11 +776,13 @@ function TaskDrawer({ ctx, p, all, groups, column, task, onClose }: {
   const mixed = columnScope(col) === "general";
   const entry = entryOf(table, task);
   const own = !entry || Array.isArray(entry);
-  const list = Array.isArray(entry) ? entry : [];
+  const tier = tierOf(task);
+  const list = tierList(table, task, all, groups);
   const name = TASK_WORD[task];
   const followers = TASK_ORDER.filter((t) => { const e = table[t]; return !!e && !Array.isArray(e) && e.same === task; });
   // Same as: a task of the same kind that doesn't itself follow another. Chat can't follow a task that follows Chat.
-  const options = TASK_ORDER.filter((t) => t !== task && capability(t) === capability(task) && (
+  // Fast images and Quality images keep lists of their own: each holds only its tier's models.
+  const options = tierOf(task) ? [] : TASK_ORDER.filter((t) => t !== task && capability(t) === capability(task) && (
     (!own && entry.same === t) || (table[t] ? Array.isArray(table[t]) : task !== "chat" && capability(t) === "text")));
   const sel = !own ? entry.same : target && options.includes(target) ? target : options[0];
   const save = (change: ColumnTaskChange) => run(async () => {
@@ -795,9 +790,11 @@ function TaskDrawer({ ctx, p, all, groups, column, task, onClose }: {
     const cur = ctx.models.page;
     if (cur) ctx.models.set({ ...cur, presets: next });
   });
+  // A create list saves what it shows, so a model tagged for the other tier, or Fast images' start from Quality images' list, becomes its own list.
   const saveList = (next: ModelRef[]) => save({ models: next });
   const move = (i: number, by: number) => { const next = [...list]; [next[i], next[i + by]] = [next[i + by]!, next[i]!]; void saveList(next); };
   const reorder = useReorder(list.length, list.map(refKey).join(" "), busy, (from, to) => void saveList(moved(list, from, to)));
+  const remove = (r: ModelRef) => void saveList(list.filter((x) => refKey(x) !== refKey(r)));
   const add = (r: ModelRef) => { setPicking(false); setQ(""); void saveList([...list, r]); };
   const about = `${column === "private" ? "Private threads" : "General threads"} column · ${col.preset?.name ?? "Custom"}`;
   // Why Same as is off: other tasks follow this one. A fact about the list, so it stays in view (a tooltip doesn't show on a phone).
@@ -834,8 +831,6 @@ function TaskDrawer({ ctx, p, all, groups, column, task, onClose }: {
                   const cross = mixed && prevKind && kind && kind !== prevKind;
                   prevKind = kind ?? prevKind;
                   const group = "groupId" in r ? groups.find((g) => g.id === r.groupId) : undefined;
-                  // A model tagged for one create tier only: the other tier passes it by.
-                  const only = !takesTier(ms, "fast") ? "quality" : !takesTier(ms, "quality") ? "fast" : undefined;
                   return (
                     <Fragment key={refKey(r)}>
                       {cross && <li className="crossline">Falls back to {kind} from here</li>}
@@ -846,7 +841,6 @@ function TaskDrawer({ ctx, p, all, groups, column, task, onClose }: {
                             {!group && <span className={`dot ${refUp(p, ms) ? "up" : "away"}`} aria-hidden="true" />}
                             {mixed && kind && <Kind kind={kind} />}
                             {group ? <><b>{group.name}</b><span className="cap">group of <span className="num">{ms.length}</span></span></> : <span><RefLabel refx={r} all={all} groups={groups} /></span>}
-                            {task === "image.create" && only && <span className="tier">{only === "fast" ? "Fast" : "Quality"}</span>}
                           </div>
                           {group && (
                             <div className="members">
@@ -861,7 +855,7 @@ function TaskDrawer({ ctx, p, all, groups, column, task, onClose }: {
                         <div className="octl">
                           <button type="button" className="icon sm" aria-label="Move up" disabled={busy || i === 0} onClick={() => move(i, -1)}><Icon name="up" /></button>
                           <button type="button" className="icon sm" aria-label="Move down" disabled={busy || i === list.length - 1} onClick={() => move(i, 1)}><Icon name="arrow-down" /></button>
-                          <button type="button" className="icon sm" aria-label="Remove" disabled={busy || (task === "chat" && list.length === 1)} onClick={() => void saveList(list.filter((_, j) => j !== i))}><Icon name="close" /></button>
+                          <button type="button" className="icon sm" aria-label="Remove" disabled={busy || (task === "chat" && list.length === 1)} onClick={() => remove(r)}><Icon name="close" /></button>
                         </div>
                       </li>
                     </Fragment>
@@ -870,7 +864,7 @@ function TaskDrawer({ ctx, p, all, groups, column, task, onClose }: {
               </ol>
             )}
             {picking
-              ? <Picker p={p} groups={groups} column={column} task={task} list={list} q={q} setQ={setQ} busy={busy} onAdd={add} onCancel={() => { setPicking(false); setQ(""); }} />
+              ? <Picker p={p} groups={groups} column={column} task={task} tier={tier} name={name} list={list} q={q} setQ={setQ} busy={busy} onAdd={add} onCancel={() => { setPicking(false); setQ(""); }} />
               : <div className="actions"><button type="button" disabled={busy} onClick={() => setPicking(true)}>Add…</button></div>}
           </>
         )}
@@ -880,23 +874,24 @@ function TaskDrawer({ ctx, p, all, groups, column, task, onClose }: {
 }
 
 /** Add…: suitable models of the column's kinds, by endpoint, with a search; groups with a suitable member as chips. */
-function Picker({ p, groups, column, task, list, q, setQ, busy, onAdd, onCancel }: {
-  p: ModelsPage; groups: GroupInfo[]; column: Column; task: Task; list: ModelRef[]; q: string; setQ: (q: string) => void;
+function Picker({ p, groups, column, task, tier, name, list, q, setQ, busy, onAdd, onCancel }: {
+  p: ModelsPage; groups: GroupInfo[]; column: Column; task: Task; tier?: Tier; name: string; list: ModelRef[]; q: string; setQ: (q: string) => void;
   busy: boolean; onAdd: (r: ModelRef) => void; onCancel: () => void;
 }) {
   const kindOk = (k: "local" | "cloud") => column === "general" || k === "local";
   const taken = new Set(list.map(refKey));
+  const fit = (m: OfferingInfo) => suits(task, m) && (!tier || forTier(m, tier));
   const needle = q.trim().toLowerCase();
   const eps = p.endpoints.filter((ep) => kindOk(ep.kind)).map((ep) => ({
     ep,
-    models: ep.models.filter((m) => !m.disabled && suits(task, m) && !taken.has(m.id) && (!needle || `${modelName(m)} ${m.modelId} ${ep.name}`.toLowerCase().includes(needle))),
+    models: ep.models.filter((m) => !m.disabled && fit(m) && !taken.has(m.id) && (!needle || `${modelName(m)} ${m.modelId} ${ep.name}`.toLowerCase().includes(needle))),
   })).filter((x) => x.models.length);
   const all = copies(p);
-  const gs = groups.filter((g) => !taken.has(`g:${g.id}`) && g.members.some((id) => { const c = all.get(id); return !!c && kindOk(c.ep.kind) && suits(task, c.m); }));
+  const gs = groups.filter((g) => !taken.has(`g:${g.id}`) && g.members.some((id) => { const c = all.get(id); return !!c && kindOk(c.ep.kind) && fit(c.m); }));
   const count = eps.reduce((n, x) => n + x.models.length, 0);
   return (
-    <section className="pick" aria-label={`Add to ${TASK_WORD[task]}`}>
-      <div className="section-head"><h3>Add to {TASK_WORD[task]}</h3><button type="button" className="sm" onClick={onCancel}>Cancel</button></div>
+    <section className="pick" aria-label={`Add to ${name}`}>
+      <div className="section-head"><h3>Add to {name}</h3><button type="button" className="sm" onClick={onCancel}>Cancel</button></div>
       {gs.length > 0 && (
         <div className="pick-groups">
           {gs.map((g) => <button key={g.id} type="button" className="chip" disabled={busy} onClick={() => onAdd({ groupId: g.id })}>+ Group: {g.name}</button>)}

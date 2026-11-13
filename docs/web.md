@@ -416,7 +416,7 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   `code` task in Code mode, else `chat`, as `ModelBadge`), **Thinking**
   (`thinking`, Default while `thinkingSet` is false), Fallback, then the
   nested groups **Helpers** (subagents, Titles, and **Watching threads** only in
-  a project chat) and **Images and speech** (**Images**, **Image edits** and
+  a project chat) and **Images and speech** (**Fast images**, **Quality images**, **Image edits** and
   **Image upscaling**, offering the models that do each, recipes by name;
   **Videos**, offering host recipes that make any kind of clip;
   Dictation, Read aloud). Each option says cloud or local first, and each

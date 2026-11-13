@@ -634,16 +634,22 @@ answers, so a cloud model or an image-only upscaler is passed over ("it
 doesn't upscale clips"). It posts `/host/v1/videos/upscale` and waits up
 to two hours; the answer is checked as for `video`.
 
-The tasks `image.create`, `image.edit` and `image.upscale` have their own
-ordered lists and require `image`, `edit` and `upscale` capabilities respectively.
+The tasks `image.fast` (Fast images), `image.create` (Quality images),
+`image.edit` and `image.upscale` have their own ordered lists and require
+`image` (both create lists), `edit` and `upscale` capabilities respectively.
+A create goes down Fast images unless it asks for quality, which goes down
+Quality images (`createTask`, `imageTask`); Fast images with no list of its
+own goes down Quality images' list. Neither create list follows another
+(Same as is refused).
 Local endpoints resolve by these capabilities; the cloud provider table does
 not restrict them.
 Private and local-only threads use local lists only; unavailable endpoints
 fall back in order, including from a workstation to a smaller GPU host.
 For create, resolution takes the first recipe or cloud offering whose
 `useFor` matches the requested tier, skipping models tagged only for the
-other tier on every attempt. Absent means both. A thread's settings name
-the Images model a quality create takes, since quality is the default. Cloud offerings store
+other tier on every attempt, so a list read across tiers (Fast images
+reading Quality images') passes the other tier's models by. Absent means
+both. Cloud offerings store
 `useFor`, `image` and `edit` in the existing `offerings.hand` JSON, set
 through `addModel` or `setCapabilities`; shared offerings live in self.db,
 personal ones in user.db. No schema step. Edit and upscale keep their lists.

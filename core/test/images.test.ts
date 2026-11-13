@@ -181,6 +181,22 @@ describe("image calls through the router (principles 1 and 2)", () => {
     expect(last.server.images).toHaveLength(1);
     expect(s.heard).toEqual([]);
   });
+  it("a fast create goes down Fast images and a quality one down Quality images; Fast images without a list reads Quality images'", async () => {
+    const s = await setup();
+    const ctx = s.ctx({ localOnly: true });
+    const fast = { action: "create" as const, prompt: "A garden", tier: "fast" as const }, quality = { ...fast, tier: "quality" as const };
+    s.workstation.server.useFor = "quality";
+    await s.models.discover(s.ada, s.workstation.ep.id);
+    s.models.setColumnTask(s.ada.id, "private", "image.create", [s.workstation.ref, s.spare.ref]);
+    // No Fast images list: it goes down Quality images', past the quality-only model.
+    expect((await s.models.image(ctx, fast)).resolution.ref).toEqual(s.spare.ref);
+    expect((await s.models.image(ctx, quality)).resolution.ref).toEqual(s.workstation.ref);
+    const own = await s.host("own", "fast");
+    s.models.setColumnTask(s.ada.id, "private", "image.fast", [own.ref]);
+    expect((await s.models.image(ctx, fast)).resolution.ref).toEqual(own.ref);
+    expect((await s.models.image(ctx, quality)).resolution.ref).toEqual(s.workstation.ref);
+    expect(() => s.models.setColumnTask(s.ada.id, "private", "image.fast", { same: "image.create" })).toThrow(/list of its own/);
+  });
   it("uses a non-GPT keyed offering and persists cloud tiers in hand JSON", async () => {
     const s = await setup();
     const ep = s.models.endpoint(s.ada.id, s.models.offering(s.ada.id, s.ref.offeringId)!.endpoint.id)!;
