@@ -1164,7 +1164,11 @@ and gives it to the other, and carries the files only it can get.
   otherwise), `origin` `{ source, repo, path }` when it was downloaded
   from Hugging Face, ModelScope or Civitai.
 - `POST /host/v1/recipes/import` with that body (up to 2 MB), and
-  `check: true` to only plan → `{ placed, problems, missingNodes, existing }`;
+  `check: true` to only plan → `{ placed, problems, missingNodes, existing }`.
+  Its defaults are checked against the template it runs on here (its
+  `maxSide` included); a default a starter gave for a blank of that
+  template no request sets, such as P-H3-Image's `sigmas` and
+  `editMegapixels`, is kept;
   without it, the model is made as `confirmed` and the answer is `{
   recipe, placed, downloads, copies, missingNodes }`. Each of `placed` is
   `{ file, to, how, size, origin, sha256, reason? }`, `how` one of:
