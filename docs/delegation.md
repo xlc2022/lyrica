@@ -675,7 +675,9 @@ woke is held in memory.
 **Limits:** `start`s per request to the parent (`perRequest`, default 3;
 `cloudPerRequest`, default 6, when the thread's chat model, or code model in
 code mode, resolves to a cloud endpoint now, since it uses no local GPU),
-counted before each start so parallel calls can't slip past. A request is
+counted before each start so parallel calls can't slip past. A project
+chat takes its project's **Thread starts** (Project settings → Threads, 1
+to 32) in place of both when it is set. A request is
 what a prompt starts (the person's message, a routine, a wake-up); a run a
 child's report or a delegate result starts carries on the request before it.
 Each start says how many more may follow, and one past the limit says what

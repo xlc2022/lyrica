@@ -550,6 +550,19 @@ test("a project: New project, suggested threads start into cards, the Threads po
   await expect(page.getByText("Saved.")).toBeVisible();
   await page.reload();
   await expect(page.getByLabel("Instructions")).toHaveValue("Keep answers short.");
+  // Thread starts: a typed number, clamped to its most on leaving the box, saved with the Threads card; its default is 6 on the cloud model here.
+  await sections.getByRole("link", { name: "Threads" }).click();
+  const startsBox = page.getByLabel("Thread starts");
+  await expect(startsBox).toHaveAttribute("placeholder", "Default (6)");
+  await startsBox.fill("50");
+  await startsBox.blur();
+  await expect(startsBox).toHaveValue("32");
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByText("Saved.")).toBeVisible();
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/thread-starts-${page.viewportSize()!.width}.png` });
+  await page.reload();
+  await expect(page.getByLabel("Thread starts")).toHaveValue("32");
+  await sections.getByRole("link", { name: "Project" }).click();
   // The project's page shows the instructions apart from what sleep writes, and its History says who changed
   // which part, and what Restore puts back.
   await page.getByLabel("Instructions").fill("Keep answers short and kind.");

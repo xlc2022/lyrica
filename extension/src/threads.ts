@@ -521,7 +521,7 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
         // Counted before starting, so calls made at once can't all slip under the limit.
         const most = host.perRequest?.(thread) ?? host.limits.perRequest;
         if (started >= most) {
-          throw new Error(`This request has started ${most} child threads, the most one request may start, so this one wasn't started. `
+          throw new Error(`This request has started ${most} child thread${most === 1 ? "" : "s"}, the most one request may start, so this one wasn't started. `
             + "A request is the person's message, a routine or a wake-up; child threads' reports carry on the same request. "
             + "Give the rest to a thread you started (message it once it reports), or tell the person what is left to start.");
         }

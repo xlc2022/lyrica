@@ -968,7 +968,8 @@ Custom roles override built-ins by name, except `claude`.
   parent's pool, models (`models.inheritContext`) and workspace
   (`inheritSettings`), which can only narrow. `ThreadsLimits`
   (`DEFAULT_THREADS_LIMITS`): 3 starts per request, 6 for a thread whose
-  model runs in the cloud (`cloudPerRequest`, `ThreadsHost.perRequest(from)`),
+  model runs in the cloud (`cloudPerRequest`, `ThreadsHost.perRequest(from)`;
+  a project chat takes its project's **Thread starts** in place of both),
   and at most 32 children working at once per user, checked on start and when
   a parent's message wakes an idle child; child-triggered parent turns share this budget with routines. A
   parent's message is the child's next turn, marked with
@@ -2238,9 +2239,10 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     Web UI 2's thread menu uses them. `POST threads` with `project` (and
     `PATCH` making one) also pins the thread; `Display.projects: "all" |
     "only" | "none"` filters the list; `PATCH threads/:id` with `project`,
-    `goal`, `paused`, `threadsModel`, `threadsThinking`, `threadsFallback`, `watchThreads`, `checkInOnThreads` and `askFirstInstructions`
+    `goal`, `paused`, `threadsModel`, `threadsThinking`, `threadsFallback`, `watchThreads`, `checkInOnThreads`, `askFirstInstructions` and `threadsStarts`
     (`user.db` `project_settings`, settings and unsaved drafts; Ask first is
-    the `settings` key `project.askFirst.<pool>/<thread>`, off when absent), and
+    the `settings` key `project.askFirst.<pool>/<thread>`, off when absent, and Thread starts
+    `project.starts.<pool>/<thread>`, 1 to `STARTS_MAX`, the default when absent), and
     `projectSettings.pageId` names the project page's memory ID; a project chat's
     look at its threads is marked `[Watching threads]` (`WATCHING_MARK`,
     core/src/threads.ts), which only `daemon/src/watch.ts` writes: a

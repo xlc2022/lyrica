@@ -1,3 +1,4 @@
+import { STARTS_MAX } from "./api.ts";
 import { EVIDENCE_SETTINGS, INSTRUCTIONS_LIMIT, type EvidenceSetting, type ModelRef, type Pool, type ThinkingLevel, type Users } from "@lyrica/core";
 
 // What a user sets about threads and projects that isn't conversation: thread
@@ -21,6 +22,8 @@ export interface ProjectSettings {
   watch: boolean;
   /** Check on threads: the project chat may wait in a turn for its working threads (a bare sleep), and looks go only while it is on. On unless turned off; off, it waits for their wakes. */
   checkIn: boolean;
+  /** Child threads the project chat may start in one request; none: the default (`ThreadsLimits.perRequest`). */
+  starts?: number;
   /** Her `threads instructions` stores a draft for the user to save instead of saving. Off unless turned on; only the user turns it off. */
   askFirst: boolean;
 }
@@ -56,6 +59,10 @@ export class Projects {
       watch: row?.watch !== 0,
       checkIn: this.db(userId, db => (db.prepare("SELECT value FROM settings WHERE key = ?").get(`project.checkIn.${pool}/${project}`) as { value: string } | undefined)?.value !== "false"),
       askFirst: this.db(userId, db => (db.prepare("SELECT value FROM settings WHERE key = ?").get(`project.askFirst.${pool}/${project}`) as { value: string } | undefined)?.value === "true"),
+      ...this.db(userId, db => {
+        const saved = Number((db.prepare("SELECT value FROM settings WHERE key = ?").get(`project.starts.${pool}/${project}`) as { value: string } | undefined)?.value);
+        return Number.isInteger(saved) && saved >= 1 ? { starts: Math.min(saved, STARTS_MAX) } : {};
+      }),
       ...(row?.draft_goal !== null && row?.draft_goal !== undefined ? { draftGoal: row.draft_goal } : {}),
       ...(row?.draft_instructions !== null && row?.draft_instructions !== undefined ? { draftInstructions: row.draft_instructions } : {}),
       ...(row?.model ? { model: JSON.parse(row.model) as ModelRef | ModelRef[] } : {}),
@@ -65,7 +72,7 @@ export class Projects {
   }
 
   /** Changes some of a project's settings; `null` clears the model, thinking, Fallback or evidence judge. */
-  set(userId: string, pool: Pool, project: string, change: { code?: boolean; evidence?: EvidenceSetting | null; checkIn?: boolean; askFirst?: boolean; paused?: boolean; model?: ModelRef | ModelRef[] | null; thinking?: ThinkingLevel | null; fallback?: boolean | null; watch?: boolean; draftGoal?: string | null; draftInstructions?: string | null }): ProjectSettings {
+  set(userId: string, pool: Pool, project: string, change: { code?: boolean; evidence?: EvidenceSetting | null; checkIn?: boolean; askFirst?: boolean; starts?: number | null; paused?: boolean; model?: ModelRef | ModelRef[] | null; thinking?: ThinkingLevel | null; fallback?: boolean | null; watch?: boolean; draftGoal?: string | null; draftInstructions?: string | null }): ProjectSettings {
     if (change.fallback !== undefined && change.fallback !== null && typeof change.fallback !== "boolean") throw new Error("fallback is true, false or null");
     for (const [value, limit] of [[change.draftGoal, 2000], [change.draftInstructions, INSTRUCTIONS_LIMIT]] as const) if (value !== undefined && value !== null && (typeof value !== "string" || value.length > limit)) throw new Error(`a project draft has at most ${limit} characters`);
     if (change.code !== undefined) {
@@ -81,6 +88,14 @@ export class Projects {
     if (change.checkIn !== undefined) {
       if (typeof change.checkIn !== "boolean") throw new Error("checkIn is true or false");
       this.db(userId, db => db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(`project.checkIn.${pool}/${project}`, String(change.checkIn)));
+    }
+    if (change.starts !== undefined) {
+      if (change.starts !== null && (!Number.isInteger(change.starts) || change.starts < 1)) throw new Error("starts is a whole number from 1, or null");
+      // Above the most it is clamped, as the number box shows.
+      const starts = change.starts === null ? null : Math.min(change.starts, STARTS_MAX);
+      this.db(userId, db => starts === null
+        ? db.prepare("DELETE FROM settings WHERE key = ?").run(`project.starts.${pool}/${project}`)
+        : db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(`project.starts.${pool}/${project}`, String(starts)));
     }
     if (change.askFirst !== undefined) {
       if (typeof change.askFirst !== "boolean") throw new Error("askFirst is true or false");
@@ -116,7 +131,7 @@ export class Projects {
   forget(userId: string, pool: Pool, threads: string[]): void {
     const t = JSON.stringify(threads);
     this.db(userId, (db) => {
-      for (const thread of threads) for (const key of ["code", "evidence", "checkIn", "askFirst"]) db.prepare("DELETE FROM settings WHERE key = ?").run(`project.${key}.${pool}/${thread}`);
+      for (const thread of threads) for (const key of ["code", "evidence", "checkIn", "askFirst", "starts"]) db.prepare("DELETE FROM settings WHERE key = ?").run(`project.${key}.${pool}/${thread}`);
       for (const table of ["pinned_threads", "project_settings", "started_suggestions"]) {
         db.prepare(`DELETE FROM ${table} WHERE pool = ? AND thread IN (SELECT value FROM json_each(?))`).run(pool, t);
       }

@@ -1129,8 +1129,15 @@ export class ChildThreads implements ThreadsHost {
     this.recovered.add(userId);
   }
 
+  /** Child threads one request may start: the project's Thread starts in a project chat, else the default. */
   perRequest(from: ThreadContext): number {
-    return this.cloud(from.user.id, from.pool, from.threadId) ? this.limits.cloudPerRequest : this.limits.perRequest;
+    const own = from.view.own.getThread(from.threadId)?.project ? this.o.project?.(from.user.id, from.pool, from.threadId).starts : undefined;
+    return own ?? this.defaultPerRequest(from.user.id, from.pool, from.threadId);
+  }
+
+  /** Without a project's own number: more on a cloud model, which uses no local GPU. */
+  defaultPerRequest(userId: string, pool: Pool, thread: string): number {
+    return this.cloud(userId, pool, thread) ? this.limits.cloudPerRequest : this.limits.perRequest;
   }
 
   /** Whether the thread's model runs in the cloud now; a thread with no usable model counts as local. */
