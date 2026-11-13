@@ -1348,9 +1348,12 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   `context_with_system`, the request only: stored entries keep them). Every
   earlier image rides along in every request, so a thread that made or looked
   at many large images outgrew the model host's 64 MiB body limit at a small
-  share of its window. Images are paged from the oldest, each page filling to
-  8 MiB of base64; the newest pages within `IMAGE_BYTES` (24 MiB) keep theirs,
-  and the newest page always does. Each image left out becomes the text
+  share of its window. This turn's images (the last user message and
+  everything after it) always stay: a turn too big on its own gets the
+  host's 413, which Pi compacts for, then `TOO_LARGE_ERROR`. Older images
+  are paged from the oldest, each page filling to 8 MiB of base64; the
+  newest pages within `IMAGE_BYTES` (24 MiB) keep theirs, and the newest
+  page always does. Each image left out becomes the text
   `IMAGE_LEFT_OUT`, beside the result's own text (its path), so she can read
   it again. The cut moves a page at a time, so the request's start stays
   cacheable between steps.

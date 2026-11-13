@@ -89,6 +89,19 @@ describe("images in a request", () => {
     expect(changes).toBeLessThan(left.filter((v) => v > 0).length / 3);
   });
 
+  it("never leaves out this turn's images: the person's message and everything after it", () => {
+    const photo = () => ({ type: "image", data: "x".repeat(4 * MiB), mimeType: "image/jpeg" });
+    // Seven photos of about 4 MiB in one message, over the budget on their own: all go, and the 413 path handles a turn too big.
+    const asked = { role: "user", content: [{ type: "text", text: "Which is best?" }, ...Array.from({ length: 7 }, photo)] };
+    expect(leaveOutOldImages([asked])).toEqual([asked]);
+    // Earlier turns' images go, within the budget; this turn's photos and the image she just read stay.
+    const earlier = Array.from({ length: 10 }, (_, i) => shot(3, i));
+    const out = leaveOutOldImages([...earlier, asked, { role: "assistant", content: [] }, shot(3, 99)]);
+    expect(imagesOf(out.slice(10))).toEqual(Array(8).fill("image"));
+    expect(imagesOf(out.slice(0, 10))[0]).toBe("text");
+    expect(bytes(out.slice(0, 10))).toBeLessThanOrEqual(IMAGE_BYTES);
+  });
+
   it("keeps the newest image even when it alone is over the budget", () => {
     const out = leaveOutOldImages([shot(2, 0), shot(30, 1)]);
     expect(imagesOf(out)).toEqual(["text", "image"]);

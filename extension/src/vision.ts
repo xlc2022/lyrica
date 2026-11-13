@@ -52,13 +52,17 @@ type Block = { type: string; data?: string };
 
 /**
  * The messages with their older images left out (principle 2: a request a server refuses never goes out), in the
- * request only: the stored thread keeps them. Images are paged from the oldest, each page filling to `IMAGE_PAGE`;
- * the newest pages that fit in `budget` keep theirs, and the newest page always does.
+ * request only: the stored thread keeps them. This turn's images (the last user message and everything after it) are
+ * never left out: a turn too big on its own is the server's 413, which Pi compacts for. Older images are paged from
+ * the oldest, each page filling to `IMAGE_PAGE`; the newest pages that fit in `budget` keep theirs, and the newest
+ * page always does.
  */
 export function leaveOutOldImages<T extends object>(messages: T[], budget = IMAGE_BYTES): T[] {
   const blocks = (m: T) => ((m as { content?: unknown }).content);
+  const turn = messages.findLastIndex((m) => (m as { role?: string }).role === "user");
+  const older = turn < 0 ? messages.length : turn;
   const sizes: number[] = [];
-  for (const m of messages) { const c = blocks(m); if (Array.isArray(c)) for (const b of c as Block[]) if (b.type === "image") sizes.push(b.data?.length ?? 0); }
+  for (const m of messages.slice(0, older)) { const c = blocks(m); if (Array.isArray(c)) for (const b of c as Block[]) if (b.type === "image") sizes.push(b.data?.length ?? 0); }
   const pages: number[] = [];
   const pageOf: number[] = [];
   for (const s of sizes) {
@@ -71,9 +75,9 @@ export function leaveOutOldImages<T extends object>(messages: T[], budget = IMAG
   const cut = pageOf.indexOf(kept);
   if (cut <= 0) return messages;
   let i = 0;
-  return messages.map((m) => {
+  return messages.map((m, n) => {
     const c = blocks(m);
-    if (!Array.isArray(c) || !(c as Block[]).some((b) => b.type === "image")) return m;
+    if (n >= older || !Array.isArray(c) || !(c as Block[]).some((b) => b.type === "image")) return m;
     const content = (c as Block[]).map((b) => (b.type !== "image" ? b : i++ < cut ? { type: "text", text: IMAGE_LEFT_OUT } : b));
     return { ...m, content };
   });
