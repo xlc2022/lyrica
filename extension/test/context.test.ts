@@ -111,6 +111,26 @@ describe("every request's reads", () => {
     // The total is what is left after the branch's compactions, and the report says how many there were.
     expect(meter.report()).toMatchObject({ tokens: 47, compactions: 2 });
   });
+
+  it("leaves out a request refused before it read anything, so a failing turn records no call of zero tokens", async () => {
+    const { registerContext } = await import("../src/context.ts");
+    const handlers = new Map<string, (...args: any[]) => any>();
+    const meter = new ContextMeter();
+    registerContext({ on: (name: string, fn: (...args: any[]) => any) => handlers.set(name, fn) } as any, meter);
+    const zero = { input: 0, cacheRead: 0, cacheWrite: 0, output: 0 };
+    const ctx = { model: { contextWindow: 1000 }, getContextUsage: () => undefined, sessionManager: { getEntries: () => [], getLeafId: () => null, getBranch: () => [] } };
+    handlers.get("agent_start")!();
+    handlers.get("before_provider_request")!();
+    handlers.get("message_end")!({ message: { role: "assistant", stopReason: "error", usage: zero } });
+    handlers.get("agent_end")!({}, ctx);
+    expect(meter.takePace()).toBeUndefined();
+    // One that had read its prompt still counts.
+    handlers.get("agent_start")!();
+    handlers.get("before_provider_request")!();
+    handlers.get("message_end")!({ message: { role: "assistant", stopReason: "error", usage: { ...zero, input: 30, output: 2 } } });
+    handlers.get("agent_end")!({}, ctx);
+    expect(meter.takePace()).toMatchObject({ promptTokens: 30, outputTokens: 2 });
+  });
 });
 
 

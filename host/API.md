@@ -37,6 +37,7 @@ on `/v1`, where OpenAI clients read `error.message`.
 | 409 | `load_cancelled` | The model's load was stopped by an unload while it loaded: the Load itself and every request that was waiting for it. |
 | 409 | `above_recommended` | A stretch above the factor the model's card documents, saved without `anyway`. |
 | 413 | `too_big` | The model can't fit on any GPU it may use, even with everything idle unloaded. |
+| 413 | `too_large` | A `/v1` request body over 64 MiB ("The request is larger than the model host takes (64 MiB)."). Pi reads a 413 as a request too big for the model: it compacts the thread and tries again. |
 | 503 | `paused` | The host is paused. Lyrica uses her fallbacks. |
 | 503 | `busy` | It could fit, but not within the wait limit, because the GPU is busy. The message names what with: "The GPU is busy with a chat model." |
 | 503 | `restarting` | A restart is under way. |
