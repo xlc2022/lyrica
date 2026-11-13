@@ -1,0 +1,41 @@
+{
+  "name": "Realism by Stable Yogi v3, fast",
+  "template": "krea2",
+  "useFor": "fast",
+  "parts": [
+    {
+      "role": "diffusion",
+      "source": "civitai",
+      "repo": "2786499",
+      "path": "3329215/Realism by Stable Yogi Krea2 V3.0 Extended Civ fp8-scaled C85.safetensors",
+      "sha256": "3ec3c673d467e0832ad1324fafa8eed5cde9e9f2e250b399d07245e63c904191",
+      "size": 14128290360
+    },
+    {
+      "role": "text_encoder",
+      "slot": "qwen3vl",
+      "source": "civitai",
+      "repo": "2731465",
+      "path": "3070870/qwen3vl-4b-abliterated_fp8_e4m3fn.safetensors",
+      "sha256": "1cc1120f54f04736e4dee3b8b22744637332cb34e645a1e4c51196191861ae9d",
+      "size": 4831356160
+    },
+    {
+      "role": "vae",
+      "source": "huggingface",
+      "repo": "Comfy-Org/Krea-2",
+      "path": "vae/qwen_image_vae.safetensors",
+      "sha256": "a70580f0213e67967ee9c95f05bb400e8fb08307e017a924bf3441223e023d1f",
+      "size": 253806246
+    }
+  ],
+  "loras": [],
+  "defaults": {
+    "steps": 8,
+    "cfg": 1,
+    "sampler": "euler",
+    "scheduler": "simple",
+    "width": 1024,
+    "height": 1024
+  }
+}

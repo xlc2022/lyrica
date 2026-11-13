@@ -942,7 +942,9 @@ as `{ "parts": [...] }`, each entry like this:
   take, 0 for none (Lyrica's router skips one that takes fewer than a call
   sends).
 - `useFor`: `fast`, `quality` or `both` (default). An optional field in
-  `recipes.json`; an older recipe without it reads as both. Copies keep the tag.
+  `recipes.json`; an older recipe without it reads as both. Copies keep the tag,
+  and a starter may set it (Realism by Stable Yogi's two starters are
+  `quality` and `fast`).
   Lyrica's router filters create tiers by this tag; the host keeps recipe defaults.
 - `added`: a VAE or text encoder used instead of the checkpoint's own.
 - `base`: the recipe this one was copied from, if any.
@@ -959,7 +961,8 @@ Calls:
   with its parts' files and checksums and which are present. A starter
   with a `backend` (`comfyui` or `sdcpp`) is listed, and installs, only on
   hosts that make images that way (Krea 2 Turbo Q5 is `sdcpp`: the pinned
-  ComfyUI-GGUF can't load a Krea 2 GGUF).
+  ComfyUI-GGUF can't load a Krea 2 GGUF). A starter's `useFor` (`fast` or
+  `quality`) becomes its recipe's; without one the recipe is `both`.
 - `POST /host/v1/starters/<starter>/install`: downloads the missing parts
   (as `POST /host/v1/downloads`, with `X-Hub-Token` if needed) and creates
   the recipe as `confirmed`; it becomes `ready` when they finish. Answers
