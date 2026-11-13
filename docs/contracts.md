@@ -412,7 +412,7 @@ interface Need { tools?; tokens?; imageTier?: "fast" | "quality"; imageMask?; im
                sampling?: boolean; first?: string[]; after?: string[] }   // what the call needs from a model; sampling: it sets its own JobSettings; first/after: offering IDs tried before/after the list for one call
 interface Resolution { ref: { offeringId }; endpoint; offering; label; profile: string;   // the preset's name, or "Custom"
                        source: "thread" | "preset" | "column"; skipped: { label; reason }[]; remaining: number }
-interface Pace { promptTokens; readTokens?; outputTokens; window; ttftMs; genMs; processed }   // counts and times only
+interface Pace { promptTokens; readTokens?; outputTokens; window; ttftMs; genMs; processed }   // counts and times only; a request refused before it read anything isn't counted
 interface CallRecord { at; pool; threadId; task; offeringId; label; endpointName; kind; fallback?; note?; pace?: Pace; audioSeconds? }
 interface AnswerSettings { temperature?; topP?; topK?; minP?; repeatPenalty?; presencePenalty?;
                            frequencyPenalty?; maxTokens?; seed?; stop?: string[];
@@ -1344,6 +1344,19 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   a switch that fails, it warns as above.
   `NO_VISION` and the delegate guideline tell her to delegate a look
   without naming a model, so the subagent switches by that list.
+  The same guard leaves older images out of each request (`leaveOutOldImages`,
+  `context_with_system`, the request only: stored entries keep them). Every
+  earlier image rides along in every request, so a thread that made or looked
+  at many large images outgrew the model host's 64 MiB body limit at a small
+  share of its window. This turn's images (the last user message and
+  everything after it) always stay: a turn too big on its own gets the
+  host's 413, which Pi compacts for, then `TOO_LARGE_ERROR`. Older images
+  are paged from the oldest, each page filling to 8 MiB of base64; the
+  newest pages within `IMAGE_BYTES` (24 MiB) keep theirs, and the newest
+  page always does. Each image left out becomes the text
+  `IMAGE_LEFT_OUT`, beside the result's own text (its path), so she can read
+  it again. The cut moves a page at a time, so the request's start stays
+  cacheable between steps.
 - Memory sections include `opening`: the sleep item a thread was started
   from. It comes from `itemForThread`, so no other thread ever has it.
 - Memory sections include `pinned` (`pinnedOf(store, threadId)`: the
@@ -2207,7 +2220,10 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     `hello`) while a reply waits for a model host's GPU: `busyWith` (plain
     words, "a chat model") or `loading`; null once it no longer waits, and
     cleared at `turn_end`. A reply's stored `error` that is a server's JSON
-    error ("503: {…}") keeps only its message (`plainError`);
+    error ("503: {…}") keeps only its message (`plainError`), and one
+    refused for its size in bytes (a 413, the host's older "The request is
+    too large.", Anthropic's `request_too_large`) says so and to start a new
+    thread (`replyError`, `TOO_LARGE_ERROR`), live and stored;
   - a `live_call` thread event (`call: LiveCall | null`, and `liveCall` on
     a busy thread's `hello`, its `ms` brought up to date) while a turn waits
     on a model request: `ms` since it went out, `prompt`, `cached`, `read`,

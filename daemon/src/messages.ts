@@ -315,7 +315,7 @@ export function toMessages(threadId: string, pool: Pool, entries: { n: number; d
           calls.set(p.id, { part, owner: msg });
         }
       }
-      if (m.stopReason === "error" && m.errorMessage) msg.error = plainError(m.errorMessage);
+      if (m.stopReason === "error" && m.errorMessage) msg.error = replyError(m.errorMessage);
       if (paid) {
         if (paidOn) delete paidOn.paid;
         msg.paid = paid;
@@ -365,6 +365,15 @@ export function toldLines(text: string): Told[] {
 }
 
 /** A model or endpoint failure, in plain words. */
+/** A model server's refusal of a request for its size in bytes (a model host's, a proxy's, Anthropic's), not its tokens. */
+const TOO_LARGE = /^413\b|\(413\)|request is too large|request is larger than|request entity too large|payload too large|request_too_large/i;
+export const TOO_LARGE_ERROR = "The request was too large for the model's server: this thread holds too much, often large images. Start a new thread to go on.";
+
+/** A reply's error, plainly: a request too large for the server says what to do about it. */
+export function replyError(message: string): string {
+  return TOO_LARGE.test(message) ? TOO_LARGE_ERROR : plainError(message);
+}
+
 export function plainError(message: string): string {
   // A server's own JSON error, as Pi passes it on ("503: {...}"): its message alone.
   const json = /^\d{3}:?\s*(\{[\s\S]*\})\s*$/.exec(message.trim());

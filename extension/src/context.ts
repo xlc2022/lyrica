@@ -223,6 +223,8 @@ export class PaceTracker {
 
   reset(): void { this.turn = { calls: 0, prompt: 0, read: 0, output: 0, processed: 0, ttft: 0, gen: 0 }; this.started = this.first = undefined; }
   request(at = Date.now()): void { this.started = at; this.first = undefined; }
+  /** The request failed: it isn't counted. */
+  drop(): void { this.started = this.first = undefined; }
   token(at = Date.now()): void { if (this.started !== undefined && this.first === undefined) this.first = at; }
   end(u: { input: number; output: number; cacheRead: number; cacheWrite: number } | undefined, at = Date.now()): void {
     if (this.started === undefined) return;
@@ -279,7 +281,10 @@ export function registerContext(pi: ExtensionAPI, meter: ContextMeter): void {
   };
   pi.on("message_end", (e, ctx) => {
     if (e.message.role !== "assistant") return;
-    tracker.end(e.message.usage);
+    // A request refused before it read or wrote anything: counted, it would show as a call of no tokens.
+    const u = e.message.usage;
+    if (e.message.stopReason === "error" && !(u && (u.input || u.output || u.cacheRead || u.cacheWrite))) tracker.drop();
+    else tracker.end(e.message.usage);
     // A turn that goes on with tools reports each request, so a long one (a child thread's task) shows its context and tokens as it runs.
     if (e.message.stopReason === "toolUse" && meter.onProgress) { measure(ctx); meter.onProgress(); }
   });

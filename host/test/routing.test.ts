@@ -7,7 +7,8 @@ import { LlamaCpp, Vllm } from "../src/backends.ts";
 import { ggufBytes } from "../src/gguf.ts";
 import { familyParsers, scanTextModels, templateCapabilities } from "../src/library.ts";
 import { stdoutLog, type Logger } from "../src/log.ts";
-import { Runtime } from "../src/runtime.ts";
+import { readRaw, Runtime } from "../src/runtime.ts";
+import { HostError } from "../src/http.ts";
 import { Scheduler } from "../src/scheduler.ts";
 import { FakeGpus, fakeLlamaRouter } from "./fakes.ts";
 import { call, lyrica, pair, startHost } from "./helpers.ts";
@@ -296,6 +297,17 @@ describe("routing /v1 to the model servers", () => {
     const pinned = await paired(s);
     const reply = await call({ port: s.tls, path: "/v1/chat/completions", identity: s.me, pinned, body: { model: "vllm/remote", messages: [] } });
     expect(reply.body.error.code).toBe("refused");
+  });
+});
+
+describe("a request larger than the host takes", () => {
+  it("is refused with 413, which Pi reads as a request too big for the model, so it compacts and tries again", async () => {
+    const chunk = Buffer.alloc(1 << 20);
+    const big = (async function* () { for (let i = 0; i <= 64; i++) yield chunk; })();
+    const err = await readRaw(big).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(HostError);
+    expect(err).toMatchObject({ status: 413, code: "too_large" });
+    expect((await readRaw((async function* () { yield chunk; })())).length).toBe(1 << 20);
   });
 });
 

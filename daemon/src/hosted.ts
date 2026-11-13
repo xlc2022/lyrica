@@ -13,7 +13,7 @@ import type * as Api from "./api.ts";
 import type { PermissionRequest, ThreadEvent } from "./api.ts";
 import { progressOf } from "./clips.ts";
 import type { SameFile } from "./same-file.ts";
-import { artifactPart, delegateThreads, delegationPart, clipCall, imagePart, imageRefusal, rootPart, videoPart, markersFor, plainError, shortResult, toReactions, turnRecall, type Started } from "./messages.ts";
+import { artifactPart, delegateThreads, delegationPart, clipCall, imagePart, imageRefusal, rootPart, videoPart, markersFor, plainError, replyError, shortResult, toReactions, turnRecall, type Started } from "./messages.ts";
 
 export interface HostOptions {
   users: Users;
@@ -1544,7 +1544,7 @@ export class HostedThread {
             this.limitCut = limited ? provider : undefined;
             const offline = isUnreachable(m.errorMessage) && this.opened ? this.wentAway(provider) : undefined;
             if (offline) this.emit({ type: "offline", task: offline.task, tried: offline.tried });
-            else this.emit({ type: "error", message: plainError(m.errorMessage), reply: true });
+            else this.emit({ type: "error", message: replyError(m.errorMessage), reply: true });
             if (limited && !this.limitNoticed.has(provider)) {
               this.limitNoticed.add(provider);
               this.emit({ type: "notice", text: this.limitNotice(provider), status: "limit" });

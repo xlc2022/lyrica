@@ -73,12 +73,13 @@ class UsageSniffer {
   }
 }
 
-async function readRaw(req: IncomingMessage): Promise<Buffer> {
+export async function readRaw(req: AsyncIterable<unknown>): Promise<Buffer> {
   const chunks: Buffer[] = [];
   let size = 0;
   for await (const chunk of req) {
     size += (chunk as Buffer).length;
-    if (size > BODY_LIMIT) throw new HostError(400, "invalid", "The request is too large.");
+    // 413, which Pi reads as a request too big for the model: it compacts the thread and tries again.
+    if (size > BODY_LIMIT) throw new HostError(413, "too_large", "The request is larger than the model host takes (64 MiB).");
     chunks.push(chunk as Buffer);
   }
   return Buffer.concat(chunks);
