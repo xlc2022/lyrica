@@ -53,7 +53,7 @@ export async function fakeImages() {
         return Response.json({ video: { mp4: mp4.toString("base64"), width: 2560, height: 1408, frames: 121, fps: 24, duration: 5.04, audio: true, seed: 7 }, poster: png.toString("base64"), seconds: 600 });
       }
       if (body.recipe !== "art") return Response.json({ error: { code: "not_found" } }, { status: 404 });
-      const allowed = ["recipe", "prompt", "count", "references", "loras", "steps", "cfg", "seed", "sampler", "scheduler", "shift", "guidance", "negativePrompt", ...(action === "create" ? ["width", "height"] : action === "edit" ? ["image", "mask", "replace"] : ["image", "scale", "maxSize", "colorMatch"])];
+      const allowed = ["recipe", "prompt", "count", "references", "loras", "steps", "cfg", "seed", "sampler", "scheduler", "shift", "guidance", "negativePrompt", ...(action === "create" ? ["width", "height", "aspectRatio"] : action === "edit" ? ["image", "mask", "replace"] : ["image", "scale", "maxSize", "colorMatch"])];
       expect(Object.keys(body).every(k => allowed.includes(k))).toBe(true);
       images.push({ action, body });
       return Response.json({ images: Array.from({ length: body.count ?? 1 }, () => ({ png: output.toString("base64"), width: 1, height: 1, seed: 42 })), seconds: 0.1,

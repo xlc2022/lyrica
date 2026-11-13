@@ -38,12 +38,15 @@ describe("image calls through the router (principles 1 and 2)", () => {
     expect(first.sampling).toEqual({ ms: 6250, steps: 8 });
     const pair = await s.models.image(ctx, { action: "create", prompt: "A garden", tier: "quality", size: { width: 1024, height: 512 }, count: 2 });
     expect(pair.sampling).toEqual({ ms: 12_500, steps: 16 });
+    // An aspect ratio goes to the host as it is, which keeps its recipe's area in that shape.
+    await s.models.image(ctx, { action: "create", prompt: "A pond", tier: "fast", aspectRatio: "16:9" });
     await s.models.image(ctx, { action: "edit", prompt: "Add flowers", image: input, mask: input, references: [input] });
     await s.models.image(ctx, { action: "edit", prompt: "A round mirror on a beige wall", image: input, mask: input, replace: true });
     // An upscaler's plain pass has no sampler, so the host says nothing.
     expect((await s.models.image(ctx, { action: "upscale", image: input })).sampling).toBeUndefined();
     expect(s.workstation.server.images.map(i => i.body)).toEqual([
       { recipe: "art", prompt: "A garden" }, { recipe: "art", prompt: "A garden", width: 1024, height: 512, count: 2 },
+      { recipe: "art", prompt: "A pond", aspectRatio: "16:9" },
       { recipe: "art", prompt: "Add flowers", image: png.toString("base64"), mask: png.toString("base64"), references: [png.toString("base64")] },
       { recipe: "art", prompt: "A round mirror on a beige wall", image: png.toString("base64"), mask: png.toString("base64"), replace: true },
       { recipe: "art", image: png.toString("base64") },

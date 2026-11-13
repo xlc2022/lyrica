@@ -70,7 +70,7 @@ const MAX_CLIP_UPSCALE_PIXELS = 1_500_000_000;
 const UPSCALE_SEEDS = 2 ** 32;
 
 const FIELDS: Record<"create" | "edit" | "upscale", string[]> = {
-  create: ["recipe", "prompt", "negativePrompt", "width", "height", "count", "steps", "cfg", "seed", ...JOB_SAMPLING, "references", "loras"],
+  create: ["recipe", "prompt", "negativePrompt", "width", "height", "aspectRatio", "count", "steps", "cfg", "seed", ...JOB_SAMPLING, "references", "loras"],
   edit: ["recipe", "prompt", "negativePrompt", "count", "steps", "cfg", "seed", ...JOB_SAMPLING, "references", "image", "mask", "replace", "loras"],
   upscale: ["recipe", "image", "scale", "maxSize", "colorMatch", "seed"],
 };
@@ -875,8 +875,18 @@ export class Images {
       values.cfg = num(body, "cfg", 0, 30) ?? values.cfg!;
     jobSampling(body, values);
       if (action === "create") {
-        values.width = int(body, "width", 256, template.maxSide ?? 2048, 16) ?? values.width!;
-        values.height = int(body, "height", 256, template.maxSide ?? 2048, 16) ?? values.height!;
+        const max = template.maxSide ?? 2048;
+        const ratio = aspectRatio(body.aspectRatio);
+        if (ratio !== undefined && (body.width !== undefined || body.height !== undefined)) throw invalid("Give a size or an aspect ratio, not both.");
+        if (ratio !== undefined) {
+          // The recipe's area in that shape, on a 16-pixel grid within the template's limit.
+          const area = Number(values.width) * Number(values.height);
+          const snap = (n: number) => Math.min(max, Math.max(256, Math.round(n / 16) * 16));
+          values.width = snap(Math.sqrt(area * ratio));
+          values.height = snap(Math.sqrt(area / ratio));
+        }
+        values.width = int(body, "width", 256, max, 16) ?? values.width!;
+        values.height = int(body, "height", 256, max, 16) ?? values.height!;
       }
       const refs = body.references;
       if (refs !== undefined) {

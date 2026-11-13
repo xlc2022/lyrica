@@ -22,7 +22,7 @@ export const COLOR_MATCH = ["lab", "wavelet", "wavelet_adaptive", "hsv", "adain"
 /** An upscale's largest seed: SeedVR2's. */
 export const MAX_UPSCALE_SEED = 2 ** 32 - 1;
 export type ImageRequest =
-  | (Common & { action: "create"; prompt: string; tier: "fast" | "quality"; size?: { width: number; height: number } })
+  | (Common & { action: "create"; prompt: string; tier: "fast" | "quality"; size?: { width: number; height: number }; aspectRatio?: string })
   | (Common & { action: "edit"; prompt: string; image: ImageInput; mask?: ImageInput; replace?: boolean })
   | { action: "upscale"; image: ImageInput; scale?: number; maxSize?: number; colorMatch?: typeof COLOR_MATCH[number]; seed?: number };
 export interface GeneratedImage { bytes: Uint8Array; type: "image/png"; width: number; height: number; seed?: number }
@@ -56,6 +56,8 @@ export function validateImageRequest(r: ImageRequest): void {
   if (r.action === "create") {
     if (!["fast", "quality"].includes(r.tier)) throw new HostRefused("invalid", "image tier is fast or quality");
     if (r.size && ![r.size.width, r.size.height].every(n => Number.isInteger(n) && n >= 256 && n <= 4096 && n % 16 === 0)) throw new HostRefused("invalid", "image size is multiples of 16 from 256 to 4096 (most models stop at 2048; the host says)");
+    if (r.size && r.aspectRatio !== undefined) throw new HostRefused("invalid", "give a size or an aspect ratio, not both");
+    if (r.aspectRatio !== undefined) ratioSize(r.aspectRatio);
   }
   if (r.action === "upscale") {
     if (r.scale !== undefined && !(r.scale >= 1 && r.scale <= 4)) throw new HostRefused("invalid", "image scale is 1 to 4");
@@ -143,6 +145,17 @@ function cloudFields(e: any): string {
 
 const base64 = (i: ImageInput) => Buffer.from(i.bytes).toString("base64");
 
+/** Around one megapixel in a `width:height` shape (1:8 to 8:1), on a 16-pixel grid, 2048 at most a side: a cloud model's size for an aspect ratio. A model host keeps its recipe's own area instead. */
+export function ratioSize(ratio: string): { width: number; height: number } {
+  const match = /^(\d+(?:\.\d+)?):(\d+(?:\.\d+)?)$/.exec(ratio);
+  const r = match ? Number(match[1]) / Number(match[2]) : NaN;
+  if (!Number.isFinite(r) || r < 1 / 8 || r > 8) throw new HostRefused("invalid", "aspect ratio is width:height, between 1:8 and 8:1");
+  let width = 1024 * Math.sqrt(r), height = 1024 / Math.sqrt(r);
+  const shrink = Math.min(1, 2048 / Math.max(width, height));
+  width *= shrink; height *= shrink;
+  return { width: Math.round(width / 16) * 16, height: Math.round(height / 16) * 16 };
+}
+
 /** The three canvases every GPT Image model takes: the nearest aspect ratio. */
 function canvas(size: { width: number; height: number }): string {
   const ratio = size.width / size.height;
@@ -202,7 +215,9 @@ export async function imageAt(t: Target, r: ImageRequest, signal?: AbortSignal, 
   if (!t.host) {
     const provider = CLOUD_IMAGE_PROVIDERS[t.api ?? "openai-compatible"];
     if (!provider) throw new HostRefused("unsupported", "This endpoint has no image provider.");
-    try { return { images: await provider.run(t, r, signal) }; }
+    // A cloud model has no recipe area to keep: an aspect ratio becomes about one megapixel.
+    const req: ImageRequest = r.action === "create" && r.aspectRatio !== undefined ? { ...r, aspectRatio: undefined, size: ratioSize(r.aspectRatio) } : r;
+    try { return { images: await provider.run(t, req, signal) }; }
     catch (e) {
       signal?.throwIfAborted();
       if (e instanceof HostRefused || e instanceof HostIdentityChanged) throw e;
@@ -215,7 +230,7 @@ export async function imageAt(t: Target, r: ImageRequest, signal?: AbortSignal, 
     ...(r.action === "upscale" ? { image: base64(r.image), ...(r.scale === undefined ? {} : { scale: r.scale }), ...(r.maxSize === undefined ? {} : { maxSize: r.maxSize }),
       ...(r.colorMatch === undefined ? {} : { colorMatch: r.colorMatch }), ...(r.seed === undefined ? {} : { seed: r.seed }) } : {
       prompt: r.prompt, ...(r.count === undefined ? {} : { count: r.count }), ...samplingFields(r), ...(r.references ? { references: r.references.map(base64) } : {}),
-      ...(r.action === "create" ? r.size ?? {} : { image: base64(r.image), ...(r.mask ? { mask: base64(r.mask), ...(r.replace ? { replace: true } : {}) } : {}) }),
+      ...(r.action === "create" ? { ...r.size, ...(r.aspectRatio === undefined ? {} : { aspectRatio: r.aspectRatio }) } : { image: base64(r.image), ...(r.mask ? { mask: base64(r.mask), ...(r.replace ? { replace: true } : {}) } : {}) }),
     }) };
   const out = await withProgress(t, onProgress, (tag) => answer(t, `/host/v1/images/${r.action}`, JSON.stringify(fields), { "content-type": "application/json", ...tag }, signal));
   if (!Array.isArray(out.images) || !out.images.length) throw new HostRefused("invalid", "image host returned no images");

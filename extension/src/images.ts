@@ -1,6 +1,6 @@
 // Principles 1, 2 and 8: one image tool, which also makes clips, with portrait consent checked at each resolved provider.
 import type { ExtensionContext, ExtensionFactory } from "@earendil-works/pi-coding-agent";
-import { CloudModelForbidden, HostRefused, isRestricted, NoModel, loraFiles, loraName, MAX_LORAS, modelName, type AppliedLora, type CallContext, type LoraAsk, type ImageRequest, type JobProgress, type Models, type Resolution,
+import { CloudModelForbidden, HostRefused, ratioSize, isRestricted, NoModel, loraFiles, loraName, MAX_LORAS, modelName, type AppliedLora, type CallContext, type LoraAsk, type ImageRequest, type JobProgress, type Models, type Resolution,
   type ThreadImages, type VideoRequest, type VideoUpscaleRequest, type WorkspaceSettings, LONGEST_VIDEO_SECONDS, MAX_SEED, MAX_UPSCALE_SEED, COLOR_MATCH, JOB_SETTINGS, type JobSettings, imageTask } from "@lyrica/core";
 import { Type, type Static } from "typebox";
 import { StringEnum } from "@earendil-works/pi-ai";
@@ -161,16 +161,8 @@ function needs(p: ImageArgs): void {
   if (extra.length) throw new Error(`${p.action} doesn't take ${extra.join(" or ")}: ${extra.map(k => FILE_USE[k]).join("; ")}.`);
 }
 
-/** Around one megapixel, rounded to the host's 16-pixel grid and bounded by its size limits. */
-export function ratioSize(ratio: string): { width: number; height: number } {
-  const match = /^(\d+(?:\.\d+)?):(\d+(?:\.\d+)?)$/.exec(ratio);
-  const r = match ? Number(match[1]) / Number(match[2]) : NaN;
-  if (!Number.isFinite(r) || r < 1 / 8 || r > 8) throw new Error("aspect ratio is width:height, between 1:8 and 8:1");
-  let width = 1024 * Math.sqrt(r), height = 1024 / Math.sqrt(r);
-  const shrink = Math.min(1, 2048 / Math.max(width, height));
-  width *= shrink; height *= shrink;
-  return { width: Math.round(width / 16) * 16, height: Math.round(height / 16) * 16 };
-}
+/** A cloud model's size for an aspect ratio (core/models); a host keeps its recipe's area instead. */
+export { ratioSize } from "@lyrica/core";
 
 const dayOf = (date: Date) => `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
 // One pending question per user, even across simultaneous threads in the same process.
@@ -349,8 +341,9 @@ export async function executeImage(o: ImageTools, id: string, p: ImageArgs, sign
     const common = { ...(p.count === undefined ? {} : { count: p.count }), ...(refs ? { references: refs } : {}), ...sampling(p) };
     if (p.action === "create") {
       if (p.size && p.aspectRatio) throw new Error("Give a size or an aspect ratio, not both.");
-      const size = p.size ?? (p.aspectRatio ? ratioSize(p.aspectRatio) : undefined);
-      request = { action: p.action, prompt: p.prompt!, tier: p.tier ?? "fast", ...(size ? { size } : {}), ...common };
+      // A host keeps its recipe's area in this shape (P-H3-Image's 8 megapixels); a cloud model gets about one.
+      if (p.aspectRatio) ratioSize(p.aspectRatio);
+      request = { action: p.action, prompt: p.prompt!, tier: p.tier ?? "fast", ...(p.size ? { size: p.size } : {}), ...(p.aspectRatio ? { aspectRatio: p.aspectRatio } : {}), ...common };
     } else request = { action: p.action, prompt: p.instruction!, image: await read(p.image!), ...(p.mask ? { mask: await read(p.mask), ...(p.replace ? { replace: true } : {}) } : {}), ...common };
   }
   const call = o.call();

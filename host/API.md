@@ -1237,7 +1237,9 @@ the action is `invalid`.
   (P-H3-Image's). `width` and `height` are multiples
   of 16 from 256 to 2048, or to the template's `maxSide` (P-H3-Image's is
   4096, for its native 8 megapixels); a recipe's `width` and `height`
-  defaults take the same limit. `steps` is 1 to 150, `cfg` 0 to 30, `seed` 0 to
+  defaults take the same limit. Instead of a size, `aspectRatio`
+  (`width:height`, 1:4 to 4:1) keeps the recipe's area in that shape, on
+  a 16-pixel grid within the same limit. `steps` is 1 to 150, `cfg` 0 to 30, `seed` 0 to
   2^48 (random when left out; every image of one request shares it).
   `sampler` and `scheduler` are ComfyUI names (lower case, digits and `_`),
   `shift` 0 to 20 and `guidance` 0 to 30, checked as a recipe's defaults
