@@ -988,7 +988,9 @@ it's off.
   - Each recipe or cloud image offering is tagged **fast**, **quality** or
     both (2026-10-12). A tier takes the first model in the task's ordered list whose tag
     matches, and falls back down the same list; cloud adapters map the tiers
-    to low and high quality. **Use for** in each host's
+    to low and high quality. Images stays one list (2026-11-13): the Tasks
+    row names where each tier starts, and she asks for fast only for drafts,
+    quick tries and many variations. **Use for** in each host's
     recipe block on Image models saves the tag at once; cloud model blocks
     there and in Hosts and endpoints save Use for and the Image generation
     and Image editing switches at once. It is an optional

@@ -460,6 +460,45 @@ test("New preset summary: +N fallbacks and a red gone model", async ({ page, bas
   await expect(summary.locator(".pill.bad").first()).toHaveText("gone");
 });
 
+test("Tasks: the Images row names where each create tier starts, and its drawer tags one-tier models", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  const shot = async (name: string) => { if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/tasks-${name}-${page.viewportSize()!.width}.png`, scale: "device" }); };
+  // General Images lists a fast-only model, a quality-only one and one for both: a quality create skips the first.
+  await page.route(/\/api\/u\/[^/]+\/models\/page$/, async (route) => {
+    type M = { id: string; modelId: string; label: string; image?: boolean; useFor?: string };
+    const real = await (await fetchReal(route)).json() as {
+      endpoints: { kind: string; models: M[] }[];
+      presets: { columns: { general: { preset: unknown; entries: Record<string, unknown> } } };
+    };
+    const cloud = real.endpoints.find((e) => e.kind === "cloud" && e.models.some((m) => m.modelId === "cloud-model"))!;
+    const live = cloud.models.find((m) => m.modelId === "cloud-model")!;
+    for (const [id, useFor] of [["art-fast", "fast"], ["art-quality", "quality"], ["art-both", "both"]] as const)
+      cloud.models.push({ ...live, id, modelId: id, label: id, image: true, useFor });
+    real.presets.columns.general.preset = null;
+    real.presets.columns.general.entries["image.create"] = ["art-fast", "art-quality", "art-both"].map((offeringId) => ({ offeringId }));
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(real) });
+  });
+  await page.reload();
+  await page.goto(`/#/u/${userId}/models/tasks`);
+  const cell = page.locator('tr[data-task="image.create"] [data-col="General threads"]');
+  const lines = cell.locator(".m");
+  await expect(lines).toHaveCount(2);
+  await expect(lines.nth(0)).toContainText("Quality");
+  await expect(lines.nth(0)).toContainText("art-quality");
+  await expect(lines.nth(1)).toContainText("Fast");
+  await expect(lines.nth(1)).toContainText("art-fast");
+  await expect(cell.locator(".sub")).toHaveText("+1 fallback");
+  await noHorizontalScroll(page);
+  await cell.scrollIntoViewIfNeeded();
+  await shot("images-tiers");
+  await cell.click();
+  const entries = page.getByRole("complementary", { name: "Edit Images" }).locator("li.oentry");
+  await expect(entries.nth(0).locator(".tier")).toHaveText("Fast");
+  await expect(entries.nth(1).locator(".tier")).toHaveText("Quality");
+  await expect(entries.nth(2).locator(".tier")).toHaveCount(0);
+  await shot("images-tiers-drawer");
+});
+
 test("Text models: a row per model with starred first; a row opens to its copies, and a copy's Settings saves Temperature as yours", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   const shot = async (name: string) => { if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/text-models-${name}-${page.viewportSize()!.width}.png`, fullPage: true }); };

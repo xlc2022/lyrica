@@ -1556,6 +1556,9 @@ a.tile:hover { text-decoration: none; border-color: var(--accent); }
 .ttable .cell[aria-pressed="true"] { background: var(--tool); box-shadow: inset 3px 0 0 var(--accent); }
 .cell .m { display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; overflow-wrap: anywhere; min-width: 0; }
 .cell .sub { font-size: 12px; color: var(--muted); }
+/* An Images row's create tier, before the model that tier starts with; in the task drawer, a one-tier model's tag. */
+.cell .m .tier, .oname .tier { font-size: 12px; color: var(--muted); min-width: 4.5em; }
+.oname .tier { min-width: 0; }
 .cell .sub .warn-text { font-size: 12px; }
 .task-drawer .drawer-body { gap: 12px; }
 .task-drawer .actions { justify-content: start; }

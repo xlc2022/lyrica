@@ -642,7 +642,8 @@ Private and local-only threads use local lists only; unavailable endpoints
 fall back in order, including from a workstation to a smaller GPU host.
 For create, resolution takes the first recipe or cloud offering whose
 `useFor` matches the requested tier, skipping models tagged only for the
-other tier on every attempt. Absent means both. Cloud offerings store
+other tier on every attempt. Absent means both. A thread's settings name
+the Images model a quality create takes, since quality is the default. Cloud offerings store
 `useFor`, `image` and `edit` in the existing `offerings.hand` JSON, set
 through `addModel` or `setCapabilities`; shared offerings live in self.db,
 personal ones in user.db. No schema step. Edit and upscale keep their lists.

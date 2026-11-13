@@ -41,7 +41,7 @@ const path = (description: string) => Type.Optional(Type.String({ description })
 export const imageParameters = Type.Object({
   action: StringEnum(["create", "edit", "upscale", "reject", "pick", "clear_rejected", "video", "animate", "motion", "edit_video", "extend", "upscale_video"] as const),
   prompt: videoPrompt(),
-  tier: Type.Optional(StringEnum(["fast", "quality"] as const, { description: "For create: fast or quality (the default)." })),
+  tier: Type.Optional(StringEnum(["fast", "quality"] as const, { description: "For create: quality (the default), or fast for drafts, quick tries and many variations." })),
   model: modelParameter(),
   loras: loraParameter(),
   image: path("For edit, upscale, pick, animate and motion: the image's path (animate's first frame; motion's subject, who moves)."),

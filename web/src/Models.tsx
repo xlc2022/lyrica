@@ -504,6 +504,15 @@ function membersOf(ref: ModelRef, all: Map<string, Copy>, groups: GroupInfo[]): 
   return ids.flatMap((id) => { const c = all.get(id); return c ? [c] : []; });
 }
 const refUp = (p: ModelsPage, ms: Copy[]) => ms.some((c) => answers(p, c));
+type Tier = "fast" | "quality";
+/** Whether a list entry makes images of a tier: a model tagged for the other tier only is skipped (core/models unfit). */
+const takesTier = (ms: Copy[], tier: Tier) => ms.some((c) => (c.m.useFor ?? "both") !== (tier === "fast" ? "quality" : "fast"));
+/** Where each create tier starts in an Images list, quality (the default) first; undefined when every entry takes both, so one lead serves. */
+function tierLeads(list: ModelRef[], all: Map<string, Copy>, groups: GroupInfo[]): { tier: Tier; at: number }[] | undefined {
+  const members = list.map((r) => membersOf(r, all, groups));
+  if (members.every((ms) => takesTier(ms, "fast") && takesTier(ms, "quality"))) return undefined;
+  return (["quality", "fast"] as const).map((tier) => ({ tier, at: members.findIndex((ms) => takesTier(ms, tier)) }));
+}
 const refKind = (ms: Copy[]) => ms[0]?.ep.kind;
 const refKey = (r: ModelRef) => ("offeringId" in r ? r.offeringId : `g:${r.groupId}`);
 
@@ -543,15 +552,29 @@ function Tasks({ ctx }: { ctx: MCtx }) {
     const dot = !first ? "down" : ups[0] ? "up" : ups.some(Boolean) ? "away" : "down";
     const kind = first && mixed ? refKind(membersOf(first, all, gs)) : undefined;
     const on = editing?.column === column && editing.task === task;
+    // Images: each create tier skips models tagged for the other, so the row names where each starts.
+    const leads = task === "image.create" && list.length ? tierLeads(list, all, gs) : undefined;
+    const shown = leads ? new Set(leads.filter((l) => l.at >= 0).map((l) => l.at)).size : 1;
+    const rest = list.length - shown;
+    const lead = (at: number, tier?: Tier) => {
+      const r = list[at];
+      const ms = r ? membersOf(r, all, gs) : [];
+      const d = !r ? "down" : refUp(p!, ms) ? "up" : list.slice(at).some((x) => { const xs = membersOf(x, all, gs); return (!tier || takesTier(xs, tier)) && refUp(p!, xs); }) ? "away" : "down";
+      const k = r && mixed ? refKind(ms) : undefined;
+      return (
+        <span className="m" key={tier}>{tier && <span className="tier">{tier === "fast" ? "Fast" : "Quality"}</span>}<span className={`dot ${d}`} aria-hidden="true" /><span>{r ? <RefLabel refx={r} all={all} groups={gs} /> : "No model"}</span>{k && <Kind kind={k} />}</span>
+      );
+    };
     return (
       <td>
         <button type="button" className="cell" data-col={column === "private" ? "Private threads" : "General threads"} aria-pressed={on}
           onClick={() => setEditing(on ? undefined : { column, task })}>
-          <span className="m"><span className={`dot ${dot}`} aria-hidden="true" /><span>{first ? <RefLabel refx={first} all={all} groups={gs} /> : "No model"}</span>{kind && <Kind kind={kind} />}</span>
+          {leads ? leads.map((l) => lead(l.at, l.tier))
+            : <span className="m"><span className={`dot ${dot}`} aria-hidden="true" /><span>{first ? <RefLabel refx={first} all={all} groups={gs} /> : "No model"}</span>{kind && <Kind kind={kind} />}</span>}
           <span className="sub">
             {entry && !Array.isArray(entry) ? `= ${TASK_WORD[entry.same]}`
-              : list.length > 1 ? <>+<span className="num">{list.length - 1}</span> {list.length > 2 ? "fallbacks" : "fallback"}</>
-              : list.length === 1 ? <span className="warn-text">no fallback</span> : null}
+              : rest > 0 ? <>+<span className="num">{rest}</span> {rest > 1 ? "fallbacks" : "fallback"}</>
+              : list.length === 1 || leads ? <span className="warn-text">no fallback</span> : null}
           </span>
         </button>
       </td>
@@ -811,6 +834,8 @@ function TaskDrawer({ ctx, p, all, groups, column, task, onClose }: {
                   const cross = mixed && prevKind && kind && kind !== prevKind;
                   prevKind = kind ?? prevKind;
                   const group = "groupId" in r ? groups.find((g) => g.id === r.groupId) : undefined;
+                  // A model tagged for one create tier only: the other tier passes it by.
+                  const only = !takesTier(ms, "fast") ? "quality" : !takesTier(ms, "quality") ? "fast" : undefined;
                   return (
                     <Fragment key={refKey(r)}>
                       {cross && <li className="crossline">Falls back to {kind} from here</li>}
@@ -821,6 +846,7 @@ function TaskDrawer({ ctx, p, all, groups, column, task, onClose }: {
                             {!group && <span className={`dot ${refUp(p, ms) ? "up" : "away"}`} aria-hidden="true" />}
                             {mixed && kind && <Kind kind={kind} />}
                             {group ? <><b>{group.name}</b><span className="cap">group of <span className="num">{ms.length}</span></span></> : <span><RefLabel refx={r} all={all} groups={groups} /></span>}
+                            {task === "image.create" && only && <span className="tier">{only === "fast" ? "Fast" : "Quality"}</span>}
                           </div>
                           {group && (
                             <div className="members">

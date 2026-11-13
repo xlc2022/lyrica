@@ -3024,7 +3024,8 @@ function threadSettings(d: Lyricad, user: User, pool: Pool, threadId: string): A
     const list = override?.length ? { list: override } : {};
     try {
       // evenIfDown: the drawer names what is set here; whether its machine answers now is speechState's and the status panel's to say.
-      const r = models.resolve(task, task === "speech.transcribe" ? voiceContext(ctx) : ctx, {}, { evenIfDown: true });
+      // Images names what a create makes unless she asks for fast: quality, which skips models tagged fast only.
+      const r = models.resolve(task, task === "speech.transcribe" ? voiceContext(ctx) : ctx, task === "image.create" ? { imageTier: "quality" } : {}, { evenIfDown: true });
       if (task === (applies.code ? "code" : "chat")) thinkingLevels = ["off", ...(r.offering.reasoning ?? [])];
       return {
         model: r.ref, ...list, kind: r.endpoint.kind, endpointName: r.endpoint.name, label: r.label, modelId: r.offering.modelId, name: modelName(r.offering),
