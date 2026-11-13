@@ -50,6 +50,8 @@ export interface Starter {
   defaults: Record<string, string | number>;
   /** Listed only on hosts that make images this way, when the other can't run it. */
   backend?: "comfyui" | "sdcpp";
+  /** The recipe's tag for Lyrica's create tiers; both when left out. */
+  useFor?: "fast" | "quality";
 }
 
 export const DEFAULT_KEYS = ["steps", "cfg", "sampler", "scheduler", "width", "height", "shift", "guidance", "negativePrompt", "scale", "maxSize", "colorMatch", "duration", "eta", "enhance", "refine", "refineSteps", "refineSampler", "refineScheduler", "refineEta"];
@@ -400,7 +402,7 @@ export class RecipeBook {
       return { recipe: found, toDownload: [] };
     }
     const recipe: Recipe = {
-      id: found?.id ?? randomUUID(), name: starter.name, state: "confirmed", arch: t.arch, template: t.name, does: t.does, useFor: "both",
+      id: found?.id ?? randomUUID(), name: starter.name, state: "confirmed", arch: t.arch, template: t.name, does: t.does, useFor: starter.useFor ?? "both",
       parts, loras: [...starter.loras], defaults: { ...starter.defaults }, base: null, starter: starter.id,
     };
     if (found) this.recipes.splice(this.recipes.indexOf(found), 1, recipe);

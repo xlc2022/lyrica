@@ -506,7 +506,12 @@ an abliterated Qwen3-VL 4B encoder from Civitai, the Krea2T-Enhancer patch
 and a second pass for detail (a little more time per image). It needs a
 host on a commit from 2026-11-08 or later (an Update, or `git pull &&
 host/install.sh`), which rebuilds its ComfyUI image: an older image can't
-load the RES4LYF node. The Qwen-Image 2.1 Turbo starter, which edits and
+load the RES4LYF node. The two Realism by Stable Yogi v3 starters are a
+community fine-tune of Krea 2 from Civitai, sharing one 14.1 GB model file
+with Turbo Uncensored's encoder and Krea 2's VAE: the quality one takes
+about 100 seconds for a 1152×1536 image on a 3090, the fast one about 15.
+Install both: Lyrica's image tool takes the quality one by default and
+the fast one when she asks for a fast image. The Qwen-Image 2.1 Turbo starter, which edits and
 creates (bf16 diffusion model, int8 Qwen3-VL 8B encoder, about 24.3 GB
 of files), is 14.9 GB at its largest stage and takes turns the same way.
 It replaces Qwen-Image-Edit 2509 for edits: once installed, put it first

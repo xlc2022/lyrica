@@ -390,6 +390,15 @@ per host, and Lyrica's router filters create tiers by it.
   author's licence; Krea2T-Enhancer is MIT, fetched from a copy at its
   author's own commit since the author's repository is gone. Civitai may
   ask for a token: save one under Models → Downloads → Accounts.
+  Realism by Stable Yogi v3 is a community fine-tune of Krea 2 from Civitai
+  (its fp8-scaled file, about 14.1 GB), with the same abliterated encoder
+  and Krea 2's VAE. Two starters share its files: the quality one (16 steps
+  at CFG 1.5 and a 4-step second pass at denoise 0.2 on RES4LYF's `res_2s`,
+  1280×1280; ComfyUI hosts only) and a fast one (8 steps at CFG 1,
+  1024×1024), tagged `quality` and `fast` for Lyrica's create tiers. Its
+  maker's card says never to go above CFG 2.5; higher looks harsh. Its
+  Civitai licence asks for credit, allows selling images made with it,
+  and forbids derivatives of the model.
   Krea 2's weights (Turbo and Raw) are under the Krea 2 Community License, which
   requires content filtering wherever it runs; the host filters nothing,
   so the operator who installs it sets that up. Qwen-Image 2.1 Turbo's

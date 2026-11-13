@@ -581,6 +581,16 @@ describe("recipes", () => {
     expect(b.all()).toHaveLength(2);
   });
 
+  it("tags a starter's recipe fast or quality, and two starters on one model make two recipes", () => {
+    const b = book();
+    const quality = b.fromStarter(STARTERS.find((s) => s.id === "realism-stable-yogi-3")!, () => null).recipe;
+    const fast = b.fromStarter(STARTERS.find((s) => s.id === "realism-stable-yogi-3-fast")!, () => null).recipe;
+    expect([quality.useFor, fast.useFor]).toEqual(["quality", "fast"]);
+    expect(fast.id).not.toBe(quality.id);
+    expect(fast.parts.map((p) => p.file)).toEqual(quality.parts.map((p) => p.file));
+    expect(b.fromStarter(STARTERS.find((s) => s.id === "z-image-turbo")!, () => null).recipe.useFor).toBe("both");
+  });
+
   it("fills a template with loaders, LoRAs and values, and nothing else", () => {
     const t = TEMPLATES.get("z-image")!;
     const wf = fill(t, [
@@ -1663,7 +1673,7 @@ describe("the image API", () => {
     // The test folder holds two of its parts at their download paths, but not its diffusion model.
     expect(z.parts.map((p: { present: boolean }) => p.present)).toEqual([false, true, true]);
     expect(body.starters.map((st: { id: string }) => st.id)).toEqual([
-      "flux-schnell", "krea2-raw", "krea2-turbo-uncensored", "krea2-turbo", "ltx-2.5-distilled", "minimax-h3-edit", "minimax-h3-turbo", "p-h3-image-w4a8", "p-h3-image", "qwen-image-2.1-turbo", "qwen-image-edit", "qwen-image", "scail-2", "sdxl", "seedvr2-3b", "seedvr2-7b",
+      "flux-schnell", "krea2-raw", "krea2-turbo-uncensored", "krea2-turbo", "ltx-2.5-distilled", "minimax-h3-edit", "minimax-h3-turbo", "p-h3-image-w4a8", "p-h3-image", "qwen-image-2.1-turbo", "qwen-image-edit", "qwen-image", "realism-stable-yogi-3-fast", "realism-stable-yogi-3", "scail-2", "sdxl", "seedvr2-3b", "seedvr2-7b",
       "wan2.2-i2v-14b-q5", "wan2.2-i2v-14b", "wan2.2-t2v-14b-q5", "wan2.2-t2v-14b", "wan2.2-ti2v-5b", "z-image-turbo",
     ]);
   });
