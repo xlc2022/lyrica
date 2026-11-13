@@ -1071,7 +1071,7 @@ function Hosts({ ctx }: { ctx: MCtx }) {
 }
 
 /**
- * An endpoint's models, each by its ID (a recipe by its name) after its Enabled checkbox; a speaking model has its Settings, and a
+ * An endpoint's models, under an All checkbox for the ones shown, each by its ID (a recipe by its name) after its Enabled checkbox; a speaking model has its Settings, and a
  * missing or gone one Remove. A model switched off is muted here and seen nowhere else.
  */
 function ModelList({ ctx, ep, onVoice }: { ctx: MCtx; ep: EndpointInfo; onVoice: (m: OfferingInfo) => void }) {
@@ -1082,9 +1082,26 @@ function ModelList({ ctx, ep, onVoice }: { ctx: MCtx; ep: EndpointInfo; onVoice:
   const enable = (m: OfferingInfo, on: boolean) => void run(async () => { await patch(u(ctx.user.id, "endpoints", ep.id, "models"), { disabled: !on, offeringIds: [m.id] }); ctx.models.reload(); });
   const needle = q.trim().toLowerCase();
   const shown = needle ? ep.models.filter((m) => `${modelName(m)} ${m.modelId}`.toLowerCase().includes(needle)) : ep.models;
+  const on = shown.filter((m) => !m.disabled).length;
+  // All acts on the models shown, so a search narrows it to the matches; without one it switches the whole endpoint.
+  const all = (to: boolean) => void run(async () => {
+    const offeringIds = needle ? shown.filter((m) => !m.disabled !== to).map((m) => m.id) : undefined;
+    await patch(u(ctx.user.id, "endpoints", ep.id, "models"), { disabled: !to, offeringIds });
+    ctx.models.reload();
+  });
   return (
     <>
       {ep.models.length > SEARCHABLE_MODELS && <input className="wide" type="search" aria-label={`Search ${ep.name} models`} placeholder={`Search ${ep.models.length} models`} value={q} onChange={(e) => setQ(e.target.value)} />}
+      {canEdit(ctx, ep) && shown.length > 1 && (
+        <div className="model-all wide">
+          <label>
+            <input type="checkbox" aria-label={needle ? `All matches: ${ep.name}` : `All: ${ep.name}`} checked={on === shown.length} disabled={busy}
+              ref={(el) => { if (el) el.indeterminate = on > 0 && on < shown.length; }} onChange={() => all(on < shown.length)} />
+            {needle ? "All matches" : "All"}
+          </label>
+          <span className="muted"><span className="mono">{on}</span> of <span className="mono">{shown.length}</span> enabled</span>
+        </div>
+      )}
       <ul className="model-list wide" aria-label={`${ep.name} models`}>
         {!shown.length && <li className="muted">No models match.</li>}
         {shown.map((m) => (
@@ -1125,9 +1142,11 @@ function useEndpointActions(ctx: MCtx, ep: Endpoint, others: Endpoint[], onSignI
   const [run, busy, error] = useAction();
   const [model, setModel] = useState<string>();
   const [into, setInto] = useState<string>();
-  const [asking, setAsking] = useState<"reset" | "merge" | "remove">();
+  const [asking, setAsking] = useState<"reset" | "merge" | "remove" | "missing">();
   const done = () => ctx.models.reload();
   // Merging folds an endpoint into another of the same kind and place.
+  // Models the endpoint no longer lists, missing or gone, which Remove missing models drops in one go.
+  const missing = ep.models.filter((m) => m.status !== "listed");
   const targets = others.filter((o) => o.id !== ep.id && o.kind === ep.kind && o.shared === ep.shared && o.api === ep.api);
   const items = [
     // A limit the plan didn't really reach holds every thread on it until the reset: clearing it lets them carry on now.
@@ -1135,8 +1154,7 @@ function useEndpointActions(ctx: MCtx, ep: Endpoint, others: Endpoint[], onSignI
     ...(planOf(ep.api) && onSignIn ? [{ label: "Sign in again", onPick: onSignIn }] : []),
     { label: "Read its models", onPick: () => void run(async () => { await post(`${path}/discover`); done(); }) },
     { label: "Add a model by hand", onPick: () => setModel("") },
-    ...(ep.models.some((m) => !m.disabled) ? [{ label: "Disable all models", onPick: () => void run(async () => { await patch(`${path}/models`, { disabled: true }); done(); }) }] : []),
-    ...(ep.models.some((m) => m.disabled) ? [{ label: "Enable all models", onPick: () => void run(async () => { await patch(`${path}/models`, { disabled: false }); done(); }) }] : []),
+    ...(missing.length ? [{ label: "Remove missing models…", onPick: () => setAsking("missing") }] : []),
     { label: "Reset IDs…", onPick: () => setAsking("reset") },
     ...(targets.length ? [{ label: ep.api === "host" ? "Merge duplicate host…" : "Merge duplicate…", onPick: () => setInto(targets[0]!.id) }] : []),
     { label: "Remove", danger: true, onPick: () => setAsking("remove") },
@@ -1169,6 +1187,12 @@ function useEndpointActions(ctx: MCtx, ep: Endpoint, others: Endpoint[], onSignI
       <ConfirmDialog title={`Merge ${ep.name} into ${target.name}?`} sentence={`${ep.name} goes, and lists that name its models name ${target.name}'s instead.`}
         confirm="Merge" onCancel={() => setAsking(undefined)}
         onConfirm={() => { setAsking(undefined); const to = target.id; void run(async () => { await post(`${path}/merge`, { into: to }); setInto(undefined); done(); }); }} />
+    )}
+    {asking === "missing" && (
+      <ConfirmDialog title={missing.length === 1 ? `Remove ${modelName(missing[0]!)}?` : `Remove ${missing.length} missing models?`}
+        sentence={`${ep.name} no longer lists ${missing.length === 1 ? "it" : "them"}. Every list that names ${missing.length === 1 ? "it" : "them"} drops ${missing.length === 1 ? "it" : "them"}.`}
+        confirm="Remove" danger onCancel={() => setAsking(undefined)}
+        onConfirm={() => { setAsking(undefined); const ids = missing.map((m) => m.id); void run(async () => { try { for (const id of ids) await del(u(userId, "offerings", id)); } finally { done(); } }); }} />
     )}
     {asking === "remove" && (
       <ConfirmDialog title={`Remove ${ep.name}?`} sentence={ep.api === "host"
