@@ -115,17 +115,24 @@ test("Models: the user menu's Models opens Overview, Hosts and endpoints lists t
   await expect(routerRow.locator("li[data-offering]").filter({ hasText: "cloud-model" }).getByRole("button", { name: "Remove" })).toHaveCount(0);
   await noHorizontalScroll(page);
   await shot("missing-model");
-  // Enabled: off takes a model out of everything but this list; the ⋯ switches every model at once.
+  // Enabled: off takes a model out of everything but this list; All switches every model shown at once.
   // old-model, not cloud-model: switching off drops a model from the column lists the Tasks test expects.
   // The box is controlled: it changes once the page has reloaded.
   await old.getByRole("checkbox", { name: "Enabled: old-model" }).click();
   await expect(old).toHaveClass(/off/);
   await expect(old.getByRole("checkbox", { name: "Enabled: old-model" })).not.toBeChecked();
+  const allBox = routerRow.getByRole("checkbox", { name: "All: router" });
+  await expect(allBox).not.toBeChecked();
+  expect(await allBox.evaluate((el: HTMLInputElement) => el.indeterminate)).toBe(true);
   await shot("disabled-model");
-  await routerRow.getByRole("button", { name: "Actions for router" }).click();
-  await page.getByRole("menuitem", { name: "Enable all models" }).click();
+  await allBox.click();
   await expect(old.getByRole("checkbox", { name: "Enabled: old-model" })).toBeChecked();
-  await old.getByRole("button", { name: "Remove old-model" }).click();
+  await expect(allBox).toBeChecked();
+  // A missing model has Remove on its row; Remove missing models… in the ⋯ drops every missing or gone one after one confirm.
+  await expect(old.getByRole("button", { name: "Remove old-model" })).toBeVisible();
+  await routerRow.getByRole("button", { name: "Actions for router" }).click();
+  await shot("missing-menu");
+  await page.getByRole("menuitem", { name: "Remove missing models…" }).click();
   const ask = page.getByRole("dialog", { name: "Remove old-model?" });
   await ask.getByRole("button", { name: "Remove" }).click();
   await expect(ask).toHaveCount(0);

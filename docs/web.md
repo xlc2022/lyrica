@@ -580,7 +580,10 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   search box above it past twelve models; for its managers an **Enabled**
   checkbox per model, `PATCH …/endpoints/:id/models` with that one
   `offeringId`, an unticked model muted there and seen nowhere else, others
-  seeing an "off" pill; a
+  seeing an "off" pill; above the models, for its managers while two or
+  more are shown, an **All** checkbox (**All matches** during a search,
+  indeterminate while mixed, "<n> of <m> enabled" beside it) sending the
+  same `PATCH` with no `offeringIds`, or with the matches that change; a
   speaking model's **Settings** there, and for its managers a missing or
   gone model's **Remove**, `DELETE …/offerings/:id` after a confirm dialog) and **Dashboard** (a link, `GET
   …/dashboard`, a new tab). **Edit** opens the host's drawer: Name (`PATCH
@@ -610,8 +613,8 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   for that plan and OpenAI for api.openai.com without replacing a name the
   user typed. Names preserve capitals. A plan whose sign-in lapsed
   reads **Signed out**. Each row's ⋯: Sign in again (plans), Read its models, Add a model by hand,
-  Disable all models and Enable all models (each while it would change a
-  model; `PATCH …/endpoints/:id/models` with no `offeringIds`), Pair
+  Remove missing models… (while a model is missing or gone; one confirm,
+  then `DELETE …/offerings/:id` for each), Pair
   again… (hosts), Reset IDs…, Merge duplicate host… (Merge duplicate… on other endpoints; same kind and sharing), Remove,
   the last three confirmed by a dialog. Clean up: a row per item with a
   stale, gone or empty pill, "Unreachable for N days." / "Missing for N

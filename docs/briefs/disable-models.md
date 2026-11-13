@@ -33,8 +33,9 @@ and keeps the user in charge of what spends their money.
 - Web: an **Enabled** checkbox per model in the "N models" list under a host
   or endpoint row (an "off" pill for someone who can't manage it), a muted
   row when off, a search box above the list once it holds more than twelve
-  models, and **Disable all models** and **Enable all models** in the
-  endpoint's ⋯ menu.
+  models, and an **All** checkbox above the list for every model shown
+  (**All matches** after a search; it replaced Disable all models and
+  Enable all models in the endpoint's ⋯ menu).
 
 ## Out of scope
 
