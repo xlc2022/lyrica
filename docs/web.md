@@ -286,8 +286,15 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   waits in session storage when the page has no box), selects, shows in the
   thread (the conversation scrolls to the first message naming the path, an
   upload or her call that wrote it, through the same channel), downloads (one file by its address, several as `…/files/zip`), copies
-  paths, renames and deletes (a confirm dialog), uploads and makes folders;
-  dropping files on the panel uploads them to the folder last opened. After a
+  the files (**Copy**) or their paths, pastes (**Paste**, on a folder's menu while something is copied), renames and deletes
+  (a confirm dialog), uploads and makes folders;
+  dropping files on the panel uploads them to the folder last opened. On the Files, Images and Videos tabs the keys
+  act while the panel was the last thing pressed or focused, never in a text field and never while a menu, dialog or
+  the viewer is up: **Ctrl or Cmd+C** copies the selection (kept in the page for any of the user's panels; on the
+  system clipboard as its paths, or as the image itself, made PNG, when it is one image), **Ctrl or Cmd+V** pastes
+  into the folder last opened (within the thread `…/files/copy`; from another of the user's threads each file is read
+  and uploaded, folders refused, and never from a private thread into a general one; a screenshot or files copied
+  outside Lyrica upload as a drop does), and **Delete** or **Backspace** opens the selection's delete confirm. After a
   change the folders it touched are reloaded. A rename rewrites the stored
   messages that named the file (docs/workspace.md, "Renaming keeps links"),
   and each open thread's stream then sends `renamed`, on which `useThread`

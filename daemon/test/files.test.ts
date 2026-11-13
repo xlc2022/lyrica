@@ -43,6 +43,11 @@ function fakeFiles() {
     mkdir: async (path: string) => { calls.push(["mkdir", path]); },
     rename: async (from: string, to: string) => { calls.push(["rename", from, to]); if (to.endsWith("taken")) throw new Error(`${to} is already there`); return { from, to }; },
     remove: async (paths: string[]) => { calls.push(["remove", paths]); },
+    copy: async (paths: string[], dir: string) => {
+      calls.push(["copy", paths, dir]);
+      if (!dir.startsWith("/workspace")) throw new FilesRefused(`${dir} is read-only in this thread`);
+      return paths.map((p) => `${dir}/${p.split("/").pop()}`);
+    },
     thumb: async (path: string) => (path.startsWith("/workspace/") ? { bytes: Buffer.from("tiny"), type: "image/png" } : undefined),
     zip: async (paths: string[]) => {
       calls.push(["zip", paths]);
@@ -101,6 +106,15 @@ describe("the Files panel's routes", () => {
       ["upload", "/workspace/notes", "plan.md", "# plan"], ["mkdir", "/workspace/out"],
       ["rename", "/workspace/a.txt", "/workspace/b.txt"], ["remove", ["/workspace/b.txt", "/workspace/out"]],
     ]);
+  });
+
+  it("copies files into a folder, and refuses a read-only one", async () => {
+    const { ada, path } = await setup();
+    const { calls } = fakeFiles();
+    expect((await ada.post(`${path}/copy`, { paths: ["/srv/docs/a.txt"], dir: "/workspace/notes" })).body).toEqual({ paths: ["/workspace/notes/a.txt"] });
+    expect((await ada.post(`${path}/copy`, { paths: ["/workspace/a.txt"], dir: "/srv/docs" })).status).toBe(403);
+    expect((await ada.post(`${path}/copy`, { paths: [], dir: "/workspace" })).status).toBe(400);
+    expect(calls).toEqual([["copy", ["/srv/docs/a.txt"], "/workspace/notes"], ["copy", ["/workspace/a.txt"], "/srv/docs"]]);
   });
 
   it("rewrites the stored mentions of a renamed file in the thread and its family, and leaves other threads and similar names alone", async () => {
@@ -309,6 +323,32 @@ describe("a clip's poster", () => {
       expect((await files.thumb(join(dir, "clips", "a.mp4")))?.bytes.toString()).toBe("poster");
       await files.remove([join(dir, "clips", "a.mp4")]);
       expect(readdirSync(join(dir, ".lyrica", "thumbs", "clips"))).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("a copy in the thread's sandbox", () => {
+  it("takes a free name beside a taken one, copies a folder whole, keeps links as links and won't copy a folder into itself", async () => {
+    const { ThreadFiles } = await import("@lyrica/core");
+    const { readFileSync, readlinkSync, symlinkSync } = await import("node:fs");
+    const dir = mkdtempSync(join(tmpdir(), "lyrica-copy-"));
+    try {
+      const { spawnSync } = await import("node:child_process");
+      const box = { allow: (p: string) => p, run: async (argv: string[]) => { const r = spawnSync(argv[0]!, argv.slice(1)); return { code: r.status, signal: r.signal, stdout: r.stdout, stderr: r.stderr }; } };
+      const added: string[][] = [];
+      const files = new ThreadFiles(box as unknown as Sandbox, [], (kind, names) => { if (kind === "added") added.push(names); }, dir);
+      writeFileSync(join(dir, "a.png"), "img");
+      mkdirSync(join(dir, "notes")); writeFileSync(join(dir, "notes", "plan.md"), "# plan"); symlinkSync("plan.md", join(dir, "notes", "link"));
+      expect(await files.copy([join(dir, "a.png"), join(dir, "a.png")], dir)).toEqual([join(dir, "a-2.png"), join(dir, "a-3.png")]);
+      expect(readFileSync(join(dir, "a-3.png"), "utf8")).toBe("img");
+      expect(await files.copy([join(dir, "notes")], dir)).toEqual([join(dir, "notes-2")]);
+      expect(readFileSync(join(dir, "notes-2", "plan.md"), "utf8")).toBe("# plan");
+      expect(readlinkSync(join(dir, "notes-2", "link"))).toBe("plan.md");
+      expect(await files.copy([join(dir, "notes", "plan.md")], dir)).toEqual([join(dir, "plan.md")]);
+      await expect(files.copy([join(dir, "notes")], join(dir, "notes"))).rejects.toThrow(FilesRefused);
+      expect(added).toEqual([[join(dir, "a-2.png"), join(dir, "a-3.png")], [join(dir, "notes-2")], [join(dir, "plan.md")]]);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

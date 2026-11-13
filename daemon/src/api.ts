@@ -1753,6 +1753,8 @@ export interface ImageEntry extends FileEntry { source: "uploaded" | "made" }
  * POST …/files/folder { path } → Ok. POST …/files/rename { from, to } → Ok (a taken `to` is refused); every thread
  * that can reach the file has its stored mentions of the old path rewritten (docs/workspace.md, "Renaming keeps
  * links"), and its open streams get `renamed`.
+ * POST …/files/copy { paths, dir } → FileCopyResponse: each file or folder copied into `dir` under its own name, or
+ * a free one where that is taken (`plan-2.md`); a folder can't go into itself (403). The panel's Ctrl+V.
  * POST …/files/delete { paths } → Ok, for good. POST …/files/zip { paths } → application/zip, built as it streams.
  * A root itself can't be renamed or deleted; a read-only grant refuses every change (403); a path outside the
  * thread's folders is 403. Her next turn is told, by name, what the panel added or removed.
@@ -1760,6 +1762,8 @@ export interface ImageEntry extends FileEntry { source: "uploaded" | "made" }
 export interface FileFolderInput { path: string }
 export interface FileRenameInput { from: string; to: string }
 export interface FilePathsInput { paths: string[] }
+export interface FileCopyInput { paths: string[]; dir: string }
+export interface FileCopyResponse { paths: string[] }
 
 // --- The event stream ---
 
