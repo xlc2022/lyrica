@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import ssh2 from "ssh2";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { testMcpServer } from "./mcp-server.ts";
-import { gitEnv, hostAddresses, keepResult, noReplyEmail, MCP_RESULT_BYTES, generateSshKey, helperSandbox, nftRules, resolveAddresses, sandboxedTransport, SshTarget, subnetOf, migrate, pathRewriter, Users, Workspace, WorkspaceSettings, type HelperSandbox, type MachineConfig, type SandboxSpec } from "../src/index.ts";
+import { gitEnv, hostAddresses, keepResult, noReplyEmail, MCP_RESULT_BYTES, generateSshKey, helperSandbox, nftRules, resolveAddresses, sandboxedTransport, SshTarget, subnetOf, migrate, pathRewriter, workspacePaths, Users, Workspace, WorkspaceSettings, type HelperSandbox, type MachineConfig, type SandboxSpec } from "../src/index.ts";
 import { freshKeyring, profile } from "./helpers.ts";
 
 const dirs: string[] = [];
@@ -942,6 +942,14 @@ describe("renaming keeps links", () => {
       "/workspace/photos/a.png /workspace/pics2/a.png /home/ada/workspace/pics /workspace/my cat.pngs");
     const link = pathRewriter([{ from: "pics/a.png", to: "pics/b.png", link: true }]);
     expect(link("[a](pics/a.png) and pics/a.png and [a](pics/a.png#top)")).toBe("[a](pics/b.png) and pics/a.png and [a](pics/b.png#top)");
+  });
+});
+
+describe("the files a thread names", () => {
+  it("finds bare paths, link targets relative to its folder and their decoded spelling, and nothing outside its folders", () => {
+    expect(workspacePaths("Done: /workspace/videos/a.mp4. See ![x](images/my%20cat.png) and file:///shared/plan.md!").sort()).toEqual(
+      ["/shared/plan.md", "/workspace/images/my cat.png", "/workspace/images/my%20cat.png", "/workspace/videos/a.mp4"]);
+    expect(workspacePaths("/home/ada/workspace/a.png [x](https://example.com/a.png) [y](../../etc/passwd) /workspace/../etc/passwd")).toEqual([]);
   });
 });
 

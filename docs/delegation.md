@@ -789,7 +789,8 @@ A project chat's child threads are the project's threads
 
 **Forgetting** a parent forgets its child threads too when asked (the
 default in the UI); otherwise they are kept as threads of their own, detached
-from the parent's workspace, with the settings they have; a kept child is no
+from the parent's workspace, with the settings they have and copies of
+their files (Detaching, below); a kept child is no
 longer a child (`child` is cleared, its `child_threads` row dropped), so it may
 start child threads of its own.
 
@@ -799,7 +800,14 @@ top-level thread with its messages as they are; `child` and `parent` are
 cleared and its `child_threads` row dropped, so neither thread can message
 the other; what its settings allow now becomes its own (never wider), and a
 local-only parent leaves it local-only. Its workspace folder and `/shared`
-are its own from then on: files it wrote in its parent's folder stay there.
+are its own from then on, so first it takes copies of the files it would
+lose (`Workspace.keepFiles`): each file in its parent's folder or the
+family's `/shared` that its messages name, or that it wrote there, is copied
+to the same path in its own folder (its own `shared/` for `/shared`), with
+its thumbnail or a clip's poster, so its images, clips and links still open.
+The originals stay, so the parent's links work too. A child kept when its
+parent is deleted takes its copies the same way, before the parent's folder
+goes; if copying fails, the delete stops with nothing removed.
 A subagent's thread, a project's thread and a thread whose turn is running
 are refused (`409`).
 

@@ -676,7 +676,10 @@ fixed actions, the token never shown to her.
 - On disk: `users/<id>/home.crypt` holds the ciphertext, mounted at
   `users/<id>/home`, with one folder per thread under `threads/`. A
   subagent works in its parent's folder; ordinary child threads share their
-  parent's too, while code children have their own. The gocryptfs password is the hex
+  parent's too, while code children have their own. One that leaves its
+  parent (Detach, or kept when the parent is deleted) gets a folder of its
+  own with copies of the files it names or wrote (docs/delegation.md,
+  Detaching). The gocryptfs password is the hex
   `home` subkey, passed on stdin.
 - `nix/<pool>` there is the pool's Nix store, mounted at `/nix` in her
   runs ([Nix](#nix)).

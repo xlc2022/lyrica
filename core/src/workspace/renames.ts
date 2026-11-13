@@ -1,6 +1,7 @@
 // A file renamed or moved in the Files panel keeps its links (DESIGN, "Files and images"): every stored mention of
 // its old path, as a thread writes it, is rewritten to the new one. Pure text work; the store and the workspace
 // decide where it runs.
+import { posix } from "node:path";
 
 /**
  * One way a thread writes the file: its old path and its new one. `link`: a path relative to the thread's folder,
@@ -44,6 +45,34 @@ export function pathRewriter(swaps: Respelling[]): (text: string) => string {
     for (const s of all) if (out.includes(s.from)) out = out.replace(s.re, () => s.to);
     return out;
   };
+}
+
+/** A path under /workspace or /shared where it starts a word (or follows `file://`), up to its end. */
+const WORKSPACE_PATH = new RegExp(String.raw`(?:(?<=file:\/\/)|(?<![\w.~/:%-]))\/(?:workspace|shared)\/[^${END}]+`, "g");
+/** A markdown link's target. */
+const LINK_TARGET = new RegExp(String.raw`\]\(\s*<?([^${END}#?>]+)`, "g");
+
+/**
+ * The paths under /workspace and /shared a text names, as the web's links find them: bare, as a markdown link's
+ * target (one relative to the thread's folder taken as under /workspace), and percent-decoded. Trailing punctuation
+ * is dropped; a path that leaves its root (`..`) is not one.
+ */
+export function workspacePaths(text: string): string[] {
+  const out = new Set<string>();
+  const add = (raw: string) => {
+    const clean = raw.replace(/[:.!?]+$/, "");
+    for (const p of [clean, decoded(clean)]) {
+      const n = posix.normalize(p);
+      if (n.startsWith("/workspace/") || n.startsWith("/shared/")) out.add(n);
+    }
+  };
+  if (text.includes("/workspace/") || text.includes("/shared/")) for (const m of text.matchAll(WORKSPACE_PATH)) add(m[0]);
+  if (text.includes("](")) for (const m of text.matchAll(LINK_TARGET)) if (!m[1]!.includes(":") && !m[1]!.startsWith("/")) add(posix.join("/workspace", m[1]!));
+  return [...out];
+}
+
+function decoded(s: string): string {
+  try { return decodeURI(s); } catch { return s; }
 }
 
 /** The plain strings that must appear in a text for the rewriter to change it: what a store looks for first. */

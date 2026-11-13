@@ -526,6 +526,42 @@ describe("child threads", () => {
   });
 });
 
+const has = (cmd: string) => { try { execFileSync("which", [cmd], { stdio: "ignore" }); return true; } catch { return false; } };
+const homeRunnable = process.getuid?.() !== 0 && has("bwrap") && has("gocryptfs") && has("fusermount3") && existsSync("/dev/fuse");
+
+describe.skipIf(!homeRunnable)("a daughter's files when it leaves its parent", () => {
+  it("Detach, and a child kept when its parent is deleted, take copies of the files they name or wrote in the parent's folder", async () => {
+    const { ada, parent, child, say, list, path, childPath, thread } = await setup();
+    // The served body is parsed as JSON by the test client, so each file holds a JSON string.
+    const upload = (p: string, name: string) => ada.call("POST", `${p}/files/upload?name=${enc(name)}`, Buffer.from(JSON.stringify(name)), { "content-type": "application/octet-stream" });
+    const read = (p: string, file: string) => ada.get<string>(`${p}/files/content?path=${enc(file)}`);
+    const idle = () => until(list, (l) => l.find((t) => t.id === thread.id)!.children.every((c) => c.status === "idle"));
+
+    parent.push(start("Garden", "Plan the beds."), { text: "ok" });
+    child.push({ text: "Beds planned: /workspace/plan.json, and the clip ![clip](clip%20one.json)." });
+    const id = toolEnd(await say("start one"))!.threads![0]!.id;
+    await idle();
+    // In the parent's folder: two files the child's messages name, one the child wrote, one that is the parent's alone.
+    for (const name of ["plan.json", "clip one.json", "other.json"]) expect((await upload(path, name)).body).toEqual({ path: `/workspace/${name}` });
+    expect((await upload(childPath(id), "mine.json")).body).toEqual({ path: "/workspace/mine.json" });
+
+    expect((await ada.post(`${childPath(id)}/detach`, {})).status).toBe(200);
+    for (const name of ["plan.json", "clip one.json", "mine.json"]) expect((await read(childPath(id), `/workspace/${name}`)).body).toBe(name);
+    expect((await read(childPath(id), "/workspace/other.json")).status).not.toBe(200);
+    // Copies, not moves: the parent keeps every file.
+    for (const name of ["plan.json", "clip one.json", "mine.json", "other.json"]) expect((await read(path, `/workspace/${name}`)).body).toBe(name);
+
+    // A child kept when its parent is deleted takes its files before the parent's folder goes.
+    parent.push(start("Seeds", "Order seeds."), { text: "ok" });
+    child.push({ text: "Ordered: /workspace/seeds.json" });
+    const kept = toolEnd(await say("start two"))!.threads![0]!.id;
+    await idle();
+    expect((await upload(path, "seeds.json")).status).toBe(200);
+    expect((await ada.del(path, { children: false })).status).toBe(200);
+    expect((await read(childPath(kept), "/workspace/seeds.json")).body).toBe("seeds.json");
+  });
+});
+
 describe("a child's end, reading and stopping", () => {
   const notices = async (messages: () => Promise<{ role: string; parts: unknown[] }[]>) =>
     (await messages()).filter((m) => m.role === "notice").map((m) => (m.parts[0] as { text: string }).text);

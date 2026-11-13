@@ -1454,7 +1454,7 @@ export function apiRoutes(d: Lyricad): Route[] {
     }),
     route("PUT", `${t}/pin`, (r) => pinThread(d, d.userFor(r), r, true)),
     route("DELETE", `${t}/pin`, (r) => pinThread(d, d.userFor(r), r, false)),
-    route("POST", `${t}/detach`, (r) => detachThread(d, d.userFor(r), r)),
+    route("POST", `${t}/detach`, async (r) => detachThread(d, d.userFor(r), r)),
     route("POST", `${t}/messages/:n/thread`, async (r) => {
       const user = d.userFor(r);
       const pool = poolOf(r);
@@ -2904,7 +2904,7 @@ function pinThread(d: Lyricad, user: User, r: Request, pinned: boolean): Api.Thr
  * a local-only parent leaves it local-only. Not a subagent or a project's thread,
  * and not during a turn, which runs with its parent's tools.
  */
-function detachThread(d: Lyricad, user: User, r: Request): Api.ThreadSummary {
+async function detachThread(d: Lyricad, user: User, r: Request): Promise<Api.ThreadSummary> {
   const s = d.services!;
   const pool = poolOf(r);
   const { id, parent } = owner(d, user, (o) => {
@@ -2915,6 +2915,9 @@ function detachThread(d: Lyricad, user: User, r: Request): Api.ThreadSummary {
     return { id: thread.id, parent: thread.parent };
   });
   if (s.host.busy(user.id, pool, id)) throw new HttpError(409, "this thread is working; stop it or wait for its turn to end");
+  // Its files first, while it still works in its parent's folder: nothing is cut loose until they are copied.
+  await keepDaughterFiles(d, user, pool, id);
+  if (s.host.busy(user.id, pool, id)) throw new HttpError(409, "this thread is working; stop it or wait for its turn to end");
   if (s.models.callContext(user.id, pool, parent).localOnly) s.models.setLocalOnly(user.id, pool, id, true);
   s.workspace.settings(user.id).separate(id);
   owner(d, user, (o) => o[pool].detachThread(id));
@@ -2923,6 +2926,15 @@ function detachThread(d: Lyricad, user: User, r: Request): Api.ThreadSummary {
   s.host.reload(user.id, pool, id);
   s.host.changed(user.id, pool, parent, id);
   return owner(d, user, (o) => summary(d, user, pool, o[pool], threadOf(o, r), []));
+}
+
+/**
+ * A daughter about to leave its family takes copies of the files it names, or wrote, in the folder and /shared it
+ * worked in (Workspace.keepFiles), so its messages' links still open from its own folder (docs/delegation.md, Detaching).
+ */
+async function keepDaughterFiles(d: Lyricad, user: User, pool: Pool, id: string): Promise<void> {
+  const mentioned = owner(d, user, (o) => o[pool].pathsMentioned(id));
+  await d.services!.workspace.keepFiles({ userId: user.id, pool, threadId: id }, mentioned);
 }
 
 /** Resolves or reopens a project's thread. */
@@ -3319,6 +3331,8 @@ async function deleteThread(d: Lyricad, user: User, pool: Pool, threadId: string
   deleting.set(progress, busy);
   const step = (s: Api.ThreadDeleting["step"]) => { for (const id of doomed) busy.set(id, { step: s, threads: doomed.length }); };
   try {
+    // A kept child takes copies of its files before its parent's folder, where it worked, goes; a failure stops the delete with nothing gone.
+    for (const id of kept) await keepDaughterFiles(d, user, pool, id);
     step("stopping");
     // A project's page and the notes that came only from it go before its threads do, while they still say where the notes came from.
     if (all && !keep) owner(d, user, (o) => { if (o[pool].getThread(threadId)?.project) o[pool].forgetProjectMemory(threadId, author(user)); });

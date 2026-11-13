@@ -417,9 +417,10 @@ Each active thread is one Pi session from `openThreadSession`, with
 - Forgetting a thread forgets its subagents' threads with it, deepest first,
   stopping their runs and dropping their records (`Delegation.forget`). With
   `{ children: true }` (`ForgetThread`) its child threads go too; otherwise
-  they are kept as threads of their own and detached from its workspace.
-  `POST …/detach` does the same for one daughter of a living parent
-  (`detachThread` in `routes.ts`; docs/delegation.md, Detaching).
+  they are kept as threads of their own and detached from its workspace,
+  each first taking copies of the files it names or wrote there
+  (`keepDaughterFiles`). `POST …/detach` does the same for one daughter of
+  a living parent (`detachThread` in `routes.ts`; docs/delegation.md, Detaching).
   With `{ keepMemories: true }` no note or project page is removed, each
   forgotten thread leaves a text-free tombstone, and `GET …/threads/:pool/:threadId/tombstone`
   (`ThreadTombstone`: ID, deletion time, the memories citing it; `404` when

@@ -1,5 +1,5 @@
 import { removeSecrets } from "../secrets.ts";
-import { pathRewriter, rewriteStrings, type Respelling } from "../workspace/renames.ts";
+import { pathRewriter, rewriteStrings, workspacePaths, type Respelling } from "../workspace/renames.ts";
 import { SkillLibrary } from "../skills.ts";
 import { ArtifactLibrary } from "./artifacts.ts";
 import { randomBytes } from "node:crypto";
@@ -1271,6 +1271,22 @@ export class PoolStore extends PoolReader {
     const words = JSON.stringify([...new Set(needles.flatMap((w) => [w, JSON.stringify(w).slice(1, -1)]))]);
     return (this.db.prepare(`SELECT DISTINCT thread FROM entries e WHERE EXISTS (SELECT 1 FROM json_each(?) w WHERE instr(e.data, w.value) > 0)
       UNION SELECT thread FROM drafts d WHERE EXISTS (SELECT 1 FROM json_each(?) w WHERE instr(d.text, w.value) > 0)`).all(words, words) as { thread: string }[]).map((r) => r.thread);
+  }
+
+  /**
+   * The paths under /workspace and /shared that the thread's entries (but her reasoning and image bytes) and draft
+   * name (`workspacePaths`): the files a daughter takes along when it leaves its family (docs/delegation.md, Detaching).
+   */
+  pathsMentioned(threadId: string): string[] {
+    this.mustThread(threadId);
+    const out = new Set<string>();
+    const collect = (s: string) => { for (const p of workspacePaths(s)) out.add(p); return s; };
+    const rows = this.db.prepare("SELECT data FROM entries WHERE thread = ? AND (instr(data, '/workspace/') > 0 OR instr(data, '/shared/') > 0 OR instr(data, '](') > 0)")
+      .all(threadId) as { data: string }[];
+    for (const r of rows) rewriteStrings(JSON.parse(r.data), collect);
+    const draft = this.db.prepare("SELECT text FROM drafts WHERE thread = ?").get(threadId) as { text: string } | undefined;
+    if (draft) collect(draft.text);
+    return [...out];
   }
 
   /**
