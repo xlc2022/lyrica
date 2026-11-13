@@ -486,7 +486,11 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   users as `[[Name]]` and save them as tokens). Archive, Delete, Export and Forget… on a
   selection, and Add a memory with a Write | Import segment (export and
   import in [memory.md](memory.md#export-and-import); the downloaded file
-  is made from the response in the browser and kept nowhere else). The **Recent** layer (`kinds=entry`) lists
+  is made from the response in the browser and kept nowhere else). The page's
+  counts, list (every page More has opened), tags and open memory read again
+  after its own changes and on `ShellContext.changed`, so a memory deleted
+  here, in another tab or by her leaves the list at once; an open one deleted
+  elsewhere reads "This memory is gone." The **Recent** layer (`kinds=entry`) lists
   the logged messages written since sleep last consolidated
   (`PoolStore.recentEntries`), newest first and paged by `before`; one
   opens as a memory of kind `entry` (`GET …/memory/<pool>/e:…`), read-only

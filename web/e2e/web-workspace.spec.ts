@@ -442,6 +442,55 @@ test("a memory can be added, edited and restored", async ({ page, baseURL }) => 
   await noHorizontalScroll(page);
 });
 
+test("a deleted memory leaves the list at once, from this tab or another", async ({ page, baseURL, context }) => {
+  const userId = await enter(page, baseURL!);
+  const shot = async (name: string) => { if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/memory-${name}-${page.viewportSize()!.width}.png` }); };
+  const add = async (text: string) => {
+    await page.goto(`/#/u/${userId}/memory`);
+    await page.getByRole("button", { name: "Add a memory" }).click();
+    await page.getByLabel("Text").fill(text);
+    await page.getByRole("button", { name: "Add", exact: true }).click();
+    await expect(page.locator("article.mem-item")).toContainText(text);
+    return page.url();
+  };
+  await add("Fern pots go on the north sill.");
+  const other = await add("Quince jam wants more lemon.");
+  await page.goto(`/#/u/${userId}/memory`);
+  const list = page.getByRole("region", { name: "Browse memory" }).locator(".mem-list");
+  await page.getByRole("group", { name: "Layer" }).getByRole("button", { name: "Notes" }).click();
+  // A memory added here shows in the list without a reload.
+  await expect(list.getByText("Fern pots")).toBeVisible();
+  await expect(list.getByText("Quince jam")).toBeVisible();
+
+  // Deleted from its own page: gone from the list, and the count drops.
+  await list.getByText("Fern pots").click();
+  const article = page.locator("article.mem-item");
+  await article.getByRole("button", { name: "More actions" }).click();
+  await article.getByRole("menuitem", { name: "Delete…" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Delete" }).click();
+  await expect(list.getByText("Fern pots")).toHaveCount(0);
+  await expect(list.getByText("Quince jam")).toBeVisible();
+  await shot("deleted");
+
+  // Deleted in another tab: this tab's list follows, and the reading pane says it is gone.
+  await list.getByText("Quince jam").click();
+  await expect(article).toContainText("Quince jam");
+  const tab = await context.newPage();
+  await tab.goto(other);
+  const there = tab.locator("article.mem-item");
+  await there.getByRole("button", { name: "More actions" }).click();
+  await there.getByRole("menuitem", { name: "Delete…" }).click();
+  await tab.getByRole("dialog").getByRole("button", { name: "Delete" }).click();
+  await expect(tab.locator("article.mem-item")).toHaveCount(0);
+  await tab.close();
+  await expect(page.getByText("This memory is gone.")).toBeVisible();
+  await shot("gone");
+  // A phone shows the list or the memory, not both.
+  if (phone(page)) await page.getByRole("link", { name: "Memory", exact: true }).click();
+  await expect(list.getByText("Quince jam")).toHaveCount(0);
+  await noHorizontalScroll(page);
+});
+
 test("memories export as Markdown and import back, skipping what is already there", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   await page.goto(`/#/u/${userId}/memory`);
