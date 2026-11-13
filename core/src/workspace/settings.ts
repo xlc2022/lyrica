@@ -911,6 +911,11 @@ export class WorkspaceSettings {
     for (const path of paths) put.run(folder, path, thread, at, since ?? null, since ?? null);
   }
 
+  /** Every file this thread wrote that has a record, in whichever folder holds it: what a daughter takes when it leaves (`Workspace.keepFiles`). */
+  writtenBy(thread: string): { folder: string; path: string }[] {
+    return this.db.prepare("SELECT folder, path FROM file_origins WHERE thread = ?").all(thread) as { folder: string; path: string }[];
+  }
+
   /** Which thread wrote each of these files in `folder`'s folder, for those with a record. */
   origins(folder: string, paths: string[]): Map<string, string> {
     const get = this.db.prepare("SELECT thread FROM file_origins WHERE folder = ? AND path = ?");

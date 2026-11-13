@@ -309,15 +309,66 @@ export class Workspace {
 
   /** The thread's folder in the home workspace, on the host. */
   threadDir(t: WorkspaceThread): string {
-    const home = this.homeDir(t.userId);
+    return this.folderDir(t.userId, this.settings(t.userId).folderThread(t.threadId));
+  }
+
+  /** The folder `id` has in the home workspace, made if it isn't there yet. */
+  private folderDir(userId: string, id: string): string {
+    const home = this.homeDir(userId);
     if (!isMounted(home)) throw new Locked("the home workspace is not mounted");
-    const id = this.settings(t.userId).folderThread(t.threadId);
     // Thread IDs may contain "/"; encoding keeps each one a single path component.
     const name = encodeURIComponent(id);
     if (!name || name === "." || name === "..") throw new Error(`unusable thread id: ${id}`);
     const dir = join(home, "threads", name);
     mkdirSync(dir, { recursive: true, mode: 0o700 });
     return dir;
+  }
+
+  /**
+   * A daughter leaving its family (Detach, or kept when its parent is deleted) takes copies of the files it would
+   * lose: each file in the folder it worked in, or in the family's /shared, that its messages name (`mentioned`,
+   * paths as it sees them) or that it wrote there, copied to the same path in its own folder (its own shared/ for
+   * /shared), with its thumbnail or a clip's poster, so its links still open. Nothing is moved, so the parent's
+   * links still open too, and a file already at the new path is left. Runs in a sandbox with no network, the old
+   * folders read-only, so a symlink she left can't point a copy anywhere else. Call before its settings lose the
+   * parent. Returns how many files it copied.
+   */
+  async keepFiles(t: WorkspaceThread, mentioned: string[]): Promise<number> {
+    const s = this.settings(t.userId);
+    const folder = s.folderThread(t.threadId), root = s.familyRoot(t.threadId);
+    const moving = folder !== t.threadId;
+    const shared = root !== t.threadId && this.sharesFamilyFolder(t);
+    if (!moving && !shared) return 0;
+    const sharedFolder = s.folderThread(root);
+    const wrote = s.writtenBy(t.threadId).flatMap(({ folder: f, path }) =>
+      f === sharedFolder && path.startsWith("shared/") && shared ? [posix.join(SHARED, path.slice("shared/".length))] : f === folder ? [posix.join(WORKDIR, path)] : []);
+    const OLD = `${FAMILY_ROOT}/from`, OLD_SHARED = `${FAMILY_ROOT}/from-shared`;
+    const pairs: string[] = [];
+    let n = 0;
+    const inside = (p: string, base: string) => (p.startsWith(`${base}/`) ? p.slice(base.length + 1) : undefined);
+    for (const p of new Set([...mentioned, ...wrote].map((p) => posix.normalize(p)))) {
+      const own = moving ? inside(p, WORKDIR) : undefined;
+      if (own && !own.split("/").includes(PANEL_DIR)) {
+        pairs.push(`${OLD}/${own}`, `${WORKDIR}/${own}`);
+        for (const ext of ["", ".png", ".jpg"]) pairs.push(`${OLD}/${PANEL_DIR}/thumbs/${own}${ext}`, `${WORKDIR}/${PANEL_DIR}/thumbs/${own}${ext}`);
+      }
+      const common = shared ? inside(p, SHARED) : undefined;
+      if (common) pairs.push(`${OLD_SHARED}/${common}`, `${WORKDIR}/shared/${common}`);
+      if (++n >= KEEP_FILES_LIMIT) break;
+    }
+    if (!pairs.length) return 0;
+    const sharedDir = shared ? this.sharedDir(t) : undefined;
+    const family = [...moving ? [{ path: this.threadDir(t), dest: OLD }] : [], ...sharedDir ? [{ path: sharedDir, dest: OLD_SHARED }] : []];
+    const box = new Sandbox({ workdir: this.folderDir(t.userId, t.threadId), family, grants: [], network: { internet: false, services: false, hosts: [] }, bwrap: this.opts.bwrap });
+    // Only a regular file, never one already at the new path; each copy made is printed, NUL-ended.
+    const copy = 'if [ -f "$1" ] && [ ! -L "$1" ] && [ ! -e "$2" ] && [ ! -L "$2" ]; then mkdir -p -- "$(dirname -- "$2")" && cp -p -- "$1" "$2" && printf "%s\\0" "$2"; fi; exit 0';
+    const r = await box.run(["xargs", "-0", "-n", "2", "sh", "-c", copy, "sh"], { input: Buffer.from(pairs.map((p) => `${p}\0`).join("")), timeoutMs: KEEP_FILES_TIMEOUT_MS });
+    if (r.code !== 0) throw new Error(r.stderr.toString().trim() || "copying the thread's files failed");
+    const copied = r.stdout.toString().split("\0").filter(Boolean).filter((p) => !p.startsWith(`${WORKDIR}/${PANEL_DIR}/`));
+    // What it wrote stays its own in its new folder.
+    const mine = new Set(wrote.map((p) => (p.startsWith(`${SHARED}/`) ? `${WORKDIR}/shared/${p.slice(SHARED.length + 1)}` : p)));
+    s.recordOrigins(t.threadId, copied.filter((p) => mine.has(p)).map((p) => p.slice(WORKDIR.length + 1)), t.threadId);
+    return copied.length;
   }
 
   /**
@@ -1930,6 +1981,9 @@ const ATTACH_BYTES = 100_000_000;
 
 /** At most this many files are recorded from one command. */
 const NEW_FILES_LIMIT = 2000;
+/** The most files a daughter takes along when it leaves its family (`keepFiles`), and how long the copying may take. */
+const KEEP_FILES_LIMIT = 20_000;
+const KEEP_FILES_TIMEOUT_MS = 30 * 60_000;
 
 /** A token that didn't work, or a host that didn't answer: the state it leaves the account in, and why. */
 export class GitAccountProblem extends Error {
