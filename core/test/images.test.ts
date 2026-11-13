@@ -169,7 +169,8 @@ describe("image calls through the router (principles 1 and 2)", () => {
     await s.models.discover(s.ada, s.workstation.ep.id);
     await s.models.discover(s.ada, s.spare.ep.id);
     const last = await s.host("last", tier);
-    s.models.setColumnTask(s.ada.id, "private", "image.create", [s.workstation.ref, s.spare.ref, last.ref]);
+    // Each tier's own list, the other tier's model in it passed by.
+    for (const task of ["image.fast", "image.create"] as const) s.models.setColumnTask(s.ada.id, "private", task, [s.workstation.ref, s.spare.ref, last.ref]);
     const ctx = s.ctx({ localOnly: true });
     const request = { action: "create" as const, prompt: "A garden", tier };
     const first = await s.models.image(ctx, request);
@@ -181,11 +182,56 @@ describe("image calls through the router (principles 1 and 2)", () => {
     expect(last.server.images).toHaveLength(1);
     expect(s.heard).toEqual([]);
   });
+  it("a fast create goes down Fast images and a quality one down Quality images; Fast images without a list reads Quality images'", async () => {
+    const s = await setup();
+    const ctx = s.ctx({ localOnly: true });
+    const fast = { action: "create" as const, prompt: "A garden", tier: "fast" as const }, quality = { ...fast, tier: "quality" as const };
+    s.workstation.server.useFor = "quality";
+    await s.models.discover(s.ada, s.workstation.ep.id);
+    s.models.setColumnTask(s.ada.id, "private", "image.create", [s.workstation.ref, s.spare.ref]);
+    // No Fast images list: it goes down Quality images', past the quality-only model.
+    expect((await s.models.image(ctx, fast)).resolution.ref).toEqual(s.spare.ref);
+    expect((await s.models.image(ctx, quality)).resolution.ref).toEqual(s.workstation.ref);
+    const own = await s.host("own", "fast");
+    s.models.setColumnTask(s.ada.id, "private", "image.fast", [own.ref]);
+    expect((await s.models.image(ctx, fast)).resolution.ref).toEqual(own.ref);
+    expect((await s.models.image(ctx, quality)).resolution.ref).toEqual(s.workstation.ref);
+    expect(() => s.models.setColumnTask(s.ada.id, "private", "image.fast", { same: "image.create" })).toThrow(/list of its own/);
+  });
+  it("editing Quality images first keeps the fast-only models making fast images", async () => {
+    const s = await setup();
+    const ctx = s.ctx({ localOnly: true });
+    s.workstation.server.useFor = "quality";
+    await s.models.discover(s.ada, s.workstation.ep.id);
+    const fastOnly = await s.host("fast-only", "fast");
+    // Fast-only, Both and quality-only, as a list made before Fast images existed.
+    s.models.setColumnTask(s.ada.id, "private", "image.create", [fastOnly.ref, s.spare.ref, s.workstation.ref]);
+    // That write gave Fast images a copy of setup's list; clear it, as a table stored before Fast images has none.
+    s.models.setColumnTask(s.ada.id, "private", "image.fast", undefined);
+    const fast = { action: "create" as const, prompt: "A garden", tier: "fast" as const };
+    expect((await s.models.image(ctx, fast)).resolution.ref).toEqual(fastOnly.ref);
+    // The Quality drawer saves what it shows: the fast-only model leaves Quality images, not Fast images.
+    s.models.setColumnTask(s.ada.id, "private", "image.create", [s.workstation.ref, s.spare.ref]);
+    expect((await s.models.image(ctx, fast)).resolution.ref).toEqual(fastOnly.ref);
+    expect((await s.models.image(ctx, { ...fast, tier: "quality" })).resolution.ref).toEqual(s.workstation.ref);
+  });
+  it("a thread's own Quality images pick doesn't stand in for Fast images", async () => {
+    const s = await setup();
+    s.workstation.server.useFor = "quality";
+    await s.models.discover(s.ada, s.workstation.ep.id);
+    const fastOnly = await s.host("fast-only", "fast");
+    s.models.setColumnTask(s.ada.id, "private", "image.create", [fastOnly.ref, s.spare.ref, s.workstation.ref]);
+    s.models.setColumnTask(s.ada.id, "private", "image.fast", undefined);
+    // A thread that picked a quality-only model for Images before Fast images existed.
+    const ctx = { ...s.ctx({ localOnly: true }), overrides: { "image.create": [s.workstation.ref] } };
+    expect((await s.models.image(ctx, { action: "create", prompt: "A garden", tier: "fast" })).resolution.ref).toEqual(fastOnly.ref);
+    expect((await s.models.image(ctx, { action: "create", prompt: "A garden", tier: "quality" })).resolution.ref).toEqual(s.workstation.ref);
+  });
   it("uses a non-GPT keyed offering and persists cloud tiers in hand JSON", async () => {
     const s = await setup();
     const ep = s.models.endpoint(s.ada.id, s.models.offering(s.ada.id, s.ref.offeringId)!.endpoint.id)!;
     const fast = { offeringId: s.models.addModel(s.ada, ep.id, { modelId: "art-model", image: true, edit: true, useFor: "fast" }).id };
-    s.models.setColumnTask(s.ada.id, "general", "image.create", [fast, s.ref]);
+    for (const task of ["image.fast", "image.create"] as const) s.models.setColumnTask(s.ada.id, "general", task, [fast, s.ref]);
     expect((await s.models.image(s.ctx(), { action: "create", prompt: "A garden", tier: "fast" })).resolution.ref).toEqual(fast);
     expect(s.heard[0]!.body).toMatchObject({ model: "art-model" });
     expect((await s.models.image(s.ctx(), { action: "create", prompt: "A garden", tier: "quality" })).resolution.ref).toEqual(s.ref);
@@ -210,7 +256,7 @@ describe("image calls through the router (principles 1 and 2)", () => {
     await s.models.image(s.ctx(), { action: "edit", prompt: "Add flowers", image: input });
     expect(asked.map((a) => [a.userId, a.request.action])).toEqual([[s.ada.id, "create"], [s.ada.id, "edit"]]);
     for (const ctx of [s.ctx({ pool: "private" }), s.ctx({ localOnly: true })]) {
-      await expect(s.models.image({ ...ctx, overrides: { "image.create": [ref] } }, { action: "create", prompt: "A garden", tier: "fast" })).rejects.toThrow(CloudModelForbidden);
+      await expect(s.models.image({ ...ctx, overrides: { "image.create": [ref] } }, { action: "create", prompt: "A garden", tier: "quality" })).rejects.toThrow(CloudModelForbidden);
     }
     expect(asked).toHaveLength(2);
     // Masked edits fall down the list without reaching Codex.
@@ -304,7 +350,7 @@ describe("image calls through the router (principles 1 and 2)", () => {
     if (kind === "plan") {
       ref = (await planImages(s)).ref;
     }
-    s.models.setColumnTask(s.ada.id, "general", "image.create", [ref, s.workstation.ref]);
+    for (const task of ["image.fast", "image.create"] as const) s.models.setColumnTask(s.ada.id, "general", task, [ref, s.workstation.ref]);
     const preset = s.models.addPreset(s.ada.id, { name: "Image fallbacks", scope: "general" }, "general");
     expect(s.models.resolve("image.create", s.ctx({ preset: preset.id })).ref).toEqual(ref);
     const asked = codex(s, () => new HostRefused("image_refusal", "Image generation was refused (image_refusal)."));
@@ -316,7 +362,7 @@ describe("image calls through the router (principles 1 and 2)", () => {
   it("falls back to the keyed offering when Codex can't make the image", async () => {
     const s = await setup();
     const { ref } = await planImages(s);
-    s.models.setColumnTask(s.ada.id, "general", "image.create", [ref, s.ref]);
+    s.models.setColumnTask(s.ada.id, "general", "image.fast", [ref, s.ref]);
     const asked = codex(s, () => new HostRefused("unavailable", "Codex reached its usage limit."));
     vi.stubGlobal("fetch", vi.fn(async () => Response.json({ data: [{ b64_json: png.toString("base64") }] })));
     expect((await s.models.image(s.ctx(), { action: "create", prompt: "A garden", tier: "fast" })).resolution.ref).toEqual(s.ref);

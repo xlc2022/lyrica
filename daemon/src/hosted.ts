@@ -3,7 +3,7 @@ import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { SessionManager, type AgentSession, type AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import {
   ANSWER, answerMark, callArgs, recentWorkAllowed, WELCOME_LIMITS, alwaysAllowPrefix, CloudModelForbidden, FROM_PARENT, fromParent, HEALTH_MS, isPlan, isPlanLimit, isUnreachable, planLimitReset, NoModel, Offline, PlanWaiting, SANDBOX_ALLOW, suspectKey, ROUTINE, WAKEUP, WATCHING, WATCHING_MARK,
-  sandboxHas, sandboxTools, type ChildStatus, type JobProgress, type Memory, type Models, type PersonaStore, type Pool, type PoolView, type Skill, type Users, type Workspace,
+  sandboxHas, sandboxTools, createTask, type ChildStatus, type JobProgress, type Memory, type Models, type PersonaStore, type Pool, type PoolView, type Skill, type Users, type Workspace,
 } from "@lyrica/core";
 import {
   BUILTIN_SKILLS, checkoutsOf, codeRepositories, repoSkills, skillsIndex, type ListedSkill, createChecksExtension, createSyntaxExtension, codeTaskText, formatEntry, repoRules, appendUserMessage, executeImage, ContextMeter, createDelegateExtension, createDownloadsExtension, createImageExtension, createLyricaExtension, createMcpServersExtension, createModelsExtension, createReactExtension, createThreadsExtension, createTopExtension, createWebExtension, createWorkspaceExtension, createWaitForReportsExtension, DELEGATE_MESSAGE, EMPTY_REPLY_NOTICE, TURN_TOOL_NOTICE, OPENING, openThreadSession, type ClipMade, piModelFor, syncEntries, timedReply,
@@ -1152,7 +1152,7 @@ export class HostedThread {
       try {
         result = await executeImage({ models, threadId: this.threadId,
           call: () => { const ctx = models.callContext(this.userId, this.pool, this.threadId); return { ...ctx,
-            overrides: { ...ctx.overrides, [`image.${args.action}`]: [{ offeringId }] }, fallback: false }; },
+            overrides: { ...ctx.overrides, [args.action === "create" ? createTask(args.tier) : `image.${args.action}`]: [{ offeringId }] }, fallback: false }; },
           files: workspace.imageFiles({ userId: this.userId, pool: this.pool, threadId: this.threadId, coordinates: !!view.own.getThread(this.threadId)?.project }),
           settings: () => workspace.settings(this.userId), enabled: () => tools.settings().images && tools.settings().mode !== "plan",
           approve: r => this.approve(r),

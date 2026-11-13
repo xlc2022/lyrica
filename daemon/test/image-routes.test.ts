@@ -82,11 +82,26 @@ describe("image routes (principles 1 and 2)", () => {
     } finally { await d.stop(); }
   });
 
+  it("names the quality pick in a thread's Images select, past a model tagged fast only", async () => {
+    const { rt, d, thread, call } = await setup();
+    try {
+      const models = d.services!.models, actor = d.services!.users.get(rt.ada.id)!;
+      const refs = ["fast", "quality"].map(name => {
+        const ep = models.addEndpoint(actor, { name, kind: "local", baseUrl: `https://${name}.example/v1`, apiKey: "fake-key" });
+        models.reportUp(actor.id, ep.id);
+        return { offeringId: models.addModel(actor, ep.id, { modelId: "art", image: true, useFor: name as "fast" | "quality" }).id };
+      });
+      models.setColumnTask(actor.id, "private", "image.create", refs);
+      const settings = (await call("GET", `/api/u/${actor.id}/threads/private/${encodeURIComponent(thread.id)}/settings`)).value as { models: Record<string, { model?: { offeringId: string }; endpointName?: string }> };
+      expect(settings.models["image.create"]).toMatchObject({ model: refs[1], endpointName: "quality" });
+    } finally { await d.stop(); }
+  });
+
   it("retries a stored refusal on the next local model, preserving the source message and current boundaries", async () => {
     const { rt, d, thread, call, dir } = await setup();
     try {
       const models = d.services!.models, actor = d.services!.users.get(rt.ada.id)!;
-      // A call that left out its tier was a quality one, so the next model skips the fast-only one.
+      // A quality call goes down Quality images, so the next model skips the fast-only one.
       const refs = ["first", "fast", "second"].map(name => {
         const ep = models.addEndpoint(actor, { name, kind: "local", baseUrl: `https://${name}.example/v1`, apiKey: "fake-key" });
         models.reportUp(actor.id, ep.id);
@@ -95,7 +110,7 @@ describe("image routes (principles 1 and 2)", () => {
       });
       models.setColumnTask(actor.id, "private", "image.create", refs.map(r => r.ref));
       const view = d.services!.memory.openThreadView(actor.id, "private");
-      const args = { action: "create", prompt: "A garden" };
+      const args = { action: "create", prompt: "A garden", tier: "quality" };
       let parentId: string | null = null;
       const append = (piId: string, role: string, message: unknown) => {
         view.own.appendEntry(thread.id, { piId, role, text: "", data: { type: "message", id: piId, parentId, timestamp: new Date().toISOString(), message } });

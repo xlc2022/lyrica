@@ -349,7 +349,7 @@ read through `searchView`; only matching notes then pass.
 
 ```ts
 type Task = "chat" | "code" | "subagent.cheap" | "subagent.strong" | "compaction" | "title" | "watching"
-          | "embedding" | "sleep.consolidate" | "sleep.dream" | "sleep.wake" | "vision" | "image.create" | "image.edit" | "image.upscale" | "video"
+          | "embedding" | "sleep.consolidate" | "sleep.dream" | "sleep.wake" | "vision" | "image.fast" | "image.create" | "image.edit" | "image.upscale" | "video"
           | "speech.transcribe" | "speech.speak";
 // vision (Look at images): its own list only, of models with vision; no task follows it. A subagent whose model can't see
 // an image switches to its first model up (with tools), else to a local model with vision (visionList, extension/src/delegate/runs.ts).
@@ -506,7 +506,7 @@ class Models {                                              // new Models(keyrin
   // The `image.upscale` task's list; only a host recipe that lists `upscale_video` (Offering.upscalesClips) answers ("it doesn't
   // upscale clips"). POST /host/v1/videos/upscale with explicit fields only; two hours at most (VIDEO_TIMEOUT_MS).
   firstVideoModel(ctx): { name; longestSeconds?; extend; sound } | undefined   // the Videos list's first usable model, for the image tool's duration and prompt; no call
-  loraModels(ctx, "image.create" | "image.edit" | "video", asks: LoraAsk[]): { ids; names }   // local models taking every LoRA asked, list order first, for `first`; names: every LoRA they take (loraName); no call
+  loraModels(ctx, "image.fast" | "image.create" | "image.edit" | "video", asks: LoraAsk[]): { ids; names }   // local models taking every LoRA asked, list order first, for `first`; names: every LoRA they take (loraName); no call
   imageModels(ctx): { name; actions: ("create" | "edit" | "upscale")[]; references? }[]   // the models on the Images lists that can do their task, for the image tool's model field; no call
   // Thinking and call records
   defaultThinking(userId) / setDefaultThinking(userId, level) / setThinking(userId, threadId, level | null)
@@ -687,8 +687,9 @@ class Models {                                              // new Models(keyrin
   itself follows another task). It is a thread task (`THREAD_TASKS` in
   daemon/src/api.ts) for project chats only: the project chat can choose
   its own, and `PATCH …/settings` choosing it for any other thread is 400.
-- **Images in a thread.** `image.create`, `image.edit`, `image.upscale`
-  and `video` are thread tasks too: a thread can choose its own model for
+- **Images in a thread.** `image.fast` (Fast images), `image.create`
+  (Quality images), `image.edit`, `image.upscale` and `video` are thread
+  tasks too: a thread can choose its own model for
   each, as for the text tasks, and a private or local-only thread only
   local ones. The drawer's `video` row shows the first recipe that makes
   any kind of clip; each call still passes over one that can't make its

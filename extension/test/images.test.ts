@@ -176,7 +176,7 @@ describe("image tool results (principles 1 and 4)", () => {
   });
   it("points a create with references that no model takes to edit", async () => {
     const s = await setup(), plain = await s.host("plain", undefined, undefined, 0);
-    s.models.setColumnTask(s.ada.id, "private", "image.create", [plain.ref]);
+    s.models.setColumnTask(s.ada.id, "private", "image.fast", [plain.ref]);
     s.context({ pool: "private", localOnly: true });
     await expect(s.run({ action: "create", prompt: "A garden", references: ["/workspace/uploads/landscape.png"] })).rejects.toThrow(/To change an image, use edit with it as image\./);
   });
@@ -203,7 +203,7 @@ describe("image tool results (principles 1 and 4)", () => {
 
   it("sends steps, CFG, a seed and other settings asked for to a model host for this job, passing over a cloud model, which can't take them", async () => {
     const s = await setup(); s.settings.setPhotoCloudPolicy("always");
-    s.models.setColumnTask(s.ada.id, "general", "image.create", [s.ref, s.workstation.ref]);
+    s.models.setColumnTask(s.ada.id, "general", "image.fast", [s.ref, s.workstation.ref]);
     s.models.setColumnTask(s.ada.id, "general", "image.edit", [s.ref, s.workstation.ref]);
     const made = await s.run({ action: "create", prompt: "A garden", steps: 16, cfg: 1 });
     expect((made.content as { type: string; text?: string }[]).find(c => c.type === "text")!.text)
@@ -214,10 +214,10 @@ describe("image tool results (principles 1 and 4)", () => {
       { recipe: "art", prompt: "Add flowers", cfg: 2.5, seed: 42, image: png.toString("base64") },
     ]);
     // With only the cloud model listed, nothing can take them, and the error says why.
-    s.models.setColumnTask(s.ada.id, "general", "image.create", [s.ref]);
+    s.models.setColumnTask(s.ada.id, "general", "image.fast", [s.ref]);
     await expect(s.run({ action: "create", prompt: "A garden", cfg: 1 })).rejects.toThrow(/does not take steps, CFG, a seed or other sampling settings/);
     await expect(s.run({ action: "create", prompt: "A garden", seed: 7 })).rejects.toThrow(/does not take steps, CFG, a seed or other sampling settings/);
-    s.models.setColumnTask(s.ada.id, "general", "image.create", [s.ref, s.workstation.ref]);
+    s.models.setColumnTask(s.ada.id, "general", "image.fast", [s.ref, s.workstation.ref]);
     // Without them, the cloud model is first again and the recipe's own apply.
     await s.run({ action: "create", prompt: "A pond" });
     expect(s.heard).toHaveLength(1);
@@ -257,10 +257,10 @@ describe("image tool results (principles 1 and 4)", () => {
     const image = await s.files.read(part.paths[0]!);
     expect(image.portrait).toBe(false); expect(image.input.bytes).toEqual(png);
     await s.run({ action: "edit", instruction: "Add flowers", image: part.paths[0] });
-    // A create without a tier is a quality one, rather than an error the model has to fix.
+    // A create without a tier is a fast one, rather than an error: it goes down Fast images, here Quality images' list.
     const plain = await s.run({ action: "create", prompt: "A pond" });
-    expect((plain.details as { image: { tier: string } }).image.tier).toBe("quality");
-    expect(s.heard.at(-1)?.body).toMatchObject({ quality: "high" });
+    expect((plain.details as { image: { tier: string } }).image.tier).toBe("fast");
+    expect(s.heard.at(-1)?.body).toMatchObject({ quality: "low" });
     expect(s.models.recentCalls(s.ada.id)).toHaveLength(3);
     expect(JSON.stringify(s.models.recentCalls(s.ada.id))).not.toMatch(/garden|flowers/);
   });

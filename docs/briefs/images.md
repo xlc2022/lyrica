@@ -44,7 +44,8 @@ of how she works with the user, from storyboards to edits of the user's own phot
    - The tasks `image.create` and `image.edit` resolve through the router
      with the thread's `CallContext`, using the ordered fallbacks.
    - Private and local-only threads get local models only.
-   - `fast` and `quality` are the two tiers of `image.create`.
+   - `fast` and `quality` are the two create tiers, each with its own list:
+     `image.fast` (Fast images, the default) and `image.create` (Quality images).
    - `upscale` resolves `image.upscale` (SeedVR2 on the hosts). It takes an
      image from the thread or the user's photos, so the photos-of-you rule
      applies as for edits.
