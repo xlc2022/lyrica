@@ -1589,7 +1589,7 @@ test("the Files panel's keys: Ctrl+C and Ctrl+V copy the selection into the fold
     await expect(panel.locator(`button[data-path="/workspace/${tray}"]`)).toBeVisible();
     return;
   }
-  // Ctrl+C copies the selection; Ctrl+V pastes a copy into the folder last opened, the thread's folder, and selects it.
+  // Ctrl+C copies the selection; Ctrl+V on Images pastes a copy beside its original, under a free name, and selects it.
   await grid.getByRole("button", { name: tray, exact: true }).click({ modifiers: ["ControlOrMeta"] });
   const bar = panel.getByRole("toolbar", { name: "Selection" });
   await expect(bar).toContainText("1 selected");
@@ -1600,11 +1600,13 @@ test("the Files panel's keys: Ctrl+C and Ctrl+V copy the selection into the fold
   await page.keyboard.press("ControlOrMeta+v");
   await expect(tiles).toHaveCount(2);
   const copy = tiles.and(page.locator("[aria-pressed='true']"));
-  await expect(copy).toHaveAttribute("data-path", `/workspace/${tray}`);
+  await expect(copy).toHaveAttribute("data-path", `/workspace/uploads/${tray.replace(".png", "-2.png")}`);
+  await expect(copy).toHaveAccessibleName(tray.replace(".png", "-2.png"));
+  await expect.poll(() => copy.locator("img").evaluate((i: HTMLImageElement) => i.complete && i.naturalWidth > 0)).toBe(true);
   if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/files-keys-pasted-${page.viewportSize()!.width}.png` });
   // Delete asks first, then deletes the selection.
   await page.keyboard.press("Delete");
-  const confirm = page.getByRole("dialog", { name: `Delete ${tray}?` });
+  const confirm = page.getByRole("dialog", { name: `Delete uploads/${tray.replace(".png", "-2.png")}?` });
   await expect(confirm).toContainText("is deleted for good");
   if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/files-keys-delete-${page.viewportSize()!.width}.png` });
   await confirm.getByRole("button", { name: "Delete" }).click();
@@ -1620,7 +1622,8 @@ test("the Files panel's keys: Ctrl+C and Ctrl+V copy the selection into the fold
   await expect(grid.getByRole("button", { name: "image.png", exact: true })).toBeVisible();
   // In the search box the keys are the text's: Backspace deletes a letter, not a file.
   await panel.getByRole("tab", { name: "Files" }).click();
-  await panel.getByRole("button", { name: "uploads", exact: true }).click();
+  // The paste opened uploads/ in the tree, where the copy went.
+  await expect(panel.getByRole("button", { name: "uploads", exact: true })).toHaveAttribute("aria-expanded", "true");
   await panel.getByRole("button", { name: tray, exact: true }).click({ modifiers: ["ControlOrMeta"] });
   await panel.getByRole("searchbox", { name: "Search files" }).fill("tr");
   await page.keyboard.press("Backspace");

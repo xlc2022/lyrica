@@ -272,26 +272,34 @@ export function FilesPage({ ctx, pool, threadId, threads, path }: { ctx: ShellCo
     write.catch(() => { c.system = false; });
     setCopiedNote(paths.length);
   };
-  /** Ctrl+V of what was copied in a panel: copies made in `dir` by lyricad within this thread, or carried over from another of the user's threads. */
-  const pasteCopied = async (dir: string) => {
+  /**
+   * Ctrl+V of what was copied in a panel: copies made in `dir` by lyricad within this thread, or carried over from
+   * another of the user's threads. `beside` (Images and Videos, which show no folders): a copy within the thread lands
+   * beside its original where that folder is writable, so it shows as "tray-2.png", not as a twin.
+   */
+  const pasteCopied = async (dir: string, beside = false) => {
     const c = copied;
     if (!c) return;
-    if (!writable(dir)) { setError(`${named(dir)} is read-only.`); return; }
+    const into = (p: string) => (beside && c.base === base && writable(parent(p)) ? parent(p) : dir);
+    const bad = c.paths.map(into).find((d) => !writable(d));
+    if (bad) { setError(`${named(bad)} is read-only.`); return; }
     setError("");
-    let made: string[];
-    if (c.base === base) made = (await post<FileCopyResponse>(`${base}/copy`, { paths: c.paths, dir })).paths;
-    else {
+    let made: string[] = [];
+    if (c.base === base) {
+      const groups = new Map<string, string[]>();
+      for (const p of c.paths) groups.set(into(p), [...groups.get(into(p)) ?? [], p]);
+      for (const [d, ps] of groups) made.push(...(await post<FileCopyResponse>(`${base}/copy`, { paths: ps, dir: d })).paths);
+    } else {
       // Private stays private: a private thread's files never land in a general one.
       if (c.pool === "private" && pool !== "private") throw new Error("Files from a private thread can't be pasted into a general one.");
       if (c.folders.length) throw new Error("A folder pastes only within its own thread; copy the files in it instead.");
-      made = [];
       for (const p of c.paths) {
         const r = await fetch(`${c.base}/content?path=${encodeURIComponent(p)}`, { credentials: "same-origin" });
         if (!r.ok) throw new Error(`${basename(p)} couldn't be read.`);
         made.push((await upload(`${base}/upload?dir=${encodeURIComponent(dir)}&name=${encodeURIComponent(basename(p))}`, new File([await r.blob()], basename(p)), () => {})).path);
       }
     }
-    setOpen((s) => new Set([...s, dir]));
+    setOpen((s) => new Set([...s, ...made.map(parent)]));
     await refresh(made);
     setSel(new Set(made));
   };
@@ -430,7 +438,7 @@ export function FilesPage({ ctx, pool, threadId, threads, path }: { ctx: ShellCo
       const text = e.clipboardData?.getData("text/plain") ?? "";
       if (copied && copied.userId === userId && (text === copied.text || (!copied.system && !files.length && !text))) {
         e.preventDefault();
-        pasteCopied(cwd).catch(fail);
+        pasteCopied(cwd, isMedia(tab)).catch(fail);
       } else if (files.length) {
         // A screenshot or files copied outside Lyrica upload, as a drop does.
         e.preventDefault();
