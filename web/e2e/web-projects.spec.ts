@@ -1629,6 +1629,28 @@ test("the Files panel's keys: Ctrl+C and Ctrl+V copy the selection into the fold
   await page.keyboard.press("Backspace");
   await expect(panel.getByRole("searchbox", { name: "Search files" })).toHaveValue("t");
   await expect(page.getByRole("dialog", { name: /^Delete / })).toHaveCount(0);
+  await panel.getByRole("searchbox", { name: "Search files" }).fill("");
+  // Across threads: a local-only thread's file pastes only into another local-only thread.
+  const settings = (id: string) => `/api/u/${userId}/threads/general/${encodeURIComponent(id)}/settings`;
+  const localOnly = (id: string) => page.evaluate(async (path) => { const r = await fetch(path, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ localOnly: true }) }); if (!r.ok) throw new Error(`${path}: ${r.status}`); }, settings(id));
+  await localOnly(threadId);
+  await panel.getByRole("button", { name: tray, exact: true }).click({ modifiers: ["ControlOrMeta"] });
+  await expect(bar).toContainText("1 selected");
+  await page.keyboard.press("ControlOrMeta+c");
+  await expect(bar).toContainText("Copied");
+  await newThread(page, "General");
+  await send(page, "hello other");
+  await expect(page.getByText("You said: hello other")).toBeVisible();
+  const other = decodeURIComponent(location_of(page).split("/t/general/")[1]!.split("/")[0]!);
+  await page.getByRole("link", { name: "Files and images" }).click();
+  await expect(panel.getByRole("button", { name: "Thread folder", exact: true })).toBeVisible();
+  await panel.getByRole("tab", { name: "Files" }).click();
+  await page.keyboard.press("ControlOrMeta+v");
+  await expect(panel.getByRole("alert")).toHaveText("Files from a local-only thread can't be pasted into one that uses cloud models.");
+  await localOnly(other);
+  await panel.getByRole("tab", { name: "Files" }).click();
+  await page.keyboard.press("ControlOrMeta+v");
+  await expect(panel.locator(`button[data-path="/workspace/${tray}"]`)).toBeVisible();
 });
 
 test("the Files panel's Expand opens it large in a dialog over the conversation, its tabs working there; Close, Escape or the scrim puts it back in the panel", async ({ page, baseURL }) => {

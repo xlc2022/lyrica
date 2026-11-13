@@ -192,7 +192,7 @@ Each user has two pools of memory.
     - Keys as in a file manager (decided 2026-11-13): Ctrl or Cmd+C copies
       the selected files, Ctrl or Cmd+V pastes copies into the folder last
       opened (in this thread or another of the user's, never from a private
-      thread into a general one; a screenshot from outside uploads), and
+      thread into a general one, nor local-only into cloud-using; a screenshot from outside uploads), and
       Delete asks to delete the selection.
     - Ctrl- or Cmd-click and Shift-click select several (Select in the menu
       on a phone); a mouse drag across the tree or the Images and Videos

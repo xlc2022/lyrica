@@ -6,7 +6,7 @@
 // over the conversation; the page on its own below it.
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { get, post, threadPath, upload, type FileCopyResponse, type FileEntry, type FileListing, type FileRoot, type FileSearch, type ImageEntry, type Pool, type ThreadSummary } from "./api.ts";
+import { get, post, threadPath, upload, type FileCopyResponse, type FileEntry, type FileListing, type FileRoot, type FileSearch, type ImageEntry, type Pool, type ThreadSettings, type ThreadSummary } from "./api.ts";
 import { ask, ATTACH_EVENT, ATTACH_KEY, keep, SHOW_EVENT, SHOW_KEY, type AttachRequest, type ShowRequest } from "./links.ts";
 import { FAMILY_ROOT, isUnderWorkdir, SHARED, shown, Thumb, useFileLinks, VideoThumb, WORKDIR, type FileLinks } from "./paths.tsx";
 import { ArtifactsTab, importArtifacts } from "./Artifacts.tsx";
@@ -39,7 +39,10 @@ interface MenuAt { x: number; y: number; target: Target; sub?: "delete" }
  * panels. `text` is what went on the system clipboard with it, so a later copy anywhere else wins; `system` is false
  * when the browser refused that write, and Lyrica's own copy is then all there is to paste.
  */
-let copied: { userId: string; pool: Pool; base: string; paths: string[]; folders: string[]; text: string; system: boolean } | undefined;
+let copied: { userId: string; pool: Pool; base: string; paths: string[]; folders: string[]; text: string; system: boolean; localOnly: Promise<boolean> } | undefined;
+/** Whether a thread is local-only; one that can't be read counts as local-only for a source and not for a target, so the guard errs shut. */
+const localOnlyOf = (userId: string, pool: Pool, threadId: string, unknown: boolean) =>
+  get<ThreadSettings>(threadPath(userId, pool, threadId, "settings")).then((s) => s.localOnly, () => unknown);
 const IMAGE_NAME = /\.(png|jpe?g|gif|webp)$/i;
 /** A field the keys belong to: the shortcuts leave text alone. */
 const inField = (t: EventTarget | null) => t instanceof Element && !!t.closest("input, textarea, select, [contenteditable]:not([contenteditable='false'])");
@@ -262,7 +265,7 @@ export function FilesPage({ ctx, pool, threadId, threads, path }: { ctx: ShellCo
     if (!paths.length) return;
     const text = paths.join("\n");
     const isFolder = (p: string) => listingEntry(p)?.kind === "folder";
-    const c = { userId, pool, base, paths, folders: paths.filter(isFolder), text, system: true };
+    const c = { userId, pool, base, paths, folders: paths.filter(isFolder), text, system: true, localOnly: localOnlyOf(userId, pool, threadId, true) };
     copied = c;
     const cb = navigator.clipboard;
     const one = paths.length === 1 && IMAGE_NAME.test(paths[0]!) && !isFolder(paths[0]!) ? paths[0]! : undefined;
@@ -291,7 +294,9 @@ export function FilesPage({ ctx, pool, threadId, threads, path }: { ctx: ShellCo
       for (const [d, ps] of groups) made.push(...(await post<FileCopyResponse>(`${base}/copy`, { paths: ps, dir: d })).paths);
     } else {
       // Private stays private: a private thread's files never land in a general one.
+      // These guard the user's own paste, as download-then-upload would be refused nowhere; they are not a boundary (docs/workspace.md).
       if (c.pool === "private" && pool !== "private") throw new Error("Files from a private thread can't be pasted into a general one.");
+      if (await c.localOnly && !await localOnlyOf(userId, pool, threadId, false)) throw new Error("Files from a local-only thread can't be pasted into one that uses cloud models.");
       if (c.folders.length) throw new Error("A folder pastes only within its own thread; copy the files in it instead.");
       for (const p of c.paths) {
         const r = await fetch(`${c.base}/content?path=${encodeURIComponent(p)}`, { credentials: "same-origin" });
