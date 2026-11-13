@@ -30,7 +30,7 @@ async function setup() {
 }
 
 describe("tool calls on the stream", () => {
-  it("show as the model starts writing them, then run with their arguments", async () => {
+  it("show as the model starts writing them, their arguments as written, then run with them", async () => {
     const { replies, say } = await setup();
     replies.push(steps(2), { text: "Done." });
     const events = await say("plan it");
@@ -39,6 +39,10 @@ describe("tool calls on the stream", () => {
       expect(events.filter((e) => e.type === "tool_call" && e.toolCallId === id)).toEqual([{ type: "tool_call", toolCallId: id, name: "threads" }]);
       expect(at("tool_call", id)).toBeLessThan(at("tool_start", id));
       expect(events[at("tool_start", id)]).toMatchObject({ args: { action: "steps" } });
+      // Its arguments reach the views as she writes them, before it runs.
+      expect(at("tool_call", id)).toBeLessThan(at("tool_args", id));
+      expect(at("tool_args", id)).toBeLessThan(at("tool_start", id));
+      expect(events[at("tool_args", id)]).toMatchObject({ args: { action: "steps" } });
     }
     // Both are shown before the first one runs.
     expect(at("tool_call", "call_2")).toBeLessThan(at("tool_start", "call_1"));

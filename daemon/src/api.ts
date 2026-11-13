@@ -1435,7 +1435,7 @@ export type MessagePart =
   | { type: "text"; text: string }
   | { type: "thinking"; text: string }
   /** `root`: a run_as_root card's script, hash and command, as the tool read them on the machine. */
-  | { type: "tool"; toolCallId: string; name: string; args: unknown; result?: string; isError?: boolean; threads?: ThreadRef[]; imageRefusal?: ImageRefusal; root?: RootStep }
+  | { type: "tool"; toolCallId: string; name: string; args: unknown; /** Live only: its arguments as written so far, until it runs. */ draft?: unknown; result?: string; isError?: boolean; threads?: ThreadRef[]; imageRefusal?: ImageRefusal; root?: RootStep }
   | { type: "recall"; ids: string[] }
   | { type: "remember"; ids: string[] }
   /**
@@ -1790,8 +1790,10 @@ export type ThreadEvent =
   | { type: "message_start"; model?: string }
   | { type: "text"; delta: string }
   | { type: "thinking"; delta: string }
-  /** The model has started writing a tool call: shown at once, with its arguments when it runs (`tool_start`). */
+  /** The model has started writing a tool call: shown at once, its arguments filling in (`tool_args`) and final when it runs (`tool_start`). */
   | { type: "tool_call"; toolCallId: string; name: string }
+  /** A call's arguments as written so far (partial JSON parsed), at most four times a second and once whole. Never buffered for replay. */
+  | { type: "tool_args"; toolCallId: string; args: unknown }
   | { type: "tool_start"; toolCallId: string; name: string; args: unknown }
   /** An image or clip being made started, or got further. */
   | ({ type: "making" } & Making)

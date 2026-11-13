@@ -660,6 +660,10 @@ checks and the routes with fakes; the transport test uses a local receiver.
 `GET …/threads/:pool/:threadId/events` is one SSE stream per thread. It
 carries text and thinking deltas, tool calls (`tool_call` with the tool's
 name as soon as the model starts writing one, from Pi's `toolcall_start`;
+`tool_args` with its arguments as written so far, Pi's partial parse at
+`toolcall_delta`, at most every 250 ms and once whole at `toolcall_end`,
+sent only to open views and never buffered for replay, so a view that opens
+mid-message gets the latest with the message so far;
 `tool_start` with its arguments when it runs; `tool_end` with the first lines
 of the result (6 lines or 600 characters; 60 lines or 6,000 characters for
 a `read`, so its card can show the file; stored messages keep the same), and for `delegate` its subagent threads, each with the role and

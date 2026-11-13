@@ -48,6 +48,23 @@ test("the request's counts take the dots' place while the prompt is read and she
   await noHorizontalScroll(page);
 });
 
+test("a tool call's arguments fill in as she writes them, before it runs", async ({ page, baseURL }) => {
+  await enter(page, baseURL!);
+  await newThread(page, "General");
+  await send(page, "write slowly: notes.md");
+  const marker = page.locator(".marker[data-type=tool]").filter({ hasText: "write" });
+  // The path shows in the summary as soon as it is written, while the call is still being written.
+  await expect(marker.getByRole("button", { name: "write notes.md running" })).toBeVisible();
+  await marker.getByRole("button").click();
+  await expect(marker.locator(".marker-body pre")).toContainText("Line 1 of the notes.");
+  await expect(marker.locator(".marker-body pre")).not.toContainText("Line 12 of the notes.");
+  if (process.env.SHOTS) await page.screenshot({ path: `${process.env.SHOTS}/tool-args-${phone(page) ? 390 : 1280}.png` });
+  await expect(marker.locator(".marker-body pre").first()).toContainText("Line 12 of the notes.");
+  // It then runs with the whole of them (and fails here, where the test lyricad mounts no workspace).
+  await expect(marker.getByRole("button", { name: /^write notes\.md (done|failed)$/ })).toBeVisible();
+  await noHorizontalScroll(page);
+});
+
 test("under a closed run of tool calls, the request's counts show while she reads and thinks", async ({ page, baseURL }) => {
   await enter(page, baseURL!);
   await newThread(page, "General");

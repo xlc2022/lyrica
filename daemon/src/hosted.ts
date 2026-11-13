@@ -76,6 +76,8 @@ const BUFFER = 500;
 const EPOCH = randomBytes(4).toString("hex");
 /** Besides text and reasoning, the events that draw a message being written (web/src/live.ts). */
 const WRITING = new Set<ThreadEvent["type"]>(["tool_call", "tool_start", "tool_end", "recall", "remember"]);
+/** How often a call's arguments are sent while she writes them. */
+const DRAFT_MS = 250;
 
 type Client = (id: string, event: ThreadEvent) => void;
 /** How a request ended: "held" kept it on the card past the turn, and "withdrawn" is a later held request replacing it. */
@@ -480,6 +482,30 @@ export class HostedThread {
    * The request's counts and times change several times a second: sent to the open views as they are, never
    * buffered, so they don't push real events out of the replay. A view that opens later gets the latest in `hello`.
    */
+  /** The arguments last sent for each call being written, and when: Pi parses them anew at every delta. */
+  private drafts = new Map<string, { at: number; json: string }>();
+
+  /**
+   * A call's arguments as she writes them, parsed so far by Pi: sent at most every DRAFT_MS, and once whole at its end,
+   * so a long write shows its path and content growing instead of `{}`. Like live_call, never buffered: a view
+   * that reconnects gets the next one, and one that opens later gets the latest with the message so far.
+   */
+  private drafted(toolCallId: string, args: unknown, whole: boolean): void {
+    const now = Date.now();
+    const last = this.drafts.get(toolCallId);
+    if (!whole && last && now - last.at < DRAFT_MS) return;
+    if (!args || typeof args !== "object" || !Object.keys(args).length) return;
+    const json = JSON.stringify(args);
+    if (json === last?.json) return;
+    this.drafts.set(toolCallId, { at: now, json });
+    const event: ThreadEvent = { type: "tool_args", toolCallId, args };
+    if (this.writing.length) {
+      const i = this.writing.findIndex((e) => e.type === "tool_args" && e.toolCallId === toolCallId);
+      if (i >= 0) this.writing[i] = event; else this.writing.push(event);
+    }
+    for (const c of this.clients) c(this.id(this.n), event);
+  }
+
   private liveCallChanged(call: Api.LiveCall | null): void {
     this.liveCall = call && { call, at: Date.now() };
     const event: ThreadEvent = { type: "live_call", call };
@@ -498,7 +524,7 @@ export class HostedThread {
   private writing: ThreadEvent[] = [];
 
   private track(event: ThreadEvent): void {
-    if (event.type === "message_start") this.writing = [event];
+    if (event.type === "message_start") { this.writing = [event]; this.drafts.clear(); }
     else if (event.type === "turn_end" || event.type === "rewound" || event.type === "reset") this.writing = [];
     else if (this.writing.length && (event.type === "text" || event.type === "thinking")) {
       const last = this.writing.at(-1)!;
@@ -1486,10 +1512,14 @@ export class HostedThread {
         if (a.type === "text_delta") this.emit({ type: "text", delta: a.delta });
         if (a.type === "thinking_delta") this.emit({ type: "thinking", delta: a.delta });
         // Principle 1: a call shows as the model starts writing it, not when the reply ends, so a reply of many calls isn't silent.
-        // Its arguments follow with tool_start when it runs.
+        // Its arguments fill in as she writes them (`tool_args`), and are final with tool_start when it runs.
         if (a.type === "toolcall_start") {
           const call = a.partial.content[a.contentIndex];
           if (call?.type === "toolCall" && call.id && call.name) this.emit({ type: "tool_call", toolCallId: call.id, name: call.name });
+        }
+        if (a.type === "toolcall_delta" || a.type === "toolcall_end") {
+          const call = a.type === "toolcall_end" ? a.toolCall : a.partial.content[a.contentIndex];
+          if (call?.type === "toolCall" && call.id) this.drafted(call.id, call.arguments, a.type === "toolcall_end");
         }
         break;
       }

@@ -864,12 +864,14 @@ function Marker({ part, env }: { part: Exclude<MessagePart, { type: "text" | "im
       break;
     case "tool": {
       const state = part.result === undefined ? "running" : part.isError ? "failed" : "done";
+      // A call she is still writing shows its arguments so far, until it runs with the whole of them.
+      const args = part.draft !== undefined && isEmpty(part.args) ? part.draft : part.args;
       // A call on a machine names it first, and an MCP call its server.
       const mcp = mcpOf(part.name);
-      const place = mcp?.server ?? machineOf(part.args);
+      const place = mcp?.server ?? machineOf(args);
       // A web_fetch or web_search the offline copy answered says so: the URL she asked for was never fetched online, and the search never left the server.
       const copy = (part.name === "web_fetch" || part.name === "web_search") && !part.isError ? offlineCopyOf(part.result) : undefined;
-      label = <>{place && <b className="place">{place}</b>}<b className="tool-name">{mcp?.tool ?? part.name}</b> <code>{summarizeArgs(part.args)}</code> {copy && <><span className="via">from {copy}</span> </>}<span className="state" data-state={state}>{state}</span></>;
+      label = <>{place && <b className="place">{place}</b>}<b className="tool-name">{mcp?.tool ?? part.name}</b> <code>{summarizeArgs(args)}</code> {copy && <><span className="via">from {copy}</span> </>}<span className="state" data-state={state}>{state}</span></>;
       if (part.name === "image") {
         const args = (part.args ?? {}) as { action?: string; tier?: string; images?: unknown };
         const making = makingLabel(args);
@@ -879,7 +881,7 @@ function Marker({ part, env }: { part: Exclude<MessagePart, { type: "text" | "im
       }
       body = (
         <>
-          <pre>{JSON.stringify(part.args, null, 2)}</pre>
+          <pre>{JSON.stringify(args, null, 2)}</pre>
           {part.result !== undefined && (readText(part) ? <ReadText {...readText(part)!} env={env} /> : <pre className={part.isError ? "tool-error" : ""}>{part.result}</pre>)}
           {readImage(part) && <ReadImage path={readImage(part)!} env={env} />}
         </>
@@ -1364,6 +1366,8 @@ export function summarizeArgs(args: unknown): string {
   const main = a.command ?? a.path ?? a.query ?? a.url ?? Object.values(a)[0];
   return typeof main === "string" ? main.split("\n")[0]! : JSON.stringify(main ?? "");
 }
+
+const isEmpty = (a: unknown): boolean => !a || (typeof a === "object" && !Object.keys(a).length);
 
 /** An MCP tool's server and its own name there, from Pi's `mcp__<server>__<tool>`. */
 export function mcpOf(name: string): { server: string; tool: string } | undefined {
