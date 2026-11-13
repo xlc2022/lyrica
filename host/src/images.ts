@@ -1057,8 +1057,17 @@ export class Images {
       const frame = uploads.image ? imageSize(uploads.image)! : null;
       const area = Number(values.width) * Number(values.height);
       const shape = ratio ?? (source ? source.width / source.height : frame && width === undefined && height === undefined ? frame.width / frame.height : Number(values.width) / Number(values.height));
-      values.width = snap(width ?? (height !== undefined ? height * shape : Math.sqrt(area * shape)));
-      values.height = snap(height ?? (width !== undefined ? width / shape : Math.sqrt(area / shape)));
+      let w = width ?? (height !== undefined ? height * shape : Math.sqrt(area * shape));
+      let h = height ?? (width !== undefined ? width / shape : Math.sqrt(area / shape));
+      if (width === undefined && height === undefined) {
+        // Both sides scaled by one factor to fit 2048 (or reach 256), so a wide shape holds at a large area.
+        const fit = Math.min(1, 2048 / Math.max(w, h));
+        w *= fit; h *= fit;
+        const grow = Math.max(1, 256 / Math.min(w, h));
+        w *= grow; h *= grow;
+      }
+      values.width = snap(w);
+      values.height = snap(h);
     }
     // A driving clip can't give more moves than it has. Extending, the duration is what's added.
     const longest = extending ? LONGEST_SECONDS : longestSeconds(template);
