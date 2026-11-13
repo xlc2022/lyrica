@@ -106,7 +106,7 @@ describe("the live view of a thread's stream", () => {
     expect(run([{ type: "error", message: "The thread couldn't compact." }], s).errors).toEqual(["The thread couldn't compact."]);
   });
 
-  it("shows a call as soon as the model starts writing it, and fills in its arguments in place when it runs", () => {
+  it("shows a call as soon as the model starts writing it, its arguments as written, and the whole of them in place when it runs", () => {
     const s = run([
       { type: "turn_start" },
       { type: "message_start", model: "m" },
@@ -118,6 +118,14 @@ describe("the live view of a thread's stream", () => {
       { type: "tool", toolCallId: "c1", name: "image", args: {} },
       { type: "tool", toolCallId: "c2", name: "bash", args: {} },
     ] }]);
+    // Its arguments as written so far ride beside `args`, which the cards read only once it runs.
+    const writing = run([
+      { type: "tool_args", toolCallId: "c2", args: { command: "ls" } },
+      { type: "tool_args", toolCallId: "c2", args: { command: "ls -la" } },
+    ], s);
+    expect((writing.items[0] as { parts: unknown[] }).parts[1]).toEqual({ type: "tool", toolCallId: "c2", name: "bash", args: {}, draft: { command: "ls -la" } });
+    expect((run([{ type: "tool_start", toolCallId: "c2", name: "bash", args: { command: "ls -la /" } }], writing).items[0] as { parts: unknown[] }).parts[1])
+      .toEqual({ type: "tool", toolCallId: "c2", name: "bash", args: { command: "ls -la /" } });
     const ran = run([
       { type: "tool_start", toolCallId: "c1", name: "image", args: { action: "create", prompt: "A garden" } },
       { type: "tool_end", toolCallId: "c1", name: "image", result: "made", isError: false },

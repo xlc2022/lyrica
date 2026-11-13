@@ -231,10 +231,10 @@ describe("permission prompts", () => {
     expect(request).toMatchObject({ tool: "bash", args: { command: "echo hi" } });
     // Waiting: the model hasn't been asked again yet.
     expect(model.requests).toHaveLength(1);
-    // A view that opens now sees the call so far and the waiting request.
+    // A view that opens now sees the call so far (its arguments as written, then as run) and the waiting request.
     const late = ada.events(`${path}/events`);
     await late.until(is("hello"));
-    expect(late.events.map((e) => e.event.type)).toEqual(["message_start", "tool_call", "tool_start", "hello"]);
+    expect(late.events.map((e) => e.event.type)).toEqual(["message_start", "tool_call", "tool_args", "tool_start", "hello"]);
     expect((late.events.at(-1)!.event as { permissions: unknown[] }).permissions).toHaveLength(1);
     late.close();
 

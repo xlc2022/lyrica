@@ -1479,8 +1479,10 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   naming the limit, stopping the request; none of its calls run. Calls run
   only once a reply ends, so without it a model repeating one call would run
   hundreds. Each call reaches the views as `tool_call` (`toolCallId`, `name`)
-  as soon as the model starts writing it; the live view adds its marker then
-  and fills in its arguments in place at `tool_start`.
+  as soon as the model starts writing it; the live view adds its marker then,
+  shows its arguments as written so far from `tool_args` (in the part's
+  live-only `draft`, which only the plain tool marker reads, so cards wait for
+  the whole call) and fills in its arguments in place at `tool_start`.
 - **Shared local models** (`extension/src/model-share.ts`, around every
   local endpoint's stream in `modelRuntimeFor`): `shareModel(scope, key, need,
   window, signal?, slots?, holder?)` waits until a request fits beside the ones running on

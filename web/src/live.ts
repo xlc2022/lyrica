@@ -134,10 +134,13 @@ export function liveReducer(s: Live, e: LiveAction): Live {
     case "tool_call":
       return withParts(s, (parts) => parts.some((p) => p.type === "tool" && p.toolCallId === e.toolCallId) ? parts
         : [...parts, { type: "tool", toolCallId: e.toolCallId, name: e.name, args: {} }]);
+    case "tool_args":
+      // Its arguments as she writes them, kept apart from `args` so the cards that read those wait for the whole call.
+      return withParts(s, (parts) => parts.map((p) => p.type === "tool" && p.toolCallId === e.toolCallId && p.result === undefined ? { ...p, draft: e.args } : p));
     case "tool_start":
       // A call already shown as written gets its arguments in place.
       return withParts(s, (parts) => parts.some((p) => p.type === "tool" && p.toolCallId === e.toolCallId)
-        ? parts.map((p) => p.type === "tool" && p.toolCallId === e.toolCallId ? { ...p, name: e.name, args: e.args } : p)
+        ? parts.map((p) => p.type === "tool" && p.toolCallId === e.toolCallId ? (({ draft: _, ...q }) => ({ ...q, name: e.name, args: e.args }))(p) : p)
         : [...parts, { type: "tool", toolCallId: e.toolCallId, name: e.name, args: e.args }]);
     case "making": {
       const { type: _, ...m } = e;

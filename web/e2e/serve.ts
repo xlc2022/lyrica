@@ -28,6 +28,7 @@
 // "compact: <summary>" compacts the thread with that summary (then says "Compacting.").
 // "fetch: <url>, <url>" reads each with web_fetch in turn (then says "Read them."); /page/<slug> is an article.
 // "think slowly: <text>" streams twelve sentences of reasoning, slowly, before the echo.
+// "write slowly: <path>" writes twelve lines to that file, its call's arguments streamed in small pieces.
 // "prefill slowly: <text>" first reads its prompt in steps and reasons with llama.cpp's counts; "wait slowly: <text>" waits, then reasons with none.
 import { copyFileSync, mkdtempSync, rmSync } from "node:fs";
 import { createServer } from "node:http";
@@ -356,6 +357,16 @@ function fakeModel() {
         if (fold) await new Promise((r) => setTimeout(r, 2000));
         send({ role: "assistant", content: child ? "Started it." : tell ? "Sent it." : read ? "Read it." : compact ? "Compacting." : steps ? "Checklist set." : need ? "I'll wait for her." : "Suggested." });
         send({}, "stop");
+      } else if (/^write slowly: \S+/.test(said) && last?.role !== "tool") {
+        // A long call written a piece at a time, as a model writes a file: the name first, then its arguments.
+        const path = /^write slowly: (\S+)/.exec(said)![1]!;
+        const json = JSON.stringify({ path, content: Array.from({ length: 12 }, (_, i) => `Line ${i + 1} of the notes.`).join("\n") });
+        send({ role: "assistant", tool_calls: [{ index: 0, id: `call_${Date.now()}`, type: "function", function: { name: "write", arguments: "" } }] });
+        for (const piece of json.match(/.{1,12}/gs) ?? []) {
+          send({ tool_calls: [{ index: 0, function: { arguments: piece } }] });
+          await new Promise((r) => setTimeout(r, 120));
+        }
+        send({}, "tool_calls");
       } else if ((command || plan || skill) && last?.role !== "tool") {
         const call = command ? { name: "bash", arguments: JSON.stringify({ command }) } : skill ? { name: "save_skill", arguments: JSON.stringify({ name: skill[1]!.trim(), description: skill[2]!.trim(), body: skill[3]!.trim() }) } : { name: "propose_plan", arguments: JSON.stringify({ plan }) };
         send({ role: "assistant", tool_calls: [{ index: 0, id: `call_${Date.now()}`, type: "function", function: call }] });
