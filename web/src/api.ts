@@ -50,7 +50,9 @@ export async function errorFrom(res: Response): Promise<HttpError> {
   if (res.status === 401 || res.status === 503) onAuthLost(res.status);
   const data = safeJson(await res.text().catch(() => ""));
   const reason = data && typeof data === "object" && "error" in data ? sentence(String(data.error)) : "";
-  const err = new HttpError(res.status, reason || (res.status === 503 ? `${her()} is locked.` : PLAIN[res.status]) || `Something went wrong (${res.status}).`);
+  // A 502 or 504 without her reason is the proxy in front of her (Caddy, tailscale serve): she didn't answer it.
+  const unanswered = !data && (res.status === 502 || res.status === 504) ? `${her()} didn't answer (${res.status}). Try again in a moment.` : "";
+  const err = new HttpError(res.status, reason || unanswered || (res.status === 503 ? `${her()} is locked.` : PLAIN[res.status]) || `Something went wrong (${res.status}).`);
   if (data && typeof data === "object" && "updating" in data && data.updating === true) err.updating = true;
   if (data && typeof data === "object" && "code" in data && typeof data.code === "string") err.code = data.code;
   return err;
