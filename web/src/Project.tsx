@@ -472,7 +472,7 @@ export function ThreadsSection({ base, summary, settings, onSummary }: SectionPr
       </Row>
       <Row label="Thread starts" htmlFor="p-starts" hint={`Threads ${her()} may start from one of your messages, a routine or a wake-up. Her threads' reports don't count as new messages. Default is 3, or 6 while this chat's model runs in the cloud.`}>
         <span className="with-unit">
-          <input id="p-starts" type="number" min={1} max={STARTS_MAX} step={1} inputMode="numeric" placeholder={withDefault(String(ps?.startsDefault ?? 3))}
+          <input id="p-starts" className="starts" type="number" min={1} max={STARTS_MAX} step={1} inputMode="numeric" placeholder={withDefault(String(ps?.startsDefault ?? 3))}
             value={starts} onChange={(e) => setStarts(e.target.value)} onBlur={() => setStarts(clampStarts(starts))} />
           <span className="unit">of <span className="num">{STARTS_MAX}</span></span>
         </span>

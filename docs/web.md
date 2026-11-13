@@ -381,7 +381,7 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   only the fields that changed, and a drafted field as edited. **Threads**:
   **Check on threads** (one switch for `watchThreads` and
   `checkInOnThreads`: on only when both are, and a change sets both),
-  **Thread starts** (`threadsStarts`, a typed number with "of 32" beside it,
+  **Thread starts** (`threadsStarts`, a typed number wide enough for its placeholder, with "of 32" beside it,
   clamped on leaving the box; empty shows `Default (<startsDefault>)`), then
   **New threads**: Model, Thinking, Fallback and Code mode the project's
   threads start with, and Evidence judge while Code mode is on. Each

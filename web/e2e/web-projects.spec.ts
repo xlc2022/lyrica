@@ -554,6 +554,7 @@ test("a project: New project, suggested threads start into cards, the Threads po
   await sections.getByRole("link", { name: "Threads" }).click();
   const startsBox = page.getByLabel("Thread starts");
   await expect(startsBox).toHaveAttribute("placeholder", "Default (6)");
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/thread-starts-empty-${page.viewportSize()!.width}.png` });
   await startsBox.fill("50");
   await startsBox.blur();
   await expect(startsBox).toHaveValue("32");
