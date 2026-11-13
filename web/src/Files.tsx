@@ -92,9 +92,9 @@ export function FilesPage({ ctx, pool, threadId, threads, path }: { ctx: ShellCo
   /** Where an upload or a new folder goes when nothing more specific was picked: the last folder opened. */
   const [cwd, setCwd] = useState(WORKDIR);
   const [dropping, setDropping] = useState(false);
-  /** How many files Ctrl+C just copied, said in the selection bar for a moment. */
-  const [copiedNote, setCopiedNote] = useState(0);
-  useEffect(() => { if (!copiedNote) return; const t = setTimeout(() => setCopiedNote(0), 2000); return () => clearTimeout(t); }, [copiedNote]);
+  /** Ctrl+C just copied, said in the selection bar for a moment: a new object each copy, so a second copy within the moment starts it again. */
+  const [copiedNote, setCopiedNote] = useState<{ count: number } | null>(null);
+  useEffect(() => { if (!copiedNote) return; const t = setTimeout(() => setCopiedNote(null), 2000); return () => clearTimeout(t); }, [copiedNote]);
   /** The keys act here while the panel was the last thing pressed or focused, so they never reach a panel the person isn't using. */
   const active = useRef(false);
   /** Opened large in a dialog over the conversation, from the panel's Expand. */
@@ -273,7 +273,7 @@ export function FilesPage({ ctx, pool, threadId, threads, path }: { ctx: ShellCo
       ? cb.write([new ClipboardItem({ "image/png": asPng(contentUrl(one)), "text/plain": new Blob([text], { type: "text/plain" }) })]).catch(() => cb.writeText(text))
       : cb ? cb.writeText(text) : Promise.reject(new Error("no clipboard"));
     write.catch(() => { c.system = false; });
-    setCopiedNote(paths.length);
+    setCopiedNote({ count: paths.length });
   };
   /**
    * Ctrl+V of what was copied in a panel: copies made in `dir` by lyricad within this thread, or carried over from

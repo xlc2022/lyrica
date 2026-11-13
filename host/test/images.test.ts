@@ -1602,6 +1602,10 @@ describe("the image API", () => {
     expect(s.comfyFake.seen.prompts[2].latent.inputs).toMatchObject({ width: 1376, height: 768 });
     await s.api("/host/v1/videos/create", { body: { recipe: wan.id, prompt: "x", aspectRatio: "9:16" } });
     expect(s.comfyFake.seen.prompts[3].latent.inputs).toMatchObject({ width: 704, height: 1280 });
+    // At a 2 MP area a wide shape meets 2048: both sides shrink by one factor, so 21:9 stays about 21:9.
+    await s.api(`/host/v1/recipes/${wan.id}`, { method: "PATCH", body: { op: "defaults", defaults: { width: 1920, height: 1088 } } });
+    await s.api("/host/v1/videos/create", { body: { recipe: wan.id, prompt: "x", aspectRatio: "21:9" } });
+    expect(s.comfyFake.seen.prompts[4].latent.inputs).toMatchObject({ width: 2048, height: 864 });
 
     const refused = async (path: string, extra: object) => (await s.api(path, { body: { recipe: wan.id, prompt: "x", ...extra } })).body.error.message;
     expect(await refused("/host/v1/videos/create", { width: 100 })).toMatch(/from 256 to 2048/);

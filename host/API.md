@@ -1355,7 +1355,8 @@ newer host made, read after a rollback).
   defaults, `person`). `width` and `height` are 256 to 2048, snapped to the recipe's
   `sizeStep`; left out, they are the recipe's area in the shape of
   `aspectRatio` (`width:height`, 1:4 to 4:1, never with a size), or when
-  animating the image's, or else the recipe's own size. `duration` is seconds, 1 to the
+  animating the image's, or else the recipe's own size; past 2048 (or
+  under 256) both sides scale by one factor, so the shape holds. `duration` is seconds, 1 to the
   recipe's `longestSeconds` (default 5), made into the model's nearest frame
   count at or above it. Past the recipe's longest clip, a template with a
   continuation chains clips: near-equal clips of at most its

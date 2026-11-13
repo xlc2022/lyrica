@@ -52,8 +52,8 @@
     "cfg": 1,
     "sampler": "res_multistep",
     "scheduler": "simple",
-    "width": 1344,
-    "height": 768,
+    "width": 1920,
+    "height": 1088,
     "duration": 5
   },
   "backend": "comfyui"
