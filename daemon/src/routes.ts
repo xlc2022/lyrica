@@ -1736,6 +1736,11 @@ export function apiRoutes(d: Lyricad): Route[] {
       await refused(() => files(r).remove(paths.map(String)));
       return { ok: true };
     }),
+    route("POST", `${t}/files/copy`, async (r): Promise<Api.FileCopyResponse> => {
+      const { paths, dir } = await r.json<Api.FileCopyInput>();
+      if (!Array.isArray(paths) || !paths.length) throw new HttpError(400, "paths must be a list");
+      return { paths: await refused(() => files(r).copy(paths.map(String), String(dir ?? ""))) };
+    }),
     route("POST", `${t}/files/zip`, async (r) => {
       const { paths } = await r.json<Api.FilePathsInput>();
       if (!Array.isArray(paths) || !paths.length) throw new HttpError(400, "paths must be a list");

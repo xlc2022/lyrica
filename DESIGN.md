@@ -187,12 +187,17 @@ Each user has two pools of memory.
       to the previous or next image of the list it was opened from
       (decided 2026-10-22).
     - Actions are in a right-click menu (a long press on a phone, or ⋯):
-      Attach to message, Show in thread, Download, Copy path, Rename and
-      Delete on a file; Upload and New folder on a folder or empty space.
+      Attach to message, Show in thread, Download, Copy, Copy path, Rename and
+      Delete on a file; Upload, New folder and Paste on a folder or empty space.
+    - Keys as in a file manager (decided 2026-11-13): Ctrl or Cmd+C copies
+      the selected files, Ctrl or Cmd+V pastes copies into the folder last
+      opened (in this thread or another of the user's, never from a private
+      thread into a general one, nor local-only into cloud-using; a screenshot from outside uploads), and
+      Delete asks to delete the selection.
     - Ctrl- or Cmd-click and Shift-click select several (Select in the menu
       on a phone); a mouse drag across the tree or the Images and Videos
       grid also draws a box that selects what it touches. The menu then
-      acts on all of them: Attach, Download as zip, Copy paths, Delete.
+      acts on all of them: Attach, Download as zip, Copy, Copy paths, Delete.
     - Uploading from the panel, or dropping files on it, adds them to the
       thread's folder without sending a message. Her next turn gets one line
       naming the files added or removed since her last turn. Files attached

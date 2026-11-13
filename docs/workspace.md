@@ -716,10 +716,12 @@ fixed actions, the token never shown to her.
   asked for with `coordinates`, each of those folders is also a root,
   kind `member`, read-only, with its thread's id, so the person finds
   every thread's files from the chat; elsewhere they are no root), with
-  `find`, `cat`, `stat`, `mkdir`, `mv` and `rm`, so the panel can reach exactly what she can and nothing else: a path outside, a symlink
+  `find`, `cat`, `stat`, `mkdir`, `mv`, `cp` and `rm`, so the panel can reach exactly what she can and nothing else: a path outside, a symlink
   out, a root, the panel's own `.lyrica` folder, and any change in a
-  read-only grant are refused (`FilesRefused`). Uploads land under a free name,
-  as in the message box. Adds, removes and renames are noted (`panel_files` in
+  read-only grant are refused (`FilesRefused`). Uploads and copies (`copy`, the panel's
+  Ctrl+V) land under a free name, as in the message box. A paste from another thread is the browser reading
+  one thread's file and uploading it to the other; its refusals (private into general, local-only into a thread that
+  isn't) guard the user's own action, as a download and upload by hand would, and are not a boundary. Adds, removes and renames are noted (`panel_files` in
   `user.db`) and told to her once, at her next turn, by `ThreadTools.fileNotes`.
 - **Renaming keeps links.** A file or folder renamed or moved in the panel
   (the thread's Files panel, or a project's Files and images) keeps its real

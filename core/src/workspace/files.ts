@@ -240,6 +240,34 @@ export class ThreadFiles {
     return { from: f, to: t };
   }
 
+  /**
+   * Copies files and folders into `dir`, each under its own name or, where that is taken, a free one (`plan-2.md`, as
+   * an upload gets). Symlinks are copied as links, never followed. A folder can't go into itself. Returns the new
+   * paths as she sees them.
+   */
+  async copy(paths: string[], dir: string): Promise<string[]> {
+    if (!paths.length) return [];
+    const d = this.allow(dir, true);
+    const out: string[] = [];
+    for (const raw of paths) {
+      const p = this.allow(raw, false);
+      if (this.roots().some((r) => r.path === p)) throw new FilesRefused(`${p} is one of this thread's folders itself`);
+      if (d === p || d.startsWith(`${p}/`)) throw new FilesRefused(`${posix.basename(p)} can't be copied into itself`);
+      const name = posix.basename(p);
+      const dot = name.lastIndexOf(".");
+      const [stem, ext] = dot > 0 ? [name.slice(0, dot), name.slice(dot)] : [name, ""];
+      // The first free name wins; mkdir or a no-clobber create claims it before the copy fills it.
+      const script = 'src=$1; cd "$2" && n="$3$4" && i=2 && ' +
+        'until if [ -d "$src" ] && [ ! -L "$src" ]; then mkdir -- "$n"; else (set -C; : > "$n"); fi 2>/dev/null; do ' +
+        '[ "$i" -gt 999 ] && exit 1; n="$3-$i$4"; i=$((i+1)); done && ' +
+        'if [ -d "$src" ] && [ ! -L "$src" ]; then cp -RP -- "$src/." "$n/"; else rm -f -- "$n" && cp -P -- "$src" "$n"; fi || { rm -rf -- "$n"; exit 1; }; printf %s "$n"';
+      out.push(posix.join(d, (await this.file(["sh", "-c", script, "sh", p, d, stem, ext])).toString()));
+    }
+    this.note("added", out);
+    this.origins.added?.(out);
+    return out;
+  }
+
   /** Deletes files and folders, for good. */
   async remove(paths: string[]): Promise<void> {
     if (!paths.length) return;

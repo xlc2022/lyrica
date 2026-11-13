@@ -966,7 +966,9 @@ documented in `daemon/src/api.ts`, "The Files panel".
   host without ImageMagick (it is in the Debian install and the NixOS sandbox
   tools), 404: the panel shows the image itself.
 - `POST …/files/upload?dir&name` (the bytes), `POST …/files/folder { path }`,
-  `POST …/files/rename { from, to }`, `POST …/files/delete { paths }` change
+  `POST …/files/rename { from, to }`, `POST …/files/copy { paths, dir }` (answers the new
+  paths; each lands under its own name or a free one, `plan-2.md`, folders whole and links
+  as links; a folder can't go into itself), `POST …/files/delete { paths }` change
   the thread's folder and read-write grants. A read-only grant, a root itself,
   `.lyrica`, or a path outside the thread's folders is refused with 403; a
   taken `to` or a missing file is 400 with the reason. Deleting is permanent.

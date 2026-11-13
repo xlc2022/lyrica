@@ -1554,6 +1554,105 @@ test("the Files panel: a tree one folder at a time, a file shown, search, the Im
   await noHorizontalScroll(page);
 });
 
+test("the Files panel's keys: Ctrl+C and Ctrl+V copy the selection into the folder, a pasted screenshot uploads, and Delete asks first; on a phone the menu's Copy and Paste", async ({ page, baseURL, context }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  const userId = await enter(page, baseURL!);
+  await newThread(page, "General");
+  await send(page, "hello keys");
+  await expect(page.getByText("You said: hello keys")).toBeVisible();
+  const threadId = decodeURIComponent(location_of(page).split("/t/general/")[1]!.split("/")[0]!);
+  // A red 2×2 PNG the browser can put on the system clipboard.
+  const png = "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEElEQVR4nGP4z8AARAwQCgAf7gP9i18U1AAAAABJRU5ErkJggg==";
+  const trayPath = await page.evaluate(async ([path, b64]) => {
+    const r = await fetch(path, { method: "POST", headers: { "content-type": "application/octet-stream" }, body: Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)) });
+    if (!r.ok) throw new Error(`${path}: ${r.status} ${await r.text()}`);
+    return ((await r.json()) as { path: string }).path;
+  }, [`/api/u/${userId}/threads/general/${encodeURIComponent(threadId)}/uploads?name=tray.png`, png] as const);
+  const tray = trayPath.slice("/workspace/uploads/".length);
+  await page.getByRole("link", { name: "Files and images" }).click();
+  const panel = phone(page) ? page.locator(".files-page") : page.getByRole("complementary");
+  await panel.getByRole("tab", { name: "Images" }).click();
+  const grid = panel.locator(".igrid");
+  const tiles = grid.locator("button[data-path]");
+  await expect(tiles).toHaveCount(1);
+  if (phone(page)) {
+    // No keyboard: Copy in a file's menu, Paste in a folder's.
+    await grid.getByRole("button", { name: tray, exact: true }).click({ button: "right" });
+    const menu = page.getByRole("menu", { name: "File actions" });
+    if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/files-keys-copy-${page.viewportSize()!.width}.png` });
+    await menu.locator("[data-key='C']").click();
+    await panel.getByRole("tab", { name: "Files" }).click();
+    await panel.getByRole("button", { name: "Thread folder", exact: true }).click({ button: "right" });
+    if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/files-keys-paste-${page.viewportSize()!.width}.png` });
+    await expect(menu.locator("[data-key='V']")).toHaveText(/^Paste/);
+    await menu.locator("[data-key='V']").click();
+    await expect(panel.locator(`button[data-path="/workspace/${tray}"]`)).toBeVisible();
+    return;
+  }
+  // Ctrl+C copies the selection; Ctrl+V on Images pastes a copy beside its original, under a free name, and selects it.
+  await grid.getByRole("button", { name: tray, exact: true }).click({ modifiers: ["ControlOrMeta"] });
+  const bar = panel.getByRole("toolbar", { name: "Selection" });
+  await expect(bar).toContainText("1 selected");
+  await page.keyboard.press("ControlOrMeta+c");
+  await expect(bar).toContainText("Copied");
+  // One image goes on the system clipboard as the image, with its path as text.
+  await expect.poll(() => page.evaluate(async () => { const [item] = await navigator.clipboard.read(); return item?.types.slice().sort(); })).toEqual(["image/png", "text/plain"]);
+  await page.keyboard.press("ControlOrMeta+v");
+  await expect(tiles).toHaveCount(2);
+  const copy = tiles.and(page.locator("[aria-pressed='true']"));
+  await expect(copy).toHaveAttribute("data-path", `/workspace/uploads/${tray.replace(".png", "-2.png")}`);
+  await expect(copy).toHaveAccessibleName(tray.replace(".png", "-2.png"));
+  await expect.poll(() => copy.locator("img").evaluate((i: HTMLImageElement) => i.complete && i.naturalWidth > 0)).toBe(true);
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/files-keys-pasted-${page.viewportSize()!.width}.png` });
+  // Delete asks first, then deletes the selection.
+  await page.keyboard.press("Delete");
+  const confirm = page.getByRole("dialog", { name: `Delete uploads/${tray.replace(".png", "-2.png")}?` });
+  await expect(confirm).toContainText("is deleted for good");
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/files-keys-delete-${page.viewportSize()!.width}.png` });
+  await confirm.getByRole("button", { name: "Delete" }).click();
+  await expect(tiles).toHaveCount(1);
+  await expect(grid.getByRole("button", { name: tray, exact: true })).toBeVisible();
+  // A screenshot pasted from outside Lyrica uploads, as a drop does.
+  await grid.getByRole("button", { name: tray, exact: true }).click({ modifiers: ["ControlOrMeta"] });
+  await page.evaluate((b64) => {
+    const dt = new DataTransfer();
+    dt.items.add(new File([Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))], "image.png", { type: "image/png" }));
+    document.querySelector(".igrid button")!.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true }));
+  }, png);
+  await expect(grid.getByRole("button", { name: "image.png", exact: true })).toBeVisible();
+  // In the search box the keys are the text's: Backspace deletes a letter, not a file.
+  await panel.getByRole("tab", { name: "Files" }).click();
+  // The paste opened uploads/ in the tree, where the copy went.
+  await expect(panel.getByRole("button", { name: "uploads", exact: true })).toHaveAttribute("aria-expanded", "true");
+  await panel.getByRole("button", { name: tray, exact: true }).click({ modifiers: ["ControlOrMeta"] });
+  await panel.getByRole("searchbox", { name: "Search files" }).fill("tr");
+  await page.keyboard.press("Backspace");
+  await expect(panel.getByRole("searchbox", { name: "Search files" })).toHaveValue("t");
+  await expect(page.getByRole("dialog", { name: /^Delete / })).toHaveCount(0);
+  await panel.getByRole("searchbox", { name: "Search files" }).fill("");
+  // Across threads: a local-only thread's file pastes only into another local-only thread.
+  const settings = (id: string) => `/api/u/${userId}/threads/general/${encodeURIComponent(id)}/settings`;
+  const localOnly = (id: string) => page.evaluate(async (path) => { const r = await fetch(path, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ localOnly: true }) }); if (!r.ok) throw new Error(`${path}: ${r.status}`); }, settings(id));
+  await localOnly(threadId);
+  await panel.getByRole("button", { name: tray, exact: true }).click({ modifiers: ["ControlOrMeta"] });
+  await expect(bar).toContainText("1 selected");
+  await page.keyboard.press("ControlOrMeta+c");
+  await expect(bar).toContainText("Copied");
+  await newThread(page, "General");
+  await send(page, "hello other");
+  await expect(page.getByText("You said: hello other")).toBeVisible();
+  const other = decodeURIComponent(location_of(page).split("/t/general/")[1]!.split("/")[0]!);
+  await page.getByRole("link", { name: "Files and images" }).click();
+  await expect(panel.getByRole("button", { name: "Thread folder", exact: true })).toBeVisible();
+  await panel.getByRole("tab", { name: "Files" }).click();
+  await page.keyboard.press("ControlOrMeta+v");
+  await expect(panel.getByRole("alert")).toHaveText("Files from a local-only thread can't be pasted into one that uses cloud models.");
+  await localOnly(other);
+  await panel.getByRole("tab", { name: "Files" }).click();
+  await page.keyboard.press("ControlOrMeta+v");
+  await expect(panel.locator(`button[data-path="/workspace/${tray}"]`)).toBeVisible();
+});
+
 test("the Files panel's Expand opens it large in a dialog over the conversation, its tabs working there; Close, Escape or the scrim puts it back in the panel", async ({ page, baseURL }) => {
   test.skip(phone(page), "the panel shows from 1180 px up; below it Files is the page");
   await enter(page, baseURL!);

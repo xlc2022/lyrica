@@ -6,7 +6,7 @@
 // over the conversation; the page on its own below it.
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { get, post, threadPath, upload, type FileEntry, type FileListing, type FileRoot, type FileSearch, type ImageEntry, type Pool, type ThreadSummary } from "./api.ts";
+import { get, post, threadPath, upload, type FileCopyResponse, type FileEntry, type FileListing, type FileRoot, type FileSearch, type ImageEntry, type Pool, type ThreadSettings, type ThreadSummary } from "./api.ts";
 import { ask, ATTACH_EVENT, ATTACH_KEY, keep, SHOW_EVENT, SHOW_KEY, type AttachRequest, type ShowRequest } from "./links.ts";
 import { FAMILY_ROOT, isUnderWorkdir, SHARED, shown, Thumb, useFileLinks, VideoThumb, WORKDIR, type FileLinks } from "./paths.tsx";
 import { ArtifactsTab, importArtifacts } from "./Artifacts.tsx";
@@ -33,6 +33,29 @@ type Target =
 
 /** `sub`: the menu opens straight into one of its steps (a row's Delete button opens its confirm). */
 interface MenuAt { x: number; y: number; target: Target; sub?: "delete" }
+
+/**
+ * What Ctrl+C (or Copy in the menu) last copied in a Files panel (docs/ux.md §6), for Ctrl+V in any of the same user's
+ * panels. `text` is what went on the system clipboard with it, so a later copy anywhere else wins; `system` is false
+ * when the browser refused that write, and Lyrica's own copy is then all there is to paste.
+ */
+let copied: { userId: string; pool: Pool; base: string; paths: string[]; folders: string[]; text: string; system: boolean; localOnly: Promise<boolean> } | undefined;
+/** Whether a thread is local-only; one that can't be read counts as local-only for a source and not for a target, so the guard errs shut. */
+const localOnlyOf = (userId: string, pool: Pool, threadId: string, unknown: boolean) =>
+  get<ThreadSettings>(threadPath(userId, pool, threadId, "settings")).then((s) => s.localOnly, () => unknown);
+const IMAGE_NAME = /\.(png|jpe?g|gif|webp)$/i;
+/** A field the keys belong to: the shortcuts leave text alone. */
+const inField = (t: EventTarget | null) => t instanceof Element && !!t.closest("input, textarea, select, [contenteditable]:not([contenteditable='false'])");
+/** An image's bytes as PNG, the one image type every browser puts on the system clipboard. */
+async function asPng(url: string): Promise<Blob> {
+  const blob = await fetch(url, { credentials: "same-origin" }).then((r) => { if (!r.ok) throw new Error("the image couldn't be read"); return r.blob(); });
+  if (blob.type === "image/png") return blob;
+  const bmp = await createImageBitmap(blob);
+  const c = document.createElement("canvas");
+  c.width = bmp.width; c.height = bmp.height;
+  c.getContext("2d")!.drawImage(bmp, 0, 0);
+  return new Promise((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error("the image couldn't be copied"))), "image/png"));
+}
 
 const parent = (p: string) => p.slice(0, p.lastIndexOf("/")) || "/";
 const basename = (p: string) => p.slice(p.lastIndexOf("/") + 1);
@@ -69,6 +92,11 @@ export function FilesPage({ ctx, pool, threadId, threads, path }: { ctx: ShellCo
   /** Where an upload or a new folder goes when nothing more specific was picked: the last folder opened. */
   const [cwd, setCwd] = useState(WORKDIR);
   const [dropping, setDropping] = useState(false);
+  /** How many files Ctrl+C just copied, said in the selection bar for a moment. */
+  const [copiedNote, setCopiedNote] = useState(0);
+  useEffect(() => { if (!copiedNote) return; const t = setTimeout(() => setCopiedNote(0), 2000); return () => clearTimeout(t); }, [copiedNote]);
+  /** The keys act here while the panel was the last thing pressed or focused, so they never reach a panel the person isn't using. */
+  const active = useRef(false);
   /** Opened large in a dialog over the conversation, from the panel's Expand. */
   const inPanel = !!usePanel();
   const [big, setBig] = useState(false);
@@ -232,6 +260,54 @@ export function FilesPage({ ctx, pool, threadId, threads, path }: { ctx: ShellCo
   };
   const listingEntry = (p: string) => listings[parent(p)]?.entries.find((e) => e.path === p) ?? hits?.entries.find((e) => e.path === p);
   const copy = (paths: string[]) => navigator.clipboard?.writeText(paths.join("\n")).catch(fail);
+  /** Ctrl+C: the files themselves, for Ctrl+V in this panel or another thread's; one image also goes on the system clipboard as an image. */
+  const copyFiles = (paths: string[]) => {
+    if (!paths.length) return;
+    const text = paths.join("\n");
+    const isFolder = (p: string) => listingEntry(p)?.kind === "folder";
+    const c = { userId, pool, base, paths, folders: paths.filter(isFolder), text, system: true, localOnly: localOnlyOf(userId, pool, threadId, true) };
+    copied = c;
+    const cb = navigator.clipboard;
+    const one = paths.length === 1 && IMAGE_NAME.test(paths[0]!) && !isFolder(paths[0]!) ? paths[0]! : undefined;
+    const write = one && cb && "write" in cb && typeof ClipboardItem !== "undefined"
+      ? cb.write([new ClipboardItem({ "image/png": asPng(contentUrl(one)), "text/plain": new Blob([text], { type: "text/plain" }) })]).catch(() => cb.writeText(text))
+      : cb ? cb.writeText(text) : Promise.reject(new Error("no clipboard"));
+    write.catch(() => { c.system = false; });
+    setCopiedNote(paths.length);
+  };
+  /**
+   * Ctrl+V of what was copied in a panel: copies made in `dir` by lyricad within this thread, or carried over from
+   * another of the user's threads. `beside` (Images and Videos, which show no folders): a copy within the thread lands
+   * beside its original where that folder is writable, so it shows as "tray-2.png", not as a twin.
+   */
+  const pasteCopied = async (dir: string, beside = false) => {
+    const c = copied;
+    if (!c) return;
+    const into = (p: string) => (beside && c.base === base && writable(parent(p)) ? parent(p) : dir);
+    const bad = c.paths.map(into).find((d) => !writable(d));
+    if (bad) { setError(`${named(bad)} is read-only.`); return; }
+    setError("");
+    let made: string[] = [];
+    if (c.base === base) {
+      const groups = new Map<string, string[]>();
+      for (const p of c.paths) groups.set(into(p), [...groups.get(into(p)) ?? [], p]);
+      for (const [d, ps] of groups) made.push(...(await post<FileCopyResponse>(`${base}/copy`, { paths: ps, dir: d })).paths);
+    } else {
+      // Private stays private: a private thread's files never land in a general one.
+      // These guard the user's own paste, as download-then-upload would be refused nowhere; they are not a boundary (docs/workspace.md).
+      if (c.pool === "private" && pool !== "private") throw new Error("Files from a private thread can't be pasted into a general one.");
+      if (await c.localOnly && !await localOnlyOf(userId, pool, threadId, false)) throw new Error("Files from a local-only thread can't be pasted into one that uses cloud models.");
+      if (c.folders.length) throw new Error("A folder pastes only within its own thread; copy the files in it instead.");
+      for (const p of c.paths) {
+        const r = await fetch(`${c.base}/content?path=${encodeURIComponent(p)}`, { credentials: "same-origin" });
+        if (!r.ok) throw new Error(`${basename(p)} couldn't be read.`);
+        made.push((await upload(`${base}/upload?dir=${encodeURIComponent(dir)}&name=${encodeURIComponent(basename(p))}`, new File([await r.blob()], basename(p)), () => {})).path);
+      }
+    }
+    setOpen((s) => new Set([...s, ...made.map(parent)]));
+    await refresh(made);
+    setSel(new Set(made));
+  };
   const mkdir = async (dir: string, name: string) => { await post(`${base}/folder`, { path: `${dir}/${name}` }); setOpen((s) => new Set([...s, dir])); await refresh([`${dir}/${name}`]); };
   const rename = async (from: string, name: string) => {
     const to = `${parent(from)}/${name}`;
@@ -343,6 +419,50 @@ export function FilesPage({ ctx, pool, threadId, threads, path }: { ctx: ShellCo
 
   const act = (fn: () => Promise<unknown>) => fn().then(() => setMenu(undefined), (e: Error) => { setError(e.message); setMenu(undefined); });
   const dropDir = current ? parent(current.path) : cwd;
+  // Ctrl or Cmd+C copies the selection, Ctrl or Cmd+V pastes into the folder last opened, Delete or Backspace asks to
+  // delete the selection (docs/ux.md §6). Never in a text field, nor while a menu, a dialog or the viewer is up.
+  const keys = useRef<{ key: (e: KeyboardEvent) => void; paste: (e: ClipboardEvent) => void }>(undefined);
+  keys.current = {
+    key: (e) => {
+      if (!active.current || e.altKey || e.defaultPrevented || inField(e.target) || menu || current || tab === "artifacts" || renaming) return;
+      const mod = e.ctrlKey || e.metaKey;
+      if (!mod && !e.shiftKey && (e.key === "Delete" || e.key === "Backspace") && sel.size) {
+        const paths = [...sel];
+        if (!paths.every(writable)) { setError("Something selected is read-only."); return; }
+        e.preventDefault();
+        const bar = document.querySelector(".selbar")?.getBoundingClientRect();
+        setMenu({ x: bar?.left ?? 0, y: bar?.top ?? 0, target: { kind: "selection", paths }, sub: "delete" });
+      } else if (mod && !e.shiftKey && e.key.toLowerCase() === "c" && sel.size && (getSelection()?.isCollapsed ?? true)) {
+        e.preventDefault();
+        copyFiles([...sel]);
+      }
+    },
+    paste: (e) => {
+      if (!active.current || inField(e.target) || menu || current || tab === "artifacts" || renaming) return;
+      const files = [...(e.clipboardData?.files ?? [])];
+      const text = e.clipboardData?.getData("text/plain") ?? "";
+      if (copied && copied.userId === userId && (text === copied.text || (!copied.system && !files.length && !text))) {
+        e.preventDefault();
+        pasteCopied(cwd, isMedia(tab)).catch(fail);
+      } else if (files.length) {
+        // A screenshot or files copied outside Lyrica upload, as a drop does.
+        e.preventDefault();
+        send(cwd, files);
+      }
+    },
+  };
+  useEffect(() => {
+    // Pressing or focusing anywhere else ends it; the panel's own handlers (below) start it again, after this.
+    const away = () => { active.current = false; };
+    const key = (e: KeyboardEvent) => keys.current?.key(e);
+    const paste = (e: ClipboardEvent) => keys.current?.paste(e);
+    addEventListener("pointerdown", away, true);
+    addEventListener("focusin", away, true);
+    addEventListener("keydown", key);
+    addEventListener("paste", paste);
+    return () => { removeEventListener("pointerdown", away, true); removeEventListener("focusin", away, true); removeEventListener("keydown", key); removeEventListener("paste", paste); };
+  }, []);
+  const here = { onPointerDownCapture: () => { active.current = true; }, onFocusCapture: () => { active.current = true; } };
   const panelTitle = TAB_LABEL[tab];
   const closeViewer = useCallback(() => setCurrent(undefined), []);
   /** The thread whose folder holds a path, in a project chat's Threads. */
@@ -351,6 +471,7 @@ export function FilesPage({ ctx, pool, threadId, threads, path }: { ctx: ShellCo
   const fileMenu = menu && (
     <FileMenu at={menu} writable={writable} onClose={() => setMenu(undefined)} shownName={named}
       onAttach={(ps) => { setMenu(undefined); setCurrent(undefined); attach(ps); }} onDownload={(ps) => { setMenu(undefined); download(ps); }} onCopy={(ps) => { setMenu(undefined); void copy(ps); }}
+      onCopyFiles={(ps) => { setMenu(undefined); copyFiles(ps); }} canPaste={!!copied && copied.userId === userId} onPaste={(dir) => act(() => pasteCopied(dir))}
       onSelect={(p) => { setMenu(undefined); setSel((s) => new Set([...s, p])); }} onShow={(p) => { setMenu(undefined); setCurrent(undefined); showInThread(p); }}
       onUpload={(dir) => { setMenu(undefined); askUpload(dir); }} onMkdir={(dir, name) => act(() => mkdir(dir, name))} onRename={(p, name) => act(() => rename(p, name))}
       onDelete={(ps) => act(() => remove(ps))} />
@@ -358,6 +479,7 @@ export function FilesPage({ ctx, pool, threadId, threads, path }: { ctx: ShellCo
 
   // Dropping files on the browser uploads them, wherever it shows: the panel, the page or the dialog.
   const drop = {
+    ...here,
     onDragOver: (e: React.DragEvent) => { if (e.dataTransfer.types.includes("Files")) { e.preventDefault(); setDropping(true); } },
     onDragLeave: (e: React.DragEvent) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDropping(false); },
     // On the Artifacts tab a dropped file is imported as an artifact of this thread.
@@ -408,7 +530,7 @@ export function FilesPage({ ctx, pool, threadId, threads, path }: { ctx: ShellCo
       )}
       {sel.size > 0 && (
         <div className="selbar" role="toolbar" aria-label="Selection">
-          <span><span className="num">{sel.size}</span> selected</span>
+          <span role="status"><span className="num">{sel.size}</span> selected{copiedNote ? <> · Copied</> : null}</span>
           <button type="button" className="icon sm" aria-label="Actions for the selection" onClick={(e) => openMenu(e, { kind: "selection", paths: [...sel] })}><Icon name="more" /></button>
           <button type="button" className="icon sm" aria-label="Clear the selection" onClick={() => setSel(new Set())}><Icon name="close" /></button>
         </div>
@@ -598,9 +720,10 @@ function Item({ label, kbd, danger, onClick }: { label: ReactNode; kbd?: string;
 }
 
 /** The right-click menu: Attach, Select, Show in thread, Download, Copy path; Rename and Delete where the folder is writable; Upload and New folder on a folder. */
-function FileMenu({ at, writable, shownName, onClose, onAttach, onDownload, onCopy, onSelect, onShow, onUpload, onMkdir, onRename, onDelete }: {
+function FileMenu({ at, writable, shownName, onClose, onAttach, onDownload, onCopy, onCopyFiles, canPaste, onPaste, onSelect, onShow, onUpload, onMkdir, onRename, onDelete }: {
   at: MenuAt; writable: (p: string) => boolean; shownName: (p: string) => string; onClose: () => void;
-  onAttach: (paths: string[]) => void; onDownload: (paths: string[]) => void; onCopy: (paths: string[]) => void; onSelect: (path: string) => void; onShow: (path: string) => void;
+  onAttach: (paths: string[]) => void; onDownload: (paths: string[]) => void; onCopy: (paths: string[]) => void;
+  onCopyFiles: (paths: string[]) => void; canPaste: boolean; onPaste: (dir: string) => Promise<unknown>; onSelect: (path: string) => void; onShow: (path: string) => void;
   onUpload: (dir: string) => void; onMkdir: (dir: string, name: string) => Promise<unknown>; onRename: (path: string, name: string) => Promise<unknown>; onDelete: (paths: string[]) => Promise<unknown>;
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -663,7 +786,8 @@ function FileMenu({ at, writable, shownName, onClose, onAttach, onDownload, onCo
         <span className="eyebrow"><span className="num">{paths.length}</span> items</span>
         <Item label={`Attach ${paths.length}`} kbd="A" onClick={() => onAttach(paths)} />
         <Item label="Download as zip" kbd="S" onClick={() => onDownload(paths)} />
-        <Item label="Copy paths" kbd="C" onClick={() => onCopy(paths)} />
+        <Item label="Copy" kbd="C" onClick={() => onCopyFiles(paths)} />
+        <Item label="Copy paths" kbd="P" onClick={() => onCopy(paths)} />
         {canWrite && <><div className="sep" role="separator" /><Item label={`Delete ${paths.length}…`} kbd="D" danger onClick={() => setSub("delete")} /></>}
       </>
     );
@@ -675,7 +799,8 @@ function FileMenu({ at, writable, shownName, onClose, onAttach, onDownload, onCo
         <Item label="Select" kbd="X" onClick={() => onSelect(t.entry.path)} />
         <Item label="Show in thread" kbd="G" onClick={() => onShow(t.entry.path)} />
         <Item label="Download" kbd="S" onClick={() => onDownload(paths)} />
-        <Item label="Copy path" kbd="C" onClick={() => onCopy(paths)} />
+        <Item label="Copy" kbd="C" onClick={() => onCopyFiles(paths)} />
+        <Item label="Copy path" kbd="P" onClick={() => onCopy(paths)} />
         {canWrite && (
           <>
             <div className="sep" role="separator" />
@@ -694,10 +819,12 @@ function FileMenu({ at, writable, shownName, onClose, onAttach, onDownload, onCo
           <>
             <Item label="Upload…" kbd="U" onClick={() => onUpload(dir)} />
             <Item label="New folder…" kbd="N" onClick={() => { setDraft(""); setSub("newfolder"); }} />
+            {canPaste && <Item label="Paste" kbd="V" onClick={() => void run(onPaste(dir))} />}
           </>
         ) : <p className="empty">Read-only</p>}
         {t.kind === "folder" && <Item label="Download as zip" kbd="S" onClick={() => onDownload(paths)} />}
-        <Item label="Copy path" kbd="C" onClick={() => onCopy([dir])} />
+        {t.kind === "folder" && !root && <Item label="Copy" kbd="C" onClick={() => onCopyFiles(paths)} />}
+        <Item label="Copy path" kbd="P" onClick={() => onCopy([dir])} />
         {t.kind === "folder" && !root && canWrite && (
           <>
             <div className="sep" role="separator" />
