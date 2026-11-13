@@ -3,7 +3,7 @@
 // Suggested threads card, and the Project settings page.
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import {
-  del, get, patch, post, put, threadPath, u,
+  del, get, patch, post, put, STARTS_MAX, threadPath, u,
   type CommandRule, type AllowedPaths, type EvidenceSetting, type GitRepository, type Grant, type MachineInfo, type MessagePart, type ModelRef, type Pool, type ProjectOverview, type ThinkingLevel, type ThreadChange, type ThreadSettings, type ThreadSummary,
 } from "./api.ts";
 import { ProjectQuestion } from "./Question.tsx";
@@ -431,7 +431,7 @@ export function ProjectSection({ ctx, base, summary, onSummary }: SectionProps) 
   );
 }
 
-/** Check on threads; New threads (Model, Thinking, Fallback, Code mode, and Evidence judge while Code mode is on); one Save. */
+/** Check on threads and Thread starts; New threads (Model, Thinking, Fallback, Code mode, and Evidence judge while Code mode is on); one Save. */
 export function ThreadsSection({ base, summary, settings, onSummary }: SectionProps) {
   const ps = summary.projectSettings;
   // One switch for both: looks at the threads (watchThreads) and waiting on them in a turn (checkInOnThreads).
@@ -442,6 +442,9 @@ export function ThreadsSection({ base, summary, settings, onSummary }: SectionPr
   const [evidence, setEvidence] = useState<EvidenceSetting | "">(ps?.threadsEvidence ?? "");
   const [thinking, setThinking] = useState<ThinkingLevel | "">(ps?.threadsThinking ?? "");
   const [fallback, setFallback] = useState<"" | "on" | "off">(ps?.threadsFallback === undefined ? "" : ps.threadsFallback ? "on" : "off");
+  const [starts, setStarts] = useState(ps?.threadsStarts === undefined ? "" : String(ps.threadsStarts));
+  // Typed numbers are clamped to 1 to the most; empty follows the default.
+  const clampStarts = (v: string) => v.trim() ? String(Math.min(STARTS_MAX, Math.max(1, Math.round(Number(v) || 1)))) : "";
   const [run, busy, error] = useAction();
   const [saved, setSaved] = useState(false);
   const save = () => run(async () => {
@@ -453,6 +456,7 @@ export function ThreadsSection({ base, summary, settings, onSummary }: SectionPr
       threadsEvidence: evidence || null,
       threadsThinking: thinking || null,
       threadsFallback: fallback ? fallback === "on" : null,
+      threadsStarts: clampStarts(starts) ? Number(clampStarts(starts)) : null,
     }));
     setSaved(true);
   });
@@ -465,6 +469,13 @@ export function ThreadsSection({ base, summary, settings, onSummary }: SectionPr
     <form className="card project-form" aria-label="Threads" onSubmit={(e) => { e.preventDefault(); void save(); }}>
       <Row label="Watching">
         <Switch label="Check on threads" hint={`While its threads work, ${her()} looks in on them and tells the others what affects them. Off, the chat only hears their reports, which takes far fewer tokens.`} checked={checkIn} onChange={setCheckIn} />
+      </Row>
+      <Row label="Thread starts" htmlFor="p-starts" hint={`Threads ${her()} may start from one of your messages, a routine or a wake-up. Her threads' reports don't count as new messages. Default is 3, or 6 while this chat's model runs in the cloud.`}>
+        <span className="with-unit">
+          <input id="p-starts" className="starts" type="number" min={1} max={STARTS_MAX} step={1} inputMode="numeric" placeholder={withDefault(String(ps?.startsDefault ?? 3))}
+            value={starts} onChange={(e) => setStarts(e.target.value)} onBlur={() => setStarts(clampStarts(starts))} />
+          <span className="unit">of <span className="num">{STARTS_MAX}</span></span>
+        </span>
       </Row>
       <h2 className="eyebrow" title={newThreadsHint}>New threads</h2>
       <Row label="Model" htmlFor="p-model" hint="The model a new thread talks on: Coding in Code mode, Main conversation otherwise.">

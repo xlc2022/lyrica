@@ -483,7 +483,10 @@ Each active thread is one Pi session from `openThreadSession`, with
   null follows the project chat; the model is a new thread's `code` model when it starts in
   code mode, its `chat` model otherwise), `watchThreads` and `checkInOnThreads` (each on unless
   turned off; looks go only while both are on, and the web UI sets them
-  together as **Check on threads**; see [delegation.md](delegation.md#child-threads)). A **look** at the threads
+  together as **Check on threads**; see [delegation.md](delegation.md#child-threads)), and
+  `threadsStarts` (the child threads the project chat may start in one request, 1 to
+  `STARTS_MAX` (32), larger clamped; null follows the default, shown as
+  `projectSettings.startsDefault`). A **look** at the threads
   (`watch.ts`) is one call to the `watching` task, through
   `callWithFallback` and `completeSimple` in a model runtime built from the
   project chat's `CallContext` (so local models only for a private or

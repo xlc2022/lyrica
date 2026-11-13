@@ -672,10 +672,16 @@ project is paused or hidden or an update drains, and never after the
 person stopped its last turn, until a turn there ends otherwise. What it
 woke is held in memory.
 
-**Limits:** `start`s per message to the parent (`perRequest`, default 3;
+**Limits:** `start`s per request to the parent (`perRequest`, default 3;
 `cloudPerRequest`, default 6, when the thread's chat model, or code model in
 code mode, resolves to a cloud endpoint now, since it uses no local GPU),
-counted before each start so parallel calls can't slip past. Children
+counted before each start so parallel calls can't slip past. A project
+chat takes its project's **Thread starts** (Project settings → Threads, 1
+to 32) in place of both when it is set. A request is
+what a prompt starts (the person's message, a routine, a wake-up); a run a
+child's report or a delegate result starts carries on the request before it.
+Each start says how many more may follow, and one past the limit says what
+counts and to message a started thread or tell the person what is left. Children
 working at once per user (`concurrency`, default 32, room for several cloud models) is only a ceiling: each
 model already takes as many requests at once as it can serve and queues the
 rest (models.md, "Local servers"), so children on different backends don't wait for each

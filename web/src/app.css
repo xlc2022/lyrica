@@ -1677,6 +1677,7 @@ code.raw { font-size: 12px; overflow-wrap: anywhere; }
 .srow input, .srow select { width: 100%; }
 .with-unit { display: flex; gap: 6px; align-items: center; min-width: 0; }
 .with-unit input { flex: 1; min-width: 0; }
+.with-unit input.starts { flex: 0 0 auto; width: calc(12ch + 48px); max-width: 100%; }
 .unit { font-size: 12px; color: var(--muted); white-space: nowrap; }
 .gpu-pick { display: grid; gap: 2px; font-size: 13px; }
 .estimate { margin: 0; font-size: 13px; color: var(--muted); }

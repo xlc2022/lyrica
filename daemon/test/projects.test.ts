@@ -452,6 +452,20 @@ describe("projects", () => {
     expect((await ada.get<ThreadSettings>(`${path}/settings`)).body).toMatchObject({ fallback: null, fallbackOn: false });
   });
 
+  it("start at most the project's Thread starts in one request, clamped to the most", async () => {
+    const { ada, path, script, say } = await setup();
+    expect((await ada.patch<ThreadSummary>(path, { threadsStarts: 1 })).body.projectSettings).toMatchObject({ threadsStarts: 1, startsDefault: 3 });
+    script("chat").push(start(["DNS", "dns: move DNS to the router"], ["Backups", "backups: copy the backups"]), { text: "Started one." });
+    script("dns").push({ text: "DNS moved." });
+    const { events } = await say("move DNS and copy the backups");
+    expect(ends(events).map((e) => e.result)).toEqual(expect.arrayContaining([
+      expect.stringContaining("0 more may start in this request."), expect.stringMatching(/^This request has started 1 child thread, /),
+    ]));
+    expect((await ada.patch<ThreadSummary>(path, { threadsStarts: 99 })).body.projectSettings?.threadsStarts).toBe(32);
+    expect((await ada.patch(path, { threadsStarts: 0 })).status).toBe(400);
+    expect((await ada.patch<ThreadSummary>(path, { threadsStarts: null })).body.projectSettings?.threadsStarts).toBeUndefined();
+  });
+
   it("queue a start past the limit, and run it when a slot frees", async () => {
     const { script, say, overview, get, messages, threadPath } = await setup({ threads: { concurrency: 1 } });
     let release!: () => void;

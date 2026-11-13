@@ -550,6 +550,8 @@ export interface ServingSettings {
 /** POST /api/u/:userId/offerings/:offeringId/reload → the host's answer: applies saved settings now. A shared host needs an administrator. */
 /** How many of the newest calls the Models overview lists under History. */
 export const MODELS_PAGE_CALLS = 10;
+/** The most child threads a project may let one request start (Project settings → Threads, Thread starts). */
+export const STARTS_MAX = 32;
 
 /** GET /api/u/:userId/models/page → ModelsPage: what the Models page shows, endpoints with live status. An endpoint seen down in the last 30 s isn't asked again, unless it is a host that is updating; a cloud endpoint whose provider takes a real probe is asked at most every 90 s (local ones stay at 30 s); each gets 3 s. */
 export interface ModelsPage {
@@ -1026,6 +1028,10 @@ export interface ProjectSettingsInfo {
   threadsThinking?: ThinkingLevel;
   /** Fallback for new threads of the project; none: the project chat's. */
   threadsFallback?: boolean;
+  /** Threads the project chat may start in one request (1 to `STARTS_MAX`); none: `startsDefault`. */
+  threadsStarts?: number;
+  /** What one request may start without `threadsStarts`: 3, or 6 while the chat's model runs in the cloud. */
+  startsDefault: number;
   /** After the person writes in a thread, or a thread posts an update, the project chat looks and tells the threads it affects. */
   watchThreads: boolean;
   /** The project chat may wait within a turn for its working threads; off, it ends its turn and their reports wake it. */
@@ -1063,6 +1069,8 @@ export interface ThreadChange {
   threadsEvidence?: EvidenceSetting | null;
   paused?: boolean; threadsModel?: ModelRef | ModelRef[] | null; threadsThinking?: ThinkingLevel | null; threadsFallback?: boolean | null; watchThreads?: boolean; checkInOnThreads?: boolean;
   askFirstInstructions?: boolean;
+  /** Threads the project chat may start in one request, 1 to `STARTS_MAX`; null follows the default. */
+  threadsStarts?: number | null;
 }
 /** PUT and DELETE /api/u/:userId/threads/:pool/:threadId/pin → ThreadSummary. The user's own pin, in user.db. */
 /**

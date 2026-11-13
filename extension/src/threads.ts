@@ -520,7 +520,11 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
         checkWords(p.task);
         // Counted before starting, so calls made at once can't all slip under the limit.
         const most = host.perRequest?.(thread) ?? host.limits.perRequest;
-        if (started >= most) throw new Error(`one message can start at most ${most} child threads`);
+        if (started >= most) {
+          throw new Error(`This request has started ${most} child thread${most === 1 ? "" : "s"}, the most one request may start, so this one wasn't started. `
+            + "A request is the person's message, a routine or a wake-up; child threads' reports carry on the same request. "
+            + "Give the rest to a thread you started (message it once it reports), or tell the person what is left to start.");
+        }
         started++;
         let made: { id: string; link: string; queued?: boolean };
         try {
@@ -529,9 +533,10 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
           started--;
           throw err;
         }
+        const left = `${most - started} more may start in this request.`;
         return text(made.queued
-          ? `Queued [t:${made.id}]: it starts when another thread finishes.`
-          : `Started child thread [t:${made.id}], working in the background.`, { threads: [made.id] });
+          ? `Queued [t:${made.id}]: it starts when another thread finishes. ${left}`
+          : `Started child thread [t:${made.id}], working in the background. ${left}`, { threads: [made.id] });
       },
     });
 

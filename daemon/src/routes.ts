@@ -1164,7 +1164,7 @@ export function apiRoutes(d: Lyricad): Route[] {
           s().workspace.settings(user.id).seedCommandRules(pool, thread.id);
         }
         const project = !!store.getThread(thread.id)!.project;
-        const settings = change.threadsCode !== undefined || change.threadsEvidence !== undefined || change.paused !== undefined || change.threadsModel !== undefined || change.threadsThinking !== undefined || change.threadsFallback !== undefined || change.watchThreads !== undefined || change.checkInOnThreads !== undefined || change.askFirstInstructions !== undefined || change.commandRules !== undefined || change.checks !== undefined || change.setup !== undefined;
+        const settings = change.threadsCode !== undefined || change.threadsEvidence !== undefined || change.paused !== undefined || change.threadsModel !== undefined || change.threadsThinking !== undefined || change.threadsFallback !== undefined || change.watchThreads !== undefined || change.checkInOnThreads !== undefined || change.askFirstInstructions !== undefined || change.threadsStarts !== undefined || change.commandRules !== undefined || change.checks !== undefined || change.setup !== undefined;
         if ((change.goal !== undefined || change.instructions !== undefined || change.discardDraft !== undefined || settings) && !project) {
           throw new HttpError(400, "only a project has a goal, instructions and project settings");
         }
@@ -1199,6 +1199,7 @@ export function apiRoutes(d: Lyricad): Route[] {
         if (change.threadsThinking !== undefined && change.threadsThinking !== null && !THINKING_LEVELS.includes(change.threadsThinking)) throw new HttpError(400, "threadsThinking is off, low, medium or high");
         if (change.threadsFallback !== undefined && change.threadsFallback !== null && typeof change.threadsFallback !== "boolean") throw new HttpError(400, "threadsFallback is true, false or null");
         if (change.threadsEvidence !== undefined && change.threadsEvidence !== null && !EVIDENCE_SETTINGS.includes(change.threadsEvidence)) throw new HttpError(400, "threadsEvidence is auto, on, off or null");
+        if (change.threadsStarts !== undefined && change.threadsStarts !== null && (!Number.isInteger(change.threadsStarts) || change.threadsStarts < 1)) throw new HttpError(400, "threadsStarts is a whole number from 1, or null");
         if (settings) {
           s().projects.set(user.id, pool, thread.id, {
             ...(change.paused !== undefined ? { paused: !!change.paused } : {}),
@@ -1210,6 +1211,7 @@ export function apiRoutes(d: Lyricad): Route[] {
             ...(change.watchThreads !== undefined ? { watch: !!change.watchThreads } : {}),
             ...(change.checkInOnThreads !== undefined ? { checkIn: !!change.checkInOnThreads } : {}),
             ...(change.askFirstInstructions !== undefined ? { askFirst: !!change.askFirstInstructions } : {}),
+            ...(change.threadsStarts !== undefined ? { starts: change.threadsStarts } : {}),
           });
         }
         return { thread: thread.id, project, made: !!change.project && !thread.project };
@@ -2850,6 +2852,7 @@ function summary(d: Lyricad, user: User, pool: Pool, store: PoolStore, th: Threa
       ...(settings.draftInstructions !== undefined ? { draftInstructions: settings.draftInstructions } : {}),
       commandRules: d.services!.workspace.settings(user.id).commandRules(pool, th.id), checks: d.services!.workspace.settings(user.id).checks(pool, th.id), setup: d.services!.workspace.settings(user.id).setup(pool, th.id), pageId: `p:${projectSlug(th.id)}`, paused: settings.paused, threadsCode: settings.code, ...(settings.evidence ? { threadsEvidence: settings.evidence } : {}), watchThreads: settings.watch, checkInOnThreads: settings.checkIn, askFirstInstructions: settings.askFirst, ...(settings.model ? { threadsModel: settings.model } : {}), ...(settings.thinking ? { threadsThinking: settings.thinking } : {}),
       ...(settings.fallback !== undefined ? { threadsFallback: settings.fallback } : {}),
+      ...(settings.starts !== undefined ? { threadsStarts: settings.starts } : {}), startsDefault: d.services!.children.defaultPerRequest(user.id, pool, th.id),
     } } : {}),
     ...(mine ? { state: mine.state, ...(mine.held ? { held: mine.held } : {}), ...(mine.worktreeReason ? { worktreeReason: mine.worktreeReason } : {}), ...(mine.anchor !== undefined ? { anchor: mine.anchor } : {}), ...(mine.needsYou ? { needsYou: true as const } : {}), ...chips(d, user, pool, th.id, look) } : {}),
     ...(question ? { question: { n: question.n, asked: question.asked } } : {}),

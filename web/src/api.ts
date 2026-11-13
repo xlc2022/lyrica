@@ -3,7 +3,7 @@ import { her } from "./name.ts";
 import type { DraftChange, DraftInfo, NameSetting, Pool } from "@lyrica/daemon/api";
 
 export type * from "@lyrica/daemon/api";
-export { THREAD_TASKS } from "@lyrica/daemon/api";
+export { STARTS_MAX, THREAD_TASKS } from "@lyrica/daemon/api";
 
 /** A refused request, with lyricad's reason in plain words. */
 export class HttpError extends Error {
