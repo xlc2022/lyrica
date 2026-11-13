@@ -125,6 +125,11 @@ describe("server-side history", () => {
     expect(recent[1]!.origin).toBe("user");
     const paged = (await s.ada.get<MemoryHit[]>(`${s.u}/memory/search?kinds=entry&before=${encodeURIComponent(recent[0]!.updatedAt!)}`)).body;
     expect(paged.map((h) => h.id)).toEqual([said]);
+    // Oldest first, paged forwards from the last row's time.
+    const oldest = (await s.ada.get<MemoryHit[]>(`${s.u}/memory/search?kinds=entry&sort=oldest&limit=1`)).body;
+    expect(oldest.map((h) => h.id)).toEqual([said]);
+    const later = (await s.ada.get<MemoryHit[]>(`${s.u}/memory/search?kinds=entry&sort=oldest&after=${encodeURIComponent(oldest[0]!.updatedAt!)}`)).body;
+    expect(later.map((h) => h.snippet)).toEqual(["Noted: Sunday."]);
     const detail = (await s.ada.get<MemoryDetail>(`${s.u}/memory/general/${encodeURIComponent(said)}`)).body;
     expect(detail.item).toMatchObject({ kind: "entry", text: "Water the trays on Sunday.", pool: "general" });
     expect(detail.cameFrom).toEqual([`t:${said.slice(2, said.lastIndexOf("#"))}`]);

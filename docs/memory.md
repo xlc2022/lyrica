@@ -317,7 +317,7 @@ the latest task (300 characters) and progress (1,200 characters), with its
 time. These words stay in encrypted pool.db's `code_tasks`, never user.db,
 and disappear when their thread is forgotten.
 
-**Recall counts** (Status's Memory use card). Each pool keeps how often she
+**Recall counts** (Status's Memory use card, and the Memory page's Most used order). Each pool keeps how often she
 reached each note and page, per hour, in `recalls`: `recalled` when automatic
 recall brought it into a turn, `searched` when a `recall` search found it,
 `opened` when `read_memory` opened it whole. IDs and numbers only, never the
@@ -553,10 +553,15 @@ like a notebook: a browse pane and the memory being read, laid out like the
 Files panel.
 
 - **Browsing.** A search box, a segmented control of the layers (Pages,
-  Notes, WAKE, Journal, Recent), a pool select, **User introduced** and, on
-  Notes or a search, **Hide superseded** (on by default: notes a later note
-  replaced stay out of the list and the tag counts). Without a
-  search the list is one layer, newest first, paged with More; a search
+  Notes, WAKE, Journal, Recent), a pool select, a **Sort** select on Pages,
+  Notes and Recent, **User introduced** and, on Notes or a search, **Hide
+  superseded** (on by default: notes a later note replaced stay out of the
+  list and the tag counts). Without a search the list is one layer, last
+  changed first unless Sort says otherwise (Newest or Oldest by when it was
+  written; Most used by the Recall counts below, a private thread's count of
+  a general memory adding only while both pools are shown; Title for pages;
+  Recent offers Newest and Oldest), paged with More; the order is kept per
+  layer in the browser's own storage, a word with no memory in it. A search
   replaces the list with hits across layers. **Recent** is short-term
   memory: the logged messages (a person's and hers, never a tool's result,
   an unlogged thread's, a watch, a wake-up, a routine's turn or another

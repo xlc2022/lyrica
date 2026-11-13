@@ -18,6 +18,9 @@ const isMarked = (text: string) => [FROM_PARENT, WATCHING, WAKEUP, ROUTINE].some
 /** Who made a change. Thread views write as `lyrica` or `sleep`; the owner view as `user:<id>`. */
 export type Author = "lyrica" | "sleep" | `user:${string}`;
 export type Origin = "lyrica" | "sleep" | "user";
+/** The browse pane's orders (docs/memory.md, The memory browser): last changed, newest, oldest, most used (the 31 days of recall counts), title (pages). */
+export const MEMORY_SORTS = ["changed", "added", "oldest", "used", "title"] as const;
+export type MemorySort = (typeof MEMORY_SORTS)[number];
 
 export interface Thread {
   id: string;
@@ -663,21 +666,25 @@ export class PoolReader {
   }
 
   /**
-   * Logged messages sleep hasn't consolidated yet (written after its watermark), newest first: the
-   * memory browser's Recent layer. `before` is a `createdAt` to page from. Only what a person or she
-   * said, never a tool's result or one of her looks at other threads.
+   * Logged messages sleep hasn't consolidated yet (written after its watermark), newest first or with
+   * `oldest` oldest first: the memory browser's Recent layer. `before` (newest first) or `after` (oldest
+   * first) is a `createdAt` to page from. Only what a person or she said, never a tool's result or one of
+   * her looks at other threads.
    */
-  recentEntries(opts: { limit: number; before?: string }): Item[] {
+  recentEntries(opts: { limit: number; before?: string; after?: string; oldest?: boolean }): Item[] {
     const limit = Math.max(1, opts.limit);
-    const stmt = this.db.prepare(`SELECT thread, n, text, created_at FROM entries WHERE unlogged = 0 AND role IN ('user', 'assistant') AND text != ''
-      AND created_at > @since AND (@before IS NULL OR created_at < @before) ORDER BY created_at DESC, n DESC LIMIT @limit`);
+    const stmt = opts.oldest
+      ? this.db.prepare(`SELECT thread, n, text, created_at FROM entries WHERE unlogged = 0 AND role IN ('user', 'assistant') AND text != ''
+        AND created_at > @since AND (@from IS NULL OR created_at > @from) ORDER BY created_at, n LIMIT @limit`)
+      : this.db.prepare(`SELECT thread, n, text, created_at FROM entries WHERE unlogged = 0 AND role IN ('user', 'assistant') AND text != ''
+        AND created_at > @since AND (@from IS NULL OR created_at < @from) ORDER BY created_at DESC, n DESC LIMIT @limit`);
     const since = this.watermark() ?? "";
-    let before = opts.before ?? null;
+    let from = (opts.oldest ? opts.after : opts.before) ?? null;
     const out: Item[] = [];
     // A message from another thread, a watch, a wake-up or a routine is hers or the daemon's, not a person's: left out.
     for (;;) {
       const batch = limit * 2;
-      const rows = stmt.all({ since, before, limit: batch }) as { thread: string; n: number; text: string; created_at: string }[];
+      const rows = stmt.all({ since, from, limit: batch }) as { thread: string; n: number; text: string; created_at: string }[];
       for (const r of rows) {
         if (isMarked(r.text)) continue;
         const item = this.get(entryId(r.thread, r.n));
@@ -685,7 +692,7 @@ export class PoolReader {
         if (out.length === limit) return out;
       }
       if (rows.length < batch) return out;
-      before = rows[rows.length - 1]!.created_at;
+      from = rows[rows.length - 1]!.created_at;
     }
   }
 
@@ -695,29 +702,37 @@ export class PoolReader {
   }
 
   /**
-   * One layer, newest change first, for the memory browser's browse pane.
-   * `before` is an `updatedAt` to page from; `about` keeps notes with that
-   * tag, `origin` those of one origin and `current` leaves out superseded
-   * ones. Archived memories are left out.
+   * One layer for the memory browser's browse pane, newest change first unless `sort` says otherwise
+   * (MEMORY_SORTS; `title` orders pages only). `before` is an `updatedAt` to page from in the default
+   * order, `offset` pages any order; `uses` maps an ID to how often she reached it, for `used`. `about`
+   * keeps notes with that tag, `origin` those of one origin and `current` leaves out superseded ones.
+   * Archived memories are left out.
    */
-  listMemories(kind: "note" | "page" | "journal" | "wake", opts: { limit: number; before?: string; about?: string; origin?: Origin; current?: boolean }): Item[] {
+  listMemories(kind: "note" | "page" | "journal" | "wake", opts: { limit: number; before?: string; offset?: number; sort?: MemorySort; uses?: Record<string, number>; about?: string; origin?: Origin; current?: boolean }): Item[] {
     const limit = Math.max(1, opts.limit);
-    const before = opts.before ?? null;
+    const sort = opts.sort ?? "changed";
+    const before = sort === "changed" ? opts.before ?? null : null;
+    const offset = Math.max(0, opts.offset ?? 0);
+    const order = (id: string, title?: string) => ({
+      changed: "updated_at DESC", added: "created_at DESC", oldest: "created_at", used: "coalesce(u.value, 0) DESC, updated_at DESC",
+      title: title ? `lower(${title}), ${id}` : "updated_at DESC",
+    })[sort] + `, ${id}`;
+    const uses = JSON.stringify(opts.uses ?? {});
     let rows: { id: string }[];
     switch (kind) {
       case "note":
-        rows = this.db.prepare(`SELECT id FROM notes WHERE archived = 0 AND (@before IS NULL OR updated_at < @before)
+        rows = this.db.prepare(`SELECT notes.id AS id FROM notes LEFT JOIN json_each(@uses) u ON u.key = notes.id WHERE archived = 0 AND (@before IS NULL OR updated_at < @before)
           AND (@current = 0 OR superseded_by IS NULL)
           AND (@origin IS NULL OR origin = @origin) AND (@about IS NULL OR (', ' || about || ', ') LIKE ('%, ' || @about || ', %') ESCAPE '\\')
-          ORDER BY updated_at DESC LIMIT @limit`).all({ before, current: opts.current ? 1 : 0, origin: opts.origin ?? null, about: opts.about?.replace(/[\\%_]/g, "\\$&") ?? null, limit }) as { id: string }[];
+          ORDER BY ${order("notes.id")} LIMIT @limit OFFSET @offset`).all({ uses, before, current: opts.current ? 1 : 0, origin: opts.origin ?? null, about: opts.about?.replace(/[\\%_]/g, "\\$&") ?? null, limit, offset }) as { id: string }[];
         break;
       case "page":
-        rows = this.db.prepare(`SELECT 'p:' || slug AS id FROM pages WHERE archived = 0 AND (@before IS NULL OR updated_at < @before)
-          AND (@origin IS NULL OR origin = @origin) ORDER BY updated_at DESC LIMIT @limit`).all({ before, origin: opts.origin ?? null, limit }) as { id: string }[];
+        rows = this.db.prepare(`SELECT 'p:' || slug AS id FROM pages LEFT JOIN json_each(@uses) u ON u.key = 'p:' || pages.slug WHERE archived = 0 AND (@before IS NULL OR updated_at < @before)
+          AND (@origin IS NULL OR origin = @origin) ORDER BY ${order("slug", "title")} LIMIT @limit OFFSET @offset`).all({ uses, before, origin: opts.origin ?? null, limit, offset }) as { id: string }[];
         break;
       case "journal":
-        rows = opts.origin && opts.origin !== "sleep" ? [] : this.db.prepare("SELECT id FROM journal WHERE (@before IS NULL OR updated_at < @before) ORDER BY updated_at DESC LIMIT @limit")
-          .all({ before, limit }) as { id: string }[];
+        rows = opts.origin && opts.origin !== "sleep" ? [] : this.db.prepare("SELECT id FROM journal WHERE (@before IS NULL OR updated_at < @before) ORDER BY updated_at DESC LIMIT @limit OFFSET @offset")
+          .all({ before, limit, offset }) as { id: string }[];
         break;
       case "wake":
         rows = opts.origin && opts.origin !== "sleep" ? [] : this.db.prepare("SELECT 'wake' AS id FROM wake WHERE (@before IS NULL OR updated_at < @before)").all({ before }) as { id: string }[];

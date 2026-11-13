@@ -415,6 +415,37 @@ test("the Notes layer hides superseded notes until asked", async ({ page, baseUR
   await noHorizontalScroll(page);
 });
 
+test("each layer keeps its own order, remembered in this browser", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  await page.goto(`/#/u/${userId}/memory`);
+  for (const text of ["Fixture kettle one", "Fixture kettle two"]) {
+    await page.getByRole("button", { name: "Add a memory" }).click();
+    await page.getByLabel("Text").fill(text);
+    await page.getByRole("button", { name: "Add", exact: true }).click();
+    await expect(page.locator("article.mem-item")).toContainText(text);
+  }
+  await page.goto(`/#/u/${userId}/memory`);
+  const layers = page.getByRole("group", { name: "Layer" });
+  const sort = page.getByRole("combobox", { name: "Sort" });
+  await expect(sort).toHaveValue("changed");
+  await expect(sort.locator("option")).toHaveText(["Last changed", "Newest", "Oldest", "Most used", "Title"]);
+  await layers.getByRole("button", { name: "Notes" }).click();
+  // Other tests' notes share this lyricad: only the two added here are compared.
+  const rows = page.getByRole("region", { name: "Browse memory" }).locator(".mem-list a", { hasText: "Fixture kettle" });
+  await expect(rows.first()).toContainText("Fixture kettle two");
+  await sort.selectOption("oldest");
+  await expect(rows.first()).toContainText("Fixture kettle one");
+  // WAKE is one memory: no order to pick.
+  await layers.getByRole("button", { name: "WAKE" }).click();
+  await expect(sort).toHaveCount(0);
+  await layers.getByRole("button", { name: "Pages" }).click();
+  await expect(sort).toHaveValue("changed");
+  await page.reload();
+  await layers.getByRole("button", { name: "Notes" }).click();
+  await expect(sort).toHaveValue("oldest");
+  await noHorizontalScroll(page);
+});
+
 test("a memory can be added, edited and restored", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   // A thread mention in a memory shows as a link to that thread.

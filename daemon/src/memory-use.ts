@@ -1,7 +1,7 @@
 // Principles 5 and 6: Administration → Status shows which of the administrator's own notes and pages recall leans on
 // (docs/memory.md, "Recall counts"), from the counts each pool keeps per hour and the citations it already derives.
 // Only the shown pools count, and a private row for a general memory only when both are shown.
-import { firstLine, splitId, type OwnerView, type Pool, type RecallCount } from "@lyrica/core";
+import { firstLine, RECALL_DAYS, splitId, type OwnerView, type Pool, type RecallCount } from "@lyrica/core";
 import type { AdminMemoryUse, MemoryUseRow } from "./api.ts";
 
 const HOUR = 3_600_000;
@@ -68,4 +68,22 @@ export function memoryUse(o: OwnerView, pools: Pool[], days: 7 | 30, now = Date.
     memories: byMemory.size,
     top, cited,
   };
+}
+
+/**
+ * The Memory page's Most used: how often she reached each shown pool's notes and pages in the last 31 days, by pool and
+ * bare ID. A private thread's count of a general memory adds to it only when both pools are shown, as on the card.
+ */
+export function useCounts(o: OwnerView, pools: Pool[], now = Date.now()): Record<Pool, Record<string, number>> {
+  const since = new Date(now - RECALL_DAYS * 24 * HOUR).toISOString();
+  const out: Record<Pool, Record<string, number>> = { general: {}, private: {} };
+  for (const store of pools) {
+    for (const r of o[store].recallCounts(since) as RecallCount[]) {
+      const at = splitId(r.id);
+      const pool = at?.pool ?? store;
+      if (!at || !pools.includes(pool)) continue;
+      out[pool][at.id] = (out[pool][at.id] ?? 0) + total(r);
+    }
+  }
+  return out;
 }

@@ -4,7 +4,7 @@ import { imageRetryOptions } from "./image-retry.ts";
 import { randomUUID } from "node:crypto";
 import {
   ANSWER, CLOUD_IMAGE_PROVIDERS, recentWorkAllowed, WELCOME_LIMITS, describe, AuthError, isPlan, type PlanKind, NoRecoveryCopy, WrongPassword, isEmoji, WORKDIR, CAPABILITIES, FilesRefused, checkTask, isRestricted, voiceContext, refId, THINKING_LEVELS, publicKeyOf, authorizedKeysLine, proxmoxAddress, CloudModelForbidden, FROM_PARENT, NoModel, WAKEUP, ROUTINE, WATCHING, PRONOUN_PRESETS, projectSlug,
-  citationsIn, exportMemories, importMemories, exportSkills, importSkills, firstLine, GIT_KINDS, kindOf, mcpCommand, mcpCommandLine, mcpEnv, mcpLimit, mcpPlace, sentenceCiting, splitId, HomeFileMissing, MAX_IMAGE_BYTES,
+  citationsIn, exportMemories, importMemories, exportSkills, importSkills, firstLine, GIT_KINDS, kindOf, mcpCommand, mcpCommandLine, mcpEnv, mcpLimit, mcpPlace, sentenceCiting, splitId, HomeFileMissing, MAX_IMAGE_BYTES, MEMORY_SORTS, type MemorySort,
   type Author, type Column, type Endpoint, type ModelRef, type Offering, type Hit, type Item, type GitAccountConfig, type MachineConfig, type McpServerConfig, type OwnerView, type Pool, type PoolStore, type SleepItem, type SleepRunRecord, type Thread, type ThreadPref, type User,
   botChecks, setBotChecks, searxngAddress, searxngStatus, searxngView, setSearxngAddress, kiwixAddress, kiwixArticle, kiwixPicture, kiwixStatus, setKiwixAddress, forgetKiwixBooks, claudeCodeInstalled, modelName,
   codexSignedIn, codexSignIn, codexSignOut, type CodexBox, type CodexSignIn, serverZone, zoneOf,
@@ -28,7 +28,7 @@ import { forgetThreadFiles } from "./sweep.ts";
 import { applyRemoval, entriesFrom, removalPlan, threadsReached, uploadsIn, type RemovalContext } from "./removal.ts";
 import { historyQuery } from "./history.ts";
 import { factsWindow, modelFacts } from "./model-facts.ts";
-import { memoryUse } from "./memory-use.ts";
+import { memoryUse, useCounts } from "./memory-use.ts";
 import { redactUrl, unredactUrl } from "./redact.ts";
 import { fromLyrica, isPdf, SEAL_PRELUDE, VIEW_LIMIT, viewHeaders, viewKind, withConsole } from "./file-view.ts";
 import { relinkFiles, type Relinked } from "./relink.ts";
@@ -2010,19 +2010,39 @@ export function apiRoutes(d: Lyricad): Route[] {
       // current=1 leaves out notes a later note superseded.
       const current = r.query.get("current") === "1";
       const before = r.query.get("before") || undefined;
+      const after = r.query.get("after") || undefined;
       const limit = Math.min(100, Number(r.query.get("limit") ?? 30) || 30);
+      const offset = Math.max(0, Number(r.query.get("offset") ?? 0) || 0);
+      const sortWord = r.query.get("sort") || "changed";
+      if (!(MEMORY_SORTS as readonly string[]).includes(sortWord)) throw new HttpError(400, `sort is one of ${MEMORY_SORTS.join(", ")}`);
+      const layerWord = !q && kinds?.length === 1 ? kinds[0] : undefined;
+      // Only pages have titles: another layer ordered by title reads as last changed.
+      const sort = (sortWord === "title" && layerWord !== "page" ? "changed" : sortWord) as MemorySort;
       const layer = !q && kinds?.length === 1 && ["note", "page", "wake", "journal", "entry"].includes(kinds[0]!) ? kinds[0] as "note" | "page" | "wake" | "journal" | "entry" : undefined;
       const toHit = (pool: Pool, h: Hit, item: Item | undefined): Api.MemoryHit => ({
         pool, id: h.id, kind: h.kind, snippet: h.snippet, score: h.score,
         ...(h.origin ? { origin: h.origin } : {}), ...(h.supersededBy ? { supersededBy: h.supersededBy } : {}),
         ...(item?.title ? { title: item.title } : {}), ...(item?.about?.length ? { about: item.about } : {}), ...(item ? { updatedAt: item.updatedAt } : {}),
       });
-      const listed = (pool: Pool, i: Item): Api.MemoryHit => toHit(pool, { id: i.id, kind: i.kind, snippet: firstLine(i.text), score: 0, origin: i.origin, author: i.author, supersededBy: i.supersededBy }, i);
+      const listed = (pool: Pool, i: Item): Api.MemoryHit => ({ ...toHit(pool, { id: i.id, kind: i.kind, snippet: firstLine(i.text), score: 0, origin: i.origin, author: i.author, supersededBy: i.supersededBy }, i), createdAt: i.createdAt });
       return owner(d, user, (o) => {
+        // One layer in another order: each pool's first offset + limit, merged in the same order, then the page.
+        if (layer && layer !== "entry" && (sort !== "changed" || offset)) {
+          const uses = sort === "used" ? useCounts(o, pools) : undefined;
+          const items = pools.flatMap((pool) => o[pool].listMemories(layer, { limit: offset + limit, sort, ...(uses ? { uses: uses[pool] } : {}), about, origin, current }).map((i) => ({ pool, i })));
+          const key = ({ pool, i }: { pool: Pool; i: Item }) => ({ changed: i.updatedAt, added: i.createdAt, oldest: i.createdAt, used: uses?.[pool][i.id] ?? 0, title: (i.title ?? "").toLowerCase() })[sort];
+          const desc = sort === "changed" || sort === "added" || sort === "used";
+          items.sort((a, b) => {
+            const x = key(a), y = key(b);
+            const c = x < y ? -1 : x > y ? 1 : 0;
+            return (desc ? -c : c) || (sort === "used" ? b.i.updatedAt.localeCompare(a.i.updatedAt) : 0);
+          });
+          return items.slice(offset, offset + limit).map(({ pool, i }) => listed(pool, i));
+        }
         const hits = pools.flatMap((pool): Api.MemoryHit[] => {
           const store = o[pool];
           // The Recent layer: logged messages sleep hasn't consolidated yet, the browser's short-term memory.
-          if (layer === "entry") return store.recentEntries({ limit, before }).map((i) => listed(pool, i));
+          if (layer === "entry") return store.recentEntries({ limit, before, after, oldest: sort === "oldest" }).map((i) => listed(pool, i));
           if (layer) return store.listMemories(layer, { limit, before, about, origin, current }).map((i) => listed(pool, i));
           if (!q) return store.userIntroduced().map((id) => store.get(id)).filter((x): x is Item => !!x).filter((i) => (!about || i.about?.includes(about)) && !(current && i.supersededBy)).map((i) => listed(pool, i));
           return store.search(q, { kinds, limit: limit * 2, includeArchived: true, current })
@@ -2030,7 +2050,10 @@ export function apiRoutes(d: Lyricad): Route[] {
             .map((h) => { const item = h.kind === "entry" || h.kind === "thread" ? undefined : store.get(h.id); return about && !item?.about?.includes(about) ? undefined : toHit(pool, h, item); })
             .filter((h): h is Api.MemoryHit => !!h);
         });
-        return (q ? hits.sort((a, b) => b.score - a.score) : hits.sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""))).slice(0, limit);
+        if (q) hits.sort((a, b) => b.score - a.score);
+        else if (layer === "entry" && sort === "oldest") hits.sort((a, b) => (a.updatedAt ?? "").localeCompare(b.updatedAt ?? ""));
+        else hits.sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""));
+        return hits.slice(0, limit);
       });
     }),
     route("POST", `${u}/memory/:pool/notes`, async (r) => {
