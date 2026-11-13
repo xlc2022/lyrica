@@ -55,6 +55,11 @@ export interface Template {
   parts: PartSpec[];
   references: number;
   mask: boolean;
+  /**
+   * Values its recipes run with when they set none, over the host's own (`shift` 1.15 for Krea 2, the model's
+   * native shift, where the host's is 3).
+   */
+  defaults?: Values;
   /** Video templates only. */
   video?: VideoSpec;
   /**
@@ -122,6 +127,9 @@ export function unboundSettings(t: Template, defaults: Record<string, unknown>):
   }
   return SETTINGS.filter((k) => defaults[k] !== undefined && !used.has(k));
 }
+
+/** The sampling settings a job may set in place of its recipe's: a job's answer names those its workflow takes no input for. */
+export const JOB_SETTINGS = ["steps", "cfg", "sampler", "scheduler", "shift", "guidance"];
 
 /** A LoRA applied to the model, with its part's slot (`high`, `low`) when it was made for one expert. */
 export interface Lora { file: string; strength: number; slot?: string | null }

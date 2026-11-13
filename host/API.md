@@ -861,7 +861,8 @@ as `{ "parts": [...] }`, each entry like this:
 - Architectures with templates: `sdxl` and `flux` (a checkpoint, or
   diffusion model, encoders and VAE), `z-image`, `krea2` (create; with
   recipe defaults for the Krea2T-Enhancer, RES4LYF's sampler and a second
-  pass, below),
+  pass, below; `shift` is Flux's, set through `ModelSamplingFlux` and
+  sd.cpp's flow shift alike, and defaults to the model's own 1.15),
   `qwen-image` (create, and edit for a diffusion model whose file name
   says "edit"), `qwen-image-2.1` (create and edit from one recipe, with
   the Turbo's 8-step schedule from the recipe's defaults), `p-h3-image`
@@ -1130,10 +1131,11 @@ body may be up to 2 MB. Not on a host using stable-diffusion.cpp.
   `{ by? }` → as PUT, that revision (and its layout) saved as a new one.
 - A recipe on a custom workflow lists `custom: true` and `workflowBase`
   (the built-in template it was made from, or null for an import; null on
-  a built-in's own recipe) and `unbound`: those of its defaults `steps`,
+  a built-in's own recipe). Every recipe lists `unbound`: those of its defaults `steps`,
   `cfg`, `guidance`, `sampler`, `scheduler` and `shift` that no input of
-  its workflow takes (the input was set to a fixed value), so no job uses
-  them; empty on a built-in's recipe; one whose workflow needs node types ComfyUI
+  its workflow takes (the input was set to a fixed value, or a built-in has
+  none, as SDXL has no shift), so no job uses
+  them. One whose workflow needs node types ComfyUI
   lacks does nothing, its `unsupported` naming
   them. A workflow that loads its own files can't have parts changed or
   added (change them in the workflow); deleting its last recipe deletes it
@@ -1195,6 +1197,10 @@ All three answer `{ "images": [{ "png": "<base64>", "width": 1024,
 0.7 }], "seconds": 6.2, "sampling": { "seconds": 4.8, "steps": 8 } }`.
 `loras`, only when the job applied any, is the LoRAs it chained onto the
 model, the recipe's own and then the request's, at the strengths used.
+`unused`, only when there are any, names the settings the request set
+(`steps`, `cfg`, `sampler`, `scheduler`, `shift`, `guidance`) that its
+workflow takes no input for, or stable-diffusion.cpp doesn't use for it
+(a `shift` on SDXL or FLUX): the job ran without them.
 `seconds` is the whole request, queue and loading
 included. `sampling` is how long the workflow's samplers ran, from each
 sampler's `executing` event to its last `progress`, summed over the samplers
@@ -1226,8 +1232,10 @@ the action is `invalid`.
   `sampler` and `scheduler` are ComfyUI names (lower case, digits and `_`),
   `shift` 0 to 20 and `guidance` 0 to 30, checked as a recipe's defaults
   are; each replaces the recipe's for this job only, and a template or
-  workflow without that setting ignores it. A host from before these four
-  refuses them as unknown fields.
+  workflow without that setting ignores it and names it in `unused`. A
+  setting neither the request nor the recipe gives takes the template's
+  default (Krea 2's `shift` 1.15), else the host's (`shift` 3). A host from
+  before these four refuses them as unknown fields.
   `references` only for a template that takes them (otherwise `invalid`).
 - `POST /host/v1/images/edit`: as create without `width` and `height`, plus
   `"image": "<base64>"` and an optional `"mask": "<base64>"` (its white
@@ -1375,7 +1383,7 @@ newer host made, read after a rollback).
     "sampling": { "seconds": 240.5, "steps": 20 } }
   ```
 
-  `loras` is as for images. `sampling` is as for images, summed over a
+  `loras` and `unused` are as for images. `sampling` is as for images, summed over a
   chain's clips; `POST /host/v1/videos/upscale` answers it too.
 
   The clip is H.264 MP4, with AAC sound when `audio` is true (LTX-2.5,

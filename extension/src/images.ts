@@ -123,13 +123,25 @@ const upscaleSettings = (p: ImageArgs) => ({ ...(p.colorMatch === undefined ? {}
 /** The settings a call sets, replacing its model's for this job. */
 const sampling = (p: ImageArgs): JobSettings => Object.fromEntries(JOB_SETTINGS.filter((k) => given(p[k])).map((k) => [k, p[k]]));
 
-/** The settings a call set, said after the model it was made with; never the negative prompt's words. */
-const samplingUsed = (p: ImageArgs) => {
-  const set = [...p.steps === undefined ? [] : [`${p.steps} steps`], ...p.cfg === undefined ? [] : [`CFG ${p.cfg}`],
-    ...given(p.sampler) || given(p.scheduler) ? [[p.sampler, p.scheduler].filter(given).join("/")] : [],
-    ...p.shift === undefined ? [] : [`shift ${p.shift}`], ...p.guidance === undefined ? [] : [`guidance ${p.guidance}`],
+/**
+ * The settings a call set, said after the model it was made with; never the negative prompt's words. Those the host
+ * says its workflow takes no input for (`unused`, a shift on SDXL) are left out: the image wasn't made with them.
+ */
+const samplingUsed = (p: ImageArgs, unused: string[] = []) => {
+  const took = (k: "steps" | "cfg" | "sampler" | "scheduler" | "shift" | "guidance") => given(p[k]) && !unused.includes(k);
+  const set = [...took("steps") ? [`${p.steps} steps`] : [], ...took("cfg") ? [`CFG ${p.cfg}`] : [],
+    ...took("sampler") || took("scheduler") ? [[took("sampler") ? p.sampler : undefined, took("scheduler") ? p.scheduler : undefined].filter(given).join("/")] : [],
+    ...took("shift") ? [`shift ${p.shift}`] : [], ...took("guidance") ? [`guidance ${p.guidance}`] : [],
     ...given(p.negativePrompt) ? ["a negative prompt"] : []];
   return set.length ? ` at ${set.join(", ")}` : "";
+};
+
+/** The settings a call set that the host's workflow takes no input for, said so she doesn't keep tuning them. */
+const unusedSaid = (unused: string[] | undefined) => {
+  if (!unused?.length) return "";
+  const words = unused.map(k => k === "cfg" ? "CFG" : k);
+  const list = words.length > 1 ? `${words.slice(0, -1).join(", ")} and ${words.at(-1)}` : words[0];
+  return ` This model takes no ${list}, so ${words.length > 1 ? "they were" : "it was"} left out.`;
 };
 
 /** The seeds a host answered with, so she can remake or vary a result. */
@@ -381,7 +393,7 @@ export async function executeImage(o: ImageTools, id: string, p: ImageArgs, sign
   // Any fallback is said, so she can tell them the model they got isn't the first choice.
   const passed = out.resolution.passedOver ?? [];
   const fellBack = passed.length ? ` Passed over first: ${passed.map(s => `${s.label} (${s.reason.replace(/^it /, "")})`).join("; ")}.` : "";
-  return { content: [{ type: "text" as const, text: `Made with ${modelName(out.resolution.offering)} on ${out.resolution.endpoint.name}${samplingUsed(p)}.${seedsOf(out.images.map(i => i.seed))}${lorasUsed(out.loras, asks, out.resolution)}${fellBack} Saved ${paths.join(", ")}.` },
+  return { content: [{ type: "text" as const, text: `Made with ${modelName(out.resolution.offering)} on ${out.resolution.endpoint.name}${samplingUsed(p, out.unused)}.${unusedSaid(out.unused)}${seedsOf(out.images.map(i => i.seed))}${lorasUsed(out.loras, asks, out.resolution)}${fellBack} Saved ${paths.join(", ")}.` },
     ...out.images.map(i => ({ type: "image" as const, data: Buffer.from(i.bytes).toString("base64"), mimeType: i.type }))], details: { image: part } };
 }
 
@@ -414,7 +426,7 @@ async function executeVideo(o: ImageTools, id: string, p: ImageArgs, signal?: Ab
     if (v.sampling) o.models.recordSampling(call.userId, recorded, { ...v.sampling, images: 1, pixels: v.width * v.height });
     const passed = out.resolution.passedOver ?? [];
     const fellBack = passed.length ? ` Passed over first: ${passed.map(s => `${s.label} (${s.reason.replace(/^it /, "")})`).join("; ")}.` : "";
-    const text = `Made with ${modelName(out.resolution.offering)} on ${out.resolution.endpoint.name}: ${v.duration.toFixed(1)} s at ${v.width}×${v.height}${v.audio ? ", with sound" : ""}.${seedsOf([v.seed])}${lorasUsed(v.loras, request.loras, out.resolution)}${fellBack} Saved ${path}.`;
+    const text = `Made with ${modelName(out.resolution.offering)} on ${out.resolution.endpoint.name}: ${v.duration.toFixed(1)} s at ${v.width}×${v.height}${v.audio ? ", with sound" : ""}.${unusedSaid(v.unused)}${seedsOf([v.seed])}${lorasUsed(v.loras, request.loras, out.resolution)}${fellBack} Saved ${path}.`;
     return { text, video, poster: v.poster };
   };
   // A clip holds the host's GPU for minutes: in the background her turn ends, and the chat goes on.

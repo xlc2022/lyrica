@@ -12,7 +12,7 @@ import { present, RecipeBook, loadStarters, type Recipe } from "../src/recipes.t
 import { Runtime } from "../src/runtime.ts";
 import { Scheduler } from "../src/scheduler.ts";
 import { fill, loadTemplates } from "../src/templates.ts";
-import { SdCpp, sdcppArgs, sdcppJob } from "../src/sdcpp.ts";
+import { SdCpp, sdcppArgs, sdcppJob, sdcppUnused } from "../src/sdcpp.ts";
 import { FakeBackend, FakeGpus, MP4, PNG, fakeComfy, fakeSdServer, safetensors } from "./fakes.ts";
 import { call, lyrica, pair, startHost } from "./helpers.ts";
 
@@ -683,14 +683,17 @@ describe("recipes", () => {
       { role: "diffusion", slot: null, file: "k.safetensors", added: false },
       { role: "text_encoder", slot: "qwen3vl", file: "vl.safetensors", added: false },
       { role: "vae", slot: null, file: "v.safetensors", added: false },
-    ], [], { prompt: "x", negativePrompt: "blurry", width: 1024, height: 1024, count: 1, steps: 28, cfg: 4.5, seed: 1, sampler: "euler", scheduler: "simple" });
+    ], [], { prompt: "x", negativePrompt: "blurry", width: 1024, height: 1024, count: 1, steps: 28, cfg: 4.5, seed: 1, sampler: "euler", scheduler: "simple", shift: 2 });
     expect(krea.load_clip).toEqual({ class_type: "CLIPLoader", inputs: { clip_name: "vl.safetensors", type: "krea2" } });
     // Krea 2 (Raw) samples with real CFG, so the negative prompt is encoded; Turbo's CFG 1 skips it.
     expect(krea.neg!.inputs).toEqual({ text: "blurry", clip: ["load_clip", 0] });
     expect(JSON.stringify(krea)).not.toContain("$");
-    // Plain Krea 2: one KSampler on the model as loaded, decoded.
-    expect(Object.keys(krea).filter((k) => !k.startsWith("load_"))).toEqual(["pos", "neg", "latent", "sample", "decode", "save"]);
-    expect(krea.sample!.inputs.model).toEqual(["load_model", 0]);
+    // Plain Krea 2: the model as loaded, shifted, into one KSampler, decoded. Its shift is Flux's (mu), the
+    // same at every size: the template's default, 1.15, is the model's own, so a recipe that sets none runs as before.
+    expect(Object.keys(krea).filter((k) => !k.startsWith("load_"))).toEqual(["pos", "neg", "latent", "shift", "sample", "decode", "save"]);
+    expect(krea.shift).toEqual({ class_type: "ModelSamplingFlux", inputs: { model: ["load_model", 0], max_shift: 2, base_shift: 2, width: 1024, height: 1024 } });
+    expect(krea.sample!.inputs.model).toEqual(["shift", 0]);
+    expect(TEMPLATES.get("krea2")!.defaults).toEqual({ shift: 1.15 });
     expect(krea.decode!.inputs.samples).toEqual(["sample", 0]);
 
     // The workflow the operator picked: the enhancer patches the model, and a second pass reworks the first's latent.
@@ -700,20 +703,21 @@ describe("recipes", () => {
       { role: "vae" as const, slot: null, file: "v.safetensors", added: false },
     ];
     const starterOf = (id: string) => JSON.parse(readFileSync(new URL(`../recipes/${id}.json`, import.meta.url), "utf8"));
-    const base = { prompt: "x", negativePrompt: "", count: 1, seed: 1, refineSteps: 8, refineSampler: "res_2s", refineScheduler: "bong_tangent", refineEta: 0.9 };
+    const base = { prompt: "x", negativePrompt: "", count: 1, seed: 1, shift: 1.15, refineSteps: 8, refineSampler: "res_2s", refineScheduler: "bong_tangent", refineEta: 0.9 };
     const tuned = fill(TEMPLATES.get("krea2")!, kreaParts, [{ file: "style.safetensors", strength: 0.8 }], { ...base, ...starterOf("krea2-turbo-uncensored").defaults });
     expect(tuned.enhance).toEqual({ class_type: "ComfyUI-Krea2T-Enhancer", inputs: { model: ["lora_0", 0], enabled: true, strength: 1.5, debug: false } });
-    expect(tuned.sample!.inputs.model).toEqual(["enhance", 0]);
+    expect(tuned.shift!.inputs.model).toEqual(["enhance", 0]);
+    expect(tuned.sample!.inputs.model).toEqual(["shift", 0]);
     expect(tuned.refine_rk).toMatchObject({
       class_type: "ClownsharKSampler_Beta",
-      inputs: { model: ["enhance", 0], latent_image: ["sample", 0], sampler_name: "res_2s", scheduler: "bong_tangent", eta: 0.9, steps: 8, denoise: 0.2 },
+      inputs: { model: ["shift", 0], latent_image: ["sample", 0], sampler_name: "res_2s", scheduler: "bong_tangent", eta: 0.9, steps: 8, denoise: 0.2 },
     });
     expect(tuned.decode!.inputs.samples).toEqual(["refine_rk", 0]);
     expect(tuned).not.toHaveProperty("sample_rk");
     // With `eta`, the first pass is RES4LYF's sampler instead of KSampler.
     const rk = fill(TEMPLATES.get("krea2")!, kreaParts, [], { ...base, steps: 8, cfg: 1, sampler: "res_2s", scheduler: "bong_tangent", eta: 0.7, width: 1024, height: 1024 });
     expect(rk).not.toHaveProperty("sample");
-    expect(rk.sample_rk).toMatchObject({ class_type: "ClownsharKSampler_Beta", inputs: { model: ["load_model", 0], eta: 0.7, sampler_name: "res_2s" } });
+    expect(rk.sample_rk).toMatchObject({ class_type: "ClownsharKSampler_Beta", inputs: { model: ["shift", 0], eta: 0.7, sampler_name: "res_2s" } });
     expect(rk.decode!.inputs.samples).toEqual(["sample_rk", 0]);
   });
 
@@ -1001,6 +1005,10 @@ describe("stable-diffusion.cpp", () => {
     expect(odd.sample_params).not.toHaveProperty("sample_method");
     expect(odd.sample_params).not.toHaveProperty("scheduler");
     expect(odd.sample_params).not.toHaveProperty("flow_shift");
+    // Krea 2's shift is sd.cpp's flow shift, which for it is Flux's, as ComfyUI's is.
+    expect(sdcppJob("krea2", { ...base, shift: 2 })).toMatchObject({ sample_params: { flow_shift: 2 } });
+    expect(sdcppUnused("krea2", { shift: 2, guidance: 3, sampler: "uni_pc", scheduler: "simple", steps: 8 })).toEqual(["guidance", "sampler"]);
+    expect(sdcppUnused("flux", { shift: 2, guidance: 3 })).toEqual(["shift"]);
   });
 
   it("cancels in sd-server a job whose client went away", async () => {
@@ -1228,6 +1236,7 @@ describe("the image API", () => {
     expect(made.body.images).toHaveLength(2);
     expect(made.body.images[0]).toMatchObject({ width: 1, height: 1, seed: 11 });
     expect(Buffer.from(made.body.images[0].png, "base64")).toEqual(PNG);
+    expect(made.body).not.toHaveProperty("unused");
 
     const sent = s.comfyFake.seen.prompts[0];
     const classes = new Set(Object.values(sent as Record<string, { class_type: string }>).map((n) => n.class_type));
@@ -1239,6 +1248,10 @@ describe("the image API", () => {
     expect(usage.body.models).toContainEqual(expect.objectContaining({ id: z.id, images: 2 }));
     expect(s.lines.join("\n")).not.toContain(MARKER);
     for (const f of readdirSync(s.dataDir)) expect(readFileSync(join(s.dataDir, f), "utf8")).not.toContain(MARKER);
+
+    // A setting the recipe's workflow takes no input for is named, so Lyrica doesn't say the image was made with it.
+    const unused = await s.api("/host/v1/images/create", { body: { recipe: z.id, prompt: "x", shift: 2, guidance: 4 } });
+    expect(unused.body.unused).toEqual(["guidance"]);
   });
 
   it("adds a LoRA of the host's that fits a recipe to one job, at the strength asked for", async () => {

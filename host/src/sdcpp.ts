@@ -38,6 +38,19 @@ const SCHEDULERS: Record<string, string> = {
 };
 
 /**
+ * The templates whose shift is sd.cpp's flow shift, as it is ComfyUI's: an SD3-style shift for Z-Image and
+ * Qwen-Image, Flux's for Krea 2 (FluxFlowDenoiser, whose default is the model's 1.15).
+ */
+const FLOW_SHIFT = new Set(["z-image", "qwen-image", "krea2"]);
+
+/** Those of a job's settings (`set`) that sd.cpp doesn't use for this template or can't name. */
+export function sdcppUnused(template: string, set: Values): string[] {
+  const used = (k: string) => k === "steps" || k === "cfg" || (k === "guidance" && template === "flux") || (k === "shift" && FLOW_SHIFT.has(template))
+    || (k === "sampler" && !!SAMPLERS[String(set[k])]) || (k === "scheduler" && !!SCHEDULERS[String(set[k])]);
+  return Object.keys(set).filter((k) => !used(k));
+}
+
+/**
  * sd-server's arguments for a recipe's parts, under /models. Throws when sd.cpp
  * can't make it here: another template, LoRAs, or a part it has no flag for.
  * `card`: whether its FP16 tensor cores run at full rate (a CMP unlocked since
@@ -77,8 +90,7 @@ export function sdcppJob(template: string, v: Values): object {
   };
   if (SAMPLERS[String(v.sampler)]) sample.sample_method = SAMPLERS[String(v.sampler)];
   if (SCHEDULERS[String(v.scheduler)]) sample.scheduler = SCHEDULERS[String(v.scheduler)];
-  // ComfyUI's shift for these flow models is sd.cpp's flow shift.
-  if (template === "z-image" || template === "qwen-image") sample.flow_shift = v.shift;
+  if (FLOW_SHIFT.has(template)) sample.flow_shift = v.shift;
   return {
     prompt: v.prompt, negative_prompt: v.negativePrompt, width: v.width, height: v.height, seed: v.seed,
     batch_count: v.count, sample_params: sample, output_format: "png",

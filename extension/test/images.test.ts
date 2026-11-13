@@ -225,6 +225,9 @@ describe("image tool results (principles 1 and 4)", () => {
     await s.run({ action: "create", prompt: "A lake", sampler: "euler", scheduler: "beta", shift: 3.5, negativePrompt: "boats" }).then(r =>
       expect((r.content as { type: string; text?: string }[]).find(c => c.type === "text")!.text).toMatch(/^Made with Art on workstation at euler\/beta, shift 3\.5, a negative prompt\. /));
     expect(s.workstation.server.images.at(-1)!.body).toEqual({ recipe: "art", prompt: "A lake", sampler: "euler", scheduler: "beta", shift: 3.5, negativePrompt: "boats" });
+    // A setting the host says the model's workflow takes no input for isn't claimed: the result says it was left out.
+    await s.run({ action: "create", prompt: "A lake", shift: 2, guidance: 4 }).then(r =>
+      expect((r.content as { type: string; text?: string }[]).find(c => c.type === "text")!.text).toMatch(/^Made with Art on workstation at shift 2\. This model takes no guidance, so it was left out\. Seed 42\. /));
     await expect(s.run({ action: "create", prompt: "A lake", sampler: "Euler A" })).rejects.toThrow(/ComfyUI sampler name/);
     // An upscale takes its own colour matching and seed, within SeedVR2's range.
     s.models.setColumnTask(s.ada.id, "general", "image.upscale", [s.workstation.ref]);

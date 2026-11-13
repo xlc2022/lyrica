@@ -13,8 +13,8 @@ import type { Logger } from "./log.ts";
 import { scanParts, type Part, type Role } from "./parts.ts";
 import { clipSpec, COLOR_MATCH, loraFits, present, RecipeBook, starterPath, type Recipe, type Starter } from "./recipes.ts";
 import type { Runtime } from "./runtime.ts";
-import { sdcppArgs, type SdCpp } from "./sdcpp.ts";
-import { fill, LONGEST_SECONDS, longestSeconds, type Action, type Continuation, type Lora, type Template, type Values, type VideoSpec } from "./templates.ts";
+import { sdcppArgs, sdcppUnused, type SdCpp } from "./sdcpp.ts";
+import { fill, JOB_SETTINGS, LONGEST_SECONDS, longestSeconds, unboundSettings, type Action, type Continuation, type Lora, type Template, type Values, type VideoSpec } from "./templates.ts";
 import { checkTemplate, CUSTOM_ACTIONS, customAction, filesIn, importWorkflow, label, parseWorkflow, partSpecs, recipeParts, videoSpec, layoutOf, type NodeList, type Workflows } from "./workflows.ts";
 import { checkDefault, DEFAULT_KEYS } from "./recipes.ts";
 import { copyable, copyPath, exportRecipe, moveFiles, place, readBundle, type Placed } from "./recipe-copy.ts";
@@ -29,6 +29,15 @@ const WORKFLOW_LIMIT = 2 * 1024 * 1024;
 const IMAGE_LIMIT = 20 * 1024 * 1024;
 /** The answer's `sampling` (API.md, "Making images"): how long the samplers ran and their steps, when ComfyUI reported them. */
 const samplingField = (s: Sampling | undefined) => (s ? { sampling: { seconds: Math.round(s.ms) / 1000, steps: s.steps } } : {});
+/**
+ * The answer's `unused` (API.md, "Making images"): those of the settings a job set that its workflow takes no input
+ * for (a shift on SDXL), or sd.cpp doesn't use, so whoever asked doesn't say the job ran with them.
+ */
+function unusedField(t: Template, body: Record<string, unknown>, sdcpp: boolean): { unused?: string[] } {
+  const set: Values = Object.fromEntries(JOB_SETTINGS.filter((k) => body[k] !== undefined).map((k) => [k, body[k] as string | number]));
+  const unused = sdcpp ? sdcppUnused(t.name, set) : unboundSettings(t, set);
+  return unused.length ? { unused } : {};
+}
 /** The most of a part's file one read gives, when a model is copied to another host. */
 const PIECE = 32 * 1024 * 1024;
 const MAX_SIDE = 8192;
@@ -39,6 +48,8 @@ const BASE_DEFAULTS: Values = {
   // Krea 2's second pass (host/workflows/krea2.json), which runs only when a recipe sets `refine`, its denoise.
   refineSteps: 8, refineSampler: "res_2s", refineScheduler: "bong_tangent", refineEta: 0.9,
 };
+/** The values a job starts from: the host's, then its template's, then its recipe's. */
+const startValues = (t: Template, recipe: { defaults: Values }, extra: Values = {}): Values => ({ ...BASE_DEFAULTS, ...extra, ...t.defaults, ...recipe.defaults });
 const IDLE_FREE_MS = 10 * 60_000;
 /** How long one clip may take: a 14B model on a 24 GB card can take most of an hour. */
 const VIDEO_TIMEOUT_MS = 2 * 60 * 60_000;
@@ -844,7 +855,7 @@ export class Images {
     const template = this.book.templates.get(recipe.template)!;
     const loras = this.jobLoras(recipe, body.loras);
 
-    const values: Values = { ...BASE_DEFAULTS, ...recipe.defaults };
+    const values = startValues(template, recipe);
     const uploads: Record<string, Buffer> = {};
     if (action !== "upscale") {
       if (typeof body.prompt !== "string" || !body.prompt) throw invalid("prompt is missing.");
@@ -931,6 +942,7 @@ export class Images {
       ...appliedLoras(loras),
       seconds,
       ...samplingField(sampling),
+      ...unusedField(template, body, !!sdcpp),
     });
   }
 
@@ -968,7 +980,7 @@ export class Images {
     const loras = this.jobLoras(recipe, body.loras);
     if (extending && !(chain && recipe.does.some((a) => a === "video" || a === "animate"))) throw invalid("That recipe can't extend a clip.");
 
-    const values: Values = { ...BASE_DEFAULTS, duration: 5, ...recipe.defaults };
+    const values = startValues(template, recipe, { duration: 5 });
     if (typeof body.prompt !== "string" || !body.prompt) throw invalid("prompt is missing.");
     values.prompt = body.prompt;
     if (body.negativePrompt !== undefined) {
@@ -1097,6 +1109,7 @@ export class Images {
       ...appliedLoras(loras),
       seconds,
       ...samplingField(sampling),
+      ...unusedField(template, body, false),
     });
   }
 
@@ -1119,7 +1132,7 @@ export class Images {
     const source = mp4Video(clip);
     if (!source) throw invalid("video isn't an MP4 clip whose video track can be read.");
 
-    const values: Values = { ...BASE_DEFAULTS, batchSize: 33, temporalOverlap: 3, ...recipe.defaults };
+    const values = startValues(template, recipe, { batchSize: 33, temporalOverlap: 3 });
     const scale = num(body, "scale", 1, 4) ?? Number(values.scale);
     values.maxSize = int(body, "maxSize", 256, 8192) ?? values.maxSize!;
     if (body.colorMatch !== undefined && !COLOR_MATCH.includes(body.colorMatch as string)) throw invalid(`colorMatch must be one of ${COLOR_MATCH.join(", ")}.`);

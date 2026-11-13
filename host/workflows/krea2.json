@@ -25,6 +25,9 @@
   ],
   "references": 0,
   "mask": false,
+  "defaults": {
+    "shift": 1.15
+  },
   "workflow": {
     "pos": {
       "class_type": "CLIPTextEncode",
@@ -58,9 +61,8 @@
         "debug": false
       }
     },
-    "sample": {
-      "class_type": "KSampler",
-      "_unless": "eta",
+    "shift": {
+      "class_type": "ModelSamplingFlux",
       "inputs": {
         "model": {
           "$pick": [
@@ -71,6 +73,20 @@
             "$model"
           ]
         },
+        "max_shift": "$shift",
+        "base_shift": "$shift",
+        "width": 1024,
+        "height": 1024
+      }
+    },
+    "sample": {
+      "class_type": "KSampler",
+      "_unless": "eta",
+      "inputs": {
+        "model": [
+          "shift",
+          0
+        ],
         "seed": "$seed",
         "steps": "$steps",
         "cfg": "$cfg",
@@ -95,15 +111,10 @@
       "class_type": "ClownsharKSampler_Beta",
       "_if": "eta",
       "inputs": {
-        "model": {
-          "$pick": [
-            [
-              "enhance",
-              0
-            ],
-            "$model"
-          ]
-        },
+        "model": [
+          "shift",
+          0
+        ],
         "positive": [
           "pos",
           0
@@ -132,15 +143,10 @@
       "class_type": "ClownsharKSampler_Beta",
       "_if": "refine",
       "inputs": {
-        "model": {
-          "$pick": [
-            [
-              "enhance",
-              0
-            ],
-            "$model"
-          ]
-        },
+        "model": [
+          "shift",
+          0
+        ],
         "positive": [
           "pos",
           0
