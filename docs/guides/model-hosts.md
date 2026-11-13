@@ -517,7 +517,7 @@ ComfyUI only; the fast one is listed for stable-diffusion.cpp hosts too,
 untried there. If Civitai refuses the download, add a Civitai token under
 Downloads → Accounts and try again. The Qwen-Image 2.1 Turbo starter,
 which edits and creates (bf16 diffusion model, int8 Qwen3-VL 8B encoder,
-about 24.3 GB of files), is 14.9 GB at its largest stage and takes turns
+about 24.3 GB of files), is 14.9 GB at its largest stage at 1024×1024 and takes turns
 the same way. It creates at its native 2K (2048×2048) by default, which
 looks far more natural than 1 megapixel: on a 3090 an image takes about
 29 seconds and peaks near 24 GB of VRAM, so on a smaller card ask for
