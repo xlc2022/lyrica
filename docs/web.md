@@ -277,8 +277,9 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   one of its threads at `/thread-workspaces/<id>`, by that thread's title in
   the thread list's order, read-only; a path in one is named by the title
   (`Alpha/report.md`) and its file opens with that thread beside it. A search runs under every root; a file,
-  an image from Images (`…/files/images`, filtered by source), or a clip from
-  Videos (`…/files/videos`, the same filter, each tile its poster thumbnail or,
+  an image from Images (`…/files/images`, filtered by source and ordered by
+  **Sort**, `MediaTools.tsx`, kept in `localStorage` as `lyrica.media.sort`), or a clip from
+  Videos (`…/files/videos`, the same filter and sort, each tile its poster thumbnail or,
   for a clip without one, its own first frame), opens in
   the **file viewer** (below). The right-click menu (a long press, or the
   viewer's ⋯, which renders the same menu inside the viewer's dialog) attaches
@@ -287,7 +288,10 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   thread (the conversation scrolls to the first message naming the path, an
   upload or her call that wrote it, through the same channel), downloads (one file by its address, several as `…/files/zip`), copies
   the files (**Copy**) or their paths, pastes (**Paste**, on a folder's menu while something is copied), renames and deletes
-  (a confirm dialog), uploads and makes folders;
+  (a confirm dialog), uploads and makes folders, and on images names them with
+  **Auto-name** (`AutoNameDrawer`, also in Project settings → Files: one
+  `…/files/auto-name` ask per image, shown as each answers, renamed with
+  `…/files/rename` only on Rename);
   dropping files on the panel uploads them to the folder last opened. On the Files, Images and Videos tabs the keys
   act while the panel was the last thing pressed or focused, never in a text field and never while a menu, dialog or
   the viewer is up: **Ctrl or Cmd+C** copies the selection (kept in the page for any of the user's panels; on the

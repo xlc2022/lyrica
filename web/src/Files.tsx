@@ -10,6 +10,7 @@ import { get, post, threadPath, upload, type FileCopyResponse, type FileEntry, t
 import { ask, ATTACH_EVENT, ATTACH_KEY, keep, SHOW_EVENT, SHOW_KEY, type AttachRequest, type ShowRequest } from "./links.ts";
 import { FAMILY_ROOT, isUnderWorkdir, SHARED, shown, Thumb, useFileLinks, VideoThumb, WORKDIR, type FileLinks } from "./paths.tsx";
 import { ArtifactsTab, importArtifacts } from "./Artifacts.tsx";
+import { AutoNameDrawer, IMAGE_NAME, SortSelect, sortMedia, useMediaSort, type MediaSort } from "./MediaTools.tsx";
 import { Viewer } from "./Viewer.tsx";
 import { Icon } from "./icons.tsx";
 import { her } from "./name.ts";
@@ -43,7 +44,6 @@ let copied: { userId: string; pool: Pool; base: string; paths: string[]; folders
 /** Whether a thread is local-only; one that can't be read counts as local-only for a source and not for a target, so the guard errs shut. */
 const localOnlyOf = (userId: string, pool: Pool, threadId: string, unknown: boolean) =>
   get<ThreadSettings>(threadPath(userId, pool, threadId, "settings")).then((s) => s.localOnly, () => unknown);
-const IMAGE_NAME = /\.(png|jpe?g|gif|webp)$/i;
 /** A field the keys belong to: the shortcuts leave text alone. */
 const inField = (t: EventTarget | null) => t instanceof Element && !!t.closest("input, textarea, select, [contenteditable]:not([contenteditable='false'])");
 /** An image's bytes as PNG, the one image type every browser puts on the system clipboard. */
@@ -89,6 +89,9 @@ export function FilesPage({ ctx, pool, threadId, threads, path }: { ctx: ShellCo
   const [hits, setHits] = useState<{ q: string; entries: FileEntry[]; more: boolean }>();
   const [filter, setFilter] = useState<Filter>("all");
   const [media, setMedia] = useState<Partial<Record<MediaTab, ImageEntry[]>>>({});
+  const [sort, setSort] = useMediaSort();
+  /** The images Auto-name is naming, in its drawer. */
+  const [naming, setNaming] = useState<string[]>();
   /** Where an upload or a new folder goes when nothing more specific was picked: the last folder opened. */
   const [cwd, setCwd] = useState(WORKDIR);
   const [dropping, setDropping] = useState(false);
@@ -202,14 +205,14 @@ export function FilesPage({ ctx, pool, threadId, threads, path }: { ctx: ShellCo
 
   // Ctrl- or Cmd-click adds to the selection, Shift-click takes everything between (docs/ux.md §6), in the grid's order on Images and Videos.
   const visible = useMemo(() => {
-    if (isMedia(tab)) return filtered(media[tab], filter)?.map((e) => e.path) ?? [];
+    if (isMedia(tab)) return filtered(media[tab], filter, sort)?.map((e) => e.path) ?? [];
     if (tab === "artifacts") return [];
     if (hits) return hits.entries.map((e) => e.path);
     const out: string[] = [];
     const walk = (dir: string) => { for (const e of listings[dir]?.entries ?? []) { out.push(e.path); if (e.kind === "folder" && open.has(e.path)) walk(e.path); } };
     for (const r of roots) if (open.has(r.path)) walk(r.path);
     return out;
-  }, [tab, media, filter, hits, listings, open, roots]);
+  }, [tab, media, filter, sort, hits, listings, open, roots]);
   const { sel, setSel, pick: choose } = useSelection(visible);
   const treeEl = useRef<HTMLDivElement>(null);
   const treeBox = useBoxSelect(treeEl, sel, setSel);
@@ -474,7 +477,7 @@ export function FilesPage({ ctx, pool, threadId, threads, path }: { ctx: ShellCo
       onCopyFiles={(ps) => { setMenu(undefined); copyFiles(ps); }} canPaste={!!copied && copied.userId === userId} onPaste={(dir) => act(() => pasteCopied(dir))}
       onSelect={(p) => { setMenu(undefined); setSel((s) => new Set([...s, p])); }} onShow={(p) => { setMenu(undefined); setCurrent(undefined); showInThread(p); }}
       onUpload={(dir) => { setMenu(undefined); askUpload(dir); }} onMkdir={(dir, name) => act(() => mkdir(dir, name))} onRename={(p, name) => act(() => rename(p, name))}
-      onDelete={(ps) => act(() => remove(ps))} />
+      onDelete={(ps) => act(() => remove(ps))} onAutoName={(ps) => { setMenu(undefined); setCurrent(undefined); setNaming(ps); }} />
   );
 
   // Dropping files on the browser uploads them, wherever it shows: the panel, the page or the dialog.
@@ -526,7 +529,7 @@ export function FilesPage({ ctx, pool, threadId, threads, path }: { ctx: ShellCo
       ) : tab === "artifacts" ? (
         <ArtifactsTab ctx={ctx} pool={pool} threadId={threadId} activity={activity} onError={setError} />
       ) : (
-        <MediaGrid kind={tab} entries={media[tab]} filter={filter} onFilter={setFilter} links={links} sel={sel} onSelect={setSel} onPick={pick} press={(e) => press({ kind: "file", entry: e })} onOpen={(i) => view(i, filtered(media[tab], filter))} />
+        <MediaGrid kind={tab} entries={media[tab]} filter={filter} onFilter={setFilter} sort={sort} onSort={setSort} links={links} sel={sel} onSelect={setSel} onPick={pick} press={(e) => press({ kind: "file", entry: e })} onOpen={(i) => view(i, filtered(media[tab], filter, sort))} />
       )}
       {sel.size > 0 && (
         <div className="selbar" role="toolbar" aria-label="Selection">
@@ -536,6 +539,8 @@ export function FilesPage({ ctx, pool, threadId, threads, path }: { ctx: ShellCo
         </div>
       )}
       <input ref={picker} type="file" multiple hidden onChange={(e) => { send(uploadTo.current, e.target.files ?? []); e.target.value = ""; }} />
+      {naming && <AutoNameDrawer base={base} paths={naming} links={links} onClose={() => setNaming(undefined)}
+        onRenamed={(moves) => { setSel(new Set()); void refresh(moves.flatMap((m) => [m.from, m.to])).catch(fail); }} />}
       {current && (
         // The file large, with this thread beside it when the file is in its own folder (a grant's has no thread of its own).
         <Viewer ctx={ctx} threads={threads} file={current} base={base} shownPath={named(current.path)} thread={isUnderWorkdir(current.path) ? { pool, threadId } : memberOf(current.path) ? { pool, threadId: memberOf(current.path)! } : undefined}
@@ -576,14 +581,15 @@ function FilesDialog({ label, onClose, children }: { label: string; onClose: () 
   );
 }
 
-const filtered = (entries: ImageEntry[] | undefined, filter: Filter) => entries?.filter((i) => filter === "all" || i.source === filter);
+/** The grid's entries: those the filter keeps, in the sort's order. */
+const filtered = (entries: ImageEntry[] | undefined, filter: Filter, sort: MediaSort) => entries && sortMedia(entries.filter((i) => filter === "all" || i.source === filter), sort);
 
 /** The thread's images or clips, filtered, each opening in the viewer; a clip shows its poster. */
-function MediaGrid({ kind, entries, filter, onFilter, links, sel, onSelect, onPick, press, onOpen }: {
-  kind: MediaTab; entries?: ImageEntry[]; filter: Filter; onFilter: (f: Filter) => void; links: FileLinks; sel: Set<string>; onSelect: (s: Set<string>) => void;
+function MediaGrid({ kind, entries, filter, onFilter, sort, onSort, links, sel, onSelect, onPick, press, onOpen }: {
+  kind: MediaTab; entries?: ImageEntry[]; filter: Filter; onFilter: (f: Filter) => void; sort: MediaSort; onSort: (s: MediaSort) => void; links: FileLinks; sel: Set<string>; onSelect: (s: Set<string>) => void;
   onPick: (e: React.MouseEvent, entry: FileEntry) => boolean; press: (entry: FileEntry) => Record<string, unknown>; onOpen: (entry: FileEntry) => void;
 }) {
-  const listed = filtered(entries, filter);
+  const listed = filtered(entries, filter, sort);
   const grid = useRef<HTMLDivElement>(null);
   const { box, drag } = useBoxSelect(grid, sel, onSelect);
   return (
@@ -594,6 +600,7 @@ function MediaGrid({ kind, entries, filter, onFilter, links, sel, onSelect, onPi
             <button key={k} type="button" aria-pressed={filter === k} onClick={() => onFilter(k)}>{l}</button>
           ))}
         </div>
+        <SortSelect sort={sort} onSort={onSort} />
       </div>
       <div ref={grid} className="igrid" aria-label={TAB_LABEL[kind]} {...drag}>
         {!entries ? <p className="empty">Loading…</p> : !listed?.length ? <p className="empty">No {kind} yet</p> : listed.map((i) => (
@@ -607,6 +614,8 @@ function MediaGrid({ kind, entries, filter, onFilter, links, sel, onSelect, onPi
     </>
   );
 }
+/** At most this many images in one Auto-name (lyricad's own cap, daemon/src/auto-name.ts). */
+const AUTO_NAME_MAX = 50;
 /** Two sets of event handlers as one: where both have a handler for an event, each runs, `a`'s first. */
 function both(a: Record<string, unknown>, b: Record<string, unknown>) {
   const out: Record<string, unknown> = { ...a, ...b };
@@ -720,11 +729,13 @@ function Item({ label, kbd, danger, onClick }: { label: ReactNode; kbd?: string;
 }
 
 /** The right-click menu: Attach, Select, Show in thread, Download, Copy path; Rename and Delete where the folder is writable; Upload and New folder on a folder. */
-function FileMenu({ at, writable, shownName, onClose, onAttach, onDownload, onCopy, onCopyFiles, canPaste, onPaste, onSelect, onShow, onUpload, onMkdir, onRename, onDelete }: {
+function FileMenu({ at, writable, shownName, onClose, onAttach, onDownload, onCopy, onCopyFiles, canPaste, onPaste, onSelect, onShow, onUpload, onMkdir, onRename, onDelete, onAutoName }: {
   at: MenuAt; writable: (p: string) => boolean; shownName: (p: string) => string; onClose: () => void;
   onAttach: (paths: string[]) => void; onDownload: (paths: string[]) => void; onCopy: (paths: string[]) => void;
   onCopyFiles: (paths: string[]) => void; canPaste: boolean; onPaste: (dir: string) => Promise<unknown>; onSelect: (path: string) => void; onShow: (path: string) => void;
   onUpload: (dir: string) => void; onMkdir: (dir: string, name: string) => Promise<unknown>; onRename: (path: string, name: string) => Promise<unknown>; onDelete: (paths: string[]) => Promise<unknown>;
+  /** Auto-name (docs/ux.md §6): images in the thread's own folder, where it is writable. */
+  onAutoName: (paths: string[]) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [sub, setSub] = useState<"" | "rename" | "newfolder" | "delete">(at.sub ?? "");
@@ -734,6 +745,8 @@ function FileMenu({ at, writable, shownName, onClose, onAttach, onDownload, onCo
   const paths = t.kind === "file" ? [t.entry.path] : t.kind === "selection" ? t.paths : t.kind === "folder" ? [t.path] : [];
   const dir = t.kind === "folder" ? t.path : t.kind === "space" ? t.dir : "";
   const canWrite = paths.length ? paths.every(writable) : writable(dir);
+  const canName = canWrite && (t.kind === "file" || t.kind === "selection") && paths.length <= AUTO_NAME_MAX
+    && paths.every((p) => IMAGE_NAME.test(p) && p.startsWith(`${WORKDIR}/`));
 
   useLayoutEffect(() => {
     const el = ref.current;
@@ -788,7 +801,7 @@ function FileMenu({ at, writable, shownName, onClose, onAttach, onDownload, onCo
         <Item label="Download as zip" kbd="S" onClick={() => onDownload(paths)} />
         <Item label="Copy" kbd="C" onClick={() => onCopyFiles(paths)} />
         <Item label="Copy paths" kbd="P" onClick={() => onCopy(paths)} />
-        {canWrite && <><div className="sep" role="separator" /><Item label={`Delete ${paths.length}…`} kbd="D" danger onClick={() => setSub("delete")} /></>}
+        {canWrite && <><div className="sep" role="separator" />{canName && <Item label={`Auto-name ${paths.length}…`} kbd="N" onClick={() => onAutoName(paths)} />}<Item label={`Delete ${paths.length}…`} kbd="D" danger onClick={() => setSub("delete")} /></>}
       </>
     );
   } else if (t.kind === "file") {
@@ -805,6 +818,7 @@ function FileMenu({ at, writable, shownName, onClose, onAttach, onDownload, onCo
           <>
             <div className="sep" role="separator" />
             <Item label="Rename…" kbd="R" onClick={() => { setDraft(t.entry.name); setSub("rename"); }} />
+            {canName && <Item label="Auto-name…" kbd="N" onClick={() => onAutoName(paths)} />}
             <Item label="Delete…" kbd="D" danger onClick={() => setSub("delete")} />
           </>
         )}

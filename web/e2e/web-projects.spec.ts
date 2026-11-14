@@ -1554,6 +1554,80 @@ test("the Files panel: a tree one folder at a time, a file shown, search, the Im
   await noHorizontalScroll(page);
 });
 
+test("the Files panel's Images: Sort orders the grid by date or name, and Auto-name suggests names in a drawer that renames on Rename", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  await newThread(page, "General");
+  await send(page, "hello images");
+  await expect(page.getByText("You said: hello images")).toBeVisible();
+  const threadId = decodeURIComponent(location_of(page).split("/t/general/")[1]!.split("/")[0]!);
+  const base = `/api/u/${userId}/threads/general/${encodeURIComponent(threadId)}/files`;
+  // The thread's folder as lyricad lists it (the sandbox's part is the Files panel test's): two images whose names
+  // sort the other way from their dates, and a rename that moves one. Auto-name's vision call is lyricad's
+  // (daemon/test/auto-name.test.ts); here its answers are given, one image per ask.
+  const at = (name: string, modified: string) => ({ name, path: `/workspace/uploads/${name}`, kind: "file", size: 120, modified, source: "uploaded" });
+  let images = [at("zebra.png", "2026-11-01T10:00:00.000Z"), at("apple.png", "2026-11-02T10:00:00.000Z")];
+  const renames: { from: string; to: string }[] = [], asked: string[] = [];
+  await page.route(`**${base}**`, async (route) => {
+    const url = new URL(route.request().url());
+    const path = url.pathname.slice(base.length);
+    if (path === "") return route.fulfill({ json: { roots: [{ path: "/workspace", writable: true, kind: "thread" }], dir: url.searchParams.get("dir") ?? "/workspace", entries: [], more: false } });
+    if (path === "/images") return route.fulfill({ json: images });
+    if (path === "/videos") return route.fulfill({ json: [] });
+    if (path === "/rename") {
+      const m = route.request().postDataJSON() as { from: string; to: string };
+      renames.push(m);
+      images = images.map((i) => (i.path === m.from ? { ...i, path: m.to, name: m.to.slice(m.to.lastIndexOf("/") + 1) } : i));
+      return route.fulfill({ json: { ok: true } });
+    }
+    if (path === "/auto-name") {
+      const p = (route.request().postDataJSON() as { paths: string[] }).paths[0]!;
+      asked.push(p);
+      return route.fulfill({ json: [p.endsWith("zebra.png") ? { path: p, name: "striped-horse.png" } : { path: p, error: "No model can look at images." }] });
+    }
+    return route.fulfill({ status: 404, json: { error: "not here" } });
+  });
+  await page.getByRole("link", { name: "Files and images" }).click();
+  const panel = phone(page) ? page.locator(".files-page") : page.getByRole("complementary");
+  await panel.getByRole("tab", { name: "Images" }).click();
+  const grid = panel.locator(".igrid");
+  const names = () => grid.locator("button[data-path] .meta").allTextContents();
+  const sort = panel.getByRole("combobox", { name: "Sort" });
+  await expect(sort).toHaveValue("newest");
+  await expect.poll(names).toEqual(["apple.png", "zebra.png"]);
+  await sort.selectOption("oldest");
+  await expect.poll(names).toEqual(["zebra.png", "apple.png"]);
+  await sort.selectOption("name");
+  await expect.poll(names).toEqual(["apple.png", "zebra.png"]);
+  await sort.selectOption("oldest");
+  // Kept in this browser: the grid opens again in the same order.
+  await page.reload();
+  await panel.getByRole("tab", { name: "Images" }).click();
+  await expect(panel.getByRole("combobox", { name: "Sort" })).toHaveValue("oldest");
+  await expect.poll(names).toEqual(["zebra.png", "apple.png"]);
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/images-sort-${page.viewportSize()!.width}.png` });
+
+  await grid.getByRole("button", { name: "zebra.png", exact: true }).click({ modifiers: ["ControlOrMeta"] });
+  await grid.getByRole("button", { name: "apple.png", exact: true }).click({ modifiers: ["ControlOrMeta"] });
+  await panel.getByRole("toolbar", { name: "Selection" }).getByRole("button", { name: "Actions for the selection" }).click();
+  await page.getByRole("menu", { name: "File actions" }).getByRole("menuitem", { name: "Auto-name 2…" }).click();
+  const drawer = page.getByRole("complementary", { name: "Auto-name" });
+  const field = drawer.getByRole("textbox", { name: "New name for zebra.png" });
+  await expect(field).toHaveValue("striped-horse.png");
+  await expect(drawer.getByText("No model can look at images.")).toBeVisible();
+  await expect(drawer.getByRole("status")).toContainText("1 to rename");
+  expect(asked.sort()).toEqual(["/workspace/uploads/apple.png", "/workspace/uploads/zebra.png"]);
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/auto-name-${page.viewportSize()!.width}.png` });
+  // The name is the user's to change; nothing is renamed before Rename.
+  await field.fill("zebra-photo.png");
+  expect(renames).toEqual([]);
+  await drawer.getByRole("button", { name: "Rename 1" }).click();
+  await expect(drawer).toHaveCount(0);
+  expect(renames).toEqual([{ from: "/workspace/uploads/zebra.png", to: "/workspace/uploads/zebra-photo.png" }]);
+  // A rename keeps the file's date, so it keeps its place under Oldest.
+  await expect.poll(names).toEqual(["zebra-photo.png", "apple.png"]);
+  await noHorizontalScroll(page);
+});
+
 test("the Files panel's keys: Ctrl+C and Ctrl+V copy the selection into the folder, a pasted screenshot uploads, and Delete asks first; on a phone the menu's Copy and Paste", async ({ page, baseURL, context }) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   const userId = await enter(page, baseURL!);

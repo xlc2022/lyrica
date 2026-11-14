@@ -1735,6 +1735,16 @@ export interface FileSearch { entries: FileEntry[]; more: boolean }
  */
 export interface ImageEntry extends FileEntry { source: "uploaded" | "made" }
 /**
+ * POST …/files/auto-name { paths } → AutoName[], one per path in order: a name for each image (PNG, JPEG, GIF, WebP)
+ * in the thread's folder from what the thread's `vision` model sees (Models → Tasks, "Look at images"), at most 50 per
+ * ask. Nothing is renamed: the panel shows the names and applies them with …/files/rename. A name keeps the image's
+ * extension and is free in its folder and among the others suggested ("red-bicycle-2.png"); one already right comes
+ * back as it is. A private or local-only thread uses local models only, and a photo of the user (DESIGN "Photos of
+ * you") goes to a cloud model only when the user's photo setting is Always, or Ask approved today. An image that
+ * couldn't be named carries `error` instead.
+ */
+export type AutoName = { path: string; name: string; error?: undefined } | { path: string; name?: undefined; error: string };
+/**
  * GET …/files/content?path=<path>[&download=1] → the file's bytes, with its type
  * (images by their bytes; HTML, SVG and scripts as plain text, never run; an unknown name as plain text when its first
  * bytes are UTF-8 text) and

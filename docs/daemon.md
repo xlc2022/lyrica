@@ -877,6 +877,16 @@ documented in `daemon/src/api.ts`, "The Files panel".
   under a root (at most 200). `GET …/files/images` lists every image in the
   thread's folder, `uploaded` when it is in `uploads/`, otherwise `made` by her;
   `GET …/files/videos` lists every clip (`.mp4`, `.webm`) the same way.
+- `POST …/files/auto-name { paths }` suggests a name for each image (at most
+  50, only in the thread's own `/workspace`) from what the thread's `vision`
+  model sees (`daemon/src/auto-name.ts`): the image's thumbnail (or the image
+  itself without one) goes through `Models.callWithFallback("vision", …)` with
+  the thread's CallContext, made local-only for a photo of the user (or an
+  image it can't check, such as a GIF) unless the photo setting is Always or
+  Ask approved today. The reply becomes a lowercase, hyphenated stem with the
+  image's extension, free in its folder and among the others suggested. It
+  renames nothing; the panel renames with `…/files/rename`. Neither the image
+  nor the names are logged; the call is recorded as a `vision` call.
 - `GET …/files/content?path=<path>[&download=1]` streams the file with its
   type: images by their bytes, text by extension, and HTML, SVG and scripts
   as `text/plain`; a name it doesn't know (a C++ header, a Makefile) is
