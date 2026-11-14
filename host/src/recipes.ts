@@ -338,6 +338,13 @@ export class RecipeBook {
         }
         break;
       }
+      case "starterDefaults": {
+        // The starter's settings now, for a recipe installed before a starter changed (its files stay as they are).
+        const starter = r.starter ? this.starters.find((s) => s.id === r.starter) : undefined;
+        if (!starter) throw invalid("This recipe wasn't made from a starter on this host.");
+        r.defaults = structuredClone(starter.defaults);
+        break;
+      }
       case "rename":
         if (typeof body.name !== "string" || !body.name.trim()) throw invalid("name is missing.");
         r.name = body.name.trim();

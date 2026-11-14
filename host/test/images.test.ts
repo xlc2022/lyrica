@@ -530,6 +530,17 @@ describe("recipes", () => {
     expect(b.describe(b.get(recipe.id), new Set([...here, rife]))).toMatchObject({ ready: true, video: { fps: 32 } });
   });
 
+  it("puts a starter's settings back on a recipe made from it, and only on one", () => {
+    const b = new RecipeBook(mkdtempSync(join(tmpdir(), "lyrica-book-")), TEMPLATES, STARTERS);
+    const starter = STARTERS.find((s) => s.id === "flux-schnell")!;
+    const { recipe } = b.fromStarter(starter, () => null);
+    b.patch(recipe.id, { op: "defaults", defaults: { steps: 12, width: 640, negativePrompt: "blurry" } }, []);
+    expect(b.patch(recipe.id, { op: "starterDefaults" }, []).defaults).toEqual(starter.defaults);
+    // A copy is its own recipe: it has no starter to go back to.
+    const copy = b.copy(recipe.id, "mine");
+    expect(() => b.patch(copy.id, { op: "starterDefaults" }, [])).toThrow(/wasn't made from a starter/);
+  });
+
   it("runs Wan 2.2 5B with its FastWan LoRA, and a recipe made without it stays as it was", () => {
     const b = new RecipeBook(mkdtempSync(join(tmpdir(), "lyrica-book-")), TEMPLATES, STARTERS);
     const starter = STARTERS.find((s) => s.id === "wan2.2-ti2v-5b")!;

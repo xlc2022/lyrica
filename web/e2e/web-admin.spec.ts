@@ -888,7 +888,7 @@ async function fakeImages(page: Page) {
     part("comfy/diffusion_models/qwen_image_fp8.safetensors", "diffusion", "qwen-image", 20.4, { precision: "fp8", usedBy: [qi] }),
   ];
   const recipes = [
-    { id: zi, name: "Z-Image Turbo", useFor: "both", state: "confirmed", ready: true, arch: "z-image", template: "z-image", does: ["create"], loras: [], base: null, starter: null,
+    { id: zi, name: "Z-Image Turbo", useFor: "both", state: "confirmed", ready: true, arch: "z-image", template: "z-image", does: ["create"], loras: [], base: null, starter: "z-image-turbo",
       parts: [{ role: "diffusion", slot: null, file: parts[0]!.file, added: false }, { role: "text_encoder", slot: "qwen3", file: parts[1]!.file, added: false }, { role: "vae", slot: null, file: parts[2]!.file, added: false }],
       defaults: { steps: 8, cfg: 1, width: 1024, height: 1024 } },
     { id: qi, name: "Qwen-Image", state: "proposed", ready: false, arch: "qwen-image", template: "qwen-image", does: ["create"], loras: [], base: null, starter: null, defaults: { steps: 30, cfg: 4 },
@@ -1365,10 +1365,22 @@ test("Image models: groups by architecture with Role and Where; a recipe opens t
   for (const l of [block.locator(".field.steps > span").first(), block.locator(".field.steps .muted").first(), cfg]) expect(Math.abs((await middle(l)) - mid)).toBeLessThanOrEqual(2);
   expect(Math.abs((await middle(block.locator(".copyfoot-settings .field > span").first())) - (await middle(useFor)))).toBeLessThanOrEqual(2);
   const addPart = await middle(block.getByRole("button", { name: "Add part" }));
-  for (const l of [block.getByRole("link", { name: "Edit workflow" }), block.getByRole("button", { name: "Delete model…" })]) expect(Math.abs((await middle(l)) - addPart)).toBeLessThanOrEqual(2);
+  // On a phone the actions wrap: Reset to starter settings… and Delete model… take a second line, level with each other.
+  expect(Math.abs((await middle(block.getByRole("link", { name: "Edit workflow" }))) - addPart)).toBeLessThanOrEqual(2);
+  const reset = await middle(block.getByRole("button", { name: "Reset to starter settings…" }));
+  expect(Math.abs(reset - (phone(page) ? await middle(block.getByRole("button", { name: "Delete model…" })) : addPart))).toBeLessThanOrEqual(2);
+  if (!phone(page)) expect(Math.abs((await middle(block.getByRole("button", { name: "Delete model…" }))) - addPart)).toBeLessThanOrEqual(2);
   if (!phone(page)) expect(Math.abs((await middle(useFor)) - mid)).toBeLessThanOrEqual(2);
   if (phone(page)) expect((await steps.boundingBox())!.height).toBeGreaterThanOrEqual(44);
   await noHorizontalScroll(page);
+  // Reset to starter settings… asks, then puts the starter's settings back on this host's copy.
+  await block.getByRole("button", { name: "Reset to starter settings…" }).click();
+  const resetDialog = page.getByRole("dialog", { name: "Reset Z-Image Turbo to its starter's settings?" });
+  await expect(resetDialog).toContainText("Its steps, CFG, sampler, size and other settings on box go back to the starter's. Its files and LoRAs stay as they are.");
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/image-models-reset-${page.viewportSize()!.width}.png` });
+  await resetDialog.getByRole("button", { name: "Reset" }).click();
+  await expect.poll(() => post(`recipes/${images.zi}`).at(-1)).toEqual({ do: "change", change: { op: "starterDefaults" } });
+  await expect(resetDialog).toHaveCount(0);
 
   // Change: the host's other VAEs for the architecture, or Download another….
   await block.getByRole("button", { name: "Change the VAE" }).click();

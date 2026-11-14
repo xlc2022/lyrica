@@ -19,7 +19,7 @@ import { RowMenu } from "./Machines.tsx";
 import { canEdit, Frame, plural, UsedIn, type MCtx } from "./ModelsFrame.tsx";
 import { her } from "./name.ts";
 import { go, href } from "./route.ts";
-import { Dialog, ErrorText, useAction, useLoad, useLongPress, useSelection } from "./ui.tsx";
+import { ConfirmDialog, Dialog, ErrorText, useAction, useLoad, useLongPress, useSelection } from "./ui.tsx";
 import { WorkflowImport } from "./Workflows.tsx";
 
 type Endpoint = ModelsPage["endpoints"][number];
@@ -81,6 +81,7 @@ interface Lib {
   /** The other hosts this user manages that a model can be copied to, with their free space. */
   copyTargets?: (c: RecipeCopy) => CopyTarget[];
   onCopyTo?: (c: RecipeCopy) => void;
+  onReset?: (c: RecipeCopy) => void;
 }
 const recipeOf = (L: Lib, hostId: string, id: string) => L.libOf(hostId)?.recipes.find((r) => r.id === id);
 const nameOf = (L: Lib, hostId: string, id: string) => recipeOf(L, hostId, id)?.name;
@@ -119,6 +120,7 @@ export function ImageModels({ ctx }: { ctx: MCtx }) {
   const [adding, setAdding] = useState<RecipeCopy>();
   const [deleting, setDeleting] = useState<{ c: RecipeCopy; usedIn: ModelUse[] }>();
   const [copying, setCopying] = useState<RecipeCopy>();
+  const [resetting, setResetting] = useState<RecipeCopy>();
   const [toast, setToast] = useState("");
   const [run, busy, error] = useAction();
   const reads = useMemo(() => libs.data ?? [], [libs.data]);
@@ -181,6 +183,7 @@ export function ImageModels({ ctx }: { ctx: MCtx }) {
     copyTargets: (c) => reads.filter((r) => r.ep.id !== c.hostId && !r.error && canEdit(ctx, r.ep))
       .map((r) => ({ id: r.ep.id, name: r.ep.name, free: freeOn(p, r.ep.id) })),
     onCopyTo: setCopying,
+    onReset: setResetting,
     // The first call only says where the model is used, for the dialog; Delete deletes.
     onDelete: (c) => void run(async () => {
       const o = offeringOf(c);
@@ -307,6 +310,10 @@ export function ImageModels({ ctx }: { ctx: MCtx }) {
       </>}
       {adding && <AddPart L={L} c={adding} onAdd={(a) => addPart(adding, a)} onCancel={() => setAdding(undefined)} />}
       {copying && <CopyToHost L={L} c={copying} targets={L.copyTargets!(copying)} onCopy={(to) => copyTo(copying, to)} onCancel={() => setCopying(undefined)} />}
+      {resetting && <ConfirmDialog title={`Reset ${resetting.recipe.name} to its starter's settings?`}
+        sentence={`Its steps, CFG, sampler, size and other settings on ${resetting.host} go back to the starter's. Its files and LoRAs stay as they are.`}
+        confirm="Reset" onCancel={() => setResetting(undefined)}
+        onConfirm={() => { const c = resetting; setResetting(undefined); L.act(c, { do: "change", change: { op: "starterDefaults" } }); }} />}
       {deleting && <DeleteRecipe L={L} c={deleting.c} usedIn={deleting.usedIn} onConfirm={remove} onCancel={() => setDeleting(undefined)} />}
       {toast && (
         <div className="toast" role="status">
@@ -574,6 +581,7 @@ function CopyBlock({ L, c, details }: { L: Lib; c: RecipeCopy; details?: boolean
                 <a className="sm" href={href({ page: "models", userId: L.ctx.user.id, tab: "images", add: "workflow", host: c.hostId, recipe: r.id })}>Edit workflow</a>
               )}
               {!!L.copyTargets?.(c).length && <button type="button" className="sm" disabled={L.busy} onClick={() => L.onCopyTo?.(c)}>Copy to host…</button>}
+              {r.starter && <button type="button" className="sm" disabled={L.busy} onClick={() => L.onReset?.(c)}>Reset to starter settings…</button>}
               {mainPart?.downloaded && <button type="button" className="sm danger" disabled={L.busy} onClick={() => L.onDelete?.(c)}>Delete model…</button>}
             </div>
           )}

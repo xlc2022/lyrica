@@ -899,7 +899,7 @@ whether the user starred it (`star`, per user, starred first).
 proposals and missing parts) and parts by role, as the host reports them.
 Confirm, ignore, download missing parts (with the hub token for the hub
 they come from), change (swap a part within its role
-and slot, LoRAs, defaults, rename, or `useFor`), copy or delete; the host keeps every part
+and slot, LoRAs, defaults, the starter's defaults again, rename, or `useFor`), copy or delete; the host keeps every part
 another recipe uses. **Starter recipes** (`starters`, `installStarter`):
 the host's own, from `GET /host/v1/starters`, each part marked `present`;
 making one posts `…/starters/<id>/install` with the hub token when a part
