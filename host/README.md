@@ -401,6 +401,10 @@ per host, and Lyrica's router filters create tiers by it.
   maker's card says never to go above CFG 2.5; higher looks harsh. Its
   Civitai licence asks for credit, allows selling images made with it,
   and forbids derivatives of the model.
+  RealVisXL V5.0 is a photoreal fine-tune of SDXL (its fp16 file, about
+  6.9 GB, on Hugging Face under CreativeML Open RAIL++-M, SDXL's own
+  licence), at its card's negative prompt, 30 steps of dpmpp_2m karras and
+  CFG 5; it beats base SDXL at photos and runs on either backend.
   Krea 2's weights (Turbo and Raw) are under the Krea 2 Community License, which
   requires content filtering wherever it runs; the host filters nothing,
   so the operator who installs it sets that up. Qwen-Image 2.1 Turbo's
