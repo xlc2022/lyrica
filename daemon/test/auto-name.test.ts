@@ -94,13 +94,13 @@ describe("auto-name", () => {
     "IMG_0042.JPG", "IMG_20231101_123456.jpg", "IMG-20231101-WA0001.jpg", "DSC_0001.JPG", "DSCN1234.jpg", "P1010001.JPG",
     "PXL_20231101_123456789.PORTRAIT.jpg", "VID_20231101_120000.mp4", "Screenshot 2023-11-01 at 10.00.00.png",
     "Screenshot_20231101-100000.png", "WhatsApp Image 2023-11-01 at 10.00.00 AM.jpeg", "image.png", "image (1).png",
-    "photo-2.jpg", "untitled.png", "ComfyUI_00001_.png", "1699999999999.jpg", "20231101_123456.mp4",
+    "photo-2.jpg", "untitled.png", "Screen Recording.mov", "cover-0001.jpg", "ComfyUI_00001_.png", "1699999999999.jpg", "20231101_123456.mp4",
     "3f2b8c1e-9a4d-4e2f-8b1a-0c9d7e6f5a4b.png", "d41d8cd98f00b204e9800998ecf8427e.jpg", "a8F3kLq9Zx.webp",
   ])("%s looks made up by a machine", (name) => expect(machineName(name)).toBe(true));
 
   it.each([
     "beach-trip.png", "Mum's birthday.jpg", "red-bicycle-by-a-canal.png", "room101.png", "IMG_0042 beach.jpg",
-    "report2023.png", "final.png", "cat.gif", "logo-v2.png",
+    "report2023.png", "final.png", "cat.gif", "logo-v2.png", "cover.png", "night.png", "original.jpg", "portrait-edit.png",
   ])("%s looks chosen by a person", (name) => {
     expect(machineName(name)).toBe(false);
   });

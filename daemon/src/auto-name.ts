@@ -27,7 +27,11 @@ const MACHINE_WORDS = new Set([
   "bokeh", "mp", "raw", "cover", "original", "export", "exported", "scaled", "resized", "thumb", "thumbnail", "whatsapp", "signal", "telegram",
   "received", "fb", "wa", "comfyui", "output", "generated", "render", "frame",
 ]);
-const machineToken = (t: string) => /^\d+$/.test(t) || MACHINE_WORDS.has(t)
+// The words a name can be on its own with no number in it ("image.png", "Screen Recording.mov"); cover.png or night.png
+// is a person's.
+const DEFAULT_WORDS = new Set(["img", "image", "photo", "pic", "picture", "video", "clip", "movie", "screenshot", "screen", "shot", "recording", "untitled", "unnamed", "download", "file"]);
+/** A word no person would type: a number, a hash or random letters and digits. */
+const noiseToken = (t: string) => /^\d+$/.test(t)
   || /^[a-z]{1,5}\d{4,}[a-z]?$/.test(t) // IMG1234, DSC0001, P1010001, WA0001
   || /^(?=.*\d)(?=.*[a-f])[0-9a-f]{6,}$/.test(t) // a hash, or part of a UUID
   || (t.length >= 8 && /^[a-z0-9]+$/.test(t) && (t.match(/[a-z]\d|\d[a-z]/g)?.length ?? 0) >= 3); // a random token: a8f3klq9zx
@@ -35,14 +39,16 @@ const machineToken = (t: string) => /^\d+$/.test(t) || MACHINE_WORDS.has(t)
 /**
  * Whether a file's name looks made up by a machine (a camera's IMG_0042, a screenshot's date, a hash, a UUID, a
  * random token, "image (1)") rather than chosen by a person: every word in its stem is a number, a camera or app
- * word, or random letters and digits. Auto-name renames only these unless the user ticks **Rename chosen names too**.
+ * word, or random letters and digits, and at least one is a number, hash or token unless the stem is only default
+ * words ("image", "Screenshot"), so "cover.png" stays. Auto-name renames only these unless the user ticks **Rename chosen names too**.
  */
 export function machineName(name: string): boolean {
   const dot = name.lastIndexOf(".");
   // A UUID's own parts are short, so it is taken whole: Lyrica names what she makes this way.
   const stem = (dot > 0 ? name.slice(0, dot) : name).toLowerCase().replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g, " ");
   const tokens = stem.split(/[^a-z0-9]+/).filter(Boolean);
-  return tokens.every(machineToken);
+  return tokens.every((t) => MACHINE_WORDS.has(t) || noiseToken(t))
+    && (tokens.some(noiseToken) || tokens.every((t) => DEFAULT_WORDS.has(t)));
 }
 /** A name's stem at most this long, before its extension. */
 const STEM = 60;

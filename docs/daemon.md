@@ -882,7 +882,9 @@ documented in `daemon/src/api.ts`, "The Files panel".
   thread's `vision` model sees (`daemon/src/auto-name.ts`). Only a name a
   machine made up is renamed (`machineName`: every word of the stem is a
   number, a camera, screenshot or app word such as `IMG`, `DSC`, `PXL`,
-  `Screenshot`, `image`, a hash, a UUID or a random token); one a person chose
+  `Screenshot`, `image`, a hash, a UUID or a random token, with at least one
+  number, hash or token unless it is only a default word such as `image`, so
+  `cover.png` stays); one a person chose
   comes back as it is with `kept` and no model is asked, unless `all` (the
   drawer's **Rename chosen names too**). The image's thumbnail (or the image itself
   without one; a clip's poster, and a clip without one can't be named) goes through `Models.callWithFallback("vision", …)` with
