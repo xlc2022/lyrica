@@ -567,6 +567,22 @@ a 3090 each takes seconds:
 The gated ones need a Hugging Face token whose account accepted their
 licence (Downloads → Accounts); more steps or a 2 MP edit don't help.
 
+Three more Krea 2 fine-tunes from Civitai each have a quality and a fast
+starter, like Realism by Stable Yogi: the quality one at 1280×1280 with a
+4-step second pass at 0.2 (ComfyUI hosts), the fast one at 1024×1024.
+They share Krea 2's own encoder and VAE, need a Civitai token (Downloads
+→ Accounts), and run at CFG 1 at their makers' steps:
+- **Kroma v0.3.1 Turbo** (lodestones' fine-tune, a 13.5 GB W8A8 file;
+  ComfyUI hosts only): 8 steps, euler. On a 3090 about 14 seconds fast,
+  30 quality. It draws people a little older than asked.
+- **GonzaLomo Krea 2 v4** (12.8 GB fp8): 6 steps, euler with the beta
+  scheduler; about 10 and 35 seconds.
+- **CyberRealistic Krea 2 v4** (13.5 GB fp8), the most photographic:
+  12 steps, euler; about 20 and 46 seconds.
+Their Civitai licences allow selling images (Kroma's and
+CyberRealistic's also allow commercial use of the model; GonzaLomo's
+images only).
+
 The **MOSS-Image** starters (ComfyUI hosts; OpenMOSS's 5B model, Apache
 2.0, a 5.4 GB int8 model with a 7.3 GB Qwen3.5 9B encoder) are good at
 text in pictures and long, detailed prompts. **MOSS-Image** creates, at
