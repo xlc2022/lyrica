@@ -1743,7 +1743,7 @@ export interface ImageEntry extends FileEntry { source: "uploaded" | "made" }
  * extension and is free in its folder and among the others suggested ("red-bicycle-2.png"); one already right comes
  * back as it is. A private or local-only thread uses local models only, and a photo of the user (DESIGN "Photos of
  * you") goes to a cloud model only when the user's photo setting is Always, or Ask approved today. An image that
- * couldn't be named carries `error` instead.
+ * couldn't be named carries `error` instead, as does one whose call took more than three minutes (AUTO_NAME_TIMEOUT_MS).
  */
 export type AutoName = { path: string; name: string; kept?: true; error?: undefined } | { path: string; name?: undefined; kept?: undefined; error: string };
 /**

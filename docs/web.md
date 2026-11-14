@@ -292,7 +292,7 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   **Auto-name** (`AutoNameDrawer`, also in Project settings → Files: one
   `…/files/auto-name` ask per file, three in flight at once, shown as each answers, renamed with
   `…/files/rename` only on Rename; a name a person chose shows **Kept** until **Overwrite existing names**, unticked each time the
-  drawer opens, asks again with `all`);
+  drawer opens, asks again with `all`; only closing the drawer stops the asks, never a render of the page around it);
   dropping files on the panel uploads them to the folder last opened. On the Files, Images and Videos tabs the keys
   act while the panel was the last thing pressed or focused, never in a text field and never while a menu, dialog or
   the viewer is up: **Ctrl or Cmd+C** copies the selection (kept in the page for any of the user's panels; on the
