@@ -1,6 +1,7 @@
 # core
 
-Keys, users and the persona store. No Pi dependency.
+Keys, users and the persona store. No dependency on Pi's agent; only
+`workspace/mcp.ts` uses Pi's MCP client (`@earendil-works/pi-mcp`).
 
 - **`db.ts`** opens SQLCipher databases (`better-sqlite3-multiple-ciphers`,
   `cipher=sqlcipher`, `legacy=4`), optionally read-only, and holds the
@@ -77,7 +78,7 @@ Keys, users and the persona store. No Pi dependency.
     `inheritSettings` for subagents, and `saveUpload`.
   - `AllowedPaths` keeps the folders each user may grant in `self.db`; only
     an administrator changes them. `WorkspaceSettings` keeps thread settings,
-    network defaults and SSH targets in the user's `user.db`.
+    network defaults and machines (SSH and Proxmox) in the user's `user.db`.
   - `net.ts` builds the `pasta` options and the nftables rules for a
     sandbox's network.
   - `Sandbox` (bubblewrap) and `SshTarget` implement Pi's tool operations
@@ -103,16 +104,18 @@ users/<id>/home/        where it is mounted while the user is unlocked
 
 ## Sandbox tests
 
-`test/sandbox.test.ts` and `bin/test/bench.test.ts` need bubblewrap,
+`test/sandbox.test.ts` and the repository's `bin/test/bench.test.ts` need bubblewrap,
 gocryptfs, FUSE (`/dev/fuse`), pasta and nft (with `/dev/net/tun`), and must run as an unprivileged user,
 because root hides permission bugs. As root they are skipped. CI runs them as
-its normal user, with `LYRICA_SANDBOX_TESTS=require` so they can't be skipped. In a root cloud
+its normal user, with `LYRICA_SANDBOX_TESTS=require` so they can't be skipped;
+that also requires passwordless `sudo -n` and a non-loopback IPv4 address. In a root cloud
 session, create a user and run them as that user from a copy of the checkout:
 
 ```sh
 apt-get install -y bubblewrap gocryptfs fuse3 openssh-server passt nftables imagemagick
 chmod 666 /dev/fuse /dev/net/tun   # some containers ship them 0600
 useradd -m lyricatest
+echo 'lyricatest ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/lyricatest   # require needs sudo -n
 rsync -a --exclude .git ./ /home/lyricatest/lyrica/ && chown -R lyricatest: /home/lyricatest/lyrica
 su lyricatest -c 'cd ~/lyrica && LYRICA_SANDBOX_TESTS=require npx vitest --run'
 ```

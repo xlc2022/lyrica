@@ -84,11 +84,13 @@ for a thread, pool step 9). That file is step 1; every later change is a numbere
 pool step in `core/src/migrations.ts` (step 2 adds `entries.reactions`, step 3
 the table `drafts`: the composer's unsent text, one row per thread; step 4 the
 table `wakeups`; step 5 `thread_steps` for checklists; step 6 `routines`
-for recurring turns; step 13 `renames`, files renamed in the Files panel until
+for recurring turns; step 7 `watches`; step 8 `questions`; step 10 `skills`;
+step 12 `vectors`; step 13 `renames`, files renamed in the Files panel until
 sleep respells the memories citing their threads; step 14 `sleep_runs.superseded`,
 the notes a run marked replaced and what replaced them before, so the night can
 be undone, and `sleep_focus`, the person's line for tonight's dream; step 15
-adds nullable `routines.title` and `routines.description`; step 17 adds
+adds nullable `routines.title` and `routines.description`; step 16 `recalls`,
+the Recall counts below; step 17 adds
 `artifacts`, a published or imported page's title, kind, thread and path, and
 `artifact_versions`, each version's bytes and who made it), never DDL in the
 memory module. Routine labels stay encrypted in their own pool: an optional
@@ -615,8 +617,8 @@ Files panel.
   general and private pools, read and write. An owner view never goes into a
   conversation or a model's context. Those use thread views only.
 
-Users can also ask Lyrica to correct a memory in conversation. There is no
-terminal client for memory.
+Users can also ask Lyrica to correct a memory in conversation, or use
+`lyrica mem` in a terminal (above).
 
 ## Export and import
 

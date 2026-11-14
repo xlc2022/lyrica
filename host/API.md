@@ -1324,7 +1324,7 @@ fewest jobs, and each clip of a chained video runs on the same one.
 
 On a host whose (first) image GPU is a CMP 100-210, stable-diffusion.cpp makes the
 images instead (README.md, "Image models"): create only, for Z-Image,
-Qwen-Image, FLUX and SDXL recipes without LoRAs, and a job names none. The recipe list says so:
+Qwen-Image, Krea 2, FLUX and SDXL recipes without LoRAs, and a job names none. The recipe list says so:
 `does` holds only `create`, or is empty with an `unsupported` reason for a
 recipe it can't run. A job for one is `invalid`, saying why. `sampler` and `scheduler` take the nearest sd.cpp names, or its
 defaults. Each image of a batch is made from the next seed, and says so. A

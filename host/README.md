@@ -546,8 +546,9 @@ per host, and Lyrica's router filters create tiers by it.
   - the voice (the owner's pick from the benchmark):
     `onnx-community/Kokoro-82M-v1.1-zh-ONNX` at
     `6cc0f0d2ebe369a68b0df87c2b65c1af8c0ac3e3`: `onnx/model.onnx`,
-    `config.json`, `tokenizer.json`, `tokenizer_config.json` and every
-    `voices/*.bin` (about 330 MB with all 103 voices);
+    `config.json`, `tokenizer.json`, `tokenizer_config.json` and three
+    voices, `voices/zm_010.bin`, `zf_001.bin` and `af_maple.bin` (about
+    330 MB); any of its 103 voices can be downloaded with them;
   - dictation: `openai/whisper-large-v3-turbo` at
     `41f01f3fe87f28c78e2fbf8b568835947dd65ed9`: `model.safetensors` and
     its JSON and text files (about 1.6 GB); on a host with a CMP,
@@ -721,14 +722,15 @@ revoked. A revoked server must pair again.
     flash attention on sm_70 uses the tile kernel; that reads prompts about
     three times as fast as the stock image, and changes nothing on Turing
     and newer cards. Unlocked, llama.cpp makes its own choices, which read
-    prompts about twice as fast again. CI publishes it and sd-server's image
-    (`.github/workflows/cmp-images.yml`) under a tag that hashes their build
+    prompts about twice as fast again. CI publishes it, sd-server's and
+    whisper-server's images (`.github/workflows/cmp-images.yml`) under a tag that hashes their build
     folder and CUDA capabilities, in the registry `prebuilt.sh` names (one
     line, or `LYRICA_HOST_REGISTRY`). `install.sh` pulls the tag that matches
     its own code when the image covers every GPU's compute capability, and
     checks the image's content label, then runs it by the digest it
     checked, so a tag pushed again later changes nothing. Otherwise it adds
-    `compose.cmp.build.yaml` (or `compose.sdcpp.build.yaml`) and builds
+    `compose.cmp.build.yaml` (or `compose.sdcpp.build.yaml`,
+    `compose.whisper.build.yaml`) and builds
     the image for the host's GPUs, which takes a while, saying why.
   - llama.cpp runs in router mode. host-api writes its preset file (each
     model's file, GPU and context), reads the router's measurement of it
@@ -791,6 +793,8 @@ revoked. A revoked server must pair again.
     them.
   - `vllm-status`: the vLLM supervisor's report of servers that exited;
     read-only for host-api.
+  - `comfyui-status` (and `sdcpp-status`, `whisper-status` where those
+    run): the run each gate started; read-only for host-api.
   - `tailscale` (with Tailscale only): the tailscale container's node
     state, so the machine keeps its tailnet identity across restarts.
   - The models folder is mounted read-only everywhere except its `lyrica/`

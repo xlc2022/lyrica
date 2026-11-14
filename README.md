@@ -58,7 +58,7 @@ The repository was rebuilt from scratch starting 2026-10-09.
   Proxmox, and Git accounts with project repositories.
 - Web search through a SearXNG of your own, an offline copy of Wikipedia
   beside it, and reading pages from the thread's sandbox.
-- MCP servers (remote, per thread).
+- MCP servers (remote, or local programs, per thread).
 - Model and speech hosts on GPU machines, and the web's Models area for
   text and image models, their downloads and hub tokens.
 - The `image` tool for creation, edits and upscaling, with encrypted results,
@@ -83,7 +83,7 @@ host/          model and speech hosts for GPU machines
 nix/           NixOS module, package, sandbox tools and check-host.sh
 persona/       seed, imported into self.db on first run
 evals/         continuity scenarios
-bin/lyrica     one command: serve, admin, dev, version, smoke-test
+bin/lyrica     one command: serve, admin, chat, mem, dev, version, smoke-test
 docs/          component docs, guides and briefs
 ```
 
