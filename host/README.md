@@ -401,6 +401,13 @@ per host, and Lyrica's router filters create tiers by it.
   maker's card says never to go above CFG 2.5; higher looks harsh. Its
   Civitai licence asks for credit, allows selling images made with it,
   and forbids derivatives of the model.
+  FLUX.2 klein 4B (Apache 2.0) and 9B (FLUX Non-Commercial License,
+  gated) and FLUX.3 image klein (FLUX Kommunity License, gated) create
+  and edit with up to three references (`flux2-klein-4b`,
+  `flux2-klein-9b` and `flux3-klein` templates, ComfyUI only): an edit
+  is the image scaled to about 1 MP, encoded as a reference latent, and
+  the output takes its size. The gated files' checksums are pinned from
+  copies downloaded with an accepting account's token.
   RealVisXL V5.0 is a photoreal fine-tune of SDXL (its fp16 file, about
   6.9 GB, on Hugging Face under CreativeML Open RAIL++-M, SDXL's own
   licence), at its card's negative prompt, 30 steps of dpmpp_2m karras and

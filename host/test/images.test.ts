@@ -175,6 +175,50 @@ describe("parts", () => {
   });
 });
 
+describe("FLUX.2 klein parts", () => {
+  it("tells klein 4B from 9B by its text input, FLUX.2's VAE by its 32 channels and Qwen3 8B by its width, so each fits its template", () => {
+    const klein = (txt: number) => safetensors({ "double_blocks.0.img_attn.qkv.weight": {}, "single_blocks.0.linear1.weight": {}, "double_stream_modulation_img.lin.weight": {}, "txt_in.weight": { shape: [3072, txt] } });
+    const qwen3 = (width: number) => safetensors({ "model.layers.0.self_attn.q_proj.weight": {}, "model.layers.0.self_attn.q_norm.weight": {}, "model.embed_tokens.weight": { shape: [151936, width] } });
+    const dir = folder({
+      "flux-2-klein-4b-fp8.safetensors": klein(7680), "flux-2-klein-9b-fp8.safetensors": klein(12288),
+      "flux2-vae.safetensors": safetensors({ "decoder.conv_in.weight": { shape: [512, 32, 3, 3] }, "encoder.conv_in.weight": { shape: [128, 3, 3, 3] } }),
+      "qwen_3_4b.safetensors": qwen3(2560), "qwen_3_8b_fp8mixed.safetensors": qwen3(4096), "ae.safetensors": FLUX_VAE,
+      "flux3-image-klein-int8-convrot.safetensors": safetensors({ "early_stream_modulations.image.lin.weight": {}, "content_mode_blocks.image.0.attn.qkv.weight": {}, "single_blocks.0.linear1.weight": {} }),
+    });
+    expect(Object.fromEntries(scanParts(dir).map((p) => [p.file, [p.role, p.slot, p.arch]]))).toEqual({
+      "flux-2-klein-4b-fp8.safetensors": ["diffusion", null, "flux2-klein-4b"],
+      "flux-2-klein-9b-fp8.safetensors": ["diffusion", null, "flux2-klein-9b"],
+      "flux3-image-klein-int8-convrot.safetensors": ["diffusion", null, "flux3-klein"],
+      "flux2-vae.safetensors": ["vae", null, "flux2"],
+      "ae.safetensors": ["vae", null, "flux"],
+      "qwen_3_4b.safetensors": ["text_encoder", "qwen3", "qwen3"],
+      "qwen_3_8b_fp8mixed.safetensors": ["text_encoder", "qwen3_8b", "qwen3"],
+    });
+    // A klein 4B proposal takes the 4B encoder and FLUX.2's VAE, and makes and edits.
+    const b = new RecipeBook(mkdtempSync(join(tmpdir(), "lyrica-book-")), TEMPLATES, STARTERS);
+    b.propose(scanParts(dir));
+    const r = b.all().find((x) => x.arch === "flux2-klein-4b")!;
+    expect(r).toMatchObject({ template: "flux2-klein-4b", does: ["create", "edit"] });
+    expect(r.parts.map((p) => p.file).sort()).toEqual(["flux-2-klein-4b-fp8.safetensors", "flux2-vae.safetensors", "qwen_3_4b.safetensors"]);
+  });
+
+  it("fills klein's edit with the image's own size and each reference on both conditionings, and a create with the asked size", () => {
+    const t = TEMPLATES.get("flux2-klein-4b")!;
+    const p = (role: Recipe["parts"][number]["role"], file: string, slot: string | null = null) => ({ role, slot, file, added: false });
+    const parts = [p("diffusion", "k.safetensors"), p("text_encoder", "q.safetensors", "qwen3"), p("vae", "v.safetensors")];
+    const base = { prompt: "x", seed: 1, steps: 4, cfg: 1, sampler: "euler", count: 1, width: 1024, height: 768 };
+    const made = fill(t, parts, [], base);
+    expect(made.canvas!.inputs).toMatchObject({ width: 1024, height: 768 });
+    expect(Object.keys(made)).not.toContain("canvas_image");
+    const edit = fill(t, parts, [], { ...base, image: "in.png", reference1: "r.png" });
+    expect(edit.canvas_image!.inputs).toMatchObject({ width: ["size", 0], height: ["size", 1] });
+    expect(edit.sample!.inputs.sigmas).toEqual(["sigmas_image", 0]);
+    expect(edit.pos_ref1!.inputs.conditioning).toEqual(["pos_image", 0]);
+    expect(edit.guider!.inputs).toMatchObject({ positive: ["pos_ref1", 0], negative: ["neg_ref1", 0] });
+    expect(Object.keys(edit)).not.toContain("canvas");
+  });
+});
+
 describe("video parts", () => {
   it("tells video models, their experts, encoders and audio VAEs apart, so no image recipe takes them", () => {
     const dir = folder({
@@ -1750,7 +1794,7 @@ describe("the image API", () => {
     // The test folder holds two of its parts at their download paths, but not its diffusion model.
     expect(z.parts.map((p: { present: boolean }) => p.present)).toEqual([false, true, true]);
     expect(body.starters.map((st: { id: string }) => st.id)).toEqual([
-      "flux-schnell", "juggernaut-xl-v9", "krea2-raw", "krea2-turbo-uncensored", "krea2-turbo", "ltx-2.5-distilled", "minimax-h3-edit", "minimax-h3-turbo", "p-h3-image-w4a8", "p-h3-image", "qwen-image-2.1-turbo", "qwen-image-2512", "qwen-image-edit", "qwen-image", "realism-stable-yogi-3-fast", "realism-stable-yogi-3", "realvisxl-v5", "scail-2", "sdxl", "seedvr2-3b", "seedvr2-7b",
+      "flux-schnell", "flux2-klein-4b", "flux2-klein-9b", "flux3-klein", "juggernaut-xl-v9", "krea2-raw", "krea2-turbo-uncensored", "krea2-turbo", "ltx-2.5-distilled", "minimax-h3-edit", "minimax-h3-turbo", "p-h3-image-w4a8", "p-h3-image", "qwen-image-2.1-turbo", "qwen-image-2512", "qwen-image-edit", "qwen-image", "realism-stable-yogi-3-fast", "realism-stable-yogi-3", "realvisxl-v5", "scail-2", "sdxl", "seedvr2-3b", "seedvr2-7b",
       "wan2.2-i2v-14b-q5", "wan2.2-i2v-14b", "wan2.2-t2v-14b-q5", "wan2.2-t2v-14b", "wan2.2-ti2v-5b", "z-image-turbo",
     ]);
   });
