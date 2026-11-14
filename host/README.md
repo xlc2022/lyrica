@@ -405,6 +405,10 @@ per host, and Lyrica's router filters create tiers by it.
   6.9 GB, on Hugging Face under CreativeML Open RAIL++-M, SDXL's own
   licence), at its card's negative prompt, 30 steps of dpmpp_2m karras and
   CFG 5; it beats base SDXL at photos and runs on either backend.
+  Juggernaut XL v9 (about 7.1 GB, CreativeML Open RAIL-M; its makers ask
+  for a licence before it is served behind a paid API) is the other,
+  glossier photoreal SDXL, at its card's 35 steps of dpmpp_2m karras, CFG
+  4.5 and no negative prompt.
   Krea 2's weights (Turbo and Raw) are under the Krea 2 Community License, which
   requires content filtering wherever it runs; the host filters nothing,
   so the operator who installs it sets that up. Qwen-Image 2.1 Turbo's

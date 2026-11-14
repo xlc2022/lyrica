@@ -1,0 +1,23 @@
+{
+  "name": "Juggernaut XL v9",
+  "template": "sdxl",
+  "parts": [
+    {
+      "role": "checkpoint",
+      "source": "huggingface",
+      "repo": "RunDiffusion/Juggernaut-XL-v9",
+      "path": "Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors",
+      "sha256": "c9e3e68f89b8e38689e1097d4be4573cf308de4e3fd044c64ca697bdb4aa8bca",
+      "size": 7105348188
+    }
+  ],
+  "loras": [],
+  "defaults": {
+    "steps": 35,
+    "cfg": 4.5,
+    "sampler": "dpmpp_2m",
+    "scheduler": "karras",
+    "width": 1024,
+    "height": 1024
+  }
+}

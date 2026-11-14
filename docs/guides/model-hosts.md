@@ -555,7 +555,9 @@ half times as long as a plain edit.
 The RealVisXL V5.0 starter (one 6.9 GB SDXL checkpoint) is the one to
 pick for SDXL photos: it looks far more like a photograph than base
 SDXL with the same prompt, in about 10 seconds a 1 MP image on a 3090.
-Like any SDXL model it reads short comma-separated phrases best.
+Juggernaut XL v9 (7.1 GB) is the other photoreal SDXL starter, a little
+glossier; its makers say not to serve it behind a paid API without their
+licence. Like any SDXL model they read short comma-separated phrases best.
 
 The FLUX.1 schnell starter (one 17.2 GB fp8 checkpoint) creates at
 1536×1536 by default, which looks more natural than 1024×1024: on a 3090
