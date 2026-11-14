@@ -21,6 +21,15 @@
       ]
     },
     {
+      "role": "lora",
+      "slot": "realism",
+      "arch": [
+        "minimax-h3"
+      ],
+      "optional": true,
+      "trigger": "r34l1sm"
+    },
+    {
       "role": "text_encoder",
       "slot": "qwen3vl_32b"
     },

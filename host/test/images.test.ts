@@ -456,6 +456,16 @@ describe("video parts", () => {
     expect(refImage.anchor!.inputs).toEqual({ positive: ["cond", 0], vae: ["load_vae", 0], latent: ["cond", 1], image: ["load", 0], frame_idx: 0 });
     expect(refImage.guide!.inputs.conditioning).toEqual(["anchor", 0]);
     expect(refImage.sample!.inputs.latent_image).toEqual(["cond", 1]);
+    // fal's Realism People LoRA, a part of the Realism starters, goes on after the speed LoRA.
+    const withFal = fill(TEMPLATES.get("minimax-h3-ref2va")!, [...refParts, p("lora", "fal.safetensors", "realism")], [], { negativePrompt: "", ...sing.defaults, prompt: "x", seed: 1, width: 1344, height: 768, ...at("minimax-h3-ref2va", 5, 1344, 768, 4) });
+    expect(withFal.lora_realism!.inputs).toMatchObject({ model: ["lora_speed", 0], lora_name: "fal.safetensors" });
+    expect(withFal.guide!.inputs.model).toEqual(["lora_realism", 0]);
+    // Its trigger word starts the prompt, once; without the LoRA the prompt is as asked.
+    expect(withFal.cond!.inputs.prompt).toBe("r34l1sm x");
+    expect(fill(TEMPLATES.get("minimax-h3-ref2va")!, [...refParts, p("lora", "fal.safetensors", "realism")], [], { negativePrompt: "", ...sing.defaults, prompt: "r34l1sm x", seed: 1, width: 1344, height: 768, ...at("minimax-h3-ref2va", 5, 1344, 768, 4) }).cond!.inputs.prompt).toBe("r34l1sm x");
+    expect(refText.cond!.inputs.prompt).toBe("x");
+    expect(STARTERS.find((s) => s.id === "singularity-h3-v2-realism")!.parts.find((q) => q.slot === "realism")).toMatchObject({ repo: "fal/MiniMax-H3-Realism-People-LoRA" });
+    expect(STARTERS.find((s) => s.id === "singularity-h3-v2")!.parts.some((q) => q.slot === "realism")).toBe(false);
 
     // A template that needs a part the recipe lacks says so.
     expect(() => fill(TEMPLATES.get("minimax-h3")!, [p("diffusion", "h3.safetensors"), p("vae", "v.safetensors")], [], { ...h3.defaults, prompt: "x", seed: 1, width: 1344, height: 768, ...at("minimax-h3", 5, 1344, 768) })).toThrow(/nothing for \$clip/);
@@ -1878,7 +1888,7 @@ describe("the image API", () => {
     // The test folder holds two of its parts at their download paths, but not its diffusion model.
     expect(z.parts.map((p: { present: boolean }) => p.present)).toEqual([false, true, true]);
     expect(body.starters.map((st: { id: string }) => st.id)).toEqual([
-      "cobijada-h3-hybrid-w4a8", "cobijada-h3-hybrid", "flux-schnell", "flux2-klein-4b", "flux2-klein-9b", "flux3-klein", "juggernaut-xl-v9", "krea2-raw", "krea2-turbo-uncensored", "krea2-turbo", "ltx-2.5-distilled", "minimax-h3-edit", "minimax-h3-image-w4a8", "minimax-h3-image", "minimax-h3-turbo-w6a8", "minimax-h3-turbo", "moss-image-edit", "moss-image", "p-h3-image-w4a8", "p-h3-image", "qwen-image-2.1-turbo", "qwen-image-2512", "qwen-image-edit", "qwen-image", "realism-stable-yogi-3-fast", "realism-stable-yogi-3", "realvisxl-v5", "scail-2", "sdxl", "seedvr2-3b", "seedvr2-7b", "singularity-h3-v2-w4a8", "singularity-h3-v2",
+      "cobijada-h3-hybrid-realism-w4a8", "cobijada-h3-hybrid-realism", "cobijada-h3-hybrid-w4a8", "cobijada-h3-hybrid", "flux-schnell", "flux2-klein-4b", "flux2-klein-9b", "flux3-klein", "juggernaut-xl-v9", "krea2-raw", "krea2-turbo-uncensored", "krea2-turbo", "ltx-2.5-distilled", "minimax-h3-edit", "minimax-h3-image-w4a8", "minimax-h3-image", "minimax-h3-turbo-realism-w6a8", "minimax-h3-turbo-w6a8", "minimax-h3-turbo", "moss-image-edit", "moss-image", "p-h3-image-w4a8", "p-h3-image", "qwen-image-2.1-turbo", "qwen-image-2512", "qwen-image-edit", "qwen-image", "realism-stable-yogi-3-fast", "realism-stable-yogi-3", "realvisxl-v5", "scail-2", "sdxl", "seedvr2-3b", "seedvr2-7b", "singularity-h3-v2-realism-w4a8", "singularity-h3-v2-realism", "singularity-h3-v2-w4a8", "singularity-h3-v2",
       "wan2.2-i2v-14b-q5", "wan2.2-i2v-14b", "wan2.2-t2v-14b-q5", "wan2.2-t2v-14b", "wan2.2-ti2v-5b", "z-image-turbo",
     ]);
   });

@@ -200,7 +200,12 @@ export class RecipeBook {
       if (!["diffusion", "checkpoint", "upscaler"].includes(main.role) || used.has(main.file)) continue;
       const t = this.templateFor(main, parts);
       if (!t) continue; // no template for its architecture: it stays a file
-      const starter = this.starters.find((s) => s.template === t.name && s.backend !== "sdcpp");
+      // The starter it most likely came from: the one with its file, else one whose LoRAs are all here, else any for
+      // its template (several H3 starters share one: Turbo, w6a8, Cobijada).
+      const own = this.starters.filter((s) => s.template === t.name && s.backend !== "sdcpp");
+      const here = (path: string) => parts.some((q) => basename(q.file) === basename(path));
+      const starter = own.find((s) => s.parts.some((q) => q.role === main.role && basename(q.path) === basename(main.file)))
+        ?? own.find((s) => s.parts.filter((q) => q.role === "lora").every((q) => here(q.path))) ?? own[0];
       const recipeParts: RecipePart[] = [{ role: main.role, slot: main.slot, file: main.file, added: false }];
       if (main.role !== "checkpoint") {
         // A video model's other expert is a part like its VAE; the main part fills its own slot.
@@ -211,7 +216,8 @@ export class RecipeBook {
             ?? candidates.find((p) => home(p.file) === home(main.file)) ?? candidates[0];
           if (pick && spec.role === "diffusion") used.add(pick.file);
           if (pick) recipeParts.push({ role: spec.role, slot: spec.slot ?? null, file: pick.file, added: false });
-          else if (!spec.optional || (spec.role === "lora" && starter?.parts.some((p) => p.role === "lora" && p.slot === spec.slot))) {
+          // A speed LoRA its starter has is needed, as its steps were set for it; another optional LoRA (H3's realism) isn't.
+          else if (!spec.optional || (spec.role === "lora" && spec.slot === "speed" && starter?.parts.some((p) => p.role === "lora" && p.slot === spec.slot))) {
             const known = starter?.parts.find((p) => p.role === spec.role && (spec.slot === undefined || p.slot === spec.slot));
             recipeParts.push({
               role: spec.role, slot: spec.slot ?? null, file: null, added: false,

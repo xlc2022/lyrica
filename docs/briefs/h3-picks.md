@@ -29,7 +29,14 @@ pictures and clips with on the operator's own hardware.
   the scanned files fill most wins (VFX Edit LoRA present: editor).
 - **Starters**: `minimax-h3-image` (int8), `minimax-h3-image-w4a8`,
   `minimax-h3-turbo-w6a8`, `cobijada-h3-hybrid` (+ `-w4a8`),
-  `singularity-h3-v2` (+ `-w4a8`). Pins from the Hugging Face API.
+  `singularity-h3-v2` (+ `-w4a8`), and a `-realism` twin of each video one
+  with fal's Realism People LoRA as a `realism` slot part. Pins from the
+  Hugging Face API.
+- **Trigger words**: a template LoRA slot may name a `trigger`; the host
+  starts every prompt with it when the recipe has that LoRA (r34l1sm).
+- **Proposals**: a scanned model takes the defaults of the starter that has
+  its file (several H3 starters share a template); only a missing *speed*
+  LoRA is listed as needed.
 
 ## Open questions
 
@@ -40,6 +47,8 @@ pictures and clips with on the operator's own hardware.
   and an H3 Turbo clip.
 - Singularity's chaining (16 s join, 60 s, extend) needs tuning on
   mystria, as H3 Turbo's was (#695, #700, #711).
+- The realism LoRA's strength (fal says 1, or 0.6 to 0.8 lighter) is for
+  the GPU run to settle.
 - Large models (int8 starters, Singularity chaining) run on mystria; w4a8
   and w6a8 on lunasa.
 

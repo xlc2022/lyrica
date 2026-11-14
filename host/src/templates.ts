@@ -32,6 +32,8 @@ export interface PartSpec {
   optional?: boolean;
   /** For a LoRA the template names: how strongly it applies (default 1). */
   strength?: number;
+  /** For a LoRA the template names: its trigger word, which starts every prompt when the recipe has it (fal's r34l1sm). */
+  trigger?: string;
 }
 
 export interface Node {
@@ -256,6 +258,11 @@ function loaders(t: Template, parts: FilledPart[], loras: Lora[]) {
 /** The ComfyUI prompt for one request. Throws if a value the template needs is missing. */
 export function fill(t: Template, parts: FilledPart[], loras: Lora[], values: Values): Record<string, Node> {
   const { nodes, links } = t.loaders === "template" ? { nodes: {}, links: {} as Record<string, Link | null> } : loaders(t, parts, loras);
+  // A LoRA part with a trigger word puts it at the start of the prompt (once: a chained clip's prompt has it already).
+  for (const spec of t.parts) {
+    if (spec.role !== "lora" || !spec.trigger || !parts.some((p) => p.role === "lora" && p.slot === spec.slot)) continue;
+    if (typeof values.prompt === "string" && !values.prompt.startsWith(spec.trigger)) values = { ...values, prompt: `${spec.trigger} ${values.prompt}` };
+  }
   // A loader link a template asks for but no part gives (`$vae_audio` with no audio VAE) is an error below.
   const linkName = (v: string) => /^\$(model|clip|vae|latentUpscaler|interpolator|clipVision|segmenter|segmenterClip)(_\w+)?$/.test(v);
   const graph: Record<string, Node> = {};

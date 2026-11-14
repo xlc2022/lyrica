@@ -845,7 +845,10 @@ and w4a8 (24 GB): **Cobijada H3 Hybrid**, a merge of H3's two checkpoints
 (uncensored) that takes Turbo's LoRA and chains up to 60 s, and
 **Singularity H3 v2**, the most used fine-tune, which is ref2va only: it
 runs on its own template, makes clips from text or animates an image, and
-chains to 60 s as Turbo does. Their repositories say Apache 2.0, but they are H3
+chains to 60 s as Turbo does. Each has a **Realism** twin that also
+fetches fal's Realism People LoRA (0.12 GiB) for faces, skin and gestures
+that hold up in close-up; the host starts its prompts with the LoRA's
+trigger word, r34l1sm. Their repositories say Apache 2.0, but they are H3
 derivatives under H3's licence. Any H3 LoRA file on the host now counts
 as H3's even when its name doesn't say so (fal's Realism People, Pika's
 H3 Flex), so it can be added to an H3 recipe or asked for per clip.

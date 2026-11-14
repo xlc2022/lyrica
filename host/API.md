@@ -889,7 +889,10 @@ as `{ "parts": [...] }`, each entry like this:
   an image anchored as the first frame by a guide; its continuation,
   `minimax-h3-ref2va-continue.json`, anchors the clip so far the same way
   from references, so it chains to 60 s too) and `minimax-h3-edit` (edit_video, on H3's
-  ref2va model with the VFX Edit LoRA). Where an architecture has two
+  ref2va model with the VFX Edit LoRA). Both H3 video templates take an
+  optional `realism` LoRA slot (fal's Realism People); a LoRA slot with a
+  `trigger` word puts it at the start of every prompt, chained clips' too,
+  when the recipe has that LoRA. Where an architecture has two
   templates, a scanned model is proposed with the one whose LoRA slots the
   scanned files fill most (a ref2va checkpoint beside the VFX Edit LoRA is
   an editor, otherwise a video model), then by whether its name says
