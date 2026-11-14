@@ -1737,7 +1737,7 @@ export interface ImageEntry extends FileEntry { source: "uploaded" | "made" }
 /**
  * POST …/files/auto-name { paths } → AutoName[], one per path in order: a name for each image (PNG, JPEG, GIF, WebP)
  * in the thread's folder from what the thread's `vision` model sees (Models → Tasks, "Look at images"), at most 50 per
- * ask. Nothing is renamed: the panel shows the names and applies them with …/files/rename. A name keeps the image's
+ * ask, three asked at once. Nothing is renamed: the panel shows the names and applies them with …/files/rename. A name keeps the image's
  * extension and is free in its folder and among the others suggested ("red-bicycle-2.png"); one already right comes
  * back as it is. A private or local-only thread uses local models only, and a photo of the user (DESIGN "Photos of
  * you") goes to a cloud model only when the user's photo setting is Always, or Ask approved today. An image that

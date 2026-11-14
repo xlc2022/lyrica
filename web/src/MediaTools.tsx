@@ -40,7 +40,7 @@ const nameOf = (p: string) => p.slice(p.lastIndexOf("/") + 1);
 
 /**
  * A suggested name that another row in the same folder already has gets -2, -3… (lyricad keeps each free in its
- * folder; the drawer asks one image at a time, so it keeps them apart from each other).
+ * folder; the drawer asks for each image on its own, so it keeps them apart from each other).
  */
 export function apart(name: string, dir: string, rows: { path: string; draft: string }[]): string {
   const dot = name.lastIndexOf(".");
@@ -49,10 +49,13 @@ export function apart(name: string, dir: string, rows: { path: string; draft: st
   for (let n = 1; ; n++) { const c = `${stem}${n > 1 ? `-${n}` : ""}${ext}`; if (!taken.has(c.toLowerCase())) return c; }
 }
 
+/** Asks in flight at once (daemon/src/auto-name.ts, AUTO_NAME_AT_ONCE). */
+const AT_ONCE = 3;
+
 type Row = { path: string; draft: string; state: "waiting" | "named" | "failed" | "renamed"; error?: string };
 
 /**
- * Auto-name: each image's suggested name, asked for one at a time and shown as it comes, each editable. **Rename**
+ * Auto-name: each image's suggested name, asked for a few at a time and shown as it comes, each editable. **Rename**
  * renames those whose name changed; one left as it was, or emptied, stays as it is. Closing stops the asking.
  */
 export function AutoNameDrawer({ base, paths, links, onClose, onRenamed }: {
@@ -70,12 +73,14 @@ export function AutoNameDrawer({ base, paths, links, onClose, onRenamed }: {
     addEventListener("keydown", key);
     return () => { live.current = false; removeEventListener("keydown", key); };
   }, [onClose]);
-  // One image at a time, so each name shows as it comes and closing stops the rest.
+  // Each image on its own ask, a few at once (lyricad's own AUTO_NAME_AT_ONCE), so each name shows as it comes and
+  // closing stops the rest.
   useEffect(() => {
     let on = true;
-    void (async () => {
-      for (const path of paths) {
-        if (!on) return;
+    let next = 0;
+    const worker = async () => {
+      while (on && next < paths.length) {
+        const path = paths[next++]!;
         let got: AutoName | undefined;
         try { [got] = await post<AutoName[]>(`${base}/auto-name`, { paths: [path] }); }
         catch (e) { got = { path, error: (e as Error).message }; }
@@ -84,7 +89,8 @@ export function AutoNameDrawer({ base, paths, links, onClose, onRenamed }: {
           : got?.name !== undefined ? { ...r, draft: apart(got.name, dirOf(path), rs.filter((o) => o.path !== path)), state: "named" }
           : { ...r, state: "failed", error: got?.error ?? "no name came back" }));
       }
-    })();
+    };
+    for (let i = 0; i < Math.min(AT_ONCE, paths.length); i++) void worker();
     return () => { on = false; };
   }, [base, paths]);
   const naming = rows.filter((r) => r.state === "waiting").length;

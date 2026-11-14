@@ -5,10 +5,16 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("@lyrica/extension", () => ({
   modelRuntimeFor: async () => ({ streamSimple: () => "stream" }),
   piModelFor: () => ({ model: { contextWindow: 8192 } }),
-  timedReply: async () => ({ reply: { stopReason: "stop", content: [{ type: "text", text: reply }] } }),
+  timedReply: async () => {
+    flight.now++; flight.most = Math.max(flight.most, flight.now);
+    await new Promise((r) => setTimeout(r, 5));
+    flight.now--;
+    return { reply: { stopReason: "stop", content: [{ type: "text", text: reply }] } };
+  },
 }));
 let reply = "Red Bicycle by a Canal.";
-const { autoNames, freeName, stemOf } = await import("../src/auto-name.ts");
+const flight = { now: 0, most: 0 };
+const { AUTO_NAME_AT_ONCE, autoNames, freeName, stemOf } = await import("../src/auto-name.ts");
 
 function setup(o: { portrait?: boolean; policy?: "never" | "ask" | "always"; approved?: boolean; gif?: boolean; names?: string[] } = {}) {
   const contexts: { localOnly: boolean }[] = [];
@@ -40,6 +46,16 @@ describe("auto-name", () => {
     const { run } = setup({ names: [] });
     const out = await run(["/workspace/a.png", "/workspace/b.png"]);
     expect(out.map((x) => x.name)).toEqual(["red-bicycle-by-a-canal.png", "red-bicycle-by-a-canal-2.png"]);
+  });
+
+  it("asks a few at a time and answers in the order asked", async () => {
+    const { run } = setup({ names: [] });
+    flight.most = 0;
+    const paths = Array.from({ length: 8 }, (_, i) => `/workspace/${i}.png`);
+    const out = await run(paths);
+    expect(flight.most).toBe(AUTO_NAME_AT_ONCE);
+    expect(out.map((x) => x.path)).toEqual(paths);
+    expect(new Set(out.map((x) => x.name)).size).toBe(8);
   });
 
   it.each([

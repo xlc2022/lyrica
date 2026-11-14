@@ -885,7 +885,9 @@ documented in `daemon/src/api.ts`, "The Files panel".
   image it can't check, such as a GIF) unless the photo setting is Always or
   Ask approved today. The reply becomes a lowercase, hyphenated stem with the
   image's extension, free in its folder and among the others suggested. It
-  renames nothing; the panel renames with `…/files/rename`. Neither the image
+  renames nothing; the panel renames with `…/files/rename`. Up to three images
+  are asked at once (`AUTO_NAME_AT_ONCE`; a local server takes them as its
+  slots allow), with no thinking asked for. Neither the image
   nor the names are logged; the call is recorded as a `vision` call.
 - `GET …/files/content?path=<path>[&download=1]` streams the file with its
   type: images by their bytes, text by extension, and HTML, SVG and scripts
