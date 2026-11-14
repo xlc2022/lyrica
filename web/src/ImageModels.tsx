@@ -12,7 +12,7 @@ import { fileChoices, HUB_WORD, size } from "./downloads.ts";
 import { GatedNote, HostField, LinkFields, linkProblem, managedHosts, RepoField, Size, startDownload, startUploads, tokenFor, UploadFields, uploadProblem, useLookup, wayBack } from "./Downloads.tsx";
 import { Icon } from "./icons.tsx";
 import {
-  addableRoles, archWord, defaultsWords, deletePlan, fileName, missingOf, precisionWord, recipeFiles, recipeRows, ROLE_WORD, roleWord, slotWord, starredFirst, withLora,
+  addableRoles, archWord, defaultsWords, deletePlan, fileName, missingOf, moreCloud, plainModels, precisionWord, recipeFiles, recipeRows, ROLE_WORD, roleWord, slotWord, starredFirst, withLora,
   type HostLibrary, type HostPart, type HostRecipe, type ImageRow, type RecipeCopy, type Role,
 } from "./images.ts";
 import { RowMenu } from "./Machines.tsx";
@@ -50,10 +50,6 @@ function useLibraries(ctx: MCtx, only?: (ep: Endpoint) => boolean) {
 /** The recipes the hosts proposed, by host and name. */
 const proposalsOf = (libs: HostLibrary[]): RecipeCopy[] => libs.flatMap((l) => l.recipes.filter((r) => r.state === "proposed")
   .sort((a, b) => a.name.localeCompare(b.name)).map((recipe) => ({ hostId: l.hostId, host: l.host, recipe })));
-
-/** The image models on plain endpoints and plans: no parts, so one line each. */
-const plainModels = (p?: ModelsPage) => (p?.endpoints ?? []).filter((ep) => ep.api !== "host")
-  .flatMap((ep) => ep.models.filter((m) => (m.image || m.edit || m.upscale) && m.status !== "gone").map((m) => ({ ep, m })));
 
 type Does = "create" | "edit" | "upscale";
 const ROLES: ["all" | Does, string][] = [["all", "All"], ["create", "Generate"], ["edit", "Edit"], ["upscale", "Upscale"]];
@@ -391,10 +387,6 @@ function PlainRow({ ctx, ep, m, busy, onStar, open, onToggle }: { ctx: MCtx; ep:
     </li>
   );
 }
-
-/** Models on keyed endpoints with an image provider that don't make or edit images yet: what Generate and Edit can switch on. */
-const moreCloud = (p?: ModelsPage) => (p?.endpoints ?? []).filter((ep) => ep.kind === "cloud" && ep.api === "openai-compatible" && ep.hasApiKey)
-  .flatMap((ep) => ep.models.filter((m) => m.status !== "gone" && !m.image && !m.edit && !m.upscale && !m.embedding && !m.transcribe && !m.speak).map((m) => ({ ep, m })));
 
 /** The Cloud group's last line: the keyed endpoints' other models, collapsed, each with Generate and Edit. */
 function MoreCloud({ ctx, models }: { ctx: MCtx; models: { ep: Endpoint; m: OfferingInfo }[] }) {
