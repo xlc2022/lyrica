@@ -219,6 +219,36 @@ describe("FLUX.2 klein parts", () => {
   });
 });
 
+describe("MOSS-Image parts", () => {
+  it("tells MOSS-Image, its Qwen3.5 9B encoder and its edit LoRA apart, so create and edit each find their parts", () => {
+    const dir = folder({
+      "moss_image_sft_int8_convrot.safetensors": safetensors({ "shared_block_modulation.weight": {}, "video_embedder.weight": {}, "layers.0.k_norm.weight": {} }),
+      "qwen3.5_9b_w4a8_gptq.safetensors": safetensors({ "model.language_model.layers.0.linear_attn.in_proj_qkv.weight": {}, "model.language_model.embed_tokens.weight": { shape: [248320, 4096] }, "mtp.layers.0.self_attn.q_proj.weight": {} }),
+      "moss_image_edit_lora_rank_64_bf16.safetensors": safetensors({ "layers.0.proj.ffn_up_gate.lora_A": {}, "layers.0.proj.ffn_up_gate.lora_B": {} }),
+      "flux2-vae_small.safetensors": safetensors({ "decoder.conv_in.weight": { shape: [384, 32, 3, 3] }, "encoder.conv_in.weight": { shape: [128, 3, 3, 3] } }),
+    });
+    const parts = scanParts(dir);
+    expect(Object.fromEntries(parts.map((p) => [p.file, [p.role, p.slot, p.arch]]))).toEqual({
+      "moss_image_sft_int8_convrot.safetensors": ["diffusion", null, "moss-image"],
+      "qwen3.5_9b_w4a8_gptq.safetensors": ["text_encoder", "qwen3.5_9b", "qwen3.5"],
+      "moss_image_edit_lora_rank_64_bf16.safetensors": ["lora", "edit", "moss-image"],
+      "flux2-vae_small.safetensors": ["vae", null, "flux2"],
+    });
+    // The edit starter's recipe runs the LoRA on the model; the create one doesn't take it.
+    const b = new RecipeBook(mkdtempSync(join(tmpdir(), "lyrica-book-")), TEMPLATES, STARTERS);
+    const files = new Map(parts.map((p) => [p.file, p.file]));
+    const have = (p: { path: string }) => files.get(p.path.split("/").pop()!) ?? null;
+    const edit = b.fromStarter(STARTERS.find((s) => s.id === "moss-image-edit")!, have).recipe;
+    const create = b.fromStarter(STARTERS.find((s) => s.id === "moss-image")!, have).recipe;
+    expect(b.ready(edit, new Set(parts.map((p) => p.file)))).toBe(true);
+    expect(b.ready(create, new Set(parts.map((p) => p.file)))).toBe(true);
+    const job = fill(TEMPLATES.get("moss-image-edit")!, present(edit, new Set(parts.map((p) => p.file))), [], { prompt: "x", negativePrompt: "", seed: 1, steps: 30, cfg: 4, sampler: "euler", scheduler: "normal", count: 1, image: "in.png" });
+    expect(job.lora_edit!.inputs).toMatchObject({ lora_name: "moss_image_edit_lora_rank_64_bf16.safetensors" });
+    expect(job.skip!.inputs.model).toEqual(["lora_edit", 0]);
+    expect(create.parts.some((p) => p.role === "lora")).toBe(false);
+  });
+});
+
 describe("video parts", () => {
   it("tells video models, their experts, encoders and audio VAEs apart, so no image recipe takes them", () => {
     const dir = folder({
@@ -1794,7 +1824,7 @@ describe("the image API", () => {
     // The test folder holds two of its parts at their download paths, but not its diffusion model.
     expect(z.parts.map((p: { present: boolean }) => p.present)).toEqual([false, true, true]);
     expect(body.starters.map((st: { id: string }) => st.id)).toEqual([
-      "flux-schnell", "flux2-klein-4b", "flux2-klein-9b", "flux3-klein", "juggernaut-xl-v9", "krea2-raw", "krea2-turbo-uncensored", "krea2-turbo", "ltx-2.5-distilled", "minimax-h3-edit", "minimax-h3-turbo", "p-h3-image-w4a8", "p-h3-image", "qwen-image-2.1-turbo", "qwen-image-2512", "qwen-image-edit", "qwen-image", "realism-stable-yogi-3-fast", "realism-stable-yogi-3", "realvisxl-v5", "scail-2", "sdxl", "seedvr2-3b", "seedvr2-7b",
+      "flux-schnell", "flux2-klein-4b", "flux2-klein-9b", "flux3-klein", "juggernaut-xl-v9", "krea2-raw", "krea2-turbo-uncensored", "krea2-turbo", "ltx-2.5-distilled", "minimax-h3-edit", "minimax-h3-turbo", "moss-image-edit", "moss-image", "p-h3-image-w4a8", "p-h3-image", "qwen-image-2.1-turbo", "qwen-image-2512", "qwen-image-edit", "qwen-image", "realism-stable-yogi-3-fast", "realism-stable-yogi-3", "realvisxl-v5", "scail-2", "sdxl", "seedvr2-3b", "seedvr2-7b",
       "wan2.2-i2v-14b-q5", "wan2.2-i2v-14b", "wan2.2-t2v-14b-q5", "wan2.2-t2v-14b", "wan2.2-ti2v-5b", "z-image-turbo",
     ]);
   });

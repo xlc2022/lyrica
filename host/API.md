@@ -826,19 +826,20 @@ as `{ "parts": [...] }`, each entry like this:
   tracks people for SCAIL-2), or `unknown`.
 - `slot`: for a text encoder, which one: `clip_l`, `clip_g`, `t5`, `umt5`
   (Wan's), `qwen2.5vl`, `qwen3` (Qwen3 4B), `qwen3_8b` (FLUX.2 klein
-  9B's, by its 4096-wide embedding), `qwen3vl` (Qwen3-VL 4B), `qwen3vl_8b`,
+  9B's, by its 4096-wide embedding), `qwen3.5_9b` (MOSS-Image's, its
+  linear-attention layers), `qwen3vl` (Qwen3-VL 4B), `qwen3vl_8b`,
   `qwen3vl_32b` (MiniMax H3's), `gemma4_12b` (LTX-2.5's), `ph3`
   (P-H3-Image's Qwen3-VL 4B, told by its text connector), …. For Wan 2.2
   14B's two experts and their LoRAs, `high` or `low` (read from the file
   name, as their tensors are alike); a speed LoRA otherwise (turbo, lightning, lightx2v, FastWan or a step
   count in its name), `speed`;
-  SCAIL-2's DPO LoRA (by name), `dpo`; MiniMax H3's VFX Edit LoRA (by
+  SCAIL-2's DPO LoRA (by name), `dpo`; MiniMax H3's VFX Edit LoRA and MOSS-Image's edit LoRA (by
   name), `edit`; an audio VAE, `audio`. Otherwise
   `null`.
 - `arch`: the architecture read from the tensor names (`sdxl`, `flux`,
   `z-image`, `qwen-image`, `qwen-image-2.1`, `krea2`, `flux2-klein-4b` and
   `flux2-klein-9b` (FLUX.2 klein, by its text input's width; its VAE, 32
-  latent channels, is `flux2`), `flux3-klein`, `seedvr2`,
+  latent channels, is `flux2`), `flux3-klein`, `moss-image`, `seedvr2`,
   `wan2.2-5b`, `wan2.2-t2v-14b`, `wan2.2-i2v-14b`, `ltx2`, `minimax-h3`,
   `minimax-h3-ref2va`, `p-h3-image` (H3's tensors plus a timestep table;
   its VAE by a single-frame decoder), `scail2`, `clip-vision-h`, `sam3`,
