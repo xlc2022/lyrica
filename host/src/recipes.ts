@@ -63,8 +63,11 @@ const DEFAULT_RANGES: Record<string, [number, number, number?]> = {
   // Krea 2's (host/workflows/krea2.json): RES4LYF's eta, the Krea2T-Enhancer's strength, and the second pass.
   eta: [0, 2], enhance: [0, 2], refine: [0.01, 1], refineSteps: [1, 150, 1], refineEta: [0, 2],
 };
-/** Recipes a LoRA's architecture fits beside its own: Wan 2.1 and 2.2 14B LoRAs share one layout ("wan"). */
-const LORA_FITS: Record<string, string[]> = { wan: ["wan2.2-t2v-14b", "wan2.2-i2v-14b", "scail2"] };
+/**
+ * Recipes a LoRA's architecture fits beside its own: Wan 2.1 and 2.2 14B LoRAs share one layout ("wan"), and so do
+ * MiniMax H3's two checkpoints (an fl2va LoRA, or one that doesn't say, also loads on ref2va).
+ */
+const LORA_FITS: Record<string, string[]> = { wan: ["wan2.2-t2v-14b", "wan2.2-i2v-14b", "scail2"], "minimax-h3": ["minimax-h3-ref2va"] };
 export const loraFits = (recipeArch: string, loraArch: string | null) => !!loraArch && (loraArch === recipeArch || !!LORA_FITS[loraArch]?.includes(recipeArch));
 
 export const COLOR_MATCH = ["lab", "wavelet", "wavelet_adaptive", "hsv", "adain", "none"];
@@ -167,11 +170,18 @@ export class RecipeBook {
       ...(t.video ? { video: { ...clipSpec(t.video, present(r, files)), longestSeconds: longestSeconds(t) } } : {}) };
   }
 
-  /** The template for a main part: an edit model gets the edit template when its architecture has one. */
-  private templateFor(part: Part): Template | undefined {
+  /**
+   * The template for a main part. The one whose LoRA slots the scanned files fill most comes first (H3's ref2va
+   * checkpoint beside the VFX Edit LoRA is a clip editor, without it a video model); then an edit model gets the
+   * edit template when its architecture has one.
+   */
+  private templateFor(part: Part, parts: Part[]): Template | undefined {
     const options = [...this.templates.values()].filter((t) => t.arch === part.arch && (part.role !== "checkpoint" || t.checkpoint));
     const edit = /edit/i.test(basename(part.file));
-    return options.find((t) => t.does.includes("edit") === edit) ?? options[0];
+    const loras = (t: Template) => t.parts.filter((s) => s.role === "lora" && parts.some((p) => this.fits(s, p))).length;
+    const most = Math.max(0, ...options.map(loras));
+    const best = options.filter((t) => loras(t) === most);
+    return best.find((t) => t.does.some((a) => a === "edit" || a === "edit_video") === edit) ?? best[0];
   }
 
   private fits(spec: PartSpec, p: Part): boolean {
@@ -188,7 +198,7 @@ export class RecipeBook {
     let made = 0;
     for (const main of parts) {
       if (!["diffusion", "checkpoint", "upscaler"].includes(main.role) || used.has(main.file)) continue;
-      const t = this.templateFor(main);
+      const t = this.templateFor(main, parts);
       if (!t) continue; // no template for its architecture: it stays a file
       const starter = this.starters.find((s) => s.template === t.name && s.backend !== "sdcpp");
       const recipeParts: RecipePart[] = [{ role: main.role, slot: main.slot, file: main.file, added: false }];

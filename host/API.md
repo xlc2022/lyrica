@@ -842,14 +842,19 @@ as `{ "parts": [...] }`, each entry like this:
   latent channels, is `flux2`), `flux3-klein`, `moss-image`, `seedvr2`,
   `wan2.2-5b`, `wan2.2-t2v-14b`, `wan2.2-i2v-14b`, `ltx2`, `minimax-h3`,
   `minimax-h3-ref2va`, `p-h3-image` (H3's tensors plus a timestep table;
-  its VAE by a single-frame decoder), `scail2`, `clip-vision-h`, `sam3`,
+  its VAE by a single-frame decoder), `minimax-h3-image` (MiniMax's own
+  picture model: the timestep table and no audio stream; its VAE's
+  single-frame decoder is 1024 wide inside, P-H3-Image's 2048), `scail2`, `clip-vision-h`, `sam3`,
   …), or `null`.
   MiniMax H3's two checkpoints have the same tensors, so a file whose name
   says `ref2va` (or a LoRA's `ref2v`) is `minimax-h3-ref2va`, the other
-  `minimax-h3`. Wan 2.2 14B's VAE is Wan 2.1's, which reads as
+  `minimax-h3`. An H3 LoRA whose name doesn't say `minimax_h3` (fal's,
+  Pika's) is told by its keys, attention as one `qkv_proj` plus the token
+  refiner. Wan 2.2 14B's VAE is Wan 2.1's, which reads as
   `qwen-image`; the 5B's is `wan2.2`. A LoRA's is its model's, except that
   Wan 2.1 and 2.2 14B LoRAs share one layout, `wan`, which fits the 14B
-  and SCAIL-2 recipes; a Wan LoRA 3072 wide (`self_attn.q`) is the 5B's,
+  and SCAIL-2 recipes, and a `minimax-h3` LoRA also fits
+  `minimax-h3-ref2va` recipes; a Wan LoRA 3072 wide (`self_attn.q`) is the 5B's,
   `wan2.2-5b`. A Qwen-Image 2.1 LoRA has Qwen-Image's tensor names, so it
   reads as `qwen-image-2.1` only when its metadata's `ss_base_model_version`
   says `qwen_image_2` or its file name says "qwen-image-2.1". A file whose
@@ -874,14 +879,25 @@ as `{ "parts": [...] }`, each entry like this:
   the Turbo's 8-step schedule from the recipe's defaults), `p-h3-image`
   (create and edit from one recipe, up to 3 references, one image per
   request; the picture to edit scaled to the recipe's `editMegapixels`
-  first and its sigmas from the recipe's defaults), `seedvr2`
+  first and its sigmas from the recipe's defaults), `minimax-h3-image`
+  (the same, on MiniMax's own conditioning node with H3's 32B encoder, no
+  shift, and its steps on a scheduler), `seedvr2`
   (upscale), and the video ones: `wan2.2-5b`, `ltx2` and `minimax-h3`
   (video and animate), `wan2.2-t2v-14b` (video), `wan2.2-i2v-14b`
-  (animate), `scail2` (motion) and `minimax-h3-edit` (edit_video, on H3's
-  ref2va model with the VFX Edit LoRA). A model with two experts takes both in
+  (animate), `scail2` (motion), `minimax-h3-ref2va` (video and animate on
+  a ref2va checkpoint such as Singularity: no references for a text clip,
+  an image anchored as the first frame by a guide; its continuation,
+  `minimax-h3-ref2va-continue.json`, anchors the clip so far the same way
+  from references, so it chains to 60 s too) and `minimax-h3-edit` (edit_video, on H3's
+  ref2va model with the VFX Edit LoRA). Where an architecture has two
+  templates, a scanned model is proposed with the one whose LoRA slots the
+  scanned files fill most (a ref2va checkpoint beside the VFX Edit LoRA is
+  an editor, otherwise a video model), then by whether its name says
+  "edit". A model with two experts takes both in
   one recipe, with the LoRAs its template names; any other LoRA goes onto
   both experts, or onto the one a `high` or `low` LoRA was made for. A file that names a
-  template under `continues` (`minimax-h3-continue.json`) is that
+  template under `continues` (`minimax-h3-continue.json`,
+  `minimax-h3-ref2va-continue.json`) is that
   template's continuation, the workflow that makes the next clip of a
   longer video, not a template of its own.
 
@@ -1250,7 +1266,7 @@ the action is `invalid`.
   Only `recipe` and `prompt` are required; the rest fall back to the
   recipe's defaults. `count` is 1 to 4, or only 1 for a template or
   custom workflow without `$count`, which makes one image at a time
-  (P-H3-Image's). `width` and `height` are multiples
+  (P-H3-Image's and MiniMax-H3-Image's). `width` and `height` are multiples
   of 16 from 256 to 2048, or to the template's `maxSide` (P-H3-Image's is
   4096, for its native 8 megapixels); a recipe's `width` and `height`
   defaults take the same limit. Instead of a size, `aspectRatio`
@@ -1274,9 +1290,9 @@ the action is `invalid`.
   shape the model was trained on (Qwen-Image-Edit) or the image's own
   shape on a 32-pixel grid (Qwen-Image 2.1); about the recipe's
   `editMegapixels` (4 by default) in the image's own shape on a 32-pixel
-  grid for P-H3-Image, so a small image comes back larger. Up to two
-  `references` for Qwen-Image-Edit, three for Qwen-Image 2.1 and
-  P-H3-Image. Qwen-Image 2.1 runs a masked
+  grid for P-H3-Image and MiniMax-H3-Image, so a small image comes back
+  larger. Up to two `references` for Qwen-Image-Edit, three for Qwen-Image
+  2.1, P-H3-Image and MiniMax-H3-Image. Qwen-Image 2.1 runs a masked
   edit through LanPaint's sampler on an image of about one megapixel, with
   the mask grown by 24 pixels, then puts only that part back into the
   original at its own size, blended over 31 pixels at its edge. With a
