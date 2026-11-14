@@ -9,6 +9,7 @@ import { RowMenu } from "./Machines.tsx";
 import { her } from "./name.ts";
 import { Thumb, useFileLinks, VideoThumb, WORKDIR } from "./paths.tsx";
 import { Viewer } from "./Viewer.tsx";
+import { AutoNameDrawer, IMAGE_NAME, SortSelect, sortMedia, useMediaSort } from "./MediaTools.tsx";
 import type { ShellContext } from "./Shell.tsx";
 import { ConfirmDialog, ErrorText, InlineRename, shortTime, useAction } from "./ui.tsx";
 
@@ -47,6 +48,9 @@ export function FilesSection({ ctx, pool, threadId }: { ctx: ShellContext; pool:
   /** The Images or Videos grid's entries, for the tab shown. */
   const [media, setMedia] = useState<{ tab: Tab; entries: ImageEntry[] }>();
   const [filter, setFilter] = useState<Filter>("all");
+  const [sort, setSort] = useMediaSort();
+  /** The image Auto-name is naming, in its drawer. */
+  const [naming, setNaming] = useState<string[]>();
   const [renaming, setRenaming] = useState<string>();
   const [adding, setAdding] = useState(false);
   const [moving, setMoving] = useState<FileEntry>();
@@ -110,11 +114,12 @@ export function FilesSection({ ctx, pool, threadId }: { ctx: ShellContext; pool:
     { label: e.kind === "folder" ? "Download as zip" : "Download", onPick: () => void download(e) },
     { label: "Rename…", onPick: () => setRenaming(e.path) },
     { label: "Move to…", onPick: () => setMoving(e) },
+    ...(e.kind !== "folder" && IMAGE_NAME.test(e.name) ? [{ label: "Auto-name…", onPick: () => setNaming([e.path]) }] : []),
     { label: "Delete…", danger: true, onPick: () => setDeleting(e) },
   ];
   const facts = (e: FileEntry) => e.kind === "folder" ? "Folder" : `${shortTime(e.modified)} · ${kb(e.size)}`;
   const entries = media?.tab === tab ? media.entries : undefined;
-  const shownMedia = entries?.filter((i) => filter === "all" || i.source === filter);
+  const shownMedia = entries && sortMedia(entries.filter((i) => filter === "all" || i.source === filter), sort);
 
   return (
     <section className={`card pfiles${dropping ? " drop" : ""}`} aria-label="Files"
@@ -168,8 +173,11 @@ export function FilesSection({ ctx, pool, threadId }: { ctx: ShellContext; pool:
         </>
       ) : (
         <>
-          <div className="seg" role="group" aria-label="Show">
-            {([["all", "All"], ["uploaded", "Uploaded"], ["made", `Made by ${her()}`]] as const).map(([k, l]) => <button key={k} type="button" aria-pressed={filter === k} onClick={() => setFilter(k)}>{l}</button>)}
+          <div className="pfiles-filters">
+            <div className="seg" role="group" aria-label="Show">
+              {([["all", "All"], ["uploaded", "Uploaded"], ["made", `Made by ${her()}`]] as const).map(([k, l]) => <button key={k} type="button" aria-pressed={filter === k} onClick={() => setFilter(k)}>{l}</button>)}
+            </div>
+            <SortSelect sort={sort} onSort={setSort} />
           </div>
           {!entries ? <p className="muted">Loading…</p> : !shownMedia?.length ? <p className="muted">No {tab} yet.</p> : (
             <ul className="pfiles-grid" aria-label={TAB_LABEL[tab]}>
@@ -193,6 +201,7 @@ export function FilesSection({ ctx, pool, threadId }: { ctx: ShellContext; pool:
       <input ref={picker} type="file" multiple hidden onChange={(e) => { send(e.target.files ?? []); e.target.value = ""; }} />
       {viewing && <Viewer ctx={ctx} threads={ctx.threads} file={viewing} base={base} shownPath={relative(viewing.path)} thread={{ pool, threadId }}
         list={among} onStep={(f) => setViewing(f as FileEntry)} onClose={closeViewer} />}
+      {naming && <AutoNameDrawer base={base} paths={naming} links={links} onClose={() => setNaming(undefined)} onRenamed={() => void load()} />}
       {moving && <MoveDrawer base={base} entry={moving} onClose={() => setMoving(undefined)} onMoved={() => { setMoving(undefined); void load(); }} />}
       {deleting && (
         <ConfirmDialog title={`Delete ${deleting.name}?`} danger confirm="Delete" onCancel={() => setDeleting(undefined)}

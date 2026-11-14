@@ -1,6 +1,7 @@
 import { ARTIFACT_LIMIT, ArtifactError, artifactExtension, artifactKind, buildReactPage, EVIDENCE_SETTINGS, DEFAULT_THINKING, PushStore, titleFromName, type Artifact, type ArtifactKind, type PushSettings, type SkillLibrary } from "@lyrica/core";
 import { pushTarget } from "./push.ts";
 import { imageRetryOptions } from "./image-retry.ts";
+import { AUTO_NAME_LIMIT, autoNames } from "./auto-name.ts";
 import { randomUUID } from "node:crypto";
 import {
   ANSWER, CLOUD_IMAGE_PROVIDERS, recentWorkAllowed, WELCOME_LIMITS, describe, AuthError, isPlan, type PlanKind, NoRecoveryCopy, WrongPassword, isEmoji, WORKDIR, CAPABILITIES, FilesRefused, checkTask, isRestricted, voiceContext, refId, THINKING_LEVELS, publicKeyOf, authorizedKeysLine, proxmoxAddress, CloudModelForbidden, FROM_PARENT, NoModel, WAKEUP, ROUTINE, WATCHING, PRONOUN_PRESETS, projectSlug,
@@ -1649,6 +1650,14 @@ export function apiRoutes(d: Lyricad): Route[] {
     }),
     route("GET", `${t}/files/images`, async (r): Promise<Api.ImageEntry[]> => withOrigins(r, await refused(() => files(r).images()))),
     route("GET", `${t}/files/videos`, async (r): Promise<Api.ImageEntry[]> => withOrigins(r, await refused(() => files(r).videos()))),
+    route("POST", `${t}/files/auto-name`, async (r): Promise<Api.AutoName[]> => {
+      const user = d.userFor(r);
+      const thread = owner(d, user, (o) => threadOf(o, r));
+      const { paths } = await r.json<{ paths?: unknown }>();
+      if (!Array.isArray(paths) || !paths.length || paths.some((p) => typeof p !== "string")) throw new HttpError(400, "paths is a list of image paths");
+      if (paths.length > AUTO_NAME_LIMIT) throw new HttpError(400, `at most ${AUTO_NAME_LIMIT} images at a time`);
+      return autoNames(s().models, s().workspace, { userId: user.id, pool: poolOf(r), threadId: thread.id, ...(thread.project ? { coordinates: true } : {}) }, paths as string[]);
+    }),
     route("GET", `${t}/files/thumb`, async (r) => {
       const thumb = await refused(() => files(r).thumb(r.query.get("path") ?? ""));
       if (!thumb) throw new HttpError(404, "no thumbnail; show the image itself");

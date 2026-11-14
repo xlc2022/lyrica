@@ -1248,7 +1248,16 @@ dialog.viewer > .error { position: absolute; bottom: 8px; left: 16px; }
   .changes-list { padding-inline: var(--gutter); }
   .cline { grid-template-columns: 3ch 3ch 1.5ch minmax(0, 1fr); }
 }
-.ifilter { padding: 10px var(--gutter) 0; }
+.ifilter { padding: 10px var(--gutter) 0; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+/* The grids' Sort sits beside the filter, compact like Memory's (docs/ux.md §6). */
+.media-sort { min-height: 30px; font-size: 13px; padding: 2px 8px; width: auto; }
+.pfiles-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.auto-name-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.auto-name-list li { display: grid; grid-template-columns: 56px minmax(0, 1fr); gap: 10px; align-items: center; }
+.auto-name-list img { width: 56px; height: 56px; object-fit: cover; border-radius: 6px; border: 1px solid var(--line); background: var(--tool); display: block; }
+.auto-name-field { display: grid; gap: 4px; min-width: 0; font-size: 13px; }
+.auto-name-field > span { overflow-wrap: anywhere; }
+.auto-name-field input { width: 100%; min-width: 0; }
 .igrid { flex: 1; min-height: 0; overflow-y: auto; padding: 12px var(--gutter) 24px; display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 12px; align-content: start; }
 .igrid > button { display: grid; gap: 4px; padding: 0; border: 0; background: transparent; min-height: 0; white-space: normal; text-align: left; align-content: start; min-width: 0; }
 .igrid > button:hover { border: 0; }

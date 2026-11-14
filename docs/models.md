@@ -602,6 +602,9 @@ or local-only one reads the Private column and stays local. A switch to a
 cloud model sends that model the subagent's whole conversation so far, not
 only the image, at that model's price: a cloud model is in the list only if
 the person put it there. With no list set, only local models are tried.
+The Files panel's **Auto-name** calls the same task with the thread's own
+context, one image per call, a photo of the user kept local unless the
+photo setting allows the cloud (docs/daemon.md, Files).
 
 The task `video` (Videos) has its own ordered list in each column and
 preset, of host recipes that do `video`, `animate`, `motion` or `edit_video`; nothing follows it.
