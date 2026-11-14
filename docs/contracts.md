@@ -3104,7 +3104,7 @@ selfTest(): Promise<string | undefined>   // lyricad calls this at startup
   the asking (reads like `read`, start and shutdown like `bash`, stop and
   reboot suspect, Plan mode reads only). `destroy` is never offered.
 - **SSH helper:** the SSH client runs in a sandboxed helper process per
-  connection (`core/workspace/ssh-helper.ts`, behind `sandboxedTransport`),
+  connection (`core/src/workspace/ssh-helper.ts`, behind `sandboxedTransport`),
   given one machine's key on its stdin and network to that one address and
   port through the existing nftables rules; it speaks length-prefixed frames
   (`ssh-frames.ts`). The host key decision stays in `lyricad`; strict key
