@@ -1,0 +1,41 @@
+{
+  "name": "FLUX.3 image klein",
+  "template": "flux3-klein",
+  "parts": [
+    {
+      "role": "diffusion",
+      "source": "huggingface",
+      "repo": "black-forest-labs/flux-3-image-klein-comfy",
+      "path": "diffusion_models/flux3-image-klein-int8-convrot.safetensors",
+      "sha256": "847d8933548afd93df4af2cac2498e70891bf28d9dae06d695f536992e168fe2",
+      "size": 5827874779
+    },
+    {
+      "role": "text_encoder",
+      "slot": "qwen3vl",
+      "source": "huggingface",
+      "repo": "black-forest-labs/flux-3-image-klein-comfy",
+      "path": "text_encoders/qwen3vl_4b_int8_convrot.safetensors",
+      "sha256": "32de113cbf8282b02cbff0794b637b9d6676da09314a1db5a30bcea9bf4ee01c",
+      "size": 4858559240
+    },
+    {
+      "role": "vae",
+      "source": "huggingface",
+      "repo": "Comfy-Org/flux2-dev",
+      "path": "split_files/vae/flux2-vae.safetensors",
+      "sha256": "d64f3a68e1cc4f9f4e29b6e0da38a0204fe9a49f2d4053f0ec1fa1ca02f9c4b5",
+      "size": 336213556
+    }
+  ],
+  "loras": [],
+  "defaults": {
+    "steps": 16,
+    "cfg": 1,
+    "sampler": "euler",
+    "scheduler": "simple",
+    "width": 1024,
+    "height": 1024
+  },
+  "backend": "comfyui"
+}

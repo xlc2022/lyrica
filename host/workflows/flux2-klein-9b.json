@@ -1,0 +1,540 @@
+{
+  "arch": "flux2-klein-9b",
+  "does": [
+    "create",
+    "edit"
+  ],
+  "checkpoint": false,
+  "clipType": "flux2",
+  "parts": [
+    {
+      "role": "diffusion",
+      "arch": [
+        "flux2-klein-9b"
+      ]
+    },
+    {
+      "role": "text_encoder",
+      "slot": "qwen3_8b"
+    },
+    {
+      "role": "vae",
+      "arch": [
+        "flux2"
+      ]
+    }
+  ],
+  "references": 3,
+  "mask": false,
+  "workflow": {
+    "pos": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": "$prompt",
+        "clip": "$clip"
+      }
+    },
+    "neg": {
+      "class_type": "ConditioningZeroOut",
+      "inputs": {
+        "conditioning": [
+          "pos",
+          0
+        ]
+      }
+    },
+    "load": {
+      "class_type": "LoadImage",
+      "_if": "image",
+      "inputs": {
+        "image": "$image"
+      }
+    },
+    "fit": {
+      "class_type": "ImageScaleToTotalPixels",
+      "_if": "image",
+      "inputs": {
+        "image": [
+          "load",
+          0
+        ],
+        "upscale_method": "lanczos",
+        "megapixels": 1.0,
+        "resolution_steps": 16
+      }
+    },
+    "size": {
+      "class_type": "GetImageSize",
+      "_if": "image",
+      "inputs": {
+        "image": [
+          "fit",
+          0
+        ]
+      }
+    },
+    "enc": {
+      "class_type": "VAEEncode",
+      "_if": "image",
+      "inputs": {
+        "pixels": [
+          "fit",
+          0
+        ],
+        "vae": "$vae"
+      }
+    },
+    "pos_image": {
+      "class_type": "ReferenceLatent",
+      "_if": "image",
+      "inputs": {
+        "conditioning": [
+          "pos",
+          0
+        ],
+        "latent": [
+          "enc",
+          0
+        ]
+      }
+    },
+    "neg_image": {
+      "class_type": "ReferenceLatent",
+      "_if": "image",
+      "inputs": {
+        "conditioning": [
+          "neg",
+          0
+        ],
+        "latent": [
+          "enc",
+          0
+        ]
+      }
+    },
+    "ref1": {
+      "class_type": "LoadImage",
+      "_if": "reference1",
+      "inputs": {
+        "image": "$reference1"
+      }
+    },
+    "fit1": {
+      "class_type": "ImageScaleToTotalPixels",
+      "_if": "reference1",
+      "inputs": {
+        "image": [
+          "ref1",
+          0
+        ],
+        "upscale_method": "lanczos",
+        "megapixels": 1.0,
+        "resolution_steps": 16
+      }
+    },
+    "enc1": {
+      "class_type": "VAEEncode",
+      "_if": "reference1",
+      "inputs": {
+        "pixels": [
+          "fit1",
+          0
+        ],
+        "vae": "$vae"
+      }
+    },
+    "pos_ref1": {
+      "class_type": "ReferenceLatent",
+      "_if": "reference1",
+      "inputs": {
+        "conditioning": {
+          "$pick": [
+            [
+              "pos_image",
+              0
+            ],
+            [
+              "pos",
+              0
+            ]
+          ]
+        },
+        "latent": [
+          "enc1",
+          0
+        ]
+      }
+    },
+    "neg_ref1": {
+      "class_type": "ReferenceLatent",
+      "_if": "reference1",
+      "inputs": {
+        "conditioning": {
+          "$pick": [
+            [
+              "neg_image",
+              0
+            ],
+            [
+              "neg",
+              0
+            ]
+          ]
+        },
+        "latent": [
+          "enc1",
+          0
+        ]
+      }
+    },
+    "ref2": {
+      "class_type": "LoadImage",
+      "_if": "reference2",
+      "inputs": {
+        "image": "$reference2"
+      }
+    },
+    "fit2": {
+      "class_type": "ImageScaleToTotalPixels",
+      "_if": "reference2",
+      "inputs": {
+        "image": [
+          "ref2",
+          0
+        ],
+        "upscale_method": "lanczos",
+        "megapixels": 1.0,
+        "resolution_steps": 16
+      }
+    },
+    "enc2": {
+      "class_type": "VAEEncode",
+      "_if": "reference2",
+      "inputs": {
+        "pixels": [
+          "fit2",
+          0
+        ],
+        "vae": "$vae"
+      }
+    },
+    "pos_ref2": {
+      "class_type": "ReferenceLatent",
+      "_if": "reference2",
+      "inputs": {
+        "conditioning": {
+          "$pick": [
+            [
+              "pos_ref1",
+              0
+            ],
+            [
+              "pos_image",
+              0
+            ],
+            [
+              "pos",
+              0
+            ]
+          ]
+        },
+        "latent": [
+          "enc2",
+          0
+        ]
+      }
+    },
+    "neg_ref2": {
+      "class_type": "ReferenceLatent",
+      "_if": "reference2",
+      "inputs": {
+        "conditioning": {
+          "$pick": [
+            [
+              "neg_ref1",
+              0
+            ],
+            [
+              "neg_image",
+              0
+            ],
+            [
+              "neg",
+              0
+            ]
+          ]
+        },
+        "latent": [
+          "enc2",
+          0
+        ]
+      }
+    },
+    "ref3": {
+      "class_type": "LoadImage",
+      "_if": "reference3",
+      "inputs": {
+        "image": "$reference3"
+      }
+    },
+    "fit3": {
+      "class_type": "ImageScaleToTotalPixels",
+      "_if": "reference3",
+      "inputs": {
+        "image": [
+          "ref3",
+          0
+        ],
+        "upscale_method": "lanczos",
+        "megapixels": 1.0,
+        "resolution_steps": 16
+      }
+    },
+    "enc3": {
+      "class_type": "VAEEncode",
+      "_if": "reference3",
+      "inputs": {
+        "pixels": [
+          "fit3",
+          0
+        ],
+        "vae": "$vae"
+      }
+    },
+    "pos_ref3": {
+      "class_type": "ReferenceLatent",
+      "_if": "reference3",
+      "inputs": {
+        "conditioning": {
+          "$pick": [
+            [
+              "pos_ref2",
+              0
+            ],
+            [
+              "pos_ref1",
+              0
+            ],
+            [
+              "pos_image",
+              0
+            ],
+            [
+              "pos",
+              0
+            ]
+          ]
+        },
+        "latent": [
+          "enc3",
+          0
+        ]
+      }
+    },
+    "neg_ref3": {
+      "class_type": "ReferenceLatent",
+      "_if": "reference3",
+      "inputs": {
+        "conditioning": {
+          "$pick": [
+            [
+              "neg_ref2",
+              0
+            ],
+            [
+              "neg_ref1",
+              0
+            ],
+            [
+              "neg_image",
+              0
+            ],
+            [
+              "neg",
+              0
+            ]
+          ]
+        },
+        "latent": [
+          "enc3",
+          0
+        ]
+      }
+    },
+    "guider": {
+      "class_type": "CFGGuider",
+      "inputs": {
+        "model": "$model",
+        "positive": {
+          "$pick": [
+            [
+              "pos_ref3",
+              0
+            ],
+            [
+              "pos_ref2",
+              0
+            ],
+            [
+              "pos_ref1",
+              0
+            ],
+            [
+              "pos_image",
+              0
+            ],
+            [
+              "pos",
+              0
+            ]
+          ]
+        },
+        "negative": {
+          "$pick": [
+            [
+              "neg_ref3",
+              0
+            ],
+            [
+              "neg_ref2",
+              0
+            ],
+            [
+              "neg_ref1",
+              0
+            ],
+            [
+              "neg_image",
+              0
+            ],
+            [
+              "neg",
+              0
+            ]
+          ]
+        },
+        "cfg": "$cfg"
+      }
+    },
+    "noise": {
+      "class_type": "RandomNoise",
+      "inputs": {
+        "noise_seed": "$seed"
+      }
+    },
+    "sampler": {
+      "class_type": "KSamplerSelect",
+      "inputs": {
+        "sampler_name": "$sampler"
+      }
+    },
+    "sigmas": {
+      "class_type": "Flux2Scheduler",
+      "_unless": "image",
+      "inputs": {
+        "steps": "$steps",
+        "width": "$width",
+        "height": "$height"
+      }
+    },
+    "sigmas_image": {
+      "class_type": "Flux2Scheduler",
+      "_if": "image",
+      "inputs": {
+        "steps": "$steps",
+        "width": [
+          "size",
+          0
+        ],
+        "height": [
+          "size",
+          1
+        ]
+      }
+    },
+    "canvas": {
+      "class_type": "EmptyFlux2LatentImage",
+      "_unless": "image",
+      "inputs": {
+        "width": "$width",
+        "height": "$height",
+        "batch_size": "$count"
+      }
+    },
+    "canvas_image": {
+      "class_type": "EmptyFlux2LatentImage",
+      "_if": "image",
+      "inputs": {
+        "width": [
+          "size",
+          0
+        ],
+        "height": [
+          "size",
+          1
+        ],
+        "batch_size": "$count"
+      }
+    },
+    "sample": {
+      "class_type": "SamplerCustomAdvanced",
+      "inputs": {
+        "noise": [
+          "noise",
+          0
+        ],
+        "guider": [
+          "guider",
+          0
+        ],
+        "sampler": [
+          "sampler",
+          0
+        ],
+        "sigmas": {
+          "$pick": [
+            [
+              "sigmas_image",
+              0
+            ],
+            [
+              "sigmas",
+              0
+            ]
+          ]
+        },
+        "latent_image": {
+          "$pick": [
+            [
+              "canvas_image",
+              0
+            ],
+            [
+              "canvas",
+              0
+            ]
+          ]
+        }
+      }
+    },
+    "decode": {
+      "class_type": "VAEDecode",
+      "inputs": {
+        "samples": [
+          "sample",
+          0
+        ],
+        "vae": "$vae"
+      }
+    },
+    "save": {
+      "class_type": "SaveImageWebsocket",
+      "inputs": {
+        "images": [
+          "decode",
+          0
+        ]
+      }
+    }
+  }
+}

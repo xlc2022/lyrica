@@ -1,0 +1,40 @@
+{
+  "name": "FLUX.2 klein 9B",
+  "template": "flux2-klein-9b",
+  "parts": [
+    {
+      "role": "diffusion",
+      "source": "huggingface",
+      "repo": "black-forest-labs/FLUX.2-klein-9b-fp8",
+      "path": "flux-2-klein-9b-fp8.safetensors",
+      "sha256": "865ba09f5b4c3cbd3468a4bd3acb9fcb2f8740c54317482f0bcd4ed1d3655cee",
+      "size": 9433061528
+    },
+    {
+      "role": "text_encoder",
+      "slot": "qwen3_8b",
+      "source": "huggingface",
+      "repo": "Comfy-Org/flux2-klein-9B",
+      "path": "split_files/text_encoders/qwen_3_8b_fp8mixed.safetensors",
+      "sha256": "abad16806e0cbabc54e0325d6565847443fe396d5f0be38bb3cd3fe75a1201d6",
+      "size": 8664848742
+    },
+    {
+      "role": "vae",
+      "source": "huggingface",
+      "repo": "Comfy-Org/flux2-dev",
+      "path": "split_files/vae/flux2-vae.safetensors",
+      "sha256": "d64f3a68e1cc4f9f4e29b6e0da38a0204fe9a49f2d4053f0ec1fa1ca02f9c4b5",
+      "size": 336213556
+    }
+  ],
+  "loras": [],
+  "defaults": {
+    "steps": 4,
+    "cfg": 1,
+    "sampler": "euler",
+    "width": 1024,
+    "height": 1024
+  },
+  "backend": "comfyui"
+}

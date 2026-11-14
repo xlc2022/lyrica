@@ -1,0 +1,195 @@
+{
+  "arch": "flux3-klein",
+  "does": [
+    "create",
+    "edit"
+  ],
+  "checkpoint": false,
+  "clipType": "flux3",
+  "parts": [
+    {
+      "role": "diffusion",
+      "arch": [
+        "flux3-klein"
+      ]
+    },
+    {
+      "role": "text_encoder",
+      "slot": "qwen3vl"
+    },
+    {
+      "role": "vae",
+      "arch": [
+        "flux2"
+      ]
+    }
+  ],
+  "references": 3,
+  "mask": false,
+  "workflow": {
+    "pos": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": "$prompt",
+        "clip": "$clip"
+      }
+    },
+    "neg": {
+      "class_type": "ConditioningZeroOut",
+      "inputs": {
+        "conditioning": [
+          "pos",
+          0
+        ]
+      }
+    },
+    "load": {
+      "class_type": "LoadImage",
+      "_if": "image",
+      "inputs": {
+        "image": "$image"
+      }
+    },
+    "ref1": {
+      "class_type": "LoadImage",
+      "_if": "reference1",
+      "inputs": {
+        "image": "$reference1"
+      }
+    },
+    "ref2": {
+      "class_type": "LoadImage",
+      "_if": "reference2",
+      "inputs": {
+        "image": "$reference2"
+      }
+    },
+    "ref3": {
+      "class_type": "LoadImage",
+      "_if": "reference3",
+      "inputs": {
+        "image": "$reference3"
+      }
+    },
+    "refs": {
+      "class_type": "ReferenceMultiLatent",
+      "_if": "image",
+      "inputs": {
+        "positive": [
+          "pos",
+          0
+        ],
+        "negative": [
+          "neg",
+          0
+        ],
+        "vae": "$vae",
+        "resolution": "resize",
+        "resolution.megapixels": 1.0,
+        "images.image0": [
+          "load",
+          0
+        ],
+        "images.image1": [
+          "ref1",
+          0
+        ],
+        "images.image2": [
+          "ref2",
+          0
+        ],
+        "images.image3": [
+          "ref3",
+          0
+        ]
+      }
+    },
+    "canvas": {
+      "class_type": "EmptyFlux2LatentImage",
+      "_unless": "image",
+      "inputs": {
+        "width": "$width",
+        "height": "$height",
+        "batch_size": "$count"
+      }
+    },
+    "batch": {
+      "class_type": "RepeatLatentBatch",
+      "_if": "image",
+      "inputs": {
+        "samples": [
+          "refs",
+          2
+        ],
+        "amount": "$count"
+      }
+    },
+    "sample": {
+      "class_type": "KSampler",
+      "inputs": {
+        "model": "$model",
+        "seed": "$seed",
+        "steps": "$steps",
+        "cfg": "$cfg",
+        "sampler_name": "$sampler",
+        "scheduler": "$scheduler",
+        "positive": {
+          "$pick": [
+            [
+              "refs",
+              0
+            ],
+            [
+              "pos",
+              0
+            ]
+          ]
+        },
+        "negative": {
+          "$pick": [
+            [
+              "refs",
+              1
+            ],
+            [
+              "neg",
+              0
+            ]
+          ]
+        },
+        "latent_image": {
+          "$pick": [
+            [
+              "batch",
+              0
+            ],
+            [
+              "canvas",
+              0
+            ]
+          ]
+        },
+        "denoise": 1
+      }
+    },
+    "decode": {
+      "class_type": "VAEDecode",
+      "inputs": {
+        "samples": [
+          "sample",
+          0
+        ],
+        "vae": "$vae"
+      }
+    },
+    "save": {
+      "class_type": "SaveImageWebsocket",
+      "inputs": {
+        "images": [
+          "decode",
+          0
+        ]
+      }
+    }
+  }
+}

@@ -552,6 +552,21 @@ list too if you like its images. A masked edit on it runs through
 LanPaint (a pinned ComfyUI node, GPL-3.0), which takes about two and a
 half times as long as a plain edit.
 
+Three FLUX klein starters (ComfyUI hosts) create and edit: given an
+image, they change it as asked and keep the rest, and they take up to
+three more images as references ("put the woman from the second image
+on this bed"). An edit comes out at about 1 MP in the image's shape. On
+a 3090 each takes seconds:
+- **FLUX.2 klein 4B** (Apache 2.0; 4.1 GB, sharing Z-Image's Qwen3 4B
+  encoder): 4 steps at CFG 1, an image in 2 to 4 seconds.
+- **FLUX.2 klein 9B** (FLUX Non-Commercial License, gated; 9.4 GB and an
+  8.7 GB Qwen3 8B encoder): 4 steps, 8 to 11 seconds.
+- **FLUX.3 image klein** (FLUX Kommunity License, gated; 5.8 GB and a
+  4.9 GB Qwen3-VL 4B encoder): 16 steps at CFG 1, 5 to 16 seconds, the
+  most photographic of the three.
+The gated ones need a Hugging Face token whose account accepted their
+licence (Downloads → Accounts); more steps or a 2 MP edit don't help.
+
 The Qwen-Image 2512 starter is Qwen-Image's December 2025 release
 (Apache 2.0, a 20.4 GB fp8 model with the same encoder and VAE as the
 original): at the same 20 steps and CFG 4, about 70 seconds a 1328×1328

@@ -15,7 +15,7 @@ export interface Part {
   format: "safetensors" | "gguf";
   role: Role;
   /**
-   * For text encoders: clip_l, clip_g, t5, umt5, qwen3, qwen2.5vl, qwen3vl (4B), qwen3vl_8b,
+   * For text encoders: clip_l, clip_g, t5, umt5, qwen3 (4B), qwen3_8b, qwen2.5vl, qwen3vl (4B), qwen3vl_8b,
    * qwen3vl_32b, gemma4_12b. For a video model's two experts and their LoRAs: high, low (from
    * the file name); a speed LoRA: speed; SCAIL-2's DPO LoRA: dpo. An audio VAE: audio.
    */
@@ -115,6 +115,14 @@ export function classify(names: string[], shapes: Record<string, number[]>, file
 
   const bare = names.map((n) => (n.startsWith(dm) ? n.slice(dm.length) : n));
   const hasBare = (re: RegExp) => bare.some((n) => re.test(n));
+  // FLUX.3 image klein: image and image-condition streams with their own modulations.
+  if (hasBare(/^early_stream_modulations\.image\./) && hasBare(/^content_mode_blocks\./)) return { role: "diffusion", slot: null, arch: "flux3-klein" };
+  // FLUX.2 klein: FLUX's blocks with shared modulation, told apart by its text input's width (three of its Qwen3's
+  // hidden states: 4B's 2560, 8B's 4096). Before FLUX.1, whose keys it shares.
+  if (hasBare(/^double_stream_modulation_img\./)) {
+    const txt = Object.entries(shapes).find(([n]) => /(^|\.)txt_in\.weight$/.test(n))?.[1]?.[1];
+    return txt === 7680 ? { role: "diffusion", slot: null, arch: "flux2-klein-4b" } : txt === 12288 ? { role: "diffusion", slot: null, arch: "flux2-klein-9b" } : unknown;
+  }
   if (hasBare(/^double_blocks\.0\.img_attn/) && hasBare(/^single_blocks\./)) return { role: "diffusion", slot: null, arch: "flux" };
   if (hasBare(/^transformer_blocks\.0\.img_mod/) && hasBare(/^txt_norm\./)) return { role: "diffusion", slot: null, arch: "qwen-image" };
   if (hasBare(/^txt_in\.text_norm\.weight$/) && hasBare(/^modulation\.1\.weight$/)) return { role: "diffusion", slot: null, arch: "qwen-image-2.1" };
@@ -163,7 +171,11 @@ export function classify(names: string[], shapes: Record<string, number[]>, file
     const merger = names.find((n) => /(^|\.)visual\.merger\.linear_fc2\.weight$/.test(n));
     if (merger) return shapes[merger]?.[0] === 4096 ? { role: "text_encoder", slot: "qwen3vl_8b", arch: "qwen3vl" } : { role: "text_encoder", slot: "qwen3vl", arch: "qwen3vl" };
     if (has(/(^|\.)visual\.blocks\.0\./)) return { role: "text_encoder", slot: "qwen2.5vl", arch: "qwen2.5vl" };
-    if (has(/(^|\.)layers\.0\.self_attn\.q_norm\.weight$/)) return { role: "text_encoder", slot: "qwen3", arch: "qwen3" };
+    if (has(/(^|\.)layers\.0\.self_attn\.q_norm\.weight$/)) {
+      // Qwen3 8B (FLUX.2 klein 9B's) by its 4096-wide embedding; the 4B (Z-Image's, klein 4B's) is 2560.
+      const embed = Object.entries(shapes).find(([n]) => /(^|\.)embed_tokens\.weight$/.test(n))?.[1];
+      return embed?.[1] === 4096 ? { role: "text_encoder", slot: "qwen3_8b", arch: "qwen3" } : { role: "text_encoder", slot: "qwen3", arch: "qwen3" };
+    }
   }
 
   // Video VAEs, by the keys ComfyUI's VAE loader reads; an audio VAE takes the audio slot. P-H3-Image's has H3's
@@ -177,7 +189,8 @@ export function classify(names: string[], shapes: Record<string, number[]>, file
   if (/latent[_-]?(spatial[_-]?)?upscaler/.test(name)) return { role: "latent_upscaler", slot: null, arch: "ltx2" };
   if (has(/^decoder\.conv_in\.weight$/) && has(/^encoder\.conv_in\.weight$/)) {
     const channels = shapes["decoder.conv_in.weight"]?.[1];
-    return { role: "vae", slot: null, arch: channels === 4 ? "sdxl" : channels === 16 ? "flux" : null };
+    // FLUX.2's VAE decodes 32 channels.
+    return { role: "vae", slot: null, arch: channels === 4 ? "sdxl" : channels === 16 ? "flux" : channels === 32 ? "flux2" : null };
   }
   if (has(/^decoder\.conv1\.weight$/) && has(/^encoder\.conv1\.weight$/)) {
     // Wan 2.1's layout is Qwen-Image's (and Wan 2.2 14B's VAE); Wan 2.2's with 48 latent channels is the 5B's,
