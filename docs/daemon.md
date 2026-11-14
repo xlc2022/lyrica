@@ -1600,7 +1600,8 @@ again installs that checkout's commit as a release, the way an update does
 home, the flake's module does the same ("On NixOS" below).
 
 - It installs the packages (bubblewrap, gocryptfs, FUSE, passt, nftables,
-  openssl, ImageMagick, ffmpeg (with ffprobe, so she can check her clips), and for the updater build-essential, python3, git,
+  openssl, rsync, ImageMagick, ffmpeg (with ffprobe, so she can check her clips),
+  shellcheck (it checks her bash calls), gh and, where packaged, tea, and for the updater build-essential, python3, git,
   openssh-client and jq, python3-venv for clones' Python dependencies, and
   the sandbox's Python baseline for scraping and data work: python3-bs4,
   python3-lxml, python3-requests, python3-html5lib and python3-yaml, and
@@ -1914,7 +1915,7 @@ system with the module on. Only x86_64-linux.
   the CA bundle's (`closureInfo`). See docs/workspace.md.
 - **Options:** `enable`, `package`, `port` (7340), `tailscale` (on),
   `tailscalePackage`, `openFirewall` (on), `searxng` (on), `zimDir` (null),
-  `caddyPackage`, `sandboxPackages`.
+  `mcpNixos` (off), `ebayMcp` (off), `caddyPackage`, `sandboxPackages`.
 - **Releases** are generations of the profile `/nix/var/nix/profiles/lyrica`,
   which lyricad runs. An Update builds `git+file:///opt/lyrica/repo.git?rev=<commit>#lyrica`
   as root (Nix's own sandboxed builders do the building, not `lyrica-build`),

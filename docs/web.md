@@ -1109,7 +1109,7 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   Update asks in a dialog that says it is less tested, then posts
   `{ commit }`), a state
   line beneath (Fetching, Draining with the count of busy threads when
-  there are any and the user's own linked, Building, Testing, Probation,
+  there are any and the user's own linked, Building, Testing, Switching, Probation,
   Failed with the error; while one shows, the section reloads every 2
   seconds, so a Check or Update follows through to its result). An
   update shows a box in the state line's place instead (`Progress`): its
@@ -1124,7 +1124,7 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   rollback as a sentence, and the kept releases as rows (commit in mono,
   date, the first line of its update note when it has one, Running) with **Roll back** in the row's ⋯, asked in a dialog that
   names the commit and says when messages since the snapshot are lost.
-  While an update drains, the page polls every 5 s; sending a message that
+  While an update drains, the page polls every 2 s; sending a message that
   gets `409 {updating:true}` keeps the text in the box and says Updating.
   Where no updater is installed (a development run) the section says so.
   A failed probation also shows in Notifications as "Update <commit> rolled

@@ -66,8 +66,8 @@ The Lyrica Pi extension. `createLyricaExtension(thread, options)` returns a Pi
   print mode).
 
 - **`workspace.ts`**: `createWorkspaceExtension(tools)` registers `read`,
-  `write`, `edit` and `bash` (and `proxmox`, `add_repository` and
-  `propose_plan` where the thread has them), routed to the thread's
+  `write`, `edit`, `bash` and `page` (and `proxmox`, `add_repository`,
+  `propose_plan` and `jobs` where the thread has them), routed to the thread's
   execution target (see
   [docs/workspace.md](../docs/workspace.md)). It enforces the thread's
   permission mode in `tool_call`, sends `!` commands to the same target, and
@@ -109,8 +109,9 @@ In a checkout it's `bin/lyrica`. On a machine set up with install.sh it's
 ```sh
 bin/lyrica admin setup-code            # first run: the setup page's code, addresses and fingerprint
 bin/lyrica admin init                  # self.db passphrase, first administrator
+bin/lyrica admin passphrase | wipe     # lyricad stopped
 bin/lyrica admin user add <login> [--admin]
-bin/lyrica admin user list | set-admin <login> on|off | passwd <login> | profile <login>
+bin/lyrica admin user list | set-admin <login> on|off | passwd <login> | profile <login> | remove <login>
 bin/lyrica dev --init <dir>            # development runtime with test administrator "tester"
 bin/lyrica dev --runtime <dir> --user <login> [--private | --local-only] [--debug-prompt]
 bin/lyrica admin grants add|remove --user <login> --pool general|private <path>
@@ -124,13 +125,13 @@ bin/lyrica admin net hosts add|remove --user <login> --pool general|private <hos
 bin/lyrica admin models endpoints add <name> cloud|local <base-url> [--shared | --user <login>]
 bin/lyrica admin models endpoints list|remove|probe [<name>] [--shared | --user <login>]
 bin/lyrica admin models endpoints model <name> <model-id> [--context <tokens>] [--tools] [--shared | --user <login>]
-bin/lyrica admin models profile show|set|default … --user <login>
+bin/lyrica admin models preset list|show|use|set|save|add|rename|remove … --user <login>
 bin/lyrica serve [--port <port>]       # lyricad (default 7340)
 bin/lyrica version [--json]
 bin/lyrica smoke-test <empty dir> [--port <port>]
 ```
 
-- Admin commands use `--runtime <dir>`, else `LYRICA_HOME`, else `./runtime`.
+- `serve` and admin commands use `--runtime <dir>`, else `LYRICA_HOME`, else `./runtime`.
 - Passwords and passphrases are read only at a hidden terminal prompt.
 - `dev` is a developer bench. It refuses any directory without the
   `LYRICA_DEVELOPMENT_RUNTIME` marker that `dev --init` writes.
@@ -146,4 +147,5 @@ bin/lyrica smoke-test <empty dir> [--port <port>]
   - It loads Lyrica's routed tools and `delegate`, mounts the user's home
     workspace and grants every folder the user may grant in that pool,
     read-write.
-- `chat` and `mem` print that they aren't built yet.
+- `chat` (a terminal thread) and `mem` (her memories at the prompt) talk to
+  a running lyricad over its socket and still ask for the user's password.

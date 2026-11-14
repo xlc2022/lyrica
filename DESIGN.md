@@ -99,8 +99,8 @@ Each user has two pools of memory.
   and two actions; everything works at phone width.
 - **Where things are:**
   - **Sidebar:** New thread, Search (with a Pinned messages view),
-    **Notifications** with its count (in orange), Memory, Sleep (with a
-    count) and Models at the top; then her items from last night; then
+    **Notifications** with its count (in orange), Memory and Sleep (with a
+    count) at the top; then her items from last night; then
     threads, with child threads nested under their parent and a project's
     threads under the project (see [Projects](#projects)); then a line of
     host status; then the user's button.
@@ -122,7 +122,9 @@ Each user has two pools of memory.
   - **The thread menu** opens by right-clicking a thread (a long press on a
     phone), with a letter shortcut for each item: Pin (P), Mark as unread
     (U), Rename (R), **Share with ›** (S), **Move to group ›** (M), Hide (H)
-    and Delete (D); **Make project** (K) on a top-level thread,
+    and Delete (D); **Make project** (K), **Continue as project** (C) and
+    **Move to project** (J) on a top-level thread, **Open beside** (B) on a
+    child thread,
     **Detach** (T) on a child thread, branch or copy outside a project, and
     **Resolve** or **Reopen** (E) on a project's thread. Detach confirms,
     then makes it a thread of its own (see Child threads in
@@ -139,11 +141,11 @@ Each user has two pools of memory.
     added only to Private, and a thread kept off the cloud keeps that in its
     copy, so the hard rules hold across users. Sharing a private thread
     asks first. Only users on the same server appear in the list.
-  - **The user's button** opens a menu: Settings, Administration (shown
-    only to administrators), Switch user, Lock and Log out.
+  - **The user's button** opens a menu: Models, Settings, Administration
+    (shown only to administrators), Switch user, Lock and Log out.
   - **Settings** (the user's own) and **Administration** (administrators) are pages
-    with a list of sections on the left. Notifications is the first section
-    of Settings.
+    with a list of sections on the left. Profile is the first section of
+    Settings.
   - **Push**, after Appearance in Settings, sends fixed phrases or counts for
     visible Notifications decisions, excluding sleep items (principles 6 and 2).
     URL and optional token stay in encrypted user settings; the saved view
@@ -159,12 +161,14 @@ Each user has two pools of memory.
     clean-up items, finished downloads, host problems. It sorts by newest, oldest, type, or host and
     pool, filters by type and place, has actions on each row and bulk
     actions, and pages through large numbers. Counts elsewhere link to it.
-  - **Header:** "Lyrica (ver. …, build …)" with the date and time beneath;
-    the daemon reports its version and build.
+  - **Header:** her name at the sidebar's top; the welcome page's facts
+    line gives the date, the time, and the version and build the daemon
+    reports.
   - **Welcome:** a greeting, the message box with General or Private, her
     items from last night, Notifications, and Backend (what answers now).
   - **Files and images, in every thread.** **Files** in the thread header
-    opens a side panel (full screen on a phone) with three tabs:
+    opens a side panel (full screen on a phone) with four tabs (Artifacts,
+    the fourth, is under Artifacts below):
     - **Files:** a searchable tree of the thread's folder (uploads, images
       she made, her notes and scratch files) and each granted folder.
       Clicking a file opens it in the file viewer.
@@ -550,8 +554,8 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
   model, for any purpose, fails with an error. Nothing ever falls back across
   the local/cloud line.
 - **Models page.** One area covers everything about models, with its own
-  list of pages: **Overview** (one alert, four tiles: endpoints up, what's
-  Backend, downloads, Notifications; compact hosts; the last calls),
+  list of pages: **Overview** (one alert, three tiles: endpoints up, what's
+  Backend, Clean up; compact hosts; the last calls),
   **Tasks**, **Text models**, **Image models**, **Hosts and endpoints**,
   **Downloads**, **Clean up** and **Recent calls**. Downloading a model,
   scanning and pairing are pages; a confirmation is a dialog. It covers:
@@ -821,14 +825,17 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     - llama.cpp loads GGUF files from it directly, and ComfyUI finds
       checkpoints and LoRAs through its extra model paths.
   - **Downloads,** from Lyrica's model library or the host's dashboard: from
-    Hugging Face, ModelScope or an https link. A shared host takes requests
+    Hugging Face, ModelScope, Civitai or an https link. A shared host takes requests
     from administrators only, and a personal host from its owner.
     - A small **fetch** service is the only container with internet access.
       It can write only to the `lyrica` subfolder, and has no GPU and no way
       to the other containers. `host-api` asks it to list a repository's
       files and to download one, so nothing needs the Docker socket.
-    - Only GGUF, safetensors and ONNX files are accepted. Pickle formats (`.bin`,
-      `.pt`, `.ckpt`) can run code when they load, so they are refused. A
+    - Only GGUF, safetensors and ONNX files are accepted, with the small
+      files a model folder needs, a voice model's raw `voices/*.bin` arrays
+      and whisper.cpp's `ggml-*.bin` files, each checked for its format on
+      arrival. Pickle formats (`.bin`, `.pt`, `.ckpt`) can run code when
+      they load, so they are refused. A
       model that needs `trust_remote_code` is never run.
     - Each file is checked against the checksum its hub publishes, or one
       given with a link. A link without one is marked **unverified**. A file
@@ -1392,7 +1399,7 @@ project page and the web part are built. Recent calls can be filtered by project
   project can message any other thread of the same project. The message is
   that thread's next turn, marked as from the sender (a mark only `lyricad`
   writes), and shows there, so every exchange can be read where it landed.
-  At most 3 such messages per turn, and waking an idle thread counts against
+  At most 3 such messages per turn to any one thread, and waking an idle thread counts against
   the at-once limit. Such a message follows the same rule as a child's
   update to its parent: local-only covers a thread's own model calls, so a
   local-only thread's message can reach a thread that uses cloud models,
@@ -1420,7 +1427,7 @@ project page and the web part are built. Recent calls can be filtered by project
   working on reversible steps and stops before an irreversible one.
 - **States:** Working; **Waiting on you** (an approval, an update that asks
   the user something, or a failed turn); Queued (started past the at-once limit,
-  which stays 2 per user; it waits its turn instead of being refused); Idle;
+  32 per user; it waits its turn instead of being refused); Idle;
   **Resolved**. A thread is resolved by the user, by Lyrica when its work is
   delivered and nothing is owed, or after 7 days with no activity; a message
   in it reopens it.

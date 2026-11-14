@@ -68,8 +68,8 @@ self-hosted runners, which no workflow uses at the moment.
   and runs only the jobs it touches; the others show as skipped, which
   counts as passed:
   - check (typecheck and unit tests) and e2e (the Playwright tests, one
-    job per spec file: `e2e (chat)`, `e2e (workspace)`, `e2e (projects)`,
-    `e2e (admin)`),
+    job per spec file: `e2e (chat)`, `e2e (messages)`, `e2e (workspace)`,
+    `e2e (projects)`, `e2e (admin)`),
     side by side: anything but `docs/` and the top-level Markdown files.
     `persona/` is her seed, so it counts. Together on one runner they took
     about 14.5 minutes, 9 of them Playwright; apart, each sets up its own

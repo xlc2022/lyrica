@@ -515,10 +515,10 @@ class Models {                                              // new Models(keyrin
   thinkingFor(resolution, asked, unset?): { level; note? }   // asked defaults to DEFAULT_THINKING ("medium"), also the per-user default; unset (CallContext.thinkingUnset) drops the can't-think note
   mandatoryThinking(offering) / mustThink(offeringId)   // a model whose provider refused thinking off: medium or the nearest level; in memory for the run
   sawThinking(userId, offeringId, { pool, threadId, task })   // a model with no levels thought anyway: clears the can't-think note on that call and drops it from later ones; in memory for the run
-  recordCall(userId, { pool, threadId, task, resolution, note?, audioSeconds?, images? }, { retry? }) / recentCalls(userId, { limit?, threadId?, threadIds?, pool?, speech?: false }): CallRecord[]
+  recordCall(userId, { pool, threadId, task, resolution, note?, audioSeconds?, images?, clip? }, { retry? }) / recentCalls(userId, { limit?, threadId?, threadIds?, pool?, speech?: false }): CallRecord[]
   callHistory(userId, { limit, offset, q, pools, threadIds? }): { entries: CallRecord[]; total }
     // GET models/calls/history?project=&pool= restricts both pool and project threads; hidden project pool is 404.
-  recordPace(userId, threadId, pace, task?, pool?) / speedsByOffering(userId): Map<offeringId, { tokPerS?; promptTokPerS? }>   // medians over the last 20 calls
+  recordPace(userId, threadId, pace, task?, pool?) / speedsByOffering(userId): Map<offeringId, { tokPerSec?; promptTokPerSec? }>   // medians over the last 20 calls
   usage(userId, pool, threadIds): { threadId; label; kind?: "local" | "cloud"; tokens; input; output; gpuMs?; cached?; measured? }[]
     // Calls plus durable folded counts plus subagent runs at every depth; pool AND thread filtered.
   addCallTotals(userId, pool, threadId, label, kind, input, output): void   // adds one call to call_totals; Claude Code's, counted by its relay
@@ -1957,7 +1957,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     and `serverTool`, in every mode. Read-only MCP tools stay on in Plan mode.
   - `toolsOff(settings, registered)`: Plan mode leaves only `PLAN_TOOLS`
     (`read`, `recall`, `read_memory`, `web_search`, `web_fetch`,
-    `delegate`, `ask_parent`, `threads`, `propose_plan`, `tool_search`, and `proxmox` and `browse`, whose
+    `delegate`, `ask_parent`, `threads`, `react`, `propose_plan`, `tool_search`, and `proxmox` and `browse`, whose
     `tool_call` refuses all but their reading actions); outside Plan
     mode `propose_plan` is off. `SWITCHED_TOOLS`: `webSearch` turns off
     `web_search`, `web_fetch` and `browse`, `images` turns off `image`. The gate runs

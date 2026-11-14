@@ -820,7 +820,7 @@ are refused (`409`).
 ## Not here
 
 - Child threads of child threads, moving a child to another pool.
-- External coding CLIs (Claude Code, Codex) as subagents: they would send her
-  work outside the router.
+- External coding CLIs other than Claude Code ([above](#claude-code)), such as
+  Codex, as subagents: they would send her work outside the router.
 - A watchdog or LSP checks: use the reviewer role or a loop.
 - Durable runs that keep working across a restart, and missions.
