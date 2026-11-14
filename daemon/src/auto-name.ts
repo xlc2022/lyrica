@@ -1,5 +1,5 @@
-// Auto-name in the Files panel's Images tab (docs/ux.md §6): a name for each image from what the `vision` task's model
-// sees. Principles 1 and 2: the call goes through core/models with the thread's own CallContext, so a private or
+// Auto-name in the Files panel's Images and Videos tabs (docs/ux.md §6): a name for each image, or clip by its poster,
+// from what the `vision` task's model sees, for names a machine made up; a name a person chose stays unless asked. Principles 1 and 2: the call goes through core/models with the thread's own CallContext, so a private or
 // local-only thread gets local models only, and a photo of the user reaches a cloud model only under the user's own
 // photo setting. The image and the names are never logged; the call is recorded like any other (task, model).
 import { posix } from "node:path";
@@ -16,11 +16,39 @@ export const AUTO_NAME_LIMIT = 50;
  */
 export const AUTO_NAME_AT_ONCE = 3;
 const IMAGE = /\.(png|jpe?g|gif|webp)$/i;
+/** A clip, named from its poster (the thumbnail kept when it was made); one without a poster can't be named. */
+const VIDEO = /\.(mp4|webm)$/i;
+
+// Words a camera, phone, screenshot tool or image app puts in a name it makes up, never words a person picked.
+const MACHINE_WORDS = new Set([
+  "img", "image", "images", "photo", "photos", "pic", "pics", "picture", "dsc", "dscn", "dscf", "dcim", "pxl", "mvimg", "vid", "video", "mov",
+  "movie", "clip", "gopr", "gopro", "dji", "cam", "camera", "screenshot", "screenshots", "screen", "shot", "recording", "capture", "snapshot",
+  "untitled", "unnamed", "download", "downloaded", "file", "at", "am", "pm", "copy", "edited", "edit", "hdr", "burst", "portrait", "night",
+  "bokeh", "mp", "raw", "cover", "original", "export", "exported", "scaled", "resized", "thumb", "thumbnail", "whatsapp", "signal", "telegram",
+  "received", "fb", "wa", "comfyui", "output", "generated", "render", "frame",
+]);
+const machineToken = (t: string) => /^\d+$/.test(t) || MACHINE_WORDS.has(t)
+  || /^[a-z]{1,5}\d{4,}[a-z]?$/.test(t) // IMG1234, DSC0001, P1010001, WA0001
+  || /^(?=.*\d)(?=.*[a-f])[0-9a-f]{6,}$/.test(t) // a hash, or part of a UUID
+  || (t.length >= 8 && /^[a-z0-9]+$/.test(t) && (t.match(/[a-z]\d|\d[a-z]/g)?.length ?? 0) >= 3); // a random token: a8f3klq9zx
+
+/**
+ * Whether a file's name looks made up by a machine (a camera's IMG_0042, a screenshot's date, a hash, a UUID, a
+ * random token, "image (1)") rather than chosen by a person: every word in its stem is a number, a camera or app
+ * word, or random letters and digits. Auto-name renames only these unless the user ticks **Chosen names**.
+ */
+export function machineName(name: string): boolean {
+  const dot = name.lastIndexOf(".");
+  // A UUID's own parts are short, so it is taken whole: Lyrica names what she makes this way.
+  const stem = (dot > 0 ? name.slice(0, dot) : name).toLowerCase().replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g, " ");
+  const tokens = stem.split(/[^a-z0-9]+/).filter(Boolean);
+  return tokens.every(machineToken);
+}
 /** A name's stem at most this long, before its extension. */
 const STEM = 60;
 
 const SYSTEM = [
-  "Name the image file from what the picture shows: two to six plain words that would let someone find it again, such as \"red-bicycle-by-a-canal\".",
+  "Name the file from what the picture shows: two to six plain words that would let someone find it again, such as \"red-bicycle-by-a-canal\".",
   "Lowercase, words joined by hyphens, no extension, no quotes, no other text. Reply with the name only.",
 ].join(" ");
 
@@ -28,7 +56,7 @@ const SYSTEM = [
 export function stemOf(reply: string): string {
   const line = reply.trim().split("\n")[0] ?? "";
   const s = line.normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase()
-    .replace(/\.(png|jpe?g|gif|webp)$/, "")
+    .replace(/\.(png|jpe?g|gif|webp|mp4|webm)$/, "")
     .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
   return s.slice(0, STEM).replace(/-+$/, "");
 }
@@ -44,12 +72,14 @@ export function freeName(stem: string, ext: string, taken: Set<string>): string 
 const dayOf = (date: Date) => `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
 
 /**
- * A suggested name for each image, nothing renamed: the panel shows them and the user applies them with Rename.
- * An image that couldn't be named carries `error` in place of `name`. Every call is the thread's own, so its
+ * A suggested name for each image or clip, nothing renamed: the panel shows them and the user applies them with Rename.
+ * One whose name a person chose (not `machineName`) comes back as it is with `kept`, and no model is asked, unless
+ * `all`. One that couldn't be named carries `error` in place of `name`. Every call is the thread's own, so its
  * models are the thread's; a portrait counts as local-only unless the user's photo setting is Always, or Ask
  * with today's approval given.
  */
-export async function autoNames(models: Models, workspace: Workspace, t: { userId: string; pool: Pool; threadId: string; coordinates?: boolean }, paths: string[], now = new Date()): Promise<AutoName[]> {
+export async function autoNames(models: Models, workspace: Workspace, t: { userId: string; pool: Pool; threadId: string; coordinates?: boolean }, paths: string[], o: { all?: boolean; now?: Date } = {}): Promise<AutoName[]> {
+  const now = o.now ?? new Date();
   const files = workspace.files(t);
   const images = workspace.imageFiles(t);
   const settings = workspace.settings(t.userId);
@@ -66,12 +96,16 @@ export async function autoNames(models: Models, workspace: Workspace, t: { userI
   const one = async (path: string): Promise<AutoName> => {
     const name = posix.basename(path);
     try {
-      if (!IMAGE.test(name)) throw new Error("only images can be named this way");
-      // Only the thread's own folder, as the Images tab lists it: never photos-of-me/ or a grant.
-      if (!path.startsWith(`${WORKDIR}/`) || posix.normalize(path) !== path) throw new Error("only images in the thread's folder can be named this way");
-      // The whole image, for the portrait rule; a GIF can't be read as one, so it counts as a portrait (local only).
+      const video = VIDEO.test(name);
+      if (!IMAGE.test(name) && !video) throw new Error("only images and clips can be named this way");
+      // Only the thread's own folder, as the Images and Videos tabs list it: never photos-of-me/ or a grant.
+      if (!path.startsWith(`${WORKDIR}/`) || posix.normalize(path) !== path) throw new Error("only files in the thread's folder can be named this way");
+      // A name a person chose stays, and costs no call.
+      if (!o.all && !machineName(name)) return { path, name, kept: true };
+      // The whole image, for the portrait rule; a GIF or a clip's poster can't be read as one, so it counts as a
+      // portrait (local only).
       let portrait = true, whole: { bytes: Uint8Array; type: string } | undefined;
-      try {
+      if (!video) try {
         const read = await images.read(path);
         portrait = read.portrait;
         whole = read.input;
@@ -80,7 +114,7 @@ export async function autoNames(models: Models, workspace: Workspace, t: { userI
       const thumb = await files.thumb(path).catch(() => undefined);
       const sent = thumb ? { data: thumb.bytes.toString("base64"), mimeType: thumb.type }
         : whole ? { data: Buffer.from(whole.bytes).toString("base64"), mimeType: whole.type } : undefined;
-      if (!sent) throw new Error("it couldn't be read as an image");
+      if (!sent) throw new Error(video ? "it has no poster to look at" : "it couldn't be read as an image");
       const ctx: CallContext = portrait && !cloudPhotos() ? { ...base, localOnly: true } : base;
       const stem = stemOf(await ask(models, ctx, t, sent));
       if (!stem) throw new Error("the model gave no name");
