@@ -5,8 +5,8 @@ export type Theme = "dark" | "light";
 
 /** The categorical order every chart and pie uses, light and dark (validated for colour-blind separation). */
 export const SERIES: Record<Theme, string[]> = {
-  light: ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#6250d6", "#e34948"],
-  dark: ["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181", "#008300", "#9085e9", "#e66767"],
+  light: ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#6250d6", "#e34948", "#0097b2", "#b36b1e", "#a23fb0", "#7a8f00"],
+  dark: ["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181", "#008300", "#9085e9", "#e66767", "#1aa6c0", "#b8742c", "#b45cc4", "#879c10"],
 };
 
 export const URL_REFUSED = "its data must be in the message as values, not loaded from a URL.";

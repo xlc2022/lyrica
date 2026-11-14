@@ -14,8 +14,8 @@ const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
 /** Pixels kept between a speed dot's centre and the plot's edges: its radius and its outline. */
 const DOT = 8;
-/** More copies than the categorical order holds: the busiest seven keep their colour, the rest are Other. */
-const MOST = 8;
+/** More copies than the categorical order holds: the busiest eleven keep their colour, the rest are Other. */
+const MOST = 12;
 const OTHER = "Other";
 
 const SPEED_WHY = "Median recorded output tokens per second of generation, with positive output and at least 50 ms.";
@@ -30,6 +30,8 @@ const RESET_WHY = "Count calls from now on. Call records stay: thread usage, spe
 const KEPT_WHY = "Nightly cleanup keeps every call record from the last 31 days, at least the latest 500 and at most 20,000 per user, across both pools.";
 /** Where this browser keeps the models taken off Model calls' charts. */
 const HIDDEN_KEY = "lyrica.status.hiddenModels";
+/** Where this browser keeps each model copy's colour on Model calls. */
+const COLOURS_KEY = "lyrica.status.modelColours";
 const NARROW_WHY = "Drag across the chart, or click two bars, to narrow the window.";
 
 /** The window Model calls shows: the last 24 hours, 7 or 30 days, or a span narrowed on its charts (`span`, ISO). */
@@ -52,18 +54,64 @@ export function samplingWords(s: NonNullable<Facts["models"][number]["sampling"]
 
 export interface Series { offeringId: string; name: string; title: string; color: string }
 
+/** The model copies that get a colour of their own: all of them up to twelve, else the busiest eleven (the rest are Other). */
+function keptOf(models: Facts["models"]): Facts["models"] {
+  return models.length <= MOST ? models : [...models].sort((a, b) => b.calls - a.calls).slice(0, MOST - 1);
+}
+
 /**
- * Each model copy's series: its short name (with its endpoint where two share one), its full label as a title, and a
- * colour in the one order, by label so a copy keeps its colour as counts change; past eight, the least used are Other.
+ * Which colour in the categorical order each kept copy wears: the one `remembered` gives it while no other kept copy
+ * has it, else the first free one that no copy out of the window remembers either (so it keeps its own when it comes
+ * back), else the first free one. Colour follows the copy, not its place in the list, so a window that adds or drops a
+ * model doesn't repaint the rest. Returns `remembered` with the kept copies' colours in it.
  */
-export function seriesOf(models: Facts["models"], theme: "dark" | "light", other: string): Series[] {
-  const kept = models.length <= MOST ? models : [...models].sort((a, b) => b.calls - a.calls).slice(0, MOST - 1);
+export function colourSlots(keptIds: string[], remembered: Readonly<Record<string, number>>, n = MOST): Record<string, number> {
+  const next = { ...remembered }, taken = new Set<number>(), here = new Set(keptIds);
+  const ok = (i: unknown): i is number => typeof i === "number" && Number.isInteger(i) && i >= 0 && i < n;
+  const waiting: string[] = [];
+  for (const id of keptIds) {
+    const i = remembered[id];
+    if (ok(i) && !taken.has(i)) taken.add(i);
+    else waiting.push(id);
+  }
+  const elsewhere = new Set(Object.entries(remembered).filter(([id]) => !here.has(id)).map(([, i]) => i));
+  for (const id of waiting) {
+    let i = 0;
+    while (i < n && (taken.has(i) || elsewhere.has(i))) i++;
+    if (i === n) { i = 0; while (taken.has(i)) i++; }
+    taken.add(i);
+    next[id] = i;
+  }
+  return next;
+}
+
+/**
+ * Each model copy's series: its short name (with its endpoint where two share one), its full label as a title, and its
+ * colour from `slots` (by label order without one); past twelve, the least used are Other, in grey.
+ */
+export function seriesOf(models: Facts["models"], theme: "dark" | "light", other: string, slots: Readonly<Record<string, number>> = {}): Series[] {
+  const kept = keptOf(models);
+  const slot = colourSlots(kept.map((m) => m.offeringId), slots);
   const short = (m: Facts["models"][number]) => shortModel(m.label);
   const dup = (m: Facts["models"][number]) => models.filter((x) => short(x) === short(m)).length > 1;
-  let i = 0;
+  const folded = models.filter((m) => !kept.includes(m)).map((m) => short(m));
+  const otherTitle = `The least used share grey: ${[...new Set(folded)].join(", ")}`;
   return models.map((m) => kept.includes(m)
-    ? { offeringId: m.offeringId, name: dup(m) ? `${short(m)} · ${m.endpointName}` : short(m), title: `${m.label} · ${m.endpointName}`, color: SERIES[theme][i++]! }
-    : { offeringId: m.offeringId, name: OTHER, title: OTHER, color: other });
+    ? { offeringId: m.offeringId, name: dup(m) ? `${short(m)} · ${m.endpointName}` : short(m), title: `${m.label} · ${m.endpointName}`, color: SERIES[theme][slot[m.offeringId]!]! }
+    : { offeringId: m.offeringId, name: OTHER, title: otherTitle, color: other });
+}
+
+/** The colours this browser has given model copies on Model calls, so each keeps its own across windows and visits. */
+function useColourSlots(models: Facts["models"]): Record<string, number> {
+  const [stored] = useState<Record<string, number>>(() => {
+    try { const v = JSON.parse(localStorage.getItem(COLOURS_KEY) ?? "{}") as unknown; return v && typeof v === "object" && !Array.isArray(v) ? v as Record<string, number> : {}; } catch { return {}; }
+  });
+  const slots = colourSlots(keptOf(models).map((m) => m.offeringId), stored);
+  const json = JSON.stringify(slots);
+  useEffect(() => {
+    try { if (localStorage.getItem(COLOURS_KEY) !== json) localStorage.setItem(COLOURS_KEY, json); } catch { /* kept for this visit only */ }
+  }, [json]);
+  return slots;
 }
 
 /** A moment as the user's clock reads it, held as if that were UTC: the charts keep their zone, not the browser's. */
@@ -362,7 +410,8 @@ export function ModelCallFacts({ facts, window = { days: 1 }, onWindow, onReset 
   const reset = Date.parse(facts.since) > Date.parse(facts.from);
   // No page (a test rendering to a string): the light tokens.
   const t = typeof document === "undefined" ? { edge: "#889494", panel: "#ffffff" } : tokens();
-  const series = seriesOf(facts.models, theme, t.edge);
+  const slots = useColourSlots(facts.models);
+  const series = seriesOf(facts.models, theme, t.edge, slots);
   const legend = [...new Map(series.map((s) => [s.name, s])).values()];
   const { off, toggle, showAll } = useHidden(HIDDEN_KEY, legend.length > 1 ? legend.map((s) => s.name) : []);
   // The models taken off the charts: their calls leave all four, and the facts line counts the rest out of the whole.
@@ -412,7 +461,7 @@ export function ModelCallFacts({ facts, window = { days: 1 }, onWindow, onReset 
           const sampled = speed === undefined && m.sampling ? samplingWords(m.sampling) : undefined;
           const audio = m.audioSeconds !== undefined && !m.outputTokens ? audioWords(m.audioSeconds) : undefined;
           return <div role="row" key={m.offeringId} className={off.has(s.name) ? "off" : undefined}>
-            <span role="cell" className="mt-model" title={`${m.label} · ${m.endpointName}${off.has(s.name) ? "\nOff the charts." : ""}`}><span className="swatch" style={{ "--sw": s.color } as CSSProperties} aria-hidden="true" />{shortModel(m.label)} <span className="muted">· {m.endpointName}</span></span>
+            <span role="cell" className="mt-model" title={`${m.label} · ${m.endpointName}${s.name === OTHER ? "\nIn Other on the charts: only the busiest eleven get a colour of their own." : ""}${off.has(s.name) ? "\nOff the charts." : ""}`}><span className="swatch" style={{ "--sw": s.color } as CSSProperties} aria-hidden="true" />{shortModel(m.label)} <span className="muted">· {m.endpointName}</span></span>
             <span role="cell" className="num" data-label="Calls">{m.calls}</span>
             <span role="cell" className="num" data-label="Output" title={m.made && !m.outputTokens ? MADE_WHY : audio ? AUDIO_WHY : undefined}>{m.made && !m.outputTokens
               ? <>{m.made.count.toLocaleString()} <span className="muted">{m.made.count === 1 ? m.made.unit : `${m.made.unit}s`}</span></>

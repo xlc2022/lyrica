@@ -1,7 +1,7 @@
 import { expect, it } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { bucketed, buckets, bucketSize, factsQuery, ModelCallFacts, seriesOf, speedSpec, unwall, wall } from "../src/ModelCallFacts.tsx";
+import { bucketed, buckets, bucketSize, colourSlots, factsQuery, ModelCallFacts, seriesOf, speedSpec, unwall, wall } from "../src/ModelCallFacts.tsx";
 import type { ModelCallFacts as Facts } from "../src/api.ts";
 
 // Synthetic facts only: no text of any real conversation.
@@ -75,13 +75,29 @@ it("escapes recorded labels as text", () => {
   expect(html).not.toContain("<model-59>");
 });
 
-it("keeps a copy's colour by label, names copies that share a name by endpoint, and folds the least used past eight into Other", () => {
+it("keeps a copy's colour by label, names copies that share a name by endpoint, and folds the least used past twelve into Other", () => {
   const two = seriesOf([model({ offeringId: "a", label: "x/Same", endpointName: "One" }), model({ offeringId: "b", label: "y/Same", endpointName: "Two" })], "light", "#888888");
   expect(two.map((s) => s.name)).toEqual(["Same · One", "Same · Two"]);
-  const many = Array.from({ length: 10 }, (_, i) => model({ offeringId: `m${i}`, label: `m${i}`, calls: i }));
+  const many = Array.from({ length: 14 }, (_, i) => model({ offeringId: `m${i}`, label: `m${i}`, calls: i }));
   const s = seriesOf(many, "light", "#888888");
   expect(s.filter((x) => x.name === "Other").map((x) => x.offeringId)).toEqual(["m0", "m1", "m2"]);
-  expect(new Set(s.map((x) => x.color)).size).toBe(8);
+  expect(new Set(s.map((x) => x.color)).size).toBe(12);
+});
+
+it("keeps each copy's colour when a window adds or drops a model, and gives a copy that comes back its own again", () => {
+  const first = colourSlots(["b", "c", "d"], {});
+  expect(first).toEqual({ b: 0, c: 1, d: 2 });
+  // "a" sorts first in the new window: the others keep theirs, and "a" takes one nobody remembers.
+  const second = colourSlots(["a", "b", "d"], first);
+  expect(second).toMatchObject({ a: 3, b: 0, d: 2 });
+  expect(colourSlots(["a", "c", "d"], second)).toMatchObject({ a: 3, c: 1, d: 2 });
+  // Two remembered on one colour: the first keeps it, the other moves; a stored value out of range is ignored.
+  expect(colourSlots(["x", "y", "z"], { x: 5, y: 5, z: 99 })).toMatchObject({ x: 5, y: 0, z: 1 });
+  // Every colour remembered by a copy out of the window: reuse one rather than run out.
+  const full = Object.fromEntries(Array.from({ length: 12 }, (_, i) => [`o${i}`, i]));
+  expect(colourSlots(["new"], full).new).toBe(0);
+  const s = seriesOf([model({ offeringId: "a", label: "a" }), model({ offeringId: "b", label: "b" })], "light", "#888888", { a: 4, b: 1 });
+  expect(s.map((x) => x.color)).toEqual(["#e87ba4", "#eb6834"]);
 });
 
 it("buckets calls and output into the 24 hours on the user's clock, the oldest partial hour holding what came before it", () => {
