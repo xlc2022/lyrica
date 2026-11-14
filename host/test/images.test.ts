@@ -536,6 +536,14 @@ describe("recipes", () => {
     const { recipe } = b.fromStarter(starter, () => null);
     b.patch(recipe.id, { op: "defaults", defaults: { steps: 12, width: 640, negativePrompt: "blurry" } }, []);
     expect(b.patch(recipe.id, { op: "starterDefaults" }, []).defaults).toEqual(starter.defaults);
+    // A Wan 2.2 5B installed before its starter took FastWan gets the LoRA as a missing part with the 6 steps, so it
+    // waits for the download rather than running them without it.
+    const wan = STARTERS.find((s) => s.id === "wan2.2-ti2v-5b")!;
+    const old = b.fromStarter({ ...wan, parts: wan.parts.filter((p) => p.role !== "lora"), defaults: { ...wan.defaults, steps: 20, cfg: 5 } }, () => null).recipe;
+    const reset = b.patch(old.id, { op: "starterDefaults" }, []);
+    expect(reset.defaults).toMatchObject({ steps: 6, cfg: 1 });
+    expect(reset.parts.find((p) => p.role === "lora")).toMatchObject({ slot: "speed", file: null, missing: { repo: "Kijai/WanVideo_comfy" } });
+    expect(b.ready(reset, new Set(reset.parts.filter((p) => p.file).map((p) => p.file!)))).toBe(false);
     // A copy is its own recipe: it has no starter to go back to.
     const copy = b.copy(recipe.id, "mine");
     expect(() => b.patch(copy.id, { op: "starterDefaults" }, [])).toThrow(/wasn't made from a starter/);

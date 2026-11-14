@@ -386,6 +386,9 @@ Three ways a model gets into the library:
   doesn't change them. **Reset to starter settings…** at the foot of the
   model's block for its host sets them to the starter's as that host
   ships it now (update the host first); the model's files and LoRAs stay.
+  When the starter's settings need a LoRA the model lacks (the Wan 2.2 5B
+  starter's FastWan), it shows as missing: **Download the missing parts**
+  fetches it, and the model runs again once it is here.
   A copy made from a model has no starter to go back to.
 - **Copy a model to another host**: in Models, Image models, use **Copy
   to host…** at the foot of the model's block for its host (shown when you
