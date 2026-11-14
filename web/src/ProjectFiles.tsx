@@ -9,7 +9,7 @@ import { RowMenu } from "./Machines.tsx";
 import { her } from "./name.ts";
 import { Thumb, useFileLinks, VideoThumb, WORKDIR } from "./paths.tsx";
 import { Viewer } from "./Viewer.tsx";
-import { AutoNameDrawer, IMAGE_NAME, SortSelect, sortMedia, useMediaSort } from "./MediaTools.tsx";
+import { AutoNameDrawer, IMAGE_NAME, VIDEO_NAME, SortSelect, sortMedia, useMediaSort } from "./MediaTools.tsx";
 import type { ShellContext } from "./Shell.tsx";
 import { ConfirmDialog, ErrorText, InlineRename, shortTime, useAction } from "./ui.tsx";
 
@@ -114,7 +114,7 @@ export function FilesSection({ ctx, pool, threadId }: { ctx: ShellContext; pool:
     { label: e.kind === "folder" ? "Download as zip" : "Download", onPick: () => void download(e) },
     { label: "Rename…", onPick: () => setRenaming(e.path) },
     { label: "Move to…", onPick: () => setMoving(e) },
-    ...(e.kind !== "folder" && IMAGE_NAME.test(e.name) ? [{ label: "Auto-name…", onPick: () => setNaming([e.path]) }] : []),
+    ...(e.kind !== "folder" && (IMAGE_NAME.test(e.name) || VIDEO_NAME.test(e.name)) ? [{ label: "Auto-name…", onPick: () => setNaming([e.path]) }] : []),
     { label: "Delete…", danger: true, onPick: () => setDeleting(e) },
   ];
   const facts = (e: FileEntry) => e.kind === "folder" ? "Folder" : `${shortTime(e.modified)} · ${kb(e.size)}`;

@@ -10,7 +10,7 @@ import { get, post, threadPath, upload, type FileCopyResponse, type FileEntry, t
 import { ask, ATTACH_EVENT, ATTACH_KEY, keep, SHOW_EVENT, SHOW_KEY, type AttachRequest, type ShowRequest } from "./links.ts";
 import { FAMILY_ROOT, isUnderWorkdir, SHARED, shown, Thumb, useFileLinks, VideoThumb, WORKDIR, type FileLinks } from "./paths.tsx";
 import { ArtifactsTab, importArtifacts } from "./Artifacts.tsx";
-import { AutoNameDrawer, IMAGE_NAME, SortSelect, sortMedia, useMediaSort, type MediaSort } from "./MediaTools.tsx";
+import { AutoNameDrawer, IMAGE_NAME, VIDEO_NAME, SortSelect, sortMedia, useMediaSort, type MediaSort } from "./MediaTools.tsx";
 import { Viewer } from "./Viewer.tsx";
 import { Icon } from "./icons.tsx";
 import { her } from "./name.ts";
@@ -734,7 +734,7 @@ function FileMenu({ at, writable, shownName, onClose, onAttach, onDownload, onCo
   onAttach: (paths: string[]) => void; onDownload: (paths: string[]) => void; onCopy: (paths: string[]) => void;
   onCopyFiles: (paths: string[]) => void; canPaste: boolean; onPaste: (dir: string) => Promise<unknown>; onSelect: (path: string) => void; onShow: (path: string) => void;
   onUpload: (dir: string) => void; onMkdir: (dir: string, name: string) => Promise<unknown>; onRename: (path: string, name: string) => Promise<unknown>; onDelete: (paths: string[]) => Promise<unknown>;
-  /** Auto-name (docs/ux.md §6): images in the thread's own folder, where it is writable. */
+  /** Auto-name (docs/ux.md §6): images and clips in the thread's own folder, where it is writable. */
   onAutoName: (paths: string[]) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -746,7 +746,7 @@ function FileMenu({ at, writable, shownName, onClose, onAttach, onDownload, onCo
   const dir = t.kind === "folder" ? t.path : t.kind === "space" ? t.dir : "";
   const canWrite = paths.length ? paths.every(writable) : writable(dir);
   const canName = canWrite && (t.kind === "file" || t.kind === "selection") && paths.length <= AUTO_NAME_MAX
-    && paths.every((p) => IMAGE_NAME.test(p) && p.startsWith(`${WORKDIR}/`));
+    && paths.every((p) => (IMAGE_NAME.test(p) || VIDEO_NAME.test(p)) && p.startsWith(`${WORKDIR}/`));
 
   useLayoutEffect(() => {
     const el = ref.current;

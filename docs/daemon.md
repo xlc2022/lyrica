@@ -877,12 +877,19 @@ documented in `daemon/src/api.ts`, "The Files panel".
   under a root (at most 200). `GET …/files/images` lists every image in the
   thread's folder, `uploaded` when it is in `uploads/`, otherwise `made` by her;
   `GET …/files/videos` lists every clip (`.mp4`, `.webm`) the same way.
-- `POST …/files/auto-name { paths }` suggests a name for each image (at most
-  50, only in the thread's own `/workspace`) from what the thread's `vision`
-  model sees (`daemon/src/auto-name.ts`): the image's thumbnail (or the image
-  itself without one) goes through `Models.callWithFallback("vision", …)` with
+- `POST …/files/auto-name { paths, all? }` suggests a name for each image or
+  clip (at most 50, only in the thread's own `/workspace`) from what the
+  thread's `vision` model sees (`daemon/src/auto-name.ts`). Only a name a
+  machine made up is renamed (`machineName`: every word of the stem is a
+  number, a camera, screenshot or app word such as `IMG`, `DSC`, `PXL`,
+  `Screenshot`, `image`, a hash, a UUID or a random token, with at least one
+  number, hash or token unless it is only a default word such as `image`, so
+  `cover.png` stays); one a person chose
+  comes back as it is with `kept` and no model is asked, unless `all` (the
+  drawer's **Rename chosen names too**). The image's thumbnail (or the image itself
+  without one; a clip's poster, and a clip without one can't be named) goes through `Models.callWithFallback("vision", …)` with
   the thread's CallContext, made local-only for a photo of the user (or an
-  image it can't check, such as a GIF) unless the photo setting is Always or
+  image it can't check, such as a GIF or a clip) unless the photo setting is Always or
   Ask approved today. The reply becomes a lowercase, hyphenated stem with the
   image's extension, free in its folder and among the others suggested. It
   renames nothing; the panel renames with `…/files/rename`. Up to three images

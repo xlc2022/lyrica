@@ -1,9 +1,9 @@
 // What the Images and Videos grids share (docs/ux.md §6): their Sort, and Auto-name's drawer, where a name for each
-// image comes from the thread's "Look at images" model and nothing is renamed until Rename.
+// image or clip comes from the thread's "Look at images" model and nothing is renamed until Rename.
 import { useEffect, useRef, useState } from "react";
 import { post, type AutoName, type FileEntry } from "./api.ts";
 import { Icon } from "./icons.tsx";
-import { Thumb, type FileLinks } from "./paths.tsx";
+import { Thumb, VideoThumb, type FileLinks } from "./paths.tsx";
 import { ErrorText } from "./ui.tsx";
 
 export type MediaSort = "newest" | "oldest" | "name";
@@ -35,6 +35,7 @@ export function SortSelect({ sort, onSort }: { sort: MediaSort; onSort: (s: Medi
 }
 
 export const IMAGE_NAME = /\.(png|jpe?g|gif|webp)$/i;
+export const VIDEO_NAME = /\.(mp4|webm)$/i;
 const dirOf = (p: string) => p.slice(0, p.lastIndexOf("/")) || "/";
 const nameOf = (p: string) => p.slice(p.lastIndexOf("/") + 1);
 
@@ -52,48 +53,73 @@ export function apart(name: string, dir: string, rows: { path: string; draft: st
 /** Asks in flight at once (daemon/src/auto-name.ts, AUTO_NAME_AT_ONCE). */
 const AT_ONCE = 3;
 
-type Row = { path: string; draft: string; state: "waiting" | "named" | "failed" | "renamed"; error?: string };
+type Row = { path: string; draft: string; state: "waiting" | "named" | "kept" | "failed" | "renamed"; error?: string; /** Its name looks chosen by a person (lyricad's machineName). */ chosen?: boolean };
 
 /**
- * Auto-name: each image's suggested name, asked for a few at a time and shown as it comes, each editable. **Rename**
- * renames those whose name changed; one left as it was, or emptied, stays as it is. Closing stops the asking.
+ * Auto-name: each image's or clip's suggested name, asked for a few at a time and shown as it comes, each editable.
+ * A name a person chose is kept, with no model asked, unless **Rename chosen names too** is ticked (off each time the drawer
+ * opens). **Rename** renames those whose name changed; one left as it was, or emptied, stays as it is. Closing stops
+ * the asking.
  */
 export function AutoNameDrawer({ base, paths, links, onClose, onRenamed }: {
   base: string; paths: string[]; links: FileLinks; onClose: () => void; onRenamed: (moves: { from: string; to: string }[]) => void;
 }) {
   const [rows, setRows] = useState<Row[]>(() => paths.map((path) => ({ path, draft: nameOf(path), state: "waiting" })));
+  const [all, setAll] = useState(false);
+  const allNow = useRef(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const ref = useRef<HTMLElement>(null);
   const live = useRef(true);
+  /** The asks under way: each batch stops when the drawer closes, and the chosen names' when the box is unticked. */
+  const batches = useRef<{ on: boolean; chosen: boolean }[]>([]);
   useEffect(() => {
     live.current = true;
     ref.current?.focus();
     const key = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     addEventListener("keydown", key);
-    return () => { live.current = false; removeEventListener("keydown", key); };
+    return () => { live.current = false; for (const b of batches.current) b.on = false; removeEventListener("keydown", key); };
   }, [onClose]);
-  // Each image on its own ask, a few at once (lyricad's own AUTO_NAME_AT_ONCE), so each name shows as it comes and
+  // Each file on its own ask, a few at once (lyricad's own AUTO_NAME_AT_ONCE), so each name shows as it comes and
   // closing stops the rest.
-  useEffect(() => {
-    let on = true;
+  const ask = (list: string[], chosen: boolean) => {
+    const batch = { on: true, chosen };
+    batches.current.push(batch);
     let next = 0;
     const worker = async () => {
-      while (on && next < paths.length) {
-        const path = paths[next++]!;
+      while (batch.on && next < list.length) {
+        const path = list[next++]!;
         let got: AutoName | undefined;
-        try { [got] = await post<AutoName[]>(`${base}/auto-name`, { paths: [path] }); }
+        try { [got] = await post<AutoName[]>(`${base}/auto-name`, { paths: [path], ...(chosen ? { all: true } : {}) }); }
         catch (e) { got = { path, error: (e as Error).message }; }
-        if (!on) return;
+        if (!batch.on) return;
+        // A chosen name with the box ticked: asked again for every name.
+        if (got?.kept && allNow.current) { setRows((rs) => rs.map((r) => r.path === path ? { ...r, chosen: true } : r)); ask([path], true); continue; }
         setRows((rs) => rs.map((r) => r.path !== path ? r
+          : got?.kept ? { ...r, draft: nameOf(path), state: "kept", chosen: true }
           : got?.name !== undefined ? { ...r, draft: apart(got.name, dirOf(path), rs.filter((o) => o.path !== path)), state: "named" }
           : { ...r, state: "failed", error: got?.error ?? "no name came back" }));
       }
     };
-    for (let i = 0; i < Math.min(AT_ONCE, paths.length); i++) void worker();
-    return () => { on = false; };
+    for (let i = 0; i < Math.min(AT_ONCE, list.length); i++) void worker();
+    return batch;
+  };
+  useEffect(() => {
+    const batch = ask(paths, false);
+    return () => { batch.on = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one ask per opening; `ask` reads the box through allNow
   }, [base, paths]);
+  const tick = (on: boolean) => {
+    setAll(on);
+    allNow.current = on;
+    for (const b of batches.current) if (b.chosen) b.on = false;
+    const chosen = rows.filter((r) => r.chosen && r.state !== "renamed");
+    setRows((rs) => rs.map((r) => !r.chosen || r.state === "renamed" ? r
+      : on ? { ...r, state: "waiting", error: undefined } : { ...r, draft: nameOf(r.path), state: "kept", error: undefined }));
+    if (on && chosen.length) ask(chosen.map((r) => r.path), true);
+  };
   const naming = rows.filter((r) => r.state === "waiting").length;
+  const kept = rows.filter((r) => r.state === "kept").length;
   const changes = rows.filter((r) => r.state === "named" && r.draft.trim() && r.draft.trim() !== nameOf(r.path));
   const bad = changes.find((r) => r.draft.includes("/"));
   const rename = async () => {
@@ -123,14 +149,19 @@ export function AutoNameDrawer({ base, paths, links, onClose, onRenamed }: {
           <button type="button" className="icon sm" aria-label="Close" onClick={onClose}><Icon name="close" /></button>
         </div>
         <form className="drawer-body" onSubmit={(e) => { e.preventDefault(); if (changes.length && !bad && !busy) void rename(); }}>
-          <p className="muted" role="status">{naming ? <>Naming <span className="num">{rows.length - naming}</span> of <span className="num">{rows.length}</span>…</> : <><span className="num">{changes.length}</span> to rename</>}</p>
+          <label className="check" title="Off, only camera, screenshot and random names are renamed.">
+            <input type="checkbox" checked={all} disabled={busy} onChange={(e) => tick(e.target.checked)} /> Rename chosen names too
+          </label>
+          <p className="muted" role="status">{naming ? <>Naming <span className="num">{rows.length - naming}</span> of <span className="num">{rows.length}</span>…</>
+            : <><span className="num">{changes.length}</span> to rename{kept ? <>, <span className="num">{kept}</span> kept</> : null}</>}</p>
           <ul className="auto-name-list">
             {rows.map((r) => (
               <li key={r.path}>
-                <Thumb path={r.path} alt="" files={links} />
+                {VIDEO_NAME.test(r.path) ? <VideoThumb path={r.path} files={links} /> : <Thumb path={r.path} alt="" files={links} />}
                 <span className="auto-name-field">
                   <span className="mono muted" title={r.path}>{nameOf(r.path)}</span>
                   {r.state === "waiting" ? <span className="muted">Looking…</span>
+                    : r.state === "kept" ? <span className="muted">Kept</span>
                     : r.state === "failed" ? <span className="error">{r.error}</span>
                     : r.state === "renamed" ? <span className="mono">{r.draft}</span>
                     : <input className="mono" aria-label={`New name for ${nameOf(r.path)}`} value={r.draft} disabled={busy} spellCheck={false}

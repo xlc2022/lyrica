@@ -1735,15 +1735,17 @@ export interface FileSearch { entries: FileEntry[]; more: boolean }
  */
 export interface ImageEntry extends FileEntry { source: "uploaded" | "made" }
 /**
- * POST …/files/auto-name { paths } → AutoName[], one per path in order: a name for each image (PNG, JPEG, GIF, WebP)
- * in the thread's folder from what the thread's `vision` model sees (Models → Tasks, "Look at images"), at most 50 per
- * ask, three asked at once. Nothing is renamed: the panel shows the names and applies them with …/files/rename. A name keeps the image's
+ * POST …/files/auto-name { paths, all? } → AutoName[], one per path in order: a name for each image (PNG, JPEG, GIF,
+ * WebP) or clip (MP4, WebM, by its poster) in the thread's folder from what the thread's `vision` model sees (Models →
+ * Tasks, "Look at images"), at most 50 per ask, three asked at once. Only a name a machine made up (a camera's
+ * IMG_0042, a screenshot's date, a hash, a UUID, a random token) is renamed: one a person chose comes back as it is
+ * with `kept`, and no model is asked, unless `all` (the drawer's **Rename chosen names too**). Nothing is renamed: the panel shows the names and applies them with …/files/rename. A name keeps the image's
  * extension and is free in its folder and among the others suggested ("red-bicycle-2.png"); one already right comes
  * back as it is. A private or local-only thread uses local models only, and a photo of the user (DESIGN "Photos of
  * you") goes to a cloud model only when the user's photo setting is Always, or Ask approved today. An image that
  * couldn't be named carries `error` instead.
  */
-export type AutoName = { path: string; name: string; error?: undefined } | { path: string; name?: undefined; error: string };
+export type AutoName = { path: string; name: string; kept?: true; error?: undefined } | { path: string; name?: undefined; kept?: undefined; error: string };
 /**
  * GET …/files/content?path=<path>[&download=1] → the file's bytes, with its type
  * (images by their bytes; HTML, SVG and scripts as plain text, never run; an unknown name as plain text when its first

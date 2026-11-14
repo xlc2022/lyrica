@@ -603,7 +603,8 @@ cloud model sends that model the subagent's whole conversation so far, not
 only the image, at that model's price: a cloud model is in the list only if
 the person put it there. With no list set, only local models are tried.
 The Files panel's **Auto-name** calls the same task with the thread's own
-context, one image per call, a photo of the user kept local unless the
+context, one image or clip poster per call, only for names a machine made
+up unless the user ticks **Rename chosen names too**, a photo of the user kept local unless the
 photo setting allows the cloud (docs/daemon.md, Files).
 
 The task `video` (Videos) has its own ordered list in each column and

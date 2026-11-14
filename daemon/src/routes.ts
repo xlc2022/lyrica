@@ -1653,10 +1653,10 @@ export function apiRoutes(d: Lyricad): Route[] {
     route("POST", `${t}/files/auto-name`, async (r): Promise<Api.AutoName[]> => {
       const user = d.userFor(r);
       const thread = owner(d, user, (o) => threadOf(o, r));
-      const { paths } = await r.json<{ paths?: unknown }>();
-      if (!Array.isArray(paths) || !paths.length || paths.some((p) => typeof p !== "string")) throw new HttpError(400, "paths is a list of image paths");
+      const { paths, all } = await r.json<{ paths?: unknown; all?: unknown }>();
+      if (!Array.isArray(paths) || !paths.length || paths.some((p) => typeof p !== "string")) throw new HttpError(400, "paths is a list of image or clip paths");
       if (paths.length > AUTO_NAME_LIMIT) throw new HttpError(400, `at most ${AUTO_NAME_LIMIT} images at a time`);
-      return autoNames(s().models, s().workspace, { userId: user.id, pool: poolOf(r), threadId: thread.id, ...(thread.project ? { coordinates: true } : {}) }, paths as string[]);
+      return autoNames(s().models, s().workspace, { userId: user.id, pool: poolOf(r), threadId: thread.id, ...(thread.project ? { coordinates: true } : {}) }, paths as string[], { all: all === true });
     }),
     route("GET", `${t}/files/thumb`, async (r) => {
       const thumb = await refused(() => files(r).thumb(r.query.get("path") ?? ""));
