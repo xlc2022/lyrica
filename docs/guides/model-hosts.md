@@ -567,6 +567,16 @@ a 3090 each takes seconds:
 The gated ones need a Hugging Face token whose account accepted their
 licence (Downloads → Accounts); more steps or a 2 MP edit don't help.
 
+The **MOSS-Image** starters (ComfyUI hosts; OpenMOSS's 5B model, Apache
+2.0, a 5.4 GB int8 model with a 7.3 GB Qwen3.5 9B encoder) are good at
+text in pictures and long, detailed prompts. **MOSS-Image** creates, at
+ComfyUI's 25 steps of er_sde and CFG 2.5 (about 16 to 22 seconds at
+1 MP on a 3090; the authors' 50 steps of euler at CFG 3 looked the same
+in twice the time). **MOSS-Image Edit** adds a community edit LoRA (its
+author states no licence; Comfy-Org rehosts it) and edits one image at
+about 1 MP in 25 seconds; it follows "Change only the X to Y. Keep …
+unchanged." best.
+
 The Qwen-Image 2512 starter is Qwen-Image's December 2025 release
 (Apache 2.0, a 20.4 GB fp8 model with the same encoder and VAE as the
 original): at the same 20 steps and CFG 4, about 70 seconds a 1328×1328

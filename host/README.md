@@ -408,6 +408,11 @@ per host, and Lyrica's router filters create tiers by it.
   is the image scaled to about 1 MP, encoded as a reference latent, and
   the output takes its size. The gated files' checksums are pinned from
   copies downloaded with an accepting account's token.
+  MOSS-Image (Apache 2.0, OpenMOSS's 5B with a Qwen3.5 9B encoder and
+  FLUX.2's small VAE) has two starters on the `moss-image` templates:
+  one creates (with layer-skip guidance on layer 22, as ComfyUI's
+  template does), the other edits through a community edit LoRA whose
+  author states no licence.
   RealVisXL V5.0 is a photoreal fine-tune of SDXL (its fp16 file, about
   6.9 GB, on Hugging Face under CreativeML Open RAIL++-M, SDXL's own
   licence), at its card's negative prompt, 30 steps of dpmpp_2m karras and

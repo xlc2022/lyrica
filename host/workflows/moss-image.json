@@ -1,0 +1,127 @@
+{
+  "arch": "moss-image",
+  "does": [
+    "create"
+  ],
+  "checkpoint": false,
+  "clipType": "moss_image",
+  "parts": [
+    {
+      "role": "diffusion",
+      "arch": [
+        "moss-image"
+      ]
+    },
+    {
+      "role": "text_encoder",
+      "slot": "qwen3.5_9b"
+    },
+    {
+      "role": "vae",
+      "arch": [
+        "flux2"
+      ]
+    }
+  ],
+  "references": 0,
+  "mask": false,
+  "workflow": {
+    "pos": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": "$prompt",
+        "clip": "$clip"
+      }
+    },
+    "neg": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": "$negativePrompt",
+        "clip": "$clip"
+      }
+    },
+    "skip": {
+      "class_type": "SkipLayerGuidanceDiTSimple",
+      "inputs": {
+        "model": "$model",
+        "double_layers": "",
+        "single_layers": "22",
+        "start_percent": 0,
+        "end_percent": 0.5
+      }
+    },
+    "shift": {
+      "class_type": "ModelSamplingAuraFlow",
+      "_if": "shift",
+      "inputs": {
+        "model": [
+          "skip",
+          0
+        ],
+        "shift": "$shift"
+      }
+    },
+    "latent": {
+      "class_type": "EmptyFlux2LatentImage",
+      "inputs": {
+        "width": "$width",
+        "height": "$height",
+        "batch_size": "$count"
+      }
+    },
+    "sample": {
+      "class_type": "KSampler",
+      "inputs": {
+        "model": {
+          "$pick": [
+            [
+              "shift",
+              0
+            ],
+            [
+              "skip",
+              0
+            ]
+          ]
+        },
+        "seed": "$seed",
+        "steps": "$steps",
+        "cfg": "$cfg",
+        "sampler_name": "$sampler",
+        "scheduler": "$scheduler",
+        "positive": [
+          "pos",
+          0
+        ],
+        "negative": [
+          "neg",
+          0
+        ],
+        "latent_image": [
+          "latent",
+          0
+        ],
+        "denoise": 1
+      }
+    },
+    "decode": {
+      "class_type": "VAEDecode",
+      "inputs": {
+        "samples": [
+          "sample",
+          0
+        ],
+        "vae": "$vae"
+      }
+    },
+    "save": {
+      "class_type": "SaveImageWebsocket",
+      "inputs": {
+        "images": [
+          "decode",
+          0
+        ]
+      }
+    }
+  }
+}

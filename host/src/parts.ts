@@ -15,7 +15,7 @@ export interface Part {
   format: "safetensors" | "gguf";
   role: Role;
   /**
-   * For text encoders: clip_l, clip_g, t5, umt5, qwen3 (4B), qwen3_8b, qwen2.5vl, qwen3vl (4B), qwen3vl_8b,
+   * For text encoders: clip_l, clip_g, t5, umt5, qwen3 (4B), qwen3_8b, qwen3.5_9b, qwen2.5vl, qwen3vl (4B), qwen3vl_8b,
    * qwen3vl_32b, gemma4_12b. For a video model's two experts and their LoRAs: high, low (from
    * the file name); a speed LoRA: speed; SCAIL-2's DPO LoRA: dpo. An audio VAE: audio.
    */
@@ -88,7 +88,7 @@ export function classify(names: string[], shapes: Record<string, number[]>, file
   const expert = /high[_-]?noise/.test(name) ? "high" : /low[_-]?noise/.test(name) ? "low" : null;
 
   if (has(/lora_(up|down|A|B)\b|\.lora_(up|down|A|B)\.|^lora_(unet|te)/)) {
-    const slot = expert ?? (/turbo|lightning|lightx2v|fastwan|\d+[_-]?steps?/.test(name) ? "speed" : /(^|[^a-z])dpo([^a-z]|$)/.test(name) ? "dpo" : /vfx[_-]?edit/.test(name) ? "edit" : null);
+    const slot = expert ?? (/turbo|lightning|lightx2v|fastwan|\d+[_-]?steps?/.test(name) ? "speed" : /(^|[^a-z])dpo([^a-z]|$)/.test(name) ? "dpo" : /vfx[_-]?edit|moss[_-]?image[_-]?edit/.test(name) ? "edit" : null);
     // Wan 2.2 5B's blocks are 3072 wide, the 14B's (and Wan 2.1's) 5120: a LoRA's down matrix is its rank by that width.
     const wanDown = Object.entries(shapes).find(([n]) => /blocks[._]\d+[._]self[._]attn[._]q[._.]lora_(down|A)\b/.test(n))?.[1];
     // Qwen-Image 2.1's LoRAs have Qwen-Image's tensor names; the trainer's metadata, or the file name, says which.
@@ -100,6 +100,7 @@ export function classify(names: string[], shapes: Record<string, number[]>, file
       : has(/img_mod|txt_mod/) ? "qwen-image"
       : has(/noise_refiner|context_refiner|cap_embedder|layers[._]\d+[._]attention/) ? "z-image"
       : has(/txtfusion|blocks[._]\d+[._]attn[._]w[qkvo]\b/) ? "krea2"
+      : has(/layers[._]\d+[._]proj[._]ffn_up_gate/) ? "moss-image"
       : has(/input_blocks|down_blocks|lora_te2/) ? "sdxl"
       : null;
     return { role: "lora", slot, arch };
@@ -115,6 +116,8 @@ export function classify(names: string[], shapes: Record<string, number[]>, file
 
   const bare = names.map((n) => (n.startsWith(dm) ? n.slice(dm.length) : n));
   const hasBare = (re: RegExp) => bare.some((n) => re.test(n));
+  // MOSS-Image: one stream of layers under a shared block modulation.
+  if (hasBare(/^shared_block_modulation\./) && hasBare(/^video_embedder\./)) return { role: "diffusion", slot: null, arch: "moss-image" };
   // FLUX.3 image klein: image and image-condition streams with their own modulations.
   if (hasBare(/^early_stream_modulations\.image\./) && hasBare(/^content_mode_blocks\./)) return { role: "diffusion", slot: null, arch: "flux3-klein" };
   // FLUX.2 klein: FLUX's blocks with shared modulation, told apart by its text input's width (three of its Qwen3's
@@ -161,6 +164,11 @@ export function classify(names: string[], shapes: Record<string, number[]>, file
     // Gemma, which also has Qwen3's q_norm. Gemma 4 12B (LTX-2.5's): 48 layers, and global layers without v_proj.
     const gemma4 = has(/(^|\.)layers\.47\.self_attn\.q_norm\.weight$/) && !has(/(^|\.)layers\.5\.self_attn\.v_proj\.weight$/) && !has(/(^|\.)layers\.59\./);
     return gemma4 ? { role: "text_encoder", slot: "gemma4_12b", arch: "gemma4" } : unknown;
+  }
+  // Qwen3.5 (MOSS-Image's 9B): linear-attention layers among the full ones, by its 4096-wide embedding.
+  if (has(/(^|\.)layers\.0\.linear_attn\.in_proj_qkv\./)) {
+    const embed = Object.entries(shapes).find(([n]) => /(^|\.)embed_tokens\.weight$/.test(n))?.[1];
+    return embed?.[1] === 4096 ? { role: "text_encoder", slot: "qwen3.5_9b", arch: "qwen3.5" } : unknown;
   }
   // P-H3-Image's Qwen3-VL 4B with its text connector.
   if (has(/(^|\.)text_connector\.proj\.weight$/)) return { role: "text_encoder", slot: "ph3", arch: "qwen3vl" };
