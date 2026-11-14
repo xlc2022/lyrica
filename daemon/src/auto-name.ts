@@ -7,8 +7,14 @@ import { WORKDIR, type CallContext, type Models, type Pool, type Workspace } fro
 import { modelRuntimeFor, piModelFor, timedReply } from "@lyrica/extension";
 import type { AutoName } from "./api.ts";
 
-/** At most this many images in one ask: each is one model call, one after another. */
+/** At most this many images in one ask: each is one model call. */
 export const AUTO_NAME_LIMIT = 50;
+/**
+ * Calls in flight at once, here and in the drawer (web/src/MediaTools.tsx). A local server takes them as its slots
+ * allow (extension/src/model-share.ts), so more only queue there; a cloud model or a multi-slot server answers them
+ * side by side.
+ */
+export const AUTO_NAME_AT_ONCE = 3;
 const IMAGE = /\.(png|jpe?g|gif|webp)$/i;
 /** A name's stem at most this long, before its extension. */
 const STEM = 60;
@@ -50,29 +56,30 @@ export async function autoNames(models: Models, workspace: Workspace, t: { userI
   const base = models.callContext(t.userId, t.pool, t.threadId);
   const cloudPhotos = () => { const p = settings.photoCloudPolicy(); return p === "always" || (p === "ask" && settings.photoCloudApproved(dayOf(now))); };
   // Each folder's names, read once, so a suggestion never takes a name that is there.
-  const taken = new Map<string, Set<string>>();
-  const namesIn = async (dir: string) => {
+  // The promise is kept, so images named at once share one read of their folder.
+  const taken = new Map<string, Promise<Set<string>>>();
+  const namesIn = (dir: string) => {
     let s = taken.get(dir);
-    if (!s) { s = new Set((await files.list(dir)).entries.map((e) => e.name.toLowerCase())); taken.set(dir, s); }
+    if (!s) { s = files.list(dir).then((l) => new Set(l.entries.map((e) => e.name.toLowerCase()))); taken.set(dir, s); }
     return s;
   };
-  const out: AutoName[] = [];
-  for (const path of paths) {
+  const one = async (path: string): Promise<AutoName> => {
     const name = posix.basename(path);
     try {
       if (!IMAGE.test(name)) throw new Error("only images can be named this way");
       // Only the thread's own folder, as the Images tab lists it: never photos-of-me/ or a grant.
       if (!path.startsWith(`${WORKDIR}/`) || posix.normalize(path) !== path) throw new Error("only images in the thread's folder can be named this way");
       // The whole image, for the portrait rule; a GIF can't be read as one, so it counts as a portrait (local only).
-      let portrait = true, sent: { data: string; mimeType: string } | undefined;
+      let portrait = true, whole: { bytes: Uint8Array; type: string } | undefined;
       try {
         const read = await images.read(path);
         portrait = read.portrait;
-        sent = { data: Buffer.from(read.input.bytes).toString("base64"), mimeType: read.input.type };
+        whole = read.input;
       } catch { /* the thumbnail below */ }
       // The small copy where there is one: fewer bytes to the model, and it is all a name needs.
       const thumb = await files.thumb(path).catch(() => undefined);
-      if (thumb) sent = { data: thumb.bytes.toString("base64"), mimeType: thumb.type };
+      const sent = thumb ? { data: thumb.bytes.toString("base64"), mimeType: thumb.type }
+        : whole ? { data: Buffer.from(whole.bytes).toString("base64"), mimeType: whole.type } : undefined;
       if (!sent) throw new Error("it couldn't be read as an image");
       const ctx: CallContext = portrait && !cloudPhotos() ? { ...base, localOnly: true } : base;
       const stem = stemOf(await ask(models, ctx, t, sent));
@@ -80,16 +87,25 @@ export async function autoNames(models: Models, workspace: Workspace, t: { userI
       const ext = (posix.extname(name) || "").toLowerCase();
       const taken = await namesIn(posix.dirname(path));
       // Already called that: kept as it is.
-      if (name.toLowerCase() === `${stem}${ext}`) { out.push({ path, name }); continue; }
-      out.push({ path, name: freeName(stem, ext, taken) });
+      if (name.toLowerCase() === `${stem}${ext}`) return { path, name };
+      return { path, name: freeName(stem, ext, taken) };
     } catch (err) {
-      out.push({ path, error: (err as Error).message });
+      return { path, error: (err as Error).message };
     }
-  }
+  };
+  // A few at a time, answered in the order asked.
+  const out: AutoName[] = new Array(paths.length);
+  let next = 0;
+  const worker = async () => { while (next < paths.length) { const i = next++; out[i] = await one(paths[i]!); } };
+  await Promise.all(Array.from({ length: Math.min(AUTO_NAME_AT_ONCE, paths.length) }, worker));
   return out;
 }
 
-/** One call to the thread's `vision` model with one image; the next in the list answers when one's machine is away. */
+/**
+ * One call to the thread's `vision` model with one image; the next in the list answers when one's machine is away.
+ * No thinking is asked for (no `reasoning`), so a model that can turn it off answers at once; one whose provider
+ * requires it is asked again at medium, or the nearest level it has (extension/src/models.ts).
+ */
 async function ask(models: Models, ctx: CallContext, t: { userId: string; pool: Pool; threadId: string }, image: { data: string; mimeType: string }): Promise<string> {
   const runtime = await modelRuntimeFor(models, ctx);
   const reply = await models.callWithFallback("vision", ctx, {}, async (resolution) => {
