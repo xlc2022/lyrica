@@ -380,6 +380,16 @@ Three ways a model gets into the library:
   on. It is checked like a download, but has no checksum to compare with.
   A host from before 2026-11-07 takes uploads only once it is updated
   (**Upgrade** in [Operating a host](#operating-a-host)).
+- **Bring a model up to its starter's settings**: a starter's settings
+  change with Lyrica's updates (steps, size, its negative prompt), but a
+  model installed before keeps its own, and installing the starter again
+  doesn't change them. **Reset to starter settings…** at the foot of the
+  model's block for its host sets them to the starter's as that host
+  ships it now (update the host first); the model's files and LoRAs stay.
+  When the starter's settings need a LoRA the model lacks (the Wan 2.2 5B
+  starter's FastWan), it shows as missing: **Download the missing parts**
+  fetches it, and the model runs again once it is here.
+  A copy made from a model has no starter to go back to.
 - **Copy a model to another host**: in Models, Image models, use **Copy
   to host…** at the foot of the model's block for its host (shown when you
   manage another host). The dialog shows

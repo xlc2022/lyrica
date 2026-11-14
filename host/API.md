@@ -1017,6 +1017,13 @@ Calls:
     `res_2s`, `refineScheduler` `bong_tangent` and `refineEta` 0.9 unless
     the recipe says otherwise). Without them it is one KSampler pass;
   - `{ "op": "rename", "name": "..." }`;
+  - `{ "op": "starterDefaults" }`: the recipe's defaults become its
+    starter's as this host ships it now, for a recipe installed before
+    the starter changed; its files and LoRAs stay, but a starter's LoRA
+    part the recipe lacks (Wan 2.2 5B's FastWan, which its settings are
+    for) joins it as missing, so the recipe isn't ready until
+    `download-parts` fetches it. `400` for a recipe not
+    made from a starter on this host (a copy has none);
   - `{ "op": "useFor", "useFor": "fast" }`: `fast`, `quality` or `both`,
     saved in `recipes.json`.
 

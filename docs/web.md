@@ -781,7 +781,10 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   **Change** for a text encoder or VAE (`swap`, or Download another… to the
   download page), **Remove** for an added part or LoRA, **Use this recipe**
   (`confirm`), **Download the missing parts** (`download-parts`),
-  **Ignore**, the **Add part** side drawer and the delete dialog. A LoRA's
+  **Ignore**, the **Add part** side drawer and the delete dialog.
+  **Reset to starter settings…** (a confirmed recipe made from a starter,
+  `recipe.starter`) asks in a `ConfirmDialog` and sends `change { op:
+  "starterDefaults" }`. A LoRA's
   row has **Strength** (-4 to 4, "of 4", clamped when left), saved with
   `setLora` when it changed. **Add part**
   lists the host's files of the part's kind and architecture (for a LoRA,

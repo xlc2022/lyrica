@@ -338,6 +338,18 @@ export class RecipeBook {
         }
         break;
       }
+      case "starterDefaults": {
+        // The starter's settings now, for a recipe installed before a starter changed (its files stay as they are).
+        const starter = r.starter ? this.starters.find((s) => s.id === r.starter) : undefined;
+        if (!starter) throw invalid("This recipe wasn't made from a starter on this host.");
+        r.defaults = structuredClone(starter.defaults);
+        // Settings made for a LoRA the recipe lacks (Wan 2.2 5B's FastWan) bring it, missing until it downloads, so they
+        // never run without it.
+        for (const p of starter.parts.filter((x) => x.role === "lora" && !r.parts.some((q) => q.role === "lora" && q.slot === (x.slot ?? null)))) {
+          r.parts.push({ role: p.role, slot: p.slot ?? null, file: null, added: false, missing: { source: p.source, repo: p.repo, path: p.path, sha256: p.sha256, size: p.size ?? null } });
+        }
+        break;
+      }
       case "rename":
         if (typeof body.name !== "string" || !body.name.trim()) throw invalid("name is missing.");
         r.name = body.name.trim();
