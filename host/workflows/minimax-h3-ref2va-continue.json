@@ -1,0 +1,208 @@
+{
+  "continues": "minimax-h3-ref2va",
+  "overlap": 22,
+  "clipSeconds": 15,
+  "promptPrefix": "The same continuous shot goes on from the given frames, with no cut and no jump back to an earlier moment; the action carries on from where it is now. ",
+  "reference": {
+    "promptPrefix": "<Picture 1> is the shot as it is now: keep its framing, camera distance and angle. Everyone looks exactly as in <Picture 2>: the same face, hair and clothes, whatever its framing. ",
+    "workflow": {
+      "now": {
+        "class_type": "ImageFromBatch",
+        "inputs": {
+          "image": [
+            "tail",
+            0
+          ],
+          "batch_index": -1,
+          "length": 1
+        }
+      },
+      "reference": {
+        "class_type": "LoadImage",
+        "inputs": {
+          "image": "$reference"
+        }
+      },
+      "cond": {
+        "class_type": "MiniMaxH3ReferenceToVideo",
+        "inputs": {
+          "clip": "$clip",
+          "prompt": "$prompt",
+          "width": "$width",
+          "height": "$height",
+          "length": "$frames",
+          "ref_image_size": "match",
+          "vae": "$vae",
+          "audio_vae": "$vae_audio",
+          "ref_images.ref_image_0": [
+            "now",
+            0
+          ],
+          "ref_images.ref_image_1": [
+            "reference",
+            0
+          ]
+        }
+      }
+    }
+  },
+  "workflow": {
+    "previous": {
+      "class_type": "LoadVideo",
+      "inputs": {
+        "file": "$previous"
+      }
+    },
+    "tail": {
+      "class_type": "LyricaClipTail",
+      "inputs": {
+        "video": [
+          "previous",
+          0
+        ],
+        "frames": "$overlap"
+      }
+    },
+    "cond": {
+      "class_type": "MiniMaxH3ReferenceToVideo",
+      "inputs": {
+        "clip": "$clip",
+        "vae": "$vae",
+        "audio_vae": "$vae_audio",
+        "prompt": "$prompt",
+        "width": "$width",
+        "height": "$height",
+        "length": "$frames",
+        "ref_image_size": "match"
+      }
+    },
+    "anchor": {
+      "class_type": "MiniMaxH3AddGuide",
+      "inputs": {
+        "positive": [
+          "cond",
+          0
+        ],
+        "vae": "$vae",
+        "audio_vae": "$vae_audio",
+        "latent": [
+          "cond",
+          1
+        ],
+        "image": [
+          "tail",
+          0
+        ],
+        "audio": [
+          "tail",
+          1
+        ],
+        "frame_idx": 0
+      }
+    },
+    "guide": {
+      "class_type": "BasicGuider",
+      "inputs": {
+        "model": "$model",
+        "conditioning": [
+          "anchor",
+          0
+        ]
+      }
+    },
+    "noise": {
+      "class_type": "RandomNoise",
+      "inputs": {
+        "noise_seed": "$seed"
+      }
+    },
+    "sampler": {
+      "class_type": "KSamplerSelect",
+      "inputs": {
+        "sampler_name": "$sampler"
+      }
+    },
+    "schedule": {
+      "class_type": "BasicScheduler",
+      "inputs": {
+        "model": "$model",
+        "scheduler": "$scheduler",
+        "steps": "$steps",
+        "denoise": 1
+      }
+    },
+    "sample": {
+      "class_type": "SamplerCustomAdvanced",
+      "inputs": {
+        "noise": [
+          "noise",
+          0
+        ],
+        "guider": [
+          "guide",
+          0
+        ],
+        "sampler": [
+          "sampler",
+          0
+        ],
+        "sigmas": [
+          "schedule",
+          0
+        ],
+        "latent_image": [
+          "cond",
+          1
+        ]
+      }
+    },
+    "decode": {
+      "class_type": "VAEDecode",
+      "inputs": {
+        "samples": [
+          "sample",
+          0
+        ],
+        "vae": "$vae"
+      }
+    },
+    "sound": {
+      "class_type": "VAEDecodeAudio",
+      "inputs": {
+        "samples": [
+          "sample",
+          0
+        ],
+        "vae": "$vae_audio"
+      }
+    },
+    "join": {
+      "class_type": "LyricaJoinClips",
+      "inputs": {
+        "previous": [
+          "previous",
+          0
+        ],
+        "images": [
+          "decode",
+          0
+        ],
+        "audio": [
+          "sound",
+          0
+        ],
+        "fps": "$fps",
+        "overlap": "$overlap"
+      }
+    },
+    "save": {
+      "class_type": "SaveVideoWebsocket",
+      "inputs": {
+        "video": [
+          "join",
+          0
+        ]
+      }
+    }
+  }
+}

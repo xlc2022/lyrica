@@ -625,9 +625,20 @@ about 25 seconds at a 19 GB peak). It makes one image per request, at
 oversharpened. Both
 need ComfyUI 0.44 or later, so update the host before adding them (an
 Update, or `git pull && host/install.sh`), which rebuilds its ComfyUI
-image at 0.44.2; an older image doesn't have their nodes.
+image (now 0.45.3); an older image doesn't have their nodes.
 Their weights are under the MiniMax H3 Community License, as H3 Turbo's
 are.
+
+The MiniMax-H3-Image starters (ComfyUI hosts) create and edit pictures
+with MiniMax's own picture model: 2048×2048 by default, 6 steps, up to 3
+references, one image per request. They share H3 Turbo's text encoder
+(14.6 GiB), so with Turbo installed the int8 one fetches about 20 GiB and
+the w4a8 one about 12.8 GiB; the int8 one is for a large card, the w4a8
+one for a 24 GB card if the machine's RAM holds the encoder and model
+(about 27 GiB). They need ComfyUI 0.45, so update the host first. Their
+licence, the MiniMax-H3-Image Community License, excludes the same places
+as H3's and also needs MiniMax's written consent above $1M yearly revenue
+or to offer it as a hosted service to others.
 
 Whisper on vLLM wants a memory share of about 0.1 of a 24 GB
 card.
@@ -773,7 +784,7 @@ from 2026-11-08 on (**Upgrade** in [Operating a host](#operating-a-host)).
 
 ### Video recipes
 
-ComfyUI hosts list seven video starters: Wan 2.2 TI2V 5B (about 19 GB of
+ComfyUI hosts list these video starters (more H3 ones below): Wan 2.2 TI2V 5B (about 19 GB of
 files with its FastWan speed LoRA, fits a 24 GB card; on a 3090 a 5-second
 clip takes about a minute at its 6 steps, where 20 steps without the LoRA
 took four), Wan 2.2 T2V 14B and I2V 14B (about 37 GB each),
@@ -842,6 +853,21 @@ people with SAM 3.1, under Meta's SAM License (commercial use allowed,
 with an acknowledgement in publications, lawful use including privacy
 law, and trade controls). Its frame-reading node is another addition to
 the ComfyUI image, so the next Update rebuilds it again.
+
+For a 24 GB card, **MiniMax H3 Turbo w6a8** is H3 Turbo with Comfy-Org's
+w6a8 model (about 15 GiB) and lightx2v's 4-step 768p LoRA, at 1344×768.
+Two community H3 models come as starters too, each int8 (large cards)
+and w4a8 (24 GB): **Cobijada H3 Hybrid**, a merge of H3's two checkpoints
+(uncensored) that takes Turbo's LoRA and chains up to 60 s, and
+**Singularity H3 v2**, the most used fine-tune, which is ref2va only: it
+runs on its own template, makes clips from text or animates an image, and
+chains to 60 s as Turbo does. Each has a **Realism** twin that also
+fetches fal's Realism People LoRA (0.12 GiB) for faces, skin and gestures
+that hold up in close-up; the host starts its prompts with the LoRA's
+trigger word, r34l1sm. Their repositories say Apache 2.0, but they are H3
+derivatives under H3's licence. Any H3 LoRA file on the host now counts
+as H3's even when its name doesn't say so (fal's Realism People, Pika's
+H3 Flex), so it can be added to an H3 recipe or asked for per clip.
 
 ComfyUI hosts also list **MiniMax H3 VFX Edit** (about 42 GB of files; the
 text encoder and VAEs are H3 Turbo's, so with Turbo installed it fetches

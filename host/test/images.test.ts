@@ -122,6 +122,10 @@ const H3_VAE = safetensors({ "decoder.transformer_blocks.0.scale1": {}, "encoder
 const H3_AUDIO_VAE = safetensors({ "pre_block.attn.zero_k_bias": { dtype: "F32" } });
 const PH3 = safetensors({ "video_patch_proj.weight": { dtype: "I8" }, "audio_patch_proj.weight": {}, "adaln_t_table": { dtype: "F32" } });
 const PH3_TE = safetensors({ "model.language_model.layers.0.self_attn.q_proj.weight": { dtype: "I8" }, "model.visual.merger.linear_fc2.weight": { shape: [2560, 4096] }, "text_connector.proj.weight": {} });
+const H3_IMAGE = safetensors({ "video_patch_proj.weight": { dtype: "I8" }, "adaln_t_table": { dtype: "F32" } });
+const H3_IMAGE_VAE = safetensors({ "decoder.transformer_blocks.0.scale1": {}, "encoder.down.5.block.0.conv1.weight": {}, "decoder.proj_out.weight": { shape: [768, 1024] }, "decoder.x_embedder.weight": { shape: [1024, 24] } });
+// An H3 LoRA whose name doesn't say so (fal's, Pika's): attention as one qkv_proj, and the token refiner.
+const H3_LORA_UNNAMED = safetensors({ "diffusion_model.blocks.0.attn.qkv_proj.lora_A.weight": {}, "diffusion_model.token_refiner.blocks.0.attn.qkv_proj.lora_A.weight": {} });
 const PH3_VAE = safetensors({ "decoder.transformer_blocks.0.scale1": {}, "encoder.down.5.block.0.conv1.weight": { dtype: "I8" }, "decoder.proj_out.weight": { shape: [768, 1024] } });
 
 function folder(files: Record<string, Buffer>): string {
@@ -264,6 +268,8 @@ describe("video parts", () => {
       "v/minimax_h3_ref2va_pruned_int8_convrot.safetensors": H3, "v/minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors": H3_LORA,
       "v/minimax_h3_vfx_edit_v1.0_r128.safetensors": H3_LORA,
       "v/p-h3-image_int8_convrot.safetensors": PH3, "v/p-h3-image_text_encoder_int8_convrot.safetensors": PH3_TE, "v/p-h3-image_vae_int8_convrot.safetensors": PH3_VAE,
+      "v/minimax_h3_image_pruned_w4a8.safetensors": H3_IMAGE, "v/minimax_h3_image_vae_fp16.safetensors": H3_IMAGE_VAE,
+      "v/h3-realism-people-t2v-i2v-r2v.safetensors": H3_LORA_UNNAMED, "v/pika_h3_flex_turbo_4step_fl2va.safetensors": H3_LORA_UNNAMED,
       "v/Wan2.2-T2V-A14B-HighNoise-Q5_K_M.gguf": wanGguf(16), "v/Wan2.2-I2V-A14B-LowNoise-Q5_K_M.gguf": wanGguf(36, true),
       "v/wan2.1_14B_SCAIL_2_int8_convrot.safetensors": SCAIL2, "v/wan2.1_SCAIL_2_DPO_lora_bf16.safetensors": WAN_LORA,
       "v/lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors": WAN_LORA, "v/clip_vision_h.safetensors": CLIP_VISION_H,
@@ -300,6 +306,12 @@ describe("video parts", () => {
       "p-h3-image_int8_convrot.safetensors": ["diffusion", null, "p-h3-image"],
       "p-h3-image_text_encoder_int8_convrot.safetensors": ["text_encoder", "ph3", "qwen3vl"],
       "p-h3-image_vae_int8_convrot.safetensors": ["vae", null, "p-h3-image"],
+      // MiniMax-H3-Image: the timestep table and no audio stream; its decoder is 1024 wide inside, P-H3-Image's 2048.
+      "minimax_h3_image_pruned_w4a8.safetensors": ["diffusion", null, "minimax-h3-image"],
+      "minimax_h3_image_vae_fp16.safetensors": ["vae", null, "minimax-h3-image"],
+      // H3 LoRAs whose names don't say H3, by their keys; a speed one by its name.
+      "h3-realism-people-t2v-i2v-r2v.safetensors": ["lora", null, "minimax-h3"],
+      "pika_h3_flex_turbo_4step_fl2va.safetensors": ["lora", "speed", "minimax-h3"],
       // A GGUF expert is told by the same tensors.
       "Wan2.2-T2V-A14B-HighNoise-Q5_K_M.gguf": ["diffusion", "high", "wan2.2-t2v-14b"],
       "Wan2.2-I2V-A14B-LowNoise-Q5_K_M.gguf": ["diffusion", "low", "wan2.2-i2v-14b"],
@@ -429,6 +441,32 @@ describe("video parts", () => {
     expect(turbo.cond!.inputs).not.toHaveProperty("first_frame");
     expect(turbo.sound!.inputs.vae).toEqual(["load_vae_audio", 0]);
     expect(JSON.stringify(turbo)).not.toContain("$");
+    // H3's ref2va checkpoints (Singularity) make clips too: a text clip from no references, and an image anchored as
+    // the first frame by a guide, as the clip editor anchors its clip.
+    const sing = STARTERS.find((s) => s.id === "singularity-h3-v2")!;
+    const refParts = [p("diffusion", "s.safetensors"), p("lora", "turbo.safetensors", "speed"), p("text_encoder", "vl.safetensors", "qwen3vl_32b"),
+      p("vae", "v.safetensors"), p("vae", "a.safetensors", "audio")];
+    const refText = fill(TEMPLATES.get("minimax-h3-ref2va")!, refParts, [], { negativePrompt: "", ...sing.defaults, prompt: "x", seed: 1, width: 1344, height: 768, ...at("minimax-h3-ref2va", 5, 1344, 768, 4) });
+    expect(refText.cond!.class_type).toBe("MiniMaxH3ReferenceToVideo");
+    expect(refText.cond!.inputs).toMatchObject({ length: 124, width: 1344, height: 768, audio_vae: ["load_vae_audio", 0] });
+    expect(Object.keys(refText)).not.toContain("anchor");
+    expect(refText.guide!.inputs).toEqual({ model: ["lora_speed", 0], conditioning: ["cond", 0] });
+    expect(JSON.stringify(refText)).not.toContain("$");
+    const refImage = fill(TEMPLATES.get("minimax-h3-ref2va")!, refParts, [], { negativePrompt: "", ...sing.defaults, prompt: "x", seed: 1, width: 1344, height: 768, image: "lyrica-image.png", ...at("minimax-h3-ref2va", 5, 1344, 768, 4) });
+    expect(refImage.anchor!.inputs).toEqual({ positive: ["cond", 0], vae: ["load_vae", 0], latent: ["cond", 1], image: ["load", 0], frame_idx: 0 });
+    expect(refImage.guide!.inputs.conditioning).toEqual(["anchor", 0]);
+    expect(refImage.sample!.inputs.latent_image).toEqual(["cond", 1]);
+    // fal's Realism People LoRA, a part of the Realism starters, goes on after the speed LoRA.
+    const withFal = fill(TEMPLATES.get("minimax-h3-ref2va")!, [...refParts, p("lora", "fal.safetensors", "realism")], [], { negativePrompt: "", ...sing.defaults, prompt: "x", seed: 1, width: 1344, height: 768, ...at("minimax-h3-ref2va", 5, 1344, 768, 4) });
+    expect(withFal.lora_realism!.inputs).toMatchObject({ model: ["lora_speed", 0], lora_name: "fal.safetensors" });
+    expect(withFal.guide!.inputs.model).toEqual(["lora_realism", 0]);
+    // Its trigger word starts the prompt, once; without the LoRA the prompt is as asked.
+    expect(withFal.cond!.inputs.prompt).toBe("r34l1sm x");
+    expect(fill(TEMPLATES.get("minimax-h3-ref2va")!, [...refParts, p("lora", "fal.safetensors", "realism")], [], { negativePrompt: "", ...sing.defaults, prompt: "r34l1sm x", seed: 1, width: 1344, height: 768, ...at("minimax-h3-ref2va", 5, 1344, 768, 4) }).cond!.inputs.prompt).toBe("r34l1sm x");
+    expect(refText.cond!.inputs.prompt).toBe("x");
+    expect(STARTERS.find((s) => s.id === "singularity-h3-v2-realism")!.parts.find((q) => q.slot === "realism")).toMatchObject({ repo: "fal/MiniMax-H3-Realism-People-LoRA" });
+    expect(STARTERS.find((s) => s.id === "singularity-h3-v2")!.parts.some((q) => q.slot === "realism")).toBe(false);
+
     // A template that needs a part the recipe lacks says so.
     expect(() => fill(TEMPLATES.get("minimax-h3")!, [p("diffusion", "h3.safetensors"), p("vae", "v.safetensors")], [], { ...h3.defaults, prompt: "x", seed: 1, width: 1344, height: 768, ...at("minimax-h3", 5, 1344, 768) })).toThrow(/nothing for \$clip/);
   });
@@ -454,6 +492,11 @@ describe("long videos", () => {
   it("chains H3 clips of at most 15 seconds, each next one starting from the last 22 frames", () => {
     expect(h3.continuation).toMatchObject({ overlap: 22, clipSeconds: 15 });
     expect(TEMPLATES.has("minimax-h3-continue")).toBe(false);
+    // H3's ref2va checkpoints (Singularity) chain the same way, from references rather than a first frame.
+    const ref = TEMPLATES.get("minimax-h3-ref2va")!;
+    expect(ref.continuation).toMatchObject({ overlap: 22, clipSeconds: 15, promptPrefix: h3.continuation!.promptPrefix });
+    expect(ref.continuation!.workflow.cond!.class_type).toBe("MiniMaxH3ReferenceToVideo");
+    expect(ref.continuation!.workflow.anchor!.inputs).toMatchObject({ image: ["tail", 0], audio: ["tail", 1], frame_idx: 0 });
     // Up to H3's longest clip is one clip, with no join to cut at; past it near-equal clips, whose new frames cover what was asked.
     expect(clipPlan(h3.video!, h3.continuation, 15)).toEqual([15]);
     for (const seconds of [16, 30, 60]) {
@@ -823,6 +866,27 @@ describe("recipes", () => {
     expect(ph3New.sample!.inputs.latent_image).toEqual(["create", 1]);
     expect(Object.keys(ph3New)).not.toContain("load");
     expect(JSON.stringify(ph3New)).not.toContain("$");
+
+    // MiniMax-H3-Image: P-H3-Image's shape on MiniMax's own conditioning node, with H3's 32B encoder, no shift, and its
+    // 6 distilled steps on a scheduler; a create at 2048², an edit at the picture's own shape scaled to 4 MP.
+    const h3iStarter = STARTERS.find((s) => s.id === "minimax-h3-image")!;
+    const h3iParts = [
+      { role: "diffusion" as const, slot: null, file: "i.safetensors", added: false },
+      { role: "text_encoder" as const, slot: "qwen3vl_32b", file: "vl.safetensors", added: false },
+      { role: "vae" as const, slot: null, file: "v.safetensors", added: false },
+    ];
+    const h3iEdit = fill(TEMPLATES.get("minimax-h3-image")!, h3iParts, [], { negativePrompt: "", ...h3iStarter.defaults, prompt: "x", count: 1, seed: 1, image: "lyrica-image.png", reference1: "lyrica-ref.png", seen: 1 });
+    expect(h3iEdit.edit!.class_type).toBe("MiniMaxH3ImageConditioning");
+    expect(h3iEdit.edit!.inputs).toMatchObject({ width: 0, height: 0, "images.image_1": ["fit", 0], "images.image_2": ["ref1", 0], clip: ["load_clip", 0] });
+    expect(h3iEdit.fit!.inputs).toMatchObject({ megapixels: 4 });
+    expect(h3iEdit.guide!.inputs).toEqual({ model: ["load_model", 0], conditioning: ["edit", 0] });
+    expect(h3iEdit.schedule!.inputs).toMatchObject({ steps: 6, scheduler: "simple" });
+    expect(Object.keys(h3iEdit)).not.toContain("shift");
+    expect(JSON.stringify(h3iEdit)).not.toContain("$");
+    const h3iNew = fill(TEMPLATES.get("minimax-h3-image")!, h3iParts, [], { negativePrompt: "", ...h3iStarter.defaults, prompt: "x", count: 1, seed: 1 });
+    expect(h3iNew.create!.inputs).toMatchObject({ width: 2048, height: 2048 });
+    expect(h3iNew.sample!.inputs.latent_image).toEqual(["create", 1]);
+    expect(JSON.stringify(h3iNew)).not.toContain("$");
 
     const krea = fill(TEMPLATES.get("krea2")!, [
       { role: "diffusion", slot: null, file: "k.safetensors", added: false },
@@ -1824,7 +1888,7 @@ describe("the image API", () => {
     // The test folder holds two of its parts at their download paths, but not its diffusion model.
     expect(z.parts.map((p: { present: boolean }) => p.present)).toEqual([false, true, true]);
     expect(body.starters.map((st: { id: string }) => st.id)).toEqual([
-      "cyberrealistic-krea2-4-fast", "cyberrealistic-krea2-4", "flux-schnell", "flux2-klein-4b", "flux2-klein-9b", "flux3-klein", "gonzalomo-krea2-4-fast", "gonzalomo-krea2-4", "juggernaut-xl-v9", "krea2-raw", "krea2-turbo-uncensored", "krea2-turbo", "kroma-fast", "kroma", "ltx-2.5-distilled", "minimax-h3-edit", "minimax-h3-turbo", "moss-image-edit", "moss-image", "p-h3-image-w4a8", "p-h3-image", "qwen-image-2.1-turbo", "qwen-image-2512", "qwen-image-edit", "qwen-image", "realism-stable-yogi-3-fast", "realism-stable-yogi-3", "realvisxl-v5", "scail-2", "sdxl", "seedvr2-3b", "seedvr2-7b",
+      "cobijada-h3-hybrid-realism-w4a8", "cobijada-h3-hybrid-realism", "cobijada-h3-hybrid-w4a8", "cobijada-h3-hybrid", "cyberrealistic-krea2-4-fast", "cyberrealistic-krea2-4", "flux-schnell", "flux2-klein-4b", "flux2-klein-9b", "flux3-klein", "gonzalomo-krea2-4-fast", "gonzalomo-krea2-4", "juggernaut-xl-v9", "krea2-raw", "krea2-turbo-uncensored", "krea2-turbo", "kroma-fast", "kroma", "ltx-2.5-distilled", "minimax-h3-edit", "minimax-h3-image-w4a8", "minimax-h3-image", "minimax-h3-turbo-realism-w6a8", "minimax-h3-turbo-w6a8", "minimax-h3-turbo", "moss-image-edit", "moss-image", "p-h3-image-w4a8", "p-h3-image", "qwen-image-2.1-turbo", "qwen-image-2512", "qwen-image-edit", "qwen-image", "realism-stable-yogi-3-fast", "realism-stable-yogi-3", "realvisxl-v5", "scail-2", "sdxl", "seedvr2-3b", "seedvr2-7b", "singularity-h3-v2-realism-w4a8", "singularity-h3-v2-realism", "singularity-h3-v2-w4a8", "singularity-h3-v2",
       "wan2.2-i2v-14b-q5", "wan2.2-i2v-14b", "wan2.2-t2v-14b-q5", "wan2.2-t2v-14b", "wan2.2-ti2v-5b", "z-image-turbo",
     ]);
   });
