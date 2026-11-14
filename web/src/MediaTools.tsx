@@ -57,7 +57,7 @@ type Row = { path: string; draft: string; state: "waiting" | "named" | "kept" | 
 
 /**
  * Auto-name: each image's or clip's suggested name, asked for a few at a time and shown as it comes, each editable.
- * A name a person chose is kept, with no model asked, unless **Rename chosen names too** is ticked (off each time the drawer
+ * A name a person chose is kept, with no model asked, unless **Overwrite existing names** is ticked (off each time the drawer
  * opens). **Rename** renames those whose name changed; one left as it was, or emptied, stays as it is. Closing stops
  * the asking.
  */
@@ -73,13 +73,16 @@ export function AutoNameDrawer({ base, paths, links, onClose, onRenamed }: {
   const live = useRef(true);
   /** The asks under way: each batch stops when the drawer closes, and the chosen names' when the box is unticked. */
   const batches = useRef<{ on: boolean; chosen: boolean }[]>([]);
+  // The parent may pass a new onClose on any render; only closing the drawer stops the asking.
+  const close = useRef(onClose);
+  close.current = onClose;
   useEffect(() => {
     live.current = true;
     ref.current?.focus();
-    const key = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    const key = (e: KeyboardEvent) => e.key === "Escape" && close.current();
     addEventListener("keydown", key);
     return () => { live.current = false; for (const b of batches.current) b.on = false; removeEventListener("keydown", key); };
-  }, [onClose]);
+  }, []);
   // Each file on its own ask, a few at once (lyricad's own AUTO_NAME_AT_ONCE), so each name shows as it comes and
   // closing stops the rest.
   const ask = (list: string[], chosen: boolean) => {
@@ -150,7 +153,7 @@ export function AutoNameDrawer({ base, paths, links, onClose, onRenamed }: {
         </div>
         <form className="drawer-body" onSubmit={(e) => { e.preventDefault(); if (changes.length && !bad && !busy) void rename(); }}>
           <label className="check" title="Off, only camera, screenshot and random names are renamed.">
-            <input type="checkbox" checked={all} disabled={busy} onChange={(e) => tick(e.target.checked)} /> Rename chosen names too
+            <input type="checkbox" checked={all} disabled={busy} onChange={(e) => tick(e.target.checked)} /> Overwrite existing names
           </label>
           <p className="muted" role="status">{naming ? <>Naming <span className="num">{rows.length - naming}</span> of <span className="num">{rows.length}</span>…</>
             : <><span className="num">{changes.length}</span> to rename{kept ? <>, <span className="num">{kept}</span> kept</> : null}</>}</p>

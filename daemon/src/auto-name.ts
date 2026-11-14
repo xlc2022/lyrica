@@ -40,7 +40,7 @@ const noiseToken = (t: string) => /^\d+$/.test(t)
  * Whether a file's name looks made up by a machine (a camera's IMG_0042, a screenshot's date, a hash, a UUID, a
  * random token, "image (1)") rather than chosen by a person: every word in its stem is a number, a camera or app
  * word, or random letters and digits, and at least one is a number, hash or token unless the stem is only default
- * words ("image", "Screenshot"), so "cover.png" stays. Auto-name renames only these unless the user ticks **Rename chosen names too**.
+ * words ("image", "Screenshot"), so "cover.png" stays. Auto-name renames only these unless the user ticks **Overwrite existing names**.
  */
 export function machineName(name: string): boolean {
   const dot = name.lastIndexOf(".");

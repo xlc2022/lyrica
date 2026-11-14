@@ -1618,8 +1618,8 @@ test("the Files panel's Images: Sort orders the grid by date or name, and Auto-n
   const field = drawer.getByRole("textbox", { name: "New name for zebra.png" });
   await expect(field).toHaveValue("striped-horse.png");
   await expect(drawer.getByText("No model can look at images.")).toBeVisible();
-  // A chosen name is kept, and Rename chosen names too starts unticked.
-  const chosen = drawer.getByRole("checkbox", { name: "Rename chosen names too" });
+  // A chosen name is kept, and Overwrite existing names starts unticked.
+  const chosen = drawer.getByRole("checkbox", { name: "Overwrite existing names" });
   await expect(chosen).not.toBeChecked();
   await expect(drawer.getByText("Kept", { exact: true })).toBeVisible();
   await expect(drawer.getByRole("status")).toContainText("1 to rename, 1 kept");
