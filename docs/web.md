@@ -291,7 +291,7 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   (a confirm dialog), uploads and makes folders, and on images and clips names them with
   **Auto-name** (`AutoNameDrawer`, also in Project settings → Files: one
   `…/files/auto-name` ask per file, three in flight at once, shown as each answers, renamed with
-  `…/files/rename` only on Rename; a name a person chose shows **Kept** until **Chosen names**, unticked each time the
+  `…/files/rename` only on Rename; a name a person chose shows **Kept** until **Rename chosen names too**, unticked each time the
   drawer opens, asks again with `all`);
   dropping files on the panel uploads them to the folder last opened. On the Files, Images and Videos tabs the keys
   act while the panel was the last thing pressed or focused, never in a text field and never while a menu, dialog or

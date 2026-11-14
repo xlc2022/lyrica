@@ -884,7 +884,7 @@ documented in `daemon/src/api.ts`, "The Files panel".
   number, a camera, screenshot or app word such as `IMG`, `DSC`, `PXL`,
   `Screenshot`, `image`, a hash, a UUID or a random token); one a person chose
   comes back as it is with `kept` and no model is asked, unless `all` (the
-  drawer's **Chosen names**). The image's thumbnail (or the image itself
+  drawer's **Rename chosen names too**). The image's thumbnail (or the image itself
   without one; a clip's poster, and a clip without one can't be named) goes through `Models.callWithFallback("vision", …)` with
   the thread's CallContext, made local-only for a photo of the user (or an
   image it can't check, such as a GIF or a clip) unless the photo setting is Always or

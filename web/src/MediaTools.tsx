@@ -57,7 +57,7 @@ type Row = { path: string; draft: string; state: "waiting" | "named" | "kept" | 
 
 /**
  * Auto-name: each image's or clip's suggested name, asked for a few at a time and shown as it comes, each editable.
- * A name a person chose is kept, with no model asked, unless **Chosen names** is ticked (off each time the drawer
+ * A name a person chose is kept, with no model asked, unless **Rename chosen names too** is ticked (off each time the drawer
  * opens). **Rename** renames those whose name changed; one left as it was, or emptied, stays as it is. Closing stops
  * the asking.
  */
@@ -149,8 +149,8 @@ export function AutoNameDrawer({ base, paths, links, onClose, onRenamed }: {
           <button type="button" className="icon sm" aria-label="Close" onClick={onClose}><Icon name="close" /></button>
         </div>
         <form className="drawer-body" onSubmit={(e) => { e.preventDefault(); if (changes.length && !bad && !busy) void rename(); }}>
-          <label className="check" title="Also rename files whose names look chosen by a person. Off, only camera, screenshot and random names are renamed.">
-            <input type="checkbox" checked={all} disabled={busy} onChange={(e) => tick(e.target.checked)} /> Chosen names
+          <label className="check" title="Off, only camera, screenshot and random names are renamed.">
+            <input type="checkbox" checked={all} disabled={busy} onChange={(e) => tick(e.target.checked)} /> Rename chosen names too
           </label>
           <p className="muted" role="status">{naming ? <>Naming <span className="num">{rows.length - naming}</span> of <span className="num">{rows.length}</span>…</>
             : <><span className="num">{changes.length}</span> to rename{kept ? <>, <span className="num">{kept}</span> kept</> : null}</>}</p>

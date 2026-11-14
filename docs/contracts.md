@@ -354,7 +354,7 @@ type Task = "chat" | "code" | "subagent.cheap" | "subagent.strong" | "compaction
 // vision (Look at images): its own list only, of models with vision; no task follows it. A subagent whose model can't see
 // an image switches to its first model up (with tools), else to a local model with vision (visionList, extension/src/delegate/runs.ts).
 // The Files panel's Auto-name (POST …/files/auto-name, daemon/src/auto-name.ts) calls it too, one image (or clip's poster) per call, up to three at once, only for names a
-// machine made up unless the user ticks Chosen names, with the thread's context, made local-only for a photo of the user unless the photo setting allows the cloud.
+// machine made up unless the user ticks Rename chosen names too, with the thread's context, made local-only for a photo of the user unless the photo setting allows the cloud.
 // code (Coding) defaults to { same: "subagent.strong" } in new tables and
 // populated saved presets missing it, subject to the one-level Same as rule.
 // A thread's code list wins; its chat override never supplies code's fallback.
