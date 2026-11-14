@@ -1,6 +1,8 @@
 // The Image models tab's pure parts (src/ImageModels.tsx): a host's recipes and parts as host/API.md gives them, the
 // words for them, the rows they make, and what deleting one would delete. Kept apart so a test can check them.
 
+import type { ModelsPage } from "./api.ts";
+
 export type Role = "checkpoint" | "diffusion" | "text_encoder" | "vae" | "lora" | "upscaler" | "unknown";
 
 /** An image model file in a host's models folder (host/API.md, "Parts"). */
@@ -173,3 +175,14 @@ export function loaderWords(
   }
   return out;
 }
+
+/**
+ * The image models on plain endpoints and plans: no parts, so one line each. A model switched off in its endpoint's list
+ * isn't one: no task list, picker or library shows it, and its switches would find no model to change.
+ */
+export const plainModels = (p?: ModelsPage) => (p?.endpoints ?? []).filter((ep) => ep.api !== "host")
+  .flatMap((ep) => ep.models.filter((m) => (m.image || m.edit || m.upscale) && m.status !== "gone" && !m.disabled).map((m) => ({ ep, m })));
+
+/** Models on keyed endpoints with an image provider that don't make or edit images yet, and aren't switched off: what Generate and Edit can switch on. */
+export const moreCloud = (p?: ModelsPage) => (p?.endpoints ?? []).filter((ep) => ep.kind === "cloud" && ep.api === "openai-compatible" && ep.hasApiKey)
+  .flatMap((ep) => ep.models.filter((m) => m.status !== "gone" && !m.disabled && !m.image && !m.edit && !m.upscale && !m.embedding && !m.transcribe && !m.speak).map((m) => ({ ep, m })));

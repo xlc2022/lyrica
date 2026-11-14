@@ -1,6 +1,7 @@
 // A host's recipes and parts in words (web/src/images.ts), as the Image models tab shows them.
 import { describe, expect, it } from "vitest";
-import { addableRoles, defaultsWords, deletePlan, loaderWords, missingOf, recipeFiles, recipeRows, starredFirst, withLora, type HostPart, type HostRecipe } from "../src/images.ts";
+import { addableRoles, defaultsWords, deletePlan, loaderWords, missingOf, moreCloud, plainModels, recipeFiles, recipeRows, starredFirst, withLora, type HostPart, type HostRecipe } from "../src/images.ts";
+import type { ModelsPage } from "../src/api.ts";
 
 const GB = 2 ** 30;
 const recipe = (r: Partial<HostRecipe>): HostRecipe => ({
@@ -123,5 +124,17 @@ describe("loaderWords", () => {
 
   it("gives a checkpoint's own text encoder and VAE unless the recipe adds others", () => {
     expect(loaderWords([{ role: "checkpoint", slot: null, file: "sdxl.safetensors" }], [], [])).toEqual({ model: "sdxl", clip: "sdxl", vae: "sdxl" });
+  });
+});
+
+describe("plain and other cloud models", () => {
+  // A model switched off in its endpoint's list has no switches to change: the daemon finds no model by its ID.
+  const page = (models: object[]) => ({ endpoints: [{ id: "e1", name: "OpenRouter", kind: "cloud", api: "openai-compatible", hasApiKey: true, models }] }) as unknown as ModelsPage;
+  const m = (id: string, x: object = {}) => ({ id, modelId: id, status: "listed", ...x });
+
+  it("leaves out a model switched off in its endpoint's list", () => {
+    const p = page([m("on", { image: true }), m("off", { image: true, disabled: true }), m("chat"), m("chat-off", { disabled: true })]);
+    expect(plainModels(p).map((x) => x.m.id)).toEqual(["on"]);
+    expect(moreCloud(p).map((x) => x.m.id)).toEqual(["chat"]);
   });
 });
