@@ -748,6 +748,9 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   Image pill links to Image models.
   Each change PATCHes the offering's capabilities and reloads the Models
   page; controls are disabled for a shared endpoint's non-administrator.
+  A model switched off in its endpoint's list is in neither (`plainModels`
+  and `moreCloud` in `src/images.ts`): the daemon has no model by that ID
+  to change.
   These use ux §3's controls, §4's names and §6's model blocks.
   The facts line counts models, parts, hosts and the groups holding them,
   then links "<n> to review" when a host the user manages proposed
