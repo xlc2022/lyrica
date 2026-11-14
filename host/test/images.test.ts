@@ -1750,7 +1750,7 @@ describe("the image API", () => {
     // The test folder holds two of its parts at their download paths, but not its diffusion model.
     expect(z.parts.map((p: { present: boolean }) => p.present)).toEqual([false, true, true]);
     expect(body.starters.map((st: { id: string }) => st.id)).toEqual([
-      "flux-schnell", "juggernaut-xl-v9", "krea2-raw", "krea2-turbo-uncensored", "krea2-turbo", "ltx-2.5-distilled", "minimax-h3-edit", "minimax-h3-turbo", "p-h3-image-w4a8", "p-h3-image", "qwen-image-2.1-turbo", "qwen-image-edit", "qwen-image", "realism-stable-yogi-3-fast", "realism-stable-yogi-3", "realvisxl-v5", "scail-2", "sdxl", "seedvr2-3b", "seedvr2-7b",
+      "flux-schnell", "juggernaut-xl-v9", "krea2-raw", "krea2-turbo-uncensored", "krea2-turbo", "ltx-2.5-distilled", "minimax-h3-edit", "minimax-h3-turbo", "p-h3-image-w4a8", "p-h3-image", "qwen-image-2.1-turbo", "qwen-image-2512", "qwen-image-edit", "qwen-image", "realism-stable-yogi-3-fast", "realism-stable-yogi-3", "realvisxl-v5", "scail-2", "sdxl", "seedvr2-3b", "seedvr2-7b",
       "wan2.2-i2v-14b-q5", "wan2.2-i2v-14b", "wan2.2-t2v-14b-q5", "wan2.2-t2v-14b", "wan2.2-ti2v-5b", "z-image-turbo",
     ]);
   });

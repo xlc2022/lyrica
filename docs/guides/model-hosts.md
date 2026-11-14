@@ -552,6 +552,14 @@ list too if you like its images. A masked edit on it runs through
 LanPaint (a pinned ComfyUI node, GPL-3.0), which takes about two and a
 half times as long as a plain edit.
 
+The Qwen-Image 2512 starter is Qwen-Image's December 2025 release
+(Apache 2.0, a 20.4 GB fp8 model with the same encoder and VAE as the
+original): at the same 20 steps and CFG 4, about 70 seconds a 1328×1328
+image on a 3090, its people, skin and light look far more like a photo
+than **Qwen-Image (original)**'s soft, washed-out look, though they
+tend to look older than asked. The original stays listed; a model
+installed from it keeps its link to it.
+
 The RealVisXL V5.0 starter (one 6.9 GB SDXL checkpoint) is the one to
 pick for SDXL photos: it looks far more like a photograph than base
 SDXL with the same prompt, in about 10 seconds a 1 MP image on a 3090.
