@@ -581,7 +581,9 @@ They share Krea 2's own encoder and VAE, need a Civitai token (Downloads
   12 steps, euler; about 20 and 46 seconds.
 Their Civitai licences allow selling images (Kroma's and
 CyberRealistic's also allow commercial use of the model; GonzaLomo's
-images only).
+images only), and as Krea 2 derivatives they carry the Krea 2 Community
+License's content-filtering requirement, which the host doesn't meet by
+itself.
 
 The **MOSS-Image** starters (ComfyUI hosts; OpenMOSS's 5B model, Apache
 2.0, a 5.4 GB int8 model with a 7.3 GB Qwen3.5 9B encoder) are good at
@@ -592,6 +594,13 @@ in twice the time). **MOSS-Image Edit** adds a community edit LoRA (its
 author states no licence; Comfy-Org rehosts it) and edits one image at
 about 1 MP in 25 seconds; it follows "Change only the X to Y. Keep …
 unchanged." best.
+
+**Realism by Stable Yogi Moss v2** is a photoreal fine-tune of
+MOSS-Image from Civitai (its 3.6 GB INT4-ConvRot file, with MOSS-Image's
+encoder and small VAE; ComfyUI hosts; a Civitai token): at its maker's
+8 steps of er_sde with the beta scheduler and CFG 1, a 1024×1536 photo
+takes about 5 seconds on a 3090, far more photographic than MOSS-Image
+itself. Its licence allows no commercial use and asks for credit.
 
 The Qwen-Image 2512 starter is Qwen-Image's December 2025 release
 (Apache 2.0, a 20.4 GB fp8 model with the same encoder and VAE as the

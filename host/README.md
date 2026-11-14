@@ -432,6 +432,9 @@ per host, and Lyrica's router filters create tiers by it.
   a 0.2 second pass; ComfyUI only) and a fast one (1024×1024; Kroma's
   W8A8 file is ComfyUI only), at their makers' steps (8, 6 with the beta
   scheduler, 12) and CFG 1, on Krea 2's own encoder and VAE.
+  Realism by Stable Yogi Moss v2 is a Civitai fine-tune of MOSS-Image
+  (INT4-ConvRot, 3.6 GB; no commercial use, credit asked) on the
+  `moss-image` template at its maker's 8 steps, er_sde/beta, CFG 1.
   MOSS-Image (Apache 2.0, OpenMOSS's 5B with a Qwen3.5 9B encoder and
   FLUX.2's small VAE) has two starters on the `moss-image` templates:
   one creates (with layer-skip guidance on layer 22, as ComfyUI's
