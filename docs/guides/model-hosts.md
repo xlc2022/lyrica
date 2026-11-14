@@ -614,20 +614,17 @@ an image takes about 13 seconds (4 at 1024×1024), with ComfyUI holding
 about 23 GB of VRAM. Past about 2.4 megapixels it starts repeating the
 subject in wide images, so don't raise it further.
 
-The P-H3-Image starters (ComfyUI
-hosts) create and edit pictures with PrunaAI's fine-tune of MiniMax H3:
-the int8 one is about 29.5 GB of files and peaks near 31 GB of VRAM, so
-it wants a 32 GB or
-larger card; the w4a8 one is about 20 GB and peaks near 21 GB, so it fits
-24 GB when nothing else is loaded (on a 3090 a 2912×2912 image takes
-about 25 seconds at a 19 GB peak). It makes one image per request, at
-8 megapixels by default, as PrunaAI recommends: smaller ones look
-oversharpened. Both
-need ComfyUI 0.44 or later, so update the host before adding them (an
-Update, or `git pull && host/install.sh`), which rebuilds its ComfyUI
-image (now 0.45.3); an older image doesn't have their nodes.
-Their weights are under the MiniMax H3 Community License, as H3 Turbo's
-are.
+The P-H3-Image starters (ComfyUI hosts) create and edit pictures with
+PrunaAI's fine-tune of MiniMax H3: the int8 one is about 29.5 GB of files
+and peaks near 31 GB of VRAM, so it wants a 32 GB or larger card; the w4a8
+one is about 20 GB and peaks near 21 GB, so it fits 24 GB when nothing
+else is loaded (on a 3090 a 2912×2912 image takes about 25 seconds at a 19
+GB peak). It makes one image per request, at 8 megapixels by default, as
+PrunaAI recommends: smaller ones look oversharpened. Both need ComfyUI
+0.44 or later, so update the host before adding them (an Update, or `git
+pull && host/install.sh`), which rebuilds its ComfyUI image (now 0.45.3);
+an older image doesn't have their nodes. Their weights are under the
+MiniMax H3 Community License, as H3 Turbo's are.
 
 The MiniMax-H3-Image starters (ComfyUI hosts) create and edit pictures
 with MiniMax's own picture model: 2048×2048 by default, 6 steps, up to 3
