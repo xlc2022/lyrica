@@ -15,6 +15,11 @@ export const AUTO_NAME_LIMIT = 50;
  * side by side.
  */
 export const AUTO_NAME_AT_ONCE = 3;
+/**
+ * How long one file's call may take, waiting for a local server's slot included, before it ends as that file's error:
+ * a call that never answers would otherwise hold its row on Looking… and its slot for good.
+ */
+export const AUTO_NAME_TIMEOUT_MS = 180_000;
 const IMAGE = /\.(png|jpe?g|gif|webp)$/i;
 /** A clip, named from its poster (the thumbnail kept when it was made); one without a poster can't be named. */
 const VIDEO = /\.(mp4|webm)$/i;
@@ -84,7 +89,7 @@ const dayOf = (date: Date) => `${date.getFullYear()}-${date.getMonth() + 1}-${da
  * models are the thread's; a portrait counts as local-only unless the user's photo setting is Always, or Ask
  * with today's approval given.
  */
-export async function autoNames(models: Models, workspace: Workspace, t: { userId: string; pool: Pool; threadId: string; coordinates?: boolean }, paths: string[], o: { all?: boolean; now?: Date } = {}): Promise<AutoName[]> {
+export async function autoNames(models: Models, workspace: Workspace, t: { userId: string; pool: Pool; threadId: string; coordinates?: boolean }, paths: string[], o: { all?: boolean; now?: Date; timeoutMs?: number } = {}): Promise<AutoName[]> {
   const now = o.now ?? new Date();
   const files = workspace.files(t);
   const images = workspace.imageFiles(t);
@@ -122,7 +127,7 @@ export async function autoNames(models: Models, workspace: Workspace, t: { userI
         : whole ? { data: Buffer.from(whole.bytes).toString("base64"), mimeType: whole.type } : undefined;
       if (!sent) throw new Error(video ? "it has no poster to look at" : "it couldn't be read as an image");
       const ctx: CallContext = portrait && !cloudPhotos() ? { ...base, localOnly: true } : base;
-      const stem = stemOf(await ask(models, ctx, t, sent));
+      const stem = stemOf(await inTime(o.timeoutMs ?? AUTO_NAME_TIMEOUT_MS, (signal) => ask(models, ctx, t, sent, signal)));
       if (!stem) throw new Error("the model gave no name");
       const ext = (posix.extname(name) || "").toLowerCase();
       const taken = await namesIn(posix.dirname(path));
@@ -141,12 +146,22 @@ export async function autoNames(models: Models, workspace: Workspace, t: { userI
   return out;
 }
 
+/** `call` with a signal that stops it after `ms`; it ends then even if the call ignores its signal. */
+async function inTime<T>(ms: number, call: (signal: AbortSignal) => Promise<T>): Promise<T> {
+  const stop = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => { stop.abort(); reject(new Error(`the model didn't answer in ${Math.round(ms / 1000)} seconds`)); }, ms);
+  });
+  try { return await Promise.race([call(stop.signal), late]); } finally { clearTimeout(timer); }
+}
+
 /**
  * One call to the thread's `vision` model with one image; the next in the list answers when one's machine is away.
  * No thinking is asked for (no `reasoning`), so a model that can turn it off answers at once; one whose provider
  * requires it is asked again at medium, or the nearest level it has (extension/src/models.ts).
  */
-async function ask(models: Models, ctx: CallContext, t: { userId: string; pool: Pool; threadId: string }, image: { data: string; mimeType: string }): Promise<string> {
+async function ask(models: Models, ctx: CallContext, t: { userId: string; pool: Pool; threadId: string }, image: { data: string; mimeType: string }, signal: AbortSignal): Promise<string> {
   const runtime = await modelRuntimeFor(models, ctx);
   const reply = await models.callWithFallback("vision", ctx, {}, async (resolution) => {
     const { model } = piModelFor(runtime, models, "vision", ctx, resolution);
@@ -154,7 +169,7 @@ async function ask(models: Models, ctx: CallContext, t: { userId: string; pool: 
     const { reply: r, pace } = await timedReply(runtime.streamSimple(model, {
       systemPrompt: SYSTEM,
       messages: [{ role: "user", content: [{ type: "text", text: "Name this image." }, { type: "image", ...image }], timestamp: Date.now() }],
-    }), model.contextWindow);
+    }, { signal }), model.contextWindow);
     if (r.stopReason === "error") throw new Error(r.errorMessage ?? "the vision model failed");
     if (pace) models.recordPace(t.userId, t.threadId, pace, "vision", t.pool);
     return r;

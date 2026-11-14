@@ -1645,6 +1645,49 @@ test("the Files panel's Images: Sort orders the grid by date or name, and Auto-n
   await noHorizontalScroll(page);
 });
 
+test("Auto-name names a batch of 17 even when the page around its drawer renders again while the names are coming", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  await newThread(page, "General");
+  await send(page, "hello batch");
+  await expect(page.getByText("You said: hello batch")).toBeVisible();
+  const threadId = decodeURIComponent(location_of(page).split("/t/general/")[1]!.split("/")[0]!);
+  const base = `/api/u/${userId}/threads/general/${encodeURIComponent(threadId)}/files`;
+  const images = Array.from({ length: 17 }, (_, i) => ({ name: `IMG_${1000 + i}.png`, path: `/workspace/uploads/IMG_${1000 + i}.png`, kind: "file", size: 120, modified: `2026-11-01T10:${String(i).padStart(2, "0")}:00.000Z`, source: "uploaded" }));
+  // The answers wait until the page has rendered again under the drawer, as a reload on window focus does.
+  let release!: () => void;
+  const gate = new Promise<void>((r) => { release = r; });
+  let imageLists = 0;
+  await page.route(`**${base}**`, async (route) => {
+    const url = new URL(route.request().url());
+    const path = url.pathname.slice(base.length);
+    if (path === "") return route.fulfill({ json: { roots: [{ path: "/workspace", writable: true, kind: "thread" }], dir: url.searchParams.get("dir") ?? "/workspace", entries: [], more: false } });
+    if (path === "/images") { imageLists++; return route.fulfill({ json: images }); }
+    if (path === "/videos") return route.fulfill({ json: [] });
+    if (path === "/auto-name") {
+      const { paths: [p] } = route.request().postDataJSON() as { paths: string[] };
+      await gate;
+      return route.fulfill({ json: [{ path: p, name: `named-${p!.slice(p!.lastIndexOf("_") + 1)}` }] });
+    }
+    return route.fulfill({ status: 404, json: { error: "not here" } });
+  });
+  await page.getByRole("link", { name: "Files and images" }).click();
+  const panel = phone(page) ? page.locator(".files-page") : page.getByRole("complementary");
+  await panel.getByRole("tab", { name: "Images" }).click();
+  const grid = panel.locator(".igrid");
+  for (const i of images) await grid.getByRole("button", { name: i.name, exact: true }).click({ modifiers: ["ControlOrMeta"] });
+  await panel.getByRole("toolbar", { name: "Selection" }).getByRole("button", { name: "Actions for the selection" }).click();
+  await page.getByRole("menu", { name: "File actions" }).getByRole("menuitem", { name: "Auto-name 17…" }).click();
+  const drawer = page.getByRole("complementary", { name: "Auto-name" });
+  await expect(drawer.getByText("Looking…")).toHaveCount(17);
+  const before = imageLists;
+  await page.evaluate(() => dispatchEvent(new Event("focus")));
+  await expect.poll(() => imageLists).toBeGreaterThan(before);
+  release();
+  await expect(drawer.getByText("Looking…")).toHaveCount(0);
+  await expect(drawer.getByRole("textbox", { name: "New name for IMG_1016.png" })).toHaveValue("named-1016.png");
+  await expect(drawer.getByRole("button", { name: "Rename 17" })).toBeEnabled();
+});
+
 test("the Files panel's keys: Ctrl+C and Ctrl+V copy the selection into the folder, a pasted screenshot uploads, and Delete asks first; on a phone the menu's Copy and Paste", async ({ page, baseURL, context }) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   const userId = await enter(page, baseURL!);

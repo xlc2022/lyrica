@@ -6,6 +6,7 @@ vi.mock("@lyrica/extension", () => ({
   modelRuntimeFor: async () => ({ streamSimple: () => "stream" }),
   piModelFor: () => ({ model: { contextWindow: 8192 } }),
   timedReply: async () => {
+    if (hang) return new Promise(() => {});
     flight.now++; flight.most = Math.max(flight.most, flight.now);
     await new Promise((r) => setTimeout(r, 5));
     flight.now--;
@@ -13,6 +14,7 @@ vi.mock("@lyrica/extension", () => ({
   },
 }));
 let reply = "Red Bicycle by a Canal.";
+let hang = false;
 const flight = { now: 0, most: 0 };
 const { AUTO_NAME_AT_ONCE, autoNames, freeName, machineName, stemOf } = await import("../src/auto-name.ts");
 
@@ -33,7 +35,7 @@ function setup(o: { portrait?: boolean; policy?: "never" | "ask" | "always"; app
     }),
     settings: () => ({ photoCloudPolicy: () => o.policy ?? "ask", photoCloudApproved: () => !!o.approved }),
   };
-  return { contexts, run: (paths: string[], all?: boolean) => autoNames(models as never, workspace as never, { userId: "u", pool: "general", threadId: "t" }, paths, { all }) };
+  return { contexts, run: (paths: string[], all?: boolean, timeoutMs?: number) => autoNames(models as never, workspace as never, { userId: "u", pool: "general", threadId: "t" }, paths, { all, ...(timeoutMs ? { timeoutMs } : {}) }) };
 }
 
 describe("auto-name", () => {
@@ -117,6 +119,15 @@ describe("auto-name", () => {
     expect(stemOf("café-terrace.jpg")).toBe("cafe-terrace");
     expect(stemOf("   ")).toBe("");
     expect(freeName("a", ".png", new Set(["a.png", "a-2.png"]))).toBe("a-3.png");
+  });
+
+  it("ends a call that never answers as that image's error, so a batch always finishes", async () => {
+    hang = true;
+    const { run } = setup({ names: [] });
+    const out = await run(Array.from({ length: 17 }, (_, i) => `/workspace/IMG_${1000 + i}.png`), false, 20);
+    hang = false;
+    expect(out).toHaveLength(17);
+    expect(out.every((x) => x.error === "the model didn't answer in 0 seconds")).toBe(true);
   });
 
   it("reports a reply with no name as that image's error", async () => {
