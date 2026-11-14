@@ -93,7 +93,8 @@ export function classify(names: string[], shapes: Record<string, number[]>, file
     const wanDown = Object.entries(shapes).find(([n]) => /blocks[._]\d+[._]self[._]attn[._]q[._.]lora_(down|A)\b/.test(n))?.[1];
     // Qwen-Image 2.1's LoRAs have Qwen-Image's tensor names; the trainer's metadata, or the file name, says which.
     const qwen21 = /qwen[_-]?image[_-]?2/.test(meta.ss_base_model_version ?? "") || /qwen[_-]?image[_-]?2[._-]?1/.test(name);
-    const arch = /minimax[_-]?h3/.test(name) ? h3
+    // H3's LoRAs are told by their keys (attention as one qkv_proj, and the token refiner) when the name doesn't say.
+    const arch = /minimax[_-]?h3/.test(name) || (has(/(^|\.)blocks[._]\d+[._]attn[._]qkv_proj[._]lora_(A|B|up|down)\b/) && has(/(^|\.)token_refiner[._]/)) ? h3
       : has(/blocks[._]\d+[._](self|cross)[._]attn[._][qkvo]\b/) ? (wanDown?.[1] === 3072 ? "wan2.2-5b" : "wan")
       : qwen21 ? "qwen-image-2.1"
       : has(/double_blocks|single_blocks/) ? "flux"
@@ -133,8 +134,10 @@ export function classify(names: string[], shapes: Record<string, number[]>, file
   if (hasBare(/^txtfusion\.projector\.weight$/)) return { role: "diffusion", slot: null, arch: "krea2" };
   if (hasBare(/^input_blocks\.0\.0\./) && hasBare(/^label_emb\./)) return { role: "diffusion", slot: null, arch: "sdxl" };
   // Video models, by the keys ComfyUI's model detection reads.
-  // P-H3-Image is H3 fine-tuned for stills, its timestep branch a precomputed table.
+  // P-H3-Image is H3 fine-tuned for stills, its timestep branch a precomputed table. MiniMax-H3-Image, MiniMax's own
+  // picture model, has that table and no audio stream at all.
   if (hasBare(/^video_patch_proj\.weight$/) && hasBare(/^audio_patch_proj\.weight$/)) return { role: "diffusion", slot: null, arch: hasBare(/^adaln_t_table$/) ? "p-h3-image" : h3 };
+  if (hasBare(/^video_patch_proj\.weight$/) && hasBare(/^adaln_t_table$/)) return { role: "diffusion", slot: null, arch: "minimax-h3-image" };
   if (hasBare(/^adaln_single\.emb\.timestep_embedder\.linear_1\.bias$/) && hasBare(/^audio_adaln_single\.linear\.weight$/)) return { role: "diffusion", slot: null, arch: "ltx2" };
   // SCAIL-2: Wan 2.1 I2V 14B with its own patch embeddings for the pose and mask videos.
   if (hasBare(/^head\.modulation$/) && hasBare(/^patch_embedding_pose\.weight$/)) return { role: "diffusion", slot: null, arch: "scail2" };
@@ -186,9 +189,12 @@ export function classify(names: string[], shapes: Record<string, number[]>, file
     }
   }
 
-  // Video VAEs, by the keys ComfyUI's VAE loader reads; an audio VAE takes the audio slot. P-H3-Image's has H3's
-  // encoder and a single-frame decoder, 768 wide at its output.
-  if (has(/^decoder\.proj_out\.weight$/) && shapes["decoder.proj_out.weight"]?.[0] === 768) return { role: "vae", slot: null, arch: "p-h3-image" };
+  // Video VAEs, by the keys ComfyUI's VAE loader reads; an audio VAE takes the audio slot. P-H3-Image's and
+  // MiniMax-H3-Image's have H3's encoder and a single-frame decoder, 768 wide at its output: MiniMax-H3-Image's decoder
+  // is 1024 wide inside, P-H3-Image's 2048.
+  if (has(/^decoder\.proj_out\.weight$/) && shapes["decoder.proj_out.weight"]?.[0] === 768) {
+    return { role: "vae", slot: null, arch: shapes["decoder.x_embedder.weight"]?.[0] === 1024 ? "minimax-h3-image" : "p-h3-image" };
+  }
   if (has(/^decoder\.transformer_blocks\.0\.scale1$/) && has(/^encoder\.down\.5\.block\.0\.conv1\.weight$/)) return { role: "vae", slot: null, arch: "minimax-h3" };
   if (has(/^pre_block\.attn\.zero_k_bias$/)) return { role: "vae", slot: "audio", arch: "minimax-h3" };
   if (has(/^decoder\.up_blocks\.0\.res_blocks\.0\.conv1\.conv\.weight$/) || has(/^decoder\.conv_in_x_t\.weight$/)) return { role: "vae", slot: null, arch: "ltx2" };

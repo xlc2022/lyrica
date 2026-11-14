@@ -379,6 +379,25 @@ per host, and Lyrica's router filters create tiers by it.
   w4a8 (about 20 GB, about 21 GB). Its weights are under the MiniMax H3
   Community License, as H3's are. It needs ComfyUI 0.44 or later, which
   the host's ComfyUI image carries.
+  MiniMax-H3-Image (ComfyUI hosts only) is MiniMax's own picture model on
+  H3: it creates (2048×2048 by default) and edits with up to 3 references
+  in 6 steps without CFG, one image per request. Its text encoder is H3
+  Turbo's file. Two starters: int8 (about 21 GB of its own) and w4a8
+  (about 12.5 GB). Its licence, the MiniMax-H3-Image Community License,
+  excludes the same places as H3's and also needs MiniMax's written
+  consent above $1M yearly revenue or to host it as a service for others.
+  It needs ComfyUI 0.45 or later.
+  More H3 video starters: MiniMax H3 Turbo w6a8 (Comfy-Org's 16 GB w6a8
+  file with lightx2v's 4-step 768p LoRA, at 1344×768, sized for a 24 GB
+  card), Cobijada H3 Hybrid (int8 and w4a8; a community merge of the
+  fl2va and ref2va checkpoints, uncensored, on the H3 Turbo template so it
+  chains to 60 s) and Singularity H3 v2 (int8 and w4a8; the most used
+  community fine-tune, ref2va only, on the `minimax-h3-ref2va` template
+  with the ref2v 4-step LoRA; it chains to 60 s as Turbo does). Each of
+  these also comes as a Realism starter with fal's Realism People LoRA
+  (0.12 GiB, strength 1), whose trigger word r34l1sm the host puts at the
+  start of every prompt. The community files say
+  Apache 2.0, but as H3 derivatives they come under H3's licence.
   Krea 2 Raw is Krea 2's undistilled model beside Turbo, sharing its
   encoder and VAE: 52 steps at CFG 3.5 (Krea's own figures) with a negative prompt, against
   Turbo's 8 at CFG 1, so an image takes several times as long.
