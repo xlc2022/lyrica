@@ -1036,8 +1036,11 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   megapixels and it/s in its tooltip, and the images or clips it made in
   the Output cell in place of zero tokens; a speech model's seconds of audio
   heard or spoken there instead, as s, min or h) and recorded fallbacks.
-  Series take the chart colours by label; past eight copies the least used are
-  Other. The legend is `Legend`: each name a toggle, and `useHidden` keeps the
+  Series take the chart colours by `colourSlots`: each copy keeps the colour
+  this browser gave it (`localStorage`, `lyrica.status.modelColours`), and a
+  new one takes a free colour no remembered copy has, so a window that adds or
+  drops a model repaints none; past twelve copies the least used are Other, in
+  grey, named in its legend tooltip and their rows' tooltips. The legend is `Legend`: each name a toggle, and `useHidden` keeps the
   names taken off in `localStorage` (`lyrica.status.hiddenModels`); their calls
   leave all four charts, the facts line counts the rest "of" the whole, and
   their table rows stay, muted. Colours come from every series, so they don't
