@@ -532,9 +532,19 @@ test("\"/\" in the message box lists the commands, and each works a control that
   // SHOTS=<dir> keeps pictures for a pull request.
   const shot = async (name: string) => { if (process.env.SHOTS) await page.screenshot({ path: `${process.env.SHOTS}/${name}-${phone(page) ? 390 : 1280}.png` }); };
   await message.fill("/");
-  await expect(menu.getByRole("option")).toHaveCount(5);
+  await expect(menu.getByRole("option")).toHaveCount(9); // no Context before the first turn
   await expect(message).toHaveAttribute("aria-expanded", "true");
   await shot("commands");
+  // A short window (a phone with its keyboard up): the menu scrolls, and Up from the first row brings the last into sight.
+  const size = page.viewportSize()!;
+  await page.setViewportSize({ width: size.width, height: 480 });
+  await message.press("ArrowUp");
+  await expect(menu.getByRole("option", { name: /^\/new/ })).toBeInViewport();
+  await expect(menu.getByRole("option", { name: /^\/new/ })).toHaveAttribute("aria-selected", "true");
+  await shot("commands-short");
+  await message.press("ArrowDown");
+  await expect(menu.getByRole("option").first()).toBeInViewport();
+  await page.setViewportSize(size);
   // "/" and Enter never compact: picking /compact waits for what to keep.
   await message.press("Enter");
   await expect(message).toHaveValue("/compact ");
@@ -561,11 +571,13 @@ test("\"/\" in the message box lists the commands, and each works a control that
   await message.fill("/mode auto");
   await message.press("Enter");
   await expect(page.locator(".mode-picker")).toContainText("Auto");
-  // /model opens the header's picker.
+  // /model opens the header's picker.  /rename names the thread.
   await message.fill("/model");
   await message.press("Enter");
   await expect(page.getByRole("dialog", { name: /^Model for/ })).toBeVisible();
   await page.keyboard.press("Escape");
+  await send(page, "/rename Garden plans");
+  await expect(page.getByRole("heading", { level: 1, name: "Garden plans" })).toBeVisible();
   // /compact asks lyricad to compact; Send runs a command line as Enter does (a phone's Enter is a new line).
   const compacted = page.waitForResponse((r) => r.url().endsWith("/compact") && r.request().method() === "POST");
   await send(page, "/compact keep the garden plan");

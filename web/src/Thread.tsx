@@ -106,8 +106,9 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
   useEffect(() => { if (t.live.reload || t.live.tools) noteActivity(`${pool}/${threadId}`); }, [t.live.reload, t.live.tools, noteActivity, pool, threadId]);
   // A double-click on the title renames the thread in place (docs/ux.md §6).
   const [renaming, setRenaming] = useState(false);
-  // Bumped by /model to open the header's model picker.
+  // Bumped by /model and /context to open the header's picker and popover.
   const [openModel, setOpenModel] = useState(0);
+  const [openContext, setOpenContext] = useState(0);
   const renameTo = (name: string) => patch<ThreadSummary>(base, { title: name }).then((x) => { summary.set(x); refreshThreads(); }, (e: Error) => setSendError(e.message));
   // Project (a project chat's header) toggles the project's overview beside the chat from the split width, and opens the page below it.
   const wide = useWide();
@@ -313,13 +314,15 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
   const menuNow = useMemo(() => menuAt && { ...menuAt, thread: listed ?? menuAt.thread }, [menuAt, listed]);
   // The message box's "/" commands (docs/ux.md §6, Commands in the message box): each works a control that has a home here.
   const commands = useMemo((): CommandEnv | undefined => settings.data && s && !s.subagent ? {
-    settings: settings.data, onSettings: changeSettings,
+    settings: settings.data, title: s.title ?? "", onSettings: changeSettings,
     setModel: (model) => patch<ThreadSettings>(`${base}/settings`, { models: { [settings.data!.code ? "code" : "chat"]: model } }).then(settings.set),
     openModel: () => setOpenModel((n) => n + 1),
+    ...(context ? { openContext: () => setOpenContext((n) => n + 1) } : {}),
+    rename: (title) => patch<ThreadSummary>(base, { title }).then((x) => { summary.set(x); refreshThreads(); }),
     compact: (notes) => post(`${base}/compact`, { notes }),
     // A project's threads are hers to start.
     ...(!s.project && !inProject?.project ? { newThread: () => void post<ThreadSummary>(u(userId, "threads"), { pool }).then((x) => { refreshThreads(); go({ page: "thread", userId, pool, threadId: x.id }); }, (e: Error) => setSendError(e.message)) } : {}),
-  } : undefined, [settings.data, settings.set, s, changeSettings, base, refreshThreads, inProject, userId, pool]);
+  } : undefined, [settings.data, settings.set, s, changeSettings, base, context, summary.set, refreshThreads, inProject, userId, pool]);
   if (!s && summary.error && gone.data) return <Tombstone userId={userId} pool={pool} data={gone.data} />;
 
   return (
@@ -336,7 +339,7 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
             {settings.data && <ModelBadge base={base} settings={settings.data} onChange={settings.set} readOnly={!!s?.subagent} opener={openModel} />}
             {pins.data && !s?.subagent && <PinnedBadge pins={pins.data} you={ctx.user.displayName} userId={ctx.user.id} pool={pool} />}
             {s && !s.subagent && !s.child && <GroupPicker ctx={ctx} base={base} summary={s} onChange={(x) => { summary.set(x); refreshThreads(); }} />}
-            {context && <ContextFact context={context} footer={phone && !isProject && usageProps ? <TokensFact {...usageProps} inline /> : undefined} />}
+            {context && <ContextFact context={context} opener={openContext} footer={phone && !isProject && usageProps ? <TokensFact {...usageProps} inline /> : undefined} />}
             {!!steps?.length && <ChecklistButton steps={steps} />}
             {!phone && usageProps && <TokensFact {...usageProps} />}
             {s?.project && overview.data && <ThreadsFact userId={userId} pool={pool} threadId={threadId} overview={overview.data} footer={phone && usageProps ? <TokensFact {...usageProps} inline /> : undefined} />}

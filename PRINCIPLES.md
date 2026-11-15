@@ -118,7 +118,7 @@ brake.
 | Thing | Budget |
 |---|---|
 | Model-facing tools | 50 or fewer |
-| Slash commands | 6 or fewer |
+| Slash commands | 12 or fewer |
 | Long-running processes | 1 daemon, plus Pi's TUI when in use |
 | Core extension | about 10,000 lines in `extension/src`, counting every line |
 | Docs | README, AGENTS, PRINCIPLES, DESIGN, the contracts, briefs, at most one page per component, and the operator guides in docs/guides/ |

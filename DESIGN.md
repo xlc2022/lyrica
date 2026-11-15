@@ -2791,6 +2791,11 @@ new evidence.
   commands, SSH). The budget still exists so that every tool has to justify
   itself. To 50 (the owner, 2026-11-10), when `browse` became the 31st
   counting the tools only sleep has.
+- **Slash-command budget raised from 6 to 12 (the owner, 2026-11-15).** The
+  message box's "/" commands came to ten with the terminal's /sleep: five
+  that act (compact, model, thinking, mode, new) and five that reach a
+  control already one tap away (context, code, web, images, rename). The
+  owner chose to keep all ten over trimming to five.
 - **Remote machines: "much later" → now (2026-10-11).** Working on the owner's
   other computers was deferred until she had proven reliable. It comes
   forward as an extension of the SSH targets that already exist, with each

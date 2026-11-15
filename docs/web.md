@@ -1638,13 +1638,16 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   a phone, where Enter is a new line); a line that names none, such as a
   path, is sent as a message. A command that works says so to a screen
   reader (a polite live region), and one that can't puts why in the
-  conversation's error line, its text back in the box. The five commands
-  (with the terminal's /sleep, the budget's six, PRINCIPLES.md 8):
-  /compact [what to keep] (`POST …/compact`), /model [name] (opens the
-  header's picker, or picks the first model that matches), /thinking and
-  /mode (the thread's settings, as the drawer and the mode menu set them),
-  and /new (a thread in the same pool, opened; not in a project, whose
-  threads she starts). `ModelBadge` takes an `opener` count that opens it. While a compaction runs (`Live.compacting`, from the `compacting`
+  conversation's error line, its text back in the box. The ten commands
+  (with the terminal's /sleep, within the budget of twelve, PRINCIPLES.md 8):
+  /compact [what to keep] (`POST …/compact`), /context (opens the header's
+  Context, once there is one), /model [name] (opens the header's picker, or
+  picks the first model that matches), /thinking, /mode, /code, /web,
+  /images (the thread's settings, as the drawer, the mode menu and "+" set
+  them; the switches take on, off or nothing to flip), /rename <title>, and
+  /new (a thread in the same pool, opened; not in a project, whose threads
+  she starts). `ModelBadge` and `ContextFact` take an `opener` count that
+  opens them. While a compaction runs (`Live.compacting`, from the `compacting`
   event) the conversation ends with a **Compacting** marker, running; one
   between turns reloads the messages so its Compacted marker shows at once.
   Shift+Tab in the box cycles
