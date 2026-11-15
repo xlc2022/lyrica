@@ -22,7 +22,8 @@ pictures and clips with on the operator's own hardware.
   clip editor anchors its clip. Its continuation
   (`minimax-h3-ref2va-continue.json`) is H3 Turbo's with the reference
   node in place of the first-frame one, so it chains to 60 s.
-- **Scan**: MiniMax-H3-Image's diffusion model (timestep table, no audio
+- **Scan**: P-H3-Image by its 16-wide timestep table (w6a8 repacks of H3
+  carry an 8-wide one); MiniMax-H3-Image's diffusion model (timestep table, no audio
   stream) and VAE (decoder 1024 wide inside); H3 LoRAs by `qkv_proj` plus
   `token_refiner` keys; an fl2va LoRA fits ref2va recipes.
 - **Proposals**: where an arch has two templates, the one whose LoRA slots
