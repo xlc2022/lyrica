@@ -3260,13 +3260,15 @@ export class Models {
   /**
    * The thinking level a model runs at for a requested one, and a note when it
    * thinks at another level. A model that can't think answers without thinking,
-   * saying so unless `unset` (nobody chose a level) or it was seen thinking on
-   * its own (sawThinking); one that can't turn
+   * saying so unless `unset` (nobody chose a level), its template opens a
+   * thought itself (`opensThinking`) or it was seen thinking on its own
+   * (sawThinking); one that can't turn
    * thinking off thinks at medium, or the nearest level it has.
    */
   thinkingFor(r: Pick<Resolution, "offering" | "label"> & { endpoint?: Pick<Endpoint, "api"> }, asked: ThinkingLevel = DEFAULT_THINKING, unset = false): { level: ThinkingLevel; note?: string } {
     const levels = r.offering.reasoning ?? [];
-    if (!levels.length) return asked === "off" || unset || this.thinksUnasked.has(r.offering.id) ? { level: "off" } : { level: "off", note: `${r.label} can't think, so it answered without thinking` };
+    // A template that opens <think> itself with no switch (GLM-5.3-Flash's) thinks on every reply, as startsMidThought has it.
+    if (!levels.length) return asked === "off" || unset || r.offering.opensThinking || this.thinksUnasked.has(r.offering.id) ? { level: "off" } : { level: "off", note: `${r.label} can't think, so it answered without thinking` };
     if (asked === "off") {
       if (!r.offering.alwaysThinks && !this.alwaysThinks.has(r.offering.id)) return { level: "off" };
       const level = this.mandatoryThinking(r.offering)!;
