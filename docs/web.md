@@ -1628,8 +1628,9 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   above it (`.command-menu`, the memory editor's `[[` popover), each row
   the command in mono with what may follow it muted, the label of the
   control it works and that control's value, the command's explanation as
-  its tooltip. Typing narrows it; Up and Down move, Enter picks, Tab writes
-  "/name " for what follows, Escape closes it; the textarea carries
+  its tooltip. Typing narrows it; Up and Down move, Enter picks (/model and
+  /new run; /compact, /thinking and /mode write "/name " for what follows,
+  so "/" and Enter never compact), Tab writes "/name ", Escape closes it; the textarea carries
   `aria-autocomplete`, `aria-expanded`, `aria-controls` and
   `aria-activedescendant`. A command with choices (/thinking, /mode, /model
   by name) lists them, headed by its label, with a check on the current one.

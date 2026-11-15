@@ -29,7 +29,7 @@ export interface Command {
   label: string;
   value?: string;
   tip: string;
-  /** Picking the row with nothing after the name: `run` runs it; `complete` writes "/name " so a choice or text can follow. */
+  /** Picking the row from the menu: `run` runs it; `complete` writes "/name " so a choice or text can follow. */
   bare: "run" | "complete";
   choices?: (q: string) => Choice[];
   /** Runs it; returns what a screen reader hears, or throws to show why it can't. */
@@ -62,12 +62,13 @@ export function commandList(env: CommandEnv): Command[] {
   const filter = (all: () => Choice[]) => (q: string) => all().filter((c) => !q || c.label.toLowerCase().startsWith(q.toLowerCase()) || c.value.startsWith(q.toLowerCase()));
   const list: (Command | false)[] = [
     {
-      name: "compact", arg: "[what to keep]", label: "Compaction", bare: "run",
+      // Picked from the menu it waits for its text, so "/" and Enter never compact; a sent "/compact" line runs.
+      name: "compact", arg: "[what to keep]", label: "Compaction", bare: "complete",
       tip: "Compacts now: a summary replaces the older messages. Text after the command is what the summary must keep. While she works, it waits for her turn to end.",
       run: async (arg) => { await env.compact(arg); return "Compacting"; },
     },
     {
-      name: "model", arg: "[name]", label: "Conversation", value: current.modelId ? shortModel(current.modelId) : current.name, bare: "run",
+      name: "model", arg: "[name]", label: s.code ? "Coding" : "Conversation", value: current.modelId ? shortModel(current.modelId) : current.name, bare: "run",
       tip: "The model she talks on in this thread (Coding in Code mode). With a name, the first model that matches.",
       choices: models,
       run: async (arg) => {
@@ -165,7 +166,8 @@ export function useCommands(draft: string, setDraft: (text: string) => void, env
   const runLine = (text: string): boolean => {
     const hit = parseCommand(text, commands);
     if (!hit) return false;
-    if (hit.command.bare === "complete" && !hit.arg) { setDraft(`/${hit.command.name} `); return true; }
+    // A command that needs a choice waits for one; /compact on its own runs.
+    if (hit.command.choices && hit.command.bare === "complete" && !hit.arg) { setDraft(`/${hit.command.name} `); return true; }
     void run(hit.command, hit.arg);
     return true;
   };

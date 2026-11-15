@@ -535,6 +535,10 @@ test("\"/\" in the message box lists the commands, and each works a control that
   await expect(menu.getByRole("option")).toHaveCount(5);
   await expect(message).toHaveAttribute("aria-expanded", "true");
   await shot("commands");
+  // "/" and Enter never compact: picking /compact waits for what to keep.
+  await message.press("Enter");
+  await expect(message).toHaveValue("/compact ");
+  await message.fill("/");
   await message.pressSequentially("th");
   await expect(menu.getByRole("option")).toHaveCount(1);
   await message.press("Tab");

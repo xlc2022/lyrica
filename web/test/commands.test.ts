@@ -42,6 +42,11 @@ describe("commands in the message box", () => {
     expect(menuRows("/mode ", list).map((r) => r.kind === "choice" && r.choice.value)).not.toContain("bypass");
   });
 
+  it("never compacts from the menu alone: picking /compact waits for its text, a sent line runs it", () => {
+    expect(commandList(env()).find((c) => c.name === "compact")!.bare).toBe("complete");
+    expect(commandList(env({ settings: { ...settings, code: true } })).find((c) => c.name === "model")!.label).toBe("Coding");
+  });
+
   it("compacts with what follows the name as the summary's notes", async () => {
     const e = env();
     const hit = parseCommand("/compact keep the migration plan", commandList(e))!;
