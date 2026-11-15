@@ -57,8 +57,9 @@ tool each for A and B, prompt lines only where the thread has a machine).
   job's helper exits with `lyricad`). A restart loses the record, so a job
   that was running then is never reported.
 - Plan mode has neither `bash` nor `jobs`.
-- Web: the notice reads **Background command** (`NOTICE_HEADS.job`), its
-  text as given. No new control.
+- Web: the notice is a card headed **Background command** with how it
+  ended, then the command and its last output in blocks that keep their
+  lines (`web/src/JobNotice.tsx`, read back from the notice text; docs/ux.md).
 
 ## B. Root steps on a card
 

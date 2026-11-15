@@ -24,6 +24,7 @@ import { ConfirmDialog, ErrorText, fullTime, Prose, sendsOnEnter, useAction, use
 import { OfflinePage } from "./OfflinePage.tsx";
 import { basename, fileTarget, InlineImage, isImagePath, isUnderWorkdir, largeUrl, Lightbox, PathText, SHARED, useFileLinks, type FileLinks } from "./paths.tsx";
 import { CopyButton } from "./CopyButton.tsx";
+import { JobNotice, parseJobNotice } from "./JobNotice.tsx";
 import type { ReactNode } from "react";
 import { foldLooks, raisedIn, toldIn, type Told } from "./looks.ts";
 import { sortImages, type MessageImages as SortedImages, type RejectedImage } from "./rejects.ts";
@@ -1313,6 +1314,8 @@ const CHECK_STATES: Record<string, ReactNode> = {
 function Notice({ text, status, threads, env }: { text: string; status?: string; threads?: ThreadRef[]; env: Env }) {
   // In a project chat, a thread's updates go on its card (no card per update).
   if (env.project && (status === "update" || status === "waiting")) return null;
+  const job = status === "job" ? parseJobNotice(text) : undefined;
+  if (job) return <JobNotice job={job} />;
   return (
     <div className="subagent delivered" data-status={status}>
       <div className="sub-head">
