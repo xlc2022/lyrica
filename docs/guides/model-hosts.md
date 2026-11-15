@@ -154,8 +154,8 @@ flash attention on. The images notice it by themselves at each start.
 
 - **Debian or Ubuntu:** `install.sh` offers it, or run `host/cmp-unlock.sh`.
   It needs NVIDIA's proprietary driver (not `-open`) from a branch
-  between 535 and 580 (580 is the last for Volta, and the host's CUDA
-  12.8 images need 535 or later), Secure Boot off and the kernel's
+  between 525 and 580 (580 is the last for Volta; below 570 the host
+  needs Docker 28 or later, as above), Secure Boot off and the kernel's
   headers, builds a kernel module, and blacklists `nouveau` and
   `nvidia_drm`, so a desktop drawn by an NVIDIA card would lose its
   display. Then reboot.
