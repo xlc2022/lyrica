@@ -570,6 +570,13 @@ BEFORE_IMAGES=$(stack_images)
 "${COMPOSE[@]}" run --rm --no-deps -T --user 0 --cap-add CHOWN --entrypoint chown fetch 10001:10001 /models/lyrica
 # The model servers run as other users and read it: 755, whatever the umask made it.
 "${COMPOSE[@]}" run --rm --no-deps -T --entrypoint chmod fetch 755 /models/lyrica
+# A service the compose files now turn off (compose.novllm.yaml's vLLM,
+# compose.sdcpp.yaml's ComfyUI) keeps its container from an earlier install:
+# remove it, so its image goes with the others below.
+ACTIVE=$("${COMPOSE[@]}" config --services)
+for s in $(docker ps -a --filter label=com.docker.compose.project=lyrica-host --format '{{.Label "com.docker.compose.service"}}' | sort -u); do
+  grep -qx "$s" <<<"$ACTIVE" || docker ps -aq --filter label=com.docker.compose.project=lyrica-host --filter "label=com.docker.compose.service=$s" | xargs -r docker rm -f >/dev/null
+done
 "${COMPOSE[@]}" up -d --remove-orphans
 
 # Once Tailscale has joined, the auth key isn't needed: drop it from .env.
