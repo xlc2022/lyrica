@@ -7,6 +7,7 @@ ARG IMAGE
 FROM ${IMAGE}
 COPY requirements.txt /tmp/lyrica-requirements.txt
 # The CUDA image installs with uv, the ROCm one with pip. --no-deps: numpy and cffi are already there.
-RUN if command -v uv >/dev/null; then uv pip install --system --no-deps --require-hashes -r /tmp/lyrica-requirements.txt; \
+# The CUDA image sets UV_OVERRIDE (its NCCL pin), which --require-hashes would also want a hash for: not here.
+RUN if command -v uv >/dev/null; then env -u UV_OVERRIDE uv pip install --system --no-deps --require-hashes -r /tmp/lyrica-requirements.txt; \
     else python3 -m pip install --no-cache-dir --no-deps --require-hashes -r /tmp/lyrica-requirements.txt; fi && \
     rm /tmp/lyrica-requirements.txt && python3 -c "import soundfile, soxr"
