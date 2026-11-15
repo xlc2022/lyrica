@@ -385,14 +385,21 @@ export class Runtime {
   }
 
   private async proxy(req: IncomingMessage, res: ServerResponse, path: string): Promise<void> {
-    const raw = await readRaw(req);
-    let body: { model?: unknown; stream?: unknown };
+    let raw = await readRaw(req);
+    let body: { model?: unknown; stream?: unknown; reasoning_effort?: unknown; chat_template_kwargs?: unknown };
     try {
       body = JSON.parse(raw.toString("utf8"));
     } catch {
       throw invalid("The body isn't valid JSON.");
     }
     const model = this.modelFor(body.model, path === "/v1/embeddings" ? "embedding" : "chat");
+    // A template that reads `reasoning_effort` gets it as a template argument, in its own words (GLM-5.3's high is max).
+    const efforts = model.capabilities.efforts;
+    if (efforts && (body.reasoning_effort === "low" || body.reasoning_effort === "medium" || body.reasoning_effort === "high")) {
+      const kwargs = body.chat_template_kwargs && typeof body.chat_template_kwargs === "object" ? body.chat_template_kwargs : {};
+      const { reasoning_effort, ...rest } = body;
+      raw = Buffer.from(JSON.stringify({ ...rest, chat_template_kwargs: { ...kwargs, reasoning_effort: efforts[reasoning_effort] } }));
+    }
     const started = Date.now();
     const sniffer = new UsageSniffer(body.stream === true);
     await this.pass(req, res, model, path, raw, "application/json", (chunk) => sniffer.feed(chunk));

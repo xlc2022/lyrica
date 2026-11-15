@@ -1957,6 +1957,8 @@ export class Models {
         ...(m.capabilities?.transcribe || m.kind === "transcribe" ? { transcribe: true } : {}),
         ...(m.capabilities?.speak ? { speak: { voices: hostVoices(m.capabilities.speak.voices) } } : {}),
         ...(levels.length ? { reasoning: reasoning.length ? reasoning : ["medium"] as "medium"[] } : {}),
+        // Effort levels with no off (GLM-5.3's template thinks at max without one): off thinks at medium, with a note.
+        ...(levels.length && !m.capabilities?.reasoning?.includes("off") ? { alwaysThinks: true } : {}),
         ...(m.capabilities?.opensThinking ? { opensThinking: true } : {}),
         ...(m.sha256 ? { digest: m.sha256 } : {}),
         ...(m.identity ? { identity: m.identity } : {}),

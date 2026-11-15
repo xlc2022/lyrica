@@ -31,9 +31,19 @@ describe("pairing", () => {
     expect([...s.host.pinned.keys()]).toEqual([fingerprint(mine)]);
     const [o] = await s.models.discover(s.ada, ep.id);
     expect(o).toMatchObject({ modelId: "lyrica/huggingface/Qwen/Qwen3.8-27B-GGUF/Qwen3.8-27B-Q4_K_M.gguf", contextWindow: 32768, parallel: 1, tools: true, reasoning: ["medium"], opensThinking: true, digest: "ab".repeat(32), server: "llama.cpp" });
+    expect(o!.alwaysThinks).toBeUndefined();
     expect(await s.models.probe(s.ada.id, ep.id)).toEqual({ state: "up" });
     // The sampling its file recommends shows as the model's own, and nothing is set.
     expect(s.models.offeringSettings(s.ada.id, o!.id)).toMatchObject({ values: {}, defaults: { temperature: 0.7, topP: 0.8, topK: 20 }, contextWindow: { value: 32768, source: "host" } });
+  });
+
+  it("takes effort levels with no off (GLM-5.3's template) as three levels that think even when off is asked", async () => {
+    const m = await withModels();
+    const host = await fakeHost({ name: "lyrica-glm", models: [{ id: "shared/glm-Q3_K_XL.gguf", kind: "chat", reasoning: ["low", "medium", "high"], opensThinking: true }] });
+    const ep = await m.models.pairHost(m.ada, { name: "glm", addresses: [host.address], code: host.newCode() });
+    const [o] = await m.models.discover(m.ada, ep.id);
+    expect(o).toMatchObject({ reasoning: ["low", "medium", "high"], alwaysThinks: true, opensThinking: true });
+    expect(m.models.thinkingFor({ offering: o!, label: "glm", endpoint: { api: "host" } }, "off")).toEqual({ level: "medium", note: "glm can't turn thinking off, so it thought at medium" });
   });
 
   it("refuses a malformed code without contacting the host, and a wrong one without pinning", async () => {

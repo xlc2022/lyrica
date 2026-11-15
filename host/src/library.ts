@@ -22,6 +22,11 @@ export interface Capabilities {
   reasoning: string[] | null;
   /** The chat template writes `<think>` itself, so a reply can start mid-thought with only `</think>`. */
   opensThinking?: boolean;
+  /**
+   * A template that reads `reasoning_effort` (GLM-5.3, gpt-oss): the value it is given for each of Lyrica's levels,
+   * sent as `chat_template_kwargs.reasoning_effort` in place of a request's `reasoning_effort`.
+   */
+  efforts?: Record<"low" | "medium" | "high", string>;
   /** Dictation: speech to text on /v1/audio/transcriptions. */
   transcribe?: boolean;
   /** Text to speech on /v1/audio/speech, with the voices it has. */
@@ -182,12 +187,32 @@ function str(v: GgufValue | undefined): string | null {
   return typeof v === "string" && v ? v : null;
 }
 
-export function templateCapabilities(template: string | null): Pick<Capabilities, "tools" | "reasoning" | "opensThinking"> {
+const EFFORTS = ["minimal", "low", "medium", "high", "max", "xhigh"];
+
+/**
+ * A template's own effort words, from the lines that read `reasoning_effort`, mapped onto low, medium and high:
+ * GLM-5.3 takes low and high, and anything else is its default, max, so medium is high and high is max. A template
+ * naming fewer than two (gpt-oss names only its default) takes the levels as they are.
+ */
+function templateEfforts(template: string): Record<"low" | "medium" | "high", string> {
+  const words = new Set<string>();
+  for (const line of template.split("\n").filter((l) => /\breasoning_effort\b/.test(l))) {
+    for (const m of line.matchAll(/["']([a-z]+)["']/g)) if (EFFORTS.includes(m[1]!)) words.add(m[1]!);
+  }
+  const have = EFFORTS.filter((w) => words.has(w));
+  if (have.length < 2) return { low: "low", medium: "medium", high: "high" };
+  return { low: have[0]!, medium: have[Math.floor(have.length / 2)]!, high: have[have.length - 1]! };
+}
+
+export function templateCapabilities(template: string | null): Pick<Capabilities, "tools" | "reasoning" | "opensThinking" | "efforts"> {
+  const effort = !!template && /\breasoning_effort\b/.test(template);
   return {
     ...(template?.includes("<think>") ? { opensThinking: true } : {}),
     tools: !!template && /\btools\b/.test(template),
-    // Only `enable_thinking` can be driven. A template that opens <think> without it always thinks: no switch.
-    reasoning: template && /\benable_thinking\b/.test(template) ? ["off", "on"] : null,
+    // `enable_thinking` is a switch. `reasoning_effort` is three levels and no off: the template thinks at its
+    // default without one. A template that opens <think> with neither always thinks, at no level Lyrica can set.
+    reasoning: template && /\benable_thinking\b/.test(template) ? ["off", "on"] : effort ? ["low", "medium", "high"] : null,
+    ...(effort && !/\benable_thinking\b/.test(template!) ? { efforts: templateEfforts(template!) } : {}),
   };
 }
 
