@@ -650,7 +650,11 @@ the bf16 encoder (15.4 GiB), about 53.7 GiB of files for the first and
 38.1 GiB more for each other (they share the encoder and VAE). The host
 says one is too big on a 24 GB card; use fp8 there. A
 stable-diffusion.cpp host doesn't list them, nor any edit starter.
-They are untried on a card so far: same steps and CFG as fp8.
+Their defaults follow ComfyUI's own templates and the model cards:
+2512 bf16 runs 50 steps at CFG 4 (on an RTX PRO 6000, about 51 s of
+sampling at 1328×1328, against 21 s at 20 steps, with slightly more
+finished detail), Qwen-Image (original) bf16 20 steps at CFG 4, and
+Edit 2509 bf16 20 steps at CFG 4. Lower the steps in a recipe for speed.
 
 The RealVisXL V5.0 starter (one 6.9 GB SDXL checkpoint) is the one to
 pick for SDXL photos: it looks far more like a photograph than base

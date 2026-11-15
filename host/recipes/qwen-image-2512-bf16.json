@@ -34,7 +34,7 @@
   ],
   "loras": [],
   "defaults": {
-    "steps": 20,
+    "steps": 50,
     "cfg": 4,
     "sampler": "euler",
     "scheduler": "simple",
