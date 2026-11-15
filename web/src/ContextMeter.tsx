@@ -1,5 +1,5 @@
 // How full the thread's context is: a word in the header's facts line, and a popover with the parts (docs/ux.md §6).
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ContextInfo, PaceInfo } from "./api.ts";
 import { shortTime, useDismiss, useInView } from "./ui.tsx";
 
@@ -28,8 +28,13 @@ export function newerContext(a?: ContextInfo | null, b?: ContextInfo): ContextIn
 /** Warn from 80 %, danger from 95 %, where compaction is close. */
 export const contextLevel = (percent: number) => (percent >= 95 ? "danger" : percent >= 80 ? "warn" : undefined);
 
-export function ContextFact({ context, footer }: { context: ContextInfo; footer?: React.ReactNode }) {
+export function ContextFact({ context, footer, opener }: {
+  context: ContextInfo; footer?: React.ReactNode;
+  /** Bumped to open the popover from elsewhere (the message box's /context). */
+  opener?: number;
+}) {
   const [open, setOpen] = useState(false);
+  useEffect(() => { if (opener) setOpen(true); }, [opener]);
   const anchor = useRef<HTMLSpanElement>(null);
   const close = useCallback(() => setOpen(false), []);
   useDismiss(anchor, open, close);

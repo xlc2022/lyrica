@@ -11,23 +11,34 @@ const settings = {
 } as unknown as ThreadSettings;
 
 const env = (over: Partial<CommandEnv> = {}): CommandEnv => ({
-  settings, onSettings: vi.fn(), setModel: vi.fn(async () => {}), openModel: vi.fn(),
-  compact: vi.fn(async () => {}), newThread: vi.fn(), ...over,
+  settings, title: "Garden", onSettings: vi.fn(), setModel: vi.fn(async () => {}), openModel: vi.fn(), openContext: vi.fn(),
+  compact: vi.fn(async () => {}), rename: vi.fn(async () => {}), newThread: vi.fn(), ...over,
 });
 
 describe("commands in the message box", () => {
   it("lists every command after a bare slash, and narrows as the name is typed", () => {
     const list = commandList(env());
-    expect(menuRows("/", list).map((r) => r.command.name)).toEqual(["compact", "model", "thinking", "mode", "new"]);
-    expect(menuRows("/m", list).map((r) => r.command.name)).toEqual(["model", "mode"]);
+    expect(menuRows("/", list).map((r) => r.command.name)).toEqual(["compact", "context", "model", "thinking", "mode", "code", "web", "images", "rename", "new"]);
+    expect(menuRows("/co", list).map((r) => r.command.name)).toEqual(["compact", "context", "code"]);
     // A path or a sentence is a message: nothing opens, and nothing runs.
     expect(menuRows("/usr/bin is broken", list)).toEqual([]);
     expect(parseCommand("/usr/bin is broken", list)).toBeUndefined();
     expect(menuRows("hello /co", list)).toEqual([]);
   });
 
-  it("leaves out New thread in a project, whose threads she starts", () => {
-    expect(commandList(env({ newThread: undefined })).map((c) => c.name)).not.toContain("new");
+  it("leaves out what the thread can't do: New thread in a project, Context before it is measured", () => {
+    const names = commandList(env({ newThread: undefined, openContext: undefined })).map((c) => c.name);
+    expect(names).not.toContain("new");
+    expect(names).not.toContain("context");
+  });
+
+  it("switches web search and images, or sets them with on and off", () => {
+    const e = env();
+    const list = commandList(e);
+    expect(list.find((c) => c.name === "web")!.run("")).toBe("Web search: Off");
+    expect(list.find((c) => c.name === "images")!.run("on")).toBe("Images: On");
+    expect(e.onSettings).toHaveBeenCalledWith({ webSearch: false });
+    expect(() => list.find((c) => c.name === "code")!.run("maybe")).toThrow(/on or off/);
   });
 
   it("shows a command's choices after its name, and runs the one picked", () => {

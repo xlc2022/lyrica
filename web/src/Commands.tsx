@@ -1,7 +1,8 @@
 // Commands in the message box (docs/ux.md §6, Commands in the message box): "/" as the box's first character opens
 // a popover of commands, as "[[" does in the memory editor. Each command works a control that already has a home
-// (the header's model picker, the drawer's Thinking, the mode menu, New thread), or compacts the thread. Five, with
-// the terminal's /sleep, is the budget's six (PRINCIPLES.md, 8). A line that names no command is sent as a message.
+// (the header's model picker and Context, the drawer's Thinking and Code mode, the mode menu, the "+" switches, the
+// title, New thread), or compacts the thread. Ten, with the terminal's /sleep, within the budget of twelve
+// (PRINCIPLES.md, 8). A line that names no command is sent as a message.
 import { useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from "react";
 import type { ModelRef, PermissionMode, ThinkingLevel, ThreadSettings, ThreadSettingsChange } from "./api.ts";
 import { isChatModel, matchesModel, modelName, shortModel } from "./ModelLabel.tsx";
@@ -14,6 +15,10 @@ export interface CommandEnv {
   /** Picks the model she talks on (Conversation, or Coding in Code mode), as the header's picker does. */
   setModel: (model: ModelRef) => Promise<unknown>;
   openModel: () => void;
+  /** Absent before the first measured turn, when the header has no Context. */
+  openContext?: () => void;
+  title: string;
+  rename: (title: string) => Promise<unknown>;
   compact: (notes: string) => Promise<unknown>;
   /** Absent in a project, whose threads she starts. */
   newThread?: () => void;
@@ -28,6 +33,8 @@ export interface Command {
   /** The control it works, by that control's own label. */
   label: string;
   value?: string;
+  /** Mono value (a percent). */
+  num?: boolean;
   tip: string;
   /** Picking the row from the menu: `run` runs it; `complete` writes "/name " so a choice or text can follow. */
   bare: "run" | "complete";
@@ -37,6 +44,15 @@ export interface Command {
 }
 
 const cap = (s: string) => s[0]!.toUpperCase() + s.slice(1);
+const onOff = (on: boolean) => (on ? "On" : "Off");
+/** "on", "off" or nothing (which flips it). */
+const toggled = (arg: string, now: boolean) => {
+  const a = arg.toLowerCase();
+  if (a === "on") return true;
+  if (a === "off") return false;
+  if (a) throw new Error("Use on or off, or nothing to switch it.");
+  return !now;
+};
 const fromChoices = (choices: Choice[], arg: string, what: string) => {
   const a = arg.toLowerCase();
   const hit = choices.find((c) => c.value.toLowerCase() === a || c.label.toLowerCase() === a) ?? choices.find((c) => c.label.toLowerCase().startsWith(a));
@@ -67,6 +83,10 @@ export function commandList(env: CommandEnv): Command[] {
       tip: "Compacts now: a summary replaces the older messages. Text after the command is what the summary must keep. While she works, it waits for her turn to end.",
       run: async (arg) => { await env.compact(arg); return "Compacting"; },
     },
+    !!env.openContext && {
+      name: "context", label: "Context", value: s.context ? `${s.context.percent}%` : undefined, num: true, bare: "run",
+      tip: "What fills the context window.", run: () => { env.openContext!(); return ""; },
+    },
     {
       name: "model", arg: "[name]", label: s.code ? "Coding" : "Conversation", value: current.modelId ? shortModel(current.modelId) : current.name, bare: "run",
       tip: "The model she talks on in this thread (Coding in Code mode). With a name, the first model that matches.",
@@ -96,6 +116,22 @@ export function commandList(env: CommandEnv): Command[] {
         env.onSettings({ mode: hit.value as PermissionMode });
         return `Mode: ${hit.label}`;
       },
+    },
+    {
+      name: "code", label: "Code mode", value: onOff(s.code), bare: "run", tip: "Turns Code mode on or off.",
+      run: (arg) => { const on = toggled(arg, s.code); env.onSettings({ code: on }); return `Code mode: ${onOff(on)}`; },
+    },
+    {
+      name: "web", label: "Web search", value: onOff(s.webSearch), bare: "run", tip: "Turns web search on or off in this thread.",
+      run: (arg) => { const on = toggled(arg, s.webSearch); env.onSettings({ webSearch: on }); return `Web search: ${onOff(on)}`; },
+    },
+    {
+      name: "images", label: "Images", value: onOff(s.images), bare: "run", tip: "Lets the agent make and edit images in this thread, or stops it.",
+      run: (arg) => { const on = toggled(arg, s.images); env.onSettings({ images: on }); return `Images: ${onOff(on)}`; },
+    },
+    {
+      name: "rename", arg: "<title>", label: "Title", value: env.title, bare: "complete", tip: "Renames this thread.",
+      run: async (arg) => { if (!arg) throw new Error("Write the new title after /rename."); await env.rename(arg); return `Renamed to ${arg}`; },
     },
     !!env.newThread && { name: "new", label: "New thread", bare: "run", tip: "Starts a new thread in this pool and opens it.", run: () => { env.newThread!(); return ""; } },
   ];
@@ -186,7 +222,7 @@ export function useCommands(draft: string, setDraft: (text: string) => void, env
           onMouseDown={(e) => { e.preventDefault(); pick(row, "enter"); }}>
           <span className="cmd">/{row.command.name}{row.command.arg && <span className="arg"> {row.command.arg}</span>}</span>
           <span className="lbl">{row.command.label}</span>
-          <span className="val">{row.command.value ?? ""}</span>
+          <span className={`val${row.command.num ? " num" : ""}`}>{row.command.value ?? ""}</span>
         </button>
       ))}
     </div>

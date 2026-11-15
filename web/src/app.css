@@ -488,6 +488,7 @@ button.jump-latest { font-size: 13px; min-height: var(--tap); }
 .command-menu .item.opt .lbl { color: var(--fg); }
 .command-menu .lbl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .command-menu .val { font-size: 12px; white-space: nowrap; max-width: 16ch; overflow: hidden; text-overflow: ellipsis; }
+.command-menu .val.num { font-family: var(--mono); }
 .command-menu .mk { color: var(--accent); font-weight: 600; }
 @media (pointer: coarse) { .command-menu .item { min-height: 44px; } }
 .composer[data-dragging="true"] { outline: 2px dashed var(--accent); outline-offset: -6px; }
