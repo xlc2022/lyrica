@@ -277,22 +277,35 @@ existed before became general machines at Ask.
 `lyrica admin ssh add`): Lyrica makes a key pair and keeps it in memory for
 an hour; nothing is saved until the user confirms the host key. The key's
 `authorized_keys` line is `restrict,from="<Lyrica's addresses>" ssh-ed25519
-…`, usable only from this computer. The setup, run as root on the machine:
+…`, usable only from this computer. The setup, pasted whole on the machine
+as a user with sudo (`machineSetup`). Every write goes through `sudo tee`,
+never a shell redirect, and the commands are one `&&` chain, so the shell
+reads them all before sudo asks for a password and stops at the first that
+fails:
 
 ```sh
-# 1. Her key, in a file only root can change, beside any key already there
-install -d -m 755 /etc/ssh/authorized_keys
-touch /etc/ssh/authorized_keys/<account>
-grep -qxF -- '<the key line>' /etc/ssh/authorized_keys/<account> || printf '%s\n' '<the key line>' >> /etc/ssh/authorized_keys/<account>
-chmod 644 /etc/ssh/authorized_keys/<account>
-printf 'Match User <account>\n    AuthorizedKeysFile /etc/ssh/authorized_keys/%%u\n' > /etc/ssh/sshd_config.d/lyrica-<account>.conf
-sshd -t && systemctl reload ssh
+# Her key, in a file only root can change, beside any key already there
+sudo install -d -m 755 /etc/ssh/authorized_keys &&
+sudo touch /etc/ssh/authorized_keys/<account> &&
+{ sudo grep -qxF -- '<the key line>' /etc/ssh/authorized_keys/<account> || printf '%s\n' '<the key line>' | sudo tee -a /etc/ssh/authorized_keys/<account> > /dev/null; } &&
+sudo chmod 644 /etc/ssh/authorized_keys/<account> &&
+printf 'Match User <account>\n    AuthorizedKeysFile /etc/ssh/authorized_keys/%%u\n' | sudo tee /etc/ssh/sshd_config.d/lyrica-<account>.conf > /dev/null &&
+sudo sshd -t &&
+sudo systemctl reload ssh &&
 
-# 2. Optional: sudo without a password, for exact commands (visudo -f /etc/sudoers.d/lyrica)
-<account> ALL=(root) NOPASSWD: /usr/bin/systemctl restart nginx
-#    or, on a machine you really trust, for everything:
-# <account> ALL=(root) NOPASSWD: ALL
+# The host key's fingerprint, to compare with the one Lyrica shows
+ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
 ```
+
+Sudo without a password is optional and never in that block, so pasting it
+grants nothing. The page offers it as two commands of their own
+(`machineSudo`, the probe's `sudo`), **Sudo, exact commands** (an example,
+`<account> ALL=(root) NOPASSWD: /usr/bin/systemctl restart nginx`, to
+change first) and **Sudo, everything** (`<account> ALL=(root) NOPASSWD:
+ALL`, for a machine the user really trusts). Each adds its line to
+`/etc/sudoers.d/lyrica` the way the run-as-root card does
+(`sudoersCommand`): the file's other lines kept, checked by `visudo -c`
+before it is installed.
 
 A second machine on the same account adds its line beside the first, and
 each account gets its own `sshd_config.d` file (before 2026-11-05 the block

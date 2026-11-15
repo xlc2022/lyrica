@@ -275,7 +275,8 @@ async function workspaceAdmin(users: Users, keyring: Keyring, kind: "grants" | "
     if (!isPool(machinePool)) throw new Error(USAGE);
     if (limit !== undefined && !MACHINE_LIMITS.includes(limit as MachineLimit)) throw new Error("--limit is ask, acceptEdits or auto");
     let probe = await workspace.probeMachine(target.id, login, { name, address });
-    console.log(`Run this on the machine as root:\n\n${probe.setup}\n`);
+    console.log(`Paste this on the machine as a user with sudo:\n\n${probe.setup}\n`);
+    if (probe.sudo) console.log(`Optional, sudo without a password for one command (change the example first):\n\n${probe.sudo.exact}\n\nor, on a machine you really trust, for everything:\n\n${probe.sudo.everything}\n`);
     await ask("Press Enter when it's done. ");
     probe = await workspace.probeMachine(target.id, login, { name, address, draft: probe.draft });
     if (!probe.fingerprint) throw new Error(`couldn't reach ${address}: ${probe.problem ?? "no answer"}`);

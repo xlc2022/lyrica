@@ -22,7 +22,7 @@ export { FAMILY_ROOT } from "./sandbox.ts";
 import type { ClaudeCodeUsage } from "./relay.ts";
 import { SETUP_SCRIPT, SetupFailures, setupOutcome } from "./setup.ts";
 import type { CodexBox } from "../models/codex.ts";
-import { authorizedKeysLine, machineSetup } from "./machines.ts";
+import { authorizedKeysLine, machineSetup, machineSudo } from "./machines.ts";
 import {
   beyondPower, certFingerprint, ownAddress, ownNode, parseProxmoxAddress, ProxmoxAnswer, proxmoxAction, proxmoxHttps, proxmoxSetup, proxmoxUser, thisComputer, tokenId,
   type ProxmoxAction, type ProxmoxCall, type ProxmoxTransport, type Self,
@@ -162,8 +162,10 @@ export interface MachineProbe {
   draft?: string;
   /** SSH: for the machine's keys file, usable only from Lyrica's addresses. */
   keyLine?: string;
-  /** The setup steps to run as root on the machine (for Proxmox, on the node). */
+  /** The setup steps to paste on the machine as a user with sudo (for Proxmox, as root on the node). */
   setup: string;
+  /** SSH on her own account: the optional sudo rights, each a command to paste on its own (`machineSudo`). */
+  sudo?: { exact: string; everything: string };
   /** The host key the machine showed, or for Proxmox its certificate's, when it answered. */
   fingerprint?: string;
   /** Whether her key was accepted. Always false for Proxmox: the token is tried only at Confirm, against the confirmed certificate. */
@@ -183,6 +185,8 @@ export function parseMachineAddress(address: string): { username: string; host: 
   const m = /^([^@\s]+)@(\[[0-9a-fA-F:.]+\]|[^:\s@\[\]]+)(?::(\d+))?$/.exec(address.trim());
   const port = Number(m?.[3] ?? 22);
   if (!m || port < 1 || port > 65535) throw new Error("the address looks like account@host or account@host:port");
+  // The account goes unquoted into the setup block and the sudoers lines the user pastes, so it is a plain POSIX user name.
+  if (!/^[A-Za-z_][A-Za-z0-9_.-]{0,31}$/.test(m[1]!)) throw new Error("the account is a user name: letters, digits, _, . and -, starting with a letter or _");
   return { username: m[1]!, host: m[2]!.replace(/^\[|\]$/g, ""), port };
 }
 
@@ -1646,7 +1650,7 @@ export class Workspace {
     }
     pair.expires = now + DRAFT_MS;
     const keyLine = authorizedKeysLine(pair.publicKey);
-    const probe = await this.reach({ draft: draft!, keyLine, setup: machineSetup(username, keyLine, input.asUser) }, { host, port, username, privateKey: pair.privateKey });
+    const probe = await this.reach({ draft: draft!, keyLine, setup: machineSetup(username, keyLine, input.asUser), ...(input.asUser ? {} : { sudo: machineSudo(username) }) }, { host, port, username, privateKey: pair.privateKey });
     // Her own account's keys are read from the root-owned file, never ~/.ssh, so the same account added as the user's own can't log in: say why.
     const hers = input.asUser && probe.fingerprint && !probe.login
       ? this.settings(userId).machines().find((m) => m.kind === "ssh" && !m.asUser && m.host === host && m.port === port && m.username === username) : undefined;
@@ -1663,11 +1667,11 @@ export class Workspace {
     const cfg = this.settings(userId).machine(name);
     if (!cfg || cfg.kind !== "ssh") throw new Error(`no machine ${name}`);
     const keyLine = authorizedKeysLine(publicKeyOf(cfg.privateKey));
-    return this.reach({ keyLine, setup: machineSetup(cfg.username, keyLine, cfg.asUser) }, cfg);
+    return this.reach({ keyLine, setup: machineSetup(cfg.username, keyLine, cfg.asUser), ...(cfg.asUser ? {} : { sudo: machineSudo(cfg.username) }) }, cfg);
   }
 
   /** Resolves the host and logs in. The key it shows is only reported: nothing runs, and the connection closes once she's in. */
-  private async reach(base: { draft?: string; keyLine: string; setup: string }, to: { host: string; port: number; username: string; privateKey: string }): Promise<MachineProbe> {
+  private async reach(base: { draft?: string; keyLine: string; setup: string; sudo?: MachineProbe["sudo"] }, to: { host: string; port: number; username: string; privateKey: string }): Promise<MachineProbe> {
     let resolved: { addresses: string[]; outside: boolean };
     try {
       resolved = await resolveHost(to.host);

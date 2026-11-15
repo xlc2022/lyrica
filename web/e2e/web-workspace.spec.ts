@@ -603,8 +603,16 @@ test("Machines lists none, and Add machine reaches a machine before anything is 
   await page.getByRole("textbox", { name: "Address" }).fill("lyrica@nowhere.invalid");
   await page.getByRole("button", { name: "Next" }).click();
   // The key and its setup commands come even when the host can't be resolved; Test says why.
-  await expect(page.getByRole("button", { name: "Copy" })).toBeVisible();
-  await expect(page.getByText("/etc/ssh/authorized_keys")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Copy", exact: true })).toBeVisible();
+  await expect(page.getByText("/etc/ssh/authorized_keys").first()).toBeVisible();
+  // Its long lines wrap, so nothing is hidden past the block's edge.
+  const setup = page.locator("pre.setup");
+  expect(await setup.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+  // The optional sudo rights are commands of their own, each with its Copy, so pasting the setup never grants them.
+  await expect(setup).not.toContainText("NOPASSWD");
+  await expect(page.getByRole("button", { name: "Copy sudo, exact commands" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Copy sudo, everything" })).toBeVisible();
+  await expect(page.locator(".machine-sudo pre").nth(1)).toContainText("NOPASSWD: ALL");
   await page.getByRole("button", { name: "Test" }).click();
   await expect(page.getByRole("alert").first()).toBeVisible();
   await expect(page.getByRole("button", { name: "Confirm" })).toHaveCount(0);

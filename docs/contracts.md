@@ -2817,8 +2817,8 @@ machinesFor(t): ThreadMachine[]           // { name, kind, limit, root, asUser? 
 proxmox(t, machine, action, vm?): Promise<string>  // one PROXMOX_ACTIONS call on a thread's Proxmox machine, token sent only to the pinned certificate; each API call records the machine's state (online on any answer but 401, keyChanged on another certificate, else unreachable)
 callMode(t, machine?): PermissionMode     // on a machine, stricterMode(effective(t).mode, its limit)
 probeMachine(userId, login, { kind?, name, address, draft?, asUser?, user?, replace? }): Promise<MachineProbe>
-  // SSH: a key pair kept in memory for an hour (by `draft`), its keyLine and setup steps, the host key seen,
-  // whether the login worked, offNetwork; asUser gives the own-account setup (no root), and a failed login on an account that is already hers there (a saved machine with the same address and account) says why; account root refused. Proxmox: the certificate's fingerprint and the pveum setup, no token sent; asUser with `user` (user@realm) gives the setup for a separated token on the user's own Proxmox user.
+  // SSH: a key pair kept in memory for an hour (by `draft`), its keyLine and setup steps (one `&&` chain to paste as a user with sudo), on her own account `sudo` { exact, everything } (each a command adding one line to /etc/sudoers.d/lyrica through sudoersCommand), the host key seen,
+  // whether the login worked, offNetwork; asUser gives the own-account setup (no root), and a failed login on an account that is already hers there (a saved machine with the same address and account) says why; account root refused, and an account that isn't a plain user name ([A-Za-z_][A-Za-z0-9_.-]*, at most 32), since it goes unquoted into the pasted block and sudoers lines. Proxmox: the certificate's fingerprint and the pveum setup, no token sent; asUser with `user` (user@realm) gives the setup for a separated token on the user's own Proxmox user.
   // replace (Replace key): the saved SSH machine `name` tried as saved, its own key, account and address; no pair made, address and draft ignored.
   // Saves nothing.
 addMachine(userId, { kind?, name, address, root, pool, limit?, draft? | token?, hostKey, offNetworkConfirmed?, asUser?, user? }): Promise<MachineConfig>
@@ -2860,7 +2860,7 @@ settings(userId): WorkspaceSettings       // per-pool defaults, per-thread overr
 //   inheritSettings takes a subset; effective() keeps only machines every ancestor grants.
 // SUSPECT_COMMANDS (each with `everywhere?` for the sandbox too and `discards?` for git throwing work away), suspectCommand(command, where = "machine"), discardingGit(command) (the folders where such git runs), removedFolders(command) (the folders `rm -r` deletes), SANDBOX_ALLOW (the machine key Allow in this thread stores for a sandbox command),
 //   writtenFiles(command) (the targets of its redirections and tee), onFloor(path), cleanOutput(onData), maskKeys(buf) (shares removePrivateKeys from core/src/secrets.ts),
-//   authorizedKeysLine(publicKey), machineSetup(account, keyLine, asUser?), unwrapped(words) (a simple command past its
+//   authorizedKeysLine(publicKey), machineSetup(account, keyLine, asUser?), machineSudo(account), unwrapped(words) (a simple command past its
 //   wrappers and the shell's keywords): core/src/workspace/machines.ts
 // malformedCommand(command, run = runShellcheck) (the refusal, or undefined), runShellcheck(command) (ShellFinding[], or
 //   undefined without ShellCheck, on a failure or past 3 s), blocking(command, findings), BLOCKS_IN_DELETE, segments(command):
