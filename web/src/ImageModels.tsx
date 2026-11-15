@@ -967,12 +967,14 @@ const doesWords = (s: HostStarter) => [...new Set(s.does.map((d) => doesWord(d a
  * Starter recipes: the host's own, searched, filtered and grouped by family, a model's variants folded into one row
  * with a Variant switch once picked; each with its parts and what is left to download. One is picked.
  */
-function Starters({ list, added, picked, setPicked, free }: { list: HostStarter[]; added: Set<string>; picked?: string; setPicked: (id: string) => void; free: number }) {
+function Starters({ list: all, added, picked, setPicked, free }: { list: HostStarter[]; added: Set<string>; picked?: string; setPicked: (id: string) => void; free: number }) {
   const [q, setQ] = useState("");
   const [kind, setKind] = useState<StarterKind>("all");
   const [show, setShow] = useState<StarterShow>("all");
   const [open, setOpen] = useState<Set<string>>(() => new Set());
-  if (!list.length) return <p className="muted">This host ships no starter recipes.</p>;
+  // A host from before families lists none: its template's architecture stands in, and does nothing to filter by.
+  const list = useMemo(() => all.map((s) => ({ ...s, family: s.family || archWord(s.template), does: s.does ?? [] })), [all]);
+  if (!all.length) return <p className="muted">This host ships no starter recipes.</p>;
   const tooBig = (s: HostStarter) => toFetch(s).bytes > free;
   const ofKind = list.filter((s) => kind === "all" || s.does.some((d) => kindOf(d) === kind));
   const shows = (s: HostStarter, x: StarterShow) => x === "all" || (x === "here" ? !toFetch(s).parts.length : added.has(s.id));
