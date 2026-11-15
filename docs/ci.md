@@ -137,7 +137,8 @@ internet and nothing else:
 
 Every job runs the code of the branch it checks, with root on the VM, and
 the workflows' token is read-only, except that the CMP images job may write
-packages (below). The repository is public, so anyone can
+packages (below), from a push, a run started by hand or a pull request
+from a branch of this repository. The repository is public, so anyone can
 open a pull request from a fork, and a pull request's run uses the
 workflow files from its own branch: a fork can name `lyrica-ci` in any
 workflow, whatever `main`'s workflows say. So the boundary is a repository
@@ -159,15 +160,32 @@ same as the code hosts update from.
 
 `cmp-images.yml` builds the CMP 100-210's llama.cpp, sd-server and
 whisper-server images (host/README.md) when `host/llamacpp/`,
-`host/sdcpp/`, `host/whispercpp/` or `host/prebuilt.sh` change. A pull request only builds them. A push to `main`, or a run
-started by hand on a branch (Actions, CMP images, Run workflow), logs in to the
-registry `host/prebuilt.sh` names with the job's token, which may write
-packages there, and pushes each image whose tag isn't published yet. A
-fork's pull request gets a read-only token whatever the workflow asks. The
-first push creates each package as private: make it public once
-(the package's settings on GitHub, Change visibility), or hosts can't pull
-it and build their own. llama.cpp for six CUDA capabilities is a long
-compile on a hosted runner, so the job may run for hours.
+`host/sdcpp/`, `host/whispercpp/` or `host/prebuilt.sh` change. Each job
+first works out its image's tag, a hash of the image's own folder and CUDA
+list (`prebuilt.sh`), and asks the registry for it without logging in (the
+packages are public). A tag that is already published is the same image, so
+the job stops there, in under a minute; only a change to an image's own
+folder or CUDA list compiles. llama.cpp and whisper.cpp for six CUDA
+capabilities take 40 to 60 minutes each on a hosted runner, sd-server about
+20.
+
+A new tag is published by the run that first builds it: a push to `main`, a
+run started by hand on a branch (Actions, CMP images, Run workflow), or a
+pull request from a branch of this repository. That run logs in to the
+registry `prebuilt.sh` names with the job's token, which may write packages
+there, and pushes the image, so main finds the tag after the merge and
+doesn't compile it again. A fork's pull request gets a read-only token
+whatever the workflow asks, and only builds. A tag a pull request published
+and then changed again stays in the registry unused, since hosts only ask
+for the tag their own checkout computes. The first push creates each package
+as private: make it public once (the package's settings on GitHub, Change
+visibility), or hosts can't pull it and build their own, and every CI run
+compiles again.
+
+`host-images.yml` builds the ComfyUI and CUDA speech images (build only,
+never published) when their folders or compose files change. `starters.yml`
+checks the starter recipes (`host/recipes/`) against Hugging Face; it is its
+own workflow, so a recipe change builds no image.
 
 ## Switching runners
 
