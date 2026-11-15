@@ -1,6 +1,9 @@
 # A model list for looking at images
 
-**Status:** Merged as #555 (aa654f8).
+**Status:** Merged as #555 (aa654f8). Points 2 to 4 were replaced on
+2026-11-15 by the `look` tool: a model without vision keeps the work and
+asks the Look at images model about the images in words, rather than a
+subagent switching to it (docs/models.md, "Look at images").
 
 The owner's decision (2026-10-25). A project chat whose model can't see
 delegated a look at an uploaded image and named a per-token cloud model,

@@ -84,6 +84,11 @@ The Lyrica Pi extension. `createLyricaExtension(thread, options)` returns a Pi
   Exact layouts and diagrams use HTML/SVG and the sandbox's offline Chromium
   command from that doc. Its image description and guidance stay short:
   principle 8 charges every context token on every turn.
+- **`look.ts`**: `createLookExtension` adds the `look` tool, on only while
+  the thread's model has no vision: the Look at images model gets the images
+  (or a clip's stills) and her question and answers in words.
+  `vision.ts`'s guard tells a model without vision to call it rather than
+  describe an image it can't see.
 - **`models.ts`**: `modelRuntimeFor(models, call)` builds the Pi
   `ModelRuntime` for a thread from the router, and `piModelFor` resolves a
   task to a Pi model. See [docs/models.md](../docs/models.md). Local

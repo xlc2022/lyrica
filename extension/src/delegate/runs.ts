@@ -11,11 +11,11 @@ import { syncEntries, toStoredEntry } from "../record.ts";
 import { PaceTracker } from "../context.ts";
 import { openThreadSession } from "../session.ts";
 import { piModelFor } from "../models.ts";
-import type { VisionFallback } from "../vision.ts";
 import { createMcpServersExtension } from "../mcp.ts";
 import { createWebExtension } from "../web.ts";
 import { checkoutsOf, repoRules } from "../code-repositories.ts";
 import { createImageExtension } from "../images.ts";
+import { createLookExtension } from "../look.ts";
 import { createSyntaxExtension } from "../syntax.ts";
 import { createWorkspaceExtension, type Approval, type ApprovalRequest } from "../workspace.ts";
 import { rolesFor } from "./roles.ts";
@@ -45,7 +45,7 @@ export interface Limits {
 // A local model working through a large task can take an hour; one that has stopped answering shows within minutes.
 export const DEFAULT_LIMITS: Limits = { depth: 1, concurrency: 2, runsPerRequest: 8, timeoutMs: 90 * 60_000, idleMs: 5 * 60_000, notes: 3, foregroundMs: 5 * 60_000 };
 
-export type DelegateWorkspace = Pick<Workspace, "inheritSettings" | "forThread" | "settings"> & Partial<Pick<Workspace, "imageFiles" | "claudeDir">>;
+export type DelegateWorkspace = Pick<Workspace, "inheritSettings" | "forThread" | "settings"> & Partial<Pick<Workspace, "imageFiles" | "files" | "claudeDir">>;
 
 export interface DelegationOptions {
   users: Users;
@@ -1179,6 +1179,13 @@ export class Delegation {
           enabled: () => !role.readOnly && !narrowing.readOnly && tools.settings().images && tools.settings().mode !== "plan",
           approve: r => this.approve(sub!, r),
         }));
+        // Eyes for a model without vision: the subagent keeps its work and asks the thread's vision model what images show.
+        if (workspace.imageFiles) extensions.push(createLookExtension({ models: this.o.models, threadId: child.id,
+          call: () => lookContext(this.o.models.callContext(parent.user.id, parent.pool, child.id), this.parentCall(run)),
+          files: workspace.imageFiles({ ...p, threadId: child.id }), settings: () => workspace.settings(parent.user.id),
+          ...(workspace.files ? { frames: (path: string, count: number) => workspace.files!({ ...p, threadId: child.id }).frames(path, count) } : {}),
+          approve: r => this.approve(sub!, r),
+        }));
         // Its role says whether it searches and browses; its Web search switch is its parent's or off. Its browser is
         // its own, under its own network, with a profile of its own: it has none of its parent's logins.
         const browses = role.tools.includes("browse") && !!tools.browser && !!sandboxTools().browser && sandboxHas("node");
@@ -1194,26 +1201,9 @@ export class Delegation {
       const nested = this.depth(ctx) < this.limits.depth;
       if (nested) extensions.push(createDelegateExtension(ctx, this, run.budget));
       // tool_search loads the MCP tools, which register after its role's tools are set, so the role doesn't turn them off.
-      const allowed = new Set([...role.tools, "ask_parent", ...(nested ? ["delegate"] : []), ...(mcp ? ["tool_search"] : [])]);
+      const allowed = new Set([...role.tools, "ask_parent", "look", ...(nested ? ["delegate"] : []), ...(mcp ? ["tool_search"] : [])]);
       // First: it must run before the MCP extension registers anything, else the role gate turns loaded MCP tools off.
-      // A model without vision that reads an image goes on, for the rest of this subagent, on one that can see it (visionList),
-      // recorded as the subagent's model. Its own call context, so a private or local-only one reads the Private column.
-      const vision: VisionFallback = async () => {
-        const task = role.name === "coder" ? "code" : "chat";
-        const call = () => models.callContext(parent.user.id, parent.pool, child.id);
-        const list = visionList(models, call(), this.parentCall(run));
-        if (!list.length) return undefined;
-        // Tried before anything is saved, so with none up the thread keeps its own list, or none.
-        const tried = { ...call(), overrides: { ...call().overrides, [task]: list } };
-        let picked;
-        try { picked = models.resolve(task, tried); } catch { return undefined; }
-        models.setThreadModel(parent.user.id, parent.pool, child.id, task, list);
-        const { model } = piModelFor(opened.runtime, models, task, call(), picked);
-        if (sub) { sub.model = picked.label; sub.cloud = picked.endpoint.kind !== "local"; }
-        this.store.update(parent.user.id, parent.pool, child.id, { model: picked.label, offeringId: picked.ref.offeringId });
-        return { model, label: picked.label };
-      };
-      extensions.unshift(createSubagentExtension(ctx, role, hooks, allowed, this.o.name?.() ?? "Lyrica", !earlier && role.name === "coder" ? { task, done } : undefined, rules, vision));
+      extensions.unshift(createSubagentExtension(ctx, role, hooks, allowed, this.o.name?.() ?? "Lyrica", !earlier && role.name === "coder" ? { task, done } : undefined, rules));
       const opened = await openThreadSession({ thread: ctx, models, cwd: this.o.cwd, extensions, task: () => role.name === "coder" ? "code" : "chat" });
       opened.session.setThinkingLevel(role.thinking);
       // Passes over a model whose machine is away, and records the call. The role keeps its own thinking level.
@@ -1302,18 +1292,11 @@ function withInput(spec: WorkflowSpec, input: string): WorkflowSpec {
 }
 
 /**
- * The models a subagent whose model can't see an image switches to: the first up in the person's Look at images
- * list (task `vision`, with tools), else every local chat model with vision. `ctx` is the subagent's own and `parent`
- * its parent's as it is now (switched to local-only since the run started, say): if either is restricted, the
- * Private column decides and only local models come back.
+ * The context a subagent's look runs in: its own, made local-only when its parent's is restricted and its own isn't
+ * (its parent switched to local-only since the run started), so its images never reach a cloud vision model then.
  */
-export function visionList(models: Models, own: CallContext, parent?: CallContext): { offeringId: string }[] {
-  const ctx = parent && isRestricted(parent) && !isRestricted(own) ? { ...own, localOnly: true } : own;
-  try {
-    return [models.resolve("vision", ctx, { tools: true }).ref];
-  } catch {
-    return models.textModels(ctx).filter((m) => m.vision && m.local).map((m) => ({ offeringId: m.id }));
-  }
+export function lookContext(own: CallContext, parent?: CallContext): CallContext {
+  return parent && isRestricted(parent) && !isRestricted(own) ? { ...own, localOnly: true } : own;
 }
 
 /** What a finished run tells the parent. */

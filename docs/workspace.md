@@ -952,6 +952,14 @@ Videos tab has listed it, is kept the same way (`<uuid>.mp4.seconds`). She is to
 facts and path; a clip made within a call (an explicit retry) also shows her
 its poster as an image.
 
+A thread whose model can't see has the `look` tool instead of seeing images
+itself (docs/models.md, "Look at images"). It reads images as the image tool
+does, and a clip as stills: `ThreadFiles.frames(path, count)` runs ffprobe,
+then ffmpeg once per still, inside the thread's Files sandbox with no
+network, each still from the middle of its share of the clip, at most 768
+pixels on its longer side, as a JPEG kept in memory only, nothing written.
+At most 16 stills per clip. Without ffmpeg, a clip can't be looked at.
+
 Each user's mounted home also has `photos-of-me/`, outside the thread folders
 and sandbox grants. The tool reaches it through `/photos-of-me/<file>` (or
 `photos-of-me/<file>`). `Workspace.imageFiles(t).read` marks these inputs as

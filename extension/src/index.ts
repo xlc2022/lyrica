@@ -27,6 +27,7 @@ export * from "./code-repositories.ts";
 export * from "./context.ts";
 export * from "./gate.ts";
 export * from "./images.ts";
+export * from "./look.ts";
 export * from "./mcp.ts";
 export * from "./memory.ts";
 export { createTopExtension, TOP_MESSAGE } from "./top.ts";

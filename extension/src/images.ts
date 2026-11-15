@@ -168,7 +168,8 @@ const dayOf = (date: Date) => `${date.getFullYear()}-${date.getMonth() + 1}-${da
 // One pending question per user, even across simultaneous threads in the same process.
 const pending = new WeakMap<WorkspaceSettings, Promise<boolean>>();
 
-async function allowPortrait(o: ImageTools, r: Resolution, id: string, ctx: ExtensionContext | undefined, signal?: AbortSignal): Promise<void> {
+/** Asks, once a day under Ask, before a photo of the user goes to a cloud model; the look tool asks the same way. */
+export async function allowPortrait(o: Pick<ImageTools, "settings" | "approve" | "now">, r: Resolution, id: string, ctx: ExtensionContext | undefined, signal?: AbortSignal, tool = "image"): Promise<void> {
   const s = o.settings();
   const policy = s.photoCloudPolicy();
   if (policy === "never") throw new Error("Photos of you aren't allowed to go to cloud models.");
@@ -178,7 +179,7 @@ async function allowPortrait(o: ImageTools, r: Resolution, id: string, ctx: Exte
   let question = pending.get(s);
   if (!question) {
     const text = `Send photos of you to ${r.endpoint.name}?`;
-    const request: ApprovalRequest = { toolCallId: id, tool: "image", input: { question: text, provider: r.endpoint.name, model: r.label }, warning: text };
+    const request: ApprovalRequest = { toolCallId: id, tool, input: { question: text, provider: r.endpoint.name, model: r.label }, warning: text };
     question = (async () => {
       const allowed = o.approve ? (await o.approve(request)) === true : ctx?.hasUI ? await ctx.ui.confirm(text, "An approval lasts until the end of today.") : false;
       signal?.throwIfAborted();

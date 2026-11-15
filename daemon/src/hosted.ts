@@ -6,7 +6,7 @@ import {
   sandboxHas, sandboxTools, createTask, type ChildStatus, type JobProgress, type Memory, type Models, type PersonaStore, type Pool, type PoolView, type Skill, type Users, type Workspace,
 } from "@lyrica/core";
 import {
-  BUILTIN_SKILLS, checkoutsOf, codeRepositories, repoSkills, skillsIndex, type ListedSkill, createChecksExtension, createSyntaxExtension, codeTaskText, formatEntry, repoRules, appendUserMessage, executeImage, ContextMeter, createDelegateExtension, createDownloadsExtension, createImageExtension, createLyricaExtension, createMcpServersExtension, createModelsExtension, createReactExtension, createThreadsExtension, createTopExtension, createWebExtension, createWorkspaceExtension, createWaitForReportsExtension, DELEGATE_MESSAGE, EMPTY_REPLY_NOTICE, TURN_TOOL_NOTICE, OPENING, openThreadSession, type ClipMade, piModelFor, syncEntries, timedReply,
+  BUILTIN_SKILLS, checkoutsOf, codeRepositories, repoSkills, skillsIndex, type ListedSkill, createChecksExtension, createSyntaxExtension, codeTaskText, formatEntry, repoRules, appendUserMessage, executeImage, ContextMeter, createDelegateExtension, createDownloadsExtension, createImageExtension, createLookExtension, createLyricaExtension, createMcpServersExtension, createModelsExtension, createReactExtension, createThreadsExtension, createTopExtension, createWebExtension, createWorkspaceExtension, createWaitForReportsExtension, DELEGATE_MESSAGE, EMPTY_REPLY_NOTICE, TURN_TOOL_NOTICE, OPENING, openThreadSession, type ClipMade, piModelFor, syncEntries, timedReply,
   GO_AHEAD, grantKey, MODE_LABELS, type Approval, type ApprovalRequest, type ThreadsHost, type Delegation, type DelegationEvent, type GoAhead, type DownloadsHost, type HubListing, type ModelsHost, type PlanRequest, type SubagentApproval, type ThreadContext, type UserReaction,
 } from "@lyrica/extension";
 import type * as Api from "./api.ts";
@@ -1424,6 +1424,14 @@ export class HostedThread {
             settings: () => workspace.settings(this.userId), enabled: () => tools.settings().images && tools.settings().mode !== "plan",
             approve: r => this.approve(r),
             ...(this.o.clips ? { background: (make: (signal: AbortSignal, onProgress: (p: JobProgress) => void) => Promise<ClipMade>, toolCallId: string) => this.o.clips!(this.userId, this.pool, this.threadId, make, toolCallId) } : {}),
+          }),
+          // Eyes for a model without vision of its own: the thread's Look at images model answers her questions about images.
+          createLookExtension({ models, threadId: this.threadId,
+            call: () => models.callContext(this.userId, this.pool, this.threadId),
+            files: workspace.imageFiles({ userId: this.userId, pool: this.pool, threadId: this.threadId, coordinates: !!thread.project }),
+            frames: (path, count) => workspace.files({ userId: this.userId, pool: this.pool, threadId: this.threadId, coordinates: !!thread.project }).frames(path, count),
+            settings: () => workspace.settings(this.userId),
+            approve: r => this.approve(r),
           }),
           // web_search and web_fetch, behind the Web search switch; a fetch runs in the thread's sandbox.
           // browse too: the thread's own browser, in a sandbox with its network and nothing else of the thread's. A project chat has it too (the owner, 2026-11-11); a subagent's is its own (delegate/runs.ts).

@@ -174,12 +174,12 @@ const ASKS: Record<PermissionMode, string[]> = {
 /**
  * The only tools Plan mode leaves on: the ones that read, read-only
  * delegation, her child threads (where compacting her own context is too),
- * propose_plan, and tool_search; of MCP tools, those their server marks read-only.
+ * propose_plan, tool_search and look; of MCP tools, those their server marks read-only.
  */
-export const PLAN_TOOLS: ReadonlySet<string> = new Set(["read", "recall", "read_memory", "web_search", "web_fetch", "browse", "delegate", "ask_parent", "threads", "react", "propose_plan", "proxmox", "tool_search"]);
+export const PLAN_TOOLS: ReadonlySet<string> = new Set(["read", "recall", "read_memory", "web_search", "web_fetch", "browse", "delegate", "ask_parent", "threads", "react", "propose_plan", "proxmox", "tool_search", "look"]);
 
-/** Tools whose input leaves Lyrica for someone else: SearXNG's engines, a web page's server. */
-const LEAVES: ReadonlySet<string> = new Set(["web_search", "web_fetch", "browse", "image"]);
+/** Tools whose input leaves Lyrica for someone else: SearXNG's engines, a web page's server, a cloud model. */
+const LEAVES: ReadonlySet<string> = new Set(["web_search", "web_fetch", "browse", "image", "look"]);
 
 /** Tools that change things outside but ask on their own card, with the change in words, so the generic approval doesn't ask too. */
 const OWN_CARD: ReadonlySet<string> = new Set(["models", "browse"]);

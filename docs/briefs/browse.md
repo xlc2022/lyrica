@@ -51,7 +51,7 @@ prompt).
    same markers as `web_fetch`.
 4. **`screenshot`** returns the visible part as an image, the same way a
    `read` of an image file does, so a model without vision is told it
-   can't see it and the Look at images list applies.
+   can't see it and looks with the `look` tool's `recent`.
 5. **One browser per thread, in its sandbox.** A driver script
    (`core/src/browse.cjs`) runs on the sandbox's node and drives its
    Chromium over the DevTools pipe; `lyricad` talks to it over the
