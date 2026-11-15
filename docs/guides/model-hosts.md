@@ -63,6 +63,11 @@ answer to start, so a long prompt on a slow model can still be read.
 - `iptables` and `git`. systemd keeps the egress rules across reboots;
   without it you run `sudo host/egress.sh apply` after every boot and
   Docker restart.
+- **Internet at install and update:** the image registries, GitHub (the
+  ComfyUI image's pinned nodes) and, for vLLM, PyPI (`pypi.org` and
+  `files.pythonhosted.org`), since its image is built here over the pinned
+  vLLM image with two hash-pinned packages. A proxy or firewall that
+  allows only the registries fails the vLLM build.
 - A user in the `docker` group to run the script as: it runs `docker
   compose` as you, and uses `sudo` only for the egress rules, their unit
   and the updater (its state folder, any deploy key, script and units).
