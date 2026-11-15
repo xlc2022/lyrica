@@ -50,12 +50,13 @@ can't open private.db, and Settings lists only the pools the display shows.
 ## B. The index in every thread
 
 - A stable system section `skills` lists each active skill as its name, its
-  description, and where to read it: `read_memory` with `s:<name>` for
-  library skills, or the file path for repository skills.
+  description, and the tool that opens it with what to give that tool:
+  `read_memory="s:<name>"` for a library skill, `read="<file path>"` for a
+  repository's.
 - It is capped at 40 skills and 4,000 characters. Library skills come first,
   then repository skills, cut whole.
-- One line says to read a skill before doing the job it describes and to
-  follow it.
+- One line says to open a skill with the tool its line names before doing
+  the job it describes, and to follow it.
 - Subagents don't get it. A coder works in the parent's checkouts, and the
   parent passes on what it needs.
 - Repository skills are looked up only when the thread has checkouts, so a

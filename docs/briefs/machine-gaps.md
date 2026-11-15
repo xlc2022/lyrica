@@ -186,6 +186,11 @@ tool each for A and B, prompt lines only where the thread has a machine).
   A machine with no GPU at all still stops her. With passwordless sudo on
   the machine she runs root steps herself, as docs/workspace.md already
   says for any machine.
+- The skills list named no tool (2026-11-15, the retry in a new thread):
+  each line read `read="s:model-host"`, and she gave that id to the file
+  reader, `read`, which found no such file. A line now names the tool as
+  its attribute: `read_memory="s:<name>"`, or `read="<path>"` for a
+  repository's skill.
 - No change to `host/`.
 
 ## Out of scope

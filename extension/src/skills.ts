@@ -5,11 +5,12 @@ import { Type } from "typebox";
 
 // Skills (docs/briefs/skills.md): one line per skill in every thread's prompt, the body read only when a task calls
 // for it. Library skills (the person's and hers, in user.db) read with read_memory s:<name>; a repository's with read.
+// Each line names that tool as its attribute: `read="s:<name>"` sent her to the file reader with a skill's id.
 
 export const SKILLS_IN_ALL = 4000;
 export const SKILLS_LISTED = 40;
 const REPO_SKILLS_MAX = 20;
-export const SKILLS_HEADING = "Your skills: procedures for jobs that come up again. Before doing a job one describes, read it and follow it.";
+export const SKILLS_HEADING = "Your skills: procedures for jobs that come up again. Before doing a job one describes, open it with the tool its line names and follow it.";
 
 export interface ListedSkill { name: string; description: string; /** Where to read it: s:<name> or a file path. */ at: string }
 
@@ -29,7 +30,7 @@ export function skillsIndex(skills: ListedSkill[]): string | undefined {
   const lines: string[] = [];
   let left = SKILLS_IN_ALL - SKILLS_HEADING.length;
   for (const s of skills.slice(0, SKILLS_LISTED)) {
-    const line = `<skill name="${attr(s.name)}" read="${attr(s.at)}">${attr(s.description)}</skill>`;
+    const line = `<skill name="${attr(s.name)}" ${s.at.startsWith("s:") ? "read_memory" : "read"}="${attr(s.at)}">${attr(s.description)}</skill>`;
     if (line.length + 1 > left) break;
     left -= line.length + 1;
     lines.push(line);

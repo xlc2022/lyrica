@@ -54,7 +54,7 @@ describe("skills", () => {
     ])!;
     expect(index.split("\n")).toEqual([
       SKILLS_HEADING,
-      '<skill name="release" read="s:release">When cutting a release.</skill>',
+      '<skill name="release" read_memory="s:release">When cutting a release.</skill>',
       '<skill name="deploy" read="/workspace/repos/app/.claude/skills/deploy/SKILL.md">Deploys &quot;prod&quot; &lt;safely></skill>',
     ]);
     const many = skillsIndex(Array.from({ length: 80 }, (_, i) => ({ name: `skill-${i}`, description: "x".repeat(150), at: `s:skill-${i}` })))!;
@@ -103,7 +103,7 @@ describe("skills", () => {
       read: (name) => (name === "release" ? "1. Tag it." : undefined),
       propose: (input, call) => { saved.push({ input, call }); return { ...input, pool: "general", state: "waiting", author: "lyrica", at: "" } as Skill; },
     });
-    expect((await turn()).skills).toContain('<skill name="release" read="s:release">');
+    expect((await turn()).skills).toContain('<skill name="release" read_memory="s:release">');
     const read = (id: string) => tools.get("read_memory")!.execute("c", { id });
     expect((await read("s:release")).content[0].text).toBe("1. Tag it.");
     expect((await read("s:nothing")).content[0].text).toBe("No skill nothing.");
