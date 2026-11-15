@@ -51,6 +51,9 @@ const isThreadRead = (tool: string, args: unknown) => tool === "threads" && (arg
 
 /** A bash call that only waits, as polling does (allowed: a wake is the main signal, polling its backup). */
 const isSleep = (tool: string, args: unknown) => tool === "bash" && /^\s*sleep\s+\d+(\.\d+)?[smh]?\s*;?\s*$/.test(String((args as { command?: unknown } | null)?.command ?? ""));
+/** A remember: each save names a new note ID, so the result is compared without the IDs, and saving the same notes again is a repeat. */
+const isRemember = (tool: string) => tool === "remember";
+const NOTE_ID = /\bn:\d{8}-[0-9a-f]{8}\b/g;
 /** A command started in the background: each call is its own job, so the same command again isn't the same result (the running-jobs cap bounds them). */
 const isBackground = (tool: string, args: unknown) => tool === "bash" && !!(args as { background?: unknown } | null)?.background;
 
@@ -59,6 +62,9 @@ function normalized(value: unknown): string {
   if (value && typeof value === "object") return `{${Object.keys(value).sort().map(k => `${JSON.stringify(k)}:${normalized((value as Record<string, unknown>)[k])}`).join(",")}}`;
   return JSON.stringify(value) ?? "null";
 }
+
+/** Told to her when she saves the same notes a third time in one turn. */
+export const SAVED_TWICE = "You already saved these notes twice this turn, so they weren't saved again. Answer or try something different.";
 
 /** Told to her when a project chat that waits for its threads' reports tries to wait in its turn instead. */
 export const WAIT_FOR_REPORTS = "This project waits for its threads' reports instead of checking in on them: end your turn now. A thread's report, question or error wakes you.";
@@ -113,6 +119,7 @@ export function createTurnToolsExtension(max = MAX_TURN_TOOL_CALLS): ExtensionFa
       // A background call is a job each time, so identical ones in a batch each start; a repeated result (the jobs cap's refusal, say) is still a repeat.
       if ((!isBackground(e.toolName, e.args) && together >= MAX_IDENTICAL_TOOL_CALLS - 1) || (last.length === MAX_IDENTICAL_TOOL_CALLS - 1 && last.every((r) => r === last[0]))) refused.set(e.toolCallId, isThreadRead(e.toolName, e.args)
         ? `You already read this thread twice with these arguments. If it is still working: ${CHILD_WAKES}`
+        : isRemember(e.toolName) ? SAVED_TWICE
         : "You already have this result: this tool was called with identical arguments twice and returned the same both times. Answer or try something different.");
       else running.set(e.toolCallId, key);
       if (calls >= max) { stopped = true; why = `Turn stopped after \`${calls}\` tool calls.`; }
@@ -126,7 +133,8 @@ export function createTurnToolsExtension(max = MAX_TURN_TOOL_CALLS): ExtensionFa
       const key = running.get(e.toolCallId);
       if (key === undefined) return;
       running.delete(e.toolCallId);
-      const digest = createHash("sha256").update(`${e.isError}:${JSON.stringify((e.result as { content?: unknown } | undefined)?.content ?? null)}`).digest("base64");
+      const content = JSON.stringify((e.result as { content?: unknown } | undefined)?.content ?? null);
+      const digest = createHash("sha256").update(`${e.isError}:${isRemember(e.toolName) ? content.replace(NOTE_ID, "n:") : content}`).digest("base64");
       repeats.set(key, [...(repeats.get(key) ?? []), digest]);
     });
     pi.on("turn_end", (e, ctx) => {
