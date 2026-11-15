@@ -497,6 +497,11 @@ export interface RecipeCopyPlan {
 /** GET /api/u/:userId/hosts/:endpointId/starters → { starters }: the host's starter recipes (host/API.md), each part `present` when it is on the host. */
 export interface HostStarter {
   id: string; name: string; template: string;
+  /** Its group, and for a variant the model it is one of and its label (host/API.md). */
+  family: string; variantOf?: string; variant?: string;
+  /** What its template does: create, edit, video, animate, motion, upscale, edit_video. */
+  does: string[];
+  useFor?: "fast" | "quality";
   parts: { role: string; slot?: string; source: string; repo: string; path: string; sha256: string; size?: number; present: boolean }[];
   loras: { file: string; strength: number }[];
   defaults: Record<string, string | number>;

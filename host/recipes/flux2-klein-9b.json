@@ -1,5 +1,8 @@
 {
   "name": "FLUX.2 klein 9B",
+  "family": "FLUX",
+  "variantOf": "FLUX.2 klein",
+  "variant": "9B",
   "template": "flux2-klein-9b",
   "parts": [
     {

@@ -1,5 +1,8 @@
 {
   "name": "Krea 2 Turbo",
+  "family": "Krea 2",
+  "variantOf": "Krea 2 Turbo",
+  "variant": "Full size",
   "template": "krea2",
   "parts": [
     {

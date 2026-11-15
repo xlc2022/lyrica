@@ -1,5 +1,6 @@
 {
   "name": "Qwen-Image-Edit 2509",
+  "family": "Qwen-Image",
   "template": "qwen-image-edit",
   "parts": [
     {

@@ -1,5 +1,6 @@
 {
   "name": "SCAIL-2",
+  "family": "SCAIL-2",
   "template": "scail2",
   "parts": [
     {

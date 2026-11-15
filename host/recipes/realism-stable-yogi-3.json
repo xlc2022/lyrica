@@ -1,5 +1,8 @@
 {
   "name": "Realism by Stable Yogi v3",
+  "family": "Krea 2",
+  "variantOf": "Realism by Stable Yogi v3",
+  "variant": "Quality",
   "template": "krea2",
   "backend": "comfyui",
   "useFor": "quality",

@@ -929,6 +929,11 @@ export function ImageReview({ ctx }: { ctx: MCtx }) {
   );
 }
 
+/** The foot's picked starter and what it downloads. */
+const StarterPicked = ({ s }: { s?: HostStarter }) => (
+  <span className="dl-picked">{s ? <><b>{s.name}</b><span className="cap">{toFetch(s).parts.length ? <><Size text={size(toFetch(s).bytes)} /> to download</> : "every part is on this host"}</span></> : <span className="cap">No starter picked</span>}</span>
+);
+
 /* ---- Download image model: a starter recipe, files from Hugging Face, a link, a scan of the host's models folder, or files from this computer ---- */
 
 type ImageSource = "starters" | "huggingface" | "civitai" | "url" | "scan" | "upload" | "workflow";
@@ -937,23 +942,114 @@ const SOURCES: [ImageSource, string][] = [["starters", "Starter recipes"], ["hug
 /** A starter's parts not on the host yet, and their bytes. */
 const toFetch = (s: HostStarter) => { const parts = s.parts.filter((p) => !p.present); return { parts, bytes: parts.reduce((n, p) => n + (p.size ?? 0), 0) }; };
 
-/** Starter recipes: the host's own, each with its parts and what is left to download; one is picked. */
-function Starters({ list, added, picked, setPicked }: { list: HostStarter[]; added: Set<string>; picked?: string; setPicked: (id: string) => void }) {
+type StarterKind = "all" | "create" | "edit" | "video" | "upscale";
+const STARTER_KINDS: [StarterKind, string][] = [["all", "All"], ["create", "Generate"], ["edit", "Edit"], ["video", "Video"], ["upscale", "Upscale"]];
+/** Which Does a template's action falls under: clips, animating and motion are all Video. */
+const kindOf = (d: string): StarterKind => (d === "create" || d === "edit" ? d : d === "upscale" || d === "upscale_video" ? "upscale" : "video");
+type StarterShow = "all" | "here" | "added";
+
+/** A row of Starter recipes: one starter, or a model's variants folded together (by name). */
+interface StarterRow { key: string; name: string; family: string; items: HostStarter[] }
+function starterRows(list: HostStarter[]): StarterRow[] {
+  const rows = new Map<string, StarterRow>();
+  for (const s of list) {
+    const key = s.variantOf ? `${s.family}\n${s.variantOf}` : s.id;
+    const row = rows.get(key) ?? { key, name: s.variantOf ?? s.name, family: s.family, items: [] };
+    row.items.push(s);
+    rows.set(key, row);
+  }
+  for (const r of rows.values()) r.items.sort((a, b) => a.name.localeCompare(b.name));
+  return [...rows.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+const doesWords = (s: HostStarter) => [...new Set(s.does.map((d) => doesWord(d as HostRecipe["does"][number])))];
+
+/**
+ * Starter recipes: the host's own, searched, filtered and grouped by family, a model's variants folded into one row
+ * with a Variant switch once picked; each with its parts and what is left to download. One is picked.
+ */
+function Starters({ list, added, picked, setPicked, free }: { list: HostStarter[]; added: Set<string>; picked?: string; setPicked: (id: string) => void; free: number }) {
+  const [q, setQ] = useState("");
+  const [kind, setKind] = useState<StarterKind>("all");
+  const [show, setShow] = useState<StarterShow>("all");
+  const [open, setOpen] = useState<Set<string>>(() => new Set());
   if (!list.length) return <p className="muted">This host ships no starter recipes.</p>;
+  const tooBig = (s: HostStarter) => toFetch(s).bytes > free;
+  const ofKind = list.filter((s) => kind === "all" || s.does.some((d) => kindOf(d) === kind));
+  const shows = (s: HostStarter, x: StarterShow) => x === "all" || (x === "here" ? !toFetch(s).parts.length : added.has(s.id));
+  const words = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const matches = (s: HostStarter) => {
+    const text = [s.name, s.family, s.variantOf, s.variant, s.useFor, ...doesWords(s)].join(" ").toLowerCase();
+    return words.every((w) => text.includes(w));
+  };
+  const kept = ofKind.filter((s) => shows(s, show) && matches(s));
+  const filtering = words.length > 0 || show !== "all";
+  const families = new Map<string, StarterRow[]>();
+  for (const r of starterRows(kept)) families.set(r.family, [...(families.get(r.family) ?? []), r]);
+  const toggle = (f: string) => setOpen((o) => { const n = new Set(o); if (n.has(f)) n.delete(f); else n.add(f); return n; });
+  const clear = () => { setQ(""); setKind("all"); setShow("all"); };
+  return <>
+    <div className="img-filters">
+      <input type="search" aria-label="Search starters" placeholder="Search by name or family" value={q} onChange={(e) => setQ(e.target.value)} />
+      <div className="seg" role="group" aria-label="Does">
+        {STARTER_KINDS.map(([k, label]) => <button key={k} type="button" aria-pressed={kind === k} onClick={() => setKind(k)}>{label}</button>)}
+      </div>
+    </div>
+    <div className="chip-row" role="group" aria-label="Show">
+      {([["all", "All"], ["here", "On this host"], ["added", "Added"]] as [StarterShow, string][]).map(([x, label]) => (
+        <Fragment key={x}>{chip(<>{label} <span className="num">{ofKind.filter((s) => shows(s, x)).length}</span></>, show === x, () => setShow(x))}</Fragment>
+      ))}
+    </div>
+    <p className="sr-only" aria-live="polite">{plural(kept.length, "starter", "starters")}</p>
+    {families.size ? (
+      <div className="starter-groups" role="radiogroup" aria-label="Starter recipes">
+        {[...families.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([family, rows]) => {
+          const items = rows.flatMap((r) => r.items);
+          const isOpen = filtering || open.has(family) || items.some((s) => s.id === picked);
+          const nAdded = items.filter((s) => added.has(s.id)).length;
+          return (
+            <details key={family} className="starter-family" open={isOpen}>
+              <summary onClick={(e) => { e.preventDefault(); toggle(family); }} aria-expanded={isOpen}>
+                <Icon name="right" />
+                <span className="starter-family-name">{family} <span className="cap">{[...new Set(items.flatMap(doesWords))].join(" · ")}</span></span>
+                <span className="cap">{plural(items.length, "starter", "starters")}{nAdded > 0 && <> · <span className="num">{nAdded}</span> added</>}</span>
+              </summary>
+              {isOpen && rows.map((r) => <StarterChoice key={r.key} row={r} added={added} picked={picked} setPicked={setPicked} tooBig={tooBig} free={free} />)}
+            </details>
+          );
+        })}
+      </div>
+    ) : <p className="muted">No starters match. <button type="button" className="link" onClick={clear}>Clear</button></p>}
+  </>;
+}
+
+/** One row: a starter, or a model's variants; a picked row with variants shows a Variant switch. */
+function StarterChoice({ row, added, picked, setPicked, tooBig, free }: { row: StarterRow; added: Set<string>; picked?: string; setPicked: (id: string) => void; tooBig: (s: HostStarter) => boolean; free: number }) {
+  const many = row.items.length > 1;
+  const isPicked = row.items.some((s) => s.id === picked);
+  const s = row.items.find((x) => x.id === picked) ?? row.items.find((x) => !tooBig(x)) ?? row.items[0]!;
+  const big = tooBig(s);
+  const f = toFetch(s);
+  const fetchOf = row.items.map((x) => toFetch(x).bytes);
+  const lo = Math.min(...fetchOf), hi = Math.max(...fetchOf);
+  const facts = many && !isPicked
+    ? <>{[...new Set(row.items.flatMap(doesWords))].join(" · ")} · {plural(row.items.length, "variant", "variants")} · {hi === 0 ? "every part is on this host" : <>{lo === hi ? <Size text={size(lo)} /> : <>{lo ? <Size text={size(lo)} /> : "nothing"} to <Size text={size(hi)} /></>} to download</>}</>
+    : <>{[...doesWords(s), ...(s.useFor ? [s.useFor] : [])].join(" · ")} · {plural(s.parts.length, "part", "parts")} · {f.parts.length ? <><Size text={size(f.bytes)} /> to download</> : "every part is on this host"}</>;
   return (
-    <div className="choices" role="radiogroup" aria-label="Starter recipes">
-      {list.map((s) => {
-        const f = toFetch(s);
-        return (
-          <label key={s.id} className="choice">
-            <input type="radio" name="starter" checked={picked === s.id} onChange={() => setPicked(s.id)} />
-            <span className="choice-file">
-              <span className="choice-name">{s.name}{added.has(s.id) && <span className="pill">added</span>}</span>
-              <span className="cap">{plural(s.parts.length, "part", "parts")} · {f.parts.length ? <><Size text={size(f.bytes)} /> to download</> : "every part is on this host"}</span>
-            </span>
-          </label>
-        );
-      })}
+    <div className="starter">
+      <label className="choice">
+        <input type="radio" name="starter" checked={isPicked} disabled={big} onChange={() => setPicked(s.id)} />
+        <span className="choice-file">
+          <span className="choice-name">{row.name}{row.items.some((x) => added.has(x.id)) && <span className="pill">added</span>}{big && <span className="pill warn" title={`${size(f.bytes)} to download, ${size(free)} free.`}>not enough space</span>}</span>
+          <span className="cap">{facts}</span>
+        </span>
+      </label>
+      {many && isPicked && (
+        <div className="seg starter-variant" role="group" aria-label="Variant">
+          {row.items.map((x) => (
+            <button key={x.id} type="button" aria-pressed={x.id === s.id} disabled={tooBig(x)} title={tooBig(x) ? `Not enough space: ${size(toFetch(x).bytes)} to download.` : undefined} onClick={() => setPicked(x.id)}>{x.variant}</button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -1087,7 +1183,7 @@ export function DownloadImage({ ctx }: { ctx: MCtx }) {
           </>}
           {source === "starters" && <>
             <ErrorText error={starters.error} />
-            {starters.data && <Starters list={starters.data[0]} added={starters.data[1]} picked={starter} setPicked={(id) => { setStarter(id); setProblem(""); }} />}
+            {starters.data && <Starters list={starters.data[0]} added={starters.data[1]} picked={starter} setPicked={(id) => { setStarter(id); setProblem(""); }} free={host.status!.modelsFolder.free} />}
           </>}
           {source === "workflow" && <WorkflowImport ctx={ctx} hostId={host.ep.id} onCancel={() => { location.hash = back; }} />}
           {source === "upload" && <UploadFields files={uploads} setFiles={(f) => { setUploads(f); setProblem(""); }} free={host.status!.modelsFolder.free} />}
@@ -1104,7 +1200,8 @@ export function DownloadImage({ ctx }: { ctx: MCtx }) {
             ) : <p className="muted">Nothing new in <code>{host.status!.modelsFolder.path}</code>.</p>)}
           </>}
           {source !== "workflow" && <ErrorText error={problem || (source === "huggingface" || source === "civitai" ? look.error : "") || error} />}
-          {source !== "workflow" && <div className="row">
+          {source !== "workflow" && <div className={source === "starters" ? "row dl-foot" : "row"}>
+            {source === "starters" && <StarterPicked s={starters.data?.[0].find((x) => x.id === starter)} />}
             {source !== "scan" && <button type="button" className="primary" disabled={busy || look.busy} onClick={download}>{source === "starters" ? "Add model" : source === "upload" ? "Upload" : "Download"}</button>}
             <button type="button" onClick={() => { location.hash = back; }}>{source === "scan" ? "Back" : "Cancel"}</button>
           </div>}

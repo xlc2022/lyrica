@@ -1,5 +1,8 @@
 {
   "name": "Wan 2.2 I2V 14B Q5",
+  "family": "Wan 2.2",
+  "variantOf": "Wan 2.2 I2V 14B",
+  "variant": "Q5",
   "template": "wan22-i2v-14b",
   "parts": [
     {

@@ -1,5 +1,6 @@
 {
   "name": "MOSS-Image",
+  "family": "MOSS-Image",
   "template": "moss-image",
   "backend": "comfyui",
   "parts": [

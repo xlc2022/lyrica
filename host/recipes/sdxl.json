@@ -1,5 +1,6 @@
 {
   "name": "Stable Diffusion XL",
+  "family": "SDXL",
   "template": "sdxl",
   "parts": [
     {

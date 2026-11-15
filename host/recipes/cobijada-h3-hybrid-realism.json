@@ -1,5 +1,8 @@
 {
   "name": "Cobijada H3 Hybrid Realism",
+  "family": "MiniMax H3",
+  "variantOf": "Cobijada H3 Hybrid",
+  "variant": "Realism",
   "template": "minimax-h3",
   "parts": [
     {

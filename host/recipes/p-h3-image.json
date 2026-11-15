@@ -1,5 +1,8 @@
 {
   "name": "P-H3-Image",
+  "family": "P-H3-Image",
+  "variantOf": "P-H3-Image",
+  "variant": "Full size",
   "template": "p-h3-image",
   "parts": [
     {

@@ -1,5 +1,8 @@
 {
   "name": "MiniMax H3 Turbo",
+  "family": "MiniMax H3",
+  "variantOf": "MiniMax H3 Turbo",
+  "variant": "Full size",
   "template": "minimax-h3",
   "parts": [
     {

@@ -808,9 +808,13 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   `useLongPress` in `src/ui.tsx`, which Files uses too), and the bar sends
   the action to each selected recipe in turn. **Download image model**
   (`…/models/images/download`) starts on **Starter recipes**: the host's
-  starters (`GET …/starters`) as radios, each with its parts and the size
-  left to download or "every part is on this host", and "added" once the
-  host made a recipe from it. **Add model** makes it (`POST
+  starters (`GET …/starters`) as radios in a collapsed group per `family`,
+  with a search box, a Does filter and chips (All, On this host, Added);
+  a model's variants (`variantOf`) are one row with a Variant switch once
+  picked. Each says what it does, its parts and the size left to download
+  or "every part is on this host", "added" once the host made a recipe
+  from it, and "not enough space" (disabled) past the host's free space. A
+  foot that stays in view names the picked starter. **Add model** makes it (`POST
   …/starters/:id/install`), first asking in a dialog, "Download the missing
   parts?", which names each missing file and its size, when anything is
   missing; nothing downloads before Download there. It then opens Downloads,

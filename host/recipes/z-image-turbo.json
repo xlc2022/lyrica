@@ -1,5 +1,6 @@
 {
   "name": "Z-Image Turbo",
+  "family": "Z-Image",
   "template": "z-image",
   "parts": [
     {

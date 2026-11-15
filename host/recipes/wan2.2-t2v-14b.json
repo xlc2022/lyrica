@@ -1,5 +1,8 @@
 {
   "name": "Wan 2.2 T2V 14B",
+  "family": "Wan 2.2",
+  "variantOf": "Wan 2.2 T2V 14B",
+  "variant": "Full size",
   "template": "wan22-t2v-14b",
   "parts": [
     {

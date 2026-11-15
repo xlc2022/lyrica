@@ -1,5 +1,8 @@
 {
   "name": "Realism by Stable Yogi v3, fast",
+  "family": "Krea 2",
+  "variantOf": "Realism by Stable Yogi v3",
+  "variant": "Fast",
   "template": "krea2",
   "useFor": "fast",
   "parts": [

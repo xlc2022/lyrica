@@ -1,5 +1,8 @@
 {
   "name": "GonzaLomo Krea 2 v4, fast",
+  "family": "Krea 2",
+  "variantOf": "GonzaLomo Krea 2 v4",
+  "variant": "Fast",
   "template": "krea2",
   "useFor": "fast",
   "parts": [

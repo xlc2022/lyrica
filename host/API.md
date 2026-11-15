@@ -996,7 +996,11 @@ Calls:
   ComfyUI-GGUF can't load a Krea 2 GGUF). A starter's `useFor` (`fast` or
   `quality`) becomes its recipe's; without one the recipe is `both`. So
   does a starter's `longestSeconds`, the longest video its recipe makes
-  (`video.longestSeconds`, below).
+  (`video.longestSeconds`, below). Each starter has a `family`, the group
+  Download image model lists it under ("Krea 2", "MiniMax H3"); one of a
+  model's variants also has `variantOf` (the model's name) and `variant`
+  (its label: "w4a8", "Fast", "Full size"), which fold into one row there.
+  The listing adds `does`, its template's actions.
 - `POST /host/v1/starters/<starter>/install`: downloads the missing parts
   (as `POST /host/v1/downloads`, with `X-Hub-Token` if needed) and creates
   the recipe as `confirmed`; it becomes `ready` when they finish. Answers

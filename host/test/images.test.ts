@@ -1911,6 +1911,18 @@ describe("the image API", () => {
       "cobijada-h3-hybrid-realism-w4a8", "cobijada-h3-hybrid-realism", "cobijada-h3-hybrid-w4a8", "cobijada-h3-hybrid", "cyberrealistic-krea2-4-fast", "cyberrealistic-krea2-4", "flux-schnell", "flux2-klein-4b", "flux2-klein-9b", "flux3-klein", "gonzalomo-krea2-4-fast", "gonzalomo-krea2-4", "juggernaut-xl-v9", "krea2-raw", "krea2-turbo-uncensored", "krea2-turbo", "kroma-fast", "kroma", "ltx-2.5-distilled", "minimax-h3-edit", "minimax-h3-image-w4a8", "minimax-h3-image", "minimax-h3-turbo-realism-w6a8", "minimax-h3-turbo-w6a8", "minimax-h3-turbo", "moss-image-edit", "moss-image", "p-h3-image-w4a8", "p-h3-image", "qwen-image-2.1-turbo", "qwen-image-2512", "qwen-image-edit", "qwen-image", "realism-stable-yogi-3-fast", "realism-stable-yogi-3", "realism-stable-yogi-moss-2", "realvisxl-v5", "scail-2", "sdxl", "seedvr2-3b", "seedvr2-7b", "singularity-h3-v2-realism-w6a8", "singularity-h3-v2-realism", "singularity-h3-v2-w6a8", "singularity-h3-v2",
       "wan2.2-i2v-14b-q5", "wan2.2-i2v-14b", "wan2.2-t2v-14b-q5", "wan2.2-t2v-14b", "wan2.2-ti2v-5b", "z-image-turbo",
     ]);
+    // Download image model groups them by family and folds a model's variants into one row.
+    expect(z).toMatchObject({ family: "Z-Image", does: ["create"] });
+    for (const st of STARTERS) {
+      expect(st.family, st.id).toBeTruthy();
+      expect(!!st.variantOf, st.id).toBe(!!st.variant);
+      if (st.variantOf) {
+        const kin = STARTERS.filter((o) => o.variantOf === st.variantOf);
+        expect(kin.length, st.id).toBeGreaterThan(1);
+        expect(new Set(kin.map((o) => o.family)).size, st.id).toBe(1);
+        expect(new Set(kin.map((o) => o.variant)).size, st.id).toBe(kin.length);
+      }
+    }
   });
 
   it("lists a starter for one backend only on hosts using it", async () => {

@@ -319,7 +319,7 @@ export class Images {
     }
     if (path === "/host/v1/starters" && method === "GET") {
       sendJson(res, 200, {
-        starters: this.starters().map((s) => ({ ...s, parts: s.parts.map((p) => ({ ...p, present: this.have(p) !== null })) })),
+        starters: this.starters().map((s) => ({ ...s, does: this.book.templates.get(s.template)?.does ?? [], parts: s.parts.map((p) => ({ ...p, present: this.have(p) !== null })) })),
       });
       return true;
     }

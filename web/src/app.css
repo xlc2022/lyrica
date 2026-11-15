@@ -2162,3 +2162,21 @@ dialog .eyebrow { margin: 10px 0 4px; }
 .viewer-head .artifact-rename { flex: 0 1 24ch; }
 .artifact-version { font-size: 13px; max-width: 100%; }
 .viewer-error { position: absolute; left: 16px; bottom: 16px; padding: 8px 12px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); }
+/* Download image model, Starter recipes: a collapsible group per family, a model's variants as one row with a Variant
+   switch once picked, and a foot that stays in view with the picked starter and Add model. */
+.starter-groups { display: grid; gap: 8px; min-width: 0; }
+.starter-family { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--panel); min-width: 0; }
+.starter-family > summary { list-style: none; cursor: pointer; display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 6px 12px; min-height: 44px; background: var(--tool); }
+.starter-family > summary::-webkit-details-marker { display: none; }
+.starter-family > summary .ic { color: var(--muted); transition: transform .15s; }
+.starter-family[open] > summary .ic { transform: rotate(90deg); }
+@media (prefers-reduced-motion: reduce) { .starter-family > summary .ic { transition: none; } }
+.starter-family-name { font-weight: 600; display: flex; flex-wrap: wrap; gap: 2px 8px; align-items: baseline; min-width: 0; }
+.starter-family-name .cap { font-weight: 400; }
+.starter { border-top: 1px solid var(--line); min-width: 0; }
+.starter .choice { align-items: start; }
+.starter .choice > input { margin-top: 3px; }
+.starter-variant { margin: 0 12px 10px 40px; }
+.dl-form .starter-variant button { min-height: 30px; padding: 0 10px; }
+.dl-foot { position: sticky; bottom: 0; z-index: 1; align-items: center; background: var(--panel); border-top: 1px solid var(--line); margin: 0 -16px -14px; padding: 10px 16px; border-radius: 0 0 var(--radius) var(--radius); }
+.dl-picked { display: grid; margin-right: auto; min-width: 0; font-size: 13px; overflow-wrap: anywhere; }

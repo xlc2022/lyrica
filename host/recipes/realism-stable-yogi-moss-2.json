@@ -1,5 +1,6 @@
 {
   "name": "Realism by Stable Yogi Moss v2",
+  "family": "MOSS-Image",
   "template": "moss-image",
   "backend": "comfyui",
   "parts": [
