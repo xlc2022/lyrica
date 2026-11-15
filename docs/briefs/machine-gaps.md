@@ -185,7 +185,10 @@ tool each for A and B, prompt lines only where the thread has a machine).
   as a root step on a yes or an ask, reboots and starts the checks over.
   A machine with no GPU at all still stops her. With passwordless sudo on
   the machine she runs root steps herself, as docs/workspace.md already
-  says for any machine.
+  says for any machine. After the reboot she starts the checks on the
+  machine as a background command, which waits until it answers
+  (docs/workspace.md, "Background commands"): on the first run she waited
+  with an `ssh` loop in her sandbox, which has no key for the machine.
 - The skills list named no tool (2026-11-15, the retry in a new thread):
   each line read `read="s:model-host"`, and she gave that id to the file
   reader, `read`, which found no such file. A line now names the tool as
