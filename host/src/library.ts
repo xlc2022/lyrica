@@ -393,7 +393,8 @@ function vllmModel(root: string, dir: string, files: string[]): TextModel | null
 }
 
 /** Architectures vLLM serves on /v1/audio/transcriptions. */
-const TRANSCRIBE = ["WhisperForConditionalGeneration", "VoxtralForConditionalGeneration"];
+// Voxtral Realtime streams in vLLM, and also answers a whole clip there, as dictation sends it.
+const TRANSCRIBE = ["WhisperForConditionalGeneration", "VoxtralForConditionalGeneration", "VoxtralRealtimeForConditionalGeneration"];
 
 /** Whisper or Voxtral: dictation, on vLLM. Its context is the decoder's, which is short (448 for Whisper). */
 function transcribeModel(root: string, dir: string, config: any, size: number): TextModel {

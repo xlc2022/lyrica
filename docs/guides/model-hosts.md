@@ -426,8 +426,8 @@ Three ways a model gets into the library:
 
 ### The voice and dictation starters
 
-The owner chose these after the benchmark; the host's README names them
-and the exact revisions. The dashboard's Models section offers both under
+The owner chose the voice and Whisper after the benchmark; Voxtral came
+later. The host's README names them and the exact revisions. The dashboard's Models section offers them under
 **Starters**, at these revisions, beside the chat and embedding starters;
 **Download** there is the quickest way. A starter shows only where the
 host runs its server: the voice on every host (on the CPU except on
@@ -450,6 +450,12 @@ curl -sS 'http://127.0.0.1:7236/host/v1/hub/files?source=huggingface&repo=onnx-c
 - **Dictation**, `openai/whisper-large-v3-turbo` at revision
   `41f01f3fe87f28c78e2fbf8b568835947dd65ed9`: `model.safetensors` and
   every `.json` and `.txt` file the listing shows (about 1.6 GB).
+- **Dictation**, a larger choice: `mistralai/Voxtral-Mini-4B-Realtime-2602`
+  at revision `2769294da9567371363522aac9bbcfdd19447add`:
+  `consolidated.safetensors`, `params.json`, `tekken.json`, `config.json`,
+  `generation_config.json` and `processor_config.json` (about 8.9 GB; skip
+  `model.safetensors`, the same weights again). It needs about 13 GB of a
+  GPU, so a 16 GB card holds it alone.
 
 ```sh
 curl -sS -H 'content-type: application/json' -d '{

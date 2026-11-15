@@ -26,6 +26,7 @@ afterEach(async () => {
 const MARKER = "quokka-lantern-9931";
 const KOKORO = "lyrica/huggingface/onnx-community/Kokoro-82M-v1.1-zh-ONNX";
 const WHISPER = "lyrica/huggingface/openai/whisper-large-v3-turbo";
+const VOXTRAL = "lyrica/huggingface/mistralai/Voxtral-Mini-4B-Realtime-2602";
 
 function modelsFolder(): string {
   const dir = mkdtempSync(join(tmpdir(), "lyrica-models-"));
@@ -39,6 +40,9 @@ function modelsFolder(): string {
   mkdirSync(join(dir, WHISPER), { recursive: true });
   writeFileSync(join(dir, WHISPER, "config.json"), JSON.stringify({ architectures: ["WhisperForConditionalGeneration"], max_target_positions: 448, decoder_layers: 4, d_model: 1280, decoder_attention_heads: 20 }));
   writeFileSync(join(dir, WHISPER, "model.safetensors"), Buffer.alloc(16));
+  mkdirSync(join(dir, VOXTRAL), { recursive: true });
+  writeFileSync(join(dir, VOXTRAL, "config.json"), JSON.stringify({ architectures: ["VoxtralRealtimeForConditionalGeneration"], text_config: { max_position_embeddings: 131072, num_hidden_layers: 26, hidden_size: 3072, num_attention_heads: 32, num_key_value_heads: 8, head_dim: 128 } }));
+  writeFileSync(join(dir, VOXTRAL, "consolidated.safetensors"), Buffer.alloc(16));
   return dir;
 }
 
@@ -96,12 +100,16 @@ class AudioBackend extends FakeBackend {
 }
 
 describe("the models folder", () => {
-  it("finds Whisper for dictation and Kokoro's voices in the languages Lyrica speaks", () => {
+  it("finds Whisper and Voxtral for dictation and Kokoro's voices in the languages Lyrica speaks", () => {
     const models = scanTextModels(modelsFolder());
     expect(models.map((m) => [m.id, m.kind, m.server, m.format])).toEqual([
+      [VOXTRAL, "transcribe", "vllm", "safetensors"],
       [KOKORO, "speak", "speech", "onnx"],
       [WHISPER, "transcribe", "vllm", "safetensors"],
     ]);
+    expect(models[0]!.capabilities.transcribe).toBe(true);
+    expect(models[0]!.contextLength).toBe(131072);
+    models.shift();
     expect(models[0]!.onnx).toBe("onnx/model.onnx");
     expect(models[0]!.capabilities.speak).toEqual({
       voices: [{ id: "af_heart", language: "en" }, { id: "bm_george", language: "en" }, { id: "zf_xiaoxiao", language: "zh" }],
@@ -119,7 +127,7 @@ describe("the models folder", () => {
 describe("voice placement", () => {
   const gpus = [0, 1].map((index) => ({ index, name: "GPU", vendor: "nvidia" as const, total: 24 * 1024 ** 3, used: 0 }));
   const all = (): GpuSettings => ({ excluded: false, keepFree: 0, servers: ["llamacpp", "vllm", "speech"] });
-  const kokoro = (): TextModel => scanTextModels(modelsFolder())[0]!;
+  const kokoro = (): TextModel => scanTextModels(modelsFolder()).find((m) => m.kind === "speak")!;
 
   it("takes one GPU or Auto, and only Auto when voices run on the CPU", () => {
     expect(validate(kokoro(), { placement: { mode: "gpus", gpus: [1] } }, gpus, all)).toEqual({ placement: { mode: "gpus", gpus: [1] } });
@@ -256,7 +264,7 @@ describe("the speech server's client", () => {
     await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
     open.push({ close: () => server.close() });
     const speech = new Speech({ url: `http://127.0.0.1:${(server.address() as AddressInfo).port}`, models: "/models" });
-    const kokoro = scanTextModels(modelsFolder())[0]!;
+    const kokoro = scanTextModels(modelsFolder()).find((m) => m.kind === "speak")!;
     await speech.load(kokoro, { ...CPU_OPTION, gpus: [1] });
     await speech.load(kokoro, CPU_OPTION);
     expect(sent).toEqual([

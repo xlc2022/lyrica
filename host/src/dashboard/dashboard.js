@@ -420,6 +420,13 @@ const STARTERS = [
   { id: "lyrica/huggingface/openai/whisper-large-v3-turbo", name: "Whisper large-v3 turbo", kind: "transcribe", server: "vllm",
     repo: "openai/whisper-large-v3-turbo", revision: "41f01f3fe87f28c78e2fbf8b568835947dd65ed9",
     files: ["model.safetensors"], also: /^[^/]+\.(json|txt)$/, size: 1.6 * 2 ** 30, needs: 2.4 * 2 ** 30 },
+  // Mistral's own format (consolidated.safetensors, params.json, tekken.json), which vLLM picks for it; the repository's
+  // model.safetensors is the same weights again for Transformers. config.json is how the host knows it. Needs: its
+  // weights and the cache for the default 32k context.
+  { id: "lyrica/huggingface/mistralai/Voxtral-Mini-4B-Realtime-2602", name: "Voxtral Mini 4B Realtime", kind: "transcribe", server: "vllm",
+    repo: "mistralai/Voxtral-Mini-4B-Realtime-2602", revision: "2769294da9567371363522aac9bbcfdd19447add",
+    files: ["consolidated.safetensors", "params.json", "tekken.json", "config.json", "generation_config.json", "processor_config.json"],
+    size: 8_874_376_582, needs: 13 * 2 ** 30 },
 ];
 
 /** Downloads a starter's files, read from the repository's listing at its revision. */

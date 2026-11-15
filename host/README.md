@@ -620,7 +620,14 @@ per host, and Lyrica's router filters create tiers by it.
     `41f01f3fe87f28c78e2fbf8b568835947dd65ed9`: `model.safetensors` and
     its JSON and text files (about 1.6 GB); on a host with a CMP,
     `ggerganov/whisper.cpp` at `5359861c739e955e79d9a303bcbc70fb988958b1`:
-    `ggml-large-v3-turbo-q8_0.bin` (about 874 MB).
+    `ggml-large-v3-turbo-q8_0.bin` (about 874 MB);
+  - dictation, on hosts that run vLLM: `mistralai/Voxtral-Mini-4B-Realtime-2602` at
+    `2769294da9567371363522aac9bbcfdd19447add`, in Mistral's format:
+    `consolidated.safetensors`, `params.json`, `tekken.json`,
+    `config.json`, `generation_config.json` and `processor_config.json`
+    (about 8.9 GB; the repository's `model.safetensors` is the same weights
+    again and isn't needed). It takes about 13 GB of a GPU at the default
+    32k context. vLLM serves a whole clip with it, as Lyrica sends one.
 - **Keeping them loaded.** Pin both, so speaking and dictation never wait
   for a load. Whisper takes about 2.2 GB of a GPU and Kokoro about 1 GB.
   On a host with one large GPU, place both on it (Whisper with a vLLM
