@@ -9,6 +9,7 @@ import {
 } from "./api.ts";
 import { CopyButton } from "./CopyButton.tsx";
 import { ModeItem, MODES } from "./Modes.tsx";
+import { checkSudoers, ROOT_LIMITS, sudoersCommand } from "../../core/src/workspace/sudoers.ts";
 import { Icon } from "./icons.tsx";
 import { her } from "./name.ts";
 import { go, href } from "./route.ts";
@@ -18,6 +19,14 @@ import { ConfirmDialog, ErrorText, useAction, useDismiss, useLoad } from "./ui.t
 /** The three modes a machine's limit can be, loosest last. */
 const LIMITS: MachineLimit[] = ["ask", "acceptEdits", "auto"];
 const POOLS: Record<Pool, string> = { general: "General", private: "Private" };
+/** The account her own machines start with; the key block makes it where the machine lacks it. */
+const HER_ACCOUNT = "lyrica";
+
+/** An SSH machine's account@host[:port] as its account and the rest, which the drawer edits; a Proxmox address has no account. */
+function splitAddress(m: MachineInfo): { account?: string; rest: string } {
+  const at = m.kind === "ssh" ? m.address.indexOf("@") : -1;
+  return at < 0 ? { rest: m.address } : { account: m.address.slice(0, at), rest: m.address.slice(at + 1) };
+}
 
 /**
  * At most one state per row: a dot's colour and its word, with the duration in mono where there is one. `refused` is a
@@ -93,6 +102,7 @@ function MachinesList({ ctx }: { ctx: ShellContext }) {
                   </span>
                 )}
                 <RowMenu label={`Actions for ${m.name}`} items={[
+                  { label: "Edit", onPick: () => setOpen(m.name) },
                   { label: "Replace key", onPick: () => go({ page: "settings", userId, section: `machines/${encodeURIComponent(m.name)}/key` }) },
                   ...(state?.refused ? [{ label: "Use anyway", onPick: () => setUsing(m) }] : []),
                   { label: "Remove", danger: true, onPick: () => setRemoving(m) },
@@ -162,7 +172,9 @@ export function RowMenu({ label, items, open: shown, onOpen }: {
 
 /** Editing one machine: its address, folder and pool, and Mode limit as the message box's three-item mode list. Save at the foot. */
 function MachineDrawer({ userId, machine, onSaved, onClose }: { userId: string; machine: MachineInfo; onSaved: (m: MachineInfo) => void; onClose: () => void }) {
-  const [address, setAddress] = useState(machine.address);
+  // The account is fixed once added, so only the host and port are edited; the account is a fact under Address.
+  const { account, rest } = splitAddress(machine);
+  const [address, setAddress] = useState(rest);
   const [root, setRoot] = useState(machine.root ?? "");
   const [pool, setPool] = useState(machine.pool);
   const [limit, setLimit] = useState(machine.limit);
@@ -175,7 +187,7 @@ function MachineDrawer({ userId, machine, onSaved, onClose }: { userId: string; 
     return () => removeEventListener("keydown", key);
   }, [onClose]);
   const change: MachineChange = {
-    ...(address !== machine.address ? { address } : {}),
+    ...(address.trim() !== rest ? { address: account ? `${account}@${address.trim()}` : address.trim() } : {}),
     ...(machine.kind === "ssh" && (root || null) !== machine.root ? { root: root || null } : {}),
     ...(pool !== machine.pool ? { pool } : {}),
     ...(limit !== machine.limit ? { limit } : {}),
@@ -192,6 +204,7 @@ function MachineDrawer({ userId, machine, onSaved, onClose }: { userId: string; 
         <fieldset className="group" disabled={busy}>
           <legend>{machine.kind === "proxmox" ? "Proxmox" : "SSH"}</legend>
           <label className="field"><span>Address</span><input className="mono" value={address} onChange={(e) => setAddress(e.target.value)} /></label>
+          {account && <label className="field"><span>User</span><input className="mono" value={account} readOnly title="Fixed once added. Remove the machine and add it again for another account." /></label>}
           {machine.kind === "ssh" && <label className="field"><span>Folder</span><input className="mono" value={root} placeholder="/" onChange={(e) => setRoot(e.target.value)} /></label>}
           {machine.kind === "proxmox" && <p className="muted small mono">{machine.tokenId}</p>}
           <label className="field"><span>Pool</span>
@@ -243,26 +256,88 @@ type Step = "address" | "key" | "test" | "fingerprint";
 /** The probe's body: the form as typed, or for Replace key the machine as saved with `replace`. */
 type ProbeInput = { kind: Kind; name: string; address: string; draft?: string; asUser?: boolean; user?: string; replace?: boolean };
 
+/** The setup commands in a code block, with Copy in its head as the sudo blocks have it; Copy is the Key step's action, so it is primary while that step is current. */
+function SetupBlock({ text, copied, primary, onCopy, preRef }: { text: string; copied: boolean; primary?: boolean; onCopy: () => void; preRef: React.RefObject<HTMLPreElement | null> }) {
+  return (
+    <div className="code-block setup-block">
+      <div className="code-head">
+        <span className="code-lang">Setup</span>
+        <button type="button" className={`sm code-copy${primary ? " primary" : ""}`} aria-label={copied ? "Copied" : "Copy"} onClick={onCopy}>{copied ? "Copied" : "Copy"}</button>
+      </div>
+      <pre className="setup" ref={preRef}><code><SetupLines text={text} /></code></pre>
+    </div>
+  );
+}
+
 /** The setup block's lines, each its own block so a wrapped command hangs under its first line rather than reading as a command of its own. */
 function SetupLines({ text }: { text: string }) {
   return <>{text.split("\n").map((line, i) => <span className="line" key={i}>{line}</span>)}</>;
 }
 
 /** The Key step's optional sudo rights: each its own command with its own Copy, so pasting the setup never grants them. */
-function SudoBlocks({ sudo }: { sudo: NonNullable<MachineProbe["sudo"]> }) {
-  const blocks = [
-    { label: "Sudo, exact commands", hint: "Optional: sudo without a password for one command. Change the example command first.", text: sudo.exact },
-    { label: "Sudo, everything", hint: "Optional: sudo without a password for any command, only on a machine you really trust.", text: sudo.everything },
-  ];
+function SudoBlocks({ sudo, account }: { sudo: NonNullable<MachineProbe["sudo"]>; account: string }) {
   return <div className="machine-sudo">
-    {blocks.map((b) => (
-      <div className="code-block" key={b.label}>
-        <div className="code-head"><span className="code-lang">{b.label}</span><CopyButton text={b.text} label="Copy" ariaLabel={`Copy ${b.label.toLowerCase()}`} className="code-copy" /></div>
-        <p className="muted sudo-hint">{b.hint}</p>
-        <pre><code>{b.text}</code></pre>
-      </div>
-    ))}
+    <ExactSudo account={account} />
+    <div className="code-block">
+      <div className="code-head"><span className="code-lang">Sudo, everything</span><CopyButton text={sudo.everything} label="Copy" ariaLabel="Copy sudo, everything" className="code-copy" /></div>
+      <p className="muted sudo-hint">Optional: sudo without a password for any command. Only if you really trust the models you'll run.</p>
+      <pre><code>{sudo.everything}</code></pre>
+    </div>
   </div>;
+}
+
+/** A typed command's sudoers line, checked as her offered lines are (docs/workspace.md, "Root steps"): the line, a warning, or why it's refused. */
+function sudoLine(account: string, command: string): { line?: string; warning?: string; problem?: string } {
+  try {
+    const [checked] = checkSudoers([`${account} ALL=(root) NOPASSWD: ${command.trim()}`], account);
+    return { line: checked!.line, ...(checked!.warning ? { warning: checked!.warning } : {}) };
+  } catch (err) {
+    return { problem: (err as Error).message.replace(/^sudoers line \d+: /, "") };
+  }
+}
+
+/**
+ * Sudo, exact commands: a box per command, Add command for another (up to
+ * the card's limit), each checked as it is typed, and one command to paste
+ * that adds every line that passed.
+ */
+function ExactSudo({ account }: { account: string }) {
+  const [commands, setCommands] = useState([""]);
+  const checked = commands.map((c) => (c.trim() ? sudoLine(account, c) : {}));
+  const lines = checked.flatMap((c) => (c.line ? [c.line] : []));
+  const ready = lines.length > 0 && !checked.some((c) => c.problem);
+  const text = ready ? sudoersCommand(lines) : "";
+  const set = (i: number, v: string) => setCommands((l) => l.map((c, j) => (j === i ? v : c)));
+  return (
+    <div className="code-block exact-sudo">
+      <div className="code-head">
+        <span className="code-lang">Sudo, exact commands</span>
+        {ready
+          ? <CopyButton text={text} label="Copy" ariaLabel="Copy sudo, exact commands" className="code-copy" />
+          : <button type="button" className="sm code-copy" disabled aria-label="Copy sudo, exact commands" title="Type a command first.">Copy</button>}
+      </div>
+      <p className="muted sudo-hint">Optional: sudo without a password for these commands only, each with its arguments.</p>
+      <div className="sudo-commands">
+        {commands.map((c, i) => (
+          <div className="sudo-command" key={i}>
+            <div className="row">
+              <input className="mono" aria-label={`Command ${i + 1}`} value={c} placeholder="/usr/bin/systemctl restart nginx" autoComplete="off" spellCheck={false}
+                aria-invalid={!!checked[i]!.problem} onChange={(e) => set(i, e.target.value)} />
+              {commands.length > 1 && (
+                <button type="button" className="icon sm" aria-label={`Remove command ${i + 1}`} title="Remove" onClick={() => setCommands((l) => l.filter((_, j) => j !== i))}><Icon name="close" /></button>
+              )}
+            </div>
+            {checked[i]!.problem && <p className="error small">{checked[i]!.problem}</p>}
+            {checked[i]!.warning && <p className="warn-text small">Reaches root anyway: {checked[i]!.warning}.</p>}
+          </div>
+        ))}
+        {commands.length < ROOT_LIMITS.sudoers && (
+          <div className="row"><button type="button" className="sm" onClick={() => setCommands((l) => [...l, ""])}>Add command</button></div>
+        )}
+      </div>
+      {ready && <pre><code>{text}</code></pre>}
+    </div>
+  );
 }
 
 /**
@@ -275,9 +350,11 @@ export function MachinePage({ ctx, name }: { ctx: ShellContext; name?: string })
   const replacing = name !== undefined;
   const existing = useLoad(() => (replacing ? get<MachineInfo[]>(u(userId, "machines")).then((l) => l.find((m) => m.name === name) ?? null) : Promise.resolve(null)), [userId, name]);
   const [kind, setKind] = useState<Kind>("ssh");
-  const [form, setForm] = useState({ name: "", address: "", root: "", pool: "general" as Pool, token: "", account: "hers" as Account, user: "", typed: "" });
+  const [form, setForm] = useState({ name: "", address: "", root: "", pool: "general" as Pool, token: "", account: "hers" as Account, user: "", login: HER_ACCOUNT, typed: "" });
   // The probe's answer: her key's setup steps and, after Test, the fingerprint and whether the login worked.
   const [probe, setProbe] = useState<MachineProbe>();
+  // Bumped when a field the probe depends on changes, so an answer for what was typed before is dropped.
+  const typedAt = useRef(0);
   const [copied, setCopied] = useState(false);
   const [tested, setTested] = useState(false);
   // Replace key, New key pair: a fresh pair is being made for the saved machine, so the page runs the Key and Test steps as when adding it.
@@ -292,18 +369,33 @@ export function MachinePage({ ctx, name }: { ctx: ShellContext; name?: string })
     setForm((f) => ({ ...f, name: machine.name, address: machine.address, root: machine.root ?? "", pool: machine.pool }));
   }, [machine]);
 
-  const setField = (k: keyof typeof form, v: string) => { setForm((f) => ({ ...f, [k]: v })); if (k === "address" || k === "name" || k === "account" || k === "user") { setProbe(undefined); setCopied(false); setTested(false); } };
+  const setField = (k: keyof typeof form, v: string) => {
+    setForm((f) => {
+      const next = { ...f, [k]: v };
+      // An SSH address typed or pasted whole (account@host) fills User from its account part.
+      if (k === "address" && kind === "ssh" && v.includes("@")) Object.assign(next, { login: v.slice(0, v.indexOf("@")), address: v.slice(v.indexOf("@") + 1) });
+      // Her own account starts as hers; the user's own starts empty, to be typed.
+      if (k === "account") next.login = v === "mine" ? (f.login === HER_ACCOUNT ? "" : f.login) : f.login || HER_ACCOUNT;
+      return next;
+    });
+    if (k === "address" || k === "name" || k === "account" || k === "user" || k === "login") { typedAt.current++; setProbe(undefined); setCopied(false); setTested(false); }
+  };
   const mine = form.account === "mine" && !replacing;
   // A token on the user's own Proxmox user needs that user named, so the setup block and the token check can name it.
   const pveUser = kind === "proxmox" && mine ? form.user.trim() : "";
-  const ready = form.name.trim() !== "" && form.address.trim() !== "" && (kind !== "proxmox" || !mine || pveUser !== "");
+  const ready = form.name.trim() !== "" && form.address.trim() !== "" && (kind === "ssh" ? form.login.trim() !== "" : !mine || pveUser !== "");
+  // The server takes an SSH machine's address as account@host[:port].
+  const address = kind === "ssh" ? `${form.login.trim()}@${form.address.trim()}` : form.address.trim();
   const probeWith = (input: ProbeInput, then?: () => void) => probing(async () => {
-    setProbe(await post<MachineProbe>(u(userId, "machines", "probe"), input));
+    const at = typedAt.current;
+    const answer = await post<MachineProbe>(u(userId, "machines", "probe"), input);
+    if (at !== typedAt.current) return;
+    setProbe(answer);
     then?.();
   });
   const typed = (draft?: string): ProbeInput => replacing && machine
     ? { kind, name: machine.name, address: machine.address, draft, ...(machine.asUser ? { asUser: true } : {}) }
-    : { kind, name: form.name.trim(), address: form.address.trim(), draft, ...(mine ? { asUser: true } : {}), ...(pveUser ? { user: pveUser } : {}) };
+    : { kind, name: form.name.trim(), address, draft, ...(mine ? { asUser: true } : {}), ...(pveUser ? { user: pveUser } : {}) };
   // Leaving the address, or Enter in it, fetches her key for the machine, so the Key step can show its setup steps.
   const reach = () => { if (ready && !probe && !probingBusy) void probeWith(typed()); };
   const test = () => probeWith(typed(probe?.draft), () => setTested(true));
@@ -334,7 +426,7 @@ export function MachinePage({ ctx, name }: { ctx: ShellContext; name?: string })
       await post(u(userId, "machines", name, "key"), { hostKey: probe.fingerprint, ...(kind === "proxmox" && form.token.trim() ? { token: form.token.trim() } : {}), ...(fresh ? { draft: probe.draft } : {}) });
     } else {
       const input: MachineInput = {
-        kind, name: form.name.trim(), address: form.address.trim(), root: kind === "ssh" && form.root.trim() ? form.root.trim() : undefined, pool: form.pool,
+        kind, name: form.name.trim(), address, root: kind === "ssh" && form.root.trim() ? form.root.trim() : undefined, pool: form.pool,
         hostKey: probe.fingerprint, offNetworkConfirmed, ...(kind === "proxmox" ? { token: form.token.trim() } : { draft: probe.draft }), ...(mine ? { asUser: true } : {}), ...(pveUser ? { user: pveUser } : {}),
       };
       await post<MachineInfo>(u(userId, "machines"), input);
@@ -347,6 +439,8 @@ export function MachinePage({ ctx, name }: { ctx: ShellContext; name?: string })
   };
 
   const keyLabel = kind === "proxmox" ? "Token" : "Key";
+  // The account the sudoers lines name: as typed while adding, the saved one on Replace key.
+  const sudoAccount = (replacing && machine ? splitAddress(machine).account : undefined) ?? form.login.trim();
   const title = replacing ? "Replace key" : "Add machine";
   const back = href({ page: "settings", userId, section: "machines" });
   return (
@@ -362,7 +456,7 @@ export function MachinePage({ ctx, name }: { ctx: ShellContext; name?: string })
         {!replacing && (
           <div className="seg" role="group" aria-label="Kind">
             {(["ssh", "proxmox"] as Kind[]).map((k) => (
-              <button key={k} type="button" aria-pressed={kind === k} onClick={() => { if (kind !== k) { setKind(k); setProbe(undefined); setCopied(false); setTested(false); } }}>{k === "ssh" ? "SSH" : "Proxmox"}</button>
+              <button key={k} type="button" aria-pressed={kind === k} onClick={() => { if (kind !== k) { typedAt.current++; setKind(k); setProbe(undefined); setCopied(false); setTested(false); } }}>{k === "ssh" ? "SSH" : "Proxmox"}</button>
             ))}
           </div>
         )}
@@ -372,7 +466,7 @@ export function MachinePage({ ctx, name }: { ctx: ShellContext; name?: string })
             <div className="row wrap top">
               <label className="field narrow"><span>Name</span><input value={form.name} autoFocus onBlur={reach} onChange={(e) => setField("name", e.target.value)} /></label>
               <label className="field grow"><span>Address</span>
-                <input className="mono" value={form.address} placeholder={kind === "proxmox" ? "https://pve.lan:8006" : mine ? "you@laptop.lan" : "lyrica@build-box.lan"} onBlur={reach} onChange={(e) => setField("address", e.target.value)} />
+                <input className="mono" value={form.address} placeholder={kind === "proxmox" ? "https://pve.lan:8006" : mine ? "laptop.lan" : "build-box.lan"} onBlur={reach} onChange={(e) => setField("address", e.target.value)} />
               </label>
               <label className="field narrow"><span>Account</span>
                 <select value={form.account} onChange={(e) => setField("account", e.target.value)}>
@@ -385,6 +479,9 @@ export function MachinePage({ ctx, name }: { ctx: ShellContext; name?: string })
               )}
             </div>
             <div className="row wrap top">
+              {kind === "ssh" && (
+                <label className="field narrow"><span>User</span><input className="mono" value={form.login} placeholder="you" autoComplete="off" spellCheck={false} onBlur={reach} onChange={(e) => setField("login", e.target.value)} /></label>
+              )}
               {kind === "ssh" && <label className="field grow"><span>Folder</span><input className="mono" value={form.root} placeholder="/" onChange={(e) => setField("root", e.target.value)} /></label>}
               <label className="field narrow"><span>Pool</span>
                 <select value={form.pool} onChange={(e) => setField("pool", e.target.value)}>
@@ -406,11 +503,8 @@ export function MachinePage({ ctx, name }: { ctx: ShellContext; name?: string })
         {probe && adding && (
           <section className="step" aria-labelledby="step-key">
             <h2 className="eyebrow" id="step-key">{keyLabel}</h2>
-            <pre className="setup" ref={setupRef}><code><SetupLines text={probe.setup} /></code></pre>
-            <div className="row">
-              <button type="button" className={step === "key" ? "primary" : ""} onClick={copy}>{copied ? "Copied" : "Copy"}</button>
-            </div>
-            {probe.sudo && <SudoBlocks sudo={probe.sudo} />}
+            <SetupBlock text={probe.setup} copied={copied} primary={step === "key"} onCopy={copy} preRef={setupRef} />
+            {probe.sudo && <SudoBlocks sudo={probe.sudo} account={sudoAccount} />}
             {kind === "proxmox" && (
               <label className="field"><span>Token</span>
                 <input className="mono" type="password" value={form.token} placeholder={pveUser ? `${pveUser}!lyrica=…` : "lyrica@pve!agent=…"} autoComplete="off" onChange={(e) => setField("token", e.target.value)} />
@@ -441,12 +535,11 @@ export function MachinePage({ ctx, name }: { ctx: ShellContext; name?: string })
           <section className="step" aria-labelledby="step-key">
             <h2 className="eyebrow" id="step-key">Key</h2>
             <p className="muted">{her()}'s key isn't accepted there any more (a reinstalled machine loses it). Run this as root on the machine, then test again, or make a new key pair below.</p>
-            <pre className="setup" ref={setupRef}><code><SetupLines text={probe.setup} /></code></pre>
+            <SetupBlock text={probe.setup} copied={copied} onCopy={copy} preRef={setupRef} />
             <div className="row">
-              <button type="button" onClick={copy}>{copied ? "Copied" : "Copy"}</button>
               <button type="button" disabled={probingBusy} onClick={again}>Test</button>
             </div>
-            {probe.sudo && <SudoBlocks sudo={probe.sudo} />}
+            {probe.sudo && <SudoBlocks sudo={probe.sudo} account={sudoAccount} />}
           </section>
         )}
         {((replacing && !fresh) || (tested && loginOk)) && (

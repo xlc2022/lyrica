@@ -600,19 +600,42 @@ test("Machines lists none, and Add machine reaches a machine before anything is 
   await expect(page.getByRole("button", { name: "SSH" })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("button", { name: "Copy" })).toHaveCount(0);
   await page.getByRole("textbox", { name: "Name" }).fill("nowhere");
-  await page.getByRole("textbox", { name: "Address" }).fill("lyrica@nowhere.invalid");
+  // The account has its own box, starting as hers; an address pasted whole fills it from its account part.
+  const user = page.getByRole("textbox", { name: "User" });
+  await expect(user).toHaveValue("lyrica");
+  await page.getByRole("textbox", { name: "Address" }).fill("sam@nowhere.invalid");
+  await expect(page.getByRole("textbox", { name: "Address" })).toHaveValue("nowhere.invalid");
+  await expect(user).toHaveValue("sam");
+  await user.fill("lyrica");
+  const probed = page.waitForRequest((r) => r.method() === "POST" && r.url().endsWith("/machines/probe"));
   await page.getByRole("button", { name: "Next" }).click();
+  expect((await probed).postDataJSON()).toMatchObject({ kind: "ssh", name: "nowhere", address: "lyrica@nowhere.invalid" });
   // The key and its setup commands come even when the host can't be resolved; Test says why.
   await expect(page.getByRole("button", { name: "Copy", exact: true })).toBeVisible();
   await expect(page.getByText("/etc/ssh/authorized_keys").first()).toBeVisible();
+  // Her account is made first where the machine doesn't have it.
+  await expect(page.locator("pre.setup").first()).toContainText("sudo useradd --create-home --shell /bin/bash --password '*' lyrica");
   // Its long lines wrap, so nothing is hidden past the block's edge.
   const setup = page.locator("pre.setup");
   expect(await setup.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
   // The optional sudo rights are commands of their own, each with its Copy, so pasting the setup never grants them.
   await expect(setup).not.toContainText("NOPASSWD");
-  await expect(page.getByRole("button", { name: "Copy sudo, exact commands" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Copy sudo, everything" })).toBeVisible();
-  await expect(page.locator(".machine-sudo pre").nth(1)).toContainText("NOPASSWD: ALL");
+  await expect(page.locator(".machine-sudo pre")).toHaveCount(1);
+  await expect(page.locator(".machine-sudo pre")).toContainText("NOPASSWD: ALL");
+  // Exact commands: a box per command, checked as typed, and one command adding every line once all pass.
+  const exact = page.locator(".exact-sudo");
+  await expect(exact.getByRole("button", { name: "Copy sudo, exact commands" })).toBeDisabled();
+  await exact.getByRole("textbox", { name: "Command 1" }).fill("/usr/bin/systemctl restart nginx");
+  await exact.getByRole("button", { name: "Add command" }).click();
+  await exact.getByRole("textbox", { name: "Command 2" }).fill("bash -c id");
+  await expect(exact.getByText("the program must be an absolute path such as /usr/bin/systemctl")).toBeVisible();
+  await expect(exact.getByRole("button", { name: "Copy sudo, exact commands" })).toBeDisabled();
+  await exact.getByRole("textbox", { name: "Command 2" }).fill("/usr/bin/apt-get update");
+  await expect(exact.getByText("Reaches root anyway: a package can run any script as root.")).toBeVisible();
+  await expect(exact.getByRole("button", { name: "Copy sudo, exact commands" })).toBeEnabled();
+  await expect(exact.locator("pre")).toContainText("'lyrica ALL=(root) NOPASSWD: /usr/bin/systemctl restart nginx' 'lyrica ALL=(root) NOPASSWD: /usr/bin/apt-get update'");
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/add-machine-${page.viewportSize()!.width}.png`, fullPage: true });
   await page.getByRole("button", { name: "Test" }).click();
   await expect(page.getByRole("alert").first()).toBeVisible();
   await expect(page.getByRole("button", { name: "Confirm" })).toHaveCount(0);
@@ -643,6 +666,16 @@ test("A private machine she is refused for going off network is confirmed from i
   await row.getByRole("button", { name: "Actions for vault" }).click();
   await expect(page.getByRole("menuitem", { name: "Replace key" })).toBeVisible();
   await expect(page.getByRole("menuitem", { name: "Use anyway" })).toHaveCount(0);
+  // Edit opens the drawer: the address without its account, which is fixed, and saving puts the account back in front.
+  await page.getByRole("menuitem", { name: "Edit" }).click();
+  const drawer = page.getByRole("complementary", { name: "vault" });
+  await expect(drawer.getByRole("textbox", { name: "User" })).toHaveValue("lyrica");
+  await expect(drawer.getByRole("textbox", { name: "User" })).not.toBeEditable();
+  await drawer.getByRole("textbox", { name: "Address" }).fill("10.0.0.9:2222");
+  const saved = page.waitForRequest((r) => r.method() === "PATCH" && r.url().endsWith("/machines/vault"));
+  await page.route("**/machines/vault", (r) => r.request().method() === "PATCH" ? r.fulfill({ json: { ...vault, address: "lyrica@10.0.0.9:2222", offNetwork: true } }) : r.fallback());
+  await drawer.getByRole("button", { name: "Save" }).click();
+  expect((await saved).postDataJSON()).toEqual({ address: "lyrica@10.0.0.9:2222" });
 });
 
 test("Add machine for a Proxmox offers the user's own Proxmox user, with its warnings and its own setup", async ({ page, baseURL }) => {

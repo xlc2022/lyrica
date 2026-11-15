@@ -7,7 +7,7 @@ import { networkInterfaces } from "node:os";
 import { StringDecoder } from "node:string_decoder";
 import { posix } from "node:path";
 import { removePrivateKeys, PRIVATE_KEY_BEGIN as BEGIN, PRIVATE_KEY_END as END } from "../secrets.ts";
-import { sudoersCommand } from "./root.ts";
+import { sudoersCommand } from "./sudoers.ts";
 import { within } from "./settings.ts";
 
 export interface SuspectCommand {
@@ -511,8 +511,10 @@ export function authorizedKeysLine(publicKey: string, from: string[] = ownAddres
 }
 
 /**
- * What makes a machine ready, to paste whole as a user with sudo: the key in
- * a root-owned file sshd reads for her account, so nothing she runs can add
+ * What makes a machine ready, to paste whole as a user with sudo: her
+ * account, made when the machine doesn't have it yet (password `*`, which
+ * matches nothing yet doesn't lock the account, so sshd still takes her key),
+ * the key in a root-owned file sshd reads for her account, so nothing she runs can add
  * one, and the host key's fingerprint. Writes go through `sudo tee`, never a
  * shell redirect, which would run as the user. The commands are one `&&`
  * chain, so the shell reads all of them before sudo asks for a password (a
@@ -535,6 +537,9 @@ export function machineSetup(account: string, keyLine: string, asUser = false): 
   }
   const keys = `/etc/ssh/authorized_keys/${account}`;
   return chain([
+    "# Her account, made if it isn't there yet; with no password, only her key logs in",
+    `{ id -u ${account} > /dev/null 2>&1 || sudo useradd --create-home --shell /bin/bash --password '*' ${account}; }`,
+    "",
     "# Her key, in a file only root can change, beside any key already there",
     "sudo install -d -m 755 /etc/ssh/authorized_keys",
     `sudo touch ${keys}`,
@@ -554,14 +559,12 @@ function chain(lines: string[]): string {
 }
 
 /**
- * The optional sudo rights, each a command to paste on its own: `exact`
- * allows one command (an example to change), `everything` all of them, for a
- * machine the user really trusts. Both add to /etc/sudoers.d/lyrica the way
- * her run-as-root card does, checked by visudo before sudo reads them.
+ * The optional right to run everything with sudo, a command to paste on its
+ * own, only for models the user really trusts. It adds to
+ * /etc/sudoers.d/lyrica the way her run-as-root card does, checked by visudo
+ * before sudo reads it. Exact commands are built on the page from the
+ * commands the user types (`checkSudoers`, `sudoersCommand`).
  */
-export function machineSudo(account: string): { exact: string; everything: string } {
-  return {
-    exact: sudoersCommand([`${account} ALL=(root) NOPASSWD: /usr/bin/systemctl restart nginx`]),
-    everything: sudoersCommand([`${account} ALL=(root) NOPASSWD: ALL`]),
-  };
+export function machineSudo(account: string): { everything: string } {
+  return { everything: sudoersCommand([`${account} ALL=(root) NOPASSWD: ALL`]) };
 }
