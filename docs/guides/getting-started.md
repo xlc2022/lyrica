@@ -1184,7 +1184,7 @@ refused. To replace the destination, enter the full URL and token again;
   `"lyrica-clients"` in `users.users.<account>.extraGroups` on NixOS),
   then log out and back in. The commands are in
   [daemon.md](../daemon.md#terminal-clients).
-- **Her name** is under Administration, Her name, Name. Memories and threads
+- **Her name** is under Administration, Agent name, Name. Memories and threads
   written so far keep the old one.
 - **Sleep** runs at `sleep.time` (04:00 by default; Administration,
   Sleep), in each user's own time zone (Settings, Profile, Time zone; the

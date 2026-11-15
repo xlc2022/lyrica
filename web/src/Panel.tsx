@@ -66,7 +66,7 @@ const SETTINGS: SectionDef[] = [
 ];
 const ADMIN: SectionDef[] = [
   { key: "status", label: "Status", body: (ctx) => <StatusSection key={`${ctx.user.id}:${ctx.me.display.showGeneral}:${ctx.me.display.showPrivate}`} ctx={ctx} /> },
-  { key: "name", label: "Her name", body: (ctx) => <Section title="Her name"><NameForm ctx={ctx} /></Section> },
+  { key: "name", label: "Agent name", body: (ctx) => <Section title="Agent name"><NameForm ctx={ctx} /></Section> },
   { key: "users", label: "Users", body: (ctx) => <UsersSection ctx={ctx} /> },
   { key: "sleep", label: "Sleep", body: (ctx) => <SleepTimeSection ctx={ctx} /> },
   { key: "unlocked", label: "Start unlocked", body: (ctx) => <UnlockedSection ctx={ctx} /> },
@@ -606,7 +606,7 @@ function AllowedPathsEditor({ userId, target }: { userId: string; target: string
   );
 }
 
-/** Her name (docs/ux.md §6 "Her name"): one field and one Save. */
+/** Her name (docs/ux.md §6 "Agent name"): one field and one Save. */
 function NameForm({ ctx }: { ctx: ShellContext }) {
   const userId = ctx.user.id;
   const current = useLoad(() => get<NameSetting>(u(userId, "admin", "name")), [userId]);

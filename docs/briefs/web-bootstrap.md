@@ -47,7 +47,7 @@ looks, the drawer and the dialog (docs/ux.md §1.4).
    Lyrica" and its sentence, the author label on her messages, "Lyrica is
    thinking…", the dialog sentences, Web access's legend. One helper, not
    thirty literals.
-3. **Administration → Her name**, after Status: **Name** with
+3. **Administration → Agent name**, after Status: **Name** with
    one Save; its tooltip says "Memories and threads written so far keep
    the old name."
 4. **Administration → Tailnet** (`#/u/<user>/admin/tailnet`, between Start
@@ -88,7 +88,7 @@ The daemon (Bootstrap); a per-user nickname; the getting-started guide
 
 - The ux.md checklist (§10) in the PR, with screenshots at 1280 and 390 of
   the setup page at each step, Administration → Tailnet in each state,
-  and Administration → Her name.
+  and Administration → Agent name.
 - Browser tests: the setup page appears without `self.db` and the home
   appears signed in after Create; the header and the unlock page show the
   set name; Leave asks before it acts; Web access's Tailnet mode shows its

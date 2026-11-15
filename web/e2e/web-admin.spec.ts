@@ -1979,12 +1979,12 @@ test("the phone sidebar scrolls as a whole, links to user row", async ({ page, b
   await noHorizontalScroll(page);
 });
 
-test("Administration has Her name after Status and saves the name throughout the app", async ({ page, baseURL }) => {
+test("Administration has Agent name after Status and saves the name throughout the app", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   await page.goto(`/#/u/${userId}/admin/name`);
   const nav = page.getByRole("navigation", { name: "Administration sections" });
   await expect(nav.getByRole("link").nth(0)).toHaveText("Status");
-  await expect(nav.getByRole("link").nth(1)).toHaveText("Her name");
+  await expect(nav.getByRole("link").nth(1)).toHaveText("Agent name");
   const name = page.getByLabel("Name", { exact: true });
   const save = page.getByRole("button", { name: "Save", exact: true });
   await expect(name).toHaveValue("Lyrica");
@@ -1992,10 +1992,10 @@ test("Administration has Her name after Status and saves the name throughout the
   await expect(save).toBeDisabled();
   await name.fill("   ");
   await expect(save).toBeDisabled();
-  await expect(page.getByRole("alert").filter({ hasText: "Her name is 1 to 40 characters." })).toHaveText("Her name is 1 to 40 characters.");
+  await expect(page.getByRole("alert").filter({ hasText: "Agent name is 1 to 40 characters." })).toHaveText("Agent name is 1 to 40 characters.");
   await name.fill("Ly\u2028rica");
   await expect(save).toBeDisabled();
-  await expect(page.getByRole("alert").filter({ hasText: "Her name is one line of text." })).toHaveText("Her name is one line of text.");
+  await expect(page.getByRole("alert").filter({ hasText: "Agent name is one line of text." })).toHaveText("Agent name is one line of text.");
   await name.fill("  Lyrica  ");
   await expect(save).toBeDisabled();
   await name.fill("Moonlight");
