@@ -467,6 +467,9 @@ describe("video parts", () => {
     // Measured on mystria: at full strength it puts a frizzy halo round her hair on ref2va, and smears faces on fl2va.
     expect(withFal.lora_realism!.inputs).toMatchObject({ model: ["lora_speed", 0], lora_name: "fal.safetensors", strength_model: 0.5 });
     expect(TEMPLATES.get("minimax-h3")!.parts.find((q) => q.slot === "realism")!.strength).toBe(0.7);
+    // Singularity's speed LoRA at 0.7 over 6 steps, as its repository's renders: 4 steps at 1 melts a running dog's legs.
+    expect(withFal.lora_speed!.inputs.strength_model).toBe(0.7);
+    expect(sing.defaults.steps).toBe(6);
     expect(withFal.guide!.inputs.model).toEqual(["lora_realism", 0]);
     // Its trigger word starts the prompt, once; without the LoRA the prompt is as asked.
     expect(withFal.cond!.inputs.prompt).toBe("r34l1sm x");

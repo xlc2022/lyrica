@@ -866,10 +866,11 @@ Two community H3 models come as starters too, each int8 (large cards)
 and w4a8 (24 GB): **Cobijada H3 Hybrid**, a merge of H3's two checkpoints
 (uncensored) that takes Turbo's LoRA and, as int8, chains up to 60 s,
 and **Singularity H3 v2**, the most used fine-tune, which is ref2va only:
-it runs on its own template, makes clips from text or animates an image,
-and as int8 chains to 60 s as Turbo does. Each has a **Realism** twin that also
+it runs on its own template at 6 steps with its speed LoRA at 0.7, makes
+clips from text or animates an image, and as int8 chains to 60 s as Turbo does. Each has a **Realism** twin that also
 fetches fal's Realism People LoRA (0.12 GiB) for faces, skin and gestures
-that hold up in close-up (at strength 0.7, or 0.5 on Singularity); the
+that hold up in close-up (at strength 0.7, or 0.5 on Singularity, below
+the card's 1, which smeared faces in our tests); the
 host starts its prompts with the LoRA's trigger word, r34l1sm. The w6a8
 and w4a8 video starters make one clip of up to 5 s and don't extend:
 on a 24 GB card with 30 GB of RAM a chained clip ran out of memory. Use

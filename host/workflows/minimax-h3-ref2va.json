@@ -18,7 +18,8 @@
       "slot": "speed",
       "arch": [
         "minimax-h3-ref2va"
-      ]
+      ],
+      "strength": 0.7
     },
     {
       "role": "lora",

@@ -52,6 +52,9 @@ The run on mystria and lunasa settled what was open; its report is
   a 16 s chain was killed by earlyoom twice, so the w6a8 and w4a8 video
   starters set `longestSeconds` 5.
 - P-H3-Image and Krea 2 work on ComfyUI 0.45.3.
+- Singularity runs at 6 steps with its speed LoRA at 0.7 (slot `strength`), as
+  its repository's renders do: 4 steps at 1 melted a running dog's legs.
+- fal's card says strength 1; the 0.7 and 0.5 above stand on these runs.
 
 ## Handoff
 
