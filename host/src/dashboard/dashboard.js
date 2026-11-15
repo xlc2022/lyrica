@@ -402,6 +402,13 @@ const STARTERS = [
   { id: "lyrica/huggingface/unsloth/Qwen3.5-9B-GGUF/Qwen3.5-9B-Q4_K_M.gguf", name: "Qwen3.5 9B", kind: "chat", server: "llamacpp",
     repo: "unsloth/Qwen3.5-9B-GGUF", revision: "3885219b6810b007914f3a7950a8d1b469d598a5", files: ["Qwen3.5-9B-Q4_K_M.gguf", "mmproj-F16.gguf"],
     size: 5_680_522_464 + 918_166_080, needs: 8 * 2 ** 30 },
+  // Eyes for a chat model without vision (Look at images): the 4B names files and copies text best, the 2B for small cards.
+  { id: "lyrica/huggingface/unsloth/Qwen3.5-4B-GGUF/Qwen3.5-4B-Q4_K_M.gguf", name: "Qwen3.5 4B", kind: "chat", server: "llamacpp",
+    repo: "unsloth/Qwen3.5-4B-GGUF", revision: "e87f176479d0855a907a41277aca2f8ee7a09523", files: ["Qwen3.5-4B-Q4_K_M.gguf", "mmproj-F16.gguf"],
+    size: 2_740_937_888 + 672_423_616, needs: 6.5 * 2 ** 30 },
+  { id: "lyrica/huggingface/unsloth/Qwen3.5-2B-GGUF/Qwen3.5-2B-Q4_K_M.gguf", name: "Qwen3.5 2B", kind: "chat", server: "llamacpp",
+    repo: "unsloth/Qwen3.5-2B-GGUF", revision: "f6d5376be1edb4d416d56da11e5397a961aca8ae", files: ["Qwen3.5-2B-Q4_K_M.gguf", "mmproj-F16.gguf"],
+    size: 1_280_835_840 + 668_227_264, needs: 4 * 2 ** 30 },
   { id: "lyrica/huggingface/Qwen/Qwen3-Embedding-0.6B-GGUF/Qwen3-Embedding-0.6B-Q8_0.gguf", name: "Qwen3 Embedding 0.6B", kind: "embedding", server: "llamacpp",
     repo: "Qwen/Qwen3-Embedding-0.6B-GGUF", revision: "370f27d7550e0def9b39c1f16d3fbaa13aa67728", files: ["Qwen3-Embedding-0.6B-Q8_0.gguf"],
     size: 639_150_592, needs: 1 * 2 ** 30 },

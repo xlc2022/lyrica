@@ -608,7 +608,9 @@ stills) and her question, never the conversation, and returns the answer as
 text, so her own model keeps the work. The thread's own context decides the
 column, so a private or local-only one reads the Private column and stays
 local; a cloud model is in the list only if the person put it there. With
-no list set, only local models are tried.
+no list set, only local models are tried. The host's Qwen3.5 4B and 2B
+starters are small vision models for this list (docs/guides/model-hosts.md,
+"Eyes for a model without vision").
 The Files panel's **Auto-name** calls the same task with the thread's own
 context, one image or clip poster per call, only for names a machine made
 up unless the user ticks **Overwrite existing names**, a photo of the user kept local unless the
