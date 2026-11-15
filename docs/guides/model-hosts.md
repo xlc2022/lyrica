@@ -863,12 +863,14 @@ the ComfyUI image, so the next Update rebuilds it again.
 For a 24 GB card, **MiniMax H3 Turbo w6a8** is H3 Turbo with Comfy-Org's
 w6a8 model (about 15 GiB) and lightx2v's 4-step 768p LoRA, at 1344×768.
 Two community H3 models come as starters too, each int8 (large cards) and
-w4a8 (24 GB): **Cobijada H3 Hybrid**, a merge of H3's two checkpoints
+a 24 GB size (Cobijada w4a8, Singularity w6a8): **Cobijada H3 Hybrid**, a merge of H3's two checkpoints
 (uncensored) that takes Turbo's LoRA and, as int8, chains up to 60 s, and
 **Singularity H3 v2**, the most used fine-tune, which is ref2va only: it
 runs on its own template at 6 steps with its speed LoRA at 0.7, makes
 clips from text or animates an image, and as int8 chains to 60 s as Turbo
-does. Each has a **Realism** twin that also fetches fal's Realism People
+does. Singularity's 24 GB file is WAS's w6a8 r2 (16 GB): on a 3090 it runs
+as fast as the w4a8 (about 155 s for a 5 s clip) and stays closer to the
+int8. Each has a **Realism** twin that also fetches fal's Realism People
 LoRA (0.12 GiB) for faces, skin and gestures that hold up in close-up (at
 strength 0.7, or 0.5 on Singularity, below the card's 1, which smeared
 faces in our tests); the host starts its prompts with the LoRA's trigger

@@ -1,14 +1,14 @@
 {
-  "name": "Singularity H3 v2 w4a8",
+  "name": "Singularity H3 v2 w6a8",
   "template": "minimax-h3-ref2va",
   "parts": [
     {
       "role": "diffusion",
       "source": "huggingface",
       "repo": "WAS/Minimax-h3_Singularity_v2_pruned",
-      "path": "Minimax-h3_Singularity_ref2va_v2_pruned_w4a8.safetensors",
-      "sha256": "22924ff34c02a78937bb176fb33ac583eb986f709b33c597e28292484c35dbfb",
-      "size": 11767193905
+      "path": "Minimax-h3_Singularity_ref2va_v2_pruned_w6a8_r2.safetensors",
+      "sha256": "dfa002594b84d97b67ac624997d074ba5d8893476b4b0e26491b7cfcb58260c0",
+      "size": 15982052308
     },
     {
       "role": "lora",

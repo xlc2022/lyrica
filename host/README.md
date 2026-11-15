@@ -391,7 +391,8 @@ per host, and Lyrica's router filters create tiers by it.
   file with lightx2v's 4-step 768p LoRA, at 1344×768, sized for a 24 GB
   card), Cobijada H3 Hybrid (int8 and w4a8; a community merge of the
   fl2va and ref2va checkpoints, uncensored, on the H3 Turbo template so it
-  chains to 60 s) and Singularity H3 v2 (int8 and w4a8; the most used
+  chains to 60 s) and Singularity H3 v2 (int8 and w6a8 r2, which on a
+  3090 is as fast as the w4a8 and closer to the int8; the most used
   community fine-tune, ref2va only, on the `minimax-h3-ref2va` template
   with the ref2v 4-step LoRA at 0.7 and 6 steps, as its repository's
   comparison renders use: fewer melted limbs than 4 steps at 1; it chains to 60 s as Turbo does). Each of
