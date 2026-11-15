@@ -293,6 +293,8 @@ describe("thinking", () => {
     expect(s.models.thinkingFor(plain, "medium")).toEqual({ level: "off", note: "blackwell/qwen3.8-27b can't think, so it answered without thinking" });
     // The default level, chosen by nobody, isn't worth a note.
     expect(s.models.thinkingFor(plain, "medium", true)).toEqual({ level: "off" });
+    // Nor is a template that opens <think> with no switch (GLM-5.3-Flash's): it thinks on every reply.
+    expect(s.models.thinkingFor({ ...plain, offering: { ...plain.offering, opensThinking: true } }, "medium")).toEqual({ level: "off" });
     s.models.setCapabilities(s.ada, s.blackwell.ref.offeringId, { reasoning: ["medium", "high"] });
     const some = s.models.resolve("chat", { ...s.ctx(), overrides: { chat: [s.blackwell.ref] } });
     expect(s.models.thinkingFor(some, "low")).toEqual({ level: "medium", note: "blackwell/qwen3.8-27b doesn't think at low, so it thought at medium" });

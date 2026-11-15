@@ -545,7 +545,9 @@ thinking setting (off, low, medium, high, `setThinking`) with a per-user
 default (`setDefaultThinking`, medium unless set: `DEFAULT_THINKING`).
 `thinkingFor` maps it to what the model offers: the nearest level it has,
 with a note, or off when it can't think, with a note unless nobody chose
-the level (`CallContext.thinkingUnset`). A model listed with no levels may
+the level (`CallContext.thinkingUnset`) or the model is `opensThinking`:
+a template that opens `<think>` with no switch (GLM-5.3-Flash's) thinks on
+every reply. Any other model listed with no levels may
 think anyway (a plain llama-server whose template thinks by default): its
 first reply with thinking clears that note on the call, and `sawThinking`
 remembers it for the daemon's run, so later calls get none. A child thread copies its parent's
