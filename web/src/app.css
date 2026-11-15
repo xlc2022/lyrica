@@ -2177,6 +2177,6 @@ dialog .eyebrow { margin: 10px 0 4px; }
 .starter .choice { align-items: start; }
 .starter .choice > input { margin-top: 3px; }
 .starter-variant { margin: 0 12px 10px 40px; }
-.dl-form .starter-variant button { min-height: 30px; padding: 0 10px; }
+@media (pointer: fine) { .dl-form .starter-variant button { min-height: 30px; padding: 0 10px; } }
 .dl-foot { position: sticky; bottom: 0; z-index: 1; align-items: center; background: var(--panel); border-top: 1px solid var(--line); margin: 0 -16px -14px; padding: 10px 16px; border-radius: 0 0 var(--radius) var(--radius); }
 .dl-picked { display: grid; margin-right: auto; min-width: 0; font-size: 13px; overflow-wrap: anywhere; }
