@@ -9,13 +9,13 @@ import { StateFile } from "../src/state.ts";
 import { FakeBackend, FakeGpus, GIB, textModel } from "./fakes.ts";
 
 type Srv = "llamacpp" | "vllm" | "images";
-function setup(totals = [24], opts: { waitLimits?: Record<Priority, number>; dir?: string; servers?: Srv[]; gpuBackend?: "rocm" | "vulkan"; sharedMemory?: Srv[]; log?: Logger; disk?: () => number } = {}) {
+function setup(totals = [24], opts: { waitLimits?: Record<Priority, number>; dir?: string; servers?: Srv[]; gpuBackend?: "rocm" | "vulkan"; sharedMemory?: Srv[]; log?: Logger; disk?: () => number; quietMs?: number } = {}) {
   const dir = opts.dir ?? mkdtempSync(join(tmpdir(), "lyrica-sched-"));
   const gpus = new FakeGpus(totals);
   const llamacpp = new FakeBackend(gpus);
   const vllm = new FakeBackend(gpus);
   const state = new StateFile(dir);
-  const scheduler = new Scheduler({ monitor: gpus, backends: { llamacpp, vllm }, state, log: opts.log ?? (() => {}), waitLimits: opts.waitLimits, servers: opts.servers, gpuBackend: opts.gpuBackend, sharedMemory: opts.sharedMemory, disk: opts.disk });
+  const scheduler = new Scheduler({ monitor: gpus, backends: { llamacpp, vllm }, state, log: opts.log ?? (() => {}), waitLimits: opts.waitLimits, servers: opts.servers, gpuBackend: opts.gpuBackend, sharedMemory: opts.sharedMemory, disk: opts.disk, quietMs: opts.quietMs });
   return { dir, gpus, llamacpp, vllm, state, scheduler };
 }
 
@@ -110,7 +110,8 @@ describe("the GPU queue", () => {
   });
 
   it("leaves a model unloaded when Unload stops its reload", async () => {
-    const { scheduler, llamacpp, gpus } = setup();
+    // The reload waits quietMs after its unload before loading again; the 2 s default equals until's timeout.
+    const { scheduler, llamacpp, gpus } = setup([24], { quietMs: 50 });
     const m = textModel("m", 10);
     await scheduler.loadNow(m);
     llamacpp.loadMs = 10_000;
