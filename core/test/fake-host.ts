@@ -10,7 +10,7 @@ const servers: Server[] = [];
 afterEach(async () => { await Promise.all(servers.splice(0).map((s) => new Promise((r) => { s.closeAllConnections(); s.close(r); }))); });
 
 export interface HostModel {
-  id: string; kind?: "chat" | "embedding" | "transcribe" | "speak"; contextLength?: number; tools?: boolean; reasoning?: string[] | null; opensThinking?: boolean; sha256?: string | null;
+  id: string; kind?: "chat" | "embedding" | "transcribe" | "speak"; contextLength?: number; tools?: boolean; reasoning?: string[] | null; opensThinking?: boolean; efforts?: Record<string, string>; sha256?: string | null;
   downloaded?: boolean; identity?: Record<string, unknown> | null;
   /** The sampling its file recommends. */
   sampling?: Record<string, number>;
@@ -99,7 +99,7 @@ export async function fakeHost(opts: { name?: string; models?: HostModel[]; port
         return json(res, 200, { models: models.map((m) => ({
           id: m.id, kind: m.kind ?? "chat", server: "llamacpp", format: "gguf", size: 1, sha256: m.sha256 ?? null, downloaded: m.downloaded ?? false, identity: m.identity ?? null,
           capabilities: {
-            tools: m.tools ?? false, vision: false, embedding: m.kind === "embedding", reasoning: m.reasoning ?? null, ...(m.opensThinking ? { opensThinking: true } : {}),
+            tools: m.tools ?? false, vision: false, embedding: m.kind === "embedding", reasoning: m.reasoning ?? null, ...(m.opensThinking ? { opensThinking: true } : {}), ...(m.efforts ? { efforts: m.efforts } : {}),
             ...(m.kind === "transcribe" ? { transcribe: true } : {}), ...(m.kind === "speak" ? { speak: { voices: m.voices ?? [] } } : {}),
           },
           contextLength: m.contextLength ?? null, parallel: m.kind === "chat" || !m.kind ? 1 : null, sampling: m.sampling ?? null, state: "unloaded", gpu: null, pinned: false, vram: null,

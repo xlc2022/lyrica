@@ -39,10 +39,10 @@ describe("pairing", () => {
 
   it("takes effort levels with no off (GLM-5.3's template) as three levels that think even when off is asked", async () => {
     const m = await withModels();
-    const host = await fakeHost({ name: "lyrica-glm", models: [{ id: "shared/glm-Q3_K_XL.gguf", kind: "chat", reasoning: ["low", "medium", "high"], opensThinking: true }] });
+    const host = await fakeHost({ name: "lyrica-glm", models: [{ id: "shared/glm-Q3_K_XL.gguf", kind: "chat", reasoning: ["low", "medium", "high"], opensThinking: true, efforts: { low: "low", medium: "high", high: "max" } }] });
     const ep = await m.models.pairHost(m.ada, { name: "glm", addresses: [host.address], code: host.newCode() });
     const [o] = await m.models.discover(m.ada, ep.id);
-    expect(o).toMatchObject({ reasoning: ["low", "medium", "high"], alwaysThinks: true, opensThinking: true });
+    expect(o).toMatchObject({ reasoning: ["low", "medium", "high"], alwaysThinks: true, opensThinking: true, levelNames: { low: "low", medium: "high", high: "max" } });
     expect(m.models.thinkingFor({ offering: o!, label: "glm", endpoint: { api: "host" } }, "off")).toEqual({ level: "medium", note: "glm can't turn thinking off, so it thought at medium" });
   });
 

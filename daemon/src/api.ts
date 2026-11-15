@@ -1259,8 +1259,10 @@ export interface ThreadSettings {
   thinking: ThinkingLevel;
   /** Whether the thread chose `thinking`; false follows the user's default. */
   thinkingSet: boolean;
-  /** The levels the current chat model offers (always including off). */
+  /** The levels the current chat model offers: off unless it always thinks. */
   thinkingLevels: ThinkingLevel[];
+  /** What the model calls a level, where that differs from the level ("On" for a template's switch; GLM-5.3's High and Max). */
+  thinkingNames: Partial<Record<ThinkingLevel, string>>;
   /** The last call in this thread: which model answered, and any fallback. */
   answered?: CallInfo;
   /**

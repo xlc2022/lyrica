@@ -43,6 +43,8 @@ export interface DiscoveredModel {
   server?: "llama.cpp" | "vllm";
   /** Its server says the model can't turn thinking off (LM Studio, OpenRouter's `reasoning.mandatory`). */
   alwaysThinks?: boolean;
+  /** A host's template words for the levels (host/API.md "Models", `efforts`). */
+  levelNames?: Partial<Record<"low" | "medium" | "high", string>>;
   /** The file's SHA-256, where a host reports it: the same file on two hosts is the same model. */
   digest?: string;
   /** What a host read from the file or its model card, for the library. */

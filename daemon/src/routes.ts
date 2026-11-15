@@ -3057,6 +3057,7 @@ function threadSettings(d: Lyricad, user: User, pool: Pool, threadId: string): A
   const applies = { ...workspace.settings(user.id).effective(threadId), ...(threadId ? {} : newThreadDefaults(d, user)) };
   const isUnlogged = owner(d, user, (o) => o[pool].getThread(threadId)?.unlogged ?? false);
   let thinkingLevels: Api.ThinkingLevel[] = ["off"];
+  let thinkingNames: Partial<Record<Api.ThinkingLevel, string>> = {};
   const taskModel = (task: Api.ThreadTask): Api.TaskModel => {
     const override = ctx.overrides?.[task];
     const list = override?.length ? { list: override } : {};
@@ -3064,7 +3065,13 @@ function threadSettings(d: Lyricad, user: User, pool: Pool, threadId: string): A
       // evenIfDown: the drawer names what is set here; whether its machine answers now is speechState's and the status panel's to say.
       // Each create list names the model its tier takes, past one tagged for the other tier only.
       const r = models.resolve(task, task === "speech.transcribe" ? voiceContext(ctx) : ctx, task === "image.create" ? { imageTier: "quality" } : task === "image.fast" ? { imageTier: "fast" } : {}, { evenIfDown: true });
-      if (task === (applies.code ? "code" : "chat")) thinkingLevels = ["off", ...(r.offering.reasoning ?? [])];
+      if (task === (applies.code ? "code" : "chat")) {
+        const levels = r.offering.reasoning ?? [];
+        // Off only where the model can stop thinking; each level by the name the model is given it under.
+        thinkingLevels = [...(r.offering.alwaysThinks && levels.length ? [] : ["off" as const]), ...levels];
+        const toggle = levels.length === 1 && (r.endpoint.api === "host" || !!r.offering.lmStudio || !!r.offering.llamaServer);
+        thinkingNames = toggle ? { [levels[0]!]: "On" } : { ...r.offering.levelNames };
+      }
       return {
         model: r.ref, ...list, kind: r.endpoint.kind, endpointName: r.endpoint.name, label: r.label, modelId: r.offering.modelId, name: modelName(r.offering),
         source: r.source, fallbacks: r.remaining,
@@ -3084,7 +3091,7 @@ function threadSettings(d: Lyricad, user: User, pool: Pool, threadId: string): A
   const effective = chosen && (!restricted || chosen.scope === "private") ? chosen : columnPreset;
   return {
     models: Object.fromEntries(THREAD_TASKS.map((task) => [task, taskModel(task)])) as Api.ThreadSettings["models"],
-    profile: effective?.name ?? "Custom", preset: ctx.preset ?? null, thinking: ctx.thinking ?? DEFAULT_THINKING, thinkingSet: !ctx.thinkingUnset, thinkingLevels,
+    profile: effective?.name ?? "Custom", preset: ctx.preset ?? null, thinking: ctx.thinking ?? DEFAULT_THINKING, thinkingSet: !ctx.thinkingUnset, thinkingLevels, thinkingNames,
     ...(answered ? { answered } : {}),
     ...(threadId ? contextOf(d, user, pool, threadId, answered) ?? {} : {}),
     code: applies.code, localOnly: ctx.localOnly,
