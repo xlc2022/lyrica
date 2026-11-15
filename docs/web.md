@@ -926,21 +926,26 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   token", "up to Accept edits") and at most one state as a dot and a word
   (Online, Unreachable with the duration in mono, Key changed, Off
   network; none if never probed; a machine whose host key was never
-  confirmed shows Key changed). The row opens a drawer: address, folder,
+  confirmed shows Key changed). The row, or **Edit** in its ⋯, opens a
+  drawer: address (host and port; the account under it, read-only), folder,
   pool and **Mode limit** as the message box's three-item mode list, with
-  one Save. The row's ⋯ has Replace key, **Use anyway** (only on a private
+  one Save. The row's ⋯ has Edit, Replace key, **Use anyway** (only on a private
   machine she is refused because it went Off network, its state
   `offNetwork`: the same dialog as Add machine's, then
   `confirm-off-network`, after which the row still says Off network and
   the item is gone) and Remove, Remove in a dialog with its one
   sentence. **Add machine** is a link to its own card in the section
   (`#/u/<user>/settings/machines/new`): a kind segment (SSH | Proxmox), then
-  steps as sections with eyebrows. Name and address (name, address, folder
-  for SSH, pool); leaving the address or pressing Enter asks `lyricad` for
-  her key and the setup commands. Key, or Token for Proxmox (the commands in
-  a code block that wraps its long lines, **Copy**, and the token field; for
-  her own SSH account, under them, the optional **Sudo, exact commands** and
-  **Sudo, everything** code blocks, each with its own Copy, `SudoBlocks`). Test (**Test** probes again
+  steps as sections with eyebrows. Name and address (name, address as the
+  host and port, account, for SSH user and folder, pool; an address typed
+  as `account@host` moves its account into User); leaving the address or pressing Enter asks `lyricad` for
+  her key and the setup commands; an answer for fields changed since is
+  dropped. Key, or Token for Proxmox (the commands in a code block that
+  wraps its long lines, with **Copy** in its head, `SetupBlock`, and the
+  token field; for her own SSH account, under them, the optional **Sudo,
+  exact commands** block, a box per command with **Add command** and each
+  box checked as typed, `ExactSudo`, and **Sudo, everything**, each with
+  its own Copy, `SudoBlocks`). Test (**Test** probes again
   and says Logged in or the problem). Fingerprint (the host key or
   certificate fingerprint in mono, **Confirm**). The current step's button
   is the one primary; a done step's turns secondary; nothing is saved before

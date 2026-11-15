@@ -164,8 +164,8 @@ export interface MachineProbe {
   keyLine?: string;
   /** The setup steps to paste on the machine as a user with sudo (for Proxmox, as root on the node). */
   setup: string;
-  /** SSH on her own account: the optional sudo rights, each a command to paste on its own (`machineSudo`). */
-  sudo?: { exact: string; everything: string };
+  /** SSH on her own account: sudo for everything, a command to paste on its own (`machineSudo`). */
+  sudo?: { everything: string };
   /** The host key the machine showed, or for Proxmox its certificate's, when it answered. */
   fingerprint?: string;
   /** Whether her key was accepted. Always false for Proxmox: the token is tried only at Confirm, against the confirmed certificate. */
