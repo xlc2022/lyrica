@@ -986,7 +986,8 @@ lyrica admin ssh add --user ada office ada-lyrica@office.lan --pool general --li
 steps:
 
 1. She makes a key pair and prints the setup to paste **on the machine
-   as a user with sudo**: her public key into `/etc/ssh/authorized_keys/<account>`, a
+   as a user with sudo** (on a machine without sudo, install it first, or
+   paste it as root with each `sudo ` removed): her public key into `/etc/ssh/authorized_keys/<account>`, a
    file only root can change (beside any key already there), with a `Match
    User` block in `/etc/ssh/sshd_config.d/lyrica-<account>.conf`, then
    `sshd -t && systemctl reload ssh` (the unit is `sshd` on Fedora and

@@ -117,6 +117,8 @@ describe("machines", () => {
     await expect(workspace.updateMachine(ada.id, "box", { address: "ada@127.0.0.1" })).rejects.toThrow(/account can't change/);
     expect((await workspace.updateMachine(ada.id, "box", { address: "lyrica@127.0.0.1:2222" })).port).toBe(2222);
     await expect(workspace.probeMachine(ada.id, "ada", { name: "srv", address: "root@127.0.0.1", asUser: true })).rejects.toThrow(/never logs in as root/);
+    // The account goes unquoted into the block the user pastes and into sudoers lines, so it is a plain user name.
+    for (const bad of ["a;id@127.0.0.1", "$(id)@127.0.0.1", "-x@127.0.0.1"]) await expect(workspace.probeMachine(ada.id, "ada", { name: "srv", address: bad })).rejects.toThrow(/the account is a user name/);
   });
 
   it("say why the user's own account can't log in when it is already hers on that machine", async () => {

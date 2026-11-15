@@ -185,6 +185,8 @@ export function parseMachineAddress(address: string): { username: string; host: 
   const m = /^([^@\s]+)@(\[[0-9a-fA-F:.]+\]|[^:\s@\[\]]+)(?::(\d+))?$/.exec(address.trim());
   const port = Number(m?.[3] ?? 22);
   if (!m || port < 1 || port > 65535) throw new Error("the address looks like account@host or account@host:port");
+  // The account goes unquoted into the setup block and the sudoers lines the user pastes, so it is a plain POSIX user name.
+  if (!/^[A-Za-z_][A-Za-z0-9_.-]{0,31}$/.test(m[1]!)) throw new Error("the account is a user name: letters, digits, _, . and -, starting with a letter or _");
   return { username: m[1]!, host: m[2]!.replace(/^\[|\]$/g, ""), port };
 }
 
