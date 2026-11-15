@@ -34,8 +34,10 @@ prebuilt_image() { echo "$PREBUILT_REGISTRY/lyrica-host-$1:$(prebuilt_tag "$1")"
 # $3 is 1, it pulls and carries its own tag as its content label; else to
 # nothing, saying why it will be built here instead. A pulled image is named
 # by its digest, so every later start runs exactly the image checked here
-# even if the tag is pushed again. Without a pull (--no-start, which only CI
-# uses, on hosts with no CMP) it stays the unchecked tag.
+# even if the tag is pushed again. Without a pull (--no-start: CI, on hosts
+# with no CMP, and Lyrica's model-host skill before its install step) it
+# stays the unchecked tag, which the next run without --no-start pulls and
+# checks, or builds.
 prebuilt_pick() {
   PREBUILT=$(prebuilt_image "$1")
   local why repo=${PREBUILT%:*}
