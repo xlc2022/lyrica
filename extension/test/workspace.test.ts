@@ -185,6 +185,9 @@ it("tells a sandbox command that reaches one of her machines over ssh to name th
   // A name that only appears elsewhere, or another host, is fine.
   expect(sandboxReachesMachine("echo nautica; ssh git@github.com", machines)).toBeUndefined();
   expect(sandboxReachesMachine("ssh nautica-backup true", machines)).toBeUndefined();
+  // Not a connection: ssh-keygen forgetting a host key, a local rsync into a folder named like a machine.
+  expect(sandboxReachesMachine("ssh-keygen -R nautica", machines)).toBeUndefined();
+  expect(sandboxReachesMachine("rsync -a src nautica", machines)).toBeUndefined();
 });
 
 describe("workspace tools in a Pi session", () => {

@@ -1073,9 +1073,10 @@ background, so it doesn't hold her turn (`core/src/workspace/jobs.ts`).
   key ends it at once. So after a reboot she starts the next check on the
   machine in the background and is told when it is back.
 - **The sandbox can't reach her machines**: it has no key or address for
-  them. A sandbox `bash` that runs `ssh`, `scp`, `sftp` or `rsync` to one
-  of the thread's machines by name is refused before it runs, telling her
-  to name the machine instead (`sandboxReachesMachine`).
+  them. A sandbox `bash` that runs `ssh` or `sftp` to one of the thread's
+  machines by name, or `scp` or `rsync` to `<machine>:`, is refused before
+  it runs, telling her to name the machine instead (`sandboxReachesMachine`);
+  `ssh-keygen` and a local copy are left alone.
 - Its time limit is 4 hours unless she gives one, and at most 24
   (`JOB_LIMITS`); at the limit it is killed and reported as timed out. A
   thread has at most 4 running at once, a running local MCP server
