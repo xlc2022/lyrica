@@ -1051,17 +1051,20 @@ script installs them, and NixOS's module brings its own)
 and a passed network self-test: when the journal says "network is off for
 every thread", every machine call fails too, with nothing to fall back to.
 If a machine's host key ever changes, every call fails until you confirm
-the new key (Replace key in its ⋯ menu). When her login fails there, as
-on a reinstalled machine, the page shows her key's setup block again to
-run and **Test**; **New key pair** makes a fresh pair instead, and the
-old key line stays on the machine until you remove it by hand. `lyrica
-admin ssh list` shows each machine's pool, limit and confirmed key, and
-`ssh remove` takes one away. SSH targets added before machines existed
-became general machines at Ask; one that had never connected has no
-confirmed key and must be added again (`ssh remove <name>`, then `add`).
-The same cure applies to a machine added before 2026-10-11 that never
-connects, even though its setup was run: about one key in 256 made before
-#96 was one OpenSSH could not load, and saved keys are not checked.
+the new key (Replace key in its ⋯ menu). When her login fails there, as on
+a reinstalled machine, the page shows her key's setup block again to run
+and **Test**; **New key pair** makes a fresh pair instead, and the old key
+line stays on the machine until you remove it by hand. `lyrica admin ssh
+list` shows each machine's pool, limit and confirmed key, and `ssh remove`
+takes one away. Removing one under Settings, Machines leaves the machine
+as it is, but its dialog offers commands to paste there that take away her
+key line, her sudoers lines or her whole account (on your own account,
+only the key); Lyrica runs none of them. SSH targets added before machines
+existed became general machines at Ask; one that had never connected has
+no confirmed key and must be added again (`ssh remove <name>`, then
+`add`). The same cure applies to a machine added before 2026-10-11 that
+never connects, even though its setup was run: about one key in 256 made
+before #96 was one OpenSSH could not load, and saved keys are not checked.
 
 ## Give her a Proxmox node
 
@@ -1137,7 +1140,9 @@ the new fingerprint (Replace key in the row's ⋯ menu under Settings,
 Machines, which takes a new token too; or `ssh remove <name>`, then
 `proxmox add` again). Add machine there, with Proxmox as the kind, is the
 same as the command. `lyrica admin ssh list` shows Proxmox machines with
-the SSH ones, and `ssh remove <name>` takes one away.
+the SSH ones, and `ssh remove <name>` takes one away. Removing one under
+Settings offers the `pveum` commands to delete her token there, and her
+user if it was made for her.
 
 ## Get pushes on your phone
 
