@@ -246,7 +246,7 @@ export class Scheduler {
   /**
    * Its settings with the context it is served with: a chat model with none
    * saved gets the largest that fits once Lyrica's unpinned models are
-   * unloaded (autoContext), kept while it stays loaded.
+   * unloaded, loaded embedding models staying (autoContext), kept while it stays loaded.
    */
   served(model: TextModel): ModelSettings {
     const s = this.settings(model);
@@ -256,10 +256,15 @@ export class Scheduler {
     return { ...s, contextLength: autoContext(model, s, this.othersView(model), (i) => this.gpuSettings(i)) };
   }
 
-  /** The GPUs with what they hold besides Lyrica's models that could be unloaded: other programs, and pinned models. */
+  /**
+   * The GPUs with what they hold besides Lyrica's models that could be unloaded: other programs, pinned models, and
+   * loaded embedding models. Lyrica embeds on every turn, so a chat model sized to fill the GPUs would swap with its
+   * small embedding model on each call (GLM-5.3-Flash on two 96 GB cards did).
+   */
   private othersView(model: TextModel): Gpu[] {
+    const stays = (x: Loaded) => this.pinned(x.model.id) || x.model.kind === "embedding";
     return this.gpusFor(serverOf(model)).map((g) => ({
-      ...g, used: Math.max(0, g.used - [...this.loaded.values()].filter((x) => x.model.id !== model.id && !this.pinned(x.model.id)).reduce((n, x) => n + (x.vram[g.index] ?? 0), 0)),
+      ...g, used: Math.max(0, g.used - [...this.loaded.values()].filter((x) => x.model.id !== model.id && !stays(x)).reduce((n, x) => n + (x.vram[g.index] ?? 0), 0)),
     }));
   }
 
