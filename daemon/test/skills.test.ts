@@ -50,7 +50,7 @@ describe("skills", () => {
     expect((await s.ada.post(notifications[0]!.actions[0]!.path)).status).toBe(200);
     expect((await s.ada.post(notifications[0]!.actions[0]!.path)).status).toBe(404);
 
-    expect(await s.prompt()).toContain('<skill name=\\"render-check\\" read=\\"s:render-check\\">Before saying a scene renders.</skill>');
+    expect(await s.prompt()).toContain('<skill name=\\"render-check\\" read_memory=\\"s:render-check\\">Before saying a scene renders.</skill>');
     expect((await s.ada.get<NotificationPage>(`${s.u}/notifications`)).body.items.filter((n) => n.id.startsWith("skill:"))).toEqual([]);
     s.stream.close();
   });
@@ -99,7 +99,7 @@ describe("the add-machine skill", () => {
     await s.ada.post(`${s.path}/messages`, { text: "how do I let you manage my Proxmox?" });
     await s.stream.until((e) => e.type === "turn_end", 0);
     const turn = JSON.stringify(s.model.requests.map((r) => r.messages));
-    expect(turn).toContain('<skill name=\\"add-machine\\" read=\\"s:add-machine\\">Walk the person through giving you another computer over SSH, or a Proxmox node');
+    expect(turn).toContain('<skill name=\\"add-machine\\" read_memory=\\"s:add-machine\\">Walk the person through giving you another computer over SSH, or a Proxmox node');
     // She takes the person through the page, and never takes the key or token herself.
     expect(turn).toContain("the person adds it in **Settings**, **Machines**, **Add machine**");
     expect(turn).toContain("you never ask for one, or for a password, in chat");
@@ -107,8 +107,8 @@ describe("the add-machine skill", () => {
     await s.ada.post(`${s.u}/skills`, { name: "add-machine", description: "Our own way.", body: "Ask the administrator." });
     const prompt = await s.prompt();
     const latest = prompt.slice(prompt.lastIndexOf("<skills>"));
-    expect(latest).toContain('<skill name=\\"add-machine\\" read=\\"s:add-machine\\">Our own way.</skill>');
-    expect(latest).not.toContain('read=\\"s:add-machine\\">Walk');
+    expect(latest).toContain('<skill name=\\"add-machine\\" read_memory=\\"s:add-machine\\">Our own way.</skill>');
+    expect(latest).not.toContain('read_memory=\\"s:add-machine\\">Walk');
     s.stream.close();
   });
 });
@@ -120,7 +120,7 @@ describe("the model-host skill", () => {
     const ws = s.d.services!.workspace.settings(s.rt.ada.id);
     ws.addMachine({ name: "box", host: "127.0.0.1", port: 22, username: "lyrica", root: null, pool: "general", limit: "ask", privateKey: "fake", offNetwork: false }, `SHA256:${"A".repeat(43)}`);
     ws.setThread(s.thread.id, "general", { machines: ["box"] });
-    expect(await s.prompt()).toContain('<skill name=\\"model-host\\" read=\\"s:model-host\\">Install a Lyrica model host');
+    expect(await s.prompt()).toContain('<skill name=\\"model-host\\" read_memory=\\"s:model-host\\">Install a Lyrica model host');
 
     const from = s.stream.events.length;
     s.model.reply({ tools: [{ name: "read_memory", args: { id: "s:model-host" } }] }, { text: "Read it." });
@@ -132,8 +132,8 @@ describe("the model-host skill", () => {
     // The top of the prompt stays fixed, so the latest skills section is the last one.
     const prompt = await s.prompt();
     const latest = prompt.slice(prompt.lastIndexOf("<skills>"));
-    expect(latest).toContain('<skill name=\\"model-host\\" read=\\"s:model-host\\">Our own way.</skill>');
-    expect(latest).not.toContain('read=\\"s:model-host\\">Install');
+    expect(latest).toContain('<skill name=\\"model-host\\" read_memory=\\"s:model-host\\">Our own way.</skill>');
+    expect(latest).not.toContain('read_memory=\\"s:model-host\\">Install');
     s.stream.close();
   });
 });
