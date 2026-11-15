@@ -237,7 +237,8 @@ four parts with its projector, about 149 GB, for two 96 GB GPUs), GLM 5.3
 Flash (Q4) (UD-Q4_K_XL in six parts, about 201 GB, for two 96 GB GPUs with
 a system RAM allowance), DeepSeek V4 Flash (Unsloth's UD-Q4_K_XL in
 five parts, about 155 GB, text only, for two 96 GB GPUs), Qwen3.5 9B
-(Q4_K_M with its projector), Qwen3 Embedding 0.6B (Q8_0), and the voice and
+(Q4_K_M with its projector), Qwen3.5 4B and 2B (Q4_K_M with their
+projectors, for Look at images), Qwen3 Embedding 0.6B (Q8_0), and the voice and
 dictation models named in docs/guides/model-hosts.md. Only those the host's
 servers run are listed, on a GPU or the CPU, and one too big says so: for
 llama.cpp, too big for all the GPUs that allow it together, since it splits

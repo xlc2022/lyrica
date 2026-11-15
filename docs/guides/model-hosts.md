@@ -723,6 +723,22 @@ question once per turn; a general pool whose model is on a cloud endpoint
 leaves local-only threads' words out ([docs/memory.md](../memory.md),
 "Recall by meaning").
 
+### Eyes for a model without vision
+
+A chat model that can't see images (DeepSeek V4 Flash, say)
+gets the **look** tool, which shows images, clip stills and screenshots to
+the first model in the **Look at images** row of Models, Tasks and hands
+back its words. Download the **Qwen3.5 4B** starter (Q4_K_M with its
+projector, about 3.4 GB, 6.5 GB of GPU memory at a 32K context) under
+Starters on the dashboard and put it first in that row for both columns.
+It names files with one clean name and copies a screenshot's text word for
+word; on a CMP 100-210 it answers a 1080p screenshot in about 1.2 s and a
+12 MP photo in about 3.3 s. On a card with 4 GB, use **Qwen3.5 2B**
+(about 2 GB, 4 GB of GPU memory) instead: as fast, but it tends to offer a
+list of names and to summarise text rather than copy it. A photo takes up
+to about 4,000 tokens of the model's context and a 1080p screenshot about
+2,000, so give it a context of 16K or more.
+
 ## Images
 
 Confirmed, ready recipes can go in the `image.fast` (Fast images),
