@@ -280,7 +280,8 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   an image from Images (`…/files/images`, filtered by source and ordered by
   **Sort**, `MediaTools.tsx`, kept in `localStorage` as `lyrica.media.sort`), or a clip from
   Videos (`…/files/videos`, the same filter and sort, each tile its poster thumbnail or,
-  for a clip without one, its own first frame), opens in
+  for a clip without one, its own first frame, with its length (`seconds`) at the lower right
+  when lyricad knows it, `VideoThumb` in `paths.tsx`), opens in
   the **file viewer** (below). The right-click menu (a long press, or the
   viewer's ⋯, which renders the same menu inside the viewer's dialog) attaches
   (the path goes into this thread's message box through a window event, or

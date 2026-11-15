@@ -7,7 +7,7 @@ import { kb } from "./Files.tsx";
 import { Icon } from "./icons.tsx";
 import { RowMenu } from "./Machines.tsx";
 import { her } from "./name.ts";
-import { Thumb, useFileLinks, VideoThumb, WORKDIR } from "./paths.tsx";
+import { clipLength, Thumb, useFileLinks, VideoThumb, WORKDIR } from "./paths.tsx";
 import { Viewer } from "./Viewer.tsx";
 import { AutoNameDrawer, IMAGE_NAME, VIDEO_NAME, SortSelect, sortMedia, useMediaSort } from "./MediaTools.tsx";
 import type { ShellContext } from "./Shell.tsx";
@@ -183,8 +183,8 @@ export function FilesSection({ ctx, pool, threadId }: { ctx: ShellContext; pool:
             <ul className="pfiles-grid" aria-label={TAB_LABEL[tab]}>
               {shownMedia.map((i) => (
                 <li key={i.path}>
-                  <button type="button" className="pfiles-thumb" aria-label={`Open ${i.name}`} onClick={() => view(i, shownMedia)}>
-                    {tab === "videos" ? <VideoThumb path={i.path} files={links} /> : <Thumb path={i.path} alt="" files={links} />}
+                  <button type="button" className="pfiles-thumb" aria-label={`Open ${i.name}${i.seconds === undefined ? "" : `, ${clipLength(i.seconds)}`}`} onClick={() => view(i, shownMedia)}>
+                    {tab === "videos" ? <VideoThumb path={i.path} files={links} seconds={i.seconds} /> : <Thumb path={i.path} alt="" files={links} />}
                   </button>
                   <span className="pfiles-tile">
                     {renaming === i.path

@@ -1546,12 +1546,41 @@ test("the Files panel: a tree one folder at a time, a file shown, search, the Im
   const clip = panel.locator(".igrid").getByRole("button", { name: "clip.mp4", exact: true });
   await expect(clip.locator(".vplay")).toBeVisible();
   await expect(clip.locator("video")).toHaveCount(1);
+  // A clip ffprobe can't read (this one is a bare header) shows no length.
+  await expect(clip.locator(".vlen")).toHaveCount(0);
   if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/files-videos-${page.viewportSize()!.width}.png` });
   await clip.click();
   await expect(page.getByRole("dialog", { name: "clip.mp4" }).locator(".viewer-media video")).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog", { name: "clip.mp4" })).toHaveCount(0);
   await noHorizontalScroll(page);
+});
+
+test("the Files panel's Videos: each clip's tile shows its length, read with its name, and none while unknown", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  await newThread(page, "General");
+  await send(page, "hello clips");
+  await expect(page.getByText("You said: hello clips")).toBeVisible();
+  const threadId = decodeURIComponent(location_of(page).split("/t/general/")[1]!.split("/")[0]!);
+  const base = `/api/u/${userId}/threads/general/${encodeURIComponent(threadId)}/files`;
+  // The lengths as lyricad lists them (its ffprobe and cache are daemon/test/files.test.ts's).
+  const clip = (name: string, seconds?: number) => ({ name, path: `/workspace/videos/${name}`, kind: "file", size: 120, modified: "2026-11-01T10:00:00.000Z", source: "made", ...seconds === undefined ? {} : { seconds } });
+  await page.route(`**${base}**`, async (route) => {
+    const path = new URL(route.request().url()).pathname.slice(base.length);
+    if (path === "") return route.fulfill({ json: { roots: [{ path: "/workspace", writable: true, kind: "thread" }], dir: "/workspace", entries: [], more: false } });
+    if (path === "/images") return route.fulfill({ json: [] });
+    if (path === "/videos") return route.fulfill({ json: [clip("fox.mp4", 5.04), clip("walk.mp4", 62.4), clip("long.mp4", 3725), clip("new.mp4")] });
+    return route.fulfill({ status: 404, json: { error: "not here" } });
+  });
+  await page.getByRole("link", { name: "Files and images" }).click();
+  const panel = phone(page) ? page.locator(".files-page") : page.getByRole("complementary");
+  await panel.getByRole("tab", { name: "Videos" }).click();
+  const grid = panel.locator(".igrid");
+  await expect(grid.getByRole("button", { name: "fox.mp4, 0:05", exact: true }).locator(".vlen")).toHaveText("0:05");
+  await expect(grid.getByRole("button", { name: "walk.mp4, 1:02", exact: true }).locator(".vlen")).toHaveText("1:02");
+  await expect(grid.getByRole("button", { name: "long.mp4, 1:02:05", exact: true }).locator(".vlen")).toHaveText("1:02:05");
+  await expect(grid.getByRole("button", { name: "new.mp4", exact: true }).locator(".vlen")).toHaveCount(0);
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/files-video-length-${page.viewportSize()!.width}.png` });
 });
 
 test("the Files panel's Images: Sort orders the grid by date or name, and Auto-name suggests names in a drawer that renames on Rename, keeping chosen names unless asked", async ({ page, baseURL }) => {

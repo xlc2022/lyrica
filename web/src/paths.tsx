@@ -167,13 +167,22 @@ export function Thumb({ path, alt, files, onGone, onBroken }: { path: string; al
  * A clip's tile: the poster kept as its thumbnail, or, where it has none (an uploaded clip), the clip's own first
  * frame, read from its metadata and never saved. A play mark sits over either.
  */
-export function VideoThumb({ path, files }: { path: string; files: FileLinks }) {
+/** A clip's length as a clock: 0:05, 1:02, 1:00:00; at least 0:01. */
+export function clipLength(seconds: number): string {
+  const s = Math.max(1, Math.round(seconds));
+  const two = (n: number) => String(n).padStart(2, "0");
+  return s < 3600 ? `${Math.floor(s / 60)}:${two(s % 60)}` : `${Math.floor(s / 3600)}:${two(Math.floor(s / 60) % 60)}:${two(s % 60)}`;
+}
+
+/** A clip's tile: its poster with the play mark, and its length when known (`seconds`). */
+export function VideoThumb({ path, files, seconds }: { path: string; files: FileLinks; seconds?: number }) {
   const [poster, setPoster] = useState(true);
   return (
     <span className="vthumb">
       {poster ? <img src={files.thumb(path)} alt="" loading="lazy" onError={() => setPoster(false)} />
         : <video src={`${files.url(path)}#t=0.1`} preload="metadata" muted playsInline aria-hidden="true" tabIndex={-1} />}
       <span className="vplay" aria-hidden="true"><Icon name="play" /></span>
+      {seconds !== undefined && <span className="vlen num" aria-hidden="true">{clipLength(seconds)}</span>}
     </span>
   );
 }

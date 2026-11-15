@@ -174,8 +174,8 @@ Each user has two pools of memory.
       Clicking a file opens it in the file viewer.
     - **Images:** thumbnails of the images in the thread's folder, with All,
       Uploaded and Made by Lyrica. Clicking one opens it in the file viewer.
-    - **Videos:** the same for clips, each shown by its poster; one opens
-      in the file viewer to play.
+    - **Videos:** the same for clips, each shown by its poster with its
+      length; one opens in the file viewer to play.
     - **The file viewer** (decided 2026-10-20, as in Claude's own app): the
       file large, with the thread that wrote it beside it (recorded for her
       writes, commands, uploads and images, and dropped with the file;

@@ -8,7 +8,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { createPortal } from "react-dom";
 import { get, post, threadPath, upload, type FileCopyResponse, type FileEntry, type FileListing, type FileRoot, type FileSearch, type ImageEntry, type Pool, type ThreadSettings, type ThreadSummary } from "./api.ts";
 import { ask, ATTACH_EVENT, ATTACH_KEY, keep, SHOW_EVENT, SHOW_KEY, type AttachRequest, type ShowRequest } from "./links.ts";
-import { FAMILY_ROOT, isUnderWorkdir, SHARED, shown, Thumb, useFileLinks, VideoThumb, WORKDIR, type FileLinks } from "./paths.tsx";
+import { clipLength, FAMILY_ROOT, isUnderWorkdir, SHARED, shown, Thumb, useFileLinks, VideoThumb, WORKDIR, type FileLinks } from "./paths.tsx";
 import { ArtifactsTab, importArtifacts } from "./Artifacts.tsx";
 import { AutoNameDrawer, IMAGE_NAME, VIDEO_NAME, SortSelect, sortMedia, useMediaSort, type MediaSort } from "./MediaTools.tsx";
 import { Viewer } from "./Viewer.tsx";
@@ -604,9 +604,9 @@ function MediaGrid({ kind, entries, filter, onFilter, sort, onSort, links, sel, 
       </div>
       <div ref={grid} className="igrid" aria-label={TAB_LABEL[kind]} {...drag}>
         {!entries ? <p className="empty">Loading…</p> : !listed?.length ? <p className="empty">No {kind} yet</p> : listed.map((i) => (
-          <button key={i.path} type="button" aria-label={i.name} data-path={i.path} className={sel.has(i.path) ? "sel" : undefined} aria-pressed={sel.has(i.path) || undefined}
+          <button key={i.path} type="button" aria-label={i.seconds === undefined ? i.name : `${i.name}, ${clipLength(i.seconds)}`} data-path={i.path} className={sel.has(i.path) ? "sel" : undefined} aria-pressed={sel.has(i.path) || undefined}
             onClick={(e) => { if (!onPick(e, i)) onOpen(i); }} {...press(i)}>
-            {kind === "videos" ? <VideoThumb path={i.path} files={links} /> : <Thumb path={i.path} alt="" files={links} />}<span className="meta mono">{i.name}</span>
+            {kind === "videos" ? <VideoThumb path={i.path} files={links} seconds={i.seconds} /> : <Thumb path={i.path} alt="" files={links} />}<span className="meta mono">{i.name}</span>
           </button>
         ))}
         {box && <div className="selbox" aria-hidden="true" style={box} />}

@@ -29,8 +29,11 @@ export interface FileRoot { path: string; writable: boolean; kind: "thread" | "s
 
 export interface FileListing { entries: FileEntry[]; /** The listing stopped at the cap. */ more: boolean }
 
-/** An image or a clip in the thread's folder: uploaded by the person, or made by her. */
-export interface ImageEntry extends FileEntry { source: "uploaded" | "made" }
+/**
+ * An image or a clip in the thread's folder: uploaded by the person, or made by her. A clip's `seconds` is its length,
+ * absent while unknown (no ffprobe, a file it can't read, or one not probed yet).
+ */
+export interface ImageEntry extends FileEntry { source: "uploaded" | "made"; seconds?: number }
 
 /** The panel's own folder in the thread's: its thumbnails live under `.lyrica/thumbs`; never listed or searched. */
 export const PANEL_DIR = ".lyrica";
@@ -38,6 +41,8 @@ export const THUMB_BOX = 320;
 const THUMB_TIMEOUT_MS = 20_000;
 export const LIST_LIMIT = 2000;
 export const SEARCH_LIMIT = 200;
+/** At most this many clips are probed for their length in one listing; the rest are probed on the next. */
+export const PROBE_LIMIT = 100;
 export const ZIP_FILES_LIMIT = 10_000;
 const IMAGE_EXTENSIONS = ["png", "jpg", "jpeg", "gif", "webp"];
 /** The clips the web's viewer plays. */
@@ -110,13 +115,32 @@ export class ThreadFiles {
   images(): Promise<ImageEntry[]> { return this.media(IMAGE_EXTENSIONS); }
 
   /** Every clip in the thread's folder, uploaded ones told from hers. */
-  videos(): Promise<ImageEntry[]> { return this.media(VIDEO_EXTENSIONS); }
+  async videos(): Promise<ImageEntry[]> {
+    const entries = await this.media(VIDEO_EXTENSIONS);
+    const seconds = await this.lengths(entries.map((e) => e.path)).catch(() => []);
+    return entries.map((e, i) => (seconds[i] === undefined ? e : { ...e, seconds: seconds[i] }));
+  }
 
   private async media(extensions: string[]): Promise<ImageEntry[]> {
     const names = extensions.flatMap((e, i) => [...(i ? ["-o"] : []), "-iname", `*.${e}`]);
     void this.pruneThumbs().catch(() => {});
-    const { entries } = await this.find(["find", WORKDIR, "-name", PANEL_DIR, "-prune", "-o", "-type", "f", "(", ...names, ")", "-printf", PRINTF], LIST_LIMIT);
-    return entries.map((e) => ({ ...e, source: e.path.startsWith(`${WORKDIR}/uploads/`) ? "uploaded" : "made" }));
+    const { entries } = await this.find(["find", this.workdir, "-name", PANEL_DIR, "-prune", "-o", "-type", "f", "(", ...names, ")", "-printf", PRINTF], LIST_LIMIT);
+    return entries.map((e) => ({ ...e, source: e.path.startsWith(`${this.workdir}/uploads/`) ? "uploaded" : "made" }));
+  }
+
+  /**
+   * Each clip's length in seconds, in order, from ffprobe inside the sandbox. A length is kept beside the clip's poster
+   * (`.lyrica/thumbs/<its path>.seconds`) until the clip is newer, so a clip is probed once, and at most PROBE_LIMIT
+   * new ones in a call; one it can't read is kept as unknown. Without ffprobe, none is known.
+   */
+  private async lengths(paths: string[]): Promise<(number | undefined)[]> {
+    if (!paths.length) return [];
+    const script = 'command -v ffprobe >/dev/null && command -v timeout >/dev/null || exit 0; w=$1; n=$2; p=$3; shift 3; for f; do c=$w/$p/thumbs/${f#"$w"/}.seconds; ' +
+      'if [ -f "$c" ] && [ ! "$f" -nt "$c" ]; then d=$(cat -- "$c"); elif [ "$n" -gt 0 ]; then n=$((n-1)); ' +
+      'd=$(timeout 10 ffprobe -v error -show_entries format=duration -of default=nw=1:nk=1 -- "$f" 2>/dev/null) || d=; ' +
+      'mkdir -p -- "$(dirname -- "$c")" && printf %s "$d" > "$c"; else d=; fi; printf "%s\\0" "$d"; done';
+    const out = await this.file(["sh", "-c", script, "sh", this.workdir, String(PROBE_LIMIT), PANEL_DIR, ...paths]);
+    return out.toString().split("\0").slice(0, paths.length).map((d) => { const n = Number.parseFloat(d); return Number.isFinite(n) && n > 0 ? n : undefined; });
   }
 
   /**
@@ -199,7 +223,7 @@ export class ThreadFiles {
 
   /** The thumbnails of files under `paths` (a file's own, or everything under a folder), to go with them. */
   private thumbsOf(paths: string[]): string[] {
-    return paths.flatMap((p) => { const t = this.thumbPath(p); return t ? [t, `${t}.png`, `${t}.jpg`] : []; });
+    return paths.flatMap((p) => { const t = this.thumbPath(p); return t ? [t, `${t}.png`, `${t}.jpg`, `${t}.seconds`] : []; });
   }
 
   /**
