@@ -1,5 +1,6 @@
 {
   "name": "RealVisXL V5.0",
+  "family": "SDXL",
   "template": "sdxl",
   "parts": [
     {

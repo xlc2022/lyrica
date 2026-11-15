@@ -1,5 +1,6 @@
 {
   "name": "Juggernaut XL v9",
+  "family": "SDXL",
   "template": "sdxl",
   "parts": [
     {

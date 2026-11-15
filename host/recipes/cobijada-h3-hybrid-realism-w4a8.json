@@ -1,5 +1,8 @@
 {
   "name": "Cobijada H3 Hybrid Realism w4a8",
+  "family": "MiniMax H3",
+  "variantOf": "Cobijada H3 Hybrid",
+  "variant": "Realism w4a8",
   "template": "minimax-h3",
   "parts": [
     {

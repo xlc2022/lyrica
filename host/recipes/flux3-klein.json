@@ -1,5 +1,6 @@
 {
   "name": "FLUX.3 image klein",
+  "family": "FLUX",
   "template": "flux3-klein",
   "parts": [
     {

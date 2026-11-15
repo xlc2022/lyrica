@@ -1,5 +1,6 @@
 {
   "name": "Qwen-Image (original)",
+  "family": "Qwen-Image",
   "template": "qwen-image",
   "parts": [
     {

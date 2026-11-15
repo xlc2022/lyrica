@@ -925,8 +925,11 @@ async function fakeImages(page: Page) {
   // Starter recipes: Z-Image Turbo's parts are all here; FLUX.1 schnell's model isn't.
   const sp = (path: string, size: number, present: boolean) => ({ role: "diffusion", source: "huggingface", repo: "Comfy-Org/x", path, sha256: "00", size: size * GB, present });
   const starters = [
-    { id: "z-image-turbo", name: "Z-Image Turbo", template: "z-image", parts: [sp("split_files/z_image_turbo_bf16.safetensors", 12.3, true)], loras: [], defaults: {} },
-    { id: "flux-schnell", name: "FLUX.1 schnell", template: "flux", parts: [sp("flux1-schnell.safetensors", 11.9, false), { ...sp("ae.safetensors", 0.3, true), role: "vae" }], loras: [], defaults: {} },
+    { id: "z-image-turbo", name: "Z-Image Turbo", family: "Z-Image", does: ["create"], template: "z-image", parts: [sp("split_files/z_image_turbo_bf16.safetensors", 12.3, true)], loras: [], defaults: {} },
+    { id: "flux-schnell", name: "FLUX.1 schnell", family: "FLUX", does: ["create"], template: "flux", parts: [sp("flux1-schnell.safetensors", 11.9, false), { ...sp("ae.safetensors", 0.3, true), role: "vae" }], loras: [], defaults: {} },
+    // Two variants of one model fold into one row; one is too big for the host's free space.
+    { id: "wan-t2v", name: "Wan 2.2 T2V 14B", family: "Wan 2.2", variantOf: "Wan 2.2 T2V 14B", variant: "Full size", does: ["video"], template: "wan22-t2v-14b", parts: [sp("wan_t2v_14b.safetensors", 120, false)], loras: [], defaults: {} },
+    { id: "wan-t2v-q5", name: "Wan 2.2 T2V 14B Q5", family: "Wan 2.2", variantOf: "Wan 2.2 T2V 14B", variant: "Q5", does: ["video"], template: "wan22-t2v-14b", parts: [sp("wan_t2v_14b_q5.gguf", 9.8, false)], loras: [], defaults: {} },
   ];
   await page.route(/\/api\/u\/[^/]+\/hosts\/ep-box\/starters(\/[^/]+\/install)?$/, (route) => {
     const path = new URL(route.request().url()).pathname.replace(/^.*\/ep-box\//, "");
@@ -1488,12 +1491,34 @@ test("Image models: groups by architecture with Role and Where; a recipe opens t
   await expect(page).toHaveURL(new RegExp(`#/u/${userId}/models/images/download$`));
   await expect(page.getByRole("heading", { level: 1, name: "Download image model" })).toBeVisible();
   // Starter recipes come first: what each needs, and a dialog before anything missing downloads.
+  // A collapsed group per family, searched, filtered by what it does and what the host has; a model's variants are one row.
   const startersList = page.getByRole("radiogroup", { name: "Starter recipes" });
   await expect(page.getByRole("group", { name: "Source" }).getByRole("button", { name: "Starter recipes" })).toHaveAttribute("aria-pressed", "true");
+  await expect(startersList.locator("summary")).toHaveText([/^FLUX.*1 starter$/, /^Wan 2\.2.*2 starters$/, /^Z-Image.*1 starter · 1 added$/]);
+  await expect(startersList.getByRole("radio")).toHaveCount(0);
+  await page.getByRole("group", { name: "Show" }).getByRole("button", { name: /On this host/ }).click();
+  await expect(startersList.getByRole("radio")).toHaveCount(1);
   await expect(startersList.getByRole("radio", { name: /Z-Image Turbo/ })).toHaveAccessibleName(/every part is on this host/);
-  await expect(startersList.getByRole("radio", { name: /FLUX\.1 schnell/ })).toHaveAccessibleName(/2 parts · 11\.9 GB to download/);
-  await page.getByRole("button", { name: "Add model" }).click();
-  await expect(page.getByRole("alert").filter({ hasText: "Choose a starter recipe." })).toBeVisible();
+  await page.getByRole("group", { name: "Show" }).getByRole("button", { name: /^All/ }).click();
+  await page.getByRole("group", { name: "Does" }).getByRole("button", { name: "Video" }).click();
+  await expect(startersList.locator("summary")).toHaveText([/^Wan 2\.2/]);
+  await startersList.locator("summary").click();
+  await expect(startersList.getByRole("radio", { name: /Wan 2\.2 T2V 14B/ })).toHaveAccessibleName(/video · 2 variants · 9\.8 GB to 120\.0 GB to download/);
+  await startersList.getByRole("radio", { name: /Wan 2\.2 T2V 14B/ }).check();
+  const variant = startersList.getByRole("group", { name: "Variant" });
+  await expect(variant.getByRole("button", { name: "Q5" })).toHaveAttribute("aria-pressed", "true");
+  await expect(variant.getByRole("button", { name: "Full size" })).toBeDisabled();
+  await expect(page.locator(".dl-foot")).toContainText("Wan 2.2 T2V 14B Q5");
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/starters-${page.viewportSize()!.width}.png`, fullPage: true });
+  await page.getByRole("group", { name: "Does" }).getByRole("button", { name: "All" }).click();
+  await page.getByRole("searchbox", { name: "Search starters" }).fill("flux");
+  await expect(startersList.locator("summary")).toHaveText([/^FLUX/]);
+  await expect(startersList.getByRole("radio", { name: /FLUX\.1 schnell/ })).toHaveAccessibleName(/generate · 2 parts · 11\.9 GB to download/);
+  await page.getByRole("searchbox", { name: "Search starters" }).fill("nothing like this");
+  await expect(page.getByText("No starters match.")).toBeVisible();
+  await page.getByRole("button", { name: "Clear" }).click();
+  await expect(page.getByRole("searchbox", { name: "Search starters" })).toHaveValue("");
+  await page.getByRole("searchbox", { name: "Search starters" }).fill("schnell");
   await startersList.getByRole("radio", { name: /FLUX\.1 schnell/ }).check();
   await noHorizontalScroll(page);
   await page.getByRole("button", { name: "Add model" }).click();

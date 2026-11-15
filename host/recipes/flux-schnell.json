@@ -1,5 +1,6 @@
 {
   "name": "FLUX.1 schnell",
+  "family": "FLUX",
   "template": "flux",
   "parts": [
     {

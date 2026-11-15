@@ -907,7 +907,8 @@ Confirm, ignore, download missing parts (with the hub token for the hub
 they come from), change (swap a part within its role
 and slot, LoRAs, defaults, the starter's defaults again, rename, or `useFor`), copy or delete; the host keeps every part
 another recipe uses. **Starter recipes** (`starters`, `installStarter`):
-the host's own, from `GET /host/v1/starters`, each part marked `present`;
+the host's own, from `GET /host/v1/starters`, each part marked `present`,
+with its `family`, `does` and, for a variant, `variantOf` and `variant`;
 making one posts `…/starters/<id>/install` with the hub token when a part
 is missing, and the host downloads those and confirms the recipe. A shared
 host needs an administrator. Only confirmed recipes become offerings (`recipe/<id>`,

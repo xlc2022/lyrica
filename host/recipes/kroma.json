@@ -1,5 +1,8 @@
 {
   "name": "Kroma v0.3.1 Turbo",
+  "family": "Krea 2",
+  "variantOf": "Kroma v0.3.1 Turbo",
+  "variant": "Quality",
   "template": "krea2",
   "backend": "comfyui",
   "useFor": "quality",

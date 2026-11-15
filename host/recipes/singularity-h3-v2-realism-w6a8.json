@@ -1,5 +1,8 @@
 {
   "name": "Singularity H3 v2 Realism w6a8",
+  "family": "MiniMax H3",
+  "variantOf": "Singularity H3 v2",
+  "variant": "Realism w6a8",
   "template": "minimax-h3-ref2va",
   "parts": [
     {

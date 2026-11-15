@@ -1,5 +1,8 @@
 {
   "name": "MiniMax-H3-Image w4a8",
+  "family": "MiniMax-H3-Image",
+  "variantOf": "MiniMax-H3-Image",
+  "variant": "w4a8",
   "template": "minimax-h3-image",
   "parts": [
     {

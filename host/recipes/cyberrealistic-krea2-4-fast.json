@@ -1,5 +1,8 @@
 {
   "name": "CyberRealistic Krea 2 v4, fast",
+  "family": "Krea 2",
+  "variantOf": "CyberRealistic Krea 2 v4",
+  "variant": "Fast",
   "template": "krea2",
   "useFor": "fast",
   "parts": [

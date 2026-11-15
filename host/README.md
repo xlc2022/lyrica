@@ -343,7 +343,9 @@ per host, and Lyrica's router filters create tiers by it.
   update brings the node, which is added to `comfyui/Dockerfile` at a
   reviewed commit like the others.
 - **Starters** (`recipes/`) are known-good recipes, with each part's
-  checksum. Install downloads only the parts that aren't here.
+  checksum. Install downloads only the parts that aren't here. Each names
+  its `family`, and a variant of another model `variantOf` and `variant`,
+  so Lyrica groups them and folds variants into one row.
   A starter can be for one way of making images only: Krea 2 Turbo Q5
   (GGUFs, about 13.4 GB, for 16 GB cards) is listed only on hosts using
   stable-diffusion.cpp.

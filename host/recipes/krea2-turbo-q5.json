@@ -1,5 +1,8 @@
 {
   "name": "Krea 2 Turbo Q5",
+  "family": "Krea 2",
+  "variantOf": "Krea 2 Turbo",
+  "variant": "Q5",
   "template": "krea2",
   "backend": "sdcpp",
   "parts": [

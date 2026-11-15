@@ -1,5 +1,8 @@
 {
   "name": "GonzaLomo Krea 2 v4",
+  "family": "Krea 2",
+  "variantOf": "GonzaLomo Krea 2 v4",
+  "variant": "Quality",
   "template": "krea2",
   "backend": "comfyui",
   "useFor": "quality",

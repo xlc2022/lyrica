@@ -1,5 +1,6 @@
 {
   "name": "LTX-2.5 Distilled",
+  "family": "LTX-2.5",
   "template": "ltx2",
   "parts": [
     {

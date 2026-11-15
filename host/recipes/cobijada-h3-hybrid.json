@@ -1,5 +1,8 @@
 {
   "name": "Cobijada H3 Hybrid",
+  "family": "MiniMax H3",
+  "variantOf": "Cobijada H3 Hybrid",
+  "variant": "Full size",
   "template": "minimax-h3",
   "parts": [
     {

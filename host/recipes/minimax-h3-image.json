@@ -1,5 +1,8 @@
 {
   "name": "MiniMax-H3-Image",
+  "family": "MiniMax-H3-Image",
+  "variantOf": "MiniMax-H3-Image",
+  "variant": "Full size",
   "template": "minimax-h3-image",
   "parts": [
     {

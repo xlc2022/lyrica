@@ -46,6 +46,11 @@ export interface Recipe {
 export interface Starter {
   id: string;
   name: string;
+  /** The group Download image model lists it under ("Krea 2", "MiniMax H3"). */
+  family: string;
+  /** For one of several variants of a model: the model's name, which their row shows, and this one's label ("w4a8", "Fast"). */
+  variantOf?: string;
+  variant?: string;
   template: string;
   parts: { role: Role; slot?: string; source: string; repo: string; path: string; sha256: string; size?: number }[];
   loras: { file: string; strength: number }[];

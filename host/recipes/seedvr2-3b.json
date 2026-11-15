@@ -1,5 +1,8 @@
 {
   "name": "SeedVR2 3B",
+  "family": "SeedVR2",
+  "variantOf": "SeedVR2",
+  "variant": "3B",
   "template": "seedvr2",
   "parts": [
     {
