@@ -6,7 +6,7 @@
 // cloud model only under the user's photo setting, asked as the image tool asks.
 import type { Api, Model } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext, ExtensionFactory } from "@earendil-works/pi-coding-agent";
-import { CloudModelForbidden, isRestricted, MAX_FRAMES, type CallContext, type Models, type ThreadImages, type WorkspaceSettings } from "@lyrica/core";
+import { CloudModelForbidden, isRestricted, MAX_FRAMES, NoModel, type CallContext, type Models, type ThreadImages, type WorkspaceSettings } from "@lyrica/core";
 import { Type } from "typebox";
 import { timedReply } from "./context.ts";
 import { setToolsOff } from "./gate.ts";
@@ -30,8 +30,13 @@ export interface LookTools {
 
 /** At most this many images, or clips, in one look. */
 export const MAX_LOOK_FILES = 8;
-/** Most images in one look, stills included: local vision servers take few per request. */
-export const MAX_LOOK_IMAGES = 32;
+/**
+ * About what one image takes of the vision model's context: a clip's still (at most 768 px on a side, ThreadFiles.frames)
+ * and any other image (Pi's own estimate for an image in her context). A look's images, question and a reply's room
+ * are the call's Need.tokens, so a vision model whose context window can't hold them is passed over for the next.
+ */
+export const STILL_TOKENS = 600, IMAGE_TOKENS = 1200;
+const REPLY_TOKENS = 2048;
 /** A clip's stills when she gives no number. */
 export const DEFAULT_FRAMES = 8;
 const VIDEO = /\.(mp4|webm|mov|mkv|m4v|avi)$/i;
@@ -65,7 +70,7 @@ export function createLookExtension(o: LookTools): ExtensionFactory {
     });
     pi.registerTool({
       name: "look", label: "Look",
-      description: `Look at images or videos your model can't see: the thread's vision model answers your question about them in words. Paths are workspace images (PNG, JPEG or WebP), /photos-of-me/<file>, or clips (MP4, WebM, MOV), at most ${MAX_LOOK_FILES} at once and ${MAX_LOOK_IMAGES} images with the stills; a clip is shown as stills spread over its length. recent adds the images of the latest tool result that held any, such as a browse screenshot.`,
+      description: `Look at images or videos your model can't see: the thread's vision model answers your question about them in words. Paths are workspace images (PNG, JPEG or WebP), /photos-of-me/<file>, or clips (MP4, WebM, MOV), at most ${MAX_LOOK_FILES} at once; a clip is shown as stills spread over its length. recent adds the images of the latest tool result that held any, such as a browse screenshot.`,
       promptSnippet: "see images and videos through the thread's vision model",
       promptGuidelines: [
         "Use look whenever you need to know what an image or video shows (one the user sent, a screenshot, a result you made): ask exactly what you need, such as \"describe this photo\", \"read all the text\" or \"what changes between these two\".",
@@ -87,36 +92,42 @@ export function createLookExtension(o: LookTools): ExtensionFactory {
         const frames = Math.max(1, Math.min(MAX_FRAMES, p.frames ?? DEFAULT_FRAMES));
         // Each file's images, with a line naming it; a clip's stills say the second each comes from.
         const content: ({ type: "text"; text: string } | { type: "image"; data: string; mimeType: string })[] = [{ type: "text", text: p.question.trim() }];
-        let portrait = false, images = 0;
+        let portrait = false, images = 0, tokens = REPLY_TOKENS;
         if (p.recent && recent) {
           portrait = recent.portrait;
           content.push({ type: "text", text: "From the latest tool result:" });
-          for (const image of recent.images) { content.push({ type: "image", ...image }); images++; }
+          for (const image of recent.images) { content.push({ type: "image", ...image }); images++; tokens += IMAGE_TOKENS; }
         }
         for (const path of paths) {
           if (VIDEO.test(path)) {
             if (!o.frames) throw new Error("Videos can't be looked at here.");
-            if (images + frames > MAX_LOOK_IMAGES) throw new Error(`One look takes at most ${MAX_LOOK_IMAGES} images, stills included: give fewer clips or fewer frames.`);
             const stills = await o.frames(path, frames, signal);
             // A clip's stills can't be traced to a portrait as an image can: they count as one, as Auto-name's posters do.
             portrait = true;
             content.push({ type: "text", text: `Video ${path}, ${stills.length} still${stills.length > 1 ? "s" : ""}:` });
             for (const s of stills) {
               content.push({ type: "text", text: `At ${s.at} s:` }, { type: "image", data: s.bytes.toString("base64"), mimeType: s.type });
-              images++;
+              images++; tokens += STILL_TOKENS;
             }
           } else {
-            if (images + 1 > MAX_LOOK_IMAGES) throw new Error(`One look takes at most ${MAX_LOOK_IMAGES} images, stills included: give fewer clips or fewer frames.`);
             const read = await o.files.read(path);
             portrait ||= read.portrait;
             content.push({ type: "text", text: `Image ${path}:` }, { type: "image", data: Buffer.from(read.input.bytes).toString("base64"), mimeType: read.input.type });
-            images++;
+            images++; tokens += IMAGE_TOKENS;
           }
         }
+        for (const c of content) if (c.type === "text") tokens += Math.ceil(c.text.length / 4);
+        tokens += Math.ceil(SYSTEM.length / 4);
         const call = o.call();
         const runtime = await modelRuntimeFor(o.models, call);
         let label = "";
-        const reply = await o.models.callWithFallback("vision", call, {}, async (resolution) => {
+        // Too many images for every vision model's context window: say so in her terms, not the router's.
+        const tooMany = (err: unknown) => {
+          if (err instanceof NoModel && /context window/.test(err.message))
+            return new Error(`These ${images} images need about ${tokens} tokens, more than the vision model's context window holds: give fewer images, clips or frames (${err.message}).`);
+          return err;
+        };
+        const reply = await o.models.callWithFallback("vision", call, { tokens }, async (resolution) => {
           signal?.throwIfAborted();
           if (resolution.endpoint.kind === "cloud") {
             if (isRestricted(o.call())) throw new CloudModelForbidden("This thread uses local models only.");
@@ -133,7 +144,7 @@ export function createLookExtension(o: LookTools): ExtensionFactory {
           if (pace) o.models.recordPace(call.userId, o.threadId, pace, "vision", call.pool);
           label = resolution.label;
           return r;
-        });
+        }).catch((err: unknown) => { throw tooMany(err); });
         const text = reply.content.filter((c) => c.type === "text").map((c) => (c as { text: string }).text).join("").trim();
         if (!text) throw new Error(`${label} gave no answer. Ask again, or tell them you couldn't look.`);
         return { content: [{ type: "text" as const, text: `${label} sees:\n\n${text}` }], details: { model: label, images } };
