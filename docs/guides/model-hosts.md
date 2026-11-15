@@ -864,17 +864,19 @@ For a 24 GB card, **MiniMax H3 Turbo w6a8** is H3 Turbo with Comfy-Org's
 w6a8 model (about 15 GiB) and lightx2v's 4-step 768p LoRA, at 1344×768.
 Two community H3 models come as starters too, each int8 (large cards)
 and w4a8 (24 GB): **Cobijada H3 Hybrid**, a merge of H3's two checkpoints
-(uncensored) that takes Turbo's LoRA and chains up to 60 s, and
-**Singularity H3 v2**, the most used fine-tune, which is ref2va only: it
-runs on its own template, makes clips from text or animates an image, and
-chains to 60 s as Turbo does. Each has a **Realism** twin that also
+(uncensored) that takes Turbo's LoRA and, as int8, chains up to 60 s,
+and **Singularity H3 v2**, the most used fine-tune, which is ref2va only:
+it runs on its own template, makes clips from text or animates an image,
+and as int8 chains to 60 s as Turbo does. Each has a **Realism** twin that also
 fetches fal's Realism People LoRA (0.12 GiB) for faces, skin and gestures
 that hold up in close-up (at strength 0.7, or 0.5 on Singularity); the
 host starts its prompts with the LoRA's trigger word, r34l1sm. The w6a8
 and w4a8 video starters make one clip of up to 5 s and don't extend:
 on a 24 GB card with 30 GB of RAM a chained clip ran out of memory. Use
-the int8 starters on a large card for longer videos. Their repositories say Apache 2.0, but they are H3
-derivatives under H3's licence. Any H3 LoRA file on the host now counts
+the int8 starters on a large card for longer videos. A recipe installed
+from one of them before 2026-11-15 gets that 5 s cap only after **Reset
+to starter settings…**. Their repositories say Apache 2.0, but they are
+H3 derivatives under H3's licence. Any H3 LoRA file on the host now counts
 as H3's even when its name doesn't say so (fal's Realism People, Pika's
 H3 Flex), so it can be added to an H3 recipe or asked for per clip.
 
@@ -940,6 +942,9 @@ second pairing. Then:
   update/<name>` or `--commit <whole commit on main>`; a latest merge
   shows as version `main-<commit>`. The card's state word follows the
   steps: Fetching, Draining, Building, and Rolling back if it goes back.
+  When the ComfyUI image is rebuilt, each custom node's download gives up
+  after 2 minutes below 10 KB/s and tries again, 3 tries in all, so a
+  stalled one fails the build instead of hanging the Update.
   The host pauses (running
   jobs finish first), installs the release into a root-owned tree,
   `/opt/lyrica-host/<commit>`, and is rolled back if host-api doesn't
