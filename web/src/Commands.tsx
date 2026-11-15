@@ -167,6 +167,9 @@ export function useCommands(draft: string, setDraft: (text: string) => void, env
   const rows = closedFor === draft ? [] : menuRows(draft, commands);
   useEffect(() => setActive(0), [draft]);
   const at = Math.min(active, Math.max(0, rows.length - 1));
+  // The menu scrolls past its cap: the active row stays in sight, so Enter never runs one you can't see.
+  const shown = rows.length > 0;
+  useEffect(() => { if (shown) document.getElementById(`${opts.id}-${at}`)?.scrollIntoView({ block: "nearest" }); }, [at, shown, opts.id, draft]);
 
   const run = async (command: Command, arg: string) => {
     setDraft("");

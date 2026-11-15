@@ -535,6 +535,16 @@ test("\"/\" in the message box lists the commands, and each works a control that
   await expect(menu.getByRole("option")).toHaveCount(9); // no Context before the first turn
   await expect(message).toHaveAttribute("aria-expanded", "true");
   await shot("commands");
+  // A short window (a phone with its keyboard up): the menu scrolls, and Up from the first row brings the last into sight.
+  const size = page.viewportSize()!;
+  await page.setViewportSize({ width: size.width, height: 480 });
+  await message.press("ArrowUp");
+  await expect(menu.getByRole("option", { name: /^\/new/ })).toBeInViewport();
+  await expect(menu.getByRole("option", { name: /^\/new/ })).toHaveAttribute("aria-selected", "true");
+  await shot("commands-short");
+  await message.press("ArrowDown");
+  await expect(menu.getByRole("option").first()).toBeInViewport();
+  await page.setViewportSize(size);
   // "/" and Enter never compact: picking /compact waits for what to keep.
   await message.press("Enter");
   await expect(message).toHaveValue("/compact ");

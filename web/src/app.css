@@ -478,7 +478,7 @@ button.jump-latest { font-size: 13px; min-height: var(--tap); }
 .composer { display: grid; justify-items: center; padding: 10px var(--gutter) max(6px, env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: var(--panel); }
 .composer-wrap { display: grid; gap: 2px; width: 100%; max-width: 76ch; position: relative; }
 /* Commands in the message box (docs/ux.md §6): the memory editor's [[ popover, above the box; command in mono, the control's label, its value. */
-.command-menu { position: absolute; left: 0; bottom: calc(100% + 6px); z-index: 8; width: min(440px, 100%); max-height: min(50vh, 420px); overflow-y: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 6px; box-shadow: 0 8px 30px rgb(0 0 0 / 0.18); display: grid; gap: 1px; }
+.command-menu { position: absolute; left: 0; bottom: calc(100% + 6px); z-index: 8; width: min(440px, 100%); max-height: min(50vh, 420px); max-height: min(45dvh, 420px); overflow-y: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 6px; box-shadow: 0 8px 30px rgb(0 0 0 / 0.18); display: grid; gap: 1px; }
 .command-menu .eyebrow { padding: 4px 10px 2px; }
 .command-menu .item { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; text-align: left; border: 0; background: transparent; border-radius: 8px; padding: 6px 10px; min-height: 32px; width: 100%; font-weight: 400; color: var(--fg); box-shadow: none; }
 .command-menu .item:hover, .command-menu .item[aria-selected="true"] { background: var(--tool); }
