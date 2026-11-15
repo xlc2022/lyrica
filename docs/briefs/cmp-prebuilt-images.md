@@ -30,9 +30,9 @@ likely. They should download the two images, not compile them.
    fixed `CUDA_ARCHS` list that covers the CMP and the NVIDIA cards a host
    is likely to pair with it (`70-real;75-real;80-real;86-real;89-real;120-real`);
    sd-server runs on the CMP alone, so it is built for `70-real`.
-   The workflow runs on pushes to `main` that change either folder, and on
-   pull requests as a build-only check, the way `host-images.yml` checks
-   ComfyUI now.
+   The workflow runs on pushes to `main` and pull requests that change
+   either folder; a tag already published is skipped, and a new one is
+   pushed by the run that builds it (a fork's pull request only builds).
 2. **Tags the host can work out.** Each image is tagged with a hash of
    what goes into it: its Dockerfile, its build arguments (the tag and
    commit it pins, the `CUDA_ARCHS` list) and the base images' digests.
@@ -60,8 +60,9 @@ and any change to what the images contain or how they run.
 
 ## Checks
 
-- The workflow builds both images and pushes them on `main`; a pull request
-  only builds.
+- The workflow skips a tag that is already published; otherwise it builds
+  and pushes it, from `main` or a pull request from a branch of this
+  repository (a fork's pull request only builds; docs/ci.md, "CMP images").
 - `install.sh` tests (or a script check in CI's host-stack job): a matching
   tag is pulled, not built; a missing tag or an unlisted capability falls
   back to a build with a one-line reason; the hash changes when the

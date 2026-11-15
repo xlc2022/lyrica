@@ -1,0 +1,26 @@
+name: Starter recipes
+# Checks the starter recipes' files against Hugging Face (host/recipes/check.ts),
+# since that needs the internet. Apart from host-images.yml, so a recipe
+# change builds no image.
+on:
+  pull_request:
+    paths: ["host/recipes/**", ".github/workflows/starters.yml"]
+  push:
+    branches: [main]
+    paths: ["host/recipes/**"]
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: true
+jobs:
+  starters:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - run: node host/recipes/check.ts
