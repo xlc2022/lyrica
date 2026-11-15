@@ -1964,7 +1964,9 @@ Details in [docs/memory.md](docs/memory.md).
   first, a CPU-served copy of the same model after it; with none reachable,
   recall is by words alone and the embedder catches up later. One model per
   index: a changed model re-embeds the pool. No index server, no native
-  extension: a scan in the daemon is enough for a pool of thousands.
+  extension: a scan in the daemon, over vectors held in memory at one byte
+  per number and rescored exactly, all pools together under 2 GiB (the
+  operator's limit is 4 GB), the least recently used let go first.
 - **Lineage:** each layer cites the one below it by ID, inline. "Where did this
   come from" and "what was it consolidated into" are both answered from those
   citations.

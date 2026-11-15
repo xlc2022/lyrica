@@ -10,6 +10,7 @@ import { PoolReader, PoolStore, type Hit, type Item, type SearchOptions, type St
 import { splitId } from "./refs.ts";
 import { checkReadable, migrate } from "../migrations.ts";
 import { SkillLibrary, type Skill } from "../skills.ts";
+import { watchVectors } from "./vector-cache.ts";
 
 /**
  * Store handles for one conversation (or one sleep run). A general view holds
@@ -119,6 +120,7 @@ export class Memory {
     try {
       db.pragma("secure_delete = ON");
       migrate(db, "pool");
+      watchVectors(db);
     } catch (err) {
       db.close();
       throw err;

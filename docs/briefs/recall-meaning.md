@@ -32,8 +32,9 @@ The owner's decisions (2026-11-01):
 - Vectors live in the pool database, in the same encrypted file; no
   separate index server (no plaintext on disk) and no native extension.
   Nearest-neighbour search is a scan in the daemon: a few thousand
-  memories of 1,024 floats compare in milliseconds. If a pool outgrows
-  that, sqlite-vec is the next step, not a different design.
+  memories of 1,024 floats compare in milliseconds. Since then the scan
+  runs over vectors held in memory (docs/memory.md, "Recall by meaning");
+  if a pool outgrows that, sqlite-vec is the next step, not a different design.
 
 ## In scope
 

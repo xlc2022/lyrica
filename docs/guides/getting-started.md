@@ -516,7 +516,8 @@ Two things to look at once she is unlocked:
   ```
 
   must print `NoNewPrivs: 0`. The unit keeps only `PrivateTmp` and
-  `ProtectControlGroups`; the comment in `daemon/deploy/lyricad.service`
+  `ProtectControlGroups`, plus `LimitCORE=0` so a crash leaves no core dump
+  of her decrypted memory; the comment in `daemon/deploy/lyricad.service`
   lists what must stay off and why.
 
 - **The network self-test passed.** At unlock, `lyricad` starts a sandbox

@@ -16,6 +16,7 @@ export * from "./store/artifacts.ts";
 export * from "./store/memory.ts";
 export * from "./store/transfer.ts";
 export * from "./store/sleep-prompt.ts";
+export { forgetVectors, VECTOR_CACHE_BYTES } from "./store/vector-cache.ts";
 export { citationsIn, firstLine, kindOf, searchWords, sentenceCiting, splitId, stripCitations, type Kind } from "./store/refs.ts";
 export * from "./models/index.ts";
 export * from "./forge/types.ts";
