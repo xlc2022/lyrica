@@ -7,6 +7,7 @@ import { networkInterfaces } from "node:os";
 import { StringDecoder } from "node:string_decoder";
 import { posix } from "node:path";
 import { removePrivateKeys, PRIVATE_KEY_BEGIN as BEGIN, PRIVATE_KEY_END as END } from "../secrets.ts";
+import { keysFile, sshdRule } from "./machine-cleanup.ts";
 import { sudoersCommand } from "./sudoers.ts";
 import { within } from "./settings.ts";
 
@@ -535,7 +536,7 @@ export function machineSetup(account: string, keyLine: string, asUser = false): 
       ...fingerprint,
     ]);
   }
-  const keys = `/etc/ssh/authorized_keys/${account}`;
+  const keys = keysFile(account);
   return chain([
     "# Her account, made if it isn't there yet; with no password, only her key logs in",
     `{ id -u ${account} > /dev/null 2>&1 || sudo useradd --create-home --shell /bin/bash --password '*' ${account}; }`,
@@ -545,7 +546,7 @@ export function machineSetup(account: string, keyLine: string, asUser = false): 
     `sudo touch ${keys}`,
     `{ sudo grep -qxF -- '${line}' ${keys} || printf '%s\\n' '${line}' | sudo tee -a ${keys} > /dev/null; }`,
     `sudo chmod 644 ${keys}`,
-    `printf 'Match User ${account}\\n    AuthorizedKeysFile /etc/ssh/authorized_keys/%%u\\n' | sudo tee /etc/ssh/sshd_config.d/lyrica-${account}.conf > /dev/null`,
+    `printf 'Match User ${account}\\n    AuthorizedKeysFile /etc/ssh/authorized_keys/%%u\\n' | sudo tee ${sshdRule(account)} > /dev/null`,
     "sudo sshd -t",
     "sudo systemctl reload ssh",
     ...fingerprint,

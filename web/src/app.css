@@ -879,6 +879,11 @@ form.drawer-body { flex: 1; }
 .exact-sudo .sudo-command input { flex: 1; min-width: 0; }
 @media (pointer: coarse) { .exact-sudo button.sm { min-height: 44px; min-width: 44px; } }
 .machine-sudo .code-block pre { margin: 0; padding: 2px 12px 10px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; line-height: 1.5; }
+/* Remove machine's dialog: wide enough for the clean-up commands, which wrap as the sudo blocks do. */
+dialog.remove-machine { width: min(560px, calc(100vw - 32px)); }
+.remove-machine .machine-sudo > .eyebrow, .remove-machine .machine-sudo > p { margin: 0; }
+/* On a phone the commands outrun the screen: Cancel and Remove stay in reach at the dialog's foot. */
+.remove-machine .dlg-actions { position: sticky; bottom: -18px; margin: 0 -18px -18px; padding: 12px 18px 18px; background: var(--panel); border-top: 1px solid var(--line); }
 .fingerprint { margin: 0; font-size: 14px; overflow-wrap: anywhere; }
 /* On a machine, the permission card and the marker name it first. */
 .place { font: 600 0.78rem var(--mono); color: var(--fg); margin-right: 6px; }

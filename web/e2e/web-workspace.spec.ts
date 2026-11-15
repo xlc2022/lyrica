@@ -681,6 +681,32 @@ test("A private machine she is refused for going off network is confirmed from i
   expect((await saved).postDataJSON()).toEqual({ address: "lyrica@10.0.0.9:2222" });
 });
 
+test("Remove machine offers what she left there as optional commands, and removes without running them", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  const box = { name: "box", kind: "ssh", address: "lyrica@box.lan", root: null, pool: "general", limit: "ask", keyLine: `restrict ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI${"x".repeat(43)}`, hostKey: `SHA256:${"A".repeat(43)}`, offNetwork: false, lastUsed: null };
+  let removed = false;
+  await page.route("**/machines", (r) => r.request().method() === "GET" ? r.fulfill({ json: removed ? [] : [box] }) : r.fallback());
+  await page.route("**/machines/box", (r) => { if (r.request().method() !== "DELETE") return r.fallback(); removed = true; return r.fulfill({ status: 204 }); });
+  await page.goto(`/#/u/${userId}/settings/machines`);
+  const section = page.getByRole("region", { name: "Machines", exact: true });
+  await section.getByRole("button", { name: "Actions for box" }).click();
+  await page.getByRole("menuitem", { name: "Remove" }).click();
+  const dialog = page.getByRole("dialog", { name: "Remove machine" });
+  // Her key, her sudo lines and her account, each a block with its own Copy.
+  const cleanup = dialog.getByRole("region", { name: "Clean up box" });
+  await expect(cleanup.locator("pre")).toHaveCount(3);
+  await expect(cleanup.locator("pre").nth(0)).toContainText("/etc/ssh/authorized_keys/lyrica");
+  await expect(cleanup.locator("pre").nth(1)).toContainText("/etc/sudoers.d/lyrica");
+  await expect(cleanup.locator("pre").nth(2)).toContainText("userdel --remove lyrica");
+  await expect(cleanup.getByRole("button", { name: "Copy account" })).toBeVisible();
+  await noHorizontalScroll(page);
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/remove-machine-${page.viewportSize()!.width}.png` });
+  await dialog.getByRole("button", { name: "Remove", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(section).toContainText("None yet.");
+  expect(removed).toBe(true);
+});
+
 test("Add machine for a Proxmox offers the user's own Proxmox user, with its warnings and its own setup", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   await page.goto(`/#/u/${userId}/settings/machines/new`);
