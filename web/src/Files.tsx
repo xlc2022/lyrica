@@ -614,8 +614,6 @@ function MediaGrid({ kind, entries, filter, onFilter, sort, onSort, links, sel, 
     </>
   );
 }
-/** At most this many images in one Auto-name (lyricad's own cap, daemon/src/auto-name.ts). */
-const AUTO_NAME_MAX = 50;
 /** Two sets of event handlers as one: where both have a handler for an event, each runs, `a`'s first. */
 function both(a: Record<string, unknown>, b: Record<string, unknown>) {
   const out: Record<string, unknown> = { ...a, ...b };
@@ -745,7 +743,7 @@ function FileMenu({ at, writable, shownName, onClose, onAttach, onDownload, onCo
   const paths = t.kind === "file" ? [t.entry.path] : t.kind === "selection" ? t.paths : t.kind === "folder" ? [t.path] : [];
   const dir = t.kind === "folder" ? t.path : t.kind === "space" ? t.dir : "";
   const canWrite = paths.length ? paths.every(writable) : writable(dir);
-  const canName = canWrite && (t.kind === "file" || t.kind === "selection") && paths.length <= AUTO_NAME_MAX
+  const canName = canWrite && (t.kind === "file" || t.kind === "selection")
     && paths.every((p) => (IMAGE_NAME.test(p) || VIDEO_NAME.test(p)) && p.startsWith(`${WORKDIR}/`));
 
   useLayoutEffect(() => {
