@@ -512,7 +512,7 @@ class Models {                                              // new Models(keyrin
   imageModels(ctx): { name; actions: ("create" | "edit" | "upscale")[]; references? }[]   // the models on the Images lists that can do their task, for the image tool's model field; no call
   // Thinking and call records
   defaultThinking(userId) / setDefaultThinking(userId, level) / setThinking(userId, threadId, level | null)
-  thinkingFor(resolution, asked, unset?): { level; note? }   // asked defaults to DEFAULT_THINKING ("medium"), also the per-user default; unset (CallContext.thinkingUnset) drops the can't-think note
+  thinkingFor(resolution, asked, unset?): { level; note? }   // asked defaults to DEFAULT_THINKING ("medium"), also the per-user default; unset (CallContext.thinkingUnset) or an opensThinking model with no levels drops the can't-think note
   mandatoryThinking(offering) / mustThink(offeringId)   // a model whose provider refused thinking off: medium or the nearest level; in memory for the run
   sawThinking(userId, offeringId, { pool, threadId, task })   // a model with no levels thought anyway: clears the can't-think note on that call and drops it from later ones; in memory for the run
   recordCall(userId, { pool, threadId, task, resolution, note?, audioSeconds?, images?, clip? }, { retry? }) / recentCalls(userId, { limit?, threadId?, threadIds?, pool?, speech?: false }): CallRecord[]
