@@ -31,6 +31,8 @@ export interface JobInfo {
   exitCode?: number | null;
   /** Why it failed or stopped, in plain words. */
   reason?: string;
+  /** A machine job whose machine doesn't answer yet (rebooting): it starts once it does. */
+  waiting?: boolean;
 }
 
 /** The thread a job belongs to. */
@@ -59,7 +61,7 @@ export function jobDuration(from: string, to: string): string {
 
 /** One line about a job, for `jobs list` and her notices. */
 export function jobLine(j: JobInfo, now = new Date().toISOString()): string {
-  const how = j.state === "running" ? `running for ${jobDuration(j.startedAt, now)}`
+  const how = j.state === "running" ? `${j.waiting ? `waiting for ${j.place} to answer` : "running"} for ${jobDuration(j.startedAt, now)}`
     : `${j.state}${j.exitCode !== undefined && j.exitCode !== null ? ` with code ${j.exitCode}` : ""} after ${jobDuration(j.startedAt, j.endedAt ?? now)}${j.reason ? ` (${j.reason})` : ""}`;
   if (j.kind === "mcp") return `${j.id} in the sandbox, ${how}: the MCP server ${j.command}`;
   if (j.kind === "browser") return `${j.id} in the sandbox, ${how}: the browse tool's browser`;
@@ -82,10 +84,14 @@ export class Jobs {
   private readonly byThread = new Map<string, Job[]>();
   private readonly next = new Map<string, number>();
 
-  constructor(private readonly onEnd: (thread: JobThread, job: JobInfo, output: string) => void = () => {}) {}
+  constructor(private readonly onEnd: (thread: JobThread, job: JobInfo, output: string) => void = () => {}, private readonly retryMs = 10_000) {}
 
-  /** Starts `command` on `target` in `cwd`. Refuses a fifth running job in the thread. */
-  start(thread: JobThread, place: string, target: ExecutionTarget, command: string, cwd: string, timeoutS = JOB_LIMITS.timeoutS): JobInfo {
+  /**
+   * Starts `command` on `target` in `cwd`. Refuses a fifth running job in the thread. A machine's `cwd` is a
+   * function that connects: while the machine doesn't answer (it is rebooting), the job waits, trying again every
+   * `retryMs`, and runs once it does, within its time limit. A changed or unconfirmed host key ends it at once.
+   */
+  start(thread: JobThread, place: string, target: ExecutionTarget, command: string, cwd: string | (() => Promise<string>), timeoutS = JOB_LIMITS.timeoutS): JobInfo {
     const k = key(thread);
     const list = this.byThread.get(k) ?? [];
     const running = list.filter((j) => j.state === "running");
@@ -96,7 +102,7 @@ export class Jobs {
     const n = (this.next.get(k) ?? 0) + 1;
     this.next.set(k, n);
     const job: Job = {
-      id: `j${n}`, place, command, cwd, startedAt: new Date().toISOString(), state: "running",
+      id: `j${n}`, place, command, cwd: typeof cwd === "string" ? cwd : "", startedAt: new Date().toISOString(), state: "running",
       thread, controller: new AbortController(), output: [], outputBytes: 0, dropped: 0,
     };
     list.push(job);
@@ -104,7 +110,21 @@ export class Jobs {
     const timeout = Math.min(timeoutS, JOB_LIMITS.maxTimeoutS);
     const timer = setTimeout(() => this.end(job, "timed out", null), timeout * 1000);
     timer.unref();
-    target.ops().bash.exec(command, cwd, { onData: (d) => this.keep(job, d), signal: job.controller.signal })
+    const signal = job.controller.signal;
+    const run = (dir: string) => target.ops().bash.exec(command, dir, { onData: (d) => this.keep(job, d), signal });
+    const waited = async () => {
+      for (;;) {
+        try {
+          return await (cwd as () => Promise<string>)();
+        } catch (err) {
+          if (/host key/.test((err as Error).message) || signal.aborted) throw err;
+          job.waiting = true;
+          await new Promise<void>((r) => { const t = setTimeout(r, this.retryMs); signal.addEventListener("abort", () => { clearTimeout(t); r(); }, { once: true }); });
+          if (signal.aborted) throw err;
+        }
+      }
+    };
+    (typeof cwd === "string" ? run(cwd) : waited().then((dir) => { job.waiting = false; job.cwd = dir; return run(dir); }))
       .then(({ exitCode }) => this.end(job, exitCode === 0 ? "exited" : "failed", exitCode))
       .catch((err: Error) => this.end(job, "failed", null, err.message))
       .finally(() => clearTimeout(timer));
@@ -213,6 +233,7 @@ export class Jobs {
 const info = (j: Job): JobInfo => ({
   id: j.id, ...(j.kind ? { kind: j.kind } : {}), place: j.place, command: j.command, cwd: j.cwd, startedAt: j.startedAt, state: j.state,
   ...(j.endedAt ? { endedAt: j.endedAt } : {}), ...(j.exitCode !== undefined ? { exitCode: j.exitCode } : {}), ...(j.reason ? { reason: j.reason } : {}),
+  ...(j.waiting && j.state === "running" ? { waiting: true } : {}),
 });
 
 const text = (j: Job): string => `${j.dropped ? `[… ${j.dropped} bytes left out …]\n` : ""}${Buffer.concat(j.output).toString("utf8")}`;

@@ -8,7 +8,7 @@ import type { ExecutionTarget, ThreadGitRepository, ThreadMachine, ThreadMcpServ
 import { Type } from "typebox";
 import { afterEach, describe, expect, it } from "vitest";
 import { BASH_TIMEOUT_S, createDownloadsExtension, pageTool, createMcpServersExtension, createModelsExtension, filesFor, type DownloadsHost, createWorkspaceExtension, setToolsOff, toolsLine, type ApprovalRequest, type ModelsHost, type ServingProposal, type ThreadTools } from "../src/index.ts";
-import { BUILD_THERE, checkUnder, editArguments, FORMATS_LINE, grantKey, pathArguments, insertsOnly, LINK_LINE, READ_ONLY_CHAT, describe as describePrompt } from "../src/workspace.ts";
+import { BUILD_THERE, checkUnder, sandboxReachesMachine, editArguments, FORMATS_LINE, grantKey, pathArguments, insertsOnly, LINK_LINE, READ_ONLY_CHAT, describe as describePrompt } from "../src/workspace.ts";
 import { testMcpServer } from "../../core/test/mcp-server.ts";
 import { cleanRepos, git, localTarget, repo, saved } from "./git-repo.ts";
 import { freshKeyring, profile } from "../../core/test/helpers.ts";
@@ -175,6 +175,17 @@ async function run(mode: ThreadWorkspace["mode"], calls: ReturnType<typeof fauxT
   }
   return { files, commands, system: system.join("\n"), offered, results, settings };
 }
+
+it("tells a sandbox command that reaches one of her machines over ssh to name the machine instead", () => {
+  const machines = ["nautica", "lunasa"];
+  // The wait she wrote after a reboot: the sandbox has no key or address for nautica, so it could only fail.
+  expect(sandboxReachesMachine("for i in $(seq 1 60); do sleep 10; if ssh -o ConnectTimeout=5 -o BatchMode=yes nautica true; then exit 0; fi; done", machines)).toBe("nautica");
+  expect(sandboxReachesMachine("scp out.txt lyrica@lunasa:/tmp/", machines)).toBe("lunasa");
+  expect(sandboxReachesMachine("rsync -a dist/ nautica:site/", machines)).toBe("nautica");
+  // A name that only appears elsewhere, or another host, is fine.
+  expect(sandboxReachesMachine("echo nautica; ssh git@github.com", machines)).toBeUndefined();
+  expect(sandboxReachesMachine("ssh nautica-backup true", machines)).toBeUndefined();
+});
 
 describe("workspace tools in a Pi session", () => {
   // browse (docs/briefs/browse.md): what would send a form asks in every mode, with what would be sent, and only a yes reaches the browser.

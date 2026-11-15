@@ -40,6 +40,29 @@ describe("Jobs", () => {
     expect(jobNotice(ended[0]!.job, ended[0]!.output)).toMatch(/^Background command j1 in the sandbox, exited with code 0 after \d+ s: make\nLast output:\nbuilding\ndone$/);
   });
 
+  it("waits for a machine that doesn't answer yet (rebooting), then runs there; a changed host key ends it at once", async () => {
+    const ended: JobInfo[] = [];
+    const jobs = new Jobs((_t, job) => ended.push(job), 5);
+    const { target, running } = fakeTarget();
+    let down = 2;
+    const connect = async () => { if (down-- > 0) throw new Error("ssh nautica: connect ECONNREFUSED"); return "/home/lyrica"; };
+    expect(jobs.start(thread, "nautica", target, "nvidia-smi", connect)).toMatchObject({ id: "j1", state: "running" });
+    await tick();
+    expect(jobs.list(thread)[0]).toMatchObject({ waiting: true });
+    expect(jobNotice(jobs.list(thread)[0]!, "")).toMatch(/j1 in nautica, waiting for nautica to answer for \d+ s: nvidia-smi/);
+    await new Promise((r) => setTimeout(r, 30));
+    expect(jobs.list(thread)[0]).toMatchObject({ cwd: "/home/lyrica" });
+    expect(jobs.list(thread)[0]!.waiting).toBeUndefined();
+    running.get("nvidia-smi")!.done(0);
+    await tick();
+    expect(ended.map((j) => j.state)).toEqual(["exited"]);
+    // Another machine's key changed: not a reboot, so it ends with that reason and never runs.
+    jobs.start(thread, "lunasa", target, "uptime", async () => { throw new Error("ssh lunasa: its host key changed (now SHA256:x); confirm the new key to use it again"); });
+    await tick(); await tick();
+    expect(ended[1]).toMatchObject({ state: "failed", reason: expect.stringMatching(/host key changed/) });
+    expect(running.has("uptime")).toBe(false);
+  });
+
   it("refuses more running jobs than the limit, and stops one on request", async () => {
     const ended: JobInfo[] = [];
     const jobs = new Jobs((_t, job) => ended.push(job));

@@ -204,6 +204,15 @@ const text = (t: string) => ({ content: [{ type: "text" as const, text: t }], de
 const MACHINE = Type.Optional(Type.String({ description: "One of your machines, by name, to run this there. Leave it out for the sandbox." }));
 
 /** What an approval covered: anything run that differs is denied. */
+/** The machine a sandbox command tries to reach over ssh, scp, sftp or rsync by its name, which only a call naming the machine can. */
+export function sandboxReachesMachine(command: string, machines: string[]): string | undefined {
+  for (const m of machines) {
+    const name = m.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    if (new RegExp(`\\b(ssh|scp|sftp|rsync)\\b[^|;&\\n]*(^|[\\s@'"])${name}(?=$|[\\s:'"])`).test(command)) return m;
+  }
+  return undefined;
+}
+
 const shown = (tool: string, input: Record<string, unknown>, machine: string | undefined, cwd: string | undefined) =>
   JSON.stringify([tool, machine ?? null, cwd ?? null, tool === "bash" || tool === "proxmox" ? suspectKey(tool, input) : tool === "page" ? [input.action, input.path, input.out] : input.path]);
 
@@ -322,11 +331,16 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
         },
         async execute(id, params, signal, onUpdate, ctx) {
           const { machine: named, background, ...rest } = params as Record<string, unknown>;
+          if (name === "bash" && !named) {
+            const reached = sandboxReachesMachine(String(rest.command ?? ""), (tools.machines?.() ?? []).filter((m) => m.kind !== "proxmox").map((m) => m.name));
+            if (reached) throw new Error(`The sandbox can't reach ${reached}: it has no key or address for your machines, so this would only fail. Run the command on it with machine: "${reached}". After a reboot, start it there with background: true and it waits until ${reached} answers.`);
+          }
           if ((name === "read" || name === "edit" || name === "write") && typeof rest.path === "string") last = { verb: name === "read" ? "read" : name === "edit" ? "edited" : "wrote", path: rest.path };
           if (name === "bash" && background === true && tools.startJob) {
             const machine = (named as string | undefined) || undefined;
             const target = tools.target(machine);
-            bound(id, name, rest, machine, machine ? await target.cwd() : undefined);
+            // A machine that doesn't answer (rebooting) still takes the job: it waits for the machine.
+            bound(id, name, rest, machine, machine ? await target.cwd().catch(() => undefined) : undefined);
             const job = await tools.startJob(String(rest.command), machine, typeof rest.timeout === "number" ? rest.timeout : undefined);
             return text(`Started ${jobLine(job)}\nYou'll be told when it ends. jobs shows its output so far (the first part while it runs; the end once it ends) or stops it. To follow a long job's progress, have it write to a file and read that.`);
           }
@@ -562,7 +576,9 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
         return undefined;
       }
       const request: ApprovalRequest = { toolCallId: event.toolCallId, tool: event.toolName, input };
-      if (machine) Object.assign(request, { machine: machine.name }, pve ? {} : { cwd: await tools.target(machine.name).cwd() });
+      // A machine that doesn't answer (rebooting) asks without its folder: a background command on it waits for it.
+      const cwd = machine && !pve ? await tools.target(machine.name).cwd().catch(() => undefined) : undefined;
+      if (machine) Object.assign(request, { machine: machine.name }, cwd ? { cwd } : {});
       if (suspect) request.warning = warning;
       // The person's later yes to this same call, held past an earlier turn, answers it once.
       const granted = !!tools.takeGrant?.(grantKey(event.toolName, input, request.machine, request.cwd));

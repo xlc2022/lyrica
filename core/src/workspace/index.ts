@@ -538,7 +538,8 @@ export class Workspace {
         /** Starts a background command in the sandbox or on one of the thread's machines; the call was approved already. */
         startJob: async (command: string, machine?: string, timeoutS?: number) => {
           const target = this.targetFor(t, machine);
-          return this.jobs.start(t, machine || "sandbox", target, command, await target.cwd(), timeoutS);
+          // A machine's job connects in the background, so one started while the machine reboots waits for it.
+          return this.jobs.start(t, machine || "sandbox", target, command, machine ? () => target.cwd() : await target.cwd(), timeoutS);
         },
         jobs: () => this.jobs.list(t),
         jobOutput: (id: string) => this.jobs.output(t, id),
