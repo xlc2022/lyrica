@@ -208,7 +208,10 @@ const MACHINE = Type.Optional(Type.String({ description: "One of your machines, 
 export function sandboxReachesMachine(command: string, machines: string[]): string | undefined {
   for (const m of machines) {
     const name = m.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    if (new RegExp(`\\b(ssh|scp|sftp|rsync)\\b[^|;&\\n]*(^|[\\s@'"])${name}(?=$|[\\s:'"])`).test(command)) return m;
+    // The tool as a word of its own (not ssh-keygen), and the machine as a host: rsync and scp only with a colon after it.
+    const ssh = new RegExp(`(^|[\\s;&|(])(ssh|sftp)(?=\\s)[^|;&\\n]*[\\s@'"]${name}(?=$|[\\s:'"])`);
+    const rsync = new RegExp(`(^|[\\s;&|(])(rsync|scp)(?=\\s)[^|;&\\n]*[\\s@'"]${name}:`);
+    if (ssh.test(command) || rsync.test(command)) return m;
   }
   return undefined;
 }
