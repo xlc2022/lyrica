@@ -604,7 +604,7 @@ test("Machines lists none, and Add machine reaches a machine before anything is 
   await page.getByRole("button", { name: "Next" }).click();
   // The key and its setup commands come even when the host can't be resolved; Test says why.
   await expect(page.getByRole("button", { name: "Copy", exact: true })).toBeVisible();
-  await expect(page.getByText("/etc/ssh/authorized_keys")).toBeVisible();
+  await expect(page.getByText("/etc/ssh/authorized_keys").first()).toBeVisible();
   // Its long lines wrap, so nothing is hidden past the block's edge.
   const setup = page.locator("pre.setup");
   expect(await setup.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);

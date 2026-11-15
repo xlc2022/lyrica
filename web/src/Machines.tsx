@@ -243,16 +243,22 @@ type Step = "address" | "key" | "test" | "fingerprint";
 /** The probe's body: the form as typed, or for Replace key the machine as saved with `replace`. */
 type ProbeInput = { kind: Kind; name: string; address: string; draft?: string; asUser?: boolean; user?: string; replace?: boolean };
 
+/** The setup block's lines, each its own block so a wrapped command hangs under its first line rather than reading as a command of its own. */
+function SetupLines({ text }: { text: string }) {
+  return <>{text.split("\n").map((line, i) => <span className="line" key={i}>{line}</span>)}</>;
+}
+
 /** The Key step's optional sudo rights: each its own command with its own Copy, so pasting the setup never grants them. */
 function SudoBlocks({ sudo }: { sudo: NonNullable<MachineProbe["sudo"]> }) {
   const blocks = [
     { label: "Sudo, exact commands", hint: "Optional: sudo without a password for one command. Change the example command first.", text: sudo.exact },
-    { label: "Sudo, everything", hint: "Optional: sudo without a password for any command, on a machine you really trust.", text: sudo.everything },
+    { label: "Sudo, everything", hint: "Optional: sudo without a password for any command, only on a machine you really trust.", text: sudo.everything },
   ];
   return <div className="machine-sudo">
     {blocks.map((b) => (
       <div className="code-block" key={b.label}>
-        <div className="code-head"><span className="code-lang" title={b.hint}>{b.label}</span><CopyButton text={b.text} label="Copy" ariaLabel={`Copy ${b.label.toLowerCase()}`} className="code-copy" /></div>
+        <div className="code-head"><span className="code-lang">{b.label}</span><CopyButton text={b.text} label="Copy" ariaLabel={`Copy ${b.label.toLowerCase()}`} className="code-copy" /></div>
+        <p className="muted sudo-hint">{b.hint}</p>
         <pre><code>{b.text}</code></pre>
       </div>
     ))}
@@ -400,7 +406,7 @@ export function MachinePage({ ctx, name }: { ctx: ShellContext; name?: string })
         {probe && adding && (
           <section className="step" aria-labelledby="step-key">
             <h2 className="eyebrow" id="step-key">{keyLabel}</h2>
-            <pre className="setup" ref={setupRef}><code>{probe.setup}</code></pre>
+            <pre className="setup" ref={setupRef}><code><SetupLines text={probe.setup} /></code></pre>
             <div className="row">
               <button type="button" className={step === "key" ? "primary" : ""} onClick={copy}>{copied ? "Copied" : "Copy"}</button>
             </div>
@@ -435,7 +441,7 @@ export function MachinePage({ ctx, name }: { ctx: ShellContext; name?: string })
           <section className="step" aria-labelledby="step-key">
             <h2 className="eyebrow" id="step-key">Key</h2>
             <p className="muted">{her()}'s key isn't accepted there any more (a reinstalled machine loses it). Run this as root on the machine, then test again, or make a new key pair below.</p>
-            <pre className="setup" ref={setupRef}><code>{probe.setup}</code></pre>
+            <pre className="setup" ref={setupRef}><code><SetupLines text={probe.setup} /></code></pre>
             <div className="row">
               <button type="button" onClick={copy}>{copied ? "Copied" : "Copy"}</button>
               <button type="button" disabled={probingBusy} onClick={again}>Test</button>

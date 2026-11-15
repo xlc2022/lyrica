@@ -836,9 +836,11 @@ form.drawer-body { flex: 1; }
 /* A setup block wraps its long lines (a key line runs past 200 characters) rather than hiding them past the edge; Copy and a hand selection still take the commands as written. Its step spans the card. */
 .setup { margin: 0; background: var(--tool); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; line-height: 1.5; }
 .steps > .step:has(> .setup) { max-width: none; }
+.setup .line { display: block; min-height: 1.5em; padding-left: 4ch; text-indent: -4ch; }
 /* The optional sudo commands under it: a code block each, headed by its name and Copy, wrapping as the setup block does. */
 .machine-sudo { display: grid; gap: 10px; }
 .machine-sudo .code-block { margin: 0; }
+.machine-sudo .sudo-hint { margin: 0; padding: 2px 12px 4px; font-size: 13px; }
 .machine-sudo .code-block pre { margin: 0; padding: 2px 12px 10px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; line-height: 1.5; }
 .fingerprint { margin: 0; font-size: 14px; overflow-wrap: anywhere; }
 /* On a machine, the permission card and the marker name it first. */
