@@ -997,17 +997,19 @@ steps:
    (beside any key already there), with a `Match User` block in
    `/etc/ssh/sshd_config.d/lyrica-<account>.conf`, then `sshd -t &&
    systemctl reload ssh` (the unit is `sshd` on Fedora and RHEL). The key
-   line is restricted to connections from this computer. If she should run
-   any command as root there, it also prints an optional command, only for
-   when you really trust the models you'll run, adding `<account>
-   ALL=(root) NOPASSWD: ALL` to `/etc/sudoers.d/lyrica`, checked by
-   `visudo -c`. For exact commands only, the Add machine page in Settings
-   has a box per command and builds the same kind of command from them.
-   She never takes a sudo password; a root step she can't run there comes
-   to you on a card. When the card offers sudoers lines, it also carries
-   one command to paste on the machine: it adds them, keeps the file's
-   other lines and installs the result only once `visudo -c` passes, so
-   you never open an editor.
+   line is `restrict` (no forwarding, agent or pty) and names no `from=`
+   addresses, so her server can move network without locking her out;
+   running the setup again replaces any older line for the same key. If
+   she should run any command as root there, it also prints an optional
+   command, only for when you really trust the models you'll run, adding
+   `<account> ALL=(root) NOPASSWD: ALL` to `/etc/sudoers.d/lyrica`,
+   checked by `visudo -c`. For exact commands only, the Add machine page
+   in Settings has a box per command and builds the same kind of command
+   from them. She never takes a sudo password; a root step she can't run
+   there comes to you on a card. When the card offers sudoers lines, it
+   also carries one command to paste on the machine: it adds them, keeps
+   the file's other lines and installs the result only once `visudo -c`
+   passes, so you never open an editor.
 2. Press Enter. She connects, prints the machine's host key fingerprint
    and whether her key was accepted, and asks you to confirm the
    fingerprint. Compare it with what the machine prints:
@@ -1047,24 +1049,26 @@ Terrapin fix (strict key exchange); adding an older one fails with "the
 server doesn't offer strict key exchange; update its OpenSSH". On Lyrica's
 side, each SSH connection runs in a sandbox of its own, so machines need
 `bwrap`, `pasta`, `nft`, `unshare` and `bash` on her host (the install
-script installs them, and NixOS's module brings its own)
-and a passed network self-test: when the journal says "network is off for
-every thread", every machine call fails too, with nothing to fall back to.
-If a machine's host key ever changes, every call fails until you confirm
-the new key (Replace key in its ⋯ menu). When her login fails there, as on
-a reinstalled machine, the page shows her key's setup block again to run
-and **Test**; **New key pair** makes a fresh pair instead, and the old key
-line stays on the machine until you remove it by hand. `lyrica admin ssh
-list` shows each machine's pool, limit and confirmed key, and `ssh remove`
-takes one away. Removing one under Settings, Machines leaves the machine
-as it is, but its dialog offers commands to paste there that take away her
-key line, her sudoers lines or her whole account (on your own account,
-only the key); Lyrica runs none of them. SSH targets added before machines
-existed became general machines at Ask; one that had never connected has
-no confirmed key and must be added again (`ssh remove <name>`, then
-`add`). The same cure applies to a machine added before 2026-10-11 that
-never connects, even though its setup was run: about one key in 256 made
-before #96 was one OpenSSH could not load, and saved keys are not checked.
+script installs them, and NixOS's module brings its own) and a passed
+network self-test: when the journal says "network is off for every
+thread", every machine call fails too, with nothing to fall back to. If a
+machine's host key ever changes, every call fails until you confirm the
+new key (Replace key in its ⋯ menu). When her login fails there, as on a
+reinstalled machine, or one added before 2026-11-16 (its key line is
+pinned to her server's old addresses) after her server moves network, the
+page shows her key's setup block again to run and **Test**; **New key
+pair** makes a fresh pair instead, and the old key line stays on the
+machine until you remove it by hand. `lyrica admin ssh list` shows each
+machine's pool, limit and confirmed key, and `ssh remove` takes one away.
+Removing one under Settings, Machines leaves the machine as it is, but its
+dialog offers commands to paste there that take away her key line, her
+sudoers lines or her whole account (on your own account, only the key);
+Lyrica runs none of them. SSH targets added before machines existed became
+general machines at Ask; one that had never connected has no confirmed key
+and must be added again (`ssh remove <name>`, then `add`). The same cure
+applies to a machine added before 2026-10-11 that never connects, even
+though its setup was run: about one key in 256 made before #96 was one
+OpenSSH could not load, and saved keys are not checked.
 
 ## Give her a Proxmox node
 
