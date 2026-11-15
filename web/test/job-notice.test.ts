@@ -29,6 +29,6 @@ describe("parseJobNotice", () => {
     const html = renderToStaticMarkup(createElement(JobNotice, { job: parseJobNotice(jobNotice(job({ exitCode: 1 }), "a\nb"))! }));
     expect(html).toContain('<pre class="job-command" aria-label="Command">uptime; cd /srv &amp;&amp; make</pre>');
     expect(html).toContain('<pre class="job-output" aria-label="Last output">a\nb</pre>');
-    expect(html).toContain('<span class="dot down" aria-hidden="true"></span>exit 1');
+    expect(html).toContain('<span class="dot down" aria-hidden="true"></span>exit <span class="mono">1</span>');
   });
 });

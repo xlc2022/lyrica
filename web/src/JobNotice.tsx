@@ -39,7 +39,7 @@ export function parseJobNotice(text: string): EndedJob | undefined {
 
 /** How it ended, as the head's word: "exit 0" with a green dot, a failure with a red one, a stop with none. */
 function ending(j: EndedJob) {
-  const word = j.state === "exited" ? `exit ${j.exitCode ?? "?"}` : j.state;
+  const word = j.state === "exited" ? <>exit <span className="mono">{j.exitCode ?? "?"}</span></> : j.state;
   const dot = j.state === "stopped" ? "" : j.state === "exited" && j.exitCode === 0 ? "up" : "down";
   return <span className="status-word"><span className={`dot ${dot}`} aria-hidden="true" />{word}</span>;
 }
@@ -62,7 +62,7 @@ export function JobNotice({ job }: { job: EndedJob }) {
       <div className="sub-head">
         <b className="as-is">Background command</b>
         {ending(job)}
-        <span className="muted job-facts"><span className="mono">{job.id}</span> · {job.place} · {job.took}{job.reason && <> · {job.reason}</>}</span>
+        <span className="muted job-facts"><span className="mono">{job.id}</span> · {job.place} · <span className="mono">{job.took}</span>{job.reason && <> · {job.reason}</>}</span>
       </div>
       <div ref={body} className="job-body" data-clamped={more ? undefined : ""}>
         <pre className="job-command" aria-label="Command">{job.command}</pre>
@@ -71,7 +71,7 @@ export function JobNotice({ job }: { job: EndedJob }) {
           <pre className="job-output" aria-label="Last output">{job.output}</pre>
         </> : <span className="job-label">No output</span>}
       </div>
-      {(long || more) && <button type="button" className="link show-more" onClick={() => setMore(!more)}>{more ? "Show less" : "Show more"}</button>}
+      {(long || more) && <button type="button" className="link show-more" aria-expanded={more} onClick={() => setMore(!more)}>{more ? "Show less" : "Show more"}</button>}
     </div>
   );
 }
