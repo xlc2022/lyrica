@@ -120,7 +120,9 @@ const H3_LORA = safetensors({ "diffusion_model.blocks.0.attn.to_q.lora_A.weight"
 const QWEN3VL_32B = safetensors({ "model.language_model.layers.0.self_attn.q_proj.weight": { dtype: "U8" }, "model.language_model.layers.0.self_attn.q_norm.weight": {}, "model.language_model.layers.63.self_attn.q_proj.weight": { dtype: "U8" } });
 const H3_VAE = safetensors({ "decoder.transformer_blocks.0.scale1": {}, "encoder.down.5.block.0.conv1.weight": { dtype: "I8" } });
 const H3_AUDIO_VAE = safetensors({ "pre_block.attn.zero_k_bias": { dtype: "F32" } });
-const PH3 = safetensors({ "video_patch_proj.weight": { dtype: "I8" }, "audio_patch_proj.weight": {}, "adaln_t_table": { dtype: "F32" } });
+const PH3 = safetensors({ "video_patch_proj.weight": { dtype: "I8" }, "audio_patch_proj.weight": {}, "adaln_t_table": { dtype: "F32", shape: [4097, 16] } });
+// A w6a8 repack of H3 (Comfy-Org's Turbo, Singularity's r2) has a timestep table too, 8 wide.
+const H3_W6A8 = safetensors({ "model.diffusion_model.video_patch_proj.weight": { dtype: "I8" }, "model.diffusion_model.audio_patch_proj.weight": {}, "model.diffusion_model.adaln_t_table": { dtype: "F32", shape: [1025, 8] } });
 const PH3_TE = safetensors({ "model.language_model.layers.0.self_attn.q_proj.weight": { dtype: "I8" }, "model.visual.merger.linear_fc2.weight": { shape: [2560, 4096] }, "text_connector.proj.weight": {} });
 const H3_IMAGE = safetensors({ "video_patch_proj.weight": { dtype: "I8" }, "adaln_t_table": { dtype: "F32" } });
 const H3_IMAGE_VAE = safetensors({ "decoder.transformer_blocks.0.scale1": {}, "encoder.down.5.block.0.conv1.weight": {}, "decoder.proj_out.weight": { shape: [768, 1024] }, "decoder.x_embedder.weight": { shape: [1024, 24] } });
@@ -269,6 +271,7 @@ describe("video parts", () => {
       "v/minimax_h3_vfx_edit_v1.0_r128.safetensors": H3_LORA,
       "v/p-h3-image_int8_convrot.safetensors": PH3, "v/p-h3-image_text_encoder_int8_convrot.safetensors": PH3_TE, "v/p-h3-image_vae_int8_convrot.safetensors": PH3_VAE,
       "v/minimax_h3_image_pruned_w4a8.safetensors": H3_IMAGE, "v/minimax_h3_image_vae_fp16.safetensors": H3_IMAGE_VAE,
+      "v/minimax_h3_fl2va_pruned_w6a8.safetensors": H3_W6A8, "v/Minimax-h3_Singularity_ref2va_v2_pruned_w6a8_r2.safetensors": H3_W6A8,
       "v/h3-realism-people-t2v-i2v-r2v.safetensors": H3_LORA_UNNAMED, "v/pika_h3_flex_turbo_4step_fl2va.safetensors": H3_LORA_UNNAMED,
       "v/Wan2.2-T2V-A14B-HighNoise-Q5_K_M.gguf": wanGguf(16), "v/Wan2.2-I2V-A14B-LowNoise-Q5_K_M.gguf": wanGguf(36, true),
       "v/wan2.1_14B_SCAIL_2_int8_convrot.safetensors": SCAIL2, "v/wan2.1_SCAIL_2_DPO_lora_bf16.safetensors": WAN_LORA,
@@ -295,6 +298,9 @@ describe("video parts", () => {
       "ltx-2.5-audio-vae-bf16.safetensors": ["vae", "audio", "ltx2"],
       "ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors": ["latent_upscaler", null, "ltx2"],
       "minimax_h3_fl2va_pruned_int8_convrot.safetensors": ["diffusion", null, "minimax-h3"],
+      // Their timestep table is 8 wide, P-H3-Image's 16.
+      "minimax_h3_fl2va_pruned_w6a8.safetensors": ["diffusion", null, "minimax-h3"],
+      "Minimax-h3_Singularity_ref2va_v2_pruned_w6a8_r2.safetensors": ["diffusion", null, "minimax-h3-ref2va"],
       "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors": ["lora", "speed", "minimax-h3"],
       "minimax_h3_video_vae_int8_convrot.safetensors": ["vae", null, "minimax-h3"],
       "minimax_h3_audio_vae_fp32.safetensors": ["vae", "audio", "minimax-h3"],
@@ -461,6 +467,9 @@ describe("video parts", () => {
     // Measured on mystria: at full strength it puts a frizzy halo round her hair on ref2va, and smears faces on fl2va.
     expect(withFal.lora_realism!.inputs).toMatchObject({ model: ["lora_speed", 0], lora_name: "fal.safetensors", strength_model: 0.5 });
     expect(TEMPLATES.get("minimax-h3")!.parts.find((q) => q.slot === "realism")!.strength).toBe(0.7);
+    // Singularity's speed LoRA at 0.7 over 6 steps, as its repository's renders: 4 steps at 1 melts a running dog's legs.
+    expect(withFal.lora_speed!.inputs.strength_model).toBe(0.7);
+    expect(sing.defaults.steps).toBe(6);
     expect(withFal.guide!.inputs.model).toEqual(["lora_realism", 0]);
     // Its trigger word starts the prompt, once; without the LoRA the prompt is as asked.
     expect(withFal.cond!.inputs.prompt).toBe("r34l1sm x");

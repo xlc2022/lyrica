@@ -136,7 +136,12 @@ export function classify(names: string[], shapes: Record<string, number[]>, file
   // Video models, by the keys ComfyUI's model detection reads.
   // P-H3-Image is H3 fine-tuned for stills, its timestep branch a precomputed table. MiniMax-H3-Image, MiniMax's own
   // picture model, has that table and no audio stream at all.
-  if (hasBare(/^video_patch_proj\.weight$/) && hasBare(/^audio_patch_proj\.weight$/)) return { role: "diffusion", slot: null, arch: hasBare(/^adaln_t_table$/) ? "p-h3-image" : h3 };
+  // P-H3-Image is H3 with a timestep table 16 wide; w6a8 repacks of H3 itself (Comfy-Org's Turbo, Singularity's r2)
+  // carry one 8 wide.
+  if (hasBare(/^video_patch_proj\.weight$/) && hasBare(/^audio_patch_proj\.weight$/)) {
+    const table = names.find((n) => /(^|\.)adaln_t_table$/.test(n));
+    return { role: "diffusion", slot: null, arch: table && shapes[table]?.[1] === 16 ? "p-h3-image" : h3 };
+  }
   if (hasBare(/^video_patch_proj\.weight$/) && hasBare(/^adaln_t_table$/)) return { role: "diffusion", slot: null, arch: "minimax-h3-image" };
   if (hasBare(/^adaln_single\.emb\.timestep_embedder\.linear_1\.bias$/) && hasBare(/^audio_adaln_single\.linear\.weight$/)) return { role: "diffusion", slot: null, arch: "ltx2" };
   // SCAIL-2: Wan 2.1 I2V 14B with its own patch embeddings for the pose and mask videos.

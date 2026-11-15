@@ -393,10 +393,11 @@ per host, and Lyrica's router filters create tiers by it.
   fl2va and ref2va checkpoints, uncensored, on the H3 Turbo template so it
   chains to 60 s) and Singularity H3 v2 (int8 and w4a8; the most used
   community fine-tune, ref2va only, on the `minimax-h3-ref2va` template
-  with the ref2v 4-step LoRA; it chains to 60 s as Turbo does). Each of
+  with the ref2v 4-step LoRA at 0.7 and 6 steps, as its repository's
+  comparison renders use: fewer melted limbs than 4 steps at 1; it chains to 60 s as Turbo does). Each of
   these also comes as a Realism starter with fal's Realism People LoRA
-  (0.12 GiB; strength 0.7 on fl2va models, 0.5 on Singularity's ref2va,
-  where full strength smears faces or rings the hair with a halo), whose
+  (0.12 GiB; strength 0.7 on fl2va models, 0.5 on Singularity's ref2va:
+  its card says 1, but on our tests full strength smeared faces or ringed the hair with a halo), whose
   trigger word r34l1sm the host puts at the
   start of every prompt. The w6a8 and w4a8 video starters make one clip
   of at most 5 s (`longestSeconds`): a chained clip runs a 30 GB host out
