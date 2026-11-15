@@ -251,6 +251,18 @@ it("fails the turn visibly when the retry has only thinking too", async () => {
   expect(r.shown.at(-1)).toMatchObject({ role: "assistant", error: EMPTY_REPLY });
 });
 
+it("counts only empty replies in a row: one after a reply that made a call gets its own carry-on", async () => {
+  // GLM-5.3 on the nautica thread: an empty reply, a retry that made a call, then an empty reply again failed the turn.
+  const r = await replies([
+    fauxAssistantMessage(fauxThinking("She")),
+    fauxAssistantMessage([fauxThinking("Reading the skill."), fauxToolCall("read", { path: "a.txt" })]),
+    fauxAssistantMessage(fauxThinking("I")),
+    fauxAssistantMessage("Done."),
+  ]);
+  expect(r.shown.some((m) => m.error)).toBe(false);
+  expect(JSON.stringify(r.shown)).toContain("Done.");
+});
+
 it("says the context is too full when both replies ran into the reply limit while thinking", async () => {
   // A model that always thinks (GLM-5.3) thinks on the retry too, and a full window leaves it no room.
   const r = await replies([fauxAssistantMessage(fauxThinking("She"), { stopReason: "length" }), fauxAssistantMessage(fauxThinking("I"), { stopReason: "length" }), fauxAssistantMessage("never asked")]);
