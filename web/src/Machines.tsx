@@ -10,11 +10,12 @@ import {
 import { CopyButton } from "./CopyButton.tsx";
 import { ModeItem, MODES } from "./Modes.tsx";
 import { checkSudoers, ROOT_LIMITS, sudoersCommand } from "../../core/src/workspace/sudoers.ts";
+import { cleanupWhere, machineCleanup } from "../../core/src/workspace/machine-cleanup.ts";
 import { Icon } from "./icons.tsx";
 import { her } from "./name.ts";
 import { go, href } from "./route.ts";
 import type { ShellContext } from "./Shell.tsx";
-import { ConfirmDialog, ErrorText, useAction, useDismiss, useLoad } from "./ui.tsx";
+import { ConfirmDialog, Dialog, ErrorText, useAction, useDismiss, useLoad } from "./ui.tsx";
 
 /** The three modes a machine's limit can be, loosest last. */
 const LIMITS: MachineLimit[] = ["ask", "acceptEdits", "auto"];
@@ -119,8 +120,7 @@ function MachinesList({ ctx }: { ctx: ShellContext }) {
         </>
       )}
       {removing && (
-        <ConfirmDialog title="Remove machine" sentence={`Remove ${removing.name}? Every thread that uses it loses it, and her key for it is forgotten.`}
-          confirm="Remove" danger onCancel={() => setRemoving(undefined)}
+        <RemoveMachine machine={removing} onCancel={() => setRemoving(undefined)}
           onConfirm={() => { const m = removing; setRemoving(undefined); void run(async () => { await del(u(userId, "machines", m.name)); machines.reload(); }); }} />
       )}
       {using && (
@@ -129,6 +129,38 @@ function MachinesList({ ctx }: { ctx: ShellContext }) {
           onConfirm={() => { const m = using; setUsing(undefined); void run(async () => { replace(await post<MachineInfo>(u(userId, "machines", m.name, "confirm-off-network"), {})); }); }} />
       )}
     </section>
+  );
+}
+
+/**
+ * Remove's dialog: its sentence, then what she left on the machine as optional commands, a code block each with
+ * Copy in its head as the Add machine page's sudo blocks have it. Removing never runs them: she can't reach the
+ * machine as anyone but herself, and the user may keep her account for another Lyrica.
+ */
+function RemoveMachine({ machine, onCancel, onConfirm }: { machine: MachineInfo; onCancel: () => void; onConfirm: () => void }) {
+  const steps = machineCleanup(machine);
+  return (
+    <Dialog labelledBy="remove-machine-title" className="remove-machine" onCancel={onCancel} onSubmit={onConfirm}>
+      <h2 id="remove-machine-title">Remove machine</h2>
+      <p>Remove {machine.name}? Every thread that uses it loses it, and her key for it is forgotten.</p>
+      {steps.length > 0 && (
+        <section className="machine-sudo" aria-labelledby="remove-machine-cleanup">
+          <h3 className="eyebrow" id="remove-machine-cleanup">Clean up {machine.name}</h3>
+          <p className="muted small">Optional, before or after removing it: run any of these on the machine {cleanupWhere(machine)}.</p>
+          {steps.map((s) => (
+            <div className="code-block" key={s.name}>
+              <div className="code-head"><span className="code-lang">{s.name}</span><CopyButton text={s.command} label="Copy" ariaLabel={`Copy ${s.name.toLowerCase()}`} className="code-copy" /></div>
+              <p className="muted sudo-hint">{s.hint}</p>
+              <pre><code>{s.command}</code></pre>
+            </div>
+          ))}
+        </section>
+      )}
+      <div className="dlg-actions">
+        <button type="button" onClick={onCancel}>Cancel</button>
+        <button type="submit" className="danger primary" autoFocus>Remove</button>
+      </div>
+    </Dialog>
   );
 }
 

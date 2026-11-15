@@ -2895,7 +2895,7 @@ settings(userId): WorkspaceSettings       // per-pool defaults, per-thread overr
 //   inheritSettings takes a subset; effective() keeps only machines every ancestor grants.
 // SUSPECT_COMMANDS (each with `everywhere?` for the sandbox too and `discards?` for git throwing work away), suspectCommand(command, where = "machine"), discardingGit(command) (the folders where such git runs), removedFolders(command) (the folders `rm -r` deletes), SANDBOX_ALLOW (the machine key Allow in this thread stores for a sandbox command),
 //   writtenFiles(command) (the targets of its redirections and tee), onFloor(path), cleanOutput(onData), maskKeys(buf) (shares removePrivateKeys from core/src/secrets.ts),
-//   authorizedKeysLine(publicKey), machineSetup(account, keyLine, asUser?), machineSudo(account), unwrapped(words) (a simple command past its
+//   authorizedKeysLine(publicKey), machineSetup(account, keyLine, asUser?), machineSudo(account), machineCleanup(machine) (Remove machine's optional clean-up steps, machine-cleanup.ts, free of Node modules), unwrapped(words) (a simple command past its
 //   wrappers and the shell's keywords): core/src/workspace/machines.ts
 // malformedCommand(command, run = runShellcheck) (the refusal, or undefined), runShellcheck(command) (ShellFinding[], or
 //   undefined without ShellCheck, on a failure or past 3 s), blocking(command, findings), BLOCKS_IN_DELETE, segments(command):

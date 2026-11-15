@@ -321,7 +321,20 @@ A second machine on the same account adds its line beside the first, and
 each account gets its own `sshd_config.d` file (before 2026-11-05 the block
 wrote both files over, so adding a machine replaced another's key on the
 same account, or another account's `Match` block). Removing a machine
-leaves its line on the machine; no key matches it any more.
+leaves everything on the machine: her key pair is forgotten, so no key
+matches its line any more. Remove's dialog offers what she left as
+optional commands for the user to paste (`machineCleanup` in
+`core/src/workspace/machine-cleanup.ts`, free of Node modules, which also
+names the keys file and `sshd_config.d` rule the setup writes): **Key**
+deletes the lines holding her key's blob from her keys file, others kept;
+**Sudo** deletes the lines naming her account from
+`/etc/sudoers.d/lyrica`, other accounts' kept; **Account** removes her
+keys file and `sshd` rule, reloads sshd, stops her processes and runs
+`userdel --remove`, so any other machine on that account loses it too. On
+the user's own account only **Key** is offered, run as that account on
+`~/.ssh/authorized_keys`. For Proxmox, **Token** is `pveum user token
+remove`, and **User** (`pveum user delete`) is offered only for the user
+made for her. Lyrica runs none of them.
 
 The test then reads the host key the machine shows and tries the login,
 and the user compares the fingerprint with `ssh-keygen -lf
