@@ -170,6 +170,13 @@ tool each for A and B, prompt lines only where the thread has a machine).
   image build and pull in the background (A); smoke test; pause; give the
   pairing code. On a shared machine, pause the host after testing and check
   that no container holds GPU memory.
+- A CMP 100-210 has its own section in the skill (added before the first
+  install on real hardware, which is on one): she tells the card by its
+  PCI ID from sysfs, since `nvidia-smi` names it a Tesla V100 and says
+  nothing without a driver; says which driver it needs and what runs on
+  it; asks about the unlock as a second question; passes `--cmp-unlock`,
+  which `--yes` alone leaves out; and after the reboot checks the tensor
+  rate with the image's own `tensor-probe`. Not yet run on the card.
 - No change to `host/`.
 
 ## Out of scope

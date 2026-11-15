@@ -447,7 +447,11 @@ enter in **Add model host**. Nothing under `host/` changes for it. A
 machine with no GPU or no driver stops her at the first step, and being
 told to install anyway doesn't change that. The installer's `--no-gpu` is
 a test mode that serves no models: she doesn't bring it up, and goes on
-with it only when the person asks for it by name.
+with it only when the person asks for it by name. She tells a CMP 100-210
+by its PCI ID, with or without a driver, and the skill has that card's
+differences: which driver it needs, what runs on it, its unlock as a
+second question before anything changes, and a reboot and a check of the
+tensor rate after an install with the unlock.
 
 ## Proxmox
 
