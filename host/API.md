@@ -841,7 +841,8 @@ as `{ "parts": [...] }`, each entry like this:
   `flux2-klein-9b` (FLUX.2 klein, by its text input's width; its VAE, 32
   latent channels, is `flux2`), `flux3-klein`, `moss-image`, `seedvr2`,
   `wan2.2-5b`, `wan2.2-t2v-14b`, `wan2.2-i2v-14b`, `ltx2`, `minimax-h3`,
-  `minimax-h3-ref2va`, `p-h3-image` (H3's tensors plus a timestep table;
+  `minimax-h3-ref2va`, `p-h3-image` (H3's tensors plus a timestep table 16 wide; the
+  w6a8 repacks of H3 itself carry one 8 wide;
   its VAE by a single-frame decoder), `minimax-h3-image` (MiniMax's own
   picture model: the timestep table and no audio stream; its VAE's
   single-frame decoder is 1024 wide inside, P-H3-Image's 2048), `scail2`, `clip-vision-h`, `sam3`,
