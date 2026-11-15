@@ -51,7 +51,7 @@ test("the setup page takes the code, her name and the first administrator, skips
   await expect(page).toHaveTitle("Aria");
 });
 
-test("Administration: her name changes from Her name, Tailnet says what's missing, and Updates says there is no updater", async ({ page }) => {
+test("Administration: her name changes from Agent name, Tailnet says what's missing, and Updates says there is no updater", async ({ page }) => {
   // A new browser: she is unlocked, so it goes straight to Log in.
   await page.goto("/");
   await page.getByLabel("Login name").fill("ada");
@@ -60,7 +60,7 @@ test("Administration: her name changes from Her name, Tailnet says what's missin
   await expect(page.getByText("Switch user")).toBeAttached();
   const userId = await page.evaluate(async () => ((await (await fetch("/api/state")).json()) as { users: { id: string }[] }).users[0]!.id);
   await page.goto(`/#/u/${userId}/admin/name`);
-  const section = page.getByRole("region", { name: "Her name" });
+  const section = page.getByRole("region", { name: "Agent name" });
   const name = section.getByLabel("Name", { exact: true });
   await expect(name).toHaveValue("Aria");
   await name.fill("Lyra");

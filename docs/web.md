@@ -1064,7 +1064,7 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   used | Most cited** rows, each memory a link into the memory browser
   (`recalledHref`).
   Tooltips explain scope, pace and fallback markers; no errors or retries are
-  inferred), **Her name** (Name, 1–40 characters
+  inferred), **Agent name** (Name, 1–40 characters
   on one line, one Save disabled when invalid or unchanged; `PUT …/admin/name`,
   then her displayed name updates and the page re-reads `/api/state`), Users with the administrator flag,
   **Change password…** (the new password and the administrator's own, in
