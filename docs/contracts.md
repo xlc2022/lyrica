@@ -1356,8 +1356,9 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   any (a browse screenshot), kept in memory for the session. One
   `callWithFallback("vision", call, { tokens })` with a fixed system prompt and one user
   message (her question, then the images), no reasoning; `tokens` is the
-  text's length / 4, STILL_TOKENS (600) a still, IMAGE_TOKENS (1200) any
-  other image, and 2,048 for the reply, so a vision model whose context
+  text's length / 4, each image's `imageTokens` (one per 32 x 32 pixels
+  read from its PNG, JPEG or WebP header, at most MAX_IMAGE_TOKENS, 4,096,
+  which an unreadable one counts as), and 2,048 for the reply, so a vision model whose context
   window can't hold them is passed over, and when none can she is told to
   give fewer images, clips or frames, before any model call; a cloud model is
   refused in a restricted thread, and a photo of the user (a portrait read,
