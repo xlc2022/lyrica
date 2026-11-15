@@ -53,9 +53,20 @@ export function JobNotice({ job }: { job: EndedJob }) {
   useLayoutEffect(() => {
     if (more) return;
     // A cut block fades at its foot, so it reads as clamped rather than broken off mid-line.
+    // The output's fade is drawn over it, above its sideways scrollbar (--bar, the bar's height), so the bar stays seen and grabbed.
     const pres = [...(body.current?.querySelectorAll("pre") ?? [])];
-    for (const el of pres) el.toggleAttribute("data-cut", el.scrollHeight > el.clientHeight + 1);
-    setLong(pres.some((el) => el.hasAttribute("data-cut")));
+    const measure = () => {
+      for (const el of pres) {
+        const cut = el.scrollHeight > el.clientHeight + 1;
+        el.toggleAttribute("data-cut", cut);
+        el.parentElement?.style.setProperty("--bar", `${Math.max(0, el.offsetHeight - el.clientHeight - 2)}px`);
+      }
+      setLong(pres.some((el) => el.hasAttribute("data-cut")));
+    };
+    measure();
+    const watch = new ResizeObserver(measure);
+    for (const el of pres) watch.observe(el);
+    return () => watch.disconnect();
   }, [more, job.command, job.output]);
   return (
     <div className="subagent delivered job-notice" data-status="job">
@@ -68,7 +79,7 @@ export function JobNotice({ job }: { job: EndedJob }) {
         <pre className="job-command" aria-label="Command">{job.command}</pre>
         {job.output ? <>
           <span className="job-label">Last output</span>
-          <pre className="job-output" aria-label="Last output">{job.output}</pre>
+          <div className="job-scroll"><pre className="job-output" aria-label="Last output">{job.output}</pre></div>
         </> : <span className="job-label">No output</span>}
       </div>
       {(long || more) && <button type="button" className="link show-more" aria-expanded={more} onClick={() => setMore(!more)}>{more ? "Show less" : "Show more"}</button>}
