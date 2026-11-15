@@ -464,8 +464,13 @@ button.jump-latest { font-size: 13px; min-height: var(--tap); }
 .job-body { display: grid; gap: 6px; margin-top: 4px; min-width: 0; }
 .job-body pre { margin: 0; background: var(--tool); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; line-height: 1.5; color: var(--fg); }
 .job-body[data-clamped] .job-command { max-height: calc(4 * 1.5em + 18px); overflow: hidden; }
-.job-body[data-clamped] .job-output { max-height: calc(16 * 1.5em + 18px); overflow: hidden; }
-.job-body[data-clamped] pre[data-cut] { mask-image: linear-gradient(#000 70%, transparent); }
+/* Output keeps its lines whole, so a table (nvidia-smi, docker ps) stays a table: a wide one scrolls sideways in its block. */
+.job-body .job-output { white-space: pre; overflow-wrap: normal; overflow-x: auto; }
+.job-body[data-clamped] .job-output { max-height: calc(16 * 1.5em + 18px); overflow-y: hidden; }
+.job-body[data-clamped] .job-command[data-cut] { mask-image: linear-gradient(#000 70%, transparent); }
+/* The clamped output's fade sits over its text and stops at its sideways scrollbar, which stays in view to grab. */
+.job-scroll { position: relative; min-width: 0; }
+.job-body[data-clamped] .job-scroll:has(> pre[data-cut])::after { content: ""; position: absolute; left: 1px; right: 1px; bottom: calc(var(--bar, 0px) + 1px); height: 30%; border-radius: 0 0 7px 7px; background: linear-gradient(transparent, var(--tool)); pointer-events: none; }
 .job-label { font-size: 12px; color: var(--muted); }
 .job-notice .show-more { justify-self: start; font-size: 13px; }
 @media (pointer: coarse) { .job-notice .show-more { min-height: var(--tap); } }
@@ -575,6 +580,7 @@ button.jump-latest { font-size: 13px; min-height: var(--tap); }
 .subgroup { display: grid; gap: 10px; margin-top: 6px; }
 .subgroup > legend { padding: 0; margin-bottom: 6px; font-size: 13px; font-weight: 600; color: var(--muted); }
 /* A select's label with what follows its model, such as "+2 fallbacks". */
+.field > p.muted { margin: 0; font-size: 13px; }
 .field > .with-count { display: flex; justify-content: space-between; gap: 8px; }
 .with-count > .fallbacks { font-size: 12px; }
 .net-switch { display: grid; gap: 2px; justify-items: start; }
@@ -859,12 +865,19 @@ form.drawer-body { flex: 1; }
 .step { display: grid; gap: 10px; }
 /* A setup block wraps its long lines (a key line runs past 200 characters) rather than hiding them past the edge; Copy and a hand selection still take the commands as written. Its step spans the card. */
 .setup { margin: 0; background: var(--tool); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; line-height: 1.5; }
-.steps > .step:has(> .setup) { max-width: none; }
+.steps > .step:has(> .setup), .steps > .step:has(> .setup-block) { max-width: none; }
+.setup-block { margin: 0; }
+.setup-block .setup { background: none; border: 0; border-radius: 0; padding: 2px 12px 10px; }
 .setup .line { display: block; min-height: 1.5em; padding-left: 4ch; text-indent: -4ch; }
 /* The optional sudo commands under it: a code block each, headed by its name and Copy, wrapping as the setup block does. */
 .machine-sudo { display: grid; gap: 10px; }
 .machine-sudo .code-block { margin: 0; }
 .machine-sudo .sudo-hint { margin: 0; padding: 2px 12px 4px; font-size: 13px; }
+.exact-sudo .sudo-commands { display: grid; gap: 6px; padding: 0 12px 10px; }
+.exact-sudo .sudo-command { display: grid; gap: 4px; }
+.exact-sudo .sudo-command p { margin: 0; }
+.exact-sudo .sudo-command input { flex: 1; min-width: 0; }
+@media (pointer: coarse) { .exact-sudo button.sm { min-height: 44px; min-width: 44px; } }
 .machine-sudo .code-block pre { margin: 0; padding: 2px 12px 10px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; line-height: 1.5; }
 .fingerprint { margin: 0; font-size: 14px; overflow-wrap: anywhere; }
 /* On a machine, the permission card and the marker name it first. */

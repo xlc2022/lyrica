@@ -1650,8 +1650,8 @@ NAS, and Proxmox nodes. Decided 2026-10-11 from
   hands over on a question card with its hash; when a root command will
   recur, she may offer exact sudoers lines, which the user adds. How much
   sudo she has on a machine is the owner's call, made by hand on that
-  machine: exact commands, or on a machine the owner really trusts,
-  passwordless sudo for everything (the owner said so on 2026-11-01).
+  machine: exact commands, or, when the owner really trusts the models
+  that will run there, passwordless sudo for everything (the owner said so on 2026-11-01).
   Even then she holds no password, writes no sudoers, and the machine's
   mode limit and the suspect-command check still apply to what she runs.
 - **A machine has a mode limit**, the loosest mode she may use there: Ask,
@@ -2135,7 +2135,8 @@ Details in [docs/sleep.md](docs/sleep.md).
   call, 2026-10-21): a large-context model should use its context.
 - **Skipping:** sleep skips a user whose key isn't available, or a pool whose
   endpoint is offline, and tries again at the next due time. Nothing is lost.
-  The next sleep just covers a longer period.
+  The next sleep just covers a longer period. A night missed for want of the
+  key is slept as soon as the key comes back.
 - **What she'd like to raise** after a night (a thought from the dream, a
   question from consolidation, a persona suggestion) never opens a
   conversation by itself.
