@@ -38,21 +38,23 @@ pictures and clips with on the operator's own hardware.
   its file (several H3 starters share a template); only a missing *speed*
   LoRA is listed as needed.
 
-## Open questions
+## GPU run (2026-11-14)
 
-- Nothing here has run on a GPU, and the ComfyUI bump is untested on the
-  older templates. The Lunasa run should cover MiniMax-H3-Image (create,
-  edit), Turbo w6a8 on the 3090 (does it fit at 1344×768 with 30 GB RAM?),
-  Cobijada, Singularity (text and animate), a P-H3-Image and Krea 2 image,
-  and an H3 Turbo clip.
-- Singularity's chaining (16 s join, 60 s, extend) needs tuning on
-  mystria, as H3 Turbo's was (#695, #700, #711).
-- The realism LoRA's strength (fal says 1, or 0.6 to 0.8 lighter) is for
-  the GPU run to settle.
-- Large models (int8 starters, Singularity chaining) run on mystria; w4a8
-  and w6a8 on lunasa.
+The run on mystria and lunasa settled what was open; its report is
+`h3-gpu-run-2026-11-14.md` in the project files.
+
+- Every int8 starter works on mystria at its defaults; MiniMax-H3-Image
+  takes 5 to 10 s for 4 MP. Singularity chains smoothly to 16 and 60 s.
+- The realism LoRA is 0.7 on `minimax-h3` and 0.5 on `minimax-h3-ref2va`
+  (template slot `strength`): at 1 it smears faces, or haloes the hair.
+- Lunasa runs MiniMax-H3-Image w4a8 (9 s warm) and Turbo w6a8 5 s clips;
+  a 16 s chain was killed by earlyoom twice, so the w6a8 and w4a8 video
+  starters set `longestSeconds` 5.
+- P-H3-Image and Krea 2 work on ComfyUI 0.45.3.
 
 ## Handoff
 
 - 2026-11-14: built on `claude/project-thread-l9wv1m`. Next: PR review
   (host, ComfyUI bump), then the Lunasa GPU run and tuning of defaults.
+- 2026-11-15: GPU run done (above); realism strengths and the 5 s cap are
+  in. Nothing open.

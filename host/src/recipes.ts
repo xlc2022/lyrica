@@ -39,6 +39,8 @@ export interface Recipe {
   starter: string | null;
   /** The recipe on another host this one was copied from ("Copying a model to another host"). */
   copiedFrom?: string;
+  /** The longest video it makes, from its starter: one clip, never chained or extended, where more runs out of memory. */
+  longestSeconds?: number;
 }
 
 export interface Starter {
@@ -52,6 +54,8 @@ export interface Starter {
   backend?: "comfyui" | "sdcpp";
   /** The recipe's tag for Lyrica's create tiers; both when left out. */
   useFor?: "fast" | "quality";
+  /** The longest video its recipe makes (Recipe.longestSeconds). */
+  longestSeconds?: number;
 }
 
 export const DEFAULT_KEYS = ["steps", "cfg", "sampler", "scheduler", "width", "height", "shift", "guidance", "negativePrompt", "scale", "maxSize", "colorMatch", "duration", "eta", "enhance", "refine", "refineSteps", "refineSampler", "refineScheduler", "refineEta"];
@@ -161,13 +165,13 @@ export class RecipeBook {
     // A recipe made by a newer host (read after a rollback, say) does nothing here.
     if (!t) return { ...r, useFor: r.useFor ?? "both", ready: false, mask: false, references: 0, does: [], unsupported: `This host has no template ${r.template}; update it to use this recipe.` };
     // A template with a continuation also extends clips, and chains them into a longer video.
-    const extend = t.continuation && r.does.some((a) => a === "video" || a === "animate") ? ["extend" as const] : [];
+    const extend = t.continuation && !r.longestSeconds && r.does.some((a) => a === "video" || a === "animate") ? ["extend" as const] : [];
     // An upscaler whose template has a clip workflow upscales clips too.
     const clips = t.clipWorkflow && r.does.includes("upscale") ? ["upscale_video" as const] : [];
     return { ...r, does: [...r.does, ...extend, ...clips], useFor: r.useFor ?? "both", ready: this.ready(r, files), mask: t.mask, references: t.references, custom: !!t.custom, workflowBase: t.custom?.base ?? null,
       // A built-in may take no input for a setting too: SDXL's has no shift.
       unbound: unboundSettings(t, r.defaults),
-      ...(t.video ? { video: { ...clipSpec(t.video, present(r, files)), longestSeconds: longestSeconds(t) } } : {}) };
+      ...(t.video ? { video: { ...clipSpec(t.video, present(r, files)), longestSeconds: longestSeconds(t, r.longestSeconds) } } : {}) };
   }
 
   /**
@@ -359,6 +363,8 @@ export class RecipeBook {
         const starter = r.starter ? this.starters.find((s) => s.id === r.starter) : undefined;
         if (!starter) throw invalid("This recipe wasn't made from a starter on this host.");
         r.defaults = structuredClone(starter.defaults);
+        if (starter.longestSeconds) r.longestSeconds = starter.longestSeconds;
+        else delete r.longestSeconds;
         // Settings made for a LoRA the recipe lacks (Wan 2.2 5B's FastWan) bring it, missing until it downloads, so they
         // never run without it.
         for (const p of starter.parts.filter((x) => x.role === "lora" && !r.parts.some((q) => q.role === "lora" && q.slot === (x.slot ?? null)))) {
@@ -434,6 +440,7 @@ export class RecipeBook {
     const recipe: Recipe = {
       id: found?.id ?? randomUUID(), name: starter.name, state: "confirmed", arch: t.arch, template: t.name, does: t.does, useFor: starter.useFor ?? "both",
       parts, loras: [...starter.loras], defaults: { ...starter.defaults }, base: null, starter: starter.id,
+      ...(starter.longestSeconds ? { longestSeconds: starter.longestSeconds } : {}),
     };
     if (found) this.recipes.splice(this.recipes.indexOf(found), 1, recipe);
     else this.recipes.push(recipe);

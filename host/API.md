@@ -890,7 +890,8 @@ as `{ "parts": [...] }`, each entry like this:
   `minimax-h3-ref2va-continue.json`, anchors the clip so far the same way
   from references, so it chains to 60 s too) and `minimax-h3-edit` (edit_video, on H3's
   ref2va model with the VFX Edit LoRA). Both H3 video templates take an
-  optional `realism` LoRA slot (fal's Realism People); a LoRA slot with a
+  optional `realism` LoRA slot (fal's Realism People, at the slot's
+  `strength`: 0.7 on `minimax-h3`, 0.5 on `minimax-h3-ref2va`); a LoRA slot with a
   `trigger` word puts it at the start of every prompt, chained clips' too,
   when the recipe has that LoRA. Where an architecture has two
   templates, a scanned model is proposed with the one whose LoRA slots the
@@ -950,7 +951,9 @@ as `{ "parts": [...] }`, each entry like this:
   "frameStep": 4, "frameOffset": 1, "sizeStep": 32, "maxSeconds": 8,
   "audio": false, "longestSeconds": 8 }`. `maxSeconds` is its longest
   clip, `longestSeconds` its longest video: 60 with a continuation, else
-  `maxSeconds`. Clips have `frameStep × k + frameOffset` frames, and
+  `maxSeconds`. A recipe from a starter that sets `longestSeconds` (the H3
+  w6a8 and w4a8 video starters, 5: chaining runs out of memory on a 24 GB
+  card with 30 GB of RAM) is capped there, and doesn't list `extend`. Clips have `frameStep × k + frameOffset` frames, and
   width and height are multiples of `sizeStep`. A template may take an
   optional `interpolator` part (Wan 2.2 14B's do, with `"interpolate": 2`):
   a recipe is ready without one, or while it downloads, and once its file
@@ -990,7 +993,9 @@ Calls:
   with a `backend` (`comfyui` or `sdcpp`) is listed, and installs, only on
   hosts that make images that way (Krea 2 Turbo Q5 is `sdcpp`: the pinned
   ComfyUI-GGUF can't load a Krea 2 GGUF). A starter's `useFor` (`fast` or
-  `quality`) becomes its recipe's; without one the recipe is `both`.
+  `quality`) becomes its recipe's; without one the recipe is `both`. So
+  does a starter's `longestSeconds`, the longest video its recipe makes
+  (`video.longestSeconds`, below).
 - `POST /host/v1/starters/<starter>/install`: downloads the missing parts
   (as `POST /host/v1/downloads`, with `X-Hub-Token` if needed) and creates
   the recipe as `confirmed`; it becomes `ready` when they finish. Answers
@@ -1040,7 +1045,8 @@ Calls:
     `res_2s`, `refineScheduler` `bong_tangent` and `refineEta` 0.9 unless
     the recipe says otherwise). Without them it is one KSampler pass;
   - `{ "op": "rename", "name": "..." }`;
-  - `{ "op": "starterDefaults" }`: the recipe's defaults become its
+  - `{ "op": "starterDefaults" }`: the recipe's defaults (and its
+    `longestSeconds` cap) become its
     starter's as this host ships it now, for a recipe installed before
     the starter changed; its files and LoRAs stay, but a starter's LoRA
     part the recipe lacks (Wan 2.2 5B's FastWan, which its settings are

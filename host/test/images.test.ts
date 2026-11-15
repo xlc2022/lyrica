@@ -458,7 +458,9 @@ describe("video parts", () => {
     expect(refImage.sample!.inputs.latent_image).toEqual(["cond", 1]);
     // fal's Realism People LoRA, a part of the Realism starters, goes on after the speed LoRA.
     const withFal = fill(TEMPLATES.get("minimax-h3-ref2va")!, [...refParts, p("lora", "fal.safetensors", "realism")], [], { negativePrompt: "", ...sing.defaults, prompt: "x", seed: 1, width: 1344, height: 768, ...at("minimax-h3-ref2va", 5, 1344, 768, 4) });
-    expect(withFal.lora_realism!.inputs).toMatchObject({ model: ["lora_speed", 0], lora_name: "fal.safetensors" });
+    // Measured on mystria: at full strength it puts a frizzy halo round her hair on ref2va, and smears faces on fl2va.
+    expect(withFal.lora_realism!.inputs).toMatchObject({ model: ["lora_speed", 0], lora_name: "fal.safetensors", strength_model: 0.5 });
+    expect(TEMPLATES.get("minimax-h3")!.parts.find((q) => q.slot === "realism")!.strength).toBe(0.7);
     expect(withFal.guide!.inputs.model).toEqual(["lora_realism", 0]);
     // Its trigger word starts the prompt, once; without the LoRA the prompt is as asked.
     expect(withFal.cond!.inputs.prompt).toBe("r34l1sm x");
@@ -1650,6 +1652,15 @@ describe("the image API", () => {
     expect(await refused({ extend: clip(1024, 576, 120, 24).toString("base64"), width: 1024 })).toMatch(/keeps its own size/);
     expect(await refused({ extend: clip(1024, 576, 120, 24).toString("base64"), image: PNG.toString("base64") })).toMatch(/no image/);
     expect(await refused({ extend: PNG.toString("base64") })).toMatch(/video track/);
+
+    // A recipe from a starter sized for a host short of memory (lunasa's w6a8) makes one clip at most, and never extends.
+    s.book.all().find((r) => r.id === h3r.id)!.longestSeconds = 5;
+    const capped: Recipe = (await s.api("/host/v1/recipes?state=confirmed")).body.recipes.find((r: Recipe) => r.id === h3r.id);
+    expect(capped).toMatchObject({ does: ["video", "animate"], video: { maxSeconds: 15, longestSeconds: 5 } });
+    expect(await refused({ duration: 6 })).toMatch(/from 1 to 5/);
+    expect(await refused({ extend: clip(1024, 576, 120, 24).toString("base64") })).toBe("That recipe can't extend a clip.");
+    expect(STARTERS.filter((st) => st.longestSeconds === 5).map((st) => st.id).sort()).toEqual([
+      "cobijada-h3-hybrid-realism-w4a8", "cobijada-h3-hybrid-w4a8", "minimax-h3-turbo-realism-w6a8", "minimax-h3-turbo-w6a8", "singularity-h3-v2-realism-w4a8", "singularity-h3-v2-w4a8"]);
     expect(s.lines.join("\n")).not.toContain(MARKER);
   });
 

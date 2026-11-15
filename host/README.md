@@ -395,8 +395,12 @@ per host, and Lyrica's router filters create tiers by it.
   community fine-tune, ref2va only, on the `minimax-h3-ref2va` template
   with the ref2v 4-step LoRA; it chains to 60 s as Turbo does). Each of
   these also comes as a Realism starter with fal's Realism People LoRA
-  (0.12 GiB, strength 1), whose trigger word r34l1sm the host puts at the
-  start of every prompt. The community files say
+  (0.12 GiB; strength 0.7 on fl2va models, 0.5 on Singularity's ref2va,
+  where full strength smears faces or rings the hair with a halo), whose
+  trigger word r34l1sm the host puts at the
+  start of every prompt. The w6a8 and w4a8 video starters make one clip
+  of at most 5 s (`longestSeconds`): a chained clip runs a 30 GB host out
+  of memory. The community files say
   Apache 2.0, but as H3 derivatives they come under H3's licence.
   Krea 2 Raw is Krea 2's undistilled model beside Turbo, sharing its
   encoder and VAE: 52 steps at CFG 3.5 (Krea's own figures) with a negative prompt, against

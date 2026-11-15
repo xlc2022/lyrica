@@ -998,7 +998,7 @@ export class Images {
     if (!spec) throw new HostError(500, "internal", `Template ${template.name} has no video settings.`);
     const chain = template.continuation;
     const loras = this.jobLoras(recipe, body.loras);
-    if (extending && !(chain && recipe.does.some((a) => a === "video" || a === "animate"))) throw invalid("That recipe can't extend a clip.");
+    if (extending && !(chain && !recipe.longestSeconds && recipe.does.some((a) => a === "video" || a === "animate"))) throw invalid("That recipe can't extend a clip.");
 
     const values = startValues(template, recipe, { duration: 5 });
     if (typeof body.prompt !== "string" || !body.prompt) throw invalid("prompt is missing.");
@@ -1070,7 +1070,7 @@ export class Images {
       values.height = snap(h);
     }
     // A driving clip can't give more moves than it has. Extending, the duration is what's added.
-    const longest = extending ? LONGEST_SECONDS : longestSeconds(template);
+    const longest = extending ? LONGEST_SECONDS : longestSeconds(template, recipe.longestSeconds);
     let duration = Math.min(num(body, "duration", 1, longest) ?? Math.min(Number(values.duration), longest), driveSeconds);
     if (source) {
       // The whole clip unless fewer seconds are asked for, in the model's frame counts, never past the clip's own frames.
