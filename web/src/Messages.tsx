@@ -110,6 +110,8 @@ export function Conversation({ ctx, pool, base, threadId, subagent, thread, rewi
       {live.busy && live.gpuWait
         ? <p className="thinking-dots" role="status"><span>{live.gpuWait.loading ? "Loading the model…" : `Waiting for the GPU, busy with ${live.gpuWait.busyWith ?? "other work"}…`}</span></p>
         : live.busy && !live.items.some((x) => x.role === "assistant") && <p className="thinking-dots" role="status">{env.liveCall && callLine(env.liveCall.call, 0) ? <><span className="sr-only">{her()} is thinking…</span><CallStats live={env.liveCall} /></> : <span>{her()} is thinking…</span>}</p>}
+      {/* A compaction running (hers, a /compact, or Pi's at the window's edge): the stored Compacted marker takes its place. */}
+      {live.compacting && <div className="marker" data-type="compacting" role="status"><span className="marker-line">Compacting <span className="state" data-state="running">running</span></span></div>}
       {live.permissions.filter((p) => !p.subagent || !shown.has(p.subagent.threadId) || p.subagent.threadId === threadId)
         .map((p) => <PermissionPrompt key={p.requestId} base={base} p={p} env={env} />)}
       {live.errors.map((e, i) => <p key={i} className="error turn-error" role="alert">{e}</p>)}

@@ -438,7 +438,7 @@ button.jump-latest { font-size: 13px; min-height: var(--tap); }
 .call-stats { color: var(--muted); font-size: 12px; line-height: 20px; }
 .call-stats .num { font-size: 12px; white-space: nowrap; }
 .marker { font-size: 13px; color: var(--muted); min-width: 0; }
-.marker > button { display: inline-flex; gap: 6px; align-items: center; max-width: 100%; min-height: 28px; border: 1px dashed var(--line); background: transparent; border-radius: 999px; padding: 2px 10px; color: var(--muted); overflow: hidden; white-space: nowrap; font-weight: 400; }
+.marker > button, .marker > .marker-line { display: inline-flex; gap: 6px; align-items: center; max-width: 100%; min-height: 28px; border: 1px dashed var(--line); background: transparent; border-radius: 999px; padding: 2px 10px; color: var(--muted); overflow: hidden; white-space: nowrap; font-weight: 400; }
 .marker > button code { overflow: hidden; text-overflow: ellipsis; min-width: 0; color: var(--fg); font-size: 12px; }
 .marker[data-type="recall"] > button::before, .marker[data-type="remember"] > button::before { content: ""; flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
 .tool-name { font: 600 12px var(--mono); color: var(--accent); }
@@ -476,7 +476,20 @@ button.jump-latest { font-size: 13px; min-height: var(--tap); }
 .main > .head, .composer, .subnote, .offline { flex: none; }
 
 .composer { display: grid; justify-items: center; padding: 10px var(--gutter) max(6px, env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: var(--panel); }
-.composer-wrap { display: grid; gap: 2px; width: 100%; max-width: 76ch; }
+.composer-wrap { display: grid; gap: 2px; width: 100%; max-width: 76ch; position: relative; }
+/* Commands in the message box (docs/ux.md §6): the memory editor's [[ popover, above the box; command in mono, the control's label, its value. */
+.command-menu { position: absolute; left: 0; bottom: calc(100% + 6px); z-index: 8; width: min(440px, 100%); max-height: min(50vh, 420px); overflow-y: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 6px; box-shadow: 0 8px 30px rgb(0 0 0 / 0.18); display: grid; gap: 1px; }
+.command-menu .eyebrow { padding: 4px 10px 2px; }
+.command-menu .item { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; text-align: left; border: 0; background: transparent; border-radius: 8px; padding: 6px 10px; min-height: 32px; width: 100%; font-weight: 400; color: var(--fg); box-shadow: none; }
+.command-menu .item:hover, .command-menu .item[aria-selected="true"] { background: var(--tool); }
+.command-menu .cmd { font-family: var(--mono); font-size: 13px; white-space: nowrap; }
+.command-menu .cmd .arg, .command-menu .lbl, .command-menu .val { color: var(--muted); }
+.command-menu .item.opt { grid-template-columns: minmax(0, 1fr) auto; }
+.command-menu .item.opt .lbl { color: var(--fg); }
+.command-menu .lbl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.command-menu .val { font-size: 12px; white-space: nowrap; max-width: 16ch; overflow: hidden; text-overflow: ellipsis; }
+.command-menu .mk { color: var(--accent); font-weight: 600; }
+@media (pointer: coarse) { .command-menu .item { min-height: 44px; } }
 .composer[data-dragging="true"] { outline: 2px dashed var(--accent); outline-offset: -6px; }
 /* The box holds the text and Send; the quiet row under it holds "+" and the mode. Nothing in either has a border but the box. */
 .composer-box { position: relative; border: 1px solid var(--edge); border-radius: 14px; background: var(--bg); padding: 5px 44px 5px 10px; }

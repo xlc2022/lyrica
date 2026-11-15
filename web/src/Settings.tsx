@@ -57,10 +57,13 @@ function speaker(value: TaskModel, allowed: EndpointInfo[]): OfferingInfo | unde
 }
 
 /** Always visible in the header: the main conversation's model, cloud or local, and its endpoint. */
-export function ModelBadge({ base, settings, onChange, readOnly }: {
+export function ModelBadge({ base, settings, onChange, readOnly, opener }: {
   base: string; settings: ThreadSettings; onChange: (s: ThreadSettings) => void; readOnly: boolean;
+  /** Bumped to open the picker from elsewhere (the message box's /model). */
+  opener?: number;
 }) {
   const [open, setOpen] = useState(false);
+  useEffect(() => { if (opener) setOpen(true); }, [opener]);
   const anchor = useRef<HTMLSpanElement>(null);
   const button = useRef<HTMLButtonElement>(null);
   const close = useCallback(() => setOpen(false), []);

@@ -1020,22 +1020,66 @@ export class HostedThread {
   private async afterTurn(opened: Opened, aborted: boolean): Promise<void> {
     const pace = opened.meter.takePace();
     if (pace) this.o.models.recordPace(this.userId, this.threadId, pace, this.turnTask, this.pool);
-    const asked = opened.meter.pending;
+    // Hers wins over the person's /compact asked during the turn: either way the thread compacts once.
+    const asked = opened.meter.pending ?? this.compactAsked;
     opened.meter.pending = undefined;
+    this.compactAsked = undefined;
     // Stop means stop: a stopped turn's compaction is dropped.
-    if (asked && !aborted) {
-      opened.meter.running = asked;
-      try {
-        // With her summary, session_before_compact hands it to Pi; without, Pi writes one with her notes.
-        await opened.session.compact(asked.summary ? undefined : asked.notes || undefined);
-      } catch (err) {
-        this.emit({ type: "error", message: `The thread couldn't compact: ${plainError((err as Error).message)}` });
-      } finally {
-        opened.meter.running = undefined;
-      }
-    }
+    if (asked && !aborted) await this.compactNow(opened, asked);
     const context = opened.meter.report();
     if (context) this.emit({ type: "context", context });
+  }
+
+  /** Runs a compaction: with her summary, session_before_compact hands it to Pi; without, Pi writes one with the notes. */
+  private async compactNow(opened: Opened, asked: { summary?: string; notes?: string }): Promise<boolean> {
+    opened.meter.running = asked;
+    try {
+      await opened.session.compact(asked.summary ? undefined : asked.notes || undefined);
+      return true;
+    } catch (err) {
+      const why = (err as Error).message;
+      // Pi keeps the newest quarter of the window: a short conversation has nothing older to summarise.
+      this.emit({ type: "error", message: /nothing to compact/i.test(why) ? "Nothing to compact yet: the whole conversation still fits in what a compaction keeps." : `The thread couldn't compact: ${plainError(why)}` });
+      return false;
+    } finally {
+      opened.meter.running = undefined;
+    }
+  }
+
+  /** The person's /compact while a turn runs: it compacts when the turn ends. */
+  private compactAsked: { notes: string } | undefined;
+
+  /**
+   * The person's `/compact`: Pi's compaction with the thread's chat model, `notes` (what the summary must keep) as its
+   * instructions. Idle, it runs now, holding the turn so nothing starts meanwhile; while a turn runs, it waits for the
+   * turn's end, as hers does. A stopped turn drops it.
+   */
+  async compact(notes: string): Promise<{ queued: boolean }> {
+    if (this.busy) {
+      this.compactAsked = { notes: notes.trim() };
+      return { queued: true };
+    }
+    this.busy = true;
+    this.stopIdle();
+    let failed: Error | undefined;
+    try {
+      const opened = await this.open();
+      // A failure shows in the thread's error line (compactNow), so the request itself succeeds.
+      await this.compactNow(opened, { notes: notes.trim() });
+      const context = opened.meter.report();
+      if (context) this.emit({ type: "context", context });
+    } catch (err) {
+      failed = new Error(plainError(refusal(err)));
+    } finally {
+      this.busy = false;
+      this.startIdle();
+    }
+    // The person's messages sent meanwhile go now, together, as one turn; else a marked message waiting.
+    const waiting = this.queued.splice(0);
+    if (waiting.length) this.emit({ type: "queue", queued: [] });
+    await this.start(waiting.length ? waiting.join("\n\n") : undefined).catch(() => {});
+    if (failed) throw failed;
+    return { queued: false };
   }
 
   /**
@@ -1570,7 +1614,11 @@ export class HostedThread {
         if (entry.type === "custom_message" && entry.customType === DELEGATE_MESSAGE) this.notice(entry.content, entry.details);
         break;
       }
+      case "compaction_start":
+        this.emit({ type: "compacting", running: true });
+        break;
       case "compaction_end": {
+        this.emit({ type: "compacting", running: false });
         // Hers, or Pi's own at the window's edge: a marker that expands to the summary.
         const r = e.result;
         if (!r || e.aborted) break;

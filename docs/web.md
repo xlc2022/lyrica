@@ -1623,6 +1623,30 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   method is composing, Enter makes a new line and Send is the button. Every
   box that sends a message (the home box, a subagent's message box) shares
   this rule through `sendsOnEnter` in `src/ui.tsx`.
+- **Commands** (`src/Commands.tsx`, in a thread's message box; not the home
+  box or a subagent's): "/" as the box's first character opens a listbox
+  above it (`.command-menu`, the memory editor's `[[` popover), each row
+  the command in mono with what may follow it muted, the label of the
+  control it works and that control's value, the command's explanation as
+  its tooltip. Typing narrows it; Up and Down move, Enter picks (/model and
+  /new run; /compact, /thinking and /mode write "/name " for what follows,
+  so "/" and Enter never compact), Tab writes "/name ", Escape closes it; the textarea carries
+  `aria-autocomplete`, `aria-expanded`, `aria-controls` and
+  `aria-activedescendant`. A command with choices (/thinking, /mode, /model
+  by name) lists them, headed by its label, with a check on the current one.
+  Sending a line that names a command runs it instead of sending it (Send on
+  a phone, where Enter is a new line); a line that names none, such as a
+  path, is sent as a message. A command that works says so to a screen
+  reader (a polite live region), and one that can't puts why in the
+  conversation's error line, its text back in the box. The five commands
+  (with the terminal's /sleep, the budget's six, PRINCIPLES.md 8):
+  /compact [what to keep] (`POST …/compact`), /model [name] (opens the
+  header's picker, or picks the first model that matches), /thinking and
+  /mode (the thread's settings, as the drawer and the mode menu set them),
+  and /new (a thread in the same pool, opened; not in a project, whose
+  threads she starts). `ModelBadge` takes an `opener` count that opens it. While a compaction runs (`Live.compacting`, from the `compacting`
+  event) the conversation ends with a **Compacting** marker, running; one
+  between turns reloads the messages so its Compacted marker shows at once.
   Shift+Tab in the box cycles
   Ask, Accept edits, Plan, Auto, shown at once. Changes are saved one at a
   time in the order pressed, and a message sent meanwhile waits for them; a

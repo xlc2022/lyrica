@@ -1325,6 +1325,11 @@ export interface ThreadSettings {
  * refuse any part: a cloud model in a private or local-only thread, a folder
  * outside the allowed paths, a subagent wider than its parent.
  */
+/** `POST …/compact`: the message box's /compact. `notes` is what the summary must keep. */
+export interface CompactRequest { notes?: string }
+/** `queued`: a turn was running, so it compacts when the turn ends. */
+export interface CompactResponse { queued: boolean }
+
 export interface ThreadSettingsChange {
   code?: boolean;
   evidence?: EvidenceSetting;
@@ -1886,6 +1891,8 @@ export type ThreadEvent =
   | { type: "gpu_wait"; wait: GpuWait | null }
   /** The model request a turn waits on, at most every 500 ms while it changes; null once it ends (and at `turn_end`). Not replayed. */
   | { type: "live_call"; call: LiveCall | null }
+  /** A compaction (hers, the person's /compact, or Pi's at the window's edge) started (`running`), or ended either way. */
+  | { type: "compacting"; running: boolean }
   /** The thread was compacted, by her or by Pi at the window's edge (also stored, as a `notice` message). */
   | { type: "compacted"; before: number; after?: number; summary: string }
   /**

@@ -50,6 +50,8 @@ export interface Live {
   gpuWait?: GpuWait;
   /** The model request the turn waits on, with when it went out by this browser's clock: shown in place of the dots. */
   liveCall?: { call: LiveCall; since: number };
+  /** A compaction is running: a Compacting marker at the conversation's end until it ends. */
+  compacting?: boolean;
 }
 
 export const initialLive: Live = { busy: false, queued: [], permissions: [], making: {}, items: [], errors: [], reload: 0, tools: 0, ended: 0, subagents: {}, settings: 0, children: 0 };
@@ -218,14 +220,17 @@ export function liveReducer(s: Live, e: LiveAction): Live {
     }
     case "context":
       return { ...s, context: e.context };
+    case "compacting":
+      return { ...s, compacting: e.running || undefined };
     case "gpu_wait":
       return { ...s, gpuWait: e.wait ?? undefined };
     // Its clock runs from when the request went out, by this browser's clock.
     case "live_call":
       return { ...s, liveCall: e.call ? { call: e.call, since: Date.now() - e.call.ms } : undefined };
-    // The compaction marker appears when the messages reload.
-    case "usage":
+    // The compaction marker appears when the messages reload: at the turn's end, or now for a /compact between turns.
     case "compacted":
+      return s.busy ? s : { ...s, reload: s.reload + 1, ended: s.items.length };
+    case "usage":
     case "reactions":
     // The stored messages reload (stream.ts).
     case "renamed":

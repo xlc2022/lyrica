@@ -664,7 +664,11 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     the old entries and keeps the recent ones; pinned messages stay. It
     shows as a marker, **Compacted · 41k → 6k**, expanding to the summary.
     Pi's automatic compaction stays on at the window's edge as the safety
-    net.
+    net. The person compacts with **/compact** in the message box: Pi's
+    summary on the chat model, with what they typed after it as its notes,
+    at once, or when her turn ends. It doesn't wait on her answering, so it
+    works when her model is struggling. While any compaction runs, the
+    conversation shows a **Compacting** marker.
   - **Tokens** follows Checklist once a thread has a counted turn. Its
     popover sums every request's reads (cached reads included) as input and
     its outputs as output, each with their total, by model, with the share

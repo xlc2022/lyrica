@@ -18,6 +18,17 @@ describe("the live view of a thread's stream", () => {
     expect(run([{ type: "reset" }], s).making).toEqual({});
   });
 
+  it("shows a compaction while it runs, and reloads the stored marker after one between turns", () => {
+    const s = run([{ type: "compacting", running: true }]);
+    expect(s.compacting).toBe(true);
+    const done = run([{ type: "compacting", running: false }, { type: "compacted", before: 41000, after: 6000, summary: "kept" }], s);
+    expect(done.compacting).toBeUndefined();
+    expect(done.reload).toBe(s.reload + 1);
+    // During a turn the turn's end reloads them.
+    const busy = run([{ type: "hello", busy: true, queued: [], permissions: [], making: [] }]);
+    expect(run([{ type: "compacted", before: 1, summary: "x" }], busy).reload).toBe(busy.reload);
+  });
+
   it("says what a reply waits for on the GPU until it no longer waits or the turn ends", () => {
     const s = run([
       { type: "hello", busy: true, queued: [], permissions: [], making: [], gpuWait: { busyWith: "a chat model" } },

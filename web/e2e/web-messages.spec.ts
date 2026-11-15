@@ -524,6 +524,57 @@ test("the model badge shows the current model, and a change takes effect", async
   await expect(page.getByRole("button", { name: /^Model:/ })).toContainText("local-model");
 });
 
+test("\"/\" in the message box lists the commands, and each works a control that is already there", async ({ page, baseURL }) => {
+  await enter(page, baseURL!);
+  await newThread(page, "General");
+  const message = page.getByLabel("Message", { exact: true });
+  const menu = page.getByRole("listbox", { name: "Commands" });
+  // SHOTS=<dir> keeps pictures for a pull request.
+  const shot = async (name: string) => { if (process.env.SHOTS) await page.screenshot({ path: `${process.env.SHOTS}/${name}-${phone(page) ? 390 : 1280}.png` }); };
+  await message.fill("/");
+  await expect(menu.getByRole("option")).toHaveCount(5);
+  await expect(message).toHaveAttribute("aria-expanded", "true");
+  await shot("commands");
+  // "/" and Enter never compact: picking /compact waits for what to keep.
+  await message.press("Enter");
+  await expect(message).toHaveValue("/compact ");
+  await message.fill("/");
+  await message.pressSequentially("th");
+  await expect(menu.getByRole("option")).toHaveCount(1);
+  await message.press("Tab");
+  await expect(message).toHaveValue("/thinking ");
+  const levels = page.getByRole("listbox", { name: "Thinking" });
+  await expect(levels.getByRole("option").first()).toHaveText(/Default/);
+  await shot("commands-thinking");
+  await message.press("Escape");
+  await expect(levels).toHaveCount(0);
+  // A line that names no command goes to her as a message.
+  await send(page, "/usr/bin is missing");
+  await expect(page.getByText("You said: /usr/bin is missing")).toBeVisible();
+  await expect(menu).toHaveCount(0);
+
+  // /mode with a choice changes the mode word under the box, and nothing is sent.
+  await message.fill("/mode ");
+  await page.getByRole("listbox", { name: "Mode" }).getByRole("option", { name: /^Ask/ }).click();
+  await expect(page.locator(".mode-picker")).toContainText("Ask");
+  await expect(message).toHaveValue("");
+  await message.fill("/mode auto");
+  await message.press("Enter");
+  await expect(page.locator(".mode-picker")).toContainText("Auto");
+  // /model opens the header's picker.
+  await message.fill("/model");
+  await message.press("Enter");
+  await expect(page.getByRole("dialog", { name: /^Model for/ })).toBeVisible();
+  await page.keyboard.press("Escape");
+  // /compact asks lyricad to compact; Send runs a command line as Enter does (a phone's Enter is a new line).
+  const compacted = page.waitForResponse((r) => r.url().endsWith("/compact") && r.request().method() === "POST");
+  await send(page, "/compact keep the garden plan");
+  expect((await compacted).status()).toBe(200);
+  await expect(message).toHaveValue("");
+  await shot("commands-compacted");
+  await noHorizontalScroll(page);
+});
+
 test("private and local-only threads offer only local models", async ({ page, baseURL }) => {
   await enter(page, baseURL!);
   await newThread(page, "Private");
