@@ -263,7 +263,10 @@ detected one is private), and the models folder. Then it:
    use, and the fixed address of `host-api`'s own bridge.
 2. Applies the egress rules (`egress.sh`, with sudo) and installs
    `lyrica-host-egress.service`, which applies them again at boot and after
-   every Docker restart.
+   every Docker restart. At boot it waits up to a minute for the LAN
+   address, so on a DHCP machine Docker doesn't start before the address
+   exists; since 2026-11-15 a Docker drop-in you added to order it after
+   the network is no longer needed and can go once the host is updated.
 3. Builds the `host-api` and speech images and starts the stack
    (`docker compose up -d`). The ComfyUI image is large and builds here
    too, from pinned commits.
