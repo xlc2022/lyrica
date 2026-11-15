@@ -2844,7 +2844,7 @@ respellings(t, from, to, c): Respelling[]  // how thread c writes the file t ren
 keepFiles(t, mentioned): Promise<number>  // a daughter about to leave its family (Detach; kept when its parent is deleted): copies each file of the folder and /shared it worked in that `mentioned` names or it wrote, with its thumbnail, to the same path in its own folder; in a no-network sandbox, the old folders read-only; a file already there is left. Call before its settings lose the parent
 files(t): ThreadFiles                     // the Files panel, every call a fresh no-network sandbox over the thread's grants and familyFolders(t), read-only:
   // roots() (in a project chat also a read-only `member` root with its threadId per family folder), list(dir), search(root, q), images(), read(path, range?) → { stream, size, type } (only the range's bytes; RangeError past the end), upload(dir, name, bytes) → path,
-  // mkdir(path), rename(from, to) → { from, to } as she sees them, remove(paths), zip(paths) → Readable. FilesRefused: outside the grants, a root, .lyrica, read-only.
+  // mkdir(path), rename(from, to) → { from, to } as she sees them, remove(paths), zip(paths) → { stream, bytes, files } (bytes: the exact length). FilesRefused: outside the grants, a root, .lyrica, read-only.
 changes(userId): FileChanges              // her write and edit calls' changes, for removing turns
 checkouts(t): { name, path, kind }[]     // where its code lives, for the changes view: worktrees, clones, writable grants (docs/daemon.md "Changes")
 targetFor(t, machine?): ExecutionTarget  // the sandbox, or an SSH machine the thread may use now (a Proxmox one is refused)

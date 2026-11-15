@@ -16,7 +16,7 @@ import { Icon } from "./icons.tsx";
 import { her } from "./name.ts";
 import { go } from "./route.ts";
 import { Crumbs, Main, PanelButtons, usePanel, type ShellContext } from "./Shell.tsx";
-import { ConfirmDialog, ErrorText, InlineRename, menuArrows, useLongPress, useSelection } from "./ui.tsx";
+import { ConfirmDialog, Dialog, ErrorText, InlineRename, menuArrows, useLongPress, useSelection } from "./ui.tsx";
 
 type Tab = "files" | MediaTab | "artifacts";
 /** The tabs that are a grid of one kind of file, each the route that lists them. */
@@ -62,6 +62,72 @@ const basename = (p: string) => p.slice(p.lastIndexOf("/") + 1);
 const safeDecode = (s: string) => { try { return decodeURIComponent(s); } catch { return s; } };
 const under = (p: string, dir: string) => p === dir || p.startsWith(`${dir}/`);
 export const kb = (n: number) => (n < 1024 ? `${n} B` : n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 1024))} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`);
+
+/**
+ * Download as zip (docs/ux.md §6): a dialog while lyricad builds the zip and the browser fetches it, with how far it
+ * has got and Cancel, which stops the build too; the browser saves the zip at the end and the dialog closes.
+ */
+export function ZipDialog({ base, paths, name, onClose }: { base: string; paths: string[]; name: string; onClose: () => void }) {
+  const [got, setGot] = useState<{ bytes: number; total?: number; files?: number }>();
+  const [error, setError] = useState("");
+  const stop = useRef<AbortController>(undefined);
+  const close = useRef(onClose);
+  close.current = onClose;
+  useEffect(() => {
+    const ctl = new AbortController();
+    stop.current = ctl;
+    void (async () => {
+      const r = await fetch(`${base}/zip`, { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify({ paths }), signal: ctl.signal });
+      if (!r.ok) throw new Error((await r.json().catch(() => ({ error: "The zip failed." })) as { error: string }).error);
+      const total = Number(r.headers.get("content-length")) || undefined;
+      const files = Number(r.headers.get("x-zip-files")) || undefined;
+      setGot({ bytes: 0, total, files });
+      const parts: Uint8Array<ArrayBuffer>[] = [];
+      let bytes = 0, shown = 0;
+      const reader = r.body!.getReader();
+      try {
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          parts.push(value);
+          bytes += value.length;
+          if (performance.now() - shown > 100) { shown = performance.now(); setGot({ bytes, total, files }); }
+        }
+      } catch (err) {
+        if (ctl.signal.aborted) throw err;
+        throw new Error("The zip stopped part way: a file couldn't be read.");
+      }
+      if (total && bytes !== total) throw new Error("The zip stopped part way: a file couldn't be read.");
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(new Blob(parts, { type: "application/zip" }));
+      a.download = `${name}.zip`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 60_000);
+      close.current();
+    })().catch((err: Error) => { if (!ctl.signal.aborted) setError(err.message); });
+    return () => ctl.abort();
+  }, [base, paths, name]);
+  const cancel = () => { stop.current?.abort(); onClose(); };
+  const percent = got?.total ? Math.min(100, Math.floor((got.bytes / got.total) * 100)) : undefined;
+  return (
+    <Dialog labelledBy="zip-title" className="zip-dialog" onCancel={cancel} onSubmit={cancel}>
+      <h2 id="zip-title">Zipping {name}</h2>
+      {error ? <ErrorText error={error} /> : <>
+        <div className="bar" role="progressbar" aria-labelledby="zip-title" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent}
+          aria-valuetext={got ? `${kb(got.bytes)}${got.total ? ` of ${kb(got.total)}` : ""}` : "Listing files"}>
+          <span className="seg-loaded" style={{ width: `${percent ?? 0}%` }} />
+        </div>
+        <p className="meta zip-facts" aria-live="polite">
+          {!got ? <><span className="spinner" role="status" aria-label="Working" /><span>Listing files</span></> : <span>
+            {got.files !== undefined && <><span className="num">{got.files.toLocaleString()}</span> {got.files === 1 ? "file" : "files"} · </>}
+            <span className="num">{kb(got.bytes)}</span>{got.total !== undefined && <> of <span className="num">{kb(got.total)}</span></>}
+          </span>}
+        </p>
+      </>}
+      <div className="dlg-actions"><button type="submit" autoFocus>{error ? "Close" : "Cancel"}</button></div>
+    </Dialog>
+  );
+}
 /** A path as the panel names it: inside the thread's folder without the prefix, elsewhere as it is. */
 
 /** `path`: a file to show on arrival (a link in the conversation), with its folders opened in the tree. */
@@ -92,6 +158,7 @@ export function FilesPage({ ctx, pool, threadId, threads, path }: { ctx: ShellCo
   const [sort, setSort] = useMediaSort();
   /** The images Auto-name is naming, in its drawer. */
   const [naming, setNaming] = useState<string[]>();
+  const [zipping, setZipping] = useState<{ paths: string[]; name: string }>();
   /** Where an upload or a new folder goes when nothing more specific was picked: the last folder opened. */
   const [cwd, setCwd] = useState(WORKDIR);
   const [dropping, setDropping] = useState(false);
@@ -257,9 +324,7 @@ export function FilesPage({ ctx, pool, threadId, threads, path }: { ctx: ShellCo
   const download = (paths: string[]) => {
     const a = document.createElement("a");
     if (paths.length === 1 && listingEntry(paths[0]!)?.kind !== "folder") { a.href = contentUrl(paths[0]!, true); a.download = basename(paths[0]!); a.click(); return; }
-    fetch(`${base}/zip`, { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify({ paths }) })
-      .then(async (r) => { if (!r.ok) throw new Error((await r.json().catch(() => ({ error: "the zip failed" })) as { error: string }).error); return r.blob(); })
-      .then((blob) => { a.href = URL.createObjectURL(blob); a.download = `${paths.length === 1 ? basename(paths[0]!) : "files"}.zip`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 60_000); }, fail);
+    setZipping({ paths, name: paths.length === 1 ? basename(paths[0]!) : "files" });
   };
   const listingEntry = (p: string) => listings[parent(p)]?.entries.find((e) => e.path === p) ?? hits?.entries.find((e) => e.path === p);
   const copy = (paths: string[]) => navigator.clipboard?.writeText(paths.join("\n")).catch(fail);
@@ -539,6 +604,7 @@ export function FilesPage({ ctx, pool, threadId, threads, path }: { ctx: ShellCo
         </div>
       )}
       <input ref={picker} type="file" multiple hidden onChange={(e) => { send(uploadTo.current, e.target.files ?? []); e.target.value = ""; }} />
+      {zipping && <ZipDialog base={base} paths={zipping.paths} name={zipping.name} onClose={() => setZipping(undefined)} />}
       {naming && <AutoNameDrawer base={base} paths={naming} links={links} onClose={() => setNaming(undefined)}
         onRenamed={(moves) => { setSel(new Set()); void refresh(moves.flatMap((m) => [m.from, m.to])).catch(fail); }} />}
       {current && (

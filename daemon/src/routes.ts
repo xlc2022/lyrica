@@ -1767,9 +1767,13 @@ export function apiRoutes(d: Lyricad): Route[] {
         "content-type": "application/zip", "cache-control": "no-store",
         "content-disposition": `attachment; filename*=UTF-8''${encodeURIComponent(`${name}.zip`)}`,
         "content-security-policy": "default-src 'none'", "x-content-type-options": "nosniff",
+        // The exact length, so the web's dialog shows how far it has got; the count for its words.
+        "content-length": String(zip.bytes), "x-zip-files": String(zip.files),
       }),
-      zip.on("error", () => r.res.destroy());
-      zip.pipe(r.res);
+      zip.stream.on("error", () => r.res.destroy());
+      // Cancel or a closed tab stops the read in the sandbox too.
+      r.res.on("close", () => { if (!r.res.writableFinished) zip.stream.destroy(); });
+      zip.stream.pipe(r.res);
       return undefined;
     }),
     // --- Changes: the thread's branch against its base (docs/ux.md §6, "The changes a thread made") ---

@@ -62,6 +62,81 @@ export interface OriginEvents { added?(paths: string[]): void; moved?(from: stri
 /** Thrown for a path the panel may not touch: a root itself, or one outside the thread's folders. */
 export class FilesRefused extends Error {}
 
+/** A zip being built: its stream, its exact length in bytes and how many files it holds. */
+export interface ZipStream { stream: Readable; bytes: number; files: number }
+
+interface ZipFile { path: string; name: Buffer; size: number }
+
+/**
+ * Reads a GNU tar stream one entry at a time: a regular file's name (a long one comes in an `L` entry before it) and
+ * its data. Anything else in the stream (there should be nothing else) ends it.
+ */
+class TarReader {
+  private readonly it: AsyncIterator<Buffer>;
+  private held: Buffer = Buffer.alloc(0);
+  constructor(stream: AsyncIterable<Buffer>) { this.it = stream[Symbol.asyncIterator](); }
+
+  /** Up to `n` bytes as they come; throws if the stream ends first. */
+  private async *bytes(n: number): AsyncGenerator<Buffer> {
+    while (n > 0) {
+      if (!this.held.length) {
+        const r = await this.it.next();
+        if (r.done) throw new Error("the read ended early");
+        this.held = r.value;
+      }
+      const piece = this.held.subarray(0, n);
+      this.held = this.held.subarray(piece.length);
+      n -= piece.length;
+      yield piece;
+    }
+  }
+
+  private async block(n: number): Promise<Buffer> {
+    const parts: Buffer[] = [];
+    for await (const p of this.bytes(n)) parts.push(p);
+    return Buffer.concat(parts);
+  }
+
+  /** The next regular file's name and size, or undefined at the end of the archive. */
+  async next(): Promise<{ name: string; size: number } | undefined> {
+    let long: string | undefined;
+    for (;;) {
+      let header: Buffer;
+      try { header = await this.block(512); } catch { return undefined; }
+      if (header.every((b) => b === 0)) return undefined;
+      const size = tarNumber(header.subarray(124, 136));
+      const type = String.fromCharCode(header[156]!);
+      if (type === "L") {
+        const body = await this.block(Math.ceil(size / 512) * 512);
+        long = body.subarray(0, size).toString("utf8").replace(/\0+$/, "");
+        continue;
+      }
+      if (type !== "0" && type !== "\0") return undefined;
+      const name = long ?? header.subarray(0, 100).toString("utf8").replace(/\0[\s\S]*$/, "");
+      return { name, size };
+    }
+  }
+
+  /** The entry's data, `size` bytes, then the padding to its block skipped. */
+  async *data(size: number): AsyncGenerator<Buffer> {
+    yield* this.bytes(size);
+    const pad = (512 - (size % 512)) % 512;
+    for await (const _ of this.bytes(pad)) { /* padding */ }
+  }
+
+  /** Reads the rest of the stream (the end blocks). */
+  async drain(): Promise<void> {
+    this.held = Buffer.alloc(0);
+    for (;;) if ((await this.it.next()).done) return;
+  }
+}
+
+/** A tar header's number: octal, or base-256 when its first byte's top bit is set. */
+function tarNumber(field: Buffer): number {
+  if (field[0]! & 0x80) return field.subarray(1).reduce((n, b) => n * 256 + b, field[0]! & 0x7f);
+  return parseInt(field.toString("ascii").replace(/\0.*$/s, "").trim() || "0", 8);
+}
+
 /** The panel's operations for one thread, each a fresh sandbox run. */
 export class ThreadFiles {
   /**
@@ -335,88 +410,118 @@ export class ThreadFiles {
   /**
    * A zip of the files and folders, built as it streams (stored, not
    * compressed): nothing lands on disk. Each entry is named from its
-   * parent folder down, so `a/b` and `a/b/c.txt` zip as `b/c.txt`.
+   * parent folder down, so `a/b` and `a/b/c.txt` zip as `b/c.txt`. One
+   * sandbox run reads every file (GNU tar, whose stream is unpacked here),
+   * not one per file: starting a sandbox costs far more than reading a
+   * small file. `bytes` is the zip's exact length, known before it starts,
+   * so a download can show how far it has got: each file is kept to the
+   * size the listing found, cut or padded with zeros if it changed since.
    */
-  async zip(paths: string[]): Promise<Readable> {
+  async zip(paths: string[]): Promise<ZipStream> {
     if (!paths.length) throw new FilesRefused("nothing to zip");
-    const files: { path: string; name: string; size: number }[] = [];
+    const files: ZipFile[] = [];
     for (const raw of paths) {
       const p = this.allow(raw, false);
       const out = await this.capped(["find", p, "-name", PANEL_DIR, "-prune", "-o", "-type", "f", "-printf", ZIP_PRINTF], ZIP_FILES_LIMIT + 1 - files.length);
       for (const line of out) {
         const tab = line.indexOf("\t");
         const path = line.slice(tab + 1);
-        files.push({ path, name: posix.relative(posix.dirname(p), path), size: Number(line.slice(0, tab)) });
+        files.push({ path, name: Buffer.from(posix.relative(posix.dirname(p), path), "utf8"), size: Number(line.slice(0, tab)) });
         if (files.length > ZIP_FILES_LIMIT) throw new FilesRefused(`more than ${ZIP_FILES_LIMIT} files; zip fewer at a time`);
       }
     }
     if (!files.length) throw new FilesRefused("no files to zip");
-    if (files.reduce((n, f) => n + f.size, 0) >= 0xffffffff) throw new FilesRefused("more than 4 GB; zip fewer at a time");
-    return Readable.from(this.zipChunks(files));
+    const bytes = files.reduce((n, f) => n + 30 + f.name.length + f.size + 16 + 46 + f.name.length, 22);
+    if (bytes >= 0xffffffff) throw new FilesRefused("more than 4 GB; zip fewer at a time");
+    return { stream: Readable.from(this.zipChunks(files)), bytes, files: files.length };
   }
 
-  private async *zipChunks(files: { path: string; name: string }[]): AsyncGenerator<Buffer> {
-    const central: Buffer[] = [];
-    let offset = 0;
-    const now = dosTime(new Date());
-    for (const f of files) {
-      const name = Buffer.from(f.name, "utf8");
-      const local = Buffer.alloc(30);
-      local.writeUInt32LE(0x04034b50, 0);
-      local.writeUInt16LE(20, 4); // version needed
-      local.writeUInt16LE(0x0808, 6); // bit 3: sizes follow the data; bit 11: UTF-8 names
-      local.writeUInt16LE(0, 8); // stored
-      local.writeUInt16LE(now.time, 10);
-      local.writeUInt16LE(now.date, 12);
-      local.writeUInt16LE(name.length, 26);
-      const at = offset;
-      yield Buffer.concat([local, name]);
-      offset += local.length + name.length;
-      let crc = 0;
-      let size = 0;
-      const child = await this.box.start(["cat", "--", f.path]);
-      child.stdin.end();
-      const err: Buffer[] = [];
-      child.stderr.on("data", (d: Buffer) => err.push(d));
-      for await (const chunk of child.stdout as AsyncIterable<Buffer>) {
-        crc = crc32(chunk, crc);
-        size += chunk.length;
-        yield chunk;
+  private async *zipChunks(files: ZipFile[]): AsyncGenerator<Buffer> {
+    const child = await this.box.start(["tar", "--format=gnu", "--create", "--file=-", "--absolute-names", "--no-recursion", "--hard-dereference", "--null", "--files-from=-"]);
+    const err: Buffer[] = [];
+    child.stderr.on("data", (d: Buffer) => err.push(d));
+    child.stdin.on("error", () => {});
+    child.stdin.end(Buffer.concat(files.flatMap((f) => [Buffer.from(f.path, "utf8"), Buffer.alloc(1)])));
+    const closed = new Promise<number | null>((resolve) => (child.exitCode !== null || child.signalCode !== null ? resolve(child.exitCode) : child.once("close", resolve)));
+    const said = () => Buffer.concat(err).toString().trim();
+    const tar = new TarReader(child.stdout as AsyncIterable<Buffer>);
+    try {
+      const central: Buffer[] = [];
+      let offset = 0;
+      const now = dosTime(new Date());
+      for (const f of files) {
+        const entry = await tar.next();
+        if (!entry || entry.name !== f.path) {
+          child.kill("SIGKILL");
+          await closed;
+          throw new Error(said() || `could not read ${f.path}`);
+        }
+        const local = Buffer.alloc(30);
+        local.writeUInt32LE(0x04034b50, 0);
+        local.writeUInt16LE(20, 4); // version needed
+        local.writeUInt16LE(0x0808, 6); // bit 3: sizes follow the data; bit 11: UTF-8 names
+        local.writeUInt16LE(0, 8); // stored
+        local.writeUInt16LE(now.time, 10);
+        local.writeUInt16LE(now.date, 12);
+        local.writeUInt16LE(f.name.length, 26);
+        const at = offset;
+        yield Buffer.concat([local, f.name]);
+        offset += local.length + f.name.length;
+        let crc = 0;
+        // The size the listing found: a file that grew since is cut there, one that shrank is padded with zeros.
+        let left = f.size;
+        for await (const chunk of tar.data(entry.size)) {
+          const piece = chunk.subarray(0, left);
+          if (!piece.length) continue;
+          crc = crc32(piece, crc);
+          left -= piece.length;
+          yield piece;
+        }
+        if (left > 0) {
+          const pad = Buffer.alloc(left);
+          crc = crc32(pad, crc);
+          yield pad;
+        }
+        offset += f.size;
+        const descriptor = Buffer.alloc(16);
+        descriptor.writeUInt32LE(0x08074b50, 0);
+        descriptor.writeUInt32LE(crc >>> 0, 4);
+        descriptor.writeUInt32LE(f.size, 8);
+        descriptor.writeUInt32LE(f.size, 12);
+        yield descriptor;
+        offset += descriptor.length;
+        const head = Buffer.alloc(46);
+        head.writeUInt32LE(0x02014b50, 0);
+        head.writeUInt16LE(20, 4); // made by
+        head.writeUInt16LE(20, 6); // needed
+        head.writeUInt16LE(0x0808, 8);
+        head.writeUInt16LE(0, 10);
+        head.writeUInt16LE(now.time, 12);
+        head.writeUInt16LE(now.date, 14);
+        head.writeUInt32LE(crc >>> 0, 16);
+        head.writeUInt32LE(f.size, 20);
+        head.writeUInt32LE(f.size, 24);
+        head.writeUInt16LE(f.name.length, 28);
+        head.writeUInt32LE(at, 42);
+        central.push(head, f.name);
       }
-      const code = await new Promise<number | null>((resolve) => (child.exitCode !== null ? resolve(child.exitCode) : child.once("close", resolve)));
-      if (code !== 0) throw new Error(Buffer.concat(err).toString().trim() || `could not read ${f.path}`);
-      offset += size;
-      const descriptor = Buffer.alloc(16);
-      descriptor.writeUInt32LE(0x08074b50, 0);
-      descriptor.writeUInt32LE(crc >>> 0, 4);
-      descriptor.writeUInt32LE(size, 8);
-      descriptor.writeUInt32LE(size, 12);
-      yield descriptor;
-      offset += descriptor.length;
-      const entry = Buffer.alloc(46);
-      entry.writeUInt32LE(0x02014b50, 0);
-      entry.writeUInt16LE(20, 4); // made by
-      entry.writeUInt16LE(20, 6); // needed
-      entry.writeUInt16LE(0x0808, 8);
-      entry.writeUInt16LE(0, 10);
-      entry.writeUInt16LE(now.time, 12);
-      entry.writeUInt16LE(now.date, 14);
-      entry.writeUInt32LE(crc >>> 0, 16);
-      entry.writeUInt32LE(size, 20);
-      entry.writeUInt32LE(size, 24);
-      entry.writeUInt16LE(name.length, 28);
-      entry.writeUInt32LE(at, 42);
-      central.push(entry, name);
+      // tar's end blocks; then its exit: 1 only says a file changed while it was read, which the sizes above allow for.
+      await tar.drain();
+      const code = await closed;
+      if (code !== 0 && code !== 1) throw new Error(said() || `tar failed (${code})`);
+      const dir = Buffer.concat(central);
+      yield dir;
+      const end = Buffer.alloc(22);
+      end.writeUInt32LE(0x06054b50, 0);
+      end.writeUInt16LE(files.length, 8);
+      end.writeUInt16LE(files.length, 10);
+      end.writeUInt32LE(dir.length, 12);
+      end.writeUInt32LE(offset, 16);
+      yield end;
+    } finally {
+      // A download stopped part way (Cancel, a closed tab) stops the read too.
+      if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
     }
-    const dir = Buffer.concat(central);
-    yield dir;
-    const end = Buffer.alloc(22);
-    end.writeUInt32LE(0x06054b50, 0);
-    end.writeUInt16LE(files.length, 8);
-    end.writeUInt16LE(files.length, 10);
-    end.writeUInt32LE(dir.length, 12);
-    end.writeUInt32LE(offset, 16);
-    yield end;
   }
 
   private async find(argv: string[], limit: number): Promise<FileListing> {
