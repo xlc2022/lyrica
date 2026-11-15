@@ -755,7 +755,16 @@ revoked. A revoked server must pair again.
   and for ROCm adds `compose.hsa.yaml` for `--hsa-override` and
   `compose.apu.yaml` (unified memory) on an APU alone. For NVIDIA without
   Docker's nvidia runtime (NixOS), `compose.cdi.yaml` swaps the GPU
-  reservations for CDI devices. They log nothing
+  reservations for CDI devices. So it does on a driver from 525 to 569,
+  older than the images' CUDA 12.8: the container toolkit would put CUDA's
+  forward-compat library ahead of the driver's, and that library runs only
+  on datacenter cards. `install.sh` then writes `/etc/cdi/nvidia.yaml`
+  without the toolkit's `enable-cuda-compat` hook, sets
+  `NVIDIA_CTK_CDI_GENERATE_DISABLED_HOOKS=enable-cuda-compat` in
+  `/etc/nvidia-container-toolkit/nvidia-cdi-refresh.env` for the spec the
+  toolkit writes at every boot, and restarts Docker when a spec changed;
+  CUDA 12 runs the images on the driver's own library. It needs `nvidia-ctk`
+  and Docker's CDI support (on by default from Docker 28). They log nothing
   (Docker's `none` log driver).
   - On a host with a CMP 100-210 (PCI ID `10de:1df4` or `10de:1d84`),
     `install.sh` adds `compose.cmp.yaml`. Its llama.cpp
