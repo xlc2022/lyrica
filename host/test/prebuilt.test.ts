@@ -79,4 +79,18 @@ describe("the CMP's prebuilt images", () => {
     expect(read("install.sh")).toMatch(/\[\[ -n \$PREBUILT \]\] \|\| FILES\+=:compose\.sdcpp\.build\.yaml/);
     expect(read("install.sh")).toMatch(/\[\[ -n \$PREBUILT \]\] \|\| FILES\+=:compose\.whisper\.build\.yaml/);
   });
+
+  it("put the images beside a CMP on the other card, where ComfyUI runs and edits", () => {
+    const pick = (comfy: string, cmps: string, others: string) => sh(host, `image_gpus "${comfy}" "${cmps}" "${others}" 2>/dev/null`);
+    // A CMP alone: stable-diffusion.cpp on it.
+    expect(pick("", "0", "")).toBe("0");
+    // A first install beside a 3090: images on the 3090.
+    expect(pick("", "0", "1")).toBe("1");
+    expect(pick("", "1", "0 2")).toBe("0");
+    // A list naming both drops the CMP; one naming CMPs alone is the operator's choice and stays.
+    expect(pick("0,1", "0", "1")).toBe("1");
+    expect(pick("1,0,2", "1", "0 2")).toBe("0,2");
+    expect(pick("0", "0", "1")).toBe("0");
+    expect(pick("1", "0", "1")).toBe("1");
+  });
 });

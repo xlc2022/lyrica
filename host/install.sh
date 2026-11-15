@@ -343,8 +343,12 @@ if [[ $VENDOR == nvidia ]] && nvidia-smi --query-gpu=pci.device_id --format=csv,
   prebuilt_pick whispercpp "$CUDA_ARCHS" "$START"
   WHISPER_IMAGE=${PREBUILT:-lyrica-host-whispercpp:cmp}
   [[ -n $PREBUILT ]] || FILES+=:compose.whisper.build.yaml
-  # The (first) image GPU is one: stable-diffusion.cpp makes images in ComfyUI's place (compose.sdcpp.yaml).
-  if nvidia-smi -i "$(echo "${COMFY_GPU:-0}" | cut -d, -f1)" --query-gpu=pci.device_id --format=csv,noheader 2>/dev/null | grep -qiE '^0x(1df4|1d84)10de$'; then
+  # Beside another card, images go there (image_gpus); only with CMPs alone does stable-diffusion.cpp make
+  # them, on the first, in ComfyUI's place (compose.sdcpp.yaml).
+  GPU_IDS=$(nvidia-smi --query-gpu=index,pci.device_id --format=csv,noheader 2>/dev/null)
+  COMFY_GPU=$(image_gpus "$COMFY_GPU" "$(grep -iE ',[[:space:]]*0x(1df4|1d84)10de$' <<<"$GPU_IDS" | cut -d, -f1 | paste -sd' ' -)" \
+    "$(grep -viE ',[[:space:]]*0x(1df4|1d84)10de$' <<<"$GPU_IDS" | cut -d, -f1 | paste -sd' ' -)")
+  if grep -iE "^${COMFY_GPU%%,*},[[:space:]]*0x(1df4|1d84)10de$" <<<"$GPU_IDS" >/dev/null; then
     FILES+=:compose.sdcpp.yaml
     [[ $NVIDIA_CDI == 1 ]] && FILES+=:compose.sdcpp.cdi.yaml
     say "CMP 100-210 for images: stable-diffusion.cpp makes them in ComfyUI's place."
