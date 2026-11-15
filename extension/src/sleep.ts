@@ -288,6 +288,31 @@ export class Sleep {
     return [...this.waiting.values()].filter((w) => w.userId === userId).map(({ pool, endpointId }) => ({ pool, endpointId }));
   }
 
+  /**
+   * When a user's key comes back: a pool whose last run began before `since`
+   * (the last sleep time) missed that night, unrecorded if lyricad restarted
+   * meanwhile. The miss is recorded as a no-key skip and the pool sleeps now.
+   * Resolves once those runs end.
+   */
+  async catchUp(userId: string, since: string): Promise<void> {
+    if (this.mode(userId) === "manual") return;
+    const runs: Promise<unknown>[] = [];
+    for (const pool of ["general", "private"] as const) {
+      const view = this.o.memory.openThreadView(userId, pool);
+      let missed: boolean;
+      try {
+        const last = view.own.listSleepRuns(1)[0];
+        missed = !!last && last.startedAt < since;
+      } finally {
+        view.close();
+      }
+      if (!missed) continue;
+      if (!this.unrecorded.some((s) => s.userId === userId && s.pool === pool && s.at >= since)) this.unrecorded.push({ userId, pool, reason: "scheduled", at: since });
+      runs.push(this.run(userId, pool, "scheduled").catch((err: Error) => this.log(`sleep failed: ${err.name}`)));
+    }
+    await Promise.all(runs);
+  }
+
   /** lyricad's tick: sleep that waited for a plan runs once it resets, or once the user falls back. */
   resumeWaiting(): void {
     for (const [key, w] of this.waiting) {

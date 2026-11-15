@@ -449,6 +449,30 @@ describe("a night's sleep", () => {
     again.close();
   });
 
+  it("records a night missed without the key, even after a restart, and sleeps it once the key is back", async () => {
+    const s = await setup();
+    const v = s.view();
+    s.talk(v, "Something.", "{user} said something");
+    s.script({});
+    expect(await s.sleep.run(s.ada.id, "general", "scheduled")).toMatchObject({ status: "complete" });
+    s.talk(v, "Something else.", "{user} said something else");
+    v.close();
+    // The night came while the key was away and lyricad restarted, so nothing holds the skip.
+    s.keyring.lockUser(s.ada.id);
+    await new Promise((r) => setTimeout(r, 2));
+    const night = new Date().toISOString();
+    await s.users.authenticate("ada", "pw");
+    s.script({});
+    await s.sleep.catchUp(s.ada.id, night);
+    const again = s.view();
+    expect(again.own.listSleepRuns().map((r) => [r.status, r.skipReason])).toEqual([["complete", undefined], ["skipped", "no-key"], ["complete", undefined]]);
+    expect(again.own.listSleepRuns()[1]!.startedAt).toBe(night);
+    // Slept since that night: nothing more.
+    await s.sleep.catchUp(s.ada.id, night);
+    expect(again.own.listSleepRuns()).toHaveLength(3);
+    again.close();
+  });
+
   it("stops at Lock, or past a phase's limit, and marks the run partial", async () => {
     const s = await setup({ turns: 2 });
     const v = s.view();
