@@ -27,6 +27,8 @@ const CALL_MS = 30_000;
 
 /** The templates sd.cpp can make images for, and its flag for each text encoder slot. */
 const TEMPLATES = new Set(["z-image", "qwen-image", "krea2", "flux", "sdxl"]);
+/** Whether sd.cpp can make images for a template at all (it creates only; no edits, no video). */
+export const sdcppRuns = (template: string) => TEMPLATES.has(template);
 const ENCODERS: Record<string, string> = { qwen3: "--llm", "qwen2.5vl": "--llm", qwen3vl: "--llm", t5: "--t5xxl", clip_l: "--clip_l", clip_g: "--clip_g" };
 /** ComfyUI's sampler and scheduler names as sd.cpp names them; others take sd.cpp's default. */
 const SAMPLERS: Record<string, string> = {

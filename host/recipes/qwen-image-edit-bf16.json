@@ -1,0 +1,43 @@
+{
+  "name": "Qwen-Image-Edit 2509 bf16",
+  "family": "Qwen-Image",
+  "variantOf": "Qwen-Image-Edit 2509",
+  "variant": "bf16",
+  "template": "qwen-image-edit",
+  "backend": "comfyui",
+  "parts": [
+    {
+      "role": "diffusion",
+      "source": "huggingface",
+      "repo": "Comfy-Org/Qwen-Image-Edit_ComfyUI",
+      "path": "split_files/diffusion_models/qwen_image_edit_2509_bf16.safetensors",
+      "sha256": "2da4dc223f9e6cfb8aa97f966d1bb46b24dbae314256ba587cb02bfbcb60ef6d",
+      "size": 40861031488
+    },
+    {
+      "role": "text_encoder",
+      "slot": "qwen2.5vl",
+      "source": "huggingface",
+      "repo": "Comfy-Org/Qwen-Image_ComfyUI",
+      "path": "split_files/text_encoders/qwen_2.5_vl_7b.safetensors",
+      "sha256": "cfafd739459bc86257397259f612a9aee88e5b98e85b5c0d0d1717e898b3463a",
+      "size": 16584415576
+    },
+    {
+      "role": "vae",
+      "source": "huggingface",
+      "repo": "Comfy-Org/Qwen-Image_ComfyUI",
+      "path": "split_files/vae/qwen_image_vae.safetensors",
+      "sha256": "a70580f0213e67967ee9c95f05bb400e8fb08307e017a924bf3441223e023d1f",
+      "size": 253806246
+    }
+  ],
+  "loras": [],
+  "defaults": {
+    "steps": 20,
+    "cfg": 2.5,
+    "sampler": "euler",
+    "scheduler": "simple",
+    "shift": 3
+  }
+}
