@@ -36,7 +36,7 @@ import {
 import { AllowedPaths } from "./paths.ts";
 import type { Respelling } from "./renames.ts";
 import { generateSshKey, publicKeyOf, SshTarget } from "./ssh.ts";
-import { Jobs, type JobInfo } from "./jobs.ts";
+import { Jobs, machineReady, type JobInfo } from "./jobs.ts";
 import { sandboxedTransport, type SshTransport } from "./transport.ts";
 
 export * from "./worktree.ts";
@@ -539,7 +539,7 @@ export class Workspace {
         startJob: async (command: string, machine?: string, timeoutS?: number) => {
           const target = this.targetFor(t, machine);
           // A machine's job connects in the background, so one started while the machine reboots waits for it.
-          return this.jobs.start(t, machine || "sandbox", target, command, machine ? () => target.cwd() : await target.cwd(), timeoutS);
+          return this.jobs.start(t, machine || "sandbox", target, command, machine ? machineReady(target) : await target.cwd(), timeoutS);
         },
         jobs: () => this.jobs.list(t),
         jobOutput: (id: string) => this.jobs.output(t, id),

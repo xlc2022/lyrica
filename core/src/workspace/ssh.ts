@@ -64,6 +64,11 @@ export class SshTarget implements ExecutionTarget {
 
   async cwd(): Promise<string> { return this.cfg.root ?? (await this.connect()).home; }
 
+  reconnect(): void {
+    void this.conn?.then((c) => c.close(), () => {});
+    this.conn = undefined;
+  }
+
   close(): void {
     this.closed = true;
     void this.conn?.then((c) => c.close(), () => {});

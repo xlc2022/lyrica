@@ -42,6 +42,8 @@ export interface ExecutionTarget {
   run?(argv: string[], o?: { signal?: AbortSignal; timeoutMs?: number; cwd?: string; onData?: (data: Buffer) => void; maxBytes?: number }): Promise<{ code: number | null; stdout: Buffer; stderr: Buffer }>;
   /** The credentials its runs hold (the sandbox's tokens), so they can be hidden in output and kept out of calls that leave. */
   secrets?(): string[];
+  /** Drops a machine's kept connection, so the next call connects afresh (one left from before a reboot can look open). */
+  reconnect?(): void;
 }
 
 export const SECRET_HIDDEN = "[credential hidden]";
