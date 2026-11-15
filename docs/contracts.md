@@ -2469,7 +2469,10 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
       `CleanupItem`, `ModelUse`, `ModelsNotice`, `CallInfo`, `TextLibrary`,
       `LibraryEntry`, `HubTokenInfo` (last four characters), `HubTokenInput`.
     - **Threads:** `ThreadSettings` gains `preset`, `presetChoice`, `thinking`,
-      `thinkingLevels` and `answered`; `TaskModel` gains `list`, `label` and
+      `thinkingLevels` (off only where the model can stop thinking),
+      `thinkingNames` (the model's own word for a level: "On" for a
+      template's switch, a host's `efforts` such as GLM-5.3's High and Max)
+      and `answered`; `TaskModel` gains `list`, `label` and
       `modelId`. `ThreadSettingsChange.models` takes a ref, a list or null, and
       gains `preset` and `thinking`. `DELETE` on a thread calls
       `Models.forgetThread` for it and each subagent thread under it.

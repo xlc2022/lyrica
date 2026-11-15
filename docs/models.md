@@ -183,7 +183,9 @@ administrator pairs or manages them; a personal host lives in its user's
   gets `reasoning_effort` like any OpenAI-compatible endpoint; levels with no
   `off` (a template that reads `reasoning_effort`, GLM-5.3's) make it
   `alwaysThinks`, so off thinks at medium with a note, and the host hands the
-  level to the template in its own word (GLM-5.3's high is its max).
+  level to the template in its own word (GLM-5.3's high is its max). Those
+  words come along as `levelNames`, and the thread drawer's Thinking select
+  shows them, with no Off for a model that can't stop thinking.
 - `hostStatus` returns the host's status (GPUs, placements, loaded and
   pinned models, VRAM, queue) to anyone who can use it; `hostControl`
   pauses, resumes or restarts it and answers the whole status after, since

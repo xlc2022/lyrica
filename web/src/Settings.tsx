@@ -38,7 +38,7 @@ export const TASK_LABELS: Record<ThreadTask, string> = {
 /** The drawer's Models section after Conversation, Thinking and Fallback: its two quiet groups. */
 const HELPER_TASKS: readonly ThreadTask[] = ["subagent.cheap", "subagent.strong", "title", "watching"];
 const MEDIA_TASKS: readonly ThreadTask[] = ["image.fast", "image.create", "image.edit", "image.upscale", "video", "speech.transcribe", "speech.speak"];
-const levelName = (l: ThinkingLevel) => l[0]!.toUpperCase() + l.slice(1);
+const levelName = (l: string) => l[0]!.toUpperCase() + l.slice(1);
 /** What answers after the shown model: a thread's pick is a list of one, so it replaces the preset's whole list. */
 const fallbackCount = (n: number) => (n ? <><span className="num">+{n}</span> fallback{n === 1 ? "" : "s"}</> : "no fallback");
 /** Whether a model can do a thread task: the image, video and speech tasks need their capability; every other one is text. */
@@ -156,6 +156,8 @@ export function SettingsDrawer({ ctx, base, summary, settings, machines, onSetti
   const presets = useLoad(() => get<Presets>(u(userId, "presets")), [userId]);
   // A private or local-only thread may choose only a private preset, so a general choice it can no longer use shows as its column.
   const usablePresets = (presets.data?.presets ?? []).filter((p) => !settings.localOnly || p.scope === "private");
+  // The model's own name for a level (GLM-5.3's High and Max, a switch's On), else the level.
+  const modelLevel = (l: ThinkingLevel) => levelName(settings.thinkingNames?.[l] ?? l);
   const chosenPreset = settings.preset && usablePresets.some((p) => p.id === settings.preset) ? settings.preset : "";
   const [title, setTitle] = useState(summary.title ?? "");
   const ref = useRef<HTMLElement>(null);
@@ -211,8 +213,8 @@ export function SettingsDrawer({ ctx, base, summary, settings, machines, onSetti
           <label className="field" title="How long the conversation model thinks before it answers.">
             <span>Thinking</span>
             <select value={settings.thinkingSet ? settings.thinking : ""} onChange={(e) => change({ thinking: (e.target.value || null) as ThinkingLevel | null })}>
-              <option value="">{settings.thinkingSet ? "Default" : `Default (${levelName(settings.thinking)})`}</option>
-              {[...new Set([...settings.thinkingLevels, ...(settings.thinkingSet ? [settings.thinking] : [])])].map((l) => <option key={l} value={l}>{levelName(l)}</option>)}
+              <option value="">{settings.thinkingSet ? "Default" : `Default (${modelLevel(settings.thinking)})`}</option>
+              {[...new Set([...settings.thinkingLevels, ...(settings.thinkingSet ? [settings.thinking] : [])])].map((l) => <option key={l} value={l}>{modelLevel(l)}</option>)}
             </select>
           </label>
           <NetSwitch label="Fallback" hint="When off, only the first model in each list answers; if it can't, the message waits for it." value={settings.fallback} effective={settings.fallbackOn}

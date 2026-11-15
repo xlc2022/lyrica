@@ -255,6 +255,8 @@ export interface Offering extends Capabilities {
   opensThinking?: boolean;
   /** Its server says it can't turn thinking off (LM Studio, OpenRouter), so it thinks at mandatoryThinking when asked for off. */
   alwaysThinks?: boolean;
+  /** The model's own word for each level, where a host read them from its chat template (GLM-5.3: high for medium, max for high). */
+  levelNames?: Partial<Record<"low" | "medium" | "high", string>>;
   /** An LM Studio model, as last discovered: the `models` tool may load it again with another context. */
   lmStudio?: boolean;
   /** A plain llama-server described it on /props: its one thinking level is the chat template's switch. */
@@ -581,7 +583,7 @@ const toEndpoint = (r: EndpointRow, shared: boolean, now = Date.now()): Endpoint
   };
 };
 const toOffering = (r: OfferingRow, now = Date.now()): Offering => {
-  const caps: Capabilities & { digest?: string; identity?: ModelIdentity; downloaded?: boolean; size?: number; recipe?: string; mask?: boolean; references?: number; loras?: string[]; extend?: boolean; upscalesClips?: boolean; longestSeconds?: number; sound?: boolean; useFor?: Offering["useFor"]; separate?: boolean; servedContext?: number; servedParallel?: number; opensThinking?: boolean; alwaysThinks?: boolean; lmStudio?: boolean; llamaServer?: boolean; server?: string; price?: ModelPrice; retiresAt?: string; maxOutput?: number; disabled?: boolean } = { ...JSON.parse(r.found), ...JSON.parse(r.hand) };
+  const caps: Capabilities & { digest?: string; identity?: ModelIdentity; downloaded?: boolean; size?: number; recipe?: string; mask?: boolean; references?: number; loras?: string[]; extend?: boolean; upscalesClips?: boolean; longestSeconds?: number; sound?: boolean; useFor?: Offering["useFor"]; separate?: boolean; servedContext?: number; servedParallel?: number; opensThinking?: boolean; alwaysThinks?: boolean; levelNames?: Offering["levelNames"]; lmStudio?: boolean; llamaServer?: boolean; server?: string; price?: ModelPrice; retiresAt?: string; maxOutput?: number; disabled?: boolean } = { ...JSON.parse(r.found), ...JSON.parse(r.hand) };
   // A host's serving settings decide its context window, over one set by hand and one discovered.
   const served = (JSON.parse(r.found) as { servedContext?: number }).servedContext;
   if (served) caps.contextWindow = served;
@@ -607,6 +609,7 @@ const toOffering = (r: OfferingRow, now = Date.now()): Offering => {
     ...(caps.separate ? { separate: true } : {}),
     ...(caps.opensThinking ? { opensThinking: true } : {}),
     ...(caps.alwaysThinks ? { alwaysThinks: true } : {}),
+    ...(caps.levelNames ? { levelNames: caps.levelNames } : {}),
     ...(caps.lmStudio ? { lmStudio: true } : {}),
     ...(caps.llamaServer ? { llamaServer: true } : {}),
     ...(caps.server === "llama.cpp" || caps.server === "vllm" ? { server: caps.server } : {}),
@@ -1927,7 +1930,7 @@ export class Models {
   private async hostModels(ep: Endpoint): Promise<DiscoveredModel[]> {
     const list = listIn<{
       id: string; kind?: string; server?: string; sha256?: string | null; contextLength?: number | null; parallel?: number | null; size?: number; downloaded?: boolean; identity?: ModelIdentity | null; sampling?: Record<string, unknown> | null;
-      capabilities?: { tools?: boolean; vision?: boolean; embedding?: boolean; reasoning?: string[] | null; opensThinking?: boolean; transcribe?: boolean; speak?: { voices?: unknown } | null };
+      capabilities?: { tools?: boolean; vision?: boolean; embedding?: boolean; reasoning?: string[] | null; opensThinking?: boolean; efforts?: Record<string, unknown>; transcribe?: boolean; speak?: { voices?: unknown } | null };
     }>(await this.hostCall(ep, "GET", "/host/v1/models"), "models");
     if (!list) throw new Error(`${ep.name} didn't return a model list`);
     // Image and video models are recipes: only confirmed ones become offerings, so a proposal never resolves.
@@ -1959,6 +1962,8 @@ export class Models {
         ...(levels.length ? { reasoning: reasoning.length ? reasoning : ["medium"] as "medium"[] } : {}),
         // Effort levels with no off (GLM-5.3's template thinks at max without one): off thinks at medium, with a note.
         ...(levels.length && !m.capabilities?.reasoning?.includes("off") ? { alwaysThinks: true } : {}),
+        // The template's own words for the levels, so the thinking picker names what the model is given.
+        ...(m.capabilities?.efforts ? { levelNames: Object.fromEntries((["low", "medium", "high"] as const).flatMap((l) => typeof m.capabilities!.efforts![l] === "string" ? [[l, m.capabilities!.efforts![l] as string]] : [])) } : {}),
         ...(m.capabilities?.opensThinking ? { opensThinking: true } : {}),
         ...(m.sha256 ? { digest: m.sha256 } : {}),
         ...(m.identity ? { identity: m.identity } : {}),
