@@ -1107,7 +1107,9 @@ background, so it doesn't hold her turn (`core/src/workspace/jobs.ts`).
   `onJobEnd` delivers a notice into the thread (`jobNotice`: the job, the
   exit code, how long it ran and the last 40 lines of its output), on the
   path a background subagent's result takes (`Delegation.deliver`, status
-  `job`, `quiet`). The notice never starts a turn by itself: a busy thread
+  `job`, `quiet`). The web reads the notice text back into its card
+  (`parseJobNotice` in `web/src/JobNotice.tsx`; web/test/job-notice.test.ts
+  holds the two to the same wording). The notice never starts a turn by itself: a busy thread
   gets it after the step it is on, so she reads it if the turn goes on. 5 s
   after the first job ends (`JOB_WAKE_MS`) `lyricad` wakes the thread once
   to carry on (`HostedThread.wakeChild`), so jobs that end close together

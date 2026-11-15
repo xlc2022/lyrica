@@ -459,6 +459,16 @@ button.jump-latest { font-size: 13px; min-height: var(--tap); }
 .sub-head b.to-thread { flex: 1 1 0; width: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sub-head .open { margin-left: auto; }
 .subagent p { font-size: 14px; }
+/* A background command that ended (docs/ux.md): the command and its last output each in a block that keeps its lines; long ones clamp until Show more. */
+.job-facts { font-size: 12px; overflow-wrap: anywhere; }
+.job-body { display: grid; gap: 6px; margin-top: 4px; min-width: 0; }
+.job-body pre { margin: 0; background: var(--tool); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; line-height: 1.5; color: var(--fg); }
+.job-body[data-clamped] .job-command { max-height: calc(4 * 1.5em + 18px); overflow: hidden; }
+.job-body[data-clamped] .job-output { max-height: calc(16 * 1.5em + 18px); overflow: hidden; }
+.job-body[data-clamped] pre[data-cut] { mask-image: linear-gradient(#000 70%, transparent); }
+.job-label { font-size: 12px; color: var(--muted); }
+.job-notice .show-more { justify-self: start; font-size: 13px; }
+@media (pointer: coarse) { .job-notice .show-more { min-height: var(--tap); } }
 .status { width: 8px; height: 8px; border-radius: 50%; background: var(--local); }
 .status[data-state="running"] { background: var(--accent); animation: pulse 1.4s ease-in-out infinite; }
 .status[data-state="failed"] { background: var(--danger); }
