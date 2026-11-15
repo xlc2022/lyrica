@@ -750,7 +750,7 @@ export interface MachineInfo {
   root: string | null;
   pool: Pool;
   limit: MachineLimit;
-  /** SSH: for the machine's keys file, usable only from Lyrica's addresses. */
+  /** SSH: for the machine's keys file: `restrict`, from any address. */
   keyLine?: string;
   /** Proxmox: the token's id (user@realm!tokenid). The token itself is never shown. */
   tokenId?: string;

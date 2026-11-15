@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { spawnSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   callArgs, cleanOutput, discardingGit, removedFolders, generateSshKey, maskKeys, migrate, RemoteMissing, suspectCommand, Users, writtenFiles, Workspace, WorkspaceSettings,
   type Db, type NewMachine, type SshSession, type SshTransport,
@@ -104,7 +107,7 @@ describe("machines", () => {
     expect(own.setup).not.toContain("useradd");
     expect(spawnSync("bash", ["-n"], { input: hers.setup }).status).toBe(0);
     // Her line is added beside any key already there, never written over it, and each account has its own sshd file.
-    expect(hers.setup).toMatch(/sudo grep -qxF -- 'restrict,[^\n]* \|\| printf '%s\\n' 'restrict,[^\n]* \| sudo tee -a \/etc\/ssh\/authorized_keys\/lyrica > \/dev\/null/);
+    expect(hers.setup).toContain(`printf '%s\\n' '${hers.keyLine}' | sudo tee -a /etc/ssh/authorized_keys/lyrica > /dev/null`);
     expect(hers.setup).toContain("| sudo tee /etc/ssh/sshd_config.d/lyrica-lyrica.conf > /dev/null");
     // Pasted whole as a user with sudo: no write runs as that user, and the commands are one chain, so sudo's password prompt can't swallow a later line.
     expect(hers.setup).not.toMatch(/>>? ?\/etc\//);
@@ -124,6 +127,25 @@ describe("machines", () => {
     await expect(workspace.probeMachine(ada.id, "ada", { name: "srv", address: "root@127.0.0.1", asUser: true })).rejects.toThrow(/never logs in as root/);
     // The account goes unquoted into the block the user pastes and into sudoers lines, so it is a plain user name.
     for (const bad of ["a;id@127.0.0.1", "$(id)@127.0.0.1", "-x@127.0.0.1"]) await expect(workspace.probeMachine(ada.id, "ada", { name: "srv", address: bad })).rejects.toThrow(/the account is a user name/);
+  });
+
+  it("give a key line that works from any address, and a setup that replaces an older line for the same key", async () => {
+    const { workspace, ada } = await setup();
+    const own = await workspace.probeMachine(ada.id, "ada", { name: "laptop", address: "ada@127.0.0.1", asUser: true });
+    // Pinned to the server's addresses, a key stops working when the server moves network.
+    expect(own.keyLine).toMatch(/^restrict ssh-ed25519 \S+/);
+    const blob = own.keyLine!.split(" ")[2]!;
+    const home = mkdtempSync(join(tmpdir(), "lyrica-keys-"));
+    try {
+      mkdirSync(join(home, ".ssh"), { mode: 0o700 });
+      const other = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOTHERKEYOTHERKEYOTHERKEYOTHERKEYOTHERKEYOT other";
+      writeFileSync(join(home, ".ssh", "authorized_keys"), `${other}\nrestrict,from="10.0.0.2,fe80::1" ssh-ed25519 ${blob} lyrica:ada:laptop\n`);
+      // The last line, the fingerprint, reads this computer's host key, which a test host may lack.
+      spawnSync("bash", ["-c", own.setup!], { env: { ...process.env, HOME: home } });
+      expect(readFileSync(join(home, ".ssh", "authorized_keys"), "utf8")).toBe(`${other}\n${own.keyLine}\n`);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
   });
 
   it("say why the user's own account can't log in when it is already hers on that machine", async () => {

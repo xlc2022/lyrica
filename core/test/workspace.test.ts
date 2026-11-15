@@ -737,7 +737,7 @@ describe.skipIf(!helperRunnable)("an ssh target", () => {
       const first = await probe.probeMachine(ada.id, "ada", { name: "local", address: `${userInfo().username}@127.0.0.1:${port}` });
       expect(first.fingerprint).toMatch(/^SHA256:/);
       expect(first.login).toBe(false); // the draft's key isn't installed
-      expect(first.keyLine).toMatch(/^restrict(,from="[^"]*")? ssh-ed25519 /);
+      expect(first.keyLine).toMatch(/^restrict ssh-ed25519 /);
       // Replace key tries the machine as saved, with the key the server has, so that login works.
       probe.settings(ada.id).addMachine({ name: "local", host: "127.0.0.1", port, username: userInfo().username, privateKey: key.privateKey, root: null, pool: "general", offNetwork: false }, first.fingerprint!);
       const saved = await probe.probeMachine(ada.id, "ada", { name: "local", address: "", replace: true });
