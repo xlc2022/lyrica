@@ -1326,6 +1326,8 @@ dialog.viewer > .error { position: absolute; bottom: 8px; left: 16px; }
 .igrid img { -webkit-user-drag: none; }
 .igrid .selbox, .ftree .selbox { position: absolute; z-index: 1; pointer-events: none; border: 1px solid var(--accent); background: color-mix(in srgb, var(--accent) 15%, transparent); border-radius: 2px; }
 .selbar { display: flex; align-items: center; gap: 6px; padding: 6px var(--gutter); border-top: 1px solid var(--line); font-size: 13px; background: var(--panel); }
+/* Memory's bar (above) bleeds into its padded list; the Files panel's sits on the gutter like the grid. */
+.files-page .selbar { margin: 0; }
 .selbar > span { margin-right: auto; }
 /* Centred wherever it is opened from (a message's prose zeroes its children's margins), and never taller than the viewport. */
 dialog.lightbox { width: min(960px, calc(100vw - 32px)); max-height: calc(100vh - 32px); margin: auto; }
