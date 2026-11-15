@@ -35,6 +35,7 @@ export function registerMemoryTools(pi: ExtensionAPI, view: PoolView, ctx: () =>
       "In notes, write {user} for the person you're talking with, never their name, and {user:obj}, {user:poss}, {user:poss-pro}, {user:refl} for their pronouns. There is no subject pronoun form: write {user} where \"she\" or \"they\" would go.",
       "To correct a note, save the corrected fact with supersedes set to the old note's ID.",
       "Progress on work in flight (a pull request's CI, a review round) lives where the work is. Note what it settled: the outcome, a decision, or a lesson, with supersedes set to notes it makes out of date.",
+      "Testing or tuning a model or a machine is work in flight too: the settings tried, timings and which run failed stay in the thread. Note only what it settled, such as the setting that works, with about naming the model or machine.",
       "In notes, mention another conversation as [t:<id>] and a message in one as [e:<id>#<n>], never by its title: titles change, and the ID always shows the current one.",
     ],
     parameters: Type.Object({
