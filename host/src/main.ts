@@ -13,6 +13,7 @@ import { Workflows } from "./workflows.ts";
 import { amdMonitor, isCmp, noGpus, nvidiaMonitor } from "./gpus.ts";
 import { stdoutLog } from "./log.ts";
 import { Runtime } from "./runtime.ts";
+import { SERVERS } from "./placement.ts";
 import { Scheduler } from "./scheduler.ts";
 import { SdCpp } from "./sdcpp.ts";
 import { WhisperCpp } from "./whispercpp.ts";
@@ -73,7 +74,8 @@ const scheduler = new Scheduler({
   disk: diskReads(modelsDir) ?? undefined,
   monitor: vendor === "nvidia" ? nvidiaMonitor : vendor === "amd" ? amdMonitor("/sys", { order: backend === "vulkan" ? "pci" : "kfd" }) : noGpus,
   gpuBackend: backend,
-  servers: backend === "vulkan" ? ["llamacpp"] : undefined,
+  // Only CMP 100-210s here: install.sh leaves vLLM's service out (compose.novllm.yaml).
+  servers: backend === "vulkan" ? ["llamacpp"] : env.VLLM === "off" ? SERVERS.filter((s) => s !== "vllm") : undefined,
   // The speech server runs on an NVIDIA GPU, and on the CPU anywhere else
   // (its ONNX runtime has no ROCm or Vulkan build).
   cpuServers: backend === "cuda" ? [] : ["speech"],

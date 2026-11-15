@@ -584,6 +584,10 @@ per host, and Lyrica's router filters create tiers by it.
     logs nothing and saves nothing. On danube's CMP, large-v3-turbo q8_0
     transcribes 180 s of English in about 6 s. Only that host's own
     dictation server's models are listed.
+  - When every NVIDIA card is a CMP 100-210, `install.sh` also adds
+    `compose.novllm.yaml`: vLLM's service (a 33 GB image) is neither
+    pulled nor started, and host-api leaves vLLM out of the servers it
+    offers. Beside another NVIDIA card vLLM stays, for that card.
 - **Voice** models are Kokoro's ONNX export: a folder with its `.onnx` file,
   its vocabulary and `voices/`. The speech server (`speech/`, our image)
   reads them in English and Mandarin, including English words in Mandarin

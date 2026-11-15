@@ -1,0 +1,10 @@
+# A host whose NVIDIA cards are all CMP 100-210s (10de:1df4 or 10de:1d84):
+# vLLM can't run on one, so install.sh adds this, and its service is neither
+# pulled nor started. host-api leaves vLLM out of the servers it offers.
+services:
+  host-api:
+    environment:
+      VLLM: "off"
+
+  vllm:
+    profiles: [vllm]

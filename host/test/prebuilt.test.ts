@@ -93,4 +93,14 @@ describe("the CMP's prebuilt images", () => {
     expect(pick("0", "0", "1")).toBe("0");
     expect(pick("1", "0", "1")).toBe("1");
   });
+
+  it("leave vLLM out only when every NVIDIA card is a CMP, which it can't run on", () => {
+    const only = (...cards: string[]) => sh(host, `cmp_only "$IDS" && echo yes || echo no`, { IDS: cards.join("\n") });
+    expect(only("0, 0x1D8410DE")).toBe("yes");
+    expect(only("0, 0x1df410de", "1, 0x1d8410de")).toBe("yes");
+    // Beside a 3090, vLLM stays for that card.
+    expect(only("0, 0x1d8410de", "1, 0x220410de")).toBe("no");
+    expect(only()).toBe("no");
+    expect(readFileSync(join(host, "install.sh"), "utf8")).toMatch(/if cmp_only "\$GPU_IDS"; then\n\s+FILES\+=:compose\.novllm\.yaml/);
+  });
 });
