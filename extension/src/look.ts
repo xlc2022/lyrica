@@ -30,13 +30,43 @@ export interface LookTools {
 
 /** At most this many images, or clips, in one look. */
 export const MAX_LOOK_FILES = 8;
-/**
- * About what one image takes of the vision model's context: a clip's still (at most 768 px on a side, ThreadFiles.frames)
- * and any other image (Pi's own estimate for an image in her context). A look's images, question and a reply's room
- * are the call's Need.tokens, so a vision model whose context window can't hold them is passed over for the next.
- */
-export const STILL_TOKENS = 600, IMAGE_TOKENS = 1200;
+/** Most tokens one image takes: llama.cpp scales a larger image down to this (measured: a 12 MP photo, 4,038). */
+export const MAX_IMAGE_TOKENS = 4096;
 const REPLY_TOKENS = 2048;
+
+/** An image's width and height from its PNG, JPEG or WebP header, if it has one. */
+export function imageSize(b: Uint8Array): { width: number; height: number } | undefined {
+  const v = new DataView(b.buffer, b.byteOffset, b.byteLength);
+  if (b.length >= 24 && v.getUint32(0) === 0x89504e47) return { width: v.getUint32(16), height: v.getUint32(20) };
+  if (b.length >= 30 && v.getUint32(0) === 0x52494646 && v.getUint32(8) === 0x57454250) {
+    const kind = String.fromCharCode(b[12]!, b[13]!, b[14]!, b[15]!);
+    if (kind === "VP8X") return { width: 1 + (b[24]! | b[25]! << 8 | b[26]! << 16), height: 1 + (b[27]! | b[28]! << 8 | b[29]! << 16) };
+    if (kind === "VP8 ") return { width: v.getUint16(26, true) & 0x3fff, height: v.getUint16(28, true) & 0x3fff };
+    if (kind === "VP8L") { const n = v.getUint32(21, true); return { width: 1 + (n & 0x3fff), height: 1 + (n >> 14 & 0x3fff) }; }
+    return undefined;
+  }
+  if (b[0] !== 0xff || b[1] !== 0xd8) return undefined;
+  // A JPEG: walk its segments to the frame header (SOF0-15, not DHT, JPG or DAC).
+  for (let i = 2; i + 9 < b.length;) {
+    if (b[i] !== 0xff) return undefined;
+    const marker = b[i + 1]!;
+    if (marker === 0xff) { i++; continue; }
+    if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) return { width: v.getUint16(i + 7), height: v.getUint16(i + 5) };
+    i += 2 + v.getUint16(i + 2);
+  }
+  return undefined;
+}
+
+/**
+ * About what an image takes of the vision model's context: one token per 32 x 32 pixels (measured on Qwen3.5: a
+ * 512 x 512 image 279 tokens with its prompt, a 1080p screenshot 2,063), at most MAX_IMAGE_TOKENS, which is also
+ * the guess for one whose size can't be read. A look's images, question and a reply's room are the call's
+ * Need.tokens, so a vision model whose context window can't hold them is passed over for the next.
+ */
+export function imageTokens(bytes: Uint8Array): number {
+  const size = imageSize(bytes);
+  return size ? Math.min(MAX_IMAGE_TOKENS, Math.max(64, Math.ceil(size.width * size.height / 1024))) : MAX_IMAGE_TOKENS;
+}
 /** A clip's stills when she gives no number. */
 export const DEFAULT_FRAMES = 8;
 const VIDEO = /\.(mp4|webm|mov|mkv|m4v|avi)$/i;
@@ -96,7 +126,7 @@ export function createLookExtension(o: LookTools): ExtensionFactory {
         if (p.recent && recent) {
           portrait = recent.portrait;
           content.push({ type: "text", text: "From the latest tool result:" });
-          for (const image of recent.images) { content.push({ type: "image", ...image }); images++; tokens += IMAGE_TOKENS; }
+          for (const image of recent.images) { content.push({ type: "image", ...image }); images++; tokens += imageTokens(Buffer.from(image.data, "base64")); }
         }
         for (const path of paths) {
           if (VIDEO.test(path)) {
@@ -107,13 +137,13 @@ export function createLookExtension(o: LookTools): ExtensionFactory {
             content.push({ type: "text", text: `Video ${path}, ${stills.length} still${stills.length > 1 ? "s" : ""}:` });
             for (const s of stills) {
               content.push({ type: "text", text: `At ${s.at} s:` }, { type: "image", data: s.bytes.toString("base64"), mimeType: s.type });
-              images++; tokens += STILL_TOKENS;
+              images++; tokens += imageTokens(s.bytes);
             }
           } else {
             const read = await o.files.read(path);
             portrait ||= read.portrait;
             content.push({ type: "text", text: `Image ${path}:` }, { type: "image", data: Buffer.from(read.input.bytes).toString("base64"), mimeType: read.input.type });
-            images++; tokens += IMAGE_TOKENS;
+            images++; tokens += imageTokens(read.input.bytes);
           }
         }
         for (const c of content) if (c.type === "text") tokens += Math.ceil(c.text.length / 4);

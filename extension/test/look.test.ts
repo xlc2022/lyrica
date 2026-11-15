@@ -14,7 +14,7 @@ vi.mock("../src/context.ts", async (original) => ({
   ...(await original<object>()),
   timedReply: async () => ({ reply: { stopReason: "stop", content: [{ type: "text", text: "A red bicycle by a canal." }] } }),
 }));
-const { createLookExtension, registerVisionGuard, NO_VISION, USE_LOOK } = await import("../src/index.ts");
+const { createLookExtension, imageTokens, registerVisionGuard, MAX_IMAGE_TOKENS, NO_VISION, USE_LOOK } = await import("../src/index.ts");
 
 type Handler = (event: unknown, ctx: unknown) => unknown;
 function setup(o: { cloud?: boolean; localOnly?: boolean; portrait?: boolean; policy?: "never" | "ask" | "always"; allow?: boolean; window?: number } = {}) {
@@ -108,6 +108,18 @@ describe("the look tool", () => {
     await expect(setup({ window: 16_384 }).look({ paths: ["/workspace/a.mp4", "/workspace/b.mp4", "/workspace/c.mp4"], question: "?", frames: 16 }))
       .rejects.toThrow(/48 images need about \d+ tokens.*give fewer images, clips or frames/);
     expect(sent).toBeUndefined();
+  });
+
+  it("sizes an image by its pixels, as the vision model's encoder does", () => {
+    const png = Buffer.alloc(24); png.writeUInt32BE(0x89504e47, 0); png.writeUInt32BE(1920, 16); png.writeUInt32BE(1080, 20);
+    // A JPEG: SOI, an APP0 segment, then the frame header with height and width.
+    const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 4, 0, 0, 0xff, 0xc0, 0, 17, 8, 0x02, 0x00, 0x02, 0x00, 3, 0, 0, 0, 0]);
+    expect(imageTokens(png)).toBe(2025);
+    expect(imageTokens(jpeg)).toBe(256);
+    // A 12 MP photo is scaled down to the encoder's most; an unreadable image is taken as that big.
+    png.writeUInt32BE(4000, 16); png.writeUInt32BE(3000, 20);
+    expect(imageTokens(png)).toBe(MAX_IMAGE_TOKENS);
+    expect(imageTokens(new Uint8Array([1, 2, 3]))).toBe(MAX_IMAGE_TOKENS);
   });
 
   it("never sends a local-only thread's images to a cloud model", async () => {
