@@ -1315,6 +1315,9 @@ refused. To replace the destination, enter the full URL and token again;
   - **Before 2026-11-11:** Nix for her sandbox (`nix build`, `nix
     develop`), from a pinned tarball in `/opt/lyrica/tools/lib/nix`; until
     then her sandbox has no `nix`.
+  - **Before 2026-11-15:** `LimitCORE=0` in `lyricad`'s unit, so a crash
+    leaves no core dump of her decrypted memory; until then the system's
+    core dump setting decides.
   - **Any install missing them:** headless Chromium and IBM Plex for her
     screenshots, Claude Code and Codex, ffmpeg and ffprobe (until then
     she can't check a clip's length or streams), and the Python baseline
