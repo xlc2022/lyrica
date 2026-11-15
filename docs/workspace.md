@@ -444,8 +444,11 @@ install itself as a root step, pinned to a clean commit of her clone; a smoke te
 `127.0.0.1:7236/host/v1/status`; pausing the host on a shared machine; and
 a pairing code from `127.0.0.1:7236/dashboard/pairing` for the user to
 enter in **Add model host**. Nothing under `host/` changes for it. A
-machine with no GPU or no driver stops her at the first step, and being
-told to install anyway doesn't change that. The installer's `--no-gpu` is
+machine with no GPU stops her at the first step, and being told to install
+anyway doesn't change that. A card that only lacks its driver gets an
+offer: she says what installing the distribution's own driver changes,
+installs it as a root step when the person says yes or asks for it,
+reboots the machine, and starts the checks over. The installer's `--no-gpu` is
 a test mode that serves no models: she doesn't bring it up, and goes on
 with it only when the person asks for it by name. She tells a CMP 100-210
 by its PCI ID, with or without a driver, and the skill has that card's

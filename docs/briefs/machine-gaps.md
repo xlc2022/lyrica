@@ -177,6 +177,15 @@ tool each for A and B, prompt lines only where the thread has a machine).
   it; asks about the unlock as a second question; passes `--cmp-unlock`,
   which `--yes` alone leaves out; and after the reboot checks the tensor
   rate with the image's own `tensor-probe`. Not yet run on the card.
+- A card with no driver (2026-11-15, from that first install): the skill
+  called installing a driver the person's job, with no reason on record,
+  and its "being told to install anyway doesn't change the answer" made
+  her refuse the owner's plain request to install it. She now offers to
+  install the distribution's own driver, says what that changes, does it
+  as a root step on a yes or an ask, reboots and starts the checks over.
+  A machine with no GPU at all still stops her. With passwordless sudo on
+  the machine she runs root steps herself, as docs/workspace.md already
+  says for any machine.
 - No change to `host/`.
 
 ## Out of scope
