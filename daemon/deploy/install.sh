@@ -423,5 +423,15 @@ if [ "$NEW_DEPLOY_KEY" = new ]; then
   say "For Administration → Updates, add this as a read-only deploy key of $REPO_URL:"
   cat /etc/lyrica/deploy-key.pub
 fi
+# Swap writes memory to disk as it is, decrypted text and keys among it: swap in RAM (zram) or on an
+# encrypted device is fine, anything else gets a warning (docs/daemon.md, "Deployment").
+UNENCRYPTED_SWAP=$(swapon --show=NAME,TYPE --noheadings --raw 2>/dev/null | while read -r name type; do
+  case $name in /dev/zram*) continue ;; esac
+  dev=$name
+  if [ "$type" = file ]; then dev=$(findmnt -n -o SOURCE -T "$name" 2>/dev/null | head -1); dev=${dev%%\[*}; fi
+  lsblk -n -s -o TYPE "$dev" 2>/dev/null | grep -qx crypt || printf '%s ' "$name"
+done)
+UNENCRYPTED_SWAP=${UNENCRYPTED_SWAP% }
+[ -z "$UNENCRYPTED_SWAP" ] || say "Warning: swap that isn't encrypted ($UNENCRYPTED_SWAP) can write her decrypted memory to disk. Encrypt it, use zram, or turn it off."
 say "Running release ${COMMIT:0:12}. Go back with: sudo lyrica-rollback"
 say "Done. lyricad listens on 127.0.0.1:7340; 'lyrica admin setup-code' prints the setup page's code until Lyrica is set up."

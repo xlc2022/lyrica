@@ -162,6 +162,19 @@ in {
       '';
     };
 
+    swapEncrypted = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Set when this machine's swap is encrypted in a way the module can't
+        see, such as a swap partition or file on a LUKS disk. Swap writes
+        memory to disk as it is, her decrypted text and keys among it, so a
+        swap device without `randomEncryption.enable` or `encrypted.enable`
+        draws a warning at rebuild unless this is set. zram swap stays in
+        memory and needs nothing.
+      '';
+    };
+
     ebayMcp = lib.mkOption {
       type = lib.types.bool;
       default = false;
@@ -181,6 +194,9 @@ in {
 
   config = lib.mkIf cfg.enable {
     services.lyrica-mcp-nixos.enable = lib.mkIf cfg.mcpNixos true;
+
+    warnings = lib.optional (!cfg.swapEncrypted && lib.any (d: !(d.randomEncryption.enable || d.encrypted.enable)) config.swapDevices)
+      "services.lyrica: swap that isn't encrypted can write her decrypted memory to disk. Set randomEncryption.enable on each of swapDevices, use zramSwap, or set services.lyrica.swapEncrypted if it sits on an encrypted disk.";
 
     assertions = [{
       assertion = config.security.allowUserNamespaces;
@@ -473,6 +489,8 @@ in {
         # stay off. NixOS adds none by default.
         ProtectControlGroups = true;
         PrivateTmp = true;
+        # No core dump of lyricad: one would hold unlocked keys and decrypted memory, unencrypted on disk.
+        LimitCORE = 0;
       };
     };
   };

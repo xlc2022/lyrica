@@ -203,7 +203,10 @@ read it for anything not covered here.
    NixOS lookups on 127.0.0.1:8001 that you then add under Settings, MCP
    servers; [nixos-mcp.md](nixos-mcp.md)), `ebayMcp` (off: eBay's own MCP
    server among her sandbox tools, added under Settings, MCP servers as
-   the command `ebay-mcp-server`; [ebay-mcp.md](ebay-mcp.md)), `caddyPackage`, and
+   the command `ebay-mcp-server`; [ebay-mcp.md](ebay-mcp.md)), `swapEncrypted`
+   (off: set it when swap sits on an encrypted disk; otherwise swap without
+   `randomEncryption.enable` draws a warning, since it can write her
+   decrypted memory to disk; zram swap is fine), `caddyPackage`, and
    `sandboxPackages`, the tools her commands see (NixOS has no `/usr` to
    share, so the module builds one directory from that list, which
    includes git, gh, tea, Node 24, Claude Code and Codex by default; add
@@ -516,8 +519,14 @@ Two things to look at once she is unlocked:
   ```
 
   must print `NoNewPrivs: 0`. The unit keeps only `PrivateTmp` and
-  `ProtectControlGroups`; the comment in `daemon/deploy/lyricad.service`
+  `ProtectControlGroups`, plus `LimitCORE=0` so a crash leaves no core dump
+  of her decrypted memory; the comment in `daemon/deploy/lyricad.service`
   lists what must stay off and why.
+
+- **Swap is encrypted, in RAM, or off.** Swap can write her decrypted
+  memory to disk. `install.sh` ends with a warning naming any swap that
+  isn't on an encrypted device or zram; encrypt it, switch to zram, or
+  turn it off.
 
 - **The network self-test passed.** At unlock, `lyricad` starts a sandbox
   and checks that it can't undo its own firewall rules. If that fails, the
