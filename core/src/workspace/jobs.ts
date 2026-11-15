@@ -76,6 +76,27 @@ export function jobNotice(j: JobInfo, output: string): string {
   return `Background command ${jobLine(j)}\n${tail ? `Last output:\n${tail}` : "No output."}`;
 }
 
+/** How long a machine has to answer `true` before a waiting job takes it for not answering yet. */
+export const MACHINE_PROBE_MS = 20_000;
+
+/**
+ * Whether a machine answers, for a job that waits for it: a round trip on its connection, since one kept from
+ * before a reboot can look open and a set folder needs no connection to name. Its folder when it answers;
+ * otherwise the connection is dropped, so the next try connects afresh, and the error is thrown.
+ */
+export function machineReady(target: ExecutionTarget, probeMs = MACHINE_PROBE_MS): () => Promise<string> {
+  return async () => {
+    try {
+      const dir = await target.cwd();
+      await target.ops().bash.exec("true", dir, { onData: () => {}, signal: AbortSignal.timeout(probeMs) });
+      return dir;
+    } catch (err) {
+      target.reconnect?.();
+      throw err;
+    }
+  };
+}
+
 /**
  * The background commands of every thread. `onEnd` hears of each job once,
  * when it exits, fails, times out or is stopped, with its kept output.

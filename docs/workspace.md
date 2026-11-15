@@ -1067,8 +1067,11 @@ background, so it doesn't hold her turn (`core/src/workspace/jobs.ts`).
   commands, command rules), then starts and returns at once with a job id
   (`j1`, `j2`, … per thread), where it runs and the command.
 - **A machine that doesn't answer** (rebooting after a driver install) still
-  takes a background command: the job waits, connecting again every 10 s,
-  and runs once the machine answers, within its time limit (`jobs` shows
+  takes a background command: the job waits, trying again every 10 s,
+  and runs once the machine answers, within its time limit. Answering is
+  a round trip (`true`, 20 s at most) on its connection, since a set folder
+  needs none and a connection kept from before the reboot can look open;
+  a failed try drops it, so the next connects afresh (`machineReady`) (`jobs` shows
   it as "waiting for <machine> to answer"). A changed or unconfirmed host
   key ends it at once. So after a reboot she starts the next check on the
   machine in the background and is told when it is back.

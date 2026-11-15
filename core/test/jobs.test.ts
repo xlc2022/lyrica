@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { JOB_LIMITS, jobNotice, Jobs, sleepWait, type ExecutionTarget, type JobInfo } from "../src/index.ts";
+import { JOB_LIMITS, jobNotice, Jobs, machineReady, sleepWait, type ExecutionTarget, type JobInfo } from "../src/index.ts";
 
 const thread = { userId: "u1", pool: "general", threadId: "t1" };
 
@@ -61,6 +61,34 @@ describe("Jobs", () => {
     await tick(); await tick();
     expect(ended[1]).toMatchObject({ state: "failed", reason: expect.stringMatching(/host key changed/) });
     expect(running.has("uptime")).toBe(false);
+  });
+
+  it("takes a machine as answering only after a round trip, dropping a connection kept from before its reboot", async () => {
+    // A set folder needs no connection to name, and the kept session fails (or hangs) until it is dropped.
+    let stale = true;
+    const reconnects: number[] = [];
+    const target = {
+      name: "ssh:nautica", cwd: async () => "/srv/work", folders: () => [],
+      reconnect: () => { reconnects.push(1); stale = false; },
+      ops: () => ({ bash: { exec: (_c: string, _d: string, o: { signal?: AbortSignal }) => stale
+        ? new Promise((_r, reject) => o.signal?.addEventListener("abort", () => reject(new Error("timed out")))) // a half-open socket: no answer
+        : Promise.resolve({ exitCode: 0 }) } }),
+    } as unknown as ExecutionTarget;
+    const ready = machineReady(target, 10);
+    await expect(ready()).rejects.toThrow(/timed out/);
+    expect(reconnects).toHaveLength(1);
+    await expect(ready()).resolves.toBe("/srv/work");
+    // In a job: it waits through the stale connection, then runs.
+    stale = true;
+    const ended: JobInfo[] = [];
+    const jobs = new Jobs((_t, job) => ended.push(job), 5);
+    const { target: runner, running } = fakeTarget();
+    jobs.start(thread, "nautica", runner, "nvidia-smi", machineReady(target, 10));
+    await new Promise((r) => setTimeout(r, 60));
+    expect(jobs.list(thread)[0]).toMatchObject({ cwd: "/srv/work", state: "running" });
+    running.get("nvidia-smi")!.done(0);
+    await tick();
+    expect(ended.map((j) => j.state)).toEqual(["exited"]);
   });
 
   it("refuses more running jobs than the limit, and stops one on request", async () => {
