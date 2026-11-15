@@ -22,6 +22,8 @@ export const CARRY_ON = "Your last reply had only thinking in it: no text and no
 /** Shown, and reported as the turn's error, when the retry came back empty too. */
 export const EMPTY_REPLY_NOTICE = "lyrica-empty-reply";
 export const EMPTY_REPLY = "The model replied with only its thinking, twice: no answer and no tool call.";
+/** The same when the second reply ran into the reply limit while thinking: the context window is too full to answer in. */
+export const NO_ROOM = "The model ran out of room while thinking, twice: the conversation fills its context window. Start a new thread, or load the model with a larger context.";
 /** Told to her, unseen, after a reply whose tool call came through as text, so nothing ran. */
 export const TEXT_TOOL_CALL_RETRY = "lyrica-text-tool-call-retry";
 export const CALL_THE_TOOL = "Your last reply wrote a tool call as text, so it didn't run. Make that call as a tool call, or write your reply without it.";
@@ -141,7 +143,10 @@ export function createTurnToolsExtension(max = MAX_TURN_TOOL_CALLS): ExtensionFa
           pi.sendMessage({ customType: EMPTY_REPLY_RETRY, content: CARRY_ON, display: false }, { deliverAs: "followUp", triggerTurn: true });
           return;
         }
-        if (empty === 2) return { entries: [{ type: "custom_message", customType: EMPTY_REPLY_NOTICE, content: EMPTY_REPLY, display: true }] };
+        if (empty === 2) return { entries: [{ type: "custom_message", customType: EMPTY_REPLY_NOTICE, content: m.stopReason === "length" ? NO_ROOM : EMPTY_REPLY, display: true }] };
+      } else if (m.role === "assistant" && m.content.some((c) => c.type === "toolCall" || (c.type === "text" && c.text.trim()))) {
+        // A reply that said or did something ends the streak: a later empty one, many calls on, gets its own carry-on.
+        empty = 0;
       }
       // A tool call left in the text would end the run as her reply: once, she makes it as a call; again, the turn fails visibly.
       if (m.role === "assistant" && m.stopReason !== "error" && m.stopReason !== "aborted" && !stopped

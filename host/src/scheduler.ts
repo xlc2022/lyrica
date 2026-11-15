@@ -795,6 +795,15 @@ export class Scheduler {
     return [...this.releasing.keys()];
   }
 
+  /** Waits, reading the GPUs, until none of these is still letting go of an unloaded model's memory (at most settleMs). */
+  private async released(gpus: number[]): Promise<void> {
+    for (;;) {
+      await this.readGpus();
+      if (!this.stillReleasing().some((g) => gpus.includes(g))) return;
+      await new Promise((r) => setTimeout(r, 250));
+    }
+  }
+
   /** Looks at the queue again shortly, while memory is still coming back. */
   private pumpSoon(): void {
     if (this.retry) return;
@@ -874,8 +883,13 @@ export class Scheduler {
       const view = this.gpus;
       this.gpus = view.map((g) => ({ ...g, used: Math.max(0, g.used - (previous.vram[g.index] ?? 0)) }));
       let plan: Plan;
+      // The automatic context too is sized with the old instance counted as gone: once it unloads, the GPUs still
+      // show its memory until its process lets go, and a context sized then fits in what is left (GLM-5.3-Flash
+      // came back at 25k of a possible 440k).
+      let settings: ModelSettings;
       try {
         plan = this.plan({ model }, new Set());
+        settings = this.served(model);
       } finally {
         this.gpus = view;
         this.loaded.set(model.id, previous);
@@ -883,14 +897,17 @@ export class Scheduler {
       if (plan instanceof HostError) throw plan;
       if ("wait" in plan) throw new HostError(503, "busy", "The GPU is busy with other work.");
       await this.unload(previous);
+      // Measure and load only once its memory is back, as a load after an eviction does: llama.cpp's measurement
+      // is checked against the GPUs as read.
+      await this.released(plan.option.gpus);
       try {
         let next = plan;
         for (let round = 0; ; round++) {
           for (const l of next.evict) await this.unload(l);
           if (stop.signal.aborted) throw loadCancelled();
-          const option = await this.measured(model, next.option, undefined, round >= 2, stop.signal);
+          const option = await this.measured(model, next.option, settings, round >= 2, stop.signal);
           if (option) {
-            await this.load(model, option, undefined, undefined, stop.signal);
+            await this.load(model, option, settings, undefined, stop.signal);
             break;
           }
           // The server found a GPU short: plan again with what it measured.
