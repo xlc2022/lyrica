@@ -13,7 +13,7 @@ import type { Logger } from "./log.ts";
 import { scanParts, type Part, type Role } from "./parts.ts";
 import { clipSpec, COLOR_MATCH, loraFits, present, RecipeBook, starterPath, type Recipe, type Starter } from "./recipes.ts";
 import type { Runtime } from "./runtime.ts";
-import { sdcppArgs, sdcppUnused, type SdCpp } from "./sdcpp.ts";
+import { sdcppArgs, sdcppRuns, sdcppUnused, type SdCpp } from "./sdcpp.ts";
 import { fill, JOB_SETTINGS, LONGEST_SECONDS, longestSeconds, unboundSettings, type Action, type Continuation, type Lora, type Template, type Values, type VideoSpec } from "./templates.ts";
 import { checkTemplate, CUSTOM_ACTIONS, customAction, filesIn, importWorkflow, label, parseWorkflow, partSpecs, recipeParts, videoSpec, layoutOf, type NodeList, type Workflows } from "./workflows.ts";
 import { checkDefault, DEFAULT_KEYS } from "./recipes.ts";
@@ -655,10 +655,13 @@ export class Images {
     return { ...(v as Record<string, string | number>) };
   }
 
-  /** The starters this host can run: a starter for one backend only shows on hosts using it. */
+  /**
+   * The starters this host can run: a starter for one backend only shows on hosts using it, and an sd.cpp host
+   * lists none whose template sd.cpp can't run (Qwen-Image-Edit, SeedVR2).
+   */
   private starters(): Starter[] {
     const backend = this.sdcpp ? "sdcpp" : "comfyui";
-    return this.book.starters.filter((s) => !s.backend || s.backend === backend);
+    return this.book.starters.filter((s) => (!s.backend || s.backend === backend) && (!this.sdcpp || sdcppRuns(s.template)));
   }
 
   /** Whether a starter part is already queued or downloading. */

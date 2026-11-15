@@ -1,6 +1,8 @@
 {
   "name": "Qwen-Image-Edit 2509",
   "family": "Qwen-Image",
+  "variantOf": "Qwen-Image-Edit 2509",
+  "variant": "fp8",
   "template": "qwen-image-edit",
   "parts": [
     {

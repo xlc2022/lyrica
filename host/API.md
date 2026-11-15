@@ -1005,7 +1005,9 @@ Calls:
   with its parts' files and checksums and which are present. A starter
   with a `backend` (`comfyui` or `sdcpp`) is listed, and installs, only on
   hosts that make images that way (Krea 2 Turbo Q5 is `sdcpp`: the pinned
-  ComfyUI-GGUF can't load a Krea 2 GGUF). A starter's `useFor` (`fast` or
+  ComfyUI-GGUF can't load a Krea 2 GGUF). An sd.cpp host also leaves out
+  every starter whose template sd.cpp can't run (Qwen-Image-Edit,
+  Qwen-Image 2.1, SeedVR2), backend or not. A starter's `useFor` (`fast` or
   `quality`) becomes its recipe's; without one the recipe is `both`. So
   does a starter's `longestSeconds`, the longest video its recipe makes
   (`video.longestSeconds`, below). Each starter has a `family`, the group
