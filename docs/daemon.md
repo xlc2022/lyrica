@@ -1626,13 +1626,9 @@ again installs that checkout's commit as a release, the way an update does
 (docs/guides/getting-started.md, "Uninstall"). On NixOS, her expected
 home, the flake's module does the same ("On NixOS" below).
 
-Memory never reaches disk unencrypted through the system either: both
-lyricad units set `LimitCORE=0`, so a crash leaves no core dump of unlocked
-keys and decrypted memory, and both setups warn about swap that isn't
-encrypted (install.sh at the end of its run, from `swapon` and `lsblk`;
-the module at rebuild, for a `swapDevices` entry without
-`randomEncryption` or `encrypted`, unless `swapEncrypted` says it sits on
-an encrypted disk). zram swap stays in memory and draws no warning.
+Both lyricad units set `LimitCORE=0`, so a crash leaves no core dump of
+unlocked keys and decrypted memory on disk. Swap is the operator's to
+encrypt.
 
 - It installs the packages (bubblewrap, gocryptfs, FUSE, passt, nftables,
   openssl, rsync, ImageMagick, ffmpeg (with ffprobe, so she can check her clips),
@@ -1950,7 +1946,7 @@ system with the module on. Only x86_64-linux.
   the CA bundle's (`closureInfo`). See docs/workspace.md.
 - **Options:** `enable`, `package`, `port` (7340), `tailscale` (on),
   `tailscalePackage`, `openFirewall` (on), `searxng` (on), `zimDir` (null),
-  `mcpNixos` (off), `ebayMcp` (off), `swapEncrypted` (off), `caddyPackage`, `sandboxPackages`.
+  `mcpNixos` (off), `ebayMcp` (off), `caddyPackage`, `sandboxPackages`.
 - **Releases** are generations of the profile `/nix/var/nix/profiles/lyrica`,
   which lyricad runs. An Update builds `git+file:///opt/lyrica/repo.git?rev=<commit>#lyrica`
   as root (Nix's own sandboxed builders do the building, not `lyrica-build`),
