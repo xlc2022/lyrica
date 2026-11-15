@@ -269,7 +269,19 @@ pool keeps a `vectors` table, derived from the index: one row per indexed
 item and the model that made it, the vector as float32, or none for an
 item the model skips (a tool result, a message with no spoken words).
 `nearest(model, vec, limit)` scans them by cosine and keeps those at or
-above `VECTOR_FLOOR` (0.5); `search` fuses that list with the keyword list
+above `VECTOR_FLOOR` (0.5). The scan runs in memory (`store/vector-cache.ts`):
+a pool's first search by meaning reads its vectors once and keeps each as a
+unit vector at one byte per number (about 1 KiB a message for a 1,024-number
+model), shared by every connection to that file. Each writable pool
+connection carries temporary triggers that name the vector rows it changes
+(`watchVectors`, set by `Memory`), and the next search re-reads only those.
+The rounded scores pick the candidates; the best few are scored again from
+their stored float32, so results and scores are exactly a scan of the table.
+All pools together stay under `VECTOR_CACHE_BYTES` (2 GiB, counting a copy
+while it grows): the least recently used pool goes first, and a pool too
+big alone is scanned from disk as before. A pool's vectors leave memory after
+15 minutes unused, when its user locks, is deleted or its pools are wiped.
+`search` fuses that list with the keyword list
 by reciprocal rank (`RRF_K` 60), so an item found both ways comes first and
 one that shares no word with the question still comes up. The keyword
 rules (`minWords`, common words, `said`, `current`, project boost) apply to

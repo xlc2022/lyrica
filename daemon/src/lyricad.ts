@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   adoptLocalKiwix, adoptLocalSearxng, bootstrap, botChecks, kiwixAddress, isMounted, codexImage, DEFAULT_NAME, HostRefused, isRestricted, Keyring, Memory, Models, Offline, PersonaProposals, PersonaStore, PRONOUN_PRESETS, searxngAddress, selfName, setSelfName,
-  SystemdCredentials, ThreadPrefs, ThreadShares, Users, WrongPassword, Workspace, finishWipe, jobNotice, STOPPED_BY_HER, homeWiped, homeWipePending, useTailnetProxy, wipePending, wipePools,
+  SystemdCredentials, ThreadPrefs, ThreadShares, Users, WrongPassword, Workspace, finishWipe, jobNotice, STOPPED_BY_HER, homeWiped, homeWipePending, useTailnetProxy, wipePending, wipePools, forgetVectors,
   localDate, localTime, serverZone, wall, zonedTime, zoneOf,
   type Argon2Params, type CredentialStore, type Pool, type ThreadsLimits, type User,
 } from "@lyrica/core";
@@ -825,6 +825,8 @@ export class Lyricad implements Drainable {
     this.sessions.dropUser(userId);
     await this.stopWork(userId);
     this.keyring.lockUser(userId);
+    // Recall's vectors held in memory are hers too: they go with the key.
+    forgetVectors(this.services!.users.userDir(userId) + "/");
     await this.services!.host.close(userId);
     await this.services!.workspace.unmountHome(userId).catch((err: Error) => this.log(`unmounting a home workspace failed: ${firstLine(err)}`));
     this.mounted.delete(userId);

@@ -2,6 +2,7 @@ import { removeSecrets } from "../secrets.ts";
 import { pathRewriter, rewriteStrings, workspacePaths, type Respelling } from "../workspace/renames.ts";
 import { SkillLibrary } from "../skills.ts";
 import { ArtifactLibrary } from "./artifacts.ts";
+import { exactScores, nearestInMemory } from "./vector-cache.ts";
 import { randomBytes } from "node:crypto";
 import { checkRoutineMetadata, nextRun, parseSchedule, type RoutineMetadata, type RoutineMetadataEdit, type Schedule } from "../routines.ts";
 import type { ForgeKind, ForgeWatchState } from "../forge/types.ts";
@@ -920,21 +921,17 @@ export class PoolReader {
     return [...fused.values()].sort((a, b) => b.score - a.score).slice(0, limit);
   }
 
-  /** The `limit` items nearest the vector by cosine, from `model`'s vectors, at or above VECTOR_FLOOR; `score` is the similarity. */
+  /**
+   * The `limit` items nearest the vector by cosine, from `model`'s vectors, at or above VECTOR_FLOOR; `score` is the similarity.
+   * From memory when the pool's vectors fit the cache (vector-cache.ts), else read whole from disk.
+   */
   nearest(model: string, values: Float32Array, limit: number): { id: string; kind: Kind; score: number }[] {
     if (limit <= 0 || !values.length) return [];
-    const rows = this.db.prepare("SELECT id, kind, vec FROM vectors WHERE model = ? AND vec IS NOT NULL").all(model) as { id: string; kind: Kind; vec: Buffer }[];
     const q = unit(values);
-    const found: { id: string; kind: Kind; score: number }[] = [];
-    for (const r of rows) {
-      const v = new Float32Array(r.vec.buffer, r.vec.byteOffset, r.vec.byteLength / 4);
-      if (v.length !== q.length) continue;
-      let dot = 0, norm = 0;
-      for (let i = 0; i < v.length; i++) { dot += v[i]! * q[i]!; norm += v[i]! * v[i]!; }
-      const score = norm > 0 ? dot / Math.sqrt(norm) : 0;
-      if (score >= VECTOR_FLOOR) found.push({ id: r.id, kind: r.kind, score });
-    }
-    return found.sort((a, b) => b.score - a.score).slice(0, limit);
+    const held = nearestInMemory(this.db, model, q, limit, VECTOR_FLOOR);
+    if (held) return held;
+    const rows = this.db.prepare("SELECT id, kind, vec FROM vectors WHERE model = ? AND vec IS NOT NULL").all(model) as { id: string; kind: Kind; vec: Buffer }[];
+    return exactScores(rows, q, VECTOR_FLOOR).slice(0, limit);
   }
 
   /** Which of the query's terms are common in this pool's index (COMMON_SHARE); a user's name never is. */

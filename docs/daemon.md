@@ -169,7 +169,8 @@ name/id and error class; stderr is discarded.
   `PUT …/me/credentials` (`Keyring.saveUserKey`). At start `lyricad` takes
   every saved key and mounts those users' home workspaces, so sleep can run.
 - Turning either off deletes the sealed file. The loaded key remains in
-  memory until locked or the service stops.
+  memory until locked or the service stops. Locking also lets go of the
+  user's recall vectors held in memory (docs/memory.md, "Recall by meaning").
 - As a non-root service user it seals with `--user`, which needs systemd 256
   or later. No root step is needed.
 

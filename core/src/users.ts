@@ -5,6 +5,7 @@ import { openEncrypted, type Db } from "./db.ts";
 import { migrate } from "./migrations.ts";
 import { WrongPassword, type Keyring, type WrappedKey } from "./keyring.ts";
 import { checkProfile, type Profile } from "./profile.ts";
+import { forgetVectors } from "./store/vector-cache.ts";
 
 export interface User {
   id: string;
@@ -370,6 +371,7 @@ export class Users {
   /** Removes a deleted user's folder and clears their mark. Their home must be unmounted. */
   removeUserFiles(userId: string): void {
     if (this.get(userId)) throw new Error("this user hasn't been deleted");
+    forgetVectors(this.userDir(userId) + "/");
     rmSync(this.userDir(userId), { recursive: true, force: true });
     setList(this.db, DELETE_PENDING, getList(this.db, DELETE_PENDING).filter((x) => x !== userId));
   }

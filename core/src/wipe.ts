@@ -3,6 +3,7 @@ import { join } from "node:path";
 import type { Db } from "./db.ts";
 import type { Keyring } from "./keyring.ts";
 import type { Users } from "./users.ts";
+import { forgetVectors } from "./store/vector-cache.ts";
 
 // Wiping memory (DESIGN.md, "Wiping memory"): every user's general and private
 // pools go, or one user's own, with what their threads left in user.db, self.db
@@ -63,6 +64,7 @@ export function wipePools(keyring: Keyring, users: Users, only?: string, keepSki
     // Decided once per pool, before any file moves, so a pool and its WAL go the same way.
     const files = readdirSync(dir);
     for (const pool of ["general", "private"]) {
+      forgetVectors(join(dir, `${pool}.db`));
       const own = files.filter((n) => n === `${pool}.db` || n.startsWith(`${pool}.db-`));
       const kept = files.filter((n) => n === `${pool}.keep.db` || n.startsWith(`${pool}.keep.db-`));
       // A pool already set aside, for a user who hasn't unlocked since, stays as it is: this one has no skills of its own yet.
