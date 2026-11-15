@@ -896,7 +896,7 @@ documented in `daemon/src/api.ts`, "The Files panel".
   listing, so an old folder fills in over a few listings. A clip ffprobe
   can't read is kept as unknown, and without `ffprobe` none is known.
 - `POST …/files/auto-name { paths, all? }` suggests a name for each image or
-  clip (at most 50, only in the thread's own `/workspace`) from what the
+  clip (any number, only in the thread's own `/workspace`) from what the
   thread's `vision` model sees (`daemon/src/auto-name.ts`). Only a name a
   machine made up is renamed (`machineName`: every word of the stem is a
   number, a camera, screenshot or app word such as `IMG`, `DSC`, `PXL`,

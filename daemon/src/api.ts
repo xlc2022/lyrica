@@ -1752,7 +1752,7 @@ export interface ImageEntry extends FileEntry { source: "uploaded" | "made"; sec
 /**
  * POST …/files/auto-name { paths, all? } → AutoName[], one per path in order: a name for each image (PNG, JPEG, GIF,
  * WebP) or clip (MP4, WebM, by its poster) in the thread's folder from what the thread's `vision` model sees (Models →
- * Tasks, "Look at images"), at most 50 per ask, three asked at once. Only a name a machine made up (a camera's
+ * Tasks, "Look at images"), any number per ask, three asked at once, each image in a call of its own. Only a name a machine made up (a camera's
  * IMG_0042, a screenshot's date, a hash, a UUID, a random token) is renamed: one a person chose comes back as it is
  * with `kept`, and no model is asked, unless `all` (the drawer's **Overwrite existing names**). Nothing is renamed: the panel shows the names and applies them with …/files/rename. A name keeps the image's
  * extension and is free in its folder and among the others suggested ("red-bicycle-2.png"); one already right comes

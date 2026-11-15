@@ -7,8 +7,6 @@ import { WORKDIR, type CallContext, type Models, type Pool, type Workspace } fro
 import { modelRuntimeFor, piModelFor, timedReply } from "@lyrica/extension";
 import type { AutoName } from "./api.ts";
 
-/** At most this many images in one ask: each is one model call. */
-export const AUTO_NAME_LIMIT = 50;
 /**
  * Calls in flight at once, here and in the drawer (web/src/MediaTools.tsx). A local server takes them as its slots
  * allow (extension/src/model-share.ts), so more only queue there; a cloud model or a multi-slot server answers them

@@ -1,7 +1,7 @@
 import { ARTIFACT_LIMIT, ArtifactError, artifactExtension, artifactKind, buildReactPage, EVIDENCE_SETTINGS, DEFAULT_THINKING, PushStore, titleFromName, type Artifact, type ArtifactKind, type PushSettings, type SkillLibrary } from "@lyrica/core";
 import { pushTarget } from "./push.ts";
 import { imageRetryOptions } from "./image-retry.ts";
-import { AUTO_NAME_LIMIT, autoNames } from "./auto-name.ts";
+import { autoNames } from "./auto-name.ts";
 import { randomUUID } from "node:crypto";
 import {
   ANSWER, CLOUD_IMAGE_PROVIDERS, recentWorkAllowed, WELCOME_LIMITS, describe, AuthError, isPlan, type PlanKind, NoRecoveryCopy, WrongPassword, isEmoji, WORKDIR, CAPABILITIES, FilesRefused, checkTask, isRestricted, voiceContext, refId, THINKING_LEVELS, publicKeyOf, authorizedKeysLine, proxmoxAddress, CloudModelForbidden, FROM_PARENT, NoModel, WAKEUP, ROUTINE, WATCHING, PRONOUN_PRESETS, projectSlug,
@@ -1663,7 +1663,6 @@ export function apiRoutes(d: Lyricad): Route[] {
       const thread = owner(d, user, (o) => threadOf(o, r));
       const { paths, all } = await r.json<{ paths?: unknown; all?: unknown }>();
       if (!Array.isArray(paths) || !paths.length || paths.some((p) => typeof p !== "string")) throw new HttpError(400, "paths is a list of image or clip paths");
-      if (paths.length > AUTO_NAME_LIMIT) throw new HttpError(400, `at most ${AUTO_NAME_LIMIT} images at a time`);
       return autoNames(s().models, s().workspace, { userId: user.id, pool: poolOf(r), threadId: thread.id, ...(thread.project ? { coordinates: true } : {}) }, paths as string[], { all: all === true });
     }),
     route("GET", `${t}/files/thumb`, async (r) => {
