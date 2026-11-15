@@ -1,7 +1,7 @@
 // The look tool: a model that can see uses its own eyes and isn't offered look; one that can't asks the thread's
 // vision model, which gets only the images and the question, and the privacy rules for photos of the user hold.
 import type { ExtensionAPI, ToolDefinition } from "@earendil-works/pi-coding-agent";
-import { CloudModelForbidden } from "@lyrica/core";
+import { CloudModelForbidden, NoModel } from "@lyrica/core";
 import { describe, expect, it, vi } from "vitest";
 
 let sent: { systemPrompt: string; messages: { content: { type: string; text?: string; data?: string }[] }[] } | undefined;
@@ -17,7 +17,7 @@ vi.mock("../src/context.ts", async (original) => ({
 const { createLookExtension, registerVisionGuard, NO_VISION, USE_LOOK } = await import("../src/index.ts");
 
 type Handler = (event: unknown, ctx: unknown) => unknown;
-function setup(o: { cloud?: boolean; localOnly?: boolean; portrait?: boolean; policy?: "never" | "ask" | "always"; allow?: boolean } = {}) {
+function setup(o: { cloud?: boolean; localOnly?: boolean; portrait?: boolean; policy?: "never" | "ask" | "always"; allow?: boolean; window?: number } = {}) {
   const handlers = new Map<string, Handler[]>();
   let tool!: ToolDefinition;
   let active = ["read", "look"];
@@ -30,9 +30,14 @@ function setup(o: { cloud?: boolean; localOnly?: boolean; portrait?: boolean; po
   } as unknown as ExtensionAPI;
   const asked: unknown[] = [];
   const recorded: unknown[] = [];
+  const needs: { tokens?: number }[] = [];
   const models = {
-    callWithFallback: async (_task: string, _ctx: unknown, _need: unknown, call: (r: unknown) => Promise<unknown>) =>
-      call({ label: "qwen3.5-4b", endpoint: { kind: o.cloud ? "cloud" : "local", name: o.cloud ? "router" : "box" } }),
+    // As the router does: a model whose context window is smaller than the need is passed over.
+    callWithFallback: async (_task: string, _ctx: unknown, need: { tokens?: number }, call: (r: unknown) => Promise<unknown>) => {
+      needs.push(need);
+      if (o.window && need.tokens! > o.window) throw new NoModel(`no model for Look at images can answer now (qwen3.5-4b: its context window (${o.window} tokens) is smaller than the conversation)`);
+      return call({ label: "qwen3.5-4b", endpoint: { kind: o.cloud ? "cloud" : "local", name: o.cloud ? "router" : "box" } });
+    },
     recordCall: (_u: string, c: unknown) => { recorded.push(c); }, recordPace: () => {},
   };
   const settings = { photoCloudPolicy: () => o.policy ?? "ask", photoCloudApproved: () => false, approvePhotoCloud: () => {} };
@@ -47,7 +52,7 @@ function setup(o: { cloud?: boolean; localOnly?: boolean; portrait?: boolean; po
   registerVisionGuard(pi);
   const fire = (name: string, ctx: unknown, event: unknown = {}) => Promise.all((handlers.get(name) ?? []).map((h) => h(event, ctx)));
   const look = (args: object) => tool.execute("call-1", args as never, undefined, undefined, { hasUI: false } as never) as Promise<{ content: { text: string }[]; details: { images: number } }>;
-  return { fire, look, active: () => active, asked, recorded, tool: () => tool };
+  return { fire, look, active: () => active, asked, recorded, needs, tool: () => tool };
 }
 const blind = { model: { input: ["text"] } };
 const seeing = { model: { input: ["text", "image"] } };
@@ -92,10 +97,16 @@ describe("the look tool", () => {
     expect(s.asked).toEqual([]);
   });
 
-  it("refuses more images than a local vision server takes, before any model call", async () => {
-    const s = setup();
+  it("passes over a vision model whose context window can't hold the images, and says so before any call", async () => {
+    const one = setup();
+    await one.look({ paths: ["/workspace/a.png"], question: "?" });
+    const many = setup();
+    await many.look({ paths: ["/workspace/a.mp4", "/workspace/b.mp4"], question: "?", frames: 16 });
+    // 32 stills need far more room than one image.
+    expect(many.needs[0]!.tokens! - one.needs[0]!.tokens!).toBeGreaterThan(31 * 500);
     sent = undefined;
-    await expect(s.look({ paths: ["/workspace/a.mp4", "/workspace/b.mp4", "/workspace/c.mp4"], question: "?", frames: 16 })).rejects.toThrow(/at most 32 images/);
+    await expect(setup({ window: 16_384 }).look({ paths: ["/workspace/a.mp4", "/workspace/b.mp4", "/workspace/c.mp4"], question: "?", frames: 16 }))
+      .rejects.toThrow(/48 images need about \d+ tokens.*give fewer images, clips or frames/);
     expect(sent).toBeUndefined();
   });
 

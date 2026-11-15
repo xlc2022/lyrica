@@ -1349,14 +1349,17 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   (`setToolsOff` reason `look`, at `session_start`, `model_select` and
   `before_agent_start`). Input `{ paths?: string[] (at most
   MAX_LOOK_FILES, 8), recent?: boolean, question: string, frames?: number
-  (1 to MAX_FRAMES, 16; DEFAULT_FRAMES, 8) }`, at most MAX_LOOK_IMAGES (32)
-  images in all, stills included, refused before any model call: workspace images (PNG, JPEG,
+  (1 to MAX_FRAMES, 16; DEFAULT_FRAMES, 8) }`: workspace images (PNG, JPEG,
   WebP) and `/photos-of-me/<file>` through `ThreadImages.read`, clips (MP4,
   WebM, MOV, MKV, M4V, AVI) as `frames` stills, each labelled with its
   second, and with `recent` the images of the latest tool result that held
   any (a browse screenshot), kept in memory for the session. One
-  `callWithFallback("vision", call)` with a fixed system prompt and one user
-  message (her question, then the images), no reasoning; a cloud model is
+  `callWithFallback("vision", call, { tokens })` with a fixed system prompt and one user
+  message (her question, then the images), no reasoning; `tokens` is the
+  text's length / 4, STILL_TOKENS (600) a still, IMAGE_TOKENS (1200) any
+  other image, and 2,048 for the reply, so a vision model whose context
+  window can't hold them is passed over, and when none can she is told to
+  give fewer images, clips or frames, before any model call; a cloud model is
   refused in a restricted thread, and a photo of the user (a portrait read,
   any clip's stills, any recent image not from `browse`) goes to one only
   through `allowPortrait(…, "look")`, the image tool's daily question. The
