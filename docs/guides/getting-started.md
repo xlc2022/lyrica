@@ -985,22 +985,23 @@ lyrica admin ssh add --user ada office ada-lyrica@office.lan --pool general --li
 (`--root <path>` limits her reads and writes there.) It runs in three
 steps:
 
-1. She makes a key pair and prints the setup to paste **on the machine
-   as a user with sudo** (on a machine without sudo, install it first, or
-   paste it as root with each `sudo ` removed): her public key into `/etc/ssh/authorized_keys/<account>`, a
-   file only root can change (beside any key already there), with a `Match
-   User` block in `/etc/ssh/sshd_config.d/lyrica-<account>.conf`, then
-   `sshd -t && systemctl reload ssh` (the unit is `sshd` on Fedora and
-   RHEL). The key line is
-   restricted to connections from this computer. If she should run some
-   commands as root there, it also prints two optional commands: one gives
-   the account an exact command (an example to change first), the other,
-   for a machine you really trust, `<account> ALL=(root) NOPASSWD: ALL`.
-   Each adds its line to `/etc/sudoers.d/lyrica`, checked by `visudo -c`. She never takes a sudo password; a root step
-   she can't run there comes to you on a card. When the card offers
-   sudoers lines, it also carries one command to paste on the machine: it
-   adds them, keeps the file's other lines and installs the result only
-   once `visudo -c` passes, so you never open an editor.
+1. She makes a key pair and prints the setup to paste **on the machine as
+   a user with sudo** (on a machine without sudo, install it first, or
+   paste it as root with each `sudo ` removed): her public key into
+   `/etc/ssh/authorized_keys/<account>`, a file only root can change
+   (beside any key already there), with a `Match User` block in
+   `/etc/ssh/sshd_config.d/lyrica-<account>.conf`, then `sshd -t &&
+   systemctl reload ssh` (the unit is `sshd` on Fedora and RHEL). The key
+   line is restricted to connections from this computer. If she should run
+   some commands as root there, it also prints two optional commands: one
+   gives the account an exact command (an example to change first), the
+   other, for a machine you really trust, `<account> ALL=(root) NOPASSWD:
+   ALL`. Each adds its line to `/etc/sudoers.d/lyrica`, checked by `visudo
+   -c`. She never takes a sudo password; a root step she can't run there
+   comes to you on a card. When the card offers sudoers lines, it also
+   carries one command to paste on the machine: it adds them, keeps the
+   file's other lines and installs the result only once `visudo -c`
+   passes, so you never open an editor.
 2. Press Enter. She connects, prints the machine's host key fingerprint
    and whether her key was accepted, and asks you to confirm the
    fingerprint. Compare it with what the machine prints:
