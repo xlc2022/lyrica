@@ -180,7 +180,10 @@ administrator pairs or manages them; a personal host lives in its user's
   `chat_template_kwargs.enable_thinking`; a template that always thinks (it opens
   `<think>` itself, like DeepSeek R1's) gets no switch. A template that writes
   `<think>` itself is reported as `opensThinking`. A host model that reports levels
-  gets `reasoning_effort` like any OpenAI-compatible endpoint.
+  gets `reasoning_effort` like any OpenAI-compatible endpoint; levels with no
+  `off` (a template that reads `reasoning_effort`, GLM-5.3's) make it
+  `alwaysThinks`, so off thinks at medium with a note, and the host hands the
+  level to the template in its own word (GLM-5.3's high is its max).
 - `hostStatus` returns the host's status (GPUs, placements, loaded and
   pinned models, VRAM, queue) to anyone who can use it; `hostControl`
   pauses, resumes or restarts it and answers the whole status after, since

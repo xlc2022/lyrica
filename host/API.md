@@ -70,7 +70,10 @@ the model server cuts short is cut short too.
 - `GET /v1/models`: every model in the models folder (chat, embedding,
   dictation and voice), loaded or not, as `{ "object": "list", "data":
   [{ "id", "object": "model", "created", "owned_by": "lyrica-host" }] }`.
-- `POST /v1/chat/completions`
+- `POST /v1/chat/completions`: passed to the model's server as sent, except
+  that a `reasoning_effort` (`low`, `medium`, `high`) for a model with
+  `efforts` becomes `chat_template_kwargs.reasoning_effort`, in the
+  template's own word for that level.
 - `POST /v1/embeddings`
 - `POST /v1/audio/transcriptions`: dictation, on a `transcribe` model
   (Whisper or Voxtral, on vLLM; or a whisper.cpp model on whisper.cpp's
@@ -245,7 +248,13 @@ seconds of audio.
   - `capabilities` are what the host can tell from the file (the chat
     template's tool and thinking support, a vision projector next to it,
     pooling for embeddings). `reasoning` is `null` or the levels it takes:
-    `["off", "on"]` when the template reads `enable_thinking`.
+    `["off", "on"]` when the template reads `enable_thinking`;
+    `["low", "medium", "high"]` when it reads `reasoning_effort` instead
+    (GLM-5.3, gpt-oss), with `efforts`, the word it is given for each
+    level: the effort words on the lines that read `reasoning_effort`, in
+    order, lowest for `low`, middle for `medium` and highest for `high`
+    (GLM-5.3: `low`, `high`, `max`), or the levels themselves when the
+    template names fewer than two. Such a template has no off.
     `opensThinking: true` when the template writes `<think>` itself, so a
     reply can start mid-thought with only `</think>`.
     A `transcribe` model has `"transcribe": true`. A `speak` model has

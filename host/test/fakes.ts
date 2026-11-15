@@ -117,6 +117,8 @@ export async function fakeLlamaRouter(loadState = "loaded", opts: { serving?: st
   const status = new Map<string, string>();
   // A model's measurement as the router reports it (`memory` on GET /models), where a test sets one.
   const memory = new Map<string, { status: string; min?: unknown }>();
+  // Each chat request's body, as the router got it.
+  const chats: Record<string, unknown>[] = [];
   const server = http.createServer(async (req, res) => {
     const chunks: Buffer[] = [];
     for await (const c of req) chunks.push(c as Buffer);
@@ -151,6 +153,7 @@ export async function fakeLlamaRouter(loadState = "loaded", opts: { serving?: st
     }
     if (url.pathname === "/v1/chat/completions") {
       if (status.get(body.model) !== "loaded") return json(400, { error: { message: "model not loaded" } });
+      chats.push(body);
       const text = `echo: ${body.messages.at(-1).content}`;
       // Error paths: a server error that repeats the prompt, and a stream cut off half way.
       if (text.includes("FAIL")) return json(500, { error: { message: `failed on: ${text}` } });
@@ -170,7 +173,7 @@ export async function fakeLlamaRouter(loadState = "loaded", opts: { serving?: st
     json(404, {});
   });
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
-  return { server, status, memory, url: `http://127.0.0.1:${(server.address() as AddressInfo).port}` };
+  return { server, status, memory, chats, url: `http://127.0.0.1:${(server.address() as AddressInfo).port}` };
 }
 
 export const TOKEN = "hf_marker_token_8812";

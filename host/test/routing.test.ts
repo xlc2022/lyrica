@@ -19,6 +19,8 @@ afterEach(async () => {
 });
 
 const MARKER = "zebra-marmalade-4417";
+// The lines of GLM-5.3-Flash's chat template that matter here.
+const GLM_TEMPLATE = "[gMASK]<sop>\n{%- set effective_reasoning_effort = reasoning_effort if reasoning_effort is defined and reasoning_effort in ['low', 'high'] else 'max' -%}\n{%- if tools -%}{%- endif -%}\n{%- if add_generation_prompt -%}<|assistant|>{{- '<think>' -}}{%- endif -%}";
 
 function modelsFolder(): string {
   const dir = mkdtempSync(join(tmpdir(), "lyrica-models-"));
@@ -56,6 +58,8 @@ function modelsFolder(): string {
   writeFileSync(join(dir, "vllm/half/config.json"), JSON.stringify({ architectures: ["Qwen3ForCausalLM"] }));
   writeFileSync(join(dir, "vllm/half/model-00001-of-00002.safetensors"), Buffer.alloc(16));
   writeFileSync(join(dir, "vllm/half/model.safetensors.index.json"), JSON.stringify({ weight_map: { a: "model-00001-of-00002.safetensors", b: "model-00002-of-00002.safetensors" } }));
+  // GLM-5.3's template: no thinking switch, an effort of low or high, max otherwise, and <think> opened every reply.
+  writeFileSync(join(dir, "shared/glm-Q3_K_XL.gguf"), ggufBytes({ "general.architecture": "glm4moe", "tokenizer.ggml.model": "gpt2", "tokenizer.chat_template": GLM_TEMPLATE }));
   writeFileSync(join(dir, "shared/big-00001-of-00002.gguf"), ggufBytes({ "general.architecture": "llama", "tokenizer.ggml.model": "gpt2" }));
   return dir;
 }
@@ -66,6 +70,7 @@ describe("the models folder", () => {
     expect(models.map((m) => [m.id, m.kind, m.server])).toEqual([
       ["lyrica/huggingface/Qwen/Qwen3-8B-GGUF/Qwen3-8B-Q4_K_M.gguf", "chat", "llamacpp"],
       ["shared/embed-Q8_0.gguf", "embedding", "llamacpp"],
+      ["shared/glm-Q3_K_XL.gguf", "chat", "llamacpp"],
       ["vllm/Qwen3-32B", "chat", "vllm"],
       ["vllm/remote", "chat", "vllm"],
     ]);
@@ -75,9 +80,9 @@ describe("the models folder", () => {
     expect(qwen.contextLength).toBe(40960);
     // The sampling its publisher recommends, which its server uses when a request sets none.
     expect(qwen.sampling).toEqual({ temperature: 0.7, topP: 0.8, topK: 20 });
-    expect(models[2]!.sampling).toEqual({ temperature: 0.6, topP: 0.95, topK: 20, repeatPenalty: 1.05 });
+    expect(models[3]!.sampling).toEqual({ temperature: 0.6, topP: 0.95, topK: 20, repeatPenalty: 1.05 });
     expect(models[1]!.sampling).toBeUndefined();
-    expect(models[3]!.remoteCode).toBe(true);
+    expect(models[4]!.remoteCode).toBe(true);
   });
 
   it("lists a model's vision projector and MTP file as its companions, never as models of their own", () => {
@@ -152,6 +157,7 @@ describe("routing /v1 to the model servers", () => {
     const plain = await call({ port: s.tls, path: "/v1/chat/completions", identity: s.me, pinned, body: { model: id, messages: [{ role: "user", content: MARKER }] } });
     expect(plain.body.choices[0].message.content).toBe(`echo: ${MARKER}`);
 
+
     s.router.status.set(id, "unloaded");
     const missing = await call({ port: s.tls, path: "/v1/chat/completions", identity: s.me, pinned, body: { model: id, stream: true, messages: [{ role: "user", content: "retry" }] } });
     expect(missing.status).toBe(503);
@@ -170,6 +176,16 @@ describe("routing /v1 to the model servers", () => {
     expect(s.lines.join("\n")).not.toContain(MARKER);
     for (const f of readdirSync(s.dataDir)) expect(readFileSync(join(s.dataDir, f), "utf8")).not.toContain(MARKER);
     for (const f of readdirSync(s.serving)) expect(readFileSync(join(s.serving, f), "utf8")).not.toContain(MARKER);
+
+    // GLM-5.3's template takes the effort as a template argument, in its words: Lyrica's high is its max.
+    const glm = "shared/glm-Q3_K_XL.gguf";
+    await s.host.runtime!.scheduler.loadNow(scanTextModels(modelsFolder()).find((m) => m.id === glm)!);
+    await call({ port: s.tls, path: "/v1/chat/completions", identity: s.me, pinned, body: { model: glm, reasoning_effort: "high", messages: [{ role: "user", content: "x" }] } });
+    expect(s.router.chats.at(-1)).toMatchObject({ chat_template_kwargs: { reasoning_effort: "max" } });
+    expect(s.router.chats.at(-1)).not.toHaveProperty("reasoning_effort");
+    // Qwen3's switch template keeps the request as sent.
+    await call({ port: s.tls, path: "/v1/chat/completions", identity: s.me, pinned, body: { model: id, reasoning_effort: "high", messages: [{ role: "user", content: "x" }] } });
+    expect(s.router.chats.at(-1)).toMatchObject({ reasoning_effort: "high" });
   });
 
   it("writes no prompt text to its real output or anywhere on disk, on success and on errors", async () => {
@@ -553,6 +569,10 @@ it("uses DeepSeek reasoning only for R1 models", () => {
 });
 
 it("offers a thinking switch only for templates that read enable_thinking, and says which open the tag", () => {
+  // GLM-5.3 reads an effort instead: three levels, in its own words, and no off.
+  expect(templateCapabilities(GLM_TEMPLATE)).toMatchObject({ reasoning: ["low", "medium", "high"], opensThinking: true, efforts: { low: "low", medium: "high", high: "max" } });
+  // gpt-oss names only its default: the levels as they are.
+  expect(templateCapabilities("{%- if reasoning_effort is not defined %}{%- set reasoning_effort = \"medium\" %}{%- endif %}Reasoning: {{ reasoning_effort }}").efforts).toEqual({ low: "low", medium: "medium", high: "high" });
   expect(templateCapabilities("{% if enable_thinking %}<think>{% endif %}").reasoning).toEqual(["off", "on"]);
   // DeepSeek R1's template opens <think> itself: the model always thinks, so there's nothing to switch.
   expect(templateCapabilities("{{ '<|Assistant|>' }}<think>\n")).toMatchObject({ reasoning: null, opensThinking: true });
