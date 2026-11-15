@@ -5,7 +5,7 @@ import { fauxAssistantMessage, fauxProvider, fauxThinking, fauxToolCall, type Js
 import { createAgentSession, DefaultResourceLoader, SessionManager, type ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { expect, it } from "vitest";
-import { CALL_THE_TOOL, CARRY_ON, createTurnToolsExtension, createWaitForReportsExtension, CUT_OFF, CUT_WRAP_UP, WAIT_FOR_REPORTS, EMPTY_REPLY, TEXT_TOOL_CALL, TURN_TOOL_NOTICE, WRAP_UP, PLAIN_WRAP_UP } from "../src/turn-tools.ts";
+import { CALL_THE_TOOL, CARRY_ON, createTurnToolsExtension, createWaitForReportsExtension, CUT_OFF, CUT_WRAP_UP, WAIT_FOR_REPORTS, EMPTY_REPLY, NO_ROOM, TEXT_TOOL_CALL, TURN_TOOL_NOTICE, WRAP_UP, PLAIN_WRAP_UP } from "../src/turn-tools.ts";
 import { createImageExtension, type ImageTools } from "../src/images.ts";
 import { toMessages } from "../../daemon/src/messages.ts";
 
@@ -249,6 +249,12 @@ it("fails the turn visibly when the retry has only thinking too", async () => {
   const r = await replies([fauxAssistantMessage(fauxThinking("Planning.")), fauxAssistantMessage(fauxThinking("Still planning.")), fauxAssistantMessage("never asked")]);
   expect(r.asked).toHaveLength(2);
   expect(r.shown.at(-1)).toMatchObject({ role: "assistant", error: EMPTY_REPLY });
+});
+
+it("says the context is too full when both replies ran into the reply limit while thinking", async () => {
+  // A model that always thinks (GLM-5.3) thinks on the retry too, and a full window leaves it no room.
+  const r = await replies([fauxAssistantMessage(fauxThinking("She"), { stopReason: "length" }), fauxAssistantMessage(fauxThinking("I"), { stopReason: "length" }), fauxAssistantMessage("never asked")]);
+  expect(r.shown.at(-1)).toMatchObject({ role: "assistant", error: NO_ROOM });
 });
 
 const AS_TEXT = "Merging now.\n<tool_call>\n<function=bash>\n<parameter=command>\ngit merge main\n</parameter>\n</function>\n</tool_call>";

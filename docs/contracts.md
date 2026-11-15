@@ -1472,7 +1472,9 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   `lyrica-ask-nudge`) asking her to carry on. If that reply ran into the
   reply limit while thinking (`stopReason: "length"`), the retry goes with
   thinking off, and the run's level comes back at its end. A second stores a
-  `lyrica-empty-reply` message (`EMPTY_REPLY`); the daemon emits it as the
+  `lyrica-empty-reply` message (`EMPTY_REPLY`, or `NO_ROOM` when it too ran
+  into the reply limit: a model that always thinks with a full context
+  window); the daemon emits it as the
   turn's `error` event, so a project's thread fails as it would on a model
   error, and after reload it shows as that reply's error.
 - **Tool calls written as text** (same extension): a local server can
