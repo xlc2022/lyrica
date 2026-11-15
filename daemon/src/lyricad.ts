@@ -9,8 +9,8 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   adoptLocalKiwix, adoptLocalSearxng, bootstrap, botChecks, kiwixAddress, isMounted, codexImage, DEFAULT_NAME, HostRefused, isRestricted, Keyring, Memory, Models, Offline, PersonaProposals, PersonaStore, PRONOUN_PRESETS, searxngAddress, selfName, setSelfName,
-  SystemdCredentials, ThreadPrefs, ThreadShares, Users, WrongPassword, Workspace, finishWipe, jobNotice, STOPPED_BY_HER, homeWiped, homeWipePending, useTailnetProxy, wipePending, wipePools,
-  localDate, localTime, serverZone, zoneOf,
+  SystemdCredentials, ThreadPrefs, ThreadShares, Users, WrongPassword, Workspace, finishWipe, jobNotice, STOPPED_BY_HER, homeWiped, homeWipePending, useTailnetProxy, wipePending, wipePools, forgetVectors,
+  localDate, localTime, serverZone, wall, zonedTime, zoneOf,
   type Argon2Params, type CredentialStore, type Pool, type ThreadsLimits, type User,
 } from "@lyrica/core";
 import { Delegation, planCatalog, Sleep, type Limits, type SleepLimits } from "@lyrica/extension";
@@ -794,6 +794,17 @@ export class Lyricad implements Drainable {
     } catch (err) {
       this.log(`recovering child threads failed: ${(err as Error).message.split("\n")[0]}`);
     }
+    // A night slept through without this key sleeps now.
+    void this.services!.sleep.catchUp(userId, this.lastSleepAt(userId)).catch((err: Error) => this.log(`catching up on sleep failed: ${err.name}`));
+  }
+
+  /** The last sleep time already passed in the user's zone, as an ISO time. */
+  lastSleepAt(userId: string, now = new Date()): string {
+    const zone = zoneOf(this.services!.users.get(userId)?.profile ?? {});
+    const [hh, mm] = this.sleepTime().split(":").map(Number) as [number, number];
+    const at = (day: Date) => { const w = wall(day, zone); return zonedTime(w.year, w.month, w.day, hh, mm, zone); };
+    const today = at(now);
+    return new Date(today <= now.getTime() ? today : at(new Date(now.getTime() - 86_400_000))).toISOString();
   }
 
   /**
@@ -814,6 +825,8 @@ export class Lyricad implements Drainable {
     this.sessions.dropUser(userId);
     await this.stopWork(userId);
     this.keyring.lockUser(userId);
+    // Recall's vectors held in memory are hers too: they go with the key.
+    forgetVectors(this.services!.users.userDir(userId) + "/");
     await this.services!.host.close(userId);
     await this.services!.workspace.unmountHome(userId).catch((err: Error) => this.log(`unmounting a home workspace failed: ${firstLine(err)}`));
     this.mounted.delete(userId);

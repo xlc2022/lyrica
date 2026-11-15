@@ -69,7 +69,11 @@ working implementation (`config/extensions/stateful-memory/memory-sleep.js`).
    `sleepChanges`) list these edits: edited notes after the new ones, pages
    with their word diff. A night skipped for no other activity still records
    that start, and its row opens to them.
-1. **Consolidate.** She reads the notes since the last sleep and skims the
+1. **Consolidate.** First, by plain code (`foldCopies`), a current note
+   word for word like one of the night's notes (ignoring citations and
+   case) is superseded by one copy: the user's own if one is theirs, else
+   the newest. Notes that only read much the same are listed for her as
+   groups to judge. Then she reads the notes since the last sleep and skims the
    threads they came from. For anything important that she never saved, she
    writes a note (catch-up stays light; Monika manages without it). Then she
    updates or creates pages, citing notes. A newer note that records a change
@@ -80,7 +84,17 @@ working implementation (`config/extensions/stateful-memory/memory-sleep.js`).
    nothing and leaves no tombstone: the old notes stay readable, notes can
    still cite them, they leave automatic recall, and the pages citing them
    are flagged. `write_page`
-   refuses to cite a superseded note and names the note that replaced it.
+   refuses to cite a superseded note and names the note that replaced it,
+   and refuses a page (other than a project's) that cites no note or page:
+   a page resting on conversation alone loses its sources when the notes
+   behind it go. She gathers what was settled about a machine or a model
+   into one page each (`host-…`, `model-…`). Once a page states all a note
+   says and cites it, `archive_notes` archives the note
+   (`archiveAbsorbed`, never a user's note), so recall finds the page; the
+   note stays readable by ID, and comes back by itself when no current page
+   cites it any more (a rewrite drops it, or the page is archived or
+   deleted). She is shown the pool's most used tags, to reuse their
+   spelling.
    After a complete run, sleep removes superseded notes that nothing but
    their replacement cites, two weeks after the replacement was written
    (`pruneSuperseded`). What they said lives on in that note, so this
@@ -129,7 +143,8 @@ newest remaining revision back as their text, with no new revision. The notes
 the night marked replaced (with `supersede`, or with a note saved with
 `supersedes`) get back what replaced them before, from the run's record
 (`sleep_runs.superseded`, pool step 14); a note replaced by one that went is
-current again. A restored page citing something since deleted or replaced is
+current again. Notes the night archived as absorbed (recorded there too, with
+`archived: true`) are unarchived. A restored page citing something since deleted or replaced is
 flagged. The night's items are dismissed; a persona proposal stays, as it is
 already a draft the person reviews. The run becomes skipped with the reason
 `undone`, so the watermark and resuming pass over it and the next sleep covers
@@ -261,8 +276,11 @@ their own **Time zone** (Settings → Profile). How it is laid out is in
 Sleep runs only for users whose key is available, either because they are
 logged in or because they saved credentials. Other users are skipped with the
 reason `no-key`, the same way an offline endpoint is skipped. The pool can't be
-written without the key, so that skip is recorded once the key is back; a
-restart in between loses the record.
+written without the key, so that skip is recorded once the key is back.
+When the key comes back (a login, or saved credentials at start), a pool
+whose last run began before the last sleep time missed that night: the miss
+is recorded as a `no-key` skip, even when a restart lost it, and the pool
+sleeps then (`Sleep.catchUp`). A pool that has never slept isn't caught up.
 
 ## In code
 
@@ -299,7 +317,9 @@ restart in between loses the record.
     what they replace on the run, for Undo): `recall`, `read_memory`, `remember` (each note must cite an
     entry that wasn't deleted; a note most of whose words a note citing the
     same entry already has isn't saved, and the reply names that note),
-    `write_page` (must cite something, never the journal or sleep's threads),
+    `supersede`, `archive_notes` (notes the page given cites and fully
+    states), `write_page` (must cite a note or page, except a project's page,
+    and never the journal or sleep's threads),
     `raise` (a question). Every tool sleep writes with (these, and dream's and
     wake's below) turns the person's whole display name into `{user}`, except
     on a page with words the person wrote, so the name is stored as a link.

@@ -128,6 +128,10 @@ id: n:20261009-k3f9   created: 2026-10-09T14:02Z   about: proxmox, backups
 [[u:7c1e]] is worried about the backup job on node 2. [e:web/3f7a2c#41]
 ```
 
+Its `about` tags are saved in the spelling the pool already uses most when
+they differ only in case, spaces, hyphens or underscores ("ui-review" is
+saved as "UI review"), so one tag doesn't drift into several.
+
 It is stored with a user token (see [Names and pronouns](#names-and-pronouns)).
 Everyone who reads it, Lyrica included, sees it with the current name: "Sam
 wants the Proxmox cluster…".
@@ -269,7 +273,19 @@ pool keeps a `vectors` table, derived from the index: one row per indexed
 item and the model that made it, the vector as float32, or none for an
 item the model skips (a tool result, a message with no spoken words).
 `nearest(model, vec, limit)` scans them by cosine and keeps those at or
-above `VECTOR_FLOOR` (0.5); `search` fuses that list with the keyword list
+above `VECTOR_FLOOR` (0.5). The scan runs in memory (`store/vector-cache.ts`):
+a pool's first search by meaning reads its vectors once and keeps each as a
+unit vector at one byte per number (about 1 KiB a message for a 1,024-number
+model), shared by every connection to that file. Each writable pool
+connection carries temporary triggers that name the vector rows it changes
+(`watchVectors`, set by `Memory`), and the next search re-reads only those.
+The rounded scores pick the candidates; the best few are scored again from
+their stored float32, so results and scores are exactly a scan of the table.
+All pools together stay under `VECTOR_CACHE_BYTES` (2 GiB, counting a copy
+while it grows): the least recently used pool goes first, and a pool too
+big alone is scanned from disk as before. A pool's vectors leave memory after
+15 minutes unused, when its user locks, is deleted or its pools are wiped.
+`search` fuses that list with the keyword list
 by reciprocal rank (`RRF_K` 60), so an item found both ways comes first and
 one that shares no word with the question still comes up. The keyword
 rules (`minWords`, common words, `said`, `current`, project boost) apply to
@@ -347,7 +363,9 @@ secrets, and does not rewrite memory already stored. A secret-named label follow
 - `remember(notes: [{ text, about?, supersedes? }])` writes notes. Their
   source is the current thread entry. Superseded notes stay but drop out of
   automatic recall. A note with the same words as a current note (ignoring case,
-  citations and spacing) isn't saved again. One that only reads much the
+  citations and spacing) isn't saved again, even when it sets `supersedes`:
+  the notes it names are pointed at the existing copy instead, so a repeated
+  correction can't pile up current copies. One that only reads much the
   same (`nearCopy`) may change it, so it is saved, and the result names the
   near match so she can set `supersedes`. Her instructions say progress on work in flight lives with the
   work, so she notes what it settled.

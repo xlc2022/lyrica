@@ -7,7 +7,7 @@ import {
 } from "@lyrica/core";
 import { Type } from "typebox";
 import { createLyricaExtension, type ThreadContext } from "./index.ts";
-import { nearCopy } from "./memory.ts";
+import { nearCopy, sameText } from "./memory.ts";
 import { openThreadSession } from "./session.ts";
 
 // Sleep (docs/sleep.md): consolidate → dream → wake, each an agentic Pi
@@ -232,6 +232,10 @@ export class Sleep {
       if (await this.probe(userId, pool, plan.phases)) return skip("endpoint-down");
 
       const runId = plan.resume?.id ?? view.own.startSleepRun(reason, plan.until, begun);
+      if (!plan.resume) {
+        const merged = foldCopies(view, runId, plan.material);
+        if (merged) this.log(`sleep ${pool}: folded ${merged} word-for-word copies of notes`);
+      }
       this.active.add(runId);
       const phases = { ...(plan.resume?.phases ?? {}) };
       view.own.updateSleepRun(runId, { status: "running" });
@@ -286,6 +290,31 @@ export class Sleep {
   /** Sleep waiting for a plan, for the user's notifications. */
   planWaits(userId: string): { pool: Pool; endpointId: string }[] {
     return [...this.waiting.values()].filter((w) => w.userId === userId).map(({ pool, endpointId }) => ({ pool, endpointId }));
+  }
+
+  /**
+   * When a user's key comes back: a pool whose last run began before `since`
+   * (the last sleep time) missed that night, unrecorded if lyricad restarted
+   * meanwhile. The miss is recorded as a no-key skip and the pool sleeps now.
+   * Resolves once those runs end.
+   */
+  async catchUp(userId: string, since: string): Promise<void> {
+    if (this.mode(userId) === "manual") return;
+    const runs: Promise<unknown>[] = [];
+    for (const pool of ["general", "private"] as const) {
+      const view = this.o.memory.openThreadView(userId, pool);
+      let missed: boolean;
+      try {
+        const last = view.own.listSleepRuns(1)[0];
+        missed = !!last && last.startedAt < since;
+      } finally {
+        view.close();
+      }
+      if (!missed) continue;
+      if (!this.unrecorded.some((s) => s.userId === userId && s.pool === pool && s.at >= since)) this.unrecorded.push({ userId, pool, reason: "scheduled", at: since });
+      runs.push(this.run(userId, pool, "scheduled").catch((err: Error) => this.log(`sleep failed: ${err.name}`)));
+    }
+    await Promise.all(runs);
   }
 
   /** lyricad's tick: sleep that waited for a plan runs once it resets, or once the user falls back. */
@@ -411,6 +440,45 @@ export class Sleep {
   private log(line: string): void { this.o.log?.(line); }
 }
 
+/** How many current notes are compared with each of tonight's notes. */
+const COPIES_CHECKED = 50;
+
+/**
+ * Before consolidation, by plain code: current notes word for word like one of tonight's are superseded by one of
+ * them (the user's own, if one is theirs, else the newest), and notes that only read much the same go to
+ * consolidation as groups to judge. Returns how many notes were superseded.
+ */
+export function foldCopies(view: PoolView, runId: string, material: SleepMaterial): number {
+  const own = view.own;
+  const gone = new Set<string>();
+  const similar: string[][] = [];
+  for (const n of material.notes) {
+    if (gone.has(n.id)) continue;
+    const text = own.get(n.id, { raw: true })?.text ?? "";
+    const near = own.search(text, { kinds: ["note"], current: true, limit: COPIES_CHECKED })
+      .map((h) => own.get(h.id, { raw: true })).filter((i): i is NonNullable<typeof i> => !!i && i.id !== n.id && !gone.has(i.id) && nearCopy(text, i.text));
+    const same = [own.get(n.id, { raw: true })!, ...near.filter((i) => sameText(text, i.text))];
+    if (same.length > 1) {
+      const keep = same.find((i) => i.origin === "user") ?? same.reduce((a, b) => (b.createdAt > a.createdAt ? b : a));
+      const old = same.filter((i) => i !== keep && i.origin !== "user").map((i) => i.id);
+      if (old.length) own.supersede(old, keep.id, "sleep", runId);
+      for (const id of old) gone.add(id);
+    }
+    const others = near.filter((i) => !sameText(text, i.text)).map((i) => i.id);
+    if (others.length && !gone.has(n.id)) similar.push([n.id, ...others]);
+  }
+  material.notes = material.notes.filter((n) => !gone.has(n.id));
+  // Each group once, without what was just superseded.
+  const seen = new Set<string>();
+  material.similar = similar.map((g) => g.filter((id) => !gone.has(id))).filter((g) => {
+    const key = [...g].sort().join(" ");
+    if (g.length < 2 || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  return gone.size;
+}
+
 // --- The sleep-only tools ---
 
 interface SleepTools {
@@ -514,6 +582,20 @@ export function sleepTools(phase: SleepPhase, s: SleepTools): ExtensionFactory {
         },
       });
       pi.registerTool({
+        name: "archive_notes",
+        label: "Archive notes",
+        description: "Archive notes a page now states in full, so recall finds the page instead of each note. The page must cite them. They stay readable by ID, and come back if the page stops citing them.",
+        promptSnippet: "archive notes a page fully states",
+        parameters: Type.Object({
+          notes: Type.Array(Type.String(), { minItems: 1, description: "The notes' IDs." }),
+          page: Type.String({ description: "The page that cites them and says all they say, like p:homelab." }),
+        }),
+        async execute(_id, params) {
+          own.archiveAbsorbed(params.notes, params.page, s.runId);
+          return text(`Archived ${params.notes.length === 1 ? "1 note" : `${params.notes.length} notes`} into ${params.page}.`);
+        },
+      });
+      pi.registerTool({
         name: "write_page",
         label: "Write page",
         description: "Create or rewrite a page: your understanding of one subject, citing the notes behind it. The whole text replaces the old one.",
@@ -528,6 +610,10 @@ export function sleepTools(phase: SleepPhase, s: SleepTools): ExtensionFactory {
         async execute(_id, params) {
           const cites = citationsIn(params.text, view.pool);
           if (!cites.length) throw new Error("a page cites what it rests on, like [n:20261009-a1b2c3d4]");
+          // A page rests on notes, which keep its sources when conversations are forgotten: entries alone are too thin. Projects' pages may cite only their conversations.
+          if (!params.slug.startsWith("project-") && !cites.some((c) => /^(general\/)?[np]:/.test(c))) {
+            throw new Error("a page rests on notes: cite at least one [n:…] or another page [p:…]. Note what a conversation said with remember first, then cite the note");
+          }
           // A dream is reflection: a page can't rest on one.
           if (cites.some((c) => hideDreams(c))) throw new Error("a page can't cite the journal or sleep's own threads: dreams aren't facts");
           // A page rests on current notes: a replaced one points to the note that replaced it.

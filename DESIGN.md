@@ -477,7 +477,9 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
   came between, as when she polls. Identical calls in one batch count as
   one result, except `bash` calls starting a background command, each its
   own job; such a call's result repeated (the running-jobs cap's refusal)
-  is still refused. Invalid arguments are
+  is still refused. A `remember` result is compared without the note IDs
+  it names, so saving the same notes a third time is refused, though each
+  save makes a new note. Invalid arguments are
   rejected before execution. Each subagent turn counts separately. A
   stopped turn shows a plain notice with the number of calls; the runtime
   ends the loop, rather than relying on a prompt instruction.
@@ -1648,8 +1650,8 @@ NAS, and Proxmox nodes. Decided 2026-10-11 from
   hands over on a question card with its hash; when a root command will
   recur, she may offer exact sudoers lines, which the user adds. How much
   sudo she has on a machine is the owner's call, made by hand on that
-  machine: exact commands, or on a machine the owner really trusts,
-  passwordless sudo for everything (the owner said so on 2026-11-01).
+  machine: exact commands, or, when the owner really trusts the models
+  that will run there, passwordless sudo for everything (the owner said so on 2026-11-01).
   Even then she holds no password, writes no sudoers, and the machine's
   mode limit and the suspect-command check still apply to what she runs.
 - **A machine has a mode limit**, the loosest mode she may use there: Ask,
@@ -1962,7 +1964,9 @@ Details in [docs/memory.md](docs/memory.md).
   first, a CPU-served copy of the same model after it; with none reachable,
   recall is by words alone and the embedder catches up later. One model per
   index: a changed model re-embeds the pool. No index server, no native
-  extension: a scan in the daemon is enough for a pool of thousands.
+  extension: a scan in the daemon, over vectors held in memory at one byte
+  per number and rescored exactly, all pools together under 2 GiB (the
+  operator's limit is 4 GB), the least recently used let go first.
 - **Lineage:** each layer cites the one below it by ID, inline. "Where did this
   come from" and "what was it consolidated into" are both answered from those
   citations.
@@ -2133,7 +2137,8 @@ Details in [docs/sleep.md](docs/sleep.md).
   call, 2026-10-21): a large-context model should use its context.
 - **Skipping:** sleep skips a user whose key isn't available, or a pool whose
   endpoint is offline, and tries again at the next due time. Nothing is lost.
-  The next sleep just covers a longer period.
+  The next sleep just covers a longer period. A night missed for want of the
+  key is slept as soon as the key comes back.
 - **What she'd like to raise** after a night (a thought from the dream, a
   question from consolidation, a persona suggestion) never opens a
   conversation by itself.

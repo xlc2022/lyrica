@@ -35,6 +35,7 @@ export function registerMemoryTools(pi: ExtensionAPI, view: PoolView, ctx: () =>
       "In notes, write {user} for the person you're talking with, never their name, and {user:obj}, {user:poss}, {user:poss-pro}, {user:refl} for their pronouns. There is no subject pronoun form: write {user} where \"she\" or \"they\" would go.",
       "To correct a note, save the corrected fact with supersedes set to the old note's ID.",
       "Progress on work in flight (a pull request's CI, a review round) lives where the work is. Note what it settled: the outcome, a decision, or a lesson, with supersedes set to notes it makes out of date.",
+      "Testing or tuning a model or a machine is work in flight too: the settings tried, timings and which run failed stay in the thread. Note only what it settled, such as the setting that works, with about naming the model or machine.",
       "In notes, mention another conversation as [t:<id>] and a message in one as [e:<id>#<n>], never by its title: titles change, and the ID always shows the current one.",
     ],
     parameters: Type.Object({
@@ -51,15 +52,18 @@ export function registerMemoryTools(pi: ExtensionAPI, view: PoolView, ctx: () =>
       const source = view.own.lastEntry(threadId, ["user", "toolResult"])?.id;
       // A note word for word like a current one is that note: not saved again. One that only reads much the same may
       // change it ("spaces over tabs"), so it's saved, and she's shown the near match to set supersedes if it does.
+      // A correction already saved word for word is that note too: the notes it corrects point at it instead.
       const copies: string[] = [];
       const similar: string[] = [];
       const fresh = params.notes.filter((n) => {
-        if (n.supersedes?.length) return true;
         const near = view.own.search(n.text, { kinds: ["note"], current: true, limit: 5 })
           .map((h) => ({ id: h.id, text: view.own.get(h.id, { raw: true })?.text ?? "" })).filter((h) => nearCopy(n.text, h.text));
         const same = near.find((h) => sameText(n.text, h.text));
-        if (same) copies.push(same.id);
-        else if (near[0]) similar.push(near[0].id);
+        if (same) {
+          const older = (n.supersedes ?? []).filter((id) => id !== same.id && view.own.get(id, { raw: true })?.supersededBy !== same.id);
+          if (older.length) view.own.supersede(older, same.id, "lyrica");
+          copies.push(same.id);
+        } else if (near[0] && !n.supersedes?.length) similar.push(near[0].id);
         return !same;
       });
       const ids = fresh.length ? view.own.addNotes(fresh.map((n) => ({ ...n, source })), { author: "lyrica", thread: threadId }) : [];

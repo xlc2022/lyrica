@@ -49,6 +49,9 @@ RestartSec=5
 # must say 0.
 ProtectControlGroups=yes
 PrivateTmp=yes
+# No core dump of lyricad: one would hold unlocked keys and decrypted memory,
+# unencrypted on disk (docs/daemon.md, "Deployment").
+LimitCORE=0
 
 [Install]
 WantedBy=multi-user.target

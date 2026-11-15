@@ -278,12 +278,18 @@ existed before became general machines at Ask.
 an hour; nothing is saved until the user confirms the host key. The key's
 `authorized_keys` line is `restrict,from="<Lyrica's addresses>" ssh-ed25519
 …`, usable only from this computer. The setup, pasted whole on the machine
-as a user with sudo (`machineSetup`). Every write goes through `sudo tee`,
+as a user with sudo (`machineSetup`). It first makes her account where the
+machine lacks it, with the password `*`: it matches nothing, yet unlike a
+locked `!` it doesn't make sshd refuse the account when PAM is off, so only
+her key logs in. Every write goes through `sudo tee`,
 never a shell redirect, and the commands are one `&&` chain, so the shell
 reads them all before sudo asks for a password and stops at the first that
 fails:
 
 ```sh
+# Her account, made if it isn't there yet; with no password, only her key logs in
+{ id -u <account> > /dev/null 2>&1 || sudo useradd --create-home --shell /bin/bash --password '*' <account>; } &&
+
 # Her key, in a file only root can change, beside any key already there
 sudo install -d -m 755 /etc/ssh/authorized_keys &&
 sudo touch /etc/ssh/authorized_keys/<account> &&
@@ -298,14 +304,18 @@ ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
 ```
 
 Sudo without a password is optional and never in that block, so pasting it
-grants nothing. The page offers it as two commands of their own
-(`machineSudo`, the probe's `sudo`), **Sudo, exact commands** (an example,
-`<account> ALL=(root) NOPASSWD: /usr/bin/systemctl restart nginx`, to
-change first) and **Sudo, everything** (`<account> ALL=(root) NOPASSWD:
-ALL`, for a machine the user really trusts). Each adds its line to
-`/etc/sudoers.d/lyrica` the way the run-as-root card does
-(`sudoersCommand`): the file's other lines kept, checked by `visudo -c`
-before it is installed.
+grants nothing. The page offers it as two commands of their own.
+**Sudo, exact commands** is built on the page from the commands the user
+types, one box each (up to eight): each becomes `<account> ALL=(root)
+NOPASSWD: <command>`, checked as typed by the same `checkSudoers` her
+offered lines go through (`core/src/workspace/sudoers.ts`, free of Node
+modules so the page imports it), with its refusal or its "reaches root
+anyway" warning under the box; Copy waits until every box passes. **Sudo,
+everything** (`machineSudo`, the probe's `sudo`) is `<account> ALL=(root)
+NOPASSWD: ALL`, only when the user really trusts the models that will run
+there. Each adds its lines to `/etc/sudoers.d/lyrica` the way the
+run-as-root card does (`sudoersCommand`): the file's other lines kept,
+checked by `visudo -c` before it is installed.
 
 A second machine on the same account adds its line beside the first, and
 each account gets its own `sshd_config.d` file (before 2026-11-05 the block
@@ -376,7 +386,7 @@ She never runs `sudo` with a password and never writes sudoers: a root step
 on a machine goes to the user on a card (`run_as_root`,
 `core/src/workspace/root.ts`). The owner decides by hand, per machine, how
 much `sudo` she gets without a password: nothing, exact commands, or
-everything on a machine the owner really trusts (DESIGN.md, "Machines");
+everything when the owner really trusts the models that will run there (DESIGN.md, "Machines");
 with everything, `sudo <command>` runs from her `bash` like any command
 there, under the machine's mode limit and the suspect-command check, and
 the card is for machines without it. The lines she may *offer* on a card

@@ -473,6 +473,8 @@ in {
         # stay off. NixOS adds none by default.
         ProtectControlGroups = true;
         PrivateTmp = true;
+        # No core dump of lyricad: one would hold unlocked keys and decrypted memory, unencrypted on disk.
+        LimitCORE = 0;
       };
     };
   };

@@ -169,7 +169,8 @@ name/id and error class; stderr is discarded.
   `PUT …/me/credentials` (`Keyring.saveUserKey`). At start `lyricad` takes
   every saved key and mounts those users' home workspaces, so sleep can run.
 - Turning either off deletes the sealed file. The loaded key remains in
-  memory until locked or the service stops.
+  memory until locked or the service stops. Locking also lets go of the
+  user's recall vectors held in memory (docs/memory.md, "Recall by meaning").
 - As a non-root service user it seals with `--user`, which needs systemd 256
   or later. No root step is needed.
 
@@ -1624,6 +1625,10 @@ again installs that checkout's commit as a release, the way an update does
 ("Updates" below). `daemon/deploy/uninstall.sh` takes it all off again
 (docs/guides/getting-started.md, "Uninstall"). On NixOS, her expected
 home, the flake's module does the same ("On NixOS" below).
+
+Both lyricad units set `LimitCORE=0`, so a crash leaves no core dump of
+unlocked keys and decrypted memory on disk. Swap is the operator's to
+encrypt.
 
 - It installs the packages (bubblewrap, gocryptfs, FUSE, passt, nftables,
   openssl, rsync, ImageMagick, ffmpeg (with ffprobe, so she can check her clips),

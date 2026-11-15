@@ -449,6 +449,30 @@ describe("a night's sleep", () => {
     again.close();
   });
 
+  it("records a night missed without the key, even after a restart, and sleeps it once the key is back", async () => {
+    const s = await setup();
+    const v = s.view();
+    s.talk(v, "Something.", "{user} said something");
+    s.script({});
+    expect(await s.sleep.run(s.ada.id, "general", "scheduled")).toMatchObject({ status: "complete" });
+    s.talk(v, "Something else.", "{user} said something else");
+    v.close();
+    // The night came while the key was away and lyricad restarted, so nothing holds the skip.
+    s.keyring.lockUser(s.ada.id);
+    await new Promise((r) => setTimeout(r, 2));
+    const night = new Date().toISOString();
+    await s.users.authenticate("ada", "pw");
+    s.script({});
+    await s.sleep.catchUp(s.ada.id, night);
+    const again = s.view();
+    expect(again.own.listSleepRuns().map((r) => [r.status, r.skipReason])).toEqual([["complete", undefined], ["skipped", "no-key"], ["complete", undefined]]);
+    expect(again.own.listSleepRuns()[1]!.startedAt).toBe(night);
+    // Slept since that night: nothing more.
+    await s.sleep.catchUp(s.ada.id, night);
+    expect(again.own.listSleepRuns()).toHaveLength(3);
+    again.close();
+  });
+
   it("stops at Lock, or past a phase's limit, and marks the run partial", async () => {
     const s = await setup({ turns: 2 });
     const v = s.view();
@@ -589,6 +613,64 @@ describe("consolidation that keeps to its job", () => {
     expect(v.own.get("wake", { raw: true })!.text).not.toContain("Ada");
     expect(v.own.getWake()).toMatch(/^Ada is planning the garden\./);
     expect(v.own.listItems().map((i) => i.text)).toEqual(["Ada owes me a decision on the beds"]);
+    v.close();
+  });
+});
+
+describe("keeping notes tidy", () => {
+  it("folds word-for-word copies before consolidating, shows near-copies and tags, and archives notes a page absorbed until the night is undone", async () => {
+    const s = await setup();
+    const v = s.view();
+    const first = s.talk(v, "I like green tea.", "{user} likes green tea");
+    await new Promise((r) => setTimeout(r, 2));
+    const copy = s.talk(v, "Green tea, as I said.", "{user} likes green tea");
+    const near = s.talk(v, "Really, green tea.", "{user} really likes green tea");
+    const tagged = s.talk(v, "Reviews matter.", "{user} wants UI reviewed");
+    v.own.edit(tagged.note!, { about: ["UI review"] }, "lyrica");
+    const seen = s.script({
+      consolidate: [
+        (c) => {
+          const prompt = said(c);
+          // The older copy is folded into the newer one by code, so she never sees it; the near copy she judges.
+          expect(prompt).not.toContain(first.note!);
+          expect(prompt).toContain("Notes that read much the same");
+          expect(prompt).toContain(`[${copy.note}], [${near.note}]`);
+          expect(prompt).toContain("Tags in use");
+          expect(prompt).toContain("UI review");
+          return call("write_page", { slug: "tea", title: "Tea", summary: "tea", text: `Green tea [${copy.entry}].` });
+        },
+        call("write_page", { slug: "tea", title: "Tea", summary: "tea", text: `Green tea, really [${copy.note}].` }),
+        call("archive_notes", { notes: [copy.note], page: "p:tea" }),
+        call("archive_notes", { notes: [near.note], page: "p:tea" }),
+      ],
+    });
+    await new Promise((r) => setTimeout(r, 2));
+    const night = await s.sleep.run(s.ada.id, "general", "manual");
+    expect(night.status).toBe("complete");
+    // A page resting only on a conversation is refused: notes keep its sources.
+    expect(said(seen.consolidate[1]!)).toContain("a page rests on notes");
+    expect(said(seen.consolidate[3]!)).toContain("Archived 1 note into p:tea");
+    expect(said(seen.consolidate[4]!)).toContain(`p:tea doesn't cite ${near.note}`);
+    expect(v.own.get(first.note!)!.supersededBy).toBe(copy.note);
+    // Archived, she reads it by ID but recall finds the page.
+    expect(v.own.get(copy.note!)!.archived).toBe(true);
+    expect(v.own.search("green tea", { kinds: ["note", "page"] }).map((h) => h.id)).not.toContain(copy.note);
+    expect(v.own.search("green tea", { kinds: ["note", "page"] }).map((h) => h.id)).toContain("p:tea");
+    expect(s.logs.join("\n")).toContain("folded 1 word-for-word copies");
+
+    const owner = s.memory.openOwnerView(s.ada.id);
+    owner.general.undoSleepRun(night.id, `user:${s.ada.id}`);
+    owner.close();
+    expect(v.own.get(copy.note!)!.archived).toBe(false);
+    expect(v.own.get(first.note!)!.supersededBy).toBeUndefined();
+
+    // A page that stops citing a note it absorbed gives it back.
+    const run = v.own.startSleepRun("manual", new Date().toISOString());
+    v.own.putPage({ slug: "tea", title: "Tea", summary: "tea", text: `Green tea [${copy.note}].` }, "sleep");
+    v.own.archiveAbsorbed([copy.note!], "p:tea", run);
+    expect(() => v.own.archiveAbsorbed([tagged.note!], "p:tea", run)).toThrow("doesn't cite");
+    v.own.putPage({ slug: "tea", title: "Tea", summary: "tea", text: `Really green tea [${near.note}].` }, "sleep");
+    expect(v.own.get(copy.note!)!.archived).toBe(false);
     v.close();
   });
 });

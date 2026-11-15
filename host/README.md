@@ -846,7 +846,10 @@ revoked. A revoked server must pair again.
       machine, including DNS for outside names.
     - `install.sh` applies the rules before starting the stack, and installs
       `lyrica-host-egress.service`, which applies them before Docker starts
-      at boot, and again on every Docker restart.
+      at boot, and again on every Docker restart. At boot it also waits up
+      to a minute for the LAN address to appear, so on a DHCP machine
+      Docker doesn't try to publish host-api's port before the address
+      exists (the bind would fail, and Docker doesn't retry it).
     - host-api's DNS server is a blackhole address: container names still
       resolve, outside names never do. Its networks have no IPv6.
     - Without systemd, run `host/egress.sh apply` yourself after each.

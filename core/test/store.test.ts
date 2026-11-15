@@ -290,6 +290,22 @@ describe("notes", () => {
     expect(own.aboutWords()).toEqual([{ about: "home", count: 2 }]);
   });
 
+  it("saves a tag in the spelling already in use when it differs only in case, spaces or hyphens", async () => {
+    const { memory, ada } = await setup();
+    const { own } = memory.openThreadView(ada.id, "general");
+    const s = said(own, "reviews");
+    const add = (about: string[]) => own.addNotes([{ text: `note ${about.join(" ")}`, source: s.entry, about }], { author: "lyrica", thread: s.thread })[0]!;
+    add(["UI review"]);
+    add(["UI review", "home"]);
+    const n = add(["ui-review", "UI_Review", "Home Lab"]);
+    expect(own.get(n)!.about).toEqual(["UI review", "Home Lab"]);
+    expect(own.aboutWords()).toEqual([{ about: "UI review", count: 3 }, { about: "home", count: 1 }, { about: "Home Lab", count: 1 }]);
+    // A note's only use of a tag can still be respelled.
+    own.edit(n, { about: ["UI review", "homelab"] }, "lyrica");
+    own.edit(n, { about: ["UI review", "HomeLab"] }, "lyrica");
+    expect(own.get(n)!.about).toEqual(["UI review", "HomeLab"]);
+  });
+
   it("removes superseded notes nothing cites once their replacement is old enough, with no tombstone, keeping cited and user notes", async () => {
     const { memory, ada } = await setup();
     const { own } = memory.openThreadView(ada.id, "general");

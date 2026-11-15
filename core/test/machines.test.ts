@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { spawnSync } from "node:child_process";
 import {
   callArgs, cleanOutput, discardingGit, removedFolders, generateSshKey, maskKeys, migrate, RemoteMissing, suspectCommand, Users, writtenFiles, Workspace, WorkspaceSettings,
   type Db, type NewMachine, type SshSession, type SshTransport,
@@ -97,6 +98,11 @@ describe("machines", () => {
     expect(own.sudo).toBeUndefined();
     const hers = await workspace.probeMachine(ada.id, "ada", { name: "box", address: "lyrica@127.0.0.1" });
     expect(hers.setup).toContain("/etc/ssh/authorized_keys/lyrica");
+    // Her account is made first where the machine lacks it, with a password that matches nothing but doesn't lock it, so sshd takes her key.
+    expect(hers.setup).toContain("{ id -u lyrica > /dev/null 2>&1 || sudo useradd --create-home --shell /bin/bash --password '*' lyrica; } &&");
+    expect(hers.setup.indexOf("useradd")).toBeLessThan(hers.setup.indexOf("authorized_keys"));
+    expect(own.setup).not.toContain("useradd");
+    expect(spawnSync("bash", ["-n"], { input: hers.setup }).status).toBe(0);
     // Her line is added beside any key already there, never written over it, and each account has its own sshd file.
     expect(hers.setup).toMatch(/sudo grep -qxF -- 'restrict,[^\n]* \|\| printf '%s\\n' 'restrict,[^\n]* \| sudo tee -a \/etc\/ssh\/authorized_keys\/lyrica > \/dev\/null/);
     expect(hers.setup).toContain("| sudo tee /etc/ssh/sshd_config.d/lyrica-lyrica.conf > /dev/null");
@@ -105,7 +111,6 @@ describe("machines", () => {
     for (const line of hers.setup.split("\n").filter((l) => l && !l.startsWith("#")).slice(0, -1)) expect(line).toMatch(/ &&$/);
     // The sudo rights are separate commands, each checked by visudo before sudo reads it, never in the setup.
     expect(hers.setup).not.toMatch(/NOPASSWD/);
-    expect(hers.sudo!.exact).toContain("'lyrica ALL=(root) NOPASSWD: /usr/bin/systemctl restart nginx'");
     expect(hers.sudo!.everything).toContain("'lyrica ALL=(root) NOPASSWD: ALL'");
     expect(hers.sudo!.everything).toContain("sudo visudo -c -f /etc/sudoers.d/lyrica.new");
     const m = await workspace.addMachine(ada.id, { name: "laptop", address: "ada@127.0.0.1", root: null, pool: "private", draft: own.draft, hostKey: KEY, asUser: true });
