@@ -344,6 +344,23 @@ describe("in a Pi session", () => {
     expect(JSON.stringify(seen[3])).toContain(`Similar to [${first}]: if a new note changes one, save it again with supersedes set to it.`);
     expect(changed).not.toBe(first);
   });
+
+  it("doesn't save a correction again when the same call repeats", async () => {
+    const m = await withMemory();
+    const t = m.thread();
+    const [old] = t.view.own.addNotes([{ text: "The video roster has two models" }], { author: "lyrica", thread: t.context.threadId });
+    const fix = () => () => fauxAssistantMessage(fauxToolCall("remember", { notes: [{ text: "The video roster has three models", supersedes: [old] }] }), { stopReason: "toolUse" });
+    const { session: s, seen } = await session(t.context, [fix(), fix(), fix(), () => fauxAssistantMessage("Noted.")]);
+    try {
+      await s.prompt("Three now.");
+    } finally {
+      s.dispose();
+    }
+    const current = t.view.own.search("video roster models", { kinds: ["note"], current: true }).map((h) => h.id);
+    expect(current).toHaveLength(1);
+    expect(t.view.own.get(old!)!.supersededBy).toBe(current[0]);
+    expect(JSON.stringify(seen[3])).toContain(`Already noted, so not saved again: [${current[0]}]`);
+  });
 });
 
 

@@ -51,15 +51,18 @@ export function registerMemoryTools(pi: ExtensionAPI, view: PoolView, ctx: () =>
       const source = view.own.lastEntry(threadId, ["user", "toolResult"])?.id;
       // A note word for word like a current one is that note: not saved again. One that only reads much the same may
       // change it ("spaces over tabs"), so it's saved, and she's shown the near match to set supersedes if it does.
+      // A correction already saved word for word is that note too: the notes it corrects point at it instead.
       const copies: string[] = [];
       const similar: string[] = [];
       const fresh = params.notes.filter((n) => {
-        if (n.supersedes?.length) return true;
         const near = view.own.search(n.text, { kinds: ["note"], current: true, limit: 5 })
           .map((h) => ({ id: h.id, text: view.own.get(h.id, { raw: true })?.text ?? "" })).filter((h) => nearCopy(n.text, h.text));
         const same = near.find((h) => sameText(n.text, h.text));
-        if (same) copies.push(same.id);
-        else if (near[0]) similar.push(near[0].id);
+        if (same) {
+          const older = (n.supersedes ?? []).filter((id) => id !== same.id && view.own.get(id, { raw: true })?.supersededBy !== same.id);
+          if (older.length) view.own.supersede(older, same.id, "lyrica");
+          copies.push(same.id);
+        } else if (near[0] && !n.supersedes?.length) similar.push(near[0].id);
         return !same;
       });
       const ids = fresh.length ? view.own.addNotes(fresh.map((n) => ({ ...n, source })), { author: "lyrica", thread: threadId }) : [];
