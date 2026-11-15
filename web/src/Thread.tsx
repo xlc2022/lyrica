@@ -11,6 +11,7 @@ import { type Live, tailKey } from "./live.ts";
 import { Conversation, delegateTasks, MessageBox } from "./Messages.tsx";
 import { SubagentsDrawer } from "./Subagents.tsx";
 import { Composer } from "./Composer.tsx";
+import type { CommandEnv } from "./Commands.tsx";
 import { ContextFact, newerContext } from "./ContextMeter.tsx";
 import { TokensFact } from "./Usage.tsx";
 import { projectRoutines, RoutinesFact } from "./Routines.tsx";
@@ -105,6 +106,8 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
   useEffect(() => { if (t.live.reload || t.live.tools) noteActivity(`${pool}/${threadId}`); }, [t.live.reload, t.live.tools, noteActivity, pool, threadId]);
   // A double-click on the title renames the thread in place (docs/ux.md §6).
   const [renaming, setRenaming] = useState(false);
+  // Bumped by /model to open the header's model picker.
+  const [openModel, setOpenModel] = useState(0);
   const renameTo = (name: string) => patch<ThreadSummary>(base, { title: name }).then((x) => { summary.set(x); refreshThreads(); }, (e: Error) => setSendError(e.message));
   // Project (a project chat's header) toggles the project's overview beside the chat from the split width, and opens the page below it.
   const wide = useWide();
@@ -308,6 +311,15 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
   const listed = findThread(threads, pool, threadId) ?? s;
   // The thread as listed now, not when the menu opened: a child started just before still counts in Delete….
   const menuNow = useMemo(() => menuAt && { ...menuAt, thread: listed ?? menuAt.thread }, [menuAt, listed]);
+  // The message box's "/" commands (docs/ux.md §6, Commands in the message box): each works a control that has a home here.
+  const commands = useMemo((): CommandEnv | undefined => settings.data && s && !s.subagent ? {
+    settings: settings.data, onSettings: changeSettings,
+    setModel: (model) => patch<ThreadSettings>(`${base}/settings`, { models: { [settings.data!.code ? "code" : "chat"]: model } }).then(settings.set),
+    openModel: () => setOpenModel((n) => n + 1),
+    compact: (notes) => post(`${base}/compact`, { notes }),
+    // A project's threads are hers to start.
+    ...(!s.project && !inProject?.project ? { newThread: () => void post<ThreadSummary>(u(userId, "threads"), { pool }).then((x) => { refreshThreads(); go({ page: "thread", userId, pool, threadId: x.id }); }, (e: Error) => setSendError(e.message)) } : {}),
+  } : undefined, [settings.data, settings.set, s, changeSettings, base, refreshThreads, inProject, userId, pool]);
   if (!s && summary.error && gone.data) return <Tombstone userId={userId} pool={pool} data={gone.data} />;
 
   return (
@@ -321,7 +333,7 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
           </h1>
           <div className="tfacts">
             <span className={`k ${pool}`}>{pool}</span>
-            {settings.data && <ModelBadge base={base} settings={settings.data} onChange={settings.set} readOnly={!!s?.subagent} />}
+            {settings.data && <ModelBadge base={base} settings={settings.data} onChange={settings.set} readOnly={!!s?.subagent} opener={openModel} />}
             {pins.data && !s?.subagent && <PinnedBadge pins={pins.data} you={ctx.user.displayName} userId={ctx.user.id} pool={pool} />}
             {s && !s.subagent && !s.child && <GroupPicker ctx={ctx} base={base} summary={s} onChange={(x) => { summary.set(x); refreshThreads(); }} />}
             {context && <ContextFact context={context} footer={phone && !isProject && usageProps ? <TokensFact {...usageProps} inline /> : undefined} />}
@@ -416,7 +428,7 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
         ? <div className="composer sub-composer"><MessageBox thread={{ pool, id: threadId }} env={{ userId }} onSent={() => t.dispatch({ type: "refresh" })} /></div>
         : resolved
         ? <div className="composer resolved-box"><p className="muted">Resolved. <button type="button" className="link" onClick={() => void reopen()}>Reopen</button></p></div>
-        : <Composer base={base} busy={t.live.busy} onSend={send} onStop={stop} restored={restored} settings={settings.data} machines={granted} onSettings={changeSettings} onError={setSendError} />}
+        : <Composer base={base} busy={t.live.busy} onSend={send} onStop={stop} restored={restored} settings={settings.data} machines={granted} onSettings={changeSettings} onError={setSendError} commands={commands} />}
       {drawer && settings.data && s && !s.subagent && (
         <SettingsDrawer
           ctx={ctx} base={base} summary={s} settings={settings.data} machines={machines.data ?? []}

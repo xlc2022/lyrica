@@ -1606,6 +1606,14 @@ export function apiRoutes(d: Lyricad): Route[] {
       if (!s().host.get(user.id, poolOf(r), thread.id).steerQueued(Number(r.params.i), String(text ?? ""))) throw new HttpError(409, "No turn is running to take it, or it already went, so it goes as the next message.");
       return { ok: true };
     }),
+    // The message box's /compact (docs/ux.md, Commands in the message box): Pi's compaction now, or when the running turn ends.
+    route("POST", `${t}/compact`, async (r): Promise<Api.CompactResponse> => {
+      const user = d.userFor(r);
+      const thread = owner(d, user, (o) => threadOf(o, r));
+      if (thread.subagent) throw new HttpError(409, "a subagent's thread can't be compacted");
+      const { notes } = await r.json<Api.CompactRequest>();
+      return s().host.get(user.id, poolOf(r), thread.id).compact(String(notes ?? ""));
+    }),
     route("POST", `${t}/stop`, async (r) => {
       const user = d.userFor(r);
       const thread = owner(d, user, (o) => threadOf(o, r));

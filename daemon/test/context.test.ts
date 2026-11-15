@@ -217,6 +217,23 @@ describe("her context", () => {
     stream.close();
   });
 
+  it("compacts when the person asks with /compact: Pi's summary, their text as its notes, at once", async () => {
+    const { ada, model, path, stream, turn, fitAfterFirst } = await setup("general", 16_384 + guidanceTokens);
+    await turn(medium("FIRST-MARK"));
+    await fitAfterFirst(MANY);
+    for (const mark of MORE) await turn(medium(`${mark}-MARK`));
+    model.reply({ text: "PI-SUMMARY-MARK: the migration plan, decided and open points." });
+    const res = await ada.post<{ queued: boolean }>(`${path}/compact`, { notes: "NOTES-MARK keep the migration plan" });
+    expect(res.body).toEqual({ queued: false });
+    expect(model.requests.find((r) => sent(r).includes("NOTES-MARK") && !r.tools?.length)).toBeDefined();
+    const page = (await ada.get<MessagePage>(`${path}/messages`)).body;
+    expect(page.messages.flatMap((m) => m.parts).find((p) => p.type === "compacted")).toMatchObject({ summary: expect.stringContaining("PI-SUMMARY-MARK") });
+    const before = model.requests.length;
+    await turn("go on");
+    expect(sent(model.requests[before]!)).not.toContain("FIRST-MARK");
+    stream.close();
+  });
+
   it("doesn't compact when the turn that asked for it was stopped", async () => {
     const { ada, model, path, stream, turn, fitAfterFirst } = await setup("general", 16_384 + guidanceTokens);
     await turn(long("FIRST-MARK"));

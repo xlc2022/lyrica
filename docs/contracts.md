@@ -2237,8 +2237,13 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     never the pool); `State.version` and `build` (once unlocked);
   - `ThreadSettings.context` (`ContextInfo`: used, window, parts, reserve,
     free, measured at, `compactions`: how many times it was compacted, with
-    used being what is left after them), `CallInfo.pace`, the `context` and `compacted`
+    used being what is left after them), `CallInfo.pace`, the `context`, `compacting`
+    (`running`, as any compaction starts and ends) and `compacted`
     thread events, and a `compacted` message part (the stored notice);
+    `POST threads/:pool/:id/compact` (`CompactRequest { notes? }` →
+    `CompactResponse { queued }`, `HostedThread.compact`): the message box's
+    /compact, Pi's compaction with `notes` as its instructions, now or when
+    the running turn ends (docs/daemon.md);
   - a `gpu_wait` thread event (`wait: GpuWait | null`, and `gpuWait` on
     `hello`) while a reply waits for a model host's GPU: `busyWith` (plain
     words, "a chat model") or `loading`; null once it no longer waits, and

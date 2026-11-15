@@ -322,6 +322,18 @@ Each active thread is one Pi session from `openThreadSession`, with
   - Pi's automatic compaction at the window's edge stays on as the safety net,
     with Pi's own summary, which keeps the goal, progress and next steps. It
     shows the same marker.
+- **The person's /compact.** `POST threads/:pool/:id/compact` `{ notes? }`
+  (`CompactRequest`, `CompactResponse`; `HostedThread.compact`) runs Pi's own
+  compaction on the thread's chat model, with `notes` (what the summary must
+  keep) as Pi's instructions. Idle, it opens the session and compacts at once,
+  holding the turn, then sends any message that came meanwhile; while a turn
+  runs it answers `{ queued: true }` and compacts when the turn ends, as hers
+  does, and Stop drops it. Hers wins when both asked in one turn. A subagent's
+  thread refuses it (`409`). A short conversation has nothing older than what
+  Pi keeps, and the error line says "Nothing to compact yet". Every
+  compaction, hers, this one or Pi's at the edge, sends `compacting`
+  `{ running: true }` when it starts and `{ running: false }` when it ends,
+  for the conversation's Compacting marker.
 - `GET /api/u/:userId/thread-defaults?pool=general|private` returns the
   settings a new thread starts with, including the default mode, without
   creating a thread. It shares the creation defaults with `POST /threads`,

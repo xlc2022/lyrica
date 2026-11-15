@@ -2,9 +2,9 @@
 // keyboards), files attach from the "+" menu, by drag or paste. The box holds
 // the text and Send (Stop while she works and the box is empty); under it, a
 // quiet row with "+", the mic (dictation goes in at the caret) and the
-// thread's mode (Shift+Tab cycles). The unsent text is kept on lyricad, one
+// thread's mode (Shift+Tab cycles). "/" at the start opens the commands (Commands.tsx). The unsent text is kept on lyricad, one
 // draft per thread, never in the browser.
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from "react";
 import { draft as loadDraft, saveDraft, upload, type ThreadSettings, type ThreadSettingsChange } from "./api.ts";
 import { Icon } from "./icons.tsx";
 import { her } from "./name.ts";
@@ -13,6 +13,7 @@ import { basename, findPaths, isImagePath, Thumb, type FileLinks } from "./paths
 import { ModePicker, nextMode, ToolsMenu, type GrantedMachine } from "./Modes.tsx";
 import { MicButton, stopReading, useDictation } from "./Voice.tsx";
 import { sendsOnEnter } from "./ui.tsx";
+import { useCommands, type CommandEnv } from "./Commands.tsx";
 
 interface Upload { id: number; name: string; progress: number; error?: string }
 
@@ -33,7 +34,7 @@ export function ComposerRow({ settings, onSettings, onAttach, onTools, mic, chil
   );
 }
 
-export function Composer({ base, busy, restored, onSend, onStop, settings, machines, onSettings, onError }: {
+export function Composer({ base, busy, restored, onSend, onStop, settings, machines, onSettings, onError, commands }: {
   base: string; busy: boolean; onSend: (text: string) => Promise<boolean>; onStop: () => void;
   /** Text handed back, such as follow-ups that Stop dropped. */
   restored: string;
@@ -41,8 +42,10 @@ export function Composer({ base, busy, restored, onSend, onStop, settings, machi
   /** The thread's granted machines with their limits, for the mode menu. */
   machines?: GrantedMachine[];
   onSettings: (change: ThreadSettingsChange) => void;
-  /** Dictation's problems, for the conversation's error line. */
+  /** Dictation's and commands' problems, for the conversation's error line. */
   onError: (message: string) => void;
+  /** What "/" commands work on (Commands.tsx); absent, the box has none. */
+  commands?: CommandEnv;
 }) {
   const [draft, setDraft] = useState("");
   const [uploads, setUploads] = useState<Upload[]>([]);
@@ -174,6 +177,12 @@ export function Composer({ base, busy, restored, onSend, onStop, settings, machi
   }, [draft.length]);
   const mic = useDictation({ base, onText: insert, onError });
 
+  // "/" commands: a popover above the box while one is typed; a sent line naming one runs it instead.
+  const [said, setSaid] = useState("");
+  const menuId = useId();
+  const cmd = useCommands(draft, (text) => { typed.current = true; setDraft(text); area.current?.focus(); }, commands,
+    { say: setSaid, fail: onError, id: menuId });
+
   // Grow with the text, up to the CSS max-height. The text is measured in a hidden copy of the box: collapsing the box
   // itself to measure it would, for that layout, hand its height to the conversation above, and a conversation
   // following its streaming tail would bounce on every keystroke (#986).
@@ -208,7 +217,9 @@ export function Composer({ base, busy, restored, onSend, onStop, settings, machi
 
   const submit = async () => {
     const text = draft.trim();
-    if (!text || uploads.some((x) => !x.error)) return;
+    if (!text) return;
+    if (!uploads.length && cmd.runLine(text)) return;
+    if (uploads.some((x) => !x.error)) return;
     stopReading();
     // A send clears lyricad's draft, so nothing pending goes; a refused one keeps it, and the text comes back.
     cancel();
@@ -235,6 +246,8 @@ export function Composer({ base, busy, restored, onSend, onStop, settings, machi
       onDrop={(e) => { e.preventDefault(); setDragging(false); attach(e.dataTransfer.files); }}
     >
       <div className="composer-wrap">
+        {cmd.menu}
+        <p className="sr-only" aria-live="polite">{said}</p>
         {images.length > 0 && (
           <ul className="attachments" aria-label="Attached images">
             {images.map((p) => (
@@ -267,7 +280,9 @@ export function Composer({ base, busy, restored, onSend, onStop, settings, machi
             onChange={(e) => { typed.current = true; setDraft(e.target.value); }}
             onBlur={() => flush()}
             onPaste={(e) => { if (e.clipboardData.files.length) { e.preventDefault(); attach(e.clipboardData.files); } }}
+            {...cmd.aria}
             onKeyDown={(e) => {
+              if (mic.state === "idle" && cmd.onKeyDown(e)) return;
               if (e.key === "Tab" && e.shiftKey && settings) { e.preventDefault(); onSettings({ mode: nextMode(settings.mode, settings.bypassAllowed) }); return; }
               // While listening: Enter stops and transcribes, Escape throws the clip away.
               if (mic.state === "recording" && e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void mic.stop(); return; }
