@@ -51,7 +51,7 @@ function fakeFiles() {
     thumb: async (path: string) => (path.startsWith("/workspace/") ? { bytes: Buffer.from("tiny"), type: "image/png" } : undefined),
     zip: async (paths: string[]) => {
       calls.push(["zip", paths]);
-      return Readable.from([Buffer.from("PK\u0003\u0004zipbytes")]);
+      return { stream: Readable.from([Buffer.from("PK\u0003\u0004zipbytes")]), bytes: 12, files: 1 };
     },
   };
   vi.spyOn(Workspace.prototype, "files").mockReturnValue(files as unknown as ThreadFiles);
@@ -184,6 +184,7 @@ describe("the Files panel's routes", () => {
     expect(zip.status).toBe(200);
     expect(zip.headers.get("content-type")).toBe("application/zip");
     expect(zip.headers.get("content-disposition")).toBe("attachment; filename*=UTF-8''notes.zip");
+    expect([zip.headers.get("content-length"), zip.headers.get("x-zip-files")]).toEqual(["12", "1"]);
     expect(Buffer.from(await zip.arrayBuffer()).toString()).toBe("PK\u0003\u0004zipbytes");
   });
 
@@ -266,12 +267,20 @@ describe("the Files panel's routes", () => {
 
 /** The real zip writer, over a real sandbox where one runs; elsewhere the bytes are checked with a tiny parse. */
 describe("the zip the panel streams", () => {
-  it("is a zip unzip can read, made without a temp file", async () => {
+  it("is a zip unzip can read, of exactly its length, made in one sandbox run without a temp file", async () => {
     const { ThreadFiles } = await import("@lyrica/core");
     const dir = mkdtempSync(join(tmpdir(), "lyrica-zip-"));
     try {
       writeFileSync(join(dir, "a.txt"), "alpha");
-      // A stand-in sandbox that runs cat and find on the host, so the writer itself is checked here.
+      const sub = join(dir, "d");
+      mkdirSync(sub);
+      // Many small files, an empty one, a name past tar's 100 bytes and a hard link, which tar would otherwise store empty.
+      for (let i = 0; i < 40; i++) writeFileSync(join(sub, `f${i}.txt`), `file ${i}\n`.repeat(i));
+      const long = `${"n".repeat(150)}.txt`;
+      writeFileSync(join(sub, long), "long name");
+      execFileSync("ln", [join(sub, "f3.txt"), join(sub, "same.txt")]);
+      // A stand-in sandbox that runs find and tar on the host, so the writer itself is checked here.
+      const starts: string[][] = [];
       const box = {
         allow: (p: string) => p,
         run: async (argv: string[]) => {
@@ -279,22 +288,69 @@ describe("the zip the panel streams", () => {
           return { code: 0, signal: null, stdout: out, stderr: Buffer.alloc(0) };
         },
         start: async (argv: string[]) => {
+          starts.push(argv);
           const { spawn } = await import("node:child_process");
           return spawn(argv[0]!, argv.slice(1), { stdio: ["pipe", "pipe", "pipe"] });
         },
       };
       const files = new ThreadFiles(box as unknown as Sandbox, []);
+      const made = await files.zip([join(dir, "a.txt"), sub]);
+      expect(made.files).toBe(43);
       const chunks: Buffer[] = [];
-      for await (const c of await files.zip([join(dir, "a.txt")])) chunks.push(c as Buffer);
+      for await (const c of made.stream) chunks.push(c as Buffer);
       const zip = Buffer.concat(chunks);
+      expect(starts).toHaveLength(1);
+      expect(zip.length).toBe(made.bytes);
       expect(zip.subarray(0, 4)).toEqual(Buffer.from([0x50, 0x4b, 0x03, 0x04]));
-      expect(readdirSync(dir)).toEqual(["a.txt"]);
-      const zipPath = join(dir, "out.zip");
+      expect(readdirSync(dir).sort()).toEqual(["a.txt", "d"]);
+      const zipPath = join(tmpdir(), `lyrica-zip-${process.pid}.zip`);
       writeFileSync(zipPath, zip);
       let listed = "";
-      try { listed = execFileSync("unzip", ["-l", zipPath]).toString(); } catch { return; /* no unzip here */ }
-      expect(listed).toContain("a.txt");
-      expect(execFileSync("unzip", ["-p", zipPath, "a.txt"]).toString()).toBe("alpha");
+      try { listed = execFileSync("unzip", ["-l", zipPath]).toString(); } catch { rmSync(zipPath, { force: true }); return; /* no unzip here */ }
+      try {
+        expect(listed).toContain("a.txt");
+        expect(listed).toContain(`d/${long}`);
+        execFileSync("unzip", ["-tq", zipPath]);
+        expect(execFileSync("unzip", ["-p", zipPath, "a.txt"]).toString()).toBe("alpha");
+        expect(execFileSync("unzip", ["-p", zipPath, "d/same.txt"]).toString()).toBe("file 3\n".repeat(3));
+        expect(execFileSync("unzip", ["-p", zipPath, "d/f39.txt"]).toString()).toBe("file 39\n".repeat(39));
+      } finally {
+        rmSync(zipPath, { force: true });
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps each file to the size it was listed at, and fails on a file gone before it was read", async () => {
+    const { ThreadFiles } = await import("@lyrica/core");
+    const dir = mkdtempSync(join(tmpdir(), "lyrica-zip-"));
+    try {
+      for (const n of ["grows.txt", "shrinks.txt", "goes.txt"]) writeFileSync(join(dir, n), "12345");
+      let change = (): void => {};
+      const box = {
+        allow: (p: string) => p,
+        run: async (argv: string[]) => ({ code: 0, signal: null, stdout: execFileSync(argv[0]!, argv.slice(1)), stderr: Buffer.alloc(0) }),
+        start: async (argv: string[]) => {
+          change();
+          const { spawn } = await import("node:child_process");
+          return spawn(argv[0]!, argv.slice(1), { stdio: ["pipe", "pipe", "pipe"] });
+        },
+      };
+      const files = new ThreadFiles(box as unknown as Sandbox, []);
+      const read = async (paths: string[]) => {
+        const made = await files.zip(paths);
+        const chunks: Buffer[] = [];
+        for await (const c of made.stream) chunks.push(c as Buffer);
+        return { made, zip: Buffer.concat(chunks) };
+      };
+      change = () => { writeFileSync(join(dir, "grows.txt"), "1234567890"); writeFileSync(join(dir, "shrinks.txt"), "12"); };
+      const { made, zip } = await read([join(dir, "grows.txt"), join(dir, "shrinks.txt")]);
+      expect(zip.length).toBe(made.bytes);
+      expect(zip.includes(Buffer.from("grows.txt12345PK"))).toBe(true);
+      expect(zip.includes(Buffer.from("shrinks.txt12\0\0\0PK"))).toBe(true);
+      change = () => rmSync(join(dir, "goes.txt"));
+      await expect(read([join(dir, "goes.txt")])).rejects.toThrow(/goes\.txt/);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

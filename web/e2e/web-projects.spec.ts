@@ -851,6 +851,21 @@ test("Project settings → Files: the project folder one folder at a time, with 
   await expect(drawer).toHaveCount(0);
   await expect(row("plan.md")).toHaveCount(0);
   await section.getByRole("navigation", { name: "Folder" }).getByRole("button", { name: "Project folder" }).click();
+  // Download as zip opens Zipping <name>: the spinner and Listing files until lyricad answers, then the bar; the browser saves it.
+  let held: (() => Promise<void>) | undefined;
+  await page.route("**/files/zip", (route) => { held = () => route.continue(); });
+  await row("notes").getByRole("button", { name: "Actions for notes" }).click();
+  await page.getByRole("menuitem", { name: "Download as zip" }).click();
+  const zipping = page.getByRole("dialog", { name: "Zipping notes" });
+  await expect(zipping.getByRole("progressbar", { name: "Zipping notes" })).toHaveAttribute("aria-valuetext", "Listing files");
+  await expect(zipping.getByRole("button", { name: "Cancel" })).toBeFocused();
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/project-files-zipping-${page.viewportSize()!.width}.png` });
+  const saved = page.waitForEvent("download");
+  await expect.poll(() => !!held).toBe(true);
+  await held!();
+  expect((await saved).suggestedFilename()).toBe("notes.zip");
+  await expect(zipping).toHaveCount(0);
+  await page.unroute("**/files/zip");
   await row("notes").getByRole("button", { name: "Open" }).click();
   await expect(row("plan.md")).toBeVisible();
   // Delete… is confirmed by a dialog named after the file.

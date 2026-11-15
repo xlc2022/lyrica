@@ -609,6 +609,8 @@ dialog::backdrop { background: rgb(0 0 0 / 0.35); }
 .dlg { padding: 18px; display: grid; gap: 12px; }
 .dlg-actions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
 .check { display: inline-flex; gap: 8px; align-items: center; min-height: calc(var(--tap) - 8px); cursor: pointer; }
+/* Download as zip (docs/ux.md §6, the Files panel): the bar, then its facts, with the spinner while lyricad lists the files. */
+.zip-facts { display: flex; gap: 10px; align-items: flex-start; margin: 0; }
 /* Wipe memory's wait (docs/ux.md §6 "Wiping memory"): a spinner beside the sentence, and what it is stopping behind a disclosure. */
 .wipe-wait { display: flex; gap: 10px; align-items: flex-start; }
 .spinner { flex: none; width: 14px; height: 14px; margin-top: 3px; border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.9s linear infinite; }

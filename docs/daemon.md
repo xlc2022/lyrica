@@ -1016,8 +1016,12 @@ documented in `daemon/src/api.ts`, "The Files panel".
   turn and sends their streams `renamed` (docs/workspace.md, "Renaming keeps
   links").
 - `POST …/files/zip { paths }` answers `application/zip`, built in Node as it
-  streams from `cat` in the sandbox: nothing is written to disk, and no zip
-  tool is needed in the sandbox.
+  streams from one GNU `tar` run in the sandbox (one run for every file, not
+  one per file): nothing is written to disk, and no zip tool is needed in the
+  sandbox. It carries its exact `Content-Length` (each file kept to the size
+  the listing found, cut or padded with zeros if it changed since) and the
+  file count in `x-zip-files`, for the web's progress dialog; a request
+  closed part way stops the `tar`.
 - Listings, searches and images carry `madeBy`, the thread that last wrote
   each file (docs/workspace.md, "Which thread wrote each file"), a subagent's
   work shown as its nearest thread that isn't one; a listing that isn't cut

@@ -1782,7 +1782,8 @@ export type AutoName = { path: string; name: string; kept?: true; error?: undefi
  * links"), and its open streams get `renamed`.
  * POST …/files/copy { paths, dir } → FileCopyResponse: each file or folder copied into `dir` under its own name, or
  * a free one where that is taken (`plan-2.md`); a folder can't go into itself (403). The panel's Ctrl+V.
- * POST …/files/delete { paths } → Ok, for good. POST …/files/zip { paths } → application/zip, built as it streams.
+ * POST …/files/delete { paths } → Ok, for good. POST …/files/zip { paths } → application/zip, built as it streams, with
+ * its exact Content-Length and the file count in `x-zip-files`; a request closed part way stops the read.
  * A root itself can't be renamed or deleted; a read-only grant refuses every change (403); a path outside the
  * thread's folders is 403. Her next turn is told, by name, what the panel added or removed.
  */

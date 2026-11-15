@@ -3,7 +3,7 @@
 // the Files panel's routes on the project chat. Files in the chat's header stays the quick view.
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { get, post, threadPath, upload, type FileEntry, type FileListing, type ImageEntry, type Pool } from "./api.ts";
-import { kb } from "./Files.tsx";
+import { kb, ZipDialog } from "./Files.tsx";
 import { Icon } from "./icons.tsx";
 import { RowMenu } from "./Machines.tsx";
 import { her } from "./name.ts";
@@ -55,6 +55,7 @@ export function FilesSection({ ctx, pool, threadId }: { ctx: ShellContext; pool:
   const [adding, setAdding] = useState(false);
   const [moving, setMoving] = useState<FileEntry>();
   const [deleting, setDeleting] = useState<FileEntry>();
+  const [zipping, setZipping] = useState<{ paths: string[]; name: string }>();
   /** The file open in the viewer, with the project chat beside it. */
   const [viewing, setViewing] = useState<FileEntry>();
   /** The files the open one was opened among (the folder shown or the Images or Videos grid), for the viewer's steps. */
@@ -91,10 +92,7 @@ export function FilesSection({ ctx, pool, threadId }: { ctx: ShellContext; pool:
   const download = (e: FileEntry) => run(async () => {
     const a = document.createElement("a");
     if (e.kind !== "folder") { a.href = contentUrl(e.path, true); a.download = e.name; a.click(); return; }
-    const r = await fetch(`${base}/zip`, { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify({ paths: [e.path] }) });
-    if (!r.ok) throw new Error((await r.json().catch(() => ({ error: "the zip failed" })) as { error: string }).error);
-    a.href = URL.createObjectURL(await r.blob()); a.download = `${e.name}.zip`; a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 60_000);
+    setZipping({ paths: [e.path], name: e.name });
   });
   const rename = (e: FileEntry, name: string) => run(async () => {
     if (name.includes("/")) throw new Error("A name can't contain /.");
@@ -202,6 +200,7 @@ export function FilesSection({ ctx, pool, threadId }: { ctx: ShellContext; pool:
       {viewing && <Viewer ctx={ctx} threads={ctx.threads} file={viewing} base={base} shownPath={relative(viewing.path)} thread={{ pool, threadId }}
         list={among} onStep={(f) => setViewing(f as FileEntry)} onClose={closeViewer} />}
       {naming && <AutoNameDrawer base={base} paths={naming} links={links} onClose={() => setNaming(undefined)} onRenamed={() => void load()} />}
+      {zipping && <ZipDialog base={base} paths={zipping.paths} name={zipping.name} onClose={() => setZipping(undefined)} />}
       {moving && <MoveDrawer base={base} entry={moving} onClose={() => setMoving(undefined)} onMoved={() => { setMoving(undefined); void load(); }} />}
       {deleting && (
         <ConfirmDialog title={`Delete ${deleting.name}?`} danger confirm="Delete" onCancel={() => setDeleting(undefined)}

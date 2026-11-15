@@ -606,7 +606,7 @@ describe.skipIf(!runnable)("the Files panel", () => {
     expect(entries.map((e) => [e.name, e.size])).toEqual([["a\tb.txt", 3], ["c\nd.txt", 7]]);
     expect((await f.search("/workspace", "b.txt")).entries.map((e) => e.path)).toEqual(["/workspace/odd/a\tb.txt"]);
     const chunks: Buffer[] = [];
-    for await (const c of await f.zip(["/workspace/odd"])) chunks.push(c as Buffer);
+    for await (const c of (await f.zip(["/workspace/odd"])).stream) chunks.push(c as Buffer);
     const zip = Buffer.concat(chunks).toString("latin1");
     expect(zip).toContain("odd/a\tb.txttab");
     expect(zip).toContain("odd/c\nd.txtnewline");
@@ -617,7 +617,7 @@ describe.skipIf(!runnable)("the Files panel", () => {
     const f = files();
     const before = readdirSync(p("work"));
     const chunks: Buffer[] = [];
-    for await (const c of await f.zip(["/workspace/notes", p("ro", "song.txt")])) chunks.push(c as Buffer);
+    for await (const c of (await f.zip(["/workspace/notes", p("ro", "song.txt")])).stream) chunks.push(c as Buffer);
     const zip = Buffer.concat(chunks);
     expect(readdirSync(p("work"))).toEqual(before);
     const names = [...zip.toString("latin1").matchAll(/PK\x01\x02[\s\S]{42}([^\x00]+?)(?=PK)/g)].map((m) => m[1]);
