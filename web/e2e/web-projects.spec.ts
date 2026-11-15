@@ -1626,6 +1626,8 @@ test("the Files panel's Images: Sort orders the grid by date or name, and Auto-n
   const sort = panel.getByRole("combobox", { name: "Sort" });
   await expect(sort).toHaveValue("newest");
   await expect.poll(names).toEqual(["beach-trip.png", "apple.png", "zebra.png"]);
+  // Every tile fills its column, however short its name.
+  expect(new Set(await grid.locator("button[data-path] img").evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().width)))).size).toBe(1);
   await sort.selectOption("oldest");
   await expect.poll(names).toEqual(["zebra.png", "apple.png", "beach-trip.png"]);
   await sort.selectOption("name");

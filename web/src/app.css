@@ -1309,12 +1309,12 @@ dialog.viewer > .error { position: absolute; bottom: 8px; left: 16px; }
 .auto-name-field > span { overflow-wrap: anywhere; }
 .auto-name-field input { width: 100%; min-width: 0; }
 .igrid { flex: 1; min-height: 0; overflow-y: auto; padding: 12px var(--gutter) 24px; display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 12px; align-content: start; }
-.igrid > button { display: grid; gap: 4px; padding: 0; border: 0; background: transparent; min-height: 0; white-space: normal; text-align: left; align-content: start; min-width: 0; }
+.igrid > button { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; padding: 0; border: 0; background: transparent; min-height: 0; white-space: normal; text-align: left; align-content: start; min-width: 0; }
 .igrid > button:hover { border: 0; }
 .igrid img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); background: var(--tool); display: block; }
-.igrid > button.sel img { outline: 3px solid var(--accent); outline-offset: 1px; }
+/* The selected ring is drawn inside the tile, so it never reaches the name under it or the next tile. */
+.igrid > button.sel img, .igrid > button.sel video { outline: 3px solid var(--accent); outline-offset: -3px; }
 .igrid video, .pfiles-thumb video { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); background: var(--tool); display: block; }
-.igrid > button.sel video { outline: 3px solid var(--accent); outline-offset: 1px; }
 .vthumb { position: relative; display: block; }
 .vplay { position: absolute; left: 8px; bottom: 8px; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: rgb(0 0 0 / 0.55); color: #fff; pointer-events: none; }
 .vplay svg { width: 12px; height: 12px; fill: currentColor; }
@@ -1326,6 +1326,8 @@ dialog.viewer > .error { position: absolute; bottom: 8px; left: 16px; }
 .igrid img { -webkit-user-drag: none; }
 .igrid .selbox, .ftree .selbox { position: absolute; z-index: 1; pointer-events: none; border: 1px solid var(--accent); background: color-mix(in srgb, var(--accent) 15%, transparent); border-radius: 2px; }
 .selbar { display: flex; align-items: center; gap: 6px; padding: 6px var(--gutter); border-top: 1px solid var(--line); font-size: 13px; background: var(--panel); }
+/* Memory's bar (above) bleeds into its padded list; the Files panel's sits on the gutter like the grid. */
+.files-page .selbar { margin: 0; }
 .selbar > span { margin-right: auto; }
 /* Centred wherever it is opened from (a message's prose zeroes its children's margins), and never taller than the viewport. */
 dialog.lightbox { width: min(960px, calc(100vw - 32px)); max-height: calc(100vh - 32px); margin: auto; }
