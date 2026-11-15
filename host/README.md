@@ -534,8 +534,14 @@ per host, and Lyrica's router filters create tiers by it.
   video model's two experts at a time), or an upscaler. ComfyUI runs them in turn and frees one stage's models when the
   next needs the room, so a recipe whose parts add up to more than the GPU
   can still run.
-- When `COMFY_GPU` (the first listed) is a CMP 100-210 (PCI ID `10de:1df4` or `10de:1d84`),
-  `install.sh` adds `compose.sdcpp.yaml` and ComfyUI
+- Beside a CMP 100-210 (PCI ID `10de:1df4` or `10de:1d84`), `install.sh`
+  picks the image GPUs with `image_gpus` (`prebuilt.sh`): with another
+  NVIDIA card in the machine, a first install (no `COMFY_GPU` in `.env`)
+  takes the first other card, and a list naming both drops the CMPs,
+  since ComfyUI has no kernels for one. A `COMFY_GPU` of CMPs alone
+  stays (an existing install's `0`, say), and the script says how to move
+  the images to the other card. When `COMFY_GPU` (the first listed) is a
+  CMP, `install.sh` adds `compose.sdcpp.yaml` and ComfyUI
   isn't started. stable-diffusion.cpp's `sd-server` (`sdcpp/Dockerfile`, a
   pinned commit built with `GGML_CUDA_FORCE_MMQ`, pulled or built like the
   CMP's llama.cpp below) makes the images instead. While the card's FP16

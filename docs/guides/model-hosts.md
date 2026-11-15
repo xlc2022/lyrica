@@ -129,8 +129,11 @@ reads prompts about three times as fast as the stock image. It downloads
 the image CI built (a few GB) when the host's GPUs are among those it
 covers, and otherwise builds it here, which took 25 minutes on a 4-core
 machine; it says which. `LYRICA_HOST_REGISTRY` points it at another
-registry, such as a Forgejo instance's. When the image GPU (`COMFY_GPU`,
-the first one listed) is one, ComfyUI isn't started and
+registry, such as a Forgejo instance's. On a machine with another NVIDIA
+card besides the CMP, a first install puts images on that card with
+ComfyUI, which edits too, and a `COMFY_GPU` list naming both drops the
+CMP, since ComfyUI can't run on it. Only when the image GPUs are CMPs
+alone (`COMFY_GPU`, the first one listed) is ComfyUI not started and
 stable-diffusion.cpp, downloaded the same way (or built, 18 minutes),
 makes the images instead: create only, for Z-Image, Qwen-Image, Krea 2,
 FLUX and SDXL recipes without LoRAs. The first image after a load takes

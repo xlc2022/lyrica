@@ -58,3 +58,29 @@ prebuilt_covers() {
   IFS=';' read -ra want <<<"$2"
   for a in "${want[@]}"; do [[ $have == *";$a;"* ]] || return 1; done
 }
+
+# The image GPUs (COMFY_GPU) on a host with a CMP 100-210: $1 is .env's
+# COMFY_GPU (empty on a first install), $2 the CMPs' indices and $3 the other
+# NVIDIA cards', each space-separated. ComfyUI can't run on a CMP, and
+# stable-diffusion.cpp makes images on one GPU only, creating but never
+# editing, so beside another card the images go there: on a first install
+# the first other card; a list naming both drops its CMPs. A list of CMPs
+# alone stays, and sd.cpp makes the images on the first. Prints the list.
+image_gpus() {
+  local g kept=() dropped=() others
+  read -ra others <<<"$3"
+  if [[ ${#others[@]} -eq 0 ]]; then echo "${1:-0}"; return; fi
+  if [[ -z $1 ]]; then
+    echo "CMP 100-210 beside another card: images on GPU ${others[0]} with ComfyUI." >&2
+    echo "${others[0]}"; return
+  fi
+  for g in ${1//,/ }; do
+    if [[ " $2 " == *" $g "* ]]; then dropped+=("$g"); else kept+=("$g"); fi
+  done
+  if [[ ${#kept[@]} -eq 0 ]]; then
+    echo "Images on the CMP 100-210 (GPU $1) with stable-diffusion.cpp, which creates but doesn't edit; COMFY_GPU=${others[0]} in host/.env puts them on GPU ${others[0]} with ComfyUI." >&2
+    echo "$1"; return
+  fi
+  [[ ${#dropped[@]} -eq 0 ]] || echo "COMFY_GPU leaves out GPU ${dropped[*]}: ComfyUI can't run on a CMP 100-210." >&2
+  (IFS=,; echo "${kept[*]}")
+}
