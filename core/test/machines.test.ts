@@ -92,14 +92,22 @@ describe("machines", () => {
     const own = await workspace.probeMachine(ada.id, "ada", { name: "laptop", address: "ada@127.0.0.1", asUser: true });
     expect(own.login).toBe(true);
     expect(own.setup).toContain(`>> ~/.ssh/authorized_keys`);
-    expect(own.setup).toContain("run as ada, not as root");
-    expect(own.setup).not.toMatch(/sshd_config|sudoers|NOPASSWD/);
+    expect(own.setup).toContain("run as ada, without sudo");
+    expect(own.setup).not.toMatch(/sshd_config|sudoers|NOPASSWD|sudo /);
+    expect(own.sudo).toBeUndefined();
     const hers = await workspace.probeMachine(ada.id, "ada", { name: "box", address: "lyrica@127.0.0.1" });
     expect(hers.setup).toContain("/etc/ssh/authorized_keys/lyrica");
     // Her line is added beside any key already there, never written over it, and each account has its own sshd file.
-    expect(hers.setup).toMatch(/grep -qxF -- 'restrict,[^\n]* \|\| printf '%s\\n' 'restrict,[^\n]* >> \/etc\/ssh\/authorized_keys\/lyrica/);
-    expect(hers.setup).not.toMatch(/[^>]> \/etc\/ssh\/authorized_keys/);
-    expect(hers.setup).toContain("> /etc/ssh/sshd_config.d/lyrica-lyrica.conf");
+    expect(hers.setup).toMatch(/sudo grep -qxF -- 'restrict,[^\n]* \|\| printf '%s\\n' 'restrict,[^\n]* \| sudo tee -a \/etc\/ssh\/authorized_keys\/lyrica > \/dev\/null/);
+    expect(hers.setup).toContain("| sudo tee /etc/ssh/sshd_config.d/lyrica-lyrica.conf > /dev/null");
+    // Pasted whole as a user with sudo: no write runs as that user, and the commands are one chain, so sudo's password prompt can't swallow a later line.
+    expect(hers.setup).not.toMatch(/>>? ?\/etc\//);
+    for (const line of hers.setup.split("\n").filter((l) => l && !l.startsWith("#")).slice(0, -1)) expect(line).toMatch(/ &&$/);
+    // The sudo rights are separate commands, each checked by visudo before sudo reads it, never in the setup.
+    expect(hers.setup).not.toMatch(/NOPASSWD/);
+    expect(hers.sudo!.exact).toContain("'lyrica ALL=(root) NOPASSWD: /usr/bin/systemctl restart nginx'");
+    expect(hers.sudo!.everything).toContain("'lyrica ALL=(root) NOPASSWD: ALL'");
+    expect(hers.sudo!.everything).toContain("sudo visudo -c -f /etc/sudoers.d/lyrica.new");
     const m = await workspace.addMachine(ada.id, { name: "laptop", address: "ada@127.0.0.1", root: null, pool: "private", draft: own.draft, hostKey: KEY, asUser: true });
     expect(m).toMatchObject({ asUser: true, pool: "private", limit: "ask", username: "ada" });
     expect((await workspace.addMachine(ada.id, { name: "box", address: "lyrica@127.0.0.1", root: null, pool: "general", draft: hers.draft, hostKey: KEY })).asUser).toBe(false);
@@ -148,7 +156,7 @@ describe("machines", () => {
     const fresh = await workspace.probeMachine(ada.id, "ada", { name: "nas", address: "lyrica@127.0.0.1" });
     expect(fresh.draft).toBeDefined();
     expect(fresh.keyLine).not.toContain(old.publicKey.split(" ")[1]);
-    expect(fresh.setup).toContain(">> /etc/ssh/authorized_keys/lyrica");
+    expect(fresh.setup).toContain("| sudo tee -a /etc/ssh/authorized_keys/lyrica");
     await expect(workspace.setHostKey(ada.id, "nas", KEY, undefined, "nope")).rejects.toThrow(/key pair has expired/);
     // A pair tested more than an hour ago has expired, even before the next probe prunes it.
     const now = Date.now();

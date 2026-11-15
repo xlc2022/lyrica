@@ -796,8 +796,10 @@ export interface MachineProbe {
   draft?: string;
   /** SSH only. */
   keyLine?: string;
-  /** The setup steps, to run as root on the machine (for Proxmox, on the node); with `asUser`, as the user's own account (for Proxmox still as root on the node, for a token on the user's own Proxmox user). */
+  /** The setup steps, one command chain to paste on the machine as a user with sudo (for Proxmox, as root on the node); with `asUser`, as the user's own account without sudo (for Proxmox still as root on the node, for a token on the user's own Proxmox user). */
   setup: string;
+  /** SSH on her own account only: the optional sudo rights, each a command to paste on its own that adds its line to /etc/sudoers.d/lyrica, checked by visudo. */
+  sudo?: { exact: string; everything: string };
   /** The host key, or for Proxmox the certificate's SHA-256 fingerprint. */
   fingerprint?: string;
   /** Whether her key was accepted. Always false for Proxmox. */

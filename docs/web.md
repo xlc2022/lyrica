@@ -934,7 +934,9 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   steps as sections with eyebrows. Name and address (name, address, folder
   for SSH, pool); leaving the address or pressing Enter asks `lyricad` for
   her key and the setup commands. Key, or Token for Proxmox (the commands in
-  a code block, **Copy**, and the token field). Test (**Test** probes again
+  a code block that wraps its long lines, **Copy**, and the token field; for
+  her own SSH account, under them, the optional **Sudo, exact commands** and
+  **Sudo, everything** code blocks, each with its own Copy, `SudoBlocks`). Test (**Test** probes again
   and says Logged in or the problem). Fingerprint (the host key or
   certificate fingerprint in mono, **Confirm**). The current step's button
   is the one primary; a done step's turns secondary; nothing is saved before

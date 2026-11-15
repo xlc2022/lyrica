@@ -18,7 +18,7 @@ First ask what they want you to do there. That decides the kind, at the top of t
 
 1. **An account for you on the machine**, not root (root is refused). If there is none: `useradd -m -s /bin/bash lyrica`, as root there. The machine needs OpenSSH 9.6 or later.
 2. **Name and address.** **Name** is what you'll call it. **Address** is `account@host`, with `:port` if it isn't 22. **Account** stays on the first choice, your own account. **Folder** is optional and keeps your file tools under one path. **Pool** is General or Private: a thread uses only machines of its own pool, and a private machine should be on their own network. Then **Next**.
-3. **Key.** The page shows a block to run as root on the machine. It puts your public key in `/etc/ssh/authorized_keys/<account>`, a file only root can change, points sshd at it for that account only, reloads sshd, and prints the machine's host key fingerprint. The sudo lines in it are optional: without them you have no root there, and a step that needs root comes to the person on a card.
+3. **Key.** The page shows a block to paste on the machine as a user with sudo. It puts your public key in `/etc/ssh/authorized_keys/<account>`, a file only root can change, points sshd at it for that account only, reloads sshd, and prints the machine's host key fingerprint. Under it, **Sudo, exact commands** and **Sudo, everything** are optional commands of their own: without them you have no root there, and a step that needs root comes to the person on a card.
 4. **Test** says **Logged in**.
 5. **Fingerprint.** They compare the fingerprint on the page with the one the block printed on the machine, then **Confirm**.
 

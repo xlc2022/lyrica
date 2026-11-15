@@ -7,6 +7,7 @@ import {
   del, get, patch, post, u,
   type MachineChange, type MachineInfo, type MachineInput, type MachineLimit, type MachineProbe, type Pool,
 } from "./api.ts";
+import { CopyButton } from "./CopyButton.tsx";
 import { ModeItem, MODES } from "./Modes.tsx";
 import { Icon } from "./icons.tsx";
 import { her } from "./name.ts";
@@ -242,6 +243,22 @@ type Step = "address" | "key" | "test" | "fingerprint";
 /** The probe's body: the form as typed, or for Replace key the machine as saved with `replace`. */
 type ProbeInput = { kind: Kind; name: string; address: string; draft?: string; asUser?: boolean; user?: string; replace?: boolean };
 
+/** The Key step's optional sudo rights: each its own command with its own Copy, so pasting the setup never grants them. */
+function SudoBlocks({ sudo }: { sudo: NonNullable<MachineProbe["sudo"]> }) {
+  const blocks = [
+    { label: "Sudo, exact commands", hint: "Optional: sudo without a password for one command. Change the example command first.", text: sudo.exact },
+    { label: "Sudo, everything", hint: "Optional: sudo without a password for any command, on a machine you really trust.", text: sudo.everything },
+  ];
+  return <div className="machine-sudo">
+    {blocks.map((b) => (
+      <div className="code-block" key={b.label}>
+        <div className="code-head"><span className="code-lang" title={b.hint}>{b.label}</span><CopyButton text={b.text} label="Copy" ariaLabel={`Copy ${b.label.toLowerCase()}`} className="code-copy" /></div>
+        <pre><code>{b.text}</code></pre>
+      </div>
+    ))}
+  </div>;
+}
+
 /**
  * Add machine, and Replace key (`name` set): one card in the Machines
  * section with a kind segment, the steps as sections with eyebrows, and one
@@ -387,6 +404,7 @@ export function MachinePage({ ctx, name }: { ctx: ShellContext; name?: string })
             <div className="row">
               <button type="button" className={step === "key" ? "primary" : ""} onClick={copy}>{copied ? "Copied" : "Copy"}</button>
             </div>
+            {probe.sudo && <SudoBlocks sudo={probe.sudo} />}
             {kind === "proxmox" && (
               <label className="field"><span>Token</span>
                 <input className="mono" type="password" value={form.token} placeholder={pveUser ? `${pveUser}!lyrica=…` : "lyrica@pve!agent=…"} autoComplete="off" onChange={(e) => setField("token", e.target.value)} />
@@ -422,6 +440,7 @@ export function MachinePage({ ctx, name }: { ctx: ShellContext; name?: string })
               <button type="button" onClick={copy}>{copied ? "Copied" : "Copy"}</button>
               <button type="button" disabled={probingBusy} onClick={again}>Test</button>
             </div>
+            {probe.sudo && <SudoBlocks sudo={probe.sudo} />}
           </section>
         )}
         {((replacing && !fresh) || (tested && loginOk)) && (

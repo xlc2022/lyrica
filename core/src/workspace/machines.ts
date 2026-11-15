@@ -7,6 +7,7 @@ import { networkInterfaces } from "node:os";
 import { StringDecoder } from "node:string_decoder";
 import { posix } from "node:path";
 import { removePrivateKeys, PRIVATE_KEY_BEGIN as BEGIN, PRIVATE_KEY_END as END } from "../secrets.ts";
+import { sudoersCommand } from "./root.ts";
 import { within } from "./settings.ts";
 
 export interface SuspectCommand {
@@ -510,37 +511,57 @@ export function authorizedKeysLine(publicKey: string, from: string[] = ownAddres
 }
 
 /**
- * The two steps that make a machine ready, to run as root there: the key in
+ * What makes a machine ready, to paste whole as a user with sudo: the key in
  * a root-owned file sshd reads for her account, so nothing she runs can add
- * one, and sudo rights that are exact commands, never a password. On the
- * user's own account (`asUser`) there is nothing to protect from her, so the
- * user adds the key to their own keys file, without root.
+ * one, and the host key's fingerprint. Writes go through `sudo tee`, never a
+ * shell redirect, which would run as the user. The commands are one `&&`
+ * chain, so the shell reads all of them before sudo asks for a password (a
+ * later pasted line would otherwise be read as the password) and stops at
+ * the first that fails. On the user's own account (`asUser`) there is
+ * nothing to protect from her, so the user adds the key to their own keys
+ * file, without sudo.
  */
 export function machineSetup(account: string, keyLine: string, asUser = false): string {
   const line = keyLine.replaceAll("'", "'\\''");
   const fingerprint = ["", "# The host key's fingerprint, to compare with the one Lyrica shows", "ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub"];
   if (asUser) {
-    return [
-      `# Her key, in your own keys file: run as ${account}, not as root`,
+    return chain([
+      `# Her key, in your own keys file: run as ${account}, without sudo`,
       "install -d -m 700 ~/.ssh",
       `printf '%s\\n' '${line}' >> ~/.ssh/authorized_keys`,
       "chmod 600 ~/.ssh/authorized_keys",
       ...fingerprint,
-    ].join("\n");
+    ]);
   }
-  return [
-    "# 1. Her key, in a file only root can change, beside any key already there",
-    "install -d -m 755 /etc/ssh/authorized_keys",
-    `touch /etc/ssh/authorized_keys/${account}`,
-    `grep -qxF -- '${line}' /etc/ssh/authorized_keys/${account} || printf '%s\\n' '${line}' >> /etc/ssh/authorized_keys/${account}`,
-    `chmod 644 /etc/ssh/authorized_keys/${account}`,
-    `printf 'Match User ${account}\\n    AuthorizedKeysFile /etc/ssh/authorized_keys/%%u\\n' > /etc/ssh/sshd_config.d/lyrica-${account}.conf`,
-    "sshd -t && systemctl reload ssh",
-    "",
-    "# 2. Optional: sudo without a password, for exact commands (visudo -f /etc/sudoers.d/lyrica)",
-    `${account} ALL=(root) NOPASSWD: /usr/bin/systemctl restart nginx`,
-    "#    or, on a machine you really trust, for everything:",
-    `# ${account} ALL=(root) NOPASSWD: ALL`,
+  const keys = `/etc/ssh/authorized_keys/${account}`;
+  return chain([
+    "# Her key, in a file only root can change, beside any key already there",
+    "sudo install -d -m 755 /etc/ssh/authorized_keys",
+    `sudo touch ${keys}`,
+    `{ sudo grep -qxF -- '${line}' ${keys} || printf '%s\\n' '${line}' | sudo tee -a ${keys} > /dev/null; }`,
+    `sudo chmod 644 ${keys}`,
+    `printf 'Match User ${account}\\n    AuthorizedKeysFile /etc/ssh/authorized_keys/%%u\\n' | sudo tee /etc/ssh/sshd_config.d/lyrica-${account}.conf > /dev/null`,
+    "sudo sshd -t",
+    "sudo systemctl reload ssh",
     ...fingerprint,
-  ].join("\n");
+  ]);
+}
+
+/** Lines as one `&&` chain: each command but the last ends in `&&`; comments and blank lines stay as they are, which the shell skips inside a chain. */
+function chain(lines: string[]): string {
+  const last = lines.findLastIndex((l) => l !== "" && !l.startsWith("#"));
+  return lines.map((l, i) => (l === "" || l.startsWith("#") || i === last ? l : `${l} &&`)).join("\n");
+}
+
+/**
+ * The optional sudo rights, each a command to paste on its own: `exact`
+ * allows one command (an example to change), `everything` all of them, for a
+ * machine the user really trusts. Both add to /etc/sudoers.d/lyrica the way
+ * her run-as-root card does, checked by visudo before sudo reads them.
+ */
+export function machineSudo(account: string): { exact: string; everything: string } {
+  return {
+    exact: sudoersCommand([`${account} ALL=(root) NOPASSWD: /usr/bin/systemctl restart nginx`]),
+    everything: sudoersCommand([`${account} ALL=(root) NOPASSWD: ALL`]),
+  };
 }
