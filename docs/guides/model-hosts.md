@@ -863,29 +863,31 @@ the ComfyUI image, so the next Update rebuilds it again.
 For a 24 GB card, **MiniMax H3 Turbo w6a8** is H3 Turbo with Comfy-Org's
 w6a8 model (about 15 GiB) and lightx2v's 4-step 768p LoRA, at 1344×768.
 Two community H3 models come as starters too, each int8 (large cards) and
-a 24 GB size (Cobijada w4a8, Singularity w6a8): **Cobijada H3 Hybrid**, a merge of H3's two checkpoints
-(uncensored) that takes Turbo's LoRA and, as int8, chains up to 60 s, and
-**Singularity H3 v2**, the most used fine-tune, which is ref2va only: it
-runs on its own template at 6 steps with its speed LoRA at 0.7, makes
-clips from text or animates an image, and as int8 chains to 60 s as Turbo
-does. Singularity's 24 GB file is WAS's w6a8 r2 (16 GB): on a 3090 it runs
-as fast as the w4a8 (about 155 s for a 5 s clip) and stays closer to the
-int8. Each has a **Realism** twin that also fetches fal's Realism People
-LoRA (0.12 GiB) for faces, skin and gestures that hold up in close-up (at
-strength 0.7, or 0.5 on Singularity, below the card's 1, which smeared
-faces in our tests); the host starts its prompts with the LoRA's trigger
-word, r34l1sm. The w6a8 and w4a8 video starters make one clip of up to 5 s
-and don't extend: on a 24 GB card with 30 GB of RAM a chained clip ran out
-of memory. Use the int8 starters on a large card for longer videos. A
-recipe installed from one of them before 2026-11-15 gets that 5 s cap only
-after **Reset to starter settings…**, and an installed Singularity recipe
-keeps 4 steps instead of 6 until then too. Their repositories say Apache
-2.0, but they are H3 derivatives under H3's licence. Any H3 LoRA file on
-the host now counts as H3's even when its name doesn't say so (fal's
-Realism People, Pika's H3 Flex), so it can be added to an H3 recipe or
-asked for per clip, and since 2026-11-15 a w6a8 H3 file (Comfy-Org's Turbo
-w6a8, Singularity's w6a8_r2) counts as H3 rather than P-H3-Image; update
-the host to get it.
+a 24 GB size (Cobijada w4a8, Singularity w6a8): **Cobijada H3 Hybrid**, a
+merge of H3's two checkpoints (uncensored) that takes Turbo's LoRA and, as
+int8, chains up to 60 s, and **Singularity H3 v2**, the most used
+fine-tune, which is ref2va only: it runs on its own template at 6 steps
+with its speed LoRA at 0.7, makes clips from text or animates an image,
+and as int8 chains to 60 s as Turbo does. Singularity's 24 GB file is
+WAS's w6a8 r2 (16 GB): on a 3090 it runs as fast as the w4a8 (about 155 s
+for a 5 s clip) and stays closer to the int8. Each has a **Realism** twin
+that also fetches fal's Realism People LoRA (0.12 GiB) for faces, skin and
+gestures that hold up in close-up (at strength 0.7, or 0.5 on Singularity,
+below the card's 1, which smeared faces in our tests); the host starts its
+prompts with the LoRA's trigger word, r34l1sm. The w6a8 and w4a8 video
+starters make one clip of up to 5 s and don't extend: on a 24 GB card with
+30 GB of RAM a chained clip ran out of memory. Use the int8 starters on a
+large card for longer videos. A recipe installed from one of them before
+2026-11-15 gets that 5 s cap only after **Reset to starter settings…**,
+and an installed Singularity recipe keeps 4 steps instead of 6 until then
+too. A recipe from the old Singularity w4a8 starter still runs, but Reset
+to starter settings refuses it, since that starter is gone: install the
+w6a8 one instead. Their repositories say Apache 2.0, but they are H3
+derivatives under H3's licence. Any H3 LoRA file on the host now counts as
+H3's even when its name doesn't say so (fal's Realism People, Pika's H3
+Flex), so it can be added to an H3 recipe or asked for per clip, and since
+2026-11-15 a w6a8 H3 file (Comfy-Org's Turbo w6a8, Singularity's w6a8_r2)
+counts as H3 rather than P-H3-Image; update the host to get it.
 
 ComfyUI hosts also list **MiniMax H3 VFX Edit** (about 42 GB of files; the
 text encoder and VAEs are H3 Turbo's, so with Turbo installed it fetches
