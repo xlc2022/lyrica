@@ -442,8 +442,12 @@ export class Vllm implements Backend {
         // Unload while it starts: taking it out of the file stops it.
         if (signal?.aborted) throw loadCancelled();
         // A server that exited while starting won't come up: stop waiting.
-        if (this.failed(model.id, attempt)) {
-          throw new HostError(503, "model_unavailable", `vLLM couldn't start ${model.id} with these settings; try a lower context length or a larger memory share.`);
+        const failed = this.failed(model.id, attempt);
+        if (failed) {
+          // The cause vLLM printed, when the supervisor caught one; else the likeliest causes.
+          throw new HostError(503, "model_unavailable", failed.error
+            ? `vLLM couldn't start ${model.id}: ${failed.error}`
+            : `vLLM couldn't start ${model.id} with these settings; try a lower context length or a larger memory share.`);
         }
         const res = await fetch(`${this.base(port)}/v1/models`);
         const body = (await res.json()) as { data: { id: string }[] };
@@ -457,12 +461,14 @@ export class Vllm implements Backend {
     }
   }
 
-  private failed(id: string, attempt: string): boolean {
+  /** The supervisor's report of this attempt's exit, with the exception vLLM printed if it caught one; null while it runs. */
+  private failed(id: string, attempt: string): { error?: string } | null {
     try {
-      const status = JSON.parse(readFileSync(this.o.statusPath, "utf8")) as { failed?: Record<string, { attempt?: string }> };
-      return status.failed?.[id]?.attempt === attempt;
+      const status = JSON.parse(readFileSync(this.o.statusPath, "utf8")) as { failed?: Record<string, { attempt?: string; error?: string }> };
+      const f = status.failed?.[id];
+      return f?.attempt === attempt ? { ...(typeof f.error === "string" ? { error: f.error } : {}) } : null;
     } catch {
-      return false;
+      return null;
     }
   }
 

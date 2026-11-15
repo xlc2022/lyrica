@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -72,6 +72,35 @@ describe.skipIf(!python)("the vLLM supervisor", () => {
       proc.kill("SIGTERM");
       await new Promise((r) => proc.once("exit", r));
     }
+  });
+
+  it("says why a server failed to start, and keeps nothing it prints once it answers", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "lyrica-vllm-"));
+    const state = join(dir, "vllm.json");
+    const status = join(dir, "status.json");
+    const run = async (script: string) => {
+      const fake = join(dir, "fake-vllm");
+      writeFileSync(fake, `#!/bin/sh\n${script}\n`);
+      chmodSync(fake, 0o755);
+      rmSync(status, { force: true });
+      writeFileSync(state, JSON.stringify({ generation: 0, servers: { a: { model: "/models/a", name: "a", attempt: "x1", port: 8000, gpus: [0] } } }));
+      const proc = spawn("python3", [SUPERVISOR], { env: { ...process.env, VLLM_STATE: state, VLLM_STATUS: status, VLLM_COMMAND: fake }, stdio: "ignore" });
+      try {
+        const read = () => (existsSync(status) ? JSON.parse(readFileSync(status, "utf8")) : {});
+        await until(() => read().failed?.a !== undefined);
+        return read().failed.a;
+      } finally {
+        proc.kill("SIGTERM");
+        await new Promise((r) => proc.once("exit", r));
+      }
+    };
+    // vLLM's engine prints the cause on stderr, then a summary that points back at it.
+    expect(await run(`echo "loading" >&2; echo "(EngineCore pid=7) ImportError: soundfile is not installed (mistral-common[soundfile])" >&2; echo "RuntimeError: Engine core initialization failed. See root cause above." >&2; exit 1`))
+      .toMatchObject({ exitCode: 1, error: "ImportError: soundfile is not installed (mistral-common[soundfile])" });
+    // Once it answered, what it printed isn't kept.
+    const served = await run(`echo "INFO: Application startup complete."; echo "ValueError: quokka-lantern-9931"; exit 2`);
+    expect(served).toMatchObject({ exitCode: 2 });
+    expect(served.error).toBeUndefined();
   });
 
   it("reports a server that exited, with the attempt it was started for", async () => {

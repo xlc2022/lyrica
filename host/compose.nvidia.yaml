@@ -31,9 +31,14 @@ services:
       - serving:/serving:ro
     tmpfs: [/tmp]
 
+  # vLLM's image with the audio libraries Voxtral needs (vllm/Dockerfile).
   vllm:
     <<: *server
-    image: vllm/vllm-openai:v0.32.0@sha256:befccf0e7e4089aa23926bb6f887a85c0d46c2a99e6de5c5ffdf5cb7957c5b34
+    build:
+      context: vllm
+      args:
+        IMAGE: vllm/vllm-openai:v0.32.0@sha256:befccf0e7e4089aa23926bb6f887a85c0d46c2a99e6de5c5ffdf5cb7957c5b34
+    image: lyrica-host-vllm:cuda
     entrypoint: [python3, /lyrica/supervisor.py]
     init: true # reaps what vLLM's engine processes leave behind
     shm_size: 16gb

@@ -20,9 +20,14 @@ services:
       - serving:/serving:ro
     tmpfs: [/tmp]
 
+  # vLLM's image with the audio libraries Voxtral needs (vllm/Dockerfile).
   vllm:
     <<: *server
-    image: rocm/vllm:rocm10.1.0_ubuntu24.04_py3.14-pytorch_2.13.0_vllm-0.29.0@sha256:e0ea9a10b729573ea8598bdc073bda0ea382fe1037eec7c0761b6fa7f46baaf4
+    build:
+      context: vllm
+      args:
+        IMAGE: rocm/vllm:rocm10.1.0_ubuntu24.04_py3.14-pytorch_2.13.0_vllm-0.29.0@sha256:e0ea9a10b729573ea8598bdc073bda0ea382fe1037eec7c0761b6fa7f46baaf4
+    image: lyrica-host-vllm:rocm
     entrypoint: [python3, /lyrica/supervisor.py]
     init: true # reaps what vLLM's engine processes leave behind
     shm_size: 16gb

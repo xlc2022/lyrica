@@ -776,7 +776,9 @@ revoked. A revoked server must pair again.
     published on every interface, because Docker's published ports bypass
     the machine's firewall.
 - The model servers are the official llama.cpp and vLLM images, pinned by
-  digest. `compose.nvidia.yaml` uses CUDA images, `compose.amd.yaml` ROCm,
+  digest; vLLM's gets one layer over it here (`vllm/Dockerfile`): the audio
+  libraries `soundfile` and `soxr`, pinned by hash, which Voxtral's
+  dictation needs and the image lacks. `compose.nvidia.yaml` uses CUDA images, `compose.amd.yaml` ROCm,
   and `compose.vulkan.yaml` Vulkan (llama.cpp only); `install.sh` picks one,
   and for ROCm adds `compose.hsa.yaml` for `--hsa-override` and
   `compose.apu.yaml` (unified memory) on an APU alone. For NVIDIA without
@@ -827,7 +829,10 @@ revoked. A revoked server must pair again.
     model on its GPUs, as host-api asks in a file, each in its own process
     group. A server that crashes is restarted after a growing wait (10
     seconds, doubling, up to 5 minutes). It reports servers that exited in
-    the `vllm-status` volume, so a load that can't start fails at once.
+    the `vllm-status` volume, so a load that can't start fails at once,
+    with the exception vLLM printed (such as a missing library) when there
+    was one. It keeps a server's last 40 lines of output in memory only
+    until the server answers; after that its output is read and dropped.
   - host-api reads VRAM with `nvidia-smi`, through NVIDIA's `utility`
     capability, or from AMD's sysfs (with GTT for an integrated GPU). With
     ROCm, AMD GPUs are numbered as ROCm numbers them; with Vulkan, by PCI
