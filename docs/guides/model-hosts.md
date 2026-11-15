@@ -151,15 +151,19 @@ F16 runs at F16; Z-Image's don't on a 16 GB card, so it stays at Q8_0 with
 flash attention on. The images notice it by themselves at each start.
 
 - **Debian or Ubuntu:** `install.sh` offers it, or run `host/cmp-unlock.sh`.
-  It needs NVIDIA's proprietary driver (not `-open`), Secure Boot off and
-  the kernel's headers, builds a kernel module, and blacklists `nouveau`
-  and `nvidia_drm`, so a desktop drawn by an NVIDIA card would lose its
+  It needs NVIDIA's proprietary driver (not `-open`) from a branch
+  between 535 and 580 (580 is the last for Volta, and the host's CUDA
+  12.8 images need 535 or later), Secure Boot off and the kernel's
+  headers, builds a kernel module, and blacklists `nouveau` and
+  `nvidia_drm`, so a desktop drawn by an NVIDIA card would lose its
   display. Then reboot.
 - **NixOS:** `services.lyrica-host.cmpUnlock.enable = true;`, then
   `nixos-rebuild boot` and reboot. It uses the 580 driver with the
   proprietary modules.
 - **Check:** `journalctl -u cmp100-unlock -b` ends with `PASS`, and
   `cmp100-bench` reports about 37 cycles per instruction (512 when locked).
+  Without root, `docker exec lyrica-host-llamacpp-1 /app/tensor-probe`
+  prints `full` or `throttled` (nothing when it can't tell).
 - **Skip or undo:** add `cmp100.skip` to the kernel command line for one
   boot; `host/cmp-unlock.sh --remove`, or set the option false, to undo.
   A run started by hand refuses while the host's containers hold the GPU.
