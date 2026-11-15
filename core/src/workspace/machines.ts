@@ -7,7 +7,7 @@ import { networkInterfaces } from "node:os";
 import { StringDecoder } from "node:string_decoder";
 import { posix } from "node:path";
 import { removePrivateKeys, PRIVATE_KEY_BEGIN as BEGIN, PRIVATE_KEY_END as END } from "../secrets.ts";
-import { keysFile, sshdRule } from "./machine-cleanup.ts";
+import { keyBlob, keysFile, sshdRule } from "./machine-cleanup.ts";
 import { sudoersCommand } from "./sudoers.ts";
 import { within } from "./settings.ts";
 
@@ -506,9 +506,14 @@ export function ownAddresses(): string[] {
   return Object.values(networkInterfaces()).flat().filter((a) => a && !a.internal).map((a) => a!.address.replace(/%.*$/, ""));
 }
 
-/** The authorized_keys line for a machine: usable only from Lyrica's addresses, with no forwarding, agent or pty. */
-export function authorizedKeysLine(publicKey: string, from: string[] = ownAddresses()): string {
-  return `restrict${from.length ? `,from="${from.join(",")}"` : ""} ${publicKey}`;
+/**
+ * The authorized_keys line for a machine: no forwarding, agent or pty. It
+ * names no `from=` addresses: what a machine sees Lyrica connect from changes
+ * when her server moves network or reaches it through NAT, and a line pinned
+ * to the old addresses would lock her out with no way back in from Lyrica.
+ */
+export function authorizedKeysLine(publicKey: string): string {
+  return `restrict ${publicKey}`;
 }
 
 /**
@@ -526,11 +531,16 @@ export function authorizedKeysLine(publicKey: string, from: string[] = ownAddres
  */
 export function machineSetup(account: string, keyLine: string, asUser = false): string {
   const line = keyLine.replaceAll("'", "'\\''");
+  // An earlier line for the same key (an older setup's, say with `from=`) goes, so running the setup again leaves one line.
+  const blob = keyBlob(keyLine);
+  const dropOld = (file: string) => `sed -i '\\|${blob}|d' ${file}`;
   const fingerprint = ["", "# The host key's fingerprint, to compare with the one Lyrica shows", "ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub"];
   if (asUser) {
     return chain([
       `# Her key, in your own keys file: run as ${account}, without sudo`,
       "install -d -m 700 ~/.ssh",
+      "touch ~/.ssh/authorized_keys",
+      dropOld("~/.ssh/authorized_keys"),
       `printf '%s\\n' '${line}' >> ~/.ssh/authorized_keys`,
       "chmod 600 ~/.ssh/authorized_keys",
       ...fingerprint,
@@ -544,7 +554,8 @@ export function machineSetup(account: string, keyLine: string, asUser = false): 
     "# Her key, in a file only root can change, beside any key already there",
     "sudo install -d -m 755 /etc/ssh/authorized_keys",
     `sudo touch ${keys}`,
-    `{ sudo grep -qxF -- '${line}' ${keys} || printf '%s\\n' '${line}' | sudo tee -a ${keys} > /dev/null; }`,
+    `sudo ${dropOld(keys)}`,
+    `printf '%s\\n' '${line}' | sudo tee -a ${keys} > /dev/null`,
     `sudo chmod 644 ${keys}`,
     `printf 'Match User ${account}\\n    AuthorizedKeysFile /etc/ssh/authorized_keys/%%u\\n' | sudo tee ${sshdRule(account)} > /dev/null`,
     "sudo sshd -t",

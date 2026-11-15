@@ -107,7 +107,7 @@ tool each for A and B, prompt lines only where the thread has a machine).
     the cloud.
 - Allowed for general and private machines alike (the user's decision). A
   private machine keeps its rules: private threads only, so no cloud model.
-- Setup for Mine needs no root: append the key line (still `restrict,from=`)
+- Setup for Mine needs no root: append the key line (still `restrict`)
   to `~/.ssh/authorized_keys`. The machine starts at Ask, as every machine
   does. Its row carries a **Your account** badge, and her prompt line says
   the machine logs in as the person's own account.

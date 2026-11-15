@@ -68,7 +68,8 @@ structural boundaries). The SSH targets that exist become machines.
    the sandbox, stripped of terminal control sequences, and private-key
    blocks are replaced with `[private key removed]` before Pi sees them.
 10. **Setup text.** The `authorized_keys` line Lyrica gives carries
-    `restrict,from="<Lyrica's addresses>"`, and the Add machine page and
+    `restrict` (it had `from=` her server's addresses until those were found
+    to break when the server moves network), and the Add machine page and
     `lyrica admin ssh add` print the two setup steps for the machine: the
     root-owned keys file (`AuthorizedKeysFile /etc/ssh/authorized_keys/%u`)
     and an exact-argv sudoers example. CLI: `lyrica admin ssh add` takes

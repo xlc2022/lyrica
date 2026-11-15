@@ -282,8 +282,11 @@ existed before became general machines at Ask.
 **Adding a machine** (`Workspace.probeMachine`, then `addMachine`, or
 `lyrica admin ssh add`): Lyrica makes a key pair and keeps it in memory for
 an hour; nothing is saved until the user confirms the host key. The key's
-`authorized_keys` line is `restrict,from="<Lyrica's addresses>" ssh-ed25519
-…`, usable only from this computer. The setup, pasted whole on the machine
+`authorized_keys` line is `restrict ssh-ed25519 …`: no forwarding, agent
+or pty. It names no `from=` addresses, since what a machine sees her connect
+from changes when her server moves network or reaches it through NAT, and a
+key pinned to old addresses locks her out with no way back in from Lyrica;
+the key itself never leaves her encrypted `user.db`. The setup, pasted whole on the machine
 as a user with sudo (`machineSetup`). It first makes her account where the
 machine lacks it, with the password `*`: it matches nothing, yet unlike a
 locked `!` it doesn't make sshd refuse the account when PAM is off, so only
@@ -299,7 +302,8 @@ fails:
 # Her key, in a file only root can change, beside any key already there
 sudo install -d -m 755 /etc/ssh/authorized_keys &&
 sudo touch /etc/ssh/authorized_keys/<account> &&
-{ sudo grep -qxF -- '<the key line>' /etc/ssh/authorized_keys/<account> || printf '%s\n' '<the key line>' | sudo tee -a /etc/ssh/authorized_keys/<account> > /dev/null; } &&
+sudo sed -i '\|<the key>|d' /etc/ssh/authorized_keys/<account> &&
+printf '%s\n' '<the key line>' | sudo tee -a /etc/ssh/authorized_keys/<account> > /dev/null &&
 sudo chmod 644 /etc/ssh/authorized_keys/<account> &&
 printf 'Match User <account>\n    AuthorizedKeysFile /etc/ssh/authorized_keys/%%u\n' | sudo tee /etc/ssh/sshd_config.d/lyrica-<account>.conf > /dev/null &&
 sudo sshd -t &&
@@ -308,6 +312,10 @@ sudo systemctl reload ssh &&
 # The host key's fingerprint, to compare with the one Lyrica shows
 ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
 ```
+
+The `sed` drops any earlier line for the same key first, such as one an
+older setup pinned to her server's addresses with `from=`, so running the
+setup again (Replace key shows it when her login fails) leaves one line.
 
 Sudo without a password is optional and never in that block, so pasting it
 grants nothing. The page offers it as two commands of their own.
@@ -386,10 +394,12 @@ Saving needs the machine's name typed. The account is fixed once added:
 a changed address may not name another account (remove the machine and add
 it again), and `root` is refused for any machine, since root steps go to
 the user on a card. The setup, run as that account with
-no root, appends the same `restrict,from=` key line to its own keys file:
+no root, puts the same `restrict` key line in its own keys file:
 
 ```sh
 install -d -m 700 ~/.ssh
+touch ~/.ssh/authorized_keys
+sed -i '\|<the key>|d' ~/.ssh/authorized_keys
 printf '%s\n' '<the key line>' >> ~/.ssh/authorized_keys
 chmod 600 ~/.ssh/authorized_keys
 ```

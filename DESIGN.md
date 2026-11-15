@@ -1668,8 +1668,9 @@ NAS, and Proxmox nodes. Decided 2026-10-11 from
 - **Keys and tokens** are generated or entered once, stored in the user's
   encrypted `user.db`, handed to the client in memory, and never shown to
   her or to anything she runs. The `authorized_keys` line Lyrica gives
-  carries `restrict` and `from=` Lyrica's addresses, so a stolen key is
-  useless elsewhere, and the machine's setup puts it in a root-owned file
+  carries `restrict` (no forwarding, agent or pty) and no `from=`: her
+  server's addresses change when it moves network, and a key pinned to them
+  would lock her out of every machine at once. The machine's setup puts it in a root-owned file
   (`AuthorizedKeysFile /etc/ssh/authorized_keys/%u`), so no command she
   runs can add a key to stay. Her sudo rights are what the owner writes
   into sudoers on that machine, exact commands or all of them; she never

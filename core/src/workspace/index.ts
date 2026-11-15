@@ -160,7 +160,7 @@ export interface ThreadMachine { name: string; kind: MachineKind; limit: Machine
 export interface MachineProbe {
   /** SSH: refers to the key pair kept in memory for this machine until it is added. */
   draft?: string;
-  /** SSH: for the machine's keys file, usable only from Lyrica's addresses. */
+  /** SSH: for the machine's keys file, `restrict`, from any address. */
   keyLine?: string;
   /** The setup steps to paste on the machine as a user with sudo (for Proxmox, as root on the node). */
   setup: string;
