@@ -451,6 +451,21 @@ describe("the GPU queue", () => {
     expect(keepFree).toBeGreaterThan(besidePin!);
   });
 
+  it("sizes the automatic context around a loaded embedding model, so the two don't swap on every turn", async () => {
+    const { scheduler } = setup([24]);
+    await scheduler.start([]);
+    const chat = textModel("chat", 4, { contextLength: 131072, kvPerToken: 2 * 64 * 8 * 128 });
+    const embed = textModel("embed", 2, { kind: "embedding", contextLength: 4096 });
+    // Alone, the chat model's context fills the GPU.
+    await scheduler.loadNow(chat);
+    const alone = scheduler.served(chat).contextLength!;
+    // The embedding model needs room, so the chat model goes once; loaded again, it leaves the embedding model its room.
+    await scheduler.loadNow(embed);
+    await scheduler.loadNow(chat);
+    expect([scheduler.placement("embed")?.state, scheduler.placement("chat")?.state]).toEqual(["loaded", "loaded"]);
+    expect(scheduler.served(chat).contextLength!).toBeLessThan(alone);
+  });
+
   it("on Auto, uses a GPU with room before unloading anything from a bigger one", async () => {
     const { scheduler, llamacpp } = setup([48, 24]);
     await scheduler.start([]);
