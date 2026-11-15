@@ -30,7 +30,8 @@ pictures and clips with on the operator's own hardware.
   the scanned files fill most wins (VFX Edit LoRA present: editor).
 - **Starters**: `minimax-h3-image` (int8), `minimax-h3-image-w4a8`,
   `minimax-h3-turbo-w6a8`, `cobijada-h3-hybrid` (+ `-w4a8`),
-  `singularity-h3-v2` (+ `-w4a8`), and a `-realism` twin of each video one
+  `singularity-h3-v2` (+ `-w6a8`, WAS's w6a8 r2, which replaced the
+  w4a8), and a `-realism` twin of each video one
   with fal's Realism People LoRA as a `realism` slot part. Pins from the
   Hugging Face API.
 - **Trigger words**: a template LoRA slot may name a `trigger`; the host
@@ -54,6 +55,8 @@ The run on mystria and lunasa settled what was open; its report is
 - P-H3-Image and Krea 2 work on ComfyUI 0.45.3.
 - Singularity runs at 6 steps with its speed LoRA at 0.7 (slot `strength`), as
   its repository's renders do: 4 steps at 1 melted a running dog's legs.
+- Singularity's w6a8 r2 replaced its w4a8: same speed on the 3090 (about
+  155 s for 5 s at 6 steps), with about 2 GB of RAM left, and closer to the int8.
 - fal's card says strength 1; the 0.7 and 0.5 above stand on these runs.
 
 ## Handoff
