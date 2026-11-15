@@ -1429,7 +1429,7 @@ export class HostedThread {
           createLookExtension({ models, threadId: this.threadId,
             call: () => models.callContext(this.userId, this.pool, this.threadId),
             files: workspace.imageFiles({ userId: this.userId, pool: this.pool, threadId: this.threadId, coordinates: !!thread.project }),
-            frames: (path, count) => workspace.files({ userId: this.userId, pool: this.pool, threadId: this.threadId, coordinates: !!thread.project }).frames(path, count),
+            frames: (path, count, signal) => workspace.files({ userId: this.userId, pool: this.pool, threadId: this.threadId, coordinates: !!thread.project }).frames(path, count, signal),
             settings: () => workspace.settings(this.userId),
             approve: r => this.approve(r),
           }),

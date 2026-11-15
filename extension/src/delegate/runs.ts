@@ -1183,7 +1183,7 @@ export class Delegation {
         if (workspace.imageFiles) extensions.push(createLookExtension({ models: this.o.models, threadId: child.id,
           call: () => lookContext(this.o.models.callContext(parent.user.id, parent.pool, child.id), this.parentCall(run)),
           files: workspace.imageFiles({ ...p, threadId: child.id }), settings: () => workspace.settings(parent.user.id),
-          ...(workspace.files ? { frames: (path: string, count: number) => workspace.files!({ ...p, threadId: child.id }).frames(path, count) } : {}),
+          ...(workspace.files ? { frames: (path: string, count: number, signal?: AbortSignal) => workspace.files!({ ...p, threadId: child.id }).frames(path, count, signal) } : {}),
           approve: r => this.approve(sub!, r),
         }));
         // Its role says whether it searches and browses; its Web search switch is its parent's or off. Its browser is

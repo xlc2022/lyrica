@@ -1344,12 +1344,13 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   subagent's session (hosted.ts, delegate/runs.ts). `LookTools`: `models`,
   `call()` (a subagent's through `lookContext(own, parent)`, local-only
   when its parent's is restricted), `threadId`, `files` (`ThreadImages.read`),
-  `frames?(path, count)` (`ThreadFiles.frames`), `settings()`, `approve?`,
+  `frames?(path, count, signal?)` (`ThreadFiles.frames`, ended with the call), `settings()`, `approve?`,
   `now?`. The tool is on only while `ctx.model` has no image input
   (`setToolsOff` reason `look`, at `session_start`, `model_select` and
   `before_agent_start`). Input `{ paths?: string[] (at most
   MAX_LOOK_FILES, 8), recent?: boolean, question: string, frames?: number
-  (1 to MAX_FRAMES, 16; DEFAULT_FRAMES, 8) }`: workspace images (PNG, JPEG,
+  (1 to MAX_FRAMES, 16; DEFAULT_FRAMES, 8) }`, at most MAX_LOOK_IMAGES (32)
+  images in all, stills included, refused before any model call: workspace images (PNG, JPEG,
   WebP) and `/photos-of-me/<file>` through `ThreadImages.read`, clips (MP4,
   WebM, MOV, MKV, M4V, AVI) as `frames` stills, each labelled with its
   second, and with `recent` the images of the latest tool result that held

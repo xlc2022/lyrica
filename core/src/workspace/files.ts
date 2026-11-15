@@ -211,14 +211,14 @@ export class ThreadFiles {
   /**
    * `count` stills from a clip, evenly spread over it (each from the middle of its share), at most FRAME_SIDE on a
    * side, as JPEGs with the second each comes from: what the look tool shows a vision model of a video. ffprobe and
-   * ffmpeg run inside the sandbox, one still at a time within FRAME_TIMEOUT_MS; nothing is written. Without them, an
-   * error saying so.
+   * ffmpeg run inside the sandbox, one still at a time within FRAME_TIMEOUT_MS, ended with `signal`; nothing is
+   * written. Without them, an error saying so.
    */
-  async frames(path: string, count: number): Promise<{ at: number; bytes: Buffer; type: "image/jpeg" }[]> {
+  async frames(path: string, count: number, signal?: AbortSignal): Promise<{ at: number; bytes: Buffer; type: "image/jpeg" }[]> {
     const p = this.allow(path, false);
     const n = Math.max(1, Math.min(MAX_FRAMES, Math.floor(count)));
     const probe = await this.box.run(["sh", "-c", 'command -v ffprobe >/dev/null && command -v ffmpeg >/dev/null || exit 3; test -f "$1" || { echo "$1 is not a file" >&2; exit 1; }; ' +
-      'ffprobe -v error -show_entries format=duration -of default=nw=1:nk=1 "file:$1"', "sh", p], { timeoutMs: FRAME_TIMEOUT_MS });
+      'ffprobe -v error -show_entries format=duration -of default=nw=1:nk=1 "file:$1"', "sh", p], { timeoutMs: FRAME_TIMEOUT_MS, signal });
     if (probe.code === 3) throw new Error("ffmpeg isn't installed, so a video's frames can't be read");
     const seconds = Number.parseFloat(probe.stdout.toString());
     if (probe.code !== 0 || !Number.isFinite(seconds) || seconds <= 0) throw new Error(probe.stderr.toString().trim() || `${path} couldn't be read as a video`);
@@ -226,8 +226,9 @@ export class ThreadFiles {
     const scale = `scale='if(gte(iw,ih),min(${FRAME_SIDE},iw),-2)':'if(gte(iw,ih),-2,min(${FRAME_SIDE},ih))'`;
     const out: { at: number; bytes: Buffer; type: "image/jpeg" }[] = [];
     for (let i = 0; i < n; i++) {
+      signal?.throwIfAborted();
       const at = Math.round(seconds * (i + 0.5) / n * 10) / 10;
-      const r = await this.box.run(["ffmpeg", "-v", "error", "-ss", String(at), "-i", `file:${p}`, "-frames:v", "1", "-vf", scale, "-f", "image2pipe", "-c:v", "mjpeg", "-q:v", "4", "-"], { timeoutMs: FRAME_TIMEOUT_MS });
+      const r = await this.box.run(["ffmpeg", "-v", "error", "-ss", String(at), "-i", `file:${p}`, "-frames:v", "1", "-vf", scale, "-f", "image2pipe", "-c:v", "mjpeg", "-q:v", "4", "-"], { timeoutMs: FRAME_TIMEOUT_MS, signal });
       if (r.code !== 0 || !r.stdout.length) throw new Error(r.stderr.toString().trim() || (r.signal ? "reading a frame took too long" : `${path} couldn't be read as a video`));
       out.push({ at, bytes: r.stdout, type: "image/jpeg" });
     }

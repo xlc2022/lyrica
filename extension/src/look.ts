@@ -21,7 +21,7 @@ export interface LookTools {
   threadId: string;
   files: Pick<ThreadImages, "read">;
   /** A clip's stills (ThreadFiles.frames). Without it, a clip can't be looked at. */
-  frames?(path: string, count: number): Promise<{ at: number; bytes: Buffer; type: string }[]>;
+  frames?(path: string, count: number, signal?: AbortSignal): Promise<{ at: number; bytes: Buffer; type: string }[]>;
   settings(): WorkspaceSettings;
   /** As ImageTools.approve, for a photo of the user going to a cloud vision model. */
   approve?(request: ApprovalRequest): Promise<Approval>;
@@ -30,6 +30,8 @@ export interface LookTools {
 
 /** At most this many images, or clips, in one look. */
 export const MAX_LOOK_FILES = 8;
+/** Most images in one look, stills included: local vision servers take few per request. */
+export const MAX_LOOK_IMAGES = 32;
 /** A clip's stills when she gives no number. */
 export const DEFAULT_FRAMES = 8;
 const VIDEO = /\.(mp4|webm|mov|mkv|m4v|avi)$/i;
@@ -63,7 +65,7 @@ export function createLookExtension(o: LookTools): ExtensionFactory {
     });
     pi.registerTool({
       name: "look", label: "Look",
-      description: `Look at images or videos your model can't see: the thread's vision model answers your question about them in words. Paths are workspace images (PNG, JPEG or WebP), /photos-of-me/<file>, or clips (MP4, WebM, MOV), at most ${MAX_LOOK_FILES} at once; a clip is shown as stills spread over its length. recent adds the images of the latest tool result that held any, such as a browse screenshot.`,
+      description: `Look at images or videos your model can't see: the thread's vision model answers your question about them in words. Paths are workspace images (PNG, JPEG or WebP), /photos-of-me/<file>, or clips (MP4, WebM, MOV), at most ${MAX_LOOK_FILES} at once and ${MAX_LOOK_IMAGES} images with the stills; a clip is shown as stills spread over its length. recent adds the images of the latest tool result that held any, such as a browse screenshot.`,
       promptSnippet: "see images and videos through the thread's vision model",
       promptGuidelines: [
         "Use look whenever you need to know what an image or video shows (one the user sent, a screenshot, a result you made): ask exactly what you need, such as \"describe this photo\", \"read all the text\" or \"what changes between these two\".",
@@ -94,7 +96,8 @@ export function createLookExtension(o: LookTools): ExtensionFactory {
         for (const path of paths) {
           if (VIDEO.test(path)) {
             if (!o.frames) throw new Error("Videos can't be looked at here.");
-            const stills = await o.frames(path, frames);
+            if (images + frames > MAX_LOOK_IMAGES) throw new Error(`One look takes at most ${MAX_LOOK_IMAGES} images, stills included: give fewer clips or fewer frames.`);
+            const stills = await o.frames(path, frames, signal);
             // A clip's stills can't be traced to a portrait as an image can: they count as one, as Auto-name's posters do.
             portrait = true;
             content.push({ type: "text", text: `Video ${path}, ${stills.length} still${stills.length > 1 ? "s" : ""}:` });
@@ -103,6 +106,7 @@ export function createLookExtension(o: LookTools): ExtensionFactory {
               images++;
             }
           } else {
+            if (images + 1 > MAX_LOOK_IMAGES) throw new Error(`One look takes at most ${MAX_LOOK_IMAGES} images, stills included: give fewer clips or fewer frames.`);
             const read = await o.files.read(path);
             portrait ||= read.portrait;
             content.push({ type: "text", text: `Image ${path}:` }, { type: "image", data: Buffer.from(read.input.bytes).toString("base64"), mimeType: read.input.type });

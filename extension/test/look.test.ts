@@ -92,6 +92,13 @@ describe("the look tool", () => {
     expect(s.asked).toEqual([]);
   });
 
+  it("refuses more images than a local vision server takes, before any model call", async () => {
+    const s = setup();
+    sent = undefined;
+    await expect(s.look({ paths: ["/workspace/a.mp4", "/workspace/b.mp4", "/workspace/c.mp4"], question: "?", frames: 16 })).rejects.toThrow(/at most 32 images/);
+    expect(sent).toBeUndefined();
+  });
+
   it("never sends a local-only thread's images to a cloud model", async () => {
     await expect(setup({ cloud: true, localOnly: true }).look({ paths: ["/workspace/a.png"], question: "?" })).rejects.toBeInstanceOf(CloudModelForbidden);
   });
