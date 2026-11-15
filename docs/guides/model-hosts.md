@@ -50,7 +50,9 @@ answer to start, so a long prompt on a slow model can still be read.
   because the CDI generator finds no driver loaded; reboot once and it
   passes. Lyrica's own units start either way.
 - The GPU driver: NVIDIA's, or `amdgpu` (with ROCm kernel support,
-  `/dev/kfd`, for the ROCm backend).
+  `/dev/kfd`, for the ROCm backend). An NVIDIA driver from 525 to 569 is
+  fine: `install.sh` gives the containers its own CUDA library through CDI,
+  which needs Docker 28 or later (host/README.md).
 - Docker with the compose plugin, using its **iptables** firewall backend
   (the default). Podman and Docker's nftables backend are refused: the
   rules that keep `host-api` from connecting out need the `DOCKER-USER`
@@ -163,7 +165,12 @@ flash attention on. The images notice it by themselves at each start.
 - **Check:** `journalctl -u cmp100-unlock -b` ends with `PASS`, and
   `cmp100-bench` reports about 37 cycles per instruction (512 when locked).
   Without root, `docker exec lyrica-host-llamacpp-1 /app/tensor-probe`
-  prints `full` or `throttled` (nothing when it can't tell).
+  prints `full` or `throttled`; nothing means CUDA itself fails in the
+  container, so no model would use the GPU either.
+- **A card with its Gen3 fuses blown:** the boot run fails with
+  `OPT_PCIE_BOOT_GEN23/GEN3_DISABLE fused`. Set `CMP100_PCIE=2` in
+  `/etc/cmp100-unlock.conf` (the file overrides the unit's `--gen2`), run
+  `sudo cmp100-unlock --force` once or reboot, and check the journal again.
 - **Skip or undo:** add `cmp100.skip` to the kernel command line for one
   boot; `host/cmp-unlock.sh --remove`, or set the option false, to undo.
   A run started by hand refuses while the host's containers hold the GPU.

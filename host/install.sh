@@ -54,7 +54,9 @@ VENDOR=$(env_value GPU_VENDOR)
 AMD_BACKEND=$(env_value GPU_BACKEND)
 HSA_OVERRIDE=$(env_value HSA_OVERRIDE_GFX_VERSION)
 AMD_FLAGS=0 APU_ONLY=0 DISCRETE_SUPPORTED=0
-NVIDIA_CDI=0
+NVIDIA_CDI=0 NO_CUDA_COMPAT=0
+# The NVIDIA images are built on CUDA 12.8 (llamacpp/Dockerfile), which a driver runs natively from branch 570.
+CUDA_DRIVER=570
 COMFY_GPU=$(env_value COMFY_GPU)
 TS_HOSTNAME=$(env_value TS_HOSTNAME)
 TS_AUTHKEY=$(env_value TS_AUTHKEY)
@@ -247,6 +249,19 @@ if [[ $CHECK_GPU == 1 ]]; then
           fail "Docker has no NVIDIA support. Install nvidia-container-toolkit and run: sudo nvidia-ctk runtime configure --runtime=docker && sudo systemctl restart docker"
         NVIDIA_CDI=1
       fi
+      # On an older 12.x driver the container toolkit puts CUDA's forward-compat library ahead of the
+      # driver's, and it runs only on datacenter cards: on a GeForce or a CMP 100-210 every CUDA call in
+      # the containers fails while nvidia-smi works. CUDA 12 runs the images on the driver's own library,
+      # so such a host gets the GPU through CDI, with the toolkit's enable-cuda-compat hook left out
+      # (the spec is written as root, below).
+      DRIVER=$(nvidia-smi --query-gpu=driver_version --format=csv,noheader | head -n 1)
+      if [[ ! -e /etc/NIXOS && ${DRIVER%%.*} -ge 525 && ${DRIVER%%.*} -lt $CUDA_DRIVER ]]; then
+        command -v nvidia-ctk >/dev/null || fail "driver $DRIVER needs nvidia-container-toolkit's nvidia-ctk, to give the containers the driver's own CUDA library."
+        [[ $(docker info --format '{{json .CDISpecDirs}}' 2>/dev/null) == \[*\"* ]] ||
+          fail "driver $DRIVER needs Docker's CDI support, which this Docker lacks or has turned off. Docker 28 or later has it on."
+        NVIDIA_CDI=1 NO_CUDA_COMPAT=1
+        say "Driver $DRIVER is older than the images' CUDA 12.8: the containers use its own CUDA library, through CDI."
+      fi
       say "GPUs: $(nvidia-smi --query-gpu=name --format=csv,noheader | paste -sd, -)" ;;
     amd)
       compgen -G '/dev/dri/renderD*' >/dev/null || fail "no /dev/dri/renderD*: install the amdgpu driver."
@@ -393,6 +408,19 @@ say "Wrote host/.env."
 
 SUDO=()
 [[ $(id -u) == 0 ]] || SUDO=(sudo)
+
+# The driver's own CUDA library in the containers (NO_CUDA_COMPAT, above): a CDI spec without the
+# forward-compat hook, and the same for the spec the toolkit's refresh service writes at every boot.
+if [[ $NO_CUDA_COMPAT == 1 ]]; then
+  "${SUDO[@]}" mkdir -p /etc/nvidia-container-toolkit /etc/cdi
+  printf '%s\n' NVIDIA_CTK_CDI_GENERATE_DISABLED_HOOKS=enable-cuda-compat | "${SUDO[@]}" tee /etc/nvidia-container-toolkit/nvidia-cdi-refresh.env >/dev/null
+  before=$("${SUDO[@]}" cat /etc/cdi/nvidia.yaml /var/run/cdi/nvidia.yaml 2>/dev/null | sha256sum)
+  "${SUDO[@]}" nvidia-ctk cdi generate --disable-hook enable-cuda-compat --output=/etc/cdi/nvidia.yaml >/dev/null 2>&1 ||
+    fail "nvidia-ctk couldn't write a CDI spec without the enable-cuda-compat hook. Update nvidia-container-toolkit."
+  if systemctl cat nvidia-cdi-refresh.service >/dev/null 2>&1; then "${SUDO[@]}" systemctl restart nvidia-cdi-refresh.service || true; fi
+  # Docker reads the specs again only when it restarts.
+  [[ $before == "$("${SUDO[@]}" cat /etc/cdi/nvidia.yaml /var/run/cdi/nvidia.yaml 2>/dev/null | sha256sum)" ]] || "${SUDO[@]}" systemctl restart docker
+fi
 
 # host-api may start no connection: apply the rules before it starts, and keep
 # them across reboots and Docker restarts with a systemd unit.
