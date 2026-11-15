@@ -795,6 +795,15 @@ export class Scheduler {
     return [...this.releasing.keys()];
   }
 
+  /** Waits, reading the GPUs, until none of these is still letting go of an unloaded model's memory (at most settleMs). */
+  private async released(gpus: number[]): Promise<void> {
+    for (;;) {
+      await this.readGpus();
+      if (!this.stillReleasing().some((g) => gpus.includes(g))) return;
+      await new Promise((r) => setTimeout(r, 250));
+    }
+  }
+
   /** Looks at the queue again shortly, while memory is still coming back. */
   private pumpSoon(): void {
     if (this.retry) return;
@@ -888,6 +897,9 @@ export class Scheduler {
       if (plan instanceof HostError) throw plan;
       if ("wait" in plan) throw new HostError(503, "busy", "The GPU is busy with other work.");
       await this.unload(previous);
+      // Measure and load only once its memory is back, as a load after an eviction does: llama.cpp's measurement
+      // is checked against the GPUs as read.
+      await this.released(plan.option.gpus);
       try {
         let next = plan;
         for (let round = 0; ; round++) {
