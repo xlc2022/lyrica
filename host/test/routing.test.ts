@@ -347,6 +347,16 @@ describe("the vLLM backend", () => {
     expect(JSON.parse(readFileSync(join(serving, "vllm.json"), "utf8")).servers).toEqual({});
   });
 
+  it("says what vLLM printed when the supervisor caught why a start failed", async () => {
+    const serving = mkdtempSync(join(tmpdir(), "lyrica-serving-"));
+    const statusPath = join(serving, "status.json");
+    const vllm = new Vllm({ url: "http://127.0.0.1:1/{port}", serving, models: "/models", statusPath });
+    const loading = vllm.load(model, at, { placement: { mode: "auto" } });
+    const { attempt } = JSON.parse(readFileSync(join(serving, "vllm.json"), "utf8")).servers.m;
+    writeFileSync(statusPath, JSON.stringify({ failed: { m: { attempt, exitCode: 1, crashes: 1, error: "ImportError: soundfile is not installed" } } }));
+    await expect(loading).rejects.toThrow("vLLM couldn't start m: ImportError: soundfile is not installed");
+  });
+
   it("keeps prompts in an eighth of host memory, where that is more than llama.cpp's own 8 GiB", () => {
     const preset = (gib: number) => {
       const serving = mkdtempSync(join(tmpdir(), "lyrica-serving-"));

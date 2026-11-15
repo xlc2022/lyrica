@@ -5,17 +5,51 @@ The vLLM image has only Python, so this small part of the host is Python.
 host-api writes the file; this script starts, stops and restarts servers to
 match it. It has no listener of its own and never sees the Docker socket.
 """
+import collections
 import json
 import os
+import re
 import signal
 import subprocess
 import sys
+import threading
 import time
 
 STATE = os.environ.get("VLLM_STATE", "/serving/vllm.json")
 # What failed to start, for host-api: it stops waiting on a load that crashed.
 STATUS = os.environ.get("VLLM_STATUS", "/status/vllm.json")
 COMMAND = os.environ.get("VLLM_COMMAND", "vllm").split()
+# uvicorn's line once the server answers: after it, nothing a server prints is kept.
+READY = "Application startup complete"
+# An exception's last line, such as "ImportError: soundfile is not installed".
+EXCEPTION = re.compile(r"\b([A-Za-z_][\w.]*(?:Error|Exception)): (\S.*)")
+
+
+def watch(proc):
+    """Reads a server's output. Until it answers, its last lines are kept in
+    memory, so a start that fails can say why; none hold a request then.
+    Once it answers, its output is read and dropped, never kept."""
+    for raw in proc.stdout:
+        if proc.lyrica_ready:
+            continue
+        line = raw.decode("utf-8", "replace").rstrip()
+        if READY in line:
+            proc.lyrica_ready = True
+            proc.lyrica_tail.clear()
+        else:
+            proc.lyrica_tail.append(line)
+
+
+def why(proc):
+    """The last exception a server printed before it answered, or None. vLLM
+    ends a failed start with one that points back at the cause: skipped."""
+    if proc.lyrica_ready:
+        return None
+    for line in reversed(proc.lyrica_tail):
+        m = EXCEPTION.search(line)
+        if m and "root cause above" not in line:
+            return f"{m.group(1)}: {m.group(2)}"[:300]
+    return None
 
 
 def rope_override(spec):
@@ -87,7 +121,12 @@ def start(spec):
     if spec.get("ropeOverride"):
         env["VLLM_ALLOW_LONG_MAX_MODEL_LEN"] = "1"
     # Its own process group, so stopping it also stops vLLM's engine processes.
-    return subprocess.Popen(argv(spec), env=env, start_new_session=True)
+    proc = subprocess.Popen(argv(spec), env=env, start_new_session=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    proc.lyrica_ready = False
+    proc.lyrica_tail = collections.deque(maxlen=40)
+    proc.lyrica_reader = threading.Thread(target=watch, args=(proc,), daemon=True)
+    proc.lyrica_reader.start()
+    return proc
 
 
 def stop(proc):
@@ -108,7 +147,7 @@ def stop(proc):
 
 
 def report(failed):
-    """Writes {name: {"attempt", "exitCode", "crashes"}} for servers that exited."""
+    """Writes {name: {"attempt", "exitCode", "crashes", "error"?}} for servers that exited."""
     try:
         tmp = STATUS + ".tmp"
         with open(tmp, "w") as f:
@@ -157,6 +196,11 @@ def main():
                     running[name] = (spec, start(spec), time.time())
                 elif current[1].poll() is not None:
                     failed[name] = {"attempt": spec.get("attempt"), "exitCode": current[1].returncode, "crashes": failures.get(name, 0) + 1}
+                    # Its last lines may still be on their way to the output thread.
+                    current[1].lyrica_reader.join(0.5)
+                    error = why(current[1])
+                    if error:
+                        failed[name]["error"] = error
                     # Restart a crashed server, waiting longer each time: 10 s, 20 s, ... up to 5 minutes.
                     wait = min(10 * 2 ** failures.get(name, 0), 300)
                     if time.time() - current[2] > wait:
