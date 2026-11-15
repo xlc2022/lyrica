@@ -63,27 +63,33 @@ describe("Jobs", () => {
     expect(running.has("uptime")).toBe(false);
   });
 
-  it("takes a machine as answering only after a round trip, dropping a connection kept from before its reboot", async () => {
-    // A set folder needs no connection to name, and the kept session fails (or hangs) until it is dropped.
-    let stale = true;
+  it("takes a machine as answering only after a round trip, dropping a connection that failed but not a busy one", async () => {
+    // A set folder needs no connection to name. The kept session first doesn't answer (busy, or the machine is still
+    // down), then is refused (the machine is back and doesn't know it), then a fresh one answers.
+    let state: "silent" | "refused" | "fresh" = "silent";
     const reconnects: number[] = [];
     const target = {
       name: "ssh:nautica", cwd: async () => "/srv/work", folders: () => [],
-      reconnect: () => { reconnects.push(1); stale = false; },
-      ops: () => ({ bash: { exec: (_c: string, _d: string, o: { signal?: AbortSignal }) => stale
-        ? new Promise((_r, reject) => o.signal?.addEventListener("abort", () => reject(new Error("timed out")))) // a half-open socket: no answer
-        : Promise.resolve({ exitCode: 0 }) } }),
+      reconnect: () => { reconnects.push(1); state = "fresh"; },
+      ops: () => ({ bash: { exec: (_c: string, _d: string, o: { signal?: AbortSignal }) => state === "silent"
+        ? new Promise((_r, reject) => o.signal?.addEventListener("abort", () => reject(new Error("timed out"))))
+        : state === "refused" ? Promise.reject(new Error("ssh nautica: read ECONNRESET")) : Promise.resolve({ exitCode: 0 }) } }),
     } as unknown as ExecutionTarget;
     const ready = machineReady(target, 10);
     await expect(ready()).rejects.toThrow(/timed out/);
+    expect(reconnects).toHaveLength(0);
+    state = "refused";
+    await expect(ready()).rejects.toThrow(/ECONNRESET/);
     expect(reconnects).toHaveLength(1);
     await expect(ready()).resolves.toBe("/srv/work");
-    // In a job: it waits through the stale connection, then runs.
-    stale = true;
+    // In a job: it waits through both, then runs.
+    state = "silent";
     const ended: JobInfo[] = [];
     const jobs = new Jobs((_t, job) => ended.push(job), 5);
     const { target: runner, running } = fakeTarget();
     jobs.start(thread, "nautica", runner, "nvidia-smi", machineReady(target, 10));
+    await new Promise((r) => setTimeout(r, 30));
+    state = "refused";
     await new Promise((r) => setTimeout(r, 60));
     expect(jobs.list(thread)[0]).toMatchObject({ cwd: "/srv/work", state: "running" });
     running.get("nvidia-smi")!.done(0);

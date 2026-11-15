@@ -1071,7 +1071,9 @@ background, so it doesn't hold her turn (`core/src/workspace/jobs.ts`).
   and runs once the machine answers, within its time limit. Answering is
   a round trip (`true`, 20 s at most) on its connection, since a set folder
   needs none and a connection kept from before the reboot can look open;
-  a failed try drops it, so the next connects afresh (`machineReady`) (`jobs` shows
+  a try that fails drops it, so the next connects afresh, while one that
+  only times out keeps it, since other jobs may be running on a busy
+  machine (`machineReady`) (`jobs` shows
   it as "waiting for <machine> to answer"). A changed or unconfirmed host
   key ends it at once. So after a reboot she starts the next check on the
   machine in the background and is told when it is back.
