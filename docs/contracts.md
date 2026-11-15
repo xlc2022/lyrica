@@ -384,7 +384,7 @@ interface Offering extends Capabilities {   // one model on one endpoint, with a
   extend?; longestSeconds?; sound?;                          // a host video recipe that adds to clips (and chains them), its longest video, and whether it renders sound
   upscalesClips?;                                            // a host upscale recipe that upscales whole clips too (its listing does `upscale_video`)
   opensThinking?;                                            // a host's chat template writes <think> itself
-  alwaysThinks?;                                             // LM Studio or OpenRouter says it can't turn thinking off
+  alwaysThinks?;                                             // LM Studio or OpenRouter says it can't turn thinking off, or a host reports levels with no off (a reasoning_effort template)
   price?: { input; output; reasoning?; cacheRead?; cacheWrite?; free };   // OpenRouter's pricing, US dollars per million tokens
   retiresAt?;                                                // OpenRouter's expiration_date
   maxOutput?;                                                // OpenRouter's top_provider.max_completion_tokens
