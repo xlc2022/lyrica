@@ -329,6 +329,48 @@ describe("a clip's poster", () => {
   });
 });
 
+/** A clip's length comes from ffprobe once, kept beside its poster until the clip changes, and moves with it. */
+describe("a clip's length", () => {
+  it("is probed once, kept until the clip is newer, unknown when unreadable, and moves with the clip", async () => {
+    const { ThreadFiles } = await import("@lyrica/core");
+    const { chmodSync, readFileSync, utimesSync } = await import("node:fs");
+    const dir = mkdtempSync(join(tmpdir(), "lyrica-clip-length-"));
+    const bin = mkdtempSync(join(tmpdir(), "lyrica-ffprobe-"));
+    try {
+      // A stand-in ffprobe: a clip's length is its text, a "bad" clip can't be read, and each run is counted.
+      writeFileSync(join(bin, "ffprobe"), `#!/bin/sh\necho x >> "${bin}/runs"\nfor a; do f=$a; done\nc=$(cat -- "$f")\n[ "$c" = bad ] && exit 1\necho "$c"\n`);
+      chmodSync(join(bin, "ffprobe"), 0o755);
+      const env = { ...process.env, PATH: `${bin}:${process.env.PATH}` };
+      const box = { allow: (p: string) => p, run: async (argv: string[]) => {
+        const { spawnSync } = await import("node:child_process");
+        const r = spawnSync(argv[0]!, argv.slice(1), { env });
+        return { code: r.status, signal: r.signal, stdout: r.stdout, stderr: r.stderr };
+      } };
+      const files = new ThreadFiles(box as unknown as Sandbox, [], () => {}, dir);
+      const runs = () => readFileSync(join(bin, "runs"), "utf8").split("\n").filter(Boolean).length;
+      mkdirSync(join(dir, "videos")); mkdirSync(join(dir, "uploads"));
+      writeFileSync(join(dir, "videos", "a.mp4"), "5.041");
+      writeFileSync(join(dir, "uploads", "b.webm"), "bad");
+      const seconds = async () => Object.fromEntries((await files.videos()).map((e) => [e.name, e.seconds]));
+      expect(await seconds()).toEqual({ "a.mp4": 5.041, "b.webm": undefined });
+      expect(runs()).toBe(2);
+      expect(await seconds()).toEqual({ "a.mp4": 5.041, "b.webm": undefined });
+      expect(runs()).toBe(2);
+      writeFileSync(join(dir, "videos", "a.mp4"), "62");
+      const earlier = new Date(Date.now() - 5000);
+      utimesSync(join(dir, ".lyrica", "thumbs", "videos", "a.mp4.seconds"), earlier, earlier);
+      expect((await seconds())["a.mp4"]).toBe(62);
+      expect(runs()).toBe(3);
+      await files.rename(join(dir, "videos", "a.mp4"), join(dir, "videos", "c.mp4"));
+      expect(await seconds()).toEqual({ "c.mp4": 62, "b.webm": undefined });
+      expect(runs()).toBe(3);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+      rmSync(bin, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("a copy in the thread's sandbox", () => {
   it("takes a free name beside a taken one, copies a folder whole, keeps links as links and won't copy a folder into itself", async () => {
     const { ThreadFiles } = await import("@lyrica/core");

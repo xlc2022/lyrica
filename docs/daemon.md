@@ -876,7 +876,12 @@ documented in `daemon/src/api.ts`, "The Files panel".
 - `GET …/files/search?root=<path>&q=<text>` finds names containing the text
   under a root (at most 200). `GET …/files/images` lists every image in the
   thread's folder, `uploaded` when it is in `uploads/`, otherwise `made` by her;
-  `GET …/files/videos` lists every clip (`.mp4`, `.webm`) the same way.
+  `GET …/files/videos` lists every clip (`.mp4`, `.webm`) the same way, each
+  with `seconds`, its length, read by `ffprobe` inside the sandbox and kept
+  beside its poster as `.lyrica/thumbs/<its path>.seconds` until the clip is
+  newer (moved and deleted with it); at most 100 clips are probed per
+  listing, so an old folder fills in over a few listings. A clip ffprobe
+  can't read is kept as unknown, and without `ffprobe` none is known.
 - `POST …/files/auto-name { paths, all? }` suggests a name for each image or
   clip (at most 50, only in the thread's own `/workspace`) from what the
   thread's `vision` model sees (`daemon/src/auto-name.ts`). Only a name a

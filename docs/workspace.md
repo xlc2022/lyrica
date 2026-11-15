@@ -927,7 +927,8 @@ portrait needs no consent.
 `ThreadImages.saveVideo` writes it as `videos/<uuid>.mp4` (a project chat's
 `shared/videos/`), with its poster, cleaned, written first as its Files
 thumbnail (`.lyrica/thumbs/videos/<uuid>.mp4.png`): deleting the clip in
-Files deletes the poster, and renaming it moves it. She is told the clip's
+Files deletes the poster, and renaming it moves it. Its length, once the
+Videos tab has listed it, is kept the same way (`<uuid>.mp4.seconds`). She is told the clip's
 facts and path; a clip made within a call (an explicit retry) also shows her
 its poster as an image.
 

@@ -1731,9 +1731,10 @@ export interface FileListing { roots: FileRoot[]; dir: string; entries: FileEntr
 export interface FileSearch { entries: FileEntry[]; more: boolean }
 /**
  * GET …/files/images → ImageEntry[]: every image in the thread's folder; `uploaded` when it is in uploads/, else `made` by her.
- * GET …/files/videos → ImageEntry[]: every clip (.mp4, .webm) there, told apart the same way.
+ * GET …/files/videos → ImageEntry[]: every clip (.mp4, .webm) there, told apart the same way, with `seconds`, its
+ * length, where ffprobe read it (kept beside its poster until the clip changes; at most 100 clips probed per listing).
  */
-export interface ImageEntry extends FileEntry { source: "uploaded" | "made" }
+export interface ImageEntry extends FileEntry { source: "uploaded" | "made"; seconds?: number }
 /**
  * POST …/files/auto-name { paths, all? } → AutoName[], one per path in order: a name for each image (PNG, JPEG, GIF,
  * WebP) or clip (MP4, WebM, by its poster) in the thread's folder from what the thread's `vision` model sees (Models →

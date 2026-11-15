@@ -1268,6 +1268,7 @@ dialog.viewer > .error { position: absolute; bottom: 8px; left: 16px; }
 .vthumb { position: relative; display: block; }
 .vplay { position: absolute; left: 8px; bottom: 8px; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: rgb(0 0 0 / 0.55); color: #fff; pointer-events: none; }
 .vplay svg { width: 12px; height: 12px; fill: currentColor; }
+.vlen { position: absolute; right: 8px; bottom: 8px; padding: 2px 6px; border-radius: 4px; background: rgb(0 0 0 / 0.55); color: #fff; font-size: 11px; line-height: 16px; pointer-events: none; }
 .igrid .meta { font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; width: 100%; display: block; }
 .igrid .empty { grid-column: 1 / -1; }
 /* Click and drag draws a box over the tree or the grid (docs/ux.md §6); the names don't take a text selection and the images don't drag away. */
