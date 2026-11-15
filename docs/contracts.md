@@ -2736,7 +2736,10 @@ sleep.events                       // started, phase, finished: IDs only, never 
   `sleep_focus` the person's line for tonight's dream, which the dream's
   instruction carries and a finished dream clears. A
   `no-key` skip is recorded once the key is back, since the pool can't be
-  written without it.
+  written without it. `Sleep.catchUp(userId, since)` runs when the key comes
+  back: each pool whose last run began before `since` (the last sleep time in
+  the user's zone) records the missed night as a `no-key` skip at `since` and
+  sleeps now; manual mode and a pool with no runs are left alone.
 - `PUT …/sleep/:pool/focus` (`SleepFocusChange { text }`, empty clears)
   sets the line for tonight and returns the sleep overview, with `focus`.
   `POST …/sleep/:pool/runs/:runId/undo` undoes the pool's newest undoable

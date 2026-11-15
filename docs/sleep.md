@@ -261,8 +261,11 @@ their own **Time zone** (Settings → Profile). How it is laid out is in
 Sleep runs only for users whose key is available, either because they are
 logged in or because they saved credentials. Other users are skipped with the
 reason `no-key`, the same way an offline endpoint is skipped. The pool can't be
-written without the key, so that skip is recorded once the key is back; a
-restart in between loses the record.
+written without the key, so that skip is recorded once the key is back.
+When the key comes back (a login, or saved credentials at start), a pool
+whose last run began before the last sleep time missed that night: the miss
+is recorded as a `no-key` skip, even when a restart lost it, and the pool
+sleeps then (`Sleep.catchUp`). A pool that has never slept isn't caught up.
 
 ## In code
 

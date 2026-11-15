@@ -2133,7 +2133,8 @@ Details in [docs/sleep.md](docs/sleep.md).
   call, 2026-10-21): a large-context model should use its context.
 - **Skipping:** sleep skips a user whose key isn't available, or a pool whose
   endpoint is offline, and tries again at the next due time. Nothing is lost.
-  The next sleep just covers a longer period.
+  The next sleep just covers a longer period. A night missed for want of the
+  key is slept as soon as the key comes back.
 - **What she'd like to raise** after a night (a thought from the dream, a
   question from consolidation, a persona suggestion) never opens a
   conversation by itself.

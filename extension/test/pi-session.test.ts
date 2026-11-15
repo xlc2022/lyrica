@@ -348,7 +348,7 @@ describe("in a Pi session", () => {
   it("doesn't save a correction again when the same call repeats", async () => {
     const m = await withMemory();
     const t = m.thread();
-    const [old] = t.view.own.addNotes([{ text: "The video roster has two models" }], { author: "lyrica", thread: t.context.threadId });
+    const old = t.view.own.addNotes([{ text: "The video roster has two models" }], { author: "lyrica", thread: t.context.threadId })[0]!;
     const fix = () => () => fauxAssistantMessage(fauxToolCall("remember", { notes: [{ text: "The video roster has three models", supersedes: [old] }] }), { stopReason: "toolUse" });
     const { session: s, seen } = await session(t.context, [fix(), fix(), fix(), () => fauxAssistantMessage("Noted.")]);
     try {
@@ -358,7 +358,7 @@ describe("in a Pi session", () => {
     }
     const current = t.view.own.search("video roster models", { kinds: ["note"], current: true }).map((h) => h.id);
     expect(current).toHaveLength(1);
-    expect(t.view.own.get(old!)!.supersededBy).toBe(current[0]);
+    expect(t.view.own.get(old)!.supersededBy).toBe(current[0]);
     expect(JSON.stringify(seen[3])).toContain(`Already noted, so not saved again: [${current[0]}]`);
   });
 });
