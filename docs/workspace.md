@@ -223,7 +223,8 @@ existed before became general machines at Ask.
   connections do (seen in the remote control tests, 2026-11-04). Strict key
   exchange (`kex-strict-*`) is required. No agent, no forwarding.
 - **Off network.** Before each connection the address is resolved and the
-  connection goes to that address. If it resolves outside the owner's LAN,
+  connection goes to that address (a name in her tailnet is her
+  tailscaled's to resolve, and stays a name). If it resolves outside the owner's LAN,
   loopback and tailnet (the model endpoints' check), the machine is marked
   off network. A private machine that has newly gone off network is refused
   until the user confirms (`confirmOffNetwork`), so a DNS change can't get past the
@@ -247,7 +248,12 @@ existed before became general machines at Ask.
   - Its network is exactly the machine's checked address and port, through
     the same `pasta` and nftables rules as an allowed host. `excludePorts`
     and the front door still apply. A machine on this host's loopback gets
-    just that one port forwarded.
+    just that one port forwarded. A machine in her tailnet (a MagicDNS name
+    or a 100.x address), while her tailscaled offers its loopback proxy,
+    is reached through that proxy: `lyricad` opens the tunnel and offers it
+    on a loopback port for the helper's one connection, forwarded the same
+    way, so the helper never gets the proxy itself. The host key is
+    checked as on a direct connection.
   - The private key goes to the helper on its stdin, never to a file or an
     environment variable.
   - `lyricad` and the helper speak length-prefixed frames (`ssh-frames.ts`):

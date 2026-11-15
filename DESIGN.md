@@ -2397,8 +2397,8 @@ Details in [docs/sleep.md](docs/sleep.md).
     her calls to tailnet peers too: userspace networking gives the machine
     no route to the tailnet, so her tailscaled opens an HTTP proxy on
     loopback (`127.0.0.1:1056`) and `lyricad` sends tailnet addresses and
-    names under her tailnet's MagicDNS suffix through it, for model hosts
-    and endpoints alike. TLS runs inside the tunnel, so a model host's
+    names under her tailnet's MagicDNS suffix through it, for model hosts,
+    endpoints, Git accounts and machines (SSH and Proxmox) alike. TLS runs inside the tunnel, so a model host's
     pinned key is checked as on a direct connection. Everything else is
     dialled directly, and so is a tailnet address when nothing listens on
     the proxy's port (a machine with its own Tailscale). Any process on

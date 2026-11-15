@@ -6,6 +6,7 @@ import { readFileSync } from "node:fs";
 import { request as httpRequest } from "node:http";
 import { hostname, networkInterfaces } from "node:os";
 import { connect as tlsConnect, type TLSSocket } from "node:tls";
+import { tailnetSocket } from "../models/tailnet.ts";
 import { ownAddresses } from "./machines.ts";
 
 export const PROXMOX_ACTIONS = ["status", "list", "start", "stop", "shutdown", "reboot", "snapshots"] as const;
@@ -145,9 +146,11 @@ export interface ProxmoxTransport {
 }
 
 /** A TLS connection whose certificate is read by fingerprint, not by a CA: Proxmox's own certificate is self-signed. */
-function open(host: string, port: number): Promise<TLSSocket> {
+/** One in her tailnet goes through her tailscaled's tunnel, with TLS inside it. */
+async function open(host: string, port: number): Promise<TLSSocket> {
+  const tunnel = await tailnetSocket(host, port);
   return new Promise((resolve, reject) => {
-    const socket = tlsConnect({ host, port, rejectUnauthorized: false, ALPNProtocols: ["http/1.1"] });
+    const socket = tlsConnect({ ...(tunnel ? { socket: tunnel } : { host, port }), rejectUnauthorized: false, ALPNProtocols: ["http/1.1"] });
     const timer = setTimeout(() => { socket.destroy(); reject(new Error(`${host}:${port} didn't answer`)); }, 10_000);
     socket.once("secureConnect", () => { clearTimeout(timer); resolve(socket); });
     socket.once("error", (err) => { clearTimeout(timer); reject(err); });

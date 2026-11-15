@@ -6,9 +6,10 @@
 import { createHash } from "node:crypto";
 import { lookup } from "node:dns/promises";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
-import { isIP } from "node:net";
+import { createServer, isIP, type AddressInfo, type Socket } from "node:net";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { tailnetSocket } from "../models/tailnet.ts";
 import { hostAddresses } from "./net.ts";
 import { Sandbox, type Sandboxed } from "./sandbox.ts";
 import { decoder, encode, type Frame } from "./ssh-frames.ts";
@@ -122,6 +123,37 @@ async function addressOf(host: string): Promise<string> {
 }
 
 /**
+ * A machine in her tailnet (a MagicDNS name or a 100.x address) while this
+ * machine reaches the tailnet only through her tailscaled's proxy: the tunnel
+ * to it, offered on a loopback port for the helper's one connection, which
+ * its sandbox reaches as it reaches a machine on loopback. Undefined to dial
+ * the machine directly. The host key is still checked by the helper, so
+ * whoever answers on that port first gets nothing it could use.
+ */
+export async function tailnetRelay(host: string, port: number): Promise<{ port: number; close: () => void } | undefined> {
+  const tunnel = await tailnetSocket(host, port, { paused: true });
+  if (!tunnel) return undefined;
+  const server = createServer();
+  const close = () => { server.close(); tunnel.destroy(); };
+  tunnel.once("close", () => server.close());
+  server.once("connection", (client: Socket) => {
+    server.close();
+    client.on("error", () => tunnel.destroy());
+    tunnel.on("error", () => client.destroy());
+    client.on("close", () => tunnel.destroy());
+    tunnel.on("close", () => client.destroy());
+    client.pipe(tunnel).pipe(client);
+  });
+  try {
+    await new Promise<void>((resolve, reject) => { server.once("error", reject); server.listen(0, "127.0.0.1", resolve); });
+  } catch (err) {
+    close();
+    throw err;
+  }
+  return { port: (server.address() as AddressInfo).port, close };
+}
+
+/**
  * The sandbox one helper runs in: a read-only system, the helper's own files,
  * no workspace, and network to exactly one address and port. A machine on this
  * host's loopback is reached through one forwarded port; one on this host's
@@ -232,8 +264,10 @@ const NO_SUCH_FILE = 2;
 export function sandboxedTransport(sandbox: () => HelperSandbox): SshTransport {
   return {
     async connect(to, verify) {
-      const address = await addressOf(to.host);
-      return new Promise<SshSession>((resolve, reject) => {
+      const relay = await tailnetRelay(to.host, to.port);
+      const address = relay ? "127.0.0.1" : await addressOf(to.host);
+      const port = relay?.port ?? to.port;
+      const opened = new Promise<SshSession>((resolve, reject) => {
         let refused: string | undefined;
         let accepted = false;
         let asked = false;
@@ -250,7 +284,7 @@ export function sandboxedTransport(sandbox: () => HelperSandbox): SshTransport {
         };
         // Starting the sandbox, which can hang if pasta can't make its device, plus ssh2's own 10 s.
         const timer = setTimeout(() => fail(new Error("timed out connecting")), 20_000);
-        Helper.start(address, to.port, sandbox(), (f, h) => {
+        Helper.start(address, port, sandbox(), (f, h) => {
           if (settled) return;
           if (f.head.ev === "hostkey") {
             // One host key per connection; the private key goes only with a yes.
@@ -277,9 +311,12 @@ export function sandboxedTransport(sandbox: () => HelperSandbox): SshTransport {
           helper = h;
           // Timed out while the sandbox was starting: the helper is ended and told nothing.
           if (settled) return h.fail(new Error("timed out connecting"));
-          h.send({ op: "connect", host: address, port: to.port, username: to.username });
+          h.send({ op: "connect", host: address, port, username: to.username });
         }, fail);
       });
+      // A connection that never opened leaves no tunnel behind; an open one's ends with it.
+      opened.catch(() => relay?.close());
+      return opened;
     },
   };
 }

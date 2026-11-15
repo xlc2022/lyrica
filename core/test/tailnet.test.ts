@@ -4,8 +4,10 @@ import { brotliCompressSync, gzipSync } from "node:zlib";
 import { createServer as createTcp, connect, type AddressInfo, type Socket } from "node:net";
 import { afterAll, describe, expect, it } from "vitest";
 import { addressesOutside, resolveHost, useTailnetProxy } from "../src/index.ts";
+import { proxmoxHttps } from "../src/workspace/proxmox.ts";
+import { tailnetRelay } from "../src/workspace/transport.ts";
 import { fakeHost } from "./fake-host.ts";
-import { selfSigned } from "./fake-proxmox.ts";
+import { fakeProxmox, selfSigned } from "./fake-proxmox.ts";
 import { withModels } from "./helpers.ts";
 
 // Her tailscaled's proxy, as a stand-in: every CONNECT goes to the same port on loopback, and the targets are kept.
@@ -59,7 +61,44 @@ describe("the tailnet, through her tailscaled's proxy", () => {
     // A name in her tailnet counts as her own network: tailscaled resolves it to a peer.
     expect(await addressesOutside("http://lm.tail1234.ts.net:1234/v1")).toEqual([]);
     // So does a Git account's or a machine's host there, which this machine's resolver can't look up.
-    expect(await resolveHost("forge.tail1234.ts.net")).toEqual({ addresses: [], outside: false });
+    // The name stands for its address, for the connection to take through the proxy.
+    expect(await resolveHost("forge.tail1234.ts.net")).toEqual({ addresses: ["forge.tail1234.ts.net"], outside: false });
+  });
+
+  it("reaches an SSH machine in her tailnet through a loopback relay, for the helper's one connection", async () => {
+    // An SSH server's stand-in: it says its banner and echoes.
+    const sshd = createTcp((c) => { c.write("SSH-2.0-stand-in\r\n"); c.pipe(c); });
+    await new Promise<void>((r) => sshd.listen(0, "127.0.0.1", r));
+    const port = (sshd.address() as AddressInfo).port;
+    try {
+      targets.length = 0;
+      const relay = (await tailnetRelay("box.tail1234.ts.net", port))!;
+      expect(targets).toEqual([`box.tail1234.ts.net:${port}`]);
+      const said = await new Promise<string>((resolve) => {
+        const c = connect({ host: "127.0.0.1", port: relay.port }, () => c.write("hello"));
+        let got = "";
+        c.on("data", (d) => { got += d.toString(); if (got.includes("hello")) { c.destroy(); resolve(got); } });
+      });
+      expect(said).toBe("SSH-2.0-stand-in\r\nhello");
+      // One connection only: the port is closed after it.
+      await expect(new Promise<void>((resolve, reject) => connect({ host: "127.0.0.1", port: relay.port }, () => resolve()).on("error", reject))).rejects.toThrow(/ECONNREFUSED/);
+      relay.close();
+      // Anything else is dialled directly.
+      expect(await tailnetRelay("127.0.0.1", port)).toBeUndefined();
+    } finally {
+      sshd.close();
+    }
+  });
+
+  it("reads a Proxmox certificate at a name in her tailnet through the proxy", async () => {
+    const pve = await fakeProxmox();
+    try {
+      targets.length = 0;
+      expect(await proxmoxHttps.fingerprint("pve.tail1234.ts.net", pve.port)).toBe(pve.fingerprint);
+      expect(targets).toEqual([`pve.tail1234.ts.net:${pve.port}`]);
+    } finally {
+      await pve.close();
+    }
   });
 
   it("leaves every other fetch as it was: compressed HTTP/2 answers still decode, through the tunnel too", async () => {
