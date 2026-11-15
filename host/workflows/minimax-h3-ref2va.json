@@ -27,7 +27,8 @@
         "minimax-h3"
       ],
       "optional": true,
-      "trigger": "r34l1sm"
+      "trigger": "r34l1sm",
+      "strength": 0.5
     },
     {
       "role": "text_encoder",

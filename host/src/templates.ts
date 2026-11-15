@@ -141,8 +141,11 @@ export interface Lora { file: string; strength: number; slot?: string | null }
 /** A video made of chained clips is at most this long (API.md, "Making videos"). */
 export const LONGEST_SECONDS = 60;
 
-/** The longest video a template makes: chained clips when it has a continuation, else one clip. */
-export const longestSeconds = (t: Template) => (t.continuation ? LONGEST_SECONDS : t.video?.maxSeconds ?? 0);
+/**
+ * The longest video a template makes: chained clips when it has a continuation, else one clip. A recipe's own
+ * `longestSeconds` (a starter sized for a host short of memory) caps it.
+ */
+export const longestSeconds = (t: Template, cap?: number) => Math.min(t.continuation ? LONGEST_SECONDS : t.video?.maxSeconds ?? 0, cap ?? Infinity);
 
 /**
  * A file that `continues` another template is that template's continuation, and one that `upscalesClipsFor` one

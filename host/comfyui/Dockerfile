@@ -22,9 +22,13 @@ ARG KREA2T_COMMIT=958898e947ce691dc66218bcb655f0a4615b07aa
 
 RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
 
-# One fetch per repository at an exact commit; nothing else from the network at run time.
+# One fetch per repository at an exact commit; nothing else from the network at run time. A fetch slower than
+# 10 KB/s for two minutes is given up and tried again, three times in all, so a stalled one fails the build
+# instead of hanging the update; a slow one (RES4LYF is about 200 MB) runs on.
 RUN set -eux; \
-    fetch() { mkdir -p "$2"; cd "$2"; git init -q; git remote add origin "https://github.com/$1"; git fetch -q --depth 1 origin "$3"; git checkout -q FETCH_HEAD; rm -rf .git; }; \
+    fetch() { mkdir -p "$2"; cd "$2"; git init -q; git remote add origin "https://github.com/$1"; \
+      for try in 1 2 3; do git -c http.lowSpeedLimit=10000 -c http.lowSpeedTime=120 fetch -q --depth 1 origin "$3" && break; [ "$try" -lt 3 ]; sleep 10; done; \
+      git checkout -q FETCH_HEAD; rm -rf .git; }; \
     fetch comfyanonymous/ComfyUI /opt/comfyui "$COMFYUI_COMMIT"; \
     fetch city96/ComfyUI-GGUF /opt/comfyui/custom_nodes/ComfyUI-GGUF "$GGUF_COMMIT"; \
     fetch numz/ComfyUI-SeedVR2_VideoUpscaler /opt/comfyui/custom_nodes/ComfyUI-SeedVR2_VideoUpscaler "$SEEDVR2_COMMIT"; \
