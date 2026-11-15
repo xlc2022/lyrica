@@ -1471,7 +1471,8 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   (`lyrica-empty-reply-retry`, `CARRY_ON`, dropped at the next turn like
   `lyrica-ask-nudge`) asking her to carry on. If that reply ran into the
   reply limit while thinking (`stopReason: "length"`), the retry goes with
-  thinking off, and the run's level comes back at its end. A second stores a
+  thinking off, and the run's level comes back at its end. A second in a row
+  (a reply with text or a tool call ends the streak) stores a
   `lyrica-empty-reply` message (`EMPTY_REPLY`, or `NO_ROOM` when it too ran
   into the reply limit: a model that always thinks with a full context
   window); the daemon emits it as the
