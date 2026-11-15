@@ -1,14 +1,14 @@
 name: Host images
 # The model host's ComfyUI images (CUDA and ROCm) and the speech server's
 # CUDA image are large, so they build only when what goes into them changes.
-# (The speech server's CPU image builds in CI's host-stack job.) The starter recipes are checked
-# against Hugging Face here too, since that needs the internet.
+# (The speech server's CPU image builds in CI's host-stack job; the starter
+# recipes are checked in starters.yml, so a recipe change builds no image.)
 on:
   pull_request:
-    paths: ["host/comfyui/**", "host/speech/**", "host/compose.nvidia.yaml", "host/compose.amd.yaml", "host/recipes/**", ".github/workflows/host-images.yml", ".github/runner/make-room.sh"]
+    paths: ["host/comfyui/**", "host/speech/**", "host/compose.nvidia.yaml", "host/compose.amd.yaml", ".github/workflows/host-images.yml", ".github/runner/make-room.sh"]
   push:
     branches: [main]
-    paths: ["host/comfyui/**", "host/speech/**", "host/compose.nvidia.yaml", "host/compose.amd.yaml", "host/recipes/**"]
+    paths: ["host/comfyui/**", "host/speech/**", "host/compose.nvidia.yaml", "host/compose.amd.yaml"]
 # The jobs run on GitHub's hosted runners for now (docs/ci.md); their token can only read.
 permissions:
   contents: read
@@ -76,13 +76,3 @@ jobs:
         run: .github/runner/make-room.sh 30
       - name: Build the CUDA image
         run: docker buildx build -f host/speech/Dockerfile --build-arg FLAVOUR=cuda --output type=cacheonly .
-  starters:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 24
-      - run: node host/recipes/check.ts

@@ -1,9 +1,11 @@
 name: CMP images
 # The CMP 100-210's llama.cpp, sd-server and whisper-server images (host/prebuilt.sh). A host
-# with that card pulls them instead of compiling for half an hour. A pull
-# request only builds them; main, or a run started by hand on a branch,
-# publishes each tag it doesn't have yet (a tag names its content, so a
-# branch's is the same image main would publish).
+# with that card pulls them instead of compiling for half an hour. A tag names
+# its content, so a job whose tag is already published stops in seconds; only a
+# change to an image's own folder (or its CUDA list) compiles. Then a run on main,
+# a run started by hand, or a pull request from a branch of this repository
+# publishes the new tag, so main finds it and doesn't compile it again. A fork's
+# pull request only builds.
 on:
   workflow_dispatch:
   pull_request:
@@ -22,7 +24,7 @@ jobs:
     # llama.cpp for six CUDA capabilities is a long compile on four cores.
     timeout-minutes: 340
     # A fork's pull request gets a read-only token whatever this says, and
-    # a pull request's run never pushes.
+    # its run never pushes (PUBLISH).
     permissions:
       contents: read
       packages: write
@@ -30,17 +32,12 @@ jobs:
       fail-fast: false
       matrix:
         name: [llamacpp, sdcpp, whispercpp]
+    env:
+      PUBLISH: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      # The CUDA devel image unpacks to about 10 GB beside the build.
-      - name: Make room
-        run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache /usr/local/share/boost /opt/microsoft \
-            /usr/local/.ghcup /usr/share/swift /usr/local/julia* /usr/lib/jvm /opt/az /usr/local/share/powershell /opt/google /usr/local/lib/node_modules \
-            /usr/share/miniconda /usr/local/share/chromium /opt/pipx
-          df -h /
       - name: Tag
         id: tag
         working-directory: host
@@ -51,16 +48,25 @@ jobs:
           echo "archs=$(prebuilt_archs ${{ matrix.name }})" >>"$GITHUB_OUTPUT"
           echo "registry=${image%%/*}" >>"$GITHUB_OUTPUT"
           echo "image: $image"
+      # The packages are public, so this needs no login. If the registry can't
+      # be read, the job builds, as before.
+      - name: Already published?
+        id: have
+        run: |
+          if docker manifest inspect "${{ steps.tag.outputs.image }}" >/dev/null 2>&1; then echo "yes=1" >>"$GITHUB_OUTPUT"; echo "already published"; fi
+      # The CUDA devel image unpacks to about 10 GB beside the build.
+      - name: Make room
+        if: steps.have.outputs.yes != '1'
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache /usr/local/share/boost /opt/microsoft \
+            /usr/local/.ghcup /usr/share/swift /usr/local/julia* /usr/lib/jvm /opt/az /usr/local/share/powershell /opt/google /usr/local/lib/node_modules \
+            /usr/share/miniconda /usr/local/share/chromium /opt/pipx
+          df -h /
       - name: Log in
-        if: github.event_name != 'pull_request'
+        if: steps.have.outputs.yes != '1' && env.PUBLISH == 'true'
         env:
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: echo "$TOKEN" | docker login "${{ steps.tag.outputs.registry }}" -u "${{ github.actor }}" --password-stdin
-      - name: Already published?
-        id: have
-        if: github.event_name != 'pull_request'
-        run: |
-          if docker manifest inspect "${{ steps.tag.outputs.image }}" >/dev/null 2>&1; then echo "yes=1" >>"$GITHUB_OUTPUT"; echo "already published"; fi
       - name: Build
         if: steps.have.outputs.yes != '1'
         run: |
@@ -70,4 +76,4 @@ jobs:
             --label "org.lyrica.content=${image##*:}" \
             --label "org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}" \
             --label "org.opencontainers.image.revision=${{ github.sha }}" \
-            -t "$image" ${{ github.event_name != 'pull_request' && '--push' || '--output type=cacheonly' }}
+            -t "$image" ${{ env.PUBLISH == 'true' && '--push' || '--output type=cacheonly' }}
