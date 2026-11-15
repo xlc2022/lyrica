@@ -95,6 +95,9 @@ elif podman compose version >/dev/null 2>&1; then
   fail "Podman isn't supported yet: host-api's egress rules need Docker's DOCKER-USER chain. Install Docker with the compose plugin."
 else fail "install Docker (with the compose plugin) first."
 fi
+# Every check below asks the daemon: one that can't be reached would read as a missing feature.
+docker info >/dev/null 2>&1 ||
+  fail "this account can't reach Docker's daemon. Start Docker, or run this as root or a docker group member (a group just added needs a new login: sg docker -c './install.sh …')."
 
 # Removes what this script and the updater installed: the stack's containers,
 # volumes (with the host's key, so every pairing ends), network and images, the
@@ -348,6 +351,11 @@ if [[ $VENDOR == nvidia ]] && nvidia-smi --query-gpu=pci.device_id --format=csv,
   GPU_IDS=$(nvidia-smi --query-gpu=index,pci.device_id --format=csv,noheader 2>/dev/null)
   COMFY_GPU=$(image_gpus "$COMFY_GPU" "$(grep -iE ',[[:space:]]*0x(1df4|1d84)10de$' <<<"$GPU_IDS" | cut -d, -f1 | paste -sd' ' -)" \
     "$(grep -viE ',[[:space:]]*0x(1df4|1d84)10de$' <<<"$GPU_IDS" | cut -d, -f1 | paste -sd' ' -)")
+  # vLLM can't run on a CMP: with CMPs alone its service isn't pulled or started (compose.novllm.yaml).
+  if cmp_only "$GPU_IDS"; then
+    FILES+=:compose.novllm.yaml
+    say "CMP 100-210s alone: vLLM, which can't run on one, isn't installed."
+  fi
   if grep -iE "^${COMFY_GPU%%,*},[[:space:]]*0x(1df4|1d84)10de$" <<<"$GPU_IDS" >/dev/null; then
     FILES+=:compose.sdcpp.yaml
     [[ $NVIDIA_CDI == 1 ]] && FILES+=:compose.sdcpp.cdi.yaml
@@ -562,6 +570,13 @@ BEFORE_IMAGES=$(stack_images)
 "${COMPOSE[@]}" run --rm --no-deps -T --user 0 --cap-add CHOWN --entrypoint chown fetch 10001:10001 /models/lyrica
 # The model servers run as other users and read it: 755, whatever the umask made it.
 "${COMPOSE[@]}" run --rm --no-deps -T --entrypoint chmod fetch 755 /models/lyrica
+# A service the compose files now turn off (compose.novllm.yaml's vLLM,
+# compose.sdcpp.yaml's ComfyUI) keeps its container from an earlier install:
+# remove it, so its image goes with the others below.
+ACTIVE=$("${COMPOSE[@]}" config --services)
+for s in $(docker ps -a --filter label=com.docker.compose.project=lyrica-host --format '{{.Label "com.docker.compose.service"}}' | sort -u); do
+  grep -qx "$s" <<<"$ACTIVE" || docker ps -aq --filter label=com.docker.compose.project=lyrica-host --filter "label=com.docker.compose.service=$s" | xargs -r docker rm -f >/dev/null
+done
 "${COMPOSE[@]}" up -d --remove-orphans
 
 # Once Tailscale has joined, the auth key isn't needed: drop it from .env.

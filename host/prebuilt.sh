@@ -84,3 +84,10 @@ image_gpus() {
   [[ ${#dropped[@]} -eq 0 ]] || echo "COMFY_GPU leaves out GPU ${dropped[*]}: ComfyUI can't run on a CMP 100-210." >&2
   (IFS=,; echo "${kept[*]}")
 }
+
+# Whether every NVIDIA card is a CMP 100-210: $1 is nvidia-smi's
+# "index, pci.device_id" lines. vLLM can't run on one, so such a host leaves
+# it out (compose.novllm.yaml). No lines (nvidia-smi failed) isn't.
+cmp_only() {
+  [[ -n $1 ]] && ! grep -qviE ',[[:space:]]*0x(1df4|1d84)10de$' <<<"$1"
+}

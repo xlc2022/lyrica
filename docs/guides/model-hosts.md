@@ -140,7 +140,8 @@ FLUX and SDXL recipes without LoRAs. The first image after a load takes
 about 2.5 minutes while it converts the weights to Q8_0; a GGUF keeps its
 own quantisation. Krea 2 has its own starter there, Krea 2 Turbo Q5
 (GGUFs, about 13.4 GB), which fits the card's 16 GB: about 70 seconds an
-image once loaded, 2.5 minutes cold. vLLM models can't run on the card, so
+image once loaded, 2.5 minutes cold. vLLM models can't run on the card (with
+only CMPs, the installer doesn't install vLLM at all), so
 dictation runs on whisper.cpp instead, with its own starter
 (large-v3-turbo q8_0). Voices run on it with an older cuDNN, so on such a
 host a Blackwell card can't run voices. Details are in
