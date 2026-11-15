@@ -575,6 +575,7 @@ button.jump-latest { font-size: 13px; min-height: var(--tap); }
 .subgroup { display: grid; gap: 10px; margin-top: 6px; }
 .subgroup > legend { padding: 0; margin-bottom: 6px; font-size: 13px; font-weight: 600; color: var(--muted); }
 /* A select's label with what follows its model, such as "+2 fallbacks". */
+.field > p.muted { margin: 0; font-size: 13px; }
 .field > .with-count { display: flex; justify-content: space-between; gap: 8px; }
 .with-count > .fallbacks { font-size: 12px; }
 .net-switch { display: grid; gap: 2px; justify-items: start; }
@@ -871,6 +872,7 @@ form.drawer-body { flex: 1; }
 .exact-sudo .sudo-command { display: grid; gap: 4px; }
 .exact-sudo .sudo-command p { margin: 0; }
 .exact-sudo .sudo-command input { flex: 1; min-width: 0; }
+@media (pointer: coarse) { .exact-sudo button.sm { min-height: 44px; min-width: 44px; } }
 .machine-sudo .code-block pre { margin: 0; padding: 2px 12px 10px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; line-height: 1.5; }
 .fingerprint { margin: 0; font-size: 14px; overflow-wrap: anywhere; }
 /* On a machine, the permission card and the marker name it first. */

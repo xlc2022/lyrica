@@ -204,7 +204,12 @@ function MachineDrawer({ userId, machine, onSaved, onClose }: { userId: string; 
         <fieldset className="group" disabled={busy}>
           <legend>{machine.kind === "proxmox" ? "Proxmox" : "SSH"}</legend>
           <label className="field"><span>Address</span><input className="mono" value={address} onChange={(e) => setAddress(e.target.value)} /></label>
-          {account && <label className="field"><span>User</span><input className="mono" value={account} readOnly title="Fixed once added. Remove the machine and add it again for another account." /></label>}
+          {account && (
+            <div className="field">
+              <label className="field"><span>User</span><input className="mono" value={account} readOnly aria-describedby="machine-user-hint" /></label>
+              <p className="muted small" id="machine-user-hint">Fixed once added. Remove the machine and add it again for another account.</p>
+            </div>
+          )}
           {machine.kind === "ssh" && <label className="field"><span>Folder</span><input className="mono" value={root} placeholder="/" onChange={(e) => setRoot(e.target.value)} /></label>}
           {machine.kind === "proxmox" && <p className="muted small mono">{machine.tokenId}</p>}
           <label className="field"><span>Pool</span>
@@ -292,7 +297,8 @@ function sudoLine(account: string, command: string): { line?: string; warning?: 
     const [checked] = checkSudoers([`${account} ALL=(root) NOPASSWD: ${command.trim()}`], account);
     return { line: checked!.line, ...(checked!.warning ? { warning: checked!.warning } : {}) };
   } catch (err) {
-    return { problem: (err as Error).message.replace(/^sudoers line \d+: /, "") };
+    const why = (err as Error).message.replace(/^sudoers line \d+: /, "");
+    return { problem: `${why.charAt(0).toUpperCase()}${why.slice(1)}.` };
   }
 }
 
@@ -314,7 +320,7 @@ function ExactSudo({ account }: { account: string }) {
         <span className="code-lang">Sudo, exact commands</span>
         {ready
           ? <CopyButton text={text} label="Copy" ariaLabel="Copy sudo, exact commands" className="code-copy" />
-          : <button type="button" className="sm code-copy" disabled aria-label="Copy sudo, exact commands" title="Type a command first.">Copy</button>}
+          : <button type="button" className="sm code-copy" disabled aria-label="Copy sudo, exact commands" title={checked.some((c) => c.problem) ? "Fix the refused command first." : "Type a command first."}>Copy</button>}
       </div>
       <p className="muted sudo-hint">Optional: sudo without a password for these commands only, each with its arguments.</p>
       <div className="sudo-commands">

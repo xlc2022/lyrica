@@ -629,7 +629,8 @@ test("Machines lists none, and Add machine reaches a machine before anything is 
   await exact.getByRole("textbox", { name: "Command 1" }).fill("/usr/bin/systemctl restart nginx");
   await exact.getByRole("button", { name: "Add command" }).click();
   await exact.getByRole("textbox", { name: "Command 2" }).fill("bash -c id");
-  await expect(exact.getByText("the program must be an absolute path such as /usr/bin/systemctl")).toBeVisible();
+  await expect(exact.getByText("The program must be an absolute path such as /usr/bin/systemctl.")).toBeVisible();
+  if (process.env.SCREENSHOTS) await exact.screenshot({ path: `${process.env.SCREENSHOTS}/sudo-refused-${page.viewportSize()!.width}.png` });
   await expect(exact.getByRole("button", { name: "Copy sudo, exact commands" })).toBeDisabled();
   await exact.getByRole("textbox", { name: "Command 2" }).fill("/usr/bin/apt-get update");
   await expect(exact.getByText("Reaches root anyway: a package can run any script as root.")).toBeVisible();
@@ -671,7 +672,9 @@ test("A private machine she is refused for going off network is confirmed from i
   const drawer = page.getByRole("complementary", { name: "vault" });
   await expect(drawer.getByRole("textbox", { name: "User" })).toHaveValue("lyrica");
   await expect(drawer.getByRole("textbox", { name: "User" })).not.toBeEditable();
+  await expect(drawer).toContainText("Fixed once added.");
   await drawer.getByRole("textbox", { name: "Address" }).fill("10.0.0.9:2222");
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/drawer-${page.viewportSize()!.width}.png` });
   const saved = page.waitForRequest((r) => r.method() === "PATCH" && r.url().endsWith("/machines/vault"));
   await page.route("**/machines/vault", (r) => r.request().method() === "PATCH" ? r.fulfill({ json: { ...vault, address: "lyrica@10.0.0.9:2222", offNetwork: true } }) : r.fallback());
   await drawer.getByRole("button", { name: "Save" }).click();
