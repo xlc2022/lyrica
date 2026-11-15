@@ -73,16 +73,20 @@ export function viaTailnet(host: string): boolean {
 class NoProxy extends Error {}
 
 /** A connection to `host:port` through the proxy for a tailnet destination; undefined to dial it directly. */
-export function tailnetSocket(host: string, port: number): Promise<Socket | undefined> {
+export function tailnetSocket(host: string, port: number, o: { paused?: boolean } = {}): Promise<Socket | undefined> {
   if (!viaTailnet(host)) return Promise.resolve(undefined);
-  return tunnel(host, port).catch((e) => {
+  return tunnel(host, port, 10_000, o).catch((e) => {
     if (e instanceof NoProxy) return undefined;
     throw e;
   });
 }
 
-/** A TCP connection to `host:port` through the proxy, once it has said yes. */
-export function tunnel(host: string, port: number, timeoutMs = 10_000): Promise<Socket> {
+/**
+ * A TCP connection to `host:port` through the proxy, once it has said yes.
+ * `paused` holds what arrives until its taker reads it, for a server that
+ * speaks first (SSH's banner) to a taker that comes later.
+ */
+export function tunnel(host: string, port: number, timeoutMs = 10_000, o: { paused?: boolean } = {}): Promise<Socket> {
   const p = proxy;
   if (!p) return Promise.reject(new Error("no tailnet proxy"));
   const target = `${isIP(host) === 6 ? `[${host}]` : host}:${port}`;
@@ -105,6 +109,7 @@ export function tunnel(host: string, port: number, timeoutMs = 10_000): Promise<
         return;
       }
       socket.off("data", onData);
+      if (o.paused) socket.pause();
       const status = Number(/^HTTP\/1\.[01] (\d{3})/.exec(said.subarray(0, end).toString("latin1"))?.[1]);
       if (status !== 200) return fail(new Error(`connect ${host}: her tailscaled couldn't reach it (${status || "no answer"})`));
       socket.setTimeout(0);

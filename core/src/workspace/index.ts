@@ -197,7 +197,8 @@ export function parseMachineAddress(address: string): { username: string; host: 
  * names), and is on her own network by definition.
  */
 export async function resolveHost(host: string): Promise<{ addresses: string[]; outside: boolean }> {
-  if (tailnetName(host)) return { addresses: [], outside: false };
+  // The name itself stands for its address: the SSH and Proxmox connections take it through her tailscaled (models/tailnet.ts).
+  if (tailnetName(host)) return { addresses: [host], outside: false };
   const addresses = isIP(host) ? [host] : await Promise.race([
     lookup(host, { all: true }).then((all) => all.map((a) => a.address)),
     new Promise<never>((_, reject) => setTimeout(() => reject(new Error(`${host} doesn't resolve`)), 5000).unref()),
