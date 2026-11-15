@@ -14,6 +14,12 @@ ip=${2:-$(sed -n 's/^HOST_API_IP=//p' .env)}
 chain=LYRICA-HOST-API
 case ${1:-apply} in
   apply)
+    # At boot this runs before Docker, which binds host-api to LAN_ADDRESS: on a DHCP
+    # machine the address may not be there yet, and the bind would fail. Wait for it.
+    lan=$(sed -n 's/^LAN_ADDRESS=//p' .env 2>/dev/null || true)
+    if [[ -n $lan ]] && command -v ip >/dev/null; then
+      for _ in $(seq 60); do [[ $(ip -o addr show) == *" $lan/"* ]] && break; sleep 1; done
+    fi
     # Before Docker starts, its chain may not exist yet: make it; Docker keeps it.
     iptables -N DOCKER-USER 2>/dev/null || true
     iptables -N "$chain" 2>/dev/null || iptables -F "$chain"

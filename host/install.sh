@@ -414,12 +414,14 @@ SUDO=()
 if [[ $NO_CUDA_COMPAT == 1 ]]; then
   "${SUDO[@]}" mkdir -p /etc/nvidia-container-toolkit /etc/cdi
   printf '%s\n' NVIDIA_CTK_CDI_GENERATE_DISABLED_HOOKS=enable-cuda-compat | "${SUDO[@]}" tee /etc/nvidia-container-toolkit/nvidia-cdi-refresh.env >/dev/null
-  before=$("${SUDO[@]}" cat /etc/cdi/nvidia.yaml /var/run/cdi/nvidia.yaml 2>/dev/null | sha256sum)
+  # Before the first install /etc/cdi/nvidia.yaml doesn't exist: a missing spec reads as empty.
+  specs() { "${SUDO[@]}" cat /etc/cdi/nvidia.yaml /var/run/cdi/nvidia.yaml 2>/dev/null || true; }
+  before=$(specs | sha256sum)
   "${SUDO[@]}" nvidia-ctk cdi generate --disable-hook enable-cuda-compat --output=/etc/cdi/nvidia.yaml >/dev/null 2>&1 ||
     fail "nvidia-ctk couldn't write a CDI spec without the enable-cuda-compat hook. Update nvidia-container-toolkit."
   if systemctl cat nvidia-cdi-refresh.service >/dev/null 2>&1; then "${SUDO[@]}" systemctl restart nvidia-cdi-refresh.service || true; fi
   # Docker reads the specs again only when it restarts.
-  [[ $before == "$("${SUDO[@]}" cat /etc/cdi/nvidia.yaml /var/run/cdi/nvidia.yaml 2>/dev/null | sha256sum)" ]] || "${SUDO[@]}" systemctl restart docker
+  [[ $before == "$(specs | sha256sum)" ]] || "${SUDO[@]}" systemctl restart docker
 fi
 
 # host-api may start no connection: apply the rules before it starts, and keep
