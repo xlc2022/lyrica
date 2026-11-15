@@ -874,8 +874,13 @@ export class Scheduler {
       const view = this.gpus;
       this.gpus = view.map((g) => ({ ...g, used: Math.max(0, g.used - (previous.vram[g.index] ?? 0)) }));
       let plan: Plan;
+      // The automatic context too is sized with the old instance counted as gone: once it unloads, the GPUs still
+      // show its memory until its process lets go, and a context sized then fits in what is left (GLM-5.3-Flash
+      // came back at 25k of a possible 440k).
+      let settings: ModelSettings;
       try {
         plan = this.plan({ model }, new Set());
+        settings = this.served(model);
       } finally {
         this.gpus = view;
         this.loaded.set(model.id, previous);
@@ -888,9 +893,9 @@ export class Scheduler {
         for (let round = 0; ; round++) {
           for (const l of next.evict) await this.unload(l);
           if (stop.signal.aborted) throw loadCancelled();
-          const option = await this.measured(model, next.option, undefined, round >= 2, stop.signal);
+          const option = await this.measured(model, next.option, settings, round >= 2, stop.signal);
           if (option) {
-            await this.load(model, option, undefined, undefined, stop.signal);
+            await this.load(model, option, settings, undefined, stop.signal);
             break;
           }
           // The server found a GPU short: plan again with what it measured.

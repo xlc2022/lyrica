@@ -124,6 +124,22 @@ describe("the GPU queue", () => {
     expect(llamacpp.calls.filter((c) => c.startsWith("load"))).toHaveLength(2);
   });
 
+  it("reloads a model at the automatic context it had, not one sized while its old instance still held the GPU", async () => {
+    const { scheduler, gpus } = setup([24]);
+    await scheduler.start([]);
+    // 256 KB of f16 KV cache a token: 1 GB per 4096 tokens.
+    const chat = textModel("chat", 4, { contextLength: 131072, kvPerToken: 2 * 64 * 8 * 128 });
+    await scheduler.loadNow(chat);
+    const before = scheduler.served(chat).contextLength!;
+    // The old instance's memory is still shown after it unloads, as a real server's is for a while.
+    const held = new Map(gpus.loaded);
+    const read = gpus.read.bind(gpus);
+    gpus.read = async () => (await read()).map((g) => ({ ...g, used: g.used + (gpus.loaded.has("chat") ? 0 : [...held.values()].reduce((n, l) => n + (l[g.index] ?? 0), 0)) }));
+    await scheduler.reload(chat);
+    expect(scheduler.placement("chat")?.state).toBe("loaded");
+    expect(scheduler.served(chat).contextLength).toBe(before);
+  });
+
   it("keeps the serving instance when reload cannot fit", async () => {
     const { scheduler, llamacpp } = setup();
     await scheduler.start([]);

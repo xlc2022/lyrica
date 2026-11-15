@@ -273,7 +273,8 @@ seconds of audio.
     it on each call; in steps of 1024, from 4096), never more than the
     trained length times the stretch; 32768 when nothing fits or the
     trained length is unknown. A model keeps the context it loaded with
-    while it stays loaded.
+    while it stays loaded; Reload sizes it with the old instance counted as
+    gone, not from the GPUs while its memory is still being let go.
     `maxContextLength` is the trained length alone, `null` when the host
     couldn't read it. `kvBytes` is the KV cache at the served context, by
     the host's estimate (`null` for voices, and where it can't tell), and
