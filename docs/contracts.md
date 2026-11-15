@@ -2425,7 +2425,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
       unfinished upload with that name and size) and
       `PUT …/uploads/:uploadId?offset=` (raw bytes, at most 64 MiB, →
       `HostDownload`; held in memory for the request only, never written);
-      `GET …/images`; `GET …/starters` (→ `{ starters: HostStarter[] }`);
+      `GET …/images`; `GET …/starters` (→ `{ starters: HostStarter[] }`, each with its `family`, `does` and, for a variant, `variantOf` and `variant`);
       `POST …/starters/:starterId/install` (→ `{ recipe, downloads }`);
       `POST …/recipes/:recipeId` (including
       `{ do: "change", change: { op: "useFor", useFor: "fast" | "quality" | "both" } }`,
