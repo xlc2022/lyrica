@@ -1403,7 +1403,8 @@ export function PermissionPrompt({ base, p, env }: { base: string; p: Permission
   const [run, busy, error] = useAction();
   const answer = (allow: boolean, mode?: GoAhead, allowInThread?: boolean, alwaysAllow?: true) => run(() => post(`${base}/permissions/${encodeURIComponent(p.requestId)}`, { allow, mode, allowInThread, alwaysAllow }));
   const left = useCountdown(p.expiresAt);
-  if (p.tool === "image") return <PortraitPrompt p={p} answer={answer} busy={busy} left={left} error={error} />;
+  // The look tool asks the same before a photo of the user reaches a cloud vision model.
+  if (p.tool === "image" || p.tool === "look") return <PortraitPrompt p={p} answer={answer} busy={busy} left={left} error={error} />;
   if (p.tool === "propose_plan" && !p.subagent) {
     // Her plan, from Plan mode: going ahead switches the thread to the mode picked.
     const plan = String((p.args as { plan?: unknown } | null)?.plan ?? "");

@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { fakeOpenAI, type ChatRequest } from "../../core/test/fake-openai.ts";
 import { withModels } from "../../core/test/helpers.ts";
 import {
-  createDelegateExtension, createLyricaExtension, Delegation, openThreadSession, visionList,
+  createDelegateExtension, createLyricaExtension, Delegation, openThreadSession, lookContext,
   type DelegationEvent, type DelegationOptions, type Limits, type Request, type ThreadContext,
 } from "../src/index.ts";
 
@@ -341,26 +341,10 @@ describe("delegate", () => {
     expect(s.delegation.status(parent)[0]).toMatchObject({ model: "openrouter/deepseek/deepseek-4.1-flash" });
   });
 
-  it("switches a subagent that meets an image to the person's Look at images model, and a local-only one to a local model with vision", async () => {
-    const s = await setup();
-    const plan = await fakeOpenAI({ label: "plan", models: [{ id: "gpt-vision" }] });
-    const box = await fakeOpenAI({ label: "box", models: [{ id: "gemma-vision" }] });
-    const planRef = { offeringId: (await s.models.discover(s.ada, s.models.addEndpoint(s.ada, { name: "plan", kind: "cloud", baseUrl: plan.baseUrl, apiKey: "sk-test" }).id))[0]!.id };
-    const boxRef = { offeringId: (await s.models.discover(s.ada, s.models.addEndpoint(s.ada, { name: "box", kind: "local", baseUrl: box.baseUrl }).id))[0]!.id };
-    for (const r of [planRef, boxRef]) s.models.setCapabilities(s.ada, r.offeringId, { vision: true, tools: true });
-    // With no list, local models with vision.
-    expect(visionList(s.models, s.thread().call)).toEqual([boxRef]);
-    // The list can hold a cloud model the person chose, such as a plan's; one that can't see is refused.
-    expect(() => s.models.setColumnTask(s.ada.id, "general", "vision", s.cloudRef)).toThrow(/can't do vision/);
-    s.models.setColumnTask(s.ada.id, "general", "vision", [planRef, boxRef]);
-    expect(visionList(s.models, s.thread().call)).toEqual([planRef]);
-    // A local-only thread reads the Private column, which has no list: the cloud model in General never reaches it.
-    expect(visionList(s.models, s.thread("general", { localOnly: true }).call)).toEqual([boxRef]);
-    // A parent switched to local-only after its subagent started: the subagent's own context is still general.
-    const parent = s.thread();
-    const sub = s.thread();
-    s.models.setLocalOnly(s.ada.id, "general", parent.threadId, true);
-    expect(visionList(s.models, s.models.callContext(s.ada.id, "general", sub.threadId), s.models.callContext(s.ada.id, "general", parent.threadId))).toEqual([boxRef]);
+  it("keeps a subagent's look local once its parent is local-only", () => {
+    const own = { userId: "u", pool: "general" as const, localOnly: false };
+    expect(lookContext(own)).toBe(own);
+    expect(lookContext(own, { ...own, localOnly: true })).toEqual({ ...own, localOnly: true });
   });
 
   it("runs a project chat's subagents in the background, and moves a long foreground run there", async () => {
@@ -1076,9 +1060,9 @@ describe("talking with subagents", () => {
 
     const scout = await s.run(parent, { task: "look", role: "scout" });
     expect(scout.status).toBe("finished");
-    // The scout's bash is off in Plan mode: it wasn't offered, and nothing ran.
+    // The scout's bash is off in Plan mode: it wasn't offered, and nothing ran. Its model has no vision, so it may look.
     const sub = s.cloud.requests.filter(isSub)[0]!;
-    expect(sub.tools!.map((t) => t.function.name).sort()).toEqual(["ask_parent", "read", "read_memory", "recall"]);
+    expect(sub.tools!.map((t) => t.function.name).sort()).toEqual(["ask_parent", "look", "read", "read_memory", "recall"]);
     expect(existsSync(join(scratch, "scout.txt"))).toBe(false);
   });
 });

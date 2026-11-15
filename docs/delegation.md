@@ -59,11 +59,11 @@ subagent:
   `delegate({ action: "models" })` lists the chat
   models she may name (never one switched off in its endpoint's list), local first, each marked local or cloud, and vision
   and paid where they apply, and Claude Code where the thread's runs have it. A subagent whose model
-  has no vision switches, on a tool result holding an image, to the first
-  model up in the person's Look at images list (task `vision`), else the
-  first local chat model with vision she may use whose machine is up, which
-  becomes its model (its card says so) and sees the image; with none, it is told it saw nothing (contracts.md,
-  `registerVisionGuard`). In a private or local-only thread it is always a
+  has no vision keeps its model and gets the `look` tool, as a thread does:
+  the Look at images model (task `vision`) answers its questions about
+  images and clips in words (contracts.md, `createLookExtension`). A look
+  runs in the subagent's own context, made local-only when its parent's is
+  (`lookContext`), so in a private or local-only thread it is always a
   local model. A refused model fails the run before any thread is made;
 - gets its workspace from `inheritSettings`: the parent's folders (or the
   ones asked for), read-only for a read-only role or `readOnly: true`, and

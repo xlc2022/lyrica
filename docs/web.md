@@ -1361,7 +1361,7 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   `notice` message, shows as a card headed by what it is, linking to the
   subagent.
 - Permission requests appear inline with Allow and Deny and the time left.
-  A portrait request (`tool: "image"`) instead asks "Send your portrait
+  A portrait request (`tool: "image"` or `"look"`) instead asks "Send your portrait
   photos to <model> (cloud) for this image? A yes lasts until the end of the
   day." The resolved model label comes from `args.model`; Send today is
   primary, Not today secondary, and there is no thread-wide Allow. Answers

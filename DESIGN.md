@@ -1185,10 +1185,14 @@ it's off.
 - **Looking at images** (2026-10-25): the task `vision`, **Look at
   images**, has its own list of models with vision in each preset, chosen
   by the person (a plan's model, a local one, or a paid one they add).
-  A subagent whose model can't see an image switches to it; with no list,
-  to a local model with vision. She delegates a look without naming a
-  model, after a project chat named a paid cloud copy of a model her own
-  machines serve.
+  A model with vision of its own always looks with it. A thread's or
+  subagent's model without vision gets the `look` tool (2026-11-15, the
+  owner: "its only job will be to read images and act as a set of eyes"):
+  the Look at images model gets only the images, or a clip's stills, and
+  her question, and answers in words, so her own model keeps the work and
+  the conversation never reaches the vision model. With no list, a local
+  model with vision looks. This replaced switching a subagent to the
+  vision model for the rest of its work.
 - **Cloud image services** are cloud endpoints like any other. The provider
   table selects by endpoint kind: OpenAI-compatible image generation and
   editing with a key (any marked image model), and the ChatGPT plan's own

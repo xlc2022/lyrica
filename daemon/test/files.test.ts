@@ -487,3 +487,38 @@ describe("the thumbnails the panel serves", () => {
     }
   });
 });
+
+/** A clip's stills for the look tool, over the same stand-in, where ffmpeg is on the host. */
+describe("a clip's stills", () => {
+  it("takes stills spread over the clip, small and in order, each with its second", async () => {
+    try { execFileSync("ffmpeg", ["-version"]); } catch { return; /* no ffmpeg here */ }
+    const { ThreadFiles, FRAME_SIDE } = await import("@lyrica/core");
+    const dir = mkdtempSync(join(tmpdir(), "lyrica-frames-"));
+    try {
+      const box = {
+        allow: (p: string) => p,
+        run: async (argv: string[]) => {
+          const { spawnSync } = await import("node:child_process");
+          const r = spawnSync(argv[0]!, argv.slice(1));
+          return { code: r.status, signal: r.signal, stdout: r.stdout, stderr: r.stderr };
+        },
+      };
+      const files = new ThreadFiles(box as unknown as Sandbox, [], () => {}, dir);
+      // A 4-second 1920x1080 test pattern.
+      execFileSync("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", "testsrc=duration=4:size=1920x1080:rate=10", "-pix_fmt", "yuv420p", join(dir, "clip.mp4")]);
+      const stills = await files.frames(join(dir, "clip.mp4"), 4);
+      expect(stills.map((s) => s.at)).toEqual([0.5, 1.5, 2.5, 3.5]);
+      for (const s of stills) {
+        expect(s.type).toBe("image/jpeg");
+        expect(s.bytes.subarray(0, 2).toString("hex")).toBe("ffd8");
+      }
+      // The longer side is cut to FRAME_SIDE: read back with ffprobe.
+      writeFileSync(join(dir, "still.jpg"), stills[0]!.bytes);
+      expect(execFileSync("ffprobe", ["-v", "error", "-show_entries", "stream=width,height", "-of", "csv=p=0", join(dir, "still.jpg")]).toString().trim()).toBe(`${FRAME_SIDE},432`);
+      writeFileSync(join(dir, "notes.txt"), "not a clip");
+      await expect(files.frames(join(dir, "notes.txt"), 2)).rejects.toThrow();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});

@@ -601,14 +601,14 @@ upscaling or encoding): the call is tagged with
 (host/API.md, "Job progress"); `video` takes it too. Cloud models report none.
 The task `vision` (Look at images) has its own ordered list of models with
 vision, in each column and preset; nothing follows it and it follows
-nothing. A subagent whose model can't see an image it reads switches, for
-the rest of its work, to the first model in that list whose machine is up
-(and that uses tools), else to the first local chat model with vision
-(`visionList`). The subagent's own context decides the column, so a private
-or local-only one reads the Private column and stays local. A switch to a
-cloud model sends that model the subagent's whole conversation so far, not
-only the image, at that model's price: a cloud model is in the list only if
-the person put it there. With no list set, only local models are tried.
+nothing. A model with vision of its own looks with it. A thread's or
+subagent's model without vision gets the `look` tool (extension/src/look.ts):
+it sends the first model up in that list only the images (or a clip's
+stills) and her question, never the conversation, and returns the answer as
+text, so her own model keeps the work. The thread's own context decides the
+column, so a private or local-only one reads the Private column and stays
+local; a cloud model is in the list only if the person put it there. With
+no list set, only local models are tried.
 The Files panel's **Auto-name** calls the same task with the thread's own
 context, one image or clip poster per call, only for names a machine made
 up unless the user ticks **Overwrite existing names**, a photo of the user kept local unless the

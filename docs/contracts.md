@@ -351,8 +351,8 @@ read through `searchView`; only matching notes then pass.
 type Task = "chat" | "code" | "subagent.cheap" | "subagent.strong" | "compaction" | "title" | "watching"
           | "embedding" | "sleep.consolidate" | "sleep.dream" | "sleep.wake" | "vision" | "image.fast" | "image.create" | "image.edit" | "image.upscale" | "video"
           | "speech.transcribe" | "speech.speak";
-// vision (Look at images): its own list only, of models with vision; no task follows it. A subagent whose model can't see
-// an image switches to its first model up (with tools), else to a local model with vision (visionList, extension/src/delegate/runs.ts).
+// vision (Look at images): its own list only, of models with vision; no task follows it. The look tool (extension/src/look.ts)
+// calls it for a thread's or subagent's model without vision: the images and her question in, words out.
 // The Files panel's Auto-name (POST …/files/auto-name, daemon/src/auto-name.ts) calls it too, one image (or clip's poster) per call, up to three at once, only for names a
 // machine made up unless the user ticks Overwrite existing names, with the thread's context, made local-only for a photo of the user unless the photo setting allows the cloud.
 // code (Coding) defaults to { same: "subagent.strong" } in new tables and
@@ -1335,19 +1335,36 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     recall leaves it out of the query (`skip`), asks for two shared
     words (`minWords: 2`) and finds only what was said (`said`); `lyricad` passes `selfName`.
 - Every thread's and subagent's session registers `registerVisionGuard`:
-  when its model has no vision, a tool result holding an image (or a `read`
-  of an image carrying Pi's "does not support images" note) gets `NO_VISION` appended, telling her she
-  saw nothing and must not describe it; a `read` of an image then fails.
-  A subagent's guard gets a `VisionFallback` (`createSubagentExtension`'s
-  `vision`): the subagent's thread takes `visionList(models, its context)`
-  as its list (the first model up in the Look at images list, task
-  `vision`, else the local chat models with vision it may use), and the
-  first whose machine is up becomes its model, in its record and card too; the guard switches to it with `pi.setModel`,
-  keeps the image and drops Pi's note, appending `SWITCHED`. With none, or
-  a switch that fails, it warns as above.
-  `NO_VISION` and the delegate guideline tell her to delegate a look
-  without naming a model, so the subagent switches by that list.
-  The same guard leaves older images out of each request (`leaveOutOldImages`,
+  when its model has no vision (`sees(model)` is false), a tool result
+  holding an image (or a `read` of an image carrying Pi's "does not support
+  images" note) gets `USE_LOOK` appended while the `look` tool is on, else
+  `NO_VISION`, telling her she saw nothing and must not describe it; a
+  `read` of an image then fails. Her model is never switched for an image.
+- `createLookExtension(LookTools)` registers `look` in every thread's and
+  subagent's session (hosted.ts, delegate/runs.ts). `LookTools`: `models`,
+  `call()` (a subagent's through `lookContext(own, parent)`, local-only
+  when its parent's is restricted), `threadId`, `files` (`ThreadImages.read`),
+  `frames?(path, count, signal?)` (`ThreadFiles.frames`, ended with the call), `settings()`, `approve?`,
+  `now?`. The tool is on only while `ctx.model` has no image input
+  (`setToolsOff` reason `look`, at `session_start`, `model_select` and
+  `before_agent_start`). Input `{ paths?: string[] (at most
+  MAX_LOOK_FILES, 8), recent?: boolean, question: string, frames?: number
+  (1 to MAX_FRAMES, 16; DEFAULT_FRAMES, 8) }`, at most MAX_LOOK_IMAGES (32)
+  images in all, stills included, refused before any model call: workspace images (PNG, JPEG,
+  WebP) and `/photos-of-me/<file>` through `ThreadImages.read`, clips (MP4,
+  WebM, MOV, MKV, M4V, AVI) as `frames` stills, each labelled with its
+  second, and with `recent` the images of the latest tool result that held
+  any (a browse screenshot), kept in memory for the session. One
+  `callWithFallback("vision", call)` with a fixed system prompt and one user
+  message (her question, then the images), no reasoning; a cloud model is
+  refused in a restricted thread, and a photo of the user (a portrait read,
+  any clip's stills, any recent image not from `browse`) goes to one only
+  through `allowPortrait(…, "look")`, the image tool's daily question. The
+  call is recorded as task `vision` with its image count. The result is
+  "<model> sees:" and the answer; `details: { model, images }`. Plan mode
+  leaves it on (`PLAN_TOOLS`), and its input is checked for secrets as
+  other tools' that leave Lyrica (`LEAVES`).
+- The vision guard also leaves older images out of each request (`leaveOutOldImages`,
   `context_with_system`, the request only: stored entries keep them). Every
   earlier image rides along in every request, so a thread that made or looked
   at many large images outgrew the model host's 64 MiB body limit at a small
