@@ -284,6 +284,8 @@ export interface SleepMaterial {
   edited: Edited[];
   /** Pages that cited something since deleted or replaced. */
   flagged: string[];
+  /** Groups of current notes that read much the same, found before consolidation; each holds one of tonight's notes. */
+  similar?: string[][];
 }
 
 export interface Question { n: number; asked: string; closed?: string; answer?: number | "words" | "withdrawn" }
@@ -748,6 +750,23 @@ export class PoolReader {
       for (const a of r.about.split(", ")) if (a) counts.set(a, (counts.get(a) ?? 0) + 1);
     }
     return [...counts].map(([about, count]) => ({ about, count })).sort((a, b) => b.count - a.count || a.about.localeCompare(b.about));
+  }
+
+  /**
+   * Tags as they will be saved: each spelled as the most used tag already in use when the two differ only in case, spaces,
+   * hyphens or underscores ("ui-review" becomes "UI review"), blanks and repeats dropped. Note `except`'s own
+   * tags don't count as in use, so its only user can still respell one.
+   */
+  protected foldAbout(about: string[], except?: string): string[] {
+    const counts = new Map<string, number>();
+    for (const r of this.db.prepare("SELECT about FROM notes WHERE archived = 0 AND about != '' AND id != ?").all(except ?? "") as { about: string }[]) {
+      for (const a of r.about.split(", ")) if (a) counts.set(a, (counts.get(a) ?? 0) + 1);
+    }
+    const known = new Map<string, string>();
+    for (const [a, n] of counts) if (n > (counts.get(known.get(tagKey(a)) ?? "") ?? 0)) known.set(tagKey(a), a);
+    const out = new Map<string, string>();
+    for (const a of about.map((x) => x.trim())) if (tagKey(a) && !out.has(tagKey(a))) out.set(tagKey(a), known.get(tagKey(a)) ?? a);
+    return [...out.values()];
   }
 
   /** How many pages and notes she uses (archived ones left out). */
@@ -1753,7 +1772,7 @@ export class PoolStore extends PoolReader {
       text = removeSecrets(text);
       const id = this.newId("n", "notes");
       const at = now();
-      const about = (note.about ?? []).map((a) => removeSecrets(a.trim())).filter(Boolean);
+      const about = this.foldAbout((note.about ?? []).map((a) => removeSecrets(a.trim())));
       this.db.prepare("INSERT INTO notes (id, text, about, origin, author, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
         .run(id, text, about.join(", "), originOf(opts.author), opts.author, at, at);
       this.written(id, { text, about }, opts.author, at);
@@ -1787,6 +1806,39 @@ export class PoolStore extends PoolReader {
         this.db.prepare("UPDATE pages SET flagged = 1 WHERE 'p:' || slug IN (SELECT src FROM citations WHERE dst = ?)").run(id);
       }
     });
+  }
+
+  /**
+   * Sleep archives notes that `page` cites and fully states, so recall finds the page rather than each note. They
+   * stay readable by ID, and come back if no current page cites them any more (`releaseAbsorbed`) or the night is undone.
+   * Only notes she wrote, still current.
+   */
+  archiveAbsorbed(notes: string[], page: string, run: string): void {
+    this.checkAuthor("sleep");
+    const p = this.load(page);
+    if (!p || p.kind !== "page" || p.archived) throw new Error(`no current page ${page}`);
+    this.tx(() => {
+      for (const id of notes) {
+        const note = this.load(id);
+        if (!note || note.kind !== "note" || note.archived) throw new Error(`no current note ${id}`);
+        if (note.origin === "user") throw new Error(`${id} was added by a user: leave it`);
+        if (note.supersededBy) throw new Error(`${id} is already superseded`);
+        if (!this.db.prepare("SELECT 1 FROM citations WHERE src = ? AND dst = ?").get(page, id)) throw new Error(`${page} doesn't cite ${id}: cite it there first`);
+        this.db.prepare("UPDATE sleep_runs SET superseded = json_insert(superseded, '$[#]', json(?)) WHERE id = ? AND superseded IS NOT NULL").run(JSON.stringify({ note: id, was: null, archived: true }), run);
+        this.db.prepare("UPDATE notes SET archived = 1 WHERE id = ?").run(id);
+      }
+    });
+  }
+
+  /** Notes sleep archived as absorbed by a page that no current page cites any more: in use again. */
+  private releaseAbsorbed(ids: string[]): void {
+    for (const id of ids) {
+      if (kindOf(id) !== "note") continue;
+      const absorbed = this.db.prepare(`SELECT 1 FROM notes n WHERE n.id = ? AND n.archived = 1
+        AND EXISTS (SELECT 1 FROM sleep_runs r, json_each(r.superseded) j WHERE r.superseded IS NOT NULL AND json_extract(j.value, '$.note') = n.id AND json_extract(j.value, '$.archived') = 1)
+        AND NOT EXISTS (SELECT 1 FROM citations c JOIN pages p ON 'p:' || p.slug = c.src WHERE c.dst = n.id AND p.archived = 0)`).get(id);
+      if (absorbed) this.db.prepare("UPDATE notes SET archived = 0 WHERE id = ?").run(id);
+    }
   }
 
   /**
@@ -1882,7 +1934,7 @@ export class PoolStore extends PoolReader {
       const stored = this.stored(body);
       if (!stored.text.trim()) throw new Error("an imported memory needs text");
       if (kindOf(id) === "note") {
-        const about = (stored.about ?? []).map((a) => a.trim()).filter(Boolean);
+        const about = this.foldAbout(stored.about ?? []);
         this.db.prepare("INSERT INTO notes (id, text, about, origin, author, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
           .run(id, stored.text, about.join(", "), "user", author, created, at);
         this.written(id, { text: stored.text, about }, author, at);
@@ -2035,6 +2087,7 @@ export class PoolStore extends PoolReader {
       }
       // What the night replaced gets back what replaced it before, newest change first; a note replaced by one that went is current again.
       for (const s of [...plan.superseded].reverse()) {
+        if (s.archived) { this.db.prepare("UPDATE notes SET archived = 0 WHERE id = ?").run(s.note); continue; }
         const by = s.was && this.load(s.was) ? s.was : null;
         this.db.prepare("UPDATE notes SET superseded_by = ? WHERE id = ?").run(by, s.note);
       }
@@ -2054,7 +2107,7 @@ export class PoolStore extends PoolReader {
   }
 
   /** What undoing `runId` would take back, per memory, and why it can't be, if it can't. */
-  private undoPlan(runId: string): { block?: string; items: Map<string, number[]>; superseded: { note: string; was: string | null }[] } {
+  private undoPlan(runId: string): { block?: string; items: Map<string, number[]>; superseded: { note: string; was: string | null; archived?: boolean }[] } {
     const items = new Map<string, number[]>();
     const run = this.db.prepare("SELECT * FROM sleep_runs WHERE id = ?").get(runId) as (SleepRunRow & { superseded: string | null }) | undefined;
     if (!run) return { block: "There's no such night.", items, superseded: [] };
@@ -2063,7 +2116,7 @@ export class PoolStore extends PoolReader {
     }
     // A run from before pool step 14, or made under a rollback, never recorded what it replaced.
     if (run.superseded === null) return { block: "That night was before nights could be undone.", items, superseded: [] };
-    const superseded = json<{ note: string; was: string | null }[]>(run.superseded);
+    const superseded = json<{ note: string; was: string | null; archived?: boolean }[]>(run.superseded);
     const revs = this.db.prepare("SELECT * FROM revisions WHERE author = 'sleep' AND created_at >= ? AND created_at <= ? ORDER BY id")
       .all(run.started_at, run.finished_at) as RevisionRow[];
     // The renamed-files step's respellings record files the person renamed: they stay.
@@ -2106,7 +2159,7 @@ export class PoolStore extends PoolReader {
     if (item.origin === "user" && item.kind === "note" && !author.startsWith("user:") && !renamed) {
       throw new Error("a memory a user added can only be changed by the user");
     }
-    const body = this.stored({ ...bodyOf(item), ...change });
+    const body = this.stored({ ...bodyOf(item), ...change, ...(item.kind === "note" && change.about ? { about: this.foldAbout(change.about, id) } : {}) });
     // The renamed-files exception holds only for sleep, and only for exactly the respelling: no other word changes.
     if (renamed) {
       const respell = respeller(renamed);
@@ -2158,6 +2211,7 @@ export class PoolStore extends PoolReader {
     if (!table || !this.load(id)) throw new Error(`no such note or page: ${id}`);
     this.db.prepare(`UPDATE ${table} SET archived = ? WHERE ${table === "pages" ? "slug" : "id"} = ?`)
       .run(archived ? 1 : 0, table === "pages" ? id.slice(2) : id);
+    if (archived && table === "pages") this.releaseAbsorbed(this.cameFrom(id));
   }
 
   /** Removes the text and every revision, leaves a text-free tombstone, and flags pages that cited it. */
@@ -2219,7 +2273,9 @@ export class PoolStore extends PoolReader {
     if (item.kind === "journal") this.db.prepare("DELETE FROM journal WHERE id = ?").run(id);
     if (item.kind === "wake") this.db.prepare("DELETE FROM wake").run();
     this.db.prepare("DELETE FROM revisions WHERE item = ?").run(id);
+    const cited = this.cameFrom(id);
     this.db.prepare("DELETE FROM citations WHERE src = ?").run(id);
+    if (item.kind === "page") this.releaseAbsorbed(cited);
     this.db.prepare("DELETE FROM search WHERE id = ?").run(id);
     this.db.prepare("DELETE FROM vectors WHERE id = ?").run(id);
     this.db.prepare("DELETE FROM recalls WHERE id = ?").run(id);
@@ -2265,10 +2321,12 @@ export class PoolStore extends PoolReader {
 
   /** A memory's citations and search row, from its current text. */
   private reindexed(id: string, body: Body): void {
+    const before = (this.db.prepare("SELECT dst FROM citations WHERE src = ?").all(id) as { dst: string }[]).map((r) => r.dst);
     this.db.prepare("DELETE FROM citations WHERE src = ?").run(id);
     const cite = this.db.prepare("INSERT OR IGNORE INTO citations (src, dst) VALUES (?, ?)");
     for (const dst of citationsIn(body.text, this.pool)) if (dst !== id) cite.run(id, dst);
     const kind = kindOf(id)!;
+    if (kind === "page") this.releaseAbsorbed(before);
     if (kind === "wake") return;
     const text = [body.title, body.summary, body.text, body.about?.join(" ")].filter(Boolean).join("\n");
     this.db.prepare("DELETE FROM search WHERE id = ?").run(id);
@@ -2439,3 +2497,6 @@ function toWatch(r: WatchRow): Watch {
     ...(r.webhook_at ? { webhookAt: r.webhook_at } : {}), createdAt: r.created_at,
   };
 }
+
+/** A tag with case, spaces, hyphens and underscores folded away: "UI review" and "ui-review" are one tag. */
+export const tagKey = (tag: string) => tag.toLowerCase().replace(/[\s_-]+/g, "");

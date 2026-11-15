@@ -5,7 +5,7 @@ import { fauxAssistantMessage, fauxProvider, fauxThinking, fauxToolCall, type Js
 import { createAgentSession, DefaultResourceLoader, SessionManager, type ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { expect, it } from "vitest";
-import { CALL_THE_TOOL, CARRY_ON, createTurnToolsExtension, createWaitForReportsExtension, CUT_OFF, CUT_WRAP_UP, WAIT_FOR_REPORTS, EMPTY_REPLY, NO_ROOM, TEXT_TOOL_CALL, TURN_TOOL_NOTICE, WRAP_UP, PLAIN_WRAP_UP } from "../src/turn-tools.ts";
+import { CALL_THE_TOOL, CARRY_ON, createTurnToolsExtension, createWaitForReportsExtension, CUT_OFF, CUT_WRAP_UP, WAIT_FOR_REPORTS, EMPTY_REPLY, NO_ROOM, TEXT_TOOL_CALL, TURN_TOOL_NOTICE, WRAP_UP, PLAIN_WRAP_UP, SAVED_TWICE } from "../src/turn-tools.ts";
 import { createImageExtension, type ImageTools } from "../src/images.ts";
 import { toMessages } from "../../daemon/src/messages.ts";
 
@@ -36,14 +36,15 @@ async function scenario(calls: { name: string; args: JsonObject }[], prompts = 1
     extensionFactories: [createTurnToolsExtension(CAP), ...extra, pi => {
       pi.registerProvider(faux.provider);
       // `log` is a running job's output: each call returns more of it.
-      for (const name of ["search", "other", "threads", "bash", "log"]) pi.registerTool({ name, label: name, description: name,
+      // `remember` saves a new note each time, under a new ID.
+      for (const name of ["search", "other", "threads", "bash", "log", "remember"]) pi.registerTool({ name, label: name, description: name,
         parameters: Type.Object({ query: Type.Optional(Type.String()), command: Type.Optional(Type.String()), background: Type.Optional(Type.Boolean()), nested: Type.Optional(Type.Object({ a: Type.Number(), b: Type.Number() })) }),
         execute: async (_id: string, args: { background?: boolean; query?: string }) => {
           executed++;
           // A background bash starts a new job each time, unless the running-jobs cap refuses it, the same way every time.
           if (name === "bash" && args.background) return args.query === "full" ? { content: [{ type: "text", text: "this thread already has 4 background commands running (j1, j2, j3, j4)" }], isError: true, details: {} }
             : { content: [{ type: "text", text: `started j${executed}` }], details: {} };
-          return { content: [{ type: "text", text: name === "log" ? `line ${executed}` : "result" }], details: {} };
+          return { content: [{ type: "text", text: name === "log" ? `line ${executed}` : name === "remember" ? `Saved n:20261115-${executed.toString(16).padStart(8, "0")}.` : "result" }], details: {} };
         } });
     }, createImageExtension({ enabled: () => { executed++; throw new Error("must not execute"); } } as unknown as ImageTools)] });
   try {
@@ -105,6 +106,15 @@ it("refuses the third identical call despite different object key order", async 
   expect(r.results[2]).toContain("already have this result");
   expect(r.requested).toBe(4);
   expect(r.notices).toHaveLength(0);
+});
+
+it("refuses a third save of the same notes, though each save names a new note", async () => {
+  const save = { name: "remember", args: { query: "the same note" } };
+  const r = await scenario([save, save, save, save]);
+  expect(r.executed).toBe(2);
+  expect(r.results[2]).toContain(SAVED_TWICE);
+  // A different note is saved as usual.
+  expect((await scenario([save, { name: "remember", args: { query: "another note" } }, save])).executed).toBe(3);
 });
 
 it("refuses a third identical threads read by saying the thread's end wakes her", async () => {

@@ -477,7 +477,9 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
   came between, as when she polls. Identical calls in one batch count as
   one result, except `bash` calls starting a background command, each its
   own job; such a call's result repeated (the running-jobs cap's refusal)
-  is still refused. Invalid arguments are
+  is still refused. A `remember` result is compared without the note IDs
+  it names, so saving the same notes a third time is refused, though each
+  save makes a new note. Invalid arguments are
   rejected before execution. Each subagent turn counts separately. A
   stopped turn shows a plain notice with the number of calls; the runtime
   ends the loop, rather than relying on a prompt instruction.

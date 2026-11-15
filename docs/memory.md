@@ -128,6 +128,10 @@ id: n:20261009-k3f9   created: 2026-10-09T14:02Z   about: proxmox, backups
 [[u:7c1e]] is worried about the backup job on node 2. [e:web/3f7a2c#41]
 ```
 
+Its `about` tags are saved in the spelling the pool already uses most when
+they differ only in case, spaces, hyphens or underscores ("ui-review" is
+saved as "UI review"), so one tag doesn't drift into several.
+
 It is stored with a user token (see [Names and pronouns](#names-and-pronouns)).
 Everyone who reads it, Lyrica included, sees it with the current name: "Sam
 wants the Proxmox cluster…".

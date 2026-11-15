@@ -65,7 +65,9 @@ export function sleepInstruction(phase: SleepPhase, c: { view: PoolView; user: s
       section("Conversations with something new (skim them with read_memory)", threads),
       section(`Memories ${user} changed or added (authoritative)`, edited),
       section("Pages to rewrite (something they cited was deleted or replaced)", m.flagged.map((id) => `- [${id}]`)),
+      section("Notes that read much the same (if a group says one thing, keep one note and supersede the rest with it)", (m.similar ?? []).map((g) => `- ${g.map((id) => `[${id}]`).join(", ")}`)),
       section("Projects with something new", projects),
+      section("Tags in use, most used first (reuse these in about rather than a new spelling)", tagLine(view)),
       generalText ? `General memory's page about ${user} [general/p:about-user]:\n${generalText}` : "",
       [
         "What to do:",
@@ -76,6 +78,8 @@ export function sleepInstruction(phase: SleepPhase, c: { view: PoolView; user: s
         "5. When a newer note records a change (a rule, a plan, a decision, a status), the newer one holds: supersede the older notes with it, and keep only the current version on pages. Raise a question only when notes disagree and neither is plainly the later word.",
         "6. Fold notes that say the same thing, or track work step by step, into one: once work such as a pull request is finished, keep one note with its outcome and anything learned (remember, citing the entry it came from), and supersede the step-by-step notes with it. Superseded notes stay readable, and notes can still cite them, but pages cite the note that replaced them.",
         "7. Rewrite the pages listed above from current notes: something they cited was deleted or replaced.",
+        "Gather what was settled about a machine or a model (settings that work, what failed and why) into one page each, such as host-<machine> or model-<name>, citing its notes; the steps of a test belong to its conversation, not a page.",
+        "Once a page states everything a note says and cites it, archive the note with archive_notes: recall then finds the page. Keep notes a page only summarizes.",
         ...(projects.length ? [`8. Keep each project's page (the slug given above): what you know about the project, such as decisions, requirements, pitfalls, who to ask and what's open, citing its notes and conversations. Its instructions are ${user}'s and stay as they are; write only what you know.`] : []),
         "Keep working in the about tags of notes you merge; add it to notes that plainly state a coding or workflow preference, worded as a fact about the user, not as an order.",
         `Write {user} for the person, never their name, in notes and pages, and {user:obj}, {user:poss}, {user:poss-pro} or {user:refl} for their pronouns${c.pronouns ? ` (${c.pronouns})` : ""}; there is no subject form, so write {user} where "she" or "they" would go. Name a conversation by citing it ([t:…]), never by its title, which can change.`,
@@ -128,6 +132,13 @@ function projectLines(view: PoolView, m: SleepMaterial): string[] {
       + (notes.length ? ` Notes: ${notes.join(", ")}.` : "");
   });
 }
+
+/** How many of the pool's tags consolidation is shown. */
+const TAGS_SHOWN = 60;
+const tagLine = (view: PoolView) => {
+  const tags = view.own.aboutWords({ current: true }).slice(0, TAGS_SHOWN).map((t) => t.about);
+  return tags.length ? [tags.join(", ")] : [];
+};
 
 const section = (title: string, lines: string[]) => (lines.length ? `${title}:\n${lines.join("\n")}` : "");
 const short = (t: string) => (t.length > 300 ? `${t.slice(0, 300)}…` : t).replace(/\s+/g, " ");
