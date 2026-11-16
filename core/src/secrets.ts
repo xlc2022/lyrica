@@ -46,7 +46,7 @@ const HEADERS = /\b(authorization[ \t]*:[ \t]*(?:(?:bearer|basic)[ \t]+)?|bearer
 // The match starts at the key word itself (after any non-alphanumeric, so
 // "GH_TOKEN" matches at "TOKEN"); the rest of the name stays as it is, and the
 // scan can't rescan a long "a-a-a-…" name from each of its dashes.
-const PAIRS = /((?<![A-Za-z0-9])["']?(?:token|secret|password|api_key|apikey|auth)["']?[ \t]*[:=][ \t]*)(?:\[secret removed\]|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s,;}`]+)(?![A-Za-z0-9_])/gi;
+const PAIRS = /((?<![A-Za-z0-9])["']?(?:token|secret|password|api_key|apikey|auth|access_key|secret_key|private_key)["']?[ \t]*[:=][ \t]*)(?:\[secret removed\]|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s,;}`]+)(?![A-Za-z0-9_])/gi;
 
 /** How far back from a match's end the next key word can begin and still reach past it: across the space or quote that ends a value. */
 const REACH = 32;
