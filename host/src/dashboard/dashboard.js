@@ -250,6 +250,8 @@ function renderHead() {
   $("subnav").replaceChildren(...SECTIONS.filter(([k]) => me.access !== "client" || !ownerOnly.has(k)).map(([k, label]) =>
     h("a", { href: `#${k}`, "aria-current": k === current ? "page" : undefined }, label,
       k === "downloads" && queue ? h("span", { class: "badge", "aria-label": `${queue} running` }, String(queue)) : null)));
+  // On a phone the sections are a scrolling row: the current one stays in view.
+  $("subnav").querySelector("[aria-current]")?.scrollIntoView({ block: "nearest", inline: "nearest" });
 }
 
 function render() {
@@ -304,10 +306,10 @@ function overview() {
     h("div", { class: "legend" }, h("span", {}, h("i", { class: "seg-pinned" }), "Pinned"), h("span", {}, h("i", { class: "seg-loaded" }), "Loaded on demand"),
       S.status.systemRam?.allowance ? h("span", {}, h("i", { class: "seg-ram" }), "In system RAM") : null));
   const tiles = h("div", { class: "tiles" },
-    list.length ? tile(null, "GPU memory", [h("b", {}, size(used).split(" ")[0]), ` of ${size(total)}`], plural(list.length, "GPU", "GPUs")) : null,
+    list.length ? tile(null, "GPU memory", [h("b", {}, size(used).split(" ")[0]), " of ", num(size(total))], plural(list.length, "GPU", "GPUs")) : null,
     tile("#text", "Models", [h("b", {}, String(loaded)), " of ", num(S.models.length), " loaded"],
       dots(pinned ? [num(pinned), " pinned"] : null, loading ? [num(loading), " loading"] : null, plural(images, "image model", "image models"))),
-    tile("#downloads", "Models folder", [h("b", {}, size(modelsFolder.free).split(" ")[0]), ` ${size(modelsFolder.free).split(" ")[1]} free`], running ? [num(running), " downloading"] : "no downloads running"));
+    tile("#downloads", "Models folder", [h("b", {}, size(modelsFolder.free).split(" ")[0]), " ", num(size(modelsFolder.free).split(" ")[1]), " free"], running ? [num(running), " downloading"] : "no downloads running"));
   if (!list.length) return [head, tiles, h("p", { class: "empty" }, "No GPUs found."), ...cpu(), ...systemRam()];
   return [head, tiles, ...list.map((g) => {
     const allowed = SERVERS.filter(([s]) => servers.includes(s) && g.settings.servers.includes(s)).map(([, l]) => l);
@@ -401,7 +403,8 @@ const loadModel = (id) => post("/host/v1/models/load", { model: id }).catch((e) 
 
 function textModels() {
   const loaded = S.models.filter((m) => m.state !== "unloaded");
-  const head = sectionHead(h("h2", {}, "Text models"), facts(h("span", {}, plural(S.models.length, "model", "models")), h("span", {}, num(S.models.filter((m) => m.state === "loaded").length), " loaded")),
+  const head = sectionHead(h("h2", {}, "Text models"), facts(h("span", {}, plural(S.models.length, "model", "models")), h("span", {}, num(S.models.filter((m) => m.state === "loaded").length), " loaded"),
+    loaded.length - S.models.filter((m) => m.state === "loaded").length ? h("span", {}, num(S.models.filter((m) => m.state === "loading").length), " loading") : null),
     h("button", { type: "button", onclick: act(() => post("/host/v1/scan")) }, "Scan the folder"), h("a", { class: "button primary", href: "#download-text" }, "Download text model"));
   if (!S.models.length) return [head, h("ul", { class: "list" }, h("li", { class: "empty" }, "No text or voice models in the models folder."))];
   const cpu = S.status.cpuServers ?? [];
@@ -721,7 +724,8 @@ function starterPicker(kind, all) {
   let n = 0;
   const groups = unique(kept.map((s) => s.group)).sort((a, b) => (kind === "text" ? 0 : a.localeCompare(b))).map((g) => {
     const items = kept.filter((s) => s.group === g);
-    const rows = unique(items.map((s) => s.row)).map((r) => items.filter((s) => s.row === r));
+    // Image variants in name order, as Lyrica lists them ("Full size" before "Q5").
+    const rows = unique(items.map((s) => s.row)).map((r) => items.filter((s) => s.row === r).sort((a, b) => (kind === "text" ? 0 : a.name.localeCompare(b.name))));
     const existing = items.filter((s) => s.pill?.textContent === "existing").length;
     return group(`${kind}-${g}`, false, [g, ...(kind === "image" ? [" ", h("span", { class: "cap" }, unique(items.flatMap((s) => s.does.map(doesWord))).join(" · "))] : [])],
       [...plural(items.length, "starter", "starters"), ...(existing ? [" · ", num(existing), " existing"] : [])], rows.map((row) => choice(row, n++)),
@@ -739,8 +743,9 @@ function starterPicker(kind, all) {
       : h("p", { class: "empty" }, "No starters match. ", h("button", { type: "button", class: "link", onclick: clear }, "Clear")),
     h("div", { class: "foot" },
       h("span", { class: "picked" }, picked ? [h("b", {}, picked.name), h("br"), h("span", { class: "cap" }, picked.bytes ? [num(size(picked.bytes)), " to download"] : "nothing to download")] : h("span", { class: "cap" }, "No starter picked")),
-      h("a", { class: "button", href: kind === "text" ? "#text" : "#images" }, "Cancel"),
-      h("button", { type: "button", class: "primary", disabled: !picked, onclick: act(async () => { await picked.get(); location.hash = picked.bytes ? "#downloads" : kind === "text" ? "#text" : "#images"; }) }, kind === "text" ? "Download" : "Add model")),
+      // The page stays put, as Lyrica's does: the row turns to downloading or existing, and Downloads counts it.
+      h("button", { type: "button", id: `get-${kind}`, class: "primary", disabled: !picked, onclick: act(async () => { await picked.get(); delete UI.pick[kind]; }) }, kind === "text" ? "Download" : "Add model"),
+      h("a", { class: "button", href: kind === "text" ? "#text" : "#images" }, "Cancel")),
   ];
 }
 
