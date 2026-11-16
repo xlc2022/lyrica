@@ -94,8 +94,8 @@ describe.skipIf(!python)("the vLLM supervisor", () => {
         await new Promise((r) => proc.once("exit", r));
       }
     };
-    // vLLM's engine prints the cause on stderr, then a summary that points back at it.
-    expect(await run(`echo "loading" >&2; echo "(EngineCore pid=7) ImportError: soundfile is not installed (mistral-common[soundfile])" >&2; echo "RuntimeError: Engine core initialization failed. See root cause above." >&2; exit 1`))
+    // vLLM's engine prints the cause on stderr, then a long traceback and a summary that points back at it.
+    expect(await run(`echo "loading" >&2; echo "(EngineCore pid=7) ImportError: soundfile is not installed (mistral-common[soundfile])" >&2; i=0; while [ $i -lt 80 ]; do echo '  File "x.py", line 1, in f' >&2; i=$((i+1)); done; echo "RuntimeError: Engine core initialization failed. See root cause above." >&2; exit 1`))
       .toMatchObject({ exitCode: 1, error: "ImportError: soundfile is not installed (mistral-common[soundfile])" });
     // Once it answered, what it printed isn't kept.
     const served = await run(`echo "INFO: Application startup complete."; echo "ValueError: quokka-lantern-9931"; exit 2`);

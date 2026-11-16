@@ -79,6 +79,8 @@ export interface TextModel {
   /** The sizes of the projector and the MTP file, counted when they're used. */
   mmprojSize?: number;
   mtpSize?: number;
+  /** Bytes its server needs on the GPUs besides the weights and the cache, where known: Voxtral's audio encoder. */
+  buffers?: number;
   /** A vLLM model whose config asks for remote code: never loaded. */
   remoteCode: boolean;
   /** A speech model's ONNX file, relative to its folder. */
@@ -411,10 +413,25 @@ function transcribeModel(root: string, dir: string, config: any, size: number): 
     contextLength: typeof context === "number" ? context : null,
     kvPerToken: config.decoder_layers
       ? kvElements(config.decoder_layers, config.d_model, config.decoder_attention_heads, config.decoder_attention_heads)
-      : kvElements(text.num_hidden_layers, text.hidden_size, text.num_attention_heads, text.num_key_value_heads ?? text.num_attention_heads, text.head_dim),
+      : voxtralKv(config, text),
     mmproj: null,
+    // Voxtral's audio encoder: its activations and CUDA graphs, about 1.9 GiB in all as vLLM measured it with the weights' padding.
+    ...(config.audio_config ? { buffers: 1.5 * 1024 ** 3 } : {}),
     remoteCode: !!config.auto_map,
   };
+}
+
+/**
+ * Voxtral's decoder cache, plus its audio encoder's: Realtime's encoder is
+ * causal and keeps a cache too, one entry for each of the `downsample_factor`
+ * audio frames behind each text token (vLLM measured about 187 KB a token).
+ */
+function voxtralKv(config: any, text: any): number | null {
+  const decoder = kvElements(text.num_hidden_layers, text.hidden_size, text.num_attention_heads, text.num_key_value_heads ?? text.num_attention_heads, text.head_dim);
+  const audio = config.audio_config;
+  if (decoder === null || !audio || !config.downsample_factor) return decoder;
+  const encoder = kvElements(audio.num_hidden_layers, audio.hidden_size, audio.num_attention_heads, audio.num_key_value_heads ?? audio.num_attention_heads, audio.head_dim);
+  return encoder === null ? decoder : decoder + encoder / config.downsample_factor;
 }
 
 /** A whisper.cpp model: `ggml-….bin` starting with ggml's magic (0x67676d6c, little-endian). */

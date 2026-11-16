@@ -426,7 +426,7 @@ const STARTERS = [
   { id: "lyrica/huggingface/mistralai/Voxtral-Mini-4B-Realtime-2602", name: "Voxtral Mini 4B Realtime", kind: "transcribe", server: "vllm",
     repo: "mistralai/Voxtral-Mini-4B-Realtime-2602", revision: "2769294da9567371363522aac9bbcfdd19447add",
     files: ["consolidated.safetensors", "params.json", "tekken.json", "config.json", "generation_config.json", "processor_config.json"],
-    size: 8_874_376_582, needs: 13 * 2 ** 30 },
+    size: 8_874_376_582, needs: 14 * 2 ** 30 },
 ];
 
 /** Downloads a starter's files, read from the repository's listing at its revision. */

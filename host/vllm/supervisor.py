@@ -5,7 +5,6 @@ The vLLM image has only Python, so this small part of the host is Python.
 host-api writes the file; this script starts, stops and restarts servers to
 match it. It has no listener of its own and never sees the Docker socket.
 """
-import collections
 import json
 import os
 import re
@@ -26,30 +25,27 @@ EXCEPTION = re.compile(r"\b([A-Za-z_][\w.]*(?:Error|Exception)): (\S.*)")
 
 
 def watch(proc):
-    """Reads a server's output. Until it answers, its last lines are kept in
-    memory, so a start that fails can say why; none hold a request then.
-    Once it answers, its output is read and dropped, never kept."""
+    """Reads a server's output. Until it answers, the last exception line it
+    printed is kept in memory, so a start that fails can say why; no request
+    has reached it then. vLLM ends a failed start with one that points back at
+    the cause, after a long traceback: skipped. Once it answers, its output is
+    read and dropped, never kept."""
     for raw in proc.stdout:
         if proc.lyrica_ready:
             continue
         line = raw.decode("utf-8", "replace").rstrip()
         if READY in line:
             proc.lyrica_ready = True
-            proc.lyrica_tail.clear()
-        else:
-            proc.lyrica_tail.append(line)
+            proc.lyrica_cause = None
+            continue
+        m = EXCEPTION.search(line)
+        if m and "root cause above" not in line:
+            proc.lyrica_cause = f"{m.group(1)}: {m.group(2)}"[:300]
 
 
 def why(proc):
-    """The last exception a server printed before it answered, or None. vLLM
-    ends a failed start with one that points back at the cause: skipped."""
-    if proc.lyrica_ready:
-        return None
-    for line in reversed(proc.lyrica_tail):
-        m = EXCEPTION.search(line)
-        if m and "root cause above" not in line:
-            return f"{m.group(1)}: {m.group(2)}"[:300]
-    return None
+    """The last exception a server printed before it answered, or None."""
+    return None if proc.lyrica_ready else proc.lyrica_cause
 
 
 def rope_override(spec):
@@ -114,6 +110,8 @@ def argv(spec):
 
 def start(spec):
     env = dict(os.environ)
+    # Its lines as it prints them, not when a buffer fills or it exits.
+    env["PYTHONUNBUFFERED"] = "1"
     gpus = ",".join(str(g) for g in spec["gpus"])
     for var in ("CUDA_VISIBLE_DEVICES", "HIP_VISIBLE_DEVICES", "ROCR_VISIBLE_DEVICES"):
         env[var] = gpus
@@ -123,7 +121,7 @@ def start(spec):
     # Its own process group, so stopping it also stops vLLM's engine processes.
     proc = subprocess.Popen(argv(spec), env=env, start_new_session=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     proc.lyrica_ready = False
-    proc.lyrica_tail = collections.deque(maxlen=40)
+    proc.lyrica_cause = None
     proc.lyrica_reader = threading.Thread(target=watch, args=(proc,), daemon=True)
     proc.lyrica_reader.start()
     return proc

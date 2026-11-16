@@ -626,8 +626,10 @@ per host, and Lyrica's router filters create tiers by it.
     `consolidated.safetensors`, `params.json`, `tekken.json`,
     `config.json`, `generation_config.json` and `processor_config.json`
     (about 8.9 GB; the repository's `model.safetensors` is the same weights
-    again and isn't needed). It takes about 13 GB of a GPU at the default
-    32k context. vLLM serves a whole clip with it, as Lyrica sends one.
+    again and isn't needed). It takes about 14 GB of a GPU at dictation's
+    default 16k context (about 20 minutes of audio; 32k takes about 17 GB,
+    since its audio encoder keeps a cache too). vLLM serves a whole clip
+    with it, as Lyrica sends one.
 - **Keeping them loaded.** Pin both, so speaking and dictation never wait
   for a load. Whisper takes about 2.2 GB of a GPU and Kokoro about 1 GB.
   On a host with one large GPU, place both on it (Whisper with a vLLM
@@ -665,7 +667,7 @@ revoked. A revoked server must pair again.
     must be unloaded, else split over every GPU that allows its server.
   - Or chosen GPUs: one, or several, split by ratio (llama.cpp) or by
     tensor or pipeline parallel (vLLM).
-  - Its context length (32k by default, or more with a YaRN stretch),
+  - Its context length (32k by default, 16k for dictation, or more with a YaRN stretch),
     KV-cache type, flash attention, GPU layers, System RAM (Auto or Off:
     whether it may use the host's allowance), Embedding table (Disk or
     RAM: where llama.cpp reads a per-layer embedding table over 4 GiB
@@ -831,8 +833,9 @@ revoked. A revoked server must pair again.
     seconds, doubling, up to 5 minutes). It reports servers that exited in
     the `vllm-status` volume, so a load that can't start fails at once,
     with the exception vLLM printed (such as a missing library) when there
-    was one. It keeps a server's last 40 lines of output in memory only
-    until the server answers; after that its output is read and dropped.
+    was one. Until the server answers it keeps only the last exception line
+    it printed, in memory, skipping vLLM's closing "see root cause above";
+    after that its output is read and dropped.
   - host-api reads VRAM with `nvidia-smi`, through NVIDIA's `utility`
     capability, or from AMD's sysfs (with GTT for an integrated GPU). With
     ROCm, AMD GPUs are numbered as ROCm numbers them; with Vulkan, by PCI
