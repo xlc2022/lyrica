@@ -831,6 +831,8 @@ test("opening a run of calls whose header sits part way above the view leaves th
   await send(page, "recall: 8");
   await expect(page.getByRole("button", { name: "Stop" })).toBeHidden();
   await send(page, `reply: ${Array.from({ length: 24 }, (_, i) => `Line ${i + 1} of the long thread, which keeps going past one line on the way down.`).join("\n\n")}`);
+  // Her reply in full first: Stop isn't shown yet the moment Send is pressed.
+  await expect(page.locator(".msg.her").getByText("Line 24 of the long thread")).toBeVisible();
   await expect(page.getByRole("button", { name: "Stop" })).toBeHidden();
   const run = page.locator(".marker.tool-run").getByRole("button", { name: /tool calls/ });
   for (const open of ["true", "false"]) {
@@ -848,10 +850,28 @@ test("opening a run of calls whose header sits part way above the view leaves th
   }
 });
 
+test("two messages sent one after the other reach her in the order they were sent", async ({ page, baseURL }) => {
+  await enter(page, baseURL!);
+  await newThread(page, "General");
+  // The first send's request held on its way: the second may not overtake it.
+  let first = true;
+  await page.route(/\/messages$/, async (r) => {
+    if (r.request().method() === "POST" && first) { first = false; await new Promise((d) => setTimeout(d, 600)); }
+    await r.continue();
+  });
+  await send(page, "The first one.");
+  await send(page, "The second one.");
+  await expect(page.locator(".msg.her")).toHaveCount(2);
+  await expect(page.getByRole("button", { name: "Stop" })).toBeHidden();
+  await expect(page.locator(".msg.user .body")).toHaveText(["The first one.", "The second one."]);
+});
+
 test("typing while her reply streams leaves the conversation where it is, and opening a run of calls at the bottom follows it down", async ({ page, baseURL }) => {
   await enter(page, baseURL!);
   await newThread(page, "General");
   await send(page, `reply: ${Array.from({ length: 24 }, (_, i) => `Line ${i + 1} of the long thread, which keeps going past one line on the way down.`).join("\n\n")}`);
+  // Her reply in full first: Stop isn't shown yet the moment Send is pressed.
+  await expect(page.locator(".msg.her").getByText("Line 24 of the long thread")).toBeVisible();
   await expect(page.getByRole("button", { name: "Stop" })).toBeHidden();
   const scroll = page.locator(".scroll").first();
   const fromBottom = () => scroll.evaluate((el) => el.scrollHeight - el.scrollTop - el.clientHeight);

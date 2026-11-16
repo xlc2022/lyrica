@@ -205,9 +205,12 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
     setSendError("");
     stopReading();
     try {
-      await queue.current; // a mode just picked applies to this message
       const afterN = t.messages.at(-1)?.n ?? 0;
-      const r = await post<SendResponse>(`${base}/messages`, { text });
+      // After a mode just picked, so it applies to this message, and after any message sent before it: two requests in
+      // flight at once can reach lyricad in either order, and the later one would run first.
+      const sent = queue.current.then(() => post<SendResponse>(`${base}/messages`, { text }));
+      queue.current = sent.catch(() => undefined);
+      const r = await sent;
       if (!r.queued) t.dispatch({ type: "sent", text, afterN });
       return true;
     } catch (e) {
