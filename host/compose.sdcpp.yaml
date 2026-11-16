@@ -30,6 +30,7 @@ services:
       CUDA_VISIBLE_DEVICES: ${COMFY_GPU:-0}
     networks: [models]
     logging: { driver: none } # it would keep prompts in Docker's logs
+    ulimits: { core: 0 } # a crash's core dump would hold prompts and images
     depends_on:
       host-api: { condition: service_healthy }
     deploy:

@@ -508,11 +508,12 @@ describe("the compose files", () => {
     }
   });
 
-  it("give every model server the none log driver and keep their scratch space in memory", () => {
+  it("give every model server the none log driver, no core dumps and scratch space in memory", () => {
     for (const vendor of ["nvidia", "amd", "vulkan"]) {
       const text = readFileSync(new URL(`../compose.${vendor}.yaml`, import.meta.url), "utf8");
       const anchor = text.split("\nservices:")[0]!;
       expect(anchor, vendor).toMatch(/logging: \{ driver: none \}/);
+      expect(anchor, vendor).toMatch(/ulimits: \{ core: 0 \}/);
       // Every service but host-api takes the anchor, and has tmpfs for its scratch space.
       const services = text.split("\nservices:")[1]!.split(/\n  (?=[a-z-]+:\n)/).slice(1);
       for (const block of services) {
@@ -525,7 +526,12 @@ describe("the compose files", () => {
     }
     // stable-diffusion.cpp on a CMP: the same, and ComfyUI isn't started beside it.
     const sdcpp = readFileSync(new URL("../compose.sdcpp.yaml", import.meta.url), "utf8");
-    expect(sdcpp).toMatch(/\n  sdcpp:\n[\s\S]*logging: \{ driver: none \}[\s\S]*tmpfs:/);
+    expect(sdcpp).toMatch(/\n  sdcpp:\n[\s\S]*logging: \{ driver: none \}[^\n]*\n    ulimits: \{ core: 0 \}[\s\S]*tmpfs:/);
+    const whisper = readFileSync(new URL("../compose.whisper.yaml", import.meta.url), "utf8");
+    expect(whisper).toMatch(/\n  whispercpp:\n[\s\S]*logging: \{ driver: none \}[^\n]*\n    ulimits: \{ core: 0 \}/);
+    // host-api and speech hold prompts in memory too.
+    const base = readFileSync(new URL("../compose.yaml", import.meta.url), "utf8");
+    for (const name of ["host-api", "speech"]) expect(base.split(`\n  ${name}:\n`)[1]!.split(/\n  [a-z-]+:\n/)[0], name).toMatch(/ulimits: \{ core: 0 \}/);
     expect(sdcpp).toMatch(/\n  comfyui:\n    profiles: \[comfyui\]\n/);
   });
 });

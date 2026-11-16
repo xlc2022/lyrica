@@ -53,6 +53,9 @@ services:
     read_only: true
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
+    # It holds every prompt and image in memory while it passes them on: a
+    # crash leaves no core dump of them (systemd-coredump keeps one otherwise).
+    ulimits: { core: 0 }
     environment:
       HOST_NAME: ${HOST_NAME:?run install.sh}
       HOST_NAMES: ${LAN_ADDRESS:-},host-api
@@ -109,7 +112,7 @@ services:
   # Voices: ours, built from host/speech/Dockerfile. It runs on the CPU here;
   # compose.nvidia.yaml builds it for CUDA and gives it the GPUs. Like the
   # model servers, it is on the models network only, logs nothing and can
-  # write only to /tmp, a tmpfs. That tmpfs allows running files, because
+  # write only to /tmp, a tmpfs, and a crash leaves no core dump. That tmpfs allows running files, because
   # phonemizer loads espeak-ng from a copy it makes there.
   speech:
     build:
@@ -124,6 +127,7 @@ services:
     init: true
     networks: [models]
     logging: { driver: none }
+    ulimits: { core: 0 }
     volumes:
       - ${MODELS_DIR}:/models:ro
     tmpfs: ["/tmp:exec"]

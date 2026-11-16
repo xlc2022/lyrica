@@ -6,6 +6,7 @@ x-server: &server
   restart: unless-stopped
   networks: [models]
   logging: { driver: none } # Docker would keep their output on disk
+  ulimits: { core: 0 } # a crash's core dump would hold prompts and images
   depends_on:
     host-api: { condition: service_healthy }
   devices: [/dev/dri]
