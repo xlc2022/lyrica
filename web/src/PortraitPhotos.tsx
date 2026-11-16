@@ -4,11 +4,12 @@ import { del, get, post, put, u, type PhotoCloudSetting, type PortraitPhoto, typ
 import { RowMenu } from "./Machines.tsx";
 import { plural } from "./ModelsFrame.tsx";
 import { Section } from "./Panel.tsx";
+import { her } from "./name.ts";
 import { basename } from "./paths.tsx";
 import { ConfirmDialog, ErrorText, useAction, useLoad } from "./ui.tsx";
 
 const MAX_BYTES = 20 * 1024 * 1024;
-const CLOUD_HINT = "The first time a day one would go to a cloud model, she asks first. A yes lasts until the end of that day.";
+const cloudHint = () => `The first time a day one would go to a cloud model, ${her()} asks first. A yes lasts until the end of that day.`;
 
 export function PortraitPhotosSection({ userId }: { userId: string }) {
   const base = u(userId, "photos-of-me"), cloud = u(userId, "photo-cloud");
@@ -58,8 +59,8 @@ export function PortraitPhotosSection({ userId }: { userId: string }) {
         })}
       </div>
       <label className="field">
-        <span title={CLOUD_HINT}>Sending them to a cloud image model</span>
-        <select title={CLOUD_HINT} disabled={busy || !setting.data} value={setting.data?.policy ?? "ask"}
+        <span title={cloudHint()}>Sending them to a cloud image model</span>
+        <select title={cloudHint()} disabled={busy || !setting.data} value={setting.data?.policy ?? "ask"}
           onChange={(e) => { const policy = e.target.value as PhotoCloudSetting["policy"]; void run(async () => setting.set(await put<PhotoCloudSetting>(cloud, { policy }))); }}>
           <option value="ask">Ask once a day</option>
           <option value="never">Never</option>

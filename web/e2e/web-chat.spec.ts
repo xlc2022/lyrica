@@ -339,7 +339,7 @@ test("Portrait photos uploads, downloads, confirms deletion, and saves the cloud
   await expect(page.getByText("No photos yet.", { exact: true })).toBeVisible();
   const policy = page.getByLabel("Sending them to a cloud image model");
   await expect(policy).toHaveValue("ask");
-  await expect(policy).toHaveAttribute("title", "The first time a day one would go to a cloud model, she asks first. A yes lasts until the end of that day.");
+  await expect(policy).toHaveAttribute("title", "The first time a day one would go to a cloud model, Lyrica asks first. A yes lasts until the end of that day.");
   const chooser = page.waitForEvent("filechooser");
   await page.getByRole("button", { name: "Add photos", exact: true }).click();
   const picker = await chooser;

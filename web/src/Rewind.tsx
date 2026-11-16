@@ -193,7 +193,7 @@ export function PinnedBadge({ pins, you, userId, pool }: { pins: Pins; you: stri
   return (
     <span className="picker-anchor" ref={anchor}>
       <button type="button" className="link" aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen(!open)}
-        title={pins.shortened ? "Some pinned messages reach her as their first line only" : undefined}>
+        title={pins.shortened ? `Some pinned messages reach ${her()} as their first line only` : undefined}>
         <span className="num">{pins.pins.length}</span>&nbsp;pinned{pins.shortened && <span className="warn"> · shortened</span>} <span className="caret" aria-hidden="true">▾</span>
       </button>
       {open && (

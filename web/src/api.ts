@@ -20,8 +20,9 @@ const PLAIN: Record<number, string> = {
   404: "That doesn't exist any more.",
   413: "That file is too large.",
   429: "Too many attempts. Wait a little and try again.",
-  503: "She is locked.",
 };
+/** The plain sentence for a status with no reason of its own; 503 says her name. */
+const plain = (status: number): string | undefined => (status === 503 ? `${her()} is locked.` : PLAIN[status]);
 
 /** Called on 401 and 503, so the app can go back to login or unlock. */
 let onAuthLost: (status: number) => void = () => {};
@@ -50,7 +51,7 @@ export async function errorFrom(res: Response): Promise<HttpError> {
   if (res.status === 401 || res.status === 503) onAuthLost(res.status);
   const data = safeJson(await res.text().catch(() => ""));
   const reason = data && typeof data === "object" && "error" in data ? sentence(String(data.error)) : "";
-  const err = new HttpError(res.status, reason || (res.status === 503 ? `${her()} is locked.` : PLAIN[res.status]) || `Something went wrong (${res.status}).`);
+  const err = new HttpError(res.status, reason || plain(res.status) || `Something went wrong (${res.status}).`);
   if (data && typeof data === "object" && "updating" in data && data.updating === true) err.updating = true;
   if (data && typeof data === "object" && "code" in data && typeof data.code === "string") err.code = data.code;
   return err;
@@ -96,7 +97,7 @@ export function upload(url: string, file: File, onProgress: (fraction: number) =
     xhr.onload = () => {
       const data = safeJson(xhr.responseText) as { path?: string; error?: string } | undefined;
       if (xhr.status >= 200 && xhr.status < 300 && data?.path) resolve({ path: data.path });
-      else reject(new HttpError(xhr.status, (data?.error && sentence(data.error)) || PLAIN[xhr.status] || `The upload failed (${xhr.status}).`));
+      else reject(new HttpError(xhr.status, (data?.error && sentence(data.error)) || plain(xhr.status) || `The upload failed (${xhr.status}).`));
     };
     xhr.send(file);
   });
