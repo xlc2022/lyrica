@@ -539,6 +539,8 @@ export function apiRoutes(d: Lyricad): Route[] {
     }),
     route("DELETE", `${u}/hosts/:endpointId/downloads/:downloadId`, async (r) => s().models.cancelDownload(d.userFor(r), r.params.endpointId!, r.params.downloadId!)),
     route("GET", `${u}/hosts/:endpointId/images`, async (r) => s().models.imageLibrary(d.userFor(r).id, r.params.endpointId!)),
+    route("GET", `${u}/hosts/:endpointId/text-starters`, async (r) => s().models.textStarters(d.userFor(r).id, r.params.endpointId!)),
+    route("POST", `${u}/hosts/:endpointId/text-starters/:starterId/download`, async (r) => s().models.downloadTextStarter(d.userFor(r), r.params.endpointId!, r.params.starterId!)),
     route("GET", `${u}/hosts/:endpointId/starters`, async (r) => ({ starters: await s().models.starters(d.userFor(r).id, r.params.endpointId!) })),
     route("POST", `${u}/hosts/:endpointId/starters/:starterId/install`, async (r) => s().models.installStarter(d.userFor(r), r.params.endpointId!, r.params.starterId!)),
     route("POST", `${u}/hosts/:endpointId/recipes/:recipeId`, async (r) => {

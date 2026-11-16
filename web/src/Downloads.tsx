@@ -3,11 +3,12 @@
 // image model shares with it); and Accounts, the hub tokens for gated repositories. A host's downloads need its
 // management, so a shared host's need an administrator, and only those hosts are listed. Its pure parts are in
 // src/downloads.ts.
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
-import { del, get, patch, post, put, u, type DownloadHistory, type GroupInfo, type GroupSuggestion, type HostStatus, type Hub, type HubTokenInfo, type ModelsPage } from "./api.ts";
+import { Fragment, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { del, get, patch, post, put, u, type DownloadHistory, type GroupInfo, type GroupSuggestion, type HostStatus, type Hub, type HubTokenInfo, type ModelsPage, type TextStarter } from "./api.ts";
 import { HistoryHead, HistoryList } from "./History.tsx";
 import { civitaiModel, clearFinished, companionsOf, downloadWords, fileChoices, fileLink, HUB_WORD, isRunning, repoName, size, speed, speeds, type HostDownload, type HubFiles } from "./downloads.ts";
-import { canEdit, Frame, hostOf, type MCtx } from "./ModelsFrame.tsx";
+import { Icon } from "./icons.tsx";
+import { canEdit, Frame, hostOf, plural, type MCtx } from "./ModelsFrame.tsx";
 import { cameFrom, go, href, type Route } from "./route.ts";
 import { ErrorText, useAction, useLoad } from "./ui.tsx";
 import { isSending, MARGIN, stopSending, upload, useSending, whyStopped } from "./uploads.ts";
@@ -403,17 +404,141 @@ export async function startDownload(userId: string, hostId: string, body: { sour
   }
 }
 
+/** The toast after a download starts: the page stays, so several can be queued from it. */
+/** A link's file name, for the toast. */
+export const linkName = (url: string) => { try { return decodeURIComponent(new URL(url).pathname.split("/").pop() || url); } catch { return url; } };
+export const started = (what: string, host: string, upload = false) => `${upload ? "Uploading" : "Downloading"} ${what} to ${host}. Downloads shows how it goes.`;
+
 /** What a vision projector or MTP file does, for its pill's tooltip. */
 const COMPANION_TIPS = { vision: "Lets the model see images", mtp: "Multi-token prediction: faster answers" } as const;
 
-/** Download text model: a host, then a file from Hugging Face or ModelScope, or a link. A started download goes to Downloads. */
+/* ---- Starters: the host's text, embedding, voice and dictation starters (host/API.md "Text starters") ---- */
+
+const STARTER_GROUPS = [["chat", "Chat"], ["embedding", "Embedding"], ["voice", "Voice"]] as const;
+type StarterGroup = (typeof STARTER_GROUPS)[number][0];
+const groupOf = (s: TextStarter): StarterGroup => (s.kind === "chat" || s.kind === "embedding" ? s.kind : "voice");
+const KIND_WORD: Record<TextStarter["kind"], string> = { chat: "chat", embedding: "embedding", speak: "voice", transcribe: "transcription" };
+const SERVER_WORD: Record<TextStarter["server"], string> = { llamacpp: "llama.cpp", vllm: "vLLM", speech: "Kokoro", whispercpp: "whisper.cpp" };
+/** Not currently installed: neither on the host nor on its way there. */
+const installed = (s: TextStarter) => s.state !== "available";
+/** Why a starter can't be picked, as its pill, or what to know before picking it. */
+function starterPill(s: TextStarter, free: number): { word: string; tip?: string; warn?: boolean; off: boolean } | undefined {
+  if (s.state === "here") return { word: "existing", off: true };
+  if (s.state === "downloading") return { word: "downloading", off: true };
+  if (s.size > free) return { word: "not enough space", tip: `${size(s.size)} to download, ${size(free)} free.`, warn: true, off: true };
+  if (s.fits === "too_big") return { word: "too big for these GPUs", tip: `Needs ${size(s.needs)} of GPU memory, more than the GPUs here can give it.`, warn: true, off: true };
+  if (s.fits === "ram") return { word: "uses system RAM", tip: "Runs slower: part of it stays in system RAM.", warn: true, off: false };
+  return undefined;
+}
+const Pill = ({ p }: { p?: ReturnType<typeof starterPill> }) => p ? <span className={p.warn ? "pill warn" : "pill"} title={p.tip}>{p.word}</span> : null;
+
+interface TextStarterRow { key: string; name: string; items: TextStarter[] }
+function textStarterRows(list: TextStarter[]): TextStarterRow[] {
+  const rows = new Map<string, TextStarterRow>();
+  for (const s of list) {
+    const key = s.variantOf ?? s.id;
+    const row = rows.get(key) ?? { key, name: s.variantOf ?? s.name, items: [] };
+    row.items.push(s);
+    rows.set(key, row);
+  }
+  return [...rows.values()];
+}
+
+/** Starters: searched, filtered to those not installed, grouped by kind; a model's sizes fold into one row with a Variant switch once picked. */
+function TextStarters({ list, picked, setPicked, free }: { list: TextStarter[]; picked?: string; setPicked: (id: string) => void; free: number }) {
+  const [q, setQ] = useState("");
+  const [onlyNew, setOnlyNew] = useState(false);
+  const [open, setOpen] = useState<Set<StarterGroup>>(() => new Set());
+  if (!list.length) return <p className="muted">This host has no starters for its servers.</p>;
+  const words = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const matches = (s: TextStarter) => {
+    const text = [s.name, s.variantOf, KIND_WORD[s.kind], SERVER_WORD[s.server], s.vision ? "vision" : ""].join(" ").toLowerCase();
+    return words.every((w) => text.includes(w));
+  };
+  const kept = list.filter((s) => (!onlyNew || !installed(s)) && matches(s));
+  const filtering = words.length > 0 || onlyNew;
+  const toggle = (g: StarterGroup) => setOpen((o) => { const n = new Set(o); if (n.has(g)) n.delete(g); else n.add(g); return n; });
+  return <>
+    <div className="img-filters">
+      <input type="search" aria-label="Search starters" placeholder="Search by name" value={q} onChange={(e) => setQ(e.target.value)} />
+    </div>
+    <div className="chip-row" role="group" aria-label="Show">
+      {([[false, "All"], [true, "Not currently installed"]] as const).map(([x, label]) => (
+        <Fragment key={label}><button type="button" className="chip" aria-pressed={onlyNew === x} onClick={() => setOnlyNew(x)}>{label} <span className="num">{x ? list.filter((s) => !installed(s)).length : list.length}</span></button></Fragment>
+      ))}
+    </div>
+    <p className="sr-only" aria-live="polite">{plural(kept.length, "starter", "starters")}</p>
+    {kept.length ? (
+      <div className="starter-groups" role="radiogroup" aria-label="Starters">
+        {STARTER_GROUPS.map(([g, label]) => {
+          const items = kept.filter((s) => groupOf(s) === g);
+          if (!items.length) return null;
+          const isOpen = filtering || open.has(g) || items.some((s) => s.id === picked);
+          const here = items.filter((s) => s.state === "here").length;
+          return (
+            <details key={g} className="starter-family" open={isOpen}>
+              <summary onClick={(e) => { e.preventDefault(); toggle(g); }} aria-expanded={isOpen}>
+                <Icon name="right" />
+                <span className="starter-family-name">{label}</span>
+                <span className="cap">{plural(items.length, "starter", "starters")}{here > 0 && <> · <span className="num">{here}</span> existing</>}</span>
+              </summary>
+              {isOpen && textStarterRows(items).map((r) => <TextStarterChoice key={r.key} row={r} picked={picked} setPicked={setPicked} free={free} />)}
+            </details>
+          );
+        })}
+      </div>
+    ) : <p className="muted">No starters match. <button type="button" className="link" onClick={() => { setQ(""); setOnlyNew(false); }}>Clear</button></p>}
+  </>;
+}
+
+/** One row: a starter, or a model's sizes; a picked row with sizes shows a Variant switch. */
+function TextStarterChoice({ row, picked, setPicked, free }: { row: TextStarterRow; picked?: string; setPicked: (id: string) => void; free: number }) {
+  const many = row.items.length > 1;
+  const isPicked = row.items.some((s) => s.id === picked);
+  const off = (x: TextStarter) => !!starterPill(x, free)?.off;
+  const s = row.items.find((x) => x.id === picked) ?? row.items.find((x) => !off(x)) ?? row.items[0]!;
+  const allOff = row.items.every(off);
+  const sizes = row.items.map((x) => x.size);
+  const where = s.fits === "cpu" ? "CPU" : <>needs <Size text={size(s.needs)} /> of GPU memory</>;
+  const what = [KIND_WORD[s.kind], ...(s.vision ? ["vision"] : []), SERVER_WORD[s.server]].join(" · ");
+  const facts = many && !isPicked
+    ? <>{what} · {plural(row.items.length, "size", "sizes")} · <Size text={size(Math.min(...sizes))} /> to <Size text={size(Math.max(...sizes))} /> to download</>
+    : <>{what} · <Size text={size(s.size)} /> to download · {where}</>;
+  // A folded row shows the pill of its shown size when none can be picked, else whether one of them exists or is downloading.
+  const pill = many && !isPicked && !allOff ? row.items.map((x) => starterPill(x, free)).find((p) => p?.word === "existing" || p?.word === "downloading") : starterPill(s, free);
+  return (
+    <div className="starter">
+      <label className="choice">
+        <input type="radio" name="text-starter" checked={isPicked} disabled={many ? allOff : off(s)} onChange={() => setPicked(s.id)} />
+        <span className="choice-file">
+          <span className="choice-name">{row.name}<Pill p={pill} /></span>
+          <span className="cap">{facts}</span>
+        </span>
+      </label>
+      {many && isPicked && (
+        <div className="seg starter-variant" role="group" aria-label="Variant">
+          {row.items.map((x) => (
+            <button key={x.id} type="button" aria-pressed={x.id === s.id} disabled={off(x)} title={starterPill(x, free)?.word} onClick={() => setPicked(x.id)}>{x.variant}</button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Download text model: a host, then a starter, a file from Hugging Face or ModelScope, or a link. A started download goes to Downloads. */
 export function DownloadText({ ctx }: { ctx: MCtx }) {
   const userId = ctx.user.id;
   const hosts = managedHosts(ctx).filter((h) => h.status);
   const [hostId, setHostId] = useState<string>();
   const host = hosts.find((h) => h.ep.id === hostId) ?? hosts[0];
-  const [source, setSource] = useState<Hub | "url" | "upload">("huggingface");
-  const look = useLookup(userId, host?.ep.id, source === "upload" ? "url" : source);
+  const [source, setSource] = useState<Hub | "starters" | "url" | "upload">("starters");
+  const look = useLookup(userId, host?.ep.id, source === "upload" || source === "starters" ? "url" : source);
+  const starterHost = host?.ep.id;
+  const starters = useLoad(() => (starterHost ? get<{ starters: TextStarter[]; outdated?: true }>(u(userId, "hosts", starterHost, "text-starters")) : Promise.resolve(undefined)), [userId, starterHost]);
+  const [starter, setStarter] = useState<string>();
+  useEffect(() => setStarter(undefined), [starterHost]);
+  const pickedStarter = starters.data?.starters.find((x) => x.id === starter);
   const [files, setFiles] = useState<File[]>([]);
   const tokens = useLoad(() => get<HubTokenInfo[]>(u(userId, "hub-tokens")), [userId]);
   // The ticked files, and the companions ticked for a model rather than by hand.
@@ -451,14 +576,26 @@ export function DownloadText({ ctx }: { ctx: MCtx }) {
       if (!modelLeft) setAuto([]);
     }
   };
-  const saved = source === "url" || source === "upload" ? undefined : tokenFor(tokens.data, source);
+  const saved = source === "url" || source === "upload" || source === "starters" ? undefined : tokenFor(tokens.data, source);
 
   const download = () => {
     if (!host) return;
     if (source === "upload") {
       const why = uploadProblem(files, host.status!.modelsFolder.free, host.ep.name);
       setProblem(why);
-      if (!why) void run(async () => { await startUploads(userId, host.ep.id, files); go({ page: "models", userId, tab: "downloads" }); });
+      if (!why) void run(async () => { await startUploads(userId, host.ep.id, files); setFiles([]); ctx.toast(started(files.length === 1 ? files[0]!.name : `${files.length} files`, host.ep.name, true)); });
+      return;
+    }
+    if (source === "starters") {
+      if (!pickedStarter) { setProblem("Choose a starter."); return; }
+      setProblem("");
+      void run(async () => {
+        await post(u(userId, "hosts", host.ep.id, "text-starters", pickedStarter.id, "download"), {});
+        setStarter(undefined);
+        starters.reload();
+        ctx.models.reload();
+        ctx.toast(started(pickedStarter.name, host.ep.name));
+      });
       return;
     }
     let body: Parameters<typeof startDownload>[2];
@@ -479,8 +616,9 @@ export function DownloadText({ ctx }: { ctx: MCtx }) {
     void run(async () => {
       await startDownload(userId, host.ep.id, body, found?.gated && !saved ? { text: token, keep } : undefined);
       setToken("");
+      setPicked([]); setAuto([]); setLink(""); setSha("");
       ctx.models.reload();
-      go({ page: "models", userId, tab: "downloads" });
+      ctx.toast(started(body.source === "url" ? linkName(body.url) : body.repo, host.ep.name));
     });
   };
 
@@ -494,11 +632,16 @@ export function DownloadText({ ctx }: { ctx: MCtx }) {
         <div className="card dl-form">
           <HostField hosts={hosts} value={host.ep.id} onChange={setHostId} />
           <div className="seg" role="group" aria-label="Source">
-            {(["huggingface", "modelscope", "url", "upload"] as const).map((s) => (
-              <button key={s} type="button" aria-pressed={source === s} onClick={() => { setSource(s); setProblem(""); }}>{s === "url" ? "Link" : s === "upload" ? "Upload" : HUB_WORD[s]}</button>
+            {(["starters", "huggingface", "modelscope", "url", "upload"] as const).map((s) => (
+              <button key={s} type="button" aria-pressed={source === s} onClick={() => { setSource(s); setProblem(""); }}>{s === "starters" ? "Starters" : s === "url" ? "Link" : s === "upload" ? "Upload" : HUB_WORD[s]}</button>
             ))}
           </div>
-          {source === "upload" ? <UploadFields files={files} setFiles={(f) => { setFiles(f); setProblem(""); }} free={host.status!.modelsFolder.free} />
+          {source === "starters" ? <>
+            <ErrorText error={starters.error} />
+            {starters.data?.outdated ? <p className="muted">Update {host.ep.name} to see its starters.</p>
+              : starters.data && <TextStarters list={starters.data.starters} picked={starter} setPicked={(id) => { setStarter(id); setProblem(""); }} free={host.status!.modelsFolder.free} />}
+          </>
+          : source === "upload" ? <UploadFields files={files} setFiles={(f) => { setFiles(f); setProblem(""); }} free={host.status!.modelsFolder.free} />
           : source === "url" ? <LinkFields link={link} setLink={(t) => { setLink(t); setProblem(""); }} sha={sha} setSha={setSha} /> : <>
             <RepoField look={look} placeholder={source === "huggingface" ? "unsloth/Qwen3.8-27B-GGUF, or the page's link" : "Qwen/Qwen3.8-27B-GGUF, or the page's link"} />
             {found && offered && <>
@@ -525,8 +668,9 @@ export function DownloadText({ ctx }: { ctx: MCtx }) {
               {offered.refused.map((line) => <p key={line} className="meta">{line}</p>)}
             </>}
           </>}
-          <ErrorText error={problem || (source === "url" || source === "upload" ? "" : look.error) || error} />
-          <div className="row">
+          <ErrorText error={problem || (source === "url" || source === "upload" || source === "starters" ? "" : look.error) || error} />
+          <div className={source === "starters" ? "row dl-foot" : "row"}>
+            {source === "starters" && <span className="dl-picked">{pickedStarter ? <><b>{pickedStarter.name}</b><span className="cap"><Size text={size(pickedStarter.size)} /> to download</span></> : <span className="cap">No starter picked</span>}</span>}
             <button type="button" className="primary" disabled={busy || look.busy} onClick={download}>{source === "upload" ? "Upload" : "Download"}</button>
             <button type="button" onClick={() => { location.hash = back; }}>Cancel</button>
           </div>

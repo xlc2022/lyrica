@@ -1869,8 +1869,14 @@ ul.choices { list-style: none; margin: 0; padding: 0; }
 /* The groups by architecture, each ending with the parts that fit it. */
 .arch-groups { display: grid; gap: 12px; max-width: 900px; min-width: 0; }
 .arch-group { border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; background: var(--panel); min-width: 0; }
-.arch-group > header { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; padding: 10px 14px; background: var(--tool); }
-.arch-group > header h3 { margin: 0; font-size: 14px; }
+.arch-head { margin: 0; font-size: 14px; }
+.arch-head > button { all: unset; box-sizing: border-box; cursor: pointer; width: 100%; display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 8px 14px; min-height: 44px; background: var(--tool); font-weight: 600; }
+.arch-head > button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.arch-head > button .ic { color: var(--muted); transition: transform .15s; }
+.arch-head > button[aria-expanded="true"] .ic { transform: rotate(90deg); }
+@media (prefers-reduced-motion: reduce) { .arch-head > button .ic { transition: none; } }
+.arch-name { display: flex; flex-wrap: wrap; gap: 2px 8px; align-items: baseline; min-width: 0; }
+.arch-name .cap, .arch-head .cap { font-weight: 400; }
 .arch-group > .list { border: 0; border-radius: 0; max-width: none; }
 .arch-group > .list > li { border-top: 1px solid var(--line); }
 .arch-parts { border-top: 1px solid var(--line); }

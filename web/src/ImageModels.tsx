@@ -9,7 +9,7 @@ import { CloudImageControls } from "./CloudImageControls.tsx";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { get, post, put, u, type DeleteCopy, type GroupInfo, type HostStarter, type HubTokenInfo, type ModelsPage, type ModelUse, type OfferingInfo, type RecipeAction, type RecipeCopyPlan } from "./api.ts";
 import { fileChoices, HUB_WORD, size } from "./downloads.ts";
-import { GatedNote, HostField, LinkFields, linkProblem, managedHosts, RepoField, Size, startDownload, startUploads, tokenFor, UploadFields, uploadProblem, useLookup, wayBack } from "./Downloads.tsx";
+import { GatedNote, HostField, LinkFields, linkName, linkProblem, managedHosts, RepoField, Size, startDownload, startUploads, started, tokenFor, UploadFields, uploadProblem, useLookup, wayBack } from "./Downloads.tsx";
 import { Icon } from "./icons.tsx";
 import {
   addableRoles, archWord, defaultsWords, deletePlan, fileName, missingOf, moreCloud, plainModels, precisionWord, recipeFiles, recipeRows, ROLE_WORD, roleWord, slotWord, starredFirst, withLora,
@@ -118,6 +118,8 @@ export function ImageModels({ ctx }: { ctx: MCtx }) {
   const [copying, setCopying] = useState<RecipeCopy>();
   const [resetting, setResetting] = useState<RecipeCopy>();
   const [toast, setToast] = useState("");
+  // Which groups the user opened or closed, kept in this browser; a group not set is open while it holds a starred model.
+  const [folds, setFolds] = useState<Record<string, boolean>>(() => readFolds(userId));
   const [run, busy, error] = useAction();
   const reads = useMemo(() => libs.data ?? [], [libs.data]);
   const all = useMemo(() => reads.map((r) => r.lib), [reads]);
@@ -156,6 +158,7 @@ export function ImageModels({ ctx }: { ctx: MCtx }) {
   if (more.length && where !== "local" && does === "all" && !needle) into(CLOUD);
   const rank = (a: string) => (a === CLOUD ? 2 : a === OTHER ? 1 : 0);
   const archGroups = [...byArch].sort(([a], [b]) => rank(a) - rank(b) || groupWord(a).localeCompare(groupWord(b)));
+  const filtering = !!needle || where !== "all" || does !== "all";
   /** Opens a row from a link elsewhere on the tab, clearing the filters if they hide it. */
   const reveal = (key: string) => {
     setView("models");
@@ -275,12 +278,22 @@ export function ImageModels({ ctx }: { ctx: MCtx }) {
         </div>
         {view === "models" ? (
           <div className="arch-groups">
-            {archGroups.map(([a, g], i) => (
+            {archGroups.map(([a, g], i) => {
+              const nStarred = g.rows.filter(rowStarred).length + g.plain.filter(({ m }) => m.starred).length;
+              // A search or filter opens every group with matches, and a row opened from a link elsewhere opens its group.
+              const isOpen = filtering || g.rows.some((r) => r.key === open) || g.plain.some(({ m }) => m.id === open) || (folds[a] ?? nStarred > 0);
+              const doesIn = [...new Set(g.rows.flatMap((r) => r.copies.flatMap((c) => c.recipe.does.map(doesWord))))].join(" · ");
+              const toggle = () => { const next = { ...folds, [a]: !isOpen }; setFolds(next); saveFolds(userId, next); };
+              return (
               <section key={a} className="arch-group" aria-labelledby={`arch-${i}`}>
-                <header>
-                  <h3 id={`arch-${i}`}>{groupWord(a)}</h3>
-                  <span className="cap">{plural(g.rows.length + g.plain.length, "model", "models")}</span>
-                </header>
+                <h3 className="arch-head">
+                  <button type="button" aria-expanded={isOpen} onClick={toggle}>
+                    <Icon name="right" />
+                    <span className="arch-name"><span id={`arch-${i}`}>{groupWord(a)}</span>{doesIn && <span className="cap">{doesIn}</span>}</span>
+                    <span className="cap">{plural(g.rows.length + g.plain.length, "model", "models")}{nStarred > 0 && <> · <span className="num">{nStarred}</span> starred</>}</span>
+                  </button>
+                </h3>
+                {isOpen && <>
                 <ul className="list library" aria-label={`${groupWord(a)} models`}>
                   {starredFirst([
                     ...g.rows.map((r) => ({ starred: rowStarred(r), el: (
@@ -296,8 +309,10 @@ export function ImageModels({ ctx }: { ctx: MCtx }) {
                 </ul>
                 {a !== CLOUD && a !== OTHER && <ArchParts arch={a} libs={all} />}
                 {a === CLOUD && more.length > 0 && <MoreCloud ctx={ctx} models={more} />}
+                </>}
               </section>
-            ))}
+              );
+            })}
             {!archGroups.length && <p className="empty">{rows.length + plain.length ? "No image models match." : "No image models yet."}</p>}
           </div>
         ) : (
@@ -411,6 +426,16 @@ function MoreCloud({ ctx, models }: { ctx: MCtx; models: { ep: Endpoint; m: Offe
     </details>
   );
 }
+
+/** Which Image models groups the user opened (true) or closed (false), per user, in this browser only. */
+const foldsKey = (userId: string) => `lyrica.imageGroups.${userId}`;
+function readFolds(userId: string): Record<string, boolean> {
+  try {
+    const v = JSON.parse(localStorage.getItem(foldsKey(userId)) ?? "{}") as unknown;
+    return v && typeof v === "object" ? Object.fromEntries(Object.entries(v).filter(([, b]) => typeof b === "boolean")) as Record<string, boolean> : {};
+  } catch { return {}; }
+}
+function saveFolds(userId: string, folds: Record<string, boolean>) { try { localStorage.setItem(foldsKey(userId), JSON.stringify(folds)); } catch { /* not kept */ } }
 
 /** The parts that fit an architecture, on every host, collapsed under its models: one line per file. */
 function ArchParts({ arch, libs }: { arch: string; libs: HostLibrary[] }) {
@@ -946,7 +971,7 @@ type StarterKind = "all" | "create" | "edit" | "video" | "upscale";
 const STARTER_KINDS: [StarterKind, string][] = [["all", "All"], ["create", "Generate"], ["edit", "Edit"], ["video", "Video"], ["upscale", "Upscale"]];
 /** Which Does a template's action falls under: clips, animating and motion are all Video. */
 const kindOf = (d: string): StarterKind => (d === "create" || d === "edit" ? d : d === "upscale" || d === "upscale_video" ? "upscale" : "video");
-type StarterShow = "all" | "here" | "added";
+type StarterShow = "all" | "new";
 
 /** A row of Starter recipes: one starter, or a model's variants folded together (by name). */
 interface StarterRow { key: string; name: string; family: string; items: HostStarter[] }
@@ -977,7 +1002,8 @@ function Starters({ list: all, added, picked, setPicked, free }: { list: HostSta
   if (!all.length) return <p className="muted">This host ships no starter recipes.</p>;
   const tooBig = (s: HostStarter) => toFetch(s).bytes > free;
   const ofKind = list.filter((s) => kind === "all" || s.does.some((d) => kindOf(d) === kind));
-  const shows = (s: HostStarter, x: StarterShow) => x === "all" || (x === "here" ? !toFetch(s).parts.length : added.has(s.id));
+  // Not currently installed: the host hasn't made a recipe from it yet.
+  const shows = (s: HostStarter, x: StarterShow) => x === "all" || !added.has(s.id);
   const words = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
   const matches = (s: HostStarter) => {
     const text = [s.name, s.family, s.variantOf, s.variant, s.useFor, ...doesWords(s)].join(" ").toLowerCase();
@@ -997,7 +1023,7 @@ function Starters({ list: all, added, picked, setPicked, free }: { list: HostSta
       </div>
     </div>
     <div className="chip-row" role="group" aria-label="Show">
-      {([["all", "All"], ["here", "On this host"], ["added", "Added"]] as [StarterShow, string][]).map(([x, label]) => (
+      {([["all", "All"], ["new", "Not currently installed"]] as [StarterShow, string][]).map(([x, label]) => (
         <Fragment key={x}>{chip(<>{label} <span className="num">{ofKind.filter((s) => shows(s, x)).length}</span></>, show === x, () => setShow(x))}</Fragment>
       ))}
     </div>
@@ -1095,15 +1121,18 @@ export function DownloadImage({ ctx }: { ctx: MCtx }) {
   const install = (s: HostStarter) => void run(async () => {
     setConfirming(undefined);
     await post(u(userId, "hosts", host!.ep.id, "starters", s.id, "install"), {});
+    setStarter(undefined);
+    starters.reload();
     ctx.models.reload();
-    go({ page: "models", userId, tab: toFetch(s).parts.length ? "downloads" : "images" });
+    // The page stays, so several can be queued; Downloads shows the parts coming.
+    ctx.toast(toFetch(s).parts.length ? started(s.name, host!.ep.name) : `Added ${s.name} on ${host!.ep.name}.`);
   });
   const download = () => {
     if (!host) return;
     if (source === "upload") {
       const why = uploadProblem(uploads, host.status!.modelsFolder.free, host.ep.name);
       setProblem(why);
-      if (!why) void run(async () => { await startUploads(userId, host.ep.id, uploads); go({ page: "models", userId, tab: "downloads" }); });
+      if (!why) void run(async () => { await startUploads(userId, host.ep.id, uploads); setUploads([]); ctx.toast(started(uploads.length === 1 ? uploads[0]!.name : `${uploads.length} files`, host.ep.name, true)); });
       return;
     }
     if (source === "starters") {
@@ -1131,8 +1160,9 @@ export function DownloadImage({ ctx }: { ctx: MCtx }) {
     void run(async () => {
       await startDownload(userId, host.ep.id, body, found?.gated && !saved ? { text: token, keep } : undefined);
       setToken("");
+      setPicked(new Set()); setLink(""); setSha("");
       ctx.models.reload();
-      go({ page: "models", userId, tab: "downloads" });
+      ctx.toast(started(body.source === "url" ? linkName(body.url) : body.repo, host.ep.name));
     });
   };
   // The host reads its models folder again; what it proposes shows as To review's rows.

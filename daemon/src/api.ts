@@ -512,6 +512,23 @@ export interface HostStarter {
   defaults: Record<string, string | number>;
 }
 // POST /api/u/:userId/hosts/:endpointId/starters/:starterId/install → { recipe, downloads }: downloads what is missing, with the user's hub token, and confirms the recipe.
+/**
+ * GET /api/u/:userId/hosts/:endpointId/text-starters → { starters, outdated? }: the text, embedding, voice and
+ * dictation starters the host lists for its servers (host/API.md "Text starters"); `outdated` for a host from before them.
+ */
+export interface TextStarter {
+  id: string; model: string; name: string;
+  /** A model's sizes share `variantOf`, each with its `variant` label. */
+  variantOf?: string; variant?: string;
+  kind: "chat" | "embedding" | "speak" | "transcribe";
+  server: "llamacpp" | "vllm" | "speech" | "whispercpp";
+  vision: boolean; repo: string;
+  /** Bytes to download, and the GPU memory it wants loaded. */
+  size: number; needs: number;
+  state: "here" | "downloading" | "available";
+  fits: "gpu" | "ram" | "cpu" | "too_big";
+}
+// POST /api/u/:userId/hosts/:endpointId/text-starters/:starterId/download → { downloads }: downloads its files at the pinned revision, with the user's Hugging Face token.
 /** POST /api/u/:userId/hosts/:endpointId/manage → the host's answer. Loading, pinning, GPU settings, the system RAM allowance, placements, scan, usage only. */
 export interface HostManage { method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE"; path: string; body?: unknown }
 /** GET /api/u/:userId/hosts/:endpointId/dashboard → { url } */

@@ -18,6 +18,7 @@ import type { Downloads } from "./downloads.ts";
 import type { Images } from "./images.ts";
 import type { Runtime } from "./runtime.ts";
 import { StateFile } from "./state.ts";
+import { TEXT_STARTERS, listStarters, starterFiles } from "./text-starters.ts";
 import { Updates } from "./updates.ts";
 
 export interface HostOptions {
@@ -235,9 +236,29 @@ export class Host {
     // /v1 carries prompts: only a paired Lyrica server may use it.
     if (pathname.startsWith("/v1/") && access !== "client") throw refused("Only a paired Lyrica server can use /v1.");
     if (this.runtime && (await this.runtime.route(req, res, pathname, method))) return;
+    if (pathname === "/host/v1/text-starters" && method === "GET") return sendJson(res, 200, { starters: await this.textStarters() });
+    const starter = pathname.match(/^\/host\/v1\/text-starters\/([a-z0-9.-]{1,80})\/download$/);
+    if (starter && method === "POST" && this.downloads) {
+      const s = TEXT_STARTERS.find((x) => x.id === starter[1]);
+      if (!s || !(await this.textStarters()).some((x) => x.id === s.id)) throw notFound();
+      // Hugging Face's token, when Lyrica sends one, goes only to Hugging Face.
+      const t = req.headers["x-hub-token"];
+      const token = typeof t === "string" && t ? t : undefined;
+      const files = starterFiles(s, await this.downloads.list("huggingface", s.repo, s.revision, token));
+      const made = files.length ? await this.downloads.request({ source: "huggingface", repo: s.repo, revision: s.revision, files }, token) : { downloads: [] };
+      this.opts.log("starter downloading", { starter: s.id, files: files.length });
+      return sendJson(res, 202, made);
+    }
     if (this.downloads && (await this.downloads.route(req, res, url, method))) return;
     if (this.images && (await this.images.route(req, res, url, method))) return;
     throw notFound();
+  }
+
+  /** The text starters this host can serve, each with its state here (host/API.md, "Text starters"). */
+  private async textStarters() {
+    const status = await this.status();
+    const models = new Set((this.runtime?.models ?? []).map((m) => m.id));
+    return listStarters(status as Parameters<typeof listStarters>[0], models, this.downloads?.inFlight ?? new Set());
   }
 
   async status() {
