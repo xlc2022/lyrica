@@ -536,7 +536,7 @@ class Models {                                              // new Models(keyrin
   embed(ctx, texts, { query?, signal?, timeoutMs? }): Promise<{ model; vectors: Float32Array[]; resolution }>   // the Embeddings list, POST /embeddings (OpenAI shape), at most EMBED_BATCH texts; query wraps each in queryText; model is the offering's model ID; CloudModelForbidden, NoModel, Offline
   embeddingModel(ctx): { model; local } | undefined   // the model ID the Embeddings list resolves to and whether its endpoint is local, without calling it
   localOnlyThreads(userId): string[]        // the user's general threads switched to local-only
-  transcribe(ctx, wav, { language?, signal? }): Promise<{ text; resolution; audioSeconds? }>   // in voiceContext(ctx); CloudModelForbidden, NoModel, Offline
+  transcribe(ctx, wav, { language?, signal? }): Promise<{ text; resolution; audioSeconds? }>   // the Dictation list; with no General one, the Private column's; CloudModelForbidden, NoModel, Offline
   speak(ctx, text, { voice?, speed?, language?, signal? }): Promise<{ audio: ReadableStream<Uint8Array>; resolution; voice? }>   // raw PCM, SPEECH_FORMAT
   speechModel(task, ctx): { label; kind } | { reason: "none" | "down"; problem }
   // Settings
@@ -582,7 +582,7 @@ class Models {                                              // new Models(keyrin
   hostDashboard(userId, hostId): string                     // a direct link, at the address that last answered
 }
 // Also exported: CloudModelForbidden, NoModel, Offline (a NoModel: code "offline", task, tried), PlanWaiting (endpointId, until), isUnreachable(err),
-// HostRefused (with `code`), PairingFailed, HostIdentityChanged, voiceContext(ctx);
+// HostRefused (with `code`), PairingFailed, HostIdentityChanged, namesTranscriber(modelId);
 // SPEECH_FORMAT (s16le, 24 kHz, mono), SPEECH_CONTENT_TYPE, MAX_CLIP_SECONDS (600), MAX_CLIP_BYTES, MAX_SPEAK_CHARS, wavData, wavSeconds, pcmSeconds, LANGUAGE;
 // STALE_DAYS, GONE_DAYS, HEALTH_MS, CAPABILITIES, ANSWER_SETTINGS, TASKS, TASK_NAMES (each task in words, for messages), THINKING_LEVELS; isRestricted,
 // checkTask, refId, baseName, acceptedSettings(endpoint), payloadFields(…); fingerprint, normaliseCode, pairingProofs,
@@ -707,8 +707,11 @@ class Models {                                              // new Models(keyrin
 - **Speech.** `speech.transcribe` and `speech.speak` have lists of their
   own (neither follows chat) and take models with the `transcribe` or
   `speak` capability, reported by a host or set by hand. `transcribe` and
-  `speak` follow the same boundary as `resolve`; `transcribe` runs in
-  `voiceContext(ctx)`, so only the thread's own pick can be a cloud model.
+  `speak` follow the same boundary as `resolve`; a general context with no
+  Dictation list (thread or column) uses the Private column's, so a cloud
+  model hears a voice only when it was picked. A plain endpoint's model
+  whose ID names a transcription model (`namesTranscriber`) is marked
+  `transcribe` when its list is read.
   Both run through `callWithFallback`: an endpoint that can't answer is
   marked down and the next model in the list answers; a list with nothing
   that can answer throws `Offline`.

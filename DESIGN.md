@@ -1273,15 +1273,16 @@ local-only threads use local speech models only.
   always-on 3090. Cloud speech is a cloud endpoint like any other (OpenAI
   first). The browser's own speech features are never used: Chrome sends
   dictation to Google, which can't keep the local/cloud line.
-- **A user's voice is personal data.** Even in a general thread, audio
-  goes to a cloud model only when the user picked that model in the
-  thread's **Dictation** select, after a short warning dialog: the
-  confirmed pick is the consent, for that thread
-  (and its branches) only; threads she starts from it begin without it.
-  Without one, Dictation uses the Private column's
-  model, whatever the thread's preset (`voiceContext`). The owner chose this over
-  a separate Voice to cloud switch (2026-10-11). Her text read aloud is
-  message text and follows the router's rules alone.
+- **Picking a cloud Dictation model is the consent.** A general thread's
+  audio goes to a cloud model only when the user put one in the General
+  column's **Dictation** list or the thread's Dictation select; no dialog
+  asks again (the owner, 2026-11-16, replacing the 2026-10-11 per-thread
+  warning). With no General list, Dictation uses the Private column's
+  list, so nothing reaches the cloud unpicked. A plain endpoint's
+  transcription models are known by name (an ID containing `transcribe`
+  or `whisper`, such as OpenAI's `gpt-transcribe` and `whisper-1`), or
+  marked by hand when added. Her text read aloud is message text and
+  follows the router's rules alone.
 - **Nothing is kept but text.** Audio is never written to disk or logged,
   in `lyricad`, on the host or in the browser. What the user says becomes
   their message's text; call records hold the model and the seconds of

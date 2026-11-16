@@ -128,15 +128,15 @@ describe("dictation", () => {
     expect((await s.ada.post(`${s.path}/transcribe`, wav(601), { "content-type": "audio/wav" })).status).toBe(413);
   });
 
-  it("sends a thread's voice to a cloud model only when Dictation picks it there", async () => {
+  it("sends a thread's voice to a cloud model once Dictation picks it, in the column or the thread", async () => {
     const s = await setup("general");
     const cloud = await fakeSpeech();
     const ep = (await s.ada.post<EndpointInfo>(`${s.u}/endpoints`, { name: "openai", kind: "cloud", baseUrl: cloud.baseUrl, apiKey: "sk" })).body;
     const stt = ep.models.find((m) => m.modelId === "whisper-large-v3-turbo")!.id;
-    await s.ada.patch(`${s.u}/offerings/${stt}`, { transcribe: true });
-    await s.ada.put(`${s.u}/columns/general/speech.transcribe`, { model: { offeringId: stt } });
+    // Its name marks it for Dictation.
+    expect(ep.models.find((m) => m.id === stt)?.transcribe).toBe(true);
 
-    // The General column names it, but without the thread's pick the Private column's model hears the clip.
+    // With no General list, the Private column's model hears the clip.
     let settings = (await s.ada.get<ThreadSettings>(`${s.path}/settings`)).body;
     expect(settings.models["speech.transcribe"]).toMatchObject({ source: "column", kind: "local" });
     // An optional task nobody set says so in its select, with no problem beside it.
@@ -151,11 +151,16 @@ describe("dictation", () => {
     expect((await s.ada.patch<Presets>(`${s.u}/presets`, { readAloudLive: true })).body.readAloudLive).toBe(true);
     expect((await s.ada.get<ThreadSettings>(`${s.path}/settings`)).body.speech.readAloudLive).toBe(true);
     expect((await s.ada.patch(`${s.u}/presets`, { readAloudLive: "yes" })).status).toBe(400);
-    // Picked in the thread's Dictation select: the cloud model hears it.
-    settings = (await s.ada.patch<ThreadSettings>(`${s.path}/settings`, { models: { "speech.transcribe": { offeringId: stt } } })).body;
+    // Picked in the General column: the cloud model hears it, with no pick in the thread.
+    await s.ada.put(`${s.u}/columns/general/speech.transcribe`, { model: { offeringId: stt } });
+    settings = (await s.ada.get<ThreadSettings>(`${s.path}/settings`)).body;
+    expect(settings.models["speech.transcribe"]).toMatchObject({ source: "column", kind: "cloud" });
     expect(settings.speech.transcribe).toMatchObject({ available: true, kind: "cloud" });
     expect((await s.ada.post(`${s.path}/transcribe`, wav(1), { "content-type": "audio/wav" })).status).toBe(200);
     expect(cloud.heard).toHaveLength(1);
+    // Picked in the thread's Dictation select: the same.
+    settings = (await s.ada.patch<ThreadSettings>(`${s.path}/settings`, { models: { "speech.transcribe": { offeringId: stt } } })).body;
+    expect(settings.speech.transcribe).toMatchObject({ available: true, kind: "cloud" });
 
     // A local-only thread can't keep a cloud pick.
     expect((await s.ada.patch(`${s.path}/settings`, { localOnly: true })).status).toBe(400);

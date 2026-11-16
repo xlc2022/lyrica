@@ -77,12 +77,12 @@ const AWAY_CODES = new Set(["unreachable", "paused", "busy", "restarting", "unav
  * model refused this request.
  */
 /**
- * The context Dictation runs in: a thread's own Dictation choice may be a
- * cloud model, since picking it there is the user's consent; without one,
- * the Private column's list, so a user's voice never reaches a cloud model
- * they didn't pick in that thread.
+ * Whether a model ID names a transcription model (OpenAI's gpt-transcribe,
+ * gpt-4o-transcribe and whisper-1, Groq's whisper-large-v3): a plain
+ * endpoint's list says nothing of what a model does, so the name marks it
+ * for Dictation. A model host reports its own.
  */
-export const voiceContext = (ctx: CallContext): CallContext => (ctx.overrides?.["speech.transcribe"]?.length ? ctx : { ...ctx, localOnly: true });
+export const namesTranscriber = (modelId: string): boolean => /transcribe|whisper/i.test(modelId);
 
 export function isUnreachable(err: unknown): boolean {
   if (err instanceof HostRefused) return AWAY_CODES.has(err.code);
@@ -1034,6 +1034,8 @@ export class Models {
         });
       }
       found = found.map(({ routerState: _, ...m }) => m);
+      // A plain endpoint's transcription models are known by name; a host and a plan say what theirs do.
+      if (ep.api !== "host" && !isPlan(ep.api)) found = found.map((m) => m.transcribe === undefined && namesTranscriber(m.modelId) ? { ...m, transcribe: true } : m);
       // A ChatGPT plan's image tool is one model of its own, not a switch on each chat model.
       if (ep.api === "chatgpt") found = [...found, PLAN_IMAGE];
     } catch (err) {
@@ -3200,8 +3202,9 @@ export class Models {
 
   /**
    * Transcribes a WAV clip with the context's Dictation model: the only way
-   * a user's audio reaches a model. A cloud model answers only when the
-   * thread picked it (`voiceContext`); otherwise the Private column's list. An endpoint that can't answer is marked down and the next model
+   * a user's audio reaches a model. It resolves like any task: a private or
+   * local-only context uses local models only, and picking a cloud model (in
+   * a column or a thread) is the user's consent. An endpoint that can't answer is marked down and the next model
    * in the list is tried, within the list's kind (`callWithFallback`); when
    * none can, Offline.
    * The audio is held in memory only. The caller records the call.
@@ -3211,7 +3214,7 @@ export class Models {
     if (wav.length > MAX_CLIP_BYTES) throw new Error(`a clip is at most ${MAX_CLIP_SECONDS / 60} minutes`);
     const seconds = wavSeconds(wav);
     if (seconds === undefined) throw new Error("the clip isn't PCM WAV audio");
-    return this.callWithFallback("speech.transcribe", voiceContext(ctx), {}, async (r) => {
+    return this.callWithFallback("speech.transcribe", ctx, {}, async (r) => {
       const text = await transcribeAt(this.speechTarget(r), wav, opts);
       return { text, resolution: r, audioSeconds: seconds };
     });
@@ -3245,7 +3248,6 @@ export class Models {
    * the model's label and kind, or the plain reason it has none.
    */
   speechModel(task: SpeechTask, ctx: CallContext): { label: string; kind: "cloud" | "local" } | { reason: "none" | "down"; problem: string } {
-    if (task === "speech.transcribe") ctx = voiceContext(ctx);
     try {
       const r = this.resolve(task, ctx);
       return { label: r.label, kind: r.endpoint.kind };
@@ -3562,7 +3564,7 @@ export class Models {
   private listFor(task: Task, ctx: CallContext, c = this.catalog(ctx.userId)): { list: ModelRef[]; source: "thread" | "preset" | "column"; profile: string } | undefined {
     const restricted = isRestricted(ctx);
     const column = restricted ? "private" : "general";
-    return this.withUser(ctx.userId, (db) => {
+    const found = this.withUser(ctx.userId, (db) => {
       const col = this.readColumn(db, column);
       const chosen = ctx.preset ? this.presetRow(db, ctx.preset) : undefined;
       const honored = chosen && (!restricted || chosen.scope === "private") ? chosen : undefined;
@@ -3586,6 +3588,8 @@ export class Models {
       // not a thread's own Quality images pick, which replaces the whole list and may hold quality models only.
       return of(task) ?? (task === "image.fast" ? of("image.create", false) : OWN_LIST_ONLY.includes(task) ? undefined : of("chat", task !== "code"));
     });
+    // Dictation with no General list uses the Private column's, as it always has: a cloud model hears a voice only when it was picked.
+    return found ?? (task === "speech.transcribe" && !restricted ? this.listFor(task, { ...ctx, localOnly: true }, c) : undefined);
   }
 
   /** Why a model's machine is away now, if it is: stale, or down in the health cache. */

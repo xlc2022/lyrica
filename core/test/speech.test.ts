@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CloudModelForbidden, NoModel, Offline, type CallContext } from "../src/index.ts";
+import { CloudModelForbidden, namesTranscriber, NoModel, Offline, type CallContext } from "../src/index.ts";
 import { fakeHost } from "./fake-host.ts";
 import { deadUrl } from "./fake-openai.ts";
 import { fakeSpeech, wav } from "./fake-speech.ts";
@@ -52,28 +52,38 @@ describe("speech and the cloud boundary", () => {
     expect(s.openai.server.heard).toEqual([]);
   });
 
-  it("sends a general thread's voice to a cloud model only when the thread picked it; otherwise the private column's", async () => {
+  it("dictates a general thread on the General list, and on the Private list until it has one", async () => {
     const s = await setup();
-    // The General column names a cloud Dictation model, but without a pick in the thread the local one hears it.
+    // Picking a cloud model in the General column is the consent: a general thread's voice goes to it.
     const general = s.models.callContext(s.ada.id, "general", "web/g");
-    expect((await s.models.transcribe(general, wav(2))).resolution.label).toBe("speech/whisper-large-v3-turbo");
-    expect(s.models.speechModel("speech.transcribe", general)).toEqual({ label: "speech/whisper-large-v3-turbo", kind: "local" });
-    expect(s.openai.server.heard).toEqual([]);
-
-    // Her text read aloud is message text: the router's rules alone.
-    await read((await s.models.speak(general, "Hello there.")).audio);
-    expect(s.openai.server.heard).toHaveLength(1);
-
-    // Picked in the thread: the cloud model hears it, and a branch keeps the pick.
-    s.models.setThreadModel(s.ada.id, "general", "web/g", "speech.transcribe", [s.openai.stt]);
-    const on = await s.models.transcribe(s.models.callContext(s.ada.id, "general", "web/g"), wav(2), { language: "zh" });
+    expect(s.models.speechModel("speech.transcribe", general)).toEqual({ label: "openai/whisper-large-v3-turbo", kind: "cloud" });
+    const on = await s.models.transcribe(general, wav(2), { language: "zh" });
     expect(on).toMatchObject({ text: "hello from the fake", audioSeconds: 2 });
     expect(s.openai.server.heard.at(-1)).toMatchObject({ url: "/v1/audio/transcriptions", model: "whisper-large-v3-turbo", language: "zh", bytes: 64_044 });
-    expect(s.models.inheritContext(s.models.callContext(s.ada.id, "general", "web/g"), "web/branch").overrides?.["speech.transcribe"]).toEqual([s.openai.stt]);
-    // Cleared, it's local again.
-    s.models.setThreadModel(s.ada.id, "general", "web/g", "speech.transcribe");
+
+    // A thread's own pick replaces the column's list, and a branch keeps it.
+    s.models.setThreadModel(s.ada.id, "general", "web/g", "speech.transcribe", [s.speech.stt]);
     expect((await s.models.transcribe(s.models.callContext(s.ada.id, "general", "web/g"), wav(1))).resolution.endpoint.kind).toBe("local");
-    expect(s.openai.server.heard.filter((h) => h.url === "/v1/audio/transcriptions")).toHaveLength(1);
+    expect(s.models.inheritContext(s.models.callContext(s.ada.id, "general", "web/g"), "web/branch").overrides?.["speech.transcribe"]).toEqual([s.speech.stt]);
+    s.models.setThreadModel(s.ada.id, "general", "web/g", "speech.transcribe");
+
+    // With no General list, the Private column's local model hears it: nothing goes to the cloud unpicked.
+    s.models.setColumnTask(s.ada.id, "general", "speech.transcribe", []);
+    const heard = s.openai.server.heard.length;
+    expect((await s.models.transcribe(general, wav(1))).resolution.label).toBe("speech/whisper-large-v3-turbo");
+    expect(s.models.speechModel("speech.transcribe", general)).toEqual({ label: "speech/whisper-large-v3-turbo", kind: "local" });
+    expect(s.openai.server.heard).toHaveLength(heard);
+  });
+
+  it("marks a plain endpoint's transcription models by name", async () => {
+    const s = await setup();
+    const server = await fakeSpeech({ label: "groq" });
+    const ep = s.models.addEndpoint(s.ada, { name: "groq", kind: "cloud", baseUrl: server.baseUrl });
+    const found = await s.models.discover(s.ada, ep.id);
+    expect(found.find((o) => o.modelId === "whisper-large-v3-turbo")?.transcribe).toBe(true);
+    expect(found.find((o) => o.modelId === "kokoro")?.transcribe).toBeUndefined();
+    expect(["gpt-transcribe", "gpt-4o-mini-transcribe", "whisper-1"].every(namesTranscriber)).toBe(true);
+    expect(namesTranscriber("gpt-5.5")).toBe(false);
   });
 });
 
