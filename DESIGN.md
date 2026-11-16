@@ -2134,7 +2134,11 @@ when to use it, and steps in Markdown (at most 8,000 characters).
     into one script's input on a card (`run_with_secret`, Run on a root
     step), and `gentoo`, installing Gentoo onto a disk from a live Linux by
     the Handbook and keeping a Gentoo machine updated (the plan before every
-    `emerge`, a yes that names the disk or package), all three listed only
+    `emerge`, a yes that names the disk or package), and `nixos`, installing
+    NixOS from its installer ISO by the manual and changing, updating,
+    rolling back and cleaning a NixOS machine through its configuration
+    (a build and its diff before every switch, option lookups through the
+    NixOS MCP server), all four listed only
     while the thread has an SSH machine. A library skill of the same name
     replaces any of them.
 - **Storage.** The person's and hers live in the pool they belong to, in
