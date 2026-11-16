@@ -532,7 +532,8 @@ describe("the GPU queue", () => {
     holder.release();
     await split;
     expect(gpus.on("big")).toEqual([0, 1]);
-    expect(llamacpp.placements.get("big")!.split).toEqual([23.5 * GIB, 23.5 * GIB]);
+    // Split by what each has free once the small model is gone, in whole GiB: the same on both.
+    expect(llamacpp.placements.get("big")!.split).toEqual([22, 22]);
     expect(llamacpp.calls).toEqual(["load small@1", "unload small", "load big@0+1"]);
     await scheduler.unloadNow("big");
     expect(gpus.on("big")).toEqual([]);

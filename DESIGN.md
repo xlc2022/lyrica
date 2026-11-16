@@ -953,7 +953,8 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     - One GPU can hold several models of any mix; vLLM's share is reserved
       while that model is loaded.
     - A model split over several GPUs loads only when each has room, counts
-      against each, and unloads from all at once.
+      against each, and unloads from all at once. Unless a split is set,
+      each GPU takes a share by what it has free.
     - Models can be **pinned** (always loaded, such as the embedding and
       title models). Every other model is loaded on demand.
     - A placement that can't work is refused when it's saved, with the

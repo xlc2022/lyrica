@@ -184,6 +184,11 @@ export interface Option {
 }
 
 const room = (g: Gpu, gs: GpuSettings) => g.total - gs.keepFree;
+/** Auto's split: each GPU's free room less its server buffers, in whole GiB; by room alone when none is free. */
+function autoSplit(gpus: Gpu[], settings: (i: number) => GpuSettings, overhead?: Overhead): number[] {
+  const free = gpus.map((g) => Math.max(0, Math.floor((room(g, settings(g.index)) - Math.max(0, g.used) - overheadOn(overhead, g.index)) / GIB)));
+  return free.some((n) => n > 0) ? free : gpus.map((g) => Math.max(1, Math.floor(room(g, settings(g.index)) / GIB)));
+}
 const matching = (gpus: Gpu[]) => gpus.every((g) => g.name === gpus[0]!.name && g.total === gpus[0]!.total);
 const powerOfTwo = (n: number) => (n & (n - 1)) === 0;
 
@@ -198,8 +203,9 @@ function option(model: TextModel, s: ModelSettings, gpus: Gpu[], settings: (i: n
     const share = s.memoryShare ?? Math.min(0.95, Math.max(0.1, Math.ceil(((total / gpus.length + OVERHEAD) / smallest) * 20) / 20));
     return { gpus: ids, split: null, parallel: par, share, need: Object.fromEntries(gpus.map((g) => [g.index, Math.round(share * g.total)])) };
   }
-  // llama.cpp splits by ratio: the one set, or by each GPU's room.
-  const ratios = split ?? gpus.map((g) => room(g, settings(g.index)));
+  // llama.cpp splits by ratio: the one set, or by what each GPU has free for the weights and cache, in whole GiB,
+  // so a GPU another program fills takes less of the model and the others more (any number of GPUs).
+  const ratios = split ?? autoSplit(gpus, settings, overhead);
   const sum = ratios.reduce((a, b) => a + b, 0);
   // Layers left off the GPUs by hand take their share of the weights and cache to system RAM.
   const off = s.gpuLayers !== undefined && model.layers && s.gpuLayers < model.layers ? Math.round((total * (model.layers - s.gpuLayers)) / model.layers) : 0;
