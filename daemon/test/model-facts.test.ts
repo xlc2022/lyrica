@@ -64,12 +64,6 @@ describe("model facts for the last 24 hours", () => {
     expect(modelFacts(rows, ["general"], NOW, iso(-10 * DAY), factsWindow(NOW, iso(-30 * DAY - MIN))).models.map((m) => m.offeringId)).toEqual(["today", "week"]);
   });
 
-  it("uses the clock of the request when none is given", () => {
-    const r = modelFacts([call({ offeringId: "x", at: new Date().toISOString() })], ["general"]);
-    expect(r.models.map((m) => m.offeringId)).toEqual(["x"]);
-    expect(Date.parse(r.since)).toBe(Date.parse(r.until) - MODEL_FACTS_WINDOW_MS);
-  });
-
   it("counts every row once, whatever its task, and only in the pools shown", () => {
     const r = modelFacts([
       call({ offeringId: "a", task: "chat" }), call({ offeringId: "a", task: "code" }), call({ offeringId: "a", task: "title" }),

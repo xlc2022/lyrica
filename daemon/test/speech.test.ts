@@ -73,6 +73,8 @@ describe("making text speakable", () => {
     expect(sentences("One. Two and", false)).toEqual(["One."]);
     expect(speakable("Look:\n```\nconst x = 1;")).toBe("Look:");
     expect(sentences(`${"word ".repeat(150)}end.`).every((s) => s.length <= 400)).toBe(true);
+    expect(speakable("See <b>this</b>.")).toBe("See this.");
+    expect(sentences("One!! Three… Four.")).toEqual(["One!!", "Three…", "Four."]);
   });
 
   it("reads the first sentence alone, then a paragraph's sentences in one language together, up to a length", () => {

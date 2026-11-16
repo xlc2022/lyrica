@@ -257,22 +257,6 @@ async function apiGet<T>(page: Page, path: string): Promise<T> {
   return r.body as T;
 }
 
-test("opening and closing home tools creates no thread", async ({ page, baseURL }) => {
-  const userId = await enter(page, baseURL!);
-  await page.goto(`/#/u/${userId}`);
-  const threads = async () => (await apiGet<{ id: string; createdAt: string }[]>(page, `/api/u/${userId}/threads`)).map((t) => t.id).sort();
-  // The shared lyricad may still be finishing an earlier test's threads: start from a list that has settled.
-  const box = page.locator(".home-box");
-  await expect(box).toBeVisible();
-  let before = await threads();
-  await expect.poll(async () => { const now = await threads(); const same = JSON.stringify(now) === JSON.stringify(before); before = now; return same; }, { intervals: [500] }).toBe(true);
-  await box.getByRole("button", { name: "Attach or switch tools" }).click();
-  await expect(box.getByRole("checkbox", { name: "Images", exact: true })).toBeVisible();
-  await page.keyboard.press("Escape");
-  await expect(box.getByRole("menu", { name: "Attach and tools" })).toHaveCount(0);
-  expect(await threads()).toEqual(before);
-});
-
 test("home attachments and tool switches stay local until send and follow the selected pool", async ({ page, baseURL }) => {
   needsSandbox();
   const userId = await enter(page, baseURL!);
@@ -302,7 +286,8 @@ test("home attachments and tool switches stay local until send and follow the se
   await box.getByRole("button", { name: "Attach or switch tools" }).click();
   await expect(box.getByRole("checkbox", { name: "Images", exact: true })).not.toBeChecked();
   await page.keyboard.press("Escape");
-  expect(await threads()).toEqual(before);
+  // No thread was made. Ids only: an earlier test's thread may still get its title meanwhile.
+  expect((await threads()).map((t) => t.id)).toEqual(before.map((t) => t.id));
   expect(uploads).toEqual([]);
   await expect(box.getByRole("menu", { name: "Mode", exact: true })).toHaveCount(0);
   await noHorizontalScroll(page);

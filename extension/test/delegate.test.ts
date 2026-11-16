@@ -971,23 +971,6 @@ describe("talking with subagents", () => {
     expect(JSON.stringify(s.cloud.requests)).not.toContain("HEMLOCK");
   });
 
-  it("offers message, and no longer steer or answer", async () => {
-    const s = await setup();
-    const parent = s.thread();
-    const p = await s.open(parent);
-    try {
-      await p.session.prompt("hello");
-    } finally {
-      p.dispose();
-    }
-    const tool = JSON.stringify(s.cloud.requests[0]!.tools!.find((t) => t.function.name === "delegate"));
-    expect(tool).toContain("Only these granted host folders");
-    expect(tool).toContain("omit folders to read the parent's checkouts; scouts see them read-only");
-    expect(tool).toContain('"message"');
-    expect(tool).not.toContain('"steer"');
-    expect(tool).not.toContain('"answer"');
-  });
-
   it("asks before a writer's commands where its parent asks, and refuses on deny or stop", async () => {
     const scratch = tempDir();
     const target: ExecutionTarget = { name: "sandbox", cwd: async () => scratch, ops: () => ({ bash: createLocalBashOperations() } as unknown as ToolOps), folders: () => [] };

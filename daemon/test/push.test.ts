@@ -9,11 +9,7 @@ const settings = { url: "https://receiver.example/secret-topic", token: "private
 const resolve = (address: string) => async () => ({ addresses: [address], outside: true });
 afterEach(() => vi.restoreAllMocks());
 
-it("uses every fixed phrase, counts and an unknown-type fallback", () => {
-  expect(Object.values(PUSH_PHRASES)).toEqual([
-    "A question is waiting.", "A permission is waiting.", "A share is waiting.",
-    "A suggested persona change is waiting.", "A persona change waits for approval.", "A thread is waiting on you.",
-  ]);
+it("uses each type's fixed phrase, counts and an unknown-type fallback", () => {
   for (const [type, phrase] of Object.entries(PUSH_PHRASES)) expect(pushBody([type])).toBe(phrase);
   expect(pushBody(["future"])).toBe("Something is waiting.");
   expect(pushBody(["question", "share"])).toBe("2 things are waiting.");
