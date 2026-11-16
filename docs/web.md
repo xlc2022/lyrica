@@ -1400,6 +1400,8 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   that opens to the summary stored with it. Her own `threads` compact call
   is a **Compaction** card whose head opens to the summary in its arguments.
   Both read what the session already holds; nothing else is written.
+- Sends go to `lyricad` one at a time, after any thread setting just
+  changed, so two sent in quick succession arrive in the order sent.
 - A message sent during a turn waits as a follow-up and shows as waiting.
   Stop aborts the turn; `lyricad` drops the waiting follow-ups, so their text
   goes back into the composer. While she works, a waiting one has **Steer
