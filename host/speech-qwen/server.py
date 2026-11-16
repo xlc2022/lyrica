@@ -38,6 +38,11 @@ MODELS_DIR = os.environ.get("MODELS_DIR", "/models")
 VOICES_DIR = os.environ.get("VOICES_DIR", "/opt/speech/voices")
 CHUNK = 8  # decoder steps per streamed chunk: about 0.67 s of audio
 HAN = re.compile(r"[㐀-鿿豈-﫿]")
+# Without these the model picks a new tone for every piece it reads, so one reply's paragraphs swing from one
+# mood to another: a steady, warm delivery for CustomVoice's speakers (Base follows its clip instead), and sampling
+# a little tighter than the model's own (temperature 0.9, top-p 1).
+INSTRUCT = "Speak in a warm, calm and natural tone, at an even, relaxed pace."
+SAMPLING = {"temperature": 0.7, "top_p": 0.9}
 WARM_UP = ("Hello there, this is a warm-up sentence.", "你好，这是一句用来预热的话。")
 
 
@@ -233,9 +238,9 @@ class Model:
 
     def _stream(self, voice, text):
         if self.kind == "custom_voice":
-            return self.tts.generate_custom_voice_streaming(text=text, speaker=self.voices[voice], language=language(text), chunk_size=CHUNK, max_new_tokens=frame_limit(text))
+            return self.tts.generate_custom_voice_streaming(text=text, speaker=self.voices[voice], language=language(text), instruct=INSTRUCT, chunk_size=CHUNK, max_new_tokens=frame_limit(text), **SAMPLING)
         ref, transcript = self.voices[voice]
-        return self.tts.generate_voice_clone_streaming(text=text, language=language(text), ref_audio=ref, ref_text=transcript, chunk_size=CHUNK, max_new_tokens=frame_limit(text))
+        return self.tts.generate_voice_clone_streaming(text=text, language=language(text), ref_audio=ref, ref_text=transcript, chunk_size=CHUNK, max_new_tokens=frame_limit(text), **SAMPLING)
 
     def speak(self, voice, text, speed):
         """The reading's PCM as it is made. Readings of one model wait their turn on its thread."""
