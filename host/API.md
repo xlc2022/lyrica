@@ -773,6 +773,30 @@ A **download**:
   deletes its partial file, or clears a finished one from the list (a
   failed one's partial file is deleted then too).
 
+### Text starters
+
+The chat, embedding, voice and dictation models worth starting with, each
+pinned to a revision (`host/src/text-starters.ts`; image starters are
+recipes, below). The dashboard's and Lyrica's Download text model pages
+read the same list.
+
+- `GET /host/v1/text-starters` → `{ starters }`: those the host's servers
+  run, on a GPU or the CPU (dictation only on the one server that does it
+  here), each `{ id, model, name, variantOf?, variant?, kind, server,
+  vision, repo, size, needs, state, fits }`. A model's sizes share
+  `variantOf`, each with its `variant` label (`Q3`, `9B`). `size` is the
+  bytes to download, `needs` the GPU memory it wants loaded. `state` is
+  `here` once its model is in the folder, `downloading` while one of its
+  repository's files is on the way, else `available`. `fits` is `gpu`,
+  `ram` (llama.cpp only: too big for the GPUs that allow it together, but
+  not with the System RAM allowance), `cpu` (its server runs on the CPU
+  here) or `too_big`.
+- `POST /host/v1/text-starters/<id>/download` → `202 { downloads }`:
+  downloads its files at the pinned revision from Hugging Face, those not
+  here yet, with `X-Hub-Token` when sent. `404` for a starter this host
+  doesn't list; `409 starter_gone` when the repository no longer has one
+  of its files.
+
 ### Uploads
 
 A file from the user's own computer comes through Lyrica in pieces and is

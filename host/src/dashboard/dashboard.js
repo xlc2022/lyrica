@@ -158,7 +158,7 @@ const field = (label, input, title) => h("label", { class: "field", title }, h("
 
 // ---- State and refreshing ----
 
-const S = { me: null, status: null, models: [], downloads: [], recipes: [], starters: [], usage: [], clients: [], code: null, hub: { source: "huggingface", repo: "", token: "", url: "", sha: "", listing: null } };
+const S = { me: null, status: null, models: [], downloads: [], recipes: [], starters: [], textStarters: [], usage: [], clients: [], code: null, hub: { source: "huggingface", repo: "", token: "", url: "", sha: "", listing: null } };
 // What the user has set on the page: searches, chips, open groups (true or false once toggled), the picked starters.
 const UI = { textQ: "", textShow: "all", open: new Map(), source: "starters", q: "", show: "all", does: "all", pick: {} };
 
@@ -199,16 +199,17 @@ async function refresh(force = false) {
     $("login-unset").hidden = me.passwordSet;
     return;
   }
-  const [status, models, downloads, recipes, starters, usage, clients] = await Promise.all([
+  const [status, models, downloads, recipes, starters, textStarters, usage, clients] = await Promise.all([
     api("/host/v1/status"),
     api("/host/v1/models").catch(() => ({ models: [] })),
     api("/host/v1/downloads").catch(() => ({ downloads: [] })),
     api("/host/v1/recipes").catch(() => ({ recipes: [] })),
     api("/host/v1/starters").catch(() => ({ starters: [] })),
+    api("/host/v1/text-starters").catch(() => ({ starters: [] })),
     api("/host/v1/usage").catch(() => ({ models: [] })),
     me.access === "client" ? { clients: [] } : api("/dashboard/clients"),
   ]);
-  Object.assign(S, { status, models: models.models, downloads: downloads.downloads, recipes: recipes.recipes.filter((r) => r.state !== "ignored"), starters: starters.starters, usage: usage.models, clients: clients.clients });
+  Object.assign(S, { status, models: models.models, downloads: downloads.downloads, recipes: recipes.recipes.filter((r) => r.state !== "ignored"), starters: starters.starters, textStarters: textStarters.starters, usage: usage.models, clients: clients.clients });
   show();
   if (!busy() || force) render();
 }
@@ -439,90 +440,25 @@ function textModels() {
   }) : h("li", { class: "empty" }, "No models match."))];
 }
 
-/**
- * Models worth starting with, downloaded at a pinned revision into the models folder. `id` is the model id
- * the file or folder gets; `also` matches the rest of a folder's files; `needs` is the GPU memory it wants loaded.
- */
-const STARTERS = [
-  { id: "lyrica/huggingface/unsloth/Qwen3.8-27B-GGUF/Qwen3.8-27B-UD-Q4_K_M.gguf", name: "Qwen3.8 27B", kind: "chat", server: "llamacpp",
-    repo: "unsloth/Qwen3.8-27B-GGUF", revision: "4ca720788d1e01f1bff70c033e0d0028fd02e502", files: ["Qwen3.8-27B-UD-Q4_K_M.gguf", "mmproj-F16.gguf"],
-    size: 16_464_440_224 + 927_607_488, needs: 22 * 2 ** 30 },
-  { id: "lyrica/huggingface/unsloth/GLM-5.3-Flash-GGUF/UD-Q3_K_XL/GLM-5.3-Flash-UD-Q3_K_XL-00001-of-00004.gguf", name: "GLM 5.3 Flash", kind: "chat", server: "llamacpp",
-    repo: "unsloth/GLM-5.3-Flash-GGUF", revision: "a38483c8cd5df544f53d70fb281afe97369d5ab6",
-    files: [1, 2, 3, 4].map((n) => `UD-Q3_K_XL/GLM-5.3-Flash-UD-Q3_K_XL-0000${n}-of-00004.gguf`).concat("mmproj-F16.gguf"),
-    size: 147_535_922_080 + 1_128_047_296, needs: 160 * 2 ** 30 },
-  { id: "lyrica/huggingface/unsloth/GLM-5.3-Flash-GGUF/UD-Q4_K_XL/GLM-5.3-Flash-UD-Q4_K_XL-00001-of-00006.gguf", name: "GLM 5.3 Flash (Q4)", kind: "chat", server: "llamacpp",
-    repo: "unsloth/GLM-5.3-Flash-GGUF", revision: "a38483c8cd5df544f53d70fb281afe97369d5ab6",
-    files: [1, 2, 3, 4, 5, 6].map((n) => `UD-Q4_K_XL/GLM-5.3-Flash-UD-Q4_K_XL-0000${n}-of-00006.gguf`).concat("mmproj-F16.gguf"),
-    size: 199_707_321_472 + 1_128_047_296, needs: 208 * 2 ** 30 },
-  { id: "lyrica/huggingface/unsloth/DeepSeek-V4-Flash-GGUF/UD-Q4_K_XL/DeepSeek-V4-Flash-UD-Q4_K_XL-00001-of-00005.gguf", name: "DeepSeek V4 Flash", kind: "chat", server: "llamacpp",
-    repo: "unsloth/DeepSeek-V4-Flash-GGUF", revision: "e3aa0d6a5fa4f820d9e132ac1fd1d01e1b2b49e0",
-    files: [1, 2, 3, 4, 5].map((n) => `UD-Q4_K_XL/DeepSeek-V4-Flash-UD-Q4_K_XL-0000${n}-of-00005.gguf`),
-    size: 155_095_840_320, needs: 168 * 2 ** 30 },
-  { id: "lyrica/huggingface/unsloth/Qwen3.5-9B-GGUF/Qwen3.5-9B-Q4_K_M.gguf", name: "Qwen3.5 9B", kind: "chat", server: "llamacpp",
-    repo: "unsloth/Qwen3.5-9B-GGUF", revision: "3885219b6810b007914f3a7950a8d1b469d598a5", files: ["Qwen3.5-9B-Q4_K_M.gguf", "mmproj-F16.gguf"],
-    size: 5_680_522_464 + 918_166_080, needs: 8 * 2 ** 30 },
-  // Eyes for a chat model without vision (Look at images): the 4B names files and copies text best, the 2B for small cards.
-  { id: "lyrica/huggingface/unsloth/Qwen3.5-4B-GGUF/Qwen3.5-4B-Q4_K_M.gguf", name: "Qwen3.5 4B", kind: "chat", server: "llamacpp",
-    repo: "unsloth/Qwen3.5-4B-GGUF", revision: "e87f176479d0855a907a41277aca2f8ee7a09523", files: ["Qwen3.5-4B-Q4_K_M.gguf", "mmproj-F16.gguf"],
-    size: 2_740_937_888 + 672_423_616, needs: 6.5 * 2 ** 30 },
-  { id: "lyrica/huggingface/unsloth/Qwen3.5-2B-GGUF/Qwen3.5-2B-Q4_K_M.gguf", name: "Qwen3.5 2B", kind: "chat", server: "llamacpp",
-    repo: "unsloth/Qwen3.5-2B-GGUF", revision: "f6d5376be1edb4d416d56da11e5397a961aca8ae", files: ["Qwen3.5-2B-Q4_K_M.gguf", "mmproj-F16.gguf"],
-    size: 1_280_835_840 + 668_227_264, needs: 4 * 2 ** 30 },
-  { id: "lyrica/huggingface/Qwen/Qwen3-Embedding-0.6B-GGUF/Qwen3-Embedding-0.6B-Q8_0.gguf", name: "Qwen3 Embedding 0.6B", kind: "embedding", server: "llamacpp",
-    repo: "Qwen/Qwen3-Embedding-0.6B-GGUF", revision: "370f27d7550e0def9b39c1f16d3fbaa13aa67728", files: ["Qwen3-Embedding-0.6B-Q8_0.gguf"],
-    size: 639_150_592, needs: 1 * 2 ** 30 },
-  { id: "lyrica/huggingface/onnx-community/Kokoro-82M-v1.1-zh-ONNX", name: "Kokoro 82M", kind: "speak", server: "speech",
-    repo: "onnx-community/Kokoro-82M-v1.1-zh-ONNX", revision: "6cc0f0d2ebe369a68b0df87c2b65c1af8c0ac3e3",
-    files: ["onnx/model.onnx", "config.json", "tokenizer.json", "tokenizer_config.json", "voices/zm_010.bin", "voices/zf_001.bin", "voices/af_maple.bin"], size: 0.33 * 2 ** 30, needs: 1 * 2 ** 30 },
-  { id: "lyrica/huggingface/ggerganov/whisper.cpp/ggml-large-v3-turbo-q8_0.bin", name: "Whisper large-v3 turbo", kind: "transcribe", server: "whispercpp",
-    repo: "ggerganov/whisper.cpp", revision: "5359861c739e955e79d9a303bcbc70fb988958b1", files: ["ggml-large-v3-turbo-q8_0.bin"], size: 874_188_075, needs: 1.5 * 2 ** 30 },
-  { id: "lyrica/huggingface/openai/whisper-large-v3-turbo", name: "Whisper large-v3 turbo", kind: "transcribe", server: "vllm",
-    repo: "openai/whisper-large-v3-turbo", revision: "41f01f3fe87f28c78e2fbf8b568835947dd65ed9",
-    files: ["model.safetensors"], also: /^[^/]+\.(json|txt)$/, size: 1.6 * 2 ** 30, needs: 2.4 * 2 ** 30 },
-  // Mistral's own format (consolidated.safetensors, params.json, tekken.json), which vLLM picks for it; the repository's
-  // model.safetensors is the same weights again for Transformers. config.json is how the host knows it. Needs: its
-  // weights and the cache for the default 32k context.
-  { id: "lyrica/huggingface/mistralai/Voxtral-Mini-4B-Realtime-2602", name: "Voxtral Mini 4B Realtime", kind: "transcribe", server: "vllm",
-    repo: "mistralai/Voxtral-Mini-4B-Realtime-2602", revision: "2769294da9567371363522aac9bbcfdd19447add",
-    files: ["consolidated.safetensors", "params.json", "tekken.json", "config.json", "generation_config.json", "processor_config.json"],
-    size: 8_874_376_582, needs: 14 * 2 ** 30 },
-];
-
-/** Downloads a starter's files, read from the repository's listing at its revision. */
-async function getStarter(s) {
-  const listing = await api(`/host/v1/hub/files?source=huggingface&repo=${encodeURIComponent(s.repo)}&revision=${s.revision}`);
-  const missing = s.files.filter((f) => !listing.files.some((x) => x.path === f));
-  if (missing.length) throw new Error(`${s.repo} no longer has ${missing.join(", ")}.`);
-  const files = listing.files.filter((f) => f.allowed && !f.present && (s.files.includes(f.path) || s.also?.test(f.path))).map((f) => f.path);
-  if (files.length) await post("/host/v1/downloads", { source: "huggingface", repo: s.repo, revision: listing.revision, files });
-}
+/** Downloads a starter's files at its pinned revision (host/src/text-starters.ts). */
+const getStarter = (s) => post(`/host/v1/text-starters/${encodeURIComponent(s.id)}/download`, {});
 
 const STARTER_GROUPS = { chat: "Chat", embedding: "Embedding", speak: "Voice", transcribe: "Voice" };
 
-/** The text starters this host can serve, as the download page's choices: its servers run them, on a GPU or the CPU. */
+/** The text starters the host lists for its servers (host/API.md, "Text starters"), as the download page's choices: a model's sizes share a row. */
 function textStarters() {
-  const { servers, cpuServers = [], gpus, dictation = "vllm", modelsFolder } = S.status;
-  // What GPUs that allow a starter's server can give it: llama.cpp splits a model over all of them, the others use one.
-  const rooms = (server) => gpus.filter((g) => !g.settings.excluded && g.settings.servers.includes(server === "whispercpp" ? "speech" : server)).map((g) => g.vram.total - g.settings.keepFree);
-  const room = (server) => server === "llamacpp" ? rooms(server).reduce((a, b) => a + b, 0) : Math.max(0, ...rooms(server));
-  // llama.cpp can keep what its GPUs lack in the system RAM allowance.
-  const ram = S.status.systemRam?.allowance ?? 0;
-  // Dictation runs on one server here: whisper.cpp beside a CMP 100-210, else vLLM.
-  const serves = (s) => (s.kind !== "transcribe" || s.server === dictation) && (s.server === "whispercpp" || servers.includes(s.server) || cpuServers.includes(s.server));
-  return STARTERS.filter(serves).map((s) => {
-    const here = S.models.some((m) => m.id === s.id);
-    const coming = S.downloads.some((d) => ["queued", "downloading", "verifying"].includes(d.state) && d.path.startsWith(`lyrica/huggingface/${s.repo}/`));
-    const fits = cpuServers.includes(s.server) || s.needs <= room(s.server);
-    const spills = !fits && s.server === "llamacpp" && s.needs <= room(s.server) + ram;
+  const free = S.status.modelsFolder.free;
+  return S.textStarters.map((s) => {
+    const kinds = [KINDS[s.kind], s.vision ? "vision" : null];
+    const installed = s.state !== "available";
     return {
-      id: s.id, name: s.name, row: s.name, group: STARTER_GROUPS[s.kind], words: [KINDS[s.kind], SERVER_NAMES[s.server]], bytes: s.size, installed: here || coming,
-      facts: [KINDS[s.kind], SERVER_NAMES[s.server], [num(size(s.size)), " to download"], cpuServers.includes(s.server) ? "CPU" : ["needs ", num(size(s.needs)), " of GPU memory"]],
-      pill: here ? h("span", { class: "pill" }, "existing") : coming ? h("span", { class: "pill info" }, "downloading")
-        : s.size > modelsFolder.free ? h("span", { class: "pill warn", title: `${size(s.size)} to download, ${size(modelsFolder.free)} free.` }, "not enough space")
-        : !fits && !spills ? h("span", { class: "pill warn", title: "More than any GPU here can give it." }, "too big for these GPUs")
-        : spills ? h("span", { class: "pill warn", title: "Runs slower: part of it stays in system RAM." }, "uses system RAM") : null,
-      off: here || coming || s.size > modelsFolder.free || (!fits && !spills),
+      id: s.id, name: s.name, row: s.variantOf ?? s.name, variant: s.variant, group: STARTER_GROUPS[s.kind], words: [...kinds, SERVER_NAMES[s.server], s.variantOf, s.variant], bytes: s.size, installed,
+      facts: [...kinds, SERVER_NAMES[s.server], [num(size(s.size)), " to download"], s.fits === "cpu" ? "CPU" : ["needs ", num(size(s.needs)), " of GPU memory"]],
+      pill: s.state === "here" ? h("span", { class: "pill" }, "existing") : s.state === "downloading" ? h("span", { class: "pill info" }, "downloading")
+        : s.size > free ? h("span", { class: "pill warn", title: `${size(s.size)} to download, ${size(free)} free.` }, "not enough space")
+        : s.fits === "too_big" ? h("span", { class: "pill warn", title: "More than any GPU here can give it." }, "too big for these GPUs")
+        : s.fits === "ram" ? h("span", { class: "pill warn", title: "Runs slower: part of it stays in system RAM." }, "uses system RAM") : null,
+      off: installed || s.size > free || s.fits === "too_big",
       get: () => getStarter(s),
     };
   });
@@ -710,7 +646,7 @@ function starterPicker(kind, all) {
     const sizes = row.map((x) => x.bytes);
     const lo = Math.min(...sizes), hi = Math.max(...sizes);
     const summary = many && !isPicked
-      ? joined([...s.facts.slice(0, kind === "text" ? 2 : 1), plural(row.length, "variant", "variants"), hi === 0 ? null : lo === hi ? [num(size(lo)), " to download"] : [num(size(lo)), " to ", num(size(hi)), " to download"]])
+      ? joined([...s.facts.slice(0, kind === "text" ? 3 : 1), plural(row.length, "variant", "variants"), hi === 0 ? null : lo === hi ? [num(size(lo)), " to download"] : [num(size(lo)), " to ", num(size(hi)), " to download"]])
       : joined(s.facts);
     const allOff = row.every((x) => x.off);
     const pill = many && !isPicked ? (allOff ? s.pill : row.find((x) => x.installed)?.pill) : s.pill;

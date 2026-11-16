@@ -231,11 +231,12 @@ row on a phone): GPUs, Models, Image models, Downloads, Usage, Lyrica
 servers and Password. A GPU's servers, the memory it keeps free and Left
 out are edited in its drawer (**Edit**); a model's placement and serving
 settings in its **Settings** drawer, where **Look up** reads its card.
-Under the model list, **Starters** offers models to begin with, each
-downloaded at a pinned revision: Qwen3.8 27B (Unsloth's UD-Q4_K_M with its
-vision projector, for a 24 GB GPU), GLM 5.3 Flash (Unsloth's UD-Q3_K_XL in
+Under the model list, **Starters** offers models to begin with (the list
+in `host/src/text-starters.ts`, which Lyrica's Download text model shows
+too), each downloaded at a pinned revision: Qwen3.8 27B (Unsloth's UD-Q4_K_M with its
+vision projector, for a 24 GB GPU), GLM 5.3 Flash Q3 (Unsloth's UD-Q3_K_XL in
 four parts with its projector, about 149 GB, for two 96 GB GPUs), GLM 5.3
-Flash (Q4) (UD-Q4_K_XL in six parts, about 201 GB, for two 96 GB GPUs with
+Flash Q4 (UD-Q4_K_XL in six parts, about 201 GB, for two 96 GB GPUs with
 a system RAM allowance), DeepSeek V4 Flash (Unsloth's UD-Q4_K_XL in
 five parts, about 155 GB, text only, for two 96 GB GPUs), Qwen3.5 9B
 (Q4_K_M with its projector), Qwen3.5 4B and 2B (Q4_K_M with their
@@ -623,7 +624,8 @@ per host, and Lyrica's router filters create tiers by it.
   - Every package is pinned with its hash (`speech/requirements.*.txt`;
     `speech/lock.sh` remakes them), so nothing is fetched at run time.
 - **Starters**, pinned to the revisions that were benchmarked. Download
-  them on the dashboard or with `POST /host/v1/downloads`:
+  them on the dashboard, from Lyrica's Download text model, or with
+  `POST /host/v1/text-starters/<id>/download`:
   - the voice (the owner's pick from the benchmark):
     `onnx-community/Kokoro-82M-v1.1-zh-ONNX` at
     `6cc0f0d2ebe369a68b0df87c2b65c1af8c0ac3e3`: `onnx/model.onnx`,
