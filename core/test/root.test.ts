@@ -82,13 +82,18 @@ describe("a root step", () => {
     const step = rootStep({ machine: "box", path: "/home/lyrica/x.sh", why: "w", sudoers: [l] }, Buffer.from("echo hi\n"), "lyrica", true);
     expect(step.sudoers?.map((s) => s.line)).toEqual([l]);
     expect(step.sudoersCommand).toBeUndefined();
+    // A module of its own: a second extraRules in her module, which may already have one, wouldn't evaluate.
     expect(step.sudoersNixos).toBe([
-      "security.sudo.extraRules = [{",
-      '  users = [ "lyrica" ];',
-      '  commands = [ { command = "/run/current-system/sw/bin/systemctl restart nginx"; options = [ "NOPASSWD" ]; } ];',
-      "}];",
+      "# A file of its own (her module may already set extraRules), added to the configuration's imports",
+      "{",
+      "  security.sudo.extraRules = [{",
+      '    users = [ "lyrica" ];',
+      '    runAs = "root";',
+      '    commands = [ { command = "/run/current-system/sw/bin/systemctl restart nginx"; options = [ "NOPASSWD" ]; } ];',
+      "  }];",
+      "}",
       "",
-      "# In her module (a second extraRules in the same file merges into the first's list), then:",
+      "# Then:",
       "sudo nixos-rebuild switch",
     ].join("\n"));
     // /usr/bin on NixOS holds only env, so the rule would never match.

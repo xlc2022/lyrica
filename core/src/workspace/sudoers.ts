@@ -100,19 +100,23 @@ export function checkSudoers(lines: unknown, account: string, nixos = false): Su
 /** A Nix string literal: `"`, `\` and `${` escaped. */
 export const nixString = (s: string) => `"${s.replaceAll("\\", "\\\\").replaceAll('"', '\\"').replaceAll("${", "\\${")}"`;
 
-/** NixOS sudo rules for her account, for the configuration's `security.sudo.extraRules`: each command, with or without a password. */
+/** NixOS sudo rules for her account, for the configuration's `security.sudo.extraRules`: each command, as root only (as the sudoers lines' `(root)`), with or without a password. */
 export function nixosSudo(account: string, commands: string[], nopasswd = true): string {
   const each = commands.map((c) => nopasswd ? `{ command = ${nixString(c)}; options = [ "NOPASSWD" ]; }` : nixString(c));
-  return ["security.sudo.extraRules = [{", `  users = [ ${nixString(account)} ];`, `  commands = [ ${each.join(" ")} ];`, "}];"].join("\n");
+  return ["security.sudo.extraRules = [{", `  users = [ ${nixString(account)} ];`, '  runAs = "root";', `  commands = [ ${each.join(" ")} ];`, "}];"].join("\n");
 }
 
 /**
  * A run-as-root card's offered lines on NixOS, whose sudo reads no sudoers.d:
- * the `security.sudo.extraRules` lines for her module, then the rebuild that
- * applies them. `lines` are checked lines (`checkSudoers`), so each is
- * `<account> ALL=(root) NOPASSWD: <command>`.
+ * a module of its own holding the `security.sudo.extraRules` rule, then the
+ * rebuild that applies it. Its own file, listed in `imports`, because her
+ * module may already define `extraRules` (Add machine's sudo, an earlier
+ * card), and a second definition in one attribute set is an error; lists
+ * from separate modules merge. `lines` are checked lines (`checkSudoers`),
+ * so each is `<account> ALL=(root) NOPASSWD: <command>`.
  */
 export function nixosSudoers(account: string, lines: string[]): string {
   const head = `${account} ALL=(root) NOPASSWD: `;
-  return [nixosSudo(account, lines.map((l) => l.slice(head.length))), "", "# In her module (a second extraRules in the same file merges into the first's list), then:", "sudo nixos-rebuild switch"].join("\n");
+  const rule = nixosSudo(account, lines.map((l) => l.slice(head.length))).split("\n").map((l) => `  ${l}`);
+  return ["# A file of its own (her module may already set extraRules), added to the configuration's imports", "{", ...rule, "}", "", "# Then:", "sudo nixos-rebuild switch"].join("\n");
 }

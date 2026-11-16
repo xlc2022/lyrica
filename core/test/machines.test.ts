@@ -136,7 +136,7 @@ describe("machines", () => {
     expect(hers.setup).toContain("services.openssh.extraConfig = lib.mkAfter ''\n    Match User lyrica\n        AuthorizedKeysFile /etc/ssh/authorized_keys.d/%u\n        PasswordAuthentication no");
     expect(hers.setup).not.toMatch(/sudo |sshd_config\.d|sudoers\.d/);
     expect(hers.rebuild).toMatch(/^sudo nixos-rebuild switch &&\n[^]*ssh-keygen -lf /);
-    expect(hers.sudo!.everything).toBe('security.sudo.extraRules = [{\n  users = [ "lyrica" ];\n  commands = [ { command = "ALL"; options = [ "NOPASSWD" ]; } ];\n}];');
+    expect(hers.sudo!.everything).toBe('security.sudo.extraRules = [{\n  users = [ "lyrica" ];\n  runAs = "root";\n  commands = [ { command = "ALL"; options = [ "NOPASSWD" ]; } ];\n}];');
     expect(hers.sudo!.password).toContain('commands = [ "ALL" ];');
     expect(hers.sudo!.password).toContain("sudo passwd lyrica");
     const own = await workspace.probeMachine(ada.id, "ada", { name: "nixlap", address: "ada@127.0.0.1", asUser: true, nixos: true });
