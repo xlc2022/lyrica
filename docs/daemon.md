@@ -1249,8 +1249,7 @@ is recorded as a call and only counts are logged.
   ([workspace.md](workspace.md), "The nightly sweep").
 - **`/sleep`.** `POST …/sleep/:pool`, or the text `/sleep` sent to a thread
   (which sleeps the thread's pool and starts no turn). In manual mode it
-  answers `confirm` unless confirmed, and once the run ends a fresh thread
-  opens in that pool (a `thread` event). Whatever would stop the run at once
+  answers `confirm` unless confirmed. It never creates a thread. Whatever would stop the run at once
   (no key, every sleep model's machine down, nothing new) is a `409` in
   plain words, and the skip is recorded. Each phase's machine is asked
   first, so a sleep list falls back past one that is off.

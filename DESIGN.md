@@ -2164,7 +2164,7 @@ Details in [docs/sleep.md](docs/sleep.md).
   agentic session written in her own voice, with only her memory tools.
 - **Schedule:** nightly at 04:00 by default, for each pool with new activity.
   `/sleep` runs it by hand. A **manual** mode works like Monika: sleep happens
-  only on `/sleep`, which then opens a fresh thread.
+  only on `/sleep`. Sleep never creates a thread the user sees.
 - **Pools:** general and private sleep run separately, each with its own model.
 - **Budget:** each phase may use 600k tokens or four of its model's context
   windows, whichever is more, on any model, paid ones included (the owner's

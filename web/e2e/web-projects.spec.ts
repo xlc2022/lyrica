@@ -2105,14 +2105,12 @@ test("Sleep History and Came from: the sidebar link opens it empty, the mode is 
   await expect(page.getByText("You said: Pelicans eat fish")).toBeVisible();
   await page.goto(`/#/u/${userId}/sleep`);
 
-  // Sleep now → General asks first; confirming runs it. The fake model never calls her sleep tools; in manual mode a fresh thread opens when it ends.
+  // Sleep now → General asks first; confirming runs it. The fake model never calls her sleep tools. It opens no thread: the page stays put.
   await page.getByRole("button", { name: "Sleep now" }).click();
   await page.getByRole("menu", { name: "Sleep now" }).getByRole("menuitem", { name: "General" }).click();
   const confirm = page.getByRole("dialog");
   await expect(confirm).toBeVisible();
   await confirm.getByRole("button", { name: "Sleep now" }).click();
-  await expect(page).toHaveURL(/\/t\/general\//);
-  await page.goto(`/#/u/${userId}/sleep`);
   const row = page.locator(".sleep-run[data-pool=general]");
   // The fake model only echoes and never calls her sleep tools, so the phases end unwritten: the run is partial.
   await expect(row).toHaveAttribute("data-status", "partial");
