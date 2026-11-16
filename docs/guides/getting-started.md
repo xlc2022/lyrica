@@ -1288,13 +1288,13 @@ refused. To replace the destination, enter the full URL and token again;
   daemon/deploy/install.sh
   ```
 
-  The script installs that commit as a release the same way: turns finish,
-  a snapshot, the switch and a restart, which logs everyone out. It
-  rebuilds Caddy only if a pin changed, and installs whatever packages,
-  units and tools the install is missing, so one run catches up an
-  install of any age. Check Node first: releases from 2026-11-16 need
-  24.15 or later, or 22.22.2 on 22 (NodeSource, as in "On Debian or Ubuntu"). What one run
-  brings to an older install:
+  The script installs that commit as a release the same way: turns finish, a
+  snapshot, the switch and a restart, which logs everyone out. It rebuilds
+  Caddy only if a pin changed, and installs whatever packages, units and
+  tools the install is missing, so one run catches up an install of any age.
+  Check Node first: releases from 2026-11-16 need 24.15 or later, or 22.22.2
+  on 22 (NodeSource, as in "On Debian or Ubuntu"). What one run brings to an
+  older install:
 
   - **Before releases** (no `/opt/lyrica/releases`): the old `lyricad`
     has no update socket, so the run can't wait for turns: stop
