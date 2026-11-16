@@ -352,18 +352,26 @@ per host, and Lyrica's router filters create tiers by it.
   stable-diffusion.cpp. A host using stable-diffusion.cpp lists no
   starter whose template it can't run (edits, Qwen-Image 2.1, SeedVR2).
   Qwen-Image 2.1 comes in bf16 throughout (ComfyUI hosts only): the base
-  model (40 steps of euler/simple at CFG 1, as its card and ComfyUI's
-  template run it, 2048×2048; tagged `quality`) and Turbo with the bf16
+  model (25 steps of euler/simple at CFG 3 with a negative prompt, APG at
+  eta 1, norm threshold 10 and momentum 0.3, then FreSca at 1, 2 and 8,
+  as stablediffusion.fr's Qwen-Image 2.1 guide and the 2.1 Fix LoRA's
+  workflow run it; 2048×2048; tagged `quality`), Max Realism (the same
+  model at 25 steps of res_2s on beta at CFG 3 with the negative prompt
+  and no APG or FreSca, as the civitaxian Qwen 2.1 workflow samples it;
+  tagged `quality`; about twice the base's time) and Turbo with the bf16
   Qwen3-VL 8B encoder, a variant of the Turbo starter with the int8 one.
+  Every 2.1 starter decodes with madebyollin's texture-fix VAE, a
+  finetune of the stock decoder that ComfyUI's Qwen-Image 2.1 tutorial
+  names for the stock one's fine checkerboard; it decodes the same
+  latents, so it changes only fine texture.
   Each is about 30.2 GiB (13.3 GiB model, 16.3 GiB encoder, 0.6 GiB VAE);
   the second adds only its 13.3 GiB model. The largest stage is the
   encoder, about 17 GiB, so they fit a 24 GB card. The `qwen-image-2.1`
   template samples on a recipe's `sigmas` when it has them (Turbo) and on
   `steps` and `scheduler` otherwise (the base model). A recipe can put
-  ComfyUI's APG and FreSca on the model path, as community workflows do
-  for texture at CFG 3 (`apg` and `fresca`, API.md), and can swap its
-  VAE for another of the same architecture, such as a texture-fix VAE
-  against the decoder's checkerboard (`swap`, API.md).
+  ComfyUI's APG and FreSca on the model path (`apg` and `fresca`,
+  API.md), and can swap its VAE for another of the same architecture
+  (`swap`, API.md).
   The video starters (Wan 2.2 TI2V 5B, T2V 14B and I2V 14B, LTX-2.5
   Distilled, MiniMax H3 Turbo) are for ComfyUI hosts only. Wan 2.2 is
   Apache 2.0. LTX-2.5's repository is gated: installing it needs a

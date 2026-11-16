@@ -840,7 +840,20 @@ describe("recipes", () => {
     const qi21BaseStarter = STARTERS.find((s) => s.id === "qwen-image-2.1")!;
     const qi21Base = fill(TEMPLATES.get("qwen-image-2.1")!, qi21Parts, [], { negativePrompt: "", ...qi21BaseStarter.defaults, prompt: "x", count: 1, seed: 1 });
     expect(qi21Base).not.toHaveProperty("sigmas");
-    expect(qi21Base.scheduled!.inputs).toEqual({ model: ["cache", 0], scheduler: "simple", steps: 40, denoise: 1 });
+    expect(qi21Base.scheduled!.inputs).toEqual({ model: ["cache", 0], scheduler: "simple", steps: 25, denoise: 1 });
+    // The base starter keeps texture at CFG 3 with APG then FreSca on the model path, and a negative prompt.
+    expect(qi21Base.apg!.inputs).toMatchObject({ model: ["cache", 0], eta: 1, norm_threshold: 10, momentum: 0.3 });
+    expect(qi21Base.fresca!.inputs).toMatchObject({ model: ["apg", 0], scale_low: 1, scale_high: 2, freq_cutoff: 8 });
+    expect(qi21Base.guider!.inputs).toMatchObject({ model: ["fresca", 0], cfg: 3 });
+    expect(qi21Base.encode!.inputs.negative_prompt).toMatch(/^low quality, /);
+    // Max Realism samples res_2s on beta at CFG 3, with no APG or FreSca.
+    const qi21Real = fill(TEMPLATES.get("qwen-image-2.1")!, qi21Parts, [], { negativePrompt: "", ...STARTERS.find((s) => s.id === "qwen-image-2.1-max-realism")!.defaults, prompt: "x", count: 1, seed: 1 });
+    expect(qi21Real.sampler!.inputs.sampler_name).toBe("res_2s");
+    expect(qi21Real.scheduled!.inputs).toMatchObject({ scheduler: "beta", steps: 25 });
+    expect(qi21Real.guider!.inputs).toMatchObject({ model: ["cache", 0], cfg: 3 });
+    expect(JSON.stringify(qi21Real)).not.toContain("$");
+    // Every 2.1 starter decodes with the texture-fix VAE.
+    for (const st of STARTERS.filter((x) => x.template === "qwen-image-2.1")) expect(st.parts.find((x) => x.role === "vae")!.repo, st.id).toBe("madebyollin/texture-fix-vae-for-qwen-image-2.1");
     expect(qi21Base.sample!.inputs.sigmas).toEqual(["scheduled", 0]);
     expect(JSON.stringify(qi21Base)).not.toContain("$");
     const qi21 = fill(TEMPLATES.get("qwen-image-2.1")!, [
@@ -1933,7 +1946,7 @@ describe("the image API", () => {
     // The test folder holds two of its parts at their download paths, but not its diffusion model.
     expect(z.parts.map((p: { present: boolean }) => p.present)).toEqual([false, true, true]);
     expect(body.starters.map((st: { id: string }) => st.id)).toEqual([
-      "cobijada-h3-hybrid-realism-w4a8", "cobijada-h3-hybrid-realism", "cobijada-h3-hybrid-w4a8", "cobijada-h3-hybrid", "cyberrealistic-krea2-4-fast", "cyberrealistic-krea2-4", "flux-schnell", "flux2-klein-4b", "flux2-klein-9b", "flux3-klein", "gonzalomo-krea2-4-fast", "gonzalomo-krea2-4", "juggernaut-xl-v9", "krea2-raw", "krea2-turbo-uncensored", "krea2-turbo", "kroma-fast", "kroma", "ltx-2.5-distilled", "minimax-h3-edit", "minimax-h3-image-w4a8", "minimax-h3-image", "minimax-h3-turbo-realism-w6a8", "minimax-h3-turbo-w6a8", "minimax-h3-turbo", "moss-image-edit", "moss-image", "p-h3-image-w4a8", "p-h3-image", "qwen-image-2.1-turbo-bf16", "qwen-image-2.1-turbo", "qwen-image-2.1", "qwen-image-2512", "qwen-image-edit", "qwen-image", "realism-stable-yogi-3-fast", "realism-stable-yogi-3", "realism-stable-yogi-moss-2", "realvisxl-v5", "scail-2", "sdxl", "seedvr2-3b", "seedvr2-7b", "singularity-h3-v2-realism-w6a8", "singularity-h3-v2-realism", "singularity-h3-v2-w6a8", "singularity-h3-v2",
+      "cobijada-h3-hybrid-realism-w4a8", "cobijada-h3-hybrid-realism", "cobijada-h3-hybrid-w4a8", "cobijada-h3-hybrid", "cyberrealistic-krea2-4-fast", "cyberrealistic-krea2-4", "flux-schnell", "flux2-klein-4b", "flux2-klein-9b", "flux3-klein", "gonzalomo-krea2-4-fast", "gonzalomo-krea2-4", "juggernaut-xl-v9", "krea2-raw", "krea2-turbo-uncensored", "krea2-turbo", "kroma-fast", "kroma", "ltx-2.5-distilled", "minimax-h3-edit", "minimax-h3-image-w4a8", "minimax-h3-image", "minimax-h3-turbo-realism-w6a8", "minimax-h3-turbo-w6a8", "minimax-h3-turbo", "moss-image-edit", "moss-image", "p-h3-image-w4a8", "p-h3-image", "qwen-image-2.1-max-realism", "qwen-image-2.1-turbo-bf16", "qwen-image-2.1-turbo", "qwen-image-2.1", "qwen-image-2512", "qwen-image-edit", "qwen-image", "realism-stable-yogi-3-fast", "realism-stable-yogi-3", "realism-stable-yogi-moss-2", "realvisxl-v5", "scail-2", "sdxl", "seedvr2-3b", "seedvr2-7b", "singularity-h3-v2-realism-w6a8", "singularity-h3-v2-realism", "singularity-h3-v2-w6a8", "singularity-h3-v2",
       "wan2.2-i2v-14b-q5", "wan2.2-i2v-14b", "wan2.2-t2v-14b-q5", "wan2.2-t2v-14b", "wan2.2-ti2v-5b", "z-image-turbo",
     ]);
     // Download image model groups them by family and folds a model's variants into one row.
