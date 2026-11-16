@@ -2,7 +2,7 @@ import { OPENING } from "@lyrica/extension";
 import { describe, expect, it, vi } from "vitest";
 import { PoolStore } from "@lyrica/core";
 import { fakeOpenAI, type ChatRequest, type Reply } from "../../core/test/fake-openai.ts";
-import type { EndpointInfo, MessagePage, OfferingInfo, SendResponse, SleepEvent, SleepOverview, SleepRunDetail, SleepStarted, ThreadEvent, ThreadSummary } from "../src/api.ts";
+import type { EndpointInfo, HistoryPage, MessagePage, OfferingInfo, SendResponse, SleepEvent, SleepOverview, SleepRunDetail, SleepRunInfo, SleepStarted, ThreadEvent, ThreadSummary } from "../src/api.ts";
 import { browser, daemon, enc, localModel, login, runtime, sse } from "./helpers.ts";
 
 // Sleep through lyricad: the nightly schedule, /sleep, the Sleep section's API.
@@ -153,6 +153,10 @@ describe("sleep in lyricad", () => {
     tick("2026-11-16T02:30:00Z");
     await s.d.sleepNight([]);
     expect((await s.ada.get<SleepOverview>(`${s.u}/sleep`)).body.runs.map((r) => [r.pool, r.status])).toEqual([["general", "complete"]]);
+    // The same minute again doesn't sleep it twice.
+    tick("2026-11-16T02:30:30Z");
+    await s.d.sleepNight([]);
+    expect((await s.ada.get<HistoryPage<SleepRunInfo>>(`${s.u}/sleep/history`)).body.total).toBe(1);
     // The server's time again: the pool follows it from then on.
     expect((await s.ada.patch<SleepOverview>(`${s.u}/sleep/general`, { time: "04:00" })).body.pools.general.time).toBe("04:00");
     await s.ada.put(`${s.u}/admin/sleep`, { time: "05:15" });

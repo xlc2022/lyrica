@@ -227,7 +227,7 @@ export class Lyricad implements Drainable {
   private readonly nightly: NodeJS.Timeout;
   /** The server's date the night's chores last ran, so they run once a night. */
   private sleptOn = "";
-  /** Each user's pool's own date its scheduled sleep last ran, in their time zone, by `userId/pool`. */
+  /** Each user's pool's own date and time its scheduled sleep last ran, in their time zone, by `userId/pool`. */
   private readonly userSleptOn = new Map<string, string>();
   /** Scheduled sleeps run one at a time, whichever zones they come from. */
   private sleeping: Promise<void> = Promise.resolve();
@@ -1031,9 +1031,11 @@ export class Lyricad implements Drainable {
     for (const u of this.services.users.all()) {
       const zone = zoneOf(u.profile), clock = localTime(now, zone), date = localDate(now, zone);
       for (const pool of POOLS) {
-        const key = `${u.id}/${pool}`;
-        if (clock !== this.poolSleepTime(u.id, pool) || this.userSleptOn.get(key) === date) continue;
-        this.userSleptOn.set(key, date);
+        // Marked with the time too: a locked user's pool with its own time sleeps (skipped, no key) at the server's
+        // time, and still sleeps at its own once the key is back the same day.
+        const key = `${u.id}/${pool}`, at = this.poolSleepTime(u.id, pool), mark = `${date} ${at}`;
+        if (clock !== at || this.userSleptOn.get(key) === mark) continue;
+        this.userSleptOn.set(key, mark);
         sleepers.push({ userId: u.id, pool });
       }
     }
