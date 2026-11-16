@@ -241,8 +241,11 @@ export function compilePattern(pattern: string, flags = "im"): RE2 {
   }
 }
 
-/** The 0-based numbers of the lines of `text` that `pattern` matches: one pass over the whole text, a line counted once. */
-export function matchingLines(text: string, pattern: string): number[] {
+/**
+ * The 0-based numbers of the lines of `text` that `pattern` matches: one pass over the whole text, a line counted once,
+ * stopping after `limit` (each match costs a call into re2, so a pattern matching millions of lines would take seconds).
+ */
+export function matchingLines(text: string, pattern: string, limit = Infinity): number[] {
   const re = compilePattern(pattern, "img");
   const bytes = Buffer.from(text, "utf8");
   const starts = [0];
@@ -253,7 +256,7 @@ export function matchingLines(text: string, pattern: string): number[] {
   for (let m = re.exec(bytes); m; m = re.exec(bytes)) {
     const line = lineAt(m.index);
     hits.push(line);
-    if (line + 1 >= starts.length) break;
+    if (hits.length >= limit || line + 1 >= starts.length) break;
     re.lastIndex = starts[line + 1]!;
   }
   return hits;
@@ -281,10 +284,12 @@ export function outputPage(text: string, o: { from?: number; lines?: number; pat
     return out;
   };
   if (o.pattern) {
-    const hits = matchingLines(all.join("\n"), o.pattern);
+    const hits = matchingLines(all.join("\n"), o.pattern, OUTPUT_LIMITS.matches + 1);
     if (!hits.length) return `No line of ${total.toLocaleString("en-US")} matches ${o.pattern}.`;
     const shown = fit(hits.slice(0, OUTPUT_LIMITS.matches).map(num));
-    return `${hits.length.toLocaleString("en-US")} of ${total.toLocaleString("en-US")} lines match${shown.length < hits.length ? `; the first ${shown.length}` : ""}:\n${shown.join("\n")}`;
+    const more = hits.length > OUTPUT_LIMITS.matches;
+    const count = more ? `${OUTPUT_LIMITS.matches} or more` : hits.length.toLocaleString("en-US");
+    return `${count} of ${total.toLocaleString("en-US")} lines match${shown.length < hits.length ? `; the first ${shown.length}` : ""}:\n${shown.join("\n")}`;
   }
   const from = Math.min(Math.max(1, Math.floor(o.from ?? 1)), total);
   const want = Math.min(Math.max(1, Math.floor(o.lines ?? OUTPUT_LIMITS.pageLines)), OUTPUT_LIMITS.maxPageLines);

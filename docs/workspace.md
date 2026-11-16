@@ -1141,7 +1141,8 @@ jobs").
   gives `from`, or with `pattern` the matching lines, at most 200. `pattern`
   is a regular expression, case ignored, at most 200 characters, run by
   RE2's linear-time engine (the native `re2` module, `compilePattern`,
-  `matchingLines`: one pass over the output, about 60 ms for 16 MiB),
+  `matchingLines`: one pass over the output, about 60 ms for 16 MiB,
+  stopping past 200 matching lines, "200 or more" then),
   never JavaScript's own, whose backtracking could hold lyricad's one
   thread: no lookaround or backreferences, and no pattern is slow. A line longer than a page is cut with a marker ("[… n more
   characters]"), and a page always holds at least one line. A subagent has

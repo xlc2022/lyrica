@@ -91,6 +91,9 @@ describe("command output", () => {
     expect(matchingLines(text, "caf[ée]$")).toEqual([3]);
     expect(matchingLines(text, "^$")).toEqual([]);
     expect(matchingLines("a\n\nb", "^$")).toEqual([1]);
+    expect(matchingLines("x\n".repeat(1000), "x", 3)).toEqual([0, 1, 2]);
+    // Her page stops counting past the matches it can show.
+    expect(outputPage("e: x\n".repeat(5000), { pattern: "e:" })).toMatch(/^200 or more of 5,000 lines match; the first 200:/);
   });
 
   it("cuts a line too long for a page rather than leaving it out, so from always moves on", async () => {
