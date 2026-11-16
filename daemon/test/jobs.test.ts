@@ -9,7 +9,7 @@ function slowTarget() {
   let finish!: (output: string, code: number) => void;
   const target = {
     name: "sandbox", cwd: async () => "/workspace", folders: () => [],
-    ops: () => ({ bash: { exec: (_c: string, _cwd: string, o: { onData: (d: Buffer) => void }) => new Promise((resolve) => { finish = (out, code) => { o.onData(Buffer.from(out)); resolve({ exitCode: code }); }; }) } }),
+    ops: () => ({ bash: { exec: (_c: string, _cwd: string, o: { onRaw?: (d: Buffer) => void }) => new Promise((resolve) => { finish = (out, code) => { o.onRaw?.(Buffer.from(out)); resolve({ exitCode: code }); }; }) } }),
   } as unknown as ExecutionTarget;
   return { target, finish: (output: string, code = 0) => finish(output, code) };
 }

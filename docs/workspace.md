@@ -1130,7 +1130,9 @@ jobs").
   workspace extension tees each call into `ThreadTools.keepOutput`
   (`Workspace.keepCall`), which keeps it while it runs and saves it with
   how it ended (`callEnd`: exited with its code, timed out, stopped or
-  failed with the reason). A machine's SSH helper sends all of a command's
+  failed with the reason). A background job keeps from `onRaw` the same
+  way, in the sandbox and on a machine (`Jobs.start`), so it too is whole up
+  to the 16 MiB, not the cut a call's result gets. A machine's SSH helper sends all of a command's
   output across its pipe, in frames of at most `MAX_BODY`; the cut is
   lyricad's.
 - **Her way to it:** under a result that was cut, one line says it is kept

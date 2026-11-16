@@ -150,7 +150,7 @@ describe("command output", () => {
     const pieces: string[] = [];
     const saved: { job: CommandOutput; output: string }[] = [];
     const target = {
-      ops: () => ({ bash: { exec: async (_c: string, _d: string, o: { onData: (d: Buffer) => void }) => { o.onData(Buffer.from("step 1\n")); o.onData(Buffer.from("done\n")); return { exitCode: 0 }; } } }),
+      ops: () => ({ bash: { exec: async (_c: string, _d: string, o: { onRaw?: (d: Buffer) => void }) => { o.onRaw?.(Buffer.from("step 1\n")); o.onRaw?.(Buffer.from("done\n")); return { exitCode: 0 }; } } }),
     } as unknown as ExecutionTarget;
     const ended = new Promise<void>((resolve) => {
       const jobs = new Jobs(() => resolve(), 10, {

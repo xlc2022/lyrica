@@ -167,7 +167,8 @@ export class Jobs {
     const timer = setTimeout(() => this.end(job, "timed out", null), timeout * 1000);
     timer.unref();
     const signal = job.controller.signal;
-    const run = (dir: string) => target.ops().bash.exec(command, dir, { onData: (d) => this.keep(job, d), signal });
+    // The whole output is kept from onRaw, as a foreground call's is: onData gets only the cut her result would (capOutput).
+    const run = (dir: string) => target.ops().bash.exec(command, dir, { onData: () => {}, onRaw: (d) => this.keep(job, d), signal });
     const waited = async () => {
       for (;;) {
         try {
