@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { Memory } from "@lyrica/core";
-import { fakeEmbed } from "../../core/test/fake-embed.ts";
+import { fakeEmbed, toyVector } from "../../core/test/fake-embed.ts";
 import { withModels } from "../../core/test/helpers.ts";
 import { Embedder } from "../src/embedder.ts";
 
@@ -101,6 +101,36 @@ describe("the embedder", () => {
     expect(general.own.nearest("Qwen3-Embedding-0.6B-Q8_0.gguf", Float32Array.from([0, 0, 0, 1]), 5).map((n) => n.id)).not.toContain(bad);
     expect(logs).toEqual(["embedding general memory: 1 of 2 refused by the model, skipped"]);
     expect(JSON.stringify(logs)).not.toMatch(/REFUSE-ME|cook/);
+    general.close();
+  });
+  it("stores no vector for a memory deleted or rewritten while the model was working", async () => {
+    const m = await withModels();
+    const { models, ada, users, keyring } = m;
+    const memory = new Memory(keyring, users);
+    let during = () => {};
+    const server = await fakeEmbed({ vectorFor: (text) => { during(); during = () => {}; return toyVector(text); } });
+    const ep = models.addEndpoint(ada, { name: "embed", kind: "local", baseUrl: server.baseUrl });
+    const found = await models.discover(ada, ep.id);
+    models.setColumnTask(ada.id, "general", "embedding", [{ offeringId: models.setCapabilities(ada, found[0]!.id, { embedding: true }).id }]);
+    const general = memory.openThreadView(ada.id, "general");
+    const t = general.own.createThread({ interface: "cli" });
+    const said = general.own.appendEntry(t.id, { piId: "p1", role: "user", data: { type: "message" }, text: "notes" });
+    const [gone, changed, kept] = general.own.addNotes([
+      { text: "{user} doesn't like cilantro", source: said },
+      { text: "{user} grows thyme on the balcony", source: said },
+      { text: "{user} likes mushroom risotto", source: said },
+    ], { author: "lyrica", thread: t.id });
+    // While the batch is with the model, one note is forgotten and another rewritten to be about trains.
+    during = () => { general.own.delete(gone!, "lyrica"); general.own.edit(changed!, { text: "{user} likes the railway station" }, "lyrica"); };
+    const embedder = new Embedder({ users, memory, models, hasKey: (id) => keyring.hasUserKey(id), log: () => {} });
+    await embedder.tick();
+    const model = "Qwen3-Embedding-0.6B-Q8_0.gguf";
+    // The forgotten note has no vector; the rewritten one waits for its new text; the untouched one has its vector.
+    expect(general.own.nearest(model, Float32Array.from([1, 0, 0, 0]), 10).map((n) => n.id)).toEqual([kept]);
+    expect(general.own.unembedded(model, 10).map((p) => p.id)).toEqual([changed]);
+    expect(general.own.vectorCount(model)).toEqual({ done: 2, left: 1 });
+    await embedder.tick(Date.now() + 61_000);
+    expect(general.own.nearest(model, Float32Array.from([0, 1, 0, 0]), 10).map((n) => n.id)).toEqual([changed]);
     general.close();
   });
 });

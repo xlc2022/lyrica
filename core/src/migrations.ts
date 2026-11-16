@@ -460,6 +460,16 @@ export const STEPS: Record<DbKind, MigrationStep[]> = {
     // and the person can scroll it (docs/workspace.md, "Command output"). Adds a table only.
     version: 18,
     run(db) { db.exec(OUTPUTS_SCHEMA); },
+  }, {
+    // Principle 5: once, the vectors the embedder stored for a memory deleted or rewritten while its model worked
+    // (docs/memory.md, "Recall by meaning"). A vector whose item left the index goes. A stale one can't be told from a
+    // current one after the fact, so every edited note, page or journal entry (more than one revision) is embedded
+    // again. Derived rows only; the schema is unchanged.
+    version: 19,
+    run(db) {
+      db.exec("DELETE FROM vectors WHERE id NOT IN (SELECT id FROM search)");
+      db.exec("DELETE FROM vectors WHERE id IN (SELECT item FROM revisions GROUP BY item HAVING count(*) > 1)");
+    },
   }],
 };
 

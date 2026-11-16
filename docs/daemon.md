@@ -1224,6 +1224,8 @@ pool's Embeddings model (`models.embeddingModel`, a private pool's context
 being local-only), takes up to `EMBED_BATCH` (32) indexed items without a
 vector from it, embeds them in one call through `models.embed`, and stores
 them with `putVectors`, which also drops any other model's rows. An item
+deleted or rewritten while the model worked gets no vector (each row carries
+the index text it was read with), and the next pass embeds its new text. An item
 with no spoken words (a tool result) is marked skipped without a call, and
 so is one the model refuses (after the batch is retried one item at a
 time), so one bad item doesn't hold up the pool. The cloud boundary holds

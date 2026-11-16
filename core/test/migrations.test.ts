@@ -795,3 +795,22 @@ describe("pool step 17 (artifacts)", () => {
     }
   });
 });
+
+describe("pool step 19 (vectors that outlived or misdescribe their memory)", () => {
+  it("drops vectors with no index row and re-queues edited memories, keeping the rest, from every released pool schema with vectors", () => {
+    for (let version = 12; version < 19; version++) {
+      const db = scratchDb();
+      migrate(db, "pool", {}, STEPS.pool.filter((s) => s.version <= version));
+      SEED.pool(db);
+      const vec = Buffer.from(Float32Array.from([1, 0]).buffer);
+      for (const [id, text] of [["n:kept", "a synthetic note"], ["n:edited", "a synthetic note, rewritten"]]) db.prepare("INSERT INTO search (id, kind, text) VALUES (?, 'note', ?)").run(id, text);
+      db.prepare("INSERT INTO revisions (item, body, author, created_at) VALUES ('n:kept', '{}', 'lyrica', '2026-01-01')").run();
+      for (const at of ["2026-01-01", "2026-01-02"]) db.prepare("INSERT INTO revisions (item, body, author, created_at) VALUES ('n:edited', '{}', 'lyrica', ?)").run(at);
+      for (const id of ["n:kept", "n:edited", "n:gone"]) db.prepare("INSERT INTO vectors (id, kind, model, vec) VALUES (?, 'note', 'm', ?)").run(id, vec);
+      migrate(db, "pool");
+      expect(schemaOf(db), `v${version}`).toEqual({ version: SCHEMA.pool, minReader: MIN_READER.pool });
+      expect(db.prepare("SELECT id FROM vectors").all(), `v${version}`).toEqual([{ id: "n:kept" }]);
+      db.close();
+    }
+  });
+});
