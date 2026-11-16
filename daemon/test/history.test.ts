@@ -113,6 +113,10 @@ describe("server-side history", () => {
       said = view.own.appendEntry(t.id, { piId: "a1", role: "user", data: {}, text: "Water the trays on Sunday." }, "2026-10-13T10:00:00.000Z");
       view.own.appendEntry(t.id, { piId: "a2", role: "assistant", data: {}, text: "Noted: Sunday." }, "2026-10-13T10:00:01.000Z");
       view.own.appendEntry(t.id, { piId: "a3", role: "toolResult", data: {}, text: "ok" }, "2026-10-13T10:00:02.000Z");
+      // A turn of hers that only calls a tool is left out; one with words and a call shows only the words.
+      const call = { type: "toolCall", name: "bash", arguments: { command: "ls /trays" } };
+      view.own.appendEntry(t.id, { piId: "a5", role: "assistant", data: { type: "message", message: { role: "assistant", content: [call] } }, text: 'bash({"command":"ls /trays"})' }, "2026-10-13T10:00:02.100Z");
+      view.own.appendEntry(t.id, { piId: "a6", role: "assistant", data: { type: "message", message: { role: "assistant", content: [{ type: "text", text: "Checking the trays." }, call] } }, text: 'Checking the trays.\nbash({"command":"ls /trays"})' }, "2026-10-13T10:00:02.200Z");
       // A parent's message to this thread is stored as a user turn, but it is hers, not a person's: not in Recent.
       view.own.appendEntry(t.id, { piId: "a4", role: "user", data: {}, text: "[From t:general/web%2Fp1]\n\nMind the seedlings too." }, "2026-10-13T10:00:03.000Z");
       const u = view.own.createThread({ interface: "web", title: "Quiet", unlogged: true });
@@ -120,16 +124,16 @@ describe("server-side history", () => {
     } finally { view.close(); }
     const recent = (await s.ada.get<MemoryHit[]>(`${s.u}/memory/search?kinds=entry`)).body;
     // Newest first; what a person or she said, never a tool's result or an unlogged thread's words.
-    expect(recent.map((h) => [h.kind, h.snippet])).toEqual([["entry", "Noted: Sunday."], ["entry", "Water the trays on Sunday."]]);
-    expect(recent[0]!.origin).toBe("lyrica");
-    expect(recent[1]!.origin).toBe("user");
-    const paged = (await s.ada.get<MemoryHit[]>(`${s.u}/memory/search?kinds=entry&before=${encodeURIComponent(recent[0]!.updatedAt!)}`)).body;
+    expect(recent.map((h) => [h.kind, h.snippet])).toEqual([["entry", "Checking the trays."], ["entry", "Noted: Sunday."], ["entry", "Water the trays on Sunday."]]);
+    expect(recent[1]!.origin).toBe("lyrica");
+    expect(recent[2]!.origin).toBe("user");
+    const paged = (await s.ada.get<MemoryHit[]>(`${s.u}/memory/search?kinds=entry&before=${encodeURIComponent(recent[1]!.updatedAt!)}`)).body;
     expect(paged.map((h) => h.id)).toEqual([said]);
     // Oldest first, paged forwards from the last row's time.
     const oldest = (await s.ada.get<MemoryHit[]>(`${s.u}/memory/search?kinds=entry&sort=oldest&limit=1`)).body;
     expect(oldest.map((h) => h.id)).toEqual([said]);
     const later = (await s.ada.get<MemoryHit[]>(`${s.u}/memory/search?kinds=entry&sort=oldest&after=${encodeURIComponent(oldest[0]!.updatedAt!)}`)).body;
-    expect(later.map((h) => h.snippet)).toEqual(["Noted: Sunday."]);
+    expect(later.map((h) => h.snippet)).toEqual(["Noted: Sunday.", "Checking the trays."]);
     const detail = (await s.ada.get<MemoryDetail>(`${s.u}/memory/general/${encodeURIComponent(said)}`)).body;
     expect(detail.item).toMatchObject({ kind: "entry", text: "Water the trays on Sunday.", pool: "general" });
     expect(detail.cameFrom).toEqual([`t:${said.slice(2, said.lastIndexOf("#"))}`]);
