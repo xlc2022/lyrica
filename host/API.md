@@ -1081,7 +1081,9 @@ Calls:
     `apgMomentum` 0 (-1 to 1) unless the recipe says otherwise) and
     `fresca` (0 to 10: ComfyUI's FreSca after it, at this high-frequency
     scale, with `frescaLow` 1 (0 to 10) and `frescaCutoff` 20 (1 to 256)).
-    Without them the model goes straight to the guider;
+    Without them the model goes straight to the guider. Both act on the
+    guidance, so they change nothing at `cfg` 1 (the 2.1 starters'):
+    a recipe that sets them needs a higher `cfg`, such as 3;
   - `{ "op": "rename", "name": "..." }`;
   - `{ "op": "starterDefaults" }`: the recipe's defaults (and its
     `longestSeconds` cap) become its
