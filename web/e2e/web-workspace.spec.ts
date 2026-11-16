@@ -1549,6 +1549,15 @@ test("a command's whole output scrolls in its row, and a named background job st
   await expect(out.locator(".read-note")).toHaveText("Exited with code 0");
   expect(await box.evaluate((el) => el.scrollHeight > el.clientHeight && el.clientHeight <= 320)).toBe(true);
   if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/command-output-${page.viewportSize()!.width}.png` });
+  // Expand opens the same output large in a dialog, with Copy; Escape puts it back.
+  await out.getByRole("button", { name: "Expand output" }).click();
+  const big = page.getByRole("dialog", { name: "Output" });
+  await expect(big.locator("pre.read-body")).toContainText("line 3000");
+  await expect(big.locator(".read-note")).toHaveText("Exited with code 0");
+  await expect(big.getByRole("button", { name: "Copy output" })).toBeVisible();
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/output-dialog-${page.viewportSize()!.width}.png` });
+  await page.keyboard.press("Escape");
+  await expect(big).toHaveCount(0);
 
   await send(page, "background: Count to forty | for i in $(seq 1 40); do echo tick $i; sleep 0.25; done");
   const jobs = page.locator(".tfacts").getByRole("button", { name: /^Jobs/ });
@@ -1562,6 +1571,14 @@ test("a command's whole output scrolls in its row, and a named background job st
   const live = card.locator("pre.read-body");
   await expect(live).toContainText("tick 3");
   if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/jobs-running-${page.viewportSize()!.width}.png` });
+  // Expanded while it runs, it keeps streaming.
+  await card.getByRole("button", { name: "Expand output" }).click();
+  const bigJob = page.getByRole("dialog", { name: "Count to forty" });
+  await expect(bigJob.locator("pre.read-body")).toContainText("tick 8");
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/output-dialog-running-${page.viewportSize()!.width}.png` });
+  await bigJob.getByRole("button", { name: "Close" }).click();
+  await expect(bigJob).toHaveCount(0);
+  await expect(pop).toBeVisible();
   // It streams: later lines arrive without reopening, and the end shows once it ends.
   await expect(live).toContainText("tick 40", { timeout: 20_000 });
   await expect(card).toContainText("Exited");
