@@ -1,8 +1,6 @@
 {
   "name": "Qwen-Image (original)",
   "family": "Qwen-Image",
-  "variantOf": "Qwen-Image (original)",
-  "variant": "fp8",
   "template": "qwen-image",
   "parts": [
     {

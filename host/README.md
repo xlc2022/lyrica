@@ -351,14 +351,15 @@ per host, and Lyrica's router filters create tiers by it.
   (GGUFs, about 13.4 GB, for 16 GB cards) is listed only on hosts using
   stable-diffusion.cpp. A host using stable-diffusion.cpp lists no
   starter whose template it can't run (edits, Qwen-Image 2.1, SeedVR2).
-  Qwen-Image (original), Qwen-Image 2512 and Qwen-Image-Edit 2509 each
-  come as fp8 and bf16 (Comfy-Org's files, Apache 2.0). A bf16 one is
-  the 38.1 GiB diffusion model with the bf16 Qwen2.5-VL 7B encoder
-  (15.4 GiB) and the shared VAE, about 53.7 GiB to download, or 15.7 GiB
-  less with another bf16 Qwen-Image already here. Its largest stage is
-  the diffusion model, about 38.3 GiB, so it needs a 48 GB or larger
-  card (the host calls it too big on a 24 GB one); bf16 is ComfyUI only,
-  since stable-diffusion.cpp would requantise it.
+  Qwen-Image 2.1 comes in bf16 throughout (ComfyUI hosts only): the base
+  model (40 steps of euler/simple at CFG 1, as its card and ComfyUI's
+  template run it, 2048×2048; tagged `quality`) and Turbo with the bf16
+  Qwen3-VL 8B encoder, a variant of the Turbo starter with the int8 one.
+  Each is about 30.2 GiB (13.3 GiB model, 16.3 GiB encoder, 0.6 GiB VAE);
+  the second adds only its 13.3 GiB model. The largest stage is the
+  encoder, about 17 GiB, so they fit a 24 GB card. The `qwen-image-2.1`
+  template samples on a recipe's `sigmas` when it has them (Turbo) and on
+  `steps` and `scheduler` otherwise (the base model).
   The video starters (Wan 2.2 TI2V 5B, T2V 14B and I2V 14B, LTX-2.5
   Distilled, MiniMax H3 Turbo) are for ComfyUI hosts only. Wan 2.2 is
   Apache 2.0. LTX-2.5's repository is gated: installing it needs a

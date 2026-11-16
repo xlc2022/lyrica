@@ -818,6 +818,15 @@ describe("recipes", () => {
     expect(Object.keys(qi21New)).not.toContain("load");
     expect(qi21New.encode!.inputs).not.toHaveProperty("images.image_1");
     expect(JSON.stringify(qi21New)).not.toContain("$");
+    // Turbo samples on its own sigmas; the base model, with none, on steps and a scheduler.
+    expect(qi21New.sigmas!.class_type).toBe("ManualSigmas");
+    expect(qi21New).not.toHaveProperty("scheduled");
+    const qi21BaseStarter = STARTERS.find((s) => s.id === "qwen-image-2.1")!;
+    const qi21Base = fill(TEMPLATES.get("qwen-image-2.1")!, qi21Parts, [], { negativePrompt: "", ...qi21BaseStarter.defaults, prompt: "x", count: 1, seed: 1 });
+    expect(qi21Base).not.toHaveProperty("sigmas");
+    expect(qi21Base.scheduled!.inputs).toEqual({ model: ["cache", 0], scheduler: "simple", steps: 40, denoise: 1 });
+    expect(qi21Base.sample!.inputs.sigmas).toEqual(["scheduled", 0]);
+    expect(JSON.stringify(qi21Base)).not.toContain("$");
     const qi21 = fill(TEMPLATES.get("qwen-image-2.1")!, [
       { role: "diffusion", slot: null, file: "q.safetensors", added: false },
       { role: "text_encoder", slot: "qwen3vl_8b", file: "vl.safetensors", added: false },
@@ -1908,7 +1917,7 @@ describe("the image API", () => {
     // The test folder holds two of its parts at their download paths, but not its diffusion model.
     expect(z.parts.map((p: { present: boolean }) => p.present)).toEqual([false, true, true]);
     expect(body.starters.map((st: { id: string }) => st.id)).toEqual([
-      "cobijada-h3-hybrid-realism-w4a8", "cobijada-h3-hybrid-realism", "cobijada-h3-hybrid-w4a8", "cobijada-h3-hybrid", "cyberrealistic-krea2-4-fast", "cyberrealistic-krea2-4", "flux-schnell", "flux2-klein-4b", "flux2-klein-9b", "flux3-klein", "gonzalomo-krea2-4-fast", "gonzalomo-krea2-4", "juggernaut-xl-v9", "krea2-raw", "krea2-turbo-uncensored", "krea2-turbo", "kroma-fast", "kroma", "ltx-2.5-distilled", "minimax-h3-edit", "minimax-h3-image-w4a8", "minimax-h3-image", "minimax-h3-turbo-realism-w6a8", "minimax-h3-turbo-w6a8", "minimax-h3-turbo", "moss-image-edit", "moss-image", "p-h3-image-w4a8", "p-h3-image", "qwen-image-2.1-turbo", "qwen-image-2512-bf16", "qwen-image-2512", "qwen-image-bf16", "qwen-image-edit-bf16", "qwen-image-edit", "qwen-image", "realism-stable-yogi-3-fast", "realism-stable-yogi-3", "realism-stable-yogi-moss-2", "realvisxl-v5", "scail-2", "sdxl", "seedvr2-3b", "seedvr2-7b", "singularity-h3-v2-realism-w6a8", "singularity-h3-v2-realism", "singularity-h3-v2-w6a8", "singularity-h3-v2",
+      "cobijada-h3-hybrid-realism-w4a8", "cobijada-h3-hybrid-realism", "cobijada-h3-hybrid-w4a8", "cobijada-h3-hybrid", "cyberrealistic-krea2-4-fast", "cyberrealistic-krea2-4", "flux-schnell", "flux2-klein-4b", "flux2-klein-9b", "flux3-klein", "gonzalomo-krea2-4-fast", "gonzalomo-krea2-4", "juggernaut-xl-v9", "krea2-raw", "krea2-turbo-uncensored", "krea2-turbo", "kroma-fast", "kroma", "ltx-2.5-distilled", "minimax-h3-edit", "minimax-h3-image-w4a8", "minimax-h3-image", "minimax-h3-turbo-realism-w6a8", "minimax-h3-turbo-w6a8", "minimax-h3-turbo", "moss-image-edit", "moss-image", "p-h3-image-w4a8", "p-h3-image", "qwen-image-2.1-turbo-bf16", "qwen-image-2.1-turbo", "qwen-image-2.1", "qwen-image-2512", "qwen-image-edit", "qwen-image", "realism-stable-yogi-3-fast", "realism-stable-yogi-3", "realism-stable-yogi-moss-2", "realvisxl-v5", "scail-2", "sdxl", "seedvr2-3b", "seedvr2-7b", "singularity-h3-v2-realism-w6a8", "singularity-h3-v2-realism", "singularity-h3-v2-w6a8", "singularity-h3-v2",
       "wan2.2-i2v-14b-q5", "wan2.2-i2v-14b", "wan2.2-t2v-14b-q5", "wan2.2-t2v-14b", "wan2.2-ti2v-5b", "z-image-turbo",
     ]);
     // Download image model groups them by family and folds a model's variants into one row.
@@ -1937,7 +1946,5 @@ describe("the image API", () => {
     // Nor edits, upscales, or a template it has no support for, though their starters name no backend.
     for (const id of ["qwen-image-edit", "seedvr2-3b", "qwen-image-2.1-turbo"]) expect(onSd, id).not.toContain(id);
     expect(onSd).toContain("qwen-image");
-    // The bf16 Qwen-Image starters are ComfyUI's: sd.cpp would requantise them to fit a 16 GB card.
-    expect(onSd).not.toContain("qwen-image-bf16");
   });
 });
