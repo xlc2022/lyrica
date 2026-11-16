@@ -360,6 +360,46 @@ describe("the GPU queue", () => {
     expect(gpus.on("image")).toEqual([0]);
   });
 
+  it("counts a loaded image recipe at its measurement, though ComfyUI takes its memory only during a job", async () => {
+    // As on a 24 GB card: ComfyUI starts small and takes the recipe's 20 GB during each job, freeing most of it after.
+    const gpus = new FakeGpus([24]);
+    const llamacpp = new FakeBackend(gpus);
+    const comfyui = new FakeBackend(gpus);
+    comfyui.load = async (model) => {
+      comfyui.calls.push(`load ${model.id}`);
+      gpus.loaded.set(model.id, { 0: GIB / 2 });
+    };
+    const state = new StateFile(mkdtempSync(join(tmpdir(), "lyrica-sched-")));
+    state.update((s) => {
+      s.vram["recipe:h3@0"] = { 0: 20 * GIB };
+    });
+    const scheduler = new Scheduler({ monitor: gpus, backends: { llamacpp, vllm: new FakeBackend(gpus), comfyui }, state, log: () => {} });
+    await scheduler.start([]);
+    const recipe = textModel("recipe:h3", 16, { kind: "image", server: "comfyui", format: "safetensors", contextLength: null });
+    const chat = textModel("chat", 17);
+    let chatOnGpu: boolean | null = null;
+    const job = () => scheduler.run(recipe, "image", async () => {
+      chatOnGpu = gpus.on("chat").length > 0;
+    });
+    await job();
+    // Loaded while the recipe sits idle between jobs: the recipe makes way, rather than the next job finding no room.
+    await scheduler.loadNow(chat);
+    expect(comfyui.calls).toEqual(["load recipe:h3", "unload recipe:h3"]);
+    // The next job, with the chat model idle: the chat model makes way.
+    await job();
+    expect(chatOnGpu).toBe(false);
+    expect(llamacpp.calls).toEqual(["load chat@0", "unload chat"]);
+    // A chat request while a job runs waits for it, rather than loading beside it.
+    const running = hold(scheduler, recipe, "image");
+    await running.started;
+    const asked = scheduler.loadNow(chat);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(scheduler.placement("chat")).toBeNull();
+    running.release();
+    await asked;
+    expect(scheduler.placement("recipe:h3")).toBeNull();
+  });
+
   it("remeasures after a job that failed, so what the server kept can still be evicted", async () => {
     const { scheduler, state, gpus, llamacpp } = setup([24]);
     await scheduler.start([]);

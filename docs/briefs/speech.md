@@ -53,8 +53,9 @@ principle 2 (the boundary stays structural).
      (16 kHz mono), at most 10 minutes; `{ text }` comes back.
    - `GET …/threads/:id/messages/:n/speech`: reads the message from the
      store, drops code blocks, tables, links and markdown, splits it into
-     sentences, and asks for one sentence at a time while keeping one
-     ahead. It streams audio as it arrives. For a message still streaming,
+     sentences, and asks for one piece at a time while keeping one ahead
+     (the first sentence alone, then a paragraph's sentences in one
+     language; daemon.md has the limits). It streams audio as it arrives. For a message still streaming,
      it follows the message to its end.
 6. **Records.** A call record per transcription and per Read aloud, with
    the task, the model and `audioSeconds`. Audio is held in memory only:

@@ -1218,7 +1218,8 @@ refused. To replace the destination, enter the full URL and token again;
 - **Sleep** runs at `sleep.time` (04:00 by default; Administration,
   Sleep), in each user's own time zone (Settings, Profile, Time zone; the
   server's until their browser sets it), for every user whose key is
-  available, unless they set Sleep to Only when I ask in Settings, Sleep.
+  available. Each user can give a pool its own time, or set it to Only when
+  I ask, with Change… on that pool's card on the Sleep page.
   The night's chores (model cleanup, the workspace sweep, resolving idle
   project threads) run at the same time in the server's zone. The
   **Sleep** page in the sidebar shows each night's runs and has **Sleep

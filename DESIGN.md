@@ -977,7 +977,10 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
       from the file as needed.
     - When a model needs room, the host unloads idle models, least recently
       used first. It never unloads a pinned model or one in use, and stops
-      ComfyUI after it has been idle a while.
+      ComfyUI after it has been idle a while. ComfyUI takes a recipe's
+      memory during each job and frees much of it after, so a GPU holding
+      a recipe counts at least the recipe's measurement: another model
+      can't load into the room its next job needs.
     - Requests wait in a queue per GPU (a split model waits for all of its
       GPUs). Interactive chat comes first, then
       images, then background work (sleep, cheap subagents). If a request
@@ -1289,8 +1292,8 @@ local-only threads use local speech models only.
 - **Dictation.** The mic records until it is pressed again; the clip is
   transcribed and the text goes into the box at the caret, to edit and send.
   Escape throws the clip away. A clip is at most 10 minutes.
-- **Read aloud** on one of her messages reads it sentence by sentence as the
-  audio arrives, skipping code, tables and links. Stop reading, the mic,
+- **Read aloud** on one of her messages reads it as the audio arrives, the
+  first sentence alone and then a paragraph at a time, skipping code, tables and links. Stop reading, the mic,
   sending, another Read aloud or leaving the thread stops it; only one thing
   plays at a time. A message with no words of hers (only cards and markers)
   has no Read aloud.
@@ -2136,7 +2139,11 @@ when to use it, and steps in Markdown (at most 8,000 characters).
     into one script's input on a card (`run_with_secret`, Run on a root
     step), and `gentoo`, installing Gentoo onto a disk from a live Linux by
     the Handbook and keeping a Gentoo machine updated (the plan before every
-    `emerge`, a yes that names the disk or package), all three listed only
+    `emerge`, a yes that names the disk or package), and `nixos`, installing
+    NixOS from its installer ISO by the manual and changing, updating,
+    rolling back and cleaning a NixOS machine through its configuration
+    (a build and its diff before every switch, option lookups through the
+    NixOS MCP server), all four listed only
     while the thread has an SSH machine. A library skill of the same name
     replaces any of them.
 - **Storage.** The person's and hers live in the pool they belong to, in
@@ -2168,9 +2175,10 @@ Details in [docs/sleep.md](docs/sleep.md).
 
 - **Cycle:** consolidate → dream → wake, adapted from Monika. Each phase is an
   agentic session written in her own voice, with only her memory tools.
-- **Schedule:** nightly at 04:00 by default, for each pool with new activity.
-  `/sleep` runs it by hand. A **manual** mode works like Monika: sleep happens
-  only on `/sleep`. Sleep never creates a thread the user sees.
+- **Schedule:** each pool has its own: nightly at 04:00 by default (or the
+  pool's own time), when it has new activity. `/sleep` runs it by hand. A
+  pool in **manual** mode works like Monika: it sleeps only on `/sleep`.
+  Sleep never creates a thread the user sees.
 - **Pools:** general and private sleep run separately, each with its own model.
 - **Budget:** each phase may use 600k tokens or four of its model's context
   windows, whichever is more, on any model, paid ones included (the owner's

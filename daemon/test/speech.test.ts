@@ -7,7 +7,7 @@ import { fakeSpeech, wav } from "../../core/test/fake-speech.ts";
 import type { CallInfo, EndpointInfo, MessagePage, Presets, Speech, ThreadSettings, ThreadSummary, Transcription } from "../src/api.ts";
 import { Memory, Users } from "@lyrica/core";
 import { freshKeyring, profile } from "../../core/test/helpers.ts";
-import { languageOf, messageText, sentences, speakable, titlesIn } from "../src/speech.ts";
+import { languageOf, messageText, paragraphSentences, piece, pieceText, sentences, speakable, titlesIn } from "../src/speech.ts";
 import { browser, daemon, enc, localModel, login, runtime } from "./helpers.ts";
 
 const VOICES = [{ id: "af_heart", language: "en" }, { id: "zf_xiaobei", language: "zh" }];
@@ -73,6 +73,16 @@ describe("making text speakable", () => {
     expect(sentences("One. Two and", false)).toEqual(["One."]);
     expect(speakable("Look:\n```\nconst x = 1;")).toBe("Look:");
     expect(sentences(`${"word ".repeat(150)}end.`).every((s) => s.length <= 400)).toBe(true);
+  });
+
+  it("reads the first sentence alone, then a paragraph's sentences in one language together, up to a length", () => {
+    const list = paragraphSentences("Hi. One here. Two here.\nNew paragraph. 然后我们去吃饭。好吗？\n" + "Long sentence here. ".repeat(20));
+    const pieces: string[] = [];
+    for (let at = 0; at < list.length;) { const n = piece(list, at); pieces.push(pieceText(list, at, n)); at += n; }
+    expect(pieces.slice(0, 4)).toEqual(["Hi.", "One here. Two here.", "New paragraph.", "然后我们去吃饭。好吗？"]);
+    expect(pieces.slice(4).every((p) => p.length <= 300)).toBe(true);
+    expect(pieces.slice(4).join(" ")).toBe("Long sentence here. ".repeat(20).trim());
+    expect(pieces).toHaveLength(6);
   });
 });
 
@@ -184,21 +194,21 @@ describe("dictation", () => {
 });
 
 describe("read aloud", () => {
-  it("reads her stored message sentence by sentence in each language's voice, skipping code, and records seconds only", async () => {
+  it("reads her stored message a paragraph at a time in each language's voice, skipping code, and records seconds only", async () => {
     const s = await setup();
     await s.turn(REPLY);
     const n = await s.nOf("assistant");
     const res = await s.audio(`${s.path}/messages/${n}/speech`);
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toBe("audio/pcm;rate=24000;encoding=s16le;channels=1");
-    expect((await res.arrayBuffer()).byteLength).toBe(6 * 9600);
+    expect((await res.arrayBuffer()).byteLength).toBe(4 * 9600);
     expect(s.speech.heard.map((h) => [h.input, h.voice])).toEqual([
-      ["Plan", "af_heart"], ["Here is the plan.", "af_heart"], ["It has two steps.", "af_heart"], ["First, run npm test!", "af_heart"],
-      ["然后我们去吃饭。", "zf_xiaobei"], ["好吗？", "zf_xiaobei"],
+      ["Plan", "af_heart"], ["Here is the plan. It has two steps.", "af_heart"], ["First, run npm test!", "af_heart"],
+      ["然后我们去吃饭。好吗？", "zf_xiaobei"],
     ]);
     const calls = (await s.ada.get<CallInfo[]>(`${s.u}/models/calls`)).body.filter((c) => c.task === "speech.speak");
     expect(calls).toHaveLength(1);
-    expect(calls[0]!.audioSeconds).toBe(1.2);
+    expect(calls[0]!.audioSeconds).toBe(0.8);
     expect(JSON.stringify(calls)).not.toMatch(/plan|吃饭/);
     // Her context meter still reads the chat call.
     expect((await s.ada.get<ThreadSettings>(`${s.path}/settings`)).body.answered?.task).toBe("chat");
@@ -214,14 +224,14 @@ describe("read aloud", () => {
 
   it("stops the upstream call when the client goes away", async () => {
     const s = await setup("private", { gapMs: 1500 });
-    await s.turn("One sentence here. And another one. And a third.");
+    await s.turn("One sentence here.\n\nAnd another one.\n\nAnd a third.");
     const stop = new AbortController();
     const res = await s.audio(`${s.path}/messages/${await s.nOf("assistant")}/speech`, stop.signal);
     const reader = res.body!.getReader();
     expect((await reader.read()).value!.length).toBeGreaterThan(0);
     stop.abort();
     await new Promise((r) => setTimeout(r, 300));
-    // The sentence playing, and the one asked ahead, were both cut off; no third was asked for.
+    // The piece playing, and the one asked ahead, were both cut off; no third was asked for.
     expect(s.speech.heard.length).toBeLessThanOrEqual(2);
     expect(s.speech.cut).toBe(s.speech.heard.length);
     await new Promise((r) => setTimeout(r, 1500));
