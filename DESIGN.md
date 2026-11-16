@@ -977,7 +977,10 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
       from the file as needed.
     - When a model needs room, the host unloads idle models, least recently
       used first. It never unloads a pinned model or one in use, and stops
-      ComfyUI after it has been idle a while.
+      ComfyUI after it has been idle a while. ComfyUI takes a recipe's
+      memory during each job and frees much of it after, so a GPU holding
+      a recipe counts at least the recipe's measurement: another model
+      can't load into the room its next job needs.
     - Requests wait in a queue per GPU (a split model waits for all of its
       GPUs). Interactive chat comes first, then
       images, then background work (sleep, cheap subagents). If a request

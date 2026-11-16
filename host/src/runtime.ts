@@ -243,6 +243,12 @@ export class Runtime {
         await s.loadNow(this.find(body.model));
       } else if (action === "unload") {
         onlyFields(body, ["model"]);
+        // An image recipe is in no model list: it unloads by the ID the GPU's status shows it under.
+        if (typeof body.model === "string" && body.model.startsWith("recipe:")) {
+          await s.unloadNow(body.model);
+          sendJson(res, 200, { id: body.model, state: "unloaded", gpus: null });
+          return true;
+        }
         await s.unloadNow(this.find(body.model).id);
       } else if (action === "reload") {
         onlyFields(body, ["model"]);
