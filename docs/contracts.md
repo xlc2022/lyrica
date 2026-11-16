@@ -2539,7 +2539,8 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     `about`, `updatedAt` and, listing a layer, `createdAt`; `kinds=entry` is the Recent layer
     ([briefs/side-panels.md](briefs/side-panels.md)), the logged
     messages written since sleep's watermark (`PoolStore.recentEntries`),
-    a person's and hers only, newest first or with `sort=oldest` oldest
+    a person's and hers only (a turn of hers that only calls tools is left out, and one
+    with words and calls lists only the words), newest first or with `sort=oldest` oldest
     first, paged forwards by `after`. `GET …/memory/:pool/e:<thread>#<n>` reads one
     such message as a `MemoryDetail` of kind `entry` (origin `user` or
     `lyrica`, `cameFrom` its thread, no revisions); PATCH, archive, restore
