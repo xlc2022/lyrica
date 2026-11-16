@@ -1138,9 +1138,13 @@ jobs").
   it in pages (from, lines), or finds lines with pattern."). `jobs output`
   takes a call's id or a job's: a page of numbered lines (`outputPage`; 200
   by default, at most 2,000, at most 60,000 characters), its end unless she
-  gives `from`, or with `pattern` (plain text, case ignored; never a regular
-  expression, which could hold lyricad's one thread) the lines holding it,
-  at most 200. A line longer than a page is cut with a marker ("[… n more
+  gives `from`, or with `pattern` the matching lines, at most 200. `pattern`
+  is a regular expression, case ignored, at most 200 characters, run by
+  RE2's linear-time engine (the native `re2` module, `compilePattern`,
+  `matchingLines`: one pass over the output, about 60 ms for 16 MiB,
+  stopping past 200 matching lines, "200 or more" then),
+  never JavaScript's own, whose backtracking could hold lyricad's one
+  thread: no lookaround or backreferences, and no pattern is slow. A line longer than a page is cut with a marker ("[… n more
   characters]"), and a page always holds at least one line. A subagent has
   no `jobs` tool, so its results say nothing more; its output is kept all
   the same.

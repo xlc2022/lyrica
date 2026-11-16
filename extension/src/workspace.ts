@@ -444,7 +444,7 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
           id: Type.Optional(Type.String({ description: "A job (j1) for output and stop, or a bash call's kept output (c3) for output." })),
           from: Type.Optional(Type.Number({ description: "output: the first line, from 1. Left out, you get the last lines." })),
           lines: Type.Optional(Type.Number({ description: `output: how many lines, ${OUTPUT_LIMITS.pageLines} if left out, at most ${OUTPUT_LIMITS.maxPageLines}.` })),
-          pattern: Type.Optional(Type.String({ description: "output: text to find (case ignored, not a regular expression); you get the lines holding it, numbered." })),
+          pattern: Type.Optional(Type.String({ description: "output: a regular expression (RE2: case ignored, no lookaround or backreferences, at most 200 characters); you get the matching lines, numbered." })),
         }),
         async execute(_id, p: { action: "list" | "output" | "stop"; id?: string; from?: number; lines?: number; pattern?: string }) {
           if (p.action === "list") {

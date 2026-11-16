@@ -7,7 +7,7 @@ sketches; names may move, but the boundaries may not.
 
 ## Stack and layout
 
-- TypeScript (ESM) on Node 24 LTS (22.12 or later still runs it), using npm workspaces.
+- TypeScript (ESM) on Node 24 LTS, 24.15 or later (22.22.2 or later on 22 still runs it), using npm workspaces.
 - Pi pinned exactly: `@earendil-works/pi-coding-agent@1.4.0`.
 - SQLCipher through `better-sqlite3-multiple-ciphers`. Argon2id through
   `@node-rs/argon2`.

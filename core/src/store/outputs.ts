@@ -2,6 +2,7 @@
 // with its thread in the pool's own database, so it is encrypted with the pool and goes when the thread does. She
 // reads it in pages with `jobs output`; the person scrolls it in the conversation and the Jobs dropdown. Principle 1:
 // what her commands printed is part of the conversation, and nothing of it is ever written in plaintext.
+import RE2 from "re2";
 import type { Db } from "../db.ts";
 
 export const OUTPUTS_SCHEMA = `
@@ -226,10 +227,46 @@ export class CommandOutputs {
   }
 }
 
+/** The longest `pattern` she may give. */
+export const PATTERN_CHARS = 200;
+
 /**
- * A page of kept output for her: from line `from` (1-based), or the lines holding `pattern` (plain text, case ignored:
- * never a regular expression she writes, which could hold lyricad's one thread for minutes), numbered either way. A
- * line too long for a page is cut with a marker, and a page always holds at least one line, so `from` always moves on.
+ * A pattern as RE2 reads it (the native re2 module: linear time, so no pattern can hold lyricad's thread), case ignored
+ * and `^`/`$` at each line, or the reason in words when it can't be used.
+ */
+export function compilePattern(pattern: string, flags = "im"): RE2 {
+  if (pattern.length > PATTERN_CHARS) throw new Error(`pattern is longer than ${PATTERN_CHARS} characters`);
+  try { return new RE2(pattern, flags); } catch (e) {
+    throw new Error(`pattern isn't a regular expression this search reads (${(e as Error).message}); lookaround and backreferences aren't supported`);
+  }
+}
+
+/**
+ * The 0-based numbers of the lines of `text` that `pattern` matches: one pass over the whole text, a line counted once,
+ * stopping after `limit` (each match costs a call into re2, so a pattern matching millions of lines would take seconds).
+ */
+export function matchingLines(text: string, pattern: string, limit = Infinity): number[] {
+  const re = compilePattern(pattern, "img");
+  const bytes = Buffer.from(text, "utf8");
+  const starts = [0];
+  for (let i = bytes.indexOf(10); i !== -1; i = bytes.indexOf(10, i + 1)) starts.push(i + 1);
+  const lineAt = (at: number) => { let lo = 0, hi = starts.length - 1; while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (starts[mid]! <= at) lo = mid; else hi = mid - 1; } return lo; };
+  const hits: number[] = [];
+  re.lastIndex = 0;
+  for (let m = re.exec(bytes); m; m = re.exec(bytes)) {
+    const line = lineAt(m.index);
+    hits.push(line);
+    if (hits.length >= limit || line + 1 >= starts.length) break;
+    re.lastIndex = starts[line + 1]!;
+  }
+  return hits;
+}
+
+/**
+ * A page of kept output for her: from line `from` (1-based), or the lines matching `pattern`, numbered either way.
+ * `pattern` is a regular expression (case ignored) run by RE2's linear-time engine (the native re2 module), never
+ * JavaScript's own, whose backtracking could hold lyricad's one thread for minutes: no lookaround or backreferences,
+ * and no pattern is slow. A line too long for a page is cut with a marker, and a page always holds at least one line, so `from` moves on.
  */
 export function outputPage(text: string, o: { from?: number; lines?: number; pattern?: string } = {}): string {
   const all = text.replace(/\n$/, "").split("\n");
@@ -247,11 +284,12 @@ export function outputPage(text: string, o: { from?: number; lines?: number; pat
     return out;
   };
   if (o.pattern) {
-    const needle = o.pattern.toLowerCase();
-    const hits = all.flatMap((l, i) => (l.toLowerCase().includes(needle) ? [i] : []));
+    const hits = matchingLines(all.join("\n"), o.pattern, OUTPUT_LIMITS.matches + 1);
     if (!hits.length) return `No line of ${total.toLocaleString("en-US")} matches ${o.pattern}.`;
     const shown = fit(hits.slice(0, OUTPUT_LIMITS.matches).map(num));
-    return `${hits.length.toLocaleString("en-US")} of ${total.toLocaleString("en-US")} lines match${shown.length < hits.length ? `; the first ${shown.length}` : ""}:\n${shown.join("\n")}`;
+    const more = hits.length > OUTPUT_LIMITS.matches;
+    const count = more ? `${OUTPUT_LIMITS.matches} or more` : hits.length.toLocaleString("en-US");
+    return `${count} of ${total.toLocaleString("en-US")} lines match${shown.length < hits.length ? `; the first ${shown.length}` : ""}:\n${shown.join("\n")}`;
   }
   const from = Math.min(Math.max(1, Math.floor(o.from ?? 1)), total);
   const want = Math.min(Math.max(1, Math.floor(o.lines ?? OUTPUT_LIMITS.pageLines)), OUTPUT_LIMITS.maxPageLines);
