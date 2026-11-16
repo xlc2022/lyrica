@@ -74,6 +74,8 @@ export class StateFile {
       const spilled = new Set(Object.keys(this.state.vram).filter((k) => /@[^@]*\/(moe|ngl)\d/.test(k)).map((k) => k.slice(0, k.indexOf("@"))));
       for (const [id, m] of Object.entries(this.state.models)) {
         if ((m as { systemRam?: unknown }).systemRam === false) { delete m.systemRam; spilled.delete(id); }
+        // Layers set by hand spill on their own, without the setting.
+        if (m.gpuLayers !== undefined) spilled.delete(id);
       }
       if (this.state.systemRam > 0) {
         for (const id of spilled) this.state.models[id] = { ...(this.state.models[id] ?? { placement: { mode: "auto" } }), systemRam: this.state.systemRam };

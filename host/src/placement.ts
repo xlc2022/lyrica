@@ -475,7 +475,7 @@ export function validate(model: TextModel, body: Record<string, unknown>, gpus: 
     throw invalid("A q8_0 or q4_0 KV cache needs flashAttention set to on.");
   }
   int(body.gpuLayers, 0, 999, "gpuLayers");
-  // From before limits, false was Off: it is now the same as leaving it out.
+  // Bytes; left out keeps the model on its GPUs.
   if (body.systemRam !== undefined && (typeof body.systemRam !== "number" || !Number.isInteger(body.systemRam) || body.systemRam < GIB || body.systemRam > 1024 * GIB)) {
     throw invalid("systemRam is the most bytes the model may keep in system RAM, from 1 GiB, or left out to keep it on its GPUs.");
   }

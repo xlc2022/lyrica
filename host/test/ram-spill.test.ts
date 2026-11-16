@@ -369,13 +369,14 @@ it("keeps models that spilled before limits spilling, up to the allowance, once"
   const dir = mkdtempSync(join(tmpdir(), "lyrica-state-"));
   writeFileSync(join(dir, "state.json"), JSON.stringify({
     systemRam: 48 * GIB,
-    models: { off: { placement: { mode: "auto" }, systemRam: false }, set: { placement: { mode: "gpus", gpus: [0] }, contextLength: 8192 } },
-    vram: { "set@0/ngl30": [20 * GIB], "fresh@0+1:22,22/moe12~8192": [18 * GIB], "off@0@0.5/ngl20": [10 * GIB], "fits@0": [8 * GIB] },
+    models: { off: { placement: { mode: "auto" }, systemRam: false }, set: { placement: { mode: "gpus", gpus: [0] }, contextLength: 8192 }, byHand: { placement: { mode: "auto" }, gpuLayers: 20 } },
+    vram: { "set@0/ngl30": [20 * GIB], "fresh@0+1:22,22/moe12~8192": [18 * GIB], "off@0@0.5/ngl20": [10 * GIB], "fits@0": [8 * GIB], "byHand@0/ngl20": [12 * GIB] },
   }));
   const state = new StateFile(dir);
   expect(state.get().models).toEqual({
     off: { placement: { mode: "auto" } },
     set: { placement: { mode: "gpus", gpus: [0] }, contextLength: 8192, systemRam: 48 * GIB },
+    byHand: { placement: { mode: "auto" }, gpuLayers: 20 },
     fresh: { placement: { mode: "auto" }, systemRam: 48 * GIB },
   });
   expect(state.get().migrations).toContain("ram-opt-in");
