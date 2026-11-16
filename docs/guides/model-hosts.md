@@ -110,6 +110,12 @@ answer to start, so a long prompt on a slow model can still be read.
 - **Memory beside the GPU:** each loaded llama.cpp model keeps recent
   prompts in the machine's own memory (`cache-ram`), an eighth of it up
   to 64 GiB, where that is more than llama.cpp's own 8 GiB.
+- **Swap encrypted, or none:** the model servers keep prompts and images
+  only in memory (host/README.md, "What a request leaves behind"), but the
+  kernel can write that memory to swap. Encrypt the host's swap as on
+  Lyrica's own server: on NixOS, `randomEncryption.enable = true` on its
+  `swapDevices` entry; on Debian or Ubuntu, a swap line in `/etc/crypttab`
+  keyed from `/dev/urandom`.
 
 ### AMD GPUs
 
