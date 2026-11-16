@@ -16,7 +16,7 @@ function h(tag, props = {}, ...children) {
   return el;
 }
 
-const ICONS = { more: "M5 12h.01M12 12h.01M19 12h.01", close: "M6 6l12 12M18 6L6 18" };
+const ICONS = { more: "M5 12h.01M12 12h.01M19 12h.01", close: "M6 6l12 12M18 6L6 18", right: "M9 5l7 7-7 7" };
 function icon(name) {
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   svg.setAttribute("class", "ic");
@@ -159,24 +159,33 @@ const field = (label, input, title) => h("label", { class: "field", title }, h("
 // ---- State and refreshing ----
 
 const S = { me: null, status: null, models: [], downloads: [], recipes: [], starters: [], usage: [], clients: [], code: null, hub: { source: "huggingface", repo: "", token: "", url: "", sha: "", listing: null } };
+// What the user has set on the page: searches, chips, open groups (true or false once toggled), the picked starters.
+const UI = { textQ: "", textShow: "all", open: new Map(), source: "starters", q: "", show: "all", does: "all", pick: {} };
 
 const SECTIONS = [
-  ["gpus", "GPUs"], ["models", "Models"], ["images", "Image models"], ["downloads", "Downloads"], ["usage", "Usage"], ["servers", "Lyrica servers"], ["password", "Password"],
+  ["overview", "Overview"], ["text", "Text models"], ["images", "Image models"], ["downloads", "Downloads"], ["usage", "Usage"], ["servers", "Lyrica servers"], ["password", "Password"],
 ];
+// Pages under a section: the two download pages.
+const PAGES = { "download-text": "text", "download-image": "images" };
 const ownerOnly = new Set(["servers", "password"]);
+const page = () => (location.hash.slice(1) in PAGES ? location.hash.slice(1) : null);
 const section = () => {
-  const want = location.hash.slice(1);
+  const want = PAGES[location.hash.slice(1)] ?? location.hash.slice(1);
   const allowed = SECTIONS.filter(([k]) => S.me?.access !== "client" || !ownerOnly.has(k)).map(([k]) => k);
-  return allowed.includes(want) ? want : "gpus";
+  return allowed.includes(want) ? want : "overview";
 };
 window.addEventListener("hashchange", () => {
   closeMenu();
+  // A download page starts from its starters, with nothing searched or picked.
+  Object.assign(UI, { source: "starters", q: "", show: "all", does: "all", pick: {} });
+  S.hub.listing = null;
   if (drawer) closeDrawer();
   else render();
 });
 
 /** Something the user has open, which a timed refresh mustn't redraw under them. */
 const busy = () => !!(drawer || openMenu || $("confirm").open || document.activeElement?.closest?.("#content form"));
+const going = (d) => ["queued", "downloading", "uploading", "verifying"].includes(d.state);
 
 async function refresh(force = false) {
   if (!force && busy()) return;
@@ -236,30 +245,71 @@ function renderHead() {
   $("problems").hidden = !problems.length;
   $("problems").replaceChildren(...problems.map((p) => h("p", { class: "warn-text" }, p)));
 
-  const counts = { models: S.models.length, images: S.recipes.length, downloads: S.downloads.filter((d) => ["queued", "downloading", "uploading", "verifying"].includes(d.state)).length || null };
+  const queue = S.downloads.filter(going).length;
   const current = section();
   $("subnav").replaceChildren(...SECTIONS.filter(([k]) => me.access !== "client" || !ownerOnly.has(k)).map(([k, label]) =>
-    h("a", { href: `#${k}`, "aria-current": k === current ? "page" : undefined }, label, counts[k] ? h("span", { class: "count" }, String(counts[k])) : null)));
+    h("a", { href: `#${k}`, "aria-current": k === current ? "page" : undefined }, label,
+      k === "downloads" && queue ? h("span", { class: "badge", "aria-label": `${queue} running` }, String(queue)) : null)));
 }
 
 function render() {
   if (!S.status) return;
   renderHead();
-  const draw = { gpus: gpus, models: textModels, images: imageModels, downloads: downloadsSection, usage: usageSection, servers: serversSection, password: passwordSection }[section()];
+  const draw = page() ? () => downloadPage(page() === "download-text" ? "text" : "image")
+    : { overview, text: textModels, images: imageModels, downloads: downloadsSection, usage: usageSection, servers: serversSection, password: passwordSection }[section()];
+  // A redraw keeps the keyboard where it was: the search box and its caret, a chip, a group's heading.
+  const at = document.activeElement?.closest?.("#content") ? document.activeElement : null;
+  const caret = at?.type === "search" ? at.selectionStart : null;
   $("content").replaceChildren(...draw().filter(Boolean));
+  const again = at?.id ? document.getElementById(at.id) : null;
+  again?.focus();
+  if (again && caret != null) again.setSelectionRange(caret, caret);
+}
+
+/** A section's head: its title, a facts line under it, its actions at the right. */
+const sectionHead = (title, sub, ...actions) => h("div", { class: "section-head" }, h("div", { class: "st" }, title, sub), actions);
+/** A model as a line shows it, as Lyrica does: its file's name without the extension, the whole ID as the tooltip. */
+const short = (id) => id.split("/").pop().replace(/\.(gguf|safetensors|bin)$/i, "") || id;
+const shortName = (id) => h("span", { title: short(id) === id ? undefined : id }, short(id));
+const plural = (count, one, many) => [num(count), ` ${count === 1 ? one : many}`];
+/** A toggle that stays pressed: a chip, or a button of a segmented control. Its id lets a redraw keep the focus on it. */
+const toggle = (id, label, pressed, on, cls) => h("button", { type: "button", id, class: cls, "aria-pressed": String(pressed), onclick: () => { on(); render(); } }, label);
+const search = (id, key, label, placeholder) => h("input", { type: "search", id, "aria-label": label, placeholder, value: UI[key], oninput: (e) => { UI[key] = e.target.value; render(); } });
+/** A collapsible group: open by `open` until the user toggles it, then as they left it; `force` opens it whatever they did. */
+function group(key, open, name, count, rows, force = false) {
+  const isOpen = force || (UI.open.get(key) ?? open);
+  const summary = h("summary", { id: `group-${key}`, onclick: (e) => { e.preventDefault(); UI.open.set(key, !isOpen); render(); } }, icon("right"), h("span", { class: "group-name" }, name), h("span", { class: "cap" }, count));
+  return h("details", { class: "group", open: isOpen ? "" : undefined }, summary, isOpen ? rows : null);
 }
 
 // ---- GPUs ----
 
 const SERVERS = [["llamacpp", "llama.cpp"], ["vllm", "vLLM"], ["images", "Images"], ["speech", "Speech"]];
 
-function gpus() {
-  const { gpus: list, servers } = S.status;
-  const head = h("div", { class: "section-head" }, h("h2", {}, "GPUs"),
+/** "loading, 64%", as Lyrica's host card says it: how much of the model's files the server has read from disk. */
+function loadingWord(id) {
+  const l = S.models.find((m) => m.id === id)?.loading;
+  return l?.of ? `loading, ${Math.min(100, Math.floor((100 * l.read) / l.of))}%` : "loading";
+}
+
+function overview() {
+  const { gpus: list, servers, modelsFolder } = S.status;
+  const loaded = S.models.filter((m) => m.state === "loaded").length, loading = S.models.filter((m) => m.state === "loading").length;
+  const pinned = S.models.filter((m) => m.pinned).length, images = S.recipes.filter((r) => r.state === "confirmed").length;
+  const used = list.reduce((n, g) => n + g.vram.used, 0), total = list.reduce((n, g) => n + g.vram.total, 0);
+  const running = S.downloads.filter(going).length;
+  const tile = (href, label, value, sub) => h(href ? "a" : "div", { class: "tile", href }, h("span", { class: "k" }, label), h("span", { class: "v" }, value), h("span", { class: "s" }, sub));
+  const dots = (...parts) => parts.filter(Boolean).flatMap((p, i) => (i ? [" · ", p] : [p])).flat();
+  const head = sectionHead(h("h2", {}, "Overview"), null,
     h("div", { class: "legend" }, h("span", {}, h("i", { class: "seg-pinned" }), "Pinned"), h("span", {}, h("i", { class: "seg-loaded" }), "Loaded on demand"),
       S.status.systemRam?.allowance ? h("span", {}, h("i", { class: "seg-ram" }), "In system RAM") : null));
-  if (!list.length) return [head, h("p", { class: "empty" }, "No GPUs found."), ...cpu(), ...systemRam()];
-  return [head, ...list.map((g) => {
+  const tiles = h("div", { class: "tiles" },
+    list.length ? tile(null, "GPU memory", [h("b", {}, size(used).split(" ")[0]), ` of ${size(total)}`], plural(list.length, "GPU", "GPUs")) : null,
+    tile("#text", "Models", [h("b", {}, String(loaded)), " of ", num(S.models.length), " loaded"],
+      dots(pinned ? [num(pinned), " pinned"] : null, loading ? [num(loading), " loading"] : null, plural(images, "image model", "image models"))),
+    tile("#downloads", "Models folder", [h("b", {}, size(modelsFolder.free).split(" ")[0]), ` ${size(modelsFolder.free).split(" ")[1]} free`], running ? [num(running), " downloading"] : "no downloads running"));
+  if (!list.length) return [head, tiles, h("p", { class: "empty" }, "No GPUs found."), ...cpu(), ...systemRam()];
+  return [head, tiles, ...list.map((g) => {
     const allowed = SERVERS.filter(([s]) => servers.includes(s) && g.settings.servers.includes(s)).map(([, l]) => l);
     const waiting = [["chat", g.queue.chat], ["image", g.queue.image], ["background", g.queue.background]].filter(([, n]) => n).map(([k, n]) => `${n} ${k}`);
     return h("section", { class: "card" },
@@ -272,10 +322,10 @@ function gpus() {
         h("span", {}, allowed.length ? allowed.join(", ") : "no servers"),
         h("span", {}, "keeps ", num(size(g.settings.keepFree)), " free")),
       h("div", { class: "bar", role: "img", "aria-label": `${size(g.vram.used)} of ${size(g.vram.total)} used` },
-        g.models.map((m) => h("span", { class: m.pinned ? "seg-pinned" : "seg-loaded", style: `width:${Math.min(100, (100 * m.vram) / g.vram.total)}%`, title: `${m.id}: ${size(m.vram)}` }))),
+        g.models.map((m) => h("span", { class: m.pinned ? "seg-pinned" : "seg-loaded", style: `width:${Math.min(100, (100 * m.vram) / g.vram.total)}%`, title: `${short(m.id)}: ${size(m.vram)}` }))),
       g.models.length ? h("ul", { class: "model-list" }, g.models.map((m) =>
-        h("li", {}, h("code", {}, m.id),
-          h("span", { class: "muted" }, [m.pinned ? "pinned" : m.state === "loading" ? "loading" : "loaded", m.busy ? "busy" : null, m.gpus.length > 1 ? `split over GPUs ${m.gpus.join(" and ")}` : null].filter(Boolean).join(" · ")),
+        h("li", {}, shortName(m.id),
+          h("span", { class: "muted" }, `(${[m.pinned ? "pinned" : m.state === "loading" ? loadingWord(m.id) : "loaded", m.busy ? "busy" : null, m.gpus.length > 1 ? `split over GPUs ${m.gpus.join(" and ")}` : null].filter(Boolean).join(" · ")})`),
           h("span", { class: "num muted" }, size(m.vram)),
           m.pinned ? null : button(m.state === "loading" ? "Cancel" : "Unload", () => post("/host/v1/models/unload", { model: m.id }))))) : null,
       waiting.length ? h("p", { class: "facts" }, `Waiting: ${waiting.join(", ")}`) : null);
@@ -305,8 +355,8 @@ function systemRam() {
       h("button", { type: "button", class: "sm", onclick: () => editRam(r) }, "Edit")),
     facts(r.allowance ? h("span", {}, num(size(r.used)), " of ", num(size(r.allowance)), " used") : null, h("span", {}, "llama.cpp")),
     r.allowance ? h("div", { class: "bar", role: "img", "aria-label": `${size(r.used)} of ${size(r.allowance)} used` },
-      r.models.map((m) => h("span", { class: "seg-ram", style: `width:${Math.min(100, (100 * m.ram) / r.allowance)}%`, title: `${m.id}: ${size(m.ram)}` }))) : null,
-    r.models.length ? h("ul", { class: "model-list" }, r.models.map((m) => h("li", {}, h("code", {}, m.id), h("span", { class: "num muted" }, size(m.ram))))) : null)];
+      r.models.map((m) => h("span", { class: "seg-ram", style: `width:${Math.min(100, (100 * m.ram) / r.allowance)}%`, title: `${short(m.id)}: ${size(m.ram)}` }))) : null,
+    r.models.length ? h("ul", { class: "model-list" }, r.models.map((m) => h("li", {}, shortName(m.id), h("span", { class: "num muted" }, size(m.ram))))) : null)];
 }
 
 function editRam(r) {
@@ -350,10 +400,17 @@ const loadModel = (id) => post("/host/v1/models/load", { model: id }).catch((e) 
 });
 
 function textModels() {
-  const head = h("div", { class: "section-head" }, h("h2", {}, "Models"), button("Scan the folder", () => post("/host/v1/scan")));
-  if (!S.models.length) return [head, h("ul", { class: "list" }, h("li", { class: "empty" }, "No text or voice models in the models folder.")), ...starters()];
+  const loaded = S.models.filter((m) => m.state !== "unloaded");
+  const head = sectionHead(h("h2", {}, "Text models"), facts(h("span", {}, plural(S.models.length, "model", "models")), h("span", {}, num(S.models.filter((m) => m.state === "loaded").length), " loaded")),
+    h("button", { type: "button", onclick: act(() => post("/host/v1/scan")) }, "Scan the folder"), h("a", { class: "button primary", href: "#download-text" }, "Download text model"));
+  if (!S.models.length) return [head, h("ul", { class: "list" }, h("li", { class: "empty" }, "No text or voice models in the models folder."))];
   const cpu = S.status.cpuServers ?? [];
-  return [head, h("ul", { class: "list" }, S.models.map((m) => {
+  const words = UI.textQ.trim().toLowerCase().split(" ").filter(Boolean);
+  const kept = (UI.textShow === "loaded" ? loaded : S.models).filter((m) => words.every((w) => `${m.id} ${KINDS[m.kind] ?? m.kind} ${SERVER_NAMES[m.server] ?? m.server}`.toLowerCase().includes(w)));
+  const filters = h("div", { class: "filters" }, search("text-q", "textQ", "Search text models", "Search by name"),
+    h("div", { class: "chip-row", role: "group", "aria-label": "Show" },
+      [["all", "All", S.models.length], ["loaded", "Loaded", loaded.length]].map(([k, label, count]) => toggle(`text-show-${k}`, [label, " ", num(count)], UI.textShow === k, () => (UI.textShow = k), "chip"))));
+  return [head, filters, h("ul", { class: "list" }, kept.length ? kept.map((m) => {
     const where = cpu.includes(m.server) ? "CPU" : m.placement.mode === "auto" ? "placed automatically" : `GPU ${m.placement.gpus.join("+")}`;
     // While loading, how much of the model has been read from disk; a model already in the page cache reads nothing and shows no percent.
     const pct = m.state === "loading" && m.loading?.of ? Math.min(100, Math.floor((100 * m.loading.read) / m.loading.of)) : null;
@@ -361,22 +418,22 @@ function textModels() {
     const reading = pct == null ? undefined : `${size(m.loading.read)} of ${size(m.loading.of)} read from disk`;
     return h("li", {},
       h("div", { class: "main" },
-        h("div", { class: "name" }, h("code", {}, m.id)),
+        h("div", { class: "name" }, shortName(m.id), m.pinned ? h("span", { class: "pill" }, "pinned") : null),
         facts(h("span", {}, KINDS[m.kind] ?? m.kind), h("span", {}, SERVER_NAMES[m.server] ?? m.server), num(size(m.size)), h("span", {}, where),
           m.capabilities?.speak ? h("span", {}, num(m.capabilities.speak.voices.length), " voices") : null,
           m.contextLength ? h("span", {}, num(m.contextLength), " context") : null,
           m.stretch ? h("span", {}, "stretch ×", num(m.stretch)) : null,
           m.kvBytes ? h("span", {}, "KV ", num(size(m.kvBytes))) : null)),
       h("div", { class: "actions" },
-        state(word, dot, reading), m.pinned ? h("span", { class: "pill" }, "pinned") : null,
+        state(word, dot, reading),
         m.state === "unloaded" ? button("Load", () => loadModel(m.id))
           : h("button", { type: "button", class: "sm", disabled: m.pinned, title: m.pinned ? "Unpin it first." : undefined, onclick: act(() => post("/host/v1/models/unload", { model: m.id })) }, m.state === "loading" ? "Cancel" : "Unload"),
         h("button", { type: "button", class: "sm", onclick: () => editModel(m).catch(failed) }, "Settings"),
-        rowMenu(m.id, [
+        rowMenu(short(m.id), [
           [m.pinned ? "Unpin" : "Pin", () => post("/host/v1/models/pin", { model: m.id, pinned: !m.pinned })],
           m.state !== "unloaded" && ["Reload", () => post("/host/v1/models/reload", { model: m.id })],
         ])));
-  })), ...starters()];
+  }) : h("li", { class: "empty" }, "No models match."))];
 }
 
 /**
@@ -438,9 +495,11 @@ async function getStarter(s) {
   if (files.length) await post("/host/v1/downloads", { source: "huggingface", repo: s.repo, revision: listing.revision, files });
 }
 
-/** The starters this host can serve: its servers run them, on a GPU or the CPU, with each one's state here. */
-function starters() {
-  const { servers, cpuServers = [], gpus, dictation = "vllm" } = S.status;
+const STARTER_GROUPS = { chat: "Chat", embedding: "Embedding", speak: "Voice", transcribe: "Voice" };
+
+/** The text starters this host can serve, as the download page's choices: its servers run them, on a GPU or the CPU. */
+function textStarters() {
+  const { servers, cpuServers = [], gpus, dictation = "vllm", modelsFolder } = S.status;
   // What GPUs that allow a starter's server can give it: llama.cpp splits a model over all of them, the others use one.
   const rooms = (server) => gpus.filter((g) => !g.settings.excluded && g.settings.servers.includes(server === "whispercpp" ? "speech" : server)).map((g) => g.vram.total - g.settings.keepFree);
   const room = (server) => server === "llamacpp" ? rooms(server).reduce((a, b) => a + b, 0) : Math.max(0, ...rooms(server));
@@ -448,21 +507,22 @@ function starters() {
   const ram = S.status.systemRam?.allowance ?? 0;
   // Dictation runs on one server here: whisper.cpp beside a CMP 100-210, else vLLM.
   const serves = (s) => (s.kind !== "transcribe" || s.server === dictation) && (s.server === "whispercpp" || servers.includes(s.server) || cpuServers.includes(s.server));
-  const rows = STARTERS.filter(serves).map((s) => {
+  return STARTERS.filter(serves).map((s) => {
     const here = S.models.some((m) => m.id === s.id);
     const coming = S.downloads.some((d) => ["queued", "downloading", "verifying"].includes(d.state) && d.path.startsWith(`lyrica/huggingface/${s.repo}/`));
     const fits = cpuServers.includes(s.server) || s.needs <= room(s.server);
     const spills = !fits && s.server === "llamacpp" && s.needs <= room(s.server) + ram;
-    return h("li", {},
-      h("div", { class: "main" }, h("div", { class: "name" }, s.name),
-        facts(h("span", {}, KINDS[s.kind]), h("span", {}, SERVER_NAMES[s.server]), h("span", {}, "about ", num(size(s.size))),
-          cpuServers.includes(s.server) ? h("span", {}, "CPU") : h("span", {}, "needs ", num(size(s.needs)), " of GPU memory"))),
-      h("div", { class: "actions" },
-        here ? state("Here", "up") : coming ? state("Downloading", "info")
-          : !fits && !spills ? h("span", { class: "pill warn", title: "More than any GPU here can give it." }, "too big for these GPUs")
-          : h("span", { class: "row" }, spills ? h("span", { class: "pill warn", title: "Runs slower: part of it stays in system RAM." }, "uses system RAM") : null, button("Download", () => getStarter(s)))));
+    return {
+      id: s.id, name: s.name, row: s.name, group: STARTER_GROUPS[s.kind], words: [KINDS[s.kind], SERVER_NAMES[s.server]], bytes: s.size, installed: here || coming,
+      facts: [KINDS[s.kind], SERVER_NAMES[s.server], [num(size(s.size)), " to download"], cpuServers.includes(s.server) ? "CPU" : ["needs ", num(size(s.needs)), " of GPU memory"]],
+      pill: here ? h("span", { class: "pill" }, "existing") : coming ? h("span", { class: "pill info" }, "downloading")
+        : s.size > modelsFolder.free ? h("span", { class: "pill warn", title: `${size(s.size)} to download, ${size(modelsFolder.free)} free.` }, "not enough space")
+        : !fits && !spills ? h("span", { class: "pill warn", title: "More than any GPU here can give it." }, "too big for these GPUs")
+        : spills ? h("span", { class: "pill warn", title: "Runs slower: part of it stays in system RAM." }, "uses system RAM") : null,
+      off: here || coming || s.size > modelsFolder.free || (!fits && !spills),
+      get: () => getStarter(s),
+    };
   });
-  return rows.length ? [h("h3", {}, "Starters"), h("ul", { class: "list" }, rows)] : [];
 }
 
 /** A model's placement and serving settings; what isn't a field stays as JSON under Other settings. */
@@ -486,7 +546,7 @@ async function editModel(m) {
   const ramLimit = h("span", { hidden: !ramBox.checked }, " up to ", ramGb, " of ", num(allowGb), " GB");
   ramBox.onchange = () => (ramLimit.hidden = !ramBox.checked);
   const ramCheck = llama ? h("div", { class: "row", style: "align-items: center" },
-    h("label", { class: "check", title: allowance ? "Lets this model keep part of itself in system RAM, which is slower, for a longer context or a model too big for its GPUs. Unticked, it stays on its GPUs." : "The host's System RAM allowance is off; set it in the System RAM card under GPUs." },
+    h("label", { class: "check", title: allowance ? "Lets this model keep part of itself in system RAM, which is slower, for a longer context or a model too big for its GPUs. Unticked, it stays on its GPUs." : "The host's System RAM allowance is off; set it in the System RAM card on Overview." },
       ramBox, h("span", {}, "System RAM", allowance ? "" : " · off")), ramLimit) : null;
   const pickBox = h("fieldset", { hidden: where.value !== "gpus" && !llama }, h("legend", {}, "Memory"), gpuChecks, ramCheck);
   where.onchange = () => {
@@ -569,57 +629,145 @@ async function editModel(m) {
 
 // ---- Image models ----
 
+const doesWord = (d) => (d === "create" ? "generate" : d === "upscale_video" ? "upscale clips" : d === "edit_video" ? "edit clips" : d);
+/** Which Does an action falls under: clips, animating and motion are all Video. */
+const doesKind = (d) => (d === "create" || d === "edit" ? d : d === "upscale" || d === "upscale_video" ? "upscale" : "video");
+const unique = (list) => [...new Set(list)];
+
 function imageModels() {
-  const list = h("ul", { class: "list" }, S.recipes.length ? S.recipes.map((r) => {
-    const missing = r.parts.filter((p) => !p.file || p.missing).length;
+  const head = sectionHead(h("h2", {}, "Image models"), facts(h("span", {}, plural(S.recipes.length, "model", "models")), h("span", {}, plural(unique(S.recipes.map((r) => r.arch)).length, "group", "groups"))),
+    h("button", { type: "button", onclick: act(() => post("/host/v1/scan")) }, "Scan the folder"), h("a", { class: "button primary", href: "#download-image" }, "Download image model"));
+  if (!S.recipes.length) return [head, h("ul", { class: "list" }, h("li", { class: "empty" }, "None yet."))];
+  const missing = (r) => r.parts.filter((p) => !p.file || p.missing).length;
+  const review = (r) => r.state === "proposed" || missing(r) > 0;
+  const row = (r) => {
+    const lacks = missing(r);
     const badge = r.state === "proposed" ? h("span", { class: "pill info", title: "Found in the models folder; Use adds it." }, "proposed")
-      : missing ? h("span", { class: "pill warn" }, `${missing} part${missing > 1 ? "s" : ""} missing`)
+      : lacks ? h("span", { class: "pill warn" }, `${lacks} part${lacks > 1 ? "s" : ""} missing`)
       : r.ready ? state("Ready", "up") : state("Not ready", "away");
     const del = ["Delete…", async () => (await confirmFirst(`Delete ${r.name}? Parts the host downloaded that no other recipe uses are deleted too.`, "Delete", true)) && api(`/host/v1/recipes/${r.id}`, { method: "DELETE" }), { danger: true }];
     const parts = ["Download parts", () => post(`/host/v1/recipes/${r.id}/download-parts`)];
     return h("li", {},
-      h("div", { class: "main" }, h("div", { class: "name" }, r.name), facts(h("span", {}, r.arch), h("span", {}, r.does.join(" and ")))),
+      h("div", { class: "main" }, h("div", { class: "name" }, r.name), facts(h("span", {}, r.does.map(doesWord).join(" · ")), r.useFor && r.useFor !== "both" ? h("span", {}, r.useFor) : null)),
       h("div", { class: "actions" }, badge,
-        r.state === "proposed" ? button("Use", () => post(`/host/v1/recipes/${r.id}/confirm`)) : missing ? button(...parts) : null,
+        r.state === "proposed" ? button("Use", () => post(`/host/v1/recipes/${r.id}/confirm`)) : lacks ? button(...parts) : null,
         rowMenu(r.name, [
           r.state === "proposed" && ["Ignore", () => post(`/host/v1/recipes/${r.id}/ignore`)],
-          r.state === "proposed" && missing && parts,
+          r.state === "proposed" && lacks && parts,
           del,
         ])));
-  }) : h("li", { class: "empty" }, "None yet."));
+  };
+  const arches = unique(S.recipes.map((r) => r.arch)).sort((a, b) => a.localeCompare(b));
+  // A group opens by itself while one of its models waits for the user, or while it is the only group.
+  return [head, h("div", { class: "groups" }, arches.map((arch) => {
+    const mine = S.recipes.filter((r) => r.arch === arch).sort((a, b) => a.name.localeCompare(b.name));
+    const waiting = mine.filter(review).length;
+    return group(`arch-${arch}`, waiting > 0 || arches.length === 1, [arch, " ", h("span", { class: "cap" }, unique(mine.flatMap((r) => r.does.map(doesWord))).join(" · "))],
+      [...plural(mine.length, "model", "models"), ...(waiting ? [" · ", num(waiting), " to review"] : [])], h("ul", { class: "rows" }, mine.map(row)));
+  }))];
+}
+
+/** The host's starter recipes, as the download page's choices: a model's variants share a row. */
+function imageStarters() {
+  const free = S.status.modelsFolder.free;
+  return S.starters.map((s) => {
+    const lacks = s.parts.filter((p) => !p.present);
+    const bytes = lacks.reduce((n, p) => n + (p.size ?? 0), 0);
+    const here = S.recipes.some((r) => r.starter === s.id);
+    const does = unique((s.does ?? []).map(doesWord));
+    return {
+      id: s.id, name: s.name, row: s.variantOf ?? s.name, variant: s.variant, group: s.family || s.template, does: s.does ?? [], words: [s.variantOf, s.variant, s.useFor, ...does], bytes, installed: here,
+      facts: [...does, s.useFor, plural(s.parts.length, "part", "parts"), lacks.length ? [num(size(bytes)), " to download"] : "every part is on this host"],
+      pill: here ? h("span", { class: "pill" }, "existing") : bytes > free ? h("span", { class: "pill warn", title: `${size(bytes)} to download, ${size(free)} free.` }, "not enough space") : null,
+      off: here || bytes > free,
+      get: () => post(`/host/v1/starters/${s.id}/install`),
+    };
+  });
+}
+
+// ---- The download pages ----
+
+/**
+ * The starters to pick one from: a search box, Does for image starters, All and Not currently installed, then a
+ * collapsed group per kind or family. A model's variants fold into one row, with a Variant switch once it is picked.
+ */
+function starterPicker(kind, all) {
+  if (!all.length) return [h("p", { class: "empty" }, kind === "text" ? "This host's servers run none of the starters." : "This host ships no starter recipes.")];
+  if (all.find((s) => s.id === UI.pick[kind])?.off) delete UI.pick[kind];
+  const picked = all.find((s) => s.id === UI.pick[kind]);
+  const ofKind = all.filter((s) => UI.does === "all" || !s.does || s.does.some((d) => doesKind(d) === UI.does));
+  const shows = (s, x) => x === "all" || !s.installed;
+  const words = UI.q.trim().toLowerCase().split(" ").filter(Boolean);
+  const kept = ofKind.filter((s) => shows(s, UI.show) && words.every((w) => [s.name, s.group, ...s.words].join(" ").toLowerCase().includes(w)));
+  const filtering = words.length > 0 || UI.show !== "all";
+  const joined = (parts) => parts.filter(Boolean).flatMap((p, i) => (i ? [" · ", p] : [p])).flat();
+  const choice = (row, n) => {
+    const many = row.length > 1, isPicked = row.includes(picked);
+    const s = isPicked ? picked : row.find((x) => !x.off) ?? row[0];
+    const sizes = row.map((x) => x.bytes);
+    const lo = Math.min(...sizes), hi = Math.max(...sizes);
+    const summary = many && !isPicked
+      ? joined([...s.facts.slice(0, kind === "text" ? 2 : 1), plural(row.length, "variant", "variants"), hi === 0 ? null : lo === hi ? [num(size(lo)), " to download"] : [num(size(lo)), " to ", num(size(hi)), " to download"]])
+      : joined(s.facts);
+    const allOff = row.every((x) => x.off);
+    const pill = many && !isPicked ? (allOff ? s.pill : row.find((x) => x.installed)?.pill) : s.pill;
+    return h("div", { class: "starter" },
+      h("label", { class: "choice" },
+        h("input", { type: "radio", name: "starter", id: `starter-${kind}-${n}`, checked: isPicked, disabled: many ? allOff : s.off, onchange: () => { UI.pick[kind] = s.id; render(); } }),
+        h("span", { class: "choice-file" }, h("span", { class: "choice-name" }, many ? s.row : s.name, pill ? pill.cloneNode(true) : null), h("span", { class: "cap" }, summary))),
+      many && isPicked ? h("div", { class: "seg variant", role: "group", "aria-label": "Variant" },
+        row.map((x, i) => h("button", { type: "button", id: `variant-${kind}-${i}`, "aria-pressed": String(x === s), disabled: x.off, title: x.off ? x.pill?.textContent : undefined, onclick: () => { UI.pick[kind] = x.id; render(); } }, x.variant ?? x.name))) : null);
+  };
+  let n = 0;
+  const groups = unique(kept.map((s) => s.group)).sort((a, b) => (kind === "text" ? 0 : a.localeCompare(b))).map((g) => {
+    const items = kept.filter((s) => s.group === g);
+    const rows = unique(items.map((s) => s.row)).map((r) => items.filter((s) => s.row === r));
+    const existing = items.filter((s) => s.pill?.textContent === "existing").length;
+    return group(`${kind}-${g}`, false, [g, ...(kind === "image" ? [" ", h("span", { class: "cap" }, unique(items.flatMap((s) => s.does.map(doesWord))).join(" · "))] : [])],
+      [...plural(items.length, "starter", "starters"), ...(existing ? [" · ", num(existing), " existing"] : [])], rows.map((row) => choice(row, n++)),
+      filtering || items.includes(picked));
+  });
+  const clear = () => { Object.assign(UI, { q: "", show: "all", does: "all" }); render(); };
   return [
-    h("div", { class: "section-head" }, h("h2", {}, "Image models"), button("Scan the folder", () => post("/host/v1/scan"))),
-    list,
-    S.starters.length ? h("h3", {}, "Starters") : null,
-    S.starters.length ? h("ul", { class: "list" }, S.starters.map((s) => {
-      const have = s.parts.filter((p) => p.present).length;
-      return h("li", {}, h("div", { class: "main" }, h("div", { class: "name" }, s.name), facts(h("span", {}, num(have), " of ", num(s.parts.length), " parts here"))),
-        h("div", { class: "actions" }, button("Install", () => post(`/host/v1/starters/${s.id}/install`))));
-    })) : null,
+    h("div", { class: "filters" }, search(`${kind}-q`, "q", "Search starters", kind === "text" ? "Search by name" : "Search by name or family"),
+      kind === "image" ? h("div", { class: "seg", role: "group", "aria-label": "Does" },
+        [["all", "All"], ["create", "Generate"], ["edit", "Edit"], ["video", "Video"], ["upscale", "Upscale"]].map(([k, label]) => toggle(`does-${k}`, label, UI.does === k, () => (UI.does = k)))) : null),
+    h("div", { class: "chip-row", role: "group", "aria-label": "Show" },
+      [["all", "All"], ["new", "Not currently installed"]].map(([x, label]) => toggle(`show-${x}`, [label, " ", num(ofKind.filter((s) => shows(s, x)).length)], UI.show === x, () => (UI.show = x), "chip"))),
+    h("p", { class: "sr-only", "aria-live": "polite" }, `${kept.length} ${kept.length === 1 ? "starter" : "starters"}`),
+    groups.length ? h("div", { class: "groups", role: "radiogroup", "aria-label": kind === "text" ? "Starters" : "Starter recipes" }, groups)
+      : h("p", { class: "empty" }, "No starters match. ", h("button", { type: "button", class: "link", onclick: clear }, "Clear")),
+    h("div", { class: "foot" },
+      h("span", { class: "picked" }, picked ? [h("b", {}, picked.name), h("br"), h("span", { class: "cap" }, picked.bytes ? [num(size(picked.bytes)), " to download"] : "nothing to download")] : h("span", { class: "cap" }, "No starter picked")),
+      h("a", { class: "button", href: kind === "text" ? "#text" : "#images" }, "Cancel"),
+      h("button", { type: "button", class: "primary", disabled: !picked, onclick: act(async () => { await picked.get(); location.hash = picked.bytes ? "#downloads" : kind === "text" ? "#text" : "#images"; }) }, kind === "text" ? "Download" : "Add model")),
   ];
 }
 
-// ---- Downloads ----
-
 const hubHeaders = () => ({ ...(S.hub.token ? { "x-hub-token": S.hub.token } : {}) });
-const bound = (key, props = {}) => h("input", { ...props, value: S.hub[key], oninput: (e) => (S.hub[key] = e.target.value) });
+const bound = (key, props = {}) => h("input", { ...props, id: `hub-${key}`, value: S.hub[key], oninput: (e) => (S.hub[key] = e.target.value) });
 
-function downloadsSection() {
+/** Download text model and Download image model: the starters first, then a repository's files or a link. */
+function downloadPage(kind) {
   const hub = S.hub;
-  const pick = (source) => h("button", { type: "button", "aria-pressed": String(hub.source === source), onclick: () => { hub.source = source; hub.listing = null; render(); } }, { huggingface: "Hugging Face", modelscope: "ModelScope", url: "Link" }[source]);
-  const form = hub.source === "url"
-    ? h("form", { class: "row", onsubmit: (e) => { e.preventDefault(); act(async () => { await post("/host/v1/downloads", { source: "url", url: hub.url.trim(), ...(hub.sha.trim() ? { sha256: hub.sha.trim() } : {}) }); hub.url = hub.sha = ""; })(); } },
+  const pick = ([source, label]) => toggle(`source-${source}`, label, UI.source === source, () => { UI.source = source; hub.listing = null; if (source !== "starters") hub.source = source; });
+  const form = UI.source === "starters" ? starterPicker(kind, kind === "text" ? textStarters() : imageStarters())
+    : UI.source === "url"
+    ? [h("form", { class: "row", onsubmit: (e) => { e.preventDefault(); act(async () => { await post("/host/v1/downloads", { source: "url", url: hub.url.trim(), ...(hub.sha.trim() ? { sha256: hub.sha.trim() } : {}) }); hub.url = hub.sha = ""; location.hash = "#downloads"; })(); } },
       field("Link", bound("url", { type: "url", required: true, placeholder: "https://…/model.gguf" }), "A .gguf or .safetensors file."),
       field("SHA-256", bound("sha", { class: "num" }), "If the page lists one."),
-      h("button", { type: "submit", class: "primary" }, "Download"))
-    : h("form", { class: "row", onsubmit: (e) => { e.preventDefault(); listFiles().catch(failed); } },
+      h("button", { type: "submit", class: "primary" }, "Download"))]
+    : [h("form", { class: "row", onsubmit: (e) => { e.preventDefault(); listFiles().catch(failed); } },
       field("Repository", bound("repo", { required: true, placeholder: "owner/name" })),
       field("Access token", bound("token", { type: "password", autocomplete: "off" }), "Only for a gated repository. Used for this download, never kept."),
-      h("button", { type: "submit", class: "primary" }, "List files"));
-  const listing = hub.listing;
+      h("button", { type: "submit", class: "primary" }, "List files"))];
+  const listing = UI.source === "starters" ? null : hub.listing;
+  const folder = S.status.modelsFolder;
   return [
-    h("div", { class: "section-head" }, h("h2", {}, "Downloads"), h("span", { class: "facts" }, num(size(S.status.modelsFolder.free)), " free")),
-    h("section", { class: "card" }, h("div", { class: "seg", role: "group", "aria-label": "Source" }, pick("huggingface"), pick("modelscope"), pick("url")), form),
+    h("a", { class: "link back", href: kind === "text" ? "#text" : "#images" }, icon("right"), kind === "text" ? "Text models" : "Image models"),
+    sectionHead(h("h2", {}, kind === "text" ? "Download text model" : "Download image model"), facts(h("span", {}, num(size(folder.free)), " free in ", h("code", {}, folder.path)))),
+    h("section", { class: `card download${UI.source === "starters" ? " picking" : ""}` },
+      h("div", { class: "seg", role: "group", "aria-label": "Source" }, [["starters", kind === "text" ? "Starters" : "Starter recipes"], ["huggingface", "Hugging Face"], ["modelscope", "ModelScope"], ["url", "Link"]].map(pick)), form),
     listing ? h("div", { class: "section-head" }, h("h3", {}, h("code", {}, listing.repo)), h("span", { class: "facts" }, "revision ", h("code", {}, listing.revision.slice(0, 12)))) : null,
     listing ? h("ul", { class: "list" }, listing.files.length ? listing.files.map((f) =>
       h("li", {}, h("div", { class: "main" }, h("div", { class: "name" }, h("code", {}, f.path)), facts(num(size(f.size)))),
@@ -627,8 +775,6 @@ function downloadsSection() {
           : button("Download", () => fetch("/host/v1/downloads", { method: "POST", headers: { "content-type": "application/json", ...hubHeaders() }, credentials: "same-origin", body: JSON.stringify({ source: hub.source, repo: listing.repo, revision: listing.revision, files: [f.path] }) })
             .then((r) => r.json().then((b) => (r.ok ? b : Promise.reject(new Error(b.error?.message)))))))))
       : h("li", { class: "empty" }, "No files.")) : null,
-    S.downloads.length ? h("h3", {}, "On this host") : null,
-    S.downloads.length ? h("ul", { class: "list" }, S.downloads.map(downloadRow)) : null,
   ];
 }
 
@@ -642,33 +788,57 @@ async function listFiles() {
   render();
 }
 
+// ---- Downloads ----
+
+const SOURCES = { huggingface: "Hugging Face", modelscope: "ModelScope", civitai: "Civitai", upload: "an upload" };
+
+/** The queue: what is on its way, then what finished, as Lyrica's Downloads lists them. */
+function downloadsSection() {
+  const running = S.downloads.filter(going), finished = S.downloads.filter((d) => !going(d));
+  const clear = () => Promise.all(finished.map((d) => api(`/host/v1/downloads/${d.id}`, { method: "DELETE" })));
+  const part = (label, list) => (list.length ? h("ul", { class: "list" }, h("li", { class: "eyebrow part" }, label), list.map(downloadRow)) : null);
+  return [
+    sectionHead(h("h2", {}, "Downloads"), facts(h("span", {}, num(running.length), " running"), h("span", {}, num(finished.length), " finished"), h("span", {}, num(size(S.status.modelsFolder.free)), " free")),
+      h("a", { class: "button", href: "#download-text" }, "Download text model"), h("a", { class: "button", href: "#download-image" }, "Download image model")),
+    h("div", { class: "section-head" }, h("h3", {}, "Queue"), finished.length ? h("button", { type: "button", class: "link", onclick: act(clear) }, "Clear finished") : null),
+    S.downloads.length ? null : h("ul", { class: "list" }, h("li", { class: "empty" }, "Nothing downloaded yet.")),
+    part("In progress", running), part("History", finished),
+  ];
+}
+
 function downloadRow(d) {
-  const going = ["queued", "downloading", "uploading", "verifying"].includes(d.state);
   const pct = d.size ? Math.floor((100 * d.received) / d.size) : null;
+  const moving = d.state === "downloading" || d.state === "uploading";
   // An upload is sent from a browser through Lyrica; it waits here between pieces.
-  const word = d.state === "downloading" || d.state === "uploading" ? state(pct == null ? "Downloading" : h("span", {}, d.state === "uploading" ? "Uploading " : "Downloading ", num(`${pct}%`)), "info")
+  const word = moving ? state(pct == null ? "Downloading" : h("span", {}, d.state === "uploading" ? "Uploading " : "Downloading ", num(`${pct}%`)), "info")
     : d.state === "queued" ? state("Queued", "") : d.state === "verifying" ? state("Verifying", "info")
     : d.state === "done" ? (d.source === "upload" ? state("Uploaded", "up") : d.verified === false ? state("Done, unverified", "away", "No SHA-256 to check it against.") : state("Done", "up"))
     : state(d.state === "failed" ? "Failed" : d.state, "down");
+  let from = SOURCES[d.source] ?? d.source;
+  if (d.url) try { from = new URL(d.url).hostname; } catch { /* keeps the source's name */ }
   return h("li", {},
-    h("div", { class: "main" }, h("div", { class: "name" }, h("code", {}, d.path)), d.url ? h("p", { class: "facts" }, h("code", { class: "muted" }, d.url)) : null),
-    h("div", { class: "actions" }, word, button(going ? "Cancel" : "Clear", () => api(`/host/v1/downloads/${d.id}`, { method: "DELETE" }))),
-    (d.state === "downloading" || d.state === "uploading") && pct != null ? h("div", { class: "progress wide" }, h("span", { style: `width:${pct}%` })) : null,
+    h("div", { class: "main" }, h("div", { class: "name" }, h("span", { title: d.url ?? d.path }, d.path.split("/").pop()), from ? h("span", { class: "cap" }, `from ${from}`) : null),
+      moving && pct != null ? h("div", { class: "progress" }, h("span", { style: `width:${pct}%` })) : null,
+      facts(word, d.size ? h("span", {}, ...(moving ? [num(size(d.received)), " of "] : []), num(size(d.size))) : null)),
+    h("div", { class: "actions" }, button(going(d) ? "Cancel" : "Clear", () => api(`/host/v1/downloads/${d.id}`, { method: "DELETE" }))),
     d.error ? h("p", { class: "warn-text wide" }, d.error) : null);
 }
 
 // ---- Usage ----
 
 function usageSection() {
+  const cell = (label, value) => h("td", { class: "num", "data-label": label }, value ?? "");
   return [
-    h("div", { class: "section-head" }, h("h2", { title: "Counts only: never prompts, results or who asked. Nothing leaves this machine." }, "Usage")),
-    h("ul", { class: "list" }, S.usage.length ? S.usage.map((u) => h("li", {},
-      h("div", { class: "main" }, h("div", { class: "name" }, h("code", {}, u.id)),
-        facts(h("span", {}, num(u.requests), " requests"),
-          u.promptTokens + u.completionTokens ? h("span", {}, num(u.promptTokens + u.completionTokens), " tokens") : null,
-          u.images ? h("span", {}, num(u.images), " images") : null,
-          u.audioSeconds ? h("span", {}, num(duration(u.audioSeconds)), " of audio") : null,
-          h("span", {}, num(duration(u.seconds)), " busy"))))) : h("li", { class: "empty" }, "Nothing yet.")),
+    sectionHead(h("h2", { title: "Counts only: never prompts, results or who asked. Nothing leaves this machine." }, "Usage"), null),
+    S.usage.length ? h("div", { class: "table" }, h("table", {},
+      h("thead", {}, h("tr", {}, h("th", { scope: "col" }, "Model"), ["Requests", "Tokens", "Images", "Audio", "Busy"].map((l) => h("th", { scope: "col", class: "num" }, l)))),
+      h("tbody", {}, S.usage.map((u) => h("tr", {}, h("th", { scope: "row" }, shortName(u.id)),
+        cell("Requests", u.requests.toLocaleString("en")),
+        cell("Tokens", u.promptTokens + u.completionTokens ? (u.promptTokens + u.completionTokens).toLocaleString("en") : null),
+        cell("Images", u.images ? u.images.toLocaleString("en") : null),
+        cell("Audio", u.audioSeconds ? duration(u.audioSeconds) : null),
+        cell("Busy", duration(u.seconds)))))))
+      : h("ul", { class: "list" }, h("li", { class: "empty" }, "Nothing yet.")),
   ];
 }
 
