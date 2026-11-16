@@ -74,9 +74,14 @@ describe("command output", () => {
     const page = outputPage(text, { from: 1, lines: 3 });
     expect(page).toBe("Lines 1-3 of 500; from: 4 goes on:\n  1  line 1\n  2  line 2\n  3  line 3");
     expect(outputPage(text, { pattern: "unable to locate" })).toBe("1 of 500 lines match:\n421  E: Unable to locate package nvidia-driver");
-    // Plain text, never a regular expression run in lyricad: "(a+)+$" is only looked for as written.
-    expect(outputPage(text, { pattern: "(" })).toBe("No line of 500 matches (.");
-    expect(outputPage("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaab", { pattern: "(a+)+$" })).toMatch(/^No line/);
+    expect(outputPage(text, { pattern: "unable|refused" })).toMatch(/^1 of 500 lines match/);
+    expect(() => outputPage(text, { pattern: "(" })).toThrow(/isn't a regular expression/);
+    expect(() => outputPage(text, { pattern: "(?<=E: )Unable" })).toThrow(/lookaround/);
+    expect(() => outputPage(text, { pattern: "a".repeat(201) })).toThrow(/200 characters/);
+    // RE2 is linear: what makes JavaScript's engine backtrack for minutes is quick here.
+    const started = Date.now();
+    expect(outputPage("a".repeat(50_000) + "b", { pattern: "(a+)+$" })).toBe("No line of 1 matches (a+)+$.");
+    expect(Date.now() - started).toBeLessThan(2000);
   });
 
   it("cuts a line too long for a page rather than leaving it out, so from always moves on", () => {

@@ -2,6 +2,7 @@
 // with its thread in the pool's own database, so it is encrypted with the pool and goes when the thread does. She
 // reads it in pages with `jobs output`; the person scrolls it in the conversation and the Jobs dropdown. Principle 1:
 // what her commands printed is part of the conversation, and nothing of it is ever written in plaintext.
+import { RE2JS } from "re2js";
 import type { Db } from "../db.ts";
 
 export const OUTPUTS_SCHEMA = `
@@ -226,10 +227,14 @@ export class CommandOutputs {
   }
 }
 
+/** The longest `pattern` she may give. */
+export const PATTERN_CHARS = 200;
+
 /**
- * A page of kept output for her: from line `from` (1-based), or the lines holding `pattern` (plain text, case ignored:
- * never a regular expression she writes, which could hold lyricad's one thread for minutes), numbered either way. A
- * line too long for a page is cut with a marker, and a page always holds at least one line, so `from` always moves on.
+ * A page of kept output for her: from line `from` (1-based), or the lines matching `pattern`, numbered either way.
+ * `pattern` is a regular expression (case ignored) run by RE2's linear-time engine (re2js), never JavaScript's own,
+ * whose backtracking could hold lyricad's one thread for minutes: no lookaround or backreferences, and no pattern is
+ * slow. A line too long for a page is cut with a marker, and a page always holds at least one line, so `from` moves on.
  */
 export function outputPage(text: string, o: { from?: number; lines?: number; pattern?: string } = {}): string {
   const all = text.replace(/\n$/, "").split("\n");
@@ -247,8 +252,12 @@ export function outputPage(text: string, o: { from?: number; lines?: number; pat
     return out;
   };
   if (o.pattern) {
-    const needle = o.pattern.toLowerCase();
-    const hits = all.flatMap((l, i) => (l.toLowerCase().includes(needle) ? [i] : []));
+    if (o.pattern.length > PATTERN_CHARS) throw new Error(`pattern is longer than ${PATTERN_CHARS} characters`);
+    let re: RE2JS;
+    try { re = RE2JS.compile(o.pattern, RE2JS.CASE_INSENSITIVE); } catch (e) {
+      throw new Error(`pattern isn't a regular expression this search reads (${(e as Error).message.replace(/^error parsing regexp: /, "")}); lookaround and backreferences aren't supported`);
+    }
+    const hits = all.flatMap((l, i) => (re.matcher(l).find() ? [i] : []));
     if (!hits.length) return `No line of ${total.toLocaleString("en-US")} matches ${o.pattern}.`;
     const shown = fit(hits.slice(0, OUTPUT_LIMITS.matches).map(num));
     return `${hits.length.toLocaleString("en-US")} of ${total.toLocaleString("en-US")} lines match${shown.length < hits.length ? `; the first ${shown.length}` : ""}:\n${shown.join("\n")}`;
