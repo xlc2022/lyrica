@@ -665,7 +665,8 @@ per host, and Lyrica's router filters create tiers by it.
    [model hosts guide](../docs/guides/model-hosts.md#pair-it-with-lyrica).
 
 Paired Lyrica servers are listed on the dashboard, where they can be
-revoked. A revoked server must pair again.
+revoked. A revoked server must pair again. Removing the host in Lyrica
+unpairs it here too, when the host can be reached.
 
 ## Models and GPUs
 

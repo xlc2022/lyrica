@@ -1093,6 +1093,34 @@ test("a host card has one facts line and Pause, Edit and ⋯; Edit opens a drawe
   await noHorizontalScroll(page);
 });
 
+test("Remove on a host says it unpairs, and says so when the host couldn't unpair this server", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  const shot = async (name: string) => { if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/remove-host-${name}-${page.viewportSize()!.width}.png` }); };
+  await fakeHost(page, []);
+  let removed = false;
+  await page.route(/\/api\/u\/[^/]+\/endpoints\/ep-box$/, async (route) => {
+    removed = route.request().method() === "DELETE";
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, stillPaired: true }) });
+  });
+  await page.goto(`/#/u/${userId}/models/hosts`);
+  const card = page.locator("article.host[data-endpoint=ep-box]");
+  await card.getByRole("button", { name: "Actions for box" }).click();
+  await page.getByRole("menuitem", { name: "Remove" }).click();
+  const ask = page.getByRole("dialog");
+  await expect(ask.getByRole("heading")).toHaveText("Remove box?");
+  await expect(ask).toContainText("this Lyrica unpairs from the host unless someone else here still uses it.");
+  await shot("confirm");
+  await ask.getByRole("button", { name: "Remove" }).click();
+  await expect(page.locator(".toast")).toHaveText("Removed box, but it couldn't unpair this server. Revoke it on the host's dashboard.");
+  expect(removed).toBe(true);
+  await shot("toast");
+  // It asks the person to act, so it stays until they close it.
+  await page.waitForTimeout(4500);
+  await expect(page.locator(".toast")).toBeVisible();
+  await page.locator(".toast").getByRole("button", { name: "Dismiss" }).click();
+  await expect(page.locator(".toast")).toHaveCount(0);
+});
+
 
 
 test("Update… is always in a host's ⋯: greyed out with why until it can run, then a dialog, then the updater's steps as its state", async ({ page, baseURL }) => {

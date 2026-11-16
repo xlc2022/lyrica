@@ -93,6 +93,7 @@ export async function fakeHost(opts: { name?: string; models?: HostModel[]; port
         return json(res, 200, { host: { name: opts.name ?? "fake-host", fingerprint: lieAboutKey ? "0".repeat(64) : identity.fingerprint }, proof: badProof ? proofs.client : proofs.host });
       }
       if (!clientFp || !pinned.has(clientFp)) return json(res, 401, { error: { code: "unpaired", message: "This Lyrica server isn't paired with this host." } });
+      if (req.method === "DELETE" && url.pathname === "/pair/v1") { pinned.delete(clientFp); return json(res, 200, {}); }
       if (req.method === "GET" && url.pathname === "/v1/models") return json(res, 200, { object: "list", data: models.map((m) => ({ id: m.id, object: "model", created: 0, owned_by: "lyrica-host" })) });
       // Lists come wrapped, as the real host sends them (host/src/runtime.ts, images.ts).
       if (req.method === "GET" && url.pathname === "/host/v1/models") {

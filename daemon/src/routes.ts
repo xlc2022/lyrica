@@ -401,8 +401,12 @@ export function apiRoutes(d: Lyricad): Route[] {
       if (p && p.userId === d.userFor(r).id) dropOpenRouter(r.params.signInId!);
       return { ok: true };
     }),
-    route("DELETE", `${u}/endpoints/:endpointId`, (r) => {
-      s().models.removeEndpoint(d.userFor(r), r.params.endpointId!);
+    route("DELETE", `${u}/endpoints/:endpointId`, async (r): Promise<Api.RemovedEndpoint> => {
+      const user = d.userFor(r);
+      const ep = s().models.endpoint(user.id, r.params.endpointId!);
+      s().models.removeEndpoint(user, r.params.endpointId!);
+      // Removed in Lyrica whatever the host says; only a host that couldn't be reached is worth a word.
+      if (ep?.api === "host" && (await s().models.releaseHost(ep)) === "failed") return { ok: true, stillPaired: true };
       return { ok: true };
     }),
     route("POST", `${u}/endpoints/:endpointId/discover`, async (r) => {
