@@ -20,7 +20,7 @@ import { McpServersSection } from "./Mcp.tsx";
 import { MachinesSection } from "./Machines.tsx";
 import { PortraitPhotosSection } from "./PortraitPhotos.tsx";
 import { checkName, her, setHer } from "./name.ts";
-import { SKIPPED, SleepModeField, SleepTimeSection } from "./Sleep.tsx";
+import { SKIPPED, SleepTimeSection } from "./Sleep.tsx";
 import { TailnetSection } from "./Tailnet.tsx";
 import { UpdatesSection } from "./Updates.tsx";
 import { BYPASS_HINT, MCP_BYPASS_HINT, mcpBypassWarning, modeOrder, MODES } from "./Modes.tsx";
@@ -53,7 +53,6 @@ const SETTINGS: SectionDef[] = [
   { key: "password", label: "Password", body: (ctx) => <PasswordSection ctx={ctx} /> },
   { key: "personas", label: "Your personas", body: (ctx) => <LinksSection ctx={ctx} /> },
   { key: "suggestions", label: "Persona suggestions", body: (ctx) => <DraftsSection ctx={ctx} /> },
-  { key: "sleep", label: "Sleep", body: (ctx) => <SleepSection ctx={ctx} /> },
   { key: "network", label: "Network", body: (ctx) => <NetworkSection ctx={ctx} /> },
   { key: "machines", label: "Machines", body: (ctx, rest) => <MachinesSection ctx={ctx} rest={rest} /> },
   { key: "git", label: "Git accounts", body: (ctx) => <GitAccountsSection ctx={ctx} /> },
@@ -250,23 +249,6 @@ function PasswordSection({ ctx }: { ctx: ShellContext }) {
         <ErrorText error={error} />
         <div className="row"><button className="primary" disabled={busy || !oldPassword || !newPassword || newPassword !== again}>Change password</button></div>
       </form>
-    </Section>
-  );
-}
-
-/** Settings → Sleep: when sleep happens for this user, and Sleep fallback. Each saved at once. */
-function SleepSection({ ctx }: { ctx: ShellContext }) {
-  const userId = ctx.user.id;
-  const presets = useLoad(() => get<Presets>(u(userId, "presets")), [userId]);
-  const [run, , error] = useAction();
-  return (
-    <Section title="Sleep">
-      <ErrorText error={presets.error || error} />
-      <SleepModeField ctx={ctx} />
-      {presets.data && (
-        <Switch label="Sleep fallback" hint="When off, each sleep phase uses its first model only; if that one is away, sleep waits for the next night."
-          checked={presets.data.sleepFallback} onChange={(sleepFallback) => run(async () => presets.set(await patch<Presets>(u(userId, "presets"), { sleepFallback })))} />
-      )}
     </Section>
   );
 }

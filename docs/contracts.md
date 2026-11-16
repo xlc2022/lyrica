@@ -1344,7 +1344,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     `remember` in an unlogged thread. lyricad lists the active skills of the
     thread view's own pool, then of the pools it reads (a name once), then Lyrica's own (`BUILTIN_SKILLS`,
     extension/src/<name>.md) unless a library skill takes the name: `add-machine` in every thread, and
-    `model-host`, `secrets` and `gentoo` while the thread has an SSH machine; then `repoSkills(target, checkouts, cache?)`, cached per thread by checkout and HEAD.
+    `model-host`, `secrets`, `gentoo` and `nixos` while the thread has an SSH machine; then `repoSkills(target, checkouts, cache?)`, cached per thread by checkout and HEAD.
     `read(name)` falls back to a built-in skill's body;
   - `name()`: her name for this deployment, read every turn. Automatic
     recall leaves it out of the query (`skip`), asks for two shared
@@ -2519,14 +2519,14 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
       (`usedIn`, `deleted`, `left`), `ServingSettings`.
     - **Groups and presets:** `GET`/`POST groups`; `GET groups/suggestions`;
       `GET`/`PATCH`/`DELETE groups/:id`; `GET`/`PATCH presets` (`thinking`,
-      `fallback`, `sleepFallback`, `readAloudLive`, `freeOnly`, `readDaily`); `POST presets`
+      `fallback`, `readAloudLive`, `freeOnly`, `readDaily`); `POST presets`
       (`{ name, column }`); `PATCH`/`DELETE presets/:id` (`{ name }`);
       `PUT columns/:column` (`{ preset }`); `PUT columns/:column/:task`
       (`{ models }`, `{ same }` or `{ model }`); `POST columns/:column/save`
       (`{ preset }` or `{ name }`). Types: `GroupInfo`, `GroupInput`,
       `GroupChange`, `GroupDetail`, `GroupSuggestion`, `PresetInfo`,
       `Presets` (the presets, the two columns, `thinking`, `fallback`,
-      `sleepFallback`, `readAloudLive`, `freeOnly` and `readDaily`), `ColumnTaskChange`,
+      `readAloudLive`, `freeOnly` and `readDaily`), `ColumnTaskChange`,
       `PresetsChange`.
     - **Models page, library, tokens:** `GET models/page` (→ `ModelsPage`:
       endpoints with `pageStatus` and each starred offering marked `starred`, hosts' status or error (`unpaired` when the
@@ -2619,8 +2619,8 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     `ThreadSettings.speech` (`Speech`, also `GET /api/u/:userId/speech?pool=`)
     and `models["speech.transcribe"]`, `models["speech.speak"]` (thread tasks);
     `ThreadSettings.fallback` (null follows `Presets.fallback`) and
-    `fallbackOn`, `ThreadSettingsChange.fallback`, `PresetsChange.fallback`
-    and `sleepFallback`;
+    `fallbackOn`, `ThreadSettingsChange.fallback`, `PresetsChange.fallback`,
+    and each pool's sleep `SleepPoolSettings.fallback`;
     `Presets.readAloudLive` and `Speech.readAloudLive` (Read aloud while she
     writes, off by default), `PresetsChange.readAloudLive`;
     `Capabilities.transcribe` and `speak`, `AnswerSettings.voices` and
@@ -2653,7 +2653,9 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     with `preview=1` returns all active downloads, only the newest finished
     one, and `finishedTotal`; without it, the existing host array remains.
     Clear finished reads history in pages and clears each returned entry.
-  - sleep: overview (newest run per pool only), run detail, items (start a chat, dismiss), `sleep.mode`,
+  - sleep: overview (newest run per pool only, and `pools`: each pool's
+    `SleepPoolSettings`, mode, time and fallback), `PATCH sleep/:pool`
+    (`SleepPoolChange`), run detail, items (start a chat, dismiss),
     start a run, and an event stream. `/sleep` typed in a thread is
     `SendRequest.confirm` and `SendResponse.sleep`.
 - **Local sockets:** a Unix socket (mode `0600`, owned by the service user)
@@ -2662,9 +2664,10 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   `/run/lyrica-clients` when installed) serves it to accounts in that group.
   `lyrica chat` and `lyrica mem` use them. The user still logs in with a
   password over either socket. Being on the machine isn't enough.
-- **Scheduler:** at `sleep.time` (default 04:00) in each user's own time
-  zone (`Profile.timeZone`, else the server's), for each user not in manual
-  mode, sleep each pool, one run at a time across all users. The night's
+- **Scheduler:** at each pool's time (its own `sleep.time.<pool>` in
+  `user.db`, else `sleep.time`, default 04:00) in each user's own time zone
+  (`Profile.timeZone`, else the server's), sleep each pool not in manual
+  mode, one run at a time across all users and pools. The night's
   chores (model cleanup, sweep, idle project threads) run at `sleep.time`
   in the server's zone.
 - **Updates** (docs/daemon.md, "Updates"): an update socket,
@@ -2768,7 +2771,9 @@ sleep.run(userId, pool, reason: "scheduled" | "manual"): Promise<SleepRun>  // q
 sleep.check(userId, pool)          // what would stop a run now, without recording anything
 sleep.stop(userId)                 // Lock: the run is marked partial
 sleep.prune(now?): number          // forgets phase threads older than 36 hours, memories kept
-sleep.mode(userId) / setMode(userId, "scheduled" | "manual")   // user.db
+sleep.mode(userId, pool) / setMode(userId, pool, "scheduled" | "manual")   // user.db, per pool
+sleep.time(userId, pool) / setTime(userId, pool, "HH:MM" | null)          // undefined/null: the server's sleep.time
+sleep.fallback(userId, pool) / setFallback(userId, pool, on)
 sleep.events                       // started, phase, finished: IDs only, never text
 ```
 
@@ -2780,10 +2785,10 @@ sleep.events                       // started, phase, finished: IDs only, never 
   `sleep_focus` the person's line for tonight's dream, which the dream's
   instruction carries and a finished dream clears. A
   `no-key` skip is recorded once the key is back, since the pool can't be
-  written without it. `Sleep.catchUp(userId, since)` runs when the key comes
-  back: each pool whose last run began before `since` (the last sleep time in
-  the user's zone) records the missed night as a `no-key` skip at `since` and
-  sleeps now; manual mode and a pool with no runs are left alone.
+  written without it. `Sleep.catchUp(userId, sinceFor)` runs when the key comes
+  back: each pool whose last run began before `sinceFor(pool)` (that pool's
+  last sleep time in the user's zone) records the missed night as a `no-key`
+  skip then and sleeps now; a pool in manual mode or with no runs is left alone.
 - `PUT …/sleep/:pool/focus` (`SleepFocusChange { text }`, empty clears)
   sets the line for tonight and returns the sleep overview, with `focus`.
   `POST …/sleep/:pool/runs/:runId/undo` undoes the pool's newest undoable

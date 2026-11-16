@@ -353,19 +353,36 @@ describe("a night's sleep", () => {
     v.close();
   });
 
+  it("gives each pool its own schedule, starting from the one setting from before", async () => {
+    const s = await setup();
+    const db = s.users.openUserDb(s.ada.id);
+    try { db.prepare("INSERT INTO settings (key, value) VALUES ('sleep.mode', 'manual'), ('sleep.fallback', 'off')").run(); } finally { db.close(); }
+    expect([s.sleep.mode(s.ada.id, "general"), s.sleep.mode(s.ada.id, "private")]).toEqual(["manual", "manual"]);
+    expect(s.sleep.fallback(s.ada.id, "private")).toBe(false);
+    s.sleep.setMode(s.ada.id, "private", "scheduled");
+    expect([s.sleep.mode(s.ada.id, "general"), s.sleep.mode(s.ada.id, "private")]).toEqual(["manual", "scheduled"]);
+    expect(s.sleep.time(s.ada.id, "private")).toBeUndefined();
+    s.sleep.setTime(s.ada.id, "private", "02:30");
+    expect([s.sleep.time(s.ada.id, "general"), s.sleep.time(s.ada.id, "private")]).toEqual([undefined, "02:30"]);
+    expect(() => s.sleep.setTime(s.ada.id, "private", "2:30")).toThrow();
+    s.sleep.setTime(s.ada.id, "private", null);
+    expect(s.sleep.time(s.ada.id, "private")).toBeUndefined();
+  });
+
   it("with Fallback off, skips a night whose phase's first model is away rather than use the next", async () => {
     const s = await setup();
     const v = s.view();
     s.talk(v, "Hello there.", "{user} said hello");
     const dead = s.models.addEndpoint(s.ada, { name: "dead", kind: "cloud", baseUrl: await deadUrl() });
     s.models.setColumnTask(s.ada.id, "general", "sleep.dream", [{ offeringId: s.models.addModel(s.ada, dead.id, { modelId: "m" }).id }, s.cloudRef]);
-    expect(s.sleep.fallback(s.ada.id)).toBe(true);
-    s.sleep.setFallback(s.ada.id, false);
-    expect(s.sleep.fallback(s.ada.id)).toBe(false);
+    expect(s.sleep.fallback(s.ada.id, "general")).toBe(true);
+    s.sleep.setFallback(s.ada.id, "general", false);
+    expect(s.sleep.fallback(s.ada.id, "general")).toBe(false);
+    expect(s.sleep.fallback(s.ada.id, "private")).toBe(true);
     expect(await s.sleep.run(s.ada.id, "general", "scheduled")).toMatchObject({ status: "skipped", skipReason: "endpoint-down" });
     expect(v.own.watermark()).toBeUndefined();
     // On, the next model in the list sleeps.
-    s.sleep.setFallback(s.ada.id, true);
+    s.sleep.setFallback(s.ada.id, "general", true);
     s.script({});
     expect((await s.sleep.run(s.ada.id, "general", "scheduled")).status).toBe("complete");
     v.close();
@@ -463,12 +480,12 @@ describe("a night's sleep", () => {
     const night = new Date().toISOString();
     await s.users.authenticate("ada", "pw");
     s.script({});
-    await s.sleep.catchUp(s.ada.id, night);
+    await s.sleep.catchUp(s.ada.id, () => night);
     const again = s.view();
     expect(again.own.listSleepRuns().map((r) => [r.status, r.skipReason])).toEqual([["complete", undefined], ["skipped", "no-key"], ["complete", undefined]]);
     expect(again.own.listSleepRuns()[1]!.startedAt).toBe(night);
     // Slept since that night: nothing more.
-    await s.sleep.catchUp(s.ada.id, night);
+    await s.sleep.catchUp(s.ada.id, () => night);
     expect(again.own.listSleepRuns()).toHaveLength(3);
     again.close();
   });

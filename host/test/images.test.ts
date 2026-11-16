@@ -1390,6 +1390,10 @@ describe("the image API", () => {
 
     expect(s.lines.join("\n")).not.toContain(MARKER);
     for (const f of readdirSync(s.dataDir)) expect(readFileSync(join(s.dataDir, f), "utf8")).not.toContain(MARKER);
+    // Unload takes a recipe by the ID the GPU's status lists it under.
+    expect(s.scheduler.placement(`recipe:${z.id}`)).not.toBeNull();
+    expect((await s.api("/host/v1/models/unload", { body: { model: `recipe:${z.id}` } })).body).toEqual({ id: `recipe:${z.id}`, state: "unloaded", gpus: null });
+    expect(s.scheduler.placement(`recipe:${z.id}`)).toBeNull();
   });
 
   it("times sampling from each output sampler's start to its last step, with the steps, and nothing without a sampler", () => {

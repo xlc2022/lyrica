@@ -429,13 +429,15 @@ test("Tasks: the table shows each column's models; a cell's drawer adds, reorder
   await page.getByRole("dialog", { name: "Delete Deep work?" }).getByRole("button", { name: "Delete" }).click();
   await expect(editPreset2).toHaveCount(0);
 
-  // The old Settings → Model profiles address lands here; Settings has Sleep in its place.
+  // The old Settings → Model profiles address lands here, and Settings → Sleep's on the Sleep page.
   await page.goto(`/#/u/${userId}/settings/profiles`);
   await expect(page).toHaveURL(new RegExp(`#/u/${userId}/models/tasks$`));
   await expect(page.getByRole("heading", { level: 1, name: "Tasks" })).toBeVisible();
   await page.goto(`/#/u/${userId}/settings/sleep`);
-  await expect(page.getByRole("navigation", { name: "Settings sections" }).getByRole("link", { name: "Sleep" })).toHaveAttribute("aria-current", "page");
-  await expect(page.getByRole("checkbox", { name: "Sleep fallback" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Sleep" })).toBeVisible();
+  await expect(page.locator(".sleep-pool[data-pool=general]").getByRole("checkbox", { name: "Fallback" })).toBeVisible();
+  await page.goto(`/#/u/${userId}/settings`);
+  await expect(page.getByRole("navigation", { name: "Settings sections" }).getByRole("link", { name: "Sleep" })).toHaveCount(0);
   await expect(page.getByRole("navigation", { name: "Settings sections" }).getByRole("link", { name: "Model profiles" })).toHaveCount(0);
 });
 

@@ -53,7 +53,7 @@ export async function openBench(keyring: Keyring, users: Users, user: User, opts
   });
   // /sleep: this pool, now. Manual mode asks first; afterwards a new session wakes up with the new WAKE.
   const sleepNow = async (c: ExtensionCommandContext) => {
-    if (sleep.mode(user.id) === "manual" && c.hasUI && !(await c.ui.confirm("Sleep now?", `Consolidate, dream and wake for the ${pool} pool.`))) return;
+    if (sleep.mode(user.id, pool) === "manual" && c.hasUI && !(await c.ui.confirm("Sleep now?", `Consolidate, dream and wake for the ${pool} pool.`))) return;
     syncEntries(c.sessionManager, view.own, thread.id);
     const { skip, reason } = await sleep.check(user.id, pool);
     const run = skip ? undefined : await sleep.run(user.id, pool, "manual");

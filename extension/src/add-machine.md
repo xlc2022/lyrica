@@ -42,6 +42,7 @@ To use their own Proxmox user (say `root@pam`) instead of `lyrica@pve`: **Accoun
 ## When a step fails
 
 - "the server doesn't offer strict key exchange; update its OpenSSH": the machine's OpenSSH is older than 9.6.
+- On NixOS the block for your own account can't take: sshd there reads only the system's configuration. Read `s:nixos` ("Giving you an installed NixOS machine", or "Where it runs from" for its installer ISO) and take the person through that instead.
 - Test says the login didn't work: the block wasn't run as root on that machine, the account in the address doesn't exist there, or the address is another machine's. The block can be run again safely.
 - "the token didn't work: Proxmox answered 401": the token was pasted without its `user@realm!name=` part, or cut short.
 - Confirm opens a dialog, **Outside your network**, with **Add anyway**: the address of a private machine isn't on their own network, so a private thread's commands and files would leave it. Say that plainly rather than telling them to press on.

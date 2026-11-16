@@ -1107,8 +1107,12 @@ Dictation and Read aloud (see [models.md](models.md) Speech). Types are in
   number, never text), reads each thread she mentions as its current title
   (`titlesIn`), drops code blocks, tables, images, links' URLs and
   markdown, splits it into sentences (pieces of at most 400 characters), and
-  asks for one sentence at a time while the one before plays, each in the
-  voice for its language (Han characters mean Mandarin). It streams raw PCM
+  asks for one piece at a time while the one before plays, each in the
+  voice for its language (Han characters mean Mandarin). The first sentence
+  goes alone, so the voice starts soon; after it a piece is the sentences of
+  one paragraph in one language, up to 300 characters of English or 100 of
+  Mandarin (`piece`), since Kokoro sounds flat on short lines and starts its
+  intonation afresh with each request. It streams raw PCM
   (`audio/pcm;rate=24000;encoding=s16le;channels=1`). `messages/live/speech`
   follows the message she is writing now (`HostedThread.following()`) to
   its end; when she is writing nothing (she finished as it was pressed), it
@@ -1133,8 +1137,8 @@ Dictation and Read aloud (see [models.md](models.md) Speech). Types are in
   each of the thread's lists answers ([models.md](models.md#choosing-a-model)):
   a message to a thread whose model is away waits, as under **No model
   reachable**. A branch or subagent starts with its parent's.
-  `Presets.sleepFallback` (`PATCH presets`, `sleep.fallback` in `user.db`)
-  does the same for sleep's phases.
+  Each pool's `SleepPoolSettings.fallback` (`PATCH …/sleep/:pool`,
+  `sleep.fallback.<pool>` in `user.db`) does the same for that pool's sleep phases.
 - `ThreadSettings.answered` skips speech calls, so the context meter reads
   the chat call. With no open session the meter reads that call's record:
   the last request's whole prompt, since its output counts every call of the
@@ -1240,24 +1244,29 @@ is recorded as a call and only counts are logged.
 
 `lyricad` builds one `Sleep` ([sleep.md](sleep.md)) and runs it three ways:
 
-- **At night.** At `sleep.time` (default 04:00) in each user's own time zone
-  (`Profile.timeZone`, else the server's) it sleeps that user's general
-  pool, then private pool (`Lyricad.sleepNight`); runs queue, so only one
-  goes at a time across users. A user still queued when a drain or a memory
-  wipe begins waits for it to end (`undrained`). A user in manual mode is left out; a user without
-  a key, or a pool with nothing new, is skipped with the reason.
+- **At night.** Each pool sleeps at its own time (`sleep.time.<pool>` in
+  `user.db`, else `sleep.time`, default 04:00; `Lyricad.poolSleepTime`) in
+  its user's own time zone (`Profile.timeZone`, else the server's)
+  (`Lyricad.sleepNight`); runs queue, so only one goes at a time across
+  users and pools. A pool still queued when a drain or a memory wipe begins
+  waits for it to end (`undrained`). A pool in manual mode is left out; a
+  user without a key, or a pool with nothing new, is skipped with the reason.
   At `sleep.time` in the server's zone it prunes gone models nothing names (`Models.prune`,
   [models.md](models.md)), and sweeps each mounted user's home workspace
   ([workspace.md](workspace.md), "The nightly sweep").
 - **`/sleep`.** `POST …/sleep/:pool`, or the text `/sleep` sent to a thread
-  (which sleeps the thread's pool and starts no turn). In manual mode it
+  (which sleeps the thread's pool and starts no turn). With the pool in manual mode it
   answers `confirm` unless confirmed. It never creates a thread. Whatever would stop the run at once
   (no key, every sleep model's machine down, nothing new) is a `409` in
   plain words, and the skip is recorded. Each phase's machine is asked
   first, so a sleep list falls back past one that is off.
-- **The Sleep section.** `GET …/sleep` gives the mode (`sleep.mode` in
-  `user.db`, set with `PUT …/sleep/mode`), the time, open items and recent
-  runs of both pools. `GET …/sleep/:pool/runs/:runId` gives one run: notes she
+- **The Sleep section.** `GET …/sleep` gives each pool's settings
+  (`pools`: mode, time and fallback, from `sleep.mode.<pool>`,
+  `sleep.time.<pool>` and `sleep.fallback.<pool>` in `user.db`; a pool with no
+  mode or fallback of its own yet follows the older one-per-user
+  `sleep.mode` and `sleep.fallback`), set with `PATCH …/sleep/:pool` (a time
+  equal to `sleep.time` is cleared, so the pool follows the server's again),
+  the server's time, open items and recent runs of both pools. `GET …/sleep/:pool/runs/:runId` gives one run: notes she
   caught up on, pages with their text before and after, questions, the dream,
   WAKE and items. `POST …/sleep/:pool/items/:itemId/chat` starts a web thread
   from an item and has her speak first. Retrying returns the same thread;
