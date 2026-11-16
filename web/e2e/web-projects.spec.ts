@@ -239,6 +239,61 @@ test("the thread drawer's Read aloud has a Settings link opening the voice drawe
   await expect(drawer).toHaveCount(0);
 });
 
+test("Read aloud's Voice select lists every voice that speaks all its model's languages, and one on another model switches Read aloud to it; a model with a voice per language has a select per language", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  const base = `/api/u/${encodeURIComponent(userId)}`;
+  // Two more endpoints on the fake speech server, their kokoro given voices that speak English and Mandarin alike, as Qwen3-TTS's do.
+  const ids = await page.evaluate(async (base) => {
+    const json = { "content-type": "application/json" };
+    const eps = await (await fetch(`${base}/endpoints`)).json() as { id: string; name: string; baseUrl: string }[];
+    const speech = eps.find((e) => e.name === "speech")!;
+    await fetch(`${base}/endpoints/${speech.id}/discover`, { method: "POST", headers: json });
+    const made: Record<string, string> = {};
+    for (const [name, voices] of [["customvoice", ["Sohee", "Ryan"]], ["clone", ["Friend"]]] as const) {
+      const ep = await (await fetch(`${base}/endpoints`, { method: "POST", headers: json, body: JSON.stringify({ name, kind: "local", baseUrl: speech.baseUrl }) })).json() as { id: string };
+      const found = await (await fetch(`${base}/endpoints/${ep.id}/discover`, { method: "POST", headers: json })).json() as { models: { id: string; modelId: string }[] };
+      const kokoro = found.models.find((m) => m.modelId === "kokoro")!.id;
+      await fetch(`${base}/offerings/${kokoro}`, { method: "PATCH", headers: json, body: JSON.stringify({ speak: { voices: voices.flatMap((id) => [{ id, language: "en" }, { id, language: "zh" }]) } }) });
+      made[name] = ep.id;
+    }
+    return made;
+  }, base);
+  try {
+    await newThread(page, "General");
+    const drawer = await openSettings(page);
+    const read = drawer.getByRole("combobox", { name: "Read aloud", exact: true });
+    const voice = drawer.getByRole("combobox", { name: "Voice", exact: true });
+    await read.selectOption({ label: "local · kokoro · customvoice" });
+    // One select: this model's voices first, then the other model's, each group named as in Read aloud.
+    await expect(voice.locator("optgroup").first()).toHaveAttribute("label", "kokoro · customvoice");
+    await expect(voice.locator("optgroup").nth(1)).toHaveAttribute("label", "kokoro · clone");
+    await expect(voice.locator("option")).toHaveText(["Default", "Sohee", "Ryan", "Friend"]);
+    await expect(drawer.getByRole("combobox", { name: "English", exact: true })).toHaveCount(0);
+    await voice.selectOption({ label: "Ryan" });
+    await expect(voice.locator("option:checked")).toHaveText("Ryan");
+    await expect(read.locator("option:checked")).toHaveText("local · kokoro · customvoice");
+    // Friend lives on the other model: picking it switches Read aloud there.
+    await voice.selectOption({ label: "Friend" });
+    await expect(read.locator("option:checked")).toHaveText("local · kokoro · clone");
+    await expect(voice.locator("option:checked")).toHaveText("Friend");
+    await expect(voice.locator("optgroup").first()).toHaveAttribute("label", "kokoro · clone");
+    await noHorizontalScroll(page);
+    if (process.env.SCREENSHOTS) await voice.evaluate((el) => el.scrollIntoView({ block: "center" }));
+    if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/voice-select-${page.viewportSize()!.width}.png` });
+    // Back to the model whose voices speak one language each: a select per language, named for it.
+    await read.selectOption({ label: "local · kokoro · speech" });
+    await expect(voice).toHaveCount(0);
+    await expect(drawer.getByRole("combobox", { name: "English", exact: true })).toBeVisible();
+    await expect(drawer.getByRole("combobox", { name: "Mandarin", exact: true })).toBeVisible();
+    await read.selectOption("");
+    await drawer.getByRole("button", { name: "Close" }).click();
+  } finally {
+    await page.evaluate(async ([base, ids]) => {
+      for (const id of Object.values(ids)) await fetch(`${base}/endpoints/${id}`, { method: "DELETE" });
+    }, [base, ids] as const);
+  }
+});
+
 test("the header greets the user and names the version and build, and the home box starts a thread", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   await page.goto(`/#/u/${userId}`);

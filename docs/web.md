@@ -1739,7 +1739,13 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   **Settings** link after it, opening that drawer over the thread drawer
   for the model the select shows (the thread's pick, else the column's),
   when it speaks and the thread may use it; Escape closes the voice
-  drawer first, and focus goes back to the link.
+  drawer first, and focus goes back to the link. Under them `VoicePick`
+  (src/Settings.tsx) picks the voice in place: one **Voice** select when
+  every voice of the model speaks all its languages (Qwen3-TTS), listing
+  the voices of every such model the thread may use, grouped by model; a
+  voice on another model is saved on that model and switches the thread's
+  Read aloud to it. Otherwise a select per language. It reads the
+  model's settings again when the voice drawer closes.
 - **Question cards** (`src/Question.tsx`, principles 1 and 6; ux §6): a
   `threads ask` call shows its question, optional muted context and each
   option's label and consequence. Only the recommended option is primary,
