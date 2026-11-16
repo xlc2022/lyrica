@@ -448,7 +448,7 @@ describe("projects", () => {
     // Cleared, new threads follow the project chat's again.
     expect((await ada.patch<ThreadSummary>(path, { threadsFallback: null })).body.projectSettings?.threadsFallback).toBeUndefined();
     // The defaults: new threads, and sleep's phases.
-    expect((await ada.patch<Presets>(`${u}/presets`, { fallback: false, sleepFallback: false })).body).toMatchObject({ fallback: false, sleepFallback: false });
+    expect((await ada.patch<Presets>(`${u}/presets`, { fallback: false })).body).toMatchObject({ fallback: false });
     expect((await ada.get<ThreadSettings>(`${path}/settings`)).body).toMatchObject({ fallback: null, fallbackOn: false });
   });
 

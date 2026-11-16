@@ -93,10 +93,11 @@ becomes understanding (principle 5), and where she wakes up continuous
    A skip moves nothing and is recorded. Lock during a run stops it and marks
    it `partial`.
 9. **Scheduling, in `lyricad`.**
-   - Run at `sleep.time` (self.db `settings`, administrators) for each user
-     with a key available, and each pool with activity.
-   - `sleep.mode`, `scheduled` (default) or `manual`, is a per-user setting in
-     `user.db`.
+   - Run each pool at its own time (`sleep.time.<pool>` in `user.db`, else
+     `sleep.time` in self.db `settings`, set by administrators) for each user
+     with a key available, when the pool has activity.
+   - The mode, `scheduled` (default) or `manual`, and fallback are per pool
+     in `user.db` (`sleep.mode.<pool>`, `sleep.fallback.<pool>`).
    - Run pools one at a time per user, and users one at a time, so a GPU
      isn't asked for everything at once.
 10. **`/sleep`.**

@@ -1,12 +1,12 @@
 // Sleep (docs/sleep.md "Sleep in the UI"): her items from the night at the top, each with Start a chat
-// and Dismiss; then the newest run, with Show all beside History, opening to its notes, pages with their word
-// differences, questions, dream and WAKE, each linking into the memory browser, the newest with Undo this night…;
-// Focus: her line for the next dream per pool above History; Sleep now at the foot.
-// Also the per-user mode (Settings → Sleep) and the administrator's sleep time.
-import { Fragment, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+// and Dismiss; Focus, her line for the next dream per pool; then History, with Show all, and a card per pool:
+// its newest run, opening to its notes, pages with their word differences, questions, dream and WAKE, each
+// linking into the memory browser, the newest with Undo this night…; under it the pool's Sleep now, Fallback
+// and schedule, changed in a dialog. Also the administrator's sleep time.
+import { Fragment, type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import {
-  del, get, HttpError, post, put, u,
-  type Display, type HistoryPage, type Pool, type SleepEvent, type SleepFocusChange, type SleepItemInfo, type SleepMode, type SleepOverview, type SleepRunDetail, type SleepRunInfo, type SleepStarted, type SleepTime, type ThreadSummary, type UserMap,
+  del, get, HttpError, patch, post, put, u,
+  type Display, type HistoryPage, type Pool, type SleepEvent, type SleepFocusChange, type SleepItemInfo, type SleepMode, type SleepOverview, type SleepPoolChange, type SleepRunDetail, type SleepRunInfo, type SleepStarted, type SleepTime, type ThreadSummary, type UserMap,
 } from "./api.ts";
 import { HistoryHead, HistoryList } from "./History.tsx";
 import { Icon } from "./icons.tsx";
@@ -14,7 +14,7 @@ import { plainCitations, poolWord, wordDiff } from "./memory.ts";
 import { readable } from "./mentions.ts";
 import { go, href, idHref, type Route } from "./route.ts";
 import { PageHead, PoolLock, type ShellContext } from "./Shell.tsx";
-import { ClampedText, clock, ConfirmDialog, dateText, ErrorText, hidden, Prose, shortTime, useAction, useDismiss, useLoad } from "./ui.tsx";
+import { ClampedText, clock, ConfirmDialog, dateText, Dialog, ErrorText, hidden, Prose, shortTime, useAction, useLoad } from "./ui.tsx";
 
 export interface SleepState {
   overview?: SleepOverview;
@@ -143,7 +143,9 @@ export function SleepPage({ ctx }: { ctx: ShellContext }) {
     return () => es.close();
   }, [userId, reload]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const last = (o?.runs ?? []).slice(0, 1);
+  const pools = (["general", "private"] as const).filter((p) => !hidden(display, p));
+  // Each shown pool's newest run, for its card.
+  const last = pools.flatMap((p) => { const r = o?.runs.find((x) => x.pool === p); return r ? [r] : []; });
   // The history page's total decides whether the preview's Show all is worth showing; one row answers that cheaply.
   const runTotal = useLoad(() => get<HistoryPage<SleepRunInfo>>(`${u(userId, "sleep", "history")}?limit=1`), [userId]);
 
@@ -200,10 +202,11 @@ export function SleepPage({ ctx }: { ctx: ShellContext }) {
           {o && <Focus ctx={ctx} />}
           <section aria-label="History" className="sleep-block">
             <HistoryHead to={{ page: "history", userId, kind: "sleep" }} count={runTotal.data?.total} />
-            <div className="list sleep-runs">{last.map(row)}</div>
+            {o && pools.map((p) => {
+              const r = last.find((x) => x.pool === p);
+              return <PoolCard key={p} ctx={ctx} pool={p}>{r ? row(r) : <div className="sleep-sum"><span className="t"><PoolName pool={p} /></span><span className="meta">No sleep yet.</span></div>}</PoolCard>;
+            })}
           </section>
-          {o && !o.runs.length && <p className="empty">No sleep yet.</p>}
-          <SleepFoot ctx={ctx} />
         </div>
       </div>
     </main>
@@ -366,46 +369,48 @@ function Focus({ ctx }: { ctx: ShellContext }) {
   );
 }
 
-/** Sleep now, with its menu of pools, and the mode in one line with a link to where it changes. */
-function SleepFoot({ ctx }: { ctx: ShellContext }) {
+/** A pool's card: its newest run, then its own Sleep now, Fallback and schedule, whose Change… opens a dialog. */
+function PoolCard({ ctx, pool, children }: { ctx: ShellContext; pool: Pool; children: ReactNode }) {
   const userId = ctx.user.id;
-  const o = ctx.sleep.overview;
-  const pools = (["general", "private"] as const).filter((p) => !hidden(ctx.me.display, p));
-  const [open, setOpen] = useState(false);
-  const [asking, setAsking] = useState<{ pool: Pool; sentence: string }>();
+  const o = ctx.sleep.overview!;
+  const mine = o.pools[pool];
+  const sleeping = o.runs.some((r) => r.pool === pool && r.status === "running");
+  const [asking, setAsking] = useState<string>();
+  const [editing, setEditing] = useState(false);
   const [toast, setToast] = useState("");
   const [busy, setBusy] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  const close = useCallback(() => setOpen(false), []);
-  useDismiss(ref, open, close);
-  const sleep = async (pool: Pool, confirm?: true) => {
-    setOpen(false); setBusy(true); setToast("");
+  // Fallback shows the click at once, then what the server saved.
+  const [fallback, setFallback] = useState<boolean>();
+  const [run, saving, error] = useAction();
+  const change = (c: SleepPoolChange) => run(async () => ctx.sleep.set(await patch<SleepOverview>(u(userId, "sleep", pool), c)));
+  const sleep = async (confirm?: true) => {
+    setBusy(true); setToast("");
     try {
       const r = await post<SleepStarted>(u(userId, "sleep", pool), confirm ? { confirm } : {});
-      if ("confirm" in r) setAsking({ pool, sentence: r.confirm });
+      if ("confirm" in r) setAsking(r.confirm);
       else ctx.sleep.reload();
     } catch (e) { setToast(e instanceof HttpError ? e.message : String(e)); } finally { setBusy(false); }
   };
-  const change = href({ page: "settings", userId, section: "sleep" });
   return (
-    <div className="sleep-foot">
-      <div className="msg-menu" ref={ref}>
-        <button type="button" disabled={busy || !pools.length} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}>Sleep now <span className="caret" aria-hidden="true">▾</span></button>
-        {open && (
-          <div className="menu above" role="menu" aria-label="Sleep now">
-            {pools.map((p) => <button key={p} type="button" role="menuitem" onClick={() => void sleep(p)}>{p === "private" && <PoolLock />}{poolWord(p)}</button>)}
-          </div>
-        )}
-      </div>
-      {o && (
+    <div className="sleep-pool" data-pool={pool}>
+      {children}
+      <div className="sleep-foot">
+        <button type="button" disabled={busy || sleeping} onClick={() => void sleep()}>Sleep now</button>
+        <label className="check" title="When off, each sleep phase uses its first model only; if that one is away, sleep waits for the next night.">
+          <input type="checkbox" name={`sleep-fallback-${pool}`} checked={fallback ?? mine.fallback} disabled={saving}
+            onChange={(e) => { const on = e.target.checked; setFallback(on); void change({ fallback: on }).finally(() => setFallback(undefined)); }} /> Fallback
+        </label>
         <span className="cap sleep-mode">
-          {o.mode === "scheduled" ? <>Scheduled nightly at <span className="num">{o.time}</span></> : "Manual: only when you ask"} · <a href={change}>change</a>
+          {mine.mode === "scheduled" ? <>Nightly at <span className="num">{mine.time}</span></> : "Only when you ask"} · <button type="button" className="link" onClick={() => setEditing(true)}>Change…</button>
         </span>
-      )}
+      </div>
+      <ErrorText error={error} />
+      {editing && <ScheduleDialog pool={pool} mode={mine.mode} time={mine.time} error={error}
+        onCancel={() => setEditing(false)} onSave={(c) => void change(c).then((ok) => { if (ok) setEditing(false); })} />}
       {asking && (
         // lyricad's sentence opens with its question: that is the dialog's title, the rest its sentence.
-        <ConfirmDialog title={/^[^?]*\?/.exec(asking.sentence)?.[0] ?? "Sleep now?"} sentence={asking.sentence.replace(/^[^?]*\?\s*/, "") || asking.sentence} confirm="Sleep now"
-          onCancel={() => setAsking(undefined)} onConfirm={() => { const p = asking.pool; setAsking(undefined); void sleep(p, true); }} />
+        <ConfirmDialog title={/^[^?]*\?/.exec(asking)?.[0] ?? "Sleep now?"} sentence={asking.replace(/^[^?]*\?\s*/, "") || asking} confirm="Sleep now"
+          onCancel={() => setAsking(undefined)} onConfirm={() => { setAsking(undefined); void sleep(true); }} />
       )}
       {toast && (
         <div className="toast" role="status">
@@ -417,22 +422,31 @@ function SleepFoot({ ctx }: { ctx: ShellContext }) {
   );
 }
 
-/** Settings → Sleep: when sleep happens for this user. Saved at once, like Sleep fallback beside it. */
-export function SleepModeField({ ctx }: { ctx: ShellContext }) {
-  const o = ctx.sleep.overview;
-  const [run, busy, error] = useAction();
-  if (!o) return null;
-  const set = (mode: SleepMode) => run(async () => ctx.sleep.set(await put<SleepOverview>(u(ctx.user.id, "sleep", "mode"), { mode })));
+/** A pool's schedule: nightly at a time in the user's zone, or only when they ask. */
+function ScheduleDialog({ pool, mode: was, time: at, error, onCancel, onSave }: {
+  pool: Pool; mode: SleepMode; time: string; error: string; onCancel: () => void; onSave: (c: SleepPoolChange) => void;
+}) {
+  const [mode, setMode] = useState(was);
+  const [time, setTime] = useState(at);
+  const id = `sleep-schedule-${pool}`;
   return (
-    <>
-      <label className="field sleep-mode-field"><span>Sleep</span>
-        <select name="sleep-mode" aria-label="Sleep" value={o.mode} disabled={busy} onChange={(e) => void set(e.target.value as SleepMode)}>
-          <option value="scheduled">Nightly at {o.time}</option>
+    <Dialog labelledBy={id} onCancel={onCancel} onSubmit={() => onSave({ mode, ...(mode === "scheduled" && time && time !== at ? { time } : {}) })}>
+      <h2 id={id}>{poolWord(pool)} sleep</h2>
+      <label className="field"><span>Schedule</span>
+        <select name="sleep-mode" value={mode} onChange={(e) => setMode(e.target.value as SleepMode)}>
+          <option value="scheduled">Nightly</option>
           <option value="manual">Only when I ask</option>
         </select>
       </label>
+      {mode === "scheduled" && (
+        <label className="field"><span title="In your time zone.">Time</span><input type="time" name="sleep-time" required value={time} onChange={(e) => setTime(e.target.value)} /></label>
+      )}
       <ErrorText error={error} />
-    </>
+      <div className="dlg-actions">
+        <button type="button" onClick={onCancel}>Cancel</button>
+        <button type="submit" className="primary" disabled={mode === was && time === at}>Save</button>
+      </div>
+    </Dialog>
   );
 }
 
@@ -449,7 +463,7 @@ export function SleepTimeSection({ ctx }: { ctx: ShellContext }) {
       <div className="section-head"><h2 id="h-sleep">Sleep</h2></div>
       <ErrorText error={sleep.error || error} />
       <form className="inline" onSubmit={(e) => { e.preventDefault(); void save(); }}>
-        <label className="field"><span title="Each user sleeps at this time in their own time zone.">Sleep time</span><input type="time" name="sleep-time" value={time ?? sleep.data?.time ?? ""} onChange={(e) => setTime(e.target.value)} /></label>
+        <label className="field"><span title="Each pool sleeps at this time in its user's time zone, unless they choose another on the Sleep page.">Sleep time</span><input type="time" name="sleep-time" value={time ?? sleep.data?.time ?? ""} onChange={(e) => setTime(e.target.value)} /></label>
         <button className="primary" disabled={busy || !time || time === sleep.data?.time}>Save</button>
       </form>
     </section>

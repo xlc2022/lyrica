@@ -77,6 +77,8 @@ const LEADING_HEADERS = /^(\s*[#*_>]*\s*dream journal\s*\(reflection, not a reco
 
 const SETTING = "sleep.mode";
 const FALLBACK = "sleep.fallback";
+const TIME = "sleep.time";
+const CLOCK = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 export class Sleep {
   readonly events = new EventEmitter();
@@ -89,25 +91,55 @@ export class Sleep {
   private readonly waiting = new Map<string, { userId: string; pool: Pool; endpointId: string }>();
   /** No-key skips, written into the pool the next time its key is here. */
   private readonly unrecorded: { userId: string; pool: Pool; reason: SleepRun["reason"]; at: string }[] = [];
+  /** Each user's pools' own sleep times, as read from user.db (undefined: the server's). */
+  private readonly times = new Map<string, Partial<Record<Pool, string>>>();
 
   constructor(private readonly o: SleepOptions) {
     this.limits = { ...DEFAULT_SLEEP_LIMITS, ...o.limits };
   }
 
-  mode(userId: string): SleepMode {
-    return this.setting(userId, SETTING) === "manual" ? "manual" : "scheduled";
+  /** Each pool has its own schedule; a pool not set yet follows the user's one setting from before pools had their own. */
+  mode(userId: string, pool: Pool): SleepMode {
+    return (this.setting(userId, `${SETTING}.${pool}`) ?? this.setting(userId, SETTING)) === "manual" ? "manual" : "scheduled";
   }
 
-  setMode(userId: string, mode: SleepMode): void {
+  setMode(userId: string, pool: Pool, mode: SleepMode): void {
     if (mode !== "scheduled" && mode !== "manual") throw new Error("sleep mode is scheduled or manual");
-    this.setting(userId, SETTING, mode);
+    this.setting(userId, `${SETTING}.${pool}`, mode);
   }
 
-  /** Fallback for sleep's phases, on unless turned off. Off, each phase uses its list's first model only. */
-  fallback(userId: string): boolean { return this.setting(userId, FALLBACK) !== "off"; }
-  setFallback(userId: string, on: boolean): void {
+  /** Fallback for a pool's sleep phases, on unless turned off. Off, each phase uses its list's first model only. */
+  fallback(userId: string, pool: Pool): boolean { return (this.setting(userId, `${FALLBACK}.${pool}`) ?? this.setting(userId, FALLBACK)) !== "off"; }
+  setFallback(userId: string, pool: Pool, on: boolean): void {
     if (typeof on !== "boolean") throw new Error("sleep fallback is true or false");
-    this.setting(userId, FALLBACK, on ? "on" : "off");
+    this.setting(userId, `${FALLBACK}.${pool}`, on ? "on" : "off");
+  }
+
+  /**
+   * A pool's own nightly time, `HH:MM` in the user's zone, or undefined to follow the server's sleep time. Read once
+   * while the key is here and then kept, since lyricad's tick asks every minute.
+   */
+  time(userId: string, pool: Pool): string | undefined {
+    if (!this.o.hasKey(userId)) return undefined;
+    let t = this.times.get(userId);
+    if (!t) {
+      t = { general: this.setting(userId, `${TIME}.general`), private: this.setting(userId, `${TIME}.private`) };
+      this.times.set(userId, t);
+    }
+    return t[pool];
+  }
+
+  /** Null follows the server's sleep time again. */
+  setTime(userId: string, pool: Pool, time: string | null): void {
+    if (time !== null && (typeof time !== "string" || !CLOCK.test(time))) throw new Error("sleep time is HH:MM");
+    const db = this.o.users.openUserDb(userId);
+    try {
+      if (time === null) db.prepare("DELETE FROM settings WHERE key = ?").run(`${TIME}.${pool}`);
+      else db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(`${TIME}.${pool}`, time);
+    } finally {
+      db.close();
+    }
+    this.times.delete(userId);
   }
 
   private setting(userId: string, key: string, value?: string): string | undefined {
@@ -182,6 +214,7 @@ export class Sleep {
 
   /** A deleted user: what waits for them (a plan's reset, skips to record at their next unlock) goes. */
   forget(userId: string): void {
+    this.times.delete(userId);
     for (const [key, w] of this.waiting) if (w.userId === userId) this.waiting.delete(key);
     for (let i = this.unrecorded.length - 1; i >= 0; i--) if (this.unrecorded[i]!.userId === userId) this.unrecorded.splice(i, 1);
   }
@@ -278,7 +311,7 @@ export class Sleep {
     for (const p of phases) {
       let ep: string;
       try {
-        ep = this.o.models.resolve(`sleep.${p}`, { userId, pool, localOnly: pool === "private", fallback: this.fallback(userId) }).endpoint.id;
+        ep = this.o.models.resolve(`sleep.${p}`, { userId, pool, localOnly: pool === "private", fallback: this.fallback(userId, pool) }).endpoint.id;
       } catch {
         continue;
       }
@@ -294,14 +327,15 @@ export class Sleep {
 
   /**
    * When a user's key comes back: a pool whose last run began before `since`
-   * (the last sleep time) missed that night, unrecorded if lyricad restarted
+   * (its last sleep time) missed that night, unrecorded if lyricad restarted
    * meanwhile. The miss is recorded as a no-key skip and the pool sleeps now.
    * Resolves once those runs end.
    */
-  async catchUp(userId: string, since: string): Promise<void> {
-    if (this.mode(userId) === "manual") return;
+  async catchUp(userId: string, sinceFor: (pool: Pool) => string): Promise<void> {
     const runs: Promise<unknown>[] = [];
     for (const pool of ["general", "private"] as const) {
+      if (this.mode(userId, pool) === "manual") continue;
+      const since = sinceFor(pool);
       const view = this.o.memory.openThreadView(userId, pool);
       let missed: boolean;
       try {
@@ -331,7 +365,7 @@ export class Sleep {
     const mine = this.unrecorded.filter((s) => s.userId === userId && s.pool === pool);
     if (!mine.length) return;
     for (const s of mine) this.unrecorded.splice(this.unrecorded.indexOf(s), 1);
-    if (this.mode(userId) === "manual" && mine.every((s) => s.reason === "scheduled")) return;
+    if (this.mode(userId, pool) === "manual" && mine.every((s) => s.reason === "scheduled")) return;
     for (const s of mine) view.own.recordSleepRun(s.reason, "no-key", s.at);
   }
 
@@ -363,7 +397,7 @@ export class Sleep {
    * Offline when none answers.
    */
   private async context(userId: string, pool: Pool, phase: SleepPhase): Promise<{ call: CallContext; ref: { offeringId: string } }> {
-    const base: CallContext = { userId, pool, localOnly: pool === "private", fallback: this.fallback(userId) };
+    const base: CallContext = { userId, pool, localOnly: pool === "private", fallback: this.fallback(userId, pool) };
     const { ref } = await this.o.models.resolveLive(`sleep.${phase}`, base, {}, { probeLast: true });
     return { ref, call: { ...base, overrides: { chat: [ref], compaction: [ref] } } };
   }

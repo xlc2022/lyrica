@@ -102,9 +102,11 @@ export function parse(hash: string): Route {
     const add = UNDER.find((x) => x.tab === tab && x.part === b)?.add;
     return { page: "models", userId, ...(tab && tab !== "overview" ? { tab } : {}), ...(add ? { add } : {}), ...((add === "host" || add === "workflow") && params.get("host") ? { host: params.get("host")! } : {}), ...(add === "workflow" && params.get("recipe") ? { recipe: params.get("recipe")! } : {}), ...(tab === "calls" && params.get("project") ? { project: params.get("project")!, pool: params.get("pool") === "private" ? "private" as const : "general" as const } : {}), ...(q ? { q } : {}), ...(pageNum ? { at: pageNum } : {}) };
   }
-  // Settings → Endpoints moved to Models → Hosts and endpoints, and Settings → Model presets to Models → Tasks.
+  // Settings → Endpoints moved to Models → Hosts and endpoints, Settings → Model presets to Models → Tasks.
   if (section === "settings" && a === "endpoints") return { page: "models", userId, tab: "hosts" };
   if (section === "settings" && a === "profiles") return { page: "models", userId, tab: "tasks" };
+  // Settings → Sleep moved onto the Sleep page's cards.
+  if (section === "settings" && a === "sleep") return { page: "sleep", userId };
   // A section may have pages of its own under it (settings/machines/new): the rest of the path rides along.
   const rest = [a, b, ...more].filter((x): x is string => x !== undefined).join("/");
   if (section === "settings") return { page: "settings", userId, ...(rest ? { section: rest } : {}) };

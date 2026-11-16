@@ -34,6 +34,9 @@ const HOST_CODES = ["need_repo", "above_recommended"];
 const UNLISTED = new Set(["/api/u/:userId/threads/:pool/:threadId/draft"]);
 /** What an idle thread is woken with when one of its background commands ends: the notice above it says which. */
 const JOB_WAKE_MS = 5000;
+const POOLS = ["general", "private"] as const satisfies readonly Pool[];
+/** One user's pool, due its scheduled sleep. */
+export interface Sleeper { userId: string; pool: Pool }
 const JOB_WAKE = "A background command ended: its notice is above (and any others that ended with it). Carry on with what it was for, or say what it found.";
 /** What an idle thread is woken with when a clip she started is made, or fails. */
 const CLIP_WAKE = "A clip you started in the background is done: its notice is above, and the chat shows the clip. Tell them it's ready, or why it failed.";
@@ -224,7 +227,7 @@ export class Lyricad implements Drainable {
   private readonly nightly: NodeJS.Timeout;
   /** The server's date the night's chores last ran, so they run once a night. */
   private sleptOn = "";
-  /** Each user's own date their scheduled sleep last ran, in their time zone. */
+  /** Each user's pool's own date its scheduled sleep last ran, in their time zone, by `userId/pool`. */
   private readonly userSleptOn = new Map<string, string>();
   /** Scheduled sleeps run one at a time, whichever zones they come from. */
   private sleeping: Promise<void> = Promise.resolve();
@@ -232,7 +235,7 @@ export class Lyricad implements Drainable {
   private prunedAt = 0;
   /** The night's chores came due during an update's drain: they run at undrain. */
   private sleepDue = false;
-  /** Users whose scheduled sleep came due during a drain: they sleep at undrain. */
+  /** Users' pools (`userId/pool`) whose scheduled sleep came due during a drain: they sleep at undrain. */
   private readonly sleepersDue = new Set<string>();
   private drainingNow = false;
   /** A memory wipe is running: new turns are refused and scheduled work waits, as while draining. */
@@ -799,13 +802,13 @@ export class Lyricad implements Drainable {
       this.log(`recovering child threads failed: ${(err as Error).message.split("\n")[0]}`);
     }
     // A night slept through without this key sleeps now.
-    void this.services!.sleep.catchUp(userId, this.lastSleepAt(userId)).catch((err: Error) => this.log(`catching up on sleep failed: ${err.name}`));
+    void this.services!.sleep.catchUp(userId, (pool) => this.lastSleepAt(userId, pool)).catch((err: Error) => this.log(`catching up on sleep failed: ${err.name}`));
   }
 
-  /** The last sleep time already passed in the user's zone, as an ISO time. */
-  lastSleepAt(userId: string, now = new Date()): string {
+  /** The pool's last sleep time already passed in the user's zone, as an ISO time. */
+  lastSleepAt(userId: string, pool: Pool, now = new Date()): string {
     const zone = zoneOf(this.services!.users.get(userId)?.profile ?? {});
-    const [hh, mm] = this.sleepTime().split(":").map(Number) as [number, number];
+    const [hh, mm] = this.poolSleepTime(userId, pool).split(":").map(Number) as [number, number];
     const at = (day: Date) => { const w = wall(day, zone); return zonedTime(w.year, w.month, w.day, hh, mm, zone); };
     const today = at(now);
     return new Date(today <= now.getTime() ? today : at(new Date(now.getTime() - 86_400_000))).toISOString();
@@ -930,8 +933,10 @@ export class Lyricad implements Drainable {
     s.users.deleteUser(actor, target);
     // A lock keeps what waits for the user's return; nobody returns from a delete.
     s.sleep.forget(target.id);
-    this.userSleptOn.delete(target.id);
-    this.sleepersDue.delete(target.id);
+    for (const pool of POOLS) {
+      this.userSleptOn.delete(`${target.id}/${pool}`);
+      this.sleepersDue.delete(`${target.id}/${pool}`);
+    }
     await this.keyring.dropSavedKey(target.id).catch((err: Error) => this.log(`forgetting a deleted user's saved key failed: ${firstLine(err)}`));
     await this.finishDeletes();
     this.log("deleted a user");
@@ -988,6 +993,11 @@ export class Lyricad implements Drainable {
     return row?.value ?? "04:00";
   }
 
+  /** When a user's pool sleeps: its own time, set on the Sleep page, or the server's sleep time. */
+  poolSleepTime(userId: string, pool: Pool): string {
+    return this.services?.sleep.time(userId, pool) ?? this.sleepTime();
+  }
+
   private tick(now = new Date()): void {
     if (!this.services) return;
     this.push.tick();
@@ -1017,15 +1027,18 @@ export class Lyricad implements Drainable {
       if (waiting) this.sleepDue = true;
       else this.night(now);
     }
-    const sleepers: string[] = [];
+    const sleepers: Sleeper[] = [];
     for (const u of this.services.users.all()) {
-      const zone = zoneOf(u.profile);
-      if (localTime(now, zone) !== time || this.userSleptOn.get(u.id) === localDate(now, zone)) continue;
-      this.userSleptOn.set(u.id, localDate(now, zone));
-      sleepers.push(u.id);
+      const zone = zoneOf(u.profile), clock = localTime(now, zone), date = localDate(now, zone);
+      for (const pool of POOLS) {
+        const key = `${u.id}/${pool}`;
+        if (clock !== this.poolSleepTime(u.id, pool) || this.userSleptOn.get(key) === date) continue;
+        this.userSleptOn.set(key, date);
+        sleepers.push({ userId: u.id, pool });
+      }
     }
     if (!sleepers.length) return;
-    if (waiting) for (const id of sleepers) this.sleepersDue.add(id);
+    if (waiting) for (const x of sleepers) this.sleepersDue.add(`${x.userId}/${x.pool}`);
     else void this.sleepNight(sleepers);
   }
 
@@ -1069,30 +1082,30 @@ export class Lyricad implements Drainable {
   }
 
   /**
-   * The scheduled sleep: these users (every user when left out), each pool,
-   * one at a time, after any scheduled sleep still running. A user without
-   * a key is skipped (no-key); one in manual mode isn't run; a pool with
-   * nothing new is skipped (no-activity).
+   * The scheduled sleep: these users' pools (a bare user ID: both pools;
+   * every user's when left out), one at a time, after any scheduled sleep
+   * still running. A user without a key is skipped (no-key); a pool in
+   * manual mode isn't run; a pool with nothing new is skipped (no-activity).
    */
-  sleepNight(userIds?: string[]): Promise<void> {
-    this.sleeping = this.sleeping.then(() => this.sleepUsers(userIds)).catch((err: Error) => this.log(`sleep failed: ${err.name}`));
+  sleepNight(who?: (string | Sleeper)[]): Promise<void> {
+    this.sleeping = this.sleeping.then(() => this.sleepUsers(who)).catch((err: Error) => this.log(`sleep failed: ${err.name}`));
     return this.sleeping;
   }
 
-  private async sleepUsers(userIds?: string[]): Promise<void> {
+  private async sleepUsers(who?: (string | Sleeper)[]): Promise<void> {
     const s = this.services;
     if (!s) return;
-    const due = s.users.all().filter((u) => !userIds || userIds.includes(u.id));
-    for (const [i, u] of due.entries()) {
-      // A drain or a wipe that began while earlier users slept: the rest wait for undrained().
+    const known = new Set(s.users.all().map((u) => u.id));
+    const due = (who ?? [...known]).flatMap((x): Sleeper[] => (typeof x === "string" ? POOLS.map((pool) => ({ userId: x, pool })) : [x]))
+      .filter((x) => known.has(x.userId));
+    for (const [i, x] of due.entries()) {
+      // A drain or a wipe that began while earlier pools slept: the rest wait for undrained().
       if (this.draining || this.wipingNow) {
-        for (const later of due.slice(i)) this.sleepersDue.add(later.id);
+        for (const later of due.slice(i)) this.sleepersDue.add(`${later.userId}/${later.pool}`);
         return;
       }
-      if (this.keyring.hasUserKey(u.id) && s.sleep.mode(u.id) === "manual") continue;
-      for (const pool of ["general", "private"] as const) {
-        await s.sleep.run(u.id, pool, "scheduled").catch((err: Error) => this.log(`sleep failed: ${err.name}`));
-      }
+      if (this.keyring.hasUserKey(x.userId) && s.sleep.mode(x.userId, x.pool) === "manual") continue;
+      await s.sleep.run(x.userId, x.pool, "scheduled").catch((err: Error) => this.log(`sleep failed: ${err.name}`));
     }
   }
 
@@ -1118,9 +1131,12 @@ export class Lyricad implements Drainable {
       this.night(new Date());
     }
     if (this.sleepersDue.size) {
-      const ids = [...this.sleepersDue];
+      const due = [...this.sleepersDue].map((key): Sleeper => {
+        const at = key.lastIndexOf("/");
+        return { userId: key.slice(0, at), pool: key.slice(at + 1) as Pool };
+      });
       this.sleepersDue.clear();
-      void this.sleepNight(ids);
+      void this.sleepNight(due);
     }
   }
 

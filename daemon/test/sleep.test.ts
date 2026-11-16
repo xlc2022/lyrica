@@ -63,7 +63,7 @@ describe("sleep in lyricad", () => {
     await s.talk();
     await s.d.sleepNight();
     const overview = (await s.ada.get<SleepOverview>(`${s.u}/sleep`)).body;
-    expect(overview).toMatchObject({ mode: "scheduled", time: "04:00" });
+    expect(overview).toMatchObject({ time: "04:00", pools: { general: { mode: "scheduled", time: "04:00", fallback: true }, private: { mode: "scheduled", time: "04:00", fallback: true } } });
     expect(overview.runs.map((r) => [r.pool, r.status, r.skipReason])).toEqual(expect.arrayContaining([
       ["general", "complete", undefined], ["private", "skipped", "no-activity"],
     ]));
@@ -119,7 +119,7 @@ describe("sleep in lyricad", () => {
 
   it("in manual mode sleeps only on /sleep, asks first, then opens a fresh thread", async () => {
     const s = await setup();
-    await s.ada.put(`${s.u}/sleep/mode`, { mode: "manual" });
+    for (const pool of ["general", "private"]) await s.ada.patch(`${s.u}/sleep/${pool}`, { mode: "manual" });
     const path = await s.talk();
     await s.d.sleepNight();
     expect((await s.ada.get<SleepOverview>(`${s.u}/sleep`)).body.runs).toEqual([]);
@@ -139,6 +139,27 @@ describe("sleep in lyricad", () => {
     const list = (await s.ada.get<ThreadSummary[]>(`${s.u}/threads`)).body;
     expect(list.map((t) => t.id)).toContain(fresh);
     expect((await s.ada.get<SleepOverview>(`${s.u}/sleep`)).body.runs.map((r) => [r.status, r.reason])).toEqual([["complete", "manual"]]);
+  });
+
+  it("sleeps each pool on its own schedule", async () => {
+    const s = await setup();
+    await s.talk();
+    // General sleeps at its own time; Private only when asked.
+    const set = (await s.ada.patch<SleepOverview>(`${s.u}/sleep/general`, { time: "02:30", fallback: false })).body;
+    expect(set.pools.general).toEqual({ mode: "scheduled", time: "02:30", fallback: false });
+    expect((await s.ada.patch<SleepOverview>(`${s.u}/sleep/private`, { mode: "manual" })).body.pools.private).toEqual({ mode: "manual", time: "04:00", fallback: true });
+    expect((await s.ada.patch(`${s.u}/sleep/general`, { time: "25:00" })).status).toBe(400);
+    const tick = (at: string) => (s.d as unknown as { tick(now: Date): void }).tick(new Date(at));
+    tick("2026-11-16T04:00:00Z");
+    await s.d.sleepNight([]);
+    expect((await s.ada.get<SleepOverview>(`${s.u}/sleep`)).body.runs).toEqual([]);
+    tick("2026-11-16T02:30:00Z");
+    await s.d.sleepNight([]);
+    expect((await s.ada.get<SleepOverview>(`${s.u}/sleep`)).body.runs.map((r) => [r.pool, r.status])).toEqual([["general", "complete"]]);
+    // The server's time again: the pool follows it from then on.
+    expect((await s.ada.patch<SleepOverview>(`${s.u}/sleep/general`, { time: "04:00" })).body.pools.general.time).toBe("04:00");
+    await s.ada.put(`${s.u}/admin/sleep`, { time: "05:15" });
+    expect((await s.ada.get<SleepOverview>(`${s.u}/sleep`)).body.pools.general.time).toBe("05:15");
   });
 
   it("answers /sleep with a plain error when it can't run", async () => {
