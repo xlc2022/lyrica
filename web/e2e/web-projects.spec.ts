@@ -288,7 +288,8 @@ test("home attachments and tool switches stay local until send and follow the se
   await box.getByRole("button", { name: "Attach or switch tools" }).click();
   await expect(box.getByRole("checkbox", { name: "Images", exact: true })).not.toBeChecked();
   await page.keyboard.press("Escape");
-  expect(await threads()).toEqual(before);
+  // No thread was made. Ids only: an earlier test's thread may still get its title meanwhile.
+  expect((await threads()).map((t) => t.id)).toEqual(before.map((t) => t.id));
   expect(uploads).toEqual([]);
   await expect(box.getByRole("menu", { name: "Mode", exact: true })).toHaveCount(0);
   await noHorizontalScroll(page);
