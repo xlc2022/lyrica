@@ -112,26 +112,34 @@ export function maxContextOf(model: TextModel, s: ModelSettings): number | null 
 /**
  * The context for a chat model with no saved one: the largest that fits some
  * way it may run with its GPUs as given, in steps of 1024 from 4096 up to its
- * maximum. With no maximum, or when nothing fits, 32k (never past its maximum),
- * so a load that can't work fails with the usual reason.
+ * maximum. A model that fits on its GPUs at any of those never counts system
+ * RAM, which is far slower. One that doesn't, and may keep part of itself in
+ * the system RAM allowance (`allowance`: what is left of it for this model),
+ * gets the largest context that the GPUs and that RAM hold. With no maximum, or when nothing fits, 32k
+ * (never past its maximum), so a load that can't work fails with the usual reason.
  */
-export function autoContext(model: TextModel, s: ModelSettings, gpus: Gpu[], settings: (i: number) => GpuSettings): number {
+export function autoContext(model: TextModel, s: ModelSettings, gpus: Gpu[], settings: (i: number) => GpuSettings, allowance = 0): number {
   const max = maxContextOf(model, s);
   const fallback = Math.min(defaultContext(model), max ?? Infinity);
   if (max === null || model.kind !== "chat") return fallback;
-  const fits = (context: number) => {
-    const at = { ...s, contextLength: context };
-    return options(model, at, gpus, settings).some((o) => !neverFits(model, at, o, gpus, settings));
+  const largest = (ram: number, most: number) => {
+    const fits = (context: number) => {
+      const at = { ...s, contextLength: context };
+      return options(model, at, gpus, settings, ram).some((o) => !neverFits(model, at, o, gpus, settings, ram));
+    };
+    if (fits(most)) return most;
+    // Steps of 1024: lo fits, hi doesn't.
+    let lo = 4, hi = Math.ceil(most / 1024);
+    if (hi <= lo || !fits(lo * 1024)) return null;
+    while (hi - lo > 1) {
+      const mid = (lo + hi) >> 1;
+      if (fits(mid * 1024)) lo = mid; else hi = mid;
+    }
+    return lo * 1024;
   };
-  if (fits(max)) return max;
-  // Steps of 1024: lo fits, hi doesn't.
-  let lo = 4, hi = Math.ceil(max / 1024);
-  if (hi <= lo || !fits(lo * 1024)) return fallback;
-  while (hi - lo > 1) {
-    const mid = (lo + hi) >> 1;
-    if (fits(mid * 1024)) lo = mid; else hi = mid;
-  }
-  return lo * 1024;
+  const onGpus = largest(0, max);
+  if (onGpus !== null) return onGpus;
+  return (allowance > 0 && spills(model, s) ? largest(allowance, max) : null) ?? fallback;
 }
 
 /**
@@ -518,7 +526,7 @@ export function validate(model: TextModel, body: Record<string, unknown>, gpus: 
 
   const s = body as unknown as ModelSettings;
   // With no context saved, it is checked at the one it would be served with.
-  const at = s.contextLength === undefined && model.kind === "chat" ? { ...s, contextLength: autoContext(model, s, gpus, settings) } : s;
+  const at = s.contextLength === undefined && model.kind === "chat" ? { ...s, contextLength: autoContext(model, s, gpus, settings, allowance) } : s;
   const opts = options(model, at, gpus, settings, allowance);
   if (!opts.length) throw invalid(`No GPU allows ${SERVER_NAMES[server]}.`);
   // Auto needs one way that can work; a chosen placement must work as chosen.

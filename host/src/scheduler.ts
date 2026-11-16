@@ -23,8 +23,15 @@ export const PRIORITIES: Priority[] = ["chat", "image", "background"];
 
 const RANK: Record<Priority, number> = { chat: 0, image: 1, background: 2 };
 
-/** Servers with no kernels for a CMP 100-210 (sm_70): vLLM, whose PyTorch has none. */
-const NOT_ON_CMP: Server[] = ["vllm"];
+/**
+ * The oldest NVIDIA compute capability each server's image has kernels for, when
+ * main.ts says nothing: vLLM v0.32.0's image is built for 7.5 and newer
+ * (torch_cuda_arch_list in its docker/Dockerfile), so a CMP 100-210 (7.0) or
+ * a Pascal card never runs it.
+ */
+const MIN_COMPUTE: Partial<Record<Server, number>> = { vllm: 7.5 };
+/** The CMP 100-210's compute capability, for a driver whose nvidia-smi doesn't report one. */
+const CMP_COMPUTE = 7.0;
 const GIB = 1024 ** 3;
 
 export const paused = () => new HostError(503, "paused", "The model host is paused.");
@@ -92,6 +99,10 @@ export interface SchedulerOptions {
    * CUDA. Their models take no GPU memory and need no placement.
    */
   cpuServers?: Server[];
+  /** Each NVIDIA GPU's compute capability (7.5 for sm_75), where nvidia-smi reports it. */
+  computeCap?: (index: number) => number | undefined;
+  /** The oldest compute capability each server's image runs on; a GPU older than that never allows it. */
+  minCompute?: Partial<Record<Server, number>>;
   /** How the servers reach the GPUs, for the status. */
   gpuBackend?: "cuda" | "rocm" | "vulkan" | null;
   /**
@@ -208,8 +219,16 @@ export class Scheduler {
     const beside = gpu?.integrated === true && this.gpus.some((g) => !g.integrated);
     const servers = gpu?.integrated && this.gpuBackend === "rocm" ? (["llamacpp"] as Server[]) : defaultGpu().servers;
     const saved = this.o.state.get().gpuSettings[index] ?? { ...defaultGpu(), servers, excluded: beside };
-    const cmp = isCmp(gpu?.pciId);
-    return { ...saved, servers: saved.servers.filter((s) => this.servers.includes(s) && !(cmp && NOT_ON_CMP.includes(s))) };
+    return { ...saved, servers: saved.servers.filter((s) => this.servers.includes(s) && !this.tooOld(index, s)) };
+  }
+
+  /** The compute capability a server needs, when this GPU's is older: its image has no kernels for it. */
+  private tooOld(index: number, server: Server): number | null {
+    const min = (this.o.minCompute ?? MIN_COMPUTE)[server];
+    if (min === undefined) return null;
+    const gpu = this.gpus.find((g) => g.index === index);
+    const cc = this.o.computeCap?.(index) ?? (isCmp(gpu?.pciId) ? CMP_COMPUTE : undefined);
+    return cc !== undefined && cc < min ? min : null;
   }
 
   settings(model: TextModel): ModelSettings {
@@ -246,14 +265,21 @@ export class Scheduler {
   /**
    * Its settings with the context it is served with: a chat model with none
    * saved gets the largest that fits once Lyrica's unpinned models are
-   * unloaded, loaded embedding models staying (autoContext), kept while it stays loaded.
+   * unloaded, loaded embedding models staying, counting the system RAM
+   * allowance only when it can't fit the GPUs at all (autoContext), kept while it stays loaded.
    */
   served(model: TextModel): ModelSettings {
     const s = this.settings(model);
     if (s.contextLength !== undefined || model.kind !== "chat" || this.onCpu(model)) return s;
     const l = this.loaded.get(model.id);
     if (l?.auto) return { ...s, contextLength: l.settings.contextLength };
-    return { ...s, contextLength: autoContext(model, s, this.othersView(model), (i) => this.gpuSettings(i)) };
+    return { ...s, contextLength: autoContext(model, s, this.othersView(model), (i) => this.gpuSettings(i), this.ramFor(model)) };
+  }
+
+  /** The system RAM allowance left for a model once Lyrica's unpinned models are unloaded: what pinned and embedding models keep there stays taken. */
+  private ramFor(model: TextModel): number {
+    const stays = [...this.loaded.values()].filter((x) => x.model.id !== model.id && (this.pinned(x.model.id) || x.model.kind === "embedding"));
+    return Math.max(0, this.ramAllowance - stays.reduce((n, x) => n + (x.option.ram ?? 0), 0));
   }
 
   /**
@@ -313,8 +339,8 @@ export class Scheduler {
     if (!opts.length) {
       const server = serverOf(model);
       if (job.gpu !== undefined) return `GPU ${job.gpu} doesn't allow images.`;
-      const cmpOnly = NOT_ON_CMP.includes(server) && this.gpus.some((g) => isCmp(g.pciId));
-      return cmpOnly ? `${SERVER_NAMES[server]} can't run on a CMP 100-210, and no other GPU here allows it.` : `No GPU allows ${SERVER_NAMES[server]} for this model.`;
+      const min = this.gpus.map((g) => this.tooOld(g.index, server)).find((n) => n !== null);
+      return min ? `${SERVER_NAMES[server]} needs a GPU of compute capability ${min.toFixed(1)} or newer, and no other GPU here allows it.` : `No GPU allows ${SERVER_NAMES[server]} for this model.`;
     }
     const s = this.served(model);
     const empty = this.gpusFor(serverOf(model)).map((g) => ({ ...g, used: 0 }));

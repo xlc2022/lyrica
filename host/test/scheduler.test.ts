@@ -9,13 +9,13 @@ import { StateFile } from "../src/state.ts";
 import { FakeBackend, FakeGpus, GIB, textModel } from "./fakes.ts";
 
 type Srv = "llamacpp" | "vllm" | "images";
-function setup(totals = [24], opts: { waitLimits?: Record<Priority, number>; dir?: string; servers?: Srv[]; gpuBackend?: "rocm" | "vulkan"; sharedMemory?: Srv[]; log?: Logger; disk?: () => number; quietMs?: number } = {}) {
+function setup(totals = [24], opts: { waitLimits?: Record<Priority, number>; dir?: string; servers?: Srv[]; gpuBackend?: "rocm" | "vulkan"; sharedMemory?: Srv[]; log?: Logger; disk?: () => number; quietMs?: number; computeCap?: (i: number) => number | undefined; minCompute?: Partial<Record<Srv, number>> } = {}) {
   const dir = opts.dir ?? mkdtempSync(join(tmpdir(), "lyrica-sched-"));
   const gpus = new FakeGpus(totals);
   const llamacpp = new FakeBackend(gpus);
   const vllm = new FakeBackend(gpus);
   const state = new StateFile(dir);
-  const scheduler = new Scheduler({ monitor: gpus, backends: { llamacpp, vllm }, state, log: opts.log ?? (() => {}), waitLimits: opts.waitLimits, servers: opts.servers, gpuBackend: opts.gpuBackend, sharedMemory: opts.sharedMemory, disk: opts.disk, quietMs: opts.quietMs });
+  const scheduler = new Scheduler({ monitor: gpus, backends: { llamacpp, vllm }, state, log: opts.log ?? (() => {}), waitLimits: opts.waitLimits, servers: opts.servers, gpuBackend: opts.gpuBackend, sharedMemory: opts.sharedMemory, disk: opts.disk, quietMs: opts.quietMs, computeCap: opts.computeCap, minCompute: opts.minCompute });
   return { dir, gpus, llamacpp, vllm, state, scheduler };
 }
 
@@ -728,7 +728,23 @@ describe("requests", () => {
     // With the other GPU closed to it, the reason names the card.
     await scheduler.setGpu(1, { servers: ["llamacpp"], keepFree: GIB / 2, excluded: false });
     const err = await scheduler.run(textModel("w", 4, { server: "vllm", format: "safetensors" }), "chat", async () => {}).catch((e) => e);
-    expect(err.message).toBe("vLLM can't run on a CMP 100-210, and no other GPU here allows it.");
+    expect(err.message).toBe("vLLM needs a GPU of compute capability 7.5 or newer, and no other GPU here allows it.");
+  });
+
+  it("keeps each server off GPUs older than its image's kernels, and sizes the context without them", async () => {
+    // A Pascal card (6.1) beside a Blackwell one (12.0).
+    const minCompute = { llamacpp: 5.0, vllm: 7.5, images: 7.5, speech: 7.5 };
+    const { scheduler, gpus } = setup([24, 24], { computeCap: (i) => (i === 0 ? 6.1 : 12.0), minCompute });
+    gpus.gpus.forEach((g) => (g.used = 0));
+    await scheduler.start([]);
+    expect(scheduler.gpuSettings(0).servers).toEqual(["llamacpp"]);
+    expect(scheduler.gpuSettings(1).servers).toEqual(["llamacpp", "vllm", "images", "speech"]);
+    // llama.cpp spreads over both, so its context counts the old card's memory; vLLM's counts the new card's alone.
+    const kv = 2 * 64 * 8 * 128;
+    const llama = textModel("l", 20, { contextLength: 131072, kvPerToken: kv });
+    const v = textModel("v", 20, { server: "vllm", format: "safetensors", contextLength: 131072, kvPerToken: kv });
+    expect(scheduler.served(llama).contextLength!).toBeGreaterThan(65536);
+    expect(scheduler.served(v).contextLength!).toBeLessThan(32768);
   });
 
   it("on a Vulkan host, offers llama.cpp only", async () => {

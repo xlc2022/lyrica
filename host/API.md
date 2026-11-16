@@ -272,7 +272,9 @@ seconds of audio.
     embeds on every turn, so a chat model filling the GPUs would swap with
     it on each call; in steps of 1024, from 4096), never more than the
     trained length times the stretch; 32768 when nothing fits or the
-    trained length is unknown. A model keeps the context it loaded with
+    trained length is unknown. It counts system RAM only for a llama.cpp
+    model that can't fit its GPUs at any context: then the largest that
+    its GPUs and what is left of the RAM allowance hold. A model keeps the context it loaded with
     while it stays loaded; Reload sizes it with the old instance counted as
     gone, and measures and loads it once that memory is back.
     `maxContextLength` is the trained length alone, `null` when the host
@@ -521,8 +523,14 @@ Only the repository's name and revision leave the host.
   out entirely (a GPU kept for the display, for example). Every field is
   optional; the defaults are all the servers this host runs, 512 MiB, and
   not left out (left out for an integrated GPU beside a discrete one). A
-  server the host doesn't run is `invalid`. A CMP 100-210 never runs vLLM,
-  whose PyTorch has no kernels for it, whatever its settings say.
+  server the host doesn't run is `invalid`. A GPU never runs a server
+  whose image has no kernels for its compute capability (nvidia-smi's
+  `compute_cap`), whatever its settings say: llama.cpp needs 5.0, vLLM
+  7.5, ComfyUI 7.5 (CUDA 13; stable-diffusion.cpp in its place on a CMP
+  is built for 7.0), speech 7.5 (cuDNN 9), or 7.0 on a host
+  with a CMP 100-210, whose speech image keeps Volta's cuDNN. So a CMP
+  100-210 (7.0) or a Pascal card runs llama.cpp only, and options and the
+  automatic context leave it out for the others.
   `keepFree` must be less than the GPU's memory.
   Models it may no longer hold are unloaded first (`in_use` while a request
   runs on one). Answers `{ "settings": { ... } }`.

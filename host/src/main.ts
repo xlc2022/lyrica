@@ -10,7 +10,7 @@ import { Images } from "./images.ts";
 import { RecipeBook, loadStarters } from "./recipes.ts";
 import { loadTemplates } from "./templates.ts";
 import { Workflows } from "./workflows.ts";
-import { amdMonitor, isCmp, noGpus, nvidiaMonitor } from "./gpus.ts";
+import { amdMonitor, isCmp, noGpus, nvidiaComputeCaps, nvidiaMonitor } from "./gpus.ts";
 import { stdoutLog } from "./log.ts";
 import { Runtime } from "./runtime.ts";
 import { SERVERS } from "./placement.ts";
@@ -70,10 +70,18 @@ const sdcpp = env.SDCPP_URL
 // Beside a CMP 100-210, install.sh adds whisper.cpp for dictation, which vLLM can't do there.
 const whispercpp = env.WHISPER_URL ? new WhisperCpp(env.WHISPER_URL, { serving, status: env.WHISPER_STATUS || "/whisper-status/whisper.json", models: modelsDir }) : null;
 const cmpGpus = new Set(nvidiaGpus.filter((g) => isCmp(g.pciId)).map((g) => g.index));
+const computeCaps = vendor === "nvidia" ? await nvidiaComputeCaps() : new Map<number, number>();
+// The oldest compute capability each server's image has kernels for. llama.cpp's CUDA 12.8 image builds
+// 5.0 and up (its ggml-cuda CMakeLists; on a CMP, install.sh builds it for this host's cards). vLLM v0.32.0
+// builds 7.5 and up (torch_cuda_arch_list), as does ComfyUI's CUDA 13.0 PyTorch, CUDA 13 having dropped
+// older cards; stable-diffusion.cpp in its place is built for the CMP (70-real). The speech server's cuDNN 9.27
+// supports 7.5 and up (cuDNN's support matrix); beside a CMP, install.sh builds it with one that has Volta's.
+const minCompute = { llamacpp: 5.0, vllm: 7.5, images: sdcpp ? 7.0 : 7.5, speech: cmpGpus.size ? 7.0 : 7.5 };
 const scheduler = new Scheduler({
   disk: diskReads(modelsDir) ?? undefined,
   monitor: vendor === "nvidia" ? nvidiaMonitor : vendor === "amd" ? amdMonitor("/sys", { order: backend === "vulkan" ? "pci" : "kfd" }) : noGpus,
   gpuBackend: backend,
+  ...(vendor === "nvidia" ? { computeCap: (i: number) => computeCaps.get(i), minCompute } : {}),
   // Only CMP 100-210s here: install.sh leaves vLLM's service out (compose.novllm.yaml).
   servers: backend === "vulkan" ? ["llamacpp"] : env.VLLM === "off" ? SERVERS.filter((s) => s !== "vllm") : undefined,
   // The speech server runs on an NVIDIA GPU, and on the CPU anywhere else

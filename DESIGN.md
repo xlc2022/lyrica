@@ -944,12 +944,14 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
         with how it splits (llama.cpp's split by ratio; vLLM's tensor
         parallel across matching GPUs, else pipeline parallel);
       - its own **context length** (by default the largest that fits its
-        GPUs, up to what the model supports), and for vLLM its
+        GPUs, up to what the model supports; system RAM counts only for a
+        model that can't fit its GPUs at all), and for vLLM its
         **memory share**, so one large GPU holds several vLLM models side
         by side.
     - **Each GPU says what it may run** (llama.cpp, vLLM, images) and how
       much memory to **keep free**, or it is left out entirely, such as a
-      GPU kept for the display.
+      GPU kept for the display. A GPU older than a server's image has
+      kernels for (by compute capability) never runs that server.
     - One GPU can hold several models of any mix; vLLM's share is reserved
       while that model is loaded.
     - A model split over several GPUs loads only when each has room, counts
