@@ -1238,8 +1238,11 @@ jobs").
   and the refusal says why and to run it as it is. Only a cut that ends the
   line counts, so these run: a pipe into `tail` or `head` followed by more
   (`; sleep 30; done` in a wait loop, `> sample.csv`, `) && deploy`), one
-  inside `$(…)` or a quoted `bash -c` line, `tail -f`, `-F` or `-n +N`, a
-  pipe that isn't last, and the same line in her turn. A subagent, with no `jobs` tool, gets only
+  inside `$(…)` or a quoted `bash -c` line, `tail -f`, `-F` or `-n +N`,
+  `head` after a followed stream (`journalctl -f | grep ready | head -1`, a
+  wait for a line), a pipe that isn't last, and the same line in her turn.
+  A refused `head` names the command's own limit (`grep -m 1`,
+  `find -print -quit`) for stopping early on purpose. A subagent, with no `jobs` tool, gets only
   the first part. The `jobs` description names the same limit, and a started
   job's reply says `jobs output` reads it live.
 - **Her way to it:** under a result that was cut, one line says it is kept

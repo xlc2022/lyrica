@@ -505,10 +505,13 @@ export function cutOutput(command: string, background: boolean): string | undefi
   // `tail -f` follows a file, and `tail -n +2` streams from a line rather than keeping the end.
   const args = stage.slice(1);
   if (!args.every((w) => /^(?:-[A-Za-z]*\d*|--[a-z]+(?:=\d+)?|\d+)$/.test(w)) || args.some((w) => /^-[A-Za-z]*[fF]|^--follow/.test(w))) return undefined;
+  // head after a followed stream (`journalctl -f | grep -i ready | head -1`) is a wait for a line: it ends the command on purpose.
+  if (program === "head" && /(?:^|\s)(?:-[A-Za-z]*[fF]|--follow\S*)(?:\s|$)/.test(command)) return undefined;
   const cut = stage.join(" ");
   const why = program === "tail"
     ? "tail prints nothing until the command ends, so the job shows no output while it runs, and only its last lines are kept: the rest is lost."
-    : "head keeps only the first lines and then exits, so the rest is lost, and the command can be killed the next time it writes.";
+    : "head keeps only the first lines and then exits, so the rest is lost, and the command can be killed the next time it writes. "
+      + "To stop at the first match on purpose, use the command's own limit (grep -m 1, find -print -quit).";
   return `Not run: this background command ends in \`| ${cut}\`. ${why} `
     + `Run it without \`| ${cut}\`: its whole output is kept and shown live as it comes. jobs output with its id reads its latest lines while it runs or after it ends (leave out from), or finds lines with pattern.`;
 }

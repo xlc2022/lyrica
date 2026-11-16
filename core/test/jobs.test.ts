@@ -250,5 +250,9 @@ describe("cutOutput", () => {
     expect(cutOutput("(make | tail -5) && deploy", true)).toBeUndefined();
     expect(cutOutput("make | tail -5 && deploy", true)).toBeUndefined();
     expect(cutOutput("docker compose logs | tail -n +2", true)).toBeUndefined();
+    // head after a followed stream waits for a line, and ends the command on purpose.
+    expect(cutOutput("journalctl -u lyrica-host -f | grep -i ready | head -1", true)).toBeUndefined();
+    expect(cutOutput("docker compose logs --follow host-api | head -n 1", true)).toBeUndefined();
+    expect(cutOutput("find / -name '*.gguf' | head -1", true)).toMatch(/grep -m 1, find -print -quit/);
   });
 });
