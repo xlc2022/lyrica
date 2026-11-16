@@ -1012,7 +1012,11 @@ steps:
    choose a password for her account at a `passwd` prompt (SSH logins
    can't use it) and adds `<account> ALL=(root) ALL`: you then type that
    password on a root step's card and press Run for each one, optionally
-   keeping it in memory for up to an hour. She never learns it. A root step
+   keeping it in memory for up to an hour. It never reaches the chat, and
+   her ordinary commands don't see it, but a process of her account set up
+   to catch it could: it guards against mistakes, not against a model set
+   on getting root. Exact commands, or root steps in your own terminal, are
+   stronger. A root step
    she can't run there comes to you on a card, to run with your password
    or in your own terminal. When the card offers sudoers lines, it
    also carries one command to paste on the machine: it adds them, keeps

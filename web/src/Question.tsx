@@ -27,7 +27,7 @@ function rootQuestion(args: unknown): Question | undefined {
     options: [
       { label: "Done", consequence: `Already run by hand. ${her()} checks the result and carries on.` },
       { label: "Not now", consequence: `Nothing runs. ${her()} says what waits on this.` },
-      { label: "Run", consequence: `Sudo takes the password for this script only. ${her()} gets the output, never the password.` },
+      { label: "Run", consequence: `Sudo takes the password for this script only. It never goes into the chat.` },
     ],
   };
 }
@@ -77,7 +77,7 @@ function SecretField({ label, lines, sudo, kept, value, setValue, keep, setKeep,
 }) {
   const [shown, setShown] = useState(false);
   const id = useId(), keepId = useId();
-  const tip = sudo ? `Goes only to sudo, for this script. Never shown to ${her()}; forgotten when the script ends.` : `Goes only to this script's input, never into the chat; forgotten when the script ends.`;
+  const tip = sudo ? `Goes to sudo for this script, never into the chat; forgotten when the script ends.` : `Goes only to this script's input, never into the chat; forgotten when the script ends.`;
   const common = { id, value, autoComplete: "off", spellCheck: false, disabled, onChange: (e: { target: { value: string } }) => setValue(e.target.value) };
   return <div className="card-secret">
     <label htmlFor={kept ? undefined : id} title={tip}>{label}<Icon name="lock" /></label>

@@ -7,7 +7,7 @@ description: Get a key, token, password or the person's sudo password into a com
 
 A secret is anything the person would keep private: an auth key, an API key, a token, a password, a private key, a passphrase, their sudo password. You never see one and never ask for one in chat. It reaches a command one way: the person types it on a card, and lyricad hands it to one script's standard input, masks it in the output, and wipes it when the script ends.
 
-That keeps it out of the conversation, not out of your account. A `run_with_secret` script runs as your account, so while it runs any other command of yours on that machine could reach the secret, and it is wherever the script leaves it. Say so in `why` when it matters, ask for a one-off, narrow or short-lived secret, and if the run fails, tell the person to revoke it. Don't start other commands on that machine while it runs. A sudo password is different: lyricad gives it to sudo alone.
+That keeps it out of the conversation, not out of your account. A `run_with_secret` script runs as your account, so while it runs any other command of yours on that machine could reach the secret, and it is wherever the script leaves it. Say so in `why` when it matters, ask for a one-off, narrow or short-lived secret, and if the run fails, tell the person to revoke it. Don't start other commands on that machine while it runs. A sudo password on a root card goes to sudo, out of your ordinary commands' reach.
 
 ## Which card
 

@@ -485,13 +485,18 @@ the card is for machines without it. The lines she may *offer* on a card
   the input; under setsid (`groupRun` with a ready line) her outer shell
   closes its copy and prints a fresh ready line. lyricad writes the
   password only once that line and sudo's fresh prompt have come out (the
-  SSH helper's `after`, `ops.ts` `handOff`), so sudo alone reads it; both
-  lines are left out of the output, and the password is masked (below).
+  SSH helper's `after`, `ops.ts` `handOff`); both lines are left out of the
+  output, and the password is masked (below).
   Root makes the copy (root's own, mode 0600) and checks its hash, so her
   account can't change it between the check and the run. `-k` means sudo
-  neither uses nor keeps a cached login. A process of hers that opened the
-  input in the moment before her shell exec'd sudo could still race sudo
-  for the password; nothing of hers holds it once sudo prompts. **Keep for** (minutes, 0 to 60, 0
+  neither uses nor keeps a cached login. So the password never reaches the
+  conversation, a log or a file, and ordinary commands of hers don't see
+  it. A process of her account set up in advance could: one that opens the
+  input through `/proc` before her shell lets go of it keeps its own read
+  end and races sudo, and both lines are on the command line, so it can
+  print them early. With `ALL=(root) ALL` that is root, so **Sudo, with
+  password** guards against mistakes, not a hostile model; exact NOPASSWD
+  commands and root steps run in the person's own terminal are stronger. **Keep for** (minutes, 0 to 60, 0
   by default) keeps the password in lyricad's memory for that machine
   (`Workspace.passwordKept`), so a later root card there shows **Kept · <n>
   min left** with **Forget** and runs without it being typed; each card

@@ -1675,9 +1675,14 @@ NAS, and Proxmox nodes. Decided 2026-10-11 from
   the thread's text, a log or a file. The script runs as her account, so
   her account, and any other command of hers on that machine, can reach
   the secret while it runs: the card and her skill say so, and ask for
-  one-off, narrow or short-lived secrets. A sudo password goes to sudo
-  alone: her shell execs sudo, lyricad writes it only once sudo prompts,
-  and root copies and checks the script. One pasted into chat is part of
+  one-off, narrow or short-lived secrets. A sudo password never
+  reaches the conversation, a log or a file, and ordinary commands of hers
+  don't see it (her shell execs sudo, lyricad writes it only once sudo
+  prompts, and root copies and checks the script). A process of her
+  account set up in advance to catch it could, and with `ALL=(root) ALL`
+  that is root: **Sudo, with password** guards against mistakes, not a
+  hostile model. Exact NOPASSWD commands, or root steps run in the
+  person's own terminal, are the stronger choices. One pasted into chat is part of
   the conversation; she says so and asks for a new one.
 - **A machine has a mode limit**, the loosest mode she may use there: Ask,
   Accept edits or Auto. New machines start at **Ask**; the owner loosens each one

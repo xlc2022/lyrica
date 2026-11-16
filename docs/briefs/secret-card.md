@@ -22,7 +22,8 @@ key could only be typed there too.
 - The root step's card gains **Password**, **Keep for** (0 to 60 minutes,
   in memory only) and **Run** (`sudo -S -k`, exec'd by her shell; the
   password written only once sudo prompts; root copies and checks the
-  script), beside Done and Not now.
+  script). It keeps the password from ordinary commands of hers, not from a
+  process of her account set up to catch it, beside Done and Not now.
 - A `run_with_secret` script runs as her account, so her account can
   reach the secret while it runs; the docs, skill and card say so.
 - Add machine's **Sudo, with password**: a password for her account,
