@@ -73,6 +73,13 @@ describe("speech and the cloud boundary", () => {
     expect((await s.models.transcribe(general, wav(1))).resolution.label).toBe("speech/whisper-large-v3-turbo");
     expect(s.models.speechModel("speech.transcribe", general)).toEqual({ label: "speech/whisper-large-v3-turbo", kind: "local" });
     expect(s.openai.server.heard).toHaveLength(heard);
+
+    // Even when the Private column's list is a group with a cloud copy: the fallback is local-only, not just the lookup.
+    const group = s.models.addGroup(s.ada, { name: "whisper", members: [s.openai.stt.offeringId, s.speech.stt.offeringId] });
+    s.models.setColumnTask(s.ada.id, "private", "speech.transcribe", [{ groupId: group.id }]);
+    expect((await s.models.transcribe(general, wav(1))).resolution.endpoint.kind).toBe("local");
+    expect(s.models.speechModel("speech.transcribe", general)).toMatchObject({ kind: "local" });
+    expect(s.openai.server.heard).toHaveLength(heard);
   });
 
   it("marks a plain endpoint's transcription models by name", async () => {

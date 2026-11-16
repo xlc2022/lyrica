@@ -866,8 +866,9 @@ anything else is set by hand (`addModel` or `setCapabilities`).
   resolves like any task: the thread's own list (a branch inherits it),
   then the column's; a private or local-only context uses local models
   only. A general context with no Dictation list of its own or in its
-  column uses the Private column's list (`listFor`), so a cloud model
-  hears nothing unpicked. Picking one is the consent; nothing asks again.
+  column runs local-only (`dictationContext`), so the Private column's
+  list answers and a cloud model, a group's cloud copy included, hears
+  nothing unpicked. Picking one is the consent; nothing asks again.
   (`thread_choices.voice_cloud`, the old switch, is no longer read.)
 - **Fallbacks** go through `callWithFallback`. When a call can't be made
   (the endpoint can't be reached or doesn't answer in time, a host answers

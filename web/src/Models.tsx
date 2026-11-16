@@ -553,7 +553,7 @@ function Tasks({ ctx }: { ctx: MCtx }) {
     const mixed = columnScope(col) === "general";
     const entry = entryOf(table, task);
     const own = tierList(table, task, all, gs);
-    // Dictation with no General list uses the Private column's (core/models listFor).
+    // Dictation with no General list uses the Private column's, local-only (core/models dictationContext).
     const privateDictation = task === "speech.transcribe" && column === "general" && !own.length;
     const list = privateDictation ? tierList(columnEntries(p!.presets.columns.private), task, all, gs) : own;
     const first = list[0];

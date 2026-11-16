@@ -3171,7 +3171,7 @@ function threadSettings(d: Lyricad, user: User, pool: Pool, threadId: string): A
     try {
       // evenIfDown: the drawer names what is set here; whether its machine answers now is speechState's and the status panel's to say.
       // Each create list names the model its tier takes, past one tagged for the other tier only.
-      const r = models.resolve(task, ctx, task === "image.create" ? { imageTier: "quality" } : task === "image.fast" ? { imageTier: "fast" } : {}, { evenIfDown: true });
+      const r = models.resolve(task, task === "speech.transcribe" ? models.dictationContext(ctx) : ctx, task === "image.create" ? { imageTier: "quality" } : task === "image.fast" ? { imageTier: "fast" } : {}, { evenIfDown: true });
       if (task === (applies.code ? "code" : "chat")) {
         const levels = r.offering.reasoning ?? [];
         // Off only where the model can stop thinking; each level by the name the model is given it under.

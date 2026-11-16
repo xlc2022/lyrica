@@ -3214,7 +3214,7 @@ export class Models {
     if (wav.length > MAX_CLIP_BYTES) throw new Error(`a clip is at most ${MAX_CLIP_SECONDS / 60} minutes`);
     const seconds = wavSeconds(wav);
     if (seconds === undefined) throw new Error("the clip isn't PCM WAV audio");
-    return this.callWithFallback("speech.transcribe", ctx, {}, async (r) => {
+    return this.callWithFallback("speech.transcribe", this.dictationContext(ctx), {}, async (r) => {
       const text = await transcribeAt(this.speechTarget(r), wav, opts);
       return { text, resolution: r, audioSeconds: seconds };
     });
@@ -3248,6 +3248,7 @@ export class Models {
    * the model's label and kind, or the plain reason it has none.
    */
   speechModel(task: SpeechTask, ctx: CallContext): { label: string; kind: "cloud" | "local" } | { reason: "none" | "down"; problem: string } {
+    if (task === "speech.transcribe") ctx = this.dictationContext(ctx);
     try {
       const r = this.resolve(task, ctx);
       return { label: r.label, kind: r.endpoint.kind };
@@ -3564,7 +3565,7 @@ export class Models {
   private listFor(task: Task, ctx: CallContext, c = this.catalog(ctx.userId)): { list: ModelRef[]; source: "thread" | "preset" | "column"; profile: string } | undefined {
     const restricted = isRestricted(ctx);
     const column = restricted ? "private" : "general";
-    const found = this.withUser(ctx.userId, (db) => {
+    return this.withUser(ctx.userId, (db) => {
       const col = this.readColumn(db, column);
       const chosen = ctx.preset ? this.presetRow(db, ctx.preset) : undefined;
       const honored = chosen && (!restricted || chosen.scope === "private") ? chosen : undefined;
@@ -3588,8 +3589,16 @@ export class Models {
       // not a thread's own Quality images pick, which replaces the whole list and may hold quality models only.
       return of(task) ?? (task === "image.fast" ? of("image.create", false) : OWN_LIST_ONLY.includes(task) ? undefined : of("chat", task !== "code"));
     });
-    // Dictation with no General list uses the Private column's, as it always has: a cloud model hears a voice only when it was picked.
-    return found ?? (task === "speech.transcribe" && !restricted ? this.listFor(task, { ...ctx, localOnly: true }, c) : undefined);
+  }
+
+  /**
+   * The context Dictation runs in: as given when it has a Dictation list
+   * (the thread's or its column's); otherwise made local-only, so the
+   * Private column's list answers and every cloud model, a group's cloud
+   * copy included, is skipped. A cloud model hears a voice only when it was picked.
+   */
+  dictationContext(ctx: CallContext): CallContext {
+    return isRestricted(ctx) || this.listFor("speech.transcribe", ctx) ? ctx : { ...ctx, localOnly: true };
   }
 
   /** Why a model's machine is away now, if it is: stale, or down in the health cache. */

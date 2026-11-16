@@ -539,6 +539,7 @@ class Models {                                              // new Models(keyrin
   transcribe(ctx, wav, { language?, signal? }): Promise<{ text; resolution; audioSeconds? }>   // the Dictation list; with no General one, the Private column's; CloudModelForbidden, NoModel, Offline
   speak(ctx, text, { voice?, speed?, language?, signal? }): Promise<{ audio: ReadableStream<Uint8Array>; resolution; voice? }>   // raw PCM, SPEECH_FORMAT
   speechModel(task, ctx): { label; kind } | { reason: "none" | "down"; problem }
+  dictationContext(ctx): CallContext        // ctx as given when it has a Dictation list; otherwise local-only
   // Settings
   offeringSettings(userId, offeringId): { values: AnswerSettings; sources: Partial<Record<keyof AnswerSettings, SettingSource>>;
                                           dropped: (keyof AnswerSettings)[]; defaults: ModelDefaults;   // the sampling the model reports as its own
@@ -708,8 +709,9 @@ class Models {                                              // new Models(keyrin
   own (neither follows chat) and take models with the `transcribe` or
   `speak` capability, reported by a host or set by hand. `transcribe` and
   `speak` follow the same boundary as `resolve`; a general context with no
-  Dictation list (thread or column) uses the Private column's, so a cloud
-  model hears a voice only when it was picked. A plain endpoint's model
+  Dictation list (thread or column) runs local-only (`dictationContext`),
+  so the Private column's list answers and a cloud model hears a voice
+  only when it was picked. A plain endpoint's model
   whose ID names a transcription model (`namesTranscriber`) is marked
   `transcribe` when its list is read.
   Both run through `callWithFallback`: an endpoint that can't answer is
