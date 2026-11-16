@@ -182,6 +182,19 @@ export function callEnd(err: unknown): { state: "exited" | "failed" | "timed out
 
 /** Under output that was cut, where the rest is: only when she has the jobs tool to read it. */
 export const keptLine = (id: string) => `The whole output is kept as ${id}: jobs output with id ${id} reads it in pages (from, lines), or finds lines with pattern.`;
+const MIB = (n: number) => `${n / (1024 * 1024)} MiB`;
+/**
+ * Her bash tool's description, in place of Pi's: Pi's says long output goes to a temp file, which in Lyrica it never
+ * does (capOutput keeps it under Pi's limits), and says nothing of the output kept with the thread.
+ */
+export const bashDescription = (jobs: boolean) =>
+  "Run a bash command in the current folder, or on one of your machines. Returns stdout and stderr: all of it when it is short; "
+  + "when it is long, its first and last part with a marker where the middle was left out."
+  + (jobs
+    ? ` Every call's whole output is kept with this conversation, encrypted, up to ${MIB(OUTPUT_LIMITS.keepBytes)} a command `
+      + `(its first ${MIB(OUTPUT_LIMITS.headBytes)} and its latest ${MIB(OUTPUT_LIMITS.keepBytes - OUTPUT_LIMITS.headBytes)}), and jobs output reads it by the id named under a result that was cut. `
+      + "So never save output to a file with tee or a redirect to read it later, and never cut it with tail, head or grep: what you cut isn't kept."
+    : "");
 const TOOLS: Record<keyof ToolOps, Create> = {
   read: createReadToolDefinition as unknown as Create,
   write: createWriteToolDefinition as unknown as Create,
@@ -358,6 +371,7 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
       const template = create(WORKDIR, { operations: undefined as never });
       pi.registerTool({
         ...template,
+        ...(name === "bash" ? { description: bashDescription(!!(tools.startJob && tools.jobs && tools.jobOutput && tools.stopJob)) } : {}),
         parameters: Type.Object({
           ...(template.parameters as ReturnType<typeof Type.Object>).properties,
           ...(name === "bash" ? { timeout: BASH_TIMEOUT, ...(tools.startJob ? { background: BACKGROUND, name: JOB_NAME } : {}) } : {}),
@@ -384,7 +398,7 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
             // A machine that doesn't answer (rebooting) still takes the job: it waits for the machine.
             bound(id, name, rest, machine, machine ? await target.cwd().catch(() => undefined) : undefined);
             const job = await tools.startJob(String(rest.command), machine, typeof rest.timeout === "number" ? rest.timeout : undefined, { ...(typeof jobName === "string" ? { name: jobName } : {}), call: id });
-            return text(`Started ${jobLine(job)}\nYou'll be told when it ends. jobs shows its output so far (the first part while it runs; the end once it ends) or stops it. To follow a long job's progress, have it write to a file and read that.`);
+            return text(`Started ${jobLine(job)}\nYou'll be told when it ends. jobs output reads what it has printed so far, live, or finds lines in it with pattern; jobs stop ends it.`);
           }
           if (name === "bash") rest.timeout ??= BASH_TIMEOUT_S;
           // An empty machine is the sandbox, as in tool_call.
@@ -443,8 +457,9 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
         name: "jobs",
         label: "Background commands",
         description: "This conversation's background commands (bash with background: true): list them, read one's output, or stop one. "
-          + "output also reads the whole output of any earlier bash call by its id (c3), named under a result that was cut: a page of numbered lines, "
-          + "its end unless you give from, or the lines matching pattern.",
+          + "output reads the whole kept output of a job, live while it runs, or of any earlier bash call by its id (c3), named under a result that was cut: "
+          + `up to ${MIB(OUTPUT_LIMITS.keepBytes)} a command, its first ${MIB(OUTPUT_LIMITS.headBytes)} and its latest ${MIB(OUTPUT_LIMITS.keepBytes - OUTPUT_LIMITS.headBytes)}. `
+          + "You get a page of numbered lines, its end unless you give from, or the lines matching pattern.",
         promptSnippet: "list, read or stop your background commands; read any command's whole output",
         parameters: Type.Object({
           action: Type.Union([Type.Literal("list"), Type.Literal("output"), Type.Literal("stop")]),
