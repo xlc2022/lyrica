@@ -52,7 +52,7 @@ for name, f in (PdfReader("form.pdf").get_fields() or {}).items():
 ```python
 w = PdfWriter(clone_from="form.pdf")
 for page in w.pages:
-    w.update_page_form_field_values(page, {"Name": "Ada Lovelace", "Agree": "/Yes"}, auto_regenerate=False)
+    w.update_page_form_field_values(page, {"Name": "Ada Sample", "Agree": "/Yes"}, auto_regenerate=False)
 w.set_need_appearances_writer(True)
 w.write("form-filled.pdf")
 ```
@@ -65,7 +65,7 @@ Field names are often cryptic: match them to the labels on a picture of the page
 - Some pages: `qpdf in.pdf --pages . 1-3,7 -- part.pdf`; every page alone: `qpdf --split-pages in.pdf page-%d.pdf`
 - Rotate pages 2 and 4: `qpdf in.pdf --rotate=+90:2,4 out.pdf`
 - Repair a damaged file: `qpdf in.pdf repaired.pdf`; `qpdf --check in.pdf` says what is wrong.
-- A file that opens but won't print or copy: `qpdf --decrypt in.pdf open.pdf`. One that needs a password to open: ask the person, and say that the password stays in the conversation; then `qpdf --password=… --decrypt in.pdf open.pdf`.
+- A file that opens but won't print or copy: `qpdf --decrypt in.pdf open.pdf`. One that needs a password to open: ask the person, and say that the password stays in the conversation; then pass it on standard input, not as an argument: `printf '%s' '…' | qpdf --password-file=- --decrypt in.pdf open.pdf`.
 
 ## Making a PDF
 
