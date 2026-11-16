@@ -621,6 +621,31 @@ never writes sudoers. For upkeep she syncs, reports unread news, shows
 `--depclean` only after its list is approved. Partitioning and wiping a disk are
 on the suspect list above, so they ask whatever the mode.
 
+### Installing and running NixOS
+
+While a thread has an SSH machine, its skills also list `nixos`
+(`extension/src/nixos.md`). It sends her to the current NixOS manual
+section before an install, an upgrade or a cleanup, and to the NixOS MCP
+server's `nix` and `nix_versions` tools (or search.nixos.org) for every
+option and package she writes. The install runs from the NixOS installer
+ISO, added as a machine with **Account: Mine** and user `nixos` (it has sudo
+without a password): she checks the disks and firmware, asks the person
+once for the disk, partitions, flake or not and names, follows the
+manual's partitioning, `nixos-generate-config`, and `nixos-install
+--no-root-passwd`; the person sets passwords at the console with
+`nixos-enter` and adds the installed system as a new machine, with her key
+already declared in its configuration. Add machine's own block doesn't
+work on an installed NixOS machine (sshd there doesn't read
+`sshd_config.d`), so the skill has the person declare her account and key
+in the configuration instead. For upkeep she finds the configuration by
+asking (never assuming `/etc/nixos`), edits a copy, builds it as her
+account and shows `nix store diff-closures` and the diff, then switches as
+a root step: `dry-activate` first for services, `test` first for
+networking, the firewall, SSH and users. Updates are `nix flake update` or
+the channel, a new release only after its release notes, rollback with
+`--rollback` or the boot menu, and `nix-collect-garbage --delete-older-than`
+only after a yes that says old generations go.
+
 ## Proxmox
 
 A Proxmox machine (`kind: "proxmox"`) is reached over Proxmox's HTTPS API

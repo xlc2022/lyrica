@@ -118,11 +118,13 @@ describe("the model-host skill", () => {
     const s = await setup();
     expect(await s.prompt()).not.toContain("model-host");
     expect(await s.prompt()).not.toContain('read_memory=\\"s:gentoo\\"');
+    expect(await s.prompt()).not.toContain('read_memory=\\"s:nixos\\"');
     const ws = s.d.services!.workspace.settings(s.rt.ada.id);
     ws.addMachine({ name: "box", host: "127.0.0.1", port: 22, username: "lyrica", root: null, pool: "general", limit: "ask", privateKey: "fake", offNetwork: false }, `SHA256:${"A".repeat(43)}`);
     ws.setThread(s.thread.id, "general", { machines: ["box"] });
     expect(await s.prompt()).toContain('<skill name=\\"model-host\\" read_memory=\\"s:model-host\\">Install a Lyrica model host');
     expect(await s.prompt()).toContain('<skill name=\\"gentoo\\" read_memory=\\"s:gentoo\\">Install Gentoo onto a disk');
+    expect(await s.prompt()).toContain('<skill name=\\"nixos\\" read_memory=\\"s:nixos\\">Install NixOS');
 
     const from = s.stream.events.length;
     s.model.reply({ tools: [{ name: "read_memory", args: { id: "s:model-host" } }] }, { text: "Read it." });
