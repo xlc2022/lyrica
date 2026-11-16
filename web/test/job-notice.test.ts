@@ -24,17 +24,18 @@ describe("parseJobNotice", () => {
   it("reads the name she gave it, which heads the card", () => {
     const parsed = parseJobNotice(jobNotice(job({ name: "Pull the host images", command: "docker compose pull" }), "pulled"));
     expect(parsed).toMatchObject({ id: "j5", name: "Pull the host images", place: "box", command: "docker compose pull", output: "pulled" });
-    expect(renderToStaticMarkup(createElement(JobNotice, { job: parsed! }))).toContain('<b class="as-is">Pull the host images</b>');
+    expect(renderToStaticMarkup(createElement(JobNotice, { job: parsed!, base: "/api/t" }))).toContain('<b class="as-is">Pull the host images</b>');
   });
 
   it("leaves an MCP server's end to the plain notice", () => {
     expect(parseJobNotice(jobNotice(job({ kind: "mcp", command: "fs" }), ""))).toBeUndefined();
   });
 
-  it("shows the command and output in blocks of their own", () => {
-    const html = renderToStaticMarkup(createElement(JobNotice, { job: parseJobNotice(jobNotice(job({ exitCode: 1 }), "a\nb"))! }));
+  it("shows the command, and its output only once opened", () => {
+    const html = renderToStaticMarkup(createElement(JobNotice, { job: parseJobNotice(jobNotice(job({ exitCode: 1 }), "a\nb"))!, base: "/api/t" }));
     expect(html).toContain('<pre class="job-command" aria-label="Command">uptime; cd /srv &amp;&amp; make</pre>');
-    expect(html).toContain('<pre class="job-output" aria-label="Last output">a\nb</pre>');
+    expect(html).toMatch(/<button type="button" class="link job-toggle" aria-expanded="false">.*Output<\/button>/);
+    expect(html).not.toContain("a\nb");
     expect(html).toContain('<span class="dot down" aria-hidden="true"></span>exit <span class="mono">1</span>');
   });
 });

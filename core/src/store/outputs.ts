@@ -70,7 +70,7 @@ export interface CommandOutput {
 }
 
 /** How the Jobs dropdown orders them. */
-export type OutputSort = "newest" | "oldest" | "running" | "longest";
+export type OutputSort = "newest" | "oldest" | "longest" | "name";
 
 /** What it printed, as kept: the first part and the end, with a marker where the middle was left out. */
 export const cutMarker = (dropped: number): string => `\n[… ${dropped.toLocaleString("en-US")} bytes left out here …]\n`;
@@ -136,16 +136,19 @@ const fromRow = (r: Row): CommandOutput => ({
 /** How long a command ran, in milliseconds (one still running, until now). */
 const ran = (o: CommandOutput, now: number) => (o.endedAt ? Date.parse(o.endedAt) : now) - Date.parse(o.startedAt);
 
-/** Orders outputs for the Jobs dropdown: newest first unless asked otherwise; ties by start. */
+/** What a job's card is headed with: its name, or its command when it has none. */
+const title = (o: CommandOutput) => o.name ?? o.command;
+
+/** Orders outputs for the Jobs dropdown: running ones on top, then newest first unless asked otherwise; ties by start. */
 export function sortOutputs(list: CommandOutput[], sort: OutputSort, now = Date.now()): CommandOutput[] {
   const byStart = (a: CommandOutput, b: CommandOutput) => b.startedAt.localeCompare(a.startedAt);
   const cmp: Record<OutputSort, (a: CommandOutput, b: CommandOutput) => number> = {
     newest: byStart,
     oldest: (a, b) => -byStart(a, b),
-    running: (a, b) => Number(b.state === "running") - Number(a.state === "running") || byStart(a, b),
     longest: (a, b) => ran(b, now) - ran(a, now) || byStart(a, b),
+    name: (a, b) => title(a).localeCompare(title(b), "en", { sensitivity: "base", numeric: true }) || byStart(a, b),
   };
-  return [...list].sort(cmp[sort]);
+  return [...list].sort((a, b) => Number(b.state === "running") - Number(a.state === "running") || cmp[sort](a, b));
 }
 
 /**

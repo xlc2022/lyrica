@@ -2,6 +2,8 @@
 // docs/workspace.md, "Background commands"). The notice is the text she was told (core's `jobNotice`); this reads it
 // back into its parts, so the command and its output keep their lines in blocks of their own.
 import { useLayoutEffect, useRef, useState } from "react";
+import { Icon } from "./icons.tsx";
+import { OutputBox } from "./CommandOutput.tsx";
 
 export interface EndedJob {
   id: string;
@@ -46,30 +48,31 @@ function ending(j: EndedJob) {
   return <span className="status-word"><span className={`dot ${dot}`} aria-hidden="true" />{word}</span>;
 }
 
-/** The card: the head with how it ended, the job, where and how long; the command and its last output in blocks that keep their lines, clamped until Show more. */
-export function JobNotice({ job }: { job: EndedJob }) {
+/**
+ * The card: the head with how it ended, the job, where and how long; the command, clamped until Show more; and its
+ * output, hidden until opened. Opened, it shows the job's whole kept output (`base` is the thread's API path), or the
+ * notice's last lines when none was kept.
+ */
+export function JobNotice({ job, base }: { job: EndedJob; base: string }) {
   const [more, setMore] = useState(false);
+  const [open, setOpen] = useState(false);
   const [long, setLong] = useState(false);
   const body = useRef<HTMLDivElement>(null);
-  // Show more shows only when a clamp hides something.
+  // Show more shows only when the clamp cuts the command; a cut command fades at its foot, so it reads as clamped rather than broken off.
   useLayoutEffect(() => {
     if (more) return;
-    // A cut block fades at its foot, so it reads as clamped rather than broken off mid-line.
-    // The output's fade is drawn over it, above its sideways scrollbar (--bar, the bar's height), so the bar stays seen and grabbed.
-    const pres = [...(body.current?.querySelectorAll("pre") ?? [])];
+    const el = body.current?.querySelector<HTMLElement>(".job-command");
+    if (!el) return;
     const measure = () => {
-      for (const el of pres) {
-        const cut = el.scrollHeight > el.clientHeight + 1;
-        el.toggleAttribute("data-cut", cut);
-        el.parentElement?.style.setProperty("--bar", `${Math.max(0, el.offsetHeight - el.clientHeight - 2)}px`);
-      }
-      setLong(pres.some((el) => el.hasAttribute("data-cut")));
+      const cut = el.scrollHeight > el.clientHeight + 1;
+      el.toggleAttribute("data-cut", cut);
+      setLong(cut);
     };
     measure();
     const watch = new ResizeObserver(measure);
-    for (const el of pres) watch.observe(el);
+    watch.observe(el);
     return () => watch.disconnect();
-  }, [more, job.command, job.output]);
+  }, [more, job.command]);
   return (
     <div className="subagent delivered job-notice" data-status="job">
       <div className="sub-head">
@@ -80,8 +83,10 @@ export function JobNotice({ job }: { job: EndedJob }) {
       <div ref={body} className="job-body" data-clamped={more ? undefined : ""}>
         <pre className="job-command" aria-label="Command">{job.command}</pre>
         {job.output ? <>
-          <span className="job-label">Last output</span>
-          <div className="job-scroll"><pre className="job-output" aria-label="Last output">{job.output}</pre></div>
+          <button type="button" className="link job-toggle" aria-expanded={open} onClick={() => setOpen(!open)}>
+            <Icon name="right" className="chev-ic" />Output
+          </button>
+          {open && <OutputBox base={base} id={job.id} running={false} fallback={job.output} label="Output" />}
         </> : <span className="job-label">No output</span>}
       </div>
       {(long || more) && <button type="button" className="link show-more" aria-expanded={more} onClick={() => setMore(!more)}>{more ? "Show less" : "Show more"}</button>}

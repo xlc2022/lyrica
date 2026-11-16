@@ -1318,7 +1318,7 @@ function Notice({ text, status, threads, env }: { text: string; status?: string;
   // In a project chat, a thread's updates go on its card (no card per update).
   if (env.project && (status === "update" || status === "waiting")) return null;
   const job = status === "job" ? parseJobNotice(text) : undefined;
-  if (job) return <JobNotice job={job} />;
+  if (job) return <JobNotice job={job} base={env.base} />;
   return (
     <div className="subagent delivered" data-status={status}>
       <div className="sub-head">

@@ -1476,7 +1476,7 @@ export function apiRoutes(d: Lyricad): Route[] {
       const user = d.userFor(r), pool = poolOf(r);
       const thread = owner(d, user, (o) => threadOf(o, r));
       const sort = r.query.get("sort") ?? "newest";
-      if (!["newest", "oldest", "running", "longest"].includes(sort)) throw new HttpError(400, "sort is newest, oldest, running or longest");
+      if (!["newest", "oldest", "longest", "name"].includes(sort)) throw new HttpError(400, "sort is newest, oldest, longest or name");
       try { return s().workspace.jobList({ userId: user.id, pool, threadId: thread.id }, r.query.get("q") ?? "", sort as OutputSort); }
       catch (e) { if (/^pattern /.test((e as Error).message)) throw new HttpError(400, (e as Error).message); throw e; }
     }),

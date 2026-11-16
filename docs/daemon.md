@@ -712,7 +712,7 @@ name, command or output (read by `readSearch`: text, a wildcard anywhere, or
 `/…/` an RE2 regular expression, the last two run in SQLite through
 `re2_match`; `400` with the reason when it can't be read) and
 `sort` one of `newest` (the default), `oldest`,
-`running`, `longest` (`400` otherwise). They read the thread's pool through
+`longest`, `name` (`400` otherwise), running jobs always first. They read the thread's pool through
 its thread view (docs/workspace.md, Command output).
 `live_call` carries the model request a turn waits on as counts and times
 (the extension's `onLiveCall`, docs/models.md, Live counts), at most every
