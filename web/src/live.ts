@@ -232,6 +232,9 @@ export function liveReducer(s: Live, e: LiveAction): Live {
       return s.busy ? s : { ...s, reload: s.reload + 1, ended: s.items.length };
     case "usage":
     case "reactions":
+    // The open output boxes and the Jobs dropdown take these (CommandOutput.tsx).
+    case "output":
+    case "jobs":
     // The stored messages reload (stream.ts).
     case "renamed":
       return s;

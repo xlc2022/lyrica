@@ -32,7 +32,7 @@ describe("Jobs", () => {
     const job = jobs.start(thread, "sandbox", target, "make", "/workspace");
     expect(job).toMatchObject({ id: "j1", state: "running", command: "make" });
     running.get("make")!.onData(Buffer.from("building\ndone\n"));
-    expect(jobs.output(thread, "j1").output).toContain("building");
+    expect(jobs.output(thread, "j1")!.output).toContain("building");
     running.get("make")!.done(0);
     await tick();
     expect(ended).toHaveLength(1);
@@ -109,7 +109,7 @@ describe("Jobs", () => {
     await tick();
     expect(ended.map((j) => [j.id, j.state])).toEqual([["j2", "stopped"]]);
     expect(jobs.stop(thread, "j2")).toBe(false);
-    expect(() => jobs.output(thread, "j9")).toThrow(/no background command j9/);
+    expect(jobs.output(thread, "j9")).toBeUndefined();
   });
 
   it("stops a user's jobs at Lock, or only the forgotten threads'", async () => {

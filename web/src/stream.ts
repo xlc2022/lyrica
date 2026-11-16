@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { get, threadPath, type Message, type MessagePage, type Pool, type QuestionState, type ThreadEvent } from "./api.ts";
 import { initialLive, liveReducer } from "./live.ts";
+import { jobsChanged, outputArrived } from "./CommandOutput.tsx";
 
 // Every event the stream sends, each listened for by name: a new ThreadEvent type fails the typecheck until it's here.
 const LISTENED: Record<ThreadEvent["type"], true> = {
@@ -9,6 +10,7 @@ const LISTENED: Record<ThreadEvent["type"], true> = {
   recall: true, remember: true, permission: true, permission_end: true, usage: true, queue: true, received: true, error: true,
   offline: true, title: true, settings: true, turn_end: true, delegation: true, notice: true, rewound: true, child: true,
   reactions: true, renamed: true, steps: true, wakeups: true, context: true, compacting: true, compacted: true, gpu_wait: true, live_call: true,
+  output: true, jobs: true,
 };
 const EVENT_TYPES = Object.keys(LISTENED) as ThreadEvent["type"][];
 
@@ -100,6 +102,9 @@ export function useThread(userId: string, pool: Pool, threadId: string) {
           if (type === "hello") { setConnected(true); delay = 1000; }
           try {
             const e = JSON.parse(m.data) as ThreadEvent;
+            // A running command's output and the Jobs list go to the views that show them, not to the conversation's state.
+            if (e.type === "output") { outputArrived(base, e); return; }
+            if (e.type === "jobs") { jobsChanged(base); return; }
             // Removed messages go at once; the reload brings what's left.
             if (e.type === "rewound") setMessages((old) => old.filter((x) => x.n < e.from));
             // A reaction, hers or from another tab, lands on the stored message at once.

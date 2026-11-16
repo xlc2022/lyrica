@@ -12,7 +12,6 @@
 
 import ssh2 from "ssh2";
 import type { ClientChannel, SFTPWrapper, Stats } from "ssh2";
-import { capOutput } from "./ops.ts";
 import { decoder, encode, MAX_BODY, type Frame } from "./ssh-frames.ts";
 
 const send = (head: object, body?: Buffer) => { process.stdout.write(encode(head, body)); };
@@ -111,13 +110,12 @@ function request(id: number, head: Frame["head"], body: Buffer): void {
       client.exec(String(head.command), (err, stream) => {
         if (err) return done(err);
         streams.set(id, stream);
-        // Capped here, before it crosses the pipe.
-        const out = capOutput((d) => send({ id, ev: "data" }, d));
-        stream.on("data", (d: Buffer) => out.push(d));
-        stream.stderr.on("data", (d: Buffer) => out.push(d));
+        // All of it crosses the pipe: lyricad keeps the whole output with the thread and gives her its start and end.
+        const out = (d: Buffer) => { for (let i = 0; i < d.length; i += MAX_BODY) send({ id, ev: "data" }, d.subarray(i, i + MAX_BODY)); };
+        stream.on("data", out);
+        stream.stderr.on("data", out);
         stream.on("close", (code: number | null) => {
           streams.delete(id);
-          out.end();
           done(null, { code: typeof code === "number" ? code : null });
         });
       });

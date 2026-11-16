@@ -21,6 +21,12 @@ describe("parseJobNotice", () => {
     expect(parsed).toEqual({ id: "j5", place: "sandbox", state: "timed out", took: "2 h 5 min", reason: "over its 3600 s limit", command: "uptime; cd /srv && make", output: "" });
   });
 
+  it("reads the name she gave it, which heads the card", () => {
+    const parsed = parseJobNotice(jobNotice(job({ name: "Pull the host images", command: "docker compose pull" }), "pulled"));
+    expect(parsed).toMatchObject({ id: "j5", name: "Pull the host images", place: "box", command: "docker compose pull", output: "pulled" });
+    expect(renderToStaticMarkup(createElement(JobNotice, { job: parsed! }))).toContain('<b class="as-is">Pull the host images</b>');
+  });
+
   it("leaves an MCP server's end to the plain notice", () => {
     expect(parseJobNotice(jobNotice(job({ kind: "mcp", command: "fs" }), ""))).toBeUndefined();
   });

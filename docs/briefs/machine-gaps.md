@@ -40,7 +40,9 @@ tool each for A and B, prompt lines only where the thread has a machine).
   owned by `Workspace`, so they outlive the thread's session (which is
   disposed when idle). Output is what the target delivers (capped as for any
   command: the first 20 KB live, the end once it ends), at most 64 KB a job,
-  in memory only. Nothing goes to disk.
+  in memory only. Nothing goes to disk. (Since built: the whole output is
+  kept encrypted with the thread, up to 16 MiB a command; docs/workspace.md,
+  Command output.)
 - A new `jobs` tool: `list` (this thread's jobs: id, where, command, state,
   how long), `output` (a job's kept output so far), `stop` (kills it). Ended
   jobs are kept until 10 newer ones have ended in that thread.

@@ -226,6 +226,7 @@ nothing else. No code path gives a general view a private handle.
 | Reactions | `react(threadId, n, emoji, by, on)` → `Reaction[]` (`{ emoji, by: string[] }`, `by` user IDs or `LYRICA_REACTS`); `entryPage` entries carry `reactions`. Pool schema step 2 (`entries.reactions`, JSON) |
 | Skills | `skills` → `SkillLibrary` for this pool (core/src/skills.ts): `all()`, `active()`, `read(name)`, `byCall(call)`; a store's also `put(input)` (the person's, active at once), `propose(input, thread, call, autoApprove)` (hers: active with auto-approve, else waiting beside the active one), `approve(name)`, `decline(name)`, `remove(name)`, `importSkill(draft)` (theirs and active; `{ name, duplicate }`, renaming to `name-2` rather than replacing anything). `exportSkills(skills)`, `parseSkills(text)` and `importSkills({ general, private }, texts, pool?)` move them as Markdown (docs/briefs/skills.md, "Export and import"); lyricad's `GET …/skills` → `Skills`, `POST …/skills` (`SkillChange`) → `SkillInfo`, `PUT …/skills/auto-approve` (`SkillsAutoApprove`), `POST …/skills/:pool/:name/approve|decline` and `DELETE …/skills/:pool/:name` (each → `Skills`) reach a shown pool's store through its thread view (docs/daemon.md, "Memory browser and settings"); `POST …/skills/export` → `SkillsExport` and `POST …/skills/import` (`SkillsImport`) → `SkillsImportResult` use them through the owner view. `checkSkill` and `SKILL_LIMITS` (name 64, description 200, body 8000, 100 per pool). Pool step 10 adds `skills` |
 | Artifacts | `artifacts` → `ArtifactLibrary` for this pool (core/src/store/artifacts.ts; pool step 17's `artifacts` and `artifact_versions`): `list({ threads? })` → `Artifact[]` (`id`, `pool`, `title`, `kind`: `html`, `svg`, `markdown` or `react`, `thread?`, `path?`, `version`, `size`, `createdAt`, `updatedAt`), newest change first; `get(id)`; `byPath(thread, path)`; `versions(id)` → `{ n, author, size, createdAt }[]`, newest first; `read(id, n?)` → `{ kind, n, bytes, built? }`; a store's also `create({ title, kind, thread?, path?, bytes, built?, author })`, `addVersion(id, { bytes, built?, author, path?, title? })`, `publish({ thread, threads?, path, kind, title?, artifact?, bytes, built?, author })` → `{ artifact, created }` (a version of `artifact` when it belongs to `thread` or one of `threads`, else of the artifact `thread` published from `path`, else a new one; the same bytes add no version; another kind is refused), `restore(id, n, author)` (that version again as a new one), `rename(id, title)`, `delete(id)`, `forgetThread(thread)`. `author` is `lyrica` or `user`. A version is at most `ARTIFACT_LIMIT` (16 MiB), a title at most 120 characters, and a version never changes once written. `forgetThread` deletes a thread's artifacts with it, its memories kept or not. `artifactKind(name)`, `artifactExtension(kind)` and `titleFromName(name)` map file names; `ArtifactError` is a problem with what was given. |
+| Command output | `outputs` → `CommandOutputs` for this pool (core/src/store/outputs.ts; pool step 18's `command_outputs`, deleted with the thread): `save(thread, CommandOutput, output)` (replaces; then empties the thread's oldest outputs past `OUTPUT_LIMITS.threadBytes`, 256 MiB), `get(thread, id)`, `text(thread, id)`, `byCall(thread, call)`, `list(thread, kind, q?)`, `lastNumber(thread, "c" \| "j")`. `CommandOutput` is `{ id, call?, kind: "call" \| "job", name?, place, command, cwd, startedAt, endedAt?, state, exitCode?, reason?, bytes, dropped }`. `KeptOutput` keeps one command's first `headBytes` (1 MiB) and its end within `keepBytes` (16 MiB), `cutMarker` marking the cut; `sortOutputs`, `outputPage`. Reached by `Workspace` through `WorkspaceOptions.outputs(t, fn)`, which lyricad gives the thread's own view |
 | Code tasks | `codeTask(threadId)` → `{ task, done, at }` or undefined; `setCodeTask(threadId, task, done = "")` replaces it (300 / 1,200 characters), with credential removal. Pool step 9 adds `code_tasks`, deleted with the thread; no task text enters user.db |
 | Drafts | `draft(threadId)` → `{ text, updatedAt }` or undefined, `setDraft(threadId, text)` (empty deletes it); one per thread, gone with the thread. Pool schema step 3 (`drafts`) |
 | Projects | `pageForProject(threadId)`, `projectNotes(threadId, since?)` |
@@ -1841,8 +1842,13 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   - With `startJob`, `bash` takes `background: true` and there is a `jobs`
     tool (`list`, `output`, `stop`); a subagent has neither. A background
     call is approved like any `bash`, then `startJob(command, machine?,
-    timeoutS?)` returns a `JobInfo` (with the job's `cwd`) at once
-    (docs/workspace.md, Background commands). Jobs that end within
+    timeoutS?, { name?, call? })` returns a `JobInfo` (with the job's `cwd`
+    and `name`) at once (docs/workspace.md, Background commands). With
+    `keepOutput({ call, place, command, cwd })` → `{ id, push(data), end({
+    state, exitCode?, reason? }) }` each `bash` call keeps its whole output
+    (the target's `onRaw`), and `jobs output` takes its id (`c<n>`) or a
+    job's, with `from`, `lines` or `pattern` (`outputPage`; docs/workspace.md,
+    Command output). Jobs that end within
     `jobWakeMs` (5 s) of each other wake the thread once.
   - `browse({ action, url?, ref?, text?, submit?, direction?, offset?, path? })`
     (the same extension, registered only with `browser()`: a hosted
@@ -1929,7 +1935,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     claudeCode?(), machines?(), allowedInThread?(machine, command), proxmox?(machine, action, vm?),
     mcpServers?(), toolAllowedInThread?(server, tool), mcpBypass?(), approve?, browser?(), setMode?,
     proposePlan?(PlanRequest), recordChange?(NewChange), sameFile?(path, inserts?), madeFiles?(paths), madeSince?(since), fileNotes?(),
-    startJob?(command, machine?, timeoutS?), jobs?(), jobOutput?(id), stopJob?(id) }`.
+    startJob?(command, machine?, timeoutS?, { name?, call? }), jobs?(), jobOutput?(id), stopJob?(id), keepOutput?(…) }`.
     `sameFile(path, inserts)` runs in `tool_call` for a sandbox `write` or `edit`
     (`inserts` when `insertsOnly`: every replacement of the edit keeps its
     old text whole at the start or end of the new), and for each file a sandbox `bash` plainly writes (`writtenFiles`),

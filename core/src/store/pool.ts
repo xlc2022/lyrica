@@ -1,6 +1,7 @@
 import { removeSecrets } from "../secrets.ts";
 import { pathRewriter, rewriteStrings, workspacePaths, type Respelling } from "../workspace/renames.ts";
 import { SkillLibrary } from "../skills.ts";
+import { CommandOutputs } from "./outputs.ts";
 import { ArtifactLibrary } from "./artifacts.ts";
 import { exactScores, nearestInMemory } from "./vector-cache.ts";
 import { randomBytes } from "node:crypto";
@@ -358,6 +359,8 @@ export class PoolReader {
   get skills(): SkillLibrary { return new SkillLibrary(this.db, this.pool); }
   /** This pool's artifacts (docs/briefs/artifacts.md). A reader's connection is read-only, so only its reads work. */
   get artifacts(): ArtifactLibrary { return new ArtifactLibrary(this.db, this.pool); }
+  /** This pool's kept command output (docs/workspace.md, "Command output"). A reader's connection is read-only, so only its reads work. */
+  get outputs(): CommandOutputs { return new CommandOutputs(this.db); }
 
   protected render(text: string): string {
     const profiles = this.c.profiles();

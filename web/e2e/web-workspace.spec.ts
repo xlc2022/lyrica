@@ -1531,3 +1531,49 @@ test("artifacts: import a page on the Files panel's Artifacts tab, open it in th
   await expect(viewer).toHaveCount(0);
   expect(await page.evaluate(async ([u, t]) => (await (await fetch(`/api/u/${u}/artifacts/general?thread=${encodeURIComponent(t!)}`)).json() as unknown[]).length, [userId, threadId])).toBe(0);
 });
+
+// Command output (docs/ux.md §6, "Command output" and "Background jobs"): the whole output in a bash row, and named jobs
+// in the Jobs dropdown on the facts line, streaming while they run.
+test("a command's whole output scrolls in its row, and a named background job streams in the Jobs dropdown with search and Sort", async ({ page, baseURL }) => {
+  needsSandbox();
+  await enter(page, baseURL!);
+  await newThread(page, "General");
+  // 3,000 lines: more than her result holds, all of it kept.
+  await send(page, "run: seq -f 'line %g' 1 3000");
+  await expect(page.getByText("The command finished.")).toBeVisible();
+  await page.locator(".marker[data-type='tool']").getByRole("button", { name: /bash/ }).click();
+  const out = page.locator(".marker-body .command-output");
+  const box = out.getByRole("region").or(out.locator("pre.read-body"));
+  await expect(box).toContainText("line 1\n");
+  await expect(box).toContainText("line 3000");
+  await expect(out.locator(".read-note")).toHaveText("Exited with code 0");
+  expect(await box.evaluate((el) => el.scrollHeight > el.clientHeight && el.clientHeight <= 320)).toBe(true);
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/command-output-${page.viewportSize()!.width}.png` });
+
+  await send(page, "background: Count to forty | for i in $(seq 1 40); do echo tick $i; sleep 0.25; done");
+  const jobs = page.locator(".tfacts").getByRole("button", { name: /^Jobs/ });
+  await expect(jobs).toContainText("Jobs 1");
+  await jobs.click();
+  const pop = page.getByRole("dialog", { name: "Background jobs" });
+  const card = pop.locator(".job-card").first();
+  await expect(card).toContainText("Count to forty");
+  await expect(card).toContainText("Running");
+  await card.locator(".job-head").click();
+  const live = card.locator("pre.read-body");
+  await expect(live).toContainText("tick 3");
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/jobs-running-${page.viewportSize()!.width}.png` });
+  // It streams: later lines arrive without reopening, and the end shows once it ends.
+  await expect(live).toContainText("tick 40", { timeout: 20_000 });
+  await expect(card).toContainText("Exited");
+  await expect(card.locator(".read-note")).toHaveText("Exited with code 0");
+  // Search covers the output; Sort is kept in this browser.
+  await pop.getByRole("searchbox", { name: "Search jobs" }).fill("tick 17");
+  await expect(pop.locator(".job-card")).toHaveCount(1);
+  await pop.getByRole("searchbox", { name: "Search jobs" }).fill("no such line");
+  await expect(pop.getByText("No job matches.")).toBeVisible();
+  await pop.getByRole("searchbox", { name: "Search jobs" }).fill("");
+  await pop.getByRole("combobox", { name: "Sort" }).selectOption("longest");
+  await expect(pop.locator(".job-card")).toHaveCount(1);
+  await noHorizontalScroll(page);
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/jobs-done-${page.viewportSize()!.width}.png` });
+});

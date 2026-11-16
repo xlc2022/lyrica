@@ -591,6 +591,10 @@ export class Lyricad implements Drainable {
         try { models.addCallTotals(t.userId, t.pool, t.threadId, u.model ? `Claude Code/${u.model}` : "Claude Code", "cloud", u.inputTokens, u.outputTokens); }
         catch (err) { this.log(`Claude Code usage not recorded: ${(err as Error).message}`); }
       },
+      // Command output (docs/workspace.md, "Command output"): kept in the thread's pool, and streamed to its open views as it comes.
+      outputs: (t, fn) => { const v = memory.openThreadView(t.userId, t.pool); try { return fn(v.own.outputs); } finally { v.close(); } },
+      onOutput: (t, e) => host.peek(t.userId, t.pool, t.threadId)?.output(e),
+      onJobs: (t) => host.peek(t.userId, t.pool, t.threadId)?.unbuffered({ type: "jobs" }),
       // A background command ended: its thread gets a notice, as a background subagent's result, and an idle thread wakes once.
       onJobEnd: (t, job, output) => {
         // A job she stopped herself: her jobs stop already told her, and a notice would only cost her a turn each.

@@ -14,6 +14,7 @@ import { Composer } from "./Composer.tsx";
 import type { CommandEnv } from "./Commands.tsx";
 import { ContextFact, newerContext } from "./ContextMeter.tsx";
 import { TokensFact } from "./Usage.tsx";
+import { JobsFact } from "./CommandOutput.tsx";
 import { projectRoutines, RoutinesFact } from "./Routines.tsx";
 import { ChecklistButton } from "./Checklist.tsx";
 import { ChangesFact } from "./Changes.tsx";
@@ -345,6 +346,7 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
             {context && <ContextFact context={context} opener={openContext} footer={phone && !isProject && usageProps ? <TokensFact {...usageProps} inline /> : undefined} />}
             {!!steps?.length && <ChecklistButton steps={steps} />}
             {!phone && usageProps && <TokensFact {...usageProps} />}
+            {s && !s.subagent && <JobsFact base={base} />}
             {s?.project && overview.data && <ThreadsFact userId={userId} pool={pool} threadId={threadId} overview={overview.data} footer={phone && usageProps ? <TokensFact {...usageProps} inline /> : undefined} />}
             {!!routines.length && <RoutinesFact userId={userId} threadId={threadId} routines={routines} onChange={refreshSettings} />}
             {!!settings.data?.wakeups?.length && <WakeupsFact base={base} wakeups={settings.data.wakeups} onChange={setWakeups} />}

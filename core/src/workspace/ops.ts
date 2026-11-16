@@ -21,6 +21,8 @@ export interface ToolOps {
   bash: {
     exec(command: string, cwd: string, options: {
       onData: (data: Buffer) => void;
+      /** Everything the command prints, cleaned and masked as `onData` is but not cut short: kept with the thread (docs/workspace.md, "Command output"). */
+      onRaw?: (data: Buffer) => void;
       signal?: AbortSignal;
       timeout?: number;
       env?: NodeJS.ProcessEnv;
@@ -116,7 +118,8 @@ const LINES = 800;
 /**
  * Passes command output on while it is short, then keeps only the tail.
  * Pi writes any output over its limits (50 KB or 2,000 lines) to a plaintext
- * temp file on the host, so what reaches Pi always stays under them.
+ * temp file on the host, so what reaches Pi always stays under them. The
+ * whole output goes to `onRaw` beside it, which keeps it encrypted.
  */
 export function capOutput(onData: (data: Buffer) => void): { push(data: Buffer): void; end(): void } {
   let sent = 0;

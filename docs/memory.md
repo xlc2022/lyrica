@@ -92,7 +92,9 @@ be undone, and `sleep_focus`, the person's line for tonight's dream; step 15
 adds nullable `routines.title` and `routines.description`; step 16 `recalls`,
 the Recall counts below; step 17 adds
 `artifacts`, a published or imported page's title, kind, thread and path, and
-`artifact_versions`, each version's bytes and who made it), never DDL in the
+`artifact_versions`, each version's bytes and who made it; step 18
+`command_outputs`, each bash call's and background job's kept output,
+docs/workspace.md "Command output"), never DDL in the
 memory module. Routine labels stay encrypted in their own pool: an optional
 one-line title (80 characters) and description (300 characters), checked after
 credential removal. Metadata edits preserve omitted fields, clear a label

@@ -1,4 +1,4 @@
-import { ARTIFACT_LIMIT, ArtifactError, artifactExtension, artifactKind, buildReactPage, EVIDENCE_SETTINGS, DEFAULT_THINKING, PushStore, titleFromName, type Artifact, type ArtifactKind, type PushSettings, type SkillLibrary } from "@lyrica/core";
+import { ARTIFACT_LIMIT, ArtifactError, artifactExtension, artifactKind, buildReactPage, EVIDENCE_SETTINGS, DEFAULT_THINKING, PushStore, titleFromName, type Artifact, type ArtifactKind, type OutputSort, type PushSettings, type SkillLibrary } from "@lyrica/core";
 import { pushTarget } from "./push.ts";
 import { imageRetryOptions } from "./image-retry.ts";
 import { autoNames } from "./auto-name.ts";
@@ -1455,6 +1455,29 @@ export function apiRoutes(d: Lyricad): Route[] {
       const thread = owner(d, user, (o) => threadOf(o, r));
       if (!s().wakeups.remove(user.id, pool, thread.id, Number(r.params.id))) throw new HttpError(404, "no such wake-up");
       return s().wakeups.list(user.id, pool, thread.id);
+    }),
+    // Command output (docs/workspace.md, "Command output"): a bash call's or job's whole kept output, and the thread's jobs.
+    route("GET", `${t}/outputs`, (r): Api.CommandOutputText => {
+      const user = d.userFor(r), pool = poolOf(r);
+      const thread = owner(d, user, (o) => threadOf(o, r));
+      const call = r.query.get("call");
+      if (!call) throw new HttpError(400, "call is required");
+      const found = s().workspace.outputByCall({ userId: user.id, pool, threadId: thread.id }, call);
+      if (!found) throw new HttpError(404, "no output kept for that call");
+      return found;
+    }),
+    route("GET", `${t}/outputs/:id`, (r): Api.CommandOutputText => {
+      const user = d.userFor(r), pool = poolOf(r);
+      const thread = owner(d, user, (o) => threadOf(o, r));
+      try { return s().workspace.outputOf({ userId: user.id, pool, threadId: thread.id }, r.params.id!); }
+      catch { throw new HttpError(404, "no such command"); }
+    }),
+    route("GET", `${t}/jobs`, (r): Api.CommandOutputInfo[] => {
+      const user = d.userFor(r), pool = poolOf(r);
+      const thread = owner(d, user, (o) => threadOf(o, r));
+      const sort = r.query.get("sort") ?? "newest";
+      if (!["newest", "oldest", "running", "longest"].includes(sort)) throw new HttpError(400, "sort is newest, oldest, running or longest");
+      return s().workspace.jobList({ userId: user.id, pool, threadId: thread.id }, r.query.get("q") ?? "", sort as OutputSort);
     }),
     route("PUT", `${t}/pin`, (r) => pinThread(d, d.userFor(r), r, true)),
     route("DELETE", `${t}/pin`, (r) => pinThread(d, d.userFor(r), r, false)),
