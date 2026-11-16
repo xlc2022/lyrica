@@ -588,8 +588,9 @@ Files panel.
   layer in the browser's own storage, a word with no memory in it. A search
   replaces the list with hits across layers. **Recent** is short-term
   memory: the logged messages (a person's and hers, never a tool's result,
-  an unlogged thread's, a watch, a wake-up, a routine's turn or another
-  thread's message to this one) written since sleep last finished consolidating,
+  a turn of hers that only calls tools, an unlogged thread's, a watch, a wake-up, a routine's turn or another
+  thread's message to this one; a turn with words and calls shows only the
+  words) written since sleep last finished consolidating,
   the ones automatic recall can still find before they become notes and
   pages. A message read there is a memory of kind `entry`: its text, who
   said it as its origin, its thread under Came from and the notes citing it

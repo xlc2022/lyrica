@@ -83,6 +83,17 @@ export function conversationOnly(data: unknown): unknown {
   return { ...entry, message: { ...m, content: parts } };
 }
 
+/**
+ * What she said in an assistant entry, without her tool calls (stored as `name({...})` in its
+ * searchable text): "" for a turn that only calls tools. An entry without Pi content keeps its text.
+ */
+function spoken(data: string, text: string): string {
+  const content = (JSON.parse(data) as { message?: { content?: unknown } }).message?.content;
+  if (typeof content === "string") return content.trim() ? text : "";
+  if (!Array.isArray(content)) return text;
+  return (content as Part[]).flatMap((p) => (p.type === "text" && p.text?.trim() ? [p.text] : [])).join("\n");
+}
+
 export interface StoredEntry {
   /** `e:<thread>#<n>`, or the original entry's ID for an exported copy. */
   id: string;
@@ -674,15 +685,16 @@ export class PoolReader {
   /**
    * Logged messages sleep hasn't consolidated yet (written after its watermark), newest first or with
    * `oldest` oldest first: the memory browser's Recent layer. `before` (newest first) or `after` (oldest
-   * first) is a `createdAt` to page from. Only what a person or she said, never a tool's result or one of
-   * her looks at other threads.
+   * first) is a `createdAt` to page from. Only what a person or she said, never a tool's result, a turn of
+   * hers that only calls tools (her calls stay searchable, just not listed here) or one of her looks at
+   * other threads; a turn with both shows only her words.
    */
   recentEntries(opts: { limit: number; before?: string; after?: string; oldest?: boolean }): Item[] {
     const limit = Math.max(1, opts.limit);
     const stmt = opts.oldest
-      ? this.db.prepare(`SELECT thread, n, text, created_at FROM entries WHERE unlogged = 0 AND role IN ('user', 'assistant') AND text != ''
+      ? this.db.prepare(`SELECT thread, n, role, data, text, created_at FROM entries WHERE unlogged = 0 AND role IN ('user', 'assistant') AND text != ''
         AND created_at > @since AND (@from IS NULL OR created_at > @from) ORDER BY created_at, n LIMIT @limit`)
-      : this.db.prepare(`SELECT thread, n, text, created_at FROM entries WHERE unlogged = 0 AND role IN ('user', 'assistant') AND text != ''
+      : this.db.prepare(`SELECT thread, n, role, data, text, created_at FROM entries WHERE unlogged = 0 AND role IN ('user', 'assistant') AND text != ''
         AND created_at > @since AND (@from IS NULL OR created_at < @from) ORDER BY created_at DESC, n DESC LIMIT @limit`);
     const since = this.watermark() ?? "";
     let from = (opts.oldest ? opts.after : opts.before) ?? null;
@@ -690,11 +702,13 @@ export class PoolReader {
     // A message from another thread, a watch, a wake-up or a routine is hers or the daemon's, not a person's: left out.
     for (;;) {
       const batch = limit * 2;
-      const rows = stmt.all({ since, from, limit: batch }) as { thread: string; n: number; text: string; created_at: string }[];
+      const rows = stmt.all({ since, from, limit: batch }) as { thread: string; n: number; role: string; data: string; text: string; created_at: string }[];
       for (const r of rows) {
         if (isMarked(r.text)) continue;
+        const words = r.role === "assistant" ? spoken(r.data, r.text) : r.text;
+        if (!words) continue;
         const item = this.get(entryId(r.thread, r.n));
-        if (item) out.push(item);
+        if (item) out.push(words === r.text ? item : { ...item, text: words });
         if (out.length === limit) return out;
       }
       if (rows.length < batch) return out;
