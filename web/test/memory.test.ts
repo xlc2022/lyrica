@@ -29,6 +29,11 @@ describe("citations in a memory's text", () => {
     // A page's Markdown reads as plain words: no heading marks, emphasis, ticks or link targets; snake_case stays.
     expect(firstWords("# Ada\n## Food and drink\n- Likes **strong** `oolong` from [the shop](https://x.example) and tea_cakes", 80))
       .toBe("Ada Food and drink Likes strong oolong from the shop and tea_cakes");
+    // Too long, it ends with its first sentence if that fits, else at a whole word: never "a clean loc…".
+    expect(firstWords("The garden shed has a new lock. The key is under the blue pot by the door.")).toBe("The garden shed has a new lock.");
+    expect(firstWords("Sam's backup script lives in a clean local Git repo under /srv/backups with its tests"))
+      .toBe("Sam's backup script lives in a clean local Git repo under…");
+    expect(firstWords("e.g. the shed, the greenhouse and the long bed by the fence all need new netting")).toBe("e.g. the shed, the greenhouse and the long bed by the fence…");
   });
 });
 

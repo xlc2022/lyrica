@@ -43,10 +43,18 @@ export const plainMarkdown = (text: string) => text
   .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
   .replace(/(\*\*|\*|`+)(\S(?:.*?\S)?)\1/g, "$2");
 
-/** A memory's name where it has no title: its first words, without Markdown's marks. */
+/**
+ * A memory's name where it has no title: its first words, without Markdown's marks. Longer than `width`, it ends with
+ * its first sentence when that fits, or else at the last whole word that fits, never in the middle of a word.
+ */
 export function firstWords(text: string, width = 60): string {
   const flat = plainMarkdown(plainCitations(text)).replace(/\s+/g, " ").trim();
-  return flat.length > width ? `${flat.slice(0, width - 1).trimEnd()}…` : flat;
+  if (flat.length <= width) return flat;
+  const head = flat.slice(0, width);
+  // A sentence ends at . ! or ? before a space; under 20 characters it is more likely an abbreviation ("e.g.").
+  for (let at = head.indexOf(" ", 20); at > 0; at = head.indexOf(" ", at + 1)) if (/[.!?]/.test(head[at - 1]!)) return head.slice(0, at);
+  const cut = head.slice(0, width - 1), space = cut.lastIndexOf(" ");
+  return `${(flat[width - 1] === " " || space < width / 2 ? cut : cut.slice(0, space)).replace(/[\s,;:–-]+$/, "")}…`;
 }
 
 /** The text without its citation groups. */
