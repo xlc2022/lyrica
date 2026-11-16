@@ -14,6 +14,14 @@ export const SUDOERS_HOW = "it keeps the lines the file already has, checks the 
 export const quote = (s: string) => `'${s.replaceAll("'", "'\\''")}'`;
 
 /**
+ * A NixOS sudo rule (`nixosSudo`) as a module of its own, for the configuration's `imports`. Each Add machine
+ * sudo block is one, so the person can use any of them together: a second `security.sudo.extraRules` in one
+ * attribute set is an error, while the lists of separate modules merge.
+ */
+export const nixosSudoModule = (rule: string) =>
+  ["# A file of its own, added to the configuration's imports before the rebuild", "{", ...rule.split("\n").map((l) => `  ${l}`), "}"].join("\n");
+
+/**
  * The command on the card that adds offered lines to the sudoers file, ready to paste. It reads the file's own
  * lines in a step of its own, so a failed sudo (a mistyped password) stops the chain instead of installing the
  * new lines alone; then the old lines (their last one given its newline) and the new, each once; put beside the

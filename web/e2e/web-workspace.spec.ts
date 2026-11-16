@@ -664,7 +664,10 @@ test("Add machine on NixOS gives a module for the configuration, a rebuild, and 
   const exact = page.locator(".exact-sudo");
   await exact.getByRole("textbox", { name: "Command 1" }).fill("/run/current-system/sw/bin/systemctl restart nginx");
   await expect(exact.locator("pre")).toContainText('{ command = "/run/current-system/sw/bin/systemctl restart nginx"; options = [ "NOPASSWD" ]; }');
+  // Each sudo block is a module of its own, so any of them can go in the configuration's imports together.
+  await expect(exact.locator("pre")).toContainText("# A file of its own, added to the configuration's imports");
   await noHorizontalScroll(page);
+  if (process.env.SCREENSHOTS) { await exact.scrollIntoViewIfNeeded(); await page.screenshot({ path: `${process.env.SCREENSHOTS}/add-machine-nixos-sudo-${page.viewportSize()!.width}.png` }); }
   if (process.env.SCREENSHOTS) { await blocks.nth(0).scrollIntoViewIfNeeded(); await page.screenshot({ path: `${process.env.SCREENSHOTS}/add-machine-nixos-${page.viewportSize()!.width}.png` }); }
 });
 
