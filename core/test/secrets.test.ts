@@ -62,7 +62,8 @@ describe("secret removal", () => {
     "AKIA" + "A".repeat(16), "AIza" + "b".repeat(35),
     "eyJhbGciOiJub25lIn0.eyJzdWIiOiJmaWN0aW9uIn0.bWFkZXVw",
     "Bearer made-up-credential", "Authorization: Basic bWFkZXVw", "Authorization: Bearer made-up",
-    ...["token", "secret", "password", "api_key", "apikey", "auth", "GH_TOKEN", "client_secret"].map((key) => `${key}=made-up-value`),
+    ...["token", "secret", "password", "api_key", "apikey", "auth", "GH_TOKEN", "client_secret", "SECRET_KEY", "private_key"].map((key) => `${key}=made-up-value`),
+    "aws_secret_access_key = madeUpSecretValue/0123456789ABCDEFGHIJKLM", "AWS_SECRET_ACCESS_KEY=made-up-value",
     '"token": "made up value"', "password='made up value'", '"api_key": "made\\\"up"',
   ];
   it.each(shapes)("removes %s", (secret) => {
