@@ -115,8 +115,7 @@ export function maxContextOf(model: TextModel, s: ModelSettings): number | null 
  * maximum. A model that fits on its GPUs at any of those never counts system
  * RAM, which is far slower. One that doesn't, and may keep part of itself in
  * the system RAM allowance (`allowance`: what is left of it for this model),
- * gets the largest context up to 32k that the GPUs and that RAM hold, so it
- * keeps as little there as it can. With no maximum, or when nothing fits, 32k
+ * gets the largest context that the GPUs and that RAM hold. With no maximum, or when nothing fits, 32k
  * (never past its maximum), so a load that can't work fails with the usual reason.
  */
 export function autoContext(model: TextModel, s: ModelSettings, gpus: Gpu[], settings: (i: number) => GpuSettings, allowance = 0): number {
@@ -140,7 +139,7 @@ export function autoContext(model: TextModel, s: ModelSettings, gpus: Gpu[], set
   };
   const onGpus = largest(0, max);
   if (onGpus !== null) return onGpus;
-  return (allowance > 0 && spills(model, s) ? largest(allowance, fallback) : null) ?? fallback;
+  return (allowance > 0 && spills(model, s) ? largest(allowance, max) : null) ?? fallback;
 }
 
 /** The context the model is served with: its setting, else 32k (16k for dictation), never past its maximum. */

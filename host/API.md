@@ -273,8 +273,8 @@ seconds of audio.
     it on each call; in steps of 1024, from 4096), never more than the
     trained length times the stretch; 32768 when nothing fits or the
     trained length is unknown. It counts system RAM only for a llama.cpp
-    model that can't fit its GPUs at any context: then the largest up to
-    32768 that its GPUs and what is left of the RAM allowance hold. A model keeps the context it loaded with
+    model that can't fit its GPUs at any context: then the largest that
+    its GPUs and what is left of the RAM allowance hold. A model keeps the context it loaded with
     while it stays loaded; Reload sizes it with the old instance counted as
     gone, and measures and loads it once that memory is back.
     `maxContextLength` is the trained length alone, `null` when the host

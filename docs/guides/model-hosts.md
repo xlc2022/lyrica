@@ -535,7 +535,7 @@ scales from, defaults to the trained length); `contextLength` still picks
 what it serves. Unset, a chat model gets the largest context that fits its
 GPUs, up to its trained length (32k when the host can't tell); only a model
 that can't fit its GPUs at all keeps part of itself in the system RAM
-allowance, with at most 32k. So it may
+allowance, with the largest context the GPUs and that allowance hold. So it may
 fill a GPU and be unloaded whenever another model needs the room; set a
 smaller context to keep both loaded. The editor's hint shows what the
 model's card recommends; **Look up** in the model's Settings reads the

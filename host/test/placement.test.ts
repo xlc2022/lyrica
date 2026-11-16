@@ -123,15 +123,18 @@ describe("the context with none saved", () => {
     const layered = textModel("layered", 20, { contextLength: 131072, kvPerToken: 2 * 64 * 8 * 128, layers: 40 });
     // It fits the 24 GB GPU at 8k: all on the GPU, whatever the allowance.
     expect(autoContext(layered, auto, empty(24), all, 16 * GIB)).toBe(8192);
-    // 30 GB of weights never fit 24 GB: the largest context up to 32k that the GPU and 12 GB of RAM hold.
+    // 30 GB of weights never fit 24 GB: the largest context that the GPU and 12 GB of RAM hold.
     const big = textModel("big", 30, { contextLength: 131072, kvPerToken: 2 * 64 * 8 * 128, layers: 40 });
     const withRam = autoContext(big, auto, empty(24), all, 12 * GIB);
     expect(withRam).toBeGreaterThan(8192);
     expect(withRam).toBeLessThan(32768);
     expect(options(big, { ...auto, contextLength: withRam }, empty(24), all, 12 * GIB)[0]!.ram).toBeLessThanOrEqual(12 * GIB);
     expect(() => validate(big, auto, empty(24), all, false, 12 * GIB)).not.toThrow();
-    // Enough RAM for 32k: 32k, no more.
-    expect(autoContext(big, auto, empty(24), all, 32 * GIB)).toBe(32768);
+    // With more RAM, more context, up to what it was trained for.
+    const more = autoContext(big, auto, empty(24), all, 32 * GIB);
+    expect(more).toBeGreaterThan(65536);
+    expect(options(big, { ...auto, contextLength: more }, empty(24), all, 32 * GIB)[0]!.ram).toBeLessThanOrEqual(32 * GIB);
+    expect(autoContext(big, auto, empty(24), all, 64 * GIB)).toBe(131072);
   });
 
   it("stays at 32k when nothing fits or the model's length is unknown", () => {
