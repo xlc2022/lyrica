@@ -74,7 +74,11 @@ export function queryTokens(query: string, profiles: Map<UserId, Profile>): Name
 }
 
 function startsSentence(text: string, offset: number): boolean {
-  return /(^|[.!?]\s+|\n\s*)$/.test(text.slice(0, offset));
+  // By hand rather than /(^|[.!?]\s+|\n\s*)$/, which rescans long whitespace from each line break.
+  const before = text.slice(0, offset);
+  const word = before.trimEnd();
+  const space = before.slice(word.length);
+  return !before || space.includes("\n") || (!!space && /[.!?]$/.test(word));
 }
 
 function escape(s: string): string {
@@ -86,7 +90,7 @@ function escape(s: string): string {
 // mentions"). The web draws each as a chip with the current title.
 
 /** `[t:<id>]`, `[e:<id>#<n>]`, and from a private view `[general/t:<id>]`. */
-export const THREAD_MENTION = /\[(?:(general|private)\/)?([te]):([^\]\s#]+)(?:#(\d+))?\]/g;
+export const THREAD_MENTION = /\[(?:(general|private)\/)?([te]):([^[\]\s#]+)(?:#(\d+))?\]/g;
 
 /** What a mention reads as where there is no chip: the thread's current title, or "a forgotten thread". */
 export function renderThreadMentions(text: string, titleOf: (threadId: string, pool?: "general" | "private") => string | undefined): string {

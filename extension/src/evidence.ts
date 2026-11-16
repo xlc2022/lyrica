@@ -32,10 +32,11 @@ Answer with one line of JSON and nothing else: {"verdict":"done"}, {"verdict":"c
 
 /** The judge's answer, or none when it isn't a verdict. */
 export function parseVerdict(text: string): Verdict | undefined {
-  const m = /\{[\s\S]*\}/.exec(text);
-  if (!m) return undefined;
+  // From the first "{" to the last "}", found by hand: the regex for it rescans an unclosed "{{{…" from each brace.
+  const start = text.indexOf("{"), end = text.lastIndexOf("}");
+  if (start < 0 || end < start) return undefined;
   let parsed: unknown;
-  try { parsed = JSON.parse(m[0]); } catch { return undefined; }
+  try { parsed = JSON.parse(text.slice(start, end + 1)); } catch { return undefined; }
   const v = parsed as { verdict?: unknown; reason?: unknown; next?: unknown } | null;
   if (!v || typeof v !== "object" || (v.verdict !== "done" && v.verdict !== "continue" && v.verdict !== "blocked")) return undefined;
   const reason = typeof v.reason === "string" ? v.reason.trim() : "";

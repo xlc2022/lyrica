@@ -125,24 +125,46 @@ export interface PageCheck {
   local: string[];
 }
 
+// Each is linear in the page's length, so a fetched page can't hold lyricad's thread:
+// a tag runs greedily to its ">" (one pass), then its attributes are read inside it.
+const TAG = /<(?!a\b)[a-z][^>]*/gi;
+const LOAD_ATTR = /\s(?:src|href|poster|data)\s*=\s*["']?((?:https?:)?\/\/[^"'\s>]+)/gi;
 const LOADS = [
-  /<(?!a\b)[a-z][\w-]*\b[^>]*?\s(?:src|href|poster|data)\s*=\s*["']?((?:https?:)?\/\/[^"'\s>]+)/gi,
   /url\(\s*["']?((?:https?:)?\/\/[^"')\s]+)/gi,
-  /@import\s+(?:url\()?\s*["']((?:https?:)?\/\/[^"']+)/gi,
-  /\b(?:import|from)\s*\(?\s*["']((?:https?:)?\/\/[^"']+)["']/g,
+  /@import\s+(?:url\(\s*)?["']((?:https?:)?\/\/[^"']+)/gi,
+  /\b(?:import|from)\s*(?:\(\s*)?["']((?:https?:)?\/\/[^"']+)["']/g,
 ];
 const CALLS = /\b(fetch\s*\(|new\s+XMLHttpRequest\b|new\s+WebSocket\b|new\s+EventSource\b|new\s+(?:Shared)?Worker\s*\(|importScripts\s*\(|navigator\.sendBeacon\s*\()/g;
-const LOCAL = /<(?!a\b)[a-z][\w-]*\b[^>]*?\s(?:src|href)\s*=\s*["']?(?!data:|blob:|#|javascript:|mailto:|about:|(?:https?:)?\/\/)([^"'\s>]+)/gi;
+const LOCAL_ATTR = /\s(?:src|href)\s*=\s*["']?(?!data:|blob:|#|javascript:|mailto:|about:|(?:https?:)?\/\/)([^"'\s>]+)/gi;
+/** Each value of `attr` in the tags of `html` (not links). */
+const inTags = (html: string, attr: RegExp) => [...html.matchAll(TAG)].flatMap((t) => [...t[0].matchAll(attr)].map((m) => m[1]!));
+
+/**
+ * `html` up to the end of its last `close` (a global regex). An element
+ * pattern run on this can't rescan to the end of the page from each opening
+ * tag of an element left open; such an element matches nothing either way.
+ */
+function closedPart(html: string, close: RegExp): string {
+  let end = 0;
+  for (const m of html.matchAll(close)) end = m.index + m[0].length;
+  return html.slice(0, end);
+}
+const SCRIPT_CLOSE = /<\/script>/gi;
+/** `html` with each closed script's code taken out, its tags kept. */
+function withoutScriptCode(html: string): string {
+  const closed = closedPart(html, SCRIPT_CLOSE);
+  return closed.replace(/(<script\b[^<>]*>)[^]*?(<\/script>)/gi, "$1$2") + html.slice(closed.length);
+}
 
 /** Checks one page's HTML: each list at most 20, without repeats. */
 export function checkPage(html: string): PageCheck {
-  const found = (patterns: RegExp[]) => [...new Set(patterns.flatMap((p) => [...html.matchAll(p)].map((m) => m[1]!)))].slice(0, 20);
+  const found = (patterns: RegExp[]) => [...new Set([...inTags(html, LOAD_ATTR), ...patterns.flatMap((p) => [...html.matchAll(p)].map((m) => m[1]!))])].slice(0, 20);
   // A link (<a href>) is somewhere to go, not something loaded; a script's own text is checked for calls, not for links in its strings.
   return {
     loads: found(LOADS),
-    calls: [...new Set([...html.matchAll(CALLS)].map((m) => m[1]!.replace(/\s+/g, " ").replace(/\s*\($/, "")))].slice(0, 20),
+    calls: [...new Set([...html.matchAll(CALLS)].map((m) => m[1]!.replace(/\s+/g, " ").replace(/ ?\($/, "")))].slice(0, 20),
     // A tag in a script's string is code (a template), so local files are looked for outside scripts' code only.
-    local: [...new Set([...html.replace(/(<script\b[^>]*>)[^]*?(<\/script>)/gi, "$1$2").matchAll(LOCAL)].map((m) => m[1]!))]
+    local: [...new Set(inTags(withoutScriptCode(html), LOCAL_ATTR))]
       .filter((p) => !/^[a-z][\w+.-]*:/i.test(p) || p.startsWith("file:")).slice(0, 20),
   };
 }
@@ -181,9 +203,10 @@ export async function bundlePage(entry: string, read: ReadFile): Promise<Bundled
   let html = (await read(entry)).toString("utf8");
   const inlined = new Set<string>();
   const importMap: Record<string, string> = {};
-  html = html.replace(/<script\b[^>]*\btype\s*=\s*["']?importmap["']?[^>]*>([\s\S]*?)<\/script>/gi, (all, body: string) => {
+  const closed = closedPart(html, SCRIPT_CLOSE);
+  html = closed.replace(/<script\b[^<>]*\btype\s*=\s*["']?importmap["']?[^<>]*>([\s\S]*?)<\/script>/gi, (all, body: string) => {
     try { Object.assign(importMap, JSON.parse(body).imports ?? {}); return ""; } catch { return all; }
-  });
+  }) + html.slice(closed.length);
   const local = (ref: string, from = base) => posix.resolve(from, decodeURI(ref.split(/[?#]/)[0]!));
   const libsPlugin: Plugin = {
     name: "lyrica-files",
@@ -223,19 +246,19 @@ export async function bundlePage(entry: string, read: ReadFile): Promise<Bundled
   };
   const style = (code: string) => code.replace(/<\/(style)/gi, "<\\/$1");
   const attr = (tag: string, name: string) => new RegExp(`\\s${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, "i").exec(tag)?.slice(1).find((v) => v !== undefined);
-  /** Replaces each match, awaited; with `outside`, never one inside a script, whose strings may hold tags. */
-  const replaceAsync = async (re: RegExp, fn: (m: RegExpExecArray) => Promise<string>, outside = true) => {
-    const scripts = outside ? [...html.matchAll(/<script\b[^>]*>[\s\S]*?<\/script>/gi)].map((m) => [m.index!, m.index! + m[0].length]) : [];
-    const found = [...html.matchAll(re)].filter((m) => !scripts.some(([a, b]) => m.index! > a! && m.index! < b!));
+  /** Replaces each match, awaited; with `outside`, never one inside a script, whose strings may hold tags. `close` ends an element `re` matches (see closedPart). */
+  const replaceAsync = async (re: RegExp, fn: (m: RegExpExecArray) => Promise<string>, outside = true, close?: RegExp) => {
+    const scripts = outside ? [...closedPart(html, SCRIPT_CLOSE).matchAll(/<script\b[^<>]*>[\s\S]*?<\/script>/gi)].map((m) => [m.index!, m.index! + m[0].length]) : [];
+    const found = [...(close ? closedPart(html, close) : html).matchAll(re)].filter((m) => !scripts.some(([a, b]) => m.index! > a! && m.index! < b!));
     const done = await Promise.all(found.map((m) => fn(m as RegExpExecArray)));
     let out = "", at = 0;
     found.forEach((m, i) => { out += html.slice(at, m.index) + done[i]; at = m.index! + m[0].length; });
     html = out + html.slice(at);
   };
   // Inline styles that import or point at files, then stylesheets.
-  await replaceAsync(/<style\b([^>]*)>([\s\S]*?)<\/style>/gi, async (m) => (/@import|url\(/i.test(m[2]!)
-    ? `<style${m[1]}>${style(await bundle({ code: m[2]!, loader: "css" }, undefined))}</style>` : m[0]));
-  await replaceAsync(/<link\b[^>]*>/gi, async (m) => {
+  await replaceAsync(/<style\b([^<>]*)>([\s\S]*?)<\/style>/gi, async (m) => (/@import|url\(/i.test(m[2]!)
+    ? `<style${m[1]}>${style(await bundle({ code: m[2]!, loader: "css" }, undefined))}</style>` : m[0]), true, /<\/style>/gi);
+  await replaceAsync(/<link\b[^<>]*>/gi, async (m) => {
     const rel = attr(m[0], "rel")?.toLowerCase() ?? "", href = attr(m[0], "href");
     if (href === undefined || remote(href)) return m[0];
     if (rel.split(/\s+/).includes("stylesheet")) return `<style>${style(await bundle({ file: local(href) }, undefined))}</style>`;
@@ -245,7 +268,7 @@ export async function bundlePage(entry: string, read: ReadFile): Promise<Bundled
     return m[0];
   });
   // Images and media by their src (and a video's poster).
-  await replaceAsync(/<(?:img|source|audio|video|input)\b[^>]*>/gi, async (m) => {
+  await replaceAsync(/<(?:img|source|audio|video|input)\b[^<>]*>/gi, async (m) => {
     let tag = m[0];
     for (const name of ["src", "poster"]) {
       const v = attr(tag, name);
@@ -255,7 +278,7 @@ export async function bundlePage(entry: string, read: ReadFile): Promise<Bundled
   });
   // Scripts last, so nothing above looks into their code: a local file inlined (a module bundled with its imports),
   // an inline module with imports bundled.
-  await replaceAsync(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi, async (m) => {
+  await replaceAsync(/<script\b([^<>]*)>([\s\S]*?)<\/script>/gi, async (m) => {
     const open = m[1]!, body = m[2]!;
     const module = /\btype\s*=\s*["']?module/i.test(open);
     const src = attr(`<script${open}>`, "src");
@@ -265,11 +288,11 @@ export async function bundlePage(entry: string, read: ReadFile): Promise<Bundled
       if (module) return `<script type="module">${script(await bundle({ file }, "esm"))}</script>`;
       const code = (await read(file)).toString("utf8");
       inlined.add(file);
-      return `<script${open.replace(/\s+src\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/i, "")}>${script(code)}</script>`;
+      return `<script${open.replace(/(?<!\s)\s+src\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/i, "")}>${script(code)}</script>`;
     }
     if (module && /\bimport\b/.test(body)) return `<script type="module">${script(await bundle({ code: body, loader: "js" }, "esm"))}</script>`;
     return m[0];
-  }, false);
+  }, false, SCRIPT_CLOSE);
   return { html, inlined: [...inlined] };
 }
 

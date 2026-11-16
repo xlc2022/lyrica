@@ -24,15 +24,16 @@ export function speakable(markdown: string): string {
     const f = /^\s*(`{3,}|~{3,})/.exec(line);
     if (fence) { if (f && f[1]![0] === fence[0] && f[1]!.length >= fence.length) fence = undefined; continue; }
     if (f) { fence = f[1]; continue; }
-    if (/^\s*\|/.test(line) || /^\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(line)) continue; // tables
+    if (/^\s*\|/.test(line) || /^\s*:?-{3,}:?(?:\s*\|\s*:?-{3,}:?)+\s*(?:\|\s*)?$/.test(line)) continue; // tables
     if (/^\s{4,}\S/.test(line) && !out.at(-1)) continue; // an indented code block
     if (/^\s*([-*_])(\s*\1){2,}\s*$/.test(line)) { out.push(""); continue; } // a rule
     const text = line
-      .replace(/!\[[^\]]*\]\([^)]*\)/g, "") // images
-      .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1") // links: their words
-      .replace(/<(https?:[^>]*)>/g, "") // autolinks
+      // No class below runs past the bracket that opens another, so an unclosed "[[[…" or "<<<…" is read once.
+      .replace(/!\[[^[\]]*\]\([^()]*(?:\([^()]*\)[^()]*)*\)/g, "") // images
+      .replace(/\[([^[\]]*)\]\([^()]*(?:\([^()]*\)[^()]*)*\)/g, "$1") // links: their words
+      .replace(/<(https?:[^<>]*)>/g, "") // autolinks
       .replace(/https?:\/\/\S+/g, "") // bare URLs
-      .replace(/<[^>]+>/g, "") // HTML
+      .replace(/<[^<>]+>/g, "") // HTML
       .replace(/^\s{0,3}#{1,6}\s+/, "") // headings
       .replace(/^\s*>\s?/, "") // quotes
       .replace(/^\s*(?:[-*+]|\d+[.)])\s+(?:\[[ xX]\]\s+)?/, "") // list marks and task boxes
@@ -52,7 +53,8 @@ export function speakable(markdown: string): string {
  */
 export function sentences(text: string, complete = true): string[] {
   const out: string[] = [];
-  const re = /[^\n]*?(?:[.!?…]+["'”’)\]]*(?=\s|$)|[。！？；]+["'”’）」』]*|\n|$)/g;
+  // A run of marks is tried from its first mark only, so "!!!!…" isn't rescanned from each.
+  const re = /[^\n]*?(?:(?<![.!?…])[.!?…]+["'”’)\]]*(?=\s|$)|[。！？；]+["'”’）」』]*|\n|$)/g;
   let m: RegExpExecArray | null;
   let last = 0;
   while ((m = re.exec(text)) && m[0].length) {

@@ -360,7 +360,9 @@ secret-named assignments. This also covers titles, summaries, tags, project
 instructions, revisions and search text. Account names and environment variable
 names alone stay. Conversation entries are unchanged. The shared detector is
 `core/src/secrets.ts`; it recognizes credential shapes, not arbitrary unlabeled
-secrets, and does not rewrite memory already stored. A secret-named label followed by a colon also matches some prose ("Auth: OAuth via GitHub"); in memory that loss is accepted.
+secrets, and does not rewrite memory already stored. It takes time linear in
+the text's length, so crafted text can't hold lyricad's thread; its test
+checks it against the earlier patterns on random text. A secret-named label followed by a colon also matches some prose ("Auth: OAuth via GitHub"); in memory that loss is accepted.
 
 - `remember(notes: [{ text, about?, supersedes? }])` writes notes. Their
   source is the current thread entry. Superseded notes stay but drop out of
