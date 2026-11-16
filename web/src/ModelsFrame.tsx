@@ -117,7 +117,7 @@ export function UsedIn({ ctx, usedIn, more = "" }: { ctx: MCtx; usedIn: ModelUse
 
 /* ---- A speaking model's Settings drawer (from an endpoint's models in Hosts and endpoints, and from Text models) ---- */
 
-const LANGUAGES: Record<string, string> = { en: "English", zh: "Mandarin" };
+export const LANGUAGES: Record<string, string> = { en: "English", zh: "Mandarin" };
 const MAX_SPEED = 4;
 const MIN_SPEED = 0.25;
 

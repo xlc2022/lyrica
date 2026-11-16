@@ -83,9 +83,10 @@ danube in `qwen3-tts-test/`.
 
 ## UI
 
-No new control. The model's Settings drawer already has a Voice select per
-language (docs/ux.md, Models). The Qwen voices appear there, and in the
-Read aloud model list, like Kokoro's.
+At first no new control: the model's Settings drawer has a Voice select per
+language. Since then the thread drawer has a **Voice** select under Read
+aloud, listing Friend and the CustomVoice speakers together, picking the
+model with the voice (docs/ux.md, Thread settings).
 
 ## Done when
 

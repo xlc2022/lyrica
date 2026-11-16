@@ -586,7 +586,8 @@ button.jump-latest { font-size: 13px; min-height: var(--tap); }
 .field > .with-count { display: flex; justify-content: space-between; gap: 8px; }
 .with-count > .fallbacks { font-size: 12px; }
 .net-switch { display: grid; gap: 2px; justify-items: start; }
-/* Read aloud's select, then its model's Settings link on the same line. */
+/* Read aloud's select, then its model's Settings link on the same line; its Voice select (or one per language) under them. */
+.speak { display: grid; gap: 10px; }
 .speak-row > .field { flex: 1 1 160px; }
 .speak-row > button.link { min-height: var(--tap); }
 .chips { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }

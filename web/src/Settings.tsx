@@ -2,8 +2,8 @@
 import { isChatModel, matchesModel, ModelLabel, modelName, shortModel } from "./ModelLabel.tsx";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import {
-  get, patch, u,
-  type AllowedPaths, type EndpointInfo, type Grant, type ModelRef, type PermissionMode, type MachineInfo, type OfferingInfo, type Presets,
+  get, patch, put, u,
+  type AllowedPaths, type EndpointInfo, type Grant, type ModelRef, type PermissionMode, type MachineInfo, type OfferingInfo, type OfferingSettings, type Presets,
   type EvidenceSetting, type TaskModel, type ThinkingLevel, type ThreadSettings, type ThreadSettingsChange, type ThreadSummary, type ThreadTask,
 } from "./api.ts";
 import { Repositories } from "./Git.tsx";
@@ -11,7 +11,7 @@ import { McpServers } from "./Mcp.tsx";
 import { Icon } from "./icons.tsx";
 import { her } from "./name.ts";
 import { modeOrder, MODES } from "./Modes.tsx";
-import { VoiceDrawer } from "./ModelsFrame.tsx";
+import { LANGUAGES, VoiceDrawer } from "./ModelsFrame.tsx";
 import type { ShellContext } from "./Shell.tsx";
 import { ErrorText, Switch, useAction, useDismiss, useInView, useLoad } from "./ui.tsx";
 
@@ -168,7 +168,9 @@ export function SettingsDrawer({ ctx, base, summary, settings, machines, onSetti
   const speaking = speaker(settings.models["speech.speak"], settings.allowed);
   const [voice, setVoice] = useState<OfferingInfo>();
   const voiceLink = useRef<HTMLButtonElement>(null);
-  const closeVoice = useCallback(() => { setVoice(undefined); voiceLink.current?.focus(); }, []);
+  // The drawer may change the voice: the Voice select reads it again once it closes.
+  const [voiceRead, setVoiceRead] = useState(0);
+  const closeVoice = useCallback(() => { setVoice(undefined); setVoiceRead((n) => n + 1); voiceLink.current?.focus(); }, []);
   const voiceOpen = useRef(false);
   voiceOpen.current = !!voice;
   // Focus moves in once, when the drawer opens: the thread re-renders on every streamed event, and
@@ -186,9 +188,13 @@ export function SettingsDrawer({ ctx, base, summary, settings, machines, onSetti
   const taskRow = (task: ThreadTask) => {
     const select = <TaskSelect key={task} task={task} value={settings.models[task]} allowed={settings.allowed} onChange={(m) => change({ models: { [task]: m } })} />;
     return task === "speech.speak" && speaking ? (
-      <div key={task} className="inline speak-row">
-        {select}
-        <button ref={voiceLink} type="button" className="link sm" aria-label={`${speaking.modelId} settings`} onClick={() => setVoice(speaking)}>Settings</button>
+      <div key={task} className="speak">
+        <div className="inline speak-row">
+          {select}
+          <button ref={voiceLink} type="button" className="link sm" aria-label={`${speaking.modelId} settings`} onClick={() => setVoice(speaking)}>Settings</button>
+        </div>
+        <VoicePick userId={userId} model={speaking} allowed={settings.allowed} read={voiceRead}
+          onModel={(id) => change({ models: { "speech.speak": { offeringId: id } } })} />
       </div>
     ) : select;
   };
@@ -337,6 +343,69 @@ export function TaskSelect({ task, label, value, allowed, onChange }: {
       </select>
       {value.problem && <small className="error">{value.problem}</small>}
     </label>
+  </>);
+}
+
+/** Whether every voice of a speaking model speaks each of its languages (Qwen3-TTS's do; Kokoro's speak one each). */
+const everyLanguage = (m: OfferingInfo) => {
+  const voices = m.speak?.voices ?? [];
+  const languages = new Set(voices.map((v) => v.language));
+  return voices.length > 0 && voices.every((v) => voices.filter((w) => w.id === v.id).length === languages.size);
+};
+const voiceIds = (m: OfferingInfo) => [...new Set((m.speak?.voices ?? []).map((v) => v.id))];
+
+/** Read aloud's voice, under its model: one Voice select over every voice that speaks all its languages, grouped by
+ * model, picking one on another model switching Read aloud to it; or, for a model whose voices speak one language
+ * each, a select per language. Saved as the model's own voice setting (yours), as its Settings drawer does. */
+function VoicePick({ userId, model, allowed, read, onModel }: {
+  userId: string; model: OfferingInfo; allowed: EndpointInfo[]; read: number; onModel: (offeringId: string) => void;
+}) {
+  const settingsOf = (id: string) => u(userId, "offerings", id, "settings");
+  const settings = useLoad(() => get<OfferingSettings>(settingsOf(model.id)), [model.id], [read]);
+  const [run, busy, error] = useAction();
+  const voices = model.speak?.voices ?? [];
+  const languages = [...new Set(voices.map((v) => v.language))];
+  const chosen = settings.data?.values.voices ?? {};
+  if (everyLanguage(model)) {
+    const others = allowed.flatMap((ep) => ep.models).filter((m) => m.id !== model.id && everyLanguage(m));
+    // Named as in the Read aloud select: the model, then its endpoint.
+    const where = (m: OfferingInfo) => `${shortModel(modelName(m))} · ${allowed.find((ep) => ep.models.includes(m))?.name ?? ""}`;
+    const current = languages.every((l) => chosen[l] === chosen[languages[0]!]) ? chosen[languages[0]!] ?? "" : "";
+    const pick = (value: string) => run(async () => {
+      const [id, voice] = [value.slice(0, value.indexOf("|")), value.slice(value.indexOf("|") + 1)];
+      const target = id === model.id ? model : others.find((m) => m.id === id)!;
+      const values = { voices: Object.fromEntries([...new Set(target.speak!.voices.map((v) => v.language))].map((l) => [l, voice])) };
+      const saved = await put<OfferingSettings>(settingsOf(id), { values });
+      if (id === model.id) settings.set(saved);
+      else onModel(id);
+    });
+    return (
+      <label className="field">
+        <span>Voice</span>
+        <select value={current ? `${model.id}|${current}` : ""} disabled={!settings.data || busy} onChange={(e) => e.target.value && pick(e.target.value)}>
+          {!current && <option value="">Default</option>}
+          {[model, ...others].map((m) => (
+            <optgroup key={m.id} label={where(m)}>
+              {voiceIds(m).map((v) => <option key={v} value={`${m.id}|${v}`}>{v.replaceAll("_", " ")}</option>)}
+            </optgroup>
+          ))}
+        </select>
+        <ErrorText error={settings.error || error} />
+      </label>
+    );
+  }
+  return (<>
+    {languages.map((lang) => (
+      <label key={lang} className="field">
+        <span>{LANGUAGES[lang] ?? lang}</span>
+        <select value={chosen[lang] ?? ""} disabled={!settings.data || busy}
+          onChange={(e) => run(async () => settings.set(await put<OfferingSettings>(settingsOf(model.id), { values: { voices: { ...chosen, [lang]: e.target.value } } })))}>
+          {!chosen[lang] && <option value="">Default</option>}
+          {voices.filter((v) => v.language === lang).map((v) => <option key={v.id} value={v.id}>{v.id}</option>)}
+        </select>
+      </label>
+    ))}
+    <ErrorText error={settings.error || error} />
   </>);
 }
 
