@@ -354,6 +354,9 @@ test("deleting the turn that started a child thread lists the thread, ticked, an
   await send(page, "start: Shed list");
   await expect(page.getByText("Started it.")).toBeVisible();
   await expect(page.locator(".threads-card")).toContainText("Child thread: Shed list");
+  // The child answers and ends, and its last reply comes back as its report. Until that notice is stored the
+  // thread is busy and Delete is disabled, so a click landing as it arrives would do nothing.
+  await expect(page.getByText(/ended without a report/)).toBeVisible();
   const menus = page.getByRole("button", { name: "More actions" });
   await menus.last().click();
   await page.getByRole("menuitem", { name: "Delete", exact: true }).click();
