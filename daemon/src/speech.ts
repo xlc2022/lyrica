@@ -8,6 +8,9 @@ import { HttpError, SECURITY_HEADERS } from "./http.ts";
 
 /** One speech request's longest piece of text: long sentences are cut at a comma or a space. */
 const PIECE = 400;
+/** The longest piece of several sentences, in characters: about 100 to 300 of Kokoro's tokens. */
+const GROUP_EN = 300;
+const GROUP_ZH = 100;
 
 /** Which of the two languages a piece of text is in: Mandarin if it has Han characters. */
 export const languageOf = (text: string): "zh" | "en" => (/[㐀-鿿豈-﫿]/.test(text) ? "zh" : "en");
@@ -52,6 +55,47 @@ export function speakable(markdown: string): string {
  * when the text may still grow: the last piece then waits for more.
  */
 export function sentences(text: string, complete = true): string[] {
+  return paragraphSentences(text, complete).map((s) => s.text);
+}
+
+/** A sentence and the paragraph it is in, counted from 0. */
+export interface Sentence { text: string; paragraph: number }
+
+/** `sentences`, each with its paragraph: a line of speakable text is a paragraph. */
+export function paragraphSentences(text: string, complete = true): Sentence[] {
+  const lines = text.split("\n");
+  return lines.flatMap((line, i) => splitSentences(line, complete || i < lines.length - 1).map((s) => ({ text: s, paragraph: i })));
+}
+
+/**
+ * How many of `list`'s sentences, from `from`, are read in one request.
+ * The first sentence goes alone, so the voice starts soon. After it, the
+ * sentences of one paragraph in one language go together up to a length:
+ * Kokoro's voices sound best at 100 to 200 tokens and flat on a short line
+ * (its VOICES.md), and each request starts its intonation afresh.
+ */
+export function piece(list: readonly Sentence[], from: number): number {
+  if (from === 0) return Math.min(1, list.length);
+  const head = list[from];
+  if (!head) return 0;
+  const lang = languageOf(head.text);
+  const most = lang === "zh" ? GROUP_ZH : GROUP_EN;
+  let n = 1;
+  let length = head.text.length;
+  for (let next = list[from + n]; next && next.paragraph === head.paragraph && languageOf(next.text) === lang && length + 1 + next.text.length <= most; next = list[from + n]) {
+    length += 1 + next.text.length;
+    n++;
+  }
+  return n;
+}
+
+/** The text of `n` sentences read as one piece: English joined with spaces, Mandarin without. */
+export function pieceText(list: readonly Sentence[], from: number, n: number): string {
+  const parts = list.slice(from, from + n).map((s) => s.text);
+  return parts.join(languageOf(parts[0] ?? "") === "zh" ? "" : " ");
+}
+
+function splitSentences(text: string, complete: boolean): string[] {
   const out: string[] = [];
   // A run of marks is tried from its first mark only, so "!!!!…" isn't rescanned from each.
   const re = /[^\n]*?(?:(?<![.!?…])[.!?…]+["'”’)\]]*(?=\s|$)|[。！？；]+["'”’）」』]*|\n|$)/g;
@@ -112,8 +156,9 @@ export interface SpeechSource {
 export const storedSource = (text: string): SpeechSource => ({ text: () => text, done: () => true, more: async () => {} });
 
 /**
- * Streams a message read aloud to `res`: one sentence at a time, the next
- * one asked for while this one plays. The first sentence's refusal is thrown
+ * Streams a message read aloud to `res`: the first sentence alone, then a
+ * paragraph's sentences at a time (`piece`), the next piece asked for while
+ * this one plays. The first sentence's refusal is thrown
  * before any header, so it answers as JSON; after that, a failure ends the
  * stream. `allowed` is checked between sentences and every few seconds, so
  * Logout and Lock stop it. One call record for the whole reading.
@@ -131,34 +176,35 @@ export async function readAloud(o: {
   type Spoken = Awaited<ReturnType<Models["speak"]>>;
   const ask = (text: string): Promise<Spoken> => {
     const p = models.speak(ctx, text, { language: languageOf(text), signal: stop.signal });
-    p.catch(() => {}); // a sentence asked ahead whose reading was stopped
+    p.catch(() => {}); // a piece asked ahead whose reading was stopped
     return p;
   };
-  let ahead: Promise<Spoken> | undefined;
+  let ahead: { spoken: Promise<Spoken>; n: number } | undefined;
   try {
     let done = 0;
     for (;;) {
       // Wait until there is a whole sentence, or the message is done.
-      let list = sentences(source.text(), source.done());
+      let list = paragraphSentences(source.text(), source.done());
       while (list.length <= done && !source.done() && !stop.signal.aborted) {
         await source.more(stop.signal);
-        list = sentences(source.text(), source.done());
+        list = paragraphSentences(source.text(), source.done());
       }
       if (stop.signal.aborted || !o.allowed()) break;
       if (list.length <= done) {
         if (!first) throw new HttpError(400, "there is nothing in this message to read aloud");
         break;
       }
-      const spoken = await (ahead ?? ask(list[done]!));
+      const now = ahead ?? (() => { const n = piece(list, done); return { spoken: ask(pieceText(list, done, n)), n }; })();
       ahead = undefined;
-      done++;
+      const spoken = await now.spoken;
+      done += now.n;
       if (!first) {
         first = spoken.resolution;
         res.writeHead(200, { ...SECURITY_HEADERS, "content-type": SPEECH_CONTENT_TYPE, "cache-control": "no-store" });
       }
-      // One ahead: the next sentence is asked for while this one streams.
-      const next = sentences(source.text(), source.done());
-      if (next.length > done) ahead = ask(next[done]!);
+      // One ahead: the next piece is asked for while this one streams.
+      const next = paragraphSentences(source.text(), source.done());
+      if (next.length > done) { const n = piece(next, done); ahead = { spoken: ask(pieceText(next, done, n)), n }; }
       const reader = spoken.audio.getReader();
       const cancel = () => void reader.cancel().catch(() => {});
       stop.signal.addEventListener("abort", cancel, { once: true });
@@ -180,7 +226,7 @@ export async function readAloud(o: {
     clearInterval(check);
     res.off("close", closed);
     stop.abort();
-    void ahead?.then((s) => s.audio.cancel().catch(() => {}), () => {});
+    void ahead?.spoken.then((s) => s.audio.cancel().catch(() => {}), () => {});
     if (first) {
       models.recordCall(ctx.userId, { pool: o.pool, threadId: o.threadId, task: "speech.speak", resolution: first, audioSeconds: pcmSeconds(bytes) });
       if (!res.writableEnded) res.end();

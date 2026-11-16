@@ -1289,8 +1289,8 @@ local-only threads use local speech models only.
 - **Dictation.** The mic records until it is pressed again; the clip is
   transcribed and the text goes into the box at the caret, to edit and send.
   Escape throws the clip away. A clip is at most 10 minutes.
-- **Read aloud** on one of her messages reads it sentence by sentence as the
-  audio arrives, skipping code, tables and links. Stop reading, the mic,
+- **Read aloud** on one of her messages reads it as the audio arrives, the
+  first sentence alone and then a paragraph at a time, skipping code, tables and links. Stop reading, the mic,
   sending, another Read aloud or leaving the thread stops it; only one thing
   plays at a time. A message with no words of hers (only cards and markers)
   has no Read aloud.
