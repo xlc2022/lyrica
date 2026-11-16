@@ -498,10 +498,11 @@ yes; the prerequisites as a root step; cloning her own repository (its
 address is in the skill; she asks rather than guess another) and
 `install.sh --no-start` as her account, with the image build and pull in the background; the
 install itself as a root step, pinned to a clean commit of her clone; when
-the person wants the host on their tailnet, `install.sh --tailscale NAME`
-run by the person in their own terminal, so the auth key is typed at a
-hidden prompt and never passes through her (the host never listens on the
-machine's own Tailscale address); a smoke test against
+the person wants the host on their tailnet, a second pinned script with
+`install.sh --tailscale NAME` that the person runs with `sudo bash` in
+their own terminal: the auth key is typed at a hidden prompt, and `.env`
+belongs to root while the key is in it, so it never reaches her account
+(the host never listens on the machine's own Tailscale address); a smoke test against
 `127.0.0.1:7236/host/v1/status`; pausing the host on a shared machine; and
 a pairing code from `127.0.0.1:7236/dashboard/pairing` for the user to
 enter in **Add model host**. Nothing under `host/` changes for it. A

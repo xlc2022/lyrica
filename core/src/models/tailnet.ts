@@ -83,7 +83,7 @@ function dialReason(body: Buffer, port: number): string {
   if (lower.includes("refused")) return `nothing there takes connections on port ${port}`;
   if (lower.includes("timeout") || lower.includes("timed out") || lower.includes("deadline")) return "no answer: the machine may be off, or the tailnet's access rules may not let this server reach it";
   if (lower.includes("no route") || lower.includes("unreachable")) return "no route to it in the tailnet";
-  if (lower.includes("no such host") || lower.includes("unknown") || lower.includes("not found")) return "no machine of that name in the tailnet";
+  if (lower.includes("no such host")) return "no machine of that name in the tailnet";
   return text;
 }
 
@@ -142,6 +142,9 @@ export function tunnel(host: string, port: number, timeoutMs = 10_000, o: { paus
         };
         socket.on("data", more);
         socket.once("end", () => { clearTimeout(wait); done(); });
+        // A reset mid-body still reports what was said, not the reset.
+        socket.off("error", onError);
+        socket.once("error", () => { clearTimeout(wait); done(); });
         return;
       }
       if (o.paused) socket.pause();
