@@ -16,6 +16,8 @@ import { NO_USAGE, type StateFile, type Usage } from "./state.ts";
 const BODY_LIMIT = 64 * 1024 * 1024;
 /** The speech server's audio: 16-bit mono PCM at 24 kHz. */
 const SPEECH_RATE = 24000;
+/** The longest tone a speech request may ask for, as the Qwen3-TTS server takes it. */
+const MAX_INSTRUCT = 200;
 const KIND_USE: Record<TextModel["kind"], string> = {
   chat: "chat", embedding: "embeddings", image: "images", transcribe: "dictation", speak: "speech",
 };
@@ -443,7 +445,7 @@ export class Runtime {
   /** Her voice: the speech server's audio, streamed back as it is made. */
   private async speak(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const body = await readJson(req, 128 * 1024);
-    onlyFields(body, ["model", "input", "voice", "speed", "response_format"]);
+    onlyFields(body, ["model", "input", "voice", "speed", "instruct", "response_format"]);
     const model = this.modelFor(body.model, "speak");
     if (typeof body.input !== "string" || !body.input.trim() || [...body.input].length > 4096) throw invalid("input is the text to read, 1 to 4096 characters.");
     const voices = model.capabilities.speak?.voices ?? [];
@@ -453,7 +455,10 @@ export class Runtime {
     const speed = body.speed ?? 1;
     if (typeof speed !== "number" || !(speed >= 0.25 && speed <= 4)) throw invalid("speed is from 0.25 to 4.");
     if (body.response_format !== undefined && body.response_format !== "pcm") throw invalid("response_format is pcm: 16-bit mono at 24 kHz.");
-    const raw = Buffer.from(JSON.stringify({ model: model.id, input: body.input, voice: body.voice, speed }));
+    if (body.instruct !== undefined && (typeof body.instruct !== "string" || !body.instruct.trim() || [...body.instruct].length > MAX_INSTRUCT)) throw invalid(`instruct is how to speak, 1 to ${MAX_INSTRUCT} characters.`);
+    // A model that takes no instruction (Kokoro, a Qwen3-TTS Base) reads as it always does.
+    const instruct = model.capabilities.speak?.instruct && typeof body.instruct === "string" ? { instruct: body.instruct.trim() } : {};
+    const raw = Buffer.from(JSON.stringify({ model: model.id, input: body.input, voice: body.voice, speed, ...instruct }));
     const started = Date.now();
     let bytes = 0;
     await this.pass(req, res, model, "/v1/audio/speech", raw, "application/json", (chunk) => (bytes += chunk.length));

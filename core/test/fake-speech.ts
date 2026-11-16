@@ -6,7 +6,7 @@ const servers: Server[] = [];
 afterEach(async () => { await Promise.all(servers.splice(0).map((s) => new Promise((r) => { s.closeAllConnections(); s.close(r); }))); });
 
 /** What the fake heard: the model and language of a transcription (with the clip's size), or a spoken request's fields. */
-export interface Heard { url: string; model?: string; language?: string; bytes?: number; input?: string; voice?: string; speed?: number; format?: string }
+export interface Heard { url: string; model?: string; language?: string; bytes?: number; input?: string; voice?: string; speed?: number; instruct?: string; format?: string }
 
 /**
  * A small OpenAI-compatible speech server on 127.0.0.1: GET /v1/models,
@@ -40,8 +40,8 @@ export async function fakeSpeech(opts: { models?: Record<string, unknown>[]; tex
         res.writeHead(200, { "content-type": "application/json" });
         return res.end(JSON.stringify({ text: ` ${opts.text ?? "hello from the fake"} ` }));
       }
-      const spoken = JSON.parse(body.toString("utf8")) as { model: string; input: string; voice?: string; speed?: number; response_format?: string };
-      heard.push({ url: req.url, model: spoken.model, input: spoken.input, voice: spoken.voice, speed: spoken.speed, format: spoken.response_format });
+      const spoken = JSON.parse(body.toString("utf8")) as { model: string; input: string; voice?: string; speed?: number; instruct?: string; response_format?: string };
+      heard.push({ url: req.url, model: spoken.model, input: spoken.input, voice: spoken.voice, speed: spoken.speed, ...(spoken.instruct !== undefined ? { instruct: spoken.instruct } : {}), format: spoken.response_format });
       res.writeHead(200, { "content-type": "audio/pcm" });
       let ended = false;
       res.on("close", () => { if (!ended) cut++; });

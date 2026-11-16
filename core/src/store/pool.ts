@@ -1460,6 +1460,23 @@ export class PoolStore extends PoolReader {
     return changed;
   }
 
+  /**
+   * Keeps a reply's tone notes apart from its entry (`piId`), for Read aloud
+   * alone; nothing that reads entries sees them. Does nothing if the entry
+   * isn't stored.
+   */
+  setTones(threadId: string, piId: string, notes: readonly { at: number; note: string }[]): void {
+    const n = this.entryNumber(threadId, piId);
+    if (n === undefined || !notes.length) return;
+    this.db.prepare("INSERT OR REPLACE INTO tones (thread, n, notes) VALUES (?, ?, ?)").run(threadId, n, JSON.stringify(notes.map(({ at, note }) => ({ at, note }))));
+  }
+
+  /** Entry `n`'s tone notes, for Read aloud only: empty when it has none. */
+  tones(threadId: string, n: number): { at: number; note: string }[] {
+    const row = this.db.prepare("SELECT notes FROM tones WHERE thread = ? AND n = ?").get(threadId, n) as { notes: string } | undefined;
+    return row ? JSON.parse(row.notes) as { at: number; note: string }[] : [];
+  }
+
   /** Pins or unpins entry `n`: a pinned entry stays in her context word for word. Throws if there's no such entry. */
   pinEntry(threadId: string, n: number, pinned: boolean): void {
     this.mustThread(threadId);

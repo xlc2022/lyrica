@@ -48,6 +48,9 @@ working implementation (`config/extensions/stateful-memory/memory-sleep.js`).
 
 ## The cycle (per pool)
 
+Sleep reads threads' entries only, so a reply's tone notes for Read aloud,
+kept apart from its entry (docs/memory.md, Storage), never reach a memory.
+
 0. **Renamed files.** Before anything else, plain code (no model) works
    through the renames the Files panel kept since the last run
    (`renames`, pool step 13; docs/workspace.md, "Renaming keeps links"):

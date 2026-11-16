@@ -844,7 +844,9 @@ endpoint setup is in [the operator guide](guides/getting-started.md#image-models
 Two tasks, **Dictation** (`speech.transcribe`) and **Read aloud**
 (`speech.speak`), with lists of their own (they never follow chat). A model
 can do them when it has the capability: `transcribe: true`, or `speak:
-{ voices: [{ id, language }] }` (a language tag such as `en` or `zh`). A host
+{ voices: [{ id, language }], instruct?: true }` (a language tag such as
+`en` or `zh`; `instruct` when it reads in a tone each request asks for, as
+a Qwen3-TTS CustomVoice model does). A host
 reports both in `/host/v1/models` (`kind` `transcribe` or `speak`). On any
 other endpoint except a plan, a model whose ID contains `transcribe` or
 `whisper` (`namesTranscriber`) is marked `transcribe` when its list is read;
@@ -853,11 +855,13 @@ anything else is set by hand (`addModel` or `setCapabilities`).
 - `transcribe(ctx, wav, { language?, signal? })` sends a 16 kHz mono WAV
   clip (at most 10 minutes) to `/v1/audio/transcriptions` and gives back
   `{ text, resolution, audioSeconds }`.
-- `speak(ctx, text, { voice?, speed?, language?, signal? })` asks
+- `speak(ctx, text, { voice?, speed?, language?, instruct?, signal? })` asks
   `/v1/audio/speech` for one piece of text with `response_format: "pcm"`
   and gives back `{ audio, resolution, voice }`: a stream of raw PCM,
-  s16le mono at 24 kHz (`SPEECH_FORMAT`). Cancelling the stream, or
-  `signal`, cancels the request.
+  s16le mono at 24 kHz (`SPEECH_FORMAT`). `instruct`, the tone to read in,
+  goes only to a model with `speak.instruct` (a fallback without it reads
+  as always); `speaksWithTone(ctx)` says whether the context's Read aloud
+  model takes one. Cancelling the stream, or `signal`, cancels the request.
 - Both are the only way audio reaches a model, through the router: a
   private or local-only context uses local models only, and a host is
   called through `fetchFor`. The caller records the call

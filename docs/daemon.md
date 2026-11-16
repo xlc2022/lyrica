@@ -1118,6 +1118,20 @@ Dictation and Read aloud (see [models.md](models.md) Speech). Types are in
   its end; when she is writing nothing (she finished as it was pressed), it
   reads her last message. Closing the connection, Logout or Lock stops it and cancels the
   model's work. One call record per reading, with the seconds of audio.
+- **Tone notes** (`extension/src/tone.ts`). While the thread's Read aloud
+  model takes a tone (`speak.instruct`, `Models.speaksWithTone`), her
+  system prompt asks her to open a paragraph whose feeling changes with
+  `<tone>gently amused</tone>`, and every request of her session streams
+  through a hand-written scanner that lifts those tags out (a note of up
+  to 80 characters; a longer one stays as written, one left half-written
+  at the end is dropped), so no event, stored entry or later context holds
+  one. A subagent's or sleep's thread is never asked. The notes, each with
+  the offset in her reply's text blocks where its paragraph starts, are
+  stored apart in the pool's `tones` table when the reply is recorded;
+  `following()` hands the live reply's notes to `messages/live/speech`.
+  Read aloud gives each piece its paragraph's note, or the last one before
+  it, as `instruct` ("Speak naturally, gently amused, at an even pace.");
+  a reply without notes reads in the model's calm default.
 - Refusals come before any audio, as JSON: `NoModel` and
   `CloudModelForbidden` are 400, `Offline` (every model set is down) is
   502; a message that isn't hers is 400, a missing one 404.

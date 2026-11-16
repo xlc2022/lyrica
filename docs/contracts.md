@@ -375,7 +375,7 @@ interface Endpoint {
   downSince?: string; stale: boolean;       // stale: unreachable for STALE_DAYS (14)
 }
 interface Capabilities { contextWindow?; tools?; vision?; embedding?; image?; edit?; upscale?; video?; animate?; motion?; videoEdit?; reasoning?: ("low" | "medium" | "high")[];
-                         transcribe?: boolean; speak?: { voices: Voice[] }; useFor?: "fast" | "quality" | "both" }
+                         transcribe?: boolean; speak?: { voices: Voice[]; instruct?: true }; useFor?: "fast" | "quality" | "both" }
 interface Voice { id; language }                             // language: a primary tag, "en" or "zh"
 interface Offering extends Capabilities {   // one model on one endpoint, with a permanent id
   id; endpointId; modelId; manual: boolean;
@@ -537,7 +537,8 @@ class Models {                                              // new Models(keyrin
   embeddingModel(ctx): { model; local } | undefined   // the model ID the Embeddings list resolves to and whether its endpoint is local, without calling it
   localOnlyThreads(userId): string[]        // the user's general threads switched to local-only
   transcribe(ctx, wav, { language?, signal? }): Promise<{ text; resolution; audioSeconds? }>   // the Dictation list; with no General one, the Private column's; CloudModelForbidden, NoModel, Offline
-  speak(ctx, text, { voice?, speed?, language?, signal? }): Promise<{ audio: ReadableStream<Uint8Array>; resolution; voice? }>   // raw PCM, SPEECH_FORMAT
+  speak(ctx, text, { voice?, speed?, language?, instruct?, signal? }): Promise<{ audio: ReadableStream<Uint8Array>; resolution; voice? }>   // raw PCM, SPEECH_FORMAT; instruct (a tone) only to a model with speak.instruct
+  speaksWithTone(ctx): boolean   // the context's Read aloud model takes a tone, even while its machine is down
   speechModel(task, ctx): { label; kind } | { reason: "none" | "down"; problem }
   dictationContext(ctx): CallContext        // ctx as given when it has a Dictation list; otherwise local-only
   // Settings
@@ -723,10 +724,11 @@ class Models {                                              // new Models(keyrin
   passes them through, host/API.md): `POST /v1/audio/transcriptions`,
   multipart `file` (`audio/wav`), `model`, `language?`, `response_format:
   "json"` → `{ text }`; `POST /v1/audio/speech`, JSON `{ model, input,
-  voice?, speed?, response_format: "pcm" }` → raw s16le mono 24 kHz PCM,
+  voice?, speed?, instruct?, response_format: "pcm" }` → raw s16le mono 24 kHz PCM,
   streamed. A host's `/host/v1/models` entry has `kind` `transcribe` or
   `speak`, with `capabilities.transcribe: true` or `capabilities.speak:
-  { voices: [{ id, language }] }`. Away (`isUnreachable`): no answer, a
+  { voices: [{ id, language }], instruct?: true }` (`instruct`: each request
+  may ask for a tone). Away (`isUnreachable`): no answer, a
   host's away codes, or 5xx or 429 from a plain endpoint; a host's
   `model_unavailable` (one model's server is off) skips only that model.
 - **Planned:** `X-Lyrica-Priority: background` for sleep and cheap subagents

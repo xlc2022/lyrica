@@ -75,6 +75,12 @@ users.
   settings page says so.
 - **Backups** are encrypted (restic or borg). Memory never goes into a git
   repository.
+- **Tone notes are not memory.** When the Read aloud model takes a tone, her
+  replies' tone notes (docs/daemon.md, Speech) are kept in the pool's
+  `tones` table by entry, never in the entry. Everything that reads a
+  thread (her context, recall, search, sleep, export, the web) reads
+  entries, so none of them sees a note; Read aloud is the one reader
+  (`PoolStore.tones`), and a note goes when its entry does.
 
 Tables in a pool database (`core/src/store/schema.ts`, one line of reason
 each): `threads`, `entries`, `notes`, `pages`, `wake`, `journal`,
@@ -94,7 +100,8 @@ the Recall counts below; step 17 adds
 `artifacts`, a published or imported page's title, kind, thread and path, and
 `artifact_versions`, each version's bytes and who made it; step 18
 `command_outputs`, each bash call's and background job's kept output,
-docs/workspace.md "Command output"), never DDL in the
+docs/workspace.md "Command output"; step 20 `tones`, a reply's tone notes
+for Read aloud, below), never DDL in the
 memory module. Routine labels stay encrypted in their own pool: an optional
 one-line title (80 characters) and description (300 characters), checked after
 credential removal. Metadata edits preserve omitted fields, clear a label

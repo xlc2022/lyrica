@@ -203,8 +203,8 @@ export interface Capabilities {
   reasoning?: Exclude<ThinkingLevel, "off">[];
   /** Speech to text (Dictation). */
   transcribe?: boolean;
-  /** Text to speech (Read aloud), with its voices and the language each speaks. */
-  speak?: { voices: Voice[] };
+  /** Text to speech (Read aloud), with its voices and the language each speaks; `instruct` when each request may ask for a tone. */
+  speak?: { voices: Voice[]; instruct?: true };
 }
 /** One of a speech model's voices. `language` is a primary language tag, such as "en" or "zh". */
 export interface Voice { id: string; language: string }
@@ -929,7 +929,7 @@ export class Models {
     if (caps.useFor != null && !["fast", "quality", "both"].includes(caps.useFor)) throw new Error("useFor is fast, quality or both");
     if (caps.reasoning?.some((l) => !THINKING_LEVELS.includes(l) || (l as string) === "off")) throw new Error("reasoning levels are low, medium and high");
     if (caps.transcribe !== undefined && caps.transcribe !== null && typeof caps.transcribe !== "boolean") throw new Error("transcribe is true or false");
-    if (caps.speak) caps = { ...caps, speak: { voices: checkVoices(caps.speak.voices) } };
+    if (caps.speak) caps = { ...caps, speak: { voices: checkVoices(caps.speak.voices), ...(caps.speak.instruct === true ? { instruct: true as const } : {}) } };
     this.write(actor, o.endpoint.id, (db) => {
       const row = db.prepare("SELECT hand FROM offerings WHERE id = ?").get(offeringId) as { hand: string };
       const hand: Record<string, unknown> = JSON.parse(row.hand);
@@ -1990,7 +1990,7 @@ export class Models {
   private async hostModels(ep: Endpoint): Promise<DiscoveredModel[]> {
     const list = listIn<{
       id: string; kind?: string; server?: string; sha256?: string | null; contextLength?: number | null; parallel?: number | null; size?: number; downloaded?: boolean; identity?: ModelIdentity | null; sampling?: Record<string, unknown> | null;
-      capabilities?: { tools?: boolean; vision?: boolean; embedding?: boolean; reasoning?: string[] | null; opensThinking?: boolean; efforts?: Record<string, unknown>; transcribe?: boolean; speak?: { voices?: unknown } | null };
+      capabilities?: { tools?: boolean; vision?: boolean; embedding?: boolean; reasoning?: string[] | null; opensThinking?: boolean; efforts?: Record<string, unknown>; transcribe?: boolean; speak?: { voices?: unknown; instruct?: unknown } | null };
     }>(await this.hostCall(ep, "GET", "/host/v1/models"), "models");
     if (!list) throw new Error(`${ep.name} didn't return a model list`);
     // Image and video models are recipes: only confirmed ones become offerings, so a proposal never resolves.
@@ -2018,7 +2018,7 @@ export class Models {
         ...(m.capabilities?.vision !== undefined ? { vision: !!m.capabilities.vision } : {}),
         ...(m.capabilities?.embedding || m.kind === "embedding" ? { embedding: true } : {}),
         ...(m.capabilities?.transcribe || m.kind === "transcribe" ? { transcribe: true } : {}),
-        ...(m.capabilities?.speak ? { speak: { voices: hostVoices(m.capabilities.speak.voices) } } : {}),
+        ...(m.capabilities?.speak ? { speak: { voices: hostVoices(m.capabilities.speak.voices), ...(m.capabilities.speak.instruct === true ? { instruct: true as const } : {}) } } : {}),
         ...(levels.length ? { reasoning: reasoning.length ? reasoning : ["medium"] as "medium"[] } : {}),
         // Effort levels with no off (GLM-5.3's template thinks at max without one): off thinks at medium, with a note.
         ...(levels.length && !m.capabilities?.reasoning?.includes("off") ? { alwaysThinks: true } : {}),
@@ -3228,7 +3228,7 @@ export class Models {
    * like `transcribe`, up to the first bytes of audio. Cancelling the stream
    * (or `signal`) cancels the request. The caller records the call.
    */
-  async speak(ctx: CallContext, text: string, opts: { voice?: string; speed?: number; language?: string; signal?: AbortSignal } = {}): Promise<{ audio: ReadableStream<Uint8Array>; resolution: Resolution; voice?: string }> {
+  async speak(ctx: CallContext, text: string, opts: { voice?: string; speed?: number; language?: string; instruct?: string; signal?: AbortSignal } = {}): Promise<{ audio: ReadableStream<Uint8Array>; resolution: Resolution; voice?: string }> {
     if (!text.trim()) throw new Error("there is nothing to read");
     if (text.length > MAX_SPEAK_CHARS) throw new Error(`a piece of text to speak is at most ${MAX_SPEAK_CHARS} characters`);
     if (opts.speed !== undefined && !(opts.speed >= 0.25 && opts.speed <= 4)) throw new Error("speed is a number from 0.25 to 4");
@@ -3238,9 +3238,24 @@ export class Models {
       const lang = opts.language?.toLowerCase();
       const voice = opts.voice ?? (lang ? settings.voices?.[lang] ?? voices.find((v) => v.language === lang)?.id : undefined) ?? voices[0]?.id;
       const speed = opts.speed ?? settings.speed;
-      const audio = await speakAt(this.speechTarget(r), text, { ...(voice ? { voice } : {}), ...(speed !== undefined ? { speed } : {}), ...(opts.signal ? { signal: opts.signal } : {}) });
+      // A tone goes only to a model that takes one: a fallback without it reads as it always does.
+      const instruct = opts.instruct && r.offering.speak?.instruct ? { instruct: opts.instruct } : {};
+      const audio = await speakAt(this.speechTarget(r), text, { ...(voice ? { voice } : {}), ...(speed !== undefined ? { speed } : {}), ...instruct, ...(opts.signal ? { signal: opts.signal } : {}) });
       return { audio, resolution: r, ...(voice ? { voice } : {}) };
     });
+  }
+
+  /**
+   * Whether the context's Read aloud model takes a tone with each piece
+   * (`speak.instruct`, Qwen3-TTS CustomVoice), even while its machine is down:
+   * only then is she asked to write tone notes (docs/briefs/voice-tone.md).
+   */
+  speaksWithTone(ctx: CallContext): boolean {
+    try {
+      return !!this.resolve("speech.speak", ctx, {}, { evenIfDown: true }).offering.speak?.instruct;
+    } catch {
+      return false;
+    }
   }
 
   /**

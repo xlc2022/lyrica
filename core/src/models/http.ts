@@ -31,7 +31,7 @@ export async function addressesOutside(baseUrl: string): Promise<string[]> {
 export interface DiscoveredModel {
   modelId: string; contextWindow?: number; tools?: boolean; vision?: boolean; image?: boolean; embedding?: boolean;
   edit?: boolean; upscale?: boolean; video?: boolean; animate?: boolean; motion?: boolean; videoEdit?: boolean;
-  transcribe?: boolean; speak?: { voices: { id: string; language: string }[] };
+  transcribe?: boolean; speak?: { voices: { id: string; language: string }[]; instruct?: boolean };
   reasoning?: ("low" | "medium" | "high")[];
   /** A host's chat template writes `<think>` itself (host/API.md "Models"). */
   opensThinking?: boolean;

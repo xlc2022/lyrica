@@ -203,10 +203,10 @@ describe("/v1/audio", () => {
     expect(kokoro.capabilities.speak.voices).toContainEqual({ id: "zf_xiaoxiao", language: "zh" });
     expect((await s.api("/host/v1/status")).body.cpuServers).toEqual(["speech"]);
 
-    const spoken = await s.api("/v1/audio/speech", { body: { model: KOKORO, input: MARKER, voice: "zf_xiaoxiao" } });
+    const spoken = await s.api("/v1/audio/speech", { body: { model: KOKORO, input: MARKER, voice: "zf_xiaoxiao", instruct: "gently amused" } });
     expect(spoken.status).toBe(200);
     expect(spoken.headers["content-type"]).toBe("audio/pcm;rate=24000");
-    // Loaded with no GPU, and only the fields it reads passed on.
+    // Loaded with no GPU, and only the fields it reads passed on: Kokoro takes no tone.
     expect(s.backend.calls).toEqual([`load ${KOKORO}@`]);
     expect(JSON.parse(s.audio.seen[0]!.body.toString())).toEqual({ model: KOKORO, input: MARKER, voice: "zf_xiaoxiao", speed: 1 });
 
@@ -223,6 +223,8 @@ describe("/v1/audio", () => {
     expect(voice.body.error.message).toContain("af_heart, bm_george, zf_xiaoxiao");
     const speed = await s.api("/v1/audio/speech", { body: { model: KOKORO, input: "hi", voice: "af_heart", speed: 9 } });
     expect(speed.body.error).toMatchObject({ code: "invalid", message: "speed is from 0.25 to 4." });
+    const tone = await s.api("/v1/audio/speech", { body: { model: KOKORO, input: "hi", voice: "af_heart", instruct: "x".repeat(201) } });
+    expect(tone.body.error).toMatchObject({ code: "invalid", message: "instruct is how to speak, 1 to 200 characters." });
     const format = await s.api("/v1/audio/speech", { body: { model: KOKORO, input: "hi", voice: "af_heart", response_format: "mp3" } });
     expect(format.status).toBe(400);
     const kind = await s.api("/v1/audio/speech", { body: { model: WHISPER, input: "hi", voice: "af_heart" } });
@@ -298,6 +300,8 @@ describe("Qwen3-TTS voices", () => {
     expect(ids(models[0]!, "zh")).toEqual(["Friend"]);
     expect(ids(models[1]!, "en")).toEqual(["Vivian", "Uncle_Fu", "Ryan"]);
     expect(ids(models[1]!, "zh")).toEqual(["Vivian", "Uncle_Fu", "Ryan"]);
+    // CustomVoice's speakers take a tone with each request; Base copies its clip's.
+    expect([models[0]!.capabilities.speak!.instruct, models[1]!.capabilities.speak!.instruct]).toEqual([undefined, true]);
     // Placement counts what the server holds beyond the files: the CUDA graphs, and Base's speaker encoder.
     expect(sizes(models[0]!, {} as Parameters<typeof sizes>[1]).weights).toBe(Math.round(1200 * 1.1 + 1024 ** 3));
   });

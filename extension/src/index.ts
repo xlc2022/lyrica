@@ -16,6 +16,7 @@ export { RECALL_GUIDELINES } from "./tools.ts";
 import { registerExitCodes } from "./exit-codes.ts";
 import { registerTestOutput } from "./test-output.ts";
 import { registerVisionGuard } from "./vision.ts";
+import { TONE_GUIDE } from "./tone.ts";
 
 export * from "./assemble.ts";
 export * from "./code.ts";
@@ -36,6 +37,7 @@ export * from "./downloads-tool.ts";
 export * from "./page.ts";
 export * from "./react.ts";
 export * from "./record.ts";
+export * from "./tone.ts";
 export * from "./routing.ts";
 export * from "./skills.ts";
 export * from "./sleep.ts";
@@ -82,6 +84,8 @@ export interface LyricaOptions {
   projectThreads?: () => string | undefined;
   /** Selected recent work for this turn only, supplied by lyricad. */
   recentWork?: () => string | undefined;
+  /** Whether her replies may carry tone notes for Read aloud this turn (tone.ts): its model takes a tone. */
+  tones?: () => boolean;
   /** The user's reactions since her last turn, taken each turn: told to her in the turn message. */
   reactions?: () => UserReaction[];
   /** Her name for this deployment, read every turn; automatic recall leaves it out. */
@@ -156,6 +160,9 @@ export function createLyricaExtension(thread: ThreadContext, opts: LyricaOptions
         options.sections.earlier = earlierText(thread.threadId, kept);
         report.push({ name: "recall", text: options.sections.earlier, budget: options.sections.earlier.length, truncated: false, place: "system" });
       } else delete options.sections.earlier;
+      // Only when Read aloud would follow them: otherwise no note is asked for and no token spent.
+      if (opts.tones?.()) options.sections.voice = TONE_GUIDE;
+      else delete options.sections.voice;
       const skills = await opts.skills?.index();
       if (skills) {
         options.sections.skills = skills;

@@ -1926,33 +1926,36 @@ export function apiRoutes(d: Lyricad): Route[] {
       const live = r.params.n === "live" ? s().host.peek(user.id, pool, thread.id)?.following() : undefined;
       if (live) {
         let read = "";
-        let at = -1;
-        // Made speakable as it grows; the text stays in memory only.
+        let at = "";
+        // Made speakable as it grows, with its tone notes' marks; the text and the notes stay in memory only.
         source = {
           text: () => {
             const raw = live.text();
-            if (raw.length !== at) {
-              at = raw.length;
+            const notes = live.tones();
+            if (`${raw.length}:${notes.length}` !== at) {
+              at = `${raw.length}:${notes.length}`;
               // Titles need the pool open; most of a reply has no mention, so only then.
               const parts = [{ type: "text" as const, text: raw }];
-              read = /\[(?:\w+\/)?[te]:/.test(raw) ? owner(d, user, (o) => messageText(parts, titlesIn(o, pool))) : messageText(parts);
+              read = /\[(?:\w+\/)?[te]:/.test(raw) ? owner(d, user, (o) => messageText(parts, titlesIn(o, pool), notes)) : messageText(parts, undefined, notes);
             }
             return read;
           },
-          done: live.done, more: live.more,
+          tones: live.tones, done: live.done, more: live.more,
         };
       } else {
         // Live with nothing being written (she finished as it was pressed) reads her last message.
         const n = r.params.n === "live" ? undefined : entryN(r);
-        const text = owner(d, user, (o) => {
+        const { text, notes } = owner(d, user, (o) => {
           const message = n === undefined
             ? toMessages(thread.id, pool, o[pool].entryPage(thread.id, { limit: 20 }).entries).findLast((m) => m.role === "assistant")
             : toMessages(thread.id, pool, o[pool].entryPage(thread.id, { before: n + 1, limit: 1 }).entries.filter((e) => e.n === n))[0];
           if (!message) throw new HttpError(404, n === undefined ? `${d.name()} hasn't written a message here` : "no such message");
           if (message.role !== "assistant") throw new HttpError(400, `only ${d.name()}'s messages are read aloud`);
-          return messageText(message.parts, titlesIn(o, pool));
+          // Her tone notes, kept apart from the message: Read aloud is the only reader (docs/briefs/voice-tone.md).
+          const notes = o[pool].tones(thread.id, message.n);
+          return { text: messageText(message.parts, titlesIn(o, pool), notes), notes };
         });
-        source = storedSource(text);
+        source = storedSource(text, notes);
       }
       const allowed = () => !!d.sessions.users(r.cookie)?.has(user.id) && d.keyring.hasUserKey(user.id);
       await readAloud({ models: s().models, ctx: s().models.callContext(user.id, pool, thread.id), pool, threadId: thread.id, source, res: r.res, allowed });
@@ -2752,9 +2755,13 @@ function capabilities(input: object, clearing = false): Record<string, number | 
     else if (k === "contextWindow" && typeof v === "number" && v > 0) out[k] = Math.floor(v);
     else if (k === "reasoning" && Array.isArray(v) && v.every((l) => levels.includes(l))) out[k] = levels.filter((l) => v.includes(l));
     // Each voice is checked in core.
-    else if (k === "speak" && v && typeof v === "object" && Array.isArray((v as { voices?: unknown }).voices)) out[k] = { voices: (v as { voices: Api.Voice[] }).voices };
+    else if (k === "speak" && v && typeof v === "object" && Array.isArray((v as { voices?: unknown }).voices)) {
+      const { voices, instruct } = v as { voices: Api.Voice[]; instruct?: unknown };
+      if (instruct !== undefined && instruct !== true) throw new HttpError(400, "speak.instruct is true, or left out");
+      out[k] = { voices, ...(instruct ? { instruct: true as const } : {}) };
+    }
     else if (k !== "contextWindow" && k !== "reasoning" && k !== "speak" && k !== "useFor" && typeof v === "boolean") out[k] = v;
-    else throw new HttpError(400, `${k} must be ${k === "useFor" ? "fast, quality or both" : k === "contextWindow" ? "a number of tokens" : k === "reasoning" ? "a list of low, medium and high" : k === "speak" ? "{ voices: [{ id, language }] }" : "true or false"}`);
+    else throw new HttpError(400, `${k} must be ${k === "useFor" ? "fast, quality or both" : k === "contextWindow" ? "a number of tokens" : k === "reasoning" ? "a list of low, medium and high" : k === "speak" ? "{ voices: [{ id, language }], instruct?: true }" : "true or false"}`);
   }
   return out;
 }

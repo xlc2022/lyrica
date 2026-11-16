@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import type { AgentSession, SessionEntry } from "@earendil-works/pi-coding-agent";
 import { MEMORY_TOOLS, type NewEntry, type PoolStore } from "@lyrica/core";
+import { tonesOf } from "./tone.ts";
 
 // Threads live in the pool database, never in Pi session files. Pi saves a
 // message only after its message_end listeners run, so user entries are copied
@@ -13,13 +14,18 @@ export const OPENING = "(The conversation is starting. Speak first.)";
 
 interface EntrySource { getEntries(): SessionEntry[] }
 
-/** Stores every Pi entry the thread doesn't have yet. Returns how many were new. */
+/**
+ * Stores every Pi entry the thread doesn't have yet, and a reply's tone notes
+ * apart from it (never in the entry). Returns how many were new.
+ */
 export function syncEntries(source: EntrySource, store: PoolStore, threadId: string): number {
   const have = store.storedPiIds(threadId);
   let added = 0;
   for (const entry of source.getEntries()) {
     if (have.has(entry.id)) continue;
     store.appendEntry(threadId, toStoredEntry(entry), entry.timestamp);
+    const notes = entry.type === "message" ? tonesOf(entry.message) : undefined;
+    if (notes) store.setTones(threadId, entry.id, notes);
     added++;
   }
   return added;

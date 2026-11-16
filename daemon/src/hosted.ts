@@ -8,6 +8,7 @@ import {
 import {
   BUILTIN_SKILLS, checkoutsOf, codeRepositories, repoSkills, skillsIndex, type ListedSkill, createChecksExtension, createSyntaxExtension, codeTaskText, formatEntry, repoRules, appendUserMessage, executeImage, ContextMeter, createDelegateExtension, createDownloadsExtension, createImageExtension, createLookExtension, createLyricaExtension, createMcpServersExtension, createModelsExtension, createReactExtension, createThreadsExtension, createTopExtension, createWebExtension, createWorkspaceExtension, createWaitForReportsExtension, DELEGATE_MESSAGE, EMPTY_REPLY_NOTICE, TURN_TOOL_NOTICE, OPENING, openThreadSession, type ClipMade, piModelFor, syncEntries, timedReply,
   GO_AHEAD, grantKey, MODE_LABELS, type Approval, type ApprovalRequest, type ThreadsHost, type Delegation, type DelegationEvent, type GoAhead, type DownloadsHost, type HubListing, type ModelsHost, type PlanRequest, type SubagentApproval, type ThreadContext, type UserReaction,
+  type ToneNote, type Tones,
 } from "@lyrica/extension";
 import type * as Api from "./api.ts";
 import type { PermissionRequest, ThreadEvent } from "./api.ts";
@@ -118,7 +119,7 @@ function heldNote(r: PermissionRequest, allowed: boolean): string {
  */
 interface Steer { text: string; handed: boolean; prompt: boolean; /** The person's own follow-up, moved in with Steer now. */ person?: true }
 
-interface Opened { session: AgentSession; view: PoolView; meter: ContextMeter; dispose(): void; title(): Promise<string | undefined>; prepare(opts?: { retry?: boolean }): Promise<unknown> }
+interface Opened { session: AgentSession; view: PoolView; meter: ContextMeter; tones: Tones; dispose(): void; title(): Promise<string | undefined>; prepare(opts?: { retry?: boolean }): Promise<unknown> }
 
 /** The threads lyricad hosts, keyed by user, pool and thread. A record is light; its Pi session opens on first use. */
 export class ThreadHost {
@@ -542,14 +543,17 @@ export class HostedThread {
   }
 
   /**
-   * Follows her message still being written: its text so far, and a wait
-   * for more. Undefined when nothing is being written.
+   * Follows her message still being written: its text so far, its tone
+   * notes, and a wait for more. Undefined when nothing is being written.
    */
-  following(): { text: () => string; done: () => boolean; more: (signal: AbortSignal) => Promise<void> } | undefined {
+  following(): { text: () => string; tones: () => readonly ToneNote[]; done: () => boolean; more: (signal: AbortSignal) => Promise<void> } | undefined {
     const live = this.live;
     if (!live || live.done) return undefined;
+    // Its tone notes, added to as they are found (in memory only): the reply's own list, taken while it is written.
+    const notes = this.opened?.tones.live ?? [];
     return {
       text: () => live.text,
+      tones: () => notes,
       done: () => live.done || this.closed,
       more: (signal) => new Promise<void>((resolve) => {
         if (live.done || signal.aborted) return resolve();
@@ -1409,7 +1413,11 @@ export class HostedThread {
       };
       // Repository skills by checkout and HEAD, so an unchanged checkout costs one git call a turn.
       const repoSkillsSeen = new Map<string, ListedSkill[]>();
-      const { session, runtime, prepare, dispose } = await openThreadSession({
+      // Tone notes for Read aloud (docs/briefs/voice-tone.md): asked for, and lifted out of her replies, only while
+      // the thread's Read aloud model takes a tone; never in a subagent's or sleep's thread.
+      const tones = () => !thread.subagent && thread.interface !== "sleep" && models.speaksWithTone(models.callContext(this.userId, this.pool, this.threadId));
+      const { session, runtime, prepare, dispose, tones: toneNotes } = await openThreadSession({
+        tones,
         thread: ctx, models, cwd: this.o.cwd, task: () => tools.settings().code ? "code" : "chat",
         // A reply waiting for a host's GPU (up to 15 minutes, then the next model) has the views say what it waits for.
         onGpuWait: (wait) => { this.gpuWait = wait; this.emit({ type: "gpu_wait", wait }); },
@@ -1446,6 +1454,7 @@ export class HostedThread {
             },
             persona: () => persona.read(), profile: () => users.get(this.userId)!.profile, folders: tools.folders, meter,
             recentWork: () => this.recentWork(view),
+            tones,
             reactions: () => this.unseenReactions.splice(0),
             ...(this.o.name ? { name: this.o.name } : {}),
             ...(thread.project ? { projectThreads: () => this.o.projectThreads?.(this.userId, this.pool, this.threadId) } : {}),
@@ -1548,7 +1557,7 @@ export class HostedThread {
         const text = reply.content.filter((p) => p.type === "text").map((p) => (p as { text: string }).text).join("").trim();
         return text.replace(/^["'“]+|["'”.]+$/g, "").split("\n")[0]!.slice(0, 80) || undefined;
       };
-      return { session, view, meter, title, prepare: (opts?: { retry?: boolean }) => { this.turnTask = this.chatTask(); return prepare(opts); }, dispose: () => { unsubscribe(); dispose(); view.close(); } };
+      return { session, view, meter, tones: toneNotes, title, prepare: (opts?: { retry?: boolean }) => { this.turnTask = this.chatTask(); return prepare(opts); }, dispose: () => { unsubscribe(); dispose(); view.close(); } };
     } catch (err) {
       view.close();
       throw err;
