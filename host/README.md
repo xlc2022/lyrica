@@ -627,10 +627,12 @@ per host, and Lyrica's router filters create tiers by it.
     `consolidated.safetensors`, `params.json`, `tekken.json`,
     `config.json`, `generation_config.json` and `processor_config.json`
     (about 8.9 GB; the repository's `model.safetensors` is the same weights
-    again and isn't needed). It takes about 14 GB of a GPU at dictation's
-    default 16k context (about 20 minutes of audio; 32k takes about 17 GB,
-    since its audio encoder keeps a cache too). vLLM serves a whole clip
-    with it, as Lyrica sends one.
+    again and isn't needed). It takes about 14 GB of a GPU (13.4 GiB) at
+    any context: its decoder and its audio encoder keep sliding windows,
+    and the host runs it with a batch of 512 tokens unless one is set
+    (vLLM's 2,048 would hold 5.7 GiB of cache instead of 2.3). Dictation
+    defaults to a 16k context, about 20 minutes of audio. vLLM serves a
+    whole clip with it, as Lyrica sends one.
 - **Keeping them loaded.** Pin both, so speaking and dictation never wait
   for a load. Whisper takes about 2.2 GB of a GPU and Kokoro about 1 GB.
   On a host with one large GPU, place both on it (Whisper with a vLLM
@@ -673,7 +675,8 @@ revoked. A revoked server must pair again.
     whether it may use the host's allowance), Embedding table (Disk or
     RAM: where llama.cpp reads a per-layer embedding table over 4 GiB
     from; RAM takes it from the allowance), parallel requests, batch
-    size, a chat template, and for vLLM a memory share, so several vLLM
+    size (the server's default, or 512 for a vLLM model whose cache holds
+    sliding windows), a chat template, and for vLLM a memory share, so several vLLM
     models can share one GPU (each is its own server).
   - A llama.cpp model whose experts partly sit in system RAM reads prompts
     in steps of its whole batch (`ubatch-size` = the batch size, 2048

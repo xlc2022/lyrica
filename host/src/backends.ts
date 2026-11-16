@@ -9,7 +9,7 @@ import { totalmem } from "node:os";
 import { HostError } from "./http.ts";
 import type { TextModel } from "./library.ts";
 import type { Logger } from "./log.ts";
-import { concurrentOf, contextOf, tableInRam, usesMtp, usesVision, type ModelSettings, type Option } from "./placement.ts";
+import { batchOf, concurrentOf, contextOf, tableInRam, usesMtp, usesVision, type ModelSettings, type Option } from "./placement.ts";
 
 /** What the server says a model takes on a GPU with a placement: all of it, and the part that isn't weights (cache and compute buffers). */
 export interface Measured { bytes: number; extra: number }
@@ -417,7 +417,7 @@ export class Vllm implements Backend {
         tensorParallel: at.parallel === "tensor" ? at.gpus.length : 1,
         pipelineParallel: at.parallel === "pipeline" ? at.gpus.length : 1,
         memoryShare: at.share, maxModelLen: contextOf(m, s),
-        maxNumSeqs: concurrentOf(m, s) ?? s.maxSeqs ?? null, maxNumBatchedTokens: s.batchSize ?? null, dtype: s.dtype ?? null,
+        maxNumSeqs: concurrentOf(m, s) ?? s.maxSeqs ?? null, maxNumBatchedTokens: batchOf(m, s), dtype: s.dtype ?? null,
         chatTemplate: s.chatTemplate ? this.templates.write(s.chatTemplate) : null,
         // The supervisor merges these into the model's own RoPE settings.
         ropeOverride: s.stretch ? { factor: s.stretch.factor, originalContext: s.stretch.originalContext } : null,

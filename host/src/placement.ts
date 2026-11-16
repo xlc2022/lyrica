@@ -134,6 +134,14 @@ export function autoContext(model: TextModel, s: ModelSettings, gpus: Gpu[], set
   return lo * 1024;
 }
 
+/**
+ * vLLM's batch for a model with a sliding-window cache: its setting, else 512,
+ * which keeps Voxtral's cache to about 2.3 GiB (2,048, vLLM's default on a
+ * 24 GB card, takes 5.7 GiB). Null for other models: the server's default.
+ */
+export const WINDOW_BATCH = 512;
+export const batchOf = (model: TextModel, s: ModelSettings): number | null => s.batchSize ?? (model.kvWindows ? WINDOW_BATCH : null);
+
 /** The context the model is served with: its setting, else 32k (16k for dictation), never past its maximum. */
 export function contextOf(model: TextModel, s: ModelSettings): number {
   return Math.min(s.contextLength ?? defaultContext(model), maxContextOf(model, s) ?? Infinity);
@@ -159,11 +167,18 @@ export function sizes(model: TextModel, s: ModelSettings): { weights: number; kv
   // whisper.cpp: its file, and about half a gigabyte of buffers for the audio.
   if (model.server === "whispercpp") return { weights: Math.round(model.size * 1.1) + GIB / 2, kv: 0 };
   const context = model.kind === "embedding" ? Math.min(contextOf(model, s), 8192) : contextOf(model, s);
-  const perToken = model.kvPerToken !== null ? model.kvPerToken * KV_BYTES[s.kvCacheType ?? "f16"] : (2 * GIB) / DEFAULT_CONTEXT;
+  const bytes = KV_BYTES[s.kvCacheType ?? "f16"];
+  const perToken = model.kvPerToken !== null ? model.kvPerToken * bytes : (2 * GIB) / DEFAULT_CONTEXT;
   const extras = (usesVision(model, s) ? model.mmprojSize ?? 0 : 0) + (usesMtp(model, s) ? model.mtpSize ?? 0 : 0);
   // llama.cpp never puts a per-layer embedding table on the GPUs.
   const table = model.server === "llamacpp" ? model.layerTable ?? 0 : 0;
-  return { weights: Math.round((model.size - table + extras) * 1.05) + (model.buffers ?? 0), kv: Math.round(perToken * context) };
+  const weights = Math.round((model.size - table + extras) * 1.05) + (model.buffers ?? 0);
+  if (model.kvWindows && model.server === "vllm") {
+    // vLLM keeps each window plus the tokens in flight: two batches, with async scheduling.
+    const flight = 2 * batchOf(model, s)!;
+    return { weights, kv: Math.round(model.kvWindows.reduce((sum, w) => sum + w.elements * bytes * Math.min(w.window - 1 + flight, context), 0)) };
+  }
+  return { weights, kv: Math.round(perToken * context) };
 }
 
 /** One way to run a model: its GPUs, and what it takes on each. */

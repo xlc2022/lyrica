@@ -460,8 +460,8 @@ curl -sS 'http://127.0.0.1:7236/host/v1/hub/files?source=huggingface&repo=onnx-c
   `consolidated.safetensors`, `params.json`, `tekken.json`, `config.json`,
   `generation_config.json` and `processor_config.json` (about 8.9 GB; skip
   `model.safetensors`, the same weights again). It needs about 14 GB of a
-  GPU at dictation's default 16k context (about 20 minutes of audio), so a
-  16 GB card holds it alone.
+  GPU whatever its context (dictation's default, 16k, is about 20 minutes
+  of audio), so a 16 GB card holds it alone.
 
 ```sh
 curl -sS -H 'content-type: application/json' -d '{

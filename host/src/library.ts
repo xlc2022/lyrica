@@ -79,6 +79,14 @@ export interface TextModel {
   /** The sizes of the projector and the MTP file, counted when they're used. */
   mmprojSize?: number;
   mtpSize?: number;
+  /**
+   * vLLM: a cache that holds only a sliding window, per group of layers: its
+   * elements per token (every layer, as vLLM pads the groups to one size) and
+   * its window in tokens. vLLM keeps the window plus the tokens in flight, so
+   * the cache stops growing with the context. Voxtral Realtime's decoder and
+   * its audio encoder; when set, it sizes the cache instead of `kvPerToken`.
+   */
+  kvWindows?: { elements: number; window: number }[];
   /** Bytes its server needs on the GPUs besides the weights and the cache, where known: Voxtral's audio encoder. */
   buffers?: number;
   /** A vLLM model whose config asks for remote code: never loaded. */
@@ -415,8 +423,9 @@ function transcribeModel(root: string, dir: string, config: any, size: number): 
       ? kvElements(config.decoder_layers, config.d_model, config.decoder_attention_heads, config.decoder_attention_heads)
       : voxtralKv(config, text),
     mmproj: null,
-    // Voxtral's audio encoder: its activations and CUDA graphs, about 1.9 GiB in all as vLLM measured it with the weights' padding.
-    ...(config.audio_config ? { buffers: 1.5 * 1024 ** 3 } : {}),
+    // Voxtral's audio encoder, activations and CUDA graphs: on a 3090 vLLM held 10.6 GiB besides its cache, 1.9 GiB over the weights with their padding.
+    ...(config.audio_config ? { buffers: 1.9 * 1024 ** 3 } : {}),
+    ...windows(config, text),
     remoteCode: !!config.auto_map,
   };
 }
@@ -432,6 +441,28 @@ function voxtralKv(config: any, text: any): number | null {
   if (decoder === null || !audio || !config.downsample_factor) return decoder;
   const encoder = kvElements(audio.num_hidden_layers, audio.hidden_size, audio.num_attention_heads, audio.num_key_value_heads ?? audio.num_attention_heads, audio.head_dim);
   return encoder === null ? decoder : decoder + encoder / config.downsample_factor;
+}
+
+/**
+ * Voxtral Realtime's windows: the decoder's, and the causal audio encoder's,
+ * which vLLM keeps in pools of `downsample_factor` audio frames, one pool a
+ * text token. vLLM pads both groups to the larger one's layers. Checked
+ * against vLLM 0.32 on a 3090: 3.83 GiB at a 3,456-token context and
+ * 5.72 GiB at 16k and 32k, with its default batch of 2,048.
+ */
+function windows(config: any, text: any): { kvWindows: { elements: number; window: number }[] } | {} {
+  const audio = config.audio_config;
+  const pool = config.downsample_factor;
+  if (!audio?.sliding_window || !text.sliding_window || !pool) return {};
+  const layers = Math.max(text.num_hidden_layers, audio.num_hidden_layers);
+  const dim = (c: any) => c.head_dim ?? c.hidden_size / c.num_attention_heads;
+  const heads = (c: any) => c.num_key_value_heads ?? c.num_attention_heads;
+  return {
+    kvWindows: [
+      { elements: 2 * layers * heads(text) * dim(text), window: text.sliding_window },
+      { elements: 2 * layers * heads(audio) * dim(audio) * pool, window: Math.ceil(audio.sliding_window / pool) + 1 },
+    ],
+  };
 }
 
 /** A whisper.cpp model: `ggml-….bin` starting with ggml's magic (0x67676d6c, little-endian). */
