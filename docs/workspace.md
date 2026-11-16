@@ -1135,6 +1135,15 @@ jobs").
   to the 16 MiB, not the cut a call's result gets. A machine's SSH helper sends all of a command's
   output across its pipe, in frames of at most `MAX_BODY`; the cut is
   lyricad's.
+- **What she is told:** her `bash` tool carries Lyrica's own description
+  (`bashDescription`), not Pi's, whose "full output is saved to a temp file"
+  never happens here (`capOutput` keeps what reaches Pi under its limits). It
+  says long output comes back as its start and end, that every call's whole
+  output is kept encrypted up to 16 MiB for `jobs output`, and so never to
+  `tee` output to a file or cut it with `tail`, `head` or `grep`, since a
+  pipe's cut is what gets kept. A subagent, with no `jobs` tool, gets only
+  the first part. The `jobs` description names the same limit, and a started
+  job's reply says `jobs output` reads it live.
 - **Her way to it:** under a result that was cut, one line says it is kept
   (`keptLine`: "The whole output is kept as c7: jobs output with id c7 reads
   it in pages (from, lines), or finds lines with pattern."). `jobs output`

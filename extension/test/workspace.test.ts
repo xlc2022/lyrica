@@ -8,7 +8,7 @@ import type { ExecutionTarget, ThreadGitRepository, ThreadMachine, ThreadMcpServ
 import { Type } from "typebox";
 import { afterEach, describe, expect, it } from "vitest";
 import { BASH_TIMEOUT_S, createDownloadsExtension, pageTool, createMcpServersExtension, createModelsExtension, filesFor, type DownloadsHost, createWorkspaceExtension, setToolsOff, toolsLine, type ApprovalRequest, type ModelsHost, type ServingProposal, type ThreadTools } from "../src/index.ts";
-import { BUILD_THERE, callEnd, checkUnder, keptLine, sandboxReachesMachine, sshRefusal, editArguments, FORMATS_LINE, grantKey, pathArguments, insertsOnly, LINK_LINE, READ_ONLY_CHAT, describe as describePrompt } from "../src/workspace.ts";
+import { BUILD_THERE, bashDescription, callEnd, checkUnder, keptLine, sandboxReachesMachine, sshRefusal, editArguments, FORMATS_LINE, grantKey, pathArguments, insertsOnly, LINK_LINE, READ_ONLY_CHAT, describe as describePrompt } from "../src/workspace.ts";
 import { testMcpServer } from "../../core/test/mcp-server.ts";
 import { cleanRepos, git, localTarget, repo, saved } from "./git-repo.ts";
 import { freshKeyring, profile } from "../../core/test/helpers.ts";
@@ -1322,4 +1322,13 @@ it("tells a bash call's end from how Pi's bash ended", () => {
 it("reads a command's kept output in pages: its end by default, from a line, or the lines a pattern matches", async () => {
   const { results } = await run("auto", [fauxToolCall("jobs", { action: "output", id: "j1", from: 1, lines: 1 })], { jobs: [] });
   expect(results[0]).toContain("Lines 1-1 of 1:\n1  half way");
+});
+
+it("tells her bash's whole output is kept, not saved to a temp file, and not to tee or cut it", () => {
+  const withJobs = bashDescription(true);
+  expect(withJobs).not.toMatch(/temp file/);
+  expect(withJobs).toContain("up to 16 MiB a command (its first 1 MiB and its latest 15 MiB)");
+  expect(withJobs).toMatch(/never save output to a file with tee/);
+  // A subagent has no jobs tool, so its description promises nothing to read it with.
+  expect(bashDescription(false)).not.toMatch(/jobs output|tee/);
 });
