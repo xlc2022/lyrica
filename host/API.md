@@ -777,7 +777,7 @@ A **download**:
 
 The chat, embedding, voice and dictation models worth starting with, each
 pinned to a revision (`host/src/text-starters.ts`; image starters are
-recipes, below). The dashboard's Starters and Lyrica's Download text model
+recipes, below). The dashboard's and Lyrica's Download text model pages
 read the same list.
 
 - `GET /host/v1/text-starters` → `{ starters }`: those the host's servers

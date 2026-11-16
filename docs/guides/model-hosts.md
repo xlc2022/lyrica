@@ -450,9 +450,10 @@ Three ways a model gets into the library:
 
 The owner chose the voice and Whisper after the benchmark; Voxtral came
 later. The host's README names them and the exact revisions. Lyrica's
-**Download text model** (Models, Downloads) and the dashboard's Models
-section offer them under **Starters**, at these revisions, beside the chat
-and embedding starters; **Download** there is the quickest way. Lyrica
+**Download text model** (Models, Downloads) and the dashboard's own
+**Download text model** (under Text models) offer them under **Starters**,
+at these revisions, beside the chat and embedding starters; picking one
+and **Download** there is the quickest way. Lyrica
 lists a host's starters only once that host is on a 2026-11-16 or later
 release (Update…). A starter shows only where the host runs its server:
 the voice on every host (on the CPU except on NVIDIA), dictation on hosts
@@ -518,7 +519,7 @@ GPU says which servers it may run and how much memory to keep free.
 A host can also give llama.cpp models part of its system RAM, so a model
 or quant bigger than its GPUs still runs, slower. It is off until you set
 **System RAM** in GB: in the host's **Edit** drawer under Models, Hosts
-and endpoints, or on its dashboard's GPUs page. A 96 GB machine allows up
+and endpoints, or on its dashboard's Overview. A 96 GB machine allows up
 to 76 GB, leaving room for llama.cpp's prompt cache and the system. A
 model uses it only when you tick its own **System RAM** setting (in
 Lyrica's Serving settings or the dashboard's model Settings) and give it a
@@ -786,8 +787,8 @@ setting survives a rescan of the host's models folder.
 Memory recall searches by words, and by meaning too once the
 **Embeddings** row of Models, Tasks has a model; without one nothing
 breaks, recall is keyword-only. Download the **Qwen3 Embedding 0.6B**
-starter (Q8_0) under Starters in Lyrica's Download text model or on the
-host's dashboard; the host
+starter (Q8_0) under Starters in Download text model, Lyrica's or the
+host dashboard's; the host
 serves it with llama.cpp as an embedding model by itself, on a GPU or the
 CPU. Put it in the Embeddings row for both the General and the Private
 column, since private and local-only threads only use the Private one.
@@ -807,7 +808,7 @@ A chat model that can't see images (DeepSeek V4 Flash, say) gets the
 first model in the **Look at images** row of Models, Tasks and hands back
 its words. Download the **Qwen3.5 4B** starter (Q4_K_M with its projector,
 about 3.4 GB, 6.5 GB of GPU memory at a 32K context) under Starters
-(Download text model, or the dashboard) and put it first in that row for
+(Download text model, Lyrica's or the dashboard's) and put it first in that row for
 both columns. It names files with one clean name and copies a screenshot's
 text word for word; on a CMP 100-210 it answers a 1080p screenshot in
 about 1.2 s and a 12 MP photo in about 3.3 s. On a card with 4 GB, use
