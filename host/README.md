@@ -204,7 +204,8 @@ models only: no vLLM and no images.
 With `--tailscale NAME`, the stack joins your tailnet as a device of its own,
 named `NAME`. It asks once for an auth key, which is removed from `.env` once
 the device has joined. With `--no-lan` as well, the host is reachable only
-over Tailscale.
+over Tailscale. Without it, the host isn't on the tailnet even when the
+machine is: it doesn't listen on the machine's own Tailscale address.
 
 ## The dashboard
 
@@ -659,8 +660,8 @@ per host, and Lyrica's router filters create tiers by it.
 1. On the dashboard, choose **Pair with Lyrica**. A code like
    `7KQ2-M9XD-4RTB-W1HZ` appears there; it is never logged. It works once,
    for 10 minutes.
-2. In Lyrica, add the host with its addresses (`192.168.1.20`, or its
-   tailnet name) and the code. The steps are in the
+2. In Lyrica, add the host with its addresses (`192.168.1.20`, or the
+   tailnet name from `--tailscale NAME`) and the code. The steps are in the
    [model hosts guide](../docs/guides/model-hosts.md#pair-it-with-lyrica).
 
 Paired Lyrica servers are listed on the dashboard, where they can be

@@ -345,6 +345,10 @@ address.
    (LAN address first, tailnet name second, say) and the pairing code.
    A tailnet address or name works when Lyrica is on that tailnet itself
    (Administration, Tailnet): she reaches it through her own tailscaled.
+   The tailnet name is the host's own device from `--tailscale NAME`, not
+   the machine's: the host doesn't listen on the machine's own Tailscale
+   address, so pairing there fails with "nothing there takes connections
+   on port 7236".
    On a Debian install from before 2026-10-22, re-run `install.sh` once
    so her tailscaled gets that proxy; NixOS gets it with the next rebuild.
    Turn on **Shared** for a host every user may use (administrators only);
