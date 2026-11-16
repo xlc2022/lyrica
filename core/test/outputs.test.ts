@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { CommandOutputs, cutMarker, KeptOutput, LiveText, migrate, openEncrypted, outputPage, sortOutputs, type CommandOutput } from "../src/index.ts";
+import { CommandOutputs, cutMarker, KeptOutput, LiveText, matchingLines, migrate, openEncrypted, outputPage, sortOutputs, type CommandOutput } from "../src/index.ts";
 import { Jobs } from "../src/workspace/jobs.ts";
 import type { ExecutionTarget } from "../src/workspace/ops.ts";
 
@@ -69,27 +69,36 @@ describe("command output", () => {
     expect(outputs.text("web/t1", "c3")).toHaveLength(big.length);
   });
 
-  it("gives her a numbered page, the next line to go on from, and matches for a pattern", () => {
+  it("gives her a numbered page, the next line to go on from, and matches for a pattern", async () => {
     const text = Array.from({ length: 500 }, (_, i) => (i === 420 ? "E: Unable to locate package nvidia-driver" : `line ${i + 1}`)).join("\n");
-    const page = outputPage(text, { from: 1, lines: 3 });
+    const page = await outputPage(text, { from: 1, lines: 3 });
     expect(page).toBe("Lines 1-3 of 500; from: 4 goes on:\n  1  line 1\n  2  line 2\n  3  line 3");
-    expect(outputPage(text, { pattern: "unable to locate" })).toBe("1 of 500 lines match:\n421  E: Unable to locate package nvidia-driver");
-    expect(outputPage(text, { pattern: "unable|refused" })).toMatch(/^1 of 500 lines match/);
+    expect(await outputPage(text, { pattern: "unable to locate" })).toBe("1 of 500 lines match:\n421  E: Unable to locate package nvidia-driver");
+    expect(await outputPage(text, { pattern: "unable|refused" })).toMatch(/^1 of 500 lines match/);
     expect(() => outputPage(text, { pattern: "(" })).toThrow(/isn't a regular expression/);
     expect(() => outputPage(text, { pattern: "(?<=E: )Unable" })).toThrow(/lookaround/);
     expect(() => outputPage(text, { pattern: "a".repeat(201) })).toThrow(/200 characters/);
     // RE2 is linear: what makes JavaScript's engine backtrack for minutes is quick here.
     const started = Date.now();
-    expect(outputPage("a".repeat(50_000) + "b", { pattern: "(a+)+$" })).toBe("No line of 1 matches (a+)+$.");
+    expect(await outputPage("a".repeat(50_000) + "b", { pattern: "(a+)+$" })).toBe("No line of 1 matches (a+)+$.");
     expect(Date.now() - started).toBeLessThan(2000);
   });
 
-  it("cuts a line too long for a page rather than leaving it out, so from always moves on", () => {
+  it("finds matching lines in one pass: anchors per line, a line once however often it matches, any script", () => {
+    const text = "ok\nE: one E: two\nok\nnée: café\nE: last";
+    expect(matchingLines(text, "^e:")).toEqual([1, 4]);
+    expect(matchingLines(text, "e:")).toEqual([1, 3, 4]);
+    expect(matchingLines(text, "caf[ée]$")).toEqual([3]);
+    expect(matchingLines(text, "^$")).toEqual([]);
+    expect(matchingLines("a\n\nb", "^$")).toEqual([1]);
+  });
+
+  it("cuts a line too long for a page rather than leaving it out, so from always moves on", async () => {
     const text = "a\n" + "x".repeat(70_000) + "\nb\n";
-    const page = outputPage(text, { from: 2, lines: 5 });
+    const page = await outputPage(text, { from: 2, lines: 5 });
     expect(page).toMatch(/^Lines 2-3 of 3:\n2  x+ \[… [\d,]+ more characters\]\n3  b$/);
     expect(page.length).toBeLessThanOrEqual(60_100);
-    expect(outputPage(text, { pattern: "xxx" })).toMatch(/^1 of 3 lines match:\n2  x+ \[…/);
+    expect(await outputPage(text, { pattern: "xxx" })).toMatch(/^1 of 3 lines match:\n2  x+ \[…/);
   });
 
   it("never splits a character between two live pieces", () => {

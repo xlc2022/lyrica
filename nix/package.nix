@@ -15,7 +15,8 @@ buildNpmPackage {
 
   # The SQLite binding loads the linux-x64.node its package ships, so nothing
   # asks npm to build it from source. python3 is for node-gyp, which builds
-  # ssh2's optional cpu-features; the first entry stops npm's warnings about
+  # re2 (its prebuilt download can't run in the sandbox, so it compiles from
+  # the sources it ships) and ssh2's optional cpu-features; the first entry stops npm's warnings about
   # nixpkgs' nodedir (nix/npm-nodedir.nix).
   nativeBuildInputs = [ (callPackage ./npm-nodedir.nix { nodejs = nodejs_24; }) python3 makeWrapper ];
   env.PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1";
