@@ -446,12 +446,18 @@ export function maskKeys(content: Buffer): Buffer {
 // Terminal control: CSI and OSC sequences, other escapes, and control characters but tab and newline.
 // eslint-disable-next-line no-control-regex
 const CONTROL = /\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)?|\x1b[@-_]|[\x00-\x08\x0b-\x1f\x7f]/g;
+// What of it is kept, for foldOutput to play as a terminal would: carriage return, backspace, and the CSI cursor
+// moves and erases (ESC[2K, ESC[1A, ESC[10G), so a progress bar reads as its latest state rather than its frames run together.
+// eslint-disable-next-line no-control-regex
+const MOVE = /^(?:[\r\b]|\x1b\[[0-9;]*[A-HJKdfsu`])$/;
+const strip = (m: string) => (MOVE.test(m) ? m : "");
 /** A line longer than this is passed on without waiting for its end. */
 const LONG_LINE = 8 * 1024;
 
 /**
  * Command output from a machine, cleaned line by line before it is passed
- * on: terminal control sequences stripped, and private-key blocks replaced
+ * on: terminal control sequences stripped but for the cursor moves and
+ * erases foldOutput plays (a line holding a key loses those too), private-key blocks replaced
  * with a marker. A partial line waits for its end, unless it gets long.
  */
 export function cleanOutput(onData: (data: Buffer) => void): { push(data: Buffer): void; end(): void } {
@@ -467,7 +473,7 @@ export function cleanOutput(onData: (data: Buffer) => void): { push(data: Buffer
       return undefined;
     }
     const begin = BEGIN.exec(clean);
-    if (!begin) return clean;
+    if (!begin) return l.replace(CONTROL, strip);
     inKey = !END.test(clean.slice(begin.index));
     return `${clean.slice(0, begin.index)}${KEY_REMOVED}`;
   };

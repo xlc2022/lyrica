@@ -1617,3 +1617,28 @@ test("a command's whole output scrolls in its row, and a named background job st
   await noHorizontalScroll(page);
   if (process.env.SCREENSHOTS) await notice.screenshot({ path: `${process.env.SCREENSHOTS}/job-notice-open-${page.viewportSize()!.width}.png` });
 });
+
+// A progress bar redrawn with \r, and lines redrawn with cursor moves, show as a terminal would: their latest state.
+test("command output folds progress redrawn in place, as a terminal shows it", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  await newThread(page, "General");
+  const threadId = threadIdOf(page.url());
+  const bar = Array.from({ length: 26 }, (_, i) => `\rmodel.gguf ${String(i * 4).padStart(3)}% ${"#".repeat(i)}${".".repeat(25 - i)} ${(i * 0.0496).toFixed(2)} GB`).join("");
+  const layers = ["Downloading 0.61GB", "Downloading 1.20GB", "Pull complete"]
+    .map((s) => `\x1b[2A\x1b[2Kcbb9175a9bc5 \x1b[33m${s}\x1b[0m\n\x1b[2K4f4fb700ef54 ${s}\n`).join("");
+  const output = `Fetching model.gguf\n${bar}\ncbb9175a9bc5 Waiting\n4f4fb700ef54 Waiting\n${layers}Done\n`;
+  const job = { id: "c1", call: "b1", kind: "call", place: "sandbox", command: "./fetch.sh", cwd: "/workspace", startedAt: "2026-11-16T05:00:00Z",
+    endedAt: "2026-11-16T05:01:00Z", state: "exited", exitCode: 0, bytes: Buffer.byteLength(output), dropped: 0 };
+  await page.route(`**/api/u/${userId}/threads/general/${encodeURIComponent(threadId)}/outputs?call=b1`, (route) => route.fulfill({ json: { job, output } }));
+  await page.route(`**/api/u/${userId}/threads/general/${encodeURIComponent(threadId)}/messages`, (route) => route.fulfill({ json: {
+    messages: [{ id: `e:${threadId}#1`, n: 1, role: "assistant", createdAt: "2026-11-16T05:01:00Z", parts: [
+      { type: "tool", toolCallId: "b1", name: "bash", args: { command: "./fetch.sh" }, result: "Done", isError: false },
+      { type: "text", text: "The model is fetched." },
+    ] }], hasMore: false,
+  } }));
+  await page.goto(page.url());
+  await page.locator(".marker[data-type='tool']").getByRole("button", { name: /bash/ }).click();
+  const box = page.locator(".marker-body .command-output pre.read-body");
+  await expect(box).toHaveText("Fetching model.gguf\nmodel.gguf 100% ######################### 1.24 GB\ncbb9175a9bc5 Pull complete\n4f4fb700ef54 Pull complete\nDone\n");
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/output-folded-${page.viewportSize()!.width}.png` });
+});

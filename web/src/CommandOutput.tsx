@@ -2,6 +2,7 @@
 // and the thread's background jobs in the Jobs dropdown on the facts line, each streaming while it runs.
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { get, type CommandOutputInfo, type CommandOutputText, type OutputEvent } from "./api.ts";
+import { Terminal } from "../../core/src/workspace/terminal.ts";
 import { CopyButton } from "./CopyButton.tsx";
 import { Icon } from "./icons.tsx";
 import { ErrorText, useDismiss, useInView } from "./ui.tsx";
@@ -60,6 +61,8 @@ export function OutputBox({ base, call, id, running, fallback, failed, label }: 
     let live = true;
     let loaded = false;
     const early: OutputEvent[] = [];
+    // Played as a terminal shows it: a progress bar redrawn with \r or cursor moves keeps only its latest state.
+    const term = new Terminal();
     const add = (e: OutputEvent) => {
       if (e.to <= seen.current) return;
       // Part of it already here (sent while the view loaded): only the rest. A gap: lyricad skipped a flood's middle.
@@ -67,7 +70,9 @@ export function OutputBox({ base, call, id, running, fallback, failed, label }: 
       if (e.at < seen.current) piece = new TextDecoder().decode(utf8.encode(e.data).subarray(seen.current - e.at));
       else if (e.at > seen.current) piece = `\n[… ${(e.at - seen.current).toLocaleString("en-US")} bytes skipped while it streamed …]\n${piece}`;
       seen.current = e.to;
-      setText((t) => { const next = (t ?? "") + piece; return next.length > LIVE_CHARS ? next.slice(next.length - LIVE_CHARS) : next; });
+      term.write(piece);
+      term.trimAbove(LIVE_CHARS);
+      setText(term.text());
     };
     // Listened to from the start: a bash call's row only learns it started a job once its output is read.
     const off = listen(outputListeners, base, (e: OutputEvent) => {
@@ -80,7 +85,9 @@ export function OutputBox({ base, call, id, running, fallback, failed, label }: 
       loaded = true;
       seen.current = r.job.bytes;
       setInfo(r.job);
-      setText(r.output);
+      term.write(r.output);
+      term.trimAbove(LIVE_CHARS);
+      setText(term.text());
       setMissing(false);
       for (const e of early.splice(0)) add(e);
     }, (e: Error & { status?: number }) => {
