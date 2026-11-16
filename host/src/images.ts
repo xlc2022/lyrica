@@ -898,6 +898,8 @@ export class Images {
         }
         values.width = int(body, "width", 256, max, 16) ?? values.width!;
         values.height = int(body, "height", 256, max, 16) ?? values.height!;
+        const mp = template.maxMegapixels;
+        if (mp && Number(values.width) * Number(values.height) > mp * 1e6) throw invalid(`This recipe makes at most ${mp} megapixels: ask for a smaller size.`);
       }
       const refs = body.references;
       if (refs !== undefined) {

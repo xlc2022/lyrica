@@ -1343,8 +1343,10 @@ the action is `invalid`.
   custom workflow without `$count`, which makes one image at a time
   (P-H3-Image's and MiniMax-H3-Image's). `width` and `height` are multiples
   of 16 from 256 to 2048, or to the template's `maxSide` (P-H3-Image's is
-  4096, for its native 8 megapixels); a recipe's `width` and `height`
-  defaults take the same limit. Instead of a size, `aspectRatio`
+  4096, for its native 8 megapixels; MiniMax-H3-Image's 6272, for 16
+  megapixels at 21:9); a recipe's `width` and `height` defaults take the
+  same limit. A template's `maxMegapixels` also caps their product
+  (MiniMax-H3-Image's 20, the top of its card's working range). Instead of a size, `aspectRatio`
   (`width:height`, 1:8 to 8:1) keeps the recipe's area in that shape: past
   the limit (or under 256) both sides scale by one factor, so the shape
   holds, then go on a 16-pixel grid. A host from before this refuses the

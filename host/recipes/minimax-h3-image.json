@@ -37,9 +37,9 @@
     "cfg": 1,
     "sampler": "euler",
     "scheduler": "simple",
-    "width": 2048,
-    "height": 2048,
-    "editMegapixels": 4
+    "width": 4096,
+    "height": 4096,
+    "editMegapixels": 16
   },
   "backend": "comfyui"
 }
