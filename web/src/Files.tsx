@@ -17,7 +17,7 @@ import { her } from "./name.ts";
 import { go } from "./route.ts";
 import { Crumbs, Main, PanelButtons, usePanel, type ShellContext } from "./Shell.tsx";
 import { SEARCH_TIP } from "./CommandOutput.tsx";
-import { ConfirmDialog, Dialog, ErrorText, InlineRename, menuArrows, useLongPress, useSelection } from "./ui.tsx";
+import { ConfirmDialog, Dialog, ErrorText, InlineRename, menuArrows, nameFocus, useLongPress, useSelection } from "./ui.tsx";
 
 type Tab = "files" | MediaTab | "artifacts";
 /** The tabs that are a grid of one kind of file, each the route that lists them. */
@@ -419,7 +419,7 @@ export function FilesPage({ ctx, pool, threadId, threads, path }: { ctx: ShellCo
     if (renaming === e.path) {
       return (
         <div key={e.path} className="frow" style={{ paddingLeft: 6 + depth * 14 }}>
-          <InlineRename className="fname" value={e.name} label="New name" onSave={(n) => n.includes("/") ? Promise.reject(new Error("A name can't contain /")).catch(fail) : rename(e.path, n).catch(fail)} onDone={() => setRenaming(undefined)} />
+          <InlineRename className="fname" value={e.name} file={!isDir} label="New name" onSave={(n) => n.includes("/") ? Promise.reject(new Error("A name can't contain /")).catch(fail) : rename(e.path, n).catch(fail)} onDone={() => setRenaming(undefined)} />
         </div>
       );
     }
@@ -796,13 +796,6 @@ function Item({ label, kbd, danger, onClick }: { label: ReactNode; kbd?: string;
       <span>{label}</span>{kbd && <kbd>{kbd}</kbd>}
     </button>
   );
-}
-
-/** A name field opens on the name's start, selected up to a file's extension, so typing keeps ".mp4". */
-function nameFocus(input: HTMLInputElement, file: boolean) {
-  const dot = file ? input.value.lastIndexOf(".") : -1;
-  input.setSelectionRange(0, dot > 0 ? dot : input.value.length);
-  input.scrollLeft = 0;
 }
 
 /** The right-click menu: Attach, Select, Show in thread, Download, Copy path; Rename and Delete where the folder is writable; Upload and New folder on a folder. */
