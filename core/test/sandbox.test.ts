@@ -550,6 +550,12 @@ describe.skipIf(!runnable)("the Files panel", () => {
     expect((await f.list(p("ro"))).entries.map((e) => e.name)).toEqual(["song.txt"]);
     const hits = await f.search("/workspace", "PLA");
     expect(hits.entries.map((e) => e.path)).toEqual(["/workspace/notes/plan.md"]);
+    // A wildcard fits the whole name; /…/ is a regular expression (RE2); case ignored either way.
+    expect((await f.search("/workspace", "*.TXT")).entries.map((e) => e.path)).toEqual(["/workspace/zebra.txt"]);
+    expect((await f.search("/workspace", "plan.*")).entries.map((e) => e.path)).toEqual(["/workspace/notes/plan.md"]);
+    expect((await f.search("/workspace", "zebr?.txt")).entries.map((e) => e.path)).toEqual(["/workspace/zebra.txt"]);
+    expect((await f.search("/workspace", "/^(PLAN|zebra)\\./")).entries.map((e) => e.path).sort()).toEqual(["/workspace/notes/plan.md", "/workspace/zebra.txt"]);
+    await expect(f.search("/workspace", "/(?<=x)y/")).rejects.toThrow(/lookaround/);
     await expect(f.list("/etc")).rejects.toThrow(FilesRefused);
     await expect(f.list(p("rw", "..", "outside"))).rejects.toThrow(FilesRefused);
   });

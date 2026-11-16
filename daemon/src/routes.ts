@@ -1477,7 +1477,8 @@ export function apiRoutes(d: Lyricad): Route[] {
       const thread = owner(d, user, (o) => threadOf(o, r));
       const sort = r.query.get("sort") ?? "newest";
       if (!["newest", "oldest", "running", "longest"].includes(sort)) throw new HttpError(400, "sort is newest, oldest, running or longest");
-      return s().workspace.jobList({ userId: user.id, pool, threadId: thread.id }, r.query.get("q") ?? "", sort as OutputSort);
+      try { return s().workspace.jobList({ userId: user.id, pool, threadId: thread.id }, r.query.get("q") ?? "", sort as OutputSort); }
+      catch (e) { if (/^pattern /.test((e as Error).message)) throw new HttpError(400, (e as Error).message); throw e; }
     }),
     route("PUT", `${t}/pin`, (r) => pinThread(d, d.userFor(r), r, true)),
     route("DELETE", `${t}/pin`, (r) => pinThread(d, d.userFor(r), r, false)),
@@ -1676,7 +1677,8 @@ export function apiRoutes(d: Lyricad): Route[] {
       return { roots: f.roots(), dir, ...listing, entries: withOrigins(r, listing.entries, listing.more ? undefined : dir) };
     }),
     route("GET", `${t}/files/search`, async (r): Promise<Api.FileSearch> => {
-      const found = await refused(() => files(r).search(r.query.get("root") || WORKDIR, r.query.get("q") ?? ""));
+      const found = await refused(() => files(r).search(r.query.get("root") || WORKDIR, r.query.get("q") ?? ""))
+        .catch((e: Error) => { if (/^pattern /.test(e.message)) throw new HttpError(400, e.message); throw e; });
       return { ...found, entries: withOrigins(r, found.entries) };
     }),
     route("GET", `${t}/files/images`, async (r): Promise<Api.ImageEntry[]> => withOrigins(r, await refused(() => files(r).images()))),

@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { CommandOutputs, cutMarker, KeptOutput, LiveText, matchingLines, migrate, openEncrypted, outputPage, sortOutputs, type CommandOutput } from "../src/index.ts";
+import { CommandOutputs, cutMarker, KeptOutput, LiveText, matchingLines, migrate, readSearch, searchTest, openEncrypted, outputPage, sortOutputs, type CommandOutput } from "../src/index.ts";
 import { Jobs } from "../src/workspace/jobs.ts";
 import type { ExecutionTarget } from "../src/workspace/ops.ts";
 
@@ -54,6 +54,12 @@ describe("command output", () => {
     expect(outputs.list("web/t1", "job", "MANIFEST").map((j) => j.id)).toEqual(["j1"]);
     expect(outputs.list("web/t1", "job", "host images").map((j) => j.id)).toEqual(["j1"]);
     expect(outputs.list("web/t1", "job", "compose").map((j) => j.id)).toEqual(["j2"]);
+    // /…/ is a regular expression (RE2), and * or ? a wildcard anywhere: over the name, the command and the output.
+    expect(outputs.list("web/t1", "job", "/^error: \\w+ unknown$/").map((j) => j.id)).toEqual(["j1"]);
+    expect(outputs.list("web/t1", "job", "/compose|host images/").map((j) => j.id).sort()).toEqual(["j1", "j2"]);
+    expect(() => outputs.list("web/t1", "job", "/(?=x)/")).toThrow(/lookaround/);
+    expect(outputs.list("web/t1", "job", "docker * build").map((j) => j.id)).toEqual(["j2"]);
+    expect(outputs.list("web/t1", "job", "manifest unkn?wn").map((j) => j.id)).toEqual(["j1"]);
     db.prepare("DELETE FROM threads WHERE id = 'web/t1'").run();
     expect(outputs.list("web/t1", "job")).toEqual([]);
   });
@@ -94,6 +100,17 @@ describe("command output", () => {
     expect(matchingLines("x\n".repeat(1000), "x", 3)).toEqual([0, 1, 2]);
     // Her page stops counting past the matches it can show.
     expect(outputPage("e: x\n".repeat(5000), { pattern: "e:" })).toMatch(/^200 or more of 5,000 lines match; the first 200:/);
+  });
+
+  it("reads a search box: /…/ a regular expression, * or ? a wildcard, anything else text", () => {
+    expect(readSearch(" /^a.c$/ ")).toEqual({ kind: "regex", pattern: "^a.c$" });
+    expect(readSearch("file-*.xyz")).toEqual({ kind: "glob", glob: "file-*.xyz" });
+    expect(readSearch("notes")).toEqual({ kind: "text", text: "notes" });
+    const whole = searchTest(readSearch("file.*"), true);
+    expect(["file.txt", "FILE.md", "profile.txt", "file"].map(whole)).toEqual([true, true, false, false]);
+    const glob = searchTest(readSearch("file-?.xyz"), true);
+    expect(["file-1.xyz", "file-12.xyz", "file-1Xxyz"].map(glob)).toEqual([true, false, false]);
+    expect(searchTest(readSearch("*.txt"), false)("cat a.TXT b")).toBe(true);
   });
 
   it("cuts a line too long for a page rather than leaving it out, so from always moves on", async () => {

@@ -1569,6 +1569,15 @@ test("a command's whole output scrolls in its row, and a named background job st
   // Search covers the output; Sort is kept in this browser.
   await pop.getByRole("searchbox", { name: "Search jobs" }).fill("tick 17");
   await expect(pop.locator(".job-card")).toHaveCount(1);
+  // /…/ reads as a regular expression, * or ? as a wildcard.
+  await pop.getByRole("searchbox", { name: "Search jobs" }).fill("/^tick 3[0-9]$/");
+  await expect(pop.locator(".job-card")).toHaveCount(1);
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/jobs-regex-${page.viewportSize()!.width}.png` });
+  await pop.getByRole("searchbox", { name: "Search jobs" }).fill("tick 3?");
+  await expect(pop.locator(".job-card")).toHaveCount(1);
+  await pop.getByRole("searchbox", { name: "Search jobs" }).fill("/(?<=tick )1/");
+  await expect(pop.getByRole("alert")).toContainText("lookaround and backreferences aren't supported");
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/jobs-regex-error-${page.viewportSize()!.width}.png` });
   await pop.getByRole("searchbox", { name: "Search jobs" }).fill("no such line");
   await expect(pop.getByText("No job matches.")).toBeVisible();
   await pop.getByRole("searchbox", { name: "Search jobs" }).fill("");

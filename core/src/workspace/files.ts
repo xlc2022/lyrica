@@ -6,6 +6,7 @@
 import { posix } from "node:path";
 import { Readable } from "node:stream";
 import { crc32 } from "node:zlib";
+import { readSearch, searchTest } from "../store/outputs.ts";
 import type { ByteRange } from "./images.ts";
 import { looksLikeText, sniffImage } from "./ops.ts";
 import { SHARED, Sandbox, SandboxDenied, WORKDIR } from "./sandbox.ts";
@@ -45,6 +46,8 @@ export const FRAME_SIDE = 768;
 const FRAME_TIMEOUT_MS = 20_000;
 export const LIST_LIMIT = 2000;
 export const SEARCH_LIMIT = 200;
+/** A regular expression search reads at most this many names under a root. */
+export const REGEX_SCAN_LIMIT = 100_000;
 /** At most this many clips are probed for their length in one listing; the rest are probed on the next. */
 export const PROBE_LIMIT = 100;
 export const ZIP_FILES_LIMIT = 10_000;
@@ -181,11 +184,26 @@ export class ThreadFiles {
     return out;
   }
 
-  /** Files and folders under `root` whose name contains `query` (case ignored), stopping at the cap. */
+  /**
+   * Files and folders under `root` by name, case ignored, stopping at the cap, the query read as a search box reads it
+   * (`readSearch`): text the name contains, a wildcard pattern the whole name fits (`*.txt`, through find's own
+   * `-iname`), or `/…/` a regular expression (RE2) matched in lyricad against each of the first REGEX_SCAN_LIMIT names
+   * under the root; `more` then also says names went unread.
+   */
   async search(root: string, query: string): Promise<FileListing> {
     const r = this.allow(root, false);
     const q = query.trim();
     if (!q) return { entries: [], more: false };
+    const read = readSearch(q);
+    if (read.kind === "glob") {
+      return this.find(["find", r, "-mindepth", "1", "-name", PANEL_DIR, "-prune", "-o", "-iname", read.glob.replace(/[\\[\]]/g, "\\$&"), "-printf", PRINTF], SEARCH_LIMIT);
+    }
+    if (read.kind === "regex") {
+      const test = searchTest(read, true);
+      const all = await this.find(["find", r, "-mindepth", "1", "-name", PANEL_DIR, "-prune", "-o", "-printf", PRINTF], REGEX_SCAN_LIMIT);
+      const hits = all.entries.filter((e) => test(e.name));
+      return { entries: hits.slice(0, SEARCH_LIMIT), more: all.more || hits.length > SEARCH_LIMIT };
+    }
     const pattern = `*${q.replace(/[\\*?[\]]/g, "\\$&")}*`;
     return this.find(["find", r, "-mindepth", "1", "-name", PANEL_DIR, "-prune", "-o", "-iname", pattern, "-printf", PRINTF], SEARCH_LIMIT);
   }

@@ -708,7 +708,10 @@ opens mid-run reads what is kept so far:
 output; `400` without `call`, `404` when none was kept),
 `GET …/outputs/:id` the same by its id, and `GET …/jobs?q=&sort=` →
 `CommandOutputInfo[]`, the thread's jobs, running and kept, `q` matching a
-name, command or output and `sort` one of `newest` (the default), `oldest`,
+name, command or output (read by `readSearch`: text, a wildcard anywhere, or
+`/…/` an RE2 regular expression, the last two run in SQLite through
+`re2_match`; `400` with the reason when it can't be read) and
+`sort` one of `newest` (the default), `oldest`,
 `running`, `longest` (`400` otherwise). They read the thread's pool through
 its thread view (docs/workspace.md, Command output).
 `live_call` carries the model request a turn waits on as counts and times
@@ -901,8 +904,11 @@ documented in `daemon/src/api.ts`, "The Files panel".
   project thread's project folder is one of its grants, so it shows as a
   root. Listings stop at 2,000 entries (`more: true`); the panel's own
   `.lyrica` folder is hidden.
-- `GET …/files/search?root=<path>&q=<text>` finds names containing the text
-  under a root (at most 200). `GET …/files/images` lists every image in the
+- `GET …/files/search?root=<path>&q=<text>` finds names under a root (at
+  most 200), `q` read by `readSearch`: text a name contains, a wildcard
+  (`*`, `?`) the whole name fits (find's `-iname`), or `/…/` a regular
+  expression (RE2, case ignored) matched in lyricad against each of the first
+  100,000 names; a pattern it can't read is `400` with the reason. `GET …/files/images` lists every image in the
   thread's folder, `uploaded` when it is in `uploads/`, otherwise `made` by her;
   `GET …/files/videos` lists every clip (`.mp4`, `.webm`) the same way, each
   with `seconds`, its length, read by `ffprobe` inside the sandbox and kept

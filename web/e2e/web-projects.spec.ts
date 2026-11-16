@@ -1433,6 +1433,14 @@ test("the Files panel: a tree one folder at a time, a file shown, search, the Im
   await panel.getByLabel("Search files").fill(tray.slice(0, 6));
   await expect(panel.getByRole("button", { name: `uploads/${tray}`, exact: true })).toBeVisible();
   await expect(panel.getByRole("button", { name: /plan\.md/ })).toHaveCount(0);
+  // A wildcard fits the whole name; /…/ is a regular expression.
+  await panel.getByLabel("Search files").fill("plan.*");
+  await expect(panel.getByRole("button", { name: /plan\.md/ }).first()).toBeVisible();
+  await expect(panel.getByRole("button", { name: `uploads/${tray}`, exact: true })).toHaveCount(0);
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/files-glob-${page.viewportSize()!.width}.png` });
+  await panel.getByLabel("Search files").fill("/^plan\\.(md|txt)$/");
+  await expect(panel.getByRole("button", { name: /plan\.md/ }).first()).toBeVisible();
+  await expect(panel.getByRole("button", { name: `uploads/${tray}`, exact: true })).toHaveCount(0);
   await panel.getByLabel("Search files").fill("");
 
   // The menu on a file: Attach puts its path in the message box.

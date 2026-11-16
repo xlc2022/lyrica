@@ -16,6 +16,7 @@ import { Icon } from "./icons.tsx";
 import { her } from "./name.ts";
 import { go } from "./route.ts";
 import { Crumbs, Main, PanelButtons, usePanel, type ShellContext } from "./Shell.tsx";
+import { SEARCH_TIP } from "./CommandOutput.tsx";
 import { ConfirmDialog, Dialog, ErrorText, InlineRename, menuArrows, useLongPress, useSelection } from "./ui.tsx";
 
 type Tab = "files" | MediaTab | "artifacts";
@@ -152,6 +153,7 @@ export function FilesPage({ ctx, pool, threadId, threads, path }: { ctx: ShellCo
   /** The row renamed in place from its Rename button. */
   const [renaming, setRenaming] = useState<string>();
   const [q, setQ] = useState("");
+  const [searchError, setSearchError] = useState("");
   const [hits, setHits] = useState<{ q: string; entries: FileEntry[]; more: boolean }>();
   const [filter, setFilter] = useState<Filter>("all");
   const [media, setMedia] = useState<Partial<Record<MediaTab, ImageEntry[]>>>({});
@@ -247,7 +249,8 @@ export function FilesPage({ ctx, pool, threadId, threads, path }: { ctx: ShellCo
     let live = true;
     const t = setTimeout(() => {
       Promise.all(roots.map((r) => get<FileSearch>(`${base}/search?root=${encodeURIComponent(r.path)}&q=${encodeURIComponent(text)}`)))
-        .then((rs) => { if (live) setHits({ q: text, entries: rs.flatMap((r) => r.entries), more: rs.some((r) => r.more) }); }, fail);
+        .then((rs) => { if (live) { setSearchError(""); setHits({ q: text, entries: rs.flatMap((r) => r.entries), more: rs.some((r) => r.more) }); } },
+          (e: Error & { status?: number }) => { if (!live) return; if (e.status === 400) { setHits({ q: text, entries: [], more: false }); setSearchError(e.message); } else fail(e); });
     }, 200);
     return () => { live = false; clearTimeout(t); };
   }, [q, roots, base]);
@@ -582,7 +585,10 @@ export function FilesPage({ ctx, pool, threadId, threads, path }: { ctx: ShellCo
       <ErrorText error={error} />
       {tab === "files" ? (
         <>
-          <div className="fsearch"><input type="search" aria-label="Search files" placeholder="Search files" value={q} onChange={(e) => setQ(e.target.value)} /></div>
+          <div className="fsearch">
+            <input type="search" aria-label="Search files" placeholder="Search files" title={SEARCH_TIP} value={q} onChange={(e) => setQ(e.target.value)} />
+          </div>
+          {q.trim() && <div className="fsearch-error"><ErrorText error={searchError} /></div>}
           <div className="fbody">
             <div ref={treeEl} className="ftree" role="tree" aria-label="Folders and files" {...both(press({ kind: "space", dir: cwd }), treeBox.drag)}>
               {tree}
