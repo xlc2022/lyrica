@@ -679,7 +679,8 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   Delete preset… confirms in a dialog.
   Rows group Conversation, Memory, Sleep, Images and Speech. A cell shows
   the first model's state, +N fallbacks or no fallback, or = Chat for a
-  shared task. Dictation has a Private cell only. The drawer names the
+  shared task. General Dictation with no list shows the Private column's
+  model and "= Private". The drawer names the
   column and preset, with **Its own list** or **Same as**, **Task to share
   with**, ordered models with Move up, Move down and Remove, and **Add…**.
   A row also drags to a new place (`useReorder` in `src/ui.tsx`, pointer
@@ -1724,12 +1725,11 @@ local/cloud chip and preset, then each model host's state as a dot and word.
 - **Dictation** and **Read aloud** are selects in the thread settings
   drawer's Models section, under Images and speech, offering only models that
   transcribe or speak; "Preset (…)" names what applies without a pick
-  (for Dictation, always the Private column's). A cloud pick for Dictation
-  first asks in a dialog naming the model (Use cloud dictation or Cancel);
-  confirmed, it is what sends that thread's voice to the cloud.
+  (for Dictation with no General list, the Private column's). A cloud pick
+  is the consent; no dialog asks.
   **Read aloud while agent writes** (`Presets.readAloudLive`) is a switch
   under Speech in Settings, Appearance. Models → Tasks has a Read aloud
-  row in both columns and a Dictation row under Private threads only, and
+  row and a Dictation row in both columns, and
   a speaking model
   in an endpoint's model list (Models → Hosts and endpoints, "N models") has
   a Settings link opening its drawer: a voice per

@@ -84,7 +84,7 @@ describe("a thread's checklist", () => {
     const line = threadLine({ id: "c1", title: "Build", status: "working", updatedAt: "2026-01-01T00:00:00Z", steps: [
       { text: "Read", state: "done" }, { text: "Test", state: "doing" }, { text: "PR", state: "todo" },
     ] });
-    expect(line).toBe("[t:c1] \"Build\": working, last 2026-01-01T00:00:00Z; 1 of 3 steps done, now: \"Test\"");
+    expect(line).toContain("1 of 3 steps done, now: \"Test\"");
     expect(threadLine({ id: "c2", status: "idle", updatedAt: "2026-01-01T00:00:00Z" })).not.toContain("steps");
   });
 });

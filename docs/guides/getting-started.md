@@ -676,9 +676,13 @@ She has no model until you add one. Each user has two columns, **Private
 threads** and **General threads**, each following a preset that maps tasks
 (main conversation, subagents, titles, sleep, dictation, read aloud and so
 on) to ordered lists of models; the first model that answers is used, and
-private and local-only threads use the Private column only. Dictation uses
-the Private column too, unless a thread picks its own model, so its
-`speech.transcribe` list goes there. See [docs/models.md](../models.md).
+private and local-only threads use the Private column only. Dictation in a
+general thread uses the General column's list when it has one (a cloud
+model such as OpenAI's `gpt-transcribe` is fine there: picking it is the
+consent), otherwise the Private column's. An OpenAI-compatible endpoint's
+models whose IDs contain `transcribe` or `whisper` are marked for Dictation
+on their own; for another name, use **Add a model by hand** and tick
+**Dictation**. See [docs/models.md](../models.md).
 
 - **A cloud or OpenAI-compatible endpoint:** Models, Hosts and endpoints,
   **Add endpoint** (Name, Kind Custom, Base URL, API key, then the Local

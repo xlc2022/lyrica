@@ -131,13 +131,9 @@ it("lets a plain sleep repeat, and a call made again after one, since time has p
   expect((await scenario([sleep, sleep, sleep, sleep])).executed).toBe(4);
   expect((await scenario([sleep, cat, sleep, cat, sleep, cat, sleep, cat])).executed).toBe(8);
   expect((await scenario([cat, cat, cat])).executed).toBe(2);
+  expect((await scenario([cat, cat, cat], 1, true)).executed).toBe(2);
   const status = { name: "bash", args: { command: "sleep 60 && git status" } };
   expect((await scenario([status, status, status])).executed).toBe(2);
-});
-
-it("refuses the third identical call in one batch", async () => {
-  const cat = { name: "bash", args: { command: "cat package.json" } };
-  expect((await scenario([cat, cat, cat], 1, true)).executed).toBe(2);
 });
 
 it("lets the same command start in the background again and again, in one batch or in turn: each is its own job", async () => {

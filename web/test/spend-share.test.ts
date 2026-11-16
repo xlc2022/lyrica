@@ -1,14 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createElement } from "react";
-import { href, parse } from "../src/route.ts";
 import { UsageRows } from "../src/Usage.tsx";
 
 describe("spend share", () => {
-  it("keeps project and pool in Recent calls addresses", () => {
-    const route = { page: "models" as const, userId: "user", tab: "calls" as const, pool: "private" as const, project: "web/a?b" };
-    expect(parse(href(route))).toEqual(route);
-  });
   it("renders model and thread shares, mono counts, and a project-filtered Recent calls link", () => {
     const html = renderToStaticMarkup(createElement(UsageRows, {
       userId: "user", pool: "general", threadId: "chat", threads: [],

@@ -13,7 +13,7 @@ import { her } from "./name.ts";
 import { modeOrder, MODES } from "./Modes.tsx";
 import { VoiceDrawer } from "./ModelsFrame.tsx";
 import type { ShellContext } from "./Shell.tsx";
-import { ConfirmDialog, ErrorText, Switch, useAction, useDismiss, useInView, useLoad } from "./ui.tsx";
+import { ErrorText, Switch, useAction, useDismiss, useInView, useLoad } from "./ui.tsx";
 
 export const CODE_MODE_HINT = "Focus on the code: a coding model, a short persona, and only this project's memory and your working preferences.";
 export const EVIDENCE_HINT = "When a code turn that changed something ends, the coding model judges the reply against what the tools showed, and sends her back once or twice if it isn't shown. Automatic judges only on a local model; a cloud model's tokens are a choice you make here.";
@@ -311,8 +311,6 @@ export function TaskSelect({ task, label, value, allowed, onChange }: {
   const current = value.source === "thread" ? refKey(value.model ?? (first && "offeringId" in first ? first : undefined)) : "";
   const fromPreset = (value.source === "preset" || value.source === "column") && value.model
     ? `${value.kind ? `${value.kind} · ` : ""}${value.modelId ? `${value.name ?? shortModel(value.modelId)} · ${value.endpointName}` : named(value)}` : "nothing set";
-  // Picking a cloud Dictation model is the consent to send this thread's voice to the cloud, so it asks first.
-  const [cloudPick, setCloudPick] = useState<{ id: string; name: string }>();
   // The count describes the select rather than naming it, so the select keeps the task's name.
   const countId = useId();
   const counted = value.fallbacks !== undefined;
@@ -324,10 +322,7 @@ export function TaskSelect({ task, label, value, allowed, onChange }: {
       {/* An option can't carry a tooltip, so the select's holds the chosen model's whole ID. */}
       <select value={current} aria-describedby={counted ? countId : undefined} title={(current ? allowed.flatMap((x) => x.models).find((m) => m.id === current)?.modelId : value.modelId) ?? undefined} onChange={(e) => {
         const id = e.target.value;
-        const ep = allowed.find((x) => x.models.some((m) => m.id === id));
-        const m = ep?.models.find((x) => x.id === id);
-        if (task === "speech.transcribe" && ep?.kind === "cloud" && m) setCloudPick({ id, name: `${modelName(m)} on ${ep.name}` });
-        else onChange(id ? { offeringId: id } : null);
+        onChange(id ? { offeringId: id } : null);
       }}>
         <option value="">Preset ({fromPreset})</option>
         {allowed.filter((ep) => ep.models.some((m) => fits(task, m))).map((ep) => (
@@ -342,11 +337,6 @@ export function TaskSelect({ task, label, value, allowed, onChange }: {
       </select>
       {value.problem && <small className="error">{value.problem}</small>}
     </label>
-    {cloudPick && (
-      <ConfirmDialog title="Send your voice to the cloud?" confirm="Use cloud dictation"
-        sentence={`In this thread, what you dictate goes to ${cloudPick.name}, a cloud service, to be written out.`}
-        onCancel={() => setCloudPick(undefined)} onConfirm={() => { onChange({ offeringId: cloudPick.id }); setCloudPick(undefined); }} />
-    )}
   </>);
 }
 

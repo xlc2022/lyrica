@@ -845,8 +845,10 @@ Two tasks, **Dictation** (`speech.transcribe`) and **Read aloud**
 (`speech.speak`), with lists of their own (they never follow chat). A model
 can do them when it has the capability: `transcribe: true`, or `speak:
 { voices: [{ id, language }] }` (a language tag such as `en` or `zh`). A host
-reports both in `/host/v1/models` (`kind` `transcribe` or `speak`); for any
-other endpoint they are set by hand (`setCapabilities`).
+reports both in `/host/v1/models` (`kind` `transcribe` or `speak`). On any
+other endpoint except a plan, a model whose ID contains `transcribe` or
+`whisper` (`namesTranscriber`) is marked `transcribe` when its list is read;
+anything else is set by hand (`addModel` or `setCapabilities`).
 
 - `transcribe(ctx, wav, { language?, signal? })` sends a 16 kHz mono WAV
   clip (at most 10 minutes) to `/v1/audio/transcriptions` and gives back
@@ -860,13 +862,14 @@ other endpoint they are set by hand (`setCapabilities`).
   private or local-only context uses local models only, and a host is
   called through `fetchFor`. The caller records the call
   (`recordCall(…, { audioSeconds })`), never with text.
-- **A cloud model hears a voice only when the thread picked it.**
-  `transcribe` and `speechModel` run Dictation in `voiceContext(ctx)`: the
-  thread's own Dictation list when it has one (a branch inherits it),
-  otherwise the context made local-only, so the Private column's list
-  answers and a cloud model can't. Read aloud sends message text, so it
-  follows the router's rules alone. (`thread_choices.voice_cloud`, the old
-  switch, is no longer read.)
+- **A cloud model hears a voice only when it was picked.** Dictation
+  resolves like any task: the thread's own list (a branch inherits it),
+  then the column's; a private or local-only context uses local models
+  only. A general context with no Dictation list of its own or in its
+  column runs local-only (`dictationContext`), so the Private column's
+  list answers and a cloud model, a group's cloud copy included, hears
+  nothing unpicked. Picking one is the consent; nothing asks again.
+  (`thread_choices.voice_cloud`, the old switch, is no longer read.)
 - **Fallbacks** go through `callWithFallback`. When a call can't be made
   (the endpoint can't be reached or doesn't answer in time, a host answers
   one of its away codes, or another endpoint answers 5xx or 429), the

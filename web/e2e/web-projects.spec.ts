@@ -75,7 +75,7 @@ test("dictation goes in at the caret, Read aloud plays her reply, and a speech s
     await page.emulateMedia({ colorScheme: null });
   };
   const message = page.getByLabel("Message", { exact: true });
-  // Without a pick in the thread, Dictation is the local profile's model, even in a cloud-profile thread.
+  // With no General Dictation list, Dictation is the Private column's model, even in a cloud-profile thread.
   const mic = page.getByRole("button", { name: "Dictate" });
   await expect(mic).toBeEnabled();
   // Dictation and Read aloud selects in the drawer's Models, offering only models that transcribe or speak; a cloud pick is this thread's.
@@ -83,16 +83,9 @@ test("dictation goes in at the caret, Read aloud plays her reply, and a speech s
   const dictation = drawer.getByRole("combobox", { name: "Dictation" });
   await expect(dictation.locator("option")).toHaveText(["Preset (local · whisper · speech)", "cloud · whisper · openai", "local · whisper · speech"]);
   await expect(drawer.getByLabel("Voice to cloud")).toHaveCount(0);
-  // A cloud pick asks first: Cancel (or Escape) keeps the profile's, and the drawer stays open.
-  const ask = page.getByRole("dialog", { name: "Send your voice to the cloud?" });
+  // A cloud pick is the consent: no dialog.
   await dictation.selectOption({ label: "cloud · whisper · openai" });
-  await expect(ask).toContainText("whisper on openai");
-  await shot("dictation-cloud-confirm");
-  await page.keyboard.press("Escape");
-  await expect(ask).toHaveCount(0);
-  await expect(dictation.locator("option:checked")).toHaveText("Preset (local · whisper · speech)");
-  await dictation.selectOption({ label: "cloud · whisper · openai" });
-  await ask.getByRole("button", { name: "Use cloud dictation" }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(dictation.locator("option:checked")).toHaveText("cloud · whisper · openai");
   await shot("dictation-select");
   await drawer.getByRole("button", { name: "Close" }).click();
@@ -156,13 +149,15 @@ test("dictation goes in at the caret, Read aloud plays her reply, and a speech s
   }
 });
 
-test("a speaking model's Settings drawer sets its voice and clamps its speed; only the Private column has Dictation", async ({ page, baseURL }) => {
+test("a speaking model's Settings drawer sets its voice and clamps its speed; General Dictation follows Private until set", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   await page.goto(`/#/u/${encodeURIComponent(userId)}/models/tasks`);
   await expect(page.getByRole("heading", { level: 1, name: "Tasks" })).toBeVisible();
-  // Dictation is only in the Private threads column; a cloud model hears a voice only when a thread picks it.
-  await expect(page.locator('tr[data-task="speech.transcribe"] [data-col="General threads"]')).toHaveCount(0);
+  // General Dictation with no list of its own shows and uses the Private column's model.
   await expect(page.locator('tr[data-task="speech.transcribe"] [data-col="Private threads"]')).toContainText("whisper");
+  await expect(page.locator('tr[data-task="speech.transcribe"] [data-col="General threads"]')).toContainText("whisper");
+  await expect(page.locator('tr[data-task="speech.transcribe"] [data-col="General threads"]')).toContainText("= Private");
+  if (process.env.SCREENSHOTS) await page.locator('tr[data-task="speech.transcribe"]').screenshot({ path: `${process.env.SCREENSHOTS}/tasks-dictation-${page.viewportSize()!.width}.png` });
   await expect(page.locator('tr[data-task="speech.speak"] [data-col="Private threads"]')).toContainText("kokoro");
   await expect(page.locator('tr[data-task="speech.speak"] [data-col="General threads"]')).toContainText("kokoro");
   // Read aloud's picker offers only models that speak: kokoro on speech is already in the list, so nothing else is left.
@@ -175,6 +170,9 @@ test("a speaking model's Settings drawer sets its voice and clamps its speed; on
   // The speech endpoint's models, under Models → Hosts and endpoints.
   await page.goto(`/#/u/${encodeURIComponent(userId)}/models/hosts`);
   await page.locator("li.ep-row").filter({ hasText: /^speech/ }).getByRole("button", { name: /models$/ }).click();
+  // whisper's name marks it for Dictation.
+  await expect(page.locator('ul[aria-label="speech models"] li').filter({ hasText: "whisper" }).locator(".pill", { hasText: "dictation" })).toBeVisible();
+  if (process.env.SCREENSHOTS) await page.locator('ul[aria-label="speech models"]').screenshot({ path: `${process.env.SCREENSHOTS}/model-list-dictation-${page.viewportSize()!.width}.png` });
   await page.getByRole("button", { name: "kokoro settings" }).first().click();
   const drawer = page.getByRole("complementary", { name: "kokoro settings" });
   await drawer.evaluate((el) => Promise.all(el.getAnimations().map((a) => a.finished)));
@@ -259,22 +257,6 @@ async function apiGet<T>(page: Page, path: string): Promise<T> {
   return r.body as T;
 }
 
-test("opening and closing home tools creates no thread", async ({ page, baseURL }) => {
-  const userId = await enter(page, baseURL!);
-  await page.goto(`/#/u/${userId}`);
-  const threads = async () => (await apiGet<{ id: string; createdAt: string }[]>(page, `/api/u/${userId}/threads`)).map((t) => t.id).sort();
-  // The shared lyricad may still be finishing an earlier test's threads: start from a list that has settled.
-  const box = page.locator(".home-box");
-  await expect(box).toBeVisible();
-  let before = await threads();
-  await expect.poll(async () => { const now = await threads(); const same = JSON.stringify(now) === JSON.stringify(before); before = now; return same; }, { intervals: [500] }).toBe(true);
-  await box.getByRole("button", { name: "Attach or switch tools" }).click();
-  await expect(box.getByRole("checkbox", { name: "Images", exact: true })).toBeVisible();
-  await page.keyboard.press("Escape");
-  await expect(box.getByRole("menu", { name: "Attach and tools" })).toHaveCount(0);
-  expect(await threads()).toEqual(before);
-});
-
 test("home attachments and tool switches stay local until send and follow the selected pool", async ({ page, baseURL }) => {
   needsSandbox();
   const userId = await enter(page, baseURL!);
@@ -304,7 +286,8 @@ test("home attachments and tool switches stay local until send and follow the se
   await box.getByRole("button", { name: "Attach or switch tools" }).click();
   await expect(box.getByRole("checkbox", { name: "Images", exact: true })).not.toBeChecked();
   await page.keyboard.press("Escape");
-  expect(await threads()).toEqual(before);
+  // No thread was made. Ids only: an earlier test's thread may still get its title meanwhile.
+  expect((await threads()).map((t) => t.id)).toEqual(before.map((t) => t.id));
   expect(uploads).toEqual([]);
   await expect(box.getByRole("menu", { name: "Mode", exact: true })).toHaveCount(0);
   await noHorizontalScroll(page);

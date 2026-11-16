@@ -73,7 +73,8 @@ export async function enter(page: Page, baseURL: string): Promise<string> {
       await api("PATCH", `/offerings/${whisper}`, { transcribe: true });
       await api("PATCH", `/offerings/${kokoro}`, { speak: { voices: [{ id: "af_heart", language: "en" }, { id: "zf_xiaobei", language: "zh" }] } });
       const column = kind === "local" ? "private" : "general";
-      await api("PUT", `/columns/${column}/speech.transcribe`, { model: { offeringId: whisper } });
+      // General Dictation stays unset, so it uses the Private column's model until a thread picks one.
+      if (kind === "local") await api("PUT", `/columns/${column}/speech.transcribe`, { model: { offeringId: whisper } });
       await api("PUT", `/columns/${column}/speech.speak`, { model: { offeringId: kokoro } });
     }
   }

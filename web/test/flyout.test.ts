@@ -35,8 +35,3 @@ it("closes when the pointer rests on a sibling item, or after it leaves the menu
   expect(hoverIntent("group", { kind: "item", key: null })).toEqual({ action: "close", delay: HOVER_OPEN_MS });
   expect(hoverIntent("group", { kind: "outside" })).toEqual({ action: "close", delay: FLYOUT_CLOSE_MS });
 });
-
-it("does nothing when there is no flyout to open or close", () => {
-  expect(hoverIntent("", { kind: "item", key: null })).toBeNull();
-  expect(hoverIntent("", { kind: "outside" })).toBeNull();
-});

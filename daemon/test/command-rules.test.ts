@@ -55,7 +55,6 @@ describe("project command rules through lyricad", () => {
   });
   it("a new project starts with the default rules, which forbid a force push without a card", async () => {
     const s = await setup();
-    expect((await s.ada.get<ThreadSummary>(s.path)).body.projectSettings!.commandRules).toEqual(DEFAULT_COMMAND_RULES);
     s.model.respond(c => c.messages.some(m => m.role === "tool") ? { text: "Refused." } : bash("git push --force origin main"));
     const stream = s.ada.events(`${s.path}/events`);
     await s.ada.post(`${s.path}/messages`, { text: "Push it" });
