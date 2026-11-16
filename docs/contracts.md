@@ -433,7 +433,8 @@ class Models {                                              // new Models(keyrin
   // Endpoints and IDs
   addEndpoint(actor, { name, kind, baseUrl, apiKey? }, { shared? }): Endpoint   // shared: administrators only; baseUrl: no scheme → http:// (local) or https:// (cloud), no path → /v1
   editEndpoint(actor, id, { name?, baseUrl?, apiKey?: string | null }): Endpoint   // never touches an ID; not a host's URL or key
-  removeEndpoint(actor, id)                                 // each model leaves a tombstone; for a host, this is unpairing
+  removeEndpoint(actor, id)                                 // each model leaves a tombstone
+  releaseHost(ep): Promise<"unpaired" | "in_use" | "failed">   // after removing a host: DELETE /pair/v1 there unless another endpoint (host_pins) pins its key
   endpoints(userId) / endpoint(userId, id) / offerings(userId, endpointId) / offering(userId, offeringId)
   label(userId, id) / find(userId, idOrLabel): ModelRef? / findEndpoint(userId, idOrLabel)
   addModel(actor, endpointId, { modelId } & Capabilities): Offering
@@ -674,7 +675,7 @@ class Models {                                              // new Models(keyrin
 - **Where things live.** In `self.db`: `endpoints`, `offerings`,
   `model_groups`, `offering_settings`, `hub_tokens` (shared), plus
   `offering_redirects`, `redirect_pending`, `shared_refs`,
-  `shared_refs_indexed`, `legacy_refs` and `host_identity`. In each
+  `shared_refs_indexed`, `host_pins`, `legacy_refs` and `host_identity`. In each
   `user.db`: the same first five (the user's own), `model_presets`,
   `model_columns`, `thread_models`, `thread_choices`, `local_only_threads`,
   `starred_offerings`, `model_calls` and `call_totals`, with the default thinking level
@@ -682,8 +683,8 @@ class Models {                                              // new Models(keyrin
   `thread_choices.profile` stay one release, kept in step by `syncLegacy`, so
   a rollback keeps the user's choices. Shared rows change only with an
   administrator actor. A `user.db` is migrated, has pending shared redirects
-  applied, and is indexed into `shared_refs` the first time it is opened in
-  a process.
+  applied, and is indexed into `shared_refs` and `host_pins` the first time
+  it is opened in a process.
 - **Watching.** `watching` ("Watching threads") is a text task: a new
   preset starts it following `subagent.cheap`, and a stored preset with
   no entry for it reads as following `subagent.cheap` too (unless that
@@ -2424,7 +2425,8 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     `webSearch` and `images`, and their mode and switches are the effective
     ones, and so are its `grants` and `machines`;
   - models (paths under `/api/u/:userId/`):
-    - **Endpoints:** `GET`/`POST endpoints`; `PATCH`/`DELETE endpoints/:id`;
+    - **Endpoints:** `GET`/`POST endpoints`; `PATCH`/`DELETE endpoints/:id`
+      (`DELETE` → `RemovedEndpoint`, `stillPaired` when a removed host couldn't unpair this server);
       `POST endpoints/:id/discover`, `…/reset-ids`, `…/merge` (→ `EndpointInfo`),
       `…/models` (→ `OfferingInfo`); `PATCH endpoints/:id/models`
       (`ModelsEnabledChange` `{ disabled, offeringIds? }`, every model of the

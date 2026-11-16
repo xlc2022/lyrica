@@ -122,11 +122,15 @@ host proof   an8T3niOqqc4RbFGohVv7KASZd_iq2rLT4l6gaCy_l4
   paired, last seen) and can revoke any of them. Revoking takes effect on
   the next request, including on open connections.
 - A host can be paired with several Lyrica servers.
-- Unpairing from Lyrica's side is forgetting the pin; the host keeps the
-  client listed until it is revoked there.
+- A paired client can unpair itself: `DELETE /pair/v1` drops the pin of
+  the certificate it presents and answers `200 {}`. A client that isn't
+  paired gets the usual `401 unpaired`, which it can read as done. Lyrica
+  sends it when it removes the last endpoint that pins this host, then
+  forgets the pin; if the host can't be reached, Lyrica forgets the pin
+  anyway and the client stays listed until it is revoked on the dashboard.
 - Pairing again from a client that is already paired replaces its name.
-- Only the dashboard can make a code or revoke a client. A paired client
-  can't.
+- Only the dashboard can make a code or revoke another client. A paired
+  client can't.
 
 ## For a Node client
 

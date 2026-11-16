@@ -345,6 +345,7 @@ export class Users {
         for (const r of redirects) unused.run(r.from_id, r.from_id);
         db.prepare("DELETE FROM shared_refs WHERE user = ?").run(id);
         db.prepare("DELETE FROM shared_refs_indexed WHERE user = ?").run(id);
+        db.prepare("DELETE FROM host_pins WHERE user = ?").run(id);
         for (const key of ["wipe.pending", "wipe.home"]) setList(db, key, getList(db, key).filter((x) => x !== id));
         setList(db, DELETE_PENDING, [...new Set([...getList(db, DELETE_PENDING), id])]);
       })();

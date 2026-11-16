@@ -200,6 +200,17 @@ export class Host {
     if (access === "unpaired") throw new HostError(401, "unpaired", "This Lyrica server isn't paired with this host.");
     if (access === null) throw new HostError(401, "login", "Sign in to the dashboard first.");
 
+    // A paired Lyrica server unpairs itself when it removes this host (PAIRING.md, "After pairing").
+    if (pathname === "/pair/v1" && method === "DELETE") {
+      if (access !== "client") throw refused("Only a paired Lyrica server can unpair itself. Revoke it under its name instead.");
+      const fp = this.clientFingerprint(req)!;
+      this.state.update((s) => {
+        s.clients = s.clients.filter((c) => c.fingerprint !== fp);
+      });
+      this.opts.log("unpaired", { client: fp });
+      return sendJson(res, 200, {});
+    }
+
     // Dashboard-only: pairing codes, paired clients and the password.
     if (pathname.startsWith("/dashboard/")) {
       if (access === "client") throw refused("Only the host's dashboard can do this.");

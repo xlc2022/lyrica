@@ -146,6 +146,22 @@ describe("after pairing", () => {
     expect(after.body.error.code).toBe("unpaired");
   });
 
+  it("lets a paired client unpair itself, and only itself", async () => {
+    const { tls, local: lp } = await host();
+    const me = lyrica();
+    const other = lyrica();
+    const pinned = await pair(tls, me, await code(lp));
+    await pair(tls, other, await code(lp));
+    expect((await call({ port: tls, path: "/pair/v1", method: "DELETE", identity: me, pinned })).status).toBe(200);
+    expect((await call({ port: tls, path: "/host/v1/status", identity: me, pinned })).body.error.code).toBe("unpaired");
+    // Asking again is the plain "unpaired" answer, which Lyrica reads as done.
+    expect((await call({ port: tls, path: "/pair/v1", method: "DELETE", identity: me, pinned })).body.error.code).toBe("unpaired");
+    const { body } = await local(lp, "/dashboard/clients");
+    expect(body.clients.map((c: { fingerprint: string }) => c.fingerprint)).toEqual([fingerprint(other.cert)]);
+    // The dashboard revokes by name instead.
+    expect((await local(lp, "/pair/v1", { method: "DELETE" })).status).toBe(403);
+  });
+
   it("doesn't let a paired client make codes or revoke", async () => {
     const { tls, local: lp } = await host();
     const me = lyrica();

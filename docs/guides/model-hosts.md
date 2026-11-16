@@ -1006,7 +1006,7 @@ second pairing. Then:
   with its own code; its dashboard lists them and revokes any one. Every
   paired server has the same rights: it sees the same models, recipes and
   GPUs, and can load, pin, pause, change settings, delete downloads and
-  update the host. Only the dashboard makes codes and revokes servers.
+  update the host. Only the dashboard makes codes and revokes other servers.
   Their jobs share one queue on the same GPUs, so one busy server slows
   the others, and a pause from any of them pauses the host for all.
   **Update** moves the host to the asking server's release, so keep the
@@ -1115,8 +1115,11 @@ second pairing. Then:
   layout on the running stack whenever you doubt it.
 - **Revoke** a Lyrica server on the dashboard; it must pair again.
   **Unpair** from Lyrica's side by removing the endpoint (`DELETE
-  …/endpoints/<endpoint id>`); the host keeps it listed until revoked
-  there.
+  …/endpoints/<endpoint id>`): Lyrica asks the host to forget it too,
+  unless another endpoint on that Lyrica server still uses the host. If
+  the host can't be reached then, or runs a release from before hosts
+  could unpair a server, Lyrica says so and the host keeps it listed
+  until you revoke it on the dashboard.
 - **Deleting a file** (`DELETE /host/v1/files?path=<path>`) removes only
   a file the host itself downloaded, unchanged since; nothing else in the
   models folder is ever touched. The dashboard's Delete is for image

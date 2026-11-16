@@ -8,7 +8,7 @@ import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import {
   del, get, patch, post, put, u,
   type CallInfo, type CleanupItem, type Column, type ColumnState, type ColumnTaskChange, type EndpointChange, type EndpointInfo, type Entry, type GroupInfo, type HostStatus, type ModelsNotice, type ModelsPage,
-  type ModelRef, type OfferingInfo, type PlanSignInStarted, type PresetInfo, type Presets, type PresetScope, type Task, type ThreadSummary,
+  type ModelRef, type OfferingInfo, type PlanSignInStarted, type PresetInfo, type Presets, type PresetScope, type RemovedEndpoint, type Task, type ThreadSummary,
 } from "./api.ts";
 import { HistoryList } from "./History.tsx";
 import { Icon } from "./icons.tsx";
@@ -1196,11 +1196,16 @@ function useEndpointActions(ctx: MCtx, ep: Endpoint, others: Endpoint[], onSignI
     )}
     {asking === "remove" && (
       <ConfirmDialog title={`Remove ${ep.name}?`} sentence={ep.api === "host"
-        ? "Its models leave every list that names them. The host keeps listing this server until you revoke it there."
+        ? "Its models leave every list that names them, and the host unpairs this server unless another endpoint here still uses it."
         : planOf(ep.api) ? `Its models leave every list that names them. Lyrica stays connected in your ${planOf(ep.api) === "codex" ? "ChatGPT" : PLAN_NAMES[planOf(ep.api)!]} account until you disconnect it there.`
         : "Its models leave every list that names them, so threads that used them fall back to the next model."}
         confirm="Remove" danger onCancel={() => setAsking(undefined)}
-        onConfirm={() => { setAsking(undefined); void run(async () => { await del(path); done(); }); }} />
+        onConfirm={() => { setAsking(undefined); void run(async () => {
+          const removed = await del<RemovedEndpoint>(path);
+          // The card goes with the endpoint, so the shell says it.
+          if (removed.stillPaired) ctx.toast(`Removed ${ep.name}, but it couldn't unpair this server. Revoke it on the host's dashboard.`);
+          done();
+        }); }} />
     )}
   </>;
   return { items, forms };
