@@ -638,7 +638,11 @@ per host, and Lyrica's router filters create tiers by it.
   English, so each is listed under both. A piece with Han characters is
   read as Chinese, any other as English. Qwen3-TTS has no speed input, so
   the server stretches its audio to the asked speed without changing the
-  pitch.
+  pitch. Every reading by a CustomVoice speaker carries one fixed
+  instruction (a warm, calm, natural tone at an even pace), and both kinds
+  sample a little tighter than the model's default (temperature 0.7, top-p
+  0.9), so the pieces of one reply sound alike. No per-reply emotion is
+  sent.
   - Two flavours of PyTorch 2.14.1: CUDA 12.6 (`cu126`), its last build
     with Volta kernels, for a CMP 100-210 through Hopper; and CUDA 13
     (`cu130`), Turing and newer, Blackwell included. `install.sh` picks
