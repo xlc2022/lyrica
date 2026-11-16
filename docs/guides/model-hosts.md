@@ -452,15 +452,16 @@ The owner chose the voice and Whisper after the benchmark; Voxtral came
 later. The host's README names them and the exact revisions. Lyrica's
 **Download text model** (Models, Downloads) and the dashboard's own
 **Download text model** (under Text models) offer them under **Starters**,
-at these revisions, beside the chat and embedding starters; picking one and
-**Download** there is the quickest way. A starter shows only where the
-host runs its server: the voice on every host (on the CPU except on
-NVIDIA), dictation on hosts that run vLLM (not Vulkan) or, beside a CMP
-100-210, whisper.cpp. The voice starter takes three voices, `zm_010`,
-`zf_001` and `af_maple`. For other voices, or where a starter
-doesn't show, do the same by hand, from the machine, where the dashboard
-port needs no password: list a repository's files first, then ask for
-the ones you want by name:
+at these revisions, beside the chat and embedding starters; picking one
+and **Download** there is the quickest way. Lyrica
+lists a host's starters only once that host is on a 2026-11-16 or later
+release (Update…). A starter shows only where the host runs its server:
+the voice on every host (on the CPU except on NVIDIA), dictation on hosts
+that run vLLM (not Vulkan) or, beside a CMP 100-210, whisper.cpp. The
+voice starter takes three voices, `zm_010`, `zf_001` and `af_maple`. For
+other voices, or where a starter doesn't show, do the same by hand, from
+the machine, where the dashboard port needs no password: list a
+repository's files first, then ask for the ones you want by name:
 
 ```sh
 curl -sS 'http://127.0.0.1:7236/host/v1/hub/files?source=huggingface&repo=onnx-community/Kokoro-82M-v1.1-zh-ONNX&revision=6cc0f0d2ebe369a68b0df87c2b65c1af8c0ac3e3'
@@ -802,19 +803,19 @@ leaves local-only threads' words out ([docs/memory.md](../memory.md),
 
 ### Eyes for a model without vision
 
-A chat model that can't see images (DeepSeek V4 Flash, say)
-gets the **look** tool, which shows images, clip stills and screenshots to
-the first model in the **Look at images** row of Models, Tasks and hands
-back its words. Download the **Qwen3.5 4B** starter (Q4_K_M with its
-projector, about 3.4 GB, 6.5 GB of GPU memory at a 32K context) under
-Starters (Download text model, Lyrica's or the dashboard's) and put it first in that row for both columns.
-It names files with one clean name and copies a screenshot's text word for
-word; on a CMP 100-210 it answers a 1080p screenshot in about 1.2 s and a
-12 MP photo in about 3.3 s. On a card with 4 GB, use **Qwen3.5 2B**
-(about 2 GB, 4 GB of GPU memory) instead: as fast, but it tends to offer a
-list of names and to summarise text rather than copy it. A photo takes up
-to about 4,000 tokens of the model's context and a 1080p screenshot about
-2,000, so give it a context of 16K or more.
+A chat model that can't see images (DeepSeek V4 Flash, say) gets the
+**look** tool, which shows images, clip stills and screenshots to the
+first model in the **Look at images** row of Models, Tasks and hands back
+its words. Download the **Qwen3.5 4B** starter (Q4_K_M with its projector,
+about 3.4 GB, 6.5 GB of GPU memory at a 32K context) under Starters
+(Download text model, Lyrica's or the dashboard's) and put it first in that row for
+both columns. It names files with one clean name and copies a screenshot's
+text word for word; on a CMP 100-210 it answers a 1080p screenshot in
+about 1.2 s and a 12 MP photo in about 3.3 s. On a card with 4 GB, use
+**Qwen3.5 2B** (about 2 GB, 4 GB of GPU memory) instead: as fast, but it
+tends to offer a list of names and to summarise text rather than copy it.
+A photo takes up to about 4,000 tokens of the model's context and a 1080p
+screenshot about 2,000, so give it a context of 16K or more.
 
 ## Images
 

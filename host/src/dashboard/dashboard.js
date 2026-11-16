@@ -736,7 +736,7 @@ const SOURCES = { huggingface: "Hugging Face", modelscope: "ModelScope", civitai
 /** The queue: what is on its way, then what finished, as Lyrica's Downloads lists them. */
 function downloadsSection() {
   const running = S.downloads.filter(going), finished = S.downloads.filter((d) => !going(d));
-  const clear = () => Promise.all(finished.map((d) => api(`/host/v1/downloads/${d.id}`, { method: "DELETE" })));
+  const clear = () => Promise.all(finished.map((d) => api(`/host/v1/downloads/${encodeURIComponent(d.id)}`, { method: "DELETE" })));
   const part = (label, list) => (list.length ? h("ul", { class: "list" }, h("li", { class: "eyebrow part" }, label), list.map(downloadRow)) : null);
   return [
     sectionHead(h("h2", {}, "Downloads"), facts(h("span", {}, num(running.length), " running"), h("span", {}, num(finished.length), " finished"), h("span", {}, num(size(S.status.modelsFolder.free)), " free")),
@@ -761,7 +761,7 @@ function downloadRow(d) {
     h("div", { class: "main" }, h("div", { class: "name" }, h("span", { title: d.url ?? d.path }, d.path.split("/").pop()), from ? h("span", { class: "cap" }, `from ${from}`) : null),
       moving && pct != null ? h("div", { class: "progress" }, h("span", { style: `width:${pct}%` })) : null,
       facts(word, d.size ? h("span", {}, ...(moving ? [num(size(d.received)), " of "] : []), num(size(d.size))) : null)),
-    h("div", { class: "actions" }, button(going(d) ? "Cancel" : "Clear", () => api(`/host/v1/downloads/${d.id}`, { method: "DELETE" }))),
+    h("div", { class: "actions" }, button(going(d) ? "Cancel" : "Clear", () => api(`/host/v1/downloads/${encodeURIComponent(d.id)}`, { method: "DELETE" }))),
     d.error ? h("p", { class: "warn-text wide" }, d.error) : null);
 }
 
