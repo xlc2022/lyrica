@@ -2397,26 +2397,36 @@ export class PoolStore extends PoolReader {
    * marked skipped), a note, page or journal entry by its indexed text. The
    * entries of `excludeThreads` (local-only threads, when the model is a
    * cloud one) are left out, as are sleep's threads, which recall never shows.
+   * `seen` and `row` are the index's text and row as read, for putVectors to check the item hasn't changed meanwhile.
    */
-  unembedded(model: string, limit: number, excludeThreads: string[] = []): { id: string; kind: Kind; text: string }[] {
+  unembedded(model: string, limit: number, excludeThreads: string[] = []): { id: string; kind: Kind; text: string; seen: string; row: number }[] {
     // json_each has an `id` column of its own, so the index's is named.
-    const rows = this.db.prepare(`SELECT s.id, s.kind, s.text FROM search s WHERE s.id NOT IN (SELECT id FROM vectors WHERE model = @model)
+    const rows = this.db.prepare(`SELECT s.rowid AS row, s.id, s.kind, s.text FROM search s WHERE s.id NOT IN (SELECT id FROM vectors WHERE model = @model)
       AND s.id NOT LIKE 'e:sleep/%' AND NOT EXISTS (SELECT 1 FROM json_each(@threads) t WHERE s.id LIKE 'e:' || t.value || '#%') LIMIT @limit`)
-      .all({ model, threads: JSON.stringify(excludeThreads), limit }) as { id: string; kind: Kind; text: string }[];
+      .all({ model, threads: JSON.stringify(excludeThreads), limit }) as { row: number; id: string; kind: Kind; text: string }[];
     return rows.map((r) => {
-      if (r.kind !== "entry") return { id: r.id, kind: r.kind, text: r.text.slice(0, EMBED_CHARS) };
+      if (r.kind !== "entry") return { id: r.id, kind: r.kind, text: r.text.slice(0, EMBED_CHARS), seen: r.text, row: r.row };
       const [entry] = this.entryWindow(r.id, 0);
       const said = entry && ENTRY_ORIGIN[entry.role] ? this.saidText(r.id) : "";
-      return { id: r.id, kind: r.kind, text: said.trim().slice(0, EMBED_CHARS) };
+      return { id: r.id, kind: r.kind, text: said.trim().slice(0, EMBED_CHARS), seen: r.text, row: r.row };
     });
   }
 
-  /** Stores vectors from `model`, dropping any other model's: one model, one index. A row with no vector marks an item the model skips. */
-  putVectors(model: string, rows: { id: string; kind: Kind; vec?: Float32Array }[]): void {
+  /**
+   * Stores vectors from `model`, dropping any other model's: one model, one index. A row with no vector marks an item
+   * the model skips. A row carrying `seen` and `row` (unembedded's) is stored only if the index still holds that text
+   * there: an item deleted or rewritten while the model worked gets no vector, so none outlives its memory or describes
+   * old words. The row makes it a point lookup; the id and text keep it right when FTS5 gives a freed row number again.
+   */
+  putVectors(model: string, rows: { id: string; kind: Kind; vec?: Float32Array; seen?: string; row?: number }[]): void {
     const put = this.db.prepare("INSERT OR REPLACE INTO vectors (id, kind, model, vec) VALUES (?, ?, ?, ?)");
+    const current = this.db.prepare("SELECT 1 FROM search WHERE rowid = ? AND id = ? AND text = ?");
     this.db.transaction(() => {
       this.db.prepare("DELETE FROM vectors WHERE model != ?").run(model);
-      for (const r of rows) put.run(r.id, r.kind, model, r.vec ? Buffer.from(r.vec.buffer, r.vec.byteOffset, r.vec.byteLength) : null);
+      for (const r of rows) {
+        if (r.seen !== undefined && !current.get(r.row ?? -1, r.id, r.seen)) continue;
+        put.run(r.id, r.kind, model, r.vec ? Buffer.from(r.vec.buffer, r.vec.byteOffset, r.vec.byteLength) : null);
+      }
     })();
   }
 

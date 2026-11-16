@@ -1734,8 +1734,9 @@ NAS, and Proxmox nodes. Decided 2026-10-11 from
   recursive `rm`; `git push --force`, `reset --hard`, `clean`, discarding
   changes, deleting a branch or stash); the other is commands almost never
   right on a machine (deleting `/`, `/*`, a home folder or a top-level
-  system folder; `mkfs` or `dd` onto a device; recursive `chmod` or `chown`
-  on `/`; `userdel`; shutdown and reboot; `qm destroy`). A `cd` earlier on
+  system folder; `mkfs` or `dd` onto a device; rewriting a disk's
+  partition table or wiping it; recursive `chmod` or `chown` on `/`;
+  `userdel`; shutdown and reboot; `qm destroy`). A `cd` earlier on
   the line counts, so `cd / && rm -rf *` is read as `rm -rf /*` (decided
   2026-11-09, with the sandbox part, after comparing other coding agents'
   guards). The permission card carries a warning sentence and a third
@@ -2130,10 +2131,17 @@ when to use it, and steps in Markdown (at most 8,000 characters).
     never adds a machine or takes its key or token herself. And
     `model-host`, installing a model host on one of the thread's
     SSH machines (root steps on a card, the image pull in the background,
-    the pairing code), and `secrets`, getting a key, token or sudo password
+    the pairing code), `secrets`, getting a key, token or sudo password
     into one script's input on a card (`run_with_secret`, Run on a root
-    step), both listed only while the thread has an SSH machine. A library
-    skill of the same name replaces any of them.
+    step), and `gentoo`, installing Gentoo onto a disk from a live Linux by
+    the Handbook and keeping a Gentoo machine updated (the plan before every
+    `emerge`, a yes that names the disk or package), and `nixos`, installing
+    NixOS from its installer ISO by the manual and changing, updating,
+    rolling back and cleaning a NixOS machine through its configuration
+    (a build and its diff before every switch, option lookups through the
+    NixOS MCP server), all four listed only
+    while the thread has an SSH machine. A library skill of the same name
+    replaces any of them.
 - **Storage.** The person's and hers live in the pool they belong to, in
   that pool's encrypted database (`skills`, pool step 10), at most 100 per
   pool, and are reached only through the pool's view. A skill she saves
@@ -2163,9 +2171,10 @@ Details in [docs/sleep.md](docs/sleep.md).
 
 - **Cycle:** consolidate → dream → wake, adapted from Monika. Each phase is an
   agentic session written in her own voice, with only her memory tools.
-- **Schedule:** nightly at 04:00 by default, for each pool with new activity.
-  `/sleep` runs it by hand. A **manual** mode works like Monika: sleep happens
-  only on `/sleep`. Sleep never creates a thread the user sees.
+- **Schedule:** each pool has its own: nightly at 04:00 by default (or the
+  pool's own time), when it has new activity. `/sleep` runs it by hand. A
+  pool in **manual** mode works like Monika: it sleeps only on `/sleep`.
+  Sleep never creates a thread the user sees.
 - **Pools:** general and private sleep run separately, each with its own model.
 - **Budget:** each phase may use 600k tokens or four of its model's context
   windows, whichever is more, on any model, paid ones included (the owner's

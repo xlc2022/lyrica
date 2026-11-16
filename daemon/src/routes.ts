@@ -695,7 +695,6 @@ export function apiRoutes(d: Lyricad): Route[] {
       const c = await r.json<Api.PresetsChange>();
       if (c.thinking !== undefined) s().models.setDefaultThinking(user.id, c.thinking);
       if (c.fallback !== undefined) s().models.setDefaultFallback(user.id, c.fallback);
-      if (c.sleepFallback !== undefined) s().sleep.setFallback(user.id, c.sleepFallback);
       if (c.readAloudLive !== undefined) s().models.setDefaultReadAloudLive(user.id, c.readAloudLive);
       if (c.freeOnly !== undefined) s().models.setFreeOnly(user.id, c.freeOnly);
       if (c.readDaily !== undefined) s().models.setReadDaily(user.id, c.readDaily);
@@ -1987,10 +1986,15 @@ export function apiRoutes(d: Lyricad): Route[] {
 
     // --- Sleep: runs, items, /sleep ---
     route("GET", `${u}/sleep`, (r) => sleepOverview(d, d.userFor(r))),
-    route("PUT", `${u}/sleep/mode`, async (r) => {
-      const user = d.userFor(r);
-      const { mode } = await r.json<Api.SleepModeChange>();
-      s().sleep.setMode(user.id, mode);
+    route("PATCH", `${u}/sleep/:pool`, async (r) => {
+      const user = d.userFor(r), pool = poolOf(r);
+      const c = await r.json<Api.SleepPoolChange>();
+      try {
+        if (c.mode !== undefined) s().sleep.setMode(user.id, pool, c.mode);
+        // A time equal to the server's is cleared, so the pool follows it if the administrator changes it later.
+        if (c.time !== undefined) s().sleep.setTime(user.id, pool, c.time === d.sleepTime() ? null : c.time);
+        if (c.fallback !== undefined) s().sleep.setFallback(user.id, pool, c.fallback);
+      } catch (err) { throw new HttpError(400, (err as Error).message); }
       return sleepOverview(d, user);
     }),
     route("GET", `${u}/sleep/history`, (r): Api.HistoryPage<Api.SleepRunInfo> => {
@@ -2770,7 +2774,7 @@ function presets(d: Lyricad, userId: string): Api.Presets {
     presets: m.presets(userId),
     columns: { private: m.column(userId, "private"), general: m.column(userId, "general") },
     thinking: m.defaultThinking(userId),
-    fallback: m.defaultFallback(userId), sleepFallback: d.services!.sleep.fallback(userId),
+    fallback: m.defaultFallback(userId),
     readAloudLive: m.defaultReadAloudLive(userId), freeOnly: m.freeOnly(userId), readDaily: m.readDaily(userId),
   };
 }
@@ -2895,7 +2899,7 @@ function adminStatus(d: Lyricad): Api.AdminStatus {
 async function startSleep(d: Lyricad, user: User, pool: Pool, confirmed: boolean): Promise<Api.SleepStarted> {
   d.refuseWhileDraining();
   const { sleep } = d.services!;
-  const manual = sleep.mode(user.id) === "manual";
+  const manual = sleep.mode(user.id, pool) === "manual";
   if (manual && !confirmed) return { confirm: `Sleep now? She'll consolidate, dream and wake for your ${pool} memory.` };
   const { skip, reason } = await sleep.check(user.id, pool);
   const run = sleep.run(user.id, pool, "manual"); // records a skip too
@@ -2920,7 +2924,7 @@ function sleepOverview(d: Lyricad, user: User): Api.SleepOverview {
   return owner(d, user, (o) => {
     const pools = ["general", "private"] as const;
     return {
-      mode: d.services!.sleep.mode(user.id),
+      pools: Object.fromEntries(pools.map((p) => [p, { mode: d.services!.sleep.mode(user.id, p), fallback: d.services!.sleep.fallback(user.id, p), time: d.poolSleepTime(user.id, p) }])) as Api.SleepOverview["pools"],
       time: d.sleepTime(),
       items: pools.flatMap((p) => o[p].listItems().map((i) => sleepItemInfo(p, i))).sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
       runs: pools.flatMap((p) => o[p].listSleepRuns(1).map((r) => sleepRunInfo(p, r))).sort((a, b) => b.startedAt.localeCompare(a.startedAt)),

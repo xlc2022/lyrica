@@ -234,7 +234,7 @@ nothing else. No code path gives a general view a private handle.
 | Writing memories | `addNotes(notes, { author, thread?, run? })`, `supersede(old, by, author, run?)` (`run`: the sleep run doing it, which records each replaced note and what replaced it before in `sleep_runs.superseded`, for Undo; marks existing notes replaced by a current note and flags pages citing them; deletes nothing, so no tombstone; never a user's note unless a user does it), `archiveAbsorbed(notes, page, run)` (sleep archives current notes of hers that `page` cites, recorded on the run for Undo; unarchived when no current page cites them any more), `pruneSuperseded(before)` → count (sleep removes superseded notes, not a user's, edited by one or archived, that nothing but their replacement cites, whose replacement was written before `before`; no tombstone), `putPage` (sleep and user pages), `putWake`, `addJournal`. Every write (notes, pages and edits, WAKE, journal, sleep items, project instructions) passes text, title, summary and tags through `removeSecrets` (core/src/secrets.ts) first; matches become `[secret removed]` |
 | Any memory, by ID | `get`, `edit`, `restore`, `archive`, `delete`, `deleteMany` |
 | Reading for the prompt | `getWake`, `pageIndex`, `forFolders(paths)`, `listJournal`, `journalHistory({ limit, offset, q })` → `{ entries, total }`, `userIntroduced` |
-| Search | `search(query, { kinds, limit, current, excludeThread, fromThread, only, skip, minWords, said, vector })`, returning `{ id, kind, snippet, score, at, origin }` (`vector: { model, values }`: the query's vector; hits by meaning from `nearest(model, values, limit)`, cosine at or above `VECTOR_FLOOR`, scanned in memory with the same results as a scan of the table (`store/vector-cache.ts`; `forgetVectors(pathPrefix)` lets go of what is held under a user's folder), join the keyword hits by reciprocal rank fusion, `RRF_K`, docs/memory.md "Recall by meaning"; `origin`: who wrote a memory, or `user` or `lyrica` for a user or assistant entry, unset for a tool result; a user-role entry lyricad wrote, such as a message from another of her threads, a watch, a wake-up or a routine, is `lyrica`; `at`: when an entry was said or a memory last changed; `skip`: words left out of the query; `minWords`: when the query has more words than that, a hit holds at least that many of them, each as the same word, its stem or a longer word starting with it (`sameWord`), a user's name counting once, and enough of its words that aren't common in the index, a word in more than 2% of it and 20 items being common; `said`: leave out tool results and match a message on its text, not its tool calls);  a store's `unembedded(model, limit, excludeThreads?)` → `{ id, kind, text }[]` (indexed items with no vector from `model`, never sleep's entries nor those of `excludeThreads`; a message by its spoken words, empty for one with none), `putVectors(model, [{ id, kind, vec? }])` (float32 vectors; `vec` left out marks an item skipped; another model's rows are dropped), `vectorCount(model)` → `{ done, left }` (items the model has been through, a vector or skipped, and those left, never counting sleep's entries); `searchMessages(query, { limit, before?, threads? })` → `MessageHit[]` (`thread`, `n`, `role`, `text`, `createdAt`): the user's messages and her replies from the same index, every word of `query` as a word or a word's start (`searchWords`), newest first, before `before`, in `threads`; an entry a rewind removed while a branch keeps its copy is found at the copy |
+| Search | `search(query, { kinds, limit, current, excludeThread, fromThread, only, skip, minWords, said, vector })`, returning `{ id, kind, snippet, score, at, origin }` (`vector: { model, values }`: the query's vector; hits by meaning from `nearest(model, values, limit)`, cosine at or above `VECTOR_FLOOR`, scanned in memory with the same results as a scan of the table (`store/vector-cache.ts`; `forgetVectors(pathPrefix)` lets go of what is held under a user's folder), join the keyword hits by reciprocal rank fusion, `RRF_K`, docs/memory.md "Recall by meaning"; `origin`: who wrote a memory, or `user` or `lyrica` for a user or assistant entry, unset for a tool result; a user-role entry lyricad wrote, such as a message from another of her threads, a watch, a wake-up or a routine, is `lyrica`; `at`: when an entry was said or a memory last changed; `skip`: words left out of the query; `minWords`: when the query has more words than that, a hit holds at least that many of them, each as the same word, its stem or a longer word starting with it (`sameWord`), a user's name counting once, and enough of its words that aren't common in the index, a word in more than 2% of it and 20 items being common; `said`: leave out tool results and match a message on its text, not its tool calls);  a store's `unembedded(model, limit, excludeThreads?)` → `{ id, kind, text, seen, row }[]` (indexed items with no vector from `model`, never sleep's entries nor those of `excludeThreads`; a message by its spoken words, empty for one with none; `seen`, `row`: the index text and row as read), `putVectors(model, [{ id, kind, vec?, seen?, row? }])` (float32 vectors; `vec` left out marks an item skipped; a row with `seen` is stored only if the index row `row` still holds that id and text; another model's rows are dropped), `vectorCount(model)` → `{ done, left }` (items the model has been through, a vector or skipped, and those left, never counting sleep's entries); `searchMessages(query, { limit, before?, threads? })` → `MessageHit[]` (`thread`, `n`, `role`, `text`, `createdAt`): the user's messages and her replies from the same index, every word of `query` as a word or a word's start (`searchWords`), newest first, before `before`, in `threads`; an entry a rewind removed while a branch keeps its copy is found at the copy |
 | Lineage | `cameFrom`, `usedIn`, `revisions`, `revisionHistory(id, { limit, offset, q })` → `{ entries, total }` (newest first), `isTombstoned(entryId)`, `editedSince(since)` |
 | Recall counts | `countRecalls(ids, how, at?)` (a store's; `how` is `"recalled" \| "searched" \| "opened"`; notes and pages only, per UTC hour, rows older than `RECALL_DAYS` (31) dropped), `recallCounts(since)` → `RecallCount[]` (`{ id, hour, recalled, searched, opened }`, oldest first), `citationCounts()` → `{ id, n }[]` (notes and pages by how many memories cite them). Pool step 16 adds `recalls`; deleting a memory deletes its rows. IDs and numbers only (docs/memory.md, "Recall counts") |
 | Sleep runs | `startSleepRun`, `updateSleepRun`, `recordSleepRun` (a skip), `listSleepRuns`, `sleepRunHistory({ limit, offset, q })` → `{ entries, total }`, `getSleepRun`, `watermark`, `sleepMaterial(since, until)`, `sleepChanges(from, to)` → `{ notes (made), edited (notes it edited), pages, journal, wake? }`; `startSleepRun(reason, until, startedAt?)` and `recordSleepRun(reason, skip, at?, startedAt?)` take the time the run began, before its renamed-files step; `undoableRun()` (the newest run not skipped, once ended), `sleepUndoBlock(runId)` → why not, in words, and `undoSleepRun(runId, author)` → `{ removed, restored }` (a person only; docs/sleep.md "Undo"; the run becomes skipped as `undone`); `sleepFocus()` → `{ text, setAt }`, `setSleepFocus(text, author)` (a person only, at most `SLEEP_FOCUS_LIMIT` 300 characters, empty clears) and `clearSleepFocus(before)` (pool step 14's `sleep_focus`; docs/sleep.md "Focus") |
@@ -1349,7 +1349,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     `remember` in an unlogged thread. lyricad lists the active skills of the
     thread view's own pool, then of the pools it reads (a name once), then Lyrica's own (`BUILTIN_SKILLS`,
     extension/src/<name>.md) unless a library skill takes the name: `add-machine` in every thread, and
-    `model-host` and `secrets` while the thread has an SSH machine; then `repoSkills(target, checkouts, cache?)`, cached per thread by checkout and HEAD.
+    `model-host`, `secrets`, `gentoo` and `nixos` while the thread has an SSH machine; then `repoSkills(target, checkouts, cache?)`, cached per thread by checkout and HEAD.
     `read(name)` falls back to a built-in skill's body;
   - `name()`: her name for this deployment, read every turn. Automatic
     recall leaves it out of the query (`skip`), asks for two shared
@@ -2524,14 +2524,14 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
       (`usedIn`, `deleted`, `left`), `ServingSettings`.
     - **Groups and presets:** `GET`/`POST groups`; `GET groups/suggestions`;
       `GET`/`PATCH`/`DELETE groups/:id`; `GET`/`PATCH presets` (`thinking`,
-      `fallback`, `sleepFallback`, `readAloudLive`, `freeOnly`, `readDaily`); `POST presets`
+      `fallback`, `readAloudLive`, `freeOnly`, `readDaily`); `POST presets`
       (`{ name, column }`); `PATCH`/`DELETE presets/:id` (`{ name }`);
       `PUT columns/:column` (`{ preset }`); `PUT columns/:column/:task`
       (`{ models }`, `{ same }` or `{ model }`); `POST columns/:column/save`
       (`{ preset }` or `{ name }`). Types: `GroupInfo`, `GroupInput`,
       `GroupChange`, `GroupDetail`, `GroupSuggestion`, `PresetInfo`,
       `Presets` (the presets, the two columns, `thinking`, `fallback`,
-      `sleepFallback`, `readAloudLive`, `freeOnly` and `readDaily`), `ColumnTaskChange`,
+      `readAloudLive`, `freeOnly` and `readDaily`), `ColumnTaskChange`,
       `PresetsChange`.
     - **Models page, library, tokens:** `GET models/page` (→ `ModelsPage`:
       endpoints with `pageStatus` and each starred offering marked `starred`, hosts' status or error (`unpaired` when the
@@ -2624,8 +2624,8 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     `ThreadSettings.speech` (`Speech`, also `GET /api/u/:userId/speech?pool=`)
     and `models["speech.transcribe"]`, `models["speech.speak"]` (thread tasks);
     `ThreadSettings.fallback` (null follows `Presets.fallback`) and
-    `fallbackOn`, `ThreadSettingsChange.fallback`, `PresetsChange.fallback`
-    and `sleepFallback`;
+    `fallbackOn`, `ThreadSettingsChange.fallback`, `PresetsChange.fallback`,
+    and each pool's sleep `SleepPoolSettings.fallback`;
     `Presets.readAloudLive` and `Speech.readAloudLive` (Read aloud while she
     writes, off by default), `PresetsChange.readAloudLive`;
     `Capabilities.transcribe` and `speak`, `AnswerSettings.voices` and
@@ -2658,7 +2658,9 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     with `preview=1` returns all active downloads, only the newest finished
     one, and `finishedTotal`; without it, the existing host array remains.
     Clear finished reads history in pages and clears each returned entry.
-  - sleep: overview (newest run per pool only), run detail, items (start a chat, dismiss), `sleep.mode`,
+  - sleep: overview (newest run per pool only, and `pools`: each pool's
+    `SleepPoolSettings`, mode, time and fallback), `PATCH sleep/:pool`
+    (`SleepPoolChange`), run detail, items (start a chat, dismiss),
     start a run, and an event stream. `/sleep` typed in a thread is
     `SendRequest.confirm` and `SendResponse.sleep`.
 - **Local sockets:** a Unix socket (mode `0600`, owned by the service user)
@@ -2667,9 +2669,10 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   `/run/lyrica-clients` when installed) serves it to accounts in that group.
   `lyrica chat` and `lyrica mem` use them. The user still logs in with a
   password over either socket. Being on the machine isn't enough.
-- **Scheduler:** at `sleep.time` (default 04:00) in each user's own time
-  zone (`Profile.timeZone`, else the server's), for each user not in manual
-  mode, sleep each pool, one run at a time across all users. The night's
+- **Scheduler:** at each pool's time (its own `sleep.time.<pool>` in
+  `user.db`, else `sleep.time`, default 04:00) in each user's own time zone
+  (`Profile.timeZone`, else the server's), sleep each pool not in manual
+  mode, one run at a time across all users and pools. The night's
   chores (model cleanup, sweep, idle project threads) run at `sleep.time`
   in the server's zone.
 - **Updates** (docs/daemon.md, "Updates"): an update socket,
@@ -2773,7 +2776,9 @@ sleep.run(userId, pool, reason: "scheduled" | "manual"): Promise<SleepRun>  // q
 sleep.check(userId, pool)          // what would stop a run now, without recording anything
 sleep.stop(userId)                 // Lock: the run is marked partial
 sleep.prune(now?): number          // forgets phase threads older than 36 hours, memories kept
-sleep.mode(userId) / setMode(userId, "scheduled" | "manual")   // user.db
+sleep.mode(userId, pool) / setMode(userId, pool, "scheduled" | "manual")   // user.db, per pool
+sleep.time(userId, pool) / setTime(userId, pool, "HH:MM" | null)          // undefined/null: the server's sleep.time
+sleep.fallback(userId, pool) / setFallback(userId, pool, on)
 sleep.events                       // started, phase, finished: IDs only, never text
 ```
 
@@ -2785,10 +2790,10 @@ sleep.events                       // started, phase, finished: IDs only, never 
   `sleep_focus` the person's line for tonight's dream, which the dream's
   instruction carries and a finished dream clears. A
   `no-key` skip is recorded once the key is back, since the pool can't be
-  written without it. `Sleep.catchUp(userId, since)` runs when the key comes
-  back: each pool whose last run began before `since` (the last sleep time in
-  the user's zone) records the missed night as a `no-key` skip at `since` and
-  sleeps now; manual mode and a pool with no runs are left alone.
+  written without it. `Sleep.catchUp(userId, sinceFor)` runs when the key comes
+  back: each pool whose last run began before `sinceFor(pool)` (that pool's
+  last sleep time in the user's zone) records the missed night as a `no-key`
+  skip then and sleeps now; a pool in manual mode or with no runs is left alone.
 - `PUT …/sleep/:pool/focus` (`SleepFocusChange { text }`, empty clears)
   sets the line for tonight and returns the sleep overview, with `focus`.
   `POST …/sleep/:pool/runs/:runId/undo` undoes the pool's newest undoable

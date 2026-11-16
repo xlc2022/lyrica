@@ -373,6 +373,19 @@ describe("suspect commands", () => {
     }
     expect(suspectCommand("sudo reboot")).toBe("This shuts the machine down or restarts it.");
   });
+  it("catch a disk's partition table rewritten or wiped, and leave reading it alone", () => {
+    const wipe = "This rewrites a disk's partitions or wipes it, erasing what's on it.";
+    for (const c of ["sudo sfdisk /dev/sda < table", "sfdisk --part-type /dev/sda 1 uefi", "fdisk /dev/nvme0n1", "sudo sgdisk --zap-all /dev/sda", "sgdisk -Z /dev/sda",
+      "sgdisk -n 1:0:+1G -t 1:ef00 /dev/sda", "sgdisk --new=2:0:0 /dev/sda", "sgdisk -o /dev/sdb", "parted -s /dev/sda mklabel gpt", "parted /dev/sda -- mkpart root 1GiB 100%",
+      "parted /dev/sda rm 2", "sudo wipefs -a /dev/sda", "wipefs --all /dev/sda1", "wipefs -af /dev/sda", "blkdiscard /dev/nvme0n1"]) {
+      expect(suspectCommand(c), c).toBe(wipe);
+      expect(suspectCommand(c, "sandbox"), c).toBeUndefined();
+    }
+    for (const c of ["sfdisk -l", "sudo sfdisk --dump /dev/sda", "sfdisk -J /dev/sda", "fdisk -l /dev/sda", "sgdisk -p /dev/sda", "sgdisk --print /dev/sda", "sgdisk -v /dev/sda",
+      "parted -l", "parted /dev/sda print", "wipefs /dev/sda", "lsblk -f"]) {
+      expect(suspectCommand(c), c).toBeUndefined();
+    }
+  });
   it("read a cd earlier on the line, so a relative delete points where it will run", () => {
     const sweep = "This deletes everything, a home folder or a system folder.";
     for (const c of ["cd / && rm -rf *", "cd /; rm -rf .", "cd /home/ada && rm -rf *", "cd && rm -rf *", "cd /tmp && cd .. && rm -rf *", "(cd /usr && rm -rf ./*)", "bash -c 'cd / && rm -rf *'"]) {

@@ -679,8 +679,6 @@ export interface Presets {
   thinking: ThinkingLevel;
   /** Fallback, unless a thread chooses: whether a later model in a list may answer when the first can't. On by default. */
   fallback: boolean;
-  /** Fallback for sleep's phases. On by default; off, a phase whose first model is away waits for the next night. */
-  sleepFallback: boolean;
   /** Read aloud while agent writes: Read aloud is offered on the reply she is still writing (`messages/live/speech`). Off by default. */
   readAloudLive: boolean;
   /** Free models only: every list skips a model whose price is known and isn't free. Off by default. */
@@ -696,7 +694,7 @@ export interface Presets {
  */
 export type ColumnTaskChange = { models: ModelRef[] | null } | { same: Task } | { model: ModelRef | null };
 /** PATCH /api/u/:userId/presets → Presets */
-export interface PresetsChange { thinking?: ThinkingLevel; fallback?: boolean; sleepFallback?: boolean; readAloudLive?: boolean; freeOnly?: boolean; readDaily?: boolean }
+export interface PresetsChange { thinking?: ThinkingLevel; fallback?: boolean; readAloudLive?: boolean; freeOnly?: boolean; readDaily?: boolean }
 
 /**
  * One turn's counts and times. `promptTokens` is the whole prompt of its last
@@ -2598,14 +2596,20 @@ export interface SleepItemInfo {
 }
 
 /**
- * GET /api/u/:userId/sleep → SleepOverview: the mode, the sleep time, open items, the newest run of each pool, newest
- * first, and each pool's line for tonight's dream, where the person left one.
+ * GET /api/u/:userId/sleep → SleepOverview: each pool's schedule and fallback, the sleep time, open items, the newest
+ * run of each pool, newest first, and each pool's line for tonight's dream, where the person left one.
  */
-export interface SleepOverview { mode: SleepMode; time: string; items: SleepItemInfo[]; runs: SleepRunInfo[]; focus: Partial<Record<Pool, string>> }
+export interface SleepOverview { pools: Record<Pool, SleepPoolSettings>; time: string; items: SleepItemInfo[]; runs: SleepRunInfo[]; focus: Partial<Record<Pool, string>> }
+/**
+ * A pool's own sleep: nightly or only when asked; its nightly time (`HH:MM` in the user's zone: its own, or the
+ * server's sleep time when it has none); and fallback for its phases (on by default; off, a phase whose first model is
+ * away waits for the next night). A pool not set yet follows the user's one earlier setting of mode and fallback.
+ */
+export interface SleepPoolSettings { mode: SleepMode; time: string; fallback: boolean }
 /** PUT /api/u/:userId/sleep/:pool/focus → SleepOverview. Empty text clears the line; at most 300 characters. */
 export interface SleepFocusChange { text: string }
-/** PUT /api/u/:userId/sleep/mode → SleepOverview */
-export interface SleepModeChange { mode: SleepMode }
+/** PATCH /api/u/:userId/sleep/:pool → SleepOverview. A `time` equal to the server's sleep time (or null) follows it again. */
+export interface SleepPoolChange { mode?: SleepMode; time?: string | null; fallback?: boolean }
 
 /** GET /api/u/:userId/sleep/:pool/runs/:runId → SleepRunDetail */
 export interface SleepRunDetail extends SleepRunInfo {

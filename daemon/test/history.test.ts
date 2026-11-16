@@ -17,8 +17,8 @@ async function setup() {
   const logs: string[] = [];
   const d = {
     keyring,
-    services: { users, memory, models, sleep: { mode: () => "scheduled" } },
-    sleepTime: () => "04:00",
+    services: { users, memory, models, sleep: { mode: () => "scheduled", fallback: () => true } },
+    sleepTime: () => "04:00", poolSleepTime: () => "04:00",
     userFor: (r: Request) => {
       const user = users.get(r.params.userId!);
       if (!user) throw new HttpError(401, "not logged in");

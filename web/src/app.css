@@ -1532,7 +1532,7 @@ pre.note { white-space: pre-wrap; max-height: 40vh; overflow: auto; }
 @media (pointer: coarse) { .update-output .output-toggle { min-height: var(--tap); } }
 .update-output pre { margin: 0; padding: 2px 12px 10px; font-size: 12px; line-height: 1.5; white-space: pre; overflow: auto; max-height: 40vh; }
 .dlg-commit { font-weight: 400; font-size: 15px; color: var(--muted); }
-/* Sleep (docs/sleep.md "Sleep in the UI"): her items, then the runs as disclosures, then Sleep now. */
+/* Sleep (docs/sleep.md "Sleep in the UI"): her items, then a card per pool with its newest run as a disclosure. */
 .sleep { display: grid; gap: 20px; }
 .sleep-block { display: grid; gap: 8px; min-width: 0; }
 .sleep-day + .sleep-day { margin-top: 10px; }
@@ -1557,15 +1557,15 @@ summary.sleep-sum:hover { background: color-mix(in oklab, var(--tool) 50%, trans
 .sleep-part li { overflow-wrap: anywhere; min-width: 0; }
 .sleep-detail .wdiff { margin-top: 4px; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 14px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 320px; overflow-y: auto; background: var(--bg); }
 .sleep-detail .prose { font-size: 14px; }
-.sleep-foot { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
-.sleep-foot .msg-menu { margin-left: 0; }
-.sleep-foot .menu { min-width: 160px; }
-.sleep-foot .menu .pool-lock { width: 10px; height: 12px; }
+/* A pool's card: its newest run, then its Sleep now, Fallback and schedule. */
+.sleep-pool { border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); overflow: hidden; min-width: 0; }
+.sleep-foot { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; padding: 10px 14px; border-top: 1px solid var(--line); }
+.sleep-foot .sleep-mode .link { font-size: inherit; }
+.sleep-pool > .error { padding: 0 14px 10px; }
 @media (max-width: 700px) {
   .list > li.sleep-item { grid-template-columns: minmax(0, 1fr); }
   .sleep-item .actions { justify-content: start; }
 }
-.sleep-mode-field { max-width: 260px; }
 
 /* ---- Models (docs/ux.md section 6): Overview, Hosts and endpoints, Clean up, Recent calls ---- */
 :root {
