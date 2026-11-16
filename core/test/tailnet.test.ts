@@ -3,7 +3,7 @@ import { createSecureServer } from "node:http2";
 import { brotliCompressSync, gzipSync } from "node:zlib";
 import { createServer as createTcp, connect, type AddressInfo, type Socket } from "node:net";
 import { afterAll, describe, expect, it } from "vitest";
-import { addressesOutside, resolveHost, useTailnetProxy } from "../src/index.ts";
+import { addressesOutside, HostRefused, resolveHost, useTailnetProxy } from "../src/index.ts";
 import { proxmoxHttps } from "../src/workspace/proxmox.ts";
 import { tailnetRelay } from "../src/workspace/transport.ts";
 import { fakeHost } from "./fake-host.ts";
@@ -16,6 +16,12 @@ const proxy = createTcp((client: Socket) => {
   client.once("data", (head) => {
     const target = /^CONNECT (\S+) HTTP\/1\.1/.exec(head.toString("latin1"))?.[1] ?? "";
     targets.push(target);
+    // Like tailscaled when its dial fails: 500, with the dial error as the body.
+    if (target.startsWith("100.99.")) {
+      const why = `dial tcp ${target}: connect: connection refused\n`;
+      client.end(`HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: ${why.length}\r\n\r\n${why}`);
+      return;
+    }
     const port = Number(target.slice(target.lastIndexOf(":") + 1));
     const upstream = connect({ host: "127.0.0.1", port }, () => {
       client.write("HTTP/1.1 200 OK\r\n\r\n");
@@ -43,6 +49,13 @@ describe("the tailnet, through her tailscaled's proxy", () => {
     // Another machine at that address is refused, as it would be directly.
     await host.replaceKey();
     expect(await m.models.probe(m.ada.id, ep.id)).toMatchObject({ state: "down" });
+  });
+
+  it("says why her tailscaled couldn't reach a host, rather than its status code", async () => {
+    const m = await withModels();
+    const err = await m.models.pairHost(m.ada, { name: "nautica", addresses: ["100.99.1.2"], code: "7kq2-m9xd-4rtb-w1hz" }).catch((e: Error) => e);
+    expect(err).toBeInstanceOf(HostRefused);
+    expect((err as Error).message).toBe("Couldn't reach the host at 100.99.1.2 (connect 100.99.1.2:7236: her tailscaled couldn't reach it (nothing there takes connections on port 7236)).");
   });
 
   it("sends names in her tailnet and tailnet addresses through it, and nothing else", async () => {

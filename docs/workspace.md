@@ -497,7 +497,15 @@ the GPU; saying what can run there; listing the system-wide changes for a
 yes; the prerequisites as a root step; cloning her own repository (its
 address is in the skill; she asks rather than guess another) and
 `install.sh --no-start` as her account, with the image build and pull in the background; the
-install itself as a root step, pinned to a clean commit of her clone; a smoke test against
+install itself as a root step, pinned to a clean commit of her clone; when
+the person wants the host on their tailnet, a second pinned script with
+`install.sh --tailscale NAME` that the person runs with `sudo bash` in
+their own terminal (the host never listens on the machine's own Tailscale
+address). The auth key is typed at a hidden prompt, never through chat;
+`.env` is root's while the key is in it; the key is one-off and
+short-lived, so once used it is worthless even though the tailscale
+container's environment keeps it; and a key that didn't join is revoked
+before she reads the logs; a smoke test against
 `127.0.0.1:7236/host/v1/status`; pausing the host on a shared machine; and
 a pairing code from `127.0.0.1:7236/dashboard/pairing` for the user to
 enter in **Add model host**. Nothing under `host/` changes for it. A
