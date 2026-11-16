@@ -673,7 +673,10 @@ never writes sudoers. For upkeep she syncs, reports unread news, shows
 `emerge --pretend` before every build and waits for a yes, merges
 `._cfg` files one by one with the person instead of `etc-update`, and runs
 `--depclean` only after its list is approved. Partitioning and wiping a disk are
-on the suspect list above, so they ask whatever the mode.
+on the suspect list above, so they ask whatever the mode. Her root scripts
+go out as plain quoted heredocs, never encoded, so a card shows every line
+it runs, and with `bash -e` and nothing after them, so a failed job reports
+its failure.
 
 ### Installing and running NixOS
 
