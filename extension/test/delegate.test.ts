@@ -142,7 +142,7 @@ describe("delegate", () => {
     const sent = s.cloud.requests.at(-1)!;
     const prompt = JSON.stringify(sent.messages);
     // It keeps its parent's machines, and hears of the SSH one only.
-    expect(prompt).toContain("Machines you can work on over SSH, with the machine argument: nas");
+    expect(prompt).toContain("(never ssh to one yourself): nas");
     expect(prompt).not.toContain("Proxmox machines");
     expect(sent.tools!.map((t) => t.function.name)).toEqual(expect.arrayContaining(["bash"]));
     expect(sent.tools!.map((t) => t.function.name)).not.toContain("proxmox");

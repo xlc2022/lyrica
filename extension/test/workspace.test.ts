@@ -8,7 +8,7 @@ import type { ExecutionTarget, ThreadGitRepository, ThreadMachine, ThreadMcpServ
 import { Type } from "typebox";
 import { afterEach, describe, expect, it } from "vitest";
 import { BASH_TIMEOUT_S, createDownloadsExtension, pageTool, createMcpServersExtension, createModelsExtension, filesFor, type DownloadsHost, createWorkspaceExtension, setToolsOff, toolsLine, type ApprovalRequest, type ModelsHost, type ServingProposal, type ThreadTools } from "../src/index.ts";
-import { BUILD_THERE, checkUnder, sandboxReachesMachine, editArguments, FORMATS_LINE, grantKey, pathArguments, insertsOnly, LINK_LINE, READ_ONLY_CHAT, describe as describePrompt } from "../src/workspace.ts";
+import { BUILD_THERE, checkUnder, sandboxReachesMachine, sshRefusal, editArguments, FORMATS_LINE, grantKey, pathArguments, insertsOnly, LINK_LINE, READ_ONLY_CHAT, describe as describePrompt } from "../src/workspace.ts";
 import { testMcpServer } from "../../core/test/mcp-server.ts";
 import { cleanRepos, git, localTarget, repo, saved } from "./git-repo.ts";
 import { freshKeyring, profile } from "../../core/test/helpers.ts";
@@ -188,6 +188,9 @@ it("tells a sandbox command that reaches one of her machines over ssh to name th
   // Not a connection: ssh-keygen forgetting a host key, a local rsync into a folder named like a machine.
   expect(sandboxReachesMachine("ssh-keygen -R nautica", machines)).toBeUndefined();
   expect(sandboxReachesMachine("rsync -a src nautica", machines)).toBeUndefined();
+  // On a machine, the call already runs there: ssh to that same machine is the double wrap she once sent.
+  expect(sandboxReachesMachine("ssh -o BatchMode=yes -o ConnectTimeout=10 nautica 'hostname; uname -a'", ["nautica"])).toBe("nautica");
+  expect(sshRefusal("nautica", true)).toContain("send only the command it wraps, with machine: \"nautica\"");
 });
 
 describe("workspace tools in a Pi session", () => {
