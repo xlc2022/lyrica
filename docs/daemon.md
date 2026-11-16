@@ -1107,8 +1107,12 @@ Dictation and Read aloud (see [models.md](models.md) Speech). Types are in
   number, never text), reads each thread she mentions as its current title
   (`titlesIn`), drops code blocks, tables, images, links' URLs and
   markdown, splits it into sentences (pieces of at most 400 characters), and
-  asks for one sentence at a time while the one before plays, each in the
-  voice for its language (Han characters mean Mandarin). It streams raw PCM
+  asks for one piece at a time while the one before plays, each in the
+  voice for its language (Han characters mean Mandarin). The first sentence
+  goes alone, so the voice starts soon; after it a piece is the sentences of
+  one paragraph in one language, up to 300 characters of English or 100 of
+  Mandarin (`piece`), since Kokoro sounds flat on short lines and starts its
+  intonation afresh with each request. It streams raw PCM
   (`audio/pcm;rate=24000;encoding=s16le;channels=1`). `messages/live/speech`
   follows the message she is writing now (`HostedThread.following()`) to
   its end; when she is writing nothing (she finished as it was pressed), it
