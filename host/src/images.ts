@@ -47,6 +47,8 @@ const BASE_DEFAULTS: Values = {
   negativePrompt: "", steps: 20, cfg: 1, sampler: "euler", scheduler: "simple", width: 1024, height: 1024, shift: 3, guidance: 3.5, scale: 2, maxSize: 4096, colorMatch: "lab",
   // Krea 2's second pass (host/workflows/krea2.json), which runs only when a recipe sets `refine`, its denoise.
   refineSteps: 8, refineSampler: "res_2s", refineScheduler: "bong_tangent", refineEta: 0.9,
+  // Qwen-Image 2.1's APG and FreSca (host/workflows/qwen-image-2.1.json), which run only when a recipe sets `apg` or `fresca`.
+  apgNormThreshold: 5, apgMomentum: 0, frescaLow: 1, frescaCutoff: 20,
 };
 /** The values a job starts from: the host's, then its template's, then its recipe's. */
 const startValues = (t: Template, recipe: { defaults: Values }, extra: Values = {}): Values => ({ ...BASE_DEFAULTS, ...extra, ...t.defaults, ...recipe.defaults });

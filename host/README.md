@@ -359,7 +359,11 @@ per host, and Lyrica's router filters create tiers by it.
   the second adds only its 13.3 GiB model. The largest stage is the
   encoder, about 17 GiB, so they fit a 24 GB card. The `qwen-image-2.1`
   template samples on a recipe's `sigmas` when it has them (Turbo) and on
-  `steps` and `scheduler` otherwise (the base model).
+  `steps` and `scheduler` otherwise (the base model). A recipe can put
+  ComfyUI's APG and FreSca on the model path, as community workflows do
+  for texture at CFG 3 (`apg` and `fresca`, API.md), and can swap its
+  VAE for another of the same architecture, such as a texture-fix VAE
+  against the decoder's checkerboard (`swap`, API.md).
   The video starters (Wan 2.2 TI2V 5B, T2V 14B and I2V 14B, LTX-2.5
   Distilled, MiniMax H3 Turbo) are for ComfyUI hosts only. Wan 2.2 is
   Apache 2.0. LTX-2.5's repository is gated: installing it needs a

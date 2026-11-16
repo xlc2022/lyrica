@@ -1075,7 +1075,13 @@ Calls:
     `refine` (0.01 to 1: a second pass over the first one's latent at this
     denoise, on ClownsharKSampler with `refineSteps` 8, `refineSampler`
     `res_2s`, `refineScheduler` `bong_tangent` and `refineEta` 0.9 unless
-    the recipe says otherwise). Without them it is one KSampler pass;
+    the recipe says otherwise). Without them it is one KSampler pass.
+    Qwen-Image 2.1 recipes also take `apg` (0 to 2: ComfyUI's APG on the
+    model path, at this eta, with `apgNormThreshold` 5 (0 to 50) and
+    `apgMomentum` 0 (-1 to 1) unless the recipe says otherwise) and
+    `fresca` (0 to 10: ComfyUI's FreSca after it, at this high-frequency
+    scale, with `frescaLow` 1 (0 to 10) and `frescaCutoff` 20 (1 to 256)).
+    Without them the model goes straight to the guider;
   - `{ "op": "rename", "name": "..." }`;
   - `{ "op": "starterDefaults" }`: the recipe's defaults (and its
     `longestSeconds` cap) become its

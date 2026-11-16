@@ -63,7 +63,8 @@ export interface Starter {
   longestSeconds?: number;
 }
 
-export const DEFAULT_KEYS = ["steps", "cfg", "sampler", "scheduler", "width", "height", "shift", "guidance", "negativePrompt", "scale", "maxSize", "colorMatch", "duration", "eta", "enhance", "refine", "refineSteps", "refineSampler", "refineScheduler", "refineEta"];
+export const DEFAULT_KEYS = ["steps", "cfg", "sampler", "scheduler", "width", "height", "shift", "guidance", "negativePrompt", "scale", "maxSize", "colorMatch", "duration", "eta", "enhance", "refine", "refineSteps", "refineSampler", "refineScheduler", "refineEta",
+  "apg", "apgNormThreshold", "apgMomentum", "fresca", "frescaLow", "frescaCutoff"];
 
 // The same ranges a request may ask for (images.ts), so a default is always one a request could give.
 const DEFAULT_RANGES: Record<string, [number, number, number?]> = {
@@ -71,6 +72,8 @@ const DEFAULT_RANGES: Record<string, [number, number, number?]> = {
   shift: [0, 20], guidance: [0, 30], scale: [1, 4], maxSize: [256, 8192, 1], duration: [1, 15],
   // Krea 2's (host/workflows/krea2.json): RES4LYF's eta, the Krea2T-Enhancer's strength, and the second pass.
   eta: [0, 2], enhance: [0, 2], refine: [0.01, 1], refineSteps: [1, 150, 1], refineEta: [0, 2],
+  // Qwen-Image 2.1's (host/workflows/qwen-image-2.1.json): ComfyUI's APG (its eta) and FreSca (its high-frequency scale).
+  apg: [0, 2], apgNormThreshold: [0, 50], apgMomentum: [-1, 1], fresca: [0, 10], frescaLow: [0, 10], frescaCutoff: [1, 256, 1],
 };
 /**
  * Recipes a LoRA's architecture fits beside its own: Wan 2.1 and 2.2 14B LoRAs share one layout ("wan"), and so do

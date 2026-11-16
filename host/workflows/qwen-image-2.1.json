@@ -144,13 +144,59 @@
         "dtype": "default"
       }
     },
-    "guider": {
-      "class_type": "CFGGuider",
+    "apg": {
+      "class_type": "APG",
+      "_if": "apg",
       "inputs": {
         "model": [
           "cache",
           0
         ],
+        "eta": "$apg",
+        "norm_threshold": "$apgNormThreshold",
+        "momentum": "$apgMomentum"
+      }
+    },
+    "fresca": {
+      "class_type": "FreSca",
+      "_if": "fresca",
+      "inputs": {
+        "model": {
+          "$pick": [
+            [
+              "apg",
+              0
+            ],
+            [
+              "cache",
+              0
+            ]
+          ]
+        },
+        "scale_low": "$frescaLow",
+        "scale_high": "$fresca",
+        "freq_cutoff": "$frescaCutoff"
+      }
+    },
+    "guider": {
+      "class_type": "CFGGuider",
+      "inputs": {
+        "model": {
+          "$pick": [
+            [
+              "fresca",
+              0
+            ],
+            [
+              "apg",
+              0
+            ],
+            [
+              "cache",
+              0
+            ]
+          ]
+        },
         "positive": [
           "encode",
           0

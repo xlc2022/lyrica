@@ -223,6 +223,22 @@ describe("FLUX.2 klein parts", () => {
     expect(edit.guider!.inputs).toMatchObject({ positive: ["pos_ref1", 0], negative: ["neg_ref1", 0] });
     expect(Object.keys(edit)).not.toContain("canvas");
   });
+
+  it("puts APG and FreSca on Qwen-Image 2.1's model path only when a recipe sets them", () => {
+    const t = TEMPLATES.get("qwen-image-2.1")!;
+    const p = (role: Recipe["parts"][number]["role"], file: string, slot: string | null = null) => ({ role, slot, file, added: false });
+    const parts = [p("diffusion", "q.safetensors"), p("text_encoder", "e.safetensors", "qwen3vl_8b"), p("vae", "v.safetensors")];
+    const base = { prompt: "x", negativePrompt: "", seed: 1, steps: 25, cfg: 3, sampler: "euler", scheduler: "simple", count: 1, width: 1024, height: 1024, resolution: 0,
+      apgNormThreshold: 5, apgMomentum: 0, frescaLow: 1, frescaCutoff: 20 };
+    const plain = fill(t, parts, [], base);
+    expect(Object.keys(plain)).not.toContain("apg");
+    expect(plain.guider!.inputs.model).toEqual(["cache", 0]);
+    const both = fill(t, parts, [], { ...base, apg: 1, apgNormThreshold: 10, apgMomentum: 0.3, fresca: 2, frescaCutoff: 8 });
+    expect(both.apg!.inputs).toMatchObject({ model: ["cache", 0], eta: 1, norm_threshold: 10, momentum: 0.3 });
+    expect(both.fresca!.inputs).toMatchObject({ model: ["apg", 0], scale_low: 1, scale_high: 2, freq_cutoff: 8 });
+    expect(both.guider!.inputs.model).toEqual(["fresca", 0]);
+    expect(fill(t, parts, [], { ...base, fresca: 2 }).fresca!.inputs.model).toEqual(["cache", 0]);
+  });
 });
 
 describe("MOSS-Image parts", () => {
