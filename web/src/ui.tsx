@@ -142,7 +142,15 @@ export function menuArrows(e: KeyboardEvent, menu: HTMLElement | null): boolean 
  * name's spot with it selected; Enter or leaving the field saves a changed name, Escape or an unchanged one
  * puts the name back. Clicks inside it never reach the row or link around it.
  */
-export function InlineRename({ value, label, className, onSave, onDone }: { value: string; label: string; className?: string; onSave: (name: string) => Promise<unknown>; onDone: () => void }) {
+/** A name field opens on the name's start, selected up to a file's extension, so typing keeps ".mp4". */
+export function nameFocus(input: HTMLInputElement, file: boolean) {
+  const dot = file ? input.value.lastIndexOf(".") : -1;
+  input.setSelectionRange(0, dot > 0 ? dot : input.value.length);
+  input.scrollLeft = 0;
+}
+
+/** `file`: the name is a file's, selected up to its extension. */
+export function InlineRename({ value, label, className, file, onSave, onDone }: { value: string; label: string; className?: string; file?: boolean; onSave: (name: string) => Promise<unknown>; onDone: () => void }) {
   const [draft, setDraft] = useState(value);
   const done = useRef(false);
   const finish = (save: boolean) => {
@@ -155,7 +163,7 @@ export function InlineRename({ value, label, className, onSave, onDone }: { valu
   const stop = (e: React.SyntheticEvent) => { e.stopPropagation(); if ("preventDefault" in e && (e.type === "click" || e.type === "dblclick")) e.preventDefault(); };
   return (
     <input className={className ? `rename ${className}` : "rename"} autoFocus aria-label={label} value={draft} onChange={(e) => setDraft(e.target.value)}
-      onFocus={(e) => e.target.select()} onBlur={() => finish(true)}
+      onFocus={(e) => nameFocus(e.target, !!file)} onBlur={() => finish(true)}
       onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Enter") { e.preventDefault(); finish(true); } else if (e.key === "Escape") { e.preventDefault(); finish(false); } }}
       onClick={stop} onDoubleClick={stop} onPointerDown={stop} onContextMenu={stop} />
   );

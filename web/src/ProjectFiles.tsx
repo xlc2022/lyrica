@@ -154,7 +154,7 @@ export function FilesSection({ ctx, pool, threadId }: { ctx: ShellContext; pool:
                   <span className="pfile-main">
                     <Icon name={e.kind === "folder" ? "folder" : IMAGE.test(e.name) ? "image" : "file"} className="dim" />
                     {renaming === e.path
-                      ? <InlineRename className="mono" value={e.name} label="New name" onSave={(n) => rename(e, n)} onDone={() => setRenaming(undefined)} />
+                      ? <InlineRename className="mono" value={e.name} file={e.kind !== "folder"} label="New name" onSave={(n) => rename(e, n)} onDone={() => setRenaming(undefined)} />
                       : <span className="pfile-name mono">{e.name}</span>}
                     <span className="fact">{facts(e)}</span>
                   </span>
@@ -186,7 +186,7 @@ export function FilesSection({ ctx, pool, threadId }: { ctx: ShellContext; pool:
                   </button>
                   <span className="pfiles-tile">
                     {renaming === i.path
-                      ? <InlineRename className="mono" value={i.name} label="New name" onSave={(n) => rename(i, n)} onDone={() => setRenaming(undefined)} />
+                      ? <InlineRename className="mono" value={i.name} file label="New name" onSave={(n) => rename(i, n)} onDone={() => setRenaming(undefined)} />
                       : <span className="mono" title={relative(i.path)}>{i.name}</span>}
                     <RowMenu label={`Actions for ${i.name}`} items={menu(i)} />
                   </span>
