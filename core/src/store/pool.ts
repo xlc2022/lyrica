@@ -327,35 +327,6 @@ function unit(v: Float32Array): Float32Array {
 }
 const json = <T>(s: string): T => JSON.parse(s) as T;
 const entryId = (thread: string, n: number) => `e:${thread}#${n}`;
-/** What may hold code: a path, snake_case, an assignment, a flag, a dotted name, a time or port, a variable or a call. */
-const CODE_LIKE = /\/\w|\w_\w|\w=\S|--\w|\w\.\w|:\d|\$\w|\w\(\)/;
-
-/**
- * Whether `next` is `old` with only backticks added, in pairs, and spaces added beside them ("duty255" may become
- * "duty `255`"), none inside […] (a citation group) or [[…]] (a mention): every other character, spaces included,
- * stays in order. One pass over both.
- */
-export function onlyBackticksAdded(old: string, next: string): boolean {
-  if (old.includes("`") || (next.split("`").length - 1) % 2) return false;
-  let i = 0, j = 0, depth = 0;
-  while (j < next.length) {
-    const c = next[j]!;
-    // Never inside a citation group or a mention token: a tick there hides its IDs from citationsIn and stripCitations.
-    if (c === "`") { if (depth > 0) return false; j++; continue; }
-    if (c === "[") depth++;
-    else if (c === "]" && depth > 0) depth--;
-    if (c === " " && old[i] !== " ") {
-      let k = j;
-      while (next[k] === " ") k++;
-      if (next[k] === "`" || next[j - 1] === "`") { j = k; continue; }
-      return false;
-    }
-    if (old[i] !== c) return false;
-    i++; j++;
-  }
-  return i === old.length;
-}
-
 /** A revision's body as a memory's: without the renames a respelling revision keeps for userText. */
 const revisionBody = (raw: string): Body => { const { renamed: _, ...body } = JSON.parse(raw) as Body & { renamed?: unknown }; return body; };
 /** Renames applied in order, oldest first, each as one rewriter. */
@@ -1487,25 +1458,6 @@ export class PoolStore extends PoolReader {
     }
     this.db.prepare("DELETE FROM renames WHERE id <= ?").run(rows.at(-1)!.id);
     return changed;
-  }
-
-  // One-time backticks pass (2026-11-16; remove in the next PR once it has run): her older notes get Markdown backticks
-  // around paths, commands and values, as the remember tool now asks (docs/memory.md, "Backticks in older notes").
-
-  /** Current notes she or sleep wrote, never touched by a user, with no backticks yet and something that reads as code. */
-  backtickCandidates(): { id: string; text: string }[] {
-    const rows = this.db.prepare(`SELECT id, text FROM notes WHERE superseded_by IS NULL AND origin != 'user'
-      AND instr(text, ?) = 0 AND NOT EXISTS (SELECT 1 FROM revisions r WHERE r.item = notes.id AND r.author LIKE 'user:%') ORDER BY id`).all("`") as { id: string; text: string }[];
-    // Citations and mention tokens ([e:web/3f7a2c#4], [[u:…]]) aren't code.
-    return rows.filter((r) => CODE_LIKE.test(r.text.replace(/\[[^[\]\n]*\]/g, " ")));
-  }
-
-  /** The note with backticks added by sleep, as a revision; refused unless backticks (and spaces beside them) are all that changed. */
-  addBackticks(id: string, text: string): void {
-    const item = this.load(id);
-    if (!item || item.kind !== "note" || item.origin === "user") throw new Error(`no note of hers ${id}`);
-    if (!onlyBackticksAdded(item.text, text)) throw new Error(`a backticks edit of ${id} may only add backticks`);
-    if (text !== item.text) this.edit(id, { text }, "sleep");
   }
 
   /** Pins or unpins entry `n`: a pinned entry stays in her context word for word. Throws if there's no such entry. */
