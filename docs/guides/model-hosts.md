@@ -243,7 +243,12 @@ a reboot; with Secure Boot on, enrolling the driver's key at the machine's
 own screen is yours to do. On a GPU someone else already uses, she leaves
 the host paused. On a CMP 100-210 she also asks whether to install its
 unlock, and has you reboot before the pairing code. On NixOS she stops and
-says the module comes first. The steps below are the same ones, by hand.
+says the module comes first. If you want the host on your tailnet, she
+gives you a pinned script running `install.sh --tailscale NAME` to run
+with `sudo bash` in your own terminal: it asks for a Tailscale auth key at
+a hidden prompt, so make the key one-off and short-lived and never paste
+it in chat, and a key that didn't join is revoked. The steps below are the
+same ones, by hand.
 
 ```sh
 git clone https://github.com/xlc2022/lyrica && cd lyrica
