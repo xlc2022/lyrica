@@ -1196,7 +1196,7 @@ function useEndpointActions(ctx: MCtx, ep: Endpoint, others: Endpoint[], onSignI
     )}
     {asking === "remove" && (
       <ConfirmDialog title={`Remove ${ep.name}?`} sentence={ep.api === "host"
-        ? "Its models leave every list that names them, and the host unpairs this server unless another endpoint here still uses it."
+        ? "Its models leave every list that names them, and this Lyrica unpairs from the host unless someone else here still uses it."
         : planOf(ep.api) ? `Its models leave every list that names them. Lyrica stays connected in your ${planOf(ep.api) === "codex" ? "ChatGPT" : PLAN_NAMES[planOf(ep.api)!]} account until you disconnect it there.`
         : "Its models leave every list that names them, so threads that used them fall back to the next model."}
         confirm="Remove" danger onCancel={() => setAsking(undefined)}

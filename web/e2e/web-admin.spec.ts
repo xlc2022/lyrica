@@ -1108,7 +1108,7 @@ test("Remove on a host says it unpairs, and says so when the host couldn't unpai
   await page.getByRole("menuitem", { name: "Remove" }).click();
   const ask = page.getByRole("dialog");
   await expect(ask.getByRole("heading")).toHaveText("Remove box?");
-  await expect(ask).toContainText("the host unpairs this server unless another endpoint here still uses it.");
+  await expect(ask).toContainText("this Lyrica unpairs from the host unless someone else here still uses it.");
   await shot("confirm");
   await ask.getByRole("button", { name: "Remove" }).click();
   await expect(page.locator(".toast")).toHaveText("Removed box, but it couldn't unpair this server. Revoke it on the host's dashboard.");
