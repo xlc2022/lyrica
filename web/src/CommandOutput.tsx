@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { get, type CommandOutputInfo, type CommandOutputText, type OutputEvent } from "./api.ts";
 import { CopyButton } from "./CopyButton.tsx";
+import { Icon } from "./icons.tsx";
 import { ErrorText, useDismiss, useInView } from "./ui.tsx";
 
 // --- The thread stream's output and jobs events, for the views that show them (stream.ts feeds these) ---
@@ -48,8 +49,6 @@ export function OutputBox({ base, call, id, running, fallback, failed, label }: 
   const [info, setInfo] = useState<CommandOutputInfo>();
   const [missing, setMissing] = useState(false);
   const [error, setError] = useState("");
-  const box = useRef<HTMLPreElement>(null);
-  const atEnd = useRef(true);
   // The bytes of output this view holds the end of, so a piece it already has (sent while it loaded) isn't added twice.
   const seen = useRef(0);
   // A background job's row or card reads it again when it ends, for its end line and whatever was kept last.
@@ -91,7 +90,37 @@ export function OutputBox({ base, call, id, running, fallback, failed, label }: 
     return () => { live = false; off(); };
   }, [base, call, id, running, ended]);
 
-  // Keeps the end in view as output arrives, unless the person scrolled up to read.
+  const [big, setBig] = useState(false);
+
+  // Nothing kept to show (a call from before output was kept, or one that failed before printing): her result, as before.
+  if (fallback !== undefined && (missing || (text === "" && info?.kind === "call" && info.state !== "running" && failed))) return <pre className={failed ? "tool-error" : ""}>{fallback}</pre>;
+  if (error) return <ErrorText error={error} />;
+  const going = running || info?.state === "running";
+  const end = info && !going ? endLine(info) : undefined;
+  const endNote = end && <p className={`cap read-note${info?.state === "exited" && info.exitCode === 0 ? "" : " danger"}`}>{end.split(/(\d+)/).map((t, i) => (i % 2 ? <span key={i} className="num">{t}</span> : t))}</p>;
+  return (
+    <div className="read-text command-output" data-kind="code">
+      <div className="code-head">
+        <span className="code-lang">{label}</span>
+        <button type="button" className="icon sm code-expand" aria-label={`Expand ${label.toLowerCase()}`} title="Expand" onClick={() => setBig(true)}><Icon name="expand" /></button>
+        <CopyButton text={text ?? ""} label="Copy" ariaLabel="Copy output" className="code-copy" />
+      </div>
+      <OutputText text={text} going={going} label={label} />
+      {endNote}
+      {big && (
+        <OutputDialog label={label} info={info} text={text} onClose={() => setBig(false)}>
+          <OutputText text={text} going={going} label={label} />
+          {endNote}
+        </OutputDialog>
+      )}
+    </div>
+  );
+}
+
+/** The output itself, following its end as it arrives unless the person scrolled up to read. */
+function OutputText({ text, going, label }: { text: string | undefined; going: boolean; label: string }) {
+  const box = useRef<HTMLPreElement>(null);
+  const atEnd = useRef(true);
   useLayoutEffect(() => {
     const el = box.current;
     if (el && atEnd.current) el.scrollTop = el.scrollHeight;
@@ -100,23 +129,41 @@ export function OutputBox({ base, call, id, running, fallback, failed, label }: 
     const el = box.current;
     if (el) atEnd.current = el.scrollHeight - el.scrollTop - el.clientHeight < 8;
   }, []);
-
-  // Nothing kept to show (a call from before output was kept, or one that failed before printing): her result, as before.
-  if (fallback !== undefined && (missing || (text === "" && info?.kind === "call" && info.state !== "running" && failed))) return <pre className={failed ? "tool-error" : ""}>{fallback}</pre>;
-  if (error) return <ErrorText error={error} />;
-  const going = running || info?.state === "running";
-  const end = info && !going ? endLine(info) : undefined;
   return (
-    <div className="read-text command-output" data-kind="code">
-      <div className="code-head">
-        <span className="code-lang">{label}</span>
-        <CopyButton text={text ?? ""} label="Copy" ariaLabel="Copy output" className="code-copy" />
-      </div>
-      <pre ref={box} className="read-body" onScroll={onScroll} tabIndex={0} aria-label={label} aria-busy={going || undefined}>
-        {text === undefined ? <span className="muted">Loading…</span> : text || <span className="muted">{going ? "No output yet." : "No output."}</span>}
-      </pre>
-      {end && <p className={`cap read-note${info?.state === "exited" && info.exitCode === 0 ? "" : " danger"}`}>{end.split(/(\d+)/).map((t, i) => (i % 2 ? <span key={i} className="num">{t}</span> : t))}</p>}
-    </div>
+    <pre ref={box} className="read-body" onScroll={onScroll} tabIndex={0} aria-label={label} aria-busy={going || undefined}>
+      {text === undefined ? <span className="muted">Loading…</span> : text || <span className="muted">{going ? "No output yet." : "No output."}</span>}
+    </pre>
+  );
+}
+
+/** A command's output large, in a dialog over the conversation (the whole screen on a phone), still streaming. */
+function OutputDialog({ label, info, text, onClose, children }: {
+  label: string; info: CommandOutputInfo | undefined; text: string | undefined; onClose: () => void; children: React.ReactNode;
+}) {
+  const ref = useRef<HTMLDialogElement>(null);
+  useEffect(() => { const el = ref.current; if (el && !el.open) el.showModal(); return () => el?.close(); }, []);
+  const st = info && stateOf(info);
+  return (
+    <dialog ref={ref} className="viewer output-dialog" aria-label={info?.name ?? label}
+      onCancel={(e) => { e.preventDefault(); onClose(); }} onKeyDown={(e) => { if (e.key === "Escape") e.stopPropagation(); }}
+      onClick={(e) => { e.stopPropagation(); if (e.target === ref.current) onClose(); }}>
+      <section className="viewer-file">
+        <div className="viewer-head">
+          <h2 className="changes-title">{info?.name ?? label}</h2>
+          {info && <code className="name output-command" title={info.command}>{info.command}</code>}
+          {info && st && (
+            <span className="viewer-facts muted">
+              <span className="status-word"><span className={`dot ${st.dot}`} aria-hidden="true" />{st.word}</span> · {info.place} · <span className="num">{ranFor(info)}</span>
+            </span>
+          )}
+          <span className="viewer-acts">
+            <CopyButton text={text ?? ""} label="Copy" ariaLabel="Copy output" />
+            <button type="button" className="icon sm" aria-label="Close" title="Close" onClick={onClose}><Icon name="close" /></button>
+          </span>
+        </div>
+        <div className="viewer-body command-output">{children}</div>
+      </section>
+    </dialog>
   );
 }
 
