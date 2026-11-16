@@ -8,7 +8,7 @@ import { StringDecoder } from "node:string_decoder";
 import { posix } from "node:path";
 import { removePrivateKeys, PRIVATE_KEY_BEGIN as BEGIN, PRIVATE_KEY_END as END } from "../secrets.ts";
 import { keyBlob, keysFile, RELOAD_SSHD, sshdRule } from "./machine-cleanup.ts";
-import { nixosSudo, nixString, sudoersCommand } from "./sudoers.ts";
+import { nixosSudo, nixosSudoModule, nixString, sudoersCommand } from "./sudoers.ts";
 import { within } from "./settings.ts";
 
 export interface SuspectCommand {
@@ -653,8 +653,8 @@ function chain(lines: string[]): string {
 export function machineSudo(account: string, nixos = false): { everything: string; password: string } {
   if (nixos) {
     return {
-      everything: nixosSudo(account, ["ALL"]),
-      password: [nixosSudo(account, ["ALL"], false), "", "# After the rebuild: the password, typed twice at the prompt", `sudo passwd ${account}`].join("\n"),
+      everything: nixosSudoModule(nixosSudo(account, ["ALL"])),
+      password: [nixosSudoModule(nixosSudo(account, ["ALL"], false)), "", "# After the rebuild: the password, typed twice at the prompt", `sudo passwd ${account}`].join("\n"),
     };
   }
   return {

@@ -45,7 +45,7 @@ The person sets passwords at the installer's console, never through you: `sudo n
 
 ## Keeping a NixOS machine running
 
-**Giving you an installed NixOS machine.** sshd and sudo on NixOS read only the configuration's own rules, so on Add machine the person sets **System** to NixOS: the page then gives a module that declares your account, its key and an SSH rule, a rebuild, and any sudo as `security.sudo.extraRules` for the same module. They save the module beside their configuration, add it to `imports`, rebuild, then press **Test** and confirm the fingerprint. Find the configuration first (below) if they ask you to do it.
+**Giving you an installed NixOS machine.** sshd and sudo on NixOS read only the configuration's own rules, so on Add machine the person sets **System** to NixOS: the page then gives a module that declares your account, its key and an SSH rule, a rebuild, and any sudo as a module of its own holding `security.sudo.extraRules`, each added to `imports`. They save the module beside their configuration, add it to `imports`, rebuild, then press **Test** and confirm the fingerprint. Find the configuration first (below) if they ask you to do it.
 
 **Find the configuration first.** Ask the person where it lives, and check what you find: `ls -l /etc/nixos`, whether there is a `flake.nix`, `nixos-version`, `nixos-rebuild list-generations | tail -3`. Never assume `/etc/nixos`, and never use a checkout of Lyrica's own repository as the configuration. With a flake, the machine's name is its entry in `nixosConfigurations` (`nix flake show <folder>`), and every command takes `--flake <folder>#<name>`. In a flake inside a git repository, Nix sees only files added to git: `git add` a new file before you build.
 

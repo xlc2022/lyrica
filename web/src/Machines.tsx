@@ -9,7 +9,7 @@ import {
 } from "./api.ts";
 import { CopyButton } from "./CopyButton.tsx";
 import { ModeItem, MODES } from "./Modes.tsx";
-import { checkSudoers, nixosSudo, ROOT_LIMITS, sudoersCommand } from "../../core/src/workspace/sudoers.ts";
+import { checkSudoers, nixosSudo, nixosSudoModule, ROOT_LIMITS, sudoersCommand } from "../../core/src/workspace/sudoers.ts";
 import { cleanupWhere, machineCleanup } from "../../core/src/workspace/machine-cleanup.ts";
 import { Icon } from "./icons.tsx";
 import { her } from "./name.ts";
@@ -362,7 +362,7 @@ function ExactSudo({ account, nixos }: { account: string; nixos: boolean }) {
   const lines = checked.flatMap((c) => (c.line ? [c.line] : []));
   const ready = lines.length > 0 && !checked.some((c) => c.problem);
   const head = `${account} ALL=(root) NOPASSWD: `;
-  const text = !ready ? "" : nixos ? nixosSudo(account, lines.map((l) => l.slice(head.length))) : sudoersCommand(lines);
+  const text = !ready ? "" : nixos ? nixosSudoModule(nixosSudo(account, lines.map((l) => l.slice(head.length)))) : sudoersCommand(lines);
   const set = (i: number, v: string) => setCommands((l) => l.map((c, j) => (j === i ? v : c)));
   return (
     <div className="code-block exact-sudo">

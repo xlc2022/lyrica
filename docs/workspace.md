@@ -451,8 +451,11 @@ configuration, so only a rebuild changes her keys, as the root-owned file
 does elsewhere; the `Match` block, last in sshd's config, keeps
 `~/.ssh` and passwords out for her account. **Rebuild** is `sudo
 nixos-rebuild switch` (with `--flake` where the configuration is a flake),
-then the fingerprint. The sudo blocks are `security.sudo.extraRules` for
-the same module (`nixosSudo` in `core/src/workspace/sudoers.ts`); exact
+then the fingerprint. Each sudo block is a module of its own holding a
+`security.sudo.extraRules` rule (`nixosSudo` and `nixosSudoModule` in
+`core/src/workspace/sudoers.ts`), added to `imports`: two `extraRules` in
+one attribute set don't evaluate, while separate modules' lists merge, so
+any of them can be used together; exact
 commands may name programs under `/run/current-system/sw/bin`, and **Sudo,
 with password** adds `sudo passwd <account>` after the rebuild. On the
 user's own account the module only adds the key to
