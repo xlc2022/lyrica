@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { JOB_LIMITS, jobNotice, Jobs, machineReady, sleepWait, type ExecutionTarget, type JobInfo } from "../src/index.ts";
+import { JOB_LIMITS, jobNotice, Jobs, machineReady, NOTICE_LIMITS, sleepWait, type ExecutionTarget, type JobInfo } from "../src/index.ts";
+import { capOutput } from "../src/workspace/ops.ts";
 
 const thread = { userId: "u1", pool: "general", threadId: "t1" };
 
-/** A target whose commands run until their signal aborts or `finish` is called. */
+/**
+ * A target whose commands run until their signal aborts or `done` is called. Like the sandbox's and a machine's,
+ * what a command prints (`onData` here) reaches `onRaw` whole and the caller's `onData` cut (capOutput).
+ */
 function fakeTarget() {
   const running = new Map<string, { onData: (d: Buffer) => void; done: (code: number) => void }>();
   const target: ExecutionTarget = {
@@ -12,8 +16,9 @@ function fakeTarget() {
     folders: () => [],
     ops: () => ({
       bash: {
-        exec: (command: string, _cwd: string, o: { onData: (d: Buffer) => void; signal?: AbortSignal }) => new Promise<{ exitCode: number }>((resolve, reject) => {
-          running.set(command, { onData: o.onData, done: (code) => resolve({ exitCode: code }) });
+        exec: (command: string, _cwd: string, o: { onData: (d: Buffer) => void; onRaw?: (d: Buffer) => void; signal?: AbortSignal }) => new Promise<{ exitCode: number }>((resolve, reject) => {
+          const out = capOutput(o.onData);
+          running.set(command, { onData: (d) => { out.push(d); o.onRaw?.(d); }, done: (code) => { out.end(); resolve({ exitCode: code }); } });
           o.signal?.addEventListener("abort", () => reject(new Error("aborted")));
         }),
       },
@@ -38,6 +43,41 @@ describe("Jobs", () => {
     expect(ended).toHaveLength(1);
     expect(ended[0]!.job).toMatchObject({ state: "exited", exitCode: 0 });
     expect(jobNotice(ended[0]!.job, ended[0]!.output)).toMatch(/^Background command j1 in the sandbox, exited with code 0 after \d+ s: make\nLast output:\nbuilding\ndone$/);
+  });
+
+  it("keeps a long job's whole output, in the sandbox and on a machine, not the cut a call's result gets", async () => {
+    const saved: Buffer[] = [];
+    const jobs = new Jobs(() => {}, 10_000, { save: (_t, _job, output) => saved.push(output) });
+    const { target, running } = fakeTarget();
+    // Like `seq 1 200000`: about 1.2 MB in many pieces, far past the 20 KB and 800 lines a call's result keeps.
+    const lines = Array.from({ length: 200_000 }, (_, i) => `${i + 1}\n`).join("");
+    for (const [place, cwd] of [["sandbox", "/workspace"], ["nautica", async () => "/home/lyrica"]] as const) {
+      jobs.start(thread, place, target, `seq ${place}`, cwd);
+      await tick();
+      for (let i = 0; i < lines.length; i += 65_536) running.get(`seq ${place}`)!.onData(Buffer.from(lines.slice(i, i + 65_536)));
+      running.get(`seq ${place}`)!.done(0);
+      await tick();
+    }
+    expect(saved).toHaveLength(2);
+    for (const output of saved) {
+      expect(output.toString("utf8")).toBe(lines);
+      expect(output.toString("utf8")).not.toContain("left out");
+    }
+  });
+
+  it("ends a job's notice with a bounded tail: a 1 MB line or thousands of lines stay within a few KB, and say where the rest is", () => {
+    const job: JobInfo = { id: "j4", place: "sandbox", command: "docker pull x", cwd: "/workspace", startedAt: "2026-01-01T00:00:00Z", endedAt: "2026-01-01T00:01:00Z", state: "exited", exitCode: 0 };
+    const bar = `${"=".repeat(1024 * 1024)}> 100%`;
+    const huge = jobNotice(job, `${bar}\ndone\n`);
+    expect(huge.length).toBeLessThan(NOTICE_LIMITS.chars + 500);
+    expect(huge).toContain("jobs output with id j4 reads the whole output");
+    expect(huge).toMatch(/\[… [\d,]+ characters\] =+> 100%\ndone$/);
+    const many = jobNotice(job, Array.from({ length: 5000 }, (_, i) => `line ${i + 1}`).join("\n"));
+    expect(many.length).toBeLessThan(NOTICE_LIMITS.chars + 500);
+    expect(many).toMatch(/\[… [\d,]+ characters before these lines left out; jobs output with id j4 reads the whole output\]\nline 4961\n/);
+    expect(many.endsWith("line 5000")).toBe(true);
+    // A short output is as it was, with no marker.
+    expect(jobNotice(job, "a\nb\n")).toMatch(/Last output:\na\nb$/);
   });
 
   it("waits for a machine that doesn't answer yet (rebooting), then runs there; a changed host key ends it at once", async () => {

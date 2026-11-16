@@ -50,7 +50,7 @@ tool each for A and B, prompt lines only where the thread has a machine).
   stopped herself leaves none, since 2026-11-04), `lyricad` delivers a
   notice into the thread (`status: "job"`), the same encrypted path a
   background subagent's result takes, with the exit code, how long it ran and
-  its last 40 lines. An idle thread is woken once to carry on, through the
+  the end of its output (at most 40 lines and 4 KB; docs/workspace.md). An idle thread is woken once to carry on, through the
   same guards as a wake-up (a paused project or a child past the at-once
   limit waits; the notice stays in the thread). A busy thread gets it as a
   follow-up.

@@ -1130,7 +1130,9 @@ jobs").
   workspace extension tees each call into `ThreadTools.keepOutput`
   (`Workspace.keepCall`), which keeps it while it runs and saves it with
   how it ended (`callEnd`: exited with its code, timed out, stopped or
-  failed with the reason). A machine's SSH helper sends all of a command's
+  failed with the reason). A background job keeps from `onRaw` the same
+  way, in the sandbox and on a machine (`Jobs.start`), so it too is whole up
+  to the 16 MiB, not the cut a call's result gets. A machine's SSH helper sends all of a command's
   output across its pipe, in frames of at most `MAX_BODY`; the cut is
   lyricad's.
 - **Her way to it:** under a result that was cut, one line says it is kept
@@ -1207,7 +1209,10 @@ background, so it doesn't hold her turn (`core/src/workspace/jobs.ts`).
   with the thread once it ends (`JobHooks`).
 - When a job ends (exited, failed, timed out or stopped), `lyricad`'s
   `onJobEnd` delivers a notice into the thread (`jobNotice`: the job, the
-  exit code, how long it ran and the last 40 lines of its output), on the
+  exit code, how long it ran and the end of its output: its last 40 lines,
+  each cut to its last 1,000 characters, 4 KB in all, after a line naming
+  how much was left out and its `jobs output` id when anything was;
+  `noticeTail`, `NOTICE_LIMITS`), on the
   path a background subagent's result takes (`Delegation.deliver`, status
   `job`, `quiet`). The web reads the notice text back into its card
   (`parseJobNotice` in `web/src/JobNotice.tsx`; web/test/job-notice.test.ts
