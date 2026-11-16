@@ -272,7 +272,8 @@ snapshot it can read is restored. The package is rebuilt only when the
 code it ships changed; a commit that touched only docs or tests reuses the
 built one, and the restart is quick. The first rebuild from 2026-11-17 on
 also builds OCRmyPDF and fpdf2 for her `pdf` skill, so it takes longer
-once, and her sandbox tools grow by about 670 MiB. Updates and rollback
+once, and her sandbox tools grow by about 670 MiB (730 MiB with Noto Sans
+CJK, her font for Chinese, from 2026-11-17). Updates and rollback
 from "Upgrading" work on NixOS too. After an Update, run
 `nix flake update lyrica` before your next `nixos-rebuild` for any reason:
 the system flake's lock still names the older commit. lyricad keeps the
@@ -377,7 +378,8 @@ answers ahead; without a terminal the answer is no), then:
    Nix binary tarball (pinned, in `/opt/lyrica/tools/lib/nix`) for Nix
    in her sandbox; if any of them fails it only prints a warning. IBM
    Plex, the web UI's and her screenshots' font, comes from apt
-   (`fonts-ibm-plex`). An install from before 2026-11-01 had Chromium,
+   (`fonts-ibm-plex`), and Noto Sans CJK for Chinese, Japanese and Korean
+   (`fonts-noto-cjk`). An install from before 2026-11-01 had Chromium,
    Claude Code and Codex in `/usr/local`; this run moves them and removes
    the old copies. When
    Tailscale's binaries are missing it adds Tailscale's apt repository
@@ -1365,7 +1367,9 @@ refused. To replace the destination, enter the full URL and token again;
     `/opt/lyrica/tools/lib/python`) and Tesseract's large English, Chinese
     and orientation files (in `/opt/lyrica/tools/share/tessdata`, about
     130 MiB); until then she has only `pdftotext` and poppler's other tools
-    for PDFs. About 380 MiB in all.
+    for PDFs. About 380 MiB in all. Also `fonts-noto-cjk` (about 90 MiB),
+    so what she renders shows Chinese, Japanese and Korean; until then
+    those come out as boxes.
   - **Any install missing them:** headless Chromium and IBM Plex for her
     screenshots, Claude Code and Codex, ffmpeg and ffprobe (until then
     she can't check a clip's length or streams), and the Python baseline

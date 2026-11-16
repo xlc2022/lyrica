@@ -8,7 +8,8 @@
 # and its tests, claude-code
 # for threads with Claude Code on (docs/workspace.md, "Claude Code"), and
 # codex for ChatGPT Images, in a sandbox of its own (docs/models.md).
-# chromium and the fonts render HTML/SVG diagrams offline (principle 1),
+# chromium and the fonts render HTML/SVG diagrams offline (principle 1)
+# (Noto Sans CJK, the variable font, for Chinese, Japanese and Korean),
 # and take screenshots of her web UI (web/e2e/shot.ts). gnumake and gcc,
 # with python3, build native npm modules (node-gyp) when no prebuilt binary
 # fits, as Debian's build-essential does there. python3 comes with a baseline
@@ -51,7 +52,7 @@ with pkgs; [
     pypdf pdfplumber pillow reportlab pandas numpy pypdfium2 ]))
   qpdf tesseract ocrmypdf
   ffmpeg-headless
-  chromium ibm-plex dejavu_fonts
+  chromium ibm-plex dejavu_fonts noto-fonts-cjk-sans
   bubblewrap passt nftables nix
   unfree.claude-code codex
 ]

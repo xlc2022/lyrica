@@ -666,7 +666,8 @@ and Traditional Chinese), with her own eyes for handwriting and tables
 Tesseract reads badly and every figure checked against the picture, pypdf
 for listing and filling form fields (reportlab and pypdf to write over a
 page without fields), qpdf to merge, split, rotate, repair and decrypt, and
-Chromium's print to PDF from HTML to make one. Results are new files; she
+Chromium's print to PDF from HTML to make one (Noto Sans CJK for Chinese,
+which also writes Chinese over a page as a printed overlay). Results are new files; she
 never changes or deletes the person's original unless asked. The tools
 come from nix/sandbox-tools.nix on NixOS and install.sh on Debian
 (docs/daemon.md).

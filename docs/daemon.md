@@ -1696,7 +1696,8 @@ encrypt.
   everyday tools her sandbox would otherwise lack: ripgrep, file, bc, xxd,
   bsdextrautils for hexdump, zip, tree, fd-find (linked as `fd` in her tool
   prefix), sqlite3, yq, poppler-utils for pdftotext, wget, lsof, strace and
-  pandoc, and for her `pdf` skill qpdf, tesseract-ocr, ocrmypdf,
+  pandoc, fonts-noto-cjk so what she renders shows Chinese, Japanese and
+  Korean, and for her `pdf` skill qpdf, tesseract-ocr, ocrmypdf,
   python3-pil, python3-reportlab, python3-pandas and python3-numpy;
   pdfplumber, pdfminer.six and pypdfium2, which Debian doesn't package,
   and pypdf, whose Debian 12 version is too old, go into
@@ -2007,7 +2008,8 @@ system with the module on. Only x86_64-linux.
   requests, html5lib and PyYAML, and for the `pdf` skill qpdf, Tesseract
   (English, Simplified and Traditional Chinese and orientation only, from the
   large tessdata files), OCRmyPDF built against it, and pypdf, pdfplumber,
-  Pillow, reportlab, pandas, NumPy and pypdfium2, make and gcc (for native npm
+  Pillow, reportlab, pandas, NumPy and pypdfium2, Noto Sans CJK (the
+  variable font) for Chinese, Japanese and Korean, make and gcc (for native npm
   modules), ImageMagick, ffmpeg (headless, with ffprobe), Chromium with IBM Plex
   and DejaVu fonts for her screenshots, bubblewrap, passt, nftables) and
   `LYRICA_SANDBOX_CLOSURE` to the store paths of their closure, Node's and
