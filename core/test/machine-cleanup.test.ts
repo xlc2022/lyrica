@@ -43,6 +43,13 @@ describe("machine clean-up", () => {
     expect(machineCleanup({ ...ssh, keyLine: "" }).map((s) => s.name)).toEqual(["Sudo", "Account"]);
   });
 
+  it("on NixOS, offers the rebuild that drops what her module declared, then her home folder", () => {
+    expect(machineCleanup({ ...ssh, nixos: true }).map((s) => [s.name, s.command]))
+      .toEqual([["Configuration", "sudo nixos-rebuild switch"], ["Home", "sudo rm -rf /home/lyrica"]]);
+    expect(machineCleanup({ ...ssh, nixos: true, asUser: true, address: "sam@laptop.lan" }).map((s) => [s.name, s.command]))
+      .toEqual([["Key", "sudo nixos-rebuild switch"]]);
+  });
+
   it("offers a Proxmox token, and the user made for her, never the user's own Proxmox user", () => {
     expect(machineCleanup({ kind: "proxmox", address: "https://pve.lan:8006", tokenId: "lyrica@pve!agent" }).map((s) => s.command))
       .toEqual(["pveum user token remove lyrica@pve agent", "pveum user delete lyrica@pve"]);

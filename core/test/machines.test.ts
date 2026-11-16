@@ -129,6 +129,27 @@ describe("machines", () => {
     for (const bad of ["a;id@127.0.0.1", "$(id)@127.0.0.1", "-x@127.0.0.1"]) await expect(workspace.probeMachine(ada.id, "ada", { name: "srv", address: bad })).rejects.toThrow(/the account is a user name/);
   });
 
+  it("on NixOS, give a module for the configuration and a rebuild, with sudo as extraRules, since its sshd and sudo read no drop-in folders", async () => {
+    const { settings, workspace, ada } = await setup();
+    const hers = await workspace.probeMachine(ada.id, "ada", { name: "nix", address: "lyrica@127.0.0.1", nixos: true });
+    expect(hers.setup).toContain(`users.users.lyrica = {\n    isNormalUser = true;\n    openssh.authorizedKeys.keys = [ "${hers.keyLine}" ];`);
+    expect(hers.setup).toContain("services.openssh.extraConfig = lib.mkAfter ''\n    Match User lyrica\n        AuthorizedKeysFile /etc/ssh/authorized_keys.d/%u\n        PasswordAuthentication no");
+    expect(hers.setup).not.toMatch(/sudo |sshd_config\.d|sudoers\.d/);
+    expect(hers.rebuild).toMatch(/^sudo nixos-rebuild switch &&\n[^]*ssh-keygen -lf /);
+    expect(hers.sudo!.everything).toBe('security.sudo.extraRules = [{\n  users = [ "lyrica" ];\n  commands = [ { command = "ALL"; options = [ "NOPASSWD" ]; } ];\n}];');
+    expect(hers.sudo!.password).toContain('commands = [ "ALL" ];');
+    expect(hers.sudo!.password).toContain("sudo passwd lyrica");
+    const own = await workspace.probeMachine(ada.id, "ada", { name: "nixlap", address: "ada@127.0.0.1", asUser: true, nixos: true });
+    expect(own.setup).toBe(`{\n  # Her key, beside your own\n  users.users.ada.openssh.authorizedKeys.keys = [ "${own.keyLine}" ];\n}`);
+    expect(own.sudo).toBeUndefined();
+    // A dotted account is quoted, or Nix would read it as a nested path.
+    expect((await workspace.probeMachine(ada.id, "ada", { name: "nixdot", address: "first.last@127.0.0.1", nixos: true })).setup).toContain('users.users."first.last" = {');
+    // Saved with the machine, so Replace key and Remove machine give the NixOS steps again.
+    expect((await workspace.addMachine(ada.id, { name: "nix", address: "lyrica@127.0.0.1", root: null, pool: "general", draft: hers.draft, hostKey: KEY, nixos: true })).nixos).toBe(true);
+    expect((await workspace.probeMachine(ada.id, "ada", { name: "nix", address: "", replace: true })).rebuild).toContain("nixos-rebuild");
+    expect(settings.machine("nix")!.nixos).toBe(true);
+  });
+
   it("give a key line that works from any address, and a setup that replaces an older line for the same key", async () => {
     const { workspace, ada } = await setup();
     const own = await workspace.probeMachine(ada.id, "ada", { name: "laptop", address: "ada@127.0.0.1", asUser: true });
@@ -496,7 +517,7 @@ describe("the files a command plainly writes", () => {
 
 describe("sudo with a password", () => {
   it("keeps password logins out of SSH for her account, then sets the password and a sudoers line that asks for it", () => {
-    expect(machineSetup("lyrica", "ssh-ed25519 AAAA x")).toContain("PasswordAuthentication no\\n    KbdInteractiveAuthentication no");
+    expect(machineSetup("lyrica", "ssh-ed25519 AAAA x").setup).toContain("PasswordAuthentication no\\n    KbdInteractiveAuthentication no");
     const { password } = machineSudo("lyrica");
     const order = ["PasswordAuthentication no", "sudo sshd -t", "sudo systemctl reload ssh", "sudo passwd lyrica", "'lyrica ALL=(root) ALL'", "visudo -c"].map((x) => password.indexOf(x));
     expect(order.every((at, i) => at >= 0 && (i === 0 || at > order[i - 1]!))).toBe(true);

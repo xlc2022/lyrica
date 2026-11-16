@@ -35,7 +35,8 @@ const NEVER = new Set(["bash", "sh", "dash", "zsh", "fish", "ksh", "csh", "tcsh"
   "strace", "ltrace", "gdb", "ssh", "socat", "screen", "tmux"]);
 
 /** Where a program on a sudoers line must live: folders only root can change. */
-const SYSTEM_DIRS = ["/usr/bin/", "/usr/sbin/", "/bin/", "/sbin/", "/usr/local/bin/", "/usr/local/sbin/"];
+/** Folders only root can change; NixOS keeps its programs in /run/current-system/sw. */
+const SYSTEM_DIRS = ["/usr/bin/", "/usr/sbin/", "/bin/", "/sbin/", "/usr/local/bin/", "/usr/local/sbin/", "/run/current-system/sw/bin/", "/run/current-system/sw/sbin/"];
 
 /** Folders where she can write, so a file there given to a root command is hers to change. */
 const HERS = /^\/(home|tmp|var\/tmp|dev\/shm|run\/user)(\/|$)/;
@@ -91,4 +92,13 @@ export function checkSudoers(lines: unknown, account: string): SudoersLine[] {
       ?? (name === "systemctl" && SYSTEMCTL_ROOT.has(words[1] ?? "") ? "it changes what runs as root" : undefined);
     return { line, ...(warning ? { warning } : {}) };
   });
+}
+
+/** A Nix string literal: `"`, `\` and `${` escaped. */
+export const nixString = (s: string) => `"${s.replaceAll("\\", "\\\\").replaceAll('"', '\\"').replaceAll("${", "\\${")}"`;
+
+/** NixOS sudo rules for her account, for the configuration's `security.sudo.extraRules`: each command, with or without a password. */
+export function nixosSudo(account: string, commands: string[], nopasswd = true): string {
+  const each = commands.map((c) => nopasswd ? `{ command = ${nixString(c)}; options = [ "NOPASSWD" ]; }` : nixString(c));
+  return ["security.sudo.extraRules = [{", `  users = [ ${nixString(account)} ];`, `  commands = [ ${each.join(" ")} ];`, "}];"].join("\n");
 }

@@ -184,6 +184,8 @@ export interface MachineProbe {
   keyLine?: string;
   /** The setup steps to paste on the machine as a user with sudo (for Proxmox, as root on the node). */
   setup: string;
+  /** NixOS: the rebuild that applies `setup`, a module for the configuration, then the fingerprint. */
+  rebuild?: string;
   /** SSH on her own account: sudo for everything, and sudo with a password, each a command to paste on its own (`machineSudo`). */
   sudo?: { everything: string; password: string };
   /** The host key the machine showed, or for Proxmox its certificate's, when it answered. */
@@ -1745,7 +1747,7 @@ export class Workspace {
    * (or the one from an earlier probe), its setup steps, and a test that
    * reads the host key and tries the key. Nothing is saved.
    */
-  async probeMachine(userId: string, login: string, input: { kind?: MachineKind; name: string; address: string; draft?: string; asUser?: boolean; user?: string; replace?: boolean }): Promise<MachineProbe> {
+  async probeMachine(userId: string, login: string, input: { kind?: MachineKind; name: string; address: string; draft?: string; asUser?: boolean; nixos?: boolean; user?: string; replace?: boolean }): Promise<MachineProbe> {
     if (input.kind === "proxmox") return this.probeProxmox(input.address, input.asUser ? proxmoxUser(input.user ?? "") : undefined);
     if (input.replace) return this.probeSaved(userId, input.name);
     const now = Date.now();
@@ -1761,10 +1763,10 @@ export class Workspace {
     }
     pair.expires = now + DRAFT_MS;
     const keyLine = authorizedKeysLine(pair.publicKey);
-    const probe = await this.reach({ draft: draft!, keyLine, setup: machineSetup(username, keyLine, input.asUser), ...(input.asUser ? {} : { sudo: machineSudo(username) }) }, { host, port, username, privateKey: pair.privateKey });
+    const probe = await this.reach({ draft: draft!, keyLine, ...machineSetup(username, keyLine, input.asUser, input.nixos), ...(input.asUser ? {} : { sudo: machineSudo(username, input.nixos) }) }, { host, port, username, privateKey: pair.privateKey });
     // Her own account's keys are read from the root-owned file, never ~/.ssh, so the same account added as the user's own can't log in: say why.
     const hers = input.asUser && probe.fingerprint && !probe.login
-      ? this.settings(userId).machines().find((m) => m.kind === "ssh" && !m.asUser && m.host === host && m.port === port && m.username === username) : undefined;
+      ? this.settings(userId).machines().find((m) => m.kind === "ssh" && !m.asUser && !(m.nixos && input.nixos) && m.host === host && m.port === port && m.username === username) : undefined;
     if (!hers) return probe;
     return { ...probe, problem: `${username} is already her account on ${hers.name}: sshd reads its keys from /etc/ssh/authorized_keys/${username}, never ~/.ssh, so a key added as your own can't log in. Use your own account, or ${hers.name} as it is.` };
   }
@@ -1778,11 +1780,11 @@ export class Workspace {
     const cfg = this.settings(userId).machine(name);
     if (!cfg || cfg.kind !== "ssh") throw new Error(`no machine ${name}`);
     const keyLine = authorizedKeysLine(publicKeyOf(cfg.privateKey));
-    return this.reach({ keyLine, setup: machineSetup(cfg.username, keyLine, cfg.asUser), ...(cfg.asUser ? {} : { sudo: machineSudo(cfg.username) }) }, cfg);
+    return this.reach({ keyLine, ...machineSetup(cfg.username, keyLine, cfg.asUser, cfg.nixos), ...(cfg.asUser ? {} : { sudo: machineSudo(cfg.username, cfg.nixos) }) }, cfg);
   }
 
   /** Resolves the host and logs in. The key it shows is only reported: nothing runs, and the connection closes once she's in. */
-  private async reach(base: { draft?: string; keyLine: string; setup: string; sudo?: MachineProbe["sudo"] }, to: { host: string; port: number; username: string; privateKey: string }): Promise<MachineProbe> {
+  private async reach(base: { draft?: string; keyLine: string; setup: string; rebuild?: string; sudo?: MachineProbe["sudo"] }, to: { host: string; port: number; username: string; privateKey: string }): Promise<MachineProbe> {
     let resolved: { addresses: string[]; outside: boolean };
     try {
       resolved = await resolveHost(to.host);
@@ -2009,7 +2011,7 @@ export class Workspace {
     const { outside } = await resolveHost(host);
     if (outside && input.pool === "private" && !input.offNetworkConfirmed) throw new Error(`${host} resolves outside your network; confirm adding it anyway`);
     const m = this.settings(userId).addMachine({
-      name: input.name, host, port, username, privateKey: pair.privateKey, root: input.root, asUser: input.asUser === true, pool: input.pool, limit: input.limit, offNetwork: outside,
+      name: input.name, host, port, username, privateKey: pair.privateKey, root: input.root, asUser: input.asUser === true, nixos: input.nixos === true, pool: input.pool, limit: input.limit, offNetwork: outside,
     }, input.hostKey);
     this.drafts.delete(input.draft);
     return m;

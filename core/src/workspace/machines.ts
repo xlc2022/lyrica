@@ -8,7 +8,7 @@ import { StringDecoder } from "node:string_decoder";
 import { posix } from "node:path";
 import { removePrivateKeys, PRIVATE_KEY_BEGIN as BEGIN, PRIVATE_KEY_END as END } from "../secrets.ts";
 import { keyBlob, keysFile, RELOAD_SSHD, sshdRule } from "./machine-cleanup.ts";
-import { sudoersCommand } from "./sudoers.ts";
+import { nixosSudo, nixString, sudoersCommand } from "./sudoers.ts";
 import { within } from "./settings.ts";
 
 export interface SuspectCommand {
@@ -551,27 +551,27 @@ export function authorizedKeysLine(publicKey: string): string {
  * later pasted line would otherwise be read as the password) and stops at
  * the first that fails. On the user's own account (`asUser`) there is
  * nothing to protect from her, so the user adds the key to their own keys
- * file, without sudo.
+ * file, without sudo. On NixOS (`nixos`), see `nixosSetup`.
  */
-export function machineSetup(account: string, keyLine: string, asUser = false): string {
+export function machineSetup(account: string, keyLine: string, asUser = false, nixos = false): { setup: string; rebuild?: string } {
+  if (nixos) return nixosSetup(account, keyLine, asUser);
   const line = keyLine.replaceAll("'", "'\\''");
   // An earlier line for the same key (an older setup's, say with `from=`) goes, so running the setup again leaves one line.
   const blob = keyBlob(keyLine);
   const dropOld = (file: string) => `sed -i '\\|${blob}|d' ${file}`;
-  const fingerprint = ["", "# The host key's fingerprint, to compare with the one Lyrica shows", "ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub"];
   if (asUser) {
-    return chain([
+    return { setup: chain([
       `# Her key, in your own keys file: run as ${account}, without sudo`,
       "install -d -m 700 ~/.ssh",
       "touch ~/.ssh/authorized_keys",
       dropOld("~/.ssh/authorized_keys"),
       `printf '%s\\n' '${line}' >> ~/.ssh/authorized_keys`,
       "chmod 600 ~/.ssh/authorized_keys",
-      ...fingerprint,
-    ]);
+      ...FINGERPRINT,
+    ]) };
   }
   const keys = keysFile(account);
-  return chain([
+  return { setup: chain([
     "# Her account, made if it isn't there yet; with no password, only her key logs in",
     `{ id -u ${account} > /dev/null 2>&1 || sudo useradd --create-home --shell /bin/bash --password '*' ${account}; }`,
     "",
@@ -584,8 +584,46 @@ export function machineSetup(account: string, keyLine: string, asUser = false): 
     sshdMatch(account),
     "sudo sshd -t",
     RELOAD_SSHD,
-    ...fingerprint,
-  ]);
+    ...FINGERPRINT,
+  ]) };
+}
+
+const FINGERPRINT = ["", "# The host key's fingerprint, to compare with the one Lyrica shows", "ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub"];
+
+/**
+ * NixOS's sshd reads no sshd_config.d and its sudo no sudoers.d (nixpkgs
+ * sshd.nix and sudo.nix), so the shell setup's rule would never be read.
+ * There the setup is a module for the system configuration: her account,
+ * with her key in /etc/ssh/authorized_keys.d/<account>, which NixOS builds
+ * read-only from the configuration, and a Match rule, last in sshd's config
+ * (`lib.mkAfter`), that reads only that file for her and takes no password.
+ * Then a rebuild and the fingerprint. On the user's own account only the
+ * key, in the same file: theirs to keep beside any key in ~/.ssh.
+ */
+function nixosSetup(account: string, keyLine: string, asUser: boolean): { setup: string; rebuild: string } {
+  const key = `openssh.authorizedKeys.keys = [ ${nixString(keyLine)} ];`;
+  // A name with a dot (first.last) would read as a nested path: it is quoted.
+  const user = `users.users.${/^[A-Za-z_][A-Za-z0-9_-]*$/.test(account) ? account : nixString(account)}`;
+  const setup = asUser
+    ? ["{", "  # Her key, beside your own", `  ${user}.${key}`, "}"]
+    : [
+      "{ lib, ... }: {",
+      "  # Her account, with her key in a file built from this configuration, which only a rebuild changes",
+      `  ${user} = {`,
+      "    isNormalUser = true;",
+      `    ${key}`,
+      "  };",
+      "",
+      "  # Only that file logs her in: not ~/.ssh, and never a password",
+      "  services.openssh.extraConfig = lib.mkAfter ''",
+      `    Match User ${account}`,
+      "        AuthorizedKeysFile /etc/ssh/authorized_keys.d/%u",
+      "        PasswordAuthentication no",
+      "        KbdInteractiveAuthentication no",
+      "  '';",
+      "}",
+    ];
+  return { setup: setup.join("\n"), rebuild: chain(["sudo nixos-rebuild switch", ...FINGERPRINT]) };
 }
 
 /**
@@ -612,7 +650,13 @@ function chain(lines: string[]): string {
  * before sudo reads it. Exact commands are built on the page from the commands
  * the user types (`checkSudoers`, `sudoersCommand`).
  */
-export function machineSudo(account: string): { everything: string; password: string } {
+export function machineSudo(account: string, nixos = false): { everything: string; password: string } {
+  if (nixos) {
+    return {
+      everything: nixosSudo(account, ["ALL"]),
+      password: [nixosSudo(account, ["ALL"], false), "", "# After the rebuild: the password, typed twice at the prompt", `sudo passwd ${account}`].join("\n"),
+    };
+  }
   return {
     everything: sudoersCommand([`${account} ALL=(root) NOPASSWD: ALL`]),
     password: chain([

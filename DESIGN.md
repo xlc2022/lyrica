@@ -1706,7 +1706,9 @@ NAS, and Proxmox nodes. Decided 2026-10-11 from
   server's addresses change when it moves network, and a key pinned to them
   would lock her out of every machine at once. The machine's setup puts it in a root-owned file
   (`AuthorizedKeysFile /etc/ssh/authorized_keys/%u`), so no command she
-  runs can add a key to stay. Her sudo rights are what the owner writes
+  runs can add a key to stay; on NixOS, which reads no drop-in folders,
+  the setup is a module for its configuration that does the same through
+  `users.users` and `/etc/ssh/authorized_keys.d`. Her sudo rights are what the owner writes
   into sudoers on that machine: exact commands, all of them, or all of them
   with a password the user types on each root step's card; she never holds
   a password.

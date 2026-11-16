@@ -31,6 +31,8 @@ export interface CleanupMachine {
   keyLine?: string;
   tokenId?: string;
   asUser?: boolean;
+  /** Set up by a module in its NixOS configuration. */
+  nixos?: boolean;
 }
 
 /** The key's base64 blob, the part of an authorized_keys line that names the key whatever its options or comment. */
@@ -45,7 +47,10 @@ export function keyBlob(keyLine: string | undefined): string | undefined {
  * (any other account's stay), and her account with its home folder, its
  * keys file and its sshd rule. On the user's own account only the key: the
  * account and its sudo are theirs. Proxmox: the token, and for her own
- * Proxmox user that user. Empty when nothing is known to take away.
+ * Proxmox user that user. On NixOS, what the module declared goes with a
+ * rebuild once the user takes the module out (NixOS removes a user it no
+ * longer declares, keeping the home folder), then her home folder. Empty when
+ * nothing is known to take away.
  */
 export function machineCleanup(m: CleanupMachine): CleanupStep[] {
   if (m.kind === "proxmox") {
@@ -59,6 +64,14 @@ export function machineCleanup(m: CleanupMachine): CleanupStep[] {
   const at = m.address.indexOf("@");
   const account = at < 0 ? "" : m.address.slice(0, at);
   if (!/^[a-z_][a-z0-9_-]*$/i.test(account)) return [];
+  if (m.nixos) {
+    const rebuild = "sudo nixos-rebuild switch";
+    if (m.asUser) return [{ name: "Key", hint: `Take her key out of ${account}'s keys in the configuration first, then rebuild.`, command: rebuild }];
+    return [
+      { name: "Configuration", hint: `Take her module out of the configuration's imports first: the rebuild then removes ${account}, her key, her SSH rule and her sudo.`, command: rebuild },
+      { name: "Home", hint: `Deletes ${account}'s home folder with everything in it, which NixOS keeps when it removes the account.`, command: `sudo rm -rf /home/${account}` },
+    ];
+  }
   const blob = keyBlob(m.keyLine);
   // `\|…|d` deletes the lines holding the blob; base64 has no `|`, and `+` and `/` are plain in a basic regular expression.
   const dropKey = (file: string) => `sed -i '\\|${blob}|d' ${file}`;

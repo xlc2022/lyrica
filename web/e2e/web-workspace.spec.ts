@@ -644,6 +644,30 @@ test("Machines lists none, and Add machine reaches a machine before anything is 
   await expect(page.getByRole("region", { name: "Machines", exact: true })).toContainText("None yet.");
 });
 
+test("Add machine on NixOS gives a module for the configuration, a rebuild, and sudo as extraRules", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  await page.goto(`/#/u/${userId}/settings/machines/new`);
+  await page.getByRole("textbox", { name: "Name" }).fill("nix");
+  await page.getByRole("textbox", { name: "Address" }).fill("nix.invalid");
+  await page.getByRole("combobox", { name: "System" }).selectOption("nixos");
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/add-machine-system-${page.viewportSize()!.width}.png` });
+  const probed = page.waitForRequest((r) => r.method() === "POST" && r.url().endsWith("/machines/probe"));
+  await page.getByRole("button", { name: "Next" }).click();
+  expect((await probed).postDataJSON()).toMatchObject({ address: "lyrica@nix.invalid", nixos: true });
+  const blocks = page.locator(".setup-block");
+  await expect(blocks.nth(0)).toContainText("Configuration");
+  await expect(blocks.nth(0)).toContainText("users.users.lyrica = {");
+  await expect(blocks.nth(0)).toContainText("AuthorizedKeysFile /etc/ssh/authorized_keys.d/%u");
+  await expect(blocks.nth(1)).toContainText("sudo nixos-rebuild switch");
+  await expect(page.getByRole("button", { name: "Copy rebuild" })).toBeVisible();
+  await expect(page.locator(".machine-sudo pre").first()).toContainText('commands = [ { command = "ALL"; options = [ "NOPASSWD" ]; } ];');
+  const exact = page.locator(".exact-sudo");
+  await exact.getByRole("textbox", { name: "Command 1" }).fill("/run/current-system/sw/bin/systemctl restart nginx");
+  await expect(exact.locator("pre")).toContainText('{ command = "/run/current-system/sw/bin/systemctl restart nginx"; options = [ "NOPASSWD" ]; }');
+  await noHorizontalScroll(page);
+  if (process.env.SCREENSHOTS) { await blocks.nth(0).scrollIntoViewIfNeeded(); await page.screenshot({ path: `${process.env.SCREENSHOTS}/add-machine-nixos-${page.viewportSize()!.width}.png` }); }
+});
+
 test("A private machine she is refused for going off network is confirmed from its row, and then has nothing left to confirm", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   const vault = { name: "vault", kind: "ssh", address: "lyrica@vault.example", root: null, pool: "private", limit: "ask", keyLine: "", hostKey: `SHA256:${"A".repeat(43)}`, lastUsed: null };

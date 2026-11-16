@@ -16,6 +16,8 @@ describe("sudoers lines she offers", () => {
     expect(checkSudoers([line("/usr/bin/apt-get update")], "lyrica")[0]!.warning).toMatch(/package/);
     expect(checkSudoers([line("/usr/bin/systemctl edit nginx")], "lyrica")[0]!.warning).toMatch(/what runs as root/);
     expect(checkSudoers([line('/usr/bin/nvidia-smi ""')], "lyrica")).toEqual([{ line: line('/usr/bin/nvidia-smi ""') }]);
+    // NixOS keeps its programs under /run/current-system/sw, which only a rebuild changes.
+    expect(checkSudoers([line("/run/current-system/sw/bin/systemctl restart nginx.service")], "lyrica")).toEqual([{ line: line("/run/current-system/sw/bin/systemctl restart nginx.service") }]);
   });
 
   it("refuses anything that runs anything, a wildcard, ALL, another account or a relative program", () => {

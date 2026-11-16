@@ -776,6 +776,8 @@ export interface MachineInfo {
   tokenId?: string;
   /** True when it logs in as the user's own account (SSH), or its token is on the user's own Proxmox user, not one made for her. */
   asUser?: boolean;
+  /** SSH: set up by a module in its NixOS configuration, so Replace key and Remove machine give NixOS steps. */
+  nixos?: boolean;
   /**
    * The host key the user confirmed (SHA256:…), or for Proxmox the certificate's
    * fingerprint (AB:CD:…); null for a machine from before confirming, which
@@ -813,6 +815,8 @@ export interface MachineInfo {
  */
 export interface MachineProbeInput {
   kind?: "ssh" | "proxmox"; name: string; address: string; draft?: string; asUser?: boolean; replace?: boolean;
+  /** SSH: the machine runs NixOS, whose sshd and sudo read no drop-in folders: `setup` is then a module for its configuration and `rebuild` applies it. */
+  nixos?: boolean;
   /** Proxmox with `asUser`: the user's own Proxmox user (user@realm) the setup block puts the token on. */
   user?: string;
 }
@@ -823,6 +827,8 @@ export interface MachineProbe {
   keyLine?: string;
   /** The setup steps, one command chain to paste on the machine as a user with sudo (for Proxmox, as root on the node); with `asUser`, as the user's own account without sudo (for Proxmox still as root on the node, for a token on the user's own Proxmox user). */
   setup: string;
+  /** NixOS: `nixos-rebuild switch`, then the fingerprint; `setup` is then the module, and `sudo` holds `security.sudo.extraRules` lines for it. */
+  rebuild?: string;
   /** SSH on her own account only: sudo for everything, and sudo with a password the user chooses (typed on each root step's card), each a command to paste on its own that adds its line to /etc/sudoers.d/lyrica, checked by visudo. */
   sudo?: { everything: string; password: string };
   /** The host key, or for Proxmox the certificate's SHA-256 fingerprint. */
@@ -850,6 +856,8 @@ export interface MachineInput {
   /** Account: Mine. SSH: `address` is the user's own account. Proxmox: `token` is on the user's own Proxmox user, `user` (user@realm); a token on another user is refused (400). Set only when adding; the page shows its warnings first. */
   asUser?: boolean;
   user?: string;
+  /** SSH: the machine runs NixOS (Add machine's System). Set only when adding. */
+  nixos?: boolean;
 }
 /** PATCH /api/u/:userId/machines/:name → MachineInfo. A new pool takes the machine from every thread that granted it. */
 export interface MachineChange { address?: string; root?: string | null; pool?: Pool; limit?: MachineLimit }

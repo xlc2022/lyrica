@@ -997,7 +997,8 @@ steps:
    a user with sudo** (on a machine without sudo, install it first, or
    paste it as root with each `sudo ` removed): the account, made with
    `useradd` if the machine doesn't have it yet (password `*`, so only her
-   key logs in; on NixOS declare it in your configuration instead, and on
+   key logs in; on NixOS choose **System: NixOS**, which gives a module
+   for your configuration and a rebuild instead of this block, and on
    Alpine or another system without `useradd` or `/bin/bash`, make the
    account yourself first), her public key into
    `/etc/ssh/authorized_keys/<account>`, a file only root can change

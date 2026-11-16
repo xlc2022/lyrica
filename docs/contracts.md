@@ -2905,12 +2905,13 @@ targetFor(t, machine?): ExecutionTarget  // the sandbox, or an SSH machine the t
 machinesFor(t): ThreadMachine[]           // { name, kind, limit, root, asUser? }: granted by it and every ancestor, of its pool
 proxmox(t, machine, action, vm?): Promise<string>  // one PROXMOX_ACTIONS call on a thread's Proxmox machine, token sent only to the pinned certificate; each API call records the machine's state (online on any answer but 401, keyChanged on another certificate, else unreachable)
 callMode(t, machine?): PermissionMode     // on a machine, stricterMode(effective(t).mode, its limit)
-probeMachine(userId, login, { kind?, name, address, draft?, asUser?, user?, replace? }): Promise<MachineProbe>
+probeMachine(userId, login, { kind?, name, address, draft?, asUser?, nixos?, user?, replace? }): Promise<MachineProbe>
   // SSH: a key pair kept in memory for an hour (by `draft`), its keyLine and setup steps (one `&&` chain to paste as a user with sudo), on her own account `sudo` { everything, password } (each a command adding one line to /etc/sudoers.d/lyrica through sudoersCommand; `password` first rewrites her sshd rule and runs `passwd` for her account), the host key seen,
   // whether the login worked, offNetwork; asUser gives the own-account setup (no root), and a failed login on an account that is already hers there (a saved machine with the same address and account) says why; account root refused, and an account that isn't a plain user name ([A-Za-z_][A-Za-z0-9_.-]*, at most 32), since it goes unquoted into the pasted block and sudoers lines. Proxmox: the certificate's fingerprint and the pveum setup, no token sent; asUser with `user` (user@realm) gives the setup for a separated token on the user's own Proxmox user.
   // replace (Replace key): the saved SSH machine `name` tried as saved, its own key, account and address; no pair made, address and draft ignored.
+  // nixos (or a saved NixOS machine on replace): `setup` is a module for its configuration (her account and key in users.users, a Match rule in services.openssh.extraConfig), `rebuild` is nixos-rebuild switch then the fingerprint, and `sudo` holds security.sudo.extraRules lines (nixosSudo), since NixOS reads no sshd_config.d or sudoers.d.
   // Saves nothing.
-addMachine(userId, { kind?, name, address, root, pool, limit?, draft? | token?, hostKey, offNetworkConfirmed?, asUser?, user? }): Promise<MachineConfig>
+addMachine(userId, { kind?, name, address, root, pool, limit?, draft? | token?, hostKey, offNetworkConfirmed?, asUser?, nixos?, user? }): Promise<MachineConfig>
   // Proxmox: tries the token against the confirmed certificate and refuses the Proxmox running Lyrica (ownNode); asUser: the token must be on `user` and hold nothing beyond the .Audit privileges and VM.PowerMgmt (GET /access/permissions), or it is refused
 updateMachine(userId, name, { address?, root?, limit?, pool? }): Promise  // a new pool drops the machine from every thread; an address naming another account is refused; Proxmox: own-node address refused
 setHostKey(userId, name, hostKey, token?): Promise / confirmOffNetwork(userId, name) / removeMachine(userId, name)

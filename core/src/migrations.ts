@@ -354,6 +354,11 @@ export const STEPS: Record<DbKind, MigrationStep[]> = {
     // (DESIGN.md, Machines). Adds a nullable column only.
     version: 25,
     run(db) { addColumns(db, [["thread_workspaces", "held", "TEXT"]]); },
+  }, {
+    // Principle 2: a machine that runs NixOS gets its setup as a module for its configuration, since NixOS's sshd and
+    // sudo read no drop-in folders (docs/workspace.md, "NixOS"). Adds a column only.
+    version: 26,
+    run(db) { addColumns(db, [["machines", "nixos", "INTEGER NOT NULL DEFAULT 0"]]); },
   }],
   pool: [{
     version: 1, contract: true,

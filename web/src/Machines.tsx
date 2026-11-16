@@ -9,7 +9,7 @@ import {
 } from "./api.ts";
 import { CopyButton } from "./CopyButton.tsx";
 import { ModeItem, MODES } from "./Modes.tsx";
-import { checkSudoers, ROOT_LIMITS, sudoersCommand } from "../../core/src/workspace/sudoers.ts";
+import { checkSudoers, nixosSudo, ROOT_LIMITS, sudoersCommand } from "../../core/src/workspace/sudoers.ts";
 import { cleanupWhere, machineCleanup } from "../../core/src/workspace/machine-cleanup.ts";
 import { Icon } from "./icons.tsx";
 import { her } from "./name.ts";
@@ -268,6 +268,8 @@ function MachineDrawer({ userId, machine, onSaved, onClose }: { userId: string; 
 
 type Kind = "ssh" | "proxmox";
 type Account = "hers" | "mine";
+/** Add machine's System: NixOS reads no sshd or sudoers drop-ins, so its setup is a module for the configuration. */
+type System = "linux" | "nixos";
 
 /** What logging in as the user's own account gives her, shown before it can be chosen (docs/workspace.md, "Your own account"; for Proxmox, "Your own Proxmox user"). */
 export function accountWarnings(pool: Pool, kind: Kind = "ssh"): string[] {
@@ -291,19 +293,28 @@ export function accountWarnings(pool: Pool, kind: Kind = "ssh"): string[] {
 }
 type Step = "address" | "key" | "test" | "fingerprint";
 /** The probe's body: the form as typed, or for Replace key the machine as saved with `replace`. */
-type ProbeInput = { kind: Kind; name: string; address: string; draft?: string; asUser?: boolean; user?: string; replace?: boolean };
+type ProbeInput = { kind: Kind; name: string; address: string; draft?: string; asUser?: boolean; nixos?: boolean; user?: string; replace?: boolean };
 
-/** The setup commands in a code block, with Copy in its head as the sudo blocks have it; Copy is the Key step's action, so it is primary while that step is current. */
-function SetupBlock({ text, copied, primary, onCopy, preRef }: { text: string; copied: boolean; primary?: boolean; onCopy: () => void; preRef: React.RefObject<HTMLPreElement | null> }) {
-  return (
+/**
+ * The setup commands in a code block, with Copy in its head as the sudo blocks have it; Copy is the Key step's action, so it is primary while that step is current.
+ * On NixOS the block is the module for the configuration, headed Configuration, with the rebuild that applies it in a block of its own under it.
+ */
+function SetupBlock({ text, rebuild, copied, primary, onCopy, preRef }: { text: string; rebuild?: string; copied: boolean; primary?: boolean; onCopy: () => void; preRef: React.RefObject<HTMLPreElement | null> }) {
+  return (<>
     <div className="code-block setup-block">
       <div className="code-head">
-        <span className="code-lang">Setup</span>
+        <span className="code-lang">{rebuild ? "Configuration" : "Setup"}</span>
         <button type="button" className={`sm code-copy${primary ? " primary" : ""}`} aria-label={copied ? "Copied" : "Copy"} onClick={onCopy}>{copied ? "Copied" : "Copy"}</button>
       </div>
+      {rebuild && <p className="muted sudo-hint">A module for the machine's configuration: save it beside the configuration and add it to imports.</p>}
       <pre className="setup" ref={preRef}><code><SetupLines text={text} /></code></pre>
     </div>
-  );
+    {rebuild && <div className="code-block setup-block">
+      <div className="code-head"><span className="code-lang">Rebuild</span><CopyButton text={rebuild} label="Copy" ariaLabel="Copy rebuild" className="code-copy" /></div>
+      <p className="muted sudo-hint">From the configuration's folder; with a flake, add <code className="nowrap">--flake .#&lt;machine&gt;</code> to the first line.</p>
+      <pre className="setup"><code><SetupLines text={rebuild} /></code></pre>
+    </div>}
+  </>);
 }
 
 /** The setup block's lines, each its own block so a wrapped command hangs under its first line rather than reading as a command of its own. */
@@ -312,9 +323,9 @@ function SetupLines({ text }: { text: string }) {
 }
 
 /** The Key step's optional sudo rights: each its own command with its own Copy, so pasting the setup never grants them. */
-function SudoBlocks({ sudo, account }: { sudo: NonNullable<MachineProbe["sudo"]>; account: string }) {
+function SudoBlocks({ sudo, account, nixos }: { sudo: NonNullable<MachineProbe["sudo"]>; account: string; nixos: boolean }) {
   return <div className="machine-sudo">
-    <ExactSudo account={account} />
+    <ExactSudo account={account} nixos={nixos} />
     <div className="code-block">
       <div className="code-head"><span className="code-lang">Sudo, everything</span><CopyButton text={sudo.everything} label="Copy" ariaLabel="Copy sudo, everything" className="code-copy" /></div>
       <p className="muted sudo-hint">Optional: sudo without a password for any command. Only if you really trust the models you'll run.</p>
@@ -342,14 +353,16 @@ function sudoLine(account: string, command: string): { line?: string; warning?: 
 /**
  * Sudo, exact commands: a box per command, Add command for another (up to
  * the card's limit), each checked as it is typed, and one command to paste
- * that adds every line that passed.
+ * that adds every line that passed (on NixOS, the `security.sudo.extraRules`
+ * lines for the configuration).
  */
-function ExactSudo({ account }: { account: string }) {
+function ExactSudo({ account, nixos }: { account: string; nixos: boolean }) {
   const [commands, setCommands] = useState([""]);
   const checked = commands.map((c) => (c.trim() ? sudoLine(account, c) : {}));
   const lines = checked.flatMap((c) => (c.line ? [c.line] : []));
   const ready = lines.length > 0 && !checked.some((c) => c.problem);
-  const text = ready ? sudoersCommand(lines) : "";
+  const head = `${account} ALL=(root) NOPASSWD: `;
+  const text = !ready ? "" : nixos ? nixosSudo(account, lines.map((l) => l.slice(head.length))) : sudoersCommand(lines);
   const set = (i: number, v: string) => setCommands((l) => l.map((c, j) => (j === i ? v : c)));
   return (
     <div className="code-block exact-sudo">
@@ -364,7 +377,7 @@ function ExactSudo({ account }: { account: string }) {
         {commands.map((c, i) => (
           <div className="sudo-command" key={i}>
             <div className="row">
-              <input className="mono" aria-label={`Command ${i + 1}`} value={c} placeholder="/usr/bin/systemctl restart nginx" autoComplete="off" spellCheck={false}
+              <input className="mono" aria-label={`Command ${i + 1}`} value={c} placeholder={nixos ? "/run/current-system/sw/bin/systemctl restart nginx" : "/usr/bin/systemctl restart nginx"} autoComplete="off" spellCheck={false}
                 aria-invalid={!!checked[i]!.problem} onChange={(e) => set(i, e.target.value)} />
               {commands.length > 1 && (
                 <button type="button" className="icon sm" aria-label={`Remove command ${i + 1}`} title="Remove" onClick={() => setCommands((l) => l.filter((_, j) => j !== i))}><Icon name="close" /></button>
@@ -393,7 +406,7 @@ export function MachinePage({ ctx, name }: { ctx: ShellContext; name?: string })
   const replacing = name !== undefined;
   const existing = useLoad(() => (replacing ? get<MachineInfo[]>(u(userId, "machines")).then((l) => l.find((m) => m.name === name) ?? null) : Promise.resolve(null)), [userId, name]);
   const [kind, setKind] = useState<Kind>("ssh");
-  const [form, setForm] = useState({ name: "", address: "", root: "", pool: "general" as Pool, token: "", account: "hers" as Account, user: "", login: HER_ACCOUNT, typed: "" });
+  const [form, setForm] = useState({ name: "", address: "", root: "", pool: "general" as Pool, token: "", account: "hers" as Account, user: "", login: HER_ACCOUNT, typed: "", system: "linux" as System });
   // The probe's answer: her key's setup steps and, after Test, the fingerprint and whether the login worked.
   const [probe, setProbe] = useState<MachineProbe>();
   // Bumped when a field the probe depends on changes, so an answer for what was typed before is dropped.
@@ -421,9 +434,11 @@ export function MachinePage({ ctx, name }: { ctx: ShellContext; name?: string })
       if (k === "account") next.login = v === "mine" ? (f.login === HER_ACCOUNT ? "" : f.login) : f.login || HER_ACCOUNT;
       return next;
     });
-    if (k === "address" || k === "name" || k === "account" || k === "user" || k === "login") { typedAt.current++; setProbe(undefined); setCopied(false); setTested(false); }
+    if (k === "address" || k === "name" || k === "account" || k === "user" || k === "login" || k === "system") { typedAt.current++; setProbe(undefined); setCopied(false); setTested(false); }
   };
   const mine = form.account === "mine" && !replacing;
+  // NixOS: as chosen while adding, as saved on Replace key.
+  const nixos = kind === "ssh" && (replacing ? !!machine?.nixos : form.system === "nixos");
   // A token on the user's own Proxmox user needs that user named, so the setup block and the token check can name it.
   const pveUser = kind === "proxmox" && mine ? form.user.trim() : "";
   const ready = form.name.trim() !== "" && form.address.trim() !== "" && (kind === "ssh" ? form.login.trim() !== "" : !mine || pveUser !== "");
@@ -437,8 +452,8 @@ export function MachinePage({ ctx, name }: { ctx: ShellContext; name?: string })
     then?.();
   });
   const typed = (draft?: string): ProbeInput => replacing && machine
-    ? { kind, name: machine.name, address: machine.address, draft, ...(machine.asUser ? { asUser: true } : {}) }
-    : { kind, name: form.name.trim(), address, draft, ...(mine ? { asUser: true } : {}), ...(pveUser ? { user: pveUser } : {}) };
+    ? { kind, name: machine.name, address: machine.address, draft, ...(machine.asUser ? { asUser: true } : {}), ...(nixos ? { nixos: true } : {}) }
+    : { kind, name: form.name.trim(), address, draft, ...(mine ? { asUser: true } : {}), ...(nixos ? { nixos: true } : {}), ...(pveUser ? { user: pveUser } : {}) };
   // Leaving the address, or Enter in it, fetches her key for the machine, so the Key step can show its setup steps.
   const reach = () => { if (ready && !probe && !probingBusy) void probeWith(typed()); };
   const test = () => probeWith(typed(probe?.draft), () => setTested(true));
@@ -470,7 +485,7 @@ export function MachinePage({ ctx, name }: { ctx: ShellContext; name?: string })
     } else {
       const input: MachineInput = {
         kind, name: form.name.trim(), address, root: kind === "ssh" && form.root.trim() ? form.root.trim() : undefined, pool: form.pool,
-        hostKey: probe.fingerprint, offNetworkConfirmed, ...(kind === "proxmox" ? { token: form.token.trim() } : { draft: probe.draft }), ...(mine ? { asUser: true } : {}), ...(pveUser ? { user: pveUser } : {}),
+        hostKey: probe.fingerprint, offNetworkConfirmed, ...(kind === "proxmox" ? { token: form.token.trim() } : { draft: probe.draft }), ...(mine ? { asUser: true } : {}), ...(nixos ? { nixos: true } : {}), ...(pveUser ? { user: pveUser } : {}),
       };
       await post<MachineInfo>(u(userId, "machines"), input);
     }
@@ -531,6 +546,14 @@ export function MachinePage({ ctx, name }: { ctx: ShellContext; name?: string })
                   {(Object.keys(POOLS) as Pool[]).map((p) => <option key={p} value={p}>{POOLS[p]}</option>)}
                 </select>
               </label>
+              {kind === "ssh" && (
+                <label className="field narrow system-field"><span>System</span>
+                  <select value={form.system} onChange={(e) => setField("system", e.target.value)}>
+                    <option value="linux">Linux</option>
+                    <option value="nixos">NixOS</option>
+                  </select>
+                </label>
+              )}
             </div>
             {mine && (
               <ul className="account-warnings" aria-label={kind === "proxmox" ? "A token on your own user" : "Logging in as your own account"}>
@@ -546,8 +569,8 @@ export function MachinePage({ ctx, name }: { ctx: ShellContext; name?: string })
         {probe && adding && (
           <section className="step" aria-labelledby="step-key">
             <h2 className="eyebrow" id="step-key">{keyLabel}</h2>
-            <SetupBlock text={probe.setup} copied={copied} primary={step === "key"} onCopy={copy} preRef={setupRef} />
-            {probe.sudo && <SudoBlocks sudo={probe.sudo} account={sudoAccount} />}
+            <SetupBlock text={probe.setup} rebuild={probe.rebuild} copied={copied} primary={step === "key"} onCopy={copy} preRef={setupRef} />
+            {probe.sudo && <SudoBlocks sudo={probe.sudo} account={sudoAccount} nixos={nixos} />}
             {kind === "proxmox" && (
               <label className="field"><span>Token</span>
                 <input className="mono" type="password" value={form.token} placeholder={pveUser ? `${pveUser}!lyrica=…` : "lyrica@pve!agent=…"} autoComplete="off" onChange={(e) => setField("token", e.target.value)} />
@@ -577,12 +600,12 @@ export function MachinePage({ ctx, name }: { ctx: ShellContext; name?: string })
         {replacing && !fresh && kind === "ssh" && probe?.fingerprint && !probe.login && (
           <section className="step" aria-labelledby="step-key">
             <h2 className="eyebrow" id="step-key">Key</h2>
-            <p className="muted">{her()}'s key isn't accepted there any more (a reinstalled machine loses it). Run this as root on the machine, then test again, or make a new key pair below.</p>
-            <SetupBlock text={probe.setup} copied={copied} onCopy={copy} preRef={setupRef} />
+            <p className="muted">{her()}'s key isn't accepted there any more (a reinstalled machine loses it). {nixos ? "Put this in its configuration and rebuild" : "Run this as root on the machine"}, then test again, or make a new key pair below.</p>
+            <SetupBlock text={probe.setup} rebuild={probe.rebuild} copied={copied} onCopy={copy} preRef={setupRef} />
             <div className="row">
               <button type="button" disabled={probingBusy} onClick={again}>Test</button>
             </div>
-            {probe.sudo && <SudoBlocks sudo={probe.sudo} account={sudoAccount} />}
+            {probe.sudo && <SudoBlocks sudo={probe.sudo} account={sudoAccount} nixos={nixos} />}
           </section>
         )}
         {((replacing && !fresh) || (tested && loginOk)) && (
