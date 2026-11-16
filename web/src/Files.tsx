@@ -792,6 +792,13 @@ function Item({ label, kbd, danger, onClick }: { label: ReactNode; kbd?: string;
   );
 }
 
+/** A name field opens on the name's start, selected up to a file's extension, so typing keeps ".mp4". */
+function nameFocus(input: HTMLInputElement, file: boolean) {
+  const dot = file ? input.value.lastIndexOf(".") : -1;
+  input.setSelectionRange(0, dot > 0 ? dot : input.value.length);
+  input.scrollLeft = 0;
+}
+
 /** The right-click menu: Attach, Select, Show in thread, Download, Copy path; Rename and Delete where the folder is writable; Upload and New folder on a folder. */
 function FileMenu({ at, writable, shownName, onClose, onAttach, onDownload, onCopy, onCopyFiles, canPaste, onPaste, onSelect, onShow, onUpload, onMkdir, onRename, onDelete, onAutoName }: {
   at: MenuAt; writable: (p: string) => boolean; shownName: (p: string) => string; onClose: () => void;
@@ -853,7 +860,7 @@ function FileMenu({ at, writable, shownName, onClose, onAttach, onDownload, onCo
   if (sub === "rename" || sub === "newfolder") {
     body = (
       <form onSubmit={(e) => { e.preventDefault(); const name = draft.trim(); if (!name || name.includes("/")) return; void run(sub === "rename" ? onRename(paths[0]!, name) : onMkdir(dir, name)); }}>
-        <input autoFocus aria-label={sub === "rename" ? "New name" : "Folder name"} value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); setSub(""); } }} />
+        <input autoFocus aria-label={sub === "rename" ? "New name" : "Folder name"} value={draft} onFocus={(e) => nameFocus(e.target, sub === "rename" && t.kind === "file")} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); setSub(""); } }} />
         <button type="submit" className="primary sm" disabled={!draft.trim() || draft.includes("/")}>{sub === "rename" ? "Rename" : "Add"}</button>
       </form>
     );
