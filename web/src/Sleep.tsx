@@ -140,8 +140,10 @@ export function SleepPage({ ctx }: { ctx: ShellContext }) {
   const pools = (["general", "private"] as const).filter((p) => !hidden(display, p));
   // Each shown pool's newest run, for its card.
   const last = pools.flatMap((p) => { const r = o?.runs.find((x) => x.pool === p); return r ? [r] : []; });
-  // The history page's total decides whether the preview's Show all is worth showing; one row answers that cheaply.
-  const runTotal = useLoad(() => get<HistoryPage<SleepRunInfo>>(`${u(userId, "sleep", "history")}?limit=1`), [userId]);
+  // The history page's total decides whether Show all is worth showing: only when it holds more than the cards do.
+  // One row answers that cheaply, read again whenever a card's run changes.
+  const shownRuns = last.map((r) => `${r.pool}/${r.id}`).join(" ");
+  const runTotal = useLoad(() => get<HistoryPage<SleepRunInfo>>(`${u(userId, "sleep", "history")}?limit=1`), [userId, shownRuns]);
 
   // Last night's runs are read at once, for their lines; an earlier one when it opens. Reread when a run ends.
   const load = useCallback((r: SleepRunInfo) => get<SleepRunDetail>(u(userId, "sleep", r.pool, "runs", r.id)).then((d) => setDetails((m) => ({ ...m, [`${r.pool}/${r.id}`]: d }))), [userId]);
@@ -195,7 +197,7 @@ export function SleepPage({ ctx }: { ctx: ShellContext }) {
           </section>
           {o && <Focus ctx={ctx} />}
           <section aria-label="History" className="sleep-block">
-            <HistoryHead to={{ page: "history", userId, kind: "sleep" }} count={runTotal.data?.total} />
+            <HistoryHead to={{ page: "history", userId, kind: "sleep" }} count={runTotal.data && runTotal.data.total - Math.max(0, last.length - 1)} />
             {o && pools.map((p) => {
               const r = last.find((x) => x.pool === p);
               return <PoolCard key={p} ctx={ctx} pool={p}>{r ? row(r) : <div className="sleep-sum"><span className="t"><PoolName pool={p} /></span><span className="meta">No sleep yet.</span></div>}</PoolCard>;

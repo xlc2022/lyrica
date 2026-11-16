@@ -2134,6 +2134,8 @@ test("Sleep History and Came from: the sidebar link opens it empty, each pool's 
   // Private hasn't slept: only its card still says so.
   await expect(general.getByText("No sleep yet.")).toHaveCount(0);
   await expect(priv.getByText("No sleep yet.")).toBeVisible();
+  // One night in all, and its card shows it: no Show all yet.
+  await expect(page.getByRole("link", { name: "Show all", exact: true })).toHaveCount(0);
   await row.locator("summary.sleep-sum").click();
   await expect(row.locator(".sleep-detail")).toBeVisible();
   await expect(row.locator(".sleep-detail")).not.toContainText("Loading…");
