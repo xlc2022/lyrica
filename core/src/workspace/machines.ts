@@ -602,12 +602,14 @@ const FINGERPRINT = ["", "# The host key's fingerprint, to compare with the one 
  */
 function nixosSetup(account: string, keyLine: string, asUser: boolean): { setup: string; rebuild: string } {
   const key = `openssh.authorizedKeys.keys = [ ${nixString(keyLine)} ];`;
+  // A name with a dot (first.last) would read as a nested path: it is quoted.
+  const user = `users.users.${/^[A-Za-z_][A-Za-z0-9_-]*$/.test(account) ? account : nixString(account)}`;
   const setup = asUser
-    ? ["{", "  # Her key, beside your own", `  users.users.${account}.${key}`, "}"]
+    ? ["{", "  # Her key, beside your own", `  ${user}.${key}`, "}"]
     : [
       "{ lib, ... }: {",
       "  # Her account, with her key in a file built from this configuration, which only a rebuild changes",
-      `  users.users.${account} = {`,
+      `  ${user} = {`,
       "    isNormalUser = true;",
       `    ${key}`,
       "  };",

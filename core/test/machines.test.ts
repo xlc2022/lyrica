@@ -142,6 +142,8 @@ describe("machines", () => {
     const own = await workspace.probeMachine(ada.id, "ada", { name: "nixlap", address: "ada@127.0.0.1", asUser: true, nixos: true });
     expect(own.setup).toBe(`{\n  # Her key, beside your own\n  users.users.ada.openssh.authorizedKeys.keys = [ "${own.keyLine}" ];\n}`);
     expect(own.sudo).toBeUndefined();
+    // A dotted account is quoted, or Nix would read it as a nested path.
+    expect((await workspace.probeMachine(ada.id, "ada", { name: "nixdot", address: "first.last@127.0.0.1", nixos: true })).setup).toContain('users.users."first.last" = {');
     // Saved with the machine, so Replace key and Remove machine give the NixOS steps again.
     expect((await workspace.addMachine(ada.id, { name: "nix", address: "lyrica@127.0.0.1", root: null, pool: "general", draft: hers.draft, hostKey: KEY, nixos: true })).nixos).toBe(true);
     expect((await workspace.probeMachine(ada.id, "ada", { name: "nix", address: "", replace: true })).rebuild).toContain("nixos-rebuild");
