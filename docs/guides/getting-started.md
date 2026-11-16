@@ -257,28 +257,30 @@ read it for anything not covered here.
     It must print nothing. It reads only the current `lyricad` run, so
     lines from an earlier run in the same boot don't count.
 
-Everything from "Save the passphrase" on applies unchanged. `lyricad`
-runs from the profile `/nix/var/nix/profiles/lyrica`, and its first start
-sets up the updater's repository as install.sh does (see "Updates from
-GitHub" below); when the repository isn't public it makes
-`/etc/lyrica/deploy-key` and logs where to add its `.pub`. Keep a
-scheduled Proxmox backup of the VM, for the reason given there. Upgrading
-is `nix flake update lyrica` in `/etc/nixos` and `nixos-rebuild switch`
-(`lyrica` is the input's name in step 6's flake; if yours names it
-differently, `nix flake metadata` lists the inputs), which restarts
-`lyricad` (which logs everyone out). Before that start,
-when the package changed, her databases are snapshotted and the profile
-moves to it; if the new package can't read them, the newest snapshot it
-can read is restored. The package is rebuilt only when the code it ships
-changed; a commit that touched only docs or tests reuses the built one,
-and the restart is quick. Updates and rollback from "Upgrading" work on
-NixOS too. After an Update, run `nix flake update lyrica` before your next
-`nixos-rebuild` for any reason: the system flake's lock still names the
-older commit. lyricad keeps the newer release anyway and logs it once
-("the module's package (…) is older than the running release (…)" in
-`journalctl -u lyricad`). For the same reason, pinning the flake to an
-older commit doesn't take her back: use Roll back. The home page header
-shows the commit that is running, as on Debian.
+Everything from "Save the passphrase" on applies unchanged. `lyricad` runs
+from the profile `/nix/var/nix/profiles/lyrica`, and its first start sets
+up the updater's repository as install.sh does (see "Updates from GitHub"
+below); when the repository isn't public it makes `/etc/lyrica/deploy-key`
+and logs where to add its `.pub`. Keep a scheduled Proxmox backup of the
+VM, for the reason given there. Upgrading is `nix flake update lyrica` in
+`/etc/nixos` and `nixos-rebuild switch` (`lyrica` is the input's name in
+step 6's flake; if yours names it differently, `nix flake metadata` lists
+the inputs), which restarts `lyricad` (which logs everyone out). Before
+that start, when the package changed, her databases are snapshotted and
+the profile moves to it; if the new package can't read them, the newest
+snapshot it can read is restored. The package is rebuilt only when the
+code it ships changed; a commit that touched only docs or tests reuses the
+built one, and the restart is quick. The first rebuild from 2026-11-17 on
+also builds OCRmyPDF and fpdf2 for her `pdf` skill, so it takes longer
+once, and her sandbox tools grow by about 670 MiB. Updates and rollback
+from "Upgrading" work on NixOS too. After an Update, run
+`nix flake update lyrica` before your next `nixos-rebuild` for any reason:
+the system flake's lock still names the older commit. lyricad keeps the
+newer release anyway and logs it once ("the module's package (…) is older
+than the running release (…)" in `journalctl -u lyricad`). For the same
+reason, pinning the flake to an older commit doesn't take her back: use
+Roll back. The home page header shows the commit that is running, as on
+Debian.
 
 ### On Debian or Ubuntu
 
@@ -1358,12 +1360,12 @@ refused. To replace the destination, enter the full URL and token again;
     leaves no core dump of her decrypted memory; until then the system's
     core dump setting decides.
   - **Before 2026-11-17:** the PDF tools her `pdf` skill uses: qpdf,
-    Tesseract with OCRmyPDF, python3-pil, python3-reportlab,
-    python3-pandas and python3-numpy, then pdfplumber and pypdf (pinned
-    wheels in `/opt/lyrica/tools/lib/python`) and Tesseract's
-    large English, Chinese and orientation files (in
-    `/opt/lyrica/tools/share/tessdata`, about 130 MiB); until then she
-    has only `pdftotext` and poppler's other tools for PDFs.
+    Tesseract with OCRmyPDF, python3-pil, python3-reportlab, python3-pandas
+    and python3-numpy, then pdfplumber and pypdf (pinned wheels in
+    `/opt/lyrica/tools/lib/python`) and Tesseract's large English, Chinese
+    and orientation files (in `/opt/lyrica/tools/share/tessdata`, about
+    130 MiB); until then she has only `pdftotext` and poppler's other tools
+    for PDFs. About 380 MiB in all.
   - **Any install missing them:** headless Chromium and IBM Plex for her
     screenshots, Claude Code and Codex, ffmpeg and ffprobe (until then
     she can't check a clip's length or streams), and the Python baseline
