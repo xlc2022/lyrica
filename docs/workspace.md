@@ -452,12 +452,14 @@ does elsewhere; the `Match` block, last in sshd's config, keeps
 `~/.ssh` and passwords out for her account. **Rebuild** is `sudo
 nixos-rebuild switch` (with `--flake` where the configuration is a flake),
 then the fingerprint. Each sudo block is a module of its own holding a
-`security.sudo.extraRules` rule (`nixosSudo` and `nixosSudoModule` in
+`security.sudo.extraRules` rule with `runAs = "root"` as the sudoers
+lines' `(root)` (`nixosSudo` and `nixosSudoModule` in
 `core/src/workspace/sudoers.ts`), added to `imports`: two `extraRules` in
 one attribute set don't evaluate, while separate modules' lists merge, so
-any of them can be used together; exact
-commands may name programs under `/run/current-system/sw/bin`, and **Sudo,
-with password** ends with `sudo passwd <account>`, to run after the rebuild, as a comment so the file stays valid Nix. On the
+any of them can be used together; exact commands must name programs under
+`/run/current-system/sw/{bin,sbin}`, and **Sudo, with password** ends with
+`sudo passwd <account>`, to run after the rebuild, as a comment so the
+file stays valid Nix. On the
 user's own account the module only adds the key to
 `users.users.<account>.openssh.authorizedKeys.keys`. Remove offers
 **Configuration** (rebuild after taking the module out: NixOS removes a
@@ -502,7 +504,13 @@ the card is for machines without it. The lines she may *offer* on a card
   refused hash shows as a failure). A script changed after the card was
   made, or during the run, doesn't reach root.
 - `sudoers`, when the same root command will be needed again: at most 8
-  lines for `/etc/sudoers.d/lyrica`, which the card shows with the command
+  lines for `/etc/sudoers.d/lyrica` (on a NixOS machine, whose sudo reads
+  no `sudoers.d`, the card shows instead one **Configuration** block: a module
+  of its own holding the lines as a `security.sudo.extraRules` rule with
+  `runAs = "root"`, to add to the configuration's `imports`, then `sudo
+  nixos-rebuild switch` (`nixosSudoers`); a file of its own because her
+  module may already set `extraRules`, and a second definition in one
+  attribute set won't evaluate, while lists from separate modules merge), which the card shows with the command
   that adds them, ready to paste (`sudoersCommand`, built from the checked
   lines as the card shows them): it reads the file's own lines in a step
   that can fail (a mistyped password stops it, so the file is never
@@ -514,7 +522,9 @@ the card is for machines without it. The lines she may *offer* on a card
   person never opens an editor. `checkSudoers` refuses a line that isn't
   `<account> ALL=(root) NOPASSWD: <program> <fixed arguments>` for the
   machine's account, with the program in `/usr/bin`, `/usr/sbin`, `/bin`,
-  `/sbin` or `/usr/local/{bin,sbin}` and at least one argument (`""` alone
+  `/sbin`, `/usr/local/{bin,sbin}` or `/run/current-system/sw/{bin,sbin}`
+  (on a NixOS machine only the last, since its `/usr/bin` holds only `env`)
+  and at least one argument (`""` alone
   for none, since a bare program allows any). It refuses a wildcard, a
   quote, a comment (`#`), `@`, a comma, a shell character, `ALL`, an
   argument under `/home`, `/tmp`, `/var/tmp`, `/dev/shm` or `/run/user`, or with `..`,

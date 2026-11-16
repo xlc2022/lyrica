@@ -1081,7 +1081,11 @@ machine's pool, limit and confirmed key, and `ssh remove` takes one away.
 Removing one under Settings, Machines leaves the machine as it is, but its
 dialog offers commands to paste there that take away her key line, her
 sudoers lines or her whole account (on your own account, only the key);
-Lyrica runs none of them. SSH targets added before machines existed became
+Lyrica runs none of them. On a machine added as **System: NixOS** the sudo
+blocks are `security.sudo.extraRules` in the same module, and removing it
+means taking the module out of your configuration and rebuilding (NixOS
+then removes her account, key and sudo), plus deleting her home folder,
+which NixOS keeps. SSH targets added before machines existed became
 general machines at Ask; one that had never connected has no confirmed key
 and must be added again (`ssh remove <name>`, then `add`). The same cure
 applies to a machine added before 2026-10-11 that never connects, even

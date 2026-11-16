@@ -1888,13 +1888,14 @@ export class Workspace {
   /**
    * A script she wrote on one of the thread's machines, read as it is (key
    * blocks unmasked, so its hash is the file's), for a root step's card, with
-   * the account she logs in there as.
+   * the account she logs in there as and whether the machine runs NixOS.
    */
-  async rootScript(t: WorkspaceThread, machine: string, path: string): Promise<{ bytes: Buffer; account: string }> {
+  async rootScript(t: WorkspaceThread, machine: string, path: string): Promise<{ bytes: Buffer; account: string; nixos?: boolean }> {
     if (!path.startsWith("/")) throw new Error("path must be the script's absolute path on the machine");
     const target = this.targetFor(t, machine);
     const bytes = await target.ops().edit.readFile(path);
-    return { bytes, account: this.settings(t.userId).machine(machine)!.username };
+    const m = this.settings(t.userId).machine(machine)!;
+    return { bytes, account: m.username, nixos: m.nixos };
   }
 
   /**

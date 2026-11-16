@@ -42,9 +42,9 @@ const NEVER = new Set(["bash", "sh", "dash", "zsh", "fish", "ksh", "csh", "tcsh"
   "systemd-run", "chroot", "unshare", "nsenter", "setsid", "setpriv", "stdbuf", "flock", "taskset", "ionice", "chrt", "start-stop-daemon",
   "strace", "ltrace", "gdb", "ssh", "socat", "screen", "tmux"]);
 
-/** Where a program on a sudoers line must live: folders only root can change. */
-/** Folders only root can change; NixOS keeps its programs in /run/current-system/sw. */
-const SYSTEM_DIRS = ["/usr/bin/", "/usr/sbin/", "/bin/", "/sbin/", "/usr/local/bin/", "/usr/local/sbin/", "/run/current-system/sw/bin/", "/run/current-system/sw/sbin/"];
+/** Where a program on a sudoers line must live: folders only root can change. NixOS keeps its programs in /run/current-system/sw, and only there. */
+const NIXOS_DIRS = ["/run/current-system/sw/bin/", "/run/current-system/sw/sbin/"];
+const SYSTEM_DIRS = ["/usr/bin/", "/usr/sbin/", "/bin/", "/sbin/", "/usr/local/bin/", "/usr/local/sbin/", ...NIXOS_DIRS];
 
 /** Folders where she can write, so a file there given to a root command is hers to change. */
 const HERS = /^\/(home|tmp|var\/tmp|dev\/shm|run\/user)(\/|$)/;
@@ -70,9 +70,11 @@ const SYSTEMCTL_ROOT = new Set(["edit", "link", "enable", "set-property", "impor
  * for a program run with none (a bare program allows any arguments), with
  * no wildcard, comment, `ALL`, path she can write, or shell, editor,
  * interpreter or wrapper. Refuses the first bad line, with why; warns where
- * the program can reach root anyway.
+ * the program can reach root anyway. On NixOS (`nixos`) the program must be
+ * under /run/current-system/sw: /usr/bin there holds only env, so a rule for
+ * /usr/bin/systemctl would never match.
  */
-export function checkSudoers(lines: unknown, account: string): SudoersLine[] {
+export function checkSudoers(lines: unknown, account: string, nixos = false): SudoersLine[] {
   if (!Array.isArray(lines) || !lines.length) throw new Error("sudoers is a list of lines");
   if (lines.length > ROOT_LIMITS.sudoers) throw new Error(`offer at most ${ROOT_LIMITS.sudoers} sudoers lines at once`);
   const head = `${account} ALL=(root) NOPASSWD: `;
@@ -88,7 +90,8 @@ export function checkSudoers(lines: unknown, account: string): SudoersLine[] {
     if (/[*?[\]\\,:=!"'`$;&|<>(){}~#@]/.test((none ? words.slice(0, 1) : words).join(" "))) bad("wildcards, quotes, comments, commas and shell characters aren't allowed: name one command with fixed arguments");
     if (program === "ALL" || words.includes("ALL")) bad("ALL would let her run anything as root");
     if (!/^\/[\w./+-]+$/.test(program) || program.includes("/../") || program.includes("/./") || program.endsWith("/")) bad("the program must be an absolute path such as /usr/bin/systemctl");
-    if (!SYSTEM_DIRS.some((d) => program.startsWith(d) && !program.slice(d.length).includes("/"))) bad(`the program must be in ${SYSTEM_DIRS.join(", ")}, where she can't change it`);
+    const dirs = nixos ? NIXOS_DIRS : SYSTEM_DIRS;
+    if (!dirs.some((d) => program.startsWith(d) && !program.slice(d.length).includes("/"))) bad(`the program must be in ${dirs.join(", ")}, where she can't change it${nixos ? " (NixOS keeps its programs there)" : ""}`);
     const name = program.split("/").at(-1)!;
     // vim.basic, python3.12, bash.static: the name without a version or variant.
     const base = name.replace(/\..*$/, "").replace(/\d+$/, "");
@@ -105,8 +108,23 @@ export function checkSudoers(lines: unknown, account: string): SudoersLine[] {
 /** A Nix string literal: `"`, `\` and `${` escaped. */
 export const nixString = (s: string) => `"${s.replaceAll("\\", "\\\\").replaceAll('"', '\\"').replaceAll("${", "\\${")}"`;
 
-/** NixOS sudo rules for her account, for the configuration's `security.sudo.extraRules`: each command, with or without a password. */
+/** NixOS sudo rules for her account, for the configuration's `security.sudo.extraRules`: each command, as root only (as the sudoers lines' `(root)`), with or without a password. */
 export function nixosSudo(account: string, commands: string[], nopasswd = true): string {
   const each = commands.map((c) => nopasswd ? `{ command = ${nixString(c)}; options = [ "NOPASSWD" ]; }` : nixString(c));
-  return ["security.sudo.extraRules = [{", `  users = [ ${nixString(account)} ];`, `  commands = [ ${each.join(" ")} ];`, "}];"].join("\n");
+  return ["security.sudo.extraRules = [{", `  users = [ ${nixString(account)} ];`, '  runAs = "root";', `  commands = [ ${each.join(" ")} ];`, "}];"].join("\n");
+}
+
+/**
+ * A run-as-root card's offered lines on NixOS, whose sudo reads no sudoers.d:
+ * a module of its own holding the `security.sudo.extraRules` rule, then the
+ * rebuild that applies it. Its own file, listed in `imports`, because her
+ * module may already define `extraRules` (Add machine's sudo, an earlier
+ * card), and a second definition in one attribute set is an error; lists
+ * from separate modules merge. `lines` are checked lines (`checkSudoers`),
+ * so each is `<account> ALL=(root) NOPASSWD: <command>`.
+ */
+export function nixosSudoers(account: string, lines: string[]): string {
+  const head = `${account} ALL=(root) NOPASSWD: `;
+  const rule = nixosSudo(account, lines.map((l) => l.slice(head.length))).split("\n").map((l) => `  ${l}`);
+  return ["# A file of its own (her module may already set extraRules), added to the configuration's imports", "{", ...rule, "}", "", "# Then:", "sudo nixos-rebuild switch"].join("\n");
 }

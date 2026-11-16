@@ -137,7 +137,7 @@ describe("machines", () => {
     expect(hers.setup).not.toMatch(/sudo |sshd_config\.d|sudoers\.d/);
     expect(hers.rebuild).toMatch(/^sudo nixos-rebuild switch &&\n[^]*ssh-keygen -lf /);
     // Each sudo block is a module of its own for imports: two extraRules in one attribute set don't evaluate, separate modules' lists merge.
-    expect(hers.sudo!.everything).toBe('# A file of its own, added to the configuration\'s imports before the rebuild\n{\n  security.sudo.extraRules = [{\n    users = [ "lyrica" ];\n    commands = [ { command = "ALL"; options = [ "NOPASSWD" ]; } ];\n  }];\n}');
+    expect(hers.sudo!.everything).toBe('# A file of its own, added to the configuration\'s imports before the rebuild\n{\n  security.sudo.extraRules = [{\n    users = [ "lyrica" ];\n    runAs = "root";\n    commands = [ { command = "ALL"; options = [ "NOPASSWD" ]; } ];\n  }];\n}');
     expect(hers.sudo!.password).toMatch(/^# A file of its own[^\n]*\n\{\n  security\.sudo\.extraRules = \[\{/);
     expect(hers.sudo!.password).toContain('commands = [ "ALL" ];');
     expect(hers.sudo!.password).toContain("#   sudo passwd lyrica");

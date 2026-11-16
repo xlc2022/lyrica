@@ -77,6 +77,29 @@ describe("a root step", () => {
     expect(() => rootStep({ machine: "box", path: "/x.sh", why: "w", sudoers: [line("/usr/bin/apt-get install *")] }, Buffer.from("a"), "lyrica")).toThrow();
   });
 
+  it("on a NixOS machine offers the lines as extraRules for its configuration and a rebuild, and refuses a program outside /run/current-system/sw", () => {
+    const l = line("/run/current-system/sw/bin/systemctl restart nginx");
+    const step = rootStep({ machine: "box", path: "/home/lyrica/x.sh", why: "w", sudoers: [l] }, Buffer.from("echo hi\n"), "lyrica", true);
+    expect(step.sudoers?.map((s) => s.line)).toEqual([l]);
+    expect(step.sudoersCommand).toBeUndefined();
+    // A module of its own: a second extraRules in her module, which may already have one, wouldn't evaluate.
+    expect(step.sudoersNixos).toBe([
+      "# A file of its own (her module may already set extraRules), added to the configuration's imports",
+      "{",
+      "  security.sudo.extraRules = [{",
+      '    users = [ "lyrica" ];',
+      '    runAs = "root";',
+      '    commands = [ { command = "/run/current-system/sw/bin/systemctl restart nginx"; options = [ "NOPASSWD" ]; } ];',
+      "  }];",
+      "}",
+      "",
+      "# Then:",
+      "sudo nixos-rebuild switch",
+    ].join("\n"));
+    // /usr/bin on NixOS holds only env, so the rule would never match.
+    expect(() => rootStep({ machine: "box", path: "/x.sh", why: "w", sudoers: [line("/usr/bin/systemctl restart nginx")] }, Buffer.from("a"), "lyrica", true)).toThrow(/run\/current-system\/sw\/bin.*NixOS/);
+  });
+
   describe("the sudoers command, run with a stub sudo", () => {
     // `sudo` here runs its command as the test user, with root's ownership flags dropped; `visudo` passes; `cat` can be made to fail, as a mistyped password does.
     const run = (file: string, lines: string[], catFails = false) => {

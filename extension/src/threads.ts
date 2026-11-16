@@ -45,7 +45,7 @@ export interface ThreadsHost {
    * card, and the account she logs in there as. Without it, there is no
    * run_as_root tool.
    */
-  rootScript?(from: ThreadContext, machine: string, path: string): Promise<{ bytes: Buffer; account: string }>;
+  rootScript?(from: ThreadContext, machine: string, path: string): Promise<{ bytes: Buffer; account: string; nixos?: boolean }>;
   questionsChanged?(userId: string, pool: ThreadContext["pool"], thread: string): void;
   /** Her `threads watch`: watch an open pull request on one of the thread's repositories for CI and reviews. Returns what she is told. */
   watch?(from: ThreadContext, repo: string, number: number): Promise<string>;
@@ -552,18 +552,18 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
           machine: Type.String({ description: "One of your machines, by name." }),
           path: Type.String({ description: "The script's absolute path there." }),
           why: Type.String({ description: `What it does and why it needs root (at most ${ROOT_LIMITS.why} characters).` }),
-          sudoers: Type.Optional(Type.Array(Type.String(), { description: "Each \"<account> ALL=(root) NOPASSWD: /usr/bin/program args\"." })),
+          sudoers: Type.Optional(Type.Array(Type.String(), { description: "Each \"<account> ALL=(root) NOPASSWD: /usr/bin/program args\" (on NixOS, /run/current-system/sw/bin/program)." })),
         }),
         async execute(id, p: { machine: string; path: string; why: string; sudoers?: string[] }, _signal, _update, ctx) {
-          const { bytes, account } = await read(thread, p.machine, p.path);
-          const step = rootStep(p, bytes, account);
+          const { bytes, account, nixos } = await read(thread, p.machine, p.path);
+          const step = rootStep(p, bytes, account, nixos === true);
           syncEntries(ctx.sessionManager, store, thread.threadId);
           const n = store.questionCall(thread.threadId, id);
           if (n === undefined) throw new Error("run_as_root needs its stored tool call");
           store.askQuestion(thread.threadId, n);
           await host.asked?.(thread);
           return {
-            content: [{ type: "text" as const, text: `The root step is on a card, with the hash ${step.sha256}: \`${step.command}\`${step.sudoers ? `, and ${step.sudoers.length} sudoers line(s) with the command that adds them to ${SUDOERS_FILE} (${SUDOERS_HOW})` : ""}. Carry on with what doesn't depend on it, or end the turn; the answer arrives in a later turn, and then check that it worked.` }],
+            content: [{ type: "text" as const, text: `The root step is on a card, with the hash ${step.sha256}: \`${step.command}\`${!step.sudoers ? "" : step.sudoersNixos ? `, and ${step.sudoers.length} sudoers line(s) as security.sudo.extraRules for the machine's NixOS configuration, then a rebuild (NixOS's sudo reads no sudoers.d)` : `, and ${step.sudoers.length} sudoers line(s) with the command that adds them to ${SUDOERS_FILE} (${SUDOERS_HOW})`}. Carry on with what doesn't depend on it, or end the turn; the answer arrives in a later turn, and then check that it worked.` }],
             details: { root: step },
           };
         },

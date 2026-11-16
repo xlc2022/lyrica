@@ -89,7 +89,9 @@ tool each for A and B, prompt lines only where the thread has a machine).
   `install`, `rsync`, `tar`, `mount`). The card shows the lines, the warnings
   and, since the remote control tests (2026-11-04), the command that adds
   them: checked by `visudo -c` before it replaces the file, so the person
-  pastes one command instead of opening visudo. She never writes
+  pastes one command instead of opening visudo. On a NixOS machine (since
+  2026-11-16), whose sudo reads no `sudoers.d`, the card offers the lines as
+  `security.sudo.extraRules` and a rebuild instead. She never writes
   sudoers herself: the existing floor refuses `/etc/sudoers*` to `write` and
   `edit`.
 - Off in Plan mode. On a machine the tool counts as a `read` for the mode.

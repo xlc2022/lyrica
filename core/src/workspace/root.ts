@@ -8,9 +8,9 @@
 // offer exact sudoers lines instead, checked here.
 
 import { createHash } from "node:crypto";
-import { checkSudoers, quote, ROOT_LIMITS, sudoersCommand, type SudoersLine } from "./sudoers.ts";
+import { checkSudoers, nixosSudoers, quote, ROOT_LIMITS, sudoersCommand, type SudoersLine } from "./sudoers.ts";
 
-export { checkSudoers, ROOT_LIMITS, SUDOERS_FILE, SUDOERS_HOW, sudoersCommand, type SudoersLine } from "./sudoers.ts";
+export { checkSudoers, nixosSudoers, ROOT_LIMITS, SUDOERS_FILE, SUDOERS_HOW, sudoersCommand, type SudoersLine } from "./sudoers.ts";
 
 /** What the card shows, from the tool's own reading of the script: never her words, except `why`. */
 export interface RootStep {
@@ -24,6 +24,8 @@ export interface RootStep {
   sudoers?: SudoersLine[];
   /** With `sudoers`: what the user runs to add the lines, checked by visudo before they reach sudo (`sudoersCommand`). */
   sudoersCommand?: string;
+  /** With `sudoers` on a NixOS machine, in place of `sudoersCommand`: the `security.sudo.extraRules` lines and the rebuild (`nixosSudoers`), since NixOS's sudo reads no sudoers.d. */
+  sudoersNixos?: string;
   /** A `run_with_secret` card: the secret's name, as the field's label ("Tailscale auth key"). Its `command` runs as her account, without sudo. */
   secret?: string;
   /** With `secret`: a box of several lines (a private key) in place of one line. */
@@ -86,14 +88,15 @@ function readScript(input: { path: string; why: string }, bytes: Buffer, needs =
   return { script, sha256: createHash("sha256").update(bytes).digest("hex"), why };
 }
 
-/** Reads what `run_as_root` read on the machine into the card: refuses a script too long, empty or not text. */
-export function rootStep(input: { machine: string; path: string; why: string; sudoers?: string[] }, bytes: Buffer, account: string): RootStep {
+/** Reads what `run_as_root` read on the machine into the card: refuses a script too long, empty or not text. On a NixOS machine (`nixos`), offered lines become configuration. */
+export function rootStep(input: { machine: string; path: string; why: string; sudoers?: string[] }, bytes: Buffer, account: string, nixos = false): RootStep {
   const { script, sha256, why } = readScript(input, bytes);
   // The command carries the lines as the card shows them: checked and trimmed.
-  const sudoers = input.sudoers?.length ? checkSudoers(input.sudoers, account) : undefined;
+  const sudoers = input.sudoers?.length ? checkSudoers(input.sudoers, account, nixos) : undefined;
+  const lines = sudoers?.map((l) => l.line) ?? [];
   return {
     machine: input.machine, path: input.path, sha256, command: rootCommand(input.path, sha256, scriptShell(script)), script, why,
-    ...(sudoers ? { sudoers, sudoersCommand: sudoersCommand(sudoers.map((l) => l.line)) } : {}),
+    ...(sudoers ? { sudoers, ...(nixos ? { sudoersNixos: nixosSudoers(account, lines) } : { sudoersCommand: sudoersCommand(lines) }) } : {}),
   };
 }
 
