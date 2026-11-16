@@ -1,6 +1,6 @@
 # Brief: Qwen3-TTS voices for Read aloud
 
-**Status:** Planned (2026-11-16). Owner: the read-aloud thread.
+**Status:** Built (2026-11-16), waiting on its tests on danube and lunasa. Owner: the read-aloud thread.
 
 ## Why
 
@@ -64,8 +64,7 @@ danube in `qwen3-tts-test/`.
    model.
    The Speech backend sends a Qwen model's load and requests to the new
    server, and Kokoro's to the old one; placement, GPU settings and the
-   scheduler are unchanged (`server: "speech"`). The size placement uses
-   is measured on load, not guessed from files.
+   scheduler are unchanged (`server: "speech"`).
 4. **Starters.** Qwen3-TTS 1.7B CustomVoice and Qwen3-TTS 1.7B Base, from
    `Qwen/…` at pinned revisions, beside Kokoro. Both are Apache 2.0 and
    safetensors.
@@ -100,5 +99,9 @@ Read aloud model list, like Kokoro's.
 
 ## Handoff notes
 
-- Next: the server and images (first PR), then discovery, routing and
-  starters (second PR), then prebuilt publishing if it wasn't in the first.
+- Built in one PR: the server, both images and their publishing,
+  discovery, routing and the starters. The size placement uses is the
+  files' size plus a buffer per kind (0.3 GiB CustomVoice, 1 GiB Base),
+  set from danube's numbers, not measured on load.
+- The image build was checked only by installing its locked packages;
+  the first CI run of `cmp-images.yml` builds it for real.

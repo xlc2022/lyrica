@@ -1,0 +1,8 @@
+# Requirements of other packages that lock.sh replaces.
+# torchaudio has no 2.14 build. qwen-tts-hf imports it but uses it only for
+# the 25 Hz tokenizer, which the 12 Hz models don't load, so 2.11 is held to
+# PyTorch 2.14 here (as on the CMP that tested it).
+torch==2.14.1
+torchaudio==2.11.0
+# qwen-tts-hf's web demo, which the server never imports.
+gradio ; sys_platform == "never"

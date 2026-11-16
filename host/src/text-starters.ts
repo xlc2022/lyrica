@@ -65,6 +65,16 @@ export const TEXT_STARTERS: TextStarter[] = [
     repo: "onnx-community/Kokoro-82M-v1.1-zh-ONNX", revision: "6cc0f0d2ebe369a68b0df87c2b65c1af8c0ac3e3",
     files: ["onnx/model.onnx", "config.json", "tokenizer.json", "tokenizer_config.json", "voices/zm_010.bin", "voices/zf_001.bin", "voices/af_maple.bin"],
     size: Math.round(0.33 * GiB), needs: 1 * GiB },
+  // Qwen3-TTS (Apache 2.0) on the Qwen3-TTS speech server, NVIDIA GPUs only: CustomVoice's voices are its nine
+  // speakers; Base clones the clips built into that server (QWEN_CLONE_VOICES), Friend first.
+  { id: "qwen3-tts-1.7b-customvoice", model: "lyrica/huggingface/Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice", name: "Qwen3-TTS 1.7B CustomVoice", kind: "speak", server: "speech",
+    repo: "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice", revision: "0c0e3051f131929182e2c023b9537f8b1c68adfe",
+    files: ["model.safetensors", "config.json", "generation_config.json", "preprocessor_config.json", "tokenizer_config.json", "vocab.json", "merges.txt", "speech_tokenizer/model.safetensors", "speech_tokenizer/config.json", "speech_tokenizer/configuration.json", "speech_tokenizer/preprocessor_config.json"],
+    size: 4_520_159_586, needs: Math.round(5.5 * GiB) },
+  { id: "qwen3-tts-1.7b-base", model: "lyrica/huggingface/Qwen/Qwen3-TTS-12Hz-1.7B-Base", name: "Qwen3-TTS 1.7B Base", kind: "speak", server: "speech",
+    repo: "Qwen/Qwen3-TTS-12Hz-1.7B-Base", revision: "fd4b254389122332181a7c3db7f27e918eec64e3",
+    files: ["model.safetensors", "config.json", "generation_config.json", "preprocessor_config.json", "tokenizer_config.json", "vocab.json", "merges.txt", "speech_tokenizer/model.safetensors", "speech_tokenizer/config.json", "speech_tokenizer/configuration.json", "speech_tokenizer/preprocessor_config.json"],
+    size: 4_544_170_364, needs: 6 * GiB },
   { id: "whisper-large-v3-turbo-cpp", model: "lyrica/huggingface/ggerganov/whisper.cpp/ggml-large-v3-turbo-q8_0.bin", name: "Whisper large-v3 turbo", kind: "transcribe", server: "whispercpp",
     repo: "ggerganov/whisper.cpp", revision: "5359861c739e955e79d9a303bcbc70fb988958b1", files: ["ggml-large-v3-turbo-q8_0.bin"], size: 874_188_075, needs: 1.5 * GiB },
   { id: "whisper-large-v3-turbo", model: "lyrica/huggingface/openai/whisper-large-v3-turbo", name: "Whisper large-v3 turbo", kind: "transcribe", server: "vllm",

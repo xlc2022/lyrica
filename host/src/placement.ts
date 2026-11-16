@@ -174,7 +174,7 @@ export function concurrentOf(model: TextModel, s: ModelSettings): number | null 
 
 /** Bytes for the weights, and for the KV cache at the model's context. */
 export function sizes(model: TextModel, s: ModelSettings): { weights: number; kv: number } {
-  if (model.kind === "image" || model.kind === "speak") return { weights: Math.round(model.size * 1.1), kv: 0 };
+  if (model.kind === "image" || model.kind === "speak") return { weights: Math.round(model.size * 1.1 + (model.buffers ?? 0)), kv: 0 };
   // whisper.cpp: its file, and about half a gigabyte of buffers for the audio.
   if (model.server === "whispercpp") return { weights: Math.round(model.size * 1.1) + GIB / 2, kv: 0 };
   const context = model.kind === "embedding" ? Math.min(contextOf(model, s), 8192) : contextOf(model, s);

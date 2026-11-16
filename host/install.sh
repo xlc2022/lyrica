@@ -365,6 +365,21 @@ if [[ $VENDOR == nvidia ]] && nvidia-smi --query-gpu=pci.device_id --format=csv,
     [[ -n $PREBUILT ]] || FILES+=:compose.sdcpp.build.yaml
   fi
 fi
+# Qwen3-TTS voices, on NVIDIA cards only (compose.nvidia.yaml's speech-qwen):
+# PyTorch's CUDA 12.6 build, which still runs Volta, or its CUDA 13 build for
+# Blackwell (qwen_flavour). The image CI publishes is pulled, or it's built here.
+SPEECH_QWEN_IMAGE=
+if [[ $VENDOR == nvidia ]]; then
+  # shellcheck source=prebuilt.sh
+  . ./prebuilt.sh
+  CAPS=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader 2>/dev/null | tr -d ' ' | sort -u | paste -sd' ' -)
+  QWEN_FLAVOUR=$(qwen_flavour "$CAPS")
+  # Only the cards this flavour runs on are asked of the published image.
+  QWEN_ARCHS=$(for c in $CAPS; do a="${c/./}-real"; [[ ";$(prebuilt_archs "speech-qwen-$QWEN_FLAVOUR");" == *";$a;"* ]] && echo "$a"; done | paste -sd';' -)
+  prebuilt_pick "speech-qwen-$QWEN_FLAVOUR" "${QWEN_ARCHS:-75-real}" "$START"
+  SPEECH_QWEN_IMAGE=${PREBUILT:-lyrica-host-speech-qwen:$QWEN_FLAVOUR}
+  [[ -n $PREBUILT ]] || FILES+=:compose.speech-qwen.build.yaml
+fi
 RENDER_GID=$(getent group render 2>/dev/null | cut -d: -f3 || true)
 [[ $WANT_LAN == 1 ]] && FILES+=:compose.lan.yaml
 [[ -n $TS_HOSTNAME ]] && FILES+=:compose.tailscale.yaml
@@ -408,6 +423,8 @@ CUDA_ARCHS=$CUDA_ARCHS
 LLAMACPP_CMP_IMAGE=$LLAMACPP_CMP_IMAGE
 SDCPP_IMAGE=$SDCPP_IMAGE
 WHISPER_IMAGE=$WHISPER_IMAGE
+SPEECH_QWEN_IMAGE=$SPEECH_QWEN_IMAGE
+SPEECH_QWEN_FLAVOUR=${QWEN_FLAVOUR:-}
 RENDER_GID=${RENDER_GID:-}
 COMPOSE_FILE=$FILES
 HOST_VERSION=$VERSION

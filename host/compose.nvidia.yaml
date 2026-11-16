@@ -95,3 +95,19 @@ services:
       args: { FLAVOUR: cuda }
     image: lyrica-host-speech:cuda
     tmpfs: ["/tmp:exec"] # the phonemizer loads espeak-ng from here
+
+  # Qwen3-TTS voices (speech-qwen/), on the GPU host-api names when it loads
+  # one: the image CI publishes (prebuilt.sh), or one built here
+  # (compose.speech-qwen.build.yaml). Like the other speech server, it is on
+  # the models network only, logs nothing, can write only to /tmp, a tmpfs
+  # (which allows running files, for Triton's kernels), and leaves no core dump.
+  speech-qwen:
+    <<: *server
+    image: ${SPEECH_QWEN_IMAGE:?run install.sh}
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    init: true
+    volumes:
+      - ${MODELS_DIR}:/models:ro
+    tmpfs: ["/tmp:exec"]

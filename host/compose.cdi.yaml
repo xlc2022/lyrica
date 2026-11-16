@@ -15,3 +15,4 @@ services:
   vllm: *cdi
   comfyui: *cdi
   speech: *cdi
+  speech-qwen: *cdi

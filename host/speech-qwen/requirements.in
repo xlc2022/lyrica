@@ -1,0 +1,8 @@
+# The Qwen3-TTS speech server's packages. lock.sh pins them, with their
+# hashes, in requirements.cu126.txt and requirements.cu130.txt; only the
+# PyTorch build differs.
+faster-qwen3-tts==0.5.4
+# faster-qwen3-tts's own pin: newer Transformers fail on the speech tokenizer's config.
+transformers==5.15.1
+numpy
+soundfile

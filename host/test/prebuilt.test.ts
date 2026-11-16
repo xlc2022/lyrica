@@ -94,6 +94,25 @@ describe("the CMP's prebuilt images", () => {
     expect(pick("1", "0", "1")).toBe("1");
   });
 
+  it("include the Qwen3-TTS speech server in a flavour for the host's cards", () => {
+    // One build folder, two flavours, each tagged apart.
+    expect(sh(host, "prebuilt_dir speech-qwen-cu126")).toBe("speech-qwen");
+    expect(sh(host, "prebuilt_tag speech-qwen-cu126")).not.toBe(sh(host, "prebuilt_tag speech-qwen-cu130"));
+    expect(sh(host, "prebuilt_image speech-qwen-cu130")).toMatch(/^ghcr\.io\/xlc2022\/lyrica-host-speech-qwen-cu130:[0-9a-f]{16}$/);
+    const flavour = (caps: string) => sh(host, `qwen_flavour "${caps}"`);
+    expect(flavour("8.6")).toBe("cu126");
+    expect(flavour("7.0")).toBe("cu126");
+    expect(flavour("8.6 12.0")).toBe("cu130");
+    // A CMP beside Blackwell: only CUDA 12.6 runs the CMP, so Blackwell goes without.
+    expect(flavour("7.0 12.0")).toBe("cu126");
+    expect(sh(host, `prebuilt_covers speech-qwen-cu126 "70-real;86-real" && echo yes`)).toBe("yes");
+    expect(sh(host, `prebuilt_covers speech-qwen-cu130 "70-real" || echo no`)).toBe("no");
+    const read = (f: string) => readFileSync(join(host, f), "utf8");
+    expect(read("compose.nvidia.yaml")).toMatch(/speech-qwen:\n(?:.*\n)*?\s+image: \$\{SPEECH_QWEN_IMAGE:\?run install\.sh\}/);
+    expect(read("compose.speech-qwen.build.yaml")).toMatch(/build:\n\s+context: speech-qwen\n\s+args:\n\s+FLAVOUR:/);
+    expect(read("install.sh")).toMatch(/\[\[ -n \$PREBUILT \]\] \|\| FILES\+=:compose\.speech-qwen\.build\.yaml/);
+  });
+
   it("leave vLLM out only when every NVIDIA card is a CMP, which it can't run on", () => {
     const only = (...cards: string[]) => sh(host, `cmp_only "$IDS" && echo yes || echo no`, { IDS: cards.join("\n") });
     expect(only("0, 0x1D8410DE")).toBe("yes");

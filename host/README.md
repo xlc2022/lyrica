@@ -625,6 +625,41 @@ per host, and Lyrica's router filters create tiers by it.
     loads espeak-ng from a copy it makes there. Text it reads is never kept.
   - Every package is pinned with its hash (`speech/requirements.*.txt`;
     `speech/lock.sh` remakes them), so nothing is fetched at run time.
+- **Qwen3-TTS voice** models (CustomVoice and Base, a folder with
+  `config.json` of `model_type` `qwen3_tts`, `model.safetensors` and
+  `speech_tokenizer/`) are served by a second speech server
+  (`speech-qwen/`, our image), on NVIDIA hosts only, one GPU per model,
+  through faster-qwen3-tts (PyTorch with CUDA graphs). A CustomVoice
+  model's voices are its nine speakers (Vivian, Serena, Uncle_Fu, Dylan,
+  Eric, Ryan, Aiden, Ono_Anna, Sohee); a Base model's are the clips built
+  into the image (`speech-qwen/voices/<name>.wav`, its transcript in
+  `<name>.txt`), which it clones: Friend, a voice designed with Qwen's
+  VoiceDesign model, not a real person's. Every voice reads Mandarin and
+  English, so each is listed under both. A piece with Han characters is
+  read as Chinese, any other as English. Qwen3-TTS has no speed input, so
+  the server stretches its audio to the asked speed without changing the
+  pitch.
+  - Two flavours of PyTorch 2.14.1: CUDA 12.6 (`cu126`), its last build
+    with Volta kernels, for a CMP 100-210 through Hopper; and CUDA 13
+    (`cu130`), Turing and newer, Blackwell included. `install.sh` picks
+    `cu130` when a card is Blackwell and none is a CMP (`qwen_flavour`),
+    else `cu126`, so a Blackwell card beside a CMP can't run these voices.
+    Models load in bf16, or fp16 on Volta, which has no bf16, with
+    PyTorch's own attention. CI publishes both (`prebuilt.sh`), and
+    `install.sh` pulls the one for the host, building it here
+    (`compose.speech-qwen.build.yaml`) only when it can't.
+  - A load reads the weights and captures the CUDA graphs with two
+    warm-up sentences, about 30 s. On danube's unlocked CMP, CustomVoice
+    took 4.9 GB and Base 5.6 GB, started speaking in about 0.45 s and made
+    a second of audio in 0.6 s; Kokoro is about ten times as fast.
+  - It runs as 10001, on the `models` network only, read-only with no
+    capabilities, logs nothing and writes only to its `/tmp` tmpfs (which
+    allows running files, for Triton's kernels); like Kokoro's, it exits
+    once nothing is loaded. Hub access is off (`HF_HUB_OFFLINE`).
+    torchaudio has no 2.14 build, so 2.11 is installed with it; it is only
+    used by the 25 Hz tokenizer, which these 12 Hz models don't load.
+    Every package is pinned with its hash (`speech-qwen/requirements.*.txt`;
+    `speech-qwen/lock.sh` remakes them).
 - **Starters**, pinned to the revisions that were benchmarked. Download
   them on the dashboard, from Lyrica's Download text model, or with
   `POST /host/v1/text-starters/<id>/download`:
@@ -634,6 +669,11 @@ per host, and Lyrica's router filters create tiers by it.
     `config.json`, `tokenizer.json`, `tokenizer_config.json` and three
     voices, `voices/zm_010.bin`, `zf_001.bin` and `af_maple.bin` (about
     330 MB); any of its 103 voices can be downloaded with them;
+  - Qwen3-TTS voices, on NVIDIA hosts: `Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice`
+    at `0c0e3051f131929182e2c023b9537f8b1c68adfe` and
+    `Qwen/Qwen3-TTS-12Hz-1.7B-Base` at
+    `fd4b254389122332181a7c3db7f27e918eec64e3`: `model.safetensors`, its
+    JSON and text files and `speech_tokenizer/` (about 4.5 GB each);
   - dictation: `openai/whisper-large-v3-turbo` at
     `41f01f3fe87f28c78e2fbf8b568835947dd65ed9`: `model.safetensors` and
     its JSON and text files (about 1.6 GB); on a host with a CMP,
@@ -681,7 +721,8 @@ unpairs it here too, when the host can be reached.
   - Folders with a `config.json` and safetensors are served by vLLM. A model
     whose config asks for remote code is listed but never loaded.
   - Voice models (see above) are served by the speech server, on one GPU
-    or the CPU. Their only setting is the placement.
+    or the CPU, and Qwen3-TTS voice models by the Qwen3-TTS speech server,
+    on one NVIDIA GPU. Their only setting is the placement.
 - **Each model has a placement** and serving settings, set on the dashboard
   or through the API:
   - Auto (the default): one GPU with room, preferring one where nothing
@@ -834,7 +875,8 @@ unpairs it here too, when the host can be reached.
     three times as fast as the stock image, and changes nothing on Turing
     and newer cards. Unlocked, llama.cpp makes its own choices, which read
     prompts about twice as fast again. CI publishes it, sd-server's and
-    whisper-server's images (`.github/workflows/cmp-images.yml`) under a tag that hashes their build
+    whisper-server's images, and the Qwen3-TTS speech server's two flavours
+    (`.github/workflows/cmp-images.yml`) under a tag that hashes their build
     folder and CUDA capabilities, in the registry `prebuilt.sh` names (one
     line, or `LYRICA_HOST_REGISTRY`). `install.sh` pulls the tag that matches
     its own code when the image covers every GPU's compute capability, and

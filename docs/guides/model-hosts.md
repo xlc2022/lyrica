@@ -486,6 +486,15 @@ curl -sS 'http://127.0.0.1:7236/host/v1/hub/files?source=huggingface&repo=onnx-c
   `model.safetensors`, the same weights again). It needs about 14 GB of a
   GPU whatever its context (dictation's default, 16k, is about 20 minutes
   of audio), so a 16 GB card holds it alone.
+- **A warmer voice**, on an NVIDIA host only: Qwen3-TTS. It sounds more
+  natural than Kokoro and handles Mandarin and English with one voice,
+  but is about ten times slower (still faster than it speaks) and takes
+  about 5 GB of a GPU. Two starters, about 4.5 GB each:
+  `Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice` (voices Vivian, Ryan, Sohee and
+  six more) and `Qwen/Qwen3-TTS-12Hz-1.7B-Base` (the voice Friend). By
+  hand, take `model.safetensors`, every `.json` and `.txt` file, and
+  `speech_tokenizer/`. Pick the voice in the model's Settings, as for
+  Kokoro. `install.sh` pulls the server's image for the host's cards.
 
 ```sh
 curl -sS -H 'content-type: application/json' -d '{

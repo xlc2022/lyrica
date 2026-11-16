@@ -94,7 +94,8 @@ const scheduler = new Scheduler({
     llamacpp: new LlamaCpp({ url: env.LLAMACPP_URL || "http://llamacpp:8080", serving, models: modelsDir, device: (i) => `${backend === "vulkan" ? "Vulkan" : backend === "rocm" ? "ROCm" : "CUDA"}${i}`, cmp: (i) => cmpGpus.has(i), log: stdoutLog }),
     vllm: new Vllm({ url: env.VLLM_URL || "http://vllm:{port}", serving, models: modelsDir }),
     comfyui: sdcpp ?? comfy,
-    speech: new Speech({ url: env.SPEECH_URL || "http://speech:8000", models: modelsDir }),
+    // Qwen3-TTS voices: their own server, on NVIDIA GPUs only (compose.nvidia.yaml).
+    speech: new Speech({ url: env.SPEECH_URL || "http://speech:8000", ...(backend === "cuda" ? { qwenUrl: env.SPEECH_QWEN_URL || "http://speech-qwen:8000" } : {}), models: modelsDir }),
     ...(whispercpp ? { whispercpp } : {}),
   },
   state: host.state,
