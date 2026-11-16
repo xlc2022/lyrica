@@ -1114,6 +1114,11 @@ test("Remove on a host says it unpairs, and says so when the host couldn't unpai
   await expect(page.locator(".toast")).toHaveText("Removed box, but it couldn't unpair this server. Revoke it on the host's dashboard.");
   expect(removed).toBe(true);
   await shot("toast");
+  // It asks the person to act, so it stays until they close it.
+  await page.waitForTimeout(4500);
+  await expect(page.locator(".toast")).toBeVisible();
+  await page.locator(".toast").getByRole("button", { name: "Dismiss" }).click();
+  await expect(page.locator(".toast")).toHaveCount(0);
 });
 
 

@@ -50,8 +50,8 @@ export interface ShellContext {
   openSide: () => void;
   /** Reload GET /api/state: after her name changes. */
   refreshState: () => void;
-  /** Says what an action did in a toast at the foot of the screen ("Pinned to the top"), gone after a few seconds. */
-  toast: (text: string) => void;
+  /** Says what an action did in a toast at the foot of the screen ("Pinned to the top"), gone after a few seconds; `stay` keeps one that asks the person to act until they close it. */
+  toast: (text: string, opts?: { stay?: boolean }) => void;
   /** Per thread (`<pool>/<id>`), a count bumped when its open stream finished a tool call or a turn: the Files panel beside it reloads its folders. */
   activity: Record<string, number>;
   noteActivity: (key: string) => void;
@@ -68,7 +68,7 @@ export function Shell({ user, users, route, build, onAuthChange, refreshState }:
   const groups = useLoad(() => get<ThreadGroup[]>(u(user.id, "thread-groups")), [user.id]);
   const [sideOpen, setSideOpen] = useState(false);
   // Numbered, so the same words said again start their few seconds again.
-  const [toast, setToast] = useState<{ text: string; n: number }>();
+  const [toast, setToast] = useState<{ text: string; n: number; stay?: boolean }>();
   const closeToast = useCallback(() => setToast(undefined), []);
   const [activity, setActivity] = useState<Record<string, number>>({});
   const noteActivity = useCallback((key: string) => setActivity((a) => ({ ...a, [key]: (a[key] ?? 0) + 1 })), []);
@@ -131,7 +131,7 @@ export function Shell({ user, users, route, build, onAuthChange, refreshState }:
   const ctx: ShellContext = {
     user: me.data.user, me: me.data, setMe: me.set, build, refreshThreads: threads.reload,
     groups: groups.data ?? [], refreshGroups: groups.reload, waiting: notes.waiting, refreshNotifications: notes.reload, sleep, cleanup, models, changed, threads: threads.data ?? [], openSide: () => setSideOpen(true),
-    refreshState, toast: (text) => setToast((t) => ({ text, n: (t?.n ?? 0) + 1 })), activity, noteActivity,
+    refreshState, toast: (text, opts) => setToast((t) => ({ text, n: (t?.n ?? 0) + 1, stay: opts?.stay })), activity, noteActivity,
   };
 
   const panel = wide && route.page === "thread" ? route.panel : undefined;
@@ -185,7 +185,7 @@ export function Shell({ user, users, route, build, onAuthChange, refreshState }:
           {page(panelRoute(route.userId, panel), () => dropDrawer("panel"))}
         </PanelColumn>
       )}
-      {toast && <Toast key={toast.n} text={toast.text} after={4000} onClose={closeToast} />}
+      {toast && <Toast key={toast.n} text={toast.text} after={toast.stay ? undefined : 4000} onClose={closeToast} />}
     </div>
   );
 }

@@ -1203,7 +1203,7 @@ function useEndpointActions(ctx: MCtx, ep: Endpoint, others: Endpoint[], onSignI
         onConfirm={() => { setAsking(undefined); void run(async () => {
           const removed = await del<RemovedEndpoint>(path);
           // The card goes with the endpoint, so the shell says it.
-          if (removed.stillPaired) ctx.toast(`Removed ${ep.name}, but it couldn't unpair this server. Revoke it on the host's dashboard.`);
+          if (removed.stillPaired) ctx.toast(`Removed ${ep.name}, but it couldn't unpair this server. Revoke it on the host's dashboard.`, { stay: true });
           done();
         }); }} />
     )}
