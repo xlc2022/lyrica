@@ -280,7 +280,9 @@ written without the key, so that skip is recorded once the key is back.
 When the key comes back (a login, or saved credentials at start), a pool
 whose last run began before the last sleep time missed that night: the miss
 is recorded as a `no-key` skip, even when a restart lost it, and the pool
-sleeps then (`Sleep.catchUp`). A pool that has never slept isn't caught up.
+sleeps then (`Sleep.catchUp`). A pool that has never slept isn't caught up. Until the one-time backticks pass has run for a pool (`Sleep.backticksOnce`,
+queued before the catch-up; docs/memory.md, "Backticks in older notes"), it runs
+first, and a run tries it again before it starts.
 
 ## In code
 
