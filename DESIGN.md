@@ -1729,7 +1729,7 @@ NAS, and Proxmox nodes. Decided 2026-10-11 from
 - **A floor no mode lifts** for `write` and `edit` on a machine: `~/.ssh/`,
   `/etc/ssh/` and `/etc/sudoers*` are refused, before any approval card.
 - **Output** is capped as in the sandbox, stripped of terminal control
-  sequences, and private-key blocks in it are replaced with a marker before
+  sequences but for the cursor moves a terminal would play, and private-key blocks in it are replaced with a marker before
   she or memory sees them. Secrets live on machines, which is why a machine
   that holds them belongs in the Private pool.
 - **Proxmox** is a kind of machine reached over its API, never a root shell.
