@@ -1496,7 +1496,11 @@ test("the Files panel: a tree one folder at a time, a file shown, search, the Im
   await menu.getByRole("menuitem", { name: "Rename…" }).click();
   await menu.getByLabel("New name").fill("sketches");
   // The menu's item style once made this button transparent, its white text invisible.
-  await expect(menu.getByRole("button", { name: "Rename" })).not.toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  const renameButton = menu.getByRole("button", { name: "Rename" });
+  await expect(renameButton).not.toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  const fill = await renameButton.evaluate((b) => getComputedStyle(b).backgroundColor);
+  await renameButton.hover();
+  await expect(renameButton).toHaveCSS("background-color", fill);
   await menu.getByRole("button", { name: "Rename" }).click();
   await expect(panel.getByRole("button", { name: "sketches", exact: true })).toBeVisible();
   await panel.getByRole("button", { name: "sketches", exact: true }).click({ button: "right" });
