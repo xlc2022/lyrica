@@ -92,13 +92,22 @@ export function Viewer({ ctx, threads, file, base, shownPath, thread, list, onSt
   const at = pictures.findIndex((f) => f.path === file.path);
   const steps: Steps | undefined = at >= 0 && pictures.length > 1
     ? { at, count: pictures.length, go: (by) => { const f = pictures[at + by]; if (f) onStep!(f); } } : undefined;
-  // Left and Right step, unless a field, a menu or the thread beside has the keys.
-  const onKeyDown = (e: React.KeyboardEvent) => {
-    if (!steps || (e.key !== "ArrowLeft" && e.key !== "ArrowRight") || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
-    if ((e.target as Element).closest("input, textarea, select, [contenteditable], [role='menu'], .ctx-menu, .viewer-thread")) return;
-    e.preventDefault();
-    steps.go(e.key === "ArrowLeft" ? -1 : 1);
-  };
+  // Left and Right step, unless a field, a menu, a drawer or the thread beside has the keys. Heard on the document,
+  // not the dialog: a click that focuses nothing (any click in Safari, which doesn't focus buttons) leaves the body
+  // focused, and the dialog would never see the key.
+  const stepsRef = useRef(steps);
+  stepsRef.current = steps;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const s = stepsRef.current;
+      if (!s || e.defaultPrevented || (e.key !== "ArrowLeft" && e.key !== "ArrowRight") || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+      if (e.target instanceof Element && e.target.closest("input, textarea, select, [contenteditable], [role='menu'], .ctx-menu, .drawer, .viewer-thread")) return;
+      e.preventDefault();
+      s.go(e.key === "ArrowLeft" ? -1 : 1);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
 
   // The thread that wrote the file, where one is recorded and still there; else the library's own.
   const known = thread && ((file.madeBy && findThread(threads, thread.pool, file.madeBy)) || findThread(threads, thread.pool, thread.threadId));
@@ -110,7 +119,7 @@ export function Viewer({ ctx, threads, file, base, shownPath, thread, list, onSt
   return (
     <dialog ref={ref} className="viewer" aria-label={file.name} data-split={(wide && showThread) || undefined}
       // Escape closes the topmost thing: a menu or drawer open inside first, then the viewer.
-      onCancel={(e) => { e.preventDefault(); if (!document.activeElement?.closest("[role='menu'], .ctx-menu, .drawer")) onClose(); }} onKeyDown={onKeyDown}>
+      onCancel={(e) => { e.preventDefault(); if (!document.activeElement?.closest("[role='menu'], .ctx-menu, .drawer")) onClose(); }}>
       {showFile && (
         <FilePane file={file} shownPath={shownPath} contentUrl={contentUrl()} viewUrl={viewUrl} settingsUrl={settingsUrl} steps={steps} heading={from?.heading} facts={from?.facts} kind={from?.kind} sealed={from?.sealed}
           actions={<>

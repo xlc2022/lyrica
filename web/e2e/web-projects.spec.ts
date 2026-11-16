@@ -1927,6 +1927,10 @@ test("the file viewer: an image steps to the previous or next image of its list 
   // The clicked button keeps the focus, so the keys go on working.
   await page.keyboard.press("ArrowRight");
   await expect(page.getByRole("dialog", { name: names[1] })).toBeVisible();
+  // With nothing in the viewer focused (Safari doesn't focus a clicked button), the keys still step.
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  await page.keyboard.press("ArrowLeft");
+  await expect(page.getByRole("dialog", { name: names[0] })).toBeVisible();
   await page.keyboard.press("Escape");
 
   // A Markdown file has no steps.
