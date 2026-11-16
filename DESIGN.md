@@ -2134,7 +2134,9 @@ when to use it, and steps in Markdown (at most 8,000 characters).
   - Built in: `add-machine`, taking the person through the Add machine
     page for an SSH machine or a Proxmox (what its setup block does, the
     fingerprint, giving a thread the machine), listed in every thread; she
-    never adds a machine or takes its key or token herself. And
+    never adds a machine or takes its key or token herself. `pdf`, reading,
+    OCR, tables, forms, pages and making PDFs with the sandbox's own tools,
+    also listed in every thread. And
     `model-host`, installing a model host on one of the thread's
     SSH machines (root steps on a card, the image pull in the background,
     the pairing code), `secrets`, getting a key, token or sudo password

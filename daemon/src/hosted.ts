@@ -1438,12 +1438,13 @@ export class HostedThread {
               // The skills in this thread's own pool, then those it reads (a Private thread's General ones), then each
               // checkout's own (docs/briefs/skills.md). A name in its own pool wins. Lyrica's own skills come
               // after the library's, unless a library skill takes the name: add-machine in every thread, since
-              // the person asks for it where there is no machine yet, and model-host, secrets, gentoo and nixos while the thread has an SSH machine.
+              // the person asks for it where there is no machine yet, pdf in every thread, since a PDF can come
+              // up in any, and model-host, secrets, gentoo and nixos while the thread has an SSH machine.
               index: async () => {
                 const checkouts = checkoutsOf(tools.settings(), workspace.repositoriesFor({ userId: this.userId, pool: this.pool, threadId: this.threadId }));
                 const library = librarySkills(view);
                 const ssh = tools.machines?.().some((m) => m.kind === "ssh");
-                const own = ["add-machine", ...ssh ? ["model-host", "secrets", "gentoo", "nixos"] : []].filter((name) => !library.some((s) => s.name === name));
+                const own = ["add-machine", "pdf", ...ssh ? ["model-host", "secrets", "gentoo", "nixos"] : []].filter((name) => !library.some((s) => s.name === name));
                 return skillsIndex([
                   ...library.map((s) => ({ name: s.name, description: s.description, at: `s:${s.name}` })),
                   ...own.map((name) => BUILTIN_SKILLS[name]!.listed),

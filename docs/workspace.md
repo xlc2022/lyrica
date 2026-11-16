@@ -655,6 +655,22 @@ differences: which driver it needs, what runs on it, its unlock as a
 second question before anything changes, and a reboot and a check of the
 tensor rate after an install with the unlock.
 
+### PDFs
+
+Every thread's skills list `pdf` (`extension/src/pdf.md`). It sends her to
+the sandbox's own tools, so nothing leaves the machine: `pdfinfo`,
+`pdffonts` and `pdftotext` first, `pdftoppm` to turn a page into a picture
+she looks at, pdfplumber for words with positions and tables (pandas for
+the numbers), OCRmyPDF and Tesseract for scanned pages (English, Simplified
+and Traditional Chinese), with her own eyes for handwriting and tables
+Tesseract reads badly and every figure checked against the picture, pypdf
+for listing and filling form fields (reportlab and pypdf to write over a
+page without fields), qpdf to merge, split, rotate, repair and decrypt, and
+Chromium's print to PDF from HTML to make one. Results are new files; she
+never changes or deletes the person's original unless asked. The tools
+come from nix/sandbox-tools.nix on NixOS and install.sh on Debian
+(docs/daemon.md).
+
 ### Installing and running Gentoo
 
 While a thread has an SSH machine, its skills also list `gentoo`
@@ -2531,7 +2547,10 @@ sandbox mounts; never the `/etc/static` link, which it doesn't), and `CHROME_PAT
 sandbox's Chromium, with `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD` and
 `PUPPETEER_SKIP_DOWNLOAD`, so npm, pip and browser libraries use what is
 there instead of failing on certificates or downloading a browser
-(`toolEnv` in `sandbox.ts`). With internet off, it tells her not to
+(`toolEnv` in `sandbox.ts`). On Debian it also has `PYTHONPATH` set to
+`/opt/lyrica/tools/lib/python` when install.sh put pdfplumber and pypdf there, and
+`TESSDATA_PREFIX` to `/opt/lyrica/tools/share/tessdata` when Tesseract's
+English file is there. With internet off, it tells her not to
 mirror or proxy CDNs or registries, but to say what she couldn't check or ask
 for Internet or an allowed host. `proxmox` is the tool for
 Proxmox machines ([above](#proxmox)). The memory tool

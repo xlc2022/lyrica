@@ -357,7 +357,10 @@ answers ahead; without a terminal the answer is no), then:
    scraping and data work (her prompt names the ones present), ripgrep,
    file, bc, xxd, bsdextrautils (hexdump), zip, tree, fd-find, sqlite3,
    yq, poppler-utils (pdftotext), wget, lsof, strace and pandoc for her
-   everyday commands, and `gh`
+   everyday commands, qpdf, tesseract-ocr, ocrmypdf, python3-pil,
+   python3-reportlab, python3-pandas and python3-numpy for her `pdf`
+   skill (with pdfplumber's and pypdf's pinned wheels and Tesseract's large
+   English, Chinese and orientation files in her tool prefix), and `gh`
    and `tea` for threads with repositories (`tea` only where it is
    packaged; without it, Gitea and Forgejo accounts work through git
    alone). It makes her tool prefix, `/opt/lyrica/tools`: root-owned,
@@ -1354,6 +1357,13 @@ refused. To replace the destination, enter the full URL and token again;
   - **Before 2026-11-15:** `LimitCORE=0` in `lyricad`'s unit, so a crash
     leaves no core dump of her decrypted memory; until then the system's
     core dump setting decides.
+  - **Before 2026-11-17:** the PDF tools her `pdf` skill uses: qpdf,
+    Tesseract with OCRmyPDF, python3-pil, python3-reportlab,
+    python3-pandas and python3-numpy, then pdfplumber and pypdf (pinned
+    wheels in `/opt/lyrica/tools/lib/python`) and Tesseract's
+    large English, Chinese and orientation files (in
+    `/opt/lyrica/tools/share/tessdata`, about 130 MiB); until then she
+    has only `pdftotext` and poppler's other tools for PDFs.
   - **Any install missing them:** headless Chromium and IBM Plex for her
     screenshots, Claude Code and Codex, ffmpeg and ffprobe (until then
     she can't check a clip's length or streams), and the Python baseline

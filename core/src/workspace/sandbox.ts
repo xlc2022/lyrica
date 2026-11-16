@@ -163,11 +163,16 @@ export function sandboxTools(): { programs: string[]; python?: string[]; browser
   const python = programs.includes("Python 3") ? pythonLibraries() : [];
   return { programs, ...python.length ? { python } : {}, browser: find(BROWSERS) };
 }
-/** Where the sandbox's CA bundle and Chromium are, so npm, pip, Playwright and Puppeteer use them instead of failing or downloading their own. */
+/** Where the sandbox's CA bundle, Chromium and (on Debian) the tool prefix's Python libraries and Tesseract files are, so npm, pip, Playwright, Puppeteer, Python and Tesseract use them instead of failing or downloading their own. */
 export function toolEnv(): Record<string, string> {
   const env: Record<string, string> = {};
   const ca = caBundle();
   if (ca) Object.assign(env, { SSL_CERT_FILE: ca, NODE_EXTRA_CA_CERTS: ca, REQUESTS_CA_BUNDLE: ca });
+  // install.sh's PDF libraries Debian doesn't package, and Tesseract's large language files (her pdf skill).
+  if (!tools()) {
+    if (existsSync(`${TOOLS_PREFIX}/lib/python/pdfplumber`)) env.PYTHONPATH = `${TOOLS_PREFIX}/lib/python`;
+    if (existsSync(`${TOOLS_PREFIX}/share/tessdata/eng.traineddata`)) env.TESSDATA_PREFIX = `${TOOLS_PREFIX}/share/tessdata`;
+  }
   const browser = find(BROWSERS);
   if (browser) Object.assign(env, { CHROME_PATH: browser, PUPPETEER_EXECUTABLE_PATH: browser, PUPPETEER_SKIP_DOWNLOAD: "1", PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1" });
   return env;

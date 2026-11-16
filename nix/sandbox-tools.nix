@@ -21,7 +21,12 @@
 # the sandbox has no /nix. xxd (tinyxxd), bc, zip, tree, fd, sqlite, yq (the
 # jq wrapper, with xq and tomlq), poppler-utils (pdftotext), rsync, wget, lsof,
 # strace and pandoc match install.sh's everyday tools; util-linux brings
-# hexdump and column.
+# hexdump and column. qpdf, Tesseract with OCRmyPDF, and pypdf, pdfplumber,
+# Pillow, reportlab, pandas, NumPy and pypdfium2 are for her pdf skill
+# (extension/src/pdf.md). Tesseract keeps English, Simplified and Traditional
+# Chinese and page orientation, from the large tessdata files (nixpkgs'
+# default would bring every language, about 1 GiB); OCRmyPDF is built against
+# that Tesseract, without rerunning its test suite.
 pkgs:
 let
   # Claude Code is unfree. Only it is allowed, in its own import, so the
@@ -30,13 +35,21 @@ let
     inherit (pkgs.stdenv.hostPlatform) system;
     config.allowUnfreePredicate = p: pkgs.lib.getName p == "claude-code";
   };
+  tesseract = pkgs.tesseract.override { enableLanguages = [ "eng" "osd" "chi_sim" "chi_tra" ]; };
+  # fpdf2, which OCRmyPDF renders with, fails one image test in nixos-26.05,
+  # so neither is in the binary cache; both are built here without tests.
+  fpdf2 = pkgs.python3Packages.fpdf2.overridePythonAttrs { doCheck = false; };
+  ocrmypdf = pkgs.python3Packages.toPythonApplication
+    ((pkgs.python3Packages.ocrmypdf.override { inherit tesseract fpdf2; }).overridePythonAttrs { doCheck = false; });
 in
 with pkgs; [
   bashInteractive coreutils findutils gnugrep gnused gawk diffutils patch
   gnutar gzip xz bzip2 zstd unzip which file less procps util-linux xxd bc
   zip tree fd sqlite yq poppler-utils rsync wget lsof strace pandoc
   getent git gh tea nodejs_24 openssh openssl curl cacert jq ripgrep gnumake gcc imagemagick shellcheck
-  (python3.withPackages (ps: with ps; [ beautifulsoup4 lxml requests html5lib pyyaml ]))
+  (python3.withPackages (ps: with ps; [ beautifulsoup4 lxml requests html5lib pyyaml
+    pypdf pdfplumber pillow reportlab pandas numpy pypdfium2 ]))
+  qpdf tesseract ocrmypdf
   ffmpeg-headless
   chromium ibm-plex dejavu_fonts
   bubblewrap passt nftables nix

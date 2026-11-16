@@ -81,7 +81,9 @@ apt-get install -y -qq --no-install-recommends \
   build-essential python3 python3-venv git gh openssh-client jq shellcheck \
   ripgrep file bc xxd bsdextrautils zip tree fd-find sqlite3 yq poppler-utils \
   wget lsof strace pandoc \
-  python3-bs4 python3-lxml python3-requests python3-html5lib python3-yaml >/dev/null
+  python3-bs4 python3-lxml python3-requests python3-html5lib python3-yaml \
+  qpdf tesseract-ocr ocrmypdf python3-pil python3-reportlab python3-pandas python3-numpy \
+  python3-cryptography python3-charset-normalizer >/dev/null
 # shellcheck checks her bash calls before they run (core/src/workspace/shellcheck.ts).
 # ripgrep, file, bc, xxd, bsdextrautils (hexdump, column), zip, tree, fd,
 # sqlite3, yq, poppler-utils (pdftotext), wget, lsof, strace and pandoc are
@@ -161,6 +163,67 @@ fi
 if [ -x "$TOOLS/bin/codex" ] && [ -d /usr/local/lib/node_modules/@openai/codex ]; then
   npm uninstall -g --prefix /usr/local --loglevel=error @openai/codex >/dev/null 2>&1 || true
 fi
+
+# --- PDF tools ---
+# Her pdf skill (extension/src/pdf.md) uses qpdf, Tesseract with OCRmyPDF,
+# Pillow, reportlab, pandas and NumPy from the packages above, and two
+# things in her tool prefix:
+# - pdfplumber (with pdfminer.six and pypdfium2), which Debian doesn't
+#   package, and pypdf, whose Debian 12 version lacks what the skill uses,
+#   wheels pinned by hash, in $TOOLS/lib/python (her sandbox's PYTHONPATH;
+#   toolEnv in core/src/workspace/sandbox.ts). Their other needs,
+#   cryptography and charset-normalizer, are Debian's.
+# - Tesseract's large language files (tessdata 4.1.0, the ones nixpkgs ships)
+#   for English, Simplified and Traditional Chinese and page orientation, in
+#   $TOOLS/share/tessdata (her sandbox's TESSDATA_PREFIX). Debian's own are
+#   the small, faster ones.
+PDF_PYTHON=$TOOLS/lib/python
+PDF_WHEELS='pdfplumber==0.11.9 --hash=sha256:33ec5580959ba524e9100138746e090879504c42955df1b8a997604dd326c443
+pdfminer.six==20251230 --hash=sha256:9ff2e3466a7dfc6de6fd779478850b6b7c2d9e9405aa2a5869376a822771f485
+pypdfium2==5.14.0 --hash=sha256:11f281613fa22313d9c7ab89947665e84eccf8ebe40e1198a84a88352305648d --hash=sha256:f1b696e6901e16f114a2ec6332e5e3f8f5033a901614ead28499ab18ca6024f5
+pypdf==6.21.4 --hash=sha256:33e4fb41ca352810eb4e9838aa0d82d6888a5f8bf682f43e99cce5faa666255c'
+if [ "$(cat "$PDF_PYTHON/.requirements" 2>/dev/null)" != "$PDF_WHEELS" ]; then
+  say "Installing pdfplumber and pypdf for her sandbox..."
+  PDF_TMP=$(mktemp -d)
+  printf '%s\n' "$PDF_WHEELS" >"$PDF_TMP/requirements.txt"
+  if python3 -m venv "$PDF_TMP/venv" \
+    && "$PDF_TMP/venv/bin/pip" install -q --disable-pip-version-check --no-deps --require-hashes --only-binary :all: \
+      --target "$PDF_TMP/python" -r "$PDF_TMP/requirements.txt" >/dev/null; then
+    rm -rf "$PDF_PYTHON"
+    mv "$PDF_TMP/python" "$PDF_PYTHON"
+    printf '%s\n' "$PDF_WHEELS" >"$PDF_PYTHON/.requirements"
+    chmod -R a+rX "$PDF_PYTHON"
+  else
+    say "installing pdfplumber and pypdf failed: her pdf skill can't read tables or fill in forms until they're installed."
+  fi
+  rm -rf "$PDF_TMP"
+fi
+TESSDATA=$TOOLS/share/tessdata
+install -d -m 0755 "$TESSDATA"
+# Tesseract reads its output settings (configs/, tessconfigs/) and the PDF
+# renderer's font (pdf.ttf) from beside the language files, so everything in
+# Debian's own tessdata but its language files is linked in.
+for file in /usr/share/tesseract-ocr/*/tessdata/*; do
+  case $file in *.traineddata) continue ;; esac
+  [ -e "$file" ] || continue
+  ln -sfn "$file" "$TESSDATA/${file##*/}"
+done
+for lang in eng:daa0c97d651c19fba3b25e81317cd697e9908c8208090c94c3905381c23fc047 \
+  osd:e19f2ae860792fdf372cf48d8ce70ae5da3c4052962fe22e9de1f680c374bb0e \
+  chi_sim:fc05d89ab31d8b4e226910f16a8bcbf78e43bae3e2580bb5feefd052efdab363 \
+  chi_tra:559067dc0f7c94788884742129d66a0117dde7f4ff12b263d92147173497db14; do
+  name=${lang%%:*} sum=${lang#*:}
+  echo "$sum  $TESSDATA/$name.traineddata" | sha256sum -c --quiet - >/dev/null 2>&1 && continue
+  say "Downloading Tesseract's $name language file..."
+  if curl -fsSL -o "$TESSDATA/$name.traineddata.part" "https://raw.githubusercontent.com/tesseract-ocr/tessdata/4.1.0/$name.traineddata" \
+    && echo "$sum  $TESSDATA/$name.traineddata.part" | sha256sum -c --quiet - >/dev/null; then
+    mv "$TESSDATA/$name.traineddata.part" "$TESSDATA/$name.traineddata"
+    chmod 0644 "$TESSDATA/$name.traineddata"
+  else
+    rm -f "$TESSDATA/$name.traineddata.part"
+    say "downloading Tesseract's $name language file failed: her OCR can't read that language until it's there."
+  fi
+done
 
 # --- Nix ---
 # The official Nix binary tarball, unpacked into her tool prefix, for flakes
