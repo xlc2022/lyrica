@@ -6,7 +6,10 @@
 // every other sequence are dropped. What it gives is what the person would have seen when the command ended.
 //
 // One pass, a character at a time, with no pattern: linear on any output (AGENTS.md, patterns on outside text).
-// It streams: `write` takes pieces as they come, a sequence split between two pieces included.
+// Work a sequence does beyond its own characters (spaces a cursor jump pads a line with, cells an erase blanks,
+// lines it clears) is paid from `credit`, which each character of output adds to, so neither time nor what it gives
+// can grow faster than the output: crafted output only folds less faithfully. It streams: `write` takes pieces as
+// they come, a sequence split between two pieces included.
 
 /** How far up a cursor move reaches: lines above the screen are scrolled out and fixed, as in a terminal. */
 export const SCREEN_ROWS = 256;
@@ -14,6 +17,9 @@ export const SCREEN_ROWS = 256;
 export const MAX_COLUMN = 4096;
 /** The most of a sequence's parameters kept; longer ones are still read to their end, and ignored. */
 const MAX_PARAMS = 64;
+/** Work a fold may do before its output has paid for any, and how much each character of output adds. */
+const START_CREDIT = 64 * 1024;
+const CREDIT_PER_CHAR = 1;
 
 const enum State { Text, Escape, EscapeMore, Csi, Str, StrEscape }
 
@@ -27,9 +33,11 @@ export class Terminal {
   private saved = { row: 0, col: 0 };
   private state = State.Text;
   private params = "";
+  private credit = START_CREDIT;
 
   /** Plays a piece of output. */
   write(text: string): this {
+    this.credit += CREDIT_PER_CHAR * text.length;
     for (let i = 0; i < text.length; i++) {
       const c = text.charCodeAt(i);
       switch (this.state) {
@@ -38,8 +46,7 @@ export class Terminal {
             // A run of text at once: most output is lines of it, and this keeps it fast.
             let j = i + 1;
             while (j < text.length && printable(text.charCodeAt(j))) j++;
-            this.rows[this.row]!.put(this.col, text.slice(i, j));
-            this.col += j - i;
+            this.put(text.slice(i, j));
             i = j - 1;
           } else this.control(c);
           break;
@@ -77,7 +84,8 @@ export class Terminal {
   /** Puts the cursor after the last thing shown, so a note added there (output skipped) overwrites nothing. */
   toEnd(): this {
     this.row = this.rows.length - 1;
-    this.col = this.rows[this.row]!.text().length;
+    this.col = this.rows[this.row]!.length;
+    this.state = State.Text;
     return this;
   }
 
@@ -95,7 +103,7 @@ export class Terminal {
       this.col = 0;
     } else if (c === 0x0d) this.col = 0;
     else if (c === 0x08) this.col = Math.max(0, this.col - 1);
-    else if (c === 0x09) this.rows[this.row]!.put(this.col++, "\t");
+    else if (c === 0x09) this.put("\t");
     else if (c === 0x1b) this.state = State.Escape;
     else if (c === 0x9b) { this.params = ""; this.state = State.Csi; }
     else if (c === 0x9d || c === 0x90) this.state = State.Str;
@@ -115,18 +123,34 @@ export class Terminal {
     else if (c >= 0x20 && c <= 0x2f) this.state = State.EscapeMore;
   }
 
+  /** Writes a run at the cursor; spaces padding the line out to it come from credit, and past it the run lands sooner. */
+  private put(run: string): void {
+    const line = this.rows[this.row]!;
+    const pad = Math.min(Math.max(0, this.col - line.length), this.credit);
+    this.credit -= pad;
+    this.col = Math.min(this.col, line.length + pad);
+    line.put(this.col, run);
+    this.col += run.length;
+  }
+
   private csi(final: number): void {
     // A private sequence (ESC[?25l hides the cursor) changes nothing that shows.
     if (/* < = > ? */ this.params.length && this.params.charCodeAt(0) >= 0x3c) return;
-    const ps = this.params.split(";").map((p) => Math.min(Number.parseInt(p, 10) || 0, 1_000_000));
+    // The first two parameters, as numbers (0 when left out); more are never needed here.
+    const ps = [0, 0];
+    for (let i = 0, k = 0; i < this.params.length && k < 2; i++) {
+      const d = this.params.charCodeAt(i);
+      if (d === 0x3b) k++;
+      else if (d >= 0x30 && d <= 0x39) ps[k] = Math.min(ps[k]! * 10 + d - 0x30, 1_000_000);
+    }
     const n = Math.max(1, ps[0] ?? 0);
     const line = this.rows[this.row]!;
     switch (final) {
       case 0x41: this.row = Math.max(0, this.row - n); break; // A, up
-      case 0x42: this.down(n); break; // B, down
+      case 0x42: this.row = Math.min(this.rows.length - 1, this.row + n); break; // B, down: it stops at the last line
       case 0x43: this.col = Math.min(MAX_COLUMN, this.col + n); break; // C, forward
       case 0x44: this.col = Math.max(0, this.col - n); break; // D, back
-      case 0x45: this.down(n); this.col = 0; break; // E, next line
+      case 0x45: this.row = Math.min(this.rows.length - 1, this.row + n); this.col = 0; break; // E, next line
       case 0x46: this.row = Math.max(0, this.row - n); this.col = 0; break; // F, previous line
       case 0x47: case 0x60: this.col = Math.min(MAX_COLUMN, n - 1); break; // G, column
       case 0x64: this.goTo(n - 1, this.col); break; // d, row
@@ -134,14 +158,17 @@ export class Terminal {
       case 0x4b: { // K, erase in line
         const how = ps[0] ?? 0;
         if (how === 0) line.cut(this.col);
-        else if (how === 1) line.blank(this.col);
+        else if (how === 1) this.credit -= line.blank(this.col, this.credit);
         else if (how === 2) line.cut(0);
         break;
       }
       case 0x4a: { // J, erase in display
         const how = ps[0] ?? 0;
         if (how === 0) { line.cut(this.col); this.rows.length = this.row + 1; }
-        else if (how === 1) { for (let r = 0; r < this.row; r++) this.rows[r] = new Row(); line.blank(this.col); }
+        else if (how === 1) {
+          for (let r = this.row - 1; r >= 0 && this.credit > 0; r--, this.credit--) this.rows[r]!.cut(0);
+          this.credit -= line.blank(this.col, this.credit);
+        }
         else this.clear();
         break;
       }
@@ -151,9 +178,9 @@ export class Terminal {
     }
   }
 
-  /** Down `n` lines, adding lines at the bottom; the screen's top scrolls out past SCREEN_ROWS. */
+  /** Down `n` lines, adding a line at the bottom (a new line, as LF); the screen's top scrolls out past SCREEN_ROWS. */
   private down(n: number): void {
-    for (let k = 0; k < Math.min(n, SCREEN_ROWS); k++) {
+    for (let k = 0; k < n; k++) {
       this.row++;
       if (this.row === this.rows.length) this.rows.push(new Row());
       if (this.rows.length > SCREEN_ROWS) {
@@ -164,10 +191,9 @@ export class Terminal {
     }
   }
 
+  /** To a row and column; the screen holds the lines printed so far, so a row past them is the last. */
   private goTo(row: number, col: number): void {
-    const want = Math.min(row, SCREEN_ROWS - 1);
-    while (this.rows.length <= want) this.rows.push(new Row());
-    this.row = want;
+    this.row = Math.min(row, this.rows.length - 1);
     this.col = col;
   }
 
@@ -177,8 +203,9 @@ export class Terminal {
 
   /** The screen cleared (ESC[2J, `clear`): what it showed scrolls out, as a terminal keeps it in its scrollback. */
   private clear(): void {
-    const shown = this.rows.map((r) => r.text()).join("\n");
-    if (shown) this.above += `${shown}\n`;
+    let last = this.rows.length - 1;
+    while (last >= 0 && !this.rows[last]!.length) last--;
+    if (last >= 0) this.above += `${this.rows.slice(0, last + 1).map((r) => r.text()).join("\n")}\n`;
     this.rows = [new Row()];
     this.row = 0;
   }
@@ -187,34 +214,63 @@ export class Terminal {
 const printable = (c: number) => c >= 0x20 && c !== 0x7f && (c < 0x80 || c > 0x9f);
 
 /**
- * One line of the screen, a cell per UTF-16 unit. Text added at its end is joined as a string; the first write
- * before its end turns it into cells, once, so a line redrawn a million times costs a million cell writes, not copies.
+ * One line of the screen, a cell per UTF-16 unit: `head` as text, then `cells` from where something first wrote
+ * before the end. Text added at the end is joined as a string. Opening the head into cells at least doubles the
+ * cells each time, so a line redrawn a million times costs a million cell writes and each character a bounded
+ * number of copies. `mark`: cells 0 through it are all spaces, so erasing to the cursor again blanks only past it.
  */
 class Row {
-  private s = "";
-  private cells?: string[];
+  private head = "";
+  private cells: string[] = [];
+  private mark = -1;
+
+  get length(): number {
+    return this.head.length + this.cells.length;
+  }
 
   put(col: number, run: string): void {
-    if (!this.cells && col >= this.s.length) { this.s += " ".repeat(col - this.s.length) + run; return; }
-    const cells = (this.cells ??= this.s.split(""));
-    while (cells.length < col) cells.push(" ");
-    for (let k = 0; k < run.length; k++) cells[col + k] = run[k]!;
+    if (col <= this.mark) this.mark = col - 1;
+    if (!this.cells.length && col >= this.head.length) { this.head += " ".repeat(col - this.head.length) + run; return; }
+    this.open(col);
+    const at = col - this.head.length;
+    while (this.cells.length < at) this.cells.push(" ");
+    for (let k = 0; k < run.length; k++) this.cells[at + k] = run[k]!;
   }
 
   /** Erases from `col` to the end. */
   cut(col: number): void {
-    if (this.cells) this.cells.length = Math.min(this.cells.length, col);
-    else this.s = this.s.slice(0, col);
+    if (col <= this.head.length) {
+      if (col < this.head.length) this.head = this.head.slice(0, col);
+      if (this.cells.length) this.cells = [];
+    }
+    else this.cells.length = Math.min(this.cells.length, col - this.head.length);
+    this.mark = Math.min(this.mark, col - 1);
   }
 
-  /** Erases from the start through `col`, leaving spaces. */
-  blank(col: number): void {
-    const cells = (this.cells ??= this.s.split(""));
-    for (let i = 0; i <= col && i < cells.length; i++) cells[i] = " ";
+  /** Erases from the start through `col`, leaving spaces, at most `budget` cells of it; gives how many it blanked. */
+  blank(col: number, budget: number): number {
+    // Through the end: an empty line shows the same, as later text pads it with spaces.
+    if (col >= this.length - 1) { this.cut(0); return 0; }
+    const from = this.mark + 1;
+    const to = Math.min(col, this.mark + Math.max(0, budget));
+    if (to < from) return 0;
+    this.open(from);
+    for (let i = from; i <= to; i++) this.cells[i - this.head.length] = " ";
+    this.mark = to;
+    return to - from + 1;
   }
 
   text(): string {
-    return this.cells ? this.cells.join("") : this.s;
+    return this.cells.length ? this.head + this.cells.join("") : this.head;
+  }
+
+  /** Makes cells of the head from `col` on, at least as many again as there are cells. */
+  private open(col: number): void {
+    if (col >= this.head.length) return;
+    const at = Math.max(0, Math.min(col, this.head.length - Math.max(this.cells.length, 64)));
+    const opened = this.head.slice(at).split("");
+    this.cells = opened.length ? opened.concat(this.cells) : this.cells;
+    this.head = this.head.slice(0, at);
   }
 }
 

@@ -1168,11 +1168,19 @@ jobs").
   (`Terminal`, `foldOutput`): a carriage return goes back to the line's
   start and what follows overwrites it, backspace steps back, the CSI cursor
   moves (up, down, across, to a row or column, save and restore) work on a
-  screen of the latest 256 lines (`SCREEN_ROWS`; lines above it are fixed),
-  erases (`ESC[K`, `ESC[J`) clear what they name, and `ESC[2J` scrolls the
-  screen out as a terminal's scrollback keeps it. Colours, titles and every
-  other sequence are dropped. No column passes 4,096 (`MAX_COLUMN`). One
-  pass, a character at a time, no pattern: about 0.25 s for 16 MiB at worst.
+  screen of the lines printed so far, at most the latest 256 (`SCREEN_ROWS`;
+  lines above it are fixed; a move down stops at the last line, as at a
+  terminal's bottom), erases (`ESC[K`, `ESC[J`) clear what they name, and
+  `ESC[2J` scrolls the screen out as a terminal's scrollback keeps it.
+  Colours, titles and every other sequence are dropped. No column passes
+  4,096 (`MAX_COLUMN`). One pass, a character at a time, no pattern. Work a
+  sequence does past its own characters (spaces a jump pads a line with,
+  cells an erase blanks, lines it clears) is paid from a credit each
+  character of output adds one to (64 Ki to start), so time and the folded
+  text stay linear in the output, which crafted output can only make fold
+  less faithfully: about 0.1 to 0.5 s for 16 MiB of crafted sequences, and
+  under 1 s for jumps that pad 16 MiB with spaces. The web view shows at
+  most the end 2 MiB of it, as before.
   Her `bash` result, `jobs output`, a job's end notice and the web view
   (which plays the stream as it comes) all get the folded text. A tool that
   prints a new line per update when it sees no terminal (Docker Compose's

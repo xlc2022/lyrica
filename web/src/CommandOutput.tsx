@@ -28,6 +28,8 @@ export function jobsChanged(base: string): void { for (const fn of jobsListeners
 /** The most a view holds of a command streaming in: past it, its start goes, so a chatty job can't fill the page. */
 const LIVE_CHARS = 2 * 1024 * 1024;
 const utf8 = new TextEncoder();
+/** What the view shows of its terminal: at most LIVE_CHARS, its end, even when one line holds more. */
+const liveText = (term: Terminal) => { const t = term.text(); return t.length > LIVE_CHARS ? t.slice(t.length - LIVE_CHARS) : t; };
 
 /** How a command ended, in words, under its output. */
 export function endLine(o: CommandOutputInfo): string | undefined {
@@ -76,7 +78,7 @@ export function OutputBox({ base, call, id, running, fallback, failed, label }: 
       seen.current = e.to;
       term.write(piece);
       term.trimAbove(LIVE_CHARS);
-      setText(term.text());
+      setText(liveText(term));
     };
     // Listened to from the start: a bash call's row only learns it started a job once its output is read.
     const off = listen(outputListeners, base, (e: OutputEvent) => {
@@ -91,7 +93,7 @@ export function OutputBox({ base, call, id, running, fallback, failed, label }: 
       setInfo(r.job);
       term.write(r.output);
       term.trimAbove(LIVE_CHARS);
-      setText(term.text());
+      setText(liveText(term));
       setMissing(false);
       for (const e of early.splice(0)) add(e);
     }, (e: Error & { status?: number }) => {

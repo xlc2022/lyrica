@@ -44,6 +44,30 @@ describe("command output as a terminal shows it", () => {
     expect(performance.now() - start).toBeLessThan(2000);
   });
 
+  it("stays linear on erases and jumps that redo work, and gives no more than the output paid for", () => {
+    const time = (input: string) => { const start = performance.now(); const out = foldOutput(input); return { ms: performance.now() - start, out }; };
+    // Erase to the cursor at the end of an ever longer line (PR review's case: 27.9 s before).
+    expect(time(("a".repeat(4000) + "\x1b[1K").repeat(4000)).ms).toBeLessThan(2000);
+    // A jump far right, then erase to it, then back to the start: each erase would blank 4,096 cells.
+    expect(time(`${"y".repeat(5000)}${"\x1b[1Gx\x1b[4000G\x1b[1K".repeat(1 << 20)}`).ms).toBeLessThan(2000);
+    // Clearing every line above, from the screen's last line, over and over.
+    expect(time(`${"l\n".repeat(SCREEN_ROWS)}${"\x1b[1J".repeat(1 << 21)}`).ms).toBeLessThan(2000);
+    // Jumps that pad a line with spaces: what comes back can't outgrow the output by much.
+    const pad = "\x1b[4096Gx\n".repeat(1 << 20);
+    const padded = time(pad);
+    expect(padded.ms).toBeLessThan(2000);
+    expect(padded.out.length).toBeLessThan(2 * pad.length + 65536);
+    const cleared = time("\x1b[256;1H\x1b[2J".repeat(1 << 20));
+    expect(cleared.out.length).toBe(0);
+    // One huge line overwritten at its start.
+    expect(time(`${"x".repeat(16 << 20)}\rY`).out.slice(0, 2)).toBe("Yx");
+  });
+
+  it("starts its note in plain text even when a gap lands inside a sequence", () => {
+    const t = new Terminal().write("ok\x1b[");
+    expect(t.toEnd().write("\n[skipped]\n").text()).toBe("ok\n[skipped]\n");
+  });
+
   it("keeps a machine's carriage returns and cursor moves for the fold, and still strips the rest", () => {
     const got: string[] = [];
     const clean = cleanOutput((d) => got.push(d.toString()));
