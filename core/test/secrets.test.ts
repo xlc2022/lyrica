@@ -100,7 +100,7 @@ describe("secret removal on crafted text", () => {
 
   it("shows no word the earlier patterns hid, on short random text", () => {
     const atoms = ["eyJ", "ghp_", "github_pat_", "sk-", "xoxb-", "AKIA", "AIza", "token", "TOKEN", "auth", "api_key", "secret", "password",
-      "Bearer ", "authorization: ", "basic ", "a", "A", "0", "_", "-", ".", "=", ":", " ", "\n", '"', "'", "\\", ",", ";", "}", "[", "]",
+      "Bearer ", "authorization: ", "x-auth-token: ", "basic ", "a", "A", "0", "_", "-", ".", "=", ":", " ", "\n", '"', "'", "\\", ",", ";", "}", "[", "]",
       SECRET_REMOVED, "abcdefghij", "x".repeat(20), "Ab1".repeat(6), "-----BEGIN RSA PRIVATE KEY-----", "-----END RSA PRIVATE KEY-----"];
     let seed = 1;
     const pick = (n: number) => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed % n; };
@@ -114,6 +114,7 @@ describe("secret removal on crafted text", () => {
 
   it("removes a header value after a secret-named key", () => {
     expect(removeSecrets("X-Auth-Token: Bearer made-up")).toBe(`X-Auth-Token: ${SECRET_REMOVED}`);
+    expect(removeSecrets("x-auth-token: authorization: authorization: made-up")).not.toContain("made-up");
   });
 
   it("catches a key word after a doubled underscore, which the earlier patterns missed", () => {
@@ -126,6 +127,8 @@ describe("secret removal on crafted text", () => {
     ["a token prefix repeated without its dots", fill("eyJ-")],
     ["a Slack prefix repeated before an underscore", fill("xoxb-", "_")],
     ["a long dashed key name", '"' + fill("S-")],
+    ["keys that run into each other", fill("token: ")],
+    ["headers that run into each other", fill("x-auth-token: authorization: ")],
   ])("is quick on %s", (_name, text) => {
     const started = performance.now();
     removeSecrets(text);

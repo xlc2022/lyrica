@@ -41,12 +41,32 @@ function tokenSpans(text: string): [number, number][] {
   return spans;
 }
 
-const HEADERS = /\b(?:authorization[ \t]*:[ \t]*(?:(?:bearer|basic)[ \t]+)?|bearer[ \t]+)[^\s"'`,;<>]+/gi;
+const HEADERS = /\b(authorization[ \t]*:[ \t]*(?:(?:bearer|basic)[ \t]+)?|bearer[ \t]+)[^\s"'`,;<>]+/gi;
 // Keep the key (including environment variable names), remove the entire value.
 // The match starts at the key word itself (after any non-alphanumeric, so
 // "GH_TOKEN" matches at "TOKEN"); the rest of the name stays as it is, and the
 // scan can't rescan a long "a-a-a-…" name from each of its dashes.
 const PAIRS = /((?<![A-Za-z0-9])["']?(?:token|secret|password|api_key|apikey|auth)["']?[ \t]*[:=][ \t]*)(?:\[secret removed\]|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s,;}`]+)(?![A-Za-z0-9_])/gi;
+
+/** How far back from a match's end the next key word can begin and still reach past it: across the space or quote that ends a value. */
+const REACH = 32;
+
+/**
+ * What `re` (a key or header word in group 1, then its value) removes in
+ * `text`: the value alone when `keepKey`. A value can end in the start of
+ * another key ("auth: authorization: abc"), so after each match the scan
+ * resumes near its end rather than after it, which keeps it linear.
+ */
+function valueSpans(text: string, re: RegExp, keepKey: boolean): [number, number][] {
+  const spans: [number, number][] = [];
+  re.lastIndex = 0;
+  for (let m = re.exec(text); m; m = re.exec(text)) {
+    const value = m.index + m[1]!.length, end = m.index + m[0].length;
+    spans.push([keepKey ? value : m.index, end]);
+    re.lastIndex = Math.max(value, end - REACH);
+  }
+  return spans;
+}
 
 /**
  * Each detector reads the same text and what any of them finds is removed,
@@ -55,11 +75,10 @@ const PAIRS = /((?<![A-Za-z0-9])["']?(?:token|secret|password|api_key|apikey|aut
  */
 export function removeSecrets(text: string): string {
   const t = removePrivateKeys(text);
-  const spans: [number, number][] = [
-    ...[...t.matchAll(PAIRS)].map((m): [number, number] => [m.index + m[1]!.length, m.index + m[0].length]),
-    ...[...t.matchAll(HEADERS)].map((m): [number, number] => [m.index, m.index + m[0].length]),
-    ...tokenSpans(t),
-  ].sort((a, b) => a[0] - b[0]);
+  // A marker already there counts as found, so a match ending inside one takes it whole rather than leaving "removed]".
+  const markers: [number, number][] = [];
+  for (let at = t.indexOf(SECRET_REMOVED); at >= 0; at = t.indexOf(SECRET_REMOVED, at + SECRET_REMOVED.length)) markers.push([at, at + SECRET_REMOVED.length]);
+  const spans = [...markers, ...valueSpans(t, PAIRS, true), ...valueSpans(t, HEADERS, false), ...tokenSpans(t)].sort((a, b) => a[0] - b[0]);
   let out = "";
   let kept = 0;
   for (let i = 0; i < spans.length; ) {
