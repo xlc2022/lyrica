@@ -200,6 +200,21 @@ export class Scheduler {
     return this.gpus.map((g) => (g.carveOut ? { ...g, total: g.carveOut.total, used: g.carveOut.used } : g));
   }
 
+  /**
+   * The GPUs as a load is planned on them. ComfyUI takes a recipe's memory
+   * during each job and frees much of it after, so a GPU holding a recipe
+   * counts at least what its models were measured to take: read between
+   * jobs, it would look free, and a model loaded into that room leaves the
+   * recipe's next job none.
+   */
+  private planningView(server: Server): Gpu[] {
+    return this.gpusFor(server).map((g) => {
+      const on = [...this.loaded.values()].filter((l) => l.option.gpus.includes(g.index));
+      if (!on.some((l) => l.model.server === "comfyui")) return g;
+      return { ...g, used: Math.max(g.used, on.reduce((n, l) => n + (l.vram[g.index] ?? 0), 0)) };
+    });
+  }
+
   async validationGpus(server: Server): Promise<Gpu[]> {
     await this.readGpus();
     return this.gpusFor(server).map((g) => ({ ...g, used: Math.max(0, g.used - [...this.loaded.values()].reduce((n, l) => n + (l.vram[g.index] ?? 0), 0)) }));
@@ -391,7 +406,7 @@ export class Scheduler {
       throw e;
     }
     if (!m) return o;
-    const view = this.gpusFor(serverOf(model));
+    const view = this.planningView(serverOf(model));
     const free = (g: number) => {
       const gpu = view.find((x) => x.index === g)!;
       return gpu.total - gpu.used - this.gpuSettings(g).keepFree;
@@ -650,7 +665,7 @@ export class Scheduler {
     const rivals = model.server === "whispercpp" ? [...this.loaded.values()].filter((l) => l.model.server === "whispercpp" && l.model.id !== model.id) : [];
     if (rivals.some((l) => !l.ready || l.active > 0)) return { wait: [...new Set(rivals.flatMap((l) => l.option.gpus))] };
     const loadedOn = (g: number) => [...this.loaded.values()].filter((l) => l.option.gpus.includes(g));
-    const view = this.gpusFor(serverOf(model));
+    const view = this.planningView(serverOf(model));
     const free = (g: number) => {
       const gpu = view.find((x) => x.index === g)!;
       return gpu.total - gpu.used - this.gpuSettings(g).keepFree;

@@ -777,7 +777,9 @@ unpairs it here too, when the host can be reached.
   host retries measurement on a later request. A measurement larger than a
   GPU's room (its memory less what it keeps free) is set aside for the
   estimate, since the model loaded within that room: it took the whole
-  card or caught another program's memory.
+  card or caught another program's memory. A GPU holding an image recipe
+  is planned on as using at least what its models were measured to take,
+  since between jobs ComfyUI holds less than its next job will.
 - **At start** host-api unloads every model llama.cpp still holds that it
   didn't load itself, such as those loaded before host-api alone restarted
   (a re-run of `install.sh` that doesn't restart llama.cpp), so their memory

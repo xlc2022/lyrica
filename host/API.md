@@ -322,7 +322,10 @@ seconds of audio.
   `load failed` with its code and message, for when the requester has given
   up waiting.
 - `POST /host/v1/models/unload` `{ "model": "<id>" }`: unloads it from all
-  its GPUs; `in_use` while a request is running on it. On a model still
+  its GPUs; `in_use` while a request is running on it. It also takes an
+  image recipe by the ID a GPU's status lists it under (`recipe:<id>`, or
+  `recipe:<id>@gpu<n>` with several image GPUs), and answers
+  `{ "id", "state": "unloaded", "gpus": null }`. On a model still
   loading (or being measured for its load, or reloading) it stops the load:
   the server is told to unload it, which ends a llama.cpp server mid-read
   (a vLLM one leaves the supervisor's file; a server that can't stop
