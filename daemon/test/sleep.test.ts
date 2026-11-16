@@ -117,7 +117,7 @@ describe("sleep in lyricad", () => {
     expect(slept()).toContain(s.rt.sam.id);
   });
 
-  it("in manual mode sleeps only on /sleep, asks first, then opens a fresh thread", async () => {
+  it("in manual mode sleeps only on /sleep, and asks first", async () => {
     const s = await setup();
     await s.ada.put(`${s.u}/sleep/mode`, { mode: "manual" });
     const path = await s.talk();
@@ -131,13 +131,10 @@ describe("sleep in lyricad", () => {
     await events.ready;
     const started = await s.ada.post<SleepStarted>(`${s.u}/sleep/general`, { confirm: true });
     expect(started.body).toEqual({ started: true });
-    await events.until((e) => (e as unknown as SleepEvent).type === "thread");
+    await events.until((e) => (e as unknown as SleepEvent).type === "finished");
     events.close();
     const types = events.events.map((e) => (e.event as unknown as SleepEvent).type);
-    expect(types).toEqual(["started", "phase", "phase", "phase", "phase", "phase", "phase", "finished", "thread"]);
-    const fresh = (events.events.at(-1)!.event as unknown as Extract<SleepEvent, { type: "thread" }>).threadId;
-    const list = (await s.ada.get<ThreadSummary[]>(`${s.u}/threads`)).body;
-    expect(list.map((t) => t.id)).toContain(fresh);
+    expect(types).toEqual(["started", "phase", "phase", "phase", "phase", "phase", "phase", "finished"]);
     expect((await s.ada.get<SleepOverview>(`${s.u}/sleep`)).body.runs.map((r) => [r.status, r.reason])).toEqual([["complete", "manual"]]);
   });
 

@@ -224,7 +224,7 @@ code therefore never needs to open a private database.
 | Setting | Behavior |
 |---|---|
 | `sleep.mode: scheduled` (default) | Nightly at `sleep.time` (04:00) in the user's time zone, for each pool with new activity. `/sleep` also works. |
-| `sleep.mode: manual` | Works like Monika: sleep runs only on `/sleep`, which asks for confirmation, sleeps, then opens a fresh thread. |
+| `sleep.mode: manual` | Works like Monika: sleep runs only on `/sleep`, which asks for confirmation, then sleeps. It opens no thread. |
 
 ## When the endpoint is offline
 
