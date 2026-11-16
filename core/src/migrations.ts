@@ -6,7 +6,7 @@ import { addNotice, ENDPOINT_SCHEMA, MIXED_PRESET, migrate as moveModels, MODEL_
 import { PREFS_SCHEMA } from "./prefs.ts";
 import { ARTIFACTS_SCHEMA } from "./store/artifacts.ts";
 import { OUTPUTS_SCHEMA } from "./store/outputs.ts";
-import { POOL_SCHEMA, POOL_UPGRADES, RECALLS_SCHEMA, RENAMES_SCHEMA, ROUTINES_SCHEMA, VECTORS_SCHEMA, WAKEUPS_SCHEMA, WATCHES_SCHEMA } from "./store/schema.ts";
+import { POOL_SCHEMA, POOL_UPGRADES, RECALLS_SCHEMA, RENAMES_SCHEMA, ROUTINES_SCHEMA, TONES_SCHEMA, VECTORS_SCHEMA, WAKEUPS_SCHEMA, WATCHES_SCHEMA } from "./store/schema.ts";
 import { CHANGES_SCHEMA } from "./workspace/changes.ts";
 import { SKILLS_SCHEMA } from "./skills.ts";
 import { MACHINES_SCHEMA, ORIGINS_SCHEMA, upgradeWorkspace, WORKSPACE_SCHEMA } from "./workspace/settings.ts";
@@ -475,6 +475,11 @@ export const STEPS: Record<DbKind, MigrationStep[]> = {
       db.exec("DELETE FROM vectors WHERE id NOT IN (SELECT id FROM search)");
       db.exec("DELETE FROM vectors WHERE id IN (SELECT item FROM revisions GROUP BY item HAVING count(*) > 1)");
     },
+  }, {
+    // Principles 1 and 6: a reply's tone notes, for Read aloud only, apart from its entry (docs/briefs/voice-tone.md).
+    // Adds a table only.
+    version: 20,
+    run(db) { db.exec(TONES_SCHEMA); },
   }],
 };
 

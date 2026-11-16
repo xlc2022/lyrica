@@ -30,8 +30,8 @@ export interface Capabilities {
   efforts?: Record<"low" | "medium" | "high", string>;
   /** Dictation: speech to text on /v1/audio/transcriptions. */
   transcribe?: boolean;
-  /** Text to speech on /v1/audio/speech, with the voices it has. */
-  speak?: { voices: Voice[] };
+  /** Text to speech on /v1/audio/speech, with the voices it has; `instruct` when it takes a tone ("gently amused") per request. */
+  speak?: { voices: Voice[]; instruct?: true };
 }
 
 export interface Voice {
@@ -571,7 +571,8 @@ function qwenTtsModel(root: string, dir: string, entries: string[]): TextModel |
     format: "safetensors",
     size: statSync(join(dir, "model.safetensors")).size + statSync(join(dir, "speech_tokenizer", "model.safetensors")).size,
     identity: { basename: basename(dir), sizeLabel: null, finetune: null, baseModels: [] },
-    capabilities: { tools: false, vision: false, embedding: false, reasoning: null, speak: { voices } },
+    // CustomVoice's speakers follow a spoken instruction; Base copies its clip's delivery.
+    capabilities: { tools: false, vision: false, embedding: false, reasoning: null, speak: { voices, ...(kind === "custom_voice" ? { instruct: true as const } : {}) } },
     contextLength: null,
     kvPerToken: null,
     mmproj: null,

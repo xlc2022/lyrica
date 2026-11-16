@@ -85,9 +85,11 @@ the model server cuts short is cut short too.
   host-api reads `model`, checks that `file` is there, and for usage reads a
   WAV file's header. Answers `{ "text": "..." }`.
 - `POST /v1/audio/speech`: her voice, on a `speak` model.
-  `{ "model", "input", "voice", "speed"?, "response_format"? }`: `input` is
+  `{ "model", "input", "voice", "speed"?, "instruct"?, "response_format"? }`: `input` is
   1 to 4096 characters, `voice` one of the model's voices (an unknown one is
-  `invalid`, naming some that exist), `speed` 0.25 to 4 (default 1), and
+  `invalid`, naming some that exist), `speed` 0.25 to 4 (default 1),
+  `instruct` the tone to read in, 1 to 200 characters, passed on only to a
+  model whose `speak` has `"instruct": true` (others read as always), and
   `response_format` only `pcm`. Answers raw 16-bit little-endian mono PCM at
   24 kHz (`audio/pcm;rate=24000`), streamed: long text is read in parts at
   sentence breaks, and each part is sent as soon as it is made.
@@ -261,7 +263,8 @@ seconds of audio.
     `"speak": { "voices": [{ "id": "af_heart", "language": "en" },
     { "id": "zf_xiaoxiao", "language": "zh" }] }`: the voices the speech
     server can read, English (`en`) and Mandarin (`zh`); a Mandarin voice
-    also reads the English words in Mandarin text.
+    also reads the English words in Mandarin text. A Qwen3-TTS CustomVoice
+    model's also has `"instruct": true`: it reads in the tone a request asks for.
   - A voice model is a folder with an `.onnx` file (in it or in `onnx/`;
     `model.onnx` where there are several), its vocabulary in `config.json`
     or `tokenizer.json`, and `voices/*.bin`, one raw float32 array per

@@ -125,11 +125,71 @@ function cut(s: string): string[] {
   return pieces;
 }
 
-/** Her stored message's text, as it reads aloud: a thread she mentions reads as its current title. */
-export function messageText(parts: Api.MessagePart[], titleOf: TitleOf = () => undefined): string {
-  const text = parts.filter((p): p is Extract<Api.MessagePart, { type: "text" }> => p.type === "text").map((p) => p.text).join("\n\n");
-  return speakable(renderThreadMentions(text, titleOf));
+/**
+ * Her stored message's text, as it reads aloud: a thread she mentions reads
+ * as its current title. Each of its tone notes (`notes`, by offset into the
+ * text parts joined with nothing between) is a mark where it was written (`toneMarks`).
+ */
+export function messageText(parts: Api.MessagePart[], titleOf: TitleOf = () => undefined, notes: readonly ToneNote[] = []): string {
+  const texts = parts.filter((p): p is Extract<Api.MessagePart, { type: "text" }> => p.type === "text").map((p) => p.text);
+  return speakable(renderThreadMentions(markTones(texts, notes).join("\n\n"), titleOf));
 }
+
+/** A tone note (docs/briefs/voice-tone.md): how the paragraph starting at `at` is meant to sound. */
+export interface ToneNote { at: number; note: string }
+
+/** Tone notes travel through `speakable` as private-use marks: U+E000 plus the note's place in its list. */
+const MARK = 0xe000;
+const MARKS = 64;
+const isMark = (code: number) => code >= MARK && code < MARK + MARKS;
+
+/**
+ * `texts` with each note's mark at the end of the line it was written in
+ * (a mark at a line's start would hide a heading's or a list's mark from
+ * `speakable`). A mark-like character of her own reads as a space, so marks are only Lyrica's.
+ */
+export function markTones(texts: readonly string[], notes: readonly ToneNote[]): string[] {
+  let base = 0;
+  return texts.map((raw) => {
+    let text = "";
+    for (let i = 0; i < raw.length; i++) text += isMark(raw.charCodeAt(i)) ? " " : raw[i];
+    const marks: { at: number; i: number }[] = [];
+    notes.slice(0, MARKS).forEach((n, i) => {
+      let at = n.at - base;
+      if (at < 0 || at >= text.length) return;
+      while (at < text.length && text[at] === "\n") at++;
+      const end = text.indexOf("\n", at);
+      marks.push({ at: end < 0 ? text.length : end, i });
+    });
+    base += raw.length;
+    // From the end, so earlier places stay put; marks at one place end up in the notes' order.
+    for (const m of marks.sort((a, b) => b.at - a.at || b.i - a.i)) text = text.slice(0, m.at) + String.fromCharCode(MARK + m.i) + text.slice(m.at);
+    return text;
+  });
+}
+
+/**
+ * Speakable text with its marks taken out, and each paragraph's (line's)
+ * note: the last one marked in it, else the one before it.
+ */
+export function unmarkTones(text: string, notes: readonly ToneNote[]): { text: string; tones: (string | undefined)[] } {
+  const tones: (string | undefined)[] = [];
+  let tone: string | undefined;
+  const lines = text.split("\n").map((line) => {
+    let out = "";
+    for (let i = 0; i < line.length; i++) {
+      const code = line.charCodeAt(i);
+      if (isMark(code)) tone = notes[code - MARK]?.note ?? tone;
+      else out += line[i];
+    }
+    tones.push(tone);
+    return out.trim();
+  });
+  return { text: lines.join("\n"), tones };
+}
+
+/** What the voice is told for a paragraph with a note. */
+export const toneInstruct = (note: string) => `Speak naturally, ${note}, at an even pace.`;
 
 /** A thread's current title, in the message's pool or the pool named in the mention. */
 export type TitleOf = (threadId: string, pool?: Pool) => string | undefined;
@@ -146,14 +206,16 @@ export function titlesIn(o: OwnerView, pool: Pool): TitleOf {
 
 /** Where Read aloud gets its text: a stored message, or one still being written. */
 export interface SpeechSource {
-  /** The text so far, already made speakable. */
+  /** The text so far, already made speakable, with its tone notes' marks (`messageText`). */
   text(): string;
+  /** Its tone notes so far, which the marks count into. */
+  tones(): readonly ToneNote[];
   done(): boolean;
   /** Resolves when there is more text, or the message is done, or `signal` stops. */
   more(signal: AbortSignal): Promise<void>;
 }
 
-export const storedSource = (text: string): SpeechSource => ({ text: () => text, done: () => true, more: async () => {} });
+export const storedSource = (text: string, notes: readonly ToneNote[] = []): SpeechSource => ({ text: () => text, tones: () => notes, done: () => true, more: async () => {} });
 
 /**
  * Streams a message read aloud to `res`: the first sentence alone, then a
@@ -161,7 +223,8 @@ export const storedSource = (text: string): SpeechSource => ({ text: () => text,
  * this one plays. The first sentence's refusal is thrown
  * before any header, so it answers as JSON; after that, a failure ends the
  * stream. `allowed` is checked between sentences and every few seconds, so
- * Logout and Lock stop it. One call record for the whole reading.
+ * Logout and Lock stop it. Each piece is read in its paragraph's tone note,
+ * if it has one. One call record for the whole reading.
  */
 export async function readAloud(o: {
   models: Models; ctx: CallContext; pool: Pool; threadId: string; source: SpeechSource; res: ServerResponse; allowed: () => boolean;
@@ -174,37 +237,47 @@ export async function readAloud(o: {
   let first: Resolution | undefined;
   let bytes = 0;
   type Spoken = Awaited<ReturnType<Models["speak"]>>;
-  const ask = (text: string): Promise<Spoken> => {
-    const p = models.speak(ctx, text, { language: languageOf(text), signal: stop.signal });
+  const ask = (text: string, tone: string | undefined): Promise<Spoken> => {
+    const p = models.speak(ctx, text, { language: languageOf(text), ...(tone ? { instruct: toneInstruct(tone) } : {}), signal: stop.signal });
     p.catch(() => {}); // a piece asked ahead whose reading was stopped
     return p;
   };
   let ahead: { spoken: Promise<Spoken>; n: number } | undefined;
   try {
     let done = 0;
+    const read = () => {
+      const { text, tones } = unmarkTones(source.text(), source.tones());
+      return { list: paragraphSentences(text, source.done()), tones };
+    };
+    const askAt = (r: ReturnType<typeof read>, from: number) => {
+      const n = piece(r.list, from);
+      return { spoken: ask(pieceText(r.list, from, n), r.tones[r.list[from]!.paragraph]), n };
+    };
     for (;;) {
       // Wait until there is a whole sentence, or the message is done.
-      let list = paragraphSentences(source.text(), source.done());
+      let now = read();
+      let list = now.list;
       while (list.length <= done && !source.done() && !stop.signal.aborted) {
         await source.more(stop.signal);
-        list = paragraphSentences(source.text(), source.done());
+        now = read();
+        list = now.list;
       }
       if (stop.signal.aborted || !o.allowed()) break;
       if (list.length <= done) {
         if (!first) throw new HttpError(400, "there is nothing in this message to read aloud");
         break;
       }
-      const now = ahead ?? (() => { const n = piece(list, done); return { spoken: ask(pieceText(list, done, n)), n }; })();
+      const asked = ahead ?? askAt(now, done);
       ahead = undefined;
-      const spoken = await now.spoken;
-      done += now.n;
+      const spoken = await asked.spoken;
+      done += asked.n;
       if (!first) {
         first = spoken.resolution;
         res.writeHead(200, { ...SECURITY_HEADERS, "content-type": SPEECH_CONTENT_TYPE, "cache-control": "no-store" });
       }
       // One ahead: the next piece is asked for while this one streams.
-      const next = paragraphSentences(source.text(), source.done());
-      if (next.length > done) { const n = piece(next, done); ahead = { spoken: ask(pieceText(next, done, n)), n }; }
+      const next = read();
+      if (next.list.length > done) ahead = askAt(next, done);
       const reader = spoken.audio.getReader();
       const cancel = () => void reader.cancel().catch(() => {});
       stop.signal.addEventListener("abort", cancel, { once: true });

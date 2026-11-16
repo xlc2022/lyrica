@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -7,7 +8,7 @@ import { fakeSpeech, wav } from "../../core/test/fake-speech.ts";
 import type { CallInfo, EndpointInfo, MessagePage, Presets, Speech, ThreadSettings, ThreadSummary, Transcription } from "../src/api.ts";
 import { Memory, Users } from "@lyrica/core";
 import { freshKeyring, profile } from "../../core/test/helpers.ts";
-import { languageOf, messageText, paragraphSentences, piece, pieceText, sentences, speakable, titlesIn } from "../src/speech.ts";
+import { languageOf, markTones, messageText, paragraphSentences, piece, pieceText, sentences, speakable, titlesIn, toneInstruct, unmarkTones } from "../src/speech.ts";
 import { browser, daemon, enc, localModel, login, runtime } from "./helpers.ts";
 
 const VOICES = [{ id: "af_heart", language: "en" }, { id: "zf_xiaobei", language: "zh" }];
@@ -255,5 +256,68 @@ describe("read aloud", () => {
     expect(res.status).toBe(200);
     await res.arrayBuffer();
     expect(s.speech.heard.map((h) => h.input)).toEqual(["First part.", "Second part follows here."]);
+  });
+});
+
+describe("tone notes", () => {
+  const system = (s: { model: { requests: { messages: { role: string; content?: unknown }[] }[] } }) => JSON.stringify(s.model.requests.at(-1)!.messages.filter((m) => m.role === "system"));
+
+  it("asks for none, and keeps none, while the Read aloud model takes no tone, yet never shows a tag", async () => {
+    const s = await setup();
+    // As after Read aloud was switched off mid-turn: she still writes a tag.
+    await s.turn("Plain <tone>warm</tone>words stay.");
+    expect(system(s)).not.toContain("<tone>");
+    const page = (await s.ada.get<MessagePage>(`${s.path}/messages`)).body;
+    expect(page.messages.at(-1)!.parts).toEqual([{ type: "text", text: "Plain words stay." }]);
+    await (await s.audio(`${s.path}/messages/${page.messages.at(-1)!.n}/speech`)).arrayBuffer();
+    expect(s.speech.heard.every((h) => h.instruct === undefined)).toBe(true);
+  });
+
+  it("are asked for, lifted out as she writes, shown to no one, and read aloud with each paragraph", async () => {
+    const s = await setup();
+    await s.ada.patch(`${s.u}/offerings/${s.id("kokoro")}`, { speak: { voices: VOICES, instruct: true } });
+    const ends = s.stream.events.filter((e) => e.event.type === "turn_end").length;
+    // Tags split across chunks, one on a line of its own, one before a paragraph's words.
+    s.model.reply({ deltas: [
+      { content: "<to" }, { content: "ne>gently am" }, { content: "used</tone>\nHa, that is funny. It really is.\n\n<tone>qu" },
+      { content: "iet and tender</t" }, { content: "one> I missed you.\n\nSee you soon." },
+    ] });
+    await s.ada.post(`${s.path}/messages`, { text: "say something" });
+    await s.stream.until((e) => e.type === "turn_end" && s.stream.events.filter((x) => x.event.type === "turn_end").length > ends, 0, 20_000);
+    expect(system(s)).toContain("<tone>gently amused</tone>");
+
+    // Never in her text: not live, not stored, not in what any reader of the thread gets.
+    const page = (await s.ada.get<MessagePage>(`${s.path}/messages`)).body;
+    expect(page.messages.at(-1)!.parts).toEqual([{ type: "text", text: "Ha, that is funny. It really is.\n\nI missed you.\n\nSee you soon." }]);
+    expect(JSON.stringify(s.stream.events)).not.toMatch(/amused|tender|<tone|<to/);
+    expect(JSON.stringify(page)).not.toMatch(/amused|tender/);
+    // Her next turn's context doesn't carry them either.
+    await s.turn("Again.");
+    expect(JSON.stringify(s.model.requests.at(-1)!.messages.filter((m) => m.role !== "system"))).not.toMatch(/amused|tender/);
+
+    // Read aloud speaks each paragraph in its note, and one without a note in the last one before it.
+    const n = (await s.ada.get<MessagePage>(`${s.path}/messages`)).body.messages.filter((m) => m.role === "assistant").at(-2)!.n;
+    await (await s.audio(`${s.path}/messages/${n}/speech`)).arrayBuffer();
+    expect(s.speech.heard.filter((h) => h.input).map((h) => [h.input, h.instruct])).toEqual([
+      ["Ha, that is funny.", toneInstruct("gently amused")], ["It really is.", toneInstruct("gently amused")],
+      ["I missed you.", toneInstruct("quiet and tender")], ["See you soon.", toneInstruct("quiet and tender")],
+    ]);
+  });
+
+  it("are read by Read aloud alone", () => {
+    // Every reader of a thread (her context, sleep, recall, search, export, the web UI) reads entries, which never hold a
+    // note; the notes' own table is read in one place.
+    const readers = execFileSync("git", ["grep", "-l", "-E", "\\.tones\\(", "--", "core/src", "daemon/src", "extension/src", "web/src"], { cwd: join(import.meta.dirname, "..", ".."), encoding: "utf8" });
+    expect(readers.trim().split("\n")).toEqual(["daemon/src/routes.ts", "daemon/src/speech.ts"]);
+  });
+
+  it("puts a note's mark at the end of its line, so headings and lists still read, and takes it out again", () => {
+    const text = "Intro line.\n\n- Item one\n\n# Head";
+    const notes = [{ at: 0, note: "warm" }, { at: text.indexOf("- Item"), note: "bright" }, { at: text.indexOf("# Head"), note: "low" }];
+    const read = unmarkTones(speakable(markTones([text], notes).join("")), notes);
+    expect(read.text).toBe("Intro line.\nItem one\nHead");
+    expect(read.tones).toEqual(["warm", "bright", "low"]);
+    // A mark-like character of her own is never taken for a note.
+    expect(unmarkTones(speakable(markTones(["A\ue000b."], []).join("")), []).text).toBe("A b.");
   });
 });

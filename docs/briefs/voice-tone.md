@@ -1,6 +1,7 @@
 # Brief: a tone for each paragraph Read aloud speaks
 
-**Status:** Planned (2026-11-16). Owner: the read-aloud thread.
+**Status:** Built (2026-11-16). Owner: the read-aloud thread. What exists
+is in docs/daemon.md (Speech, "Tone notes") and docs/memory.md (Storage).
 
 ## Why
 
@@ -22,14 +23,13 @@ tone notes never shown and never in her memories (principles 1 and 6).
    with a hand-written scanner, not a regex over her output. The reply's
    text never holds a tag, live or stored. A tag left half-written at the
    end is dropped.
-3. **Kept apart.** The notes are stored on the message as a part of their
-   own, `{ type: "tone", notes: [{ paragraph, note }] }`, encrypted like the
-   rest of the thread. The thread read path (`openThreadView` and the
-   message API) leaves `tone` parts out unless a caller asks for them by
-   name, and Read aloud is the only caller that does. So context assembly,
-   sleep, recall, search, export, the web UI and anything added later never
-   see a note: it can't reach her memories, her later turns or the user's
-   screen.
+3. **Kept apart.** The notes, each with the offset where its paragraph
+   starts, are stored in the pool's own `tones` table by entry, encrypted
+   like the rest of the thread, never in the entry. Context assembly, sleep,
+   recall, search, export, the web UI and anything added later read
+   entries, so none of them sees a note: it can't reach her memories, her
+   later turns or the user's screen. Read aloud is the one reader
+   (`PoolStore.tones`), and a test holds it to that.
 4. **Spoken with.** `readAloud` gives each piece the note of the paragraph
    it starts in, or the last note before it, and passes it to `Models.speak`
    as `instruct`; host-api passes it to the Qwen3-TTS server, which gives it

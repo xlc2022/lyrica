@@ -209,8 +209,8 @@ export interface Capabilities {
   reasoning?: ("low" | "medium" | "high")[];
   /** Speech to text (Dictation). */
   transcribe?: boolean;
-  /** Text to speech (Read aloud): its voices, each with the language it speaks ("en", "zh"). */
-  speak?: { voices: Voice[] };
+  /** Text to speech (Read aloud): its voices, each with the language it speaks ("en", "zh"); `instruct` when each request may ask for a tone. */
+  speak?: { voices: Voice[]; instruct?: true };
 }
 /** One of a speech model's voices, with the language it speaks: a primary tag such as "en" or "zh". */
 export interface Voice { id: string; language: string }

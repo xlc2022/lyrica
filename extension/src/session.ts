@@ -10,6 +10,7 @@ import { createRepairExtension } from "./repair.ts";
 import { createLiveCallExtension, LiveCallMeter, type LiveCall } from "./live-call.ts";
 import { createTurnToolsExtension } from "./turn-tools.ts";
 import { recordEntries } from "./record.ts";
+import { Tones } from "./tone.ts";
 
 type Settings = Parameters<typeof SettingsManager.inMemory>[0];
 
@@ -26,6 +27,11 @@ export interface ThreadSessionOptions {
   onGpuWait?: (w: GpuWait | null) => void;
   /** The model request a turn waits on, as counts and times, and null once it ends (live-call.ts). */
   onLiveCall?: (c: LiveCall | null) => void;
+  /**
+   * For her own threads: tone tags are lifted out of every reply, and the notes kept while this is true (the
+   * Read aloud model takes a tone; docs/briefs/voice-tone.md). Without it replies stream as written.
+   */
+  tones?: () => boolean;
 }
 
 /**
@@ -39,6 +45,8 @@ export interface ThreadSession {
   runtime: ModelRuntime;
   /** The chat model it opened with. */
   chat: { offeringId: string };
+  /** Her replies' tone notes, in memory until each reply is stored apart (only Read aloud reads them). */
+  tones: Tones;
   /** Before each turn: the chat model again, with fallbacks and the thinking level, recorded as a call. */
   prepare(opts?: { thinking?: boolean; retry?: boolean }): Promise<Resolution>;
   dispose(): void;
@@ -74,11 +82,14 @@ export async function openThreadSession(o: ThreadSessionOptions): Promise<Thread
     noTools: "builtin",
   });
   await session.bindExtensions({});
+  // Every request of the session, whatever its provider, streams through here.
+  const tones = new Tones(o.tones ?? (() => false));
+  if (o.tones) session.agent.streamFunction = tones.wrap(session.agent.streamFunction);
   const stop = recordEntries(session, thread.view.own, thread.threadId);
   // A reply that came back means its endpoint answered, so it isn't stale.
   const answered = session.subscribe((e) => {
     if (e.type === "message_end" && e.message.role === "assistant" && e.message.stopReason !== "error" && session.model) o.models.reportUp(thread.user.id, session.model.provider);
   });
   const prepare = (opts: { thinking?: boolean; retry?: boolean } = {}) => prepareTurn({ session, runtime, models: o.models, call: o.models.callContext(thread.user.id, thread.pool, thread.threadId), pool: thread.pool, threadId: thread.threadId, task: o.task?.() ?? "chat", ...opts });
-  return { session, runtime, chat, prepare, dispose: () => { stop(); answered(); session.dispose(); } };
+  return { session, runtime, chat, tones, prepare, dispose: () => { stop(); answered(); session.dispose(); } };
 }

@@ -55,7 +55,7 @@ export async function transcribeAt(t: SpeechTarget, wav: Uint8Array, opts: { lan
  * once the audio starts; the stream ends with the audio, and cancelling it
  * cancels the request.
  */
-export async function speakAt(t: SpeechTarget, text: string, opts: { voice?: string; speed?: number; signal?: AbortSignal }): Promise<ReadableStream<Uint8Array>> {
+export async function speakAt(t: SpeechTarget, text: string, opts: { voice?: string; speed?: number; instruct?: string; signal?: AbortSignal }): Promise<ReadableStream<Uint8Array>> {
   const stop = new AbortController();
   const signal = opts.signal ? AbortSignal.any([opts.signal, stop.signal]) : stop.signal;
   // Until the first bytes arrive: a host that hangs counts as away.
@@ -64,7 +64,7 @@ export async function speakAt(t: SpeechTarget, text: string, opts: { voice?: str
   try {
     res = await t.fetch(`${t.baseUrl}/audio/speech`, {
       method: "POST", headers: { ...bearer(t.apiKey), "content-type": "application/json" }, signal,
-      body: JSON.stringify({ model: t.modelId, input: text, ...(opts.voice ? { voice: opts.voice } : {}), ...(opts.speed !== undefined ? { speed: opts.speed } : {}), response_format: "pcm" }),
+      body: JSON.stringify({ model: t.modelId, input: text, ...(opts.voice ? { voice: opts.voice } : {}), ...(opts.speed !== undefined ? { speed: opts.speed } : {}), ...(opts.instruct ? { instruct: opts.instruct } : {}), response_format: "pcm" }),
     });
   } catch (e) {
     // No audio in time: a machine that stopped answering, so the next model tries.

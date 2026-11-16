@@ -43,6 +43,8 @@ HAN = re.compile(r"[㐀-鿿豈-﫿]")
 # a little tighter than the model's own (temperature 0.9, top-p 1).
 INSTRUCT = "Speak in a warm, calm and natural tone, at an even, relaxed pace."
 SAMPLING = {"temperature": 0.7, "top_p": 0.9}
+# A request's own tone ("gently amused"), used in place of INSTRUCT by CustomVoice; Base takes none.
+MAX_INSTRUCT = 200
 WARM_UP = ("Hello there, this is a warm-up sentence.", "你好，这是一句用来预热的话。")
 
 
@@ -215,10 +217,10 @@ class Model:
         loaded.put(None)
         with torch.inference_mode():
             while (job := self.jobs.get()) is not None:
-                voice, text, speed, out, stop = job
+                voice, text, speed, instruct, out, stop = job
                 try:
                     stretch = Stretch(speed)
-                    stream = self._stream(voice, text)
+                    stream = self._stream(voice, text, instruct)
                     try:
                         for chunk, _sr, _info in stream:
                             if stop.is_set():
@@ -236,14 +238,14 @@ class Model:
                 except Exception as e:  # noqa: BLE001
                     out.put(e)
 
-    def _stream(self, voice, text):
+    def _stream(self, voice, text, instruct=None):
         if self.kind == "custom_voice":
-            return self.tts.generate_custom_voice_streaming(text=text, speaker=self.voices[voice], language=language(text), instruct=INSTRUCT, chunk_size=CHUNK, max_new_tokens=frame_limit(text), **SAMPLING)
+            return self.tts.generate_custom_voice_streaming(text=text, speaker=self.voices[voice], language=language(text), instruct=instruct or INSTRUCT, chunk_size=CHUNK, max_new_tokens=frame_limit(text), **SAMPLING)
         ref, transcript = self.voices[voice]
         return self.tts.generate_voice_clone_streaming(text=text, language=language(text), ref_audio=ref, ref_text=transcript, chunk_size=CHUNK, max_new_tokens=frame_limit(text), **SAMPLING)
 
-    def speak(self, voice, text, speed):
-        """The reading's PCM as it is made. Readings of one model wait their turn on its thread."""
+    def speak(self, voice, text, speed, instruct=None):
+        """The reading's PCM as it is made, in the tone `instruct` asks for (CustomVoice only). Readings of one model wait their turn on its thread."""
         if voice not in self.voices:
             raise Refused(400, "invalid", "That isn't one of this model's voices.")
         out, stop = queue.Queue(), threading.Event()
@@ -251,7 +253,7 @@ class Model:
             # Unloaded since the request found it: no thread would answer.
             if self.closed:
                 raise Refused(503, "model_unavailable", "That voice model isn't loaded.")
-            self.jobs.put((voice, text, speed, out, stop))
+            self.jobs.put((voice, text, speed, instruct, out, stop))
         try:
             while (item := out.get()) is not None:
                 if isinstance(item, Exception):
@@ -387,14 +389,16 @@ class Handler(BaseHTTPRequestHandler):
             model = MODELS.get(b.get("model"))
         if model is None:
             raise Refused(503, "model_unavailable", "That voice model isn't loaded.")
-        text, voice, speed = b.get("input"), b.get("voice"), b.get("speed", 1)
+        text, voice, speed, instruct = b.get("input"), b.get("voice"), b.get("speed", 1), b.get("instruct")
         if not isinstance(text, str) or not text.strip() or len(text) > 4096:
             raise Refused(400, "invalid", "input is the text to read, 1 to 4096 characters.")
         if not isinstance(voice, str):
             raise Refused(400, "invalid", "voice is missing.")
         if isinstance(speed, bool) or not isinstance(speed, (int, float)) or not 0.25 <= speed <= 4:
             raise Refused(400, "invalid", "speed is from 0.25 to 4.")
-        audio = model.speak(voice, text, float(speed))
+        if instruct is not None and (not isinstance(instruct, str) or not instruct.strip() or len(instruct) > MAX_INSTRUCT):
+            raise Refused(400, "invalid", f"instruct is how to speak, 1 to {MAX_INSTRUCT} characters.")
+        audio = model.speak(voice, text, float(speed), instruct and instruct.strip())
         first = next(audio, b"")  # errors before any audio are answered as errors
         self.send_response(200)
         self.send_header("content-type", f"audio/pcm;rate={RATE}")

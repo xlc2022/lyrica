@@ -183,6 +183,22 @@ CREATE TABLE IF NOT EXISTS renames (
 );
 `;
 
+/**
+ * Tone notes (docs/briefs/voice-tone.md): how she meant each paragraph of a
+ * reply to sound, kept apart from its entry so no reader of entries (her
+ * context, sleep, recall, search, export, the web UI) ever sees one. Only
+ * Read aloud reads them, by entry. They go with their entry.
+ */
+export const TONES_SCHEMA = `
+CREATE TABLE IF NOT EXISTS tones (
+  thread TEXT NOT NULL,
+  n      INTEGER NOT NULL,
+  notes  TEXT NOT NULL,
+  PRIMARY KEY (thread, n),
+  FOREIGN KEY (thread, n) REFERENCES entries (thread, n) ON DELETE CASCADE
+);
+`;
+
 /** Wake-ups (DESIGN.md, Projects): a thread's note to itself for later. Fired ones stay a day, for the daily cap. */
 export const WAKEUPS_SCHEMA = `
 CREATE TABLE IF NOT EXISTS wakeups (

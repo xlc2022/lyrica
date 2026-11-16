@@ -52,6 +52,10 @@ The Lyrica Pi extension. `createLyricaExtension(thread, options)` returns a Pi
   off). Subagents and sleep get only `recall` and `read_memory` from here
   (sleep registers its own `remember` and writing tools).
 - **`record.ts`** stores Pi's entries in the thread (`recordEntries`).
+- **`tone.ts`**: while the Read aloud model takes a tone, asks her for
+  `<tone>…</tone>` notes and lifts them out of every reply as it streams
+  (`Tones`, wrapped round the session's stream function); `record.ts` keeps
+  them apart from the entry, for Read aloud alone (docs/daemon.md, Speech).
 - **`context.ts`**, **`react.ts`**, **`threads.ts`**: how full her context
   is and her model's pace, with the lines that tell her to compact, the user's reactions told to her in the turn message, and
   the `threads` tool (child threads and project actions, wake-ups, routines,
