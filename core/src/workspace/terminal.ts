@@ -74,6 +74,13 @@ export class Terminal {
     return this.above + this.rows.map((r) => r.text()).join("\n");
   }
 
+  /** Puts the cursor after the last thing shown, so a note added there (output skipped) overwrites nothing. */
+  toEnd(): this {
+    this.row = this.rows.length - 1;
+    this.col = this.rows[this.row]!.text().length;
+    return this;
+  }
+
   /** Lets go of the oldest lines scrolled out, past `chars` of them, so a view holding a long command stays bounded. */
   trimAbove(chars: number): void {
     if (this.above.length <= chars) return;

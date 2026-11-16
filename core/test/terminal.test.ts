@@ -23,6 +23,11 @@ describe("command output as a terminal shows it", () => {
     expect(t.text()).toBe("😀 done");
   });
 
+  it("adds a note after everything shown, wherever the cursor was moved", () => {
+    const t = new Terminal().write("a 1\nb 1\n\x1b[2A");
+    expect(t.toEnd().write("\n[skipped]\n").text()).toBe("a 1\nb 1\n\n[skipped]\n");
+  });
+
   it("keeps plain output byte for byte", () => {
     const plain = "cbb9175a9bc5 Downloading 1.189GB\ncbb9175a9bc5 Downloading 1.191GB\n\ttab, 你好\n";
     expect(foldOutput(plain)).toBe(plain);

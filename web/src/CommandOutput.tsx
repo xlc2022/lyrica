@@ -68,7 +68,11 @@ export function OutputBox({ base, call, id, running, fallback, failed, label }: 
       // Part of it already here (sent while the view loaded): only the rest. A gap: lyricad skipped a flood's middle.
       let piece = e.data;
       if (e.at < seen.current) piece = new TextDecoder().decode(utf8.encode(e.data).subarray(seen.current - e.at));
-      else if (e.at > seen.current) piece = `\n[… ${(e.at - seen.current).toLocaleString("en-US")} bytes skipped while it streamed …]\n${piece}`;
+      else if (e.at > seen.current) {
+        // Said after everything shown, wherever the cursor was moved to, so it overwrites no redrawn line.
+        term.toEnd();
+        piece = `\n[… ${(e.at - seen.current).toLocaleString("en-US")} bytes skipped while it streamed …]\n${piece}`;
+      }
       seen.current = e.to;
       term.write(piece);
       term.trimAbove(LIVE_CHARS);
