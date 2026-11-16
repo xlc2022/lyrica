@@ -162,6 +162,8 @@ class Model:
             raise Refused(400, "invalid", "That model has no voices.")
         self.device = device
         self.jobs = queue.Queue()
+        self.closed = False
+        self.jobs_lock = threading.Lock()
         loaded = queue.Queue()
         threading.Thread(target=self._work, args=(folder, loaded), daemon=True).start()
         failed = loaded.get()
@@ -230,7 +232,11 @@ class Model:
         if voice not in self.voices:
             raise Refused(400, "invalid", "That isn't one of this model's voices.")
         out, stop = queue.Queue(), threading.Event()
-        self.jobs.put((voice, text, speed, out, stop))
+        with self.jobs_lock:
+            # Unloaded since the request found it: no thread would answer.
+            if self.closed:
+                raise Refused(503, "model_unavailable", "That voice model isn't loaded.")
+            self.jobs.put((voice, text, speed, out, stop))
         try:
             while (item := out.get()) is not None:
                 if isinstance(item, Exception):
@@ -240,7 +246,9 @@ class Model:
             stop.set()  # a client that went away stops the model
 
     def close(self):
-        self.jobs.put(None)
+        with self.jobs_lock:
+            self.closed = True
+            self.jobs.put(None)
 
 
 MODELS = {}
