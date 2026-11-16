@@ -39,7 +39,7 @@ function secretQuestion(args: unknown): Question | undefined {
   return {
     question: `Run with a secret on ${a.machine}?`, recommended: 0,
     options: [
-      { label: "Run", consequence: `What's typed here goes to this script, never into the chat. The script runs as ${her()}'s account, so a key that expires is best.` },
+      { label: "Run", consequence: `What's typed here goes to this script, never into the chat. The script runs under ${her()}'s account and can read the secret there, so use a key that expires.` },
       { label: "Not now", consequence: `Nothing runs. ${her()} says what waits on this.` },
     ],
   };

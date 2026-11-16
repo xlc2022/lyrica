@@ -68,7 +68,7 @@ describe("question cards", () => {
     expect(html).toMatch(/autocomplete="off"/i);
     expect(html.indexOf(">Run<")).toBeLessThan(html.indexOf(">Not now<"));
     expect(html).toMatch(/class="primary" disabled=""><span>Run/);
-    expect(html).toContain("The script runs as Lyrica&#x27;s account");
+    expect(html).toContain("The script runs under Lyrica&#x27;s account and can read the secret there");
     expect(html).not.toMatch(/\b(She|she|her)\b/);
     expect(html).not.toContain("Keep for");
   });
