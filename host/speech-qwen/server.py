@@ -63,6 +63,16 @@ def builtin_voices():
     return out
 
 
+def frame_limit(text):
+    """At most four times the frames the text should take, so a sampling
+    runaway ends in seconds rather than the model's three minutes. Qwen3-TTS
+    makes 12 frames a second; a Han character takes about 0.3 s to say, any
+    other about 0.08 s."""
+    han = len(HAN.findall(text))
+    seconds = 0.3 * han + 0.08 * (len(text) - han)
+    return min(2048, 48 + int(4 * 12 * seconds))
+
+
 def language(text):
     """Chinese when the text has Han characters (mixed text too), else English."""
     return "Chinese" if HAN.search(text) else "English"
@@ -223,9 +233,9 @@ class Model:
 
     def _stream(self, voice, text):
         if self.kind == "custom_voice":
-            return self.tts.generate_custom_voice_streaming(text=text, speaker=self.voices[voice], language=language(text), chunk_size=CHUNK)
+            return self.tts.generate_custom_voice_streaming(text=text, speaker=self.voices[voice], language=language(text), chunk_size=CHUNK, max_new_tokens=frame_limit(text))
         ref, transcript = self.voices[voice]
-        return self.tts.generate_voice_clone_streaming(text=text, language=language(text), ref_audio=ref, ref_text=transcript, chunk_size=CHUNK)
+        return self.tts.generate_voice_clone_streaming(text=text, language=language(text), ref_audio=ref, ref_text=transcript, chunk_size=CHUNK, max_new_tokens=frame_limit(text))
 
     def speak(self, voice, text, speed):
         """The reading's PCM as it is made. Readings of one model wait their turn on its thread."""

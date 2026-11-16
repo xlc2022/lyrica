@@ -660,7 +660,9 @@ per host, and Lyrica's router filters create tiers by it.
     used by the 25 Hz tokenizer, which these 12 Hz models don't load. PyTorch's Triton overrides of its own ops are
     turned off, since Triton needs a C compiler the image doesn't have. Each
     model's load, warm-up and readings run on one thread of its own, where
-    its CUDA graphs were captured.
+    its CUDA graphs were captured. A reading stops at four times the length its
+    text should take, so a rare sampling runaway babbles for seconds, not
+    minutes.
     Every package is pinned with its hash (`speech-qwen/requirements.*.txt`;
     `speech-qwen/lock.sh` remakes them).
 - **Starters**, pinned to the revisions that were benchmarked. Download
