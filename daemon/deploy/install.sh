@@ -82,7 +82,7 @@ apt-get install -y -qq --no-install-recommends \
   ripgrep file bc xxd bsdextrautils zip tree fd-find sqlite3 yq poppler-utils \
   wget lsof strace pandoc \
   python3-bs4 python3-lxml python3-requests python3-html5lib python3-yaml \
-  qpdf tesseract-ocr ocrmypdf python3-pil python3-reportlab python3-pandas python3-numpy \
+  fonts-noto-cjk qpdf tesseract-ocr ocrmypdf python3-pil python3-reportlab python3-pandas python3-numpy \
   python3-cryptography python3-charset-normalizer >/dev/null
 # shellcheck checks her bash calls before they run (core/src/workspace/shellcheck.ts).
 # ripgrep, file, bc, xxd, bsdextrautils (hexdump, column), zip, tree, fd,
@@ -165,7 +165,8 @@ if [ -x "$TOOLS/bin/codex" ] && [ -d /usr/local/lib/node_modules/@openai/codex ]
 fi
 
 # --- PDF tools ---
-# Her pdf skill (extension/src/pdf.md) uses qpdf, Tesseract with OCRmyPDF,
+# fonts-noto-cjk lets the PDFs and pictures she makes show Chinese, Japanese
+# and Korean. Her pdf skill (extension/src/pdf.md) uses qpdf, Tesseract with OCRmyPDF,
 # Pillow, reportlab, pandas and NumPy from the packages above, and two
 # things in her tool prefix:
 # - pdfplumber (with pdfminer.six and pypdfium2), which Debian doesn't
