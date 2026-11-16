@@ -78,6 +78,8 @@ const EPOCH = randomBytes(4).toString("hex");
 const WRITING = new Set<ThreadEvent["type"]>(["tool_call", "tool_start", "tool_end", "recall", "remember"]);
 /** How often a call's arguments are sent while she writes them. */
 const DRAFT_MS = 250;
+/** How often a running command's new output goes to the open views. */
+const OUTPUT_MS = 200;
 
 type Client = (id: string, event: ThreadEvent) => void;
 /** How a request ended: "held" kept it on the card past the turn, and "withdrawn" is a later held request replacing it. */
@@ -1790,6 +1792,26 @@ export class HostedThread {
 
   /** A forwarded event from elsewhere, such as Delegation's runs. */
   publish(event: ThreadEvent): void { this.emit(event); }
+
+  /** An event for the open views now, never kept for replay: a view that opens later reads the state instead. */
+  unbuffered(event: ThreadEvent): void { for (const c of this.clients) c(this.id(this.n), event); }
+
+  /** Output of running commands not yet sent, by id: sent together every OUTPUT_MS, so a chatty command is a few events a second. */
+  private pendingOutput = new Map<string, Api.OutputEvent>();
+  private outputTimer: NodeJS.Timeout | undefined;
+
+  /** A running command printed something (docs/workspace.md, "Command output"): to the open views, a few times a second. */
+  output(e: Api.OutputEvent): void {
+    if (!this.clients.size) return;
+    const was = this.pendingOutput.get(e.id);
+    this.pendingOutput.set(e.id, was ? { ...was, data: was.data + e.data } : e);
+    this.outputTimer ??= setTimeout(() => {
+      this.outputTimer = undefined;
+      const all = [...this.pendingOutput.values()];
+      this.pendingOutput.clear();
+      for (const o of all) this.unbuffered({ type: "output", ...o });
+    }, OUTPUT_MS);
+  }
 
   /** Images and clips her image calls are making now, by call (docs/ux.md, "An image the agent made"). */
   private readonly making = new Map<string, Api.Making>();

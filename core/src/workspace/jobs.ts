@@ -1,14 +1,15 @@
 // Background commands (docs/workspace.md, "Background commands"): a `bash`
-// call that returns at once and runs on while her turn goes on or ends. Jobs
-// live in lyricad's memory, so they outlive the thread's session; their
-// output is kept here only, already capped by the target, and never written
-// anywhere. A restart loses them.
+// call that returns at once and runs on while her turn goes on or ends. A
+// running job lives in lyricad's memory, so it outlives the thread's session;
+// a restart stops it. Its output is kept as it comes (KeptOutput) and, once it
+// ends, with its thread (`JobHooks.save`), encrypted like the rest of it.
 
+import { KeptOutput, type CommandOutput } from "../store/outputs.ts";
 import type { ExecutionTarget } from "./ops.ts";
 import { SHELLS, simpleCommands, unwrapped } from "./machines.ts";
 
-/** A thread's jobs: running at once, kept after ending, the default and longest time limit (seconds), and output kept (bytes). */
-export const JOB_LIMITS = { running: 4, kept: 10, timeoutS: 4 * 3600, maxTimeoutS: 24 * 3600, outputBytes: 64 * 1024 };
+/** A thread's jobs: running at once, kept in memory after ending, the default and longest time limit (seconds), and the longest name. */
+export const JOB_LIMITS = { running: 4, kept: 10, timeoutS: 4 * 3600, maxTimeoutS: 24 * 3600, nameChars: 60 };
 
 export type JobState = "running" | "exited" | "failed" | "timed out" | "stopped";
 
@@ -18,6 +19,10 @@ export const STOPPED_BY_HER = "stopped by her";
 export interface JobInfo {
   /** `j<n>`, counted per thread. */
   id: string;
+  /** What it does, in her words ("Pull the host images"); the command's first words when she gave none. */
+  name?: string;
+  /** The tool call that started it. */
+  call?: string;
   /** A process that isn't a command of hers but holds a running slot: a local MCP server (docs/briefs/mcp-local.md), or the `browse` tool's browser. */
   kind?: "mcp" | "browser";
   /** "sandbox" or the machine's name. */
@@ -41,9 +46,27 @@ export interface JobThread { userId: string; pool: string; threadId: string }
 interface Job extends JobInfo {
   thread: JobThread;
   controller: AbortController;
-  output: Buffer[];
-  outputBytes: number;
-  dropped: number;
+  kept: KeptOutput;
+}
+
+/**
+ * Where a job's output goes besides memory: `seed` is the highest job number the thread has kept, so numbers go on
+ * after a restart; `data` is each piece as it comes, `at` the bytes before it; `changed` a job started or ended;
+ * `save` keeps an ended job with its thread. A local MCP server's or the browser's slot has no output and isn't kept.
+ */
+export interface JobHooks {
+  seed?(thread: JobThread): number;
+  data?(thread: JobThread, job: JobInfo, at: number, data: Buffer): void;
+  changed?(thread: JobThread): void;
+  save?(thread: JobThread, job: CommandOutput, output: Buffer): void;
+}
+
+/** A job's name: hers, on one line without parentheses and cut to JOB_LIMITS.nameChars, or else the command's first words. */
+export function jobName(name: string | undefined, command: string): string {
+  // No parentheses: her notice names it in them (jobLine), and the web reads it back from there.
+  const own = name?.replace(/[()]/g, "").replace(/\s+/g, " ").trim();
+  const words = own || command.replace(/\s+/g, " ").trim();
+  return words.length > JOB_LIMITS.nameChars ? `${words.slice(0, JOB_LIMITS.nameChars - 1).trimEnd()}…` : words;
 }
 
 const key = (t: JobThread) => `${t.userId}/${t.pool}/${t.threadId}`;
@@ -65,7 +88,7 @@ export function jobLine(j: JobInfo, now = new Date().toISOString()): string {
     : `${j.state}${j.exitCode !== undefined && j.exitCode !== null ? ` with code ${j.exitCode}` : ""} after ${jobDuration(j.startedAt, j.endedAt ?? now)}${j.reason ? ` (${j.reason})` : ""}`;
   if (j.kind === "mcp") return `${j.id} in the sandbox, ${how}: the MCP server ${j.command}`;
   if (j.kind === "browser") return `${j.id} in the sandbox, ${how}: the browse tool's browser`;
-  return `${j.id} in ${j.place === "sandbox" ? "the sandbox" : j.place}, ${how}: ${j.command}`;
+  return `${j.id}${j.name && j.name !== jobName(undefined, j.command) ? ` (${j.name})` : ""} in ${j.place === "sandbox" ? "the sandbox" : j.place}, ${how}: ${j.command}`;
 }
 
 /** What lyricad tells the thread when a job ends: the job, and the last lines of its output. A local MCP server's output is never kept. */
@@ -108,14 +131,24 @@ export class Jobs {
   private readonly byThread = new Map<string, Job[]>();
   private readonly next = new Map<string, number>();
 
-  constructor(private readonly onEnd: (thread: JobThread, job: JobInfo, output: string) => void = () => {}, private readonly retryMs = 10_000) {}
+  constructor(private readonly onEnd: (thread: JobThread, job: JobInfo, output: string) => void = () => {}, private readonly retryMs = 10_000, private readonly hooks: JobHooks = {}) {}
+
+  /** The next `j<n>` in the thread: after any it ran since lyricad started, and any it kept from before. */
+  private nextId(thread: JobThread): string {
+    const k = key(thread);
+    let seed = 0;
+    try { seed = this.hooks.seed?.(thread) ?? 0; } catch { /* locked: memory alone */ }
+    const n = Math.max(this.next.get(k) ?? 0, seed) + 1;
+    this.next.set(k, n);
+    return `j${n}`;
+  }
 
   /**
    * Starts `command` on `target` in `cwd`. Refuses a fifth running job in the thread. A machine's `cwd` is a
    * function that connects: while the machine doesn't answer (it is rebooting), the job waits, trying again every
    * `retryMs`, and runs once it does, within its time limit. A changed or unconfirmed host key ends it at once.
    */
-  start(thread: JobThread, place: string, target: ExecutionTarget, command: string, cwd: string | (() => Promise<string>), timeoutS = JOB_LIMITS.timeoutS): JobInfo {
+  start(thread: JobThread, place: string, target: ExecutionTarget, command: string, cwd: string | (() => Promise<string>), timeoutS = JOB_LIMITS.timeoutS, o: { name?: string; call?: string } = {}): JobInfo {
     const k = key(thread);
     const list = this.byThread.get(k) ?? [];
     const running = list.filter((j) => j.state === "running");
@@ -123,14 +156,13 @@ export class Jobs {
       throw new Error(`this thread already has ${running.length} background commands running (${running.map((j) => j.id).join(", ")}); wait for one, or stop one with jobs`);
     }
     if (!(timeoutS > 0)) throw new Error("timeout must be a positive number of seconds");
-    const n = (this.next.get(k) ?? 0) + 1;
-    this.next.set(k, n);
     const job: Job = {
-      id: `j${n}`, place, command, cwd: typeof cwd === "string" ? cwd : "", startedAt: new Date().toISOString(), state: "running",
-      thread, controller: new AbortController(), output: [], outputBytes: 0, dropped: 0,
+      id: this.nextId(thread), name: jobName(o.name, command), ...(o.call ? { call: o.call } : {}), place, command, cwd: typeof cwd === "string" ? cwd : "",
+      startedAt: new Date().toISOString(), state: "running", thread, controller: new AbortController(), kept: new KeptOutput(),
     };
     list.push(job);
     this.byThread.set(k, list);
+    this.changed(thread);
     const timeout = Math.min(timeoutS, JOB_LIMITS.maxTimeoutS);
     const timer = setTimeout(() => this.end(job, "timed out", null), timeout * 1000);
     timer.unref();
@@ -169,11 +201,9 @@ export class Jobs {
     if (running.length >= JOB_LIMITS.running) {
       throw new Error(`this thread already has ${running.length} background commands running (${running.map((j) => j.id).join(", ")}), so ${kind === "mcp" ? `the MCP server ${server}` : "the browser"} can't start; stop one with jobs`);
     }
-    const n = (this.next.get(k) ?? 0) + 1;
-    this.next.set(k, n);
     const job: Job = {
-      id: `j${n}`, kind, place: "sandbox", command: server, cwd: "/workspace", startedAt: new Date().toISOString(), state: "running",
-      thread, controller: new AbortController(), output: [], outputBytes: 0, dropped: 0,
+      id: this.nextId(thread), kind, place: "sandbox", command: server, cwd: "/workspace", startedAt: new Date().toISOString(), state: "running",
+      thread, controller: new AbortController(), kept: new KeptOutput(0, 0),
     };
     job.controller.signal.addEventListener("abort", () => { try { onStop(); } catch { /* already gone */ } }, { once: true });
     list.push(job);
@@ -195,10 +225,15 @@ export class Jobs {
     return (this.byThread.get(key(thread)) ?? []).map(info);
   }
 
-  /** A job's kept output so far. */
-  output(thread: JobThread, id: string): { job: JobInfo; output: string } {
-    const job = this.find(thread, id);
-    return { job: info(job), output: text(job) };
+  /** A job's kept output so far, or undefined if it isn't one lyricad holds now (ended before a restart, or long ago). */
+  output(thread: JobThread, id: string): { job: JobInfo; output: string } | undefined {
+    const job = this.byThread.get(key(thread))?.find((j) => j.id === id);
+    return job && { job: info(job), output: text(job) };
+  }
+
+  /** The thread's running commands with their output so far, for the Jobs dropdown: local MCP servers and the browser aren't commands. */
+  runningOutputs(thread: JobThread): { job: CommandOutput; output: string }[] {
+    return (this.byThread.get(key(thread)) ?? []).filter((j) => j.state === "running" && !j.kind).map((j) => ({ job: kept(j), output: text(j) }));
   }
 
   /** Stops a running job. False if it had already ended. */
@@ -232,13 +267,13 @@ export class Jobs {
   }
 
   private keep(job: Job, data: Buffer): void {
-    job.output.push(data);
-    job.outputBytes += data.length;
-    // The target caps output already; this only bounds what a job holds here.
-    while (job.output.length > 1 && job.outputBytes - job.output[0]!.length >= JOB_LIMITS.outputBytes) {
-      job.outputBytes -= job.output[0]!.length;
-      job.dropped += job.output.shift()!.length;
-    }
+    const at = job.kept.bytes;
+    job.kept.push(data);
+    try { this.hooks.data?.(job.thread, info(job), at, data); } catch { /* no view */ }
+  }
+
+  private changed(thread: JobThread): void {
+    try { this.hooks.changed?.(thread); } catch { /* no view */ }
   }
 
   private end(job: Job, state: JobState, exitCode: number | null, reason?: string): void {
@@ -250,17 +285,27 @@ export class Jobs {
       const ended = list.filter((j) => j.state !== "running");
       for (const old of ended.slice(0, Math.max(0, ended.length - JOB_LIMITS.kept))) list.splice(list.indexOf(old), 1);
     }
+    // Kept before her notice goes, so the notice's id is one she can read.
+    if (!job.kind) try { this.hooks.save?.(job.thread, kept(job), job.kept.buffer()); } catch { /* the thread is gone or locked: memory alone */ }
+    this.changed(job.thread);
     try { this.onEnd(job.thread, info(job), text(job)); } catch { /* the thread is gone or locked */ }
   }
 }
 
 const info = (j: Job): JobInfo => ({
-  id: j.id, ...(j.kind ? { kind: j.kind } : {}), place: j.place, command: j.command, cwd: j.cwd, startedAt: j.startedAt, state: j.state,
+  id: j.id, ...(j.kind ? { kind: j.kind } : {}), ...(j.name ? { name: j.name } : {}), ...(j.call ? { call: j.call } : {}), place: j.place, command: j.command, cwd: j.cwd, startedAt: j.startedAt, state: j.state,
   ...(j.endedAt ? { endedAt: j.endedAt } : {}), ...(j.exitCode !== undefined ? { exitCode: j.exitCode } : {}), ...(j.reason ? { reason: j.reason } : {}),
   ...(j.waiting && j.state === "running" ? { waiting: true } : {}),
 });
 
-const text = (j: Job): string => `${j.dropped ? `[… ${j.dropped} bytes left out …]\n` : ""}${Buffer.concat(j.output).toString("utf8")}`;
+const text = (j: Job): string => j.kept.buffer().toString("utf8");
+
+/** A job as its thread keeps it. */
+const kept = (j: Job): CommandOutput => ({
+  id: j.id, ...(j.call ? { call: j.call } : {}), kind: "job", ...(j.name ? { name: j.name } : {}), place: j.place, command: j.command, cwd: j.cwd,
+  startedAt: j.startedAt, ...(j.endedAt ? { endedAt: j.endedAt } : {}), state: j.state,
+  ...(j.exitCode !== undefined ? { exitCode: j.exitCode } : {}), ...(j.reason ? { reason: j.reason } : {}), bytes: j.kept.bytes, dropped: j.kept.dropped,
+});
 
 /** Waiting with `sleep`: a fixed wait this long or longer, or a loop that sleeps this long or longer between checks in her turn, is refused (`sleepWait`). */
 export const SLEEP_LIMITS = { fixedS: 60, loopS: 10 };

@@ -5,6 +5,7 @@ import { IDENTITY_SCHEMA } from "./models/host.ts";
 import { addNotice, ENDPOINT_SCHEMA, MIXED_PRESET, migrate as moveModels, MODEL_CHOICE_SCHEMA, PRESET_SCHEMA, REDIRECT_SCHEMA, upgradeCalls, upgradeEndpoints } from "./models/schema.ts";
 import { PREFS_SCHEMA } from "./prefs.ts";
 import { ARTIFACTS_SCHEMA } from "./store/artifacts.ts";
+import { OUTPUTS_SCHEMA } from "./store/outputs.ts";
 import { POOL_SCHEMA, POOL_UPGRADES, RECALLS_SCHEMA, RENAMES_SCHEMA, ROUTINES_SCHEMA, VECTORS_SCHEMA, WAKEUPS_SCHEMA, WATCHES_SCHEMA } from "./store/schema.ts";
 import { CHANGES_SCHEMA } from "./workspace/changes.ts";
 import { SKILLS_SCHEMA } from "./skills.ts";
@@ -438,6 +439,11 @@ export const STEPS: Record<DbKind, MigrationStep[]> = {
     // (docs/briefs/artifacts.md). Adds two tables only.
     version: 17,
     run(db) { db.exec(ARTIFACTS_SCHEMA); },
+  }, {
+    // Principle 1: every command's and background job's whole output, kept with its thread so she can page through it
+    // and the person can scroll it (docs/workspace.md, "Command output"). Adds a table only.
+    version: 18,
+    run(db) { db.exec(OUTPUTS_SCHEMA); },
   }],
 };
 

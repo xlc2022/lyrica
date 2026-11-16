@@ -5,7 +5,7 @@ import {
 import { readFileSync } from "node:fs";
 import { posix } from "node:path";
 import {
-  BROWSE_READS, browseFormText, browseFormWarning, type Browser, type BrowseCall, decide, sourcedFile, SCRIPT_LIMIT, type CommandRule, withoutNoMachine, holdsSecret, librariesLine, JOB_LIMITS, jobLine, sleepWait, type JobInfo, malformedCommand, mcpNamespace, onFloor, sandboxNix, sandboxTools, PROXMOX_READS, PROXMOX_SUSPECT, SANDBOX_ALLOW, stricterMode, suspectCommand, suspectKey, discardingGit, removedFolders, SHARED, FAMILY_ROOT, WORKDIR, writtenFiles, type ExecutionTarget, type ProxmoxAction, type Network, type NewChange, type PermissionMode, type ThreadGitRepository, type ThreadMachine, type ThreadRepository, type ThreadWorkspace, type ToolOps,
+  BROWSE_READS, browseFormText, browseFormWarning, type Browser, type BrowseCall, decide, sourcedFile, SCRIPT_LIMIT, type CommandRule, withoutNoMachine, holdsSecret, librariesLine, JOB_LIMITS, jobLine, OUTPUT_LIMITS, outputPage, sleepWait, type JobInfo, malformedCommand, mcpNamespace, onFloor, sandboxNix, sandboxTools, PROXMOX_READS, PROXMOX_SUSPECT, SANDBOX_ALLOW, stricterMode, suspectCommand, suspectKey, discardingGit, removedFolders, SHARED, FAMILY_ROOT, WORKDIR, writtenFiles, type ExecutionTarget, type ProxmoxAction, type Network, type NewChange, type PermissionMode, type ThreadGitRepository, type ThreadMachine, type ThreadRepository, type ThreadWorkspace, type ToolOps,
 } from "@lyrica/core";
 import { Type } from "typebox";
 import { setToolsOff } from "./gate.ts";
@@ -96,9 +96,14 @@ export interface ThreadTools {
   /** Where its parent, children and (in a project) siblings read its folder, whether it has /shared, and its own part of it. Without it, none is said. */
   family?(): { folder: string; shared: boolean; handover?: string };
   /** Starts an approved command in the background (docs/workspace.md, "Background commands"). Without it, bash has no background and there is no jobs tool. */
-  startJob?(command: string, machine?: string, timeoutS?: number): Promise<JobInfo>;
+  startJob?(command: string, machine?: string, timeoutS?: number, o?: { name?: string; call?: string }): Promise<JobInfo>;
   jobs?(): JobInfo[];
+  /** A command's kept output, a bash call's (`c<n>`) or a job's (`j<n>`); throws for one the thread doesn't have. */
   jobOutput?(id: string): { job: JobInfo; output: string };
+  /** A bash call starts: its whole output is kept with the thread as `c<n>` (docs/workspace.md, "Command output"). */
+  keepOutput?(o: { call: string; place: string; command: string; cwd: string }): {
+    id: string; push(data: Buffer): void; end(r: { state: "exited" | "failed" | "timed out" | "stopped"; exitCode?: number | null; reason?: string }): { bytes: number; dropped: number };
+  };
   stopJob?(id: string): boolean;
 }
 
@@ -155,6 +160,21 @@ export function checkUnder(jobs: JobInfo[], place: string, path: string, what: "
 }
 const BASH_TIMEOUT = Type.Optional(Type.Number({ description: `Timeout in seconds, ${BASH_TIMEOUT_S} if left out (${JOB_LIMITS.timeoutS} in the background). Give a longer one for a long build or test run.` }));
 const BACKGROUND = Type.Optional(Type.Boolean({ description: "Run it in the background: you get a job id at once, and are told when it ends. For a download, build, install, test run or wait that takes minutes or more. Then end your turn or do other work; never sleep to wait for it." }));
+const JOB_NAME = Type.Optional(Type.String({ description: `With background: what the job does, in a few words the person reads in its list ("Pull the host images"); at most ${JOB_LIMITS.nameChars} characters.` }));
+
+/** The state a bash call ended in, from how Pi's bash ended: its exit code, a timeout or a stop. */
+export function callEnd(err: unknown): { state: "exited" | "failed" | "timed out" | "stopped"; exitCode?: number | null; reason?: string } {
+  if (err === undefined) return { state: "exited", exitCode: 0 };
+  const message = err instanceof Error ? err.message : String(err);
+  const code = /Command exited with code (\d+)\s*$/.exec(message);
+  if (code) return { state: "exited", exitCode: Number(code[1]) };
+  if (/timed out|timeout/i.test(message)) return { state: "timed out" };
+  if (/aborted/i.test(message)) return { state: "stopped" };
+  return { state: "failed", reason: message.split("\n").pop()!.slice(0, 200) };
+}
+
+/** Under output that was cut, where the rest is: only when she has the jobs tool to read it. */
+export const keptLine = (id: string) => `The whole output is kept as ${id}: jobs output with id ${id} reads it in pages (from, lines), or finds lines with pattern.`;
 const TOOLS: Record<keyof ToolOps, Create> = {
   read: createReadToolDefinition as unknown as Create,
   write: createWriteToolDefinition as unknown as Create,
@@ -333,7 +353,7 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
         ...template,
         parameters: Type.Object({
           ...(template.parameters as ReturnType<typeof Type.Object>).properties,
-          ...(name === "bash" ? { timeout: BASH_TIMEOUT, ...(tools.startJob ? { background: BACKGROUND } : {}) } : {}),
+          ...(name === "bash" ? { timeout: BASH_TIMEOUT, ...(tools.startJob ? { background: BACKGROUND, name: JOB_NAME } : {}) } : {}),
           machine: MACHINE,
         }) as typeof template.parameters,
         // A machine sent as null, "null" or "sandbox" is no machine: the call is the sandbox's, in the gate, the run and the approval.
@@ -344,7 +364,7 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
           return name === "edit" ? editArguments(args) : args;
         },
         async execute(id, params, signal, onUpdate, ctx) {
-          const { machine: named, background, ...rest } = params as Record<string, unknown>;
+          const { machine: named, background, name: jobName, ...rest } = params as Record<string, unknown>;
           if (name === "bash") {
             const ssh = (tools.machines?.() ?? []).filter((m) => m.kind !== "proxmox").map((m) => m.name);
             const reached = sandboxReachesMachine(String(rest.command ?? ""), named ? ssh.filter((m) => m === named) : ssh);
@@ -356,7 +376,7 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
             const target = tools.target(machine);
             // A machine that doesn't answer (rebooting) still takes the job: it waits for the machine.
             bound(id, name, rest, machine, machine ? await target.cwd().catch(() => undefined) : undefined);
-            const job = await tools.startJob(String(rest.command), machine, typeof rest.timeout === "number" ? rest.timeout : undefined);
+            const job = await tools.startJob(String(rest.command), machine, typeof rest.timeout === "number" ? rest.timeout : undefined, { ...(typeof jobName === "string" ? { name: jobName } : {}), call: id });
             return text(`Started ${jobLine(job)}\nYou'll be told when it ends. jobs shows its output so far (the first part while it runs; the end once it ends) or stops it. To follow a long job's progress, have it write to a file and read that.`);
           }
           if (name === "bash") rest.timeout ??= BASH_TIMEOUT_S;
@@ -365,7 +385,11 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
           const target = tools.target(machine);
           const cwd = await target.cwd();
           bound(id, name, rest, machine, machine ? cwd : undefined);
-          const ops = name === "write" || name === "edit" ? recording(target, target.ops()[name], id, tools.recordChange) : target.ops()[name];
+          // A bash call's whole output is kept as it comes (tee'd before the cut her result gets), for her and the person to read.
+          const keep = name === "bash" ? tools.keepOutput?.({ call: id, place: machine ?? "sandbox", command: String(rest.command ?? ""), cwd }) : undefined;
+          const ops = name === "write" || name === "edit" ? recording(target, target.ops()[name], id, tools.recordChange)
+            : keep ? { exec: (c: string, dir: string, o: Parameters<ToolOps["bash"]["exec"]>[2]) => target.ops().bash.exec(c, dir, { ...o, onRaw: keep.push }) }
+            : target.ops()[name];
           const tool = create(cwd, { operations: ops as never });
           // Pi resolves paths against the session's cwd, which is on the host; use the target's.
           const here = new Proxy(ctx, { get: (t, k) => (k === "cwd" ? cwd : Reflect.get(t, k)) });
@@ -375,10 +399,25 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
             const line = what && checkUnder(tools.jobs?.() ?? [], machine || "sandbox", what === "edit" && typeof rest.path === "string" ? posix.resolve(cwd, rest.path) : cwd, what);
             return line ? { ...result, content: [...result.content, { type: "text" as const, text: line }] } : result;
           };
-          if (machine || (name !== "write" && name !== "edit" && name !== "bash")) return checking(await tool.execute(id, rest, signal, onUpdate, here));
+          // The cut her result got (capOutput's marker) says where the whole output is, when she can read it.
+          const cut = (text: string) => !!keep && !!tools.jobOutput && /bytes of output left out …\]/.test(text);
+          const run = async () => {
+            if (!keep) return tool.execute(id, rest, signal, onUpdate, here);
+            try {
+              const result = await tool.execute(id, rest, signal, onUpdate, here);
+              keep.end(callEnd(undefined));
+              const said = result.content.map((c) => (c.type === "text" ? c.text : "")).join("\n");
+              return cut(said) ? { ...result, content: [...result.content, { type: "text" as const, text: keptLine(keep.id) }] } : result;
+            } catch (err) {
+              keep.end(callEnd(err));
+              if (err instanceof Error && cut(err.message)) err.message = `${err.message}\n${keptLine(keep.id)}`;
+              throw err;
+            }
+          };
+          if (machine || (name !== "write" && name !== "edit" && name !== "bash")) return checking(await run());
           const since = new Date();
           try {
-            return checking(await tool.execute(id, rest, signal, onUpdate, here));
+            return checking(await run());
           } finally {
             // Which thread wrote what, for the file viewer; a failed sweep only leaves it unrecorded.
             if (name === "bash") tools.madeSince?.(since);
@@ -396,13 +435,18 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
       pi.registerTool({
         name: "jobs",
         label: "Background commands",
-        description: "This conversation's background commands (bash with background: true): list them, see one's output so far, or stop one.",
-        promptSnippet: "list, read or stop your background commands",
+        description: "This conversation's background commands (bash with background: true): list them, read one's output, or stop one. "
+          + "output also reads the whole output of any earlier bash call by its id (c3), named under a result that was cut: a page of numbered lines, "
+          + "its end unless you give from, or the lines matching pattern.",
+        promptSnippet: "list, read or stop your background commands; read any command's whole output",
         parameters: Type.Object({
           action: Type.Union([Type.Literal("list"), Type.Literal("output"), Type.Literal("stop")]),
-          id: Type.Optional(Type.String({ description: "The job, such as j1, for output and stop." })),
+          id: Type.Optional(Type.String({ description: "A job (j1) for output and stop, or a bash call's kept output (c3) for output." })),
+          from: Type.Optional(Type.Number({ description: "output: the first line, from 1. Left out, you get the last lines." })),
+          lines: Type.Optional(Type.Number({ description: `output: how many lines, ${OUTPUT_LIMITS.pageLines} if left out, at most ${OUTPUT_LIMITS.maxPageLines}.` })),
+          pattern: Type.Optional(Type.String({ description: "output: a regular expression (case ignored); you get the matching lines, numbered." })),
         }),
-        async execute(_id, p: { action: "list" | "output" | "stop"; id?: string }) {
+        async execute(_id, p: { action: "list" | "output" | "stop"; id?: string; from?: number; lines?: number; pattern?: string }) {
           if (p.action === "list") {
             const all = jobs();
             return text(all.length ? all.map((j) => jobLine(j)).join("\n") : "No background commands in this conversation.");
@@ -410,7 +454,11 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
           if (!p.id) throw new Error(`${p.action} needs the job's id`);
           if (p.action === "stop") return text(stopJob(p.id) ? `Stopped ${p.id}.` : `${p.id} had already ended.`);
           const { job, output } = jobOutput(p.id);
-          return text(`${jobLine(job)}\n${output.trim() ? output : "No output yet."}`);
+          if (!output.trim()) return text(`${jobLine(job)}\nNo output${job.state === "running" ? " yet" : ""}.`);
+          const lines = Math.min(Math.max(1, Math.floor(p.lines ?? OUTPUT_LIMITS.pageLines)), OUTPUT_LIMITS.maxPageLines);
+          const total = output.replace(/\n$/, "").split("\n").length;
+          const page = outputPage(output, { ...p, lines, from: p.from ?? Math.max(1, total - lines + 1) });
+          return text(`${jobLine(job)}\n${page}`);
         },
       } as ToolDefinition);
     }

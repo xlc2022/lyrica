@@ -179,9 +179,6 @@ export function helperSandbox(address: string, port: number, o: HelperSandbox): 
 
 type Pending = { resolve: (f: Frame) => void; reject: (e: Error) => void; onData?: (d: Buffer) => void };
 
-/** Output from one command larger than this means the helper isn't capping it: the connection ends. */
-const MAX_OUTPUT = 256 * 1024;
-
 /**
  * lyricad's end of one helper: frames out, replies matched by id. Everything
  * the helper sends is checked as untrusted.
@@ -333,12 +330,7 @@ function sessionOf(h: Helper, home: string, closed: (() => void)[]): SshSession 
   return {
     home,
     async exec(command, o) {
-      let received = 0;
-      const run = h.call({ op: "exec", command }, undefined, (d) => {
-        received += d.length;
-        if (received > MAX_OUTPUT) h.fail(new Error("the SSH helper sent more output than it should"));
-        else o.onData(d);
-      });
+      const run = h.call({ op: "exec", command }, undefined, (d) => o.onData(d));
       let stopped: Error | undefined;
       let rejectStop: (err: Error) => void = () => {};
       const stopping = new Promise<never>((_, reject) => { rejectStop = reject; });

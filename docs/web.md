@@ -160,6 +160,17 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   and **Total** tokens, **Cached** (the cache's share of input, `cacheHit`, or a muted “—”) and local **GPU time**, then Total; Input's header tooltip says “Counts every request, cached reads included.” and Total's
   “Tokens counted before input and output were kept apart count here alone.”
   On a phone it opens rows in place at the foot of Context.
+  **Jobs** follows Tokens once the thread has started a background job
+  (`JobsFact` in `src/CommandOutput.tsx`, `GET …/jobs?q=&sort=`, reloaded on
+  the `jobs` event and while the search or sort changes): its popover's
+  cards open to an `OutputBox` of the job. The same `OutputBox` is a `bash`
+  call's open marker (`src/Messages.tsx`): it reads `GET …/outputs?call=` (or
+  `…/outputs/:id`), then appends the `output` events for its command,
+  skipping any piece before the bytes it already holds and showing at most
+  the last 2 MiB while it streams; `src/stream.ts` hands `output` and `jobs`
+  to the listeners in `CommandOutput.tsx` rather than to the turn. A call
+  with nothing kept (from before, or failed before printing) shows its
+  stored result.
   Then, while she has wake-ups waiting (`ThreadSettings.wakeups`, soonest
   first), **Wake-up** and the soonest time in mono (`wakeTime`: HH:MM today,
   the date before it otherwise) open a popover with each one's time and an

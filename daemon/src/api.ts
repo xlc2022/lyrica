@@ -1822,6 +1822,34 @@ export interface GpuWait { busyWith?: string; loading?: true }
  */
 export interface LiveCall { ms: number; prompt?: number; cached?: number; read?: number; readRate?: number; output?: number; outputRate?: number; counted?: true; writing?: "thinking" | "tool" }
 
+/** A piece of a running command's output (docs/workspace.md, "Command output"). */
+export interface OutputEvent { id: string; call?: string; job?: true; at: number; data: string }
+
+/** One command and what it printed, as the Jobs dropdown and a bash row read it; `output` is what is kept (GET …/outputs/:id). */
+export interface CommandOutputInfo {
+  /** `c<n>` for a bash call, `j<n>` for a background job. */
+  id: string;
+  call?: string;
+  kind: "call" | "job";
+  /** A job's name. */
+  name?: string;
+  /** "sandbox" or the machine's name. */
+  place: string;
+  command: string;
+  cwd: string;
+  startedAt: string;
+  endedAt?: string;
+  state: "running" | "exited" | "failed" | "timed out" | "stopped";
+  exitCode?: number | null;
+  reason?: string;
+  /** All it printed, in bytes, and how much of that the cut in the middle left out. */
+  bytes: number;
+  dropped: number;
+}
+
+/** A command with its kept output. */
+export interface CommandOutputText { job: CommandOutputInfo; output: string }
+
 export type ThreadEvent =
   /** On every connection, after any replay or message so far: the thread's state now, with what is being made. */
   | { type: "hello"; busy: boolean; queued: string[]; permissions: PermissionRequest[]; making: Making[]; gpuWait?: GpuWait; liveCall?: LiveCall }
@@ -1838,6 +1866,13 @@ export type ThreadEvent =
   | { type: "tool_call"; toolCallId: string; name: string }
   /** A call's arguments as written so far (partial JSON parsed), at most four times a second and once whole. Never buffered for replay. */
   | { type: "tool_args"; toolCallId: string; args: unknown }
+  /**
+   * A running command printed `data`, `at` bytes into its output: a bash call (`call` is its tool call) or a background
+   * job (`job`). A few times a second; never buffered for replay, so a view that opens mid-run reads the output so far.
+   */
+  | ({ type: "output" } & OutputEvent)
+  /** A background command started or ended: the Jobs list changed. Never buffered. */
+  | { type: "jobs" }
   | { type: "tool_start"; toolCallId: string; name: string; args: unknown }
   /** An image or clip being made started, or got further. */
   | ({ type: "making" } & Making)

@@ -8,7 +8,7 @@ import type { ExecutionTarget, ThreadGitRepository, ThreadMachine, ThreadMcpServ
 import { Type } from "typebox";
 import { afterEach, describe, expect, it } from "vitest";
 import { BASH_TIMEOUT_S, createDownloadsExtension, pageTool, createMcpServersExtension, createModelsExtension, filesFor, type DownloadsHost, createWorkspaceExtension, setToolsOff, toolsLine, type ApprovalRequest, type ModelsHost, type ServingProposal, type ThreadTools } from "../src/index.ts";
-import { BUILD_THERE, checkUnder, sandboxReachesMachine, sshRefusal, editArguments, FORMATS_LINE, grantKey, pathArguments, insertsOnly, LINK_LINE, READ_ONLY_CHAT, describe as describePrompt } from "../src/workspace.ts";
+import { BUILD_THERE, callEnd, checkUnder, keptLine, sandboxReachesMachine, sshRefusal, editArguments, FORMATS_LINE, grantKey, pathArguments, insertsOnly, LINK_LINE, READ_ONLY_CHAT, describe as describePrompt } from "../src/workspace.ts";
 import { testMcpServer } from "../../core/test/mcp-server.ts";
 import { cleanRepos, git, localTarget, repo, saved } from "./git-repo.ts";
 import { freshKeyring, profile } from "../../core/test/helpers.ts";
@@ -40,7 +40,9 @@ function fakeTarget(files: Map<string, string>, commands: string[], machine?: st
     read: { readFile: read, access: async (p) => { await read(p); }, detectImageMimeType: async () => null },
     write: { writeFile: write, mkdir: async () => {} },
     edit: { readFile: read, writeFile: write, access: async (p) => { await read(p); } },
-    bash: { exec: async (command, _cwd, { onData, timeout }) => {
+    bash: { exec: async (command, _cwd, { onData, onRaw, timeout }) => {
+      // Output past the cap: she gets its start and end with the cut's marker, as capOutput gives; the whole goes to onRaw.
+      if (command === "long-build") { onRaw?.(Buffer.from("x\n".repeat(5000))); onData(Buffer.from("x\n[… 9998 bytes of output left out …]\nx\n")); return { exitCode: 0 }; }
       // A save before git throws work away is kept apart from her commands, and answers as a save that happened.
       if (command.includes("refs/lyrica/saved")) { saveRuns.push(command); onData(Buffer.from("SAVED:refs/lyrica/saved/20261112T000000Z-abc1234\n")); return { exitCode: 0 }; }
       timeouts.push(timeout); commands.push(machine ? `${machine}: ${command}` : command); onData(Buffer.from("ran\n")); return { exitCode: 0 };
@@ -50,6 +52,8 @@ function fakeTarget(files: Map<string, string>, commands: string[], machine?: st
 }
 
 interface Run {
+  /** Kept command output: each call's id, place and command, then its bytes and end. */
+  kept?: string[];
   rules?: import("@lyrica/core").CommandRule[];
   /** Changes to the thread's settings, which the tools read on every call. */
   settings?: Partial<ThreadWorkspace>;
@@ -139,6 +143,12 @@ async function run(mode: ThreadWorkspace["mode"], calls: ReturnType<typeof fauxT
     ...(o.sameFile ? { sameFile: o.sameFile } : {}),
     ...(o.artifacts ? { artifacts: o.artifacts } : {}),
     ...(o.takeGrant ? { takeGrant: o.takeGrant } : {}),
+    ...(o.kept ? {
+      keepOutput: (k: { call: string; place: string; command: string }) => {
+        let bytes = 0;
+        return { id: "c1", push: (d: Buffer) => { bytes += d.length; }, end: (r: { state: string; exitCode?: number | null }) => { o.kept!.push(`${k.place}: ${k.command}: ${bytes} bytes, ${r.state} ${r.exitCode}`); return { bytes, dropped: 0 }; } };
+      },
+    } : {}),
     ...(o.jobs ? {
       startJob: async (command: string, machine?: string) => {
         o.jobs!.push(`${machine ?? "sandbox"}: ${command}`);
@@ -1287,4 +1297,29 @@ describe("an edit or a commit while a check runs", () => {
     expect(checkUnder([job("cd other && npm test")], "sandbox", "/workspace/lyrica/a.ts", "edit")).toBeUndefined();
     expect(checkUnder([job("npm test", { place: "box" })], "sandbox", "/workspace/a.ts", "edit")).toBeUndefined();
   });
+});
+
+it("keeps a bash call's whole output and, under a result that was cut, says how to read the rest", async () => {
+  const kept: string[] = [];
+  const { results } = await run("auto", [fauxToolCall("bash", { command: "long-build" })], { kept, jobs: [] });
+  expect(kept).toEqual(["sandbox: long-build: 10000 bytes, exited 0"]);
+  expect(results[0]).toContain("bytes of output left out");
+  expect(results[0]).toContain(keptLine("c1"));
+  // A short result says nothing more.
+  const short: string[] = [];
+  const again = await run("auto", [fauxToolCall("bash", { command: "ls" })], { kept: short, jobs: [] });
+  expect(short).toEqual(["sandbox: ls: 0 bytes, exited 0"]);
+  expect(again.results[0]).not.toContain("kept as");
+});
+
+it("tells a bash call's end from how Pi's bash ended", () => {
+  expect(callEnd(undefined)).toEqual({ state: "exited", exitCode: 0 });
+  expect(callEnd(new Error("oops\n\nCommand exited with code 127"))).toEqual({ state: "exited", exitCode: 127 });
+  expect(callEnd(new Error("Command timed out after 600 seconds"))).toEqual({ state: "timed out" });
+  expect(callEnd(new Error("Command aborted"))).toEqual({ state: "stopped" });
+});
+
+it("reads a command's kept output in pages: its end by default, from a line, or the lines a pattern matches", async () => {
+  const { results } = await run("auto", [fauxToolCall("jobs", { action: "output", id: "j1", from: 1, lines: 1 })], { jobs: [] });
+  expect(results[0]).toContain("Lines 1-1 of 1:\n1  half way");
 });

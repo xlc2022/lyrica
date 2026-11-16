@@ -5,6 +5,8 @@ import { useLayoutEffect, useRef, useState } from "react";
 
 export interface EndedJob {
   id: string;
+  /** The name she gave it, when she gave one. */
+  name?: string;
   /** "sandbox" or the machine's name. */
   place: string;
   state: "exited" | "failed" | "timed out" | "stopped";
@@ -17,7 +19,7 @@ export interface EndedJob {
   output: string;
 }
 
-const HEAD = /^Background command (j\d+) in (the sandbox|.+?), (exited|failed|timed out|stopped)(?: with code (-?\d+))? after (\d+ s|\d+ min|\d+ h \d+ min)(?: \((.*?)\))?: /;
+const HEAD = /^Background command (j\d+)(?: \(([^()]*)\))? in (the sandbox|.+?), (exited|failed|timed out|stopped)(?: with code (-?\d+))? after (\d+ s|\d+ min|\d+ h \d+ min)(?: \((.*?)\))?: /;
 const OUTPUT = "\nLast output:\n";
 const NONE = "\nNo output.";
 
@@ -32,8 +34,8 @@ export function parseJobNotice(text: string): EndedJob | undefined {
   else if (rest.endsWith(NONE)) [command, output] = [rest.slice(0, -NONE.length), ""];
   else return undefined;
   return {
-    id: m[1]!, place: m[2] === "the sandbox" ? "sandbox" : m[2]!, state: m[3] as EndedJob["state"],
-    ...(m[4] !== undefined ? { exitCode: Number(m[4]) } : {}), took: m[5]!, ...(m[6] ? { reason: m[6] } : {}), command, output,
+    id: m[1]!, ...(m[2] ? { name: m[2] } : {}), place: m[3] === "the sandbox" ? "sandbox" : m[3]!, state: m[4] as EndedJob["state"],
+    ...(m[5] !== undefined ? { exitCode: Number(m[5]) } : {}), took: m[6]!, ...(m[7] ? { reason: m[7] } : {}), command, output,
   };
 }
 
@@ -71,7 +73,7 @@ export function JobNotice({ job }: { job: EndedJob }) {
   return (
     <div className="subagent delivered job-notice" data-status="job">
       <div className="sub-head">
-        <b className="as-is">Background command</b>
+        <b className="as-is">{job.name ?? "Background command"}</b>
         {ending(job)}
         <span className="muted job-facts"><span className="mono">{job.id}</span> · {job.place} · <span className="mono">{job.took}</span>{job.reason && <> · {job.reason}</>}</span>
       </div>

@@ -205,11 +205,11 @@ export class SshTarget implements ExecutionTarget {
       },
       edit: { readFile: rawRead, writeFile, access: async (p) => { const { s, q } = await writable(p); return s.check(q, "r+"); } },
       bash: {
-        exec: async (command, cwd, { onData, signal, timeout }) => {
+        exec: async (command, cwd, { onData, onRaw, signal, timeout }) => {
           const base = await this.cwd();
           const dir = within(posix.normalize(cwd), base) ? posix.normalize(cwd) : base;
           const out = capOutput(onData);
-          const clean = cleanOutput((d) => out.push(d));
+          const clean = cleanOutput((d) => { out.push(d); onRaw?.(d); });
           const session = await this.session();
           const group = groupRun(command);
           try {

@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 import { get, post, threadPath, u, type GoAhead, type ImagePart, type LiveCall, type Making, type VideoPart, type ImageRetryOptions, type MemoryDetail, type Message, type MessagePage, type MessagePart, type PermissionRequest, type Pool, type QuestionState, type Reaction, type SendResponse, type Speech, type ThreadRef, type ThreadSummary } from "./api.ts";
 import { SkillCard } from "./Skills.tsx";
 import { isQuestionPart, QuestionCard, ROOT_TOOL } from "./Question.tsx";
+import { OutputBox } from "./CommandOutput.tsx";
 import { repeatedFailures, storedLiveCopies, storedUserItems, type LiveItem } from "./live.ts";
 import { useMentionText, useMentionTitles, useThreadMentions } from "./mentions.ts";
 import { GoAheadMenu } from "./Modes.tsx";
@@ -891,7 +892,9 @@ function Marker({ part, env }: { part: Exclude<MessagePart, { type: "text" | "im
       body = (
         <>
           <pre>{JSON.stringify(args, null, 2)}</pre>
-          {part.result !== undefined && (readText(part) ? <ReadText {...readText(part)!} env={env} /> : <pre className={part.isError ? "tool-error" : ""}>{part.result}</pre>)}
+          {part.name === "bash" && !env.subagent
+            ? <OutputBox base={env.base} call={part.toolCallId} running={part.result === undefined} fallback={part.result} failed={part.isError} label={(args as { background?: unknown } | null)?.background === true ? "Job output" : "Output"} />
+            : part.result !== undefined && (readText(part) ? <ReadText {...readText(part)!} env={env} /> : <pre className={part.isError ? "tool-error" : ""}>{part.result}</pre>)}
           {readImage(part) && <ReadImage path={readImage(part)!} env={env} />}
         </>
       );

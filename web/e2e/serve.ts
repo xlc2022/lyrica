@@ -27,6 +27,7 @@
 // "read <title>" reads that child thread (then says "Read it.").
 // "compact: <summary>" compacts the thread with that summary (then says "Compacting.").
 // "fetch: <url>, <url>" reads each with web_fetch in turn (then says "Read them."); /page/<slug> is an article.
+// "background: <name> | <command>" starts the command as a background job with that name (then says "The command finished.").
 // "think slowly: <text>" streams twelve sentences of reasoning, slowly, before the echo.
 // "write slowly: <path>" writes twelve lines to that file, its call's arguments streamed in small pieces.
 // "prefill slowly: <text>" first reads its prompt in steps and reasons with llama.cpp's counts; "wait slowly: <text>" waits, then reasons with none.
@@ -286,7 +287,9 @@ function fakeModel() {
       const base = { id: "chatcmpl-1", object: "chat.completion.chunk", created: 0, model: chat.model };
       const send = (delta: unknown, finish: string | null = null) => res.write(`data: ${JSON.stringify({ ...base, choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`);
       res.writeHead(200, { "content-type": "text/event-stream" });
-      const command = /run: (.+)/.exec(said)?.[1];
+      // "background: <name> | <command>" starts that command as a named background job.
+      const job = /^background: ([^|]+)\|\s*(.+)/.exec(said);
+      const command = job ? job[2] : /run: (.+)/.exec(said)?.[1];
       // "recall: <n>": n recall calls in a row (a run of tool calls), then the usual echo.
       const recalls = Number(/^recall: (\d+)/.exec(said)?.[1] ?? 0);
       if (recalls) {
@@ -368,7 +371,7 @@ function fakeModel() {
         }
         send({}, "tool_calls");
       } else if ((command || plan || skill) && last?.role !== "tool") {
-        const call = command ? { name: "bash", arguments: JSON.stringify({ command }) } : skill ? { name: "save_skill", arguments: JSON.stringify({ name: skill[1]!.trim(), description: skill[2]!.trim(), body: skill[3]!.trim() }) } : { name: "propose_plan", arguments: JSON.stringify({ plan }) };
+        const call = command ? { name: "bash", arguments: JSON.stringify(job ? { command, background: true, name: job[1]!.trim() } : { command }) } : skill ? { name: "save_skill", arguments: JSON.stringify({ name: skill[1]!.trim(), description: skill[2]!.trim(), body: skill[3]!.trim() }) } : { name: "propose_plan", arguments: JSON.stringify({ plan }) };
         send({ role: "assistant", tool_calls: [{ index: 0, id: `call_${Date.now()}`, type: "function", function: call }] });
         send({}, "tool_calls");
       } else {

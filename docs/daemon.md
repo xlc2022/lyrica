@@ -696,6 +696,20 @@ upscale, video, animate, motion, edit_video) starts and each time its model host
 the background keeps it: its clip job sends `making` and `made` until the clip arrives), `hello` carrying the
 `making` of now so a view that opens meanwhile shows the placeholders, and turn end, then the thread's `context` after each request that goes on with tools and after each turn, and a `compacted`
 marker when it compacts.
+`output` carries a running command's output as it comes (`OutputEvent`:
+its id `c<n>` or `j<n>`, the tool call, `job` for a background job, `at`,
+the bytes before this piece, and `data`), batched per command at most every
+200 ms (`HostedThread.output`); `jobs` says a background job started or
+ended. Both go to open views only, never into the replay buffer; a view that
+opens mid-run reads what is kept so far:
+`GET …/threads/:pool/:threadId/outputs?call=<toolCallId>` → `{ job, output }`
+(`CommandOutputText`: the command, as `CommandOutputInfo`, and its kept
+output; `400` without `call`, `404` when none was kept),
+`GET …/outputs/:id` the same by its id, and `GET …/jobs?q=&sort=` →
+`CommandOutputInfo[]`, the thread's jobs, running and kept, `q` matching a
+name, command or output and `sort` one of `newest` (the default), `oldest`,
+`running`, `longest` (`400` otherwise). They read the thread's pool through
+its thread view (docs/workspace.md, Command output).
 `live_call` carries the model request a turn waits on as counts and times
 (the extension's `onLiveCall`, docs/models.md, Live counts), at most every
 500 ms while it changes and null when it ends. It goes to the open views

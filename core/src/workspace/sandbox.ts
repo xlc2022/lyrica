@@ -699,10 +699,10 @@ export class Sandbox implements ExecutionTarget {
         },
       },
       bash: {
-        exec: async (command, cwd, { onData, signal, timeout }) => {
-          // The run's tokens are hidden before anything reaches her (a token split across chunks too).
+        exec: async (command, cwd, { onData, onRaw, signal, timeout }) => {
+          // The run's tokens are hidden before anything reaches her or is kept (a token split across chunks too).
           const out = capOutput(onData);
-          const masked = secretMasker(this.secrets(), (d) => out.push(d));
+          const masked = secretMasker(this.secrets(), (d) => { out.push(d); onRaw?.(d); });
           const r = await this.run(["bash", "-c", command], {
             cwd: posix.normalize(cwd), onData: (d) => masked.push(d), signal, timeoutMs: timeout ? timeout * 1000 : undefined,
           });

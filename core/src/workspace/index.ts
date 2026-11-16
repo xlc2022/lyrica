@@ -36,7 +36,8 @@ import {
 import { AllowedPaths } from "./paths.ts";
 import type { Respelling } from "./renames.ts";
 import { generateSshKey, publicKeyOf, SshTarget } from "./ssh.ts";
-import { Jobs, machineReady, type JobInfo } from "./jobs.ts";
+import { Jobs, machineReady, type JobInfo, type JobThread } from "./jobs.ts";
+import { KeptOutput, sortOutputs, type CommandOutput, type CommandOutputs, type OutputSort } from "../store/outputs.ts";
 import { sandboxedTransport, type SshTransport } from "./transport.ts";
 
 export * from "./worktree.ts";
@@ -129,7 +130,19 @@ export interface WorkspaceOptions {
   onClaudeCodeLimit?: (t: WorkspaceThread, until?: number) => void;
   /** A background command ended (docs/workspace.md, "Background commands"): lyricad tells its thread. Without it, threads get no background commands. */
   onJobEnd?: (t: WorkspaceThread, job: JobInfo, output: string) => void;
+  /**
+   * The thread pool's kept command output (docs/workspace.md, "Command output"), for `fn` to read or write. Without
+   * it, output is kept only while its command runs.
+   */
+  outputs?: <T>(t: { userId: string; pool: Pool; threadId: string }, fn: (o: CommandOutputs) => T) => T;
+  /** A running command printed `data`, `at` bytes into its output: for the thread's open views, never kept by this. */
+  onOutput?: (t: { userId: string; pool: Pool; threadId: string }, e: OutputEvent) => void;
+  /** A background command started or ended: the thread's Jobs list changed. */
+  onJobs?: (t: { userId: string; pool: Pool; threadId: string }) => void;
 }
+
+/** A piece of a running command's output, for the open views: its id, the tool call, the bytes before it and the piece. */
+export interface OutputEvent { id: string; call?: string; job?: true; at: number; data: string }
 
 /** Where Claude Code sends what it reads: a run gets Claude Code only if its network reaches this. */
 export const CLAUDE_CODE_HOST = "api.anthropic.com";
@@ -248,7 +261,13 @@ export class Workspace {
 
   constructor(private readonly keyring: Keyring, private readonly users: Users, private readonly opts: WorkspaceOptions) {
     this.allowedPaths = new AllowedPaths(keyring.self(), users, keyring.home);
-    this.jobs = new Jobs((t, job, output) => this.opts.onJobEnd?.(t as WorkspaceThread, job, output));
+    const thread = (t: JobThread) => t as WorkspaceThread;
+    this.jobs = new Jobs((t, job, output) => this.opts.onJobEnd?.(thread(t), job, output), undefined, {
+      seed: (t) => this.opts.outputs?.(thread(t), (o) => o.lastNumber(t.threadId, "j")) ?? 0,
+      data: (t, job, at, data) => this.opts.onOutput?.(thread(t), { id: job.id, ...(job.call ? { call: job.call } : {}), job: true, at, data: data.toString("utf8") }),
+      changed: (t) => this.opts.onJobs?.(thread(t)),
+      save: (t, job, output) => this.opts.outputs?.(thread(t), (o) => o.save(t.threadId, job, output)),
+    });
     this.sshTransport = opts.sshTransport
       ?? sandboxedTransport(() => ({ ...this.door(), bwrap: this.opts.bwrap, pasta: this.opts.pasta, refused: this.networkRefused }));
   }
@@ -260,6 +279,73 @@ export class Workspace {
       this.settingsByUser.set(userId, s);
     }
     return s;
+  }
+
+  // --- Command output (docs/workspace.md, "Command output") ---
+
+  /** Bash calls running now, by `<user>/<pool>/<thread>/<id>`, with their output so far. */
+  private readonly calls = new Map<string, { info: CommandOutput; kept: KeptOutput }>();
+  /** The last `c<n>` used in each thread since lyricad started. */
+  private readonly lastCall = new Map<string, number>();
+
+  /** A bash call starts: numbers it, keeps its output as it comes and tells the open views, and keeps it with the thread when it ends. */
+  keepCall(t: { userId: string; pool: Pool; threadId: string }, o: { call: string; place: string; command: string; cwd: string }): {
+    id: string; push(data: Buffer): void; end(r: { state: CommandOutput["state"]; exitCode?: number | null; reason?: string }): { bytes: number; dropped: number };
+  } {
+    const tk = `${t.userId}/${t.pool}/${t.threadId}`;
+    let stored = 0;
+    try { stored = this.opts.outputs?.(t, (x) => x.lastNumber(t.threadId, "c")) ?? 0; } catch { /* locked: memory alone */ }
+    const n = Math.max(this.lastCall.get(tk) ?? 0, stored) + 1;
+    this.lastCall.set(tk, n);
+    const info: CommandOutput = { id: `c${n}`, call: o.call, kind: "call", place: o.place, command: o.command, cwd: o.cwd, startedAt: new Date().toISOString(), state: "running", bytes: 0, dropped: 0 };
+    const kept = new KeptOutput();
+    const k = `${tk}/${info.id}`;
+    this.calls.set(k, { info, kept });
+    return {
+      id: info.id,
+      push: (data) => {
+        const at = kept.bytes;
+        kept.push(data);
+        try { this.opts.onOutput?.(t, { id: info.id, call: o.call, at, data: data.toString("utf8") }); } catch { /* no view */ }
+      },
+      end: (r) => {
+        this.calls.delete(k);
+        Object.assign(info, { endedAt: new Date().toISOString(), state: r.state, bytes: kept.bytes, dropped: kept.dropped },
+          r.exitCode !== undefined ? { exitCode: r.exitCode } : {}, r.reason ? { reason: r.reason } : {});
+        try { this.opts.outputs?.(t, (x) => x.save(t.threadId, info, kept.buffer())); } catch { /* the thread is gone or locked */ }
+        return { bytes: kept.bytes, dropped: kept.dropped };
+      },
+    };
+  }
+
+  /** A command's kept output by its id (`c<n>` or `j<n>`): running ones from memory, the rest from the thread. */
+  outputOf(t: { userId: string; pool: Pool; threadId: string }, id: string): { job: CommandOutput; output: string } {
+    const call = this.calls.get(`${t.userId}/${t.pool}/${t.threadId}/${id}`);
+    if (call) return { job: { ...call.info, bytes: call.kept.bytes, dropped: call.kept.dropped }, output: call.kept.buffer().toString("utf8") };
+    const job = this.jobs.output(t, id);
+    if (job && job.job.state === "running" && !job.job.kind) return this.jobs.runningOutputs(t).find((r) => r.job.id === id)!;
+    const stored = this.opts.outputs?.(t, (x) => { const j = x.get(t.threadId, id); return j && { job: j, output: x.text(t.threadId, id) ?? "" }; });
+    if (stored) return stored;
+    throw new Error(`no command ${id} in this thread`);
+  }
+
+  /** The output a tool call's command printed, by the call: what a conversation's bash row opens to. */
+  outputByCall(t: { userId: string; pool: Pool; threadId: string }, call: string): { job: CommandOutput; output: string } | undefined {
+    const prefix = `${t.userId}/${t.pool}/${t.threadId}/`;
+    for (const [k, c] of this.calls) if (k.startsWith(prefix) && c.info.call === call) return this.outputOf(t, c.info.id);
+    const running = this.jobs.runningOutputs(t).find((r) => r.job.call === call);
+    if (running) return running;
+    return this.opts.outputs?.(t, (x) => { const j = x.byCall(t.threadId, call); return j && { job: j, output: x.text(t.threadId, j.id) ?? "" }; });
+  }
+
+  /** The thread's background commands for the Jobs dropdown: running ones and kept ones, matching `q`, in `sort`'s order. */
+  jobList(t: { userId: string; pool: Pool; threadId: string }, q = "", sort: OutputSort = "newest"): CommandOutput[] {
+    const needle = q.trim().toLowerCase();
+    const running = this.jobs.runningOutputs(t)
+      .filter((r) => !needle || [r.job.name ?? "", r.job.command, r.output].some((x) => x.toLowerCase().includes(needle))).map((r) => r.job);
+    const ids = new Set(running.map((j) => j.id));
+    const kept = (this.opts.outputs?.(t, (x) => x.list(t.threadId, "job", needle)) ?? []).filter((j) => !ids.has(j.id));
+    return sortOutputs([...running, ...kept], sort);
   }
 
   /** What her write and edit calls did to the user's files, with snapshots in their home workspace. */
@@ -525,6 +611,8 @@ export class Workspace {
       folders: () => this.folders(t),
       /** Called after her write or edit tool changed a file, so removing the turn can undo it. */
       recordChange: (c: NewChange) => { this.changes(t.userId).record(t.pool, t.threadId, c); },
+      /** A bash call starts: its whole output is kept as it comes, and with the thread once it ends (`c<n>`). */
+      keepOutput: (o: { call: string; place: string; command: string; cwd: string }) => this.keepCall(t, o),
       /** The file whichever thread names it (`fileKey`). */
       fileKey: (path: string) => this.fileKey(t, path),
       /** Her write or edit call wrote this file (as she sees it). */
@@ -537,13 +625,13 @@ export class Workspace {
       fileNotes: () => this.settings(t.userId).takeFileNotes(t.threadId),
       ...(this.opts.onJobEnd ? {
         /** Starts a background command in the sandbox or on one of the thread's machines; the call was approved already. */
-        startJob: async (command: string, machine?: string, timeoutS?: number) => {
+        startJob: async (command: string, machine?: string, timeoutS?: number, o?: { name?: string; call?: string }) => {
           const target = this.targetFor(t, machine);
           // A machine's job connects in the background, so one started while the machine reboots waits for it.
-          return this.jobs.start(t, machine || "sandbox", target, command, machine ? machineReady(target) : await target.cwd(), timeoutS);
+          return this.jobs.start(t, machine || "sandbox", target, command, machine ? machineReady(target) : await target.cwd(), timeoutS, o);
         },
         jobs: () => this.jobs.list(t),
-        jobOutput: (id: string) => this.jobs.output(t, id),
+        jobOutput: (id: string) => { const { job: { kind: _k, bytes: _b, dropped: _d, ...job }, output } = this.outputOf(t, id); return { job, output }; },
         stopJob: (id: string) => this.jobs.stop(t, id),
       } : {}),
     };

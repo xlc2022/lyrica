@@ -94,7 +94,9 @@ database files. A command that could see either one could read everything.
   command can't redirect a mount.
 - Command output past 20 KB (or 800 lines) is cut to the first 20 KB and the
   last 20 KB, with a note of what was left out, before Pi sees it. Pi would
-  otherwise save long output to a plaintext temp file on the host.
+  otherwise save long output to a plaintext temp file on the host. The whole
+  output goes beside it to `onRaw`, which keeps it encrypted with the thread
+  ("Command output" below).
 
 ## Machines
 
@@ -258,9 +260,11 @@ existed before became general machines at Ask.
     environment variable.
   - `lyricad` and the helper speak length-prefixed frames (`ssh-frames.ts`):
     connect, exec with streamed output and kill, the SFTP operations the
-    target uses. `lyricad` refuses oversized frames and more command output
-    than the helper's cap allows; output is capped in the helper, before it
-    crosses the pipe, and a file over 64 MB is refused rather than read.
+    target uses. `lyricad` refuses oversized frames, and a file over 64 MB
+    is refused rather than read. A command's output crosses the pipe whole,
+    in frames of at most `MAX_BODY`; `lyricad` cuts what she sees and keeps
+    at most 16 MiB of it (Command output), so a flood holds no more memory
+    than that.
   - The helper sends the server's host key to `lyricad`, which decides.
     Strict key exchange is required (OpenSSH 9.6, or a distribution's
     Terrapin fix, has it).
@@ -1104,6 +1108,46 @@ checks these boundaries without sockets. The real encrypted-home test skips
 when FUSE/gocryptfs isn't available; CI's `LYRICA_SANDBOX_TESTS=require` requires
 it. Other storage tests use synthetic bitmap bytes in a stand-in home.
 
+## Command output
+
+Everything a `bash` call or a background job prints is kept with its thread,
+so she can read past the cut her result got and the person can scroll it
+(`core/src/store/outputs.ts`; docs/ux.md, "Command output" and "Background
+jobs").
+
+- **Kept whole, up to 16 MiB a command** (`OUTPUT_LIMITS.keepBytes`): its
+  first 1 MiB and its latest 15 MiB, with a marker (`[… n bytes left out
+  here …]`) where the middle went. Each bash call gets an id, `c1`, `c2`, …
+  per thread, and each job keeps its `j<n>`.
+- **Where:** the table `command_outputs` in the thread's own pool database
+  (pool step 18), encrypted with the pool like its messages, deleted with the
+  thread. A thread keeps at most 256 MiB of output in all
+  (`threadBytes`): past it, its oldest commands' output is emptied to a
+  marker, their rows kept. Nothing of it is logged or written in plaintext.
+- **How it is taken:** a target's `bash.exec` passes everything, cleaned and
+  masked as her result is (terminal control and private keys on a machine,
+  credentials in the sandbox), to `onRaw` beside the capped `onData`. The
+  workspace extension tees each call into `ThreadTools.keepOutput`
+  (`Workspace.keepCall`), which keeps it while it runs and saves it with
+  how it ended (`callEnd`: exited with its code, timed out, stopped or
+  failed with the reason). A machine's SSH helper sends all of a command's
+  output across its pipe, in frames of at most `MAX_BODY`; the cut is
+  lyricad's.
+- **Her way to it:** under a result that was cut, one line says it is kept
+  (`keptLine`: "The whole output is kept as c7: jobs output with id c7 reads
+  it in pages (from, lines), or finds lines with pattern."). `jobs output`
+  takes a call's id or a job's: a page of numbered lines (`outputPage`; 200
+  by default, at most 2,000, at most 60,000 characters), its end unless she
+  gives `from`, or with `pattern` (a regular expression, case ignored) the
+  matching lines, at most 200. A subagent has no `jobs` tool, so its results
+  say nothing more; its output is kept all the same.
+- **Live:** while a command runs, each piece goes to the thread's open views
+  as an `output` event (its id, the call, the bytes before it), sent a few
+  times a second (`HostedThread.output`, never buffered for replay). A job
+  starting or ending sends `jobs`. A view that opens mid-run reads the
+  output so far (`Workspace.outputOf` / `outputByCall`) and skips any piece
+  it already has.
+
 ## Background commands
 
 A download, build or install that takes minutes or hours runs in the
@@ -1112,7 +1156,12 @@ background, so it doesn't hold her turn (`core/src/workspace/jobs.ts`).
 - `bash` takes `background: true`, in the sandbox or on a machine. The call
   is approved exactly as any `bash` (the mode, the machine's limit, suspect
   commands, command rules), then starts and returns at once with a job id
-  (`j1`, `j2`, … per thread), where it runs and the command.
+  (`j1`, `j2`, … per thread, going on after a restart from the highest the
+  thread kept), where it runs and the command. With it she gives `name`, a
+  few words the person reads in the Jobs list ("Pull the host images"; one
+  line, no parentheses, at most 60 characters, `jobName`); without one the
+  name is the command's first words. Her notices and `jobs list` show it in
+  parentheses after the id.
 - **A machine that doesn't answer** (rebooting after a driver install) still
   takes a background command: the job waits, trying again every 10 s,
   and runs once the machine answers, within its time limit. Answering is
@@ -1138,13 +1187,13 @@ background, so it doesn't hold her turn (`core/src/workspace/jobs.ts`).
   counting as one (`Jobs.hold`, "MCP servers" above); a fifth is refused,
   naming them.
 - The `jobs` tool lists the thread's jobs (where, command, state, how
-  long), shows one's output so far, or stops one. A target caps output as
-  for any command, so while a job runs its first 20 KB shows, and its end
-  once it ends; to follow a long job she has it write to a file and reads
-  that. The ten most recently ended jobs are kept.
-- `Workspace.jobs` holds them in `lyricad`'s memory, so they outlive the
-  thread's session, which is disposed when idle. Output is kept there only
-  (at most 64 KB a job) and never written anywhere.
+  long), reads one's output in pages ("Command output" below), or stops one.
+  Its list holds the running jobs and the ten most recently ended since
+  `lyricad` started.
+- `Workspace.jobs` holds running jobs in `lyricad`'s memory, so they outlive
+  the thread's session, which is disposed when idle. A job's output is kept
+  as it comes (`KeptOutput`), streamed to the thread's open views, and kept
+  with the thread once it ends (`JobHooks`).
 - When a job ends (exited, failed, timed out or stopped), `lyricad`'s
   `onJobEnd` delivers a notice into the thread (`jobNotice`: the job, the
   exit code, how long it ran and the last 40 lines of its output), on the
