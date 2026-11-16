@@ -868,8 +868,9 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     `/free`. It never touches the Docker socket, which would amount to root.
     A process that has used a GPU keeps a CUDA context there until it exits,
     so ComfyUI runs only while a recipe is loaded (a small gate in its
-    container starts and stops it as host-api asks), and the speech server
-    exits once nothing is loaded, for Docker to start it again.
+    container starts and stops it as host-api asks), and the speech servers
+    (Kokoro's and Qwen3-TTS's) exit once nothing is loaded, for Docker to
+    start them again.
   - **Dashboard**, served by the host API on port 7236. It shows:
     - GPUs and VRAM, loaded and pinned models, and the queue;
     - usage statistics: requests, tokens, images and time per model. Never

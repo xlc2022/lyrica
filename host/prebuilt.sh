@@ -1,7 +1,9 @@
-# The CMP 100-210's own images (llamacpp/, sdcpp/, whispercpp/), built by CI
-# (.github/workflows/cmp-images.yml) and pulled by install.sh, which builds
-# them here only when a pull can't be had. Sourced by both, so they agree on
-# where the images are, what they're built for and what they're tagged.
+# The images CI builds (.github/workflows/cmp-images.yml) and install.sh
+# pulls, building them here only when a pull can't be had: the CMP 100-210's
+# own (llamacpp/, sdcpp/, whispercpp/) and the Qwen3-TTS speech server's two
+# flavours (speech-qwen/ as speech-qwen-cu126 and speech-qwen-cu130). Sourced
+# by both, so they agree on where the images are, what they're built for and
+# what they're tagged.
 
 # The registry and namespace: the one line to change for another registry,
 # such as a Forgejo instance's.
@@ -15,15 +17,23 @@ prebuilt_archs() {
     llamacpp) echo "70-real;75-real;80-real;86-real;89-real;120-real" ;;
     sdcpp) echo "70-real" ;;
     whispercpp) echo "70-real;75-real;80-real;86-real;89-real;120-real" ;;
+    # The cards PyTorch 2.14's wheels run on: CUDA 12.6's still have Volta;
+    # CUDA 13's start at Turing and add Blackwell.
+    speech-qwen-cu126) echo "50-real;52-real;60-real;61-real;70-real;75-real;80-real;86-real;87-real;89-real;90-real" ;;
+    speech-qwen-cu130) echo "75-real;80-real;86-real;87-real;89-real;90-real;100-real;103-real;110-real;120-real;121-real" ;;
   esac
 }
 
+# An image's build folder: the Qwen3-TTS flavours share speech-qwen/.
+prebuilt_dir() { echo "${1%-cu1[0-9][0-9]}"; }
+
 # An image's tag: a hash of its build context (the Dockerfile, which pins its
 # base images and source commit, and the files beside it) and the
-# capabilities it's built for. Run from host/.
+# capabilities it's built for (for a Qwen3-TTS flavour, which flavour). Run
+# from host/.
 prebuilt_tag() {
   {
-    (cd "$1" && find . -type f | LC_ALL=C sort | while IFS= read -r f; do printf '%s %s\n' "$f" "$(sha256sum <"$f" | cut -d' ' -f1)"; done)
+    (cd "$(prebuilt_dir "$1")" && find . -type f | LC_ALL=C sort | while IFS= read -r f; do printf '%s %s\n' "$f" "$(sha256sum <"$f" | cut -d' ' -f1)"; done)
     prebuilt_archs "$1"
   } | sha256sum | cut -c1-16
 }
@@ -46,10 +56,26 @@ prebuilt_pick() {
   elif ! docker pull -q "$PREBUILT" >/dev/null 2>&1; then why="$PREBUILT couldn't be pulled"
   elif [[ $(docker image inspect -f '{{index .Config.Labels "org.lyrica.content"}}' "$PREBUILT" 2>/dev/null) != "${PREBUILT##*:}" ]]; then why="$PREBUILT doesn't carry its own tag as its content label"
   elif ! PREBUILT=$(docker image inspect -f '{{range .RepoDigests}}{{println .}}{{end}}' "$PREBUILT" 2>/dev/null | grep -m1 "^$repo@"); then why="the pulled image has no digest from $repo"
-  else echo "CMP 100-210: pulled $PREBUILT."; return
+  else echo "$(prebuilt_for "$1"): pulled $PREBUILT."; return
   fi
-  echo "CMP 100-210: building $1 here from source, which takes a while the first time: $why."
+  echo "$(prebuilt_for "$1"): building $1 here from source, which takes a while the first time: $why."
   PREBUILT=
+}
+
+# What an image is for, to begin its messages.
+prebuilt_for() { if [[ $1 == speech-qwen-* ]]; then echo "Qwen3-TTS voices"; else echo "CMP 100-210"; fi; }
+
+# The Qwen3-TTS speech image for a host's NVIDIA cards, $1 their compute
+# capabilities like "7.0 8.6": cu130 when one is Blackwell (10.0 or newer),
+# unless a CMP's Volta (7.0) is there too, which only cu126 runs; then
+# Blackwell can't run Qwen3-TTS voices, as it can't run Kokoro's Volta build.
+qwen_flavour() {
+  local cap blackwell= volta=
+  for cap in $1; do
+    [[ ${cap%%.*} -ge 10 ]] && blackwell=1
+    [[ $cap == 7.0 ]] && volta=1
+  done
+  if [[ -n $blackwell && -z $volta ]]; then echo cu130; else echo cu126; fi
 }
 
 # Whether every capability in a list like "61-real;70-real" is in the image's.

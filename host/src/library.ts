@@ -1,7 +1,8 @@
 // The text and speech models in the models folder: GGUF files for llama.cpp,
 // safetensors folders for vLLM (Whisper and Voxtral among them, for
-// dictation), whisper.cpp files for dictation on a CMP 100-210, and ONNX
-// voice models for the speech server. Reads headers only.
+// dictation), whisper.cpp files for dictation on a CMP 100-210, ONNX voice
+// models for the speech server and Qwen3-TTS folders for its Qwen3-TTS
+// server. Reads headers only.
 import { closeSync, existsSync, lstatSync, openSync, readFileSync, readSync, readdirSync, statSync } from "node:fs";
 import { basename, dirname, join, relative } from "node:path";
 import { readGguf, readGgufTensorBytes, type GgufValue } from "./gguf.ts";
@@ -93,6 +94,8 @@ export interface TextModel {
   remoteCode: boolean;
   /** A speech model's ONNX file, relative to its folder. */
   onnx?: string;
+  /** A Qwen3-TTS voice model, for the Qwen3-TTS speech server: its speakers (CustomVoice) or built-in clips it clones (Base). */
+  qwenTts?: "custom_voice" | "base";
   toolCallParser?: string;
   reasoningParser?: string;
   /** The sampling its publisher recommends, which its server uses when a request sets none: a GGUF's `general.sampling.*`, a folder's generation_config.json. */
@@ -537,6 +540,47 @@ function speechModel(root: string, dir: string, entries: string[]): TextModel | 
   };
 }
 
+/**
+ * The voices a Qwen3-TTS Base model clones: the clips built into the
+ * Qwen3-TTS speech image (host/speech-qwen/voices/<name>.wav and .txt).
+ */
+export const QWEN_CLONE_VOICES = ["Friend"];
+
+/** GPU memory a Qwen3-TTS model takes beyond its weights' files, measured on a CMP 100-210: its CUDA graphs, and a Base model's speaker encoder and reference clip. */
+const QWEN_BUFFERS = { custom_voice: 0.3 * 1024 ** 3, base: 1024 ** 3 };
+
+/**
+ * A Qwen3-TTS voice model (`model_type` qwen3_tts, CustomVoice or Base):
+ * model.safetensors, config.json and the 12 Hz speech tokenizer in
+ * speech_tokenizer/. Every voice reads Mandarin and English, so each is
+ * listed under both. Null if it isn't one.
+ */
+function qwenTtsModel(root: string, dir: string, entries: string[]): TextModel | null {
+  const config = readJson(join(dir, "config.json"));
+  const kind: unknown = config?.tts_model_type;
+  if (config?.model_type !== "qwen3_tts" || (kind !== "custom_voice" && kind !== "base")) return null;
+  if (!entries.includes("model.safetensors") || !existsSync(join(dir, "speech_tokenizer", "model.safetensors"))) return null;
+  const names = kind === "base" ? QWEN_CLONE_VOICES
+    : Object.keys(config.talker_config?.spk_id ?? {}).filter((s) => /^[a-z][a-z_]{0,40}$/.test(s)).map((s) => s.replace(/(^|_)[a-z]/g, (c) => c.toUpperCase()));
+  if (!names.length) return null;
+  const voices: Voice[] = (["en", "zh"] as const).flatMap((language) => names.map((id) => ({ id, language })));
+  return {
+    id: relative(root, dir).split("\\").join("/"),
+    kind: "speak",
+    server: "speech",
+    format: "safetensors",
+    size: statSync(join(dir, "model.safetensors")).size + statSync(join(dir, "speech_tokenizer", "model.safetensors")).size,
+    identity: { basename: basename(dir), sizeLabel: null, finetune: null, baseModels: [] },
+    capabilities: { tools: false, vision: false, embedding: false, reasoning: null, speak: { voices } },
+    contextLength: null,
+    kvPerToken: null,
+    mmproj: null,
+    buffers: QWEN_BUFFERS[kind],
+    remoteCode: false,
+    qwenTts: kind,
+  };
+}
+
 /** Every text and speech model under `root`. Unreadable files are skipped. */
 export function scanTextModels(root: string): TextModel[] {
   const found: TextModel[] = [];
@@ -556,7 +600,8 @@ export function scanTextModels(root: string): TextModel[] {
       }
     }
     if (entries.includes("config.json") && !entries.includes("model_index.json") && entries.some((e) => e.endsWith(".safetensors"))) {
-      const model = vllmModel(root, dir, entries);
+      // A Qwen3-TTS folder is a voice model or nothing (one still downloading), never a vLLM model.
+      const model = readJson(join(dir, "config.json"))?.model_type === "qwen3_tts" ? qwenTtsModel(root, dir, entries) : vllmModel(root, dir, entries);
       if (model) found.push(model);
       return;
     }

@@ -1,0 +1,8 @@
+# compose.nvidia.yaml's Qwen3-TTS speech server built here: install.sh adds
+# this when the published image can't be used.
+services:
+  speech-qwen:
+    build:
+      context: speech-qwen
+      args:
+        FLAVOUR: ${SPEECH_QWEN_FLAVOUR:?run install.sh}

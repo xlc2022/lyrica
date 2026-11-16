@@ -8,7 +8,7 @@ import { mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { scanTextModels, type TextModel } from "../src/library.ts";
+import { QWEN_CLONE_VOICES, scanTextModels, type TextModel } from "../src/library.ts";
 import { CPU_OPTION, batchOf, contextOf, defaultGpu, options, sizes, validate, type GpuSettings } from "../src/placement.ts";
 import { Runtime, wavSeconds } from "../src/runtime.ts";
 import { Scheduler } from "../src/scheduler.ts";
@@ -265,6 +265,89 @@ describe("/v1/audio", () => {
     });
     for (let i = 0; i < 100 && !s.audio.closed(); i++) await new Promise((r) => setTimeout(r, 20));
     expect(s.audio.closed()).toBe(1);
+  });
+});
+
+const QWEN_CV = "lyrica/huggingface/Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice";
+const QWEN_BASE = "lyrica/huggingface/Qwen/Qwen3-TTS-12Hz-1.7B-Base";
+
+/** Qwen3-TTS CustomVoice and Base folders, and one whose speech tokenizer hasn't arrived yet. */
+function qwenFolder(): string {
+  const dir = mkdtempSync(join(tmpdir(), "lyrica-models-"));
+  const folder = (id: string, config: object, tokenizer = true) => {
+    mkdirSync(join(dir, id, "speech_tokenizer"), { recursive: true });
+    writeFileSync(join(dir, id, "config.json"), JSON.stringify({ model_type: "qwen3_tts", ...config }));
+    writeFileSync(join(dir, id, "model.safetensors"), Buffer.alloc(1000));
+    if (tokenizer) writeFileSync(join(dir, id, "speech_tokenizer/model.safetensors"), Buffer.alloc(200));
+  };
+  folder(QWEN_CV, { tts_model_type: "custom_voice", talker_config: { spk_id: { vivian: 3065, uncle_fu: 3010, ryan: 3061 } } });
+  folder(QWEN_BASE, { tts_model_type: "base", talker_config: { spk_id: {} } });
+  folder("lyrica/partial", { tts_model_type: "base" }, false);
+  return dir;
+}
+
+describe("Qwen3-TTS voices", () => {
+  it("are found in CustomVoice (its speakers) and Base (the built-in clips) folders, each in both languages", () => {
+    const models = scanTextModels(qwenFolder());
+    expect(models.map((m) => [m.id, m.kind, m.server, m.format, m.qwenTts, m.size])).toEqual([
+      [QWEN_BASE, "speak", "speech", "safetensors", "base", 1200],
+      [QWEN_CV, "speak", "speech", "safetensors", "custom_voice", 1200],
+    ]);
+    const ids = (m: TextModel, language: string) => m.capabilities.speak!.voices.filter((v) => v.language === language).map((v) => v.id);
+    expect(ids(models[0]!, "en")).toEqual(["Friend"]);
+    expect(ids(models[0]!, "zh")).toEqual(["Friend"]);
+    expect(ids(models[1]!, "en")).toEqual(["Vivian", "Uncle_Fu", "Ryan"]);
+    expect(ids(models[1]!, "zh")).toEqual(["Vivian", "Uncle_Fu", "Ryan"]);
+    // Placement counts what the server holds beyond the files: the CUDA graphs, and Base's speaker encoder.
+    expect(sizes(models[0]!, {} as Parameters<typeof sizes>[1]).weights).toBe(Math.round(1200 * 1.1 + 1024 ** 3));
+  });
+
+  it("clone the clips the Qwen3-TTS image carries, each with its transcript", () => {
+    const voices = readdirSync(new URL("../speech-qwen/voices", import.meta.url).pathname).sort();
+    expect(voices).toEqual(QWEN_CLONE_VOICES.flatMap((v) => [`${v}.txt`, `${v}.wav`]).sort());
+  });
+
+  it("load on their own server, on a GPU, and Kokoro's on its own", async () => {
+    const sent: { at: string; path?: string; body: unknown }[] = [];
+    const serve = async (at: string) => {
+      const server = http.createServer(async (req, res) => {
+        let d = "";
+        for await (const c of req) d += c;
+        if (req.url === "/health") return void res.writeHead(200, { "content-type": "application/json" }).end("{}");
+        sent.push({ at, path: req.url, body: JSON.parse(d) });
+        res.writeHead(200, { "content-type": "application/json" }).end("{}");
+      });
+      await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+      open.push({ close: () => server.close() });
+      return `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    };
+    const kokoroUrl = await serve("kokoro");
+    const qwenUrl = await serve("qwen");
+    const speech = new Speech({ url: kokoroUrl, qwenUrl, models: "/models" });
+    const qwen = scanTextModels(qwenFolder()).find((m) => m.qwenTts === "custom_voice")!;
+    const kokoro = scanTextModels(modelsFolder()).find((m) => m.kind === "speak")!;
+    await speech.load(qwen, { ...CPU_OPTION, gpus: [1] });
+    await speech.load(kokoro, { ...CPU_OPTION, gpus: [0] });
+    await speech.unload(qwen);
+    await speech.reset();
+    expect(sent).toEqual([
+      { at: "qwen", path: "/load", body: { name: QWEN_CV, folder: `/models/${QWEN_CV}`, device: 1 } },
+      { at: "kokoro", path: "/load", body: { name: KOKORO, folder: `/models/${KOKORO}`, file: "onnx/model.onnx", device: 0 } },
+      { at: "qwen", path: "/unload", body: { name: QWEN_CV } },
+      { at: "kokoro", path: "/reset", body: {} },
+      { at: "qwen", path: "/reset", body: {} },
+    ]);
+    // Kokoro's server down: Qwen's still lets go, and the failure is still reported.
+    sent.length = 0;
+    const kokoroDown = new Speech({ url: "http://127.0.0.1:1", qwenUrl, models: "/models" });
+    await expect(kokoroDown.reset()).rejects.toThrow();
+    expect(sent).toEqual([{ at: "qwen", path: "/reset", body: {} }]);
+    expect(speech.url(qwen)).toBe(qwenUrl);
+    expect(speech.url(kokoro)).toBe(kokoroUrl);
+    // Never on the CPU, and not at all on a host without NVIDIA GPUs.
+    await expect(speech.load(qwen, CPU_OPTION)).rejects.toMatchObject({ status: 503, code: "model_unavailable" });
+    const noNvidia = new Speech({ url: kokoroUrl, models: "/models" });
+    await expect(noNvidia.load(qwen, { ...CPU_OPTION, gpus: [0] })).rejects.toMatchObject({ status: 503, code: "model_unavailable", message: expect.stringMatching(/NVIDIA/) });
   });
 });
 

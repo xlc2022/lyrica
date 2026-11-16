@@ -41,7 +41,7 @@ on `/v1`, where OpenAI clients read `error.message`.
 | 503 | `paused` | The host is paused. Lyrica uses her fallbacks. |
 | 503 | `busy` | It could fit, but not within the wait limit, because the GPU is busy. The message names what with: "The GPU is busy with a chat model." |
 | 503 | `restarting` | A restart is under way. |
-| 503 | `model_unavailable` | The server for this model (llama.cpp, vLLM, ComfyUI, stable-diffusion.cpp or the speech server) isn't running, didn't answer or couldn't load it (a llama.cpp server that died while loading: "llama.cpp's server for this model exited with code 134 while loading."; one that stopped reading: "llama.cpp read 128.0 GB of this model's 200.0 GB, then nothing more for 10 minutes."), or ComfyUI refused or failed the job (the message names the error type and node types, never an input's value; when it ran out of GPU memory mid-job, "ComfyUI ran out of GPU memory making the image (SeedVR2VideoUpscaler). A smaller size, scale or maxSize fits."). The host itself is up: its other models may still work. |
+| 503 | `model_unavailable` | The server for this model (llama.cpp, vLLM, ComfyUI, stable-diffusion.cpp or a speech server) isn't running, didn't answer or couldn't load it (or, for a Qwen3-TTS voice model, the host has no NVIDIA GPU) (a llama.cpp server that died while loading: "llama.cpp's server for this model exited with code 134 while loading."; one that stopped reading: "llama.cpp read 128.0 GB of this model's 200.0 GB, then nothing more for 10 minutes."), or ComfyUI refused or failed the job (the message names the error type and node types, never an input's value; when it ran out of GPU memory mid-job, "ComfyUI ran out of GPU memory making the image (SeedVR2VideoUpscaler). A smaller size, scale or maxSize fits."). The host itself is up: its other models may still work. |
 | 503 | `unavailable` | A part of the host itself isn't running, such as the download service. |
 | 507 | `no_space` | Not enough free space for a download. |
 
@@ -266,6 +266,13 @@ seconds of audio.
     `model.onnx` where there are several), its vocabulary in `config.json`
     or `tokenizer.json`, and `voices/*.bin`, one raw float32 array per
     voice: Kokoro's ONNX export. Its `contextLength` is `null`.
+  - So is a Qwen3-TTS folder (`config.json` with `model_type` `qwen3_tts`
+    and `tts_model_type` `custom_voice` or `base`, `model.safetensors` and
+    `speech_tokenizer/model.safetensors`), served on an NVIDIA host only. A
+    CustomVoice model's voices are its speakers (`Vivian`, `Ryan`, …) and a
+    Base model's the clips the Qwen3-TTS speech server carries (`Friend`);
+    each is listed under both `en` and `zh`. One still downloading isn't
+    listed.
   - `contextLength` is the context it is served with: its setting, else,
     for a chat model, the largest that fits its GPUs once the host's other
     unpinned models are unloaded, loaded embedding models staying (Lyrica

@@ -1,6 +1,7 @@
 name: CMP images
-# The CMP 100-210's llama.cpp, sd-server and whisper-server images (host/prebuilt.sh). A host
-# with that card pulls them instead of compiling for half an hour. A tag names
+# The CMP 100-210's llama.cpp, sd-server and whisper-server images, and the Qwen3-TTS speech
+# server's two flavours (host/prebuilt.sh). A host pulls them instead of compiling for half an
+# hour, or downloading gigabytes of PyTorch wheels to build. A tag names
 # its content, so a job whose tag is already published stops in seconds; only a
 # change to an image's own folder (or its CUDA list) compiles. Then a run on main,
 # a run started by hand, or a pull request from a branch of this repository
@@ -9,10 +10,10 @@ name: CMP images
 on:
   workflow_dispatch:
   pull_request:
-    paths: ["host/llamacpp/**", "host/sdcpp/**", "host/whispercpp/**", "host/prebuilt.sh", ".github/workflows/cmp-images.yml"]
+    paths: ["host/llamacpp/**", "host/sdcpp/**", "host/whispercpp/**", "host/speech-qwen/**", "host/prebuilt.sh", ".github/workflows/cmp-images.yml"]
   push:
     branches: [main]
-    paths: ["host/llamacpp/**", "host/sdcpp/**", "host/whispercpp/**", "host/prebuilt.sh", ".github/workflows/cmp-images.yml"]
+    paths: ["host/llamacpp/**", "host/sdcpp/**", "host/whispercpp/**", "host/speech-qwen/**", "host/prebuilt.sh", ".github/workflows/cmp-images.yml"]
 permissions:
   contents: read
 concurrency:
@@ -31,7 +32,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        name: [llamacpp, sdcpp, whispercpp]
+        name: [llamacpp, sdcpp, whispercpp, speech-qwen-cu126, speech-qwen-cu130]
     env:
       PUBLISH: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
     steps:
@@ -46,6 +47,10 @@ jobs:
           image=$(prebuilt_image ${{ matrix.name }})
           echo "image=$image" >>"$GITHUB_OUTPUT"
           echo "archs=$(prebuilt_archs ${{ matrix.name }})" >>"$GITHUB_OUTPUT"
+          echo "dir=$(prebuilt_dir ${{ matrix.name }})" >>"$GITHUB_OUTPUT"
+          # A Qwen3-TTS flavour's build argument; the other images ignore it.
+          name=${{ matrix.name }}
+          echo "flavour=${name##*-}" >>"$GITHUB_OUTPUT"
           echo "registry=${image%%/*}" >>"$GITHUB_OUTPUT"
           echo "image: $image"
       # The packages are public, so this needs no login. If the registry can't
@@ -71,8 +76,9 @@ jobs:
         if: steps.have.outputs.yes != '1'
         run: |
           image=${{ steps.tag.outputs.image }}
-          docker buildx build host/${{ matrix.name }} \
+          docker buildx build host/${{ steps.tag.outputs.dir }} \
             --build-arg "CUDA_ARCHS=${{ steps.tag.outputs.archs }}" \
+            --build-arg "FLAVOUR=${{ steps.tag.outputs.flavour }}" \
             --label "org.lyrica.content=${image##*:}" \
             --label "org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}" \
             --label "org.opencontainers.image.revision=${{ github.sha }}" \
