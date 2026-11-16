@@ -472,3 +472,36 @@ export function sleepWait(command: string, background: boolean): string | undefi
   }
   return undefined;
 }
+
+/** The words after a line's last top-level pipe (`|` or `|&`, not `||`), read outside quotes; undefined with no pipe. */
+function lastPipeStage(command: string): string[] | undefined {
+  let quote = "", at = -1;
+  for (let i = 0; i < command.length; i++) {
+    const ch = command[i]!;
+    if (ch === "\\" && quote !== "'") { i++; continue; }
+    if (quote) { if (ch === quote) quote = ""; continue; }
+    if (ch === "'" || ch === '"') { quote = ch; continue; }
+    if (ch === "|" && command[i + 1] !== "|" && command[i - 1] !== "|") at = command[i + 1] === "&" ? i + 1 : i;
+  }
+  return at < 0 ? undefined : command.slice(at + 1).trim().split(/\s+/).filter(Boolean);
+}
+
+/**
+ * Why a background `bash` command isn't run because its last pipe ends in
+ * `tail` or `head`, or undefined. A model once started a host build as
+ * `… 2>&1 | tail -40`: the job showed "No output yet." for minutes, since
+ * `tail` prints only once the command ends, and then only 40 lines were kept.
+ * Without the cut, the whole output is kept and streamed as it comes.
+ * `tail -f` follows a file and is let through.
+ */
+export function cutOutput(command: string, background: boolean): string | undefined {
+  if (!background) return undefined;
+  const stage = lastPipeStage(command);
+  const program = stage?.[0];
+  if (!stage || (program !== "tail" && program !== "head")) return undefined;
+  if (stage.some((w) => /^-[A-Za-z]*[fF]|^--follow/.test(w))) return undefined;
+  const cut = stage.join(" ");
+  return `Not run: this background command ends in \`| ${cut}\`. ${program} prints nothing until the command ends, so the job shows no output while it runs, `
+    + `and ${program === "tail" ? "only its last" : "only its first"} lines are kept: the rest is lost. `
+    + `Run it without \`| ${cut}\`: its whole output is kept and shown live as it comes. jobs output with its id reads its latest lines while it runs or after it ends (leave out from), or finds lines with pattern.`;
+}
