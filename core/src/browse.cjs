@@ -9,6 +9,8 @@ const { spawn } = require("node:child_process");
 const { rmSync, mkdirSync, readFileSync, renameSync, statfsSync, writeFileSync } = require("node:fs");
 const [profile, agent] = process.argv.slice(1);
 const LOAD_MS = 20_000, SETTLE_MS = 600;
+/** Moves of the pointer, 50 ms apart, before a click that can't be seen to land is made by script. */
+const POINTER_TRIES = 40;
 // Anubis works out a proof of work in the page, a few seconds, and then loads the real page by itself.
 const CHECK_MS = 30_000;
 // Chromium can drop a cookie with no end date when it closes, and writes none for a while after it is set, so a
@@ -176,7 +178,7 @@ for (const p of [toChrome, fromChrome]) p.on("error", quit);
 // element and never reused in a browser's life, so an old number can't come to mean something else on a new page.
 const PAGE = `((start) => {
   if (globalThis.__ly) return;
-  const S = { n: start, ids: new WeakMap(), els: new Map(), held: new WeakSet(), frames: [] };
+  const S = { n: start, ids: new WeakMap(), els: new Map(), held: new WeakSet(), frames: [], over: false, overOn: null, onOver: () => { S.over = true; } };
   const SKIP = new Set(["SCRIPT", "STYLE", "NOSCRIPT", "TEMPLATE", "HEAD", "META", "LINK", "SVG", "CANVAS", "VIDEO", "AUDIO", "OBJECT", "EMBED"]);
   const ROLES = { button: "button", link: "link", checkbox: "checkbox", radio: "radio", tab: "tab", menuitem: "menu item", menuitemcheckbox: "checkbox", menuitemradio: "radio", option: "option", switch: "checkbox", combobox: "field", textbox: "field", searchbox: "field" };
   const clean = (s, max = 100) => { s = String(s ?? "").replace(/\\s+/g, " ").trim(); return s.length > max ? s.slice(0, max) + "…" : s; };
@@ -277,8 +279,14 @@ const PAGE = `((start) => {
     while (top?.shadowRoot?.elementFromPoint(x, y) && top.shadowRoot.elementFromPoint(x, y) !== top) top = top.shadowRoot.elementFromPoint(x, y);
     const hit = top && (el.contains(top) || top.contains(el) || el.getRootNode().host?.contains?.(top) || (el.labels && [...el.labels].some((l) => l.contains(top))));
     if (!r.width || !r.height || !hit) { el.click(); return { clicked: true }; }
+    // Whether the pointer has reached it: the browser finds a frame from another site by where it last drew it, which
+    // can lag a scroll, so a press is sent only once a move is seen to land here.
+    S.over = false;
+    if (S.overOn !== el) { S.overOn?.removeEventListener("mousemove", S.onOver, true); S.overOn = el; el.addEventListener("mousemove", S.onOver, true); }
     return { x, y };
   }
+  /** "over" once the pointer's move has landed on the thing being clicked; at the last try, a click by script instead. */
+  const over = (last) => S.over ? "over" : last && S.overOn ? (S.overOn.click(), "clicked") : "";
   /** Ready to type into: focused, with what it holds selected so the new text replaces it. */
   function focus(n) {
     const el = find(n);
@@ -358,7 +366,7 @@ const PAGE = `((start) => {
   const frameIndex = (el) => S.frames.indexOf(el);
   /** Where a frame's page starts on screen, inside its border and padding. */
   const box = (el) => { const r = el.getBoundingClientRect(), st = getComputedStyle(el); return { x: r.left + el.clientLeft + parseFloat(st.paddingLeft), y: r.top + el.clientTop + parseFloat(st.paddingTop) }; };
-  globalThis.__ly = { snap, point, focus, pick, sends, hold, what, frameIndex, box, fileField };
+  globalThis.__ly = { snap, point, over, focus, pick, sends, hold, what, frameIndex, box, fileField };
 })`;
 
 /** Runs an expression in a frame's world of ours (the page's own by default), making the world again after a page change. */
@@ -518,7 +526,14 @@ const ops = {
       const o = await offset(e.id);
       const x = at.x + o.x, y = at.y + o.y;
       const mouse = { x, y, button: "left", clickCount: 1 };
-      await send("Input.dispatchMouseEvent", { type: "mouseMoved", x, y });
+      // Moved there until the move lands on it, so the press can't go to whatever stood there before a scroll.
+      for (let i = 0; ; i++) {
+        await send("Input.dispatchMouseEvent", { type: "mouseMoved", x, y });
+        const seen = await inFrame(e.id, `__ly.over(${i === POINTER_TRIES})`);
+        if (seen === "clicked") return {};
+        if (seen) break;
+        await sleep(50);
+      }
       await send("Input.dispatchMouseEvent", { type: "mousePressed", ...mouse });
       await send("Input.dispatchMouseEvent", { type: "mouseReleased", ...mouse });
       return {};
