@@ -65,6 +65,8 @@ describe("secret removal", () => {
     ...["token", "secret", "password", "api_key", "apikey", "auth", "GH_TOKEN", "client_secret", "SECRET_KEY", "private_key"].map((key) => `${key}=made-up-value`),
     "aws_secret_access_key = madeUpSecretValue/0123456789ABCDEFGHIJKLM", "AWS_SECRET_ACCESS_KEY=made-up-value",
     '"token": "made up value"', "password='made up value'", '"api_key": "made\\\"up"',
+    // Notes are Markdown, so a value can come in backticks.
+    "password: `made up value`", "`api_key`: `made-up`", "Authorization: Bearer `made-up`",
   ];
   it.each(shapes)("removes %s", (secret) => {
     const expected = /[:=]/.test(secret) && !secret.startsWith("Authorization:")
@@ -130,6 +132,8 @@ describe("secret removal on crafted text", () => {
     ["a long dashed key name", '"' + fill("S-")],
     ["keys that run into each other", fill("token: ")],
     ["headers that run into each other", fill("x-auth-token: authorization: ")],
+    ["an unclosed backtick before keys", "token: `" + fill("token: bearer ")],
+    ["backticks that open after every key", fill("token: `bearer `")],
   ])("is quick on %s", (_name, text) => {
     const started = performance.now();
     removeSecrets(text);

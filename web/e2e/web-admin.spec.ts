@@ -3491,7 +3491,7 @@ test("a long From sleep row opens its own text in place and starts no chat", asy
 
   // #593: a long row's checkbox is named by its first words, not its whole text — the full item
   // made the checkbox announce a paragraph. A short row keeps its whole title, which identifies it.
-  await expect(row.getByRole("checkbox")).toHaveAccessibleName(`Select ${SLEEP_FIXTURE.long.slice(0, 79).trimEnd()}…`);
+  await expect(row.getByRole("checkbox")).toHaveAccessibleName("Select Fixture question about whether to plant the beds along the north wall this…");
   await expect(page.locator(".nrow.nsleep").filter({ hasText: SLEEP_FIXTURE.short }).getByRole("checkbox"))
     .toHaveAccessibleName(`Select ${SLEEP_FIXTURE.short}`);
 

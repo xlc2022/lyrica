@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { isThreadView, Memory, openEncrypted, projectSlug, readView, searchView, Users, type PoolStore } from "../src/index.ts";
+import { isThreadView, Memory, onlyBackticksAdded, openEncrypted, projectSlug, readView, searchView, Users, type PoolStore } from "../src/index.ts";
 import { stem } from "../src/store/refs.ts";
 import { freshKeyring, profile } from "./helpers.ts";
 
@@ -1024,6 +1024,47 @@ describe("renamed files at sleep", () => {
       expect(view.own.get(other!)?.text).toContain("/workspace/uploads/cat.png");
       expect(view.own.pendingRenames()).toBe(0);
       expect(view.own.applyRenames()).toEqual([]);
+    } finally { view.close(); }
+  });
+});
+
+// The one-time backticks pass (remove with it in the next PR).
+describe("backticks on older notes", () => {
+  it("allows only added backticks, in pairs, and spaces beside them", () => {
+    expect(onlyBackticksAdded("The job runs backup.sh at 03:00", "The job runs `backup.sh` at `03:00`")).toBe(true);
+    expect(onlyBackticksAdded("set retries3 in conf", "set `retries` `3` in conf")).toBe(true);
+    expect(onlyBackticksAdded("runs backup.sh", "runs `backup.sh")).toBe(false);
+    expect(onlyBackticksAdded("runs backup.sh nightly", "runs `backup.sh` daily")).toBe(false);
+    expect(onlyBackticksAdded("runs backup.sh [n:1]", "runs `backup.sh`")).toBe(false);
+    expect(onlyBackticksAdded("a b", "a  b")).toBe(false);
+    expect(onlyBackticksAdded("already `x`", "already `x`")).toBe(false);
+    // Citation groups and mention tokens keep their IDs readable.
+    const cited = "Runs backup.sh nightly [e:web/3f7a2c#4, n:abc] with [[u:ab12]]";
+    expect(onlyBackticksAdded(cited, "Runs `backup.sh` nightly [e:web/3f7a2c#4, n:abc] with [[u:ab12]]")).toBe(true);
+    expect(onlyBackticksAdded(cited, "Runs `backup.sh` nightly [`e:web/3f7a2c#4`, `n:abc`] with [[u:ab12]]")).toBe(false);
+    expect(onlyBackticksAdded(cited, "Runs backup.sh nightly [e:web/3f7a2c#4, n:abc] with [[`u:ab12`]]")).toBe(false);
+  });
+
+  it("offers her current notes that read as code, never a user's, and saves only an added-backticks edit as sleep", async () => {
+    const { memory, ada } = await setup();
+    const view = memory.openThreadView(ada.id, "general");
+    try {
+      const a = said(view.own, "the backup script");
+      const [code] = view.own.addNotes([
+        { text: "The backup runs backup.sh at 03:00", source: a.entry },
+        { text: "{user} likes oolong", source: a.entry },
+        { text: "Already `marked.sh`", source: a.entry },
+      ], { author: "lyrica", thread: a.thread });
+      const [theirs] = memory.openOwnerView(ada.id).general.addNotes([{ text: "Mine: /srv/data", source: a.entry }], { author: `user:${ada.id}`, thread: a.thread });
+      const [edited] = view.own.addNotes([{ text: "Keys in /etc/ssh", source: a.entry }], { author: "lyrica", thread: a.thread });
+      memory.openOwnerView(ada.id).general.edit(edited!, { text: "Keys live in /etc/ssh" }, `user:${ada.id}`);
+      expect(view.own.backtickCandidates().map((n) => n.id)).toEqual([code]);
+      const old = view.own.get(code!, { raw: true })!.text;
+      expect(() => view.own.addBackticks(code!, old.replace("03:00", "04:00"))).toThrow(/may only add backticks/);
+      expect(() => view.own.addBackticks(theirs!, "Mine: `/srv/data`")).toThrow(/no note of hers/);
+      view.own.addBackticks(code!, old.replace("backup.sh", "`backup.sh`").replace("03:00", "`03:00`"));
+      expect(view.own.get(code!, { raw: true })!.text).toContain("`backup.sh` at `03:00`");
+      expect(view.own.backtickCandidates()).toEqual([]);
     } finally { view.close(); }
   });
 });

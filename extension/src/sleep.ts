@@ -6,6 +6,7 @@ import {
   type SkipReason, type SleepItem, type SleepMaterial, type SleepLimit, type SleepPhase, type SleepRunRecord, type Users,
 } from "@lyrica/core";
 import { Type } from "typebox";
+import { addBackticks } from "./backticks.ts";
 import { createLyricaExtension, type ThreadContext } from "./index.ts";
 import { nearCopy, sameText } from "./memory.ts";
 import { openThreadSession } from "./session.ts";
@@ -77,6 +78,8 @@ const LEADING_HEADERS = /^(\s*[#*_>]*\s*dream journal\s*\(reflection, not a reco
 
 const SETTING = "sleep.mode";
 const FALLBACK = "sleep.fallback";
+/** The one-time backticks pass, per pool: "done" once it ran (user.db settings; remove with the pass). */
+const BACKTICKS = "notes.backticks";
 
 export class Sleep {
   readonly events = new EventEmitter();
@@ -125,6 +128,34 @@ export class Sleep {
     const next = this.queue.then(() => this.runNow(userId, pool, reason));
     this.queue = next.catch(() => {});
     return next;
+  }
+
+  /**
+   * One-time backticks pass (2026-11-16; remove in the next PR once it has run): at the first unlock after the
+   * update, each pool's older notes get backticks, before any sleep, queued like a run. A pool is marked done once
+   * every batch was asked; one whose model is away is tried again at the next unlock or sleep.
+   */
+  backticksOnce(userId: string): Promise<void> {
+    const next = this.queue.then(async () => { for (const pool of ["general", "private"] as const) await this.backticksNow(userId, pool); });
+    this.queue = next.catch(() => {});
+    return next;
+  }
+
+  /** With `open`, a run's own view: used as it is and left open. */
+  private async backticksNow(userId: string, pool: Pool, open?: PoolView): Promise<void> {
+    const key = `${BACKTICKS}.${pool}`;
+    if (!this.o.users.get(userId) || !this.o.hasKey(userId) || this.setting(userId, key) === "done") return;
+    const view = open ?? this.o.memory.openThreadView(userId, pool);
+    try {
+      const call: CallContext = { userId, pool, localOnly: pool === "private", fallback: this.fallback(userId) };
+      const r = await addBackticks(this.o.models, view, call);
+      this.setting(userId, key, "done");
+      if (r.checked) this.log(`backticks ${pool}: ${r.changed} of ${r.checked} notes changed, ${r.refused} refused`);
+    } catch (err) {
+      this.log(`backticks ${pool} failed: ${(err as Error).name}`);
+    } finally {
+      if (!open) view.close();
+    }
   }
 
   /**
@@ -210,6 +241,7 @@ export class Sleep {
     const view = this.o.memory.openThreadView(userId, pool);
     try {
       this.flushSkips(view, userId, pool);
+      await this.backticksNow(userId, pool, view);
       // The run begins here, so the night's changes include the renamed-files edits, a skipped night's too.
       const begun = new Date().toISOString();
       // Files renamed since the last run: the memories citing their threads get the new paths first, by plain code (docs/sleep.md, "Renamed files").

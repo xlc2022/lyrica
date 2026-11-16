@@ -798,6 +798,8 @@ export class Lyricad implements Drainable {
     } catch (err) {
       this.log(`recovering child threads failed: ${(err as Error).message.split("\n")[0]}`);
     }
+    // The one-time backticks pass on older notes (remove in the next PR once it has run), queued before any sleep.
+    void this.services!.sleep.backticksOnce(userId).catch((err: Error) => this.log(`backticks pass failed: ${err.name}`));
     // A night slept through without this key sleeps now.
     void this.services!.sleep.catchUp(userId, this.lastSleepAt(userId)).catch((err: Error) => this.log(`catching up on sleep failed: ${err.name}`));
   }

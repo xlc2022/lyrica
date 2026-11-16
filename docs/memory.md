@@ -356,7 +356,8 @@ memory now.
 Before storing notes, pages, WAKE, journal entries, sleep items or memory edits,
 the store replaces recognized credentials with `[secret removed]`, including
 private-key blocks, known provider tokens, JWTs, authorization values and
-secret-named assignments. This also covers titles, summaries, tags, project
+secret-named assignments, a value in Markdown backticks included
+(password: `x`). This also covers titles, summaries, tags, project
 instructions, revisions and search text. Account names and environment variable
 names alone stay. Conversation entries are unchanged. The shared detector is
 `core/src/secrets.ts`; it recognizes credential shapes, not arbitrary unlabeled
@@ -372,7 +373,21 @@ checks it against the earlier patterns on random text. A secret-named label foll
   correction can't pile up current copies. One that only reads much the
   same (`nearCopy`) may change it, so it is saved, and the result names the
   near match so she can set `supersedes`. Her instructions say progress on work in flight lives with the
-  work, so she notes what it settled.
+  work, so she notes what it settled. Notes are Markdown, and her instructions say to put paths,
+  commands, settings and their values in backticks, so they read as code rather than run into the words.
+- **Backticks in older notes** (one-time, 2026-11-16; the next PR removes it). At the
+  first unlock after the update, before any sleep, each pool's current notes that
+  she or sleep wrote, that no user touched, with no backticks and something that
+  reads as code (a path, snake_case, `x=y`, a flag, a dotted name, a time) go to
+  sleep's consolidate model in batches of 20, under the pool's rules (a private
+  note reaches only a local model). `PoolStore.addBackticks` saves an answer as an
+  edit by sleep, with the old text a revision, and refuses one that changes
+  anything but added backticks and spaces beside them, or puts a backtick inside a
+  citation group or mention token. A pool is marked done in the user's settings
+  (`notes.backticks.<pool>`) once every batch was asked, so a batch whose call
+  failed is not retried; when no model answers at all, the next unlock or sleep
+  tries again. Notes with line breaks
+  are left as they are. Counts only are logged.
 - **One fact per note, and plenty of notes.** Small notes keep lineage and
   deletion precise. Small notes must never mean fewer notes, so:
   - one `remember` call can save several notes at once, so splitting a moment
