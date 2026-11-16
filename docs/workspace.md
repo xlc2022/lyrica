@@ -1227,17 +1227,19 @@ jobs").
   says long output comes back as its start and end, that every call's whole
   output is kept encrypted up to 16 MiB for `jobs output` and shown live as
   it comes, and so never to `tee` output to a file or pipe a command into
-  `tail`, `head` or `grep`: `tail` and `head` print nothing until the command
-  ends, and a pipe's cut is what gets kept. The `background` argument says
+  `tail`, `head` or `grep`: `tail` prints nothing until the command ends,
+  `head` can stop it early, and a pipe's cut is what gets kept. The `background` argument says
   the same.
 - **A cut background command is refused** (`cutOutput` in `jobs.ts`; a model
   once started a host build as `… 2>&1 | tail -40`, and its job showed "No
   output yet." for minutes, then kept 40 lines). Where she has background
   commands, the gate refuses a `bash` call with `background: true` whose
   last top-level pipe goes into `tail` or `head`, before anyone is asked,
-  and the refusal says why and to run it as it is. `tail -f` or `-F`, a pipe
-  that isn't last, one inside a quoted `bash -c` line, and the same line in
-  her turn run. A subagent, with no `jobs` tool, gets only
+  and the refusal says why and to run it as it is. Only a cut that ends the
+  line counts, so these run: a pipe into `tail` or `head` followed by more
+  (`; sleep 30; done` in a wait loop, `> sample.csv`, `) && deploy`), one
+  inside `$(…)` or a quoted `bash -c` line, `tail -f`, `-F` or `-n +N`, a
+  pipe that isn't last, and the same line in her turn. A subagent, with no `jobs` tool, gets only
   the first part. The `jobs` description names the same limit, and a started
   job's reply says `jobs output` reads it live.
 - **Her way to it:** under a result that was cut, one line says it is kept

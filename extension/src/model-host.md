@@ -48,7 +48,7 @@ A step that needs root: when your account already has sudo without a password th
    cd lyrica/host && ./install.sh --yes --no-start --name <host name> --models /srv/models
    ```
 
-   This checks the GPU and writes `host/.env` only. Then start `docker compose build && docker compose pull --ignore-buildable` there with `background: true`, as it is: no `| tail` or `| head`, which would show nothing while it runs and keep only their part. Tell the person it is running. You're told when it ends; read its last lines then with `jobs output`.
+   This checks the GPU and writes `host/.env` only. Then start `docker compose build && docker compose pull --ignore-buildable` there with `background: true`, as it is: no `| tail` or `| head`, which would show nothing while it runs (tail) or stop it early (head), and keep only their part. Tell the person it is running. You're told when it ends; read its last lines then with `jobs output`.
 6. **The install itself, as a root step.** The installer needs root for the egress rules and the updater, and it runs your whole clone as root, so the script pins the clone to one commit and refuses changes in it. Take the commit from `git rev-parse HEAD`, then write:
 
    ```sh

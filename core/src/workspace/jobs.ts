@@ -492,16 +492,23 @@ function lastPipeStage(command: string): string[] | undefined {
  * `… 2>&1 | tail -40`: the job showed "No output yet." for minutes, since
  * `tail` prints only once the command ends, and then only 40 lines were kept.
  * Without the cut, the whole output is kept and streamed as it comes.
- * `tail -f` follows a file and is let through.
+ * Only a cut that ends the line counts: a pipe into `tail` inside a loop, a
+ * subshell, `$(…)` or one written to a file is a filter, and `tail -f` follows
+ * a file.
  */
 export function cutOutput(command: string, background: boolean): string | undefined {
   if (!background) return undefined;
   const stage = lastPipeStage(command);
   const program = stage?.[0];
   if (!stage || (program !== "tail" && program !== "head")) return undefined;
-  if (stage.some((w) => /^-[A-Za-z]*[fF]|^--follow/.test(w))) return undefined;
+  // Only a cut that ends the line: a stage that goes on (`; sleep 30; done`, `> sample.csv`, `) && deploy`) is a filter inside it.
+  // `tail -f` follows a file, and `tail -n +2` streams from a line rather than keeping the end.
+  const args = stage.slice(1);
+  if (!args.every((w) => /^(?:-[A-Za-z]*\d*|--[a-z]+(?:=\d+)?|\d+)$/.test(w)) || args.some((w) => /^-[A-Za-z]*[fF]|^--follow/.test(w))) return undefined;
   const cut = stage.join(" ");
-  return `Not run: this background command ends in \`| ${cut}\`. ${program} prints nothing until the command ends, so the job shows no output while it runs, `
-    + `and ${program === "tail" ? "only its last" : "only its first"} lines are kept: the rest is lost. `
+  const why = program === "tail"
+    ? "tail prints nothing until the command ends, so the job shows no output while it runs, and only its last lines are kept: the rest is lost."
+    : "head keeps only the first lines and then exits, so the rest is lost, and the command can be killed the next time it writes.";
+  return `Not run: this background command ends in \`| ${cut}\`. ${why} `
     + `Run it without \`| ${cut}\`: its whole output is kept and shown live as it comes. jobs output with its id reads its latest lines while it runs or after it ends (leave out from), or finds lines with pattern.`;
 }

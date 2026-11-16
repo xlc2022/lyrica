@@ -232,7 +232,8 @@ describe("cutOutput", () => {
     expect(why).toMatch(/^Not run: this background command ends in `\| tail -40`/);
     expect(why).toContain("shows no output while it runs");
     expect(why).toContain("the rest is lost");
-    expect(cutOutput("make |& head -n 20", true)).toMatch(/only its first lines/);
+    expect(cutOutput("make |& head -n 20", true)).toMatch(/head keeps only the first lines and then exits/);
+    expect(cutOutput("make | tail --lines=40", true)).toBeDefined();
   });
   it("lets the same line run in her turn, a followed log, and pipes that aren't last", () => {
     expect(cutOutput("docker compose build 2>&1 | tail -40", false)).toBeUndefined();
@@ -242,5 +243,12 @@ describe("cutOutput", () => {
     expect(cutOutput("npm test || tail -5 log", true)).toBeUndefined();
     expect(cutOutput("bash -c 'make | tail -5'", true)).toBeUndefined();
     expect(cutOutput("npm run build", true)).toBeUndefined();
+    // A filter inside the line: a wait loop, a sample written to a file, $(…), a subshell, a step after it, or tail -n +N.
+    expect(cutOutput("while true; do curl -s localhost:7236/host/v1/status | tail -1; sleep 30; done", true)).toBeUndefined();
+    expect(cutOutput("cat big.csv | head -n 100000 > sample.csv", true)).toBeUndefined();
+    expect(cutOutput("cd $(ls -d */ | head -1) && make", true)).toBeUndefined();
+    expect(cutOutput("(make | tail -5) && deploy", true)).toBeUndefined();
+    expect(cutOutput("make | tail -5 && deploy", true)).toBeUndefined();
+    expect(cutOutput("docker compose logs | tail -n +2", true)).toBeUndefined();
   });
 });

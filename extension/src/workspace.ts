@@ -194,7 +194,7 @@ export const bashDescription = (jobs: boolean) =>
     ? ` Every call's whole output is kept with this conversation, encrypted, up to ${MIB(OUTPUT_LIMITS.keepBytes)} a command `
       + `(its first ${MIB(OUTPUT_LIMITS.headBytes)} and its latest ${MIB(OUTPUT_LIMITS.keepBytes - OUTPUT_LIMITS.headBytes)}), and jobs output reads it by the id named under a result that was cut. `
       + "It is shown live as it comes, so the person sees a long command working. So never save output to a file with tee or a redirect to read it later, and never pipe a command into tail, head or grep to keep its output short: "
-      + "tail and head print nothing until the command ends, and what you cut isn't kept. jobs output reads the last lines, or finds lines with pattern, after."
+      + "tail prints nothing until the command ends, head can stop the command early, and what you cut isn't kept. jobs output reads the last lines, or finds lines with pattern, after."
     : "");
 const TOOLS: Record<keyof ToolOps, Create> = {
   read: createReadToolDefinition as unknown as Create,
