@@ -312,9 +312,10 @@ shows the commit that is running, as on Debian.
    For the SearXNG the script offers (below), install Docker first; the
    script never installs it.
 
-5. **Node.js 24** (22.12 or later still works), installed before the
-   script runs (it checks and stops otherwise). CI and the NixOS package
-   use 24. The web UI's build (Vite 8) needs 22.12 or later. NodeSource's
+5. **Node.js 24**, 24.15 or later (22.22.2 or later on 22 still works),
+   installed before the script runs (it checks and stops otherwise). CI and
+   the NixOS package use 24. re2, which runs search patterns, needs those
+   versions; the web UI's build (Vite 8) needs 22.12 or later. NodeSource's
    packages are one way:
 
    ```sh
@@ -1251,7 +1252,8 @@ refused. To replace the destination, enter the full URL and token again;
   no packages: when a release needs a new one, install it by hand or run
   `install.sh` from a checkout. Node is one: releases since 2026-10-29 need
   22.12 or later, and on an older Node the update's build fails and she
-  stays on the running release, so upgrade Node first (NodeSource, as in
+  stays on the running release; releases from 2026-11-16 need 24.15 or
+  later (22.22.2 on 22). So upgrade Node first (NodeSource, as in
   "On Debian or Ubuntu"). shellcheck is another, from 2026-11-10: until
   it is installed (`apt-get install shellcheck` on Debian; on NixOS the
   next flake update and `nixos-rebuild switch`, since the module puts it
@@ -1290,8 +1292,8 @@ refused. To replace the destination, enter the full URL and token again;
   a snapshot, the switch and a restart, which logs everyone out. It
   rebuilds Caddy only if a pin changed, and installs whatever packages,
   units and tools the install is missing, so one run catches up an
-  install of any age. Check Node first: releases since 2026-10-29 need
-  22.12 or later (NodeSource, as in "On Debian or Ubuntu"). What one run
+  install of any age. Check Node first: releases from 2026-11-16 need
+  24.15 or later, or 22.22.2 on 22 (NodeSource, as in "On Debian or Ubuntu"). What one run
   brings to an older install:
 
   - **Before releases** (no `/opt/lyrica/releases`): the old `lyricad`

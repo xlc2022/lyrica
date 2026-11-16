@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "workspaces": ["core", "extension", "daemon", "web", "host"],
-  "engines": { "node": ">=22.12" },
+  "engines": { "node": "^22.22.2 || ^24.15.0 || >=26" },
   "scripts": {
     "typecheck": "tsc --noEmit && tsc --noEmit -p web && tsc --noEmit -p host",
     "test": "vitest --run",

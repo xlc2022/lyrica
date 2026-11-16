@@ -1661,8 +1661,9 @@ encrypt.
   pandoc), and the `tailscale` package from Tailscale's apt
   repository when its binaries are missing (then disabling the host's own
   `tailscaled.service` the package enables, unless it was enabled before, so
-  a host keeps its own as it was), checks for Node.js 22.12 or later (the web UI
-  build needs it, Vite 8), makes her tool prefix `/opt/lyrica/tools`
+  a host keeps its own as it was), checks for Node.js 24.15 or later, or 22.22.2
+  or later on 22 (re2, which runs search patterns, declares those; the web UI
+  build needs 22.12, Vite 8), makes her tool prefix `/opt/lyrica/tools`
   (root-owned; every sandbox mounts it read-only with its `bin` first on
   the PATH, `TOOLS_PREFIX` in `core/src/workspace/sandbox.ts`, so programs
   installed only for her never go into the host's `/usr` or `/usr/local`),
@@ -1879,7 +1880,7 @@ check names and counts, never text.
 
 `flake.nix` gives `packages.x86_64-linux.lyrica` (`nix/package.nix`: lyricad,
 the CLI and the built web UI, `buildNpmPackage` on nixpkgs' `nodejs_24`,
-refusing Node older than 22.12) and `nixosModules.default`
+refusing Node older than 24.15, or 22.22.2 on 22) and `nixosModules.default`
 (`nix/module.nix`, `services.lyrica`). nixpkgs is the `nixos-26.05` channel,
 locked in `flake.lock`. `nix flake check` builds the package and a NixOS
 system with the module on. Only x86_64-linux.
