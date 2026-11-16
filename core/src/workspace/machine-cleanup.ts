@@ -8,6 +8,11 @@ import { SUDOERS_FILE } from "./sudoers.ts";
 export const keysFile = (account: string) => `/etc/ssh/authorized_keys/${account}`;
 /** The sshd rule that points her account at `keysFile`. */
 export const sshdRule = (account: string) => `/etc/ssh/sshd_config.d/lyrica-${account}.conf`;
+/**
+ * Reloads sshd wherever it runs: systemd's unit is `ssh` on Debian and Ubuntu and `sshd` on most others (Fedora,
+ * Arch, NixOS, Gentoo), and OpenRC (Gentoo, Alpine) has `rc-service sshd`.
+ */
+export const RELOAD_SSHD = "if [ -d /run/systemd/system ]; then sudo systemctl reload ssh 2>/dev/null || sudo systemctl reload sshd; else sudo rc-service sshd reload; fi";
 
 /** Where the steps run, for the line above them. */
 export function cleanupWhere(m: CleanupMachine): string {
@@ -74,7 +79,7 @@ export function machineCleanup(m: CleanupMachine): CleanupStep[] {
       // Her logins go first, then whatever she still runs, then the account.
       command: [
         `sudo rm -f ${keys} ${sshdRule(account)}`,
-        "sudo systemctl reload ssh",
+        RELOAD_SSHD,
         `{ sudo pkill -KILL -u ${account}; sleep 1; }`,
         `sudo userdel --remove ${account}`,
       ].join(" &&\n"),

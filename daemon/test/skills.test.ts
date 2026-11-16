@@ -117,10 +117,12 @@ describe("the model-host skill", () => {
   it("is listed only while the thread has an SSH machine, reads like a library skill, and gives way to a library skill of its name", async () => {
     const s = await setup();
     expect(await s.prompt()).not.toContain("model-host");
+    expect(await s.prompt()).not.toContain('read_memory=\\"s:gentoo\\"');
     const ws = s.d.services!.workspace.settings(s.rt.ada.id);
     ws.addMachine({ name: "box", host: "127.0.0.1", port: 22, username: "lyrica", root: null, pool: "general", limit: "ask", privateKey: "fake", offNetwork: false }, `SHA256:${"A".repeat(43)}`);
     ws.setThread(s.thread.id, "general", { machines: ["box"] });
     expect(await s.prompt()).toContain('<skill name=\\"model-host\\" read_memory=\\"s:model-host\\">Install a Lyrica model host');
+    expect(await s.prompt()).toContain('<skill name=\\"gentoo\\" read_memory=\\"s:gentoo\\">Install Gentoo onto a disk');
 
     const from = s.stream.events.length;
     s.model.reply({ tools: [{ name: "read_memory", args: { id: "s:model-host" } }] }, { text: "Read it." });

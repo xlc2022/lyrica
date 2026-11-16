@@ -7,7 +7,7 @@ import { networkInterfaces } from "node:os";
 import { StringDecoder } from "node:string_decoder";
 import { posix } from "node:path";
 import { removePrivateKeys, PRIVATE_KEY_BEGIN as BEGIN, PRIVATE_KEY_END as END } from "../secrets.ts";
-import { keyBlob, keysFile, sshdRule } from "./machine-cleanup.ts";
+import { keyBlob, keysFile, RELOAD_SSHD, sshdRule } from "./machine-cleanup.ts";
 import { sudoersCommand } from "./sudoers.ts";
 import { within } from "./settings.ts";
 
@@ -42,6 +42,23 @@ function gitSub(w: string[]): string[] | undefined {
   let i = 1;
   while (i < w.length && w[i]!.startsWith("-")) i += GIT_VALUE_FLAGS.has(w[i]!) ? 2 : 1;
   return w.slice(i);
+}
+
+/** sfdisk's and fdisk's options that only read; with none of them, they write the table they're given. */
+const TABLE_READS = new Set(["-l", "--list", "-d", "--dump", "-J", "--json", "-s", "--show-size", "-V", "--verify", "-F", "--list-free", "-g", "--show-geometry", "-x", "--list-details", "-h", "--help", "-v", "--version"]);
+/** sgdisk's options that write: zap, clear, new, delete, replicate, load a backup, convert MBR. */
+const SGDISK_WRITES = /^(?:-[a-zA-Z]*[ZzondRlg]|--(?:zap-all|zap|clear|new|delete|replicate|load-backup|mbrtogpt))/;
+/** A disk's partition table rewritten or its signatures wiped: sfdisk or fdisk given a table, sgdisk's writes, parted's, wipefs -a, blkdiscard. */
+function partitions(w: string[]): boolean {
+  const opts = flags(w);
+  switch (w[0]) {
+    case "sfdisk": case "fdisk": return !opts.some((f) => TABLE_READS.has(f.split("=")[0]!));
+    case "sgdisk": return opts.some((f) => SGDISK_WRITES.test(f));
+    case "parted": return args(w).some((a) => ["mklabel", "mktable", "mkpart", "rm", "resizepart"].includes(a));
+    case "wipefs": return opts.some((f) => short("[ao]")(f) || f === "--all" || f.startsWith("--offset"));
+    case "blkdiscard": return true;
+    default: return false;
+  }
 }
 
 /**
@@ -90,6 +107,7 @@ export const SUSPECT_COMMANDS: readonly SuspectCommand[] = [
   },
   { warning: "This formats a disk, erasing what's on it.", test: (w) => /^mkfs(\..+)?$|^mke2fs$/.test(w[0]!) },
   { warning: "This writes straight onto a device, overwriting what's on it.", test: (w) => w[0] === "dd" && w.some((a) => a.startsWith("of=/dev/")) },
+  { warning: "This rewrites a disk's partitions or wipes it, erasing what's on it.", test: partitions },
   {
     warning: "This changes permissions or owners across the whole system.",
     test: (w) => (w[0] === "chmod" || w[0] === "chown" || w[0] === "chgrp") && flags(w).some((f) => /^-[a-zA-Z]*R|^--recursive$/.test(f))
@@ -565,7 +583,7 @@ export function machineSetup(account: string, keyLine: string, asUser = false): 
     `sudo chmod 644 ${keys}`,
     sshdMatch(account),
     "sudo sshd -t",
-    "sudo systemctl reload ssh",
+    RELOAD_SSHD,
     ...fingerprint,
   ]);
 }
@@ -601,7 +619,7 @@ export function machineSudo(account: string): { everything: string; password: st
       "# No SSH login with a password for her account",
       sshdMatch(account),
       "sudo sshd -t",
-      "sudo systemctl reload ssh",
+      RELOAD_SSHD,
       "",
       `# The password, typed twice at the prompt`,
       `sudo passwd ${account}`,

@@ -1344,7 +1344,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     `remember` in an unlogged thread. lyricad lists the active skills of the
     thread view's own pool, then of the pools it reads (a name once), then Lyrica's own (`BUILTIN_SKILLS`,
     extension/src/<name>.md) unless a library skill takes the name: `add-machine` in every thread, and
-    `model-host` and `secrets` while the thread has an SSH machine; then `repoSkills(target, checkouts, cache?)`, cached per thread by checkout and HEAD.
+    `model-host`, `secrets` and `gentoo` while the thread has an SSH machine; then `repoSkills(target, checkouts, cache?)`, cached per thread by checkout and HEAD.
     `read(name)` falls back to a built-in skill's body;
   - `name()`: her name for this deployment, read every turn. Automatic
     recall leaves it out of the query (`skip`), asks for two shared
