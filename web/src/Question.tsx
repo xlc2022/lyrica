@@ -1,5 +1,5 @@
 // Principles 1 and 6: a decision stays beside the work, and its answer is a message.
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { del, get, post, type MessagePage, type MessagePart, type QuestionState, type RootStep } from "./api.ts";
 import { CopyButton } from "./CopyButton.tsx";
 import { Icon } from "./icons.tsx";
@@ -76,21 +76,23 @@ function SecretField({ label, lines, sudo, kept, value, setValue, keep, setKeep,
   keep: string; setKeep: (v: string) => void; onForget: () => void; disabled: boolean;
 }) {
   const [shown, setShown] = useState(false);
+  const id = useId(), keepId = useId();
   const tip = `Goes only to this script's input. Never shown to ${her()}; forgotten when the script ends.`;
-  const common = { id: "card-secret", value, autoComplete: "off", spellCheck: false, disabled, onChange: (e: { target: { value: string } }) => setValue(e.target.value) };
+  const common = { id, value, autoComplete: "off", spellCheck: false, disabled, onChange: (e: { target: { value: string } }) => setValue(e.target.value) };
   return <div className="card-secret">
-    <label htmlFor={kept ? undefined : "card-secret"} title={tip}>{label}<Icon name="lock" /></label>
+    <label htmlFor={kept ? undefined : id} title={tip}>{label}<Icon name="lock" /></label>
     {kept ? <div className="card-secret-row"><span className="muted">Kept · <span className="num">{kept}</span> min left</span><button type="button" className="sm" disabled={disabled} onClick={onForget}>Forget</button></div> : <>
       <div className="card-secret-row">
         {lines ? <textarea {...common} className={shown ? "" : "masked"} rows={5} /> : <input {...common} type={shown ? "text" : "password"} />}
         <button type="button" className="sm" aria-pressed={shown} onClick={() => setShown(!shown)}>{shown ? "Hide" : "Show"}</button>
       </div>
       {sudo && <div className="card-keep">
-        <label htmlFor="card-keep" title="Minutes the server holds the password in memory, so later root steps on this machine run without typing it again. Each still waits for Run. 0 keeps nothing.">Keep for</label>
-        <input id="card-keep" type="text" inputMode="numeric" value={keep} disabled={disabled} onChange={(e) => setKeep(e.target.value.replace(/[^0-9]/g, "").slice(0, 3))}
+        <label htmlFor={keepId}>Keep for</label>
+        <input id={keepId} type="text" inputMode="numeric" value={keep} disabled={disabled} onChange={(e) => setKeep(e.target.value.replace(/[^0-9]/g, "").slice(0, 3))}
           onBlur={() => setKeep(String(Math.min(KEEP_MAX, Math.max(0, Number(keep) || 0))))} />
         <span className="muted">min, of <span className="num">{KEEP_MAX}</span></span>
       </div>}
+      {sudo && <p className="muted card-keep-note">The server holds the password in memory for that long, so later root steps on this machine skip typing it. Each still waits for Run.</p>}
     </>}
   </div>;
 }

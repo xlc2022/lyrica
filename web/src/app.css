@@ -2087,6 +2087,8 @@ dialog .eyebrow { margin: 10px 0 4px; }
 .card-secret-row textarea.masked { -webkit-text-security: disc; }
 .card-secret-row > .muted { align-self: center; }
 .card-keep { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.card-keep-note { margin: 0; font-size: 12px; }
+@media (pointer: coarse) { .card-secret button.sm { min-height: var(--tap); } }
 .card-keep input { width: 5em; font-family: var(--mono); font-variant-numeric: tabular-nums; }
 @media (max-width: 760px) {
   .question-options { flex-direction: column; }
