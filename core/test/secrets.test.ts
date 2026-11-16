@@ -84,26 +84,36 @@ describe("secret removal", () => {
 });
 
 describe("secret removal on crafted text", () => {
-  // The patterns removeSecrets used before they were made linear, with the key's
-  // lookbehind widened to let a key word follow "_" too (so "MY__TOKEN=" is caught).
+  // The patterns removeSecrets used before they were made linear, run one after another as they were.
   const OLD_TOKENS = /\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9_-]{16,}|xox[abpr]-[A-Za-z0-9-]{10,}|AKIA[A-Z0-9]{16}|AIza[A-Za-z0-9_-]{35}|eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)(?![A-Za-z0-9_-])/g;
   const OLD_HEADERS = /\b(?:authorization[ \t]*:[ \t]*(?:(?:bearer|basic)[ \t]+)?|bearer[ \t]+)[^\s"'`,;<>]+/gi;
-  const OLD_PAIRS = /((?<![A-Za-z0-9])(?:["']?(?:[A-Za-z0-9]+[_-])*(?:token|secret|password|api_key|apikey|auth)["']?)[ \t]*[:=][ \t]*)(?:\[secret removed\]|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s,;}`]+)(?![A-Za-z0-9_])/gi;
+  const OLD_PAIRS = /((?<![A-Za-z0-9_])(?:["']?(?:[A-Za-z0-9]+[_-])*(?:token|secret|password|api_key|apikey|auth)["']?)[ \t]*[:=][ \t]*)(?:\[secret removed\]|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s,;}`]+)(?![A-Za-z0-9_])/gi;
   const KEY = /-----BEGIN ([A-Z0-9 ]*)PRIVATE KEY( BLOCK)?-----[\s\S]*?(?:-----END \1PRIVATE KEY\2-----|$)/g;
-  const reference = (t: string) => t.replace(KEY, SECRET_REMOVED).replace(OLD_PAIRS, (_m, k: string) => k + SECRET_REMOVED)
+  const before = (t: string) => t.replace(KEY, SECRET_REMOVED).replace(OLD_PAIRS, (_m, k: string) => k + SECRET_REMOVED)
     .replace(OLD_HEADERS, SECRET_REMOVED).replace(OLD_TOKENS, SECRET_REMOVED);
+  /** How often each word shows, markers aside. */
+  const words = (t: string) => {
+    const n = new Map<string, number>();
+    for (const w of t.split(SECRET_REMOVED).join(" ").match(/[A-Za-z0-9]+/g) ?? []) n.set(w, (n.get(w) ?? 0) + 1);
+    return n;
+  };
 
-  it("removes exactly what the earlier patterns removed, on short random text", () => {
+  it("shows no word the earlier patterns hid, on short random text", () => {
     const atoms = ["eyJ", "ghp_", "github_pat_", "sk-", "xoxb-", "AKIA", "AIza", "token", "TOKEN", "auth", "api_key", "secret", "password",
-      "Bearer ", "authorization: ", "a", "A", "0", "_", "-", ".", "=", ":", " ", "\n", '"', "'", "\\", ",", ";", "}", "[", "]",
-      SECRET_REMOVED, "x".repeat(20), "Ab1".repeat(6), "-----BEGIN RSA PRIVATE KEY-----", "-----END RSA PRIVATE KEY-----"];
+      "Bearer ", "authorization: ", "basic ", "a", "A", "0", "_", "-", ".", "=", ":", " ", "\n", '"', "'", "\\", ",", ";", "}", "[", "]",
+      SECRET_REMOVED, "abcdefghij", "x".repeat(20), "Ab1".repeat(6), "-----BEGIN RSA PRIVATE KEY-----", "-----END RSA PRIVATE KEY-----"];
     let seed = 1;
     const pick = (n: number) => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed % n; };
     for (let i = 0; i < 20_000; i++) {
       let text = "";
       for (let j = 1 + pick(12); j > 0; j--) text += atoms[pick(atoms.length)];
-      expect(removeSecrets(text), JSON.stringify(text)).toBe(reference(text));
+      const now = words(removeSecrets(text)), was = words(before(text));
+      for (const [w, n] of now) if (n > (was.get(w) ?? 0)) expect.fail(`${JSON.stringify(text)} shows "${w}": ${JSON.stringify(removeSecrets(text))}, was ${JSON.stringify(before(text))}`);
     }
+  });
+
+  it("removes a header value after a secret-named key", () => {
+    expect(removeSecrets("X-Auth-Token: Bearer made-up")).toBe(`X-Auth-Token: ${SECRET_REMOVED}`);
   });
 
   it("catches a key word after a doubled underscore, which the earlier patterns missed", () => {

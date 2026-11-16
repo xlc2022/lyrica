@@ -18,9 +18,9 @@ const TOKEN_START = /\b(?:gh[pousr]_|github_pat_|sk-|xox[abpr]-|AKIA|AIza|eyJ)/g
 const TOKEN_AT = /(?:gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9_-]{16,}|xox[abpr]-[A-Za-z0-9-]{10,}|AKIA[A-Z0-9]{16}|AIza[A-Za-z0-9_-]{35}|eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)(?![A-Za-z0-9_-])/y;
 const RUN: Record<string, RegExp> = { xox: /[A-Za-z0-9-]*/y, eyJ: /[A-Za-z0-9_-]*/y };
 
-function removeTokens(text: string): string {
-  let out = "";
-  let kept = 0;
+/** Where each token is in `text`, in order. */
+function tokenSpans(text: string): [number, number][] {
+  const spans: [number, number][] = [];
   const dead: Record<string, number> = {};
   TOKEN_START.lastIndex = 0;
   for (let m = TOKEN_START.exec(text); m; m = TOKEN_START.exec(text)) {
@@ -31,14 +31,14 @@ function removeTokens(text: string): string {
     TOKEN_AT.lastIndex = at;
     const token = TOKEN_AT.exec(text);
     if (token) {
-      out += text.slice(kept, at) + SECRET_REMOVED;
-      kept = TOKEN_START.lastIndex = at + token[0].length;
+      spans.push([at, at + token[0].length]);
+      TOKEN_START.lastIndex = at + token[0].length;
       continue;
     }
     if (run) { run.lastIndex = at; run.exec(text); dead[kind] = run.lastIndex; }
     TOKEN_START.lastIndex = at + 1;
   }
-  return kept ? out + text.slice(kept) : text;
+  return spans;
 }
 
 const HEADERS = /\b(?:authorization[ \t]*:[ \t]*(?:(?:bearer|basic)[ \t]+)?|bearer[ \t]+)[^\s"'`,;<>]+/gi;
@@ -48,6 +48,25 @@ const HEADERS = /\b(?:authorization[ \t]*:[ \t]*(?:(?:bearer|basic)[ \t]+)?|bear
 // scan can't rescan a long "a-a-a-…" name from each of its dashes.
 const PAIRS = /((?<![A-Za-z0-9])["']?(?:token|secret|password|api_key|apikey|auth)["']?[ \t]*[:=][ \t]*)(?:\[secret removed\]|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s,;}`]+)(?![A-Za-z0-9_])/gi;
 
+/**
+ * Each detector reads the same text and what any of them finds is removed,
+ * overlaps merged into one marker. Run one after another, a pair's value
+ * could swallow the start of a header ("X-Auth-Token: Bearer abc" kept "abc").
+ */
 export function removeSecrets(text: string): string {
-  return removeTokens(removePrivateKeys(text).replace(PAIRS, (_match, key: string) => key + SECRET_REMOVED).replace(HEADERS, SECRET_REMOVED));
+  const t = removePrivateKeys(text);
+  const spans: [number, number][] = [
+    ...[...t.matchAll(PAIRS)].map((m): [number, number] => [m.index + m[1]!.length, m.index + m[0].length]),
+    ...[...t.matchAll(HEADERS)].map((m): [number, number] => [m.index, m.index + m[0].length]),
+    ...tokenSpans(t),
+  ].sort((a, b) => a[0] - b[0]);
+  let out = "";
+  let kept = 0;
+  for (let i = 0; i < spans.length; ) {
+    let [start, end] = spans[i++]!;
+    while (i < spans.length && spans[i]![0] < end) end = Math.max(end, spans[i++]![1]);
+    out += t.slice(kept, start) + SECRET_REMOVED;
+    kept = end;
+  }
+  return out + t.slice(kept);
 }

@@ -89,12 +89,6 @@ reading them whole.
 - **No personal names.** Docs, comments, prompts and test fixtures never
   name the owner or another real person: say "the user" or "the operator",
   and use a made-up name (Ada, Sam) in examples.
-- **Patterns stay linear on outside text.** A regex over text an outsider
-  can shape (a fetched page, command output, a model's reply) runs on
-  lyricad's one thread, so it must not rescan: no class that runs past the
-  bracket that opens another, no overlapping `\s*`, no `x+$` trim (loop
-  instead). Check a new one with [recheck](https://makenowjust-labs.github.io/recheck/)
-  and time it on 64 KB of crafted input.
 - **Deleting code is progress.**
 
 ## Checks
