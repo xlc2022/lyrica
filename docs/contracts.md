@@ -1842,10 +1842,12 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   active only while no reason has it off, and comes back only if a reason
   took it away.
 - **Root steps** (`run_as_root`, registered by the threads extension when
-  `ThreadsHost.rootScript?(from, machine, path): Promise<{ bytes, account }>`
+  `ThreadsHost.rootScript?(from, machine, path): Promise<{ bytes, account, nixos? }>`
   exists, never in an ordinary child thread): `rootStep(input, bytes,
-  account)` builds the `RootStep` `{ machine, path, sha256, command, script,
-  why, sudoers?: { line, warning? }[], sudoersCommand? }` (`checkSudoers`,
+  account, nixos?)` builds the `RootStep` `{ machine, path, sha256, command, script,
+  why, sudoers?: { line, warning? }[], sudoersCommand?, sudoersNixos? }`
+  (`sudoersNixos`, the extraRules and rebuild, in place of `sudoersCommand`
+  on a NixOS machine) (`checkSudoers`,
   `rootCommand`, `scriptShell`, `sudoersCommand`, `ROOT_LIMITS`), returned as the result's
   `details.root`; the daemon passes
   it on as `root` on the tool part and the `tool_end` event (`rootPart`).

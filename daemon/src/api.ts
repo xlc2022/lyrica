@@ -1512,6 +1512,8 @@ export interface RootStep {
   sudoers?: { line: string; warning?: string }[];
   /** With `sudoers`: the command that adds the lines, checked by visudo first (absent on a card from before it existed). */
   sudoersCommand?: string;
+  /** With `sudoers` on a NixOS machine, in place of `sudoersCommand`: the security.sudo.extraRules lines and the rebuild. */
+  sudoersNixos?: string;
   /** A run_with_secret card: the secret's name, the field's label; `lines` asks for a box of several lines. */
   secret?: string;
   lines?: boolean;

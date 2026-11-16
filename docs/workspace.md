@@ -453,7 +453,7 @@ does elsewhere; the `Match` block, last in sshd's config, keeps
 nixos-rebuild switch` (with `--flake` where the configuration is a flake),
 then the fingerprint. The sudo blocks are `security.sudo.extraRules` for
 the same module (`nixosSudo` in `core/src/workspace/sudoers.ts`); exact
-commands may name programs under `/run/current-system/sw/bin`, and **Sudo,
+commands must name programs under `/run/current-system/sw/{bin,sbin}`, and **Sudo,
 with password** adds `sudo passwd <account>` after the rebuild. On the
 user's own account the module only adds the key to
 `users.users.<account>.openssh.authorizedKeys.keys`. Remove offers
@@ -499,7 +499,10 @@ the card is for machines without it. The lines she may *offer* on a card
   refused hash shows as a failure). A script changed after the card was
   made, or during the run, doesn't reach root.
 - `sudoers`, when the same root command will be needed again: at most 8
-  lines for `/etc/sudoers.d/lyrica`, which the card shows with the command
+  lines for `/etc/sudoers.d/lyrica` (on a NixOS machine, whose sudo reads
+  no `sudoers.d`, the card shows instead one **Configuration** block: the
+  lines as `security.sudo.extraRules` for her module, `nixosSudoers`, then
+  `sudo nixos-rebuild switch`), which the card shows with the command
   that adds them, ready to paste (`sudoersCommand`, built from the checked
   lines as the card shows them): it reads the file's own lines in a step
   that can fail (a mistyped password stops it, so the file is never
@@ -511,7 +514,9 @@ the card is for machines without it. The lines she may *offer* on a card
   person never opens an editor. `checkSudoers` refuses a line that isn't
   `<account> ALL=(root) NOPASSWD: <program> <fixed arguments>` for the
   machine's account, with the program in `/usr/bin`, `/usr/sbin`, `/bin`,
-  `/sbin` or `/usr/local/{bin,sbin}` and at least one argument (`""` alone
+  `/sbin`, `/usr/local/{bin,sbin}` or `/run/current-system/sw/{bin,sbin}`
+  (on a NixOS machine only the last, since its `/usr/bin` holds only `env`)
+  and at least one argument (`""` alone
   for none, since a bare program allows any). It refuses a wildcard, a
   quote, a comment (`#`), `@`, a comma, a shell character, `ALL`, an
   argument under `/home`, `/tmp`, `/var/tmp`, `/dev/shm` or `/run/user`, or with `..`,

@@ -340,9 +340,9 @@ function SudoBlocks({ sudo, account, nixos }: { sudo: NonNullable<MachineProbe["
 }
 
 /** A typed command's sudoers line, checked as her offered lines are (docs/workspace.md, "Root steps"): the line, a warning, or why it's refused. */
-function sudoLine(account: string, command: string): { line?: string; warning?: string; problem?: string } {
+function sudoLine(account: string, command: string, nixos: boolean): { line?: string; warning?: string; problem?: string } {
   try {
-    const [checked] = checkSudoers([`${account} ALL=(root) NOPASSWD: ${command.trim()}`], account);
+    const [checked] = checkSudoers([`${account} ALL=(root) NOPASSWD: ${command.trim()}`], account, nixos);
     return { line: checked!.line, ...(checked!.warning ? { warning: checked!.warning } : {}) };
   } catch (err) {
     const why = (err as Error).message.replace(/^sudoers line \d+: /, "");
@@ -358,7 +358,7 @@ function sudoLine(account: string, command: string): { line?: string; warning?: 
  */
 function ExactSudo({ account, nixos }: { account: string; nixos: boolean }) {
   const [commands, setCommands] = useState([""]);
-  const checked = commands.map((c) => (c.trim() ? sudoLine(account, c) : {}));
+  const checked = commands.map((c) => (c.trim() ? sudoLine(account, c, nixos) : {}));
   const lines = checked.flatMap((c) => (c.line ? [c.line] : []));
   const ready = lines.length > 0 && !checked.some((c) => c.problem);
   const head = `${account} ALL=(root) NOPASSWD: `;
