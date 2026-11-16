@@ -1038,6 +1038,11 @@ describe("backticks on older notes", () => {
     expect(onlyBackticksAdded("runs backup.sh [n:1]", "runs `backup.sh`")).toBe(false);
     expect(onlyBackticksAdded("a b", "a  b")).toBe(false);
     expect(onlyBackticksAdded("already `x`", "already `x`")).toBe(false);
+    // Citation groups and mention tokens keep their IDs readable.
+    const cited = "Runs backup.sh nightly [e:web/3f7a2c#4, n:abc] with [[u:ab12]]";
+    expect(onlyBackticksAdded(cited, "Runs `backup.sh` nightly [e:web/3f7a2c#4, n:abc] with [[u:ab12]]")).toBe(true);
+    expect(onlyBackticksAdded(cited, "Runs `backup.sh` nightly [`e:web/3f7a2c#4`, `n:abc`] with [[u:ab12]]")).toBe(false);
+    expect(onlyBackticksAdded(cited, "Runs backup.sh nightly [e:web/3f7a2c#4, n:abc] with [[`u:ab12`]]")).toBe(false);
   });
 
   it("offers her current notes that read as code, never a user's, and saves only an added-backticks edit as sleep", async () => {

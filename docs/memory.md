@@ -382,9 +382,11 @@ checks it against the earlier patterns on random text. A secret-named label foll
   sleep's consolidate model in batches of 20, under the pool's rules (a private
   note reaches only a local model). `PoolStore.addBackticks` saves an answer as an
   edit by sleep, with the old text a revision, and refuses one that changes
-  anything but added backticks and spaces beside them. A pool is marked done in
-  the user's settings (`notes.backticks.<pool>`) once every batch was asked; when
-  no model answers, the next unlock or sleep tries again. Notes with line breaks
+  anything but added backticks and spaces beside them, or puts a backtick inside a
+  citation group or mention token. A pool is marked done in the user's settings
+  (`notes.backticks.<pool>`) once every batch was asked, so a batch whose call
+  failed is not retried; when no model answers at all, the next unlock or sleep
+  tries again. Notes with line breaks
   are left as they are. Counts only are logged.
 - **One fact per note, and plenty of notes.** Small notes keep lineage and
   deletion precise. Small notes must never mean fewer notes, so:

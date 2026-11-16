@@ -497,7 +497,8 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   tags for notes; a search replaces the list. A memory without a title is
   named by its first words (`firstWords`), with citations and Markdown's
   marks taken off; past its width the name ends with the first sentence when
-  that fits, else at the last whole word, never mid-word. The memory at the right shows
+  that fits, else at the last whole word (mid-word only when the first half
+  has no space, such as a long path). The memory at the right shows
   its citations as titles with a hover preview (`linkCitations` turns each
   citation into a link whose word comes from `MemoryDetail.links`, its title's
   mention tokens rendered first by `readableLinks`; the raw ID is never shown), Came from and Used in with the citing sentence. Each

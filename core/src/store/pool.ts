@@ -332,14 +332,18 @@ const CODE_LIKE = /\/\w|\w_\w|\w=\S|--\w|\w\.\w|:\d|\$\w|\w\(\)/;
 
 /**
  * Whether `next` is `old` with only backticks added, in pairs, and spaces added beside them ("duty255" may become
- * "duty `255`"): every other character, spaces included, stays in order. One pass over both.
+ * "duty `255`"), none inside […] (a citation group) or [[…]] (a mention): every other character, spaces included,
+ * stays in order. One pass over both.
  */
 export function onlyBackticksAdded(old: string, next: string): boolean {
   if (old.includes("`") || (next.split("`").length - 1) % 2) return false;
-  let i = 0, j = 0;
+  let i = 0, j = 0, depth = 0;
   while (j < next.length) {
     const c = next[j]!;
-    if (c === "`") { j++; continue; }
+    // Never inside a citation group or a mention token: a tick there hides its IDs from citationsIn and stripCitations.
+    if (c === "`") { if (depth > 0) return false; j++; continue; }
+    if (c === "[") depth++;
+    else if (c === "]" && depth > 0) depth--;
     if (c === " " && old[i] !== " ") {
       let k = j;
       while (next[k] === " ") k++;
