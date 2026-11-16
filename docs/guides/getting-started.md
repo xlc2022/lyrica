@@ -518,7 +518,9 @@ Two things to look at once she is unlocked:
   must print `NoNewPrivs: 0`. The unit keeps only `PrivateTmp` and
   `ProtectControlGroups`, plus `LimitCORE=0` so a crash leaves no core dump
   of her decrypted memory; the comment in `daemon/deploy/lyricad.service`
-  lists what must stay off and why.
+  lists what must stay off and why. The kernel can still write that memory
+  to swap, so if the server has swap, encrypt it (on NixOS,
+  `randomEncryption.enable = true` on its `swapDevices` entry).
 
 - **The network self-test passed.** At unlock, `lyricad` starts a sandbox
   and checks that it can't undo its own firewall rules. If that fails, the
