@@ -1024,10 +1024,13 @@ steps:
    on getting root. Exact commands, or root steps in your own terminal, are
    stronger. A root step
    she can't run there comes to you on a card, to run with your password
-   or in your own terminal. When the card offers sudoers lines, it
-   also carries one command to paste on the machine: it adds them, keeps
-   the file's other lines and installs the result only once `visudo -c`
-   passes, so you never open an editor.
+   or in your own terminal. When the card offers sudoers lines, it also
+   carries one command to paste on the machine: it adds them, keeps the
+   file's other lines and installs the result only once `visudo -c`
+   passes, so you never open an editor. On a NixOS machine it offers a
+   module instead (`security.sudo.extraRules`) to add to your
+   configuration's imports, then `sudo nixos-rebuild switch`; exact
+   commands there name programs under `/run/current-system/sw`.
 2. Press Enter. She connects, prints the machine's host key fingerprint
    and whether her key was accepted, and asks you to confirm the
    fingerprint. Compare it with what the machine prints:
