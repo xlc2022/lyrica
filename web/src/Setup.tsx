@@ -32,7 +32,7 @@ function explain(e: Error, step: StepKey): string {
   const status = e instanceof HttpError ? e.status : 0;
   if (step === "admin" && status === 403) return "The code doesn't match. Run lyrica admin setup-code on the server to see it.";
   if (step === "admin" && status === 429) return "Too many wrong codes. Wait before trying again: the wait grows with each wrong code, up to 15 minutes.";
-  if (step === "tailnet" && status === 409 && /cut this connection/.test(e.message)) return "This page is reached over the tailnet, so joining another one would cut it off. Open her LAN address and do it there.";
+  if (step === "tailnet" && status === 409 && /cut this connection/.test(e.message)) return `This page is reached over the tailnet, so joining another one would cut it off. Open ${her()}'s LAN address and do it there.`;
   if (step === "tailnet") return tailnetReason(e.message);
   return e.message;
 }
@@ -73,7 +73,7 @@ export function Setup({ userId, onCreated, onDone }: { userId?: string; onCreate
             <label className="field grow"><span>Repeat</span><input type="password" autoComplete="new-password" value={repeat} disabled={!!userId} onChange={(e) => setRepeat(e.target.value)} /></label>
           </div>
           <Switch label="Start unlocked" checked={unlocked} disabled={!creds.available || !!userId} onChange={setUnlocked}
-            hint={creds.available ? "The passphrase is saved with systemd-creds, so she comes up unlocked after a restart." : creds.reason ?? "This machine can't save credentials."} />
+            hint={creds.available ? `The passphrase is saved with systemd-creds, so ${her()} comes up unlocked after a restart.` : creds.reason ?? "This machine can't save credentials."} />
           <ErrorText error={mismatch} />
           {!userId && <div className="row"><button className={step === "code" ? "primary" : ""} disabled={!code.trim() || !passphrase || !repeat}>Continue</button></div>}
         </form>
@@ -163,7 +163,7 @@ function ModelsStep({ userId, current, onNext }: { userId: string; current: bool
   const add = () => run(async () => {
     const ep = await post<EndpointInfo>(u(userId, "endpoints"), { name: form.name.trim(), kind: form.kind, baseUrl: form.baseUrl.trim(), apiKey: form.apiKey || undefined, shared: true });
     const first = ep.models[0];
-    if (!first) throw new Error("No models were listed at that address. Check the URL and the key; the Models area lists what she finds.");
+    if (!first) throw new Error(`No models were listed at that address. Check the URL and the key; the Models area lists what ${her()} finds.`);
     await put(u(userId, "columns", form.kind === "cloud" ? "general" : "private", "chat"), { model: { offeringId: first.id } });
     setAdded(ep);
     onNext();
@@ -217,7 +217,7 @@ function DoneStep({ userId, login, unlocked, onDone }: { userId: string; login: 
         <dt>Administrator</dt><dd className="mono">{login}</dd>
         {tn?.state === "connected" && <><dt>Tailnet</dt><dd className="mono">{tn.tailnet}{tn.dnsName ? ` · ${tn.dnsName}` : ""}</dd></>}
       </dl>
-      {!unlocked && <p>She starts locked after each restart; the passphrase unlocks her.</p>}
+      {!unlocked && <p>{her()} starts locked after each restart; the passphrase unlocks her.</p>}
       <div className="row"><button type="button" className="primary" onClick={onDone}>Start a chat</button></div>
     </section>
   );

@@ -1947,8 +1947,8 @@ export function apiRoutes(d: Lyricad): Route[] {
           const message = n === undefined
             ? toMessages(thread.id, pool, o[pool].entryPage(thread.id, { limit: 20 }).entries).findLast((m) => m.role === "assistant")
             : toMessages(thread.id, pool, o[pool].entryPage(thread.id, { before: n + 1, limit: 1 }).entries.filter((e) => e.n === n))[0];
-          if (!message) throw new HttpError(404, n === undefined ? "she hasn't written a message here" : "no such message");
-          if (message.role !== "assistant") throw new HttpError(400, "only her messages are read aloud");
+          if (!message) throw new HttpError(404, n === undefined ? `${d.name()} hasn't written a message here` : "no such message");
+          if (message.role !== "assistant") throw new HttpError(400, `only ${d.name()}'s messages are read aloud`);
           return messageText(message.parts, titlesIn(o, pool));
         });
         source = storedSource(text);
@@ -2082,7 +2082,7 @@ export function apiRoutes(d: Lyricad): Route[] {
     }),
     route("POST", `${u}/sleep/:pool/runs/:runId/undo`, (r) => {
       const user = d.userFor(r);
-      if (s().sleep.working().includes(user.id)) throw new HttpError(409, "She's asleep now. Undo once she wakes.");
+      if (s().sleep.working().includes(user.id)) throw new HttpError(409, `${d.name()} is asleep now. Undo once she wakes.`);
       return owner(d, user, (o) => {
         try { o[poolOf(r)].undoSleepRun(r.params.runId!, `user:${user.id}`); } catch (err) { throw new HttpError(409, (err as Error).message); }
         return sleepRunDetail(d, o, poolOf(r), r.params.runId!);
@@ -2448,18 +2448,18 @@ export function apiRoutes(d: Lyricad): Route[] {
     route("PUT", `${u}/admin/tailnet`, async (r) => {
       d.adminFor(r);
       const join = await r.json<Api.TailnetJoin>();
-      if (join.leave) notOverTailnet(r, "Connecting to another tailnet");
+      if (join.leave) notOverTailnet(d, r, "Connecting to another tailnet");
       return s().tailnet.join(join);
     }),
     route("POST", `${u}/admin/tailnet/connect`, (r) => { d.adminFor(r); return s().tailnet.connect(); }),
     route("POST", `${u}/admin/tailnet/disconnect`, (r) => {
       d.adminFor(r);
-      notOverTailnet(r, "Disconnecting");
+      notOverTailnet(d, r, "Disconnecting");
       return s().tailnet.disconnect();
     }),
     route("DELETE", `${u}/admin/tailnet`, async (r) => {
       d.adminFor(r);
-      notOverTailnet(r, "Leaving the tailnet");
+      notOverTailnet(d, r, "Leaving the tailnet");
       // Its web mode goes first, to Direct if that's still listening, else off; beside Built-in, Tailnet alone goes off.
       if (s().web.view().mode === "tailnet") await s().web.set({ mode: d.external.direct() ? "direct" : "off" });
       else await s().web.dropTailnet();
@@ -2543,8 +2543,8 @@ async function limited<T>(d: Lyricad, keys: string[], attempt: () => Promise<T>,
 }
 
 /** A change that would cut off the request asking for it, when it came through her own tailnet address. */
-function notOverTailnet(r: Request, what: string): void {
-  if (r.via === "tailnet") throw new HttpError(409, `${what} from her tailnet address would cut this connection; do it over the LAN or on the machine`);
+function notOverTailnet(d: Lyricad, r: Request, what: string): void {
+  if (r.via === "tailnet") throw new HttpError(409, `${what} from ${d.name()}'s tailnet address would cut this connection; do it over the LAN or on the machine`);
 }
 
 function pick<T extends object, K extends keyof T>(o: T, keys: K[]): Pick<T, K> {
@@ -2942,7 +2942,7 @@ function sleepRunDetail(d: Lyricad, o: OwnerView, pool: Pool, runId: string): Ap
   // An undone night's items went with it.
   const items = run.skipReason === "undone" ? [] : store.listItems({ run: run.id, includeDismissed: true }).map((i) => sleepItemInfo(pool, i));
   const undoable = store.undoableRun()?.id === run.id;
-  const blocked = undoable ? store.sleepUndoBlock(run.id) ?? (d.services!.sleep.working().includes(o.userId) ? "She's asleep now. Undo once she wakes." : undefined) : undefined;
+  const blocked = undoable ? store.sleepUndoBlock(run.id) ?? (d.services!.sleep.working().includes(o.userId) ? `${d.name()} is asleep now. Undo once she wakes.` : undefined) : undefined;
   return {
     ...sleepRunInfo(pool, run),
     // Notes it made, then notes it edited (a renamed file respelled).
@@ -3359,7 +3359,7 @@ function pin(d: Lyricad, user: User, r: Request, pinned: boolean): Api.Ok {
     const at = o[pool].entryPage(thread.id, { before: n + 1, limit: 1 }).entries.find((e) => e.n === n);
     const role = (at?.data as { type?: string; message?: { role?: string } } | undefined)?.message?.role;
     if (!at) throw new HttpError(404, "no such message");
-    if (role !== "user" && role !== "assistant") throw new HttpError(400, "only your messages and her replies can be pinned");
+    if (role !== "user" && role !== "assistant") throw new HttpError(400, `only your messages and ${d.name()}'s replies can be pinned`);
     o[pool].pinEntry(thread.id, n, pinned);
     return { ok: true };
   });
@@ -3377,7 +3377,7 @@ function react(d: Lyricad, user: User, r: Request, on: boolean): Api.Reactions {
     const at = o[pool].entryPage(thread.id, { before: n + 1, limit: 1 }).entries.find((e) => e.n === n);
     const role = (at?.data as { type?: string; message?: { role?: string } } | undefined)?.message?.role;
     if (!at) throw new HttpError(404, "no such message");
-    if (role !== "user" && role !== "assistant") throw new HttpError(400, "only your messages and her replies take reactions");
+    if (role !== "user" && role !== "assistant") throw new HttpError(400, `only your messages and ${d.name()}'s replies take reactions`);
     const reactions = toReactions(o[pool].react(thread.id, n, emoji, user.id, on), user.id) ?? [];
     d.services!.host.get(user.id, pool, thread.id).reacted(n, reactions, { emoji, on, hers: role === "assistant" });
     return { reactions };
@@ -3420,7 +3420,7 @@ async function rewind(d: Lyricad, user: User, r: Request, req: Api.RewindRequest
     }
     if (req.action !== "regenerate") throw new HttpError(400, "the action is delete, regenerate or edit");
     const asked = entries.filter((e) => e.n <= n && userText(e.data) !== undefined).at(-1);
-    if (!asked || asked.n === n) throw new HttpError(400, "only her replies can be regenerated");
+    if (!asked || asked.n === n) throw new HttpError(400, `only ${d.name()}'s replies can be regenerated`);
     return { from: asked.n, then: userText(asked.data)! };
   });
   // Regenerate with…: the router checks the model before anything is removed.

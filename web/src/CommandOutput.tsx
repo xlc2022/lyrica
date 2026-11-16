@@ -5,6 +5,7 @@ import { get, type CommandOutputInfo, type CommandOutputText, type OutputEvent }
 import { Terminal } from "../../core/src/workspace/terminal.ts";
 import { CopyButton } from "./CopyButton.tsx";
 import { Icon } from "./icons.tsx";
+import { her } from "./name.ts";
 import { ErrorText, useDismiss, useInView } from "./ui.tsx";
 
 // --- The thread stream's output and jobs events, for the views that show them (stream.ts feeds these) ---
@@ -31,11 +32,14 @@ const utf8 = new TextEncoder();
 /** What the view shows of its terminal: at most LIVE_CHARS, its end, even when one line holds more. */
 const liveText = (term: Terminal) => { const t = term.text(); return t.length > LIVE_CHARS ? t.slice(t.length - LIVE_CHARS) : t; };
 
+/** The reason core/src/workspace/jobs.ts (STOPPED_BY_HER) gives a job she stopped herself: shown with her name. */
+const STOPPED_BY_HER = "stopped by her";
+
 /** How a command ended, in words, under its output. */
 export function endLine(o: CommandOutputInfo): string | undefined {
   if (o.state === "running") return undefined;
   if (o.state === "timed out") return "Timed out";
-  if (o.state === "stopped") return o.reason ? `Stopped: ${o.reason}` : "Stopped";
+  if (o.state === "stopped") return o.reason === STOPPED_BY_HER ? `Stopped by ${her()}` : o.reason ? `Stopped: ${o.reason}` : "Stopped";
   if (o.exitCode !== undefined && o.exitCode !== null) return `Exited with code ${o.exitCode}`;
   return o.reason ? `Failed: ${o.reason}` : "Failed";
 }

@@ -7,11 +7,11 @@ import { her } from "./name.ts";
 import type { ShellContext } from "./Shell.tsx";
 import { ConfirmDialog, ErrorText, useDismiss, useLoad } from "./ui.tsx";
 
-const CUT = "This page is reached over the tailnet, so disconnecting would cut it off. Open her LAN address and do it there.";
+const cut = () => `This page is reached over the tailnet, so disconnecting would cut it off. Open ${her()}'s LAN address and do it there.`;
 
 /** The 409 for a change asked over her own tailnet address, in the page's words; anything else as lyricad said it. */
 export function tailnetError(e: Error): string {
-  return e instanceof HttpError && e.status === 409 && /cut this connection/.test(e.message) ? CUT : tailnetReason(e.message);
+  return e instanceof HttpError && e.status === 409 && /cut this connection/.test(e.message) ? cut() : tailnetReason(e.message);
 }
 
 /** The server's reason in the page's words (docs/ux.md §4: what happened and what to do). */

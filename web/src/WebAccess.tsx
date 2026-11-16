@@ -10,7 +10,7 @@ import { ErrorText, Switch, useAction, useLoad } from "./ui.tsx";
 const MODES: { mode: WebMode; label: string; hint: () => string }[] = [
   { mode: "off", label: "Only this machine", hint: () => `Nothing listens beyond 127.0.0.1. While ${her()} is on a tailnet, its devices still reach that port at her tailnet address, where nobody can log in.` },
   { mode: "direct", label: "Direct", hint: () => `${her()}'s own HTTPS on this machine's addresses, with a certificate she made; a browser trusts it once by its fingerprint.` },
-  { mode: "tailnet", label: "Tailnet", hint: () => "HTTPS at her tailnet name through Tailscale, for every device on the tailnet." },
+  { mode: "tailnet", label: "Tailnet", hint: () => `HTTPS at ${her()}'s tailnet name through Tailscale, for every device on the tailnet.` },
   { mode: "builtin", label: "Built-in Caddy", hint: () => `${her()} runs Caddy on the addresses you pick, with a certificate for your hostname from a DNS challenge.` },
   { mode: "external", label: "A proxy elsewhere", hint: () => "Another machine's proxy forwards to an address here." },
 ];
@@ -103,7 +103,7 @@ function WebAccessForm({ path, access, onSaved }: { path: string; access: WebAcc
           <input value={name} placeholder="lyrica.example.net" autoCapitalize="none" disabled={busy} onChange={(ev) => setName(ev.target.value)} />
           <small className="muted">The address you'll open in the browser, for example lyrica.example.net. {mode === "external"
             ? "Its DNS record should point at the proxy."
-            : "Its DNS record should point at one of the addresses under Serve on, or at her tailnet address."}</small>
+            : `Its DNS record should point at one of the addresses under Serve on, or at ${her()}'s tailnet address.`}</small>
         </label>
       )}
 

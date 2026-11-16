@@ -125,9 +125,9 @@ export class TailnetControl {
     const controlServer = j.controlServer ? checkControlServer(String(j.controlServer)) : undefined;
     return this.serial(async () => {
       const before = await this.status();
-      if (before.state === "notInstalled") throw new HttpError(409, `she can't join: ${before.reason}`);
+      if (before.state === "notInstalled") throw new HttpError(409, `this machine can't join: ${before.reason}`);
       if (before.state === "connected" || before.state === "disconnected") {
-        if (!j.leave) throw new HttpError(409, `she is on ${before.tailnet ?? "a tailnet"} already; leave it first`);
+        if (!j.leave) throw new HttpError(409, `this machine is on ${before.tailnet ?? "a tailnet"} already; leave it first`);
         await this.run("logout");
       }
       const file = join(this.o.runtime, `tailnet-key-${randomBytes(8).toString("hex")}`);

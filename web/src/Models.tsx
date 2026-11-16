@@ -23,6 +23,7 @@ import {
 } from "./ModelsFrame.tsx";
 import { go, href, type ModelsPageUnder, type ModelsTab, type Route } from "./route.ts";
 import type { ShellContext } from "./Shell.tsx";
+import { her } from "./name.ts";
 import { TextModels } from "./TextModels.tsx";
 import { clock, ConfirmDialog, ErrorText, hidden, moved, shortTime, Switch, useAction, useDismiss, useLoad, useReorder } from "./ui.tsx";
 
@@ -141,7 +142,7 @@ function updateOffer(p: ModelsPage | undefined, s: HostStatus | undefined): { re
   if (!s) return { why: "The host isn't answering." };
   if (hostUpdating(s)) return { why: "An update is running." };
   if (!s.update?.available) return { why: s.update?.reason ?? "This host has no updater: run install.sh on the host again." };
-  if (!p?.release) return { why: "Lyrica isn't running a release from her updater. Update her first, in Administration → Updates." };
+  if (!p?.release) return { why: `${her()} isn't running a release from her updater. Update her first, in Administration → Updates.` };
   if (!p.release.tag && !s.update.commits) return { why: "This host's updater can't install a latest merge yet: run install.sh on the host again." };
   if (s.commit === p.release.commit) return { why: `This host already runs ${releaseName(p.release.tag)}.` };
   return { release: p.release };
@@ -443,7 +444,8 @@ type Tier = "fast" | "quality";
 const tierOf = (t: Task): Tier | undefined => (t === "image.fast" ? "fast" : t === "image.create" ? "quality" : undefined);
 /** Whether a model makes images of a tier: untagged and Both make either. */
 const forTier = (m: { useFor?: "fast" | "quality" | "both" }, tier: Tier) => (m.useFor ?? "both") !== (tier === "fast" ? "quality" : "fast");
-const TASK_ROWS: { group: string; tasks: { task: Task; hint: string }[] }[] = [
+/** A function, so the hints say her name as it is now. */
+const TASK_ROWS = (): { group: string; tasks: { task: Task; hint: string }[] }[] => [
   { group: "Conversation", tasks: [
     { task: "chat", hint: "The main conversation" },
     { task: "code", hint: "Code changes: edit, test, fix" },
@@ -456,13 +458,13 @@ const TASK_ROWS: { group: string; tasks: { task: Task; hint: string }[] }[] = [
   { group: "Memory", tasks: [{ task: "embedding", hint: "Recall and search" }] },
   { group: "Sleep", tasks: [
     { task: "sleep.consolidate", hint: "The day into memory" },
-    { task: "sleep.dream", hint: "Her own time" },
+    { task: "sleep.dream", hint: `${her()}'s own time` },
     { task: "sleep.wake", hint: "Writing WAKE" },
   ] },
-  { group: "Images", tasks: [{ task: "vision", hint: "Seeing an image her model can't" }, { task: "image.fast", hint: "New images, unless she asks for quality" }, { task: "image.create", hint: "New images she asks quality for" }, { task: "image.edit", hint: "Changing an image" }, { task: "image.upscale", hint: "Sharper, larger images" }, { task: "video", hint: "Short clips, on a model host" }] },
+  { group: "Images", tasks: [{ task: "vision", hint: `Seeing an image ${her()}'s model can't` }, { task: "image.fast", hint: `New images, unless ${her()} asks for quality` }, { task: "image.create", hint: `New images ${her()} asks quality for` }, { task: "image.edit", hint: "Changing an image" }, { task: "image.upscale", hint: "Sharper, larger images" }, { task: "video", hint: "Short clips, on a model host" }] },
   { group: "Speech", tasks: [{ task: "speech.transcribe", hint: "Speech to text" }, { task: "speech.speak", hint: "Text to speech" }] },
 ];
-const TASK_ORDER = TASK_ROWS.flatMap((g) => g.tasks.map((t) => t.task));
+const TASK_ORDER = TASK_ROWS().flatMap((g) => g.tasks.map((t) => t.task));
 
 /** What a task needs (core/models): Same as stays within one, and pickers offer only models that have it. */
 const capability = (t: Task) => (t === "embedding" ? "embedding" : t === "vision" ? "vision" : t === "image.create" || t === "image.fast" ? "image" : t === "image.edit" ? "edit" : t === "image.upscale" ? "upscale"
@@ -595,7 +597,7 @@ function Tasks({ ctx }: { ctx: MCtx }) {
               </tr>
             </thead>
             <tbody>
-              {TASK_ROWS.map((g) => (
+              {TASK_ROWS().map((g) => (
                 <Fragment key={g.group}>
                   <tr className="tgroup"><td colSpan={3}><span className="eyebrow">{g.group}</span></td></tr>
                   {g.tasks.map(({ task, hint }) => (

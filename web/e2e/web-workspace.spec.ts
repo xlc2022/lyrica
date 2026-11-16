@@ -986,7 +986,7 @@ test("an administrator sees how Lyrica is reached", async ({ page, baseURL }) =>
   // Each named mode says where its DNS record goes.
   await expect(section.getByText("Its DNS record should point at the proxy.")).toBeVisible();
   await section.getByLabel("Built-in Caddy").check();
-  await expect(section.getByText("Its DNS record should point at one of the addresses under Serve on, or at her tailnet address")).toBeVisible();
+  await expect(section.getByText("Its DNS record should point at one of the addresses under Serve on, or at Lyrica's tailnet address")).toBeVisible();
   await noHorizontalScroll(page);
 
   const status = section.getByRole("region", { name: "Web access status" });
@@ -1645,4 +1645,25 @@ test("command output folds progress redrawn in place, as a terminal shows it", a
   const box = page.locator(".marker-body .command-output pre.read-body");
   await expect(box).toHaveText("Fetching model.gguf\nmodel.gguf 100% ######################### 1.24 GB\ncbb9175a9bc5 Pull complete\n4f4fb700ef54 Pull complete\nDone\n");
   if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/output-folded-${page.viewportSize()!.width}.png` });
+});
+
+// A job she stopped herself ends "Stopped by <her name>", not with the reason core stores for it.
+test("a job she stopped herself says so with her name", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  await newThread(page, "General");
+  const threadId = threadIdOf(page.url());
+  const output = "tick 1\ntick 2\n";
+  const job = { id: "c1", call: "b1", kind: "call", place: "sandbox", command: "./count.sh", cwd: "/workspace", startedAt: "2026-11-16T05:00:00Z",
+    endedAt: "2026-11-16T05:01:00Z", state: "stopped", reason: "stopped by her", bytes: Buffer.byteLength(output), dropped: 0 };
+  await page.route(`**/api/u/${userId}/threads/general/${encodeURIComponent(threadId)}/outputs?call=b1`, (route) => route.fulfill({ json: { job, output } }));
+  await page.route(`**/api/u/${userId}/threads/general/${encodeURIComponent(threadId)}/messages`, (route) => route.fulfill({ json: {
+    messages: [{ id: `e:${threadId}#1`, n: 1, role: "assistant", createdAt: "2026-11-16T05:01:00Z", parts: [
+      { type: "tool", toolCallId: "b1", name: "bash", args: { command: "./count.sh" }, result: "Stopped", isError: false },
+      { type: "text", text: "I stopped the count." },
+    ] }], hasMore: false,
+  } }));
+  await page.goto(page.url());
+  await page.locator(".marker[data-type='tool']").getByRole("button", { name: /bash/ }).click();
+  await expect(page.locator(".marker-body .command-output .read-note")).toHaveText("Stopped by Lyrica");
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/stopped-by-${page.viewportSize()!.width}.png` });
 });

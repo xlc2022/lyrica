@@ -842,9 +842,9 @@ export class Lyricad implements Drainable {
     s.wakeups.drop(userId);
     s.routines.drop(userId);
     s.forge.drop(userId);
-    s.workspace.jobs.stopUser(userId, "Lyrica locked");
+    s.workspace.jobs.stopUser(userId, `${this.name()} locked`);
     s.workspace.forgetPasswords(userId);
-    s.clips.stop("Lyrica locked", userId);
+    s.clips.stop(`${this.name()} locked`, userId);
     // Subagent runs record how they ended in user.db, and a sleep run in the pool, so they stop before the key goes.
     await s.delegation.stopAll(userId);
     await s.children.lock(userId);
@@ -1188,8 +1188,8 @@ export class Lyricad implements Drainable {
     clearInterval(this.nightly);
     if (s) {
       await s.delegation.stopAll();
-      for (const u of s.users.all()) s.workspace.jobs.stopUser(u.id, "Lyrica stopped");
-      s.clips.stop("Lyrica stopped");
+      for (const u of s.users.all()) s.workspace.jobs.stopUser(u.id, `${this.name()} stopped`);
+      s.clips.stop(`${this.name()} stopped`);
       s.watcher.close();
       for (const u of s.users.all()) await s.sleep.stop(u.id);
       await s.host.close();
