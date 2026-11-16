@@ -2,6 +2,7 @@
 // and the thread's background jobs in the Jobs dropdown on the facts line, each streaming while it runs.
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { get, type CommandOutputInfo, type CommandOutputText, type OutputEvent } from "./api.ts";
+import { Terminal } from "../../core/src/workspace/terminal.ts";
 import { CopyButton } from "./CopyButton.tsx";
 import { Icon } from "./icons.tsx";
 import { ErrorText, useDismiss, useInView } from "./ui.tsx";
@@ -27,6 +28,8 @@ export function jobsChanged(base: string): void { for (const fn of jobsListeners
 /** The most a view holds of a command streaming in: past it, its start goes, so a chatty job can't fill the page. */
 const LIVE_CHARS = 2 * 1024 * 1024;
 const utf8 = new TextEncoder();
+/** What the view shows of its terminal: at most LIVE_CHARS, its end, even when one line holds more. */
+const liveText = (term: Terminal) => { const t = term.text(); return t.length > LIVE_CHARS ? t.slice(t.length - LIVE_CHARS) : t; };
 
 /** How a command ended, in words, under its output. */
 export function endLine(o: CommandOutputInfo): string | undefined {
@@ -60,14 +63,22 @@ export function OutputBox({ base, call, id, running, fallback, failed, label }: 
     let live = true;
     let loaded = false;
     const early: OutputEvent[] = [];
+    // Played as a terminal shows it: a progress bar redrawn with \r or cursor moves keeps only its latest state.
+    const term = new Terminal();
     const add = (e: OutputEvent) => {
       if (e.to <= seen.current) return;
       // Part of it already here (sent while the view loaded): only the rest. A gap: lyricad skipped a flood's middle.
       let piece = e.data;
       if (e.at < seen.current) piece = new TextDecoder().decode(utf8.encode(e.data).subarray(seen.current - e.at));
-      else if (e.at > seen.current) piece = `\n[… ${(e.at - seen.current).toLocaleString("en-US")} bytes skipped while it streamed …]\n${piece}`;
+      else if (e.at > seen.current) {
+        // Said after everything shown, wherever the cursor was moved to, so it overwrites no redrawn line.
+        term.toEnd();
+        piece = `\n[… ${(e.at - seen.current).toLocaleString("en-US")} bytes skipped while it streamed …]\n${piece}`;
+      }
       seen.current = e.to;
-      setText((t) => { const next = (t ?? "") + piece; return next.length > LIVE_CHARS ? next.slice(next.length - LIVE_CHARS) : next; });
+      term.write(piece);
+      term.trimAbove(LIVE_CHARS);
+      setText(liveText(term));
     };
     // Listened to from the start: a bash call's row only learns it started a job once its output is read.
     const off = listen(outputListeners, base, (e: OutputEvent) => {
@@ -80,7 +91,9 @@ export function OutputBox({ base, call, id, running, fallback, failed, label }: 
       loaded = true;
       seen.current = r.job.bytes;
       setInfo(r.job);
-      setText(r.output);
+      term.write(r.output);
+      term.trimAbove(LIVE_CHARS);
+      setText(liveText(term));
       setMissing(false);
       for (const e of early.splice(0)) add(e);
     }, (e: Error & { status?: number }) => {
