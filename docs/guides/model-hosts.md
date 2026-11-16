@@ -657,14 +657,29 @@ tend to look older than asked. The original stays listed; a model
 installed from it keeps its link to it.
 
 Qwen-Image 2.1 also comes in bf16 throughout, for ComfyUI hosts: the
-**Qwen-Image 2.1** starter is the base model, not distilled, at its
-card's 40 steps (CFG 1, 2048×2048), for the Quality images list, and
-**Qwen-Image 2.1 Turbo**'s **bf16** variant swaps the int8 encoder for
-the bf16 one. Each is about 30.2 GiB of files, and the second adds only
-its 13.3 GiB model; the largest stage is the 16.3 GiB encoder, so they
-fit a 24 GB card. Both create and edit. Their realism and settings
-haven't been tested on a card yet. A stable-diffusion.cpp host doesn't
-list them, nor any edit starter.
+**Qwen-Image 2.1** starter is the base model, not distilled, for the
+Quality images list, and **Qwen-Image 2.1 Turbo**'s **bf16** variant
+swaps the int8 encoder for the bf16 one. Each is about 30.2 GiB of
+files, and the second adds only its 13.3 GiB model; the largest stage is
+the 16.3 GiB encoder, so they fit a 24 GB card. Both create and edit. A
+stable-diffusion.cpp host doesn't list them, nor any edit starter.
+
+Their settings come from a realism test at 2048×2048 on an RTX PRO 6000
+(two prompts, two seeds). The base starter runs 25 steps at CFG 3 with
+a negative prompt, APG and FreSca, about 70 seconds an image, with
+clearly more skin texture than CFG 1; 40 steps looked barely better
+than 25. **Qwen-Image 2.1 Max Realism**, also for Quality images, is the
+same model on the res_2s sampler with the beta scheduler at CFG 3: the
+most lifelike skin of the test, at about 150 seconds an image, and it
+sometimes over-sharpens. Turbo, at about 9 seconds, looked nearly as
+real as the base. Every 2.1 starter decodes with a texture-fix VAE
+(0.6 GiB, the same licence as the model), which cleans up the stock
+decoder's fine checkerboard at no extra time. A model installed from a
+2.1 starter before these settings keeps its own: **Reset to starter
+settings…** in its drawer brings the new ones, but keeps its files.
+For the texture-fix VAE, install the Max Realism starter (it downloads
+only the VAE when the model and encoder are there), then pick that VAE
+in the older model's drawer.
 
 The RealVisXL V5.0 starter (one 6.9 GB SDXL checkpoint) is the one to
 pick for SDXL photos: it looks far more like a photograph than base

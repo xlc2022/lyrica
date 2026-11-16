@@ -1,0 +1,45 @@
+{
+  "name": "Qwen-Image 2.1 Max Realism",
+  "family": "Qwen-Image",
+  "template": "qwen-image-2.1",
+  "backend": "comfyui",
+  "useFor": "quality",
+  "parts": [
+    {
+      "role": "diffusion",
+      "source": "huggingface",
+      "repo": "Comfy-Org/Qwen-Image-2.1",
+      "path": "diffusion_models/qwen_image_2.1_bf16.safetensors",
+      "sha256": "89f4158d066cc33906a199fca85634f766892dd78f49b6698dabf187ac86c4bc",
+      "size": 14230280616
+    },
+    {
+      "role": "text_encoder",
+      "slot": "qwen3vl_8b",
+      "source": "huggingface",
+      "repo": "Comfy-Org/Qwen-Image-2.1",
+      "path": "text_encoders/qwen3vl_8b_bf16.safetensors",
+      "sha256": "68bdc82bc1b66851162ae656225e7e2068166b603db19bd5d5a3b90eb12669a9",
+      "size": 17534334616
+    },
+    {
+      "role": "vae",
+      "source": "huggingface",
+      "repo": "madebyollin/texture-fix-vae-for-qwen-image-2.1",
+      "path": "texture_fix_vae_for_qwen_image_2.1_bf16.safetensors",
+      "sha256": "36f56608b02077a50a08ea3dbcdb88351298ceba49948f41f9f87186378e6908",
+      "size": 675509688
+    }
+  ],
+  "loras": [],
+  "defaults": {
+    "steps": 25,
+    "cfg": 3,
+    "sampler": "res_2s",
+    "scheduler": "beta",
+    "negativePrompt": "low quality, blurry, artifacts, bad hands, bad anatomy, watermark, signature",
+    "width": 2048,
+    "height": 2048,
+    "resolution": 1024
+  }
+}
