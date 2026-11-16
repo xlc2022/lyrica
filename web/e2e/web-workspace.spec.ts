@@ -1585,4 +1585,18 @@ test("a command's whole output scrolls in its row, and a named background job st
   await expect(pop.locator(".job-card")).toHaveCount(1);
   await noHorizontalScroll(page);
   if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/jobs-done-${page.viewportSize()!.width}.png` });
+  // Its notice in the chat keeps the output closed; opened, it is the whole kept output, as in its card.
+  await page.keyboard.press("Escape");
+  const notice = page.locator(".job-notice").filter({ hasText: "Count to forty" });
+  await expect(notice.getByRole("button", { name: "Output" })).toHaveAttribute("aria-expanded", "false");
+  await expect(notice.locator(".command-output")).toHaveCount(0);
+  await notice.getByRole("button", { name: "Output" }).scrollIntoViewIfNeeded();
+  if (process.env.SCREENSHOTS) await notice.screenshot({ path: `${process.env.SCREENSHOTS}/job-notice-closed-${page.viewportSize()!.width}.png` });
+  await notice.getByRole("button", { name: "Output" }).click();
+  await expect(notice.locator(".command-output pre.read-body")).toContainText("tick 1\n");
+  await expect(notice.locator(".command-output pre.read-body")).toContainText("tick 40");
+  // Each line stays whole (a table stays a table), the box scrolling sideways instead.
+  expect(await notice.locator(".command-output pre.read-body").evaluate((el) => getComputedStyle(el).whiteSpace)).toBe("pre");
+  await noHorizontalScroll(page);
+  if (process.env.SCREENSHOTS) await notice.screenshot({ path: `${process.env.SCREENSHOTS}/job-notice-open-${page.viewportSize()!.width}.png` });
 });

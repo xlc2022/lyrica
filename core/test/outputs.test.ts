@@ -134,15 +134,16 @@ describe("command output", () => {
     expect([a, b, c].every((p) => !p.data.includes("\ufffd"))).toBe(true);
   });
 
-  it("sorts newest, oldest, running first and longest", () => {
+  it("keeps running jobs on top, then sorts newest, oldest, longest or by name", () => {
     const a = cmd("j1", { startedAt: "2026-11-16T01:00:00.000Z", endedAt: "2026-11-16T01:30:00.000Z" });
     const b = cmd("j2", { startedAt: "2026-11-16T01:10:00.000Z", endedAt: "2026-11-16T01:11:00.000Z" });
     const c = cmd("j3", { startedAt: "2026-11-16T01:05:00.000Z", state: "running", endedAt: undefined });
     const now = Date.parse("2026-11-16T01:12:00.000Z");
-    expect(sortOutputs([a, b, c], "newest", now).map((j) => j.id)).toEqual(["j2", "j3", "j1"]);
-    expect(sortOutputs([a, b, c], "oldest", now).map((j) => j.id)).toEqual(["j1", "j3", "j2"]);
-    expect(sortOutputs([a, b, c], "running", now).map((j) => j.id)).toEqual(["j3", "j2", "j1"]);
-    expect(sortOutputs([a, b, c], "longest", now).map((j) => j.id)).toEqual(["j1", "j3", "j2"]);
+    expect(sortOutputs([a, b, c], "newest", now).map((j) => j.id)).toEqual(["j3", "j2", "j1"]);
+    expect(sortOutputs([a, b, c], "oldest", now).map((j) => j.id)).toEqual(["j3", "j1", "j2"]);
+    expect(sortOutputs([a, b, c], "longest", now).map((j) => j.id)).toEqual(["j3", "j1", "j2"]);
+    const named = [cmd("j4", { name: "tick 10" }), cmd("j5", { name: "Build" }), cmd("j6", { command: "tick 9" })];
+    expect(sortOutputs(named, "name", now).map((j) => j.id)).toEqual(["j5", "j6", "j4"]);
   });
 
   it("names a job, streams its output, keeps it with the thread when it ends, and goes on numbering after a restart", async () => {

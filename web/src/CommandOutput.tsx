@@ -125,9 +125,9 @@ export function OutputBox({ base, call, id, running, fallback, failed, label }: 
 /** What the Jobs and Files search boxes read, as their tooltip. */
 export const SEARCH_TIP = "Text, or a wildcard such as *.txt or file-?.log, or /a regular expression/. Case is ignored.";
 
-type Sort = "newest" | "oldest" | "running" | "longest";
+type Sort = "newest" | "oldest" | "longest" | "name";
 const SORTS: { value: Sort; label: string }[] = [
-  { value: "newest", label: "Newest" }, { value: "oldest", label: "Oldest" }, { value: "running", label: "Running first" }, { value: "longest", label: "Longest" },
+  { value: "newest", label: "Newest" }, { value: "oldest", label: "Oldest" }, { value: "longest", label: "Longest" }, { value: "name", label: "Name" },
 ];
 const SORT_KEY = "lyrica.jobs.sort";
 const readSort = (): Sort => { try { const s = localStorage.getItem(SORT_KEY); return SORTS.some((x) => x.value === s) ? s as Sort : "newest"; } catch { return "newest"; } };

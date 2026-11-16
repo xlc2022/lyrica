@@ -461,21 +461,21 @@ button.jump-latest { font-size: 13px; min-height: var(--tap); }
 .sub-head b.to-thread { flex: 1 1 0; width: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sub-head .open { margin-left: auto; }
 .subagent p { font-size: 14px; }
-/* A background command that ended (docs/ux.md): the command and its last output each in a block that keeps its lines; long ones clamp until Show more. */
+/* A background command that ended (docs/ux.md): the command and its last output each in a block that keeps its lines; a long command clamps until Show more, and the output shows only when opened. */
 .job-facts { font-size: 12px; overflow-wrap: anywhere; }
 .job-body { display: grid; gap: 6px; margin-top: 4px; min-width: 0; }
-.job-body pre { margin: 0; background: var(--tool); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; line-height: 1.5; color: var(--fg); }
+.job-body > pre { margin: 0; background: var(--tool); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; line-height: 1.5; color: var(--fg); }
 .job-body[data-clamped] .job-command { max-height: calc(4 * 1.5em + 18px); overflow: hidden; }
-/* Output keeps its lines whole, so a table (nvidia-smi, docker ps) stays a table: a wide one scrolls sideways in its block. */
-.job-body .job-output { white-space: pre; overflow-wrap: normal; overflow-x: auto; }
-.job-body[data-clamped] .job-output { max-height: calc(16 * 1.5em + 18px); overflow-y: hidden; }
+/* With nothing kept (a job from before output was kept), the notice's last lines, whole, a wide one scrolling sideways. */
+.job-body > pre:not(.job-command) { white-space: pre; overflow-wrap: normal; overflow-x: auto; }
 .job-body[data-clamped] .job-command[data-cut] { mask-image: linear-gradient(#000 70%, transparent); }
-/* The clamped output's fade sits over its text and stops at its sideways scrollbar, which stays in view to grab. */
-.job-scroll { position: relative; min-width: 0; }
-.job-body[data-clamped] .job-scroll:has(> pre[data-cut])::after { content: ""; position: absolute; left: 1px; right: 1px; bottom: calc(var(--bar, 0px) + 1px); height: 30%; border-radius: 0 0 7px 7px; background: linear-gradient(transparent, var(--tool)); pointer-events: none; }
 .job-label { font-size: 12px; color: var(--muted); }
+/* Its last output, hidden until opened (docs/ux.md): the chevron turns down while it shows. */
+.job-notice .job-toggle { justify-self: start; font-size: 13px; }
+.job-toggle .chev-ic { width: 12px; height: 12px; transition: transform 0.15s; }
+.job-toggle[aria-expanded="true"] .chev-ic { transform: rotate(90deg); }
 .job-notice .show-more { justify-self: start; font-size: 13px; }
-@media (pointer: coarse) { .job-notice .show-more { min-height: var(--tap); } }
+@media (pointer: coarse) { .job-notice .show-more, .job-notice .job-toggle { min-height: var(--tap); } }
 .status { width: 8px; height: 8px; border-radius: 50%; background: var(--local); }
 .status[data-state="running"] { background: var(--accent); animation: pulse 1.4s ease-in-out infinite; }
 .status[data-state="failed"] { background: var(--danger); }
@@ -867,7 +867,8 @@ dialog::backdrop { background: rgb(0 0 0 / 0.35); }
 .job-card .job-facts { font-size: 12px; }
 .job-card .job-command { font-family: var(--mono); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
 .job-card .command-output { margin: 0 8px 6px; }
-.job-card .command-output pre.read-body, .marker-body .command-output pre.read-body { padding: 2px 12px 10px; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 320px; overflow: auto; font-size: 12px; }
+/* Each line stays whole, so a table (nvidia-smi, docker ps) stays a table: the box scrolls sideways as well as down. */
+.job-card .command-output pre.read-body, .job-notice .command-output pre.read-body, .marker-body .command-output pre.read-body { padding: 2px 12px 10px; white-space: pre; overflow-wrap: normal; max-height: 320px; overflow: auto; font-size: 12px; }
 .command-output .read-note.danger { color: var(--danger); }
 .tfacts .link .dot { margin-right: 6px; vertical-align: middle; }
 .mono, input.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
