@@ -200,7 +200,7 @@ export function JobsFact({ base }: { base: string }) {
       {open && (
         <div className="picker jobs-pop" role="dialog" aria-label="Background jobs">
           <div className="jobs-tools">
-            <input type="search" aria-label="Search jobs" placeholder="Search commands and output" value={q} onChange={(e) => setQ(e.target.value)} />
+            <input type="search" aria-label="Search jobs" placeholder="Search jobs" value={q} onChange={(e) => setQ(e.target.value)} />
             <select aria-label="Sort" value={sort} onChange={(e) => pickSort(e.target.value as Sort)}>
               {SORTS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
             </select>

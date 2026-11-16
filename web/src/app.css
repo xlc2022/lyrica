@@ -854,10 +854,10 @@ dialog::backdrop { background: rgb(0 0 0 / 0.35); }
 .wake-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 2px 4px 2px 10px; }
 .picker-foot { border-top: 1px solid var(--line); padding: 8px 10px 2px; font-size: 14px; }
 /* The Jobs dropdown (docs/ux.md §6, "Background jobs"): search and Sort, then a card per job opening to its output. */
-.jobs-pop { width: min(560px, calc(100vw - 32px)); max-height: 70vh; }
-.jobs-tools { display: flex; gap: 6px; }
-.jobs-tools input { flex: 1; min-width: 0; min-height: 32px; }
-.jobs-tools select { min-height: 32px; }
+.jobs-pop { width: min(560px, calc(100vw - 32px)); max-height: 70vh; grid-template-columns: minmax(0, 1fr); }
+.jobs-tools { display: flex; gap: 6px; min-width: 0; }
+.jobs-tools input { flex: 1; min-width: 0; }
+.jobs-tools select { flex: none; }
 .job-card { border: 1px solid var(--line); border-radius: 8px; display: grid; gap: 6px; padding: 0 0 2px; min-width: 0; }
 .job-card .job-head { display: grid; gap: 2px; text-align: left; border: 0; background: transparent; border-radius: 8px; padding: 8px 10px; font-weight: 400; justify-content: stretch; min-width: 0; }
 .job-card .job-line { display: flex; align-items: center; gap: 8px; min-width: 0; }
