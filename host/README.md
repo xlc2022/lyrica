@@ -671,8 +671,8 @@ revoked. A revoked server must pair again.
   - Or chosen GPUs: one, or several, split by ratio (llama.cpp) or by
     tensor or pipeline parallel (vLLM).
   - Its context length (32k by default, 16k for dictation, or more with a YaRN stretch),
-    KV-cache type, flash attention, GPU layers, System RAM (Auto or Off:
-    whether it may use the host's allowance), Embedding table (Disk or
+    KV-cache type, flash attention, GPU layers, System RAM (a limit in GB,
+    off unless set: how much of the host's allowance it may use), Embedding table (Disk or
     RAM: where llama.cpp reads a per-layer embedding table over 4 GiB
     from; RAM takes it from the allowance), parallel requests, batch
     size (the server's default, or 512 for a vLLM model whose cache holds

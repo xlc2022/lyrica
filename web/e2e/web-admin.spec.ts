@@ -1247,10 +1247,10 @@ test("a host's System RAM: off until set in its drawer, then a block on its card
   await shot("card");
   await noHorizontalScroll(page);
 
-  // A model's Serving: System RAM is Auto or Off while the host has an allowance, and the estimate says what stays there.
+  // A model's Serving: System RAM is a checkbox with a limit in GB, of the host's allowance, and the estimate says what stays there.
   await page.route(/\/api\/u\/[^/]+\/offerings\/off-big\/settings$/, (route) => route.continue({ url: route.request().url().replace("off-big", encodeURIComponent(localOffering)) }));
   await page.route(/\/api\/u\/[^/]+\/offerings\/off-big\/serving$/, (route) => route.fulfill(json({
-    model: big, settings: {}, contextLength: 32768, maxContextLength: 131072, trainedContextLength: 131072, kvBytes: 3 * GB, ramBytes: 18 * GB,
+    model: big, settings: { systemRam: 24 * GB }, contextLength: 32768, maxContextLength: 131072, trainedContextLength: 131072, kvBytes: 3 * GB, ramBytes: 18 * GB,
     layerTableBytes: 23 * GB, recommended: null, stretchUntested: false,
   })));
   await page.route(/\/api\/u\/[^/]+\/library\/text(\?.*)?$/, async (route) => {
@@ -1267,9 +1267,19 @@ test("a host's System RAM: off until set in its drawer, then a block on its card
   await row.locator(".ldetail").getByRole("button", { name: /^Settings for .*Big-MoE-Q6_K/ }).click();
   const settings = page.getByRole("complementary", { name: /^Settings for Big-MoE-Q6_K/ });
   await settings.getByRole("button", { name: "Serving" }).click();
-  const select = settings.getByLabel("System RAM");
-  await expect(select).toHaveValue("auto");
-  await expect(settings.locator(".srow").filter({ has: page.getByLabel("System RAM") }).locator("[title]").first()).toHaveAttribute("title", /The host's allowance is 48 GB\.$/);
+  const ramOn = settings.getByRole("checkbox", { name: /^System RAM/ });
+  const limit = settings.getByLabel("System RAM limit");
+  await expect(ramOn).toBeChecked();
+  await expect(limit).toHaveValue("24");
+  await expect(settings.locator(".srow").filter({ has: page.getByLabel("System RAM limit") })).toContainText(/up to\s*of 48 GB/);
+  // Unticked, it stays on its GPUs; ticked again, the limit starts at the whole allowance.
+  await ramOn.uncheck();
+  await expect(limit).toHaveCount(0);
+  await ramOn.check();
+  await expect(limit).toHaveValue("48");
+  await limit.fill("30");
+  await limit.blur();
+  await expect(limit).toHaveValue("30");
   await expect(settings.getByRole("status").filter({ hasText: "system RAM" })).toHaveText("18.0 GB stays in system RAM, so it runs slower.");
   // A per-layer embedding table over 4 GiB: read from Disk unless RAM is chosen.
   const table = settings.getByLabel("Embedding table");
@@ -1277,7 +1287,7 @@ test("a host's System RAM: off until set in its drawer, then a block on its card
   await expect(settings.locator(".srow").filter({ has: page.getByLabel("Embedding table") }).locator("[title]").first()).toHaveAttribute("title", /RAM loads it whole, 23\.0 GB of the host's allowance\.$/);
   await table.selectOption("ram");
   await expect(table).toHaveValue("ram");
-  await select.scrollIntoViewIfNeeded();
+  await limit.scrollIntoViewIfNeeded();
   await shot("serving");
   await noHorizontalScroll(page);
 });

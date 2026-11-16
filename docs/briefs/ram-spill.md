@@ -28,9 +28,13 @@ refused whatever it says.
   host drawer (after Models folder) and in the host dashboard (a **System
   RAM** card after the GPUs, its Edit drawer holding the one field), and
   saves through `PUT /host/v1/memory`.
-- **Models on Auto.** Each model's Serving settings gain **System RAM**,
-  Auto or Off, shown while the host has an allowance. Off keeps a model on
-  the GPUs only, so a chat model stays fast or is refused as today.
+- **Models opt in** (the owner, 2026-11-16, replacing Auto or Off): each
+  model's Serving settings gain a **System RAM** checkbox and a limit in GB
+  of the allowance. Unticked keeps a model on its GPUs. Ticked, an automatic
+  context is the longest its GPUs and the limit hold, and a context set by
+  hand fills the GPUs first, the rest going to RAM; unticked, such a context
+  is refused. Models that spilled before got the whole allowance as their
+  limit, once.
 - **Only what doesn't fit spills.** A way of running that fits the GPUs,
   unloading idle models if needed, always wins. Only when a way can't fit
   even once the host's other unpinned models are unloaded does the host
@@ -66,7 +70,7 @@ refused whatever it says.
   gains **In system RAM**), and what is spilled ("GLM 5.3 Flash (18 GB)").
 - **Host dashboard**: a System RAM card after the GPUs, and a **System
   RAM** checkbox in a llama.cpp model's Settings (under Memory, beside the
-  GPUs of a custom allocation; unticked is `systemRam: false`). **Starters**: a starter too big for the GPUs but within
+  GPUs of a custom allocation, with its GB limit beside it). **Starters**: a starter too big for the GPUs but within
   GPUs plus allowance gets **uses system RAM** (amber pill, tooltip "Runs
   slower: part of it stays in system RAM.") and can download; past both it
   stays **too big for these GPUs**.

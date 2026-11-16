@@ -814,7 +814,7 @@ function CopyDrawer({ ctx, entry, copy, onClose, onSaved }: { ctx: MCtx; entry: 
         </SRow>
         {(!!allowance || typeof draft.systemRam === "number") && (
           <div className="srow">
-            <label className="lbl check" title={RAM_TIP}>
+            <label className="check" title={RAM_TIP}>
               <input type="checkbox" checked={typeof draft.systemRam === "number"} onChange={(e) => set("systemRam", e.target.checked ? Math.max(GB, Math.floor(allowance / GB) * GB) : undefined)} /> System RAM<span className="sr-only">. {RAM_TIP}</span>
             </label>
             {typeof draft.systemRam === "number" && (
