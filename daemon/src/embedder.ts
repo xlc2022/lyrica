@@ -65,7 +65,7 @@ export class Embedder {
         try {
           const out = await this.o.models.embed(ctx, toEmbed.map((p) => p.text));
           // The list resolved to another model meanwhile: its vectors go with that model, and the next pass sees what's left.
-          if (out.model !== model) { view.own.putVectors(out.model, toEmbed.map((p, i) => ({ id: p.id, kind: p.kind, vec: out.vectors[i]! }))); return out.vectors.length; }
+          if (out.model !== model) { view.own.putVectors(out.model, toEmbed.map((p, i) => ({ id: p.id, kind: p.kind, vec: out.vectors[i]!, seen: p.seen, row: p.row }))); return out.vectors.length; }
           vectors = out.vectors;
         } catch (err) {
           if (err instanceof NoModel || isUnreachable(err)) return 0;
@@ -86,7 +86,8 @@ export class Embedder {
       const rows = pending.map((p) => {
         const at = toEmbed.indexOf(p);
         const vec = at >= 0 ? vectors[at] : undefined;
-        return vec ? { id: p.id, kind: p.kind, vec } : { id: p.id, kind: p.kind };
+        // `seen`: an item deleted or rewritten while the model worked is left out, and the next pass embeds what's there now.
+        return { id: p.id, kind: p.kind, vec, seen: p.seen, row: p.row };
       });
       view.own.putVectors(model, rows);
       return rows.length;
