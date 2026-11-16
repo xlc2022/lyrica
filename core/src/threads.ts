@@ -33,7 +33,11 @@ export function normalizeThreadArguments(input: unknown): any {
   // A label over the limit is cut at a word and its whole wording leads the consequence, rather than refused.
   if (Array.isArray(a.options)) a.options = a.options.map((o: any) => {
     if (typeof o?.label !== "string" || typeof o.consequence !== "string" || o.label.trim().length <= ASK_LIMITS.label) return o;
-    const whole = o.label.trim().replace(/[\s.]+$/, "");
+    // Trailing spaces and dots dropped by hand: /[\s.]+$/ rescans a long run of them from each.
+    const label = o.label.trim();
+    let end = label.length;
+    while (end && /[\s.]/.test(label[end - 1]!)) end--;
+    const whole = label.slice(0, end);
     const cut = whole.slice(0, ASK_LIMITS.label + 1).replace(/\s+\S*$/, "").replace(/[\s,;:–—-]+$/, "");
     const consequence = `${whole}. ${o.consequence.trim()}`;
     return cut && cut.length <= ASK_LIMITS.label && consequence.length <= ASK_LIMITS.consequence ? { ...o, label: cut, consequence } : o;

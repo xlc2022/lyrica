@@ -157,7 +157,7 @@ export function simpleCommands(command: string): string[][] {
  */
 export function knownValues(command: string): Map<string, string> {
   const values = new Map<string, string>();
-  const rest = command.replace(/\$\{[A-Za-z_][A-Za-z0-9_]*\}/g, "").replace(/\d*>&\d+|&>>?/g, "");
+  const rest = command.replace(/\$\{[A-Za-z_][A-Za-z0-9_]*\}/g, "").replace(/(?<!\d)\d*>&\d+|&>>?/g, "");
   if (/[|&(){}`'\\#]|<</.test(rest)) return values;
   const parsed = parse(command);
   if (parsed.some((words) => words.some((w) => KEYWORDS.has(w) || SHELLS.has(posix.basename(w)) || ["-exec", "-execdir", "-ok"].includes(w)))) return values;

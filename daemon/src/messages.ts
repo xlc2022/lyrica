@@ -112,8 +112,6 @@ function textOf(content: Content | undefined): string {
   return content.filter((p) => p.type === "text").map((p) => p.text ?? "").join("\n");
 }
 
-const ID = /\[((?:general\/)?(?:[ntpej]:[^\]\s]+|wake))\]/g;
-
 /** Memory IDs recalled: the ids at the start of each line of a `<recall>` section or a recall result. */
 export function recalledIds(text: string): string[] {
   const ids = text.split("\n").map((l) => /^\[((?:general\/)?(?:[ntpej]:[^\]\s]+|wake))\] \(/.exec(l.trim())?.[1]).filter((x): x is string => !!x);

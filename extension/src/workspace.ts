@@ -137,7 +137,14 @@ type Create = (cwd: string, options: { operations: never }) => ToolDefinition;
 export const BASH_TIMEOUT_S = 600;
 
 /** A bash command that makes a commit. */
-const COMMIT = /\bgit\b[^;&|\n]*\bcommit\b/;
+/** Whether a command runs `git … commit` within one part of it (not across `;`, `&`, `|` or a line). Linear: each part is read once. */
+export const commits = (command: string) => command.split(/[;&|\n]/).some((part) => {
+  const git = /\bgit\b/.exec(part);
+  if (!git) return false;
+  const commit = /\bcommit\b/g;
+  commit.lastIndex = git.index + 3;
+  return commit.test(part);
+});
 /** A background command that checks the code: tests, a type check, a lint or a build. */
 const CHECK = /\b(test|tests|vitest|jest|playwright|pytest|tsc|typecheck|lint|eslint|check|e2e|build|cargo|go test)\b/;
 
@@ -395,7 +402,7 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
           const here = new Proxy(ctx, { get: (t, k) => (k === "cwd" ? cwd : Reflect.get(t, k)) });
           // A file changed, or a commit made, under a check that is still running: she hears it isn't in what it tests.
           const checking = <R extends { content: unknown[] }>(result: R): R => {
-            const what = name === "bash" ? (COMMIT.test(String(rest.command ?? "")) ? "commit" : undefined) : name === "edit" || name === "write" ? "edit" : undefined;
+            const what = name === "bash" ? (commits(String(rest.command ?? "")) ? "commit" : undefined) : name === "edit" || name === "write" ? "edit" : undefined;
             const line = what && checkUnder(tools.jobs?.() ?? [], machine || "sandbox", what === "edit" && typeof rest.path === "string" ? posix.resolve(cwd, rest.path) : cwd, what);
             return line ? { ...result, content: [...result.content, { type: "text" as const, text: line }] } : result;
           };
@@ -776,7 +783,22 @@ export async function saveBeforeRemove(target: ExecutionTarget, dirs: string[], 
       'git bundle create -q "$f" ${r:+"$r"} --branches --not --remotes >/dev/null 2>&1 && echo "BUNDLE:$w:$f" )',
     ].join("; ");
     const out = await runSave(target, `snap() { ${SNAPSHOT}; }; [ -d ${quote(dir)} ] || exit 0; find ${quote(dir)} -maxdepth 3 -name .git -prune 2>/dev/null | while IFS= read -r g; do ${one}; done`);
-    for (const m of out.matchAll(/^BUNDLE:(.*):(\/.*\.bundle)$/gm)) saves.push({ dir: m[1]!, bundle: m[2]! });
+    saves.push(...bundleLines(out));
+  }
+  return saves;
+}
+
+/**
+ * The "BUNDLE:<dir>:<file>.bundle" lines of a save's output, split at the
+ * last ":/" (a dir may hold one). Read by hand: a regex for it rescans a long
+ * line from each ":/".
+ */
+export function bundleLines(out: string): SavedWork[] {
+  const saves: SavedWork[] = [];
+  for (const line of out.split(/\r\n|[\n\r\u2028\u2029]/)) {
+    if (!line.startsWith("BUNDLE:") || !line.endsWith(".bundle")) continue;
+    const at = line.lastIndexOf(":/", line.length - 9);
+    if (at >= 7) saves.push({ dir: line.slice(7, at), bundle: line.slice(at + 1) });
   }
   return saves;
 }
