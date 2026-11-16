@@ -243,7 +243,12 @@ a reboot; with Secure Boot on, enrolling the driver's key at the machine's
 own screen is yours to do. On a GPU someone else already uses, she leaves
 the host paused. On a CMP 100-210 she also asks whether to install its
 unlock, and has you reboot before the pairing code. On NixOS she stops and
-says the module comes first. The steps below are the same ones, by hand.
+says the module comes first. If you want the host on your tailnet, she
+gives you a pinned script running `install.sh --tailscale NAME` to run
+with `sudo bash` in your own terminal: it asks for a Tailscale auth key at
+a hidden prompt, so make the key one-off and short-lived and never paste
+it in chat, and a key that didn't join is revoked. The steps below are the
+same ones, by hand.
 
 ```sh
 git clone https://github.com/xlc2022/lyrica && cd lyrica
@@ -345,6 +350,10 @@ address.
    (LAN address first, tailnet name second, say) and the pairing code.
    A tailnet address or name works when Lyrica is on that tailnet itself
    (Administration, Tailnet): she reaches it through her own tailscaled.
+   The tailnet name is the host's own device from `--tailscale NAME`, not
+   the machine's: the host doesn't listen on the machine's own Tailscale
+   address, so pairing there fails with "nothing there takes connections
+   on port 7236".
    On a Debian install from before 2026-10-22, re-run `install.sh` once
    so her tailscaled gets that proxy; NixOS gets it with the next rebuild.
    Turn on **Shared** for a host every user may use (administrators only);
@@ -1006,7 +1015,7 @@ second pairing. Then:
   with its own code; its dashboard lists them and revokes any one. Every
   paired server has the same rights: it sees the same models, recipes and
   GPUs, and can load, pin, pause, change settings, delete downloads and
-  update the host. Only the dashboard makes codes and revokes servers.
+  update the host. Only the dashboard makes codes and revokes other servers.
   Their jobs share one queue on the same GPUs, so one busy server slows
   the others, and a pause from any of them pauses the host for all.
   **Update** moves the host to the asking server's release, so keep the
@@ -1115,8 +1124,11 @@ second pairing. Then:
   layout on the running stack whenever you doubt it.
 - **Revoke** a Lyrica server on the dashboard; it must pair again.
   **Unpair** from Lyrica's side by removing the endpoint (`DELETE
-  …/endpoints/<endpoint id>`); the host keeps it listed until revoked
-  there.
+  …/endpoints/<endpoint id>`): Lyrica asks the host to forget it too,
+  unless another endpoint on that Lyrica server still uses the host. If
+  the host can't be reached then, or runs a release from before hosts
+  could unpair a server, Lyrica says so and the host keeps it listed
+  until you revoke it on the dashboard.
 - **Deleting a file** (`DELETE /host/v1/files?path=<path>`) removes only
   a file the host itself downloaded, unchanged since; nothing else in the
   models folder is ever touched. The dashboard's Delete is for image

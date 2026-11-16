@@ -69,6 +69,24 @@ export function viaTailnet(host: string): boolean {
   return v ? TAILNET.check(h, v === 6 ? "ipv6" : "ipv4") : tailnetName(h);
 }
 
+/** At most this much of a refused CONNECT's body is read for its reason. */
+const REASON_BYTES = 1024;
+
+/**
+ * Why tailscaled couldn't dial, from the error it wrote back ("dial tcp
+ * 100.64.0.7:7236: connect: connection refused"), in plain words; the
+ * error itself, cleaned and cut short, when it isn't a common one.
+ */
+function dialReason(body: Buffer, port: number): string {
+  const text = body.toString("utf8").replace(/[^\x20-\x7e]+/g, " ").trim().slice(0, 200);
+  const lower = text.toLowerCase();
+  if (lower.includes("refused")) return `nothing there takes connections on port ${port}`;
+  if (lower.includes("timeout") || lower.includes("timed out") || lower.includes("deadline")) return "no answer: the machine may be off, or the tailnet's access rules may not let this server reach it";
+  if (lower.includes("no route") || lower.includes("unreachable")) return "no route to it in the tailnet";
+  if (lower.includes("no such host")) return "no machine of that name in the tailnet";
+  return text;
+}
+
 /** Not listening: no proxy to go through. */
 class NoProxy extends Error {}
 
@@ -109,9 +127,27 @@ export function tunnel(host: string, port: number, timeoutMs = 10_000, o: { paus
         return;
       }
       socket.off("data", onData);
-      if (o.paused) socket.pause();
       const status = Number(/^HTTP\/1\.[01] (\d{3})/.exec(said.subarray(0, end).toString("latin1"))?.[1]);
-      if (status !== 200) return fail(new Error(`connect ${host}: her tailscaled couldn't reach it (${status || "no answer"})`));
+      if (status !== 200) {
+        // tailscaled answers a CONNECT it couldn't dial with 500 and the dial error as its body: read it for the reason.
+        const length = Number(/\r\ncontent-length: *(\d{1,5})\r\n/i.exec(`${said.subarray(0, end).toString("latin1")}\r\n`)?.[1] ?? REASON_BYTES);
+        const want = end + 4 + Math.min(length, REASON_BYTES);
+        let body = said;
+        const done = () => fail(new Error(`connect ${host}:${port}: her tailscaled couldn't reach it (${dialReason(body.subarray(end + 4, want), port) || (status ? `it answered ${status}` : "no answer")})`));
+        if (body.length >= want) return done();
+        const wait = setTimeout(done, 1000);
+        const more = (chunk: Buffer) => {
+          body = Buffer.concat([body, chunk]);
+          if (body.length >= want) { clearTimeout(wait); done(); }
+        };
+        socket.on("data", more);
+        socket.once("end", () => { clearTimeout(wait); done(); });
+        // A reset mid-body still reports what was said, not the reset.
+        socket.off("error", onError);
+        socket.once("error", () => { clearTimeout(wait); done(); });
+        return;
+      }
+      if (o.paused) socket.pause();
       socket.setTimeout(0);
       // Whoever takes the socket listens for its errors from here.
       socket.off("error", onError);

@@ -300,7 +300,12 @@ export interface EndpointInput { name: string; kind: "cloud" | "local"; baseUrl:
 /** PATCH /api/u/:userId/endpoints/:endpointId → EndpointInfo. Keeps every ID. `apiKey: null` removes the key. */
 /** `paused` pauses or resumes a plain endpoint or plan: fallbacks skip it while paused. A host pauses itself (…/hosts/:endpointId/pause). */
 export interface EndpointChange { name?: string; baseUrl?: string; apiKey?: string | null; paused?: boolean }
-/** DELETE /api/u/:userId/endpoints/:endpointId → Ok. Its models leave tombstones. */
+/**
+ * DELETE /api/u/:userId/endpoints/:endpointId → RemovedEndpoint. Its models leave tombstones.
+ * A model host's last endpoint also unpairs this server on the host (host/PAIRING.md);
+ * `stillPaired` when the host couldn't be reached for that, so it's revoked on its dashboard instead.
+ */
+export interface RemovedEndpoint { ok: true; stillPaired?: true }
 /** POST /api/u/:userId/endpoints/:endpointId/discover → EndpointInfo. Re-reads /v1/models; models no longer listed are marked missing. */
 /** POST /api/u/:userId/endpoints/:endpointId/models → OfferingInfo. Adds a model by hand. */
 export interface ModelInput extends Capabilities { modelId: string }
@@ -334,7 +339,7 @@ export interface MergeInput { into: string }
 /**
  * POST /api/u/:userId/hosts → EndpointInfo. Pairs a model host with the code
  * its dashboard shows (host/PAIRING.md), pins its key and reads its models.
- * `shared` needs an administrator. Unpair with DELETE …/endpoints/:endpointId.
+ * `shared` needs an administrator. DELETE …/endpoints/:endpointId removes and unpairs it.
  */
 export interface HostInput { name: string; addresses: string[]; code: string; shared?: boolean }
 /** POST /api/u/:userId/hosts/:endpointId/pair → EndpointInfo. Pairs again after the host's key changed; every ID stays. */

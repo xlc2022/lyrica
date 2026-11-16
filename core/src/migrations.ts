@@ -158,6 +158,18 @@ CREATE TABLE IF NOT EXISTS mcp_servers (
 );
 `;
 
+/**
+ * The host keys (endpoints.pin) each user's own model hosts pin, refreshed
+ * whenever their user.db is indexed. A row means that user was indexed; a user
+ * with no row hasn't been, so a host could still be theirs.
+ */
+const HOST_PINS_SCHEMA = `
+CREATE TABLE IF NOT EXISTS host_pins (
+  user TEXT PRIMARY KEY,
+  pins TEXT NOT NULL
+);
+`;
+
 /** Each tool call sent to an MCP server, for its budget (user step 22): rows older than two days go as new ones are written. */
 const MCP_CALLS_SCHEMA = `
 CREATE TABLE IF NOT EXISTS mcp_calls (
@@ -196,6 +208,10 @@ export const STEPS: Record<DbKind, MigrationStep[]> = {
     // Principle 1: endpoints.paused_at for a database past step 1 before that step added it, so editing a shared endpoint works. Adds a column only.
     version: 3,
     run(db) { upgradeEndpoints(db); },
+  }, {
+    // Principle 1: which host keys each user's own hosts pin, so removing the last endpoint for a host unpairs it there. Adds a table only.
+    version: 4,
+    run(db) { db.exec(HOST_PINS_SCHEMA); },
   }],
   user: [{
     version: 1, contract: true,

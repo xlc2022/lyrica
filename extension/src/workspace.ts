@@ -5,7 +5,7 @@ import {
 import { readFileSync } from "node:fs";
 import { posix } from "node:path";
 import {
-  BROWSE_READS, browseFormText, browseFormWarning, type Browser, type BrowseCall, decide, sourcedFile, SCRIPT_LIMIT, type CommandRule, withoutNoMachine, holdsSecret, librariesLine, JOB_LIMITS, jobLine, OUTPUT_LIMITS, outputPage, sleepWait, type JobInfo, malformedCommand, mcpNamespace, onFloor, sandboxNix, sandboxTools, PROXMOX_READS, PROXMOX_SUSPECT, SANDBOX_ALLOW, stricterMode, suspectCommand, suspectKey, discardingGit, removedFolders, SHARED, FAMILY_ROOT, WORKDIR, writtenFiles, type ExecutionTarget, type ProxmoxAction, type Network, type NewChange, type PermissionMode, type ThreadGitRepository, type ThreadMachine, type ThreadRepository, type ThreadWorkspace, type ToolOps,
+  BROWSE_READS, browseFormText, foldOutput, browseFormWarning, type Browser, type BrowseCall, decide, sourcedFile, SCRIPT_LIMIT, type CommandRule, withoutNoMachine, holdsSecret, librariesLine, JOB_LIMITS, jobLine, OUTPUT_LIMITS, outputPage, sleepWait, type JobInfo, malformedCommand, mcpNamespace, onFloor, sandboxNix, sandboxTools, PROXMOX_READS, PROXMOX_SUSPECT, SANDBOX_ALLOW, stricterMode, suspectCommand, suspectKey, discardingGit, removedFolders, SHARED, FAMILY_ROOT, WORKDIR, writtenFiles, type ExecutionTarget, type ProxmoxAction, type Network, type NewChange, type PermissionMode, type ThreadGitRepository, type ThreadMachine, type ThreadRepository, type ThreadWorkspace, type ToolOps,
 } from "@lyrica/core";
 import { Type } from "typebox";
 import { setToolsOff } from "./gate.ts";
@@ -422,10 +422,20 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
           };
           // The cut her result got (capOutput's marker) says where the whole output is, when she can read it.
           const cut = (text: string) => !!keep && !!tools.jobOutput && /bytes of output left out …\]/.test(text);
-          const run = async () => {
-            if (!keep) return tool.execute(id, rest, signal, onUpdate, here);
+          // Her bash result as a terminal would show it (foldOutput): a progress bar's latest state, not its every frame.
+          const execute = async () => {
             try {
               const result = await tool.execute(id, rest, signal, onUpdate, here);
+              return name === "bash" ? { ...result, content: result.content.map((c) => (c.type === "text" ? { ...c, text: foldOutput(c.text) } : c)) } : result;
+            } catch (err) {
+              if (name === "bash" && err instanceof Error) err.message = foldOutput(err.message);
+              throw err;
+            }
+          };
+          const run = async () => {
+            if (!keep) return execute();
+            try {
+              const result = await execute();
               keep.end(callEnd(undefined));
               const said = result.content.map((c) => (c.type === "text" ? c.text : "")).join("\n");
               return cut(said) ? { ...result, content: [...result.content, { type: "text" as const, text: keptLine(keep.id) }] } : result;

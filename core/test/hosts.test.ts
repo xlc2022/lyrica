@@ -202,4 +202,35 @@ describe("shared and personal hosts", () => {
     expect(() => s.models.removeEndpoint(s.bob, shared.id)).toThrow(Forbidden);
     expect(await s.models.hostControl(s.ada, shared.id, "pause")).toMatchObject({ state: "paused" });
   });
+
+  it("unpairs a removed host only when no other endpoint pins it, and removes it anyway when the host can't be reached", async () => {
+    const s = await setup();
+    const theirs = await s.models.pairHost(s.bob, { name: "laptop", addresses: [s.host.address], code: s.host.newCode() });
+    const mine = await s.models.pairHost(s.ada, { name: "laptop", addresses: [s.host.address], code: s.host.newCode() });
+    const shared = await s.models.pairHost(s.ada, { name: "shared-laptop", addresses: [s.host.address], code: s.host.newCode() }, { shared: true });
+    const release = async (user: typeof s.ada, id: string) => {
+      const ep = s.models.endpoint(user.id, id)!;
+      s.models.removeEndpoint(user, id);
+      return s.models.releaseHost(ep);
+    };
+    // Bob's own endpoint and the shared one still pin it, then Bob's alone.
+    expect(await release(s.ada, mine.id)).toBe("in_use");
+    expect(await release(s.ada, shared.id)).toBe("in_use");
+    expect(s.host.pinned.size).toBe(1);
+    // The last one goes: the host forgets this server.
+    expect(await release(s.bob, theirs.id)).toBe("unpaired");
+    expect(s.host.pinned.size).toBe(0);
+
+    // A user never indexed since this release might pin it: kept.
+    const again = await s.models.pairHost(s.ada, { name: "laptop", addresses: [s.host.address], code: s.host.newCode() });
+    s.keyring.self().prepare("DELETE FROM host_pins WHERE user = ?").run(s.bob.id);
+    expect(await release(s.ada, again.id)).toBe("in_use");
+    expect(s.host.pinned.size).toBe(1);
+
+    // A host that can't be reached is still removed in Lyrica.
+    const off = await s.models.pairHost(s.bob, { name: "away", addresses: [s.host.address], code: s.host.newCode() });
+    s.models.setHostAddresses(s.bob, off.id, [new URL(await deadUrl()).host]);
+    expect(await release(s.bob, off.id)).toBe("failed");
+    expect(s.models.endpoint(s.bob.id, off.id)).toBeUndefined();
+  });
 });

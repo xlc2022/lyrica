@@ -212,8 +212,15 @@ administrator pairs or manages them; a personal host lives in its user's
   offer Resume. A host that answered
   `unpaired` (it revoked this server) says `unpaired: true` until it answers
   again or is paired again, so the page can offer Pair again….
-- Unpairing is removing the endpoint; the host keeps listing this server
-  until it is revoked there.
+- Unpairing is removing the endpoint. `releaseHost` then asks the host to
+  forget this server (`DELETE /pair/v1`, host/PAIRING.md) unless another
+  endpoint pins the same host key: a shared one, or any user's own, read
+  from `host_pins` in `self.db` (each user's host keys, refreshed whenever
+  their `user.db` is indexed; added by expand-only self step 4). A user
+  with no `host_pins` row hasn't been indexed since, so the host stays
+  paired. A host that can't be reached, or is older than `DELETE /pair/v1`,
+  keeps listing this server until it is revoked there; the removal answers `stillPaired: true` so the page
+  can say so.
 - Every user who can use a shared host sees its addresses, fingerprint and
   status (including its models folder's path), as they see a plain
   endpoint's URL. That is deliberate: none of it is a secret.
@@ -264,7 +271,7 @@ A forgotten thread's lists, choices and call records go with it (`forgetThread`)
 
 Tables: `endpoints`, `offerings` and `model_groups` (in both `self.db` and
 `user.db`); `offering_redirects`, `redirect_pending`, `shared_refs`,
-`shared_refs_indexed` and `legacy_refs` (in `self.db`); `model_presets`,
+`shared_refs_indexed`, `host_pins` and `legacy_refs` (in `self.db`); `model_presets`,
 `model_columns`, `thread_models`, `thread_choices`, `local_only_threads`
 and `model_calls` (in `user.db`). See `core/src/models/schema.ts`.
 

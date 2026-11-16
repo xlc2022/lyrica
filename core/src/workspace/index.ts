@@ -43,6 +43,7 @@ import { scriptShell, secretCommand, sudoRunCommand } from "./root.ts";
 export const KEEP_PASSWORD_MINUTES = 60;
 import { KeptOutput, LiveText, readSearch, searchTest, sortOutputs, type CommandOutput, type CommandOutputs, type OutputSort } from "../store/outputs.ts";
 import { sandboxedTransport, type SshTransport } from "./transport.ts";
+import { foldOutput } from "./terminal.ts";
 
 export * from "./worktree.ts";
 export * from "./changes.ts";
@@ -52,6 +53,7 @@ export * from "./home.ts";
 export * from "./jobs.ts";
 export * from "./root.ts";
 export * from "./machines.ts";
+export * from "./terminal.ts";
 export * from "./shellcheck.ts";
 export * from "./rules.ts";
 export * from "./mcp.ts";
@@ -649,7 +651,8 @@ export class Workspace {
           return this.jobs.start(t, machine || "sandbox", target, command, machine ? machineReady(target) : await target.cwd(), timeoutS, o);
         },
         jobs: () => this.jobs.list(t),
-        jobOutput: (id: string) => { const { job: { kind: _k, bytes: _b, dropped: _d, ...job }, output } = this.outputOf(t, id); return { job, output }; },
+        // She reads what a terminal would have shown (foldOutput), not every frame of a progress bar.
+        jobOutput: (id: string) => { const { job: { kind: _k, bytes: _b, dropped: _d, ...job }, output } = this.outputOf(t, id); return { job, output: foldOutput(output) }; },
         stopJob: (id: string) => this.jobs.stop(t, id),
       } : {}),
     };

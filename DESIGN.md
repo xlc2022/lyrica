@@ -908,8 +908,11 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
       A host whose key changed must be paired again, and Lyrica says so
       plainly.
     - **Unpairing** works from either side: remove the host in Lyrica, or
-      revoke a Lyrica server on the host's dashboard. A host can be paired
-      with several Lyrica servers, such as a test instance.
+      revoke a Lyrica server on the host's dashboard. Removing it in Lyrica
+      also unpairs this server on the host, unless another endpoint (shared
+      or any user's own) still uses that host; a host that can't be reached
+      is removed anyway, and Lyrica says to revoke it there. A host can be
+      paired with several Lyrica servers, such as a test instance.
     - A host that has revoked this server says **Unpaired** on the Models
       page, not down, with **Pair again…** on its card, since pairing again
       is the fix.
@@ -1729,7 +1732,7 @@ NAS, and Proxmox nodes. Decided 2026-10-11 from
 - **A floor no mode lifts** for `write` and `edit` on a machine: `~/.ssh/`,
   `/etc/ssh/` and `/etc/sudoers*` are refused, before any approval card.
 - **Output** is capped as in the sandbox, stripped of terminal control
-  sequences, and private-key blocks in it are replaced with a marker before
+  sequences but for the cursor moves a terminal would play, and private-key blocks in it are replaced with a marker before
   she or memory sees them. Secrets live on machines, which is why a machine
   that holds them belongs in the Private pool.
 - **Proxmox** is a kind of machine reached over its API, never a root shell.

@@ -208,7 +208,8 @@ existed before became general machines at Ask.
   `/usr/sbin` and `/sbin` added to the end of its PATH (Debian's sshd leaves
   them off a plain user's), so `shutdown` or `sshd -T` is found.
 - **Output** of commands is capped as in the sandbox, stripped of terminal
-  control sequences, and private-key blocks are replaced with `[private key
+  control sequences but for carriage returns, backspaces and the cursor
+  moves and erases the fold plays ("Command output", below), and private-key blocks are replaced with `[private key
   removed]` (PEM and OpenSSH keys, and PGP private key blocks). `read`
   masks key blocks too; `edit` reads the file as it is, so
   writing it back keeps the key.
@@ -497,7 +498,15 @@ the GPU; saying what can run there; listing the system-wide changes for a
 yes; the prerequisites as a root step; cloning her own repository (its
 address is in the skill; she asks rather than guess another) and
 `install.sh --no-start` as her account, with the image build and pull in the background; the
-install itself as a root step, pinned to a clean commit of her clone; a smoke test against
+install itself as a root step, pinned to a clean commit of her clone; when
+the person wants the host on their tailnet, a second pinned script with
+`install.sh --tailscale NAME` that the person runs with `sudo bash` in
+their own terminal (the host never listens on the machine's own Tailscale
+address). The auth key is typed at a hidden prompt, never through chat;
+`.env` is root's while the key is in it; the key is one-off and
+short-lived, so once used it is worthless even though the tailscale
+container's environment keeps it; and a key that didn't join is revoked
+before she reads the logs; a smoke test against
 `127.0.0.1:7236/host/v1/status`; pausing the host on a shared machine; and
 a pairing code from `127.0.0.1:7236/dashboard/pairing` for the user to
 enter in **Add model host**. Nothing under `host/` changes for it. A
@@ -1160,6 +1169,30 @@ jobs").
   characters]"), and a page always holds at least one line. A subagent has
   no `jobs` tool, so its results say nothing more; its output is kept all
   the same.
+- **As a terminal shows it** (`core/src/workspace/terminal.ts`): commands
+  run without a terminal, so a progress bar redrawn with `\r`, or lines
+  redrawn with cursor moves, arrive as every frame. What is kept is the
+  output as printed; what is read is played as a terminal would show it
+  (`Terminal`, `foldOutput`): a carriage return goes back to the line's
+  start and what follows overwrites it, backspace steps back, the CSI cursor
+  moves (up, down, across, to a row or column, save and restore) work on a
+  screen of the lines printed so far, at most the latest 256 (`SCREEN_ROWS`;
+  lines above it are fixed; a move down stops at the last line, as at a
+  terminal's bottom), erases (`ESC[K`, `ESC[J`) clear what they name, and
+  `ESC[2J` scrolls the screen out as a terminal's scrollback keeps it.
+  Colours, titles and every other sequence are dropped. No column passes
+  4,096 (`MAX_COLUMN`). One pass, a character at a time, no pattern. Work a
+  sequence does past its own characters (spaces a jump pads a line with,
+  cells an erase blanks, lines it clears) is paid from a credit each
+  character of output adds one to (64 Ki to start), so time and the folded
+  text stay linear in the output, which crafted output can only make fold
+  less faithfully: about 0.1 to 0.5 s for 16 MiB of crafted sequences, and
+  under 1 s for jumps that pad 16 MiB with spaces. The web view shows at
+  most the end 2 MiB of it, as before.
+  Her `bash` result, `jobs output`, a job's end notice and the web view
+  (which plays the stream as it comes) all get the folded text. A tool that
+  prints a new line per update when it sees no terminal (Docker Compose's
+  plain mode) stays as printed, since a terminal would show it the same.
 - **Live:** while a command runs, each piece goes to the thread's open views
   as an `output` event (its id, the call, `at` and `to`, the bytes of output
   before and after its text; `LiveText` holds back a character cut between

@@ -722,6 +722,44 @@ export class Models {
     }, (db) => { db.prepare("DELETE FROM endpoints WHERE id = ?").run(id); });
   }
 
+  /**
+   * After a host's endpoint is removed: unpairs this server on the host
+   * (host/PAIRING.md, DELETE /pair/v1) unless another endpoint, shared or any
+   * user's own, still pins the same host key. A user whose user.db hasn't been
+   * indexed might, so the host stays paired then. A host that can't be reached,
+   * or is too old to unpair a client, stays paired and the answer says so
+   * ("failed"): the endpoint is gone either way.
+   */
+  async releaseHost(ep: Endpoint): Promise<"unpaired" | "in_use" | "failed"> {
+    if (ep.api !== "host") throw new Error(`${ep.name} isn't a model host`);
+    try {
+      if (this.hostInUse(ep.fingerprint ?? "")) return "in_use";
+      try {
+        await this.hostCall(ep, "DELETE", "/pair/v1", undefined, undefined, 10_000);
+      } catch (err) {
+        // Already unpaired there (revoked on its dashboard) is the same outcome.
+        if (err instanceof HostRefused && err.code === "unpaired") return "unpaired";
+        return "failed";
+      }
+      return "unpaired";
+    } finally {
+      for (const key of this.fetches.keys()) if (key.startsWith(`${ep.id}\u0000`)) this.fetches.delete(key);
+      this.health.delete(ep.id);
+      this.unpaired.delete(ep.id);
+      this.reached.delete(ep.id);
+      this.awayStatus.delete(ep.id);
+    }
+  }
+
+  private hostInUse(pin: string): boolean {
+    const self = this.self();
+    if (!pin || self.prepare("SELECT 1 FROM endpoints WHERE api = 'host' AND pin = ?").get(pin)) return true;
+    return this.users.all().some((u) => {
+      const row = self.prepare("SELECT pins FROM host_pins WHERE user = ?").get(u.id) as { pins: string } | undefined;
+      return !row || (JSON.parse(row.pins) as string[]).includes(pin);
+    });
+  }
+
   // --- Subscription plans ---
 
   /** ChatGPT Images runs the user's own Codex; the daemon installs the runner, which knows where their encrypted home is. */
@@ -1745,6 +1783,7 @@ export class Models {
       db.prepare("INSERT INTO endpoints (id, name, kind, api, base_url, api_key, created_at, addresses, pin) VALUES (?, ?, 'local', 'host', ?, NULL, ?, ?, ?)")
         .run(id, input.name, baseUrl, new Date().toISOString(), JSON.stringify(addresses), paired.fingerprint);
     });
+    if (!shared) this.withUser(actor.id, (db) => this.index(actor.id, db));
     this.health.delete(id);
     this.unpaired.delete(id);
     return this.endpoint(actor.id, id)!;
@@ -3790,6 +3829,8 @@ export class Models {
       const add = self.prepare("INSERT OR IGNORE INTO shared_refs (user, ref) VALUES (?, ?)");
       for (const r of refs) add.run(userId, r);
       self.prepare("INSERT OR IGNORE INTO shared_refs_indexed (user) VALUES (?)").run(userId);
+      const pins = (db.prepare("SELECT DISTINCT pin FROM endpoints WHERE api = 'host' AND pin IS NOT NULL ORDER BY pin").all() as { pin: string }[]).map((r) => r.pin);
+      self.prepare("INSERT OR REPLACE INTO host_pins (user, pins) VALUES (?, ?)").run(userId, JSON.stringify(pins));
     })();
   }
 

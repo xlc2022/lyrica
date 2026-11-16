@@ -7,6 +7,7 @@
 import { KeptOutput, type CommandOutput } from "../store/outputs.ts";
 import type { ExecutionTarget } from "./ops.ts";
 import { SHELLS, simpleCommands, unwrapped } from "./machines.ts";
+import { foldOutput } from "./terminal.ts";
 
 /** A thread's jobs: running at once, kept in memory after ending, the default and longest time limit (seconds), and the longest name. */
 export const JOB_LIMITS = { running: 4, kept: 10, timeoutS: 4 * 3600, maxTimeoutS: 24 * 3600, nameChars: 60 };
@@ -189,7 +190,7 @@ export function noticeTail(id: string, output: string): string {
 export function jobNotice(j: JobInfo, output: string): string {
   if (j.kind === "mcp") return `${jobLine(j)}. Its tools are off until the next turn starts it again.`;
   if (j.kind === "browser") return `${jobLine(j)}. The next browse call opens it again, with its logins kept.`;
-  const tail = noticeTail(j.id, output);
+  const tail = noticeTail(j.id, foldOutput(output));
   return `Background command ${jobLine(j)}\n${tail ? `Last output:\n${tail}` : "No output."}`;
 }
 
