@@ -827,7 +827,7 @@ export function apiRoutes(d: Lyricad): Route[] {
     route("POST", `${u}/machines/probe`, async (r): Promise<Api.MachineProbe> => {
       const user = d.userFor(r);
       const input = await r.json<Api.MachineProbeInput>();
-      return s().workspace.probeMachine(user.id, user.login, { kind: checkKind(input.kind), name: String(input.name ?? ""), address: String(input.address ?? ""), draft: input.draft, asUser: input.asUser === true, user: input.user === undefined ? undefined : String(input.user), replace: input.replace === true });
+      return s().workspace.probeMachine(user.id, user.login, { kind: checkKind(input.kind), name: String(input.name ?? ""), address: String(input.address ?? ""), draft: input.draft, asUser: input.asUser === true, nixos: input.nixos === true, user: input.user === undefined ? undefined : String(input.user), replace: input.replace === true });
     }),
     route("POST", `${u}/machines`, async (r) => {
       const user = d.userFor(r);
@@ -835,7 +835,7 @@ export function apiRoutes(d: Lyricad): Route[] {
       return machineInfo(await s().workspace.addMachine(user.id, {
         kind: checkKind(input.kind), name: String(input.name ?? ""), address: String(input.address ?? ""), root: input.root || null, pool: checkPool(input.pool),
         limit: input.limit, draft: String(input.draft ?? ""), token: input.token === undefined ? undefined : String(input.token),
-        hostKey: String(input.hostKey ?? ""), offNetworkConfirmed: input.offNetworkConfirmed === true, asUser: input.asUser === true,
+        hostKey: String(input.hostKey ?? ""), offNetworkConfirmed: input.offNetworkConfirmed === true, asUser: input.asUser === true, nixos: input.nixos === true,
         user: input.user === undefined ? undefined : String(input.user),
       }));
     }),
@@ -2860,7 +2860,7 @@ function machineInfo(m: MachineConfig): Api.MachineInfo {
   return {
     name: m.name, kind: m.kind, address: `${m.username}@${host}${m.port === 22 ? "" : `:${m.port}`}`, root: m.root, pool: m.pool, limit: m.limit,
     keyLine: authorizedKeysLine(publicKeyOf(m.privateKey)), hostKey: m.hostKey, offNetwork: m.offNetwork, lastUsed: m.lastUsed,
-    ...(m.asUser ? { asUser: true } : {}), ...(m.state ? { state: m.state } : {}),
+    ...(m.asUser ? { asUser: true } : {}), ...(m.nixos ? { nixos: true } : {}), ...(m.state ? { state: m.state } : {}),
   };
 }
 

@@ -199,6 +199,23 @@ describe("user step 25 (held approvals)", () => {
   });
 });
 
+describe("user step 26 (NixOS machines)", () => {
+  it("adds machines.nixos to every released user schema, keeping machines, and the release before still opens it", () => {
+    for (const v of STEPS.user.map((s) => s.version).filter((v) => v < 26)) {
+      const db = scratchDb();
+      const previous = STEPS.user.filter((s) => s.version <= v);
+      migrate(db, "user", {}, previous);
+      // Step 1 builds today's table, so the column a released schema lacked is taken out first.
+      db.exec("ALTER TABLE machines DROP COLUMN nixos");
+      db.prepare("INSERT INTO machines (name, host, port, username, private_key) VALUES ('box', 'box.lan', 22, 'lyrica', 'k')").run();
+      migrate(db, "user");
+      expect(db.prepare("SELECT name, nixos FROM machines").get(), `v${v}`).toEqual({ name: "box", nixos: 0 });
+      expect(() => checkReadable(db, "user", STEPS.user.filter((s) => s.version < 26))).not.toThrow();
+      db.close();
+    }
+  });
+});
+
 describe("user step 5 (portrait-photo cloud choice)", () => {
   it("expands every released user schema with Ask once a day and preserves an existing choice", () => {
     for (let v = 1; v < 5; v++) for (const policy of [undefined, "never", "always"]) {

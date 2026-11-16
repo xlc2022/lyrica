@@ -421,6 +421,47 @@ ask, and root steps still go to the user on a card. Its row carries **Your
 account**, and the `workspace` prompt section says the machine logs in as
 the person's own account.
 
+### NixOS
+
+NixOS's sshd reads no `sshd_config.d` and its sudo no `sudoers.d` (nixpkgs
+`sshd.nix` and `sudo.nix`), so the shell setup's `Match` rule and the
+three sudo commands would do nothing there. Add machine's **System**
+(Linux or NixOS, SSH only) picks the NixOS setup instead, saved with the
+machine (`nixos`, user.db step 26) so Replace key and Remove give it again.
+The probe's `setup` is then a module for the machine's configuration, and
+`rebuild` applies it:
+
+```nix
+{ lib, ... }: {
+  users.users.<account> = {
+    isNormalUser = true;
+    openssh.authorizedKeys.keys = [ "<the key line>" ];
+  };
+  services.openssh.extraConfig = lib.mkAfter ''
+    Match User <account>
+        AuthorizedKeysFile /etc/ssh/authorized_keys.d/%u
+        PasswordAuthentication no
+        KbdInteractiveAuthentication no
+  '';
+}
+```
+
+NixOS builds `/etc/ssh/authorized_keys.d/<account>` read-only from the
+configuration, so only a rebuild changes her keys, as the root-owned file
+does elsewhere; the `Match` block, last in sshd's config, keeps
+`~/.ssh` and passwords out for her account. **Rebuild** is `sudo
+nixos-rebuild switch` (with `--flake` where the configuration is a flake),
+then the fingerprint. The sudo blocks are `security.sudo.extraRules` for
+the same module (`nixosSudo` in `core/src/workspace/sudoers.ts`); exact
+commands may name programs under `/run/current-system/sw/bin`, and **Sudo,
+with password** adds `sudo passwd <account>` after the rebuild. On the
+user's own account the module only adds the key to
+`users.users.<account>.openssh.authorizedKeys.keys`. Remove offers
+**Configuration** (rebuild after taking the module out: NixOS removes a
+user it no longer declares, with her key, rule and sudo) and **Home**
+(`rm -rf /home/<account>`, which NixOS keeps); on the user's own account,
+**Key**: take the line out and rebuild.
+
 ## Root steps
 
 She never holds a password and never writes sudoers: a root step on a
