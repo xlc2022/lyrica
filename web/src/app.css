@@ -231,8 +231,10 @@ button.private { color: var(--private); border-color: color-mix(in oklab, var(--
   .ctx-menu button[aria-expanded="true"] { background: var(--tool); }
 }
 .ctx-menu .sep { height: 1px; background: var(--line); margin: 4px 0; }
-.ctx-menu form { display: flex; gap: 6px; padding: 4px; }
+.ctx-menu form { display: flex; gap: 6px; padding: 4px; width: min(400px, calc(100vw - 32px)); }
 .ctx-menu form input { flex: 1; min-height: 32px; }
+/* The form's Rename or Add keeps its primary fill; the menu's item rule above would make it transparent, white on white. */
+.ctx-menu form button.primary { background: var(--accent); color: var(--accent-fg); justify-content: center; font-weight: 600; }
 .scrim { display: none; }
 
 .main { display: flex; flex-direction: column; min-width: 0; min-height: 0; height: 100%; position: relative; overflow: hidden; }
