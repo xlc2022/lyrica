@@ -73,6 +73,9 @@ export interface GpuSettings {
 export const ramMost = (total: number) => Math.max(0, total - Math.min(64 * 1024 ** 3, Math.max(8 * 1024 ** 3, total / 8)) - 8 * 1024 ** 3);
 
 export const DEFAULT_CONTEXT = 32768;
+/** Dictation's default: about 20 minutes of Voxtral's audio (12.5 tokens a second), so it fits a 16 GB card. */
+export const TRANSCRIBE_CONTEXT = 16384;
+const defaultContext = (model: TextModel) => (model.kind === "transcribe" ? TRANSCRIBE_CONTEXT : DEFAULT_CONTEXT);
 const GIB = 1024 ** 3;
 /** llama.cpp reads a per-layer embedding table larger than this from the file as needed, unless it is kept in RAM. */
 export const LAZY_TABLE = 4 * GIB;
@@ -114,7 +117,7 @@ export function maxContextOf(model: TextModel, s: ModelSettings): number | null 
  */
 export function autoContext(model: TextModel, s: ModelSettings, gpus: Gpu[], settings: (i: number) => GpuSettings): number {
   const max = maxContextOf(model, s);
-  const fallback = Math.min(DEFAULT_CONTEXT, max ?? Infinity);
+  const fallback = Math.min(defaultContext(model), max ?? Infinity);
   if (max === null || model.kind !== "chat") return fallback;
   const fits = (context: number) => {
     const at = { ...s, contextLength: context };
@@ -131,9 +134,9 @@ export function autoContext(model: TextModel, s: ModelSettings, gpus: Gpu[], set
   return lo * 1024;
 }
 
-/** The context the model is served with: its setting, else 32k, never past its maximum. */
+/** The context the model is served with: its setting, else 32k (16k for dictation), never past its maximum. */
 export function contextOf(model: TextModel, s: ModelSettings): number {
-  return Math.min(s.contextLength ?? DEFAULT_CONTEXT, maxContextOf(model, s) ?? Infinity);
+  return Math.min(s.contextLength ?? defaultContext(model), maxContextOf(model, s) ?? Infinity);
 }
 
 /**
@@ -160,7 +163,7 @@ export function sizes(model: TextModel, s: ModelSettings): { weights: number; kv
   const extras = (usesVision(model, s) ? model.mmprojSize ?? 0 : 0) + (usesMtp(model, s) ? model.mtpSize ?? 0 : 0);
   // llama.cpp never puts a per-layer embedding table on the GPUs.
   const table = model.server === "llamacpp" ? model.layerTable ?? 0 : 0;
-  return { weights: Math.round((model.size - table + extras) * 1.05), kv: Math.round(perToken * context) };
+  return { weights: Math.round((model.size - table + extras) * 1.05) + (model.buffers ?? 0), kv: Math.round(perToken * context) };
 }
 
 /** One way to run a model: its GPUs, and what it takes on each. */

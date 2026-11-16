@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { scanTextModels, type TextModel } from "../src/library.ts";
-import { CPU_OPTION, validate, type GpuSettings } from "../src/placement.ts";
+import { CPU_OPTION, contextOf, defaultGpu, options, validate, type GpuSettings } from "../src/placement.ts";
 import { Runtime, wavSeconds } from "../src/runtime.ts";
 import { Scheduler } from "../src/scheduler.ts";
 import { Speech } from "../src/speech.ts";
@@ -41,7 +41,7 @@ function modelsFolder(): string {
   writeFileSync(join(dir, WHISPER, "config.json"), JSON.stringify({ architectures: ["WhisperForConditionalGeneration"], max_target_positions: 448, decoder_layers: 4, d_model: 1280, decoder_attention_heads: 20 }));
   writeFileSync(join(dir, WHISPER, "model.safetensors"), Buffer.alloc(16));
   mkdirSync(join(dir, VOXTRAL), { recursive: true });
-  writeFileSync(join(dir, VOXTRAL, "config.json"), JSON.stringify({ architectures: ["VoxtralRealtimeForConditionalGeneration"], text_config: { max_position_embeddings: 131072, num_hidden_layers: 26, hidden_size: 3072, num_attention_heads: 32, num_key_value_heads: 8, head_dim: 128 } }));
+  writeFileSync(join(dir, VOXTRAL, "config.json"), JSON.stringify({ architectures: ["VoxtralRealtimeForConditionalGeneration"], downsample_factor: 4, audio_config: { num_hidden_layers: 32, hidden_size: 1280, num_attention_heads: 32, num_key_value_heads: 32, head_dim: 64 }, text_config: { max_position_embeddings: 131072, num_hidden_layers: 26, hidden_size: 3072, num_attention_heads: 32, num_key_value_heads: 8, head_dim: 128 } }));
   writeFileSync(join(dir, VOXTRAL, "consolidated.safetensors"), Buffer.alloc(16));
   return dir;
 }
@@ -116,6 +116,18 @@ describe("the models folder", () => {
     });
     expect(models[1]!.capabilities.transcribe).toBe(true);
     expect(models[1]!.contextLength).toBe(448);
+  });
+
+  it("gives Voxtral the share of a 16 or 24 GB card that vLLM measured it needs", () => {
+    // Its real size; on a 3090, vLLM needed a share of 0.7 at 32k: 10.1 GiB besides its cache, and 187 KB a token.
+    const voxtral = { ...scanTextModels(modelsFolder()).find((m) => m.id === VOXTRAL)!, size: 8_874_376_582 };
+    const auto = { placement: { mode: "auto" as const } };
+    const share = (gb: number, s: object = auto) =>
+      options(voxtral, { ...auto, ...s }, [{ index: 0, name: "GPU", vendor: "nvidia", total: gb * 2 ** 30, used: 0 }], () => defaultGpu())[0]!.share;
+    expect(contextOf(voxtral, auto)).toBe(16384);
+    expect(share(24)).toBe(0.6);
+    expect(share(16)).toBe(0.85);
+    expect(share(24, { contextLength: 32768 })).toBe(0.7);
   });
 
   it("measures a WAV clip from its header", () => {
