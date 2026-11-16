@@ -140,3 +140,43 @@ describe("root steps", () => {
     s.stream.close();
   });
 });
+
+describe("secrets on a card", () => {
+  it("take a secret as raw bytes into one run of the hashed script, never into her conversation, and keep Run off Notifications", async () => {
+    const s = await setup();
+    const script = "#!/bin/bash\nIFS= read -r TS_AUTHKEY\necho joined\n";
+    s.d.services!.workspace.rootScript = async () => ({ bytes: Buffer.from(script), account: "lyrica" });
+    const runs: { step: unknown; secret: string; keep?: number }[] = [];
+    s.d.services!.workspace.runFromCard = (_t, step, secret, o) => {
+      runs.push({ step, secret: secret?.toString() ?? "", keep: o?.keepMinutes });
+      return { id: "j1", place: step.machine, command: "", cwd: "", startedAt: "", state: "running" };
+    };
+    s.model.reply({ tools: [{ name: "run_with_secret", args: { machine: "box", path: "/home/lyrica/join.sh", secret: "Tailscale auth key", why: "Joins the host to the tailnet." } }] });
+    s.model.reply({ text: "It's on a card." });
+    let from = s.stream.events.length;
+    await s.ada.post(`${s.path}/messages`, { text: "join the tailnet" });
+    await s.stream.until(e => e.type === "turn_end", from);
+    const n = (await s.ada.get<ThreadSummary>(s.path)).body.question!.n;
+    const page = (await s.ada.get<MessagePage>(`${s.path}/messages`)).body;
+    const part = page.messages.flatMap(m => m.parts).find(p => p.type === "tool" && p.name === "run_with_secret");
+    expect(part).toMatchObject({ root: { machine: "box", secret: "Tailscale auth key", sha256: createHash("sha256").update(script).digest("hex") } });
+    expect((part as { root: { command: string } }).root.command).not.toContain("sudo");
+    const item = (await s.ada.get<NotificationPage>(`${s.u}/notifications?type=question`)).body.items[0]!;
+    expect(item).toMatchObject({ title: "Run with a secret on box?" });
+    expect(item.actions.map(a => a.label)).toEqual(["Not now"]);
+    expect((await s.ada.post(`${s.path}/questions/${n}/answer`, { option: 0 })).status).toBe(400);
+
+    s.model.reply({ text: "Waiting for it." });
+    from = s.stream.events.length;
+    const res = await s.ada.post<{ job: string }>(`${s.path}/questions/${n}/run`, Buffer.from("tskey-auth-secret123"));
+    expect(res).toMatchObject({ status: 200, body: { job: "j1" } });
+    await s.stream.until(e => e.type === "turn_end", from);
+    expect(runs).toEqual([{ step: expect.objectContaining({ machine: "box", path: "/home/lyrica/join.sh", sudo: false }), secret: "tskey-auth-secret123", keep: 0 }]);
+    expect(JSON.stringify(s.model.requests)).not.toContain("tskey-auth-secret123");
+    expect(JSON.stringify((await s.ada.get<MessagePage>(`${s.path}/messages`)).body)).not.toContain("tskey-auth-secret123");
+    expect(JSON.stringify(s.model.requests.at(-1))).toContain(`[Answer to q:${n}]\\n\\nRun (background command j1`);
+    expect((await s.ada.post(`${s.path}/questions/${n}/run`, Buffer.from("again"))).status).toBe(409);
+    expect(runs).toHaveLength(1);
+    s.stream.close();
+  });
+});

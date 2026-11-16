@@ -1,4 +1,4 @@
-import { callArgs, FROM_PARENT, LYRICA_REACTS, ROOT_TOOL, ROUTINE, WAKEUP, WATCHING, type Reaction as StoredReaction } from "@lyrica/core";
+import { callArgs, FROM_PARENT, LYRICA_REACTS, ROOT_TOOL, SECRET_TOOL, ROUTINE, WAKEUP, WATCHING, type Reaction as StoredReaction } from "@lyrica/core";
 import { type ChecksResult, CHECKS_NOTICE, type EvidenceResult, EVIDENCE_NOTICE, DELEGATE_MESSAGE, EMPTY_REPLY_NOTICE, INTERRUPTED_NOTICE, TURN_TOOL_NOTICE, OPENING, PAID_FALLBACK, type PaidFallback, USER_MESSAGE } from "@lyrica/extension";
 import type { Message, MessagePart, Pool, Reaction, RootStep, ThreadRef, Told } from "./api.ts";
 
@@ -53,15 +53,16 @@ export function clipCall(details: unknown, content: unknown): Extract<MessagePar
   return { type: "tool", name: "image", toolCallId: `${c.toolCallId}:made`, args: c.args ?? {}, result: shortResult(content), isError: false };
 }
 
-/** A root step's card (docs/workspace.md, "Root steps"): what run_as_root read on the machine, as it stored it. */
+/** A root step's or a secret's card (docs/workspace.md, "Root steps"): what run_as_root or run_with_secret read on the machine, as it stored it. */
 export function rootPart(tool: string, details: unknown): RootStep | undefined {
   const r = (details as { root?: Partial<RootStep> } | undefined)?.root;
-  if (tool !== ROOT_TOOL || !r || typeof r !== "object") return undefined;
+  if ((tool !== ROOT_TOOL && tool !== SECRET_TOOL) || !r || typeof r !== "object") return undefined;
   const str = (v: unknown): v is string => typeof v === "string";
   if (![r.machine, r.path, r.sha256, r.command, r.script, r.why].every(str)) return undefined;
   const sudoers = Array.isArray(r.sudoers) ? r.sudoers.filter((l) => str(l?.line)).map((l) => ({ line: l.line, ...(str(l.warning) ? { warning: l.warning } : {}) })) : undefined;
   return { machine: r.machine!, path: r.path!, sha256: r.sha256!, command: r.command!, script: r.script!, why: r.why!,
-    ...(sudoers?.length ? { sudoers, ...(str(r.sudoersCommand) ? { sudoersCommand: r.sudoersCommand } : {}) } : {}) };
+    ...(sudoers?.length ? { sudoers, ...(str(r.sudoersCommand) ? { sudoersCommand: r.sudoersCommand } : {}) } : {}),
+    ...(tool === SECRET_TOOL && str(r.secret) ? { secret: r.secret, ...(r.lines === true ? { lines: true } : {}) } : {}) };
 }
 
 /** Fixed refusal metadata only; no provider text passes into the API. */

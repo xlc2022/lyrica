@@ -96,7 +96,8 @@ function collect(d: Lyricad, user: User, show: Api.Display): Api.Notification[] 
       out.push({ id: `question:${pool}/${th.id}/${q.n}`, type: "question", title: ask.question,
         detail: ask.options[ask.recommended]!.consequence, scope: pool, decision: true,
         thread: { pool, id: th.id }, at: q.asked,
-        actions: order.map(option => ({ label: ask.options[option]!.label, method: "POST", path: `${t(pool, th.id)}/questions/${q.n}/answer`, body: { option } })),
+        // Run needs what the person types on the card, so it is answered there only.
+        actions: order.filter(option => !ask.options[option]!.secret).map(option => ({ label: ask.options[option]!.label, method: "POST", path: `${t(pool, th.id)}/questions/${q.n}/answer`, body: { option } })),
       });
     }
     // A child thread posted an update, or waits on the user.

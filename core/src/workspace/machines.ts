@@ -557,12 +557,20 @@ export function machineSetup(account: string, keyLine: string, asUser = false): 
     `sudo ${dropOld(keys)}`,
     `printf '%s\\n' '${line}' | sudo tee -a ${keys} > /dev/null`,
     `sudo chmod 644 ${keys}`,
-    `printf 'Match User ${account}\\n    AuthorizedKeysFile /etc/ssh/authorized_keys/%%u\\n' | sudo tee ${sshdRule(account)} > /dev/null`,
+    sshdMatch(account),
     "sudo sshd -t",
     "sudo systemctl reload ssh",
     ...fingerprint,
   ]);
 }
+
+/**
+ * sshd's rule for her account: her keys from the root-owned file, and no
+ * password login, so a sudo password the user gives her account (Sudo, with
+ * password) never opens SSH.
+ */
+const sshdMatch = (account: string) =>
+  `printf 'Match User ${account}\\n    AuthorizedKeysFile /etc/ssh/authorized_keys/%%u\\n    PasswordAuthentication no\\n    KbdInteractiveAuthentication no\\n' | sudo tee ${sshdRule(account)} > /dev/null`;
 
 /** Lines as one `&&` chain: each command but the last ends in `&&`; comments and blank lines stay as they are, which the shell skips inside a chain. */
 function chain(lines: string[]): string {
@@ -571,12 +579,29 @@ function chain(lines: string[]): string {
 }
 
 /**
- * The optional right to run everything with sudo, a command to paste on its
- * own, only for models the user really trusts. It adds to
+ * The optional sudo rights, each a command to paste on its own. `everything`:
+ * sudo without a password, only for models the user really trusts. `password`:
+ * sudo with a password the user chooses at `passwd`'s prompt, which they then
+ * type on a root step's card for each run (docs/workspace.md, "Root steps");
+ * it first rewrites her sshd rule so the password can't open SSH. Both add to
  * /etc/sudoers.d/lyrica the way her run-as-root card does, checked by visudo
- * before sudo reads it. Exact commands are built on the page from the
- * commands the user types (`checkSudoers`, `sudoersCommand`).
+ * before sudo reads it. Exact commands are built on the page from the commands
+ * the user types (`checkSudoers`, `sudoersCommand`).
  */
-export function machineSudo(account: string): { everything: string } {
-  return { everything: sudoersCommand([`${account} ALL=(root) NOPASSWD: ALL`]) };
+export function machineSudo(account: string): { everything: string; password: string } {
+  return {
+    everything: sudoersCommand([`${account} ALL=(root) NOPASSWD: ALL`]),
+    password: chain([
+      "# No SSH login with a password for her account",
+      sshdMatch(account),
+      "sudo sshd -t",
+      "sudo systemctl reload ssh",
+      "",
+      `# The password, typed twice at the prompt`,
+      `sudo passwd ${account}`,
+      "",
+      "# Sudo for her account, asking for that password",
+      sudoersCommand([`${account} ALL=(root) ALL`]),
+    ]),
+  };
 }

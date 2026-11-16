@@ -59,6 +59,33 @@ describe("question cards", () => {
     expect(withCommand).not.toContain("sudo visudo -f /etc/sudoers.d/lyrica<");
     expect(html(root)).toContain("sudo visudo -f /etc/sudoers.d/lyrica");
   });
+  it("asks for a secret in a masked field, Run first and off until something is typed, in her name", () => {
+    const root = { machine: "box", path: "/home/ada/join.sh", sha256: "ab", command: "f=$(mktemp) && bash \"$f\"", script: "read -r k", why: "Joins the tailnet.", secret: "Tailscale auth key" };
+    const html = renderToStaticMarkup(createElement(QuestionCard, { args: { machine: "box", why: "Joins the tailnet.", secret: "Tailscale auth key" }, name: "run_with_secret", root, state, base: "/thread", onChange: vi.fn() }));
+    expect(html).toContain("Run with a secret on box?");
+    expect(html).toMatch(/<label[^>]*>Tailscale auth key/);
+    expect(html).toContain('type="password"');
+    expect(html).toMatch(/autocomplete="off"/i);
+    expect(html.indexOf(">Run<")).toBeLessThan(html.indexOf(">Not now<"));
+    expect(html).toMatch(/class="primary" disabled=""><span>Run/);
+    expect(html).toContain("Lyrica gets the output, never the tailscale auth key.");
+    expect(html).not.toMatch(/\b(She|she|her)\b/);
+    expect(html).not.toContain("Keep for");
+  });
+  it("offers Run with the password and Keep for on a root step, or the kept password's minutes with Forget", () => {
+    const root = { machine: "box", path: "/home/ada/x.sh", sha256: "ab", command: "f=$(mktemp) && sudo bash \"$f\"", script: "echo hi", why: "Restarts ssh." };
+    const html = (s: QuestionState) => renderToStaticMarkup(createElement(QuestionCard, { args: { machine: "box", why: "Restarts ssh." }, name: "run_as_root", root, state: s, base: "/thread", onChange: vi.fn() }));
+    const typed = html(state);
+    expect(typed).toMatch(/<label[^>]*>Password/);
+    expect(typed).toContain("Keep for");
+    expect(typed).toMatch(/inputmode="numeric"/i);
+    expect([">Run<", ">Done<", ">Not now<"].map((l) => typed.indexOf(l))).toEqual([...[">Run<", ">Done<", ">Not now<"].map((l) => typed.indexOf(l))].sort((a, b) => a - b));
+    const kept = html({ ...state, kept: 12 });
+    expect(kept).toContain('Kept · <span class="num">12</span> min left');
+    expect(kept).toContain(">Forget<");
+    expect(kept).not.toContain('type="password"');
+    expect(kept).toMatch(/class="primary"><span>Run/);
+  });
   it("uses the same question and controls on the project card", () => {
     vi.mocked(useLoad).mockReturnValue(loaded({ args, state }));
     const html = renderToStaticMarkup(createElement(ProjectQuestion, { base: "/thread", n: 12, onChange: vi.fn() }));

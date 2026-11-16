@@ -36,7 +36,11 @@ import {
 import { AllowedPaths } from "./paths.ts";
 import type { Respelling } from "./renames.ts";
 import { generateSshKey, publicKeyOf, SshTarget } from "./ssh.ts";
-import { Jobs, machineReady, type JobInfo, type JobThread } from "./jobs.ts";
+import { JOB_LIMITS, Jobs, machineReady, secretMasks, type JobInfo, type JobThread } from "./jobs.ts";
+import { scriptShell, secretCommand, sudoRunCommand } from "./root.ts";
+
+/** The longest a sudo password may be kept, in minutes (Keep for on a root step's card). */
+export const KEEP_PASSWORD_MINUTES = 60;
 import { KeptOutput, LiveText, readSearch, searchTest, sortOutputs, type CommandOutput, type CommandOutputs, type OutputSort } from "../store/outputs.ts";
 import { sandboxedTransport, type SshTransport } from "./transport.ts";
 
@@ -178,8 +182,8 @@ export interface MachineProbe {
   keyLine?: string;
   /** The setup steps to paste on the machine as a user with sudo (for Proxmox, as root on the node). */
   setup: string;
-  /** SSH on her own account: sudo for everything, a command to paste on its own (`machineSudo`). */
-  sudo?: { everything: string };
+  /** SSH on her own account: sudo for everything, and sudo with a password, each a command to paste on its own (`machineSudo`). */
+  sudo?: { everything: string; password: string };
   /** The host key the machine showed, or for Proxmox its certificate's, when it answered. */
   fingerprint?: string;
   /** Whether her key was accepted. Always false for Proxmox: the token is tried only at Confirm, against the confirmed certificate. */
@@ -296,6 +300,8 @@ export class Workspace {
   private readonly calls = new Map<string, { info: CommandOutput; kept: KeptOutput }>();
   /** Running jobs' text for the open views, by the same key. */
   private readonly liveJobs = new Map<string, LiveText>();
+  /** Sudo passwords the person chose to keep for a while, in memory only, by user and machine (docs/workspace.md, "Root steps"). */
+  private readonly keptPasswords = new Map<string, { password: Buffer; until: number; timer: NodeJS.Timeout }>();
   /** The last `c<n>` used in each thread since lyricad started. */
   private readonly lastCall = new Map<string, number>();
 
@@ -1886,6 +1892,67 @@ export class Workspace {
     return { bytes, account: this.settings(t.userId).machine(machine)!.username };
   }
 
+  /**
+   * Runs the script a root step's or a secret's card showed, once the person
+   * pressed Run, as a background command of the thread (docs/workspace.md,
+   * "Secrets for one command"): the copy is checked against the card's hash,
+   * and `secret` is the command's whole input, followed by a newline. For a
+   * root step it is the sudo password, typed now or kept from an earlier card
+   * on the same machine; `keepMinutes` keeps it that long. Its output masks
+   * the secret, and lyricad overwrites its copies with zeros when the run ends.
+   */
+  runFromCard(t: WorkspaceThread, step: { machine: string; path: string; sha256: string; script: string; sudo: boolean }, secret: Buffer | undefined, o: { keepMinutes?: number; name?: string; call?: string } = {}): JobInfo {
+    if (!this.opts.onJobEnd) throw new Error("background commands aren't available");
+    if (!this.machinesFor(t).some((m) => m.name === step.machine && m.kind !== "proxmox")) throw new Error(`${step.machine} isn't one of this thread's machines`);
+    let input: Buffer;
+    if (secret?.length) {
+      input = Buffer.concat([secret, ...(secret[secret.length - 1] === 0x0a ? [] : [Buffer.from("\n")])]);
+      if (step.sudo && o.keepMinutes) this.keepPassword(t.userId, step.machine, secret, o.keepMinutes);
+    } else if (step.sudo) {
+      const kept = this.keptPassword(t.userId, step.machine);
+      if (!kept) throw new Error("type the password: none is kept for this machine");
+      input = Buffer.concat([kept, Buffer.from("\n")]);
+      kept.fill(0);
+    } else throw new Error("type the secret first");
+    secret?.fill(0);
+    const shell = scriptShell(step.script);
+    const command = step.sudo ? sudoRunCommand(step.path, step.sha256, shell) : secretCommand(step.path, step.sha256, shell);
+    const target = this.targetFor(t, step.machine);
+    return this.jobs.start(t, step.machine, target, command, machineReady(target), JOB_LIMITS.timeoutS, {
+      ...(o.name ? { name: o.name } : {}), ...(o.call ? { call: o.call } : {}), stdin: input, mask: secretMasks(input), done: () => input.fill(0),
+    });
+  }
+
+  /** Minutes left on the sudo password kept for this user's machine, or undefined when none is. */
+  passwordKept(userId: string, machine: string): number | undefined {
+    const k = this.keptPasswords.get(`${userId}\0${machine}`);
+    return k && k.until > Date.now() ? Math.ceil((k.until - Date.now()) / 60_000) : undefined;
+  }
+
+  /** Forgets kept sudo passwords: one machine's, or all of the user's (Lock, Forget on the card, a removed machine). */
+  forgetPasswords(userId: string, machine?: string): void {
+    for (const [k, v] of this.keptPasswords) {
+      if (!k.startsWith(`${userId}\0`) || (machine !== undefined && k !== `${userId}\0${machine}`)) continue;
+      clearTimeout(v.timer);
+      v.password.fill(0);
+      this.keptPasswords.delete(k);
+    }
+  }
+
+  private keepPassword(userId: string, machine: string, password: Buffer, minutes: number): void {
+    const m = Math.min(KEEP_PASSWORD_MINUTES, Math.max(0, Math.round(minutes)));
+    this.forgetPasswords(userId, machine);
+    if (!m) return;
+    const timer = setTimeout(() => this.forgetPasswords(userId, machine), m * 60_000);
+    timer.unref();
+    this.keptPasswords.set(`${userId}\0${machine}`, { password: Buffer.from(password), until: Date.now() + m * 60_000, timer });
+  }
+
+  private keptPassword(userId: string, machine: string): Buffer | undefined {
+    const k = this.keptPasswords.get(`${userId}\0${machine}`);
+    return k && k.until > Date.now() ? Buffer.from(k.password) : undefined;
+  }
+
   async proxmox(t: WorkspaceThread, machine: string, action: ProxmoxAction, vm?: string): Promise<string> {
     this.settings(t.userId).checkInherited(t.threadId, t.pool);
     if (!this.machinesFor(t).some((m) => m.name === machine && m.kind === "proxmox")) throw new Error(`${machine} isn't one of this thread's Proxmox machines`);
@@ -2002,6 +2069,7 @@ export class Workspace {
   }
 
   removeMachine(userId: string, name: string): void {
+    this.forgetPasswords(userId, name);
     this.settings(userId).removeMachine(name);
     this.disconnect(userId, name);
   }

@@ -320,6 +320,11 @@ function SudoBlocks({ sudo, account }: { sudo: NonNullable<MachineProbe["sudo"]>
       <p className="muted sudo-hint">Optional: sudo without a password for any command. Only if you really trust the models you'll run.</p>
       <pre><code>{sudo.everything}</code></pre>
     </div>
+    {sudo.password && <div className="code-block">
+      <div className="code-head"><span className="code-lang">Sudo, with password</span><CopyButton text={sudo.password} label="Copy" ariaLabel="Copy sudo, with password" className="code-copy" /></div>
+      <p className="muted sudo-hint">Optional: sudo asks for a password chosen at the prompt here, typed on each root step's card. SSH logins can't use it.</p>
+      <pre><code>{sudo.password}</code></pre>
+    </div>}
   </div>;
 }
 

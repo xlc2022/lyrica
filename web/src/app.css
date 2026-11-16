@@ -2077,6 +2077,17 @@ dialog .eyebrow { margin: 10px 0 4px; }
 .account-warnings { margin: 4px 0 0; padding-left: 20px; color: var(--warn); font-size: 13px; }
 .account-warnings li + li { margin-top: 4px; }
 .root-script pre { max-height: 320px; overflow: auto; }
+/* The field on a root step's or a secret's card: masked, Show beside it; Keep for in minutes on a root step. */
+.card-secret { display: grid; gap: 6px; margin: 12px 0; }
+.card-secret > label { font-weight: 600; display: flex; align-items: center; gap: 6px; }
+.card-secret > label .ic { width: 14px; height: 14px; color: var(--muted); }
+.card-secret-row { display: flex; gap: 8px; align-items: flex-start; flex-wrap: wrap; }
+.card-secret-row input, .card-secret-row textarea { flex: 1 1 200px; min-width: 0; font-family: var(--mono); font-size: 13px; }
+.card-secret-row textarea { min-height: 104px; font-size: 12px; line-height: 1.5; resize: vertical; }
+.card-secret-row textarea.masked { -webkit-text-security: disc; }
+.card-secret-row > .muted { align-self: center; }
+.card-keep { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.card-keep input { width: 5em; font-family: var(--mono); font-variant-numeric: tabular-nums; }
 @media (max-width: 760px) {
   .question-options { flex-direction: column; }
   .question-options button { flex: auto; width: 100%; }

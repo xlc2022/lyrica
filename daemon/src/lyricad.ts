@@ -843,6 +843,7 @@ export class Lyricad implements Drainable {
     s.routines.drop(userId);
     s.forge.drop(userId);
     s.workspace.jobs.stopUser(userId, "Lyrica locked");
+    s.workspace.forgetPasswords(userId);
     s.clips.stop("Lyrica locked", userId);
     // Subagent runs record how they ended in user.db, and a sleep run in the pool, so they stop before the key goes.
     await s.delegation.stopAll(userId);

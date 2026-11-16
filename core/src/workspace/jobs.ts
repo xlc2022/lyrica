@@ -47,6 +47,76 @@ interface Job extends JobInfo {
   thread: JobThread;
   controller: AbortController;
   kept: KeptOutput;
+  /** A run from a card's secret: what is masked in its output as it comes, and what is told when it ends. */
+  masker?: Masker;
+  done?: () => void;
+}
+
+/** What stands for a secret in a run's output. */
+export const SECRET_MASK = "[secret]";
+
+/**
+ * Replaces each secret in output that comes in pieces: the last bytes of a
+ * piece wait for the next, so a secret split across two still matches.
+ */
+export class Masker {
+  private carry: Buffer = Buffer.alloc(0);
+  private readonly keep: number;
+  constructor(private readonly secrets: Buffer[]) {
+    this.keep = Math.max(0, ...secrets.map((x) => x.length)) - 1;
+  }
+  push(data: Buffer): Buffer {
+    const all = this.mask(Buffer.concat([this.carry, data]));
+    const cut = Math.max(0, all.length - this.keep);
+    this.carry = all.subarray(cut);
+    return all.subarray(0, cut);
+  }
+  end(): Buffer {
+    const rest = this.carry;
+    this.carry = Buffer.alloc(0);
+    return rest;
+  }
+  /** Overwrites the secrets it holds with zeros, once the run has ended. */
+  wipe(): void {
+    for (const x of this.secrets) x.fill(0);
+  }
+  private mask(b: Buffer): Buffer {
+    for (const x of this.secrets) {
+      if (!x.length) continue;
+      const parts: Buffer[] = [];
+      let from = 0;
+      for (let i = b.indexOf(x); i >= 0; i = b.indexOf(x, from)) {
+        parts.push(b.subarray(from, i), Buffer.from(SECRET_MASK));
+        from = i + x.length;
+      }
+      if (from) b = Buffer.concat([...parts, b.subarray(from)]);
+    }
+    return b;
+  }
+}
+
+/**
+ * What a run from a card masks: the secret, without the newline the run adds, and, for one of several lines (a
+ * private key), each line of it at least 8 bytes long.
+ */
+export function secretMasks(secret: Buffer): Buffer[] {
+  // Bytes throughout, never a string, so each copy can be wiped (Masker.wipe).
+  const trim = (b: Buffer): Buffer => {
+    let a = 0, z = b.length;
+    while (a < z && (b[a] === 0x20 || b[a] === 0x09 || b[a] === 0x0d || b[a] === 0x0a)) a++;
+    while (z > a && (b[z - 1] === 0x20 || b[z - 1] === 0x09 || b[z - 1] === 0x0d || b[z - 1] === 0x0a)) z--;
+    return b.subarray(a, z);
+  };
+  const whole = trim(secret);
+  const out = whole.length ? [Buffer.from(whole)] : [];
+  for (let from = 0; from <= whole.length;) {
+    let i = whole.indexOf(0x0a, from);
+    if (i < 0) i = whole.length;
+    const line = trim(whole.subarray(from, i));
+    if (line.length >= 8 && line.length < whole.length && !out.some((o) => o.equals(line))) out.push(Buffer.from(line));
+    from = i + 1;
+  }
+  return out.sort((a, b) => b.length - a.length);
 }
 
 /**
@@ -172,7 +242,8 @@ export class Jobs {
    * function that connects: while the machine doesn't answer (it is rebooting), the job waits, trying again every
    * `retryMs`, and runs once it does, within its time limit. A changed or unconfirmed host key ends it at once.
    */
-  start(thread: JobThread, place: string, target: ExecutionTarget, command: string, cwd: string | (() => Promise<string>), timeoutS = JOB_LIMITS.timeoutS, o: { name?: string; call?: string } = {}): JobInfo {
+  start(thread: JobThread, place: string, target: ExecutionTarget, command: string, cwd: string | (() => Promise<string>), timeoutS = JOB_LIMITS.timeoutS,
+    o: { name?: string; call?: string; stdin?: Buffer; mask?: Buffer[]; done?: () => void } = {}): JobInfo {
     const k = key(thread);
     const list = this.byThread.get(k) ?? [];
     const running = list.filter((j) => j.state === "running");
@@ -183,6 +254,7 @@ export class Jobs {
     const job: Job = {
       id: this.nextId(thread), name: jobName(o.name, command), ...(o.call ? { call: o.call } : {}), place, command, cwd: typeof cwd === "string" ? cwd : "",
       startedAt: new Date().toISOString(), state: "running", thread, controller: new AbortController(), kept: new KeptOutput(),
+      ...(o.mask?.length ? { masker: new Masker(o.mask) } : {}), ...(o.done ? { done: o.done } : {}),
     };
     list.push(job);
     this.byThread.set(k, list);
@@ -192,7 +264,7 @@ export class Jobs {
     timer.unref();
     const signal = job.controller.signal;
     // The whole output is kept from onRaw, as a foreground call's is: onData gets only the cut her result would (capOutput).
-    const run = (dir: string) => target.ops().bash.exec(command, dir, { onData: () => {}, onRaw: (d) => this.keep(job, d), signal });
+    const run = (dir: string) => target.ops().bash.exec(command, dir, { onData: () => {}, onRaw: (d) => this.keep(job, d), signal, ...(o.stdin ? { stdin: o.stdin } : {}) });
     const waited = async () => {
       for (;;) {
         try {
@@ -291,7 +363,9 @@ export class Jobs {
     return job;
   }
 
-  private keep(job: Job, data: Buffer): void {
+  private keep(job: Job, raw: Buffer): void {
+    const data = job.masker ? job.masker.push(raw) : raw;
+    if (!data.length) return;
     const at = job.kept.bytes;
     job.kept.push(data);
     try { this.hooks.data?.(job.thread, info(job), at, data); } catch { /* no view */ }
@@ -303,6 +377,11 @@ export class Jobs {
 
   private end(job: Job, state: JobState, exitCode: number | null, reason?: string): void {
     if (job.state !== "running") return;
+    if (job.masker) {
+      this.keep({ ...job, masker: undefined } as Job, job.masker.end());
+      job.masker.wipe();
+    }
+    try { job.done?.(); } catch { /* the secret is wiped already */ }
     Object.assign(job, { state, endedAt: new Date().toISOString(), ...(state === "stopped" || state === "timed out" ? {} : { exitCode }), ...(reason ? { reason } : {}) });
     job.controller.abort();
     const list = this.byThread.get(key(job.thread));

@@ -45,6 +45,27 @@ describe("Jobs", () => {
     expect(jobNotice(ended[0]!.job, ended[0]!.output)).toMatch(/^Background command j1 in the sandbox, exited with code 0 after \d+ s: make\nLast output:\nbuilding\ndone$/);
   });
 
+  it("hands a card's secret to the command's input, masks it in what is kept and saved, and wipes it at the end", async () => {
+    const saved: Buffer[] = [];
+    const ended: string[] = [];
+    const jobs = new Jobs((_t, _job, output) => ended.push(output), 10_000, { save: (_t, _job, output) => saved.push(output) });
+    let given: Buffer | undefined;
+    const { target, running } = fakeTarget();
+    const exec = target.ops().bash.exec;
+    target.ops = () => ({ bash: { exec: (c: string, d: string, o: Parameters<typeof exec>[2]) => { given = o.stdin && Buffer.from(o.stdin); return exec(c, d, o); } } }) as unknown as ReturnType<ExecutionTarget["ops"]>;
+    const input = Buffer.from("tskey-abc123\n");
+    let wiped = false;
+    jobs.start(thread, "box", target, "join", "/home/lyrica", 60, { stdin: input, mask: [Buffer.from("tskey-abc123")], done: () => { input.fill(0); wiped = true; } });
+    expect(given?.toString()).toBe("tskey-abc123\n");
+    running.get("join")!.onData(Buffer.from("using tskey-ab"));
+    running.get("join")!.onData(Buffer.from("c123\njoined\n"));
+    running.get("join")!.done(0);
+    await tick();
+    expect(ended[0]).toBe("using [secret]\njoined\n");
+    expect(saved[0]!.toString()).toBe("using [secret]\njoined\n");
+    expect(wiped && input.every((b) => b === 0)).toBe(true);
+  });
+
   it("keeps a long job's whole output, in the sandbox and on a machine, not the cut a call's result gets", async () => {
     const saved: Buffer[] = [];
     const jobs = new Jobs(() => {}, 10_000, { save: (_t, _job, output) => saved.push(output) });

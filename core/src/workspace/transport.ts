@@ -33,7 +33,7 @@ export interface SshSession {
   /** The account's home folder, as the server reports it. */
   readonly home: string;
   /** Runs a command; output streams to `onData` (stdout and stderr together, capped). Resolves to the exit code. */
-  exec(command: string, o: { onData: (d: Buffer) => void; signal?: AbortSignal; timeout?: number }): Promise<number | null>;
+  exec(command: string, o: { onData: (d: Buffer) => void; signal?: AbortSignal; timeout?: number; stdin?: Buffer }): Promise<number | null>;
   realpath(path: string): Promise<string>;
   /** Undefined when nothing is there. */
   lstat(path: string): Promise<RemoteStat | undefined>;
@@ -330,7 +330,8 @@ function sessionOf(h: Helper, home: string, closed: (() => void)[]): SshSession 
   return {
     home,
     async exec(command, o) {
-      const run = h.call({ op: "exec", command }, undefined, (d) => o.onData(d));
+      // A secret for the command's input travels as the request's body, in memory, and the helper ends the input after it.
+      const run = h.call({ op: "exec", command, ...(o.stdin ? { stdin: true } : {}) }, o.stdin, (d) => o.onData(d));
       let stopped: Error | undefined;
       let rejectStop: (err: Error) => void = () => {};
       const stopping = new Promise<never>((_, reject) => { rejectStop = reject; });

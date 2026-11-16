@@ -205,7 +205,7 @@ export class SshTarget implements ExecutionTarget {
       },
       edit: { readFile: rawRead, writeFile, access: async (p) => { const { s, q } = await writable(p); return s.check(q, "r+"); } },
       bash: {
-        exec: async (command, cwd, { onData, onRaw, signal, timeout }) => {
+        exec: async (command, cwd, { onData, onRaw, signal, timeout, stdin }) => {
           const base = await this.cwd();
           const dir = within(posix.normalize(cwd), base) ? posix.normalize(cwd) : base;
           const out = capOutput(onData);
@@ -214,7 +214,7 @@ export class SshTarget implements ExecutionTarget {
           const group = groupRun(command);
           try {
             // As `ssh host cmd` runs it, in the account's own environment; Debian's sshd leaves /usr/sbin and /sbin off a plain user's PATH, so they go on its end.
-            const code = await session.exec(`export PATH="$PATH:/usr/sbin:/sbin" && cd ${quote(dir)} && ${group.run}`, { onData: (d) => clean.push(d), signal, timeout });
+            const code = await session.exec(`export PATH="$PATH:/usr/sbin:/sbin" && cd ${quote(dir)} && ${group.run}`, { onData: (d) => clean.push(d), signal, timeout, ...(stdin ? { stdin } : {}) });
             return { exitCode: code };
           } catch (err) {
             // Stopped, timed out or cut off: SSH's KILL reaches only the shell, so what the command started goes by its process group.

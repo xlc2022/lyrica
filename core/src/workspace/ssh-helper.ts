@@ -110,6 +110,8 @@ function request(id: number, head: Frame["head"], body: Buffer): void {
       client.exec(String(head.command), (err, stream) => {
         if (err) return done(err);
         streams.set(id, stream);
+        // A secret from a card is the command's whole input: written, then the input ends.
+        if (head.stdin === true) stream.end(body);
         // All of it crosses the pipe: lyricad keeps the whole output with the thread and gives her its start and end.
         const out = (d: Buffer) => { for (let i = 0; i < d.length; i += MAX_BODY) send({ id, ev: "data" }, d.subarray(i, i + MAX_BODY)); };
         stream.on("data", out);

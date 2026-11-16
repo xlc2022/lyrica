@@ -26,6 +26,8 @@ export interface ToolOps {
       signal?: AbortSignal;
       timeout?: number;
       env?: NodeJS.ProcessEnv;
+      /** What the command reads on its standard input, then end of input: a secret from a card (machines only). Without it, nothing is written. */
+      stdin?: Buffer;
     }): Promise<{ exitCode: number | null }>;
   };
 }
