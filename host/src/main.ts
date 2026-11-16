@@ -74,9 +74,9 @@ const computeCaps = vendor === "nvidia" ? await nvidiaComputeCaps() : new Map<nu
 // The oldest compute capability each server's image has kernels for. llama.cpp's CUDA 12.8 image builds
 // 5.0 and up (its ggml-cuda CMakeLists; on a CMP, install.sh builds it for this host's cards). vLLM v0.32.0
 // builds 7.5 and up (torch_cuda_arch_list), as does ComfyUI's CUDA 13.0 PyTorch, CUDA 13 having dropped
-// older cards; stable-diffusion.cpp in its place is built for the CMP. The speech server's cuDNN 9.27
+// older cards; stable-diffusion.cpp in its place is built for the CMP (70-real). The speech server's cuDNN 9.27
 // supports 7.5 and up (cuDNN's support matrix); beside a CMP, install.sh builds it with one that has Volta's.
-const minCompute = { llamacpp: 5.0, vllm: 7.5, ...(sdcpp ? {} : { images: 7.5 }), speech: cmpGpus.size ? 7.0 : 7.5 };
+const minCompute = { llamacpp: 5.0, vllm: 7.5, images: sdcpp ? 7.0 : 7.5, speech: cmpGpus.size ? 7.0 : 7.5 };
 const scheduler = new Scheduler({
   disk: diskReads(modelsDir) ?? undefined,
   monitor: vendor === "nvidia" ? nvidiaMonitor : vendor === "amd" ? amdMonitor("/sys", { order: backend === "vulkan" ? "pci" : "kfd" }) : noGpus,

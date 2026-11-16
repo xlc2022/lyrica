@@ -527,7 +527,7 @@ Only the repository's name and revision leave the host.
   whose image has no kernels for its compute capability (nvidia-smi's
   `compute_cap`), whatever its settings say: llama.cpp needs 5.0, vLLM
   7.5, ComfyUI 7.5 (CUDA 13; stable-diffusion.cpp in its place on a CMP
-  is built for it), speech 7.5 (cuDNN 9), or 7.0 on a host
+  is built for 7.0), speech 7.5 (cuDNN 9), or 7.0 on a host
   with a CMP 100-210, whose speech image keeps Volta's cuDNN. So a CMP
   100-210 (7.0) or a Pascal card runs llama.cpp only, and options and the
   automatic context leave it out for the others.
