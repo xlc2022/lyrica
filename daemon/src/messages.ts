@@ -7,6 +7,8 @@ import type { Message, MessagePart, Pool, Reaction, RootStep, ThreadRef, Told } 
 
 const RESULT_LINES = 6;
 const RESULT_CHARS = 600;
+/** At most this much of a failed call's last line, kept under its cut output. */
+const REASON_CHARS = 300;
 /** A `read` of a text file keeps more, so its card shows the file as she read it (docs/ux.md §6). */
 const READ_LINES = 60;
 const READ_CHARS = 6000;
@@ -89,14 +91,19 @@ export function delegateThreads(tool: string, details: unknown, pool: Pool, star
 }
 interface PiEntry { type: string; message?: PiMessage; customType?: string; content?: Content; data?: unknown }
 
-/** The first few lines of a tool's output. */
-export function shortResult(content: unknown, tool?: string): string {
+/**
+ * The first few lines of a tool's output. A failed call's cut output keeps
+ * its last line too, which says why it failed ("Command exited with code 1").
+ */
+export function shortResult(content: unknown, tool?: string, failed = false): string {
   const text = textOf(content as Content);
   const lines = text.split("\n");
   const [max, chars] = tool === "read" ? [READ_LINES, READ_CHARS] : [RESULT_LINES, RESULT_CHARS];
   let short = lines.slice(0, max).join("\n");
   if (short.length > chars) short = short.slice(0, chars);
-  return short.length < text.length ? `${short}…` : short;
+  if (short.length >= text.length) return short;
+  const last = failed ? lines.map((l) => l.trim()).filter(Boolean).at(-1) : undefined;
+  return last && !short.endsWith(last) ? `${short}…\n${last.length > REASON_CHARS ? `${last.slice(0, REASON_CHARS)}…` : last}` : `${short}…`;
 }
 
 function textOf(content: Content | undefined): string {
@@ -326,7 +333,7 @@ export function toMessages(threadId: string, pool: Pool, entries: { n: number; d
     } else if (m.role === "toolResult" && m.toolCallId) {
       const call = calls.get(m.toolCallId);
       if (!call) continue;
-      call.part.result = shortResult(m.content, call.part.name);
+      call.part.result = shortResult(m.content, call.part.name, !!m.isError);
       call.part.isError = !!m.isError;
       call.part.imageRefusal = imageRefusal(call.part.name, m.details);
       const root = !m.isError ? rootPart(call.part.name, m.details) : undefined;

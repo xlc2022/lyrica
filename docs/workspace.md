@@ -1128,7 +1128,10 @@ background, so it doesn't hold her turn (`core/src/workspace/jobs.ts`).
   them. A sandbox `bash` that runs `ssh` or `sftp` to one of the thread's
   machines by name, or `scp` or `rsync` to `<machine>:`, is refused before
   it runs, telling her to name the machine instead (`sandboxReachesMachine`);
-  `ssh-keygen` and a local copy are left alone.
+  `ssh-keygen` and a local copy are left alone. A `bash` on a machine that
+  ssh'es to that same machine is refused the same way, since the call
+  already runs there. Both refusals (`sshRefusal`) tell her to drop the
+  `ssh` and send only the command it wraps.
 - Its time limit is 4 hours unless she gives one, and at most 24
   (`JOB_LIMITS`); at the limit it is killed and reported as timed out. A
   thread has at most 4 running at once, a running local MCP server

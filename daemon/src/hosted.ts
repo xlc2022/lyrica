@@ -1662,7 +1662,7 @@ export class HostedThread {
         // A clip made in the background keeps its placeholder: its clip job reports it from here.
         if (this.making.delete(e.toolCallId) && (e.result as { details?: { clip?: string } } | undefined)?.details?.clip !== "started") this.emit({ type: "made", toolCallId: e.toolCallId });
         const content = (e.result as { content?: unknown } | undefined)?.content;
-        const result = shortResult(content, e.toolName);
+        const result = shortResult(content, e.toolName, !!e.isError);
         const threads = delegateThreads(e.toolName, (e.result as { details?: unknown } | undefined)?.details, this.pool, e.toolName === "delegate" ? this.started() : undefined);
         const image = !e.isError ? imagePart(e.toolName, (e.result as { details?: unknown } | undefined)?.details) : undefined;
         const video = !e.isError ? videoPart(e.toolName, (e.result as { details?: unknown } | undefined)?.details) : undefined;

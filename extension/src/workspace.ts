@@ -201,10 +201,13 @@ export function toolsOff(s: Pick<ThreadWorkspace, "mode" | "webSearch" | "images
 }
 
 const text = (t: string) => ({ content: [{ type: "text" as const, text: t }], details: undefined });
-const MACHINE = Type.Optional(Type.String({ description: "One of your machines, by name, to run this there. Leave it out for the sandbox." }));
+const MACHINE = Type.Optional(Type.String({ description: "One of your machines, by name: the call runs on that machine itself, as your account there, so a command never needs ssh to reach it. Leave it out for the sandbox." }));
 
-/** What an approval covered: anything run that differs is denied. */
-/** The machine a sandbox command tries to reach over ssh, scp, sftp or rsync by its name, which only a call naming the machine can. */
+/**
+ * The machine a command tries to reach over ssh, scp, sftp or rsync by its
+ * name: from the sandbox, which has no key or address for it, or from that
+ * machine itself, where the call already runs.
+ */
 export function sandboxReachesMachine(command: string, machines: string[]): string | undefined {
   for (const m of machines) {
     const name = m.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -214,6 +217,14 @@ export function sandboxReachesMachine(command: string, machines: string[]): stri
     if (ssh.test(command) || rsync.test(command)) return m;
   }
   return undefined;
+}
+
+/** Why a command that ssh'es to one of her machines didn't run, and the call that does it. */
+export function sshRefusal(machine: string, fromItself: boolean): string {
+  const how = `Leave the ssh out and send only the command it wraps, with machine: "${machine}": bash runs it on ${machine} itself, as your account there.`;
+  return fromItself
+    ? `Not run: this already runs on ${machine}, so ssh from ${machine} to itself only fails. ${how}`
+    : `Not run: the sandbox can't reach ${machine}: it has no key or address for your machines. ${how} After a reboot, start it there with background: true and it waits until ${machine} answers.`;
 }
 
 const shown = (tool: string, input: Record<string, unknown>, machine: string | undefined, cwd: string | undefined) =>
@@ -334,9 +345,10 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
         },
         async execute(id, params, signal, onUpdate, ctx) {
           const { machine: named, background, ...rest } = params as Record<string, unknown>;
-          if (name === "bash" && !named) {
-            const reached = sandboxReachesMachine(String(rest.command ?? ""), (tools.machines?.() ?? []).filter((m) => m.kind !== "proxmox").map((m) => m.name));
-            if (reached) throw new Error(`The sandbox can't reach ${reached}: it has no key or address for your machines, so this would only fail. Run the command on it with machine: "${reached}". After a reboot, start it there with background: true and it waits until ${reached} answers.`);
+          if (name === "bash") {
+            const ssh = (tools.machines?.() ?? []).filter((m) => m.kind !== "proxmox").map((m) => m.name);
+            const reached = sandboxReachesMachine(String(rest.command ?? ""), named ? ssh.filter((m) => m === named) : ssh);
+            if (reached) throw new Error(sshRefusal(reached, !!named));
           }
           if ((name === "read" || name === "edit" || name === "write") && typeof rest.path === "string") last = { verb: name === "read" ? "read" : name === "edit" ? "edited" : "wrote", path: rest.path };
           if (name === "bash" && background === true && tools.startJob) {
@@ -774,7 +786,7 @@ export function describe(tools: ThreadTools): string {
     network(tools.network()),
     ...[toolsLine(), librariesLine()].filter(Boolean),
     ...(!s.coordinates && sandboxNix() ? [NIX_LINE] : []),
-    ...(machines.length ? [`Machines you can work on over SSH, with the machine argument: ${machines.join(", ")}. The sandbox's network settings don't apply there.`] : []),
+    ...(machines.length ? [`Machines you can work on over SSH, with the machine argument, which runs a call on the machine itself (never ssh to one yourself): ${machines.join(", ")}. The sandbox's network settings don't apply there.`] : []),
     // Named only where the proxmox tool is: a subagent keeps its parent's machines but has no such tool.
     ...(pves.length && tools.proxmox ? [`Proxmox machines you can manage with the proxmox tool: ${pves.join(", ")}.`] : []),
     ...(tools.claudeCode?.() ? [CLAUDE_CODE_LINE] : []),
