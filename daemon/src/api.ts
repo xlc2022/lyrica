@@ -2632,9 +2632,9 @@ export interface SleepRunDetail extends SleepRunInfo {
 
 /**
  * POST /api/u/:userId/sleep/:pool → SleepStarted. Sleeps the pool now (`/sleep`).
- * In manual mode it answers `confirm` unless `confirm: true` is sent; then, once
- * the run ends, a fresh thread opens in that pool (a `thread` event). Anything
- * that stops it at once (no key, endpoint down, nothing new) is a 409 in plain words.
+ * In manual mode it answers `confirm` unless `confirm: true` is sent. It never
+ * creates a thread. Anything that stops it at once (no key, endpoint down,
+ * nothing new) is a 409 in plain words.
  */
 export interface SleepRequest { confirm?: boolean }
 export type SleepStarted = { started: true } | { confirm: string };
@@ -2646,9 +2646,7 @@ export type SleepStarted = { started: true } | { confirm: string };
 export type SleepEvent =
   | { type: "started"; pool: Pool; runId: string; reason: "scheduled" | "manual" }
   | { type: "phase"; pool: Pool; runId: string; phase: SleepPhase; state: "started" | "done" | "stopped" }
-  | { type: "finished"; pool: Pool; runId: string; status: SleepRunInfo["status"]; skipReason?: SkipReason }
-  /** Manual mode: the fresh thread opened after the run. */
-  | { type: "thread"; pool: Pool; threadId: string };
+  | { type: "finished"; pool: Pool; runId: string; status: SleepRunInfo["status"]; skipReason?: SkipReason };
 
 // --- Updates (docs/daemon.md "Updates"). The updater runs as root, outside lyricad. ---
 

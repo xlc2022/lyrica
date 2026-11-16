@@ -230,7 +230,7 @@ of its own follows the administrator's `sleep.time`.
 | Mode | Behavior |
 |---|---|
 | `scheduled` (default) | Nightly at the pool's time (`sleep.time`, 04:00, unless the pool has its own) in the user's time zone, when the pool has new activity. `/sleep` also works. |
-| `manual` | Works like Monika: the pool sleeps only on `/sleep`, which asks for confirmation, sleeps, then opens a fresh thread. |
+| `manual` | Works like Monika: the pool sleeps only on `/sleep`, which asks for confirmation, then sleeps. It opens no thread. |
 
 ## When the endpoint is offline
 

@@ -6,7 +6,7 @@
 import { Fragment, type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import {
   del, get, HttpError, patch, post, put, u,
-  type Display, type HistoryPage, type Pool, type SleepEvent, type SleepFocusChange, type SleepItemInfo, type SleepMode, type SleepOverview, type SleepPoolChange, type SleepRunDetail, type SleepRunInfo, type SleepStarted, type SleepTime, type ThreadSummary, type UserMap,
+  type Display, type HistoryPage, type Pool, type SleepFocusChange, type SleepItemInfo, type SleepMode, type SleepOverview, type SleepPoolChange, type SleepRunDetail, type SleepRunInfo, type SleepStarted, type SleepTime, type ThreadSummary, type UserMap,
 } from "./api.ts";
 import { HistoryHead, HistoryList } from "./History.tsx";
 import { Icon } from "./icons.tsx";
@@ -129,17 +129,11 @@ export function SleepPage({ ctx }: { ctx: ShellContext }) {
   const [run, busy, error] = useAction();
   const [details, setDetails] = useState<Record<string, SleepRunDetail>>({});
 
-  // Her events while the page is open: a run starting or ending refreshes the overview; manual mode's fresh thread opens.
+  // Her events while the page is open: a run starting or ending refreshes the overview.
   useEffect(() => {
     const es = new EventSource(u(userId, "sleep", "events"));
-    const on = (m: MessageEvent<string>) => {
-      try {
-        const e = JSON.parse(m.data) as SleepEvent;
-        if (e.type === "thread") { ctx.refreshThreads(); go({ page: "thread", userId, pool: e.pool, threadId: e.threadId }); }
-        else reload();
-      } catch { /* not ours */ }
-    };
-    for (const type of ["started", "phase", "finished", "thread"]) es.addEventListener(type, on);
+    const on = () => reload();
+    for (const type of ["started", "phase", "finished"]) es.addEventListener(type, on);
     return () => es.close();
   }, [userId, reload]); // eslint-disable-line react-hooks/exhaustive-deps
 

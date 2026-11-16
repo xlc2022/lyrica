@@ -2893,26 +2893,21 @@ function adminStatus(d: Lyricad): Api.AdminStatus {
 }
 
 /**
- * /sleep: sleeps the pool now. Manual mode asks first, and opens a fresh
- * thread once the run ends. Whatever stops it at once is a plain error.
+ * /sleep: sleeps the pool now. Manual mode asks first. It never creates a
+ * thread. Whatever stops it at once is a plain error.
  */
 async function startSleep(d: Lyricad, user: User, pool: Pool, confirmed: boolean): Promise<Api.SleepStarted> {
   d.refuseWhileDraining();
   const { sleep } = d.services!;
   const manual = sleep.mode(user.id, pool) === "manual";
-  if (manual && !confirmed) return { confirm: `Sleep now? She'll consolidate, dream and wake for your ${pool} memory, and then a fresh thread opens.` };
+  if (manual && !confirmed) return { confirm: `Sleep now? She'll consolidate, dream and wake for your ${pool} memory.` };
   const { skip, reason } = await sleep.check(user.id, pool);
   const run = sleep.run(user.id, pool, "manual"); // records a skip too
   if (skip) {
     await run;
     throw new HttpError(409, `Sleep can't run now: ${reason}.`);
   }
-  void run.then((done) => {
-    if (!manual || done.status === "skipped" || !d.keyring.hasUserKey(user.id)) return;
-    const thread = owner(d, user, (o) => o[pool].createThread({ interface: "web" }));
-    d.services!.workspace.settings(user.id).startThread(thread.id, pool);
-    sleep.events.emit("event", { type: "thread", userId: user.id, pool, threadId: thread.id });
-  }).catch((err: Error) => d.log(`sleep failed: ${err.name}`));
+  void run.catch((err: Error) => d.log(`sleep failed: ${err.name}`));
   return { started: true };
 }
 

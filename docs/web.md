@@ -539,8 +539,8 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   docs/ux.md §6 "What she did at night"): `#/u/<user>/sleep`, from the
   sidebar's Sleep link, whose badge counts her new items (`GET …/sleep`,
   reread on user-stream events, on focus and after each action; while the page is open
-  `GET …/sleep/events` reloads it as a run starts, changes phase or ends,
-  and a `thread` event opens the thread a manual run leaves). Items first,
+  `GET …/sleep/events` reloads it as a run starts, changes phase or ends;
+  sleep never opens a thread). Items first,
   newest first, with **Start a chat** (`POST …/items/<id>/chat`, then the
   new thread) and **Dismiss** (`DELETE`). Then **History**, with **Show all**
   right-aligned beside the eyebrow, has a card per shown pool (`.sleep-pool`)
