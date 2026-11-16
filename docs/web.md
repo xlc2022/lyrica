@@ -365,8 +365,9 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   its search hits or its Images grid, as filtered; Project settings' folder
   shown or its Images grid) steps through the images and SVGs of that list
   with **Previous image** and **Next image**, round 44 px buttons on its
-  sides, and with Left and Right, except in a field, a menu or the thread
-  beside. It stops at the ends, where that button is disabled, and the
+  sides, and with Left and Right, heard on the document so they work with
+  nothing focused (a Safari click focuses no button), except in a field, a
+  menu, a drawer or the thread beside. It stops at the ends, where that button is disabled, and the
   facts read "Image 2 of 4". Escape closes
   a menu inside first, then the viewer, and so does any navigation.
 - **Artifacts** (`Artifacts.tsx`, docs/ux.md §6, docs/briefs/artifacts.md):
