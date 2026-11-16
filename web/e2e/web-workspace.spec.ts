@@ -1595,6 +1595,8 @@ test("a command's whole output scrolls in its row, and a named background job st
   await notice.getByRole("button", { name: "Output" }).click();
   await expect(notice.locator(".command-output pre.read-body")).toContainText("tick 1\n");
   await expect(notice.locator(".command-output pre.read-body")).toContainText("tick 40");
+  // Each line stays whole (a table stays a table), the box scrolling sideways instead.
+  expect(await notice.locator(".command-output pre.read-body").evaluate((el) => getComputedStyle(el).whiteSpace)).toBe("pre");
   await noHorizontalScroll(page);
   if (process.env.SCREENSHOTS) await notice.screenshot({ path: `${process.env.SCREENSHOTS}/job-notice-open-${page.viewportSize()!.width}.png` });
 });

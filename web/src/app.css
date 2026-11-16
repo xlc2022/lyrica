@@ -867,7 +867,8 @@ dialog::backdrop { background: rgb(0 0 0 / 0.35); }
 .job-card .job-facts { font-size: 12px; }
 .job-card .job-command { font-family: var(--mono); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
 .job-card .command-output { margin: 0 8px 6px; }
-.job-card .command-output pre.read-body, .job-notice .command-output pre.read-body, .marker-body .command-output pre.read-body { padding: 2px 12px 10px; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 320px; overflow: auto; font-size: 12px; }
+/* Each line stays whole, so a table (nvidia-smi, docker ps) stays a table: the box scrolls sideways as well as down. */
+.job-card .command-output pre.read-body, .job-notice .command-output pre.read-body, .marker-body .command-output pre.read-body { padding: 2px 12px 10px; white-space: pre; overflow-wrap: normal; max-height: 320px; overflow: auto; font-size: 12px; }
 .command-output .read-note.danger { color: var(--danger); }
 .tfacts .link .dot { margin-right: 6px; vertical-align: middle; }
 .mono, input.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
