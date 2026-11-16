@@ -11,7 +11,7 @@ Work on the machine with the machine argument: a command with it runs on the mac
 
 A step that needs root goes to the person with `run_as_root`, unless they gave your account sudo without a password there (`sudo -n true` succeeds): then you run it yourself with `sudo`, after the same yes. You never type a sudo password and never ask for one.
 
-1. **Check the machine.** Run these and keep what they print. One command for all of them is one card for the person, and a program that isn't there is an answer, not a failure:
+1. **Check the machine.** Run these and keep what they print. One command for all of them is one card for the person, and a program that isn't there is an answer, not a failure: end that command with `true`, so the last check's exit code doesn't mark it failed:
    - `uname -a`, `cat /etc/os-release`: Debian or Ubuntu (NixOS needs the operator's own module first: stop and say so).
    - `nvidia-smi` (or `ls /dev/kfd /dev/dri` for AMD): the GPUs, their memory, and the driver version. `/dev/dri` alone isn't a GPU: a virtual display has one. No GPU: stop. A card with no driver: the driver comes first. Both are below.
    - `for d in /sys/bus/pci/devices/*; do case $(cat "$d/class") in 0x03*) echo "$(cat "$d/vendor"):$(cat "$d/device")";; esac; done`: the cards in the machine, with a driver or without (`0x10de` is NVIDIA, `0x1002` AMD). `0x10de:0x1df4` or `0x10de:0x1d84` is a CMP 100-210, which `nvidia-smi` names a Tesla V100: read "A CMP 100-210" below before you go on.
