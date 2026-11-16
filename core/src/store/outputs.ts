@@ -216,9 +216,21 @@ export class CommandOutputs {
     return r && fromRow(r);
   }
 
-  /** The thread's commands of one kind; `q` (case ignored) matches the name, the command or anything kept of the output. */
+  /**
+   * The thread's commands of one kind; `q` (case ignored) matches the name, the command or anything kept of the output:
+   * read as a search box reads it (`readSearch`); a wildcard pattern or regular expression is run by SQLite through
+   * `re2_match`, a wildcard pattern anywhere in the text.
+   */
   list(thread: string, kind: OutputKind, q?: string): CommandOutput[] {
-    const needle = q?.trim().toLowerCase();
+    const query = readSearch(q ?? "");
+    const needle = query.kind === "text" && query.text ? query.text.toLowerCase() : undefined;
+    if (query.kind !== "text") {
+      const test = searchTest(query, false);
+      this.db.function("re2_match", { deterministic: true }, (v: unknown) => (v != null && test(String(v)) ? 1 : 0));
+      const rows = this.db.prepare(`SELECT ${COLUMNS} FROM command_outputs WHERE thread = ? AND kind = ?
+        AND (re2_match(name) OR re2_match(command) OR re2_match(CAST(output AS TEXT)))`).all(thread, kind);
+      return (rows as Row[]).map(fromRow);
+    }
     const rows = needle
       ? this.db.prepare(`SELECT ${COLUMNS} FROM command_outputs WHERE thread = @thread AND kind = @kind
           AND (instr(lower(coalesce(name, '')), @q) OR instr(lower(command), @q) OR instr(lower(CAST(output AS TEXT)), @q))`).all({ thread, kind, q: needle })
@@ -239,6 +251,34 @@ export function compilePattern(pattern: string, flags = "im"): RE2 {
   try { return new RE2(pattern, flags); } catch (e) {
     throw new Error(`pattern isn't a regular expression this search reads (${(e as Error).message}); lookaround and backreferences aren't supported`);
   }
+}
+
+/**
+ * How a search box reads what the person typed (docs/ux.md, "Background jobs" and the Files panel): `/…/` is a regular
+ * expression (RE2), a text holding `*` or `?` a wildcard pattern (`*.txt`, `file-*.xyz`, `file.*`: `*` any run of
+ * characters, `?` one), anything else plain text; case is ignored throughout.
+ */
+export type SearchQuery = { kind: "text"; text: string } | { kind: "glob"; glob: string } | { kind: "regex"; pattern: string };
+
+export function readSearch(q: string): SearchQuery {
+  const t = q.trim();
+  const slashed = /^\/(.+)\/$/s.exec(t);
+  if (slashed) return { kind: "regex", pattern: slashed[1]! };
+  if (/[*?]/.test(t)) return { kind: "glob", glob: t };
+  return { kind: "text", text: t };
+}
+
+/** A wildcard pattern as RE2 source: `*` any run of characters, `?` one, everything else as written. */
+export const globSource = (glob: string): string => glob.replace(/[.+^${}()|[\]\\/-]/g, "\\$&").replaceAll("*", ".*").replaceAll("?", ".");
+
+/**
+ * A search as one test for a piece of text: the text contained, the wildcard pattern over the whole of it (`whole`, a
+ * file's name) or anywhere in it (a job's command or output), or the regular expression anywhere in it.
+ */
+export function searchTest(q: SearchQuery, whole: boolean): (s: string) => boolean {
+  if (q.kind === "text") { const n = q.text.toLowerCase(); return (s) => s.toLowerCase().includes(n); }
+  const re = q.kind === "regex" ? compilePattern(q.pattern) : compilePattern(whole ? `^${globSource(q.glob)}$` : globSource(q.glob), "is");
+  return (s) => re.test(s);
 }
 
 /**

@@ -37,7 +37,7 @@ import { AllowedPaths } from "./paths.ts";
 import type { Respelling } from "./renames.ts";
 import { generateSshKey, publicKeyOf, SshTarget } from "./ssh.ts";
 import { Jobs, machineReady, type JobInfo, type JobThread } from "./jobs.ts";
-import { KeptOutput, LiveText, sortOutputs, type CommandOutput, type CommandOutputs, type OutputSort } from "../store/outputs.ts";
+import { KeptOutput, LiveText, readSearch, searchTest, sortOutputs, type CommandOutput, type CommandOutputs, type OutputSort } from "../store/outputs.ts";
 import { sandboxedTransport, type SshTransport } from "./transport.ts";
 
 export * from "./worktree.ts";
@@ -352,11 +352,11 @@ export class Workspace {
 
   /** The thread's background commands for the Jobs dropdown: running ones and kept ones, matching `q`, in `sort`'s order. */
   jobList(t: { userId: string; pool: Pool; threadId: string }, q = "", sort: OutputSort = "newest"): CommandOutput[] {
-    const needle = q.trim().toLowerCase();
+    const hit = searchTest(readSearch(q), false);
     const running = this.jobs.runningOutputs(t)
-      .filter((r) => !needle || [r.job.name ?? "", r.job.command, r.output].some((x) => x.toLowerCase().includes(needle))).map((r) => r.job);
+      .filter((r) => !q.trim() || [r.job.name ?? "", r.job.command, r.output].some(hit)).map((r) => r.job);
     const ids = new Set(running.map((j) => j.id));
-    const kept = (this.opts.outputs?.(t, (x) => x.list(t.threadId, "job", needle)) ?? []).filter((j) => !ids.has(j.id));
+    const kept = (this.opts.outputs?.(t, (x) => x.list(t.threadId, "job", q)) ?? []).filter((j) => !ids.has(j.id));
     return sortOutputs([...running, ...kept], sort);
   }
 

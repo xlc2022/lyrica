@@ -161,7 +161,8 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   “Tokens counted before input and output were kept apart count here alone.”
   On a phone it opens rows in place at the foot of Context.
   **Jobs** follows Tokens once the thread has started a background job
-  (`JobsFact` in `src/CommandOutput.tsx`, `GET …/jobs?q=&sort=`, reloaded on
+  (`JobsFact` in `src/CommandOutput.tsx`, `GET …/jobs?q=&sort=`, its search box
+  read on the server as the Files search's is, `SEARCH_TIP` its tooltip; reloaded on
   the `jobs` event and while the search or sort changes): its popover's
   cards open to an `OutputBox` of the job. The same `OutputBox` is a `bash`
   call's open marker (`src/Messages.tsx`): it reads `GET …/outputs?call=` (or

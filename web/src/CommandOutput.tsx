@@ -122,6 +122,9 @@ export function OutputBox({ base, call, id, running, fallback, failed, label }: 
 
 // --- The Jobs dropdown ---
 
+/** What the Jobs and Files search boxes read, as their tooltip. */
+export const SEARCH_TIP = "Text, or a wildcard such as *.txt or file-?.log, or /a regular expression/. Case is ignored.";
+
 type Sort = "newest" | "oldest" | "running" | "longest";
 const SORTS: { value: Sort; label: string }[] = [
   { value: "newest", label: "Newest" }, { value: "oldest", label: "Oldest" }, { value: "running", label: "Running first" }, { value: "longest", label: "Longest" },
@@ -162,7 +165,8 @@ function useJobs(base: string, q: string, sort: Sort): { jobs: CommandOutputInfo
   useEffect(() => {
     let live = true;
     const t = setTimeout(() => {
-      get<CommandOutputInfo[]>(`${base}/jobs?q=${encodeURIComponent(q)}&sort=${sort}`).then((j) => { if (live) { setJobs(j); setError(""); } }, (e: Error) => { if (live) setError(e.message); });
+      get<CommandOutputInfo[]>(`${base}/jobs?q=${encodeURIComponent(q)}&sort=${sort}`)
+        .then((j) => { if (live) { setJobs(j); setError(""); } }, (e: Error) => { if (live) { setJobs(undefined); setError(e.message); } });
     }, q ? 250 : 0);
     return () => { live = false; clearTimeout(t); };
   }, [base, q, sort, tick]);
@@ -203,7 +207,7 @@ export function JobsFact({ base }: { base: string }) {
       {open && (
         <div className="picker jobs-pop" role="dialog" aria-label="Background jobs">
           <div className="jobs-tools">
-            <input type="search" aria-label="Search jobs" placeholder="Search jobs" value={q} onChange={(e) => setQ(e.target.value)} />
+            <input type="search" aria-label="Search jobs" placeholder="Search jobs" title={SEARCH_TIP} value={q} onChange={(e) => setQ(e.target.value)} />
             <select aria-label="Sort" value={sort} onChange={(e) => pickSort(e.target.value as Sort)}>
               {SORTS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
             </select>
