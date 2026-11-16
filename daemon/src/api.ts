@@ -1823,7 +1823,8 @@ export interface GpuWait { busyWith?: string; loading?: true }
 export interface LiveCall { ms: number; prompt?: number; cached?: number; read?: number; readRate?: number; output?: number; outputRate?: number; counted?: true; writing?: "thinking" | "tool" }
 
 /** A piece of a running command's output (docs/workspace.md, "Command output"). */
-export interface OutputEvent { id: string; call?: string; job?: true; at: number; data: string }
+/** `at` and `to` are the bytes of the command's output before and after `data`; a gap before `at` was skipped. */
+export interface OutputEvent { id: string; call?: string; job?: true; at: number; to: number; data: string }
 
 /** One command and what it printed, as the Jobs dropdown and a bash row read it; `output` is what is kept (GET …/outputs/:id). */
 export interface CommandOutputInfo {

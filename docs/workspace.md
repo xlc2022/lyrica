@@ -1138,12 +1138,19 @@ jobs").
   it in pages (from, lines), or finds lines with pattern."). `jobs output`
   takes a call's id or a job's: a page of numbered lines (`outputPage`; 200
   by default, at most 2,000, at most 60,000 characters), its end unless she
-  gives `from`, or with `pattern` (a regular expression, case ignored) the
-  matching lines, at most 200. A subagent has no `jobs` tool, so its results
-  say nothing more; its output is kept all the same.
+  gives `from`, or with `pattern` (plain text, case ignored; never a regular
+  expression, which could hold lyricad's one thread) the lines holding it,
+  at most 200. A line longer than a page is cut with a marker ("[… n more
+  characters]"), and a page always holds at least one line. A subagent has
+  no `jobs` tool, so its results say nothing more; its output is kept all
+  the same.
 - **Live:** while a command runs, each piece goes to the thread's open views
-  as an `output` event (its id, the call, the bytes before it), sent a few
-  times a second (`HostedThread.output`, never buffered for replay). A job
+  as an `output` event (its id, the call, `at` and `to`, the bytes of output
+  before and after its text; `LiveText` holds back a character cut between
+  pieces), sent a few times a second (`HostedThread.output`, never buffered
+  for replay). A batch carries at most its latest 64 KiB; the view marks
+  what it skipped ("[… n bytes skipped while it streamed …]"), and the kept
+  copy, read when it is opened again, has them. A job
   starting or ending sends `jobs`. A view that opens mid-run reads the
   output so far (`Workspace.outputOf` / `outputByCall`) and skips any piece
   it already has.

@@ -147,6 +147,29 @@ export function sortOutputs(list: CommandOutput[], sort: OutputSort, now = Date.
   return [...list].sort(cmp[sort]);
 }
 
+/**
+ * Turns a running command's output into text for the open views piece by piece, holding back a character cut between
+ * two pieces until the rest of it comes. `at` and `to` are the bytes of output before and after the text it gives.
+ */
+export class LiveText {
+  private held = Buffer.alloc(0);
+  piece(at: number, data: Buffer): { at: number; to: number; data: string } {
+    const buf = this.held.length ? Buffer.concat([this.held, data]) : data;
+    let cut = buf.length;
+    // A UTF-8 lead byte within the last three whose sequence runs past the end: hold it and what follows.
+    for (let i = buf.length - 1; i >= Math.max(0, buf.length - 3); i--) {
+      const b = buf[i]!;
+      if ((b & 0xc0) === 0x80) continue;
+      const need = b >= 0xf0 ? 4 : b >= 0xe0 ? 3 : b >= 0xc0 ? 2 : 1;
+      if (i + need > buf.length) cut = i;
+      break;
+    }
+    const start = at - this.held.length;
+    this.held = Buffer.from(buf.subarray(cut));
+    return { at: start, to: start + cut, data: buf.subarray(0, cut).toString("utf8") };
+  }
+}
+
 /** One thread pool's kept command output. */
 export class CommandOutputs {
   constructor(private readonly db: Db, private readonly threadBytes: number = OUTPUT_LIMITS.threadBytes) {}
@@ -203,22 +226,29 @@ export class CommandOutputs {
   }
 }
 
-/** A page of kept output for her: from line `from` (1-based), or the lines matching `pattern`, numbered either way. */
+/**
+ * A page of kept output for her: from line `from` (1-based), or the lines holding `pattern` (plain text, case ignored:
+ * never a regular expression she writes, which could hold lyricad's one thread for minutes), numbered either way. A
+ * line too long for a page is cut with a marker, and a page always holds at least one line, so `from` always moves on.
+ */
 export function outputPage(text: string, o: { from?: number; lines?: number; pattern?: string } = {}): string {
   const all = text.replace(/\n$/, "").split("\n");
   const total = all.length;
   const width = String(total).length;
-  const num = (i: number) => `${String(i + 1).padStart(width)}  ${all[i]}`;
+  const room = OUTPUT_LIMITS.pageChars - width - 64;
+  const num = (i: number) => {
+    const l = all[i]!;
+    return `${String(i + 1).padStart(width)}  ${l.length > room ? `${l.slice(0, room)} [… ${(l.length - room).toLocaleString("en-US")} more characters]` : l}`;
+  };
   const fit = (lines: string[]) => {
     let size = 0;
     const out: string[] = [];
-    for (const l of lines) { size += l.length + 1; if (size > OUTPUT_LIMITS.pageChars) break; out.push(l); }
+    for (const l of lines) { size += l.length + 1; if (size > OUTPUT_LIMITS.pageChars && out.length) break; out.push(l); }
     return out;
   };
   if (o.pattern) {
-    let re: RegExp;
-    try { re = new RegExp(o.pattern, "i"); } catch { throw new Error(`pattern isn't a regular expression: ${o.pattern}`); }
-    const hits = all.flatMap((l, i) => (re.test(l) ? [i] : []));
+    const needle = o.pattern.toLowerCase();
+    const hits = all.flatMap((l, i) => (l.toLowerCase().includes(needle) ? [i] : []));
     if (!hits.length) return `No line of ${total.toLocaleString("en-US")} matches ${o.pattern}.`;
     const shown = fit(hits.slice(0, OUTPUT_LIMITS.matches).map(num));
     return `${hits.length.toLocaleString("en-US")} of ${total.toLocaleString("en-US")} lines match${shown.length < hits.length ? `; the first ${shown.length}` : ""}:\n${shown.join("\n")}`;

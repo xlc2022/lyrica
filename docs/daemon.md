@@ -697,9 +697,10 @@ the background keeps it: its clip job sends `making` and `made` until the clip a
 `making` of now so a view that opens meanwhile shows the placeholders, and turn end, then the thread's `context` after each request that goes on with tools and after each turn, and a `compacted`
 marker when it compacts.
 `output` carries a running command's output as it comes (`OutputEvent`:
-its id `c<n>` or `j<n>`, the tool call, `job` for a background job, `at`,
-the bytes before this piece, and `data`), batched per command at most every
-200 ms (`HostedThread.output`); `jobs` says a background job started or
+its id `c<n>` or `j<n>`, the tool call, `job` for a background job, `at`
+and `to`, the bytes of output before and after this piece, and `data`),
+batched per command at most every 200 ms, each batch at most its latest
+64 Ki characters (`HostedThread.output`; a gap before `at` was skipped); `jobs` says a background job started or
 ended. Both go to open views only, never into the replay buffer; a view that
 opens mid-run reads what is kept so far:
 `GET …/threads/:pool/:threadId/outputs?call=<toolCallId>` → `{ job, output }`

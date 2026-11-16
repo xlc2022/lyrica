@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { CommandOutputs, cutMarker, KeptOutput, migrate, openEncrypted, outputPage, sortOutputs, type CommandOutput } from "../src/index.ts";
+import { CommandOutputs, cutMarker, KeptOutput, LiveText, migrate, openEncrypted, outputPage, sortOutputs, type CommandOutput } from "../src/index.ts";
 import { Jobs } from "../src/workspace/jobs.ts";
 import type { ExecutionTarget } from "../src/workspace/ops.ts";
 
@@ -74,7 +74,30 @@ describe("command output", () => {
     const page = outputPage(text, { from: 1, lines: 3 });
     expect(page).toBe("Lines 1-3 of 500; from: 4 goes on:\n  1  line 1\n  2  line 2\n  3  line 3");
     expect(outputPage(text, { pattern: "unable to locate" })).toBe("1 of 500 lines match:\n421  E: Unable to locate package nvidia-driver");
-    expect(() => outputPage(text, { pattern: "(" })).toThrow(/regular expression/);
+    // Plain text, never a regular expression run in lyricad: "(a+)+$" is only looked for as written.
+    expect(outputPage(text, { pattern: "(" })).toBe("No line of 500 matches (.");
+    expect(outputPage("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaab", { pattern: "(a+)+$" })).toMatch(/^No line/);
+  });
+
+  it("cuts a line too long for a page rather than leaving it out, so from always moves on", () => {
+    const text = "a\n" + "x".repeat(70_000) + "\nb\n";
+    const page = outputPage(text, { from: 2, lines: 5 });
+    expect(page).toMatch(/^Lines 2-3 of 3:\n2  x+ \[… [\d,]+ more characters\]\n3  b$/);
+    expect(page.length).toBeLessThanOrEqual(60_100);
+    expect(outputPage(text, { pattern: "xxx" })).toMatch(/^1 of 3 lines match:\n2  x+ \[…/);
+  });
+
+  it("never splits a character between two live pieces", () => {
+    const live = new LiveText();
+    const bytes = Buffer.from("née ✓ ok");
+    const a = live.piece(0, bytes.subarray(0, 2));   // "n" and half of "é"
+    const b = live.piece(2, bytes.subarray(2, 7));   // the rest of "é", "e ", two of "✓"'s three bytes
+    const c = live.piece(7, bytes.subarray(7));
+    expect([a, b, c].map((p) => p.data).join("")).toBe("née ✓ ok");
+    expect(a).toEqual({ at: 0, to: 1, data: "n" });
+    expect(b.at).toBe(1);
+    expect(c.to).toBe(bytes.length);
+    expect([a, b, c].every((p) => !p.data.includes("\ufffd"))).toBe(true);
   });
 
   it("sorts newest, oldest, running first and longest", () => {

@@ -37,7 +37,7 @@ import { AllowedPaths } from "./paths.ts";
 import type { Respelling } from "./renames.ts";
 import { generateSshKey, publicKeyOf, SshTarget } from "./ssh.ts";
 import { Jobs, machineReady, type JobInfo, type JobThread } from "./jobs.ts";
-import { KeptOutput, sortOutputs, type CommandOutput, type CommandOutputs, type OutputSort } from "../store/outputs.ts";
+import { KeptOutput, LiveText, sortOutputs, type CommandOutput, type CommandOutputs, type OutputSort } from "../store/outputs.ts";
 import { sandboxedTransport, type SshTransport } from "./transport.ts";
 
 export * from "./worktree.ts";
@@ -142,7 +142,8 @@ export interface WorkspaceOptions {
 }
 
 /** A piece of a running command's output, for the open views: its id, the tool call, the bytes before it and the piece. */
-export interface OutputEvent { id: string; call?: string; job?: true; at: number; data: string }
+/** `at` and `to` are the bytes of the command's output before and after `data`; a gap before `at` was skipped. */
+export interface OutputEvent { id: string; call?: string; job?: true; at: number; to: number; data: string }
 
 /** Where Claude Code sends what it reads: a run gets Claude Code only if its network reaches this. */
 export const CLAUDE_CODE_HOST = "api.anthropic.com";
@@ -264,9 +265,17 @@ export class Workspace {
     const thread = (t: JobThread) => t as WorkspaceThread;
     this.jobs = new Jobs((t, job, output) => this.opts.onJobEnd?.(thread(t), job, output), undefined, {
       seed: (t) => this.opts.outputs?.(thread(t), (o) => o.lastNumber(t.threadId, "j")) ?? 0,
-      data: (t, job, at, data) => this.opts.onOutput?.(thread(t), { id: job.id, ...(job.call ? { call: job.call } : {}), job: true, at, data: data.toString("utf8") }),
+      data: (t, job, at, data) => {
+        const k = `${t.userId}/${t.pool}/${t.threadId}/${job.id}`;
+        let live = this.liveJobs.get(k);
+        if (!live) this.liveJobs.set(k, (live = new LiveText()));
+        this.opts.onOutput?.(thread(t), { id: job.id, ...(job.call ? { call: job.call } : {}), job: true, ...live.piece(at, data) });
+      },
       changed: (t) => this.opts.onJobs?.(thread(t)),
-      save: (t, job, output) => this.opts.outputs?.(thread(t), (o) => o.save(t.threadId, job, output)),
+      save: (t, job, output) => {
+        this.liveJobs.delete(`${t.userId}/${t.pool}/${t.threadId}/${job.id}`);
+        this.opts.outputs?.(thread(t), (o) => o.save(t.threadId, job, output));
+      },
     });
     this.sshTransport = opts.sshTransport
       ?? sandboxedTransport(() => ({ ...this.door(), bwrap: this.opts.bwrap, pasta: this.opts.pasta, refused: this.networkRefused }));
@@ -285,6 +294,8 @@ export class Workspace {
 
   /** Bash calls running now, by `<user>/<pool>/<thread>/<id>`, with their output so far. */
   private readonly calls = new Map<string, { info: CommandOutput; kept: KeptOutput }>();
+  /** Running jobs' text for the open views, by the same key. */
+  private readonly liveJobs = new Map<string, LiveText>();
   /** The last `c<n>` used in each thread since lyricad started. */
   private readonly lastCall = new Map<string, number>();
 
@@ -299,6 +310,7 @@ export class Workspace {
     this.lastCall.set(tk, n);
     const info: CommandOutput = { id: `c${n}`, call: o.call, kind: "call", place: o.place, command: o.command, cwd: o.cwd, startedAt: new Date().toISOString(), state: "running", bytes: 0, dropped: 0 };
     const kept = new KeptOutput();
+    const live = new LiveText();
     const k = `${tk}/${info.id}`;
     this.calls.set(k, { info, kept });
     return {
@@ -306,7 +318,7 @@ export class Workspace {
       push: (data) => {
         const at = kept.bytes;
         kept.push(data);
-        try { this.opts.onOutput?.(t, { id: info.id, call: o.call, at, data: data.toString("utf8") }); } catch { /* no view */ }
+        try { this.opts.onOutput?.(t, { id: info.id, call: o.call, ...live.piece(at, data) }); } catch { /* no view */ }
       },
       end: (r) => {
         this.calls.delete(k);

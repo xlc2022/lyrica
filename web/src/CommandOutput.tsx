@@ -62,10 +62,13 @@ export function OutputBox({ base, call, id, running, fallback, failed, label }: 
     let loaded = false;
     const early: OutputEvent[] = [];
     const add = (e: OutputEvent) => {
-      const len = utf8.encode(e.data).length;
-      if (e.at + len <= seen.current) return;
-      seen.current = e.at + len;
-      setText((t) => { const next = (t ?? "") + e.data; return next.length > LIVE_CHARS ? next.slice(next.length - LIVE_CHARS) : next; });
+      if (e.to <= seen.current) return;
+      // Part of it already here (sent while the view loaded): only the rest. A gap: lyricad skipped a flood's middle.
+      let piece = e.data;
+      if (e.at < seen.current) piece = new TextDecoder().decode(utf8.encode(e.data).subarray(seen.current - e.at));
+      else if (e.at > seen.current) piece = `\n[… ${(e.at - seen.current).toLocaleString("en-US")} bytes skipped while it streamed …]\n${piece}`;
+      seen.current = e.to;
+      setText((t) => { const next = (t ?? "") + piece; return next.length > LIVE_CHARS ? next.slice(next.length - LIVE_CHARS) : next; });
     };
     // Listened to from the start: a bash call's row only learns it started a job once its output is read.
     const off = listen(outputListeners, base, (e: OutputEvent) => {

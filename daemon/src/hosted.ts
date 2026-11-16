@@ -80,6 +80,8 @@ const WRITING = new Set<ThreadEvent["type"]>(["tool_call", "tool_start", "tool_e
 const DRAFT_MS = 250;
 /** How often a running command's new output goes to the open views. */
 const OUTPUT_MS = 200;
+/** The most of a command's output one batch carries, its latest characters: a flood (`yes`) costs the views no more. */
+const OUTPUT_BATCH_CHARS = 64 * 1024;
 
 type Client = (id: string, event: ThreadEvent) => void;
 /** How a request ended: "held" kept it on the card past the turn, and "withdrawn" is a later held request replacing it. */
@@ -1804,7 +1806,14 @@ export class HostedThread {
   output(e: Api.OutputEvent): void {
     if (!this.clients.size) return;
     const was = this.pendingOutput.get(e.id);
-    this.pendingOutput.set(e.id, was ? { ...was, data: was.data + e.data } : e);
+    // Pieces of one command come in order and join; past the batch's limit only its latest characters go, `at` moved on.
+    let next = was ? { ...was, to: e.to, data: was.data + e.data } : e;
+    if (next.data.length > OUTPUT_BATCH_CHARS) {
+      let data = next.data.slice(next.data.length - OUTPUT_BATCH_CHARS);
+      if (/^[\udc00-\udfff]/.test(data)) data = data.slice(1);
+      next = { ...next, at: next.to - Buffer.byteLength(data), data };
+    }
+    this.pendingOutput.set(e.id, next);
     this.outputTimer ??= setTimeout(() => {
       this.outputTimer = undefined;
       const all = [...this.pendingOutput.values()];
