@@ -872,7 +872,7 @@ dialog::backdrop { background: rgb(0 0 0 / 0.35); }
 .command-output .read-note.danger { color: var(--danger); }
 .command-output .code-expand { margin-left: auto; }
 .command-output .code-expand + .code-copy { margin-left: 0; }
-.output-dialog .output-command { font-size: 12px; min-width: 0; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60ch; }
+.output-dialog .output-command { display: block; font-size: 12px; min-width: 0; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60ch; }
 dialog.output-dialog .viewer-body pre.read-body { flex: 1; min-height: 0; max-height: none; margin: 0; padding: 10px 16px; white-space: pre; overflow-wrap: normal; overflow: auto; font-size: 13px; }
 /* On a phone Copy and Close keep the title's line; the command and its facts take the lines below. */
 @media (max-width: 760px) { .output-dialog .viewer-head > .viewer-acts { order: 1; flex-basis: auto; margin-left: auto; } .output-dialog .viewer-head > .output-command, .output-dialog .viewer-head > .viewer-facts { order: 2; flex-basis: 100%; max-width: none; } .output-dialog .viewer-body pre.read-body, .output-dialog .viewer-body .read-note { padding-inline: var(--gutter); } }

@@ -150,7 +150,7 @@ function OutputDialog({ label, info, text, onClose, children }: {
       <section className="viewer-file">
         <div className="viewer-head">
           <h2 className="changes-title">{info?.name ?? label}</h2>
-          {info && <code className="name output-command" title={info.command}>{info.command}</code>}
+          {info && <code className="output-command" title={info.command}>{info.command}</code>}
           {info && st && (
             <span className="viewer-facts muted">
               <span className="status-word"><span className={`dot ${st.dot}`} aria-hidden="true" />{st.word}</span> · {info.place} · <span className="num">{ranFor(info)}</span>
