@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { JOB_LIMITS, jobNotice, Jobs, machineReady, sleepWait, type ExecutionTarget, type JobInfo } from "../src/index.ts";
+import { JOB_LIMITS, jobNotice, Jobs, machineReady, NOTICE_LIMITS, sleepWait, type ExecutionTarget, type JobInfo } from "../src/index.ts";
 import { capOutput } from "../src/workspace/ops.ts";
 
 const thread = { userId: "u1", pool: "general", threadId: "t1" };
@@ -63,6 +63,21 @@ describe("Jobs", () => {
       expect(output.toString("utf8")).toBe(lines);
       expect(output.toString("utf8")).not.toContain("left out");
     }
+  });
+
+  it("ends a job's notice with a bounded tail: a 1 MB line or thousands of lines stay within a few KB, and say where the rest is", () => {
+    const job: JobInfo = { id: "j4", place: "sandbox", command: "docker pull x", cwd: "/workspace", startedAt: "2026-01-01T00:00:00Z", endedAt: "2026-01-01T00:01:00Z", state: "exited", exitCode: 0 };
+    const bar = `${"=".repeat(1024 * 1024)}> 100%`;
+    const huge = jobNotice(job, `${bar}\ndone\n`);
+    expect(huge.length).toBeLessThan(NOTICE_LIMITS.chars + 500);
+    expect(huge).toContain("jobs output with id j4 reads the whole output");
+    expect(huge).toMatch(/\[… [\d,]+ characters\] =+> 100%\ndone$/);
+    const many = jobNotice(job, Array.from({ length: 5000 }, (_, i) => `line ${i + 1}`).join("\n"));
+    expect(many.length).toBeLessThan(NOTICE_LIMITS.chars + 500);
+    expect(many).toMatch(/\[… [\d,]+ characters before these lines left out; jobs output with id j4 reads the whole output\]\nline 4961\n/);
+    expect(many.endsWith("line 5000")).toBe(true);
+    // A short output is as it was, with no marker.
+    expect(jobNotice(job, "a\nb\n")).toMatch(/Last output:\na\nb$/);
   });
 
   it("waits for a machine that doesn't answer yet (rebooting), then runs there; a changed host key ends it at once", async () => {

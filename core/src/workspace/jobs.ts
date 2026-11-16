@@ -71,9 +71,6 @@ export function jobName(name: string | undefined, command: string): string {
 
 const key = (t: JobThread) => `${t.userId}/${t.pool}/${t.threadId}`;
 
-/** The last `n` lines of `text`. */
-export const lastLines = (text: string, n: number): string => text.split("\n").slice(-n).join("\n");
-
 /** How long a job ran, in words: "42 s", "12 min", "3 h 5 min". */
 export function jobDuration(from: string, to: string): string {
   const s = Math.max(0, Math.round((Date.parse(to) - Date.parse(from)) / 1000));
@@ -91,11 +88,38 @@ export function jobLine(j: JobInfo, now = new Date().toISOString()): string {
   return `${j.id}${j.name && j.name !== jobName(undefined, j.command) ? ` (${j.name})` : ""} in ${j.place === "sandbox" ? "the sandbox" : j.place}, ${how}: ${j.command}`;
 }
 
-/** What lyricad tells the thread when a job ends: the job, and the last lines of its output. A local MCP server's output is never kept. */
+/** A job's end notice holds at most its last `lines` lines, each cut to its last `lineChars` characters, and `chars` in all. */
+export const NOTICE_LIMITS = { lines: 40, lineChars: 1000, chars: 4096 };
+
+/**
+ * The end of a job's output for its notice, within NOTICE_LIMITS: a progress bar redrawn with \r or minified JSON is
+ * one huge line, so lines are cut too, keeping their end. When anything was left out, a first line says how much and
+ * names the job's id for `jobs output`. Scans back from the end, so a 16 MiB output costs no more than a small one.
+ */
+export function noticeTail(id: string, output: string): string {
+  const text = output.trimEnd();
+  if (!text) return "";
+  const kept: string[] = [];
+  let size = 0, end = text.length, left = 0;
+  while (end > 0 && kept.length < NOTICE_LIMITS.lines) {
+    const start = text.lastIndexOf("\n", end - 1) + 1;
+    let line = text.slice(Math.max(start, end - NOTICE_LIMITS.lineChars), end);
+    const cut = end - start - line.length;
+    if (cut > 0) { line = `[… ${cut.toLocaleString("en-US")} characters] ${line}`; left += cut; }
+    if (kept.length && size + line.length + 1 > NOTICE_LIMITS.chars) break;
+    kept.unshift(line);
+    size += line.length + 1;
+    end = start > 0 ? start - 1 : 0;
+  }
+  left += end;
+  return left > 0 ? `[… ${left.toLocaleString("en-US")} characters before these lines left out; jobs output with id ${id} reads the whole output]\n${kept.join("\n")}` : kept.join("\n");
+}
+
+/** What lyricad tells the thread when a job ends: the job, and the end of its output (noticeTail). A local MCP server's output is never kept. */
 export function jobNotice(j: JobInfo, output: string): string {
   if (j.kind === "mcp") return `${jobLine(j)}. Its tools are off until the next turn starts it again.`;
   if (j.kind === "browser") return `${jobLine(j)}. The next browse call opens it again, with its logins kept.`;
-  const tail = lastLines(output.trimEnd(), 40);
+  const tail = noticeTail(j.id, output);
   return `Background command ${jobLine(j)}\n${tail ? `Last output:\n${tail}` : "No output."}`;
 }
 

@@ -1209,7 +1209,10 @@ background, so it doesn't hold her turn (`core/src/workspace/jobs.ts`).
   with the thread once it ends (`JobHooks`).
 - When a job ends (exited, failed, timed out or stopped), `lyricad`'s
   `onJobEnd` delivers a notice into the thread (`jobNotice`: the job, the
-  exit code, how long it ran and the last 40 lines of its output), on the
+  exit code, how long it ran and the end of its output: its last 40 lines,
+  each cut to its last 1,000 characters, 4 KB in all, after a line naming
+  how much was left out and its `jobs output` id when anything was;
+  `noticeTail`, `NOTICE_LIMITS`), on the
   path a background subagent's result takes (`Delegation.deliver`, status
   `job`, `quiet`). The web reads the notice text back into its card
   (`parseJobNotice` in `web/src/JobNotice.tsx`; web/test/job-notice.test.ts
