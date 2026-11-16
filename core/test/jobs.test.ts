@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { JOB_LIMITS, jobNotice, Jobs, machineReady, NOTICE_LIMITS, sleepWait, type ExecutionTarget, type JobInfo } from "../src/index.ts";
+import { cutOutput, JOB_LIMITS, jobNotice, Jobs, machineReady, NOTICE_LIMITS, sleepWait, type ExecutionTarget, type JobInfo } from "../src/index.ts";
 import { capOutput } from "../src/workspace/ops.ts";
 
 const thread = { userId: "u1", pool: "general", threadId: "t1" };
@@ -223,5 +223,36 @@ describe("sleepWait", () => {
     expect(sleepWait("sleep $DELAY", false)).toBeUndefined();
     expect(sleepWait("npm test", false)).toBeUndefined();
     expect(sleepWait("echo 'sleep 300'", false)).toBeUndefined();
+  });
+});
+
+describe("cutOutput", () => {
+  it("refuses a background command piped into tail or head, and says why", () => {
+    const why = cutOutput(`cd ~/lyrica/host && sg docker -c 'docker compose build && docker compose pull --ignore-buildable' 2>&1 | tail -40`, true);
+    expect(why).toMatch(/^Not run: this background command ends in `\| tail -40`/);
+    expect(why).toContain("shows no output while it runs");
+    expect(why).toContain("the rest is lost");
+    expect(cutOutput("make |& head -n 20", true)).toMatch(/head keeps only the first lines and then exits/);
+    expect(cutOutput("make | tail --lines=40", true)).toBeDefined();
+  });
+  it("lets the same line run in her turn, a followed log, and pipes that aren't last", () => {
+    expect(cutOutput("docker compose build 2>&1 | tail -40", false)).toBeUndefined();
+    expect(cutOutput("tail -f /var/log/syslog | grep error", true)).toBeUndefined();
+    expect(cutOutput("journalctl -u x | tail -F", true)).toBeUndefined();
+    expect(cutOutput("docker compose logs | tail -n 5 | grep x", true)).toBeUndefined();
+    expect(cutOutput("npm test || tail -5 log", true)).toBeUndefined();
+    expect(cutOutput("bash -c 'make | tail -5'", true)).toBeUndefined();
+    expect(cutOutput("npm run build", true)).toBeUndefined();
+    // A filter inside the line: a wait loop, a sample written to a file, $(…), a subshell, a step after it, or tail -n +N.
+    expect(cutOutput("while true; do curl -s localhost:7236/host/v1/status | tail -1; sleep 30; done", true)).toBeUndefined();
+    expect(cutOutput("cat big.csv | head -n 100000 > sample.csv", true)).toBeUndefined();
+    expect(cutOutput("cd $(ls -d */ | head -1) && make", true)).toBeUndefined();
+    expect(cutOutput("(make | tail -5) && deploy", true)).toBeUndefined();
+    expect(cutOutput("make | tail -5 && deploy", true)).toBeUndefined();
+    expect(cutOutput("docker compose logs | tail -n +2", true)).toBeUndefined();
+    // head after a followed stream waits for a line, and ends the command on purpose.
+    expect(cutOutput("journalctl -u lyrica-host -f | grep -i ready | head -1", true)).toBeUndefined();
+    expect(cutOutput("docker compose logs --follow host-api | head -n 1", true)).toBeUndefined();
+    expect(cutOutput("find / -name '*.gguf' | head -1", true)).toMatch(/grep -m 1, find -print -quit/);
   });
 });

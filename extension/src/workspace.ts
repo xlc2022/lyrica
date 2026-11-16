@@ -5,7 +5,7 @@ import {
 import { readFileSync } from "node:fs";
 import { posix } from "node:path";
 import {
-  BROWSE_READS, browseFormText, foldOutput, browseFormWarning, type Browser, type BrowseCall, decide, sourcedFile, SCRIPT_LIMIT, type CommandRule, withoutNoMachine, holdsSecret, librariesLine, JOB_LIMITS, jobLine, OUTPUT_LIMITS, outputPage, sleepWait, type JobInfo, malformedCommand, mcpNamespace, onFloor, sandboxNix, sandboxTools, PROXMOX_READS, PROXMOX_SUSPECT, SANDBOX_ALLOW, stricterMode, suspectCommand, suspectKey, discardingGit, removedFolders, SHARED, FAMILY_ROOT, WORKDIR, writtenFiles, type ExecutionTarget, type ProxmoxAction, type Network, type NewChange, type PermissionMode, type ThreadGitRepository, type ThreadMachine, type ThreadRepository, type ThreadWorkspace, type ToolOps,
+  BROWSE_READS, browseFormText, foldOutput, browseFormWarning, type Browser, type BrowseCall, decide, sourcedFile, SCRIPT_LIMIT, type CommandRule, withoutNoMachine, holdsSecret, librariesLine, JOB_LIMITS, jobLine, OUTPUT_LIMITS, outputPage, sleepWait, cutOutput, type JobInfo, malformedCommand, mcpNamespace, onFloor, sandboxNix, sandboxTools, PROXMOX_READS, PROXMOX_SUSPECT, SANDBOX_ALLOW, stricterMode, suspectCommand, suspectKey, discardingGit, removedFolders, SHARED, FAMILY_ROOT, WORKDIR, writtenFiles, type ExecutionTarget, type ProxmoxAction, type Network, type NewChange, type PermissionMode, type ThreadGitRepository, type ThreadMachine, type ThreadRepository, type ThreadWorkspace, type ToolOps,
 } from "@lyrica/core";
 import { Type } from "typebox";
 import { setToolsOff } from "./gate.ts";
@@ -166,7 +166,7 @@ export function checkUnder(jobs: JobInfo[], place: string, path: string, what: "
     : `${job.id} is still running checks here (${job.command}); this commit may not be the tree it tests. Commit after checks pass on the exact tree.`;
 }
 const BASH_TIMEOUT = Type.Optional(Type.Number({ description: `Timeout in seconds, ${BASH_TIMEOUT_S} if left out (${JOB_LIMITS.timeoutS} in the background). Give a longer one for a long build or test run.` }));
-const BACKGROUND = Type.Optional(Type.Boolean({ description: "Run it in the background: you get a job id at once, and are told when it ends. For a download, build, install, test run or wait that takes minutes or more. Then end your turn or do other work; never sleep to wait for it." }));
+const BACKGROUND = Type.Optional(Type.Boolean({ description: "Run it in the background: you get a job id at once, and are told when it ends. For a download, build, install, test run or wait that takes minutes or more. Don't pipe it into tail or head: its whole output is kept and shown live. Then end your turn or do other work; never sleep to wait for it." }));
 const JOB_NAME = Type.Optional(Type.String({ description: `With background: what the job does, in a few words the person reads in its list ("Pull the host images"); at most ${JOB_LIMITS.nameChars} characters.` }));
 
 /** The state a bash call ended in, from how Pi's bash ended: its exit code, a timeout or a stop. */
@@ -193,7 +193,8 @@ export const bashDescription = (jobs: boolean) =>
   + (jobs
     ? ` Every call's whole output is kept with this conversation, encrypted, up to ${MIB(OUTPUT_LIMITS.keepBytes)} a command `
       + `(its first ${MIB(OUTPUT_LIMITS.headBytes)} and its latest ${MIB(OUTPUT_LIMITS.keepBytes - OUTPUT_LIMITS.headBytes)}), and jobs output reads it by the id named under a result that was cut. `
-      + "So never save output to a file with tee or a redirect to read it later, and never cut it with tail, head or grep: what you cut isn't kept."
+      + "It is shown live as it comes, so the person sees a long command working. So never save output to a file with tee or a redirect to read it later, and never pipe a command into tail, head or grep to keep its output short: "
+      + "tail prints nothing until the command ends, head can stop the command early, and what you cut isn't kept. jobs output reads the last lines, or finds lines with pattern, after."
     : "");
 const TOOLS: Record<keyof ToolOps, Create> = {
   read: createReadToolDefinition as unknown as Create,
@@ -647,6 +648,8 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
       if (event.toolName === "bash") { const malformed = await malformedCommand(String(input.command)); if (malformed) return { block: true, reason: malformed }; }
       // Waiting with a long sleep holds her turn on a guess: it goes back to her, naming the ways that wait on the thing itself.
       if (event.toolName === "bash" && tools.startJob) { const wait = sleepWait(String(input.command), input.background === true); if (wait) return { block: true, reason: wait }; }
+      // A background command cut with tail or head shows nothing while it runs and keeps only the cut: it goes back to her without it.
+      if (event.toolName === "bash" && tools.startJob) { const cut = cutOutput(String(input.command), input.background === true); if (cut) return { block: true, reason: cut }; }
       // Anything that reaches outside and changes things there can't be undone from here: it always asks.
       const a = pi.getAllTools().find((t) => t.name === event.toolName)?.annotations;
       const irreversible = !!a?.openWorldHint && !a.readOnlyHint && !OWN_CARD.has(event.toolName);
