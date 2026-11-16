@@ -311,7 +311,7 @@ function SetupBlock({ text, rebuild, copied, primary, onCopy, preRef }: { text: 
     </div>
     {rebuild && <div className="code-block setup-block">
       <div className="code-head"><span className="code-lang">Rebuild</span><CopyButton text={rebuild} label="Copy" ariaLabel="Copy rebuild" className="code-copy" /></div>
-      <p className="muted sudo-hint">From the configuration's folder; with a flake, add --flake .#&lt;machine&gt;.</p>
+      <p className="muted sudo-hint">From the configuration's folder; with a flake, add <code className="nowrap">--flake .#&lt;machine&gt;</code> to the first line.</p>
       <pre className="setup"><code><SetupLines text={rebuild} /></code></pre>
     </div>}
   </>);

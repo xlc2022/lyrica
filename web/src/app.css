@@ -896,6 +896,7 @@ form.drawer-body { flex: 1; }
 .setup-block { margin: 0; }
 .setup-block .setup { background: none; border: 0; border-radius: 0; padding: 2px 12px 10px; }
 /* System wraps onto a row of its own: as wide as a column of the rows above, not the whole row. */
+.sudo-hint code.nowrap { white-space: nowrap; }
 @media (min-width: 700px) { .row > .field.system-field { flex: 0 1 calc((100% - 16px) / 3); } }
 .setup .line { display: block; min-height: 1.5em; padding-left: 4ch; text-indent: -4ch; }
 /* The optional sudo commands under it: a code block each, headed by its name and Copy, wrapping as the setup block does. */
