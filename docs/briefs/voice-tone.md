@@ -1,4 +1,4 @@
-# Brief: a tone for each piece Read aloud speaks
+# Brief: a tone for each paragraph Read aloud speaks
 
 **Status:** Planned (2026-11-16). Owner: the read-aloud thread.
 
@@ -7,43 +7,49 @@
 Qwen3-TTS CustomVoice speakers follow a short instruction ("gently amused",
 "quiet and tender"), but Read aloud sends one fixed, calm instruction
 (#1185), so a happy reply and a sad one sound alike. The owner wants her
-voice to carry the feeling of what she says, and wants the tone notes never
-shown (principles 1 and 6).
+voice to carry what she means, with no delay before it speaks, and wants the
+tone notes never shown and never in her memories (principles 1 and 6).
 
 ## What
 
-1. **The note.** Before a piece is spoken, a model reads it, with the piece
-   before it, and answers a tone note of at most eight English words. The
-   call goes through `core/models` on the thread's own task list (a new
-   task, `speech.tone`, defaulting to the Titles model), so a private or
-   local-only thread keeps its text on its own machines. A note that fails
-   or is late falls back to the calm default; the reading never waits more
-   than 1 s for one.
-2. **Ahead of time.** Read aloud already fetches the next piece while one
-   plays; it asks for the next note then too, so only the first piece waits.
-3. **Passed down, never shown.** `Models.speak` takes an optional
-   `instruct`; host-api's `/v1/audio/speech` passes it to the Qwen3-TTS
-   server, which gives it to CustomVoice in place of the default. Kokoro and
-   Base ignore it. The note isn't stored, logged or sent to the web UI: it
-   lives only for the request (no plaintext memory).
-4. **Her replies are unchanged.** She doesn't write the note herself, so
-   nothing hidden ever sits in a reply's text.
+1. **She writes them.** When the user's Read aloud model takes instructions
+   (host-api marks a CustomVoice model's `speak` with `instruct: true`), her
+   context asks her to open a paragraph whose feeling differs from the last
+   with a tag, `<tone>gently amused</tone>`, at most eight English words.
+   Without such a model, nothing asks her to, and no tokens are spent.
+2. **Taken out as she writes.** The extension lifts each tag out of the
+   reply as it streams, the way it lifts inline `<think>` (`inline-thinking.ts`),
+   with a hand-written scanner, not a regex over her output. The reply's
+   text never holds a tag, live or stored. A tag left half-written at the
+   end is dropped.
+3. **Kept apart.** The notes are stored on the message as a part of their
+   own, `{ type: "tone", notes: [{ paragraph, note }] }`, encrypted like the
+   rest of the thread. Only Read aloud reads that part. Context assembly,
+   sleep, recall, search, export and the web UI skip it, so a note never
+   reaches her memories, her later turns or the user's screen. The API
+   never sends the part to the web UI.
+4. **Spoken with.** `readAloud` gives each piece the note of the paragraph
+   it starts in, or the last note before it, and passes it to `Models.speak`
+   as `instruct`; host-api passes it to the Qwen3-TTS server, which gives it
+   to CustomVoice in place of the calm default. Kokoro and Base ignore it.
+   A reply with no notes is read with the default.
 
 ## Out of scope
 
 - **Friend.** Base clones a clip and takes no instruction, so Friend keeps
-  one tone. Giving Friend feelings means fine-tuning a CustomVoice model on
-  Friend's voice (Qwen publishes the scripts); that would be a brief of its
-  own, with a recording set to make first.
-- Any control or display. The tone task appears in the task lists like the
-  others only if the owner asks.
+  one tone. Feelings for Friend need a CustomVoice model fine-tuned on
+  Friend's voice: a brief of its own.
+- Any control or display.
+- Notes for replies written before this ships.
 
 ## Done when
 
 - On danube, a happy, a sad and a matter-of-fact reply read by Sohee sound
-  clearly different, and the pieces within each stay consistent.
-- Tests: the note goes through the thread's task list (a private thread
-  never reaches a cloud model), a slow or failed note falls back, and no
-  note reaches a log, the database or the web UI.
-- docs/daemon.md, host/API.md, host/README.md, docs/contracts.md and this
-  brief describe what exists.
+  clearly different, and Read aloud starts as quickly as it does today.
+- Tests: a tag, whole or split across stream chunks, never reaches the
+  reply's text; the tone part never reaches context assembly, sleep's
+  input, recall, search, export or the web UI; Read aloud sends each
+  piece's note; no tag is asked for when the Read aloud model takes no
+  instructions.
+- docs/memory.md, docs/sleep.md, docs/daemon.md, docs/contracts.md,
+  host/API.md, host/README.md and this brief describe what exists.
