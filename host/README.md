@@ -906,6 +906,26 @@ revoked. A revoked server must pair again.
   pause, GPU settings, model placements and serving settings, pins,
   measured VRAM and usage counts. Prompts are never stored, and host-api's
   log has no text: only event names, IDs and counts, never the pairing code.
+- What a request leaves behind. Nothing reaches disk: the model servers
+  log nothing (Docker's `none` driver), write only to `tmpfs`, and no
+  container leaves a core dump when it crashes (`ulimits: core: 0`), which
+  on a machine with `systemd-coredump` (NixOS's default) would otherwise
+  keep a crashed server's memory, prompts and images included, on disk.
+  In memory, until the process ends or the next job:
+  - host-api: only while the request runs.
+  - llama.cpp: the prompt cache (`cache-ram`, above); `--no-slots`, and no
+    slot save path.
+  - vLLM: its prefix cache; its output is dropped once it answers.
+  - ComfyUI: its node cache of the last job, and its last 300 console
+    lines (a failing node's exception can carry prompt text). Its history
+    is cleared after every job and its uploads blanked; its folders are
+    emptied whenever it starts or stops, and it stops once its recipes
+    have been idle for 10 minutes.
+  - sd-server: a finished job, its prompt and images, for ten minutes; it
+    has no call to clear one.
+  - speech and whisper-server: nothing past the request.
+  Memory, `tmpfs` included, can be written to swap: encrypt swap on a host,
+  as on Lyrica's own server.
 - Images are pinned by digest. `host-api` is built from this checkout by
   `install.sh`, and CI builds the stack on pull requests that touch `host/`.
 - `test/stack/network.sh` checks the network layout on a running stack.

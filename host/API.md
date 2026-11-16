@@ -1385,7 +1385,8 @@ ComfyUI and removed from its queue.
 
 Prompts and images exist only in memory for the job: ComfyUI's folders are
 `tmpfs`, metadata saving is off, uploaded images are overwritten with a
-blank one and its history is cleared after each job. ComfyUI itself has no
+blank one, its history is cleared after each job, and a crash leaves no
+core dump (README.md, "What a request leaves behind"). ComfyUI itself has no
 authentication: anything on the `models` network could call it, which is
 why only the model servers are there and none of them has a route out.
 

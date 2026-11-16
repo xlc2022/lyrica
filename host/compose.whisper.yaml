@@ -26,6 +26,7 @@ services:
       CUDA_DEVICE_ORDER: PCI_BUS_ID
     networks: [models]
     logging: { driver: none } # it prints what it transcribes
+    ulimits: { core: 0 } # a crash's core dump would hold what it heard
     depends_on:
       host-api: { condition: service_healthy }
     deploy:
