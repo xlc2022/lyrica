@@ -4,7 +4,7 @@ import { imageRetryOptions } from "./image-retry.ts";
 import { autoNames } from "./auto-name.ts";
 import { randomUUID } from "node:crypto";
 import {
-  ANSWER, CLOUD_IMAGE_PROVIDERS, recentWorkAllowed, WELCOME_LIMITS, describe, AuthError, isPlan, type PlanKind, NoRecoveryCopy, WrongPassword, isEmoji, WORKDIR, CAPABILITIES, FilesRefused, checkTask, isRestricted, voiceContext, refId, THINKING_LEVELS, publicKeyOf, authorizedKeysLine, proxmoxAddress, CloudModelForbidden, FROM_PARENT, NoModel, WAKEUP, ROUTINE, WATCHING, PRONOUN_PRESETS, projectSlug,
+  ANSWER, CLOUD_IMAGE_PROVIDERS, recentWorkAllowed, WELCOME_LIMITS, describe, AuthError, isPlan, type PlanKind, NoRecoveryCopy, WrongPassword, isEmoji, WORKDIR, CAPABILITIES, FilesRefused, checkTask, isRestricted, refId, THINKING_LEVELS, publicKeyOf, authorizedKeysLine, proxmoxAddress, CloudModelForbidden, FROM_PARENT, NoModel, WAKEUP, ROUTINE, WATCHING, PRONOUN_PRESETS, projectSlug,
   citationsIn, exportMemories, importMemories, exportSkills, importSkills, firstLine, GIT_KINDS, kindOf, mcpCommand, mcpCommandLine, mcpEnv, mcpLimit, mcpPlace, sentenceCiting, splitId, HomeFileMissing, MAX_IMAGE_BYTES, MEMORY_SORTS, type MemorySort,
   type Author, type Column, type Endpoint, type ModelRef, type Offering, type Hit, type Item, type GitAccountConfig, type MachineConfig, type McpServerConfig, type OwnerView, type Pool, type PoolStore, type SleepItem, type SleepRunRecord, type Thread, type ThreadPref, type User,
   botChecks, setBotChecks, searxngAddress, searxngStatus, searxngView, setSearxngAddress, kiwixAddress, kiwixArticle, kiwixPicture, kiwixStatus, setKiwixAddress, forgetKiwixBooks, claudeCodeInstalled, modelName,
@@ -3175,7 +3175,7 @@ function threadSettings(d: Lyricad, user: User, pool: Pool, threadId: string): A
     try {
       // evenIfDown: the drawer names what is set here; whether its machine answers now is speechState's and the status panel's to say.
       // Each create list names the model its tier takes, past one tagged for the other tier only.
-      const r = models.resolve(task, task === "speech.transcribe" ? voiceContext(ctx) : ctx, task === "image.create" ? { imageTier: "quality" } : task === "image.fast" ? { imageTier: "fast" } : {}, { evenIfDown: true });
+      const r = models.resolve(task, task === "speech.transcribe" ? models.dictationContext(ctx) : ctx, task === "image.create" ? { imageTier: "quality" } : task === "image.fast" ? { imageTier: "fast" } : {}, { evenIfDown: true });
       if (task === (applies.code ? "code" : "chat")) {
         const levels = r.offering.reasoning ?? [];
         // Off only where the model can stop thinking; each level by the name the model is given it under.

@@ -507,9 +507,9 @@ where Kokoro is quick enough.
 Warm, on an RTX 3090, a 24-second reply is spoken in 0.7 s and transcribed
 in 0.25 s; on the CPU alone Kokoro takes about 1.3 s for a 5-second
 sentence. Unpinned, the host swaps models in and out, and the first use
-after a swap takes about 30 s. Dictation uses the Private column unless a
-thread picks its own model, so put Whisper in its
-`speech.transcribe` list.
+after a swap takes about 30 s. Put Whisper in the Private column's
+`speech.transcribe` list; general threads use it too until the General
+column has a Dictation list of its own.
 
 ### Placements and settings
 

@@ -548,13 +548,14 @@ function Tasks({ ctx }: { ctx: MCtx }) {
   const gs = groups.data ?? [];
   const apply = (next: Presets) => { const cur = ctx.models.page; if (cur) ctx.models.set({ ...cur, presets: next }); };
   const cell = (column: Column, task: Task) => {
-    // Dictation is always local (core/models voiceContext), so the General column has no cell for it.
-    if (task === "speech.transcribe" && column === "general") return <td />;
     const col = p!.presets.columns[column];
     const table = columnEntries(col);
     const mixed = columnScope(col) === "general";
     const entry = entryOf(table, task);
-    const list = tierList(table, task, all, gs);
+    const own = tierList(table, task, all, gs);
+    // Dictation with no General list uses the Private column's, local-only (core/models dictationContext).
+    const privateDictation = task === "speech.transcribe" && column === "general" && !own.length;
+    const list = privateDictation ? tierList(columnEntries(p!.presets.columns.private), task, all, gs) : own;
     const first = list[0];
     const rest = list.length - 1;
     const ups = list.map((r) => refUp(p!, membersOf(r, all, gs)));
@@ -567,7 +568,7 @@ function Tasks({ ctx }: { ctx: MCtx }) {
           onClick={() => setEditing(on ? undefined : { column, task })}>
           <span className="m"><span className={`dot ${dot}`} aria-hidden="true" /><span>{first ? <RefLabel refx={first} all={all} groups={gs} /> : "No model"}</span>{kind && <Kind kind={kind} />}</span>
           <span className="sub">
-            {entry && !Array.isArray(entry) ? `= ${TASK_WORD[entry.same]}`
+            {privateDictation ? "= Private" : entry && !Array.isArray(entry) ? `= ${TASK_WORD[entry.same]}`
               : rest > 0 ? <>+<span className="num">{rest}</span> {rest > 1 ? "fallbacks" : "fallback"}</>
               : list.length === 1 ? <span className="warn-text">no fallback</span> : null}
           </span>
@@ -1113,6 +1114,7 @@ function ModelList({ ctx, ep, onVoice }: { ctx: MCtx; ep: EndpointInfo; onVoice:
               : m.disabled && <span className="pill">off</span>}
             {m.recipe ? <ModelLabel model={m.recipe} endpoint={ep.name} id={m.modelId} /> : <ModelLabel model={m.modelId} endpoint={ep.name} raw />}
             {m.status !== "listed" && <span className="pill warn">{m.status}</span>}
+            {m.transcribe && ep.api !== "host" && <span className="pill info" title="Dictation can use it.">dictation</span>}
             {m.speak?.voices.length ? <button type="button" className="link sm" aria-label={`${m.modelId} settings`} onClick={() => onVoice(m)}>Settings</button> : null}
             {m.status !== "listed" && canEdit(ctx, ep) && <button type="button" className="link sm" aria-label={`Remove ${modelName(m)}`} disabled={busy} onClick={() => setRemoving(m)}>Remove</button>}
           </li>
@@ -1143,6 +1145,7 @@ function useEndpointActions(ctx: MCtx, ep: Endpoint, others: Endpoint[], onSignI
   const path = u(userId, "endpoints", ep.id);
   const [run, busy, error] = useAction();
   const [model, setModel] = useState<string>();
+  const [dictates, setDictates] = useState(false);
   const [into, setInto] = useState<string>();
   const [asking, setAsking] = useState<"reset" | "merge" | "remove" | "missing">();
   const done = () => ctx.models.reload();
@@ -1155,7 +1158,7 @@ function useEndpointActions(ctx: MCtx, ep: Endpoint, others: Endpoint[], onSignI
     ...(planOf(ep.api) && limited(ep) ? [{ label: "Clear limit", onPick: () => void run(async () => { await post(`${path}/clear-limit`); done(); }) }] : []),
     ...(planOf(ep.api) && onSignIn ? [{ label: "Sign in again", onPick: onSignIn }] : []),
     { label: "Read its models", onPick: () => void run(async () => { await post(`${path}/discover`); done(); }) },
-    { label: "Add a model by hand", onPick: () => setModel("") },
+    { label: "Add a model by hand", onPick: () => { setModel(""); setDictates(false); } },
     ...(missing.length ? [{ label: "Remove missing models…", onPick: () => setAsking("missing") }] : []),
     { label: "Reset IDs…", onPick: () => setAsking("reset") },
     ...(targets.length ? [{ label: ep.api === "host" ? "Merge duplicate host…" : "Merge duplicate…", onPick: () => setInto(targets[0]!.id) }] : []),
@@ -1164,8 +1167,12 @@ function useEndpointActions(ctx: MCtx, ep: Endpoint, others: Endpoint[], onSignI
   const target = targets.find((t) => t.id === into);
   const forms = <>
     {model !== undefined && (
-      <form className="inline wide" onSubmit={(e) => { e.preventDefault(); void run(async () => { await post(`${path}/models`, { modelId: model.trim() }); setModel(undefined); done(); }); }}>
+      <form className="inline wide" onSubmit={(e) => { e.preventDefault(); void run(async () => { await post(`${path}/models`, { modelId: model.trim(), ...(dictates ? { transcribe: true } : {}) }); setModel(undefined); done(); }); }}>
         <label className="field grow"><span>Model ID</span><input className="mono" autoFocus value={model} onChange={(e) => setModel(e.target.value)} /></label>
+        {/* A host reports its own dictation models and a plan has none; a plain endpoint's are known by name or ticked here. */}
+        {ep.api !== "host" && !planOf(ep.api) && (
+          <label className="check" title="It turns speech into text at /v1/audio/transcriptions."><input type="checkbox" checked={dictates} onChange={(e) => setDictates(e.target.checked)} /> Dictation</label>
+        )}
         <button className="sm" disabled={busy || !model.trim()}>Add</button>
         <button type="button" className="sm" onClick={() => setModel(undefined)}>Cancel</button>
       </form>
