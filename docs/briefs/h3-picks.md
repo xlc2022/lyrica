@@ -69,5 +69,7 @@ The run on mystria and lunasa settled what was open; its report is
   at 16 MP (were 2048² and 4 MP), its template's `maxSide` is 6272 and
   `maxMegapixels` 20: MiniMax's model card gives a 4 to 20 MP working
   range, best near 16 MP, with 4096×4096 to 6272×2688; Comfy-Org's graphs
-  default to 4 MP. Open: no GPU run at 16 MP yet (time, and whether the
-  w4a8 fits a 24 GB card and lunasa's 30 GB of RAM there).
+  default to 4 MP. Lunasa run (w4a8, 3090, 6 steps): 4096² in 60.6 s cold
+  and 37.9 s warm, peaks 23,860 of 24,576 MiB VRAM and 29.2 of 30 GB RAM, no
+  earlyoom; 2048² in 7.5 s warm. 4096² is visibly sharper (2048² looks
+  painterly in close crops); background signs are still gibberish. Nothing open.

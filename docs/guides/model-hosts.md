@@ -731,7 +731,9 @@ from about 4 to 20 megapixels and best near 16, so new pictures keep 16
 megapixels in any shape (16:9 is 5456×3072) and a picture to edit is
 scaled to 16 megapixels first; a host refuses more than 20. A recipe
 added before this keeps 2048×2048 until **Reset to starter settings…**.
-16 megapixels hasn't been measured on a 24 GB card yet. They share H3 Turbo's text encoder
+On a 3090 the w4a8 makes a 4096×4096 picture in about 38 seconds warm
+(8 at 2048×2048), with a peak of 23.3 GiB of VRAM and 29 of 30 GB of RAM,
+so a 24 GB card with 30 GB of RAM has almost nothing to spare. They share H3 Turbo's text encoder
 (14.6 GiB), so with Turbo installed the int8 one fetches about 20 GiB and
 the w4a8 one about 12.8 GiB; the int8 one is for a large card, the w4a8
 one for a 24 GB card if the machine's RAM holds the encoder and model
