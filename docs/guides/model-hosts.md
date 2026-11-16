@@ -333,10 +333,13 @@ interfaces (Docker's, for one). That is how you change a setting.
 
 Until a password is set (by the script, or on the dashboard at the machine)
 it opens only at the machine. It looks like Lyrica's own pages: the host's
-state with **Pause** at the top, and sections down the left for the GPUs
-and what is loaded on them, the model library (each model's **Settings**
-opens a drawer), image models, downloads, usage, paired Lyrica servers and
-the password.
+state with **Pause** at the top, and sections down the left: **Overview**
+(the GPUs and what is loaded on them), **Text models** (each model's
+**Settings** opens a drawer), **Image models**, **Downloads** (the queue
+only), usage, paired Lyrica servers and the password. Text models and
+Image models each open their own Download page, with Starters, Hugging
+Face, ModelScope and Link. A host shows this layout from its 2026-11-16
+update.
 
 ## Pair it with Lyrica
 
@@ -388,11 +391,12 @@ Three ways a model gets into the library:
   vLLM gets tool calling only for families the host knows (Qwen2.5,
   Qwen3.x, Llama 3.x, Mistral and Mixtral, DeepSeek; see `host/API.md`);
   any other family shows tools off and chats without them.
-- **Download on the dashboard** from Hugging Face, ModelScope or an https
-  link, into `lyrica/<source>/<repository>/` in the models folder. Only
-  GGUF, safetensors and ONNX files are taken; pickles and code are refused;
-  every file is checked against the hub's checksum. A gated repository's
-  token is used for that download and never kept.
+- **Download on the dashboard** (Download text model or Download image
+  model, from Text models or Image models) from Hugging Face, ModelScope or
+  an https link, into `lyrica/<source>/<repository>/` in the models folder.
+  Only GGUF, safetensors and ONNX files are taken; pickles and code are
+  refused; every file is checked against the hub's checksum. A gated
+  repository's token is used for that download and never kept.
 - **Download from Lyrica**: in Models, Text models, **Download model**
   opens Download text model. Name a repository on Hugging Face or
   ModelScope, or paste its link, pick a host and a GGUF file (or the whole
@@ -808,14 +812,15 @@ A chat model that can't see images (DeepSeek V4 Flash, say) gets the
 first model in the **Look at images** row of Models, Tasks and hands back
 its words. Download the **Qwen3.5 4B** starter (Q4_K_M with its projector,
 about 3.4 GB, 6.5 GB of GPU memory at a 32K context) under Starters
-(Download text model, Lyrica's or the dashboard's) and put it first in that row for
-both columns. It names files with one clean name and copies a screenshot's
-text word for word; on a CMP 100-210 it answers a 1080p screenshot in
-about 1.2 s and a 12 MP photo in about 3.3 s. On a card with 4 GB, use
-**Qwen3.5 2B** (about 2 GB, 4 GB of GPU memory) instead: as fast, but it
-tends to offer a list of names and to summarise text rather than copy it.
-A photo takes up to about 4,000 tokens of the model's context and a 1080p
-screenshot about 2,000, so give it a context of 16K or more.
+(Download text model, Lyrica's or the dashboard's) and put it first in
+that row for both columns. It names files with one clean name and copies a
+screenshot's text word for word; on a CMP 100-210 it answers a 1080p
+screenshot in about 1.2 s and a 12 MP photo in about 3.3 s. On a card with
+4 GB, use **Qwen3.5 2B** (about 2 GB, 4 GB of GPU memory) instead: as
+fast, but it tends to offer a list of names and to summarise text rather
+than copy it. A photo takes up to about 4,000 tokens of the model's
+context and a 1080p screenshot about 2,000, so give it a context of 16K or
+more.
 
 ## Images
 
