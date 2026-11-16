@@ -108,7 +108,7 @@ export function secretAsk(args: unknown): Ask | undefined {
   return {
     question: `Run with a secret on ${a.machine}?`.slice(0, ASK_LIMITS.question),
     context: a.why.trim().slice(0, 1200),
-    options: [{ label: "Run", consequence: `The ${a.secret.trim().toLowerCase().slice(0, 40)} goes to this script's input only.`, secret: true }, NOT_NOW],
+    options: [{ label: "Run", consequence: "What's typed here goes to this script's input only.", secret: true }, NOT_NOW],
     recommended: 0,
   };
 }

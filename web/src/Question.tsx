@@ -36,11 +36,10 @@ function rootQuestion(args: unknown): Question | undefined {
 function secretQuestion(args: unknown): Question | undefined {
   const a = args as { machine?: unknown; why?: unknown; secret?: unknown } | null;
   if (typeof a?.machine !== "string" || typeof a.why !== "string" || typeof a.secret !== "string") return undefined;
-  const what = a.secret.trim().toLowerCase();
   return {
     question: `Run with a secret on ${a.machine}?`, recommended: 0,
     options: [
-      { label: "Run", consequence: `The ${what} goes to this script's input only. ${her()} gets the output, never the ${what}.` },
+      { label: "Run", consequence: `What's typed here goes to this script's input only. ${her()} gets the output, never the secret.` },
       { label: "Not now", consequence: `Nothing runs. ${her()} says what waits on this.` },
     ],
   };

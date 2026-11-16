@@ -236,7 +236,9 @@ covered.
 Lyrica can do this for you on a Debian or Ubuntu machine she reaches over
 SSH: give a thread the machine and ask her to install a model host there.
 She checks the machine, asks before changing anything system-wide, hands
-you the two steps that need root on cards, pulls the images in the
+you the two steps that need root on cards (to run with your sudo password
+on the card, or in your own terminal; with passwordless sudo she runs them
+herself after your yes), pulls the images in the
 background and ends with a pairing code. If the card has no driver yet,
 she offers to install your distribution's own, which adds a root step and
 a reboot; with Secure Boot on, enrolling the driver's key at the machine's
@@ -244,10 +246,10 @@ own screen is yours to do. On a GPU someone else already uses, she leaves
 the host paused. On a CMP 100-210 she also asks whether to install its
 unlock, and has you reboot before the pairing code. On NixOS she stops and
 says the module comes first. If you want the host on your tailnet, she
-gives you a pinned script running `install.sh --tailscale NAME` to run
-with `sudo bash` in your own terminal: it asks for a Tailscale auth key at
-a hidden prompt, so make the key one-off and short-lived and never paste
-it in chat, and a key that didn't join is revoked. The steps below are the
+asks for a Tailscale auth key on a card: make it one-off and short-lived
+in Tailscale's admin console and type it there, never in chat. It goes
+only to her script's input, which joins the host's own tailnet device and
+starts its container again without the key. The steps below are the
 same ones, by hand.
 
 ```sh

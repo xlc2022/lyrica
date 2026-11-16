@@ -765,6 +765,10 @@ describe.skipIf(!helperRunnable)("an ssh target", () => {
       const { exitCode } = await ops.bash.exec("pwd && cat todo.txt", "/elsewhere", { onData: (d) => { out += d.toString(); } });
       expect(exitCode).toBe(0);
       expect(out).toBe(`${join(dir, "root")}\nbuy milk\n`);
+      // A card's secret is the command's whole input: read, then the input ends, so a second read finds nothing.
+      out = "";
+      await ops.bash.exec('IFS= read -r k; echo "${#k}"; cat; echo end', dir, { onData: (d) => { out += d.toString(); }, stdin: Buffer.from("tskey-abc\n") });
+      expect(out).toBe("9\nend\n");
       // A stopped command takes what it started with it, even a child that outlives its shell.
       const pidFile = join(dir, "root", "child.pid");
       const stop = new AbortController();

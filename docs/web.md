@@ -957,8 +957,8 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   wraps its long lines, with **Copy** in its head, `SetupBlock`, and the
   token field; for her own SSH account, under them, the optional **Sudo,
   exact commands** block, a box per command with **Add command** and each
-  box checked as typed, `ExactSudo`, and **Sudo, everything**, each with
-  its own Copy, `SudoBlocks`). Test (**Test** probes again
+  box checked as typed, `ExactSudo`, **Sudo, everything** and **Sudo, with
+  password**, each with its own Copy, `SudoBlocks`). Test (**Test** probes again
   and says Logged in or the problem). Fingerprint (the host key or
   certificate fingerprint in mono, **Confirm**). The current step's button
   is the one primary; a done step's turns secondary; nothing is saved before
@@ -1751,6 +1751,18 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   decision, with the recommended consequence as detail, recommended-first
   answer buttons and then Open thread. Private questions follow the Private
   filter. A selection containing a question offers no bulk action.
+  A root step's and a secret's card (`run_as_root`, `run_with_secret`) show
+  her `why`, then `SecretField`: the label (the secret's name, or
+  **Password** on a root step) with the lock icon carrying the tooltip, a
+  masked input (a textarea masked with `-webkit-text-security` for
+  `lines`) with **Show**, and on a root step **Keep for**, a text box of
+  digits clamped to 0 to 60 on blur with "min, of 60" (no spinner), or,
+  when `QuestionState.kept` says one is kept, "Kept · <n> min left" with
+  **Forget** (`DELETE …/questions/:n/run`). Run comes first and
+  recommended, disabled until something is typed or a password is kept; it
+  posts the field's text as a `Blob` (raw bytes) to `…/questions/:n/run`
+  with `?keep=`, then clears the field. The consequences name her with
+  `her()` and use no pronouns.
 - **The plan card:** a `propose_plan` request shows "Plan", its step count
   when it has numbered or bulleted steps, the plan as prose, a primary
   "Go ahead in…" whose menu offers Ask, Accept edits or Auto, Keep planning,

@@ -572,7 +572,13 @@ per thread; `ThreadSummary.question` exposes its entry number and asked time.
 `POST …/threads/:pool/:id/questions/:n/answer { option }` posts the chosen
 label with lyricad's `[Answer to q:<n>]` mark and starts a turn. It returns
 204, 404 for a missing question or another thread's, 409 when closed, and
-400 for an invalid option. The reader shows it as a user message, without
+400 for an invalid option or Run, which only `POST …/questions/:n/run`
+answers: Run on a root step's or a secret's card, the secret or sudo password
+as the raw body (never JSON, and overwritten with zeros once the run has it),
+`?keep=<minutes>` on a root step. It starts the script as a background
+command, closes the card and posts Run as the answer (docs/workspace.md,
+"Secrets for one command"); `DELETE` on the same path forgets a kept
+password. The reader shows an answer as a user message, without
 the mark. Both the messages route and hosted `MarkedText` refuse user text
 starting with `[Answer to q:`. A typed message closes the question as
 `words`, keeping the text unchanged. Replacement, the person's Stop and

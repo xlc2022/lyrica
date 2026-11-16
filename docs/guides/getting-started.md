@@ -1008,8 +1008,13 @@ steps:
    `<account> ALL=(root) NOPASSWD: ALL` to `/etc/sudoers.d/lyrica`,
    checked by `visudo -c`. For exact commands only, the Add machine page
    in Settings has a box per command and builds the same kind of command
-   from them. She never takes a sudo password; a root step she can't run
-   there comes to you on a card. When the card offers sudoers lines, it
+   from them. A third optional command, **Sudo, with password**, has you
+   choose a password for her account at a `passwd` prompt (SSH logins
+   can't use it) and adds `<account> ALL=(root) ALL`: you then type that
+   password on a root step's card and press Run for each one, optionally
+   keeping it in memory for up to an hour. She never learns it. A root step
+   she can't run there comes to you on a card, to run with your password
+   or in your own terminal. When the card offers sudoers lines, it
    also carries one command to paste on the machine: it adds them, keeps
    the file's other lines and installs the result only once `visudo -c`
    passes, so you never open an editor.

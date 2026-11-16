@@ -68,7 +68,7 @@ describe("question cards", () => {
     expect(html).toMatch(/autocomplete="off"/i);
     expect(html.indexOf(">Run<")).toBeLessThan(html.indexOf(">Not now<"));
     expect(html).toMatch(/class="primary" disabled=""><span>Run/);
-    expect(html).toContain("Lyrica gets the output, never the tailscale auth key.");
+    expect(html).toContain("Lyrica gets the output, never the secret.");
     expect(html).not.toMatch(/\b(She|she|her)\b/);
     expect(html).not.toContain("Keep for");
   });
