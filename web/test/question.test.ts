@@ -59,6 +59,16 @@ describe("question cards", () => {
     expect(withCommand).not.toContain("sudo visudo -f /etc/sudoers.d/lyrica<");
     expect(html(root)).toContain("sudo visudo -f /etc/sudoers.d/lyrica");
   });
+  it("shows a NixOS root step's lines as one Configuration block, without the sudoers.d command", () => {
+    const root = { machine: "box", path: "/home/ada/x.sh", sha256: "ab", command: "f=$(mktemp) && sudo bash \"$f\"", script: "echo hi", why: "Restarts nginx.",
+      sudoers: [{ line: "ada ALL=(root) NOPASSWD: /run/current-system/sw/bin/systemctl restart nginx" }], sudoersNixos: "security.sudo.extraRules = [{\n}];\n\nsudo nixos-rebuild switch" };
+    const html = renderToStaticMarkup(createElement(QuestionCard, { args: { machine: "box", why: "Restarts nginx." }, name: "run_as_root", root, state, base: "/thread", onChange: vi.fn() }));
+    expect(html).toContain('class="code-lang">Configuration<');
+    expect(html).toContain("sudo nixos-rebuild switch");
+    expect(html).not.toContain(">Sudoers<");
+    expect(html).not.toContain("sudoers.d");
+    expect(html.match(/class="code-lang">Command</g)).toHaveLength(1);
+  });
   it("asks for a secret in a masked field, Run first and off until something is typed, in her name", () => {
     const root = { machine: "box", path: "/home/ada/join.sh", sha256: "ab", command: "f=$(mktemp) && bash \"$f\"", script: "read -r k", why: "Joins the tailnet.", secret: "Tailscale auth key" };
     const html = renderToStaticMarkup(createElement(QuestionCard, { args: { machine: "box", why: "Joins the tailnet.", secret: "Tailscale auth key" }, name: "run_with_secret", root, state, base: "/thread", onChange: vi.fn() }));

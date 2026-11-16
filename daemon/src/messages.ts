@@ -61,7 +61,7 @@ export function rootPart(tool: string, details: unknown): RootStep | undefined {
   if (![r.machine, r.path, r.sha256, r.command, r.script, r.why].every(str)) return undefined;
   const sudoers = Array.isArray(r.sudoers) ? r.sudoers.filter((l) => str(l?.line)).map((l) => ({ line: l.line, ...(str(l.warning) ? { warning: l.warning } : {}) })) : undefined;
   return { machine: r.machine!, path: r.path!, sha256: r.sha256!, command: r.command!, script: r.script!, why: r.why!,
-    ...(sudoers?.length ? { sudoers, ...(str(r.sudoersCommand) ? { sudoersCommand: r.sudoersCommand } : {}) } : {}),
+    ...(sudoers?.length ? { sudoers, ...(str(r.sudoersCommand) ? { sudoersCommand: r.sudoersCommand } : {}), ...(str(r.sudoersNixos) ? { sudoersNixos: r.sudoersNixos } : {}) } : {}),
     ...(tool === SECRET_TOOL && str(r.secret) ? { secret: r.secret, ...(r.lines === true ? { lines: true } : {}) } : {}) };
 }
 

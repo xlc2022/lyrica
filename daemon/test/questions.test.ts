@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { fakeOpenAI } from "../../core/test/fake-openai.ts";
 import type { MessagePage, NotificationPage, ThreadSummary } from "../src/api.ts";
+import { rootPart } from "../src/messages.ts";
 import { browser, daemon, enc, localModel, login, runtime } from "./helpers.ts";
 
 const ask = { action: "ask", question: "Which change?", context: "Choose a scope.", options: [{ label: "Small", consequence: "Keep the scope narrow." }, { label: "Large", consequence: "Cover more cases." }], recommended: 1 };
@@ -138,6 +139,13 @@ describe("root steps", () => {
     expect(end).toMatchObject({ isError: true, result: expect.stringContaining("bash runs anything") });
     expect((await s.ada.get<ThreadSummary>(s.path)).body.question).toBeUndefined();
     s.stream.close();
+  });
+});
+
+describe("a NixOS root step", () => {
+  it("keeps its extraRules configuration on the stored card", () => {
+    const root = { machine: "box", path: "/x.sh", sha256: "ab", command: "c", script: "s", why: "w", sudoers: [{ line: "l" }], sudoersNixos: "security.sudo.extraRules = [];" };
+    expect(rootPart("run_as_root", { root })).toEqual(root);
   });
 });
 

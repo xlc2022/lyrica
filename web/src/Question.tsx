@@ -53,16 +53,16 @@ function Block({ label, text }: { label: string; text: string }) {
   </div>;
 }
 
-/** What a root step's card shows: why, the command (which checks the hash first), the hash, the script, and any sudoers lines with the command that adds them (a card from before that command existed names visudo instead). */
+/** What a root step's card shows: why, the command (which checks the hash first), the hash, the script, and any sudoers lines with the command that adds them (a card from before that command existed names visudo instead; on NixOS, one Configuration block of extraRules and the rebuild). */
 function RootDetails({ root }: { root: RootStep }) {
   return <div className="root-step">
     <Block label="Command" text={root.command} />
     <p className="muted">SHA-256 <span className="mono">{root.sha256}</span></p>
     <div className="root-script"><Block label={root.path} text={root.script} /></div>
     {root.sudoers && <>
-      <Block label="Sudoers" text={root.sudoers.map((l) => l.line).join("\n")} />
+      <Block label={root.sudoersNixos ? "Configuration" : "Sudoers"} text={root.sudoersNixos ?? root.sudoers.map((l) => l.line).join("\n")} />
       {root.sudoers.filter((l) => l.warning).map((l, i) => <p key={i} className="warn-text">{`${l.line.split(" ").slice(3).join(" ")}: ${l.warning}.`}</p>)}
-      {root.sudoersCommand ? <Block label="Command" text={root.sudoersCommand} /> : <p className="muted mono">sudo visudo -f /etc/sudoers.d/lyrica</p>}
+      {root.sudoersNixos ? null : root.sudoersCommand ? <Block label="Command" text={root.sudoersCommand} /> : <p className="muted mono">sudo visudo -f /etc/sudoers.d/lyrica</p>}
     </>}
   </div>;
 }

@@ -617,7 +617,7 @@ export class ChildThreads implements ThreadsHost {
   }
 
   /** A script on one of the thread's machines, for a root step's card (docs/workspace.md, "Root steps"). */
-  rootScript(from: ThreadContext, machine: string, path: string): Promise<{ bytes: Buffer; account: string }> {
+  rootScript(from: ThreadContext, machine: string, path: string): Promise<{ bytes: Buffer; account: string; nixos?: boolean }> {
     const project = from.view.own.projectOf(from.threadId);
     return this.o.workspace.rootScript({ userId: from.user.id, pool: from.pool, threadId: from.threadId, ...(project ? { project } : {}) }, machine, path);
   }
