@@ -221,10 +221,16 @@ code therefore never needs to open a private database.
 
 ## Modes
 
-| Setting | Behavior |
+Each pool has its own mode, time and fallback (`sleep.mode.<pool>`,
+`sleep.time.<pool>`, `sleep.fallback.<pool>` in `user.db`), set on its card
+on the Sleep page. A pool with no mode or fallback of its own yet follows the
+user's older one setting (`sleep.mode`, `sleep.fallback`); one with no time
+of its own follows the administrator's `sleep.time`.
+
+| Mode | Behavior |
 |---|---|
-| `sleep.mode: scheduled` (default) | Nightly at `sleep.time` (04:00) in the user's time zone, for each pool with new activity. `/sleep` also works. |
-| `sleep.mode: manual` | Works like Monika: sleep runs only on `/sleep`, which asks for confirmation, then sleeps. It opens no thread. |
+| `scheduled` (default) | Nightly at the pool's time (`sleep.time`, 04:00, unless the pool has its own) in the user's time zone, when the pool has new activity. `/sleep` also works. |
+| `manual` | Works like Monika: the pool sleeps only on `/sleep`, which asks for confirmation, then sleeps. It opens no thread. |
 
 ## When the endpoint is offline
 
@@ -240,14 +246,17 @@ cheap request (such as listing models).
   and the remaining phases run next time.
 - **Manual `/sleep` with the endpoint down:** an immediate, plain error.
 
-Sleep never falls back outside the phase's own model list. With **Sleep
-fallback** off (`sleep.fallback`, Settings → Sleep), each phase uses its list's
-first model only: when that one is away, the pool is skipped as above.
+Sleep never falls back outside the phase's own model list. With a pool's
+**Fallback** off (`sleep.fallback.<pool>`, its card on the Sleep page), each
+phase uses its list's first model only: when that one is away, the pool is
+skipped as above.
 
 ## Sleep in the UI
 
-The web UI has a **Sleep** section in the sidebar. Its **History** box
-shows only the newest visible run. **Show all**, at the right of the History
+The web UI has a **Sleep** section in the sidebar. Its **History** has a card
+per shown pool with that pool's newest run, its **Sleep now**, its
+**Fallback** and its schedule, whose **Change…** opens a dialog for nightly or
+only when asked, and the time. **Show all**, at the right of the History
 eyebrow, opens all runs with server-side search and numbered pages. Each run
 shows:
 
@@ -265,10 +274,9 @@ person's line for tonight's dream (see "Focus").
 Above the runs are her **items**, with a badge on the section while any are
 new. Each item has **Start a chat**, which opens a new thread in that pool
 where she begins with it, and **Dismiss**. Everything links into the memory
-browser. **Sleep now** at the foot sleeps a pool at once; the per-user mode
-(nightly, or only when asked) is a select in Settings → Sleep and the
-hour is the administrator's **Sleep time**, which each user reaches at
-their own **Time zone** (Settings → Profile). How it is laid out is in
+browser. A pool's **Sleep now** sleeps it at once. Its time defaults to the
+administrator's **Sleep time**, and every time is reached in the user's own
+**Time zone** (Settings → Profile). How it is laid out is in
 [web.md](web.md) and docs/ux.md.
 
 ## Keys
@@ -278,7 +286,7 @@ logged in or because they saved credentials. Other users are skipped with the
 reason `no-key`, the same way an offline endpoint is skipped. The pool can't be
 written without the key, so that skip is recorded once the key is back.
 When the key comes back (a login, or saved credentials at start), a pool
-whose last run began before the last sleep time missed that night: the miss
+whose last run began before its last sleep time missed that night: the miss
 is recorded as a `no-key` skip, even when a restart lost it, and the pool
 sleeps then (`Sleep.catchUp`). A pool that has never slept isn't caught up.
 
@@ -354,7 +362,7 @@ sleeps then (`Sleep.catchUp`). A pool that has never slept isn't caught up.
   `opening` section, and `lyricad` prompts that thread with a hidden opening
   line so she speaks first. Retrying an interrupted opening answers the
   existing last opening user entry without appending a second one.
-- **`lyricad`** runs every user's pools at `sleep.time` in their own time zone (a user in manual mode
+- **`lyricad`** runs each user's pools at each pool's time in their own time zone (a pool in manual mode
   is left out), serves the Sleep section's API and its event stream, and
   takes `/sleep` typed in a thread. See [daemon.md](daemon.md#sleep). The
   bench offers `/sleep` as a Pi command.

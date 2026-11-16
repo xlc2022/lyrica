@@ -2166,9 +2166,10 @@ Details in [docs/sleep.md](docs/sleep.md).
 
 - **Cycle:** consolidate → dream → wake, adapted from Monika. Each phase is an
   agentic session written in her own voice, with only her memory tools.
-- **Schedule:** nightly at 04:00 by default, for each pool with new activity.
-  `/sleep` runs it by hand. A **manual** mode works like Monika: sleep happens
-  only on `/sleep`. Sleep never creates a thread the user sees.
+- **Schedule:** each pool has its own: nightly at 04:00 by default (or the
+  pool's own time), when it has new activity. `/sleep` runs it by hand. A
+  pool in **manual** mode works like Monika: it sleeps only on `/sleep`.
+  Sleep never creates a thread the user sees.
 - **Pools:** general and private sleep run separately, each with its own model.
 - **Budget:** each phase may use 600k tokens or four of its model's context
   windows, whichever is more, on any model, paid ones included (the owner's

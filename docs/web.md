@@ -542,9 +542,15 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   `GET …/sleep/events` reloads it as a run starts, changes phase or ends;
   sleep never opens a thread). Items first,
   newest first, with **Start a chat** (`POST …/items/<id>/chat`, then the
-  new thread) and **Dismiss** (`DELETE`). Then **History** shows only the newest visible run,
-  read at once for its summary line, with **Show all** right-aligned beside
-  the eyebrow. `…/history/sleep` lists all runs newest first and reads a run
+  new thread) and **Dismiss** (`DELETE`). Then **History**, with **Show all**
+  right-aligned beside the eyebrow, has a card per shown pool (`.sleep-pool`)
+  holding that pool's newest run, read at once for its summary line, or
+  "No sleep yet."; under it the pool's foot: **Sleep now**
+  (`POST …/sleep/<pool>`, greyed while that pool sleeps), a **Fallback**
+  checkbox saved at once and the schedule ("Nightly at 04:00" or "Only when
+  you ask") with **Change…**, a dialog ("<Pool> sleep") with a **Schedule**
+  select (Nightly, Only when I ask) and, when nightly, a **Time** field, saved
+  by its **Save** (`PATCH …/sleep/<pool>`). `…/history/sleep` lists all runs newest first and reads a run
   when its row opens
   (`GET …/runs/<id>`). A row shows Notes, Pages with their word diff, Questions,
   Thoughts, the Dream and the WAKE, each linking to the Memory page at that
@@ -559,15 +565,12 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   Between the items and History, **Focus** has a form per shown pool (the
   pool word after it when both show): a text field of at most 300 characters,
   **Save** (`PUT …/sleep/<pool>/focus`) and, while a line is set, **Clear**.
-  **Sleep now** ▾ picks the
-  pool (`POST …/sleep/<pool>`); a `confirm` answer becomes a dialog whose
+  A **Sleep now** answered with `confirm` becomes a dialog whose
   **Sleep now** resends with `confirm: true`; a 409 is shown as a toast in
   `lyricad`'s words. Text arrives in stored form and is shown with the users of
-  the runs already read; an unknown mention reads "someone". The foot names
-  the schedule and links **change** to Settings → Sleep, where the
-  **Sleep** select (Nightly at the server's time, or Only when I ask) sits
-  above Sleep fallback and saves at once (`PUT …/sleep/mode`). A pool hidden in
-  the Sort menu is left out: its items, runs and **Sleep now** choice, with the
+  the runs already read; an unknown mention reads "someone". The old
+  `…/settings/sleep` address opens this page. A pool hidden in
+  the Sort menu is left out: its items, runs and card, with the
   same "<Pool> is hidden. Turn on <Pool> in the Sort menu to see it." line as
   Memory, and the sidebar badge counts only the pools shown.
 - **Models** (`src/Models.tsx`, its frame and what the tabs share in
@@ -693,7 +696,6 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   thread header's chip, a reply's header line, the Backend card and the
   thread drawer's selects (the select's tooltip holds the chosen model's
   whole ID) all use it.
-  Settings → Sleep holds Sleep mode and Sleep fallback;
   `…/settings/profiles` remains a redirect to Tasks.
   Text models (`src/TextModels.tsx`, its pure parts in `src/library.ts`)
   reads the whole library (`GET …/library/text`, 200 a request) and filters
@@ -932,10 +934,11 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   explain what leaves the server), Unlock and lock (saved credentials, stay
   unlocked after logout, and `lyricad`'s warning when the two contradict),
   Password, Your personas (linking a separate persona needs both passwords),
-  Persona suggestions (edit, send on to the administrators, or drop),
-  Sleep (the **Sleep** mode select and the **Sleep fallback** switch;
-  model presets moved to Models → Tasks and endpoints to Hosts and
-  endpoints, so `…/settings/profiles` and `…/settings/endpoints` go there), Network (New threads: the default
+  Persona suggestions (edit, send on to the administrators, or drop)
+  (model presets moved to Models → Tasks and endpoints to Hosts and
+  endpoints, so `…/settings/profiles` and `…/settings/endpoints` go there; each
+  pool's sleep schedule and fallback are on the Sleep page's cards, so
+  `…/settings/sleep` goes there), Network (New threads: the default
   mode and Fallback; then network defaults per pool), and **Machines**
   (`src/Machines.tsx`, docs/ux.md section 6): a row per machine with its
   name, a facts line in mono (address, pool, "SSH · key" or "Proxmox API ·
