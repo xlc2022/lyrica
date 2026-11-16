@@ -496,18 +496,20 @@ from Lyrica with `PUT /api/u/<user id>/offerings/<offering id>/serving`.
 A placement that can't work is refused when saved, with the reason. Each
 GPU says which servers it may run and how much memory to keep free.
 
-A host can also give llama.cpp models part of its system RAM, so a model or
-quant bigger than its GPUs still runs, slower. It is off until you set
-**System RAM** in GB: in the host's **Edit** drawer under Models, Hosts and
-endpoints, or on its dashboard's GPUs page. A 96 GB machine allows up to
-76 GB, leaving room for llama.cpp's prompt cache and the system. A model uses it only when you tick its own **System RAM** setting (in
+A host can also give llama.cpp models part of its system RAM, so a model
+or quant bigger than its GPUs still runs, slower. It is off until you set
+**System RAM** in GB: in the host's **Edit** drawer under Models, Hosts
+and endpoints, or on its dashboard's GPUs page. A 96 GB machine allows up
+to 76 GB, leaving room for llama.cpp's prompt cache and the system. A
+model uses it only when you tick its own **System RAM** setting (in
 Lyrica's Serving settings or the dashboard's model Settings) and give it a
 limit in GB. Then an automatic context is the longest its GPUs and that
-much RAM hold, and a context you type fills the GPUs first and puts the rest
-in RAM. Unticked, the model stays on its GPUs, and a context they can't
-hold isn't saved. Models that already spilled keep a limit of the whole
-allowance after the update. A host gets
-the allowance with its next Update.
+much RAM hold, and a context you type fills the GPUs first and puts the
+rest in RAM. Unticked, the model stays on its GPUs, and a context they
+can't hold isn't saved. Models that already spilled keep a limit of the
+whole allowance after the update. Rebuild Lyrica, then run Update… on each
+host; until a host is updated, ticking a model's System RAM there is
+refused, and every other save works.
 
 Some models, such as Qwen3.8-Flash-Next and Gemma 4, have a per-layer
 embedding table that llama.cpp keeps off the GPUs and reads from the model
@@ -532,24 +534,23 @@ stretch, set in the model's settings on the dashboard together with the
 context to serve, for example
 `"contextLength": 1010000, "stretch": { "type": "yarn", "factor": 4 }`.
 You can also ask Lyrica to do it: her `models` tool asks you on a card
-before it changes anything. The stretch raises the most the model may serve
-(the trained length times the factor; `originalContext`, the length YaRN
-scales from, defaults to the trained length); `contextLength` still picks
-what it serves. Unset, a chat model gets the largest context that fits its
-GPUs, up to its trained length (32k when the host can't tell); only a model
-that can't fit its GPUs at all keeps part of itself in the system RAM
-allowance, with the largest context the GPUs and that allowance hold. So it may
-fill a GPU and be unloaded whenever another model needs the room; set a
-smaller context to keep both loaded. The editor's hint shows what the
-model's card recommends; **Look up** in the model's Settings reads the
-card (it asks for the repository when the host doesn't know it). A factor
-above the card's asks "<publisher> documents N. Save anyway?". Each model
-row shows "stretched ×N" and the size of its KV cache, which grows with
-the context length, so a stretched model may need a lower context or more
-memory. The host reports a stretch on any vLLM model as untested
-(vllm#58870) until its image carries the fix; llama.cpp is the safer
-choice for it. Details are in
-[host/API.md](../../host/API.md#recommended-settings).
+before it changes anything. The stretch raises the most the model may
+serve (the trained length times the factor; `originalContext`, the length
+YaRN scales from, defaults to the trained length); `contextLength` still
+picks what it serves. Unset, a chat model gets the largest context that
+fits its GPUs, up to its trained length (32k when the host can't tell);
+only a model with its own System RAM ticked keeps part of itself in RAM,
+with the largest context the GPUs and its limit hold. So it may fill a GPU
+and be unloaded whenever another model needs the room; set a smaller
+context to keep both loaded. The editor's hint shows what the model's card
+recommends; **Look up** in the model's Settings reads the card (it asks
+for the repository when the host doesn't know it). A factor above the
+card's asks "<publisher> documents N. Save anyway?". Each model row shows
+"stretched ×N" and the size of its KV cache, which grows with the context
+length, so a stretched model may need a lower context or more memory. The
+host reports a stretch on any vLLM model as untested (vllm#58870) until
+its image carries the fix; llama.cpp is the safer choice for it. Details
+are in [host/API.md](../../host/API.md#recommended-settings).
 
 On a host with one large GPU, voice and a big chat model compete for
 memory. On 24 GB, the 27B below at 128k leaves no room for pinned voice:
