@@ -636,6 +636,12 @@ test("Text models: a row per model with starred first; a row opens to its copies
  * The e2e has no model host: a made-up one, "box", joins the Models page's answer, and its host-backed calls are
  * answered here. Returns what was posted to start a download.
  */
+/** Opens an Image models group, which starts collapsed unless it holds a starred model. */
+async function openGroup(page: Page, name: string) {
+  const b = page.getByRole("region", { name, exact: true }).locator(".arch-head button");
+  if ((await b.getAttribute("aria-expanded")) !== "true") await b.click();
+}
+
 async function fakeHost(page: Page, downloads: Record<string, unknown>[], models: Record<string, unknown>[] = []) {
   const GB = 2 ** 30;
   const started: unknown[] = [];
@@ -671,6 +677,24 @@ async function fakeHost(page: Page, downloads: Record<string, unknown>[], models
       .filter((d) => Object.values(d).join(" ").toLowerCase().includes(q)).map((download) => ({ endpointId: "ep-box", download }));
     const offset = Number(query.get("offset") ?? 0), limit = Number(query.get("limit") ?? 20);
     return route.fulfill(json({ total: entries.length, entries: entries.slice(offset, offset + limit) }));
+  });
+  // Text starters: one here, one too big for its GPUs, a model's two sizes, and a voice.
+  const textStarters = [
+    { id: "big-27b", model: "m/big", name: "Big 27B", kind: "chat", server: "llamacpp", vision: true, repo: "a/big-GGUF", size: 17 * GB, needs: 22 * GB, state: "available", fits: "gpu" },
+    { id: "huge", model: "m/huge", name: "Huge Flash", kind: "chat", server: "llamacpp", vision: false, repo: "a/huge-GGUF", size: 80 * GB, needs: 168 * GB, state: "available", fits: "too_big" },
+    { id: "small-9b", model: "m/s9", name: "Small 9B", variantOf: "Small", variant: "9B", kind: "chat", server: "llamacpp", vision: true, repo: "a/s9-GGUF", size: 6.6 * GB, needs: 8 * GB, state: "here", fits: "gpu" },
+    { id: "small-4b", model: "m/s4", name: "Small 4B", variantOf: "Small", variant: "4B", kind: "chat", server: "llamacpp", vision: true, repo: "a/s4-GGUF", size: 3.4 * GB, needs: 6.5 * GB, state: "available", fits: "gpu" },
+    { id: "embed", model: "m/e", name: "Embed 0.6B", kind: "embedding", server: "llamacpp", vision: false, repo: "a/e-GGUF", size: 0.6 * GB, needs: 1 * GB, state: "here", fits: "gpu" },
+    { id: "voice", model: "m/v", name: "Voice 82M", kind: "speak", server: "speech", vision: false, repo: "a/v", size: 0.4 * GB, needs: 1 * GB, state: "available", fits: "gpu" },
+  ];
+  await page.route(/\/api\/u\/[^/]+\/hosts\/ep-box\/text-starters(\/[^/]+\/download)?$/, (route) => {
+    const id = /text-starters\/([^/]+)\/download$/.exec(route.request().url())?.[1];
+    if (id) {
+      started.push({ starter: id });
+      Object.assign(textStarters.find((s) => s.id === id)!, { state: "downloading" });
+      return route.fulfill(json({ downloads: [] }));
+    }
+    return route.fulfill(json({ starters: textStarters }));
   });
   await page.route(/\/api\/u\/[^/]+\/hosts\/ep-box\/hub\/files\?/, (route) => {
     const repo = new URL(route.request().url()).searchParams.get("repo");
@@ -771,6 +795,43 @@ test("Downloads History: the queue shows progress with Cancel and how each ended
   await page.getByRole("button", { name: "Cancel" }).click();
   await expect(page).toHaveURL(new RegExp(`#/u/${userId}/models/text$`));
   await page.getByRole("button", { name: "Download model" }).click();
+
+  // Starters come first: a group per kind, collapsed until opened, with what each needs and why one can't be picked.
+  await expect(page.getByRole("group", { name: "Source" }).getByRole("button", { name: "Starters" })).toHaveAttribute("aria-pressed", "true");
+  const starterList = page.getByRole("radiogroup", { name: "Starters" });
+  await expect(starterList.locator("summary")).toHaveText([/^Chat\s*4 starters · 1 existing$/, /^Embedding\s*1 starter · 1 existing$/, /^Voice\s*1 starter$/]);
+  await expect(starterList.getByRole("radio")).toHaveCount(0);
+  await page.getByRole("button", { name: "Download", exact: true }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "Choose a starter." })).toHaveText("Choose a starter.");
+  await starterList.locator("summary").first().click();
+  const chat = starterList.locator(".starter");
+  await expect(chat).toHaveCount(3);
+  await expect(chat.nth(0)).toContainText("chat · vision · llama.cpp · 17.0 GB to download · needs 22.0 GB of GPU memory");
+  await expect(chat.nth(1).locator(".pill")).toHaveText("too big for these GPUs");
+  await expect(chat.nth(1).getByRole("radio")).toBeDisabled();
+  // A model's sizes are one row; picked, it offers a Variant switch with the one already here disabled.
+  await expect(chat.nth(2)).toContainText("2 sizes");
+  await expect(chat.nth(2).locator(".pill")).toHaveText("existing");
+  await chat.nth(2).getByRole("radio").check();
+  const variant = chat.nth(2).getByRole("group", { name: "Variant" });
+  await expect(variant.getByRole("button", { name: "9B" })).toBeDisabled();
+  await expect(variant.getByRole("button", { name: "4B" })).toHaveAttribute("aria-pressed", "true");
+  // Not currently installed leaves out what is here.
+  await page.getByRole("group", { name: "Show" }).getByRole("button", { name: /Not currently installed/ }).click();
+  await expect(page.getByRole("group", { name: "Show" }).getByRole("button", { name: /Not currently installed/ })).toHaveText("Not currently installed 4");
+  await expect(starterList.locator("summary")).toHaveText([/^Chat/, /^Voice/]);
+  await expect(page.locator(".dl-foot .dl-picked")).toContainText("Small 4B3.4 GB to download");
+  await noHorizontalScroll(page);
+  await shot("starters");
+  // Download starts it and stays, so another can be queued; the starter shows it is on its way.
+  await page.getByRole("button", { name: "Download", exact: true }).click();
+  await expect(page.getByText("Downloading Small 4B to box. Downloads shows how it goes.")).toBeVisible();
+  await shot("starter-queued");
+  await expect(page).toHaveURL(new RegExp(`#/u/${userId}/models/downloads/text$`));
+  await expect(page.locator(".dl-foot .dl-picked")).toHaveText("No starter picked");
+  await page.getByRole("group", { name: "Show" }).getByRole("button", { name: "All", exact: false }).first().click();
+  await expect(starterList.locator(".starter").nth(2).locator(".pill")).toHaveText("existing");
+  await page.getByRole("group", { name: "Source" }).getByRole("button", { name: "Hugging Face" }).click();
   await page.getByRole("button", { name: "Download", exact: true }).click();
   await expect(page.getByRole("alert").filter({ hasText: "Look up the repository first." })).toHaveText("Look up the repository first.");
   await page.getByLabel("Repository").fill("not a repository");
@@ -794,8 +855,9 @@ test("Downloads History: the queue shows progress with Cancel and how each ended
   await noHorizontalScroll(page);
   await shot("text");
   await page.getByRole("button", { name: "Download", exact: true }).click();
-  await expect(page).toHaveURL(new RegExp(`#/u/${userId}/models/downloads$`));
-  expect(started).toEqual([{ source: "huggingface", repo: "a/m-GGUF", files: ["m-Q4_K_M.gguf", "mmproj-F16.gguf"] }]);
+  await expect(page.getByText("Downloading a/m-GGUF to box. Downloads shows how it goes.")).toBeVisible();
+  await expect(files.getByRole("checkbox").first()).not.toBeChecked();
+  expect(started).toEqual([{ starter: "small-4b" }, { source: "huggingface", repo: "a/m-GGUF", files: ["m-Q4_K_M.gguf", "mmproj-F16.gguf"] }]);
   // A link must be https and name one model file.
   await page.goto(`/#/u/${userId}/models/downloads/text`);
   await page.getByRole("group", { name: "Source" }).getByRole("button", { name: "Link" }).click();
@@ -847,7 +909,9 @@ test("Upload sends a model file from this computer in pieces, and Downloads show
   await noHorizontalScroll(page);
   await shot("text");
   await page.getByRole("button", { name: "Upload", exact: true }).last().click();
-  await expect(page).toHaveURL(new RegExp(`#/u/${userId}/models/downloads$`));
+  await expect(page.getByText("Uploading mine-Q4_K_M.gguf to box. Downloads shows how it goes.")).toBeVisible();
+  // The page stays; Downloads lists the upload while this tab sends it.
+  await page.getByRole("navigation", { name: "Models pages" }).getByRole("link", { name: /^Downloads/ }).click();
   await expect.poll(() => pieces).toEqual([{ offset: "0", bytes: file.length }]);
 
   // The one this tab sent finished; the older one no tab is sending is Paused, with how to carry on.
@@ -980,6 +1044,7 @@ test("Copy to host… shows where each of a model's files would come from on the
   });
 
   await page.goto(`/#/u/${userId}/models/images`);
+  await openGroup(page, "Z-Image");
   await page.getByRole("list", { name: "Z-Image models" }).getByRole("button", { name: /^Z-Image Turbo/ }).click();
   const block = page.getByRole("region", { name: "Z-Image Turbo on box" });
   const copy = block.getByRole("button", { name: "Copy to host…" });
@@ -1333,9 +1398,18 @@ test("Image models: groups by architecture with Role and Where; a recipe opens t
   await page.getByRole("button", { name: "Scan", exact: true }).click();
   await expect.poll(() => post("manage")).toEqual([{ method: "POST", path: "/host/v1/scan" }]);
 
-  // A recipe: its facts, then its copy on the host as a block of parts.
+  // A recipe: its facts, then its copy on the host as a block of parts. A group starts collapsed, with what its models do and how many.
   const list = page.getByRole("list", { name: "Z-Image models" });
-  await expect(page.getByRole("region", { name: "Z-Image", exact: true }).locator("header")).toContainText("Z-Image1 model");
+  const head = page.getByRole("region", { name: "Z-Image", exact: true }).locator(".arch-head button");
+  await expect(head).toHaveText("Z-Imagegenerate1 model");
+  await expect(head).toHaveAttribute("aria-expanded", "false");
+  await expect(list).toHaveCount(0);
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/image-groups-${page.viewportSize()!.width}.png` });
+  await head.click();
+  await expect(head).toHaveAttribute("aria-expanded", "true");
+  // Opened, it stays open in this browser.
+  await page.reload();
+  await expect(head).toHaveAttribute("aria-expanded", "true");
   await expect(list.getByRole("button", { name: /^Z-Image Turbo/ })).toContainText("Z-Image · generate · fast and quality · 1 copy · box");
   await expect(page.locator(".arch-groups").getByText("Qwen-Image")).toHaveCount(0);
   // The parts that fit Z-Image, collapsed under its models.
@@ -1534,9 +1608,10 @@ test("Image models: groups by architecture with Role and Where; a recipe opens t
   await expect(page.getByRole("group", { name: "Source" }).getByRole("button", { name: "Starter recipes" })).toHaveAttribute("aria-pressed", "true");
   await expect(startersList.locator("summary")).toHaveText([/^FLUX.*1 starter$/, /^Wan 2\.2.*2 starters$/, /^Z-Image.*1 starter · 1 added$/]);
   await expect(startersList.getByRole("radio")).toHaveCount(0);
-  await page.getByRole("group", { name: "Show" }).getByRole("button", { name: /On this host/ }).click();
-  await expect(startersList.getByRole("radio")).toHaveCount(1);
-  await expect(startersList.getByRole("radio", { name: /Z-Image Turbo/ })).toHaveAccessibleName(/every part is on this host/);
+  // Not currently installed leaves out the starters the host has made a recipe from.
+  await page.getByRole("group", { name: "Show" }).getByRole("button", { name: /Not currently installed/ }).click();
+  await expect(page.getByRole("group", { name: "Show" }).getByRole("button", { name: /Not currently installed/ })).toHaveText("Not currently installed 3");
+  await expect(startersList.locator("summary")).toHaveText([/^FLUX/, /^Wan 2\.2/]);
   await page.getByRole("group", { name: "Show" }).getByRole("button", { name: /^All/ }).click();
   await page.getByRole("group", { name: "Does" }).getByRole("button", { name: "Video" }).click();
   await expect(startersList.locator("summary")).toHaveText([/^Wan 2\.2/]);
@@ -1568,9 +1643,10 @@ test("Image models: groups by architecture with Role and Where; a recipe opens t
   expect(post("starters/flux-schnell/install")).toEqual([]);
   await page.getByRole("button", { name: "Add model" }).click();
   await ask.getByRole("button", { name: /^Download/ }).click();
-  await expect(page).toHaveURL(new RegExp(`#/u/${userId}/models/downloads$`));
+  // The page stays, so another can be queued.
+  await expect(page.getByText("Downloading FLUX.1 schnell to box. Downloads shows how it goes.")).toBeVisible();
+  await expect(page).toHaveURL(new RegExp(`#/u/${userId}/models/images/download$`));
   expect(post("starters/flux-schnell/install")).toHaveLength(1);
-  await page.goto(`/#/u/${userId}/models/images/download`);
   await page.getByRole("group", { name: "Source" }).getByRole("button", { name: "Scan folder" }).click();
   await page.getByRole("button", { name: "Scan now" }).click();
   await expect(page.getByRole("list", { name: "Found" }).locator("li.rvrow")).toContainText("Qwen-Image");
@@ -1597,7 +1673,8 @@ test("Image models: groups by architecture with Role and Where; a recipe opens t
   await files.getByRole("checkbox").first().check();
   await noHorizontalScroll(page);
   await page.getByRole("button", { name: "Download", exact: true }).click();
-  await expect(page).toHaveURL(new RegExp(`#/u/${userId}/models/downloads$`));
+  await expect(page.getByText("Downloading Comfy-Org/Qwen-Image_ComfyUI to box. Downloads shows how it goes.")).toBeVisible();
+  await expect(files.getByRole("checkbox").first()).not.toBeChecked();
   expect(started).toEqual([{ source: "huggingface", repo: "Comfy-Org/Qwen-Image_ComfyUI", files: ["m-Q4_K_M.gguf"] }]);
   // Downloads reads the page again as it opens; let that answer go unanswered.
   await page.unrouteAll({ behavior: "ignoreErrors" });
@@ -1609,6 +1686,7 @@ test("Image models: a setting the model's own workflow gives a fixed value, or i
   // A built-in template with no input for a default (P-H3-Image's CFG, SDXL's shift): the host lists it as unbound too.
   Object.assign(images.recipes[0]!, { unbound: ["cfg"] });
   await page.goto(`/#/u/${userId}/models/images`);
+  await openGroup(page, "Z-Image");
   await page.getByRole("list", { name: "Z-Image models" }).getByRole("button", { name: /^Z-Image Turbo/ }).click();
   const block = page.getByRole("region", { name: "Z-Image Turbo on box" });
   await expect(block.locator(".copyhead")).toContainText("template z-image · 8 steps · 1024×1024");
@@ -1617,6 +1695,7 @@ test("Image models: a setting the model's own workflow gives a fixed value, or i
   // The model's workflow was edited so its cfg input is Fixed: the host lists CFG as unbound.
   Object.assign(images.recipes[0]!, { template: "custom-0e0e0e0e", custom: true, workflowBase: "z-image", unbound: ["cfg"] });
   await page.reload();
+  await openGroup(page, "Z-Image");
   await page.getByRole("list", { name: "Z-Image models" }).getByRole("button", { name: /^Z-Image Turbo/ }).click();
   await expect(block.locator(".copyhead")).toContainText("template z-image · edited · 8 steps · 1024×1024");
   await expect(block.locator(".copyhead")).not.toContainText("CFG");
@@ -1741,6 +1820,7 @@ test("Custom workflows: Workflow imports an export into a draft, Edit workflow s
   // A built-in recipe's Edit workflow opens the template as it ships; Save gives the model its own revision of it, with no copy.
   (images.recipes[0] as { loras: { file: string; strength: number }[] }).loras = [{ file: "comfy/loras/pixel-art.safetensors", strength: 0.6 }];
   await page.goto(`/#/u/${userId}/models/images`);
+  await openGroup(page, "Z-Image");
   await page.getByRole("list", { name: "Z-Image models" }).getByRole("button", { name: /^Z-Image Turbo/ }).click();
   const block = page.getByRole("region", { name: "Z-Image Turbo on box" });
   await expect(block.locator(".copyhead")).toContainText("template z-image · 8 steps");
@@ -2115,6 +2195,7 @@ test("image providers run 2: cloud switches and refusal links", async ({ page, b
   await expect(row.getByRole("checkbox", { name: "Enabled: art-model" })).toBeChecked();
   await page.goto(`/#/u/${userId}/models/images`);
   const cloud = page.getByRole("region", { name: "Cloud", exact: true });
+  await openGroup(page, "Cloud");
   await cloud.getByText("Other cloud models").click();
   const controls = cloud.locator(`[data-entry="${model.id}"]`);
   await expect(controls.getByRole("checkbox", { name: "Generate" })).not.toBeChecked();

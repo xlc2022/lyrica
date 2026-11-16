@@ -922,7 +922,12 @@ the host's own, from `GET /host/v1/starters`, each part marked `present`,
 with its `family`, `does` and, for a variant, `variantOf` and `variant`;
 making one posts `…/starters/<id>/install` with the hub token when a part
 is missing, and the host downloads those and confirms the recipe. A shared
-host needs an administrator. Only confirmed recipes become offerings (`recipe/<id>`,
+host needs an administrator. **Text starters** (`textStarters`,
+`downloadTextStarter`): the chat, embedding, voice and dictation starters
+from `GET /host/v1/text-starters`, each with its `state` and where it
+`fits`, or `outdated` for a host from before them; downloading one posts
+`…/text-starters/<id>/download` with the Hugging Face token, the same
+administrator rule applying. Only confirmed recipes become offerings (`recipe/<id>`,
 with `image`, `edit`, `upscale`, `video`, `animate`, `motion` or `videoEdit` (`edit_video`) as the recipe does),
 so a proposal never resolves; a recipe that does none of these isn't one; a recipe deleted here
 leaves a tombstone. The tag is `fast`, `quality` or `both`, stored as an

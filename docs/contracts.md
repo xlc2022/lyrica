@@ -2495,6 +2495,10 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
       `HostDownload`; held in memory for the request only, never written);
       `GET …/images`; `GET …/starters` (→ `{ starters: HostStarter[] }`, each with its `family`, `does` and, for a variant, `variantOf` and `variant`);
       `POST …/starters/:starterId/install` (→ `{ recipe, downloads }`);
+      `GET …/text-starters` (→ `{ starters: TextStarter[], outdated? }`,
+      `outdated` for a host from before them);
+      `POST …/text-starters/:starterId/download` (→ `{ downloads }`, with
+      the user's Hugging Face token);
       `POST …/recipes/:recipeId` (including
       `{ do: "change", change: { op: "useFor", useFor: "fast" | "quality" | "both" } }`,
       saves on the host and refreshes discovery; `{ do: "copy-to", host,

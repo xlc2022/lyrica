@@ -1313,6 +1313,25 @@ export class Models {
   }
 
   /**
+   * The text, embedding, voice and dictation starters a host lists for its servers, each with its state there
+   * (host/API.md, "Text starters"). A host from before them has none: `outdated` says to update it.
+   */
+  async textStarters(userId: string, hostId: string): Promise<{ starters: unknown[]; outdated?: true }> {
+    try {
+      return { starters: listIn<unknown>(await this.hostCall(this.needHost(userId, hostId), "GET", "/host/v1/text-starters"), "starters") ?? [] };
+    } catch (e) {
+      if (e instanceof HostRefused && e.code === "not_found") return { starters: [], outdated: true };
+      throw e;
+    }
+  }
+
+  /** Downloads a text starter at its pinned revision, with the user's Hugging Face token when one is saved. A shared host needs an administrator. */
+  async downloadTextStarter(actor: User, hostId: string, starterId: string): Promise<unknown> {
+    const ep = this.manageable(actor, hostId);
+    return this.hostCall(ep, "POST", `/host/v1/text-starters/${encodeURIComponent(starterId)}/download`, {}, this.hubHeader(actor.id, "huggingface"));
+  }
+
+  /**
    * Makes a starter recipe on a host: it downloads the parts not there yet,
    * with the user's hub token when one is saved, and confirms the recipe,
    * which becomes an offering. Again, it gives back the same recipe. A
