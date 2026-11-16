@@ -24,10 +24,12 @@ tone notes never shown and never in her memories (principles 1 and 6).
    end is dropped.
 3. **Kept apart.** The notes are stored on the message as a part of their
    own, `{ type: "tone", notes: [{ paragraph, note }] }`, encrypted like the
-   rest of the thread. Only Read aloud reads that part. Context assembly,
-   sleep, recall, search, export and the web UI skip it, so a note never
-   reaches her memories, her later turns or the user's screen. The API
-   never sends the part to the web UI.
+   rest of the thread. The thread read path (`openThreadView` and the
+   message API) leaves `tone` parts out unless a caller asks for them by
+   name, and Read aloud is the only caller that does. So context assembly,
+   sleep, recall, search, export, the web UI and anything added later never
+   see a note: it can't reach her memories, her later turns or the user's
+   screen.
 4. **Spoken with.** `readAloud` gives each piece the note of the paragraph
    it starts in, or the last note before it, and passes it to `Models.speak`
    as `instruct`; host-api passes it to the Qwen3-TTS server, which gives it
@@ -47,8 +49,8 @@ tone notes never shown and never in her memories (principles 1 and 6).
 - On danube, a happy, a sad and a matter-of-fact reply read by Sohee sound
   clearly different, and Read aloud starts as quickly as it does today.
 - Tests: a tag, whole or split across stream chunks, never reaches the
-  reply's text; the tone part never reaches context assembly, sleep's
-  input, recall, search, export or the web UI; Read aloud sends each
+  reply's text; the read path leaves the tone part out for every caller
+  but Read aloud (one test that guards every consumer); Read aloud sends each
   piece's note; no tag is asked for when the Read aloud model takes no
   instructions.
 - docs/memory.md, docs/sleep.md, docs/daemon.md, docs/contracts.md,
