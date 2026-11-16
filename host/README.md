@@ -657,7 +657,10 @@ per host, and Lyrica's router filters create tiers by it.
     allows running files, for Triton's kernels); like Kokoro's, it exits
     once nothing is loaded. Hub access is off (`HF_HUB_OFFLINE`).
     torchaudio has no 2.14 build, so 2.11 is installed with it; it is only
-    used by the 25 Hz tokenizer, which these 12 Hz models don't load.
+    used by the 25 Hz tokenizer, which these 12 Hz models don't load. PyTorch's Triton overrides of its own ops are
+    turned off, since Triton needs a C compiler the image doesn't have. Each
+    model's load, warm-up and readings run on one thread of its own, where
+    its CUDA graphs were captured.
     Every package is pinned with its hash (`speech-qwen/requirements.*.txt`;
     `speech-qwen/lock.sh` remakes them).
 - **Starters**, pinned to the revisions that were benchmarked. Download

@@ -24,6 +24,7 @@ to read is never kept.
 """
 import json
 import os
+import queue
 import re
 import sys
 import threading
@@ -139,23 +140,19 @@ def pcm(x):
 
 
 class Model:
-    def __init__(self, folder, device):
-        import torch
-        from faster_qwen3_tts import FasterQwen3TTS
+    """One model on one GPU, worked by one thread of its own.
 
-        if not torch.cuda.is_available() or device >= torch.cuda.device_count():
-            raise Refused(503, "model_unavailable", "This speech server can't see that GPU.")
+    CUDA graphs replay at full speed only on the thread that captured them
+    (on another, every reading cost about 0.4 s more on danube's CMP), so
+    the load, the warm-up and every reading run on the model's own thread,
+    and a request only takes the audio it makes."""
+
+    def __init__(self, folder, device):
         with open(os.path.join(folder, "config.json"), encoding="utf-8") as f:
             config = json.load(f)
         self.kind = config.get("tts_model_type")
         if config.get("model_type") != "qwen3_tts" or self.kind not in ("custom_voice", "base"):
             raise Refused(400, "invalid", "That isn't a Qwen3-TTS CustomVoice or Base model.")
-        self.device = device
-        self.lock = threading.Lock()
-        # Volta has no bf16; newer cards use it, as the model was trained.
-        dtype = torch.bfloat16 if torch.cuda.get_device_capability(device)[0] >= 8 else torch.float16
-        with torch.cuda.device(device):
-            self.tts = FasterQwen3TTS.from_pretrained(folder, device=f"cuda:{device}", dtype=dtype, attn_implementation="sdpa", local_files_only=True)
         if self.kind == "custom_voice":
             speakers = (config.get("talker_config") or {}).get("spk_id") or {}
             self.voices = {s.title(): s for s in speakers}
@@ -163,11 +160,64 @@ class Model:
             self.voices = builtin_voices()
         if not self.voices:
             raise Refused(400, "invalid", "That model has no voices.")
-        # CUDA graphs are captured on first use: two whole sentences now, so the first one read isn't slow.
-        first = next(iter(self.voices))
-        for text in WARM_UP:
-            for _ in self.speak(first, text, 1.0):
-                pass
+        self.device = device
+        self.jobs = queue.Queue()
+        loaded = queue.Queue()
+        threading.Thread(target=self._work, args=(folder, loaded), daemon=True).start()
+        failed = loaded.get()
+        if failed is not None:
+            raise failed
+
+    def _work(self, folder, loaded):
+        try:
+            import torch
+
+            # PyTorch 2.14 sends some ops (the RoPE outer product's bmm) to
+            # Triton kernels, which need a C compiler to start; this image has
+            # none, and PyTorch's own kernels serve them as well.
+            from torch._native import registry
+
+            registry.deregister_op_overrides(disable_dsl_names="triton")
+            from faster_qwen3_tts import FasterQwen3TTS
+
+            if not torch.cuda.is_available() or self.device >= torch.cuda.device_count():
+                raise Refused(503, "model_unavailable", "This speech server can't see that GPU.")
+            torch.cuda.set_device(self.device)
+            # Volta has no bf16; newer cards use it, as the model was trained.
+            dtype = torch.bfloat16 if torch.cuda.get_device_capability(self.device)[0] >= 8 else torch.float16
+            self.tts = FasterQwen3TTS.from_pretrained(folder, device=f"cuda:{self.device}", dtype=dtype, attn_implementation="sdpa", local_files_only=True)
+            # CUDA graphs are captured on first use: two whole sentences now, so the first one read isn't slow.
+            first = next(iter(self.voices))
+            with torch.inference_mode():
+                for text in WARM_UP:
+                    for _ in self._stream(first, text):
+                        pass
+        except Exception as e:  # noqa: BLE001
+            loaded.put(e)
+            return
+        loaded.put(None)
+        with torch.inference_mode():
+            while (job := self.jobs.get()) is not None:
+                voice, text, speed, out, stop = job
+                try:
+                    stretch = Stretch(speed)
+                    stream = self._stream(voice, text)
+                    try:
+                        for chunk, _sr, _info in stream:
+                            if stop.is_set():
+                                break
+                            audio = stretch.feed(np.asarray(chunk, dtype=np.float32).reshape(-1))
+                            if len(audio):
+                                out.put(pcm(audio))
+                        else:
+                            rest = stretch.finish()
+                            if len(rest):
+                                out.put(pcm(rest))
+                    finally:
+                        stream.close()
+                    out.put(None)
+                except Exception as e:  # noqa: BLE001
+                    out.put(e)
 
     def _stream(self, voice, text):
         if self.kind == "custom_voice":
@@ -176,20 +226,21 @@ class Model:
         return self.tts.generate_voice_clone_streaming(text=text, language=language(text), ref_audio=ref, ref_text=transcript, chunk_size=CHUNK)
 
     def speak(self, voice, text, speed):
-        import torch
-
+        """The reading's PCM as it is made. Readings of one model wait their turn on its thread."""
         if voice not in self.voices:
             raise Refused(400, "invalid", "That isn't one of this model's voices.")
-        stretch = Stretch(speed)
-        # One reading at a time per model: its CUDA graphs and cache are shared.
-        with self.lock, torch.cuda.device(self.device), torch.inference_mode():
-            for chunk, _sr, _info in self._stream(voice, text):
-                out = stretch.feed(np.asarray(chunk, dtype=np.float32).reshape(-1))
-                if len(out):
-                    yield pcm(out)
-            rest = stretch.finish()
-            if len(rest):
-                yield pcm(rest)
+        out, stop = queue.Queue(), threading.Event()
+        self.jobs.put((voice, text, speed, out, stop))
+        try:
+            while (item := out.get()) is not None:
+                if isinstance(item, Exception):
+                    raise item
+                yield item
+        finally:
+            stop.set()  # a client that went away stops the model
+
+    def close(self):
+        self.jobs.put(None)
 
 
 MODELS = {}
@@ -282,11 +333,15 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(200, {"loaded": True})
         if self.path == "/unload":
             with LOCK:
-                MODELS.pop(b.get("name"), None)
+                model = MODELS.pop(b.get("name"), None)
                 EXITING = EXITING or (GPU_USED and not MODELS)
+            if model is not None:
+                model.close()
             return self.answer_then_exit()
         if self.path == "/reset":
             with LOCK:
+                for model in MODELS.values():
+                    model.close()
                 MODELS.clear()
                 EXITING = EXITING or GPU_USED
             return self.answer_then_exit()
@@ -331,7 +386,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.chunk(chunk)
             self.wfile.write(b"0\r\n\r\n")
         finally:
-            audio.close()  # a client that went away stops the model, which frees its lock
+            audio.close()  # a client that went away stops the reading
 
     def chunk(self, data):
         if data:
