@@ -74,7 +74,9 @@ export class Speech implements Backend {
 
   /** Both servers: each one that answers lets go of everything. */
   async reset(): Promise<void> {
-    await this.post("/reset", {});
-    if (this.o.qwenUrl) await this.post("/reset", {}, undefined, this.o.qwenUrl);
+    // Both, even when one is down, so neither keeps its GPU.
+    const bases = this.o.qwenUrl ? [undefined, this.o.qwenUrl] : [undefined];
+    const failed = (await Promise.allSettled(bases.map((base) => this.post("/reset", {}, undefined, base)))).find((r) => r.status === "rejected");
+    if (failed) throw failed.reason;
   }
 }

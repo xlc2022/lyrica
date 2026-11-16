@@ -337,6 +337,11 @@ describe("Qwen3-TTS voices", () => {
       { at: "kokoro", path: "/reset", body: {} },
       { at: "qwen", path: "/reset", body: {} },
     ]);
+    // Kokoro's server down: Qwen's still lets go, and the failure is still reported.
+    sent.length = 0;
+    const kokoroDown = new Speech({ url: "http://127.0.0.1:1", qwenUrl, models: "/models" });
+    await expect(kokoroDown.reset()).rejects.toThrow();
+    expect(sent).toEqual([{ at: "qwen", path: "/reset", body: {} }]);
     expect(speech.url(qwen)).toBe(qwenUrl);
     expect(speech.url(kokoro)).toBe(kokoroUrl);
     // Never on the CPU, and not at all on a host without NVIDIA GPUs.
