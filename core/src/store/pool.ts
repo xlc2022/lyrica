@@ -529,6 +529,25 @@ export class PoolReader {
     const call = parts.find(p => p.type === "toolCall" && isQuestionCall(p.name, p.arguments));
     return call ? askOfCall(call.name, call.arguments) : undefined;
   }
+  /**
+   * The card a root step or a secret's card showed, as its tool stored it (its `details.root`): the
+   * machine, path and hash the run route checks the script against. Read from the encrypted log.
+   */
+  readStep(thread: string, n: number): { tool: string; step: Record<string, unknown> } | undefined {
+    const entry = this.entryPage(thread, { before: n + 1, limit: 1 }).entries.find(e => e.n === n);
+    const parts = (entry?.data as { message?: { content?: unknown } } | undefined)?.message?.content;
+    if (!Array.isArray(parts)) return undefined;
+    const call = parts.find(p => p.type === "toolCall" && isQuestionCall(p.name, p.arguments) && p.name !== "threads");
+    if (!call) return undefined;
+    const rows = this.db.prepare("SELECT data FROM entries WHERE thread = ? AND n > ? AND role = 'toolResult' ORDER BY n LIMIT 20").all(thread, n) as { data: string }[];
+    for (const r of rows) {
+      const m = (json(r.data) as { message?: { toolCallId?: unknown; isError?: unknown; details?: { root?: unknown } } }).message;
+      if (m?.toolCallId !== call.id) continue;
+      const step = m?.isError ? undefined : m?.details?.root;
+      return step && typeof step === "object" ? { tool: String(call.name), step: step as Record<string, unknown> } : undefined;
+    }
+    return undefined;
+  }
   questionCall(thread: string, id: string): number | undefined {
     const rows = this.db.prepare("SELECT n, data FROM entries WHERE thread = ? AND role = 'assistant' ORDER BY n DESC").all(thread) as { n: number; data: string }[];
     return rows.find(r => {

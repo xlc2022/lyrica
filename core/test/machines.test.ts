@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  callArgs, cleanOutput, discardingGit, removedFolders, generateSshKey, maskKeys, migrate, RemoteMissing, suspectCommand, Users, writtenFiles, Workspace, WorkspaceSettings,
+  callArgs, cleanOutput, discardingGit, machineSetup, machineSudo, removedFolders, generateSshKey, maskKeys, migrate, RemoteMissing, suspectCommand, Users, writtenFiles, Workspace, WorkspaceSettings,
   type Db, type NewMachine, type SshSession, type SshTransport,
 } from "../src/index.ts";
 import { freshKeyring, profile } from "./helpers.ts";
@@ -480,3 +480,14 @@ describe("the files a command plainly writes", () => {
     }
   });
 });
+
+describe("sudo with a password", () => {
+  it("keeps password logins out of SSH for her account, then sets the password and a sudoers line that asks for it", () => {
+    expect(machineSetup("lyrica", "ssh-ed25519 AAAA x")).toContain("PasswordAuthentication no\\n    KbdInteractiveAuthentication no");
+    const { password } = machineSudo("lyrica");
+    const order = ["PasswordAuthentication no", "sudo sshd -t", "sudo systemctl reload ssh", "sudo passwd lyrica", "'lyrica ALL=(root) ALL'", "visudo -c"].map((x) => password.indexOf(x));
+    expect(order.every((at, i) => at >= 0 && (i === 0 || at > order[i - 1]!))).toBe(true);
+    expect(password).not.toContain("NOPASSWD");
+  });
+});
+

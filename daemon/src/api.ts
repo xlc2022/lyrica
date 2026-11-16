@@ -808,8 +808,8 @@ export interface MachineProbe {
   keyLine?: string;
   /** The setup steps, one command chain to paste on the machine as a user with sudo (for Proxmox, as root on the node); with `asUser`, as the user's own account without sudo (for Proxmox still as root on the node, for a token on the user's own Proxmox user). */
   setup: string;
-  /** SSH on her own account only: sudo for everything, a command to paste on its own that adds its line to /etc/sudoers.d/lyrica, checked by visudo. */
-  sudo?: { everything: string };
+  /** SSH on her own account only: sudo for everything, and sudo with a password the user chooses (typed on each root step's card), each a command to paste on its own that adds its line to /etc/sudoers.d/lyrica, checked by visudo. */
+  sudo?: { everything: string; password: string };
   /** The host key, or for Proxmox the certificate's SHA-256 fingerprint. */
   fingerprint?: string;
   /** Whether her key was accepted. Always false for Proxmox. */
@@ -1487,6 +1487,9 @@ export interface RootStep {
   sudoers?: { line: string; warning?: string }[];
   /** With `sudoers`: the command that adds the lines, checked by visudo first (absent on a card from before it existed). */
   sudoersCommand?: string;
+  /** A run_with_secret card: the secret's name, the field's label; `lines` asks for a box of several lines. */
+  secret?: string;
+  lines?: boolean;
 }
 
 /** A `delegate` call's subagent threads, so its card can open them; a subagent's carries its role and the model it ran on. */
@@ -1539,9 +1542,20 @@ export interface Reaction { emoji: string; you: boolean; her: boolean }
  */
 export interface Reactions { reactions: Reaction[] }
 
-/** POST …/threads/:pool/:threadId/questions/:n/answer → 204; 404 unknown, 409 closed, 400 invalid option. */
+/** POST …/threads/:pool/:threadId/questions/:n/answer → 204; 404 unknown, 409 closed, 400 invalid option or Run (which only …/run answers). */
 export interface AnswerQuestion { option: number }
-export interface QuestionState { n: number; asked: string; closed?: string; answer?: number | "words" | "withdrawn" }
+/**
+ * POST …/threads/:pool/:threadId/questions/:n/run?keep=<minutes> → RunFromCard: Run on an open root step's or secret's
+ * card (docs/workspace.md, "Secrets for one command"). The body is the secret or sudo password as raw bytes
+ * (application/octet-stream, at most 16 KB), never JSON, so lyricad can wipe it; an empty body on a root step uses
+ * the password kept for that machine. `keep` (root steps, 0 to 60) keeps the typed password that many minutes. The
+ * card closes with Run, and the script runs as a background command of the thread, whose end tells her. 400 when
+ * nothing was typed and none is kept, 404 unknown, 409 closed.
+ * DELETE …/questions/:n/run → 204 forgets the password kept for that card's machine (Forget).
+ */
+export interface RunFromCard { job: string }
+/** `kept`: on an open root step's card, the minutes left on the sudo password kept for its machine. */
+export interface QuestionState { n: number; asked: string; closed?: string; answer?: number | "words" | "withdrawn"; kept?: number }
 /**
  * GET /api/u/:userId/threads/:pool/:threadId/messages?before=<n>&limit=<k> → MessagePage
  * Newest page by default, oldest first within the page. Tool results are folded into their calls.

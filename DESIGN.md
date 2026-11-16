@@ -1652,15 +1652,38 @@ NAS, and Proxmox nodes. Decided 2026-10-11 from
   becomes reachable from general threads. The sandbox's
   internet switch and allowed hosts cover the sandbox only: a machine's
   network is its own.
-- **Root stays with the user.** She never runs `sudo` with a password or
-  writes sudoers. A root step is a script she writes on the machine and
-  hands over on a question card with its hash; when a root command will
-  recur, she may offer exact sudoers lines, which the user adds. How much
-  sudo she has on a machine is the owner's call, made by hand on that
-  machine: exact commands, or, when the owner really trusts the models
-  that will run there, passwordless sudo for everything (the owner said so on 2026-11-01).
-  Even then she holds no password, writes no sudoers, and the machine's
-  mode limit and the suspect-command check still apply to what she runs.
+- **Root stays with the user.** She never holds a password or writes
+  sudoers. A root step is a script she writes on the machine and hands over
+  on a question card with its hash. The user runs it in their own terminal,
+  or types their sudo password on the card and presses Run: lyricad runs the
+  checked script with `sudo -S -k`, the password on its input, so it opens
+  that one script and sudo caches nothing (the owner, 2026-11-16). The user
+  may keep the password in lyricad's memory up to 60 minutes, so later
+  cards on that machine run without typing it; each still waits for Run.
+  When a root command will recur, she may offer exact sudoers lines, which
+  the user adds. How much sudo she has on a machine is the owner's call,
+  made by hand on that machine: exact commands, sudo with a password the
+  user chooses (typed on each card; SSH refuses it), or, when the owner
+  really trusts the models that will run there, passwordless sudo for
+  everything (the owner said so on 2026-11-01). The machine's mode limit
+  and the suspect-command check still apply to what she runs.
+- **Secrets reach one command, never the conversation** (the owner,
+  2026-11-16). A key, token or password a command needs is typed on a
+  question card (`run_with_secret`), sent to lyricad as raw bytes, written
+  to the standard input of the one script the card hashed, masked in its
+  output and overwritten with zeros when it ends. It never reaches a model,
+  the thread's text, a log or a file. The script runs as her account, so
+  her account, and any other command of hers on that machine, can reach
+  the secret while it runs: the card and her skill say so, and ask for
+  one-off, narrow or short-lived secrets. A sudo password never
+  reaches the conversation, a log or a file, and ordinary commands of hers
+  don't see it (her shell execs sudo, lyricad writes it only once sudo
+  prompts, and root copies and checks the script). A process of her
+  account set up in advance to catch it could, and with `ALL=(root) ALL`
+  that is root: **Sudo, with password** guards against mistakes, not a
+  hostile model. Exact NOPASSWD commands, or root steps run in the
+  person's own terminal, are the stronger choices. One pasted into chat is part of
+  the conversation; she says so and asks for a new one.
 - **A machine has a mode limit**, the loosest mode she may use there: Ask,
   Accept edits or Auto. New machines start at **Ask**; the owner loosens each one
   as she proves reliable there. A call's mode is the strictest of the
@@ -1680,8 +1703,9 @@ NAS, and Proxmox nodes. Decided 2026-10-11 from
   would lock her out of every machine at once. The machine's setup puts it in a root-owned file
   (`AuthorizedKeysFile /etc/ssh/authorized_keys/%u`), so no command she
   runs can add a key to stay. Her sudo rights are what the owner writes
-  into sudoers on that machine, exact commands or all of them; she never
-  has a password.
+  into sudoers on that machine: exact commands, all of them, or all of them
+  with a password the user types on each root step's card; she never holds
+  a password.
 - **The host key is confirmed when the machine is added**, never pinned on
   first use: the Add machine page shows the fingerprint Lyrica sees next to
   the command that prints it on the machine, and on the tailnet also checks
@@ -2105,8 +2129,10 @@ when to use it, and steps in Markdown (at most 8,000 characters).
     never adds a machine or takes its key or token herself. And
     `model-host`, installing a model host on one of the thread's
     SSH machines (root steps on a card, the image pull in the background,
-    the pairing code), listed only while the thread has an SSH machine. A
-    library skill of the same name replaces either.
+    the pairing code), and `secrets`, getting a key, token or sudo password
+    into one script's input on a card (`run_with_secret`, Run on a root
+    step), both listed only while the thread has an SSH machine. A library
+    skill of the same name replaces any of them.
 - **Storage.** The person's and hers live in the pool they belong to, in
   that pool's encrypted database (`skills`, pool step 10), at most 100 per
   pool, and are reached only through the pool's view. A skill she saves

@@ -10,6 +10,7 @@ import {
   botChecks, setBotChecks, searxngAddress, searxngStatus, searxngView, setSearxngAddress, kiwixAddress, kiwixArticle, kiwixPicture, kiwixStatus, setKiwixAddress, forgetKiwixBooks, claudeCodeInstalled, modelName,
   codexSignedIn, codexSignIn, codexSignOut, type CodexBox, type CodexSignIn, serverZone, zoneOf, imageTask,
   ChangesUnavailable, type ByteRange, commitFiles, fileSides, repositoryChanges, type ExecutionTarget,
+  KEEP_PASSWORD_MINUTES, ROOT_TOOL, SECRET_LIMITS,
 } from "@lyrica/core";
 import type * as Api from "./api.ts";
 import { MODELS_PAGE_CALLS, THREAD_TASKS } from "./api.ts";
@@ -53,6 +54,9 @@ function deletingOf(d: Lyricad): Map<string, Map<string, Api.ThreadDeleting>> {
 }
 
 /** Every API route. Locked, only /api/state, /api/unlock and /api/setup answer; setting up, only state and setup (lyricad.ts enforces it). */
+/** Cards whose Run is starting now, so a second press doesn't run the script twice. */
+const runningCards = new Set<string>();
+
 export function apiRoutes(d: Lyricad): Route[] {
   const deleting = deletingOf(d);
   const s = (): Services => d.services!;
@@ -1319,7 +1323,12 @@ export function apiRoutes(d: Lyricad): Route[] {
         if (!before && s().prefs.get(user.id, poolOf(r), thread.id).unread) s().prefs.setUnread(user.id, poolOf(r), thread.id, false);
         const page = o[poolOf(r)].entryPage(thread.id, { before: before ? Number(before) : undefined, limit });
         const names = thread.subagent ? { userName: (id: string) => s().users.get(id)?.profile.displayName ?? "a user" } : undefined;
-        const questions = o[poolOf(r)].questions(thread.id);
+        const questions = o[poolOf(r)].questions(thread.id).map((q) => {
+          if (q.closed) return q;
+          const step = o[poolOf(r)].readStep(thread.id, q.n);
+          const kept = step?.tool === ROOT_TOOL && typeof step.step.machine === "string" ? s().workspace.passwordKept(user.id, step.step.machine) : undefined;
+          return kept ? { ...q, kept } : q;
+        });
         return { messages: toMessages(thread.id, poolOf(r), page.entries,
           s().delegation.store.runs(user.id, poolOf(r), { parent: thread.id }), names, { ...(thread.child && thread.parent ? { parent: thread.parent } : {}), userId: user.id, userName: user.profile.displayName }), hasMore: page.hasMore, ...(questions.length ? { questions } : {}) };
       });
@@ -1371,11 +1380,72 @@ export function apiRoutes(d: Lyricad): Route[] {
         const ask = store.readAsk(thread.id, n);
         if (!ask) throw new HttpError(404, "no such question");
         if (!Number.isInteger(option) || option < 0 || option >= ask.options.length) throw new HttpError(400, "option is out of range");
+        if (ask.options[option]!.secret) throw new HttpError(400, "Run needs what you type on the card: open the thread");
         if (!store.closeQuestion(thread.id, option, n)) throw new HttpError(409, "this question is closed");
         return ask.options[option]!.label;
       });
       s().children.userWrote(user.id, pool, thread.id);
       await s().host.get(user.id, pool, thread.id).send(label, { answer: n });
+      r.res.writeHead(204); r.res.end();
+      return undefined;
+    }),
+    // Run on a root step's or a secret's card: the secret comes as raw bytes, so no string of it is left behind.
+    route("POST", `${t}/questions/:n/run`, async (r): Promise<Api.RunFromCard> => {
+      const user = d.userFor(r);
+      d.refuseWhileDraining();
+      const pool = poolOf(r);
+      const secret = await r.bytes(SECRET_LIMITS.bytes);
+      const key = `${user.id}/${pool}/${r.params.threadId}/${r.params.n}`;
+      if (runningCards.has(key)) { secret.fill(0); throw new HttpError(409, "this card is already running"); }
+      runningCards.add(key);
+      try {
+        const keep = Number(r.query.get("keep") ?? 0);
+        if (!Number.isFinite(keep) || keep < 0 || keep > KEEP_PASSWORD_MINUTES) throw new HttpError(400, `keep is 0 to ${KEEP_PASSWORD_MINUTES} minutes`);
+        const thread = owner(d, user, o => threadOf(o, r));
+        const project = owner(d, user, o => o[pool].projectOf(thread.id));
+        if (project && project !== thread.id && s().children.stopped(user.id, pool, project)) throw new HttpError(409, "this project is paused or hidden");
+        const n = Number(r.params.n);
+        const { step, run, label } = owner(d, user, o => {
+          const store = o[pool];
+          const q = store.questions(thread.id).find(q => q.n === n);
+          if (!q) throw new HttpError(404, "no such question");
+          if (q.closed) throw new HttpError(409, "this question is closed");
+          const found = store.readStep(thread.id, n);
+          const ask = store.readAsk(thread.id, n);
+          const run = ask?.options.findIndex(o => o.secret) ?? -1;
+          if (!found || !ask || run < 0) throw new HttpError(404, "this card has no Run");
+          return { step: found, run, label: ask.options[run]!.label };
+        });
+        const st = step.step;
+        if (![st.machine, st.path, st.sha256, st.script].every(v => typeof v === "string")) throw new HttpError(404, "this card has no Run");
+        const sudo = step.tool === ROOT_TOOL;
+        const project2 = project ? { project } : {};
+        const job = (() => {
+          try {
+            return s().workspace.runFromCard({ userId: user.id, pool, threadId: thread.id, ...project2 },
+              { machine: st.machine as string, path: st.path as string, sha256: st.sha256 as string, script: st.script as string, sudo }, secret.length ? secret : undefined,
+              { keepMinutes: sudo ? keep : 0, name: sudo ? `Root step on ${st.machine as string}` : `${String(st.secret ?? "Secret")} on ${st.machine as string}` });
+          } catch (err) { throw new HttpError(400, (err as Error).message); }
+        })();
+        owner(d, user, o => o[pool].closeQuestion(thread.id, run, n));
+        s().children.questionsChanged(user.id, pool, thread.id);
+        s().children.userWrote(user.id, pool, thread.id);
+        await s().host.get(user.id, pool, thread.id).send(`${label} (background command ${job.id}: you're told when it ends)`, { answer: n });
+        return { job: job.id };
+      } finally {
+        secret.fill(0);
+        runningCards.delete(key);
+      }
+    }),
+    route("DELETE", `${t}/questions/:n/run`, (r) => {
+      const user = d.userFor(r);
+      const machine = owner(d, user, o => {
+        const thread = threadOf(o, r);
+        const step = o[poolOf(r)].readStep(thread.id, Number(r.params.n));
+        return step?.tool === ROOT_TOOL && typeof step.step.machine === "string" ? step.step.machine : undefined;
+      });
+      if (!machine) throw new HttpError(404, "this card has no kept password");
+      s().workspace.forgetPasswords(user.id, machine);
       r.res.writeHead(204); r.res.end();
       return undefined;
     }),

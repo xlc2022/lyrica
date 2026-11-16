@@ -1054,8 +1054,11 @@ Custom roles override built-ins by name, except `claude`.
   Pool step 8 adds `questions(thread, n, asked, closed, answer)`: only a
   pointer to the tool call's entry and its times and outcome. Words are read
   from the encrypted log with `PoolReader.readAsk` (`askOfCall`: a `threads`
-  ask's own words, or `rootAsk` for a `run_as_root` call, which
-  `isQuestionCall` also counts as a question card); `questions` lists the
+  ask's own words, `rootAsk` for a `run_as_root` call, or `secretAsk` for a
+  `run_with_secret` call, which `isQuestionCall` also counts as question
+  cards; an option with `secret: true`, Run, needs what the person types on
+  the card, so Notifications leave it out and only the run route answers
+  it; `readStep(thread, n)` reads the card's stored `details.root`); `questions` lists the
   states and `openQuestion` returns the open one. `PoolStore.askQuestion`
   withdraws a previous question; `closeQuestion` records an option index,
   `"words"` or `"withdrawn"`. At most one question is open per thread.
@@ -1082,13 +1085,23 @@ Custom roles override built-ins by name, except `claude`.
   settings/child refreshes to open views.
   `POST /api/u/:userId/threads/:pool/:id/questions/:n/answer { option }`
   returns 204, 404 for an unknown question or one in another thread, 409
-  once closed, and 400 for an option out of range. It sends the chosen
+  once closed, and 400 for an option out of range or a `secret` option. It sends the chosen
   `<label>` as a user message prefixed `[Answer to q:<n>]` and starts a
   turn normally. `ANSWER`, beside `FROM_PARENT` and `WATCHING`, guards that
   prefix: only lyricad writes it, and typed/API messages starting with it
   are refused with 400 or `MarkedText` by `HostedThread.send`. The reader
   strips the mark for display; `Message.from.kind` remains `user`. A typed
   message closes an open question as `"words"` and keeps the text unchanged.
+  `POST …/questions/:n/run?keep=<minutes>` answers Run on a root step's or
+  a secret's card: its body is the secret or sudo password as raw bytes (at
+  most 16 KB, never JSON); an empty body on a root step uses the password
+  kept for that machine. It starts the run (`runFromCard`), closes the card
+  with Run, sends `Run (background command j<n>: you're told when it ends)`
+  marked as the answer, and returns `{ job }`; 400 when nothing was typed or
+  kept, 404 for a card without Run, 409 when closed or already starting.
+  `DELETE …/questions/:n/run` forgets the password kept for the card's
+  machine. An open root step's `QuestionState.kept` is the minutes left on
+  that password.
   `NotificationType` gains `question`, with id
   `question:<pool>/<thread>/<n>` and `decision: true`. Title is the question,
   detail the recommended option's consequence. Its actions POST to that
@@ -1331,7 +1344,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     `remember` in an unlogged thread. lyricad lists the active skills of the
     thread view's own pool, then of the pools it reads (a name once), then Lyrica's own (`BUILTIN_SKILLS`,
     extension/src/<name>.md) unless a library skill takes the name: `add-machine` in every thread, and
-    `model-host` while the thread has an SSH machine; then `repoSkills(target, checkouts, cache?)`, cached per thread by checkout and HEAD.
+    `model-host` and `secrets` while the thread has an SSH machine; then `repoSkills(target, checkouts, cache?)`, cached per thread by checkout and HEAD.
     `read(name)` falls back to a built-in skill's body;
   - `name()`: her name for this deployment, read every turn. Automatic
     recall leaves it out of the query (`skip`), asks for two shared
@@ -1836,7 +1849,25 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   `rootCommand`, `scriptShell`, `sudoersCommand`, `ROOT_LIMITS`), returned as the result's
   `details.root`; the daemon passes
   it on as `root` on the tool part and the `tool_end` event (`rootPart`).
+  `rootAsk`'s answers are Done 0, Not now 1 and Run 2 (`ROOT_OPTIONS`).
   See [workspace.md](workspace.md#root-steps).
+- **Secrets on a card** (`run_with_secret`, beside `run_as_root` and under
+  the same conditions): `secretStep(input, bytes)` builds a `RootStep` with
+  `secret` (the field's label, at most 40 characters) and `lines?`, its
+  `command` from `secretCommand` (no sudo); `secretAsk` answers Run 0 and
+  Not now 1 (`SECRET_OPTIONS`). Run calls `Workspace.runFromCard(t, { machine,
+  path, sha256, script, sudo }, secret?, { keepMinutes?, name? })`, which
+  starts a background job with `stdin` (the secret and a newline) and
+  `mask` (`secretMasks`); a root step's runs `sudoRunCommand(path, sha256,
+  shell, prompt)` with `handOff` and `drop` (fresh ready and prompt lines,
+  left out of the output by `Masker`'s second list) and may keep the
+  password (`passwordKept`, `forgetPasswords`, `KEEP_PASSWORD_MINUTES`).
+  `ToolOps.bash.exec` takes `stdin?: Buffer` and `handOff?: { ready, prompt }`,
+  `SshSession.exec` `stdin?` and `after?: string[]` (machines only; the SSH
+  helper ends the command's input after it, and with `after` writes it only
+  once each line has come out); `groupRun(command, ready?)` closes the
+  account shell's input and prints `ready` first. See
+  [workspace.md](workspace.md#secrets-for-one-command).
 - **Workspace extension** (`createWorkspaceExtension(tools: ThreadTools)`):
   - A `bash` call with no `timeout` gets `BASH_TIMEOUT_S` (600 seconds),
     and the tool's schema says so; she gives a longer one for a long build.
@@ -2861,7 +2892,7 @@ machinesFor(t): ThreadMachine[]           // { name, kind, limit, root, asUser? 
 proxmox(t, machine, action, vm?): Promise<string>  // one PROXMOX_ACTIONS call on a thread's Proxmox machine, token sent only to the pinned certificate; each API call records the machine's state (online on any answer but 401, keyChanged on another certificate, else unreachable)
 callMode(t, machine?): PermissionMode     // on a machine, stricterMode(effective(t).mode, its limit)
 probeMachine(userId, login, { kind?, name, address, draft?, asUser?, user?, replace? }): Promise<MachineProbe>
-  // SSH: a key pair kept in memory for an hour (by `draft`), its keyLine and setup steps (one `&&` chain to paste as a user with sudo), on her own account `sudo` { exact, everything } (each a command adding one line to /etc/sudoers.d/lyrica through sudoersCommand), the host key seen,
+  // SSH: a key pair kept in memory for an hour (by `draft`), its keyLine and setup steps (one `&&` chain to paste as a user with sudo), on her own account `sudo` { everything, password } (each a command adding one line to /etc/sudoers.d/lyrica through sudoersCommand; `password` first rewrites her sshd rule and runs `passwd` for her account), the host key seen,
   // whether the login worked, offNetwork; asUser gives the own-account setup (no root), and a failed login on an account that is already hers there (a saved machine with the same address and account) says why; account root refused, and an account that isn't a plain user name ([A-Za-z_][A-Za-z0-9_.-]*, at most 32), since it goes unquoted into the pasted block and sudoers lines. Proxmox: the certificate's fingerprint and the pveum setup, no token sent; asUser with `user` (user@realm) gives the setup for a separated token on the user's own Proxmox user.
   // replace (Replace key): the saved SSH machine `name` tried as saved, its own key, account and address; no pair made, address and draft ignored.
   // Saves nothing.

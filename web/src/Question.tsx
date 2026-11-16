@@ -1,26 +1,47 @@
 // Principles 1 and 6: a decision stays beside the work, and its answer is a message.
-import { useEffect, useState } from "react";
-import { get, post, type MessagePage, type MessagePart, type QuestionState, type RootStep } from "./api.ts";
+import { useEffect, useId, useState } from "react";
+import { del, get, post, type MessagePage, type MessagePart, type QuestionState, type RootStep } from "./api.ts";
 import { CopyButton } from "./CopyButton.tsx";
 import { Icon } from "./icons.tsx";
+import { her } from "./name.ts";
 import { ErrorText, useAction, useLoad } from "./ui.tsx";
 
 interface Question { question: string; context?: string; recommended: number; options: { label: string; consequence: string }[] }
 
-/** The tool whose card asks to run a script as root (core ROOT_TOOL). */
+/** The tool whose card asks to run a script as root (core ROOT_TOOL), and the one that asks for a secret (core SECRET_TOOL). */
 export const ROOT_TOOL = "run_as_root";
+export const SECRET_TOOL = "run_with_secret";
+/** The longest a sudo password may be kept, in minutes (core KEEP_PASSWORD_MINUTES). */
+const KEEP_MAX = 60;
 
-/** Whether a tool part is a question card: threads ask, or a root step. */
+/** Whether a tool part is a question card: threads ask, a root step, or a secret's card. */
 export const isQuestionPart = (p: MessagePart): boolean =>
-  p.type === "tool" && !p.isError && ((p.name === "threads" && (p.args as { action?: string })?.action === "ask") || p.name === ROOT_TOOL);
+  p.type === "tool" && !p.isError && ((p.name === "threads" && (p.args as { action?: string })?.action === "ask") || p.name === ROOT_TOOL || p.name === SECRET_TOOL);
 
-/** A root step's question, as core's rootAsk words it. */
+/** A root step's question, as core's rootAsk numbers its answers (Done 0, Not now 1, Run 2), in her name. */
 function rootQuestion(args: unknown): Question | undefined {
   const a = args as { machine?: unknown; why?: unknown } | null;
   if (typeof a?.machine !== "string" || typeof a.why !== "string") return undefined;
   return {
     question: `Run as root on ${a.machine}?`, recommended: 0,
-    options: [{ label: "Done", consequence: "You ran it. She checks the result and carries on." }, { label: "Not now", consequence: "Nothing runs. She says what waits on it." }],
+    options: [
+      { label: "Done", consequence: `Already run by hand. ${her()} checks the result and carries on.` },
+      { label: "Not now", consequence: `Nothing runs. ${her()} says what waits on this.` },
+      { label: "Run", consequence: `Sudo takes the password for this script only. It never goes into the chat.` },
+    ],
+  };
+}
+
+/** A secret's question, as core's secretAsk numbers its answers (Run 0, Not now 1). */
+function secretQuestion(args: unknown): Question | undefined {
+  const a = args as { machine?: unknown; why?: unknown; secret?: unknown } | null;
+  if (typeof a?.machine !== "string" || typeof a.why !== "string" || typeof a.secret !== "string") return undefined;
+  return {
+    question: `Run with a secret on ${a.machine}?`, recommended: 0,
+    options: [
+      { label: "Run", consequence: `What's typed here goes to this script, never into the chat. The script runs under ${her()}'s account and can read the secret there, so use a key that expires.` },
+      { label: "Not now", consequence: `Nothing runs. ${her()} says what waits on this.` },
+    ],
   };
 }
 
@@ -35,7 +56,6 @@ function Block({ label, text }: { label: string; text: string }) {
 /** What a root step's card shows: why, the command (which checks the hash first), the hash, the script, and any sudoers lines with the command that adds them (a card from before that command existed names visudo instead). */
 function RootDetails({ root }: { root: RootStep }) {
   return <div className="root-step">
-    <p>{root.why}</p>
     <Block label="Command" text={root.command} />
     <p className="muted">SHA-256 <span className="mono">{root.sha256}</span></p>
     <div className="root-script"><Block label={root.path} text={root.script} /></div>
@@ -47,22 +67,75 @@ function RootDetails({ root }: { root: RootStep }) {
   </div>;
 }
 
+/**
+ * The field on a root step's or a secret's card (docs/ux.md): masked, with Show; a box of several lines when the
+ * secret asks for one; on a root step, Keep for in minutes, or the kept password's minutes left with Forget.
+ */
+function SecretField({ label, lines, sudo, kept, value, setValue, keep, setKeep, onForget, disabled }: {
+  label: string; lines?: boolean; sudo: boolean; kept?: number; value: string; setValue: (v: string) => void;
+  keep: string; setKeep: (v: string) => void; onForget: () => void; disabled: boolean;
+}) {
+  const [shown, setShown] = useState(false);
+  const id = useId(), keepId = useId();
+  const tip = sudo ? `Goes to sudo for this script, never into the chat; forgotten when the script ends.` : `Goes only to this script's input, never into the chat; forgotten when the script ends.`;
+  const common = { id, value, autoComplete: "off", spellCheck: false, disabled, onChange: (e: { target: { value: string } }) => setValue(e.target.value) };
+  return <div className="card-secret">
+    <label htmlFor={kept ? undefined : id} title={tip}>{label}<Icon name="lock" /></label>
+    {kept ? <div className="card-secret-row"><span className="muted">Kept · <span className="num">{kept}</span> min left</span><button type="button" className="sm" disabled={disabled} onClick={onForget}>Forget</button></div> : <>
+      <div className="card-secret-row">
+        {lines ? <textarea {...common} className={shown ? "" : "masked"} rows={5} /> : <input {...common} type={shown ? "text" : "password"} />}
+        <button type="button" className="sm" aria-pressed={shown} onClick={() => setShown(!shown)}>{shown ? "Hide" : "Show"}</button>
+      </div>
+      {sudo && <div className="card-keep">
+        <label htmlFor={keepId}>Keep for</label>
+        <input id={keepId} type="text" inputMode="numeric" value={keep} disabled={disabled} onChange={(e) => setKeep(e.target.value.replace(/[^0-9]/g, "").slice(0, 3))}
+          onBlur={() => setKeep(String(Math.min(KEEP_MAX, Math.max(0, Number(keep) || 0))))} />
+        <span className="muted">min, of <span className="num">{KEEP_MAX}</span></span>
+      </div>}
+      {sudo && <p className="muted card-keep-note">The server holds the password in memory for that long, so later root steps on this machine skip typing it. Each still waits for Run.</p>}
+    </>}
+  </div>;
+}
+
 export function QuestionCard({ args, root, name, state, base, onChange }: { args: unknown; root?: RootStep; name?: string; state?: QuestionState; base: string; onChange: () => void }) {
-  const q = (name === ROOT_TOOL ? rootQuestion(args) : args) as Question;
+  const q = (name === ROOT_TOOL ? rootQuestion(args) : name === SECRET_TOOL ? secretQuestion(args) : args) as Question;
   const [run, busy, error] = useAction();
   const [answered, setAnswered] = useState<number>();
+  const [value, setValue] = useState("");
+  const [keep, setKeep] = useState("0");
   useEffect(() => setAnswered(undefined), [base, state?.n, state?.answer]);
   const answer = state?.answer ?? answered;
   const closed = !!state?.closed || answer !== undefined;
   if (!q?.question || !Array.isArray(q.options)) return null;
+  const sudo = name === ROOT_TOOL;
+  // Run is the option the card's own route answers: shown first, and only with the step the card read.
+  const runAt = name === ROOT_TOOL ? 2 : name === SECRET_TOOL ? 0 : -1;
+  const hasRun = runAt >= 0 && !!root;
+  const order = hasRun ? [runAt, ...q.options.map((_, i) => i).filter((i) => i !== runAt)] : q.options.map((_, i) => i).filter((i) => i !== runAt);
+  const recommended = hasRun ? runAt : q.recommended;
+  const ready = !!value.trim() || !!state?.kept;
+  const press = (i: number) => run(async () => {
+    try {
+      if (i === runAt) {
+        const minutes = sudo && !state?.kept ? Math.min(KEEP_MAX, Math.max(0, Number(keep) || 0)) : 0;
+        // Raw bytes, never JSON: lyricad wipes them once the script has them.
+        await post(`${base}/questions/${state!.n}/run${minutes ? `?keep=${minutes}` : ""}`, new Blob([value]));
+        setValue("");
+      } else await post(`${base}/questions/${state!.n}/answer`, { option: i });
+      setAnswered(i);
+    } finally { onChange(); }
+  });
   return <section className="question-card" aria-label={q.question} {...(!closed && state ? { "data-pending": "Question" } : {})}>
     <div className="question-title">{q.question}</div>
     {closed ? <p className="question-result">{typeof answer === "number" ? <><Icon name="check" />{q.options[answer]?.label}</> : answer === "words" ? "Answered in words." : "Withdrawn."}</p> : <>
-      {root ? <RootDetails root={root} /> : q.context && <p className="muted">{q.context}</p>}
-      <div className="question-options">{q.options.map((o, i) => <button type="button" key={i} className={i === q.recommended ? "primary" : ""} disabled={!state || busy} onClick={() => run(async () => {
-        try { await post(`${base}/questions/${state!.n}/answer`, { option: i }); setAnswered(i); }
-        finally { onChange(); }
-      })}><span>{o.label}{i === q.recommended && <span className="question-recommended">Recommended</span>}</span><span className="question-consequence">{o.consequence}</span></button>)}</div>
+      {root ? <>
+        <p>{root.why}</p>
+        {hasRun && <SecretField label={root.secret ?? "Password"} lines={root.lines} sudo={sudo} kept={state?.kept} value={value} setValue={setValue} keep={keep} setKeep={setKeep} disabled={!state || busy}
+          onForget={() => run(async () => { try { await del(`${base}/questions/${state!.n}/run`); } finally { onChange(); } })} />}
+        <RootDetails root={root} />
+      </> : q.context && <p className="muted">{q.context}</p>}
+      <div className="question-options">{order.map((i) => { const o = q.options[i]!; return <button type="button" key={i} className={i === recommended ? "primary" : ""} disabled={!state || busy || (i === runAt && !ready)} onClick={() => press(i)}>
+        <span>{o.label}{i === recommended && <span className="question-recommended">Recommended</span>}</span><span className="question-consequence">{o.consequence}</span></button>; })}</div>
     </>}
     <ErrorText error={error} />
   </section>;

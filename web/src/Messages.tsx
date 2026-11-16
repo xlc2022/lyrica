@@ -3,7 +3,7 @@ import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useSta
 import { createPortal } from "react-dom";
 import { get, post, threadPath, u, type GoAhead, type ImagePart, type LiveCall, type Making, type VideoPart, type ImageRetryOptions, type MemoryDetail, type Message, type MessagePage, type MessagePart, type PermissionRequest, type Pool, type QuestionState, type Reaction, type SendResponse, type Speech, type ThreadRef, type ThreadSummary } from "./api.ts";
 import { SkillCard } from "./Skills.tsx";
-import { isQuestionPart, QuestionCard, ROOT_TOOL } from "./Question.tsx";
+import { isQuestionPart, QuestionCard, ROOT_TOOL, SECRET_TOOL } from "./Question.tsx";
 import { OutputBox } from "./CommandOutput.tsx";
 import { repeatedFailures, storedLiveCopies, storedUserItems, type LiveItem } from "./live.ts";
 import { useMentionText, useMentionTitles, useThreadMentions } from "./mentions.ts";
@@ -185,8 +185,8 @@ export interface Quiet { key: string; n?: number; parts: MessagePart[]; streamin
 export function isMarker(p: MessagePart): boolean {
   if (p.type === "thinking" || p.type === "recall" || p.type === "remember") return true;
   if (p.type !== "tool") return false;
-  // A root step is a question card once its call has returned (its Run as root card), so it ends a run; while it runs, or when it failed, a marker.
-  if (p.name === ROOT_TOOL) return !!p.isError || p.result === undefined;
+  // A root step or a secret's card is a question card once its call has returned, so it ends a run; while it runs, or when it failed, a marker.
+  if (p.name === ROOT_TOOL || p.name === SECRET_TOOL) return !!p.isError || p.result === undefined;
   // Rejecting or clearing attempts shows no image: a marker, which can fold into a run. Her other image calls show an image.
   if (p.name === "image") return ["reject", "clear_rejected"].includes((p.args as { action?: string } | null)?.action ?? "");
   if (p.name === "delegate" || p.name === "propose_plan") return false;
@@ -841,7 +841,7 @@ function Marker({ part, env }: { part: Exclude<MessagePart, { type: "text" | "im
   if (part.type === "tool" && part.name === "save_skill" && part.result !== undefined && !part.isError) return <SkillCard args={part.args} call={part.toolCallId} userId={env.userId} />;
   // While her plan waits for an answer, its card shows it; the marker would be a second copy.
   if (part.type === "tool" && part.name === "propose_plan" && part.result === undefined) return null;
-  if (part.type === "tool" && part.name === ROOT_TOOL && !part.isError && part.result !== undefined) {
+  if (part.type === "tool" && (part.name === ROOT_TOOL || part.name === SECRET_TOOL) && !part.isError && part.result !== undefined) {
     return <QuestionCard args={part.args} name={part.name} root={part.root} state={env.questions.get(part.toolCallId)} base={env.base} onChange={env.questionChanged} />;
   }
   if (part.type === "tool" && part.name === "threads") {

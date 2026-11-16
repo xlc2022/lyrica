@@ -9,7 +9,7 @@ A model host serves local models to Lyrica from a GPU machine. Lyrica's code is 
 
 Work on the machine with the machine argument: a command with it runs on the machine itself, as your account there, so never wrap it in `ssh`. When a check fails, read and report what it printed before you change anything, and fix the cause it shows: don't try changes one after another. Never hand-edit a file a tool generates (a CDI spec, the installer's `.env`), and never cut the installer's output short with `tail` or `grep`, or save it to a file with `tee`: it says what it skipped and why, and its whole output is kept for you to read with `jobs output`. Check that a change took effect before you reboot for it. Every value you pass comes from the machine: an address, a name or a path is one you read from `host/.env` or a command's output, never a guess. A change step 3 didn't list (a systemd drop-in, a unit, a system config file) is a new question for the person, unless these steps name it.
 
-A step that needs root goes to the person with `run_as_root`, unless they gave your account sudo without a password there (`sudo -n true` succeeds): then you run it yourself with `sudo`, after the same yes. You never type a sudo password and never ask for one.
+A step that needs root: when your account already has sudo without a password there (`sudo -n true` succeeds), run it yourself with `sudo`, after the same yes. Otherwise it goes to the person with `run_as_root`, whose card lets them type their sudo password and press Run, or run it in their own terminal. A key or token a step needs goes on a card with `run_with_secret`, as the `secrets` skill says, never through chat: skip the card when the machine already has what the step needs.
 
 1. **Check the machine.** Run these and keep what they print. One command for all of them is one card for the person, and a program that isn't there is an answer, not a failure: end that command with `true`, so the last check's exit code doesn't mark it failed:
    - `uname -a`, `cat /etc/os-release`: Debian or Ubuntu (NixOS needs the operator's own module first: stop and say so).
@@ -64,16 +64,26 @@ A step that needs root goes to the person with `run_as_root`, unless they gave y
 
    `run_as_root` with it, naming the commit in `why`. The builds are already cached, so it takes minutes. It prints a deploy key from `/etc/lyrica-host/deploy-key.pub` the first time: ask the person to add it to the repository as a read-only deploy key, for updates.
 
-   **Tailscale, if the person wanted it.** The device needs a Tailscale auth key, which `--yes` never asks for and which must never pass through chat. So write a second script like step 6's, with the same commit and checks, whose last lines are:
+   **Tailscale, if the person wanted it.** First check whether it is done already: `host/.tailscale-joined` exists and `docker compose ps tailscale` in `host/` shows it running. If not, the device needs a Tailscale auth key, which `--yes` never asks for. Your account is in the `docker` group, so this needs no root: write a script in your home folder, with the device name from step 3:
 
    ```sh
-   cd host
-   chown root: .env && chmod 600 .env
-   ./install.sh --tailscale <device name>
-   if test -e .tailscale-joined; then chown <your account>: .env; else echo "Tailscale didn't join. The key is still in $PWD/.env, readable only by root."; fi
+   #!/usr/bin/env bash
+   set -euo pipefail
+   IFS= read -r TS_AUTHKEY
+   cd /home/<your account>/lyrica/host
+   ./install.sh --yes --no-start --tailscale <device name> < /dev/null
+   TS_AUTHKEY=$TS_AUTHKEY docker compose up -d < /dev/null
+   joined=0
+   for _ in $(seq 60); do
+     if docker compose exec -T tailscale tailscale status --json < /dev/null | grep -q '"BackendState": *"Running"'; then joined=1; break; fi
+     sleep 2
+   done
+   # Joined or not, the container starts again without the key.
+   docker compose up -d tailscale < /dev/null
+   test $joined = 1 && touch .tailscale-joined
    ```
 
-   The person runs it in their own terminal on the machine with `sudo bash <script>`, never `run_as_root`. Tell them to make a one-off auth key that expires soon in Tailscale's admin console, that the installer asks again for the settings it already has (Enter keeps each one) and then for the key at a hidden prompt, and that the builds are cached. When they say it's done, check that `host/.tailscale-joined` exists and `docker compose ps tailscale` in `host/` shows it running. If the file isn't there, don't look further: `.env` is root's while the key is in it. Ask the person to revoke that key in Tailscale's admin console (the tailscale container still holds it, and your account can reach the container), then to run `sudo sed -i 's/^TS_AUTHKEY=.*/TS_AUTHKEY=/' <host folder>/.env && sudo chown <your account>: <host folder>/.env`. Only after both, read `docker compose logs tailscale --tail 30` and report it. The host's tailnet name is `<device name>.<their tailnet>.ts.net`.
+   Then `run_with_secret` with it, `secret` "Tailscale auth key", and a `why` that says it joins the host to their tailnet as that device and asks for a one-off auth key that expires soon, from Tailscale's admin console (Settings, Keys). `install.sh --no-start` only rewrites `.env` with the device's name (the key never goes there), and a key that joined is spent, so nothing keeps it. When you're told the run ended: exit 0 means it joined. Otherwise read its output and `docker compose logs tailscale --tail 30` and report them; the key may be spent, so a retry needs a new one on a new card. The host's tailnet name is `<device name>.<their tailnet>.ts.net`.
 7. **Smoke test.** `curl -fsS http://127.0.0.1:7236/host/v1/status` on the machine: the state is `running` and the GPUs are listed. After any reboot, first read `docker compose ps -a` in `host/`: a service that exited stays down, so report its `docker inspect -f '{{.State.Error}}'` and logs rather than wait for it. Then wait for this endpoint (a loop of up to 5 minutes in one background command on the machine), not for the services in `docker compose ps`: they show as running before host-api answers. If it still doesn't answer, run `ss -tlnp | grep 7236` and `docker compose logs host-api --tail 30`, and report them before you restart anything. `docker compose ps` in `host/`: every service is up. If one isn't, read its `docker compose logs <service> --tail 50` and report it.
 8. **Pause on a shared machine.** If step 1 found someone else on the GPU, pause the host now with `curl -fsS -X POST http://127.0.0.1:7236/host/v1/pause`, then check with `nvidia-smi` that no container of the host holds GPU memory. Never leave a model loaded there.
 9. **The pairing code.** `curl -fsS -X POST http://127.0.0.1:7236/dashboard/pairing` makes a code that works once, for 10 minutes. Give it to the person with the host's addresses (its LAN address, and its tailnet name from step 6 if it has one; never the machine's own Tailscale address) and its key fingerprint (from `install.sh`'s output), and ask them to open **Models**, **Hosts and endpoints**, **Add model host** at once. They compare the fingerprint Lyrica shows with that one.

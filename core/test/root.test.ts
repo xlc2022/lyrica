@@ -1,10 +1,11 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { checkSudoers, rootAsk, rootStep, sudoersCommand } from "../src/index.ts";
+import { groupRun } from "../src/workspace/ssh.ts";
+import { checkSudoers, Masker, rootAsk, rootStep, secretAsk, secretMasks, secretStep, sudoersCommand, sudoRunCommand } from "../src/index.ts";
 
 const line = (cmd: string) => `lyrica ALL=(root) NOPASSWD: ${cmd}`;
 
@@ -117,11 +118,97 @@ describe("a root step", () => {
     expect(rootStep({ machine: "m", path: "/x.sh", why: "w" }, Buffer.from("if x; then\n\techo hi\nfi\n"), "u").script).toContain("\techo");
   });
 
-  it("asks Done or Not now, from the call's arguments alone", () => {
+  it("asks Done, Not now or Run, keeping the stored answers' numbers, from the call's arguments alone", () => {
     expect(rootAsk({ machine: "box", why: "Installs Docker." })).toEqual({
       question: "Run as root on box?", context: "Installs Docker.", recommended: 0,
-      options: [{ label: "Done", consequence: expect.any(String) }, { label: "Not now", consequence: expect.any(String) }],
+      options: [{ label: "Done", consequence: expect.any(String) }, { label: "Not now", consequence: expect.any(String) }, { label: "Run", consequence: expect.any(String), secret: true }],
     });
     expect(rootAsk({ why: "x" })).toBeUndefined();
+  });
+});
+
+describe("a secret on a card", () => {
+  // A stub `sudo` that prints its prompt, checks the password line, says whether the shell that started it still
+  // holds the input, and runs the rest.
+  const stubSudo = (dir: string) => {
+    mkdirSync(join(dir, "bin"));
+    writeFileSync(join(dir, "bin", "sudo"), `#!/bin/bash
+[ "$1 $2 $3" = "-S -k -p" ] || exit 9
+printf '%s' "$4" >&2
+IFS= read -r pw; [ "$pw" = hunter2 ] || { echo "Sorry, try again." >&2; exit 1; }
+[ -e /proc/$PPID/fd/0 ] && echo "the shell still holds the input"
+shift 4; exec "$@"
+`);
+    chmodSync(join(dir, "bin", "sudo"), 0o755);
+    return { ...process.env, PATH: `${join(dir, "bin")}:${process.env.PATH}` };
+  };
+  // Runs a card's command as lyricad would, with `input` on its standard input from the start.
+  const runCard = (command: string, input: string) => {
+    const dir = mkdtempSync(join(tmpdir(), "lyrica-secret-"));
+    try { return execFileSync("bash", ["-c", command], { input, env: stubSudo(dir), stdio: "pipe" }).toString(); }
+    catch (e) { return `exit ${(e as { status: number }).status}`; }
+    finally { rmSync(dir, { recursive: true, force: true }); }
+  };
+  // Runs a root card's command as lyricad does over SSH (groupRun with a hand-off): the password is written only
+  // once the shell's ready line and sudo's prompt have both come out. Gives the output as kept, and the exit code.
+  const runSudoCard = (path: string, sha256: string, password: string) => new Promise<{ out: string; code: number | null }>((resolve) => {
+    const dir = mkdtempSync(join(tmpdir(), "lyrica-sudo-"));
+    const ready = "lyrica-ready-test", prompt = "lyrica-sudo-test";
+    const child = spawn("bash", ["-c", groupRun(sudoRunCommand(path, sha256, "bash", prompt), ready).run], { env: stubSudo(dir) });
+    let out = "", wrote = false;
+    const seen = (d: Buffer) => {
+      out += d.toString();
+      if (!wrote && out.includes(ready) && out.includes(prompt)) { wrote = true; child.stdin.end(`${password}\n`); }
+    };
+    child.stdout.on("data", seen);
+    child.stderr.on("data", seen);
+    child.on("close", (code) => { rmSync(dir, { recursive: true, force: true }); resolve({ out: out.split(`${ready}\n`).join("").split(prompt).join(""), code }); });
+  });
+  const script = (dir: string, text: string) => { const path = join(dir, "s.sh"); writeFileSync(path, text); return path; };
+
+  it("reads the script into a card labelled with the secret's name, and asks Run or Not now", () => {
+    const step = secretStep({ machine: "box", path: "/home/lyrica/join.sh", why: "Joins the tailnet.", secret: " Tailscale auth key " }, Buffer.from("read -r k\n"));
+    expect(step).toMatchObject({ secret: "Tailscale auth key", why: "Joins the tailnet.", sha256: createHash("sha256").update("read -r k\n").digest("hex") });
+    expect(step.command).not.toContain("sudo");
+    expect(secretStep({ machine: "box", path: "/k.sh", why: "w", secret: "Deploy key", lines: true }, Buffer.from("x")).lines).toBe(true);
+    expect(() => secretStep({ machine: "box", path: "/k.sh", why: "w", secret: "" }, Buffer.from("x"))).toThrow(/label, 1 to 40/);
+    expect(() => secretStep({ machine: "box", path: "/k.sh", why: "w", secret: "a\nb" }, Buffer.from("x"))).toThrow(/one line/);
+    expect(secretAsk({ machine: "box", why: "w", secret: "Tailscale auth key" })?.options.map((o) => [o.label, !!o.secret])).toEqual([["Run", true], ["Not now", false]]);
+  });
+
+  it("gives the secret to the script's input only when the script is the one the card hashed", () => {
+    const dir = mkdtempSync(join(tmpdir(), "lyrica-card-"));
+    const path = script(dir, "IFS= read -r k\necho \"got ${#k} characters\"\n");
+    const step = secretStep({ machine: "box", path, why: "w", secret: "Key" }, readFileSync(path));
+    expect(runCard(step.command, "tskey-abc\n")).toBe("got 9 characters\n");
+    writeFileSync(path, "IFS= read -r k\necho \"$k\"\n");
+    expect(runCard(step.command, "tskey-abc\n")).toMatch(/^exit [1-9]/);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("runs a root step with the password written only once sudo prompts, to sudo alone, and root copying and checking the script", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "lyrica-card-"));
+    const path = script(dir, "echo ran as root step\n");
+    const step = rootStep({ machine: "box", path, why: "w" }, readFileSync(path), "lyrica");
+    expect(await runSudoCard(path, step.sha256, "hunter2")).toEqual({ out: "ran as root step\n", code: 0 });
+    expect(await runSudoCard(path, step.sha256, "wrong")).toEqual({ out: "Sorry, try again.\n", code: 1 });
+    // The account's shell execs sudo: nothing of the account sits between the input and sudo.
+    expect(sudoRunCommand(path, step.sha256, "bash", "p")).toMatch(/^exec sudo -S -k -p 'p' \/bin\/sh -c '[^']*mktemp/);
+    writeFileSync(path, "echo changed\n");
+    expect((await runSudoCard(path, step.sha256, "hunter2")).code).not.toBe(0);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("masks the secret in output that comes in pieces, a key's long lines too, and wipes what it held", () => {
+    const masks = secretMasks(Buffer.from("-----BEGIN KEY-----\nAAAAB3NzaC1yc2E\nxyz\n-----END KEY-----\n"));
+    expect(masks.map(String)).toEqual(["-----BEGIN KEY-----\nAAAAB3NzaC1yc2E\nxyz\n-----END KEY-----", "-----BEGIN KEY-----", "-----END KEY-----", "AAAAB3NzaC1yc2E"]);
+    const m = new Masker(secretMasks(Buffer.from("hunter2\n")));
+    const out = [m.push(Buffer.from("pass: hun")), m.push(Buffer.from("ter2 ok\nhunter")), m.push(Buffer.from("2")), m.end()];
+    expect(Buffer.concat(out).toString()).toBe("pass: [secret] ok\n[secret]");
+    const held = secretMasks(Buffer.from("hunter2"));
+    new Masker(held).wipe();
+    const marked = new Masker(secretMasks(Buffer.from("pw")), [Buffer.from("ready-1\n"), Buffer.from("sudo-1")]);
+    expect(Buffer.concat([marked.push(Buffer.from("rea")), marked.push(Buffer.from("dy-1\nsu")), marked.push(Buffer.from("do-1ok pw")), marked.end()]).toString()).toBe("ok [secret]");
+    expect(held[0]!.every((b) => b === 0)).toBe(true);
   });
 });

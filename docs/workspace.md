@@ -310,7 +310,7 @@ sudo touch /etc/ssh/authorized_keys/<account> &&
 sudo sed -i '\|<the key>|d' /etc/ssh/authorized_keys/<account> &&
 printf '%s\n' '<the key line>' | sudo tee -a /etc/ssh/authorized_keys/<account> > /dev/null &&
 sudo chmod 644 /etc/ssh/authorized_keys/<account> &&
-printf 'Match User <account>\n    AuthorizedKeysFile /etc/ssh/authorized_keys/%%u\n' | sudo tee /etc/ssh/sshd_config.d/lyrica-<account>.conf > /dev/null &&
+printf 'Match User <account>\n    AuthorizedKeysFile /etc/ssh/authorized_keys/%%u\n    PasswordAuthentication no\n    KbdInteractiveAuthentication no\n' | sudo tee /etc/ssh/sshd_config.d/lyrica-<account>.conf > /dev/null &&
 sudo sshd -t &&
 sudo systemctl reload ssh &&
 
@@ -322,8 +322,8 @@ The `sed` drops any earlier line for the same key first, such as one an
 older setup pinned to her server's addresses with `from=`, so running the
 setup again (Replace key shows it when her login fails) leaves one line.
 
-Sudo without a password is optional and never in that block, so pasting it
-grants nothing. The page offers it as two commands of their own.
+Sudo is optional and never in that block, so pasting it grants nothing.
+The page offers it as three commands of their own.
 **Sudo, exact commands** is built on the page from the commands the user
 types, one box each (up to eight): each becomes `<account> ALL=(root)
 NOPASSWD: <command>`, checked as typed by the same `checkSudoers` her
@@ -332,7 +332,11 @@ modules so the page imports it), with its refusal or its "reaches root
 anyway" warning under the box; Copy waits until every box passes. **Sudo,
 everything** (`machineSudo`, the probe's `sudo`) is `<account> ALL=(root)
 NOPASSWD: ALL`, only when the user really trusts the models that will run
-there. Each adds its lines to `/etc/sudoers.d/lyrica` the way the
+there. **Sudo, with password** (the probe's `sudo.password`) writes her sshd
+rule again with password logins off (for an account set up before they
+were), runs `sudo passwd <account>` so the user chooses its password at
+the prompt, and adds `<account> ALL=(root) ALL`: sudo then asks for that
+password, which the user types on each root step's card (Root steps). Each adds its lines to `/etc/sudoers.d/lyrica` the way the
 run-as-root card does (`sudoersCommand`): the file's other lines kept,
 checked by `visudo -c` before it is installed.
 
@@ -416,11 +420,14 @@ the person's own account.
 
 ## Root steps
 
-She never runs `sudo` with a password and never writes sudoers: a root step
-on a machine goes to the user on a card (`run_as_root`,
-`core/src/workspace/root.ts`). The owner decides by hand, per machine, how
-much `sudo` she gets without a password: nothing, exact commands, or
-everything when the owner really trusts the models that will run there (DESIGN.md, "Machines");
+She never holds a password and never writes sudoers: a root step on a
+machine goes to the user on a card (`run_as_root`,
+`core/src/workspace/root.ts`), where they run it in their own terminal or
+type their sudo password and press Run. The owner decides by hand, per
+machine, how much `sudo` she gets: nothing, exact commands, everything
+with a password typed on each card (Add machine's **Sudo, with password**),
+or everything without one when the owner really trusts the models that
+will run there (DESIGN.md, "Machines");
 with everything, `sudo <command>` runs from her `bash` like any command
 there, under the machine's mode limit and the suspect-command check, and
 the card is for machines without it. The lines she may *offer* on a card
@@ -436,7 +443,8 @@ the card is for machines without it. The lines she may *offer* on a card
   shows what bash reads.
 - The card is a question card (one open per thread, Waiting on you,
   Notifications, push, a tap or a typed answer), asking **Run as root on
-  <machine>?** with **Done** (recommended) and **Not now**. Its question
+  <machine>?** with **Run**, **Done** and **Not now** (stored as Done 0,
+  Not now 1, Run 2, so older cards keep their answers). Its question
   comes from the call's arguments (`rootAsk`); what it shows comes from the
   tool's result (`RootStep`): her `why`, the command, the hash and the
   script. Her account owns the script, so the command copies it first and
@@ -470,10 +478,78 @@ the card is for machines without it. The lines she may *offer* on a card
   where the program can reach root anyway (package managers, `docker`,
   `chmod`, `cp`, `tee`, `systemctl edit`, …). The floor
   above already refuses `/etc/sudoers*` to her `write` and `edit`.
+- **Run** takes the password typed in the card's **Password** field and
+  runs the step as a background command of the thread (`sudoRunCommand`):
+  `exec sudo -S -k -p '<prompt>' /bin/sh -c '<copy, check, run>' sh
+  '<path>' '<sha256>'`. Her shell execs sudo, so no process of hers keeps
+  the input; under setsid (`groupRun` with a ready line) her outer shell
+  closes its copy and prints a fresh ready line. lyricad writes the
+  password only once that line and sudo's fresh prompt have come out (the
+  SSH helper's `after`, `ops.ts` `handOff`); both lines are left out of the
+  output, and the password is masked (below).
+  Root makes the copy (root's own, mode 0600) and checks its hash, so her
+  account can't change it between the check and the run. `-k` means sudo
+  neither uses nor keeps a cached login. So the password never reaches the
+  conversation, a log or a file, and ordinary commands of hers don't see
+  it. A process of her account set up in advance could: one that opens the
+  input through `/proc` before her shell lets go of it keeps its own read
+  end and races sudo, and both lines are on the command line, so it can
+  print them early. With `ALL=(root) ALL` that is root, so **Sudo, with
+  password** guards against mistakes, not a hostile model; exact NOPASSWD
+  commands and root steps run in the person's own terminal are stronger. **Keep for** (minutes, 0 to 60, 0
+  by default) keeps the password in lyricad's memory for that machine
+  (`Workspace.passwordKept`), so a later root card there shows **Kept · <n>
+  min left** with **Forget** and runs without it being typed; each card
+  still waits for Run. Lock, a restart, Forget, removing the machine or the
+  time running out overwrites it with zeros. It works where sudo takes a
+  password: her login as the person's own account, or her account after
+  **Sudo, with password**, whose setup rewrites her sshd rule so SSH
+  refuses passwords for her account (every setup's rule says so now), runs
+  `passwd` for it at the person's prompt and adds `<account> ALL=(root)
+  ALL` through `sudoersCommand`.
 - The answer arrives in a later turn as `[Answer to q:<n>]` with the
-  option's label or the user's words; she checks the result then.
+  option's label or the user's words; she checks the result then. After
+  Run, the background command's end tells her, with its output.
 - Not in an ordinary child thread (it asks its parent), a subagent, or
   Plan mode.
+
+## Secrets for one command
+
+A key, token or password a command needs never passes through a
+conversation (DESIGN.md, "Machines"). It does reach her account: the
+script runs as her account, so while it runs, any other command of hers on
+that machine can read its input, change its copy after the hash check, or
+read the environment or command line of what the script hands the secret
+to, and the secret is wherever the script puts it afterwards. What holds is
+that it never reaches chat, the thread or the kept output except as
+`[secret]`. So her skill asks for one-off, narrow or short-lived secrets,
+revoked if the run fails, and the card says the script runs as her
+account. She writes a script on a machine
+that reads it from standard input and calls `run_with_secret({ machine,
+path, secret, lines?, why })`, where `secret` is the field's label
+("Tailscale auth key", at most 40 characters) and `lines` asks for a box of
+several lines (a private key). The script is read and hashed as a root
+step's is (`secretStep`), and the card is a question card, **Run with a
+secret on <machine>?**, with her `why`, the field (masked, with **Show**),
+the command, the hash and the script, then **Run** and **Not now**.
+Notifications offer only Not now: Run needs the field.
+
+Run posts the secret to lyricad as raw bytes (`POST …/questions/:n/run`,
+docs/daemon.md), never JSON, so no string of it is left in lyricad.
+`Workspace.runFromCard` starts the checked copy as her account
+(`secretCommand`: no sudo) as a background command of the thread, writes
+the secret and a newline to its standard input over the SSH helper and
+ends the input; the secret is never on a command line, in an environment
+of hers or in a file. Its output is masked as it comes (`Masker`,
+`secretMasks`: the secret, and each line of a several-line one 8 bytes or
+longer, become `[secret]`, even split across pieces), so what is kept
+with the thread and what she is told hold none of it. When the run ends,
+lyricad overwrites its copies with zeros. Only machines take a secret,
+not the sandbox. What the script does with it is the script's, which is
+why the person reads it first; her `secrets` skill
+(`extension/src/secrets.md`) says how to write one (read it once, hand it
+on through stdin or one command's environment, never echo or save it,
+remove it from where a program kept it) and which card fits.
 
 ### Adding a machine, asked in chat
 
@@ -498,15 +574,15 @@ the GPU; saying what can run there; listing the system-wide changes for a
 yes; the prerequisites as a root step; cloning her own repository (its
 address is in the skill; she asks rather than guess another) and
 `install.sh --no-start` as her account, with the image build and pull in the background; the
-install itself as a root step, pinned to a clean commit of her clone; when
-the person wants the host on their tailnet, a second pinned script with
-`install.sh --tailscale NAME` that the person runs with `sudo bash` in
-their own terminal (the host never listens on the machine's own Tailscale
-address). The auth key is typed at a hidden prompt, never through chat;
-`.env` is root's while the key is in it; the key is one-off and
-short-lived, so once used it is worthless even though the tailscale
-container's environment keeps it; and a key that didn't join is revoked
-before she reads the logs; a smoke test against
+install itself as a root step, pinned to a clean commit of her clone (a
+root step she runs with `sudo` herself where `sudo -n true` succeeds); when
+the person wants the host on their tailnet and it hasn't joined yet, a
+script as her account (in the `docker` group) given to `run_with_secret`
+for a one-off auth key: it reads the key, rewrites `.env` with
+`install.sh --yes --no-start --tailscale NAME` (the key never goes there),
+starts the stack with the key in `docker compose`'s environment, waits for
+the device to join, and starts the tailscale container again without it
+(the host never listens on the machine's own Tailscale address); a smoke test against
 `127.0.0.1:7236/host/v1/status`; pausing the host on a shared machine; and
 a pairing code from `127.0.0.1:7236/dashboard/pairing` for the user to
 enter in **Add model host**. Nothing under `host/` changes for it. A

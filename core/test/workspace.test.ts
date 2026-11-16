@@ -765,6 +765,15 @@ describe.skipIf(!helperRunnable)("an ssh target", () => {
       const { exitCode } = await ops.bash.exec("pwd && cat todo.txt", "/elsewhere", { onData: (d) => { out += d.toString(); } });
       expect(exitCode).toBe(0);
       expect(out).toBe(`${join(dir, "root")}\nbuy milk\n`);
+      // A card's secret is the command's whole input: read, then the input ends, so a second read finds nothing.
+      out = "";
+      await ops.bash.exec('IFS= read -r k; echo "${#k}"; cat; echo end', dir, { onData: (d) => { out += d.toString(); }, stdin: Buffer.from("tskey-abc\n") });
+      expect(out).toBe("9\nend\n");
+      // A sudo password waits for the shell's ready line and the prompt of what the command execs, then goes to it alone.
+      out = "";
+      await ops.bash.exec(`exec /bin/sh -c 'printf p-1 >&2; IFS= read -r k; [ -e /proc/$PPID/fd/0 ] && echo held; echo "\${#k}"'`, dir,
+        { onData: (d) => { out += d.toString(); }, stdin: Buffer.from("hunter2\n"), handOff: { ready: "r-1", prompt: "p-1" } });
+      expect(out.replace("r-1\n", "").replace("p-1", "")).toBe("7\n");
       // A stopped command takes what it started with it, even a child that outlives its shell.
       const pidFile = join(dir, "root", "child.pid");
       const stop = new AbortController();

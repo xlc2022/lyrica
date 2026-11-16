@@ -2,7 +2,7 @@ import type { ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import { Type, type Static } from "typebox";
 import { StringEnum } from "@earendil-works/pi-ai";
 import {
-  ASK_GUIDELINE, CHILD_WAKES, isQuestionCall, ROOT_LIMITS, ROOT_TOOL, rootStep, SUDOERS_FILE, SUDOERS_HOW, normalizeThreadArguments, cleanAsk, CHILD_THREAD_GUIDELINES, cleanSteps, MENTION_GUIDELINE, pickThread, PROJECT_CHAT_GUIDELINES, PROJECT_THREAD_GUIDELINES, STEPS_GUIDELINE, STEPS_LIMITS, threadLine, describe, parseSchedule, ROUTINE_GUIDELINE, WAKEUP_GUIDELINE, WAKEUP_LIMITS, WATCH_GUIDELINE,
+  ASK_GUIDELINE, CHILD_WAKES, isQuestionCall, ROOT_LIMITS, ROOT_TOOL, rootStep, SECRET_LIMITS, SECRET_TOOL, secretStep, SUDOERS_FILE, SUDOERS_HOW, normalizeThreadArguments, cleanAsk, CHILD_THREAD_GUIDELINES, cleanSteps, MENTION_GUIDELINE, pickThread, PROJECT_CHAT_GUIDELINES, PROJECT_THREAD_GUIDELINES, STEPS_GUIDELINE, STEPS_LIMITS, threadLine, describe, parseSchedule, ROUTINE_GUIDELINE, WAKEUP_GUIDELINE, WAKEUP_LIMITS, WATCH_GUIDELINE,
   type ChildInfo, type StartRequest, type ThreadsLimits,
 } from "@lyrica/core";
 import { askCompaction, COMPACT_GUIDELINES, type ContextMeter } from "./context.ts";
@@ -546,7 +546,7 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
       pi.registerTool({
         name: ROOT_TOOL,
         label: "Run as root",
-        description: `Ask the person, on a card, to run as root a script you wrote with write on one of your machines; the answer comes in a later turn. Optionally offer sudoers lines for a root command needed again (one command, full path, fixed arguments); the card carries the command that adds them.`,
+        description: `Ask the person, on a card, to run as root a script you wrote with write on one of your machines; the answer comes in a later turn. They run it themselves (Done), or Run it with their sudo password as a background command, whose end you're told. Optionally offer sudoers lines for a root command needed again (one command, full path, fixed arguments); the card carries the command that adds them.`,
         promptSnippet: "hand a root step on a machine to the person, on a card",
         parameters: Type.Object({
           machine: Type.String({ description: "One of your machines, by name." }),
@@ -564,6 +564,33 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
           await host.asked?.(thread);
           return {
             content: [{ type: "text" as const, text: `The root step is on a card, with the hash ${step.sha256}: \`${step.command}\`${step.sudoers ? `, and ${step.sudoers.length} sudoers line(s) with the command that adds them to ${SUDOERS_FILE} (${SUDOERS_HOW})` : ""}. Carry on with what doesn't depend on it, or end the turn; the answer arrives in a later turn, and then check that it worked.` }],
+            details: { root: step },
+          };
+        },
+      });
+
+      pi.registerTool({
+        name: SECRET_TOOL,
+        label: "Run with a secret",
+        description: "Ask the person, on a card, for a secret that goes to the standard input of a script you wrote on one of your machines, never through chat. Run starts it as your account, as a background command. Read the secrets skill first.",
+        promptSnippet: "a key or password into one script, on a card",
+        parameters: Type.Object({
+          machine: Type.String({ description: "One of your machines, by name." }),
+          path: Type.String({ description: "The script's absolute path." }),
+          secret: Type.String({ description: `The field's label, e.g. "Tailscale auth key" (≤${SECRET_LIMITS.name} chars).` }),
+          lines: Type.Optional(Type.Boolean({ description: "Several lines (a private key)." })),
+          why: Type.String({ description: `What it does with it, and where to make one (≤${ROOT_LIMITS.why} chars).` }),
+        }),
+        async execute(id, p: { machine: string; path: string; secret: string; lines?: boolean; why: string }, _signal, _update, ctx) {
+          const { bytes } = await read(thread, p.machine, p.path);
+          const step = secretStep(p, bytes);
+          syncEntries(ctx.sessionManager, store, thread.threadId);
+          const n = store.questionCall(thread.threadId, id);
+          if (n === undefined) throw new Error("run_with_secret needs its stored tool call");
+          store.askQuestion(thread.threadId, n);
+          await host.asked?.(thread);
+          return {
+            content: [{ type: "text" as const, text: `The card asks for the ${step.secret}, with the script's hash ${step.sha256}. Carry on with what doesn't depend on it, or end the turn. If the person presses Run, the script runs as a background command and you're told when it ends; if they choose Not now, nothing ran.` }],
             details: { root: step },
           };
         },

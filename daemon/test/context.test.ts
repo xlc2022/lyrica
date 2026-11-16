@@ -83,7 +83,9 @@ describe("her context", () => {
     const context = stream.events.find((e) => e.event.type === "context")?.event as Extract<ThreadEvent, { type: "context" }>;
     expect(context.context).toMatchObject({ window: 16_384, parts: expect.arrayContaining([{ name: "conversation", tokens: expect.any(Number) }]) });
     const settings = (await ada.get<ThreadSettings>(`${path}/settings`)).body;
-    expect(settings.context).toMatchObject({ window: 16_384, reserve: 1311 });
+    // Pi's reserve, 8% of the window, or what her prompt leaves of it where the sandbox's tools (browse) make it longer.
+    expect(settings.context).toMatchObject({ window: 16_384, reserve: Math.min(1311, 16_384 - settings.context!.tokens) });
+    expect(settings.context!.reserve).toBeGreaterThan(0);
     const used = settings.context!.parts.filter((p) => p.name !== "reserve" && p.name !== "free").reduce((a, p) => a + p.tokens, 0);
     expect(used).toBe(settings.context!.tokens);
 

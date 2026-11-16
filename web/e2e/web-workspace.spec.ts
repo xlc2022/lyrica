@@ -621,8 +621,12 @@ test("Machines lists none, and Add machine reaches a machine before anything is 
   // The optional sudo rights are commands of their own, each with its Copy, so pasting the setup never grants them.
   await expect(setup).not.toContainText("NOPASSWD");
   await expect(page.getByRole("button", { name: "Copy sudo, everything" })).toBeVisible();
-  await expect(page.locator(".machine-sudo pre")).toHaveCount(1);
-  await expect(page.locator(".machine-sudo pre")).toContainText("NOPASSWD: ALL");
+  await expect(page.locator(".machine-sudo pre")).toHaveCount(2);
+  await expect(page.locator(".machine-sudo pre").first()).toContainText("NOPASSWD: ALL");
+  // Sudo with a password: SSH refuses the password, which is set at the person's own prompt.
+  await expect(page.getByRole("button", { name: "Copy sudo, with password" })).toBeVisible();
+  await expect(page.locator(".machine-sudo pre").nth(1)).toContainText("PasswordAuthentication no");
+  await expect(page.locator(".machine-sudo pre").nth(1)).toContainText("passwd lyrica");
   // Exact commands: a box per command, checked as typed, and one command adding every line once all pass.
   const exact = page.locator(".exact-sudo");
   await expect(exact.getByRole("button", { name: "Copy sudo, exact commands" })).toBeDisabled();

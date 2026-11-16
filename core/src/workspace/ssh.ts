@@ -205,16 +205,16 @@ export class SshTarget implements ExecutionTarget {
       },
       edit: { readFile: rawRead, writeFile, access: async (p) => { const { s, q } = await writable(p); return s.check(q, "r+"); } },
       bash: {
-        exec: async (command, cwd, { onData, onRaw, signal, timeout }) => {
+        exec: async (command, cwd, { onData, onRaw, signal, timeout, stdin, handOff }) => {
           const base = await this.cwd();
           const dir = within(posix.normalize(cwd), base) ? posix.normalize(cwd) : base;
           const out = capOutput(onData);
           const clean = cleanOutput((d) => { out.push(d); onRaw?.(d); });
           const session = await this.session();
-          const group = groupRun(command);
+          const group = groupRun(command, stdin && handOff ? handOff.ready : undefined);
           try {
             // As `ssh host cmd` runs it, in the account's own environment; Debian's sshd leaves /usr/sbin and /sbin off a plain user's PATH, so they go on its end.
-            const code = await session.exec(`export PATH="$PATH:/usr/sbin:/sbin" && cd ${quote(dir)} && ${group.run}`, { onData: (d) => clean.push(d), signal, timeout });
+            const code = await session.exec(`export PATH="$PATH:/usr/sbin:/sbin" && cd ${quote(dir)} && ${group.run}`, { onData: (d) => clean.push(d), signal, timeout, ...(stdin ? { stdin, ...(handOff ? { after: [handOff.ready, handOff.prompt] } : {}) } : {}) });
             return { exitCode: code };
           } catch (err) {
             // Stopped, timed out or cut off: SSH's KILL reaches only the shell, so what the command started goes by its process group.
@@ -237,11 +237,20 @@ export class SshTarget implements ExecutionTarget {
  * named for this run while it runs and passes its exit code on; `kill` ends
  * that group and removes the file. A machine with no setsid runs the
  * command as before, and `kill` finds no file.
+ *
+ * With `ready` (a sudo password to come on the input, ops.ts handOff), the
+ * command ends by exec-ing sudo, and the account's own shell closes its copy
+ * of the input before it prints `ready`: once sudo prompts, no shell of the
+ * account holds the input the password is written to.
  */
-export function groupRun(command: string): { run: string; kill: string } {
+export function groupRun(command: string, ready?: string): { run: string; kill: string } {
   const file = `"\${TMPDIR:-/tmp}/lyrica-run-${randomBytes(8).toString("hex")}"`;
+  const say = ready ? `printf '%s\\n' ${quote(ready)}` : "";
   return {
-    run: `if command -v setsid >/dev/null 2>&1; then setsid "\${SHELL:-/bin/sh}" -c ${quote(command)} <&0 & p=$!; echo "$p" > ${file}; wait "$p"; r=$?; rm -f ${file}; exit "$r"; else ${command}
+    run: ready
+      ? `if command -v setsid >/dev/null 2>&1; then setsid "\${SHELL:-/bin/sh}" -c ${quote(command)} <&0 & p=$!; exec 0<&-; ${say}; echo "$p" > ${file}; wait "$p"; r=$?; rm -f ${file}; exit "$r"; else ${say}; ${command}
+fi`
+      : `if command -v setsid >/dev/null 2>&1; then setsid "\${SHELL:-/bin/sh}" -c ${quote(command)} <&0 & p=$!; echo "$p" > ${file}; wait "$p"; r=$?; rm -f ${file}; exit "$r"; else ${command}
 fi`,
     kill: `f=${file}; if [ -f "$f" ]; then kill -KILL -- "-$(cat "$f")" 2>/dev/null; rm -f "$f"; fi`,
   };

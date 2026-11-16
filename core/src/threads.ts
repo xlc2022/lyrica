@@ -9,7 +9,8 @@ export const FROM_PARENT = /^\[From t:([^\]\s]+)\]\n\n/;
 /** Only lyricad writes an answer mark; the label remains a user's message. */
 export const ANSWER = /^\[Answer to q:/;
 export const answerMark = (n: number) => `[Answer to q:${n}]\n\n`;
-export interface Ask { question: string; options: { label: string; consequence: string }[]; recommended: number; context?: string }
+/** A card's question. An option with `secret` (Run on a root or secret card) needs what the person types on the card, so only the card's own route answers it. */
+export interface Ask { question: string; options: { label: string; consequence: string; secret?: true }[]; recommended: number; context?: string }
 export const ASK_LIMITS = { question: 800, context: 1200, minOptions: 2, maxOptions: 4, label: 40, consequence: 200 };
 /** Only unambiguous repairs, shared by Pi preparation and encrypted-log readers. */
 export function normalizeThreadArguments(input: unknown): any {
@@ -74,6 +75,15 @@ export function cleanAsk(input: unknown): Ask {
 }
 /** The tool whose card asks the person to run a script as root (docs/workspace.md, "Root steps"). */
 export const ROOT_TOOL = "run_as_root";
+/** The tool whose card asks the person for a secret that goes to one script's input (docs/workspace.md, "Secrets for one command"). */
+export const SECRET_TOOL = "run_with_secret";
+
+/** The answers on a root step's card, by index: stored answers keep their numbers, so Run, added later, comes last. */
+export const ROOT_OPTIONS = { done: 0, notNow: 1, run: 2 } as const;
+/** The answers on a secret's card, by index. */
+export const SECRET_OPTIONS = { run: 0, notNow: 1 } as const;
+
+const NOT_NOW = { label: "Not now", consequence: "Nothing runs. What waits on it gets said next." };
 
 /** The question a root step asks, for Notifications, the project card and her stored answer: from the call's arguments. */
 export function rootAsk(args: unknown): Ask | undefined {
@@ -83,20 +93,34 @@ export function rootAsk(args: unknown): Ask | undefined {
     question: `Run as root on ${a.machine}?`.slice(0, ASK_LIMITS.question),
     context: a.why.trim().slice(0, 1200),
     options: [
-      { label: "Done", consequence: "You ran it. She checks the result and carries on." },
-      { label: "Not now", consequence: "Nothing runs. She says what waits on it." },
+      { label: "Done", consequence: "Already run by hand. The result gets checked next." },
+      NOT_NOW,
+      { label: "Run", consequence: "Sudo takes the password for this script only.", secret: true },
     ],
     recommended: 0,
   };
 }
 
-/** Whether a stored tool call is a question card: `threads` ask, or a root step. */
+/** The question a secret's card asks: from the call's arguments. */
+export function secretAsk(args: unknown): Ask | undefined {
+  const a = args as { machine?: unknown; why?: unknown; secret?: unknown } | null;
+  if (typeof a?.machine !== "string" || !a.machine || typeof a.why !== "string" || typeof a.secret !== "string") return undefined;
+  return {
+    question: `Run with a secret on ${a.machine}?`.slice(0, ASK_LIMITS.question),
+    context: a.why.trim().slice(0, 1200),
+    options: [{ label: "Run", consequence: "What's typed here goes to this script, never into the chat.", secret: true }, NOT_NOW],
+    recommended: 0,
+  };
+}
+
+/** Whether a stored tool call is a question card: `threads` ask, a root step, or a secret's card. */
 export const isQuestionCall = (name: unknown, args: unknown): boolean =>
-  (name === "threads" && (args as { action?: unknown } | null)?.action === "ask") || name === ROOT_TOOL;
+  (name === "threads" && (args as { action?: unknown } | null)?.action === "ask") || name === ROOT_TOOL || name === SECRET_TOOL;
 
 /** A question card's question, from its stored call; undefined if it doesn't hold one. */
 export function askOfCall(name: unknown, args: unknown): Ask | undefined {
   if (name === ROOT_TOOL) return rootAsk(args);
+  if (name === SECRET_TOOL) return secretAsk(args);
   try { return cleanAsk(args); } catch { return undefined; }
 }
 export const ASK_GUIDELINE = "Ask on a card (threads ask) only for a fork that changes the person's goal, an output they will notice, or a step no one can undo. Ask once, without repeating it in prose. Put the recommended option first. Keep working on it where the step can be undone; otherwise end the turn. The answer arrives in a later turn.";
