@@ -1858,10 +1858,15 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   Not now 1 (`SECRET_OPTIONS`). Run calls `Workspace.runFromCard(t, { machine,
   path, sha256, script, sudo }, secret?, { keepMinutes?, name? })`, which
   starts a background job with `stdin` (the secret and a newline) and
-  `mask` (`secretMasks`); a root step's runs `sudoRunCommand` and may keep the
+  `mask` (`secretMasks`); a root step's runs `sudoRunCommand(path, sha256,
+  shell, prompt)` with `handOff` and `drop` (fresh ready and prompt lines,
+  left out of the output by `Masker`'s second list) and may keep the
   password (`passwordKept`, `forgetPasswords`, `KEEP_PASSWORD_MINUTES`).
-  `ToolOps.bash.exec` and `SshSession.exec` take `stdin?: Buffer` (machines
-  only; the SSH helper ends the command's input after it). See
+  `ToolOps.bash.exec` takes `stdin?: Buffer` and `handOff?: { ready, prompt }`,
+  `SshSession.exec` `stdin?` and `after?: string[]` (machines only; the SSH
+  helper ends the command's input after it, and with `after` writes it only
+  once each line has come out); `groupRun(command, ready?)` closes the
+  account shell's input and prints `ready` first. See
   [workspace.md](workspace.md#secrets-for-one-command).
 - **Workspace extension** (`createWorkspaceExtension(tools: ThreadTools)`):
   - A `bash` call with no `timeout` gets `BASH_TIMEOUT_S` (600 seconds),

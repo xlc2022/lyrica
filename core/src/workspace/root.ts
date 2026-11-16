@@ -58,12 +58,15 @@ export const secretCommand = (path: string, sha256: string, shell: "sh" | "bash"
 
 /**
  * A root step lyricad runs itself, with the password the person typed on the
- * card as sudo's first line of input: `-S` reads it there, `-p ''` prints no
- * prompt, and `-k` neither uses nor updates a cached login, so the password
- * opens this one script and nothing she runs after it.
+ * card. The account's shell execs sudo at once, so it keeps no copy of the
+ * input: `-S` reads the password there, `-p` prints `prompt` (lyricad writes
+ * the password only once it sees it, ops.ts handOff), and `-k` neither uses
+ * nor updates a cached login. Root makes the copy of the script and checks
+ * its hash, so the copy is root's own and the account can't change it between
+ * the check and the run.
  */
-export const sudoRunCommand = (path: string, sha256: string, shell: "sh" | "bash" = "bash"): string =>
-  `f=$(mktemp) && cat ${quote(path)} > "$f" && echo ${quote(`${sha256}  `)}"$f" | sha256sum -c --quiet - && sudo -S -k -p '' ${shell} "$f"; rc=$?; rm -f "$f"; (exit $rc)`;
+export const sudoRunCommand = (path: string, sha256: string, shell: "sh" | "bash", prompt: string): string =>
+  `exec sudo -S -k -p ${quote(prompt)} /bin/sh -c ${quote(`f=$(mktemp) && cat "$1" > "$f" && printf '%s  %s\\n' "$2" "$f" | sha256sum -c --quiet - && ${shell} "$f"; rc=$?; rm -f "$f"; exit $rc`)} sh ${quote(path)} ${quote(sha256)}`;
 
 const HIDDEN = /[\x00-\x08\x0b-\x1f\x7f\u00ad\u061c\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff]/;
 

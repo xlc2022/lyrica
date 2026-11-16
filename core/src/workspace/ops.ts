@@ -28,6 +28,12 @@ export interface ToolOps {
       env?: NodeJS.ProcessEnv;
       /** What the command reads on its standard input, then end of input: a secret from a card (machines only). Without it, nothing is written. */
       stdin?: Buffer;
+      /**
+       * With `stdin`, a sudo password: the command must end by exec-ing sudo with `prompt` as its prompt. The
+       * account's shell lets go of the input and prints `ready`, sudo prints `prompt`, and only then is `stdin`
+       * written, so sudo alone holds and reads it. Both lines are left out of the output.
+       */
+      handOff?: { ready: string; prompt: string };
     }): Promise<{ exitCode: number | null }>;
   };
 }

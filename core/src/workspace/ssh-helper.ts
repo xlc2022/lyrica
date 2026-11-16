@@ -110,10 +110,19 @@ function request(id: number, head: Frame["head"], body: Buffer): void {
       client.exec(String(head.command), (err, stream) => {
         if (err) return done(err);
         streams.set(id, stream);
-        // A secret from a card is the command's whole input: written, then the input ends.
-        if (head.stdin === true) stream.end(body);
+        // A secret from a card is the command's whole input: written, then the input ends. With `after`, it waits until
+        // each of those lines has come out of the command (a sudo password waits for sudo's own prompt).
+        const after = head.stdin === true && Array.isArray(head.after) ? head.after.map(String) : [];
+        if (head.stdin === true && !after.length) stream.end(body);
+        let tail = "";
+        const watch = (d: Buffer) => {
+          if (!after.length) return;
+          tail = (tail + d.toString("latin1")).slice(-4096);
+          for (let i = after.length - 1; i >= 0; i--) if (tail.includes(after[i]!)) after.splice(i, 1);
+          if (!after.length) { stream.end(body); tail = ""; }
+        };
         // All of it crosses the pipe: lyricad keeps the whole output with the thread and gives her its start and end.
-        const out = (d: Buffer) => { for (let i = 0; i < d.length; i += MAX_BODY) send({ id, ev: "data" }, d.subarray(i, i + MAX_BODY)); };
+        const out = (d: Buffer) => { watch(d); for (let i = 0; i < d.length; i += MAX_BODY) send({ id, ev: "data" }, d.subarray(i, i + MAX_BODY)); };
         stream.on("data", out);
         stream.stderr.on("data", out);
         stream.on("close", (code: number | null) => {

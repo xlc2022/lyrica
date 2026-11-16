@@ -1667,13 +1667,18 @@ NAS, and Proxmox nodes. Decided 2026-10-11 from
   really trusts the models that will run there, passwordless sudo for
   everything (the owner said so on 2026-11-01). The machine's mode limit
   and the suspect-command check still apply to what she runs.
-- **Secrets reach one command, never her** (the owner, 2026-11-16). A key,
-  token or password a command needs is typed on a question card
-  (`run_with_secret`), sent to lyricad as raw bytes, written to the
-  standard input of the one script the card hashed, masked in its output
-  and overwritten with zeros when it ends. It never reaches a model, the
-  thread's text, a log or a file. One pasted into chat is part of the
-  conversation; she says so and asks for a new one.
+- **Secrets reach one command, never the conversation** (the owner,
+  2026-11-16). A key, token or password a command needs is typed on a
+  question card (`run_with_secret`), sent to lyricad as raw bytes, written
+  to the standard input of the one script the card hashed, masked in its
+  output and overwritten with zeros when it ends. It never reaches a model,
+  the thread's text, a log or a file. The script runs as her account, so
+  her account, and any other command of hers on that machine, can reach
+  the secret while it runs: the card and her skill say so, and ask for
+  one-off, narrow or short-lived secrets. A sudo password goes to sudo
+  alone: her shell execs sudo, lyricad writes it only once sudo prompts,
+  and root copies and checks the script. One pasted into chat is part of
+  the conversation; she says so and asks for a new one.
 - **A machine has a mode limit**, the loosest mode she may use there: Ask,
   Accept edits or Auto. New machines start at **Ask**; the owner loosens each one
   as she proves reliable there. A call's mode is the strictest of the

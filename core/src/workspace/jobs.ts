@@ -63,8 +63,9 @@ export const SECRET_MASK = "[secret]";
 export class Masker {
   private carry: Buffer = Buffer.alloc(0);
   private readonly keep: number;
-  constructor(private readonly secrets: Buffer[]) {
-    this.keep = Math.max(0, ...secrets.map((x) => x.length)) - 1;
+  /** `drop`: lines left out of the output altogether (the markers of a sudo run, ops.ts handOff). */
+  constructor(private readonly secrets: Buffer[], private readonly drop: Buffer[] = []) {
+    this.keep = Math.max(0, ...secrets.map((x) => x.length), ...drop.map((x) => x.length)) - 1;
   }
   push(data: Buffer): Buffer {
     const all = this.mask(Buffer.concat([this.carry, data]));
@@ -82,12 +83,12 @@ export class Masker {
     for (const x of this.secrets) x.fill(0);
   }
   private mask(b: Buffer): Buffer {
-    for (const x of this.secrets) {
+    for (const [x, by] of [...this.secrets.map((x) => [x, SECRET_MASK] as const), ...this.drop.map((x) => [x, ""] as const)]) {
       if (!x.length) continue;
       const parts: Buffer[] = [];
       let from = 0;
       for (let i = b.indexOf(x); i >= 0; i = b.indexOf(x, from)) {
-        parts.push(b.subarray(from, i), Buffer.from(SECRET_MASK));
+        parts.push(b.subarray(from, i), Buffer.from(by));
         from = i + x.length;
       }
       if (from) b = Buffer.concat([...parts, b.subarray(from)]);
@@ -244,7 +245,7 @@ export class Jobs {
    * `retryMs`, and runs once it does, within its time limit. A changed or unconfirmed host key ends it at once.
    */
   start(thread: JobThread, place: string, target: ExecutionTarget, command: string, cwd: string | (() => Promise<string>), timeoutS = JOB_LIMITS.timeoutS,
-    o: { name?: string; call?: string; stdin?: Buffer; mask?: Buffer[]; done?: () => void } = {}): JobInfo {
+    o: { name?: string; call?: string; stdin?: Buffer; mask?: Buffer[]; drop?: Buffer[]; handOff?: { ready: string; prompt: string }; done?: () => void } = {}): JobInfo {
     const k = key(thread);
     const list = this.byThread.get(k) ?? [];
     const running = list.filter((j) => j.state === "running");
@@ -255,7 +256,7 @@ export class Jobs {
     const job: Job = {
       id: this.nextId(thread), name: jobName(o.name, command), ...(o.call ? { call: o.call } : {}), place, command, cwd: typeof cwd === "string" ? cwd : "",
       startedAt: new Date().toISOString(), state: "running", thread, controller: new AbortController(), kept: new KeptOutput(),
-      ...(o.mask?.length ? { masker: new Masker(o.mask) } : {}), ...(o.done ? { done: o.done } : {}),
+      ...(o.mask?.length ? { masker: new Masker(o.mask, o.drop) } : {}), ...(o.done ? { done: o.done } : {}),
     };
     list.push(job);
     this.byThread.set(k, list);
@@ -265,7 +266,7 @@ export class Jobs {
     timer.unref();
     const signal = job.controller.signal;
     // The whole output is kept from onRaw, as a foreground call's is: onData gets only the cut her result would (capOutput).
-    const run = (dir: string) => target.ops().bash.exec(command, dir, { onData: () => {}, onRaw: (d) => this.keep(job, d), signal, ...(o.stdin ? { stdin: o.stdin } : {}) });
+    const run = (dir: string) => target.ops().bash.exec(command, dir, { onData: () => {}, onRaw: (d) => this.keep(job, d), signal, ...(o.stdin ? { stdin: o.stdin, ...(o.handOff ? { handOff: o.handOff } : {}) } : {}) });
     const waited = async () => {
       for (;;) {
         try {

@@ -479,10 +479,19 @@ the card is for machines without it. The lines she may *offer* on a card
   `chmod`, `cp`, `tee`, `systemctl edit`, …). The floor
   above already refuses `/etc/sudoers*` to her `write` and `edit`.
 - **Run** takes the password typed in the card's **Password** field and
-  runs the same checked copy with `sudo -S -k -p ''`, the password as sudo's
-  first line of input (`sudoRunCommand`), as a background command of the
-  thread, the password masked in its output (below). `-k` means sudo
-  neither uses nor keeps a cached login. **Keep for** (minutes, 0 to 60, 0
+  runs the step as a background command of the thread (`sudoRunCommand`):
+  `exec sudo -S -k -p '<prompt>' /bin/sh -c '<copy, check, run>' sh
+  '<path>' '<sha256>'`. Her shell execs sudo, so no process of hers keeps
+  the input; under setsid (`groupRun` with a ready line) her outer shell
+  closes its copy and prints a fresh ready line. lyricad writes the
+  password only once that line and sudo's fresh prompt have come out (the
+  SSH helper's `after`, `ops.ts` `handOff`), so sudo alone reads it; both
+  lines are left out of the output, and the password is masked (below).
+  Root makes the copy (root's own, mode 0600) and checks its hash, so her
+  account can't change it between the check and the run. `-k` means sudo
+  neither uses nor keeps a cached login. A process of hers that opened the
+  input in the moment before her shell exec'd sudo could still race sudo
+  for the password; nothing of hers holds it once sudo prompts. **Keep for** (minutes, 0 to 60, 0
   by default) keeps the password in lyricad's memory for that machine
   (`Workspace.passwordKept`), so a later root card there shows **Kept · <n>
   min left** with **Forget** and runs without it being typed; each card
@@ -502,7 +511,15 @@ the card is for machines without it. The lines she may *offer* on a card
 ## Secrets for one command
 
 A key, token or password a command needs never passes through a
-conversation (DESIGN.md, "Machines"). She writes a script on a machine
+conversation (DESIGN.md, "Machines"). It does reach her account: the
+script runs as her account, so while it runs, any other command of hers on
+that machine can read its input, change its copy after the hash check, or
+read the environment or command line of what the script hands the secret
+to, and the secret is wherever the script puts it afterwards. What holds is
+that it never reaches chat, the thread or the kept output except as
+`[secret]`. So her skill asks for one-off, narrow or short-lived secrets,
+revoked if the run fails, and the card says the script runs as her
+account. She writes a script on a machine
 that reads it from standard input and calls `run_with_secret({ machine,
 path, secret, lines?, why })`, where `secret` is the field's label
 ("Tailscale auth key", at most 40 characters) and `lines` asks for a box of

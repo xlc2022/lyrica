@@ -1919,10 +1919,13 @@ export class Workspace {
     } else throw new Error("type the secret first");
     secret?.fill(0);
     const shell = scriptShell(step.script);
-    const command = step.sudo ? sudoRunCommand(step.path, step.sha256, shell) : secretCommand(step.path, step.sha256, shell);
+    // Fresh lines each run: the shell's "input let go" and sudo's prompt, after both of which the password is written.
+    const handOff = step.sudo ? { ready: `lyrica-ready-${randomBytes(12).toString("hex")}`, prompt: `lyrica-sudo-${randomBytes(12).toString("hex")}` } : undefined;
+    const command = handOff ? sudoRunCommand(step.path, step.sha256, shell, handOff.prompt) : secretCommand(step.path, step.sha256, shell);
     const target = this.targetFor(t, step.machine);
     return this.jobs.start(t, step.machine, target, command, machineReady(target), JOB_LIMITS.timeoutS, {
       ...(o.name ? { name: o.name } : {}), ...(o.call ? { call: o.call } : {}), stdin: input, mask: secretMasks(input), done: () => input.fill(0),
+      ...(handOff ? { handOff, drop: [`${handOff.ready}\n`, handOff.ready, handOff.prompt].map((x) => Buffer.from(x)) } : {}),
     });
   }
 

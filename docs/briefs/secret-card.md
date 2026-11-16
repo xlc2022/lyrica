@@ -20,7 +20,11 @@ key could only be typed there too.
   masked in the output and wiped at the end (docs/workspace.md, "Secrets
   for one command").
 - The root step's card gains **Password**, **Keep for** (0 to 60 minutes,
-  in memory only) and **Run** (`sudo -S -k`), beside Done and Not now.
+  in memory only) and **Run** (`sudo -S -k`, exec'd by her shell; the
+  password written only once sudo prompts; root copies and checks the
+  script), beside Done and Not now.
+- A `run_with_secret` script runs as her account, so her account can
+  reach the secret while it runs; the docs, skill and card say so.
 - Add machine's **Sudo, with password**: a password for her account,
   chosen at the person's own prompt, that SSH refuses.
 - Her `secrets` skill, and the `model-host` skill's Tailscale step on
@@ -32,6 +36,9 @@ key could only be typed there too.
 - Secrets in the sandbox: only machines take one.
 - Encrypting a kept password in lyricad's memory: the key would sit in the
   same process (offered to the owner, not asked for).
+
+- Refusing Run while another command of hers runs on that machine (a
+  partial guard against her own account; not built).
 
 ## Handoff
 
