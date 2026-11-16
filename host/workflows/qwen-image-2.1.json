@@ -178,6 +178,20 @@
       "class_type": "ManualSigmas",
       "inputs": {
         "sigmas": "$sigmas"
+      },
+      "_if": "sigmas"
+    },
+    "scheduled": {
+      "class_type": "BasicScheduler",
+      "_unless": "sigmas",
+      "inputs": {
+        "model": [
+          "cache",
+          0
+        ],
+        "scheduler": "$scheduler",
+        "steps": "$steps",
+        "denoise": 1
       }
     },
     "batch": {
@@ -222,10 +236,18 @@
           "sampler",
           0
         ],
-        "sigmas": [
-          "sigmas",
-          0
-        ],
+        "sigmas": {
+          "$pick": [
+            [
+              "sigmas",
+              0
+            ],
+            [
+              "scheduled",
+              0
+            ]
+          ]
+        },
         "latent_image": {
           "$pick": [
             [
@@ -256,10 +278,18 @@
           "sampler",
           0
         ],
-        "sigmas": [
-          "sigmas",
-          0
-        ],
+        "sigmas": {
+          "$pick": [
+            [
+              "sigmas",
+              0
+            ],
+            [
+              "scheduled",
+              0
+            ]
+          ]
+        },
         "latent_image": [
           "batch",
           0

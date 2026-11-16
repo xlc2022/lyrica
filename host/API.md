@@ -893,7 +893,8 @@ as `{ "parts": [...] }`, each entry like this:
   sd.cpp's flow shift alike, and defaults to the model's own 1.15),
   `qwen-image` (create, and edit for a diffusion model whose file name
   says "edit"), `qwen-image-2.1` (create and edit from one recipe, with
-  the Turbo's 8-step schedule from the recipe's defaults), `p-h3-image`
+  the Turbo's 8-step `sigmas` from the recipe's defaults, or, for a recipe
+  without them such as the base model, its `steps` on its `scheduler`), `p-h3-image`
   (create and edit from one recipe, up to 3 references, one image per
   request; the picture to edit scaled to the recipe's `editMegapixels`
   first and its sigmas from the recipe's defaults), `minimax-h3-image`

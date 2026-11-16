@@ -1,6 +1,8 @@
 {
   "name": "Qwen-Image 2.1 Turbo",
   "family": "Qwen-Image",
+  "variantOf": "Qwen-Image 2.1 Turbo",
+  "variant": "int8 encoder",
   "template": "qwen-image-2.1",
   "parts": [
     {

@@ -644,18 +644,15 @@ than **Qwen-Image (original)**'s soft, washed-out look, though they
 tend to look older than asked. The original stays listed; a model
 installed from it keeps its link to it.
 
-Qwen-Image (original), Qwen-Image 2512 and Qwen-Image-Edit 2509 each
-have a **bf16** variant beside the fp8 one, for ComfyUI hosts with a
-card of 48 GB or more: the full-precision 38.1 GiB diffusion model and
-the bf16 encoder (15.4 GiB), about 53.7 GiB of files for the first and
-38.1 GiB more for each other (they share the encoder and VAE). The host
-says one is too big on a 24 GB card; use fp8 there. A
-stable-diffusion.cpp host doesn't list them, nor any edit starter.
-Their defaults follow ComfyUI's own templates and the model cards:
-2512 bf16 runs 50 steps at CFG 4 (on an RTX PRO 6000, about 51 s of
-sampling at 1328×1328, against 21 s at 20 steps, with slightly more
-finished detail), Qwen-Image (original) bf16 20 steps at CFG 4, and
-Edit 2509 bf16 20 steps at CFG 4. Lower the steps in a recipe for speed.
+Qwen-Image 2.1 also comes in bf16 throughout, for ComfyUI hosts: the
+**Qwen-Image 2.1** starter is the base model, not distilled, at its
+card's 40 steps (CFG 1, 2048×2048), for the Quality images list, and
+**Qwen-Image 2.1 Turbo**'s **bf16** variant swaps the int8 encoder for
+the bf16 one. Each is about 30.2 GiB of files, and the second adds only
+its 13.3 GiB model; the largest stage is the 16.3 GiB encoder, so they
+fit a 24 GB card. Both create and edit. Their realism and settings
+haven't been tested on a card yet. A stable-diffusion.cpp host doesn't
+list them, nor any edit starter.
 
 The RealVisXL V5.0 starter (one 6.9 GB SDXL checkpoint) is the one to
 pick for SDXL photos: it looks far more like a photograph than base
