@@ -262,12 +262,15 @@ describe("read aloud", () => {
 describe("tone notes", () => {
   const system = (s: { model: { requests: { messages: { role: string; content?: unknown }[] }[] } }) => JSON.stringify(s.model.requests.at(-1)!.messages.filter((m) => m.role === "system"));
 
-  it("asks for none, and leaves her text alone, while the Read aloud model takes no tone", async () => {
+  it("asks for none, and keeps none, while the Read aloud model takes no tone, yet never shows a tag", async () => {
     const s = await setup();
-    await s.turn("Plain <tone>words</tone> stay.");
+    // As after Read aloud was switched off mid-turn: she still writes a tag.
+    await s.turn("Plain <tone>warm</tone>words stay.");
     expect(system(s)).not.toContain("<tone>");
     const page = (await s.ada.get<MessagePage>(`${s.path}/messages`)).body;
-    expect(page.messages.at(-1)!.parts).toEqual([{ type: "text", text: "Plain <tone>words</tone> stay." }]);
+    expect(page.messages.at(-1)!.parts).toEqual([{ type: "text", text: "Plain words stay." }]);
+    await (await s.audio(`${s.path}/messages/${page.messages.at(-1)!.n}/speech`)).arrayBuffer();
+    expect(s.speech.heard.every((h) => h.instruct === undefined)).toBe(true);
   });
 
   it("are asked for, lifted out as she writes, shown to no one, and read aloud with each paragraph", async () => {

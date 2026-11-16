@@ -27,7 +27,10 @@ export interface ThreadSessionOptions {
   onGpuWait?: (w: GpuWait | null) => void;
   /** The model request a turn waits on, as counts and times, and null once it ends (live-call.ts). */
   onLiveCall?: (c: LiveCall | null) => void;
-  /** Whether her replies' tone notes are lifted out now: while the Read aloud model takes a tone (docs/briefs/voice-tone.md). */
+  /**
+   * For her own threads: tone tags are lifted out of every reply, and the notes kept while this is true (the
+   * Read aloud model takes a tone; docs/briefs/voice-tone.md). Without it replies stream as written.
+   */
   tones?: () => boolean;
 }
 
@@ -81,7 +84,7 @@ export async function openThreadSession(o: ThreadSessionOptions): Promise<Thread
   await session.bindExtensions({});
   // Every request of the session, whatever its provider, streams through here.
   const tones = new Tones(o.tones ?? (() => false));
-  session.agent.streamFunction = tones.wrap(session.agent.streamFunction);
+  if (o.tones) session.agent.streamFunction = tones.wrap(session.agent.streamFunction);
   const stop = recordEntries(session, thread.view.own, thread.threadId);
   // A reply that came back means its endpoint answered, so it isn't stale.
   const answered = session.subscribe((e) => {

@@ -183,22 +183,22 @@ export function tonesOf(message: unknown): ToneNote[] | undefined {
 }
 
 /**
- * One session's tone notes: the reply being written's, as found. While
- * `on()` is false, replies stream as the model wrote them.
+ * One session's tone notes: the reply being written's, as found. Tags are
+ * lifted out of every reply, since the ask is set per turn and the model may
+ * change within one; `on()` decides only whether the notes are kept.
  */
 export class Tones {
   /** The notes of the reply being written now. */
   live: ToneNote[] = [];
   constructor(readonly on: () => boolean) {}
 
-  /** Pi's stream function, with tags lifted out of every reply while `on()`. */
+  /** Pi's stream function, with tags lifted out of every reply. */
   wrap<F extends StreamFn>(stream: F): F {
     return (async (...args: Parameters<F>) => {
       const source = await stream(...args);
-      if (!this.on()) { this.live = []; return source; }
       const notes: ToneNote[] = [];
       this.live = notes;
-      return liftTones(source, notes, (message) => { if (notes.length) FINISHED.set(message, notes); });
+      return liftTones(source, notes, (message) => { if (notes.length && this.on()) FINISHED.set(message, notes); });
     }) as F;
   }
 }

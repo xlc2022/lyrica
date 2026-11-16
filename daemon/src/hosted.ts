@@ -1413,11 +1413,12 @@ export class HostedThread {
       };
       // Repository skills by checkout and HEAD, so an unchanged checkout costs one git call a turn.
       const repoSkillsSeen = new Map<string, ListedSkill[]>();
-      // Tone notes for Read aloud (docs/briefs/voice-tone.md): asked for, and lifted out of her replies, only while
-      // the thread's Read aloud model takes a tone; never in a subagent's or sleep's thread.
-      const tones = () => !thread.subagent && thread.interface !== "sleep" && models.speaksWithTone(models.callContext(this.userId, this.pool, this.threadId));
+      // Tone notes for Read aloud (docs/briefs/voice-tone.md): asked for and kept only while the thread's Read aloud
+      // model takes a tone, and lifted out of every reply of her own threads (never a subagent's or sleep's).
+      const own = !thread.subagent && thread.interface !== "sleep";
+      const tones = () => own && models.speaksWithTone(models.callContext(this.userId, this.pool, this.threadId));
       const { session, runtime, prepare, dispose, tones: toneNotes } = await openThreadSession({
-        tones,
+        ...(own ? { tones } : {}),
         thread: ctx, models, cwd: this.o.cwd, task: () => tools.settings().code ? "code" : "chat",
         // A reply waiting for a host's GPU (up to 15 minutes, then the next model) has the views say what it waits for.
         onGpuWait: (wait) => { this.gpuWait = wait; this.emit({ type: "gpu_wait", wait }); },

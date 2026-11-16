@@ -1121,11 +1121,13 @@ Dictation and Read aloud (see [models.md](models.md) Speech). Types are in
 - **Tone notes** (`extension/src/tone.ts`). While the thread's Read aloud
   model takes a tone (`speak.instruct`, `Models.speaksWithTone`), her
   system prompt asks her to open a paragraph whose feeling changes with
-  `<tone>gently amused</tone>`, and every request of her session streams
-  through a hand-written scanner that lifts those tags out (a note of up
+  `<tone>gently amused</tone>`. Every request of her own threads streams
+  through a hand-written scanner that lifts those tags out, whatever the
+  model (the ask is set per turn, and the model may change within one) (a note of up
   to 80 characters; a longer one stays as written, one left half-written
   at the end is dropped), so no event, stored entry or later context holds
-  one. A subagent's or sleep's thread is never asked. The notes, each with
+  one; the notes are kept only while the model takes a tone. A subagent's
+  or sleep's thread is never asked and never scanned. The notes, each with
   the offset in her reply's text blocks where its paragraph starts, are
   stored apart in the pool's `tones` table when the reply is recorded;
   `following()` hands the live reply's notes to `messages/live/speech`.
