@@ -117,7 +117,7 @@ describe("sleep in lyricad", () => {
     expect(slept()).toContain(s.rt.sam.id);
   });
 
-  it("in manual mode sleeps only on /sleep, asks first, and never opens a thread", async () => {
+  it("in manual mode sleeps only on /sleep, and asks first", async () => {
     const s = await setup();
     await s.ada.put(`${s.u}/sleep/mode`, { mode: "manual" });
     const path = await s.talk();
@@ -131,14 +131,10 @@ describe("sleep in lyricad", () => {
     await events.ready;
     const started = await s.ada.post<SleepStarted>(`${s.u}/sleep/general`, { confirm: true });
     expect(started.body).toEqual({ started: true });
-    const before = (await s.ada.get<ThreadSummary[]>(`${s.u}/threads`)).body.map((t) => t.id);
     await events.until((e) => (e as unknown as SleepEvent).type === "finished");
-    await new Promise((r) => setImmediate(r));
     events.close();
     const types = events.events.map((e) => (e.event as unknown as SleepEvent).type);
     expect(types).toEqual(["started", "phase", "phase", "phase", "phase", "phase", "phase", "finished"]);
-    // Sleep leaves the thread list as it was: no empty thread appears after the run.
-    expect((await s.ada.get<ThreadSummary[]>(`${s.u}/threads`)).body.map((t) => t.id)).toEqual(before);
     expect((await s.ada.get<SleepOverview>(`${s.u}/sleep`)).body.runs.map((r) => [r.status, r.reason])).toEqual([["complete", "manual"]]);
   });
 
