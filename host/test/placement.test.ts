@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { autoContext, concurrentOf, defaultGpu, validate, type GpuSettings } from "../src/placement.ts";
+import { autoContext, concurrentOf, defaultGpu, options, validate, type GpuSettings } from "../src/placement.ts";
 import type { Gpu } from "../src/gpus.ts";
 import { GIB, textModel } from "./fakes.ts";
 
@@ -97,6 +97,26 @@ describe("the context with none saved", () => {
     // A save with no context is checked at that one, so it passes where 32k wouldn't.
     expect(() => validate(llama, auto, empty(24), all)).not.toThrow();
     expect(() => validate(llama, { ...auto, contextLength: 32768 }, empty(24), all)).toThrow("lower the context length");
+  });
+
+  it("splits over GPUs by what each has free, so a GPU another program half fills takes less", () => {
+    // 80 GB of weights over two 96 GB GPUs, one holding a 52 GB image model: 43 GB free there, 95 on the other.
+    const big = textModel("big", 80, { contextLength: 262144, kvPerToken: 2 * 64 * 8 * 128 });
+    const two = [{ ...gpu(0, 96), used: 52 * GIB }, { ...gpu(1, 96), used: 0 }];
+    // Split evenly, 42 GB of weights would land on the GPU with 43 free; split by free room, 50 GB of cache fit.
+    expect(autoContext(big, auto, two, all)).toBeGreaterThan(131072);
+    const [both] = options(big, { ...auto, contextLength: 131072 }, two, all).filter((o) => o.gpus.length === 2);
+    expect(both!.need[0]!).toBeLessThanOrEqual(43.5 * GIB);
+    expect(both!.split![1]! / both!.split![0]!).toBeGreaterThan(2);
+  });
+
+  it("splits by free room over any number of GPUs, and by size when none is free", () => {
+    const three = [{ ...gpu(0, 24), used: 12 * GIB }, { ...gpu(1, 24), used: 0 }, { ...gpu(2, 24), used: 0 }];
+    const m = textModel("m", 40, { contextLength: 8192, kvPerToken: 2 * 64 * 8 * 128 });
+    const [all3] = options(m, auto, three, all).filter((o) => o.gpus.length === 3);
+    expect(all3!.split).toEqual([11, 23, 23]);
+    const full = three.map((g) => ({ ...g, used: 24 * GIB }));
+    expect(options(m, auto, full, all).find((o) => o.gpus.length === 3)!.split).toEqual([23, 23, 23]);
   });
 
   it("stays at 32k when nothing fits or the model's length is unknown", () => {

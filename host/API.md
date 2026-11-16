@@ -420,12 +420,16 @@ embeddings and dictation receive neither parser.
 - `placement`:
   - `{ "mode": "auto" }`, the default: one GPU that has room without
     unloading anything (the largest first), else one where idle models can
-    be unloaded, else split over every GPU that allows its server. With a
+    be unloaded, else split over every GPU that allows its server. A
+    llama.cpp split gives each GPU a share by what it has free (its memory
+    less what it keeps free, what other programs, pinned and embedding
+    models hold there, and the server's buffers), so a GPU another program
+    half fills takes less of the model, on any number of GPUs. With a
     system RAM allowance, ways that keep nothing in RAM come first (see
     "System RAM").
   - `{ "mode": "gpus", "gpus": [...] }`: these GPUs. For llama.cpp, several
-    GPUs split by `split` ratios, each 0.01 to 1000 (default: each GPU's
-    memory less what it keeps free). For vLLM, `"parallel": "tensor"` (matching GPUs, two, four
+    GPUs split by `split` ratios, each 0.01 to 1000 (default: by what each
+    has free, as for Auto). For vLLM, `"parallel": "tensor"` (matching GPUs, two, four
     or eight) or `"pipeline"`; by default tensor where the GPUs match, else
     pipeline.
 - `contextLength`: 512 up to what the model was trained for, times its
