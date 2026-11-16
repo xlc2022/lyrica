@@ -1696,7 +1696,14 @@ encrypt.
   everyday tools her sandbox would otherwise lack: ripgrep, file, bc, xxd,
   bsdextrautils for hexdump, zip, tree, fd-find (linked as `fd` in her tool
   prefix), sqlite3, yq, poppler-utils for pdftotext, wget, lsof, strace and
-  pandoc), and the `tailscale` package from Tailscale's apt
+  pandoc, and for her `pdf` skill qpdf, tesseract-ocr, ocrmypdf,
+  python3-pil, python3-reportlab, python3-pandas and python3-numpy;
+  pdfplumber, pdfminer.six and pypdfium2, which Debian doesn't package,
+  and pypdf, whose Debian 12 version is too old, go into
+  `/opt/lyrica/tools/lib/python` from wheels pinned by hash, and Tesseract's large language files (tessdata 4.1.0:
+  English, Simplified and Traditional Chinese, orientation; pinned by
+  hash) into `/opt/lyrica/tools/share/tessdata`, with Debian's configs and
+  pdf.ttf linked beside them), and the `tailscale` package from Tailscale's apt
   repository when its binaries are missing (then disabling the host's own
   `tailscaled.service` the package enables, unless it was enabled before, so
   a host keeps its own as it was), checks for Node.js 24.15 or later, or 22.22.2
@@ -1997,7 +2004,10 @@ system with the module on. Only x86_64-linux.
   (`nix/sandbox-tools.nix`: a shell, the usual command-line tools, git,
   OpenSSH, OpenSSL, curl, jq, ripgrep, file, bc, xxd, zip, tree, fd, sqlite3, yq,
   pdftotext, rsync, wget, lsof, strace, pandoc, Python with beautifulsoup4, lxml,
-  requests, html5lib and PyYAML, make and gcc (for native npm
+  requests, html5lib and PyYAML, and for the `pdf` skill qpdf, Tesseract
+  (English, Simplified and Traditional Chinese and orientation only, from the
+  large tessdata files), OCRmyPDF built against it, and pypdf, pdfplumber,
+  Pillow, reportlab, pandas, NumPy and pypdfium2, make and gcc (for native npm
   modules), ImageMagick, ffmpeg (headless, with ffprobe), Chromium with IBM Plex
   and DejaVu fonts for her screenshots, bubblewrap, passt, nftables) and
   `LYRICA_SANDBOX_CLOSURE` to the store paths of their closure, Node's and

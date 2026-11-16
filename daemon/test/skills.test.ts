@@ -93,13 +93,15 @@ describe("skills", () => {
 });
 
 describe("the add-machine skill", () => {
-  it("is listed in a thread with no machine, reads like a library skill, and gives way to a library skill of its name", async () => {
+  it("is listed with pdf in a thread with no machine, reads like a library skill, and gives way to a library skill of its name", async () => {
     const s = await setup();
     s.model.reply({ tools: [{ name: "read_memory", args: { id: "s:add-machine" } }] }, { text: "Read it." });
     await s.ada.post(`${s.path}/messages`, { text: "how do I let you manage my Proxmox?" });
     await s.stream.until((e) => e.type === "turn_end", 0);
     const turn = JSON.stringify(s.model.requests.map((r) => r.messages));
     expect(turn).toContain('<skill name=\\"add-machine\\" read_memory=\\"s:add-machine\\">Walk the person through giving you another computer over SSH, or a Proxmox node');
+    // The pdf skill is listed in every thread too.
+    expect(turn).toContain('<skill name=\\"pdf\\" read_memory=\\"s:pdf\\">Read, search, pull tables from, OCR');
     // She takes the person through the page, and never takes the key or token herself.
     expect(turn).toContain("the person adds it in **Settings**, **Machines**, **Add machine**");
     expect(turn).toContain("you never ask for one, or for a password, in chat");
