@@ -407,7 +407,9 @@ per host, and Lyrica's router filters create tiers by it.
   Community License, as H3's are. It needs ComfyUI 0.44 or later, which
   the host's ComfyUI image carries.
   MiniMax-H3-Image (ComfyUI hosts only) is MiniMax's own picture model on
-  H3: it creates (2048×2048 by default) and edits with up to 3 references
+  H3: it creates at 16 megapixels, as its model card recommends (4096×4096
+  by default, sides up to 6272 for 21:9, at most 20 megapixels), and
+  edits (the picture scaled to 16 megapixels first) with up to 3 references
   in 6 steps without CFG, one image per request. Its text encoder is H3
   Turbo's file. Two starters: int8 (about 21 GB of its own) and w4a8
   (about 12.5 GB). Its licence, the MiniMax-H3-Image Community License,

@@ -65,3 +65,9 @@ The run on mystria and lunasa settled what was open; its report is
   (host, ComfyUI bump), then the Lunasa GPU run and tuning of defaults.
 - 2026-11-15: GPU run done (above); realism strengths and the 5 s cap are
   in. Nothing open.
+- 2026-11-16: MiniMax-H3-Image starters now create at 4096×4096 and edit
+  at 16 MP (were 2048² and 4 MP), its template's `maxSide` is 6272 and
+  `maxMegapixels` 20: MiniMax's model card gives a 4 to 20 MP working
+  range, best near 16 MP, with 4096×4096 to 6272×2688; Comfy-Org's graphs
+  default to 4 MP. Open: no GPU run at 16 MP yet (time, and whether the
+  w4a8 fits a 24 GB card and lunasa's 30 GB of RAM there).

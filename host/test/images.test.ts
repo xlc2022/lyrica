@@ -917,7 +917,7 @@ describe("recipes", () => {
     expect(JSON.stringify(ph3New)).not.toContain("$");
 
     // MiniMax-H3-Image: P-H3-Image's shape on MiniMax's own conditioning node, with H3's 32B encoder, no shift, and its
-    // 6 distilled steps on a scheduler; a create at 2048², an edit at the picture's own shape scaled to 4 MP.
+    // 6 distilled steps on a scheduler; a create at 4096² (its card's 16 MP), an edit at the picture's own shape scaled to 16 MP.
     const h3iStarter = STARTERS.find((s) => s.id === "minimax-h3-image")!;
     const h3iParts = [
       { role: "diffusion" as const, slot: null, file: "i.safetensors", added: false },
@@ -927,13 +927,13 @@ describe("recipes", () => {
     const h3iEdit = fill(TEMPLATES.get("minimax-h3-image")!, h3iParts, [], { negativePrompt: "", ...h3iStarter.defaults, prompt: "x", count: 1, seed: 1, image: "lyrica-image.png", reference1: "lyrica-ref.png", seen: 1 });
     expect(h3iEdit.edit!.class_type).toBe("MiniMaxH3ImageConditioning");
     expect(h3iEdit.edit!.inputs).toMatchObject({ width: 0, height: 0, "images.image_1": ["fit", 0], "images.image_2": ["ref1", 0], clip: ["load_clip", 0] });
-    expect(h3iEdit.fit!.inputs).toMatchObject({ megapixels: 4 });
+    expect(h3iEdit.fit!.inputs).toMatchObject({ megapixels: 16 });
     expect(h3iEdit.guide!.inputs).toEqual({ model: ["load_model", 0], conditioning: ["edit", 0] });
     expect(h3iEdit.schedule!.inputs).toMatchObject({ steps: 6, scheduler: "simple" });
     expect(Object.keys(h3iEdit)).not.toContain("shift");
     expect(JSON.stringify(h3iEdit)).not.toContain("$");
     const h3iNew = fill(TEMPLATES.get("minimax-h3-image")!, h3iParts, [], { negativePrompt: "", ...h3iStarter.defaults, prompt: "x", count: 1, seed: 1 });
-    expect(h3iNew.create!.inputs).toMatchObject({ width: 2048, height: 2048 });
+    expect(h3iNew.create!.inputs).toMatchObject({ width: 4096, height: 4096 });
     expect(h3iNew.sample!.inputs.latent_image).toEqual(["create", 1]);
     expect(JSON.stringify(h3iNew)).not.toContain("$");
 
