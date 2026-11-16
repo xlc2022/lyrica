@@ -119,22 +119,33 @@ describe("the context with none saved", () => {
     expect(options(m, auto, full, all).find((o) => o.gpus.length === 3)!.split).toEqual([23, 23, 23]);
   });
 
-  it("counts the system RAM allowance only for a model that can't fit its GPUs at all", () => {
+  it("uses system RAM for context only when the model's System RAM is on, up to its limit", () => {
     const layered = textModel("layered", 20, { contextLength: 131072, kvPerToken: 2 * 64 * 8 * 128, layers: 40 });
-    // It fits the 24 GB GPU at 8k: all on the GPU, whatever the allowance.
-    expect(autoContext(layered, auto, empty(24), all, 16 * GIB)).toBe(8192);
-    // 30 GB of weights never fit 24 GB: the largest context that the GPU and 12 GB of RAM hold.
+    // Off: what its 24 GB GPU holds, whatever the host allows.
+    const gpuOnly = autoContext(layered, auto, empty(24), all, 64 * GIB);
+    expect(gpuOnly).toBeLessThan(131072);
+    // On: the rest goes to RAM, so the context it was trained for.
+    expect(autoContext(layered, { ...auto, systemRam: 64 * GIB }, empty(24), all, 64 * GIB)).toBe(131072);
+    // 30 GB of weights never fit 24 GB: off, it doesn't load at all.
     const big = textModel("big", 30, { contextLength: 131072, kvPerToken: 2 * 64 * 8 * 128, layers: 40 });
-    const withRam = autoContext(big, auto, empty(24), all, 12 * GIB);
+    expect(() => validate(big, auto, empty(24), all, false, 64 * GIB)).toThrow(/needs about/);
+    // On with a 12 GB limit: the largest context the GPU and 12 GB hold, even though the host allows 64.
+    const capped = { ...auto, systemRam: 12 * GIB };
+    const withRam = autoContext(big, capped, empty(24), all, 64 * GIB);
     expect(withRam).toBeGreaterThan(8192);
-    expect(withRam).toBeLessThan(32768);
-    expect(options(big, { ...auto, contextLength: withRam }, empty(24), all, 12 * GIB)[0]!.ram).toBeLessThanOrEqual(12 * GIB);
-    expect(() => validate(big, auto, empty(24), all, false, 12 * GIB)).not.toThrow();
-    // With more RAM, more context, up to what it was trained for.
-    const more = autoContext(big, auto, empty(24), all, 32 * GIB);
-    expect(more).toBeGreaterThan(65536);
-    expect(options(big, { ...auto, contextLength: more }, empty(24), all, 32 * GIB)[0]!.ram).toBeLessThanOrEqual(32 * GIB);
-    expect(autoContext(big, auto, empty(24), all, 64 * GIB)).toBe(131072);
+    expect(withRam).toBeLessThan(131072);
+    expect(options(big, { ...capped, contextLength: withRam }, empty(24), all, 64 * GIB)[0]!.ram).toBeLessThanOrEqual(12 * GIB);
+    expect(() => validate(big, capped, empty(24), all, false, 64 * GIB)).not.toThrow();
+    // A context typed past the limit is refused with the model's limit, not the host's.
+    expect(() => validate(big, { ...capped, contextLength: 131072 }, empty(24), all, false, 64 * GIB)).toThrow(/System RAM limit of 12/);
+    // The host's allowance still binds when it is smaller than the model's limit.
+    expect(autoContext(big, { ...auto, systemRam: 64 * GIB }, empty(24), all, 12 * GIB)).toBe(withRam);
+  });
+
+  it("takes System RAM as whole bytes from 1 GiB, or left out", () => {
+    const m = textModel("m", 4, { layers: 32 });
+    expect(validate(m, { ...auto, systemRam: 8 * GIB }, empty(24), all).systemRam).toBe(8 * GIB);
+    for (const bad of [false, 0, 1.5, GIB - 1, "8"]) expect(() => validate(m, { ...auto, systemRam: bad } as never, empty(24), all)).toThrow(/systemRam/);
   });
 
   it("stays at 32k when nothing fits or the model's length is unknown", () => {

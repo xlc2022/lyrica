@@ -27,7 +27,7 @@ describe("a per-layer embedding table", () => {
     expect(o!.ram).toBe(23 * GIB);
     // Loaded without mmap, the input embeddings llama.cpp keeps on the CPU come with it; Off for spilling doesn't stop it.
     const withInput = textModel("flash", 134, { layers: 48, layerTable: 23 * GIB, inputBytes: 2 * GIB });
-    expect(options(withInput, { ...s, layerTable: "ram", systemRam: false }, [gpu(0, 128)], all, 32 * GIB)[0]!.ram).toBe(25 * GIB);
+    expect(options(withInput, { ...s, layerTable: "ram", systemRam: undefined }, [gpu(0, 128)], all, 32 * GIB)[0]!.ram).toBe(25 * GIB);
     // What the settings answer reports is all a fitting model keeps there, so the drawer shows nothing spilled.
     expect(tableBytes(withInput)).toBe(25 * GIB);
     expect(() => validate(flash(), { ...s, layerTable: "ram" }, [gpu(0, 128)], all, false, 0)).toThrow(/allowance, which is off/);
@@ -39,8 +39,8 @@ describe("a per-layer embedding table", () => {
 
   it("adds to what a spilled model keeps in RAM", () => {
     const m = textModel("moe", 60, { layers: 48, layerTable: 10 * GIB, expertLayers: Array.from({ length: 48 }, () => GIB) });
-    const [disk] = options(m, s, [gpu(0, 24)], all, 64 * GIB);
-    const [ram] = options(m, { ...s, layerTable: "ram" }, [gpu(0, 24)], all, 64 * GIB);
+    const [disk] = options(m, { ...s, systemRam: 64 * GIB }, [gpu(0, 24)], all, 64 * GIB);
+    const [ram] = options(m, { ...s, systemRam: 64 * GIB, layerTable: "ram" }, [gpu(0, 24)], all, 64 * GIB);
     expect(disk!.cpuMoe).toBeGreaterThan(0);
     expect(ram!.cpuMoe).toBe(disk!.cpuMoe);
     expect(ram!.ram! - disk!.ram!).toBe(10 * GIB);
