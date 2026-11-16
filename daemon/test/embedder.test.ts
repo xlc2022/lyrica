@@ -115,12 +115,13 @@ describe("the embedder", () => {
     const general = memory.openThreadView(ada.id, "general");
     const t = general.own.createThread({ interface: "cli" });
     const said = general.own.appendEntry(t.id, { piId: "p1", role: "user", data: { type: "message" }, text: "notes" });
-    const [gone, changed, kept] = general.own.addNotes([
+    const [gone, kept, changed] = general.own.addNotes([
       { text: "{user} doesn't like cilantro", source: said },
-      { text: "{user} grows thyme on the balcony", source: said },
       { text: "{user} likes mushroom risotto", source: said },
+      { text: "{user} grows thyme on the balcony", source: said },
     ], { author: "lyrica", thread: t.id });
-    // While the batch is with the model, one note is forgotten and another rewritten to be about trains.
+    // While the batch is with the model, one note is forgotten and the newest rewritten to be about trains: its new
+    // index row gets the same row number back, so only its text tells the two apart.
     during = () => { general.own.delete(gone!, "lyrica"); general.own.edit(changed!, { text: "{user} likes the railway station" }, "lyrica"); };
     const embedder = new Embedder({ users, memory, models, hasKey: (id) => keyring.hasUserKey(id), log: () => {} });
     await embedder.tick();

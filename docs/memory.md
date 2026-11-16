@@ -294,8 +294,9 @@ rules (`minWords`, common words, `said`, `current`, project boost) apply to
 the keyword side; `said`, `current`, `kinds` and `only` to both. Vectors
 compare only within one model: `putVectors(model, rows)` drops any other
 model's rows, so a changed Embeddings list re-embeds the pool from the
-start, keyword recall working meanwhile. A row carrying `seen` (the index
-text `unembedded` read) is stored only if the index still holds that text,
+start, keyword recall working meanwhile. A row carrying `seen` and `row` (the
+index text and row `unembedded` read) is stored only if that row still holds
+the same id and text (a point lookup, right even when FTS5 reuses a row number),
 so an item deleted or rewritten while the model worked gets no vector rather
 than one that outlives it or describes its old words; pool step 19 dropped,
 once, the vectors left by that race before (any with no index row, and those
