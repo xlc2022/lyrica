@@ -42,7 +42,7 @@ A step that needs root goes to the person with `run_as_root`, unless they gave y
    ```
 
    Then `run_as_root` with it and wait for the person's answer. A new group needs a new login, and your connection to the machine stays open between calls: if `docker ps` is still refused, run everything that talks to Docker as `sg docker -c '…'`, `install.sh` and step 5's pulls included: without the group the installer can't reach the daemon and stops.
-5. **Get the code and pull in the background.** Clone the repository into your home folder (`git clone https://github.com/<owner>/lyrica`, the address the person gives or the project's own). Then:
+5. **Get the code and pull in the background.** Clone your own repository into your home folder: `git clone https://github.com/xlc2022/lyrica`, unless the person names another address (a fork). It is public and clones without credentials. If the clone fails, show the person git's error and ask; never try a guessed address, and never call the repository private unless git said it needs credentials. Then:
 
    ```sh
    cd lyrica/host && ./install.sh --yes --no-start --name <host name> --models /srv/models

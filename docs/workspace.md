@@ -494,8 +494,9 @@ While a thread has an SSH machine, its skills list Lyrica's own
 which she reads with `read_memory` `s:model-host`. It walks her through:
 checking the card, driver, Docker and disk, and whether someone else uses
 the GPU; saying what can run there; listing the system-wide changes for a
-yes; the prerequisites as a root step; cloning and `install.sh --no-start`
-as her account, with the image build and pull in the background; the
+yes; the prerequisites as a root step; cloning her own repository (its
+address is in the skill; she asks rather than guess another) and
+`install.sh --no-start` as her account, with the image build and pull in the background; the
 install itself as a root step, pinned to a clean commit of her clone; a smoke test against
 `127.0.0.1:7236/host/v1/status`; pausing the host on a shared machine; and
 a pairing code from `127.0.0.1:7236/dashboard/pairing` for the user to
