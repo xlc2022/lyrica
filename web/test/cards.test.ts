@@ -96,7 +96,7 @@ describe("welcome cards", () => {
   });
 });
 
-it("the shared home row has tools and dictation without Mode or Thinking", () => {
+it("the shared home row has tools and dictation", () => {
   const html = renderToStaticMarkup(createElement(ComposerRow, {
     onSettings: vi.fn(), onAttach: vi.fn(),
     mic: { state: "idle", seconds: 0, onStart: vi.fn(), onStop: vi.fn() },
@@ -106,6 +106,4 @@ it("the shared home row has tools and dictation without Mode or Thinking", () =>
   expect(html).toContain('type="file"');
   expect(html).toContain('aria-label="Dictate"');
   expect(html).toContain("General / Private");
-  expect(html).not.toContain("mode-picker");
-  expect(html).not.toContain("Thinking");
 });

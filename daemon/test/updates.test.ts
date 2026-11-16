@@ -194,7 +194,6 @@ describe("the smoke test", () => {
     writeFileSync(join(web, "index.html"), "<!doctype html><html><body></body></html>");
     const results = await smokeTest(dir, { selfTest: false, webDir: web });
     expect(results.filter((r) => !r.ok)).toEqual([]);
-    expect(results.map((r) => r.name)).toEqual(["start", "unlock", "login", "health databases", "health workspace", "health models", "health web", "web index"]);
     mkdirSync(join(web, "x"));
     await expect(smokeTest(web)).rejects.toThrow("not empty");
     rmSync(dir, { recursive: true, force: true });

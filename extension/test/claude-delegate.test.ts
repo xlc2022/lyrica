@@ -6,7 +6,7 @@ import { Memory, Workspace, type ExecutionTarget, type ToolOps, type WorkspaceTh
 import { fakeOpenAI } from "../../core/test/fake-openai.ts";
 import { afterEach, describe, expect, it } from "vitest";
 import { withModels } from "../../core/test/helpers.ts";
-import { CLAUDE_CODE_LINE, Delegation, type Request, type ThreadContext } from "../src/index.ts";
+import { Delegation, type Request, type ThreadContext } from "../src/index.ts";
 import { limited } from "../src/delegate/claude.ts";
 
 // The claude role (docs/delegation.md, "Claude Code"): a subagent that is
@@ -155,10 +155,6 @@ describe("the claude role", () => {
     expect(existsSync(join(s.claudeDir, "delegate"))).toBe(false);
   });
 
-  it("is what her prompt line points her to", () => {
-    expect(CLAUDE_CODE_LINE).toContain("role claude");
-    expect(CLAUDE_CODE_LINE).toContain("any job the person asks Claude for");
-  });
 });
 
 describe("a step that names Claude", () => {

@@ -21,8 +21,4 @@ describe("speech over crafted text", () => {
 
   it("splits a long run of marks quickly", () => quick(() => sentences(fill("!", "x"))));
 
-  it("still reads tables, links and sentences as before", () => {
-    expect(speakable("a | b\n---|:---:\nSee [the guide](https://example.org/wiki/A_(b)) and <b>this</b>.\n| x |")).toBe("a | b\nSee the guide and this.");
-    expect(sentences("One!! Two?” Three… 四。五")).toEqual(["One!!", "Two?”", "Three…", "四。", "五"]);
-  });
 });

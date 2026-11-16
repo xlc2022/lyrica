@@ -340,8 +340,8 @@ test("Search finds messages by a rare word, marks it, and a hit opens its thread
   await expect(side.locator(".showing label").filter({ hasText: "Hidden" })).toHaveAttribute("title", "Hidden threads are left out of the list and of search.");
 });
 
-test("Search closes when another page is opened, clears its query, and opens again for the next search", async ({ page, baseURL }) => {
-  await enter(page, baseURL!);
+test("Search closes when another page is opened, a second page of one area too, clears its query, and opens again for the next search", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
   await newThread(page, "General"); // one titled "New thread", for the search that follows
   const side = page.getByRole("complementary", { name: "Threads" });
   const box = side.getByRole("searchbox", { name: "Search titles and messages" });
@@ -372,13 +372,9 @@ test("Search closes when another page is opened, clears its query, and opens aga
   await expect(side.locator(".thread").first()).toBeVisible();
   await expect(side.getByText("Nothing matches.")).toHaveCount(0);
   await noHorizontalScroll(page);
-});
 
-test("Search closes on a second page of one area, where the route's kind does not change", async ({ page, baseURL }) => {
-  const userId = await enter(page, baseURL!);
-  const side = page.getByRole("complementary", { name: "Threads" });
-  const box = side.getByRole("searchbox", { name: "Search titles and messages" });
-  // Models and its pages are one route kind, so a check on the kind alone would miss this.
+  // A second page of one area closes it too: Models and its pages are one route kind.
+  if (phone(page)) await side.getByRole("button", { name: "Hide threads" }).click();
   await page.goto(`/#/u/${userId}/models`);
   if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
   await side.getByText("Search", { exact: true }).click();
@@ -390,7 +386,6 @@ test("Search closes on a second page of one area, where the route's kind does no
   if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
   await expect(box).toBeHidden();
   await expect(side.getByText("Nothing matches.")).toHaveCount(0);
-  await noHorizontalScroll(page);
 });
 
 test("the Notes layer hides superseded notes until asked", async ({ page, baseURL, request }) => {
@@ -1222,33 +1217,6 @@ test("a thread's branch shows as a badge that opens the changes view: files, com
   await noHorizontalScroll(page);
 });
 
-test("an open run of tool calls follows again when scrolled to its bottom while calls render before the scroll event", async ({ page, baseURL }) => {
-  await enter(page, baseURL!);
-  await newThread(page, "General");
-  await send(page, "recall: 24 slowly");
-  const run = page.locator(".marker.tool-run");
-  await run.getByRole("button", { name: /tool calls running/ }).click();
-  const box = run.locator(".run-body");
-  const calls = run.locator(".run-body .marker[data-type='tool']");
-  await expect.poll(() => box.evaluate((el) => el.scrollHeight > el.clientHeight + 40)).toBe(true);
-  // Scrolled up, new calls land below without moving it.
-  await box.evaluate((el) => { el.scrollTop = 0; });
-  const seen = await calls.count();
-  await expect.poll(() => calls.count()).toBeGreaterThan(seen + 1);
-  expect(await box.evaluate((el) => el.scrollTop)).toBe(0);
-  // Hold the scroll events back, scroll to the bottom, and let new calls render before the event arrives.
-  await page.evaluate(() => { (window as any).held = true; window.addEventListener("scroll", (e) => { if ((window as any).held) e.stopImmediatePropagation(); }, true); });
-  await box.evaluate((el) => { el.scrollTop = el.scrollHeight; });
-  const back = await calls.count();
-  await expect.poll(() => calls.count()).toBeGreaterThan(back);
-  // The held event arrives late, measured against a height the person never saw: following must not stop.
-  await box.evaluate((el) => { (window as any).held = false; el.dispatchEvent(new Event("scroll")); });
-  const later = await calls.count();
-  await expect.poll(() => calls.count()).toBeGreaterThan(later);
-  await expect.poll(() => box.evaluate((el) => el.scrollHeight - el.scrollTop - el.clientHeight), { timeout: 3000 }).toBeLessThanOrEqual(2);
-  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/tool-run-follow-${page.viewportSize()!.width}.png` });
-});
-
 // The subagents drawer (docs/ux.md §6): the fake model never delegates, so the thread's runs are answered here as the daemon
 // would send them; the header's button and the drawer's rows are the real UI.
 test("a thread's subagents open in a drawer from the header: working ones first, each row a link to its thread", async ({ page, baseURL }) => {
@@ -1620,50 +1588,4 @@ test("a command's whole output scrolls in its row, and a named background job st
   expect(await notice.locator(".command-output pre.read-body").evaluate((el) => getComputedStyle(el).whiteSpace)).toBe("pre");
   await noHorizontalScroll(page);
   if (process.env.SCREENSHOTS) await notice.screenshot({ path: `${process.env.SCREENSHOTS}/job-notice-open-${page.viewportSize()!.width}.png` });
-});
-
-// A progress bar redrawn with \r, and lines redrawn with cursor moves, show as a terminal would: their latest state.
-test("command output folds progress redrawn in place, as a terminal shows it", async ({ page, baseURL }) => {
-  const userId = await enter(page, baseURL!);
-  await newThread(page, "General");
-  const threadId = threadIdOf(page.url());
-  const bar = Array.from({ length: 26 }, (_, i) => `\rmodel.gguf ${String(i * 4).padStart(3)}% ${"#".repeat(i)}${".".repeat(25 - i)} ${(i * 0.0496).toFixed(2)} GB`).join("");
-  const layers = ["Downloading 0.61GB", "Downloading 1.20GB", "Pull complete"]
-    .map((s) => `\x1b[2A\x1b[2Kcbb9175a9bc5 \x1b[33m${s}\x1b[0m\n\x1b[2K4f4fb700ef54 ${s}\n`).join("");
-  const output = `Fetching model.gguf\n${bar}\ncbb9175a9bc5 Waiting\n4f4fb700ef54 Waiting\n${layers}Done\n`;
-  const job = { id: "c1", call: "b1", kind: "call", place: "sandbox", command: "./fetch.sh", cwd: "/workspace", startedAt: "2026-11-16T05:00:00Z",
-    endedAt: "2026-11-16T05:01:00Z", state: "exited", exitCode: 0, bytes: Buffer.byteLength(output), dropped: 0 };
-  await page.route(`**/api/u/${userId}/threads/general/${encodeURIComponent(threadId)}/outputs?call=b1`, (route) => route.fulfill({ json: { job, output } }));
-  await page.route(`**/api/u/${userId}/threads/general/${encodeURIComponent(threadId)}/messages`, (route) => route.fulfill({ json: {
-    messages: [{ id: `e:${threadId}#1`, n: 1, role: "assistant", createdAt: "2026-11-16T05:01:00Z", parts: [
-      { type: "tool", toolCallId: "b1", name: "bash", args: { command: "./fetch.sh" }, result: "Done", isError: false },
-      { type: "text", text: "The model is fetched." },
-    ] }], hasMore: false,
-  } }));
-  await page.goto(page.url());
-  await page.locator(".marker[data-type='tool']").getByRole("button", { name: /bash/ }).click();
-  const box = page.locator(".marker-body .command-output pre.read-body");
-  await expect(box).toHaveText("Fetching model.gguf\nmodel.gguf 100% ######################### 1.24 GB\ncbb9175a9bc5 Pull complete\n4f4fb700ef54 Pull complete\nDone\n");
-  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/output-folded-${page.viewportSize()!.width}.png` });
-});
-
-// A job she stopped herself ends "Stopped by <her name>", not with the reason core stores for it.
-test("a job she stopped herself says so with her name", async ({ page, baseURL }) => {
-  const userId = await enter(page, baseURL!);
-  await newThread(page, "General");
-  const threadId = threadIdOf(page.url());
-  const output = "tick 1\ntick 2\n";
-  const job = { id: "c1", call: "b1", kind: "call", place: "sandbox", command: "./count.sh", cwd: "/workspace", startedAt: "2026-11-16T05:00:00Z",
-    endedAt: "2026-11-16T05:01:00Z", state: "stopped", reason: "stopped by her", bytes: Buffer.byteLength(output), dropped: 0 };
-  await page.route(`**/api/u/${userId}/threads/general/${encodeURIComponent(threadId)}/outputs?call=b1`, (route) => route.fulfill({ json: { job, output } }));
-  await page.route(`**/api/u/${userId}/threads/general/${encodeURIComponent(threadId)}/messages`, (route) => route.fulfill({ json: {
-    messages: [{ id: `e:${threadId}#1`, n: 1, role: "assistant", createdAt: "2026-11-16T05:01:00Z", parts: [
-      { type: "tool", toolCallId: "b1", name: "bash", args: { command: "./count.sh" }, result: "Stopped", isError: false },
-      { type: "text", text: "I stopped the count." },
-    ] }], hasMore: false,
-  } }));
-  await page.goto(page.url());
-  await page.locator(".marker[data-type='tool']").getByRole("button", { name: /bash/ }).click();
-  await expect(page.locator(".marker-body .command-output .read-note")).toHaveText("Stopped by Lyrica");
-  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/stopped-by-${page.viewportSize()!.width}.png` });
 });

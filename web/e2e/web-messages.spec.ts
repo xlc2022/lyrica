@@ -187,6 +187,20 @@ test("an open run of tool calls follows her newest call only while its box is at
   const back = await calls.count();
   await expect.poll(() => calls.count()).toBeGreaterThan(back + 1);
   await expect.poll(() => box.evaluate((el) => el.scrollHeight - el.scrollTop - el.clientHeight)).toBeLessThanOrEqual(2);
+  // Scrolled up and back while the scroll event is held, so new calls render before it arrives: measured against a
+  // height the person never saw, it must not stop the following.
+  await box.evaluate((el) => { el.scrollTop = 0; });
+  const up = await calls.count();
+  await expect.poll(() => calls.count()).toBeGreaterThan(up);
+  expect(await box.evaluate((el) => el.scrollTop)).toBe(0);
+  await page.evaluate(() => { (window as any).held = true; window.addEventListener("scroll", (e) => { if ((window as any).held) e.stopImmediatePropagation(); }, true); });
+  await box.evaluate((el) => { el.scrollTop = el.scrollHeight; });
+  const held = await calls.count();
+  await expect.poll(() => calls.count()).toBeGreaterThan(held);
+  await box.evaluate((el) => { (window as any).held = false; el.dispatchEvent(new Event("scroll")); });
+  const later = await calls.count();
+  await expect.poll(() => calls.count()).toBeGreaterThan(later);
+  await expect.poll(() => box.evaluate((el) => el.scrollHeight - el.scrollTop - el.clientHeight), { timeout: 3000 }).toBeLessThanOrEqual(2);
 });
 
 test("a code block in her reply shows its language and Copy, which copies its text and reads Copied, then Copy failed where the clipboard refuses", async ({ page, baseURL, context }) => {

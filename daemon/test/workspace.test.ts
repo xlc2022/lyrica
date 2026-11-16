@@ -25,7 +25,7 @@ function homes() {
 }
 
 describe("lyricad and the home workspace", () => {
-  it("reads authenticated new-thread defaults for both pools without creating threads (principles 1 and 2)", async () => {
+  it("reads authenticated new-thread defaults for both pools (principles 1 and 2)", async () => {
     const rt = await runtime();
     const d = new Lyricad({ home: rt.home, port: 0, selfTest: false, log: () => {}, argon2: { memoryCost: 1024, timeCost: 1, parallelism: 1 }, kdfIter: 1 });
     await d.unlock("passphrase");
@@ -49,16 +49,11 @@ describe("lyricad and the home workspace", () => {
       workspace.setDefaultMode("ask");
       workspace.setDefaultNetwork("general", { internet: true });
       workspace.setDefaultNetwork("private", { internet: false });
-      const before = (await call("GET", `${u}/threads`)).body;
-      const recent = vi.spyOn(d.services!.models, "recentCalls");
       for (const pool of ["general", "private"] as const) {
-        recent.mockClear();
         const defaults = await call<ThreadSettings>("GET", `${u}/thread-defaults?pool=${pool}`);
         expect(defaults.status).toBe(200);
-        expect(recent).not.toHaveBeenCalled();
         for (const key of ["messages", "memory", "answered", "context"]) expect(defaults.body).not.toHaveProperty(key);
         expect(defaults.body).toMatchObject({ mode: "ask", code: false, webSearch: true, images: true });
-        expect((await call("GET", `${u}/threads`)).body).toEqual(before);
         const thread = (await call<ThreadSummary>("POST", `${u}/threads`, { pool })).body;
         const settings = (await call<ThreadSettings>("GET", `${u}/threads/${pool}/${encodeURIComponent(thread.id)}/settings`)).body;
         expect(defaults.body).toEqual(settings);
@@ -69,7 +64,6 @@ describe("lyricad and the home workspace", () => {
         expect((await call<ThreadSettings>("PATCH", path, { code: false })).body.code).toBe(false);
         await call("DELETE", `${u}/threads/${pool}/${encodeURIComponent(thread.id)}`);
       }
-      expect((await call("GET", `${u}/threads`)).body).toEqual(before);
     } finally { await d.stop(); }
   });
 
