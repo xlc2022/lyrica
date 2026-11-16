@@ -999,7 +999,8 @@ steps:
    `/etc/ssh/authorized_keys/<account>`, a file only root can change
    (beside any key already there), with a `Match User` block in
    `/etc/ssh/sshd_config.d/lyrica-<account>.conf`, then `sshd -t &&
-   systemctl reload ssh` (the unit is `sshd` on Fedora and RHEL). The key
+   systemctl reload ssh`, or `sshd` where the unit has that name, or
+   `rc-service sshd reload` on OpenRC. The key
    line is `restrict` (no forwarding, agent or pty) and names no `from=`
    addresses, so her server can move network without locking her out;
    running the setup again replaces any older line for the same key. If
