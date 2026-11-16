@@ -500,10 +500,13 @@ A host can also give llama.cpp models part of its system RAM, so a model or
 quant bigger than its GPUs still runs, slower. It is off until you set
 **System RAM** in GB: in the host's **Edit** drawer under Models, Hosts and
 endpoints, or on its dashboard's GPUs page. A 96 GB machine allows up to
-76 GB, leaving room for llama.cpp's prompt cache and the system. Only a
-model that can't fit its GPUs uses it, and only for what they lack; a
-model's **System RAM** setting, Off in Lyrica or unticked on the
-dashboard, keeps it on the GPUs. A host gets
+76 GB, leaving room for llama.cpp's prompt cache and the system. A model uses it only when you tick its own **System RAM** setting (in
+Lyrica's Serving settings or the dashboard's model Settings) and give it a
+limit in GB. Then an automatic context is the longest its GPUs and that
+much RAM hold, and a context you type fills the GPUs first and puts the rest
+in RAM. Unticked, the model stays on its GPUs, and a context they can't
+hold isn't saved. Models that already spilled keep a limit of the whole
+allowance after the update. A host gets
 the allowance with its next Update.
 
 Some models, such as Qwen3.8-Flash-Next and Gemma 4, have a per-layer

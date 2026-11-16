@@ -723,8 +723,9 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   Memory share, Pinned through the host's pin route, the KV cache estimate,
   and "<n> GB stays in system RAM, so it runs slower." from `ramBytes`),
   Memory (Context length "of <max>", Stretch, Original context, KV cache,
-  **System RAM** (Auto or Off, the setting `systemRam`, shown while the
-  host has an allowance), **Embedding table** (Disk or RAM, the setting
+  **System RAM** (a checkbox and "up to <GB> of <allowance> GB", the
+  setting `systemRam` in bytes, shown while the host has an allowance or
+  the model has a limit), **Embedding table** (Disk or RAM, the setting
   `layerTable`, shown when the host reports `layerTableBytes` and has an
   allowance; the system RAM estimate leaves a table kept there out),
   Flash attention, **Projector** (the setting `mmproj`, picked

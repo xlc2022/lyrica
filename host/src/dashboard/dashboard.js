@@ -468,7 +468,7 @@ function starters() {
 /** A model's placement and serving settings; what isn't a field stays as JSON under Other settings. */
 async function editModel(m) {
   const info = await api(`/host/v1/models/settings?model=${encodeURIComponent(m.id)}`);
-  const { placement = { mode: "auto" }, contextLength, stretch, parallel, maxSeqs, kvCacheType, memoryShare, systemRam: ramSetting, ...rest } = info.settings;
+  const { placement = { mode: "auto" }, contextLength, stretch, parallel, maxSeqs, kvCacheType, memoryShare, systemRam: ramSetting, batchSize, ...rest } = info.settings;
   const { mode, gpus: chosen = [], ...placementRest } = placement;
   const llama = m.server === "llamacpp", vllm = m.server === "vllm", chat = m.kind === "chat";
   const usable = S.status.gpus.filter((g) => !g.settings.excluded);
@@ -477,11 +477,17 @@ async function editModel(m) {
   where.value = mode === "gpus" ? "gpus" : "auto";
   const picks = usable.map((g) => [g.index, h("input", { type: "checkbox", checked: chosen.includes(g.index) })]);
   const gpuChecks = picks.map(([i, box]) => h("label", { class: "check", hidden: where.value !== "gpus" }, box, `GPU ${i} · ${usable.find((g) => g.index === i).name}`));
-  // llama.cpp can keep what its GPUs lack in the host's System RAM allowance, under either placement; unticked is systemRam: false.
+  // llama.cpp can keep part of a model in the host's System RAM allowance, up to the model's own limit in GB, when ticked.
   const allowance = S.status.systemRam?.allowance ?? 0;
-  const ramBox = h("input", { type: "checkbox", checked: ramSetting !== false, disabled: !allowance });
-  const ramCheck = llama ? h("label", { class: "check", title: allowance ? "Runs slower: what the GPUs lack stays in system RAM." : "The host's System RAM allowance is off; set it in the System RAM card under GPUs." },
-    ramBox, h("span", {}, "System RAM · ", allowance ? h("span", {}, "up to ", num(size(allowance))) : "off")) : null;
+  const allowGb = Math.floor(allowance / 2 ** 30);
+  const ramBox = h("input", { type: "checkbox", checked: typeof ramSetting === "number", disabled: !allowance && typeof ramSetting !== "number" });
+  const ramGb = h("input", { type: "number", min: "1", max: String(Math.max(1, allowGb)), step: "1", class: "num", "aria-label": "System RAM limit (GB)",
+    value: typeof ramSetting === "number" ? Math.round(ramSetting / 2 ** 30) : Math.max(1, allowGb) });
+  const ramLimit = h("span", { hidden: !ramBox.checked }, " up to ", ramGb, " of ", num(allowGb), " GB");
+  ramBox.onchange = () => (ramLimit.hidden = !ramBox.checked);
+  const ramCheck = llama ? h("div", { class: "row", style: "align-items: center" },
+    h("label", { class: "check", title: allowance ? "Lets this model keep part of itself in system RAM, which is slower, for a longer context or a model too big for its GPUs. Unticked, it stays on its GPUs." : "The host's System RAM allowance is off; set it in the System RAM card under GPUs." },
+      ramBox, h("span", {}, "System RAM", allowance ? "" : " · off")), ramLimit) : null;
   const pickBox = h("fieldset", { hidden: where.value !== "gpus" && !llama }, h("legend", {}, "Memory"), gpuChecks, ramCheck);
   where.onchange = () => {
     gpuChecks.forEach((l) => (l.hidden = where.value !== "gpus"));
@@ -508,6 +514,7 @@ async function editModel(m) {
   }
   describe(info.recommended);
   const atOnce = h("input", { type: "number", min: "1", class: "num", value: (llama ? parallel : maxSeqs) ?? "", placeholder: m.parallel ? String(m.parallel) : "" });
+  const batch = h("input", { type: "number", min: "32", max: "65536", step: "32", class: "num", value: batchSize ?? "", placeholder: "llama.cpp's" });
   const kv = h("select", {}, ["", "f16", "q8_0", "q4_0"].map((v) => h("option", { value: v }, v || "Default (f16)")));
   kv.value = kvCacheType ?? "";
   const share = h("input", { type: "number", min: "5", max: "95", step: "5", class: "num", value: memoryShare ? Math.round(memoryShare * 100) : "", placeholder: "what it needs" });
@@ -522,11 +529,12 @@ async function editModel(m) {
     const { placement: extraPlacement, ...extraRest } = extra;
     const settings = { ...extraRest };
     settings.placement = where.value === "gpus" ? { ...extraPlacement, mode: "gpus", gpus: picks.filter(([, b]) => b.checked).map(([i]) => i) } : { mode: "auto" };
-    if (llama && !ramBox.checked) settings.systemRam = false;
+    if (llama && ramBox.checked) settings.systemRam = Math.max(1, Math.round(Number(ramGb.value) || allowGb)) * 2 ** 30;
     if (ctx.value) settings.contextLength = Number(ctx.value);
     if (chat && Number(factor.value) > 1) settings.stretch = { ...stretch, type: "yarn", factor: Number(factor.value) };
     if (atOnce.value) settings[llama ? "parallel" : "maxSeqs"] = Number(atOnce.value);
     if (llama && kv.value) settings.kvCacheType = kv.value;
+    if (llama && batch.value) settings.batchSize = Number(batch.value);
     if (vllm && share.value) settings.memoryShare = Number(share.value) / 100;
     return settings;
   };
@@ -541,6 +549,7 @@ async function editModel(m) {
       info.contextLength != null ? field("Context length", ctx, "Unset: the largest that fits.") : null,
       chat ? h("div", { class: "field" }, field("Stretch", factor, info.stretchUntested ? "A YaRN factor, 1 to 8. Untested on vLLM for this model." : "A YaRN factor, 1 to 8."), card, repo) : null,
       chat && (llama || vllm) ? field("Requests at once", atOnce, "Unset: by its context, 1 below 200k tokens.") : null,
+      llama ? field("Batch size", batch, "Tokens per step, 32 to 65,536. Unset: llama.cpp's default.") : null,
       llama ? field("KV cache", kv, "q8_0 and q4_0 need flashAttention on, under Other settings.") : null,
       vllm ? field("Memory share (%)", share, "Of each of its GPUs. Unset: what it needs.") : null,
       field("Other settings", other, "JSON: flashAttention, gpuLayers, batchSize, chatTemplate and the rest in the host's API.md."),

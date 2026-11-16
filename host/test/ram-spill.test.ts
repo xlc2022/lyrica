@@ -13,6 +13,8 @@ import { FakeBackend, FakeGpus, fakeLlamaRouter, GIB, textModel } from "./fakes.
 
 const gpu = (index: number, gb: number): Gpu => ({ index, name: "RTX 3090", vendor: "nvidia", total: gb * GIB, used: 0 });
 const all = (i: number): GpuSettings => (void i, defaultGpu());
+/** System RAM on for a model, with room to spare under any allowance here. */
+const ON = { systemRam: 128 * GIB };
 /**
  * llama.cpp's own rule with every layer offloaded (llama-model.cpp): layers + 1 slots, the last the output layer,
  * slot l on upper_bound(cumulative split, l / (layers + 1)). Returns each GPU's layers, and the output layer's GPU.
@@ -31,14 +33,14 @@ const experts = (layers: number, gb: number, dense = 0) => Array.from({ length: 
 describe("keeping part of a model in system RAM", () => {
   it("leaves a model that fits its GPUs alone", () => {
     const m = textModel("m", 10, { layers: 40, expertLayers: experts(40, 8) });
-    const [o] = options(m, { placement: { mode: "auto" } }, [gpu(0, 24)], all, 32 * GIB);
+    const [o] = options(m, { ...ON, placement: { mode: "auto" } }, [gpu(0, 24)], all, 32 * GIB);
     expect(o).toMatchObject({ gpus: [0] });
     expect(o!.ram).toBeUndefined();
   });
 
   it("moves only the experts the GPU lacks room for, before whole layers", () => {
     const m = textModel("moe", 30, { layers: 48, expertLayers: experts(48, 27) });
-    const [o] = options(m, { placement: { mode: "auto" }, contextLength: 8192 }, [gpu(0, 24)], all, 32 * GIB);
+    const [o] = options(m, { ...ON, placement: { mode: "auto" }, contextLength: 8192 }, [gpu(0, 24)], all, 32 * GIB);
     expect(o!.cpuMoe).toBeGreaterThan(0);
     expect(o!.cpuMoe).toBeLessThan(48);
     expect(o!.gpuLayers).toBeUndefined();
@@ -50,7 +52,7 @@ describe("keeping part of a model in system RAM", () => {
 
   it("moves whole layers of a dense model", () => {
     const m = textModel("dense", 30, { layers: 60 });
-    const [o] = options(m, { placement: { mode: "auto" }, contextLength: 8192 }, [gpu(0, 24)], all, 32 * GIB);
+    const [o] = options(m, { ...ON, placement: { mode: "auto" }, contextLength: 8192 }, [gpu(0, 24)], all, 32 * GIB);
     expect(o!.cpuMoe).toBeUndefined();
     expect(o!.gpuLayers).toBeGreaterThan(40);
     expect(o!.gpuLayers).toBeLessThan(60);
@@ -60,7 +62,7 @@ describe("keeping part of a model in system RAM", () => {
   it("on two GPUs that both lack room, keeps each GPU's layers within it", () => {
     // 100 GB over two 48 GB GPUs: both lack room, and only the layers each holds can relieve it.
     const m = textModel("big", 100, { layers: 80, expertLayers: experts(80, 85), outputBytes: 2 * GIB });
-    const s = { placement: { mode: "auto" as const }, contextLength: 8192 };
+    const s = { ...ON, placement: { mode: "auto" as const }, contextLength: 8192 };
     const both = options(m, s, [gpu(0, 48), gpu(1, 48)], all, 64 * GIB).find((o) => o.gpus.length === 2)!;
     expect(both.cpuMoe).toBeGreaterThan(0);
     // Check against the layers llama.cpp itself gives each GPU under the split it's given, the output layer on the last.
@@ -80,7 +82,7 @@ describe("keeping part of a model in system RAM", () => {
 
   it("with a split set by hand, moves experts until the GPU holding the later layers fits too", () => {
     const m = textModel("big", 100, { layers: 80, expertLayers: experts(80, 85) });
-    const s = { placement: { mode: "gpus" as const, gpus: [0, 1], split: [1, 1] }, contextLength: 8192 };
+    const s = { ...ON, placement: { mode: "gpus" as const, gpus: [0, 1], split: [1, 1] }, contextLength: 8192 };
     const [o] = options(m, s, [gpu(0, 48), gpu(1, 48)], all, 64 * GIB);
     // llama.cpp gives GPU 0 layers 0 to 40 and GPU 1 layers 41 to 79 and the output layer.
     expect(llamaLayers(80, o!.split!).counts).toEqual([41, 39]);
@@ -92,7 +94,7 @@ describe("keeping part of a model in system RAM", () => {
   it("counts no relief from dense first layers", () => {
     const dense = textModel("glm", 30, { layers: 48, expertLayers: experts(48, 27, 3) });
     const even = textModel("moe", 30, { layers: 48, expertLayers: experts(48, 27) });
-    const s = { placement: { mode: "auto" as const }, contextLength: 8192 };
+    const s = { ...ON, placement: { mode: "auto" as const }, contextLength: 8192 };
     const [a] = options(dense, s, [gpu(0, 24)], all, 32 * GIB);
     const [b] = options(even, s, [gpu(0, 24)], all, 32 * GIB);
     // The first three layers move nothing, so it takes three more layers to free the same room.
@@ -103,7 +105,7 @@ describe("keeping part of a model in system RAM", () => {
   it("puts a way that fits across all the GPUs before one GPU with the rest in RAM", () => {
     // 120 GB over two 96 GB GPUs: either GPU alone would spill about 30 GB.
     const m = textModel("big", 120, { layers: 48, expertLayers: experts(48, 110) });
-    const opts = options(m, { placement: { mode: "auto" }, contextLength: 8192 }, [gpu(0, 96), gpu(1, 96)], all, 64 * GIB);
+    const opts = options(m, { ...ON, placement: { mode: "auto" }, contextLength: 8192 }, [gpu(0, 96), gpu(1, 96)], all, 64 * GIB);
     expect(opts[0]).toMatchObject({ gpus: [0, 1] });
     expect(opts[0]!.ram).toBeUndefined();
     expect(opts.slice(1).every((o) => o.gpus.length === 1 && o.ram! > 0)).toBe(true);
@@ -112,7 +114,7 @@ describe("keeping part of a model in system RAM", () => {
   it("refuses at save with the reason of the way over every GPU", () => {
     const m = textModel("huge", 400, { layers: 48, expertLayers: experts(48, 380) });
     const gpus = [gpu(0, 96), gpu(1, 96)];
-    const s = { placement: { mode: "auto" as const }, contextLength: 8192 };
+    const s = { ...ON, placement: { mode: "auto" as const }, contextLength: 8192 };
     const both = options(m, s, gpus, all, 64 * GIB).find((o) => o.gpus.length === 2)!;
     const gb = (both.ram! / GIB).toFixed(1);
     expect(() => validate(m, s, gpus, all, false, 64 * GIB)).toThrow(`needs about ${gb} GB of system RAM`);
@@ -120,20 +122,20 @@ describe("keeping part of a model in system RAM", () => {
 
   it("never spills when the allowance is off or the model says Off", () => {
     const m = textModel("moe", 30, { layers: 48, expertLayers: experts(48, 27) });
-    expect(options(m, { placement: { mode: "auto" }, contextLength: 8192 }, [gpu(0, 24)], all, 0)[0]!.ram).toBeUndefined();
-    expect(options(m, { placement: { mode: "auto" }, contextLength: 8192, systemRam: false }, [gpu(0, 24)], all, 32 * GIB)[0]!.ram).toBeUndefined();
-    expect(() => validate(m, { placement: { mode: "auto" }, contextLength: 8192, systemRam: false }, [gpu(0, 24)], all, false, 32 * GIB)).toThrow(/needs about/);
+    expect(options(m, { ...ON, placement: { mode: "auto" }, contextLength: 8192 }, [gpu(0, 24)], all, 0)[0]!.ram).toBeUndefined();
+    expect(options(m, { ...ON, placement: { mode: "auto" }, contextLength: 8192, systemRam: undefined }, [gpu(0, 24)], all, 32 * GIB)[0]!.ram).toBeUndefined();
+    expect(() => validate(m, { ...ON, placement: { mode: "auto" }, contextLength: 8192, systemRam: undefined }, [gpu(0, 24)], all, false, 32 * GIB)).toThrow(/needs about/);
   });
 
   it("refuses at save a spill past the allowance, with both numbers", () => {
     const m = textModel("moe", 40, { layers: 48, expertLayers: experts(48, 36) });
-    expect(() => validate(m, { placement: { mode: "auto" }, contextLength: 8192 }, [gpu(0, 24)], all, false, 8 * GIB)).toThrow(/system RAM besides its GPUs, more than the host's allowance of 8\.0 GB/);
-    expect(validate(m, { placement: { mode: "auto" }, contextLength: 8192 }, [gpu(0, 24)], all, false, 32 * GIB)).toMatchObject({ contextLength: 8192 });
+    expect(() => validate(m, { ...ON, placement: { mode: "auto" }, contextLength: 8192 }, [gpu(0, 24)], all, false, 8 * GIB)).toThrow(/system RAM besides its GPUs, more than the host's allowance of 8\.0 GB/);
+    expect(validate(m, { ...ON, placement: { mode: "auto" }, contextLength: 8192 }, [gpu(0, 24)], all, false, 32 * GIB)).toMatchObject({ contextLength: 8192 });
   });
 
   it("counts layers left off the GPUs by hand", () => {
     const m = textModel("dense", 30, { layers: 60 });
-    const [o] = options(m, { placement: { mode: "auto" }, contextLength: 8192, gpuLayers: 30 }, [gpu(0, 24)], all);
+    const [o] = options(m, { ...ON, placement: { mode: "auto" }, contextLength: 8192, gpuLayers: 30 }, [gpu(0, 24)], all);
     expect(o!.gpuLayers).toBe(30);
     expect(o!.ram!).toBeGreaterThan(15 * GIB);
   });
@@ -159,6 +161,7 @@ describe("the system RAM allowance", () => {
     const { scheduler } = setup();
     await scheduler.start([]);
     const m = textModel("moe", 30, { layers: 48, expertLayers: experts(48, 27), contextLength: 8192 });
+    scheduler.saveSettings(m, { ...ON, placement: { mode: "auto" } });
     await expect(scheduler.loadNow(m)).rejects.toMatchObject({ code: "too_big" });
     await expect(scheduler.setRamAllowance(80 * GIB)).rejects.toMatchObject({ code: "invalid" });
     await scheduler.setRamAllowance(32 * GIB);
@@ -174,8 +177,8 @@ describe("the system RAM allowance", () => {
     // Each needs about 8 GB of system RAM on one GPU.
     const a = textModel("a", 30, { layers: 48, expertLayers: experts(48, 27), contextLength: 8192 });
     const b = textModel("b", 30, { layers: 48, expertLayers: experts(48, 27), contextLength: 8192 });
-    scheduler.saveSettings(a, { placement: { mode: "gpus", gpus: [0] }, contextLength: 8192 });
-    scheduler.saveSettings(b, { placement: { mode: "gpus", gpus: [1] }, contextLength: 8192 });
+    scheduler.saveSettings(a, { ...ON, placement: { mode: "gpus", gpus: [0] }, contextLength: 8192 });
+    scheduler.saveSettings(b, { ...ON, placement: { mode: "gpus", gpus: [1] }, contextLength: 8192 });
     await scheduler.loadNow(a);
     await scheduler.loadNow(b);
     expect(llamacpp.calls).toEqual(["load a@0", "unload a", "load b@1"]);
@@ -187,8 +190,8 @@ describe("the system RAM allowance", () => {
     await scheduler.setRamAllowance(12 * GIB);
     const a = textModel("a", 30, { layers: 48, expertLayers: experts(48, 27), contextLength: 8192 });
     const b = textModel("b", 30, { layers: 48, expertLayers: experts(48, 27), contextLength: 8192 });
-    scheduler.saveSettings(a, { placement: { mode: "gpus", gpus: [0] }, contextLength: 8192 });
-    scheduler.saveSettings(b, { placement: { mode: "gpus", gpus: [1] }, contextLength: 8192 });
+    scheduler.saveSettings(a, { ...ON, placement: { mode: "gpus", gpus: [0] }, contextLength: 8192 });
+    scheduler.saveSettings(b, { ...ON, placement: { mode: "gpus", gpus: [1] }, contextLength: 8192 });
     await scheduler.pin(a, true);
     await expect(scheduler.loadNow(b)).rejects.toThrow(/system RAM; the allowance is 12\.0 GB, of which .* GB is pinned/);
   });
@@ -198,7 +201,7 @@ describe("the system RAM allowance", () => {
     await scheduler.start([]);
     await scheduler.setRamAllowance(64 * GIB);
     const small = textModel("small", 8);
-    scheduler.saveSettings(small, { placement: { mode: "gpus", gpus: [0] }, contextLength: 8192 });
+    scheduler.saveSettings(small, { ...ON, placement: { mode: "gpus", gpus: [0] }, contextLength: 8192 });
     await scheduler.pin(small, true);
     const big = textModel("big", 120, { layers: 48, expertLayers: experts(48, 110), contextLength: 8192 });
     await scheduler.loadNow(big);
@@ -211,7 +214,7 @@ describe("the system RAM allowance", () => {
     await scheduler.start([]);
     await scheduler.setRamAllowance(64 * GIB);
     const idle = textModel("idle", 60);
-    scheduler.saveSettings(idle, { placement: { mode: "gpus", gpus: [0] }, contextLength: 8192 });
+    scheduler.saveSettings(idle, { ...ON, placement: { mode: "gpus", gpus: [0] }, contextLength: 8192 });
     await scheduler.loadNow(idle);
     const big = textModel("big", 120, { layers: 48, expertLayers: experts(48, 110), contextLength: 8192 });
     await scheduler.loadNow(big);
@@ -224,6 +227,7 @@ describe("the system RAM allowance", () => {
     await scheduler.start([]);
     await scheduler.setRamAllowance(32 * GIB);
     const m = textModel("moe", 30, { layers: 48, expertLayers: experts(48, 27), contextLength: 8192 });
+    scheduler.saveSettings(m, { ...ON, placement: { mode: "auto" } });
     await scheduler.loadNow(m);
     await scheduler.setRamAllowance(0);
     expect(llamacpp.calls.at(-1)).toBe("unload moe");
@@ -238,8 +242,8 @@ describe("what llama.cpp is told", () => {
     const llama = new LlamaCpp({ url: router.url, serving, models: "/models", device: (i) => `CUDA${i}` });
     const at = { gpus: [0], split: null, parallel: null, share: null, need: { 0: 20 * GIB } };
     try {
-      await llama.load(textModel("moe.gguf", 30, { layers: 48 }), { ...at, ram: 10 * GIB, cpuMoe: 18 }, { placement: { mode: "auto" } });
-      await llama.load(textModel("dense.gguf", 30, { layers: 60 }), { ...at, ram: 10 * GIB, gpuLayers: 41 }, { placement: { mode: "auto" } });
+      await llama.load(textModel("moe.gguf", 30, { layers: 48 }), { ...at, ram: 10 * GIB, cpuMoe: 18 }, { ...ON, placement: { mode: "auto" } });
+      await llama.load(textModel("dense.gguf", 30, { layers: 60 }), { ...at, ram: 10 * GIB, gpuLayers: 41 }, { ...ON, placement: { mode: "auto" } });
       const ini = readFileSync(join(serving, "llamacpp.ini"), "utf8");
       expect(ini).toMatch(/\[moe\.gguf\][^[]*n-gpu-layers = 999\nflash-attn = auto\nn-cpu-moe = 18\n/);
       expect(ini).toMatch(/\[dense\.gguf\][^[]*n-gpu-layers = 41\n/);
@@ -247,7 +251,7 @@ describe("what llama.cpp is told", () => {
       // Experts in RAM cross to the GPU once per prompt step, so the step is the whole batch; layers on the GPUs keep llama.cpp's step.
       expect(ini).toMatch(/\[moe\.gguf\][^[]*ubatch-size = 2048\n/);
       expect(ini).not.toMatch(/\[dense\.gguf\][^[]*ubatch-size/);
-      await llama.load(textModel("moe.gguf", 30, { layers: 48 }), { ...at, ram: 10 * GIB, cpuMoe: 18 }, { placement: { mode: "auto" }, batchSize: 4096 });
+      await llama.load(textModel("moe.gguf", 30, { layers: 48 }), { ...at, ram: 10 * GIB, cpuMoe: 18 }, { ...ON, placement: { mode: "auto" }, batchSize: 4096 });
       expect(readFileSync(join(serving, "llamacpp.ini"), "utf8")).toMatch(/\[moe\.gguf\][^[]*batch-size = 4096\nubatch-size = 4096\n/);
     } finally {
       router.server.close();
@@ -282,6 +286,7 @@ describe("reading a GGUF's experts", () => {
       await scheduler.start([]);
       await scheduler.setRamAllowance(64 * GIB);
       const m = textModel("big", 100, { layers: 80, expertLayers: experts(80, 85), outputBytes: 2 * GIB, contextLength: 8192 });
+      scheduler.saveSettings(m, { ...ON, placement: { mode: "auto" } });
       return { gpus, llamacpp, state, scheduler, m };
     }
 
@@ -359,4 +364,24 @@ describe("reading a GGUF's experts", () => {
       expect(Object.keys(state.get().vram).some((k) => k.startsWith("big@"))).toBe(true);
     });
   });
+
+it("keeps models that spilled before limits spilling, up to the allowance, once", () => {
+  const dir = mkdtempSync(join(tmpdir(), "lyrica-state-"));
+  writeFileSync(join(dir, "state.json"), JSON.stringify({
+    systemRam: 48 * GIB,
+    models: { off: { placement: { mode: "auto" }, systemRam: false }, set: { placement: { mode: "gpus", gpus: [0] }, contextLength: 8192 }, byHand: { placement: { mode: "auto" }, gpuLayers: 20 } },
+    vram: { "set@0/ngl30": [20 * GIB], "fresh@0+1:22,22/moe12~8192": [18 * GIB], "off@0@0.5/ngl20": [10 * GIB], "fits@0": [8 * GIB], "byHand@0/ngl20": [12 * GIB] },
+  }));
+  const state = new StateFile(dir);
+  expect(state.get().models).toEqual({
+    off: { placement: { mode: "auto" } },
+    set: { placement: { mode: "gpus", gpus: [0] }, contextLength: 8192, systemRam: 48 * GIB },
+    byHand: { placement: { mode: "auto" }, gpuLayers: 20 },
+    fresh: { placement: { mode: "auto" }, systemRam: 48 * GIB },
+  });
+  expect(state.get().migrations).toContain("ram-opt-in");
+  // Turned off again by hand, it stays off.
+  state.update((s) => void delete s.models.set!.systemRam);
+  expect(new StateFile(dir).get().models.set!.systemRam).toBeUndefined();
+});
 });

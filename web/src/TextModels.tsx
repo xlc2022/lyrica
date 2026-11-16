@@ -512,6 +512,8 @@ const MEMORY_KEYS = ["contextLength", "stretch", "kvCacheType", "gpuLayers", "sy
 const MAX_STRETCH = 8;
 
 /** A label, a control and its unit; `word` is the value's source after the label. */
+const RAM_TIP = "Lets this model keep part of itself in system RAM, which is slower, for a longer context or a model too big for its GPUs. Unticked, it stays on its GPUs, and a context they can't hold isn't saved.";
+
 function SRow({ label, word, title, unit, children }: { label: string; word?: string; title?: string; unit?: React.ReactNode; children: React.ReactNode }) {
   return (
     <label className="srow">
@@ -648,6 +650,13 @@ function CopyDrawer({ ctx, entry, copy, onClose, onSaved }: { ctx: MCtx; entry: 
     if (!stretch) return;
     const { originalContext: _, ...rest } = stretch;
     set("stretch", text.trim() === "" ? rest : { ...rest, originalContext: Number(text) });
+  };
+  // The System RAM limit is typed in whole GB, at least 1 and at most the host's allowance.
+  const [ramText, setRamText] = useState<string>();
+  const clampRam = () => {
+    const n = Math.round(Number(ramText));
+    if (ramText !== undefined && Number.isFinite(n)) set("systemRam", Math.min(Math.max(1, Math.floor(allowance / GB)), Math.max(1, n)) * GB);
+    setRamText(undefined);
   };
   const clampFactor = () => { if (stretch) set("stretch", { ...stretch, factor: Math.min(MAX_STRETCH, Math.max(1, llama ? Math.round(stretch.factor) : stretch.factor)) }); };
   // A Q8_0 or Q4_0 KV cache needs Flash attention on (host/API.md), so choosing one turns it on.
@@ -803,12 +812,20 @@ function CopyDrawer({ ctx, entry, copy, onClose, onSaved }: { ctx: MCtx; entry: 
             <option value="f16">F16</option><option value="q8_0">Q8_0</option><option value="q4_0">Q4_0</option>
           </select>
         </SRow>
-        {(!!allowance || draft.systemRam === false) && (
-          <SRow label="System RAM" title={`Auto keeps what doesn't fit the GPUs in system RAM, which is slower. Off refuses a model too big for them.${allowance ? ` The host's allowance is ${Math.round(allowance / GB)} GB.` : ""}`}>
-            <select aria-label="System RAM" value={draft.systemRam === false ? "off" : "auto"} onChange={(e) => set("systemRam", e.target.value === "off" ? false : undefined)}>
-              <option value="auto">Auto</option><option value="off">Off</option>
-            </select>
-          </SRow>
+        {(!!allowance || typeof draft.systemRam === "number") && (
+          <div className="srow">
+            <label className="check" title={RAM_TIP}>
+              <input type="checkbox" checked={typeof draft.systemRam === "number"} onChange={(e) => set("systemRam", e.target.checked ? Math.max(GB, Math.floor(allowance / GB) * GB) : undefined)} /> System RAM<span className="sr-only">. {RAM_TIP}</span>
+            </label>
+            {typeof draft.systemRam === "number" && (
+              <span className="with-unit">
+                <span className="unit">up to</span>
+                <input type="number" min={1} max={Math.max(1, Math.floor(allowance / GB))} step={1} aria-label="System RAM limit" value={ramText ?? String(Math.round(draft.systemRam / GB))}
+                  onChange={(e) => setRamText(e.target.value)} onBlur={clampRam} />
+                <span className="unit">of {Math.floor(allowance / GB)} GB</span>
+              </span>
+            )}
+          </div>
         )}
         {!!sv.layerTableBytes && (!!allowance || draft.layerTable === "ram") && (
           <SRow label="Embedding table" title={`Disk reads this model's per-layer embedding table from its file as needed, which is slow when other files crowd it out of memory. RAM loads it whole, ${gb(sv.layerTableBytes)} GB of the host's allowance.`}>

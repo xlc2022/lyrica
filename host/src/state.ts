@@ -68,6 +68,20 @@ export class StateFile {
       for (const u of Object.values(this.state.usage)) u.audioSeconds ??= 0;
       this.state.migrations = [...this.state.migrations, "speech"];
     }
+    // System RAM per model became opt-in, with a limit: a model that spilled before (its measured placements keep
+    // experts or layers in RAM) keeps doing so, up to the allowance; Off was false and is now unset, the default.
+    if (!this.state.migrations.includes("ram-opt-in")) {
+      const spilled = new Set(Object.keys(this.state.vram).filter((k) => /@[^@]*\/(moe|ngl)\d/.test(k)).map((k) => k.slice(0, k.indexOf("@"))));
+      for (const [id, m] of Object.entries(this.state.models)) {
+        if ((m as { systemRam?: unknown }).systemRam === false) { delete m.systemRam; spilled.delete(id); }
+        // Layers set by hand spill on their own, without the setting.
+        if (m.gpuLayers !== undefined) spilled.delete(id);
+      }
+      if (this.state.systemRam > 0) {
+        for (const id of spilled) this.state.models[id] = { ...(this.state.models[id] ?? { placement: { mode: "auto" } }), systemRam: this.state.systemRam };
+      }
+      this.state.migrations = [...this.state.migrations, "ram-opt-in"];
+    }
     // Written back once, so the file on disk is in today's shape.
     if (stored !== null && JSON.stringify(JSON.parse(stored)) !== JSON.stringify(this.state)) this.update(() => {});
   }

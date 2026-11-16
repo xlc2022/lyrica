@@ -22,8 +22,11 @@ export interface ModelSettings {
   flashAttention?: "auto" | "on" | "off";
   /** Layers on the GPUs, set by hand; the rest, with their cache, stay in system RAM. All unless set. */
   gpuLayers?: number;
-  /** llama.cpp: false keeps the model on the GPUs only, never in the host's system RAM allowance. */
-  systemRam?: false;
+  /**
+   * llama.cpp: the most of the model, in bytes, that may stay in the host's system RAM allowance, for a longer
+   * automatic context or a model too big for its GPUs. Unset keeps it on its GPUs.
+   */
+  systemRam?: number;
   /** llama.cpp: "ram" loads a per-layer embedding table over 4 GiB into system RAM, instead of reading its rows from the file as needed. */
   layerTable?: "ram";
   parallel?: number;
@@ -112,10 +115,10 @@ export function maxContextOf(model: TextModel, s: ModelSettings): number | null 
 /**
  * The context for a chat model with no saved one: the largest that fits some
  * way it may run with its GPUs as given, in steps of 1024 from 4096 up to its
- * maximum. A model that fits on its GPUs at any of those never counts system
- * RAM, which is far slower. One that doesn't, and may keep part of itself in
- * the system RAM allowance (`allowance`: what is left of it for this model),
- * gets the largest context that the GPUs and that RAM hold. With no maximum, or when nothing fits, 32k
+ * maximum. A llama.cpp model whose System RAM is on gets the largest that its
+ * GPUs and that RAM hold together (`allowance`: what is left of the host's
+ * allowance for it, within the model's own limit); it keeps nothing there
+ * when its GPUs hold its maximum. With no maximum, or when nothing fits, 32k
  * (never past its maximum), so a load that can't work fails with the usual reason.
  */
 export function autoContext(model: TextModel, s: ModelSettings, gpus: Gpu[], settings: (i: number) => GpuSettings, allowance = 0): number {
@@ -138,8 +141,8 @@ export function autoContext(model: TextModel, s: ModelSettings, gpus: Gpu[], set
     return lo * 1024;
   };
   const onGpus = largest(0, max);
-  if (onGpus !== null) return onGpus;
-  return (allowance > 0 && spills(model, s) ? largest(allowance, max) : null) ?? fallback;
+  const withRam = onGpus !== max && allowance > 0 && spills(model, s) ? largest(ramCap(s, allowance), max) : null;
+  return Math.max(onGpus ?? 0, withRam ?? 0) || fallback;
 }
 
 /**
@@ -245,8 +248,10 @@ function option(model: TextModel, s: ModelSettings, gpus: Gpu[], settings: (i: n
   };
 }
 
-/** Whether a model may keep part of itself in the host's system RAM allowance. */
-const spills = (model: TextModel, s: ModelSettings) => model.server === "llamacpp" && !!model.layers && s.systemRam !== false && s.gpuLayers === undefined;
+/** Whether a model may keep part of itself in the host's system RAM allowance: its System RAM is on. */
+const spills = (model: TextModel, s: ModelSettings) => model.server === "llamacpp" && !!model.layers && !!s.systemRam && s.gpuLayers === undefined;
+/** The system RAM a model may keep: the allowance, within the model's own limit when its System RAM is on. */
+const ramCap = (s: ModelSettings, allowance: number) => Math.min(allowance, s.systemRam ?? allowance);
 
 /**
  * An option that doesn't fit its GPUs (`used`: what other programs hold), with
@@ -364,8 +369,10 @@ function gpuOptions(model: TextModel, s: ModelSettings, gpus: Gpu[], settings: (
 /** Why an option can never fit, even with its GPUs empty and the system RAM allowance unused; null if it can. */
 export function neverFits(model: TextModel, s: ModelSettings, o: Option, gpus: Gpu[], settings: (i: number) => GpuSettings, allowance = Infinity): string | null {
   const gb = (n: number) => (n / GIB).toFixed(1);
-  if (o.ram && o.ram > allowance) {
-    return `This model needs about ${gb(o.ram)} GB of system RAM besides its GPUs, more than the host's allowance of ${gb(allowance)} GB.`;
+  if (o.ram && o.ram > ramCap(s, allowance)) {
+    return ramCap(s, allowance) < allowance
+      ? `This model needs about ${gb(o.ram)} GB of system RAM besides its GPUs, more than its System RAM limit of ${gb(ramCap(s, allowance))} GB.`
+      : `This model needs about ${gb(o.ram)} GB of system RAM besides its GPUs, more than the host's allowance of ${gb(allowance)} GB.`;
   }
   if (serverOf(model) === "vllm") {
     // vLLM must fit the weights and the KV cache for its context inside its share of each GPU.
@@ -468,7 +475,10 @@ export function validate(model: TextModel, body: Record<string, unknown>, gpus: 
     throw invalid("A q8_0 or q4_0 KV cache needs flashAttention set to on.");
   }
   int(body.gpuLayers, 0, 999, "gpuLayers");
-  if (body.systemRam !== undefined && body.systemRam !== false) throw invalid("systemRam is false, or left out for Auto.");
+  // Bytes; left out keeps the model on its GPUs.
+  if (body.systemRam !== undefined && (typeof body.systemRam !== "number" || !Number.isInteger(body.systemRam) || body.systemRam < GIB || body.systemRam > 1024 * GIB)) {
+    throw invalid("systemRam is the most bytes the model may keep in system RAM, from 1 GiB, or left out to keep it on its GPUs.");
+  }
   if (body.layerTable !== undefined) {
     if (body.layerTable !== "ram") throw invalid("layerTable is \"ram\", or left out to read it from the file.");
     if (!tableBytes(model)) throw invalid("This model has no per-layer embedding table over 4 GiB.");

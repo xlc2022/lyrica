@@ -453,8 +453,11 @@ embeddings and dictation receive neither parser.
 - llama.cpp only: `kvCacheType` (`f16`, `q8_0`, `q4_0`), `flashAttention`
   (`auto`, `on`, `off`), `gpuLayers` (0 to 999: layers on the GPUs, the
   rest with their cache in system RAM, counted by the fit check against
-  the System RAM allowance), `systemRam` (`false` keeps the model on its
-  GPUs only, never spilling; left out, it may use the allowance), `layerTable` (`"ram"`
+  the System RAM allowance), `systemRam` (bytes, from 1 GiB: the most of the
+  model that may stay in the allowance; left out, the model stays on its GPUs
+  and a context they can't hold is refused. Set, an automatic context is the
+  longest its GPUs and that much RAM hold, and a context set by hand fills the
+  GPUs first and puts the rest there), `layerTable` (`"ram"`
   loads a per-layer embedding table over 4 GiB whole into system RAM, from
   the allowance whatever `systemRam` says, instead of llama.cpp reading its
   rows from the model file as it needs them; refused for a model without one, or while the host has
@@ -566,9 +569,8 @@ Only the repository's name and revision leave the host.
   memory: idle ones are unloaded to make room, least recently used first,
   never a pinned one or one in use. Past the allowance even when nothing
   else is there, a load is `too_big`, naming both numbers.
-- vLLM, image recipes and voices never use it. A model whose settings
-  have `systemRam: false`, or `gpuLayers` set by hand, never spills into
-  it; an embedding table it keeps in RAM (below) still counts.
+- vLLM, image recipes and voices never use it. A model without `systemRam` in its settings, or with `gpuLayers` set by
+  hand, never spills into it; an embedding table it keeps in RAM (below) still counts.
 - A per-layer embedding table (`per_layer_token_embd.weight`, as in
   Gemma 4 or Qwen3.8-Flash-Next) never goes on the GPUs, so the fit check
   leaves it out. llama.cpp reads one over 4 GiB from the model file as it

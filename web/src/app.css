@@ -1741,7 +1741,7 @@ code.raw { font-size: 12px; overflow-wrap: anywhere; }
 .sgroup-head { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; position: relative; }
 .srow { display: grid; grid-template-columns: minmax(0, 1fr) minmax(130px, 200px); gap: 10px; align-items: center; font-size: 14px; }
 .srow .lbl { display: flex; flex-wrap: wrap; gap: 2px 8px; align-items: baseline; min-width: 0; }
-.srow input, .srow select { width: 100%; }
+.srow input:not([type="checkbox"]), .srow select { width: 100%; }
 .with-unit { display: flex; gap: 6px; align-items: center; min-width: 0; }
 .with-unit input { flex: 1; min-width: 0; }
 .with-unit input.starts { flex: 0 0 auto; width: calc(12ch + 48px); max-width: 100%; }
