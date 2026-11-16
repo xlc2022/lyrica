@@ -140,7 +140,9 @@ describe("machines", () => {
     expect(hers.sudo!.everything).toBe('# A file of its own, added to the configuration\'s imports before the rebuild\n{\n  security.sudo.extraRules = [{\n    users = [ "lyrica" ];\n    commands = [ { command = "ALL"; options = [ "NOPASSWD" ]; } ];\n  }];\n}');
     expect(hers.sudo!.password).toMatch(/^# A file of its own[^\n]*\n\{\n  security\.sudo\.extraRules = \[\{/);
     expect(hers.sudo!.password).toContain('commands = [ "ALL" ];');
-    expect(hers.sudo!.password).toContain("sudo passwd lyrica");
+    expect(hers.sudo!.password).toContain("#   sudo passwd lyrica");
+    // Saved whole as a file, it is still one module: nothing but comments after its closing brace.
+    expect(hers.sudo!.password.slice(hers.sudo!.password.lastIndexOf("}") + 1).split("\n").every((l) => l === "" || l.startsWith("#"))).toBe(true);
     const own = await workspace.probeMachine(ada.id, "ada", { name: "nixlap", address: "ada@127.0.0.1", asUser: true, nixos: true });
     expect(own.setup).toBe(`{\n  # Her key, beside your own\n  users.users.ada.openssh.authorizedKeys.keys = [ "${own.keyLine}" ];\n}`);
     expect(own.sudo).toBeUndefined();

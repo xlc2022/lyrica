@@ -457,7 +457,7 @@ then the fingerprint. Each sudo block is a module of its own holding a
 one attribute set don't evaluate, while separate modules' lists merge, so
 any of them can be used together; exact
 commands may name programs under `/run/current-system/sw/bin`, and **Sudo,
-with password** adds `sudo passwd <account>` after the rebuild. On the
+with password** ends with `sudo passwd <account>`, to run after the rebuild, as a comment so the file stays valid Nix. On the
 user's own account the module only adds the key to
 `users.users.<account>.openssh.authorizedKeys.keys`. Remove offers
 **Configuration** (rebuild after taking the module out: NixOS removes a

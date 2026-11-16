@@ -654,7 +654,7 @@ export function machineSudo(account: string, nixos = false): { everything: strin
   if (nixos) {
     return {
       everything: nixosSudoModule(nixosSudo(account, ["ALL"])),
-      password: [nixosSudoModule(nixosSudo(account, ["ALL"], false)), "", "# After the rebuild: the password, typed twice at the prompt", `sudo passwd ${account}`].join("\n"),
+      password: [nixosSudoModule(nixosSudo(account, ["ALL"], false)), "", "# After the rebuild, run this and type the password twice at its prompt (a comment, so the file stays valid Nix):", `#   sudo passwd ${account}`].join("\n"),
     };
   }
   return {
