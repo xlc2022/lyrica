@@ -54,6 +54,21 @@ export const nvidiaMonitor: GpuMonitor = {
 };
 
 /**
+ * Each NVIDIA GPU's compute capability by index (7.5 for sm_75), read once:
+ * asked apart from the memory reading, so a driver whose nvidia-smi lacks
+ * `compute_cap` loses only this (an empty map).
+ */
+export async function nvidiaComputeCaps(): Promise<Map<number, number>> {
+  const { stdout } = await promisify(execFile)("nvidia-smi", ["--query-gpu=index,compute_cap", "--format=csv,noheader"], { timeout: 10_000 }).catch(() => ({ stdout: "" }));
+  const caps = new Map<number, number>();
+  for (const line of stdout.trim().split("\n")) {
+    const [index, cap] = line.split(",").map((x) => x.trim());
+    if (/^\d+$/.test(index ?? "") && /^\d+\.\d+$/.test(cap ?? "")) caps.set(Number(index), Number(cap));
+  }
+  return caps;
+}
+
+/**
  * AMD integrated GPUs (APUs), by their gfx target: Raven, Picasso, Renoir,
  * Van Gogh, Rembrandt, Raphael, Mendocino, Phoenix and Hawk Point (780M),
  * Strix and Strix Halo, Krackan.
