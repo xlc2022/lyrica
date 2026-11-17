@@ -1896,8 +1896,9 @@ come from the user's Git accounts (DESIGN.md, "Updates and self-editing").
   run), and swaps the placeholder for the token only on that repository's
   Git paths (`/<owner>/<name>.git/…`) and its host's API (`api.github.com`
   and `uploads.github.com` for GitHub, `/api/` on GitHub Enterprise,
-  `/api/v1/` on Forgejo and Gitea). Each request goes on with the `Host`
-  its client sent, also when it goes through her tailscaled's proxy. A placeholder anywhere else is
+  `/api/v1/` on Forgejo and Gitea). Each request goes on with the host its
+  client tunnelled to as its `Host` (whatever header the client sent),
+  also when it goes through her tailscaled's proxy. A placeholder anywhere else is
   refused, and a request without one goes as it is. A **read-only**
   repository (a read-only, narrowed or offline child's or subagent's) is
   held to reading at the relay, whatever the token allows: fetches
