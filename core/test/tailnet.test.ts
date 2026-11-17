@@ -3,7 +3,9 @@ import { createSecureServer } from "node:http2";
 import { brotliCompressSync, gzipSync } from "node:zlib";
 import { createServer as createTcp, connect, type AddressInfo, type Socket } from "node:net";
 import { afterAll, describe, expect, it } from "vitest";
-import { addressesOutside, HostRefused, resolveHost, useTailnetProxy } from "../src/index.ts";
+import { createServer as createHttps } from "node:https";
+import { lookup } from "node:dns/promises";
+import { addressesOutside, HostRefused, resolveHost, useTailnetProxy, whyUnreachable } from "../src/index.ts";
 import { proxmoxHttps } from "../src/workspace/proxmox.ts";
 import { tailnetRelay } from "../src/workspace/transport.ts";
 import { fakeHost } from "./fake-host.ts";
@@ -32,7 +34,10 @@ const proxy = createTcp((client: Socket) => {
   });
 });
 await new Promise<void>((r) => proxy.listen(0, "127.0.0.1", r));
-useTailnetProxy(`127.0.0.1:${(proxy.address() as AddressInfo).port}`, () => "tail1234.ts.net");
+// Public names with tailnet records, as a forge's can have (git.example.net → 100.x); every other name resolves as usual.
+const RECORDS: Record<string, string[]> = { "forge.example.net": ["100.70.1.2"], "dark.example.net": ["100.99.3.4"] };
+useTailnetProxy(`127.0.0.1:${(proxy.address() as AddressInfo).port}`, () => "tail1234.ts.net",
+  async (host) => RECORDS[host] ?? (await lookup(host, { all: true })).map((a) => a.address));
 afterAll(() => proxy.close());
 
 describe("the tailnet, through her tailscaled's proxy", () => {
@@ -137,6 +142,45 @@ describe("the tailnet, through her tailscaled's proxy", () => {
       if (reject === undefined) delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
       else process.env.NODE_TLS_REJECT_UNAUTHORIZED = reject;
       server.close();
+    }
+  });
+
+  it("sends a public name whose records point into the tailnet through it, to the address", async () => {
+    const server = createHttp((_, res) => res.writeHead(200, { "content-type": "application/json" }).end('{"login":"ada"}'));
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    const port = (server.address() as AddressInfo).port;
+    try {
+      targets.length = 0;
+      expect(await (await fetch(`http://forge.example.net:${port}/api/v1/user`)).json()).toEqual({ login: "ada" });
+      expect((await fetch(`http://localhost:${port}/api/v1/user`)).status).toBe(200);
+      expect(targets).toEqual([`100.70.1.2:${port}`]);
+    } finally {
+      server.close();
+    }
+  });
+});
+
+describe("why a Git host gave no answer", () => {
+  const why = (url: string, host: string, init: RequestInit = {}) => fetch(url, init).then(() => "answered", (err) => whyUnreachable(host, err));
+
+  it("names the cause in plain words, and keeps the host as typed", async () => {
+    // Her tailscaled's own reason, for a name whose record points into the tailnet.
+    expect(await why("https://dark.example.net/api/v1/user", "dark.example.net"))
+      .toBe("dark.example.net is on your tailnet, and Lyrica's Tailscale couldn't reach it: nothing there takes connections on port 443");
+    expect(await why("https://nothing.invalid/", "nothing.invalid")).toBe("nothing.invalid doesn't resolve from this server");
+    const closed = createTcp();
+    await new Promise<void>((r) => closed.listen(0, "127.0.0.1", r));
+    const port = (closed.address() as AddressInfo).port;
+    await new Promise<void>((r) => closed.close(() => r()));
+    expect(await why(`https://127.0.0.1:${port}/`, `127.0.0.1:${port}`)).toBe(`127.0.0.1:${port} refused the connection on port ${port}`);
+    const tls = createHttps(selfSigned(), (_, res) => res.end("{}"));
+    await new Promise<void>((r) => tls.listen(0, "127.0.0.1", r));
+    const tlsPort = (tls.address() as AddressInfo).port;
+    try {
+      expect(await why(`https://127.0.0.1:${tlsPort}/`, "Git.Example.net")).toBe("Git.Example.net's certificate isn't valid: no trusted authority signed it");
+      expect(await why(`https://127.0.0.1:${tlsPort}/`, "git.example.net", { signal: AbortSignal.timeout(0) })).toBe("git.example.net didn't answer in time");
+    } finally {
+      tls.close();
     }
   });
 });

@@ -4,7 +4,7 @@ import { request as httpsRequest, type RequestOptions } from "node:https";
 import { connect, isIP, type AddressInfo, type Socket } from "node:net";
 import * as tls from "node:tls";
 import { createSecureContext, TLSSocket, type SecureContext } from "node:tls";
-import { tailnetSocket, viaTailnet } from "../models/tailnet.ts";
+import { tailnetProxied, tailnetSocket, viaTailnet } from "../models/tailnet.ts";
 import { makeAuthority } from "./certs.ts";
 import type { GitKind } from "./settings.ts";
 
@@ -92,11 +92,13 @@ const upstreamCAs = () => typeof tls.getCACertificates !== "function" ? undefine
 /**
  * How an upstream on her tailnet is reached: through her tailscaled's proxy,
  * with TLS inside the tunnel, as a model host is (core/src/models/tailnet.ts).
- * Node's request takes its own connection for that one request; every other
+ * Node's request takes its own connection for that one request, as does a
+ * Git host's name while the proxy is in use (its lookup decides); every other
  * host keeps the default agent and its kept-alive connections.
  */
-function tunnelTo(host: string, port: number, secure: boolean): Pick<RequestOptions, "createConnection"> {
-  if (!viaTailnet(host)) return {};
+function tunnelTo(host: string, port: number, secure: boolean, mayResolveInto: boolean): Pick<RequestOptions, "createConnection"> {
+  // A Git host's name may point into the tailnet (a public name with a 100.x record): only the lookup says.
+  if (!viaTailnet(host) && !(mayResolveInto && tailnetProxied() && !isIP(host))) return {};
   const createConnection: NonNullable<RequestOptions["createConnection"]> = (o, cb) => {
     tailnetSocket(host, port).then((raw) => {
       if (!secure) return cb(null, raw ?? connect(port, host));
@@ -336,7 +338,7 @@ export async function openRelay(spec: RelaySpec): Promise<Relay> {
     const secure = base.protocol === "https:";
     const request = secure ? httpsRequest : httpRequest;
     const out = request({ protocol: base.protocol, hostname: hostname(base.host), port: base.port || undefined, method: req.method, path, headers,
-      ...secure ? { ca: upstreamCAs() } : {}, ...tunnelTo(hostname(base.host), Number(base.port) || (secure ? 443 : 80), secure) }, (up) => {
+      ...secure ? { ca: upstreamCAs() } : {}, ...tunnelTo(hostname(base.host), Number(base.port) || (secure ? 443 : 80), secure, to !== ANTHROPIC_HOST) }, (up) => {
       res.writeHead(up.statusCode ?? 502, up.headers);
       // The plan's usage limit: a 429 whose unified rate limit is rejected, with its reset in seconds.
       if (to === ANTHROPIC_HOST && up.statusCode === 429 && up.headers["anthropic-ratelimit-unified-status"] === "rejected") {

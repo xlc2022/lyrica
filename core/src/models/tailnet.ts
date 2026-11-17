@@ -1,11 +1,13 @@
 // Calls to the tailnet. Her tailscaled runs with userspace networking, so this
 // machine has no route to tailnet addresses; it opens a proxy on loopback
 // (`--outbound-http-proxy-listen`) instead. Tailnet destinations go through it
-// by HTTP CONNECT, and TLS runs inside the tunnel end to end, so a model
+// by HTTP CONNECT (tailnet addresses, MagicDNS names, and ordinary names whose
+// DNS records all point into the tailnet), and TLS runs inside the tunnel end to end, so a model
 // host's pinned key is checked exactly as on a direct connection. Everything
 // else is dialled directly, and so is a tailnet destination when nothing
 // listens on the proxy's port (no tailscaled of hers, or one started before
 // it had the proxy): a machine with its own Tailscale reaches it that way.
+import { lookup } from "node:dns/promises";
 import { BlockList, connect as tcp, isIP, type Socket } from "node:net";
 import { Agent, buildConnector, fetch as undiciFetch } from "undici";
 
@@ -16,6 +18,16 @@ TAILNET.addSubnet("fd7a:115c:a1e0::", 48, "ipv6");
 let proxy: { host: string; port: number } | undefined;
 let suffix: () => string | undefined = () => undefined;
 let builtinFetch: typeof fetch | undefined;
+let resolveName = async (host: string): Promise<string[]> => (await lookup(host, { all: true })).map((a) => a.address);
+
+/**
+ * Names outside MagicDNS whose DNS records point into the tailnet (a public
+ * `git.example.net` with a 100.x record), with the address to dial through
+ * the proxy, or none for an ordinary name; each kept a minute.
+ */
+const named = new Map<string, { address?: string; until: number }>();
+const NAMED_MS = 60_000;
+const NAMED_MAX = 1000;
 
 /**
  * Sends tailnet destinations through her tailscaled's proxy (`host:port` on
@@ -28,11 +40,13 @@ let builtinFetch: typeof fetch | undefined;
  * everything else, since a newer undici's dispatcher under Node's fetch
  * loses an HTTP/2 answer's headers and so its content encoding.
  */
-export function useTailnetProxy(address: string, magicDns: () => string | undefined = () => undefined): void {
+export function useTailnetProxy(address: string, magicDns: () => string | undefined = () => undefined, resolve?: (host: string) => Promise<string[]>): void {
   const u = new URL(`http://${address}`);
   if (!["127.0.0.1", "[::1]", "localhost"].includes(u.hostname)) throw new Error("the tailnet proxy listens on loopback");
   proxy = { host: u.hostname.replace(/^\[|\]$/g, ""), port: Number(u.port) || 80 };
   suffix = magicDns;
+  if (resolve) resolveName = resolve;
+  named.clear();
   const direct = buildConnector({});
   const dispatcher = new Agent({
     connect: (opts, callback) => {
@@ -47,11 +61,13 @@ export function useTailnetProxy(address: string, magicDns: () => string | undefi
   const builtin = (builtinFetch ??= globalThis.fetch);
   globalThis.fetch = ((input: string | URL | Request, init?: RequestInit) => {
     const url = new URL(input instanceof Request ? input.url : String(input));
-    if (!viaTailnet(url.hostname)) return builtin(input, init);
-    const from = input instanceof Request
+    return tailnetTarget(url.hostname).then((target) => {
+      if (!target) return builtin(input, init);
+      const from = input instanceof Request
       ? { method: input.method, headers: input.headers, body: input.body, signal: input.signal, duplex: "half", redirect: input.redirect }
       : {};
-    return undiciFetch(url, { ...from, ...(init as object), dispatcher } as never) as unknown as Promise<Response>;
+      return undiciFetch(url, { ...from, ...(init as object), dispatcher } as never) as unknown as Promise<Response>;
+    });
   }) as typeof fetch;
 }
 
@@ -61,12 +77,34 @@ export function tailnetName(host: string): boolean {
   return !!s && host.replace(/\.$/, "").toLowerCase().endsWith(`.${s}`);
 }
 
+/** Whether her tailscaled's proxy is in use. */
+export const tailnetProxied = (): boolean => !!proxy;
+
 /** Whether a host is reached through the proxy: a tailnet address, or a name in her tailnet. */
 export function viaTailnet(host: string): boolean {
   if (!proxy) return false;
   const h = host.replace(/^\[|\]$/g, "");
   const v = isIP(h);
   return v ? TAILNET.check(h, v === 6 ? "ipv6" : "ipv4") : tailnetName(h);
+}
+
+/**
+ * Where a connection to `host` goes through the proxy: the host itself for a
+ * tailnet address or a MagicDNS name, the first address for a name whose
+ * records all point into the tailnet, or undefined to dial it directly.
+ */
+export async function tailnetTarget(host: string): Promise<string | undefined> {
+  if (!proxy) return undefined;
+  const h = host.replace(/^\[|\]$/g, "");
+  if (isIP(h) || tailnetName(h)) return viaTailnet(h) ? h : undefined;
+  const key = h.replace(/\.$/, "").toLowerCase();
+  const known = named.get(key);
+  if (known && known.until > Date.now()) return known.address;
+  const addresses = await resolveName(h).catch(() => []);
+  const inside = addresses.length > 0 && addresses.every((a) => TAILNET.check(a, isIP(a) === 6 ? "ipv6" : "ipv4"));
+  if (named.size >= NAMED_MAX) named.clear();
+  named.set(key, { address: inside ? addresses[0] : undefined, until: Date.now() + NAMED_MS });
+  return inside ? addresses[0] : undefined;
 }
 
 /** At most this much of a refused CONNECT's body is read for its reason. */
@@ -91,9 +129,10 @@ function dialReason(body: Buffer, port: number): string {
 class NoProxy extends Error {}
 
 /** A connection to `host:port` through the proxy for a tailnet destination; undefined to dial it directly. */
-export function tailnetSocket(host: string, port: number, o: { paused?: boolean } = {}): Promise<Socket | undefined> {
-  if (!viaTailnet(host)) return Promise.resolve(undefined);
-  return tunnel(host, port, 10_000, o).catch((e) => {
+export async function tailnetSocket(host: string, port: number, o: { paused?: boolean } = {}): Promise<Socket | undefined> {
+  const target = await tailnetTarget(host);
+  if (!target) return undefined;
+  return tunnel(target, port, 10_000, o).catch((e) => {
     if (e instanceof NoProxy) return undefined;
     throw e;
   });

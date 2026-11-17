@@ -1800,11 +1800,15 @@ come from the user's Git accounts (DESIGN.md, "Updates and self-editing").
   pool. Adding one, or replacing its token, checks the token against the
   host first (GitHub's `/user`, Gitea's and Forgejo's `/api/v1/user`, and
   the login must be the account's; Other only checks that the host
-  answers) and saves nothing when that fails. Each use records Signed in,
+  answers) and saves nothing when that fails, saying why in plain words:
+  the name doesn't resolve, the connection was refused, the certificate
+  isn't valid (and how), no answer in time, a redirect, her tailscaled's
+  own reason, or the HTTP status. Each use records Signed in,
   Token rejected or Unreachable. A GitHub account is general only. A
   private account's host must resolve on her own network (LAN, loopback or
   the tailnet, as for private machines); a host in her tailnet (a MagicDNS
-  name or a 100.x address) is reached through her tailscaled's proxy, by
+  name, a 100.x address, or a public name whose DNS records all point at
+  100.x addresses, looked up again each minute) is reached through her tailscaled's proxy, by
   the account check and by the credential relay alike, so a machine with no
   Tailscale of its own still reaches a forge there; when it stops doing so the
   account is Off network and no token goes out until the user confirms
