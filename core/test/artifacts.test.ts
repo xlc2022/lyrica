@@ -34,6 +34,19 @@ describe("artifacts", () => {
     expect(a.list()).toHaveLength(2);
   });
 
+  it("an automatic update overwrites her newest version, never one the person made", () => {
+    const a = library();
+    const { artifact } = a.publish({ thread: "web/t1", path: "/thread/r.md", kind: "markdown", bytes: Buffer.from("# one"), author: "lyrica" });
+    const replaced = a.publish({ thread: "web/t1", path: "/thread/r.md", kind: "markdown", bytes: Buffer.from("# two"), author: "lyrica", artifact: artifact.id, replace: true });
+    expect(replaced.artifact.version).toBe(1);
+    expect(a.read(artifact.id)?.bytes.toString()).toBe("# two");
+    a.restore(artifact.id, 1, "user");
+    // The person's version stays: the update adds one after it.
+    expect(a.publish({ thread: "web/t1", path: "/thread/r.md", kind: "markdown", bytes: Buffer.from("# three"), author: "lyrica", replace: true }).artifact.version).toBe(3);
+    expect(a.versions(artifact.id).map((v) => [v.n, v.author])).toEqual([[3, "lyrica"], [2, "user"], [1, "lyrica"]]);
+    expect(a.read(artifact.id, 2)?.bytes.toString()).toBe("# two");
+  });
+
   it("restore an old version as a new one, by the person, and rename", () => {
     const a = library();
     const { artifact } = a.publish({ thread: "web/t1", path: "/thread/a.html", kind: "html", bytes: page("one"), author: "lyrica" });

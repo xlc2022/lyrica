@@ -10,7 +10,10 @@ import {
 import { Type } from "typebox";
 import { setToolsOff } from "./gate.ts";
 import { proxmoxTool } from "./proxmox.ts";
-import { bundleOut, pageTool } from "./page.ts";
+import { artifactPlace, bundleOut, pageTool, publishFile } from "./page.ts";
+
+/** How often a changed published file is published again, at most: the user asked for about a minute (2026-11-17). */
+export const REPUBLISH_MS = 60_000;
 
 /** What the workspace tools need for one thread. `Workspace` from core provides it. */
 /** An artifact as her page tool says it (docs/briefs/artifacts.md). */
@@ -84,7 +87,7 @@ export interface ThreadTools {
    * the next version of one, `list` names the thread's and its project's. Without it (a subagent), there are none.
    */
   artifacts?: {
-    publish(p: { path: string; kind: "html" | "svg" | "markdown" | "react"; bytes: Buffer; built?: Buffer; title?: string; artifact?: string }): { artifact: ThreadArtifact; created: boolean };
+    publish(p: { path: string; kind: "html" | "svg" | "markdown" | "react"; bytes: Buffer; built?: Buffer; title?: string; artifact?: string; replace?: boolean }): { artifact: ThreadArtifact; created: boolean };
     list(): ThreadArtifact[];
   };
   /** Records that this thread wrote these files in the sandbox (paths as she sees them), for the file viewer's thread beside a file. */
@@ -695,12 +698,48 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
       return undefined;
     });
 
+    // A published file she changes is published again, overwriting her newest version (the user chose, 2026-11-17),
+    // at most once a minute per artifact; what is still owed is published when her turn ends.
+    const republished = new Map<string, number>();
+    const owed = new Map<string, { id: string; machine?: string; file: string }>();
+    const republish = async (a: { id: string; machine?: string; file: string }) => {
+      owed.delete(a.id);
+      republished.set(a.id, Date.now());
+      try {
+        const { artifact } = await publishFile(tools, a.machine, a.file, { artifact: a.id, replace: true });
+        return `Updated ${artifact.id} "${artifact.title}" (version ${artifact.version}) from ${a.file}.`;
+      } catch (err) {
+        return `Not updated: ${a.id} from ${a.file}: ${err instanceof Error ? err.message : String(err)}`;
+      }
+    };
+    /** The thread's artifacts whose file this call changed: the path write or edit wrote, or a file a command names. */
+    const changedArtifacts = async (tool: string, input: Record<string, unknown>) => {
+      if (!tools.artifacts || (tool !== "write" && tool !== "edit" && tool !== "bash")) return [];
+      const machine = (input.machine as string | undefined) || undefined;
+      const all = tools.artifacts.list().flatMap((a) => (a.path ? [{ id: a.id, ...artifactPlace(a.path) }] : [])).filter((a) => a.machine === machine);
+      if (!all.length) return [];
+      if (tool === "bash") return all.filter((a) => String(input.command ?? "").includes(posix.basename(a.file)));
+      const cwd = await tools.target(machine).cwd();
+      const path = typeof input.path === "string" ? posix.resolve(cwd, input.path) : undefined;
+      return all.filter((a) => a.file === path);
+    };
+
     // The command's result says what was saved before it ran, so she knows she can get it back.
-    pi.on("tool_result", (event) => {
+    pi.on("tool_result", async (event) => {
       const saves = saved.get(event.toolCallId);
       saved.delete(event.toolCallId);
-      if (!saves?.length) return;
-      return { content: [...event.content, { type: "text" as const, text: savedNote(saves) }] };
+      const notes = saves?.length ? [savedNote(saves)] : [];
+      if (!event.isError) {
+        for (const a of await changedArtifacts(event.toolName, event.input as Record<string, unknown>).catch(() => [])) {
+          if (Date.now() - (republished.get(a.id) ?? 0) >= REPUBLISH_MS) notes.push(await republish(a));
+          else owed.set(a.id, a);
+        }
+      }
+      if (!notes.length) return;
+      return { content: [...event.content, ...notes.map((text) => ({ type: "text" as const, text }))] };
+    });
+    pi.on("agent_end", async () => {
+      for (const a of [...owed.values()]) await republish(a);
     });
 
     // Commands typed with "!" in the terminal run where her tools do.

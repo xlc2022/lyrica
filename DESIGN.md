@@ -222,11 +222,11 @@ Each user has two pools of memory.
       turns never deletes it.
   - **Artifacts** (decided 2026-11-11, as in Claude's own app): a page,
     drawing or document she publishes with `page publish`, or one the user
-    imports, kept with a title and every version it has had. Versions live
+    imports, kept with a title and its versions. Versions live
     in the pool's own encrypted database, not in the thread's folder, so a
-    version never changes when the file it came from does, and a Private
+    version is a copy, not a link to the file it came from, and a Private
     artifact is never listed or served under General. A version is at most
-    16 MiB and is one self-contained file. Publishing is also how she shows the user a file, from the sandbox or one of her machines, without reading it into her context and typing it out again; a text file that isn't a page is shown as Markdown holding it as code. An artifact opens as a file
+    16 MiB and is one self-contained file. She never shows the user a file by reading it into her context and typing it out again: a file in her folders she links by its path, which opens it in the file viewer as it is now, and one on a machine she publishes; a text file that isn't a page is shown as Markdown holding it as code. When she changes a file she published, it is published again on its own, at most once a minute, and that update overwrites her newest version instead of adding one (the user chose this, 2026-11-17); a version the user made is never overwritten. An artifact opens as a file
     does, in the same sandbox under its thread's internet rule, and only for the signed-in user: there
     are no public links. She can't delete one; the user can. Every
     artifact belongs to a thread, and deleting the thread deletes its

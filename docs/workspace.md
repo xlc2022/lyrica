@@ -2647,8 +2647,19 @@ script, PNG decoder or bundler:
   machine, as `read` there would). Its result's details carry the
   artifact's id, title, kind and version, which the conversation shows as
   a card; her result is one line, so the file never enters her context.
-  Her prompt tells her to publish a file the person asks to see rather
-  than read it and type it out again.
+  Her prompt tells her never to read a file the person asks to see and
+  type it out again: one in her folders she gives as a path in her reply
+  (it opens in the file viewer, always current); one on a machine, or a
+  page worth versions, she publishes. It also tells her to write reports
+  and notes for the person in her thread's folder rather than on a machine.
+  When she changes a published file afterwards (`write` or `edit` on its
+  path, or a command naming the file, in the same place), the workspace
+  extension publishes it again with `replace`, which overwrites her newest
+  version (`replaceLatest`; a version the user made is never overwritten,
+  so one is added after it). That happens at most once a minute per
+  artifact (`REPUBLISH_MS`); a change inside the minute is owed and
+  published when her turn ends. Her result gets one line, "Updated <id>…";
+  no new card, since the card she already has opens the newest content.
 - `artifacts` lists the thread's artifacts and its project's: id, title,
   kind, version and path.
 

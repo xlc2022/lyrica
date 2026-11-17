@@ -39,6 +39,39 @@ export function codeBlock(name: string, text: string): Buffer {
 /** One line for an artifact in her results. */
 const artifactLine = (a: ThreadArtifact) => `${a.id} "${a.title}" (${a.kind}, version ${a.version}${a.path ? `, from ${a.path}` : ""})`;
 
+/** Where an artifact's file is: a sandbox path, or `<machine>:<path>` for one taken from a machine. */
+export function artifactPlace(path: string): { machine?: string; file: string } {
+  if (path.startsWith("/")) return { file: path };
+  const at = path.indexOf(":");
+  return at > 0 ? { machine: path.slice(0, at), file: path.slice(at + 1) } : { file: path };
+}
+
+/**
+ * Publishes one file, from the sandbox or a machine, as a new artifact or the next version of one: `page publish`,
+ * and the republish after she changes a published file. The file goes only to the artifact; she gets the lines.
+ */
+export async function publishFile(tools: ThreadTools, machine: string | undefined, file: string, o: { title?: string; artifact?: string; replace?: boolean } = {}) {
+  if (!tools.artifacts) throw new Error("Artifacts aren't available here: publish from the thread itself.");
+  const read = await tools.target(machine).ops().read.readFile(file);
+  if (read.length > ARTIFACT_LIMIT) throw new Error("An artifact is at most 16 MiB.");
+  // A text file of another kind is shown as Markdown holding it as a code block; a binary file isn't an artifact.
+  const own = artifactKind(file);
+  const kind = own ?? (read.includes(0) ? undefined : "markdown");
+  if (!kind) throw new Error("An artifact is a text file: an .html, .svg, .md, .jsx or .tsx page, or code, a log or another text file to show.");
+  const bytes = own ? read : codeBlock(posix.basename(file), read.toString("utf8"));
+  // Where the file is: a machine's path is kept with the machine's name, so it never meets a sandbox path's artifact.
+  const where = machine ? `${machine}:${file}` : file;
+  // A React component is built into one page here, by esbuild alone: its source is compiled, never run, and may import only the listed packages.
+  const built = kind === "react" ? Buffer.from((await buildReactPage(bytes.toString("utf8"), { loader: /\.tsx$/i.test(file) ? "tsx" : "jsx", ...(o.title ? { title: o.title } : {}) })).html) : undefined;
+  // One file is all an artifact carries: a page that needs files beside it is bundled first.
+  const found = kind === "html" ? checkPage(bytes.toString("utf8")) : undefined;
+  if (found?.local.length) throw new Error(`${where} refers to local files an artifact can't carry: ${found.local.join(", ")}. Run page bundle and publish the bundle.`);
+  const { artifact, created } = tools.artifacts.publish({ path: where, kind, bytes, ...(built ? { built } : {}), ...o });
+  const lines = [`${created ? "Published" : artifact.version === 1 ? "Already published, unchanged:" : `Published version ${artifact.version} of`} ${artifactLine(artifact)}. The person sees a card for it in this reply.`];
+  if (found && (found.loads.length || found.calls.length)) lines.push(describeCheck(found), "With the thread's internet off the page runs no scripts and loads nothing from the network.");
+  return { artifact, created, lines };
+}
+
 /** How long a page may take to fire its load event before the screenshot is taken anyway. */
 const LOAD_MS = 20_000;
 const pct = (x: number) => `${x >= 0.1 || x === 0 ? Math.round(x * 100) : (x * 100).toFixed(1)}%`;
@@ -64,8 +97,9 @@ export function pageTool(tools: ThreadTools, check: (id: string, input: Record<s
     promptSnippet: "preview an HTML page (screenshot, errors, pixel stats), bundle it into one file, check it loads nothing from elsewhere, or publish it as an artifact",
     promptGuidelines: ["Check a page with page preview, not a screenshot script of your own; read its errors before its pixels.",
       "When the person wants one file, page bundle it, then preview the bundle.",
-      "page publish a finished page, drawing or document the person will keep or come back to, not every scratch file; publish the same file again after changing it.",
-      "When the person asks to see a file (a report, a page, code, a log), page publish it, with machine when it's on one, rather than reading it and typing it out again in your reply."],
+      "page publish a finished page, drawing or document the person will keep or come back to, not every scratch file; when you change a published file with write, edit or a command naming it, it is updated for the person on its own.",
+      "Write a report, notes or anything else meant for the person in your thread's folder, not on a machine you're working on, so it stays off that machine and shows in their Files panel.",
+      "When the person asks to see a file, never read it and type it out again in your reply. One in your folders: give its path in your reply, which opens it in their file viewer as it is now. One on a machine, or a page they'll want versions of: page publish it."],
     parameters: pageParameters,
     // A machine sent as null, "null" or "sandbox" is no machine, as for the file tools.
     prepareArguments: (input: unknown) => withoutNoMachine(input, (tools.machines?.() ?? []).map((m) => m.name)) as PageArgs,
@@ -87,22 +121,7 @@ export function pageTool(tools: ThreadTools, check: (id: string, input: Record<s
       const file = posix.resolve(cwd, p.path);
       if (p.action === "publish") {
         if (!tools.artifacts) throw new Error("Artifacts aren't available here: publish from the thread itself.");
-        const read = await target.ops().read.readFile(file);
-        if (read.length > ARTIFACT_LIMIT) throw new Error("An artifact is at most 16 MiB.");
-        // A text file of another kind is shown as Markdown holding it as a code block; a binary file isn't an artifact.
-        const kind = artifactKind(file) ?? (read.includes(0) ? undefined : "markdown");
-        if (!kind) throw new Error("An artifact is a text file: an .html, .svg, .md, .jsx or .tsx page, or code, a log or another text file to show.");
-        const bytes = artifactKind(file) ? read : codeBlock(posix.basename(file), read.toString("utf8"));
-        // Where the file is: a machine's path is kept with the machine's name, so it never meets a sandbox path's artifact.
-        const where = machine ? `${machine}:${file}` : file;
-        // A React component is built into one page here, by esbuild alone: its source is compiled, never run, and may import only the listed packages.
-        const built = kind === "react" ? Buffer.from((await buildReactPage(bytes.toString("utf8"), { loader: /\.tsx$/i.test(file) ? "tsx" : "jsx", ...(p.title ? { title: p.title } : {}) })).html) : undefined;
-        // One file is all an artifact carries: a page that needs files beside it is bundled first.
-        const found = kind === "html" ? checkPage(bytes.toString("utf8")) : undefined;
-        if (found?.local.length) throw new Error(`${where} refers to local files an artifact can't carry: ${found.local.join(", ")}. Run page bundle and publish the bundle.`);
-        const { artifact, created } = tools.artifacts.publish({ path: where, kind, bytes, ...(built ? { built } : {}), ...(p.title ? { title: p.title } : {}), ...(p.artifact ? { artifact: p.artifact } : {}) });
-        const lines = [`${created ? "Published" : artifact.version === 1 ? "Already published, unchanged:" : `Published version ${artifact.version} of`} ${artifactLine(artifact)}. The person sees a card for it in this reply.`];
-        if (found && (found.loads.length || found.calls.length)) lines.push(describeCheck(found), "With the thread's internet off the page runs no scripts and loads nothing from the network.");
+        const { artifact, lines } = await publishFile(tools, machine, file, { ...(p.title ? { title: p.title } : {}), ...(p.artifact ? { artifact: p.artifact } : {}) });
         return { content: [text(lines.join("\n"))], details: { artifact: { id: artifact.id, title: artifact.title, kind: artifact.kind, version: artifact.version } } };
       }
       if (p.action === "check") {
