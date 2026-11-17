@@ -250,6 +250,8 @@ describe("Git accounts and repositories", () => {
     await expect(add("away", "192.0.2.7", "private")).rejects.toThrow(/outside your network/);
     expect((await add("away", "192.0.2.7", "private", { offNetworkConfirmed: true })).offNetwork).toBe(true);
     expect((await add("home", "https://127.0.0.1:3000/", "private")).host).toBe("127.0.0.1:3000");
+    // The Name field's rule names the field, never the Account field beside it.
+    await expect(add("Lilypad Forgejo", "127.0.0.1:3000", "private")).rejects.toThrow("the name uses letters, digits, '.', '_' and '-', with no spaces");
     // The token is checked first: a wrong one, or another account's, saves nothing.
     await expect(workspace.addGitAccount(ada.id, { name: "x", kind: "github", host: "github.com", account: "ada", token: "nope", pool: "general" })).rejects.toThrow(/rejected the token/);
     await expect(workspace.addGitAccount(ada.id, { name: "x", kind: "github", host: "github.com", account: "ada", token: TOKEN, pool: "general" })).rejects.toThrow(/lyrica-bot's, not ada's/);
