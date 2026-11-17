@@ -66,6 +66,8 @@ describe("a local MCP server's transport", () => {
     expect(await probeMcpCommand(start())).toEqual({ tools: 1, description: "A test server on stdio." });
     await expect(probeMcpCommand(start({ MCP_TEST_FAIL: "EBAY_CLIENT_ID and EBAY_CLIENT_SECRET are required" }))).rejects.toThrow(/^the program stopped: EBAY_CLIENT_ID and EBAY_CLIENT_SECRET are required$/);
     await expect(probeMcpCommand(async () => { throw new Error("this thread already has 4 background commands running"); })).rejects.toThrow(/4 background commands/);
+    // One that logs as it starts and then never answers hasn't stopped: the timeout stays the reason, its log beside it.
+    await expect(probeMcpCommand(start({ MCP_TEST_HANG: "Demo MCP server running on stdio" }), 500)).rejects.toThrow(/^the program didn't answer as an MCP server: .+ \(it said: Demo MCP server running on stdio\)$/);
   });
 
   it("drops the server's log notifications, hands its results on, records its state, and stops the process when closed", async () => {

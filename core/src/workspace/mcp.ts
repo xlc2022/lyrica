@@ -281,6 +281,7 @@ class ProcessTransport implements McpTransport {
   private child: McpProcess | undefined;
   private closed = false;
   private closeEmitted = false;
+  private gone = false;
   private pending = Buffer.alloc(0);
   private errTail = "";
   private readonly messageListeners = new Set<(m: JsonRpcMessage) => void>();
@@ -292,6 +293,9 @@ class ProcessTransport implements McpTransport {
   /** The last of what the program wrote to stderr: its own words on why it stopped. */
   stderr(): string { return this.errTail; }
 
+  /** Whether the program exited by itself, not because this transport closed it. */
+  exited(): boolean { return this.gone; }
+
   async start(): Promise<void> {
     if (this.child) throw new Error("MCP process transport already started");
     if (this.closed) throw new McpConnectionClosedError();
@@ -301,7 +305,7 @@ class ProcessTransport implements McpTransport {
     child.stderr.on("data", (d: Buffer) => { this.errTail = (this.errTail + d.toString("utf8")).slice(-STDERR_BYTES); });
     child.stdin.on("error", () => {}); // the program may exit without reading
     child.on("error", (err) => this.emitError(err));
-    child.on("close", () => { this.child = undefined; this.emitClose(); });
+    child.on("close", () => { this.child = undefined; if (!this.closed) this.gone = true; this.emitClose(); });
   }
 
   async send(m: JsonRpcMessage): Promise<void> {
@@ -429,26 +433,28 @@ export function probeMcp(url: string, token?: string, f?: typeof fetch): Promise
   return probe(new StreamableHttpTransport({ url, headers: headers(token), fetch: noRedirects(f), openGetStream: false }), mcpHost(url));
 }
 
-/** Checks a local server before it is saved: started by `start` (in a sandbox), it must answer `initialize` and `tools/list` within 15 seconds. Throws McpServerProblem. */
-export function probeMcpCommand(start: () => Promise<McpProcess>): Promise<McpProbe> {
+/** Checks a local server before it is saved: started by `start` (in a sandbox), it must answer `initialize` and `tools/list` within 15 seconds (`timeoutMs`, shorter in tests). Throws McpServerProblem. */
+export function probeMcpCommand(start: () => Promise<McpProcess>, timeoutMs = 15_000): Promise<McpProbe> {
   const transport = new ProcessTransport(start);
-  return probe(transport, LOCAL_HOST, () => transport.stderr());
+  return probe(transport, LOCAL_HOST, () => ({ stderr: transport.stderr(), exited: transport.exited() }), timeoutMs);
 }
 
-async function probe(transport: McpTransport, place: string, stderr?: () => string): Promise<McpProbe> {
-  const client = new McpClient({ name: "lyrica", version: "1", requestTimeoutMs: 15_000 });
+async function probe(transport: McpTransport, place: string, local?: () => { stderr: string; exited: boolean }, timeoutMs = 15_000): Promise<McpProbe> {
+  const client = new McpClient({ name: "lyrica", version: "1", requestTimeoutMs: timeoutMs });
   try {
     const init = await client.connect(transport);
-    const tools = await client.listTools({ timeoutMs: 15_000 });
+    const tools = await client.listTools({ timeoutMs });
     const line = (init.instructions ?? "").split("\n").map((l) => l.trim()).find(Boolean) ?? init.serverInfo?.title ?? null;
     return { tools: tools.length, description: line ? line.slice(0, 200) : null };
   } catch (err) {
     const state = mcpFailure(err);
-    // A local server's own words on why it stopped say more than "closed" does: a missing key, a program not found.
-    const said = stderr ? whyItStopped(stderr()) : undefined;
+    // A local server's own words say more than "closed" does: a missing key, a program not found. Only one that exited
+    // stopped; one still running (a timeout) keeps the error, its words beside it.
+    const { stderr = "", exited = false } = local?.() ?? {};
+    const said = whyItStopped(stderr);
     throw new McpServerProblem(state, state === "rejected" ? `${place} rejected the token`
-      : said ? `the program stopped: ${said}`
-      : `${place === LOCAL_HOST ? "the program" : place} didn't answer as an MCP server: ${(err as Error).message}`);
+      : said && exited ? `the program stopped: ${said}`
+      : `${place === LOCAL_HOST ? "the program" : place} didn't answer as an MCP server: ${(err as Error).message}${said ? ` (it said: ${said})` : ""}`);
   } finally {
     await client.close().catch(() => {});
   }
