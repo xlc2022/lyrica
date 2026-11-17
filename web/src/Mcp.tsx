@@ -165,12 +165,12 @@ function McpDrawer({ userId, server, onSaved, onChanged, onClose }: {
           <label className="field"><span>Name</span><input value={form.name} autoFocus={adding} spellCheck={false} onChange={(e) => set("name", e.target.value)} /></label>
           {!(replacing && server?.command) && (
             <label className="field"><span>URL</span>
-              <input className="mono" value={form.url} placeholder="https://mcp.example.com/mcp" spellCheck={false} disabled={replacing || local} onChange={(e) => set("url", e.target.value)} />
+              <input className="mono" value={form.url} placeholder={replacing || local ? undefined : "https://mcp.example.com/mcp"} spellCheck={false} disabled={replacing || local} onChange={(e) => set("url", e.target.value)} />
             </label>
           )}
           {!(replacing && server && !server.command) && (
             <label className="field"><span>Command</span>
-              <input className="mono" value={form.command} placeholder="ebay-mcp-server" spellCheck={false} disabled={replacing || !!form.url.trim()} title={COMMAND_TIP} onChange={(e) => set("command", e.target.value)} />
+              <input className="mono" value={form.command} placeholder={replacing || form.url.trim() ? undefined : "example-mcp-server"} spellCheck={false} disabled={replacing || !!form.url.trim()} title={COMMAND_TIP} onChange={(e) => set("command", e.target.value)} />
             </label>
           )}
           {(adding || replacing) && !(local || server?.command) && (

@@ -943,8 +943,16 @@ test("MCP servers: one is checked before it's saved, granted in a thread's drawe
   await expect(section).toContainText("None yet.");
   await section.getByRole("button", { name: "Add server" }).click();
   const adding = page.getByRole("complementary", { name: "Add server" });
-  await adding.getByLabel("Name", { exact: true }).fill("house");
+  await adding.getByLabel("Name", { exact: true }).fill("My house");
   await adding.getByLabel("URL").fill("http://127.0.0.1:9/mcp");
+  // With a URL, Command is disabled and shows no example that could pass for a value.
+  await expect(adding.getByLabel("Command")).toBeDisabled();
+  await expect(adding.getByLabel("Command")).not.toHaveAttribute("placeholder");
+  // The name is checked first, and its error says a space is the problem.
+  await adding.getByRole("button", { name: "Add server" }).click();
+  await expect(adding.getByRole("alert")).toContainText("with no spaces");
+  await shot("mcp-name");
+  await adding.getByLabel("Name", { exact: true }).fill("house");
   await adding.getByRole("button", { name: "Add server" }).click();
   // Nothing answers there, so nothing is saved.
   await expect(adding.getByRole("alert")).toContainText("didn't answer");
