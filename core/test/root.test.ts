@@ -54,16 +54,26 @@ describe("a root step", () => {
     const step = rootStep({ machine: "box", path: "/home/lyrica/it's.sh", why: " Installs Docker. " }, Buffer.from("echo hi\n"), "lyrica");
     expect(step.sha256).toBe(createHash("sha256").update("echo hi\n").digest("hex"));
     // The cleanup keeps the chain's status: a refused hash exits 1 for the person, not the rm's 0.
-    expect(step.command).toBe(`f=$(mktemp) && cat '/home/lyrica/it'\\''s.sh' > "$f" && echo '${step.sha256}  '"$f" | sha256sum -c --quiet - && sudo bash "$f"; rc=$?; rm -f "$f"; (exit $rc)`);
+    expect(step.command).toBe(`d=$(mktemp -d) && f="$d/script" && cat '/home/lyrica/it'\\''s.sh' > "$f" && echo '${step.sha256}  '"$f" | sha256sum -c --quiet - && sudo bash "$f"; rc=$?; rm -rf "$d"; (exit $rc)`);
     expect(step.why).toBe("Installs Docker.");
     expect(step.sudoers).toBeUndefined();
-    // The copy runs under the shell the first line asks for: sh or dash as sh, anything else (or no shebang) as bash.
-    for (const first of ["#!/bin/sh", "#!/usr/bin/sh", "#!/usr/bin/env sh", "#!/bin/dash", "#! /bin/sh -e"]) {
-      expect(rootStep({ machine: "box", path: "/x.sh", why: "w" }, Buffer.from(`${first}\necho hi\n`), "u").command).toContain('sudo sh "$f"');
-    }
-    for (const first of ["#!/bin/bash", "#!/usr/bin/env bash", "#!/bin/shell", "echo hi"]) {
-      expect(rootStep({ machine: "box", path: "/x.sh", why: "w" }, Buffer.from(`${first}\necho hi\n`), "u").command).toContain('sudo bash "$f"');
-    }
+    // The copy runs with what the first line names: a shell by name from PATH (dash as sh), its one argument kept;
+    // any other interpreter by its path; no first line means bash.
+    const runs = (first: string) => rootStep({ machine: "box", path: "/x.sh", why: "w" }, Buffer.from(`${first}\necho hi\n`), "u").command;
+    for (const first of ["#!/bin/sh", "#!/usr/bin/sh", "#!/usr/bin/env sh", "#!/bin/dash"]) expect(runs(first)).toContain('sudo sh "$f"');
+    expect(runs("#! /bin/sh -e")).toContain('sudo sh -e "$f"');
+    for (const first of ["#!/bin/bash", "#!/usr/bin/env bash", "echo hi"]) expect(runs(first)).toContain('sudo bash "$f"');
+    expect(runs("#!/usr/bin/env python3")).toContain('sudo /usr/bin/env python3 "$f"');
+    expect(runs("#!/usr/bin/perl -w")).toContain('sudo /usr/bin/perl -w "$f"');
+    // A root step's interpreter must be one only root can change, and env's program a bare name.
+    expect(() => runs("#!/home/lyrica/venv/bin/python")).toThrow(/only root can change/);
+    expect(() => runs("#!/usr/bin/env /home/lyrica/py")).toThrow(/bare name/);
+    expect(() => runs("#!/usr/bin/env -S python3 -u")).toThrow(/at most one argument/);
+    expect(() => runs("#!python3")).toThrow(/absolute path/);
+    // No . or .. segment or // carries the path past the folder check.
+    for (const first of ["#!/usr/bin/../../home/lyrica/x", "#!/nix/store/../../home/lyrica/x", "#!/usr/bin/./x", "#!/usr//bin/python3"]) expect(() => runs(first)).toThrow(/plain absolute path/);
+    // A root step's argument is a flag alone, for shells too: a path there would run her own file as root.
+    for (const first of ["#!/bin/bash /home/lyrica/evil.sh", "#!/usr/bin/python3 /home/lyrica/x.py", "#!/usr/bin/perl -I/home/lyrica/lib"]) expect(() => runs(first)).toThrow(/only a flag/);
   });
 
   it("carries the command that adds offered lines, as the card shows them: the file's own lines read first, each line quoted, checked beside the file by visudo before it replaces it", () => {
@@ -208,6 +218,26 @@ shift 4; exec "$@"
     expect(runCard(step.command, "tskey-abc\n")).toBe("got 9 characters\n");
     writeFileSync(path, "IFS= read -r k\necho \"$k\"\n");
     expect(runCard(step.command, "tskey-abc\n")).toMatch(/^exit [1-9]/);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("runs a script with the interpreter its first line names, so a Python script gets the secret too", () => {
+    const dir = mkdtempSync(join(tmpdir(), "lyrica-card-"));
+    const path = script(dir, "#!/usr/bin/env python3\nimport sys\nk = sys.stdin.readline().rstrip('\\n')\nprint(f'got {len(k)} characters')\n");
+    const step = secretStep({ machine: "box", path, why: "w", secret: "Key" }, readFileSync(path));
+    expect(step.command).toContain('&& /usr/bin/env python3 "$f"');
+    expect(runCard(step.command, "cf-token-abc\n")).toBe("got 12 characters\n");
+    // Her own account runs a secret's script, so an interpreter in her home is fine there.
+    expect(secretStep({ machine: "box", path, why: "w", secret: "Key" }, Buffer.from("#!/home/lyrica/venv/bin/python\nx\n")).command).toContain('&& /home/lyrica/venv/bin/python "$f"');
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("runs the copy from a private folder, so nothing planted beside it is imported", () => {
+    const dir = mkdtempSync(join(tmpdir(), "lyrica-card-"));
+    // Python imports from the script's own folder first (Node's node_modules too): the copy's is new and holds only it.
+    const path = script(dir, "#!/usr/bin/env python3\nimport json, os, sys\nprint(json.dumps(os.listdir(sys.path[0])))\n");
+    const step = secretStep({ machine: "box", path, why: "w", secret: "Key" }, readFileSync(path));
+    expect(runCard(step.command, "k\n")).toBe('["script"]\n');
     rmSync(dir, { recursive: true, force: true });
   });
 
