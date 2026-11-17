@@ -1,5 +1,6 @@
 // The signed-in layout: the sidebar, and the page the route points at.
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { get, patch, post, upload, threadPath, u, type Display, type DisplayChange, type LogoutResponse, type Me, type Pool, type SearchHit, type State, type ThreadGroup, type ThreadSort, type ThreadSummary, type ThreadSettings, type ThreadSettingsChange, type UserCard } from "./api.ts";
 import { asPanel, href, go, panelRoute, parse, type Panel, type Route } from "./route.ts";
 import { Icon } from "./icons.tsx";
@@ -890,7 +891,7 @@ function ListMenu({ at, ctx, onClose }: { at: { x: number; y: number }; ctx: She
       <button type="button" role="menuitem" data-key="P" onClick={() => create("private")}><span>Private</span><kbd>P</kbd></button>
     </>
   );
-  return (
+  return createPortal(
     <div ref={ref} className="ctx-menu" role="menu" aria-label="Thread list menu" style={{ left: at.x, top: at.y }} {...hover}>
       {sub === "group" ? (
         <form onSubmit={(e) => { e.preventDefault(); if (name.trim()) void addGroup(); }}>
@@ -907,7 +908,7 @@ function ListMenu({ at, ctx, onClose }: { at: { x: number; y: number }; ctx: She
       )}
       <ErrorText error={error} />
       {fly && <Flyout parentRef={ref} anchor="project">{projectItems}</Flyout>}
-    </div>
+    </div>, document.body
   );
 }
 

@@ -5,6 +5,7 @@
 // project and Move to project for a top-level thread, Detach for a child row
 // outside a project, Resolve and Reopen for a project's thread.
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { del, get, patch, post, put, threadPath, u, type Person, type ThreadDeleting, type ThreadGroup, type ThreadSettings, type ThreadSummary } from "./api.ts";
 import { FoldConfirm, type FoldRow } from "./FoldConfirm.tsx";
 import { go, type Route } from "./route.ts";
@@ -281,12 +282,13 @@ export function ThreadMenu({ at, userId, route, groups, onGroups, onChange, onTo
       </>
     );
   }
-  return (
+  // Outside the sidebar's scrolling and sliding layer, including the nested flyout.
+  return createPortal(
     <div ref={ref} className="ctx-menu" role="menu" aria-label={`${t.title || "New thread"} menu`} style={{ left: at.x, top: at.y }} {...hover}>
       {body}
       <ErrorText error={error} />
       {fly && <Flyout parentRef={ref} anchor={fly}>{sub === "share" ? shareItems : sub === "move" ? projectItems : groupItems}</Flyout>}
-    </div>
+    </div>, document.body
   );
 }
 
