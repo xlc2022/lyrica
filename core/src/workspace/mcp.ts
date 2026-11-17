@@ -281,6 +281,7 @@ class ProcessTransport implements McpTransport {
   private child: McpProcess | undefined;
   private closed = false;
   private closeEmitted = false;
+  private gone = false;
   private pending = Buffer.alloc(0);
   private errTail = "";
   private readonly messageListeners = new Set<(m: JsonRpcMessage) => void>();
@@ -292,6 +293,9 @@ class ProcessTransport implements McpTransport {
   /** The last of what the program wrote to stderr: its own words on why it stopped. */
   stderr(): string { return this.errTail; }
 
+  /** Whether the program exited by itself, not because this transport closed it. */
+  exited(): boolean { return this.gone; }
+
   async start(): Promise<void> {
     if (this.child) throw new Error("MCP process transport already started");
     if (this.closed) throw new McpConnectionClosedError();
@@ -301,7 +305,7 @@ class ProcessTransport implements McpTransport {
     child.stderr.on("data", (d: Buffer) => { this.errTail = (this.errTail + d.toString("utf8")).slice(-STDERR_BYTES); });
     child.stdin.on("error", () => {}); // the program may exit without reading
     child.on("error", (err) => this.emitError(err));
-    child.on("close", () => { this.child = undefined; this.emitClose(); });
+    child.on("close", () => { this.child = undefined; if (!this.closed) this.gone = true; this.emitClose(); });
   }
 
   async send(m: JsonRpcMessage): Promise<void> {
@@ -378,6 +382,42 @@ export function keepResult(result: unknown): unknown {
   return { ...r, content: [{ type: "text", text }, ...images] };
 }
 
+/**
+ * The line of a program's stderr that says why it stopped, cut to 300
+ * characters: the last that names an error (`Error: …`, `TypeError: …`,
+ * `Error [ERR_…]: …`), from the error's name on (a bare `Error: ` left
+ * off), else the last that isn't a stack frame or Node's version footer. A Node program that throws ends
+ * its stderr with stack frames, so its last line alone says nothing.
+ * Plain string search, no regex: the text is the program's.
+ */
+export function whyItStopped(stderr: string): string | undefined {
+  const lines = stderr.split("\n").map((l) => l.trim()).filter((l) => l && !l.startsWith("at ") && !l.startsWith("Node.js v"));
+  for (const whole of lines.toReversed()) {
+    const at = errorName(whole);
+    if (at < 0) continue;
+    const line = whole.slice(at);
+    return (line.startsWith("Error: ") ? line.slice(7) : line).slice(0, 300);
+  }
+  return lines.at(-1)?.slice(0, 300);
+}
+
+/** Where `<Name>Error: ` or `<Name>Error [CODE]: ` starts in a line, or -1. */
+function errorName(line: string): number {
+  let close = -2; // the next "]", found once and reused, so the search stays linear
+  for (let i = line.indexOf("Error"); i >= 0; i = line.indexOf("Error", i + 5)) {
+    let end = i + 5;
+    if (line[end] === " " && line[end + 1] === "[") {
+      if (close !== -1 && close < end) close = line.indexOf("]", end + 2);
+      if (close > end) end = close + 1;
+    }
+    if (line[end] !== ":" || line[end + 1] !== " ") continue;
+    let start = i;
+    while (start > 0 && /[A-Za-z0-9_$.]/.test(line.charAt(start - 1))) start--;
+    return start;
+  }
+  return -1;
+}
+
 /** What a check found: the server answered `initialize` and `tools/list`. */
 export interface McpProbe {
   tools: number;
@@ -393,24 +433,27 @@ export function probeMcp(url: string, token?: string, f?: typeof fetch): Promise
   return probe(new StreamableHttpTransport({ url, headers: headers(token), fetch: noRedirects(f), openGetStream: false }), mcpHost(url));
 }
 
-/** Checks a local server before it is saved: started by `start` (in a sandbox), it must answer `initialize` and `tools/list` within 15 seconds. Throws McpServerProblem. */
-export function probeMcpCommand(start: () => Promise<McpProcess>): Promise<McpProbe> {
+/** Checks a local server before it is saved: started by `start` (in a sandbox), it must answer `initialize` and `tools/list` within 15 seconds (`timeoutMs`, shorter in tests). Throws McpServerProblem. */
+export function probeMcpCommand(start: () => Promise<McpProcess>, timeoutMs = 15_000): Promise<McpProbe> {
   const transport = new ProcessTransport(start);
-  return probe(transport, LOCAL_HOST, () => transport.stderr());
+  return probe(transport, LOCAL_HOST, () => ({ stderr: transport.stderr(), exited: transport.exited() }), timeoutMs);
 }
 
-async function probe(transport: McpTransport, place: string, stderr?: () => string): Promise<McpProbe> {
-  const client = new McpClient({ name: "lyrica", version: "1", requestTimeoutMs: 15_000 });
+async function probe(transport: McpTransport, place: string, local?: () => { stderr: string; exited: boolean }, timeoutMs = 15_000): Promise<McpProbe> {
+  const client = new McpClient({ name: "lyrica", version: "1", requestTimeoutMs: timeoutMs });
   try {
     const init = await client.connect(transport);
-    const tools = await client.listTools({ timeoutMs: 15_000 });
+    const tools = await client.listTools({ timeoutMs });
     const line = (init.instructions ?? "").split("\n").map((l) => l.trim()).find(Boolean) ?? init.serverInfo?.title ?? null;
     return { tools: tools.length, description: line ? line.slice(0, 200) : null };
   } catch (err) {
     const state = mcpFailure(err);
-    // A local server's own last words, one line, say more than "closed" does: a missing key, a program not found.
-    const said = stderr?.().trim().split("\n").filter(Boolean).at(-1)?.slice(0, 300);
+    // A local server's own words say more than "closed" does: a missing key, a program not found. Only one that exited
+    // stopped; one still running (a timeout) keeps the error, its words beside it.
+    const { stderr = "", exited = false } = local?.() ?? {};
+    const said = whyItStopped(stderr);
     throw new McpServerProblem(state, state === "rejected" ? `${place} rejected the token`
+      : said && exited ? `the program stopped: ${said}`
       : `${place === LOCAL_HOST ? "the program" : place} didn't answer as an MCP server: ${(err as Error).message}${said ? ` (it said: ${said})` : ""}`);
   } finally {
     await client.close().catch(() => {});

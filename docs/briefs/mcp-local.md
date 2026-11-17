@@ -49,8 +49,9 @@ starts in well under a second with Node installed.
    shows Unreachable in Settings until a slot is free.
 4. **Checked before it is saved**, as a remote one: the probe starts it in
    a sandbox of its own, an empty folder and no network (a server that
-   needs the network to start fails the check, and its own last line on
-   stderr says why), and asks `initialize` and `tools/list`. No host
+   needs the network to start fails the check, and the line of its stderr
+   that names its error says why, `whyItStopped`: a Node program's stack
+   frames come after it), and asks `initialize` and `tools/list`. No host
    check and never Off network: the facts line says "this machine".
 5. **Settings → MCP servers**: the drawer's URL field gains a **Command**
    field beside it (one of the two), and for a command server the Token

@@ -4,10 +4,16 @@
 // with the WHO variable of its environment and whether it sees the PATH it
 // was started with, so a test can check what reaches a local server. With
 // MCP_TEST_FAIL set it writes that to stderr and exits at once, as a program
-// missing its keys would. It logs each request to stderr, as servers do.
+// missing its keys would; with MCP_TEST_HANG it writes that and never
+// answers. It logs each request to stderr, as servers do.
 const readline = require("node:readline");
 
-if (process.env.MCP_TEST_FAIL) {
+if (process.env.MCP_TEST_HANG) {
+  // Logs a line, as a server starting does, then never answers.
+  process.stderr.write(`${process.env.MCP_TEST_HANG}\n`);
+  setInterval(() => {}, 1000);
+  return;
+} else if (process.env.MCP_TEST_FAIL) {
   process.stderr.write(`${process.env.MCP_TEST_FAIL}\n`);
   process.exit(2);
 }

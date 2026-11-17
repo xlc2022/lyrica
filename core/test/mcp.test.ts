@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { describe, expect, it } from "vitest";
 import { McpClient } from "@earendil-works/pi-mcp";
-import { mcpCommand, mcpCommandLine, mcpEnv, mcpPlace, mcpStdioTransport, probeMcpCommand, shellWords, type McpProcess } from "../src/index.ts";
+import { mcpCommand, mcpCommandLine, mcpEnv, mcpPlace, mcpStdioTransport, probeMcpCommand, shellWords, whyItStopped, type McpProcess } from "../src/index.ts";
 
 // A local MCP server (docs/briefs/mcp-local.md): started by whoever hands the
 // transport a process (the thread's sandbox, in lyricad), spoken to on its
@@ -35,11 +35,39 @@ describe("a local MCP server's command and environment", () => {
   });
 });
 
+describe("why a local MCP server stopped", () => {
+  it("picks the error line out of a stack trace, not the trace's last frame", () => {
+    // eBay's server without its keys, as it writes it.
+    expect(whyItStopped([
+      "[2026-11-17T13:06:31.764Z] [ERROR] Fatal error - Token configuration error: EBAY_CLIENT_ID and EBAY_CLIENT_SECRET are required for both user and application token modes",
+      "Stack trace: Error: Token configuration error: EBAY_CLIENT_ID and EBAY_CLIENT_SECRET are required for both user and application token modes",
+      "    at validateTokenConfiguration (file:///app/dist/helper/token-manager.js:49:15)",
+      "    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)",
+    ].join("\n"))).toBe("Token configuration error: EBAY_CLIENT_ID and EBAY_CLIENT_SECRET are required for both user and application token modes");
+    // Node's own report of an uncaught throw, and of a missing package.
+    expect(whyItStopped("file:///app/x.js:3\n  throw new TypeError(\"bad\");\n  ^\n\nTypeError: bad\n    at file:///app/x.js:3:9\n\nNode.js v24.15.0\n")).toBe("TypeError: bad");
+    expect(whyItStopped("node:internal/modules/package_json_reader:268\nError [ERR_MODULE_NOT_FOUND]: Cannot find package 'zod'\n    at x (node:internal)\n")).toBe("Error [ERR_MODULE_NOT_FOUND]: Cannot find package 'zod'");
+    // A Python traceback ends with its error; a plain line stays as it is.
+    expect(whyItStopped("Traceback (most recent call last):\n  File \"x.py\", line 1\nKeyError: 'API_KEY'\n")).toBe("KeyError: 'API_KEY'");
+    expect(whyItStopped("bwrap: execvp ebay-mcp-server: No such file or directory\n")).toBe("bwrap: execvp ebay-mcp-server: No such file or directory");
+    expect(whyItStopped("  \n")).toBeUndefined();
+  });
+
+  it("stays linear on crafted stderr", () => {
+    const t = Date.now();
+    whyItStopped("Error [".repeat(10_000) + "]");
+    whyItStopped("a".repeat(64 * 1024) + "Error: x");
+    expect(Date.now() - t).toBeLessThan(500);
+  });
+});
+
 describe("a local MCP server's transport", () => {
   it("answers initialize and tools/list through the probe, and says what a program that stops at once wrote", async () => {
     expect(await probeMcpCommand(start())).toEqual({ tools: 1, description: "A test server on stdio." });
-    await expect(probeMcpCommand(start({ MCP_TEST_FAIL: "EBAY_CLIENT_ID and EBAY_CLIENT_SECRET are required" }))).rejects.toThrow(/the program didn't answer as an MCP server: .*it said: EBAY_CLIENT_ID and EBAY_CLIENT_SECRET are required/);
+    await expect(probeMcpCommand(start({ MCP_TEST_FAIL: "EBAY_CLIENT_ID and EBAY_CLIENT_SECRET are required" }))).rejects.toThrow(/^the program stopped: EBAY_CLIENT_ID and EBAY_CLIENT_SECRET are required$/);
     await expect(probeMcpCommand(async () => { throw new Error("this thread already has 4 background commands running"); })).rejects.toThrow(/4 background commands/);
+    // One that logs as it starts and then never answers hasn't stopped: the timeout stays the reason, its log beside it.
+    await expect(probeMcpCommand(start({ MCP_TEST_HANG: "Demo MCP server running on stdio" }), 500)).rejects.toThrow(/^the program didn't answer as an MCP server: .+ \(it said: Demo MCP server running on stdio\)$/);
   });
 
   it("drops the server's log notifications, hands its results on, records its state, and stops the process when closed", async () => {
