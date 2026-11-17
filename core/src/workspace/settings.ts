@@ -1136,7 +1136,7 @@ export class WorkspaceSettings {
 
   /** Saves a Git account whose token was checked against its host (`Workspace.addGitAccount` does that first). */
   addGitAccount(a: NewGitAccount, state: GitAccountState["kind"] | null = null): GitAccountConfig {
-    if (!GIT_ACCOUNT.test(a.name)) throw new Error("account names use letters, digits, '.', '_' and '-'");
+    if (!GIT_ACCOUNT.test(a.name)) throw new Error("the name uses letters, digits, '.', '_' and '-', with no spaces");
     if (this.gitAccount(a.name)) throw new Error(`Git account ${a.name} already exists`);
     const next = checkGitAccount(a);
     // A Forgejo or Gitea account gets its webhook secret when it is made; it stays with the account like the token.
@@ -1156,7 +1156,7 @@ export class WorkspaceSettings {
     const before = this.needGit(name);
     const next = checkGitAccount({ ...before, ...change });
     if (next.name !== name) {
-      if (!GIT_ACCOUNT.test(next.name)) throw new Error("account names use letters, digits, '.', '_' and '-'");
+      if (!GIT_ACCOUNT.test(next.name)) throw new Error("the name uses letters, digits, '.', '_' and '-', with no spaces");
       if (this.gitAccount(next.name)) throw new Error(`Git account ${next.name} already exists`);
     }
     const moved = next.host !== before.host || next.account !== before.account;
