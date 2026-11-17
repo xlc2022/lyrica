@@ -1012,7 +1012,12 @@ steps:
    (beside any key already there), with a `Match User` block in
    `/etc/ssh/sshd_config.d/lyrica-<account>.conf`, then `sshd -t &&
    systemctl reload ssh`, or `sshd` where the unit has that name, or
-   `rc-service sshd reload` on OpenRC. The key
+   `rc-service sshd reload` on OpenRC; where `ssh.socket` holds port 22
+   (Ubuntu 22.10 and later, some Debian and Proxmox container images) it
+   runs `systemctl try-restart ssh.service` instead, because a reload
+   there kills sshd. If an older setup already left `ssh.service` failed
+   there, `systemctl stop ssh.service && systemctl restart ssh.socket`
+   brings logins back. The key
    line is `restrict` (no forwarding, agent or pty) and names no `from=`
    addresses, so her server can move network without locking her out;
    running the setup again replaces any older line for the same key. If
