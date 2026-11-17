@@ -726,7 +726,8 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
       const problems = tools.repositories?.().length && tools.cloneRepositories ? await tools.cloneRepositories().catch((err: Error) => [err.message]) : [];
       const options = event.systemPromptOptions;
       const git = gitSection(tools, problems);
-      options.sections = { ...options.sections, workspace: describe(tools), ...(git ? { git } : {}) };
+      const start = await Promise.resolve().then(() => tools.target().cwd()).catch(() => WORKDIR);
+      options.sections = { ...options.sections, workspace: describe(tools, start), ...(git ? { git } : {}) };
     });
   };
 }
@@ -874,7 +875,7 @@ async function choose(ctx: ExtensionContext, plan: string): Promise<GoAhead | un
 }
 
 /** A short, stable description of where she works, so the prompt stays cacheable. */
-export function describe(tools: ThreadTools): string {
+export function describe(tools: ThreadTools, start = WORKDIR): string {
   const s = tools.settings();
   const grants = s.grants.map((g) => `${g.path} (${g.writable ? "read-write" : "read-only"})`);
   const all = tools.machines?.() ?? [];
@@ -883,6 +884,7 @@ export function describe(tools: ThreadTools): string {
   const pves = all.filter((m) => m.kind === "proxmox").map((m) => `${m.name} (${limit(m)}${m.asUser ? ", with a token on the person's own Proxmox user" : ""})`);
   return [
     `Your file and command tools run in a sandbox. ${WORKDIR} is this conversation's folder; uploads arrive in ${WORKDIR}/uploads.`,
+    `Commands start in ${start}, and relative paths resolve there.`,
     SERVER_LINE,
     ...(tools.startJob ? [WAIT_LINE] : []),
     ...(s.coordinates ? [READ_ONLY_CHAT] : []),

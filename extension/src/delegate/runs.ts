@@ -1,10 +1,11 @@
 import { randomBytes } from "node:crypto";
 import { EventEmitter } from "node:events";
+import { posix } from "node:path";
 import type { AgentSession, ExtensionFactory, SessionEntry } from "@earendil-works/pi-coding-agent";
 import {
   DelegationStore, isRestricted, sandboxHas, sandboxTools, LIVE_STATUSES, claudeAlias, isClaudeModel, matchModel, meansClaude, namedOutright, refId, renderThreadMentions, sameModelName, singledOut, unmatched,
   type CallContext, type ClaudeAlias, type CouncilSpec, type Grant, type LoopSpec, type Memory, type ModelRef, type Models, type Pool, type PoolStore, type Role,
-  type Step, type SubagentRecord, type SubagentStatus, type Tier, type Usage, type User, type Users, type Workflow, type WorkflowSpec, type Workspace,
+  type ExecutionTarget, type Step, type SubagentRecord, type SubagentStatus, type Tier, type Usage, type User, type Users, type Workflow, type WorkflowSpec, type Workspace,
 } from "@lyrica/core";
 import type { ThreadContext } from "../index.ts";
 import { syncEntries, toStoredEntry } from "../record.ts";
@@ -94,7 +95,7 @@ const userMessage = (said: Said) => ({
 });
 
 /** Narrowing that applies to every subagent of a run. Nothing here can widen the parent's settings. */
-export interface Narrowing { folders?: string[]; readOnly?: boolean; internet?: false }
+export interface Narrowing { folders?: string[]; readOnly?: boolean; internet?: false; cwd?: string }
 
 export type Request = Narrowing & (
   | Step
@@ -824,7 +825,7 @@ export class Delegation {
   // --- Running ---
 
   private async execute(run: Run, req: Request): Promise<string> {
-    const narrowing: Narrowing = { folders: req.folders, readOnly: req.readOnly, internet: req.internet };
+    const narrowing: Narrowing = { folders: req.folders, readOnly: req.readOnly, internet: req.internet, cwd: req.cwd };
     if ("workflow" in req) {
       const w = this.workflows(run.parent.user.id).find((x) => x.name === req.workflow);
       if (!w) throw new Error(`no workflow ${req.workflow}`);
@@ -1154,6 +1155,14 @@ export class Delegation {
         // A project chat's subagent is read-only as the chat is, so delegating can't make what the chat may not.
         // No proxmox either: a hypervisor's power is the thread's own to use, whatever a role's tool list says.
         const { setMode: _own, cloneRepositories: _fetched, addRepository: _asks, startJob: _bg, jobs: _jobs, jobOutput: _out, stopJob: _stop, proxmox: _pve, ...tools } = workspace.forThread({ ...p, threadId: child.id, reposOf: parent.threadId, reposReadOnly: noMachines || coordinates, ...(coordinates ? { coordinates } : {}) });
+        // Its commands start in the folder it was handed: the run's cwd, else its one checkout, else its own folder.
+        // A sandbox that can't start yet (the home isn't mounted) says so at its first call, as before, unless cwd was asked for.
+        const start = await Promise.resolve().then(() => startFolder(tools.target(), narrowing.cwd, worktrees.length ? worktrees.map((w) => w.path) : placesOf(tools.settings(), tools.repositories?.() ?? [])))
+          .catch((err: Error) => { if (narrowing.cwd) throw err; return undefined; });
+        if (start) {
+          const sandbox = tools.target;
+          tools.target = (machine?: string) => (machine ? sandbox(machine) : startingIn(sandbox(), start));
+        }
         if (claude) {
           // Claude Code in its sandbox, in place of a Pi session: no extensions of ours.
           if (!tools.claudeCode() || !workspace.claudeDir) throw new Error(CLAUDE_OFF);
@@ -1285,6 +1294,35 @@ function withWorktrees(task: string, worktrees: Worktree[]): string {
   if (!worktrees.length) return task;
   return `${task}\n\nOther subagents are working on the same repositories at the same time, so you have your own git worktree for each. Work and commit only there, never in the original folder:\n${worktreeNote(worktrees)}`;
 }
+
+/**
+ * Where a subagent's sandbox commands start: `asked` (relative to the sandbox's folder), else its one worktree, clone
+ * or granted folder when it has exactly one; undefined keeps the sandbox's folder. A scout once ran `grep … modules`
+ * from /workspace beside `git -C /workspace/repos/<name>`, and the relative path missed.
+ */
+export async function startFolder(target: ExecutionTarget, asked: string | undefined, places: string[]): Promise<string | undefined> {
+  const home = await target.cwd();
+  const isDir = async (dir: string) => !target.run || (await target.run(["test", "-d", dir], { timeoutMs: 5000 }).catch(() => undefined))?.code === 0;
+  const dir = asked?.trim() ? posix.resolve(home, asked.trim()) : new Set(places.map(posix.normalize)).size === 1 ? posix.normalize(places[0]!) : home;
+  if (dir === home) return undefined;
+  if (await isDir(dir)) return dir;
+  if (asked?.trim()) throw new Error(`cwd ${asked} isn't a folder the subagent can reach in its sandbox`);
+  return undefined;
+}
+
+/** Where a thread's code lives: its worktrees, its clones, and its granted folders (read-only ones too) no worktree replaces. */
+const placesOf = (s: { grants: { path: string }[]; threadWork?: { worktrees: { repo: string; path: string }[] } }, clones: { path: string }[]) => {
+  const trees = s.threadWork?.worktrees ?? [];
+  return [...trees.map((w) => w.path), ...clones.map((c) => c.path), ...s.grants.filter((g) => !trees.some((w) => w.repo === g.path)).map((g) => g.path)];
+};
+
+/** The sandbox target with its commands, and the paths its tools resolve, starting in `dir`. */
+export const startingIn = (target: ExecutionTarget, dir: string): ExecutionTarget => new Proxy(target, {
+  get: (t, k) => {
+    const v = k === "cwd" ? async () => dir : Reflect.get(t, k, t) as unknown;
+    return typeof v === "function" && k !== "cwd" ? (v as (...a: unknown[]) => unknown).bind(t) : v;
+  },
+});
 
 /** A saved workflow's spec, with `{input}` replaced everywhere. */
 function withInput(spec: WorkflowSpec, input: string): WorkflowSpec {

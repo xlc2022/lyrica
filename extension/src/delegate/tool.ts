@@ -52,6 +52,7 @@ const Params = Type.Object({
   folders: Type.Optional(Type.Array(Type.String(), { description: "Only these granted host folders. Not repository checkout paths: omit folders to read the parent's checkouts; scouts see them read-only." })),
   readOnly: Type.Optional(Type.Boolean({ description: "The subagents may read the folders but not change them." })),
   internet: Type.Optional(Type.Literal(false, { description: "false cuts the subagents off from the internet." })),
+  cwd: Type.Optional(Type.String({ description: "The sandbox folder their commands start in, such as a repository checkout (/workspace/repos/<name>). Default: their one checkout or folder, when they have just one." })),
   id: Type.Optional(Type.String({ description: "The run ID, for status, wait, stop and message." })),
   message: Type.Optional(Type.String({ description: "For message: joins a working subagent's work, answers its question, or continues one that has ended, in its own thread." })),
   thread: Type.Optional(Type.String({ description: "For message, which subagent of the run (its thread), where it has several and none or more than one is waiting." })),
@@ -63,7 +64,7 @@ const WORK = ["task", "tasks", "chain", "loop", "council", "workflow"] as const;
 function request(p: Params): Request {
   const given = WORK.filter((k) => p[k] !== undefined);
   if (given.length !== 1) throw new Error(`give exactly one of ${WORK.join(", ")}`);
-  const narrowing = { folders: p.folders, readOnly: p.readOnly, internet: p.internet };
+  const narrowing = { folders: p.folders, readOnly: p.readOnly, internet: p.internet, cwd: p.cwd };
   if (p.task !== undefined) return { ...narrowing, task: p.task, title: p.title, done: p.done, role: p.role, tier: p.tier, ...(p.model ? { model: p.model } : {}), ...(p.fork ? { fork: true } : {}) };
   if (p.workflow !== undefined) return { ...narrowing, workflow: p.workflow, input: p.input };
   const k = given[0] as "tasks" | "chain" | "loop" | "council";

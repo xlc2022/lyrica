@@ -811,7 +811,8 @@ Custom roles override built-ins by name, except `claude`.
 - `delegation.message(parent, runId, { text, from? }, { thread?, budget })`
   is also how a user's message reaches a subagent, from its card in the
   parent's chat; the parent gets a note. `subagent_runs` records `pick` and
-  `narrowing` so a subagent can be continued.
+  `narrowing` (with any `cwd`, where its sandbox commands start) so a
+  subagent can be continued.
 - Subagents aren't listed in the thread list; child threads (forks, copies)
   nest under their parent.
 - **Routine tool** (`threads` in hosted threads): `action: "routine"`
