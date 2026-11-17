@@ -57,13 +57,17 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   events, and on focus; the stream reconnects automatically,
   with a fresh connection after a terminal HTTP error), Memory, the Sort menu, the thread list, the **status panel** (`src/SideStatus.tsx`: above the user row, its own divider line; up to two most-used local endpoints side by side and up to two cloud ones on their own lines — each a dot and name (docs/ux.md §5), a short state word when it isn't simply online ("Blackwell · paused") or else, for an endpoint serving a text model, its recent output speed ("· 42 tok/s", nothing with none; prompt speed and turn count, or "no turns in the past day", in the tooltip, from `endpointUses`), plus "· checked 20 s ago" in mono for the cloud ones, ticking as time passes; each item's tooltip holds the whole line; ranked by `GET …/models/page`'s `endpointUses` counts; nothing is drawn with no endpoints), and the user. The **Sort
   menu** ("Sort: By date ▾") has the sorts By date (sections Today, Yesterday,
-  Previous 7 days, Previous 30 days, Older), Last activity, Start date, Title and My groups (one
-  section per group with its count, then Not in a group, and a New group
-  form), then the General, Private and Hidden checkboxes (Hidden's tooltip:
+  Previous 7 days, Previous 30 days, Older), Last activity, Start date and Title, and a New group
+  form under them, then the General, Private and Hidden checkboxes (Hidden's tooltip:
   "Hidden threads are left out of the list and of search."), then All threads,
   Only projects or No projects. The sort, the checkboxes and the projects
   choice are saved per user (`Display`). Pinned threads come first under a
-  **Pinned** eyebrow, whatever the sort. A thread unread for this user
+  **Pinned** eyebrow, whatever the sort. Then the user's groups, under every
+  sort: each a row (`.group-head`, a button with `aria-expanded`) with a
+  chevron, the name and its count in mono, folding its threads shut, the
+  threads inside in the sort's order; the folded groups are saved per user
+  (`Display.folded`), and a folded group with a thread waiting on the user
+  shows an amber dot. Threads in no group follow in the sort's sections. A thread unread for this user
   is bold; private threads carry a small lock in the private colour; a
   thread at work (`busy`, `making` while a clip is made after its turn, or a
   project thread's `working` state) pulses its

@@ -518,7 +518,12 @@ describe("the user's own view of their threads", () => {
     expect((await ada.get(`${tp}/messages`)).status).toBe(200);
     list = (await ada.get<{ id: string; unread?: boolean }[]>(`${u}/threads`)).body;
     expect(list.find((x) => x.id === t.id)!.unread).toBeUndefined();
-    expect((await ada.patch<{ display: { sort: string } }>(`${u}/me/display`, { sort: "groups" })).body.display.sort).toBe("groups");
+    expect((await ada.patch<{ display: { sort: string } }>(`${u}/me/display`, { sort: "title" })).body.display.sort).toBe("title");
+    // A folded group stays folded; groups show under every sort, so My groups is no longer one.
+    expect((await ada.patch<{ display: { folded: string[] } }>(`${u}/me/display`, { folded: [g.id] })).body.display.folded).toEqual([g.id]);
+    expect((await ada.get<{ display: { folded: string[] } }>(`${u}/me`)).body.display.folded).toEqual([g.id]);
+    expect((await ada.patch(`${u}/me/display`, { folded: "all" })).status).toBe(400);
+    expect((await ada.patch(`${u}/me/display`, { sort: "groups" })).status).toBe(400);
     expect((await ada.patch(`${u}/me/display`, { sort: "sideways" })).status).toBe(400);
     // Removing the group leaves its threads in none; another user sees none of it.
     await ada.del(`${u}/thread-groups/${g.id}`);

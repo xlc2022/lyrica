@@ -38,8 +38,8 @@ import { relinkFiles, type Relinked } from "./relink.ts";
 /** The most one upload piece may carry, as the host allows (host/API.md, "Uploads"). */
 const UPLOAD_PIECE = 64 * 1024 * 1024;
 
-const DISPLAY_DEFAULTS: Api.Display = { theme: "device", showGeneral: true, showPrivate: true, showHidden: false, sort: "date", projects: "all", checklists: true };
-const THREAD_SORTS: Api.ThreadSort[] = ["date", "activity", "started", "title", "groups"];
+const DISPLAY_DEFAULTS: Api.Display = { theme: "device", showGeneral: true, showPrivate: true, showHidden: false, sort: "date", folded: [], projects: "all", checklists: true };
+const THREAD_SORTS: Api.ThreadSort[] = ["date", "activity", "started", "title"];
 const DISPLAY_DEFAULTS_ALL: Api.Display = { ...DISPLAY_DEFAULTS, showPrivate: true, showGeneral: true, showHidden: true };
 const MESSAGE_PAGE = 50;
 /** The composer's unsent text, in bytes. */
@@ -252,11 +252,12 @@ export function apiRoutes(d: Lyricad): Route[] {
     route("PATCH", `${u}/me/display`, async (r) => {
       const user = d.userFor(r);
       const change = await r.json<Api.DisplayChange>();
-      const next = { ...display(d, user.id), ...pick(change, ["theme", "showGeneral", "showPrivate", "showHidden", "sort", "projects", "checklists"]) };
+      const next = { ...display(d, user.id), ...pick(change, ["theme", "showGeneral", "showPrivate", "showHidden", "sort", "folded", "projects", "checklists"]) };
       if (!["device", "light", "dark"].includes(next.theme)) throw new Error("the theme is device, light or dark");
       if (!THREAD_SORTS.includes(next.sort)) throw new Error(`the sort is one of ${THREAD_SORTS.join(", ")}`);
       if (!["all", "only", "none"].includes(next.projects)) throw new Error("projects is all, only or none");
       if (typeof next.checklists !== "boolean") throw new Error("checklists is true or false");
+      if (!Array.isArray(next.folded) || next.folded.length > 500 || next.folded.some((id) => typeof id !== "string" || id.length > 100)) throw new Error("folded is a list of group ids");
       const before = display(d, user.id).checklists;
       const db = s().users.openUserDb(user.id);
       try {
@@ -2654,7 +2655,9 @@ export function display(d: Lyricad, userId: string): Api.Display {
   const db = d.services!.users.openUserDb(userId);
   try {
     const row = db.prepare("SELECT value FROM settings WHERE key = 'display'").get() as { value: string } | undefined;
-    return { ...DISPLAY_DEFAULTS, ...(row ? JSON.parse(row.value) : {}) };
+    const saved: Api.Display = { ...DISPLAY_DEFAULTS, ...(row ? JSON.parse(row.value) : {}) };
+    // My groups was a sort until groups showed under every sort; whoever chose it gets By date.
+    return THREAD_SORTS.includes(saved.sort) ? saved : { ...saved, sort: "date" };
   } finally {
     db.close();
   }
