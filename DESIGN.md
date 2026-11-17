@@ -106,10 +106,13 @@ Each user has two pools of memory.
     host status; then the user's button.
   - **Threads can be sorted** by date (grouped Today, Yesterday, Previous 7
     days, Previous 30 days, the default), by last activity, by start date or
-    by title, or shown in **the user's own groups**, which they make, name
-    and move threads into from a thread's header or the thread menu, or by
-    right-clicking empty space in the thread list (**New group**). The
-    choice and the groups are saved per user, in `user.db`. A group can hold
+    by title. **The user's own groups** show under every sort, at the top of
+    the list (under Pinned) as sections that fold shut, each in the chosen
+    order; threads in no group follow in the sort's own sections. They make,
+    name and move threads into groups from a thread's header, the thread
+    menu, the Sort menu or by right-clicking empty space in the thread list
+    (**New group**). The sort, the folded groups and the groups are saved
+    per user, in `user.db`. A group can hold
     general and private threads; hiding a pool still hides its threads.
     Pinned threads (Pin in the thread menu) sit at the top of the list,
     whatever the sort. A thread's pin is the user's own setting, in

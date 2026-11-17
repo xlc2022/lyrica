@@ -166,6 +166,16 @@ button.private { color: var(--private); border-color: color-mix(in oklab, var(--
 /* The strip under the last row keeps the list's own menu (New project, New group) reachable when the list is full. */
 .threads { list-style: none; margin: 0; padding: 0 2px 44px; overflow-y: auto; flex: 1; display: grid; align-content: start; gap: 1px; }
 .threads .eyebrow { padding: 10px 8px 4px; display: flex; gap: 6px; align-items: baseline; }
+/* A group of the user's threads: a row that folds its threads shut, its count in mono, amber while folded over one that waits on them. */
+.group-head { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto auto; gap: 6px; align-items: center; width: 100%; min-height: var(--tap); padding: 0 8px 0 0; border: 0; border-radius: 8px; background: transparent; color: var(--fg); font-weight: 500; text-align: left; margin-top: 6px; }
+.group-head:hover { background: color-mix(in oklab, var(--panel) 60%, transparent); border: 0; }
+.group-head .chev-ic { width: 14px; height: 14px; justify-self: center; color: var(--muted); transition: transform 0.15s; }
+.group-head[aria-expanded="true"] .chev-ic { transform: rotate(90deg); }
+.group-head .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.group-head .num { font-size: 12px; font-weight: 400; color: var(--muted); }
+.group-head .waits { width: 7px; height: 7px; border-radius: 50%; background: var(--warn); }
+.in-group .threads-in { padding-left: 14px; }
+@media (prefers-reduced-motion: reduce) { .group-head .chev-ic { transition: none; } }
 .threads .trow { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 0; flex-wrap: nowrap; align-items: center; }
 .chev { width: 20px; min-height: 0; height: 24px; padding: 0; display: grid; place-items: center; border: 0; background: transparent; color: var(--muted); transition: transform 0.15s; }
 .chev .ic { width: 14px; height: 14px; }

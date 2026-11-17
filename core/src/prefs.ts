@@ -6,7 +6,7 @@ import type { Db } from "./db.ts";
 import type { Pool } from "./types.ts";
 
 export const PREFS_SCHEMA = `
--- The user's own groups of threads, shown in the sidebar under "My groups".
+-- The user's own groups of threads, shown in the sidebar as folding sections.
 CREATE TABLE IF NOT EXISTS thread_groups (
   id       TEXT PRIMARY KEY,
   name     TEXT NOT NULL,

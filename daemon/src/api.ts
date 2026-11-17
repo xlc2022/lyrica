@@ -127,8 +127,8 @@ export interface LogoutResponse {
 
 // --- The signed-in user: /api/u/:userId/me ---
 
-/** How the sidebar orders threads: by date (grouped Today, Yesterday, …), last activity, start date, title, or the user's own groups. */
-export type ThreadSort = "date" | "activity" | "started" | "title" | "groups";
+/** How the sidebar orders threads: by date (grouped Today, Yesterday, …), last activity, start date or title. The user's own groups show under every sort. */
+export type ThreadSort = "date" | "activity" | "started" | "title";
 
 export interface Display {
   theme: Theme;
@@ -136,6 +136,8 @@ export interface Display {
   showPrivate: boolean;
   showHidden: boolean;
   sort: ThreadSort;
+  /** The user's thread groups folded shut in the sidebar, by id. */
+  folded: string[];
   /** The thread list's third part: every thread, only projects (with their threads), or none of them. */
   projects: "all" | "only" | "none";
   /** Her threads keep a checklist the cards show (`threads steps`). Off, she isn't offered it and cards show none. */
@@ -1149,7 +1151,7 @@ export interface ProjectOverview {
 }
 
 /**
- * The user's own groups of threads, shown in the sidebar under "My groups" and in the thread menu's Move to group.
+ * The user's own groups of threads, shown in the sidebar as folding sections under every sort and in the thread menu's Move to group.
  * GET /api/u/:userId/thread-groups → ThreadGroup[]
  * POST /api/u/:userId/thread-groups (NewThreadGroup) → ThreadGroup
  * PATCH /api/u/:userId/thread-groups/:groupId (NewThreadGroup) → ThreadGroup

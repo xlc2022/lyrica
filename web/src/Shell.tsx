@@ -521,22 +521,30 @@ const PROJECT_FILTERS: { projects: Display["projects"]; label: string }[] = [
 ];
 
 const SORTS: { sort: ThreadSort; label: string }[] = [
-  { sort: "date", label: "By date" }, { sort: "activity", label: "Last activity" }, { sort: "started", label: "Start date" }, { sort: "title", label: "Title" }, { sort: "groups", label: "My groups" },
+  { sort: "date", label: "By date" }, { sort: "activity", label: "Last activity" }, { sort: "started", label: "Start date" }, { sort: "title", label: "Title" },
 ];
 
-/** The sidebar's sections of threads for one sort: a label and the threads under it. */
-function sections(threads: ThreadSummary[], sort: ThreadSort, groups: ThreadGroup[], now: Date): { label: string; count?: number; threads: ThreadSummary[] }[] {
+type Section = { label: string; threads: ThreadSummary[]; group?: string };
+
+/** The sidebar's sections of threads for one sort: the user's groups first, each in the sort's order, then the rest in the sort's own sections. */
+function sections(threads: ThreadSummary[], sort: ThreadSort, groups: ThreadGroup[], now: Date): Section[] {
   const byActivity = (a: ThreadSummary, b: ThreadSummary) => b.updatedAt.localeCompare(a.updatedAt);
-  if (sort === "title") return [{ label: "Title", threads: [...threads].sort((a, b) => (a.title ?? "").localeCompare(b.title ?? "") || byActivity(a, b)) }];
-  if (sort === "started") return [{ label: "Start date", threads: [...threads].sort((a, b) => b.createdAt.localeCompare(a.createdAt)) }];
-  if (sort === "activity") return [{ label: "Last activity", threads: [...threads].sort(byActivity) }];
-  const sorted = [...threads].sort(byActivity);
-  if (sort === "groups") {
-    return [
-      ...groups.map((g) => { const mine = sorted.filter((t) => t.group === g.id); return { label: g.name, count: mine.length, threads: mine }; }),
-      { label: "Not in a group", threads: sorted.filter((t) => !groups.some((g) => g.id === t.group)) },
-    ];
-  }
+  const order = (list: ThreadSummary[]) => [...list].sort(
+    sort === "title" ? (a, b) => (a.title ?? "").localeCompare(b.title ?? "") || byActivity(a, b)
+      : sort === "started" ? (a, b) => b.createdAt.localeCompare(a.createdAt) : byActivity);
+  const inGroups: Section[] = groups.map((g) => ({ label: g.name, group: g.id, threads: order(threads.filter((t) => t.group === g.id)) }));
+  const rest = threads.filter((t) => !groups.some((g) => g.id === t.group));
+  return [...inGroups, ...bySort(rest, sort, order, now)];
+}
+
+/** Whether a row waits on the user: a question, a project thread's state, or one of a project's threads. */
+const waitsOnYou = (t: ThreadSummary): boolean => !!t.question || !!t.needsYou || t.status === "waiting" || t.state === "waiting" || t.children.some(waitsOnYou);
+
+/** Threads in no group, in the sort's sections. */
+function bySort(threads: ThreadSummary[], sort: ThreadSort, order: (list: ThreadSummary[]) => ThreadSummary[], now: Date): Section[] {
+  if (!threads.length) return [];
+  if (sort !== "date") return [{ label: SORTS.find((s) => s.sort === sort)!.label, threads: order(threads) }];
+  const sorted = order(threads);
   // By date: Today, Yesterday, Previous 7 days, Previous 30 days, Older.
   // Days count in the user's time zone, so Today starts at their midnight.
   const today = dayNumber(now);
@@ -638,7 +646,8 @@ function Sidebar({ ctx, users, route, trail, threads, error, checkedAt, onAuthCh
   const shown = useMemo(() => {
     const visible = threads.filter((t) => (projects === "only" ? t.project : projects === "none" ? !t.project : true)).filter(matches);
     const pinned = visible.filter((t) => t.pinned).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-    const rest = sections(visible.filter((t) => !t.pinned), sort, ctx.groups, now);
+    // While search narrows the list, a group with no match drops out with its threads.
+    const rest = sections(visible.filter((t) => !t.pinned), sort, ctx.groups, now).filter((s) => !q || s.threads.length);
     return pinned.length ? [{ label: "Pinned", threads: pinned }, ...rest] : rest;
   }, [threads, sort, projects, ctx.groups, now, q]); // eslint-disable-line react-hooks/exhaustive-deps
   // With the hits here: the threads whose own title matches, for the rows after the hits' groups.
@@ -646,6 +655,9 @@ function Sidebar({ ctx, users, route, trail, threads, error, checkedAt, onAuthCh
   const titled = hits ? shown.flatMap((s) => s.threads).flatMap(flat).filter(titleMatches) : [];
   const nothing = !!q && threads.length > 0 && (hits ? !hits.hits.length && !titled.length : !searchable(q) && !shown.length);
   const sortLabel = SORTS.find((s) => s.sort === sort)?.label ?? "By date";
+  // A group folds shut with its row, saved per user; ids of removed groups drop out on the next change.
+  const folded = me.display.folded ?? [];
+  const fold = (id: string, shut: boolean) => setDisplay({ folded: [...folded.filter((f) => f !== id && ctx.groups.some((g) => g.id === f)), ...(shut ? [id] : [])] });
   const listMenu = useListMenu();
 
   return (
@@ -681,7 +693,7 @@ function Sidebar({ ctx, users, route, trail, threads, error, checkedAt, onAuthCh
                 <label key={s.sort}><input type="radio" name="tsort" checked={sort === s.sort} onChange={() => setDisplay({ sort: s.sort })} /> {s.label}</label>
               ))}
             </div>
-            {sort === "groups" && <NewGroup userId={user.id} onDone={ctx.refreshGroups} />}
+            <NewGroup userId={user.id} onDone={ctx.refreshGroups} />
             <hr className="menu-sep" />
             <label><input type="checkbox" checked={me.display.showGeneral} onChange={(e) => setDisplay({ showGeneral: e.target.checked })} /> General</label>
             <label><input type="checkbox" checked={me.display.showPrivate} onChange={(e) => setDisplay({ showPrivate: e.target.checked })} /> Private</label>
@@ -700,14 +712,29 @@ function Sidebar({ ctx, users, route, trail, threads, error, checkedAt, onAuthCh
         {hits ? (
           <SearchGroups hits={hits.hits} titled={titled} threads={threads} userId={user.id} current={current} menu={menu.handlers} onOpen={openHit}
             more={hits.more ? () => void moreRun(search.more) : undefined} />
-        ) : shown.map((s) => (
-          <li key={s.label} className="group-rows">
-            {(shown.length > 1 || sort === "groups" || s.label === "Pinned") && <span className="eyebrow">{s.label}{s.count !== undefined && <span className="num">{s.count}</span>}</span>}
-            <ul className="threads-in">
-              {s.threads.map((t) => <ThreadRow key={`${t.pool}/${t.id}`} t={t} userId={user.id} current={current} beside={beside} menu={menu.handlers} openBeside={openBeside} onRename={rename} />)}
-            </ul>
-          </li>
-        ))}
+        ) : shown.map((s) => {
+          const rows = s.threads.map((t) => <ThreadRow key={`${t.pool}/${t.id}`} t={t} userId={user.id} current={current} beside={beside} menu={menu.handlers} openBeside={openBeside} onRename={rename} />);
+          if (s.group) {
+            const open = !folded.includes(s.group);
+            const waits = !open && s.threads.some(waitsOnYou);
+            return (
+              <li key={`g/${s.group}`} className="group-rows in-group">
+                <button type="button" className="group-head" aria-expanded={open} onClick={() => fold(s.group!, open)}>
+                  <Icon name="right" className="chev-ic" /><span className="name">{s.label}</span>
+                  {waits && <span className="waits" title="A thread here waits on you"><span className="sr-only">a thread here waits on you</span></span>}
+                  <span className="num">{s.threads.length}</span>
+                </button>
+                {open && rows.length > 0 && <ul className="threads-in">{rows}</ul>}
+              </li>
+            );
+          }
+          return (
+            <li key={s.label} className="group-rows">
+              {(shown.length > 1 || s.label === "Pinned") && <span className="eyebrow">{s.label}</span>}
+              <ul className="threads-in">{rows}</ul>
+            </li>
+          );
+        })}
         {!threads.length && !error && <li className="muted empty">No threads yet.</li>}
         {nothing && <li className="muted empty">Nothing matches.</li>}
       </ul>
@@ -724,7 +751,7 @@ function Sidebar({ ctx, users, route, trail, threads, error, checkedAt, onAuthCh
   );
 }
 
-/** New group, in the Sort menu while My groups is the sort. */
+/** New group, in the Sort menu under the sorts. */
 function NewGroup({ userId, onDone }: { userId: string; onDone: () => void }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");

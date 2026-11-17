@@ -2282,7 +2282,9 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     interface's threads (default `web`), and `NewThread.interface` (`web`
     or `cli`, default `web`) picks a new thread's, so the web and `lyrica
     chat` each list their own; the user's own view of them:
-    `Display.sort` (`ThreadSort`), `ThreadSummary.group` and `unread`,
+    `Display.sort` (`ThreadSort`: date, activity, started or title; a saved
+    `groups` from before reads as date) and `Display.folded` (folded group
+    ids), `ThreadSummary.group` and `unread`,
     `ThreadChange.group` and `unread`, `ThreadGroup` with `GET`/`POST
     thread-groups` and `PATCH`/`DELETE thread-groups/:id` (in `user.db`,
     never the pool); `State.version` and `build` (once unlocked);

@@ -357,7 +357,7 @@ test("home attachments and tool switches stay local until send and follow the se
   expect(uploads[0]).toContain("name=general.txt");
 });
 
-test("the thread menu renames, marks unread, groups, hides and deletes; the Sort menu sorts by group", async ({ page, baseURL }) => {
+test("the thread menu renames, marks unread, groups, hides and deletes; a group shows and folds under any sort", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   await newThread(page, "General");
   await send(page, "A thread to manage");
@@ -394,15 +394,27 @@ test("the thread menu renames, marks unread, groups, hides and deletes; the Sort
   await page.getByRole("menuitem", { name: "New group…" }).click();
   await page.getByLabel("Group name").fill("Chores");
   await page.getByRole("button", { name: "Add" }).click();
+  // The group shows under By date, its thread inside; folding it hides the thread, and the fold is saved.
+  const chores = page.locator(".threads").getByRole("button", { name: /^Chores/ });
+  await expect(chores).toHaveAttribute("aria-expanded", "true");
+  await expect(page.locator(".in-group").getByRole("link", { name: /^Managed thread/ })).toBeVisible();
+  await chores.click();
+  await expect(chores).toHaveAttribute("aria-expanded", "false");
+  await expect(renamed).toHaveCount(0);
+  await page.reload();
+  if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
+  await expect(chores).toHaveAttribute("aria-expanded", "false");
+  await chores.click();
+  await expect(renamed).toBeVisible();
   const sorting = page.locator(".showing");
+  await expect(sorting.getByRole("radio", { name: "My groups" })).toHaveCount(0);
   await sorting.locator("summary").click();
-  await sorting.getByRole("radio", { name: "My groups" }).click();
-  await expect(sorting.getByRole("radio", { name: "My groups" })).toBeChecked();
+  await sorting.getByRole("radio", { name: "Title" }).click();
+  await expect(sorting.getByRole("radio", { name: "Title" })).toBeChecked();
   await sorting.locator("summary").click();
-  await expect(page.locator(".threads .eyebrow", { hasText: "Chores" })).toBeVisible();
+  await expect(page.locator(".in-group").getByRole("link", { name: /^Managed thread/ })).toBeVisible();
   await sorting.locator("summary").click();
   await sorting.getByRole("radio", { name: "By date" }).click();
-  await expect(sorting.getByRole("radio", { name: "By date" })).toBeChecked();
   await sorting.locator("summary").click();
 
   await renamed.click({ button: "right" });
