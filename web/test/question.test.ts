@@ -128,7 +128,9 @@ describe("question cards", () => {
     expect(html).toContain("Ready to print.");
     expect(html).toContain('class="k private"');
     expect(html.indexOf('>PDF')).toBeLessThan(html.indexOf('>Page'));
-    expect(html.indexOf('>Page')).toBeLessThan(html.indexOf('>Open thread'));
+    // Open thread closes the facts line; the answers row holds answers only, the recommended one filled.
+    expect(html.indexOf('>Open thread')).toBeLessThan(html.indexOf('class="actions"'));
     expect(html).toContain('class="sm primary"');
+    expect(html).not.toContain('>Recommended<');
   });
 });

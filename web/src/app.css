@@ -2141,13 +2141,22 @@ dialog .eyebrow { margin: 10px 0 4px; }
 @media (max-width: 760px) {
   .question-options { flex-direction: column; }
   .question-options button { flex: auto; width: 100%; }
-  .nquestion .actions { flex-direction: column; align-items: stretch; }
-  .nquestion .actions button { width: 100%; min-height: var(--tap); }
-  .nquestion .actions a.btn { width: 100%; justify-content: center; min-height: var(--tap); }
 }
 
-.nquestion .actions { grid-column: 2 / -1; }
-.nquestion .actions button { height: auto; white-space: normal; overflow-wrap: anywhere; flex-direction: column; gap: 2px; }
+/* A question in Notifications (docs/ux.md §6): its answers are one row of equal buttons under the text, side by
+   side on a phone too, wrapping to a grid when there are more; the filled one is the recommended answer. Open
+   thread is a link closing the facts line, so the row holds answers only. The bell keeps to the title's line. */
+.nrow.nquestion { align-items: start; }
+.nquestion .ico { height: 20px; display: grid; place-items: center; }
+.nquestion .nkind .k { margin-right: 0; }
+.nquestion .actions, .cards .nquestion .actions { grid-column: 2 / -1; justify-content: start; gap: 8px; margin-top: 4px; }
+.nrow:not(.nopick).nquestion .actions { grid-column: 3 / -1; }
+.nquestion .actions button { flex: 1 1 96px; max-width: 168px; min-height: 32px; height: auto; padding: 4px 10px; font-weight: 500; white-space: normal; overflow-wrap: anywhere; }
+.nquestion .actions button.primary { font-weight: 600; }
+@media (pointer: coarse) {
+  .nquestion .actions button { min-height: var(--tap); }
+  .nquestion .nkind a { display: inline-block; padding: 12px 0; margin: -12px 0; }
+}
 
 /* A plan's usage limit: the threads waiting for it, under a toggle, scroll past ten. */
 .nthreads-toggle { justify-self: start; }

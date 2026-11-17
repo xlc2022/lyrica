@@ -56,11 +56,13 @@ function numFirst(text: string) {
   return m ? <><span className="num">{m[1]}</span>{m[2]}</> : text;
 }
 
-function Where({ n, userId }: { n: Notification; userId: string }) {
-  if (n.thread) return <a className="sm btn" href={href({ page: "thread", userId, pool: n.thread.pool, threadId: n.thread.id })}>Open thread</a>;
+/** Where a row leads: a button among a row's actions, or on a question a link closing its facts line (docs/ux.md §6). */
+function Where({ n, userId, link }: { n: Notification; userId: string; link?: boolean }) {
+  const cls = link ? undefined : "sm btn";
+  if (n.thread) return <a className={cls} href={href({ page: "thread", userId, pool: n.thread.pool, threadId: n.thread.id })}>Open thread</a>;
   if (n.section) {
     const [page, section] = n.section.split("/") as ["settings" | "admin", string];
-    return <a className="sm btn" href={href({ page, userId, section })}>Open</a>;
+    return <a className={cls} href={href({ page, userId, section })}>Open</a>;
   }
   return null;
 }
@@ -70,8 +72,9 @@ function Row({ n, ctx, picked, onPick, act, busy }: {
 }) {
   const t = TYPES[n.type];
   const [open, setOpen] = useState(false);
+  const question = n.type === "question";
   return (
-    <li className={`nrow${onPick ? "" : " nopick"}${n.type === "question" ? " nquestion" : ""}${n.type === "sleep" ? " nsleep" : ""}`}>
+    <li className={`nrow${onPick ? "" : " nopick"}${question ? " nquestion" : ""}${n.type === "sleep" ? " nsleep" : ""}`}>
       {/* The name holds the title's first words, not its whole text: a From sleep row's title is
           her whole item (#591), so the full title made the checkbox announce all of it. */}
       {onPick && <input type="checkbox" className="npick" checked={!!picked} onChange={(e) => onPick(e.target.checked)} aria-label={`Select ${firstWords(n.title, 80)}`} />}
@@ -87,12 +90,12 @@ function Row({ n, ctx, picked, onPick, act, busy }: {
           </button>
           {open && <ul className="nthreads">{n.threads.map((x) => <li key={`${x.pool}/${x.id}`}><a href={href({ page: "thread", userId: ctx.user.id, pool: x.pool, threadId: x.id })}>{x.title}</a></li>)}</ul>}
         </>}
-        <span className="nkind">{t.label} · <span className={`k${n.scope === "private" ? " private" : ""}`}>{n.scope}</span> · <span className="when">{shortTime(n.at)}</span></span>
+        <span className="nkind">{t.label} · <span className={`k${n.scope === "private" ? " private" : ""}`}>{n.scope}</span> · <span className="when">{shortTime(n.at)}</span>{question && (n.thread || n.section) && <> · <Where n={n} userId={ctx.user.id} link /></>}</span>
       </div>
       <div className="actions">
-        {n.type !== "question" && <Where n={n} userId={ctx.user.id} />}
-        {n.actions.map((a, i) => <button key={a.label} type="button" className={`sm${n.type === "question" && i === 0 ? " primary" : ""}${a.danger ? " danger" : ""}`} disabled={busy} title={a.title} onClick={() => act([a])}>{a.label}{n.type === "question" && i === 0 && <span className="question-recommended">Recommended</span>}</button>)}
-        {n.type === "question" && <Where n={n} userId={ctx.user.id} />}
+        {!question && <Where n={n} userId={ctx.user.id} />}
+        {/* A question's first answer is the recommended one: the filled button says so, and its tooltip. */}
+        {n.actions.map((a, i) => <button key={a.label} type="button" className={`sm${question && i === 0 ? " primary" : ""}${a.danger ? " danger" : ""}`} disabled={busy} title={a.title ?? (question && i === 0 ? "Recommended" : undefined)} onClick={() => act([a])}>{a.label}</button>)}
       </div>
     </li>
   );
