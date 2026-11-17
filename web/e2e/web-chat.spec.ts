@@ -56,10 +56,11 @@ test("a tool call's arguments fill in as she writes them, before it runs", async
   // The path shows in the summary as soon as it is written, while the call is still being written.
   await expect(marker.getByRole("button", { name: "write notes.md running" })).toBeVisible();
   await marker.getByRole("button").click();
-  await expect(marker.locator(".marker-body pre")).toContainText("Line 1 of the notes.");
-  await expect(marker.locator(".marker-body pre")).not.toContainText("Line 12 of the notes.");
+  // The file's text shows as the file, here Markdown rendered, not as one escaped string.
+  await expect(marker.locator(".marker-body .read-text")).toContainText("Line 1 of the notes.");
+  await expect(marker.locator(".marker-body .read-text")).not.toContainText("Line 12 of the notes.");
   if (process.env.SHOTS) await page.screenshot({ path: `${process.env.SHOTS}/tool-args-${phone(page) ? 390 : 1280}.png` });
-  await expect(marker.locator(".marker-body pre").first()).toContainText("Line 12 of the notes.");
+  await expect(marker.locator(".marker-body .read-text")).toContainText("Line 12 of the notes.");
   // It then runs with the whole of them (and fails here, where the test lyricad mounts no workspace).
   await expect(marker.getByRole("button", { name: /^write notes\.md (done|failed)$/ })).toBeVisible();
   await noHorizontalScroll(page);
@@ -552,7 +553,7 @@ test("a clip she made shows its poster and facts, and plays in the browser's pla
   const owl = page.getByRole("button", { name: "Animating an image done" });
   await owl.click();
   await expect(owl).toHaveAttribute("aria-expanded", "true");
-  await expect(page.locator(".marker-body pre").first()).toContainText("The owl turns its head");
+  await expect(page.locator(".marker-body .tool-args").first()).toContainText("The owl turns its head");
   await expect(page.getByRole("button", { name: "Play owl.mp4" })).toBeVisible();
   await noHorizontalScroll(page);
   if (process.env.SCREENSHOTS) { await owl.scrollIntoViewIfNeeded(); await page.screenshot({ path: `${process.env.SCREENSHOTS}/clip-call-${page.viewportSize()!.width}.png` }); }
@@ -740,6 +741,50 @@ test("an image a command made, named by a link in her words, shows its thumbnail
   await expect(lightbox.getByRole("img")).toHaveAttribute("src", `${base}/files/content?path=${encodeURIComponent(path)}`);
   await lightbox.getByRole("button", { name: "Close", exact: true }).click();
   await expect(lightbox).toBeHidden();
+  await noHorizontalScroll(page);
+});
+
+test("a tool call's arguments read as code, Markdown, a diff or a list, not as JSON", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  await newThread(page, "General");
+  await send(page, "Show my calls");
+  await expect(page.getByText("You said: Show my calls")).toBeVisible();
+  const threadId = threadIdOf(page.url());
+  const base = `/api/u/${userId}/threads/general/${encodeURIComponent(threadId)}`;
+  const script = "#!/bin/bash\nset -uo pipefail\nprintf '=== Processes ===\\n'\nps -eo user,pid,comm\npython3 - <<'PY'\nimport os, json\nfor p in sorted(os.listdir('/proc')):\n    if p.isdigit():\n        print(json.dumps({'pid': int(p)}))\nPY\necho done";
+  await page.route(`**${base}/messages`, (route) => route.fulfill({ json: {
+    messages: [{ id: `e:${threadId}#1`, n: 1, role: "assistant", createdAt: "2026-11-17T04:00:00Z", parts: [
+      { type: "tool", toolCallId: "w-sh", name: "write", args: { path: "/workspace/audit.sh", content: script }, result: "Successfully wrote to /workspace/audit.sh", isError: false },
+      { type: "tool", toolCallId: "w-md", name: "write", args: { path: "/workspace/plan.md", content: "# Cleanup\n\nFree **40 GiB**.\n\n- Prune images\n- Remove old quants" }, result: "Successfully wrote to /workspace/plan.md", isError: false },
+      { type: "tool", toolCallId: "e-ts", name: "edit", args: { path: "/workspace/a.ts", edits: [{ oldText: "const a = 1;", newText: "const a = 2;" }] }, result: "Successfully replaced 1 block(s) in /workspace/a.ts.", isError: false },
+      { type: "tool", toolCallId: "m-1", name: "mcp__forgejo__create_issue", args: { repo: "lyrica", title: "Dictation stops on Firefox", draft: false, labels: ["bug", "web"], body: "Recording ends after **30 s**.\n\n- Firefox\n- Linux" }, result: "Created issue #212", isError: false },
+    ] }], hasMore: false,
+  } }));
+  await page.reload();
+  const run = page.locator(".marker.tool-run");
+  await run.getByRole("button", { name: /tool calls/ }).click();
+  for (const name of [/audit\.sh/, /plan\.md/, /a\.ts/, /create_issue/]) await run.getByRole("button", { name }).click();
+  const calls = run.locator(".run-body > .marker");
+  // The script keeps its lines, coloured as Bash with its heredoc as Python, under the file's name and Copy.
+  const sh = calls.nth(0);
+  await expect(sh.locator("pre.read-body")).toHaveText(script);
+  await expect(sh.getByRole("link", { name: "audit.sh" })).toBeVisible();
+  await expect(sh.locator(".hljs-built_in, .hljs-keyword").first()).toBeVisible();
+  await expect(sh.locator(".heredoc .hljs-keyword").first()).toHaveText(/import|for|if/);
+  await expect(sh.locator(".tool-facts")).toHaveText(/^Wrote [\d,]+ bytes$/);
+  await expect(sh.getByText('"content"')).toHaveCount(0);
+  // Markdown renders; the edit is a diff; any other call is a list of names and values.
+  await expect(calls.nth(1).getByRole("heading", { name: "Cleanup" })).toBeVisible();
+  await expect(calls.nth(2).locator(".cline.del")).toContainText("const a = 1;");
+  await expect(calls.nth(2).locator(".cline.ins mark")).toHaveText("2;");
+  await expect(calls.nth(2).locator(".tool-facts")).toHaveText("Edited 1 place");
+  const mcp = calls.nth(3).locator(".tool-args");
+  await expect(mcp.locator("dt")).toHaveText(["repo", "title", "draft", "labels", "body"]);
+  await expect(mcp.locator("dd").nth(3)).toHaveText("bug, web");
+  await expect(mcp.locator("strong")).toHaveText("30 s");
+  if (process.env.SCREENSHOTS) {
+    for (const [i, name] of ["script", "markdown", "edit", "mcp"].entries()) await calls.nth(i).screenshot({ path: `${process.env.SCREENSHOTS}/tool-args-${name}-${page.viewportSize()!.width}.png` });
+  }
   await noHorizontalScroll(page);
 });
 
