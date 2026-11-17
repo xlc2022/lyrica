@@ -288,12 +288,14 @@ describe("host management", () => {
     await new Promise<void>((r) => silent.listen(0, "127.0.0.1", r));
     try {
       s.models.setHostAddresses(s.ada, s.bigEp.id, [`127.0.0.1:${(silent.address() as { port: number }).port}`]);
-      let t = Date.now();
+      const t = Date.now();
       expect(await s.models.pageStatus(s.ada.id, s.bigEp.id, 500)).toMatchObject({ state: "down" });
       expect(Date.now() - t).toBeLessThan(1500);
-      t = Date.now();
+      // Asked again while it's down: same answer, and nothing new reaches the machine.
+      const asked = sockets.length;
+      expect(asked).toBeGreaterThan(0);
       expect(await s.models.pageStatus(s.ada.id, s.bigEp.id, 500)).toEqual({ state: "down", error: "blackwell is down" });
-      expect(Date.now() - t).toBeLessThan(100);
+      expect(sockets.length).toBe(asked);
       expect(await s.models.pageStatus(s.ada.id, s.smallEp.id)).toMatchObject({ state: "up", status: { state: "running" } });
     } finally {
       for (const c of sockets) c.destroy();
