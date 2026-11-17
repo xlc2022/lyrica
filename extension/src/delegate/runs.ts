@@ -1148,7 +1148,7 @@ export class Delegation {
         const noMachines = role.readOnly || narrowing.readOnly || narrowing.internet === false || !!narrowing.folders || worktrees.length > 0;
         // An MCP server is reached from lyricad (a remote one) or from its sandbox's network (a local one), past any folder narrowing,
         // so an offline or folder-narrowed subagent, or a writer in its own worktree, gets none. A read-only one keeps its parent's:
-        // a call its server doesn't mark read-only still asks, in both threads, unless the person chose Bypass with Allow MCP bypass (DESIGN.md, "MCP servers").
+        // a call its server doesn't mark read-only still asks, in both threads, unless the person chose Bypass and that server's own Allow bypass (DESIGN.md, "MCP servers").
         if (noMachines) parentMachines = () => workspace.settings(parent.user.id).effective(parent.threadId).machines;
         const noMcp = narrowing.internet === false || !!narrowing.folders || worktrees.length > 0;
         // Its repositories stay, read-only at the relay: it can read the forge, never push or write to it.

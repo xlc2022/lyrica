@@ -5,13 +5,14 @@
 // and Repositories. A server is a URL or a command (a local server, started
 // in the thread's sandbox); the drawer takes one of the two.
 import { useCallback, useEffect, useRef, useState } from "react";
-import { del, get, HttpError, patch, post, u, type McpServerChange, type McpServerInfo, type McpServerInput, type Pool } from "./api.ts";
+import { del, get, HttpError, patch, post, u, type McpServerChange, type McpServerInfo, type McpServerInput, type ModeDefault, type Pool } from "./api.ts";
 import { DrawerMenu } from "./Git.tsx";
 import { Icon } from "./icons.tsx";
 import { duration } from "./Machines.tsx";
+import { her } from "./name.ts";
 import { href } from "./route.ts";
 import type { ShellContext } from "./Shell.tsx";
-import { ConfirmDialog, ErrorText, useAction, useDismiss, useLoad } from "./ui.tsx";
+import { ConfirmDialog, ErrorText, Switch, useAction, useDismiss, useLoad } from "./ui.tsx";
 
 const POOLS: Record<Pool, string> = { general: "General", private: "Private" };
 const PRIVATE_POOL = "A private server must be on your own network: LAN, this machine or the tailnet.";
@@ -19,6 +20,9 @@ const COMMAND_TIP = "A local server: the program and its arguments, started in t
 const ENV_TIP = "The program's own variables, one KEY=value per line, such as its API keys. Never shown again.";
 const DAY_TIP = "At most this many tool calls a day, across all your threads, for a service with a quota. The day resets at midnight UTC. Empty means no limit.";
 const MINUTE_TIP = "At most this many tool calls in any minute, so a runaway loop can't hammer the service. Empty means no limit.";
+const BYPASS_TIP = "In Bypass permissions, this server's tools run without asking.";
+/** The confirm before a server's Allow bypass goes on. */
+const bypassWarning = (name: string) => `In Bypass permissions, ${name}'s tools will run without asking, in subagents too. It can act on ${her()}'s word alone, and text she reads could steer it.`;
 /** A limit as the form holds it: digits, or empty for none. */
 const limitText = (n: number | null | undefined) => (n === null || n === undefined ? "" : String(n));
 const limitValue = (text: string): number | null => (text.trim() ? Number(text) : null);
@@ -44,9 +48,9 @@ function StateWord({ m }: { m: McpServerInfo }) {
   return <span className="state-word"><span className={`dot ${DOT[state.tone]}`} aria-hidden="true" />{state.word}{state.detail && <span className="num mono"> {state.detail}</span>}</span>;
 }
 
-/** The facts line under a server's name: host, pool and tool count, and today's calls against a daily limit. */
-const facts = (m: McpServerInfo) => (
-  <>{m.host} · {m.pool} · {m.tools} {m.tools === 1 ? "tool" : "tools"}{m.dailyLimit !== null && <> · <span className="num">{m.callsToday.toLocaleString("en-US")}</span> of <span className="num">{m.dailyLimit.toLocaleString("en-US")}</span> today</>}</>
+/** The facts line under a server's name: host, pool and tool count, today's calls against a daily limit, and "bypass" while its Allow bypass counts. */
+const facts = (m: McpServerInfo, bypass: boolean) => (
+  <>{m.host} · {m.pool} · {m.tools} {m.tools === 1 ? "tool" : "tools"}{m.dailyLimit !== null && <> · <span className="num">{m.callsToday.toLocaleString("en-US")}</span> of <span className="num">{m.dailyLimit.toLocaleString("en-US")}</span> today</>}{bypass && m.bypass && " · bypass"}</>
 );
 
 const offNetworkSentence = (name: string) => `${name}'s host is outside your network, so a private thread's requests would leave it.`;
@@ -54,6 +58,8 @@ const offNetworkSentence = (name: string) => `${name}'s host is outside your net
 export function McpServersSection({ ctx }: { ctx: ShellContext }) {
   const userId = ctx.user.id;
   const servers = useLoad(() => get<McpServerInfo[]>(u(userId, "mcp-servers")), [userId]);
+  // Allow bypass (Settings → Network): only while it is on does a server's own Allow bypass show, or count.
+  const bypass = useLoad(() => get<ModeDefault>(u(userId, "mode")), [userId]).data?.bypass === true;
   const [open, setOpen] = useState<string | { adding: true }>();
   const list = servers.data ?? [];
   const current = typeof open === "string" ? list.find((m) => m.name === open) : undefined;
@@ -69,7 +75,7 @@ export function McpServersSection({ ctx }: { ctx: ShellContext }) {
             <li key={m.name} className="machine-row git-row">
               <button type="button" className="machine-open" aria-haspopup="dialog" aria-expanded={open === m.name} onClick={() => setOpen(m.name)}>
                 <span className="machine-name">{m.name}</span>
-                <span className="machine-facts">{facts(m)}</span>
+                <span className="machine-facts">{facts(m, bypass)}</span>
               </button>
               <StateWord m={m} />
             </li>
@@ -79,7 +85,7 @@ export function McpServersSection({ ctx }: { ctx: ShellContext }) {
       <div className="row"><button type="button" onClick={() => setOpen({ adding: true })}><Icon name="plus" /> Add server</button></div>
       {(current || (open && typeof open !== "string")) && (
         <>
-          <McpDrawer key={current?.name ?? "new"} userId={userId} server={current} onClose={close}
+          <McpDrawer key={current?.name ?? "new"} userId={userId} server={current} bypassAllowed={bypass} onClose={close}
             onSaved={() => { servers.reload(); close(); }} onChanged={() => servers.reload()} />
           <div className="scrim drawer-scrim" aria-hidden="true" onClick={close} />
         </>
@@ -89,19 +95,22 @@ export function McpServersSection({ ctx }: { ctx: ShellContext }) {
 }
 
 /**
- * One server's drawer: Name, URL or Command, and Pool, with Replace token
- * (a URL) or Replace environment (a command) and Remove behind ⋯. Without
+ * One server's drawer: Name, URL or Command, Pool and its call budget, with
+ * Allow bypass at the foot while Allow bypass is on, and Replace token (a
+ * URL) or Replace environment (a command) and Remove behind ⋯. Without
  * `server` it is Add server: a Token field (optional) or an Environment
  * field too, and the server is checked before the row is saved.
  */
-function McpDrawer({ userId, server, onSaved, onChanged, onClose }: {
-  userId: string; server?: McpServerInfo; onSaved: () => void; onChanged: () => void; onClose: () => void;
+function McpDrawer({ userId, server, bypassAllowed, onSaved, onChanged, onClose }: {
+  userId: string; server?: McpServerInfo; bypassAllowed: boolean; onSaved: () => void; onChanged: () => void; onClose: () => void;
 }) {
   const adding = !server;
   const [form, setForm] = useState({
     name: server?.name ?? "", url: server?.url ?? "", command: server?.command ?? "", pool: server?.pool ?? "general" as Pool, token: "", env: "",
     dailyLimit: limitText(server?.dailyLimit), minuteLimit: limitText(server?.minuteLimit),
   });
+  const [bypass, setBypass] = useState(server?.bypass === true);
+  const [confirmBypass, setConfirmBypass] = useState(false);
   const [replacing, setReplacing] = useState(false);
   const local = !!form.command.trim();
   const [removing, setRemoving] = useState(false);
@@ -122,6 +131,7 @@ function McpDrawer({ userId, server, onSaved, onChanged, onClose }: {
     ...(form.pool !== server.pool ? { pool: form.pool } : {}),
     ...(limitValue(form.dailyLimit) !== server.dailyLimit ? { dailyLimit: limitValue(form.dailyLimit) } : {}),
     ...(limitValue(form.minuteLimit) !== server.minuteLimit ? { minuteLimit: limitValue(form.minuteLimit) } : {}),
+    ...(bypassAllowed && bypass !== server.bypass ? { bypass } : {}),
   } : {};
   const one = !!form.url.trim() !== local;
   const ready = adding ? !!(form.name.trim() && one) : replacing ? true : Object.keys(change).length > 0 && one;
@@ -200,6 +210,9 @@ function McpDrawer({ userId, server, onSaved, onChanged, onClose }: {
                 <input type="number" min={1} step={1} inputMode="numeric" placeholder="No limit" value={form.minuteLimit} title={MINUTE_TIP} onChange={(e) => set("minuteLimit", e.target.value)} />
               </label>
               {server && server.dailyLimit !== null && <p className="muted small"><span className="num">{server.callsToday.toLocaleString("en-US")}</span> calls today.</p>}
+              {server && bypassAllowed && (
+                <Switch label="Allow bypass" hint={BYPASS_TIP} checked={bypass} onChange={(on) => (on ? setConfirmBypass(true) : setBypass(false))} />
+              )}
             </>
           )}
         </fieldset>
@@ -212,6 +225,10 @@ function McpDrawer({ userId, server, onSaved, onChanged, onClose }: {
           <button type="button" onClick={onClose}>Cancel</button>
         </div>
       </form>
+      {confirmBypass && server && (
+        <ConfirmDialog title={`Allow bypass for “${server.name}”?`} sentence={bypassWarning(server.name)} confirm="Allow" danger
+          onCancel={() => setConfirmBypass(false)} onConfirm={() => { setConfirmBypass(false); setBypass(true); }} />
+      )}
       {removing && server && (
         <ConfirmDialog title={`Remove “${server.name}”?`} sentence="It leaves every project and thread that has it, at once."
           cancel="Keep" confirm="Remove" danger onCancel={() => setRemoving(false)}

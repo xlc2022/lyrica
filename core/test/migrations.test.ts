@@ -216,6 +216,21 @@ describe("user step 26 (NixOS machines)", () => {
   });
 });
 
+describe("user step 27 (per-server MCP bypass)", () => {
+  it("adds mcp_servers.bypass to every released user schema, on for each server where Allow MCP bypass was on, and the release before still opens it", () => {
+    for (const v of STEPS.user.map((s) => s.version).filter((v) => v >= 3 && v < 27)) for (const was of [false, true]) {
+      const db = scratchDb();
+      migrate(db, "user", {}, STEPS.user.filter((s) => s.version <= v));
+      db.prepare("INSERT INTO mcp_servers (name, url, pool) VALUES ('house', 'https://mcp.example.com/mcp', 'general')").run();
+      if (was) db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('workspace.bypass.mcp', '1')").run();
+      migrate(db, "user");
+      expect(db.prepare("SELECT bypass FROM mcp_servers").get(), `v${v}`).toEqual({ bypass: was ? 1 : 0 });
+      expect(() => checkReadable(db, "user", STEPS.user.filter((s) => s.version < 27))).not.toThrow();
+      db.close();
+    }
+  });
+});
+
 describe("user step 5 (portrait-photo cloud choice)", () => {
   it("expands every released user schema with Ask once a day and preserves an existing choice", () => {
     for (let v = 1; v < 5; v++) for (const policy of [undefined, "never", "always"]) {

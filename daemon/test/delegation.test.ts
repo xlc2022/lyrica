@@ -277,7 +277,7 @@ describe("talking with subagents in lyricad", () => {
     }
   });
 
-  it("runs a read-only subagent's MCP call without a card when the tool is allowed in its parent's thread, or in Bypass with Allow MCP bypass on", async () => {
+  it("runs a read-only subagent's MCP call without a card when the tool is allowed in its parent's thread", async () => {
     const house = await testMcpServer();
     try {
       const { rt, d, ada, parent, sub, path, thread } = await setup();
@@ -305,13 +305,13 @@ describe("talking with subagents in lyricad", () => {
     }
   });
 
-  it("runs a read-only subagent's MCP call without a card in Bypass with Allow MCP bypass on", async () => {
+  it("runs a read-only subagent's MCP call without a card in Bypass with the server's Allow bypass on", async () => {
     const house = await testMcpServer();
     try {
       const { rt, ada, parent, sub, path } = await setup();
       await ada.post(`/api/u/${rt.ada.id}/mcp-servers`, { name: "house", url: house.url, pool: "general" });
       await ada.put(`/api/u/${rt.ada.id}/mode`, { bypass: true });
-      await ada.put(`/api/u/${rt.ada.id}/mode`, { mcp: true });
+      await ada.patch(`/api/u/${rt.ada.id}/mcp-servers/house`, { bypass: true });
       await ada.patch(`${path}/settings`, { mode: "bypass", mcpServers: ["house"] });
       parent.reply({ tools: [{ name: "delegate", args: { task: "look at the lamp", role: "scout" } }] }, { text: "Done." });
       sub.respond((r) => {

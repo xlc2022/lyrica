@@ -1858,7 +1858,7 @@ Decided 2026-10-12 (docs/briefs/mcp.md).
   shouldn't be added. A read-only subagent keeps its parent's servers
   (decided 2026-11-17, so scouts and reviewers can use lookups such as
   NixOS's), and its calls not marked read-only ask as its parent's do
-  (not in Bypass with Allow MCP bypass, which the owner wants silent;
+  (not in Bypass for a server with its own Allow bypass on, which the owner wants silent;
   not for a tool allowed in a thread above it); an offline or folder-narrowed subagent, a writer in a
   worktree and a narrowed child thread get none, since a server is
   reached outside the sandbox's folders and, for a remote one, its
@@ -2333,9 +2333,11 @@ Details in [docs/sleep.md](docs/sleep.md).
     Settings. Commands and file changes in the sandbox don't ask, not even
     deletes or force pushes; Forbid rules (which also refuse a command they
     can't see into), the user's own Ask rules, the cards that ask in every
-    mode and machine limits still hold. A second switch, **Allow MCP
-    bypass** (off by default, turned on only through a warning), drops the
-    MCP server card too, for one machine she runs unattended; forms,
+    mode and machine limits still hold. Each MCP server has its own
+    **Allow bypass** in its drawer (shown only while Allow bypass is on,
+    off by default, turned on only through a warning), which drops that
+    server's card too, in subagents as well (decided 2026-11-17: the user
+    chooses which servers skip cards, replacing one switch for all); forms,
     attachments and open-world tools still ask.
   - **Plan:** she can only read, recall and use read-only subagents. She
     writes a plan and asks to go ahead; approving it switches the thread to

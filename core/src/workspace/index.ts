@@ -623,8 +623,8 @@ export class Workspace {
       }),
       /** Whether the user allowed this MCP tool on this server in this thread. */
       toolAllowedInThread: (server: string, tool: string) => this.settings(t.userId).toolAllowedInThread(t.threadId, server, tool),
-      /** Allow MCP bypass, read at every call. */
-      mcpBypass: () => this.settings(t.userId).mcpBypassAllowed(),
+      /** Whether this server's tools skip the card in Bypass permissions (its own Allow bypass), read at every call. A locked database says no. */
+      mcpBypass: (server: string) => { try { return this.settings(t.userId).mcpBypassFor(server); } catch { return false; } },
       /** An approved plan switching the thread's mode. */
       setMode: (mode: PermissionMode) => { this.settings(t.userId).setThread(t.threadId, t.pool, { mode }); },
       network: (): Network => this.network(t),
@@ -1633,14 +1633,14 @@ export class Workspace {
   }
 
   /** Changes a server's name, URL, command or pool. A new URL or command is checked again; a private one moved off her network needs `offNetworkConfirmed`. */
-  async updateMcpServer(userId: string, name: string, change: { name?: string; url?: string; command?: string[]; pool?: Pool; dailyLimit?: number | null; minuteLimit?: number | null; offNetworkConfirmed?: boolean }): Promise<McpServerConfig> {
+  async updateMcpServer(userId: string, name: string, change: { name?: string; url?: string; command?: string[]; pool?: Pool; dailyLimit?: number | null; minuteLimit?: number | null; bypass?: boolean; offNetworkConfirmed?: boolean }): Promise<McpServerConfig> {
     const s = this.settings(userId);
     const before = s.mcpServer(name);
     if (!before) throw new Error(`no MCP server ${name}`);
     if (change.name !== undefined && change.name !== name) s.checkMcpName(change.name, name);
     const pool = change.pool ?? before.pool;
     const command = change.command ?? before.command;
-    const limits = { ...(change.dailyLimit !== undefined ? { dailyLimit: change.dailyLimit } : {}), ...(change.minuteLimit !== undefined ? { minuteLimit: change.minuteLimit } : {}) };
+    const limits = { ...(change.dailyLimit !== undefined ? { dailyLimit: change.dailyLimit } : {}), ...(change.minuteLimit !== undefined ? { minuteLimit: change.minuteLimit } : {}), ...(change.bypass !== undefined ? { bypass: change.bypass } : {}) };
     if (command.length) {
       if (String(change.url ?? "").trim()) throw new Error("a server is a URL or a command, not both");
       const changed = JSON.stringify(command) !== JSON.stringify(before.command);

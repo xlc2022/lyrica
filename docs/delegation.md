@@ -230,7 +230,8 @@ Ask always asks, and Allow skips sandbox mode prompts. Always allow on its
 command card saves lyricad's computed prefix for the whole project.
 
 An MCP call that its server doesn't mark read-only asks the same way in
-every mode but Bypass permissions with **Allow MCP bypass** on, shown in
+every mode but Bypass permissions for a server whose own **Allow bypass**
+is on, shown in
 both threads. **Allow in this thread** holds for that tool in the
 subagent's thread; one given in its parent's thread, or further up,
 covers the subagent too.
