@@ -1136,6 +1136,9 @@ their subagents, at any depth (`familyRoot`, `WorkspaceSettings.family`).
   the path its family reads its folder at and its own part of `/shared`,
   saying the rest of `/shared` is read-only to it, or that it has no
   `/shared` at all (`ThreadTools.family`).
+- Another line names where commands start and relative paths resolve:
+  `/workspace`, or a subagent's start folder (docs/delegation.md, "Where
+  commands start").
 - Another line (`LINK_LINE`), in every thread and the project chat, tells
   her a `/workspace` or `/shared` path is a link the person can open, and to
   link a file by its absolute path, never a relative one (docs/web.md, Chat).
@@ -2256,7 +2259,9 @@ settings:
 - **Repositories:** a subagent works in its parent's clones. One that gets
   no machines keeps the parent's repositories read-only: its sandbox
   mounts those clones read-only, so it can't change their working trees or
-  commits, and its relay refuses a push or an API write.
+  commits, and its relay refuses a push or an API write. Its sandbox
+  commands start in its one checkout, or the run's `cwd`
+  (docs/delegation.md, "Where commands start").
 
 A subagent can never widen what its parent was given. `inheritSettings`
 copies the parent's settings, or the narrower ones it is given, and the

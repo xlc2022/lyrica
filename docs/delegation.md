@@ -91,8 +91,8 @@ of:
 | `council: { question }` | The question to up to three of the thread's models at once (oracle role): its subagent models, then others it allows. Then one strong oracle combines the answers. |
 | `workflow: name` (with `input`) | A saved chain, loop or council, with `{input}` filled in. |
 
-Any of them can add `background: true`, `folders`, `readOnly: true` or
-`internet: false`. A project chat's runs always go to the background, so
+Any of them can add `background: true`, `folders`, `readOnly: true`,
+`internet: false` or `cwd`. A project chat's runs always go to the background, so
 the chat can tell the person what it started. Elsewhere a foreground run
 holds the turn for at most `foregroundMs`; one still working then carries on
 in the background, with its result delivered as a message.
@@ -106,6 +106,15 @@ reads; a push or an API write is refused); an unnarrowed writer keeps the
 parent's repositories and their credentials. An invalid folder is refused with
 this distinction and the omitted-`folders` alternative; it is never turned
 into a host grant.
+
+**Where commands start.** A subagent's sandbox commands, and the relative
+paths its file tools take, start in the folder it was handed
+(`startFolder`, `startingIn`): the run's `cwd` (a sandbox folder, relative
+to `/workspace`), else its one worktree, clone or granted folder when it has
+exactly one, else `/workspace`. A `cwd` it can't reach fails the run. The
+prompt's workspace section names that folder, so `grep -r x modules` in
+`/workspace/repos/<name>` works as a person would type it. Claude Code
+starts there too. Commands on a machine start where they always do.
 
 **Fork.** A task with `fork: true` starts its subagent from a copy of the
 parent's stored conversation, then its task. The copy is made with

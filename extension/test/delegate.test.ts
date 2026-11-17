@@ -237,6 +237,25 @@ describe("delegate", () => {
     expect(ws.credentialsFor({ userId: s.ada.id, pool: "general", threadId: child.thread }).forge.map((f) => f.readOnly)).toEqual([true]);
   });
 
+  it("starts a subagent's commands in the one repository it was handed, or in the folder the run names", async () => {
+    const read: string[] = [];
+    const target: ExecutionTarget = { name: "sandbox", cwd: async () => "/workspace", folders: () => [],
+      ops: () => ({ read: { access: async () => {}, readFile: async (path: string) => { read.push(path); return Buffer.from("hosts/\nmodules/\n"); } } }) as unknown as ToolOps };
+    let ws!: Workspace;
+    const s = await setup({ workspace: (m) => (ws = new (class extends Workspace { override targetFor(_t: WorkspaceThread) { return target; } })(m.keyring, m.users, { excludePorts: [] })) });
+    const parent = s.thread();
+    const settings = ws.settings(s.ada.id);
+    settings.addGitAccount({ name: "bot", kind: "github", host: "github.com", account: "test-bot", token: "test-token", pool: "general", offNetwork: true });
+    settings.setThread(parent.threadId, "general", { grants: [], repositories: [{ name: "example/project", account: "bot" }] });
+    s.cloud.respond((r) => (r.messages.at(-1)?.role === "tool" ? { text: "read it" } : { tools: [{ name: "read", args: { path: "README.md" } }] }));
+
+    await s.run(parent, { task: "review the modules", role: "scout" });
+    await s.run(parent, { task: "review the hosts", role: "scout", cwd: "repos/project/hosts" });
+    expect(read).toEqual(["/workspace/repos/project/README.md", "/workspace/repos/project/hosts/README.md"]);
+    // It's told so: the bare paths a scout once grepped from /workspace resolve in the checkout.
+    expect(JSON.stringify(s.cloud.requests.find(isSub)!.messages[0])).toContain("Commands start in /workspace/repos/project, and relative paths resolve there.");
+  });
+
   it("gives an offline researcher neither web_search nor web_fetch, nor browse", async () => {
     let ws!: Workspace;
     const s = await setup({ searxng: () => "http://127.0.0.1:9", workspace: (m) => (ws = new Workspace(m.keyring, m.users, { excludePorts: [] })) });
