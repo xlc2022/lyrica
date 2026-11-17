@@ -1128,26 +1128,36 @@ export class Delegation {
       };
       const extensions: ExtensionFactory[] = [];
       let mcp = false;
+      /** Its parent's machines, when it has none of its own: named in its prompt, so it can ask the parent to run a command there. */
+      let parentMachines: (() => string[]) | undefined;
       let rules: (() => Promise<string | undefined>) | undefined;
       // Its browser, if its role browses, closes when it ends; its profile stays for a later message to it.
       let closeBrowser = () => {};
       if (workspace) {
         let owner = parent.threadId;
-        while (view.own.getThread(owner)?.subagent && view.own.getThread(owner)?.parent) owner = view.own.getThread(owner)!.parent!;
+        /** The threads it works for, nearest first: its parent, up through any subagents, to the thread that started them. */
+        const above = [owner];
+        while (view.own.getThread(owner)?.subagent && view.own.getThread(owner)?.parent) above.push(owner = view.own.getThread(owner)!.parent!);
         const p = { userId: parent.user.id, pool: parent.pool, threadId: parent.threadId, project: view.own.projectOf(owner) };
         const coordinates = this.coordinates(run);
         let grants = this.grants(run, narrowing);
         if (role.readOnly || narrowing.readOnly) grants = grants.map((g) => ({ ...g, writable: false }));
         if (worktrees.length) grants = worktreeGrants(grants, worktrees);
-        // A machine is reached through bash, and an MCP server from lyricad, which no sandbox mount or network rule narrows:
+        // A machine is reached through bash, which no sandbox mount or network rule narrows:
         // a read-only, offline or folder-narrowed subagent, or a writer in its own worktree, gets none.
         const noMachines = role.readOnly || narrowing.readOnly || narrowing.internet === false || !!narrowing.folders || worktrees.length > 0;
+        // An MCP server is reached from lyricad (a remote one) or from its sandbox's network (a local one), past any folder narrowing,
+        // so an offline or folder-narrowed subagent, or a writer in its own worktree, gets none. A read-only one keeps its parent's:
+        // a call its server doesn't mark read-only still asks, in both threads, unless the person chose Bypass and that server's own Allow bypass (DESIGN.md, "MCP servers").
+        if (noMachines) parentMachines = () => workspace.settings(parent.user.id).effective(parent.threadId).machines;
+        const noMcp = narrowing.internet === false || !!narrowing.folders || worktrees.length > 0;
         // Its repositories stay, read-only at the relay: it can read the forge, never push or write to it.
         const readRepos = () => workspace.settings(parent.user.id).effective(parent.threadId).repositories.map((r) => ({ ...r, readOnly: true }));
         // Offline means web_search too: SearXNG is asked from lyricad, not the sandbox.
         workspace.inheritSettings(p, child.id, {
           grants, ...(narrowing.internet === false ? { internet: false, webSearch: false } : {}),
-          ...(noMachines ? { machines: [], repositories: readRepos(), mcpServers: [], ...(claude ? {} : { claudeCode: false }) } : {}),
+          ...(noMachines ? { machines: [], repositories: readRepos(), ...(claude ? {} : { claudeCode: false }) } : {}),
+          ...(noMcp ? { mcpServers: [] } : {}),
         });
         // Its settings follow its parent's as they are now (the stricter mode, switches off where theirs are); it can't leave Plan mode itself.
         // It works in its parent's clones, which the parent fetched at its turn's start; read-only when it gets
@@ -1179,7 +1189,11 @@ export class Delegation {
             }), release, usedBefore(earlier));
           return this.begin(run, sub, child, pick, narrowing, earlier);
         }
-        extensions.push(createWorkspaceExtension({ ...tools, approve: (r) => this.approve(sub!, r) }), createSyntaxExtension({ target: (m) => tools.target(m) }));
+        // An MCP tool the person allowed in a thread it works for runs without asking here too: their yes was for that tool there.
+        const allowedAbove = (server: string, tool: string) => above.some((id) => workspace.settings(parent.user.id).toolAllowedInThread(id, server, tool));
+        extensions.push(createWorkspaceExtension({ ...tools,
+          toolAllowedInThread: (server, tool) => !!tools.toolAllowedInThread?.(server, tool) || allowedAbove(server, tool),
+          approve: (r) => this.approve(sub!, r) }), createSyntaxExtension({ target: (m) => tools.target(m) }));
         // A coder works in its parent's checkouts or its own worktrees, under their repositories' own instructions.
         if (role.name === "coder") rules = () => repoRules(tools.target(), checkoutsOf(tools.settings(), tools.repositories?.() ?? [], worktrees));
         if (workspace.imageFiles) extensions.push(createImageExtension({ models: this.o.models, threadId: child.id,
@@ -1212,7 +1226,7 @@ export class Delegation {
       // tool_search loads the MCP tools, which register after its role's tools are set, so the role doesn't turn them off.
       const allowed = new Set([...role.tools, "ask_parent", "look", ...(nested ? ["delegate"] : []), ...(mcp ? ["tool_search"] : [])]);
       // First: it must run before the MCP extension registers anything, else the role gate turns loaded MCP tools off.
-      extensions.unshift(createSubagentExtension(ctx, role, hooks, allowed, this.o.name?.() ?? "Lyrica", !earlier && role.name === "coder" ? { task, done } : undefined, rules));
+      extensions.unshift(createSubagentExtension(ctx, role, hooks, allowed, this.o.name?.() ?? "Lyrica", !earlier && role.name === "coder" ? { task, done } : undefined, rules, parentMachines));
       const opened = await openThreadSession({ thread: ctx, models, cwd: this.o.cwd, extensions, task: () => role.name === "coder" ? "code" : "chat" });
       opened.session.setThinkingLevel(role.thinking);
       // Passes over a model whose machine is away, and records the call. The role keeps its own thinking level.

@@ -68,11 +68,23 @@ subagent:
 - gets its workspace from `inheritSettings`: the parent's folders (or the
   ones asked for), read-only for a read-only role or `readOnly: true`, and
   internet off if asked, and then Web search off too, so it has neither
-  `web_search` nor `web_fetch`. It gets the parent's machines and MCP
-  servers only when none of those narrowings apply and it isn't a writer
-  in a worktree: bash on a machine, and an MCP server, follow none of
-  them. With MCP servers it also gets `tool_search`. The workspace refuses
+  `web_search` nor `web_fetch`. It gets the parent's machines only when
+  none of those narrowings apply and it isn't a writer in a worktree:
+  bash on a machine follows none of them. It gets the parent's MCP
+  servers unless its internet is off, its folders are narrowed or it is a
+  writer in a worktree, since a server is reached past both; a read-only
+  one keeps them, so a scout can look things up (NixOS options, eBay
+  listings), and a call its server doesn't mark read-only asks as its
+  parent's would: always, except in Bypass permissions with **Allow MCP
+  bypass** on, which the person chose for exactly that (decided
+  2026-11-17). A tool the person allowed in this thread, or in a thread
+  above it, runs without asking.
+  With MCP servers it also gets `tool_search`. The workspace refuses
   anything wider;
+- left without its parent's machines, is told their names in its prompt
+  (`parentMachinesText`) and that to have a command run on one it asks the
+  parent with `ask_parent`; the parent runs it, or not, under its own mode
+  and approvals;
 - gets a short preamble plus its role's prompt instead of Lyrica's persona,
   `recall` and `read_memory` (never `remember`), `ask_parent`, and only the
   tools its role lists.
@@ -218,8 +230,11 @@ Ask always asks, and Allow skips sandbox mode prompts. Always allow on its
 command card saves lyricad's computed prefix for the whole project.
 
 An MCP call that its server doesn't mark read-only asks the same way in
-every mode, shown in both threads; **Allow in this thread** holds for that
-tool in the subagent's thread only.
+every mode but Bypass permissions for a server whose own **Allow bypass**
+is on, shown in
+both threads. **Allow in this thread** holds for that tool in the
+subagent's thread; one given in its parent's thread, or further up,
+covers the subagent too.
 
 ## Roles
 
@@ -228,7 +243,7 @@ tool in the subagent's thread only.
 | coder | strong (`code` task), high thinking | read, write, edit, bash, recall, read_memory | yes |
 | scout | cheap | read, bash, recall, read_memory | no |
 | researcher | cheap | read, bash, recall, read_memory, web_search, web_fetch, browse | no |
-| reviewer | cheap | read, bash, recall, read_memory | no |
+| reviewer | cheap | read, bash, recall, read_memory, web_search, web_fetch | no |
 | worker | strong | read, write, edit, bash, recall, read_memory | yes |
 | oracle | strong | read, recall, read_memory | no |
 | claude | Claude Code ([below](#claude-code)) | Claude Code's own | yes |
@@ -443,7 +458,7 @@ checks it reaches her, and with a real model which she picks. Code:
   returns its ID at once, as `[t:<id>]`, which she mentions it by. It gets the parent's model context
   (`models.inheritContext`: pool, local-only, preset, thinking, models) and
   workspace (`inheritSettings`, narrowed by `folders`, `readOnly` and
-  `internet: false`; any of those also leaves it no machines); the workspace refuses anything wider, and a folder the
+  `internet: false`; any of those also leaves it no machines and no MCP servers); the workspace refuses anything wider, and a folder the
   parent doesn't have is refused. `code: true` turns on its code mode, with
   the first 300 characters of the task as its Code task. It inherits "Do not log" from the store.
   If the child's first turn can't start, the child is forgotten.

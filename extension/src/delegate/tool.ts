@@ -232,11 +232,17 @@ export function createDelegateExtension(thread: ThreadContext, delegation: Deleg
   };
 }
 
+/** For a subagent left without its parent's machines: which they are, and that the parent runs a command there if asked. */
+export function parentMachinesText(machines: string[], name = "Lyrica"): string {
+  return `${name}'s machines, which you can't reach: ${machines.join(", ")}. If you need a command run on one, call ask_parent with the machine and the exact command; she decides whether to run it, and her answer brings its output.`;
+}
+
 /**
  * A subagent's own extension: the preamble and its role's prompt, read-only
  * memory, ask_parent, and only the tools its role allows.
  */
-export function createSubagentExtension(thread: ThreadContext, role: Role, hooks: SubagentHooks, allowed: Set<string>, name = "Lyrica", codingTask?: { task: string; done: string }, repoRules?: () => Promise<string | undefined>): ExtensionFactory {
+export function createSubagentExtension(thread: ThreadContext, role: Role, hooks: SubagentHooks, allowed: Set<string>, name = "Lyrica", codingTask?: { task: string; done: string }, repoRules?: () => Promise<string | undefined>,
+  parentMachines?: () => string[]): ExtensionFactory {
   const who = () => ({ threadId: thread.threadId, user: { id: thread.user.id, profile: thread.user.profile }, code: role.name === "coder" });
   return (pi) => {
     registerMemoryTools(pi, thread.view, who, { readOnly: true });
@@ -269,6 +275,9 @@ export function createSubagentExtension(thread: ThreadContext, role: Role, hooks
       const tools = toolGuidance(o, [...WORK_GUIDELINES, ...(role.name === "coder" && needsExecutionGuidelines(ctx.model) ? [EXECUTION_GUIDELINES] : [])]);
       o.customPrompt = subagentPrompt(role, name);
       o.sections = { ...(tools ? { tools } : {}), ...o.sections };
+      const machines = parentMachines?.() ?? [];
+      if (machines.length) o.sections.parent_machines = parentMachinesText(machines, name);
+      else delete o.sections.parent_machines;
       if (role.name === "coder") {
         const memory = await memorySections(thread.view, startText(event), { ...who(), folders: [] });
         o.sections.project = memory.project ?? "";

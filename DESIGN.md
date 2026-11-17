@@ -1855,7 +1855,14 @@ Decided 2026-10-12 (docs/briefs/mcp.md).
   and only those run in Plan mode. Every other call leaves the server, so
   it always asks, whatever the mode, with **Allow in this thread** for that
   tool. A server's hints are its own claim: a server the user doesn't trust
-  shouldn't be added.
+  shouldn't be added. A read-only subagent keeps its parent's servers
+  (decided 2026-11-17, so scouts and reviewers can use lookups such as
+  NixOS's), and its calls not marked read-only ask as its parent's do
+  (not in Bypass for a server with its own Allow bypass on, which the owner wants silent;
+  not for a tool allowed in a thread above it); an offline or folder-narrowed subagent, a writer in a
+  worktree and a narrowed child thread get none, since a server is
+  reached outside the sandbox's folders and, for a remote one, its
+  network.
 - **Budget.** MCP tools are deferred, loaded by `tool_search` when she
   needs one, and count as one tool together (principle 8). What she
   loaded stays loaded for the thread: a new session on it (after idle, a
