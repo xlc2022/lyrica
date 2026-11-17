@@ -232,7 +232,7 @@ tool in the subagent's thread only.
 | coder | strong (`code` task), high thinking | read, write, edit, bash, recall, read_memory | yes |
 | scout | cheap | read, bash, recall, read_memory | no |
 | researcher | cheap | read, bash, recall, read_memory, web_search, web_fetch, browse | no |
-| reviewer | cheap | read, bash, recall, read_memory | no |
+| reviewer | cheap | read, bash, recall, read_memory, web_search, web_fetch | no |
 | worker | strong | read, write, edit, bash, recall, read_memory | yes |
 | oracle | strong | read, recall, read_memory | no |
 | claude | Claude Code ([below](#claude-code)) | Claude Code's own | yes |
