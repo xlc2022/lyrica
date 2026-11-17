@@ -1079,7 +1079,7 @@ fixed actions, the token never shown to her.
   record names, the folders (with their Claude Code folders and lasting
   `/tmp`) of threads that no longer exist, subagent worktrees whose run isn't live and that
   haven't changed in 30 days, and the empty parts of a family's `/shared`
-  made for subagents before they wrote in their parent's
+  made for subagents before they wrote in their starting thread's
   (`sweepSubagentShares`). Before
   a worktree goes, git's record of it (`.git/worktrees/<name>` in its
   repository) goes too, so git no longer counts its branch as checked out:
@@ -1121,7 +1121,8 @@ their subagents, at any depth (`familyRoot`, `WorkspaceSettings.family`).
   (`Workspace.sharedDir`, `SandboxSpec.shared`). Each thread writes only in
   its own `/shared/<id>/`, made for it and mounted read-write over the
   read-only rest (`Workspace.sharedOwn`, `SandboxSpec.sharedOwn`); a
-  subagent writes in its parent's, as it works in its parent's folder. The
+  subagent writes in the one of the thread that started it (past any
+  subagents), as it works in that thread's folder. The
   folder is named by the thread's id with its `/` written `%2F`
   (`web%2F20cfd56f`), as are the folders at `/thread-workspaces`, and the
   Files panel shows a project thread's by its title. The

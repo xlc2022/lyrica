@@ -794,6 +794,25 @@ describe("delegate", () => {
     expect(parent.view.own.listThreads({ parent: child!.id })).toHaveLength(1);
   });
 
+  it("has a nested subagent write in the /shared part of the thread that started its run", async () => {
+    let ws!: Workspace;
+    const s = await setup({ limits: { depth: 2, runsPerRequest: 2 }, workspace: (m) => (ws = new Workspace(m.keyring, m.users, { excludePorts: [] })) });
+    s.cloud.respond((r) => {
+      const tools = r.tools?.map((t) => t.function.name) ?? [];
+      if (tools.includes("delegate") && r.messages.at(-1)!.role !== "tool") return { tools: [{ name: "delegate", args: { tasks: [{ task: "a", role: "scout" }] } }] };
+      return { text: "scouted" };
+    });
+    const opened: WorkspaceThread[] = [];
+    const forThread = ws.forThread.bind(ws);
+    ws.forThread = (t) => { opened.push(t); return forThread(t); };
+    const parent = s.thread();
+    await s.run(parent, { task: "split it up", role: "worker" });
+    const [child] = parent.view.own.listThreads({ parent: parent.threadId });
+    const [grandchild] = parent.view.own.listThreads({ parent: child!.id });
+    expect(opened.find((t) => t.threadId === child!.id)).toMatchObject({ reposOf: parent.threadId, sharesAs: parent.threadId });
+    expect(opened.find((t) => t.threadId === grandchild!.id)).toMatchObject({ reposOf: child!.id, sharesAs: parent.threadId });
+  });
+
   it("gives a new budget to a request, not to a run a hidden message starts", async () => {
     const s = await setup({ limits: { runsPerRequest: 1 } });
     s.cloud.respond(() => ({ text: "done" }));

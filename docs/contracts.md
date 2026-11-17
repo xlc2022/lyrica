@@ -2944,7 +2944,7 @@ settings(userId).separate(threadId)        // a daughter detached from a living 
 sharedDir(t): string | undefined          // shared/ in the folder of the family's topmost thread (settings.familyRoot; the project chat in a project):
   // SandboxSpec.shared, mounted at /shared (SHARED) for the whole family; undefined when a thread made it a file or link,
   // or when sharesFamilyFolder(t) is false: a local-only thread (or ancestor below the top) under a top that isn't restricted
-sharedOwn(t, shared): string              // the thread's own shared/<id>/ (a subagent's parent's, t.reposOf; made, replacing a file or link there): SandboxSpec.sharedOwn,
+sharedOwn(t, shared): string              // the thread's own shared/<id>/ (a subagent's run owner's, t.sharesAs; made, replacing a file or link there): SandboxSpec.sharedOwn,
   // mounted read-write at /shared/<id> over a read-only /shared; a write elsewhere in /shared throws SandboxDenied. Not for t.coordinates.
   // In the top thread, whose WORKDIR holds shared/, WORKDIR/shared (and its alias's) is mounted read-only over it too
 familyFolders(t): { path, dest }[]        // SandboxSpec.family: every other family member's folder (settings.family(root), by folderThread),

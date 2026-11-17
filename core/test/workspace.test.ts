@@ -989,10 +989,11 @@ describe("which thread wrote a file", () => {
     const child = { userId: ada.id, pool: "general" as const, threadId: "web/child" };
     const shared = mkdtempSync(join(tmpdir(), "shared-"));
     expect(workspace.sharedOwn(child, shared)).toBe("web%2Fchild");
-    // A subagent works in its parent's folder, so it writes in its parent's part rather than leaving one of its own.
-    expect(workspace.sharedOwn({ ...child, threadId: "web/sub", reposOf: "web/child" }, shared)).toBe("web%2Fchild");
+    // A subagent, and one it starts, write in the part of the thread that started them rather than leaving their own.
+    expect(workspace.sharedOwn({ ...child, threadId: "web/sub", reposOf: "web/child", sharesAs: "web/child" }, shared)).toBe("web%2Fchild");
+    expect(workspace.sharedOwn({ ...child, threadId: "web/sub2", reposOf: "web/sub", sharesAs: "web/child" }, shared)).toBe("web%2Fchild");
     expect(readdirSync(shared)).toEqual(["web%2Fchild"]);
-    expect(workspace.forThread({ ...child, threadId: "web/sub", reposOf: "web/child" }).family().handover).toBe("/shared/web%2Fchild");
+    expect(workspace.forThread({ ...child, threadId: "web/sub2", reposOf: "web/sub", sharesAs: "web/child" }).family().handover).toBe("/shared/web%2Fchild");
   });
 
   it("keys a path by the folder that holds it, /shared by the family's top, and follows renames, deletes and listings", async () => {
