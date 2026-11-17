@@ -106,8 +106,11 @@ function inline(v: unknown): ReactNode | undefined {
   return undefined;
 }
 
+/** On an approval card Markdown shows as its source, so a link's target or a comment can't hide in the rendering. */
+const sourceOf = (k: Kind, source?: boolean): Kind => (source && k.kind === "markdown" ? { kind: "text" } : k);
+
 /** Every argument as a name and its value; one of several lines, or a nested one, takes the full width as a block. */
-export function ArgList({ args, writing }: { args: Args; /** The field she is still writing. */ writing?: string }) {
+export function ArgList({ args, writing, source }: { args: Args; /** The field she is still writing. */ writing?: string; /** Markdown as its exact characters, not rendered: what an approval card asks about. */ source?: boolean }) {
   const entries = Object.entries(args);
   if (!entries.length) return null;
   return (
@@ -118,7 +121,7 @@ export function ArgList({ args, writing }: { args: Args; /** The field she is st
         return [
           <dt key={`${k}:k`}>{k}</dt>,
           one !== undefined ? <dd key={`${k}:v`}>{one}</dd>
-            : <dd key={`${k}:v`} className="wide"><Block text={text} kind={typeof v === "string" ? kindOf(v) : { kind: "code", lang: "json" }} copyLabel={`Copy ${k}`} plain={k === writing} /></dd>,
+            : <dd key={`${k}:v`} className="wide"><Block text={text} kind={typeof v === "string" ? sourceOf(kindOf(v), source) : { kind: "code", lang: "json" }} copyLabel={`Copy ${k}`} plain={k === writing} /></dd>,
         ];
       })}
     </dl>
@@ -128,7 +131,7 @@ export function ArgList({ args, writing }: { args: Args; /** The field she is st
 const drop = (a: Args, ...keys: string[]): Args => Object.fromEntries(Object.entries(a).filter(([k]) => !keys.includes(k)));
 
 /** A tool call's arguments, laid out by tool. `drafting`: she is still writing the call, its last field unfinished. */
-export function ToolArgs({ name, args, drafting, fileHref }: { name: string; args: unknown; drafting: boolean; fileHref: FileHref }) {
+export function ToolArgs({ name, args, drafting, fileHref, source }: { name: string; args: unknown; drafting: boolean; fileHref: FileHref; /** An approval card's: Markdown as its source. */ source?: boolean }) {
   if (!args || typeof args !== "object" || Array.isArray(args)) return args === undefined ? null : <pre>{JSON.stringify(args, null, 2)}</pre>;
   const a = drop(args as Args, "machine");
   const writing = drafting ? Object.keys(a).at(-1) : undefined;
@@ -136,8 +139,8 @@ export function ToolArgs({ name, args, drafting, fileHref }: { name: string; arg
   if (name === "write" && path && typeof a.content === "string") {
     return (
       <>
-        <Block text={a.content} kind={kindOf(a.content, path)} title={basename(path)} href={fileHref(path)} copyLabel="Copy file text" plain={writing === "content"} />
-        <ArgList args={drop(a, "path", "content")} />
+        <Block text={a.content} kind={sourceOf(kindOf(a.content, path), source)} title={basename(path)} href={fileHref(path)} copyLabel="Copy file text" plain={writing === "content"} />
+        <ArgList args={drop(a, "path", "content")} source={source} />
       </>
     );
   }
@@ -145,7 +148,7 @@ export function ToolArgs({ name, args, drafting, fileHref }: { name: string; arg
     return (
       <>
         <Edits path={path} edits={editsOf(a)} href={fileHref(path)} drafting={drafting} />
-        <ArgList args={drop(a, "path", "edits", "oldText", "newText")} />
+        <ArgList args={drop(a, "path", "edits", "oldText", "newText")} source={source} />
       </>
     );
   }
@@ -156,11 +159,11 @@ export function ToolArgs({ name, args, drafting, fileHref }: { name: string; arg
       <>
         <Block text={a.command} kind={{ kind: "code", lang: "bash" }} copyLabel="Copy command" plain={writing === "command"} />
         {facts.length > 0 && <p className="cap muted tool-facts">{facts.map((f, i) => <span key={i}>{i > 0 && " · "}{f}</span>)}</p>}
-        <ArgList args={{ ...rest, ...(timeout !== undefined && typeof timeout !== "number" ? { timeout } : {}), ...(background !== undefined && typeof background !== "boolean" ? { background } : {}) }} />
+        <ArgList source={source} args={{ ...rest, ...(timeout !== undefined && typeof timeout !== "number" ? { timeout } : {}), ...(background !== undefined && typeof background !== "boolean" ? { background } : {}) }} />
       </>
     );
   }
-  return <ArgList args={a} writing={writing} />;
+  return <ArgList args={a} writing={writing} source={source} />;
 }
 
 /** A successful write's or edit's result as a short facts line in place of Pi's sentence; nothing for any other. */

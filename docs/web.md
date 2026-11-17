@@ -1365,7 +1365,8 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   <n> places" (`resultFacts`). The permission card shows a write's or
   edit's arguments the same way, a command coloured as Bash, and anything
   that isn't a single line as `ArgList`; the MCP approval card uses
-  `ArgList` too.
+  `ArgList` too. On those cards (`source`) Markdown shows as its source, wrapped,
+  never rendered, so what is approved is its exact characters.
 - Code is coloured by `Highlighted` (`highlight.tsx`): `lowlight` over
   highlight.js's common grammars plus Nix and Dockerfile (`grammars.ts`, a
   chunk of its own loaded the first time code shows), its tree rendered as

@@ -1412,12 +1412,12 @@ function machineOf(args: unknown): string | undefined {
 function PermissionArgs({ tool, args, env }: { tool: string; args: unknown; env: Env }) {
   const files = useFileLinks(env.userId, env.pool, env.threadId);
   const a = args && typeof args === "object" && !Array.isArray(args) ? args as Record<string, unknown> : undefined;
-  if (a && (tool === "write" || tool === "edit")) return <div className="tool-args-box"><ToolArgs name={tool} args={a} drafting={false} fileHref={fileHref(files, !machineOf(a))} /></div>;
+  if (a && (tool === "write" || tool === "edit")) return <div className="tool-args-box"><ToolArgs name={tool} args={a} drafting={false} fileHref={fileHref(files, !machineOf(a))} source /></div>;
   if (typeof a?.command === "string") return <pre><Highlighted text={a.command} lang="bash" /></pre>;
   const text = permissionText(args);
   if (a && text === undefined) {
     const { machine: _, ...rest } = a;
-    return <ArgList args={rest} />;
+    return <ArgList args={rest} source />;
   }
   return <pre>{text ?? JSON.stringify(args)}</pre>;
 }
@@ -1469,7 +1469,7 @@ export function PermissionPrompt({ base, p, env }: { base: string; p: Permission
     return (
       <div className="permission" role="group" data-pending="Approval" aria-label={`Allow ${p.server}'s ${p.serverTool ?? p.tool}${sub ? ` for the ${sub.role} subagent` : ""}?`}>
         <p><b>{p.server}</b> · {who} to use <b className="mono">{p.serverTool ?? p.tool}</b>:</p>
-        {p.args && typeof p.args === "object" && !Array.isArray(p.args) ? <ArgList args={p.args as Record<string, unknown>} /> : <pre>{JSON.stringify(p.args ?? {}, null, 2)}</pre>}
+        {p.args && typeof p.args === "object" && !Array.isArray(p.args) ? <ArgList args={p.args as Record<string, unknown>} source /> : <pre>{JSON.stringify(p.args ?? {}, null, 2)}</pre>}
         <div className="row">
           <button type="button" className="primary" disabled={busy} onClick={() => answer(true)}>Allow</button>
           <button type="button" disabled={busy} title={`Stop asking about ${p.serverTool ?? p.tool} on ${p.server} for the rest of this thread`}

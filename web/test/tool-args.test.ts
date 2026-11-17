@@ -82,3 +82,11 @@ describe("a tool call's arguments", () => {
     expect(html).toContain(">JSON<");
   });
 });
+
+describe("an approval card's arguments", () => {
+  it("show Markdown as its source, so what is approved is its exact characters", () => {
+    const html = renderToStaticMarkup(createElement(ArgList, { args: { body: "See [docs](https://evil.example)\n\n- one" }, source: true }));
+    expect(html).toContain("See [docs](https://evil.example)");
+    expect(html).not.toContain("<li>");
+  });
+});

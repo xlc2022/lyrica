@@ -1397,7 +1397,7 @@ a.fpath { font-family: var(--mono); font-size: 0.93em; overflow-wrap: anywhere; 
 .read-text a.code-lang { color: var(--accent); }
 .marker-body .read-text pre.read-body { padding: 2px 12px 10px; white-space: pre; overflow-wrap: normal; tab-size: 4; max-height: 320px; overflow: auto; }
 .marker-body .read-text[data-kind="wrapped"] pre.read-body { white-space: pre-wrap; overflow-wrap: anywhere; }
-.read-text .read-body.prose { padding: 2px 12px 10px; max-height: 320px; overflow: auto; }
+.read-text .read-body.prose { padding: 2px 12px 10px; max-height: 320px; overflow: auto; color: var(--fg); }
 .read-text .read-note { padding: 0 12px 8px; }
 /* Code coloured by language (highlight.tsx): six tokens, each at least 4.5:1 on the code's background in both themes. */
 .hljs-keyword, .hljs-built_in, .hljs-selector-tag, .hljs-literal, .hljs-type, .hljs-doctag { color: var(--hl-kw); }
