@@ -95,7 +95,7 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   that says the copy is as it is now, that later messages and memories
   don't go, and that the thread is private when it is; `POST …/share`;
   not on a project chat or a subagent's thread; a private thread's
-  notification offers Add to Private only), Move to group (M: the groups, Not in a group, New group… N),
+  notification offers Add to Private only), Move to group (M: the groups, Not in a group, New group… N; with a mouse, dragging a top-level row onto a group or out of one does the same),
   **Pin** or **Unpin** (P, top-level threads; a toast says "Pinned to the
   top" or "Unpinned", the shell's one, gone after 4 s), **Make project…** (K, a
   top-level thread; confirms in a dialog, since there is no way back),

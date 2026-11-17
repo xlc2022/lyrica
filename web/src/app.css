@@ -180,6 +180,9 @@ button.private { color: var(--private); border-color: color-mix(in oklab, var(--
 .group-head .num { margin-left: auto; padding-left: 4px; font-size: 12px; font-weight: 400; color: var(--muted); }
 .group-head .waits { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--warn); }
 .in-group .threads-in { padding-bottom: 4px; }
+/* A thread dragged over a group, or out of one over the rest of the list (docs/ux.md §6). */
+.in-group[data-drop] { border-radius: 8px; outline: 2px dashed var(--accent); outline-offset: -2px; }
+.threads[data-drop="none"] { border-radius: 8px; outline: 2px dashed var(--accent); outline-offset: -2px; }
 .threads > .in-group + .group-rows:not(.in-group) { border-top: 1px solid var(--line); margin-top: 8px; padding-top: 2px; }
 @media (prefers-reduced-motion: reduce) { .group-head .chev-ic { transition: none; } }
 .threads .trow { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 0; flex-wrap: nowrap; align-items: center; border-radius: 8px; }
