@@ -42,7 +42,7 @@ const opaque = (words: string[], names?: readonly string[]) => {
   while (wrapped && flag(words[at - 1]) && at + 1 < words.length) { at++; while (flag(words[at]) && at + 1 < words.length) at++; }
   const named = words.slice(0, at + 1);
   // `[` globs only with a `]` after it: a lone `[` is the test command (`[ "$n" = 1 ]`).
-  return named.some((w, i) => /[*?]|\[.*\]/.test(w) && !(names && i === at && harmlessGlob(w, names))) || candidates.some((w, i) => /[$`]/.test(w) || /^(?:eval|source|\.)$/.test(w) || (SHELL.test(posix.basename(w)) && !shellLines(words.slice(i)).length));
+  return named.some((w, i) => /[*?]|\[.*\]/.test(w) && !(names && i === at && harmlessGlob(w, names))) || candidates.some((w, i) => /[$`]/.test(w) || /^(?:eval|source|\.)$/.test(w) || (SHELL.test(posix.basename(w)) && !shellLines(words.slice(i)).sure));
 };
 
 /** Validate and normalize saved prefixes; saving a prefix again replaces it. */

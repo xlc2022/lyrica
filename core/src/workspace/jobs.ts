@@ -434,7 +434,7 @@ function sleeps(command: string, depth = 0): { seconds: number[]; loop: boolean 
       const each = words.slice(1).filter((w) => !w.startsWith("-")).map(sleepSeconds);
       if (each.length && each.every((s) => s !== undefined)) seconds.push(each.reduce((a, b) => a! + b!, 0)!);
     } else if (SHELLS.has(words[0] ?? "") && depth < 3) {
-      for (const line of shellLines(words)) { const inner = sleeps(line, depth + 1); seconds.push(...inner.seconds); loop ||= inner.loop; }
+      for (const line of shellLines(words).lines) { const inner = sleeps(line, depth + 1); seconds.push(...inner.seconds); loop ||= inner.loop; }
     }
   }
   return { seconds, loop };

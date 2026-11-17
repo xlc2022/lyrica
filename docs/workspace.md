@@ -2386,7 +2386,8 @@ the program anywhere, then the other prefix words in order with intervening
 words allowed. The longest prefix wins; ties prefer Forbid, then Ask, then
 Allow. Across parts Forbid wins, then Ask, and Allow needs every part allowed.
 Opaque programs (expansions not read as above, eval, source, dot, or a shell
-without `-c`; for a wrapper, any of its words, but a glob only in the
+without a `-c` line it is sure of: only fish's `-C` line, or a `-c` found only
+past a word an unknown option may have taken; for a wrapper, any of its words, but a glob only in the
 wrapper's own words and its program (past any word that may be a flag's
 value), not in the program's arguments, so
 `timeout 60 curl "…?h=x"` isn't opaque; `command -v` and `-V` only look a

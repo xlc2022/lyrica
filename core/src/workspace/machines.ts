@@ -143,31 +143,41 @@ const SHELL_VALUE_OPTIONS = new Set(["--rcfile", "--init-file"]);
  * in a group (`bash -ec`, `sh -xc`, `bash -lc`) or after others (`bash -e -c`, `bash -o pipefail -c`). As the
  * shell does, it is the first word after the options. fish's `--command` and its `-C`/`--init-command` lines count
  * too. `words` start at the shell. An option this doesn't know may take a value (`zsh --emulate sh -c …`), so when
- * a plain word comes before any `-c`, a later `-c` still counts: a false card on `bash x.sh -c y` is the cheap side.
+ * a plain word comes before any `-c`, the scan resumes at a later `-c` group: a false card on `bash x.sh -c y` is
+ * the cheap side. `sure` says the `-c`/`--command` line is what the shell runs, found without that guess; an init
+ * line or a guessed one is still read for commands, but the shell stays opaque (rules.ts).
  */
-export function shellLines(words: string[]): string[] {
+export function shellLines(words: string[]): { lines: string[]; sure: boolean } {
   const lines: string[] = [];
   const fish = posix.basename(words[0] ?? "") === "fish";
-  let c = false, i = 1;
-  for (; i < words.length; i++) {
+  let c = false, guessed = false, script = false;
+  for (let i = 1; i < words.length; i++) {
     const w = words[i]!;
-    if (w === "--" || w === "-") { i++; break; }
-    if (w === "--command" || (fish && w === "--init-command")) { if (words[i + 1] !== undefined) lines.push(words[++i]!); continue; }
+    const plain = !/^[-+]/.test(w) || w === "-";
+    if (w === "--" || plain) {
+      const at = w === "--" ? i + 1 : i;
+      if (c) { if (words[at] !== undefined) { lines.push(words[at]!); script = true; } break; }
+      const later = words.findIndex((x, k) => k > i && /^-[A-Za-z]*c[A-Za-z]*$/.test(x));
+      if (later < 0) break;
+      guessed = true; i = later - 1; continue;
+    }
+    if (w === "--command" || (fish && w === "--init-command")) {
+      if (words[i + 1] !== undefined) { lines.push(words[++i]!); if (w === "--command") { script = true; break; } }
+      continue;
+    }
     const named = /^--(?:command|init-command)=/.exec(w);
-    if (named && (fish || w.startsWith("--command="))) { lines.push(w.slice(named[0].length)); continue; }
-    if (!/^[-+]/.test(w)) break;
+    if (named && (fish || w.startsWith("--command="))) {
+      lines.push(w.slice(named[0].length));
+      if (w.startsWith("--command=")) { script = true; break; }
+      continue;
+    }
     if (w.startsWith("--")) { if (SHELL_VALUE_OPTIONS.has(w)) i++; continue; }
     if (w[0] === "-" && w.includes("c")) c = true;
     if (fish && w[0] === "-" && w.endsWith("C") && words[i + 1] !== undefined) { lines.push(words[++i]!); continue; }
     // Each `o` or `O` in a group takes a word of its own, in order (`bash -oc pipefail 'rm …'`).
     i += w.length - w.replace(/[oO]/g, "").length;
   }
-  if (c) { if (words[i] !== undefined) lines.push(words[i]!); }
-  else {
-    const later = words.findIndex((w, k) => k >= i && /^-[A-Za-z]*c[A-Za-z]*$/.test(w));
-    if (later >= 0 && words[later + 1] !== undefined) lines.push(words[later + 1]!);
-  }
-  return lines;
+  return { lines, sure: script && !guessed };
 }
 
 const assigns = (w: string) => /^[A-Za-z_][A-Za-z0-9_]*=/.test(w);
@@ -292,7 +302,7 @@ function parse(command: string): string[][] {
     const current = words; words = [];
     commands.push(current);
     const shell = current.findIndex(w => SHELLS.has(posix.basename(w)));
-    if (shell >= 0) for (const line of shellLines(current.slice(shell))) commands.push(...parse(line));
+    if (shell >= 0) for (const line of shellLines(current.slice(shell)).lines) commands.push(...parse(line));
     for (let i = 0; i < current.length; i++) if (["-exec", "-execdir", "-ok"].includes(current[i]!)) {
       const nested = current.slice(i + 1);
       if (nested.length) commands.push(nested);
