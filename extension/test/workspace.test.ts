@@ -1320,13 +1320,13 @@ describe("the page tool", () => {
     expect(published).toEqual(["box:/home/ada/report.md"]);
   });
 
-  it("updates a published file she changes, at most once a minute, and what is owed when her turn ends", async () => {
+  it("updates a published file she changed, once, when her turn ends", async () => {
     const published: { path: string; artifact?: string; replace?: boolean; text: string }[] = [];
     const artifacts: NonNullable<ThreadTools["artifacts"]> = {
       publish: (p) => { published.push({ path: p.path, ...(p.artifact ? { artifact: p.artifact } : {}), ...(p.replace ? { replace: true } : {}), text: p.bytes.toString() }); return { artifact: { id: p.artifact ?? "a1", title: "Report", kind: p.kind, version: 1, path: p.path }, created: false }; },
       list: () => [{ id: "a1", title: "Report", kind: "markdown", version: 1, path: "/workspace/report.md" }, { id: "a2", title: "Sweep", kind: "markdown", version: 1, path: "box:/home/ada/sweep.md" }],
     };
-    const { results, files } = await run("auto", [], {
+    const { files } = await run("auto", [], {
       steps: [
         [fauxToolCall("write", { path: "report.md", content: "# one" }, { id: "1" })],
         [fauxToolCall("edit", { path: "report.md", edits: [{ oldText: "one", newText: "two" }] }, { id: "2" })],
@@ -1336,13 +1336,11 @@ describe("the page tool", () => {
       files: { "/home/ada/sweep.md": "# sweep" }, machines: [{ name: "box", kind: "ssh", limit: "auto", root: null }], artifacts, approve: async () => true,
     });
     expect(files.get("/workspace/report.md")).toBe("# two");
-    // The first change publishes at once; the edit inside the minute waits for the turn's end; other.md is no artifact's.
-    expect(published).toEqual([
-      { path: "/workspace/report.md", artifact: "a1", replace: true, text: "# one" },
-      { path: "box:/home/ada/sweep.md", artifact: "a2", replace: true, text: "# sweep" },
+    // Two changes to report.md, one publish of its last state; other.md is no artifact's.
+    expect(published.sort((x, y) => x.path.localeCompare(y.path))).toEqual([
       { path: "/workspace/report.md", artifact: "a1", replace: true, text: "# two" },
+      { path: "box:/home/ada/sweep.md", artifact: "a2", replace: true, text: "# sweep" },
     ]);
-    expect(results.filter((r) => r.includes('Updated a1 "Report"'))).toHaveLength(1);
   });
 
   it("has no artifacts where the thread gives none, such as a subagent", async () => {

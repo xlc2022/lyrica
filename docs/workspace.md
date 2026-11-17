@@ -2654,12 +2654,11 @@ script, PNG decoder or bundler:
   and notes for the person in her thread's folder rather than on a machine.
   When she changes a published file afterwards (`write` or `edit` on its
   path, or a command naming the file, in the same place), the workspace
-  extension publishes it again with `replace`, which overwrites her newest
-  version (`replaceLatest`; a version the user made is never overwritten,
-  so one is added after it). That happens at most once a minute per
-  artifact (`REPUBLISH_MS`); a change inside the minute is owed and
-  published when her turn ends. Her result gets one line, "Updated <id>…";
-  no new card, since the card she already has opens the newest content.
+  extension publishes it again once when her turn ends, with `replace`,
+  which overwrites her newest version (`replaceLatest`; a version the user
+  made is never overwritten, so one is added after it). A file that can't
+  be read then keeps the version it had. No new card: the one she already
+  has opens the newest content.
 - `artifacts` lists the thread's artifacts and its project's: id, title,
   kind, version and path.
 

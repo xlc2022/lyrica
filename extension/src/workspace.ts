@@ -12,9 +12,6 @@ import { setToolsOff } from "./gate.ts";
 import { proxmoxTool } from "./proxmox.ts";
 import { artifactPlace, bundleOut, pageTool, publishFile } from "./page.ts";
 
-/** How often a changed published file is published again, at most: the user asked for about a minute (2026-11-17). */
-export const REPUBLISH_MS = 60_000;
-
 /** What the workspace tools need for one thread. `Workspace` from core provides it. */
 /** An artifact as her page tool says it (docs/briefs/artifacts.md). */
 export interface ThreadArtifact { id: string; title: string; kind: string; version: number; path?: string }
@@ -698,20 +695,9 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
       return undefined;
     });
 
-    // A published file she changes is published again, overwriting her newest version (the user chose, 2026-11-17),
-    // at most once a minute per artifact; what is still owed is published when her turn ends.
-    const republished = new Map<string, number>();
+    // A published file she changes is published again when her turn ends, once, overwriting her newest version
+    // (the user chose both, 2026-11-17), so it costs nothing while she edits.
     const owed = new Map<string, { id: string; machine?: string; file: string }>();
-    const republish = async (a: { id: string; machine?: string; file: string }) => {
-      owed.delete(a.id);
-      republished.set(a.id, Date.now());
-      try {
-        const { artifact } = await publishFile(tools, a.machine, a.file, { artifact: a.id, replace: true });
-        return `Updated ${artifact.id} "${artifact.title}" (version ${artifact.version}) from ${a.file}.`;
-      } catch (err) {
-        return `Not updated: ${a.id} from ${a.file}: ${err instanceof Error ? err.message : String(err)}`;
-      }
-    };
     /** The thread's artifacts whose file this call changed: the path write or edit wrote, or a file a command names. */
     const changedArtifacts = async (tool: string, input: Record<string, unknown>) => {
       if (!tools.artifacts || (tool !== "write" && tool !== "edit" && tool !== "bash")) return [];
@@ -729,17 +715,15 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
       const saves = saved.get(event.toolCallId);
       saved.delete(event.toolCallId);
       const notes = saves?.length ? [savedNote(saves)] : [];
-      if (!event.isError) {
-        for (const a of await changedArtifacts(event.toolName, event.input as Record<string, unknown>).catch(() => [])) {
-          if (Date.now() - (republished.get(a.id) ?? 0) >= REPUBLISH_MS) notes.push(await republish(a));
-          else owed.set(a.id, a);
-        }
-      }
+      if (!event.isError) for (const a of await changedArtifacts(event.toolName, event.input as Record<string, unknown>).catch(() => [])) owed.set(a.id, a);
       if (!notes.length) return;
       return { content: [...event.content, ...notes.map((text) => ({ type: "text" as const, text }))] };
     });
     pi.on("agent_end", async () => {
-      for (const a of [...owed.values()]) await republish(a);
+      const due = [...owed.values()];
+      owed.clear();
+      // A file that can't be read now (moved, deleted, its machine away) keeps the version it had.
+      for (const a of due) await publishFile(tools, a.machine, a.file, { artifact: a.id, replace: true }).catch(() => undefined);
     });
 
     // Commands typed with "!" in the terminal run where her tools do.

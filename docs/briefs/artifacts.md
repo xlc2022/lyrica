@@ -239,8 +239,7 @@ works, so her threads update them there?
   code, and her prompt says to publish a file the person asks to see
   instead of retyping it. No new control: the card is the existing one.
 - 2026-11-17: the user chose that a published file she changes is updated
-  on its own, at most once a minute (what is owed goes at her turn's end),
-  and that the update overwrites her newest version ("keep only the
+  on its own when her turn ends, and that the update overwrites her newest version ("keep only the
   newest"); a version the user made is never overwritten. Her prompt also
   says to write reports for the person in her thread's folder, not on a
   machine.
