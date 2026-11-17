@@ -2082,13 +2082,13 @@ ul.choices { list-style: none; margin: 0; padding: 0; }
   .msg:hover .msg-actions, .turn:hover .msg-actions, .msg-actions:focus-within, .msg-actions:has([aria-expanded="true"]) { opacity: 1; }
 }
 @media (pointer: coarse) { .msg-actions .icon-btn { width: var(--tap); height: var(--tap); } }
-/* A run of tool calls (docs/ux.md §6, Lyrica's inner workings): one marker that opens to a box which scrolls. */
+/* A run of tool calls (docs/ux.md §6, Lyrica's inner workings): one marker that opens to its calls, which flow in the conversation's own scroll. */
 .turn.quiet { gap: 6px; }
 .marker.tool-run > button .num { color: var(--fg); font-size: 12px; }
 .marker.tool-run > button .state .num { color: inherit; }
 .marker.tool-run > button .ic { width: 14px; height: 14px; flex: none; transition: transform 0.15s; }
 .marker.tool-run > button[aria-expanded="true"] .ic { transform: rotate(180deg); }
-.marker.tool-run .run-body { max-height: 320px; overflow-y: auto; gap: 6px; }
+.marker.tool-run .run-body { gap: 6px; }
 .marker.tool-run .run-body .marker > button { background: var(--panel); }
 .marker.tool-run .run-call { margin-top: 4px; padding-left: 2px; }
 /* Her rejected attempts in a turn (docs/ux.md §6, "An image the agent made"): the run's marker, opening to small thumbnails. */

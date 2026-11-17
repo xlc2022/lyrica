@@ -330,7 +330,7 @@ export function runKey(runs: Quiet[]): string {
 
 /**
  * A run of her tool calls as one marker: "<n> tool calls", running while the turn goes on and "· <m> failed" after it, which opens
- * to a box that scrolls, every marker in it opening as before. Open state follows the first call's ID, so it survives
+ * to its calls in the conversation's own scroll (never a box that scrolls inside it), every marker in it opening as before. Open state follows the first call's ID, so it survives
  * the stored copy replacing the live one.
  */
 function ToolRun({ runs, env }: { runs: Quiet[]; env: Env }) {
@@ -342,19 +342,6 @@ function ToolRun({ runs, env }: { runs: Quiet[]; env: Env }) {
   const running = streaming || tools.some((p) => p.type === "tool" && p.result === undefined);
   // The guard turning away a read made again is about her waiting, not a failure to show.
   const failed = tools.filter((p) => p.type === "tool" && p.isError && !isPoll(p)).length;
-  const body = useRef<HTMLDivElement>(null);
-  // The box's height before this render's growth, so where the person left it is measured against what they saw,
-  // whether or not their scroll's event has fired yet. A scroll records it too, for growth inside a marker.
-  const height = useRef(0);
-  // While she works, an open box follows the newest call, but only while it sits at its bottom: scrolled up, it stays put.
-  useLayoutEffect(() => {
-    const el = body.current;
-    if (!el) { height.current = 0; return; }
-    // The person's scroll lands before its event does, and growth moves the bottom under them: judge by the height they saw.
-    const wasBottom = height.current - el.scrollTop - el.clientHeight < 24;
-    if (streaming && wasBottom) el.scrollTop = el.scrollHeight;
-    height.current = el.scrollHeight;
-  });
   const n = tools.length || parts.length;
   const word = tools.length ? (n === 1 ? "tool call" : "tool calls") : (n === 1 ? "step" : "steps");
   return (
@@ -367,7 +354,7 @@ function ToolRun({ runs, env }: { runs: Quiet[]; env: Env }) {
       {/* Open, the reply's one indicator ends the box, after the newest call. Closed, its counts stand under the marker
           while a model request has them; between requests, while her tools run, the marker's "running" says it all. */}
       {open ? (
-        <div ref={body} className="marker-body run-body" onScroll={(e) => { height.current = e.currentTarget.scrollHeight; }}>
+        <div className="marker-body run-body">
           {runs.map((r) => r.parts.map((p, i) => (p.type === "text" || p.type === "image" || p.type === "video" || p.type === "artifact" ? null : <Marker key={`${r.key}-${i}`} part={p} env={env} />)))}
           {streaming && <CallStats live={env.liveCall} />}
         </div>
