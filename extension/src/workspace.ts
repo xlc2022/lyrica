@@ -10,11 +10,12 @@ import {
 import { Type } from "typebox";
 import { setToolsOff } from "./gate.ts";
 import { proxmoxTool } from "./proxmox.ts";
-import { artifactPlace, bundleOut, pageTool, publishFile, sharedFile } from "./page.ts";
+import { bundleOut, pageTool } from "./page.ts";
+import { copyDestination, copyTool } from "./copy.ts";
 
 /** What the workspace tools need for one thread. `Workspace` from core provides it. */
 /** An artifact as her page tool says it (docs/briefs/artifacts.md). */
-export interface ThreadArtifact { id: string; title: string; kind: string; version: number; path?: string; /** This thread's own, not another thread's in its project. */ own?: boolean }
+export interface ThreadArtifact { id: string; title: string; kind: string; version: number; path?: string }
 
 export interface ThreadTools {
   prepareWorktrees?(): Promise<void>;
@@ -84,7 +85,7 @@ export interface ThreadTools {
    * the next version of one, `list` names the thread's and its project's. Without it (a subagent), there are none.
    */
   artifacts?: {
-    publish(p: { path: string; kind: "html" | "svg" | "markdown" | "react"; bytes: Buffer; built?: Buffer; title?: string; artifact?: string; replace?: boolean }): { artifact: ThreadArtifact; created: boolean };
+    publish(p: { path: string; kind: "html" | "svg" | "markdown" | "react"; bytes: Buffer; built?: Buffer; title?: string; artifact?: string }): { artifact: ThreadArtifact; created: boolean };
     list(): ThreadArtifact[];
   };
   /** Records that this thread wrote these files in the sandbox (paths as she sees them), for the file viewer's thread beside a file. */
@@ -273,7 +274,7 @@ export function sshRefusal(machine: string, fromItself: boolean): string {
 }
 
 const shown = (tool: string, input: Record<string, unknown>, machine: string | undefined, cwd: string | undefined) =>
-  JSON.stringify([tool, machine ?? null, cwd ?? null, tool === "bash" || tool === "proxmox" ? suspectKey(tool, input) : tool === "page" ? [input.action, input.path, input.out] : input.path]);
+  JSON.stringify([tool, machine ?? null, cwd ?? null, tool === "bash" || tool === "proxmox" ? suspectKey(tool, input) : tool === "page" ? [input.action, input.path, input.out] : tool === "copy" ? [input.path, input.to] : input.path]);
 
 /**
  * The tools whose whole call is its command, action or path (`shown`). A
@@ -356,6 +357,7 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
     // proxmox is offered only while the thread has a Proxmox machine. An MCP tool its server marks read-only stays on in Plan mode.
     const off = () => [...toolsOff(tools.settings(), pi.getAllTools().filter((t) => !(t.name.startsWith("mcp__") && t.annotations?.readOnlyHint === true)).map((t) => t.name)),
       ...(tools.proxmox && !tools.machines?.().some((m) => m.kind === "proxmox") ? ["proxmox"] : []),
+      ...(!tools.machines?.().some((m) => m.kind !== "proxmox") ? ["copy"] : []),
       ...(tools.addRepository && !tools.gitAccounts?.().length ? ["add_repository"] : [])];
     const gate = (ctx: ExtensionContext) => setToolsOff(pi, ctx, "workspace", off());
     /** What each approved call was approved for, by tool call. */
@@ -463,7 +465,8 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
       });
     }
 
-    pi.registerTool(pageTool(tools, (id, input, machine, cwd) => bound(id, "page", input, machine, cwd)));
+    pi.registerTool(pageTool(tools, (id, input) => bound(id, "page", input)));
+    pi.registerTool(copyTool(tools, (id, input, machine, cwd) => bound(id, "copy", input, machine, cwd)));
     if (tools.proxmox) pi.registerTool(proxmoxTool(tools.proxmox, (id, { machine, ...rest }) => bound(id, "proxmox", rest, machine as string)));
 
     if (tools.startJob && tools.jobs && tools.jobOutput && tools.stopJob) {
@@ -618,7 +621,9 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
       }
       const pve = event.toolName === "proxmox";
       const page = event.toolName === "page";
-      const place = event.toolName in TOOLS ? (input.machine as string | undefined) || "sandbox" : pve ? String(input.machine) : page ? (input.action === "publish" && (input.machine as string | undefined)) || "sandbox" : undefined;
+      // copy reads on its machine and writes in the sandbox: it is the machine's call, asked as a write.
+      const copy = event.toolName === "copy";
+      const place = event.toolName in TOOLS ? (input.machine as string | undefined) || "sandbox" : pve || copy ? String(input.machine) : page ? "sandbox" : undefined;
       // A file another thread just changed is held before anyone is asked, so a held change is never one the person approved.
       // A command is held the same way for the files it plainly writes (its redirections and tee); the sweep after it finds the rest.
       if (place === "sandbox" && tools.sameFile) {
@@ -632,6 +637,10 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
           if (held) return { block: true, reason: held };
         }
       }
+      if (copy && tools.sameFile && typeof input.path === "string") {
+        const held = tools.sameFile(copyDestination(await tools.target().cwd(), input as { path: string; to?: string }), false);
+        if (held) return { block: true, reason: held };
+      }
       const named = place && place !== "sandbox" ? tools.machines?.().find((m) => m.name === place) : undefined;
       const machine = named && (named.kind === "proxmox") === pve ? named : undefined;
       // A machine of the other kind is the thread's: the refusal names the tool that reaches it, so she doesn't ask for a machine she has.
@@ -643,7 +652,7 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
       // A Proxmox action that reads asks like read, and one that powers like bash; Plan mode only reads.
       const reads = pve && PROXMOX_READS.has(input.action as ProxmoxAction);
       if (pve && mode === "plan" && !reads) return { block: true, reason: "Plan mode only reads: proxmox status, list and snapshots." };
-      const as = pve ? (reads ? "read" : "bash") : page ? (input.action === "bundle" ? "write" : "read") : event.toolName;
+      const as = pve ? (reads ? "read" : "bash") : page ? (input.action === "bundle" ? "write" : "read") : copy ? "write" : event.toolName;
       // SSH's and sudo's files are off limits to write and edit on a machine in every mode, so there is nothing to ask about.
       if (machine && !pve && (as === "write" || as === "edit") && typeof input.path === "string" && onFloor(posix.resolve(await tools.target(machine.name).cwd(), input.path))) {
         return { block: true, reason: `${input.path} is SSH's or sudo's; write and edit never change it on a machine.` };
@@ -695,39 +704,12 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
       return undefined;
     });
 
-    // A published file she changes is published again when her turn ends, once, overwriting her newest version
-    // (the user chose both, 2026-11-17), so it costs nothing while she edits.
-    const owed = new Map<string, { id: string; machine?: string; file: string }>();
-    /**
-     * The artifacts whose file this call changed (the path write or edit wrote, or a file a command names): this
-     * thread's own, and a sibling thread's when the path is the same real file, on a machine or in /shared. A path in
-     * the thread's own folder is another file in each thread, so a sibling's from it is never touched.
-     */
-    const changedArtifacts = async (tool: string, input: Record<string, unknown>) => {
-      if (!tools.artifacts || (tool !== "write" && tool !== "edit" && tool !== "bash")) return [];
-      const machine = (input.machine as string | undefined) || undefined;
-      const all = tools.artifacts.list().flatMap((a) => (a.path && (a.own || sharedFile(a.path)) ? [{ id: a.id, ...artifactPlace(a.path) }] : [])).filter((a) => a.machine === machine);
-      if (!all.length) return [];
-      if (tool === "bash") return all.filter((a) => String(input.command ?? "").includes(posix.basename(a.file)));
-      const cwd = await tools.target(machine).cwd();
-      const path = typeof input.path === "string" ? posix.resolve(cwd, input.path) : undefined;
-      return all.filter((a) => a.file === path);
-    };
-
     // The command's result says what was saved before it ran, so she knows she can get it back.
-    pi.on("tool_result", async (event) => {
+    pi.on("tool_result", (event) => {
       const saves = saved.get(event.toolCallId);
       saved.delete(event.toolCallId);
-      const notes = saves?.length ? [savedNote(saves)] : [];
-      if (!event.isError) for (const a of await changedArtifacts(event.toolName, event.input as Record<string, unknown>).catch(() => [])) owed.set(a.id, a);
-      if (!notes.length) return;
-      return { content: [...event.content, ...notes.map((text) => ({ type: "text" as const, text }))] };
-    });
-    pi.on("agent_end", async () => {
-      const due = [...owed.values()];
-      owed.clear();
-      // A file that can't be read now (moved, deleted, its machine away) keeps the version it had.
-      for (const a of due) await publishFile(tools, a.machine, a.file, { artifact: a.id, replace: true }).catch(() => undefined);
+      if (!saves?.length) return;
+      return { content: [...event.content, { type: "text" as const, text: savedNote(saves) }] };
     });
 
     // Commands typed with "!" in the terminal run where her tools do.

@@ -1471,7 +1471,7 @@ export class HostedThread {
             // Her page publish: into this thread's own pool, in her name; an artifact she names must be this thread's or its project's.
             ...(!thread.subagent ? { artifacts: {
               publish: (p) => view.own.artifacts.publish({ ...p, thread: this.threadId, threads: this.artifactThreads(view), author: "lyrica" }),
-              list: () => view.own.artifacts.list({ threads: this.artifactThreads(view) }).map((a) => ({ ...a, own: a.thread === this.threadId })),
+              list: () => view.own.artifacts.list({ threads: this.artifactThreads(view) }),
             } } : {}),
             approve: (r) => this.approve(r),
             proposePlan: (r) => this.proposePlan(r),

@@ -1,7 +1,7 @@
 // Principles 1 and 8: one tool for what every page-building thread made for itself (docs/briefs/page-tools.md).
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { StringEnum } from "@earendil-works/pi-ai";
-import { ARTIFACT_LIMIT, artifactKind, buildReactPage, reactLibraries, bundlePage, checkPage, decodePng, describeCheck, maskSecrets, pixelStats, PREVIEW_SCRIPT, sandboxHas, sandboxTools, SHARED, withoutNoMachine, type PreviewOutput } from "@lyrica/core";
+import { ARTIFACT_LIMIT, artifactKind, buildReactPage, reactLibraries, bundlePage, checkPage, decodePng, describeCheck, maskSecrets, pixelStats, PREVIEW_SCRIPT, sandboxHas, sandboxTools, type PreviewOutput } from "@lyrica/core";
 import { posix } from "node:path";
 import { Type, type Static } from "typebox";
 import { recording, type ThreadArtifact, type ThreadTools } from "./workspace.ts";
@@ -11,7 +11,6 @@ export const pageParameters = Type.Object({
   path: Type.Optional(Type.String({ description: "The page's HTML file. For publish: an .html, .svg, .md, .jsx or .tsx file. Not needed for artifacts." })),
   title: Type.Optional(Type.String({ description: "For publish: the artifact's title; the file's name if left out on its first publish." })),
   artifact: Type.Optional(Type.String({ description: "For publish: the id of the artifact to add a version to, when the file isn't the one it was published from." })),
-  machine: Type.Optional(Type.String({ description: "For publish: one of your machines, by name, when the file is there; the sandbox if left out." })),
   out: Type.Optional(Type.String({ description: "For bundle: the file to write; <name>.single.html beside the page if left out." })),
   width: Type.Optional(Type.Integer({ minimum: 200, maximum: 2048, description: "For preview: the window's width, 1280 if left out." })),
   height: Type.Optional(Type.Integer({ minimum: 200, maximum: 2048, description: "For preview: the window's height, 800 if left out." })),
@@ -27,59 +26,8 @@ export function bundleOut(path: string, out?: string): string {
   return posix.join(dir, `${name}.single.html`);
 }
 
-/** A text file as Markdown: its name as the heading, then the file in a fence longer than any run of backticks in it. */
-export function codeBlock(name: string, text: string): Buffer {
-  let longest = 0;
-  for (const run of text.match(/`+/g) ?? []) longest = Math.max(longest, run.length);
-  const fence = "`".repeat(Math.max(3, longest + 1));
-  const lang = posix.extname(name).slice(1).toLowerCase().replace(/[^a-z0-9+#-]/g, "");
-  return Buffer.from(`# ${name}\n\n${fence}${lang}\n${text}${text.endsWith("\n") ? "" : "\n"}${fence}\n`);
-}
-
 /** One line for an artifact in her results. */
 const artifactLine = (a: ThreadArtifact) => `${a.id} "${a.title}" (${a.kind}, version ${a.version}${a.path ? `, from ${a.path}` : ""})`;
-
-/** Where an artifact's file is: a sandbox path, or `<machine>:<path>` for one taken from a machine. */
-export function artifactPlace(path: string): { machine?: string; file: string } {
-  if (path.startsWith("/")) return { file: path };
-  const at = path.indexOf(":");
-  return at > 0 ? { machine: path.slice(0, at), file: path.slice(at + 1) } : { file: path };
-}
-
-/** Whether an artifact's path names the same real file for every thread of a project: one on a machine, or in /shared. */
-export function sharedFile(path: string): boolean {
-  const { machine, file } = artifactPlace(path);
-  return !!machine || file === SHARED || file.startsWith(`${SHARED}/`);
-}
-
-/**
- * Publishes one file, from the sandbox or a machine, as a new artifact or the next version of one: `page publish`,
- * and the republish after she changes a published file. The file goes only to the artifact; she gets the lines.
- */
-export async function publishFile(tools: ThreadTools, machine: string | undefined, file: string, o: { title?: string; artifact?: string; replace?: boolean } = {}) {
-  if (!tools.artifacts) throw new Error("Artifacts aren't available here: publish from the thread itself.");
-  const read = await tools.target(machine).ops().read.readFile(file);
-  if (read.length > ARTIFACT_LIMIT) throw new Error("An artifact is at most 16 MiB.");
-  // A text file of another kind is shown as Markdown holding it as a code block; a binary file isn't an artifact.
-  const own = artifactKind(file);
-  const kind = own ?? (read.includes(0) ? undefined : "markdown");
-  if (!kind) throw new Error("An artifact is a text file: an .html, .svg, .md, .jsx or .tsx page, or code, a log or another text file to show.");
-  const bytes = own ? read : codeBlock(posix.basename(file), read.toString("utf8"));
-  // Where the file is: a machine's path is kept with the machine's name, so it never meets a sandbox path's artifact.
-  const where = machine ? `${machine}:${file}` : file;
-  // One real file, one artifact: a file on a machine or in /shared is the same file for every thread of the project,
-  // so a thread publishing it again adds to the artifact another thread made from it rather than forking a copy.
-  const into = o.artifact ?? (sharedFile(where) ? tools.artifacts.list().find((a) => a.path === where)?.id : undefined);
-  // A React component is built into one page here, by esbuild alone: its source is compiled, never run, and may import only the listed packages.
-  const built = kind === "react" ? Buffer.from((await buildReactPage(bytes.toString("utf8"), { loader: /\.tsx$/i.test(file) ? "tsx" : "jsx", ...(o.title ? { title: o.title } : {}) })).html) : undefined;
-  // One file is all an artifact carries: a page that needs files beside it is bundled first.
-  const found = kind === "html" ? checkPage(bytes.toString("utf8")) : undefined;
-  if (found?.local.length) throw new Error(`${where} refers to local files an artifact can't carry: ${found.local.join(", ")}. Run page bundle and publish the bundle.`);
-  const { artifact, created } = tools.artifacts.publish({ path: where, kind, bytes, ...(built ? { built } : {}), ...o, ...(into ? { artifact: into } : {}) });
-  const lines = [`${created ? "Published" : artifact.version === 1 ? "Already published, unchanged:" : `Published version ${artifact.version} of`} ${artifactLine(artifact)}. The person sees a card for it in this reply.`];
-  if (found && (found.loads.length || found.calls.length)) lines.push(describeCheck(found), "With the thread's internet off the page runs no scripts and loads nothing from the network.");
-  return { artifact, created, lines };
-}
 
 /** How long a page may take to fire its load event before the screenshot is taken anyway. */
 const LOAD_MS = 20_000;
@@ -90,7 +38,7 @@ const kb = (n: number) => `${Math.max(1, Math.round(n / 1024))} KB`;
  * The page tool: its gate (asking, Plan mode, the same-file hold) is the workspace extension's; `check` throws if the
  * call isn't what was approved. `browser`: whether the sandbox has Chromium and node, which only preview needs.
  */
-export function pageTool(tools: ThreadTools, check: (id: string, input: Record<string, unknown>, machine?: string, cwd?: string) => void,
+export function pageTool(tools: ThreadTools, check: (id: string, input: Record<string, unknown>) => void,
   browser = () => !!sandboxTools().browser && sandboxHas("node")): ToolDefinition {
   return {
     name: "page",
@@ -99,27 +47,18 @@ export function pageTool(tools: ThreadTools, check: (id: string, input: Record<s
       + "console messages, errors, blocked requests, its canvases and pixel stats. bundle: make one self-contained HTML file of it and its local scripts "
       + "(with their imports and the offline libraries), stylesheets and images, then check that. check: list what it would still load from the network or other files. "
       + "publish: keep a self-contained .html, .svg or .md file, or a React component (.jsx or .tsx with a default export), as an artifact the person opens from a card in your reply; publishing the same file again adds a version, and every version is kept. "
-      + "Any other text file (code, a log, a config) is published as Markdown holding it as a code block. With machine, publish takes the file from that machine. "
-      + "The file goes to the person, not to you: you get one line back, so it costs no context. "
       + `A React component may import only ${reactLibraries().map((l) => l.name).join(", ")}, and may use Tailwind classes. `
       + "artifacts: list this thread's artifacts (and its project's).",
     promptSnippet: "preview an HTML page (screenshot, errors, pixel stats), bundle it into one file, check it loads nothing from elsewhere, or publish it as an artifact",
     promptGuidelines: ["Check a page with page preview, not a screenshot script of your own; read its errors before its pixels.",
       "When the person wants one file, page bundle it, then preview the bundle.",
-      "page publish a finished page, drawing or document the person will keep or come back to, not every scratch file; when you change a published file with write, edit or a command naming it, it is updated for the person on its own.",
-      "Write a report, notes or anything else meant for the person in your thread's folder, not on a machine you're working on, so it stays off that machine and shows in their Files panel.",
-      "When the person asks to see a file, never read it and type it out again in your reply. One in your folders: give its path in your reply, which opens it in their file viewer as it is now. One on a machine, or a page they'll want versions of: page publish it."],
+      "page publish a finished page, drawing or document the person will keep or come back to, not every scratch file; publish the same file again after changing it.",
+      "When the person asks to see a file, never read it and type it out again in your reply: give its path, which opens it for them as it is now."],
     parameters: pageParameters,
-    // A machine sent as null, "null" or "sandbox" is no machine, as for the file tools.
-    prepareArguments: (input: unknown) => withoutNoMachine(input, (tools.machines?.() ?? []).map((m) => m.name)) as PageArgs,
     async execute(id, p: PageArgs, signal) {
-      // Only publish reaches a machine: preview, bundle and check work on pages in the sandbox.
-      const machine = p.machine || undefined;
-      if (machine && p.action !== "publish") throw new Error(`page ${p.action} works in the sandbox only; leave machine out.`);
-      const target = tools.target(machine);
+      check(id, p);
+      const target = tools.target();
       const cwd = await target.cwd();
-      const { machine: _, ...rest } = p;
-      check(id, rest, machine, machine ? cwd : undefined);
       const text = (t: string) => ({ type: "text" as const, text: t });
       if (p.action === "artifacts") {
         if (!tools.artifacts) throw new Error("Artifacts aren't available here: publish from the thread itself.");
@@ -130,7 +69,18 @@ export function pageTool(tools: ThreadTools, check: (id: string, input: Record<s
       const file = posix.resolve(cwd, p.path);
       if (p.action === "publish") {
         if (!tools.artifacts) throw new Error("Artifacts aren't available here: publish from the thread itself.");
-        const { artifact, lines } = await publishFile(tools, machine, file, { ...(p.title ? { title: p.title } : {}), ...(p.artifact ? { artifact: p.artifact } : {}) });
+        const kind = artifactKind(file);
+        if (!kind) throw new Error("An artifact is an .html, .svg, .md, .jsx or .tsx file.");
+        const bytes = await target.ops().read.readFile(file);
+        if (bytes.length > ARTIFACT_LIMIT) throw new Error("An artifact is at most 16 MiB.");
+        // A React component is built into one page here, by esbuild alone: its source is compiled, never run, and may import only the listed packages.
+        const built = kind === "react" ? Buffer.from((await buildReactPage(bytes.toString("utf8"), { loader: /\.tsx$/i.test(file) ? "tsx" : "jsx", ...(p.title ? { title: p.title } : {}) })).html) : undefined;
+        // One file is all an artifact carries: a page that needs files beside it is bundled first.
+        const found = kind === "html" ? checkPage(bytes.toString("utf8")) : undefined;
+        if (found?.local.length) throw new Error(`${file} refers to local files an artifact can't carry: ${found.local.join(", ")}. Run page bundle and publish the bundle.`);
+        const { artifact, created } = tools.artifacts.publish({ path: file, kind, bytes, ...(built ? { built } : {}), ...(p.title ? { title: p.title } : {}), ...(p.artifact ? { artifact: p.artifact } : {}) });
+        const lines = [`${created ? "Published" : artifact.version === 1 ? "Already published, unchanged:" : `Published version ${artifact.version} of`} ${artifactLine(artifact)}. The person sees a card for it in this reply.`];
+        if (found && (found.loads.length || found.calls.length)) lines.push(describeCheck(found), "With the thread's internet off the page runs no scripts and loads nothing from the network.");
         return { content: [text(lines.join("\n"))], details: { artifact: { id: artifact.id, title: artifact.title, kind: artifact.kind, version: artifact.version } } };
       }
       if (p.action === "check") {

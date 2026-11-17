@@ -1277,94 +1277,48 @@ describe("the page tool", () => {
     // The calls run side by side, so the results come in no fixed order.
     const one = (re: RegExp) => results.filter((r) => re.test(r));
     expect(one(/refers to local files an artifact can't carry: style.css, app.js. Run page bundle and publish the bundle\./)).toHaveLength(1);
-    expect(published.filter((p) => p.kind === "html").map((p) => [p.path, p.kind, p.text])).toEqual(Array(2).fill(["/workspace/site/one.html", "html", "<!doctype html><p>hi</p>"]));
+    expect(published.map((p) => [p.path, p.kind, p.text])).toEqual(Array(2).fill(["/workspace/site/one.html", "html", "<!doctype html><p>hi</p>"]));
     expect(published.filter((p) => p.title === "The site")).toHaveLength(1);
     expect(one(/^page: Published a1 ".*" \(html, version 1, from \/workspace\/site\/one.html\)\. The person sees a card for it in this reply\.$/)).toHaveLength(1);
     expect(one(/^page: Published version 2 of a1 /)).toHaveLength(1);
-    expect(published.filter((p) => p.path === "/workspace/notes.txt").map((p) => [p.kind, p.text])).toEqual([["markdown", "# notes.txt\n\n```txt\none\ntwo\n```\n"]]);
+    expect(one(/An artifact is an .html, .svg, .md, .jsx or .tsx file/)).toHaveLength(1);
     expect(results).toContain('page: a1 "The site" (html, version 2, from /workspace/site/one.html)');
   });
 
-  it("publishes a file from a machine, or any text file as Markdown, without it reaching her context", async () => {
+  it("copies a file from a machine into her folder without it reaching her context, asking where write asks", async () => {
     const asked: ApprovalRequest[] = [];
-    const published: { path: string; kind: string; text: string }[] = [];
-    const artifacts: NonNullable<ThreadTools["artifacts"]> = {
-      publish: (p) => { published.push({ path: p.path, kind: p.kind, text: p.bytes.toString() }); return { artifact: { id: `a${published.length}`, title: "t", kind: p.kind, version: 1, path: p.path }, created: true }; },
-      list: () => [],
-    };
-    const report = "# Sweep\n\nNothing hostile found.\n";
-    const { results } = await run("ask", [
-      fauxToolCall("page", { action: "publish", path: "/home/ada/report.md", machine: "box" }, { id: "1" }),
-      fauxToolCall("page", { action: "publish", path: "run.py", machine: "sandbox" }, { id: "2" }),
-      fauxToolCall("page", { action: "check", path: "run.py", machine: "box" }, { id: "3" }),
-    ], { files: { "/home/ada/report.md": report, "/workspace/run.py": "print('```')" }, machines: [{ name: "box", kind: "ssh", limit: "ask", root: null }], approve: async (r) => { asked.push(r); return true; }, artifacts });
-    // Publishing reads, so it asks only where read would.
-    expect(asked).toEqual([]);
-    expect(published).toContainEqual({ path: "box:/home/ada/report.md", kind: "markdown", text: report });
-    expect(published).toContainEqual({ path: "/workspace/run.py", kind: "markdown", text: "# run.py\n\n````py\nprint('```')\n````\n" });
-    // Her result is one line: the file's text is never in it.
-    expect(results.filter((r) => r.includes("Nothing hostile"))).toEqual([]);
-    expect(results).toContain("page: page check works in the sandbox only; leave machine out.");
-  });
-
-  it("asks before publishing from a machine after the turn ran elsewhere, and runs what was approved", async () => {
-    const asked: ApprovalRequest[] = [];
-    const published: string[] = [];
-    const artifacts: NonNullable<ThreadTools["artifacts"]> = {
-      publish: (p) => { published.push(p.path); return { artifact: { id: "a1", title: "t", kind: p.kind, version: 1, path: p.path }, created: true }; },
-      list: () => [],
-    };
-    await run("auto", [], { steps: [[fauxToolCall("read", { path: "notes.txt" }, { id: "1" })], [fauxToolCall("page", { action: "publish", path: "/home/ada/report.md", machine: "box" }, { id: "2" })]],
-      files: { "/home/ada/report.md": "# Sweep\n" }, machines: [{ name: "box", kind: "ssh", limit: "auto", root: null }], approve: async (r) => { asked.push(r); return true; }, artifacts });
-    expect(asked.map((r) => [r.tool, r.machine, r.cwd])).toEqual([["page", "box", "/workspace"]]);
-    expect(published).toEqual(["box:/home/ada/report.md"]);
-  });
-
-  it("updates a published file she changed, once, when her turn ends", async () => {
-    const published: { path: string; artifact?: string; replace?: boolean; text: string }[] = [];
-    const artifacts: NonNullable<ThreadTools["artifacts"]> = {
-      publish: (p) => { published.push({ path: p.path, ...(p.artifact ? { artifact: p.artifact } : {}), ...(p.replace ? { replace: true } : {}), text: p.bytes.toString() }); return { artifact: { id: p.artifact ?? "a1", title: "Report", kind: p.kind, version: 1, path: p.path }, created: false }; },
-      // a3 is a sibling thread's, from the same path: never this thread's to update.
-      list: () => [{ id: "a3", title: "Theirs", kind: "markdown", version: 1, path: "/workspace/report.md" }, { id: "a1", title: "Report", kind: "markdown", version: 1, path: "/workspace/report.md", own: true },
-        { id: "a2", title: "Sweep", kind: "markdown", version: 1, path: "box:/home/ada/sweep.md", own: true },
-        // a4 is a sibling's too, but from /shared: the same real file for every thread, so it follows.
-        { id: "a4", title: "Plan", kind: "markdown", version: 1, path: "/shared/plan.md" }],
-    };
-    const { files } = await run("auto", [], {
-      steps: [
-        [fauxToolCall("write", { path: "report.md", content: "# one" }, { id: "1" })],
-        [fauxToolCall("edit", { path: "report.md", edits: [{ oldText: "one", newText: "two" }] }, { id: "2" })],
-        [fauxToolCall("write", { path: "other.md", content: "x" }, { id: "3" }), fauxToolCall("write", { path: "/shared/plan.md", content: "# plan" }, { id: "3b" })],
-        [fauxToolCall("bash", { command: "echo hi >> /home/ada/sweep.md", machine: "box" }, { id: "4" })],
-      ],
-      files: { "/home/ada/sweep.md": "# sweep" }, machines: [{ name: "box", kind: "ssh", limit: "auto", root: null }], artifacts, approve: async () => true,
+    const held: string[] = [];
+    const box = { name: "box", kind: "ssh" as const, limit: "auto" as const, root: null };
+    const { files, results } = await run("acceptEdits", [], {
+      steps: [[fauxToolCall("copy", { machine: "box", path: "/home/ada/report.md" }, { id: "1" })],
+        [fauxToolCall("copy", { machine: "box", path: "/home/ada/report.md", to: "report-old.md" }, { id: "2" })],
+        [fauxToolCall("copy", { machine: "pve", path: "/x" }, { id: "3" })]],
+      files: { "/home/ada/report.md": "# Sweep\n\nNothing hostile found.\n" },
+      machines: [box, { name: "pve", kind: "proxmox", limit: "auto", root: null }],
+      approve: async (r) => { asked.push(r); return true; }, sameFile: (path) => { held.push(path); return undefined; },
     });
-    expect(files.get("/workspace/report.md")).toBe("# two");
-    // Two changes to report.md, one publish of its last state; other.md is no artifact's.
-    expect(published.sort((x, y) => x.path.localeCompare(y.path))).toEqual([
-      { path: "/shared/plan.md", artifact: "a4", replace: true, text: "# plan" },
-      { path: "/workspace/report.md", artifact: "a1", replace: true, text: "# two" },
-      { path: "box:/home/ada/sweep.md", artifact: "a2", replace: true, text: "# sweep" },
-    ]);
+    expect(String(files.get("/workspace/report.md"))).toBe("# Sweep\n\nNothing hostile found.\n");
+    expect(String(files.get("/workspace/report-old.md"))).toBe("# Sweep\n\nNothing hostile found.\n");
+    expect(held).toEqual(["/workspace/report.md", "/workspace/report-old.md", "/workspace/x"]);
+    // Accept edits doesn't ask for a write; a Proxmox machine has no files.
+    expect(asked).toEqual([]);
+    expect(results[0]).toBe("copy: Copied box:/home/ada/report.md to /workspace/report.md (1 KiB). Give /workspace/report.md in your reply to show it.");
+    expect(results.join("\n")).not.toContain("Nothing hostile");
+    expect(results[2]).toMatch(/pve is a Proxmox machine/);
   });
 
-  it("adds to the project's artifact of the same real file rather than forking a copy; a thread folder's file is its own", async () => {
-    const published: { path: string; artifact?: string }[] = [];
-    const artifacts: NonNullable<ThreadTools["artifacts"]> = {
-      publish: (p) => { published.push({ path: p.path, ...(p.artifact ? { artifact: p.artifact } : {}) }); return { artifact: { id: p.artifact ?? "new", title: "t", kind: p.kind, version: 2, path: p.path }, created: !p.artifact }; },
-      list: () => [{ id: "s1", title: "Sweep", kind: "markdown", version: 1, path: "box:/home/ada/sweep.md" }, { id: "s2", title: "Plan", kind: "markdown", version: 1, path: "/shared/plan.md" },
-        { id: "s3", title: "Notes", kind: "markdown", version: 1, path: "/workspace/notes.md" }],
-    };
-    await run("auto", [
-      fauxToolCall("page", { action: "publish", path: "/home/ada/sweep.md", machine: "box" }, { id: "1" }),
-      fauxToolCall("page", { action: "publish", path: "/shared/plan.md" }, { id: "2" }),
-      fauxToolCall("page", { action: "publish", path: "notes.md" }, { id: "3" }),
-    ], { files: { "/home/ada/sweep.md": "# sweep", "/shared/plan.md": "# plan", "/workspace/notes.md": "# notes" }, machines: [{ name: "box", kind: "ssh", limit: "auto", root: null }], artifacts, approve: async () => true });
-    expect(published.sort((x, y) => x.path.localeCompare(y.path))).toEqual([
-      { path: "/shared/plan.md", artifact: "s2" },
-      { path: "/workspace/notes.md" },
-      { path: "box:/home/ada/sweep.md", artifact: "s1" },
-    ]);
+  it("asks before a copy where write asks, and isn't offered without an SSH machine or in Plan mode", async () => {
+    const asked: ApprovalRequest[] = [];
+    const box = { name: "box", kind: "ssh" as const, limit: "auto" as const, root: null };
+    await run("ask", [fauxToolCall("copy", { machine: "box", path: "/home/ada/a.png" }, { id: "1" })],
+      { files: { "/home/ada/a.png": "png" }, machines: [box], approve: async (r) => { asked.push(r); return true; } });
+    expect(asked.map((r) => [r.tool, r.machine, r.input.path])).toEqual([["copy", "box", "/home/ada/a.png"]]);
+    const { offered } = await run("auto", [fauxToolCall("read", { path: "notes.txt" }, { id: "1" })]);
+    expect(offered[0]).not.toContain("copy");
+    const { offered: plan } = await run("plan", [fauxToolCall("read", { path: "notes.txt" }, { id: "1" })], { machines: [box] });
+    expect(plan[0]).not.toContain("copy");
+    const { offered: auto } = await run("auto", [fauxToolCall("read", { path: "notes.txt" }, { id: "1" })], { machines: [box] });
+    expect(auto[0]).toContain("copy");
   });
 
   it("has no artifacts where the thread gives none, such as a subagent", async () => {

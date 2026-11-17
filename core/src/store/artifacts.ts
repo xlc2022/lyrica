@@ -161,7 +161,7 @@ export class ArtifactLibrary {
     return this.must(id);
   }
 
-  /** The next version of an artifact; `path` and `title` follow when given. Only `replaceLatest` changes a version afterwards. */
+  /** The next version of an artifact; `path` and `title` follow when given. A version is never changed afterwards. */
   addVersion(id: string, v: NewVersion & { path?: string; title?: string }): Artifact {
     const a = this.must(id);
     this.checkSize(v);
@@ -176,28 +176,10 @@ export class ArtifactLibrary {
   }
 
   /**
-   * The newest version again with new content, when she made it: her automatic update after changing a published
-   * file (the user chose 2026-11-17 to keep only the newest of those). A version the user made is never overwritten:
-   * then this adds one.
-   */
-  replaceLatest(id: string, v: NewVersion & { path?: string }): Artifact {
-    const a = this.must(id);
-    const latest = this.versions(id)[0];
-    if (!latest || latest.author !== "lyrica" || v.author !== "lyrica") return this.addVersion(id, v);
-    this.checkSize(v);
-    const at = this.now().toISOString();
-    this.db.transaction(() => {
-      this.db.prepare("UPDATE artifact_versions SET bytes = ?, built = ?, created_at = ? WHERE artifact = ? AND n = ?").run(v.bytes, v.built ?? null, at, id, latest.n);
-      this.db.prepare("UPDATE artifacts SET updated_at = ?, path = ? WHERE id = ?").run(at, v.path ?? a.path ?? null, id);
-    })();
-    return this.must(id);
-  }
-
-  /**
    * Her `page publish`: a version of `artifact` when she names one of this thread's (or its project's, `threads`),
    * else of the artifact this thread published from the same path, else a new artifact.
    */
-  publish(p: { thread: string; threads?: string[]; path: string; kind: ArtifactKind; title?: string; artifact?: string; replace?: boolean } & NewVersion): { artifact: Artifact; created: boolean } {
+  publish(p: { thread: string; threads?: string[]; path: string; kind: ArtifactKind; title?: string; artifact?: string } & NewVersion): { artifact: Artifact; created: boolean } {
     let existing: Artifact | undefined;
     if (p.artifact) {
       existing = this.get(p.artifact);
@@ -207,8 +189,6 @@ export class ArtifactLibrary {
       if (existing.kind !== p.kind) throw new ArtifactError(`${existing.title} is ${existing.kind}, and ${p.path} is ${p.kind}: publish it as a new artifact from another path.`);
       const same = this.read(existing.id);
       if (same && same.bytes.equals(p.bytes) && (p.title === undefined || this.checkTitle(p.title) === existing.title)) return { artifact: existing, created: false };
-      // `replace`: her automatic update overwrites her newest version rather than adding one.
-      if (p.replace) return { artifact: this.replaceLatest(existing.id, { bytes: p.bytes, built: p.built, author: p.author, path: p.path }), created: false };
       return { artifact: this.addVersion(existing.id, { bytes: p.bytes, built: p.built, author: p.author, path: p.path, title: p.title }), created: false };
     }
     return { artifact: this.create({ title: p.title ?? titleFromName(p.path), kind: p.kind, thread: p.thread, path: p.path, bytes: p.bytes, built: p.built, author: p.author }), created: true };

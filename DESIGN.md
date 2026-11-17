@@ -222,11 +222,11 @@ Each user has two pools of memory.
       turns never deletes it.
   - **Artifacts** (decided 2026-11-11, as in Claude's own app): a page,
     drawing or document she publishes with `page publish`, or one the user
-    imports, kept with a title and its versions. Versions live
+    imports, kept with a title and every version it has had. Versions live
     in the pool's own encrypted database, not in the thread's folder, so a
-    version is a copy, not a link to the file it came from, and a Private
+    version never changes when the file it came from does, and a Private
     artifact is never listed or served under General. A version is at most
-    16 MiB and is one self-contained file. She never shows the user a file by reading it into her context and typing it out again: a file in her folders she links by its path, which opens it in the file viewer as it is now, and one on a machine she publishes (a file on a machine or in /shared has one artifact for the whole project, never a copy per thread); a text file that isn't a page is shown as Markdown holding it as code. When she changes a file she published, it is published again on its own when her reply ends, and that update overwrites her newest version instead of adding one (the user chose this, 2026-11-17); a version the user made is never overwritten. An artifact opens as a file
+    16 MiB and is one self-contained file. An artifact opens as a file
     does, in the same sandbox under its thread's internet rule, and only for the signed-in user: there
     are no public links. She can't delete one; the user can. Every
     artifact belongs to a thread, and deleting the thread deletes its
@@ -1660,6 +1660,13 @@ NAS, and Proxmox nodes. Decided 2026-10-11 from
   becomes reachable from general threads. The sandbox's
   internet switch and allowed hosts cover the sandbox only: a machine's
   network is its own.
+- **Showing a machine's file goes through her folder** (the user asked,
+  2026-11-17). `copy` brings a file from a machine into her thread's
+  folder without the bytes entering her context, and she gives its path;
+  the file viewer shows it, whatever it is. A changed original is copied
+  again when the user asks, replacing the copy or beside it. Both ends are
+  the thread's own pool, so nothing crosses a pool. Reports for the user
+  are written in her folder, not on the machine.
 - **Root stays with the user.** She never holds a password or writes
   sudoers. A root step is a script she writes on the machine and hands over
   on a question card with its hash. The user runs it in their own terminal,

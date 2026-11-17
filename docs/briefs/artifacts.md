@@ -233,18 +233,4 @@ works, so her threads update them there?
   to leak or not in headless Chromium, which looked none up even with no
   CSP; `X-DNS-Prefetch-Control: off` is sent and the doubt is written
   down beside WebRTC.
-- 2026-11-17: the user saw her read a report on a machine and type it out
-  again in her reply, so it reached her context twice. `page publish` now
-  takes `machine`, publishes any other text file as Markdown holding it as
-  code, and her prompt says to publish a file the person asks to see
-  instead of retyping it. No new control: the card is the existing one.
-- 2026-11-17: the user chose that a published file she changes is updated
-  on its own when her turn ends, and that the update overwrites her newest version ("keep only the
-  newest"); a version the user made is never overwritten. Her prompt also
-  says to write reports for the person in her thread's folder, not on a
-  machine.
-- 2026-11-17: the update now runs once when her turn ends, not once a
-  minute. One real file has one artifact: a file on a machine or in
-  `/shared` published from another thread adds to the project's existing
-  artifact rather than forking a copy, and a change to it updates that
-  artifact whichever thread made it.
+
