@@ -398,6 +398,15 @@ describe("suspect commands", () => {
     }
     expect(suspectCommand("sudo reboot")).toBe("This shuts the machine down or restarts it.");
   });
+  it("read a shell's -c line wherever -c stands among its options", () => {
+    for (const c of ["bash -ec 'rm -rf /'", "bash -lc 'rm -rf /'", "sh -xc reboot", "sudo bash -ec 'parted -s /dev/sda mklabel gpt && mkfs.ext4 /dev/sda1'",
+      "env FOO=1 dash -euc 'mkfs.ext4 /dev/sdb1'", "zsh -ic reboot", "bash -e -c reboot", "bash -o pipefail -c reboot", "bash -oc pipefail reboot", "bash -co pipefail reboot", "bash -O extglob -c reboot", "bash --norc -xc reboot",
+      "/bin/sh -c -e reboot", "sudo -u root /usr/bin/bash -lec 'rm -rf ~'", "fish --command reboot", "fish --command=reboot"]) {
+      expect(suspectCommand(c), c).toBeDefined();
+    }
+    // The line is the first word after the options; the rest are its arguments, not commands.
+    for (const c of ["bash -ec 'echo hi' reboot", "bash -e script.sh reboot", "bash -o reboot", "bash -oc reboot", "sh -x", "bash --rcfile reboot", "bash -cx 'echo $0' reboot"]) expect(suspectCommand(c), c).toBeUndefined();
+  });
   it("catch a disk's partition table rewritten or wiped, and leave reading it alone", () => {
     const wipe = "This rewrites a disk's partitions or wipes it, erasing what's on it.";
     for (const c of ["sudo sfdisk /dev/sda < table", "sfdisk --part-type /dev/sda 1 uefi", "fdisk /dev/nvme0n1", "sudo sgdisk --zap-all /dev/sda", "sgdisk -Z /dev/sda",

@@ -135,6 +135,31 @@ const VALUE_FLAGS: Record<string, string[]> = {
 /** Shells whose `-c` argument is a command line; rules.ts shares this list. */
 export const SHELLS = new Set(["sh", "bash", "rbash", "dash", "ash", "zsh", "ksh", "mksh", "oksh", "pdksh", "yash", "posh", "csh", "tcsh", "fish"]);
 
+/** A shell's long options that take the next word as their value (`bash --rcfile F`). */
+const SHELL_VALUE_OPTIONS = new Set(["--rcfile", "--init-file"]);
+
+/**
+ * The command line a shell's words run with `-c`, wherever `-c` stands among its options: alone (`bash -c`),
+ * in a group (`bash -ec`, `sh -xc`, `bash -lc`) or after others (`bash -e -c`, `bash -o pipefail -c`). As the
+ * shell does, it is the first word after the options. `words` start at the shell; undefined without `-c`.
+ */
+export function shellScript(words: string[]): string | undefined {
+  let c = false;
+  for (let i = 1; i < words.length; i++) {
+    const w = words[i]!;
+    if (w === "--" || w === "-") return c ? words[i + 1] : undefined;
+    // fish names it in full: `fish --command 'rm …'` or `--command='rm …'`.
+    if (w === "--command") return words[i + 1];
+    if (w.startsWith("--command=")) return w.slice("--command=".length);
+    if (!/^[-+]/.test(w)) return c ? w : undefined;
+    if (w.startsWith("--")) { if (SHELL_VALUE_OPTIONS.has(w)) i++; continue; }
+    if (w[0] === "-" && w.includes("c")) c = true;
+    // Each `o` or `O` in a group takes a word of its own, in order (`bash -oc pipefail 'rm …'`).
+    i += w.length - w.replace(/[oO]/g, "").length;
+  }
+  return undefined;
+}
+
 const assigns = (w: string) => /^[A-Za-z_][A-Za-z0-9_]*=/.test(w);
 /** Words that make a line more than straight-through commands. */
 const KEYWORDS = new Set(["if", "then", "else", "elif", "fi", "while", "until", "do", "done", "case", "esac", "for", "select", "function", "coproc", "!", "[[", "]]"]);
@@ -257,8 +282,8 @@ function parse(command: string): string[][] {
     const current = words; words = [];
     commands.push(current);
     const shell = current.findIndex(w => SHELLS.has(posix.basename(w)));
-    const c = current.indexOf("-c", shell + 1);
-    if (shell >= 0 && c > shell && current[c + 1]) commands.push(...parse(current[c + 1]!));
+    const script = shell >= 0 ? shellScript(current.slice(shell)) : undefined;
+    if (script) commands.push(...parse(script));
     for (let i = 0; i < current.length; i++) if (["-exec", "-execdir", "-ok"].includes(current[i]!)) {
       const nested = current.slice(i + 1);
       if (nested.length) commands.push(nested);
