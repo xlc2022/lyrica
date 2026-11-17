@@ -1,6 +1,7 @@
 // A diagram, chart or equation in her Markdown (docs/ux.md §6, Diagrams, charts and math in a message), drawn here from
 // the message's own text. Mermaid, Vega-Lite and KaTeX ship with the UI and load only when a message holds one; nothing
 // they draw loads anything: Mermaid runs strict, a chart's loader refuses every URL, and the SVG is sanitized.
+import { Highlighted, langOfFence } from "./highlight.tsx";
 import { type ComponentProps, type ReactNode, useEffect, useState } from "react";
 import type { ExtraProps } from "react-markdown";
 import { codeOf, CodeBlock } from "./CodeBlock.tsx";
@@ -116,6 +117,10 @@ export function MathText({ tex, display }: { tex: string; display: boolean }) {
 /** Inline code, or inline math (remark-math marks it `math-inline`). */
 export function RichCode({ node: _, className, children, ...props }: ComponentProps<"code"> & ExtraProps) {
   if (className?.split(" ").includes("math-inline")) return <MathText tex={String(children)} display={false} />;
+  // A fenced block's code is coloured by the language its fence names; inline code and an unknown language stay plain.
+  const lang = className?.split(" ").find((c) => c.startsWith("language-"))?.slice("language-".length);
+  const grammar = lang ? langOfFence(lang) : undefined;
+  if (grammar && typeof children === "string") return <code className={className} {...props}><Highlighted text={children} lang={grammar} /></code>;
   return <code className={className} {...props}>{children}</code>;
 }
 
