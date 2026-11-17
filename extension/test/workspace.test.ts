@@ -1324,7 +1324,9 @@ describe("the page tool", () => {
     const published: { path: string; artifact?: string; replace?: boolean; text: string }[] = [];
     const artifacts: NonNullable<ThreadTools["artifacts"]> = {
       publish: (p) => { published.push({ path: p.path, ...(p.artifact ? { artifact: p.artifact } : {}), ...(p.replace ? { replace: true } : {}), text: p.bytes.toString() }); return { artifact: { id: p.artifact ?? "a1", title: "Report", kind: p.kind, version: 1, path: p.path }, created: false }; },
-      list: () => [{ id: "a1", title: "Report", kind: "markdown", version: 1, path: "/workspace/report.md" }, { id: "a2", title: "Sweep", kind: "markdown", version: 1, path: "box:/home/ada/sweep.md" }],
+      // a3 is a sibling thread's, from the same path: never this thread's to update.
+      list: () => [{ id: "a3", title: "Theirs", kind: "markdown", version: 1, path: "/workspace/report.md" }, { id: "a1", title: "Report", kind: "markdown", version: 1, path: "/workspace/report.md", own: true },
+        { id: "a2", title: "Sweep", kind: "markdown", version: 1, path: "box:/home/ada/sweep.md", own: true }],
     };
     const { files } = await run("auto", [], {
       steps: [

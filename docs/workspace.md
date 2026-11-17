@@ -2652,7 +2652,8 @@ script, PNG decoder or bundler:
   (it opens in the file viewer, always current); one on a machine, or a
   page worth versions, she publishes. It also tells her to write reports
   and notes for the person in her thread's folder rather than on a machine.
-  When she changes a published file afterwards (`write` or `edit` on its
+  When she changes a file one of this thread's own artifacts (never a
+  sibling thread's) was published from (`write` or `edit` on its
   path, or a command naming the file, in the same place), the workspace
   extension publishes it again once when her turn ends, with `replace`,
   which overwrites her newest version (`replaceLatest`; a version the user

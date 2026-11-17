@@ -14,7 +14,7 @@ import { artifactPlace, bundleOut, pageTool, publishFile } from "./page.ts";
 
 /** What the workspace tools need for one thread. `Workspace` from core provides it. */
 /** An artifact as her page tool says it (docs/briefs/artifacts.md). */
-export interface ThreadArtifact { id: string; title: string; kind: string; version: number; path?: string }
+export interface ThreadArtifact { id: string; title: string; kind: string; version: number; path?: string; /** This thread's own, not another thread's in its project. */ own?: boolean }
 
 export interface ThreadTools {
   prepareWorktrees?(): Promise<void>;
@@ -698,11 +698,11 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
     // A published file she changes is published again when her turn ends, once, overwriting her newest version
     // (the user chose both, 2026-11-17), so it costs nothing while she edits.
     const owed = new Map<string, { id: string; machine?: string; file: string }>();
-    /** The thread's artifacts whose file this call changed: the path write or edit wrote, or a file a command names. */
+    /** This thread's own artifacts (never a sibling's at the same path) whose file this call changed: the path write or edit wrote, or a file a command names. */
     const changedArtifacts = async (tool: string, input: Record<string, unknown>) => {
       if (!tools.artifacts || (tool !== "write" && tool !== "edit" && tool !== "bash")) return [];
       const machine = (input.machine as string | undefined) || undefined;
-      const all = tools.artifacts.list().flatMap((a) => (a.path ? [{ id: a.id, ...artifactPlace(a.path) }] : [])).filter((a) => a.machine === machine);
+      const all = tools.artifacts.list().flatMap((a) => (a.own && a.path ? [{ id: a.id, ...artifactPlace(a.path) }] : [])).filter((a) => a.machine === machine);
       if (!all.length) return [];
       if (tool === "bash") return all.filter((a) => String(input.command ?? "").includes(posix.basename(a.file)));
       const cwd = await tools.target(machine).cwd();
