@@ -2679,7 +2679,9 @@ test("question cards answer in chat and Notifications and close on words", async
   await page.goto(`/#/u/${userId}/notifications`);
   const row = page.locator(".nquestion").filter({ hasText: "Which bed comes next?" });
   await expect(row).toContainText("Plant a small bed first.");
-  await expect(row.getByRole("button").first()).toHaveText("SmallRecommended");
+  await expect(row.getByRole("button").first()).toHaveText("Small");
+  await expect(row.getByRole("button").first()).toHaveAttribute("title", "Recommended");
+  await expect(row.locator(".nkind").getByRole("link", { name: "Open thread" })).toBeVisible();
   await noHorizontalScroll(page);
   if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/question-notifications-${width}.png` });
   await row.getByRole("button", { name: /^Large/ }).click();

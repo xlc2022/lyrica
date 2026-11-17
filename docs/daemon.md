@@ -643,7 +643,7 @@ things are".
   Questions have type `question`, ID `question:<pool>/<thread>/<n>`, and
   count as decisions. Their title and recommended consequence are read
   from the encrypted log through the thread reader. Actions answer each
-  option (recommended first); Open thread follows them in the UI. Private
+  option (recommended first); the UI links Open thread from the row's facts line. Private
   questions follow the Private filter. Questions have no bulk action.
   `POST …/threads/:pool/:threadId/seen` marks a child thread's updates seen
   without opening it. The list has no downloads, clean-up items, image
