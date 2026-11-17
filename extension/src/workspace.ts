@@ -169,12 +169,16 @@ const BASH_TIMEOUT = Type.Optional(Type.Number({ description: `Timeout in second
 const BACKGROUND = Type.Optional(Type.Boolean({ description: "Run it in the background: you get a job id at once, and are told when it ends. For a download, build, install, test run or wait that takes minutes or more. Don't pipe it into tail or head: its whole output is kept and shown live. Then end your turn or do other work; never sleep to wait for it." }));
 const JOB_NAME = Type.Optional(Type.String({ description: `With background: what the job does, in a few words the person reads in its list ("Pull the host images"); at most ${JOB_LIMITS.nameChars} characters.` }));
 
-/** The state a bash call ended in, from how Pi's bash ended: its exit code, a timeout or a stop. */
-export function callEnd(err: unknown): { state: "exited" | "failed" | "timed out" | "stopped"; exitCode?: number | null; reason?: string } {
-  if (err === undefined) return { state: "exited", exitCode: 0 };
+/**
+ * The state a bash call ended in, from how Pi's bash ended: its result (Pi returns a non-zero exit as an error result
+ * with the code in structuredContent.exit_code, not as a throw), or what it threw: a timeout or a stop.
+ */
+export function callEnd(err: unknown, result?: { structuredContent?: unknown }): { state: "exited" | "failed" | "timed out" | "stopped"; exitCode?: number | null; reason?: string } {
+  if (err === undefined) {
+    const code = (result?.structuredContent as { exit_code?: unknown } | undefined)?.exit_code;
+    return { state: "exited", exitCode: typeof code === "number" ? code : 0 };
+  }
   const message = err instanceof Error ? err.message : String(err);
-  const code = /Command exited with code (\d+)\s*$/.exec(message);
-  if (code) return { state: "exited", exitCode: Number(code[1]) };
   if (/timed out|timeout/i.test(message)) return { state: "timed out" };
   if (/aborted/i.test(message)) return { state: "stopped" };
   return { state: "failed", reason: message.split("\n").pop()!.slice(0, 200) };
@@ -437,7 +441,7 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
             if (!keep) return execute();
             try {
               const result = await execute();
-              keep.end(callEnd(undefined));
+              keep.end(callEnd(undefined, result));
               const said = result.content.map((c) => (c.type === "text" ? c.text : "")).join("\n");
               return cut(said) ? { ...result, content: [...result.content, { type: "text" as const, text: keptLine(keep.id) }] } : result;
             } catch (err) {

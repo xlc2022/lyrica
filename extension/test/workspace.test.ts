@@ -42,6 +42,7 @@ function fakeTarget(files: Map<string, string>, commands: string[], machine?: st
     edit: { readFile: read, writeFile: write, access: async (p) => { await read(p); } },
     bash: { exec: async (command, _cwd, { onData, onRaw, timeout }) => {
       // Output past the cap: she gets its start and end with the cut's marker, as capOutput gives; the whole goes to onRaw.
+      if (command === "sudo -n -l") { const out = Buffer.from("sudo: a password is required\n"); onRaw?.(out); onData(out); return { exitCode: 1 }; }
       if (command === "long-build") { onRaw?.(Buffer.from("x\n".repeat(5000))); onData(Buffer.from("x\n[… 9998 bytes of output left out …]\nx\n")); return { exitCode: 0 }; }
       // A save before git throws work away is kept apart from her commands, and answers as a save that happened.
       if (command.includes("refs/lyrica/saved")) { saveRuns.push(command); onData(Buffer.from("SAVED:refs/lyrica/saved/20261112T000000Z-abc1234\n")); return { exitCode: 0 }; }
@@ -1363,11 +1364,15 @@ it("keeps a bash call's whole output and, under a result that was cut, says how 
   const again = await run("auto", [fauxToolCall("bash", { command: "ls" })], { kept: short, jobs: [] });
   expect(short).toEqual(["sandbox: ls: 0 bytes, exited 0"]);
   expect(again.results[0]).not.toContain("kept as");
+  // A non-zero exit is kept with its code: Pi returns it as an error result, not a throw.
+  const failed: string[] = [];
+  await run("auto", [fauxToolCall("bash", { command: "sudo -n -l" })], { kept: failed, jobs: [] });
+  expect(failed).toEqual(["sandbox: sudo -n -l: 29 bytes, exited 1"]);
 });
 
 it("tells a bash call's end from how Pi's bash ended", () => {
   expect(callEnd(undefined)).toEqual({ state: "exited", exitCode: 0 });
-  expect(callEnd(new Error("oops\n\nCommand exited with code 127"))).toEqual({ state: "exited", exitCode: 127 });
+  expect(callEnd(undefined, { structuredContent: { exit_code: 1 } })).toEqual({ state: "exited", exitCode: 1 });
   expect(callEnd(new Error("Command timed out after 600 seconds"))).toEqual({ state: "timed out" });
   expect(callEnd(new Error("Command aborted"))).toEqual({ state: "stopped" });
 });
