@@ -163,44 +163,36 @@ test("a run with failed calls counts them after its own count", async ({ page, b
   // The count of failed calls, not the word alone, which read as if every call failed.
   await expect(run.getByRole("button")).toHaveText("4 tool calls · 2 failed");
   await expect(run.locator(".state[data-state='failed']")).toHaveText("2 failed");
-  if (process.env.SCREENSHOTS) await run.screenshot({ path: `${process.env.SCREENSHOTS}/tool-run-failed-${page.viewportSize()!.width}.png` });
+  if (process.env.SCREENSHOTS) {
+    await run.screenshot({ path: `${process.env.SCREENSHOTS}/tool-run-failed-${page.viewportSize()!.width}.png` });
+    // Opened, with each call open: the calls and their outputs lay out in the conversation's one scroll.
+    await run.getByRole("button", { name: /tool calls/ }).click();
+    for (const name of [/npm install/, /npm run build/, /npm test/, /git status/]) await run.getByRole("button", { name }).click();
+    await page.screenshot({ path: `${process.env.SCREENSHOTS}/tool-run-open-${page.viewportSize()!.width}.png`, fullPage: true });
+  }
 });
 
-test("an open run of tool calls follows her newest call only while its box is at the bottom", async ({ page, baseURL }) => {
+test("an open run of tool calls flows in the conversation's own scroll, which follows her newest call", async ({ page, baseURL }) => {
   await enter(page, baseURL!);
   await newThread(page, "General");
   await send(page, "recall: 24 slowly");
   const run = page.locator(".marker.tool-run");
+  // Opened once the page sits at its end, so what follows is the conversation's own following, not the press's.
+  const scroll = page.locator(".scroll").first();
+  const fromBottom = () => scroll.evaluate((el) => el.scrollHeight - el.scrollTop - el.clientHeight);
   await run.getByRole("button", { name: /tool calls running/ }).click();
   const box = run.locator(".run-body");
   const calls = run.locator(".run-body .marker[data-type='tool']");
-  await expect.poll(() => box.evaluate((el) => el.scrollHeight > el.clientHeight + 40)).toBe(true);
-  // At the bottom, the box follows.
-  await expect.poll(() => box.evaluate((el) => el.scrollHeight - el.scrollTop - el.clientHeight)).toBeLessThanOrEqual(2);
-  // Scrolled up, new calls land below without moving it.
-  await box.evaluate((el) => { el.scrollTop = 0; });
-  const seen = await calls.count();
-  await expect.poll(() => calls.count()).toBeGreaterThan(seen + 2);
-  expect(await box.evaluate((el) => el.scrollTop)).toBe(0);
-  // Back at the bottom, it follows again.
-  await box.evaluate((el) => { el.scrollTop = el.scrollHeight; });
+  await expect.poll(() => calls.count()).toBeGreaterThan(6);
+  // No box of its own: the calls lay out at full height in the conversation (a scroll inside a scroll clipped them).
+  expect(await box.evaluate((el) => getComputedStyle(el).overflowY)).toBe("visible");
+  expect(await box.evaluate((el) => el.scrollHeight - el.clientHeight)).toBeLessThanOrEqual(1);
+  // Back at the end, the conversation follows the newest call.
+  await scroll.evaluate((el) => { el.scrollTop = el.scrollHeight; });
   const back = await calls.count();
   await expect.poll(() => calls.count()).toBeGreaterThan(back + 1);
-  await expect.poll(() => box.evaluate((el) => el.scrollHeight - el.scrollTop - el.clientHeight)).toBeLessThanOrEqual(2);
-  // Scrolled up and back while the scroll event is held, so new calls render before it arrives: measured against a
-  // height the person never saw, it must not stop the following.
-  await box.evaluate((el) => { el.scrollTop = 0; });
-  const up = await calls.count();
-  await expect.poll(() => calls.count()).toBeGreaterThan(up);
-  expect(await box.evaluate((el) => el.scrollTop)).toBe(0);
-  await page.evaluate(() => { (window as any).held = true; window.addEventListener("scroll", (e) => { if ((window as any).held) e.stopImmediatePropagation(); }, true); });
-  await box.evaluate((el) => { el.scrollTop = el.scrollHeight; });
-  const held = await calls.count();
-  await expect.poll(() => calls.count()).toBeGreaterThan(held);
-  await box.evaluate((el) => { (window as any).held = false; el.dispatchEvent(new Event("scroll")); });
-  const later = await calls.count();
-  await expect.poll(() => calls.count()).toBeGreaterThan(later);
-  await expect.poll(() => box.evaluate((el) => el.scrollHeight - el.scrollTop - el.clientHeight), { timeout: 3000 }).toBeLessThanOrEqual(2);
+  await expect.poll(fromBottom).toBeLessThanOrEqual(2);
+  await expect(calls.last()).toBeInViewport();
 });
 
 test("a code block in her reply shows its language and Copy, which copies its text and reads Copied, then Copy failed where the clipboard refuses", async ({ page, baseURL, context }) => {
@@ -923,7 +915,14 @@ test("typing while her reply streams leaves the conversation where it is, and op
     await page.waitForTimeout(150);
     await expect(marker).toBeInViewport();
   }
+  // Its calls flow in the conversation. Where they outgrow the view (a phone), it went down only as far as keeps the
+  // header in view, and the calls that come after land below, where Jump to latest takes her; from there, or where they
+  // fit, the view follows them.
+  const jump = page.getByRole("button", { name: "Jump to latest" });
+  await expect.poll(async () => (await fromBottom()) <= 2 || (await jump.isVisible())).toBe(true);
+  if (await jump.isVisible()) await jump.click();
   await expect.poll(fromBottom).toBeLessThanOrEqual(2);
-  await expect(page.getByRole("button", { name: "Jump to latest" })).toHaveCount(0);
+  await expect(page.locator(".marker.tool-run .run-body .marker[data-type='tool']").last()).toBeInViewport();
   await expect(page.getByRole("button", { name: "Stop" })).toBeHidden({ timeout: 20_000 });
+  await expect.poll(fromBottom).toBeLessThanOrEqual(2);
 });

@@ -1326,9 +1326,10 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   or a poll) renders bare, with no header line or action row
   (`.turn.quiet`); consecutive ones are grouped, and three or more markers,
   or any run with a sleep or refused read in it (`waits`), fold into one
-  **<n> tool calls** marker (`ToolRun`, "steps" when none is a tool call) that opens to a
-  320 px box which scrolls (`.run-body`), each call its own marker inside,
-  following the newest while the turn streams, `CallStats` at its end.
+  **<n> tool calls** marker (`ToolRun`, "steps" when none is a tool call) that opens to
+  its calls (`.run-body`), each its own marker, in the conversation's own
+  scroll rather than a box of its own, `CallStats` at its end; the
+  conversation's `useStickyScroll` follows them while the turn streams.
   Closed and streaming, it shows `CallStats` under its button
   (`.run-call`) only while `callLine` has something to say. A live reply
   with no parts yet joins a pending run, so its request's counts stay
