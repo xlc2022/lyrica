@@ -1392,8 +1392,8 @@ export class Workspace {
         headers: { Accept: "application/json", "User-Agent": "lyrica", Authorization: authorization },
         signal: AbortSignal.timeout(15_000), redirect: "error",
       });
-    } catch {
-      throw new GitAccountProblem("unreachable", `${a.host} didn't answer`);
+    } catch (err) {
+      throw new GitAccountProblem("unreachable", whyUnreachable(a.host, err));
     }
     if (res.status === 401 || res.status === 403) throw new GitAccountProblem("rejected", `${a.host} rejected the token`);
     if (!res.ok) throw new GitAccountProblem("unreachable", `${a.host} answered ${res.status}`);
@@ -1410,8 +1410,8 @@ export class Workspace {
     if (a.kind === "other") {
       try {
         await this.forgeFetch()(`https://${host}/`, { method: "HEAD", signal: AbortSignal.timeout(15_000), redirect: "manual" });
-      } catch {
-        throw new GitAccountProblem("unreachable", `${host} didn't answer`);
+      } catch (err) {
+        throw new GitAccountProblem("unreachable", whyUnreachable(host, err));
       }
       return;
     }
@@ -2171,6 +2171,37 @@ const KEEP_FILES_TIMEOUT_MS = 30 * 60_000;
 /** A token that didn't work, or a host that didn't answer: the state it leaves the account in, and why. */
 export class GitAccountProblem extends Error {
   constructor(readonly state: Exclude<GitAccountState["kind"], "signedIn">, message: string) { super(message); this.name = "GitAccountProblem"; }
+}
+
+/** TLS codes for a certificate that names another host, has expired, or that no trusted authority signed. */
+const CERT_WORDS: [RegExp, string][] = [
+  [/ALTNAME/, "it names another host"],
+  [/EXPIRED/, "it has expired"],
+  [/NOT_YET_VALID/, "it isn't valid yet"],
+  [/SELF_SIGNED|UNABLE_TO_(GET_ISSUER|VERIFY)|CERT_UNTRUSTED|CERT_SIGNATURE_FAILURE/, "no trusted authority signed it"],
+];
+
+/**
+ * Why a call to a Git host got no HTTP answer, in plain words, from the
+ * error fetch threw and its cause: the name, the connection, the
+ * certificate, the time, a redirect, or her tailscaled's own reason.
+ */
+export function whyUnreachable(host: string, err: unknown): string {
+  const cause = (err as { cause?: { code?: string; message?: string } })?.cause;
+  const code = String(cause?.code ?? (err as { code?: string })?.code ?? "");
+  const message = String(cause?.message ?? (err as Error)?.message ?? "");
+  const port = /:(\d+)$/.exec(host)?.[1] ?? "443";
+  if ((err as Error)?.name === "TimeoutError" || code === "ETIMEDOUT" || code === "UND_ERR_CONNECT_TIMEOUT" || /^connect ETIMEDOUT/.test(message)) return `${host} didn't answer in time`;
+  const tailscaled = /her tailscaled couldn't reach it \((.*)\)$/.exec(message)?.[1];
+  if (tailscaled) return `${host} is on your tailnet, and Lyrica's Tailscale couldn't reach it: ${tailscaled}`;
+  if (code === "ENOTFOUND" || code === "EAI_AGAIN") return `${host} doesn't resolve from this server`;
+  if (code === "ECONNREFUSED") return `${host} refused the connection on port ${port}`;
+  if (code === "EHOSTUNREACH" || code === "ENETUNREACH") return `this server has no route to ${host}`;
+  if (code === "ECONNRESET") return `${host} closed the connection`;
+  const cert = CERT_WORDS.find(([re]) => re.test(code));
+  if (cert || code.startsWith("ERR_TLS") || code.startsWith("ERR_SSL")) return `${host}'s certificate isn't valid${cert ? `: ${cert[1]}` : ""}`;
+  if (/redirect/i.test(message)) return `${host} redirected the API call elsewhere`;
+  return `${host} didn't answer${code ? ` (${code})` : ""}`;
 }
 
 /** What a failed clone or fetch says about the account: its token refused, its host away, or neither. */

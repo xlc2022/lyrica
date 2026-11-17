@@ -853,11 +853,13 @@ test("Git accounts lists none, and Add account checks the token with the host be
   await expect(drawer.getByLabel("Pool")).toBeEnabled();
   await expect(drawer.getByRole("button", { name: "Add account" })).toBeDisabled();
   await drawer.getByLabel("Name", { exact: true }).fill("forge");
-  await drawer.getByLabel("Host").fill("127.0.0.1:9");
+  // Nothing listens on port 2 (9 is one fetch never calls).
+  await drawer.getByLabel("Host").fill("127.0.0.1:2");
   await drawer.getByLabel("Account", { exact: true }).fill("lyrica");
   await drawer.getByLabel("Token").fill("not-a-real-token");
   await drawer.getByRole("button", { name: "Add account" }).click();
-  await expect(drawer.getByRole("alert")).toContainText("didn't answer");
+  // The reason names the cause, and the host keeps its case.
+  await expect(drawer.getByRole("alert")).toHaveText("127.0.0.1:2 refused the connection on port 2.");
   await noHorizontalScroll(page);
   await drawer.getByRole("button", { name: "Cancel" }).click();
   await expect(section).toContainText("None yet.");

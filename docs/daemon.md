@@ -1440,7 +1440,10 @@ Her calls to the tailnet go through her tailscaled too. It listens for an
 HTTP proxy on `127.0.0.1:1056` (`--outbound-http-proxy-listen`), and
 `core/src/models/tailnet.ts` sends a destination there by `CONNECT` when it is
 in `100.64.0.0/10` or `fd7a:115c:a1e0::/48`, or a name under her tailnet's
-MagicDNS suffix (read from `status`, at start and every five minutes). That
+MagicDNS suffix (read from `status`, at start and every five minutes), or
+any other name whose DNS records all point into those ranges (a public
+`git.example.net` with a 100.x record; looked up once a minute per name,
+and tunnelled to its first address). That
 covers model host pairing and calls (TLS and the pin inside the tunnel) and
 any endpoint fetch: the global `fetch` hands a tailnet destination to
 undici's own fetch with the proxy's dispatcher, and leaves everything else

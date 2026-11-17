@@ -6,6 +6,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import {
   del, get, patch, post, u,
   type MachineChange, type MachineInfo, type MachineInput, type MachineLimit, type MachineProbe, type Pool,
+  sentence,
 } from "./api.ts";
 import { CopyButton } from "./CopyButton.tsx";
 import { ModeItem, MODES } from "./Modes.tsx";
@@ -346,7 +347,7 @@ function sudoLine(account: string, command: string, nixos: boolean): { line?: st
     return { line: checked!.line, ...(checked!.warning ? { warning: checked!.warning } : {}) };
   } catch (err) {
     const why = (err as Error).message.replace(/^sudoers line \d+: /, "");
-    return { problem: `${why.charAt(0).toUpperCase()}${why.slice(1)}.` };
+    return { problem: sentence(why) };
   }
 }
 

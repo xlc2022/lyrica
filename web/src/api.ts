@@ -57,9 +57,15 @@ export async function errorFrom(res: Response): Promise<HttpError> {
   return err;
 }
 
-/** lyricad's reasons are lower-case phrases; show them as sentences. */
-function sentence(s: string): string {
-  return s && s[0]!.toUpperCase() + s.slice(1) + (/[.!?]$/.test(s) ? "" : ".");
+/**
+ * lyricad's reasons are lower-case phrases; show them as sentences. One that
+ * starts with a host or another dotted, slashed or numbered name
+ * (git.example.net, ada/notes) keeps its case: a name is never capitalized.
+ */
+export function sentence(s: string): string {
+  const first = /^\S*/.exec(s)![0];
+  const name = /[.:/@\d]/.test(first.replace(/['’]s$/, "").replace(/[,;:]$/, ""));
+  return s && (name ? s[0]! : s[0]!.toUpperCase()) + s.slice(1) + (/[.!?]$/.test(s) ? "" : ".");
 }
 
 function safeJson(text: string): unknown {
