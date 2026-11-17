@@ -97,7 +97,9 @@ function Edits({ path, edits, href, drafting }: { path: string; edits: Edit[]; h
 }
 
 /** A value on one line: text, a number or true or false in colour, a list of words joined, or a dash for nothing. */
-function inline(v: unknown): ReactNode | undefined {
+function inline(v: unknown, source?: boolean): ReactNode | undefined {
+  // An approval card shows what runs exactly: a list or an empty value as its JSON.
+  if (source && (v === null || v === "" || Array.isArray(v))) return JSON.stringify(v);
   if (v === null || v === undefined || v === "" || (Array.isArray(v) && !v.length)) return "—";
   if (typeof v === "number") return <span className="hljs-number">{v}</span>;
   if (typeof v === "boolean") return <span className="hljs-literal">{String(v)}</span>;
@@ -116,7 +118,7 @@ export function ArgList({ args, writing, source }: { args: Args; /** The field s
   return (
     <dl className="tool-args">
       {entries.map(([k, v]) => {
-        const one = inline(v);
+        const one = inline(v, source);
         const text = typeof v === "string" ? v : JSON.stringify(v, null, 2);
         return [
           <dt key={`${k}:k`}>{k}</dt>,

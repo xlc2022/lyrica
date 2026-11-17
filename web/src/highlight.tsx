@@ -165,7 +165,8 @@ export function Highlighted({ text, lang, plain }: { text: string; lang?: string
     // A body is a block of its own; the newline closing each piece keeps the text as written, and before a block adds no line.
     const parts = heredocs(text);
     return <>{parts.map((p, i) => {
-      const nl = i < parts.length - 1 ? "\n" : "";
+      // An empty body has no line of its own: its opening line's newline already ends where the closing marker starts.
+      const nl = i < parts.length - 1 && !(p.sub && !p.text) ? "\n" : "";
       return p.sub ? <span key={i} className="heredoc">{colour(ll, p.lang, p.text)}{nl}</span> : <Fragment key={i}>{colour(ll, p.lang, p.text)}{nl}</Fragment>;
     })}</>;
   }, [ll, text, lang, plain]);
