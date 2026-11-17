@@ -115,7 +115,8 @@ export function heredocs(script: string): { lang?: string; text: string; sub: bo
     const m = HEREDOC.exec(line);
     if (!m || line.trimStart().startsWith("#")) continue;
     const end = lines.findIndex((l, j) => j > i && (m[1] ? l.replace(/^\t+/, "") : l) === m[3]);
-    if (end < 0) continue;
+    // No closing line, or no body at all: the lines stay with the script.
+    if (end < 0 || end === i + 1) continue;
     out.push({ lang: "bash", text: shell.join("\n"), sub: false });
     shell = [];
     out.push({ lang: langOfHeredoc(line, m.index), text: lines.slice(i + 1, end).join("\n"), sub: true });
@@ -165,8 +166,7 @@ export function Highlighted({ text, lang, plain }: { text: string; lang?: string
     // A body is a block of its own; the newline closing each piece keeps the text as written, and before a block adds no line.
     const parts = heredocs(text);
     return <>{parts.map((p, i) => {
-      // An empty body has no line of its own: its opening line's newline already ends where the closing marker starts.
-      const nl = i < parts.length - 1 && !(p.sub && !p.text) ? "\n" : "";
+      const nl = i < parts.length - 1 ? "\n" : "";
       return p.sub ? <span key={i} className="heredoc">{colour(ll, p.lang, p.text)}{nl}</span> : <Fragment key={i}>{colour(ll, p.lang, p.text)}{nl}</Fragment>;
     })}</>;
   }, [ll, text, lang, plain]);

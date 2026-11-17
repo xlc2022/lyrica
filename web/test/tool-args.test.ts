@@ -94,7 +94,7 @@ describe("an approval card's arguments", () => {
 describe("a coloured script", () => {
   it("reads exactly as written, an empty heredoc included", async () => {
     const { Highlighted } = await import("../src/highlight.tsx");
-    for (const script of [SCRIPT, "cat <<EOF\nEOF", "cat <<EOF\nEOF\necho after", "cat > a.json <<'J'\n{}\nJ"]) {
+    for (const script of [SCRIPT, "cat <<EOF\nEOF", "cat <<EOF\n\nEOF", "cat <<EOF\nEOF\necho after", "cat > a.json <<'J'\n{}\nJ"]) {
       const html = renderToStaticMarkup(createElement("pre", null, createElement(Highlighted, { text: script, lang: "bash" })));
       const text = html.replace(/<[^>]+>/g, "").replace(/&#x27;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&amp;/g, "&");
       expect(text).toBe(`<pre>${script}</pre>`.replace(/<\/?pre>/g, ""));
