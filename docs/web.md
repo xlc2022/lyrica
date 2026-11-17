@@ -86,7 +86,10 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   **New project** (General or Private: an empty, pinned project chat) and
   **New group…**.
 - **Thread menu** (`src/ThreadMenu.tsx`): right-click a thread, or hold it
-  for half a second on a touch screen. **Open beside** (B) first, on a child
+  for half a second on a touch screen. Sidebar thread and list context menus,
+  including their flyouts, render outside the sidebar so they overlay adjacent
+  UI without being clipped by its scrolling or slide transform.
+  **Open beside** (B) first, on a child
   row where the sidebar passes it (from 1180 px up with a thread open): it opens
   the child in the panel beside the open thread; Shift+click or Shift+Enter on
   the row does the same, and below 1180 px Shift+click navigates itself. Mark as unread or read (U), Rename…
