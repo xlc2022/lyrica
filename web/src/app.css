@@ -810,6 +810,7 @@ dialog::backdrop { background: rgb(0 0 0 / 0.35); }
   .tfacts .link::after, .tcard-count .link::after, .threads-pill > .link::after, .tcard .row a.sm::after, .msg.user.queued .steer::after { content: ""; position: absolute; inset: -9px -6px; }
   .chev { width: 32px; height: 44px; }
   .threads .trow { grid-template-columns: 32px minmax(0, 1fr); }
+  .group-head .chev-ic { margin: 0 9px; }
   button.icon-btn, button.icon.sm { width: 44px; height: 44px; min-height: 44px; }
   .head-actions button.sm { min-height: 44px; min-width: 44px; }
   button.code-copy, button.copy-button, .rich-block .seg button { min-height: 44px; min-width: 44px; }
