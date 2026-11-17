@@ -112,7 +112,7 @@ paths its file tools take, start in the folder it was handed
 (`startFolder`, `startingIn`): the run's `cwd` (a sandbox folder, relative
 to `/workspace`), else its one worktree, clone or granted folder when it has
 exactly one, else `/workspace`. A `cwd` it can't reach fails the run. The
-prompt's workspace section names that folder, so `grep -r x modules` in
+prompt's workspace section and Pi's `<cwd>` section name that folder, so `grep -r x modules` in
 `/workspace/repos/<name>` works as a person would type it. Claude Code
 starts there too. Commands on a machine start where they always do.
 

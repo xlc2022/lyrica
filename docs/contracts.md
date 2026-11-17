@@ -1456,7 +1456,9 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   build the top from the sections as they are then, and record what she has
   then as a `lyrica-top` custom entry (`pi.appendEntry`, not sent to the
   model), so those sections aren't sent again as updates. Pi's own sections (`preamble`,
-  `cwd`) follow its options as before.
+  `cwd`) follow its options as before. The workspace extension sets Pi's
+  `cwd` option to the folder her commands start in (docs/workspace.md), not
+  lyricad's folder on the host, so it stays the same from turn to turn.
 - **Turn tool limits** (`extension/src/turn-tools.ts`, installed first by
   `openThreadSession`): one prompt/agent run, including model continuations
   and nested tool calls, permits at most 2,500 attempted tool calls

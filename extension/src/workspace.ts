@@ -727,6 +727,8 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
       const options = event.systemPromptOptions;
       const git = gitSection(tools, problems);
       const start = await Promise.resolve().then(() => tools.target().cwd()).catch(() => WORKDIR);
+      // Pi's own <cwd> section is the session's folder, lyricad's on the host, which her tools never see: name theirs.
+      options.cwd = start;
       options.sections = { ...options.sections, workspace: describe(tools, start), ...(git ? { git } : {}) };
     });
   };
