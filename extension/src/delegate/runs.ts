@@ -1164,7 +1164,7 @@ export class Delegation {
         // no repositories, so a narrowed or read-only subagent, or a writer in a worktree, can't change them.
         // A project chat's subagent is read-only as the chat is, so delegating can't make what the chat may not.
         // No proxmox either: a hypervisor's power is the thread's own to use, whatever a role's tool list says.
-        const { setMode: _own, cloneRepositories: _fetched, addRepository: _asks, startJob: _bg, jobs: _jobs, jobOutput: _out, stopJob: _stop, proxmox: _pve, ...tools } = workspace.forThread({ ...p, threadId: child.id, reposOf: parent.threadId, reposReadOnly: noMachines || coordinates, ...(coordinates ? { coordinates } : {}) });
+        const { setMode: _own, cloneRepositories: _fetched, addRepository: _asks, startJob: _bg, jobs: _jobs, jobOutput: _out, stopJob: _stop, proxmox: _pve, ...tools } = workspace.forThread({ ...p, threadId: child.id, reposOf: parent.threadId, sharesAs: owner, reposReadOnly: noMachines || coordinates, ...(coordinates ? { coordinates } : {}) });
         // Its commands start in the folder it was handed: the run's cwd, else its one checkout, else its own folder.
         // A sandbox that can't start yet (the home isn't mounted) says so at its first call, as before, unless cwd was asked for.
         const start = await Promise.resolve().then(() => startFolder(tools.target(), narrowing.cwd, worktrees.length ? worktrees.map((w) => w.path) : placesOf(tools.settings(), tools.repositories?.() ?? [])))

@@ -1233,7 +1233,9 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   which opens the Files panel with the file in the viewer (`paths.tsx`; a code block is left
   as written). So is a markdown link whose target is a file, not a URL or an
   anchor: an absolute path or `file://` URL as written, a relative one against
-  `/workspace` (`fileTarget`); the panel refuses what she can't reach. In a
+  `/workspace`, each name's escapes decoded except one that would make a `/`,
+  since a thread's folder name holds `%2F` (`fileTarget`); the panel refuses
+  what she can't reach. In a
   project chat, whose `/shared` is its own `shared/`, a `/shared` path opens
   there. An image she writes from a file she can reach shows in the
   message by its thumbnail (`…/files/thumb`, or the image itself where the

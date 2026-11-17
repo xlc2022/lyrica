@@ -8,7 +8,7 @@ import { FileChanges, Users, type ExecutionTarget, type ToolOps } from "@lyrica/
 import { recording } from "@lyrica/extension";
 import { freshKeyring, profile } from "../../core/test/helpers.ts";
 import { applyRemoval, removalPlan, type Entry, type RemovalContext } from "../src/removal.ts";
-import { emptyHome, forgetFiles, forgetWorktree } from "../src/sweep.ts";
+import { emptyHome, forgetFiles, forgetWorktree, sweepSubagentShares } from "../src/sweep.ts";
 
 /** Stands in for the sandbox: the same operations, on the host, in a temp folder. Paths are host paths. */
 function localTarget(cwd: string): ExecutionTarget {
@@ -208,6 +208,24 @@ describe("the sweep of change records", () => {
     expect(readdirSync(join(home, "snapshots"))).toEqual([]);
     expect(readdirSync(join(home, "threads"))).toEqual(["web%2Fu", "web%2Fw"]);
     expect(readdirSync(join(home, "claude"))).toEqual([]);
+  });
+
+  it("takes the empty parts of /shared made for subagents, and keeps one with files, a thread's own and a linked shared", () => {
+    const home = realpathSync(mkdtempSync(join(tmpdir(), "lyrica-sub-shares-")));
+    try {
+      for (const dir of ["threads/web%2Fp/shared/web%2Fs1", "threads/web%2Fp/shared/web%2Fs2", "threads/web%2Fp/shared/web%2Ft", "threads/web%2Fp/shared/uploads"]) mkdirSync(join(home, dir), { recursive: true });
+      writeFileSync(join(home, "threads/web%2Fp/shared/web%2Fs2/notes.md"), "x");
+      const outside = mkdtempSync(join(tmpdir(), "lyrica-outside-"));
+      mkdirSync(join(outside, "web%2Fs3"));
+      mkdirSync(join(home, "threads/web%2Fq"));
+      symlinkSync(outside, join(home, "threads/web%2Fq/shared"));
+      expect(sweepSubagentShares(home, (id) => id.startsWith("web/s"))).toBe(1);
+      expect(readdirSync(join(home, "threads/web%2Fp/shared")).sort()).toEqual(["uploads", "web%2Fs2", "web%2Ft"]);
+      expect(existsSync(join(outside, "web%2Fs3"))).toBe(true);
+      rmSync(outside, { recursive: true, force: true });
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
   });
 
   it("empties a wiped home's folders and its pools' Nix stores, read-only store paths included", () => {
