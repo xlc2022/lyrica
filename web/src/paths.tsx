@@ -27,7 +27,8 @@ export const isUnderWorkdir = (p: string) => p === WORKDIR || p.startsWith(`${WO
 
 /**
  * The file a markdown link or image names, as an absolute path, or nothing for a URL or an anchor: an absolute path
- * or `file://` URL as it is, a relative one against the thread's folder. The Files panel refuses what she can't reach.
+ * or `file://` URL as it is, a relative one against the thread's folder, each name's escapes decoded except `%2F`.
+ * The Files panel refuses what she can't reach.
  */
 export function fileTarget(href: string | undefined): string | undefined {
   if (!href || /^(?:[#?]|\/\/)/.test(href)) return undefined;
@@ -35,7 +36,9 @@ export function fileTarget(href: string | undefined): string | undefined {
   if (/^file:\/\//i.test(p)) p = p.slice(7);
   else if (/^[a-z][a-z\d+.-]*:/i.test(p)) return undefined;
   p = p.replace(/[?#].*$/, "");
-  try { p = decodeURIComponent(p); } catch { /* left as written */ }
+  // Each name decoded on its own, and one whose escapes would make a slash (a thread's part of /shared,
+  // `web%2F20cfd56f`, is named by its encoded id) kept as written: no file's name holds a slash.
+  p = p.split("/").map((s) => { try { const d = decodeURIComponent(s); return d.includes("/") ? s : d; } catch { return s; } }).join("/");
   if (!p) return undefined;
   const parts: string[] = [];
   for (const s of (p.startsWith("/") ? p : `${WORKDIR}/${p}`).split("/")) {

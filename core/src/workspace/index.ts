@@ -516,10 +516,12 @@ export class Workspace {
   /**
    * The thread's own part of /shared (docs/workspace.md, "Handing files
    * over"): `shared/<id>/`, made for it, the one part of /shared it writes.
+   * A subagent writes in its parent's, as it works in its parent's folder, so
+   * the person sees one folder per thread there, named by its title.
    * Whatever another thread left at that name is replaced by the folder.
    */
   sharedOwn(t: WorkspaceThread, shared: string): string {
-    const name = encodeURIComponent(t.threadId);
+    const name = encodeURIComponent(t.reposOf ?? t.threadId);
     const dir = join(shared, name);
     try { if (!lstatSync(dir).isDirectory()) rmSync(dir, { force: true }); } catch { /* not there yet */ }
     try { mkdirSync(dir, { mode: 0o700 }); } catch (err) { if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err; }
@@ -586,7 +588,7 @@ export class Workspace {
         return {
           folder: `${FAMILY_ROOT}/${encodeURIComponent(this.settings(t.userId).folderThread(t.threadId))}`,
           shared,
-          ...!t.coordinates && shared ? { handover: `${SHARED}/${encodeURIComponent(t.threadId)}` } : {},
+          ...!t.coordinates && shared ? { handover: `${SHARED}/${encodeURIComponent(t.reposOf ?? t.threadId)}` } : {},
         };
       },
       settings: () => { const s = this.settings(t.userId).effective(t.threadId); return { ...s, grants: ownGrants(t, s.grants), ...(t.coordinates ? { coordinates: true } : {}) }; },

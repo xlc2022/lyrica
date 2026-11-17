@@ -1077,8 +1077,10 @@ fixed actions, the token never shown to her.
 - **The nightly sweep** (`daemon/src/sweep.ts`), for each user whose home is
   mounted: change records and snapshots older than 30 days, snapshots no
   record names, the folders (with their Claude Code folders and lasting
-  `/tmp`) of threads that no longer exist, and subagent worktrees whose run isn't live and that
-  haven't changed in 30 days. Before
+  `/tmp`) of threads that no longer exist, subagent worktrees whose run isn't live and that
+  haven't changed in 30 days, and the empty parts of a family's `/shared`
+  made for subagents before they wrote in their parent's
+  (`sweepSubagentShares`). Before
   a worktree goes, git's record of it (`.git/worktrees/<name>` in its
   repository) goes too, so git no longer counts its branch as checked out:
   only in a folder the user may grant, and only a record that names that
@@ -1118,7 +1120,11 @@ their subagents, at any depth (`familyRoot`, `WorkspaceSettings.family`).
   folder, mounted at `/shared` in every sandbox of the family
   (`Workspace.sharedDir`, `SandboxSpec.shared`). Each thread writes only in
   its own `/shared/<id>/`, made for it and mounted read-write over the
-  read-only rest (`Workspace.sharedOwn`, `SandboxSpec.sharedOwn`), and the
+  read-only rest (`Workspace.sharedOwn`, `SandboxSpec.sharedOwn`); a
+  subagent writes in its parent's, as it works in its parent's folder. The
+  folder is named by the thread's id with its `/` written `%2F`
+  (`web%2F20cfd56f`), as are the folders at `/thread-workspaces`, and the
+  Files panel shows a project thread's by its title. The
   top thread, whose own folder holds `shared/`, sees that copy read-only
   too (`/workspace/shared`); a
   project chat's is read-only throughout, and what `lyricad` puts there

@@ -28,6 +28,10 @@ describe("a markdown link to a file", () => {
     expect(fileTarget("./sf2-d/build-notes.md")).toBe("/workspace/sf2-d/build-notes.md");
     expect(fileTarget("site/a%20b.html#top")).toBe("/workspace/site/a b.html");
     expect(fileTarget("../../shared/x.png")).toBe("/shared/x.png");
+    // A thread's part of /shared is named by its encoded id: %2F stays, or the link leads to a folder that isn't there.
+    expect(fileTarget("/workspace/shared/web%2F20cfd56f/a%20b.md")).toBe("/workspace/shared/web%2F20cfd56f/a b.md");
+    expect(fileTarget("/thread-workspaces/web%2Fa1b2/report.md")).toBe("/thread-workspaces/web%2Fa1b2/report.md");
+    expect(fileTarget("/shared/web%252F20cfd56f/x.md")).toBe("/shared/web%2F20cfd56f/x.md");
     expect(fileTarget("file:///home/ada/notes.md")).toBe("/home/ada/notes.md");
   });
   it("leaves a URL, an anchor and Lyrica's own links alone", () => {

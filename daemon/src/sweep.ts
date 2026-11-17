@@ -1,4 +1,4 @@
-import { chmodSync, existsSync, lstatSync, readdirSync, readFileSync, realpathSync, rmSync, statSync } from "node:fs";
+import { chmodSync, existsSync, lstatSync, readdirSync, readFileSync, realpathSync, rmdirSync, rmSync, statSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { isMounted, type FileChanges, type Pool } from "@lyrica/core";
@@ -30,6 +30,7 @@ export async function sweepUser(s: Services, userId: string, now = new Date()): 
   const threadsDir = join(home, "threads");
   if (!existsSync(threadsDir)) return counts;
   const exists = threadExists(s, userId);
+  counts.folders += sweepSubagentShares(home, subagents(s, userId));
   const allowed = allowedOf(s, userId);
   const forgetRun = (runDir: string) => forgetRunWorktrees(runDir, allowed);
   const live = new Set((["general", "private"] as const).flatMap((pool) => s.delegation.store.liveRuns(userId, pool)));
@@ -100,6 +101,45 @@ function threadExists(s: Services, userId: string): (id: string) => boolean {
   } finally {
     o.close();
   }
+}
+
+/** Whether a thread with this id is a subagent, in either pool. */
+function subagents(s: Services, userId: string): (id: string) => boolean {
+  const o = s.memory.openOwnerView(userId);
+  try {
+    const ids = new Set([...o.general.listThreads({ includeHidden: true }), ...o.private.listThreads({ includeHidden: true })].filter((t) => t.subagent).map((t) => t.id));
+    return (id) => ids.has(id);
+  } finally {
+    o.close();
+  }
+}
+
+/**
+ * The empty parts of a family's /shared that were made for subagents before
+ * they wrote in their parent's (Workspace.sharedOwn), which the person saw as
+ * folders named by an encoded id. One that holds anything is kept, and so is
+ * one still mounted in a running sandbox. Returns how many went.
+ */
+export function sweepSubagentShares(home: string, subagent: (id: string) => boolean): number {
+  const threads = join(home, "threads");
+  let n = 0;
+  for (const top of existsSync(threads) ? readdirSync(threads) : []) {
+    const shared = join(threads, top, "shared");
+    // A thread can make `shared` a link: only a real folder is looked in.
+    try { if (!lstatSync(shared).isDirectory()) continue; } catch { continue; }
+    for (const name of readdirSync(shared)) {
+      let id: string;
+      try { id = decodeURIComponent(name); } catch { continue; }
+      if (!subagent(id)) continue;
+      const dir = join(shared, name);
+      try {
+        if (!lstatSync(dir).isDirectory() || readdirSync(dir).length) continue;
+        rmdirSync(dir);
+        n++;
+      } catch { /* in use, or changed since: the next sweep looks again */ }
+    }
+  }
+  return n;
 }
 
 /**
