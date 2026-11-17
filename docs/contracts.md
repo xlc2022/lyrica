@@ -3145,7 +3145,14 @@ selfTest(): Promise<string | undefined>   // lyricad calls this at startup
   registers each granted server with Pi's `registerMcpServer` (a command
   one by its command, which Pi never runs), exposure `deferred`, and
   loads Pi's MCP and `tool_search` extensions with no `mcp.json`, no log
-  and Lyrica's transports.
+  and Lyrica's transports. At `session_start` it turns on again every
+  tool of the thread's servers that a `tool_search` result on the branch
+  loaded (`loadedTools(branch)`, compacted entries included), waiting up
+  to `LOADED_WAIT_MS` (10 s) for each such server to list its tools or
+  fail, and again at each turn's start and end for a server that listed
+  late. It turns them on through `bringBack(pi, ctx, names)`
+  (`extension/src/gate.ts`): a tool some reason has off stays off until
+  that reason lets it go.
 - **Codex API:** `lyricad`'s `/api/u/:userId/codex` (`GET`; `DELETE`
   signs out) and `POST …/codex/sign-in` (starts Codex's device sign-in,
   replacing one under way; `409` when `codex` isn't installed), each

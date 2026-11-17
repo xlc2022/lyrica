@@ -1845,7 +1845,10 @@ Decided 2026-10-12 (docs/briefs/mcp.md).
   tool. A server's hints are its own claim: a server the user doesn't trust
   shouldn't be added.
 - **Budget.** MCP tools are deferred, loaded by `tool_search` when she
-  needs one, and count as one tool together (principle 8).
+  needs one, and count as one tool together (principle 8). What she
+  loaded stays loaded for the thread: a new session on it (after idle, a
+  restart or a settings change, and after a compaction) loads those tools
+  again, so she never has to search for them twice.
 - **A call budget, when the service has one** (decided 2026-11-09,
   docs/briefs/mcp-limits.md). A server may carry **Calls per day** and
   **Calls per minute**, both empty by default, which means no limit: a

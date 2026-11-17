@@ -1986,6 +1986,12 @@ lookups (`services.lyrica.mcpNixos`, docs/guides/nixos-mcp.md).
 - **In a session** (`createMcpServersExtension`, `extension/src/mcp.ts`)
   each granted server is registered with Pi's `registerMcpServer`, exposure
   `deferred`, so its tools are loaded by `tool_search` when she needs one.
+  What she loaded stays loaded for the thread: Pi records the loading in
+  the thread, but restores it only for its default tool set, which Lyrica
+  doesn't use, so a new session on the thread turns those tools on again
+  itself (from the `tool_search` results on its branch, compacted ones
+  included), after the server lists them. A server taken from the thread
+  doesn't bring its tools back, and Plan mode keeps a writing tool off.
   Pi's own `mcp.json` files are never read, its `mcp.log` is `/dev/null`,
   and the transport sends the token as a bearer header itself (no
   `${VAR}` or `!command` expansion), refuses redirects, drops servers'

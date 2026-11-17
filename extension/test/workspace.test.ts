@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fauxAssistantMessage, fauxProvider, fauxToolCall } from "@earendil-works/pi-ai";
-import { createAgentSession, DefaultResourceLoader, SessionManager, type AgentSession, type ExtensionAPI, type ExtensionFactory } from "@earendil-works/pi-coding-agent";
+import { createAgentSession, DefaultResourceLoader, SessionManager, SettingsManager, type AgentSession, type ExtensionAPI, type ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import type { ExecutionTarget, ThreadGitRepository, ThreadMachine, ThreadMcpServer, ThreadRepository, ThreadWorkspace, ToolOps } from "@lyrica/core";
 import { Type } from "typebox";
 import { afterEach, describe, expect, it } from "vitest";
@@ -95,6 +95,10 @@ interface Run {
   sandbox?: ExecutionTarget;
   /** The person's yes to a held approval, used once. */
   takeGrant?: ThreadTools["takeGrant"];
+  /** The thread's stored entries, as a session opened on it after an earlier one (a restart, or after idle). */
+  entries?: unknown[];
+  /** Compacts after the turn, keeping only the latest message. */
+  compact?: boolean;
 }
 
 /** Tools any thread has besides the workspace's: memory, and the switched ones, which do nothing here. */
@@ -117,6 +121,7 @@ async function run(mode: ThreadWorkspace["mode"], calls: ReturnType<typeof fauxT
   const offered: string[][] = [];
   const results: string[] = [];
   let session: AgentSession | undefined;
+  let entries: unknown[] = [];
   const faux = fauxProvider({ provider: "faux", models: [{ id: "echo" }] });
   const steps = o.steps ?? [calls];
   faux.setResponses([
@@ -127,6 +132,7 @@ async function run(mode: ThreadWorkspace["mode"], calls: ReturnType<typeof fauxT
     }),
     (_ctx: unknown) => { offered.push(session!.getActiveToolNames()); return fauxAssistantMessage("done"); },
     ...(o.again ? [(_ctx: unknown) => { offered.push(session!.getActiveToolNames()); return fauxAssistantMessage("again"); }] : []),
+    ...(o.compact ? [() => fauxAssistantMessage("summary"), () => fauxAssistantMessage("summary")] : []),
   ]);
   const settings: ThreadWorkspace = {
     grants: [{ path: "/srv/music", writable: false }], internet: false, services: false, hosts: [], mode, webSearch: true, images: true, claudeCode: false, code: false, evidence: "auto",
@@ -170,7 +176,8 @@ async function run(mode: ThreadWorkspace["mode"], calls: ReturnType<typeof fauxT
   });
   await loader.reload();
   ({ session } = await createAgentSession({
-    cwd: dir, agentDir: dir, resourceLoader: loader, sessionManager: SessionManager.inMemory(dir), noTools: "builtin",
+    cwd: dir, agentDir: dir, resourceLoader: loader, sessionManager: SessionManager.inMemory(dir, undefined, (o.entries ?? []) as never), noTools: "builtin",
+    ...(o.compact ? { settingsManager: SettingsManager.inMemory({ compaction: { keepRecentTokens: 1 } }) } : {}),
   }));
   await session.bindExtensions({});
   await session.setModel(faux.getModel());
@@ -180,10 +187,12 @@ async function run(mode: ThreadWorkspace["mode"], calls: ReturnType<typeof fauxT
   try {
     await session.prompt("go");
     if (o.again) await session.prompt("and now?");
+    if (o.compact) await session.compact();
+    entries = session.sessionManager.getEntries();
   } finally {
     session.dispose();
   }
-  return { files, commands, system: system.join("\n"), offered, results, settings };
+  return { files, commands, system: system.join("\n"), offered, results, settings, entries };
 }
 
 it("tells a sandbox command that reaches one of her machines over ssh to name the machine instead", () => {
@@ -943,6 +952,50 @@ describe("MCP servers in a thread", () => {
       await run("bypass", [], { steps: [[search], [turnOn]], mcp: { servers, bypass: true }, approve: async (r) => { asked.push(r); return false; } });
       expect(asked).toEqual([]);
       expect(house.calls.map((c) => c.tool)).toEqual(["get_status", "turn_on", "turn_on"]);
+    } finally {
+      await house.close();
+    }
+  });
+
+  it("keeps the tools she loaded in a session opened on the thread later, after a compaction too", async () => {
+    const house = await testMcpServer();
+    try {
+      const mcp = { servers: [{ name: "house", url: house.url, token: "", description: null }] };
+      const first = await run("auto", [], { steps: [[search]], mcp, compact: true });
+      expect(first.offered[1]).toContain("mcp__house__get_status");
+      expect(first.entries.some((e) => (e as { type: string }).type === "compaction")).toBe(true);
+      // The next turn opens a new session on the stored thread: she calls the tool at once, without searching again.
+      const { offered, results } = await run("auto", [], { steps: [[status]], mcp, entries: first.entries });
+      expect(offered[0]).toContain("mcp__house__get_status");
+      expect(results.join("\n")).toContain("mcp__house__get_status: get_status done");
+      expect(house.calls.map((c) => c.tool)).toEqual(["get_status"]);
+    } finally {
+      await house.close();
+    }
+  });
+
+  it("brings back a loaded writing tool off in Plan mode only once the thread leaves it", async () => {
+    const house = await testMcpServer();
+    try {
+      const mcp = { servers: [{ name: "house", url: house.url, token: "", description: null }] };
+      const first = await run("auto", [], { steps: [[search]], mcp });
+      expect(first.offered[1]).toEqual(expect.arrayContaining(["mcp__house__get_status", "mcp__house__turn_on"]));
+      const plan = await run("plan", [], { steps: [[]], mcp, entries: first.entries });
+      expect(plan.offered[0]).toContain("mcp__house__get_status");
+      expect(plan.offered[0]).not.toContain("mcp__house__turn_on");
+      const auto = await run("auto", [], { steps: [[]], mcp, entries: plan.entries });
+      expect(auto.offered[0]).toEqual(expect.arrayContaining(["mcp__house__get_status", "mcp__house__turn_on"]));
+    } finally {
+      await house.close();
+    }
+  });
+
+  it("doesn't bring back a loaded tool whose server the thread no longer has", async () => {
+    const house = await testMcpServer();
+    try {
+      const first = await run("auto", [], { steps: [[search]], mcp: { servers: [{ name: "house", url: house.url, token: "", description: null }] } });
+      const { offered } = await run("auto", [], { steps: [[]], mcp: { servers: [] }, entries: first.entries });
+      expect(offered[0]?.some((t) => t.startsWith("mcp__"))).toBe(false);
     } finally {
       await house.close();
     }
