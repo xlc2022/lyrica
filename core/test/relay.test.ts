@@ -178,6 +178,8 @@ describe("a run's relay for Git", () => {
       expect(targets).toEqual([`forge.tail1234.ts.net:${port}`]);
       expect((await through(relay, "github.com:443", "/ada/lyrica.git/info/refs", `Basic ${Buffer.from("ada:lyrica_placeholder_github").toString("base64")}`)).status).toBe(404);
       expect(targets).toEqual([`forge.tail1234.ts.net:${port}`]);
+      // Each host gets the Host its client asked for, never a port it wasn't reached on ("github.com:80" redirected forever).
+      expect(seen.map((s) => s.headers.host)).toEqual(["forge.tail1234.ts.net", "github.com"]);
     } finally {
       relay.close();
     }

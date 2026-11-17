@@ -1271,7 +1271,7 @@ export class Workspace {
       const err = out.stderr.toString();
       const state = out.code === 0 ? "signedIn" : gitFailure(err);
       if (state) s.gitAccountState(a.name, state);
-      if (out.code !== 0) problems.push(`${r.name} couldn't be ${/fetch/.test(err) ? "fetched" : "cloned"}: ${lastLine(err)}`);
+      if (out.code !== 0) problems.push(`${r.name} couldn't be ${/fetch/.test(err) ? "fetched" : "cloned"}: ${gitWhy(a.host, err)}`);
       else {
         const problem = await this.setupClone(t, box, r.name, r.path);
         if (problem) problems.push(problem);
@@ -2215,6 +2215,13 @@ function gitFailure(stderr: string): GitAccountState["kind"] | undefined {
 
 /** How long a clone's install may take at the start of a turn. */
 const SETUP_TIMEOUT_MS = 10 * 60_000;
+
+/** Why git failed, in plain words where its own are obscure; otherwise its last line. */
+function gitWhy(host: string, stderr: string): string {
+  // curl's message after git followed 20 redirects: a forge (or a proxy in front of it) that keeps sending it back.
+  if (/Maximum \(\d+\) redirects followed/i.test(stderr)) return `${host} kept redirecting git (a redirect loop), so it gave up; check what the host's web server or proxy sends for this repository's address`;
+  return lastLine(stderr);
+}
 
 const lastLine = (text: string): string => text.trim().split("\n").at(-1)?.replace(/^fatal: /, "").slice(0, 300) || "git failed";
 

@@ -337,7 +337,9 @@ export async function openRelay(spec: RelaySpec): Promise<Relay> {
     const base = new URL(spec.upstreams?.[to] ?? `https://${to}`);
     const secure = base.protocol === "https:";
     const request = secure ? httpsRequest : httpRequest;
-    const out = request({ protocol: base.protocol, hostname: hostname(base.host), port: base.port || undefined, method: req.method, path, headers,
+    // The Host the client asked for, set here: with a connection of its own (tunnelTo) Node has no agent, takes 80 as the
+    // default port and would send "github.com:80" over TLS, which GitHub answered with redirects until git gave up.
+    const out = request({ protocol: base.protocol, hostname: hostname(base.host), port: base.port || undefined, method: req.method, path, headers: { ...headers, host: to },
       ...secure ? { ca: upstreamCAs() } : {}, ...tunnelTo(hostname(base.host), Number(base.port) || (secure ? 443 : 80), secure, to !== ANTHROPIC_HOST) }, (up) => {
       res.writeHead(up.statusCode ?? 502, up.headers);
       // The plan's usage limit: a 429 whose unified rate limit is rejected, with its reset in seconds.

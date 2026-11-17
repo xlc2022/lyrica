@@ -1842,7 +1842,8 @@ come from the user's Git accounts (DESIGN.md, "Updates and self-editing").
   mounted at `/workspace/repos`; a subagent uses its parent's, read-only
   unless it is an unnarrowed writer) or fetches
   it, in the sandbox with that run's credential. A clone that fails is a
-  line in the turn's prompt, not an error. A clone stays when its
+  line in the turn's prompt, not an error, in git's last words except
+  a redirect loop, which says the host kept redirecting git. A clone stays when its
   repository leaves the thread, since it may hold unpushed work; it goes
   with the thread's folder when the sweep removes it. Two threads never
   share a working tree. Each clone then gets its dependencies
@@ -1895,7 +1896,8 @@ come from the user's Git accounts (DESIGN.md, "Updates and self-editing").
   run), and swaps the placeholder for the token only on that repository's
   Git paths (`/<owner>/<name>.git/…`) and its host's API (`api.github.com`
   and `uploads.github.com` for GitHub, `/api/` on GitHub Enterprise,
-  `/api/v1/` on Forgejo and Gitea). A placeholder anywhere else is
+  `/api/v1/` on Forgejo and Gitea). Each request goes on with the `Host`
+  its client sent, also when it goes through her tailscaled's proxy. A placeholder anywhere else is
   refused, and a request without one goes as it is. A **read-only**
   repository (a read-only, narrowed or offline child's or subagent's) is
   held to reading at the relay, whatever the token allows: fetches
