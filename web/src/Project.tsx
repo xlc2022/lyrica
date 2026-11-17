@@ -377,7 +377,7 @@ function Row({ label, hint, htmlFor, children }: { label: string; hint?: string;
   );
 }
 
-/** Goal; Instructions with their count, the link to the project page and Ask first; Group; one Save. */
+/** Goal; Instructions with their count, the link to the project page and Ask first; one Save. Group is set from the sidebar's menu. */
 export function ProjectSection({ ctx, base, summary, onSummary }: SectionProps) {
   const ps = summary.projectSettings;
   const [goal, setGoal] = useState(ps?.draftGoal ?? summary.goal ?? "");
@@ -388,7 +388,6 @@ export function ProjectSection({ ctx, base, summary, onSummary }: SectionProps) 
   const [ask, setAsk] = useState(askNow);
   // She may turn it on herself while the page is open.
   useEffect(() => setAsk(askNow), [askNow]);
-  const [group, setGroup] = useState(summary.group ?? "");
   const [run, busy, error] = useAction();
   const [saved, setSaved] = useState(false);
   const draft = ps?.draftGoal !== undefined || ps?.draftInstructions !== undefined;
@@ -399,7 +398,6 @@ export function ProjectSection({ ctx, base, summary, onSummary }: SectionProps) 
       ...(goal !== (summary.goal ?? "") || ps?.draftGoal !== undefined ? { goal } : {}),
       ...(instructions !== (summary.instructions ?? "") || ps?.draftInstructions !== undefined ? { instructions } : {}),
       ...(ask !== askNow ? { askFirstInstructions: ask } : {}),
-      ...(group !== (summary.group ?? "") ? { group: group || null } : {}),
     };
     if (Object.keys(change).length) onSummary(await patch<ThreadSummary>(base, change));
     setSaved(true);
@@ -416,12 +414,6 @@ export function ProjectSection({ ctx, base, summary, onSummary }: SectionProps) 
           <a className="small" href={href({ page: "memory", userId: ctx.user.id, pool: summary.pool, id: ps!.pageId })} title={`What ${her()} knows about the project, rewritten while she sleeps.`}>Project page</a>
         </div>
         <Switch label="Ask first" hint={`${her()} can change these instructions herself. On, her changes wait here as a draft for you to save.`} checked={ask} onChange={setAsk} />
-      </Row>
-      <Row label="Group" htmlFor="p-group">
-        <select id="p-group" value={group} onChange={(e) => setGroup(e.target.value)}>
-          <option value="">Not in a group</option>
-          {ctx.groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
-        </select>
       </Row>
       <ErrorText error={error} />
       <SaveBar busy={busy} saved={saved}>
