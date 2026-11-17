@@ -64,10 +64,10 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   choice are saved per user (`Display`). Pinned threads come first under a
   **Pinned** eyebrow, whatever the sort. Then the user's groups, under every
   sort: each a row (`.group-head`, a button with `aria-expanded`) with a
-  chevron, the name and its count in mono, folding its threads shut, the
-  threads inside in the sort's order; the folded groups are saved per user
+  chevron, the name (ellipsized) and its count in mono at the row's end, folding its threads shut, the
+  threads inside in the sort's order and not indented; the folded groups are saved per user
   (`Display.folded`), and a folded group with a thread waiting on the user
-  shows an amber dot. Threads in no group follow in the sort's sections. A thread unread for this user
+  shows an amber dot. Threads in no group follow under a thin line, in the sort's sections. A thread unread for this user
   is bold; private threads carry a small lock in the private colour; a
   thread at work (`busy`, `making` while a clip is made after its turn, or a
   project thread's `working` state) pulses its

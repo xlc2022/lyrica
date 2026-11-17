@@ -156,9 +156,10 @@ button.private { color: var(--private); border-color: color-mix(in oklab, var(--
 .side-nav details > div { padding: 4px 8px 8px; }
 .side-nav details input[type="search"] { width: 100%; min-height: 34px; }
 /* The one Sort menu above the threads: the sort choices, then the General, Private and Hidden checkboxes. */
-.thread-tools { display: flex; align-items: center; gap: 4px; padding-inline: 2px; }
+/* It sits on the list as its header: its text under the nav icons, the list close below (the sidebar's gap less 6 px). */
+.thread-tools { display: flex; align-items: center; gap: 4px; margin-bottom: -6px; }
 .showing { position: relative; }
-.showing > summary { list-style: none; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; padding: 6px 8px; min-height: 32px; font-size: 12px; color: var(--accent); border-radius: 8px; }
+.showing > summary { list-style: none; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; min-height: 28px; font-size: 12px; color: var(--accent); border-radius: 8px; }
 .showing > summary::-webkit-details-marker { display: none; }
 .showing > summary:hover { background: color-mix(in oklab, var(--panel) 60%, transparent); }
 .showing > div { position: absolute; left: 0; z-index: 12; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; display: grid; gap: 2px; min-width: 220px; box-shadow: 0 8px 24px rgb(0 0 0 / 0.12); }
@@ -167,19 +168,24 @@ button.private { color: var(--private); border-color: color-mix(in oklab, var(--
 .showing label { display: flex; gap: 8px; align-items: center; min-height: 32px; font-size: 13px; cursor: pointer; }
 .showing .new-group { justify-self: start; margin-top: 2px; }
 /* The strip under the last row keeps the list's own menu (New project, New group) reachable when the list is full. */
-.threads { list-style: none; margin: 0; padding: 0 2px 44px; overflow-y: auto; flex: 1; display: grid; align-content: start; gap: 1px; }
+.threads { list-style: none; margin: 0; padding: 0 2px 44px; overflow-y: auto; flex: 1; display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; gap: 1px; }
 .threads .eyebrow { padding: 10px 8px 4px; display: flex; gap: 6px; align-items: baseline; }
-/* A group of the user's threads: a row that folds its threads shut, its count in mono, amber while folded over one that waits on them. */
-.group-head { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto auto; gap: 6px; align-items: center; width: 100%; min-height: var(--tap); padding: 0 8px 0 0; border: 0; border-radius: 8px; background: transparent; color: var(--fg); font-weight: 500; text-align: left; margin-top: 6px; }
+/* A group of the user's threads: a row that folds its threads shut, its count in mono at the row's end, amber while folded over one that waits on them.
+   Its threads take no indent of their own: a row's dot sits under the group's name. A thin line parts the groups from the threads in none. */
+.group-head { display: flex; justify-content: flex-start; gap: 6px; align-items: center; width: 100%; min-width: 0; min-height: var(--tap); padding: 0 8px 0 0; border: 0; border-radius: 8px; background: transparent; color: var(--fg); font-weight: 500; text-align: left; }
 .group-head:hover { background: color-mix(in oklab, var(--panel) 60%, transparent); border: 0; }
-.group-head .chev-ic { width: 14px; height: 14px; justify-self: center; color: var(--muted); transition: transform 0.15s; }
+.group-head .chev-ic { width: 14px; height: 14px; margin: 0 3px; flex: none; color: var(--muted); transition: transform 0.15s; }
 .group-head[aria-expanded="true"] .chev-ic { transform: rotate(90deg); }
-.group-head .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.group-head .num { font-size: 12px; font-weight: 400; color: var(--muted); }
-.group-head .waits { width: 7px; height: 7px; border-radius: 50%; background: var(--warn); }
-.in-group .threads-in { padding-left: 14px; }
+.group-head .name { display: block; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.group-head .num { margin-left: auto; padding-left: 4px; font-size: 12px; font-weight: 400; color: var(--muted); }
+.group-head .waits { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--warn); }
+.in-group .threads-in { padding-bottom: 4px; }
+.threads > .in-group + .group-rows:not(.in-group) { border-top: 1px solid var(--line); margin-top: 8px; padding-top: 2px; }
 @media (prefers-reduced-motion: reduce) { .group-head .chev-ic { transition: none; } }
-.threads .trow { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 0; flex-wrap: nowrap; align-items: center; }
+.threads .trow { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 0; flex-wrap: nowrap; align-items: center; border-radius: 8px; }
+/* A top-level row's hover and its open-thread fill span the whole row, the arrow's column too, as a group row's hover does. */
+.threads .trow:has(> .thread:hover) { background: color-mix(in oklab, var(--panel) 60%, transparent); }
+.threads .trow:has(> .thread[aria-current="page"]) { background: var(--panel); box-shadow: inset 0 0 0 1px var(--line); }
 .chev { width: 20px; min-height: 0; height: 24px; padding: 0; display: grid; place-items: center; border: 0; background: transparent; color: var(--muted); transition: transform 0.15s; }
 .chev .ic { width: 14px; height: 14px; }
 .chev[aria-expanded="true"] { transform: rotate(90deg); }
@@ -188,6 +194,7 @@ button.private { color: var(--private); border-color: color-mix(in oklab, var(--
 .thread[aria-current="page"] { background: var(--panel); box-shadow: inset 0 0 0 1px var(--line); }
 /* The thread in the panel beside the open one: a thin box, no fill, so the open thread stays the one that's filled. */
 .thread[data-beside] { box-shadow: inset 0 0 0 1px var(--edge); }
+.threads .trow > .thread:hover, .threads .trow > .thread[aria-current="page"] { background: none; box-shadow: none; }
 .thread .title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .thread.unread .title { font-weight: 600; color: var(--accent); }
 .thread .when { display: flex; gap: 6px; align-items: center; font-size: 12px; color: var(--muted); font-family: var(--mono); font-variant-numeric: tabular-nums; }
@@ -803,6 +810,7 @@ dialog::backdrop { background: rgb(0 0 0 / 0.35); }
   .tfacts .link::after, .tcard-count .link::after, .threads-pill > .link::after, .tcard .row a.sm::after, .msg.user.queued .steer::after { content: ""; position: absolute; inset: -9px -6px; }
   .chev { width: 32px; height: 44px; }
   .threads .trow { grid-template-columns: 32px minmax(0, 1fr); }
+  .group-head .chev-ic { margin: 0 9px; }
   button.icon-btn, button.icon.sm { width: 44px; height: 44px; min-height: 44px; }
   .head-actions button.sm { min-height: 44px; min-width: 44px; }
   button.code-copy, button.copy-button, .rich-block .seg button { min-height: 44px; min-width: 44px; }
