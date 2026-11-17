@@ -193,10 +193,8 @@ export class ChildThreads implements ThreadsHost {
       // Machines are reached through bash, which no folder, read-only or network narrowing covers: a narrowed child gets none.
       // Its repositories stay, read-only at the relay, so it can still clone, fetch and read the forge but never push.
       const noMachines = !!req.readOnly || !!req.folders || req.internet === false;
-      // An MCP server isn't narrowed by folders or network either; a read-only child keeps its parent's, whose calls not marked read-only ask.
-      const noMcp = !!req.folders || req.internet === false;
       const readRepos = () => ws.effective(parent.threadId).repositories.map((r) => ({ ...r, readOnly: true }));
-      ws.inheritSettings(parent.threadId, child.id, parent.pool, { grants, ...(req.plan ? { mode: "plan" as const } : {}), ...(req.internet === false ? { internet: false } : {}), ...(noMachines ? { machines: [], repositories: readRepos(), claudeCode: false } : {}), ...(noMcp ? { mcpServers: [] } : {}) });
+      ws.inheritSettings(parent.threadId, child.id, parent.pool, { grants, ...(req.plan ? { mode: "plan" as const } : {}), ...(req.internet === false ? { internet: false } : {}), ...(noMachines ? { machines: [], repositories: readRepos(), mcpServers: [], claudeCode: false } : {}) });
       if (req.code || (project && this.o.project?.(userId, parent.pool, parent.threadId)?.code)) {
         ws.setThreadWork(child.id, { ...(req.base ? { base: true } : {}), worktrees: [] });
         if (!req.base) {

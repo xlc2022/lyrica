@@ -277,6 +277,31 @@ describe("talking with subagents in lyricad", () => {
     }
   });
 
+  it("asks for a read-only subagent's MCP call not marked read-only, even in Bypass with Allow MCP bypass on", async () => {
+    const house = await testMcpServer();
+    try {
+      const { rt, ada, parent, sub, path } = await setup();
+      await ada.post(`/api/u/${rt.ada.id}/mcp-servers`, { name: "house", url: house.url, pool: "general" });
+      await ada.put(`/api/u/${rt.ada.id}/mode`, { bypass: true });
+      await ada.put(`/api/u/${rt.ada.id}/mode`, { mcp: true });
+      await ada.patch(`${path}/settings`, { mode: "bypass", mcpServers: ["house"] });
+      parent.reply({ tools: [{ name: "delegate", args: { task: "look at the lamp", role: "scout", background: true } }] }, { text: "A scout is on it." });
+      sub.respond((r) => {
+        const results = r.messages.filter((m) => m.role === "tool").length;
+        if (results === 0) return { tools: [{ name: "tool_search", args: { query: "turn on" } }] };
+        return results < 2 ? { tools: [{ name: "mcp__house__turn_on", args: { entity: "lamp" } }] } : { text: "Asked." };
+      });
+      const stream = ada.events(`${path}/events`);
+      await ada.post(`${path}/messages`, { text: "look" });
+      await stream.until(is("permission"));
+      expect(permission(stream)).toMatchObject({ tool: "mcp__house__turn_on", server: "house", subagent: { role: "scout" } });
+      expect(house.calls).toEqual([]);
+      stream.close();
+    } finally {
+      await house.close();
+    }
+  });
+
   it("holds a subagent's call nobody answers during its turn, and the person's yes tells the parent, which continues it and the call runs once", async () => {
     const { rt, d, ada, parent, sub, path } = await setup({ permissionMs: 300 });
     await ada.patch(`${path}/settings`, { mode: "ask" });

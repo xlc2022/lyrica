@@ -148,6 +148,22 @@ describe("delegate", () => {
     expect(sent.tools!.map((t) => t.function.name)).not.toContain("proxmox");
   });
 
+  it("names its parent's machines to a read-only subagent, which can ask its parent to run a command there", async () => {
+    let ws!: Workspace;
+    const s = await setup({ workspace: (m) => (ws = new Workspace(m.keyring, m.users, { excludePorts: [] })) });
+    const parent = s.thread();
+    const settings = ws.settings(s.ada.id);
+    settings.addMachine({ name: "nas", host: "127.0.0.1", port: 22, username: "lyrica", privateKey: generateSshKey("test").privateKey, root: null, pool: "general", offNetwork: false }, `SHA256:${"A".repeat(43)}`);
+    settings.setThread(parent.threadId, "general", { mode: "auto", machines: ["nas"] });
+    await s.run(parent, { task: "review the change", role: "reviewer" });
+    const prompt = JSON.stringify(s.cloud.requests.at(-1)!.messages);
+    expect(prompt).toContain("machines, which you can't reach: nas.");
+    expect(prompt).not.toContain("(never ssh to one yourself)");
+    // A writer has the machines itself, so it hears of them as its own.
+    await s.run(parent, { task: "change it", role: "worker" });
+    expect(JSON.stringify(s.cloud.requests.at(-1)!.messages)).not.toContain("which you can't reach");
+  });
+
   it("never widens the parent's folders, switches or hosts", async () => {
     const host = tempDir();
     for (const d of ["a", "b"]) mkdirSync(join(host, d));

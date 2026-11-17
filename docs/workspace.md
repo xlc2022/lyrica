@@ -2062,9 +2062,10 @@ lookups (`services.lyrica.mcpNixos`, docs/guides/nixos-mcp.md).
 - **Approval:** a tool its server marks read-only (`readOnlyHint`) runs
   freely, and only those (with `tool_search`) are on in Plan mode. Every
   other call asks, whatever the mode, with **Allow in this thread** for
-  that tool, except in Bypass permissions with **Allow MCP bypass** on. An offline or folder-narrowed subagent or child thread, or a writer in
-  a worktree, gets no MCP servers; any other, read-only ones included,
-  gets its parent's, and its calls ask in both threads.
+  that tool, except in Bypass permissions with **Allow MCP bypass** on. A narrowed child thread, or an offline or folder-narrowed subagent or a
+  writer in a worktree, gets no MCP servers; any other subagent gets its
+  parent's, and its calls ask in both threads. A read-only subagent's
+  always ask, even under Allow MCP bypass.
 
 ## Claude Code
 

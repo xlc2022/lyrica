@@ -74,9 +74,14 @@ subagent:
   servers unless its internet is off, its folders are narrowed or it is a
   writer in a worktree, since a server is reached past both; a read-only
   one keeps them, so a scout can look things up (NixOS options, eBay
-  listings), and a call its server doesn't mark read-only still asks.
+  listings), and a call its server doesn't mark read-only always asks,
+  even in Bypass permissions with **Allow MCP bypass** on.
   With MCP servers it also gets `tool_search`. The workspace refuses
   anything wider;
+- left without its parent's machines, is told their names in its prompt
+  (`parentMachinesText`) and that to have a command run on one it asks the
+  parent with `ask_parent`; the parent runs it, or not, under its own mode
+  and approvals;
 - gets a short preamble plus its role's prompt instead of Lyrica's persona,
   `recall` and `read_memory` (never `remember`), `ask_parent`, and only the
   tools its role lists.
@@ -447,7 +452,7 @@ checks it reaches her, and with a real model which she picks. Code:
   returns its ID at once, as `[t:<id>]`, which she mentions it by. It gets the parent's model context
   (`models.inheritContext`: pool, local-only, preset, thinking, models) and
   workspace (`inheritSettings`, narrowed by `folders`, `readOnly` and
-  `internet: false`; any of those also leaves it no machines, and `folders` or `internet: false` no MCP servers); the workspace refuses anything wider, and a folder the
+  `internet: false`; any of those also leaves it no machines and no MCP servers); the workspace refuses anything wider, and a folder the
   parent doesn't have is refused. `code: true` turns on its code mode, with
   the first 300 characters of the task as its Code task. It inherits "Do not log" from the store.
   If the child's first turn can't start, the child is forgotten.
