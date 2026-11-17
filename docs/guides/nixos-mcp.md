@@ -16,11 +16,30 @@ above over the internet; the two local actions stay on the machine.
 
 ## Run it beside her (NixOS)
 
-```nix
-services.lyrica.mcpNixos = true;
-```
+1. **Turn it on in the configuration of the machine Lyrica runs on.** The
+   line goes next to your existing `services.lyrica.enable = true;`. If
+   you followed [getting-started.md](getting-started.md), that line is in
+   the modules list of `/etc/nixos/flake.nix`, so make that block:
 
-Then `nixos-rebuild switch`. The module runs `lyrica-mcp-nixos.service`:
+   ```nix
+   {
+     services.lyrica.enable = true;
+     services.lyrica.mcpNixos = true;
+   }
+   ```
+
+   If your `services.lyrica.enable` line is in `configuration.nix` (or
+   another file the system imports), add the second line there instead.
+   It only works in the system that also imports
+   `lyrica.nixosModules.default`.
+2. **Rebuild:** `sudo nixos-rebuild switch --flake /etc/nixos#lyrica`
+   (your configuration's name after the `#`).
+3. **Add it in Lyrica** under Settings → **MCP servers** at
+   `http://127.0.0.1:8001/mcp` ([Add it in Lyrica](#add-it-in-lyrica)).
+   Nothing fills the address in for her, so she can't use it until you
+   do.
+
+What the rebuild sets up: the module runs `lyrica-mcp-nixos.service`,
 nixpkgs' `mcp-nixos` in HTTP mode on `127.0.0.1:8001` (endpoint
 `http://127.0.0.1:8001/mcp`), as a dynamic user with `nix` on its path and
 a cache under `/var/cache/lyrica-mcp-nixos`, so its flake-inputs action
@@ -28,8 +47,7 @@ can run `nix flake archive` on a flake of this machine. That action needs
 the flake's directory named in the call (its `source`, for example
 `/etc/nixos`; the unit's own working directory is `/`), and the `flakes`
 and `nix-command` features on in the system's `nix.settings`.
-`nix/check-host.sh` checks that it answers. Nothing fills the address in
-for her: add it as below.
+`nix/check-host.sh` checks that it answers.
 
 ## Run it on another machine
 

@@ -851,12 +851,20 @@ of the same section: [wikipedia.md](wikipedia.md).
 
 ## Give her Nix and NixOS lookups
 
-On NixOS, `services.lyrica.mcpNixos = true` runs mcp-nixos, an MCP server
-that looks up NixOS packages and options, Home Manager options, flakes and
-Nix function docs, and reads the machine's own flake inputs and Nix store.
-Add it once under Settings, **MCP servers** as a General server at
-`http://127.0.0.1:8001/mcp`, then grant it to the threads or projects that
-should have it: [nixos-mcp.md](nixos-mcp.md).
+On NixOS, mcp-nixos is an MCP server that looks up NixOS packages and
+options, Home Manager options, flakes and Nix function docs, and reads the
+machine's own flake inputs and Nix store. To run it:
+
+1. Add `services.lyrica.mcpNixos = true;` beside
+   `services.lyrica.enable = true;` in the modules list of
+   `/etc/nixos/flake.nix` (step 6 of the NixOS install), or wherever your system sets
+   `services.lyrica.enable`.
+2. `sudo nixos-rebuild switch --flake /etc/nixos#lyrica`.
+3. Add it under Settings, **MCP servers** as a General server at
+   `http://127.0.0.1:8001/mcp`, then grant it to the threads or projects
+   that should have it.
+
+Details: [nixos-mcp.md](nixos-mcp.md).
 
 ## Give her eBay
 
