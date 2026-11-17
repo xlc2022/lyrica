@@ -248,24 +248,83 @@ describe("talking with subagents in lyricad", () => {
     }
   });
 
-  it("gives a read-only subagent none of its parent's MCP servers", async () => {
+  it("gives a read-only subagent its parent's MCP servers, and an offline one none", async () => {
     const house = await testMcpServer();
     try {
       const { rt, d, ada, parent, sub, path } = await setup();
       await ada.post(`/api/u/${rt.ada.id}/mcp-servers`, { name: "house", url: house.url, pool: "general" });
       await ada.patch(`${path}/settings`, { mcpServers: ["house"] });
+      const ws = d.services!.workspace.settings(rt.ada.id);
+      const run = async (args: Record<string, unknown>, text: string) => {
+        parent.reply({ tools: [{ name: "delegate", args: { task: "look at the lamp", role: "scout", ...args } }] }, { text: "Done." });
+        sub.reply({ text: "Looked." });
+        const stream = ada.events(`${path}/events`);
+        await ada.post(`${path}/messages`, { text });
+        await stream.until(is("turn_end"));
+        stream.close();
+        return { offered: (sub.requests.at(-1)!.tools ?? []).map((t) => t.function.name), servers: ws.thread(started(stream).threadId).mcpServers };
+      };
+      // Read-only: the server and tool_search, so it can look things up; a call not marked read-only still asks.
+      const scout = await run({}, "look");
+      expect(scout.offered).toContain("tool_search");
+      expect(scout.servers).toEqual(["house"]);
+      // Offline: none, since a server is reached outside its sandbox's network.
+      const offline = await run({ internet: false }, "look offline");
+      expect(offline.offered.some((t) => t === "tool_search" || t.startsWith("mcp__"))).toBe(false);
+      expect(offline.servers).toEqual([]);
+    } finally {
+      await house.close();
+    }
+  });
+
+  it("runs a read-only subagent's MCP call without a card when the tool is allowed in its parent's thread, or in Bypass with Allow MCP bypass on", async () => {
+    const house = await testMcpServer();
+    try {
+      const { rt, d, ada, parent, sub, path, thread } = await setup();
+      await ada.post(`/api/u/${rt.ada.id}/mcp-servers`, { name: "house", url: house.url, pool: "general" });
+      await ada.patch(`${path}/settings`, { mode: "auto", mcpServers: ["house"] });
+      const scout = async (text: string) => {
+        parent.reply({ tools: [{ name: "delegate", args: { task: "look at the lamp", role: "scout" } }] }, { text: "Done." });
+        sub.respond((r) => {
+          const results = r.messages.filter((m) => m.role === "tool").length;
+          if (results === 0) return { tools: [{ name: "tool_search", args: { query: "turn on" } }] };
+          return results < 2 ? { tools: [{ name: "mcp__house__turn_on", args: { entity: "lamp" } }] } : { text: "Looked." };
+        });
+        const stream = ada.events(`${path}/events`);
+        await ada.post(`${path}/messages`, { text });
+        await stream.until(is("turn_end"));
+        stream.close();
+        return stream.events.filter((e) => e.event.type === "permission").length;
+      };
+      // Allowed in the parent's thread: the person's yes covers the scout working for it.
+      d.services!.workspace.settings(rt.ada.id).allowToolInThread(thread.id, "house", "turn_on");
+      expect(await scout("look")).toBe(0);
+      expect(house.calls).toHaveLength(1);
+    } finally {
+      await house.close();
+    }
+  });
+
+  it("runs a read-only subagent's MCP call without a card in Bypass with Allow MCP bypass on", async () => {
+    const house = await testMcpServer();
+    try {
+      const { rt, ada, parent, sub, path } = await setup();
+      await ada.post(`/api/u/${rt.ada.id}/mcp-servers`, { name: "house", url: house.url, pool: "general" });
+      await ada.put(`/api/u/${rt.ada.id}/mode`, { bypass: true });
+      await ada.put(`/api/u/${rt.ada.id}/mode`, { mcp: true });
+      await ada.patch(`${path}/settings`, { mode: "bypass", mcpServers: ["house"] });
       parent.reply({ tools: [{ name: "delegate", args: { task: "look at the lamp", role: "scout" } }] }, { text: "Done." });
-      sub.reply({ text: "Looked." });
+      sub.respond((r) => {
+        const results = r.messages.filter((m) => m.role === "tool").length;
+        if (results === 0) return { tools: [{ name: "tool_search", args: { query: "turn on" } }] };
+        return results < 2 ? { tools: [{ name: "mcp__house__turn_on", args: { entity: "lamp" } }] } : { text: "Looked." };
+      });
       const stream = ada.events(`${path}/events`);
       await ada.post(`${path}/messages`, { text: "look" });
       await stream.until(is("turn_end"));
       stream.close();
-      const offered = (sub.requests[0]!.tools ?? []).map((t) => t.function.name);
-      expect(offered.some((t) => t === "tool_search" || t.startsWith("mcp__"))).toBe(false);
-      const scout = started(stream).threadId;
-      expect(d.services!.workspace.settings(rt.ada.id).thread(scout).mcpServers).toEqual([]);
-      // The parent itself has tool_search.
-      expect((parent.requests[0]!.tools ?? []).map((t) => t.function.name)).toContain("tool_search");
+      expect(stream.events.some((e) => e.event.type === "permission")).toBe(false);
+      expect(house.calls).toHaveLength(1);
     } finally {
       await house.close();
     }

@@ -58,8 +58,8 @@ Reply with: a two or three sentence answer; numbered findings, each with its sou
   {
     name: "reviewer",
     description: "Reviews code, a plan or a result, and reports findings with evidence.",
-    tier: "cheap", tools: READ, readOnly: true, thinking: "high",
-    prompt: `You are the reviewer. Inspect, evaluate and report findings with evidence. Verify from the code, tests, docs or requirements; don't guess.
+    tier: "cheap", tools: [...READ, "web_search", "web_fetch"], readOnly: true, thinking: "high",
+    prompt: `You are the reviewer. Inspect, evaluate and report findings with evidence. Verify from the code, tests, docs or requirements, and from an official source on the web when a claim rests on one; don't guess.
 - For a change: does it do what was intended, handle edge cases, keep tests passing, and stay minimal and readable?
 - For a plan or proposal: is it feasible and complete, does it fit what exists, is there something simpler?
 Don't change anything. Report only problems you can support with evidence, each with its location and the smallest fix, ranked P0 (blocks), P1 (fix before release) or P2 (note).
