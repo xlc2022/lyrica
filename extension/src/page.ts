@@ -52,7 +52,8 @@ export function pageTool(tools: ThreadTools, check: (id: string, input: Record<s
     promptSnippet: "preview an HTML page (screenshot, errors, pixel stats), bundle it into one file, check it loads nothing from elsewhere, or publish it as an artifact",
     promptGuidelines: ["Check a page with page preview, not a screenshot script of your own; read its errors before its pixels.",
       "When the person wants one file, page bundle it, then preview the bundle.",
-      "page publish a finished page, drawing or document the person will keep or come back to, not every scratch file; publish the same file again after changing it."],
+      "page publish a finished page, drawing or document the person will keep or come back to, not every scratch file; publish the same file again after changing it.",
+      "When the person asks to see a file, never read it and type it out again in your reply: give its path, which opens it for them as it is now."],
     parameters: pageParameters,
     async execute(id, p: PageArgs, signal) {
       check(id, p);

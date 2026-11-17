@@ -694,6 +694,8 @@ export class Sandbox implements ExecutionTarget {
       },
       write: {
         writeFile,
+        // Never through a symlink, as WRITE.
+        appendFile: async (p, content) => { await this.file(["sh", "-c", 'if [ -L "$1" ]; then echo "$1 is a symlink; not writing through it" >&2; exit 1; fi; exec cat >> "$1"', "sh", this.allow(p, true)], content); },
         mkdir: async (dir) => { await this.file(["mkdir", "-p", "--", this.allow(dir, true)]); },
       },
       edit: {

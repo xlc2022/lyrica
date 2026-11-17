@@ -123,6 +123,24 @@ export class SshTarget implements ExecutionTarget {
     }
   }
 
+  async readChunks(path: string, chunk: number, o: { onSize: (size: number) => void; onChunk: (piece: Buffer) => Promise<void>; signal?: AbortSignal }): Promise<void> {
+    const p = await this.inside(path);
+    const s = await this.session();
+    // The file itself, past any symlink, must be a regular file: a device or a pipe (/dev/zero) has no end to copy to.
+    const st = await s.lstat(await this.resolved(p));
+    if (!st) throw new Error(`${p} is missing on ${this.cfg.name}`);
+    if (st.file !== true || typeof st.size !== "number") throw new Error(`${p} isn't a regular file on ${this.cfg.name}`);
+    o.onSize(st.size);
+    // Read up to the size it had: a file that grows meanwhile is copied as it was when the copy began.
+    for (let at = 0; at < st.size;) {
+      if (o.signal?.aborted) throw new Error("aborted");
+      const piece = await s.readHead(p, Math.min(chunk, st.size - at), at);
+      if (!piece.length) break;
+      await o.onChunk(piece);
+      at += piece.length;
+    }
+  }
+
   /** Keeps read, write and edit inside the root, following remote symlinks. */
   private async inside(path: string): Promise<string> {
     const p = cleanPath(path);

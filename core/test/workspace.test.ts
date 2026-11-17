@@ -1,5 +1,5 @@
 import { execFileSync, spawn } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, truncateSync, writeFileSync } from "node:fs";
 import { connect, createServer, type Server } from "node:net";
 import { networkInterfaces, tmpdir, userInfo } from "node:os";
 import { join } from "node:path";
@@ -794,6 +794,20 @@ describe.skipIf(!helperRunnable)("an ssh target", () => {
       symlinkSync("/etc", join(dir, "root", "etc"));
       await expect(ops.read.readFile(join(dir, "root", "etc", "hostname"))).rejects.toThrow(/leads outside/);
       await expect(ops.write.writeFile(join(dir, "root", ".ssh", "authorized_keys"), "x")).rejects.toThrow(/SSH's or sudo's/);
+      // A file past the read limit, or one that isn't a regular file (a pipe would never end), is refused before it is read.
+      const big = join(dir, "root", "big.bin");
+      writeFileSync(big, "");
+      truncateSync(big, 65 * 1024 * 1024);
+      await expect(ops.read.readFile(big)).rejects.toThrow(/larger than 64 MB/);
+      execFileSync("mkfifo", [join(dir, "root", "pipe")]);
+      await expect(ops.read.readFile(join(dir, "root", "pipe"))).rejects.toThrow(/isn't a regular file/);
+      // copy reads in pieces: the size first, then each piece, never the whole file at once; a pipe is refused.
+      const pieces: number[] = [];
+      let sized = 0;
+      await target.readChunks(big, 16 * 1024 * 1024, { onSize: (n) => { sized = n; }, onChunk: async (b) => { pieces.push(b.length); } });
+      expect(sized).toBe(65 * 1024 * 1024);
+      expect(pieces).toEqual([16, 16, 16, 16, 1].map((m) => m * 1024 * 1024));
+      await expect(target.readChunks(join(dir, "root", "pipe"), 1024, { onSize: () => {}, onChunk: async () => {} })).rejects.toThrow(/isn't a regular file/);
       target.close();
       const impostor = new SshTarget({ ...target["cfg"], hostKey: `SHA256:${"B".repeat(43)}` }, helper());
       await expect(impostor.ops().read.readFile(file)).rejects.toThrow(/ssh local: its host key changed/);

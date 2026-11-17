@@ -2592,6 +2592,34 @@ for Internet or an allowed host. `proxmox` is the tool for
 Proxmox machines ([above](#proxmox)). The memory tool
 is `read_memory`, so it doesn't clash with `read`.
 
+**`copy`** (`extension/src/copy.ts`) copies one file, up to 2 GiB
+(`COPY_LIMIT`), from one of her SSH machines into
+`/workspace/copied/<machine>/` under the path it has on the machine
+(`copyDestination`), so `/home/ada/report.md` on `box` lands at
+`/workspace/copied/box/home/ada/report.md`. Copying again replaces that
+copy; `keep: true` puts the new one beside it, its name ending in the time
+(`report-20261117-0438.md`). lyricad reads the file in 8 MiB pieces
+(`COPY_CHUNK`, through the machine's `readChunks`, which refuses anything
+that isn't a regular file) and writes each piece to the sandbox as it
+comes (`write`, then `appendFile`), so at most one piece is ever in memory
+and the bytes never reach her context. A file that holds a private key's
+armour (`PRIVATE KEY-----`, seen across piece boundaries too) is refused
+rather than masked, and a copy cut short is left empty, never looking
+whole. She gets one line naming the copy, and gives that path in her
+reply for the person to open in the file viewer (Markdown rendered, code,
+images, clips, PDFs). The gate treats it as the machine's call asked as a
+`write`: the stricter of the thread's mode and the machine's limit, the
+first-call-on-another-place ask, and the same-file hold on the
+destination (not for `keep`, which makes a new file); SSH's and sudo's
+files are never copied; the approval is bound to the machine, its
+folder, `path` and `keep`. A copy of one piece is undone with its turn; a
+larger one is not (the undo record would hold the whole file), and is
+deleted from the Files panel instead. It is off in Plan mode and while
+the thread has no SSH machine. Her prompt says to write reports for the
+person in her own folder rather than on a machine, to copy a machine's
+file to show it, to copy again when the person asks after it changed, and
+never to read a file and type it out again in her reply.
+
 **`page`** (`extension/src/page.ts`, `core/src/workspace/page.ts`) works on
 an HTML page in the sandbox, so a thread doesn't write its own screenshot
 script, PNG decoder or bundler:

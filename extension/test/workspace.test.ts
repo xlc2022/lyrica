@@ -38,7 +38,7 @@ function fakeTarget(files: Map<string, string>, commands: string[], machine?: st
   const write = async (p: string, c: string) => { files.set(p, c); };
   const ops: ToolOps = {
     read: { readFile: read, access: async (p) => { await read(p); }, detectImageMimeType: async () => null },
-    write: { writeFile: write, mkdir: async () => {} },
+    write: { writeFile: write, appendFile: async (p, c) => { files.set(p, (files.get(p) ?? "") + c.toString()); }, mkdir: async () => {} },
     edit: { readFile: read, writeFile: write, access: async (p) => { await read(p); } },
     bash: { exec: async (command, _cwd, { onData, onRaw, timeout }) => {
       // Output past the cap: she gets its start and end with the cut's marker, as capOutput gives; the whole goes to onRaw.
@@ -49,7 +49,14 @@ function fakeTarget(files: Map<string, string>, commands: string[], machine?: st
       timeouts.push(timeout); commands.push(machine ? `${machine}: ${command}` : command); onData(Buffer.from("ran\n")); return { exitCode: 0 };
     } },
   };
-  return { name: machine ? `ssh:${machine}` : "sandbox", cwd: async () => "/workspace", ops: () => ops, folders: () => [], secrets: () => secrets };
+  // A machine's file in pieces, as the SSH target gives them; "/dev/zero" stands for anything that isn't a regular file.
+  const readChunks: ExecutionTarget["readChunks"] = async (p, chunk, o) => {
+    if (p === "/dev/zero") throw new Error(`${p} isn't a regular file on ${machine}`);
+    const all = await read(p);
+    o.onSize(p === "/big.mkv" ? 3 * 1024 ** 3 : all.length);
+    for (let at = 0; at < all.length; at += chunk) await o.onChunk(all.subarray(at, at + chunk));
+  };
+  return { name: machine ? `ssh:${machine}` : "sandbox", cwd: async () => "/workspace", ops: () => ops, folders: () => [], secrets: () => secrets, ...(machine ? { readChunks } : {}) };
 }
 
 interface Run {
@@ -1283,6 +1290,66 @@ describe("the page tool", () => {
     expect(one(/^page: Published version 2 of a1 /)).toHaveLength(1);
     expect(one(/An artifact is an .html, .svg, .md, .jsx or .tsx file/)).toHaveLength(1);
     expect(results).toContain('page: a1 "The site" (html, version 2, from /workspace/site/one.html)');
+  });
+
+  it("copies a file from a machine into copied/<machine>/ without it reaching her context", async () => {
+    const asked: ApprovalRequest[] = [];
+    const held: string[] = [];
+    const box = { name: "box", kind: "ssh" as const, limit: "auto" as const, root: null };
+    const report = "# Sweep\n\nNothing hostile found.\n";
+    const { files, results } = await run("acceptEdits", [], {
+      steps: [[fauxToolCall("copy", { machine: "box", path: "/home/ada/report.md" }, { id: "1" })],
+        [fauxToolCall("copy", { machine: "box", path: "/home/ada/report.md", keep: true }, { id: "2" })],
+        [fauxToolCall("copy", { machine: "pve", path: "/x" }, { id: "3" })],
+        [fauxToolCall("copy", { machine: "box", path: "/home/ada/id.txt" }, { id: "4" })],
+        [fauxToolCall("copy", { machine: "box", path: "/big.mkv" }, { id: "5" })],
+        [fauxToolCall("copy", { machine: "box", path: "/dev/zero" }, { id: "6" })]],
+      files: { "/home/ada/report.md": report, "/home/ada/id.txt": `x\n-----BEGIN OPENSSH PRIVATE KEY-----\nabc\n`, "/big.mkv": "x" },
+      machines: [box, { name: "pve", kind: "proxmox", limit: "auto", root: null }],
+      approve: async (r) => { asked.push(r); return true; }, sameFile: (path) => { held.push(path); return undefined; },
+    });
+    expect(String(files.get("/workspace/copied/box/home/ada/report.md"))).toBe(report);
+    // keep: true adds one beside it, its name ending in the time.
+    const kept = [...files.keys()].filter((k) => /^\/workspace\/copied\/box\/home\/ada\/report-\d{8}-\d{4}\.md$/.test(k));
+    expect(kept).toHaveLength(1);
+    expect(String(files.get(kept[0]!))).toBe(report);
+    // Only a copy that replaces one is held for another thread's change.
+    expect(held).toEqual(["/workspace/copied/box/home/ada/report.md", "/workspace/copied/pve/x", "/workspace/copied/box/home/ada/id.txt", "/workspace/copied/box/big.mkv", "/workspace/copied/box/dev/zero"]);
+    // Accept edits doesn't ask for a write.
+    expect(asked).toEqual([]);
+    expect(results[0]).toBe("copy: Copied box:/home/ada/report.md to /workspace/copied/box/home/ada/report.md (1 KiB). Give /workspace/copied/box/home/ada/report.md in your reply to show it.");
+    expect(results.join("\n")).not.toContain("Nothing hostile");
+    expect(results[2]).toMatch(/pve is a Proxmox machine/);
+    expect(results[3]).toBe("copy: box:/home/ada/id.txt holds a private key, so it isn't copied.");
+    expect(files.has("/workspace/copied/box/home/ada/id.txt")).toBe(false);
+    expect(results[4]).toBe("copy: box:/big.mkv is 3.0 GiB; copy takes at most 2 GiB.");
+    expect(results[5]).toMatch(/isn't a regular file/);
+  });
+
+  it("writes a large copy in pieces, and empties one cut short", async () => {
+    const box = { name: "box", kind: "ssh" as const, limit: "auto" as const, root: null };
+    const big = "a".repeat(8 * 1024 * 1024) + "b".repeat(10);
+    const { files, results } = await run("auto", [fauxToolCall("copy", { machine: "box", path: "/clip.mp4" }, { id: "1" })], { files: { "/clip.mp4": big }, machines: [box] });
+    expect(results[0]).toMatch(/^copy: Copied box:\/clip.mp4 to \/workspace\/copied\/box\/clip.mp4 \(8.0 MiB\)/);
+    expect(String(files.get("/workspace/copied/box/clip.mp4"))).toBe(big);
+    const cut = await run("auto", [fauxToolCall("copy", { machine: "box", path: "/clip.mp4" }, { id: "1" })],
+      { files: { "/clip.mp4": "a".repeat(8 * 1024 * 1024) + "-----BEGIN RSA PRIVATE KEY-----" }, machines: [box] });
+    expect(cut.results[0]).toMatch(/holds a private key/);
+    expect(String(cut.files.get("/workspace/copied/box/clip.mp4"))).toBe("");
+  });
+
+  it("asks before a copy where write asks, and isn't offered without an SSH machine or in Plan mode", async () => {
+    const asked: ApprovalRequest[] = [];
+    const box = { name: "box", kind: "ssh" as const, limit: "auto" as const, root: null };
+    await run("ask", [fauxToolCall("copy", { machine: "box", path: "/home/ada/a.png" }, { id: "1" })],
+      { files: { "/home/ada/a.png": "png" }, machines: [box], approve: async (r) => { asked.push(r); return true; } });
+    expect(asked.map((r) => [r.tool, r.machine, r.input.path])).toEqual([["copy", "box", "/home/ada/a.png"]]);
+    const { offered } = await run("auto", [fauxToolCall("read", { path: "notes.txt" }, { id: "1" })]);
+    expect(offered[0]).not.toContain("copy");
+    const { offered: plan } = await run("plan", [fauxToolCall("read", { path: "notes.txt" }, { id: "1" })], { machines: [box] });
+    expect(plan[0]).not.toContain("copy");
+    const { offered: auto } = await run("auto", [fauxToolCall("read", { path: "notes.txt" }, { id: "1" })], { machines: [box] });
+    expect(auto[0]).toContain("copy");
   });
 
   it("has no artifacts where the thread gives none, such as a subagent", async () => {

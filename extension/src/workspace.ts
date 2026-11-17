@@ -11,6 +11,7 @@ import { Type } from "typebox";
 import { setToolsOff } from "./gate.ts";
 import { proxmoxTool } from "./proxmox.ts";
 import { bundleOut, pageTool } from "./page.ts";
+import { copyDestination, copyTool } from "./copy.ts";
 
 /** What the workspace tools need for one thread. `Workspace` from core provides it. */
 /** An artifact as her page tool says it (docs/briefs/artifacts.md). */
@@ -273,7 +274,7 @@ export function sshRefusal(machine: string, fromItself: boolean): string {
 }
 
 const shown = (tool: string, input: Record<string, unknown>, machine: string | undefined, cwd: string | undefined) =>
-  JSON.stringify([tool, machine ?? null, cwd ?? null, tool === "bash" || tool === "proxmox" ? suspectKey(tool, input) : tool === "page" ? [input.action, input.path, input.out] : input.path]);
+  JSON.stringify([tool, machine ?? null, cwd ?? null, tool === "bash" || tool === "proxmox" ? suspectKey(tool, input) : tool === "page" ? [input.action, input.path, input.out] : tool === "copy" ? [input.path, input.keep === true] : input.path]);
 
 /**
  * The tools whose whole call is its command, action or path (`shown`). A
@@ -356,6 +357,7 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
     // proxmox is offered only while the thread has a Proxmox machine. An MCP tool its server marks read-only stays on in Plan mode.
     const off = () => [...toolsOff(tools.settings(), pi.getAllTools().filter((t) => !(t.name.startsWith("mcp__") && t.annotations?.readOnlyHint === true)).map((t) => t.name)),
       ...(tools.proxmox && !tools.machines?.().some((m) => m.kind === "proxmox") ? ["proxmox"] : []),
+      ...(!tools.machines?.().some((m) => m.kind !== "proxmox") ? ["copy"] : []),
       ...(tools.addRepository && !tools.gitAccounts?.().length ? ["add_repository"] : [])];
     const gate = (ctx: ExtensionContext) => setToolsOff(pi, ctx, "workspace", off());
     /** What each approved call was approved for, by tool call. */
@@ -464,6 +466,7 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
     }
 
     pi.registerTool(pageTool(tools, (id, input) => bound(id, "page", input)));
+    pi.registerTool(copyTool(tools, (id, input, machine, cwd) => bound(id, "copy", input, machine, cwd)));
     if (tools.proxmox) pi.registerTool(proxmoxTool(tools.proxmox, (id, { machine, ...rest }) => bound(id, "proxmox", rest, machine as string)));
 
     if (tools.startJob && tools.jobs && tools.jobOutput && tools.stopJob) {
@@ -618,7 +621,9 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
       }
       const pve = event.toolName === "proxmox";
       const page = event.toolName === "page";
-      const place = event.toolName in TOOLS ? (input.machine as string | undefined) || "sandbox" : pve ? String(input.machine) : page ? "sandbox" : undefined;
+      // copy reads on its machine and writes in the sandbox: it is the machine's call, asked as a write.
+      const copy = event.toolName === "copy";
+      const place = event.toolName in TOOLS ? (input.machine as string | undefined) || "sandbox" : pve || copy ? String(input.machine) : page ? "sandbox" : undefined;
       // A file another thread just changed is held before anyone is asked, so a held change is never one the person approved.
       // A command is held the same way for the files it plainly writes (its redirections and tee); the sweep after it finds the rest.
       if (place === "sandbox" && tools.sameFile) {
@@ -632,6 +637,12 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
           if (held) return { block: true, reason: held };
         }
       }
+      if (copy && tools.sameFile && typeof input.path === "string") {
+        // keep: true makes a new file, so only a copy that replaces one can meet another thread's change.
+        const from = await Promise.resolve().then(() => tools.target(String(input.machine)).cwd()).catch(() => "/");
+        const held = input.keep === true ? undefined : tools.sameFile(copyDestination(String(input.machine), posix.resolve(from, input.path)), false);
+        if (held) return { block: true, reason: held };
+      }
       const named = place && place !== "sandbox" ? tools.machines?.().find((m) => m.name === place) : undefined;
       const machine = named && (named.kind === "proxmox") === pve ? named : undefined;
       // A machine of the other kind is the thread's: the refusal names the tool that reaches it, so she doesn't ask for a machine she has.
@@ -643,10 +654,10 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
       // A Proxmox action that reads asks like read, and one that powers like bash; Plan mode only reads.
       const reads = pve && PROXMOX_READS.has(input.action as ProxmoxAction);
       if (pve && mode === "plan" && !reads) return { block: true, reason: "Plan mode only reads: proxmox status, list and snapshots." };
-      const as = pve ? (reads ? "read" : "bash") : page ? (input.action === "bundle" ? "write" : "read") : event.toolName;
+      const as = pve ? (reads ? "read" : "bash") : page ? (input.action === "bundle" ? "write" : "read") : copy ? "write" : event.toolName;
       // SSH's and sudo's files are off limits to write and edit on a machine in every mode, so there is nothing to ask about.
       if (machine && !pve && (as === "write" || as === "edit") && typeof input.path === "string" && onFloor(posix.resolve(await tools.target(machine.name).cwd(), input.path))) {
-        return { block: true, reason: `${input.path} is SSH's or sudo's; write and edit never change it on a machine.` };
+        return { block: true, reason: copy ? `${input.path} is SSH's or sudo's; copy never takes it from a machine.` : `${input.path} is SSH's or sudo's; write and edit never change it on a machine.` };
       }
       // A delete or move ShellCheck finds malformed goes back to her to fix, before anyone is asked.
       if (event.toolName === "bash") { const malformed = await malformedCommand(String(input.command)); if (malformed) return { block: true, reason: malformed }; }

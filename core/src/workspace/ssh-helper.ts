@@ -59,7 +59,7 @@ function connect(head: Frame["head"]): void {
   });
 }
 
-const statsOf = (st: Stats) => ({ mode: st.mode, uid: st.uid, gid: st.gid, symlink: st.isSymbolicLink() });
+const statsOf = (st: Stats) => ({ mode: st.mode, uid: st.uid, gid: st.gid, symlink: st.isSymbolicLink(), size: st.size, file: st.isFile() });
 
 /** One SFTP or exec request. Replies with the same id: `ok`, or `error` with SFTP's status code. */
 function request(id: number, head: Frame["head"], body: Buffer): void {
@@ -75,6 +75,8 @@ function request(id: number, head: Frame["head"], body: Buffer): void {
       // Refused here rather than as an oversized frame, which would end the connection.
       return s.stat(path, (err, st) => {
         if (err) return done(err);
+        // A device or a pipe has no size to check and may never end (/dev/zero): only a regular file is read.
+        if (!st.isFile()) return done(new Error(`${path} isn't a regular file`));
         if (st.size > MAX_BODY) return done(new Error(`${path} is larger than ${MAX_BODY / 1024 / 1024} MB`));
         s.readFile(path, (err2, data) => {
           if (err2) return done(err2);
@@ -86,8 +88,9 @@ function request(id: number, head: Frame["head"], body: Buffer): void {
     case "head": {
       return s.open(path, "r", (err, handle) => {
         if (err) return done(err);
-        const buf = Buffer.alloc(Number(head.length));
-        s.read(handle, buf, 0, buf.length, 0, (err2, n) => s.close(handle, () => done(err2, {}, buf.subarray(0, n))));
+        // A range of the file: its head, or one piece of a copy (at most a frame's body).
+        const buf = Buffer.alloc(Math.min(Number(head.length), MAX_BODY));
+        s.read(handle, buf, 0, buf.length, Number(head.offset ?? 0), (err2, n) => s.close(handle, () => done(err2, {}, buf.subarray(0, n))));
       });
     }
     case "access": {
