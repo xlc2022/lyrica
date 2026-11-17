@@ -17,14 +17,14 @@ export type FileHref = (path: string) => string | undefined;
 const LANG_NAMES: Record<string, string> = { json: "JSON", javascript: "JavaScript", typescript: "TypeScript", python: "Python", yaml: "YAML", xml: "HTML", css: "CSS", ini: "TOML", sql: "SQL" };
 const langName = (k: Kind): string => (k.kind === "markdown" ? "Markdown" : k.kind === "code" ? LANG_NAMES[k.lang] ?? k.lang : "");
 
-/** Keeps a box scrolled to its end as text arrives, unless the person scrolled up to read. */
-function useFollow<T extends HTMLElement>(dep: unknown) {
+/** While `streaming`, keeps a box scrolled to its end as text arrives, unless the person scrolled up; a whole one opens at its top. */
+function useFollow<T extends HTMLElement>(dep: unknown, streaming: boolean) {
   const ref = useRef<T>(null);
   const atEnd = useRef(true);
   useLayoutEffect(() => {
     const el = ref.current;
-    if (el && atEnd.current) el.scrollTop = el.scrollHeight;
-  }, [dep]);
+    if (el && streaming && atEnd.current) el.scrollTop = el.scrollHeight;
+  }, [dep, streaming]);
   const onScroll = () => {
     const el = ref.current;
     if (el) atEnd.current = el.scrollHeight - el.scrollTop - el.clientHeight < 8;
@@ -34,8 +34,8 @@ function useFollow<T extends HTMLElement>(dep: unknown) {
 
 /** A block of text with a strip: a file's name (a link into Files) or the language, and Copy. */
 function Block({ text, kind, title, href, copyLabel, plain }: { text: string; kind: Kind; title?: string; href?: string; copyLabel: string; plain?: boolean }) {
-  const pre = useFollow<HTMLPreElement>(text);
-  const prose = useFollow<HTMLDivElement>(text);
+  const pre = useFollow<HTMLPreElement>(text, Boolean(plain));
+  const prose = useFollow<HTMLDivElement>(text, Boolean(plain));
   const head = title ?? langName(kind);
   return (
     <div className="read-text tool-block" data-kind={kind.kind === "code" ? "code" : kind.kind === "markdown" ? "markdown" : "wrapped"}>
