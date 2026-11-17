@@ -707,7 +707,8 @@ server's `nix` and `nix_versions` tools (or search.nixos.org) for every
 option and package she writes. The install runs from the NixOS installer
 ISO, added as a machine with **Account: Mine** and user `nixos` (it has sudo
 without a password): she checks the disks and firmware, asks the person
-once for the disk, partitions, flake or not and names (their own user is
+once for the disk, partitions, flake or not and names (never a made-up
+name or time zone as a default; their own user is
 in `wheel` unless they choose a root password, so someone can be root
 after the reboot), follows the manual's partitioning,
 `nixos-generate-config`, `nix flake lock` for a flake, and `nixos-install
