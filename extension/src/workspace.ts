@@ -274,7 +274,7 @@ export function sshRefusal(machine: string, fromItself: boolean): string {
 }
 
 const shown = (tool: string, input: Record<string, unknown>, machine: string | undefined, cwd: string | undefined) =>
-  JSON.stringify([tool, machine ?? null, cwd ?? null, tool === "bash" || tool === "proxmox" ? suspectKey(tool, input) : tool === "page" ? [input.action, input.path, input.out] : tool === "copy" ? [input.path, input.to] : input.path]);
+  JSON.stringify([tool, machine ?? null, cwd ?? null, tool === "bash" || tool === "proxmox" ? suspectKey(tool, input) : tool === "page" ? [input.action, input.path, input.out] : tool === "copy" ? [input.path, input.keep === true] : input.path]);
 
 /**
  * The tools whose whole call is its command, action or path (`shown`). A
@@ -638,7 +638,9 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
         }
       }
       if (copy && tools.sameFile && typeof input.path === "string") {
-        const held = tools.sameFile(copyDestination(await tools.target().cwd(), input as { path: string; to?: string }), false);
+        // keep: true makes a new file, so only a copy that replaces one can meet another thread's change.
+        const from = await Promise.resolve().then(() => tools.target(String(input.machine)).cwd()).catch(() => "/");
+        const held = input.keep === true ? undefined : tools.sameFile(copyDestination(String(input.machine), posix.resolve(from, input.path)), false);
         if (held) return { block: true, reason: held };
       }
       const named = place && place !== "sandbox" ? tools.machines?.().find((m) => m.name === place) : undefined;
@@ -655,7 +657,7 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
       const as = pve ? (reads ? "read" : "bash") : page ? (input.action === "bundle" ? "write" : "read") : copy ? "write" : event.toolName;
       // SSH's and sudo's files are off limits to write and edit on a machine in every mode, so there is nothing to ask about.
       if (machine && !pve && (as === "write" || as === "edit") && typeof input.path === "string" && onFloor(posix.resolve(await tools.target(machine.name).cwd(), input.path))) {
-        return { block: true, reason: `${input.path} is SSH's or sudo's; write and edit never change it on a machine.` };
+        return { block: true, reason: copy ? `${input.path} is SSH's or sudo's; copy never takes it from a machine.` : `${input.path} is SSH's or sudo's; write and edit never change it on a machine.` };
       }
       // A delete or move ShellCheck finds malformed goes back to her to fix, before anyone is asked.
       if (event.toolName === "bash") { const malformed = await malformedCommand(String(input.command)); if (malformed) return { block: true, reason: malformed }; }

@@ -1967,6 +1967,13 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     the point inside the frame plus where each frame around it starts.
   - `ExecutionTarget.run?(argv, { signal?, timeoutMs?, cwd? })` runs argv with no
     shell under the target's own rules; the sandbox has it.
+  - `ExecutionTarget.readChunks?(path, chunk, { onSize, onChunk, signal? })` (an SSH
+    machine's) gives a regular file's size, then the file in pieces of at most
+    `chunk` bytes, up to the size it had when it began (the helper's `lstat`
+    reports `size` and `file`; its `head` reads from an `offset`); a device or
+    pipe is refused. Pieces are not masked. `ToolOps.write.appendFile?(path,
+    content)` (the sandbox's) adds to a file, never through a symlink. Both
+    serve `copy`.
   - `ExecutionTarget.secrets?()` is the sandbox's tokens and placeholders
     (core/src/workspace/ops.ts): `bash` output (`secretMasker`), `read` and
     `web_fetch` pages (`maskSecrets`) show `SECRET_HIDDEN` for each, and the

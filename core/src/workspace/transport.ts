@@ -22,7 +22,7 @@ export interface SshEndpoint {
   privateKey: string;
 }
 
-export interface RemoteStat { uid: number; gid: number; mode: number; symlink: boolean }
+export interface RemoteStat { uid: number; gid: number; mode: number; symlink: boolean; /** Bytes, and whether it is a regular file: given by the helper. */ size?: number; file?: boolean }
 
 /** Thrown for a path that doesn't exist, by every transport. */
 export class RemoteMissing extends Error { readonly code = "ENOENT"; }
@@ -38,8 +38,8 @@ export interface SshSession {
   /** Undefined when nothing is there. */
   lstat(path: string): Promise<RemoteStat | undefined>;
   readFile(path: string): Promise<Buffer>;
-  /** The first `n` bytes. */
-  readHead(path: string, n: number): Promise<Buffer>;
+  /** `n` bytes from `offset` (the first `n` when left out); fewer at the end of the file. */
+  readHead(path: string, n: number, offset?: number): Promise<Buffer>;
   /** Opens and closes the file, to check it can be read ("r") or written ("r+"). */
   check(path: string, mode: "r" | "r+"): Promise<void>;
   writeFile(path: string, content: string | Buffer, mode?: number): Promise<void>;
@@ -367,14 +367,15 @@ function sessionOf(h: Helper, home: string, closed: (() => void)[]): SshSession 
     lstat: async (path) => {
       try {
         const st = (await call({ op: "lstat", path })).head.stats as Record<string, unknown> | undefined;
-        return { uid: Number(st?.uid), gid: Number(st?.gid), mode: Number(st?.mode), symlink: st?.symlink === true };
+        return { uid: Number(st?.uid), gid: Number(st?.gid), mode: Number(st?.mode), symlink: st?.symlink === true,
+          ...(typeof st?.size === "number" ? { size: st.size } : {}), ...(typeof st?.file === "boolean" ? { file: st.file } : {}) };
       } catch (err) {
         if (isMissing(err)) return undefined;
         throw err;
       }
     },
     readFile: async (path) => (await call({ op: "readFile", path })).body,
-    readHead: async (path, length) => (await call({ op: "head", path, length })).body.subarray(0, length),
+    readHead: async (path, length, offset) => (await call({ op: "head", path, length, ...(offset ? { offset } : {}) })).body.subarray(0, length),
     check: async (path, mode) => { await call({ op: "access", path, mode }); },
     writeFile: async (path, content, mode) => { await call({ op: "writeFile", path, mode }, Buffer.from(content)); },
     chmod: async (path, mode) => { await call({ op: "chmod", path, mode }); },

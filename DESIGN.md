@@ -1661,10 +1661,12 @@ NAS, and Proxmox nodes. Decided 2026-10-11 from
   internet switch and allowed hosts cover the sandbox only: a machine's
   network is its own.
 - **Showing a machine's file goes through her folder** (the user asked,
-  2026-11-17). `copy` brings a file from a machine into her thread's
-  folder without the bytes entering her context, and she gives its path;
-  the file viewer shows it, whatever it is. A changed original is copied
-  again when the user asks, replacing the copy or beside it. Both ends are
+  2026-11-17). `copy` brings a file of up to 2 GiB from a machine into
+  `copied/<machine>/` in her thread's folder, under its path there, piece
+  by piece so it never sits whole in memory and never enters her context,
+  and she gives its path; the file viewer shows it, whatever it is. A
+  changed original is copied again when the user asks, replacing the copy
+  or beside it. A file holding a private key is not copied. Both ends are
   the thread's own pool, so nothing crosses a pool. Reports for the user
   are written in her folder, not on the machine.
 - **Root stays with the user.** She never holds a password or writes
