@@ -1135,7 +1135,9 @@ export class Delegation {
       let closeBrowser = () => {};
       if (workspace) {
         let owner = parent.threadId;
-        while (view.own.getThread(owner)?.subagent && view.own.getThread(owner)?.parent) owner = view.own.getThread(owner)!.parent!;
+        /** The threads it works for, nearest first: its parent, up through any subagents, to the thread that started them. */
+        const above = [owner];
+        while (view.own.getThread(owner)?.subagent && view.own.getThread(owner)?.parent) above.push(owner = view.own.getThread(owner)!.parent!);
         const p = { userId: parent.user.id, pool: parent.pool, threadId: parent.threadId, project: view.own.projectOf(owner) };
         const coordinates = this.coordinates(run);
         let grants = this.grants(run, narrowing);
@@ -1146,7 +1148,7 @@ export class Delegation {
         const noMachines = role.readOnly || narrowing.readOnly || narrowing.internet === false || !!narrowing.folders || worktrees.length > 0;
         // An MCP server is reached from lyricad (a remote one) or from its sandbox's network (a local one), past any folder narrowing,
         // so an offline or folder-narrowed subagent, or a writer in its own worktree, gets none. A read-only one keeps its parent's:
-        // a call its server doesn't mark read-only still asks, in both threads, even under its parent's Allow MCP bypass (DESIGN.md, "MCP servers").
+        // a call its server doesn't mark read-only still asks, in both threads, unless the person chose Bypass with Allow MCP bypass (DESIGN.md, "MCP servers").
         if (noMachines) parentMachines = () => workspace.settings(parent.user.id).effective(parent.threadId).machines;
         const noMcp = narrowing.internet === false || !!narrowing.folders || worktrees.length > 0;
         // Its repositories stay, read-only at the relay: it can read the forge, never push or write to it.
@@ -1187,8 +1189,11 @@ export class Delegation {
             }), release, usedBefore(earlier));
           return this.begin(run, sub, child, pick, narrowing, earlier);
         }
-        const readOnly = role.readOnly || !!narrowing.readOnly;
-        extensions.push(createWorkspaceExtension({ ...tools, ...(readOnly ? { mcpBypass: () => false } : {}), approve: (r) => this.approve(sub!, r) }), createSyntaxExtension({ target: (m) => tools.target(m) }));
+        // An MCP tool the person allowed in a thread it works for runs without asking here too: their yes was for that tool there.
+        const allowedAbove = (server: string, tool: string) => above.some((id) => workspace.settings(parent.user.id).toolAllowedInThread(id, server, tool));
+        extensions.push(createWorkspaceExtension({ ...tools,
+          toolAllowedInThread: (server, tool) => !!tools.toolAllowedInThread?.(server, tool) || allowedAbove(server, tool),
+          approve: (r) => this.approve(sub!, r) }), createSyntaxExtension({ target: (m) => tools.target(m) }));
         // A coder works in its parent's checkouts or its own worktrees, under their repositories' own instructions.
         if (role.name === "coder") rules = () => repoRules(tools.target(), checkoutsOf(tools.settings(), tools.repositories?.() ?? [], worktrees));
         if (workspace.imageFiles) extensions.push(createImageExtension({ models: this.o.models, threadId: child.id,

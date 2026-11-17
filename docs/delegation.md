@@ -74,8 +74,11 @@ subagent:
   servers unless its internet is off, its folders are narrowed or it is a
   writer in a worktree, since a server is reached past both; a read-only
   one keeps them, so a scout can look things up (NixOS options, eBay
-  listings), and a call its server doesn't mark read-only always asks,
-  even in Bypass permissions with **Allow MCP bypass** on.
+  listings), and a call its server doesn't mark read-only asks as its
+  parent's would: always, except in Bypass permissions with **Allow MCP
+  bypass** on, which the person chose for exactly that (decided
+  2026-11-17). A tool the person allowed in this thread, or in a thread
+  above it, runs without asking.
   With MCP servers it also gets `tool_search`. The workspace refuses
   anything wider;
 - left without its parent's machines, is told their names in its prompt
@@ -227,8 +230,10 @@ Ask always asks, and Allow skips sandbox mode prompts. Always allow on its
 command card saves lyricad's computed prefix for the whole project.
 
 An MCP call that its server doesn't mark read-only asks the same way in
-every mode, shown in both threads; **Allow in this thread** holds for that
-tool in the subagent's thread only.
+every mode but Bypass permissions with **Allow MCP bypass** on, shown in
+both threads. **Allow in this thread** holds for that tool in the
+subagent's thread; one given in its parent's thread, or further up,
+covers the subagent too.
 
 ## Roles
 

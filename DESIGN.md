@@ -1857,8 +1857,9 @@ Decided 2026-10-12 (docs/briefs/mcp.md).
   tool. A server's hints are its own claim: a server the user doesn't trust
   shouldn't be added. A read-only subagent keeps its parent's servers
   (decided 2026-11-17, so scouts and reviewers can use lookups such as
-  NixOS's), and its calls not marked read-only always ask, Allow MCP
-  bypass or not; an offline or folder-narrowed subagent, a writer in a
+  NixOS's), and its calls not marked read-only ask as its parent's do
+  (not in Bypass with Allow MCP bypass, which the owner wants silent;
+  not for a tool allowed in a thread above it); an offline or folder-narrowed subagent, a writer in a
   worktree and a narrowed child thread get none, since a server is
   reached outside the sandbox's folders and, for a remote one, its
   network.
