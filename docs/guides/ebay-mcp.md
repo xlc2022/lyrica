@@ -30,8 +30,8 @@ needed.
 
 The server needs no sign-in of your own eBay account: the keyset is all
 it uses for browsing. (Its user-token mode, for private data such as
-orders, takes a refresh token in `EBAY_REFRESH_TOKEN`; Lyrica passes it
-on like any other variable.)
+orders, takes `EBAY_TOKEN_TYPE=user` and a refresh token in
+`EBAY_REFRESH_TOKEN`; Lyrica passes them on like any other variable.)
 
 ## Install it where her sandboxes see it
 
@@ -61,7 +61,9 @@ Under Settings → **MCP servers**, **Add server**:
 
 - Name: `ebay` (or any name).
 - Command: `ebay-mcp-server`.
-- Environment:
+- Environment (both are required: without them the server stops as it
+  starts, and the check says "The program stopped: Token configuration
+  error: EBAY_CLIENT_ID and EBAY_CLIENT_SECRET are required…"):
 
   ```
   EBAY_CLIENT_ID=<your App ID>
@@ -89,7 +91,9 @@ searches go out through the thread's own network, so the thread needs
 The environment is never shown again; **Replace environment** behind ⋯
 sets a new keyset. The variables eBay's README lists work the same way:
 `EBAY_API_ENV` (`production`, the default), `EBAY_REQUIRED_SCOPES`,
-`EBAY_REFRESH_TOKEN`.
+`EBAY_TOKEN_TYPE`, `EBAY_REFRESH_TOKEN`. The check doesn't reach eBay (it
+runs with no network), so a wrong keyset passes it and shows as a 401 on
+her first search.
 
 ## What to expect
 

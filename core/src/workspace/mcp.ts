@@ -378,6 +378,42 @@ export function keepResult(result: unknown): unknown {
   return { ...r, content: [{ type: "text", text }, ...images] };
 }
 
+/**
+ * The line of a program's stderr that says why it stopped, cut to 300
+ * characters: the last that names an error (`Error: …`, `TypeError: …`,
+ * `Error [ERR_…]: …`), from the error's name on (a bare `Error: ` left
+ * off), else the last that isn't a stack frame or Node's version footer. A Node program that throws ends
+ * its stderr with stack frames, so its last line alone says nothing.
+ * Plain string search, no regex: the text is the program's.
+ */
+export function whyItStopped(stderr: string): string | undefined {
+  const lines = stderr.split("\n").map((l) => l.trim()).filter((l) => l && !l.startsWith("at ") && !l.startsWith("Node.js v"));
+  for (const whole of lines.toReversed()) {
+    const at = errorName(whole);
+    if (at < 0) continue;
+    const line = whole.slice(at);
+    return (line.startsWith("Error: ") ? line.slice(7) : line).slice(0, 300);
+  }
+  return lines.at(-1)?.slice(0, 300);
+}
+
+/** Where `<Name>Error: ` or `<Name>Error [CODE]: ` starts in a line, or -1. */
+function errorName(line: string): number {
+  let close = -2; // the next "]", found once and reused, so the search stays linear
+  for (let i = line.indexOf("Error"); i >= 0; i = line.indexOf("Error", i + 5)) {
+    let end = i + 5;
+    if (line[end] === " " && line[end + 1] === "[") {
+      if (close !== -1 && close < end) close = line.indexOf("]", end + 2);
+      if (close > end) end = close + 1;
+    }
+    if (line[end] !== ":" || line[end + 1] !== " ") continue;
+    let start = i;
+    while (start > 0 && /[A-Za-z0-9_$.]/.test(line.charAt(start - 1))) start--;
+    return start;
+  }
+  return -1;
+}
+
 /** What a check found: the server answered `initialize` and `tools/list`. */
 export interface McpProbe {
   tools: number;
@@ -408,10 +444,11 @@ async function probe(transport: McpTransport, place: string, stderr?: () => stri
     return { tools: tools.length, description: line ? line.slice(0, 200) : null };
   } catch (err) {
     const state = mcpFailure(err);
-    // A local server's own last words, one line, say more than "closed" does: a missing key, a program not found.
-    const said = stderr?.().trim().split("\n").filter(Boolean).at(-1)?.slice(0, 300);
+    // A local server's own words on why it stopped say more than "closed" does: a missing key, a program not found.
+    const said = stderr ? whyItStopped(stderr()) : undefined;
     throw new McpServerProblem(state, state === "rejected" ? `${place} rejected the token`
-      : `${place === LOCAL_HOST ? "the program" : place} didn't answer as an MCP server: ${(err as Error).message}${said ? ` (it said: ${said})` : ""}`);
+      : said ? `the program stopped: ${said}`
+      : `${place === LOCAL_HOST ? "the program" : place} didn't answer as an MCP server: ${(err as Error).message}`);
   } finally {
     await client.close().catch(() => {});
   }
