@@ -1139,15 +1139,20 @@ export class Delegation {
         let grants = this.grants(run, narrowing);
         if (role.readOnly || narrowing.readOnly) grants = grants.map((g) => ({ ...g, writable: false }));
         if (worktrees.length) grants = worktreeGrants(grants, worktrees);
-        // A machine is reached through bash, and an MCP server from lyricad, which no sandbox mount or network rule narrows:
+        // A machine is reached through bash, which no sandbox mount or network rule narrows:
         // a read-only, offline or folder-narrowed subagent, or a writer in its own worktree, gets none.
         const noMachines = role.readOnly || narrowing.readOnly || narrowing.internet === false || !!narrowing.folders || worktrees.length > 0;
+        // An MCP server is reached from lyricad (a remote one) or from its sandbox's network (a local one), past any folder narrowing,
+        // so an offline or folder-narrowed subagent, or a writer in its own worktree, gets none. A read-only one keeps its parent's:
+        // a call its server doesn't mark read-only still asks, in both threads (DESIGN.md, "MCP servers").
+        const noMcp = narrowing.internet === false || !!narrowing.folders || worktrees.length > 0;
         // Its repositories stay, read-only at the relay: it can read the forge, never push or write to it.
         const readRepos = () => workspace.settings(parent.user.id).effective(parent.threadId).repositories.map((r) => ({ ...r, readOnly: true }));
         // Offline means web_search too: SearXNG is asked from lyricad, not the sandbox.
         workspace.inheritSettings(p, child.id, {
           grants, ...(narrowing.internet === false ? { internet: false, webSearch: false } : {}),
-          ...(noMachines ? { machines: [], repositories: readRepos(), mcpServers: [], ...(claude ? {} : { claudeCode: false }) } : {}),
+          ...(noMachines ? { machines: [], repositories: readRepos(), ...(claude ? {} : { claudeCode: false }) } : {}),
+          ...(noMcp ? { mcpServers: [] } : {}),
         });
         // Its settings follow its parent's as they are now (the stricter mode, switches off where theirs are); it can't leave Plan mode itself.
         // It works in its parent's clones, which the parent fetched at its turn's start; read-only when it gets

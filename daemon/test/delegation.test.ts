@@ -248,24 +248,30 @@ describe("talking with subagents in lyricad", () => {
     }
   });
 
-  it("gives a read-only subagent none of its parent's MCP servers", async () => {
+  it("gives a read-only subagent its parent's MCP servers, and an offline one none", async () => {
     const house = await testMcpServer();
     try {
       const { rt, d, ada, parent, sub, path } = await setup();
       await ada.post(`/api/u/${rt.ada.id}/mcp-servers`, { name: "house", url: house.url, pool: "general" });
       await ada.patch(`${path}/settings`, { mcpServers: ["house"] });
-      parent.reply({ tools: [{ name: "delegate", args: { task: "look at the lamp", role: "scout" } }] }, { text: "Done." });
-      sub.reply({ text: "Looked." });
-      const stream = ada.events(`${path}/events`);
-      await ada.post(`${path}/messages`, { text: "look" });
-      await stream.until(is("turn_end"));
-      stream.close();
-      const offered = (sub.requests[0]!.tools ?? []).map((t) => t.function.name);
-      expect(offered.some((t) => t === "tool_search" || t.startsWith("mcp__"))).toBe(false);
-      const scout = started(stream).threadId;
-      expect(d.services!.workspace.settings(rt.ada.id).thread(scout).mcpServers).toEqual([]);
-      // The parent itself has tool_search.
-      expect((parent.requests[0]!.tools ?? []).map((t) => t.function.name)).toContain("tool_search");
+      const ws = d.services!.workspace.settings(rt.ada.id);
+      const run = async (args: Record<string, unknown>, text: string) => {
+        parent.reply({ tools: [{ name: "delegate", args: { task: "look at the lamp", role: "scout", ...args } }] }, { text: "Done." });
+        sub.reply({ text: "Looked." });
+        const stream = ada.events(`${path}/events`);
+        await ada.post(`${path}/messages`, { text });
+        await stream.until(is("turn_end"));
+        stream.close();
+        return { offered: (sub.requests.at(-1)!.tools ?? []).map((t) => t.function.name), servers: ws.thread(started(stream).threadId).mcpServers };
+      };
+      // Read-only: the server and tool_search, so it can look things up; a call not marked read-only still asks.
+      const scout = await run({}, "look");
+      expect(scout.offered).toContain("tool_search");
+      expect(scout.servers).toEqual(["house"]);
+      // Offline: none, since a server is reached outside its sandbox's network.
+      const offline = await run({ internet: false }, "look offline");
+      expect(offline.offered.some((t) => t === "tool_search" || t.startsWith("mcp__"))).toBe(false);
+      expect(offline.servers).toEqual([]);
     } finally {
       await house.close();
     }
