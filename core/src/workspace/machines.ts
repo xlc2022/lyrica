@@ -155,7 +155,8 @@ export function shellLines(words: string[]): { lines: string[]; sure: boolean } 
     const w = words[i]!;
     const plain = !/^[-+]/.test(w) || w === "-";
     if (w === "--" || plain) {
-      const at = w === "--" ? i + 1 : i;
+      // bash reads a lone `-` as `--`, and POSIX sh ignores it: either way the next word runs.
+      const at = w === "--" || w === "-" ? i + 1 : i;
       if (c) { if (words[at] !== undefined) { lines.push(words[at]!); script = true; } break; }
       const later = words.findIndex((x, k) => k > i && /^-[A-Za-z]*c[A-Za-z]*$/.test(x));
       if (later < 0) break;
