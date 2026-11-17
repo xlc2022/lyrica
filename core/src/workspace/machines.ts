@@ -139,25 +139,35 @@ export const SHELLS = new Set(["sh", "bash", "rbash", "dash", "ash", "zsh", "ksh
 const SHELL_VALUE_OPTIONS = new Set(["--rcfile", "--init-file"]);
 
 /**
- * The command line a shell's words run with `-c`, wherever `-c` stands among its options: alone (`bash -c`),
+ * The command lines a shell's words run: its `-c` line, wherever `-c` stands among its options: alone (`bash -c`),
  * in a group (`bash -ec`, `sh -xc`, `bash -lc`) or after others (`bash -e -c`, `bash -o pipefail -c`). As the
- * shell does, it is the first word after the options. `words` start at the shell; undefined without `-c`.
+ * shell does, it is the first word after the options. fish's `--command` and its `-C`/`--init-command` lines count
+ * too. `words` start at the shell. An option this doesn't know may take a value (`zsh --emulate sh -c …`), so when
+ * a plain word comes before any `-c`, a later `-c` still counts: a false card on `bash x.sh -c y` is the cheap side.
  */
-export function shellScript(words: string[]): string | undefined {
-  let c = false;
-  for (let i = 1; i < words.length; i++) {
+export function shellLines(words: string[]): string[] {
+  const lines: string[] = [];
+  const fish = posix.basename(words[0] ?? "") === "fish";
+  let c = false, i = 1;
+  for (; i < words.length; i++) {
     const w = words[i]!;
-    if (w === "--" || w === "-") return c ? words[i + 1] : undefined;
-    // fish names it in full: `fish --command 'rm …'` or `--command='rm …'`.
-    if (w === "--command") return words[i + 1];
-    if (w.startsWith("--command=")) return w.slice("--command=".length);
-    if (!/^[-+]/.test(w)) return c ? w : undefined;
+    if (w === "--" || w === "-") { i++; break; }
+    if (w === "--command" || (fish && w === "--init-command")) { if (words[i + 1] !== undefined) lines.push(words[++i]!); continue; }
+    const named = /^--(?:command|init-command)=/.exec(w);
+    if (named && (fish || w.startsWith("--command="))) { lines.push(w.slice(named[0].length)); continue; }
+    if (!/^[-+]/.test(w)) break;
     if (w.startsWith("--")) { if (SHELL_VALUE_OPTIONS.has(w)) i++; continue; }
     if (w[0] === "-" && w.includes("c")) c = true;
+    if (fish && w[0] === "-" && w.endsWith("C") && words[i + 1] !== undefined) { lines.push(words[++i]!); continue; }
     // Each `o` or `O` in a group takes a word of its own, in order (`bash -oc pipefail 'rm …'`).
     i += w.length - w.replace(/[oO]/g, "").length;
   }
-  return undefined;
+  if (c) { if (words[i] !== undefined) lines.push(words[i]!); }
+  else {
+    const later = words.findIndex((w, k) => k >= i && /^-[A-Za-z]*c[A-Za-z]*$/.test(w));
+    if (later >= 0 && words[later + 1] !== undefined) lines.push(words[later + 1]!);
+  }
+  return lines;
 }
 
 const assigns = (w: string) => /^[A-Za-z_][A-Za-z0-9_]*=/.test(w);
@@ -282,8 +292,7 @@ function parse(command: string): string[][] {
     const current = words; words = [];
     commands.push(current);
     const shell = current.findIndex(w => SHELLS.has(posix.basename(w)));
-    const script = shell >= 0 ? shellScript(current.slice(shell)) : undefined;
-    if (script) commands.push(...parse(script));
+    if (shell >= 0) for (const line of shellLines(current.slice(shell))) commands.push(...parse(line));
     for (let i = 0; i < current.length; i++) if (["-exec", "-execdir", "-ok"].includes(current[i]!)) {
       const nested = current.slice(i + 1);
       if (nested.length) commands.push(nested);

@@ -401,7 +401,8 @@ describe("suspect commands", () => {
   it("read a shell's -c line wherever -c stands among its options", () => {
     for (const c of ["bash -ec 'rm -rf /'", "bash -lc 'rm -rf /'", "sh -xc reboot", "sudo bash -ec 'parted -s /dev/sda mklabel gpt && mkfs.ext4 /dev/sda1'",
       "env FOO=1 dash -euc 'mkfs.ext4 /dev/sdb1'", "zsh -ic reboot", "bash -e -c reboot", "bash -o pipefail -c reboot", "bash -oc pipefail reboot", "bash -co pipefail reboot", "bash -O extglob -c reboot", "bash --norc -xc reboot",
-      "/bin/sh -c -e reboot", "sudo -u root /usr/bin/bash -lec 'rm -rf ~'", "fish --command reboot", "fish --command=reboot"]) {
+      "/bin/sh -c -e reboot", "sudo -u root /usr/bin/bash -lec 'rm -rf ~'", "fish --command reboot", "fish --command=reboot",
+      "zsh --emulate sh -c 'rm -rf /'", "fish -C 'rm -rf /' -c true", "fish --init-command=reboot -c true", "bash x.sh -c reboot"]) {
       expect(suspectCommand(c), c).toBeDefined();
     }
     // The line is the first word after the options; the rest are its arguments, not commands.
