@@ -1138,7 +1138,9 @@ their subagents, at any depth (`familyRoot`, `WorkspaceSettings.family`).
   `/shared` at all (`ThreadTools.family`).
 - Another line names where commands start and relative paths resolve:
   `/workspace`, or a subagent's start folder (docs/delegation.md, "Where
-  commands start").
+  commands start"). Pi's own `<cwd>` section names the same folder: the
+  extension sets Pi's `cwd` option to it, since the session's own folder is
+  lyricad's on the host, which the sandbox doesn't have.
 - Another line (`LINK_LINE`), in every thread and the project chat, tells
   her a `/workspace` or `/shared` path is a link the person can open, and to
   link a file by its absolute path, never a relative one (docs/web.md, Chat).

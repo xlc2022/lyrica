@@ -286,6 +286,8 @@ describe("workspace tools in a Pi session", () => {
     expect(system).toContain("Internet for commands: off.");
     expect(system).toContain("Hosts you may reach: nas.lan:8080.");
     expect(system).toContain("don't mirror or proxy them");
+    // Pi's own cwd line names where her tools run, not lyricad's folder on the host, which the sandbox doesn't have.
+    expect(system).toContain("<cwd>\\n/workspace\\n</cwd>");
   });
 
   it("starts a background command after the same approval as any command, and lists, reads and stops jobs", async () => {

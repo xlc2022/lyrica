@@ -254,6 +254,7 @@ describe("delegate", () => {
     expect(read).toEqual(["/workspace/repos/project/README.md", "/workspace/repos/project/hosts/README.md"]);
     // It's told so: the bare paths a scout once grepped from /workspace resolve in the checkout.
     expect(JSON.stringify(s.cloud.requests.find(isSub)!.messages[0])).toContain("Commands start in /workspace/repos/project, and relative paths resolve there.");
+    expect(JSON.stringify(s.cloud.requests.find(isSub)!.messages[0])).toContain("<cwd>\\n/workspace/repos/project\\n</cwd>");
   });
 
   it("gives an offline researcher neither web_search nor web_fetch, nor browse", async () => {
