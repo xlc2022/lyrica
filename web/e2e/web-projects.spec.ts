@@ -312,6 +312,14 @@ async function apiGet<T>(page: Page, path: string): Promise<T> {
   return r.body as T;
 }
 
+// Playwright's contextmenu dispatch drops pointer coordinates; make the mouse event explicitly.
+async function openListMenu(list: Locator) {
+  await list.evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    el.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: r.left + r.width / 2, clientY: r.bottom - 6 }));
+  });
+}
+
 test("home attachments and tool switches stay local until send and follow the selected pool", async ({ page, baseURL }) => {
   needsSandbox();
   const userId = await enter(page, baseURL!);
@@ -585,9 +593,7 @@ test("a project: New project, suggested threads start into cards, the Threads po
   await enter(page, baseURL!);
   if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
   // New project lives in the thread list's own menu, on its empty space.
-  const list = page.locator(".threads");
-  const box = (await list.boundingBox())!;
-  await list.dispatchEvent("contextmenu", { clientX: box.x + box.width / 2, clientY: box.y + box.height - 6 });
+  await openListMenu(page.locator(".threads"));
   await page.getByRole("menu", { name: "Thread list menu" }).getByRole("menuitem", { name: "New project" }).click();
   await page.getByRole("menuitem", { name: "General" }).click();
   await expect(page.getByRole("heading", { level: 1, name: "New project" })).toBeVisible();
@@ -1112,9 +1118,7 @@ test("the split view: a thread from its card opens in the panel, links inside it
     });
   });
   await enter(page, baseURL!);
-  const list = page.locator(".threads");
-  const box = (await list.boundingBox())!;
-  await list.dispatchEvent("contextmenu", { clientX: box.x + box.width / 2, clientY: box.y + box.height - 6 });
+  await openListMenu(page.locator(".threads"));
   await page.getByRole("menu", { name: "Thread list menu" }).getByRole("menuitem", { name: "New project" }).click();
   await page.getByRole("menuitem", { name: "General" }).click();
   await expect(page.getByRole("heading", { level: 1, name: "New project" })).toBeVisible();
@@ -1405,9 +1409,7 @@ test("a project's Threads list takes the width it is shown in: its rows use the 
 test("watching threads: writing in a project's thread leads to a look, shown as a marker that names the other thread she told; the switch turns it off", async ({ page, baseURL }) => {
   await enter(page, baseURL!);
   if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
-  const list = page.locator(".threads");
-  const box = (await list.boundingBox())!;
-  await list.dispatchEvent("contextmenu", { clientX: box.x + box.width / 2, clientY: box.y + box.height - 6 });
+  await openListMenu(page.locator(".threads"));
   await page.getByRole("menu", { name: "Thread list menu" }).getByRole("menuitem", { name: "New project" }).click();
   await page.getByRole("menuitem", { name: "General" }).click();
   await expect(page.getByRole("heading", { level: 1, name: "New project" })).toBeVisible();
@@ -1458,9 +1460,7 @@ test("watching threads: writing in a project's thread leads to a look, shown as 
 test("a project's thread cards: the checklist's count after the state word opens its popover, and the current step is the first line until all are done or the thread is resolved", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
-  const list = page.locator(".threads");
-  const box = (await list.boundingBox())!;
-  await list.dispatchEvent("contextmenu", { clientX: box.x + box.width / 2, clientY: box.y + box.height - 6 });
+  await openListMenu(page.locator(".threads"));
   await page.getByRole("menu", { name: "Thread list menu" }).getByRole("menuitem", { name: "New project" }).click();
   await page.getByRole("menuitem", { name: "General" }).click();
   await expect(page.getByRole("heading", { level: 1, name: "New project" })).toBeVisible();
