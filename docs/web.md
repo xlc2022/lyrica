@@ -407,7 +407,7 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   **Project**: Goal; Instructions kept on the project page (4,000
   characters, counted under the box) with a link to that page in the memory
   browser and the **Ask first** switch (`askFirstInstructions`: her
-  `threads instructions` then fills the box as a draft); Group. Save sends
+  `threads instructions` then fills the box as a draft). Save sends
   only the fields that changed, and a drafted field as edited. **Threads**:
   **Check on threads** (one switch for `watchThreads` and
   `checkInOnThreads`: on only when both are, and a change sets both),
