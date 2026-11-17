@@ -507,14 +507,18 @@ the card is for machines without it. The lines she may *offer* on a card
   comes from the call's arguments (`rootAsk`); what it shows comes from the
   tool's result (`RootStep`): her `why`, the command, the hash and the
   script. Her account owns the script, so the command copies it first and
-  checks and runs the copy: `f=$(mktemp) && cat '<path>' > "$f" && echo
-  '<sha256>  '"$f" | sha256sum -c --quiet - && sudo bash "$f"; rc=$?; rm -f
-  "$f"; (exit $rc)` (the copy runs with what the script's first line
+  checks and runs the copy: `d=$(mktemp -d) && f="$d/script" && cat
+  '<path>' > "$f" && echo '<sha256>  '"$f" | sha256sum -c --quiet - &&
+  sudo bash "$f"; rc=$?; rm -rf "$d"; (exit $rc)` (the copy sits alone in
+  a new private folder, since Python and Node load modules from beside the
+  script; it runs with what the script's first line
   names, `scriptRunner`: a shell, `sh` for sh or dash, or `bash`, by name
   from PATH with its one argument, so `#!/bin/bash` works on NixOS too;
-  any other interpreter by its path with at most one argument, such as
-  `sudo /usr/bin/env python3 "$f"`, a root step's only from a folder root
-  alone can change, with env's program a bare name; no first line means
+  any other interpreter by its plain absolute path (no `.`, `..` or `//`)
+  with at most one argument, such as `sudo /usr/bin/env python3 "$f"`; a
+  root step's interpreter only from a folder root alone can change, its
+  argument only a flag (`-e`, never a path, which could name her file),
+  and env's program a bare name; no first line means
   bash; a first line it can't run as written is refused before the card;
   the cleanup keeps the chain's exit status, so a
   refused hash shows as a failure). A script changed after the card was
@@ -560,7 +564,7 @@ the card is for machines without it. The lines she may *offer* on a card
   password only once that line and sudo's fresh prompt have come out (the
   SSH helper's `after`, `ops.ts` `handOff`); both lines are left out of the
   output, and the password is masked (below).
-  Root makes the copy (root's own, mode 0600) and checks its hash, so her
+  Root makes the copy (root's own, in a private folder) and checks its hash, so her
   account can't change it between the check and the run. `-k` means sudo
   neither uses nor keeps a cached login. So the password never reaches the
   conversation, a log or a file, and ordinary commands of hers don't see

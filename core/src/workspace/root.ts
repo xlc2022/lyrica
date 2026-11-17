@@ -38,6 +38,7 @@ export const SECRET_LIMITS = { name: 40, bytes: 16 * 1024 };
 /** Where a root step's interpreter may live: folders only root can change, so a change after the card can't reach root. */
 const ROOT_INTERPRETER_DIRS = [...SYSTEM_DIRS, "/nix/store/"];
 const INTERPRETER = /^\/[A-Za-z0-9._+/-]+$/;
+const ROOT_ARG = /^-[A-Za-z]+$/;
 const INTERPRETER_ARG = /^[A-Za-z0-9._+=:,@%/-]+$/;
 
 /**
@@ -46,7 +47,7 @@ const INTERPRETER_ARG = /^[A-Za-z0-9._+=:,@%/-]+$/;
  * the kernel's rule), so a Python or Perl script runs as one. A shell (sh,
  * dash, bash, directly or through env) runs by name from PATH, as before, so
  * `#!/bin/bash` works on NixOS too; no first line means bash. The copy sits in
- * mktemp's folder, which may be noexec, so the interpreter is named rather
+ * a private mktemp folder, which may be noexec, so the interpreter is named rather
  * than the file run. For a root step (`root`) the interpreter must be in a
  * folder only root can change, and env's program a bare name (sudo's
  * secure_path finds it). Throws, before the card is made, on a first line it
@@ -61,11 +62,15 @@ export function scriptRunner(script: string, root = false): string {
   if (rest.length > 1) throw new Error(`the script's first line gives ${interpreter} ${rest.length} arguments; a first line runs one program with at most one argument (use #!/usr/bin/env python3, not env -S)`);
   const arg = rest[0];
   if (!INTERPRETER.test(interpreter)) throw new Error(`the script's first line must name its interpreter by absolute path, such as #!/usr/bin/env python3, not ${interpreter}`);
+  // A `.` or `..` segment, or `//`, would carry a path past the folder check below.
+  if (/\/\.{1,2}(?:\/|$)|\/\//.test(interpreter)) throw new Error(`the script's first line must name its interpreter by a plain absolute path, without . or .. or //: ${interpreter}`);
   if (arg !== undefined && !INTERPRETER_ARG.test(arg)) throw new Error(`the script's first line has an argument the card can't run as written: ${arg}`);
   const base = interpreter.slice(interpreter.lastIndexOf("/") + 1);
   const env = base === "env";
   if (env && (arg === undefined || arg.startsWith("-") || arg.includes("/"))) throw new Error("after #!/usr/bin/env comes the program's bare name, such as python3");
   const program = env ? arg! : base;
+  // On a root step the argument (env's aside, a bare name) is a flag alone: a path there (bash /home/…/x.sh, perl -I/home/…) runs her files as root.
+  if (root && !env && arg !== undefined && !ROOT_ARG.test(arg)) throw new Error(`a root step's first line may give its interpreter only a flag, such as -e, not ${arg}`);
   if (/^(?:sh|dash|bash)$/.test(program)) return [program === "dash" ? "sh" : program, ...(!env && arg !== undefined ? [arg] : [])].join(" ");
   if (root && !ROOT_INTERPRETER_DIRS.some((d) => interpreter.startsWith(d))) throw new Error(`a root step's interpreter must be in a folder only root can change (${ROOT_INTERPRETER_DIRS.join(", ")}), not ${interpreter}`);
   return arg === undefined ? interpreter : `${interpreter} ${arg}`;
@@ -80,7 +85,7 @@ export function scriptRunner(script: string, root = false): string {
  * a refused hash or a failed script shows as a failure, not as the rm's 0.
  */
 export const rootCommand = (path: string, sha256: string, shell = "bash"): string =>
-  `f=$(mktemp) && cat ${quote(path)} > "$f" && echo ${quote(`${sha256}  `)}"$f" | sha256sum -c --quiet - && sudo ${shell} "$f"; rc=$?; rm -f "$f"; (exit $rc)`;
+  `d=$(mktemp -d) && f="$d/script" && cat ${quote(path)} > "$f" && echo ${quote(`${sha256}  `)}"$f" | sha256sum -c --quiet - && sudo ${shell} "$f"; rc=$?; rm -rf "$d"; (exit $rc)`;
 
 /**
  * The same chain without sudo: what lyricad runs as her account for a
@@ -89,7 +94,7 @@ export const rootCommand = (path: string, sha256: string, shell = "bash"): strin
  * the person read it never gets the secret.
  */
 export const secretCommand = (path: string, sha256: string, shell = "bash"): string =>
-  `f=$(mktemp) && cat ${quote(path)} > "$f" && echo ${quote(`${sha256}  `)}"$f" | sha256sum -c --quiet - && ${shell} "$f"; rc=$?; rm -f "$f"; (exit $rc)`;
+  `d=$(mktemp -d) && f="$d/script" && cat ${quote(path)} > "$f" && echo ${quote(`${sha256}  `)}"$f" | sha256sum -c --quiet - && ${shell} "$f"; rc=$?; rm -rf "$d"; (exit $rc)`;
 
 /**
  * A root step lyricad runs itself, with the password the person typed on the
@@ -101,7 +106,7 @@ export const secretCommand = (path: string, sha256: string, shell = "bash"): str
  * the check and the run.
  */
 export const sudoRunCommand = (path: string, sha256: string, shell: string, prompt: string): string =>
-  `exec sudo -S -k -p ${quote(prompt)} /bin/sh -c ${quote(`f=$(mktemp) && cat "$1" > "$f" && printf '%s  %s\\n' "$2" "$f" | sha256sum -c --quiet - && ${shell} "$f"; rc=$?; rm -f "$f"; exit $rc`)} sh ${quote(path)} ${quote(sha256)}`;
+  `exec sudo -S -k -p ${quote(prompt)} /bin/sh -c ${quote(`d=$(mktemp -d) && f="$d/script" && cat "$1" > "$f" && printf '%s  %s\\n' "$2" "$f" | sha256sum -c --quiet - && ${shell} "$f"; rc=$?; rm -rf "$d"; exit $rc`)} sh ${quote(path)} ${quote(sha256)}`;
 
 const HIDDEN = /[\x00-\x08\x0b-\x1f\x7f\u00ad\u061c\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff]/;
 
