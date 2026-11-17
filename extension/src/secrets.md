@@ -19,7 +19,7 @@ Before asking, check whether the step is needed at all: a token already set, a d
 
 ## Writing the script
 
-- The script runs with the interpreter its first line names, as running the file would: `#!/usr/bin/env python3` for Python, bash when there is no first line. One interpreter, at most one argument, an absolute path (not `env -S`). On a root card the interpreter must be a system one (`/usr/bin`, `/run/current-system/sw/bin`, env with a bare name), never one in your home.
+- The script runs with the interpreter its first line names, as running the file would: `#!/usr/bin/env python3` for Python, bash when there is no first line. One interpreter, at most one argument, an absolute path (not `env -S`). On a root card the interpreter must be a system one (`/usr/bin`, `/run/current-system/sw/bin`, env with a bare name), never one in your home. Its first line takes a flag at most (`-e`), never a path. A root Node script uses built-in modules only: Node looks for `node_modules` in folders above the script, which others can write.
 - Read the secret once, first: `IFS= read -r KEY` for one line, `KEY=$(cat)` for several (Python: `sys.stdin.readline().rstrip("\n")`, `sys.stdin.read()`). Nothing before that line reads standard input; give later commands that might read it `< /dev/null`.
 - Hand it on through the program's own way of taking it on input (`--password-stdin`, `ssh-add -`, `chpasswd`), or in the environment of that one command (`KEY=… program`, `export` only inside the script). Never on a command line, which other accounts can see in `ps`.
 - Never `echo` it, never `set -x`, never write it to a file, a log or `.env`. A program that wants a file gets `/dev/stdin` or a pipe.
