@@ -23,9 +23,10 @@ changed none of this: mcp-nixos speaks HTTP and keeps no state.
 
 - `nix/mcp-nixos-module.nix`: `services.lyrica-mcp-nixos` (`enable`,
   `package`, `address` 127.0.0.1, `port` 8001), `lyrica-mcp-nixos.service`
-  (default package: nixpkgs' mcp-nixos 2.4.3 built against fastmcp with
-  its tests skipped, since neither is in the nixos-26.05 binary cache and
-  three fastmcp proxy tests fail in the build sandbox),
+  (default package: mcp-nixos 3.1.1 from the flake's `mcp-nixos` input, a
+  release tag built by upstream's `lib.mkMcpNixos` against this nixpkgs
+  with its own FastMCP 4 set; nixpkgs' 2.4.3 looks for search.nixos.org's
+  indexes only under retired generations, so it reported 25.11 as stable),
   in HTTP mode with `nix` on its path, dynamic user with
   `/var/cache/lyrica-mcp-nixos` as home and cache (nix needs a writable
   cache for `nix flake archive`; PR review's finding), hardened like
@@ -49,14 +50,21 @@ change, for later if the one-time add proves a nuisance. The upstream
 pull request adding `readOnlyHint` to mcp-nixos's tools, which would
 remove the permission card and let the tools work in Plan mode.
 
-Checked 2026-11-01 in the build container: the package builds, answers
-`initialize` (version 2.4.3), lists `nix` and `nix_versions` with no
-annotations, and a `store` listing works; a bare GET answers 406, which
-is what `check-host.sh` accepts.
+Checked 2026-11-17 in the build container with 3.1.1: the package builds
+and its unit tests pass; through Lyrica's own MCP client it answers the
+save check (2 tools, `nix` and `nix_versions`, still with no
+annotations), and `action=channels` lists 26.05 as stable (index
+generation 53) beside 25.11 and unstable; a bare GET answers 400, and
+`check-host.sh` accepts any HTTP answer. 2.4.3 had probed only
+generations 43 to 46, found none and fell back to a built-in map whose
+stable was 25.11.
 
 ## Handoff
 
-Done: the module, docs and check (#733), and on 2026-11-01 the development
+Done: the module, docs and check (#733); on 2026-11-17 the package moved
+to upstream's 3.1.1 through a flake input, so stable means 26.05. Updating
+it is `nix flake update mcp-nixos` here after moving the tag in flake.nix.
+On 2026-11-01 the development
 machine runs it (`services.lyrica.mcpNixos = true`), with the server added
 as `nixos` in the General pool and granted on the owner's project. Next:
 the first real use decides whether the permission card is a nuisance worth

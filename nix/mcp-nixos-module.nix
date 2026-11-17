@@ -1,7 +1,7 @@
-# services.lyrica-mcp-nixos: mcp-nixos (github.com/utensils/mcp-nixos, from
-# nixpkgs) as an MCP server Lyrica reaches over HTTP, for NixOS package,
-# option, flake and Nix function lookups, and for reading a flake's inputs
-# and /nix/store paths on this machine. Imported by nix/module.nix (its
+# services.lyrica-mcp-nixos: mcp-nixos (github.com/utensils/mcp-nixos, a
+# release the flake pins) as an MCP server Lyrica reaches over HTTP, for
+# NixOS package, option, flake and Nix function lookups, and for reading a
+# flake's inputs and /nix/store paths on this machine. Imported by nix/module.nix (its
 # `mcpNixos` option turns it on beside her) and exported on its own as
 # nixosModules.mcp-nixos, for a machine that only runs the server. It
 # listens on loopback by default and has no authentication of its own, so
@@ -19,17 +19,11 @@ in
 
     package = lib.mkOption {
       type = lib.types.package;
-      # nixpkgs' mcp-nixos, built against a fastmcp whose test suite is skipped:
-      # on nixos-26.05 neither is in the binary cache, and three of fastmcp's
-      # proxy tests fail under the build sandbox (a cancel-scope race), which
-      # would fail the whole nixos-rebuild. Only the tests are skipped: the
-      # code is the channel's.
-      default = pkgs.mcp-nixos.override {
-        python3Packages = (pkgs.python3.override {
-          packageOverrides = _: prev: { fastmcp = prev.fastmcp.overridePythonAttrs (_: { doCheck = false; }); };
-        }).pkgs;
-      };
-      defaultText = lib.literalExpression "pkgs.mcp-nixos, with fastmcp's tests skipped";
+      # The flake's modules set this to mcp-nixos from its mcp-nixos input
+      # (flake.nix), which finds search.nixos.org's current indexes; nixpkgs'
+      # own 2.4.3 looks only under retired ones and reports 25.11 as stable.
+      default = pkgs.mcp-nixos;
+      defaultText = lib.literalExpression "mcp-nixos 3.1.1, from the flake's mcp-nixos input";
       description = "The mcp-nixos to run.";
     };
 
