@@ -1,5 +1,5 @@
 import { posix } from "node:path";
-import { LOADER, SHELLS, simpleCommands, unwrapped } from "./machines.ts";
+import { LOADER, SHELLS, shellLines, simpleCommands, unwrapped } from "./machines.ts";
 
 export interface CommandRule { prefix: string; decision: "allow" | "ask" | "forbid" }
 /** What a new project starts with (docs/workspace.md, "Project command rules"): the person removes or changes them in Project settings. */
@@ -42,7 +42,7 @@ const opaque = (words: string[], names?: readonly string[]) => {
   while (wrapped && flag(words[at - 1]) && at + 1 < words.length) { at++; while (flag(words[at]) && at + 1 < words.length) at++; }
   const named = words.slice(0, at + 1);
   // `[` globs only with a `]` after it: a lone `[` is the test command (`[ "$n" = 1 ]`).
-  return named.some((w, i) => /[*?]|\[.*\]/.test(w) && !(names && i === at && harmlessGlob(w, names))) || candidates.some(w => /[$`]/.test(w) || /^(?:eval|source|\.)$/.test(w) || (SHELL.test(posix.basename(w)) && !words.includes("-c")));
+  return named.some((w, i) => /[*?]|\[.*\]/.test(w) && !(names && i === at && harmlessGlob(w, names))) || candidates.some((w, i) => /[$`]/.test(w) || /^(?:eval|source|\.)$/.test(w) || (SHELL.test(posix.basename(w)) && !shellLines(words.slice(i)).sure));
 };
 
 /** Validate and normalize saved prefixes; saving a prefix again replaces it. */

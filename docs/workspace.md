@@ -169,7 +169,10 @@ existed before became general machines at Ask.
   `reboot` actions (`PROXMOX_SUSPECT`). Wrappers such as `sudo`, `env`, `nice`,
   `timeout` and the dynamic loader run by hand (`ld-linux-x86-64.so.2
   --library-path …`, `LOADER`) (with their flag values), a program's path,
-  git's own `-C` and `-c`, and `bash -c '…'` are looked through, a variable
+  git's own `-C` and `-c`, and a shell's `-c` line (`bash -c '…'`, also with
+  `-c` in a group or after other options: `bash -ec`, `sh -xc`, `bash -o
+  pipefail -c`, and after an option it doesn't know, `zsh --emulate sh -c`;
+  fish's `-C`/`--init-command` line too; `shellLines`) are looked through, a variable
   the line plainly sets is read as its value (below, Project command
   rules), and a `cd` earlier on the line moves where a later relative `rm`
   points, so `cd / && rm -rf *` is read as `rm -rf /*`. The answer may say **Allow in this thread**: that
@@ -2356,7 +2359,8 @@ chained or wrapped, and inside a shell script she runs or sources first on the l
 (below); it doesn't see inside other programs she runs.
 
 `rules.ts` uses `simpleCommands` from `machines.ts`: chains, pipes,
-substitutions, subshells, shell `-c` arguments and find's `-exec`, `-execdir`
+substitutions, subshells, shell `-c` lines (wherever `-c` stands among the
+shell's options, and fish's `-C` lines, as `shellLines` reads them) and find's `-exec`, `-execdir`
 and `-ok` commands are checked; quotes and backslashes inside words are
 removed. Unquoted brace expansion inside a word is read as the words bash
 makes (`r{m,} -rf /` is `rm r -rf /`, `rm -r{f,} /` is `rm -rf -r /`); `{`
@@ -2382,7 +2386,8 @@ the program anywhere, then the other prefix words in order with intervening
 words allowed. The longest prefix wins; ties prefer Forbid, then Ask, then
 Allow. Across parts Forbid wins, then Ask, and Allow needs every part allowed.
 Opaque programs (expansions not read as above, eval, source, dot, or a shell
-without `-c`; for a wrapper, any of its words, but a glob only in the
+without a `-c` line it is sure of: only fish's `-C` line, or a `-c` found only
+past a word an unknown option may have taken; for a wrapper, any of its words, but a glob only in the
 wrapper's own words and its program (past any word that may be a flag's
 value), not in the program's arguments, so
 `timeout 60 curl "…?h=x"` isn't opaque; `command -v` and `-V` only look a

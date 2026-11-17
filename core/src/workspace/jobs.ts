@@ -6,7 +6,7 @@
 
 import { KeptOutput, type CommandOutput } from "../store/outputs.ts";
 import type { ExecutionTarget } from "./ops.ts";
-import { SHELLS, simpleCommands, unwrapped } from "./machines.ts";
+import { SHELLS, shellLines, simpleCommands, unwrapped } from "./machines.ts";
 import { foldOutput } from "./terminal.ts";
 
 /** A thread's jobs: running at once, kept in memory after ending, the default and longest time limit (seconds), and the longest name. */
@@ -434,8 +434,7 @@ function sleeps(command: string, depth = 0): { seconds: number[]; loop: boolean 
       const each = words.slice(1).filter((w) => !w.startsWith("-")).map(sleepSeconds);
       if (each.length && each.every((s) => s !== undefined)) seconds.push(each.reduce((a, b) => a! + b!, 0)!);
     } else if (SHELLS.has(words[0] ?? "") && depth < 3) {
-      const c = words.indexOf("-c");
-      if (c > 0 && words[c + 1]) { const inner = sleeps(words[c + 1]!, depth + 1); seconds.push(...inner.seconds); loop ||= inner.loop; }
+      for (const line of shellLines(words).lines) { const inner = sleeps(line, depth + 1); seconds.push(...inner.seconds); loop ||= inner.loop; }
     }
   }
   return { seconds, loop };
