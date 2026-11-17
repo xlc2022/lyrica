@@ -10,9 +10,13 @@ export const keysFile = (account: string) => `/etc/ssh/authorized_keys/${account
 export const sshdRule = (account: string) => `/etc/ssh/sshd_config.d/lyrica-${account}.conf`;
 /**
  * Reloads sshd wherever it runs: systemd's unit is `ssh` on Debian and Ubuntu and `sshd` on most others (Fedora,
- * Arch, NixOS, Gentoo), and OpenRC (Gentoo, Alpine) has `rc-service sshd`.
+ * Arch, NixOS, Gentoo), and OpenRC (Gentoo, Alpine) has `rc-service sshd`. Where a socket unit holds port 22
+ * (Ubuntu 22.10+, some Debian and Proxmox images), a reload's SIGHUP makes sshd re-exec, lose the socket systemd
+ * passed it and die on "Cannot bind any address" (Launchpad bug 2011458), so there the service is restarted
+ * instead, which hands it the socket again; `try-restart` leaves a stopped one alone, as when each connection
+ * starts its own sshd and reads the new rule anyway. Without an active socket unit the reload is unchanged.
  */
-export const RELOAD_SSHD = "if [ -d /run/systemd/system ]; then sudo systemctl reload ssh 2>/dev/null || sudo systemctl reload sshd; else sudo rc-service sshd reload; fi";
+export const RELOAD_SSHD = "if [ -d /run/systemd/system ]; then if systemctl is-active --quiet ssh.socket; then sudo systemctl try-restart ssh.service; elif systemctl is-active --quiet sshd.socket; then sudo systemctl try-restart sshd.service; else sudo systemctl reload ssh 2>/dev/null || sudo systemctl reload sshd; fi; else sudo rc-service sshd reload; fi";
 
 /** Where the steps run, for the line above them. */
 export function cleanupWhere(m: CleanupMachine): string {

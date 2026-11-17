@@ -318,11 +318,18 @@ printf '%s\n' '<the key line>' | sudo tee -a /etc/ssh/authorized_keys/<account> 
 sudo chmod 644 /etc/ssh/authorized_keys/<account> &&
 printf 'Match User <account>\n    AuthorizedKeysFile /etc/ssh/authorized_keys/%%u\n    PasswordAuthentication no\n    KbdInteractiveAuthentication no\n' | sudo tee /etc/ssh/sshd_config.d/lyrica-<account>.conf > /dev/null &&
 sudo sshd -t &&
-if [ -d /run/systemd/system ]; then sudo systemctl reload ssh 2>/dev/null || sudo systemctl reload sshd; else sudo rc-service sshd reload; fi &&
+if [ -d /run/systemd/system ]; then if systemctl is-active --quiet ssh.socket; then sudo systemctl try-restart ssh.service; elif systemctl is-active --quiet sshd.socket; then sudo systemctl try-restart sshd.service; else sudo systemctl reload ssh 2>/dev/null || sudo systemctl reload sshd; fi; else sudo rc-service sshd reload; fi &&
 
 # The host key's fingerprint, to compare with the one Lyrica shows
 ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
 ```
+
+Where a socket unit holds port 22 (`ssh.socket` on Ubuntu 22.10 and later
+and some Debian and Proxmox container images), a reload makes sshd re-exec
+and die with "Cannot bind any address", so there the setup restarts the
+service instead; open sessions stay, and a stopped service is left alone,
+since the next login starts it with the new rule. Everywhere else it is the
+plain reload.
 
 The `sed` drops any earlier line for the same key first, such as one an
 older setup pinned to her server's addresses with `from=`, so running the
