@@ -226,7 +226,7 @@ Each user has two pools of memory.
     in the pool's own encrypted database, not in the thread's folder, so a
     version never changes when the file it came from does, and a Private
     artifact is never listed or served under General. A version is at most
-    16 MiB and is one self-contained file. An artifact opens as a file
+    16 MiB and is one self-contained file. Publishing is also how she shows the user a file, from the sandbox or one of her machines, without reading it into her context and typing it out again; a text file that isn't a page is shown as Markdown holding it as code. An artifact opens as a file
     does, in the same sandbox under its thread's internet rule, and only for the signed-in user: there
     are no public links. She can't delete one; the user can. Every
     artifact belongs to a thread, and deleting the thread deletes its

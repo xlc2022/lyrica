@@ -233,4 +233,8 @@ works, so her threads update them there?
   to leak or not in headless Chromium, which looked none up even with no
   CSP; `X-DNS-Prefetch-Control: off` is sent and the doubt is written
   down beside WebRTC.
-
+- 2026-11-17: the user saw her read a report on a machine and type it out
+  again in her reply, so it reached her context twice. `page publish` now
+  takes `machine`, publishes any other text file as Markdown holding it as
+  code, and her prompt says to publish a file the person asks to see
+  instead of retyping it. No new control: the card is the existing one.

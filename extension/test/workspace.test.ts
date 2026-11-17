@@ -1277,12 +1277,47 @@ describe("the page tool", () => {
     // The calls run side by side, so the results come in no fixed order.
     const one = (re: RegExp) => results.filter((r) => re.test(r));
     expect(one(/refers to local files an artifact can't carry: style.css, app.js. Run page bundle and publish the bundle\./)).toHaveLength(1);
-    expect(published.map((p) => [p.path, p.kind, p.text])).toEqual(Array(2).fill(["/workspace/site/one.html", "html", "<!doctype html><p>hi</p>"]));
+    expect(published.filter((p) => p.kind === "html").map((p) => [p.path, p.kind, p.text])).toEqual(Array(2).fill(["/workspace/site/one.html", "html", "<!doctype html><p>hi</p>"]));
     expect(published.filter((p) => p.title === "The site")).toHaveLength(1);
     expect(one(/^page: Published a1 ".*" \(html, version 1, from \/workspace\/site\/one.html\)\. The person sees a card for it in this reply\.$/)).toHaveLength(1);
     expect(one(/^page: Published version 2 of a1 /)).toHaveLength(1);
-    expect(one(/An artifact is an .html, .svg, .md, .jsx or .tsx file/)).toHaveLength(1);
+    expect(published.filter((p) => p.path === "/workspace/notes.txt").map((p) => [p.kind, p.text])).toEqual([["markdown", "# notes.txt\n\n```txt\none\ntwo\n```\n"]]);
     expect(results).toContain('page: a1 "The site" (html, version 2, from /workspace/site/one.html)');
+  });
+
+  it("publishes a file from a machine, or any text file as Markdown, without it reaching her context", async () => {
+    const asked: ApprovalRequest[] = [];
+    const published: { path: string; kind: string; text: string }[] = [];
+    const artifacts: NonNullable<ThreadTools["artifacts"]> = {
+      publish: (p) => { published.push({ path: p.path, kind: p.kind, text: p.bytes.toString() }); return { artifact: { id: `a${published.length}`, title: "t", kind: p.kind, version: 1, path: p.path }, created: true }; },
+      list: () => [],
+    };
+    const report = "# Sweep\n\nNothing hostile found.\n";
+    const { results } = await run("ask", [
+      fauxToolCall("page", { action: "publish", path: "/home/ada/report.md", machine: "box" }, { id: "1" }),
+      fauxToolCall("page", { action: "publish", path: "run.py", machine: "sandbox" }, { id: "2" }),
+      fauxToolCall("page", { action: "check", path: "run.py", machine: "box" }, { id: "3" }),
+    ], { files: { "/home/ada/report.md": report, "/workspace/run.py": "print('```')" }, machines: [{ name: "box", kind: "ssh", limit: "ask", root: null }], approve: async (r) => { asked.push(r); return true; }, artifacts });
+    // Publishing reads, so it asks only where read would.
+    expect(asked).toEqual([]);
+    expect(published).toContainEqual({ path: "box:/home/ada/report.md", kind: "markdown", text: report });
+    expect(published).toContainEqual({ path: "/workspace/run.py", kind: "markdown", text: "# run.py\n\n````py\nprint('```')\n````\n" });
+    // Her result is one line: the file's text is never in it.
+    expect(results.filter((r) => r.includes("Nothing hostile"))).toEqual([]);
+    expect(results).toContain("page: page check works in the sandbox only; leave machine out.");
+  });
+
+  it("asks before publishing from a machine after the turn ran elsewhere, and runs what was approved", async () => {
+    const asked: ApprovalRequest[] = [];
+    const published: string[] = [];
+    const artifacts: NonNullable<ThreadTools["artifacts"]> = {
+      publish: (p) => { published.push(p.path); return { artifact: { id: "a1", title: "t", kind: p.kind, version: 1, path: p.path }, created: true }; },
+      list: () => [],
+    };
+    await run("auto", [], { steps: [[fauxToolCall("read", { path: "notes.txt" }, { id: "1" })], [fauxToolCall("page", { action: "publish", path: "/home/ada/report.md", machine: "box" }, { id: "2" })]],
+      files: { "/home/ada/report.md": "# Sweep\n" }, machines: [{ name: "box", kind: "ssh", limit: "auto", root: null }], approve: async (r) => { asked.push(r); return true; }, artifacts });
+    expect(asked.map((r) => [r.tool, r.machine, r.cwd])).toEqual([["page", "box", "/workspace"]]);
+    expect(published).toEqual(["box:/home/ada/report.md"]);
   });
 
   it("has no artifacts where the thread gives none, such as a subagent", async () => {

@@ -463,7 +463,7 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
       });
     }
 
-    pi.registerTool(pageTool(tools, (id, input) => bound(id, "page", input)));
+    pi.registerTool(pageTool(tools, (id, input, machine, cwd) => bound(id, "page", input, machine, cwd)));
     if (tools.proxmox) pi.registerTool(proxmoxTool(tools.proxmox, (id, { machine, ...rest }) => bound(id, "proxmox", rest, machine as string)));
 
     if (tools.startJob && tools.jobs && tools.jobOutput && tools.stopJob) {
@@ -618,7 +618,7 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
       }
       const pve = event.toolName === "proxmox";
       const page = event.toolName === "page";
-      const place = event.toolName in TOOLS ? (input.machine as string | undefined) || "sandbox" : pve ? String(input.machine) : page ? "sandbox" : undefined;
+      const place = event.toolName in TOOLS ? (input.machine as string | undefined) || "sandbox" : pve ? String(input.machine) : page ? (input.action === "publish" && (input.machine as string | undefined)) || "sandbox" : undefined;
       // A file another thread just changed is held before anyone is asked, so a held change is never one the person approved.
       // A command is held the same way for the files it plainly writes (its redirections and tee); the sweep after it finds the rest.
       if (place === "sandbox" && tools.sameFile) {

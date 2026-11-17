@@ -2636,10 +2636,19 @@ script, PNG decoder or bundler:
   `artifact` (one of the thread's or its project's). An unchanged file adds
   no version. An HTML page that refers to local files is refused, with a
   line telling her to `bundle` first; what it would load from the network
-  is said in the result. `title` names it, the file's name otherwise. It
-  reads the file and writes only the pool database, so it asks where `read`
-  asks. Its result's details carry the artifact's id, title, kind and
-  version, which the conversation shows as a card.
+  is said in the result. `title` names it, the file's name otherwise. Any
+  other text file (code, a log, a config) becomes a Markdown artifact: the
+  file's name as its heading, then the file in a fence longer than any run
+  of backticks in it, tagged with its extension; a binary file is refused.
+  `machine` takes the file from one of her SSH machines (publish only; the
+  other actions refuse it), and its path is kept as `<machine>:<path>`, so
+  it never adds a version to a sandbox file's artifact. It reads the file
+  and writes only the pool database, so it asks where `read` asks (on a
+  machine, as `read` there would). Its result's details carry the
+  artifact's id, title, kind and version, which the conversation shows as
+  a card; her result is one line, so the file never enters her context.
+  Her prompt tells her to publish a file the person asks to see rather
+  than read it and type it out again.
 - `artifacts` lists the thread's artifacts and its project's: id, title,
   kind, version and path.
 
