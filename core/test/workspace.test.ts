@@ -614,15 +614,15 @@ describe("modes and switches", () => {
     settings.setThread("t1", "general", { mode: "bypass" });
     expect(settings.effective("t1").mode).toBe("bypass");
     expect(settings.startThread("t2", "general").mode).toBe("bypass");
-    // Allow MCP bypass: off by default, only with Allow bypass on, and off again with it.
-    expect(settings.mcpBypassAllowed()).toBe(false);
-    settings.setMcpBypassAllowed(true);
-    expect(settings.mcpBypassAllowed()).toBe(true);
+    // A server's Allow bypass: off by default, counted only while Allow bypass is on, and kept while it is off.
+    settings.addMcpServer({ name: "house", url: "https://mcp.example.com/mcp", pool: "general", description: null, tools: 1, offNetwork: false });
+    expect(settings.mcpBypassFor("house")).toBe(false);
+    settings.updateMcpServer("house", { bypass: true });
+    expect(settings.mcpBypassFor("house")).toBe(true);
     settings.setBypassAllowed(false);
-    expect(settings.mcpBypassAllowed()).toBe(false);
-    expect(() => settings.setMcpBypassAllowed(true)).toThrow(/Allow bypass/);
+    expect(settings.mcpBypassFor("house")).toBe(false);
     settings.setBypassAllowed(true);
-    expect(settings.mcpBypassAllowed()).toBe(false);
+    expect(settings.mcpBypassFor("house")).toBe(true);
     settings.setBypassAllowed(false);
     expect(settings.defaultMode()).toBe("auto");
     expect(settings.thread("t1").mode).toBe("auto");

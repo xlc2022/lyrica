@@ -750,12 +750,11 @@ export type NetworkDefaults = Record<Pool, Network>;
 export type NetworkChange = Partial<Network>;
 
 /**
- * GET /api/u/:userId/mode → ModeDefault; PUT with any field → ModeDefault. The mode new threads start in;
- * Allow bypass: whether "bypass" may be chosen (turning it off moves every thread in "bypass" to "auto" and turns
- * `mcp` off); and Allow MCP bypass: whether "bypass" also runs MCP tools that change things without asking
- * (refused while `bypass` is off).
+ * GET /api/u/:userId/mode → ModeDefault; PUT with any field → ModeDefault. The mode new threads start in, and
+ * Allow bypass: whether "bypass" may be chosen (turning it off moves every thread in "bypass" to "auto"). Which
+ * MCP servers' tools also skip the card in "bypass" is each server's own `bypass` (McpServerInfo).
  */
-export interface ModeDefault { mode: PermissionMode; bypass: boolean; mcp: boolean }
+export interface ModeDefault { mode: PermissionMode; bypass: boolean }
 
 /** GET /api/u/:userId/paths → AllowedPaths: the folders this user may grant, set by an administrator. */
 export type AllowedPaths = Record<Pool, string[]>;
@@ -950,6 +949,8 @@ export interface McpServerInfo {
   minuteLimit: number | null;
   /** Tool calls sent to it since midnight UTC. */
   callsToday: number;
+  /** Allow bypass: in Bypass permissions, its tools that change things run without asking. Ignored while Allow bypass (ModeDefault) is off. */
+  bypass: boolean;
   /**
    * How the last connection went, and since when: online, rejected (the token), unreachable, or offNetwork (it was held
    * back: a private server's host has left the user's network, until `confirm-off-network`). Absent before the first.
@@ -967,8 +968,8 @@ export interface McpServerInfo {
  * network needs `offNetworkConfirmed`.
  */
 export interface McpServerInput { name: string; url?: string; token?: string; command?: string; env?: string; pool: Pool; dailyLimit?: number | null; minuteLimit?: number | null; offNetworkConfirmed?: boolean }
-/** PATCH /api/u/:userId/mcp-servers/:name → McpServerInfo. A new URL or command is checked first; a new pool takes it from every thread; a new name follows into them. */
-export interface McpServerChange { name?: string; url?: string; command?: string; pool?: Pool; dailyLimit?: number | null; minuteLimit?: number | null; offNetworkConfirmed?: boolean }
+/** PATCH /api/u/:userId/mcp-servers/:name → McpServerInfo. A new URL or command is checked first; a new pool takes it from every thread; a new name follows into them; `bypass` sets its Allow bypass. */
+export interface McpServerChange { name?: string; url?: string; command?: string; pool?: Pool; dailyLimit?: number | null; minuteLimit?: number | null; bypass?: boolean; offNetworkConfirmed?: boolean }
 /**
  * POST /api/u/:userId/mcp-servers/:name/token → McpServerInfo. Replace token: the server is checked with it first; empty sends none.
  * A private server whose host has left her network is refused before that (400), its state then `offNetwork`.

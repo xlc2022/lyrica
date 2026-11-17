@@ -190,6 +190,8 @@ export interface McpServerConfig {
   minuteLimit: number | null;
   /** Tool calls sent to it since midnight UTC. */
   callsToday: number;
+  /** Allow bypass: in Bypass permissions, its tools that change things run without asking. Off by default; ignored while Allow bypass is off. */
+  bypass: boolean;
   /** How the last connection went, and since when; null before the first, or after its URL changed. */
   state: McpServerState | null;
 }
@@ -198,8 +200,8 @@ export interface McpServerConfig {
 export interface McpServerState { kind: McpStateKind | "offNetwork"; since: string }
 
 /** A server to save: `token`, `command` and `env` may be left out (a remote one has no command, a local one no token). */
-export type NewMcpServer = Omit<McpServerConfig, "state" | "token" | "command" | "env" | "dailyLimit" | "minuteLimit" | "callsToday">
-  & Partial<Pick<McpServerConfig, "token" | "command" | "env" | "dailyLimit" | "minuteLimit">>;
+export type NewMcpServer = Omit<McpServerConfig, "state" | "token" | "command" | "env" | "dailyLimit" | "minuteLimit" | "callsToday" | "bypass">
+  & Partial<Pick<McpServerConfig, "token" | "command" | "env" | "dailyLimit" | "minuteLimit" | "bypass">>;
 
 /** The most calls a budget can allow: a number past this is a mistake, not a limit. */
 export const MCP_LIMIT_MAX = 1_000_000;
@@ -561,26 +563,21 @@ export class WorkspaceSettings {
     return this.setting("workspace.bypass") === "1";
   }
 
-  /** Turning it off moves every thread in Bypass permissions, and the default, back to Auto, and turns Allow MCP bypass off. */
+  /** Turning it off moves every thread in Bypass permissions, and the default, back to Auto. Each MCP server's Allow bypass is kept, and ignored while it is off. */
   setBypassAllowed(on: boolean): void {
     this.db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('workspace.bypass', ?)").run(on ? "1" : "0");
     if (on) return;
-    this.db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('workspace.bypass.mcp', '0')").run();
     this.db.prepare("UPDATE thread_workspaces SET mode = 'auto' WHERE mode = 'bypass'").run();
     if (this.setting("workspace.mode") === "bypass") this.db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('workspace.mode', 'auto')").run();
   }
 
   /**
-   * Allow MCP bypass: whether a thread in Bypass permissions also runs MCP tools that change things without asking.
-   * Off by default, and only while Allow bypass is on.
+   * Whether a thread in Bypass permissions runs this MCP server's tools that change things without asking: its own
+   * Allow bypass is on, and so is Allow bypass. Read at every call.
    */
-  mcpBypassAllowed(): boolean {
-    return this.bypassAllowed() && this.setting("workspace.bypass.mcp") === "1";
-  }
-
-  setMcpBypassAllowed(on: boolean): void {
-    if (on && !this.bypassAllowed()) throw new Error("Allow MCP bypass needs Allow bypass on in Settings");
-    this.db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('workspace.bypass.mcp', ?)").run(on ? "1" : "0");
+  mcpBypassFor(server: string): boolean {
+    if (!this.bypassAllowed()) return false;
+    return (this.db.prepare("SELECT bypass FROM mcp_servers WHERE name = ?").get(server) as { bypass: number } | undefined)?.bypass === 1;
   }
 
   /** A new thread's settings: the default mode, everything else as the user's defaults say. */
@@ -1265,9 +1262,9 @@ export class WorkspaceSettings {
   addMcpServer(m: NewMcpServer, state: McpStateKind | null = null): McpServerConfig {
     this.checkMcpName(m.name);
     const next = checkMcpServer(m);
-    this.db.prepare(`INSERT INTO mcp_servers (name, url, token, command, env, pool, description, tools, off_network, daily_limit, minute_limit, state, checked_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(next.name, next.url, next.token, JSON.stringify(next.command), JSON.stringify(next.env), next.pool, next.description, next.tools, next.offNetwork ? 1 : 0,
-      next.dailyLimit, next.minuteLimit, state, state && new Date().toISOString());
+    this.db.prepare(`INSERT INTO mcp_servers (name, url, token, command, env, pool, description, tools, off_network, daily_limit, minute_limit, bypass, state, checked_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(next.name, next.url, next.token, JSON.stringify(next.command), JSON.stringify(next.env), next.pool, next.description, next.tools, next.offNetwork ? 1 : 0,
+      next.dailyLimit, next.minuteLimit, next.bypass ? 1 : 0, state, state && new Date().toISOString());
     return this.needMcp(m.name);
   }
 
@@ -1276,13 +1273,13 @@ export class WorkspaceSettings {
    * from every thread, so it is never reached from both pools; a new name
    * follows into the threads that use it.
    */
-  updateMcpServer(name: string, change: Partial<Pick<McpServerConfig, "name" | "url" | "command" | "pool" | "description" | "tools" | "dailyLimit" | "minuteLimit">>): McpServerConfig {
+  updateMcpServer(name: string, change: Partial<Pick<McpServerConfig, "name" | "url" | "command" | "pool" | "description" | "tools" | "dailyLimit" | "minuteLimit" | "bypass">>): McpServerConfig {
     const before = this.needMcp(name);
     const next = checkMcpServer({ ...before, ...change });
     if (next.name !== name) this.checkMcpName(next.name, name);
     const moved = next.url !== before.url || JSON.stringify(next.command) !== JSON.stringify(before.command);
-    this.db.prepare(`UPDATE mcp_servers SET name = ?, url = ?, command = ?, pool = ?, description = ?, tools = ?, daily_limit = ?, minute_limit = ?${moved ? ", state = NULL, checked_at = NULL" : ""} WHERE name = ?`)
-      .run(next.name, next.url, JSON.stringify(next.command), next.pool, next.description, next.tools, next.dailyLimit, next.minuteLimit, name);
+    this.db.prepare(`UPDATE mcp_servers SET name = ?, url = ?, command = ?, pool = ?, description = ?, tools = ?, daily_limit = ?, minute_limit = ?, bypass = ?${moved ? ", state = NULL, checked_at = NULL" : ""} WHERE name = ?`)
+      .run(next.name, next.url, JSON.stringify(next.command), next.pool, next.description, next.tools, next.dailyLimit, next.minuteLimit, next.bypass ? 1 : 0, name);
     if (next.name !== name) this.db.prepare("UPDATE mcp_calls SET server = ? WHERE server = ?").run(next.name, name);
     if (next.pool !== before.pool) this.dropMcpServer(name);
     else if (next.name !== name) this.renameMcpServer(name, next.name);
@@ -1476,7 +1473,7 @@ function checkMcpServer(m: NewMcpServer): Omit<McpServerConfig, "state"> {
   if (!command.length && Object.keys(env).length) throw new Error("a remote server has a token, not an environment");
   const dailyLimit = mcpLimit(m.dailyLimit, "Calls per day");
   const minuteLimit = mcpLimit(m.minuteLimit, "Calls per minute");
-  return { ...m, url: command.length ? "" : mcpUrl(url, m.pool, token), token, command, env, offNetwork: command.length ? false : m.offNetwork, dailyLimit, minuteLimit, callsToday: 0 };
+  return { ...m, url: command.length ? "" : mcpUrl(url, m.pool, token), token, command, env, offNetwork: command.length ? false : m.offNetwork, dailyLimit, minuteLimit, callsToday: 0, bypass: m.bypass === true };
 }
 
 /** Midnight UTC of the day `now` is in, as an ISO time: where a day's budget starts. */
@@ -1485,11 +1482,11 @@ const dayStart = (now = new Date()): string => `${now.toISOString().slice(0, 10)
 
 interface McpServerRow {
   name: string; url: string; token: string; command: string; env: string; pool: Pool; description: string | null; tools: number; off_network: number;
-  daily_limit: number | null; minute_limit: number | null; state: McpServerState["kind"] | null; checked_at: string | null;
+  daily_limit: number | null; minute_limit: number | null; bypass: number; state: McpServerState["kind"] | null; checked_at: string | null;
 }
 const toMcpServer = (r: McpServerRow, callsToday: number): McpServerConfig => ({
   name: r.name, url: r.url, token: r.token, command: JSON.parse(r.command || "[]"), env: JSON.parse(r.env || "{}"), pool: r.pool,
-  description: r.description, tools: r.tools, offNetwork: r.off_network === 1, dailyLimit: r.daily_limit ?? null, minuteLimit: r.minute_limit ?? null, callsToday,
+  description: r.description, tools: r.tools, offNetwork: r.off_network === 1, dailyLimit: r.daily_limit ?? null, minuteLimit: r.minute_limit ?? null, callsToday, bypass: r.bypass === 1,
   state: r.state && r.checked_at ? { kind: r.state, since: r.checked_at } : null,
 });
 

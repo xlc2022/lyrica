@@ -1069,11 +1069,11 @@ steps:
    deleting a branch or stash) ask too, and in her own sandbox as well,
    unless a user has turned on **Allow bypass** (Settings, Network, New
    threads) and put the thread in **Bypass permissions**. On a machine
-   they always ask. **Allow MCP bypass**, shown beside it only while
-   Allow bypass is on, off by default and asking first, lets those
-   threads also use MCP tools that change things without asking; forms,
-   attachments and open-world tools still ask, and turning Allow bypass
-   off turns it off too.
+   they always ask. While Allow bypass is on, each MCP server's drawer
+   (Settings, MCP servers) has its own **Allow bypass**, off by default
+   and asking first: those threads then use that server's tools that
+   change things without asking. Forms, attachments and open-world tools
+   still ask, and turning Allow bypass off makes every server ask again.
 
 The same three steps are in the web UI under Settings, Machines, **Add
 machine** (SSH or Proxmox); nothing is saved there before you confirm the

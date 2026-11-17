@@ -359,6 +359,14 @@ export const STEPS: Record<DbKind, MigrationStep[]> = {
     // sudo read no drop-in folders (docs/workspace.md, "NixOS"). Adds a column only.
     version: 26,
     run(db) { addColumns(db, [["machines", "nixos", "INTEGER NOT NULL DEFAULT 0"]]); },
+  }, {
+    // Principle 6: Allow MCP bypass is chosen per server (DESIGN.md, MCP servers). Adds a column only; the old
+    // workspace.bypass.mcp setting stays for the release before, and where it was on every server starts with it on.
+    version: 27,
+    run(db) {
+      addColumns(db, [["mcp_servers", "bypass", "INTEGER NOT NULL DEFAULT 0"]]);
+      db.exec("UPDATE mcp_servers SET bypass = 1 WHERE EXISTS (SELECT 1 FROM settings WHERE key = 'workspace.bypass.mcp' AND value = '1')");
+    },
   }],
   pool: [{
     version: 1, contract: true,

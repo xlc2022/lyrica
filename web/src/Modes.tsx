@@ -17,11 +17,7 @@ export const MODES: Record<PermissionMode, { label: string; description: string 
   bypass: { label: "Bypass permissions", description: "Commands and file changes never ask. Forbid rules still refuse." },
 };
 /** Allow bypass, under Settings → Network → New threads. */
-export const BYPASS_HINT = "Adds Bypass permissions to the mode menu, where commands and file changes in the sandbox never ask. Forbid rules still refuse. Off moves those threads to Auto.";
-/** Allow MCP bypass, beside Allow bypass while it is on. */
-export const MCP_BYPASS_HINT = "In Bypass permissions, MCP tools that change things run without asking too. Forms, attachments and open-world tools still ask.";
-/** The confirm before Allow MCP bypass goes on. */
-export const mcpBypassWarning = (name: string) => `In Bypass permissions, MCP tools that change things will run without asking. A server can send, post, buy or delete on ${name}'s word alone, and text ${name} reads on a page or in a file could steer it. Use this only on one machine you let ${name} run unattended. Forms, attachments and open-world tools still ask.`;
+export const BYPASS_HINT = "Adds Bypass permissions to the mode menu, where commands and file changes in the sandbox never ask. Forbid rules still refuse. Off moves those threads to Auto. MCP servers skip cards only where their own Allow bypass is on.";
 /** The modes a plan can go ahead in. */
 export const GO_AHEAD: GoAhead[] = ["ask", "acceptEdits", "auto"];
 

@@ -812,15 +812,14 @@ export function apiRoutes(d: Lyricad): Route[] {
     }),
     route("GET", `${u}/mode`, (r): Api.ModeDefault => {
       const ws = s().workspace.settings(d.userFor(r).id);
-      return { mode: ws.defaultMode(), bypass: ws.bypassAllowed(), mcp: ws.mcpBypassAllowed() };
+      return { mode: ws.defaultMode(), bypass: ws.bypassAllowed() };
     }),
     route("PUT", `${u}/mode`, async (r): Promise<Api.ModeDefault> => {
       const ws = s().workspace.settings(d.userFor(r).id);
       const change = await r.json<Partial<Api.ModeDefault>>();
       if (change?.bypass !== undefined) ws.setBypassAllowed(change.bypass === true);
-      if (change?.mcp !== undefined) ws.setMcpBypassAllowed(change.mcp === true);
       if (change?.mode !== undefined) ws.setDefaultMode(change.mode);
-      return { mode: ws.defaultMode(), bypass: ws.bypassAllowed(), mcp: ws.mcpBypassAllowed() };
+      return { mode: ws.defaultMode(), bypass: ws.bypassAllowed() };
     }),
     route("GET", `${u}/paths`, (r) => s().workspace.allowedPaths.list(d.userFor(r).id)),
     route("GET", `${u}/machines`, (r) => s().workspace.settings(d.userFor(r).id).machines().map(machineInfo)),
@@ -920,13 +919,14 @@ export function apiRoutes(d: Lyricad): Route[] {
     }),
     route("PATCH", `${u}/mcp-servers/:name`, async (r) => {
       const user = d.userFor(r);
-      const change = pick(await r.json<Api.McpServerChange>(), ["name", "url", "command", "pool", "dailyLimit", "minuteLimit", "offNetworkConfirmed"]);
+      const change = pick(await r.json<Api.McpServerChange>(), ["name", "url", "command", "pool", "dailyLimit", "minuteLimit", "bypass", "offNetworkConfirmed"]);
       if (change.pool !== undefined) checkPool(change.pool);
       for (const k of ["name", "url", "command"] as const) if (change[k] !== undefined) change[k] = String(change[k]);
       if (change.url !== undefined) change.url = unredactUrl(change.url, s().workspace.settings(user.id).mcpServer(r.params.name!)?.url ?? "");
-      const { command, dailyLimit, minuteLimit, ...rest } = change;
+      const { command, dailyLimit, minuteLimit, bypass, ...rest } = change;
       const m = await s().workspace.updateMcpServer(user.id, r.params.name!, {
         ...rest, offNetworkConfirmed: change.offNetworkConfirmed === true,
+        ...(bypass !== undefined ? { bypass: bypass === true } : {}),
         ...(command !== undefined ? { command: command.trim() ? mcpCommand(command) : [] } : {}),
         ...(dailyLimit !== undefined ? { dailyLimit: mcpLimit(dailyLimit, "Calls per day") } : {}),
         ...(minuteLimit !== undefined ? { minuteLimit: mcpLimit(minuteLimit, "Calls per minute") } : {}),
@@ -2835,7 +2835,7 @@ function mcpServerInfo(m: McpServerConfig): Api.McpServerInfo {
   return {
     name: m.name, url: m.url ? redactUrl(m.url) : "", command: mcpCommandLine(m.command), host: mcpPlace(m), pool: m.pool,
     hasToken: !!m.token, hasEnv: Object.keys(m.env).length > 0, tools: m.tools, description: m.description, offNetwork: m.offNetwork,
-    dailyLimit: m.dailyLimit, minuteLimit: m.minuteLimit, callsToday: m.callsToday,
+    dailyLimit: m.dailyLimit, minuteLimit: m.minuteLimit, callsToday: m.callsToday, bypass: m.bypass,
     ...(m.state ? { state: m.state } : {}),
   };
 }

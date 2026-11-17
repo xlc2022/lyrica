@@ -971,10 +971,30 @@ test("MCP servers: one is checked before it's saved, granted in a thread's drawe
   await expect(drawer.getByLabel("Calls per day")).toHaveValue("");
   await drawer.getByLabel("Calls per day").fill("4000");
   await drawer.getByLabel("Calls per minute").fill("20");
+  // Allow bypass shows only while Settings → Network's Allow bypass is on.
+  await expect(drawer.getByLabel("Allow bypass")).toHaveCount(0);
   await shot("mcp-drawer");
   await drawer.getByRole("button", { name: "Save" }).click();
   await expect(drawer).toHaveCount(0);
   await expect(row).toContainText("0 of 4,000 today");
+  await page.goto(`/#/u/${userId}/settings/network`);
+  await page.getByLabel("Allow bypass").click();
+  await expect(page.getByLabel("Allow bypass")).toBeChecked();
+  await page.goto(`/#/u/${userId}/settings/mcp`);
+  await section.getByRole("button", { name: /^house/ }).click();
+  const bypass = drawer.getByLabel("Allow bypass");
+  await expect(bypass).not.toBeChecked();
+  // Turning it on asks first, naming the server; Save keeps it, and the row says so.
+  await bypass.click();
+  const warn = page.getByRole("dialog", { name: "Allow bypass for “house”?" });
+  await expect(warn).toContainText("in subagents too");
+  await shot("mcp-bypass-confirm");
+  await warn.getByRole("button", { name: "Allow" }).click();
+  await expect(bypass).toBeChecked();
+  await shot("mcp-bypass");
+  await drawer.getByRole("button", { name: "Save" }).click();
+  await expect(drawer).toHaveCount(0);
+  await expect(row).toContainText("0 of 4,000 today · bypass");
 
   await newThread(page, "General");
   await send(page, "Hello");

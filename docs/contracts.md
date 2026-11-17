@@ -1984,7 +1984,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     input holds one (`holdsSecret`).
   - `ThreadTools` is `{ commandRules?(), target(machine?), settings(), network(),
     claudeCode?(), machines?(), allowedInThread?(machine, command), proxmox?(machine, action, vm?),
-    mcpServers?(), toolAllowedInThread?(server, tool), mcpBypass?(), approve?, browser?(), setMode?,
+    mcpServers?(), toolAllowedInThread?(server, tool), mcpBypass?(server), approve?, browser?(), setMode?,
     proposePlan?(PlanRequest), recordChange?(NewChange), sameFile?(path, inserts?), madeFiles?(paths), madeSince?(since), fileNotes?(),
     startJob?(command, machine?, timeoutS?, { name?, call? }), jobs?(), jobOutput?(id), stopJob?(id), keepOutput?(…) }`.
     `sameFile(path, inserts)` runs in `tool_call` for a sandbox `write` or `edit`
@@ -2034,7 +2034,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     subagent's tools come without `proxmox`. An `mcp__<server>__<tool>` call whose server isn't in
     `mcpServers()` is refused; one its server marks `readOnlyHint` runs,
     as does one `toolAllowedInThread`, and any one in `bypass` while
-    `mcpBypass()` (Allow MCP bypass) is true; any other asks with `server`
+    `mcpBypass(server)` (that server's Allow bypass) is true; any other asks with `server`
     and `serverTool`, in every mode. Read-only MCP tools stay on in Plan mode.
   - `toolsOff(settings, registered)`: Plan mode leaves only `PLAN_TOOLS`
     (`read`, `recall`, `read_memory`, `web_search`, `web_fetch`,
@@ -3226,10 +3226,12 @@ selfTest(): Promise<string | undefined>   // lyricad calls this at startup
   strictest first plan, ask, acceptEdits, auto, bypass. `bypass` is set only
   while `bypassAllowed()` (the `workspace.bypass` setting); otherwise
   `setDefaultMode` and `setThread` refuse it, and `setBypassAllowed(false)`
-  moves every thread and the default in it to `auto` and turns
-  `mcpBypassAllowed()` (the `workspace.bypass.mcp` setting, off by default)
-  off. `setMcpBypassAllowed(true)` is refused while `bypassAllowed()` is
-  off. Stored `ask-changes` and
+  moves every thread and the default in it to `auto`. `mcpBypassFor(server)`
+  is the server's `bypass` column (`McpServerConfig.bypass`, off by
+  default) while `bypassAllowed()`, and false otherwise; Allow bypass going
+  off keeps the column. The `workspace.bypass.mcp` setting it replaced is
+  left for the release before; user step 27 turned `bypass` on for every
+  server where it was on. Stored `ask-changes` and
   `ask-commands` migrate in place to `ask` and `acceptEdits`. A thread with
   no row is `auto`. A thread's ancestors changed later still narrow it, at
   any depth, because `effective` is read at each call.
