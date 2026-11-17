@@ -25,6 +25,8 @@ import { ConfirmDialog, ErrorText, fullTime, Prose, sendsOnEnter, useAction, use
 import { OfflinePage } from "./OfflinePage.tsx";
 import { basename, fileTarget, InlineImage, isImagePath, isUnderWorkdir, largeUrl, Lightbox, PathText, SHARED, useFileLinks, type FileLinks } from "./paths.tsx";
 import { CopyButton } from "./CopyButton.tsx";
+import { ArgList, resultFacts, ToolArgs } from "./ToolArgs.tsx";
+import { Highlighted, langOfPath } from "./highlight.tsx";
 import { JobNotice, parseJobNotice } from "./JobNotice.tsx";
 import type { ReactNode } from "react";
 import { foldLooks, raisedIn, toldIn, type Told } from "./looks.ts";
@@ -835,6 +837,7 @@ function RejectedImages({ parts, env, ns, turns, streaming }: { parts: RejectedI
 
 function Marker({ part, env }: { part: Exclude<MessagePart, { type: "text" | "image" | "video" | "artifact" }>; env: Env }) {
   const [localOpen, setLocalOpen] = useState(false);
+  const files = useFileLinks(env.userId, env.pool, env.threadId);
   const open = part.type === "tool" ? env.openTools.has(part.toolCallId) : localOpen;
   const toggle = () => (part.type === "tool" ? env.toggleTool(part.toolCallId) : setLocalOpen(!localOpen));
   if (part.type === "tool" && part.name === "delegate") return <SubagentCard part={part} env={env} />;
@@ -889,12 +892,13 @@ function Marker({ part, env }: { part: Exclude<MessagePart, { type: "text" | "im
         const shown = state === "done" && part.result?.startsWith("Making the clip in the background") ? "started" : state;
         label = <><span>{making}{args.action === "create" && args.tier && <> · {args.tier}</>} <span className="state" data-state={shown}>{shown}</span></span></>;
       }
+      const facts = resultFacts(part.name, args, part.result, part.isError);
       body = (
         <>
-          <pre>{JSON.stringify(args, null, 2)}</pre>
+          <ToolArgs name={mcp?.tool ?? part.name} args={args} drafting={drafting} fileHref={fileHref(files, !machineOf(args))} />
           {part.name === "bash" && !env.subagent
             ? <OutputBox base={env.base} call={part.toolCallId} running={part.result === undefined} fallback={part.result} failed={part.isError} label={(args as { background?: unknown } | null)?.background === true ? "Job output" : "Output"} />
-            : part.result !== undefined && (readText(part) ? <ReadText {...readText(part)!} env={env} /> : <pre className={part.isError ? "tool-error" : ""}>{part.result}</pre>)}
+            : facts ?? (part.result !== undefined && (readText(part) ? <ReadText {...readText(part)!} env={env} /> : <pre className={part.isError ? "tool-error" : ""}>{part.result}</pre>))}
           {readImage(part) && <ReadImage path={readImage(part)!} env={env} />}
         </>
       );
@@ -909,6 +913,12 @@ function Marker({ part, env }: { part: Exclude<MessagePart, { type: "text" | "im
     </div>
   );
 }
+
+/** A path's link into Files, where the thread can reach it: in its own or the shared folder, not on a machine. */
+const fileHref = (files: FileLinks, local: boolean) => (path: string): string | undefined => {
+  const target = local ? fileTarget(path) : undefined;
+  return target && (isUnderWorkdir(target) || target.startsWith(`${SHARED}/`)) ? files.href(target) : undefined;
+};
 
 /** What an image call's marker says it is doing. */
 function makingLabel(a: unknown): string {
@@ -960,7 +970,7 @@ function ReadText({ path, text, note, kind, local, env }: { path: string; text: 
         {target && (isUnderWorkdir(target) || target.startsWith(`${SHARED}/`)) ? <a className="code-lang" href={files.href(target)}>{basename(path)}</a> : <span className="code-lang">{basename(path)}</span>}
         <CopyButton text={text} label="Copy" ariaLabel="Copy file text" className="code-copy" />
       </div>
-      {kind === "markdown" ? <div className="read-body prose small"><Prose text={text} /></div> : <pre className="read-body">{text}</pre>}
+      {kind === "markdown" ? <div className="read-body prose small"><Prose text={text} /></div> : <pre className="read-body">{kind === "code" ? <Highlighted text={text} lang={langOfPath(path)} /> : text}</pre>}
       {note && <p className="cap read-note">{note.split(/(\d+)/).map((t, i) => (i % 2 ? <span key={i} className="num">{t}</span> : t))}</p>}
     </div>
   );
@@ -1395,8 +1405,25 @@ function machineOf(args: unknown): string | undefined {
   return typeof m === "string" && m ? m : undefined;
 }
 
-/** What is being approved, in mono: the command, the path, or the Proxmox action and VM. */
-function permissionText(args: unknown): string {
+/**
+ * What is being approved: a file's text or an edit as a tool call shows it, a command as Bash, a path or the Proxmox
+ * action and VM in mono, anything else as the list of its arguments.
+ */
+function PermissionArgs({ tool, args, env }: { tool: string; args: unknown; env: Env }) {
+  const files = useFileLinks(env.userId, env.pool, env.threadId);
+  const a = args && typeof args === "object" && !Array.isArray(args) ? args as Record<string, unknown> : undefined;
+  if (a && (tool === "write" || tool === "edit")) return <div className="tool-args-box"><ToolArgs name={tool} args={a} drafting={false} fileHref={fileHref(files, !machineOf(a))} /></div>;
+  if (typeof a?.command === "string") return <pre><Highlighted text={a.command} lang="bash" /></pre>;
+  const text = permissionText(args);
+  if (a && text === undefined) {
+    const { machine: _, ...rest } = a;
+    return <ArgList args={rest} />;
+  }
+  return <pre>{text ?? JSON.stringify(args)}</pre>;
+}
+
+/** What is being approved, in mono, when it fits one line: the command, the path, or the Proxmox action and VM. */
+function permissionText(args: unknown): string | undefined {
   if (!args || typeof args !== "object") return JSON.stringify(args);
   const { machine: _, ...a } = args as Record<string, unknown>;
   if (typeof a.command === "string") return a.command;
@@ -1404,7 +1431,7 @@ function permissionText(args: unknown): string {
   if (typeof a.repository === "string") return `${a.repository} · ${String(a.account ?? "")}`;
   if (typeof a.action === "string") return [a.action, a.vm].filter((x) => typeof x === "string" && x).join(" ");
   if (typeof a.path === "string" && Object.keys(a).length === 1) return a.path;
-  return JSON.stringify(a, null, 2);
+  return undefined;
 }
 
 export function PermissionPrompt({ base, p, env }: { base: string; p: PermissionRequest; env: Env }) {
@@ -1442,7 +1469,7 @@ export function PermissionPrompt({ base, p, env }: { base: string; p: Permission
     return (
       <div className="permission" role="group" data-pending="Approval" aria-label={`Allow ${p.server}'s ${p.serverTool ?? p.tool}${sub ? ` for the ${sub.role} subagent` : ""}?`}>
         <p><b>{p.server}</b> · {who} to use <b className="mono">{p.serverTool ?? p.tool}</b>:</p>
-        <pre>{JSON.stringify(p.args ?? {}, null, 2)}</pre>
+        {p.args && typeof p.args === "object" && !Array.isArray(p.args) ? <ArgList args={p.args as Record<string, unknown>} /> : <pre>{JSON.stringify(p.args ?? {}, null, 2)}</pre>}
         <div className="row">
           <button type="button" className="primary" disabled={busy} onClick={() => answer(true)}>Allow</button>
           <button type="button" disabled={busy} title={`Stop asking about ${p.serverTool ?? p.tool} on ${p.server} for the rest of this thread`}
@@ -1458,7 +1485,7 @@ export function PermissionPrompt({ base, p, env }: { base: string; p: Permission
     <div className="permission" role="group" data-pending="Approval" aria-label={`Allow ${p.tool}${p.machine ? ` on ${p.machine}` : ""}${sub ? ` for the ${sub.role} subagent` : ""}?`}>
       <p>{p.machine && <><b className="mono">{p.machine}</b> · </>}{who} to use <b>{p.tool}</b>{p.machine && p.cwd ? <> in <span className="mono">{p.cwd}</span></> : null}:</p>
       {p.warning && <p role="alert">{p.warning}</p>}
-      <pre>{permissionText(p.args)}</pre>
+      <PermissionArgs tool={p.tool} args={p.args} env={env} />
       <div className="row">
         <button type="button" className="primary" disabled={busy} onClick={() => answer(true)}>Allow</button>
         {p.alwaysAllow && <button type="button" className="always-allow" disabled={busy} onClick={() => answer(true, undefined, undefined, true)}>Always allow <span className="mono">{p.alwaysAllow}</span></button>}

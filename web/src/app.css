@@ -8,6 +8,7 @@
   --line: #dfe5e5; --edge: #889494; --tool: #f3f5f5; --danger: #a8322d; --ok: #26704a; --warn: #9a6a0a; --info: #2b6cb0;
   --accent: var(--user-accent); --accent-fg: #ffffff;
   --cloud: #9a5b12; --local: #26704a; --private: #6b3fa0;
+  --hl-kw: #7a3e9d; --hl-str: #2f6b2f; --hl-com: #5d6969; --hl-num: #9a5b12; --hl-fn: #2b6cb0; --hl-attr: #1f6f78;
   --user-block: color-mix(in oklab, var(--accent) 9%, var(--panel));
   --ui: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --mono: "IBM Plex Mono", ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
@@ -20,6 +21,7 @@
     --line: #2a3333; --edge: #607070; --tool: #1e2424; --danger: #f08a80; --ok: #7fc79a; --warn: #e3b45b; --info: #7fb3f0;
     --accent: color-mix(in oklab, var(--user-accent) 55%, white); --accent-fg: #0f1414;
     --cloud: #e3a95b; --local: #7fc79a; --private: #b896e8;
+    --hl-kw: #c9a0ef; --hl-str: #9fd18b; --hl-com: #9aa8a8; --hl-num: #e3a95b; --hl-fn: #7fb3f0; --hl-attr: #7fcfd6;
     color-scheme: dark;
   }
 }
@@ -28,6 +30,7 @@
   --line: #2a3333; --edge: #607070; --tool: #1e2424; --danger: #f08a80; --ok: #7fc79a; --warn: #e3b45b; --info: #7fb3f0;
   --accent: color-mix(in oklab, var(--user-accent) 55%, white); --accent-fg: #0f1414;
   --cloud: #e3a95b; --local: #7fc79a; --private: #b896e8;
+  --hl-kw: #c9a0ef; --hl-str: #9fd18b; --hl-com: #9aa8a8; --hl-num: #e3a95b; --hl-fn: #7fb3f0; --hl-attr: #7fcfd6;
   color-scheme: dark;
 }
 @media (pointer: coarse) { :root { --tap: 44px; } }
@@ -1396,6 +1399,31 @@ a.fpath { font-family: var(--mono); font-size: 0.93em; overflow-wrap: anywhere; 
 .marker-body .read-text[data-kind="wrapped"] pre.read-body { white-space: pre-wrap; overflow-wrap: anywhere; }
 .read-text .read-body.prose { padding: 2px 12px 10px; max-height: 320px; overflow: auto; }
 .read-text .read-note { padding: 0 12px 8px; }
+/* Code coloured by language (highlight.tsx): six tokens, each at least 4.5:1 on the code's background in both themes. */
+.hljs-keyword, .hljs-built_in, .hljs-selector-tag, .hljs-literal, .hljs-type, .hljs-doctag { color: var(--hl-kw); }
+.hljs-string, .hljs-regexp, .hljs-addition, .hljs-char.escape_ { color: var(--hl-str); }
+.hljs-comment, .hljs-quote, .hljs-meta { color: var(--hl-com); font-style: italic; }
+.hljs-number, .hljs-symbol, .hljs-bullet { color: var(--hl-num); }
+.hljs-title, .hljs-section, .hljs-name, .hljs-selector-class, .hljs-selector-id { color: var(--hl-fn); }
+.hljs-attr, .hljs-attribute, .hljs-variable, .hljs-template-variable, .hljs-params, .hljs-property, .hljs-subst { color: var(--hl-attr); }
+.hljs-deletion { color: var(--danger); }
+.hljs-emphasis { font-style: italic; } .hljs-strong { font-weight: 600; }
+/* A heredoc's body, coloured as the program it feeds, set off by a faint rule. */
+.heredoc { display: block; margin: 0 -12px; padding: 0 12px 0 10px; border-left: 2px solid var(--line); background: color-mix(in oklab, var(--tool) 60%, transparent); }
+/* A tool call's arguments (ToolArgs.tsx): names muted on the left, values on the right; a block takes the full width. */
+.tool-args { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 14px; margin: 0; font: 12px/1.5 var(--mono); }
+.tool-args dt { color: var(--muted); }
+.tool-args dd { margin: 0; min-width: 0; color: var(--fg); overflow-wrap: anywhere; white-space: pre-wrap; }
+.tool-args dd.wide { grid-column: 1 / -1; white-space: normal; font-family: var(--ui); }
+@media (max-width: 520px) { .tool-args { grid-template-columns: minmax(0, 1fr); gap: 0; } .tool-args dd { margin-bottom: 6px; } }
+.read-text pre.read-body { margin: 0; padding: 2px 12px 10px; font: 12px/1.5 var(--mono); white-space: pre; overflow-wrap: normal; tab-size: 4; max-height: 320px; overflow: auto; color: var(--fg); }
+.read-text[data-kind="wrapped"] pre.read-body { white-space: pre-wrap; overflow-wrap: anywhere; }
+.tool-edits { max-height: 320px; overflow: auto; padding-bottom: 8px; font: 12px/1.5 var(--mono); }
+.tool-edits .edit-n { margin: 0; padding: 6px 12px 0; font-family: var(--ui); }
+.tool-edits .tool-draft { margin: 0; padding: 0 12px; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--fg); }
+.tool-diff .cline { grid-template-columns: 1.5ch minmax(0, 1fr); padding: 0 12px; }
+.tool-facts { margin: 0; } .tool-facts .num { color: var(--fg); }
+.permission .tool-args, .permission .tool-args-box { margin: 8px 0; display: grid; gap: 8px; }
 .read-image .inline-img { max-width: min(100%, 240px); }
 .read-image .inline-img img { max-height: 160px; }
 .message-image { width: fit-content; max-width: min(100%, 420px); }

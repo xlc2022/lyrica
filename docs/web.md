@@ -1347,6 +1347,37 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   and `.tsv`, or rendered with `Prose` for Markdown; at most 320 px tall.
   Pi's trailing "[Showing lines …]" or "[… more lines in file …]" note is
   taken off and shown as a caption without its "Use offset" advice.
+- An expanded tool call shows its arguments as `ToolArgs` (`ToolArgs.tsx`),
+  not as JSON: a `write` as the file's text under the same strip as a read
+  (Markdown rendered, code coloured), an `edit` as one diff per edit
+  (`lineDiff` from `diff.ts`, "Edit n of m" over each when there are
+  several), a `bash` command as Bash with its timeout and background as a
+  muted facts line, and anything else (MCP tools included) as `ArgList`, a
+  `dl` of names and values: one-line text, numbers and booleans inline, a
+  list of words joined with commas, a dash for nothing, and a value of
+  several lines or a nested one as a full-width block whose kind `kindOf`
+  picks (`highlight.tsx`: the path's extension, else a `#!` line, JSON that
+  parses, Markdown's marks, else wrapped text). `machine` is left out, as
+  the marker names it. While she writes the call (`drafting`), the field
+  she is writing (the last one) shows uncoloured and its box follows its
+  end unless scrolled up; an edit not yet whole shows as plain text. A
+  successful write's or edit's result becomes "Wrote <n> bytes" or "Edited
+  <n> places" (`resultFacts`). The permission card shows a write's or
+  edit's arguments the same way, a command coloured as Bash, and anything
+  that isn't a single line as `ArgList`; the MCP approval card uses
+  `ArgList` too.
+- Code is coloured by `Highlighted` (`highlight.tsx`): `lowlight` over
+  highlight.js's common grammars plus Nix and Dockerfile (`grammars.ts`, a
+  chunk of its own loaded the first time code shows), its tree rendered as
+  React spans, no HTML strings. The language comes from a fence's name
+  (`langOfFence`), a file's extension (`langOfPath`) or a `#!` line. In a
+  shell script each heredoc's body (`heredocs`) is coloured as the program
+  that reads it (`python3 - <<'PY'`, `cat > x.json <<EOF`) and set off
+  as a `.heredoc` block. Six theme tokens (`--hl-kw`, `--hl-str`,
+  `--hl-com`, `--hl-num`, `--hl-fn`, `--hl-attr`) colour the classes, each
+  at least 4.5:1 on the code background in both themes. Past 256 KB, or for
+  a language with no grammar, text stays uncoloured. A read's code, a tool
+  call's code and her fenced code blocks (`RichCode`) all use it.
 - An expanded `read` call whose result says it read an image (`readImage`:
   "Read image file …", not on a machine, a path that resolves under the
   thread's folders) shows that image under the result as a thumbnail at
