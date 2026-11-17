@@ -1,12 +1,15 @@
 import { devNull } from "node:os";
-import { createMcpExtension, createToolSearchExtension, type ExtensionFactory } from "@earendil-works/pi-coding-agent";
-import { mcpStdioTransport, mcpTransport, type McpBudget, type McpProcess, type McpStateKind, type ThreadMcpServer } from "@lyrica/core";
+import { createMcpExtension, createToolSearchExtension, type ExtensionContext, type ExtensionFactory } from "@earendil-works/pi-coding-agent";
+import { mcpNamespace, mcpStdioTransport, mcpTransport, type McpBudget, type McpProcess, type McpStateKind, type ThreadMcpServer } from "@lyrica/core";
+import { bringBack } from "./gate.ts";
 
 // MCP servers (DESIGN.md, "MCP servers"): Pi's own client and tool_search,
 // with nothing about servers read from or written to disk. Each granted
 // server is registered for the session, deferred, so its tools reach the
 // model only when tool_search loads them. The workspace gate decides which
-// calls run, ask, or are off.
+// calls run, ask, or are off. What tool_search loaded stays loaded for the
+// thread: a new session on it (after idle, a restart, a settings change)
+// loads those tools again, whatever was compacted.
 
 export interface McpServersHost {
   /** The thread's servers now: granted, of its pool, and a private one only once its host passed the check. Read at every call. */
@@ -23,6 +26,22 @@ export interface McpServersHost {
 
 /** The section that tells her about a server held back this turn. */
 const SECTION = "mcp_problems";
+
+/** How long a turn waits for a server to list the tools she loaded earlier: Pi's own wait for servers with direct tools. */
+export const LOADED_WAIT_MS = 10_000;
+
+interface Entry { type?: string; message?: { role?: string; toolName?: string; details?: { loaded?: unknown } } }
+
+/** Every tool tool_search loaded on the thread's branch, compacted or not. */
+export function loadedTools(branch: readonly unknown[]): string[] {
+  const names = new Set<string>();
+  for (const e of branch as Entry[]) {
+    const m = e.type === "message" ? e.message : undefined;
+    if (m?.role !== "toolResult" || m.toolName !== "tool_search" || !Array.isArray(m.details?.loaded)) continue;
+    for (const name of m.details.loaded) if (typeof name === "string") names.add(name);
+  }
+  return [...names];
+}
 
 /**
  * Pi's MCP and tool_search extensions, and the thread's servers registered
@@ -59,9 +78,32 @@ export function createMcpServersExtension(host: McpServersHost): ExtensionFactor
       await host.checkMcpServers?.().catch(() => []);
       sync();
     });
-    pi.on("before_agent_start", async (event) => {
+    /** Servers whose last connection failed, which aren't waited for. */
+    const failed = new Set<string>();
+    /** The tools she loaded earlier that belong to the thread's servers now. */
+    const loaded = (ctx: ExtensionContext) => {
+      const spaces = host.mcpServers().map((s) => `${mcpNamespace(s.name)}__`);
+      return loadedTools(ctx.sessionManager.getBranch()).filter((n) => spaces.some((p) => n.startsWith(p)));
+    };
+    /** Brings back what she loaded, once each server holding one has listed its tools, failed, or the wait is over. */
+    const restore = async (ctx: ExtensionContext) => {
+      const want = loaded(ctx);
+      if (!want.length) return;
+      const until = Date.now() + LOADED_WAIT_MS;
+      const listing = () => {
+        const names = pi.getAllTools().map((t) => t.name);
+        return host.mcpServers().some((s) => {
+          const space = `${mcpNamespace(s.name)}__`;
+          return !failed.has(s.name) && want.some((n) => n.startsWith(space)) && !names.some((n) => n.startsWith(space));
+        });
+      };
+      while (listing() && Date.now() < until && !ctx.signal?.aborted) await new Promise((r) => setTimeout(r, 50));
+      bringBack(pi, ctx, want);
+    };
+    pi.on("before_agent_start", async (event, ctx) => {
       const problems = host.checkMcpServers ? await host.checkMcpServers().catch((err: Error) => [err.message]) : [];
       sync();
+      bringBack(pi, ctx, loaded(ctx));
       const sections = event.systemPromptOptions.sections ??= {};
       if (problems.length) sections[SECTION] = `MCP servers held back this turn:\n${problems.map((p) => `- ${p}`).join("\n")}`;
       else delete sections[SECTION];
@@ -72,13 +114,19 @@ export function createMcpServersExtension(host: McpServersHost): ExtensionFactor
       for (const name of registered.keys()) if (!now.has(name)) { pi.unregisterMcpServer(name); registered.delete(name); }
       return undefined;
     });
+    // A server that lists its tools late, after the wait: they come back before her next step.
+    pi.on("turn_end", (_event, ctx) => bringBack(pi, ctx, loaded(ctx)));
     const tokenOf = (name: string) => host.mcpServers().find((s) => s.name === name);
     await createMcpExtension({
       loadConfig: () => ({ servers: [], errors: [], autoEnableCodemode: false }),
       createTransport: (entry) => {
         const s = tokenOf(entry.name);
         if (!s) throw new Error(`MCP server ${entry.name} isn't one of this thread's`);
-        const state = (kind: McpStateKind) => host.mcpServerState?.(entry.name, kind);
+        const state = (kind: McpStateKind) => {
+          if (kind === "online") failed.delete(entry.name);
+          else failed.add(entry.name);
+          host.mcpServerState?.(entry.name, kind);
+        };
         const budget = host.mcpBudget?.(entry.name);
         if (s.command?.length) {
           if (!host.startMcpServer) throw new Error(`the local MCP server ${entry.name} can't be started here`);
@@ -91,6 +139,8 @@ export function createMcpServersExtension(host: McpServersHost): ExtensionFactor
       updateConfig: () => {},
       openUrl: () => {},
     })(pi);
+    // After Pi's session_start has started the connections, and before any turn, so the gates see the tools when it starts.
+    pi.on("session_start", (_event, ctx) => restore(ctx));
     await createToolSearchExtension()(pi);
   };
 }
