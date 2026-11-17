@@ -2,11 +2,30 @@
   description = "Lyrica: lyricad, the lyrica CLI and a NixOS module (docs/daemon.md, On NixOS)";
 
   inputs.nixpkgs.url = "https://channels.nixos.org/nixos-26.05/nixexprs.tar.xz";
+  # mcp-nixos for services.lyrica-mcp-nixos: nixos-26.05 ships 2.4.3, which
+  # looks for search.nixos.org's indexes under fixed generations long since
+  # retired and so reports 25.11 as stable. A release tag, built by upstream's
+  # own lib.mkMcpNixos against this nixpkgs (docs/guides/nixos-mcp.md).
+  # Fetched over git, not github:, so a machine or sandbox that allows git
+  # reads but not GitHub's API or tarballs can still lock and build it.
+  inputs.mcp-nixos = {
+    url = "git+https://github.com/utensils/mcp-nixos?ref=refs/tags/v3.1.1&shallow=1";
+    inputs.nixpkgs.follows = "nixpkgs";
+    inputs.flake-parts.url = "git+https://github.com/hercules-ci/flake-parts?shallow=1";
+    inputs.flake-parts.inputs.nixpkgs-lib.follows = "nixpkgs";
+    inputs.devshell.url = "git+https://github.com/numtide/devshell?shallow=1";
+  };
 
-  outputs = { self, nixpkgs }:
+  outputs = inputs@{ self, nixpkgs, mcp-nixos }:
     let
       system = "x86_64-linux";
       pkgs = nixpkgs.legacyPackages.${system};
+      # services.lyrica-mcp-nixos.package's default, built for the system's
+      # own pkgs. The key makes it count once when both modules are imported.
+      mcpNixosDefault = { pkgs, lib, ... }: {
+        key = "lyrica-mcp-nixos-default";
+        config.services.lyrica-mcp-nixos.package = lib.mkDefault (mcp-nixos.lib.mkMcpNixos { inherit pkgs; });
+      };
       rev = self.rev or self.dirtyRev or "dirty";
       fs = nixpkgs.lib.fileset;
       # Only what the package build reads. Docs, evals, tests and the Nix files
@@ -23,6 +42,8 @@
         default = lyrica;
         # The module's default sandbox tools; CI runs the sandbox tests with them.
         sandbox-tools = pkgs.callPackage ./nix/sandbox-env.nix { packages = import ./nix/sandbox-tools.nix pkgs; };
+        # The mcp-nixos services.lyrica-mcp-nixos runs by default.
+        mcp-nixos = inputs.mcp-nixos.lib.mkMcpNixos { inherit pkgs; };
         sandbox-closure = pkgs.callPackage ./nix/sandbox-closure.nix { rootPaths = [ sandbox-tools pkgs.nodejs_24 pkgs.cacert ]; };
         # services.lyrica-host.gpuUnlock's kernel module, for the default
         # kernel: CI builds it. Its firmware needs NVIDIA's driver, so only a
@@ -35,7 +56,7 @@
       };
 
       nixosModules.default = { pkgs, lib, ... }: {
-        imports = [ ./nix/module.nix ];
+        imports = [ ./nix/module.nix mcpNixosDefault ];
         services.lyrica.package = lib.mkDefault self.packages.${pkgs.stdenv.hostPlatform.system}.lyrica;
       };
 
@@ -44,7 +65,9 @@
 
       # mcp-nixos alone, for a machine that only runs the MCP server for her
       # (docs/guides/nixos-mcp.md). services.lyrica.mcpNixos runs it beside her.
-      nixosModules.mcp-nixos = ./nix/mcp-nixos-module.nix;
+      nixosModules.mcp-nixos = {
+        imports = [ ./nix/mcp-nixos-module.nix mcpNixosDefault ];
+      };
 
       checks.${system} = let
         modelHostSystem = name: settings: pkgs.writeText name (builtins.unsafeDiscardStringContext
@@ -94,7 +117,7 @@
         # Everything a CI run builds and fetches, in one path: the nix job keeps
         # the last 10 of these on each runner and collects the rest.
         roots = pkgs.linkFarm "lyrica-ci-roots" {
-          inherit (self.packages.${system}) lyrica sandbox-tools sandbox-closure gpu-unlock-module cmp-unlock;
+          inherit (self.packages.${system}) lyrica mcp-nixos sandbox-tools sandbox-closure gpu-unlock-module cmp-unlock;
           nixos = self.checks.${system}.system;
           nixpkgs = nixpkgs.outPath;
         };

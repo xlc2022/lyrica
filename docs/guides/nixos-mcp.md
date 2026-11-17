@@ -40,7 +40,7 @@ above over the internet; the two local actions stay on the machine.
    do.
 
 What the rebuild sets up: the module runs `lyrica-mcp-nixos.service`,
-nixpkgs' `mcp-nixos` in HTTP mode on `127.0.0.1:8001` (endpoint
+`mcp-nixos` in HTTP mode on `127.0.0.1:8001` (endpoint
 `http://127.0.0.1:8001/mcp`), as a dynamic user with `nix` on its path and
 a cache under `/var/cache/lyrica-mcp-nixos`, so its flake-inputs action
 can run `nix flake archive` on a flake of this machine. That action needs
