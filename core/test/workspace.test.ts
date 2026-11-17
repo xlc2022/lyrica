@@ -438,6 +438,8 @@ describe("MCP servers", () => {
       await expect(workspace.addMcpServer(ada.id, { name: "away", url: "http://192.0.2.7/mcp", pool: "private" })).rejects.toThrow(/outside your network/);
       await expect(workspace.addMcpServer(ada.id, { name: "plain", url: house.url, token: "ha-token", pool: "general" })).rejects.toThrow(/only over https/);
       await expect(workspace.addMcpServer(ada.id, { name: "local", url: "stdio:npx server", pool: "private" })).rejects.toThrow(/starts with https:/);
+      // The Name field's rule says plainly that a space is the problem.
+      await expect(workspace.addMcpServer(ada.id, { name: "NixOS MCP", url: house.url, pool: "private" })).rejects.toThrow("the name uses letters, digits, '_' and '-', with no spaces, up to 40");
       await expect(workspace.addMcpServer(ada.id, { name: "both", url: house.url, command: ["server"], pool: "private" })).rejects.toThrow(/URL or a command, not both/);
       const m = await workspace.addMcpServer(ada.id, { name: "house", url: house.url, token: "ha-token", pool: "private" });
       expect(m).toMatchObject({ tools: 2, description: "Home Assistant: lights and sensors.", offNetwork: false, state: { kind: "online" } });
