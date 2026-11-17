@@ -37,7 +37,7 @@ import { AllowedPaths } from "./paths.ts";
 import type { Respelling } from "./renames.ts";
 import { generateSshKey, publicKeyOf, SshTarget } from "./ssh.ts";
 import { JOB_LIMITS, Jobs, machineReady, secretMasks, type JobInfo, type JobThread } from "./jobs.ts";
-import { scriptShell, secretCommand, sudoRunCommand } from "./root.ts";
+import { scriptRunner, secretCommand, sudoRunCommand } from "./root.ts";
 
 /** The longest a sudo password may be kept, in minutes (Keep for on a root step's card). */
 export const KEEP_PASSWORD_MINUTES = 60;
@@ -1921,7 +1921,7 @@ export class Workspace {
       kept.fill(0);
     } else throw new Error("type the secret first");
     secret?.fill(0);
-    const shell = scriptShell(step.script);
+    const shell = scriptRunner(step.script, step.sudo);
     // Fresh lines each run: the shell's "input let go" and sudo's prompt, after both of which the password is written.
     const handOff = step.sudo ? { ready: `lyrica-ready-${randomBytes(12).toString("hex")}`, prompt: `lyrica-sudo-${randomBytes(12).toString("hex")}` } : undefined;
     const command = handOff ? sudoRunCommand(step.path, step.sha256, shell, handOff.prompt) : secretCommand(step.path, step.sha256, shell);

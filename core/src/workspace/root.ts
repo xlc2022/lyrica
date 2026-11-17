@@ -8,7 +8,7 @@
 // offer exact sudoers lines instead, checked here.
 
 import { createHash } from "node:crypto";
-import { checkSudoers, nixosSudoers, quote, ROOT_LIMITS, sudoersCommand, type SudoersLine } from "./sudoers.ts";
+import { checkSudoers, nixosSudoers, quote, ROOT_LIMITS, sudoersCommand, SYSTEM_DIRS, type SudoersLine } from "./sudoers.ts";
 
 export { checkSudoers, nixosSudoers, ROOT_LIMITS, SUDOERS_FILE, SUDOERS_HOW, sudoersCommand, type SudoersLine } from "./sudoers.ts";
 
@@ -35,18 +35,51 @@ export interface RootStep {
 /** A secret's name on the card, and the most a secret or a password may be. */
 export const SECRET_LIMITS = { name: 40, bytes: 16 * 1024 };
 
-/** The shell the card runs a script with: `sh` when its first line asks for sh or dash, else bash. */
-export const scriptShell = (script: string): "sh" | "bash" => (/^#!\s*(?:\/usr)?\/bin\/(?:env\s+)?(?:sh|dash)(?:\s|$)/.test(script) ? "sh" : "bash");
+/** Where a root step's interpreter may live: folders only root can change, so a change after the card can't reach root. */
+const ROOT_INTERPRETER_DIRS = [...SYSTEM_DIRS, "/nix/store/"];
+const INTERPRETER = /^\/[A-Za-z0-9._+/-]+$/;
+const INTERPRETER_ARG = /^[A-Za-z0-9._+=:,@%/-]+$/;
+
+/**
+ * What the card runs a script's copy with, as shell words: what its first line
+ * names, as running the file would (one interpreter and at most one argument,
+ * the kernel's rule), so a Python or Perl script runs as one. A shell (sh,
+ * dash, bash, directly or through env) runs by name from PATH, as before, so
+ * `#!/bin/bash` works on NixOS too; no first line means bash. The copy sits in
+ * mktemp's folder, which may be noexec, so the interpreter is named rather
+ * than the file run. For a root step (`root`) the interpreter must be in a
+ * folder only root can change, and env's program a bare name (sudo's
+ * secure_path finds it). Throws, before the card is made, on a first line it
+ * can't run as written.
+ */
+export function scriptRunner(script: string, root = false): string {
+  if (!script.startsWith("#!")) return "bash";
+  const nl = script.indexOf("\n");
+  const words = (nl < 0 ? script : script.slice(0, nl)).slice(2).split(/[ \t]+/).filter(Boolean);
+  const [interpreter, ...rest] = words;
+  if (!interpreter) return "bash";
+  if (rest.length > 1) throw new Error(`the script's first line gives ${interpreter} ${rest.length} arguments; a first line runs one program with at most one argument (use #!/usr/bin/env python3, not env -S)`);
+  const arg = rest[0];
+  if (!INTERPRETER.test(interpreter)) throw new Error(`the script's first line must name its interpreter by absolute path, such as #!/usr/bin/env python3, not ${interpreter}`);
+  if (arg !== undefined && !INTERPRETER_ARG.test(arg)) throw new Error(`the script's first line has an argument the card can't run as written: ${arg}`);
+  const base = interpreter.slice(interpreter.lastIndexOf("/") + 1);
+  const env = base === "env";
+  if (env && (arg === undefined || arg.startsWith("-") || arg.includes("/"))) throw new Error("after #!/usr/bin/env comes the program's bare name, such as python3");
+  const program = env ? arg! : base;
+  if (/^(?:sh|dash|bash)$/.test(program)) return [program === "dash" ? "sh" : program, ...(!env && arg !== undefined ? [arg] : [])].join(" ");
+  if (root && !ROOT_INTERPRETER_DIRS.some((d) => interpreter.startsWith(d))) throw new Error(`a root step's interpreter must be in a folder only root can change (${ROOT_INTERPRETER_DIRS.join(", ")}), not ${interpreter}`);
+  return arg === undefined ? interpreter : `${interpreter} ${arg}`;
+}
 
 /**
  * The command on the card for a script at `path` with this hash. Her account
  * owns the script, so it is copied first and the copy is checked and run:
  * a change after the check can't reach root. The copy runs under `sh` when
- * the script's first line says so, else bash. The cleanup keeps the chain's
+ * the script's first line names (`scriptRunner`), else bash. The cleanup keeps the chain's
  * exit status (`(exit $rc)` sets it without leaving the person's shell), so
  * a refused hash or a failed script shows as a failure, not as the rm's 0.
  */
-export const rootCommand = (path: string, sha256: string, shell: "sh" | "bash" = "bash"): string =>
+export const rootCommand = (path: string, sha256: string, shell = "bash"): string =>
   `f=$(mktemp) && cat ${quote(path)} > "$f" && echo ${quote(`${sha256}  `)}"$f" | sha256sum -c --quiet - && sudo ${shell} "$f"; rc=$?; rm -f "$f"; (exit $rc)`;
 
 /**
@@ -55,7 +88,7 @@ export const rootCommand = (path: string, sha256: string, shell: "sh" | "bash" =
  * copy is checked against the hash the card showed, so a script changed after
  * the person read it never gets the secret.
  */
-export const secretCommand = (path: string, sha256: string, shell: "sh" | "bash" = "bash"): string =>
+export const secretCommand = (path: string, sha256: string, shell = "bash"): string =>
   `f=$(mktemp) && cat ${quote(path)} > "$f" && echo ${quote(`${sha256}  `)}"$f" | sha256sum -c --quiet - && ${shell} "$f"; rc=$?; rm -f "$f"; (exit $rc)`;
 
 /**
@@ -67,7 +100,7 @@ export const secretCommand = (path: string, sha256: string, shell: "sh" | "bash"
  * its hash, so the copy is root's own and the account can't change it between
  * the check and the run.
  */
-export const sudoRunCommand = (path: string, sha256: string, shell: "sh" | "bash", prompt: string): string =>
+export const sudoRunCommand = (path: string, sha256: string, shell: string, prompt: string): string =>
   `exec sudo -S -k -p ${quote(prompt)} /bin/sh -c ${quote(`f=$(mktemp) && cat "$1" > "$f" && printf '%s  %s\\n' "$2" "$f" | sha256sum -c --quiet - && ${shell} "$f"; rc=$?; rm -f "$f"; exit $rc`)} sh ${quote(path)} ${quote(sha256)}`;
 
 const HIDDEN = /[\x00-\x08\x0b-\x1f\x7f\u00ad\u061c\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff]/;
@@ -83,7 +116,7 @@ function readScript(input: { path: string; why: string }, bytes: Buffer, needs =
   if (bytes.includes(0)) throw new Error("the script isn't text");
   const script = bytes.toString("utf8");
   if (script.includes("\uFFFD")) throw new Error("the script isn't UTF-8 text");
-  // What the card shows must be what bash reads: no control or invisible format characters besides tab and newline.
+  // What the card shows must be what the interpreter reads: no control or invisible format characters besides tab and newline.
   if (HIDDEN.test(script)) throw new Error("the script has control or invisible characters (other than tab and newline), so the card couldn't show what runs");
   return { script, sha256: createHash("sha256").update(bytes).digest("hex"), why };
 }
@@ -95,7 +128,7 @@ export function rootStep(input: { machine: string; path: string; why: string; su
   const sudoers = input.sudoers?.length ? checkSudoers(input.sudoers, account, nixos) : undefined;
   const lines = sudoers?.map((l) => l.line) ?? [];
   return {
-    machine: input.machine, path: input.path, sha256, command: rootCommand(input.path, sha256, scriptShell(script)), script, why,
+    machine: input.machine, path: input.path, sha256, command: rootCommand(input.path, sha256, scriptRunner(script, true)), script, why,
     ...(sudoers ? { sudoers, ...(nixos ? { sudoersNixos: nixosSudoers(account, lines) } : { sudoersCommand: sudoersCommand(lines) }) } : {}),
   };
 }
@@ -106,5 +139,5 @@ export function secretStep(input: { machine: string; path: string; why: string; 
   if (!name || [...name].length > SECRET_LIMITS.name) throw new Error(`secret is the field's label, 1 to ${SECRET_LIMITS.name} characters, such as "Tailscale auth key"`);
   if (/[\p{Cc}\p{Zl}\p{Zp}]/u.test(name)) throw new Error("secret is one line of text");
   const { script, sha256, why } = readScript(input, bytes, "what it does with the secret");
-  return { machine: input.machine, path: input.path, sha256, command: secretCommand(input.path, sha256, scriptShell(script)), script, why, secret: name, ...(input.lines ? { lines: true } : {}) };
+  return { machine: input.machine, path: input.path, sha256, command: secretCommand(input.path, sha256, scriptRunner(script)), script, why, secret: name, ...(input.lines ? { lines: true } : {}) };
 }

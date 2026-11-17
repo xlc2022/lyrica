@@ -572,7 +572,7 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
       pi.registerTool({
         name: SECRET_TOOL,
         label: "Run with a secret",
-        description: "Ask the person, on a card, for a secret that goes to the standard input of a script you wrote on one of your machines, never through chat. Run starts it as your account, as a background command. Read the secrets skill first.",
+        description: "Ask the person, on a card, for a secret that goes to the standard input of a script you wrote on one of your machines, never through chat. Run starts it as your account, as a background command, with the interpreter its first line names (#!/usr/bin/env python3), bash when it has none. Read the secrets skill first.",
         promptSnippet: "a key or password into one script, on a card",
         parameters: Type.Object({
           machine: Type.String({ description: "One of your machines, by name." }),

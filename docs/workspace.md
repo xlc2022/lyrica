@@ -499,7 +499,7 @@ the card is for machines without it. The lines she may *offer* on a card
   and takes its SHA-256. A script with a control or invisible format
   character other than tab and newline (a carriage return, an escape
   sequence, a bidi override, a zero-width space) is refused, so the card
-  shows what bash reads.
+  shows what the interpreter reads.
 - The card is a question card (one open per thread, Waiting on you,
   Notifications, push, a tap or a typed answer), asking **Run as root on
   <machine>?** with **Run**, **Done** and **Not now** (stored as Done 0,
@@ -509,8 +509,14 @@ the card is for machines without it. The lines she may *offer* on a card
   script. Her account owns the script, so the command copies it first and
   checks and runs the copy: `f=$(mktemp) && cat '<path>' > "$f" && echo
   '<sha256>  '"$f" | sha256sum -c --quiet - && sudo bash "$f"; rc=$?; rm -f
-  "$f"; (exit $rc)` (`sudo sh` when the script's first line is `#!/bin/sh`
-  or dash, `scriptShell`; the cleanup keeps the chain's exit status, so a
+  "$f"; (exit $rc)` (the copy runs with what the script's first line
+  names, `scriptRunner`: a shell, `sh` for sh or dash, or `bash`, by name
+  from PATH with its one argument, so `#!/bin/bash` works on NixOS too;
+  any other interpreter by its path with at most one argument, such as
+  `sudo /usr/bin/env python3 "$f"`, a root step's only from a folder root
+  alone can change, with env's program a bare name; no first line means
+  bash; a first line it can't run as written is refused before the card;
+  the cleanup keeps the chain's exit status, so a
   refused hash shows as a failure). A script changed after the card was
   made, or during the run, doesn't reach root.
 - `sudoers`, when the same root command will be needed again: at most 8
@@ -596,7 +602,9 @@ that reads it from standard input and calls `run_with_secret({ machine,
 path, secret, lines?, why })`, where `secret` is the field's label
 ("Tailscale auth key", at most 40 characters) and `lines` asks for a box of
 several lines (a private key). The script is read and hashed as a root
-step's is (`secretStep`), and the card is a question card, **Run with a
+step's is (`secretStep`), and runs with the interpreter its first line
+names in the same way, any path allowed since it runs as her account
+(a Python script with `#!/usr/bin/env python3` runs as Python), and the card is a question card, **Run with a
 secret on <machine>?**, with her `why`, the field (masked, with **Show**),
 the command, the hash and the script, then **Run** and **Not now**.
 Notifications offer only Not now: Run needs the field.

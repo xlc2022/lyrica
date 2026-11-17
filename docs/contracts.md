@@ -1855,7 +1855,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   why, sudoers?: { line, warning? }[], sudoersCommand?, sudoersNixos? }`
   (`sudoersNixos`, the extraRules and rebuild, in place of `sudoersCommand`
   on a NixOS machine) (`checkSudoers`,
-  `rootCommand`, `scriptShell`, `sudoersCommand`, `ROOT_LIMITS`), returned as the result's
+  `rootCommand`, `scriptRunner`, `sudoersCommand`, `ROOT_LIMITS`), returned as the result's
   `details.root`; the daemon passes
   it on as `root` on the tool part and the `tool_end` event (`rootPart`).
   `rootAsk`'s answers are Done 0, Not now 1 and Run 2 (`ROOT_OPTIONS`).

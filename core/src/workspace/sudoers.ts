@@ -44,7 +44,7 @@ const NEVER = new Set(["bash", "sh", "dash", "zsh", "fish", "ksh", "csh", "tcsh"
 
 /** Where a program on a sudoers line must live: folders only root can change. NixOS keeps its programs in /run/current-system/sw, and only there. */
 const NIXOS_DIRS = ["/run/current-system/sw/bin/", "/run/current-system/sw/sbin/"];
-const SYSTEM_DIRS = ["/usr/bin/", "/usr/sbin/", "/bin/", "/sbin/", "/usr/local/bin/", "/usr/local/sbin/", ...NIXOS_DIRS];
+export const SYSTEM_DIRS = ["/usr/bin/", "/usr/sbin/", "/bin/", "/sbin/", "/usr/local/bin/", "/usr/local/sbin/", ...NIXOS_DIRS];
 
 /** Folders where she can write, so a file there given to a root command is hers to change. */
 const HERS = /^\/(home|tmp|var\/tmp|dev\/shm|run\/user)(\/|$)/;

@@ -19,7 +19,8 @@ Before asking, check whether the step is needed at all: a token already set, a d
 
 ## Writing the script
 
-- Read the secret once, first: `IFS= read -r KEY` for one line, `KEY=$(cat)` for several. Nothing before that line reads standard input; give later commands that might read it `< /dev/null`.
+- The script runs with the interpreter its first line names, as running the file would: `#!/usr/bin/env python3` for Python, bash when there is no first line. One interpreter, at most one argument, an absolute path (not `env -S`). On a root card the interpreter must be a system one (`/usr/bin`, `/run/current-system/sw/bin`, env with a bare name), never one in your home.
+- Read the secret once, first: `IFS= read -r KEY` for one line, `KEY=$(cat)` for several (Python: `sys.stdin.readline().rstrip("\n")`, `sys.stdin.read()`). Nothing before that line reads standard input; give later commands that might read it `< /dev/null`.
 - Hand it on through the program's own way of taking it on input (`--password-stdin`, `ssh-add -`, `chpasswd`), or in the environment of that one command (`KEY=… program`, `export` only inside the script). Never on a command line, which other accounts can see in `ps`.
 - Never `echo` it, never `set -x`, never write it to a file, a log or `.env`. A program that wants a file gets `/dev/stdin` or a pipe.
 - If the program keeps the secret (a container's environment, a credential store), say so in `why`, and remove it once it has done its job where you can (start the container again without it).
