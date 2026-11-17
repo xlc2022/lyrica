@@ -1355,7 +1355,7 @@ jobs").
   credentials in the sandbox), to `onRaw` beside the capped `onData`. The
   workspace extension tees each call into `ThreadTools.keepOutput`
   (`Workspace.keepCall`), which keeps it while it runs and saves it with
-  how it ended (`callEnd`: exited with its code, timed out, stopped or
+  how it ended (`callEnd`: exited with its code, from Pi's result, timed out, stopped or
   failed with the reason). A background job keeps from `onRaw` the same
   way, in the sandbox and on a machine (`Jobs.start`), so it too is whole up
   to the 16 MiB, not the cut a call's result gets. A machine's SSH helper sends all of a command's
