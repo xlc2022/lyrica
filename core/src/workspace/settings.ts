@@ -1255,8 +1255,8 @@ export class WorkspaceSettings {
   }
 
   /** A name no other server has, in Pi's eyes too: names that differ only in '-' and '_' are one server to it. */
-  private checkMcpName(name: string, except?: string): void {
-    if (!MCP_NAME.test(name)) throw new Error("server names use letters, digits, '_' and '-'");
+  checkMcpName(name: string, except?: string): void {
+    if (!MCP_NAME.test(name)) throw new Error("the name uses letters, digits, '_' and '-', with no spaces, up to 40");
     const clash = this.mcpServers().find((m) => m.name !== except && mcpNamespace(m.name) === mcpNamespace(name));
     if (clash) throw new Error(`MCP server ${clash.name} already exists`);
   }

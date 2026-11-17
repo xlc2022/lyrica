@@ -1615,7 +1615,8 @@ export class Workspace {
    */
   async addMcpServer(userId: string, input: McpServerInput): Promise<McpServerConfig> {
     const s = this.settings(userId);
-    if (s.mcpServer(input.name)) throw new Error(`MCP server ${input.name} already exists`);
+    // The name is checked before the server is, so a bad one is the error the user sees.
+    s.checkMcpName(input.name);
     const token = input.token?.trim() ?? "";
     const command = input.command ?? [];
     const env = input.env ?? {};
@@ -1636,6 +1637,7 @@ export class Workspace {
     const s = this.settings(userId);
     const before = s.mcpServer(name);
     if (!before) throw new Error(`no MCP server ${name}`);
+    if (change.name !== undefined && change.name !== name) s.checkMcpName(change.name, name);
     const pool = change.pool ?? before.pool;
     const command = change.command ?? before.command;
     const limits = { ...(change.dailyLimit !== undefined ? { dailyLimit: change.dailyLimit } : {}), ...(change.minuteLimit !== undefined ? { minuteLimit: change.minuteLimit } : {}) };
