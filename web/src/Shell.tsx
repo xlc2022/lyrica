@@ -524,6 +524,9 @@ const SORTS: { sort: ThreadSort; label: string }[] = [
   { sort: "date", label: "By date" }, { sort: "activity", label: "Last activity" }, { sort: "started", label: "Start date" }, { sort: "title", label: "Title" },
 ];
 
+/** The drag data's type for a sidebar row on its way to a group. */
+const THREAD_DRAG = "application/x-lyrica-thread";
+
 type Section = { label: string; threads: ThreadSummary[]; group?: string };
 
 /** The sidebar's sections of threads for one sort: the user's groups first, each in the sort's order, then the rest in the sort's own sections. */
@@ -659,6 +662,47 @@ function Sidebar({ ctx, users, route, trail, threads, error, checkedAt, onAuthCh
   const folded = me.display.folded ?? [];
   const fold = (id: string, shut: boolean) => setDisplay({ folded: [...folded.filter((f) => f !== id && ctx.groups.some((g) => g.id === f)), ...(shut ? [id] : [])] });
   const listMenu = useListMenu();
+  // A row dragged onto a group moves there, and out of its group when dropped on the list outside one
+  // (docs/ux.md §6); the menu's Move to group does the same from the keyboard and on a phone.
+  const canHover = useCanHover();
+  const dragged = useRef<ThreadSummary>(undefined);
+  const [dropAt, setDropAt] = useState<string>();
+  /** The group a drag is over (its id, "" for none), or undefined where a drop would change nothing. */
+  const dropZone = (e: React.DragEvent): string | undefined => {
+    const t = dragged.current;
+    if (!t || !e.dataTransfer.types.includes(THREAD_DRAG)) return undefined;
+    const zone = e.target instanceof Element ? e.target.closest<HTMLElement>("[data-zone]")?.dataset.zone : undefined;
+    if (zone === "pinned") return undefined;
+    const to = zone ?? "";
+    return to === (ctx.groups.some((g) => g.id === t.group) ? t.group : "") ? undefined : to;
+  };
+  const drag = canHover && !hits ? {
+    onDragStart: (t: ThreadSummary) => (e: React.DragEvent) => {
+      dragged.current = t;
+      e.dataTransfer.setData(THREAD_DRAG, t.id);
+      e.dataTransfer.effectAllowed = "all";
+      menu.close();
+    },
+    onDragEnd: () => { dragged.current = undefined; setDropAt(undefined); },
+  } : undefined;
+  const dropHandlers = {
+    onDragOver: (e: React.DragEvent) => {
+      const to = dropZone(e);
+      setDropAt(to);
+      if (to === undefined) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+    },
+    onDragLeave: (e: React.DragEvent) => { if (!(e.relatedTarget instanceof Node) || !e.currentTarget.contains(e.relatedTarget)) setDropAt(undefined); },
+    onDrop: (e: React.DragEvent) => {
+      const t = dragged.current, to = dropZone(e);
+      dragged.current = undefined;
+      setDropAt(undefined);
+      if (!t || to === undefined) return;
+      e.preventDefault();
+      void run(async () => { await patch(threadPath(user.id, t.pool, t.id), { group: to || null }); ctx.refreshThreads(); });
+    },
+  };
 
   return (
     <aside ref={sideRef} className="side" aria-label="Threads">
@@ -708,17 +752,17 @@ function Sidebar({ ctx, users, route, trail, threads, error, checkedAt, onAuthCh
         </details>
       </div>
       <ErrorText error={actionError || error || search.error || moreError} />
-      <ul className="threads" aria-label="Threads" {...listMenu.handlers}>
+      <ul className="threads" aria-label="Threads" data-drop={dropAt === "" ? "none" : undefined} {...listMenu.handlers} {...dropHandlers}>
         {hits ? (
           <SearchGroups hits={hits.hits} titled={titled} threads={threads} userId={user.id} current={current} menu={menu.handlers} onOpen={openHit}
             more={hits.more ? () => void moreRun(search.more) : undefined} />
         ) : shown.map((s) => {
-          const rows = s.threads.map((t) => <ThreadRow key={`${t.pool}/${t.id}`} t={t} userId={user.id} current={current} beside={beside} menu={menu.handlers} openBeside={openBeside} onRename={rename} />);
+          const rows = s.threads.map((t) => <ThreadRow key={`${t.pool}/${t.id}`} t={t} userId={user.id} current={current} beside={beside} menu={menu.handlers} openBeside={openBeside} onRename={rename} drag={s.label === "Pinned" && !s.group ? undefined : drag} />);
           if (s.group) {
             const open = !folded.includes(s.group);
             const waits = !open && s.threads.some(waitsOnYou);
             return (
-              <li key={`g/${s.group}`} className="group-rows in-group">
+              <li key={`g/${s.group}`} className="group-rows in-group" data-zone={s.group} data-drop={dropAt === s.group || undefined}>
                 <button type="button" className="group-head" aria-expanded={open} onClick={() => fold(s.group!, open)}>
                   <Icon name="right" className="chev-ic" /><span className="name">{s.label}</span>
                   {waits && <span className="waits" title="A thread here waits on you"><span className="sr-only">a thread here waits on you</span></span>}
@@ -729,7 +773,7 @@ function Sidebar({ ctx, users, route, trail, threads, error, checkedAt, onAuthCh
             );
           }
           return (
-            <li key={s.label} className="group-rows">
+            <li key={s.label} className="group-rows" data-zone={s.label === "Pinned" ? "pinned" : undefined}>
               {(shown.length > 1 || s.label === "Pinned") && <span className="eyebrow">{s.label}</span>}
               <ul className="threads-in">{rows}</ul>
             </li>
@@ -906,8 +950,13 @@ function NewRow({ shown, onShow, icon, label, onCreate }: { shown: boolean; onSh
 
 export type MenuHandlers = ReturnType<ReturnType<typeof useThreadMenu>["handlers"]>;
 
-function ThreadRow({ t, userId, current, beside, menu, openBeside, onRename }: {
+/** What makes a top-level row a thing to drag onto a group. */
+type RowDrag = { onDragStart: (t: ThreadSummary) => (e: React.DragEvent) => void; onDragEnd: () => void };
+
+function ThreadRow({ t, userId, current, beside, menu, openBeside, onRename, drag }: {
   t: ThreadSummary; userId: string; current: string; menu: (t: ThreadSummary) => MenuHandlers;
+  /** Dragging the row moves it between groups; absent for a pinned row, in search and on a touch device. */
+  drag?: RowDrag;
   /** The thread shown in the panel, as `pool/id`, or "". */
   beside: string;
   /** Open a child row in the panel beside the open thread; absent below 1180 px or with no thread open. */
@@ -927,7 +976,7 @@ function ThreadRow({ t, userId, current, beside, menu, openBeside, onRename }: {
         {t.children.length > 0
           ? <button type="button" className="chev" aria-expanded={open} aria-label={`${open ? "Hide" : "Show"} ${t.project ? "the project's threads" : "child threads"}`} onClick={() => setOpen(!open)}><Icon name="right" /></button>
           : <span className="chev" />}
-        <ThreadLink t={t} userId={userId} on={current === key} shown={beside === key} menu={menu} onRename={onRename} />
+        <ThreadLink t={t} userId={userId} on={current === key} shown={beside === key} menu={menu} onRename={onRename} drag={drag} />
       </div>
       {open && (
         <ul className="children">
@@ -946,7 +995,8 @@ function ThreadRow({ t, userId, current, beside, menu, openBeside, onRename }: {
   );
 }
 
-export function ThreadLink({ t, userId, on, shown, menu, child, openBeside, besideOnClick, onRename }: {
+export function ThreadLink({ t, userId, on, shown, menu, child, openBeside, besideOnClick, onRename, drag }: {
+  drag?: RowDrag;
   t: ThreadSummary; userId: string; on: boolean; menu: (t: ThreadSummary) => MenuHandlers; child?: boolean;
   /** This thread is the one in the panel beside the open thread: its row is outlined. */
   shown?: boolean;
@@ -990,6 +1040,7 @@ export function ThreadLink({ t, userId, on, shown, menu, child, openBeside, besi
   return (
     <a className={`thread${t.unread ? " unread" : ""}${t.project ? " project" : ""}${child && inProject ? " dotted" : ""}${working ? " working" : ""}`} href={href({ page: "thread", userId, pool: t.pool, threadId: t.id })} aria-current={on ? "page" : undefined} data-beside={shown || undefined} {...handlers}
       onClick={click} onKeyDown={(e) => { if (e.key === "Enter") shiftTo(e); }}
+      onDragStart={drag && !renaming ? drag.onDragStart(t) : undefined} onDragEnd={drag?.onDragEnd}
       onDoubleClick={onRename && !renaming ? (e) => { e.preventDefault(); getSelection()?.removeAllRanges(); setRenaming(true); } : undefined}>
       {t.project ? <span className={`project-mark ${t.pool}`} data-waiting={waiting || undefined}><Icon name="project" />{waiting && <span className="sr-only">a thread waits on you</span>}</span>
         : (!child || inProject) && (t.pool === "private"

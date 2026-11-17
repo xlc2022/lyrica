@@ -417,6 +417,36 @@ test("the thread menu renames, marks unread, groups, hides and deletes; a group 
   await sorting.getByRole("radio", { name: "By date" }).click();
   await sorting.locator("summary").click();
 
+  // A row dragged out of its group onto the rest of the list leaves the group; dragged onto the group, it moves in.
+  // A touch screen keeps the long press for the menu, whose Move to group does the same.
+  const grouped = page.locator(".in-group").getByRole("link", { name: /^Managed thread/ });
+  if (!phone(page)) {
+    const list = page.locator("ul.threads");
+    const box = (await list.boundingBox())!;
+    await renamed.hover();
+    await page.mouse.down();
+    await list.hover({ position: { x: box.width / 2, y: box.height - 12 } });
+    await list.hover({ position: { x: box.width / 2, y: box.height - 12 } });
+    await expect(list).toHaveAttribute("data-drop", "none");
+    if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/drag-out-of-group-${page.viewportSize()!.width}.png` });
+    await page.mouse.up();
+    await expect(grouped).toHaveCount(0);
+    await expect(chores).toHaveText(/0$/);
+    await expect(renamed).toBeVisible();
+    // The open thread's facts line follows: its group word goes back to the picker's empty one.
+    await expect(page.locator(".head").getByRole("button", { name: /^Chores/ })).toHaveCount(0);
+    await renamed.hover();
+    await page.mouse.down();
+    await chores.hover();
+    await chores.hover();
+    await expect(page.locator(".in-group[data-drop]")).toHaveCount(1);
+    if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/drag-to-group-${page.viewportSize()!.width}.png` });
+    await page.mouse.up();
+    await expect(page.locator(".in-group[data-drop]")).toHaveCount(0);
+    await expect(grouped).toBeVisible();
+    await expect(chores).toHaveText(/1$/);
+  }
+
   await renamed.click({ button: "right" });
   await page.getByRole("menuitem", { name: "Hide" }).click();
   await expect(renamed).toHaveCount(0);

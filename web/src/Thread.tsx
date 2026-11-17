@@ -98,6 +98,11 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
   // The stream's hello (and each turn's end) reloads the summary too: a title set after the first fetch but before
   // the stream opened came as no event, as when the file viewer opens this thread beside a file just as it is named.
   useEffect(() => { if (t.live.reload) summary.reload(); }, [t.live.reload, summary.reload]);
+  // Its group changed from the sidebar (a drag, the row's menu): the facts line's word follows the list.
+  const inList = findThread(threads, pool, threadId);
+  const listedGroup = inList ? inList.group ?? "" : undefined;
+  const shownGroup = summary.data ? summary.data.group ?? "" : undefined;
+  useEffect(() => { if (listedGroup !== undefined && shownGroup !== undefined && listedGroup !== shownGroup) summary.reload(); }, [listedGroup]); // eslint-disable-line react-hooks/exhaustive-deps
   const { refreshNotifications } = ctx;
   useEffect(() => {
     if (t.live.reload || t.live.settings || t.live.children) { refreshThreads(); refreshNotifications(); }
