@@ -1,7 +1,7 @@
 // Principles 1 and 8: one tool for what every page-building thread made for itself (docs/briefs/page-tools.md).
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { StringEnum } from "@earendil-works/pi-ai";
-import { ARTIFACT_LIMIT, artifactKind, buildReactPage, reactLibraries, bundlePage, checkPage, decodePng, describeCheck, maskSecrets, pixelStats, PREVIEW_SCRIPT, sandboxHas, sandboxTools, withoutNoMachine, type PreviewOutput } from "@lyrica/core";
+import { ARTIFACT_LIMIT, artifactKind, buildReactPage, reactLibraries, bundlePage, checkPage, decodePng, describeCheck, maskSecrets, pixelStats, PREVIEW_SCRIPT, sandboxHas, sandboxTools, SHARED, withoutNoMachine, type PreviewOutput } from "@lyrica/core";
 import { posix } from "node:path";
 import { Type, type Static } from "typebox";
 import { recording, type ThreadArtifact, type ThreadTools } from "./workspace.ts";
@@ -46,6 +46,12 @@ export function artifactPlace(path: string): { machine?: string; file: string } 
   return at > 0 ? { machine: path.slice(0, at), file: path.slice(at + 1) } : { file: path };
 }
 
+/** Whether an artifact's path names the same real file for every thread of a project: one on a machine, or in /shared. */
+export function sharedFile(path: string): boolean {
+  const { machine, file } = artifactPlace(path);
+  return !!machine || file === SHARED || file.startsWith(`${SHARED}/`);
+}
+
 /**
  * Publishes one file, from the sandbox or a machine, as a new artifact or the next version of one: `page publish`,
  * and the republish after she changes a published file. The file goes only to the artifact; she gets the lines.
@@ -61,12 +67,15 @@ export async function publishFile(tools: ThreadTools, machine: string | undefine
   const bytes = own ? read : codeBlock(posix.basename(file), read.toString("utf8"));
   // Where the file is: a machine's path is kept with the machine's name, so it never meets a sandbox path's artifact.
   const where = machine ? `${machine}:${file}` : file;
+  // One real file, one artifact: a file on a machine or in /shared is the same file for every thread of the project,
+  // so a thread publishing it again adds to the artifact another thread made from it rather than forking a copy.
+  const into = o.artifact ?? (sharedFile(where) ? tools.artifacts.list().find((a) => a.path === where)?.id : undefined);
   // A React component is built into one page here, by esbuild alone: its source is compiled, never run, and may import only the listed packages.
   const built = kind === "react" ? Buffer.from((await buildReactPage(bytes.toString("utf8"), { loader: /\.tsx$/i.test(file) ? "tsx" : "jsx", ...(o.title ? { title: o.title } : {}) })).html) : undefined;
   // One file is all an artifact carries: a page that needs files beside it is bundled first.
   const found = kind === "html" ? checkPage(bytes.toString("utf8")) : undefined;
   if (found?.local.length) throw new Error(`${where} refers to local files an artifact can't carry: ${found.local.join(", ")}. Run page bundle and publish the bundle.`);
-  const { artifact, created } = tools.artifacts.publish({ path: where, kind, bytes, ...(built ? { built } : {}), ...o });
+  const { artifact, created } = tools.artifacts.publish({ path: where, kind, bytes, ...(built ? { built } : {}), ...o, ...(into ? { artifact: into } : {}) });
   const lines = [`${created ? "Published" : artifact.version === 1 ? "Already published, unchanged:" : `Published version ${artifact.version} of`} ${artifactLine(artifact)}. The person sees a card for it in this reply.`];
   if (found && (found.loads.length || found.calls.length)) lines.push(describeCheck(found), "With the thread's internet off the page runs no scripts and loads nothing from the network.");
   return { artifact, created, lines };

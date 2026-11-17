@@ -243,3 +243,8 @@ works, so her threads update them there?
   newest"); a version the user made is never overwritten. Her prompt also
   says to write reports for the person in her thread's folder, not on a
   machine.
+- 2026-11-17: the update now runs once when her turn ends, not once a
+  minute. One real file has one artifact: a file on a machine or in
+  `/shared` published from another thread adds to the project's existing
+  artifact rather than forking a copy, and a change to it updates that
+  artifact whichever thread made it.

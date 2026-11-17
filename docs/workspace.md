@@ -2652,8 +2652,13 @@ script, PNG decoder or bundler:
   (it opens in the file viewer, always current); one on a machine, or a
   page worth versions, she publishes. It also tells her to write reports
   and notes for the person in her thread's folder rather than on a machine.
-  When she changes a file one of this thread's own artifacts (never a
-  sibling thread's) was published from (`write` or `edit` on its
+  One real file has one artifact: a file on a machine or in `/shared` is
+  the same file for every thread of a project, so publishing it from
+  another thread adds a version to the artifact already made from it
+  (`sharedFile`) rather than forking a copy; a file in a thread's own
+  folder is another file in each thread and gets its own artifact.
+  When she changes a file one of this thread's own artifacts, or any of
+  the project's from a machine or `/shared`, was published from (`write` or `edit` on its
   path, or a command naming the file, in the same place), the workspace
   extension publishes it again once when her turn ends, with `replace`,
   which overwrites her newest version (`replaceLatest`; a version the user

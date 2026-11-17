@@ -1326,13 +1326,15 @@ describe("the page tool", () => {
       publish: (p) => { published.push({ path: p.path, ...(p.artifact ? { artifact: p.artifact } : {}), ...(p.replace ? { replace: true } : {}), text: p.bytes.toString() }); return { artifact: { id: p.artifact ?? "a1", title: "Report", kind: p.kind, version: 1, path: p.path }, created: false }; },
       // a3 is a sibling thread's, from the same path: never this thread's to update.
       list: () => [{ id: "a3", title: "Theirs", kind: "markdown", version: 1, path: "/workspace/report.md" }, { id: "a1", title: "Report", kind: "markdown", version: 1, path: "/workspace/report.md", own: true },
-        { id: "a2", title: "Sweep", kind: "markdown", version: 1, path: "box:/home/ada/sweep.md", own: true }],
+        { id: "a2", title: "Sweep", kind: "markdown", version: 1, path: "box:/home/ada/sweep.md", own: true },
+        // a4 is a sibling's too, but from /shared: the same real file for every thread, so it follows.
+        { id: "a4", title: "Plan", kind: "markdown", version: 1, path: "/shared/plan.md" }],
     };
     const { files } = await run("auto", [], {
       steps: [
         [fauxToolCall("write", { path: "report.md", content: "# one" }, { id: "1" })],
         [fauxToolCall("edit", { path: "report.md", edits: [{ oldText: "one", newText: "two" }] }, { id: "2" })],
-        [fauxToolCall("write", { path: "other.md", content: "x" }, { id: "3" })],
+        [fauxToolCall("write", { path: "other.md", content: "x" }, { id: "3" }), fauxToolCall("write", { path: "/shared/plan.md", content: "# plan" }, { id: "3b" })],
         [fauxToolCall("bash", { command: "echo hi >> /home/ada/sweep.md", machine: "box" }, { id: "4" })],
       ],
       files: { "/home/ada/sweep.md": "# sweep" }, machines: [{ name: "box", kind: "ssh", limit: "auto", root: null }], artifacts, approve: async () => true,
@@ -1340,8 +1342,28 @@ describe("the page tool", () => {
     expect(files.get("/workspace/report.md")).toBe("# two");
     // Two changes to report.md, one publish of its last state; other.md is no artifact's.
     expect(published.sort((x, y) => x.path.localeCompare(y.path))).toEqual([
+      { path: "/shared/plan.md", artifact: "a4", replace: true, text: "# plan" },
       { path: "/workspace/report.md", artifact: "a1", replace: true, text: "# two" },
       { path: "box:/home/ada/sweep.md", artifact: "a2", replace: true, text: "# sweep" },
+    ]);
+  });
+
+  it("adds to the project's artifact of the same real file rather than forking a copy; a thread folder's file is its own", async () => {
+    const published: { path: string; artifact?: string }[] = [];
+    const artifacts: NonNullable<ThreadTools["artifacts"]> = {
+      publish: (p) => { published.push({ path: p.path, ...(p.artifact ? { artifact: p.artifact } : {}) }); return { artifact: { id: p.artifact ?? "new", title: "t", kind: p.kind, version: 2, path: p.path }, created: !p.artifact }; },
+      list: () => [{ id: "s1", title: "Sweep", kind: "markdown", version: 1, path: "box:/home/ada/sweep.md" }, { id: "s2", title: "Plan", kind: "markdown", version: 1, path: "/shared/plan.md" },
+        { id: "s3", title: "Notes", kind: "markdown", version: 1, path: "/workspace/notes.md" }],
+    };
+    await run("auto", [
+      fauxToolCall("page", { action: "publish", path: "/home/ada/sweep.md", machine: "box" }, { id: "1" }),
+      fauxToolCall("page", { action: "publish", path: "/shared/plan.md" }, { id: "2" }),
+      fauxToolCall("page", { action: "publish", path: "notes.md" }, { id: "3" }),
+    ], { files: { "/home/ada/sweep.md": "# sweep", "/shared/plan.md": "# plan", "/workspace/notes.md": "# notes" }, machines: [{ name: "box", kind: "ssh", limit: "auto", root: null }], artifacts, approve: async () => true });
+    expect(published.sort((x, y) => x.path.localeCompare(y.path))).toEqual([
+      { path: "/shared/plan.md", artifact: "s2" },
+      { path: "/workspace/notes.md" },
+      { path: "box:/home/ada/sweep.md", artifact: "s1" },
     ]);
   });
 
