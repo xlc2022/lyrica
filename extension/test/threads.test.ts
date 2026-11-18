@@ -149,7 +149,7 @@ describe("threads definition", () => {
     // Ceilings a little above today's sizes: growing past one is a choice, made here.
     expect(defs.plain!.size).toBeLessThan(4500);
     expect(defs.child!.size).toBeLessThan(3200);
-    expect(defs.projectChat!.size).toBeLessThan(5300);
+    expect(defs.projectChat!.size).toBeLessThan(5400);
     expect(defs.projectThread!.size).toBeLessThan(4500);
   });
 });

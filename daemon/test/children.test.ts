@@ -369,6 +369,37 @@ describe("child threads", () => {
     expect(page.filter((m) => m.role === "notice").map((m) => m.parts[0])).toEqual([expect.objectContaining({ text: expect.stringContaining("stopped when the user locked") })]);
   });
 
+  it("start a child on a preset the person names, which drops the parent's model picks but not its local-only switch", async () => {
+    const { rt, d, ada, parent, child, path, say, list } = await setup();
+    const models = d.services!.models;
+    // A private preset holding the local model, so a local-only child may use it too.
+    models.addPreset(rt.ada.id, { name: "Garden models", scope: "private" }, "private");
+    const chat = { offeringId: models.resolveModel("chat", models.callContext(rt.ada.id, "general", (await list())[0]!.id)).offeringId };
+    // The parent picked its chat model and the Cloud preset; the child is asked for Garden models.
+    expect((await ada.patch(`${path}/settings`, { preset: "builtin.cloud", models: { chat } })).status).toBe(200);
+    parent.push(start("On Garden", "Plan the beds.", { preset: "garden models preset" }), { text: "Started." });
+    child.push({ text: "Planned." });
+    const made = toolEnd(await say("start a thread with the Garden models preset"));
+    expect(made).toMatchObject({ isError: false });
+    const id = made.threads![0]!.id;
+    const garden = models.presets(rt.ada.id).find((p) => p.name === "Garden models")!.id;
+    expect(models.callContext(rt.ada.id, "general", id)).toMatchObject({ preset: garden, localOnly: false });
+    expect(models.callContext(rt.ada.id, "general", id).overrides ?? {}).toEqual({});
+
+    const refusal = async (preset: string) => {
+      parent.push(start(`On ${preset}`, "Plan the beds.", { preset }), { text: "Refused." });
+      return toolEnd(await say(`start a thread with the ${preset} preset`));
+    };
+    // A preset with no conversation model is refused before a child is made.
+    expect(await refusal("Local")).toMatchObject({ isError: true, result: expect.stringMatching(/the Local preset has no model this thread can talk on/) });
+    expect(await refusal("Orchard")).toMatchObject({ isError: true, result: expect.stringMatching(/no preset named "Orchard"; the presets are .*"Garden models"/) });
+    // A local-only parent's child keeps its switch, so a general preset is refused.
+    expect((await ada.patch(`${path}/settings`, { localOnly: true, preset: null })).status).toBe(200);
+    expect(await refusal("Cloud")).toMatchObject({ isError: true, result: expect.stringMatching(/only private presets/) });
+    const titles = (await list()).flatMap((t) => [t, ...(t.children ?? [])]).map((t) => t.title ?? "").filter((t) => t.startsWith("On "));
+    expect(titles).toEqual(["On Garden"]);
+  });
+
   it("narrow a child to the folders asked for, read-only, and keep a local-only parent's child off cloud models", async () => {
     const { rt, ada, u, parent, child, path, say, childPath } = await setup();
     const [a, b] = [0, 1].map(() => realpathSync(mkdtempSync(join(tmpdir(), "lyrica-child-"))));
