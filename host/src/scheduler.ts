@@ -86,7 +86,7 @@ interface Job {
 
 export interface SchedulerOptions {
   monitor: GpuMonitor;
-  backends: { llamacpp: Backend; vllm: Backend; comfyui?: Backend; speech?: Backend; whispercpp?: Backend };
+  backends: { llamacpp: Backend; vllm: Backend; sglang?: Backend; comfyui?: Backend; speech?: Backend; whispercpp?: Backend };
   state: StateFile;
   log: Logger;
   now?: () => number;
@@ -182,9 +182,15 @@ export class Scheduler {
     return this.o.backends.whispercpp ? "whispercpp" : "vllm";
   }
 
-  /** Whether this host has the model's server: whisper.cpp runs only beside a CMP 100-210. */
+  /** Whether this host has the model's server: whisper.cpp runs only beside a CMP 100-210, SGLang only where install.sh added it. */
   serves(model: TextModel): boolean {
+    if (model.engine === "sglang") return !!this.o.backends.sglang;
     return model.server !== "whispercpp" || !!this.o.backends.whispercpp;
+  }
+
+  /** The servers this host runs in a vLLM server's place for some models: SGLang, where install.sh added it. */
+  get engines(): "sglang"[] {
+    return this.o.backends.sglang ? ["sglang"] : [];
   }
 
   onCpu(model: TextModel): boolean {
@@ -325,6 +331,10 @@ export class Scheduler {
     if (model.server === "whispercpp") {
       if (!this.o.backends.whispercpp) throw new HostError(503, "model_unavailable", "This host has no whisper.cpp server.");
       return this.o.backends.whispercpp;
+    }
+    if (model.engine === "sglang") {
+      if (!this.o.backends.sglang) throw new HostError(503, "model_unavailable", "This host has no SGLang server; run host/install.sh --sglang.");
+      return this.o.backends.sglang;
     }
     return model.server === "vllm" ? this.o.backends.vllm : this.o.backends.llamacpp;
   }

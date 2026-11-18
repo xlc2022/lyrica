@@ -419,6 +419,8 @@ type StarterGroup = (typeof STARTER_GROUPS)[number][0];
 const groupOf = (s: TextStarter): StarterGroup => (s.kind === "chat" || s.kind === "embedding" ? s.kind : "voice");
 const KIND_WORD: Record<TextStarter["kind"], string> = { chat: "chat", embedding: "embedding", speak: "voice", transcribe: "transcription" };
 const SERVER_WORD: Record<TextStarter["server"], string> = { llamacpp: "llama.cpp", vllm: "vLLM", speech: "Kokoro", whispercpp: "whisper.cpp" };
+/** Its server's name; GLM-SGLang for one SGLang serves in vLLM's place. */
+const serverWord = (s: TextStarter) => (s.engine === "sglang" ? "GLM-SGLang" : SERVER_WORD[s.server]);
 /** Not currently installed: neither on the host nor on its way there. */
 const installed = (s: TextStarter) => s.state !== "available";
 /** Why a starter can't be picked, as its pill, or what to know before picking it. */
@@ -452,7 +454,7 @@ function TextStarters({ list, picked, setPicked, free }: { list: TextStarter[]; 
   if (!list.length) return <p className="muted">This host has no starters for its servers.</p>;
   const words = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
   const matches = (s: TextStarter) => {
-    const text = [s.name, s.variantOf, KIND_WORD[s.kind], SERVER_WORD[s.server], s.vision ? "vision" : ""].join(" ").toLowerCase();
+    const text = [s.name, s.variantOf, KIND_WORD[s.kind], serverWord(s), s.vision ? "vision" : ""].join(" ").toLowerCase();
     return words.every((w) => text.includes(w));
   };
   const kept = list.filter((s) => (!onlyNew || !installed(s)) && matches(s));
@@ -500,7 +502,7 @@ function TextStarterChoice({ row, picked, setPicked, free }: { row: TextStarterR
   const allOff = row.items.every(off);
   const sizes = row.items.map((x) => x.size);
   const where = s.fits === "cpu" ? "CPU" : <>needs <Size text={size(s.needs)} /> of GPU memory</>;
-  const what = [KIND_WORD[s.kind], ...(s.vision ? ["vision"] : []), SERVER_WORD[s.server]].join(" · ");
+  const what = [KIND_WORD[s.kind], ...(s.vision ? ["vision"] : []), serverWord(s)].join(" · ");
   const facts = many && !isPicked
     ? <>{what} · {plural(row.items.length, "size", "sizes")} · <Size text={size(Math.min(...sizes))} /> to <Size text={size(Math.max(...sizes))} /> to download</>
     : <>{what} · <Size text={size(s.size)} /> to download · {where}</>;

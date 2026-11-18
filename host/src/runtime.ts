@@ -310,6 +310,8 @@ export class Runtime {
     const sized = m.kind === "image" || m.kind === "speak" ? null : sizes(m, served);
     return {
       model: m.id,
+      // SGLang serves it in vLLM's place (install.sh --sglang).
+      ...(m.engine ? { engine: m.engine } : {}),
       settings,
       contextLength: contextOf(m, served),
       maxContextLength: maxContextOf(m, settings),
@@ -355,6 +357,8 @@ export class Runtime {
       id: m.id,
       kind: m.kind,
       server: m.server,
+      // SGLang serves it in vLLM's place (install.sh --sglang).
+      ...(m.engine ? { engine: m.engine } : {}),
       format: m.format,
       size: m.size,
       sha256: entry?.sha256 ?? null,

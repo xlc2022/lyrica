@@ -609,7 +609,7 @@ function CopyDrawer({ ctx, entry, copy, onClose, onSaved }: { ctx: MCtx; entry: 
   const here = onGpus(ctx, copy);
   const loaded = here.length > 0, pinned = here.some((m) => m.pinned);
   const llama = /\.gguf$/i.test(copy.rawName);
-  const server = llama ? "llama.cpp" : "vLLM";
+  const server = llama ? "llama.cpp" : sv?.engine === "sglang" ? "GLM-SGLang" : "vLLM";
   const set = (k: string, v: unknown) => { setAbove(false); setDraft((d) => { const n = { ...d }; if (v === undefined) delete n[k]; else n[k] = v; return n; }); };
   const num = (k: string) => (typeof draft?.[k] === "number" ? String(draft[k]) : "");
   const setNum = (k: string, text: string) => set(k, text.trim() === "" ? undefined : Number(text));

@@ -25,6 +25,9 @@ Usage: host/install.sh [options]
   --no-gpu             No GPU and no model servers: host-api alone (for testing)
   --cmp-unlock         CMP 100-210 only: install its unlock (cmp-unlock.sh)
                        without asking
+  --sglang             NVIDIA RTX PRO 6000 (sm_120) only: also run SGLang, for
+                       GLM 5.3 Flash NVFP4 (compose.sglang.yaml). Kept until
+                       --no-sglang
   --yes                Don't ask questions; use defaults and flags
   --no-start           Write .env only
   --uninstall          Remove the host from this machine (asks first)
@@ -60,6 +63,7 @@ CUDA_DRIVER=570
 COMFY_GPU=$(env_value COMFY_GPU)
 TS_HOSTNAME=$(env_value TS_HOSTNAME)
 TS_AUTHKEY=$(env_value TS_AUTHKEY)
+SGLANG=$(env_value SGLANG)
 WANT_LAN=1
 [[ -f .env && -z $LAN ]] && WANT_LAN=0
 YES=0 START=1 CHECK_GPU=1 CMP=0 CMP_UNLOCK=0 UNINSTALL=0 DELETE_DOWNLOADS=0
@@ -77,6 +81,8 @@ while [[ $# -gt 0 ]]; do
     --no-tailscale) TS_HOSTNAME= TS_AUTHKEY= ;;
     --no-gpu) CHECK_GPU=0; VENDOR=none ;;
     --cmp-unlock) CMP_UNLOCK=1 ;;
+    --sglang) SGLANG=1 ;;
+    --no-sglang) SGLANG= ;;
     --yes) YES=1 ;;
     --no-start) START=0 ;;
     --uninstall) UNINSTALL=1 ;;
@@ -380,6 +386,15 @@ if [[ $VENDOR == nvidia ]]; then
   SPEECH_QWEN_IMAGE=${PREBUILT:-lyrica-host-speech-qwen:$QWEN_FLAVOUR}
   [[ -n $PREBUILT ]] || FILES+=:compose.speech-qwen.build.yaml
 fi
+# SGLang for GLM 5.3 Flash NVFP4 (docs/briefs/sglang-glm.md), when asked: its image runs on sm_120 cards only.
+if [[ $SGLANG == 1 ]]; then
+  if [[ $VENDOR == nvidia ]] && nvidia-smi --query-gpu=compute_cap --format=csv,noheader 2>/dev/null | tr -d ' ' | grep -qx '12.0'; then
+    FILES+=:compose.sglang.yaml
+    [[ $NVIDIA_CDI == 1 ]] && FILES+=:compose.sglang.cdi.yaml
+  else
+    say "SGLang runs on NVIDIA sm_120 cards (RTX PRO 6000) only, and this host has none: left out."
+  fi
+fi
 RENDER_GID=$(getent group render 2>/dev/null | cut -d: -f3 || true)
 [[ $WANT_LAN == 1 ]] && FILES+=:compose.lan.yaml
 [[ -n $TS_HOSTNAME ]] && FILES+=:compose.tailscale.yaml
@@ -425,6 +440,7 @@ SDCPP_IMAGE=$SDCPP_IMAGE
 WHISPER_IMAGE=$WHISPER_IMAGE
 SPEECH_QWEN_IMAGE=$SPEECH_QWEN_IMAGE
 SPEECH_QWEN_FLAVOUR=${QWEN_FLAVOUR:-}
+SGLANG=$SGLANG
 RENDER_GID=${RENDER_GID:-}
 COMPOSE_FILE=$FILES
 HOST_VERSION=$VERSION
@@ -588,7 +604,7 @@ BEFORE_IMAGES=$(stack_images)
 # The model servers run as other users and read it: 755, whatever the umask made it.
 "${COMPOSE[@]}" run --rm --no-deps -T --entrypoint chmod fetch 755 /models/lyrica
 # A service the compose files now turn off (compose.novllm.yaml's vLLM,
-# compose.sdcpp.yaml's ComfyUI) keeps its container from an earlier install:
+# compose.sdcpp.yaml's ComfyUI, SGLang after --no-sglang) keeps its container from an earlier install:
 # remove it, so its image goes with the others below.
 ACTIVE=$("${COMPOSE[@]}" config --services)
 for s in $(docker ps -a --filter label=com.docker.compose.project=lyrica-host --format '{{.Label "com.docker.compose.service"}}' | sort -u); do

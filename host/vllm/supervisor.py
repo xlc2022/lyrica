@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""Runs one vLLM server per model, as host-api asks in /serving/vllm.json.
+"""Runs one vLLM server per model, as host-api asks in /serving/vllm.json;
+with ENGINE=sglang, SGLang servers from /serving/sglang.json instead.
 
-The vLLM image has only Python, so this small part of the host is Python.
-host-api writes the file; this script starts, stops and restarts servers to
-match it. It has no listener of its own and never sees the Docker socket.
+The vLLM and SGLang images have only Python, so this small part of the host
+is Python. host-api writes the file; this script starts, stops and restarts
+servers to match it. It has no listener of its own and never sees the Docker
+socket.
 """
 import json
 import os
@@ -14,12 +16,14 @@ import sys
 import threading
 import time
 
-STATE = os.environ.get("VLLM_STATE", "/serving/vllm.json")
+ENGINE = os.environ.get("ENGINE", "vllm")
+STATE = os.environ.get("VLLM_STATE", f"/serving/{ENGINE}.json")
 # What failed to start, for host-api: it stops waiting on a load that crashed.
-STATUS = os.environ.get("VLLM_STATUS", "/status/vllm.json")
-COMMAND = os.environ.get("VLLM_COMMAND", "vllm").split()
-# uvicorn's line once the server answers: after it, nothing a server prints is kept.
-READY = "Application startup complete"
+STATUS = os.environ.get("VLLM_STATUS", f"/status/{ENGINE}.json")
+COMMAND = os.environ.get("VLLM_COMMAND", ENGINE).split()
+# The server's line once it answers: after it, nothing a server prints is kept.
+# SGLang prints uvicorn's line before its warm-up, and this one after.
+READY = "The server is fired up and ready to roll" if ENGINE == "sglang" else "Application startup complete"
 # An exception's last line, such as "ImportError: soundfile is not installed".
 EXCEPTION = re.compile(r"\b([A-Za-z_][\w.]*(?:Error|Exception)): (\S.*)")
 
@@ -108,8 +112,72 @@ def argv(spec):
     return args
 
 
+# SGLang: the TP2 profile of ormandj/sglang-glm53-flash-sm120's examples/serve-glm53-flash.sh at v0.6.1,
+# the only one its image (built for GLM 5.3 Flash on sm_120) was measured with. Its environment, then its flags.
+SGLANG_ENV = {
+    "SGLANG_ENABLE_HEALTH_ENDPOINT_GENERATION": "0",
+    "PYTORCH_CUDA_ALLOC_CONF": "expandable_segments:True",
+    "SGLANG_DRAFT_LM_HEAD_FP8": "1",
+    "SGLANG_PREFILL_MBO": "0",
+    "TORCHINDUCTOR_CACHE_DIR": "/root/.cache/torchinductor",
+    "TILELANG_CACHE_DIR": "/root/.cache/tilelang",
+    "TRITON_CACHE_DIR": "/root/.cache/triton",
+    "SGLANG_KDA_EXTEND_BLOCK_TOKENS": "2048",
+    "SGLANG_BCG_RAGGED_SHAPES": "1",
+    "SGLANG_BCG_RAGGED_MAX_BS": "1",
+    "SGLANG_BCG_SEPARATE_CAPTURE_SESSIONS": "1",
+}
+
+
+def sglang_argv(spec):
+    # Requests at once; GLM's recurrent state takes up to five slots each (28 for the profile's four).
+    seqs = int(spec.get("maxNumSeqs") or 4)
+    context = int(spec.get("maxModelLen") or 32768)
+    return COMMAND + [
+        "serve",
+        "--model-path", spec["model"],
+        "--served-model-name", spec["name"],
+        "--tp", str(len(spec["gpus"])),
+        "--enable-multimodal",
+        "--warmups", "serving_coverage",
+        "--image-processor-backend", "torchvision",
+        "--mm-preprocessing-device", "cpu",
+        "--quantization", "modelopt_mixed",
+        "--moe-runner-backend", "flashinfer_cutlass",
+        "--disable-shared-experts-fusion",
+        "--disable-custom-all-reduce",
+        "--attention-backend", "dsa",
+        "--linear-attn-backend", "triton",
+        "--context-length", str(context),
+        "--max-total-tokens", str(context),
+        "--kv-cache-dtype", "fp8_e4m3",
+        "--mem-fraction-static", str(spec.get("memoryShare") or 0.99),
+        "--chunked-prefill-size", "4096", "--max-prefill-tokens", "4096",
+        "--max-running-requests", str(seqs),
+        "--max-mamba-cache-size", str(7 * seqs),
+        "--mamba-ssm-dtype", "bfloat16",
+        "--cuda-graph-backend-prefill", "breakable",
+        "--cuda-graph-bs-prefill", "64", "128",
+        "--cuda-graph-backend-decode", "full",
+        "--cuda-graph-bs-decode", *[str(n) for n in range(1, seqs + 1)],
+        "--dsa-prefill-backend", "flashinfer_sparse_mla",
+        "--dsa-decode-backend", "flashinfer_sparse_mla",
+        "--speculative-algorithm", "EAGLE",
+        "--speculative-num-steps", "3",
+        "--speculative-eagle-topk", "1",
+        "--speculative-num-draft-tokens", "4",
+        "--reasoning-parser", "glm45",
+        "--tool-call-parser", "glm47",
+        *(["--chat-template", spec["chatTemplate"]] if spec.get("chatTemplate") else []),
+        "--host", "0.0.0.0",
+        "--port", str(spec["port"]),
+    ]
+
+
 def start(spec):
     env = dict(os.environ)
+    if ENGINE == "sglang":
+        env.update(SGLANG_ENV)
     # Its lines as it prints them, not when a buffer fills or it exits.
     env["PYTHONUNBUFFERED"] = "1"
     gpus = ",".join(str(g) for g in spec["gpus"])
@@ -119,7 +187,8 @@ def start(spec):
     if spec.get("ropeOverride"):
         env["VLLM_ALLOW_LONG_MAX_MODEL_LEN"] = "1"
     # Its own process group, so stopping it also stops vLLM's engine processes.
-    proc = subprocess.Popen(argv(spec), env=env, start_new_session=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    command = sglang_argv(spec) if ENGINE == "sglang" else argv(spec)
+    proc = subprocess.Popen(command, env=env, start_new_session=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     proc.lyrica_ready = False
     proc.lyrica_cause = None
     proc.lyrica_reader = threading.Thread(target=watch, args=(proc,), daemon=True)

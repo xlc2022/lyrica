@@ -76,6 +76,8 @@ export interface GpuSettings {
 export const ramMost = (total: number) => Math.max(0, total - Math.min(64 * 1024 ** 3, Math.max(8 * 1024 ** 3, total / 8)) - 8 * 1024 ** 3);
 
 export const DEFAULT_CONTEXT = 32768;
+/** SGLang's memory share on each of its GPUs unless set: its profile's --mem-fraction-static. */
+export const SGLANG_SHARE = 0.99;
 /** Dictation's default: about 20 minutes of Voxtral's audio (12.5 tokens a second), so it fits a 16 GB card. */
 export const TRANSCRIBE_CONTEXT = 16384;
 const defaultContext = (model: TextModel) => (model.kind === "transcribe" ? TRANSCRIBE_CONTEXT : DEFAULT_CONTEXT);
@@ -223,10 +225,15 @@ function option(model: TextModel, s: ModelSettings, gpus: Gpu[], settings: (i: n
   const total = weights + kv;
   const ids = gpus.map((g) => g.index);
   if (serverOf(model) === "vllm") {
-    const par = gpus.length === 1 ? null : parallel ?? (matching(gpus) && powerOfTwo(gpus.length) ? "tensor" : "pipeline");
+    // SGLang's profile (install.sh --sglang) is tensor parallel over cards of any name, and takes 0.99 of each unless set,
+    // as its author measured it (ormandj/sglang-glm53-flash-sm120, examples/serve-glm53-flash.sh), or as much as
+    // what other programs and the GPU's keep-free leave, in whole percent.
+    const sglang = model.engine === "sglang";
+    const sglangShare = Math.min(SGLANG_SHARE, ...gpus.map((g) => Math.floor(((room(g, settings(g.index)) - Math.max(0, g.used)) / g.total) * 100) / 100));
+    const par = gpus.length === 1 ? null : sglang ? "tensor" : parallel ?? (matching(gpus) && powerOfTwo(gpus.length) ? "tensor" : "pipeline");
     // vLLM reserves a share of each GPU: the one set, or what the model needs, in steps of 5%.
     const smallest = Math.min(...gpus.map((g) => g.total));
-    const share = s.memoryShare ?? Math.min(0.95, Math.max(0.1, Math.ceil(((total / gpus.length + OVERHEAD) / smallest) * 20) / 20));
+    const share = s.memoryShare ?? (sglang ? sglangShare : Math.min(0.95, Math.max(0.1, Math.ceil(((total / gpus.length + OVERHEAD) / smallest) * 20) / 20)));
     return { gpus: ids, split: null, parallel: par, share, need: Object.fromEntries(gpus.map((g) => [g.index, Math.round(share * g.total)])) };
   }
   // llama.cpp splits by ratio: the one set, or by what each GPU has free for the weights and cache, in whole GiB,
