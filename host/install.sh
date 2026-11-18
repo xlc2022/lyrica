@@ -28,6 +28,9 @@ Usage: host/install.sh [options]
   --glm5.3f-sglang     NVIDIA RTX PRO 6000 (sm_120) only: also run SGLang, for
                        GLM 5.3 Flash NVFP4 (compose.sglang.yaml). Kept until
                        --no-glm5.3f-sglang
+  --no-gpu-p2p         No direct transfers between GPUs for a model split
+                       across them (vLLM, SGLang), where they hang, as with
+                       the IOMMU translating; slower. Kept until --gpu-p2p
   --yes                Don't ask questions; use defaults and flags
   --no-start           Write .env only
   --uninstall          Remove the host from this machine (asks first)
@@ -64,6 +67,7 @@ COMFY_GPU=$(env_value COMFY_GPU)
 TS_HOSTNAME=$(env_value TS_HOSTNAME)
 TS_AUTHKEY=$(env_value TS_AUTHKEY)
 SGLANG=$(env_value SGLANG)
+P2P_OFF=$(env_value NCCL_P2P_DISABLE)
 WANT_LAN=1
 [[ -f .env && -z $LAN ]] && WANT_LAN=0
 YES=0 START=1 CHECK_GPU=1 CMP=0 CMP_UNLOCK=0 UNINSTALL=0 DELETE_DOWNLOADS=0
@@ -83,6 +87,8 @@ while [[ $# -gt 0 ]]; do
     --cmp-unlock) CMP_UNLOCK=1 ;;
     --glm5.3f-sglang) SGLANG=1 ;;
     --no-glm5.3f-sglang) SGLANG= ;;
+    --no-gpu-p2p) P2P_OFF=1 ;;
+    --gpu-p2p) P2P_OFF= ;;
     --yes) YES=1 ;;
     --no-start) START=0 ;;
     --uninstall) UNINSTALL=1 ;;
@@ -441,6 +447,7 @@ WHISPER_IMAGE=$WHISPER_IMAGE
 SPEECH_QWEN_IMAGE=$SPEECH_QWEN_IMAGE
 SPEECH_QWEN_FLAVOUR=${QWEN_FLAVOUR:-}
 SGLANG=$SGLANG
+NCCL_P2P_DISABLE=$P2P_OFF
 RENDER_GID=${RENDER_GID:-}
 COMPOSE_FILE=$FILES
 HOST_VERSION=$VERSION

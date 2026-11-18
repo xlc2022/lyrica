@@ -27,6 +27,7 @@ services:
       CUDA_DEVICE_ORDER: PCI_BUS_ID
       HF_HUB_OFFLINE: "1"
       DO_NOT_TRACK: "1"
+      NCCL_P2P_DISABLE: ${NCCL_P2P_DISABLE:-0} # install.sh --no-gpu-p2p
     networks: [models]
     logging: { driver: none } # Docker would keep its output on disk
     ulimits: { core: 0, memlock: -1 } # no core dump of prompts; pinned memory for NCCL
@@ -42,4 +43,4 @@ services:
       - sglang-status:/status
       - sglang-cache:/root/.cache
       - ./vllm:/lyrica:ro
-    tmpfs: [/tmp]
+    tmpfs: ["/tmp:exec"] # TileLang compiles kernels into /tmp and loads them from there
