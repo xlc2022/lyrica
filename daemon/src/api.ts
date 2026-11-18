@@ -524,6 +524,8 @@ export interface TextStarter {
   variantOf?: string; variant?: string;
   kind: "chat" | "embedding" | "speak" | "transcribe";
   server: "llamacpp" | "vllm" | "speech" | "whispercpp";
+  /** SGLang serves it in vLLM's place, on a host with SGLang (host/README.md "SGLang"). */
+  engine?: "sglang";
   vision: boolean; repo: string;
   /** Bytes to download, and the GPU memory it wants loaded. */
   size: number; needs: number;
@@ -542,6 +544,8 @@ export interface HostManage { method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE
  */
 export interface ServingSettings {
   model: string;
+  /** SGLang serves it in vLLM's place, on a host with SGLang (host/README.md "SGLang"). */
+  engine?: "sglang";
   settings: Record<string, unknown>;
   contextLength: number;
   maxContextLength: number | null;

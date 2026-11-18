@@ -381,12 +381,12 @@ tool choice. Unknown families receive no tool flags and report `tools: false`;
 embeddings and dictation receive neither parser.
 
 - `GET /host/v1/models/settings?model=<id>` answers
-  `{ "model": "<id>", "settings": { ... }, "contextLength": 32768,
+  `{ "model": "<id>", "engine"?: "sglang", "settings": { ... }, "contextLength": 32768,
   "maxContextLength": 262144, "trainedContextLength": 262144,
   "kvBytes": 4294967296, "ramBytes": 0, "layerTableBytes": 24696061952,
   "recommended": { ... } | null,
   "stretchUntested": false, "extras": { "vision": true, "mtp": "file" } }`:
-  the context served, its maximum (the trained
+  `engine` as in the models list, then the context served, its maximum (the trained
   length times the stretch), the trained length (null when the host couldn't
   read it), the KV cache at the served context by the host's estimate, what
   it would keep in system RAM where it loads first (0 when it fits its

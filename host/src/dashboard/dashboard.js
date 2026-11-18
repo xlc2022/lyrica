@@ -396,6 +396,8 @@ function editGpu(g) {
 
 const KINDS = { chat: "chat", embedding: "embedding", transcribe: "transcription", speak: "voice" };
 const SERVER_NAMES = { ...Object.fromEntries(SERVERS), whispercpp: "whisper.cpp" };
+/** A model's or starter's server, by name; GLM-SGLang for one SGLang serves in vLLM's place. */
+const serverName = (x) => (x.engine === "sglang" ? "GLM-SGLang" : SERVER_NAMES[x.server] ?? x.server);
 
 /** Load waits for the whole load; one stopped with Cancel is no error to show. */
 const loadModel = (id) => post("/host/v1/models/load", { model: id }).catch((e) => {
@@ -410,7 +412,7 @@ function textModels() {
   if (!S.models.length) return [head, h("ul", { class: "list" }, h("li", { class: "empty" }, "No text or voice models in the models folder."))];
   const cpu = S.status.cpuServers ?? [];
   const words = UI.textQ.trim().toLowerCase().split(" ").filter(Boolean);
-  const kept = (UI.textShow === "loaded" ? loaded : S.models).filter((m) => words.every((w) => `${m.id} ${KINDS[m.kind] ?? m.kind} ${SERVER_NAMES[m.server] ?? m.server}`.toLowerCase().includes(w)));
+  const kept = (UI.textShow === "loaded" ? loaded : S.models).filter((m) => words.every((w) => `${m.id} ${KINDS[m.kind] ?? m.kind} ${serverName(m)}`.toLowerCase().includes(w)));
   const filters = h("div", { class: "filters" }, search("text-q", "textQ", "Search text models", "Search by name"),
     h("div", { class: "chip-row", role: "group", "aria-label": "Show" },
       [["all", "All", S.models.length], ["loaded", "Loaded", loaded.length]].map(([k, label, count]) => toggle(`text-show-${k}`, [label, " ", num(count)], UI.textShow === k, () => (UI.textShow = k), "chip"))));
@@ -423,7 +425,7 @@ function textModels() {
     return h("li", {},
       h("div", { class: "main" },
         h("div", { class: "name" }, shortName(m.id), m.pinned ? h("span", { class: "pill" }, "pinned") : null),
-        facts(h("span", {}, KINDS[m.kind] ?? m.kind), h("span", {}, SERVER_NAMES[m.server] ?? m.server), num(size(m.size)), h("span", {}, where),
+        facts(h("span", {}, KINDS[m.kind] ?? m.kind), h("span", {}, serverName(m)), num(size(m.size)), h("span", {}, where),
           m.capabilities?.speak ? h("span", {}, num(m.capabilities.speak.voices.length), " voices") : null,
           m.contextLength ? h("span", {}, num(m.contextLength), " context") : null,
           m.stretch ? h("span", {}, "stretch ×", num(m.stretch)) : null,
@@ -452,8 +454,8 @@ function textStarters() {
     const kinds = [KINDS[s.kind], s.vision ? "vision" : null];
     const installed = s.state !== "available";
     return {
-      id: s.id, name: s.name, row: s.variantOf ?? s.name, variant: s.variant, group: STARTER_GROUPS[s.kind], words: [...kinds, SERVER_NAMES[s.server], s.variantOf, s.variant], bytes: s.size, installed,
-      facts: [...kinds, SERVER_NAMES[s.server], [num(size(s.size)), " to download"], s.fits === "cpu" ? "CPU" : ["needs ", num(size(s.needs)), " of GPU memory"]],
+      id: s.id, name: s.name, row: s.variantOf ?? s.name, variant: s.variant, group: STARTER_GROUPS[s.kind], words: [...kinds, serverName(s), s.variantOf, s.variant], bytes: s.size, installed,
+      facts: [...kinds, serverName(s), [num(size(s.size)), " to download"], s.fits === "cpu" ? "CPU" : ["needs ", num(size(s.needs)), " of GPU memory"]],
       pill: s.state === "here" ? h("span", { class: "pill" }, "existing") : s.state === "downloading" ? h("span", { class: "pill info" }, "downloading")
         : s.size > free ? h("span", { class: "pill warn", title: `${size(s.size)} to download, ${size(free)} free.` }, "not enough space")
         : s.fits === "too_big" ? h("span", { class: "pill warn", title: "More than any GPU here can give it." }, "too big for these GPUs")

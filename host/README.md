@@ -175,8 +175,8 @@ for this one model on these cards) under `vllm/supervisor.py`
 kernels into the `sglang-cache` volume the first time (10 to 20 minutes).
 It serves a safetensors model whose `quantization_config.quant_method` is
 `modelopt_mixed`; a host without it leaves such a model out of its lists.
-Such a model is otherwise a vLLM model: the GPUs that allow vLLM allow it,
-and Lyrica sees it as vLLM.
+Such a model is otherwise a vLLM model: the GPUs that allow vLLM allow it.
+Lyrica and the dashboard name its server "GLM-SGLang".
 
 ### Uninstall
 
