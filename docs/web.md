@@ -1549,7 +1549,9 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   on the messages of the last turn, and Delete from here on earlier ones,
   both in danger text. A marker's ⋯ (a look, a received message, a routine)
   has Branch from here instead of a row. The row is right-aligned under the
-  user's message and its menus open leftwards; on a pointer device it
+  user's message and its menus open leftwards. `MessageMenu` measures the
+  visible conversation area and opens upward when the menu would run below it;
+  expanded model lists scroll within the available height. On a pointer device it
   appears on hover or focus (`.msg-actions`), on touch it is always shown
   with 44 px buttons. Removing turns hides them at
   once and waits five seconds with an Undo toast before the request goes
