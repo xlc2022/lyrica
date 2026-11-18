@@ -1,6 +1,6 @@
 // Each message's actions: the row of icon buttons under it (copy, regenerate, edit, branch) and its ⋯ menu (pin, remember,
 // regenerate with another model, delete). Deleting waits a few seconds, so it can be undone.
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import type { ModelRef, Pins, Pool, RemovalPlan, RewindRequest, ThreadSettings } from "./api.ts";
 import { CopyIconButton } from "./CopyButton.tsx";
 import { Icon } from "./icons.tsx";
@@ -69,7 +69,33 @@ export function MessageMenu({ n, role, rewinder, model, onRemember, branch }: {
   const [models, setModels] = useState(false);
   const [q, setQ] = useState("");
   const ref = useRef<HTMLSpanElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const close = useCallback(() => { setOpen(false); setModels(false); setQ(""); }, []);
+  // The conversation scrolls independently of the page. Keep the menu within its visible area,
+  // including when Regenerate with… grows the list or the conversation moves while it is open.
+  useLayoutEffect(() => {
+    const anchor = ref.current, menu = menuRef.current;
+    if (!open || !anchor || !menu) return;
+    const fit = () => {
+      const button = anchor.querySelector("button")!.getBoundingClientRect();
+      const scroll = anchor.closest(".scroll")?.getBoundingClientRect();
+      const top = Math.max(8, scroll?.top ?? 0);
+      const bottom = Math.min(window.innerHeight - 8, scroll?.bottom ?? window.innerHeight);
+      const above = Math.max(0, button.top - top - 4);
+      const below = Math.max(0, bottom - button.bottom - 4);
+      const height = Math.min(menu.scrollHeight, window.innerHeight * 0.6);
+      const flip = below < height && above > below;
+      menu.style.top = flip ? "auto" : "";
+      menu.style.bottom = flip ? "calc(100% + 4px)" : "";
+      menu.style.maxHeight = `${Math.max(0, Math.min(window.innerHeight * 0.6, flip ? above : below))}px`;
+    };
+    fit();
+    const observer = new ResizeObserver(fit);
+    observer.observe(menu);
+    addEventListener("resize", fit);
+    addEventListener("scroll", fit, true);
+    return () => { observer.disconnect(); removeEventListener("resize", fit); removeEventListener("scroll", fit, true); };
+  }, [open, models, q]);
   useDismiss(ref, open, close);
   const { busy, lastTurn } = rewinder;
   const act = (fn: () => void) => () => { close(); fn(); };
@@ -92,7 +118,7 @@ export function MessageMenu({ n, role, rewinder, model, onRemember, branch }: {
         <Icon name="more" />
       </button>
       {open && (
-        <div className="menu" role="menu">
+        <div ref={menuRef} className="menu" role="menu">
           {rewinder.pinned.has(n)
             ? <button type="button" role="menuitem" onClick={act(() => rewinder.pin(n, false))}>Unpin</button>
             : <button type="button" role="menuitem" onClick={act(() => rewinder.pin(n, true))}>Pin</button>}

@@ -75,7 +75,9 @@ Rules:
   to the common action.
 - At most two visible actions per row; the rest go behind ⋯ at the row's end.
   Its menu opens leftward from the ⋯, or rightward when the ⋯ wrapped to
-  the row's start on a phone, so it stays on screen.
+  the row's start on a phone, so it stays on screen. A message's ⋯ menu opens
+  upward when there is not enough space below it in the conversation; a long
+  menu scrolls within the visible conversation area.
   Settings reached often are a **link in the thing's own line**, never a
   button on every row. The one exception is a message's action row (§6, A
   message's actions): its quiet icons are the common actions on every
