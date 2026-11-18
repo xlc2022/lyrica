@@ -35,6 +35,14 @@ let
     if [ ! -f "$dir/.env" ]; then echo "no host installed yet ($dir/.env is missing): nothing to apply"; exit 0; fi
     exec ${pkgs.bash}/bin/bash "$dir/egress.sh" apply
   '';
+  # As egressRun, for lan.sh: follows a new DHCP address (host/lyrica-host-lan.service).
+  lanRun = pkgs.writeShellScript "lyrica-host-lan" ''
+    set -euo pipefail
+    dir=${cfg.checkout}/host
+    if current=$(cat /var/lib/lyrica-host-update/current 2>/dev/null) && [ -f "$current/.env" ]; then dir=$current; fi
+    if [ ! -f "$dir/.env" ] || [ ! -f "$dir/lan.sh" ]; then exit 0; fi
+    exec ${pkgs.bash}/bin/bash "$dir/lan.sh"
+  '';
   # Runs cmp100-unlock on the machine's CMP 100-210 cards (10de:1df4 or
   # 10de:1d84, as host/src/gpus.ts), or does nothing if it has none. The
   # script copies payloads over gv100's firmware for the run, so the kernel
@@ -265,6 +273,20 @@ in {
         RemainAfterExit = true;
         ExecStart = egressRun;
       };
+    };
+
+    # As host/lyrica-host-lan.service and .timer: at boot and every 5 minutes,
+    # host-api follows the machine's LAN address when DHCP changes it.
+    systemd.services.lyrica-host-lan = {
+      description = "Lyrica model host: follow the LAN address";
+      after = [ "docker.service" "network-online.target" "lyrica-host-egress.service" ];
+      wants = [ "network-online.target" ];
+      path = with pkgs; [ bash coreutils gnused gnugrep gawk iproute2 config.virtualisation.docker.package ];
+      serviceConfig = { Type = "oneshot"; ExecStart = lanRun; };
+    };
+    systemd.timers.lyrica-host-lan = {
+      wantedBy = [ "timers.target" ];
+      timerConfig = { OnBootSec = "30s"; OnUnitActiveSec = "5min"; };
     };
   };
 }

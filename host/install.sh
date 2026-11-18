@@ -151,7 +151,7 @@ uninstall() {
     say "On NixOS, remove services.lyrica-host (with its updates, gpuUnlock and cmpUnlock) from this machine's configuration and rebuild: the module owns the units and the updater."
   elif [[ -d /run/systemd/system ]]; then
     local unit
-    for unit in lyrica-host-update.path lyrica-host-update.service lyrica-host-egress.service; do
+    for unit in lyrica-host-update.path lyrica-host-update.service lyrica-host-lan.timer lyrica-host-lan.service lyrica-host-egress.service; do
       "${SUDO[@]}" systemctl disable --now "$unit" >/dev/null 2>&1 || true
       "${SUDO[@]}" rm -f "/etc/systemd/system/$unit"
     done
@@ -291,6 +291,11 @@ private() {
 }
 
 if [[ $WANT_LAN == 1 ]]; then
+  # The saved address is gone (DHCP gave another, or the machine moved): detect it again.
+  if [[ -n $LAN && $LAN_GIVEN == 0 ]] && ! ip -o addr show 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | grep -qxF "$LAN"; then
+    say "$LAN is no longer an address of this machine: detecting its LAN address again."
+    LAN=
+  fi
   if [[ -z $LAN ]]; then
     LAN=$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for (i = 1; i < NF; i++) if ($i == "src") print $(i + 1)}')
     # Docker's published ports skip the firewall, so a guess must be private.
@@ -304,6 +309,9 @@ if [[ $WANT_LAN == 1 ]]; then
   ip -o addr show 2>/dev/null | grep -w "inet ${LAN}" >/dev/null || ip -o addr show 2>/dev/null | grep "inet6 ${LAN}/" >/dev/null ||
     fail "$LAN isn't an address of this machine."
 fi
+# Its interface, so lan.sh follows a new DHCP address on the same network.
+LAN_INTERFACE=
+[[ $WANT_LAN == 1 ]] && LAN_INTERFACE=$(ip -o addr show 2>/dev/null | awk -v a="$LAN" '{split($4, p, "/"); if (p[1] == a) {print $2; exit}}')
 
 [[ -n $MODELS ]] || MODELS=/srv/models
 ask MODELS "Models folder" "$MODELS"
@@ -426,6 +434,7 @@ cat > .env <<EOF
 HOST_NAME=$NAME
 LAN_ADDRESS=$LAN
 LAN_BIND=$LAN_BIND
+LAN_INTERFACE=$LAN_INTERFACE
 EDGE_SUBNET=$EDGE_SUBNET
 HOST_API_IP=$HOST_API_IP
 MODELS_DIR=$MODELS
@@ -489,10 +498,14 @@ if [[ -e /etc/NIXOS ]]; then
   "${SUDO[@]}" systemctl restart lyrica-host-egress.service
 elif [[ -d /run/systemd/system ]]; then
   sed "s#@HOST_DIR@#$PWD#g" lyrica-host-egress.service | "${SUDO[@]}" tee /etc/systemd/system/lyrica-host-egress.service >/dev/null
+  # lan.sh follows a new DHCP address (it does nothing without a LAN address).
+  sed "s#@HOST_DIR@#$PWD#g" lyrica-host-lan.service | "${SUDO[@]}" tee /etc/systemd/system/lyrica-host-lan.service >/dev/null
+  "${SUDO[@]}" install -m 0644 lyrica-host-lan.timer /etc/systemd/system/lyrica-host-lan.timer
   "${SUDO[@]}" systemctl daemon-reload
   "${SUDO[@]}" systemctl enable --now lyrica-host-egress.service >/dev/null
+  "${SUDO[@]}" systemctl enable --now lyrica-host-lan.timer >/dev/null
 else
-  say "No systemd here: run host/egress.sh apply after every reboot or Docker restart."
+  say "No systemd here: run host/egress.sh apply after every reboot or Docker restart, and host/lan.sh when the LAN address changes."
 fi
 
 # The CMP's unlock (cmp-unlock.sh), offered until it is installed: it keeps

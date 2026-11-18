@@ -76,7 +76,8 @@ hand: `sudo lyrica-host-update --tag update/<name>`, or `--commit <sha>`.
 NixOS can't have packages or units installed by a script, so the flake's
 `model-host` module declares what `install.sh` needs: Docker (iptables
 backend), the GPU driver, `iptables`, `git`, `curl` and `jq`, the models
-folder, `lyrica-host-egress.service`, and the updater (Updates above):
+folder, `lyrica-host-egress.service`, `lyrica-host-lan.service` and
+`.timer`, and the updater (Updates above):
 `lyrica-host-update` from the store with a fixed PATH that holds every
 command `update.sh` and `install.sh` run (`host/test/updater-path.test.ts`
 checks it), `lyrica-host-update.service` and `.path`, and the updater's
@@ -973,6 +974,18 @@ unpairs it here too, when the host can be reached.
       to a minute for the LAN address to appear, so on a DHCP machine
       Docker doesn't try to publish host-api's port before the address
       exists (the bind would fail, and Docker doesn't retry it).
+    - `install.sh` also installs `lyrica-host-lan.timer`, which runs
+      `lan.sh` 30 seconds after boot and every 5 minutes. When DHCP or a
+      move to another network gives the machine a new address, Docker
+      starts host-api with no published port at all (127.0.0.1:7236
+      included, so the updater can't pause it); `lan.sh` then takes the
+      new private IPv4 address on the interface install.sh recorded
+      (`LAN_INTERFACE` in `.env`), writes it to `.env` and starts host-api
+      again on it. It never takes a public address, and leaves an IPv6
+      LAN address alone. A paired Lyrica that reaches the host by its old
+      LAN address needs the new one under Edit → Addresses; one that
+      reaches it over Tailscale doesn't. `install.sh` run again likewise
+      detects the address afresh when the saved one is gone.
     - host-api's DNS server is a blackhole address: container names still
       resolve, outside names never do. Its networks have no IPv6.
     - Without systemd, run `host/egress.sh apply` yourself after each.

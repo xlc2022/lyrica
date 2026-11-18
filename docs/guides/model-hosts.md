@@ -285,6 +285,12 @@ detected one is private), and the models folder. Then it:
    address, so on a DHCP machine Docker doesn't start before the address
    exists; since 2026-11-15 a Docker drop-in you added to order it after
    the network is no longer needed and can go once the host is updated.
+   It also installs `lyrica-host-lan.timer`: when DHCP or a move gives
+   the machine another LAN address, host-api is published on the new one
+   within 5 minutes (`host/lan.sh`), so the dashboard and Update… keep
+   working. If Lyrica reaches the host by its LAN address, put the new
+   one in the host's Edit → Addresses; a host reached over Tailscale needs
+   nothing. A DHCP reservation for the machine avoids both.
 3. Builds the `host-api` and speech images and starts the stack
    (`docker compose up -d`). The ComfyUI image is large and builds here
    too, from pinned commits.
@@ -1164,7 +1170,7 @@ second pairing. Then:
   recipes.
 - **Tear down:** `docker compose down -v` in `host/` removes the stack and
   its volumes, including the host's key (a new pairing afterwards), and
-  `sudo systemctl disable --now lyrica-host-egress` with `sudo
+  `sudo systemctl disable --now lyrica-host-egress lyrica-host-lan.timer` with `sudo
   host/egress.sh remove` takes the rules out. The models folder stays.
 
 ## Uninstall

@@ -1,0 +1,11 @@
+# Installed by host/install.sh, run by lyrica-host-lan.timer: publishes
+# host-api on the machine's new LAN address after DHCP or a move changes it
+# (see lan.sh).
+[Unit]
+Description=Lyrica model host: follow the LAN address
+After=docker.service network-online.target lyrica-host-egress.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=@HOST_DIR@/lan.sh

@@ -1,0 +1,11 @@
+# Installed by host/install.sh: runs lyrica-host-lan.service soon after boot,
+# then every 5 minutes, so a new DHCP address is followed (see lan.sh).
+[Unit]
+Description=Lyrica model host: follow the LAN address
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=5min
+
+[Install]
+WantedBy=timers.target
