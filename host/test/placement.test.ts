@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { autoContext, concurrentOf, defaultGpu, options, validate, type GpuSettings } from "../src/placement.ts";
+import { autoContext, concurrentOf, defaultGpu, neverFits, options, validate, type GpuSettings } from "../src/placement.ts";
 import type { Gpu } from "../src/gpus.ts";
 import { GIB, textModel } from "./fakes.ts";
 
@@ -152,5 +152,19 @@ describe("the context with none saved", () => {
     expect(autoContext(textModel("huge", 40, { contextLength: 131072 }), auto, empty(24), all)).toBe(32768);
     expect(autoContext(textModel("small", 4, { contextLength: null }), auto, empty(24), all)).toBe(32768);
     expect(autoContext(textModel("short", 4, { contextLength: 8192 }), auto, empty(24), all)).toBe(8192);
+  });
+});
+
+describe("SGLang's placement", () => {
+  it("runs tensor parallel over cards of different names with 0.99 of each, or what other programs leave", () => {
+    const glm = textModel("glm-nvfp4", 166, { server: "vllm", engine: "sglang", format: "safetensors", contextLength: 1_048_576 });
+    const pair = [gpu(0, 95.6, "RTX PRO 6000 Blackwell Workstation Edition"), gpu(1, 95.6, "RTX PRO 6000 Blackwell Max-Q Workstation Edition")];
+    const all = (): GpuSettings => ({ servers: ["llamacpp", "vllm", "images", "speech"], keepFree: 0, excluded: false });
+    const both = options(glm, { placement: { mode: "auto" } }, pair, all).find((o) => o.gpus.length === 2)!;
+    // 1 GB of each card is another program's: 0.98 is what's left.
+    expect(both).toMatchObject({ parallel: "tensor", share: 0.98 });
+    expect(neverFits(glm, { placement: { mode: "auto" } }, both, pair, all)).toBeNull();
+    const empty = pair.map((g) => ({ ...g, used: 0 }));
+    expect(options(glm, { placement: { mode: "auto" } }, empty, all).find((o) => o.gpus.length === 2)).toMatchObject({ share: 0.99 });
   });
 });

@@ -92,6 +92,11 @@ export interface TextModel {
   buffers?: number;
   /** A vLLM model whose config asks for remote code: never loaded. */
   remoteCode: boolean;
+  /**
+   * A vLLM model that SGLang serves instead (install.sh --sglang): one in ModelOpt's mixed format
+   * (`quantization_config.quant_method` "modelopt_mixed"), which no vLLM loads. It is otherwise a vLLM model.
+   */
+  engine?: "sglang";
   /** A speech model's ONNX file, relative to its folder. */
   onnx?: string;
   /** A Qwen3-TTS voice model, for the Qwen3-TTS speech server: its speakers (CustomVoice) or built-in clips it clones (Base). */
@@ -402,6 +407,7 @@ function vllmModel(root: string, dir: string, files: string[]): TextModel | null
     mmproj: null,
     ...(recommended ? { sampling: recommended } : {}),
     remoteCode: !!config.auto_map,
+    ...(config.quantization_config?.quant_method === "modelopt_mixed" ? { engine: "sglang" as const } : {}),
   };
 }
 

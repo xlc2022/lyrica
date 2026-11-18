@@ -279,6 +279,7 @@ export class Host {
       servers: this.runtime?.scheduler.servers ?? [],
       cpuServers: this.runtime?.scheduler.cpuServers ?? [],
       dictation: this.runtime?.scheduler.dictation ?? "vllm",
+      engines: this.runtime?.scheduler.engines ?? [],
       gpus: (await this.runtime?.scheduler.status()) ?? [],
       ...(this.runtime ? { systemRam: this.runtime.scheduler.ramStatus() } : {}),
       problems: [...(this.runtime?.scheduler.problems ?? []), ...(this.images?.problems ?? [])],

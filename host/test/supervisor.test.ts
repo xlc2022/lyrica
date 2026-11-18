@@ -44,6 +44,28 @@ describe.skipIf(!python)("the vLLM supervisor", () => {
     }
   });
 
+  it("runs SGLang with its measured profile from sglang.json, tensor parallel over the model's GPUs", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "lyrica-sglang-"));
+    const fake = join(dir, "fake-sglang");
+    writeFileSync(fake, `#!/bin/sh\necho "$CUDA_VISIBLE_DEVICES|$SGLANG_DRAFT_LM_HEAD_FP8|$*" >> ${dir}/runs\nexec sleep 1000\n`);
+    chmodSync(fake, 0o755);
+    const state = join(dir, "sglang.json");
+    writeFileSync(state, JSON.stringify({ generation: 0, servers: { glm: { model: "/models/glm", name: "glm", port: 8000, gpus: [0, 1], memoryShare: 0.99, maxModelLen: 65536, maxNumSeqs: 2 } } }));
+    const proc = spawn("python3", [SUPERVISOR], { env: { ...process.env, ENGINE: "sglang", VLLM_STATE: state, VLLM_COMMAND: fake, VLLM_STATUS: join(dir, "status.json") }, stdio: "ignore" });
+    try {
+      const runs = () => (existsSync(join(dir, "runs")) ? readFileSync(join(dir, "runs"), "utf8").trim().split("\n") : []);
+      await until(() => runs().length === 1);
+      const [gpus, env, args] = runs()[0]!.split("|");
+      expect([gpus, env]).toEqual(["0,1", "1"]);
+      expect(args).toMatch(/^serve --model-path \/models\/glm --served-model-name glm --tp 2 /);
+      for (const flag of ["--quantization modelopt_mixed", "--context-length 65536", "--max-total-tokens 65536", "--mem-fraction-static 0.99", "--max-running-requests 2", "--max-mamba-cache-size 14", "--cuda-graph-bs-decode 1 2 ", "--speculative-algorithm EAGLE", "--host 0.0.0.0 --port 8000"]) expect(args).toContain(flag);
+      expect(args).not.toMatch(/trust-remote-code|enable-metrics/);
+    } finally {
+      proc.kill("SIGTERM");
+      await new Promise((r) => proc.once("exit", r));
+    }
+  });
+
   it("gives a stretched model YaRN in its own RoPE settings, and allows the long context for that process only", async () => {
     const dir = mkdtempSync(join(tmpdir(), "lyrica-vllm-"));
     const fake = join(dir, "fake-vllm");

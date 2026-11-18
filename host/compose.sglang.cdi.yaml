@@ -1,0 +1,8 @@
+# compose.sglang.yaml through CDI devices, as compose.cdi.yaml for the others.
+services:
+  sglang:
+    devices: [nvidia.com/gpu=all]
+    deploy:
+      resources:
+        reservations:
+          devices: !reset []

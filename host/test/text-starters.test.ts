@@ -29,6 +29,14 @@ describe("text starters", () => {
     expect(cpu.get("kokoro-82m")!.fits).toBe("cpu");
   });
 
+  it("lists the SGLang starter only where SGLang runs, fitting across the GPUs that allow vLLM", () => {
+    const two = { gpus: [gpu(96), gpu(96)] };
+    expect(listStarters(host(two), new Set(), new Set()).map((s) => s.id)).not.toContain("glm-5.3-flash-nvfp4");
+    const nvfp4 = byId(listStarters(host({ ...two, engines: ["sglang"] }), new Set(), new Set())).get("glm-5.3-flash-nvfp4")!;
+    expect(nvfp4).toMatchObject({ server: "vllm", engine: "sglang", vision: true, fits: "gpu" });
+    expect(byId(listStarters(host({ gpus: [gpu(96)], engines: ["sglang"] }), new Set(), new Set())).get("glm-5.3-flash-nvfp4")!.fits).toBe("too_big");
+  });
+
   it("marks a starter here once its model is in the folder, and downloading while its files are on the way", () => {
     const qwen = TEXT_STARTERS.find((s) => s.id === "qwen3.5-9b")!;
     const list = byId(listStarters(host(), new Set([qwen.model]), new Set(["lyrica/huggingface/Qwen/Qwen3-Embedding-0.6B-GGUF/Qwen3-Embedding-0.6B-Q8_0.gguf"])));

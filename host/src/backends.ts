@@ -376,12 +376,16 @@ export interface VllmOptions {
   loadTimeoutMs?: number;
   /** The supervisor's report of servers that exited. */
   statusPath?: string;
+  /** The server, as its messages name it, and its file in the serving folder: vLLM (vllm), or SGLang (sglang). */
+  name?: string;
+  engine?: "vllm" | "sglang";
 }
 
 /**
  * vLLM: each model is its own server process, started by
  * host/vllm/supervisor.py on the GPUs of its placement with its memory
- * share, so one GPU can hold several.
+ * share, so one GPU can hold several. SGLang (install.sh --sglang) runs the
+ * same way, from its own file, for the models it serves (`engine: "sglang"`).
  */
 export class Vllm implements Backend {
   private readonly o: Required<VllmOptions>;
@@ -390,13 +394,14 @@ export class Vllm implements Backend {
   private readonly templates: Templates;
 
   constructor(o: VllmOptions) {
-    this.o = { basePort: 8000, loadTimeoutMs: 30 * 60_000, statusPath: "/vllm-status/vllm.json", ...o };
-    this.templates = new Templates(o.serving, "vllm");
+    const engine = o.engine ?? "vllm";
+    this.o = { basePort: 8000, loadTimeoutMs: 30 * 60_000, statusPath: `/${engine}-status/${engine}.json`, name: engine === "sglang" ? "SGLang" : "vLLM", engine, ...o };
+    this.templates = new Templates(o.serving, engine);
     this.write();
   }
 
   get statePath(): string {
-    return join(this.o.serving, "vllm.json");
+    return join(this.o.serving, `${this.o.engine}.json`);
   }
 
   private freePort(): number {
@@ -446,13 +451,13 @@ export class Vllm implements Backend {
         if (failed) {
           // The cause vLLM printed, when the supervisor caught one; else the likeliest causes.
           throw new HostError(503, "model_unavailable", failed.error
-            ? `vLLM couldn't start ${model.id}: ${failed.error}`
-            : `vLLM couldn't start ${model.id} with these settings; try a lower context length or a larger memory share.`);
+            ? `${this.o.name} couldn't start ${model.id}: ${failed.error}`
+            : `${this.o.name} couldn't start ${model.id} with these settings; try a lower context length or a larger memory share.`);
         }
         const res = await fetch(`${this.base(port)}/v1/models`);
         const body = (await res.json()) as { data: { id: string }[] };
         return body.data.some((m) => m.id === model.id);
-      }, this.o.loadTimeoutMs, "vLLM", 2000);
+      }, this.o.loadTimeoutMs, this.o.name, 2000);
     } catch (e) {
       // Take it out of the supervisor's file, so it stops retrying.
       this.placed.delete(model.id);
@@ -477,12 +482,12 @@ export class Vllm implements Backend {
     if (!p) return;
     this.placed.delete(model.id);
     this.write();
-    await poll(async () => !(await fetch(`${this.base(p.port)}/v1/models`).then(() => true, () => false)), 120_000, "vLLM");
+    await poll(async () => !(await fetch(`${this.base(p.port)}/v1/models`).then(() => true, () => false)), 120_000, this.o.name);
   }
 
   url(model: TextModel): string {
     const p = this.placed.get(model.id);
-    if (!p) throw unavailable("vLLM");
+    if (!p) throw unavailable(this.o.name);
     return this.base(p.port);
   }
 
@@ -492,7 +497,7 @@ export class Vllm implements Backend {
     this.generation++;
     this.write(new Map());
     // Forget them only once each server is gone, so a failure stays counted.
-    for (const port of ports) await poll(async () => !(await fetch(`${this.base(port)}/v1/models`).then(() => true, () => false)), 120_000, "vLLM");
+    for (const port of ports) await poll(async () => !(await fetch(`${this.base(port)}/v1/models`).then(() => true, () => false)), 120_000, this.o.name);
     this.placed.clear();
   }
 }

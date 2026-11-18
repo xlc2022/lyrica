@@ -355,6 +355,8 @@ export class Runtime {
       id: m.id,
       kind: m.kind,
       server: m.server,
+      // SGLang serves it in vLLM's place (install.sh --sglang).
+      ...(m.engine ? { engine: m.engine } : {}),
       format: m.format,
       size: m.size,
       sha256: entry?.sha256 ?? null,

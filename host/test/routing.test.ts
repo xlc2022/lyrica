@@ -64,6 +64,26 @@ function modelsFolder(): string {
   return dir;
 }
 
+it("gives a model in ModelOpt's mixed format to SGLang, and offers it only where SGLang runs", () => {
+  const dir = mkdtempSync(join(tmpdir(), "lyrica-models-"));
+  mkdirSync(join(dir, "glm-nvfp4"));
+  writeFileSync(join(dir, "glm-nvfp4/config.json"), JSON.stringify({ architectures: ["Glm5NextForConditionalGeneration"], quantization_config: { quant_method: "modelopt_mixed" } }));
+  writeFileSync(join(dir, "glm-nvfp4/model.safetensors"), Buffer.alloc(16));
+  const [model] = scanTextModels(dir);
+  expect(model).toMatchObject({ server: "vllm", engine: "sglang" });
+  const vllm = new Vllm({ url: "http://127.0.0.1:1/{port}", serving: mkdtempSync(join(tmpdir(), "lyrica-serving-")), models: "/models" });
+  const llamacpp = new LlamaCpp({ url: "http://127.0.0.1:1", serving: mkdtempSync(join(tmpdir(), "lyrica-serving-")), models: "/models", device: (i) => `CUDA${i}` });
+  const state = { get: () => ({}) } as never;
+  const without = new Scheduler({ monitor: new FakeGpus([]), backends: { llamacpp, vllm }, state, log: stdoutLog });
+  expect(without.serves(model!)).toBe(false);
+  expect(without.engines).toEqual([]);
+  const sglang = new Vllm({ url: "http://127.0.0.1:1/{port}", serving: mkdtempSync(join(tmpdir(), "lyrica-serving-")), models: "/models", engine: "sglang" });
+  const withIt = new Scheduler({ monitor: new FakeGpus([]), backends: { llamacpp, vllm, sglang }, state, log: stdoutLog });
+  expect(withIt.serves(model!)).toBe(true);
+  expect(withIt.engines).toEqual(["sglang"]);
+  expect(sglang.statePath.endsWith("sglang.json")).toBe(true);
+});
+
 describe("the models folder", () => {
   it("finds GGUF and vLLM text models with their identity and capabilities", () => {
     const models = scanTextModels(modelsFolder());
@@ -521,6 +541,12 @@ describe("the compose files", () => {
     expect(sdcpp).toMatch(/\n  sdcpp:\n[\s\S]*logging: \{ driver: none \}[^\n]*\n    ulimits: \{ core: 0 \}[\s\S]*tmpfs:/);
     const whisper = readFileSync(new URL("../compose.whisper.yaml", import.meta.url), "utf8");
     expect(whisper).toMatch(/\n  whispercpp:\n[\s\S]*logging: \{ driver: none \}[^\n]*\n    ulimits: \{ core: 0 \}/);
+    // SGLang (install.sh --sglang): the same, on the models network alone, its image pinned by digest.
+    const sglang = readFileSync(new URL("../compose.sglang.yaml", import.meta.url), "utf8").split("\n  sglang:\n")[1]!;
+    expect(sglang).toMatch(/logging: \{ driver: none \}[^\n]*\n    ulimits: \{ core: 0[,} ]/);
+    expect(sglang).toMatch(/\n    networks: \[models\]\n/);
+    expect(sglang).toMatch(/tmpfs:/);
+    expect(sglang).toMatch(/image: \S+@sha256:[0-9a-f]{64}\n/);
     // host-api and speech hold prompts in memory too.
     const base = readFileSync(new URL("../compose.yaml", import.meta.url), "utf8");
     for (const name of ["host-api", "speech"]) expect(base.split(`\n  ${name}:\n`)[1]!.split(/\n  [a-z-]+:\n/)[0], name).toMatch(/ulimits: \{ core: 0 \}/);

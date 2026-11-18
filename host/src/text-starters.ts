@@ -17,6 +17,10 @@ export interface TextStarter {
   variant?: string;
   kind: "chat" | "embedding" | "speak" | "transcribe";
   server: StarterServer;
+  /** It sees images, though no projector file says so (a safetensors model with its vision tower). */
+  vision?: true;
+  /** Served by SGLang in vLLM's place: listed only on a host with SGLang (install.sh --sglang), and fits across its GPUs. */
+  engine?: "sglang";
   repo: string;
   revision: string;
   files: string[];
@@ -44,6 +48,13 @@ export const TEXT_STARTERS: TextStarter[] = [
     repo: "unsloth/GLM-5.3-Flash-GGUF", revision: "a38483c8cd5df544f53d70fb281afe97369d5ab6",
     files: [1, 2, 3, 4, 5, 6].map((n) => `UD-Q4_K_XL/GLM-5.3-Flash-UD-Q4_K_XL-0000${n}-of-00006.gguf`).concat("mmproj-F16.gguf"),
     size: 199_707_321_472 + 1_128_047_296, needs: 208 * GiB },
+  // ormandj's NVFP4 build for two RTX PRO 6000s, on the SGLang install.sh --sglang adds (docs/briefs/sglang-glm.md):
+  // its 90 shards (177,995,252,856 bytes, its card), with its config, tokenizer and template. Needs: 0.99 of two 96 GB cards.
+  { id: "glm-5.3-flash-nvfp4", model: "lyrica/huggingface/ormandj/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO", name: "GLM 5.3 Flash NVFP4",
+    variantOf: "GLM 5.3 Flash", variant: "NVFP4", kind: "chat", server: "vllm", engine: "sglang", vision: true,
+    repo: "ormandj/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO", revision: "ee0989a944b0e213589191d7fca63af825a0741e",
+    files: ["config.json", "model.safetensors.index.json"], also: /^(model-\d{5}-of-\d{5}\.safetensors|[^/]+\.(json|jinja))$/,
+    size: 177_995_252_856, needs: 180 * GiB },
   { id: "deepseek-v4-flash", model: "lyrica/huggingface/unsloth/DeepSeek-V4-Flash-GGUF/UD-Q4_K_XL/DeepSeek-V4-Flash-UD-Q4_K_XL-00001-of-00005.gguf", name: "DeepSeek V4 Flash", kind: "chat", server: "llamacpp",
     repo: "unsloth/DeepSeek-V4-Flash-GGUF", revision: "e3aa0d6a5fa4f820d9e132ac1fd1d01e1b2b49e0",
     files: [1, 2, 3, 4, 5].map((n) => `UD-Q4_K_XL/DeepSeek-V4-Flash-UD-Q4_K_XL-0000${n}-of-00005.gguf`),
@@ -94,6 +105,8 @@ export interface StarterHost {
   servers: string[];
   cpuServers: string[];
   dictation: "vllm" | "whispercpp";
+  /** SGLang, where install.sh added it. */
+  engines?: string[];
   gpus: { vram: { total: number }; settings: { servers: string[]; keepFree: number; excluded: boolean } }[];
   systemRam?: { allowance: number } | null;
 }
@@ -107,6 +120,7 @@ export interface ListedStarter {
   variant?: string;
   kind: TextStarter["kind"];
   server: StarterServer;
+  engine?: "sglang";
   vision: boolean;
   repo: string;
   size: number;
@@ -126,18 +140,20 @@ export function listStarters(host: StarterHost, models: Set<string>, inFlight: S
   const rooms = (server: StarterServer) => host.gpus
     .filter((g) => !g.settings.excluded && g.settings.servers.includes(server === "whispercpp" ? "speech" : server))
     .map((g) => g.vram.total - g.settings.keepFree);
-  const room = (server: StarterServer) => server === "llamacpp" ? rooms(server).reduce((a, b) => a + b, 0) : Math.max(0, ...rooms(server));
+  // llama.cpp and SGLang (tensor parallel) take the GPUs together; the others one GPU.
+  const room = (s: TextStarter) => s.server === "llamacpp" || s.engine === "sglang" ? rooms(s.server).reduce((a, b) => a + b, 0) : Math.max(0, ...rooms(s.server));
   const ram = host.systemRam?.allowance ?? 0;
   const serves = (s: TextStarter) => (s.kind !== "transcribe" || s.server === host.dictation)
+    && (!s.engine || (host.engines ?? []).includes(s.engine))
     && (s.server === "whispercpp" || host.servers.includes(s.server) || host.cpuServers.includes(s.server));
   return TEXT_STARTERS.filter(serves).map((s) => {
     const prefix = `lyrica/huggingface/${s.repo}/`;
     const state = models.has(s.model) ? "here" : [...inFlight].some((p) => p.startsWith(prefix)) ? "downloading" : "available";
-    const fits = host.cpuServers.includes(s.server) ? "cpu" : s.needs <= room(s.server) ? "gpu"
-      : s.server === "llamacpp" && s.needs <= room(s.server) + ram ? "ram" : "too_big";
+    const fits = host.cpuServers.includes(s.server) ? "cpu" : s.needs <= room(s) ? "gpu"
+      : s.server === "llamacpp" && s.needs <= room(s) + ram ? "ram" : "too_big";
     return {
       id: s.id, model: s.model, name: s.name, ...(s.variantOf ? { variantOf: s.variantOf, variant: s.variant } : {}),
-      kind: s.kind, server: s.server, vision: s.files.some((f) => f.includes("mmproj")), repo: s.repo, size: s.size, needs: s.needs, state, fits,
+      kind: s.kind, server: s.server, ...(s.engine ? { engine: s.engine } : {}), vision: s.vision ?? s.files.some((f) => f.includes("mmproj")), repo: s.repo, size: s.size, needs: s.needs, state, fits,
     };
   });
 }

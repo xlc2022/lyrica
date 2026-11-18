@@ -115,6 +115,7 @@ seconds of audio.
   "servers": ["llamacpp", "vllm", "images", "speech"],
   "cpuServers": [],
   "dictation": "vllm",
+  "engines": [],
   "gpus": [{
     "index": 0,
     "name": "NVIDIA GeForce RTX 3090",
@@ -159,7 +160,9 @@ seconds of audio.
   GPU. `dictation`: the server dictation models run on, `vllm`, or
   `whispercpp` on a host with a CMP 100-210, where vLLM can't run; only
   that server's dictation models are listed. A whisper.cpp model falls
-  under the GPUs' `speech` setting and runs on one GPU.
+  under the GPUs' `speech` setting and runs on one GPU. `engines`:
+  `["sglang"]` where `install.sh --sglang` added SGLang, which serves some
+  vLLM models in vLLM's place, else `[]`.
 - `pciId`: the GPU's PCI vendor and device ID (`vendor:device`, lower-case
   hex), so a card that names itself as another model still shows what it
   is. Absent when the driver doesn't say.
@@ -240,7 +243,9 @@ seconds of audio.
   ```
 
   - `server`: `llamacpp` (GGUF), `vllm` (a safetensors folder with a
-    `config.json`) or `speech` (a voice model: see below). `kind` is
+    `config.json`) or `speech` (a voice model: see below). `engine`:
+    `sglang` on a `vllm` model SGLang serves instead (ModelOpt's mixed
+    format; listed only where SGLang runs), absent otherwise. `kind` is
     `chat`, `embedding`, `transcribe` (Whisper or Voxtral, on vLLM) or
     `speak`.
   - `identity` comes from GGUF metadata (`general.basename`,
@@ -796,7 +801,9 @@ read the same list.
 - `GET /host/v1/text-starters` → `{ starters }`: those the host's servers
   run, on a GPU or the CPU (dictation only on the one server that does it
   here), each `{ id, model, name, variantOf?, variant?, kind, server,
-  vision, repo, size, needs, state, fits }`. A model's sizes share
+  engine?, vision, repo, size, needs, state, fits }`. A starter with
+  `engine` `sglang` is listed only where SGLang runs, and fits across the
+  GPUs that allow vLLM together. A model's sizes share
   `variantOf`, each with its `variant` label (`Q3`, `9B`). `size` is the
   bytes to download, `needs` the GPU memory it wants loaded. `state` is
   `here` once its model is in the folder, `downloading` while one of its

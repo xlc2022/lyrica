@@ -1,0 +1,45 @@
+# SGLang for GLM 5.3 Flash in ModelOpt's mixed format (install.sh --sglang;
+# docs/briefs/sglang-glm.md): ormandj's image, built for sm_120 (RTX PRO 6000)
+# only, pinned by digest. Like vLLM it runs one server per model from
+# /serving/sglang.json through host/vllm/supervisor.py (ENGINE=sglang), on the
+# models network with no route out, logging nothing. Its compiled kernels
+# (10 to 20 minutes the first time) are kept in the sglang-cache volume.
+volumes:
+  sglang-status: {}
+  sglang-cache: {}
+
+services:
+  host-api:
+    environment:
+      SGLANG: "on"
+    volumes:
+      - sglang-status:/sglang-status:ro
+
+  sglang:
+    restart: unless-stopped
+    image: ghcr.io/ormandj/sglang-glm53-flash-sm120:v0.6.1@sha256:10d3a79629420d9c1953cbc2e25a8395364fe7a40a77d039444bb8a3e4b10dd9
+    entrypoint: [/opt/sglang/bin/python, /lyrica/supervisor.py]
+    init: true # reaps what SGLang's worker processes leave behind
+    # As its launcher (examples/serve-glm53-flash.sh): NCCL between the cards over shared memory.
+    shm_size: 64gb
+    environment:
+      ENGINE: sglang
+      CUDA_DEVICE_ORDER: PCI_BUS_ID
+      HF_HUB_OFFLINE: "1"
+      DO_NOT_TRACK: "1"
+    networks: [models]
+    logging: { driver: none } # Docker would keep its output on disk
+    ulimits: { core: 0, memlock: -1 } # no core dump of prompts; pinned memory for NCCL
+    depends_on:
+      host-api: { condition: service_healthy }
+    deploy:
+      resources:
+        reservations:
+          devices: [{ driver: nvidia, count: all, capabilities: [gpu] }]
+    volumes:
+      - ${MODELS_DIR}:/models:ro
+      - serving:/serving:ro
+      - sglang-status:/status
+      - sglang-cache:/root/.cache
+      - ./vllm:/lyrica:ro
+    tmpfs: [/tmp]

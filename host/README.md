@@ -160,6 +160,24 @@ proprietary modules, and runs the script with the kernel reading firmware
 from a copy in `/run` for the run, since the store is read-only. Both pin
 the same upstream commit (`nix/cmp-unlock.nix`); change them together.
 
+### SGLang
+
+Optional, for GLM 5.3 Flash NVFP4 on RTX PRO 6000 cards (sm_120), a trial
+(`docs/briefs/sglang-glm.md`): `host/install.sh --sglang` adds
+`compose.sglang.yaml`, and `--no-sglang` takes it out again; `.env` keeps
+the choice (`SGLANG=1`), so updates keep it. On a host without an sm_120
+card it says so and leaves it out. On NixOS, run it once by hand, as for the
+other flags. It runs
+[ormandj/sglang-glm53-flash-sm120](https://github.com/ormandj/sglang-glm53-flash-sm120)'s
+image (v0.6.1, pinned by digest: SGLang with that author's patches, built
+for this one model on these cards) under `vllm/supervisor.py`
+(`ENGINE=sglang`), with the flags of its TP2 launcher. It compiles its
+kernels into the `sglang-cache` volume the first time (10 to 20 minutes).
+It serves a safetensors model whose `quantization_config.quant_method` is
+`modelopt_mixed`; a host without it leaves such a model out of its lists.
+Such a model is otherwise a vLLM model: the GPUs that allow vLLM allow it,
+and Lyrica sees it as vLLM.
+
 ### Uninstall
 
 `host/install.sh --uninstall` removes the host: the stack's containers,
@@ -237,14 +255,17 @@ too), each downloaded at a pinned revision: Qwen3.8 27B (Unsloth's UD-Q4_K_M wit
 vision projector, for a 24 GB GPU), GLM 5.3 Flash Q3 (Unsloth's UD-Q3_K_XL in
 four parts with its projector, about 149 GB, for two 96 GB GPUs), GLM 5.3
 Flash Q4 (UD-Q4_K_XL in six parts, about 201 GB, for two 96 GB GPUs with
-a system RAM allowance), DeepSeek V4 Flash (Unsloth's UD-Q4_K_XL in
+a system RAM allowance), GLM 5.3 Flash NVFP4 (ormandj's NVFP4 build in
+90 parts, about 178 GB, for two RTX PRO 6000s, listed only where SGLang
+runs), DeepSeek V4 Flash (Unsloth's UD-Q4_K_XL in
 five parts, about 155 GB, text only, for two 96 GB GPUs), Qwen3.5 9B
 (Q4_K_M with its projector), Qwen3.5 4B and 2B (Q4_K_M with their
 projectors, for Look at images), Qwen3 Embedding 0.6B (Q8_0), and the voice and
 dictation models named in docs/guides/model-hosts.md. Only those the host's
 servers run are listed, on a GPU or the CPU, and one too big says so: for
 llama.cpp, too big for all the GPUs that allow it together, since it splits
-a model over them; for the other servers, too big for every one of them.
+a model over them (SGLang's too, tensor parallel); for the other servers,
+too big for every one of them.
 
 ## The models folder
 
@@ -729,7 +750,11 @@ unpairs it here too, when the host can be reached.
     `mmproj` next to one is its vision projector, and split files count as
     one model.
   - Folders with a `config.json` and safetensors are served by vLLM. A model
-    whose config asks for remote code is listed but never loaded.
+    whose config asks for remote code is listed but never loaded. One in
+    ModelOpt's mixed format is served by SGLang where it is installed
+    (SGLang, above), tensor parallel over its GPUs whatever their names,
+    with a memory share of 0.99 of each unless set (its launcher's), or
+    what other programs and keep-free leave, in whole percent.
   - Voice models (see above) are served by the speech server, on one GPU
     or the CPU, and Qwen3-TTS voice models by the Qwen3-TTS speech server,
     on one NVIDIA GPU. Their only setting is the placement.
@@ -911,7 +936,10 @@ unpairs it here too, when the host can be reached.
     with the exception vLLM printed (such as a missing library) when there
     was one. Until the server answers it keeps only the last exception line
     it printed, in memory, skipping vLLM's closing "see root cause above";
-    after that its output is read and dropped.
+    after that its output is read and dropped. SGLang (`--sglang`) runs
+    under the same supervisor in its own container, from `sglang.json`,
+    reporting to the `sglang-status` volume; it answers once it prints "The
+    server is fired up and ready to roll".
   - host-api reads VRAM with `nvidia-smi`, through NVIDIA's `utility`
     capability, or from AMD's sysfs (with GTT for an integrated GPU). With
     ROCm, AMD GPUs are numbered as ROCm numbers them; with Vulkan, by PCI
