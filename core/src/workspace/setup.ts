@@ -7,7 +7,10 @@
  * both from the last install that succeeded.
  */
 
-/** Install scripts stay skipped: node-gyp can't build in the sandbox's user namespace, and nothing needs them. */
+/**
+ * The installs skip install scripts, so one failing script can't fail the whole install;
+ * after npm's, REBUILD runs the scripts one package at a time.
+ */
 export const DEFAULT_SETUPS: readonly { lockfile: string; command: string }[] = [
   { lockfile: "package-lock.json", command: "npm ci --ignore-scripts --no-audit --no-fund" },
   { lockfile: "npm-shrinkwrap.json", command: "npm ci --ignore-scripts --no-audit --no-fund" },
@@ -16,6 +19,19 @@ export const DEFAULT_SETUPS: readonly { lockfile: string; command: string }[] = 
   { lockfile: "uv.lock", command: "uv sync --frozen" },
   { lockfile: "requirements*.txt", command: 'python3 -m venv .venv && for f in requirements*.txt; do .venv/bin/pip install -q -r "$f" || exit 1; done' },
 ];
+
+/**
+ * After npm's own install (not a project's command), each package with an install
+ * script runs it on its own, as `npm rebuild <name>`, so a native module gets its
+ * binary (re2 downloads its prebuilt one) and one that can't build (cpu-features
+ * without a compiler) doesn't stop the rest. Best effort: what fails stays as
+ * `--ignore-scripts` left it. npm's hidden lockfile lists what has a script.
+ */
+const REBUILD = `if [ -z "$2" ] && [ -f node_modules/.package-lock.json ]; then
+  for p in $(node -e 'const p=require(process.argv[1]).packages||{};console.log([...new Set(Object.keys(p).filter((k)=>p[k].hasInstallScript&&k.includes("node_modules/")).map((k)=>k.slice(k.lastIndexOf("node_modules/")+13)))].join(" "))' "$PWD/node_modules/.package-lock.json" 2>/dev/null); do
+    npm rebuild "$p" --no-audit --no-fund >&2 || echo "lyrica-setup: $p's install script failed" >&2
+  done
+fi`;
 
 const sq = (s: string) => `'${s.replaceAll("'", "'\\''")}'`;
 
@@ -37,7 +53,8 @@ ${DEFAULT_SETUPS.map((d, i) => {
 }).join("\n")}
   else exit 0; fi
 fi
-key=$( { printf '%s\\n' "$cmd"; cat ${[...new Set(DEFAULT_SETUPS.map((d) => d.lockfile))].join(" ")} 2>/dev/null; } | sha256sum | cut -c1-64)
+# "rebuild" is in the hash so clones installed before REBUILD existed install once more.
+key=$( { printf '%s\\nrebuild\\n' "$cmd"; cat ${[...new Set(DEFAULT_SETUPS.map((d) => d.lockfile))].join(" ")} 2>/dev/null; } | sha256sum | cut -c1-64)
 echo "lyrica-setup $key $cmd" >&2
 if [ "$key" = "$3" ]; then echo lyrica-setup-same >&2; exit 0; fi
 if [ "$(cat .git/lyrica-setup 2>/dev/null)" = "$key" ] && { [ -n "$2" ] || [ -d node_modules ] || [ -d .venv ] || [ -f .pnp.cjs ]; }; then exit 0; fi
@@ -46,6 +63,7 @@ if [ "$(cat .git/lyrica-setup 2>/dev/null)" = "$key" ] && { [ -n "$2" ] || [ -d 
 # What the install makes stays out of git status and her commits, without changing the repository.
 mkdir -p .git/info && for d in /node_modules/ /.venv/; do grep -qxF "$d" .git/info/exclude 2>/dev/null || echo "$d" >> .git/info/exclude; done
 sh -c "$cmd" >&2 || exit $?
+${REBUILD}
 printf '%s\\n' "$key" > .git/lyrica-setup
 `;
 
