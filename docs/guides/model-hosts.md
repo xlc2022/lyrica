@@ -313,6 +313,7 @@ Options, for a second run or a non-interactive one (`host/install.sh --help`):
 | `--vendor nvidia\|amd`, `--amd-backend rocm\|vulkan`, `--hsa-override VER` | Override what was detected. |
 | `--yes` | No questions: defaults and flags. |
 | `--cmp-unlock` | On a CMP 100-210, install the unlock without asking (`--yes` alone skips it). |
+| `--sglang`, `--no-sglang` | A trial, NVIDIA RTX PRO 6000 (sm_120) cards only: also run SGLang for the starter GLM 5.3 Flash NVFP4, named "GLM-SGLang" in Lyrica and the dashboard. Kept in `.env` (`SGLANG=1`) until `--no-sglang`. The first start compiles its kernels (10 to 20 minutes). See host/README.md, SGLang. |
 | `--no-start` | Write `.env` only. |
 | `--no-gpu` | `host-api` alone, no model servers. What CI uses. |
 
