@@ -545,7 +545,10 @@ describe("the compose files", () => {
     const sglang = readFileSync(new URL("../compose.sglang.yaml", import.meta.url), "utf8").split("\n  sglang:\n")[1]!;
     expect(sglang).toMatch(/logging: \{ driver: none \}[^\n]*\n    ulimits: \{ core: 0[,} ]/);
     expect(sglang).toMatch(/\n    networks: \[models\]\n/);
-    expect(sglang).toMatch(/tmpfs:/);
+    // Its /tmp is memory that allows running files: TileLang loads the kernels it compiles there.
+    expect(sglang).toMatch(/tmpfs: \["\/tmp:exec"\]/);
+    // install.sh --no-gpu-p2p reaches every server that splits a model across GPUs.
+    for (const f of ["compose.nvidia.yaml", "compose.amd.yaml", "compose.sglang.yaml"]) expect(readFileSync(new URL(`../${f}`, import.meta.url), "utf8"), f).toContain("NCCL_P2P_DISABLE: ${NCCL_P2P_DISABLE:-0}");
     expect(sglang).toMatch(/image: \S+@sha256:[0-9a-f]{64}\n/);
     // host-api and speech hold prompts in memory too.
     const base = readFileSync(new URL("../compose.yaml", import.meta.url), "utf8");

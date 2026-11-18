@@ -106,6 +106,9 @@ def argv(spec):
         args += ["--dtype", spec["dtype"]]
     if spec.get("chatTemplate"):
         args += ["--chat-template", spec["chatTemplate"]]
+    if P2P_OFF:
+        # vLLM's own all-reduce copies between the cards directly.
+        args += ["--disable-custom-all-reduce"]
     override = rope_override(spec)
     if override:
         args += ["--hf-overrides", json.dumps(override, separators=(",", ":"))]
@@ -127,6 +130,10 @@ SGLANG_ENV = {
     "SGLANG_BCG_RAGGED_MAX_BS": "1",
     "SGLANG_BCG_SEPARATE_CAPTURE_SESSIONS": "1",
 }
+
+# install.sh --no-gpu-p2p: no direct transfers between the cards, for a board where they hang (with the
+# IOMMU translating, NCCL's setup stopped at "Init parallel begin"). The cards talk through host memory.
+P2P_OFF = os.environ.get("NCCL_P2P_DISABLE") == "1"
 
 
 def sglang_argv(spec):
@@ -178,6 +185,9 @@ def start(spec):
     env = dict(os.environ)
     if ENGINE == "sglang":
         env.update(SGLANG_ENV)
+        if P2P_OFF:
+            # The image's PCIe all-reduce copies between the cards directly.
+            env["SGLANG_ENABLE_PCIE_IPC_ALLREDUCE"] = "0"
     # Its lines as it prints them, not when a buffer fills or it exits.
     env["PYTHONUNBUFFERED"] = "1"
     gpus = ",".join(str(g) for g in spec["gpus"])

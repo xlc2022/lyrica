@@ -47,6 +47,7 @@ services:
       <<: *server-env
       HF_HUB_OFFLINE: "1"
       VLLM_NO_USAGE_STATS: "1"
+      NCCL_P2P_DISABLE: ${NCCL_P2P_DISABLE:-0} # install.sh --no-gpu-p2p
       DO_NOT_TRACK: "1"
     volumes:
       - ${MODELS_DIR}:/models:ro
