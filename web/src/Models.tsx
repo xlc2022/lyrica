@@ -108,11 +108,12 @@ export const hostUpdating = (s: HostStatus) => !!s.update && ["requested", "fetc
 function updateFailure(step: string | undefined): string {
   if (step === "fetch") return "it couldn't fetch the release; check that its deploy key is added";
   if (step === "drain") return "jobs were still running after 10 minutes, so nothing changed";
+  if (step === "pause") return "its updater couldn't reach it to pause it, so nothing changed";
   if (step === "probation") return "the new version didn't start, so it went back to the one before";
   if (step?.startsWith("no ")) return "the host's updater isn't set up; run install.sh on the host again";
   if (step === "not the tag's commit") return "the release's tag no longer points at the commit Lyrica runs, so nothing changed";
   if (step?.startsWith("not ")) return "the host refused the release, so nothing changed";
-  return "something went wrong on the host, so nothing changed";
+  return step ? `the host's updater stopped at "${step}", so nothing changed` : "something went wrong on the host, so nothing changed";
 }
 /** Why moving a host to another models folder failed, from the updater's step. */
 function folderFailure(step: string | undefined): string {

@@ -67,6 +67,8 @@ fail() { # step: the update stops here, and the running commit is untouched
 }
 
 api() { curl -fsS --max-time 10 -X "$1" "$API$2" 2>/dev/null; }
+# The same, with curl's reason (refused, timed out, an HTTP status) in the journal when it fails.
+api_logged() { local out; out=$(curl -sS --fail-with-body --max-time 10 -X "$1" "$API$2" 2>&1) || { say "$1 $2: $(printf '%s' "$out" | tr -d '[:cntrl:]' | cut -c1-300)"; return 1; }; }
 host_state() { api GET /host/v1/status | jq -r '.state // empty' 2>/dev/null || true; }
 host_commit() { api GET /host/v1/status | jq -r '.commit // empty' 2>/dev/null || true; }
 host_models() { api GET /host/v1/status | jq -r '.modelsFolder.path // empty' 2>/dev/null || true; }
@@ -194,7 +196,7 @@ set_state draining "$TAG"
 WAS_PAUSED=; [ "$(host_state)" = paused ] && WAS_PAUSED=1
 resume() { [ -n "$WAS_PAUSED" ] || api POST /host/v1/resume >/dev/null || true; }
 if [ -z "$WAS_PAUSED" ]; then
-  api POST /host/v1/pause >/dev/null || fail "pause"
+  api_logged POST /host/v1/pause || fail "pause"
   waited=0
   until [ "$(host_state)" = paused ]; do
     [ "$waited" -lt "$DRAIN_SECONDS" ] || { resume; fail "drain"; }
