@@ -1866,8 +1866,14 @@ come from the user's Git accounts (DESIGN.md, "Updates and self-editing").
   --frozen-lockfile --ignore-scripts`, `yarn.lock` `yarn install
   --frozen-lockfile --ignore-scripts` (with `.yarnrc.yml`, `--immutable
   --mode=skip-build`), `uv.lock` `uv sync --frozen`, `requirements*.txt` a
-  `.venv` and `pip install -r`; none does nothing. Install scripts stay
-  skipped (see [Her checks](#her-own-code)). It runs once per clone and
+  `.venv` and `pip install -r`; none does nothing. Install scripts are
+  skipped in the install, so one that fails can't fail it all. After npm's
+  own install (not a project's command), each package that npm's hidden
+  lockfile (`node_modules/.package-lock.json`) marks with an install script
+  runs it on its own, `npm rebuild <name>`, best effort: a native module
+  gets its binary (re2, which runs search patterns, downloads its prebuilt
+  one), and one that can't build (cpu-features without a compiler) stays as
+  the install left it without stopping the rest. It runs once per clone and
   again only when the command or a lockfile changes: `.git/lyrica-setup`
   holds a hash of both from the last install that succeeded (and
   `node_modules`, `.venv` or Yarn's `.pnp.cjs` must still be there when no
@@ -2204,9 +2210,11 @@ her account is general.
   `cloneFor` runs in each clone ([Dependencies](#dependencies)). With the
   internet on she runs as `lyricad`'s own uid, as with it off (a nested
   user namespace inside the networked one), so files she writes in a
-  grant stay the user's to change. The install scripts stay skipped since
-  nothing needs them (NixOS's sandbox tools include `gnumake` and `gcc` for
-  a native module with no prebuilt binary, as Debian's build-essential does): the SQLite binding loads its prebuilt `prebuilds/linux-x64.node`. The tests that need FUSE or a tun device
+  grant stay the user's to change. The install scripts then run one package
+  at a time ([Dependencies](#dependencies)): re2 downloads its prebuilt
+  binary, and NixOS's sandbox tools include `gnumake` and `gcc` for a native
+  module with no prebuilt binary, as Debian's build-essential does. The
+  SQLite binding needs none: it loads its prebuilt `prebuilds/linux-x64.node`. The tests that need FUSE or a tun device
   (encrypted homes, rewind, uploads, network switches, the SSH helper)
   skip there, since her sandbox has neither; CI runs them with
   `LYRICA_SANDBOX_TESTS=require`, so they can't skip. The three e2e

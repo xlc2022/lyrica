@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -43,6 +43,25 @@ describe("a clone's dependencies", () => {
     rmSync(join(clone, "node_modules"), { recursive: true });
     setup();
     expect(runs()).toHaveLength(3);
+  });
+
+  it("after npm's install, runs each package's install script on its own, so one that fails doesn't stop the rest", () => {
+    writeFileSync(join(clone, "package-lock.json"), "{}");
+    symlinkSync(process.execPath, join(bin, "node"));
+    const hidden = JSON.stringify({ packages: {
+      "node_modules/cpu-features": { hasInstallScript: true },
+      "node_modules/re2": { hasInstallScript: true },
+      "core/node_modules/re2": { hasInstallScript: true },
+      "node_modules/left-pad": {},
+    } });
+    fake("npm", `case "$1" in ci) mkdir -p node_modules && echo '${hidden}' > node_modules/.package-lock.json;; rebuild) [ "$2" = cpu-features ] && exit 1;; esac`);
+    expect(setup().code).toBe(0);
+    expect(runs()).toEqual(["npm ci --ignore-scripts --no-audit --no-fund", "npm rebuild cpu-features --no-audit --no-fund", "npm rebuild re2 --no-audit --no-fund"]);
+    // A project's own command is left as it is.
+    rmSync(join(dir, "runs"));
+    fake("make", `mkdir -p node_modules && echo '${hidden}' > node_modules/.package-lock.json`);
+    setup("make deps");
+    expect(runs()).toEqual(["make deps"]);
   });
 
   it("picks pnpm, yarn (by its version) and uv by their lockfiles, never running install scripts", () => {

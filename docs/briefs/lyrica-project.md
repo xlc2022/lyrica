@@ -124,7 +124,8 @@ release passed probation there.
    when one of her code turns ends: `npm run typecheck` only, since every
    code turn re-runs them and CI runs the full suite on each pull request;
    **Install** stays empty, since each clone already gets `npm ci
-   --ignore-scripts` from its lockfile (docs/workspace.md, "Dependencies").
+   --ignore-scripts` from its lockfile, then each package's install script
+   on its own, so re2 has its binary (docs/workspace.md, "Dependencies").
    Her code threads read the repository's AGENTS.md on their own. Skills she
    saves for recurring jobs (a CI fix, a release) wait for approval in
    Settings → Skills unless auto-approve is on (DESIGN.md, "Skills").
