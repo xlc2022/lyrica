@@ -314,6 +314,7 @@ Options, for a second run or a non-interactive one (`host/install.sh --help`):
 | `--yes` | No questions: defaults and flags. |
 | `--cmp-unlock` | On a CMP 100-210, install the unlock without asking (`--yes` alone skips it). |
 | `--glm5.3f-sglang`, `--no-glm5.3f-sglang` | A trial, NVIDIA RTX PRO 6000 (sm_120) cards only: also run SGLang for the starter GLM 5.3 Flash NVFP4, named "GLM-SGLang" in Lyrica and the dashboard. Kept in `.env` (`SGLANG=1`) until `--no-glm5.3f-sglang`. The first start compiles its kernels (10 to 20 minutes). See host/README.md, SGLang. |
+| `--no-gpu-p2p`, `--gpu-p2p` | Turn off direct copies between GPUs for a model split across them (vLLM, SGLang), for a board where they hang, such as one whose IOMMU translates (`dmesg` says "Default domain type: Translated"). Slower; the kernel option `iommu=pt` often fixes P2P instead. Kept in `.env` (`NCCL_P2P_DISABLE=1`) until `--gpu-p2p`. See host/README.md, GPU P2P. |
 | `--no-start` | Write `.env` only. |
 | `--no-gpu` | `host-api` alone, no model servers. What CI uses. |
 
