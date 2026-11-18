@@ -161,7 +161,7 @@ seconds of audio.
   `whispercpp` on a host with a CMP 100-210, where vLLM can't run; only
   that server's dictation models are listed. A whisper.cpp model falls
   under the GPUs' `speech` setting and runs on one GPU. `engines`:
-  `["sglang"]` where `install.sh --sglang` added SGLang, which serves some
+  `["sglang"]` where `install.sh --glm5.3f-sglang` added SGLang, which serves some
   vLLM models in vLLM's place, else `[]`.
 - `pciId`: the GPU's PCI vendor and device ID (`vendor:device`, lower-case
   hex), so a card that names itself as another model still shows what it

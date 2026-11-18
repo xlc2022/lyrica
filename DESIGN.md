@@ -814,7 +814,7 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     behaviour is keyed on the card's PCI IDs, never its name
     (host/README.md, "CMP 100-210 unlock").
   - **Optional SGLang, a trial.** On RTX PRO 6000 cards, `install.sh
-    --sglang` adds one third-party SGLang image, pinned by digest and run
+    --glm5.3f-sglang` adds one third-party SGLang image, pinned by digest and run
     like vLLM (models network, no logs), for GLM 5.3 Flash NVFP4 alone
     (host/README.md, "SGLang"; docs/briefs/sglang-glm.md).
   - **Our images, pinned by digest.** The host API and ComfyUI images are ours,

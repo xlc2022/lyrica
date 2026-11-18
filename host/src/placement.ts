@@ -225,7 +225,7 @@ function option(model: TextModel, s: ModelSettings, gpus: Gpu[], settings: (i: n
   const total = weights + kv;
   const ids = gpus.map((g) => g.index);
   if (serverOf(model) === "vllm") {
-    // SGLang's profile (install.sh --sglang) is tensor parallel over cards of any name, and takes 0.99 of each unless set,
+    // SGLang's profile (install.sh --glm5.3f-sglang) is tensor parallel over cards of any name, and takes 0.99 of each unless set,
     // as its author measured it (ormandj/sglang-glm53-flash-sm120, examples/serve-glm53-flash.sh), or as much as
     // what other programs and the GPU's keep-free leave, in whole percent.
     const sglang = model.engine === "sglang";

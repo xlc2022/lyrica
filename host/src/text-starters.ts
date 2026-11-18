@@ -19,7 +19,7 @@ export interface TextStarter {
   server: StarterServer;
   /** It sees images, though no projector file says so (a safetensors model with its vision tower). */
   vision?: true;
-  /** Served by SGLang in vLLM's place: listed only on a host with SGLang (install.sh --sglang), and fits across its GPUs. */
+  /** Served by SGLang in vLLM's place: listed only on a host with SGLang (install.sh --glm5.3f-sglang), and fits across its GPUs. */
   engine?: "sglang";
   repo: string;
   revision: string;
@@ -48,7 +48,7 @@ export const TEXT_STARTERS: TextStarter[] = [
     repo: "unsloth/GLM-5.3-Flash-GGUF", revision: "a38483c8cd5df544f53d70fb281afe97369d5ab6",
     files: [1, 2, 3, 4, 5, 6].map((n) => `UD-Q4_K_XL/GLM-5.3-Flash-UD-Q4_K_XL-0000${n}-of-00006.gguf`).concat("mmproj-F16.gguf"),
     size: 199_707_321_472 + 1_128_047_296, needs: 208 * GiB },
-  // ormandj's NVFP4 build for two RTX PRO 6000s, on the SGLang install.sh --sglang adds (docs/briefs/sglang-glm.md):
+  // ormandj's NVFP4 build for two RTX PRO 6000s, on the SGLang install.sh --glm5.3f-sglang adds (docs/briefs/sglang-glm.md):
   // its 90 shards (177,995,252,856 bytes, its card), with its config, tokenizer and template. Needs: 0.99 of two 96 GB cards.
   { id: "glm-5.3-flash-nvfp4", model: "lyrica/huggingface/ormandj/GLM-5.3-Flash-W4A16-NVFP4-K32-Experts-FP8-WO", name: "GLM 5.3 Flash NVFP4",
     variantOf: "GLM 5.3 Flash", variant: "NVFP4", kind: "chat", server: "vllm", engine: "sglang", vision: true,
