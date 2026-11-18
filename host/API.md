@@ -630,8 +630,8 @@ Only the repository's name and revision leave the host.
   `409 updating` while one runs. `update` is `{ available, reason?, state,
   since?, tag?, error?, last? }`: `state` is `idle`, `requested`, `fetching`,
   `draining`, `building`, `rolling-back` or `failed`; `error` names the
-  failed step (`fetch`, `drain`, `probation`, or a refusal such as `not on
-  main`); `last` is the last update, `{ tag, commit, at, ok }`. While it
+  failed step (`fetch`, `pause`, `drain`, `probation`, or a refusal such as
+  `not on main`); `last` is the last update, `{ tag, commit, at, ok }`. While it
   updates the host pauses, restarts and, unless it was paused before,
   resumes. `changesFolder` is true when the updater also takes a models
   folder, and `commits` when it takes a commit (a 40-hex hash; `409
@@ -649,7 +649,7 @@ Only the repository's name and revision leave the host.
   `failed` with `models` and `error`: `not a folder`, `a system folder`,
   `holds the host's own files`, `someone else can change it`, `its lyrica
   subfolder isn't a folder`,
-  `drain`, `fetch` (the running commit wasn't in the updater's repository
+  `pause`, `drain`, `fetch` (the running commit wasn't in the updater's repository
   and couldn't be fetched) or `probation` (it went back to the old folder).
   `last` is then `{ models, commit, at, ok }`.
 - After an unload, a server's process can take seconds to let go of its
