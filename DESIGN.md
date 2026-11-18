@@ -453,6 +453,9 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
   - A child thread is full Lyrica: her persona, memory tools and the tools
     its settings allow. It inherits the parent's pool, "Do not log",
     local-only, permission mode and workspace settings, or narrower ones.
+    Its models follow the parent's, unless the user names a preset for it
+    ("start a thread with the Local preset"): then it follows that preset,
+    which its local-only switch must allow.
   - It and its parent message each other: it posts short updates at
     milestones, or in a project only once when done or blocked (a badge on
     it in the sidebar, a card in the parent), and the

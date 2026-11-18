@@ -129,6 +129,16 @@ export class ChildThreads implements ThreadsHost {
     return this.o.workspace.settings(from.user.id).effective(from.threadId).code;
   }
 
+  /** The user's preset with this name (any case) or ID; refused, naming the presets there are, when none matches. */
+  private presetNamed(userId: string, name: string): { id: string; name: string } {
+    const all = this.o.models.presets(userId);
+    let want = name.trim().toLowerCase();
+    if (want.endsWith(" preset")) want = want.slice(0, -" preset".length).trimEnd();
+    const found = all.find((p) => p.id === name.trim()) ?? all.find((p) => p.name.toLowerCase() === want);
+    if (!found) throw new Error(`no preset named "${name}"; the presets are ${all.map((p) => `"${p.name}"`).join(", ")}`);
+    return found;
+  }
+
   model(from: ThreadContext, name: string): { label: string; already?: boolean; goesOn?: boolean } {
     if (from.view.own.getThread(from.threadId)?.subagent) throw new Error("a subagent can't change its model");
     const { models, workspace } = this.o;
@@ -236,9 +246,21 @@ export class ChildThreads implements ThreadsHost {
         own.setCodeTask(child.id, req.task.slice(0, 300));
       }
       // New threads › Model is the model it talks on: Coding in Code mode, Main conversation otherwise.
-      if (chosen?.model) this.o.models.setThreadModel(userId, parent.pool, child.id, ws.effective(child.id).code ? "code" : "chat", chosen.model);
+      if (chosen?.model && !req.preset) this.o.models.setThreadModel(userId, parent.pool, child.id, ws.effective(child.id).code ? "code" : "chat", chosen.model);
       if (chosen?.thinking) this.o.models.setThinking(userId, child.id, chosen.thinking);
       if (chosen?.fallback !== undefined) this.o.models.setThreadFallback(userId, child.id, chosen.fallback);
+      // A preset the person named: the child follows it alone, so the model picks it copied from its parent, which beat a preset, go.
+      // Its local-only switch stays as inherited, and setThreadPreset refuses a general preset for a private or local-only child.
+      if (req.preset) {
+        const preset = this.presetNamed(userId, req.preset);
+        for (const task of Object.keys(this.o.models.callContext(userId, parent.pool, child.id).overrides ?? {})) {
+          this.o.models.setThreadModel(userId, parent.pool, child.id, task as import("@lyrica/core").Task);
+        }
+        this.o.models.setThreadPreset(userId, parent.pool, child.id, preset.id);
+        // Refused here rather than at its first turn, so no child is left that can't talk.
+        try { this.o.models.resolveModel(ws.effective(child.id).code ? "code" : "chat", this.o.models.callContext(userId, parent.pool, child.id)); }
+        catch (err) { throw new Error(`the ${preset.name} preset has no model this thread can talk on: ${(err as Error).message}`); }
+      }
     } catch (err) {
       await this.cleanupWorktrees(userId, parent.pool, child.id, true);
       own.forgetThread(child.id, "lyrica");

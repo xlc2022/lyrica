@@ -190,7 +190,8 @@ const stepsNote = (steps: ThreadStep[]) => {
 };
 
 /** `plan`: the thread starts in Plan mode (Make a plan); only the daemon asks for it. */
-export interface StartRequest { title: string; task: string; folders?: string[]; readOnly?: boolean; internet?: false; code?: boolean; base?: boolean; plan?: true }
+/** `preset` names a model preset (by name or ID) the child follows instead of its parent's preset and model picks. */
+export interface StartRequest { title: string; task: string; folders?: string[]; readOnly?: boolean; internet?: false; code?: boolean; base?: boolean; plan?: true; preset?: string }
 
 export interface Suggestion { title: string; task: string }
 

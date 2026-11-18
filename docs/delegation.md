@@ -453,14 +453,21 @@ checks it reaches her, and with a real model which she picks. Code:
 `extension/src/threads.ts` (the tool) and `daemon/src/children.ts` (hosting).
 
 **The tool**, `threads({ action, ... })`:
-- `start({ title, task, folders?, readOnly?, internet?, code? })` creates the child
+- `start({ title, task, folders?, readOnly?, internet?, code?, preset? })` creates the child
   (`createThread({ parent, child: true })`) and sends it the task, then
   returns its ID at once, as `[t:<id>]`, which she mentions it by. It gets the parent's model context
   (`models.inheritContext`: pool, local-only, preset, thinking, models) and
   workspace (`inheritSettings`, narrowed by `folders`, `readOnly` and
   `internet: false`; any of those also leaves it no machines and no MCP servers); the workspace refuses anything wider, and a folder the
   parent doesn't have is refused. `code: true` turns on its code mode, with
-  the first 300 characters of the task as its Code task. It inherits "Do not log" from the store.
+  the first 300 characters of the task as its Code task. `preset`, given only
+  when the user names one, is a model preset by name (any case, a trailing
+  "preset" ignored) or ID: the child follows it instead of the parent's
+  preset, and the model picks it copied from the parent (which would beat the
+  preset) are cleared. Its local-only switch stays as inherited, so a child of
+  a private or local-only thread takes only a private preset; naming a preset
+  never turns local-only on. An unknown preset, or one with no model the child
+  can talk on, is refused before the child is made. It inherits "Do not log" from the store.
   If the child's first turn can't start, the child is forgotten.
 - `message({ id, text })` to one of the thread's children, named by its ID
   or its current title (`pickThread`; a title two children share is
