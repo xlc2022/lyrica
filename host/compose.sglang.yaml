@@ -42,4 +42,4 @@ services:
       - sglang-status:/status
       - sglang-cache:/root/.cache
       - ./vllm:/lyrica:ro
-    tmpfs: [/tmp]
+    tmpfs: ["/tmp:exec"] # TileLang compiles kernels into /tmp and loads them from there
