@@ -171,7 +171,9 @@ other flags. It runs
 [ormandj/sglang-glm53-flash-sm120](https://github.com/ormandj/sglang-glm53-flash-sm120)'s
 image (v0.6.1, pinned by digest: SGLang with that author's patches, built
 for this one model on these cards) under `vllm/supervisor.py`
-(`ENGINE=sglang`), with the flags of its TP2 launcher. It compiles its
+(`ENGINE=sglang`), with the flags of its TP2 launcher and no direct transfers
+between the cards (`NCCL_P2P_DISABLE=1`: with P2P on, its start hung on a
+desktop board). It compiles its
 kernels into the `sglang-cache` volume the first time (10 to 20 minutes).
 It serves a safetensors model whose `quantization_config.quant_method` is
 `modelopt_mixed`; a host without it leaves such a model out of its lists.

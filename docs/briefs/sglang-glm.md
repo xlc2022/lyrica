@@ -51,7 +51,10 @@ Principle 1: a model she talks with this month, faster on the same host.
    `SGLANG=on` for host-api. Elsewhere it says why and leaves it out.
 2. **The supervisor** (`host/vllm/supervisor.py`) also runs SGLang, chosen
    by `ENGINE=sglang`: the same file protocol, `/serving/sglang.json` in and
-   `/status/sglang.json` out, with the TP2 profile's arguments.
+   `/status/sglang.json` out, with the TP2 profile's arguments, and P2P
+   between the cards off (`NCCL_P2P_DISABLE=1`, the image's PCIe all-reduce
+   off): with it on, NCCL's setup hung at "Init parallel begin" on the
+   two-card host (2026-11-18), so the cards exchange data through host memory.
 3. **The backend.** `Vllm` takes a name and a state file, and the host makes
    a second one for SGLang. A safetensors model whose quantization method is
    `modelopt_mixed` is served by SGLang (`engine: "sglang"`); a host

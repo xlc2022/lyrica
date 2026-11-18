@@ -126,6 +126,11 @@ SGLANG_ENV = {
     "SGLANG_BCG_RAGGED_SHAPES": "1",
     "SGLANG_BCG_RAGGED_MAX_BS": "1",
     "SGLANG_BCG_SEPARATE_CAPTURE_SESSIONS": "1",
+    # No direct transfers between the cards: on a desktop board with the IOMMU on, NCCL's setup hung at
+    # "Init parallel begin" with P2P on (mystria, 2026-11-18), and the image's PCIe all-reduce uses P2P too.
+    # The cards talk through host memory instead.
+    "NCCL_P2P_DISABLE": "1",
+    "SGLANG_ENABLE_PCIE_IPC_ALLREDUCE": "0",
 }
 
 
