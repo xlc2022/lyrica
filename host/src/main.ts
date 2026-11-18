@@ -93,7 +93,7 @@ const scheduler = new Scheduler({
   backends: {
     llamacpp: new LlamaCpp({ url: env.LLAMACPP_URL || "http://llamacpp:8080", serving, models: modelsDir, device: (i) => `${backend === "vulkan" ? "Vulkan" : backend === "rocm" ? "ROCm" : "CUDA"}${i}`, cmp: (i) => cmpGpus.has(i), log: stdoutLog }),
     vllm: new Vllm({ url: env.VLLM_URL || "http://vllm:{port}", serving, models: modelsDir }),
-    // GLM 5.3 Flash in ModelOpt's mixed format, on the SGLang install.sh --sglang adds (compose.sglang.yaml). Its first
+    // GLM 5.3 Flash in ModelOpt's mixed format, on the SGLang install.sh --glm5.3f-sglang adds (compose.sglang.yaml). Its first
     // start compiles kernels for 10 to 20 minutes besides reading 178 GB, so it gets an hour.
     ...(env.SGLANG === "on" ? { sglang: new Vllm({ url: env.SGLANG_URL || "http://sglang:{port}", serving, models: modelsDir, engine: "sglang", loadTimeoutMs: 60 * 60_000 }) } : {}),
     comfyui: sdcpp ?? comfy,

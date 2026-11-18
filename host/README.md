@@ -163,8 +163,8 @@ the same upstream commit (`nix/cmp-unlock.nix`); change them together.
 ### SGLang
 
 Optional, for GLM 5.3 Flash NVFP4 on RTX PRO 6000 cards (sm_120), a trial
-(`docs/briefs/sglang-glm.md`): `host/install.sh --sglang` adds
-`compose.sglang.yaml`, and `--no-sglang` takes it out again; `.env` keeps
+(`docs/briefs/sglang-glm.md`): `host/install.sh --glm5.3f-sglang` adds
+`compose.sglang.yaml`, and `--no-glm5.3f-sglang` takes it out again; `.env` keeps
 the choice (`SGLANG=1`), so updates keep it. On a host without an sm_120
 card it says so and leaves it out. On NixOS, run it once by hand, as for the
 other flags. It runs
@@ -936,7 +936,7 @@ unpairs it here too, when the host can be reached.
     with the exception vLLM printed (such as a missing library) when there
     was one. Until the server answers it keeps only the last exception line
     it printed, in memory, skipping vLLM's closing "see root cause above";
-    after that its output is read and dropped. SGLang (`--sglang`) runs
+    after that its output is read and dropped. SGLang (`--glm5.3f-sglang`) runs
     under the same supervisor in its own container, from `sglang.json`,
     reporting to the `sglang-status` volume; it answers once it prints "The
     server is fired up and ready to roll".

@@ -333,7 +333,7 @@ export class Scheduler {
       return this.o.backends.whispercpp;
     }
     if (model.engine === "sglang") {
-      if (!this.o.backends.sglang) throw new HostError(503, "model_unavailable", "This host has no SGLang server; run host/install.sh --sglang.");
+      if (!this.o.backends.sglang) throw new HostError(503, "model_unavailable", "This host has no SGLang server; run host/install.sh --glm5.3f-sglang.");
       return this.o.backends.sglang;
     }
     return model.server === "vllm" ? this.o.backends.vllm : this.o.backends.llamacpp;

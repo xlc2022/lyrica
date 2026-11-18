@@ -384,7 +384,7 @@ export interface VllmOptions {
 /**
  * vLLM: each model is its own server process, started by
  * host/vllm/supervisor.py on the GPUs of its placement with its memory
- * share, so one GPU can hold several. SGLang (install.sh --sglang) runs the
+ * share, so one GPU can hold several. SGLang (install.sh --glm5.3f-sglang) runs the
  * same way, from its own file, for the models it serves (`engine: "sglang"`).
  */
 export class Vllm implements Backend {

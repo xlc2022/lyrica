@@ -25,9 +25,9 @@ Usage: host/install.sh [options]
   --no-gpu             No GPU and no model servers: host-api alone (for testing)
   --cmp-unlock         CMP 100-210 only: install its unlock (cmp-unlock.sh)
                        without asking
-  --sglang             NVIDIA RTX PRO 6000 (sm_120) only: also run SGLang, for
+  --glm5.3f-sglang     NVIDIA RTX PRO 6000 (sm_120) only: also run SGLang, for
                        GLM 5.3 Flash NVFP4 (compose.sglang.yaml). Kept until
-                       --no-sglang
+                       --no-glm5.3f-sglang
   --yes                Don't ask questions; use defaults and flags
   --no-start           Write .env only
   --uninstall          Remove the host from this machine (asks first)
@@ -81,8 +81,8 @@ while [[ $# -gt 0 ]]; do
     --no-tailscale) TS_HOSTNAME= TS_AUTHKEY= ;;
     --no-gpu) CHECK_GPU=0; VENDOR=none ;;
     --cmp-unlock) CMP_UNLOCK=1 ;;
-    --sglang) SGLANG=1 ;;
-    --no-sglang) SGLANG= ;;
+    --glm5.3f-sglang) SGLANG=1 ;;
+    --no-glm5.3f-sglang) SGLANG= ;;
     --yes) YES=1 ;;
     --no-start) START=0 ;;
     --uninstall) UNINSTALL=1 ;;
@@ -604,7 +604,7 @@ BEFORE_IMAGES=$(stack_images)
 # The model servers run as other users and read it: 755, whatever the umask made it.
 "${COMPOSE[@]}" run --rm --no-deps -T --entrypoint chmod fetch 755 /models/lyrica
 # A service the compose files now turn off (compose.novllm.yaml's vLLM,
-# compose.sdcpp.yaml's ComfyUI, SGLang after --no-sglang) keeps its container from an earlier install:
+# compose.sdcpp.yaml's ComfyUI, SGLang after --no-glm5.3f-sglang) keeps its container from an earlier install:
 # remove it, so its image goes with the others below.
 ACTIVE=$("${COMPOSE[@]}" config --services)
 for s in $(docker ps -a --filter label=com.docker.compose.project=lyrica-host --format '{{.Label "com.docker.compose.service"}}' | sort -u); do

@@ -541,7 +541,7 @@ describe("the compose files", () => {
     expect(sdcpp).toMatch(/\n  sdcpp:\n[\s\S]*logging: \{ driver: none \}[^\n]*\n    ulimits: \{ core: 0 \}[\s\S]*tmpfs:/);
     const whisper = readFileSync(new URL("../compose.whisper.yaml", import.meta.url), "utf8");
     expect(whisper).toMatch(/\n  whispercpp:\n[\s\S]*logging: \{ driver: none \}[^\n]*\n    ulimits: \{ core: 0 \}/);
-    // SGLang (install.sh --sglang): the same, on the models network alone, its image pinned by digest.
+    // SGLang (install.sh --glm5.3f-sglang): the same, on the models network alone, its image pinned by digest.
     const sglang = readFileSync(new URL("../compose.sglang.yaml", import.meta.url), "utf8").split("\n  sglang:\n")[1]!;
     expect(sglang).toMatch(/logging: \{ driver: none \}[^\n]*\n    ulimits: \{ core: 0[,} ]/);
     expect(sglang).toMatch(/\n    networks: \[models\]\n/);

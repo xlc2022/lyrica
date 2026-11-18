@@ -1,4 +1,4 @@
-# SGLang for GLM 5.3 Flash in ModelOpt's mixed format (install.sh --sglang;
+# SGLang for GLM 5.3 Flash in ModelOpt's mixed format (install.sh --glm5.3f-sglang;
 # docs/briefs/sglang-glm.md): ormandj's image, built for sm_120 (RTX PRO 6000)
 # only, pinned by digest. Like vLLM it runs one server per model from
 # /serving/sglang.json through host/vllm/supervisor.py (ENGINE=sglang), on the

@@ -43,7 +43,7 @@ Principle 1: a model she talks with this month, faster on the same host.
 
 ## What
 
-1. **`install.sh --sglang`** (`--no-sglang` to take it out again), kept in
+1. **`install.sh --glm5.3f-sglang`** (`--no-glm5.3f-sglang` to take it out again), kept in
    `.env` as `SGLANG=1`. On an NVIDIA host with an sm_120 GPU it adds
    `compose.sglang.yaml` (and `compose.sglang.cdi.yaml` with CDI): the
    `sglang` service, the `sglang-status` and `sglang-cache` volumes (its
@@ -66,7 +66,7 @@ Principle 1: a model she talks with this month, faster on the same host.
 ## Out of scope
 
 - Any other model on SGLang: the image is built for this one.
-- A NixOS module option: on NixOS, run `host/install.sh --sglang` once, as
+- A NixOS module option: on NixOS, run `host/install.sh --glm5.3f-sglang` once, as
   for the other flags.
 
 ## Open
@@ -79,4 +79,4 @@ Principle 1: a model she talks with this month, faster on the same host.
 
 Done: this brief, the flag, the service, the supervisor, the backend, the
 starter and their docs. Next: merge, install on the two-card host with
-`--sglang`, load, compare with the Q4. If it's worse, remove it all.
+`--glm5.3f-sglang`, load, compare with the Q4. If it's worse, remove it all.

@@ -93,7 +93,7 @@ export interface TextModel {
   /** A vLLM model whose config asks for remote code: never loaded. */
   remoteCode: boolean;
   /**
-   * A vLLM model that SGLang serves instead (install.sh --sglang): one in ModelOpt's mixed format
+   * A vLLM model that SGLang serves instead (install.sh --glm5.3f-sglang): one in ModelOpt's mixed format
    * (`quantization_config.quant_method` "modelopt_mixed"), which no vLLM loads. It is otherwise a vLLM model.
    */
   engine?: "sglang";
