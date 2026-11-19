@@ -234,6 +234,9 @@ export function templateCapabilities(template: string | null): Pick<Capabilities
   };
 }
 
+/** The tool and reasoning parsers SGLang runs GLM 5.3 Flash with (ormandj's serve-glm53-flash.sh at v0.6.1). */
+export const SGLANG_PARSERS = { toolCallParser: "glm47", reasoningParser: "glm45" };
+
 /** Parsers for families whose tool format the host can serve. */
 export function familyParsers(family: string, name = ""): { toolCallParser?: string; reasoningParser?: string } {
   const f = family.toLowerCase().replace(/[_ .-]/g, "");
@@ -389,7 +392,9 @@ function vllmModel(root: string, dir: string, files: string[]): TextModel | null
   const embedding = files.includes("modules.json");
   if (config.architectures.some((a: unknown) => TRANSCRIBE.includes(a as string))) return transcribeModel(root, dir, config, size);
   const text = config.text_config ?? config;
-  const parsers = familyParsers(text.model_type ?? config.model_type ?? config.architectures[0] ?? "", basename(dir));
+  const sglang = config.quantization_config?.quant_method === "modelopt_mixed";
+  // SGLang's image serves one model, GLM 5.3 Flash, with GLM's parsers (its launcher's flags).
+  const parsers = sglang ? SGLANG_PARSERS : familyParsers(text.model_type ?? config.model_type ?? config.architectures[0] ?? "", basename(dir));
   const caps = templateCapabilities(embedding ? null : template);
   const generation = embedding ? null : readJson(join(dir, "generation_config.json"));
   const recommended = generation ? sampling((k) => generation[CONFIG_SAMPLING[k]]) : undefined;
@@ -407,7 +412,7 @@ function vllmModel(root: string, dir: string, files: string[]): TextModel | null
     mmproj: null,
     ...(recommended ? { sampling: recommended } : {}),
     remoteCode: !!config.auto_map,
-    ...(config.quantization_config?.quant_method === "modelopt_mixed" ? { engine: "sglang" as const } : {}),
+    ...(sglang ? { engine: "sglang" as const } : {}),
   };
 }
 

@@ -179,6 +179,8 @@ from there.
 It serves a safetensors model whose `quantization_config.quant_method` is
 `modelopt_mixed`; a host without it leaves such a model out of its lists.
 Such a model is otherwise a vLLM model: the GPUs that allow vLLM allow it.
+It uses tools through GLM's parsers (`glm47` for tool calls, `glm45` for
+thinking), as its launcher does; its template gives the thinking levels.
 Lyrica and the dashboard name its server "GLM-SGLang".
 
 ### GPU P2P

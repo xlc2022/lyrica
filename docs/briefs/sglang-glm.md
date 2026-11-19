@@ -61,7 +61,8 @@ Principle 1: a model she talks with this month, faster on the same host.
    without SGLang leaves it out of its lists. It is otherwise a vLLM model:
    GPUs that allow vLLM allow it and it has a memory share. Lyrica and the
    host dashboard name its server "GLM-SGLang" (`engine` on the models
-   list, the starters and the serving settings). Its placement is tensor parallel across its GPUs whatever their
+   list, the starters and the serving settings). It takes GLM's parsers (`glm47` tools, `glm45` reasoning), so Lyrica sees
+   it can use tools. Its placement is tensor parallel across its GPUs whatever their
    names, with a share of 0.99 unless set, as the profile was measured.
 4. **The starter.** "GLM 5.3 Flash NVFP4", listed only on a host with
    SGLang, needing 180 GiB across the GPUs that allow vLLM.
