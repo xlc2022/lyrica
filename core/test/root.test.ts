@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { groupRun } from "../src/workspace/ssh.ts";
 import { checkSudoers, Masker, rootAsk, rootStep, secretAsk, secretMasks, secretStep, sudoersCommand, sudoRunCommand } from "../src/index.ts";
+import { NOT_NIXOS } from "../src/workspace/sudoers.ts";
 
 const line = (cmd: string) => `lyrica ALL=(root) NOPASSWD: ${cmd}`;
 
@@ -80,7 +81,7 @@ describe("a root step", () => {
     const l1 = line("/usr/bin/systemctl restart ssh"), l2 = line("/usr/bin/nvidia-smi \"\"");
     const step = rootStep({ machine: "box", path: "/home/lyrica/x.sh", why: "w", sudoers: [` ${l1} `, `${l2}\n`] }, Buffer.from("echo hi\n"), "lyrica");
     expect(step.sudoers?.map((l) => l.line)).toEqual([l1, l2]);
-    expect(step.sudoersCommand).toBe("f=$(mktemp) && g=$(mktemp) && { sudo test ! -e /etc/sudoers.d/lyrica || sudo cat /etc/sudoers.d/lyrica; } > \"$f\""
+    expect(step.sudoersCommand).toBe(NOT_NIXOS + " && f=$(mktemp) && g=$(mktemp) && { sudo test ! -e /etc/sudoers.d/lyrica || sudo cat /etc/sudoers.d/lyrica; } > \"$f\""
       + ` && { awk 1 "$f"; printf '%s\\n' '${l1}' '${l2}'; } | awk '!seen[$0]++' > "$g" && sudo install -m 0440 -o root -g root "$g" /etc/sudoers.d/lyrica.new`
       + ' && sudo visudo -c -f /etc/sudoers.d/lyrica.new && sudo mv -f /etc/sudoers.d/lyrica.new /etc/sudoers.d/lyrica; rc=$?; sudo -n rm -f /etc/sudoers.d/lyrica.new 2>/dev/null; rm -f "$f" "$g"; (exit $rc)');
     // The lines are checked first, so a refused one never reaches the command.

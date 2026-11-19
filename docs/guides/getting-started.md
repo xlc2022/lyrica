@@ -1013,7 +1013,8 @@ steps:
    paste it as root with each `sudo ` removed): the account, made with
    `useradd` if the machine doesn't have it yet (password `*`, so only her
    key logs in; on NixOS choose **System: NixOS**, which gives a module
-   for your configuration and a rebuild instead of this block, and on
+   for your configuration and a rebuild instead of this block; pasted on
+NixOS, this block stops before changing anything and says so; and on
    Alpine or another system without `useradd` or `/bin/bash`, make the
    account yourself first), her public key into
    `/etc/ssh/authorized_keys/<account>`, a file only root can change

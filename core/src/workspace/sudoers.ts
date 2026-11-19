@@ -22,6 +22,12 @@ export const nixosSudoModule = (rule: string) =>
   ["# A file of its own, added to the configuration's imports before the rebuild", "{", ...rule.split("\n").map((l) => `  ${l}`), "}"].join("\n");
 
 /**
+ * Stops a shell setup on NixOS before it changes anything: there sshd reads no sshd_config.d and sudo no
+ * sudoers.d (nixpkgs sshd.nix and sudo.nix), so the setup would half work. NixOS's activation makes /etc/NIXOS.
+ */
+export const NOT_NIXOS = "{ [ ! -e /etc/NIXOS ] || { echo 'This machine runs NixOS: choose System: NixOS in Lyrica for its setup' >&2; false; }; }";
+
+/**
  * The command on the card that adds offered lines to the sudoers file, ready to paste. It reads the file's own
  * lines in a step of its own, so a failed sudo (a mistyped password) stops the chain instead of installing the
  * new lines alone; then the old lines (their last one given its newline) and the new, each once; put beside the
@@ -31,7 +37,7 @@ export const nixosSudoModule = (rule: string) =>
  * reaches sudo. `file` is the card's `/etc/sudoers.d/lyrica`; a test gives its own.
  */
 export const sudoersCommand = (lines: string[], file = SUDOERS_FILE): string =>
-  `f=$(mktemp) && g=$(mktemp) && { sudo test ! -e ${file} || sudo cat ${file}; } > "$f" && { awk 1 "$f"; printf '%s\\n' ${lines.map(quote).join(" ")}; } | awk '!seen[$0]++' > "$g"`
+  `${NOT_NIXOS} && f=$(mktemp) && g=$(mktemp) && { sudo test ! -e ${file} || sudo cat ${file}; } > "$f" && { awk 1 "$f"; printf '%s\\n' ${lines.map(quote).join(" ")}; } | awk '!seen[$0]++' > "$g"`
   + ` && sudo install -m 0440 -o root -g root "$g" ${file}.new && sudo visudo -c -f ${file}.new && sudo mv -f ${file}.new ${file}; rc=$?; sudo -n rm -f ${file}.new 2>/dev/null; rm -f "$f" "$g"; (exit $rc)`;
 
 /** Programs a sudoers line may never name: they run anything. */
