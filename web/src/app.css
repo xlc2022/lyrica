@@ -1493,7 +1493,12 @@ a.fpath { font-family: var(--mono); font-size: 0.93em; overflow-wrap: anywhere; 
 .nrow.nsleep .name:not([data-more]) { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; }
 .nrow.nsleep .show-more { justify-self: start; font-size: 13px; }
 .nrow.nsleep:has(.name[data-more]) { align-items: start; }
+/* An open run card hangs below its facts, so the row's own parts keep to its top. */
+.nrow:has(.ncard) { align-items: start; }
 .nrow .ico { width: 18px; text-align: center; color: var(--muted); font-size: 14px; }
+.nrow .ncard { grid-column: 2 / -1; min-width: 0; }
+.cards .nrow .ncard { grid-column: 2; }
+.nrow .ncard .question-card { margin: 6px 0; }
 .nrow .when { font-family: var(--mono); font-size: 12px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .nrow .actions { display: flex; flex-wrap: wrap; gap: 6px; justify-content: end; }
 .nrow .actions a.btn { display: inline-flex; align-items: center; min-height: 30px; padding: 0 9px; font-size: 13px; border: 1px solid var(--edge); border-radius: 7px; text-decoration: none; color: inherit; }

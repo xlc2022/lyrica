@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { fakeOpenAI } from "../../core/test/fake-openai.ts";
-import type { MessagePage, NotificationPage, ThreadSummary } from "../src/api.ts";
+import type { MessagePage, NotificationPage, QuestionCardData, ThreadSummary } from "../src/api.ts";
 import { rootPart } from "../src/messages.ts";
 import { browser, daemon, enc, localModel, login, runtime } from "./helpers.ts";
 
@@ -38,8 +38,9 @@ describe("question answers", () => {
     const notifications = (await s.ada.get<NotificationPage>(`${s.u}/notifications?type=question`)).body;
     expect(notifications.waiting).toBe(1);
     const item = notifications.items[0]!;
-    expect(item).toMatchObject({ id: expect.stringContaining(`/${n}`), type: "question", title: ask.question, detail: ask.options[1]!.consequence, decision: true });
-    expect(item.actions.map(a => a.label)).toEqual(["Large", "Small"]);
+    expect(item).toMatchObject({ id: expect.stringContaining(`/${n}`), type: "question", title: ask.question, detail: ask.context, decision: true });
+    // The row's detail is what the card says (the ask's own context); each button's tooltip carries its consequence.
+    expect(item.actions.map(a => [a.label, a.title])).toEqual([["Large", ask.options[1]!.consequence], ["Small", ask.options[0]!.consequence]]);
     expect((await s.ada.post(`${s.path}/questions/${n}/answer`, { option: 8 })).status).toBe(400);
     expect((await s.ada.post(`${s.path}/questions/${n + 100}/answer`, { option: 0 })).status).toBe(404);
     s.model.reply({ text: "I'll do that." });
@@ -120,14 +121,20 @@ describe("root steps", () => {
     expect(root.command).toBe(`d=$(mktemp -d) && f="$d/script" && cat '/home/lyrica/prereqs.sh' > "$f" && echo '${root.sha256}  '"$f" | sha256sum -c --quiet - && sudo bash "$f"; rc=$?; rm -rf "$d"; (exit $rc)`);
     expect((part as { root: { sudoersCommand?: string } }).root.sudoersCommand).toContain("visudo -c -f /etc/sudoers.d/lyrica.new");
     const item = (await s.ada.get<NotificationPage>(`${s.u}/notifications?type=question`)).body.items[0]!;
-    expect(item).toMatchObject({ type: "question", title: "Run as root on box?" });
-    expect(item.actions.map(a => a.label)).toEqual(["Done", "Not now"]);
+    // The row says what the card says (her reason), and Run needs what she types, so it offers the card instead of answering.
+    expect(item).toMatchObject({ type: "question", title: "Run as root on box?", detail: "Installs Docker for the model host.", run: "Password" });
+    expect(item.actions.map(a => [a.label, a.title])).toEqual([
+      ["Done", "Already run by hand. The result gets checked next."], ["Not now", "Nothing runs. What waits on it gets said next."]]);
+    const shown = (await s.ada.get<QuestionCardData>(`${s.path}/question/card`)).body;
+    expect(shown).toMatchObject({ name: "run_as_root", root: { machine: "box", why: "Installs Docker for the model host." }, state: { n } });
+    expect(shown.args).toEqual({ machine: "box", why: "Installs Docker for the model host." });
 
     s.model.reply({ text: "Checking." });
     from = s.stream.events.length;
     expect((await s.ada.post(`${s.path}/questions/${n}/answer`, { option: 0 })).status).toBe(204);
     await s.stream.until(e => e.type === "turn_end", from);
     expect(JSON.stringify(s.model.requests.at(-1))).toContain(`[Answer to q:${n}]\\n\\nDone`);
+    expect((await s.ada.get(`${s.path}/question/card`)).status).toBe(404);
 
     // A line that would let her run anything never reaches a card.
     s.model.reply({ tools: [{ name: "run_as_root", args: { machine: "box", path: "/home/lyrica/x.sh", why: "More.", sudoers: ["lyrica ALL=(root) NOPASSWD: /bin/bash"] } }] });
@@ -170,7 +177,9 @@ describe("secrets on a card", () => {
     expect(part).toMatchObject({ root: { machine: "box", secret: "Tailscale auth key", sha256: createHash("sha256").update(script).digest("hex") } });
     expect((part as { root: { command: string } }).root.command).not.toContain("sudo");
     const item = (await s.ada.get<NotificationPage>(`${s.u}/notifications?type=question`)).body.items[0]!;
-    expect(item).toMatchObject({ title: "Run with a secret on box?" });
+    expect(item).toMatchObject({ title: "Run with a secret on box?", detail: "Joins the host to the tailnet.", run: "Tailscale auth key" });
+    const shown = (await s.ada.get<QuestionCardData>(`${s.path}/question/card`)).body;
+    expect(shown).toMatchObject({ name: "run_with_secret", args: { machine: "box", secret: "Tailscale auth key", why: "Joins the host to the tailnet." }, root: { secret: "Tailscale auth key" }, state: { n } });
     expect(item.actions.map(a => a.label)).toEqual(["Not now"]);
     expect((await s.ada.post(`${s.path}/questions/${n}/answer`, { option: 0 })).status).toBe(400);
 

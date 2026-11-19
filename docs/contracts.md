@@ -1112,9 +1112,16 @@ Custom roles override built-ins by name, except `claude`.
   that password.
   `NotificationType` gains `question`, with id
   `question:<pool>/<thread>/<n>` and `decision: true`. Title is the question,
-  detail the recommended option's consequence. Its actions POST to that
+  detail what the card says: the ask's own context (her reason) when it has
+  one, else `<recommended label>: <recommended consequence>`. An option's
+  action carries its consequence as a `title` tooltip and POSTs to that
   answer route with `{ option }`, recommended first, then the others in
-  order; its `thread` supplies Open thread. There is no bulk question action.
+  order; its `thread` supplies Open thread. A card with Run (a root step, or
+  a secret) is not answered from the row: it has one action instead, the
+  secret's name (`Notification.run?`, **Password** on a root step), which
+  loads the card in place from `GET …/threads/:pool/:id/question/card` and
+  answers there — Run by the run route, Done and Not now by the answer
+  route. There is no bulk question action.
   Display filters apply as to other decisions, including the private pool.
   `NotificationType` gains `limit` (daemon/src/plan-waits.ts): id
   `limit:<endpoint>/threads` for the threads waiting on a limited plan (its

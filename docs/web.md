@@ -1819,11 +1819,13 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   (paging back to the call if needed) and offers the same answers without
   leaving the project chat. Question changes refresh the thread list and
   Notifications. Notifications' **Question** rows count under Needs a
-  decision, with the recommended consequence as detail, **Open thread** as
+  decision, with what the card says as detail (the ask's own words when it
+  has them, else the recommended option's label with its consequence),
+  **Open thread** as
   a link closing the facts line, and the answers as one row of equal
   one-line buttons under the text (side by side on phones too, wrapping to
-  a grid), recommended first: only it is primary, with the tooltip
-  Recommended. Private questions follow the Private
+  a grid), recommended first: only it is primary, each with its
+  consequence as a tooltip. Private questions follow the Private
   filter. A selection containing a question offers no bulk action.
   A root step's and a secret's card (`run_as_root`, `run_with_secret`) show
   her `why`, then `SecretField`: the label (the secret's name, or

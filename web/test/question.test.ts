@@ -2,7 +2,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { QuestionCard, ProjectQuestion, loadProjectQuestion } from "../src/Question.tsx";
-import { NotificationsCard, sharedActions } from "../src/Notifications.tsx";
+import { NotificationsCard, RowCard, sharedActions } from "../src/Notifications.tsx";
 import { useLoad } from "../src/ui.tsx";
 import type { ShellContext } from "../src/Shell.tsx";
 import { get } from "../src/api.ts";
@@ -17,8 +17,8 @@ const state: QuestionState = { n: 12, asked: "2026-10-18T12:00:00Z" };
 const card = (s?: QuestionState) => renderToStaticMarkup(createElement(QuestionCard, { args, state: s, base: "/thread", onChange: vi.fn() }));
 const loaded = (data: unknown) => ({ data, error: "", reload: vi.fn(), set: vi.fn() });
 const notification: Notification = { id: "question:private/thread/12", type: "question", title: args.question, detail: "Ready to print.", decision: true, scope: "private", at: state.asked, thread: { pool: "private", id: "thread" }, actions: [
-  { label: "PDF", method: "POST", path: "/thread/questions/12/answer", body: { option: 1 } },
-  { label: "Page", method: "POST", path: "/thread/questions/12/answer", body: { option: 0 } },
+  { label: "PDF", title: "Ready to print.", method: "POST", path: "/thread/questions/12/answer", body: { option: 1 } },
+  { label: "Page", title: "Keep it editable.", method: "POST", path: "/thread/questions/12/answer", body: { option: 0 } },
 ] };
 const ctx = { user: { id: "user" }, refreshThreads: vi.fn(), refreshNotifications: vi.fn() } as unknown as ShellContext;
 beforeEach(() => { vi.mocked(useLoad).mockReset(); vi.mocked(get).mockReset(); });
@@ -126,11 +126,34 @@ describe("question cards", () => {
     const html = renderToStaticMarkup(createElement(NotificationsCard, { ctx }));
     expect(html).toContain(args.question);
     expect(html).toContain("Ready to print.");
+    // Each answer button carries its consequence as a tooltip.
+    expect(html).toMatch(/title="Ready to print\."/);
     expect(html).toContain('class="k private"');
     expect(html.indexOf('>PDF')).toBeLessThan(html.indexOf('>Page'));
     // Open thread closes the facts line; the answers row holds answers only, the recommended one filled.
     expect(html.indexOf('>Open thread')).toBeLessThan(html.indexOf('class="actions"'));
     expect(html).toContain('class="sm primary"');
     expect(html).not.toContain('>Recommended<');
+  });
+  it("opens a run card in place from its row instead of answering it there", () => {
+    const root = { machine: "box", path: "/home/ada/x.sh", sha256: "ab", command: "f=$(mktemp) && sudo bash \"$f\"", script: "echo hi", why: "Restarts ssh." };
+    const page: NotificationPage = { items: [{ ...notification, title: "Run as root on box?", detail: "Restarts ssh.", run: "Password", actions: [
+      { label: "Done", title: "Already run by hand. The result gets checked next.", method: "POST", path: "/thread/questions/12/answer", body: { option: 0 } },
+      { label: "Not now", title: "Nothing runs. What waits on it gets said next.", method: "POST", path: "/thread/questions/12/answer", body: { option: 1 } },
+    ] }], total: 1, waiting: 1, types: ["question"] };
+    vi.mocked(useLoad).mockImplementationOnce(() => loaded(page)).mockImplementationOnce(() => loaded(undefined));
+    // The row offers the card, not an answer: Done and Not now wait on the card, where their consequences show.
+    const rowHtml = renderToStaticMarkup(createElement(NotificationsCard, { ctx }));
+    expect(rowHtml).toMatch(/aria-expanded="false"[^>]*>Password</);
+    expect(rowHtml).not.toContain('class="sm primary"');
+    const html = renderToStaticMarkup(createElement(RowCard, { card: { name: "run_as_root", args: { machine: "box", why: "Restarts ssh." }, root, state }, base: "/thread", onChange: vi.fn() }));
+    expect(html).toContain("Restarts ssh.");
+    expect(html).toContain('type="password"');
+    expect(html).toContain(">Run<");
+  });
+  it("leaves a run card closed in its row when the card route refuses", () => {
+    const html = renderToStaticMarkup(createElement(RowCard, { error: "no such card", base: "/thread", onChange: vi.fn() }));
+    expect(html).toContain("no such card");
+    expect(html).not.toContain('type="password"');
   });
 });

@@ -1235,6 +1235,8 @@ export interface Notification {
   type: NotificationType;
   title: string;
   detail?: string;
+  /** On a question whose Run needs what the person types: the label for opening the card in place ("Password", or the secret's name). The card itself is `GET …/threads/:pool/:threadId/question/card`. */
+  run?: string;
   /** Where it is: a pool, for now. */
   scope: Pool;
   /** The user has to decide something; a plain update isn't counted in the sidebar. */
@@ -1589,6 +1591,13 @@ export interface AnswerQuestion { option: number }
 export interface RunFromCard { job: string }
 /** `kept`: on an open root step's card, the minutes left on the sudo password kept for its machine. */
 export interface QuestionState { n: number; asked: string; closed?: string; answer?: number | "words" | "withdrawn"; kept?: number }
+/**
+ * GET …/threads/:pool/:threadId/question/card → QuestionCardData: the thread's open question's card, for a
+ * Notifications row to show it in place (404 when nothing is open). The words are what the card's tool call
+ * stored (a root step or a secret), or the ask's own words. Run is answered only by …/questions/:n/run, which
+ * takes the typed bytes; the row's own actions answer without input, as on the card.
+ */
+export interface QuestionCardData { name: "threads" | "run_as_root" | "run_with_secret"; args: unknown; root?: RootStep; state: QuestionState }
 /**
  * GET /api/u/:userId/threads/:pool/:threadId/messages?before=<n>&limit=<k> → MessagePage
  * Newest page by default, oldest first within the page. Tool results are folded into their calls.

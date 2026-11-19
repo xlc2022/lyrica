@@ -25,6 +25,8 @@
 // "start need: <title>" one whose task posts that status.
 // "tell <title>: <text>" messages that child thread (then says "Sent it.").
 // "read <title>" reads that child thread (then says "Read it.").
+// "root: <why>" puts a run_as_root card on machine "box" (then says "It's on a card."); its script comes
+// from the fixture below and its run is recorded, not really run over SSH.
 // "compact: <summary>" compacts the thread with that summary (then says "Compacting.").
 // "fetch: <url>, <url>" reads each with web_fetch in turn (then says "Read them."); /page/<slug> is an article.
 // "background: <name> | <command>" starts the command as a background job with that name (then says "The command finished.").
@@ -274,6 +276,10 @@ function fakeModel() {
       }
       if (req.method !== "POST" || rest !== "/chat/completions") { res.writeHead(404); return res.end(); }
       const chat = JSON.parse(body) as Chat;
+      // A run card's script comes from a fixture machine, and its run is recorded, not really run over SSH (set here,
+      // where the daemon is unlocked and its services exist).
+      daemon.services!.workspace.rootScript = async () => ({ bytes: Buffer.from("#!/bin/bash\necho on\n"), account: "lyrica" });
+      daemon.services!.workspace.runFromCard = () => ({ id: "j-fixture", place: "box", command: "", cwd: "", startedAt: "", state: "running" });
       // Her extension adds context (the time) as separate user messages; skip those.
       const text = (m: Chat["messages"][number]) => typeof m.content === "string" ? m.content
         : Array.isArray(m.content) ? m.content.map((p: { text?: string }) => p.text ?? "").join("") : "";
@@ -328,6 +334,7 @@ function fakeModel() {
       const suggest = /^suggest: (.+)/.exec(said)?.[1];
       const tell = /^tell (.+?): (.+)/.exec(said);
       const read = /^read (.+)/.exec(said)?.[1];
+      const rootCard = /^root: (.+)/.exec(said)?.[1];
       const compact = /^compact: ([\s\S]+)/.exec(said)?.[1];
       const steps = /^steps: (.+)/.exec(said)?.[1]?.split(";").flatMap((x) => {
         const m = /^\s*(done|doing|todo) (.+?)\s*$/.exec(x);
@@ -350,15 +357,18 @@ function fakeModel() {
         const other = [...said.matchAll(/^- \[t:([^\]\s]+)\]/gm)].map((m) => m[1]).find((id) => !about.has(id));
         send({ role: "assistant", content: JSON.stringify({ tell: other ? [{ thread: other, text: "Heads up: the plan changed." }] : [] }) });
         send({}, "stop");
+      } else if (rootCard && last?.role !== "tool") {
+        send({ role: "assistant", tool_calls: [{ index: 0, id: `call_${Date.now()}`, type: "function", function: { name: "run_as_root", arguments: JSON.stringify({ machine: "box", path: "/home/ada/setup.sh", why: rootCard }) } }] });
+        send({}, "tool_calls");
       } else if ((ask || need || child || suggest || steps || fold || draft || tell || read || compact) && (last?.role !== "tool" || (said.startsWith("ask twice:") && chat.messages.slice(-sinceUser).filter(m => m.role === "tool").length < 2))) {
         const args = compact ? { action: "compact", summary: compact } : ask ? { action: "ask", question: ask, context: "Choose the scope for the garden.", options: [{ label: "Small", consequence: "Plant a small bed first." }, { label: "Large", consequence: "Plant the whole garden." }], recommended: 0 } : need ? { action: "message", to: "parent", text: need, needsYou: true } : draft ? { action: "draft", goal: draft[1]!.trim(), instructions: draft[2]!.trim() } : fold ? { action: "fold", ids: fold.split(",").map(t => t.trim()) } : child ? { action: "start", title: child, task } : tell ? { action: "message", id: tell[1], text: tell[2] } : read ? { action: "read", id: read } : steps ? { action: "steps", steps }
           : { action: "suggest", threads: suggest!.split(",").map((t) => t.trim()).map((title) => ({ title, task: `Work on ${title}.` })) };
         send({ role: "assistant", tool_calls: [{ index: 0, id: `call_${Date.now()}`, type: "function", function: { name: "threads", arguments: JSON.stringify(args) } }] });
         send({}, "tool_calls");
-      } else if (ask || need || child || suggest || steps || fold || draft || tell || read || compact) {
+      } else if (ask || need || child || suggest || steps || fold || draft || tell || read || compact || rootCard) {
         // Her words after a Fold in card come two seconds late, so the card's dialog is open when her reply ends.
         if (fold) await new Promise((r) => setTimeout(r, 2000));
-        send({ role: "assistant", content: child ? "Started it." : tell ? "Sent it." : read ? "Read it." : compact ? "Compacting." : steps ? "Checklist set." : need ? "I'll wait for her." : "Suggested." });
+        send({ role: "assistant", content: child ? "Started it." : tell ? "Sent it." : read ? "Read it." : compact ? "Compacting." : steps ? "Checklist set." : need ? "I'll wait for her." : rootCard ? "It's on a card." : "Suggested." });
         send({}, "stop");
       } else if (/^write slowly: \S+/.test(said) && last?.role !== "tool") {
         // A long call written a piece at a time, as a model writes a file: the name first, then its arguments.

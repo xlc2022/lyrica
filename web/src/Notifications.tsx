@@ -4,9 +4,11 @@
 // Notifications page has the whole list with filters, sorting, paging and the
 // actions on each row.
 import { useMemo, useState } from "react";
-import { get, request, u, type Notification, type NotificationAction, type NotificationPage, type NotificationType, type Pool, type ThreadSummary } from "./api.ts";
+import { get, request, threadPath, u, type Notification, type NotificationAction, type NotificationPage, type NotificationType, type Pool, type ThreadSummary } from "./api.ts";
 import { Icon } from "./icons.tsx";
 import { firstWords } from "./memory.ts";
+import { QuestionCard, loadQuestionCard } from "./Question.tsx";
+import type { QuestionCardData } from "./api.ts";
 import { go, href } from "./route.ts";
 import { PageHead, type ShellContext } from "./Shell.tsx";
 import { ClampedText, clock, ErrorText, shortTime, useAction, useLoad } from "./ui.tsx";
@@ -67,12 +69,23 @@ function Where({ n, userId, link }: { n: Notification; userId: string; link?: bo
   return null;
 }
 
-function Row({ n, ctx, picked, onPick, act, busy }: {
-  n: Notification; ctx: ShellContext; picked?: boolean; onPick?: (v: boolean) => void; act: (a: NotificationAction[]) => Promise<boolean>; busy: boolean;
+/** The open card in a question row, under its facts (§6). */
+export function RowCard({ card, error, base, onChange }: { card?: QuestionCardData; error?: string; base: string; onChange: () => void }) {
+  return <div className="ncard"><ErrorText error={error ?? ""} />{card && <QuestionCard {...card} base={base} onChange={onChange} />}</div>;
+}
+
+function Row({ n, ctx, picked, onPick, act, busy, reload }: {
+  n: Notification; ctx: ShellContext; picked?: boolean; onPick?: (v: boolean) => void; act: (a: NotificationAction[]) => Promise<boolean>; busy: boolean; reload: () => void;
 }) {
   const t = TYPES[n.type];
   const [open, setOpen] = useState(false);
   const question = n.type === "question";
+  // A card whose Run needs what the person types opens in place from its row: the real card, from its route, so the
+  // row never answers it and Done keeps only its own meaning (§6).
+  const runCard = question && !!n.run && !!n.thread;
+  const [openCard, setOpenCard] = useState(false);
+  const shown = useLoad(async () => (openCard && n.thread ? loadQuestionCard(threadPath(ctx.user.id, n.thread.pool, n.thread.id)) : undefined),
+    [openCard, n.id, ctx.changed]);
   return (
     <li className={`nrow${onPick ? "" : " nopick"}${question ? " nquestion" : ""}${n.type === "sleep" ? " nsleep" : ""}`}>
       {/* The name holds the title's first words, not its whole text: a From sleep row's title is
@@ -92,10 +105,13 @@ function Row({ n, ctx, picked, onPick, act, busy }: {
         </>}
         <span className="nkind">{t.label} · <span className={`k${n.scope === "private" ? " private" : ""}`}>{n.scope}</span> · <span className="when">{shortTime(n.at)}</span>{question && (n.thread || n.section) && <> · <Where n={n} userId={ctx.user.id} link /></>}</span>
       </div>
+      {runCard && openCard && <RowCard card={shown.data} error={shown.error} base={threadPath(ctx.user.id, n.thread!.pool, n.thread!.id)}
+        onChange={() => { shown.reload(); reload(); ctx.refreshNotifications(); }} />}
       <div className="actions">
         {!question && <Where n={n} userId={ctx.user.id} />}
-        {/* A question's first answer is the recommended one: the filled button says so, and its tooltip. */}
-        {n.actions.map((a, i) => <button key={a.label} type="button" className={`sm${question && i === 0 ? " primary" : ""}${a.danger ? " danger" : ""}`} disabled={busy} title={a.title ?? (question && i === 0 ? "Recommended" : undefined)} onClick={() => act([a])}>{a.label}</button>)}
+        {/* A Run that needs what she types opens the card in place; its answers wait on the card. */}
+        {runCard ? <button type="button" className="sm" aria-expanded={openCard} onClick={() => setOpenCard(!openCard)}>{n.run}</button>
+          : n.actions.map((a, i) => <button key={a.label} type="button" className={`sm${question && i === 0 ? " primary" : ""}${a.danger ? " danger" : ""}`} disabled={busy} title={a.title ?? (question && i === 0 ? "Recommended" : undefined)} onClick={() => act([a])}>{a.label}</button>)}
       </div>
     </li>
   );
@@ -110,7 +126,7 @@ export function NotificationsCard({ ctx }: { ctx: ShellContext }) {
     <section className="card" aria-labelledby="h-notifications">
       <div className="section-head"><h2 id="h-notifications">Notifications</h2>{page.data && <a href={href({ page: "notifications", userId })}>All {page.data.waiting}</a>}</div>
       <ErrorText error={page.error || error} />
-      {page.data && (page.data.items.length ? <ul className="list">{page.data.items.map((n) => <Row key={n.id} n={n} ctx={ctx} act={act} busy={busy} />)}</ul>
+      {page.data && (page.data.items.length ? <ul className="list">{page.data.items.map((n) => <Row key={n.id} n={n} ctx={ctx} act={act} busy={busy} reload={page.reload} />)}</ul>
         : <p className="empty">Nothing waiting.</p>)}
     </section>
   );
@@ -143,7 +159,7 @@ export function NotificationsPage({ ctx }: { ctx: ShellContext }) {
   const groups = sort === "type" || sort === "scope"
     ? [...new Map(items.map((n) => [sort === "type" ? TYPES[n.type].label : n.scope, items.filter((x) => (sort === "type" ? TYPES[x.type].label : x.scope) === (sort === "type" ? TYPES[n.type].label : n.scope))])).entries()]
     : null;
-  const row = (n: Notification) => <Row key={n.id} n={n} ctx={ctx} picked={picked.has(n.id)} onPick={(v) => setPicked((s) => { const next = new Set(s); if (v) next.add(n.id); else next.delete(n.id); return next; })} act={act} busy={busy} />;
+  const row = (n: Notification) => <Row key={n.id} n={n} ctx={ctx} picked={picked.has(n.id)} onPick={(v) => setPicked((s) => { const next = new Set(s); if (v) next.add(n.id); else next.delete(n.id); return next; })} act={act} busy={busy} reload={page.reload} />;
   return (
     <main className="main">
       <PageHead ctx={ctx} title="Notifications" />
