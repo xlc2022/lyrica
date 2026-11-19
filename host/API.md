@@ -36,13 +36,13 @@ on `/v1`, where OpenAI clients read `error.message`.
 | 409 | `in_use` | The model or file is in use by a running request, or a link is already downloading. |
 | 409 | `load_cancelled` | The model's load was stopped by an unload while it loaded: the Load itself and every request that was waiting for it. |
 | 409 | `above_recommended` | A stretch above the factor the model's card documents, saved without `anyway`. |
-| 413 | `too_big` | The model can't fit on any GPU it may use, even with everything idle unloaded. |
 | 413 | `too_large` | A `/v1` request body over 64 MiB ("The request is larger than the model host takes (64 MiB)."). Pi reads a 413 as a request too big for the model: it compacts the thread and tries again. |
 | 503 | `paused` | The host is paused. Lyrica uses her fallbacks. |
 | 503 | `busy` | It could fit, but not within the wait limit, because the GPU is busy. The message names what with: "The GPU is busy with a chat model." |
 | 503 | `restarting` | A restart is under way. |
 | 503 | `model_unavailable` | The server for this model (llama.cpp, vLLM, ComfyUI, stable-diffusion.cpp or a speech server) isn't running, didn't answer or couldn't load it (or, for a Qwen3-TTS voice model, the host has no NVIDIA GPU) (a llama.cpp server that died while loading: "llama.cpp's server for this model exited with code 134 while loading."; one that stopped reading: "llama.cpp read 128.0 GB of this model's 200.0 GB, then nothing more for 10 minutes."), or ComfyUI refused or failed the job (the message names the error type and node types, never an input's value; when it ran out of GPU memory mid-job, "ComfyUI ran out of GPU memory making the image (SeedVR2VideoUpscaler). A smaller size, scale or maxSize fits."). The host itself is up: its other models may still work. |
 | 503 | `unavailable` | A part of the host itself isn't running, such as the download service. |
+| 507 | `too_big` | The model can't fit on any GPU it may use, even with everything idle unloaded. Not 413, which Pi reads as a request too large and compacts the thread for (hosts before this one sent 413). |
 | 507 | `no_space` | Not enough free space for a download. |
 
 ## Priority
@@ -1448,7 +1448,10 @@ recipe it can't run. A job for one is `invalid`, saying why. `sampler` and `sche
 defaults. Each image of a batch is made from the next seed, and says so. A
 cancelled job is cancelled in sd-server.
 
-A recipe's memory is measured after its first job, as for text models.
+A recipe's memory is measured after its first job, not at its load, which
+only starts ComfyUI; a saved figure under the recipe's weights (ComfyUI's
+start, as hosts before this one saved it) is measured again at the next job,
+and until then the recipe counts at least its weights.
 A recipe too big for every image GPU even with it empty (by that measure,
 or before it by its parts) is listed with `does` empty and an
 `unsupported` reason, so Lyrica never offers it, and a job for it is

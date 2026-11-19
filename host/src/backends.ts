@@ -260,7 +260,7 @@ export class LlamaCpp implements Backend {
       await this.reload();
       const key = placementOf(model, at, settings);
       if (this.diedUnmeasured.has(key))
-        throw new HostError(413, "too_big", `llama.cpp couldn't measure this model with a context of ${contextOf(model, settings)} tokens, and its last load with these settings failed; lower the context length or the batch size.`);
+        throw new HostError(507, "too_big", `llama.cpp couldn't measure this model with a context of ${contextOf(model, settings)} tokens, and its last load with these settings failed; lower the context length or the batch size.`);
       this.unmeasured.add(key);
       return missing("failed");
     }

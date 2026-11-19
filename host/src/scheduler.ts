@@ -437,7 +437,7 @@ export class Scheduler {
     if (final) {
       backend.forget?.(model);
       const gb = (n: number) => (n / GIB).toFixed(1);
-      throw new HostError(413, "too_big", `This model needs about ${gb(need[short]!)} GB on GPU ${short} by llama.cpp's measurement, of it ${gb(m[short]!.extra)} GB for its cache and buffers; the GPU has ${gb(free(short))} GB free.`);
+      throw new HostError(507, "too_big", `This model needs about ${gb(need[short]!)} GB on GPU ${short} by llama.cpp's measurement, of it ${gb(m[short]!.extra)} GB for its cache and buffers; the GPU has ${gb(free(short))} GB free.`);
     }
     const prev = this.overheads.get(model.id) ?? {};
     this.overheads.set(model.id, { ...prev, ...Object.fromEntries(o.gpus.map((g) => [g, Math.max(prev[g] ?? 0, m[g]!.extra + OVERHEAD)])) });
@@ -457,7 +457,10 @@ export class Scheduler {
       const gpu = this.gpus.find((x) => x.index === g);
       return gpu ? gpu.total - this.gpuSettings(g).keepFree : Infinity;
     };
-    return measured && Object.entries(measured).every(([g, n]) => n <= room(Number(g))) ? measured : o.need;
+    if (!measured || !Object.entries(measured).every(([g, n]) => n <= room(Number(g)))) return o.need;
+    // A recipe never counts less than its weights: less is ComfyUI's start, saved at load by hosts before measuring() saw a job.
+    if (model.server === "comfyui") return Object.fromEntries(o.gpus.map((g) => [g, Math.max(measured[g] ?? 0, o.need[g] ?? 0)]));
+    return measured;
   }
 
   /**
@@ -668,7 +671,7 @@ export class Scheduler {
   private plan(job: Pick<Job, "model" | "gpu">, held: Set<number>): Plan {
     const model = job.model;
     const never = this.neverFits(job);
-    if (never) return new HostError(413, "too_big", never);
+    if (never) return new HostError(507, "too_big", never);
     const opts = this.optionsFor(job);
     const s = this.served(model);
     // whisper.cpp holds one model at a time: loading this one replaces any other.
@@ -723,11 +726,11 @@ export class Scheduler {
     // It can never fit: say why, for the way with the most GPUs, the one with the best chance.
     const o = opts.reduce((best, x) => (x.gpus.length > best.gpus.length ? x : best), opts[0]!);
     const reason = neverFits(model, s, measured(o), empty, (i) => this.gpuSettings(i), this.ramAllowance);
-    if (reason) return new HostError(413, "too_big", reason);
+    if (reason) return new HostError(507, "too_big", reason);
     if (o.ram && o.ram > this.ramAllowance - this.ramUsed(new Set([...this.loaded.values()].filter((l) => !this.pinned(l.model.id))))) {
       const gb = (n: number) => (n / GIB).toFixed(1);
       const pinned = [...this.loaded.values()].filter((l) => this.pinned(l.model.id) && l.option.ram).reduce((n, l) => n + l.option.ram!, 0);
-      return new HostError(413, "too_big", `This model needs about ${gb(o.ram)} GB of system RAM; the allowance is ${gb(this.ramAllowance)} GB, of which ${gb(pinned)} GB is pinned.`);
+      return new HostError(507, "too_big", `This model needs about ${gb(o.ram)} GB of system RAM; the allowance is ${gb(this.ramAllowance)} GB, of which ${gb(pinned)} GB is pinned.`);
     }
     const gb = (n: number) => (n / GIB).toFixed(1);
     const need = this.needOf(model, o, s);
@@ -735,7 +738,7 @@ export class Scheduler {
     const gpu = view.find((x) => x.index === g)!;
     const pinned = loadedOn(g).filter((l) => this.pinned(l.model.id)).reduce((n, l) => n + (l.vram[g] ?? 0), 0);
     const others = gpu.used - loadedOn(g).reduce((n, l) => n + (l.vram[g] ?? 0), 0);
-    return new HostError(413, "too_big", `This model needs about ${gb(need[g]!)} GB on GPU ${g}; it has ${gb(gpu.total)} GB, of which ${gb(pinned)} GB is pinned and ${gb(Math.max(others, 0))} GB is used by other programs and ${gb(this.gpuSettings(g).keepFree)} GB is kept free.`);
+    return new HostError(507, "too_big", `This model needs about ${gb(need[g]!)} GB on GPU ${g}; it has ${gb(gpu.total)} GB, of which ${gb(pinned)} GB is pinned and ${gb(Math.max(others, 0))} GB is used by other programs and ${gb(this.gpuSettings(g).keepFree)} GB is kept free.`);
   }
 
   /** Tells a queued request where it is, once per change. */
@@ -795,7 +798,8 @@ export class Scheduler {
     entry.ready = true;
     delete entry.loading;
     // Measure each load; retain larger observations from first-use buffers. vLLM reserves its share.
-    if (model.server !== "vllm" && o.gpus.length) {
+    // ComfyUI's load only starts it: its recipe's models load in the job, which `measuring` measures.
+    if (model.server !== "vllm" && model.server !== "comfyui" && o.gpus.length) {
       const after = await this.readGpus();
       const measured: Record<number, number> = {};
       for (const g of o.gpus) measured[g] = (after.find((x) => x.index === g)?.used ?? 0) - (before[g] ?? 0);
@@ -1163,19 +1167,23 @@ export class Scheduler {
   /**
    * Measures a model whose server loads during the job (ComfyUI), from the
    * memory used before it: `fn` runs the job, and the first run with its
-   * placement is measured.
+   * placement is measured. A saved figure under the recipe's weights isn't a
+   * job's: hosts before this one saved ComfyUI's start (about 0.7 GB) at load,
+   * so it is measured again.
    */
   async measuring<T>(model: TextModel, fn: () => Promise<T>): Promise<T> {
     const entry = this.loaded.get(model.id);
     if (!entry) return fn();
     const key = this.vramKey(model, entry.option, entry.settings);
-    if (this.o.state.get().vram[key] !== undefined) return fn();
+    const saved = this.o.state.get().vram[key];
+    if (saved !== undefined && entry.option.gpus.every((g) => (saved[g] ?? 0) >= (entry.option.need[g] ?? 0))) return fn();
     const before = Object.fromEntries((await this.readGpus()).map((g) => [g.index, g.used]));
     const result = await fn();
     const after = await this.readGpus();
     const measured: Record<number, number> = {};
     for (const g of entry.option.gpus) measured[g] = (after.find((x) => x.index === g)?.used ?? 0) - (before[g] ?? 0);
     if (Object.values(measured).every((n) => n > 0)) {
+      for (const g of entry.option.gpus) measured[g] = Math.max(measured[g]!, saved?.[g] ?? 0);
       entry.vram = measured;
       this.o.state.update((s) => {
         s.vram[key] = measured;

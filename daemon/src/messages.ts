@@ -375,8 +375,16 @@ export function toldLines(text: string): Told[] {
 const TOO_LARGE = /^413\b|\(413\)|request is too large|request is larger than|request entity too large|payload too large|request_too_large/i;
 export const TOO_LARGE_ERROR = "The request was too large for the model's server: this thread holds too much, often large images. Start a new thread to go on.";
 
-/** A reply's error, plainly: a request too large for the server says what to do about it. */
+/**
+ * A model host's refusal to load a model that doesn't fit its GPUs or RAM (`too_big`). A host from before 507 sent it
+ * as 413, which reads as a request too large; its fixed text tells them apart: every one says what the model needs
+ * ("needs about 30.0 GB", "weights need about 87.5 GB", "needs about 2.1 GB more") or that llama.cpp couldn't measure it.
+ */
+const DOESNT_FIT = /\bneeds? about \d+(?:\.\d+)? GB\b|\bcouldn't measure this model\b/;
+
+/** A reply's error, plainly: a request too large for the server says what to do about it; a model that doesn't fit says why. */
 export function replyError(message: string): string {
+  if (DOESNT_FIT.test(message)) return `The model couldn't load: ${plainError(message).replace(/^\d{3}:?\s+/, "")}`;
   return TOO_LARGE.test(message) ? TOO_LARGE_ERROR : plainError(message);
 }
 
