@@ -99,12 +99,13 @@ async function baseOf(run: Run): Promise<string | undefined> {
   return undefined;
 }
 
-/** The pull request's head branch to read in place of the checkout, when the checkout isn't on it and the branch exists. */
-async function headBranchOf(run: Run, head?: string): Promise<string | undefined> {
+/** The pull request's head branch to read in place of the checkout, when the checkout isn't on it and the branch exists; the full ref, so a same-named tag can't shadow the branch in git's reads. */
+async function headBranchOf(run: Run, head?: string): Promise<{ name: string; ref: string } | undefined> {
   if (!head) return undefined;
   const on = await run(["branch", "--show-current"]);
   if (on.code !== 0 || on.out.trim() === head) return undefined;
-  return (await run(["rev-parse", "--verify", "--quiet", `refs/heads/${head}`])).code === 0 ? head : undefined;
+  const ref = `refs/heads/${head}`;
+  return (await run(["rev-parse", "--verify", "--quiet", ref])).code === 0 ? { name: head, ref } : undefined;
 }
 
 /** `added` and `deleted` where a side is missing: numstat alone can't tell a new file from a changed one. */
@@ -139,18 +140,18 @@ export async function repositoryChanges(target: ExecutionTarget, repo: { name: s
   // the badge and the view show the pull request's changes, not the clone's empty state.
   const named = await headBranchOf(run, head);
   const base = await baseOf(run);
-  const mergeBase = base ? await run(["merge-base", base, named ?? "HEAD"]) : undefined;
+  const mergeBase = base ? await run(["merge-base", base, named?.ref ?? "HEAD"]) : undefined;
   const from = mergeBase?.code === 0 && mergeBase.out.trim() ? mergeBase.out.trim() : "HEAD";
-  const read = named ?? "HEAD";
+  const read = named?.ref ?? "HEAD";
   const log = from === read ? { code: 0, out: "" } : await run(["log", `-${COMMITS}`, LOG_FORMAT, `${from}..${read}`, "--"]);
   const status = named ? { code: 0, out: "" } : await run(["status", "--porcelain", "-z", "--untracked-files=normal"]);
-  const numstat = await run(["diff", "--numstat", "-M", "-z", from, ...(named ? [named] : []), "--"]);
-  const deleted = await run(["diff", "--name-only", "--diff-filter=D", "-z", from, ...(named ? [named] : []), "--"]);
+  const numstat = await run(["diff", "--numstat", "-M", "-z", from, ...(named ? [named.ref] : []), "--"]);
+  const deleted = await run(["diff", "--name-only", "--diff-filter=D", "-z", from, ...(named ? [named.ref] : []), "--"]);
   const gone = new Set(deleted.code === 0 ? deleted.out.split("\0") : []);
   const tracked = (await withKinds(run, from, parseNumstat(numstat.out))).map((f) => (gone.has(f.path) ? { ...f, kind: "deleted" as const } : f));
   const files = [...tracked, ...(named ? [] : await untracked(run, repo.path))].sort((a, b) => a.path.localeCompare(b.path));
   return {
-    name: repo.name, path: repo.path, branch: named ?? branch.out.trim(), ...(base ? { base } : {}),
+    name: repo.name, path: repo.path, branch: named?.name ?? branch.out.trim(), ...(base ? { base } : {}),
     commits: parseLog(log.code === 0 ? log.out : ""), uncommitted: status.code === 0 && status.out.length > 0, files,
   };
 }
@@ -200,13 +201,13 @@ export async function fileSides(target: ExecutionTarget, repo: string, path: str
   const show = (ref: string, p: string) => sideOf(["git", "-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", "-C", repo, "show", `${ref}:${p}`]);
   let before: Buffer | undefined, after: Buffer | undefined;
   if (commit === "all" || commit === WORKING) {
-    const named = await headBranchOf(run, head);
+    const named = commit === "all" ? await headBranchOf(run, head) : undefined;
     if (named) {
       // The head branch stands in for the working tree, which belongs to the branch the checkout is on.
       const base = await baseOf(run);
-      const mb = base ? await run(["merge-base", base, named]) : undefined;
+      const mb = base ? await run(["merge-base", base, named.ref]) : undefined;
       before = await show(mb?.code === 0 && mb.out.trim() ? mb.out.trim() : "HEAD", oldPath ?? path);
-      after = await show(named, path);
+      after = await show(named.ref, path);
     } else {
       const base = commit === "all" ? await baseOf(run) : undefined;
       const mb = base ? await run(["merge-base", base, "HEAD"]) : undefined;

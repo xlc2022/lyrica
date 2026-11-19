@@ -94,7 +94,13 @@ describe("the changes a thread made", () => {
     expect(pull.files.map((f) => [f.path, f.kind, f.added, f.removed])).toEqual([["a.txt", "modified", 1, 0], ["sort.ts", "added", 1, 0]]);
 
     expect(await fileSides(local, sub, "a.txt", undefined, "all", "feature/sort")).toEqual({ before: "one\n", after: "one\ntwo changed\n" });
+    // The working tree stays the checked-out branch's: "all" reads the head branch, WORKING still reads the
+    // local commit and the working tree, even with the pull request's head branch off the checkout.
+    writeFileSync(join(sub, "a.txt"), "one\ntwo\nlocal edit\n");
+    expect(await fileSides(local, sub, "a.txt", undefined, "all", "feature/sort")).toEqual({ before: "one\n", after: "one\ntwo changed\n" });
+    expect(await fileSides(local, sub, "a.txt", undefined, WORKING, "feature/sort")).toEqual({ before: "one\ntwo\n", after: "one\ntwo\nlocal edit\n" });
     // A head branch the checkout is on, or one that isn't there, reads as before.
+    writeFileSync(join(sub, "a.txt"), "one\ntwo\n");
     const onHead = await repositoryChanges(local, { name: "garden/controller", path: sub }, "main");
     expect(onHead.branch).toBe("main");
     expect(onHead.files).toEqual([]);
