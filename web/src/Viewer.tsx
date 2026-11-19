@@ -7,6 +7,7 @@ import { get, type Pool, type ThreadSettings, type ThreadSummary } from "./api.t
 import { Icon } from "./icons.tsx";
 import { CopyIconButton } from "./CopyButton.tsx";
 import { href } from "./route.ts";
+import { clipLength } from "./paths.tsx";
 import { PanelFrame, useWide, type ShellContext } from "./Shell.tsx";
 import { Thread, findThread } from "./Thread.tsx";
 import { ErrorText, fullTime, Prose, shortTime, useLoad } from "./ui.tsx";
@@ -36,6 +37,13 @@ const STEPS = new Set<ViewKind | undefined>(["image", "svg"]);
 
 /** The word for a kind in the facts line. */
 const KIND_WORD: Record<ViewKind, string> = { html: "HTML", svg: "SVG", markdown: "Markdown", pdf: "PDF", image: "Image", audio: "Audio", video: "Video", text: "Text", other: "File" };
+
+/** A picture's or clip's format, as its name's extension says it; a name without a known one says nothing. */
+const FORMAT: Record<string, string> = { png: "PNG", jpg: "JPEG", jpeg: "JPEG", gif: "GIF", webp: "WebP", avif: "AVIF", bmp: "BMP", svg: "SVG", mp4: "MP4", webm: "WebM" };
+const formatOf = (name: string) => { const ext = name.includes(".") ? name.slice(name.lastIndexOf(".") + 1).toLowerCase() : ""; return FORMAT[ext]; };
+
+/** What a picture or clip says of itself once it has loaded: its own pixels, and a clip's length in seconds. */
+type MediaFacts = { width: number; height: number; seconds?: number };
 /** Kinds with a Preview and a Source. */
 const HAS_SOURCE = new Set<ViewKind>(["html", "svg", "markdown"]);
 
@@ -157,8 +165,10 @@ function FilePane({ file, shownPath, contentUrl, viewUrl, settingsUrl, steps, he
   const byName = given ?? viewKindOf(file.name);
   const [state, setState] = useState<Loaded>({ kind: "loading" });
   const [source, setSource] = useState(false);
+  const [media, setMedia] = useState<MediaFacts | undefined>();
   useEffect(() => {
     let live = true;
+    setMedia(undefined);
     // Only text is read here; the rest is shown from its address. A name that says nothing is told by its type.
     const wantsText = byName === undefined || byName === "markdown" || byName === "html" || byName === "svg";
     if (!wantsText) { setState({ kind: byName }); return; }
@@ -178,13 +188,19 @@ function FilePane({ file, shownPath, contentUrl, viewUrl, settingsUrl, steps, he
 
   const kind = state.kind === "loading" || state.kind === "error" ? byName : state.kind;
   const text = "text" in state ? state.text : undefined;
+  // What the picture or clip says of itself, read from it once it has loaded; nothing shows while it is loading or
+  // where the value is unknown (no 0×0, no NaN).
+  const dims = media && media.width > 0 && media.height > 0 ? `${media.width}×${media.height}` : undefined;
+  const fmt = formatOf(file.name);
+  const format = (kind === "image" || kind === "video") && fmt !== KIND_WORD[kind] ? fmt : undefined;
+  const length = media?.seconds !== undefined && media.seconds > 0 ? clipLength(media.seconds) : undefined;
   const sourceable = !!kind && HAS_SOURCE.has(kind) && text !== undefined;
   const raw = sourceable && source;
   return (
     <section className="viewer-file" aria-label={shownPath}>
       <div className="viewer-head">
         {heading ?? <span className="fname mono" title={shownPath}>{shownPath}</span>}
-        <span className="viewer-facts muted">{kind ? KIND_WORD[kind] : "File"}{facts && <> · {facts}</>}{steps && <> <span className="num">{steps.at + 1}</span> of <span className="num">{steps.count}</span></>} · <span className="num">{size(file.size)}</span> · <span className="num" title={fullTime(file.modified)}>{shortTime(file.modified)}</span></span>
+        <span className="viewer-facts muted">{kind ? KIND_WORD[kind] : "File"}{facts && <> · {facts}</>}{dims && <> · <span className="num">{dims}</span>{format && <> {format}</>}</>}{steps && <> <span className="num">{steps.at + 1}</span> of <span className="num">{steps.count}</span></>}{length && <> · <span className="num">{length}</span></>} · <span className="num">{size(file.size)}</span> · <span className="num" title={fullTime(file.modified)}>{shortTime(file.modified)}</span></span>
         <span className="viewer-acts">
           {sourceable && (
             <div className="seg" role="group" aria-label="Show">
@@ -200,7 +216,7 @@ function FilePane({ file, shownPath, contentUrl, viewUrl, settingsUrl, steps, he
         {state.kind === "loading" && <p className="empty">Loading…</p>}
         {state.kind === "error" && <ErrorText error={state.message} />}
         {state.kind !== "loading" && state.kind !== "error" && (raw ? <pre className="viewer-text">{text}</pre> : (
-          <Shown kind={state.kind} file={file} text={text} contentUrl={contentUrl} viewUrl={viewUrl} settingsUrl={settingsUrl} sealed={sealed} onDownload={onDownload} />
+          <Shown kind={state.kind} file={file} text={text} contentUrl={contentUrl} viewUrl={viewUrl} settingsUrl={settingsUrl} sealed={sealed} onDownload={onDownload} onMeta={setMedia} />
         ))}
         {/* aria-disabled, not disabled, at an end: a disabled button would drop the focus, and the keys with it. */}
         {steps && !raw && (
@@ -214,15 +230,15 @@ function FilePane({ file, shownPath, contentUrl, viewUrl, settingsUrl, steps, he
   );
 }
 
-function Shown({ kind, file, text, contentUrl, viewUrl, settingsUrl, sealed, onDownload }: { kind: ViewKind; file: ViewerFile; text?: string; contentUrl: string; viewUrl: string; settingsUrl?: string; sealed?: boolean; onDownload: () => void }) {
+function Shown({ kind, file, text, contentUrl, viewUrl, settingsUrl, sealed, onDownload, onMeta }: { kind: ViewKind; file: ViewerFile; text?: string; contentUrl: string; viewUrl: string; settingsUrl?: string; sealed?: boolean; onDownload: () => void; onMeta?: (facts: MediaFacts) => void }) {
   switch (kind) {
     case "html": return <HtmlPage url={viewUrl} settingsUrl={settingsUrl} name={file.name} sealed={sealed} />;
     case "svg": return <div className="viewer-media"><img src={viewUrl} alt={file.name} /></div>;
-    case "image": return <div className="viewer-media"><img src={contentUrl} alt={file.name} /></div>;
+    case "image": return <div className="viewer-media"><img src={contentUrl} alt={file.name} onLoad={(e) => onMeta?.({ width: e.currentTarget.naturalWidth, height: e.currentTarget.naturalHeight })} /></div>;
     // The browser's own PDF viewer; it won't show in a sandboxed frame, and the page route checks the bytes are a PDF's.
     case "pdf": return <iframe className="viewer-frame" src={viewUrl} title={file.name} />;
     case "audio": return <div className="viewer-media"><audio controls src={contentUrl} aria-label={file.name} /></div>;
-    case "video": return <div className="viewer-media"><video controls src={contentUrl} aria-label={file.name} /></div>;
+    case "video": return <div className="viewer-media"><video controls src={contentUrl} aria-label={file.name} onLoadedMetadata={(e) => { const v = e.currentTarget; onMeta?.({ width: v.videoWidth, height: v.videoHeight, seconds: Number.isFinite(v.duration) && v.duration > 0 ? v.duration : undefined }); }} /></div>;
     case "markdown": return <div className="viewer-prose prose"><Prose text={text ?? ""} /></div>;
     case "text": return <pre className="viewer-text">{text || <span className="muted">Empty</span>}</pre>;
     default: return <p className="empty">This kind of file isn't shown here. <button type="button" className="link" onClick={onDownload}>Download</button></p>;
