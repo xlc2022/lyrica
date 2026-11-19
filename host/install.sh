@@ -552,6 +552,16 @@ updater_status() { # available, then the reason when it isn't
   printf '%s\n' "$json" | "${SUDO[@]}" tee "$UPDATER/status/state.json" >/dev/null
   "${SUDO[@]}" chmod 0644 "$UPDATER/status/state.json"
 }
+# Run by hand while no update runs (nothing holds its lock), a step left in
+# the status by one that died (a reboot, a kill) is cleared: host-api refuses
+# requests while it shows one, and this install is what the host runs now.
+if [[ -z ${LYRICA_HOST_UPDATING:-} && -f $UPDATER/status/state.json ]] && command -v jq >/dev/null &&
+  "${SUDO[@]}" flock -n "$UPDATER/update.lock" true 2>/dev/null; then
+  json=$("${SUDO[@]}" jq -c --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    'if (.state // "") | IN("fetching", "draining", "building", "rolling-back") then .state = "idle" | .since = $at | del(.tag, .error, .models) else . end' \
+    "$UPDATER/status/state.json") &&
+    printf '%s\n' "$json" | "${SUDO[@]}" tee "$UPDATER/status/state.json" >/dev/null
+fi
 GITHUB_HOST_KEY="github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl"
 NEW_DEPLOY_KEY=0
 # Where the updater fetches from: LYRICA_REPO as given, otherwise the public

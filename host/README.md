@@ -70,6 +70,11 @@ records), or `git pull && host/install.sh` in your checkout to go
 back to it. The host resumes unless it was paused before. Its progress is in
 `/var/lib/lyrica-host-update/status/state.json` and the host's status; by
 hand: `sudo lyrica-host-update --tag update/<name>`, or `--commit <sha>`.
+A run stopped partway (`systemctl stop`, a kill) records `failed` with
+`stopped` and resumes the host. host-api refuses requests while the file
+shows a step, so a step left by a run that died outright (a reboot) is
+cleared by the next run of the updater or of `install.sh` by hand, when no
+update holds the updater's lock.
 
 ### On NixOS
 
