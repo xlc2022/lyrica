@@ -53,10 +53,13 @@ estimate with special cases.
    driver's context and workspace that llama.cpp's breakdown leaves out. If
    every GPU has room for it, the load goes ahead with that need, and the
    measurement is saved under the placement's VRAM key (keeping the larger
-   saved value), so later plans start from it. If a GPU is short, each GPU's
-   measured cache and compute (plus the 0.5 GiB) becomes the model's
-   overhead in the planner, in place of the flat allowance, and the load is
-   planned again from the top: the usual plan then unloads idle models or
+   saved value), so later plans start from it. If a GPU is short, what each
+   GPU's measurement (plus the 0.5 GiB) needs beyond the estimate's weights
+   and cache becomes the model's overhead in the planner, in place of the
+   flat allowance (counting the measured cache there too counted it twice,
+   and an automatic context, sized without the overhead, was then refused),
+   and the load is planned again from the top, the automatic context sized
+   with that overhead: the usual plan then unloads idle models or
    moves more experts to RAM, and the new placement is measured. After two
    such rounds a GPU still short refuses the load with `too_big` naming the
    measured need, not the estimate. Reload takes the same path as a queued

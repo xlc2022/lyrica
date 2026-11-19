@@ -294,7 +294,7 @@ export class Scheduler {
     if (s.contextLength !== undefined || model.kind !== "chat" || this.onCpu(model)) return s;
     const l = this.loaded.get(model.id);
     if (l?.auto) return { ...s, contextLength: l.settings.contextLength };
-    return { ...s, contextLength: autoContext(model, s, this.othersView(model), (i) => this.gpuSettings(i), this.ramFor(model)) };
+    return { ...s, contextLength: autoContext(model, s, this.othersView(model), (i) => this.gpuSettings(i), this.ramFor(model), this.overheads.get(model.id)) };
   }
 
   /** The system RAM allowance left for a model once Lyrica's unpinned models are unloaded: what pinned and embedding models keep there stays taken. */
@@ -439,8 +439,11 @@ export class Scheduler {
       const gb = (n: number) => (n / GIB).toFixed(1);
       throw new HostError(507, "too_big", `This model needs about ${gb(need[short]!)} GB on GPU ${short} by llama.cpp's measurement, of it ${gb(m[short]!.extra)} GB for its cache and buffers; the GPU has ${gb(free(short))} GB free.`);
     }
+    // What the measurement needs beyond the estimate's weights and cache on each GPU: the planner adds its own KV
+    // estimate for whatever context it tries, so the measured cache counted here again would count it twice.
     const prev = this.overheads.get(model.id) ?? {};
-    this.overheads.set(model.id, { ...prev, ...Object.fromEntries(o.gpus.map((g) => [g, Math.max(prev[g] ?? 0, m[g]!.extra + OVERHEAD)])) });
+    const beyond = (g: number) => need[g]! - (o.need[g]! - (prev[g] ?? OVERHEAD));
+    this.overheads.set(model.id, { ...prev, ...Object.fromEntries(o.gpus.map((g) => [g, Math.max(prev[g] ?? 0, OVERHEAD, beyond(g))])) });
     return null;
   }
 

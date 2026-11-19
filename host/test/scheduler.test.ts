@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import type { Logger } from "../src/log.ts";
 import { HostError } from "../src/http.ts";
 import { Scheduler, type Priority, type QueuePhase } from "../src/scheduler.ts";
+import { sizes } from "../src/placement.ts";
 import { StateFile } from "../src/state.ts";
 import { FakeBackend, FakeGpus, GIB, textModel } from "./fakes.ts";
 
@@ -149,6 +150,24 @@ describe("the GPU queue", () => {
       expect(scheduler.served(chat).contextLength).toBe(before);
     }
   }, 15_000);
+
+  it("shrinks an automatic context to what llama.cpp measures, rather than refusing the context it picked", async () => {
+    // A 16 GB card with an embedding model staying: llama.cpp's buffers come to 2 GB more than the planner's allowance.
+    const { scheduler, gpus, llamacpp } = setup([16]);
+    await scheduler.start([]);
+    llamacpp.measurements = (m, at, s) => Object.fromEntries(at.gpus.map((g) => {
+      const { weights, kv } = sizes(m, s);
+      return [g, { bytes: weights + kv + 2 * GIB, extra: kv + 2 * GIB }];
+    }));
+    await scheduler.loadNow(textModel("embed", 1, { kind: "embedding", contextLength: 8192 }));
+    // 256 KB of f16 KV cache a token: 1 GB per 4096 tokens, so the context is what the room sets.
+    const chat = textModel("chat", 3, { contextLength: 262144, kvPerToken: 2 * 64 * 8 * 128 });
+    const picked = scheduler.served(chat).contextLength!;
+    await scheduler.loadNow(chat);
+    expect(scheduler.placement("chat")?.state).toBe("loaded");
+    expect(scheduler.served(chat).contextLength).toBeLessThan(picked);
+    expect(gpus.on("chat")).toEqual([0]);
+  });
 
   it("keeps the serving instance when reload cannot fit", async () => {
     const { scheduler, llamacpp } = setup();
