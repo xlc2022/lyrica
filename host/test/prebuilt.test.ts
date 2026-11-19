@@ -58,7 +58,7 @@ describe("the CMP's prebuilt images", () => {
     const DIGESTS = `other.example/lyrica-host-llamacpp@sha256:${"cd".repeat(32)}\n${pinned}\n`;
 
     // What was pulled and checked is pinned by its digest.
-    expect(pick("70-real", "1", { PULL: "1", LABEL: tag, DIGESTS }).out).toBe(`CMP 100-210: pulled ${pinned}.\npicked=${pinned}`);
+    expect(pick("70-real", "1", { PULL: "1", LABEL: tag, DIGESTS }).out).toBe(`CMP 100-210: pulling ${image}, which can take a while.\nCMP 100-210: pulled ${pinned}.\npicked=${pinned}`);
     expect(pick("70-real", "1", { PULL: "1", LABEL: tag, DIGESTS: "" }).out).toMatch(new RegExp(`has no digest from ${repo.replaceAll(".", "\\.")}\\.\\npicked=$`));
     expect(pick("70-real", "1", { PULL: "", LABEL: tag }).out).toMatch(/building llamacpp here .*: .* couldn't be pulled\.\npicked=$/);
     expect(pick("70-real", "1", { PULL: "1", LABEL: "0000" }).out).toMatch(/doesn't carry its own tag as its content label\.\npicked=$/);

@@ -53,7 +53,12 @@ prebuilt_pick() {
   local why repo=${PREBUILT%:*}
   if ! prebuilt_covers "$1" "$2"; then why="the published image isn't built for CUDA $2"
   elif [[ $3 != 1 ]]; then return
-  elif ! docker pull -q "$PREBUILT" >/dev/null 2>&1; then why="$PREBUILT couldn't be pulled"
+  else
+    # A pull is quiet and can take many minutes: say so first, so the install doesn't look stuck.
+    echo "$(prebuilt_for "$1"): pulling $PREBUILT, which can take a while."
+    docker pull -q "$PREBUILT" >/dev/null 2>&1 || why="$PREBUILT couldn't be pulled"
+  fi
+  if [[ -n ${why:-} ]]; then :
   elif [[ $(docker image inspect -f '{{index .Config.Labels "org.lyrica.content"}}' "$PREBUILT" 2>/dev/null) != "${PREBUILT##*:}" ]]; then why="$PREBUILT doesn't carry its own tag as its content label"
   elif ! PREBUILT=$(docker image inspect -f '{{range .RepoDigests}}{{println .}}{{end}}' "$PREBUILT" 2>/dev/null | grep -m1 "^$repo@"); then why="the pulled image has no digest from $repo"
   else echo "$(prebuilt_for "$1"): pulled $PREBUILT."; return
