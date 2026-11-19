@@ -1306,8 +1306,10 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   shows as her own message when a `notice` event brings its `video` (or the
   thread reloads), under the call's marker again, done, from the event's `call`; a failed one is a notice headed Clip with a down dot and
   "failed", then the reason.
-  The shared Lightbox has a filename header, then Download, Copy path and
-  Close as icon buttons. Image tool markers read Making an image with its tier,
+  The shared Lightbox has a filename header with the image's own pixels and
+  format beside it once the image has loaded (read from the image itself,
+  absent while unknown, as the file viewer's facts line), then Download, Copy
+  path and Close as icon buttons. Image tool markers read Making an image with its tier,
   Editing an image, Upscaling an image, Rejecting an image (or <n> images),
   Picking an image or Deleting rejected images, then the word running, done
   or failed; expanding a failed marker shows the result's reason. Her

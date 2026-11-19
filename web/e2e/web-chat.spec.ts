@@ -685,6 +685,8 @@ test("an image tool result shows inline, opens large, starts an edit with Images
   await expect(lightbox).toBeVisible();
   await expect(lightbox.locator(".fname")).toHaveText("garden.png");
   await expect(lightbox.getByRole("img")).toHaveAttribute("src", `${base}/file?path=${encodeURIComponent(path)}`);
+  // The image says its own pixels and its format once it has loaded, as the Files panel's viewer does.
+  await expect(lightbox.locator(".lb-facts")).toHaveText("1×1 PNG");
   // Download and Copy path are buttons in its header, not behind a menu; Copy path reads Copied once it copies.
   await expect(lightbox.getByRole("button", { name: "Download", exact: true })).toBeVisible();
   await expect(lightbox.getByRole("button", { name: "Image actions", exact: true })).toHaveCount(0);
