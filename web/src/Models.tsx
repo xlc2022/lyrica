@@ -50,6 +50,8 @@ type Gpu = HostStatus["gpus"][number];
 const gbTotal = (bytes: number) => String(Math.round(bytes / GB));
 /** A host model's file name, without its folders and extension. */
 const shortId = (id: string) => (id.split("/").pop() ?? id).replace(/\.(gguf|safetensors)$/i, "");
+/** A loaded model as the host cards name it: an image recipe by its name, a file by its short ID. */
+const loadedName = (m: { id: string; name?: string }) => m.name ?? shortId(m.id);
 /** A label (`[shared.]<endpoint>/<model>`) as "<model> · <endpoint>". */
 function modelAndEndpoint(label: string, endpointName?: string, short = false): string {
   const m = /^(?:shared\.)?([^/]+)\/(.+)$/s.exec(label);
@@ -414,7 +416,7 @@ function DashboardButton({ ctx, ep }: { ctx: MCtx; ep: Endpoint }) {
 /** A host in the Overview: its state, what's loaded, the VRAM it uses, Pause or Resume and Dashboard. */
 function HostRow({ ctx, ep, host }: { ctx: MCtx; ep: Endpoint; host?: Host }) {
   const gpus = host && "status" in host ? host.status.gpus : [];
-  const loaded = gpus.flatMap((g) => g.models.map((m) => shortId(m.id)));
+  const loaded = gpus.flatMap((g) => g.models.map(loadedName));
   const total = gpus.reduce((n, g) => n + g.vram.total, 0), used = gpus.reduce((n, g) => n + g.vram.used, 0);
   const s = stateOf(ep, host);
   return (
@@ -1414,7 +1416,7 @@ export function RamBlock({ status, onEdit }: { status: HostStatus; onEdit?: () =
         {r.models.map((m) => <span key={m.id} className="seg-ram" style={{ width: `${Math.min(100, (m.ram / r.allowance) * 100)}%` }} />)}
       </div>
       <span className="meta">
-        {r.models.length ? r.models.map((m, i) => <Fragment key={m.id}>{i > 0 && " · "}{shortId(m.id)} <span className="cap">(<span className="num">{gb(m.ram)}</span> GB)</span></Fragment>) : "nothing spilled"}
+        {r.models.length ? r.models.map((m, i) => <Fragment key={m.id}>{i > 0 && " · "}{loadedName(m)} <span className="cap">(<span className="num">{gb(m.ram)}</span> GB)</span></Fragment>) : "nothing spilled"}
       </span>
       <span className="gpu-foot cap">llama.cpp{onEdit && <> · <button type="button" className="link sm" onClick={onEdit}>Edit</button></>}</span>
     </div>
@@ -1429,7 +1431,7 @@ export function GpuBlock({ g }: { g: Gpu }) {
       <Bar gpus={[g]} />
       <span className="meta">
         {g.models.length ? g.models.map((m, i) => (
-          <Fragment key={m.id}>{i > 0 && " · "}{shortId(m.id)} <span className="cap">({m.pinned ? "pinned" : m.state === "loading" ? <>loading{m.loading?.of ? <>, <span className="num">{Math.min(100, Math.floor((100 * m.loading.read) / m.loading.of))}%</span></> : null}</> : g.role === "vllm" ? "vLLM" : "loaded"})</span></Fragment>
+          <Fragment key={m.id}>{i > 0 && " · "}{loadedName(m)} <span className="cap">({m.pinned ? "pinned" : m.state === "loading" ? <>loading{m.loading?.of ? <>, <span className="num">{Math.min(100, Math.floor((100 * m.loading.read) / m.loading.of))}%</span></> : null}</> : g.role === "vllm" ? "vLLM" : "loaded"})</span></Fragment>
         )) : "nothing loaded"}
       </span>
       {queued.length > 0 && <span className="cap">Waiting: {queued.map((k, i) => <Fragment key={k}>{i > 0 && " · "}<span className="num">{g.queue[k]}</span> {k}</Fragment>)}</span>}

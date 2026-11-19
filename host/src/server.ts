@@ -267,6 +267,11 @@ export class Host {
       const s = statfsSync(this.opts.modelsDir);
       free = s.bavail * s.bsize;
     } catch {}
+    // An image model's id is its recipe's (`recipe:<id>`): add the recipe's name, which can change, for the UIs to show.
+    const named = <M extends { id: string }>(m: M): M & { name?: string } => {
+      const name = this.images?.recipeName(m.id);
+      return name ? { ...m, name } : m;
+    };
     return {
       name: this.opts.name,
       version: this.opts.version,
@@ -280,8 +285,8 @@ export class Host {
       cpuServers: this.runtime?.scheduler.cpuServers ?? [],
       dictation: this.runtime?.scheduler.dictation ?? "vllm",
       engines: this.runtime?.scheduler.engines ?? [],
-      gpus: (await this.runtime?.scheduler.status()) ?? [],
-      ...(this.runtime ? { systemRam: this.runtime.scheduler.ramStatus() } : {}),
+      gpus: ((await this.runtime?.scheduler.status()) ?? []).map((g) => ({ ...g, models: g.models.map(named) })),
+      ...(this.runtime ? { systemRam: ((r) => ({ ...r, models: r.models.map(named) }))(this.runtime.scheduler.ramStatus()) } : {}),
       problems: [...(this.runtime?.scheduler.problems ?? []), ...(this.images?.problems ?? [])],
       downloads: { active: this.downloads?.active ?? 0 },
       modelsFolder: { path: this.opts.modelsHostPath, free },

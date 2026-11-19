@@ -181,6 +181,12 @@ export class Images {
     });
   }
 
+  /** A loaded image model's recipe name, from its scheduler id (`recipe:<id>` or `recipe:<id>@gpu<n>`); null for any other model. */
+  recipeName(modelId: string): string | null {
+    const id = /^recipe:([^@]+)/.exec(modelId)?.[1];
+    return id ? (this.book.all().find((r) => r.id === id)?.name ?? null) : null;
+  }
+
   /** Reads the parts again and proposes recipes for new main parts. */
   scan(): { parts: number; proposals: number } {
     this.parts = scanParts(this.modelsDir);

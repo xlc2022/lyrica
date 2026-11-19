@@ -274,6 +274,8 @@ const sectionHead = (title, sub, ...actions) => h("div", { class: "section-head"
 /** A model as a line shows it, as Lyrica does: its file's name without the extension, the whole ID as the tooltip. */
 const short = (id) => id.split("/").pop().replace(/\.(gguf|safetensors|bin)$/i, "") || id;
 const shortName = (id) => h("span", { title: short(id) === id ? undefined : id }, short(id));
+/** A loaded model from the status: an image recipe by its name (its ID in the tooltip), a file by its short ID. */
+const loadedName = (m) => (m.name ? h("span", { title: m.id }, m.name) : shortName(m.id));
 const plural = (count, one, many) => [num(count), ` ${count === 1 ? one : many}`];
 /** A toggle that stays pressed: a chip, or a button of a segmented control. Its id lets a redraw keep the focus on it. */
 const toggle = (id, label, pressed, on, cls) => h("button", { type: "button", id, class: cls, "aria-pressed": String(pressed), onclick: () => { on(); render(); } }, label);
@@ -325,9 +327,9 @@ function overview() {
         h("span", {}, allowed.length ? allowed.join(", ") : "no servers"),
         h("span", {}, "keeps ", num(size(g.settings.keepFree)), " free")),
       h("div", { class: "bar", role: "img", "aria-label": `${size(g.vram.used)} of ${size(g.vram.total)} used` },
-        g.models.map((m) => h("span", { class: m.pinned ? "seg-pinned" : "seg-loaded", style: `width:${Math.min(100, (100 * m.vram) / g.vram.total)}%`, title: `${short(m.id)}: ${size(m.vram)}` }))),
+        g.models.map((m) => h("span", { class: m.pinned ? "seg-pinned" : "seg-loaded", style: `width:${Math.min(100, (100 * m.vram) / g.vram.total)}%`, title: `${m.name ?? short(m.id)}: ${size(m.vram)}` }))),
       g.models.length ? h("ul", { class: "model-list" }, g.models.map((m) =>
-        h("li", {}, shortName(m.id),
+        h("li", {}, loadedName(m),
           h("span", { class: "muted" }, `(${[m.pinned ? "pinned" : m.state === "loading" ? loadingWord(m.id) : "loaded", m.busy ? "busy" : null, m.gpus.length > 1 ? `split over GPUs ${m.gpus.join(" and ")}` : null].filter(Boolean).join(" · ")})`),
           h("span", { class: "num muted" }, size(m.vram)),
           m.pinned ? null : button(m.state === "loading" ? "Cancel" : "Unload", () => post("/host/v1/models/unload", { model: m.id }))))) : null,
@@ -358,8 +360,8 @@ function systemRam() {
       h("button", { type: "button", class: "sm", onclick: () => editRam(r) }, "Edit")),
     facts(r.allowance ? h("span", {}, num(size(r.used)), " of ", num(size(r.allowance)), " used") : null, h("span", {}, "llama.cpp")),
     r.allowance ? h("div", { class: "bar", role: "img", "aria-label": `${size(r.used)} of ${size(r.allowance)} used` },
-      r.models.map((m) => h("span", { class: "seg-ram", style: `width:${Math.min(100, (100 * m.ram) / r.allowance)}%`, title: `${short(m.id)}: ${size(m.ram)}` }))) : null,
-    r.models.length ? h("ul", { class: "model-list" }, r.models.map((m) => h("li", {}, shortName(m.id), h("span", { class: "num muted" }, size(m.ram))))) : null)];
+      r.models.map((m) => h("span", { class: "seg-ram", style: `width:${Math.min(100, (100 * m.ram) / r.allowance)}%`, title: `${m.name ?? short(m.id)}: ${size(m.ram)}` }))) : null,
+    r.models.length ? h("ul", { class: "model-list" }, r.models.map((m) => h("li", {}, loadedName(m), h("span", { class: "num muted" }, size(m.ram))))) : null)];
 }
 
 function editRam(r) {

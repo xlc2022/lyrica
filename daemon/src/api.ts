@@ -365,7 +365,8 @@ export interface HostStatus {
     vram: { total: number; used: number };
     /** `ram`: bytes it keeps in the host's system RAM, when it didn't fit its GPUs. */
     /** `loading`, while the state is `loading`: bytes read from the models disk so far, of the bytes the load reads. */
-    models: { id: string; kind: string; state: string; loading?: { read: number; of: number }; pinned: boolean; busy: boolean; vram: number | null; ram?: number; lastUsed: string | null }[];
+    /** `name`: an image model's recipe name; absent for other models and from a host from before it. */
+    models: { id: string; name?: string; kind: string; state: string; loading?: { read: number; of: number }; pinned: boolean; busy: boolean; vram: number | null; ram?: number; lastUsed: string | null }[];
     queue: { chat: number; image: number; background: number };
   }[];
   /**
@@ -374,7 +375,7 @@ export interface HostStatus {
    * `total`; absent from a host from before it. Set with PUT /host/v1/memory
    * through …/manage.
    */
-  systemRam?: { total: number; most: number; allowance: number; used: number; models: { id: string; ram: number }[] };
+  systemRam?: { total: number; most: number; allowance: number; used: number; models: { id: string; name?: string; ram: number }[] };
   downloads: { active: number };
   modelsFolder: { path: string; free: number };
 }
