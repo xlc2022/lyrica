@@ -17,7 +17,7 @@ stream, expert routing) are several GiB per card at a 32k context, which no
 flat allowance covers. Raising **Keep free** gets one load through but is a
 bandaid: the operator would tune it per model.
 
-llama.cpp's router (b11960, the build the host runs) can measure this
+llama.cpp's router (b11960 and later, as the host runs) can measure this
 itself. With `--models-memory-margin` on, it spawns a short child per model
 that reads the GGUF and the preset and reports, per device, the bytes of
 weights, cache and compute buffers at the preset's context, without

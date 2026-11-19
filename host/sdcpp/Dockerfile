@@ -8,7 +8,7 @@ ARG DEVEL=nvidia/cuda:12.8.1-devel-ubuntu24.04@sha256:520292dbb4f755fd360766059e
 ARG RUNTIME=nvidia/cuda:12.8.1-runtime-ubuntu24.04@sha256:ebef3c171eeef0298e4eb2e4be843105edf3b8b0ac45e0b43acee358e8046867
 
 FROM ${DEVEL} AS build
-ARG COMMIT=77b72a2efed78f55de26892c7e909cee001e8b83
+ARG COMMIT=532d2c15c430a785a712b2d94281f04e733008a4
 # The host's GPUs' compute capabilities, as install.sh found them (e.g. 70-real).
 ARG CUDA_ARCHS
 RUN apt-get update && apt-get install -y --no-install-recommends build-essential cmake git ca-certificates && rm -rf /var/lib/apt/lists/*
@@ -16,10 +16,10 @@ WORKDIR /src
 RUN git init -q && git remote add origin https://github.com/leejet/stable-diffusion.cpp && \
     git fetch -q --depth 1 origin "$COMMIT" && git checkout -q FETCH_HEAD && \
     git submodule update -q --init --depth 1 ggml
-# Its ggml's CUTLASS kernels are a submodule we don't fetch; the builds before it had none.
+# Its CUTLASS kernels are a submodule we don't fetch; the builds before them had none.
 RUN test -n "$CUDA_ARCHS" && \
     cmake -B build -DSD_CUDA=ON -DGGML_CUDA_FORCE_MMQ=ON -DCMAKE_CUDA_ARCHITECTURES="$CUDA_ARCHS" -DGGML_NATIVE=OFF \
-      -DGGML_CUDA_CUTLASS_PATH= -DSD_SERVER_BUILD_FRONTEND=OFF -DSD_WEBP=OFF -DSD_WEBM=OFF && \
+      -DSD_CUDA_CUTLASS_PATH= -DSD_SERVER_BUILD_FRONTEND=OFF -DSD_WEBP=OFF -DSD_WEBM=OFF && \
     cmake --build build --config Release --target sd-server -j"$(nproc)"
 COPY tensor-probe.c /tmp/
 RUN gcc -O2 -Wall -o /src/build/bin/tensor-probe /tmp/tensor-probe.c -ldl
