@@ -1729,9 +1729,11 @@ export interface RepositoryChangesInfo extends RepositoryChanges { pull?: OpenPu
  * worktrees, and writable granted folders that are the top of a git
  * repository), its branch, base, commits since the base (newest first, at
  * most 100), whether anything is uncommitted, and every file changed since
- * the base with its line counts. Read with git where the thread's tools run;
- * nothing is stored. 409 while the thread's folders can't be reached (a
- * locked home, an SSH target).
+ * the base with its line counts. A clone's open pull request whose head
+ * branch exists in it while the checkout sits on another branch is read as
+ * that branch's changes (the pull request's, against its base). Read with
+ * git where the thread's tools run; nothing is stored. 409 while the
+ * thread's folders can't be reached (a locked home, an SSH target).
  * GET …/changes/commit?repo=<path>&hash=<commit> → CommitChanges, one
  * commit's files. GET …/changes/file?repo=<path>&path=<file>[&old=<path>]
  * &commit=all|<hash> → FileSides, both sides as text (a side over 512 KB,

@@ -1086,7 +1086,12 @@ badge reloads, and its project chat a `child` event for its card.
   with its line counts, untracked files counted as added (at most 200), and
   a clone's open pull request as the forge watcher last saw it
   (`ForgeWatcher.openPull`: number, head, the forge page's URL, each check
-  and its result). 409 while the thread's folders can't be reached.
+  and its result). When the checkout has an open pull request whose head
+  branch exists in it and the checkout isn't on that branch (a clone on
+  `main` while the work is in a worktree), the head branch is what is read:
+  its commits and files against its base, with nothing uncommitted — the
+  pull request's changes, not the clone's empty state. 409 while the
+  thread's folders can't be reached.
 - `GET …/changes/commit?repo=&hash=` → `CommitChanges`, one commit's files
   (`hash` `working` for the uncommitted ones). `GET
   …/changes/file?repo=&path=&old=&commit=` → `FileSides`, both sides as

@@ -64,6 +64,45 @@ describe("the changes a thread made", () => {
     await expect(commitFiles(local, dir, "HEAD; rm -rf /")).rejects.toThrow("not a commit");
   });
 
+  it("reads a pull request's head branch when the checkout sits behind on its base", async () => {
+    // A clone on `main` while the pull request's work is on its head branch, in a worktree of the same clone:
+    // the checked-out branch reads as nothing against the base, the head branch holds the changes.
+    const sub = join(dir, "pull");
+    execFileSync("git", ["init", "-q", "-b", "main", sub]);
+    const inSub = (...args: string[]) => execFileSync("git", ["-C", sub, "-c", "user.name=Ada", "-c", "user.email=ada@example.test", ...args]).toString();
+    writeFileSync(join(sub, "a.txt"), "one\n");
+    inSub("add", "-A"); inSub("commit", "-q", "-m", "Start");
+    inSub("branch", "feature/sort");
+    writeFileSync(join(sub, "a.txt"), "one\ntwo\n"); inSub("add", "-A"); inSub("commit", "-q", "-m", "Merged since");
+    execFileSync("git", ["-C", sub, "update-ref", "refs/remotes/origin/main", "HEAD"]);
+    inSub("checkout", "-q", "feature/sort");
+    writeFileSync(join(sub, "a.txt"), "one\ntwo changed\n");
+    writeFileSync(join(sub, "sort.ts"), "export const byName = (a: string, b: string) => a.localeCompare(b);\n");
+    inSub("add", "-A"); inSub("commit", "-q", "-m", "The table sorts by its heads");
+    inSub("checkout", "-q", "main");
+
+    const empty = await repositoryChanges(local, { name: "garden/controller", path: sub });
+    expect(empty.branch).toBe("main");
+    expect(empty.files).toEqual([]);
+    expect(empty.commits).toEqual([]);
+
+    const pull = await repositoryChanges(local, { name: "garden/controller", path: sub }, "feature/sort");
+    expect(pull.branch).toBe("feature/sort");
+    expect(pull.base).toBe("origin/main");
+    expect(pull.commits.map((c) => c.subject)).toEqual(["The table sorts by its heads"]);
+    expect(pull.uncommitted).toBe(false);
+    expect(pull.files.map((f) => [f.path, f.kind, f.added, f.removed])).toEqual([["a.txt", "modified", 1, 0], ["sort.ts", "added", 1, 0]]);
+
+    expect(await fileSides(local, sub, "a.txt", undefined, "all", "feature/sort")).toEqual({ before: "one\n", after: "one\ntwo changed\n" });
+    // A head branch the checkout is on, or one that isn't there, reads as before.
+    const onHead = await repositoryChanges(local, { name: "garden/controller", path: sub }, "main");
+    expect(onHead.branch).toBe("main");
+    expect(onHead.files).toEqual([]);
+    const absent = await repositoryChanges(local, { name: "garden/controller", path: sub }, "feature/elsewhere");
+    expect(absent.branch).toBe("main");
+    expect(absent.files).toEqual([]);
+  });
+
   it("parses numstat with renames and binaries, and the log format", () => {
     expect(parseNumstat(["3\t1\ta.txt", "-\t-\tpic.png", "0\t0\t", "old/c.txt", "new/c.txt", ""].join("\0"))).toEqual([
       { path: "a.txt", kind: "modified", added: 3, removed: 1 },

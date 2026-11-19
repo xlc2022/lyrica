@@ -20,7 +20,7 @@ export interface ChangedFile {
 
 export interface ChangeCommit { hash: string; subject: string; author: string; at: string }
 
-/** One checkout's changes: its commits since the base, and every file changed since it, uncommitted work included. */
+/** One checkout's changes: its commits since the base, and every file changed since it, uncommitted work included. When a pull request's head branch is read in place of the checkout (`head`), its numbers are the head branch's. */
 export interface RepositoryChanges {
   /** The repository's name ("owner/name" for a clone, the folder's name for a granted checkout). */
   name: string;
@@ -99,6 +99,14 @@ async function baseOf(run: Run): Promise<string | undefined> {
   return undefined;
 }
 
+/** The pull request's head branch to read in place of the checkout, when the checkout isn't on it and the branch exists. */
+async function headBranchOf(run: Run, head?: string): Promise<string | undefined> {
+  if (!head) return undefined;
+  const on = await run(["branch", "--show-current"]);
+  if (on.code !== 0 || on.out.trim() === head) return undefined;
+  return (await run(["rev-parse", "--verify", "--quiet", `refs/heads/${head}`])).code === 0 ? head : undefined;
+}
+
 /** `added` and `deleted` where a side is missing: numstat alone can't tell a new file from a changed one. */
 async function withKinds(run: Run, from: string, files: ChangedFile[]): Promise<ChangedFile[]> {
   if (!files.length) return files;
@@ -121,23 +129,28 @@ async function untracked(run: Run, repo: string): Promise<ChangedFile[]> {
   return out;
 }
 
-/** Everything the branch holds against its base, uncommitted work included. */
-export async function repositoryChanges(target: ExecutionTarget, repo: { name: string; path: string }): Promise<RepositoryChanges> {
+/** Everything a branch holds against its base, uncommitted work included; `head` reads a pull request's head branch in place of the checkout's. */
+export async function repositoryChanges(target: ExecutionTarget, repo: { name: string; path: string }, head?: string): Promise<RepositoryChanges> {
   const run = runner(target, repo.path);
   const branch = await run(["branch", "--show-current"]);
   if (branch.code !== 0) throw new ChangesUnavailable(`${repo.name} can't be read now`);
+  // A clone checked out on its base's branch (say `main`) while the pull request's work sits on the head branch, in
+  // a worktree, reads as nothing: its merge base with the base is itself. There the head branch is what is read, so
+  // the badge and the view show the pull request's changes, not the clone's empty state.
+  const named = await headBranchOf(run, head);
   const base = await baseOf(run);
-  const mergeBase = base ? await run(["merge-base", base, "HEAD"]) : undefined;
+  const mergeBase = base ? await run(["merge-base", base, named ?? "HEAD"]) : undefined;
   const from = mergeBase?.code === 0 && mergeBase.out.trim() ? mergeBase.out.trim() : "HEAD";
-  const log = from === "HEAD" ? { code: 0, out: "" } : await run(["log", `-${COMMITS}`, LOG_FORMAT, `${from}..HEAD`, "--"]);
-  const status = await run(["status", "--porcelain", "-z", "--untracked-files=normal"]);
-  const numstat = await run(["diff", "--numstat", "-M", "-z", from, "--"]);
-  const deleted = await run(["diff", "--name-only", "--diff-filter=D", "-z", from, "--"]);
+  const read = named ?? "HEAD";
+  const log = from === read ? { code: 0, out: "" } : await run(["log", `-${COMMITS}`, LOG_FORMAT, `${from}..${read}`, "--"]);
+  const status = named ? { code: 0, out: "" } : await run(["status", "--porcelain", "-z", "--untracked-files=normal"]);
+  const numstat = await run(["diff", "--numstat", "-M", "-z", from, ...(named ? [named] : []), "--"]);
+  const deleted = await run(["diff", "--name-only", "--diff-filter=D", "-z", from, ...(named ? [named] : []), "--"]);
   const gone = new Set(deleted.code === 0 ? deleted.out.split("\0") : []);
   const tracked = (await withKinds(run, from, parseNumstat(numstat.out))).map((f) => (gone.has(f.path) ? { ...f, kind: "deleted" as const } : f));
-  const files = [...tracked, ...(await untracked(run, repo.path))].sort((a, b) => a.path.localeCompare(b.path));
+  const files = [...tracked, ...(named ? [] : await untracked(run, repo.path))].sort((a, b) => a.path.localeCompare(b.path));
   return {
-    name: repo.name, path: repo.path, branch: branch.out.trim(), ...(base ? { base } : {}),
+    name: repo.name, path: repo.path, branch: named ?? branch.out.trim(), ...(base ? { base } : {}),
     commits: parseLog(log.code === 0 ? log.out : ""), uncommitted: status.code === 0 && status.out.length > 0, files,
   };
 }
@@ -172,11 +185,11 @@ export async function commitFiles(target: ExecutionTarget, repo: string, hash: s
 const isBinary = (b: Buffer) => b.subarray(0, 8000).includes(0);
 
 /**
- * A file's two sides: against the base (`commit` "all": the base's version and the working tree's), uncommitted
- * (WORKING: the last commit's and the working tree's) or in one commit (its parent's version and its own). A side
- * that doesn't exist is left out.
+ * A file's two sides: against the base (`commit` "all": the base's version and the working tree's — or a pull
+ * request's head branch's, when `head` names one the checkout isn't on), uncommitted (WORKING: the last commit's
+ * and the working tree's) or in one commit (its parent's version and its own). A side that doesn't exist is left out.
  */
-export async function fileSides(target: ExecutionTarget, repo: string, path: string, oldPath: string | undefined, commit: string): Promise<FileSides> {
+export async function fileSides(target: ExecutionTarget, repo: string, path: string, oldPath: string | undefined, commit: string, head?: string): Promise<FileSides> {
   if (!target.run) throw new ChangesUnavailable("this thread's tools run where git can't be read");
   for (const p of [path, oldPath ?? path]) if (p.startsWith("/") || p.split("/").includes("..")) throw new ChangesUnavailable("not a path in the repository");
   const run = runner(target, repo);
@@ -187,12 +200,21 @@ export async function fileSides(target: ExecutionTarget, repo: string, path: str
   const show = (ref: string, p: string) => sideOf(["git", "-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", "-C", repo, "show", `${ref}:${p}`]);
   let before: Buffer | undefined, after: Buffer | undefined;
   if (commit === "all" || commit === WORKING) {
-    const base = commit === "all" ? await baseOf(run) : undefined;
-    const mb = base ? await run(["merge-base", base, "HEAD"]) : undefined;
-    const from = mb?.code === 0 && mb.out.trim() ? mb.out.trim() : "HEAD";
-    before = await show(from, oldPath ?? path);
-    // A symlink reads as its target's path, as git keeps it, never as what it points at.
-    after = await sideOf(["sh", "-c", 'if [ -L "$1" ]; then readlink -- "$1"; else cat -- "$1"; fi', "sh", posix.join(repo, path)]);
+    const named = await headBranchOf(run, head);
+    if (named) {
+      // The head branch stands in for the working tree, which belongs to the branch the checkout is on.
+      const base = await baseOf(run);
+      const mb = base ? await run(["merge-base", base, named]) : undefined;
+      before = await show(mb?.code === 0 && mb.out.trim() ? mb.out.trim() : "HEAD", oldPath ?? path);
+      after = await show(named, path);
+    } else {
+      const base = commit === "all" ? await baseOf(run) : undefined;
+      const mb = base ? await run(["merge-base", base, "HEAD"]) : undefined;
+      const from = mb?.code === 0 && mb.out.trim() ? mb.out.trim() : "HEAD";
+      before = await show(from, oldPath ?? path);
+      // A symlink reads as its target's path, as git keeps it, never as what it points at.
+      after = await sideOf(["sh", "-c", 'if [ -L "$1" ]; then readlink -- "$1"; else cat -- "$1"; fi', "sh", posix.join(repo, path)]);
+    }
   } else {
     if (!/^[0-9a-f]{7,40}$/.test(commit)) throw new ChangesUnavailable("not a commit");
     before = await show(`${commit}^`, oldPath ?? path);
