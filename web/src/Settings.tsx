@@ -154,7 +154,7 @@ export function SettingsDrawer({ ctx, base, summary, settings, machines, onSetti
   const sub = summary.subagent;
   const pool = summary.pool;
   const change = (c: ThreadSettingsChange) => run(async () => onSettings(await patch<ThreadSettings>(`${base}/settings`, c)));
-  const changeThread = (c: { title?: string; hidden?: boolean }) => run(async () => onSummary(await patch<ThreadSummary>(base, c)));
+  const changeThread = (hidden: boolean) => run(async () => onSummary(await patch<ThreadSummary>(base, { hidden })));
   const paths = useLoad(() => get<AllowedPaths>(u(userId, "paths")), [userId]);
   const presets = useLoad(() => get<Presets>(u(userId, "presets")), [userId]);
   // A private or local-only thread may choose only a private preset, so a general choice it can no longer use shows as its column.
@@ -162,7 +162,6 @@ export function SettingsDrawer({ ctx, base, summary, settings, machines, onSetti
   // The model's own name for a level (GLM-5.3's High and Max, a switch's On), else the level.
   const modelLevel = (l: ThinkingLevel) => levelName(settings.thinkingNames?.[l] ?? l);
   const chosenPreset = settings.preset && usablePresets.some((p) => p.id === settings.preset) ? settings.preset : "";
-  const [title, setTitle] = useState(summary.title ?? "");
   const ref = useRef<HTMLElement>(null);
   // Read aloud's model's voice drawer (Models' own), over this one; Escape closes it first, and focus goes back to its link.
   const speaking = speaker(settings.models["speech.speak"], settings.allowed);
@@ -295,12 +294,8 @@ export function SettingsDrawer({ ctx, base, summary, settings, machines, onSetti
 
         <fieldset className="group" disabled={busy}>
           <legend>Thread</legend>
-          <form className="inline" onSubmit={(e) => { e.preventDefault(); changeThread({ title }); }}>
-            <label className="field grow"><span>Title</span><input value={title} onChange={(e) => setTitle(e.target.value)} /></label>
-            <button type="submit" disabled={!title.trim() || title === summary.title}>Rename</button>
-          </form>
           <div className="row">
-            <button type="button" onClick={() => changeThread({ hidden: !summary.hidden })}>{summary.hidden ? "Unhide" : "Hide"}</button>
+            <button type="button" onClick={() => changeThread(!summary.hidden)}>{summary.hidden ? "Unhide Thread" : "Hide Thread"}</button>
           </div>
         </fieldset>
       </div>

@@ -23,6 +23,26 @@ test("unlock, log in, start a thread, and see a streamed reply that survives a r
   await noHorizontalScroll(page);
 });
 
+test("thread settings keeps Hide but renaming stays with the title and actions", async ({ page, baseURL }) => {
+  await enter(page, baseURL!);
+  await newThread(page, "General");
+  await page.getByRole("button", { name: "Thread settings" }).click();
+  const drawer = page.getByRole("complementary", { name: "Thread settings" });
+  await expect(drawer.getByRole("button", { name: "Hide Thread", exact: true })).toBeVisible();
+  await expect(drawer.getByRole("textbox", { name: "Title" })).toHaveCount(0);
+  await expect(drawer.getByRole("button", { name: "Rename" })).toHaveCount(0);
+  if (process.env.SCREENSHOTS) {
+    await drawer.getByRole("button", { name: "Hide Thread", exact: true }).scrollIntoViewIfNeeded();
+    await page.screenshot({ path: `${process.env.SCREENSHOTS}/thread-settings-${phone(page) ? 390 : 1280}.png` });
+  }
+  await drawer.getByRole("button", { name: "Close" }).click();
+  await page.getByRole("button", { name: "Thread actions" }).click();
+  await page.getByRole("menuitem", { name: "Rename…" }).click();
+  await page.getByRole("textbox", { name: "Title" }).fill("A clearer title");
+  await page.getByRole("button", { name: "Rename" }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("A clearer title");
+});
+
 test("the request's counts take the dots' place while the prompt is read and she thinks, and leave with her words", async ({ page, baseURL }) => {
   await enter(page, baseURL!);
   await newThread(page, "General");
