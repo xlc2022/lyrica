@@ -1391,6 +1391,7 @@ dialog.viewer > .error { position: absolute; bottom: 8px; left: 16px; }
 /* Centred wherever it is opened from (a message's prose zeroes its children's margins), and never taller than the viewport. */
 dialog.lightbox { width: min(960px, calc(100vw - 32px)); max-height: calc(100vh - 32px); margin: auto; }
 dialog.lightbox .fhead { padding: 10px 14px; }
+.lightbox .lb-facts { font-size: 13px; white-space: nowrap; }
 dialog.lightbox .lb-img { padding: 0 14px 14px; }
 dialog.lightbox img { display: block; max-width: 100%; max-height: calc(100vh - 32px - 66px); margin: 0 auto; border-radius: 8px; }
 .ctx-menu .empty { padding: 4px 10px; font-size: 13px; }

@@ -7,7 +7,7 @@ import { get, type Pool, type ThreadSettings, type ThreadSummary } from "./api.t
 import { Icon } from "./icons.tsx";
 import { CopyIconButton } from "./CopyButton.tsx";
 import { href } from "./route.ts";
-import { clipLength } from "./paths.tsx";
+import { clipLength, formatOf } from "./paths.tsx";
 import { PanelFrame, useWide, type ShellContext } from "./Shell.tsx";
 import { Thread, findThread } from "./Thread.tsx";
 import { ErrorText, fullTime, Prose, shortTime, useLoad } from "./ui.tsx";
@@ -39,9 +39,6 @@ const STEPS = new Set<ViewKind | undefined>(["image", "svg"]);
 const KIND_WORD: Record<ViewKind, string> = { html: "HTML", svg: "SVG", markdown: "Markdown", pdf: "PDF", image: "Image", audio: "Audio", video: "Video", text: "Text", other: "File" };
 
 /** A picture's or clip's format, as its name's extension says it; a name without a known one says nothing. */
-const FORMAT: Record<string, string> = { png: "PNG", jpg: "JPEG", jpeg: "JPEG", gif: "GIF", webp: "WebP", avif: "AVIF", bmp: "BMP", svg: "SVG", mp4: "MP4", webm: "WebM" };
-const formatOf = (name: string) => { const ext = name.includes(".") ? name.slice(name.lastIndexOf(".") + 1).toLowerCase() : ""; return FORMAT[ext]; };
-
 /** What a picture or clip says of itself once it has loaded: its own pixels, and a clip's length in seconds. */
 type MediaFacts = { width: number; height: number; seconds?: number };
 /** Kinds with a Preview and a Source. */

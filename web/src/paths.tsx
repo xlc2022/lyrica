@@ -177,6 +177,10 @@ export function clipLength(seconds: number): string {
   return s < 3600 ? `${Math.floor(s / 60)}:${two(s % 60)}` : `${Math.floor(s / 3600)}:${two(Math.floor(s / 60) % 60)}:${two(s % 60)}`;
 }
 
+/** A file extension's format word, as the file viewer's facts line says it. */
+const FORMAT: Record<string, string> = { png: "PNG", jpg: "JPEG", jpeg: "JPEG", gif: "GIF", webp: "WebP", avif: "AVIF", bmp: "BMP", svg: "SVG", mp4: "MP4", webm: "WebM" };
+export const formatOf = (name: string) => { const ext = name.includes(".") ? name.slice(name.lastIndexOf(".") + 1).toLowerCase() : ""; return FORMAT[ext]; };
+
 /** A clip's tile: its poster with the play mark, and its length when known (`seconds`). */
 export function VideoThumb({ path, files, seconds }: { path: string; files: FileLinks; seconds?: number }) {
   const [poster, setPoster] = useState(true);
@@ -196,17 +200,20 @@ export const basename = (p: string) => p.slice(p.lastIndexOf("/") + 1);
 export function Lightbox({ path, url, onClose, bare }: { path: string; url: string; onClose: () => void; bare?: boolean }) {
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => { const el = ref.current; if (el && !el.open) el.showModal(); return () => el?.close(); }, []);
+  const [dims, setDims] = useState<string>();
   const name = basename(path);
   return (
     <dialog ref={ref} className="lightbox" aria-label={name} onCancel={(e) => { e.preventDefault(); onClose(); }}
       onClick={(e) => { if (e.target === ref.current) onClose(); }}>
       <div className="fhead">
         <span className="fname mono">{bare ? name : shown(path)}</span>
+        {/* Its own pixels and its format, read from the image once it has loaded; nothing while unknown (no 0×0). */}
+        {dims && <span className="lb-facts muted num">{dims}{formatOf(name) && <> {formatOf(name)}</>}</span>}
         <button type="button" className="icon sm" aria-label="Download" title="Download" onClick={() => { const a = document.createElement("a"); a.href = url; a.download = name; a.click(); }}><Icon name="download" /></button>
         <CopyIconButton text={path} label="Copy path" className="icon sm" />
         <button type="button" className="icon sm" aria-label="Close" title="Close" onClick={onClose}><Icon name="close" /></button>
       </div>
-      <div className="lb-img"><img src={url} alt={name} /></div>
+      <div className="lb-img"><img src={url} alt={name} onLoad={(e) => { const { naturalWidth: w, naturalHeight: h } = e.currentTarget; setDims(w > 0 && h > 0 ? `${w}×${h}` : undefined); }} /></div>
     </dialog>
   );
 }
