@@ -293,7 +293,11 @@ seconds of audio.
     model that can't fit its GPUs at any context: then the largest that
     its GPUs and what is left of the RAM allowance hold. A model keeps the context it loaded with
     while it stays loaded; Reload sizes it with the old instance counted as
-    gone, and measures and loads it once that memory is back.
+    gone, and measures and loads it once that memory is back. While a
+    model served by SGLang is loaded with a KV cache that holds fewer
+    tokens than that context (SGLang sizes it from what is free as it
+    starts), `contextLength` is the longest prompt it takes, from its
+    server info's `max_req_input_len`, so Lyrica trims to what it accepts.
     `maxContextLength` is the trained length alone, `null` when the host
     couldn't read it. `kvBytes` is the KV cache at the served context, by
     the host's estimate (`null` for voices, and where it can't tell), and
@@ -495,7 +499,8 @@ embeddings and dictation receive neither parser.
   projector and the MTP file while they are used.
 - vLLM only: `memoryShare` (0.05 to 0.95 of each of its GPUs; by default
   what the model needs, in steps of 5%, so several vLLM models can share a
-  GPU), `maxSeqs` (requests served at once, 1 to 1024; see below), `dtype`
+  GPU; for a model served by SGLang, a share of what each GPU has free as it
+  starts, 0.99 by default), `maxSeqs` (requests served at once, 1 to 1024; see below), `dtype`
   (`auto`, `bfloat16`, `float16`).
   The weights and the KV cache for the context must fit in the share of
   each GPU (`too_big` otherwise, saying to lower the context length or

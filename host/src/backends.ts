@@ -24,9 +24,11 @@ export interface Backend {
    * time; without it, the load has a fixed time. A server that can stop
    * mid-load stops when `signal` aborts (Unload while loading), leaving
    * nothing loaded, and rejects; one that can't finishes and the scheduler
-   * unloads it.
+   * unloads it. A server whose cache turned out to hold fewer tokens than
+   * the context it was given resolves with `holds`, the longest prompt it
+   * takes, which the host then reports as the model's context.
    */
-  load(model: TextModel, placement: Option, settings: ModelSettings, progress?: LoadProgress, signal?: AbortSignal): Promise<void>;
+  load(model: TextModel, placement: Option, settings: ModelSettings, progress?: LoadProgress, signal?: AbortSignal): Promise<void | { holds?: number }>;
   /**
    * The server's own measurement of what the model would take on each of the
    * placement's GPUs, before loading it; null when the server has none.
@@ -34,7 +36,13 @@ export interface Backend {
   measure?(model: TextModel, placement: Option, settings: ModelSettings, signal?: AbortSignal): Promise<Record<number, Measured> | null>;
   /** Forgets a placement that was measured but won't be loaded. */
   forget?(model: TextModel): void;
-  unload(model: TextModel): Promise<void>;
+  /**
+   * Unloads the model. With `release`, another server is about to size itself
+   * from what is free on these GPUs: resolve only once all of this server's
+   * memory there is gone (ComfyUI stops its process at once rather than
+   * staying a moment for the next recipe).
+   */
+  unload(model: TextModel, release?: boolean): Promise<void>;
   /** Base URL for the model's OpenAI-compatible API. */
   url(model: TextModel): string;
   /** Unloads everything; throws if something couldn't be, which then stays counted. */
@@ -436,7 +444,7 @@ export class Vllm implements Backend {
     return this.o.url.replace("{port}", String(port));
   }
 
-  async load(model: TextModel, at: Option, settings: ModelSettings, _progress?: LoadProgress, signal?: AbortSignal): Promise<void> {
+  async load(model: TextModel, at: Option, settings: ModelSettings, _progress?: LoadProgress, signal?: AbortSignal): Promise<void | { holds?: number }> {
     if (model.remoteCode) throw new HostError(403, "refused", "This model needs trust_remote_code, which the host never allows.");
     const port = this.freePort();
     const attempt = randomUUID();
@@ -464,6 +472,26 @@ export class Vllm implements Backend {
       this.write();
       throw e;
     }
+    if (this.o.engine === "sglang") return this.holds(port, contextOf(model, settings));
+  }
+
+  /**
+   * SGLang sizes its KV cache from the memory free as it starts, and serves a context longer than the cache holds,
+   * refusing a prompt past the cache ("Multimodal prompt is too long ..."). When its cache came out short of the
+   * context, the longest prompt it takes (its server info's max_req_input_len), so Lyrica trims to that.
+   */
+  private async holds(port: number, context: number): Promise<{ holds?: number }> {
+    for (const path of ["/server_info", "/get_server_info"]) {
+      try {
+        const res = await fetch(`${this.base(port)}${path}`, { signal: AbortSignal.timeout(10_000) });
+        if (!res.ok) continue;
+        const info = (await res.json()) as { max_total_num_tokens?: unknown; max_req_input_len?: unknown };
+        const pool = info.max_total_num_tokens, most = info.max_req_input_len;
+        if (typeof pool !== "number" || typeof most !== "number") continue;
+        return pool < context && most > 0 ? { holds: most } : {};
+      } catch {}
+    }
+    return {};
   }
 
   /** The supervisor's report of this attempt's exit, with the exception vLLM printed if it caught one; null while it runs. */

@@ -13,7 +13,7 @@ import { isCmp, type Gpu, type GpuMonitor } from "./gpus.ts";
 import type { TextModel } from "./library.ts";
 import type { Logger } from "./log.ts";
 import {
-  autoContext, CPU_OPTION, defaultGpu, neverFits, options, OVERHEAD, placementKey, ramMost, serverOf, sizes, SERVER_NAMES, SERVERS, usesMtp, usesVision,
+  autoContext, contextOf, CPU_OPTION, defaultGpu, neverFits, options, OVERHEAD, placementKey, ramMost, serverOf, sizes, SERVER_NAMES, SERVERS, usesMtp, usesVision,
   type GpuSettings, type ModelSettings, type Option, type Overhead, type Server,
 } from "./placement.ts";
 import type { StateFile } from "./state.ts";
@@ -55,6 +55,8 @@ interface Loaded {
   loadVram?: Record<number, number>;
   /** While loading: the disk's read total when the load began, and the bytes the load reads. */
   loading?: { read0: number; of: number };
+  /** The longest prompt its server takes, when its cache holds less than the context it was given (Backend.load). */
+  holds?: number;
 }
 
 /** How long an explicit Load waits: a measurement, then a load of up to 10 minutes, with room for reading a large model from disk. */
@@ -295,6 +297,13 @@ export class Scheduler {
     const l = this.loaded.get(model.id);
     if (l?.auto) return { ...s, contextLength: l.settings.contextLength };
     return { ...s, contextLength: autoContext(model, s, this.othersView(model), (i) => this.gpuSettings(i), this.ramFor(model), this.overheads.get(model.id)) };
+  }
+
+  /** The context Lyrica may fill: the one it is served with, or less while its server's cache holds less (Loaded.holds). */
+  contextFor(model: TextModel): number {
+    const context = contextOf(model, this.served(model));
+    const holds = this.loaded.get(model.id)?.holds;
+    return holds ? Math.min(context, holds) : context;
   }
 
   /** The system RAM allowance left for a model once Lyrica's unpinned models are unloaded: what pinned and embedding models keep there stays taken. */
@@ -625,7 +634,9 @@ export class Scheduler {
           this.tell(job, { state: "loading" });
           const stop = this.starting(job.model.id);
           try {
-            for (const e of plan.evict) await this.unload(e);
+            // An image recipe evicted for another server's model stops ComfyUI first: else the plan after this one
+            // reads its CUDA context and cache as another program's, and SGLang sizes itself around them.
+            for (const e of plan.evict) await this.unload(e, e.model.server !== job.model.server);
             if (plan.evict.length) {
               // Load only once what was unloaded has let go of its memory: plan again from the top.
               await this.readGpus();
@@ -780,7 +791,11 @@ export class Scheduler {
     this.changing++;
     try {
       const backend = this.backend(model);
-      await backend.load(model, o, settings, read0 === null ? undefined : { read: () => Math.max(0, this.readDisk() - read0), of }, signal);
+      const served = await backend.load(model, o, settings, read0 === null ? undefined : { read: () => Math.max(0, this.readDisk() - read0), of }, signal);
+      if (served?.holds) {
+        entry.holds = served.holds;
+        this.o.log("cache short", { model: model.id, context: contextOf(model, settings), holds: served.holds });
+      }
       // A server that can't stop mid-load (ComfyUI, speech) finishes it first: take it off again.
       if (signal?.aborted) {
         await backend.unload(model).catch(() => {});
@@ -819,12 +834,13 @@ export class Scheduler {
     this.o.log("loaded", { model: model.id, gpus: o.gpus.join(",") });
   }
 
-  private async unload(l: Loaded): Promise<void> {
+  /** Unloads a model; `release` when another server's model loads into its room next (Backend.unload). */
+  private async unload(l: Loaded, release = false): Promise<void> {
     this.memoryEpoch++;
     this.changing++;
     const before = Object.fromEntries((await this.readGpus()).map((g) => [g.index, g.used]));
     try {
-      await this.backend(l.model).unload(l.model);
+      await this.backend(l.model).unload(l.model, release);
     } finally {
       this.changing--;
     }
@@ -961,7 +977,7 @@ export class Scheduler {
       try {
         let next = plan;
         for (let round = 0; ; round++) {
-          for (const l of next.evict) await this.unload(l);
+          for (const l of next.evict) await this.unload(l, l.model.server !== model.server);
           if (stop.signal.aborted) throw loadCancelled();
           const option = await this.measured(model, next.option, settings, round >= 2, stop.signal);
           if (option) {

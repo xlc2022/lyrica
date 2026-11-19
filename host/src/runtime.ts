@@ -313,7 +313,7 @@ export class Runtime {
       // SGLang serves it in vLLM's place (install.sh --glm5.3f-sglang).
       ...(m.engine ? { engine: m.engine } : {}),
       settings,
-      contextLength: contextOf(m, served),
+      contextLength: this.scheduler.contextFor(m),
       maxContextLength: maxContextOf(m, settings),
       trainedContextLength: m.contextLength,
       kvBytes: sized && m.kvPerToken !== null ? sized.kv : null,
@@ -367,7 +367,8 @@ export class Runtime {
       // A projector left out by its setting takes the model's sight with it.
       capabilities: { ...m.capabilities, ...(m.mmproj ? { vision: usesVision(m, this.scheduler.settings(m)) } : {}) },
       // The context it is served with; maxContextLength is what it was trained for.
-      contextLength: m.kind === "image" || m.kind === "speak" ? null : contextOf(m, this.scheduler.served(m)),
+      // Less while its server's cache holds less (SGLang sizes it from what is free as it starts).
+      contextLength: m.kind === "image" || m.kind === "speak" ? null : this.scheduler.contextFor(m),
       maxContextLength: m.contextLength,
       // Requests it serves at once, sharing that context.
       parallel: concurrentOf(m, this.scheduler.served(m)),
