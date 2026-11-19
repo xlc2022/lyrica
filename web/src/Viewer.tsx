@@ -37,8 +37,6 @@ const STEPS = new Set<ViewKind | undefined>(["image", "svg"]);
 
 /** The word for a kind in the facts line. */
 const KIND_WORD: Record<ViewKind, string> = { html: "HTML", svg: "SVG", markdown: "Markdown", pdf: "PDF", image: "Image", audio: "Audio", video: "Video", text: "Text", other: "File" };
-
-/** A picture's or clip's format, as its name's extension says it; a name without a known one says nothing. */
 /** What a picture or clip says of itself once it has loaded: its own pixels, and a clip's length in seconds. */
 type MediaFacts = { width: number; height: number; seconds?: number };
 /** Kinds with a Preview and a Source. */

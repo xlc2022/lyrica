@@ -1,7 +1,7 @@
 import { expect, it } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { bucketed, buckets, bucketSize, colourSlots, factsQuery, ModelCallFacts, seriesOf, speedSpec, unwall, wall } from "../src/ModelCallFacts.tsx";
+import { bucketed, buckets, bucketSize, colourSlots, factsQuery, ModelCallFacts, seriesOf, sortedModels, speedSpec, unwall, wall } from "../src/ModelCallFacts.tsx";
 import type { ModelCallFacts as Facts } from "../src/api.ts";
 
 // Synthetic facts only: no text of any real conversation.
@@ -98,6 +98,31 @@ it("keeps each copy's colour when a window adds or drops a model, and gives a co
   expect(colourSlots(["new"], full).new).toBe(0);
   const s = seriesOf([model({ offeringId: "a", label: "a" }), model({ offeringId: "b", label: "b" })], "light", "#888888", { a: 4, b: 1 });
   expect(s.map((x) => x.color)).toEqual(["#e87ba4", "#eb6834"]);
+});
+
+it("sorts the rows by a column: numbers as numbers, the model by name, unknowns last and ties by name, either direction", () => {
+  const rows = [
+    model({ offeringId: "b", label: "x/Beta 2", calls: 3, outputTokens: 900, medianTokPerSec: 10, fallbacks: 1 }),
+    model({ offeringId: "a", label: "y/Alpha", calls: 1, made: { count: 12, unit: "image" } }),
+    model({ offeringId: "c", label: "z/alpha 2", calls: 2, outputTokens: 1500, medianTokPerSec: 40 }),
+    model({ offeringId: "d", label: "w/Delta", calls: 2, outputTokens: 0 }),
+  ];
+  // A click opens Calls biggest first; the tie between the two models of 2 calls keeps to the name.
+  expect(sortedModels(rows, "calls", -1).map((m) => m.offeringId)).toEqual(["b", "c", "d", "a"]);
+  // A second click reverses it, ties keeping their name order.
+  expect(sortedModels(rows, "calls", 1).map((m) => m.offeringId)).toEqual(["a", "c", "d", "b"]);
+  // Speed sorts on tok/s: a model nothing measured sorts last either way, ties by name.
+  expect(sortedModels(rows, "speed", -1).map((m) => m.offeringId)).toEqual(["c", "b", "a", "d"]);
+  expect(sortedModels(rows, "speed", 1).map((m) => m.offeringId)).toEqual(["b", "c", "a", "d"]);
+  // Output counts what the cell shows: an image model's images, a speech model's seconds of audio.
+  const spoken = model({ offeringId: "s", label: "v/Kokoro", calls: 4, audioSeconds: 192 });
+  expect(sortedModels([...rows, spoken], "output", -1).map((m) => m.offeringId)).toEqual(["c", "b", "s", "a", "d"]);
+  // The model opens A→Z on its name, case-insensitively.
+  expect(sortedModels(rows, "model", 1).map((m) => m.offeringId)).toEqual(["a", "c", "b", "d"]);
+  expect(sortedModels(rows, "model", -1).map((m) => m.offeringId)).toEqual(["d", "b", "c", "a"]);
+  // Two unmeasured rows are a tie too: they keep to the name whichever way the server listed them.
+  expect(sortedModels([rows[3]!, rows[1]!], "speed", -1).map((m) => m.offeringId)).toEqual(["a", "d"]);
+  expect(sortedModels([rows[3]!, rows[1]!], "speed", 1).map((m) => m.offeringId)).toEqual(["a", "d"]);
 });
 
 it("buckets calls and output into the 24 hours on the user's clock, the oldest partial hour holding what came before it", () => {

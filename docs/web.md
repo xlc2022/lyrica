@@ -1081,6 +1081,13 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   megapixels and it/s in its tooltip, and the images or clips it made in
   the Output cell in place of zero tokens; a speech model's seconds of audio
   heard or spoken there instead, as s, min or h) and recorded fallbacks.
+  Each head is a button that sorts the rows client-side (`sortedModels`): the
+  model by its name, the numbers by the figure each cell shows (an image or
+  speech model's images or seconds of audio included), a value the column
+  can't measure last either way and ties by name; the sort is card state
+  (`aria-sort` on the sorted head, an arrow beside its word) and survives
+  the live refreshes, going back to the served order on a page load. On a phone, or in a card under 600 px, the heads are hidden and their controls with
+  them; the rows start in the served order and keep whatever sort was chosen while the card was wide.
   Series take the chart colours by `colourSlots`: each copy keeps the colour
   this browser gave it (`localStorage`, `lyrica.status.modelColours`), and a
   new one takes a free colour no remembered copy has, so a window that adds or
