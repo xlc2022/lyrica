@@ -1233,6 +1233,8 @@ export function apiRoutes(d: Lyricad): Route[] {
       if (before.project && (change.paused === false || change.hidden === false)) s().children.resume(user.id);
       // A thread made a project opens its next turn with the project's tools and guidance.
       if (before.made) s().host.reload(user.id, pool, before.thread);
+      // A rename reaches the thread's open views as a title event, so their headers follow without a reload.
+      if (change.title !== undefined) s().host.peek(user.id, pool, before.thread)?.publish({ type: "title", title: String(change.title) });
       return owner(d, user, (o) => summary(d, user, pool, o[pool], o[pool].getThread(before.thread)!, []));
     }),
     route("DELETE", t, async (r) => {
