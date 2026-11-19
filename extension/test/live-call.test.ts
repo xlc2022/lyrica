@@ -37,7 +37,7 @@ describe("a thread's model request, live", () => {
     expect(sent.at(-1)).toBeNull();
   });
 
-  it("counts the output from its characters where the server says nothing, and takes vLLM's counts where it does", () => {
+  it("counts the output from its characters where the server says nothing, and takes vLLM's and SGLang's counts where it does", () => {
     vi.useFakeTimers();
     const { m, sent, tick } = meter();
     m.request(1_000);
@@ -46,6 +46,10 @@ describe("a thread's model request, live", () => {
     tick(500);
     m.chunk({ choices: [{ delta: {} }], usage: { prompt_tokens: 1_042, completion_tokens: 12, total_tokens: 1_054 } });
     expect(sent.at(-1)).toEqual({ ms: 500, prompt: 1_042, output: 12, writing: "tool" });
+    // vLLM's and SGLang's usage says the prompt's cached tokens when its server is asked to.
+    m.request(3_000);
+    m.chunk({ choices: [{ delta: {} }], usage: { prompt_tokens: 3_042, completion_tokens: 1, total_tokens: 3_043, prompt_tokens_details: { cached_tokens: 2_816 } } });
+    expect(sent.at(-1)).toEqual({ ms: 0, prompt: 3_042, cached: 2_816, output: 1 });
     // A server that counts only at the end says 0 on the way.
     m.request(2_000);
     m.chunk({ usage: { prompt_tokens: 0, completion_tokens: 0 } });

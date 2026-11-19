@@ -169,7 +169,13 @@ administrator pairs or manages them; a personal host lives in its user's
 - **Live counts.** A thread's own turns ask a llama.cpp model (on a host,
   or a plain llama-server) for its prompt progress and per-token timings
   (`return_progress`, `timings_per_token`) and a host's vLLM model for usage
-  on every chunk (`continuous_usage_stats`). The extension's
+  on every chunk (`continuous_usage_stats`; a host's SGLang model counts as
+  vLLM here). The host starts vLLM with `--enable-prompt-tokens-details` and
+  SGLang with `--enable-cache-report`, so their usage carries the prompt's
+  cached tokens (`prompt_tokens_details.cached_tokens`), which Pi reads as
+  `cacheRead` (Tokens' Cached, the prompt speed) and the meter as `cached`.
+  Neither streams anything while it reads the prompt, so the line counts its
+  seconds there. The extension's
   `LiveCallMeter` reads those numbers from Pi's `provider_stream_event`, and
   for any other server the context's estimate of the prompt and the output
   counted at four characters a token; the thread's `live_call` event carries

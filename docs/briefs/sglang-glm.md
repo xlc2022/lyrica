@@ -33,7 +33,9 @@ Principle 1: a model she talks with this month, faster on the same host.
   the v0.6.1 tag only in docs and the launchers' image tag). It pins an
   SGLang nightly of 2026-10-10 with about 25,000 lines of the author's
   patches, compiled for sm_120 only. Its flags are those of the author's
-  `examples/serve-glm53-flash.sh` at v0.6.1 (the TP2 profile).
+  `examples/serve-glm53-flash.sh` at v0.6.1 (the TP2 profile), less
+  `--enable-metrics`; its `--enable-cache-report` is what makes the usage
+  say the prompt's cached tokens (Tokens' Cached, the prompt speed).
 - **Safety review (2026-11-18):** the launcher is a plain `docker run`, the
   patches are kernels, scheduler changes and tests, and nothing in them
   reaches out beyond the server calling its own `/freeze_gc` at start. The

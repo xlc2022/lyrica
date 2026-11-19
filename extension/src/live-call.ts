@@ -11,7 +11,7 @@ export interface LiveCall {
   ms: number;
   /** The whole prompt in tokens: the server's count once it says, else the context's estimate. */
   prompt?: number;
-  /** The prompt's tokens its server took from its cache, when it says. */
+  /** The prompt's tokens its server took from its cache, when it says (llama.cpp, or a vLLM or SGLang model's usage). */
   cached?: number;
   /** Of the prompt's new tokens (not cached), how many are read so far, while its server says (llama.cpp). */
   read?: number;
@@ -96,6 +96,9 @@ export class LiveCallMeter {
     if (u && typeof u === "object") {
       const prompt = num(u.prompt_tokens), out = num(u.completion_tokens);
       if (prompt) { c.prompt = prompt; changed = true; }
+      // vLLM (--enable-prompt-tokens-details) and SGLang (--enable-cache-report): the prompt's tokens from its cache.
+      const details = u.prompt_tokens_details, cache = details && typeof details === "object" ? num((details as Record<string, unknown>).cached_tokens) : undefined;
+      if (cache !== undefined && c.cached === undefined) { c.cached = cache; changed = true; }
       // A count of 0 mid-stream is a server that counts only at the end.
       if (out) { c.output = out; c.exact = true; changed = true; }
     }
