@@ -110,6 +110,7 @@ function updateFailure(step: string | undefined): string {
   if (step === "drain") return "jobs were still running after 10 minutes, so nothing changed";
   if (step === "pause") return "its updater couldn't reach it to pause it, so nothing changed";
   if (step === "probation") return "the new version didn't start, so it went back to the one before";
+  if (step === "stopped") return "its updater was stopped before it finished; run install.sh on the host if it doesn't come back";
   if (step?.startsWith("no ")) return "the host's updater isn't set up; run install.sh on the host again";
   if (step === "not the tag's commit") return "the release's tag no longer points at the commit Lyrica runs, so nothing changed";
   if (step?.startsWith("not ")) return "the host refused the release, so nothing changed";

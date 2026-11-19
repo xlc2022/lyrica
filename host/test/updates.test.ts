@@ -1,4 +1,4 @@
-import { execFile, execFileSync } from "node:child_process";
+import { execFile, execFileSync, spawn } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -28,10 +28,11 @@ async function world() {
   git(work, "config", "user.email", "t@example.com"); git(work, "config", "user.name", "T");
   mkdirSync(join(work, "host"));
   // Releases are made elsewhere and pushed.
-  const release = (name: string, o: { broken?: boolean; lightweight?: boolean; branch?: string } = {}) => {
+  const release = (name: string, o: { broken?: boolean; slow?: boolean; lightweight?: boolean; branch?: string } = {}) => {
     if (o.branch) git(work, "checkout", "-q", "-B", o.branch);
     writeFileSync(join(work, "host", "version"), name);
     if (o.broken) writeFileSync(join(work, "host", "BROKEN"), ""); else rmSync(join(work, "host", "BROKEN"), { force: true });
+    if (o.slow) writeFileSync(join(work, "host", "SLOW"), ""); else rmSync(join(work, "host", "SLOW"), { force: true });
     git(work, "add", "-A"); git(work, "commit", "-q", "-m", name);
     if (o.lightweight) git(work, "tag", `update/${name}`); else git(work, "tag", "-a", `update/${name}`, "-m", `Update ${name}`);
     git(work, "push", "-q", "origin", o.branch ?? "main", "--tags");
@@ -74,6 +75,7 @@ async function world() {
   writeFileSync(join(fake, "install"), `#!/usr/bin/env bash
 echo "$(cat version) $PWD $(cat .env | head -n 1) $*" >>"${fake}/installs"
 [ ! -e BROKEN ] || exit 1
+[ ! -e SLOW ] || sleep 30
 echo "$LYRICA_HOST_COMMIT" >"${running}"
 if [ "\${2:-}" = --models ]; then
   sed -i "s#^MODELS_DIR=.*#MODELS_DIR=$3#" .env
@@ -90,10 +92,13 @@ fi
   const run = (...args: string[]) => new Promise<{ code: number; err: string }>((resolve) => {
     execFile(UPDATE, args, { env, timeout: 30_000 }, (err, _out, errOut) => resolve({ code: err ? (err as { code?: number }).code ?? 1 : 0, err: errOut }));
   });
+  // A run to stop partway, as systemctl stop or a kill would.
+  // Its own process group, which a test stops whole, as systemctl stop stops the unit's.
+  const start = (...args: string[]) => spawn(UPDATE, args, { env, detached: true, stdio: "ignore" });
   const state = () => JSON.parse(readFileSync(join(dir, "status", "state.json"), "utf8"));
   const installs = () => (existsSync(join(fake, "installs")) ? readFileSync(join(fake, "installs"), "utf8").trim().split("\n") : []);
   const current = () => readFileSync(join(dir, "current"), "utf8").trim();
-  return { root, dir, api, first, release, run, state, installs, commitNow, folderNow, current, releases, checkout, fake, modelsA };
+  return { root, dir, api, first, release, run, start, state, installs, commitNow, folderNow, current, releases, checkout, fake, modelsA };
 }
 
 describe("lyrica-host-update", () => {
@@ -179,6 +184,29 @@ describe("lyrica-host-update", () => {
     expect(existsSync(join(w.fake, "checkout-ran"))).toBe(false);
     expect(w.api.state).toBe("running");
     expect(w.state()).toMatchObject({ state: "failed", error: "probation", last: { tag: "update/broken", ok: false } });
+  });
+});
+
+describe("lyrica-host-update, stopped partway", () => {
+  it("says it stopped and resumes the host, so a step isn't left on the card", async () => {
+    const w = await world();
+    w.release("two", { slow: true });
+    const child = w.start("--tag", "update/two");
+    const exited = new Promise<void>((r) => child.on("exit", () => r()));
+    // Stopped while install.sh runs.
+    for (let i = 0; i < 100 && w.installs().length === 0; i++) await new Promise((r) => setTimeout(r, 100));
+    expect(w.state().state).toBe("building");
+    process.kill(-child.pid!, "SIGTERM");
+    await exited;
+    expect(w.state()).toMatchObject({ state: "failed", error: "stopped", tag: "update/two" });
+    expect(w.api.state).toBe("running");
+  });
+
+  it("clears a step left by a run that died, so the next request goes through", async () => {
+    const w = await world();
+    writeFileSync(join(w.dir, "status", "state.json"), JSON.stringify({ available: true, state: "building", tag: "update/two" }));
+    expect((await w.run("--request")).code).toBe(0);
+    expect(w.state()).toMatchObject({ available: true, state: "failed", error: "stopped", tag: "update/two" });
   });
 });
 

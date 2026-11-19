@@ -66,6 +66,24 @@ fail() { # step: the update stops here, and the running commit is untouched
   die "${MODELS:+models folder }update ${TAG:-${MODELS:-}} failed: $1"
 }
 
+# A run that stops partway (stopped, killed, a crash) says so: host-api
+# refuses requests while the file shows a step, so a step left behind would
+# hold the host there. The lock is held, so any step in the file is this
+# run's, or one left by a run that died (a reboot, SIGKILL), which this run
+# clears the same way. A paused host is resumed unless it was paused before.
+on_exit() {
+  local s
+  s=$(jq -r '.state // empty' "$STATE_FILE" 2>/dev/null || true)
+  case "$s" in fetching|draining|building|rolling-back) ;; *) return 0 ;; esac
+  if declare -F resume >/dev/null; then resume; fi
+  # A dead run's: what it was asked for, from the file.
+  [ -n "${TAG:-}${MODELS:-}" ] || { TAG=$(jq -r '.tag // empty' "$STATE_FILE"); MODELS=$(jq -r '.models // empty' "$STATE_FILE"); }
+  set_state failed "${TAG:-}" stopped
+  say "${MODELS:+models folder }update ${TAG:-${MODELS:-}} stopped at $s"
+}
+trap on_exit EXIT
+trap 'exit 1' TERM INT HUP
+
 api() { curl -fsS --max-time 10 -X "$1" "$API$2" 2>/dev/null; }
 # The same, with curl's reason (refused, timed out, an HTTP status) in the journal when it fails.
 api_logged() { local out; out=$(curl -sS --fail-with-body --max-time 10 -X "$1" "$API$2" 2>&1) || { say "$1 $2: $(printf '%s' "$out" | tr -d '[:cntrl:]' | cut -c1-300)"; return 1; }; }
