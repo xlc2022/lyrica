@@ -363,7 +363,7 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
             {settings.data?.repositories.map((r) => <span key={`${r.account}/${r.name}`} className="badge folder" title={`Repository, through ${r.account}`}>{r.name}</span>)}
             {settings.data?.mcpServers.map((m) => <span key={`mcp:${m}`} className="badge folder" title="MCP server">{m}</span>)}
             {/* The branch and pull request badge (docs/ux.md §6): a project chat has no checkout of its own; its threads do. */}
-            {s && !s.subagent && !isProject && <ChangesFact base={base} activity={ctx.activity[`${pool}/${threadId}`] ?? 0} />}
+            {s && !s.subagent && !isProject && <ChangesFact base={base} activity={(ctx.activity[`${pool}/${threadId}`] ?? 0) + t.live.pull} />}
           </div>
         </div>
         {!s?.subagent && (

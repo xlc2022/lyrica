@@ -33,6 +33,8 @@ export interface Live {
   subagents: Record<string, number>;
   /** Bumped when the thread's settings change elsewhere, such as an approved plan switching its mode. */
   settings: number;
+  /** Bumped when the forge watcher's view of the thread's open pull request changes, so its changes badge reloads. */
+  pull: number;
   /** In a project chat: bumped when one of its threads changes state, so its card and the Threads count reload. */
   children: number;
   /** The wake-ups waiting, as the stream last said; the settings' list until then. */
@@ -54,7 +56,7 @@ export interface Live {
   compacting?: boolean;
 }
 
-export const initialLive: Live = { busy: false, queued: [], permissions: [], making: {}, items: [], errors: [], reload: 0, tools: 0, ended: 0, subagents: {}, settings: 0, children: 0 };
+export const initialLive: Live = { busy: false, queued: [], permissions: [], making: {}, items: [], errors: [], reload: 0, tools: 0, ended: 0, subagents: {}, settings: 0, pull: 0, children: 0 };
 
 /** One part's identity and content, so a tail that grew is told from one that didn't. */
 function partKey(p: MessagePart): string {
@@ -188,6 +190,8 @@ export function liveReducer(s: Live, e: LiveAction): Live {
       return { ...s, title: e.title };
     case "settings":
       return { ...s, settings: s.settings + 1 };
+    case "pull":
+      return { ...s, pull: s.pull + 1 };
     case "child":
       return { ...s, children: s.children + 1 };
     case "wakeups":

@@ -1965,6 +1965,8 @@ export type ThreadEvent =
   | { type: "reactions"; n: number; reactions: Reaction[] }
   /** The thread's settings changed (an approved plan switched its mode, say): fetch them again. */
   | { type: "settings" }
+  /** The forge watcher's view of the thread's open pull request changed (its checks, head or draft, or it closed): fetch `…/changes` again. */
+  | { type: "pull" }
   /** In a project chat: one of its threads changed state; fetch it (`GET threads/:pool/:id`) to update its card in place. */
   | { type: "child"; threadId: string }
   /** The thread's pending wake-ups changed: set, removed or fired. Soonest first. */

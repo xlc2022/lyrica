@@ -114,7 +114,8 @@ async function setupForge(kind: ForgeKind = "forgejo", opts: { project?: boolean
   const children = new ChildThreads({ users, memory, models, workspace, delegation: {} as Delegation, host: () => hostStub, paused: () => paused, limits: { concurrency: 2 } });
   const logs: string[] = [];
   const wakeups = new Wakeups({ memory, host: () => hostStub, children, log: (line) => logs.push(line) });
-  const forge = new ForgeWatcher({ memory, workspace, wakeups, log: (line) => logs.push(line) });
+  const pullChanges: string[] = [];
+  const forge = new ForgeWatcher({ memory, workspace, wakeups, log: (line) => logs.push(line), changed: (_u, _p, t) => pullChanges.push(t) });
   forge.load(user.id);
 
   const watch = (number = 12) => own(s => s.addWatch(thread.id, { repo: "ada/lyrica", kind, host, account: accountName, number }));
@@ -124,7 +125,7 @@ async function setupForge(kind: ForgeKind = "forgejo", opts: { project?: boolean
     wakeupsOf: () => own(s => s.wakeups(thread.id)),
     tick: (minutes: number) => pump(forge, at(minutes)),
     pause: (value: boolean) => { paused = value; },
-    logs };
+    logs, pullChanges };
 }
 
 describe("the forge watcher", () => {
@@ -146,6 +147,24 @@ describe("the forge watcher", () => {
     expect(s.forge.codePulls(s.user.id, "general", s.thread.id)).toHaveLength(1);
     s.forge.drop(s.user.id);
     expect(s.forge.codePulls(s.user.id, "general", s.thread.id)).toEqual([]);
+  });
+
+  it("tells open views when the pull request's checks change, not when a poll sees the same, and when it closes", async () => {
+    const s = await setupForge();
+    routeForgejo(s.fake, { status: statusBody(runningChecks()) });
+    s.watch();
+    await s.tick(0);
+    expect(s.pullChanges).toEqual([s.thread.id]);
+    await s.tick(2);
+    expect(s.pullChanges).toHaveLength(1);
+    routeForgejo(s.fake, { status: statusBody(finishedChecks()) });
+    await s.tick(4);
+    expect(s.pullChanges).toHaveLength(2);
+    expect(s.forge.openPull(s.user.id, "general", s.thread.id, "ada/lyrica")?.checks.every((c) => c.result !== null)).toBe(true);
+    routeForgejo(s.fake, { pull: pullBody({ state: "closed", merged: true }) });
+    await s.tick(6);
+    expect(s.pullChanges).toHaveLength(3);
+    expect(s.forge.openPull(s.user.id, "general", s.thread.id, "ada/lyrica")).toBeUndefined();
   });
 
   it("wakes once when the checks finish, not again for the same head, and waits again on a new head", async () => {

@@ -697,7 +697,11 @@ export class Lyricad implements Drainable {
       watchable: (u, t) => forge.watchable(u, t),
     });
     const wakeups: Wakeups = new Wakeups({ memory, host: () => host, children, log: this.log });
-    forge = new ForgeWatcher({ memory, workspace, wakeups, log: this.log });
+    forge = new ForgeWatcher({
+      memory, workspace, wakeups, log: this.log,
+      // Open views of the thread reload its changes badge; its project chat reloads its card.
+      changed: (u, p, t) => { host.peek(u, p, t)?.publish({ type: "pull" }); const parent = children.parentOf(u, p, t); if (parent) host.changed(u, p, parent, t); },
+    });
     // Two threads on one file: the second is held once and the first is told, steered into its turn or kept for its next.
     const sameFile = new SameFile({
       exists: (u, p, t) => { const v = memory.openThreadView(u, p); try { return !!v.own.getThread(t); } finally { v.close(); } },
