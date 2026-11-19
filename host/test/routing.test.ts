@@ -69,8 +69,12 @@ it("gives a model in ModelOpt's mixed format to SGLang, and offers it only where
   mkdirSync(join(dir, "glm-nvfp4"));
   writeFileSync(join(dir, "glm-nvfp4/config.json"), JSON.stringify({ architectures: ["Glm5NextForConditionalGeneration"], quantization_config: { quant_method: "modelopt_mixed" } }));
   writeFileSync(join(dir, "glm-nvfp4/model.safetensors"), Buffer.alloc(16));
+  // GLM's template: tools, and reasoning_effort for thinking.
+  writeFileSync(join(dir, "glm-nvfp4/chat_template.jinja"), "{% if tools %}{{ tools }}{% endif %}{% if reasoning_effort == 'low' %}<think>{% elif reasoning_effort == 'high' %}<think>{% endif %}");
   const [model] = scanTextModels(dir);
-  expect(model).toMatchObject({ server: "vllm", engine: "sglang" });
+  expect(model).toMatchObject({ server: "vllm", engine: "sglang", toolCallParser: "glm47", reasoningParser: "glm45" });
+  // Tools need a parser: GLM's family has none for vLLM, but SGLang runs it with GLM's.
+  expect(model!.capabilities).toMatchObject({ tools: true, reasoning: ["low", "medium", "high"] });
   const vllm = new Vllm({ url: "http://127.0.0.1:1/{port}", serving: mkdtempSync(join(tmpdir(), "lyrica-serving-")), models: "/models" });
   const llamacpp = new LlamaCpp({ url: "http://127.0.0.1:1", serving: mkdtempSync(join(tmpdir(), "lyrica-serving-")), models: "/models", device: (i) => `CUDA${i}` });
   const state = { get: () => ({}) } as never;
