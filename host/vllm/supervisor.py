@@ -92,6 +92,10 @@ def argv(spec):
     ]
     if spec.get("embedding"):
         args += ["--runner", "pooling"]
+    else:
+        # The usage's prompt_tokens_details.cached_tokens, which vLLM leaves out unless asked: the share of a
+        # prompt read from its prefix cache (Tokens' Cached, and the prompt speed of what it actually read).
+        args += ["--enable-prompt-tokens-details"]
     if not spec.get("embedding") and spec.get("toolCallParser"):
         args += ["--enable-auto-tool-choice", "--tool-call-parser", spec["toolCallParser"]]
     if not spec.get("embedding") and spec.get("reasoningParser"):
@@ -175,6 +179,9 @@ def sglang_argv(spec):
         "--speculative-num-draft-tokens", "4",
         "--reasoning-parser", spec.get("reasoningParser") or "glm45",
         "--tool-call-parser", spec.get("toolCallParser") or "glm47",
+        # The profile's, as above: the usage's prompt_tokens_details.cached_tokens, which SGLang leaves out
+        # otherwise. Its --enable-metrics (a Prometheus /metrics nothing here reads) stays off.
+        "--enable-cache-report",
         *(["--chat-template", spec["chatTemplate"]] if spec.get("chatTemplate") else []),
         "--host", "0.0.0.0",
         "--port", str(spec["port"]),

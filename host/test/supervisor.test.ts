@@ -30,7 +30,7 @@ describe.skipIf(!python)("the vLLM supervisor", () => {
     try {
       const runs = () => (existsSync(join(dir, "runs")) ? readFileSync(join(dir, "runs"), "utf8").trim().split("\n") : []);
       await until(() => runs().length === 1);
-      expect(runs()[0]).toBe("0,1 serve /models/a --served-model-name a --host 0.0.0.0 --port 8000 --gpu-memory-utilization 0.4 --tensor-parallel-size 2 --pipeline-parallel-size 1 --disable-uvicorn-access-log --load-format safetensors --enable-auto-tool-choice --tool-call-parser hermes --reasoning-parser qwen3 --max-model-len 32768 --max-num-seqs 16 --dtype bfloat16");
+      expect(runs()[0]).toBe("0,1 serve /models/a --served-model-name a --host 0.0.0.0 --port 8000 --gpu-memory-utilization 0.4 --tensor-parallel-size 2 --pipeline-parallel-size 1 --disable-uvicorn-access-log --load-format safetensors --enable-prompt-tokens-details --enable-auto-tool-choice --tool-call-parser hermes --reasoning-parser qwen3 --max-model-len 32768 --max-num-seqs 16 --dtype bfloat16");
       // A second model beside it on GPU 1: its own server; the first keeps running.
       write({ a, b: { model: "/models/b", name: "b", port: 8001, gpus: [1], embedding: true, tensorParallel: 1, pipelineParallel: 1, memoryShare: 0.3, maxModelLen: null } });
       await until(() => runs().length === 2);
@@ -59,7 +59,7 @@ describe.skipIf(!python)("the vLLM supervisor", () => {
       // With the profile's environment; with install.sh --no-gpu-p2p, the image's PCIe all-reduce is off too.
       expect([gpus, env]).toEqual(["0,1", "1 1 0"]);
       expect(args).toMatch(/^serve --model-path \/models\/glm --served-model-name glm --tp 2 /);
-      for (const flag of ["--quantization modelopt_mixed", "--context-length 65536", "--max-total-tokens 65536", "--mem-fraction-static 0.99", "--max-running-requests 2", "--max-mamba-cache-size 14", "--cuda-graph-bs-decode 1 2 ", "--speculative-algorithm EAGLE", "--host 0.0.0.0 --port 8000"]) expect(args).toContain(flag);
+      for (const flag of ["--quantization modelopt_mixed", "--context-length 65536", "--max-total-tokens 65536", "--mem-fraction-static 0.99", "--max-running-requests 2", "--max-mamba-cache-size 14", "--cuda-graph-bs-decode 1 2 ", "--speculative-algorithm EAGLE", "--enable-cache-report", "--host 0.0.0.0 --port 8000"]) expect(args).toContain(flag);
       expect(args).not.toMatch(/trust-remote-code|enable-metrics/);
     } finally {
       proc.kill("SIGTERM");
