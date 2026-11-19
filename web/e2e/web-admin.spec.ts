@@ -3305,31 +3305,32 @@ test("Status model facts preserve existing facts and render empty, measured and 
     if (!phone(page)) {
       const dataRows = facts.locator(".model-table").getByRole("row");
       const head = (name: string) => facts.getByRole("columnheader", { name, exact: true });
-      await head("Calls").click();
+      const headBtn = (name: string) => head(name).getByRole("button");
+      await headBtn("Calls").click();
       await expect(head("Calls")).toHaveAttribute("aria-sort", "descending");
       await expect(dataRows.nth(1)).toContainText("fixture-cloud");
       await facts.getByRole("table").screenshot({ path: `shots/model-calls-sorted-${page.viewportSize()!.width}.png` });
-      await head("Calls").click();
+      await headBtn("Calls").click();
       await expect(head("Calls")).toHaveAttribute("aria-sort", "ascending");
       await expect(dataRows.nth(1)).toContainText("fixture-without-speed");
       // A column it can't measure everything in: the models with no median sort last, either way.
-      await head("Speed").click();
+      await headBtn("Speed").click();
       await expect(head("Speed")).toHaveAttribute("aria-sort", "descending");
       await expect(dataRows.nth(-2)).toContainText("fixture-image");
       await expect(dataRows.nth(-1)).toContainText("fixture-without-speed");
-      await head("Speed").click();
+      await headBtn("Speed").click();
       await expect(dataRows.nth(-2)).toContainText("fixture-image");
       await expect(dataRows.nth(-1)).toContainText("fixture-without-speed");
       // Keyboard use: Enter on a head sorts, Enter again reverses. Model asc is the served order, so reverse to tell.
-      await head("Model").focus();
+      await headBtn("Model").focus();
       await page.keyboard.press("Enter");
       await expect(head("Model")).toHaveAttribute("aria-sort", "ascending");
       await page.keyboard.press("Enter");
       await expect(head("Model")).toHaveAttribute("aria-sort", "descending");
       await expect(dataRows.nth(1)).toContainText("fixture-without-speed");
-      await head("Calls").click();
+      await headBtn("Calls").click();
       await expect(dataRows.nth(1)).toContainText("fixture-cloud");
-      await head("Calls").click();
+      await headBtn("Calls").click();
       await expect(dataRows.nth(1)).toContainText("fixture-without-speed");
       const read = page.waitForRequest((r) => r.url().endsWith(`/api/u/${userId}/admin/status`));
       await page.getByRole("button", { name: "Refresh" }).click();

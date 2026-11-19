@@ -120,6 +120,9 @@ it("sorts the rows by a column: numbers as numbers, the model by name, unknowns 
   // The model opens A→Z on its name, case-insensitively.
   expect(sortedModels(rows, "model", 1).map((m) => m.offeringId)).toEqual(["a", "c", "b", "d"]);
   expect(sortedModels(rows, "model", -1).map((m) => m.offeringId)).toEqual(["d", "b", "c", "a"]);
+  // Two unmeasured rows are a tie too: they keep to the name whichever way the server listed them.
+  expect(sortedModels([rows[3]!, rows[1]!], "speed", -1).map((m) => m.offeringId)).toEqual(["a", "d"]);
+  expect(sortedModels([rows[3]!, rows[1]!], "speed", 1).map((m) => m.offeringId)).toEqual(["a", "d"]);
 });
 
 it("buckets calls and output into the 24 hours on the user's clock, the oldest partial hour holding what came before it", () => {

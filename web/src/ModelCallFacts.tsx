@@ -55,7 +55,7 @@ function sortValue(m: Facts["models"][number], key: SortKey): number | string | 
  * The rows in a column's sort order. Numbers sort as numbers, a click opening biggest first; the model sorts by name,
  * a click opening A→Z; a second click on the same head reverses it. A value the column can't measure (no median
  * recorded, which includes models timed per image or clip on Speed) sorts last either way, and rows equal on the
- * column keep to the model's name, so both directions agree on ties.
+ * column — two unmeasured ones included — keep to the model's name, so both directions agree on ties.
  */
 export function sortedModels(models: Facts["models"], key: SortKey, dir: 1 | -1): Facts["models"] {
   const byName = (a: Facts["models"][number], b: Facts["models"][number]) =>
@@ -63,7 +63,8 @@ export function sortedModels(models: Facts["models"], key: SortKey, dir: 1 | -1)
   return [...models].sort((a, b) => {
     if (key === "model") return dir * byName(a, b);
     const va = sortValue(a, key), vb = sortValue(b, key);
-    if (va === undefined || vb === undefined) return va === vb ? 0 : va === undefined ? 1 : -1;
+    if (va === undefined || vb === undefined)
+      return va === undefined && vb === undefined ? byName(a, b) : va === undefined ? 1 : -1;
     return (va as number) === (vb as number) ? byName(a, b) : dir * ((va as number) - (vb as number));
   });
 }
@@ -498,10 +499,11 @@ export function ModelCallFacts({ facts, window = { days: 1 }, onWindow, onReset 
         <div role="row" className="mt-head muted">
           {COLUMNS.map((c) => {
             const on = sort?.key === c.key;
-            return <button key={c.key} type="button" role="columnheader" aria-sort={on ? (sort!.dir === 1 ? "ascending" : "descending") : undefined}
-              title={`${c.why ? `${c.why} ` : ""}${SORT_WHY}`} onClick={() => flip(c.key)}>
-              {c.word}{on && <Icon name={sort!.dir === 1 ? "up" : "arrow-down"} />}
-            </button>;
+            return <span key={c.key} role="columnheader" aria-sort={on ? (sort!.dir === 1 ? "ascending" : "descending") : undefined}>
+              <button type="button" title={`${c.why ? `${c.why} ` : ""}${SORT_WHY}`} onClick={() => flip(c.key)}>
+                {c.word}{on && <Icon name={sort!.dir === 1 ? "up" : "arrow-down"} />}
+              </button>
+            </span>;
           })}
         </div>
         {rows.map((m) => {
