@@ -2220,6 +2220,9 @@ dialog .eyebrow { margin: 10px 0 4px; }
 .model-table { display: grid; font-size: 13px; }
 .model-table > [role="row"] { display: grid; grid-template-columns: minmax(0, 1fr) 3.5em 8.5em 8.5em 7.5em 5.5em; gap: 8px; padding: 6px 0; align-items: baseline; border-top: 1px solid var(--line); }
 .model-table > .mt-head { border-top: 0; }
+.model-table > .mt-head > button { background: none; border: 0; padding: 0; font: inherit; color: inherit; cursor: pointer; }
+@media (hover: hover) { .model-table > .mt-head > button:hover { color: var(--fg); } }
+.model-table > .mt-head .ic { width: 11px; height: 11px; margin-left: 2px; vertical-align: -1px; }
 .model-table > [role="row"] > :not(:first-child) { text-align: right; white-space: nowrap; }
 .mt-model { min-width: 0; overflow-wrap: anywhere; }
 .mt-model .swatch { margin-right: 6px; vertical-align: -1px; }

@@ -1,10 +1,12 @@
 // Principles 1 and 8: Administration → Status draws what her models did from facts already recorded per call (docs/ux.md,
 // Recorded model activity): calls and output per hour, 6 hours or day, each call's speed, calls by task, and a row per
 // model copy (an image model's output in images, a speech model's in seconds of audio), over the last 24 hours, 7 or 30
-// days, or a span narrowed on the charts. Its legend's names are toggles that take a model off the charts.
+// days, or a span narrowed on the charts. Its legend's names are toggles that take a model off the charts, and its
+// table's heads are sort toggles for the rows.
 import { type CSSProperties, useEffect, useRef, useState } from "react";
 import type { ModelCallFacts as Facts } from "./api.ts";
 import { drawChart, SERIES, tokens } from "./charts.ts";
+import { Icon } from "./icons.tsx";
 import { shortModel } from "./ModelLabel.tsx";
 import { TASK_WORD } from "./ModelsFrame.tsx";
 import { tokenCount } from "./Project.tsx";
@@ -28,6 +30,44 @@ const MADE_WHY = "Images (or clips) its calls made, in place of output tokens.";
 const AUDIO_WHY = "Seconds of audio its calls heard (Dictation) or spoke (Read aloud), in place of output tokens.";
 const RESET_WHY = "Count calls from now on. Call records stay: thread usage, speeds and history still use them.";
 const KEPT_WHY = "Nightly cleanup keeps every call record from the last 31 days, at least the latest 500 and at most 20,000 per user, across both pools.";
+const SORT_WHY = "Click to sort. Click again to reverse.";
+/** The columns the Model calls table sorts by: its six heads. */
+export type SortKey = "model" | "calls" | "output" | "speed" | "prompt" | "fallbacks";
+
+const COLUMNS: { key: SortKey; word: string; why?: string }[] = [
+  { key: "model", word: "Model" }, { key: "calls", word: "Calls" }, { key: "output", word: "Output" },
+  { key: "speed", word: "Speed", why: SPEED_WHY }, { key: "prompt", word: "Prompt", why: PROMPT_WHY }, { key: "fallbacks", word: "Fallbacks", why: FALLBACK_WHY },
+];
+
+/** The number a metric column sorts by: the one its cell shows (an image model's Output its images, a speech one's its seconds of audio). */
+function sortValue(m: Facts["models"][number], key: SortKey): number | string | undefined {
+  switch (key) {
+    case "model": return shortModel(m.label);
+    case "calls": return m.calls;
+    case "output": return m.outputTokens || m.made?.count || m.audioSeconds || 0;
+    case "speed": return m.medianTokPerSec;
+    case "prompt": return m.medianPromptTokPerSec;
+    case "fallbacks": return m.fallbacks;
+  }
+}
+
+/**
+ * The rows in a column's sort order. Numbers sort as numbers, a click opening biggest first; the model sorts by name,
+ * a click opening A→Z; a second click on the same head reverses it. A value the column can't measure (no median
+ * recorded, which includes models timed per image or clip on Speed) sorts last either way, and rows equal on the
+ * column keep to the model's name, so both directions agree on ties.
+ */
+export function sortedModels(models: Facts["models"], key: SortKey, dir: 1 | -1): Facts["models"] {
+  const byName = (a: Facts["models"][number], b: Facts["models"][number]) =>
+    shortModel(a.label).localeCompare(shortModel(b.label), undefined, { sensitivity: "base" }) || a.endpointName.localeCompare(b.endpointName);
+  return [...models].sort((a, b) => {
+    if (key === "model") return dir * byName(a, b);
+    const va = sortValue(a, key), vb = sortValue(b, key);
+    if (va === undefined || vb === undefined) return va === vb ? 0 : va === undefined ? 1 : -1;
+    return (va as number) === (vb as number) ? byName(a, b) : dir * ((va as number) - (vb as number));
+  });
+}
+
 /** Where this browser keeps the models taken off Model calls' charts. */
 const HIDDEN_KEY = "lyrica.status.hiddenModels";
 /** Where this browser keeps each model copy's colour on Model calls. */
@@ -422,6 +462,10 @@ export function ModelCallFacts({ facts, window = { days: 1 }, onWindow, onReset 
   const total = sumOf(facts.models), part = sumOf(facts.models.filter((m) => isOn(m.offeringId)));
   const size = bucketSize(facts), h = buckets(facts, size);
   const bars = { first: h[0]!, size, count: h.length };
+  // The table's order, once a head has been clicked: it stays over the live refreshes while Status is open.
+  const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>();
+  const rows = sort ? sortedModels(facts.models, sort.key, sort.dir) : facts.models;
+  const flip = (key: SortKey) => setSort((s) => s?.key === key ? { key, dir: s.dir === 1 ? -1 as const : 1 as const } : { key, dir: key === "model" ? 1 : -1 });
   const narrow = onWindow ? (a: number, b: number) => onWindow({ days: window.days, span: { from: new Date(unwall(a)).toISOString(), to: new Date(unwall(b)).toISOString() } }) : undefined;
   const last = DAYS.find((d) => d.days === window.days)!;
   const per = barWord(size);
@@ -452,10 +496,15 @@ export function ModelCallFacts({ facts, window = { days: 1 }, onWindow, onReset 
       </div>
       <div className="model-table" role="table" aria-label="Model calls by model">
         <div role="row" className="mt-head muted">
-          <span role="columnheader">Model</span><span role="columnheader">Calls</span><span role="columnheader">Output</span>
-          <span role="columnheader" title={SPEED_WHY}>Speed</span><span role="columnheader" title={PROMPT_WHY}>Prompt</span><span role="columnheader" title={FALLBACK_WHY}>Fallbacks</span>
+          {COLUMNS.map((c) => {
+            const on = sort?.key === c.key;
+            return <button key={c.key} type="button" role="columnheader" aria-sort={on ? (sort!.dir === 1 ? "ascending" : "descending") : undefined}
+              title={`${c.why ? `${c.why} ` : ""}${SORT_WHY}`} onClick={() => flip(c.key)}>
+              {c.word}{on && <Icon name={sort!.dir === 1 ? "up" : "arrow-down"} />}
+            </button>;
+          })}
         </div>
-        {facts.models.map((m) => {
+        {rows.map((m) => {
           const s = series.find((x) => x.offeringId === m.offeringId)!;
           const speed = num(m.medianTokPerSec), prompt = num(m.medianPromptTokPerSec, 0);
           const sampled = speed === undefined && m.sampling ? samplingWords(m.sampling) : undefined;
