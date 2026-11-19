@@ -1,0 +1,10 @@
+# With --tailscale-ssh: the stack's tailnet device also forwards port 22 to
+# this machine's own sshd, for a machine with no Tailscale of its own (so
+# Lyrica can reach it as a machine by the host's tailnet name). Only the
+# tailscale container gets the route to the machine; host-api's egress rules
+# are unchanged. sshd sees connections from the container's bridge address.
+services:
+  tailscale:
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    volumes:
+      - ./tailscale/serve-ssh.json:/config/serve.json:ro
