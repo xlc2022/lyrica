@@ -148,6 +148,28 @@ describe("endpoints", () => {
     expect(m.models.offering(m.ada.id, m.flash.offeringId)!.offering.status).toBe("listed");
   });
 
+  it("removes a missing model even when it is switched off in its endpoint's list", async () => {
+    const m = await withShared();
+    const { models, ada, lan, qwen } = m;
+    models.setDisabled(ada, [qwen.offeringId], true);
+    // The endpoint drops the model: missing in the list, which is the one place it still shows.
+    set(m.keyring.self(), "UPDATE offerings SET missing_since = ? WHERE id = ?", daysAgo(2), qwen.offeringId);
+    expect(models.offerings(ada.id, lan.id).find((o) => o.id === qwen.offeringId)).toMatchObject({ status: "missing" });
+    models.removeOffering(ada, qwen.offeringId);
+    expect(models.offering(ada.id, qwen.offeringId)).toBeUndefined();
+    expect(models.offerings(ada.id, lan.id).map((o) => o.modelId)).toEqual(["qwen3.8-flash"]);
+  });
+
+  it("removes a missing model while it is switched on, dropping it from the lists that name it", async () => {
+    const m = await withShared();
+    const { models, ada, lan, qwen } = m;
+    models.setColumnTask(ada.id, "private", "chat", qwen);
+    set(m.keyring.self(), "UPDATE offerings SET missing_since = ? WHERE id = ?", daysAgo(2), qwen.offeringId);
+    models.removeOffering(ada, qwen.offeringId);
+    expect(models.offerings(ada.id, lan.id).map((o) => o.modelId)).toEqual(["qwen3.8-flash"]);
+    expect(models.column(ada.id, "private").entries.chat).toBeUndefined();
+  });
+
   it("never changes IDs when an endpoint is renamed or moved", async () => {
     const { models, ada, gpu, localRef, local } = await withModels();
     models.setColumnTask(ada.id, "private", "chat", localRef);
