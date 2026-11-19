@@ -356,7 +356,9 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   1180 px the **Thread** toggle (a labelled button, pressed while the thread
   shows) switches between the two; from 1180 px up it shows or hides the
   thread. The header names the file (mono), its facts
-  (kind, size, time), **Preview | Source** for HTML, SVG and Markdown, then
+  (kind, size, time; an image or clip adds its own pixels and format there, a
+  clip its length too, read from the file itself once the browser has it and
+  absent while any is unknown), **Preview | Source** for HTML, SVG and Markdown, then
   **Download** and **Copy path** as icon buttons (Copy path is
   `CopyIconButton`, reading Copied for 2 s), and the library's ⋯ where it has one.
   What it shows depends on the name: HTML in an `iframe` of

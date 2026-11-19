@@ -2095,6 +2095,53 @@ test("the file viewer: an image steps to the previous or next image of its list 
   await page.keyboard.press("Escape");
 });
 
+test("the file viewer: a picture or clip says its resolution, format and length in the facts line, and nothing while unknown", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  await newThread(page, "General");
+  await send(page, "hello facts");
+  await expect(page.getByText("You said: hello facts")).toBeVisible();
+  const threadId = decodeURIComponent(location_of(page).split("/t/general/")[1]!.split("/")[0]!);
+  const upload = (name: string, b64: string) => page.evaluate(async ([path, b64]) => {
+    const r = await fetch(path, { method: "POST", headers: { "content-type": "application/octet-stream" }, body: Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)) });
+    if (!r.ok) throw new Error(`${path}: ${r.status}`);
+    return ((await r.json()) as { path: string }).path;
+  }, [`/api/u/${userId}/threads/general/${encodeURIComponent(threadId)}/uploads?name=${encodeURIComponent(name)}`, b64] as const);
+  // A 320×200 PNG and a 64×48, 2 s WebM: what the viewer says must be what the files themselves are.
+  const png = "iVBORw0KGgoAAAANSUhEUgAAAUAAAADIAQMAAACjyqroAAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAAADUExURTpupdNETNIAAAAHdElNRQfqCxMPKBV1q1ZYAAAAJXRFWHRkYXRlOmNyZWF0ZQAyMDI2LTExLTE5VDE1OjQwOjIxKzAwOjAwQp5v3wAAACV0RVh0ZGF0ZTptb2RpZnkAMjAyNi0xMS0xOVQxNTo0MDoyMSswMDowMPDD12MAAAAodEVYdGRhdGU6dGltZXN0YW1wADIwMjYtMTEtMTlUMTU6NDA6MjErMDA6MDBk1va8AAAAHklEQVRo3u3BAQ0AAADCoPdPbQ8HFAAAAAAAAADwYiAIAAFkack9AAAAAElFTkSuQmCC";
+  const webm = "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";
+  // An uploaded image is renamed (a random name, its extension kept), so the viewer opens under its saved name.
+  const image = (await upload("wide.png", png)).slice("/workspace/uploads/".length);
+  await upload("fox.webm", webm);
+  await upload("note.txt", Buffer.from("hello\n").toString("base64"));
+
+  await page.getByRole("link", { name: "Files and images" }).click();
+  const panel = phone(page) ? page.locator(".files-page") : page.getByRole("complementary");
+  await panel.getByRole("button", { name: "uploads", exact: true }).click();
+  const viewer = (name: string) => page.getByRole("dialog", { name });
+
+  // The picture: its own pixels and its format, before size and time.
+  await panel.getByRole("button", { name: image, exact: true }).click();
+  const imageFacts = viewer(image).locator(".viewer-facts");
+  await expect(imageFacts).toContainText("320×200 PNG");
+  await expect(imageFacts).not.toContainText("0×0");
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/viewer-facts-image-${page.viewportSize()!.width}.png` });
+  await page.keyboard.press("Escape");
+
+  // The clip: pixels, format and its length, as the Videos tab's tiles show it.
+  await panel.getByRole("button", { name: "fox.webm", exact: true }).click();
+  const videoFacts = viewer("fox.webm").locator(".viewer-facts");
+  await expect(videoFacts).toContainText("64×48 WebM");
+  await expect(videoFacts).toContainText("0:02");
+  await expect(videoFacts).not.toContainText("0×0");
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/viewer-facts-video-${page.viewportSize()!.width}.png` });
+  await page.keyboard.press("Escape");
+
+  // A text file keeps its facts line as it was: nothing to read from it.
+  await panel.getByRole("button", { name: "note.txt", exact: true }).click();
+  await expect(viewer("note.txt").locator(".viewer-facts")).toContainText("Text ·");
+  await expect(viewer("note.txt").locator(".viewer-facts")).not.toContainText("×");
+});
+
 test("the file viewer: an HTML page runs in a sandbox that can't reach Lyrica, its console beneath, the thread beside", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   await newThread(page, "General");
