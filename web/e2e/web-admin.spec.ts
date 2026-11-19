@@ -2678,9 +2678,11 @@ test("question cards answer in chat and Notifications and close on words", async
   await expect(next.getByRole("button").first()).toBeEnabled();
   await page.goto(`/#/u/${userId}/notifications`);
   const row = page.locator(".nquestion").filter({ hasText: "Which bed comes next?" });
-  await expect(row).toContainText("Plant a small bed first.");
+  await expect(row).toContainText("Choose the scope for the garden.");
+  // Each button's tooltip carries its consequence.
   await expect(row.getByRole("button").first()).toHaveText("Small");
-  await expect(row.getByRole("button").first()).toHaveAttribute("title", "Recommended");
+  await expect(row.getByRole("button").first()).toHaveAttribute("title", "Plant a small bed first.");
+  await expect(row.getByRole("button", { name: /^Large/ })).toHaveAttribute("title", "Plant the whole garden.");
   await expect(row.locator(".nkind").getByRole("link", { name: "Open thread" })).toBeVisible();
   await noHorizontalScroll(page);
   if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/question-notifications-${width}.png` });
@@ -2696,6 +2698,39 @@ test("question cards answer in chat and Notifications and close on words", async
   await expect(herbs).toHaveCount(1);
   await expect(herbs).toContainText("Answered in words.");
   expect(await page.evaluate(async base => (await fetch(`${base}/messages`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: "[Answer to q:1]" }) })).status, base)).toBe(400);
+});
+
+test("a run card's Notifications row opens the card in place and takes the password there", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  await newThread(page, "General");
+  await send(page, "root: Installs the print service.");
+  await expect(page.locator(".question-card").filter({ hasText: "Run as root on box?" })).toContainText("Installs the print service.");
+  await page.goto(`/#/u/${userId}/notifications`);
+  const row = page.locator(".nquestion").filter({ hasText: "Run as root on box?" });
+  // The row says what the card says (her reason), and doesn't answer it: Done and Not now live on the card.
+  await expect(row).toContainText("Installs the print service.");
+  await expect(row.getByRole("button", { name: "Password", exact: true })).toHaveAttribute("aria-expanded", "false");
+  await expect(row.getByRole("button", { name: /^Done/ })).toHaveCount(0);
+  await expect(row.locator(".nkind").getByRole("link", { name: "Open thread" })).toBeVisible();
+  const width = page.viewportSize()!.width;
+  await row.getByRole("button", { name: "Password", exact: true }).click();
+  const shown = row.locator(".question-card");
+  await expect(shown).toBeVisible();
+  // The card itself: Run with the password field, Done with its own meaning only, each consequence in the open.
+  await expect(shown.getByRole("button", { name: /^Done/ })).toBeVisible();
+  await expect(shown).toContainText("Already run by hand. Lyrica checks the result and carries on.");
+  await expect(shown).toContainText("Nothing runs. Lyrica says what waits on this.");
+  await noHorizontalScroll(page);
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/run-card-notifications-${width}.png` });
+  await shown.locator("input[type=password]").fill("pw-for-the-fixture-run");
+  const ran = page.waitForResponse(r => r.request().method() === "POST" && r.url().includes("/run"));
+  await shown.getByRole("button", { name: /^Run/ }).click();
+  const res = await ran;
+  expect(res.status()).toBe(200);
+  expect((await res.json() as { job: string }).job).toBe("j-fixture");
+  // The run's answer closes the card in place, as in the thread; the row stays until the question closes.
+  await expect(shown).toContainText("Run");
+  await expect(row).toBeVisible();
 });
 
 

@@ -1,6 +1,6 @@
 // Principles 1 and 6: a decision stays beside the work, and its answer is a message.
 import { useEffect, useId, useState } from "react";
-import { del, get, post, type MessagePage, type MessagePart, type QuestionState, type RootStep } from "./api.ts";
+import { del, get, post, type MessagePage, type MessagePart, type QuestionCardData, type QuestionState, type RootStep } from "./api.ts";
 import { CopyButton } from "./CopyButton.tsx";
 import { Icon } from "./icons.tsx";
 import { her } from "./name.ts";
@@ -145,6 +145,11 @@ export function QuestionCard({ args, root, name, state, base, onChange }: { args
 export function ProjectQuestion({ base, n, onChange }: { base: string; n: number; onChange: () => void }) {
   const loaded = useLoad(() => loadProjectQuestion(base, n), [base, n]);
   return <><ErrorText error={loaded.error} />{loaded.data && <QuestionCard {...loaded.data} base={base} onChange={() => { loaded.reload(); onChange(); }} />}</>;
+}
+
+/** One thread's open question's card from its route (GET …/question/card), for a Notifications row to show it in place. */
+export async function loadQuestionCard(base: string) {
+  return get<QuestionCardData>(`${base}/question/card`);
 }
 
 export async function loadProjectQuestion(base: string, n: number) {

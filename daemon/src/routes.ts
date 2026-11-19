@@ -22,7 +22,7 @@ import type { ProjectThreadInfo } from "./children.ts";
 import { Busy } from "./hosted.ts";
 import { BUILD, card, type Lyricad, type Services } from "./lyricad.ts";
 import { readUnitsStale, readUpdates, writeRequest } from "./updates.ts";
-import { toMessages, toReactions } from "./messages.ts";
+import { rootPart, toMessages, toReactions } from "./messages.ts";
 import { messageText, readAloud, readClip, speechState, storedSource, transcribeClip, titlesIn, type SpeechSource } from "./speech.ts";
 import { notifications } from "./notifications.ts";
 import { SEARCH_PAGE, searchMessages } from "./search.ts";
@@ -1366,6 +1366,26 @@ export function apiRoutes(d: Lyricad): Route[] {
       if (retry.noCloud && selected.endpoint.kind === "cloud") throw new HttpError(400, "Photos of you aren't allowed to go to cloud models.");
       await s().host.get(user.id, pool, thread.id).retryImage(retry.args, offeringId, retry.options.userMessage?.n);
       return { ok: true };
+    }),
+    // The open question's card, for a Notifications row to show it in place: what the tool call stored (a root step's
+    // or a secret's words and step, the same part the messages route shows), or the ask's own words. Run is answered
+    // only by …/questions/:n/run, which takes the typed bytes; nothing here runs.
+    route("GET", `${t}/question/card`, async (r): Promise<Api.QuestionCardData> => {
+      const user = d.userFor(r);
+      return owner(d, user, (o): Api.QuestionCardData => {
+        const thread = threadOf(o, r);
+        const store = o[poolOf(r)];
+        const q = store.openQuestion(thread.id);
+        if (!q) throw new HttpError(404, "no open question");
+        const ask = store.readAsk(thread.id, q.n);
+        if (!ask) throw new HttpError(404, "no such question");
+        const found = store.readStep(thread.id, q.n);
+        if (!found) return { name: "threads", args: ask, state: q };
+        const kept = found.tool === ROOT_TOOL && typeof found.step.machine === "string" ? s().workspace.passwordKept(user.id, found.step.machine) : undefined;
+        return { name: found.tool === ROOT_TOOL ? "run_as_root" : "run_with_secret",
+          args: { machine: found.step.machine, why: ask.context, ...(found.tool === ROOT_TOOL ? {} : { secret: found.step.secret }) },
+          root: rootPart(found.tool, { root: found.step }), state: { ...q, ...(kept ? { kept } : {}) } };
+      });
     }),
     route("POST", `${t}/questions/:n/answer`, async (r) => {
       const user = d.userFor(r);

@@ -1,7 +1,7 @@
 // Notifications (DESIGN.md, "Where things are"): one list over everything
 // waiting for the user, read from where each thing lives. Nothing is stored
 // here; acting on an item changes its source, and the item goes.
-import type { Pool, PoolStore, User } from "@lyrica/core";
+import { ROOT_TOOL, type Pool, type PoolStore, type User } from "@lyrica/core";
 import type * as Api from "./api.ts";
 import { BUILD, type Lyricad } from "./lyricad.ts";
 import { planWaits } from "./plan-waits.ts";
@@ -93,11 +93,19 @@ function collect(d: Lyricad, user: User, show: Api.Display): Api.Notification[] 
       const ask = o[pool].readAsk(th.id, q.n);
       if (!ask) continue;
       const order = [ask.recommended, ...ask.options.map((_, i) => i).filter(i => i !== ask.recommended)];
+      // The row says what the card says: her reason, never one answer's consequence standing in as a statement of fact. An
+      // answer button's tooltip carries its consequence. A Run that needs what the person types offers the card in place
+      // (GET …/question/card) instead of answering; its answer buttons answer without input, as on the card.
+      const reason = ask.context?.trim() ?? "";
+      const step = ask.options.some(option => option.secret) ? o[pool].readStep(th.id, q.n) : undefined;
+      const run = !step ? undefined : step.tool === ROOT_TOOL ? "Password"
+        : typeof step.step.secret === "string" ? step.step.secret : undefined;
       out.push({ id: `question:${pool}/${th.id}/${q.n}`, type: "question", title: ask.question,
-        detail: ask.options[ask.recommended]!.consequence, scope: pool, decision: true,
-        thread: { pool, id: th.id }, at: q.asked,
-        // Run needs what the person types on the card, so it is answered there only.
-        actions: order.filter(option => !ask.options[option]!.secret).map(option => ({ label: ask.options[option]!.label, method: "POST", path: `${t(pool, th.id)}/questions/${q.n}/answer`, body: { option } })),
+        detail: reason ? (reason.length > DETAIL ? `${reason.slice(0, DETAIL - 1)}…` : reason)
+          : `${ask.options[ask.recommended]!.label}: ${ask.options[ask.recommended]!.consequence}`,
+        scope: pool, decision: true, thread: { pool, id: th.id }, at: q.asked,
+        ...(run ? { run } : {}),
+        actions: order.filter(option => !ask.options[option]!.secret).map(option => ({ label: ask.options[option]!.label, title: ask.options[option]!.consequence, method: "POST", path: `${t(pool, th.id)}/questions/${q.n}/answer`, body: { option } })),
       });
     }
     // A child thread posted an update, or waits on the user.

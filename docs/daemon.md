@@ -579,7 +579,11 @@ as the raw body (never JSON, and overwritten with zeros once the run has it),
 `?keep=<minutes>` on a root step. It starts the script as a background
 command, closes the card and posts Run as the answer (docs/workspace.md,
 "Secrets for one command"); `DELETE` on the same path forgets a kept
-password. The reader shows an answer as a user message, without
+password. A Notifications row that cannot answer (a root step's or a
+secret's card) reads the card in place from
+`GET …/threads/:pool/:id/question/card` → `QuestionCardData`
+(`{ name, args, root?, state }`), 404 when no question is open. The reader
+shows an answer as a user message, without
 the mark. Both the messages route and hosted `MarkedText` refuse user text
 starting with `[Answer to q:`. A typed message closes the question as
 `words`, keeping the text unchanged. Replacement, the person's Stop and
@@ -642,9 +646,10 @@ things are".
   hidden is off, adds nothing, not even to the count, so nothing on screen
   says hidden content exists.
   Questions have type `question`, ID `question:<pool>/<thread>/<n>`, and
-  count as decisions. Their title and recommended consequence are read
-  from the encrypted log through the thread reader. Actions answer each
-  option (recommended first); the UI links Open thread from the row's facts line. Private
+  count as decisions. Their title and what the card says (the ask's own
+  context, else the recommended option's label with its consequence) are
+  read from the encrypted log through the thread reader. Actions answer each
+  option (recommended first), each with its consequence as a tooltip; the UI links Open thread from the row's facts line. Private
   questions follow the Private filter. Questions have no bulk action.
   `POST …/threads/:pool/:threadId/seen` marks a child thread's updates seen
   without opening it. The list has no downloads, clean-up items, image
