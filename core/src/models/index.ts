@@ -873,6 +873,13 @@ export class Models {
     return offering && { endpoint: c.endpoints.get(offering.endpointId)!, offering };
   }
 
+  /** An offering, a switched-off one included — for tidying a model away, which its endpoint's list still offers when nothing else sees it. */
+  private offeringOrOff(userId: string, offeringId: string): { endpoint: Endpoint; offering: Offering } | undefined {
+    const c = this.catalog(userId);
+    const offering = c.offerings.get(offeringId) ?? c.disabled.get(offeringId);
+    return offering && { endpoint: c.endpoints.get(offering.endpointId)!, offering };
+  }
+
   /**
    * How a model is named to people and to Lyrica: `<endpoint>/<model>`, with
    * shared endpoints as `shared.<name>` so the two never collide. A group is
@@ -2281,9 +2288,9 @@ export class Models {
     this.retire(actor, from.endpoint.shared, () => [[fromId, toId]], (db) => { db.prepare("DELETE FROM offerings WHERE id = ?").run(fromId); });
   }
 
-  /** Removes a model. A tombstone makes every list and group that named it drop it. */
+  /** Removes a model, a switched-off one included. A tombstone makes every list and group that named it drop it. */
   removeOffering(actor: User, offeringId: string): void {
-    const o = this.offering(actor.id, offeringId);
+    const o = this.offeringOrOff(actor.id, offeringId);
     if (!o) throw new NoModel(`no model ${offeringId}`);
     this.retire(actor, o.endpoint.shared, () => [[offeringId, null]], (db) => { db.prepare("DELETE FROM offerings WHERE id = ?").run(offeringId); });
   }
