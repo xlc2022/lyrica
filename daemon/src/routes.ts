@@ -1885,9 +1885,9 @@ export function apiRoutes(d: Lyricad): Route[] {
       const repositories: Api.RepositoryChangesInfo[] = [];
       for (const c of checkouts) {
         // A granted folder that isn't a repository, or a clone that isn't there yet, is left out.
-        const changes = await repositoryChanges(target, c).catch((err) => { if (err instanceof ChangesUnavailable) return undefined; throw err; });
-        if (!changes) continue;
         const pull = c.kind === "clone" ? s().forge.openPull(thread.userId, thread.pool, thread.threadId, c.name) : undefined;
+        const changes = await repositoryChanges(target, c, pull?.head).catch((err) => { if (err instanceof ChangesUnavailable) return undefined; throw err; });
+        if (!changes) continue;
         repositories.push({ ...changes, ...(pull ? { pull } : {}), ...(c.kind === "worktree" ? { worktree: true } : {}) });
       }
       return { repositories };
@@ -1898,9 +1898,11 @@ export function apiRoutes(d: Lyricad): Route[] {
       return { files: await unavailable(() => commitFiles(target, repo, r.query.get("hash") ?? "")) };
     }),
     route("GET", `${t}/changes/file`, async (r): Promise<Api.FileSides> => {
-      const { target, checkouts } = changesOf(r);
+      const { target, thread, checkouts } = changesOf(r);
       const repo = checkoutIn(checkouts, r.query.get("repo"));
-      return unavailable(() => fileSides(target, repo, r.query.get("path") ?? "", r.query.get("old") || undefined, r.query.get("commit") || "all"));
+      const checkout = checkouts.find((c) => c.path === repo)!;
+      const pull = checkout.kind === "clone" ? s().forge.openPull(thread.userId, thread.pool, thread.threadId, checkout.name) : undefined;
+      return unavailable(() => fileSides(target, repo, r.query.get("path") ?? "", r.query.get("old") || undefined, r.query.get("commit") || "all", pull?.head));
     }),
     // --- Speech: Dictation and Read aloud ---
     route("GET", `${u}/speech`, (r): Api.Speech => {
