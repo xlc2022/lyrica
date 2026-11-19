@@ -8,7 +8,7 @@ import { StringDecoder } from "node:string_decoder";
 import { posix } from "node:path";
 import { removePrivateKeys, PRIVATE_KEY_BEGIN as BEGIN, PRIVATE_KEY_END as END } from "../secrets.ts";
 import { keyBlob, keysFile, RELOAD_SSHD, sshdRule } from "./machine-cleanup.ts";
-import { nixosSudo, nixosSudoModule, nixString, sudoersCommand } from "./sudoers.ts";
+import { NOT_NIXOS, nixosSudo, nixosSudoModule, nixString, sudoersCommand } from "./sudoers.ts";
 import { within } from "./settings.ts";
 
 export interface SuspectCommand {
@@ -594,7 +594,8 @@ export function authorizedKeysLine(publicKey: string): string {
  * shell redirect, which would run as the user. The commands are one `&&`
  * chain, so the shell reads all of them before sudo asks for a password (a
  * later pasted line would otherwise be read as the password) and stops at
- * the first that fails. On the user's own account (`asUser`) there is
+ * the first that fails. It first stops on NixOS (`NOT_NIXOS`), where its
+ * sshd rule would never be read. On the user's own account (`asUser`) there is
  * nothing to protect from her, so the user adds the key to their own keys
  * file, without sudo. On NixOS (`nixos`), see `nixosSetup`.
  */
@@ -617,6 +618,9 @@ export function machineSetup(account: string, keyLine: string, asUser = false, n
   }
   const keys = keysFile(account);
   return { setup: chain([
+    "# Not on NixOS, which needs System: NixOS",
+    NOT_NIXOS,
+    "",
     "# Her account, made if it isn't there yet; with no password, only her key logs in",
     `{ id -u ${account} > /dev/null 2>&1 || sudo useradd --create-home --shell /bin/bash --password '*' ${account}; }`,
     "",
@@ -705,6 +709,9 @@ export function machineSudo(account: string, nixos = false): { everything: strin
   return {
     everything: sudoersCommand([`${account} ALL=(root) NOPASSWD: ALL`]),
     password: chain([
+      "# Not on NixOS, which needs System: NixOS",
+      NOT_NIXOS,
+      "",
       "# No SSH login with a password for her account",
       sshdMatch(account),
       "sudo sshd -t",

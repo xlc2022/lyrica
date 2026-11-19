@@ -8,6 +8,7 @@ import {
   type Db, type NewMachine, type SshSession, type SshTransport,
 } from "../src/index.ts";
 import { freshKeyring, profile } from "./helpers.ts";
+import { NOT_NIXOS } from "../src/workspace/sudoers.ts";
 
 // Machines with a fake SSH client: an in-memory machine whose host key and
 // files the tests control. The real client against a real sshd is in
@@ -104,6 +105,9 @@ describe("machines", () => {
     // Her account is made first where the machine lacks it, with a password that matches nothing but doesn't lock it, so sshd takes her key.
     expect(hers.setup).toContain("{ id -u lyrica > /dev/null 2>&1 || sudo useradd --create-home --shell /bin/bash --password '*' lyrica; } &&");
     expect(hers.setup.indexOf("useradd")).toBeLessThan(hers.setup.indexOf("authorized_keys"));
+    // On NixOS, where its sshd rule would never be read, it stops before changing anything, and so does sudo with a password.
+    expect(hers.setup.indexOf(NOT_NIXOS)).toBeLessThan(hers.setup.indexOf("useradd"));
+    expect(hers.sudo!.password.indexOf(NOT_NIXOS)).toBeLessThan(hers.sudo!.password.indexOf("passwd"));
     expect(own.setup).not.toContain("useradd");
     expect(spawnSync("bash", ["-n"], { input: hers.setup }).status).toBe(0);
     // Her line is added beside any key already there, never written over it, and each account has its own sshd file.
@@ -537,5 +541,15 @@ describe("sudo with a password", () => {
     expect(order.every((at, i) => at >= 0 && (i === 0 || at > order[i - 1]!))).toBe(true);
     expect(password).not.toContain("NOPASSWD");
   });
-});
 
+  it("stops the shell setup on NixOS with a line naming System: NixOS, and lets it run elsewhere", () => {
+    const dir = mkdtempSync(join(tmpdir(), "nixos-"));
+    try {
+      const guard = NOT_NIXOS.replace("/etc/NIXOS", join(dir, "NIXOS"));
+      expect(spawnSync("bash", ["-c", `${guard} && echo ran`], { encoding: "utf8" }).stdout).toBe("ran\n");
+      writeFileSync(join(dir, "NIXOS"), "");
+      const r = spawnSync("bash", ["-c", `${guard} && echo ran`], { encoding: "utf8" });
+      expect([r.status, r.stdout, r.stderr]).toEqual([1, "", "This machine runs NixOS: choose System: NixOS in Lyrica for its setup\n"]);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+});

@@ -307,6 +307,9 @@ reads them all before sudo asks for a password and stops at the first that
 fails:
 
 ```sh
+# Not on NixOS, which needs System: NixOS
+{ [ ! -e /etc/NIXOS ] || { echo 'This machine runs NixOS: choose System: NixOS in Lyrica for its setup' >&2; false; }; } &&
+
 # Her account, made if it isn't there yet; with no password, only her key logs in
 { id -u <account> > /dev/null 2>&1 || sudo useradd --create-home --shell /bin/bash --password '*' <account>; } &&
 
@@ -435,7 +438,10 @@ the person's own account.
 
 NixOS's sshd reads no `sshd_config.d` and its sudo no `sudoers.d` (nixpkgs
 `sshd.nix` and `sudo.nix`), so the shell setup's `Match` rule and the
-three sudo commands would do nothing there. Add machine's **System**
+three sudo commands would do nothing there; the shell setup, sudo with a
+password and every `sudoersCommand` (`NOT_NIXOS`) stop first where
+`/etc/NIXOS` exists, saying to choose System: NixOS, before they change
+anything. Add machine's **System**
 (Linux or NixOS, SSH only) picks the NixOS setup instead, saved with the
 machine (`nixos`, user.db step 26) so Replace key and Remove give it again.
 The probe's `setup` is then a module for the machine's configuration, and
