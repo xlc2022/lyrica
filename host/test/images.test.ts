@@ -1104,6 +1104,13 @@ describe("ComfyUI jobs", () => {
     expect(inputImage(PNG.toString("base64"), "image")).toEqual(PNG);
   });
 
+  it("takes an input image over 20 MB (a 4096-pixel PNG) and refuses one over 64 MB", () => {
+    const big = Buffer.concat([PNG, Buffer.alloc(30 * 1024 * 1024)]);
+    expect(inputImage(big.toString("base64"), "references").length).toBe(big.length);
+    const huge = Buffer.concat([PNG, Buffer.alloc(64 * 1024 * 1024)]);
+    expect(() => inputImage(huge.toString("base64"), "references")).toThrow("references is larger than 64 MB.");
+  });
+
   it("fails a job when ComfyUI is off or hangs, and the next job still runs", async () => {
     // Accepts connections and never answers, as a ComfyUI stuck loading.
     const sockets: net.Socket[] = [];

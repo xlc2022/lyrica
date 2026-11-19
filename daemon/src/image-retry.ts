@@ -1,5 +1,5 @@
 // Principles 1 and 2: retry only a stored refusal, with today's routing and portrait rules.
-import type { Models, Need, PoolView, Workspace } from "@lyrica/core";
+import { MAX_INPUT_IMAGE_BYTES, type Models, type Need, type PoolView, type Workspace } from "@lyrica/core";
 import type { executeImage } from "@lyrica/extension";
 import type { ImageRetryOptions } from "./api.ts";
 import { HttpError } from "./http.ts";
@@ -29,7 +29,7 @@ export async function imageRetryOptions(models: Models, workspace: Workspace, vi
   const paths = [...args.references ?? [], ...(args.image ? [args.image] : []), ...(args.mask ? [args.mask] : [])];
   let portrait = false, readable = true;
   for (const path of paths) {
-    try { const read = await files.read(path); portrait ||= read.portrait; }
+    try { const read = await files.read(path, MAX_INPUT_IMAGE_BYTES); portrait ||= read.portrait; }
     catch { readable = false; }
   }
   const named = args.model?.trim() ? models.namedImageModels(ctx, args.action, args.model).ids : [];

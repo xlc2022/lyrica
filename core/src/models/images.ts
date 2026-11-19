@@ -44,6 +44,9 @@ export interface Target {
   codex?: (r: ImageRequest, signal?: AbortSignal) => Promise<GeneratedImage[]>;
 }
 
+/** The most bytes an input image to a cloud image model may have (OpenAI's edits refuse large uploads); a model host takes more. */
+export const CLOUD_IMAGE_BYTES = 20 * 1024 * 1024;
+
 export function validateImageRequest(r: ImageRequest): void {
   if (r.action !== "upscale") {
     if (!r.prompt.trim()) throw new HostRefused("invalid", "an image needs a prompt");
@@ -215,6 +218,8 @@ export async function imageAt(t: Target, r: ImageRequest, signal?: AbortSignal, 
   if (!t.host) {
     const provider = CLOUD_IMAGE_PROVIDERS[t.api ?? "openai-compatible"];
     if (!provider) throw new HostRefused("unsupported", "This endpoint has no image provider.");
+    const inputs = r.action === "upscale" ? [r.image] : [...(r.action === "edit" ? [r.image, ...(r.mask ? [r.mask] : [])] : []), ...(r.references ?? [])];
+    if (inputs.some((i) => i.bytes.length > CLOUD_IMAGE_BYTES)) throw new HostRefused("invalid", "a cloud image model takes input images of at most 20 MB");
     // A cloud model has no recipe area to keep: an aspect ratio becomes about one megapixel.
     const req: ImageRequest = r.action === "create" && r.aspectRatio !== undefined ? { ...r, aspectRatio: undefined, size: ratioSize(r.aspectRatio) } : r;
     try { return { images: await provider.run(t, req, signal) }; }

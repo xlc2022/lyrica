@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
 import { afterEach, describe, expect, it } from "vitest";
-import { ensurePhotosDir, ThreadImages, Users, Workspace } from "../src/index.ts";
+import { ensurePhotosDir, MAX_INPUT_IMAGE_BYTES, ThreadImages, Users, Workspace } from "../src/index.ts";
 import { cleanPng } from "../src/models/images.ts";
 import { mp4, png } from "./fake-images.ts";
 import { freshKeyring, profile } from "./helpers.ts";
@@ -38,6 +38,13 @@ describe("image storage boundaries (principles 2 and 4)", () => {
     await expect(files.read("/photos-of-me/escape/portrait.png")).rejects.toThrow();
     writeFileSync(join(home, "photos-of-me", "not-an-image.png"), Buffer.alloc(32));
     await expect(files.read("/photos-of-me/not-an-image.png")).rejects.toThrow(/PNG, JPEG or WebP/);
+  });
+  it("reads a 4096-pixel PNG over 20 MB for a model host, and refuses it where a cloud model may take it", async () => {
+    const { home, marks } = setup();
+    const big = Buffer.concat([png, Buffer.alloc(30 * 1024 * 1024)]);
+    const files = new ThreadImages(() => home, () => ["threads", "web%2Fa"], async () => ({ stream: Readable.from([big]), size: big.length }), marks);
+    await expect(files.read("/workspace/images/big.png")).rejects.toThrow("an input image is at most 20 MB");
+    expect((await files.read("/workspace/images/big.png", MAX_INPUT_IMAGE_BYTES)).input.bytes.length).toBe(big.length);
   });
   it("marks the thread's folder with its first portrait result, so a copy with other bytes still counts, in this thread and from its family", async () => {
     const { home, marks, folders } = setup();

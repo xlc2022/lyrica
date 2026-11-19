@@ -1345,7 +1345,7 @@ that lead to the output, and their steps in all; it leaves out waiting, model
 loading, encoding and decoding, so it is the figure to compare models by. It
 is absent when nothing sampled (stable-diffusion.cpp, an upscaler's plain pass,
 a workflow without a sampler). Input images are base64
-PNG, JPEG or WebP, at most 20 MB each and, by their header, at most 8192
+PNG, JPEG or WebP, at most 64 MB each and, by their header, at most 8192
 pixels a side and 36 megapixels. Any field not listed is `invalid`.
 A recipe that isn't confirmed and ready is `not_found`; one that doesn't do
 the action is `invalid`.

@@ -706,6 +706,10 @@ A create request has `prompt`, `tier` (`fast` or `quality`), optional
 `size: { width, height }`, `count` and `references`. Edit takes `prompt`,
 `image`, optional `mask`, `references` and `count`; upscale takes `image`,
 optional `scale` and `maxSize`. Inputs are `{ bytes, type }` (PNG, JPEG or WebP).
+The image tool reads each input at up to 64 MB, since a host resizes a
+reference to its working size (Qwen-Image 2.1's encoder to about 1024 pixels
+a side) and bounds memory by pixels, not bytes; a cloud image model refuses
+any input over 20 MB (`CLOUD_IMAGE_BYTES`) before the request is sent.
 
 Hosts are called through their paired fetch at `/host/v1/images/<action>`
 with the confirmed recipe's ID. Size, count and a job's own settings (`JobSettings`: steps,
