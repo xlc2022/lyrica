@@ -1622,7 +1622,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     model label (a host recipe by its name) and error code it reached:
     `Image <action> failed with <label> [<code>]: <message>`. When the
     endpoint answers an error, the message is `image endpoint answered
-    <status>` followed by a model host's own message whole (a `too_big` 413
+    <status>` followed by a model host's own message whole (a `too_big` 507
     says how much GPU memory the recipe needs and has), or, from a cloud
     endpoint, only its error `code`, `type` and `parameter`, never its prose,
     which may quote the prompt.
@@ -2316,7 +2316,9 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     error ("503: {…}") keeps only its message (`plainError`), and one
     refused for its size in bytes (a 413, the host's older "The request is
     too large.", Anthropic's `request_too_large`) says so and to start a new
-    thread (`replyError`, `TOO_LARGE_ERROR`), live and stored;
+    thread (`replyError`, `TOO_LARGE_ERROR`), live and stored; a host's
+    `too_big` (a model that doesn't fit its GPUs, 413 from hosts before 507)
+    is "The model couldn't load: " and the host's reason instead;
   - a `live_call` thread event (`call: LiveCall | null`, and `liveCall` on
     a busy thread's `hello`, its `ms` brought up to date) while a turn waits
     on a model request: `ms` since it went out, `prompt`, `cached`, `read`,
@@ -2577,7 +2579,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
       `Forbidden` is `403`; `SchemaTooNew` and `MigrationFailed` are `409`;
       `Offline` is `502`; `Locked` is `503`. A `HostRefused` keeps the
       host's meaning by `code`: `invalid` and `need_repo` 400, `refused` 403,
-      `not_found` 404, `in_use`, `load_cancelled` and `above_recommended` 409, `too_big` 413,
+      `not_found` 404, `in_use`, `load_cancelled` and `above_recommended` 409, `too_big` and
       `no_space` 507; any other code (`unreachable`, `paused`, `busy`,
       `unpaired`, `identity_changed`, …) is `502` with the host's plain
       message.

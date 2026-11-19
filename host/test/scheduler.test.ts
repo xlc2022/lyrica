@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import type { Logger } from "../src/log.ts";
 import { HostError } from "../src/http.ts";
 import { Scheduler, type Priority, type QueuePhase } from "../src/scheduler.ts";
+import { sizes } from "../src/placement.ts";
 import { StateFile } from "../src/state.ts";
 import { FakeBackend, FakeGpus, GIB, textModel } from "./fakes.ts";
 
@@ -149,6 +150,24 @@ describe("the GPU queue", () => {
       expect(scheduler.served(chat).contextLength).toBe(before);
     }
   }, 15_000);
+
+  it("shrinks an automatic context to what llama.cpp measures, rather than refusing the context it picked", async () => {
+    // A 16 GB card with an embedding model staying: llama.cpp's buffers come to 2 GB more than the planner's allowance.
+    const { scheduler, gpus, llamacpp } = setup([16]);
+    await scheduler.start([]);
+    llamacpp.measurements = (m, at, s) => Object.fromEntries(at.gpus.map((g) => {
+      const { weights, kv } = sizes(m, s);
+      return [g, { bytes: weights + kv + 2 * GIB, extra: kv + 2 * GIB }];
+    }));
+    await scheduler.loadNow(textModel("embed", 1, { kind: "embedding", contextLength: 8192 }));
+    // 256 KB of f16 KV cache a token: 1 GB per 4096 tokens, so the context is what the room sets.
+    const chat = textModel("chat", 3, { contextLength: 262144, kvPerToken: 2 * 64 * 8 * 128 });
+    const picked = scheduler.served(chat).contextLength!;
+    await scheduler.loadNow(chat);
+    expect(scheduler.placement("chat")?.state).toBe("loaded");
+    expect(scheduler.served(chat).contextLength).toBeLessThan(picked);
+    expect(gpus.on("chat")).toEqual([0]);
+  });
 
   it("keeps the serving instance when reload cannot fit", async () => {
     const { scheduler, llamacpp } = setup();
@@ -398,6 +417,37 @@ describe("the GPU queue", () => {
     running.release();
     await asked;
     expect(scheduler.placement("recipe:h3")).toBeNull();
+  });
+
+  it("counts an image recipe at what its job took, not at ComfyUI's start, so a chat model can still unload it", async () => {
+    // As on two 24 GB cards with a copy of a recipe on each: ComfyUI's start takes 0.7 GB, and each job, run side by
+    // side, leaves 20 GB in place.
+    for (const stale of [false, true]) {
+      const gpus = new FakeGpus([24, 24]);
+      const llamacpp = new FakeBackend(gpus);
+      const comfyui = new FakeBackend(gpus);
+      comfyui.load = async (model) => {
+        comfyui.calls.push(`load ${model.id}`);
+        gpus.loaded.set(model.id, { [model.id.endsWith("1") ? 1 : 0]: 0.7 * GIB });
+      };
+      const state = new StateFile(mkdtempSync(join(tmpdir(), "lyrica-sched-")));
+      // A host before this one saved ComfyUI's start as each copy's measurement.
+      if (stale) state.update((s) => { s.vram["recipe:h3@gpu0@0"] = { 0: 0.7 * GIB }; s.vram["recipe:h3@gpu1@1"] = { 1: 0.7 * GIB }; });
+      const scheduler = new Scheduler({ monitor: gpus, backends: { llamacpp, vllm: new FakeBackend(gpus), comfyui }, state, log: () => {} });
+      await scheduler.start([]);
+      const copies = [0, 1].map((g) => textModel(`recipe:h3@gpu${g}`, 16, { kind: "image", server: "comfyui", format: "safetensors", contextLength: null }));
+      let both!: () => void;
+      const together = new Promise<void>((ok) => { let n = 0; both = () => { if (++n === 2) ok(); }; });
+      await Promise.all(copies.map((m, g) => scheduler.run(m, "image", () => scheduler.measuring(m, async () => {
+        gpus.loaded.get(m.id)![g] = 20.7 * GIB;
+        both();
+        await together;
+      }), g)));
+      expect([state.get().vram["recipe:h3@gpu0@0"]![0], state.get().vram["recipe:h3@gpu1@1"]![1]].every((n) => n! >= 16 * GIB)).toBe(true);
+      await scheduler.loadNow(textModel("chat", 12));
+      expect(comfyui.calls).toContain("unload recipe:h3@gpu0");
+      expect(gpus.on("chat")).toEqual([0]);
+    }
   });
 
   it("remeasures after a job that failed, so what the server kept can still be evicted", async () => {

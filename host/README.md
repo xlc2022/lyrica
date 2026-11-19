@@ -846,10 +846,12 @@ unpairs it here too, when the host can be reached.
   llama.cpp's README "Memory-based unloading"; the vision projector, which
   it leaves out, is added on the first GPU), plus 0.5 GiB per GPU for the
   driver's own context, which the measurement leaves out. When it finds a
-  GPU short, its measured cache and buffers become that GPU's overhead in
-  the planner and the load is planned again from the top, so idle models
-  are unloaded or more of the model moves to system RAM, and the new
-  placement is measured; after two such rounds a short GPU refuses the
+  GPU short, what it measured beyond the estimate's weights and cache
+  becomes that GPU's overhead in the planner (the planner adds its own
+  cache estimate for each context it tries, so the measured cache isn't
+  counted twice) and the load is planned again from the top, so idle
+  models are unloaded, more of the model moves to system RAM, or an
+  automatic context shrinks to fit, and the new placement is measured; after two such rounds a short GPU refuses the
   load, naming the measured need. Reload takes the same path. A measurement
   that fails (the measure child couldn't build the model; the router
   doesn't say why) drops the model's preset and has the router read the

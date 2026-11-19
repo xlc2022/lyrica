@@ -123,14 +123,14 @@ export function maxContextOf(model: TextModel, s: ModelSettings): number | null 
  * when its GPUs hold its maximum. With no maximum, or when nothing fits, 32k
  * (never past its maximum), so a load that can't work fails with the usual reason.
  */
-export function autoContext(model: TextModel, s: ModelSettings, gpus: Gpu[], settings: (i: number) => GpuSettings, allowance = 0): number {
+export function autoContext(model: TextModel, s: ModelSettings, gpus: Gpu[], settings: (i: number) => GpuSettings, allowance = 0, overhead?: Overhead): number {
   const max = maxContextOf(model, s);
   const fallback = Math.min(defaultContext(model), max ?? Infinity);
   if (max === null || model.kind !== "chat") return fallback;
   const largest = (ram: number, most: number) => {
     const fits = (context: number) => {
       const at = { ...s, contextLength: context };
-      return options(model, at, gpus, settings, ram).some((o) => !neverFits(model, at, o, gpus, settings, ram));
+      return options(model, at, gpus, settings, ram, overhead).some((o) => !neverFits(model, at, o, gpus, settings, ram));
     };
     if (fits(most)) return most;
     // Steps of 1024: lo fits, hi doesn't.

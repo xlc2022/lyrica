@@ -1571,7 +1571,7 @@ describe("the image API", () => {
     expect(z).toMatchObject({ does: [], unsupported: expect.stringMatching(/needs about 0\.5 GB on GPU 0/) });
     await s.api(`/host/v1/recipes/${z.id}/confirm`, { body: {} });
     const made = await s.api("/host/v1/images/create", { body: { recipe: z.id, prompt: "x" } });
-    expect([made.status, made.body.error.code]).toEqual([413, "too_big"]);
+    expect([made.status, made.body.error.code]).toEqual([507, "too_big"]);
     expect(s.comfyFake.seen.prompts).toHaveLength(0);
   });
 

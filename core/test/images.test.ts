@@ -436,9 +436,9 @@ describe("LoRAs asked for by name (docs/models.md, \"LoRAs for one call\")", () 
 describe("a failed image call's error", () => {
   const image = { bytes: png, type: "image/png" as const };
   it("passes on the host's own message, such as a recipe that doesn't fit its GPU", async () => {
-    const fetch = vi.fn(async () => Response.json({ error: { code: "too_big", message: "This model needs about 18 GB on GPU 0; it has 16 GB." } }, { status: 413 })) as unknown as typeof globalThis.fetch;
+    const fetch = vi.fn(async () => Response.json({ error: { code: "too_big", message: "This model needs about 18 GB on GPU 0; it has 16 GB." } }, { status: 507 })) as unknown as typeof globalThis.fetch;
     await expect(imageAt({ fetch, baseUrl: "https://host.example", host: true, modelId: "recipe/art" }, { action: "edit", prompt: "Add eyeliner", image }))
-      .rejects.toMatchObject({ code: "too_big", message: "image endpoint answered 413: This model needs about 18 GB on GPU 0; it has 16 GB." });
+      .rejects.toMatchObject({ code: "too_big", message: "image endpoint answered 507: This model needs about 18 GB on GPU 0; it has 16 GB." });
   });
   it("names a cloud error's code, type and parameter, never its message", async () => {
     const fetch = vi.fn(async () => Response.json({ error: { code: "invalid_value", type: "invalid_request_error", param: "size", message: "SECRET provider prompt" } }, { status: 400 })) as unknown as typeof globalThis.fetch;

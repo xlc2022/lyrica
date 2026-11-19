@@ -122,7 +122,7 @@ async function answer(t: Target, path: string, body: string | FormData, headers:
     throw new HostRefused("unavailable", "The image endpoint could not be reached.");
   }
   if (!res.ok) {
-    // A host's message is its own fixed text, so it is passed on whole (a 413 is a recipe that doesn't fit its GPU).
+    // A host's message is its own fixed text, so it is passed on whole (a 507 is a recipe that doesn't fit its GPU).
     // Never echo a cloud provider's message: it may include the prompt. Its code, type and parameter are named instead.
     const err = t.host ? await hostError(res) : undefined;
     const cloud: any = !t.host ? await res.json().catch(() => ({})) : undefined;

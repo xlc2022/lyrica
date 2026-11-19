@@ -10,7 +10,7 @@ import { HostError } from "../src/http.ts";
 import type { Gpu, GpuMonitor } from "../src/gpus.ts";
 import { makeIdentity } from "../src/identity.ts";
 import type { TextModel } from "../src/library.ts";
-import type { Option } from "../src/placement.ts";
+import type { ModelSettings, Option } from "../src/placement.ts";
 
 export const GIB = 1024 ** 3;
 
@@ -46,13 +46,13 @@ export class FakeBackend implements Backend {
 
   readonly placements = new Map<string, Option>();
   /** The server's own measurement of a placement, when set: what each GPU needs, and how much of it isn't weights. */
-  measurements?: (model: TextModel, at: Option) => Record<number, Measured> | null;
+  measurements?: (model: TextModel, at: Option, settings: ModelSettings) => Record<number, Measured> | null;
   forgotten: string[] = [];
 
-  async measure(model: TextModel, at: Option) {
+  async measure(model: TextModel, at: Option, settings: ModelSettings) {
     if (!this.measurements) return null;
     this.calls.push(`measure ${model.id}@${at.gpus.join("+")}`);
-    return this.measurements(model, at);
+    return this.measurements(model, at, settings);
   }
   forget(model: TextModel) {
     this.forgotten.push(model.id);
