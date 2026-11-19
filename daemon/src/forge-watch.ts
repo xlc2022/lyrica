@@ -21,6 +21,8 @@ export interface ForgeWatchOptions {
   wakeups: Wakeups;
   /** Failure names only, never a body or a note. */
   log: (line: string) => void;
+  /** A thread's open pull request as the watcher sees it changed (its checks, head or draft, or it closed), so open views reload it. */
+  changed?: (userId: string, pool: Pool, threadId: string) => void;
 }
 
 /** One account as the poller sees it: its stored config, read fresh each poll. */
@@ -313,12 +315,17 @@ export class ForgeWatcher {
       this.o.log(`a forge poll of ${w.repo}#${w.number} failed: ${(err as Error).name}`); // transient; keep watching
       return;
     }
+    const before = this.codeState.get(id);
     if (poll.kind === "snapshot" && poll.pull.state === "open") {
       this.codeState.set(id, {
         thread: w.thread, line: `${w.repo} PR #${w.number}: ${poll.pull.checks.map(c => `${c.name}: ${c.result ?? "pending"}`).join(", ") || "no checks reported"}`,
         pull: { repo: w.repo, number: w.number, head: poll.pull.head, url: pullUrl(a, w), ...(poll.pull.draft ? { draft: true as const } : {}), checks: poll.pull.checks.map((c) => ({ name: c.name, result: c.result })) },
       });
     } else this.codeState.delete(id);
+    // The chip in the thread header and on its project card shows what the last poll saw; without this it waited for
+    // the thread's next tool call, and stayed on "running" once she merged in the same turn the checks finished.
+    const after = this.codeState.get(id);
+    if (JSON.stringify(before?.pull) !== JSON.stringify(after?.pull)) this.o.changed?.(userId, pool, w.thread);
     const lastState: ForgeWatchState = { head: w.head, headSince: w.headSince, notifiedHeads: w.notifiedHeads, seenReviews: w.seenReviews };
     const out = decideWatch({ number: w.number, account: a.account, now: now.toISOString(), last: lastState, poll });
     const note = out.note ? renderNote(out.note) : null;

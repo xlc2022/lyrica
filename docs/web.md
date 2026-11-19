@@ -189,7 +189,9 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   request"): after the folder, machine, repository and MCP badges, one badge
   per checkout from `GET …/changes` (docs/daemon.md "Changes"), fetched when
   the thread opens and again when `ShellContext.activity` moves (a finished
-  tool call or turn); a 409 (a locked home, an SSH machine) shows nothing.
+  tool call or turn) or a `pull` stream event comes (`Live.pull`: the forge
+  watcher's poll saw the pull request's checks, head or draft change, or it
+  close); a 409 (a locked home, an SSH machine) shows nothing.
   It opens `ChangesView`, a `dialog` like the file viewer: `…/changes/commit`
   for one commit's files, `…/changes/file` for each file's two sides, which
   `diff.ts` compares in the browser (Myers over the lines, the middle shown
@@ -227,6 +229,7 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   its checklist's count from `ThreadSummary.steps`, its open pull request
   from `ThreadSummary.pull` (the number, **Draft** muted while
   `OpenPull.draft`, and the checks' dot as the changes badge colours it,
+  pulsing as the badge's does while checks run (`.dot.pending`),
   with the checks in a word for screen readers), and `ThreadSummary.subagents`, the subagents working
   for it now; a chip without anything to say is left out. In the popover, and where the
   panel's list is under 520 px wide (container `tlist`), the chips wrap onto

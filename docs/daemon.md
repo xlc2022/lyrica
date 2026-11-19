@@ -1073,7 +1073,10 @@ in the thread list and the project's overview) also carries `pull`, its
 open pull request from the watcher's last poll (`ForgeWatcher.openPulls`,
 the first when it has several), and `subagents`, how many subagents work
 for it or wait on a question now (`DelegationStore.liveCounts`, one query
-per pool per request); neither fetches anything.
+per pool per request); neither fetches anything. When a poll sees a
+thread's open pull request change (its checks, head or draft, or it closed),
+the watcher's `changed` sends the thread a `pull` event, so its changes
+badge reloads, and its project chat a `child` event for its card.
 
 - `GET …/threads/:pool/:threadId/changes` → `ThreadChanges`: per checkout,
   the branch, the base (origin's default branch, else the first of

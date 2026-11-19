@@ -50,7 +50,7 @@ export function ChangesFact({ base, activity }: { base: string; activity: number
             {r.pull && <span className="num">#{r.pull.number}</span>}
             <span className="name folder">{r.branch || "detached"}</span>
             <Counts {...totals} />
-            {checks && checks.tone !== "none" && <span className={`dot ${checks.tone === "ok" ? "up" : checks.tone === "bad" ? "down" : "away"}`} title={checks.text} />}
+            {checks && checks.tone !== "none" && <span className={`dot ${checks.tone === "ok" ? "up" : checks.tone === "bad" ? "down" : "away pending"}`} title={checks.text} />}
             <span className="caret">▾</span>
           </button>
         );

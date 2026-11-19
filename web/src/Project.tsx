@@ -36,7 +36,7 @@ export function ThreadChips({ t, link }: { t: Pick<ThreadSummary, "steps" | "pul
     <>
       <Icon name="pull" /><span className="num">#{t.pull.number}</span>
       {t.pull.draft && <>{" "}<span className="draft">Draft</span></>}
-      {said && <><span className={`dot ${checks!.tone === "ok" ? "up" : checks!.tone === "bad" ? "down" : "away"}`} /><span className="sr-only">, {said}</span></>}
+      {said && <><span className={`dot ${checks!.tone === "ok" ? "up" : checks!.tone === "bad" ? "down" : "away pending"}`} /><span className="sr-only">, {said}</span></>}
     </>
   );
   const pullTitle = t.pull && `Pull request #${t.pull.number} on ${t.pull.repo}${said ? `\n${checks!.text}` : ""}`;
