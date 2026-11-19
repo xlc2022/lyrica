@@ -186,7 +186,9 @@ seconds of audio.
   GPUs below).
 - A GPU lists every model on it, including one split over several GPUs
   (`gpus` names them all). A model's `kind` is `chat`, `embedding`,
-  `image`, `transcribe` or `speak`; `state` is `loading` or `loaded`; while a llama.cpp model is
+  `image`, `transcribe` or `speak`; an `image` model's `id` is `recipe:<recipe id>`
+  (`@gpu<n>` follows on a host with several image GPUs) and its `name` is the recipe's
+  current name; `state` is `loading` or `loaded`; while a llama.cpp model is
   `loading`, `loading` is `{ read, of }`: the bytes the server has read of the model's files (its
   projector and MTP draft with them) from the models disk, by `/proc/diskstats`, of the bytes to
   read (a model already in the page cache reads nothing and shows no progress); `vram` is what it takes on
@@ -202,7 +204,7 @@ seconds of audio.
   model waits for all of its GPUs.
 - `modelsFolder.path` is the folder on the host machine. `POST
   /host/v1/models-folder` changes it.
-- `systemRam`: `{ total, most, allowance, used, models: [{ id, ram }] }`,
+- `systemRam`: `{ total, most, allowance, used, models: [{ id, name?, ram }] }`,
   the system RAM allowance (see "System RAM" below) in bytes: the
   machine's memory, the most the allowance may be, the allowance (0 is
   off), what models keep in it, and each such model. A model under a GPU

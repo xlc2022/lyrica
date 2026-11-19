@@ -1347,6 +1347,9 @@ describe("the image API", () => {
     expect(made.status).toBe(200);
     expect(made.body.images).toHaveLength(2);
     expect(Buffer.from(made.body.images[0].png, "base64")).toEqual(PNG);
+    // The status names the loaded recipe by its name, not only its ID.
+    const loaded = (await s.api("/host/v1/status")).body.gpus.flatMap((g: { models: { id: string; name?: string }[] }) => g.models);
+    expect(loaded).toContainEqual(expect.objectContaining({ id: `recipe:${z.id}`, name: z.name }));
     // sd.cpp makes the second image from the next seed.
     expect(made.body.images.map((i: { seed: number }) => i.seed)).toEqual([11, 12]);
     // sd-server started with the recipe's parts, and got the recipe's defaults in its own names.

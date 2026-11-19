@@ -3227,8 +3227,10 @@ test("Status shows each model host's state and its GPUs, and refreshes itself wh
     real.endpoints.push({ ...local, id: "ep-box", name: "box", api: "host", state: "up", shared: false, models: [] });
     real.hosts.push({ endpointId: "ep-box", status: {
       name: "box", version: "0.9.0", fingerprint: "SHA256:aaaa", state: "running", downloads: { active: 0 }, modelsFolder: { path: "/srv/models", free: 96 * GB },
-      gpus: [{ index: 0, name: "Fixture GPU", vendor: "nvidia", role: "shared", vram: { total: 16 * GB, used: 9 * GB },
-        models: [{ id: "fixture/Fixture-27B-Q4_K_M.gguf", kind: "chat", state: "loaded", pinned: false, busy: false, vram: 9 * GB, lastUsed: null }], queue: { chat: 1, image: 0, background: 0 } }],
+      gpus: [{ index: 0, name: "Fixture GPU", vendor: "nvidia", role: "shared", vram: { total: 16 * GB, used: 13 * GB },
+        models: [{ id: "fixture/Fixture-27B-Q4_K_M.gguf", kind: "chat", state: "loaded", pinned: false, busy: false, vram: 9 * GB, lastUsed: null },
+          { id: "recipe:00000000-0000-4000-8000-000000000001", name: "Fixture Image", kind: "image", state: "loaded", pinned: false, busy: false, vram: 4 * GB, lastUsed: null }],
+        queue: { chat: 1, image: 0, background: 0 } }],
     } });
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(real) });
   });
@@ -3238,8 +3240,11 @@ test("Status shows each model host's state and its GPUs, and refreshes itself wh
   const hosts = page.getByRole("region", { name: "Model hosts" });
   const box = hosts.locator(".status-host").filter({ hasText: "box" });
   await expect(box.locator(".status-word")).toHaveText("Online");
-  await expect(box.locator(".gpu-line")).toHaveText("GPU 0 · Fixture GPU9.0 / 16 GB");
+  await expect(box.locator(".gpu-line")).toHaveText("GPU 0 · Fixture GPU13.0 / 16 GB");
   await expect(box).toContainText("Fixture-27B-Q4_K_M (loaded)");
+  // An image model shows its recipe's name, not its recipe ID.
+  await expect(box).toContainText("Fixture Image (loaded)");
+  await expect(box).not.toContainText("recipe:");
   await expect(box).toContainText("Waiting: 1 chat");
   await noHorizontalScroll(page);
   await page.screenshot({ path: `shots/status-hosts-${page.viewportSize()!.width}.png` });

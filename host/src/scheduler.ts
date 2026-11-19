@@ -1107,7 +1107,7 @@ export class Scheduler {
     });
   }
 
-  async status(): Promise<object[]> {
+  async status() {
     await this.readGpus();
     return this.gpus.map((g) => {
       const queue = { chat: 0, image: 0, background: 0 };
