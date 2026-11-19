@@ -473,7 +473,7 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   general MCP server yet" when there's none, with an **MCP servers** link at
   its foot; a change applies at once), the mode, the
   **Code mode** (Behaviour, saved at once), Web search and Images switches, the Claude Code switch (only where
-  `claudeCodeOffered`, or while on), "Do not log", rename and hide (deleting is the thread menu's Delete…). `lyricad` validates every
+  `claudeCodeOffered`, or while on), "Do not log", and **Hide** under Thread (renaming is in the title or thread menu; deleting is the thread menu's Delete…). `lyricad` validates every
   change and its reason is shown. Code mode selects the Coding model in the
   header and its picker; turning it off restores Chat. Its tooltip says
   "Focus on the code: a coding model, a short persona, and only this
