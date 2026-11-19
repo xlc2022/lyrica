@@ -10,7 +10,14 @@ import { FAMILY_ROOT, SHARED, WORKDIR } from "./sandbox.ts";
 import type { WorkspaceSettings } from "./settings.ts";
 
 export const PHOTOS_DIR = "/photos-of-me";
+/** A portrait, an upload, and an image a vision model looks at: what cloud models take. */
 export const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
+/**
+ * An image the image tool gives a model (a reference, or the image to edit, upscale or animate): a model host takes
+ * up to 64 MB and resizes it to its working size; a cloud image model still refuses past 20 MB (models/images.ts).
+ */
+export const MAX_INPUT_IMAGE_BYTES = 64 * 1024 * 1024;
+const mb = (bytes: number) => `${bytes / 1024 / 1024} MB`;
 /** Where a thread's rejected attempts go, inside its images folder. */
 export const REJECTED_DIR = "rejected";
 /** A name the image tool gave (`save`): only these can be rejected or picked. */
@@ -40,8 +47,8 @@ function inDir<T>(home: string, parts: string[], create: boolean, run: (fd: numb
   } finally { closeSync(fd); }
 }
 
-function imageInput(bytes: Buffer): ImageInput {
-  if (bytes.length > MAX_IMAGE_BYTES) throw new Error("an input image is at most 20 MB");
+function imageInput(bytes: Buffer, limit = MAX_IMAGE_BYTES): ImageInput {
+  if (bytes.length > limit) throw new Error(`an input image is at most ${mb(limit)}`);
   const type = sniffImage(bytes);
   if (type !== "image/png" && type !== "image/jpeg" && type !== "image/webp") throw new Error("an input image must be PNG, JPEG or WebP");
   return { bytes, type };
@@ -297,7 +304,8 @@ export class ThreadImages {
     return readHomeFile(home, [...this.thread(), ...partsOf(relative)], range);
   }
 
-  async read(path: string): Promise<WorkspaceImage> {
+  /** `limit`: the most bytes the caller's model takes, 20 MB unless it says (MAX_INPUT_IMAGE_BYTES for the image tool). */
+  async read(path: string, limit = MAX_IMAGE_BYTES): Promise<WorkspaceImage> {
     const home = this.home();
     // Photos have a reserved tool path, never a sandbox grant. Don't normalise away a traversal.
     const raw = path.startsWith("photos-of-me/") ? `/${path}` : path;
@@ -315,8 +323,8 @@ export class ThreadImages {
       });
       return { input: imageInput(bytes), portrait: true };
     }
-    const bytes = await this.readCapped(path, MAX_IMAGE_BYTES, "an input image is at most 20 MB");
-    return { input: imageInput(bytes), portrait: this.portraitByFolder(path) || this.portraits.isPortraitImage(createHash("sha256").update(bytes).digest("hex")) };
+    const bytes = await this.readCapped(path, limit, `an input image is at most ${mb(limit)}`);
+    return { input: imageInput(bytes, limit), portrait: this.portraitByFolder(path) || this.portraits.isPortraitImage(createHash("sha256").update(bytes).digest("hex")) };
   }
 
   /** A clip from the workspace (`motion`'s driving clip, or one to `extend`): an MP4 of at most 64 MB, read in memory only. */

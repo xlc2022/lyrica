@@ -1262,7 +1262,8 @@ At most 16 stills per clip. Without ffmpeg, a clip can't be looked at.
 Each user's mounted home also has `photos-of-me/`, outside the thread folders
 and sandbox grants. The tool reaches it through `/photos-of-me/<file>` (or
 `photos-of-me/<file>`). `Workspace.imageFiles(t).read` marks these inputs as
-portraits, sniffs PNG/JPEG/WebP and limits each to 20 MB. It refuses traversal
+portraits, sniffs PNG/JPEG/WebP and limits each to 20 MB (64 MB for the
+image tool's inputs, which a cloud image model still refuses past 20 MB). It refuses traversal
 and symlinks; ordinary workspace images are read through the thread's Files
 sandbox under its current grants.
 

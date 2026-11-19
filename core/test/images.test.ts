@@ -440,6 +440,15 @@ describe("a failed image call's error", () => {
     await expect(imageAt({ fetch, baseUrl: "https://host.example", host: true, modelId: "recipe/art" }, { action: "edit", prompt: "Add eyeliner", image }))
       .rejects.toMatchObject({ code: "too_big", message: "image endpoint answered 507: This model needs about 18 GB on GPU 0; it has 16 GB." });
   });
+  it("refuses a reference over 20 MB for a cloud model before sending it, and sends it to a host", async () => {
+    const big = { bytes: Buffer.concat([png, Buffer.alloc(25 * 1024 * 1024)]), type: "image/png" as const };
+    const fetch = vi.fn(async () => Response.json({ images: [{ png: png.toString("base64") }] })) as unknown as typeof globalThis.fetch;
+    await expect(imageAt({ fetch, baseUrl: "https://images.example/v1", host: false, modelId: "gpt-image-1", apiKey: "fake-key" }, { action: "create", prompt: "A garden", tier: "fast", references: [big] }))
+      .rejects.toThrow("a cloud image model takes input images of at most 20 MB");
+    expect(fetch).not.toHaveBeenCalled();
+    await imageAt({ fetch, baseUrl: "https://host.example", host: true, modelId: "recipe/art" }, { action: "create", prompt: "A garden", tier: "fast", references: [big] });
+    expect(fetch).toHaveBeenCalledOnce();
+  });
   it("names a cloud error's code, type and parameter, never its message", async () => {
     const fetch = vi.fn(async () => Response.json({ error: { code: "invalid_value", type: "invalid_request_error", param: "size", message: "SECRET provider prompt" } }, { status: 400 })) as unknown as typeof globalThis.fetch;
     const failed = imageAt({ fetch, baseUrl: "https://images.example/v1", host: false, modelId: "gpt-image-1", apiKey: "fake-key" }, { action: "create", prompt: "A garden", tier: "fast" });

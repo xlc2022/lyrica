@@ -1,7 +1,7 @@
 // Principles 1, 2 and 8: one image tool, which also makes clips, with portrait consent checked at each resolved provider.
 import type { ExtensionContext, ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import { CloudModelForbidden, HostRefused, ratioSize, isRestricted, NoModel, loraFiles, loraName, MAX_LORAS, modelName, type AppliedLora, type CallContext, type LoraAsk, type ImageRequest, type JobProgress, type Models, type Resolution,
-  type ThreadImages, type VideoRequest, type VideoUpscaleRequest, type WorkspaceSettings, LONGEST_VIDEO_SECONDS, MAX_SEED, MAX_UPSCALE_SEED, COLOR_MATCH, JOB_SETTINGS, type JobSettings, imageTask } from "@lyrica/core";
+  type ThreadImages, type VideoRequest, type VideoUpscaleRequest, type WorkspaceSettings, LONGEST_VIDEO_SECONDS, MAX_INPUT_IMAGE_BYTES, MAX_SEED, MAX_UPSCALE_SEED, COLOR_MATCH, JOB_SETTINGS, type JobSettings, imageTask } from "@lyrica/core";
 import { Type, type Static } from "typebox";
 import { StringEnum } from "@earendil-works/pi-ai";
 import type { Approval, ApprovalRequest } from "./workspace.ts";
@@ -331,7 +331,7 @@ export async function executeImage(o: ImageTools, id: string, p: ImageArgs, sign
   if (isVideo(p.action)) return executeVideo(o, id, p, signal, onProgress);
   let portrait = false;
   const read = async (path: string) => {
-    const result = await o.files.read(path); portrait ||= result.portrait;
+    const result = await o.files.read(path, MAX_INPUT_IMAGE_BYTES); portrait ||= result.portrait;
     return result.input;
   };
   let request: ImageRequest;
@@ -400,7 +400,7 @@ async function executeVideo(o: ImageTools, id: string, p: ImageArgs, signal?: Ab
   if (p.size && p.aspectRatio) throw new Error("Give a size or an aspect ratio, not both.");
   // An aspect ratio goes to the host as it is, which keeps the recipe's area and snaps to its size step.
   if (p.action === "edit_video" && (p.size || p.aspectRatio)) throw new Error("edit_video keeps the clip's own shape: leave size and aspectRatio out.");
-  const request: VideoRequest = { prompt: p.action === "edit_video" ? p.instruction! : p.prompt!, ...(p.action === "animate" || p.action === "motion" ? { image: (await o.files.read(p.image!)).input } : {}),
+  const request: VideoRequest = { prompt: p.action === "edit_video" ? p.instruction! : p.prompt!, ...(p.action === "animate" || p.action === "motion" ? { image: (await o.files.read(p.image!, MAX_INPUT_IMAGE_BYTES)).input } : {}),
     ...(p.action === "motion" ? { drive: await o.files.readClip(p.video!) } : {}), ...(p.action === "extend" ? { extend: await o.files.readClip(p.video!) } : {}),
     ...(p.action === "edit_video" ? { source: await o.files.readClip(p.video!) } : {}),
     ...(p.size ? { size: p.size } : {}), ...(p.aspectRatio ? { aspectRatio: p.aspectRatio } : {}), ...(p.duration === undefined ? {} : { duration: p.duration }),

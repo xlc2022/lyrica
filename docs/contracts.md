@@ -3002,7 +3002,9 @@ imageFiles(t): ThreadImages
 // ThreadImages.content(path): HomeFile { stream: Readable; size; type }; relative or /workspace/ paths,
 //   the thread's folder only (including the shared project folder); traversal/symlinks/nonfiles → HomeFileMissing.
 // ThreadImages.read(path): Promise<{ input: ImageInput; portrait: boolean }>; ordinary paths via ThreadFiles,
-//   /photos-of-me/<file> from that user's mounted encrypted home, refusing symlinks/traversal; at most 20 MB, PNG/JPEG/WebP.
+//   /photos-of-me/<file> from that user's mounted encrypted home, refusing symlinks/traversal; PNG/JPEG/WebP.
+// ThreadImages.read(path, limit = MAX_IMAGE_BYTES): at most 20 MB, or `limit` (the image tool passes MAX_INPUT_IMAGE_BYTES,
+//   64 MB, for a model host; imageAt refuses an input over CLOUD_IMAGE_BYTES, 20 MB, for a cloud model).
 // ThreadImages.read also marks bytes whose SHA-256 was recorded as a derived portrait, regardless of path; and every read
 //   once this thread's folder is marked (a portrait result was saved there), or a read of a marked folder at
 //   /thread-workspaces/<id> or /shared (folderOf, Workspace.originKey).

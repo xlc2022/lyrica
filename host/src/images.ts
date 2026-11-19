@@ -26,7 +26,10 @@ const referenceCount = (wf: Template["workflow"]) =>
 /** A custom workflow's request body: an export, with room for its long prompts and many nodes. */
 const WORKFLOW_LIMIT = 2 * 1024 * 1024;
 
-const IMAGE_LIMIT = 20 * 1024 * 1024;
+/** An input image's bytes, at most: ComfyUI takes 100 MB, and the pixel limits below are what bound its memory. */
+const IMAGE_LIMIT = 64 * 1024 * 1024;
+/** Its length in base64, as a JSON body carries it. */
+const IMAGE_BASE64 = Math.ceil(IMAGE_LIMIT / 3) * 4;
 /** The answer's `sampling` (API.md, "Making images"): how long the samplers ran and their steps, when ComfyUI reported them. */
 const samplingField = (s: Sampling | undefined) => (s ? { sampling: { seconds: Math.round(s.ms) / 1000, steps: s.steps } } : {});
 /**
@@ -111,11 +114,11 @@ function num(body: Record<string, unknown>, key: string, min: number, max: numbe
   return v;
 }
 
-/** An input image: base64, at most 20 MB, and not too many pixels by its header. */
+/** An input image: base64, at most 64 MB, and not too many pixels by its header. */
 export function inputImage(value: unknown, key: string): Buffer {
   if (typeof value !== "string") throw invalid(`${key} must be a base64 image.`);
   const data = Buffer.from(value, "base64");
-  if (data.length > IMAGE_LIMIT) throw invalid(`${key} is larger than 20 MB.`);
+  if (data.length > IMAGE_LIMIT) throw invalid(`${key} is larger than ${IMAGE_LIMIT / 1024 / 1024} MB.`);
   const size = imageSize(data);
   if (!size) throw invalid(`${key} isn't a PNG, JPEG or WebP image.`);
   // A small file can claim a huge image; the header says how big it decodes.
@@ -859,7 +862,7 @@ export class Images {
   }
 
   private async make(action: "create" | "edit" | "upscale", req: IncomingMessage, res: ServerResponse, job: JobProgress): Promise<void> {
-    const body = await readJson(req, 4 * IMAGE_LIMIT + 1024 * 1024);
+    const body = await readJson(req, 4 * IMAGE_BASE64 + 1024 * 1024);
     onlyFields(body, FIELDS[action]);
     if (typeof body.recipe !== "string") throw invalid("recipe is missing.");
     const recipe = this.book.all().find((r) => r.id === body.recipe && r.state === "confirmed");
@@ -988,7 +991,7 @@ export class Images {
    * chains clips into one (clipPlan).
    */
   private async video(req: IncomingMessage, res: ServerResponse, job: JobProgress): Promise<void> {
-    const body = await readJson(req, 2 * IMAGE_LIMIT + Math.ceil(DRIVE_LIMIT / 3) * 4);
+    const body = await readJson(req, 2 * IMAGE_BASE64 + Math.ceil(DRIVE_LIMIT / 3) * 4 + 1024 * 1024);
     onlyFields(body, VIDEO_FIELDS);
     if (typeof body.recipe !== "string") throw invalid("recipe is missing.");
     const recipe = this.book.all().find((r) => r.id === body.recipe && r.state === "confirmed");
