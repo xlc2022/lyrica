@@ -96,7 +96,7 @@ model; llama-server's own per-request timings aren't read yet.
 
 ## Open
 
-- Whether Unsloth's GGUFs load on the host's llama.cpp (b11960 knows
+- Whether Unsloth's GGUFs load on the host's llama.cpp (b11960 and later know
   `glm5-next`), and whether the host's KV estimate fits the hybrid
   attention: its header gives `head_count_kv` per layer (12 attention
   layers, 34 linear), which the library doesn't read, so the host falls
