@@ -1,8 +1,11 @@
+# check=skip=InvalidDefaultArgInFrom
 # vLLM's own image (CUDA or ROCm, from compose.nvidia.yaml or compose.amd.yaml)
 # with the audio libraries mistral-common reads clips with, which it ships
 # without: Voxtral's dictation fails to start with "soundfile is not
 # installed" otherwise. Both wheels carry their own native library, and are
 # pinned by hash (requirements.txt), so nothing is fetched at run time.
+# IMAGE has no default on purpose: compose always passes the pinned one, and a
+# build without it should fail rather than pick an image (hence the check skip above).
 ARG IMAGE
 FROM ${IMAGE}
 COPY requirements.txt /tmp/lyrica-requirements.txt
