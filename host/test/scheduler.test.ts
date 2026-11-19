@@ -450,6 +450,44 @@ describe("the GPU queue", () => {
     }
   });
 
+  it("stops ComfyUI before SGLang sizes itself, so its leftovers don't shrink GLM's memory", async () => {
+    // As on mystria: an idle H3 copy on each card. /free answers before ComfyUI lets go, and its process keeps 3 GB
+    // until it stops; SGLang then takes its share of whatever is free as it starts.
+    const gpus = new FakeGpus([95.6, 95.6]);
+    const comfyui = new FakeBackend(gpus);
+    const released: boolean[] = [];
+    comfyui.load = async (model) => { gpus.loaded.set(model.id, { [model.id.endsWith("1") ? 1 : 0]: 20 * GIB }); };
+    comfyui.unload = async (model, release) => {
+      released.push(!!release);
+      const g = model.id.endsWith("1") ? 1 : 0;
+      if (release) gpus.loaded.delete(model.id);
+      else gpus.loaded.set(model.id, { [g]: 3 * GIB });
+    };
+    const sglang = new FakeBackend(gpus);
+    const state = new StateFile(mkdtempSync(join(tmpdir(), "lyrica-sched-")));
+    const scheduler = new Scheduler({ monitor: gpus, backends: { llamacpp: new FakeBackend(gpus), vllm: new FakeBackend(gpus), sglang, comfyui }, state, log: () => {}, quietMs: 50 });
+    await scheduler.start([]);
+    for (const g of [0, 1]) await scheduler.run(textModel(`recipe:h3@gpu${g}`, 16, { kind: "image", server: "comfyui", format: "safetensors", contextLength: null }), "image", async () => {}, g);
+    const glm = textModel("glm", 166, { server: "vllm", engine: "sglang", format: "safetensors", contextLength: 1_048_576, kvPerToken: 2 * 64 * 8 * 128 });
+    await scheduler.loadNow(glm);
+    expect(released).toEqual([true, true]);
+    const at = sglang.placements.get("glm")!;
+    expect(at).toMatchObject({ gpus: [0, 1], share: 0.99 });
+    // Its share of all that is free (the fake card's other programs hold 1 GB): none of ComfyUI's is left.
+    expect(at.need[0]).toBe(Math.round(0.99 * 94.6 * GIB));
+  });
+
+  it("reports the shorter context while a server's cache holds less than it was given", async () => {
+    const { scheduler, llamacpp } = setup([24]);
+    await scheduler.start([]);
+    const chat = textModel("chat", 4, { contextLength: 32768 });
+    const load = llamacpp.load.bind(llamacpp);
+    llamacpp.load = async (...args) => { await load(...args); return { holds: 20_000 }; };
+    expect(scheduler.contextFor(chat)).toBe(32768);
+    await scheduler.loadNow(chat);
+    expect(scheduler.contextFor(chat)).toBe(20_000);
+  });
+
   it("remeasures after a job that failed, so what the server kept can still be evicted", async () => {
     const { scheduler, state, gpus, llamacpp } = setup([24]);
     await scheduler.start([]);

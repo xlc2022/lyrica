@@ -156,15 +156,30 @@ describe("the context with none saved", () => {
 });
 
 describe("SGLang's placement", () => {
-  it("runs tensor parallel over cards of different names with 0.99 of each, or what other programs leave", () => {
+  it("runs tensor parallel over cards of different names with 0.99 of what each has free, since SGLang's share leaves other programs out", () => {
     const glm = textModel("glm-nvfp4", 166, { server: "vllm", engine: "sglang", format: "safetensors", contextLength: 1_048_576 });
     const pair = [gpu(0, 95.6, "RTX PRO 6000 Blackwell Workstation Edition"), gpu(1, 95.6, "RTX PRO 6000 Blackwell Max-Q Workstation Edition")];
     const all = (): GpuSettings => ({ servers: ["llamacpp", "vllm", "images", "speech"], keepFree: 0, excluded: false });
     const both = options(glm, { placement: { mode: "auto" } }, pair, all).find((o) => o.gpus.length === 2)!;
-    // 1 GB of each card is another program's: 0.98 is what's left.
-    expect(both).toMatchObject({ parallel: "tensor", share: 0.98 });
+    // 1 GB of each card is another program's: SGLang measures what's free as it starts, so the flag stays 0.99
+    // (lowering it too counted that 1 GB twice, and 0.94 left GLM's weights no room for a cache on mystria).
+    expect(both).toMatchObject({ parallel: "tensor", share: 0.99 });
+    expect(both.need[0]).toBe(Math.round(0.99 * 94.6 * GIB));
     expect(neverFits(glm, { placement: { mode: "auto" } }, both, pair, all)).toBeNull();
-    const empty = pair.map((g) => ({ ...g, used: 0 }));
-    expect(options(glm, { placement: { mode: "auto" } }, empty, all).find((o) => o.gpus.length === 2)).toMatchObject({ share: 0.99 });
+    // A GPU's keep-free is what the share leaves of its free memory, in whole percent.
+    const keep = (): GpuSettings => ({ ...all(), keepFree: 4 * GIB });
+    expect(options(glm, { placement: { mode: "auto" } }, pair, keep).find((o) => o.gpus.length === 2)).toMatchObject({ share: 0.95 });
+  });
+
+  it("sizes an automatic context from what is free, so the cache it asks for is the one SGLang makes", () => {
+    const glm = textModel("glm-nvfp4", 166, { server: "vllm", engine: "sglang", format: "safetensors", contextLength: 1_048_576, kvPerToken: 2 * 64 * 8 * 128 });
+    const all = (): GpuSettings => ({ servers: ["llamacpp", "vllm", "images", "speech"], keepFree: GIB / 2, excluded: false });
+    const at = (used: number) => [0, 1].map((i) => ({ ...gpu(i, 95.6, "RTX PRO 6000 Blackwell Workstation Edition"), used: used * GIB }));
+    const idle = autoContext(glm, { placement: { mode: "auto" } }, at(0), all);
+    const held = autoContext(glm, { placement: { mode: "auto" } }, at(4), all);
+    expect(held).toBeLessThan(idle);
+    // What the context's cache takes fits in SGLang's share of what is free, after the weights.
+    const o = options(glm, { placement: { mode: "auto" }, contextLength: held }, at(4), all).find((x) => x.gpus.length === 2)!;
+    expect(neverFits(glm, { placement: { mode: "auto" }, contextLength: held }, o, at(4), all)).toBeNull();
   });
 });

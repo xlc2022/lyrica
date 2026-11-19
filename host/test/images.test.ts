@@ -1069,6 +1069,17 @@ describe("ComfyUI jobs", () => {
     await again;
     await comfy.reset();
     expect(asked().run).toBe(false);
+    // Unloaded for another server's model, it stops at once, and the unload ends only when gate.py says it stopped.
+    const last = comfy.load(recipe("d"));
+    writeFileSync(status, JSON.stringify({ attempt: asked().attempt }));
+    await last;
+    let gone = false;
+    const release = comfy.unload(recipe("d"), true).then(() => { gone = true; });
+    await new Promise((r) => setTimeout(r, 400));
+    expect(asked().run).toBe(false);
+    expect(gone).toBe(false);
+    writeFileSync(status, JSON.stringify({ attempt: null }));
+    await release;
   });
 
   it("fails at once, and says why, on a GPU ComfyUI's PyTorch can't run", async () => {

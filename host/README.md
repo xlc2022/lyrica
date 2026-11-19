@@ -580,8 +580,10 @@ per host, and Lyrica's router filters create tiers by it.
   `serving/comfyui-<gpu>.json`, and names the run it started in the
   `comfyui-status` volume, so host-api waits for that one. Each stops two
   seconds after its last recipe unloads (ten idle minutes after a job), at
-  once on Pause, and starts for the next job on its GPU, which then waits
-  while it starts. Each ComfyUI runs one job at a time; a job goes to the
+  once on Pause or when its recipe is unloaded to make room for another
+  server's model (that load then waits until `gate.py` says it stopped, so
+  the new server never sizes itself around ComfyUI's leftovers), and starts
+  for the next job on its GPU, which then waits while it starts. Each ComfyUI runs one job at a time; a job goes to the
   image GPU with the fewest jobs, on a tie one that has its recipe loaded,
   then the first listed. With several image GPUs each GPU's copy of a
   recipe is its own model to the scheduler (`recipe:<id>@gpu<g>`), so two
@@ -786,8 +788,12 @@ unpairs it here too, when the host can be reached.
     whose config asks for remote code is listed but never loaded. One in
     ModelOpt's mixed format is served by SGLang where it is installed
     (SGLang, above), tensor parallel over its GPUs whatever their names,
-    with a memory share of 0.99 of each unless set (its launcher's), or
-    what other programs and keep-free leave, in whole percent.
+    with a memory share of 0.99 unless set (its launcher's), or less where
+    the rest wouldn't cover keep-free, in whole percent. SGLang's
+    `--mem-fraction-static` is a share of what is free when it starts, not
+    of the card, so what other programs hold isn't taken off it again; the
+    host counts the model as that share of each GPU's free memory, and sizes
+    an automatic context to fit what is left of it after the weights.
   - Voice models (see above) are served by the speech server, on one GPU
     or the CPU, and Qwen3-TTS voice models by the Qwen3-TTS speech server,
     on one NVIDIA GPU. Their only setting is the placement.

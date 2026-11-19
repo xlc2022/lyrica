@@ -23,6 +23,8 @@ const unavailable = () => new HostError(503, "model_unavailable", "ComfyUI didn'
 const CALL_MS = 30_000;
 /** How long after its last recipe unloads ComfyUI stops, unless another loads. */
 const STOP_AFTER_MS = 2_000;
+/** How long an unload that releases the GPU waits for gate.py to say ComfyUI stopped (it waits 20 s for the process, then kills it). */
+const STOPPED_WITHIN_MS = 30_000;
 
 export class Comfy implements Backend {
   private readonly base: string;
@@ -244,10 +246,17 @@ export class Comfy implements Backend {
     } catch {}
   }
 
-  async unload(model: TextModel): Promise<void> {
+  async unload(model: TextModel, release = false): Promise<void> {
     this.loaded.delete(model.id);
     await this.post("/free", { unload_models: true, free_memory: true });
     if (this.loaded.size || !this.gate) return;
+    if (release) {
+      // Another server loads here next and sizes itself from what is free: /free answers before ComfyUI lets go,
+      // and its process keeps the CUDA context and its cache, so stop it now and wait until gate.py says it has.
+      this.ask(null);
+      await poll(async () => !this.status().attempt, STOPPED_WITHIN_MS, "ComfyUI", 250).catch(() => {});
+      return;
+    }
     // Stopped a moment later, so switching recipes doesn't restart it.
     this.stopping = setTimeout(() => this.ask(null), STOP_AFTER_MS);
     this.stopping.unref?.();
@@ -290,10 +299,10 @@ export class ComfyGpus implements Backend {
     await this.on(gpu).load(model);
     this.where.set(model.id, gpu!);
   }
-  async unload(model: TextModel): Promise<void> {
+  async unload(model: TextModel, release = false): Promise<void> {
     const gpu = this.where.get(model.id);
     this.where.delete(model.id);
-    if (gpu !== undefined) await this.on(gpu).unload(model);
+    if (gpu !== undefined) await this.on(gpu).unload(model, release);
   }
   url(model: TextModel): string {
     return this.on(this.where.get(model.id)).url();

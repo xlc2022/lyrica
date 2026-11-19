@@ -61,7 +61,7 @@ export class FakeBackend implements Backend {
   /** Whether a load stops when its signal aborts, as llama.cpp and vLLM do; ComfyUI's finishes. */
   stoppable = true;
 
-  async load(model: TextModel, at: Option, _s?: unknown, _p?: unknown, signal?: AbortSignal) {
+  async load(model: TextModel, at: Option, _s?: unknown, _p?: unknown, signal?: AbortSignal): Promise<void | { holds?: number }> {
     this.calls.push(`load ${model.id}@${at.gpus.join("+")}`);
     await new Promise<void>((ok, fail) => {
       const t = setTimeout(ok, this.loadMs);
@@ -74,7 +74,7 @@ export class FakeBackend implements Backend {
     this.placements.set(model.id, at);
     this.gpus.loaded.set(model.id, { ...at.need });
   }
-  async unload(model: TextModel) {
+  async unload(model: TextModel, _release?: boolean) {
     this.calls.push(`unload ${model.id}`);
     this.gpus.loaded.delete(model.id);
   }

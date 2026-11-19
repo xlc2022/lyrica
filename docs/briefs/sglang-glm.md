@@ -66,6 +66,10 @@ Principle 1: a model she talks with this month, faster on the same host.
    list, the starters and the serving settings). It takes GLM's parsers (`glm47` tools, `glm45` reasoning), so Lyrica sees
    it can use tools. Its placement is tensor parallel across its GPUs whatever their
    names, with a share of 0.99 unless set, as the profile was measured.
+   The share is of what each GPU has free as SGLang starts (SGLang's
+   `measure_pre_model_load_memory`), so the host never lowers it for other
+   programs' memory: doing so counted that memory twice, and 0.94 left
+   GLM's weights no room for a cache on mystria after an H3 job.
 4. **The starter.** "GLM 5.3 Flash NVFP4", listed only on a host with
    SGLang, needing 180 GiB across the GPUs that allow vLLM.
 

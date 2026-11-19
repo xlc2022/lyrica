@@ -1,5 +1,7 @@
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -379,6 +381,26 @@ describe("the vLLM backend", () => {
     const { attempt } = JSON.parse(readFileSync(join(serving, "vllm.json"), "utf8")).servers.m;
     writeFileSync(statusPath, JSON.stringify({ failed: { m: { attempt, exitCode: 1, crashes: 1, error: "ImportError: soundfile is not installed" } } }));
     await expect(loading).rejects.toThrow("vLLM couldn't start m: ImportError: soundfile is not installed");
+  });
+
+  it("reports SGLang's longest prompt when its cache came out shorter than its context", async () => {
+    // SGLang sizes its cache from what is free as it starts; a cache of 26,368 tokens refuses a 50,847-token prompt
+    // whatever --context-length says, so the host reports what it takes.
+    for (const [pool, expected] of [[26_368, { holds: 26_362 }], [70_000, {}]] as const) {
+      const server = createServer((req, res) => {
+        res.setHeader("content-type", "application/json");
+        if (req.url === "/v1/models") return res.end(JSON.stringify({ data: [{ id: "m" }] }));
+        if (req.url === "/server_info") return res.end(JSON.stringify({ max_total_num_tokens: pool, max_req_input_len: Math.min(65_535, pool - 1) - 5 }));
+        res.statusCode = 404;
+        res.end("{}");
+      });
+      await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+      open.push({ close: () => new Promise((r) => server.close(r)) });
+      const port = (server.address() as AddressInfo).port;
+      const sglang = new Vllm({ url: `http://127.0.0.1:${port}`, serving: mkdtempSync(join(tmpdir(), "lyrica-serving-")), models: "/models", engine: "sglang" });
+      const glm = { ...(model as object), contextLength: 131_072 } as never;
+      expect(await sglang.load(glm, at, { placement: { mode: "auto" }, contextLength: 65_536 })).toEqual(expected);
+    }
   });
 
   it("keeps prompts in an eighth of host memory, where that is more than llama.cpp's own 8 GiB", () => {

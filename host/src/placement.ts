@@ -225,15 +225,22 @@ function option(model: TextModel, s: ModelSettings, gpus: Gpu[], settings: (i: n
   const total = weights + kv;
   const ids = gpus.map((g) => g.index);
   if (serverOf(model) === "vllm") {
-    // SGLang's profile (install.sh --glm5.3f-sglang) is tensor parallel over cards of any name, and takes 0.99 of each unless set,
-    // as its author measured it (ormandj/sglang-glm53-flash-sm120, examples/serve-glm53-flash.sh), or as much as
-    // what other programs and the GPU's keep-free leave, in whole percent.
     const sglang = model.engine === "sglang";
-    const sglangShare = Math.min(SGLANG_SHARE, ...gpus.map((g) => Math.floor(((room(g, settings(g.index)) - Math.max(0, g.used)) / g.total) * 100) / 100));
     const par = gpus.length === 1 ? null : sglang ? "tensor" : parallel ?? (matching(gpus) && powerOfTwo(gpus.length) ? "tensor" : "pipeline");
+    if (sglang) {
+      // SGLang's profile (install.sh --glm5.3f-sglang) is tensor parallel over cards of any name. Its
+      // --mem-fraction-static is a share of the memory free when it starts, not of the card (SGLang's
+      // measure_pre_model_load_memory and KvCacheConfigurator._profile_available_bytes): what other programs hold
+      // is already left out. So it takes 0.99, as its author measured it (ormandj/sglang-glm53-flash-sm120,
+      // examples/serve-glm53-flash.sh), or less where the rest wouldn't cover the GPU's keep-free, in whole percent;
+      // and it takes that share of what each GPU has free, all of which it fills.
+      const free = (g: Gpu) => Math.max(0, g.total - Math.max(0, g.used));
+      const share = s.memoryShare ?? Math.min(SGLANG_SHARE, ...gpus.map((g) => Math.max(0.01, Math.floor((1 - settings(g.index).keepFree / Math.max(1, free(g))) * 100) / 100)));
+      return { gpus: ids, split: null, parallel: par, share, need: Object.fromEntries(gpus.map((g) => [g.index, Math.round(share * free(g))])) };
+    }
     // vLLM reserves a share of each GPU: the one set, or what the model needs, in steps of 5%.
     const smallest = Math.min(...gpus.map((g) => g.total));
-    const share = s.memoryShare ?? (sglang ? sglangShare : Math.min(0.95, Math.max(0.1, Math.ceil(((total / gpus.length + OVERHEAD) / smallest) * 20) / 20)));
+    const share = s.memoryShare ?? Math.min(0.95, Math.max(0.1, Math.ceil(((total / gpus.length + OVERHEAD) / smallest) * 20) / 20));
     return { gpus: ids, split: null, parallel: par, share, need: Object.fromEntries(gpus.map((g) => [g.index, Math.round(share * g.total)])) };
   }
   // llama.cpp splits by ratio: the one set, or by what each GPU has free for the weights and cache, in whole GiB,
@@ -382,16 +389,20 @@ export function neverFits(model: TextModel, s: ModelSettings, o: Option, gpus: G
       : `This model needs about ${gb(o.ram)} GB of system RAM besides its GPUs, more than the host's allowance of ${gb(allowance)} GB.`;
   }
   if (serverOf(model) === "vllm") {
-    // vLLM must fit the weights and the KV cache for its context inside its share of each GPU.
+    // vLLM must fit the weights and the KV cache for its context inside its share of each GPU. SGLang's share is of
+    // what each GPU has free as it starts (its need), and its tensor-parallel ranks all size from the smallest.
     const { weights, kv } = sizes(model, s);
+    const sglang = model.engine === "sglang";
+    const name = sglang ? "SGLang" : "vLLM";
+    const least = Math.min(...o.gpus.map((i) => o.need[i] ?? 0));
     for (const i of o.gpus) {
       const g = gpus.find((x) => x.index === i)!;
-      const share = o.share! * g.total;
+      const share = sglang ? least : o.share! * g.total;
       if (weights / o.gpus.length + OVERHEAD > share) {
-        return `This model's weights need about ${gb(weights / o.gpus.length + OVERHEAD)} GB on GPU ${i}, more than vLLM's share of ${gb(share)} GB; raise the memory share or use more GPUs.`;
+        return `This model's weights need about ${gb(weights / o.gpus.length + OVERHEAD)} GB on GPU ${i}, more than ${name}'s share of ${gb(share)} GB; raise the memory share or use more GPUs.`;
       }
       if ((weights + kv) / o.gpus.length + OVERHEAD > share) {
-        return `A context of ${contextOf(model, s)} tokens needs about ${gb((weights + kv) / o.gpus.length + OVERHEAD - share)} GB more than vLLM's share of GPU ${i}; lower the context length.`;
+        return `A context of ${contextOf(model, s)} tokens needs about ${gb((weights + kv) / o.gpus.length + OVERHEAD - share)} GB more than ${name}'s share of GPU ${i}; lower the context length.`;
       }
     }
   }
