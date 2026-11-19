@@ -26,7 +26,7 @@ A step that needs root: when your account already has sudo without a password th
 
    **Only on Debian 13** (`/etc/os-release` says `ID=debian` and `VERSION_ID="13"`): the distribution's driver is the 550 branch, in `contrib` and `non-free`. Take it. NVIDIA's own Debian 13 repository starts at 590, which doesn't run Maxwell, Pascal or Volta cards.
 2. **Say what can run there.** From the card: NVIDIA runs llama.cpp, vLLM, images and voices (a CMP 100-210 runs less: below); an AMD GPU outside ROCm's list gets Vulkan, which serves GGUF models only. Name a few model sizes that fit its memory.
-3. **List the system-wide changes and wait for a yes.** In one message: the packages to install, adding your account to the `docker` group (which is as good as root on that machine), the models folder, the egress firewall rules and their root systemd unit, which runs `host/egress.sh` from your clone at every boot, the updater (its units, `/etc/lyrica-host` and a deploy key), and that the stack keeps running on the GPU. In the same message, ask whether Lyrica reaches this host over Tailscale (when she isn't on the machine's LAN, she must), and if so what to call its device (say `<machine>-host`): the host listens only on loopback and the LAN address, never on the machine's own Tailscale address, so it needs a tailnet device of its own. Ask the person once and wait for their answer.
+3. **List the system-wide changes and wait for a yes.** In one message: the packages to install, adding your account to the `docker` group (which is as good as root on that machine), the models folder, the egress firewall rules and their root systemd unit, which runs `host/egress.sh` from your clone at every boot, the updater (its units, `/etc/lyrica-host` and a deploy key), and that the stack keeps running on the GPU. In the same message, ask whether Lyrica reaches this host over Tailscale (when she isn't on the machine's LAN, she must), and if so what to call its device (say `<machine>-host`): the host listens only on loopback and the LAN address, never on the machine's own Tailscale address, so it needs a tailnet device of its own. If the machine has no Tailscale of its own and they want you to reach the machine itself over SSH that way too, the device can also forward port 22 to its sshd (`--tailscale-ssh` beside `--tailscale` in step 6); the machine's address in **Add machine** is then the device's tailnet name. Ask the person once and wait for their answer.
 4. **Prerequisites, as a root step.** Write the script in your home folder on the machine (only what step 1 showed is missing), for example:
 
    ```sh
@@ -71,7 +71,7 @@ A step that needs root: when your account already has sudo without a password th
    set -euo pipefail
    IFS= read -r TS_AUTHKEY
    cd /home/<your account>/lyrica/host
-   ./install.sh --yes --no-start --tailscale <device name> < /dev/null
+   ./install.sh --yes --no-start --tailscale <device name> < /dev/null   # add --tailscale-ssh if they asked for it
    TS_AUTHKEY=$TS_AUTHKEY docker compose up -d < /dev/null
    joined=0
    for _ in $(seq 60); do

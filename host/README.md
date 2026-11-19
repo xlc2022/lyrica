@@ -250,6 +250,14 @@ the device has joined. With `--no-lan` as well, the host is reachable only
 over Tailscale. Without it, the host isn't on the tailnet even when the
 machine is: it doesn't listen on the machine's own Tailscale address.
 
+With `--tailscale-ssh` as well (kept in `.env` as `TS_SSH=1` until
+`--no-tailscale-ssh`), the device also forwards port 22 to the machine's own
+sshd (`compose.tailscale-ssh.yaml`, `tailscale/serve-ssh.json`). That is for
+a machine with no Tailscale of its own: Lyrica can then add it as a machine
+at `NAME.<tailnet>.ts.net`. sshd sees every such login come from the
+tailscale container's bridge address, and must listen on the Docker bridge
+(the default, all addresses, does).
+
 ## The dashboard
 
 - **At the machine:** `http://127.0.0.1:7236`, with no login.
@@ -1019,6 +1027,9 @@ unpairs it here too, when the host can be reached.
     (`tailnet`) and reaches host-api over an internal one
     (`tailscale-api`). It runs with no capabilities. All sign-ins over
     Tailscale come from its address, so they share one rate limit.
+    With `--tailscale-ssh`, it alone also reaches the machine's port 22
+    (through `host.docker.internal`, Docker's host gateway); host-api's
+    egress rules don't change.
 - No container mounts the Docker socket.
 - Volumes:
   - `data`: host-api's key, certificate and state (below).

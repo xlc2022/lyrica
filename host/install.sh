@@ -22,6 +22,9 @@ Usage: host/install.sh [options]
                        supports, e.g. 11.0.0 for a 780M. "none" to clear
   --tailscale NAME     Also join the tailnet as device NAME (asks for an auth key)
   --no-tailscale       Leave the tailnet
+  --tailscale-ssh      With --tailscale: the tailnet device also forwards port
+                       22 to this machine's sshd, for a machine with no
+                       Tailscale of its own. Kept until --no-tailscale-ssh
   --no-gpu             No GPU and no model servers: host-api alone (for testing)
   --cmp-unlock         CMP 100-210 only: install its unlock (cmp-unlock.sh)
                        without asking
@@ -66,6 +69,7 @@ CUDA_DRIVER=570
 COMFY_GPU=$(env_value COMFY_GPU)
 TS_HOSTNAME=$(env_value TS_HOSTNAME)
 TS_AUTHKEY=$(env_value TS_AUTHKEY)
+TS_SSH=$(env_value TS_SSH)
 SGLANG=$(env_value SGLANG)
 P2P_OFF=$(env_value NCCL_P2P_DISABLE)
 WANT_LAN=1
@@ -83,6 +87,8 @@ while [[ $# -gt 0 ]]; do
     --hsa-override) HSA_OVERRIDE=$2; AMD_FLAGS=1; [[ $HSA_OVERRIDE == none ]] && HSA_OVERRIDE=; shift ;;
     --tailscale) TS_HOSTNAME=$2; shift ;;
     --no-tailscale) TS_HOSTNAME= TS_AUTHKEY= ;;
+    --tailscale-ssh) TS_SSH=1 ;;
+    --no-tailscale-ssh) TS_SSH= ;;
     --no-gpu) CHECK_GPU=0; VENDOR=none ;;
     --cmp-unlock) CMP_UNLOCK=1 ;;
     --glm5.3f-sglang) SGLANG=1 ;;
@@ -412,6 +418,11 @@ fi
 RENDER_GID=$(getent group render 2>/dev/null | cut -d: -f3 || true)
 [[ $WANT_LAN == 1 ]] && FILES+=:compose.lan.yaml
 [[ -n $TS_HOSTNAME ]] && FILES+=:compose.tailscale.yaml
+if [[ $TS_SSH == 1 ]]; then
+  if [[ -n $TS_HOSTNAME ]]; then FILES+=:compose.tailscale-ssh.yaml
+  else say "--tailscale-ssh needs --tailscale NAME: left out."
+  fi
+fi
 # The updater installs a tree without .git, and names its commit. Run again
 # by hand in that tree, it keeps the release .env records.
 if git rev-parse HEAD >/dev/null 2>&1; then
@@ -463,6 +474,7 @@ HOST_VERSION=$VERSION
 HOST_COMMIT=$COMMIT
 TS_HOSTNAME=$TS_HOSTNAME
 TS_AUTHKEY=$TS_AUTHKEY
+TS_SSH=$TS_SSH
 EOF
 say "Wrote host/.env."
 [[ $START == 1 ]] || exit 0
@@ -695,6 +707,7 @@ say "The model host is running."
 say "  Dashboard here:   http://127.0.0.1:7236"
 [[ $WANT_LAN == 1 ]] && say "  From the LAN:     https://$LAN:7236"
 [[ -n $TS_HOSTNAME ]] && say "  Over Tailscale:   https://$TS_HOSTNAME.<your tailnet>.ts.net"
+[[ -n $TS_HOSTNAME && $TS_SSH == 1 ]] && say "  SSH to this machine: $TS_HOSTNAME.<your tailnet>.ts.net, port 22"
 say "  Key fingerprint:  $FINGERPRINT"
 say "To pair, open the dashboard, choose Pair with Lyrica, and paste the code into Lyrica's Add model host."
 if [[ $NEW_DEPLOY_KEY == 1 ]]; then

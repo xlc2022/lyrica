@@ -316,6 +316,7 @@ Options, for a second run or a non-interactive one (`host/install.sh --help`):
 | `--tailscale NAME` | Also join the tailnet as device `NAME`. Asks once for an auth key; the key is dropped from `.env` once the device has joined. |
 | `--no-lan` | Reachable over Tailscale only (needs `--tailscale`). |
 | `--no-tailscale` | Leave the tailnet. |
+| `--tailscale-ssh`, `--no-tailscale-ssh` | With `--tailscale`: the host's tailnet device also forwards port 22 to the machine's own sshd, so a machine with no Tailscale of its own can be added to Lyrica as a machine at `NAME.<tailnet>.ts.net`. Kept in `.env` (`TS_SSH=1`) until `--no-tailscale-ssh`. |
 | `--vendor nvidia\|amd`, `--amd-backend rocm\|vulkan`, `--hsa-override VER` | Override what was detected. |
 | `--yes` | No questions: defaults and flags. |
 | `--cmp-unlock` | On a CMP 100-210, install the unlock without asking (`--yes` alone skips it). |
