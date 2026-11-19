@@ -28,11 +28,11 @@ test("thread settings keeps Hide but renaming stays with the title and actions",
   await newThread(page, "General");
   await page.getByRole("button", { name: "Thread settings" }).click();
   const drawer = page.getByRole("complementary", { name: "Thread settings" });
-  await expect(drawer.getByRole("button", { name: "Hide", exact: true })).toBeVisible();
+  await expect(drawer.getByRole("button", { name: "Hide Thread", exact: true })).toBeVisible();
   await expect(drawer.getByRole("textbox", { name: "Title" })).toHaveCount(0);
   await expect(drawer.getByRole("button", { name: "Rename" })).toHaveCount(0);
   if (process.env.SCREENSHOTS) {
-    await drawer.getByRole("button", { name: "Hide", exact: true }).scrollIntoViewIfNeeded();
+    await drawer.getByRole("button", { name: "Hide Thread", exact: true }).scrollIntoViewIfNeeded();
     await page.screenshot({ path: `${process.env.SCREENSHOTS}/thread-settings-${phone(page) ? 390 : 1280}.png` });
   }
   await drawer.getByRole("button", { name: "Close" }).click();

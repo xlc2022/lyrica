@@ -295,7 +295,7 @@ export function SettingsDrawer({ ctx, base, summary, settings, machines, onSetti
         <fieldset className="group" disabled={busy}>
           <legend>Thread</legend>
           <div className="row">
-            <button type="button" onClick={() => changeThread(!summary.hidden)}>{summary.hidden ? "Unhide" : "Hide"}</button>
+            <button type="button" onClick={() => changeThread(!summary.hidden)}>{summary.hidden ? "Unhide Thread" : "Hide Thread"}</button>
           </div>
         </fieldset>
       </div>
