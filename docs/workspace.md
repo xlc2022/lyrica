@@ -1178,6 +1178,9 @@ Reject, pick and clear_rejected sort her attempts (below, "Rejected attempts").
 Create, edit, upscale and upscale_video take an optional `model` when the user names one: it is tried first, then the
 usual list. A name that matches nothing stops the call before anything runs, listing the models that can,
 and her result says when a model was passed over, which her guidelines tell her to pass on.
+Every action that makes or upscales also takes an optional `host` when the user names one ("on Mystria"): a recipe
+copied to several hosts runs on that one, or with no model named, that host's models on the lists go first. A host
+that matches nothing, or doesn't have the named model, stops the call the same way.
 Create takes a prompt, fast or quality (fast when left out; each goes down its own list, Fast images or Quality images), optional size or `width:height` aspect
 ratio, count and references; her guidelines say to write the prompt as one
 detailed paragraph (subject and action, then setting, light, framing and

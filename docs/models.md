@@ -398,6 +398,18 @@ failed on to it and to `skipped`, with the host's own reason when it answered
 but failed the job ("its host said: ComfyUI refused the workflow"), else
 "it couldn't be reached".
 
+**A host asked for by name.** A recipe copied to several hosts keeps its
+name on each, so a name alone can't pick one. `modelsOnHost(ctx, tasks,
+host, named?)` matches the host's name the way a model's is matched (an
+exact match wins over a partial one), local endpoints only. With `named`
+(the IDs `namedImageModels` found) it keeps those on that host, in their
+order; without, the models on the tasks' lists (groups expanded) that are on
+the host and can do a task, in list order, since a model off the lists answers
+only when named. They become `need.first`, so the usual list still follows and
+a fallback to another host is said in `passedOver`. `hosts` are the endpoints
+it matched; `known`, every local endpoint with a model for the tasks, for the
+error she reads.
+
 `resolveLive` first probes the chosen endpoint (2 seconds) when its health
 isn't known lately and there is a later model to fall back to (or always,
 with `probeLast`, as sleep asks).
@@ -698,7 +710,7 @@ only when asked for by name.
 `imageModels(ctx)` lists the models on the context's Create, Edit and
 Upscale lists that can do their list's task, by name in list order, with
 the actions each does there and how many references it takes (0 for none;
-left out when unknown). The image tool's `model` field names them in its
+left out when unknown), and the local hosts it is on. The image tool's `model` field names them in its
 description, so she never guesses a name. Models off the lists aren't
 named, since one answers only when the user asks for it.
 
@@ -835,7 +847,12 @@ the same. Its `loras` field (create, edit, video and animate) lists the
 LoRAs her models take in its description; a call naming one that no model
 takes fails before any model is called, saying `No image model here takes
 "<name>". The LoRAs here: …`. Its `model` field lists the models on her
-image lists (`imageModels`) as `<name> (<actions>; up to <n> references)`;
+image lists (`imageModels`) as `<name> (<actions>; up to <n> references; on <host>, <host>)`, the hosts
+said only for a model on more than one. Its `host` field (every action that makes or upscales) lists those hosts
+and puts the named host's models first (`modelsOnHost`); a host that matches none fails before any model is
+called, saying `No host here is called "<name>"; the ones that can <action>: …. Leave host out unless they name
+one.`, and so does a named model that isn't on it (`<model> isn't on <host>.`) or a host with no listed model
+for the action;
 a name that matches none fails before any model is called, saying `No image
 model here is called "<name>"; the ones that can <action>: …. Leave model
 out unless they name one.` A create with references that no model can take

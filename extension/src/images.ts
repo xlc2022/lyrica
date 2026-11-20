@@ -1,7 +1,7 @@
 // Principles 1, 2 and 8: one image tool, which also makes clips, with portrait consent checked at each resolved provider.
 import type { ExtensionContext, ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import { CloudModelForbidden, HostRefused, ratioSize, isRestricted, NoModel, loraFiles, loraName, MAX_LORAS, modelName, type AppliedLora, type CallContext, type LoraAsk, type ImageRequest, type JobProgress, type Models, type Resolution,
-  type ThreadImages, type VideoRequest, type VideoUpscaleRequest, type WorkspaceSettings, LONGEST_VIDEO_SECONDS, MAX_INPUT_IMAGE_BYTES, MAX_SEED, MAX_UPSCALE_SEED, COLOR_MATCH, JOB_SETTINGS, type JobSettings, imageTask } from "@lyrica/core";
+  type ThreadImages, type VideoRequest, type VideoUpscaleRequest, type WorkspaceSettings, LONGEST_VIDEO_SECONDS, MAX_INPUT_IMAGE_BYTES, MAX_SEED, MAX_UPSCALE_SEED, COLOR_MATCH, JOB_SETTINGS, type JobSettings, imageTask, type Task } from "@lyrica/core";
 import { Type, type Static } from "typebox";
 import { StringEnum } from "@earendil-works/pi-ai";
 import type { Approval, ApprovalRequest } from "./workspace.ts";
@@ -43,6 +43,7 @@ export const imageParameters = Type.Object({
   prompt: videoPrompt(),
   tier: Type.Optional(StringEnum(["fast", "quality"] as const, { description: "For create: fast (the default), or quality when the image matters: a finished picture, a portrait, something to keep." })),
   model: modelParameter(),
+  host: hostParameter(),
   loras: loraParameter(),
   image: path("For edit, upscale, pick, animate and motion: the image's path (animate's first frame; motion's subject, who moves)."),
   video: path("For motion: the driving clip's path, an MP4 whose person makes the moves. For edit_video: the clip to change. For extend: the clip to make longer. For upscale_video: the clip to upscale."),
@@ -84,7 +85,7 @@ type ImageModel = ReturnType<Models["imageModels"]>[number];
 
 /** A model's line in the tool's description: what it does here, and how many references it takes. */
 const modelLine = (m: ImageModel) => `${m.name} (${m.actions.join(", ")}${m.actions.includes("upscale") && m.actions.length === 1 ? ""
-  : m.references === undefined ? "" : m.references ? `; up to ${m.references} references` : "; no references"})`;
+  : m.references === undefined ? "" : m.references ? `; up to ${m.references} references` : "; no references"}${m.hosts.length > 1 ? `; on ${m.hosts.join(", ")}` : ""})`;
 
 /**
  * `model`, naming the models on her Images lists when they are known, so she never guesses a name.
@@ -93,6 +94,12 @@ const modelLine = (m: ImageModel) => `${m.name} (${m.actions.join(", ")}${m.acti
 export function modelParameter(models: readonly ImageModel[] = []) {
   const known = models.length ? ` The image models here: ${models.slice(0, 20).map(modelLine).join(", ")}${models.length > 20 ? ", …" : ""}.` : "";
   return Type.Optional(Type.String({ description: `For create, edit, upscale and upscale_video: an image model they asked for by name; it is tried first, then the usual models. Omit it otherwise: the usual models pick one that can take the call.${known}` }));
+}
+
+/** `host`, naming the hosts her image models are on when they are known, so a model on several runs on the one they chose. */
+export function hostParameter(hosts: readonly string[] = []) {
+  const known = hosts.length ? ` The hosts here: ${hosts.slice(0, 20).join(", ")}${hosts.length > 20 ? ", …" : ""}.` : "";
+  return Type.Optional(Type.String({ description: `For every action that makes or upscales: the host they asked for by name ("on Mystria"), for a model on several hosts or any model there; its models are tried first, then the usual models. Omit it otherwise.${known}` }));
 }
 
 /** `loras`, naming the LoRAs her models take when they are known. */
@@ -224,7 +231,7 @@ export function createImageExtension(o: ImageTools): ExtensionFactory {
         "For an edit, look at the image first; name the one change plainly, say what goes, and say what stays (faces, body, pose, framing, light).",
         "Make one big change per edit: for a new setting and a new outfit, edit twice, each from the last result. With a mask, say what replaces what is under it.",
         "To change an image (theirs or one you made), use edit with it as image, even when you also pass references; create makes a new picture from a prompt.",
-        "Set model only when they name an image model, to that name; never guess one. When the result says a model was passed over, tell them which model made it and why.",
+        "Set model only when they name an image model, to that name; never guess one. Set host only when they name where it runs. When the result says a model was passed over, tell them which model made it and why.",
         "When they ask for a LoRA, set loras with its name and the strength they said (1 if they gave none); say which model it went with. If it isn't found, tell them, with the LoRAs there are.",
         "With a mask, set replace when the masked thing becomes something else (a painting into a mirror), and then write the instruction as the finished scene (a round mirror on a warm beige wall); leave it off to recolour or reshape what's there, which keeps the rest of it.",
         "Don't pass the image being edited as a reference too.",
@@ -267,7 +274,7 @@ function videoModelParameters(o: ImageTools) {
     images = o.models.imageModels(call);
   } catch { return imageParameters; }
   return model || names.length || images.length ? Type.Object({ ...imageParameters.properties, ...(model ? { prompt: videoPrompt(model), duration: videoDuration(model) } : {}),
-    ...(images.length ? { model: modelParameter(images) } : {}), ...(names.length ? { loras: loraParameter(names) } : {}) }) : imageParameters;
+    ...(images.length ? { model: modelParameter(images), host: hostParameter([...new Set(images.flatMap(m => m.hosts))]) } : {}), ...(names.length ? { loras: loraParameter(names) } : {}) }) : imageParameters;
 }
 
 /**
@@ -282,6 +289,24 @@ function loraModels(o: ImageTools, call: CallContext, action: string, asks: Lora
   if (found.ids.length) return found.ids;
   const known = found.names.length ? `The LoRAs here: ${found.names.join(", ")}.` : "No model here takes LoRAs.";
   throw new Error(`No ${task === "video" ? "video" : "image"} model here takes ${asks.map(a => `"${a.name}"`).join(" and ")}${asks.length > 1 ? " together" : ""}. ${known}`);
+}
+
+/** The lists a host's models are taken from for an action, the call's own first. */
+const hostTasks = (action: string, tier?: "fast" | "quality"): Task[] => action === "create" ? tier === "quality" ? ["image.create", "image.fast"] : ["image.fast", "image.create"]
+  : action === "edit" ? ["image.edit"] : action === "upscale" || action === "upscale_video" ? ["image.upscale"] : ["video"];
+
+/**
+ * With a host they named, the models tried first there: those asked for by name that are on it, or without a name, the
+ * host's models on the lists. Nothing when they named no host. A host that matches nothing, or has no such model, stops
+ * the call, so she asks rather than reports a picture from another host.
+ */
+function hostModels(o: ImageTools, call: CallContext, p: ImageArgs, named?: readonly string[]): string[] {
+  if (!p.host?.trim()) return [];
+  const found = o.models.modelsOnHost(call, hostTasks(p.action, p.tier), p.host, named);
+  if (!found.hosts.length) throw new Error(`No host here is called "${p.host}"${found.known.length ? `; the ones that can ${p.action}: ${found.known.join(", ")}` : ""}. Leave host out unless they name one.`);
+  if (found.ids.length) return found.ids;
+  const where = found.hosts.join(" or ");
+  throw new Error(named ? `${p.model} isn't on ${where}. Leave host out to use it where it is.` : `${where} has no model on the lists that can ${p.action}.`);
 }
 
 /** The LoRAs a result was made with, by name and strength, for her to say. */
@@ -357,7 +382,9 @@ export async function executeImage(o: ImageTools, id: string, p: ImageArgs, sign
   if (named && !named.ids.length) {
     throw new Error(`No image model here is called "${p.model}"${named.names.length ? `; the ones that can ${p.action}: ${named.names.join(", ")}` : ""}. Leave model out unless they name one.`);
   }
-  const first = [...named?.ids ?? [], ...lora];
+  // On a host they named, only its copies go first.
+  const onHost = hostModels(o, call, p, named?.ids);
+  const first = [...p.host?.trim() ? onHost : named?.ids ?? [], ...lora];
   let attempted: Resolution | undefined;
   let out;
   try { out = await o.models.image(call, request, { signal, onProgress, ...(first.length ? { first } : {}), beforeSend: async r => {
@@ -406,7 +433,7 @@ async function executeVideo(o: ImageTools, id: string, p: ImageArgs, signal?: Ab
     ...(p.size ? { size: p.size } : {}), ...(p.aspectRatio ? { aspectRatio: p.aspectRatio } : {}), ...(p.duration === undefined ? {} : { duration: p.duration }),
     ...sampling(p), ...(p.loras?.length ? { loras: p.loras } : {}) };
   const call = o.call();
-  const first = loraModels(o, call, p.action, p.loras?.length ? p.loras : undefined);
+  const first = [...hostModels(o, call, p), ...loraModels(o, call, p.action, p.loras?.length ? p.loras : undefined)];
   const make = async (signal?: AbortSignal, onProgress?: (p: JobProgress) => void) => {
     let attempted: Resolution | undefined;
     let out;
@@ -450,10 +477,11 @@ async function executeUpscaleVideo(o: ImageTools, id: string, p: ImageArgs, sign
   if (named && !named.ids.length) {
     throw new Error(`No image model here is called "${p.model}"${named.names.length ? `; the ones that can upscale: ${named.names.join(", ")}` : ""}. Leave model out unless they name one.`);
   }
+  const first = p.host?.trim() ? hostModels(o, call, p, named?.ids) : named?.ids ?? [];
   const make = async (signal?: AbortSignal, onProgress?: (p: JobProgress) => void) => {
     let attempted: Resolution | undefined;
     let out;
-    try { out = await o.models.upscaleVideo(call, request, { signal, onProgress, ...(named?.ids.length ? { first: named.ids } : {}), beforeSend: async r => { attempted = r; if (!o.enabled()) throw new Error("Images are off in this thread."); } }); }
+    try { out = await o.models.upscaleVideo(call, request, { signal, onProgress, ...(first.length ? { first } : {}), beforeSend: async r => { attempted = r; if (!o.enabled()) throw new Error("Images are off in this thread."); } }); }
     catch (err) { throw withModel(err, p.action, attempted, signal); }
     signal?.throwIfAborted();
     const path = o.files.saveVideo(out.video);
