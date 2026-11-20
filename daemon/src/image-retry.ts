@@ -1,5 +1,5 @@
 // Principles 1 and 2: retry only a stored refusal, with today's routing and portrait rules.
-import { MAX_INPUT_IMAGE_BYTES, type Models, type Need, type PoolView, type Workspace } from "@lyrica/core";
+import { imageTask, MAX_INPUT_IMAGE_BYTES, type Models, type Need, type PoolView, type Workspace } from "@lyrica/core";
 import type { executeImage } from "@lyrica/extension";
 import type { ImageRetryOptions } from "./api.ts";
 import { HttpError } from "./http.ts";
@@ -32,7 +32,9 @@ export async function imageRetryOptions(models: Models, workspace: Workspace, vi
     try { const read = await files.read(path, MAX_INPUT_IMAGE_BYTES); portrait ||= read.portrait; }
     catch { readable = false; }
   }
-  const named = args.model?.trim() ? models.namedImageModels(ctx, args.action, args.model).ids : [];
+  const asked = args.model?.trim() ? models.namedImageModels(ctx, args.action, args.model).ids : [];
+  // On a host they named, its copies stay first, as in the call that was refused.
+  const named = args.host?.trim() ? models.modelsOnHost(ctx, [imageTask(args.action, args.tier)], args.host, args.model?.trim() ? asked : undefined).ids : asked;
   const need: Need = { ...(args.action === "create" ? { imageTier: args.tier ?? "fast" } : args.action === "edit" ? { imageMask: !!args.mask } : {}),
     ...(args.action !== "upscale" && args.references?.length ? { imageReferences: args.references.length } : {}), ...(named.length ? { first: named } : {}),
     ...(args.action !== "upscale" && args.loras?.length ? { loras: args.loras.map(l => l.name) } : {}) };

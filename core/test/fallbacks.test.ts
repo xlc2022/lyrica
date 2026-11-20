@@ -164,6 +164,31 @@ describe("an image model asked for by name", () => {
     expect(() => s.models.resolve("image.create", { ...priv, fallback: false }, need)).toThrow(Offline);
   });
 
+  it("runs on the host they named when a model is on several, and says it when that host can't", async () => {
+    const s = await setup();
+    const here = s.models.addModel(s.ada, s.blackwell.ep.id, { modelId: "Qwen Image", image: true });
+    const there = s.models.addModel(s.ada, s.spare.ep.id, { modelId: "Qwen Image", image: true });
+    const other = s.models.addModel(s.ada, s.spare.ep.id, { modelId: "z-image", image: true });
+    s.models.setColumnTask(s.ada.id, "private", "image.fast", [{ offeringId: here.id }, { offeringId: other.id }]);
+    const priv = s.ctx({ pool: "private", localOnly: true });
+    const named = s.models.namedImageModels(priv, "create", "qwen image").ids;
+    expect(named).toEqual([here.id, there.id]);
+    // The model they named, on the host they named, though the list holds the other host's copy.
+    const onSpare = s.models.modelsOnHost(priv, ["image.fast", "image.create"], "Spare", named);
+    expect(onSpare).toEqual({ ids: [there.id], hosts: ["spare"], known: ["blackwell", "spare"] });
+    expect(s.models.resolve("image.fast", priv, { imageTier: "fast", first: onSpare.ids }).ref).toEqual({ offeringId: there.id });
+    // A host alone: its models on the lists, in list order; a model off them answers only when named.
+    expect(s.models.modelsOnHost(priv, ["image.fast", "image.create"], "spare").ids).toEqual([other.id]);
+    expect(s.models.modelsOnHost(priv, ["image.fast"], "nowhere")).toEqual({ ids: [], hosts: [], known: ["blackwell", "spare"] });
+    // That host is away: the other copy answers, and the result says the named one was passed over.
+    const r = await s.models.callWithFallback("image.fast", priv, { imageTier: "fast", first: onSpare.ids }, async (r) => {
+      if (r.offering.id === there.id) throw new TypeError("fetch failed", { cause: Object.assign(new Error("connect ECONNREFUSED 127.0.0.1:1"), { name: "TypeError" }) });
+      return r;
+    });
+    expect(r.ref).toEqual({ offeringId: here.id });
+    expect(r.passedOver).toEqual([{ label: "spare/Qwen Image", reason: "it couldn't be reached" }]);
+  });
+
   it("does not report a model that doesn't do this kind of call as passed over", async () => {
     const s = await setup();
     const fast = s.models.addModel(s.ada, s.spare.ep.id, { modelId: "fast-image", image: true, useFor: "fast" });

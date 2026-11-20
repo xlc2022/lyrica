@@ -3064,20 +3064,43 @@ export class Models {
   }
 
   /**
+   * The models on a local host a name asks for ("mystria"), for one call, so a recipe on several hosts runs on the one
+   * they chose. The host's name matches as a model's does, an exact match winning over a partial one. With `named`
+   * (models asked for by name), those on the host, in their order; without, the models on the tasks' lists (groups
+   * expanded) that are on the host and can do a task, in list order: a model off the lists answers only when asked
+   * for by name. `hosts`: those it matched; `known`: every host with a model for the tasks, for the error she reads.
+   */
+  modelsOnHost(ctx: CallContext, tasks: readonly Task[], host: string, named?: readonly string[]): { ids: string[]; hosts: string[]; known: string[] } {
+    const c = this.catalog(ctx.userId);
+    const flat = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
+    const fits = (o: Offering, ep: Endpoint) => ep.kind === "local" && tasks.some((t) => !this.unfit(t, o, ep, {}));
+    const offerings = [...c.offerings.values()];
+    const eps = [...c.endpoints.values()].filter((ep) => offerings.some((o) => o.endpointId === ep.id && fits(o, ep)));
+    const want = flat(host), exact = eps.filter((ep) => flat(ep.name) === want);
+    const on = exact.length ? exact : want ? eps.filter((ep) => flat(ep.name).includes(want)) : [];
+    const ids = new Set(on.map((ep) => ep.id));
+    const onHost = (id: string | undefined) => { const o = id ? c.offerings.get(id) : undefined; return !!o && ids.has(o.endpointId) && fits(o, c.endpoints.get(o.endpointId)!); };
+    const listed = tasks.flatMap((t) => (this.listFor(t, ctx, c)?.list ?? []).flatMap((r) => "offeringId" in r ? [r.offeringId] : c.groups.get(r.groupId)?.members ?? []).map((raw) => this.follow(raw)));
+    const found = (named ?? listed).filter((id): id is string => onHost(id));
+    return { ids: [...new Set(found)], hosts: on.map((ep) => ep.name), known: eps.map((ep) => ep.name) };
+  }
+
+  /**
    * The models on the context's Images lists (create, edit and upscale, groups expanded) that can do
    * their list's task, by name in list order: what each does here and, for create and edit, how many
-   * reference images it takes (0: none; unknown when its host doesn't say). For the image tool's
-   * description, so she names only models that exist; no model is called.
+   * reference images it takes (0: none; unknown when its host doesn't say) and the local hosts it is on. For the
+   * image tool's description, so she names only models and hosts that exist; no model is called.
    */
-  imageModels(ctx: CallContext): { name: string; actions: ("create" | "edit" | "upscale")[]; references?: number }[] {
-    const c = this.catalog(ctx.userId), out = new Map<string, { name: string; actions: ("create" | "edit" | "upscale")[]; references?: number }>();
+  imageModels(ctx: CallContext): { name: string; actions: ("create" | "edit" | "upscale")[]; references?: number; hosts: string[] }[] {
+    const c = this.catalog(ctx.userId), out = new Map<string, { name: string; actions: ("create" | "edit" | "upscale")[]; references?: number; hosts: string[] }>();
     for (const [action, task] of [["create", "image.fast"], ["create", "image.create"], ["edit", "image.edit"], ["upscale", "image.upscale"]] as const) {
       for (const ref of this.listFor(task, ctx, c)?.list ?? []) {
         for (const raw of "offeringId" in ref ? [ref.offeringId] : c.groups.get(ref.groupId)?.members ?? []) {
           const id = this.follow(raw), o = id ? c.offerings.get(id) : undefined, ep = o && c.endpoints.get(o.endpointId);
           if (!o || !ep || (isRestricted(ctx) && ep.kind !== "local") || this.unfit(task, o, ep, {})) continue;
-          const name = modelName(o), m = out.get(name) ?? { name, actions: [] };
+          const name = modelName(o), m = out.get(name) ?? { name, actions: [], hosts: [] };
           if (!m.actions.includes(action)) m.actions.push(action);
+          if (ep.kind === "local" && !m.hosts.includes(ep.name)) m.hosts.push(ep.name);
           if (action !== "upscale") {
             const takes = ep.kind === "cloud" ? (CLOUD_IMAGE_PROVIDERS[ep.api]?.references ? undefined : 0) : o.references;
             if (takes !== undefined) m.references = Math.max(m.references ?? 0, takes);

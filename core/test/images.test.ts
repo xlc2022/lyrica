@@ -126,7 +126,7 @@ describe("image calls through the router (principles 1 and 2)", () => {
     await expect(s.models.image(ctx, { action: "create", prompt: "A garden", tier: "quality", references: [input, input, input, input] })).rejects.toThrow(/doesn't take reference images/);
     expect(off.server.images).toEqual([]);
     // What her tool lists: the models on her lists, what each does, and how many references it takes.
-    expect(s.models.imageModels(ctx)).toEqual([{ name: "Art", actions: ["create", "edit", "upscale"], references: 3 }]);
+    expect(s.models.imageModels(ctx)).toEqual([{ name: "Art", actions: ["create", "edit", "upscale"], references: 3, hosts: ["workstation", "3090", "plain", "three"] }]);
   });
   it("creates and edits through the keyed OpenAI endpoint, including quality and references", async () => {
     const s = await setup();

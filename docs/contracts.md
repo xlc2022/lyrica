@@ -511,7 +511,8 @@ class Models {                                              // new Models(keyrin
   // upscale clips"). POST /host/v1/videos/upscale with explicit fields only; two hours at most (VIDEO_TIMEOUT_MS).
   firstVideoModel(ctx): { name; longestSeconds?; extend; sound } | undefined   // the Videos list's first usable model, for the image tool's duration and prompt; no call
   loraModels(ctx, "image.fast" | "image.create" | "image.edit" | "video", asks: LoraAsk[]): { ids; names }   // local models taking every LoRA asked, list order first, for `first`; names: every LoRA they take (loraName); no call
-  imageModels(ctx): { name; actions: ("create" | "edit" | "upscale")[]; references? }[]   // the models on the Images lists that can do their task, for the image tool's model field; no call
+  imageModels(ctx): { name; actions: ("create" | "edit" | "upscale")[]; references?; hosts: string[] }[]   // the models on the Images lists that can do their task, with the local hosts each is on, for the image tool's model and host fields; no call
+  modelsOnHost(ctx, tasks: Task[], host: string, named?: string[]): { ids; hosts; known }   // the models on a local host a name asks for: those of `named` there, or the tasks' listed models there, for `first`; no call
   // Thinking and call records
   defaultThinking(userId) / setDefaultThinking(userId, level) / setThinking(userId, threadId, level | null)
   thinkingFor(resolution, asked, unset?): { level; note? }   // asked defaults to DEFAULT_THINKING ("medium"), also the per-user default; unset (CallContext.thinkingUnset) or an opensThinking model with no levels drops the can't-think note
@@ -1616,6 +1617,11 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     list for that call (docs/models.md, "A model asked for by name"). The
     field's description lists the models on her image lists
     (`Models.imageModels`), and a name that matches none fails before any call.
+    Every action that makes or upscales takes an optional `host`, a host she was asked for by name:
+    `Models.modelsOnHost` keeps the named models on it (or, with no model named, that host's listed models)
+    and tries them first, so a recipe on several hosts runs on the one asked for; a host that matches none, a
+    named model not on it, or a host with no listed model for the action fails before any call. An image
+    call refused by its content (below) is retried with the same host first.
     Create, edit, video and animate take an optional `loras: [{ name, strength }]`:
     `Models.loraModels` puts the models that take them all after any named one,
     a name none takes fails before any call with the LoRAs there are, and the result

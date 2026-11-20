@@ -174,6 +174,22 @@ describe("image tool results (principles 1 and 4)", () => {
     await expect(s.run({ action: "create", prompt: "A garden", model: "Flux" })).rejects.toThrow(/No image model here is called "Flux"; the ones that can create: .*gpt-image-1.*Leave model out/);
     expect(s.heard).toHaveLength(before);
   });
+  it("runs a model on several hosts on the one they named, lists its hosts in the tool, and stops when the host matches none", async () => {
+    const s = await setup(), plain = await s.host("plain");
+    s.models.setColumnTask(s.ada.id, "general", "image.fast", [s.workstation.ref, plain.ref]);
+    const tool = (o: ImageTools) => { let t!: ToolDefinition; createImageExtension(o)({ on: () => {}, registerTool: (d: ToolDefinition) => { t = d; } } as unknown as ExtensionAPI); return t; };
+    const { model, host } = (tool(s.options as ImageTools).parameters as { properties: { model: { description: string }; host: { description: string } } }).properties;
+    expect(model.description).toMatch(/Art \(create[^)]*; on workstation, plain\)/);
+    expect(host.description).toMatch(/The hosts here: workstation, plain\./);
+    const text = (r: Awaited<ReturnType<typeof s.run>>) => (r.content as { type: string; text?: string }[]).find(c => c.type === "text")!.text!;
+    // Without a host the list's first copy answers; with one, that host's copy does, named or not.
+    expect(text(await s.run({ action: "create", prompt: "A garden", model: "Art" }))).toMatch(/^Made with Art on workstation\./);
+    expect(text(await s.run({ action: "create", prompt: "A garden", model: "Art", host: "Plain" }))).toMatch(/^Made with Art on plain\./);
+    expect(text(await s.run({ action: "create", prompt: "A garden", host: "plain" }))).toMatch(/^Made with Art on plain\./);
+    expect(plain.server.images).toHaveLength(2);
+    await expect(s.run({ action: "create", prompt: "A garden", model: "Art", host: "Lunar" })).rejects.toThrow(/No host here is called "Lunar"; the ones that can create: .*plain.*Leave host out/);
+  });
+
   it("points a create with references that no model takes to edit", async () => {
     const s = await setup(), plain = await s.host("plain", undefined, undefined, 0);
     s.models.setColumnTask(s.ada.id, "private", "image.fast", [plain.ref]);
