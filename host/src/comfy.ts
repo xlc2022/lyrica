@@ -92,6 +92,8 @@ export class Comfy implements Backend {
     const res = await fetch(`${this.base}/upload/image`, { method: "POST", body: form, signal: AbortSignal.timeout(this.callMs) }).catch(() => {
       throw unavailable();
     });
+    // A chain uploads the clip so far each time: past ComfyUI's upload cap (--max-upload-size) it answers 413.
+    if (res.status === 413) throw new HostError(400, "invalid", `ComfyUI takes uploads of at most 1 GiB; this one is ${Math.ceil(png.length / 2 ** 20)} MiB.`);
     if (!res.ok) throw new HostError(400, "invalid", "ComfyUI couldn't read that image.");
     return ((await res.json()) as { name: string }).name;
   }
