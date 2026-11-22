@@ -88,11 +88,13 @@ const modelLine = (m: ImageModel) => `${m.name} (${m.actions.join(", ")}${m.acti
   : m.references === undefined ? "" : m.references ? `; up to ${m.references} references` : "; no references"}${m.hosts.length > 1 ? `; on ${m.hosts.join(", ")}` : ""})`;
 
 /**
- * `model`, naming the models on her Images lists when they are known, so she never guesses a name.
- * Only those are listed: a model off the lists answers only when they ask for it by name.
+ * `model`, naming the models on her Images lists when they are known, so she never guesses a name, and
+ * then the hosts' models off the lists, which answer only when they ask for one by name: without them a
+ * name such as "Max Realism" reads as a style rather than a model.
  */
-export function modelParameter(models: readonly ImageModel[] = []) {
-  const known = models.length ? ` The image models here: ${models.slice(0, 20).map(modelLine).join(", ")}${models.length > 20 ? ", …" : ""}.` : "";
+export function modelParameter(models: readonly ImageModel[] = [], unlisted: readonly string[] = []) {
+  const known = (models.length ? ` The image models here: ${models.slice(0, 20).map(modelLine).join(", ")}${models.length > 20 ? ", …" : ""}.` : "")
+    + (unlisted.length ? ` Also here, only when they name one: ${unlisted.slice(0, 20).join(", ")}${unlisted.length > 20 ? ", …" : ""}.` : "");
   return Type.Optional(Type.String({ description: `For create, edit, upscale and upscale_video: an image model they asked for by name; it is tried first, then the usual models. Omit it otherwise: the usual models pick one that can take the call.${known}` }));
 }
 
@@ -266,15 +268,16 @@ const isVideo = (a: string): a is "video" | "animate" | "motion" | "edit_video" 
  * lists and its loras the LoRAs her models take; the static schema if those can't be read.
  */
 function videoModelParameters(o: ImageTools) {
-  let model, names: string[], images: ImageModel[];
+  let model, names: string[], images: ImageModel[], unlisted: string[];
   try {
     const call = o.call();
     model = o.models.firstVideoModel(call);
     names = [...new Set((["image.fast", "image.create", "image.edit", "video"] as const).flatMap(t => o.models.loraModels(call, t, []).names))].sort();
     images = o.models.imageModels(call);
+    unlisted = o.models.unlistedImageModels(call);
   } catch { return imageParameters; }
-  return model || names.length || images.length ? Type.Object({ ...imageParameters.properties, ...(model ? { prompt: videoPrompt(model), duration: videoDuration(model) } : {}),
-    ...(images.length ? { model: modelParameter(images), host: hostParameter([...new Set(images.flatMap(m => m.hosts))]) } : {}), ...(names.length ? { loras: loraParameter(names) } : {}) }) : imageParameters;
+  return model || names.length || images.length || unlisted.length ? Type.Object({ ...imageParameters.properties, ...(model ? { prompt: videoPrompt(model), duration: videoDuration(model) } : {}),
+    ...(images.length || unlisted.length ? { model: modelParameter(images, unlisted), host: hostParameter([...new Set(images.flatMap(m => m.hosts))]) } : {}), ...(names.length ? { loras: loraParameter(names) } : {}) }) : imageParameters;
 }
 
 /**

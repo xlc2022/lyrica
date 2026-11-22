@@ -3113,6 +3113,21 @@ export class Models {
   }
 
   /**
+   * The local image models (host recipes) that can make, edit or upscale here but are on none of the
+   * context's Images lists, by name: for the image tool's description, so she knows a name they ask
+   * for ("Qwen-Image 2.1 Max Realism") is a model, though one off the lists answers only when named.
+   */
+  unlistedImageModels(ctx: CallContext): string[] {
+    const c = this.catalog(ctx.userId), listed = new Set(this.imageModels(ctx).map((m) => m.name)), out = new Set<string>();
+    for (const o of c.offerings.values()) {
+      const ep = c.endpoints.get(o.endpointId), name = modelName(o);
+      if (!o.recipe || ep?.kind !== "local" || listed.has(name)) continue;
+      if ((["image.create", "image.edit", "image.upscale"] as const).some((t) => !this.unfit(t, o, ep, {}))) out.add(name);
+    }
+    return [...out].sort();
+  }
+
+  /**
    * For a create with reference images: the local models on the context's Edit list that also create
    * and take that many references, to try after the Create list's models, which may take none. A cloud
    * model there isn't added: one off the Create list answers a create only when asked for by name.
