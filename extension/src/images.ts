@@ -487,8 +487,8 @@ async function executeUpscaleVideo(o: ImageTools, id: string, p: ImageArgs, sign
     try { out = await o.models.upscaleVideo(call, request, { signal, onProgress, ...(first.length ? { first } : {}), beforeSend: async r => { attempted = r; if (!o.enabled()) throw new Error("Images are off in this thread."); } }); }
     catch (err) { throw withModel(err, p.action, attempted, signal); }
     signal?.throwIfAborted();
-    // Extending, the host made only the next seconds, from the clip's end: they are joined on here.
-    const { path, video: v } = p.action === "extend" ? await o.files.saveExtended(p.video!, out.video, signal) : { path: o.files.saveVideo(out.video), video: out.video };
+    const path = o.files.saveVideo(out.video);
+    const v = out.video;
     const video: VideoPart = { type: "video", path, model: out.resolution.label, width: v.width, height: v.height, duration: v.duration, audio: v.audio };
     const recorded = o.models.recordCall(call.userId, { pool: call.pool, threadId: o.threadId, task: "image.upscale", resolution: out.resolution, images: 1, clip: true });
     if (v.sampling) o.models.recordSampling(call.userId, recorded, { ...v.sampling, images: 1, pixels: v.width * v.height });

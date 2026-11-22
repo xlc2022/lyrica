@@ -3045,10 +3045,10 @@ imageFiles(t): ThreadImages
 //   /thread-workspaces/<id> or /shared (folderOf, Workspace.originKey).
 // ThreadImages.readClip(path): Promise<Uint8Array>; a workspace MP4 (a driving clip, one to edit or upscale) via ThreadFiles, at most 64 MB, in memory.
 // ThreadImages.clipEnd(path, signal?): Promise<Uint8Array>; a clip's last 2 s from the keyframe before them, copied as they are
-//   (ThreadFiles.clipTail, ffmpeg in the sandbox): what `extend` sends a host, with `tail: true`, whatever the clip's length.
+//   (ThreadFiles.clipTail, ffmpeg in the sandbox, at most MAX_EXTEND_BYTES as it streams): what `extend` sends a host, with `tail: true`.
 // ThreadImages.saveExtended(path, added: GeneratedVideo, signal?): { path, video }; the host's new seconds joined onto `path`
 //   (ThreadFiles.joinClips: without re-encoding when both have the same encoder settings, else re-encoded at CRF 18),
-//   saved as saveVideo saves, its first frame the poster.
+//   saved as saveVideo saves, its first frame the poster; the joined clip is at most MAX_JOINED_BYTES (1 GiB) as it streams.
 // ThreadImages.save(GeneratedImage[], portrait = false): string[]; exclusive images/<uuid>.png in the encrypted thread folder,
 //   removes PNG metadata, refuses symlinks, returns /workspace/images/<uuid>.png paths. A project chat's (t.coordinates,
 //   as saveUpload) go in shared/images (/workspace/shared/images/<uuid>.png, its threads' /shared/images).

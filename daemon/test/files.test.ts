@@ -586,12 +586,16 @@ describe("a clip's end and a join", () => {
     const { ThreadFiles } = await import("@lyrica/core");
     const { readFileSync } = await import("node:fs");
     const dir = mkdtempSync(join(tmpdir(), "lyrica-join-"));
+    const caps: (number | undefined)[] = [];
     try {
       const box = {
         allow: (p: string) => p,
-        run: async (argv: string[], o: { input?: Buffer } = {}) => {
+        run: async (argv: string[], o: { input?: Buffer; maxBytes?: number } = {}) => {
           const { spawnSync } = await import("node:child_process");
           const r = spawnSync(argv[0]!, argv.slice(1), { input: o.input ?? "", maxBuffer: 1 << 28 });
+          // As the sandbox does: output past maxBytes stops the command.
+          if (o.maxBytes !== undefined && r.stdout.length + r.stderr.length > o.maxBytes) throw new Error(`output over ${o.maxBytes} bytes`);
+          caps.push(o.maxBytes);
           return { code: r.status, signal: r.signal, stdout: r.stdout, stderr: r.stderr };
         },
       };
@@ -620,6 +624,9 @@ describe("a clip's end and a join", () => {
       expect(packets(join(dir, "joined.mp4")).slice(-47)).toEqual(packets(join(dir, "next.mp4")).slice(1));
       const other = await files.joinClips(join(dir, "clip.mp4"), readFileSync(join(dir, "other.mp4")));
       expect(other).toMatchObject({ frames: 528, audio: false });
+      // Neither reads more than its cap into lyricad: a clip with one keyframe would give all of itself as its end.
+      const { MAX_JOINED_BYTES } = await import("@lyrica/core");
+      expect(new Set(caps.filter((c) => c !== undefined))).toEqual(new Set([256 * 1024 * 1024, MAX_JOINED_BYTES]));
       writeFileSync(join(dir, "notes.txt"), "not a clip");
       await expect(files.clipTail(join(dir, "notes.txt"), 2)).rejects.toThrow();
     } finally {
