@@ -167,9 +167,13 @@ describe("image tool results (principles 1 and 4)", () => {
     const tool = (o: ImageTools) => { let t!: ToolDefinition; createImageExtension(o)({ on: () => {}, registerTool: (d: ToolDefinition) => { t = d; } } as unknown as ExtensionAPI); return t; };
     const model = (tool(s.options as ImageTools).parameters as { properties: { model: { description: string } } }).properties.model;
     expect(model.description).toMatch(/The image models here: gpt-image-1 \(create, edit\)/);
+    // A host's model off her lists is named too, so a name they ask for ("Max Realism") reads as a model, not a style.
+    expect(model.description).toMatch(/Also here, only when they name one: Art\./);
     const named = await s.run({ action: "create", prompt: "A garden", model: "GPT Image" });
     const text = (named.content as { type: string; text?: string }[]).find(c => c.type === "text")!.text!;
     expect(text).toMatch(/^Made with gpt-image-1 on openai\. Saved /);
+    const off = await s.run({ action: "create", prompt: "A garden", model: "art" });
+    expect((off.content as { type: string; text?: string }[]).find(c => c.type === "text")!.text!).toMatch(/^Made with Art on workstation/);
     const before = s.heard.length;
     await expect(s.run({ action: "create", prompt: "A garden", model: "Flux" })).rejects.toThrow(/No image model here is called "Flux"; the ones that can create: .*gpt-image-1.*Leave model out/);
     expect(s.heard).toHaveLength(before);

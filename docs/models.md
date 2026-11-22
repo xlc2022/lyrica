@@ -711,8 +711,12 @@ only when asked for by name.
 Upscale lists that can do their list's task, by name in list order, with
 the actions each does there and how many references it takes (0 for none;
 left out when unknown), and the local hosts it is on. The image tool's `model` field names them in its
-description, so she never guesses a name. Models off the lists aren't
-named, since one answers only when the user asks for it.
+description, so she never guesses a name. `unlistedImageModels(ctx)`
+names the local host recipes that can make, edit or upscale but sit on
+none of those lists; the description adds them as models to use only when
+the user names one, so a name such as "Qwen-Image 2.1 Max Realism" reads
+as a model rather than a style. Neither list names a cloud model off the
+lists, and the error for a name that matches none names only the lists'.
 
 A create request has `prompt`, `tier` (`fast` or `quality`), optional
 `size: { width, height }`, `count` and `references`. Edit takes `prompt`,
