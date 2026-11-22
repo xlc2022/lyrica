@@ -1515,7 +1515,9 @@ so is a tailnet destination when nothing listens on the port.
 How Lyrica is reached from other machines, set by an administrator
 (`…/admin/web-access`, with `/status` and `/snippet`). Code:
 `daemon/src/web/`. The mode, name and built-in settings live in `self.db`
-under `web.access`, so the DNS credentials are encrypted with the rest of it.
+under `web.access`, so the DNS credentials are encrypted with the rest of it;
+Caddy's saved config also holds them, unencrypted, in its own `0700` state
+directory (see the Built-in mode below).
 Secret credentials are never sent back by the API (only whether they're set)
 and never logged; a Caddy error that quotes one has it replaced with
 `[hidden]`. Changes run one at a time.

@@ -1,6 +1,7 @@
 # Makes the stack a tailnet device of its own. Port 7236 is passed through
 # to host-api (mutual TLS stays end to end); 443 serves the dashboard with
-# Tailscale's certificate. The auth key is used once and never logged.
+# Tailscale's certificate. The auth key is used once and never logged; once
+# the device has joined, install.sh blanks it in .env and recreates this container.
 #
 # tailscale has its own route out (tailnet) and reaches host-api over an
 # internal network (tailscale-api). host-api's only route stays edge, so
