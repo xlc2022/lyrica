@@ -826,8 +826,9 @@ lyrica admin grants list --user ada
 
 The folder must be a real directory with no symlinks on its path, readable
 by the `lyrica` user (through its group or an ACL for anything she should
-write), and may not be in both pools. `/opt/lyrica`, the updater's state
-and the snapshots can never be granted. The same lists are under
+write), and may not be in both pools. `/opt/lyrica`, the updater's state,
+the snapshots and her `tailscaled`'s folders (`/var/lib/lyrica-tailscale`,
+`/run/lyrica-tailscale`) can never be granted. The same lists are under
 Administration, Users.
 
 Network defaults are per user and pool: general threads start with internet
