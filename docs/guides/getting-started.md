@@ -654,7 +654,9 @@ Caddy:
 2. Make an API token at your DNS provider, limited to that one zone. The
    page lists the providers Caddy was built with (Cloudflare, Porkbun,
    Namecheap, Route 53, DigitalOcean, Hetzner, deSEC, Duck DNS) and how to
-   scope each token.
+   scope each token. Lyrica keeps the token encrypted, but Caddy's own
+   saved config holds it unencrypted in its own state folder (mode
+   `0700`), so keep it limited.
 3. In Web access choose **Built-in Caddy**, enter the name, tick the
    Tailscale and LAN addresses to serve on, pick the provider and paste the
    token, and apply. The certificate comes by DNS-01 challenge, so the
