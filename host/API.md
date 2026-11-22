@@ -1512,10 +1512,14 @@ newer host made, read after a rollback).
   dropped and the rest appended. The chain comes out at most one frame
   step longer than asked, as one clip does. Each clip takes the next seed, they hold
   the GPU as one job with one progress, weighted by frames, and one MP4
-  comes back. With `extend`, an MP4 of at most 64 MB at the recipe's frame
+  comes back. With `extend`, an MP4 of at most 256 MB at the recipe's frame
   rate and a size it makes (and no `image`, `drive` or size), the recipe
   must list `extend`: `duration` (1 to 60) is the seconds to add, made by
-  continuations only, and the answer is the whole clip. With `source`, an
+  continuations only, and the answer is the whole clip. A clip whose new
+  seconds, at the clip so far's bytes per frame, would take the whole past
+  360 MB is `invalid` before anything runs, with the seconds that still fit:
+  an answer's base64 must fit one Node string (536,870,888 characters). A
+  clip that still comes out past 360 MB is a 500 `too_large`. With `source`, an
   MP4 of at most 64 MB (and no `image`, `drive`, `extend`, size or
   `aspectRatio`), the recipe must do `edit_video`: the clip is changed as
   the prompt says and keeps its motion, timing and camera. MiniMax H3's

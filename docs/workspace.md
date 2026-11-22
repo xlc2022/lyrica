@@ -1213,8 +1213,10 @@ The same tool makes short clips: `video` from a prompt, `animate` from an
 image as the first frame, and `motion` from an image and a driving clip (a
 workspace MP4 of at most 64 MB, read with `ThreadImages.readClip`): the
 image's subject moves as the person in the clip moves, and the prompt says
-the scene; and `extend` from a workspace clip and a prompt, which adds
-`duration` seconds to it and saves the whole clip as a new one; and
+the scene; and `extend` from a workspace clip (an MP4 of at most 256 MB,
+since a host-made minute at 1920×1088 passes 64 MB) and a prompt, which adds
+`duration` seconds to it and saves the whole clip as a new one; a clip too
+large is refused with its size and the limit; and
 `edit_video` from a workspace clip and an `instruction` (one English
 sentence, the change and then what stays), which changes the clip and keeps
 its motion, timing, camera and sound, saved as a new clip. Each takes

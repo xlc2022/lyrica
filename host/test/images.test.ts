@@ -80,8 +80,8 @@ function mp4(seconds: number, version: 0 | 1 = 0): Buffer {
   }
   return Buffer.concat([box("ftyp", Buffer.from("isom\0\0\x02\0", "latin1")), box("mdat", Buffer.alloc(64)), box("moov", box("mvhd", mvhd))]);
 }
-/** A clip with a video track: its size, frame count and frame rate in tkhd, mdhd and stts, as an encoder writes them. */
-function clip(width: number, height: number, frames: number, fps: number): Buffer {
+/** A clip with a video track: its size, frame count and frame rate in tkhd, mdhd and stts, as an encoder writes them; `pad` bytes of mdat make it as large as a real one. */
+function clip(width: number, height: number, frames: number, fps: number, pad = 0): Buffer {
   const box = (type: string, ...body: Buffer[]) => {
     const head = Buffer.alloc(8);
     head.writeUInt32BE(8 + body.reduce((n, b) => n + b.length, 0), 0);
@@ -104,7 +104,7 @@ function clip(width: number, height: number, frames: number, fps: number): Buffe
   const mvhd = Buffer.alloc(100);
   mvhd.writeUInt32BE(600, 12);
   mvhd.writeUInt32BE(Math.round(frames / fps * 600), 16);
-  return Buffer.concat([box("ftyp", Buffer.from("isom\0\0\x02\0", "latin1")), box("moov", box("mvhd", mvhd), sound, video)]);
+  return Buffer.concat([box("ftyp", Buffer.from("isom\0\0\x02\0", "latin1")), ...pad ? [box("mdat", Buffer.alloc(pad))] : [], box("moov", box("mvhd", mvhd), sound, video)]);
 }
 // Comfy-Org's RIFE 4.26 for ComfyUI's own frame interpolation nodes.
 const RIFE = safetensors({ "blocks.0.conv0.0.0.weight": {}, "blocks.0.lastconv.0.weight": {}, "encode.cnn0.weight": {}, "encode.cnn3.weight": { shape: [16, 4, 4, 4] } });
@@ -1693,6 +1693,14 @@ describe("the image API", () => {
     expect(added).toHaveLength(1);
     expect(added[0].cond.inputs).toMatchObject({ width: 1024, height: 576, length: 124 });
     expect(extended.body.video.frames).toBe(120 + 124 - 22);
+    // A host-made minute at 1920×1088 passes 64 MB: such a clip extends, and one whose joined clip would pass what an
+    // answer carries is refused before the GPU runs, with the seconds that still fit.
+    const big = clip(1024, 576, 24, 24, 70 * 1024 * 1024).toString("base64");
+    expect((await s.api("/host/v1/videos/create", { body: { recipe: h3r.id, prompt: "x", extend: big, duration: 1 } })).status).toBe(200);
+    const ran = s.comfyFake.seen.prompts.length;
+    const tooLong = await s.api("/host/v1/videos/create", { body: { recipe: h3r.id, prompt: "x", extend: big, duration: 5 } });
+    expect(tooLong.body.error.message).toMatch(/^That clip is 70 MB for 1\.0 s, so 5 s more would make it about \d+ MB, past the 360 MB a clip can be\. Add at most 4 s\.$/);
+    expect(s.comfyFake.seen.prompts.length).toBe(ran);
 
     // An animated still is every later clip's reference picture, after the clip so far's last frame, and the prompt names
     // both: the clip so far can lose her face, and the still alone pulls the shot back to its own framing.

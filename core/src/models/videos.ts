@@ -13,8 +13,10 @@ import { withProgress, type JobProgress } from "./progress.ts";
 export type VideoRequest = { prompt: string; image?: ImageInput; drive?: Uint8Array; extend?: Uint8Array; source?: Uint8Array; size?: { width: number; height: number }; aspectRatio?: string; duration?: number; loras?: LoraAsk[] } & JobSettings
 /** A host makes videos of at most this many seconds, chained clips included (host/API.md, "Making videos"). */
 export const LONGEST_VIDEO_SECONDS = 60;
-/** A driving clip's, a clip to extend's or a clip to edit's largest size (host/API.md, "Making videos"). */
+/** A driving clip's, a clip to edit's or a clip to upscale's largest size (host/API.md, "Making videos"). */
 export const MAX_DRIVE_BYTES = 64 * 1024 * 1024;
+/** A clip to extend's largest size: a host-made minute at 1920×1088 passes 64 MB (host/API.md, "Making videos"). */
+export const MAX_EXTEND_BYTES = 256 * 1024 * 1024;
 export interface GeneratedVideo {
   bytes: Uint8Array; type: "video/mp4"; width: number; height: number; frames: number; fps: number; duration: number; audio: boolean; seed?: number;
   /** The LoRAs the host job applied, when its answer names them. */
@@ -40,7 +42,7 @@ export function validateVideoRequest(r: VideoRequest): void {
   if (r.aspectRatio !== undefined && (r.size || !/^\d+(\.\d+)?:\d+(\.\d+)?$/.test(r.aspectRatio))) throw new HostRefused("invalid", "a video takes a size or a width:height aspect ratio");
   if (r.duration !== undefined && !(r.duration >= 1 && r.duration <= LONGEST_VIDEO_SECONDS)) throw new HostRefused("invalid", `a video is 1 to ${LONGEST_VIDEO_SECONDS} seconds`);
   if (r.extend && (r.image || r.drive || r.size || r.aspectRatio)) throw new HostRefused("invalid", "an extended clip takes no image, driving clip or size: it keeps its own");
-  if (r.extend && (!isMp4(r.extend) || r.extend.length > MAX_DRIVE_BYTES)) throw new HostRefused("invalid", "a clip to extend is an MP4 of at most 64 MB");
+  if (r.extend && (!isMp4(r.extend) || r.extend.length > MAX_EXTEND_BYTES)) throw new HostRefused("invalid", "a clip to extend is an MP4 of at most 256 MB");
   if (r.source && (r.image || r.drive || r.extend || r.size || r.aspectRatio)) throw new HostRefused("invalid", "a clip to edit takes no image, other clip or size: it keeps its own");
   if (r.source && (!isMp4(r.source) || r.source.length > MAX_DRIVE_BYTES)) throw new HostRefused("invalid", "a clip to edit is an MP4 of at most 64 MB");
   const sampling = validateSampling(r);
