@@ -1594,11 +1594,45 @@ export class PoolStore extends PoolReader {
       this.db.prepare("DELETE FROM search WHERE kind = 'entry' AND id IN (SELECT value FROM json_each(?))").run(gone);
       this.db.prepare("DELETE FROM vectors WHERE id IN (SELECT value FROM json_each(?))").run(gone);
       this.db.prepare("DELETE FROM questions WHERE thread = ? AND n >= ?").run(threadId, fromN);
+      this.rewindCodeTask(threadId, fromN);
       this.db.prepare("DELETE FROM entries WHERE thread = ? AND n >= ?").run(threadId, fromN);
       this.db.prepare("UPDATE threads SET cut = max(cut, ?) WHERE id = ?").run(rows.at(-1)!.n, threadId);
       this.optimize();
       return { removed: rows.length, pins: rows.filter((r) => r.pinned).length, subagents };
     });
+  }
+
+  /**
+   * Within a rewind from entry `fromN`: a Code task her `threads code` calls
+   * set in the removed turns goes back to what the last call left before
+   * them set, or, with none, goes, so her prompt never carries progress from
+   * turns the person removed. A task no removed call set (the person's own,
+   * or a child's from its start) stays.
+   */
+  private rewindCodeTask(threadId: string, fromN: number): void {
+    const rows = this.db.prepare("SELECT n, role, data FROM entries WHERE thread = ? AND role IN ('assistant', 'toolResult') ORDER BY n").all(threadId) as { n: number; role: string; data: string }[];
+    // A call counts once its result came back without an error: only then did it set the task.
+    const ok = new Set<string>();
+    for (const r of rows) {
+      const m = (json(r.data) as { message?: { toolCallId?: string; isError?: boolean } }).message;
+      if (r.role === "toolResult" && m?.toolCallId && !m.isError) ok.add(m.toolCallId);
+    }
+    const sets: { n: number; task: string; done: string }[] = [];
+    for (const r of rows) {
+      if (r.role !== "assistant") continue;
+      const parts = (json(r.data) as { message?: { content?: unknown } }).message?.content;
+      if (!Array.isArray(parts)) continue;
+      for (const p of parts as { type?: string; id?: string; name?: string; arguments?: { action?: unknown; task?: unknown; done?: unknown } }[]) {
+        const a = p.arguments;
+        if (p.type !== "toolCall" || p.name !== "threads" || a?.action !== "code" || !p.id || !ok.has(p.id)) continue;
+        if (a.task === undefined && a.done === undefined) continue;
+        sets.push({ n: r.n, task: typeof a.task === "string" ? a.task : "", done: typeof a.done === "string" ? a.done : "" });
+      }
+    }
+    if (!sets.some((s) => s.n >= fromN)) return;
+    const before = sets.filter((s) => s.n < fromN).at(-1);
+    if (before) this.setCodeTask(threadId, before.task, before.done);
+    else this.db.prepare("DELETE FROM code_tasks WHERE thread = ?").run(threadId);
   }
 
   /** A recurring turn in this thread or a fresh thread in the same place. Its times are in `zone`, the user's. */

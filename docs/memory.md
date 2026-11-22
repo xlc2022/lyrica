@@ -349,7 +349,10 @@ the same wording.
 `codeTask(threadId)` and `setCodeTask(threadId, task, done)` read and replace
 the latest task (300 characters) and progress (1,200 characters), with its
 time. These words stay in encrypted pool.db's `code_tasks`, never user.db,
-and disappear when their thread is forgotten.
+and disappear when their thread is forgotten. Removing turns in which her
+`threads code` calls set it puts back what the last earlier call set, or
+removes it when none did, so her prompt never carries progress from removed
+turns.
 
 **Recall counts** (Status's Memory use card, and the Memory page's Most used order). Each pool keeps how often she
 reached each note and page, per hour, in `recalls`: `recalled` when automatic
@@ -508,7 +511,7 @@ material.
 | **Forget a thread** | The thread and its entries are deleted, along with notes whose only sources were in it, and its subagents' threads the same way. Each deleted note leaves a tombstone, and pages that cited them, or the thread and its entries directly, are flagged. Its child threads (Lyrica's, branches, copies) go too with `forgetThread(id, author, { children: true })`; otherwise they are kept, with no parent. With `keepMemories` no note goes (nor, with `children`, the project's page and notes), its subagents' and child threads are forgotten the same way, and each forgotten thread leaves a thread tombstone. Its files go too: its folder in the home workspace, and the snapshots kept to undo its changes, and so do its rows in user.db (its settings, model choices, call records, pins). |
 | **Forget a topic** | Search, review the matches, then delete them in bulk. |
 | **Sleep's transcripts** | Not a level the user picks: sleep's own threads are never indexed, so recall can't find a deleted memory's copy in one, and each is forgotten 36 hours after it was made, keeping what it wrote ([sleep.md](sleep.md#in-code)). |
-| **Remove turns** | A rewind (Delete from here, Regenerate, Edit) removes entries from one onwards as forgetting does (`truncateThread`, which also counts the pins it takes); what the turns did outside memory is in daemon.md, "What removed turns did": notes whose only sources were in them go with tombstones, pages citing those notes or the entries are flagged, and subagent threads started in them are forgotten; child threads they started are forgotten too, and those they only messaged are truncated from that message on (docs/delegation.md), unless the user keeps them. An entry a branch still holds a copy of keeps its notes and search row, and its citations resolve through the copy. |
+| **Remove turns** | A rewind (Delete from here, Regenerate, Edit) removes entries from one onwards as forgetting does (`truncateThread`, which also counts the pins it takes); what the turns did outside memory is in daemon.md, "What removed turns did": notes whose only sources were in them go with tombstones, pages citing those notes or the entries are flagged, and subagent threads started in them are forgotten; a Code task set in them goes back to the one set before; child threads they started are forgotten too, and those they only messaged are truncated from that message on (docs/delegation.md), unless the user keeps them. An entry a branch still holds a copy of keeps its notes and search row, and its citations resolve through the copy. |
 
 **Branches.** `branchThread(threadId, n)` makes a child thread holding the
 entries up to `n` (and the results of its tool calls), copied as an export

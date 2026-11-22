@@ -1976,7 +1976,7 @@ noted with `working`, which consolidation preserves.
 A thread's editable `code` preference selects the `code` model list instead
 of Chat, keeping its context limit, preset, permissions and grants. The
 `threads code` action changes the next turn and, when given a task or
-progress, replaces its encrypted Code task; turning off keeps it. Projects can choose code mode for new threads,
+progress, replaces its encrypted Code task; turning off keeps it, and removing the turns that set it puts back the one before. Projects can choose code mode for new threads,
 and her `threads start` can with `code: true`. Outside a project chat she codes in the thread with code mode
 and turns it off when done; a project chat splits a build with several parts into parallel `code: true` threads, one per part, after one base thread sets up the shared interfaces; a separate base thread merges the parts and tests each merge.
 Code turns omit models, downloads, images and reactions, add five coding
