@@ -1226,6 +1226,9 @@ xAI provider instead (below).
   (`enableInstallTelemetry: false`). Pi ties its provider attribution to that setting,
   so no request carries Pi's `HTTP-Referer: https://pi.dev`,
   `X-OpenRouter-Title` or `X-OpenRouter-Categories` headers to OpenRouter.
+  It also turns Pi's cache warming off (`cacheWarming: "off"`; Pi 1.6's
+  default replays the last request between turns to keep a provider's
+  cache warm), so no model call happens outside a turn.
 
 `openThreadSession` hosts one thread with that runtime and its chat model.
 
