@@ -39,12 +39,22 @@ const COLUMNS: { key: SortKey; word: string; why?: string }[] = [
   { key: "speed", word: "Speed", why: SPEED_WHY }, { key: "prompt", word: "Prompt", why: PROMPT_WHY }, { key: "fallbacks", word: "Fallbacks", why: FALLBACK_WHY },
 ];
 
+/** What a row's Output cell shows, as the cell decides it: tokens, else what it made (images, clips), else seconds of audio. */
+function outputOf(m: Facts["models"][number]): { unit: string; amount: number } {
+  if (m.outputTokens) return { unit: "tokens", amount: m.outputTokens };
+  if (m.made) return { unit: m.made.unit, amount: m.made.count };
+  if (m.audioSeconds !== undefined) return { unit: "audio", amount: m.audioSeconds };
+  return { unit: "tokens", amount: 0 };
+}
+/** Output's units in the order they group, whichever way the column sorts: tokens, then what was made, then audio. */
+const unitRank = (unit: string) => unit === "tokens" ? 0 : unit === "audio" ? 2 : 1;
+
 /** The number a metric column sorts by: the one its cell shows (an image model's Output its images, a speech one's its seconds of audio). */
 function sortValue(m: Facts["models"][number], key: SortKey): number | string | undefined {
   switch (key) {
     case "model": return shortModel(m.label);
     case "calls": return m.calls;
-    case "output": return m.outputTokens || m.made?.count || m.audioSeconds || 0;
+    case "output": return outputOf(m).amount;
     case "speed": return m.medianTokPerSec;
     case "prompt": return m.medianPromptTokPerSec;
     case "fallbacks": return m.fallbacks;
@@ -54,7 +64,8 @@ function sortValue(m: Facts["models"][number], key: SortKey): number | string | 
 /**
  * The rows in a column's sort order. Numbers sort as numbers, a click opening biggest first; the model sorts by name,
  * a click opening A→Z; a second click on the same head reverses it. A value the column can't measure (no median
- * recorded, which includes models timed per image or clip on Speed) sorts last either way, and rows equal on the
+ * recorded, which includes models timed per image or clip on Speed) sorts last either way; Output groups its rows by
+ * unit (tokens, then images or clips, then audio) and sorts within each; and rows equal on the
  * column — two unmeasured ones included — keep to the model's name, so both directions agree on ties.
  */
 export function sortedModels(models: Facts["models"], key: SortKey, dir: 1 | -1): Facts["models"] {
@@ -62,6 +73,11 @@ export function sortedModels(models: Facts["models"], key: SortKey, dir: 1 | -1)
     shortModel(a.label).localeCompare(shortModel(b.label), undefined, { sensitivity: "base" }) || a.endpointName.localeCompare(b.endpointName);
   return [...models].sort((a, b) => {
     if (key === "model") return dir * byName(a, b);
+    // Tokens, images and seconds of audio aren't one number: Output groups rows by unit, then sorts within each.
+    if (key === "output") {
+      const oa = outputOf(a), ob = outputOf(b);
+      if (oa.unit !== ob.unit) return unitRank(oa.unit) - unitRank(ob.unit) || oa.unit.localeCompare(ob.unit);
+    }
     const va = sortValue(a, key), vb = sortValue(b, key);
     if (va === undefined || vb === undefined)
       return va === undefined && vb === undefined ? byName(a, b) : va === undefined ? 1 : -1;

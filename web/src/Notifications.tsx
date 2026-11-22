@@ -110,7 +110,7 @@ function Row({ n, ctx, picked, onPick, act, busy, reload }: {
       <div className="actions">
         {!question && <Where n={n} userId={ctx.user.id} />}
         {/* A Run that needs what she types opens the card in place; its answers wait on the card. */}
-        {runCard ? <button type="button" className="sm" aria-expanded={openCard} onClick={() => setOpenCard(!openCard)}>{n.run}</button>
+        {runCard ? <button type="button" className="sm" aria-expanded={openCard} title={`Asks for: ${n.run}`} onClick={() => setOpenCard(!openCard)}>{openCard ? "Hide card" : "Show card"}</button>
           : n.actions.map((a, i) => <button key={a.label} type="button" className={`sm${question && i === 0 ? " primary" : ""}${a.danger ? " danger" : ""}`} disabled={busy} title={a.title ?? (question && i === 0 ? "Recommended" : undefined)} onClick={() => act([a])}>{a.label}</button>)}
       </div>
     </li>

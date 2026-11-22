@@ -617,7 +617,7 @@ names in the same way, any path allowed since it runs as her account
 (a Python script with `#!/usr/bin/env python3` runs as Python), and the card is a question card, **Run with a
 secret on <machine>?**, with her `why`, the field (masked, with **Show**),
 the command, the hash and the script, then **Run** and **Not now**.
-Notifications don't answer it: their one action, the field's label, opens
+Notifications don't answer it: their one action, **Show card**, opens
 the card in place, where Run takes the field.
 
 Run posts the secret to lyricad as raw bytes (`POST …/questions/:n/run`,

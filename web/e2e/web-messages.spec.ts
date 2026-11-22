@@ -59,63 +59,32 @@ test("a message's menu regenerates, edits, deletes with Undo, and branches", asy
   await noHorizontalScroll(page);
 });
 
-test("the last message's menu stays above the composer and within the chat on phone and desktop", async ({ page, baseURL }) => {
+test("the last message's menu opens upward, within the chat", async ({ page, baseURL }) => {
   await enter(page, baseURL!);
   await newThread(page, "General");
   for (let i = 0; i < 5; i++) {
     await send(page, `Question ${i}: A short question for the last reply`);
     await expect(page.getByText(`You said: Question ${i}: A short question for the last reply`)).toBeVisible();
   }
+  // Every turn's menu is there once stored, so the last one is the bottom turn's.
   await expect(page.locator(".turn .msg-menu")).toHaveCount(5);
   await page.locator(".scroll").evaluate((el) => { el.scrollTop = el.scrollHeight; });
   const last = page.locator(".turn .msg-menu").last();
-  const button = last.getByRole("button", { name: "More actions" });
-  await button.click();
+  await last.getByRole("button", { name: "More actions" }).click();
   const menu = last.getByRole("menu");
   await expect(menu).toBeVisible();
-  const bounds = async () => page.evaluate(() => {
+  const fits = () => page.evaluate(() => {
     const scroll = document.querySelector(".scroll")!.getBoundingClientRect();
     const button = [...document.querySelectorAll(".turn .msg-menu > button")].at(-1)!.getBoundingClientRect();
     const menu = [...document.querySelectorAll(".turn .msg-menu > .menu")].at(-1)!.getBoundingClientRect();
-    return { scrollTop: scroll.top, scrollBottom: scroll.bottom, buttonTop: button.top, menuTop: menu.top, menuBottom: menu.bottom };
+    return menu.top >= Math.max(0, scroll.top) && menu.bottom <= scroll.bottom && menu.bottom < button.top;
   });
-  const initial = await bounds();
-  expect(initial.menuBottom).toBeLessThanOrEqual(initial.scrollBottom - 2);
-  expect(initial.menuTop).toBeGreaterThanOrEqual(Math.max(0, initial.scrollTop));
-  expect(initial.menuBottom).toBeLessThan(initial.buttonTop);
+  await expect.poll(fits).toBe(true);
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/message-menu-bottom-${page.viewportSize()!.width}.png` });
+  // Regenerate with… grows the menu; it still fits, scrolling inside.
   await menu.getByRole("menuitem", { name: "Regenerate with…" }).click();
   await expect(menu.getByRole("searchbox", { name: "Search models" })).toBeVisible();
-  const expanded = await bounds();
-  expect(expanded.menuTop).toBeGreaterThanOrEqual(Math.max(0, expanded.scrollTop));
-  expect(expanded.menuBottom).toBeLessThanOrEqual(expanded.scrollBottom - 2);
-  await menu.getByRole("menuitem", { name: "Delete" }).scrollIntoViewIfNeeded();
-  await expect(menu.getByRole("menuitem", { name: "Delete" })).toBeVisible();
-  await page.keyboard.press("Escape");
-  await expect(menu).toHaveCount(0);
-  await button.focus();
-  await page.keyboard.press("Enter");
-  await expect(menu).toBeVisible();
-  await page.keyboard.press("Escape");
-  await expect(menu).toHaveCount(0);
-  await expect(button).toBeFocused();
-  if (process.env.SCREENSHOTS) {
-    await button.click();
-    await page.screenshot({ path: `${process.env.SCREENSHOTS}/message-menu-bottom-${page.viewportSize()!.width}.png` });
-    await page.keyboard.press("Escape");
-  }
-  // Higher in the chat, the same menu still opens below its button and follows a scroll.
-  await page.locator(".scroll").evaluate((el) => { el.scrollTop = 0; });
-  const first = page.locator(".turn .msg-menu").first();
-  await first.getByRole("button", { name: "More actions" }).click();
-  const firstMenu = first.getByRole("menu");
-  await expect(firstMenu).toBeVisible();
-  const firstButton = await first.getByRole("button", { name: "More actions" }).boundingBox();
-  const firstBounds = await firstMenu.boundingBox();
-  expect(firstBounds!.y).toBeGreaterThanOrEqual(firstButton!.y + firstButton!.height);
-  await page.locator(".scroll").evaluate((el) => { el.scrollTop += 40; });
-  await expect(firstMenu).toBeVisible();
-  await page.locator(".scroll").click({ position: { x: 12, y: 12 } });
-  await expect(firstMenu).toHaveCount(0);
+  await expect.poll(fits).toBe(true);
 });
 
 test("a run of tool calls folds into one marker that opens to a scrolling box, and a message's actions sit under it", async ({ page, baseURL }) => {

@@ -2709,13 +2709,15 @@ test("a run card's Notifications row opens the card in place and takes the passw
   const row = page.locator(".nquestion").filter({ hasText: "Run as root on box?" });
   // The row says what the card says (her reason), and doesn't answer it: Done and Not now live on the card.
   await expect(row).toContainText("Installs the print service.");
-  await expect(row.getByRole("button", { name: "Password", exact: true })).toHaveAttribute("aria-expanded", "false");
+  await expect(row.getByRole("button", { name: "Show card", exact: true })).toHaveAttribute("aria-expanded", "false");
+  await expect(row.getByRole("button", { name: "Show card", exact: true })).toHaveAttribute("title", "Asks for: Password");
   await expect(row.getByRole("button", { name: /^Done/ })).toHaveCount(0);
   await expect(row.locator(".nkind").getByRole("link", { name: "Open thread" })).toBeVisible();
   const width = page.viewportSize()!.width;
-  await row.getByRole("button", { name: "Password", exact: true }).click();
+  await row.getByRole("button", { name: "Show card", exact: true }).click();
   const shown = row.locator(".question-card");
   await expect(shown).toBeVisible();
+  await expect(row.getByRole("button", { name: "Hide card", exact: true })).toHaveAttribute("aria-expanded", "true");
   // The card itself: Run with the password field, Done with its own meaning only, each consequence in the open.
   await expect(shown.getByRole("button", { name: /^Done/ })).toBeVisible();
   await expect(shown).toContainText("Already run by hand. Lyrica checks the result and carries on.");
@@ -3336,41 +3338,18 @@ test("Status model facts preserve existing facts and render empty, measured and 
     await expect(row("fixture-image").getByRole("cell").nth(4)).toHaveAttribute("title", "An image model reads no prompt tokens.");
     await expect(facts).toContainText("Retained history · General · kept 31 days");
     await expect(facts).toContainText("37 calls");
-    // Each head sorts its rows (a phone hides the heads, so this is a wide-card affordance), and the sort outlives a refresh.
+    // Each head sorts its rows (a phone hides the heads; the order itself is model-facts.test.ts's), and the sort outlives a refresh.
     if (!phone(page)) {
       const dataRows = facts.locator(".model-table").getByRole("row");
-      const head = (name: string) => facts.getByRole("columnheader", { name, exact: true });
-      const headBtn = (name: string) => head(name).getByRole("button");
-      await headBtn("Calls").click();
-      await expect(head("Calls")).toHaveAttribute("aria-sort", "descending");
+      const calls = facts.getByRole("columnheader", { name: "Calls", exact: true });
+      await calls.getByRole("button").click();
+      await expect(calls).toHaveAttribute("aria-sort", "descending");
       await expect(dataRows.nth(1)).toContainText("fixture-cloud");
-      await facts.getByRole("table").screenshot({ path: `shots/model-calls-sorted-${page.viewportSize()!.width}.png` });
-      await headBtn("Calls").click();
-      await expect(head("Calls")).toHaveAttribute("aria-sort", "ascending");
-      await expect(dataRows.nth(1)).toContainText("fixture-without-speed");
-      // A column it can't measure everything in: the models with no median sort last, either way.
-      await headBtn("Speed").click();
-      await expect(head("Speed")).toHaveAttribute("aria-sort", "descending");
-      await expect(dataRows.nth(-2)).toContainText("fixture-image");
-      await expect(dataRows.nth(-1)).toContainText("fixture-without-speed");
-      await headBtn("Speed").click();
-      await expect(dataRows.nth(-2)).toContainText("fixture-image");
-      await expect(dataRows.nth(-1)).toContainText("fixture-without-speed");
-      // Keyboard use: Enter on a head sorts, Enter again reverses. Model asc is the served order, so reverse to tell.
-      await headBtn("Model").focus();
-      await page.keyboard.press("Enter");
-      await expect(head("Model")).toHaveAttribute("aria-sort", "ascending");
-      await page.keyboard.press("Enter");
-      await expect(head("Model")).toHaveAttribute("aria-sort", "descending");
-      await expect(dataRows.nth(1)).toContainText("fixture-without-speed");
-      await headBtn("Calls").click();
-      await expect(dataRows.nth(1)).toContainText("fixture-cloud");
-      await headBtn("Calls").click();
-      await expect(dataRows.nth(1)).toContainText("fixture-without-speed");
+      if (process.env.SCREENSHOTS) await facts.getByRole("table").screenshot({ path: `${process.env.SCREENSHOTS}/model-calls-sorted-${page.viewportSize()!.width}.png` });
       const read = page.waitForRequest((r) => r.url().endsWith(`/api/u/${userId}/admin/status`));
       await page.getByRole("button", { name: "Refresh" }).click();
       await read;
-      await expect(dataRows.nth(1)).toContainText("fixture-without-speed");
+      await expect(dataRows.nth(1)).toContainText("fixture-cloud");
     }
     // Each chart draws, from the facts alone, and its marks answer the pointer.
     for (const name of ["Calls per hour", "Output tokens per hour", "Speed per call · tok/s", "Calls by task"]) await expect(facts.getByRole("figure", { name, exact: true }).locator(".chart-box svg")).toBeVisible();

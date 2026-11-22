@@ -114,9 +114,10 @@ it("sorts the rows by a column: numbers as numbers, the model by name, unknowns 
   // Speed sorts on tok/s: a model nothing measured sorts last either way, ties by name.
   expect(sortedModels(rows, "speed", -1).map((m) => m.offeringId)).toEqual(["c", "b", "a", "d"]);
   expect(sortedModels(rows, "speed", 1).map((m) => m.offeringId)).toEqual(["b", "c", "a", "d"]);
-  // Output counts what the cell shows: an image model's images, a speech model's seconds of audio.
+  // Output sorts what the cell shows, grouped by unit whichever way: tokens, then images, then seconds of audio.
   const spoken = model({ offeringId: "s", label: "v/Kokoro", calls: 4, audioSeconds: 192 });
-  expect(sortedModels([...rows, spoken], "output", -1).map((m) => m.offeringId)).toEqual(["c", "b", "s", "a", "d"]);
+  expect(sortedModels([...rows, spoken], "output", -1).map((m) => m.offeringId)).toEqual(["c", "b", "d", "a", "s"]);
+  expect(sortedModels([...rows, spoken], "output", 1).map((m) => m.offeringId)).toEqual(["d", "b", "c", "a", "s"]);
   // The model opens A→Z on its name, case-insensitively.
   expect(sortedModels(rows, "model", 1).map((m) => m.offeringId)).toEqual(["a", "c", "b", "d"]);
   expect(sortedModels(rows, "model", -1).map((m) => m.offeringId)).toEqual(["d", "b", "c", "a"]);
