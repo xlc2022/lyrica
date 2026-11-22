@@ -4,7 +4,7 @@ import { closeSync, constants, createReadStream, fstatSync, lstatSync, mkdirSync
 import { posix } from "node:path";
 import type { Readable } from "node:stream";
 import { cleanPng, type GeneratedImage, type ImageInput } from "../models/images.ts";
-import { isMp4, MAX_DRIVE_BYTES, type GeneratedVideo } from "../models/videos.ts";
+import { isMp4, MAX_DRIVE_BYTES, MAX_EXTEND_BYTES, type GeneratedVideo } from "../models/videos.ts";
 import { looksLikeText, sniffImage } from "./ops.ts";
 import { FAMILY_ROOT, SHARED, WORKDIR } from "./sandbox.ts";
 import type { WorkspaceSettings } from "./settings.ts";
@@ -17,7 +17,7 @@ export const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
  * up to 64 MB and resizes it to its working size; a cloud image model still refuses past 20 MB (models/images.ts).
  */
 export const MAX_INPUT_IMAGE_BYTES = 64 * 1024 * 1024;
-const mb = (bytes: number) => `${bytes / 1024 / 1024} MB`;
+const mb = (bytes: number) => `${Math.round(bytes / 1024 / 1024)} MB`;
 /** Where a thread's rejected attempts go, inside its images folder. */
 export const REJECTED_DIR = "rejected";
 /** A name the image tool gave (`save`): only these can be rejected or picked. */
@@ -323,27 +323,31 @@ export class ThreadImages {
       });
       return { input: imageInput(bytes), portrait: true };
     }
-    const bytes = await this.readCapped(path, limit, `an input image is at most ${mb(limit)}`);
+    const bytes = await this.readCapped(path, limit, () => `an input image is at most ${mb(limit)}`);
     return { input: imageInput(bytes, limit), portrait: this.portraitByFolder(path) || this.portraits.isPortraitImage(createHash("sha256").update(bytes).digest("hex")) };
   }
 
-  /** A clip from the workspace (`motion`'s driving clip, or one to `extend`): an MP4 of at most 64 MB, read in memory only. */
-  async readClip(path: string): Promise<Uint8Array> {
-    const bytes = await this.readCapped(path, MAX_DRIVE_BYTES, "a clip is at most 64 MB");
+  /**
+   * A clip from the workspace, read in memory only: an MP4 of at most 64 MB (`motion`'s driving clip, one to edit or
+   * upscale), or 256 MB for one to `extend`, which comes back whole with the new seconds joined on.
+   */
+  async readClip(path: string, extend = false): Promise<Uint8Array> {
+    const limit = extend ? MAX_EXTEND_BYTES : MAX_DRIVE_BYTES;
+    const bytes = await this.readCapped(path, limit, size => `${path} is ${mb(size)}; a clip ${extend ? "to extend " : ""}is at most ${mb(limit)}`);
     if (!isMp4(bytes)) throw new Error(`${path} isn't an MP4 clip`);
     return bytes;
   }
 
   /** A workspace file in memory, refused past `limit` bytes before and while it streams. */
-  private async readCapped(path: string, limit: number, tooBig: string): Promise<Buffer> {
+  private async readCapped(path: string, limit: number, tooBig: (size: number) => string): Promise<Buffer> {
     const file = await this.readWorkspace(path);
     const chunks: Buffer[] = [];
     let size = 0;
     try {
-      if (file.size > limit) throw new Error(tooBig);
+      if (file.size > limit) throw new Error(tooBig(file.size));
       for await (const chunk of file.stream) {
         const bytes = Buffer.from(chunk); size += bytes.length;
-        if (size > limit) throw new Error(tooBig);
+        if (size > limit) throw new Error(tooBig(size));
         chunks.push(bytes);
       }
     } finally { file.stream.destroy(); }

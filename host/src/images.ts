@@ -63,8 +63,16 @@ const JOB_SAMPLING = ["sampler", "scheduler", "shift", "guidance"];
 const VIDEO_FIELDS = ["recipe", "prompt", "negativePrompt", "image", "drive", "extend", "source", "width", "height", "duration", "steps", "cfg", "seed", ...JOB_SAMPLING, "aspectRatio", "loras"];
 /** A request names at most this many LoRA files of the host's for one job (API.md, "LoRAs for one job"): four LoRAs, each maybe a high and low noise pair. */
 const MAX_REQUEST_LORAS = 8;
-/** A driving clip (`motion`), a clip to extend or one to edit (`edit_video`): only its first seconds are used. */
+/** A driving clip (`motion`) or one to edit (`edit_video`): only its first seconds are used. */
 const DRIVE_LIMIT = 64 * 1024 * 1024;
+/**
+ * A clip to extend: the whole clip comes back with the new seconds joined on, and a minute at 1920×1088 passes
+ * 64 MB. Its base64 (358 M characters) stays well under Node's longest string (536,870,888), as a JSON body holds it.
+ */
+const EXTEND_LIMIT = 256 * 1024 * 1024;
+/** The longest clip an answer carries: its base64, with the poster's, must fit one string of Node's. */
+const ANSWER_LIMIT = 360 * 1024 * 1024;
+const MB = (n: number) => `${Math.round(n / 1024 / 1024)} MB`;
 const CLIP_UPSCALE_FIELDS = ["recipe", "video", "scale", "maxSize", "colorMatch", "seed"];
 /**
  * An upscaled clip's frames times its pixels, at most: ComfyUI holds every frame in system memory at 12 bytes a
@@ -991,7 +999,8 @@ export class Images {
    * chains clips into one (clipPlan).
    */
   private async video(req: IncomingMessage, res: ServerResponse, job: JobProgress): Promise<void> {
-    const body = await readJson(req, 2 * IMAGE_BASE64 + Math.ceil(DRIVE_LIMIT / 3) * 4 + 1024 * 1024);
+    // An image and a driving clip, or a clip to extend alone.
+    const body = await readJson(req, Math.max(2 * IMAGE_BASE64 + Math.ceil(DRIVE_LIMIT / 3) * 4, Math.ceil(EXTEND_LIMIT / 3) * 4) + 1024 * 1024);
     onlyFields(body, VIDEO_FIELDS);
     if (typeof body.recipe !== "string") throw invalid("recipe is missing.");
     const recipe = this.book.all().find((r) => r.id === body.recipe && r.state === "confirmed");
@@ -1058,7 +1067,7 @@ export class Images {
       if (typeof body.extend !== "string") throw invalid("extend must be a base64 MP4.");
       if (width !== undefined || height !== undefined || ratio !== undefined) throw invalid("An extended clip keeps its own size.");
       previous = Buffer.from(body.extend, "base64");
-      if (previous.length > DRIVE_LIMIT) throw invalid("extend is larger than 64 MB.");
+      if (previous.length > EXTEND_LIMIT) throw invalid(`That clip is ${MB(previous.length)}; a clip to extend is at most ${MB(EXTEND_LIMIT)}.`);
       const clip = mp4Video(previous);
       if (!clip) throw invalid("extend isn't an MP4 clip whose video track can be read.");
       const fps = clipSpec(spec, present(recipe, this.files())).fps;
@@ -1101,6 +1110,17 @@ export class Images {
     const plan = source ? [duration] : clipPlan(spec, chain, duration, extending);
     const clips = plan.map((seconds) => videoValues(spec, seconds, Number(values.width), Number(values.height), Number(values.steps), multiplier));
     values.seed = int(body, "seed", 0, 2 ** 48) ?? randomInt(2 ** 47);
+    if (extending) {
+      // The new seconds come out about as large per frame as the clip so far, from the same encoder: refused before the
+      // GPU runs when the whole clip would pass what an answer carries, with the seconds that still fit.
+      const had = mp4Video(previous!)!.frames, perFrame = previous!.length / Math.max(1, had);
+      const adds = clips.reduce((n, c) => n + Number(c.frames) - chain!.overlap, 0);
+      if (previous!.length + adds * perFrame > ANSWER_LIMIT) {
+        const fit = Math.floor((ANSWER_LIMIT - previous!.length) / perFrame / spec.fps);
+        throw invalid(`That clip is ${MB(previous!.length)} for ${(had / spec.fps).toFixed(1)} s, so ${Math.round(duration)} s more would make it about ${MB(previous!.length + adds * perFrame)}, past the ${MB(ANSWER_LIMIT)} a clip can be.`
+          + (fit >= 1 ? ` Add at most ${fit} s.` : " It can't be extended."));
+      }
+    }
 
     const started = Date.now();
     // Every clip of a chain runs on one GPU.
@@ -1147,6 +1167,7 @@ export class Images {
       + clips.slice(extending ? 0 : 1).reduce((n, c) => n + Number(c.frames) - chain!.overlap, 0);
     const frames = clips.length > 1 || extending ? mp4Video(video)?.frames ?? counted : counted;
     const fps = Number(clips[0]!.fps);
+    if (video.length > ANSWER_LIMIT) throw new HostError(500, "too_large", `The clip came out at ${MB(video.length)}, past the ${MB(ANSWER_LIMIT)} an answer carries.`);
     sendJson(res, 200, {
       video: { mp4: video.toString("base64"), width: size?.width ?? values.width, height: size?.height ?? values.height,
         frames, fps, duration: frames / fps, audio: spec.audio, seed: values.seed },

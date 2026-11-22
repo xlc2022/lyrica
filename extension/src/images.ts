@@ -431,7 +431,7 @@ async function executeVideo(o: ImageTools, id: string, p: ImageArgs, signal?: Ab
   // An aspect ratio goes to the host as it is, which keeps the recipe's area and snaps to its size step.
   if (p.action === "edit_video" && (p.size || p.aspectRatio)) throw new Error("edit_video keeps the clip's own shape: leave size and aspectRatio out.");
   const request: VideoRequest = { prompt: p.action === "edit_video" ? p.instruction! : p.prompt!, ...(p.action === "animate" || p.action === "motion" ? { image: (await o.files.read(p.image!, MAX_INPUT_IMAGE_BYTES)).input } : {}),
-    ...(p.action === "motion" ? { drive: await o.files.readClip(p.video!) } : {}), ...(p.action === "extend" ? { extend: await o.files.readClip(p.video!) } : {}),
+    ...(p.action === "motion" ? { drive: await o.files.readClip(p.video!) } : {}), ...(p.action === "extend" ? { extend: await o.files.readClip(p.video!, true) } : {}),
     ...(p.action === "edit_video" ? { source: await o.files.readClip(p.video!) } : {}),
     ...(p.size ? { size: p.size } : {}), ...(p.aspectRatio ? { aspectRatio: p.aspectRatio } : {}), ...(p.duration === undefined ? {} : { duration: p.duration }),
     ...sampling(p), ...(p.loras?.length ? { loras: p.loras } : {}) };
