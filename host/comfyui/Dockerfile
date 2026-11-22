@@ -5,7 +5,7 @@
 ARG BASE=pytorch/pytorch:2.14.0-cuda13.0-cudnn9-runtime@sha256:9c99fafa01edfaa3d16da8c209b38b5970bb6fd6e72725ef60efc901489f70c6
 FROM ${BASE}
 
-ARG COMFYUI_COMMIT=71096d1af6c9d1c34fc42094ec4ec59768104786
+ARG COMFYUI_COMMIT=10cdd12609eb17e8a90f2a2dd811b1c82f6107e7
 ARG GGUF_COMMIT=6ea2651e7df66d7585f6ffee804b20e92fb38b8a
 ARG SEEDVR2_COMMIT=4490bd1f482e026674543386bb2a4d176da245b9
 # LanPaint 2.2.0: masked edits on models without an inpainting checkpoint (Qwen-Image 2.1).
@@ -17,7 +17,7 @@ ARG LANPAINT_COMMIT=2d7912f9a5efe5ece8de334c7ca18317b8288c39
 # and the container is read-only, so the config is a link into /tmp (a tmpfs)
 # and starts from its defaults file, written here: sampler names without
 # folders (res_2s, not exponential/res_2s).
-ARG RES4LYF_COMMIT=119679d8d8d26e6db52757e705488abb6399d7d4
+ARG RES4LYF_COMMIT=cb2c312d979b3ab4aaca97a3b70f892f4be554f4
 ARG KREA2T_COMMIT=958898e947ce691dc66218bcb655f0a4615b07aa
 
 RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*

@@ -2287,6 +2287,10 @@ dialog .eyebrow { margin: 10px 0 4px; }
   --xy-controls-button-color-hover: var(--fg); --xy-controls-button-border-color: var(--line); --xy-node-boxshadow-selected: none;
 }
 .wf-graph .react-flow__controls { box-shadow: none; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+/* React Flow's own CSS sits in a cascade layer since v13, so the app's button rule would win over it: its controls keep their look here. */
+.wf-graph .react-flow__controls-button { padding: 4px; border: 0; border-right: 1px solid var(--line); border-radius: 0; background: var(--xy-controls-button-background-color); color: var(--xy-controls-button-color); }
+.wf-graph .react-flow__controls-button:last-child { border-right: 0; }
+.wf-graph .react-flow__controls-button:hover:not(:disabled) { border-color: var(--line); background: var(--xy-controls-button-background-color-hover); }
 .wf-gnode { min-width: 160px; max-width: 260px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; font-size: 13px; padding-bottom: 6px; }
 .wf-gnode.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
 .wf-gnode-head { padding: 6px 10px; border-bottom: 1px solid var(--line); margin-bottom: 4px; overflow-wrap: anywhere; }

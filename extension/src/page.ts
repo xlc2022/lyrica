@@ -1,6 +1,6 @@
 // Principles 1 and 8: one tool for what every page-building thread made for itself (docs/briefs/page-tools.md).
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
-import { StringEnum } from "@earendil-works/pi-ai";
+import { StringEnum } from "./string-enum.ts";
 import { ARTIFACT_LIMIT, artifactKind, buildReactPage, reactLibraries, bundlePage, checkPage, decodePng, describeCheck, maskSecrets, pixelStats, PREVIEW_SCRIPT, sandboxHas, sandboxTools, type PreviewOutput } from "@lyrica/core";
 import { posix } from "node:path";
 import { Type, type Static } from "typebox";

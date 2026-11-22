@@ -1,6 +1,6 @@
 import type { ExtensionAPI, ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { StringEnum } from "@earendil-works/pi-ai";
+import { StringEnum } from "./string-enum.ts";
 
 // Downloading models when asked (docs/models.md, "Downloads"): `model_files`
 // reads what a repository on Hugging Face or ModelScope offers, as a model

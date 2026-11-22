@@ -1,7 +1,7 @@
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { PROXMOX_ACTIONS, type ProxmoxAction } from "@lyrica/core";
 import { Type } from "typebox";
-import { StringEnum } from "@earendil-works/pi-ai";
+import { StringEnum } from "./string-enum.ts";
 
 /** The proxmox tool: a schema and one call into core/workspace. Asking is the workspace extension's, as for bash on a machine; `check` throws if the call isn't what was approved. */
 export function proxmoxTool(run: (machine: string, action: ProxmoxAction, vm?: string) => Promise<string>, check: (id: string, input: Record<string, unknown>) => void): ToolDefinition {

@@ -24,7 +24,7 @@ services:
 
   llamacpp:
     <<: *server
-    image: ghcr.io/ggml-org/llama.cpp:server-cuda-b12464@sha256:ae96e52f8b2106ea82bad786ee2d08bb9b0a8c93403df9c27ae1bf065a118089
+    image: ghcr.io/ggml-org/llama.cpp:server-cuda-b12627@sha256:f46a7938f84a62f7c2eba2dfc985d921cb54fb3ec7b4e729cec2cee2cbace609
     # --no-slots: no endpoint that would show what's being generated.
     command: [--models-preset, /serving/llamacpp.ini, --no-models-autoload, --models-max, "0", --models-memory-margin, "1", --no-slots, --host, 0.0.0.0, --port, "8080"]
     volumes:

@@ -6,28 +6,28 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@earendil-works/pi-mcp": "1.4.0",
+    "@earendil-works/pi-mcp": "1.6.0",
     "@mozilla/readability": "0.6.0",
     "@node-rs/argon2": "2.2.2",
     "@tailwindcss/browser": "4.3.5",
     "@tweenjs/tween.js": "25.0.0",
-    "better-sqlite3-multiple-ciphers": "13.0.3",
+    "better-sqlite3-multiple-ciphers": "13.2.0",
     "esbuild": "0.25.12",
-    "linkedom": "0.18.13",
-    "lucide-react": "1.72.0",
-    "re2": "1.27.0",
+    "linkedom": "0.18.15",
+    "lucide-react": "1.77.0",
+    "re2": "1.27.2",
     "react": "19.3.1",
     "react-dom": "19.3.1",
-    "recharts": "3.10.1",
+    "recharts": "3.11.0",
     "simplex-noise": "4.0.3",
     "ssh2": "1.17.0",
-    "three": "0.186.1",
-    "turndown": "7.2.4",
+    "three": "0.187.0",
+    "turndown": "7.2.5",
     "undici": "8.13.1",
-    "unpdf": "1.8.1"
+    "unpdf": "1.9.1"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "7.6.13",
+    "@types/better-sqlite3": "9.6.0",
     "@types/ssh2": "1.15.6",
     "@types/turndown": "5.0.6"
   }

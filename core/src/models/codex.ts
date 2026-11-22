@@ -29,7 +29,7 @@ export interface CodexBox {
  * versions differ (nixpkgs' isn't pinned) and a missing one doesn't exist
  * there. The sandbox is the fence; this only keeps Codex to the image tool.
  */
-export const CODEX_DISABLED = ["shell_tool", "unified_exec", "view_image", "browser_use", "computer_use", "in_app_browser", "apps", "plugins", "memories", "goals"];
+export const CODEX_DISABLED = ["shell_tool", "unified_exec", "view_image", "browser_use", "browser_use_external", "computer_use", "in_app_browser", "apps", "plugins", "memories", "goals", "multi_agent"];
 
 interface Run { code: number | null; out: string; stopped?: boolean }
 /** Runs Codex; `enough`, checked every second, stops it early (`stopped`) once it has what was asked for. */

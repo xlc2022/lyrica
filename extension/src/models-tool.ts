@@ -1,7 +1,7 @@
 import type { ExtensionAPI, ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import type { ServingEntry } from "@lyrica/core";
 import { Type } from "typebox";
-import { StringEnum } from "@earendil-works/pi-ai";
+import { StringEnum } from "./string-enum.ts";
 
 // The `models` tool (DESIGN.md, Model settings): she looks up a host model's
 // recommended context on its card and proposes a serving change, which the

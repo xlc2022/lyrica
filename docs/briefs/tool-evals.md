@@ -25,7 +25,7 @@ used here instead of more prompt text.
 Small models often send a nested array as a JSON string, use a near-synonym
 for an enum value, or name the recommended option instead of giving its index.
 Pi validates a call against the schema before `execute`, so those fail as
-`steps.0.state: must be equal to one of the allowed values`, which doesn't name
+`steps.0.state: must be equal to one of the allowed values` (Pi 1.4; since Pi 1.5 the message lists them), which doesn't name
 the allowed values.
 
 - **One normalizer in core** (`core/src/threads.ts`), used both by the

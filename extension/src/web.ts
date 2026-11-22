@@ -1,5 +1,5 @@
 import type { ExtensionAPI, ExtensionContext, ExtensionFactory } from "@earendil-works/pi-coding-agent";
-import { StringEnum } from "@earendil-works/pi-ai";
+import { StringEnum } from "./string-enum.ts";
 import { BROWSE_ACTIONS, type Browser, clamp, copyName, cutPage, outside, OUTSIDE_GUIDELINE, FETCH_BYTES, FETCH_TOO_LARGE, fetchArgv, fetchedPage, kiwixLines, kiwixPage, kiwixSearch, maskSecrets, offlineQuery, OUTPUT_OVER, RENDER_MS, renderArgv, renderedPage, SEARCH_CATEGORIES, SEARCH_TIMES, searxngSearch, type ExecutionTarget, type FetchedPage } from "@lyrica/core";
 import { Type } from "typebox";
 import { setToolsOff } from "./gate.ts";

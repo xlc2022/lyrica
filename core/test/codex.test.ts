@@ -20,7 +20,7 @@ case "$1 $2" in
   "login status") [ -f "$CODEX_HOME/auth.json" ] ;;
   "login --device-auth") printf '\\e[1mOpen https://auth.openai.com/codex/device\\e[0m\\nEnter ABCD-12345\\n'; sleep 0.2; echo '{}' > "$CODEX_HOME/auth.json" ;;
   "logout ") rm -f "$CODEX_HOME/auth.json" ;;
-  "features list") for f in image_generation shell_tool unified_exec browser_use computer_use in_app_browser apps plugins memories goals hooks; do echo "$f  stable  true"; done ;;
+  "features list") for f in image_generation shell_tool unified_exec browser_use browser_use_external computer_use in_app_browser apps plugins memories goals multi_agent hooks; do echo "$f  stable  true"; done ;;
   exec*)
     echo start >> "$bin/log"; sleep 0.1
     cat > "$bin/stdin"

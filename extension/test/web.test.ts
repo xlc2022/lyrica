@@ -61,7 +61,7 @@ describe("web tools", () => {
       expect(offered[0]).toEqual(["web_fetch"]);
       address = "http://127.0.0.1:9";
       await s.prompt("two");
-      expect(offered[1]).toEqual(["web_search", "web_fetch"]);
+      expect([...offered[1]!].sort()).toEqual(["web_fetch", "web_search"]);
       expect(results[0]).toContain("SearXNG can't be reached");
     } finally {
       s.dispose();

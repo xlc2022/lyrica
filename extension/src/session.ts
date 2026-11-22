@@ -61,7 +61,8 @@ export async function openThreadSession(o: ThreadSessionOptions): Promise<Thread
   // Pi's compaction reserve and kept tail follow the window of the model as it is when compaction runs
   // (prepareRequest keeps it current), and her two lines follow that edge (linesFor).
   // Pi's install telemetry off: it also tags every OpenRouter request as Pi's (HTTP-Referer pi.dev, X-OpenRouter-Title).
-  const settingsManager = SettingsManager.inMemory({ enableInstallTelemetry: false, ...o.settings });
+  // Cache warming off: since Pi 1.6 it replays the last request between turns, a model call with no call record.
+  const settingsManager = SettingsManager.inMemory({ enableInstallTelemetry: false, cacheWarming: "off", ...o.settings });
   const set = o.settings?.compaction;
   const sm = settingsManager as unknown as { getCompactionTokenSetting(field: "reserveTokens" | "keepRecentTokens", model?: { provider: string; id: string; contextWindow?: number }): number };
   const setting = sm.getCompactionTokenSetting.bind(settingsManager);

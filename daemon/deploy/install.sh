@@ -154,7 +154,7 @@ fi
 # OpenAI's `codex` program, which makes ChatGPT Images with the user's own
 # Codex sign-in (docs/models.md, "Image canvases"), in her tool prefix. An
 # update leaves it as it is.
-CODEX_VERSION=0.163.0
+CODEX_VERSION=0.171.0
 if [ "$("$TOOLS/bin/codex" --version 2>/dev/null | awk '{print $NF}')" != "$CODEX_VERSION" ]; then
   say "Installing Codex..."
   npm install -g --prefix "$TOOLS" --no-audit --no-fund --loglevel=error "@openai/codex@$CODEX_VERSION" >/dev/null \
