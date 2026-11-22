@@ -1,13 +1,14 @@
 // Runs in the sandbox with its own node (`node -e`): opens one web page in the sandbox's Chromium over the DevTools
 // protocol on a pipe, so a page built by JavaScript can be read (core/src/web.ts, renderArgv). It reaches the
 // network as the sandbox allows, like curl; images and media aren't loaded. Prints one JSON line: { html } or { fail }.
-// Arguments: url, user agent, load limit (ms), wait after load (ms). No packages: the sandbox has none.
+// It presents as a desktop Chromium (chromium-agent.cjs, put before this). Arguments: url, load limit (ms), wait after
+// load (ms). No packages: the sandbox has none.
 const { spawn } = require("node:child_process");
-const [url, agent, limit, wait] = process.argv.slice(1);
+const [url, limit, wait] = process.argv.slice(1);
 const chrome = spawn(process.env.CHROME_PATH, [
   "--headless", "--no-sandbox", "--remote-debugging-pipe", "--user-data-dir=/tmp/chromium", "--disable-gpu",
   "--disable-background-networking", "--no-first-run", "--disable-extensions", "--mute-audio",
-  "--blink-settings=imagesEnabled=false", `--user-agent=${agent}`, "about:blank",
+  "--blink-settings=imagesEnabled=false", ...AGENT_FLAGS, "about:blank",
 ], {
   stdio: ["ignore", "ignore", "ignore", "pipe", "pipe"],
   // As for the page preview: everything Chromium writes goes under /tmp, the sandbox's own.
@@ -47,7 +48,9 @@ for (const p of [toChrome, fromChrome]) p.on("error", lost);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 (async () => {
   const { targetId } = await send("Target.createTarget", { url: "about:blank" });
+  const agent = desktopAgent(await send("Browser.getVersion"));
   ({ sessionId: session } = await send("Target.attachToTarget", { targetId, flatten: true }));
+  await send("Network.setUserAgentOverride", agent);
   await send("Fetch.enable", { patterns: [{ urlPattern: "*" }] });
   await send("Page.enable");
   await send("Page.navigate", { url });

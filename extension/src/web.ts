@@ -23,7 +23,12 @@ export interface WebTools {
   browser?(): Pick<Browser, "act">;
   /** Whether browse may tick a simple bot-check box: an administrator's switch, read on every call. */
   botChecks?(): boolean;
+  /** Counts a page a tool got, and how a site refused it: status and bot check only (WebTally). */
+  tally?(tool: "web_fetch" | "render" | "browse", refused?: { status?: number; check?: string }): void;
 }
+
+/** Statuses that say the site turned the request away. */
+const REFUSING = new Set([401, 403, 429]);
 
 /** How much of a page one browse action answers with; `read` with an offset goes on. */
 const BROWSE_CHARS = 12_000;
@@ -140,10 +145,12 @@ export function createWebExtension(web: WebTools): ExtensionFactory {
             return { ...r, stdout: maskSecrets(r.stdout, secrets), stderr: maskSecrets(r.stderr, secrets) };
           };
           let page: FetchedPage = await fetchedPage(url.href, await run(fetchArgv(url.href), 30_000), signal);
+          if (page.status) web.tally?.("web_fetch", page.refused || page.check ? { status: page.status, check: page.check } : undefined);
           // A page built by JavaScript: render it in the sandbox's Chromium, under the same switches, and keep what reads longer.
           if (page.thin && web.canRender?.()) {
             const r = await run(renderArgv(url.href), RENDER_MS).catch(() => undefined);
             const rendered = r && renderedPage(url.href, r);
+            if (rendered) web.tally?.("render", rendered.check ? { check: rendered.check } : undefined);
             if (rendered && rendered.text.length > page.text.length) page = rendered;
           }
           // A site that turns curl away often answers a browser: say so in the failure itself, where she reads it.
@@ -193,6 +200,7 @@ export function createWebExtension(web: WebTools): ExtensionFactory {
             ...(p.text !== undefined ? { text: p.text } : {}), ...(p.action === "attach" ? { path: p.path } : {}), ...(p.submit ? { submit: true } : {}), ...(p.direction ? { direction: p.direction } : {}),
           }, signal);
           if (p.action === "close") return text("The browser is closed. Its logins are kept.");
+          if (p.action === "open" && r.status !== undefined) web.tally?.("browse", REFUSING.has(r.status) || r.check ? { status: r.status, check: r.check } : undefined);
           if (r.image) return { content: [{ type: "text" as const, text: `A screenshot of ${r.url}` }, { type: "image" as const, data: r.image, mimeType: "image/jpeg" }], details: undefined };
           if (r.text === undefined) return text(`Couldn't ${p.action}: ${r.fail ?? "the browser gave no page"}.`, true);
           // The page's own words, a message box's included, go between the markers; what is ours stays outside them.

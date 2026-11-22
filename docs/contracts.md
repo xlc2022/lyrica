@@ -1808,7 +1808,23 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     (the sandbox has Chromium and node): `renderArgv` runs
     `web-render.cjs` with the sandbox's node, which drives its Chromium
     over the DevTools pipe without images, media or fonts, and the longer
-    text wins. HTML from curl or Chromium is cut to 3,000,000 characters
+    text wins. curl sends a browser's user agent (`FETCH_UA`); Chromium,
+    here and in `browse`, sends its own as a desktop Chromium of its
+    version (`chromium-agent.cjs`, put before both scripts:
+    `desktopAgent` from `Browser.getVersion` through
+    `Network.setUserAgentOverride` on every page, frame and worker
+    session: `HeadlessChrome` becomes `Chrome/<major>.0.0.0`, client hints
+    list Chromium beside Chromium's own GREASE brand for that version,
+    Accept-Language `en-US,en`; `--disable-blink-features=AutomationControlled`
+    clears `navigator.webdriver`). **Tally:** `fetchedPage` and `htmlPage`
+    give the page's `status` and, by plain substrings (`BOT_MARKERS`,
+    `botCheck`), the bot check it is (anubis, cloudflare, datadome,
+    perimeterx, aws-waf); `browse`'s `open` answers `status`
+    (`responseStatus` of the navigation) and `check` the same way. The tools
+    call `tally(tool, refused?)` (`web_fetch`, `render`, `browse`) with
+    only those two, never an address or text; lyricad's `WebTally` keeps
+    the counts in self.db `settings` (`web.tally`) and logs them once a
+    day as one `web tally since <date>: …` line. HTML from curl or Chromium is cut to 3,000,000 characters
     before it is parsed on lyricad's thread. `cutPage` cuts to `maxChars` (20,000 by default, 50,000 at
     most) from `offset`, with a note naming the offset to read on from.
     A cut page also gets "Sections further on:" (`sections`): the headings

@@ -26,6 +26,51 @@ export function setBotChecks(self: Db, on: boolean): void {
   else self.prepare("DELETE FROM settings WHERE key = ?").run(BOT_CHECKS);
 }
 
+const TALLY = "web.tally";
+const DAY_MS = 24 * 3600_000;
+/** What WebTally keeps: since when, when it last logged, and per tool the pages it got and those refused, by kind. */
+interface Tally { since: number; logged: number; tools: Record<string, { pages: number; refused: Record<string, number> }> }
+
+/**
+ * How often sites turn her away, server-wide: per tool (web_fetch's curl, its render, browse's open) the pages it
+ * got and the refused ones by HTTP status and bot check (BOT_MARKERS), never an address or a page's words. Kept in
+ * self.db `settings` across restarts, and logged once a day as one "web tally" line, so an operator can judge
+ * whether the browser needs another engine.
+ */
+export class WebTally {
+  constructor(private readonly self: () => Db, private readonly log: (line: string) => void, private readonly now = () => Date.now()) {}
+
+  /** One page `tool` got; with `refused`, its status and check say how it was turned away. */
+  count(tool: string, refused?: { status?: number; check?: string }): void {
+    let db: Db;
+    try { db = this.self(); } catch { return; } // locked: not counted
+    const t = this.read(db);
+    const n = (t.tools[tool] ??= { pages: 0, refused: {} });
+    n.pages++;
+    if (refused) {
+      const kind = [refused.check, refused.status || undefined].filter(Boolean).join(" ") || "unknown";
+      n.refused[kind] = (n.refused[kind] ?? 0) + 1;
+    }
+    if (this.now() - t.logged >= DAY_MS) { this.log(tallyLine(t)); t.logged = this.now(); }
+    db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(TALLY, JSON.stringify(t));
+  }
+
+  read(db: Db = this.self()): Tally {
+    const row = db.prepare("SELECT value FROM settings WHERE key = ?").get(TALLY) as { value: string } | undefined;
+    try { if (row) return JSON.parse(row.value) as Tally; } catch { /* started again */ }
+    return { since: this.now(), logged: this.now(), tools: {} };
+  }
+}
+
+/** A tally as one log line: "web tally since 2026-11-22: web_fetch 120 (refused: 403 ×3); browse 30". */
+export function tallyLine(t: Tally): string {
+  const tools = Object.entries(t.tools).map(([tool, n]) => {
+    const refused = Object.entries(n.refused).sort((a, b) => b[1] - a[1]).map(([k, c]) => `${k} ×${c}`).join(", ");
+    return `${tool} ${n.pages}${refused ? ` (refused: ${refused})` : ""}`;
+  });
+  return `web tally since ${new Date(t.since).toISOString().slice(0, 10)}: ${tools.join("; ") || "nothing yet"}`;
+}
+
 /** The server's SearXNG address (self.db `settings`), or null. */
 export function searxngAddress(self: Db): string | null {
   const row = self.prepare("SELECT value FROM settings WHERE key = ?").get(KEY) as { value: string } | undefined;
@@ -344,7 +389,7 @@ export async function searxngSearch(address: string, query: string, o: WebSearch
 export const clamp = (n: number | undefined, fallback: number, max: number): number =>
   Math.min(max, Math.max(1, Math.floor(Number.isFinite(n) ? n! : fallback)));
 
-/** A browser's user agent: many sites refuse curl's. */
+/** curl's user agent, a browser's: many sites refuse curl's own. Chromium sends its own (chromium-agent.cjs). */
 export const FETCH_UA = "Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140.0";
 const MAX_MB = 10;
 /**
@@ -372,8 +417,10 @@ export function fetchArgv(url: string): string[] {
   ];
 }
 
+/** How the sandbox's Chromium presents itself to a site, put before the render and browse scripts. */
+export const CHROMIUM_AGENT = readFileSync(new URL("./chromium-agent.cjs", import.meta.url), "utf8");
 /** The render script, run by the sandbox's node (web-render.cjs). */
-export const RENDER_SCRIPT = readFileSync(new URL("./web-render.cjs", import.meta.url), "utf8");
+export const RENDER_SCRIPT = CHROMIUM_AGENT + readFileSync(new URL("./web-render.cjs", import.meta.url), "utf8");
 /** How long a rendered page may take to load, and how long it gets after that to fill itself in. */
 const RENDER_LOAD_MS = 20_000, RENDER_WAIT_MS = 1_500;
 export const RENDER_MS = RENDER_LOAD_MS + RENDER_WAIT_MS + 15_000;
@@ -385,7 +432,7 @@ export const RENDER_MS = RENDER_LOAD_MS + RENDER_WAIT_MS + 15_000;
  * URL is one argv entry.
  */
 export function renderArgv(url: string): string[] {
-  return ["node", "-e", RENDER_SCRIPT, url, FETCH_UA, String(RENDER_LOAD_MS), String(RENDER_WAIT_MS)];
+  return ["node", "-e", RENDER_SCRIPT, url, String(RENDER_LOAD_MS), String(RENDER_WAIT_MS)];
 }
 
 /** The page the render script read, as for htmlPage; undefined when it failed. */
@@ -406,8 +453,28 @@ const CURL: Record<number, string> = {
   1: "only http and https can be fetched", 35: "the TLS handshake failed", 60: "its certificate isn't trusted",
 };
 
-/** A fetched page as text, whole. `thin`: HTML with scripts and almost no text, which rendering may fill. `refused`: the site turned the fetch away (401, 403 or 429, or Anubis's check), which a browser may not be. */
-export interface FetchedPage { text: string; isError?: boolean; thin?: boolean; refused?: boolean }
+/** A fetched page as text, whole. `thin`: HTML with scripts and almost no text, which rendering may fill. `refused`: the site turned the fetch away (401, 403 or 429, or Anubis's check), which a browser may not be. `status`: the HTTP status; `check`: the bot check the page is (BOT_MARKERS), both only counted (WebTally). */
+export interface FetchedPage { text: string; isError?: boolean; thin?: boolean; refused?: boolean; status?: number; check?: string }
+
+/**
+ * The bot checks a page can be, by what only their check or block page carries: Anubis's challenge; Cloudflare's
+ * challenge page sets window._cf_chl_opt (developers.cloudflare.com, Challenge pages); DataDome's response pages load
+ * from captcha-delivery.com (docs.datadome.co, JavaScript Tag); HUMAN's (PerimeterX) block page holds #px-captcha;
+ * AWS WAF's challenge sets window.gokuProps (community write-ups; AWS documents only its x-amzn-waf-action header).
+ */
+export const BOT_MARKERS: Record<string, string[]> = {
+  anubis: ["anubis_challenge", "/.within.website/x/cmd/anubis/"],
+  cloudflare: ["_cf_chl_opt"],
+  datadome: ["captcha-delivery.com"],
+  perimeterx: ["px-captcha"],
+  "aws-waf": ["gokuProps"],
+};
+
+/** Which of BOT_MARKERS a page's HTML is, by plain substrings of its first 512 KB (the page is an outsider's). */
+export function botCheck(html: string): string | undefined {
+  const head = html.slice(0, 512_000);
+  return Object.entries(BOT_MARKERS).find(([, marks]) => marks.some((m) => head.includes(m)))?.[0];
+}
 
 /** The page from curl's output: Markdown for HTML, text for a PDF, text and JSON as they are, or an error saying what failed. */
 export async function fetchedPage(url: string, r: { code: number | null; stdout: Buffer; stderr: Buffer }, signal?: AbortSignal): Promise<FetchedPage> {
@@ -418,7 +485,10 @@ export async function fetchedPage(url: string, r: { code: number | null; stdout:
     return { text: `Couldn't fetch ${url}: ${CURL[r.code ?? -1] ?? said ?? `curl exited with ${r.code}`}.`, isError: true };
   }
   const status = Number(meta?.[1] ?? 0);
-  if (status >= 400) return { text: `${url} answered ${status}.`, isError: true, ...(status === 401 || status === 403 || status === 429 ? { refused: true } : {}) };
+  if (status >= 400) {
+    const check = botCheck(r.stdout.subarray(0, 512_000).toString("latin1"));
+    return { text: `${url} answered ${status}.`, isError: true, status, ...(check ? { check } : {}), ...(status === 401 || status === 403 || status === 429 ? { refused: true } : {}) };
+  }
   const contentType = meta?.[2] ?? "";
   const type = contentType.split(";")[0]!.trim().toLowerCase();
   const body = r.stdout;
@@ -428,7 +498,7 @@ export async function fetchedPage(url: string, r: { code: number | null; stdout:
   const plain = !html && (!type || type.startsWith("text/") || /^application\/([\w.+-]*\+)?(json|xml)$/.test(type) || type === "application/javascript");
   if (!html && !plain) return { text: `${url} is ${type}, not a page: web_fetch reads only HTML, text and PDF.`, isError: true };
   // Parsing runs on lyricad's own thread: HTML past a few MB is cut first, as the old 2 MB limit did.
-  return html ? htmlPage(url, decoded.slice(0, HTML_CHARS)) : { text: decoded.trim() };
+  return { ...(html ? htmlPage(url, decoded.slice(0, HTML_CHARS)) : { text: decoded.trim() }), status };
 }
 
 const HTML_CHARS = 3_000_000;
@@ -452,9 +522,9 @@ const ANUBIS = /id=["']?anubis_challenge\b|\/\.within\.website\/x\/cmd\/anubis\/
 
 /** An HTML page as Markdown (htmlMarkdown); `thin` when it is nearly empty and has scripts; an Anubis check is `refused`. */
 export function htmlPage(url: string, html: string): FetchedPage {
-  if (ANUBIS.test(html)) return { text: `${url} answered with Anubis's check, which a browser passes by itself in a few seconds.`, isError: true, refused: true };
-  const page = htmlMarkdown(html, url);
-  return { text: page.text, thin: page.body.replace(/\s+/g, " ").length < THIN && /<script\b/i.test(html) };
+  if (ANUBIS.test(html)) return { text: `${url} answered with Anubis's check, which a browser passes by itself in a few seconds.`, isError: true, refused: true, check: "anubis" };
+  const page = htmlMarkdown(html, url), check = botCheck(html);
+  return { text: page.text, thin: page.body.replace(/\s+/g, " ").length < THIN && /<script\b/i.test(html), ...(check ? { check } : {}) };
 }
 
 /** The part of a page from `offset`, at most `maxChars`, and a note saying where to read on when there is more. */

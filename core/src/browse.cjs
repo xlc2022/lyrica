@@ -1,13 +1,17 @@
 // Runs in the sandbox with its own node (`node -e`): one Chromium for a thread's `browse` tool, driven over the
 // DevTools protocol on a pipe (core/src/browse.ts, browseArgv). It reaches the network as the sandbox allows.
-// Arguments: profile folder, user agent. It reads one JSON request per line on stdin ({ id, op, ... }) and answers
+// It presents as a desktop Chromium (chromium-agent.cjs, put before this). Arguments: profile folder, the bot checks'
+// markers (JSON, web.ts BOT_MARKERS). It reads one JSON request per line on stdin ({ id, op, ... }) and answers
 // each with one JSON line ({ id, ... } or { id, fail }). No packages: the sandbox has none.
 //
 // What is structural here (docs/briefs/browse.md): an action that would send a form is done only when the request
 // says `approved`, and a page load that posts without it is failed in the browser, so nothing is sent.
 const { spawn } = require("node:child_process");
 const { rmSync, mkdirSync, readFileSync, renameSync, statfsSync, writeFileSync } = require("node:fs");
-const [profile, agent] = process.argv.slice(1);
+const [profile, markers] = process.argv.slice(1);
+let CHECKS = [];
+try { CHECKS = Object.entries(JSON.parse(markers)); } catch {}
+let agent;
 const LOAD_MS = 20_000, SETTLE_MS = 600;
 /** Moves of the pointer, 50 ms apart, before a click that can't be seen to land is made by script. */
 const POINTER_TRIES = 40;
@@ -43,7 +47,7 @@ for (const f of ["SingletonLock", "SingletonCookie", "SingletonSocket"]) rmSync(
 const chrome = spawn(process.env.CHROME_PATH, [
   "--headless", "--no-sandbox", "--remote-debugging-pipe", `--user-data-dir=${profile}`, "--disable-gpu",
   "--disable-background-networking", "--disable-sync", "--disable-component-update", "--no-first-run", "--disable-extensions",
-  "--mute-audio", "--password-store=basic", "--window-size=1280,800", "--disk-cache-size=52428800", `--user-agent=${agent}`, "about:blank",
+  "--mute-audio", "--password-store=basic", "--window-size=1280,800", "--disk-cache-size=52428800", ...AGENT_FLAGS, "about:blank",
 ], {
   stdio: ["ignore", "ignore", "ignore", "pipe", "pipe"],
   // Everything else Chromium writes goes under /tmp, the sandbox's own.
@@ -80,7 +84,7 @@ const quiet = (p) => p.catch(() => {});
 async function attachFrame(sid, id) {
   const f = frames.get(id);
   frames.set(id, { ...f, sid, world: undefined });
-  await Promise.all([send("Page.enable", {}, sid), send("DOM.enable", {}, sid)].map(quiet));
+  await Promise.all([send("Network.setUserAgentOverride", agent, sid), send("Page.enable", {}, sid), send("DOM.enable", {}, sid)].map(quiet));
   // Let go only once its posts are watched, and its own frames held the same way: else it stays held, unread.
   try {
     await send("Fetch.enable", { patterns: [{ urlPattern: "*", resourceType: "Document" }] }, sid);
@@ -110,9 +114,9 @@ function onEvent(m) {
     if (f) f.world = undefined;
     else frames.set(p.frame.id, { sid, parent: p.frame.parentId });
   } else if (m.method === "Target.attachedToTarget") {
-    // Anything else held at its start (a worker) is let go at once.
+    // Anything else held at its start (a worker) is let go at once, presenting as the page does.
     if (p.targetInfo.type === "iframe") void attachFrame(p.sessionId, p.targetInfo.targetId);
-    else quiet(send("Runtime.runIfWaitingForDebugger", {}, p.sessionId));
+    else void quiet(send("Network.setUserAgentOverride", agent, p.sessionId)).then(() => quiet(send("Runtime.runIfWaitingForDebugger", {}, p.sessionId)));
   } else if (m.method === "Target.detachedFromTarget") { for (const [id, f] of frames) if (f.sid === p.sessionId && id !== frame) frames.delete(id); }
   else if (m.method === "Browser.downloadWillBegin") {
     let finish;
@@ -485,6 +489,9 @@ async function frameText(id, depth, count) {
   return { url: s.url, title: s.title, text: parts.join("") };
 }
 
+/** The opened page's HTTP status and which bot check it is, if one (web.ts BOT_MARKERS): only counted, never shown. */
+const seen = () => page(`(() => { const h = document.documentElement.outerHTML.slice(0, 512000); return { status: performance.getEntriesByType("navigation")[0]?.responseStatus || 0, check: (${JSON.stringify(CHECKS)}).find(([, m]) => m.some((x) => h.includes(x)))?.[0] }; })()`).catch(() => ({}));
+
 async function snapshot() {
   const s = await frameText(frame, 0, { n: 0 });
   return { url: s.url, title: s.title, text: s.text, notes: notes.splice(0) };
@@ -506,7 +513,7 @@ const ops = {
     if (loading) await Promise.race([new Promise((res) => stopped.push(res)), sleep(LOAD_MS)]);
     await sleep(SETTLE_MS);
     await passCheck();
-    return snapshot();
+    return { ...(await snapshot()), ...(await seen()) };
   },
   read: () => snapshot(),
   async sends({ action, ref, submit }) {
@@ -640,10 +647,12 @@ async function acting(ref, how, approved, run) {
 (async () => {
   const { targetInfos } = await send("Target.getTargets");
   target = targetInfos.find((t) => t.type === "page")?.targetId ?? (await send("Target.createTarget", { url: "about:blank" })).targetId;
+  agent = desktopAgent(await send("Browser.getVersion", {}, true));
   const attached = await send("Target.attachToTarget", { targetId: target, flatten: true });
   await send("Target.setDiscoverTargets", { discover: true });
   await quiet(send("Browser.setDownloadBehavior", { behavior: "allowAndName", downloadPath: DOWNLOADS, eventsEnabled: true }, true));
   session = attached.sessionId;
+  await send("Network.setUserAgentOverride", agent);
   await send("Page.enable");
   await send("DOM.enable");
   frame = (await send("Page.getFrameTree")).frameTree.frame.id;

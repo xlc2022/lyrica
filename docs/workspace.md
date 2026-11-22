@@ -1797,7 +1797,10 @@ The **Web search** switch gives her two tools (`extension/src/web.ts`,
   passes text and JSON through, and refuses other types. A page that is
   nearly empty and has scripts is opened again in the sandbox's Chromium
   (when it has Chromium and node), under the same network switches,
-  without images or media, and the fuller text is kept. The result is cut
+  without images or media, and the fuller text is kept. Chromium, there
+  and in `browse`, presents as the desktop Chromium it is (Chrome's
+  user agent and client hints for its version, not headless), so a site
+  never sees one browser's name on another's engine. The result is cut
   to `maxChars`, and the note says which `offset` reads on. When the site
   refuses the fetch (401, 403 or 429, or Anubis's proof-of-work check
   page) and the thread has `browse`, the failure says to open the same

@@ -1,6 +1,8 @@
 import { deflateSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
-import { aboutQuery, cutPage, fetchArgv, fetchedPage, htmlMarkdown, outside, pdfText, renderArgv, renderedPage, SearchGate, searxngSearch } from "../src/web.ts";
+import Database from "better-sqlite3-multiple-ciphers";
+import { runInNewContext } from "node:vm";
+import { aboutQuery, botCheck, CHROMIUM_AGENT, cutPage, fetchArgv, fetchedPage, htmlMarkdown, outside, pdfText, renderArgv, renderedPage, SearchGate, searxngSearch, WebTally } from "../src/web.ts";
 
 // What web_fetch and web_search give her (docs/workspace.md, "Web").
 
@@ -96,6 +98,13 @@ describe("web_fetch's reading", () => {
     expect((await fetchedPage("https://big.example", { code: 63, stdout: Buffer.alloc(0), stderr: Buffer.alloc(0) })).text).toContain("larger than 10 MB");
   });
 
+  it("names the bot check a refusing site answered with", async () => {
+    const cf = await fetchedPage("https://cf.example", curl(`<html><title>Just a moment...</title><script>window._cf_chl_opt={cvId:'3'}</script></html>`, "text/html", 403));
+    expect(cf).toMatchObject({ isError: true, refused: true, status: 403, check: "cloudflare" });
+    expect(botCheck(`<iframe src="https://geo.captcha-delivery.com/captcha/?initialCid=x"></iframe>`)).toBe("datadome");
+    expect(botCheck("<p>Hello</p>")).toBeUndefined();
+  });
+
   it("cuts at maxChars and reads on from an offset", () => {
     const text = "a".repeat(100) + "b".repeat(50);
     expect(cutPage(text, 100)).toEqual({ text: "a".repeat(100), note: "[Characters 0 to 100 of 150. Read on with offset 100.]" });
@@ -118,6 +127,38 @@ describe("web_fetch's reading", () => {
     const argv = renderArgv(url);
     expect(argv.slice(0, 2)).toEqual(["node", "-e"]);
     expect(argv[3]).toBe(url);
+  });
+});
+
+describe("Chromium's user agent", () => {
+  const agentOf = (version: { product: string; userAgent: string }) =>
+    runInNewContext(`${CHROMIUM_AGENT}; desktopAgent(version)`, { version, process: { arch: "x64" } });
+
+  // What Browser.getVersion and navigator.userAgentData said in a headless-shell 157 and a full Chromium 153.
+  it("is the desktop Chromium of the same version, with Chromium's own GREASE brand", () => {
+    const shell = agentOf({ product: "HeadlessChrome/157.0.8103.78", userAgent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.8103.78 Safari/537.36" });
+    expect(shell.userAgent).toBe("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36");
+    expect(shell.userAgentMetadata.brands).toEqual([{ brand: "Chromium", version: "157" }, { brand: "Not-A.Brand", version: "99" }]);
+    const full = agentOf({ product: "Chrome/153.0.8010.12", userAgent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.0.0 Safari/537.36" });
+    expect(full.userAgentMetadata.fullVersionList).toEqual([{ brand: "Chromium", version: "153.0.8010.12" }, { brand: "Not_A Brand", version: "8.0.0.0" }]);
+    expect(full.acceptLanguage).toBe("en-US,en");
+  });
+});
+
+describe("the web tally", () => {
+  it("counts refusals by status and check only, keeps them across restarts and logs once a day", () => {
+    const db = new Database(":memory:");
+    db.exec("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
+    const lines: string[] = [];
+    let now = Date.parse("2026-11-22T10:00:00Z");
+    const tally = new WebTally(() => db, (l) => lines.push(l), () => now);
+    tally.count("web_fetch");
+    tally.count("web_fetch", { status: 403, check: "cloudflare" });
+    now += 25 * 3600_000;
+    new WebTally(() => db, (l) => lines.push(l), () => now).count("browse", { status: 429 });
+    expect(lines).toEqual(["web tally since 2026-11-22: web_fetch 2 (refused: cloudflare 403 ×1); browse 1 (refused: 429 ×1)"]);
+    // Locked: nothing is counted, and nothing throws.
+    new WebTally(() => { throw new Error("locked"); }, (l) => lines.push(l)).count("browse");
   });
 });
 

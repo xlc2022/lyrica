@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import type { Readable, Writable } from "node:stream";
-import { FETCH_UA } from "./web.ts";
+import { BOT_MARKERS, CHROMIUM_AGENT } from "./web.ts";
 import { BROWSER_PROFILE } from "./workspace/sandbox.ts";
 
 // The `browse` tool's browser (docs/briefs/browse.md): one Chromium per
@@ -8,7 +8,7 @@ import { BROWSER_PROFILE } from "./workspace/sandbox.ts";
 // driver over the process's stdin and stdout, one JSON line each way.
 
 /** The driver, run by the sandbox's node (browse.cjs). */
-export const BROWSE_SCRIPT = readFileSync(new URL("./browse.cjs", import.meta.url), "utf8");
+export const BROWSE_SCRIPT = CHROMIUM_AGENT + readFileSync(new URL("./browse.cjs", import.meta.url), "utf8");
 /** A browser nobody used for this long is closed; its profile stays. */
 export const BROWSE_IDLE_MS = 10 * 60_000;
 /**
@@ -19,7 +19,7 @@ export const BROWSE_IDLE_MS = 10 * 60_000;
 export const BROWSE_MS = 90_000;
 
 /** The command that starts the driver. */
-export const browseArgv = (): string[] => ["node", "-e", BROWSE_SCRIPT, BROWSER_PROFILE, FETCH_UA];
+export const browseArgv = (): string[] => ["node", "-e", BROWSE_SCRIPT, BROWSER_PROFILE, JSON.stringify(BOT_MARKERS)];
 
 export const BROWSE_ACTIONS = ["open", "read", "click", "type", "select", "attach", "scroll", "back", "screenshot", "close"] as const;
 export type BrowseAction = typeof BROWSE_ACTIONS[number];
@@ -29,7 +29,7 @@ export const BROWSE_READS: ReadonlySet<string> = new Set(["open", "read", "scrol
 /** A form an action would send: where, and what is in it (a password as dots). */
 export interface BrowseForm { site: string; to: string; method: string; button: string; fields: { name: string; value: string }[] }
 /** The driver's answer: the page as it is now, or a screenshot. */
-export interface BrowseReply { url?: string; title?: string; text?: string; notes?: string[]; fail?: string; image?: string; sends?: BrowseForm | null; unapproved?: BrowseForm; site?: string; what?: string; downloads?: BrowseDownload[] }
+export interface BrowseReply { url?: string; title?: string; text?: string; notes?: string[]; fail?: string; image?: string; sends?: BrowseForm | null; unapproved?: BrowseForm; site?: string; what?: string; downloads?: BrowseDownload[]; status?: number; check?: string }
 /**
  * A file the action downloaded: the site's name for it, and where it was saved in her folder (`path`, with its
  * size), or that it is still `going` (its size so far; a later action answers it again), or why not. `file` is the driver's id for it in the profile, until lyricad moves it.
