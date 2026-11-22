@@ -669,7 +669,7 @@ class Models {                                              // new Models(keyrin
   `busy`; it and an image or video job have no limit on waiting
   for the answer's headers. A
   host's refusal is a `HostRefused` carrying the host's own `code`. Lyrica's
-  key and certificate live in `self.db` (`host_identity`). `undici` 8.12.3
+  key and certificate live in `self.db` (`host_identity`). `undici` 8.13.1
   is a direct dependency of core for this.
 - **Settings** per offering are layered: a shared offering's values in
   `self.db` (administrators), the user's own in `user.db` over them. Only
