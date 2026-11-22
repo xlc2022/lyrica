@@ -81,7 +81,7 @@ Administration. No new model-facing tool, no new process of Lyrica's
 6. **The tailnet** (`daemon/src/tailnet.ts`): **her own tailscaled.**
    `lyrica-tailscaled.service` (installed by `install.sh` from Tailscale's
    package, and by the NixOS module from `pkgs.tailscale`) runs
-   `tailscaled --tun=userspace-networking --state=/var/lib/lyrica-tailscale/tailscaled.state
+   `tailscaled --no-logs-no-support --tun=userspace-networking --state=/var/lib/lyrica-tailscale/tailscaled.state
    --statedir=/var/lib/lyrica-tailscale --socket=/run/lyrica-tailscale/tailscaled.sock --port=0` as the `lyrica`
    user with its own `StateDirectory` and `RuntimeDirectory`; no root, no
    TUN device, no operator setting, and the host's own Tailscale, if any,

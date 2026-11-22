@@ -1033,7 +1033,8 @@ unpairs it here too, when the host can be reached.
       if it can.
   - With Tailscale, the `tailscale` service has its own network out
     (`tailnet`) and reaches host-api over an internal one
-    (`tailscale-api`). It runs with no capabilities. All sign-ins over
+    (`tailscale-api`). It runs with no capabilities and uploads no
+    client logs to Tailscale (`TS_NO_LOGS_NO_SUPPORT`). All sign-ins over
     Tailscale come from its address, so they share one rate limit.
     With `--tailscale-ssh`, it alone also reaches the machine's port 22
     (through `host.docker.internal`, Docker's host gateway); host-api's

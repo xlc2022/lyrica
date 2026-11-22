@@ -1438,7 +1438,8 @@ rewritten.
 ## The tailnet
 
 She is a device of her own on the tailnet: `lyrica-tailscaled.service` runs
-`tailscaled` in userspace networking as the `lyrica` user, with its state in
+`tailscaled` in userspace networking as the `lyrica` user, with
+`--no-logs-no-support` (no client logs uploaded to Tailscale), with its state in
 `/var/lib/lyrica-tailscale` (`--state` and `--statedir`: the serve
 certificate lives there too, and tailscaled derives that directory from
 `--state` only when its folder is called `tailscale`) and its socket at
@@ -1809,7 +1810,7 @@ encrypt.
   printing the setup page's addresses, the certificate's fingerprint and the
   code (`lyrica admin setup-code`).
 - **Her tailscaled's unit** runs `/usr/sbin/tailscaled
-  --tun=userspace-networking` with its own state, cache and runtime
+  --no-logs-no-support --tun=userspace-networking` with its own state, cache and runtime
   directories, `--port=0` and `--outbound-http-proxy-listen=127.0.0.1:1056`, as `lyrica`, hardened fully
   (`NoNewPrivileges`, `ProtectSystem=strict`, `ProtectHome`, `PrivateTmp`, no
   capabilities). lyricad's unit is ordered after it.

@@ -292,7 +292,8 @@ in {
         User = "lyrica";
         Group = "lyrica";
         # --port=0 picks a free UDP port, so it never fights the host's tailscaled over 41641.
-        ExecStart = "${cfg.tailscalePackage}/bin/tailscaled --tun=userspace-networking --state=/var/lib/lyrica-tailscale/tailscaled.state --statedir=/var/lib/lyrica-tailscale --socket=/run/lyrica-tailscale/tailscaled.sock --port=0 --outbound-http-proxy-listen=127.0.0.1:1056";
+        # --no-logs-no-support: no client logs uploaded to Tailscale (and no support that needs them).
+        ExecStart = "${cfg.tailscalePackage}/bin/tailscaled --no-logs-no-support --tun=userspace-networking --state=/var/lib/lyrica-tailscale/tailscaled.state --statedir=/var/lib/lyrica-tailscale --socket=/run/lyrica-tailscale/tailscaled.sock --port=0 --outbound-http-proxy-listen=127.0.0.1:1056";
         StateDirectory = "lyrica-tailscale";
         StateDirectoryMode = "0700";
         RuntimeDirectory = "lyrica-tailscale";

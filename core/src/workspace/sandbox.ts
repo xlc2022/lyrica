@@ -120,7 +120,12 @@ export const TOOLS_PREFIX = "/opt/lyrica/tools";
 // too, for pasta, nft and bwrap.
 const tools = () => process.env.LYRICA_SANDBOX_TOOLS || undefined;
 const binPath = () => (tools() ? `${tools()}/bin:${PATH}` : `${TOOLS_PREFIX}/bin:${PATH}`);
-const env = () => ({ PATH: binPath(), HOME: WORKDIR, LANG: "C.UTF-8", TERM: "dumb", ...toolEnv() });
+/**
+ * Usage reports off for the tools a sandbox most often installs: Hugging Face's
+ * libraries (DO_NOT_TRACK too), Gradio and Next.js. Each is that tool's documented switch.
+ */
+const NO_TELEMETRY = { DO_NOT_TRACK: "1", HF_HUB_DISABLE_TELEMETRY: "1", GRADIO_ANALYTICS_ENABLED: "False", NEXT_TELEMETRY_DISABLED: "1" };
+const env = () => ({ PATH: binPath(), HOME: WORKDIR, LANG: "C.UTF-8", TERM: "dumb", ...NO_TELEMETRY, ...toolEnv() });
 // The system's CA bundle (mounted with /etc/ssl), which Node and Python don't read by themselves.
 const CA_BUNDLE = "/etc/ssl/certs/ca-certificates.crt";
 /**

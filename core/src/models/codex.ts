@@ -225,7 +225,7 @@ export async function codexImage(box: CodexBox, r: ImageRequest, signal?: AbortS
         });
         // Codex's own sandbox can't start inside Lyrica's, which is the fence.
         const args = ["exec", "--json", "--color", "never", "--ephemeral", "--skip-git-repo-check", "--ignore-user-config", "--ignore-rules",
-          "--sandbox", "danger-full-access", "-c", 'approval_policy="never"', "--enable", "image_generation",
+          "--sandbox", "danger-full-access", "-c", 'approval_policy="never"', "-c", "analytics.enabled=false", "--enable", "image_generation",
           ...disabled.flatMap((f) => ["--disable", f]), "--cd", inner,
           ...inputs.flatMap((f) => ["--image", f]), "-"];
         // One image per run: once a saved image stops growing, Codex is stopped, so a second
