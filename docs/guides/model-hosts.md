@@ -938,16 +938,20 @@ takes 1 to 1½; more steps or another sampler don't help). A host on
 stable-diffusion.cpp doesn't list them. Once
 one is confirmed, put it in the **Videos** row of Models, Tasks (the last
 row under Images, whose picker lists only model hosts' video recipes), or
-`lyrica admin models preset set private video '<host>/<recipe>' --user
-ada`. Until a column has one, her `image` tool can't make clips. A clip is
-1 second up to its model's longest (8 for Wan 2.2, 10 for LTX-2.5, 15 for
-H3; up to 60 for H3, which joins clips of up to 15 s into one, and can make
-an existing clip longer), from a prompt or, with a recipe that animates
-(Wan 2.2 I2V, for one), from an image as its first frame; it is saved
-encrypted in the thread's folder under `videos/`, and Files shows its
-poster. Cloud models and plain endpoints in the list are passed over. A
-clip takes from a few minutes to most of an hour and holds its ComfyUI's
-GPU until it is done; with two GPUs, `COMFY_GPU` picks the one for images
+`lyrica admin models preset set private video '<host>/<recipe>' --user ada`.
+Until a column has one, her `image` tool can't make clips. A clip is 1
+second up to its model's longest (8 for Wan 2.2, 10 for LTX-2.5, 15 for
+H3; up to 60 for H3, which joins clips of up to 15 s into one, and can
+make an existing clip of any length longer: she sends the host only its
+last seconds and joins the new ones on in her sandbox, so run Update… on
+each host before extending clips with a `lyricad` from 2026-11-22 or
+later, since an older host refuses the request), from a prompt or, with a
+recipe that animates (Wan 2.2 I2V, for one), from an image as its first
+frame; it is saved encrypted in the thread's folder under `videos/`, and
+Files shows its poster. Cloud models and plain endpoints in the list are
+passed over. A clip takes from a few minutes to most of an hour and holds
+its ComfyUI's GPU until it is done; with two GPUs, `COMFY_GPU` picks the
+one for images
 and videos, or `COMFY_GPU=0,1` in `host/.env` (then `host/install.sh`)
 runs a ComfyUI on each, so two clips or images run at once, one per GPU.
 Each GPU then loads its own copy of a recipe, so leave room in system RAM
