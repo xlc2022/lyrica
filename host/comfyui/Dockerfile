@@ -76,7 +76,9 @@ ENV HOME=/tmp HF_HUB_OFFLINE=1 DO_NOT_TRACK=1
 # API nodes (paid cloud services) are disabled. gate.py runs one ComfyUI per
 # image GPU, each only while host-api asks, with its own port and folders
 # under /tmp/comfy, so a paused or idle host holds no GPU memory here.
+# Each clip of a chain uploads the clip so far, which outgrows ComfyUI's default
+# 100 MB upload cap partway through a long extend: the cap is 1 GiB instead.
 ENTRYPOINT ["python3", "/opt/gate.py", "/opt/venv/bin/python", "main.py", \
-  "--listen", "0.0.0.0", "--disable-auto-launch", "--disable-metadata", "--disable-api-nodes", "--preview-method", "none", \
+  "--listen", "0.0.0.0", "--disable-auto-launch", "--disable-metadata", "--disable-api-nodes", "--preview-method", "none", "--max-upload-size", "1024", \
   "--disable-all-custom-nodes", "--whitelist-custom-nodes", "websocket_image_save.py", "websocket_video_save.py", "video_frames.py", "clip_chain.py", "ComfyUI-GGUF", "ComfyUI-SeedVR2_VideoUpscaler", "LanPaint", "RES4LYF", "ComfyUI-Krea2T-Enhancer", \
   "--extra-model-paths-config", "/opt/comfyui/extra_model_paths.yaml"]
