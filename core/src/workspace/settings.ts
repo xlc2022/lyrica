@@ -959,6 +959,29 @@ export class WorkspaceSettings {
     for (const id of folders) byFolder.run(id);
   }
 
+  /** Forgotten threads: their settings (grants, machines, allowed commands, a held approval) and the Files panel's notes for them. */
+  forgetThreads(threads: string[]): void {
+    const t = JSON.stringify(threads);
+    this.db.prepare("DELETE FROM thread_workspaces WHERE thread_id IN (SELECT value FROM json_each(?))").run(t);
+    this.db.prepare("DELETE FROM panel_files WHERE thread_id IN (SELECT value FROM json_each(?))").run(t);
+  }
+
+  /**
+   * The nightly sweep: settings and Files panel notes of threads that no longer exist, as forgetThreads. Returns how
+   * many rows went. `threads` lists the threads after the rows are read: a thread is made before its settings, so one
+   * made meanwhile is in the list and keeps them (a child that lost its narrowed settings would get the defaults).
+   */
+  sweepThreads(threads: () => (thread: string) => boolean): number {
+    const rows = this.db.prepare("SELECT thread_id AS id FROM thread_workspaces UNION SELECT DISTINCT thread_id FROM panel_files").all() as { id: string }[];
+    if (!rows.length) return 0;
+    const exists = threads();
+    const gone = rows.map((r) => r.id).filter((id) => !exists(id));
+    if (!gone.length) return 0;
+    const t = JSON.stringify(gone);
+    return Number(this.db.prepare("DELETE FROM thread_workspaces WHERE thread_id IN (SELECT value FROM json_each(?))").run(t).changes)
+      + Number(this.db.prepare("DELETE FROM panel_files WHERE thread_id IN (SELECT value FROM json_each(?))").run(t).changes);
+  }
+
   /** The nightly sweep: records naming a thread or a folder that no longer exists. Returns how many went. */
   sweepOrigins(exists: (thread: string) => boolean): number {
     const rows = this.db.prepare("SELECT DISTINCT thread AS id FROM file_origins UNION SELECT DISTINCT folder FROM file_origins").all() as { id: string }[];

@@ -1714,7 +1714,8 @@ export class PoolStore extends PoolReader {
 
   /**
    * Deletes the thread and its entries, and the notes whose only sources were
-   * in it (each leaves a tombstone, and pages citing them are flagged). Its
+   * in it (each leaves a tombstone, and pages citing them, or the thread
+   * directly, are flagged). Its
    * subagents' threads hold its tasks and results, so they go first. Its
    * other daughters (child threads, branches, copies) go too with `children`;
    * otherwise they are kept as threads of their own, with the settings they
@@ -1759,6 +1760,9 @@ export class PoolStore extends PoolReader {
     if (!keep) for (const { src } of candidates) {
       if (this.cameFrom(src).every(inThread)) this.remove(src, author, true);
     }
+    // Pages citing the thread or its entries directly are flagged, as a rewind flags them, so the next sleep rewrites them without it.
+    if (!keep) this.db.prepare("UPDATE pages SET flagged = 1 WHERE 'p:' || slug IN (SELECT src FROM citations WHERE dst = ? OR (dst >= ? AND dst < ?))")
+      .run(`t:${threadId}`, `e:${threadId}#`, `e:${threadId}$`);
     // A thread deleted with its memories kept leaves a text-free tombstone: its ID and deletion time, so a citation of it still leads somewhere.
     if (keep) {
       this.db.prepare("INSERT OR REPLACE INTO tombstones (id, kind, sources, deleted_by, deleted_at) VALUES (?, 'thread', '[]', ?, ?)")
