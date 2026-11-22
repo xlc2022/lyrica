@@ -45,7 +45,7 @@ export async function fakeImages() {
       const body = JSON.parse(String(opts.body));
       if (path === "/host/v1/videos/create") {
         if (!["clip", "moves", "long", "restyle"].includes(body.recipe)) return Response.json({ error: { code: "invalid", message: "That recipe doesn't make videos." } }, { status: 400 });
-        expect(Object.keys(body).every(k => ["recipe", "prompt", "image", "drive", "extend", "source", "width", "height", "aspectRatio", "duration", "steps", "cfg", "seed", "sampler", "scheduler", "shift", "guidance", "negativePrompt", "loras"].includes(k))).toBe(true);
+        expect(Object.keys(body).every(k => ["recipe", "prompt", "image", "drive", "extend", "tail", "source", "width", "height", "aspectRatio", "duration", "steps", "cfg", "seed", "sampler", "scheduler", "shift", "guidance", "negativePrompt", "loras"].includes(k))).toBe(true);
         videos.push(body);
         return Response.json({ video: { mp4: mp4.toString("base64"), width: 1280, height: 704, frames: 121, fps: 24, duration: 5.04, audio: false, seed: 7 }, poster: png.toString("base64"), ...applied(body), seconds: 300, sampling: { seconds: 240.5, steps: 20 } });
       }

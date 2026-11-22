@@ -4,7 +4,8 @@ A continuation workflow makes the next clip of a long video from the clip
 so far: LyricaClipTail gives the clip's last frames and their sound, which
 anchor the start of the new clip (MiniMaxH3AddGuide), and LyricaJoinClips
 drops the new clip's first `overlap` frames, which repeat that tail, and
-appends the rest. The clip so far is never decoded whole: the tail decodes
+appends the rest (or, with `keep` 0, gives the rest alone: lyricad sends only
+a clip's end to extend, and joins the new seconds onto the clip itself). The clip so far is never decoded whole: the tail decodes
 only its last second or so, and the joined clip is encoded one segment at a
 time (ComfyUI's VideoFromList).
 """
@@ -53,14 +54,15 @@ class JoinClips:
                 "fps": ("FLOAT", {"default": 24.0, "min": 1.0, "max": 120.0}),
                 "overlap": ("INT", {"default": 22, "min": 0, "max": 1024}),
             },
-            "optional": {"audio": ("AUDIO",)},
+            # keep 0: only the new frames come out, for a caller that joins them onto the clip it took the end of.
+            "optional": {"audio": ("AUDIO",), "keep": ("INT", {"default": 1, "min": 0, "max": 1})},
         }
 
     RETURN_TYPES = ("VIDEO",)
     FUNCTION = "join"
     CATEGORY = "video"
 
-    def join(self, previous, images, fps, overlap, audio=None):
+    def join(self, previous, images, fps, overlap, audio=None, keep=1):
         rest = images[overlap:]
         if audio is not None:
             rate_hz = int(audio["sample_rate"])
@@ -71,6 +73,8 @@ class JoinClips:
         buffer = io.BytesIO()
         added.save_to(buffer, format=Types.VideoContainer.MP4, codec=Types.VideoCodec.H264)
         buffer.seek(0)
+        if not keep:
+            return (InputImpl.VideoFromFile(buffer),)
         return (InputImpl.VideoFromList([previous, InputImpl.VideoFromFile(buffer)]),)
 
 

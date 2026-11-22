@@ -194,7 +194,8 @@
           0
         ],
         "fps": "$fps",
-        "overlap": "$overlap"
+        "overlap": "$overlap",
+        "keep": "$keep"
       }
     },
     "save": {

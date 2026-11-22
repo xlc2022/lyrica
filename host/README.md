@@ -561,9 +561,10 @@ per host, and Lyrica's router filters create tiers by it.
   back over the websocket, and `comfyui/video_frames.py`, which picks a
   driving clip's frames at the model's frame rate, and `comfyui/clip_chain.py`,
   which takes a clip's last frames and joins the next clip onto it for
-  longer videos. Each clip of a chain uploads the clip so far, so ComfyUI
-  takes uploads of up to 1 GiB (`--max-upload-size`; its default of 100 MB
-  stopped long extends). Only those nodes load. Their Python packages go into a
+  longer videos (or, extending a clip Lyrica sent only the end of, gives
+  the new frames alone). Each clip of a chain uploads the clip so far, so
+  ComfyUI takes uploads of up to 1 GiB (`--max-upload-size`; its default of
+  100 MB stopped long extends). Only those nodes load. Their Python packages go into a
   venv, each pinned with its hash in `comfyui/requirements.txt`
   (`comfyui/lock.sh` remakes it); torch is the base image's. It has no
   route out, logs nothing, keeps its input, output and temp folders in

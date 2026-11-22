@@ -688,7 +688,8 @@ export class Workspace {
     // Cleared rejects take their records with them, as a delete in Files does.
     (paths) => { const s = this.settings(t.userId); for (const p of paths) { const key = this.originKey(t, p); if (key) s.dropOrigins(key.folder, [key.path]); } },
     // The thread whose folder holds an image she reads (/shared is the family's topmost), for the portrait mark.
-    (path) => this.originKey(t, path.startsWith("/") ? path : posix.join(WORKDIR, path))?.folder);
+    (path) => this.originKey(t, path.startsWith("/") ? path : posix.join(WORKDIR, path))?.folder,
+    () => this.files(t));
   }
 
   /** A project chat whose shared/ is its own folder's (it is its family's top): what it makes goes there. */

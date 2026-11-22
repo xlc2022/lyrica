@@ -1213,10 +1213,17 @@ The same tool makes short clips: `video` from a prompt, `animate` from an
 image as the first frame, and `motion` from an image and a driving clip (a
 workspace MP4 of at most 64 MB, read with `ThreadImages.readClip`): the
 image's subject moves as the person in the clip moves, and the prompt says
-the scene; and `extend` from a workspace clip (an MP4 of at most 256 MB,
-since a host-made minute at 1920×1088 passes 64 MB) and a prompt, which adds
-`duration` seconds to it and saves the whole clip as a new one; a clip too
-large is refused with its size and the limit; and
+the scene; and `extend` from a workspace clip and a prompt, which adds
+`duration` seconds to it and saves the whole clip as a new one, up to 1 GiB
+(`MAX_JOINED_BYTES`, about ten minutes at 1920×1088):
+only the clip's end goes to the host (`ThreadImages.clipEnd`, its last 2 s
+from the keyframe before them, copied by ffmpeg in the Files sandbox, at
+most 256 MB, so a clip with keyframes too far apart is refused), and
+the host's new seconds are joined on there (`saveExtended`), without
+re-encoding when both come from the same encoder settings, as a host's do,
+else re-encoded at CRF 18; the files ffmpeg works on are in the sandbox's
+own `/tmp` (memory, or a project chat's encrypted `tmp/`), removed when it
+ends; and
 `edit_video` from a workspace clip and an `instruction` (one English
 sentence, the change and then what stays), which changes the clip and keeps
 its motion, timing, camera and sound, saved as a new clip. Each takes

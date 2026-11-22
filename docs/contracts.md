@@ -502,7 +502,7 @@ class Models {                                              // new Models(keyrin
   // onProgress (image() takes it too): JobProgress { queued; progress?: 0-1; busyWith?; loading? } as a model host's job goes (models/progress.ts withProgress, exported):
   // the call carries X-Lyrica-Job: <random token> and GET /host/v1/jobs/<token> is read every 2 s until it ends; a host that
   // hasn't known the job after 5 reads isn't asked again. Cloud models report none.
-  // VideoRequest { prompt; image?: ImageInput (its first frame, or with drive the subject who moves); drive?: Uint8Array (an MP4 of at most 64 MB, MAX_DRIVE_BYTES); extend?: Uint8Array (a clip to add `duration` seconds to, an MP4 of at most 256 MB, MAX_EXTEND_BYTES, with no image, drive or size); source?: Uint8Array (a clip to edit as the prompt says, an MP4 of at most 64 MB, with no image, drive, extend or size; `duration` takes its first seconds); size?: { width, height } (multiples of 16, 256-2048) or aspectRatio?: "width:height" (the recipe's area in that shape); duration?: seconds, 1 to LONGEST_VIDEO_SECONDS (60); and JobSettings, as for images, in place of the recipe's; loras?: LoraAsk[], as for images }
+  // VideoRequest { prompt; image?: ImageInput (its first frame, or with drive the subject who moves); drive?: Uint8Array (an MP4 of at most 64 MB, MAX_DRIVE_BYTES); extend?: Uint8Array (a clip's end to add `duration` seconds to, an MP4 of at most 256 MB, MAX_EXTEND_BYTES, sent with `tail: true`: the answer is only the new seconds; with no image, drive or size); source?: Uint8Array (a clip to edit as the prompt says, an MP4 of at most 64 MB, with no image, drive, extend or size; `duration` takes its first seconds); size?: { width, height } (multiples of 16, 256-2048) or aspectRatio?: "width:height" (the recipe's area in that shape); duration?: seconds, 1 to LONGEST_VIDEO_SECONDS (60); and JobSettings, as for images, in place of the recipe's; loras?: LoraAsk[], as for images }
   // GeneratedVideo { bytes (H.264 MP4); type: "video/mp4"; width; height; frames; fps; duration; audio; seed?; poster: GeneratedImage }
   // The `video` task's list; only a model host's recipe that does `video` (or `animate`, with an image; or `motion`, with drive; or `edit_video`, with source; or `extend`,
   // with extend) answers, so no clip or first frame reaches a cloud model. A recipe whose `longestSeconds` is under `duration` is skipped
@@ -3043,7 +3043,12 @@ imageFiles(t): ThreadImages
 // ThreadImages.read also marks bytes whose SHA-256 was recorded as a derived portrait, regardless of path; and every read
 //   once this thread's folder is marked (a portrait result was saved there), or a read of a marked folder at
 //   /thread-workspaces/<id> or /shared (folderOf, Workspace.originKey).
-// ThreadImages.readClip(path): Promise<Uint8Array>; a workspace MP4 (a driving clip) via ThreadFiles, at most 64 MB, in memory.
+// ThreadImages.readClip(path): Promise<Uint8Array>; a workspace MP4 (a driving clip, one to edit or upscale) via ThreadFiles, at most 64 MB, in memory.
+// ThreadImages.clipEnd(path, signal?): Promise<Uint8Array>; a clip's last 2 s from the keyframe before them, copied as they are
+//   (ThreadFiles.clipTail, ffmpeg in the sandbox, at most MAX_EXTEND_BYTES as it streams): what `extend` sends a host, with `tail: true`.
+// ThreadImages.saveExtended(path, added: GeneratedVideo, signal?): { path, video }; the host's new seconds joined onto `path`
+//   (ThreadFiles.joinClips: without re-encoding when both have the same encoder settings, else re-encoded at CRF 18),
+//   saved as saveVideo saves, its first frame the poster; the joined clip is at most MAX_JOINED_BYTES (1 GiB) as it streams.
 // ThreadImages.save(GeneratedImage[], portrait = false): string[]; exclusive images/<uuid>.png in the encrypted thread folder,
 //   removes PNG metadata, refuses symlinks, returns /workspace/images/<uuid>.png paths. A project chat's (t.coordinates,
 //   as saveUpload) go in shared/images (/workspace/shared/images/<uuid>.png, its threads' /shared/images).
