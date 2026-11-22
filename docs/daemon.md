@@ -54,7 +54,7 @@ is 404; a missing login is 401.
   name as `provider`, and the resolved model label as `model` for the web card.
   The thread's own chat model is held to the same setting
   (extension/src/photos.ts): a tool result holding a photo of the user (an
-  image result made from one, a clip's first frame, Pi's `read` of a file
+  image result made from one, a clip's first frame made from one, Pi's `read` of a file
   `ThreadImages.isPortrait` counts as one) carries `photoOfUser: true` in its
   details, and every request the thread's model runtime sends to a cloud
   endpoint, a subagent's too, has those images in words unless the setting

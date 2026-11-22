@@ -274,6 +274,9 @@ describe("image tool results (principles 1 and 4)", () => {
     const clip = await s.run({ action: "video", prompt: "A fox", cfg: 3, seed: 7 });
     expect(clip.content).toContainEqual({ type: "text", text: expect.stringContaining("Seed 7.") });
     expect(s.workstation.server.videos).toEqual([{ recipe: "clip", prompt: "A fox", cfg: 3, seed: 7 }]);
+    // A clip from a prompt alone isn't a photo of the user; one animated from their photo is.
+    expect(clip.details).not.toHaveProperty(PHOTO_OF_USER);
+    expect((await s.run({ action: "animate", prompt: "She waves", image: "/photos-of-me/portrait.png" })).details).toMatchObject({ [PHOTO_OF_USER]: true });
     await expect(s.run({ action: "create", prompt: "A garden", cfg: 31 })).rejects.toThrow();
     await expect(s.run({ action: "create", prompt: "A garden", seed: 1.5 })).rejects.toThrow();
   });

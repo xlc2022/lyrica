@@ -332,6 +332,9 @@ export class ThreadImages {
     return { input: imageInput(bytes, limit), portrait: this.portraitByFolder(path) || this.portraits.isPortraitImage(createHash("sha256").update(bytes).digest("hex")) };
   }
 
+  /** Whether a path is in a folder marked as holding portraits (portraitByFolder): a clip there counts as one. "" asks of her own folder. */
+  inPortraitFolder(path: string): boolean { return this.portraitByFolder(path || WORKDIR); }
+
   /**
    * Whether an image she read some other way (Pi's `read`) counts as a portrait, as `read` here would say: by its
    * folder or its bytes. One that can't be read or hashed counts as one, so a cloud model doesn't get it unasked.

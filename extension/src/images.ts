@@ -438,7 +438,10 @@ async function executeVideo(o: ImageTools, id: string, p: ImageArgs, signal?: Ab
   if (p.size && p.aspectRatio) throw new Error("Give a size or an aspect ratio, not both.");
   // An aspect ratio goes to the host as it is, which keeps the recipe's area and snaps to its size step.
   if (p.action === "edit_video" && (p.size || p.aspectRatio)) throw new Error("edit_video keeps the clip's own shape: leave size and aspectRatio out.");
-  const request: VideoRequest = { prompt: p.action === "edit_video" ? p.instruction! : p.prompt!, ...(p.action === "animate" || p.action === "motion" ? { image: (await o.files.read(p.image!, MAX_INPUT_IMAGE_BYTES)).input } : {}),
+  const still = p.action === "animate" || p.action === "motion" ? await o.files.read(p.image!, MAX_INPUT_IMAGE_BYTES) : undefined;
+  // Its first frame is a photo of the user when the still was one, or the clip it comes from is in a marked folder.
+  const portrait = !!still?.portrait || o.files.inPortraitFolder(p.video ?? "");
+  const request: VideoRequest = { prompt: p.action === "edit_video" ? p.instruction! : p.prompt!, ...(still ? { image: still.input } : {}),
     ...(p.action === "motion" ? { drive: await o.files.readClip(p.video!) } : {}), ...(p.action === "extend" ? { extend: await o.files.clipEnd(p.video!, signal) } : {}),
     ...(p.action === "edit_video" ? { source: await o.files.readClip(p.video!) } : {}),
     ...(p.size ? { size: p.size } : {}), ...(p.aspectRatio ? { aspectRatio: p.aspectRatio } : {}), ...(p.duration === undefined ? {} : { duration: p.duration }),
@@ -472,7 +475,7 @@ async function executeVideo(o: ImageTools, id: string, p: ImageArgs, signal?: Ab
   }
   const { text, video, poster } = await make(signal, onProgress);
   return { content: [{ type: "text" as const, text: `${text} Its first frame:` },
-    { type: "image" as const, data: Buffer.from(poster.bytes).toString("base64"), mimeType: poster.type }], details: markPhoto({ video }) };
+    { type: "image" as const, data: Buffer.from(poster.bytes).toString("base64"), mimeType: poster.type }], details: portrait ? markPhoto({ video }) : { video } };
 }
 
 /**
@@ -512,5 +515,5 @@ async function executeUpscaleVideo(o: ImageTools, id: string, p: ImageArgs, sign
   }
   const { text, video, poster } = await make(signal, onProgress);
   return { content: [{ type: "text" as const, text: `${text} Its first frame:` },
-    { type: "image" as const, data: Buffer.from(poster.bytes).toString("base64"), mimeType: poster.type }], details: markPhoto({ video }) };
+    { type: "image" as const, data: Buffer.from(poster.bytes).toString("base64"), mimeType: poster.type }], details: o.files.inPortraitFolder(p.video!) ? markPhoto({ video }) : { video } };
 }

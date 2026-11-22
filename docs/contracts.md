@@ -1664,7 +1664,8 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     (`{ type: "image", data: base64, mimeType: "image/png" }`) plus path text and “Made with <model> on <host or endpoint name>” (with the steps and CFG asked for, and the seeds),
     then “With LoRA <name> (<strength>), …” for the LoRAs a host job applied (the recipe's own, then the call's),
     with a note when a named model matched none and `Passed over first: …` when it fell back.
-    A result made from a photo of the user, and a clip's first frame, carry `photoOfUser: true` in their details
+    A result made from a photo of the user, and a clip's first frame when its still was one or its clip is in a marked folder
+    (`ThreadImages.inPortraitFolder`; any clip once this thread's folder is marked), carry `photoOfUser: true` in their details
     (photos.ts markPhoto), so a cloud chat model gets the image only under the photo setting (docs/daemon.md).
     A content refusal returns `isError: true` with the refusal's message
     (fixed, or Codex's quoted reply) and details
