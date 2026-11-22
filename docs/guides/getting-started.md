@@ -329,6 +329,12 @@ Debian.
    node --version   # v24
    ```
 
+   Keep Node on the newest 24 release: 24.22.3 fixes high-severity HTTP/2
+   and TLS flaws, so on an older 24 run
+   `apt-get update && apt-get install --only-upgrade nodejs` before her
+   next update, which restarts `lyricad` on it. NixOS gets it with the
+   next flake update and rebuild, and a model host with its next Update….
+
 6. **Internet access** during the install: npm, `proxy.golang.org` for the
    Caddy build, Playwright's download servers for headless Chromium, and
    `pkgs.tailscale.com` when Tailscale isn't installed yet, and Docker Hub
