@@ -109,6 +109,30 @@ describe("rewinding a thread", () => {
     expect((await ada.post(`${path}/messages/1/rewind`, { action: "edit", text: " " })).status).toBe(400);
   });
 
+  it("puts the Code task back to what it was before the removed turns", async () => {
+    const { model, ada, path, stream, say, messages } = await setup();
+    const code = (task: string, done: string) => ({ tools: [{ name: "threads", args: { action: "code", on: true, task, done } }] });
+    model.reply(code("Fix the parser", "Found the bug in lexer.ts"), { text: "Found it." }, { text: "Parser fix" },
+      code("Fix the parser", "Patched lexer.ts, tests pass"), { text: "Patched." }, { text: "B2." }, { text: "A2." });
+    await say("one");
+    await say("two");
+    const users = (await messages()).filter((m) => m.role === "user");
+    const prompt = () => JSON.stringify(model.requests.at(-1)!.messages[0]);
+    const edit = async (n: number, text: string) => {
+      const from = stream.events.length;
+      expect((await ada.post(`${path}/messages/${n}/rewind`, { action: "edit", text })).status).toBe(200);
+      await stream.until(turnEnd, from);
+    };
+
+    await edit(users[1]!.n, "two, edited");
+    expect(prompt()).toContain("Found the bug in lexer.ts");
+    expect(prompt()).not.toContain("Patched lexer.ts");
+    // Editing the first message leaves no progress at all: she is asked to set the task again.
+    await edit(users[0]!.n, "one, edited");
+    expect(prompt()).not.toContain("lexer.ts");
+    expect(prompt()).toContain("Set the task and progress first");
+  });
+
   it("removes a note written in a removed turn, flags a page citing it, and stops its subagent", async () => {
     const { rt, d, ada, model, sub, path, thread, stream, say, messages, said } = await setup();
     model.reply({ tools: [{ name: "remember", args: { notes: [{ text: "{user} keeps bees" }] } }] }, { text: "Noted." });

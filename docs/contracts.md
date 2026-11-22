@@ -296,7 +296,9 @@ are enforced in the store:
 - **Removing turns.** `truncateThread` deletes entries from `fromN` on the
   way forgetting does: index rows go, notes whose sources are all gone are
   deleted with tombstones, pages citing them are flagged, and subagent
-  threads started in those turns are forgotten. An entry that still has a
+  threads started in those turns are forgotten. A Code task her `threads code`
+  calls set in those turns goes back to what the last earlier call set, or
+  goes when none did. An entry that still has a
   copy in a branch keeps its notes and search rows, and `entryWindow` finds
   it through the copy. Entry numbers are never reused: `threads.cut` holds
   the highest removed number and `appendEntry` numbers past it.
