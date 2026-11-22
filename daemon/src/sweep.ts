@@ -12,18 +12,21 @@ export const SWEEP_AGE_MS = 30 * 864e5;
 export interface SweepCounts { snapshots: number; records: number; folders: number; worktrees: number }
 
 /**
- * For one user whose home workspace is mounted: snapshots and change records
+ * For one user: the settings of threads that no longer exist; and, while their
+ * home workspace is mounted, snapshots and change records
  * older than 30 days; the folders of threads that no longer exist; and
  * worktrees of subagent runs that aren't live and haven't changed in 30 days.
  */
 export async function sweepUser(s: Services, userId: string, now = new Date()): Promise<SweepCounts> {
   const counts: SweepCounts = { snapshots: 0, records: 0, folders: 0, worktrees: 0 };
   const home = s.workspace.homeDir(userId);
-  if (!isMounted(home)) return counts;
   const old = new Date(now.getTime() - SWEEP_AGE_MS);
+  // A thread's settings and Files panel notes need no home: rows another way of forgetting it left (a rewind's subagents, an older release).
+  try { counts.records += s.workspace.settings(userId).sweepThreads(() => threadExists(s, userId)); } catch { /* locked */ }
+  if (!isMounted(home)) return counts;
   const c = s.workspace.changes(userId).sweep(old);
   counts.snapshots = c.snapshots;
-  counts.records = c.records;
+  counts.records += c.records;
   // Records of which thread wrote a file, naming a thread or folder that is gone.
   counts.records += s.workspace.settings(userId).sweepOrigins(threadExists(s, userId));
 
@@ -87,8 +90,17 @@ export async function forgetThreadFiles(s: Services, userId: string, pool: Pool,
   // Which thread wrote a file: the forgotten threads' records, and those in their folders (a folder another pool's
   // thread still has is kept, as below).
   const exists = threadExists(s, userId);
-  try { s.workspace.settings(userId).forgetOrigins(threads, threads.filter((id) => !exists(id))); } catch { /* locked: the sweep takes them */ }
-  if (!isMounted(home)) return 0;
+  // Its settings and the Files panel's notes for it, unless a thread in the other pool has the same id.
+  try {
+    const settings = s.workspace.settings(userId);
+    settings.forgetOrigins(threads, threads.filter((id) => !exists(id)));
+    settings.forgetThreads(threads.filter((id) => !exists(id)));
+  } catch { /* locked: the sweep takes them */ }
+  if (!isMounted(home)) {
+    // The records of what its calls changed go now; their snapshots, in the home, at the sweep once nothing names them.
+    try { const changes = s.workspace.changes(userId); changes.forget(changes.forThreads(pool, threads).map((c) => c.id)); } catch { /* locked */ }
+    return 0;
+  }
   return forgetFiles(home, s.workspace.changes(userId), pool, threads, allowedOf(s, userId), exists);
 }
 

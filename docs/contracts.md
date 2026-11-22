@@ -2178,10 +2178,14 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   each empty `threads/*/shared/<subagent id>` (not following a link there).
   `forgetWorktree(path, allowed)` removes a
   worktree's git record (a run's, or a code thread's own) only when it is in a folder the user may grant,
-  reached with no symlinks, and names that worktree back. Logs counts only.
+  reached with no symlinks, and names that worktree back. Before any of that, mounted or not, it drops the
+  `thread_workspaces` and `panel_files` rows of threads that no longer exist
+  (`WorkspaceSettings.sweepThreads`, counted as change records). Logs counts only.
   `forgetThreadFiles(services, userId, pool, threads)` does the same for
   threads just forgotten, at once and with no age limit, and drops their
-  change records and snapshots too, keeping a folder whose id a thread in
+  settings and Files panel notes (`WorkspaceSettings.forgetThreads`) and their
+  change records and snapshots too (with the home not mounted, the records at
+  once and the snapshots at the next sweep), keeping a folder whose id a thread in
   either pool still has, and removes its `tmp/<id>`, its browser profile
   `browser/<id>` and each
   `threads/*/shared/<id>` directory (not following a link there);
@@ -3268,7 +3272,9 @@ selfTest(): Promise<string | undefined>   // lyricad calls this at startup
   `recordOrigins(folder, paths, thread, since?)` (with `since`, a row
   another thread wrote at or after it is kept), `origins`, `writtenBy(thread)`, `moveOrigins`,
   `dropOrigins`, `pruneOrigins(folder, dir, names)`, `forgetOrigins(threads,
-  folders)`, `sweepOrigins(exists)`. `Workspace.madeFiles(t, paths, since?)`
+  folders)`, `sweepOrigins(exists)`. `forgetThreads(threads)` and
+  `sweepThreads(threads)` drop a gone thread's `thread_workspaces` and
+  `panel_files` rows. `Workspace.madeFiles(t, paths, since?)`
   and `madeSince(t, since)` record her writes, uploads (`saveUpload`, the panel's) and images;
   `fileOrigins(t, entries, dir?)` reads them for a listing, and a whole
   listing of `dir` prunes what it no longer holds. `ThreadFiles` takes

@@ -443,8 +443,13 @@ describe("deletion", () => {
     const sub = own.createThread({ interface: "cli", parent: a.thread, subagent: true });
     const copy = own.exportThread(a.thread, "web");
     own.setDraft(a.thread, "unsent words");
+    own.putPage({ slug: "quoted", title: "Quoted", summary: "x", text: `Said so [${a.entry}].` }, "sleep");
+    own.putPage({ slug: "other", title: "Other", summary: "x", text: `Said so [${b.entry}].` }, "sleep");
     own.forgetThread(a.thread, "lyrica");
     expect(own.getThread(a.thread)).toBeUndefined();
+    // A page quoting its entries is rewritten by the next sleep; one quoting another thread isn't.
+    expect(own.get("p:quoted")!.flagged).toBe(true);
+    expect(own.get("p:other")!.flagged).toBe(false);
     expect(own.draft(a.thread)).toBeUndefined();
     expect(own.getThread(sub.id)).toBeUndefined();
     expect(own.getThread(copy.id)).toBeDefined();

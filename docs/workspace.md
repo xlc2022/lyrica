@@ -1081,8 +1081,9 @@ fixed actions, the token never shown to her.
   exists but can't be read first isn't recorded. Undoing a change deletes a
   file the turns made, or puts back the snapshot, and only when the file
   still has the hash they left: something changed it since, so it is kept.
-- **The nightly sweep** (`daemon/src/sweep.ts`), for each user whose home is
-  mounted: change records and snapshots older than 30 days, snapshots no
+- **The nightly sweep** (`daemon/src/sweep.ts`): for each user, the settings
+  and Files panel notes of threads that no longer exist; and while their home
+  is mounted, change records and snapshots older than 30 days, snapshots no
   record names, the folders (with their Claude Code folders and lasting
   `/tmp`) of threads that no longer exist, subagent worktrees whose run isn't live and that
   haven't changed in 30 days, and the empty parts of a family's `/shared`

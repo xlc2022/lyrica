@@ -96,10 +96,18 @@ export class FileChanges {
     return readFileSync(join(this.dir, id));
   }
 
-  /** Drops the records (and snapshots) of changes that are settled: undone, or their turns gone. */
+  /**
+   * Drops the records (and snapshots) of changes that are settled: undone, or their turns gone. With the home not
+   * mounted the records still go, and the sweep takes their snapshots once no record names them.
+   */
   forget(ids: string[]): void {
     const rows = this.db.prepare("SELECT * FROM file_changes WHERE id IN (SELECT value FROM json_each(?))").all(JSON.stringify(ids)) as Row[];
-    for (const r of rows) if (r.snapshot && SNAPSHOT.test(r.snapshot)) rmSync(join(this.dir, r.snapshot), { force: true });
+    const snapshots = rows.flatMap((r) => (r.snapshot && SNAPSHOT.test(r.snapshot) ? [r.snapshot] : []));
+    if (snapshots.length) {
+      let dir: string | undefined;
+      try { dir = this.dir; } catch { /* not mounted: left to the sweep */ }
+      if (dir) for (const name of snapshots) rmSync(join(dir, name), { force: true });
+    }
     this.db.prepare("DELETE FROM file_changes WHERE id IN (SELECT value FROM json_each(?))").run(JSON.stringify(ids));
   }
 

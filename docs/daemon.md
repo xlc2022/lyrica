@@ -440,9 +440,10 @@ Each active thread is one Pi session from `openThreadSession`, with
   (`ThreadTombstone`: ID, deletion time, the memories citing it; `404` when
   none) answers where the thread was. `linkFor` gives a citation of it
   `deleted: true`.
+  Its settings (grants, machines, allowed commands) and the Files panel's notes for it go at once from user.db.
   Its files go at once while the home is mounted (`forgetThreadFiles`,
   daemon/src/sweep.ts): the change records of what its calls did and their
-  snapshots, its folder under `threads/`, its lasting `/tmp`, its own `/shared/<id>/`, its Claude Code folder and its browser profile,
+  snapshots (the records go even when it isn't, and the snapshots at the next sweep), its folder under `threads/`, its lasting `/tmp`, its own `/shared/<id>/`, its Claude Code folder and its browser profile,
   removed without holding up `lyricad`. The nightly sweep, or Sweep orphan data in Settings → Reset, takes any folder
   left behind. While the delete runs, `GET …/deleting` says which step it is on (stopping its work, its messages
   and memories, its files) for the delete dialog, and a second delete of it is refused.
