@@ -143,7 +143,7 @@ administrator pairs or manages them; a personal host lives in its user's
   session resumption. `modelRuntimeFor` gives each host's Pi provider this
   fetch, so chat, tools and streaming go through the host's `/v1`. It does
   so by wrapping the runtime's `prepareRequest`, an internal of Pi's
-  `ModelRuntime` checked against Pi 1.4.0; re-check it when Pi is upgraded.
+  `ModelRuntime` checked against Pi 1.6.0; re-check it when Pi is upgraded.
   The same wrapper adds each offering's saved settings.
 - A host that can't be reached, or doesn't answer within 30 seconds, is a
   plain reason ("blackwell can't be reached."), a 502 through the daemon.
@@ -776,8 +776,8 @@ declares create, edit, mask, references, sizes, count and tier mappings.
   unmodified Codex (`codex.ts`, the owner's choice; docs/briefs/codex-images.md):
   one `codex exec` per image with `--json --ephemeral --ignore-user-config`,
   approvals off, analytics off (`-c analytics.enabled=false`), `image_generation` on and every other Codex tool off
-  (`CODEX_DISABLED`: its shell, browser, computer use, apps, plugins,
-  memories and goals,
+  (`CODEX_DISABLED`: its shell, browsers, computer use, apps, plugins,
+  memories, goals and subagents,
   each passed when the installed Codex's `codex features list` has it, since
   nixpkgs' version isn't pinned; a Codex that can't list them is refused),
   the instructions and prompt on stdin (never argv), an edit's image and any

@@ -739,7 +739,7 @@ else is loaded (on a 3090 a 2912×2912 image takes about 25 seconds at a 19
 GB peak). It makes one image per request, at 8 megapixels by default, as
 PrunaAI recommends: smaller ones look oversharpened. Both need ComfyUI
 0.44 or later, so update the host before adding them (an Update, or `git
-pull && host/install.sh`), which rebuilds its ComfyUI image (now 0.45.3);
+pull && host/install.sh`), which rebuilds its ComfyUI image (now 0.46.2);
 an older image doesn't have their nodes. Their weights are under the
 MiniMax H3 Community License, as H3 Turbo's are.
 

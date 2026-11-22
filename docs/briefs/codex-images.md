@@ -42,7 +42,7 @@ Settings → Claude Code and Codex.
 
 Later (owner, 2026-10-18): the Codex sign-in shares one Settings section
 with Claude Code, **Claude Code and Codex**; the disabled tools are those
-the installed Codex lists, since NixOS's isn't 0.163.0.
+the installed Codex lists, since NixOS's isn't 0.171.0.
 
 ## Out of scope
 

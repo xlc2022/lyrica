@@ -1,8 +1,8 @@
 diff --git a/ggml/src/ggml-cuda/fattn.cu b/ggml/src/ggml-cuda/fattn.cu
-index bb34e01..3d1be9c 100644
+index 10aa5af..aadc937 100644
 --- a/ggml/src/ggml-cuda/fattn.cu
 +++ b/ggml/src/ggml-cuda/fattn.cu
-@@ -674,7 +674,9 @@ static best_fattn_kernel ggml_cuda_get_best_fattn_kernel(const int device, const
+@@ -732,7 +732,9 @@ static best_fattn_kernel ggml_cuda_get_best_fattn_kernel(const int device, const
          if (can_use_vector_kernel && Q->ne[1] * gqa_ratio_eff <= 2) {
              return BEST_FATTN_KERNEL_VEC;
          }
@@ -14,9 +14,10 @@ index bb34e01..3d1be9c 100644
          }
          return BEST_FATTN_KERNEL_MMA_F16;
 diff --git a/ggml/src/ggml-cuda/mmq.cu b/ggml/src/ggml-cuda/mmq.cu
+index c9bcbc2..8176c21 100644
 --- a/ggml/src/ggml-cuda/mmq.cu
 +++ b/ggml/src/ggml-cuda/mmq.cu
-@@ -449,6 +449,11 @@
+@@ -458,6 +458,11 @@ bool ggml_cuda_should_use_mmq(enum ggml_type type, int cc, int64_t ne11, int64_t
  #ifdef GGML_CUDA_FORCE_MMQ
      return true;
  #endif //GGML_CUDA_FORCE_MMQ
@@ -27,4 +28,4 @@ diff --git a/ggml/src/ggml-cuda/mmq.cu b/ggml/src/ggml-cuda/mmq.cu
 +    }
  
      if (GGML_CUDA_CC_IS_NVIDIA(cc)) {
-         return !fp16_mma_hardware_available(cc) || ne11 < MMQ_DP4A_MAX_BATCH_SIZE;
+         return !fp16_mma_hardware_available(cc) || ne11 < MMQ_DP4A_MAX_BATCH_SIZE || n_experts > 0;

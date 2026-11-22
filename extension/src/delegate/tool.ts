@@ -1,7 +1,7 @@
 import type { ExtensionAPI, ExtensionContext, ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import { LIVE_STATUSES, type Role, type SubagentRecord } from "@lyrica/core";
 import { Type, type Static } from "typebox";
-import { StringEnum } from "@earendil-works/pi-ai";
+import { StringEnum } from "../string-enum.ts";
 import { memorySections } from "../memory.ts";
 import { codeTaskText, EXECUTION_GUIDELINES, needsExecutionGuidelines } from "../code.ts";
 import { setToolsOff } from "../gate.ts";

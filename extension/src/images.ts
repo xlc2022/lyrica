@@ -3,7 +3,7 @@ import type { ExtensionContext, ExtensionFactory } from "@earendil-works/pi-codi
 import { CloudModelForbidden, HostRefused, ratioSize, isRestricted, NoModel, loraFiles, loraName, MAX_LORAS, modelName, type AppliedLora, type CallContext, type LoraAsk, type ImageRequest, type JobProgress, type Models, type Resolution,
   type ThreadImages, type VideoRequest, type VideoUpscaleRequest, type WorkspaceSettings, LONGEST_VIDEO_SECONDS, MAX_INPUT_IMAGE_BYTES, MAX_SEED, MAX_UPSCALE_SEED, COLOR_MATCH, JOB_SETTINGS, type JobSettings, imageTask, type Task } from "@lyrica/core";
 import { Type, type Static } from "typebox";
-import { StringEnum } from "@earendil-works/pi-ai";
+import { StringEnum } from "./string-enum.ts";
 import type { Approval, ApprovalRequest } from "./workspace.ts";
 
 /** `picked`: her pick among attempts made earlier, shown again last; its model is the earlier part's, so empty here. */

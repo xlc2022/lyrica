@@ -1,6 +1,6 @@
 import type { ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import { Type, type Static } from "typebox";
-import { StringEnum } from "@earendil-works/pi-ai";
+import { StringEnum } from "./string-enum.ts";
 import {
   ASK_GUIDELINE, CHILD_WAKES, isQuestionCall, ROOT_LIMITS, ROOT_TOOL, rootStep, SECRET_LIMITS, SECRET_TOOL, secretStep, SUDOERS_FILE, SUDOERS_HOW, normalizeThreadArguments, cleanAsk, CHILD_THREAD_GUIDELINES, cleanSteps, MENTION_GUIDELINE, pickThread, PROJECT_CHAT_GUIDELINES, PROJECT_THREAD_GUIDELINES, STEPS_GUIDELINE, STEPS_LIMITS, threadLine, describe, parseSchedule, ROUTINE_GUIDELINE, WAKEUP_GUIDELINE, WAKEUP_LIMITS, WATCH_GUIDELINE,
   type ChildInfo, type StartRequest, type ThreadsLimits,

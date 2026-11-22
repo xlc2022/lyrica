@@ -287,7 +287,7 @@ describe("child threads", () => {
     expect((await ada.patch(`${childPath(id)}/settings`, { unlogged: false })).status).toBe(400);
     // Its own attempt to start a child thread is refused: its threads tool has no start.
     const msgs = await until(() => messages(childPath(id)), (m) => m.some((x) => x.parts.some((p) => p.type === "tool" && p.result !== undefined)));
-    expect(msgs.flatMap((m) => m.parts).find((p) => p.type === "tool")).toMatchObject({ name: "threads", isError: true, result: expect.stringMatching(/action: must be equal to one of the allowed values/) });
+    expect(msgs.flatMap((m) => m.parts).find((p) => p.type === "tool")).toMatchObject({ name: "threads", isError: true, result: expect.stringMatching(/action: expected one of/) });
     // A folder the parent doesn't have is refused.
     parent.push(start("Elsewhere", "Look around.", { folders: ["/etc"] }), { text: "No." });
     expect(toolEnd(await say("look in /etc"))).toMatchObject({ isError: true, result: expect.stringMatching(/folders its parent has/) });

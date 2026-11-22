@@ -1,4 +1,4 @@
-import { StringEnum } from "@earendil-works/pi-ai";
+import { StringEnum } from "./string-enum.ts";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { PoolView } from "@lyrica/core";
 import { Type } from "typebox";

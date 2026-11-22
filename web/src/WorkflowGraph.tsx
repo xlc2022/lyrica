@@ -5,7 +5,7 @@
 import "@xyflow/react/dist/style.css";
 import {
   Background, Controls, Handle, Position, ReactFlow, ReactFlowProvider, useReactFlow,
-  type Connection, type Edge, type EdgeChange, type Node, type NodeChange, type NodeProps,
+  type Connection, type Edge, type EdgeChangeset, type Node, type NodeChangeset, type NodeProps,
 } from "@xyflow/react";
 import { useContext, useEffect, useMemo, useRef, useState } from "react";
 import { blankOf, BLANK_WORD, InputRow, isLink, LoaderWords, type Graph, type NodeTypes, type Value, type WNode } from "./Workflows.tsx";
@@ -188,7 +188,8 @@ function Canvas({ graph, layout, blanks, types, editable, guessed, onChange, onL
     onChange(next);
     if (selected && gone.has(selected)) setSelected(null);
   };
-  const onNodesChange = (changes: NodeChange<Node<NodeData>>[]) => {
+  const onNodesChange = (changeset: NodeChangeset<Node<NodeData>>) => {
+    const changes = changeset.toArray();
     let moved: Layout | null = null;
     for (const c of changes) {
       if (c.type === "position" && c.position) (moved ??= { ...layout })[c.id] = [Math.round(c.position.x), Math.round(c.position.y)];
@@ -200,7 +201,8 @@ function Canvas({ graph, layout, blanks, types, editable, guessed, onChange, onL
     const removed = changes.filter((c) => c.type === "remove").map((c) => c.id);
     if (removed.length) remove(removed);
   };
-  const onEdgesChange = (changes: EdgeChange[]) => {
+  const onEdgesChange = (changeset: EdgeChangeset) => {
+    const changes = changeset.toArray();
     for (const c of changes) if (c.type === "select") setLink((s) => (c.selected ? c.id : s === c.id ? null : s));
     const removed = changes.filter((c) => c.type === "remove").map((c) => edges.find((e) => e.id === c.id)).filter((e): e is Edge => !!e);
     if (!removed.length) return;

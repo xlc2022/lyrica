@@ -510,30 +510,30 @@ comfy-kitchen==0.2.41 \
     --hash=sha256:ada56f512fbc6c08b4f496a1fc4e1a6d842797e0ee6d3af4d90424a5162a0a63 \
     --hash=sha256:ca16d4c4f4cdd8fb76af7261b9fcc4596b2111511077dd7cd7f4884b5f2686af \
     --hash=sha256:cbe8f7fd9aa42e2af01a31d235fd4de59eb429ecc5a58287eed0975195b68707
-comfyui-embedded-docs==0.5.16 \
-    --hash=sha256:5bea84eea69d6370c37b725e97ed9be3729a417b41d0e17a77709001cb959b96 \
-    --hash=sha256:d677c637610a9ccfdedc6ac8df8af40006caa297e60a76d669545c1fbf488826
-comfyui-frontend-package==1.58.5 \
-    --hash=sha256:d1eb47e5a3b71b0191e42b0633c66eb8b362c46c22cd0036524fd1f5ac9096ce \
-    --hash=sha256:f407599249471e2e3c85084358f293f33d0bff8a59e2f2a6e26d638802268dec
-comfyui-workflow-templates==0.11.107 \
-    --hash=sha256:2084e434044a959da7f1affc2d75c5c84697bf5a1d2e88c689d01a70a57389f8 \
-    --hash=sha256:743acd9690742e46af21f4e664dec4e8128f9e556bcfa28f72f93b55704bc517
-comfyui-workflow-templates-core==0.3.398 \
-    --hash=sha256:4a901aa5dcd667b157c8ca1e14eae5941df7590faa6b96c228ec1a9f04515fe5 \
-    --hash=sha256:6a9b01bc962eddbe003a661ed8d229c566afe0753ad9c12a12a5becea8f7825a
-comfyui-workflow-templates-json==0.1.133 \
-    --hash=sha256:5a026b0b9ef4474e844ca5903bee875f46fb289a67aaa624790f62a324e5a5a5 \
-    --hash=sha256:8d09bfcff04b8f76cc7ebfc18c4fc1de4f06c33c7c1b2bdeeae16e54c21548de
+comfyui-embedded-docs==0.5.17 \
+    --hash=sha256:2e2d2e8693e47f3770595725db36aa995eed21f89bef247ab183678a040a6583 \
+    --hash=sha256:2e8744f0c5c958b36c8af036a0c55425173ab1fde4fdd0b30b0b5a50d7e6f495
+comfyui-frontend-package==1.59.6 \
+    --hash=sha256:68f828837a6d4c43b4f70df982452ab76aefd9108dfd70ea22cf928e9bfccdd2 \
+    --hash=sha256:7564e716da2d1e122612f067bcffda6c3b9bc766f3b9f8c85fc44cf1d9c54f85
+comfyui-workflow-templates==0.11.114 \
+    --hash=sha256:6afc2a2e81930f4ba4d96dc8dcb32a48e08a767be21bb03b31800abb542d520b \
+    --hash=sha256:e0bc6390575a19305e63f4d6d1c3b2c8327a079416912f7f70605c30bc0101e4
+comfyui-workflow-templates-core==0.3.404 \
+    --hash=sha256:7913d7e0ab743e377d33f11b48dcdf20e3768976e63bb4f07b7a43fcfaee34c4 \
+    --hash=sha256:cd807ae202ec58bd3c2578e1f9258d8bc00765d568e06574632a06586703334b
+comfyui-workflow-templates-json==0.1.139 \
+    --hash=sha256:554cf9e46d21f8ff886462cb01543ccf199fd8ab89dcd08e95dc8dcb34e4e8a6 \
+    --hash=sha256:95a4d4213d6b416dbd2db8a775966ab546ac4f29e42425d5cb22ead72d9f95d6
 comfyui-workflow-templates-media-api==0.3.84 \
     --hash=sha256:6bd5c496e368e5e40dd87dfe25f066e24d57f3602888ba3df80013a88d060259 \
     --hash=sha256:c2d6a5999ac39e4f37f47ae231c92557defe5addb2cc6ab5c11410b4d5a2910a
 comfyui-workflow-templates-media-assets-01==0.1.48 \
     --hash=sha256:7733ed12867e95e6b8b39be20bcc73579c28e97e5a44086ffb977cc2c1c78c43 \
     --hash=sha256:b12c439f52a8545b0a8e321e8f62d7aa881a4bd8dc9c889c3bbde97b10e7120f
-comfyui-workflow-templates-media-assets-02==0.1.32 \
-    --hash=sha256:1f61bf9258b96f0fa928a32c976d0c5a0daa9488da69852f1e4c9dbb22738670 \
-    --hash=sha256:dc3260a5a7c551ddde06012076c70e993dc54d5f38e2aef1baf757a4882b46c3
+comfyui-workflow-templates-media-assets-02==0.1.36 \
+    --hash=sha256:2ddacdd76e2adec35c0a5c3b4aa009e827bd6892b2f3e8a61d28e2a9874f08c8 \
+    --hash=sha256:6ff018884bfe061ffe58f14a4630aa32320085e9c8106530b4fa8424797a984c
 comfyui-workflow-templates-media-image==0.3.160 \
     --hash=sha256:88dcf749302c6a12f5b803dfb46724b4c8acc31d1117cecff51672d9bd85eb18 \
     --hash=sha256:d4a5c5541c7088f6adb1c7da41f5d7c1c14a037eda6a61cd8b4b76c251faaa93

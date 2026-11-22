@@ -8,7 +8,7 @@ sketches; names may move, but the boundaries may not.
 ## Stack and layout
 
 - TypeScript (ESM) on Node 24 LTS, 24.15 or later (22.22.2 or later on 22 still runs it), using npm workspaces.
-- Pi pinned exactly: `@earendil-works/pi-coding-agent@1.4.0`.
+- Pi pinned exactly: `@earendil-works/pi-coding-agent@1.6.0` (with `pi-ai` and `pi-mcp` at the same version).
 - SQLCipher through `better-sqlite3-multiple-ciphers`. Argon2id through
   `@node-rs/argon2`.
 - Tests with `vitest`. Type checks with `tsc --noEmit`.
@@ -1432,7 +1432,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   - It edits `event.systemPromptOptions`. The persona core goes in
     `customPrompt`. WAKE, the page index, the thread's pinned messages, and
     "who you're talking with" go in `sections`.
-  - In Pi 1.4.0, setting `customPrompt` also drops Pi's default tool list and
+  - In Pi 1.6.0, setting `customPrompt` also drops Pi's default tool list and
     rules. The extension therefore rebuilds them from each tool's own snippets
     and guidelines (`toolGuidance`) into a `tools` section. Any tool
     registered with a snippet and guidelines appears there automatically.
@@ -1577,7 +1577,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   overflow text to LM Studio's "Context size has been exceeded" so Pi
   compacts and retries (docs/models.md, Local servers).
 - **Tool definitions are resent with every reply** (principle 8): a
-  model-facing choice of strings is Pi's `StringEnum` (`"enum"`), not a union
+  model-facing choice of strings is a `StringEnum` (`"enum"`; `extension/src/string-enum.ts`, Pi's shape typed for TypeBox), not a union
   of literals, which is shorter and accepted by every provider; a tool's
   description says what each action is for once, and its parameters say how
   to call it.
@@ -2095,7 +2095,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   most one second and rewrites the turn's call record. Each successful
   assistant message calls `reportUp` for its provider.
 - `modelRuntimeFor` wraps `ModelRuntime.prepareRequest`, an internal of Pi
-  1.4.0 (as are `defaultBuiltins`, `builtins` and `rebuildProviders`, used to
+  1.6.0 (as are `defaultBuiltins`, `builtins` and `rebuildProviders`, used to
   empty the catalog); re-check them when Pi is upgraded. The wrapper gives a
   host provider its `fetchFor` fetch, and for every offering adds an
   `onPayload` that merges `payloadFields(offeringSettings(…).values, …)` into
