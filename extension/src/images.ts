@@ -439,8 +439,9 @@ async function executeVideo(o: ImageTools, id: string, p: ImageArgs, signal?: Ab
   // An aspect ratio goes to the host as it is, which keeps the recipe's area and snaps to its size step.
   if (p.action === "edit_video" && (p.size || p.aspectRatio)) throw new Error("edit_video keeps the clip's own shape: leave size and aspectRatio out.");
   const still = p.action === "animate" || p.action === "motion" ? await o.files.read(p.image!, MAX_INPUT_IMAGE_BYTES) : undefined;
-  // Its first frame is a photo of the user when the still was one, or the clip it comes from is in a marked folder.
-  const portrait = !!still?.portrait || o.files.inPortraitFolder(p.video ?? "");
+  // Its first frame is a photo of the user when the still was one, or the thread's folder is marked; and always when it
+  // comes from a clip, since no clip records whether it holds the user (one animated from their photo doesn't say so).
+  const portrait = !!still?.portrait || !!p.video || o.files.inPortraitFolder("");
   const request: VideoRequest = { prompt: p.action === "edit_video" ? p.instruction! : p.prompt!, ...(still ? { image: still.input } : {}),
     ...(p.action === "motion" ? { drive: await o.files.readClip(p.video!) } : {}), ...(p.action === "extend" ? { extend: await o.files.clipEnd(p.video!, signal) } : {}),
     ...(p.action === "edit_video" ? { source: await o.files.readClip(p.video!) } : {}),
@@ -515,5 +516,5 @@ async function executeUpscaleVideo(o: ImageTools, id: string, p: ImageArgs, sign
   }
   const { text, video, poster } = await make(signal, onProgress);
   return { content: [{ type: "text" as const, text: `${text} Its first frame:` },
-    { type: "image" as const, data: Buffer.from(poster.bytes).toString("base64"), mimeType: poster.type }], details: o.files.inPortraitFolder(p.video!) ? markPhoto({ video }) : { video } };
+    { type: "image" as const, data: Buffer.from(poster.bytes).toString("base64"), mimeType: poster.type }], details: markPhoto({ video }) };
 }

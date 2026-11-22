@@ -375,6 +375,9 @@ describe("image tool results (principles 1 and 4)", () => {
     expect(s.workstation.server.videos).toEqual([{ recipe: "long", prompt: "She keeps walking", extend: mp4.toString("base64"), tail: true, duration: 6 }]);
     expect(s.joins.map((j) => j.path)).toEqual(["/workspace/uploads/walk.mp4"]);
     expect((out.details as { video: { duration: number } }).video.duration).toBe(10);
+    // A clip doesn't record whether it holds the user, so a clip made from one counts, in a folder not marked too.
+    expect(s.settings.isPortraitFolder("web/a")).toBe(false);
+    expect(out.details).toMatchObject({ [PHOTO_OF_USER]: true });
     await expect(s.run({ action: "extend", prompt: "x" })).rejects.toThrow("extend needs video");
     // A clip given to video is refused, not ignored: a new clip isn't the one they meant to go on.
     await expect(s.run({ action: "video", prompt: "x", video: "/workspace/uploads/walk.mp4" })).rejects.toThrow("video doesn't take video: extend makes a clip longer");
@@ -392,6 +395,8 @@ describe("image tool results (principles 1 and 4)", () => {
     expect((out.details as { video: unknown }).video).toMatchObject({ type: "video", model: "shared.workstation/Art", width: 2560, height: 1408, audio: true, path: expect.stringMatching(/^\/workspace\/videos\//) });
     expect(out.content).toContainEqual({ type: "text", text: expect.stringContaining("Upscaled with Art on workstation: 5.0 s at 2560×1408, with sound.") });
     expect(s.workstation.server.upscaled).toEqual([{ recipe: "art", video: mp4.toString("base64"), scale: 2 }]);
+    expect(s.settings.isPortraitFolder("web/a")).toBe(false);
+    expect(out.details).toMatchObject({ [PHOTO_OF_USER]: true });
     expect(s.models.recentCalls(s.ada.id).map(c => c.task)).toEqual(["image.upscale"]);
     await expect(s.run({ action: "upscale_video" })).rejects.toThrow("upscale_video needs video");
     await expect(s.run({ action: "upscale_video", video: "/workspace/uploads/walk.mp4", image: "/workspace/uploads/landscape.png" })).rejects.toThrow("upscale_video doesn't take image");
