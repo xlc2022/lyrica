@@ -2,6 +2,7 @@
 import { hostError, HostIdentityChanged, HostRefused } from "./host.ts";
 import { validateLoras, type LoraAsk } from "./loras.ts";
 import { withProgress, type JobProgress } from "./progress.ts";
+import { FILES, postJob, readAnswer, type JobAnswer, type JobFiles } from "./job-files.ts";
 
 export interface ImageInput { bytes: Uint8Array; type: "image/png" | "image/jpeg" | "image/webp" }
 const QUALITY = { fast: "low", quality: "high" } as const;
@@ -134,7 +135,7 @@ async function answer(t: Target, path: string, body: string | FormData, headers:
     throw new HostRefused(err?.code ?? (res.status >= 500 || res.status === 429 ? "unavailable" : "invalid"), `image endpoint answered ${res.status}${said}`);
   }
   let out: any;
-  try { out = await res.json(); }
+  try { out = await readAnswer(res); }
   catch { throw new HostRefused("invalid", "The image endpoint returned an invalid response."); }
   if (isRefusal(out?.error?.code) || isRefusal(out?.error?.type)) throw imageRefusal();
   return out;
@@ -146,7 +147,6 @@ function cloudFields(e: any): string {
   return parts.length ? ` (${parts.join(", ")})` : "";
 }
 
-const base64 = (i: ImageInput) => Buffer.from(i.bytes).toString("base64");
 
 /** Around one megapixel in a `width:height` shape (1:8 to 8:1), on a 16-pixel grid, 2048 at most a side: a cloud model's size for an aspect ratio. A model host keeps its recipe's own area instead. */
 export function ratioSize(ratio: string): { width: number; height: number } {
@@ -231,13 +231,16 @@ export async function imageAt(t: Target, r: ImageRequest, signal?: AbortSignal, 
   }
   if (!t.modelId.startsWith("recipe/")) throw new HostRefused("invalid", "a host image model must be a confirmed recipe");
   // Explicit fields only: recipe defaults apply, and callers cannot name parts. LoRAs are only those the recipe takes.
-  const fields = { recipe: t.modelId.slice(7), ...(t.loras?.length ? { loras: t.loras } : {}),
-    ...(r.action === "upscale" ? { image: base64(r.image), ...(r.scale === undefined ? {} : { scale: r.scale }), ...(r.maxSize === undefined ? {} : { maxSize: r.maxSize }),
+  const fields: Record<string, unknown> = { recipe: t.modelId.slice(7), ...(t.loras?.length ? { loras: t.loras } : {}),
+    ...(r.action === "upscale" ? { ...(r.scale === undefined ? {} : { scale: r.scale }), ...(r.maxSize === undefined ? {} : { maxSize: r.maxSize }),
       ...(r.colorMatch === undefined ? {} : { colorMatch: r.colorMatch }), ...(r.seed === undefined ? {} : { seed: r.seed }) } : {
-      prompt: r.prompt, ...(r.count === undefined ? {} : { count: r.count }), ...samplingFields(r), ...(r.references ? { references: r.references.map(base64) } : {}),
-      ...(r.action === "create" ? { ...r.size, ...(r.aspectRatio === undefined ? {} : { aspectRatio: r.aspectRatio }) } : { image: base64(r.image), ...(r.mask ? { mask: base64(r.mask), ...(r.replace ? { replace: true } : {}) } : {}) }),
+      prompt: r.prompt, ...(r.count === undefined ? {} : { count: r.count }), ...samplingFields(r),
+      ...(r.action === "create" ? { ...r.size, ...(r.aspectRatio === undefined ? {} : { aspectRatio: r.aspectRatio }) } : r.mask && r.replace ? { replace: true } : {}),
     }) };
-  const send = (body: object) => withProgress(t, onProgress, (tag) => answer(t, `/host/v1/images/${r.action}`, JSON.stringify(body), { "content-type": "application/json", ...tag }, signal));
+  // The images go as bytes in a form (job-files.ts).
+  const files: JobFiles = r.action === "upscale" ? { image: r.image.bytes }
+    : { ...(r.references ? { references: r.references.map((i) => i.bytes) } : {}), ...(r.action === "edit" ? { image: r.image.bytes, mask: r.mask?.bytes } : {}) };
+  const send = (body: Record<string, unknown>) => withProgress(t, onProgress, (tag) => postJob(body, files, (b, type) => answer(t, `/host/v1/images/${r.action}`, b, { ...type, ...tag }, signal)));
   let out;
   try { out = await send(fields); }
   catch (e) {
@@ -247,7 +250,13 @@ export async function imageAt(t: Target, r: ImageRequest, signal?: AbortSignal, 
     out = await send({ ...rest, ...ratioSize(r.aspectRatio) });
   }
   if (!Array.isArray(out.images) || !out.images.length) throw new HostRefused("invalid", "image host returned no images");
-  const images = out.images.map((i: { png: string; seed?: number }) => ({ ...cleanPng(Buffer.from(i.png, "base64")), ...(i.seed === undefined ? {} : { seed: i.seed }) }));
+  // A form's images are its `images` parts, in the order its list names them; JSON's are base64 in the list.
+  const pngs = (out as JobAnswer)[FILES]?.images ?? [];
+  const images = out.images.map((i: { png?: string; seed?: number }, n: number) => {
+    const png = typeof i.png === "string" ? Buffer.from(i.png, "base64") : pngs[n];
+    if (!png) throw new HostRefused("invalid", "image host returned no images");
+    return { ...cleanPng(png), ...(i.seed === undefined ? {} : { seed: i.seed }) };
+  });
   const sampling = samplingOf(out), loras = appliedLoras(out.loras), unused = unusedSettings(out.unused);
   return { images, ...(sampling ? { sampling } : {}), ...(loras ? { loras } : {}), ...(unused ? { unused } : {}) };
 }

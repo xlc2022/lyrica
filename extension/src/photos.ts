@@ -3,22 +3,12 @@
 // (an edit of their photo, a read of a file marked as one, a clip's first frame) out of a cloud chat model's request.
 // A tool result that holds one says so in its details, which the thread's stored entry keeps; every request a
 // thread's model runtime sends to a cloud endpoint leaves those images out unless the setting allows them now.
-import type { WorkspaceSettings } from "@lyrica/core";
 
 /** The details key a tool result holding a photo of the user sets. */
 export const PHOTO_OF_USER = "photoOfUser";
 
 /** In place of a photo of the user left out of a cloud model's request. */
 export const PHOTO_LEFT_OUT = "[A photo of the user, left out: their photo setting keeps photos of them from cloud models. Don't describe it or say you saw it.]";
-
-/** The local day an approval under Ask lasts for. */
-export const dayOf = (date: Date) => `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
-
-/** Whether a photo of the user may go to a cloud model now without asking: Always, or Ask approved today. */
-export function photosToCloud(s: Pick<WorkspaceSettings, "photoCloudPolicy" | "photoCloudApproved">, now = new Date()): boolean {
-  const policy = s.photoCloudPolicy();
-  return policy === "always" || (policy === "ask" && s.photoCloudApproved(dayOf(now)));
-}
 
 /** A tool result's details, marked as holding a photo of the user. */
 export function markPhoto<T>(details: T): T & { [PHOTO_OF_USER]: true } {

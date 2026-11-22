@@ -3,7 +3,7 @@ import { EventEmitter } from "node:events";
 import { posix } from "node:path";
 import type { AgentSession, ExtensionFactory, SessionEntry } from "@earendil-works/pi-coding-agent";
 import {
-  DelegationStore, isRestricted, sandboxHas, sandboxTools, LIVE_STATUSES, claudeAlias, isClaudeModel, matchModel, meansClaude, namedOutright, refId, renderThreadMentions, sameModelName, singledOut, unmatched,
+  DelegationStore, isRestricted, photosToCloud, sandboxHas, sandboxTools, LIVE_STATUSES, claudeAlias, isClaudeModel, matchModel, meansClaude, namedOutright, refId, renderThreadMentions, sameModelName, singledOut, unmatched,
   type CallContext, type ClaudeAlias, type CouncilSpec, type Grant, type LoopSpec, type Memory, type ModelRef, type Models, type Pool, type PoolStore, type Role,
   type ExecutionTarget, type Step, type SubagentRecord, type SubagentStatus, type Tier, type Usage, type User, type Users, type Workflow, type WorkflowSpec, type Workspace,
 } from "@lyrica/core";
@@ -17,7 +17,6 @@ import { createWebExtension, type WebTools } from "../web.ts";
 import { checkoutsOf, repoRules } from "../code-repositories.ts";
 import { createImageExtension } from "../images.ts";
 import { createLookExtension } from "../look.ts";
-import { photosToCloud } from "../photos.ts";
 import { createSyntaxExtension } from "../syntax.ts";
 import { createWorkspaceExtension, type Approval, type ApprovalRequest } from "../workspace.ts";
 import { rolesFor } from "./roles.ts";

@@ -3,8 +3,8 @@
 // local-only thread gets local models only, and a photo of the user reaches a cloud model only under the user's own
 // photo setting. The image and the names are never logged; the call is recorded like any other (task, model).
 import { posix } from "node:path";
-import { WORKDIR, type CallContext, type Models, type Pool, type Workspace } from "@lyrica/core";
-import { modelRuntimeFor, photosToCloud, piModelFor, timedReply } from "@lyrica/extension";
+import { photosToCloud, WORKDIR, type CallContext, type Models, type Pool, type Workspace } from "@lyrica/core";
+import { modelRuntimeFor, piModelFor, timedReply } from "@lyrica/extension";
 import type { AutoName } from "./api.ts";
 
 /**

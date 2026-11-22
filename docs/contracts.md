@@ -508,6 +508,8 @@ class Models {                                              // new Models(keyrin
   // with extend) answers, so no clip or first frame reaches a cloud model. A recipe whose `longestSeconds` is under `duration` is skipped
   // ("it makes videos of at most N s"); a host recipe that chains clips (MiniMax H3) answers up to 60 s as one clip.
   // POST /host/v1/videos/create with explicit fields only; two hours at most, per 5 s asked (videoTimeout), since a chain gives each clip two hours.
+  // Host image and video jobs send their files, and read their results, as bytes in a multipart form (models/job-files.ts
+  // postJob, readAnswer; host/API.md, "Sending files"), and as base64 JSON again when a host from before forms refuses one.
   upscaleVideo(ctx, request: VideoUpscaleRequest { video: Uint8Array (an MP4 of at most 64 MB); scale?: 1-4; maxSize?: 256-8192; colorMatch?; seed?: 0 to MAX_UPSCALE_SEED }, { signal?, beforeSend?, onProgress?, first? }?): Promise<{ video: GeneratedVideo; resolution }>
   // The `image.upscale` task's list; only a host recipe that lists `upscale_video` (Offering.upscalesClips) answers ("it doesn't
   // upscale clips"). POST /host/v1/videos/upscale with explicit fields only; two hours at most (VIDEO_TIMEOUT_MS).
@@ -1396,7 +1398,11 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   give fewer images, clips or frames, before any model call; a cloud model is
   refused in a restricted thread, and a photo of the user (a portrait read,
   any clip's stills, any recent image not from `browse`) goes to one only
-  through `allowPortrait(…, "look")`, the image tool's daily question. The
+  through `allowPortrait(…, "look")`, the image tool's daily question. Each
+  image goes through Pi's `resizeImage` first (at most 2,000 x 2,000 pixels
+  and 4.5 MB of base64, as Pi's `read` sends one; `fitImage`), so eight
+  20 MB originals fit the host's 64 MiB and a cloud model's per-image
+  limit, and its `imageTokens` are counted on what is sent. The
   call is recorded as task `vision` with its image count. The result is
   "<model> sees:" and the answer; `details: { model, images }`. Plan mode
   leaves it on (`PLAN_TOOLS`), and its input is checked for secrets as
@@ -1658,6 +1664,8 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     (`{ type: "image", data: base64, mimeType: "image/png" }`) plus path text and “Made with <model> on <host or endpoint name>” (with the steps and CFG asked for, and the seeds),
     then “With LoRA <name> (<strength>), …” for the LoRAs a host job applied (the recipe's own, then the call's),
     with a note when a named model matched none and `Passed over first: …` when it fell back.
+    A result made from a photo of the user, and a clip's first frame, carry `photoOfUser: true` in their details
+    (photos.ts markPhoto), so a cloud chat model gets the image only under the photo setting (docs/daemon.md).
     A content refusal returns `isError: true` with the refusal's message
     (fixed, or Codex's quoted reply) and details
     `{ imageRefusal: { code: "image_refusal", offeringId, endpointId } }`;
@@ -3043,6 +3051,9 @@ imageFiles(t): ThreadImages
 // ThreadImages.read also marks bytes whose SHA-256 was recorded as a derived portrait, regardless of path; and every read
 //   once this thread's folder is marked (a portrait result was saved there), or a read of a marked folder at
 //   /thread-workspaces/<id> or /shared (folderOf, Workspace.originKey).
+// ThreadImages.isPortrait(path): Promise<boolean>; as read would mark it (a relative path is under /workspace), for Pi's
+//   `read` of an image: the image tool's tool_result handler then sets `photoOfUser` (photos.ts) in its details. One that
+//   can't be read or hashed counts as a portrait.
 // ThreadImages.readClip(path): Promise<Uint8Array>; a workspace MP4 (a driving clip, one to edit or upscale) via ThreadFiles, at most 64 MB, in memory.
 // ThreadImages.clipEnd(path, signal?): Promise<Uint8Array>; a clip's last 2 s from the keyframe before them, copied as they are
 //   (ThreadFiles.clipTail, ffmpeg in the sandbox, at most MAX_EXTEND_BYTES as it streams): what `extend` sends a host, with `tail: true`.

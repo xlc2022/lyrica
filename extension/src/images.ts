@@ -1,11 +1,11 @@
 // Principles 1, 2 and 8: one image tool, which also makes clips, with portrait consent checked at each resolved provider.
 import type { ExtensionContext, ExtensionFactory } from "@earendil-works/pi-coding-agent";
-import { CloudModelForbidden, HostRefused, ratioSize, isRestricted, NoModel, loraFiles, loraName, MAX_LORAS, modelName, type AppliedLora, type CallContext, type LoraAsk, type ImageRequest, type JobProgress, type Models, type Resolution,
+import { CloudModelForbidden, dayOf, HostRefused, ratioSize, isRestricted, NoModel, loraFiles, loraName, MAX_LORAS, modelName, type AppliedLora, type CallContext, type LoraAsk, type ImageRequest, type JobProgress, type Models, type Resolution,
   type ThreadImages, type VideoRequest, type VideoUpscaleRequest, type WorkspaceSettings, LONGEST_VIDEO_SECONDS, MAX_INPUT_IMAGE_BYTES, MAX_SEED, MAX_UPSCALE_SEED, COLOR_MATCH, JOB_SETTINGS, type JobSettings, imageTask, type Task } from "@lyrica/core";
 import { Type, type Static } from "typebox";
 import { StringEnum } from "./string-enum.ts";
 import type { Approval, ApprovalRequest } from "./workspace.ts";
-import { dayOf, markPhoto } from "./photos.ts";
+import { markPhoto } from "./photos.ts";
 
 /** `picked`: her pick among attempts made earlier, shown again last; its model is the earlier part's, so empty here. */
 export interface ImagePart { type: "image"; paths: string[]; model: string; tier?: "fast" | "quality"; picked?: true }
