@@ -319,6 +319,11 @@ describe("searxngSearch", () => {
     expect(await read({ searxng: () => null, target: () => refused, browser })).toBe("https://shop.example/r answered 403. The site refused a plain fetch and may answer a browser: open the same address with browse.");
     expect(await read({ searxng: () => null, target: () => refused })).toBe("https://shop.example/r answered 403.");
     expect(await read({ searxng: () => null, target: () => gone, browser })).toBe("https://shop.example/r answered 404.");
+    // Counted by status alone: no address reaches the tally.
+    const counted: unknown[][] = [];
+    await read({ searxng: () => null, target: () => refused, tally: (...a) => { counted.push(a); } });
+    await read({ searxng: () => null, target: () => gone, tally: (...a) => { counted.push(a); } });
+    expect(counted).toEqual([["web_fetch", { status: 403, check: undefined }], ["web_fetch", undefined]]);
   });
 
   it("browse answers with the page between the outside markers, and is there only with a browser", async () => {

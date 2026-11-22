@@ -5,7 +5,7 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import { Browser, BROWSE_SCRIPT, BROWSE_UNAPPROVED, BROWSE_UNAPPROVED_FILE, browseFormText, browseFormWarning, sandboxTools, type BrowserProcess } from "../src/index.ts";
+import { BOT_MARKERS, Browser, BROWSE_SCRIPT, BROWSE_UNAPPROVED, BROWSE_UNAPPROVED_FILE, browseFormText, browseFormWarning, sandboxTools, type BrowserProcess } from "../src/index.ts";
 
 // The browse tool's driver against a real Chromium and a site on loopback (docs/briefs/browse.md). The driver runs
 // here as it does in the sandbox, without the sandbox: what is checked is what the user would notice, a form
@@ -49,6 +49,8 @@ describe.skipIf(!chromium)("the browse tool's browser", () => {
         if (url.pathname === "/report") { res.setHeader("content-type", "application/pdf"); res.setHeader("content-disposition", 'attachment; filename="report.pdf"'); return res.end("%PDF-1.4 a report"); }
         if (url.pathname === "/files") return res.end(`<title>Files</title><p><a href="/report">The report</a></p>`);
         if (url.pathname === "/upload") return res.end(`<title>Upload</title><form method="post" action="/ask" enctype="multipart/form-data"><label>Your file <input type="file" name="doc"></label><button>Upload it</button></form>`);
+        if (url.pathname === "/agent") return res.end(`<title>Agent</title><p>${req.headers["user-agent"]}</p><p>${req.headers["sec-ch-ua"]}</p><p>${req.headers["accept-language"]}</p>`);
+        if (url.pathname === "/blocked") { res.statusCode = 403; return res.end(`<title>Just a moment...</title><script>window._cf_chl_opt = {};</script>`); }
         if (url.pathname === "/two") return res.end(`<title>Two</title><p>Cookie: ${req.headers.cookie ?? "none"}</p>`);
         res.end(SHOP);
       });
@@ -65,8 +67,8 @@ describe.skipIf(!chromium)("the browse tool's browser", () => {
   afterEach(async () => { await Promise.all(browsers.splice(0).map((b) => b.close())); posts.length = 0; });
   afterAll(() => { server.close(); rmSync(dir, { recursive: true, force: true }); });
 
-  const browser = (profile: string) => {
-    const b = new Browser(async () => spawn(process.execPath, ["-e", BROWSE_SCRIPT, join(dir, profile), "test"], { stdio: ["pipe", "pipe", "ignore"], env: { ...process.env, CHROME_PATH: chromium } }) as BrowserProcess);
+  const browser = (profile: string, markers = "{}") => {
+    const b = new Browser(async () => spawn(process.execPath, ["-e", BROWSE_SCRIPT, join(dir, profile), markers], { stdio: ["pipe", "pipe", "ignore"], env: { ...process.env, CHROME_PATH: chromium } }) as BrowserProcess);
     browsers.push(b);
     return b;
   };
@@ -87,6 +89,16 @@ describe.skipIf(!chromium)("the browse tool's browser", () => {
     // A number from the page before is gone, and never means something on this one.
     expect((await b.act("3", { action: "click", ref: ref(page.text, "Go") })).fail).toContain("isn't on the page any more");
     expect((await b.act("4", { action: "screenshot" })).image).toBeTruthy();
+  }, 60_000);
+
+  it("presents as the desktop Chromium it is, and says how a refusing site answered", async () => {
+    const b = browser("agent", JSON.stringify(BOT_MARKERS));
+    const page = await b.act("1", { action: "open", url: `${site}/agent` });
+    expect(page.text).toMatch(/AppleWebKit\/537\.36 \(KHTML, like Gecko\) Chrome\/\d+\.0\.0\.0 Safari/);
+    expect(page.text).not.toMatch(/Headless|Firefox/);
+    expect(page.text).toContain("en-US,en;q=0.9");
+    expect(page.status).toBe(200);
+    expect(await b.act("2", { action: "open", url: `${site}/blocked` })).toMatchObject({ status: 403, check: "cloudflare" });
   }, 60_000);
 
   it("waits out an Anubis check and reads the page it leads to", async () => {
@@ -128,7 +140,7 @@ describe.skipIf(!chromium)("the browse tool's browser", () => {
 
   it("saves a file a page offers, from a link or its address, and hands it on", async () => {
     const saved: [string, string][] = [];
-    const b = new Browser(async () => spawn(process.execPath, ["-e", BROWSE_SCRIPT, join(dir, "dl"), "test"], { stdio: ["pipe", "pipe", "ignore"], env: { ...process.env, CHROME_PATH: chromium } }) as BrowserProcess,
+    const b = new Browser(async () => spawn(process.execPath, ["-e", BROWSE_SCRIPT, join(dir, "dl"), "{}"], { stdio: ["pipe", "pipe", "ignore"], env: { ...process.env, CHROME_PATH: chromium } }) as BrowserProcess,
       undefined, undefined, async (file, name) => { saved.push([readFileSync(join(dir, "dl", "downloads", file), "utf8"), name]); return `/workspace/downloads/${name}`; });
     browsers.push(b);
     const page = await b.act("1", { action: "open", url: `${site}/files` });

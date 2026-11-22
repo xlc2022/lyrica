@@ -55,7 +55,9 @@ prompt).
 5. **One browser per thread, in its sandbox.** A driver script
    (`core/src/browse.cjs`) runs on the sandbox's node and drives its
    Chromium over the DevTools pipe; `lyricad` talks to it over the
-   process's stdin and stdout. It reaches the network only as the thread's
+   process's stdin and stdout. Chromium presents as the desktop Chromium
+   of its version (its own user agent and client hints, not headless;
+   contracts.md, `web_fetch`). It reaches the network only as the thread's
    switches and allowed hosts let any sandbox command. It holds one of
    the thread's background slots (it shows in `jobs`, and `stop` ends it)
    and closes after 10 minutes unused.
@@ -136,3 +138,9 @@ there. A search form that posts (DuckDuckGo's plain page) asked; the
 owner chose that a posted form of one plain text box goes without
 asking (7). Open
 question: the one under "Open for the owner".
+
+2026-11-22: the browser sent Firefox's user agent from Chromium, a
+mismatch bot checks read. It now presents as the Chromium it is, and each
+`open` is counted by status and bot check (the daily `web tally` log
+line), so the owner can judge after a week whether another engine
+(Camoufox was assessed and not added) is needed.
