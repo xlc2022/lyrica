@@ -1,10 +1,11 @@
 // Principles 1, 2 and 8: one image tool, which also makes clips, with portrait consent checked at each resolved provider.
 import type { ExtensionContext, ExtensionFactory } from "@earendil-works/pi-coding-agent";
-import { CloudModelForbidden, HostRefused, ratioSize, isRestricted, NoModel, loraFiles, loraName, MAX_LORAS, modelName, type AppliedLora, type CallContext, type LoraAsk, type ImageRequest, type JobProgress, type Models, type Resolution,
+import { CloudModelForbidden, dayOf, HostRefused, ratioSize, isRestricted, NoModel, loraFiles, loraName, MAX_LORAS, modelName, type AppliedLora, type CallContext, type LoraAsk, type ImageRequest, type JobProgress, type Models, type Resolution,
   type ThreadImages, type VideoRequest, type VideoUpscaleRequest, type WorkspaceSettings, LONGEST_VIDEO_SECONDS, MAX_INPUT_IMAGE_BYTES, MAX_SEED, MAX_UPSCALE_SEED, COLOR_MATCH, JOB_SETTINGS, type JobSettings, imageTask, type Task } from "@lyrica/core";
 import { Type, type Static } from "typebox";
 import { StringEnum } from "./string-enum.ts";
 import type { Approval, ApprovalRequest } from "./workspace.ts";
+import { markPhoto } from "./photos.ts";
 
 /** `picked`: her pick among attempts made earlier, shown again last; its model is the earlier part's, so empty here. */
 export interface ImagePart { type: "image"; paths: string[]; model: string; tier?: "fast" | "quality"; picked?: true }
@@ -173,7 +174,6 @@ function needs(p: ImageArgs): void {
 /** A cloud model's size for an aspect ratio (core/models); a host keeps its recipe's area instead. */
 export { ratioSize } from "@lyrica/core";
 
-const dayOf = (date: Date) => `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
 // One pending question per user, even across simultaneous threads in the same process.
 const pending = new WeakMap<WorkspaceSettings, Promise<boolean>>();
 
@@ -222,6 +222,14 @@ export function createImageExtension(o: ImageTools): ExtensionFactory {
     // Attempts rejected this turn, each once: past a few, retrying is less use than asking (ASK_INSTEAD).
     const rejects = new Set<string>();
     pi.on("agent_start", () => { refused = false; rejects.clear(); });
+    // Pi's read of an image of the user (a result she made from their photo, a copy of one) is marked as their photo,
+    // so a cloud chat model gets it only under their photo setting (photos.ts).
+    pi.on("tool_result", async (event) => {
+      if (event.toolName !== "read" || !event.content.some(c => c.type === "image")) return;
+      const path = (event.input as { path?: unknown }).path;
+      if (typeof path === "string" && !await o.files.isPortrait(path)) return;
+      return { details: markPhoto(event.details) };
+    });
     pi.registerTool({
       name: "image", label: "Image", description: "Create, edit or upscale images from workspace paths or /photos-of-me/<file>; results go to images/ (shared/images/ in a project chat). Reject sets attempts aside in images/rejected/; pick shows the one you keep last; clear_rejected deletes the rejected ones for good. Video makes a clip from a prompt, animate one from an image, motion one of an image's subject moving as the person in a clip moves, edit_video changes a clip as an instruction says, extend makes a clip longer, and upscale_video makes a clip sharper and larger; clips go to videos/ (shared/videos/), are made in the background, and you are told here when one is ready.",
       promptSnippet: "create, edit or upscale images, and make and upscale short clips",
@@ -418,7 +426,7 @@ export async function executeImage(o: ImageTools, id: string, p: ImageArgs, sign
   const passed = out.resolution.passedOver ?? [];
   const fellBack = passed.length ? ` Passed over first: ${passed.map(s => `${s.label} (${s.reason.replace(/^it /, "")})`).join("; ")}.` : "";
   return { content: [{ type: "text" as const, text: `Made with ${modelName(out.resolution.offering)} on ${out.resolution.endpoint.name}${samplingUsed(p, out.unused)}.${unusedSaid(out.unused)}${seedsOf(out.images.map(i => i.seed))}${lorasUsed(out.loras, asks, out.resolution)}${fellBack} Saved ${paths.join(", ")}.` },
-    ...out.images.map(i => ({ type: "image" as const, data: Buffer.from(i.bytes).toString("base64"), mimeType: i.type }))], details: { image: part } };
+    ...out.images.map(i => ({ type: "image" as const, data: Buffer.from(i.bytes).toString("base64"), mimeType: i.type }))], details: portrait ? markPhoto({ image: part }) : { image: part } };
 }
 
 /**
@@ -430,7 +438,11 @@ async function executeVideo(o: ImageTools, id: string, p: ImageArgs, signal?: Ab
   if (p.size && p.aspectRatio) throw new Error("Give a size or an aspect ratio, not both.");
   // An aspect ratio goes to the host as it is, which keeps the recipe's area and snaps to its size step.
   if (p.action === "edit_video" && (p.size || p.aspectRatio)) throw new Error("edit_video keeps the clip's own shape: leave size and aspectRatio out.");
-  const request: VideoRequest = { prompt: p.action === "edit_video" ? p.instruction! : p.prompt!, ...(p.action === "animate" || p.action === "motion" ? { image: (await o.files.read(p.image!, MAX_INPUT_IMAGE_BYTES)).input } : {}),
+  const still = p.action === "animate" || p.action === "motion" ? await o.files.read(p.image!, MAX_INPUT_IMAGE_BYTES) : undefined;
+  // Its first frame is a photo of the user when the still was one, or the thread's folder is marked; and always when it
+  // comes from a clip, since no clip records whether it holds the user (one animated from their photo doesn't say so).
+  const portrait = !!still?.portrait || !!p.video || o.files.inPortraitFolder("");
+  const request: VideoRequest = { prompt: p.action === "edit_video" ? p.instruction! : p.prompt!, ...(still ? { image: still.input } : {}),
     ...(p.action === "motion" ? { drive: await o.files.readClip(p.video!) } : {}), ...(p.action === "extend" ? { extend: await o.files.clipEnd(p.video!, signal) } : {}),
     ...(p.action === "edit_video" ? { source: await o.files.readClip(p.video!) } : {}),
     ...(p.size ? { size: p.size } : {}), ...(p.aspectRatio ? { aspectRatio: p.aspectRatio } : {}), ...(p.duration === undefined ? {} : { duration: p.duration }),
@@ -464,7 +476,7 @@ async function executeVideo(o: ImageTools, id: string, p: ImageArgs, signal?: Ab
   }
   const { text, video, poster } = await make(signal, onProgress);
   return { content: [{ type: "text" as const, text: `${text} Its first frame:` },
-    { type: "image" as const, data: Buffer.from(poster.bytes).toString("base64"), mimeType: poster.type }], details: { video } };
+    { type: "image" as const, data: Buffer.from(poster.bytes).toString("base64"), mimeType: poster.type }], details: portrait ? markPhoto({ video }) : { video } };
 }
 
 /**
@@ -504,5 +516,5 @@ async function executeUpscaleVideo(o: ImageTools, id: string, p: ImageArgs, sign
   }
   const { text, video, poster } = await make(signal, onProgress);
   return { content: [{ type: "text" as const, text: `${text} Its first frame:` },
-    { type: "image" as const, data: Buffer.from(poster.bytes).toString("base64"), mimeType: poster.type }], details: { video } };
+    { type: "image" as const, data: Buffer.from(poster.bytes).toString("base64"), mimeType: poster.type }], details: markPhoto({ video }) };
 }

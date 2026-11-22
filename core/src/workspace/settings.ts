@@ -480,7 +480,7 @@ export class WorkspaceSettings {
       .run(`workspace.threadWork.${threadId}`, JSON.stringify(work));
   }
 
-  /** Portrait photos sent by the image tool; ask once per server-local calendar day. */
+  /** Portrait photos sent to a cloud model; ask once per server-local calendar day (photosToCloud). */
   photoCloudPolicy(): PhotoCloudPolicy {
     const policy = this.setting("images.photos.cloud");
     return policy === "never" || policy === "always" ? policy : "ask";
@@ -1569,3 +1569,12 @@ const toMachine = (r: MachineRow): MachineConfig => ({
 
 /** A repository's HTTPS address on its account's host. */
 export const repositoryUrl = (host: string, name: string): string => `https://${host}/${name}.git`;
+
+/** The server-local day an approval of photos to the cloud under Ask lasts for. */
+export const dayOf = (date: Date) => `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
+
+/** Whether a photo of the user may go to a cloud model now without asking: Always, or Ask approved today. */
+export function photosToCloud(s: Pick<WorkspaceSettings, "photoCloudPolicy" | "photoCloudApproved">, now = new Date()): boolean {
+  const policy = s.photoCloudPolicy();
+  return policy === "always" || (policy === "ask" && s.photoCloudApproved(dayOf(now)));
+}

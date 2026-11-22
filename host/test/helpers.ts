@@ -13,6 +13,8 @@ export interface Reply {
   status: number;
   body: any;
   headers: Record<string, string | string[] | undefined>;
+  /** The answer's bytes as they came, for one that isn't text (a form's). */
+  bytes: Buffer;
 }
 
 export interface Call {
@@ -54,12 +56,13 @@ export function call(c: Call): Promise<Reply> {
           if (!res.complete) reject(new Error("the answer was cut short"));
         });
         res.on("end", () => {
-          const text = Buffer.concat(chunks).toString("utf8");
+          const bytes = Buffer.concat(chunks);
+          const text = bytes.toString("utf8");
           let body: any = text;
           try {
             body = JSON.parse(text);
           } catch {}
-          resolve({ status: res.statusCode ?? 0, body, headers: res.headers });
+          resolve({ status: res.statusCode ?? 0, body, headers: res.headers, bytes });
         });
       },
     );

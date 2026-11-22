@@ -6,7 +6,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { basename, join } from "node:path";
 import { imageSize, mp4Seconds, mp4Sound, mp4Video, type ComfyGpus, type Sampling } from "./comfy.ts";
 import type { Downloads } from "./downloads.ts";
-import { HostError, invalid, notFound, onlyFields, readJson, sendJson } from "./http.ts";
+import { HostError, invalid, notFound, onlyFields, readJob, readJson, sendJob, sendJson } from "./http.ts";
 import type { JobProgress } from "./jobs.ts";
 import type { TextModel } from "./library.ts";
 import type { Logger } from "./log.ts";
@@ -70,8 +70,10 @@ const DRIVE_LIMIT = 64 * 1024 * 1024;
  * 64 MB. Its base64 (358 M characters) stays well under Node's longest string (536,870,888), as a JSON body holds it.
  */
 const EXTEND_LIMIT = 256 * 1024 * 1024;
-/** The longest clip an answer carries: its base64, with the poster's, must fit one string of Node's. */
+/** The longest clip a JSON answer carries: its base64, with the poster's, must fit one string of Node's. */
 const ANSWER_LIMIT = 360 * 1024 * 1024;
+/** The longest clip a form's answer carries, as bytes (API.md, "Sending files"): as much as ComfyUI takes in one upload. */
+const FORM_ANSWER_LIMIT = 1024 * 1024 * 1024;
 const MB = (n: number) => `${Math.round(n / 1024 / 1024)} MB`;
 const CLIP_UPSCALE_FIELDS = ["recipe", "video", "scale", "maxSize", "colorMatch", "seed"];
 /**
@@ -122,10 +124,16 @@ function num(body: Record<string, unknown>, key: string, min: number, max: numbe
   return v;
 }
 
-/** An input image: base64, at most 64 MB, and not too many pixels by its header. */
+/** A file field: a form's bytes, or base64 in JSON. */
+function fileField(value: unknown, key: string, what: string): Buffer {
+  if (Buffer.isBuffer(value)) return value;
+  if (typeof value !== "string") throw invalid(`${key} must be ${what}.`);
+  return Buffer.from(value, "base64");
+}
+
+/** An input image: a form's file or base64, at most 64 MB, and not too many pixels by its header. */
 export function inputImage(value: unknown, key: string): Buffer {
-  if (typeof value !== "string") throw invalid(`${key} must be a base64 image.`);
-  const data = Buffer.from(value, "base64");
+  const data = fileField(value, key, "an image");
   if (data.length > IMAGE_LIMIT) throw invalid(`${key} is larger than ${IMAGE_LIMIT / 1024 / 1024} MB.`);
   const size = imageSize(data);
   if (!size) throw invalid(`${key} isn't a PNG, JPEG or WebP image.`);
@@ -134,6 +142,16 @@ export function inputImage(value: unknown, key: string): Buffer {
     throw invalid(`${key} may be at most ${MAX_SIDE} pixels a side and ${MAX_PIXELS / 1e6} megapixels.`);
   }
   return data;
+}
+
+/**
+ * A clip's answer (API.md, "Making videos"): as a form, `video` and `poster` parts beside the json part, whose
+ * `video` holds the clip's numbers; as JSON, the clip and poster in base64.
+ */
+async function sendClip(res: ServerResponse, form: boolean, video: Buffer, poster: Buffer | null, meta: Record<string, unknown>, rest: Record<string, unknown>): Promise<void> {
+  const files = [{ name: "video", bytes: video, type: "video/mp4" }, ...(poster ? [{ name: "poster", bytes: poster, type: "image/png" }] : [])];
+  await sendJob(res, form, { video: meta, ...rest }, files,
+    () => ({ video: { mp4: video.toString("base64"), ...meta }, poster: poster ? poster.toString("base64") : null, ...rest }));
 }
 
 export class Images {
@@ -870,7 +888,7 @@ export class Images {
   }
 
   private async make(action: "create" | "edit" | "upscale", req: IncomingMessage, res: ServerResponse, job: JobProgress): Promise<void> {
-    const body = await readJson(req, 4 * IMAGE_BASE64 + 1024 * 1024);
+    const { body, form } = await readJob(req, 4 * IMAGE_BASE64 + 1024 * 1024);
     onlyFields(body, FIELDS[action]);
     if (typeof body.recipe !== "string") throw invalid("recipe is missing.");
     const recipe = this.book.all().find((r) => r.id === body.recipe && r.state === "confirmed");
@@ -976,18 +994,16 @@ export class Images {
     const seconds = (Date.now() - started) / 1000;
     this.runtime.count(recipe.id, { requests: 1, images: pngs.length, seconds });
     this.log("image", { recipe: recipe.id, action, images: pngs.length });
-    sendJson(res, 200, {
-      images: pngs.map((png, i) => {
-        const size = imageSize(png);
-        // sd.cpp makes each image of a batch from the next seed, so each is reproducible alone; ComfyUI's share one.
-        const seed = sdcpp ? Number(values.seed) + i : values.seed;
-        return { png: png.toString("base64"), width: size?.width ?? null, height: size?.height ?? null, seed };
-      }),
-      ...appliedLoras(loras),
-      seconds,
-      ...samplingField(sampling),
-      ...unusedField(template, body, !!sdcpp),
+    const images = pngs.map((png, i) => {
+      const size = imageSize(png);
+      // sd.cpp makes each image of a batch from the next seed, so each is reproducible alone; ComfyUI's share one.
+      const seed = sdcpp ? Number(values.seed) + i : values.seed;
+      return { width: size?.width ?? null, height: size?.height ?? null, seed };
     });
+    const answer = { images, ...appliedLoras(loras), seconds, ...samplingField(sampling), ...unusedField(template, body, !!sdcpp) };
+    // As a form, each image is an `images` part, in the order `images` lists them.
+    await sendJob(res, form, answer, pngs.map((png) => ({ name: "images", bytes: png, type: "image/png" })),
+      () => ({ ...answer, images: images.map((m, i) => ({ png: pngs[i]!.toString("base64"), ...m })) }));
   }
 
   /**
@@ -1000,8 +1016,9 @@ export class Images {
    */
   private async video(req: IncomingMessage, res: ServerResponse, job: JobProgress): Promise<void> {
     // An image and a driving clip, or a clip to extend alone.
-    const body = await readJson(req, Math.max(2 * IMAGE_BASE64 + Math.ceil(DRIVE_LIMIT / 3) * 4, Math.ceil(EXTEND_LIMIT / 3) * 4) + 1024 * 1024);
+    const { body, form } = await readJob(req, Math.max(2 * IMAGE_BASE64 + Math.ceil(DRIVE_LIMIT / 3) * 4, Math.ceil(EXTEND_LIMIT / 3) * 4) + 1024 * 1024);
     onlyFields(body, VIDEO_FIELDS);
+    const answerLimit = form ? FORM_ANSWER_LIMIT : ANSWER_LIMIT;
     if (typeof body.recipe !== "string") throw invalid("recipe is missing.");
     const recipe = this.book.all().find((r) => r.id === body.recipe && r.state === "confirmed");
     if (!recipe || !this.book.ready(recipe, this.files())) throw notFound("No confirmed, ready recipe with that ID.");
@@ -1042,8 +1059,7 @@ export class Images {
     if (action === "animate" || action === "motion") uploads.image = inputImage(body.image, "image");
     let driveSeconds = Infinity;
     if (action === "motion") {
-      if (typeof body.drive !== "string") throw invalid("drive must be a base64 MP4.");
-      uploads.drive = Buffer.from(body.drive, "base64");
+      uploads.drive = fileField(body.drive, "drive", "an MP4");
       if (uploads.drive.length > DRIVE_LIMIT) throw invalid("drive is larger than 64 MB.");
       const seconds = mp4Seconds(uploads.drive);
       if (seconds === null) throw invalid("drive isn't an MP4 or QuickTime clip whose length can be read.");
@@ -1052,8 +1068,7 @@ export class Images {
     // A clip to edit: its own shape and length, at most the recipe's longest clip.
     let source: { width: number; height: number; frames: number; fps: number } | null = null;
     if (action === "edit_video") {
-      if (typeof body.source !== "string") throw invalid("source must be a base64 MP4.");
-      uploads.source = Buffer.from(body.source, "base64");
+      uploads.source = fileField(body.source, "source", "an MP4");
       if (uploads.source.length > DRIVE_LIMIT) throw invalid("source is larger than 64 MB.");
       source = mp4Video(uploads.source);
       if (!source || !source.fps) throw invalid("source isn't an MP4 clip whose video track can be read.");
@@ -1067,9 +1082,8 @@ export class Images {
     if (source && (width !== undefined || height !== undefined || ratio !== undefined)) throw invalid("An edited clip keeps its own shape.");
     if (extending) {
       // The next clip continues this one: its size and frame rate must be the recipe's own.
-      if (typeof body.extend !== "string") throw invalid("extend must be a base64 MP4.");
       if (width !== undefined || height !== undefined || ratio !== undefined) throw invalid("An extended clip keeps its own size.");
-      previous = Buffer.from(body.extend, "base64");
+      previous = fileField(body.extend, "extend", "an MP4");
       if (previous.length > EXTEND_LIMIT) throw invalid(`That clip is ${MB(previous.length)}; a clip to extend is at most ${MB(EXTEND_LIMIT)}.`);
       const clip = mp4Video(previous);
       if (!clip) throw invalid("extend isn't an MP4 clip whose video track can be read.");
@@ -1119,9 +1133,9 @@ export class Images {
       const had = mp4Video(previous!)!.frames, perFrame = previous!.length / Math.max(1, had);
       const adds = clips.reduce((n, c) => n + Number(c.frames) - chain!.overlap, 0);
       const kept = tail ? 0 : previous!.length;
-      if (kept + adds * perFrame > ANSWER_LIMIT) {
-        const fit = Math.floor((ANSWER_LIMIT - kept) / perFrame / spec.fps);
-        throw invalid(`That clip is ${MB(previous!.length)} for ${(had / spec.fps).toFixed(1)} s, so ${Math.round(duration)} s more would make it about ${MB(kept + adds * perFrame)}, past the ${MB(ANSWER_LIMIT)} a clip can be.`
+      if (kept + adds * perFrame > answerLimit) {
+        const fit = Math.floor((answerLimit - kept) / perFrame / spec.fps);
+        throw invalid(`That clip is ${MB(previous!.length)} for ${(had / spec.fps).toFixed(1)} s, so ${Math.round(duration)} s more would make it about ${MB(kept + adds * perFrame)}, past the ${MB(answerLimit)} a clip can be.`
           + (fit >= 1 ? ` Add at most ${fit} s.` : " It can't be extended."));
       }
     }
@@ -1172,16 +1186,9 @@ export class Images {
       + clips.slice(extending ? 0 : 1).reduce((n, c) => n + Number(c.frames) - chain!.overlap, 0);
     const frames = clips.length > 1 || extending ? mp4Video(video)?.frames ?? counted : counted;
     const fps = Number(clips[0]!.fps);
-    if (video.length > ANSWER_LIMIT) throw new HostError(500, "too_large", `The clip came out at ${MB(video.length)}, past the ${MB(ANSWER_LIMIT)} an answer carries.`);
-    sendJson(res, 200, {
-      video: { mp4: video.toString("base64"), width: size?.width ?? values.width, height: size?.height ?? values.height,
-        frames, fps, duration: frames / fps, audio: spec.audio, seed: values.seed },
-      poster: poster ? poster.toString("base64") : null,
-      ...appliedLoras(loras),
-      seconds,
-      ...samplingField(sampling),
-      ...unusedField(template, body, false),
-    });
+    if (video.length > answerLimit) throw new HostError(500, "too_large", `The clip came out at ${MB(video.length)}, past the ${MB(answerLimit)} an answer carries.`);
+    const meta = { width: size?.width ?? values.width, height: size?.height ?? values.height, frames, fps, duration: frames / fps, audio: spec.audio, seed: values.seed };
+    await sendClip(res, form, video, poster, meta, { ...appliedLoras(loras), seconds, ...samplingField(sampling), ...unusedField(template, body, false) });
   }
 
   /**
@@ -1189,7 +1196,7 @@ export class Images {
    * `scale` times the shorter side as for images, keeping its frame rate and sound.
    */
   private async upscaleClip(req: IncomingMessage, res: ServerResponse, job: JobProgress): Promise<void> {
-    const body = await readJson(req, Math.ceil(DRIVE_LIMIT / 3) * 4 + 1024 * 1024);
+    const { body, form } = await readJob(req, Math.ceil(DRIVE_LIMIT / 3) * 4 + 1024 * 1024);
     onlyFields(body, CLIP_UPSCALE_FIELDS);
     if (typeof body.recipe !== "string") throw invalid("recipe is missing.");
     const recipe = this.book.all().find((r) => r.id === body.recipe && r.state === "confirmed");
@@ -1197,8 +1204,7 @@ export class Images {
     const template = this.book.templates.get(recipe.template)!;
     if (!recipe.does.includes("upscale") || !template.clipWorkflow) throw invalid("That recipe doesn't upscale clips.");
     if (this.sdcpp) throw invalid("This host makes images with stable-diffusion.cpp, which can't upscale clips.");
-    if (typeof body.video !== "string") throw invalid("video must be a base64 MP4.");
-    const clip = Buffer.from(body.video, "base64");
+    const clip = fileField(body.video, "video", "an MP4");
     if (clip.length > DRIVE_LIMIT) throw invalid("video is larger than 64 MB.");
     const source = mp4Video(clip);
     if (!source) throw invalid("video isn't an MP4 clip whose video track can be read.");
@@ -1241,13 +1247,9 @@ export class Images {
     const made = mp4Video(video);
     const size = poster ? imageSize(poster) : null;
     const frames = made?.frames ?? source.frames, fps = made?.fps ?? source.fps;
-    sendJson(res, 200, {
-      video: { mp4: video.toString("base64"), width: size?.width ?? made?.width ?? width, height: size?.height ?? made?.height ?? height,
-        frames, fps, duration: frames / fps, audio: mp4Sound(video), seed: values.seed },
-      poster: poster ? poster.toString("base64") : null,
-      seconds,
-      ...samplingField(sampling),
-    });
+    if (!form && video.length > ANSWER_LIMIT) throw new HostError(500, "too_large", `The clip came out at ${MB(video.length)}, past the ${MB(ANSWER_LIMIT)} an answer carries.`);
+    const meta = { width: size?.width ?? made?.width ?? width, height: size?.height ?? made?.height ?? height, frames, fps, duration: frames / fps, audio: mp4Sound(video), seed: values.seed };
+    await sendClip(res, form, video, poster, meta, { seconds, ...samplingField(sampling) });
   }
 
   /** What stops images being made on this host, for the status. */

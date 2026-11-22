@@ -8,6 +8,7 @@ import { capToolCalls, objectTools } from "./tool-stream.ts";
 import { markOverflow, sharedStream, shareModel } from "./model-share.ts";
 import { reserveFor } from "./context.ts";
 import { liveFields } from "./live-call.ts";
+import { withoutPhotos } from "./photos.ts";
 
 const FREE = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
 
@@ -97,8 +98,13 @@ export function waitingFetch(f: typeof fetch, origin: string, onWait: (w: GpuWai
   }) as typeof fetch;
 }
 
-export async function modelRuntimeFor(models: Models, ctx: CallContext, opts: { onGpuWait?: (w: GpuWait | null) => void; live?: boolean } = {}): Promise<ModelRuntime> {
+export async function modelRuntimeFor(models: Models, ctx: CallContext, opts: {
+  onGpuWait?: (w: GpuWait | null) => void; live?: boolean;
+  /** Whether a photo of the user may go to a cloud model now (photosToCloud). Without it, none does (photos.ts). */
+  photos?: () => boolean;
+} = {}): Promise<ModelRuntime> {
   const allowed = models.allowed(ctx);
+  const kinds = new Map(allowed.map(({ endpoint }) => [endpoint.id, endpoint.kind]));
   // A plan's sign-in lives in the user's user.db, where Pi's refresh writes it back.
   const plans = new Set(allowed.filter(({ endpoint }) => isPlan(endpoint.api)).map(({ endpoint }) => endpoint.id));
   const runtime = await ModelRuntime.create({ credentials: new PlanCredentials(models, ctx.userId, plans), modelsPath: null, refreshOnCreate: false });
@@ -116,11 +122,14 @@ export async function modelRuntimeFor(models: Models, ctx: CallContext, opts: { 
     return [[endpoint.id, opts.onGpuWait ? waitingFetch(f, new URL(endpoint.baseUrl).origin, opts.onGpuWait) : f] as const];
   }));
   const offerings = new Map(allowed.flatMap(({ endpoint, offerings: list }) => list.map((o) => [`${endpoint.id}\u0000${o.modelId}`, { endpoint, offering: o }] as const)));
-  type Prepared = { options: { fetch?: typeof fetch; timeoutMs?: number; onPayload?: (payload: unknown, model: Model<Api>) => unknown } };
+  type Prepared = { provider: object; options: { fetch?: typeof fetch; timeoutMs?: number; onPayload?: (payload: unknown, model: Model<Api>) => unknown } };
   const r = runtime as unknown as { prepareRequest(model: Model<Api>, options?: object): Promise<Prepared> };
   const prepare = r.prepareRequest.bind(runtime);
   r.prepareRequest = async (model, options) => {
     const prepared = await prepare(model, options);
+    // Every request to a cloud endpoint, on any path (a turn, compaction, a plan's own provider), leaves out the
+    // photos of the user that tool results hold, unless the user's photo setting allows them now (principle 2).
+    if (kinds.get(model.provider) !== "local" && !opts.photos?.()) prepared.provider = withoutPhotosIn(prepared.provider);
     const f = fetches.get(model.provider);
     // Pi gives up when no answer has started in 5 minutes. A host's request may wait 15 for the GPU (loading a very
     // large model) and then read a long prompt before it answers, so it waits longer.
@@ -183,7 +192,6 @@ export async function modelRuntimeFor(models: Models, ctx: CallContext, opts: { 
     await runtime.setRuntimeApiKey(endpoint.id, endpoint.apiKey ?? "none");
   }
 
-  const kinds = new Map(allowed.map(({ endpoint }) => [endpoint.id, endpoint.kind]));
   for (const p of runtime.getProviders()) {
     const kind = kinds.get(p.id);
     if (!kind || (isRestricted(ctx) && kind !== "local")) throw new CloudModelForbidden(`the model runtime holds an unexpected provider: ${p.id}`);
@@ -191,6 +199,18 @@ export async function modelRuntimeFor(models: Models, ctx: CallContext, opts: { 
   const sealed = () => { throw new Error("Lyrica's model runtime takes no other providers"); };
   Object.assign(runtime, { registerProvider: sealed, registerNativeProvider: sealed, registerVirtualModel: sealed, login: sealed });
   return runtime;
+}
+
+/** A provider whose requests carry the photos of the user in tool results as words (photos.ts). */
+function withoutPhotosIn<P extends object>(provider: P): P {
+  return new Proxy(provider, {
+    get(target, key, receiver) {
+      const value = Reflect.get(target, key, receiver) as unknown;
+      if ((key !== "stream" && key !== "streamSimple") || typeof value !== "function") return value;
+      return (model: unknown, context: { messages: object[] }, options?: unknown) =>
+        (value as (...a: unknown[]) => unknown).call(target, model, { ...context, messages: withoutPhotos(context.messages) }, options);
+    },
+  });
 }
 
 /** A request's payload with llama.cpp's `id_slot`, after any other change made to it. */

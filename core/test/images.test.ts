@@ -56,6 +56,27 @@ describe("image calls through the router (principles 1 and 2)", () => {
     ]);
     expect(s.heard).toEqual([]);
   });
+  it("sends a host its images and clips as bytes in a form, and as JSON again to a host from before forms", async () => {
+    const s = await setup(), ctx = s.ctx({ pool: "private", localOnly: true });
+    const input = { bytes: png, type: "image/png" as const };
+    s.models.setColumnTask(s.ada.id, "private", "video", [s.workstation.long]);
+    const edited = await s.models.image(ctx, { action: "edit", prompt: "Add flowers", image: input, references: [input, input] });
+    const clip = await s.models.video(ctx, { prompt: "It goes on", extend: mp4, duration: 4 });
+    expect(s.workstation.server.sent).toEqual({ forms: 2, json: 0 });
+    s.workstation.server.beforeForms();
+    const again = await s.models.image(ctx, { action: "edit", prompt: "Add flowers", image: input, references: [input, input] });
+    const older = await s.models.video(ctx, { prompt: "It goes on", extend: mp4, duration: 4 });
+    expect(s.workstation.server.sent).toEqual({ forms: 2, json: 2 });
+    // Either way the host read the same job, and its answer is the same.
+    const [a, b] = s.workstation.server.images.map(i => i.body);
+    expect(a).toEqual(b);
+    expect(a).toMatchObject({ image: png.toString("base64"), references: [png.toString("base64"), png.toString("base64")] });
+    expect(again.images.map(i => Buffer.from(i.bytes))).toEqual(edited.images.map(i => Buffer.from(i.bytes)));
+    expect(Buffer.from(older.video.bytes)).toEqual(Buffer.from(clip.video.bytes));
+    expect(Buffer.from(clip.video.bytes)).toEqual(mp4);
+    expect(clip.video).toMatchObject({ width: 1280, height: 704, frames: 121, seed: 7 });
+  });
+
   it("records what the host measured of a call's sampling with its record, and reads it back; never the picture", async () => {
     const s = await setup(), ctx = s.ctx({ pool: "private", localOnly: true });
     const out = await s.models.image(ctx, { action: "create", prompt: "A garden", tier: "fast", count: 2 });

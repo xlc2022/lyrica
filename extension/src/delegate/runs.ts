@@ -3,7 +3,7 @@ import { EventEmitter } from "node:events";
 import { posix } from "node:path";
 import type { AgentSession, ExtensionFactory, SessionEntry } from "@earendil-works/pi-coding-agent";
 import {
-  DelegationStore, isRestricted, sandboxHas, sandboxTools, LIVE_STATUSES, claudeAlias, isClaudeModel, matchModel, meansClaude, namedOutright, refId, renderThreadMentions, sameModelName, singledOut, unmatched,
+  DelegationStore, isRestricted, photosToCloud, sandboxHas, sandboxTools, LIVE_STATUSES, claudeAlias, isClaudeModel, matchModel, meansClaude, namedOutright, refId, renderThreadMentions, sameModelName, singledOut, unmatched,
   type CallContext, type ClaudeAlias, type CouncilSpec, type Grant, type LoopSpec, type Memory, type ModelRef, type Models, type Pool, type PoolStore, type Role,
   type ExecutionTarget, type Step, type SubagentRecord, type SubagentStatus, type Tier, type Usage, type User, type Users, type Workflow, type WorkflowSpec, type Workspace,
 } from "@lyrica/core";
@@ -1229,7 +1229,8 @@ export class Delegation {
       const allowed = new Set([...role.tools, "ask_parent", "look", ...(nested ? ["delegate"] : []), ...(mcp ? ["tool_search"] : [])]);
       // First: it must run before the MCP extension registers anything, else the role gate turns loaded MCP tools off.
       extensions.unshift(createSubagentExtension(ctx, role, hooks, allowed, this.o.name?.() ?? "Lyrica", !earlier && role.name === "coder" ? { task, done } : undefined, rules, parentMachines));
-      const opened = await openThreadSession({ thread: ctx, models, cwd: this.o.cwd, extensions, task: () => role.name === "coder" ? "code" : "chat" });
+      const opened = await openThreadSession({ thread: ctx, models, cwd: this.o.cwd, extensions, task: () => role.name === "coder" ? "code" : "chat",
+        ...(workspace ? { photos: () => photosToCloud(workspace.settings(parent.user.id)) } : {}) });
       opened.session.setThinkingLevel(role.thinking);
       // Passes over a model whose machine is away, and records the call. The role keeps its own thinking level.
       const chat = await opened.prepare({ thinking: false }).catch((err) => { opened.dispose(); throw err; });

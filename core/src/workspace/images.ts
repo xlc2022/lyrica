@@ -332,6 +332,22 @@ export class ThreadImages {
     return { input: imageInput(bytes, limit), portrait: this.portraitByFolder(path) || this.portraits.isPortraitImage(createHash("sha256").update(bytes).digest("hex")) };
   }
 
+  /** Whether a path is in a folder marked as holding portraits (portraitByFolder): a clip there counts as one. "" asks of her own folder. */
+  inPortraitFolder(path: string): boolean { return this.portraitByFolder(path || WORKDIR); }
+
+  /**
+   * Whether an image she read some other way (Pi's `read`) counts as a portrait, as `read` here would say: by its
+   * folder or its bytes. One that can't be read or hashed counts as one, so a cloud model doesn't get it unasked.
+   */
+  async isPortrait(path: string): Promise<boolean> {
+    const p = path.startsWith("/") ? path : posix.join(WORKDIR, path);
+    if (p === PHOTOS_DIR || p.startsWith(`${PHOTOS_DIR}/`) || this.portraitByFolder(p)) return true;
+    try {
+      const bytes = await this.readCapped(p, MAX_IMAGE_BYTES, () => "too big to hash");
+      return this.portraits.isPortraitImage(createHash("sha256").update(bytes).digest("hex"));
+    } catch { return true; }
+  }
+
   /** A clip from the workspace (`motion`'s driving clip, one to edit or upscale): an MP4 of at most 64 MB, read in memory only. */
   async readClip(path: string): Promise<Uint8Array> {
     const bytes = await this.readCapped(path, MAX_DRIVE_BYTES, size => `${path} is ${mb(size)}; a clip is at most ${mb(MAX_DRIVE_BYTES)}`);

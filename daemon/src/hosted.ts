@@ -3,7 +3,7 @@ import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { SessionManager, type AgentSession, type AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import {
   ANSWER, answerMark, callArgs, recentWorkAllowed, WELCOME_LIMITS, alwaysAllowPrefix, CloudModelForbidden, FROM_PARENT, fromParent, HEALTH_MS, isPlan, isPlanLimit, isUnreachable, planLimitReset, NoModel, Offline, PlanWaiting, SANDBOX_ALLOW, suspectKey, ROUTINE, WAKEUP, WATCHING, WATCHING_MARK,
-  sandboxHas, sandboxTools, createTask, type ChildStatus, type JobProgress, type Memory, type Models, type PersonaStore, type Pool, type PoolView, type Skill, type Users, type Workspace,
+  sandboxHas, sandboxTools, createTask, photosToCloud, type ChildStatus, type JobProgress, type Memory, type Models, type PersonaStore, type Pool, type PoolView, type Skill, type Users, type Workspace,
 } from "@lyrica/core";
 import {
   BUILTIN_SKILLS, checkoutsOf, codeRepositories, repoSkills, skillsIndex, type ListedSkill, createChecksExtension, createSyntaxExtension, codeTaskText, formatEntry, repoRules, appendUserMessage, executeImage, ContextMeter, createDelegateExtension, createDownloadsExtension, createImageExtension, createLookExtension, createLyricaExtension, createMcpServersExtension, createModelsExtension, createReactExtension, createThreadsExtension, createTopExtension, createWebExtension, type WebTools, createWorkspaceExtension, createWaitForReportsExtension, DELEGATE_MESSAGE, EMPTY_REPLY_NOTICE, TURN_TOOL_NOTICE, OPENING, openThreadSession, type ClipMade, piModelFor, syncEntries, timedReply,
@@ -1422,6 +1422,8 @@ export class HostedThread {
       const { session, runtime, prepare, dispose, tones: toneNotes } = await openThreadSession({
         ...(own ? { tones } : {}),
         thread: ctx, models, cwd: this.o.cwd, task: () => tools.settings().code ? "code" : "chat",
+        // A photo of the user in a tool result goes to a cloud chat model only under their photo setting.
+        photos: () => photosToCloud(workspace.settings(this.userId)),
         // A reply waiting for a host's GPU (up to 15 minutes, then the next model) has the views say what it waits for.
         onGpuWait: (wait) => { this.gpuWait = wait; this.emit({ type: "gpu_wait", wait }); },
         // The request it waits on, as counts and times, in place of the dots until her words start.

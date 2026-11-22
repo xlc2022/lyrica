@@ -7,7 +7,7 @@ import { createAgentSession, DefaultResourceLoader, SessionManager, type Extensi
 import { ThreadImages, Workspace, type CallContext, type JobProgress } from "@lyrica/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fakeImages, mp4, png } from "../../core/test/fake-images.ts";
-import { ASK_INSTEAD, createImageExtension, imageParameters, ratioSize, type ApprovalRequest, type ClipMade, type ImageTools } from "../src/index.ts";
+import { ASK_INSTEAD, createImageExtension, imageParameters, PHOTO_OF_USER, ratioSize, type ApprovalRequest, type ClipMade, type ImageTools } from "../src/index.ts";
 
 const dirs: string[] = [];
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
@@ -44,9 +44,12 @@ async function setup() {
   const factory = createImageExtension(options);
   // Each run is a turn of its own: the user wrote again.
   let turn = () => {};
-  factory({ on: (event: string, f: () => void) => { if (event === "agent_start") turn = f; }, registerTool: (t: ToolDefinition) => { tool = t; } } as unknown as ExtensionAPI);
+  let toolResult: (e: unknown) => Promise<unknown> = async () => undefined;
+  factory({ on: (event: string, f: () => void) => { if (event === "agent_start") turn = f; if (event === "tool_result") toolResult = f as never; }, registerTool: (t: ToolDefinition) => { tool = t; } } as unknown as ExtensionAPI);
   const run = (args: unknown, id = "call") => { turn(); return tool.execute(id, args, undefined, undefined, noUI); };
-  return { ...s, files, joins, home, folder, settings, asked, run, factory, options, tool,
+  /** Pi's read of an image at `path`, as the extension hears it. */
+  const read = (path: string) => toolResult({ toolName: "read", input: { path }, content: [{ type: "image", data: png.toString("base64"), mimeType: "image/png" }], details: undefined, isError: false });
+  return { ...s, files, joins, home, folder, settings, asked, run, read, factory, options, tool,
     tomorrow: () => { date = new Date(2026, 9, 13, 10); }, context: (c: Partial<CallContext>) => { context = c; },
     allow: (yes: boolean) => { allowed = yes; }, enable: (yes: boolean) => { enabled = yes; } };
 }
@@ -83,6 +86,15 @@ describe("image tool: portrait photos (principle 2)", () => {
     expect(s.settings.isPortraitFolder("web/a")).toBe(true);
     await expect(s.run({ ...edit, image: "/workspace/uploads/reencoded.png" })).rejects.toThrow(/aren't allowed/);
     expect(s.heard).toEqual([]); expect(s.asked).toEqual([]);
+  });
+  it("marks a result made from their photo, and Pi's read of one, as a photo of them, so a cloud chat model gets it only under their setting", async () => {
+    const s = await setup(); s.context({ localOnly: true });
+    expect(await s.read("/workspace/uploads/landscape.png")).toBeUndefined();
+    const made = await s.run(edit);
+    expect(made.details).toMatchObject({ [PHOTO_OF_USER]: true });
+    // From here the thread's folder is marked: whatever it reads counts.
+    expect(await s.read("uploads/landscape.png")).toEqual({ details: { [PHOTO_OF_USER]: true } });
+    expect((await s.run({ action: "edit", instruction: "x", image: "/workspace/uploads/landscape.png" })).details).toMatchObject({ [PHOTO_OF_USER]: true });
   });
   it("Never refuses create references, edit inputs and masks before any bytes reach cloud", async () => {
     const s = await setup(); s.settings.setPhotoCloudPolicy("never");
@@ -262,6 +274,9 @@ describe("image tool results (principles 1 and 4)", () => {
     const clip = await s.run({ action: "video", prompt: "A fox", cfg: 3, seed: 7 });
     expect(clip.content).toContainEqual({ type: "text", text: expect.stringContaining("Seed 7.") });
     expect(s.workstation.server.videos).toEqual([{ recipe: "clip", prompt: "A fox", cfg: 3, seed: 7 }]);
+    // A clip from a prompt alone isn't a photo of the user; one animated from their photo is.
+    expect(clip.details).not.toHaveProperty(PHOTO_OF_USER);
+    expect((await s.run({ action: "animate", prompt: "She waves", image: "/photos-of-me/portrait.png" })).details).toMatchObject({ [PHOTO_OF_USER]: true });
     await expect(s.run({ action: "create", prompt: "A garden", cfg: 31 })).rejects.toThrow();
     await expect(s.run({ action: "create", prompt: "A garden", seed: 1.5 })).rejects.toThrow();
   });
@@ -360,6 +375,9 @@ describe("image tool results (principles 1 and 4)", () => {
     expect(s.workstation.server.videos).toEqual([{ recipe: "long", prompt: "She keeps walking", extend: mp4.toString("base64"), tail: true, duration: 6 }]);
     expect(s.joins.map((j) => j.path)).toEqual(["/workspace/uploads/walk.mp4"]);
     expect((out.details as { video: { duration: number } }).video.duration).toBe(10);
+    // A clip doesn't record whether it holds the user, so a clip made from one counts, in a folder not marked too.
+    expect(s.settings.isPortraitFolder("web/a")).toBe(false);
+    expect(out.details).toMatchObject({ [PHOTO_OF_USER]: true });
     await expect(s.run({ action: "extend", prompt: "x" })).rejects.toThrow("extend needs video");
     // A clip given to video is refused, not ignored: a new clip isn't the one they meant to go on.
     await expect(s.run({ action: "video", prompt: "x", video: "/workspace/uploads/walk.mp4" })).rejects.toThrow("video doesn't take video: extend makes a clip longer");
@@ -377,6 +395,8 @@ describe("image tool results (principles 1 and 4)", () => {
     expect((out.details as { video: unknown }).video).toMatchObject({ type: "video", model: "shared.workstation/Art", width: 2560, height: 1408, audio: true, path: expect.stringMatching(/^\/workspace\/videos\//) });
     expect(out.content).toContainEqual({ type: "text", text: expect.stringContaining("Upscaled with Art on workstation: 5.0 s at 2560×1408, with sound.") });
     expect(s.workstation.server.upscaled).toEqual([{ recipe: "art", video: mp4.toString("base64"), scale: 2 }]);
+    expect(s.settings.isPortraitFolder("web/a")).toBe(false);
+    expect(out.details).toMatchObject({ [PHOTO_OF_USER]: true });
     expect(s.models.recentCalls(s.ada.id).map(c => c.task)).toEqual(["image.upscale"]);
     await expect(s.run({ action: "upscale_video" })).rejects.toThrow("upscale_video needs video");
     await expect(s.run({ action: "upscale_video", video: "/workspace/uploads/walk.mp4", image: "/workspace/uploads/landscape.png" })).rejects.toThrow("upscale_video doesn't take image");

@@ -20,6 +20,10 @@ export async function fakeImages() {
     let down: string | false = false;
     // A host from before aspect ratios on images refuses the field, as onlyFields does.
     let old = false;
+    // A host from before forms (2026-11) reads every job as JSON, and refuses a form as readJson does.
+    let jsonOnly = false;
+    /** Jobs that came as forms, and those that came as JSON. */
+    const sent = { forms: 0, json: 0 };
     let output: Buffer = png;
     // The recipe's own LoRAs, which a job applies before the request's and its answer names.
     let own: { file: string; strength: number }[] = [];
@@ -27,7 +31,7 @@ export async function fakeImages() {
     const ep = models.addEndpoint(ada, { name, kind: "local", baseUrl: `https://${name}.example/v1` }, { shared: true });
     // A paired host's persisted endpoint shape; TLS itself is covered by host tests.
     keyring.self().prepare("UPDATE endpoints SET api = 'host', addresses = ?, pin = ? WHERE id = ?").run(JSON.stringify([`${name}.example`]), "fake-pin", ep.id);
-    const server = { images, videos, upscaled, useFor, imagesOff(code: string | false = "unavailable") { down = code; }, olderHost() { old = true; }, replyImage(bytes: Buffer) { output = bytes; }, recipeLoras(l: typeof own) { own = l; } };
+    const server = { images, videos, upscaled, useFor, imagesOff(code: string | false = "unavailable") { down = code; }, olderHost() { old = true; }, beforeForms() { jsonOnly = true; }, sent, replyImage(bytes: Buffer) { output = bytes; }, recipeLoras(l: typeof own) { own = l; } };
     hostFetches.set(ep.id, (async (url: string, opts: RequestInit = {}) => {
       const path = new URL(url).pathname;
       if (path === "/host/v1/status") return Response.json({ state: "running" });
@@ -42,27 +46,51 @@ export async function fakeImages() {
       ] });
       if (down) return Response.json({ error: { code: down, message: "Images unavailable." } }, { status: 503 });
       const action = path.split("/").at(-1)!;
-      const body = JSON.parse(String(opts.body));
+      // A form's files are read into its fields as base64, as JSON carries them, so a test reads either the same way.
+      const form = opts.body instanceof FormData;
+      if (form && jsonOnly) return Response.json({ error: { code: "invalid", message: "The body isn't valid JSON." } }, { status: 400 });
+      sent[form ? "forms" : "json"]++;
+      const body = form ? JSON.parse(String((opts.body as FormData).get("json"))) : JSON.parse(String(opts.body));
+      if (form) for (const name of new Set((opts.body as FormData).keys())) {
+        if (name === "json") continue;
+        const b64 = await Promise.all((opts.body as FormData).getAll(name).map(async f => Buffer.from(await (f as Blob).arrayBuffer()).toString("base64")));
+        body[name] = name === "references" ? b64 : b64[0];
+      }
+      /** A clip's answer, as the host gives it: a form to a form, JSON to JSON. */
+      const clip = (video: Record<string, unknown>, rest: Record<string, unknown>) => {
+        if (!form) return Response.json({ video: { mp4: mp4.toString("base64"), ...video }, poster: png.toString("base64"), ...rest });
+        const out = new FormData();
+        out.set("json", JSON.stringify({ video, ...rest }));
+        out.append("video", new Blob([mp4]), "video");
+        out.append("poster", new Blob([png]), "poster");
+        return new Response(out);
+      };
       if (path === "/host/v1/videos/create") {
         if (!["clip", "moves", "long", "restyle"].includes(body.recipe)) return Response.json({ error: { code: "invalid", message: "That recipe doesn't make videos." } }, { status: 400 });
         expect(Object.keys(body).every(k => ["recipe", "prompt", "image", "drive", "extend", "tail", "source", "width", "height", "aspectRatio", "duration", "steps", "cfg", "seed", "sampler", "scheduler", "shift", "guidance", "negativePrompt", "loras"].includes(k))).toBe(true);
         videos.push(body);
-        return Response.json({ video: { mp4: mp4.toString("base64"), width: 1280, height: 704, frames: 121, fps: 24, duration: 5.04, audio: false, seed: 7 }, poster: png.toString("base64"), ...applied(body), seconds: 300, sampling: { seconds: 240.5, steps: 20 } });
+        return clip({ width: 1280, height: 704, frames: 121, fps: 24, duration: 5.04, audio: false, seed: 7 }, { ...applied(body), seconds: 300, sampling: { seconds: 240.5, steps: 20 } });
       }
       if (path === "/host/v1/videos/upscale") {
         expect(Object.keys(body).every(k => ["recipe", "video", "scale", "maxSize", "colorMatch", "seed"].includes(k))).toBe(true);
         upscaled.push(body);
-        return Response.json({ video: { mp4: mp4.toString("base64"), width: 2560, height: 1408, frames: 121, fps: 24, duration: 5.04, audio: true, seed: 7 }, poster: png.toString("base64"), seconds: 600 });
+        return clip({ width: 2560, height: 1408, frames: 121, fps: 24, duration: 5.04, audio: true, seed: 7 }, { seconds: 600 });
       }
       if (body.recipe !== "art") return Response.json({ error: { code: "not_found" } }, { status: 404 });
       if (old && "aspectRatio" in body) return Response.json({ error: { code: "invalid", message: "Unknown field: aspectRatio." } }, { status: 400 });
       const allowed = ["recipe", "prompt", "count", "references", "loras", "steps", "cfg", "seed", "sampler", "scheduler", "shift", "guidance", "negativePrompt", ...(action === "create" ? ["width", "height", "aspectRatio"] : action === "edit" ? ["image", "mask", "replace"] : ["image", "scale", "maxSize", "colorMatch"])];
       expect(Object.keys(body).every(k => allowed.includes(k))).toBe(true);
       images.push({ action, body });
-      return Response.json({ images: Array.from({ length: body.count ?? 1 }, () => ({ png: output.toString("base64"), width: 1, height: 1, seed: 42 })), seconds: 0.1,
-        ...(action === "upscale" ? {} : { ...applied(body), sampling: { seconds: 6.25 * (body.count ?? 1), steps: 8 * (body.count ?? 1) } }),
+      const count = body.count ?? 1;
+      const answer = { images: Array.from({ length: count }, () => ({ width: 1, height: 1, seed: 42 })), seconds: 0.1,
+        ...(action === "upscale" ? {} : { ...applied(body), sampling: { seconds: 6.25 * count, steps: 8 * count } }),
         // Art's workflow takes no guidance, so a job that sets it hears so.
-        ...(body.guidance === undefined ? {} : { unused: ["guidance"] }) });
+        ...(body.guidance === undefined ? {} : { unused: ["guidance"] }) };
+      if (!form) return Response.json({ ...answer, images: answer.images.map(i => ({ png: output.toString("base64"), ...i })) });
+      const out = new FormData();
+      out.set("json", JSON.stringify(answer));
+      for (let i = 0; i < count; i++) out.append("images", new Blob([output]), "images");
+      return new Response(out);
     }) as typeof fetch);
     const offerings = await models.discover(ada, ep.id);
     // Art, Clip, Long, Moves and Restyle: a proposal never resolves.

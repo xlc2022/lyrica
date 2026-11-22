@@ -2,6 +2,7 @@
 import { hostError, HostIdentityChanged, HostRefused } from "./host.ts";
 import { appliedLoras, cleanPng, COLOR_MATCH, MAX_UPSCALE_SEED, samplingFields, samplingOf, unusedSettings, validateSampling, type AppliedLora, type GeneratedImage, type JobSettings, type ImageInput, type Sampling } from "./images.ts";
 import { validateLoras, type LoraAsk } from "./loras.ts";
+import { FILES, postJob, readAnswer, type JobAnswer, type JobFiles } from "./job-files.ts";
 import { withProgress, type JobProgress } from "./progress.ts";
 
 /**
@@ -74,42 +75,46 @@ export function validateVideoUpscale(r: VideoUpscaleRequest): void {
 export async function videoAt(t: { fetch: typeof fetch; baseUrl: string; modelId: string; loras?: { file: string; strength: number }[] }, r: VideoRequest, signal?: AbortSignal, onProgress?: (p: JobProgress) => void): Promise<GeneratedVideo> {
   if (!t.modelId.startsWith("recipe/")) throw new HostRefused("invalid", "a host video model must be a confirmed recipe");
   // Explicit fields only: the recipe's defaults apply, and callers cannot name parts. LoRAs are only those the recipe takes.
-  const body = JSON.stringify({ recipe: t.modelId.slice(7), prompt: r.prompt, ...(t.loras?.length ? { loras: t.loras } : {}), ...(r.image ? { image: Buffer.from(r.image.bytes).toString("base64") } : {}),
-    ...(r.drive ? { drive: Buffer.from(r.drive).toString("base64") } : {}), ...(r.extend ? { extend: Buffer.from(r.extend).toString("base64"), tail: true } : {}),
-    ...(r.source ? { source: Buffer.from(r.source).toString("base64") } : {}),
+  const fields = { recipe: t.modelId.slice(7), prompt: r.prompt, ...(t.loras?.length ? { loras: t.loras } : {}), ...(r.extend ? { tail: true } : {}),
     ...(r.size ?? {}), ...(r.aspectRatio ? { aspectRatio: r.aspectRatio } : {}), ...(r.duration === undefined ? {} : { duration: r.duration }),
-    ...samplingFields(r) });
-  return postVideo(t, "/host/v1/videos/create", body, videoTimeout(r), signal, onProgress);
+    ...samplingFields(r) };
+  const files: JobFiles = { image: r.image?.bytes, drive: r.drive, extend: r.extend, source: r.source };
+  return postVideo(t, "/host/v1/videos/create", fields, files, videoTimeout(r), signal, onProgress);
 }
 
 /** A whole clip through a confirmed host recipe that upscales clips: `POST /host/v1/videos/upscale`, in memory only. */
 export async function upscaleVideoAt(t: { fetch: typeof fetch; baseUrl: string; modelId: string }, r: VideoUpscaleRequest, signal?: AbortSignal, onProgress?: (p: JobProgress) => void): Promise<GeneratedVideo> {
   if (!t.modelId.startsWith("recipe/")) throw new HostRefused("invalid", "a host upscale model must be a confirmed recipe");
-  const body = JSON.stringify({ recipe: t.modelId.slice(7), video: Buffer.from(r.video).toString("base64"),
+  const fields = { recipe: t.modelId.slice(7),
     ...(r.scale === undefined ? {} : { scale: r.scale }), ...(r.maxSize === undefined ? {} : { maxSize: r.maxSize }),
-    ...(r.colorMatch === undefined ? {} : { colorMatch: r.colorMatch }), ...(r.seed === undefined ? {} : { seed: r.seed }) });
-  return postVideo(t, "/host/v1/videos/upscale", body, VIDEO_TIMEOUT_MS, signal, onProgress);
+    ...(r.colorMatch === undefined ? {} : { colorMatch: r.colorMatch }), ...(r.seed === undefined ? {} : { seed: r.seed }) };
+  return postVideo(t, "/host/v1/videos/upscale", fields, { video: r.video }, VIDEO_TIMEOUT_MS, signal, onProgress);
 }
 
-/** A video job's request and its answer, a clip and its poster. */
-async function postVideo(t: { fetch: typeof fetch; baseUrl: string }, path: string, body: string, ms: number, signal?: AbortSignal, onProgress?: (p: JobProgress) => void): Promise<GeneratedVideo> {
+/** A video job's request (its files as a form, job-files.ts) and its answer, a clip and its poster. */
+async function postVideo(t: { fetch: typeof fetch; baseUrl: string }, path: string, fields: Record<string, unknown>, files: JobFiles, ms: number, signal?: AbortSignal, onProgress?: (p: JobProgress) => void): Promise<GeneratedVideo> {
   const timeout = AbortSignal.timeout(ms);
-  let res: Response;
-  try { res = await withProgress(t, onProgress, (tag) => t.fetch(`${t.baseUrl}${path}`, { method: "POST", body, headers: { "content-type": "application/json", ...tag }, redirect: "error", signal: signal ? AbortSignal.any([signal, timeout]) : timeout })); }
-  catch (e) {
-    signal?.throwIfAborted();
-    if (e instanceof HostRefused || e instanceof HostIdentityChanged) throw e;
-    throw new HostRefused("unavailable", "The video host could not be reached.");
-  }
-  // A host's message is its own fixed text, never the prompt.
-  if (!res.ok) { const err = await hostError(res); throw new HostRefused(err?.code ?? (res.status >= 500 || res.status === 429 ? "unavailable" : "invalid"), `video host answered ${res.status}${err ? `: ${err.message}` : ""}`); }
-  let out: any;
-  try { out = await res.json(); } catch { throw new HostRefused("invalid", "The video host returned an invalid response."); }
+  const send = async (body: FormData | string, type: Record<string, string>, tag: Record<string, string>): Promise<JobAnswer> => {
+    let res: Response;
+    try { res = await t.fetch(`${t.baseUrl}${path}`, { method: "POST", body, headers: { ...type, ...tag }, redirect: "error", signal: signal ? AbortSignal.any([signal, timeout]) : timeout }); }
+    catch (e) {
+      signal?.throwIfAborted();
+      if (e instanceof HostRefused || e instanceof HostIdentityChanged) throw e;
+      throw new HostRefused("unavailable", "The video host could not be reached.");
+    }
+    // A host's message is its own fixed text, never the prompt.
+    if (!res.ok) { const err = await hostError(res); throw new HostRefused(err?.code ?? (res.status >= 500 || res.status === 429 ? "unavailable" : "invalid"), `video host answered ${res.status}${err ? `: ${err.message}` : ""}`); }
+    try { return await readAnswer(res); } catch { throw new HostRefused("invalid", "The video host returned an invalid response."); }
+  };
+  const out = await withProgress(t, onProgress, (tag) => postJob(fields, files, (body, type) => send(body, type, tag)));
   const v = out?.video;
-  const bytes = typeof v?.mp4 === "string" ? Buffer.from(v.mp4, "base64") : undefined;
-  if (!bytes || !isMp4(bytes) || typeof out.poster !== "string") throw new HostRefused("invalid", "video host returned no MP4");
+  // A form's clip and poster are parts of their own; JSON's are base64.
+  const parts = out[FILES];
+  const bytes = parts ? parts.video?.[0] : typeof v?.mp4 === "string" ? Buffer.from(v.mp4, "base64") : undefined;
+  const poster = parts ? parts.poster?.[0] : typeof out.poster === "string" ? Buffer.from(out.poster, "base64") : undefined;
+  if (!bytes || !isMp4(bytes) || !poster) throw new HostRefused("invalid", "video host returned no MP4");
   const num = (n: unknown) => typeof n === "number" && Number.isFinite(n) && n > 0 ? n : 0;
   const sampling = samplingOf(out), loras = appliedLoras(out.loras), unused = unusedSettings(out.unused);
   return { bytes, type: "video/mp4", width: num(v.width), height: num(v.height), frames: num(v.frames), fps: num(v.fps), duration: num(v.duration), audio: v.audio === true,
-    ...(typeof v.seed === "number" ? { seed: v.seed } : {}), poster: cleanPng(Buffer.from(out.poster, "base64")), ...(sampling ? { sampling } : {}), ...(loras ? { loras } : {}), ...(unused ? { unused } : {}) };
+    ...(typeof v.seed === "number" ? { seed: v.seed } : {}), poster: cleanPng(poster), ...(sampling ? { sampling } : {}), ...(loras ? { loras } : {}), ...(unused ? { unused } : {}) };
 }

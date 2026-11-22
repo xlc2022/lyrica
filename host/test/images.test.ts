@@ -1351,8 +1351,21 @@ describe("the image API", () => {
     });
     const me = lyrica();
     const pinned = await pair(h.tls, me, code);
-    const api = (path: string, init: { method?: string; body?: unknown; headers?: Record<string, string> } = {}) => call({ port: h.tls, path, identity: me, pinned, ...init });
-    return { ...h, api, lines, comfyFake, comfyFakes, sdFake, book, models, scheduler, gpus };
+    const api = (path: string, init: { method?: string; body?: unknown; raw?: Buffer; headers?: Record<string, string> } = {}) => call({ port: h.tls, path, identity: me, pinned, ...init });
+    /** A job sent as a form (API.md, "Sending files"): `fields` in its json part, each file a part; its answer read as a form. */
+    const form = async (path: string, fields: object, files: Record<string, Buffer | Buffer[]>) => {
+      const fd = new FormData();
+      fd.set("json", JSON.stringify(fields));
+      for (const [name, v] of Object.entries(files)) for (const b of Array.isArray(v) ? v : [v]) fd.append(name, new Blob([b]), name);
+      const req = new Response(fd);
+      const r = await api(path, { raw: Buffer.from(await req.arrayBuffer()), headers: { "content-type": req.headers.get("content-type")! } });
+      if (!/^multipart\/form-data/.test(String(r.headers["content-type"]))) return { status: r.status, json: r.body, files: {} as Record<string, Buffer[]> };
+      const out = await new Response(r.bytes, { headers: { "content-type": String(r.headers["content-type"]) } }).formData();
+      const files2: Record<string, Buffer[]> = {};
+      for (const [name, v] of out.entries()) if (typeof v !== "string") (files2[name] ??= []).push(Buffer.from(await v.arrayBuffer()));
+      return { status: r.status, json: JSON.parse(String(out.get("json"))), files: files2 };
+    };
+    return { ...h, api, form, lines, comfyFake, comfyFakes, sdFake, book, models, scheduler, gpus };
   }
 
   it("makes images with stable-diffusion.cpp in ComfyUI's place", async () => {
@@ -1635,6 +1648,13 @@ describe("the image API", () => {
     const image = await s.api("/host/v1/images/upscale", { body: { recipe: seedvr.id, image: PNG.toString("base64") } });
     expect(image.status).toBe(200);
     expect(s.comfyFake.seen.prompts[1].upscale.inputs.seed).toBeLessThan(2 ** 32);
+    // As a form, the image goes as bytes and comes back as an `images` part; a file in a field it doesn't take is refused.
+    const formed = await s.form("/host/v1/images/upscale", { recipe: seedvr.id }, { image: PNG });
+    expect(formed.status).toBe(200);
+    expect(formed.json.images).toEqual([expect.objectContaining({ seed: expect.any(Number) })]);
+    expect(formed.json.images[0]).not.toHaveProperty("png");
+    expect(formed.files.images![0]!.equals(Buffer.from(image.body.images[0].png, "base64"))).toBe(true);
+    expect((await s.form("/host/v1/images/upscale", { recipe: seedvr.id }, { image: PNG, mask: PNG })).json.error.message).toBe("Unknown field: mask.");
   });
 
   it("plans a SeedVR2 recipe from its file sizes, never from a measurement, since its node frees its models after each job", async () => {
@@ -1702,6 +1722,13 @@ describe("the image API", () => {
     const tailed = s.comfyFake.seen.prompts.slice(tailStart);
     expect(tailed.map((p) => p.join.inputs.keep)).toEqual([0, 1]);
     expect(next.body.video.frames).toBe(tailed.reduce((n, p) => n + p.cond.inputs.length - 22, 0));
+    // The same as a form: the clip's end goes as bytes, and the answer's clip and poster come back as parts of their own.
+    const formed = await s.form("/host/v1/videos/create", { recipe: h3r.id, prompt: "x", tail: true, duration: 20 }, { extend: clip(1024, 576, 48, 24) });
+    expect(formed.status).toBe(200);
+    expect(formed.json.video).toMatchObject({ frames: next.body.video.frames, fps: 24 });
+    expect(formed.json.video).not.toHaveProperty("mp4");
+    expect(formed.files.video![0]!.equals(Buffer.from(next.body.video.mp4, "base64"))).toBe(true);
+    expect(formed.files.poster).toHaveLength(next.body.poster ? 1 : 0);
     // A host-made minute at 1920×1088 passes 64 MB: such a clip extends, and one whose joined clip would pass what an
     // answer carries is refused before the GPU runs, with the seconds that still fit.
     const big = clip(1024, 576, 24, 24, 70 * 1024 * 1024).toString("base64");

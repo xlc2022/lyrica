@@ -1332,6 +1332,26 @@ and gives it to the other, and carries the files only it can get.
   `application/octet-stream`, with the file's size in `X-File-Size`. Only
   files the parts scan found (`not_found` otherwise).
 
+### Sending files
+
+The image and video jobs below take their images and clips, and give their
+results, either way:
+
+- **As a form** (what Lyrica sends): `multipart/form-data` whose `json`
+  part holds the fields shown below without the files, and each file is a
+  part of its own named by its field (`image`, `mask`, `drive`, `extend`,
+  `source`, `video`; `references` once per image, in order), as bytes. The
+  answer is a form too: its `json` part is the answer shown below without
+  the files, and they follow as parts: `images`, one per entry of
+  `images` in that order, or `video` and `poster`. A part with any other
+  name, a file given twice, or a field that is also a file is `invalid`.
+  Nothing passes through a string, so a clip is bounded only by the limits
+  below, and the wire carries a third less than base64.
+- **As JSON**, each file base64 in its field, as shown below. A host from
+  before forms (2026-11) takes only this, and refuses a form as "The body
+  isn't valid JSON."; Lyrica then sends the job again as JSON, so it keeps
+  working until the host has its Update….
+
 ### Making images
 
 All three answer `{ "images": [{ "png": "<base64>", "width": 1024,
@@ -1520,10 +1540,10 @@ newer host made, read after a rollback).
   keyframe), and the answer is only the new seconds, for the caller to join
   on: the first continuation's join (`keep` 0) gives its new frames alone.
   A clip of any length extends that way. When the answer, at the clip's
-  bytes per frame, would pass 360 MB, it is `invalid` before anything runs,
-  with the seconds that still fit: an answer's base64 must fit one Node
-  string (536,870,888 characters). One that still comes out past 360 MB is
-  a 500 `too_large`. With `source`, an
+  bytes per frame, would pass what an answer carries (1 GiB as a form; as
+  JSON 360 MB, since its base64 must fit one Node string of 536,870,888
+  characters), it is `invalid` before anything runs, with the seconds that
+  still fit. One that still comes out past it is a 500 `too_large`. With `source`, an
   MP4 of at most 64 MB (and no `image`, `drive`, `extend`, size or
   `aspectRatio`), the recipe must do `edit_video`: the clip is changed as
   the prompt says and keeps its motion, timing and camera. MiniMax H3's
@@ -1575,7 +1595,8 @@ newer host made, read after a rollback).
   system memory, so a clip whose upscaled frames times their pixels pass
   1.5 billion (15 s at 24 fps from 720p to 1440p) is `invalid`, saying how
   many frames that size allows. The answer is as for `videos/create`, its
-  `audio` read from the new clip. It may run for two hours.
+  `audio` read from the new clip, and past what an answer carries is a 500
+  `too_large` as there. It may run for two hours.
 
 ### Job progress
 
