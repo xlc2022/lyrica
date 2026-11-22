@@ -60,7 +60,7 @@ const IDLE_FREE_MS = 10 * 60_000;
 const VIDEO_TIMEOUT_MS = 2 * 60 * 60_000;
 /** Sampling settings a job may set in place of its recipe's, checked as a recipe's defaults are (API.md, "Making images"). */
 const JOB_SAMPLING = ["sampler", "scheduler", "shift", "guidance"];
-const VIDEO_FIELDS = ["recipe", "prompt", "negativePrompt", "image", "drive", "extend", "source", "width", "height", "duration", "steps", "cfg", "seed", ...JOB_SAMPLING, "aspectRatio", "loras"];
+const VIDEO_FIELDS = ["recipe", "prompt", "negativePrompt", "image", "drive", "extend", "tail", "source", "width", "height", "duration", "steps", "cfg", "seed", ...JOB_SAMPLING, "aspectRatio", "loras"];
 /** A request names at most this many LoRA files of the host's for one job (API.md, "LoRAs for one job"): four LoRAs, each maybe a high and low noise pair. */
 const MAX_REQUEST_LORAS = 8;
 /** A driving clip (`motion`) or one to edit (`edit_video`): only its first seconds are used. */
@@ -1006,6 +1006,9 @@ export class Images {
     const recipe = this.book.all().find((r) => r.id === body.recipe && r.state === "confirmed");
     if (!recipe || !this.book.ready(recipe, this.files())) throw notFound("No confirmed, ready recipe with that ID.");
     const extending = body.extend !== undefined;
+    // `extend` is only the clip's end, and the answer only the new seconds: the caller joins them on, so a clip of any length extends.
+    if (body.tail !== undefined && (typeof body.tail !== "boolean" || !extending)) throw invalid("tail is true or false, with extend.");
+    const tail = body.tail === true;
     if (extending && (body.image !== undefined || body.drive !== undefined)) throw invalid("extend takes no image or driving clip: the clip's own last frames start the next.");
     if (body.source !== undefined && (extending || body.image !== undefined || body.drive !== undefined)) throw invalid("source takes no image, driving clip or clip to extend: the edit is of that clip alone.");
     const action: Action = body.source !== undefined ? "edit_video" : body.drive !== undefined ? "motion" : body.image === undefined ? "video" : "animate";
@@ -1115,9 +1118,10 @@ export class Images {
       // GPU runs when the whole clip would pass what an answer carries, with the seconds that still fit.
       const had = mp4Video(previous!)!.frames, perFrame = previous!.length / Math.max(1, had);
       const adds = clips.reduce((n, c) => n + Number(c.frames) - chain!.overlap, 0);
-      if (previous!.length + adds * perFrame > ANSWER_LIMIT) {
-        const fit = Math.floor((ANSWER_LIMIT - previous!.length) / perFrame / spec.fps);
-        throw invalid(`That clip is ${MB(previous!.length)} for ${(had / spec.fps).toFixed(1)} s, so ${Math.round(duration)} s more would make it about ${MB(previous!.length + adds * perFrame)}, past the ${MB(ANSWER_LIMIT)} a clip can be.`
+      const kept = tail ? 0 : previous!.length;
+      if (kept + adds * perFrame > ANSWER_LIMIT) {
+        const fit = Math.floor((ANSWER_LIMIT - kept) / perFrame / spec.fps);
+        throw invalid(`That clip is ${MB(previous!.length)} for ${(had / spec.fps).toFixed(1)} s, so ${Math.round(duration)} s more would make it about ${MB(kept + adds * perFrame)}, past the ${MB(ANSWER_LIMIT)} a clip can be.`
           + (fit >= 1 ? ` Add at most ${fit} s.` : " It can't be extended."));
       }
     }
@@ -1146,7 +1150,8 @@ export class Images {
           // An animated still stays every later clip's reference: the clip so far may have lost a face the still shows.
           const ref = first ? undefined : uploads.image && chain!.reference;
           const t = first ? template : { ...template, workflow: { ...chain!.workflow, ...ref?.workflow } };
-          const step = { ...values, ...clip, seed: Number(values.seed) + i, ...(first ? {} : { overlap: chain!.overlap, prompt: `${ref?.promptPrefix ?? ""}${chain!.promptPrefix ?? ""}${values.prompt}` }) };
+          // `keep` 0: the join gives only the new frames, on an extend's first clip when the caller joins them on.
+          const step = { ...values, ...clip, seed: Number(values.seed) + i, ...(first ? {} : { overlap: chain!.overlap, keep: tail && i === 0 ? 0 : 1, prompt: `${ref?.promptPrefix ?? ""}${chain!.promptPrefix ?? ""}${values.prompt}` }) };
           const made = await comfy.runVideo(first ? uploads : { previous: video!, ...(ref ? { reference: uploads.image! } : {}) }, (names) => (this.checkBeforeRun(t), fill(t, parts, loras, { ...step, ...names })),
             VIDEO_TIMEOUT_MS, abort.signal, (f, stage) => job.progress((done + f * Number(clip.frames)) / total, stage));
           video = made.video;
@@ -1163,7 +1168,7 @@ export class Images {
     this.log("video", { recipe: recipe.id, action: extending ? "extend" : action, clips: clips.length, frames: total });
     const size = poster ? imageSize(poster) : null;
     // A chained clip's length is read from the clip itself, or else counted: each continuation drops its overlap.
-    const counted = (extending ? mp4Video(previous!)!.frames : Number(clips[0]!.clipFrames))
+    const counted = (tail ? 0 : extending ? mp4Video(previous!)!.frames : Number(clips[0]!.clipFrames))
       + clips.slice(extending ? 0 : 1).reduce((n, c) => n + Number(c.frames) - chain!.overlap, 0);
     const frames = clips.length > 1 || extending ? mp4Video(video)?.frames ?? counted : counted;
     const fps = Number(clips[0]!.fps);

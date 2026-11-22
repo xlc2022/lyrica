@@ -578,3 +578,52 @@ describe("a clip's stills", () => {
     }
   });
 });
+
+/** Extending a clip: its end goes to the host, and the new seconds are joined on here, over the same stand-in. */
+describe("a clip's end and a join", () => {
+  it("cuts the end without re-encoding, joins a host's next seconds as they are, and re-encodes clips from elsewhere", async () => {
+    try { execFileSync("ffmpeg", ["-version"]); } catch { return; /* no ffmpeg here */ }
+    const { ThreadFiles } = await import("@lyrica/core");
+    const { readFileSync } = await import("node:fs");
+    const dir = mkdtempSync(join(tmpdir(), "lyrica-join-"));
+    try {
+      const box = {
+        allow: (p: string) => p,
+        run: async (argv: string[], o: { input?: Buffer } = {}) => {
+          const { spawnSync } = await import("node:child_process");
+          const r = spawnSync(argv[0]!, argv.slice(1), { input: o.input ?? "", maxBuffer: 1 << 28 });
+          return { code: r.status, signal: r.signal, stdout: r.stdout, stderr: r.stderr };
+        },
+      };
+      const files = new ThreadFiles(box as unknown as Sandbox, [], () => {}, dir);
+      // As a host encodes: H.264 at CRF 18 and AAC, 24 fps.
+      const encode = (name: string, seconds: number, extra: string[] = ["-c:a", "aac"]) => execFileSync("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", `testsrc2=size=320x192:rate=24:duration=${seconds}`,
+        "-f", "lavfi", "-i", `sine=frequency=440:sample_rate=48000:duration=${seconds}`, "-c:v", "libx264", "-crf", "18", "-pix_fmt", "yuv420p", ...extra, join(dir, name)]);
+      const frames = (b: Buffer) => { writeFileSync(join(dir, "probe.mp4"), b); return Number(execFileSync("ffprobe", ["-v", "error", "-select_streams", "v:0", "-count_packets", "-show_entries", "stream=nb_read_packets", "-of", "csv=p=0", join(dir, "probe.mp4")]).toString()); };
+      encode("clip.mp4", 20);
+      encode("next.mp4", 2);
+      encode("other.mp4", 2, ["-profile:v", "baseline", "-an"]);
+
+      // From the keyframe before the last 2 s: at most one keyframe interval (250 frames) more, never the whole clip.
+      const tail = await files.clipTail(join(dir, "clip.mp4"), 2);
+      expect(frames(tail)).toBeGreaterThanOrEqual(48);
+      expect(frames(tail)).toBeLessThan(480);
+
+      const joined = await files.joinClips(join(dir, "clip.mp4"), readFileSync(join(dir, "next.mp4")));
+      expect(joined).toMatchObject({ width: 320, height: 192, frames: 480 + 48, fps: 24, audio: true });
+      expect(frames(joined.bytes)).toBe(528);
+      expect(joined.poster.subarray(1, 4).toString()).toBe("PNG");
+      // The host's packets as they came: the joined clip's last frames are the next clip's, not a re-encode of them.
+      const packets = (file: string) => execFileSync("ffmpeg", ["-v", "error", "-i", file, "-map", "0:v:0", "-c", "copy", "-f", "framemd5", "-"]).toString().trim().split("\n").filter((l) => !l.startsWith("#")).map((l) => l.split(",").at(-1)!.trim());
+      writeFileSync(join(dir, "joined.mp4"), joined.bytes);
+      // (Its first, the keyframe, loses x264's settings note on the way; the frames after it are byte for byte.)
+      expect(packets(join(dir, "joined.mp4")).slice(-47)).toEqual(packets(join(dir, "next.mp4")).slice(1));
+      const other = await files.joinClips(join(dir, "clip.mp4"), readFileSync(join(dir, "other.mp4")));
+      expect(other).toMatchObject({ frames: 528, audio: false });
+      writeFileSync(join(dir, "notes.txt"), "not a clip");
+      await expect(files.clipTail(join(dir, "notes.txt"), 2)).rejects.toThrow();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});

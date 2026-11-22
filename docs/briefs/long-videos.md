@@ -33,10 +33,12 @@ for, on the operator's own hardware. It builds on [video.md](video.md).
    `LyricaClipTail` and `LyricaJoinClips` nodes), which re-encodes the
    clip frame by frame, so no clip's frames are all held in memory and
    nothing is written to disk.
-2. **Extend.** The same request with `extend`, an existing clip (an MP4
-   of at most 64 MB, at the recipe's frame rate and a size it makes),
-   adds `duration` seconds to it with continuation clips only, and
-   answers with the whole clip. The image tool's new `extend` action
+2. **Extend.** The same request with `extend`, an existing clip's end
+   (lyricad sends its last seconds from a keyframe, with `tail: true`,
+   at the recipe's frame rate and a size it makes), adds `duration`
+   seconds to it with continuation clips only, and answers with only the
+   new seconds, which lyricad joins onto the clip with ffmpeg in the
+   sandbox, so a clip of any length extends. The image tool's new `extend` action
    takes the clip's path, a prompt and the seconds to add, and saves a
    new clip beside it.
 3. **Real limits.** A recipe's listing has `longestSeconds`: its

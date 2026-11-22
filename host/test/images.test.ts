@@ -549,7 +549,7 @@ describe("long videos", () => {
     const next = fill({ ...h3, workflow: h3.continuation!.workflow }, [
       p("diffusion", "h3.safetensors"), p("lora", "turbo.safetensors", "speed"), p("text_encoder", "vl.safetensors", "qwen3vl_32b"),
       p("vae", "v.safetensors"), p("vae", "a.safetensors", "audio"),
-    ], [], { negativePrompt: "", ...starter.defaults, prompt: "x", seed: 2, width: 1344, height: 768, overlap: 22, previous: "lyrica-previous.mp4", ...videoValues(h3.video!, 6, 1344, 768, 8) });
+    ], [], { negativePrompt: "", ...starter.defaults, prompt: "x", seed: 2, width: 1344, height: 768, overlap: 22, keep: 1, previous: "lyrica-previous.mp4", ...videoValues(h3.video!, 6, 1344, 768, 8) });
     expect(next.previous!.inputs).toEqual({ file: "lyrica-previous.mp4" });
     expect(next.tail!.inputs).toEqual({ video: ["previous", 0], frames: 22 });
     // The text encoder sees the frame the clip starts from, so the prompt reads against the clip so far, not the
@@ -557,7 +557,7 @@ describe("long videos", () => {
     expect(next.cond!.inputs.first_frame).toEqual(["tail", 0]);
     expect(next.anchor!.inputs).toEqual({ positive: ["cond", 0], vae: ["load_vae", 0], audio_vae: ["load_vae_audio", 0], latent: ["cond", 1], image: ["tail", 0], audio: ["tail", 1], frame_idx: 0 });
     expect(next.guide!.inputs.conditioning).toEqual(["anchor", 0]);
-    expect(next.join!.inputs).toEqual({ previous: ["previous", 0], images: ["decode", 0], audio: ["sound", 0], fps: 24, overlap: 22 });
+    expect(next.join!.inputs).toEqual({ previous: ["previous", 0], images: ["decode", 0], audio: ["sound", 0], fps: 24, overlap: 22, keep: 1 });
     expect(next.save!.inputs.video).toEqual(["join", 0]);
     expect(JSON.stringify(next)).not.toContain("$");
   });
@@ -1693,6 +1693,15 @@ describe("the image API", () => {
     expect(added).toHaveLength(1);
     expect(added[0].cond.inputs).toMatchObject({ width: 1024, height: 576, length: 124 });
     expect(extended.body.video.frames).toBe(120 + 124 - 22);
+    expect(added[0].join.inputs.keep).toBe(1);
+    // With `tail`, extend is only the clip's end, and the answer only the new frames: the first continuation's join keeps
+    // nothing before them, the later ones keep what came before in this answer. lyricad joins them onto the clip.
+    const tailStart = s.comfyFake.seen.prompts.length;
+    const next = await s.api("/host/v1/videos/create", { body: { recipe: h3r.id, prompt: "x", extend: clip(1024, 576, 48, 24).toString("base64"), tail: true, duration: 20 } });
+    expect(next.status).toBe(200);
+    const tailed = s.comfyFake.seen.prompts.slice(tailStart);
+    expect(tailed.map((p) => p.join.inputs.keep)).toEqual([0, 1]);
+    expect(next.body.video.frames).toBe(tailed.reduce((n, p) => n + p.cond.inputs.length - 22, 0));
     // A host-made minute at 1920×1088 passes 64 MB: such a clip extends, and one whose joined clip would pass what an
     // answer carries is refused before the GPU runs, with the seconds that still fit.
     const big = clip(1024, 576, 24, 24, 70 * 1024 * 1024).toString("base64");
@@ -1732,6 +1741,7 @@ describe("the image API", () => {
     expect(await refused({ extend: clip(1024, 576, 120, 24).toString("base64"), width: 1024 })).toMatch(/keeps its own size/);
     expect(await refused({ extend: clip(1024, 576, 120, 24).toString("base64"), image: PNG.toString("base64") })).toMatch(/no image/);
     expect(await refused({ extend: PNG.toString("base64") })).toMatch(/video track/);
+    expect(await refused({ tail: true })).toMatch(/with extend/);
 
     // A recipe from a starter sized for a host short of memory (lunasa's w6a8) makes one clip at most, and never extends.
     s.book.all().find((r) => r.id === h3r.id)!.longestSeconds = 5;

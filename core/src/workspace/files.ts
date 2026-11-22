@@ -44,6 +44,10 @@ const THUMB_TIMEOUT_MS = 20_000;
 export const MAX_FRAMES = 16;
 export const FRAME_SIDE = 768;
 const FRAME_TIMEOUT_MS = 20_000;
+/** Cutting a clip's end, or joining two clips: re-encoding a long 1080p clip on the server's CPU can take minutes. */
+const CLIP_TIMEOUT_MS = 30 * 60_000;
+/** The start of a script that needs ffmpeg: without it, exit 3. */
+const NEEDS_FFMPEG = "command -v ffprobe >/dev/null && command -v ffmpeg >/dev/null || exit 3;";
 export const LIST_LIMIT = 2000;
 export const SEARCH_LIMIT = 200;
 /** A regular expression search reads at most this many names under a root. */
@@ -326,6 +330,49 @@ export class ThreadFiles {
       out.push({ at, bytes: r.stdout, type: "image/jpeg" });
     }
     return out;
+  }
+
+  /**
+   * The end of a clip, for a host to continue: its last `seconds` or more, from the keyframe before them, copied
+   * without re-encoding (so it keeps the clip's encoder settings). ffmpeg runs in the sandbox; its file is in the
+   * sandbox's own /tmp (memory, or a project chat's encrypted tmp/), removed when it ends.
+   */
+  async clipTail(path: string, seconds: number, signal?: AbortSignal): Promise<Buffer> {
+    const p = this.allow(path, false);
+    const r = await this.box.run(["sh", "-c", `${NEEDS_FFMPEG} test -f "$1" || { echo "$1 is not a file" >&2; exit 1; }; d=$(mktemp -d) && trap 'rm -rf -- "$d"' EXIT && ` +
+      'ffmpeg -v error -nostdin -sseof "-$2" -i "file:$1" -map 0:v:0 -map "0:a:0?" -c copy -f mp4 "$d/t.mp4" && cat -- "$d/t.mp4"', "sh", p, String(seconds)],
+    { timeoutMs: CLIP_TIMEOUT_MS, signal });
+    if (r.code === 3) throw new Error("ffmpeg isn't installed, so a clip can't be extended");
+    if (r.code !== 0 || !r.stdout.length) throw new Error(r.stderr.toString().trim() || (r.signal ? "cutting the clip took too long" : `${path} couldn't be read as a video`));
+    return r.stdout;
+  }
+
+  /**
+   * `path` with `added` (an MP4) joined on its end, and its first frame as a PNG. Two clips from the same encoder
+   * settings (a host's) are joined without re-encoding; others are re-encoded as the host encodes (H.264 at CRF 18,
+   * AAC), sound kept only when both have it. ffmpeg runs in the sandbox, its files in the sandbox's own /tmp.
+   */
+  async joinClips(path: string, added: Buffer, signal?: AbortSignal): Promise<{ bytes: Buffer; poster: Buffer; width: number; height: number; frames: number; fps: number; audio: boolean }> {
+    const p = this.allow(path, false);
+    // The streams' codecs, shapes and encoder settings (extradata): equal, the packets go together as they are.
+    const script = `${NEEDS_FFMPEG} test -f "$1" || { echo "$1 is not a file" >&2; exit 1; }; d=$(mktemp -d) && trap 'rm -rf -- "$d"' EXIT || exit 1; ` +
+      'cat > "$d/b.mp4" && ln -s -- "$1" "$d/a.mp4" || exit 1; ' +
+      'h() { ffprobe -v error -show_data_hash sha256 -show_entries stream=codec_type,codec_name,profile,width,height,pix_fmt,r_frame_rate,sample_rate,channels,extradata_hash -of csv=p=0 "file:$1"; }; ' +
+      'has() { ffprobe -v error -select_streams a:0 -show_entries stream=index -of csv=p=0 "file:$1" | grep -q .; }; ' +
+      'if [ "$(h "$d/a.mp4")" = "$(h "$d/b.mp4")" ]; then printf "file a.mp4\\nfile b.mp4\\n" > "$d/l" && ffmpeg -v error -nostdin -f concat -safe 0 -i "$d/l" -c copy -movflags +faststart "$d/o.mp4" || exit 1; ' +
+      'elif has "$d/a.mp4" && has "$d/b.mp4"; then ffmpeg -v error -nostdin -i "file:$d/a.mp4" -i "file:$d/b.mp4" -filter_complex "[0:v:0][0:a:0][1:v:0][1:a:0]concat=n=2:v=1:a=1[v][a]" -map "[v]" -map "[a]" -c:v libx264 -crf 18 -pix_fmt yuv420p -c:a aac -movflags +faststart "$d/o.mp4" || exit 1; ' +
+      'else ffmpeg -v error -nostdin -i "file:$d/a.mp4" -i "file:$d/b.mp4" -filter_complex "[0:v:0][1:v:0]concat=n=2:v=1:a=0[v]" -map "[v]" -c:v libx264 -crf 18 -pix_fmt yuv420p -movflags +faststart "$d/o.mp4" || exit 1; fi; ' +
+      // What the joined clip is, on stderr's last line after any warning.
+      'v=$(ffprobe -v error -select_streams v:0 -count_packets -show_entries stream=width,height,r_frame_rate,nb_read_packets -of csv=p=0 "file:$d/o.mp4") || exit 1; ' +
+      'if has "$d/o.mp4"; then a=1; else a=0; fi; printf "\\n@%s,%s\\n" "$v" "$a" >&2; cat -- "$d/o.mp4"';
+    const r = await this.box.run(["sh", "-c", script, "sh", p], { input: added, timeoutMs: CLIP_TIMEOUT_MS, signal });
+    if (r.code === 3) throw new Error("ffmpeg isn't installed, so a clip can't be extended");
+    const info = /\n@(\d+),(\d+),(\d+)\/(\d+),(\d+),([01])\n?$/.exec(r.stderr.toString());
+    if (r.code !== 0 || !r.stdout.length || !info) throw new Error(r.stderr.toString().trim() || (r.signal ? "joining the clips took too long" : "the clips couldn't be joined"));
+    const [width, height, num, den, frames, audio] = info.slice(1).map(Number) as [number, number, number, number, number, number];
+    const still = await this.box.run(["ffmpeg", "-v", "error", "-nostdin", "-i", `file:${p}`, "-frames:v", "1", "-f", "image2pipe", "-c:v", "png", "-"], { timeoutMs: FRAME_TIMEOUT_MS, signal });
+    if (still.code !== 0 || !still.stdout.length) throw new Error(still.stderr.toString().trim() || `${path} couldn't be read as a video`);
+    return { bytes: r.stdout, poster: still.stdout, width, height, frames, fps: num / den, audio: audio === 1 };
   }
 
   /** Where a file's thumbnail is kept, without its extension; nothing for a path outside the thread's folder. */

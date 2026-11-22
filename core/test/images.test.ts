@@ -520,7 +520,7 @@ describe("video calls through the router (principles 1 and 2)", () => {
     expect(long.resolution.ref).toEqual(s.workstation.long);
     expect(long.resolution.skipped).toEqual([expect.objectContaining({ reason: "it makes videos of at most 8 s" })]);
     expect((await s.models.video(ctx, { prompt: "It goes on", extend: mp4, duration: 4 })).resolution.ref).toEqual(s.workstation.long);
-    expect(s.workstation.server.videos.slice(-1)).toEqual([{ recipe: "long", prompt: "It goes on", extend: mp4.toString("base64"), duration: 4 }]);
+    expect(s.workstation.server.videos.slice(-1)).toEqual([{ recipe: "long", prompt: "It goes on", extend: mp4.toString("base64"), tail: true, duration: 4 }]);
     s.models.setColumnTask(s.ada.id, "private", "video", [s.workstation.clip]);
     await expect(s.models.video(ctx, { prompt: "A fox", duration: 16 })).rejects.toThrow(/at most 8 s/);
     await expect(s.models.video(ctx, { prompt: "It goes on", extend: mp4 })).rejects.toThrow(/doesn't extend clips/);

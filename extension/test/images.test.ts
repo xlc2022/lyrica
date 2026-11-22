@@ -25,12 +25,17 @@ async function setup() {
   writeFileSync(join(folder, "uploads", "landscape.png"), png);
   const workspace = new Workspace(s.keyring, s.users, { excludePorts: [] });
   const settings = workspace.settings(s.ada.id);
+  const joins: { path: string; added: Buffer }[] = [];
   const files = new ThreadImages(() => home, () => ["threads", encodeURIComponent(thread)], async path => {
     const local = path.replace(/^\/workspace\//, "");
     if (local.includes("..") || local.startsWith("/")) throw new Error("outside the thread");
     const bytes = readFileSync(join(folder, local));
     return { stream: Readable.from([bytes]), size: bytes.length };
-  }, settings);
+  }, settings, undefined, undefined, undefined, undefined, undefined, () => ({
+    // ffmpeg's stand-ins: the end is the whole (short) clip, and the join keeps what it was given, to be checked.
+    clipTail: async (path: string) => readFileSync(join(folder, path.replace(/^\/workspace\//, ""))),
+    joinClips: async (path: string, added: Buffer) => { joins.push({ path, added }); return { bytes: added, poster: png, width: 64, height: 64, frames: 240, fps: 24, audio: true }; },
+  }));
   let date = new Date(2026, 9, 12, 10), context: Partial<CallContext> = {}, enabled = true, allowed = true;
   const asked: ApprovalRequest[] = [];
   const options = { models: s.models, threadId: thread, files, call: () => s.ctx(context), settings: () => settings,
@@ -41,7 +46,7 @@ async function setup() {
   let turn = () => {};
   factory({ on: (event: string, f: () => void) => { if (event === "agent_start") turn = f; }, registerTool: (t: ToolDefinition) => { tool = t; } } as unknown as ExtensionAPI);
   const run = (args: unknown, id = "call") => { turn(); return tool.execute(id, args, undefined, undefined, noUI); };
-  return { ...s, files, home, folder, settings, asked, run, factory, options, tool,
+  return { ...s, files, joins, home, folder, settings, asked, run, factory, options, tool,
     tomorrow: () => { date = new Date(2026, 9, 13, 10); }, context: (c: Partial<CallContext>) => { context = c; },
     allow: (yes: boolean) => { allowed = yes; }, enable: (yes: boolean) => { enabled = yes; } };
 }
@@ -351,7 +356,10 @@ describe("image tool results (principles 1 and 4)", () => {
     writeFileSync(join(s.folder, "uploads", "walk.mp4"), mp4);
     const out = await s.run({ action: "extend", prompt: "She keeps walking", video: "/workspace/uploads/walk.mp4", duration: 6 });
     expect((out.details as { video: { model: string; path: string } }).video).toMatchObject({ model: "shared.workstation/Long", path: expect.stringMatching(/^\/workspace\/videos\//) });
-    expect(s.workstation.server.videos).toEqual([{ recipe: "long", prompt: "She keeps walking", extend: mp4.toString("base64"), duration: 6 }]);
+    // Only the clip's end goes to the host, which answers with the next seconds alone; they are joined on here.
+    expect(s.workstation.server.videos).toEqual([{ recipe: "long", prompt: "She keeps walking", extend: mp4.toString("base64"), tail: true, duration: 6 }]);
+    expect(s.joins.map((j) => j.path)).toEqual(["/workspace/uploads/walk.mp4"]);
+    expect((out.details as { video: { duration: number } }).video.duration).toBe(10);
     await expect(s.run({ action: "extend", prompt: "x" })).rejects.toThrow("extend needs video");
     // A clip given to video is refused, not ignored: a new clip isn't the one they meant to go on.
     await expect(s.run({ action: "video", prompt: "x", video: "/workspace/uploads/walk.mp4" })).rejects.toThrow("video doesn't take video: extend makes a clip longer");

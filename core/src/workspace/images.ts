@@ -7,6 +7,7 @@ import { cleanPng, type GeneratedImage, type ImageInput } from "../models/images
 import { isMp4, MAX_DRIVE_BYTES, MAX_EXTEND_BYTES, type GeneratedVideo } from "../models/videos.ts";
 import { looksLikeText, sniffImage } from "./ops.ts";
 import { FAMILY_ROOT, SHARED, WORKDIR } from "./sandbox.ts";
+import type { ThreadFiles } from "./files.ts";
 import type { WorkspaceSettings } from "./settings.ts";
 
 export const PHOTOS_DIR = "/photos-of-me";
@@ -17,6 +18,8 @@ export const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
  * up to 64 MB and resizes it to its working size; a cloud image model still refuses past 20 MB (models/images.ts).
  */
 export const MAX_INPUT_IMAGE_BYTES = 64 * 1024 * 1024;
+/** How much of a clip's end goes to a host to extend it: H3's continuation reads its last 26 frames, about 1.1 s at 24 fps. */
+const CLIP_END_SECONDS = 2;
 const mb = (bytes: number) => `${Math.round(bytes / 1024 / 1024)} MB`;
 /** Where a thread's rejected attempts go, inside its images folder. */
 export const REJECTED_DIR = "rejected";
@@ -186,7 +189,9 @@ export class ThreadImages {
     /** Hears of the rejects clearRejected deleted, as she saw their paths, so their records go too. */
     private readonly removed: (paths: string[]) => void = () => {},
     /** The thread whose folder holds a path she sees (/shared is the family's topmost); none for a grant. Without it, /workspace is this thread's and /shared nobody's. */
-    private readonly folderOf: (path: string) => string | undefined = (path) => (path.startsWith(`${SHARED}/`) ? undefined : this.ownFolder())) {}
+    private readonly folderOf: (path: string) => string | undefined = (path) => (path.startsWith(`${SHARED}/`) ? undefined : this.ownFolder()),
+    /** The thread's files, whose sandbox runs ffmpeg to cut a clip's end and join the next seconds on. */
+    private readonly clips?: () => Pick<ThreadFiles, "clipTail" | "joinClips">) {}
 
   private folder(kind: "images" | "videos" = "images"): string[] { return this.shared() ? ["shared", kind] : [kind]; }
 
@@ -327,15 +332,32 @@ export class ThreadImages {
     return { input: imageInput(bytes, limit), portrait: this.portraitByFolder(path) || this.portraits.isPortraitImage(createHash("sha256").update(bytes).digest("hex")) };
   }
 
-  /**
-   * A clip from the workspace, read in memory only: an MP4 of at most 64 MB (`motion`'s driving clip, one to edit or
-   * upscale), or 256 MB for one to `extend`, which comes back whole with the new seconds joined on.
-   */
-  async readClip(path: string, extend = false): Promise<Uint8Array> {
-    const limit = extend ? MAX_EXTEND_BYTES : MAX_DRIVE_BYTES;
-    const bytes = await this.readCapped(path, limit, size => `${path} is ${mb(size)}; a clip ${extend ? "to extend " : ""}is at most ${mb(limit)}`);
+  /** A clip from the workspace (`motion`'s driving clip, one to edit or upscale): an MP4 of at most 64 MB, read in memory only. */
+  async readClip(path: string): Promise<Uint8Array> {
+    const bytes = await this.readCapped(path, MAX_DRIVE_BYTES, size => `${path} is ${mb(size)}; a clip is at most ${mb(MAX_DRIVE_BYTES)}`);
     if (!isMp4(bytes)) throw new Error(`${path} isn't an MP4 clip`);
     return bytes;
+  }
+
+  /**
+   * The end of a clip to `extend`, all a host reads to continue it: its last CLIP_END_SECONDS from the keyframe before
+   * them, as they are. A clip of any length extends, since the rest never leaves the workspace.
+   */
+  async clipEnd(path: string, signal?: AbortSignal): Promise<Uint8Array> {
+    if (!this.clips) throw new Error("This thread can't extend clips.");
+    const bytes = await this.clips().clipTail(path, CLIP_END_SECONDS, signal);
+    if (!isMp4(bytes)) throw new Error(`${path} isn't an MP4 clip`);
+    if (bytes.length > MAX_EXTEND_BYTES) throw new Error(`${path}'s last keyframes are ${mb(bytes.length)} apart; a clip's end is at most ${mb(MAX_EXTEND_BYTES)}`);
+    return bytes;
+  }
+
+  /** `path` with a host's next seconds (`added`) joined on, saved as a new clip; its first frame is the poster. */
+  async saveExtended(path: string, added: GeneratedVideo, signal?: AbortSignal): Promise<{ path: string; video: GeneratedVideo }> {
+    if (!this.clips) throw new Error("This thread can't extend clips.");
+    const j = await this.clips().joinClips(path, Buffer.from(added.bytes), signal);
+    signal?.throwIfAborted();
+    const video: GeneratedVideo = { ...added, bytes: j.bytes, width: j.width, height: j.height, frames: j.frames, fps: j.fps, duration: j.frames / j.fps, audio: j.audio, poster: cleanPng(j.poster) };
+    return { path: this.saveVideo(video), video };
   }
 
   /** A workspace file in memory, refused past `limit` bytes before and while it streams. */
