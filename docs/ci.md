@@ -19,9 +19,10 @@ self-hosted runners, which no workflow uses at the moment.
   runs them in UTC, and `test-env.ts` clears the `GIT_AUTHOR_*` and
   `GIT_COMMITTER_*` identity a Lyrica sandbox sets, so commits the tests
   make carry the tests' own names there too.
-- `.github/runner/setup.sh TOKEN`, run as root, installs Docker, a `runner`
-  user with passwordless sudo, and the runner as a systemd service. TOKEN comes
-  from the repository's Settings, Actions, Runners, New self-hosted runner.
+- `.github/runner/setup.sh`, run as root, installs Docker, a `runner`
+  user with passwordless sudo, and the runner as a systemd service. It asks
+  for the registration token (typed, never an argument, so `ps` can't show
+  it), from the repository's Settings, Actions, Runners, New self-hosted runner.
 - The jobs install their own packages with sudo, so the VM is theirs to
   change. needrestart only lists services (it once restarted the runner
   mid-job), and apt waits up to 10 minutes for a busy dpkg lock; setup.sh,
