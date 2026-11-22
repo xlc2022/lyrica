@@ -245,10 +245,11 @@ models only: no vLLM and no images.
   Beside a discrete GPU, an integrated one is left out until you include it.
 
 With `--tailscale NAME`, the stack joins your tailnet as a device of its own,
-named `NAME`. It asks once for an auth key, which is removed from `.env` once
-the device has joined. With `--no-lan` as well, the host is reachable only
-over Tailscale. Without it, the host isn't on the tailnet even when the
-machine is: it doesn't listen on the machine's own Tailscale address.
+named `NAME`. It asks once for an auth key, which is removed from `.env` and
+from the tailscale container's environment once the device has joined. With
+`--no-lan` as well, the host is reachable only over Tailscale. Without it,
+the host isn't on the tailnet even when the machine is: it doesn't listen on
+the machine's own Tailscale address.
 
 With `--tailscale-ssh` as well (kept in `.env` as `TS_SSH=1` until
 `--no-tailscale-ssh`), the device also forwards port 22 to the machine's own

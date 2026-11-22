@@ -663,6 +663,9 @@ if [[ -n $TS_HOSTNAME && -n $TS_AUTHKEY ]]; then
   done
   if [[ $JOINED == 1 ]]; then
     sed -i 's/^TS_AUTHKEY=.*/TS_AUTHKEY=/' .env
+    # The running container still has the key in its environment (docker inspect);
+    # recreate it from the blanked .env. Its state volume keeps it joined.
+    "${COMPOSE[@]}" up -d --force-recreate tailscale >/dev/null
     touch .tailscale-joined
   else
     say "Tailscale hasn't joined yet; the auth key stays in host/.env until it does. See: ${COMPOSE[*]} logs tailscale"
