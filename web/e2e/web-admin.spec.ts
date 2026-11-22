@@ -2717,6 +2717,7 @@ test("a run card's Notifications row opens the card in place and takes the passw
   await row.getByRole("button", { name: "Show card", exact: true }).click();
   const shown = row.locator(".question-card");
   await expect(shown).toBeVisible();
+  await expect(row.getByRole("button", { name: "Hide card", exact: true })).toHaveAttribute("aria-expanded", "true");
   // The card itself: Run with the password field, Done with its own meaning only, each consequence in the open.
   await expect(shown.getByRole("button", { name: /^Done/ })).toBeVisible();
   await expect(shown).toContainText("Already run by hand. Lyrica checks the result and carries on.");
