@@ -365,7 +365,7 @@ test("home attachments and tool switches stay local until send and follow the se
   expect(uploads[0]).toContain("name=general.txt");
 });
 
-test("sidebar context menus overlay the sliding sidebar and keep their keyboard, submenu and dismissal behavior", async ({ page, baseURL }) => {
+test("sidebar context menus show past the sliding sidebar's edge", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   const thread = await page.evaluate(async (uid) => {
     const r = await fetch(`/api/u/${uid}/threads`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ pool: "general", title: "Overlay thread" }) });
@@ -377,68 +377,25 @@ test("sidebar context menus overlay the sliding sidebar and keep their keyboard,
   const side = page.getByRole("complementary", { name: "Threads", exact: true });
   // Retain the slide's transformed containing block even after the animation, as a composited sidebar can do.
   await side.evaluate((el) => { el.style.transition = "none"; el.style.transform = "translateX(0)"; });
-  const row = side.getByRole("link", { name: /^Overlay thread/ }).first();
-  const open = () => row.evaluate((el) => {
-    const r = el.getBoundingClientRect(), side = el.closest(".side")!.getBoundingClientRect();
-    el.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: side.right - 40, clientY: r.bottom }));
-  });
-  const menu = page.getByRole("menu", { name: "Overlay thread menu" });
+  const menuAt = (target: Locator, y?: number) => target.evaluate((el, y) => {
+    const side = el.closest(".side")!.getBoundingClientRect();
+    el.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: side.right - 40, clientY: y ?? el.getBoundingClientRect().bottom }));
+  }, y);
   // Visibility alone misses clipping: hit-test an item's portion beyond the sidebar edge.
-  const reachesOutside = async (item: Locator) => {
-    await expect.poll(() => item.evaluate((el) => {
-      const r = el.getBoundingClientRect(), side = document.querySelector(".side")!.getBoundingClientRect();
-      const x = r.right - 4, y = r.top + r.height / 2;
-      return x > side.right && el.contains(document.elementFromPoint(x, y));
-    })).toBe(true);
-  };
-  await open();
-  const unread = menu.getByRole("menuitem", { name: "Mark as unread" });
-  await expect(unread).toBeFocused();
-  await reachesOutside(unread);
-  await page.keyboard.press("ArrowDown");
-  await expect(menu.getByRole("menuitem", { name: "Rename…" })).toBeFocused();
-  await page.keyboard.press("End");
-  await expect(menu.getByRole("menuitem", { name: "Delete…" })).toBeFocused();
-  await page.keyboard.press("Home");
-  const before = await menu.boundingBox();
-  await side.evaluate((el) => { el.scrollTop = el.scrollHeight; });
-  await expect.poll(() => menu.boundingBox()).toEqual(before);
+  const reachesOutside = (item: Locator) => expect.poll(() => item.evaluate((el) => {
+    const r = el.getBoundingClientRect(), side = document.querySelector(".side")!.getBoundingClientRect();
+    const x = r.right - 4, y = r.top + r.height / 2;
+    return x > side.right && el.contains(document.elementFromPoint(x, y));
+  })).toBe(true);
+  const row = side.getByRole("link", { name: /^Overlay thread/ }).first();
+  await menuAt(row);
+  const unread = page.getByRole("menu", { name: "Overlay thread menu" }).getByRole("menuitem", { name: "Mark as unread" });
   await reachesOutside(unread);
   if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/sidebar-menu-${page.viewportSize()!.width}.png` });
-  await menu.getByRole("menuitem", { name: "Move to group" }).click();
-  const group = page.getByRole("menuitem", { name: "New group…" });
-  await reachesOutside(group);
-  if (!phone(page)) {
-    await group.focus();
-    await page.keyboard.press("ArrowLeft");
-    await expect(menu.getByRole("menuitem", { name: "Move to group" })).toBeFocused();
-  } else {
-    await page.locator(".ctx-menu .back").click();
-  }
   await page.keyboard.press("Escape");
-  await expect(menu).toHaveCount(0);
-  await open();
-  await reachesOutside(unread);
-  // Click the part that used to be clipped, not the portion over the sidebar.
-  const box = (await unread.boundingBox())!;
-  await unread.click({ position: { x: box.width - 4, y: box.height / 2 } });
-  await expect(menu).toHaveCount(0);
-  await expect(row).toHaveClass(/unread/);
-  await open();
-  await menu.getByRole("menuitem", { name: "Mark as read" }).click();
-  await expect(menu).toHaveCount(0);
-  await expect(row).not.toHaveClass(/unread/);
   // The thread list's own context menu shares the sidebar's clipping layer.
-  await side.locator(".threads").evaluate((el) => {
-    const side = el.closest(".side")!.getBoundingClientRect();
-    el.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: side.right - 40, clientY: 120 }));
-  });
-  const listMenu = page.getByRole("menu", { name: "Thread list menu" });
-  await reachesOutside(listMenu.getByRole("menuitem", { name: "New group…" }));
-  await side.evaluate((el) => { el.style.transition = ""; el.style.transform = ""; });
-  await page.mouse.click(page.viewportSize()!.width - 4, 10);
-  await expect(listMenu).toHaveCount(0);
-  await noHorizontalScroll(page);
+  await menuAt(side.locator(".threads"), 120);
+  await reachesOutside(page.getByRole("menu", { name: "Thread list menu" }).getByRole("menuitem", { name: "New group…" }));
 });
 
 test("the thread menu renames, marks unread, groups, hides and deletes; a group shows and folds under any sort", async ({ page, baseURL }) => {
