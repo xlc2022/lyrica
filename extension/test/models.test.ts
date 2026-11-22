@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CloudModelForbidden, Memory, PRONOUN_PRESETS, type Persona, type Pool } from "@lyrica/core";
 import { createAssistantMessageEventStream, fauxAssistantMessage, isRetryableAssistantError } from "@earendil-works/pi-ai";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { deadUrl, fakeOpenAI } from "../../core/test/fake-openai.ts";
 import { fakeHost } from "../../core/test/fake-host.ts";
 import { withModels } from "../../core/test/helpers.ts";
@@ -496,6 +496,35 @@ describe("each model's own settings", () => {
     const cloud = s.cloud.requests[0] as unknown as Record<string, unknown>;
     expect(cloud.temperature).toBe(0.9);
     expect(cloud.top_k).toBeUndefined();
+  });
+
+  it("doesn't tag a request to OpenRouter as Pi's", async () => {
+    const s = await setup();
+    const headers: Headers[] = [];
+    const real = globalThis.fetch;
+    // OpenRouter's address, answered by the fake cloud server.
+    vi.stubGlobal("fetch", (input: string | URL | Request, init?: RequestInit) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (!url.startsWith("https://openrouter.ai/api/v1/")) return real(input, init);
+      if (url.endsWith("/chat/completions")) headers.push(new Headers(input instanceof Request ? input.headers : init?.headers));
+      return real(url.replace("https://openrouter.ai/api/v1", `${s.cloud.baseUrl}`), input instanceof Request ? input : init);
+    });
+    try {
+      const ep = s.models.addEndpoint(s.ada, { name: "or", kind: "cloud", baseUrl: "https://openrouter.ai/api/v1", apiKey: "sk-test" });
+      const [o] = await s.models.discover(s.ada, ep.id);
+      s.models.setColumnTask(s.ada.id, "general", "chat", [{ offeringId: o!.id }]);
+      const { session, prepare, dispose } = await s.open(s.thread("general"));
+      try {
+        await prepare();
+        await session.prompt("hello");
+      } finally {
+        dispose();
+      }
+    } finally {
+      vi.unstubAllGlobals();
+    }
+    expect(headers).toHaveLength(1);
+    for (const name of ["http-referer", "x-openrouter-title", "x-openrouter-categories"]) expect(headers[0]!.get(name)).toBeNull();
   });
 });
 

@@ -771,7 +771,7 @@ declares create, edit, mask, references, sizes, count and tier mappings.
   "Sign in with ChatGPT" token, so ChatGPT Images runs the user's own
   unmodified Codex (`codex.ts`, the owner's choice; docs/briefs/codex-images.md):
   one `codex exec` per image with `--json --ephemeral --ignore-user-config`,
-  approvals off, `image_generation` on and every other Codex tool off
+  approvals off, analytics off (`-c analytics.enabled=false`), `image_generation` on and every other Codex tool off
   (`CODEX_DISABLED`: its shell, browser, computer use, apps, plugins,
   memories and goals,
   each passed when the installed Codex's `codex features list` has it, since
@@ -1218,6 +1218,10 @@ xAI provider instead (below).
   conversation came from, which holds it whole, when that one costs
   nothing (local or free); otherwise, or failing that, on the new one. A model the conversation has outgrown is passed over for one it
   fits; when none fits, the first takes it compacted.
+- `openThreadSession` turns Pi's install telemetry off
+  (`enableInstallTelemetry: false`). Pi ties its provider attribution to that setting,
+  so no request carries Pi's `HTTP-Referer: https://pi.dev`,
+  `X-OpenRouter-Title` or `X-OpenRouter-Categories` headers to OpenRouter.
 
 `openThreadSession` hosts one thread with that runtime and its chat model.
 

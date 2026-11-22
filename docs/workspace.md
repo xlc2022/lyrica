@@ -2622,7 +2622,11 @@ sandbox mounts; never the `/etc/static` link, which it doesn't), and `CHROME_PAT
 sandbox's Chromium, with `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD` and
 `PUPPETEER_SKIP_DOWNLOAD`, so npm, pip and browser libraries use what is
 there instead of failing on certificates or downloading a browser
-(`toolEnv` in `sandbox.ts`). On Debian it also has `PYTHONPATH` set to
+(`toolEnv` in `sandbox.ts`). Every run also has the usage-report switches
+of the tools a sandbox most often installs: `DO_NOT_TRACK=1` and
+`HF_HUB_DISABLE_TELEMETRY=1` (Hugging Face's libraries),
+`GRADIO_ANALYTICS_ENABLED=False` and `NEXT_TELEMETRY_DISABLED=1`
+(`NO_TELEMETRY`). On Debian it also has `PYTHONPATH` set to
 `/opt/lyrica/tools/lib/python` when install.sh put pdfplumber and pypdf there, and
 `TESSDATA_PREFIX` to `/opt/lyrica/tools/share/tessdata` when Tesseract's
 English file is there. With internet off, it tells her not to
